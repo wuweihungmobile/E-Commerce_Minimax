@@ -1,0 +1,55 @@
+# =============================================
+# Docker Compose Override (Development)
+# AISDLC v0.09 - Stage 8 Development Preparation
+# =============================================
+
+# This file is automatically loaded by docker-compose for development
+# Usage: docker compose up (automatically loads override)
+
+services:
+  # =============================================
+  # Frontend Development
+  # =============================================
+  frontend:
+    build:
+      target: builder
+    container_name: ecommerce-frontend-dev
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+    healthcheck:
+      disabled: true
+    ports:
+      - "3000:3000"
+
+  # =============================================
+  # Backend Development
+  # =============================================
+  backend:
+    build:
+      target: builder
+    container_name: ecommerce-backend-dev
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      - SPRING_FLYWAY_ENABLED=false
+      - JAVA_OPTS=-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005
+    volumes:
+      - ./backend:/app
+      - maven_cache:/root/.m2
+    command: ./gradlew bootRun --no-daemon
+    ports:
+      - "8080:8080"
+      - "5005:5005"  # Debug port
+    healthcheck:
+      disabled: true
+
+# =============================================
+# Volume for Maven cache
+# =============================================
+volumes:
+  maven_cache:

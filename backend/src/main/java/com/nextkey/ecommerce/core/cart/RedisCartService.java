@@ -1,0 +1,275 @@
+package com.nextkey.ecommerce.core.cart;
+
+import com.nextkey.ecommerce.api.dto.CartDto;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.product.ProductSku;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Redis 購物車服務
+ * 使用 Redis Hash 儲存購物車資料
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class RedisCartService {
+
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final ListingRepository listingRepository;
+    private final ProductSkuRepository productSkuRepository;
+
+    private static final String CART_KEY_PREFIX = AppConstants.REDIS_CART_PREFIX;
+    private static final Duration CART_TTL = Duration.ofDays(30); // 購物車保留 30 天
+
+    /**
+     * 加入購物車
+     */
+    public CartDto.AddItemResponse addItem(UUID userId, UUID tenantId, CartDto.AddItemRequest request) {
+        String cartKey = getCartKey(userId, tenantId);
+        String itemKey = getItemKey(request.getListingId(), request.getSkuId());
+
+        // 檢查商品是否存在
+        Listing listing = listingRepository.findById(request.getListingId())
+                .orElseThrow(() -> new IllegalArgumentException("Listing not found: " + request.getListingId()));
+
+        BigDecimal unitPrice = listing.getBasePrice();
+        String skuCode = null;
+        String specName = null;
+
+        // 如果有 SKU，獲取 SKU 資訊
+        if (request.getSkuId() != null) {
+            ProductSku sku = productSkuRepository.findById(request.getSkuId()).orElse(null);
+            if (sku != null) {
+                unitPrice = sku.getPriceOverride() != null ? sku.getPriceOverride() : unitPrice;
+                skuCode = sku.getSkuCode();
+                specName = sku.getSpecName();
+            }
+        }
+
+        // 檢查是否已有相同商品在購物車
+        Object existingItem = redisTemplate.opsForHash().get(cartKey, itemKey);
+        int newQuantity = request.getQuantity();
+
+        if (existingItem != null) {
+            // 更新數量
+            CartItemData existing = (CartItemData) existingItem;
+            newQuantity += existing.quantity;
+        }
+
+        // 創建購物車項目
+        CartItemData item = CartItemData.builder()
+                .listingId(request.getListingId())
+                .skuId(request.getSkuId())
+                .skuCode(skuCode)
+                .specName(specName)
+                .quantity(newQuantity)
+                .unitPrice(unitPrice)
+                .listingType(listing.getListingType().name())
+                .addedAt(Instant.now())
+                .build();
+
+        // 儲存到 Redis
+        redisTemplate.opsForHash().put(cartKey, itemKey, item);
+        redisTemplate.expire(cartKey, CART_TTL);
+
+        // 計算返回結果
+        CartDto.CartItemResponse itemResponse = toCartItemResponse(itemKey, item, listing);
+        int totalItems = getTotalItemsCount(cartKey);
+
+        log.info("Added item to cart: userId={}, listingId={}, quantity={}", userId, request.getListingId(), newQuantity);
+
+        return CartDto.AddItemResponse.builder()
+                .success(true)
+                .item(itemResponse)
+                .totalItemsInCart(totalItems)
+                .message("Item added to cart successfully")
+                .build();
+    }
+
+    /**
+     * 更新購物車項目數量
+     */
+    public CartDto.CartItemResponse updateItem(UUID userId, UUID tenantId, UUID listingId, UUID skuId, int quantity) {
+        String cartKey = getCartKey(userId, tenantId);
+        String itemKey = getItemKey(listingId, skuId);
+
+        Object existingItem = redisTemplate.opsForHash().get(cartKey, itemKey);
+        if (existingItem == null) {
+            throw new IllegalArgumentException("Cart item not found");
+        }
+
+        CartItemData item = (CartItemData) existingItem;
+        item.setQuantity(quantity);
+
+        redisTemplate.opsForHash().put(cartKey, itemKey, item);
+        redisTemplate.expire(cartKey, CART_TTL);
+
+        // 獲取 listing 資訊
+        Listing listing = listingRepository.findById(listingId).orElse(null);
+        CartDto.CartItemResponse response = toCartItemResponse(itemKey, item, listing);
+
+        log.info("Updated cart item: userId={}, listingId={}, quantity={}", userId, listingId, quantity);
+        return response;
+    }
+
+    /**
+     * 移除購物車項目
+     */
+    public void removeItem(UUID userId, UUID tenantId, UUID listingId, UUID skuId) {
+        String cartKey = getCartKey(userId, tenantId);
+        String itemKey = getItemKey(listingId, skuId);
+
+        Long removed = redisTemplate.opsForHash().delete(cartKey, itemKey);
+        if (removed > 0) {
+            log.info("Removed item from cart: userId={}, listingId={}", userId, listingId);
+        }
+    }
+
+    /**
+     * 清除用戶購物車
+     */
+    public void clearCart(UUID userId, UUID tenantId) {
+        String cartKey = getCartKey(userId, tenantId);
+        redisTemplate.delete(cartKey);
+        log.info("Cleared cart: userId={}", userId);
+    }
+
+    /**
+     * 獲取用戶購物車
+     */
+    public CartDto.CartResponse getCart(UUID userId, UUID tenantId) {
+        String cartKey = getCartKey(userId, tenantId);
+        Map<Object, Object> entries = redisTemplate.opsForHash().entries(cartKey);
+
+        if (entries.isEmpty()) {
+            return CartDto.CartResponse.builder()
+                    .userId(userId)
+                    .cartKey(cartKey)
+                    .items(Collections.emptyList())
+                    .totalItems(0)
+                    .totalAmount(BigDecimal.ZERO)
+                    .currency("TWD")
+                    .updatedAt(Instant.now())
+                    .build();
+        }
+
+        // 獲取所有 listing IDs
+        Set<UUID> listingIds = entries.values().stream()
+                .map(item -> (CartItemData) item)
+                .map(CartItemData::getListingId)
+                .collect(Collectors.toSet());
+
+        // 批量獲取 listing 資訊
+        Map<UUID, Listing> listingMap = new HashMap<>();
+        listingRepository.findAllById(listingIds).forEach(listing -> listingMap.put(listing.getId(), listing));
+
+        // 轉換為回應物件
+        List<CartDto.CartItemResponse> items = new ArrayList<>();
+        BigDecimal totalAmount = BigDecimal.ZERO;
+
+        for (Map.Entry<Object, Object> entry : entries.entrySet()) {
+            String itemKey = (String) entry.getKey();
+            CartItemData item = (CartItemData) entry.getValue();
+            Listing listing = listingMap.get(item.getListingId());
+            CartDto.CartItemResponse itemResponse = toCartItemResponse(itemKey, item, listing);
+            items.add(itemResponse);
+            totalAmount = totalAmount.add(item.getSubtotal());
+        }
+
+        return CartDto.CartResponse.builder()
+                .userId(userId)
+                .cartKey(cartKey)
+                .items(items)
+                .totalItems(items.size())
+                .totalAmount(totalAmount)
+                .currency("TWD")
+                .updatedAt(Instant.now())
+                .build();
+    }
+
+    /**
+     * 獲取購物車項目數量
+     */
+    public int getCartItemCount(UUID userId, UUID tenantId) {
+        String cartKey = getCartKey(userId, tenantId);
+        return getTotalItemsCount(cartKey);
+    }
+
+    // ========== Helper Methods ==========
+
+    private String getCartKey(UUID userId, UUID tenantId) {
+        return CART_KEY_PREFIX + userId.toString() + ":" + tenantId.toString();
+    }
+
+    private String getItemKey(UUID listingId, UUID skuId) {
+        if (skuId != null) {
+            return listingId.toString() + ":" + skuId.toString();
+        }
+        return listingId.toString();
+    }
+
+    private int getTotalItemsCount(String cartKey) {
+        Map<Object, Object> entries = redisTemplate.opsForHash().entries(cartKey);
+        return entries.values().stream()
+                .map(item -> (CartItemData) item)
+                .mapToInt(CartItemData::getQuantity)
+                .sum();
+    }
+
+    private CartDto.CartItemResponse toCartItemResponse(String itemKey, CartItemData item, Listing listing) {
+        String title = listing != null ? listing.getTitle() : "Unknown";
+        String coverImageUrl = listing != null ? listing.getCoverImageUrl() : null;
+
+        return CartDto.CartItemResponse.builder()
+                .cartItemKey(itemKey)
+                .listingId(item.getListingId())
+                .title(title)
+                .coverImageUrl(coverImageUrl)
+                .skuId(item.getSkuId())
+                .skuCode(item.getSkuCode())
+                .specName(item.getSpecName())
+                .quantity(item.getQuantity())
+                .unitPrice(item.getUnitPrice())
+                .subtotal(item.getSubtotal())
+                .listingType(item.getListingType())
+                .addedAt(item.getAddedAt())
+                .build();
+    }
+
+    /**
+     * 購物車項目資料結構
+     */
+    @lombok.Data
+    @lombok.Builder
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class CartItemData {
+        private UUID listingId;
+        private UUID skuId;
+        private String skuCode;
+        private String specName;
+        private Integer quantity;
+        private BigDecimal unitPrice;
+        private String listingType;
+        private Instant addedAt;
+
+        public BigDecimal getSubtotal() {
+            if (unitPrice == null || quantity == null) {
+                return BigDecimal.ZERO;
+            }
+            return unitPrice.multiply(BigDecimal.valueOf(quantity));
+        }
+    }
+}

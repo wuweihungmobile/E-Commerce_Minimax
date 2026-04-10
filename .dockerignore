@@ -1,0 +1,71 @@
+# =============================================
+# Docker Ignore - E-Commerce Platform
+# AISDLC v0.09
+# =============================================
+
+# Dependencies
+**/node_modules
+**/.npm
+**/.yarn
+
+# Build outputs
+**/.next
+**/dist
+**/build
+**/target
+**/.gradle
+
+# Test outputs
+**/coverage
+**/.nyc_output
+**/test-results
+**/surefire-reports
+**/failsafe-reports
+
+# Version control
+**/.git
+**/.gitignore
+**/.gitattributes
+
+# IDE
+**/.idea
+**/.vscode
+**/*.swp
+**/*.swo
+**/*~
+
+# Environment files
+**/.env
+**/.env.*
+**/*.env
+
+# Documentation
+**/*.md
+**/docs
+
+# OS files
+**/.DS_Store
+**/Thumbs.db
+
+# Logs
+**/*.log
+**/logs
+
+# Temporary files
+**/*.tmp
+**/*.temp
+**/tmp
+
+# Docker files (in project root)
+docker-compose*.yml
+Dockerfile*
+
+# AISDLC framework
+**/AISDLC*
+**/.claude
+
+# Credentials and secrets
+**/*.pem
+**/*.key
+**/*.crt
+**/secrets

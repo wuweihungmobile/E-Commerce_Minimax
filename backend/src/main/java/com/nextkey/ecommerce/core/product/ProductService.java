@@ -1,0 +1,201 @@
+package com.nextkey.ecommerce.core.product;
+
+import com.nextkey.ecommerce.api.dto.ProductDto;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.product.Product;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.ProductRepository;
+import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.UUID;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class ProductService {
+
+    private final ProductRepository productRepository;
+    private final ListingRepository listingRepository;
+
+    @Transactional(readOnly = true)
+    public Page<ProductDto.ListResponse> getProducts(
+            String category,
+            String brand,
+            String keyword,
+            int page,
+            int size,
+            String sortBy,
+            String sortDir) {
+
+        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
+        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 100), sort);
+
+        UUID tenantId = TenantContext.getCurrentTenant();
+        Page<Product> products;
+
+        if (keyword != null && !keyword.isBlank()) {
+            // Search by keyword in listing title/description
+            products = productRepository.findByListing_TenantIdAndListing_Status(
+                    tenantId, Listing.ListingStatus.ACTIVE, pageRequest);
+        } else if (category != null && brand != null && !brand.isBlank()) {
+            products = productRepository.findByCategoryAndBrand(category, brand, pageRequest);
+        } else if (category != null && !category.isBlank()) {
+            products = productRepository.findByCategory(category, pageRequest);
+        } else if (brand != null && !brand.isBlank()) {
+            products = productRepository.findByBrand(brand, pageRequest);
+        } else {
+            products = productRepository.findByListing_TenantIdAndListing_Status(
+                    tenantId, Listing.ListingStatus.ACTIVE, pageRequest);
+        }
+
+        return products.map(this::toListResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public ProductDto.Response getProduct(UUID listingId) {
+        Product product = findProductByListingId(listingId);
+        return toResponse(product);
+    }
+
+    @Transactional
+    public ProductDto.Response createProduct(ProductDto.CreateRequest request) {
+        UUID tenantId = TenantContext.getCurrentTenant();
+        UUID ownerId = TenantContext.getCurrentUser();
+
+        // Create Listing first
+        Listing listing = Listing.builder()
+                .tenantId(tenantId)
+                .listingType(Listing.ListingType.PRODUCT)
+                .title(request.getTitle())
+                .description(request.getDescription())
+                .coverImageUrl(request.getCoverImageUrl())
+                .status(Listing.ListingStatus.ACTIVE)
+                .basePrice(request.getBasePrice())
+                .currency("TWD")
+                .tags(request.getTags())
+                .build();
+
+        listing = listingRepository.save(listing);
+
+        // Create Product
+        Product product = Product.builder()
+                .listing(listing)
+                .category(request.getCategory())
+                .brand(request.getBrand())
+                .weightGrams(request.getWeightGrams())
+                .dimensionsCm(request.getDimensionsCm())
+                .build();
+
+        product = productRepository.save(product);
+        log.info("Created product with listingId: {}", listing.getId());
+
+        return toResponse(product);
+    }
+
+    @Transactional
+    public ProductDto.Response updateProduct(UUID listingId, ProductDto.UpdateRequest request) {
+        Product product = findProductByListingId(listingId);
+        Listing listing = product.getListing();
+
+        if (request.getTitle() != null) {
+            listing.setTitle(request.getTitle());
+        }
+        if (request.getDescription() != null) {
+            listing.setDescription(request.getDescription());
+        }
+        if (request.getCoverImageUrl() != null) {
+            listing.setCoverImageUrl(request.getCoverImageUrl());
+        }
+        if (request.getBasePrice() != null) {
+            listing.setBasePrice(request.getBasePrice());
+        }
+        if (request.getTags() != null) {
+            listing.setTags(request.getTags());
+        }
+        if (request.getStatus() != null) {
+            listing.setStatus(Listing.ListingStatus.valueOf(request.getStatus().toUpperCase()));
+        }
+
+        listingRepository.save(listing);
+
+        if (request.getCategory() != null) {
+            product.setCategory(request.getCategory());
+        }
+        if (request.getBrand() != null) {
+            product.setBrand(request.getBrand());
+        }
+        if (request.getWeightGrams() != null) {
+            product.setWeightGrams(request.getWeightGrams());
+        }
+        if (request.getDimensionsCm() != null) {
+            product.setDimensionsCm(request.getDimensionsCm());
+        }
+
+        product = productRepository.save(product);
+        log.info("Updated product with listingId: {}", listingId);
+
+        return toResponse(product);
+    }
+
+    @Transactional
+    public void deleteProduct(UUID listingId) {
+        Product product = findProductByListingId(listingId);
+        Listing listing = product.getListing();
+
+        // Soft delete: set status to DELETED
+        listing.setStatus(Listing.ListingStatus.DELETED);
+        listingRepository.save(listing);
+
+        log.info("Deleted product with listingId: {}", listingId);
+    }
+
+    private Product findProductByListingId(UUID listingId) {
+        return productRepository.findByListingId(listingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_3000));
+    }
+
+    private ProductDto.Response toResponse(Product product) {
+        Listing listing = product.getListing();
+        return ProductDto.Response.builder()
+                .listingId(listing.getId())
+                .tenantId(listing.getTenantId())
+                .title(listing.getTitle())
+                .description(listing.getDescription())
+                .category(product.getCategory())
+                .brand(product.getBrand())
+                .basePrice(listing.getBasePrice())
+                .currency(listing.getCurrency())
+                .coverImageUrl(listing.getCoverImageUrl())
+                .status(listing.getStatus().name())
+                .tags(listing.getTags())
+                .weightGrams(product.getWeightGrams())
+                .dimensionsCm(product.getDimensionsCm())
+                .createdAt(listing.getCreatedAt())
+                .updatedAt(listing.getUpdatedAt())
+                .build();
+    }
+
+    private ProductDto.ListResponse toListResponse(Product product) {
+        Listing listing = product.getListing();
+        return ProductDto.ListResponse.builder()
+                .listingId(listing.getId())
+                .title(listing.getTitle())
+                .category(product.getCategory())
+                .brand(product.getBrand())
+                .basePrice(listing.getBasePrice())
+                .currency(listing.getCurrency())
+                .coverImageUrl(listing.getCoverImageUrl())
+                .status(listing.getStatus().name())
+                .createdAt(listing.getCreatedAt())
+                .build();
+    }
+}

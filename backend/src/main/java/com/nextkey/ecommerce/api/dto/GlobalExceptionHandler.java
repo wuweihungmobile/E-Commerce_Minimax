@@ -1,0 +1,127 @@
+package com.nextkey.ecommerce.api.dto;
+
+import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.validation.BindException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.WebRequest;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Slf4j
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException ex) {
+        log.warn("Business exception: {} - {}", ex.getErrorCode().getCode(), ex.getMessage());
+
+        HttpStatus status = mapErrorCodeToStatus(ex.getErrorCode());
+
+        return ResponseEntity.status(status)
+                .body(ApiResponse.error(ex.getFullCode(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleValidationException(MethodArgumentNotValidException ex) {
+        log.warn("Validation exception: {}", ex.getMessage());
+
+        List<ApiResponse.FieldError> fieldErrors = ex.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(error -> ApiResponse.FieldError.builder()
+                        .field(error.getField())
+                        .message(error.getDefaultMessage())
+                        .rejectedValue(error.getRejectedValue())
+                        .build())
+                .collect(Collectors.toList());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(
+                        ErrorCode.E_9000.getCode(),
+                        "Validation failed",
+                        fieldErrors
+                ));
+    }
+
+    @ExceptionHandler(BindException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBindException(BindException ex) {
+        log.warn("Bind exception: {}", ex.getMessage());
+
+        List<ApiResponse.FieldError> fieldErrors = ex.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(error -> ApiResponse.FieldError.builder()
+                        .field(error.getField())
+                        .message(error.getDefaultMessage())
+                        .rejectedValue(error.getRejectedValue())
+                        .build())
+                .collect(Collectors.toList());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(
+                        ErrorCode.E_9000.getCode(),
+                        "Binding failed",
+                        fieldErrors
+                ));
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAuthenticationException(AuthenticationException ex) {
+        log.warn("Authentication exception: {}", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error(ErrorCode.E_1000.getCode(), "Authentication required"));
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBadCredentialsException(BadCredentialsException ex) {
+        log.warn("Bad credentials: {}", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error(ErrorCode.E_1001.getCode(), "Invalid credentials"));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDeniedException(AccessDeniedException ex) {
+        log.warn("Access denied: {}", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error(ErrorCode.E_1007.getCode(), "Insufficient permissions"));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Void>> handleGenericException(Exception ex, WebRequest request) {
+        log.error("Unexpected error at {}: ", request.getDescription(true), ex);
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error(
+                        ErrorCode.E_9900.getCode(),
+                        "An unexpected error occurred"
+                ));
+    }
+
+    private HttpStatus mapErrorCodeToStatus(ErrorCode errorCode) {
+        return switch (errorCode) {
+            case E_1000, E_1001, E_1002, E_1003, E_1004, E_1008 -> HttpStatus.UNAUTHORIZED;
+            case E_1005, E_1006, E_2000, E_3000, E_3003, E_3006, E_4000, E_4006, E_5000, E_5003, E_6000, E_7000, E_7001 -> HttpStatus.NOT_FOUND;
+            case E_1007, E_2001, E_2002, E_2004 -> HttpStatus.FORBIDDEN;
+            case E_2003 -> HttpStatus.CONFLICT;
+            case E_3004, E_4001, E_4002, E_4003, E_4004, E_4005, E_5002, E_5004, E_6001, E_6002, E_6003, E_7004 -> HttpStatus.BAD_REQUEST;
+            case E_3001, E_3002, E_4008, E_5001, E_5005, E_5006, E_6004, E_6005, E_7002 -> HttpStatus.UNPROCESSABLE_ENTITY;
+            case E_9000, E_9001, E_9002, E_9003, E_9004, E_9005, E_9006, E_9007, E_9008 -> HttpStatus.BAD_REQUEST;
+            case E_9904 -> HttpStatus.TOO_MANY_REQUESTS;
+            case E_9903, E_9905 -> HttpStatus.SERVICE_UNAVAILABLE;
+            default -> HttpStatus.INTERNAL_SERVER_ERROR;
+        };
+    }
+}

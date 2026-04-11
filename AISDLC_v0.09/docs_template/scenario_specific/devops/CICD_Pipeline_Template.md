@@ -339,7 +339,7 @@ Layer 3: Deploy & Validate（使用同一 Artifact）
 class UserRepositoryIntegrationTest {
 
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:18-alpine")
         .withDatabaseName("testdb")
         .withUsername("test")
         .withPassword("test");
@@ -379,7 +379,7 @@ describe('UserRepository Integration', () => {
 
   beforeAll(async () => {
     // 啟動臨時 PostgreSQL 容器
-    container = await new PostgreSqlContainer('postgres:16-alpine')
+    container = await new PostgreSqlContainer('postgres:18-alpine')
       .withDatabase('testdb')
       .start();
 
@@ -418,7 +418,7 @@ from testcontainers.postgres import PostgresContainer
 @pytest.fixture(scope="module")
 def postgres_container():
     """啟動臨時 PostgreSQL 容器，測試完成後自動銷毀"""
-    with PostgresContainer("postgres:16-alpine") as postgres:
+    with PostgresContainer("postgres:18-alpine") as postgres:
         yield postgres
 
 @pytest.fixture
@@ -531,7 +531,7 @@ dockerize \
 **Testcontainers 內建 WaitStrategy（推薦）**：
 ```java
 // Java: 等待 PostgreSQL 接受連線後才回傳容器實例
-new PostgreSQLContainer<>("postgres:16-alpine")
+new PostgreSQLContainer<>("postgres:18-alpine")
     .waitingFor(Wait.forListeningPort())           // 等待 Port 就緒
     .waitingFor(Wait.forLogMessage(".*ready.*", 1)) // 等待日誌訊息
     .withStartupTimeout(Duration.ofSeconds(30));    // 30 秒硬超時
@@ -1312,7 +1312,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_DB: testdb
           POSTGRES_USER: test
@@ -1720,7 +1720,7 @@ integration-test-services:
   stage: test
   image: node:20-alpine
   services:
-    - name: postgres:16-alpine
+    - name: postgres:18-alpine
       alias: postgres
       variables:
         POSTGRES_DB: testdb

@@ -14,7 +14,7 @@
 | 項目 | 內容 |
 |-----|------|
 | **專案名稱** | E-Commerce B2B2C 多租戶電子商務平台 |
-| **資料庫類型** | PostgreSQL 16 |
+| **資料庫類型** | PostgreSQL 18 |
 | **多租戶策略** | Shared Schema + Tenant ID + Hibernate Filter |
 | ** Migration 工具** | Flyway 9.x |
 | **系統架構** | Clean Architecture + DDD |

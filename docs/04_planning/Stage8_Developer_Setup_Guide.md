@@ -133,7 +133,7 @@ docker compose logs -f frontend
 
 **前置條件**:
 - JDK 21 installed
-- PostgreSQL 16 running
+- PostgreSQL 18 running
 - Redis 7 running
 
 ```bash
@@ -166,7 +166,7 @@ docker run -d \
   -e POSTGRES_PASSWORD=koala5 \
   -e POSTGRES_DB=ecommerce \
   -p 5432:5432 \
-  postgres:16-alpine
+  postgres:18-alpine
 
 # Redis
 docker run -d \

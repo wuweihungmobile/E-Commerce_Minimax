@@ -8020,7 +8020,7 @@ jobs:
     if: github.ref == 'refs/heads/develop'
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_PASSWORD: test
           POSTGRES_DB: test_db

@@ -6,6 +6,7 @@ import com.nextkey.ecommerce.domain.model.product.ProductSku;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
+import com.nextkey.ecommerce.shared.exception.CartItemNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -69,6 +70,7 @@ public class RedisCartService {
         }
 
         // 創建購物車項目
+        BigDecimal subtotal = CartItemData.computeSubtotal(unitPrice, newQuantity);
         CartItemData item = CartItemData.builder()
                 .listingId(request.getListingId())
                 .skuId(request.getSkuId())
@@ -76,6 +78,7 @@ public class RedisCartService {
                 .specName(specName)
                 .quantity(newQuantity)
                 .unitPrice(unitPrice)
+                .subtotal(subtotal)
                 .listingType(listing.getListingType().name())
                 .addedAt(Instant.now())
                 .build();
@@ -107,11 +110,12 @@ public class RedisCartService {
 
         Object existingItem = redisTemplate.opsForHash().get(cartKey, itemKey);
         if (existingItem == null) {
-            throw new IllegalArgumentException("Cart item not found");
+            throw new CartItemNotFoundException("Cart item not found: " + itemKey);
         }
 
         CartItemData item = (CartItemData) existingItem;
         item.setQuantity(quantity);
+        item.setSubtotal(CartItemData.computeSubtotal(item.getUnitPrice(), quantity));
 
         redisTemplate.opsForHash().put(cartKey, itemKey, item);
         redisTemplate.expire(cartKey, CART_TTL);
@@ -131,10 +135,14 @@ public class RedisCartService {
         String cartKey = getCartKey(userId, tenantId);
         String itemKey = getItemKey(listingId, skuId);
 
-        Long removed = redisTemplate.opsForHash().delete(cartKey, itemKey);
-        if (removed > 0) {
-            log.info("Removed item from cart: userId={}, listingId={}", userId, listingId);
+        // 檢查項目是否存在
+        Object existingItem = redisTemplate.opsForHash().get(cartKey, itemKey);
+        if (existingItem == null) {
+            throw new CartItemNotFoundException("Cart item not found: " + itemKey);
         }
+
+        redisTemplate.opsForHash().delete(cartKey, itemKey);
+        log.info("Removed item from cart: userId={}, listingId={}", userId, listingId);
     }
 
     /**
@@ -192,7 +200,7 @@ public class RedisCartService {
                 .userId(userId)
                 .cartKey(cartKey)
                 .items(items)
-                .totalItems(items.size())
+                .totalItems(getTotalItemsCount(cartKey))
                 .totalAmount(totalAmount)
                 .currency("TWD")
                 .updatedAt(Instant.now())
@@ -262,10 +270,14 @@ public class RedisCartService {
         private String specName;
         private Integer quantity;
         private BigDecimal unitPrice;
+        private BigDecimal subtotal; // Stored in Redis for serialization
         private String listingType;
         private Instant addedAt;
 
-        public BigDecimal getSubtotal() {
+        /**
+         * 計算小計（僅用於建構時）
+         */
+        public static BigDecimal computeSubtotal(BigDecimal unitPrice, Integer quantity) {
             if (unitPrice == null || quantity == null) {
                 return BigDecimal.ZERO;
             }

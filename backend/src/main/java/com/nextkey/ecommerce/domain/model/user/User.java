@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.domain.model.user;
 
+import com.nextkey.ecommerce.infrastructure.persistence.UserRoleConverter;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -36,7 +37,7 @@ public class User {
     @Column(name = "avatar_url")
     private String avatarUrl;
 
-    @Column(nullable = false)
+    @Column(name = "role", nullable = false)
     @Enumerated(EnumType.STRING)
     @Builder.Default
     private UserRole role = UserRole.BUYER;

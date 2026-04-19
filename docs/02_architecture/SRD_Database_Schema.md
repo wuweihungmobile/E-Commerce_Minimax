@@ -381,7 +381,7 @@ CREATE TABLE listings (
     owner_id UUID NOT NULL,
     base_price DECIMAL(12, 2) NOT NULL,
     currency VARCHAR(3) NOT NULL DEFAULT 'TWD',
-    tags TEXT[],
+    tags JSONB DEFAULT '[]',
     location VARCHAR(200),
     latitude DECIMAL(10, 8),
     longitude DECIMAL(11, 8),

@@ -76,6 +76,10 @@ public class OrderDto {
         private String shippingRecipientName;
         private String shippingPhone;
         private String notes;
+        private Integer guestCount;
+        private String guestName;
+        private String guestPhone;
+        private String guestEmail;
         private List<OrderItemResponse> items;
         private Instant createdAt;
         private Instant updatedAt;

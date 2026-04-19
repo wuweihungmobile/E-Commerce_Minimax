@@ -44,7 +44,7 @@ services:
       - "8080:8080"
     environment:
       - SPRING_PROFILES_ACTIVE=dev
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/ecommerce
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/nextkeytest
       - SPRING_DATASOURCE_USERNAME=koala
       - SPRING_DATASOURCE_PASSWORD=koala5
       - SPRING_JPA_HIBERNATE_DDL_AUTO=validate
@@ -81,13 +81,13 @@ services:
     environment:
       - POSTGRES_USER=koala
       - POSTGRES_PASSWORD=koala5
-      - POSTGRES_DB=ecommerce
+      - POSTGRES_DB=nextkeytest
       - POSTGRES_INITDB_ARGS=--encoding=UTF8 --lc-collate=C --lc-ctype=C
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/src/main/resources/db/migration:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U koala -d ecommerce"]
+      test: ["CMD-SHELL", "pg_isready -U koala -d nextkeytest"]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -36,7 +36,9 @@ public class ProductService {
             String sortBy,
             String sortDir) {
 
-        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
+        // Map sortBy to proper field path for Product-Listing relationship
+        String sortField = mapSortField(sortBy);
+        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortField);
         PageRequest pageRequest = PageRequest.of(page, Math.min(size, 100), sort);
 
         UUID tenantId = TenantContext.getCurrentTenant();
@@ -156,6 +158,19 @@ public class ProductService {
         listingRepository.save(listing);
 
         log.info("Deleted product with listingId: {}", listingId);
+    }
+
+    /**
+     * Map sort field names to proper JPA field paths.
+     * basePrice and createdAt are on Listing, not Product.
+     */
+    private String mapSortField(String sortBy) {
+        return switch (sortBy) {
+            case "basePrice" -> "listing.basePrice";
+            case "createdAt" -> "listing.createdAt";
+            case "updatedAt" -> "listing.updatedAt";
+            default -> sortBy;
+        };
     }
 
     private Product findProductByListingId(UUID listingId) {

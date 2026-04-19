@@ -1,32 +1,31 @@
 # =============================================
-# E-Commerce Backend - Spring Boot Multi-stage Build (Layered JAR)
+# E-Commerce Backend - Spring Boot Multi-stage Build (Maven)
 # AISDLC v0.09 - Stage 8 Development Preparation
 # =============================================
 
-# Stage 1: Build with Gradle
-FROM eclipse-temurin:21-jdk-alpine AS builder
+# Stage 1: Build with Maven
+FROM maven:3.9-eclipse-temurin-21 AS builder
 WORKDIR /app
 
-# Copy Gradle wrapper and configuration
-COPY gradle gradle
-COPY build.gradle.kts settings.gradle.kts gradlew ./
-RUN chmod +x gradlew
+# Copy Maven configuration
+COPY pom.xml ./
+COPY .mvn .mvn
 
 # Download dependencies (cached layer)
-RUN ./gradlew dependencies --no-daemon
+RUN mvn dependency:go-offline -B
 
 # Copy source code
 COPY src src
 
 # Build the application
-RUN ./gradlew bootJar --no-daemon
+RUN mvn package -DskipTests -B
 
 # Stage 2: Extract Layers
 FROM eclipse-temurin:21-jdk-alpine AS extractor
 WORKDIR /app
 
 # Extract layered JAR
-COPY --from=builder /app/build/libs/*.jar app.jar
+COPY --from=builder /app/target/*.jar app.jar
 RUN java -Djarmode=layertools -jar app.jar extract
 
 # Stage 3: Production Runtime

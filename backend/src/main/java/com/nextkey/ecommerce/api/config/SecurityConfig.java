@@ -40,8 +40,13 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // Public endpoints
-                .requestMatchers("/v2/auth/**").permitAll()
+                // Public auth endpoints
+                .requestMatchers("/v2/auth/register").permitAll()
+                .requestMatchers("/v2/auth/login").permitAll()
+                .requestMatchers("/v2/auth/refresh").permitAll()
+                // Protected auth endpoints (require authentication)
+                .requestMatchers("/v2/auth/logout").authenticated()
+                .requestMatchers("/v2/auth/me").authenticated()
                 .requestMatchers("/v2/public/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 // All other requests require authentication

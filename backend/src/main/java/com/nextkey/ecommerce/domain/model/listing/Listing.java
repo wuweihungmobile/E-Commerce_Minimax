@@ -9,6 +9,7 @@ import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -65,8 +66,8 @@ public class Listing {
     @Builder.Default
     private String currency = "TWD";
 
-    @JdbcTypeCode(SqlTypes.ARRAY)
-    @Column(columnDefinition = "TEXT[]")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
     private List<String> tags;
 
     @JdbcTypeCode(SqlTypes.JSON)

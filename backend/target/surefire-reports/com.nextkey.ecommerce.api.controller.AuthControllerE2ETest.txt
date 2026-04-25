@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.nextkey.ecommerce.api.controller.AuthControllerE2ETest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.455 s -- in com.nextkey.ecommerce.api.controller.AuthControllerE2ETest

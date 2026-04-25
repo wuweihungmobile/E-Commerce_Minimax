@@ -3,19 +3,10 @@
 -- Created: 2026-04-08
 
 -- =============================================
--- ENUM Types
+-- ENUM Types (改為 VARCHAR 以相容 JPA/Hibernate)
 -- =============================================
-CREATE TYPE user_role AS ENUM ('GUEST', 'BUYER', 'SELLER', 'HOST', 'STORE_OWNER', 'STORE_STAFF', 'ADMIN', 'SUPER_ADMIN');
-CREATE TYPE tenant_status AS ENUM ('PENDING_REVIEW', 'ACTIVE', 'REJECTED', 'SUSPENDED', 'TERMINATED');
-CREATE TYPE listing_type AS ENUM ('PRODUCT', 'ROOM');
-CREATE TYPE listing_status AS ENUM ('DRAFT', 'ACTIVE', 'INACTIVE', 'DELETED');
-CREATE TYPE order_status AS ENUM ('CREATED', 'PAID', 'CONFIRMED', 'SHIPPING', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'REFUNDING', 'REFUNDED');
-CREATE TYPE payment_status AS ENUM ('PENDING', 'SUCCESS', 'FAILED');
-CREATE TYPE payment_method AS ENUM ('LINE_PAY', 'CREDIT_CARD', 'MOCK');
-CREATE TYPE stock_movement_type AS ENUM ('INBOUND', 'OUTBOUND', 'RESERVE', 'RELEASE', 'ADJUST_PLUS', 'ADJUST_MINUS', 'TRANSFER_OUT', 'TRANSFER_IN', 'SCRAP');
-CREATE TYPE room_calendar_status AS ENUM ('AVAILABLE', 'BOOKED', 'BLOCKED', 'MAINTENANCE');
-CREATE TYPE booking_status AS ENUM ('CREATED', 'PAID', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'COMPLETED', 'CANCELLED');
-CREATE TYPE pricing_rule_type AS ENUM ('WEEKDAY_WEEKEND', 'SEASONAL', 'EARLY_BIRD', 'LONG_STAY', 'MANUAL_OVERRIDE', 'LAST_MINUTE');
+-- PostgreSQL ENUM 類型會與 Hibernate @Enumerated 衝突
+-- 所以直接使用 VARCHAR 類型，在 Java 端用 @Enumerated(String) 處理
 
 -- =============================================
 -- Core Tables: Tenants & Users
@@ -27,7 +18,7 @@ CREATE TABLE tenants (
     name VARCHAR(200) NOT NULL,
     slug VARCHAR(100) UNIQUE NOT NULL,
     description TEXT,
-    status tenant_status NOT NULL DEFAULT 'PENDING_REVIEW',
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING_REVIEW',
     logo_url VARCHAR(500),
     contact_email VARCHAR(255),
     contact_phone VARCHAR(50),
@@ -48,7 +39,8 @@ CREATE TABLE users (
     full_name VARCHAR(200),
     phone VARCHAR(50),
     avatar_url VARCHAR(500),
-    role user_role NOT NULL DEFAULT 'BUYER',
+    role VARCHAR(50) NOT NULL DEFAULT 'BUYER',
+    tenant_id UUID,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     email_verified BOOLEAN DEFAULT FALSE,
     phone_verified BOOLEAN DEFAULT FALSE,
@@ -65,6 +57,7 @@ CREATE TABLE users (
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_users_status ON users(status);
+CREATE INDEX idx_users_tenant ON users(tenant_id);
 
 -- Tenant Members (租戶成員關聯)
 CREATE TABLE tenant_members (
@@ -102,15 +95,15 @@ CREATE INDEX idx_feature_toggles_tenant ON tenant_feature_toggles(tenant_id);
 CREATE TABLE listings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    listing_type listing_type NOT NULL,
+    listing_type VARCHAR(20) NOT NULL,
     title VARCHAR(200) NOT NULL,
     description TEXT,
     cover_image_url VARCHAR(500),
-    status listing_status NOT NULL DEFAULT 'DRAFT',
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
     owner_id UUID NOT NULL REFERENCES users(id),
     base_price DECIMAL(12,2) NOT NULL,
     currency VARCHAR(3) DEFAULT 'TWD',
-    tags TEXT[] DEFAULT '{}',
+    tags JSONB DEFAULT '[]',
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -187,7 +180,7 @@ CREATE TABLE room_calendar (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     room_listing_id UUID NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
     calendar_date DATE NOT NULL,
-    status room_calendar_status NOT NULL DEFAULT 'AVAILABLE',
+    status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE',
     price DECIMAL(12,2),
     booking_id UUID,
     UNIQUE(room_listing_id, calendar_date)
@@ -202,7 +195,7 @@ CREATE TABLE pricing_rules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     room_listing_id UUID REFERENCES listings(id) ON DELETE CASCADE,
-    rule_type pricing_rule_type NOT NULL,
+    rule_type VARCHAR(20) NOT NULL,
     rule_name VARCHAR(100) NOT NULL,
     priority INTEGER DEFAULT 0,
     config JSONB NOT NULL DEFAULT '{}',
@@ -226,14 +219,15 @@ CREATE TABLE orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id),
     user_id UUID NOT NULL REFERENCES users(id),
-    order_type listing_type NOT NULL,
-    status order_status NOT NULL DEFAULT 'CREATED',
+    order_type VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     total_amount DECIMAL(12,2) NOT NULL,
     currency VARCHAR(3) DEFAULT 'TWD',
     shipping_address TEXT,
     shipping_recipient_name VARCHAR(200),
     shipping_phone VARCHAR(50),
     notes TEXT,
+    guest_count INTEGER,
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -287,7 +281,7 @@ CREATE TABLE bookings (
     check_out_date DATE NOT NULL,
     guest_count INTEGER NOT NULL,
     total_guests INTEGER DEFAULT 1,
-    status booking_status NOT NULL DEFAULT 'CREATED',
+    status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     total_amount DECIMAL(12,2) NOT NULL,
     guest_name VARCHAR(200),
     guest_phone VARCHAR(50),
@@ -314,10 +308,10 @@ CREATE TABLE payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id UUID REFERENCES orders(id),
     booking_id UUID REFERENCES bookings(id),
-    payment_method payment_method NOT NULL,
+    payment_method VARCHAR(20) NOT NULL,
     amount DECIMAL(12,2) NOT NULL,
     currency VARCHAR(3) DEFAULT 'TWD',
-    status payment_status NOT NULL DEFAULT 'PENDING',
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
     transaction_id VARCHAR(255),
     idempotency_key VARCHAR(36),
     payment_data JSONB DEFAULT '{}',
@@ -420,7 +414,7 @@ CREATE TABLE stock_movements (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id),
     sku_id UUID NOT NULL REFERENCES product_skus(id),
-    movement_type stock_movement_type NOT NULL,
+    movement_type VARCHAR(20) NOT NULL,
     quantity INTEGER NOT NULL,
     reference_id UUID,
     reference_type VARCHAR(50),

@@ -158,47 +158,101 @@ L0 Security → L1 Build → L2 Dual-Build + Contract Test → L3 Canary + Rollb
 
 ---
 
-## 🎯 Claude Code Skills 整合指引
+## 🛠️ Claude Code Skills 整合指引
 
-| 階段 | 建議 Skill | 觸發時機 |
-|------|-----------|---------|
-| 階段 1 現況分析 | `/brownfield-analysis` | 舊系統代碼品質與架構分析 |
-| 階段 1 現況分析 | `/sa-analyst` | 需求重新分析、業務邏輯提取 |
-| 階段 1 現況分析 | `/ba-analyst` | 業務邏輯完整性驗證（多業務域融合時必觸發） |
-| 階段 2 遷移設計 | `/sd-architect` | 新架構設計、技術棧映射、並行運行設計 |
-| 階段 2 遷移設計 | `/pm-planning` | 遷移優先級與 ROI 決策（X-Large 規模時） |
-| 階段 3 DB 遷移 | `/database-migration` | 資料庫遷移規劃（Schema/SQL/SP 轉換） |
-| 階段 3 DB 遷移 | `/integration-database` | 新 DB 整合方案（ORM/連線池/交易管理） |
-| 階段 4 API 設計 | `/integration-api-client` | API 契約設計（新舊 API 對照） |
-| 階段 5 前端遷移 | `/dev-review` | 遷移代碼審查 |
-| 階段 6 行動端 | `/mobile-development` | Android/macOS 行動端開發規劃 |
-| 階段 7 測試 | `/qa-testing` | 測試策略與驗收測試 |
-| 階段 7 測試 | `/testing-strategy` | 跨系統對比測試（新舊系統行為等價驗證） |
-| 階段 8 部署 | `/devops-github-actions` | CI/CD 4 層 Pipeline 建立 |
-| 階段 8 部署 | `/release-management` | Canary 發布與回滾管理 |
-| 全程 | `/security-audit` | 安全審計（新舊棧都要掃描） |
-| 全程 | `/performance-optimization` | 效能基準線建立（Stage 1）與基準對比（Stage 7） |
-| 全程 | `/compliance-audit` | 合規審查（電商支付 PCI-DSS / 個資 GDPR 時觸發） |
-| 階段 3-5 | `/code-review` | 遷移代碼品質審查 |
-| 階段 3-6 | `/sprint-planning` | 大規模遷移的 Phase 拆分與迭代規劃 |
+> 本 SOP 各階段可搭配以下 Claude Code Skills 使用。每個 Skill 均有明確的觸發時機和使用方式。
+
+### Skills 對應總覽（含觸發說明）
+
+| SOP 階段 | Skill | 觸發時機 | 觸發範例指令 | 對應 Workflow |
+|---------|-------|---------|------------|-------------|
+| **階段 1 現況分析** | `/brownfield-analysis` | 分析舊系統代碼品質與架構問題 | `/brownfield-analysis` 後描述「Python Flask + Oracle 舊系統分析，評估遷移複雜度」 | `brownfield-analysis-flow` |
+| **階段 1 現況分析** | `/sa-analyst` | 提取業務邏輯、重新定義需求 | `/sa-analyst` 後描述「從舊系統代碼反推庫存管理業務邏輯和驗證規則」 | `requirements-extraction` |
+| **階段 1 現況分析** | `/ba-analyst` | 多業務域融合時，驗證業務邏輯完整性 | `/ba-analyst` 後描述「確認電商+民宿融合系統的業務邊界和共用邏輯」 | — |
+| **階段 2 遷移設計** | `/sd-architect` | 設計新架構、技術棧映射、並行運行方案 | `/sd-architect` 後描述「設計 Python→Java + Oracle→PostgreSQL 並行運行架構」 | `migration-planning-flow` |
+| **階段 2 遷移設計** | `/pm-planning` | X-Large 規模：遷移優先級與 ROI 決策 | `/pm-planning` 後描述「評估全棧遷移的 Phase 拆分和各 Phase ROI」 | — |
+| **階段 3 DB 遷移** | `/database-migration` | 資料庫遷移規劃（Schema/SQL/SP 轉換） | `/database-migration` 後描述「Oracle→PostgreSQL 遷移，含 200 個 Stored Procedure 轉換計畫」 | — |
+| **階段 3 DB 遷移** | `/integration-database` | 新 DB 整合方案（ORM/連線池/交易管理） | `/integration-database` 後描述「Spring Boot JPA + PostgreSQL 連線池和交易管理設計」 | — |
+| **階段 4 API 設計** | `/integration-api-client` | API 契約設計（新舊 API 對照映射） | `/integration-api-client` 後描述「設計新舊 API 的 Adapter Layer，確保 Contract 相容」 | — |
+| **階段 5 前端遷移** | `/dev-review` | 遷移代碼品質審查（每個模組遷移後） | `/dev-review` 後貼上「Vue→React 遷移的訂單元件代碼」 | — |
+| **階段 6 行動端** | `/mobile-development` | Android/macOS 新平台開發規劃 | `/mobile-development` 後描述「Android 掃碼庫存管理 App，整合舊系統 API」 | — |
+| **階段 7 測試** | `/qa-testing` | 制定遷移驗收測試策略 | `/qa-testing` 後描述「新舊系統業務邏輯等價驗收測試設計」 | `testing-strategy-flow` |
+| **階段 7 測試** | `/testing-strategy` | 設計跨系統對比測試（行為等價驗證） | `/testing-strategy` 後描述「新舊系統同輸入→同輸出的對比測試自動化」 | — |
+| **階段 8 部署** | `/devops-github-actions` | 建立 4 層遷移 CI/CD Pipeline | `/devops-github-actions` 後描述「遷移 Pipeline：Dual-Build + Contract Test + Canary Deploy」 | `devops-setup-flow` |
+| **階段 8 部署** | `/release-management` | Canary 漸進發布與回滾管理 | `/release-management` 後描述「5%→25%→50%→100% Canary 切換計畫和回滾觸發條件」 | — |
+| **全程** | `/security-audit` | 新舊棧安全審計（SAST + Container Scan） | `/security-audit` 後描述「遷移前後的安全基線對比審查」 | `security-assessment-flow` |
+| **全程** | `/performance-optimization` | 效能基準線建立與遷移前後對比 | `/performance-optimization` 後描述「建立舊系統 P99 基準線，作為遷移後驗收標準」 | `performance-optimization-flow` |
+| **全程** | `/compliance-audit` | 合規審查（支付/個資/醫療資料時觸發） | `/compliance-audit` 後描述「電商支付遷移的 PCI-DSS 合規驗證」 | — |
+| **階段 3-5** | `/code-review` | 遷移代碼品質審查（每個模組完成後） | `/code-review` 後貼上「遷移後的 OrderService 代碼 diff」 | — |
+| **階段 3-6** | `/sprint-planning` | 大規模遷移的 Phase 拆分與迭代規劃 | `/sprint-planning` 後描述「20 週遷移計畫的 Sprint 拆分（含里程碑 Gate）」 | — |
+
+### Skills 選擇速決表（不確定時查這裡）
+
+| 我要做什麼 | 用這個 Skill |
+|-----------|------------|
+| 分析舊系統代碼和架構 | `/brownfield-analysis` |
+| 提取業務邏輯、定義需求 | `/sa-analyst` |
+| 設計遷移架構和並行運行 | `/sd-architect` |
+| DB 遷移規劃（Schema/SP） | `/database-migration` |
+| 新 DB ORM/連線池設計 | `/integration-database` |
+| API 契約設計（新舊對照） | `/integration-api-client` |
+| 行動端新平台開發 | `/mobile-development` |
+| 遷移驗收測試設計 | `/qa-testing` + `/testing-strategy` |
+| CI/CD Pipeline 建立 | `/devops-github-actions` |
+| Canary 發布管理 | `/release-management` |
+| 安全審計 | `/security-audit` |
+| 效能基準對比 | `/performance-optimization` |
+| 合規驗證（支付/個資） | `/compliance-audit` |
 
 ---
 
-## 🔄 開發-編譯-測試循環 (AISDLC 強制規則)
+## 🔴 開發-編譯-測試循環（強制規則）
 
-> **🔴 CRITICAL**：遷移實作階段必須嚴格遵守。
+> 依據 AISDLC CLAUDE.md 強制規則，遷移實作階段必須嚴格遵守。
 
 ```
 遷移 1 個模組/功能
     ↓
-立即編譯 → 編譯失敗？ → 🔴 停止修復
+立即編譯 (Compile/Build)
     ↓
-執行單元測試 → 失敗？ → 🔴 停止修復
+編譯失敗？ → 🔴 立即停止 → 修復 → 重新編譯
+    ↓
+編譯成功 ✅
+    ↓
+執行單元測試
+    ↓
+測試失敗？ → 🔴 立即停止 → 依規格修復 → 重新測試
     ↓
 執行新舊系統對比測試 → 結果不一致？ → 🔴 停止修復
     ↓
 全部通過 ✅ → Commit → 繼續下一個
 ```
+
+**絕對禁止**：
+- ❌ 累積多個模組後才編譯
+- ❌ 編譯失敗後繼續遷移其他模組
+- ❌ 跳過新舊系統對比測試
+- ❌ 測試失敗後「先跳過」繼續
+
+**完整規範**：[Development_Build_Test_Cycle.md](../../guides/user/process/Development_Build_Test_Cycle.md)
+
+---
+
+## 📁 產出文件存放目錄指引
+
+> **🔴 重要**：各階段產出文件必須依據 [DEVELOPMENT_DIRECTORY_STRUCTURE.md](../../guides/user/onboarding/DEVELOPMENT_DIRECTORY_STRUCTURE.md) 存放至正確目錄。
+
+| 階段 | 產出文件 | 存放目錄 |
+|------|---------|---------|
+| 1 現況分析 | 系統架構分析、技術債清單、業務邏輯文檔 | `docs/02_architecture/` |
+| 1 現況分析 | 遷移範圍與風險評估 | `docs/04_planning/` |
+| 2 遷移設計 | 遷移架構設計、技術棧映射表 | `docs/02_architecture/` |
+| 2 遷移設計 | 並行運行設計、遷移計畫 | `docs/04_planning/` |
+| 3 DB 遷移 | DB 遷移計畫、Schema 映射文檔 | `docs/02_architecture/` |
+| 4 API 設計 | API 契約文檔、新舊 API 對照 | `docs/02_architecture/` |
+| 7 驗證測試 | 驗收測試計畫、對比測試報告 | `docs/03_testing/` |
+| 8 部署切換 | 部署計畫、回滾方案、Canary 配置 | `docs/08_deployment/` |
+| 9 知識沉澱 | ADR、遷移手冊、新技術棧規範 | `docs/05_development/` |
 
 ---
 

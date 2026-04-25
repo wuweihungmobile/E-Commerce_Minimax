@@ -155,7 +155,7 @@ CREATE INDEX idx_products_barcode ON products(barcode);
 @Testcontainers
 class ProductRepositoryTest {
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:18-alpine");
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {

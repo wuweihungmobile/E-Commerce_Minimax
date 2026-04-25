@@ -11,25 +11,29 @@ public class TenantContext {
     private static final ThreadLocal<UUID> CURRENT_USER = new ThreadLocal<>();
 
     public static void setCurrentTenant(UUID tenantId) {
-        log.debug("Setting tenant context to: {}", tenantId);
+        log.info("[TenantContext] setCurrentTenant: {}", tenantId);
         CURRENT_TENANT.set(tenantId);
     }
 
     public static UUID getCurrentTenant() {
-        return CURRENT_TENANT.get();
+        UUID tenant = CURRENT_TENANT.get();
+        log.debug("[TenantContext] getCurrentTenant called, returning: {}", tenant);
+        return tenant;
     }
 
     public static void setCurrentUser(UUID userId) {
-        log.debug("Setting user context to: {}", userId);
+        log.info("[TenantContext] setCurrentUser: {}", userId);
         CURRENT_USER.set(userId);
     }
 
     public static UUID getCurrentUser() {
-        return CURRENT_USER.get();
+        UUID user = CURRENT_USER.get();
+        log.debug("[TenantContext] getCurrentUser called, returning: {}", user);
+        return user;
     }
 
     public static void clear() {
-        log.debug("Clearing tenant context");
+        log.info("[TenantContext] clear");
         CURRENT_TENANT.remove();
         CURRENT_USER.remove();
     }

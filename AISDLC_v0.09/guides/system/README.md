@@ -9,7 +9,7 @@
 ---
 
 **版本**: v0.09
-**建立日期**: 2025-12-01
+**最後更新**: 2026-04-11
 **維護者**: AISDLC Framework Team
 **適用範圍**: AISDLC v0.09+
 
@@ -51,8 +51,10 @@
 - [Architecture_Diagram_Maintenance.md](architecture/Architecture_Diagram_Maintenance.md) - 架構圖版本控制指引
 - [Web_Architecture_Decision_Tree.md](architecture/Web_Architecture_Decision_Tree.md) - Web 架構決策樹
 - [Observability_Design_Guide.md](architecture/Observability_Design_Guide.md) - 可觀測性設計指南（Logging, Metrics, Tracing）
+- [High_Availability_Architecture_Checklist.md](architecture/High_Availability_Architecture_Checklist.md) - 高可用架構設計檢查清單
+- [Security_Architecture_Checklist.md](architecture/Security_Architecture_Checklist.md) - 安全架構設計檢查清單
 
-**使用時機**: Greenfield SOP Stage 5（SRD 撰寫）、技術選型階段
+**使用時機**: Greenfield SOP Stage 5（SRD 撰寫）、技術選型階段、安全與 HA 架構審查
 
 ---
 
@@ -61,8 +63,9 @@
 
 **檔案清單**:
 - [API_Versioning_Guide.md](api/API_Versioning_Guide.md) - API 版本升級與管理指引
+- [API_Mandatory_Checklist.md](api/API_Mandatory_Checklist.md) - API 設計強制檢查清單（認證、錯誤格式、文檔）
 
-**使用時機**: API 設計階段、API 版本升級時
+**使用時機**: API 設計階段、API 版本升級時、API 設計審查
 
 ---
 
@@ -71,8 +74,11 @@
 
 **檔案清單**:
 - [AT_vs_TC_Guide.md](testing/AT_vs_TC_Guide.md) - Acceptance Test vs Test Case 區分指引
+- [Performance_Test_Plan_Template.md](testing/Performance_Test_Plan_Template.md) - 效能測試計畫模板（負載測試、壓力測試規範）
 
-**使用時機**: 測試階段、User Story 撰寫 AC 時
+**使用時機**:
+- AT_vs_TC_Guide - 測試階段、User Story 撰寫 AC 時
+- Performance_Test_Plan_Template - Performance 情境、SRD 非功能需求撰寫
 
 ---
 
@@ -82,10 +88,12 @@
 **檔案清單**:
 - [Document_Quality_Checklist.md](quality/Document_Quality_Checklist.md) - 文件品質檢查清單
 - [Security_Design_Checklist.md](quality/Security_Design_Checklist.md) - 安全設計檢查清單
+- [Security_Threat_Modeling_Guide.md](quality/Security_Threat_Modeling_Guide.md) - 安全威脅建模指南（STRIDE 方法論）
 
 **使用時機**:
 - Document_Quality_Checklist - Greenfield SOP Stage 9（文件品質檢查）
 - Security_Design_Checklist - Greenfield SOP Stage 5（SRD 撰寫）
+- Security_Threat_Modeling_Guide - Security 情境、SRD 安全章節撰寫
 
 ---
 
@@ -95,10 +103,12 @@
 **檔案清單**:
 - [Estimation_Standards.md](planning/Estimation_Standards.md) - 估算標準化指南（Story Points, Velocity, RICE）
 - [Kano_Model_Guide.md](planning/Kano_Model_Guide.md) - Kano 模型功能分類指引
+- [Tech_Stack_Selection_Matrix.md](planning/Tech_Stack_Selection_Matrix.md) - 技術棧選型評估矩陣
 
 **使用時機**:
 - Estimation_Standards - 規劃階段、Sprint Planning
 - Kano_Model_Guide - Greenfield SOP Stage 4 步驟 4.2（MVP 範圍界定）
+- Tech_Stack_Selection_Matrix - 技術選型階段、Migration 情境評估
 
 ---
 
@@ -150,4 +160,4 @@
 
 ---
 
-**最後更新**: 2025-12-01
+**最後更新**: 2026-04-11

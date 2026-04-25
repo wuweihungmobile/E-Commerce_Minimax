@@ -35,28 +35,49 @@
 
 ---
 
-## 📋 Skills 整合對照表
+## 🛠️ Claude Code Skills 整合指引
 
-> 下表列出 Security & Compliance 各階段建議搭配的 Claude Code Skills，確保每個步驟都能觸發正確的自動化輔助。
+> 本 SOP 各階段可搭配以下 Claude Code Skills 使用。每個 Skill 均有明確的觸發時機和使用方式。
 
-| Skill | 階段 1<br>安全評估 | 階段 2<br>架構設計 | 階段 3<br>實施修復 | 階段 4<br>測試驗證 | 階段 5<br>文檔交付 | 說明 |
-|-------|:---:|:---:|:---:|:---:|:---:|------|
-| `/security-audit` | ✅ | ✅ | | ✅ | | OWASP Top 10 安全審計 |
-| `/compliance-audit` | ✅ | | | | ✅ | GDPR/PCI-DSS/SOC2 合規審查 |
-| `/sd-architect` | | ✅ | | | | 安全架構設計（Zero Trust） |
-| `/code-review` | | | ✅ | | | 安全程式碼審查 |
-| `/integration-oauth` | | ✅ | ✅ | | | OAuth 2.0/OIDC 認證整合 |
-| `/integration-database` | | ✅ | ✅ | | | 資料庫安全（加密、存取控制） |
-| `/qa-testing` | | | | ✅ | | 安全測試策略與案例 |
-| `/testing-strategy` | | | | ✅ | | 安全測試金字塔設計 |
-| `/devops-github-actions` | | | ✅ | ✅ | | 安全 CI/CD Pipeline（SAST/DAST） |
-| `/devops-docker` | | | ✅ | | | 容器安全（Golden Image/Trivy） |
-| `/devops-monitoring` | | | | ✅ | | 安全事件監控與告警 |
-| `/performance-optimization` | | | | ✅ | | 安全措施效能影響評估 |
-| `/integration-redis` | | ✅ | ✅ | | | Session/Token 安全快取 |
-| `/mobile-development` | ✅ | ✅ | ✅ | ✅ | | 行動端安全（Android/macOS） |
-| `/integration-stripe` | ✅ | ✅ | ✅ | ✅ | | 支付安全（Stripe.js Tokenization、PCI-DSS 合規） |
-| `/integration-webhook` | | ✅ | ✅ | ✅ | | Stripe Webhook 簽章驗證、防偽造支付回調 |
+### Skills 對應總覽（含觸發說明）
+
+| SOP 階段 | Skill | 觸發時機 | 觸發範例指令 | 對應 Workflow |
+|---------|-------|---------|------------|-------------|
+| **階段 1 安全評估** | `/security-audit` | 執行 OWASP Top 10 安全審計 | `/security-audit` 後描述「電商 API 的 SQL Injection / XSS / Auth 安全審查」 | `security-assessment-flow` |
+| **階段 1 安全評估** | `/compliance-audit` | 🔴 涉及金流/個資/醫療時必須觸發 | `/compliance-audit` 後描述「訂閱制 SaaS 的 PCI-DSS 和 GDPR 合規評估」 | — |
+| **階段 1 安全評估** | `/mobile-development` | 涉及 Android/macOS 時，行動端安全評估 | `/mobile-development` 後描述「Android 掃碼 App 的 APK 安全性和 API Key 存放審查」 | — |
+| **階段 1 安全評估** | `/integration-stripe` | 涉及 Stripe 支付時，PCI-DSS 合規評估 | `/integration-stripe` 後描述「評估 Stripe Tokenization 實作的 PCI-DSS 合規性」 | — |
+| **階段 2 架構設計** | `/sd-architect` | 設計安全架構（Zero Trust / Defense in Depth） | `/sd-architect` 後描述「設計 Zero Trust 架構：JWT + RBAC + API Gateway 安全層」 | — |
+| **階段 2 架構設計** | `/integration-oauth` | OAuth 2.0 / OIDC 認證架構設計 | `/integration-oauth` 後描述「設計 Google OAuth 2.0 + JWT Refresh Token 輪換方案」 | — |
+| **階段 2 架構設計** | `/integration-database` | 資料庫安全設計（加密/存取控制） | `/integration-database` 後描述「設計敏感欄位加密策略（AES-256）和最小權限 DB 帳號」 | — |
+| **階段 2 架構設計** | `/integration-redis` | Session/Token 安全快取設計 | `/integration-redis` 後描述「設計 Redis 安全 Session 管理（Token Rotation + Sliding Window）」 | — |
+| **階段 2 架構設計** | `/integration-webhook` | Webhook 安全簽章驗證設計 | `/integration-webhook` 後描述「設計 Stripe Webhook 簽章驗證 + 防重放攻擊機制」 | — |
+| **階段 3 實施修復** | `/code-review` | 安全修復代碼審查 | `/code-review` 後貼上「SQL Injection 修復代碼（Parameterized Query 改寫）」 | — |
+| **階段 3 實施修復** | `/integration-oauth` | OAuth 修復實作（Token 洩漏/PKCE 補強） | `/integration-oauth` 後描述「補強現有 OAuth 實作：加入 PKCE 和 State Parameter 驗證」 | — |
+| **階段 3 實施修復** | `/devops-github-actions` | 安全 CI/CD Pipeline（SAST/DAST 整合） | `/devops-github-actions` 後描述「加入 Semgrep SAST + OWASP ZAP DAST 到 CI Pipeline」 | `devops-setup-flow` |
+| **階段 3 實施修復** | `/devops-docker` | 容器安全強化（Golden Image / Trivy 掃描） | `/devops-docker` 後描述「強化 Dockerfile：Non-root user + Read-only filesystem + Trivy 掃描」 | — |
+| **階段 4 測試驗證** | `/qa-testing` | 安全測試計畫與測試案例設計 | `/qa-testing` 後描述「設計認證繞過、注入攻擊、敏感資料洩漏的安全測試案例」 | `testing-strategy-flow` |
+| **階段 4 測試驗證** | `/devops-monitoring` | 安全事件監控與告警設定 | `/devops-monitoring` 後描述「設定暴力破解告警 + 異常 API 呼叫頻率告警」 | — |
+| **階段 5 文檔交付** | `/compliance-audit` | 合規報告產出（GDPR/PCI-DSS/SOC2） | `/compliance-audit` 後描述「產出 GDPR 合規評估報告和資料處理清單」 | — |
+
+### Skills 選擇速決表（不確定時查這裡）
+
+| 我要做什麼 | 用這個 Skill |
+|-----------|------------|
+| OWASP Top 10 安全審計 | `/security-audit` |
+| 合規審查（GDPR/PCI-DSS） | `/compliance-audit` |
+| 安全架構設計 | `/sd-architect` |
+| OAuth 2.0 認證設計/修復 | `/integration-oauth` |
+| 資料庫加密/存取控制 | `/integration-database` |
+| Session/Token 安全快取 | `/integration-redis` |
+| Webhook 簽章驗證 | `/integration-webhook` |
+| 安全修復代碼審查 | `/code-review` |
+| SAST/DAST 整合 CI | `/devops-github-actions` |
+| 容器安全強化 | `/devops-docker` |
+| 安全測試設計 | `/qa-testing` |
+| 安全事件監控 | `/devops-monitoring` |
+| 支付安全（PCI-DSS） | `/integration-stripe` |
+| 行動端安全 | `/mobile-development` |
 
 ---
 
@@ -930,6 +951,61 @@ Compliance-Officer 合規審查
 - **SD-Mobile-Architect**: 行動端安全架構設計（Android/iOS/macOS QR 碼安全）
 - **QA-Mobile-Tester**: 行動端安全測試執行
 - **QA-Web-Tester**: Web 前端安全測試（XSS/CSRF/CSP）
+
+---
+
+## 🔴 開發-編譯-測試循環（強制規則）
+
+**原則**：每完成一個安全修復（Fix）或安全控制實作，**必須立即執行**編譯-測試循環，**絕不累積修復**。
+
+```
+實作 1 個安全修復
+    ↓
+立即編譯 (Compile/Build)
+    ↓
+編譯失敗？ → 🔴 立即停止 → 修復編譯錯誤 → 重新編譯
+    ↓
+執行單元測試 (Unit Test)
+    ↓
+執行安全測試 (Security Test) — SAST/DAST/漏洞掃描
+    ↓
+測試失敗？ → 🔴 立即停止 → 依安全規格修復 → 重新測試
+    ↓
+繼續下一個安全修復
+```
+
+### 安全情境特定規則
+
+| 類型 | 編譯驗證 | 安全測試 |
+|------|----------|----------|
+| 注入漏洞修復 | 參數化查詢語法正確 | SQL Injection / XSS 掃描 |
+| 認證授權修復 | Token/Session 邏輯編譯通過 | 越權測試、Session 固定測試 |
+| 加密演算法升級 | 加密函式庫匯入正確 | 舊版弱密碼測試、加解密驗證 |
+| 依賴套件更新 | 無衝突、無破壞性變更 | CVE 掃描、Dependency Check |
+| API 安全加固 | Rate Limiting/Header 設定正確 | Fuzzing、Auth Bypass 測試 |
+
+### 絕對禁止的行為
+
+1. **❌ 禁止累積多個安全修復後才測試** — 每個 Fix 必須獨立驗證
+2. **❌ 禁止跳過安全掃描** — 編譯成功不等於安全合規
+3. **❌ 禁止在安全測試失敗時繼續開發** — 安全漏洞必須立即修復
+4. **❌ 禁止在未通過安全測試前合併至主分支**
+
+完整規範請參考：[Development_Build_Test_Cycle.md](../../guides/user/process/Development_Build_Test_Cycle.md)
+
+---
+
+## 📁 產出文件存放目錄指引
+
+| 階段 | 產出文件 | 存放目錄 |
+|------|----------|----------|
+| 1 安全評估 | 安全評估報告、漏洞清單、威脅模型 | `docs/06_quality/` |
+| 2 架構設計 | 安全架構設計文件、安全控制矩陣 | `docs/02_architecture/` |
+| 3 實施修復 | 安全修復實作記錄、SAST/DAST 掃描報告 | `docs/06_quality/` |
+| 4 測試驗證 | 安全測試計畫、滲透測試報告、測試結果 | `docs/03_testing/` |
+| 5 文檔交付 | 合規報告、安全政策文件、事件回應手冊 | `docs/06_quality/` |
+| 通用 | Sprint 計畫、迭代進度紀錄 | `docs/05_development/` |
+| 通用 | CI/CD 安全基線設定、DevSecOps 配置 | `docs/08_deployment/` |
 
 ---
 

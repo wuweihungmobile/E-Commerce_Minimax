@@ -365,22 +365,94 @@ components:
 
 ---
 
-## 🔗 Skills 整合對照表
+## 🛠️ Claude Code Skills 整合指引
 
-> 💡 **說明**: 以下列出各階段可觸發的 Claude Code Skills（斜線指令），協助加速整合開發。
+> 本 SOP 各階段可搭配以下 Claude Code Skills 使用。每個 Skill 均有明確的觸發時機和使用方式。
 
-| SOP 階段 | 可觸發 Skill | 用途說明 |
-|---------|-------------|---------|
-| 階段 1：啟動 | `/sa-analyst` | SA 主導整合需求分析、系統邊界定義 |
-| 階段 2：API 研究 | `/sa-analyst`、`/documentation-api` | 整合需求 FRD、API 文檔生成與 OpenAPI 規格整理 |
-| 階段 3：整合架構 | `/sd-architect`、`/integration-api-client` | 架構設計（含規範模型/Gateway）、API 客戶端生成 |
-| 階段 4：認證授權 | `/integration-oauth`、`/security-audit` | OAuth 2.0 / SSO 整合、跨系統安全審查 |
-| 階段 5：資料映射 | `/integration-database`、`/integration-redis` | 資料庫整合（含 CDC/Outbox Pattern）、快取策略 |
-| 階段 6：測試策略 | `/qa-testing`、`/testing-strategy` | 測試計畫、Contract Testing、整合測試設計 |
-| 階段 7：監控告警 | `/devops-monitoring` | Prometheus/Grafana 監控、跨系統分散式追蹤 |
-| 跨系統整合 | `/integration-webhook`、`/integration-api-client` | Webhook 處理、跨語言 API 客戶端（Python/Java/TS） |
-| 行動端整合 | `/mobile-development` | Android/macOS 整合開發、掃碼 SDK 整合 |
-| 支付整合 | `/integration-stripe` | Stripe 支付 API 整合 |
+### Skills 對應總覽（含觸發說明）
+
+| SOP 階段 | Skill | 觸發時機 | 觸發範例指令 | 對應 Workflow |
+|---------|-------|---------|------------|-------------|
+| **階段 1：啟動** | `/sa-analyst` | 整合需求不清晰，需結構化釐清系統邊界 | `/sa-analyst` 後描述「定義 ERP 與電商平台的整合範圍和資料邊界」 | `requirements-extraction` |
+| **階段 2：API 研究** | `/sa-analyst` | 釐清第三方 API 的業務需求與使用情境 | `/sa-analyst` 後描述「分析 Stripe Payment API 在訂單流程中的整合需求」 | `requirements-extraction` |
+| **階段 2：API 研究** | `/documentation-api` | 整理第三方 API 文檔，產出 OpenAPI 規格 | `/documentation-api` 後描述「整合的 Stripe Webhook 端點定義」 | `api-specification-generation` |
+| **階段 3：整合架構** | `/sd-architect` | 設計整合架構（Gateway/Adapter/規範模型） | `/sd-architect` 後描述「設計 Canonical Model 統一 ERP 與電商的 Product 資料結構」 | `integration-analysis-flow` |
+| **階段 3：整合架構** | `/integration-api-client` | 建立型別安全的 API 客戶端 | `/integration-api-client` 後描述「建立呼叫 Shopify API 的 TypeScript 客戶端（含錯誤重試）」 | — |
+| **階段 4：認證授權** | `/integration-oauth` | OAuth 2.0 / SSO 認證整合 | `/integration-oauth` 後描述「整合 Google OAuth 讓用戶用 Google 帳號登入」 | — |
+| **階段 4：認證授權** | `/security-audit` | 🔴 跨系統安全審查（含 API Key 管理） | `/security-audit` 後描述「審查 Stripe Webhook 簽名驗證和 API Key 存放安全性」 | `security-assessment-flow` |
+| **階段 5：資料映射** | `/integration-database` | 資料庫整合方案（ORM/CDC/Outbox Pattern） | `/integration-database` 後描述「設計 Outbox Pattern 確保訂單建立與 ERP 同步的一致性」 | — |
+| **階段 5：資料映射** | `/integration-redis` | Redis 快取策略（API 響應快取/Rate Limiting） | `/integration-redis` 後描述「設計第三方 API 響應快取策略（TTL 5 分鐘）」 | — |
+| **階段 6：測試策略** | `/qa-testing` | 制定整合測試計畫（含 Contract Testing） | `/qa-testing` 後描述「設計 Stripe API Contract Testing 和 Webhook 整合測試策略」 | `testing-strategy-flow` |
+| **階段 6：測試策略** | `/testing-strategy` | 測試金字塔設計（Mock/Stub/Real API 分層） | `/testing-strategy` 後描述「整合測試金字塔：Unit + Contract + E2E 分層策略」 | — |
+| **階段 7：監控告警** | `/devops-monitoring` | 設定跨系統分散式追蹤監控 | `/devops-monitoring` 後描述「Prometheus 監控第三方 API 錯誤率和延遲 P99」 | — |
+| **Webhook 整合** | `/integration-webhook` | 建立 Webhook 處理邏輯（含簽名驗證/重試） | `/integration-webhook` 後描述「Stripe Webhook 處理（簽名驗證 + 冪等性 + 重試）」 | — |
+| **支付整合** | `/integration-stripe` | Stripe 支付 API 整合 | `/integration-stripe` 後描述「民宿訂房預授權付款流程整合」 | — |
+| **行動端整合** | `/mobile-development` | Android/macOS 整合開發（掃碼/NFC/藍牙） | `/mobile-development` 後描述「Android 整合藍牙條碼掃描器 SDK」 | — |
+
+### Skills 選擇速決表（不確定時查這裡）
+
+| 我要做什麼 | 用這個 Skill |
+|-----------|------------|
+| 釐清整合需求、定義系統邊界 | `/sa-analyst` |
+| 整理/生成 API 規格文檔 | `/documentation-api` |
+| 設計整合架構（Gateway/Adapter） | `/sd-architect` |
+| 建立型別安全 API 客戶端 | `/integration-api-client` |
+| OAuth 2.0 / SSO 認證整合 | `/integration-oauth` |
+| Stripe 支付整合 | `/integration-stripe` |
+| Webhook 接收與驗證 | `/integration-webhook` |
+| 資料庫整合（ORM/CDC/Outbox） | `/integration-database` |
+| Redis 快取策略 | `/integration-redis` |
+| 整合測試計畫 | `/qa-testing` + `/testing-strategy` |
+| API 安全審查 | `/security-audit` |
+| 監控跨系統鏈路 | `/devops-monitoring` |
+| 行動端 SDK 整合 | `/mobile-development` |
+
+---
+
+## 🔴 開發-編譯-測試循環（強制規則）
+
+> 依據 AISDLC CLAUDE.md 強制規則，整合開發階段必須遵守此循環。
+
+```
+開發 1 個整合模組（API Client / Adapter / Webhook Handler）
+    ↓
+立即編譯 (Compile/Build)
+    ↓
+編譯失敗？ → 🔴 立即停止 → 修復 → 重新編譯
+    ↓
+編譯成功 ✅
+    ↓
+執行單元測試（使用 Mock/Stub 替代外部 API）
+    ↓
+測試失敗？ → 🔴 立即停止 → 依規格修復 → 重新測試
+    ↓
+測試通過 ✅ → Commit → 繼續開發下一個整合模組
+```
+
+**絕對禁止**：
+- ❌ 累積多個 Adapter 後才編譯
+- ❌ 編譯失敗後繼續開發其他整合
+- ❌ 跳過 Mock 單元測試直接打真實 API
+- ❌ 測試失敗後暫時 hardcode 繞過
+
+**完整規範**：[Development_Build_Test_Cycle.md](../../guides/user/process/Development_Build_Test_Cycle.md)
+
+---
+
+## 📁 產出文件存放目錄指引
+
+> **🔴 重要**：各階段產出文件必須依據 [DEVELOPMENT_DIRECTORY_STRUCTURE.md](../../guides/user/onboarding/DEVELOPMENT_DIRECTORY_STRUCTURE.md) 存放至正確目錄。
+
+| 階段 | 產出文件 | 存放目錄 |
+|------|---------|---------|
+| 1 啟動 | 整合需求分析、系統邊界定義 | `docs/01_requirements/` |
+| 2 API 研究 | 第三方 API 規格文檔、OpenAPI 定義 | `docs/02_architecture/` |
+| 3 整合架構 | 整合架構設計、Canonical Model 定義 | `docs/02_architecture/` |
+| 3 整合架構 | API 客戶端規格 | `docs/02_architecture/` |
+| 4 認證授權 | 認證設計文件、OAuth Flow 文檔 | `docs/02_architecture/` |
+| 5 資料映射 | 資料映射規格、Outbox/CDC 設計 | `docs/02_architecture/` |
+| 6 測試策略 | 測試計畫、Contract Test 規格 | `docs/03_testing/` |
+| 7 監控告警 | 監控指標定義、告警規則 | `docs/06_quality/` |
 
 ---
 

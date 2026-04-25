@@ -18,6 +18,8 @@ public enum ErrorCode {
     E_2002("E-2002", "Tenant suspended"),
     E_2003("E-2003", "Tenant context ambiguous"),
     E_2004("E-2004", "Feature disabled for tenant"),
+    E_4031("E-4031", "Not authorized to operate this store"),
+    E_4041("E-4041", "Store not found"),
 
     // Listing & Product (E-3000s)
     E_3000("E-3000", "Listing not found"),
@@ -83,6 +85,10 @@ public enum ErrorCode {
     E_9006("E-9006", "Field too long"),
     E_9007("E-9007", "Invalid date format"),
     E_9008("E-9008", "Value out of range"),
+
+    // Tenant Application (E-4090s) - Note: API doc uses 4091, 4092 but we'll use existing ranges
+    E_4091("E-4091", "Store name already in use"),
+    E_4092("E-4092", "Store application already exists"),
 
     // System (E-9900s)
     E_9900("E-9900", "Internal server error"),

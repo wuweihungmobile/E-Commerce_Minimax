@@ -78,9 +78,11 @@ public class OrderController {
 
     /**
      * 取消訂單
+     * 允許訂單擁有者取消自己的訂單，或 ADMIN/SUPER_ADMIN 取消任何訂單
+     * 注意：實際授權邏輯在 service 層處理
      */
     @PostMapping("/{orderId}/cancel")
-    @PreAuthorize("hasAuthority('order:cancel')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<OrderDto.OrderResponse>> cancelOrder(
             @PathVariable UUID orderId,
             @RequestParam(required = false) String reason) {
@@ -90,9 +92,11 @@ public class OrderController {
 
     /**
      * 取得訂單狀態日誌
+     * 允許訂單擁有者查看自己的訂單日誌，或 ADMIN/SUPER_ADMIN 查看任何訂單日誌
+     * 注意：實際授權邏輯在 service 層處理
      */
     @GetMapping("/{orderId}/logs")
-    @PreAuthorize("hasAuthority('order:read')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<List<OrderDto.StateLogResponse>>> getOrderLogs(
             @PathVariable UUID orderId) {
         List<OrderDto.StateLogResponse> logs = orderService.getOrderStateLogs(orderId);

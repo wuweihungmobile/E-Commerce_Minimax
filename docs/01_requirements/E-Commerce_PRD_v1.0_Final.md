@@ -61,7 +61,7 @@
 |------|------|------|
 | 前端 | Next.js 15 (App Router) + TypeScript + Tailwind CSS | SSR + SSG |
 | 後端 | Spring Boot 3.2 (Java 21) + Clean Architecture + DDD | 多租戶感知 |
-| 資料庫 | PostgreSQL 16 | Shared Schema + Tenant ID 隔離 |
+| 資料庫 | PostgreSQL 18 | Shared Schema + Tenant ID 隔離 |
 | 快取 | Redis 7 | 購物車 / 分佈式鎖 / 限流 / 定價快取 |
 | DB 遷移 | Flyway | 所有 Schema 變更走 Migration |
 | E2E 測試 | Playwright | 端到端自動化測試 |

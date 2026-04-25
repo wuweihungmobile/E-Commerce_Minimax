@@ -13,6 +13,8 @@ services:
   frontend:
     build:
       target: builder
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost:8080/api/v2
     container_name: ecommerce-frontend-dev
     environment:
       - NODE_ENV=development
@@ -22,7 +24,7 @@ services:
       - /app/.next
     command: npm run dev
     healthcheck:
-      disabled: true
+      disable: true
     ports:
       - "3000:3000"
 
@@ -35,18 +37,30 @@ services:
     container_name: ecommerce-backend-dev
     environment:
       - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/nextkeytest
+      - SPRING_DATASOURCE_USERNAME=koala
+      - SPRING_DATASOURCE_PASSWORD=koala5
       - SPRING_JPA_HIBERNATE_DDL_AUTO=update
       - SPRING_FLYWAY_ENABLED=false
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - SPRING_DATA_REDIS_PASSWORD=redis-dev-password
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis-dev-password
       - JAVA_OPTS=-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005
     volumes:
       - ./backend:/app
       - maven_cache:/root/.m2
-    command: ./gradlew bootRun --no-daemon
+    command: mvn spring-boot:run -DskipTests
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     ports:
       - "8080:8080"
       - "5005:5005"  # Debug port
-    healthcheck:
-      disabled: true
 
 # =============================================
 # Volume for Maven cache

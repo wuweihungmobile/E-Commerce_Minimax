@@ -2253,7 +2253,7 @@ for method, path, params in test_cases:
 |------|------|
 | **系統** | 經銷存管理系統（進貨/銷貨/庫存/報表） |
 | **舊技術棧** | Vue 3 + Vite + TypeScript / Python FastAPI / Oracle 19c |
-| **新技術棧** | React Next.js / Spring Boot 3 / PostgreSQL 16 |
+| **新技術棧** | React Next.js / Spring Boot 3 / PostgreSQL 18 |
 | **新增平台** | Android（掃碼入出庫）、macOS（管理介面） |
 | **資料量** | 50+ 表、300+ SP、100 萬+筆訂單、500 萬+筆庫存異動 |
 

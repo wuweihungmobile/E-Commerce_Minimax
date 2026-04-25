@@ -2,13 +2,17 @@ package com.nextkey.ecommerce.core.auth;
 
 import com.nextkey.ecommerce.api.dto.AuthResponse;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
+import com.nextkey.ecommerce.api.dto.LogoutRequest;
 import com.nextkey.ecommerce.api.dto.RefreshTokenRequest;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
+import com.nextkey.ecommerce.api.dto.RegisterResponse;
+import com.nextkey.ecommerce.api.dto.UserInfoResponse;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
+import com.nextkey.ecommerce.infrastructure.security.RefreshTokenService;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -19,7 +23,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -31,17 +37,17 @@ public class AuthService {
     private final TenantRepository tenantRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenService jwtTokenService;
+    private final RefreshTokenService refreshTokenService;
 
     @Transactional
-    public AuthResponse register(RegisterRequest request) {
+    public RegisterResponse register(RegisterRequest request) {
         // Check if email already exists
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new BusinessException(ErrorCode.E_1005, "Email already registered");
         }
 
-        // Get system tenant
-        Tenant systemTenant = tenantRepository.findById(UUID.fromString(AppConstants.SYSTEM_TENANT_ID))
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "System tenant not found"));
+        // Resolve userType (default: BUYER)
+        User.UserRole role = resolveUserRole(request.getUserType());
 
         // Create new user
         User user = User.builder()
@@ -49,17 +55,32 @@ public class AuthService {
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .fullName(request.getFullName())
                 .phone(request.getPhone())
-                .role(User.UserRole.BUYER)
+                .role(role)
                 .status("ACTIVE")
                 .emailVerified(false)
                 .metadata(new HashMap<>())
                 .build();
 
         user = userRepository.save(user);
-        log.info("New user registered: {}", user.getEmail());
+        log.info("New user registered: {} ({})", user.getEmail(), user.getRole());
 
-        // Generate tokens
-        return generateAuthResponse(user, systemTenant);
+        return RegisterResponse.builder()
+                .userId(user.getId())
+                .email(user.getEmail())
+                .userType(user.getRole().name())
+                .createdAt(user.getCreatedAt())
+                .build();
+    }
+
+    private User.UserRole resolveUserRole(String userType) {
+        if (userType == null) {
+            return User.UserRole.BUYER;
+        }
+        return switch (userType) {
+            case "SELLER" -> User.UserRole.SELLER;
+            case "HOST" -> User.UserRole.HOST;
+            default -> User.UserRole.BUYER;
+        };
     }
 
     @Transactional
@@ -105,6 +126,11 @@ public class AuthService {
             throw new BusinessException(ErrorCode.E_1004, "Account not active");
         }
 
+        // 檢查 refresh token 是否在黑名單中
+        if (!refreshTokenService.isRefreshTokenValid(userId, refreshToken)) {
+            throw new BusinessException(ErrorCode.E_1003, "Refresh token has been revoked");
+        }
+
         Tenant tenant = user.getTenantId() != null
                 ? tenantRepository.findById(user.getTenantId()).orElse(null)
                 : tenantRepository.findById(UUID.fromString(AppConstants.SYSTEM_TENANT_ID)).orElse(null);
@@ -125,6 +151,7 @@ public class AuthService {
         );
 
         String refreshToken = jwtTokenService.generateRefreshToken(user.getId());
+        refreshTokenService.storeRefreshToken(user.getId(), refreshToken);
 
         return AuthResponse.builder()
                 .accessToken(accessToken)
@@ -138,6 +165,64 @@ public class AuthService {
                         .role(user.getRole().name())
                         .tenantId(tenantId)
                         .build())
+                .build();
+    }
+
+    /**
+     * 會員登出
+     * 將 Refresh Token 加入黑名單
+     * @param userId 當前用戶 ID
+     * @param request 登出請求（包含 refreshToken）
+     */
+    @Transactional
+    public void logout(UUID userId, LogoutRequest request) {
+        if (request.getRefreshToken() != null && !request.getRefreshToken().isEmpty()) {
+            // 只失效指定的 refresh token
+            refreshTokenService.blacklistRefreshToken(userId, request.getRefreshToken());
+            log.info("User logged out, token blacklisted: {}", userId);
+        } else {
+            // 失效所有 refresh tokens
+            refreshTokenService.blacklistAllRefreshTokens(userId);
+            log.info("User logged out, all tokens blacklisted: {}", userId);
+        }
+    }
+
+    /**
+     * 取得當前用戶資訊
+     * @param userId 當前用戶 ID
+     * @return 用戶資訊
+     */
+    @Transactional(readOnly = true)
+    public UserInfoResponse getCurrentUser(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1006, "User not found"));
+
+        // 獲取用戶的租戶資訊
+        List<UserInfoResponse.TenantInfo> tenants = new ArrayList<>();
+        if (user.getTenantId() != null) {
+            Tenant tenant = tenantRepository.findById(user.getTenantId()).orElse(null);
+            if (tenant != null) {
+                tenants.add(UserInfoResponse.TenantInfo.builder()
+                        .tenantId(tenant.getId())
+                        .tenantName(tenant.getName())
+                        .role(user.getRole().name())
+                        .build());
+            }
+        }
+
+        return UserInfoResponse.builder()
+                .userId(user.getId())
+                .email(user.getEmail())
+                .userType(user.getRole().name())
+                .status(user.getStatus())
+                .emailVerified(user.getEmailVerified())
+                .profile(UserInfoResponse.Profile.builder()
+                        .displayName(user.getFullName())
+                        .phone(user.getPhone())
+                        .avatarUrl(user.getAvatarUrl())
+                        .build())
+                .tenants(tenants)
+                .createdAt(user.getCreatedAt())
                 .build();
     }
 }

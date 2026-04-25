@@ -174,7 +174,7 @@ test:unit:
   stage: test
   image: eclipse-temurin:21-jdk-alpine
   services:
-    - postgres:16-alpine
+    - postgres:18-alpine
   variables:
     POSTGRES_DB: testdb
     POSTGRES_USER: testuser

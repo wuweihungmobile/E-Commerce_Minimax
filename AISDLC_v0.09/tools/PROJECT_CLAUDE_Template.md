@@ -1,7 +1,7 @@
 # CLAUDE.md
 # Claude Code Project Guidance
 
-**Last Updated**: 2025-01-11
+**Last Updated**: 2026-04-11
 **AISDLC Version**: v0.09
 **Document Purpose**: Provide guidance to Claude Code when working with this project using AISDLC framework
 
@@ -88,7 +88,7 @@
 
 ### 詳細規範文檔
 
-完整執行指南請參考：[Development_Build_Test_Cycle.md](AISDLC/framework/guides/user/process/Development_Build_Test_Cycle.md)
+完整執行指南請參考：[Development_Build_Test_Cycle.md](guides/user/process/Development_Build_Test_Cycle.md)
 
 **🔴 此規則適用於本專案所有開發情境！🔴**
 
@@ -151,7 +151,6 @@ AISDLC_v0.09/                            # 專案工作目錄 ✅
 ### 框架位置
 
 - **工作目錄**: AISDLC_v0.09（即框架所在目錄）
-- **專案配置**: `AISDLC_PROJECT_CONFIG.md`
 
 ### 重要參考文檔
 
@@ -306,19 +305,27 @@ Claude Code 自動執行：
 
 ```yaml
 step_1: 載入 AISDLC_INIT.md
-step_2: 識別專案情境類型（參考 AISDLC_PROJECT_CONFIG.md）
-step_3: 載入對應 Agents
-step_4: 執行對應 Workflow
+step_2: 識別專案情境類型（透過問答或指令解析）
+step_3: 自動載入對應 Primary Agents
+step_4: 執行對應 Workflow 與 SOP
 ```
 
-### 常用情境
+### 十大情境
 
-- **Greenfield**: 新專案開發
-- **Brownfield**: 舊專案維護
-- **Refactoring**: 程式碼重構
-- **Integration**: 系統整合
-- **Testing**: 測試強化
-- **Documentation**: 文檔補強
+| 情境代碼 | 說明 |
+|---------|------|
+| `greenfield` | 新專案開發 |
+| `brownfield` | 舊專案維護與改造 |
+| `refactoring` | 程式碼重構與品質改善 |
+| `migration` | 技術棧遷移（DB/框架/雲端） |
+| `performance` | 效能優化 |
+| `integration` | 第三方系統整合 |
+| `devops` | DevOps 建置與 CI/CD |
+| `testing` | 測試策略與自動化 |
+| `documentation` | 技術文檔撰寫 |
+| `security` | 安全合規審查 |
+
+**快速啟動**: `AISDLC [情境代碼] [專案簡述]`
 
 詳見：[SCENARIO_SELECTOR.md](guides/user/onboarding/SCENARIO_SELECTOR.md)
 
@@ -344,7 +351,7 @@ step_4: 執行對應 Workflow
 ---
 
 **文檔元數據**:
-- **文檔版本**: v1.0
+- **文檔版本**: v1.1
 - **建立日期**: 2025-01-11
 - **適用 AISDLC 版本**: v0.09+
 - **維護者**: 專案團隊

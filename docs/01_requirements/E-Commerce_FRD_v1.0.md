@@ -2988,7 +2988,7 @@ tenants
 ├── name: VARCHAR(200)
 ├── slug: VARCHAR(100) UNIQUE -- URL-friendly
 ├── business_type: ENUM('RETAIL_ONLY', 'BOOKING_ONLY', 'HYBRID')
-├── status: ENUM('PENDING_REVIEW', 'ACTIVE', 'REJECTED', 'SUSPENDED', 'TERMINATED')
+├── status: ENUM('PENDING', 'ACTIVE', 'REJECTED', 'SUSPENDED', 'TERMINATED')
 ├── commission_rate: DECIMAL(5,4) DEFAULT 0.05
 ├── logo_url: VARCHAR(500)
 ├── description: TEXT
@@ -3022,7 +3022,7 @@ tenant_feature_toggles
 
 **Story 狀態**: Draft
 **優先級**: P0
-**Story Points**: 5
+**Story Points**: 3
 
 ---
 
@@ -3031,7 +3031,7 @@ tenant_feature_toggles
 **AC-M17-001-1**: 提交開店申請
 **Given** Guest 填寫開店申請表單
 **When** 提交所有必填資訊
-**Then** 建立 Tenant 記錄 (status = 'PENDING_REVIEW') 並通知 Admin
+**Then** 建立 Tenant 記錄 (status = 'PENDING') 並通知 Admin
 
 **測試資料**:
 ```json
@@ -3332,7 +3332,7 @@ tenant_feature_toggles
 
 **Story 狀態**: Draft
 **優先級**: P0
-**Story Points**: 3
+**Story Points**: 1
 
 ---
 
@@ -3416,7 +3416,7 @@ tenant_feature_toggles
 #### Acceptance Criteria
 
 **AC-M17-007-1**: 審核通過開店申請
-**Given** 店鋪申請狀態為 PENDING_REVIEW
+**Given** 店鋪申請狀態為 PENDING
 **When** Admin 提交審核通過 (POST /api/v2/admin/tenants/:id/approve)
 **Then** 將店鋪狀態改為 ACTIVE，並初始化 Feature Toggle
 
@@ -3452,7 +3452,7 @@ tenant_feature_toggles
 | 條件 | 處理方式 | 預期行為 |
 |------|---------|---------|
 | 店鋪不存在 | 阻擋 | E-4041 TENANT_NOT_FOUND |
-| 店鋪狀態非 PENDING_REVIEW | 阻擋 | E-4001 INVALID_STORE_STATUS |
+| 店鋪狀態非 PENDING | 阻擋 | E-4001 INVALID_STORE_STATUS |
 | 核准無效的功能 | 警告但允許 | 顯示警告 |
 
 ---
@@ -3481,7 +3481,7 @@ tenant_feature_toggles
 #### Acceptance Criteria
 
 **AC-M17-008-1**: 駁回開店申請
-**Given** 店鋪申請狀態為 PENDING_REVIEW
+**Given** 店鋪申請狀態為 PENDING
 **When** Admin 提交駁回 (POST /api/v2/admin/tenants/:id/reject)
 **Then** 將店鋪狀態改為 REJECTED，並記錄原因
 
@@ -3516,7 +3516,7 @@ tenant_feature_toggles
 | 條件 | 處理方式 | 預期行為 |
 |------|---------|---------|
 | reason 空白 | 驗證失敗 | E-4001 VALIDATION_ERROR |
-| 店鋪狀態非 PENDING_REVIEW | 阻擋 | E-4001 INVALID_STORE_STATUS |
+| 店鋪狀態非 PENDING | 阻擋 | E-4001 INVALID_STORE_STATUS |
 
 ---
 
@@ -3540,7 +3540,7 @@ tenant_feature_toggles
 
 **狀態流轉**：
 ```
-[申請開店] → PENDING_REVIEW → [Admin 審核] → ACTIVE → [運營中]
+[申請開店] → PENDING → [Admin 審核] → ACTIVE → [運營中]
                                     │                      │
                                     ▼                      ▼
                                REJECTED              SUSPENDED (違規)
@@ -3560,7 +3560,7 @@ tenant_feature_toggles
 | **類型** | 初始化 |
 
 **規則描述**：
-當 `tenants.status` 從 `PENDING_REVIEW` → `ACTIVE` 時，系統自動以預設值初始化該 Tenant 的所有 Feature Toggle 紀錄。
+當 `tenants.status` 從 `PENDING` → `ACTIVE` 時，系統自動以預設值初始化該 Tenant 的所有 Feature Toggle 紀錄。
 
 **預設值**：
 
@@ -3689,6 +3689,15 @@ tenant_feature_toggles
 **文檔所有者**: Amanda (SA-Analyst)
 **最後審查日期**: 2026-04-09
 **下一次審查日期**: 待定
+
+---
+
+## 📝 文件修訂紀錄
+
+| 版本 | 日期 | 修改內容 | 確認人 |
+|------|------|----------|--------|
+| v1.0 | 2026-04-09 | 初始版本 | Amanda (SA) |
+| v1.1 | 2026-04-22 | 1. 修正租戶狀態 PENDING_REVIEW → PENDING<br>2. 修正 US-M17-001 Story Points 5→3<br>3. 修正 US-M17-006 Story Points 3→1 | AI Review |
 
 ---
 

@@ -6,49 +6,54 @@
 
 ```
 agent/
-├── core/                          # 核心 Agent (中文版 - 主要維護)
-│   ├── 01.agent-template-zh_OK.yaml
+├── core/                              # 核心 Agent (中文版 - 主要維護)
+│   ├── 01.agent-template-zh.yaml
 │   ├── 02.ba-business-analyst-zh.yaml
 │   ├── 03.pm-po-agent-zh.yaml
 │   ├── 04.sa-analyst-zh.yaml
 │   ├── 05.sd-architect-zh.yaml
 │   ├── 06.dev-developer-zh.yaml
 │   ├── 07.qa-tester-zh.yaml
-│   └── archive_en/                # 英文版備份 (僅供參考)
+│   ├── README.md
+│   └── backup_en/                     # 英文版備份 (僅供參考)
 │       ├── README.md
 │       └── [7 個英文版 Agent YAML]
-├── specialized/                    # 專業化 Agent
-│   ├── code-analyzer.yaml
-│   ├── compliance-officer.yaml
-│   ├── dev-senior.yaml
-│   ├── devops-engineer.yaml
-│   ├── integration-specialist.yaml
-│   ├── performance-engineer.yaml
-│   ├── qa-automation.yaml
-│   ├── qa-lead.yaml
-│   ├── qa-mobile-tester.yaml
-│   ├── qa-web-tester.yaml
-│   ├── sd-mobile-architect.yaml
-│   ├── sd-web-architect.yaml
-│   ├── security-engineer.yaml
-│   └── technical-writer.yaml
+├── specialized/                        # 專業化 Agent (中文版)
+│   ├── code-analyzer-zh.yaml
+│   ├── compliance-officer-zh.yaml
+│   ├── dev-senior-zh.yaml
+│   ├── devops-engineer-zh.yaml
+│   ├── integration-specialist-zh.yaml
+│   ├── performance-engineer-zh.yaml
+│   ├── qa-automation-zh.yaml
+│   ├── qa-lead-zh.yaml
+│   ├── qa-mobile-tester-zh.yaml
+│   ├── qa-web-tester-zh.yaml
+│   ├── sd-mobile-architect-zh.yaml
+│   ├── sd-web-architect-zh.yaml
+│   ├── security-engineer-zh.yaml
+│   ├── technical-writer-zh.yaml
+│   ├── README.md
+│   └── backup_en/                     # 英文版備份 (僅供參考)
+│       ├── README.md
+│       └── [14 個英文版 Agent YAML]
 ├── AGENT_COLLABORATION_PATTERNS.md
 ├── AGENT_PHASE2_UPDATE_GUIDE.md
 └── README.md (本檔案)
 ```
 
-## 🎯 維護策略 (2025-10-30 更新)
+## 🎯 維護策略
 
 ### ✅ 主要維護版本：中文版
 
-- **位置**：`core/*-zh.yaml`
+- **位置**：`core/*-zh.yaml`、`specialized/*-zh.yaml`
 - **狀態**：**主要維護版本，所有更新在此進行**
 - **使用者**：所有開發團隊（主要為中文使用者）
 - **更新頻率**：隨框架演進持續更新
 
 ### 📦 歷史參考版本：英文版
 
-- **位置**：`core/archive_en/*.yaml`
+- **位置**：`core/backup_en/*.yaml`、`specialized/backup_en/*.yaml`
 - **狀態**：**靜態備份，不再主動更新**
 - **用途**：
   - 術語對照參考
@@ -60,41 +65,43 @@ agent/
 
 所有核心 Agent 均已包含 Phase 2 擴充內容 (v0.03-phase2)：
 
-| # | Agent ID | 名稱 | 角色 | 情境使用頻率 | 不可替代性 |
-|---|----------|------|------|------------|-----------|
-| 1 | agent-template | Template | Agent 模板 | - | - |
-| 2 | ba-business-analyst | Beatrice | 業務分析師 | Medium (3/9) | ⭐⭐⭐⭐⭐ |
-| 3 | pm-po | Victoria | 產品經理/產品負責人 | Medium-High (6/9) | ⭐⭐⭐⭐ |
-| 4 | sa-analyst | Amanda | 系統分析師 | High (9/9) | ⭐⭐⭐⭐⭐ |
-| 5 | sd-architect | Marcus | 系統設計師/架構師 | High (8/9) | ⭐⭐⭐⭐⭐ |
-| 6 | dev-developer | David | 軟體開發者 | Medium-High (6/9) | ⭐⭐⭐⭐⭐ |
-| 7 | qa-tester | Quincy | 品質保證工程師 | High (7/9) | ⭐⭐⭐⭐⭐ |
+| # | 檔案 | 名稱 | 角色 | 情境使用頻率 | 不可替代性 |
+|---|------|------|------|------------|-----------|
+| 1 | 01.agent-template-zh.yaml | Template | Agent 模板 | - | - |
+| 2 | 02.ba-business-analyst-zh.yaml | Beatrice | 業務分析師 | Medium (4/10) | ⭐⭐⭐⭐⭐ |
+| 3 | 03.pm-po-agent-zh.yaml | Victoria | 產品經理/產品負責人 | Medium (5/10) | ⭐⭐⭐⭐ |
+| 4 | 04.sa-analyst-zh.yaml | Amanda | 系統分析師 | High (10/10) | ⭐⭐⭐⭐⭐ |
+| 5 | 05.sd-architect-zh.yaml | Marcus | 系統設計師/架構師 | High (9/10) | ⭐⭐⭐⭐⭐ |
+| 6 | 06.dev-developer-zh.yaml | David | 軟體開發者 | Medium-High (7/10) | ⭐⭐⭐⭐⭐ |
+| 7 | 07.qa-tester-zh.yaml | Quincy | 品質保證工程師 | High (7/10) | ⭐⭐⭐⭐⭐ |
 
 ## 🔧 專業化 Agent (Specialized Agents)
 
-提供特定領域的專業能力，依需求選用：
+提供特定領域的專業能力，依需求選用。**v0.09 起全部中文化 (`-zh.yaml`)**：
 
 ### 開發專業化
-- `dev-senior.yaml` - 資深開發者
-- `code-analyzer.yaml` - 代碼分析師
+- `dev-senior-zh.yaml` - 資深開發者 (Senior)
+- `code-analyzer-zh.yaml` - 代碼分析師 (CodeX)
 
 ### 架構專業化
-- `sd-web-architect.yaml` - Web 架構師
-- `sd-mobile-architect.yaml` - Mobile 架構師
+- `sd-web-architect-zh.yaml` - Web 架構師 (WebArch)
+- `sd-mobile-architect-zh.yaml` - Mobile 架構師 (MobileArch)
 
 ### QA 專業化
-- `qa-lead.yaml` - QA 主管
-- `qa-automation.yaml` - 自動化測試工程師
-- `qa-web-tester.yaml` - Web 測試工程師
-- `qa-mobile-tester.yaml` - Mobile 測試工程師
+- `qa-lead-zh.yaml` - QA 主管 (QA-Lead)
+- `qa-automation-zh.yaml` - 自動化測試工程師 (AutoQA)
+- `qa-web-tester-zh.yaml` - Web 測試工程師 (WebQA)
+- `qa-mobile-tester-zh.yaml` - Mobile 測試工程師 (MobileQA)
 
 ### 其他專業化
-- `devops-engineer.yaml` - DevOps 工程師
-- `security-engineer.yaml` - 安全工程師
-- `performance-engineer.yaml` - 效能工程師
-- `integration-specialist.yaml` - 整合專家
-- `technical-writer.yaml` - 技術文件撰寫員
-- `compliance-officer.yaml` - 合規專員
+- `devops-engineer-zh.yaml` - DevOps 工程師 (DevOps)
+- `security-engineer-zh.yaml` - 安全工程師 (SecEng)
+- `performance-engineer-zh.yaml` - 效能工程師 (Perf)
+- `integration-specialist-zh.yaml` - 整合專家 (IntegX)
+- `technical-writer-zh.yaml` - 技術文件撰寫員 (DocX)
+- `compliance-officer-zh.yaml` - 合規專員 (CompOff)
+
+> 📖 **選擇指南**: [guides/system/agent/Specialized_Agent_Selection_Guide.md](../guides/system/agent/Specialized_Agent_Selection_Guide.md)
 
 ## 📝 Agent 配置結構
 
@@ -150,7 +157,7 @@ agent/
 
 ### 新增或修改 Agent
 
-1. **使用模板**：複製 `01.agent-template-zh_OK.yaml` 作為起點
+1. **使用模板**：複製 `01.agent-template-zh.yaml` 作為起點
 2. **填寫欄位**：根據註釋指導填寫所有必要欄位
 3. **Phase 2 內容**：確保包含協作模式和情境使用定義
 4. **測試整合**：驗證與 AISDLC 工作流程的整合
@@ -164,8 +171,8 @@ agent/
 # 引用核心 Agent (中文版)
 agent: "../agent/core/04.sa-analyst-zh.yaml"
 
-# 引用專業化 Agent
-agent: "../agent/specialized/qa-automation.yaml"
+# 引用專業化 Agent (中文版)
+agent: "../agent/specialized/qa-automation-zh.yaml"
 ```
 
 ### 選擇合適的 Agent
@@ -181,15 +188,21 @@ agent: "../agent/specialized/qa-automation.yaml"
 
 - `AGENT_COLLABORATION_PATTERNS.md` - Agent 協作模式詳細說明
 - `AGENT_PHASE2_UPDATE_GUIDE.md` - Phase 2 更新指南
-- `core/archive_en/README.md` - 英文版備份說明
-- `../CLAUDE.md` - AISDLC 框架整體說明
-- `../INTEGRATION_GUIDE.md` - 框架整合指南
+- `core/backup_en/README.md` - 核心 Agent 英文版備份說明
+- `specialized/backup_en/README.md` - 專業化 Agent 英文版備份說明
+- `../AISDLC_INIT.md` - AISDLC 框架初始化與 Agent 載入配置
 
 ## 🔄 版本歷史
 
+### v0.09 (2026-03-20)
+- ✅ 所有 Specialized Agents 完成中文化 (`-zh.yaml`)
+- ✅ `archive_en/` 重命名為 `backup_en/`（core 和 specialized）
+- ✅ 模板檔名更新：`01.agent-template-zh_OK.yaml` → `01.agent-template-zh.yaml`
+- ✅ 新增十大情境完整 Agent 自動載入配置（含 migration 情境）
+
 ### v0.06 (2025-10-30)
 - ✅ 補全所有核心 Agent 的 Phase 2 內容
-- ✅ 將英文版移至 `archive_en/` 作為歷史參考
+- ✅ 將英文版移至 `backup_en/` 作為歷史參考
 - ✅ 確立中文版為主要維護版本
 - ✅ 所有 Agent 行數與英文版對齊 (包含 Phase 2)
 
@@ -214,16 +227,16 @@ A: 主要使用者為中文團隊，維護單一語言版本可以：
 
 ### Q: 還能找到英文版嗎？
 
-A: 可以！英文版備份在 `core/archive_en/` 目錄，隨時可供參考。
+A: 可以！英文版備份分別在 `core/backup_en/` 和 `specialized/backup_en/` 目錄，隨時可供參考。
 
-### Q: Specialized Agents 會有中文版嗎？
+### Q: Specialized Agents 都有中文版嗎？
 
-A: 目前 specialized agents 為英文版。未來若有需求，會根據使用頻率逐步中文化。
+A: 是的！v0.09 起所有 14 個 Specialized Agents 均已中文化（`-zh.yaml` 後綴），與核心 Agent 保持一致。
 
 ### Q: 如何貢獻新的 Agent？
 
 A:
-1. 使用 agent-template-zh_OK.yaml 作為模板
+1. 使用 `01.agent-template-zh.yaml` 作為模板
 2. 填寫完整的 Phase 2 內容
 3. 確保與現有 Agent 的協作關係定義清楚
 4. 提交 Pull Request 並更新本 README
@@ -231,5 +244,5 @@ A:
 ---
 
 **維護者**：AISDLC Framework Team
-**最後更新**：2025-10-30
-**版本**：v0.06
+**最後更新**：2026-04-11
+**版本**：v0.09

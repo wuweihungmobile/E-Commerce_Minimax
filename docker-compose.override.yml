@@ -13,6 +13,8 @@ services:
   frontend:
     build:
       target: builder
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost:8080/api/v2
     container_name: ecommerce-frontend-dev
     environment:
       - NODE_ENV=development

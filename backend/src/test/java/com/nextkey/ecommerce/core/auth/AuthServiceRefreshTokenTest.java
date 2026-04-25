@@ -7,6 +7,7 @@ import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
+import com.nextkey.ecommerce.infrastructure.security.RefreshTokenService;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -53,6 +54,9 @@ class AuthServiceRefreshTokenTest {
     @Mock
     private JwtTokenService jwtTokenService;
 
+    @Mock
+    private RefreshTokenService refreshTokenService;
+
     @InjectMocks
     private AuthService authService;
 
@@ -86,6 +90,7 @@ class AuthServiceRefreshTokenTest {
                 .thenReturn("new-access-token");
         when(jwtTokenService.generateRefreshToken(any(UUID.class))).thenReturn("new-refresh-token");
         when(jwtTokenService.getAccessTokenExpiration()).thenReturn(1800L);
+        when(refreshTokenService.isRefreshTokenValid(any(UUID.class), anyString())).thenReturn(true);
 
         // Act
         AuthResponse response = authService.refreshToken(request);
@@ -128,6 +133,7 @@ class AuthServiceRefreshTokenTest {
                 .thenReturn("new-access-token");
         when(jwtTokenService.generateRefreshToken(any(UUID.class))).thenReturn("new-refresh-token");
         when(jwtTokenService.getAccessTokenExpiration()).thenReturn(1800L);
+        when(refreshTokenService.isRefreshTokenValid(any(UUID.class), anyString())).thenReturn(true);
 
         // Act
         AuthResponse response = authService.refreshToken(request);

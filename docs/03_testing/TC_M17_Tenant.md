@@ -5,17 +5,22 @@
 > **建立日期**: 2026-04-10
 > **依據**: API_M17_Tenant.md, SRD_Database_Schema.md, SRD_System_Architecture.md
 > **測試框架**: JUnit 5 + Mockito (UT), Spring Boot Test (IT), REST Assured (API)
+> **Sprint 2 範圍**: US-M17-001 ~ US-M17-006
+> **Sprint 3 範圍**: US-M17-007, US-M17-008 (Admin APIs)
 
 ---
 
 ## 📋 測試案例總覽
 
-| 測試類型 | P0 | P1 | P2 | 小計 |
-|----------|----|----|----|------|
-| UT | 4 | 3 | 2 | 9 |
-| IT | 2 | 2 | 1 | 5 |
-| API | 3 | 3 | 2 | 8 |
-| **合計** | 9 | 8 | 5 | **22** |
+| 測試類型 | P0 | P1 | P2 | 小計 | Sprint | 狀態 |
+|----------|----|----|----|------|--------|------|
+| UT | 4 | 3 | 2 | 9 | Sprint 2 | ⏳ 待實現 |
+| IT | 2 | 2 | 1 | 5 | Sprint 2 | ⏳ 待實現 |
+| API | 3 | 4 | 2 | 9 | Sprint 2 | ✅ 已實現 (14項) |
+| **Sprint 2 合計** | 9 | 9 | 5 | **23** | | |
+| Admin IT | 2 | 1 | 0 | 3 | Sprint 3 | ⏳ 待實現 |
+| Admin API | 2 | 1 | 0 | 3 | Sprint 3 | ⏳ 待實現 |
+| **總合計** | 13 | 11 | 5 | **29** | | |
 
 ---
 
@@ -57,13 +62,15 @@
 | IT-M17-002 | 租戶申請-storeName重複 | P0 | 已有相同 storeName | 1. POST /api/v2/tenants/apply (相同 storeName) | 409 Conflict |
 | IT-M17-003 | 租戶申請-必填欄位驗證 | P1 | 無 | 1. POST /api/v2/tenants/apply (缺少 storeName) | 400 Bad Request |
 
-### 2.2 Admin 審核流程
+### 2.2 Admin 審核流程 (Sprint 3)
 
-| TC ID | 測試案例名稱 | 優先級 | 前置條件 | 測試步驟 | 預期結果 |
-|-------|-------------|--------|----------|----------|----------|
-| IT-M17-004 | Admin審核-通過申請 | P0 | 租戶狀態 = PENDING | 1. POST /api/v2/admin/tenants/{id}/approve<br>2. 驗證狀態變為 ACTIVE | 200, status = ACTIVE |
-| IT-M17-005 | Admin審核-駁回申請 | P0 | 租戶狀態 = PENDING | 1. POST /api/v2/admin/tenants/{id}/reject<br>2. 提供 reason | 200, status = REJECTED |
-| IT-M17-006 | Admin審核-非Admin角色 | P1 | StoreOwner 角色 | 1. StoreOwner 嘗試呼叫 approve API | 403 Forbidden |
+| TC ID | 測試案例名稱 | 優先級 | 前置條件 | 測試步驟 | 預期結果 | 狀態 |
+|-------|-------------|--------|----------|----------|----------|------|
+| IT-M17-004 | Admin審核-通過申請 | P0 | 租戶狀態 = PENDING | 1. POST /api/v2/admin/tenants/{id}/approve<br>2. 驗證狀態變為 ACTIVE | 200, status = ACTIVE | ⏳ 待實現 |
+| IT-M17-005 | Admin審核-駁回申請 | P0 | 租戶狀態 = PENDING | 1. POST /api/v2/admin/tenants/{id}/reject<br>2. 提供 reason | 200, status = REJECTED | ⏳ 待實現 |
+| IT-M17-006 | Admin審核-非Admin角色 | P1 | StoreOwner 角色 | 1. StoreOwner 嘗試呼叫 approve API | 403 Forbidden | ⏳ 待實現 |
+
+> **Note**: IT-M17-004, IT-M17-005, IT-M17-006 屬於 Sprint 3 (US-M17-007, US-M17-008)
 
 ### 2.3 Feature Toggle 更新
 
@@ -80,32 +87,49 @@
 
 | TC ID | 測試案例名稱 | 優先級 | 前置條件 | 測試步驟 | 預期結果 |
 |-------|-------------|--------|----------|----------|----------|
-| API-M17-001 | POST /api/v2/tenants/apply-成功 | P0 | 無 | 1. POST /api/v2/tenants/apply<br>Body: {"storeName":"新商店","businessType":"RETAIL_ONLY","contactEmail":"test@test.com"} | 201, data.status = PENDING |
-| API-M17-002 | POST /api/v2/tenants/apply-缺少必填 | P0 | 無 | 1. POST /api/v2/tenants/apply (缺少 storeName) | 400, errors 包含 storeName 錯誤 |
-| API-M17-003 | POST /api/v2/tenants/apply-Email格式錯誤 | P1 | 無 | 1. POST /api/v2/tenants/apply<br>Body: {"storeName":"商店","contactEmail":"invalid"} | 400, errors 包含 email 錯誤 |
+| API-M17-001 | POST /api/v2/tenants/apply-成功 | P0 | 無 | 1. POST /api/v2/tenants/apply<br>Body: {"storeName":"新商店","businessType":"RETAIL_ONLY","contactEmail":"test@test.com"} | 201, data.status = PENDING | ✅ 已實現 |
+| API-M17-002 | POST /api/v2/tenants/apply-缺少必填 | P0 | 無 | 1. POST /api/v2/tenants/apply (缺少 storeName) | 400, errors 包含 storeName 錯誤 | ✅ 已實現 |
+| API-M17-003 | POST /api/v2/tenants/apply-Email格式錯誤 | P1 | 無 | 1. POST /api/v2/tenants/apply<br>Body: {"storeName":"商店","contactEmail":"invalid"} | 400, errors 包含 email 錯誤 | ✅ 已實現 |
 
 ### 3.2 租戶查詢 API
 
 | TC ID | 測試案例名稱 | 優先級 | 前置條件 | 測試步驟 | 預期結果 |
 |-------|-------------|--------|----------|----------|----------|
-| API-M17-004 | GET /api/v2/tenants-取得我的店鋪列表 | P0 | 已登入且有店鋪 | 1. GET /api/v2/tenants<br>Header: Authorization: Bearer {token} | 200, data.tenants 包含店鋪列表 |
-| API-M17-005 | GET /api/v2/tenants/:id-店鋪詳情 | P0 | 已登入且有店鋪 | 1. GET /api/v2/tenants/{tenantId} | 200, data 包含 storeName, status 等 |
-| API-M17-006 | GET /api/v2/tenants/:id-不存在的店鋪 | P1 | 無 | 1. GET /api/v2/tenants/invalid-uuid | 404, message="Store not found" |
+| API-M17-004 | GET /api/v2/tenants-取得我的店鋪列表 | P0 | 已登入且有店鋪 | 1. GET /api/v2/tenants<br>Header: Authorization: Bearer {token} | 200, data.tenants 包含店鋪列表 | ✅ 已實現 |
+| API-M17-005 | GET /api/v2/tenants/:id-店鋪詳情 | P0 | 已登入且有店鋪 | 1. GET /api/v2/tenants/{tenantId} | 200, data 包含 storeName, status 等 | ✅ 已實現 |
+| API-M17-006 | GET /api/v2/tenants/:id-不存在的店鋪 | P1 | 無 | 1. GET /api/v2/tenants/invalid-uuid | 404, message="Store not found" | ✅ 已實現 |
 
-### 3.3 Admin 店鋪管理 API
-
-| TC ID | 測試案例名稱 | 優先級 | 前置條件 | 測試步驟 | 預期結果 |
-|-------|-------------|--------|----------|----------|----------|
-| API-M17-007 | GET /api/v2/admin/tenants-店鋪列表 | P0 | Admin 登入 | 1. GET /api/v2/admin/tenants<br>Header: Authorization: Bearer {adminToken} | 200, data.items 包含所有店鋪 |
-| API-M17-008 | POST /api/v2/admin/tenants/:id/approve-成功 | P0 | Admin + 待審核租戶 | 1. POST /api/v2/admin/tenants/{id}/approve | 200, data.status = ACTIVE |
-| API-M17-009 | POST /api/v2/admin/tenants/:id/reject-成功 | P1 | Admin + 待審核租戶 | 1. POST /api/v2/admin/tenants/{id}/reject<br>Body: {"reason":"資料不全"} | 200, data.status = REJECTED |
-
-### 3.4 Feature Toggle API
+### 3.3 租戶更新 API
 
 | TC ID | 測試案例名稱 | 優先級 | 前置條件 | 測試步驟 | 預期結果 |
 |-------|-------------|--------|----------|----------|----------|
-| API-M17-010 | GET /api/v2/dashboard/tenants/features-查詢 | P1 | StoreOwner 登入 | 1. GET /api/v2/dashboard/tenants/features | 200, data.features 包含所有開關 |
-| API-M17-011 | PUT /api/v2/dashboard/tenants/features/:feature-申請 | P1 | StoreOwner 登入 | 1. PUT /api/v2/dashboard/tenants/features/DYNAMIC_PRICING_ENABLED<br>Body: {"enabled": true} | 200, data.status = PENDING_APPROVAL |
+| API-M17-012 | PUT /api/v2/tenants/:id-更新店鋪成功 | P1 | StoreOwner + 已登入 | 1. PUT /api/v2/tenants/{id}<br>2. Body: {"storeName":"新名稱"} | 200, data.storeName = "新名稱" | ✅ 已實現 |
+| API-M17-013 | PUT /api/v2/tenants/:id-非Owner403 | P0 | 另一用戶 Token | 1. PUT /api/v2/tenants/{id} (非 Owner) | 403 Forbidden | ✅ 已實現 |
+| API-M17-014 | PUT /api/v2/tenants/:id-部分更新 | P2 | StoreOwner + 已登入 | 1. PUT /api/v2/tenants/{id}<br>2. Body: {"description":"新描述"} (只更新一個欄位) | 200, 其他欄位不變 | ✅ 已實現 |
+
+### 3.4 功能開關更新 API
+
+| TC ID | 測試案例名稱 | 優先級 | 前置條件 | 測試步驟 | 預期結果 |
+|-------|-------------|--------|----------|----------|----------|
+| API-M17-015 | PUT /api/v2/dashboard/tenants/features/:feature-非StoreOwner403 | P0 | 一般會員 Token | 1. PUT /api/v2/dashboard/tenants/features/BOOKING_ENABLED<br>Body: {"enabled": true} | 403 Forbidden |
+
+### 3.5 Admin 店鋪管理 API (Sprint 3)
+
+| TC ID | 測試案例名稱 | 優先級 | 前置條件 | 測試步驟 | 預期結果 | 狀態 |
+|-------|-------------|--------|----------|----------|----------|------|
+| API-M17-007 | GET /api/v2/admin/tenants-店鋪列表 | P0 | Admin 登入 | 1. GET /api/v2/admin/tenants<br>Header: Authorization: Bearer {adminToken} | 200, data.items 包含所有店鋪 | ⏳ 待實現 |
+| API-M17-008 | POST /api/v2/admin/tenants/:id/approve-成功 | P0 | Admin + 待審核租戶 | 1. POST /api/v2/admin/tenants/{id}/approve | 200, data.status = ACTIVE | ⏳ 待實現 |
+| API-M17-009 | POST /api/v2/admin/tenants/:id/reject-成功 | P1 | Admin + 待審核租戶 | 1. POST /api/v2/admin/tenants/{id}/reject<br>Body: {"reason":"資料不全"} | 200, data.status = REJECTED | ⏳ 待實現 |
+
+> **Note**: API-M17-007, API-M17-008, API-M17-009 屬於 Sprint 3 (US-M17-007, US-M17-008)
+
+### 3.5 Feature Toggle API
+
+| TC ID | 測試案例名稱 | 優先級 | 前置條件 | 測試步驟 | 預期結果 |
+|-------|-------------|--------|----------|----------|----------|
+| API-M17-010 | GET /api/v2/dashboard/tenants/features-查詢 | P1 | StoreOwner 登入 | 1. GET /api/v2/dashboard/tenants/features | 200, data.features 包含所有開關 | ✅ 已實現 |
+| API-M17-011 | PUT /api/v2/dashboard/tenants/features/:feature-申請 | P1 | StoreOwner 登入 | 1. PUT /api/v2/dashboard/tenants/features/DYNAMIC_PRICING_ENABLED<br>Body: {"enabled": true} | 200, data.status = PENDING_APPROVAL | ✅ 已實現 |
+| API-M17-015 | PUT /api/v2/dashboard/tenants/features/:feature-非StoreOwner | P0 | 一般會員 Token | 1. PUT /api/v2/dashboard/tenants/features/BOOKING_ENABLED<br>Body: {"enabled": true} | 403 Forbidden | ✅ 已實現 |
 
 ---
 
@@ -146,4 +170,14 @@
 
 **文件版本**: AISDLC v0.09
 **測試框架**: JUnit 5 + Mockito, Spring Boot Test, REST Assured
-**最後更新**: 2026-04-10
+**最後更新**: 2026-04-24
+
+## 📝 文件修訂紀錄
+
+| 版本 | 日期 | 修改內容 |
+|------|------|----------|
+| v1.0 | 2026-04-10 | 初始版本 |
+| v1.1 | 2026-04-22 | 新增 Sprint 2/3 範圍標記，Admin API 測試案例標記為 Sprint 3 |
+| v1.2 | 2026-04-22 | 新增 US-M17-003/006 測試缺口修補：API-M17-012~015 (更新店鋪、功能開關角色校驗) |
+| v1.3 | 2026-04-24 | Sprint 2 測試驗證完成：14/14 API E2E 測試通過 (TenantControllerE2ETest)，新增 US-M17-004 正向成功測試，修復 Feature Toggle requiresApproval 邏輯 |
+| v1.4 | 2026-04-24 | 新增 Sprint 3 測試狀態標記（IT-M17-004~006, API-M17-007~009）|

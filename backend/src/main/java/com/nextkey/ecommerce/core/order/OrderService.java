@@ -141,6 +141,9 @@ public class OrderService {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         // 驗證必填欄位
+        if (request.getListingId() == null) {
+            throw new BusinessException(ErrorCode.E_9005, "Listing ID is required for ROOM orders");
+        }
         if (request.getCheckInDate() == null || request.getCheckOutDate() == null) {
             throw new BusinessException(ErrorCode.E_9005, "Check-in and check-out dates are required for ROOM orders");
         }
@@ -148,23 +151,41 @@ public class OrderService {
             throw new BusinessException(ErrorCode.E_4003, "Check-out must be after check-in");
         }
 
+        // 取得 Room Listing 及其價格資訊
+        Listing roomListing = listingRepository.findById(request.getListingId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Room listing not found: " + request.getListingId()));
+
+        if (roomListing.getListingType() != Listing.ListingType.ROOM) {
+            throw new BusinessException(ErrorCode.E_9005, "Listing is not a ROOM type");
+        }
+        if (!"ACTIVE".equals(roomListing.getStatus().name())) {
+            throw new BusinessException(ErrorCode.E_3002, "Room listing not active: " + request.getListingId());
+        }
+
         // 嘗試取得租戶，若不存在則使用系統預設租戶
-        // 如果是測試環境或租戶不存在，嘗試找現有的系統租戶
         var tenant = tenantRepository.findById(tenantId)
                 .orElseGet(() -> {
-                    // 嘗試查詢系統預設租戶 (by id)
-                    var systemTenant = tenantRepository.findById(java.util.UUID.fromString("00000000-0000-0000-0000-000000000001"));
+                    // 使用 AppConstants 中的系統租戶 ID
+                    var systemTenant = tenantRepository.findById(java.util.UUID.fromString(com.nextkey.ecommerce.shared.constants.AppConstants.SYSTEM_TENANT_ID));
                     if (systemTenant.isPresent()) {
                         return systemTenant.get();
                     }
-                    // 嘗試通過 slug 找系統租戶
                     return tenantRepository.findBySlug("platform")
                             .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "System tenant not found"));
                 });
 
-        // TODO: 需要根據 tenantId 找到對應的 Room Listing 來計算價格
-        // 目前假設房間價格由前端計算並傳入，或有預設價格
-        BigDecimal totalAmount = BigDecimal.ZERO; // 實際應從 Room 定價計算
+        // 計算入住晚數
+        long nights = java.time.temporal.ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
+        if (nights <= 0) {
+            throw new BusinessException(ErrorCode.E_4003, "Check-out must be after check-in");
+        }
+
+        // 根據 basePrice 計算總金額
+        BigDecimal pricePerNight = roomListing.getBasePrice();
+        BigDecimal totalAmount = pricePerNight.multiply(BigDecimal.valueOf(nights));
+
+        log.info("ROOM order price calculation: listingId={}, checkIn={}, checkOut={}, nights={}, pricePerNight={}, totalAmount={}",
+                request.getListingId(), request.getCheckInDate(), request.getCheckOutDate(), nights, pricePerNight, totalAmount);
 
         // 建立 Room 訂單的 metadata，包含 guestCount 等資訊
         java.util.Map<String, Object> orderMetadata = new java.util.HashMap<>();

@@ -191,10 +191,14 @@ download_aisdlc() {
     # Copy AISDLC version directory
     cp -r "${source_dir}/${aisdlc_dir}" "${target_dir}/"
 
-    # Copy CLAUDE.md if exists (framework config)
-    if [ -f "${source_dir}/CLAUDE.md" ]; then
+    # Copy PROJECT_CLAUDE_Template.md as project CLAUDE.md
+    local claude_template="${source_dir}/${aisdlc_dir}/tools/PROJECT_CLAUDE_Template.md"
+    if [ -f "${claude_template}" ]; then
+        cp "${claude_template}" "${target_dir}/CLAUDE.md"
+        echo -e "${GREEN}   ✅ 產生 CLAUDE.md (from PROJECT_CLAUDE_Template.md)${NC}"
+    elif [ -f "${source_dir}/CLAUDE.md" ]; then
         cp "${source_dir}/CLAUDE.md" "${target_dir}/"
-        echo -e "${GREEN}   ✅ 複製 CLAUDE.md${NC}"
+        echo -e "${YELLOW}   ⚠️  複製 CLAUDE.md (fallback: root CLAUDE.md)${NC}"
     fi
 
     # Copy .claude/skills/ to project root (Claude Code Skills discovery)
@@ -279,11 +283,11 @@ show_completion_message() {
     fi
     echo ""
     echo -e "${YELLOW}📝 下一步:${NC}"
-    echo -e "   1. cd ${target_dir}/${aisdlc_dir}"
-    echo -e "   2. 閱讀 AISDLC_INIT.md 了解框架使用"
+    echo -e "   1. 使用 Claude Code 開啟目錄: ${target_dir}"
+    echo -e "   2. 閱讀 ${aisdlc_dir}/AISDLC_INIT.md 了解框架使用"
     echo -e "   3. PRD 寫入 docs/01_requirements/"
     echo -e "   4. SRD 寫入 docs/02_architecture/"
-    echo -e "   5. 參考: guides/user/onboarding/QUICK_START_GUIDE.md"
+    echo -e "   5. 參考: ${aisdlc_dir}/guides/user/onboarding/QUICK_START_GUIDE.md"
     echo ""
     echo -e "${CYAN}🔗 專案結構:${NC}"
     echo -e "   ${target_dir}/"
@@ -297,7 +301,7 @@ show_completion_message() {
     echo -e "   │   ├── 01_requirements/"
     echo -e "   │   ├── 02_architecture/"
     echo -e "   │   └── ..."
-    echo -e "   ├── .claude/skills/         # Claude Code Skills (31個)"
+    echo -e "   ├── .claude/skills/         # Claude Code Skills (33個)"
     echo -e "   └── CLAUDE.md               # Claude Code 設定"
     echo ""
 }

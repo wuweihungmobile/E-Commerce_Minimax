@@ -69,23 +69,94 @@ QA-Lead 整合測試報告
 
 ---
 
-## 🔗 Skills 整合對照表
+## 🛠️ Claude Code Skills 整合指引
 
-> 💡 **說明**: 以下列出各階段可觸發的 Claude Code Skills（斜線指令），協助加速測試規劃與實施。
+> 💡 **說明**: 以下列出各階段可觸發的 Claude Code Skills（斜線指令），含觸發時機、範例指令與對應 Workflow。
 
-| SOP 階段 | 可觸發 Skill | 用途說明 |
-|---------|-------------|---------|
-| 階段 1：測試策略 | `/testing-strategy` | 測試金字塔設計、工具選擇 |
-| 階段 2：測試案例 | `/qa-testing` | 測試計畫、驗收測試設計 |
-| 階段 2：安全測試 | `/security-audit` | OWASP Top 10 安全測試設計 |
-| 階段 2：效能測試 | `/performance-optimization` | 效能基準測試、負載測試設計 |
-| 階段 3：自動化 CI | `/devops-github-actions`、`/devops-gitlab-ci` | CI Pipeline 測試整合 |
-| 階段 4：測試環境 | `/devops-docker` | Docker Compose 測試環境建置 |
-| 階段 5：報告 | `/devops-monitoring` | 測試指標監控與儀表板 |
-| 行動端測試 | `/mobile-development` | Android/iOS/macOS 測試框架與裝置矩陣 |
-| 程式碼品質 | `/code-review`、`/dev-review` | 程式碼審查與測試品質確保 |
-| 資料庫測試 | `/integration-database` | PostgreSQL 測試資料管理 |
-| 合規測試 | `/compliance-audit` | 電商 PCI-DSS、付費內容保護、GDPR 合規測試設計（含 PAID/PRICE/RACE 強制測試項）|
+| SOP 階段 | 可觸發 Skill | 觸發時機 | 觸發範例指令 | 對應 Workflow | 用途說明 |
+|---------|-------------|---------|-------------|--------------|---------|
+| 階段 1：測試策略 | `/testing-strategy` | 規劃測試金字塔或選擇框架時 | `/testing-strategy 分析此 React + Node.js 專案的測試金字塔設計` | testing-strategy-flow | 測試金字塔設計、工具選擇 |
+| 階段 2：測試案例 | `/qa-testing` | 設計驗收測試或產出測試計畫時 | `/qa-testing 根據 FRD 設計購物車模組測試案例` | requirements-validation | 測試計畫、驗收測試設計 |
+| 階段 2：安全測試 | `/security-audit` | 需要規劃 OWASP 安全測試項目時 | `/security-audit 設計電商結帳流程的 OWASP Top 10 測試清單` | security-review-flow | OWASP Top 10 安全測試設計 |
+| 階段 2：效能測試 | `/performance-optimization` | 需要設計效能基準測試時 | `/performance-optimization 設計 API 負載測試腳本（100 concurrent users）` | performance-analysis | 效能基準測試、負載測試設計 |
+| 階段 3：自動化 CI | `/devops-github-actions` | 設定 CI Pipeline 測試整合時 | `/devops-github-actions 建立包含 unit/integration/e2e 的 test pipeline` | devops-setup-flow | GitHub Actions CI 測試整合 |
+| 階段 3：自動化 CI | `/devops-gitlab-ci` | GitLab 環境 CI 配置時 | `/devops-gitlab-ci 設定 GitLab CI 測試階段含 coverage report` | devops-setup-flow | GitLab CI 測試流程配置 |
+| 階段 4：測試環境 | `/devops-docker` | 建置隔離測試環境時 | `/devops-docker 建立包含 PostgreSQL + Redis 的測試用 docker-compose` | devops-setup-flow | Docker Compose 測試環境建置 |
+| 階段 5：報告 | `/devops-monitoring` | 設定測試指標監控時 | `/devops-monitoring 建立測試覆蓋率和 flaky test 監控儀表板` | devops-monitoring-flow | 測試指標監控與儀表板 |
+| 行動端測試 | `/mobile-development` | 規劃 Android/iOS/macOS 測試時 | `/mobile-development 設計 iOS 購物流程的 XCTest UI 測試策略` | mobile-testing-flow | 行動端測試框架與裝置矩陣 |
+| 程式碼品質 | `/code-review` | 審查測試程式碼品質時 | `/code-review 審查此測試檔案的覆蓋率與可維護性` | code-review-flow | 測試程式碼審查 |
+| 資料庫測試 | `/integration-database` | 管理測試資料與 DB 整合時 | `/integration-database 設計 PostgreSQL 測試資料 seed 策略` | integration-db-flow | PostgreSQL 測試資料管理 |
+| 合規測試 | `/compliance-audit` | 設計合規相關測試項目時 | `/compliance-audit 設計 PCI-DSS 支付流程強制測試清單` | compliance-review-flow | 電商/GDPR/PCI-DSS 合規測試 |
+
+### Skills 選擇速決表
+
+```
+需要規劃測試策略？         → /testing-strategy
+需要設計測試案例？         → /qa-testing
+需要安全測試設計？         → /security-audit
+需要效能測試設計？         → /performance-optimization
+需要設定 CI/CD 測試？      → /devops-github-actions 或 /devops-gitlab-ci
+需要建置測試環境？         → /devops-docker
+需要行動端測試？           → /mobile-development
+需要合規測試設計？         → /compliance-audit
+```
+
+---
+
+## 🔴 開發-編譯-測試循環（強制規則）
+
+**原則**：每完成一個測試案例實作（測試腳本、測試輔助類、Fixture），**必須立即執行**編譯-測試循環，**絕不累積開發**。
+
+```
+實作 1 個測試案例/測試模組
+    ↓
+立即編譯 (Compile/Build)
+    ↓
+編譯失敗？ → 🔴 立即停止 → 修復編譯錯誤 → 重新編譯
+    ↓
+執行該測試案例 (單一測試執行)
+    ↓
+測試失敗（邏輯錯誤）？ → 🔴 立即停止 → 依規格修復測試邏輯 → 重新執行
+    ↓
+執行相關測試套件 (Regression Check)
+    ↓
+套件有回歸？ → 🔴 立即停止 → 找出影響範圍 → 修復 → 重新執行
+    ↓
+繼續下一個測試案例
+```
+
+### 測試情境特定規則
+
+| 測試類型 | 編譯驗證 | 執行驗證 |
+|---------|---------|---------|
+| 單元測試 | 測試函式語法正確、Mock 匯入正確 | 單一測試通過、覆蓋率達標 |
+| 整合測試 | DB/API 連線設定正確 | 真實依賴連線成功、資料狀態正確 |
+| E2E 測試 | 測試框架初始化成功（Playwright/Cypress） | 頁面元素定位正確、流程完整通過 |
+| 效能測試 | k6/JMeter 腳本語法正確 | 基準指標在 SLA 內 |
+| 安全測試 | SAST 工具設定正確 | 無新增高危漏洞 |
+
+### 絕對禁止的行為
+
+1. **❌ 禁止批次開發多個測試案例後才執行** — 每個測試獨立驗證
+2. **❌ 禁止跳過 Regression Check** — 新增測試不能破壞現有測試套件
+3. **❌ 禁止 Skip/Pending 失敗測試後繼續開發** — 必須修復再繼續
+4. **❌ 禁止提交含有 `.only` 或 `skip` 的測試至主分支**
+
+完整規範請參考：[Development_Build_Test_Cycle.md](../../guides/user/process/Development_Build_Test_Cycle.md)
+
+---
+
+## 📁 產出文件存放目錄指引
+
+| 階段 | 產出文件 | 存放目錄 |
+|------|----------|----------|
+| 1 測試策略 | 測試策略文件、測試金字塔設計、工具選擇報告 | `docs/03_testing/` |
+| 2 測試案例設計 | 測試案例清單、驗收測試 (AT)、安全/效能測試計畫 | `docs/03_testing/` |
+| 3 自動化實作 | 自動化測試腳本、CI/CD 測試流程設定 | `docs/08_deployment/` |
+| 4 測試環境 | 測試環境配置文件、Docker Compose 配置、Mock 設定 | `docs/08_deployment/` |
+| 5 測試執行 | 測試執行報告、缺陷報告、覆蓋率報告 | `docs/03_testing/` |
+| 通用 | Sprint 計畫、迭代進度紀錄 | `docs/05_development/` |
+| 通用 | 測試品質指標、技術債清單 | `docs/06_quality/` |
 
 ---
 

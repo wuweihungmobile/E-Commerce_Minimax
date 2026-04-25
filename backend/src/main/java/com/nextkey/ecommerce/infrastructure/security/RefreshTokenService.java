@@ -71,13 +71,30 @@ public class RefreshTokenService {
 
     /**
      * 從 Refresh Token 中提取 userId
-     * 注意：這個方法依賴 JwtTokenService 來解析 JWT
+     *
+     * @deprecated 此方法已棄用。由於 RefreshTokenService 與 JwtTokenService
+     * 之間存在循環依賴風險，請直接在需要的地方注入 JwtTokenService 並調用
+     * {@link JwtTokenService#getUserId(String)} 方法。
+     *
+     * 替代方案：
+     * <pre>
+     * {@code
+     * @Autowired
+     * private JwtTokenService jwtTokenService;
+     *
+     * public UUID extractUserId(String refreshToken) {
+     *     return jwtTokenService.getUserId(refreshToken);
+     * }
+     * }
+     * </pre>
+     *
      * @param refreshToken JWT token
      * @return userId if valid, null otherwise
      */
+    @Deprecated
     public UUID extractUserIdFromToken(String refreshToken) {
         try {
-            // 這裡需要調用 JwtTokenService，但為了避免循環依賴，我們在 AuthService 中處理
+            log.warn("extractUserIdFromToken is deprecated. Please use JwtTokenService.getUserId() instead.");
             return null;
         } catch (Exception e) {
             log.warn("Failed to extract userId from refresh token", e);
@@ -90,16 +107,23 @@ public class RefreshTokenService {
     }
 
     /**
-     * 從 JWT 中提取一個簡短的 ID（使用 hash 或 JTI claim）
-     * 這裡我們使用 token 的最後 8 個字符作為識別符
+     * 從 JWT 中提取一個簡短的 ID（使用 SHA-256 hash）
+     * 使用 SHA-256 確保安全性，避免 hashCode() 的衝突問題
      */
     private String extractTokenId(String refreshToken) {
-        // JWT 格式: header.payload.signature
-        // 我們可以使用 signature 的最後部分作為 ID
         if (refreshToken == null || refreshToken.length() < 10) {
             return refreshToken;
         }
-        // 使用 token 的 hash 作為 key 的一部分
-        return String.valueOf(refreshToken.hashCode());
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(refreshToken.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            // 使用 Base64 編碼並取前 16 個字符作為 token ID
+            String base64Hash = java.util.Base64.getEncoder().encodeToString(hash);
+            return base64Hash.substring(0, Math.min(16, base64Hash.length()));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            log.warn("SHA-256 algorithm not available, falling back to substring", e);
+            // Fallback: 使用 token 的最後 43 個字符（JWT signature 部分的大約長度）
+            return refreshToken.substring(refreshToken.length() - 43);
+        }
     }
 }

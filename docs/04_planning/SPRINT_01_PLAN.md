@@ -79,11 +79,11 @@
 
 | ID | 標題 | SP | 優先級 | 狀態 | 負責人 |
 |----|------|-----|--------|------|--------|
-| US-M03-001 | 會員註冊 | 3 | P0 | 實現中 | Dev |
-| US-M03-002 | 會員登入 | 3 | P0 | 待實現 | Dev |
-| US-M03-003 | JWT 刷新 | 3 | P0 | 待實現 | Dev |
-| US-M03-004 | 會員登出 | 2 | P2 | 待實現 | Dev |
-| US-M03-005 | 取得當前用戶資訊 | 2 | P1 | 待實現 | Dev |
+| US-M03-001 | 會員註冊 | 3 | P0 | ✅ 已完成 | Dev |
+| US-M03-002 | 會員登入 | 3 | P0 | ✅ 已完成 | Dev |
+| US-M03-003 | JWT 刷新 | 3 | P0 | ✅ 已完成 | Dev |
+| US-M03-004 | 會員登出 | 2 | P2 | ✅ 已完成 | Dev |
+| US-M03-005 | 取得當前用戶資訊 | 2 | P1 | ✅ 已完成 | Dev |
 
 **Sprint 1 Total**: 13 SP
 
@@ -98,15 +98,15 @@
 | 會員註冊 | POST /v2/auth/register | AuthController, AuthService | 待測試 |
 | 會員登入 | POST /v2/auth/login | AuthController, AuthService | 待測試 |
 | JWT 刷新 | POST /v2/auth/refresh | AuthController, AuthService | 待測試 |
-| Logout | POST /v2/auth/logout | - | 未實現 |
-| 取得用戶資訊 | GET /v2/auth/me | - | 未實現 |
+| Logout | POST /v2/auth/logout | AuthService.logout(), RefreshTokenService | ✅ 已測試 |
+| 取得用戶資訊 | GET /v2/auth/me | AuthService.getCurrentUser() | ✅ 已測試 |
 
-### 4.2 待實現功能
+### 4.2 已實現功能
 
-| 功能 | 端點 | 技術要點 |
-|------|------|----------|
-| Logout | POST /v2/auth/logout | Refresh Token 失效 (Redis blacklist) |
-| 取得用戶資訊 | GET /v2/auth/me | JWT 解析, UserInfo DTO |
+| 功能 | 端點 | 實現位置 | 測試狀態 |
+|------|------|----------|----------|
+| Logout | POST /v2/auth/logout | AuthService.logout(), RefreshTokenService | ✅ 已測試 |
+| 取得用戶資訊 | GET /v2/auth/me | AuthService.getCurrentUser() | ✅ 已測試 |
 
 ---
 

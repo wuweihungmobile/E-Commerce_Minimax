@@ -36,6 +36,7 @@ public class OrderDto {
         private String notes;
 
         // For ROOM (booking)
+        private UUID listingId; // Required for ROOM type orders
         private LocalDate checkInDate;
         private LocalDate checkOutDate;
         private Integer guestCount;

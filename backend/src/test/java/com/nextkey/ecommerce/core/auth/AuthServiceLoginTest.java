@@ -7,6 +7,7 @@ import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
+import com.nextkey.ecommerce.infrastructure.security.RefreshTokenService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import org.junit.jupiter.api.DisplayName;
@@ -51,6 +52,9 @@ class AuthServiceLoginTest {
     @Mock
     private JwtTokenService jwtTokenService;
 
+    @Mock
+    private RefreshTokenService refreshTokenService;
+
     @InjectMocks
     private AuthService authService;
 
@@ -82,6 +86,7 @@ class AuthServiceLoginTest {
                 .thenReturn("access-token");
         when(jwtTokenService.generateRefreshToken(any(UUID.class))).thenReturn("refresh-token");
         when(jwtTokenService.getAccessTokenExpiration()).thenReturn(1800L);
+        doNothing().when(refreshTokenService).storeRefreshToken(any(UUID.class), anyString());
 
         // Act
         AuthResponse response = authService.login(request);
@@ -118,6 +123,7 @@ class AuthServiceLoginTest {
                 .thenReturn("access-token");
         when(jwtTokenService.generateRefreshToken(any(UUID.class))).thenReturn("refresh-token");
         when(jwtTokenService.getAccessTokenExpiration()).thenReturn(1800L);
+        doNothing().when(refreshTokenService).storeRefreshToken(any(UUID.class), anyString());
 
         // Act
         authService.login(request);

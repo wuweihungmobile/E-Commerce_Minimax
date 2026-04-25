@@ -26,13 +26,27 @@ public class TenantContextFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
+        String requestPath = request.getServletPath();
+        String requestMethod = request.getMethod();
+        String tenantHeader = request.getHeader(TENANT_HEADER);
+
+        log.info("[TenantContextFilter] Incoming request: {} {}, X-Tenant-ID: {}", requestMethod, requestPath, tenantHeader);
+
         try {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+            log.debug("[TenantContextFilter] Authentication: {}, principal: {}",
+                    authentication != null ? authentication.getClass().getSimpleName() : "null",
+                    authentication != null ? authentication.getPrincipal() : "null");
 
             if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal principal) {
                 UUID userId = principal.getUserId();
                 String userTenantId = principal.getTenantId();
                 String requestedTenantId = request.getHeader(TENANT_HEADER);
+                String role = principal.getRole();
+
+                log.info("[TenantContextFilter] Authenticated user: {}, tenantId: {}, role: {}, requestedTenantId: {}",
+                        userId, userTenantId, role, requestedTenantId);
 
                 // Set user context
                 TenantContext.setCurrentUser(userId);
@@ -42,19 +56,24 @@ public class TenantContextFilter extends OncePerRequestFilter {
                         userId,
                         userTenantId,
                         requestedTenantId,
-                        principal.getRole()
+                        role
                 );
 
                 TenantContext.setCurrentTenant(effectiveTenantId);
 
-                log.debug("Tenant context set - user: {}, effective tenant: {}", userId, effectiveTenantId);
+                log.info("[TenantContextFilter] Tenant context set - user: {}, effective tenant: {}", userId, effectiveTenantId);
             } else {
                 // Anonymous or public request - use system tenant
+                log.info("[TenantContextFilter] Anonymous/public request - using system tenant");
                 TenantContext.setCurrentTenant(UUID.fromString(AppConstants.SYSTEM_TENANT_ID));
             }
 
             filterChain.doFilter(request, response);
+        } catch (Exception ex) {
+            log.error("[TenantContextFilter] Error processing request: {} {}", requestMethod, requestPath, ex);
+            throw ex;
         } finally {
+            log.debug("[TenantContextFilter] Clearing tenant context");
             TenantContext.clear();
         }
     }

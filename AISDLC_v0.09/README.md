@@ -4,6 +4,7 @@
 
 **版本**: v0.09（開發專注版）
 **發布日期**: 2025-01-11
+**最後更新**: 2026-04-11
 **升級來源**: v0.07
 **文檔類型**: 版本說明文檔
 **維護狀態**: ✅ 正式版本
@@ -52,10 +53,11 @@ AISDLC v0.09（開發專注版）是基於 v0.07 的精簡版本，專為 **2 �
 |------|------|------|
 | **Core Agents** | 7 個 | 中文版 (`*-zh.yaml`)，主要維護 |
 | **Specialized Agents** | 14 個 | 專業領域 Agent |
-| **Workflows** | 17+ 個 | 工作流程定義 |
-| **文檔模板** | 25+ 個 | PRD/FRD/SRD/API/Tests |
+| **Workflows** | 8 個核心 + 情境專屬 | 工作流程定義 |
+| **文檔模板** | 50+ 個 | PRD/FRD/SRD/API/Tests/Support |
 | **場景 SOP** | 10 個 | 覆蓋主要開發情境 |
-| **核心文檔** | 4 個 | 根目錄核心維護文檔 |
+| **核心文檔** | 6 個 | 根目錄核心維護文檔 |
+| **Skills** | 33 個 | Claude Code Skills (.claude/skills/) |
 | **專案目錄** | 8 層 | 01-08 編號目錄（開發專注版） |
 
 ---
@@ -70,7 +72,7 @@ AISDLC v0.09（開發專注版）是基於 v0.07 的精簡版本，專為 **2 �
 
 # 2. 選擇你的開發情境
 Greenfield / Brownfield / Refactoring / Integration /
-Testing / Security / Performance / DevOps / Documentation
+Testing / Security / Performance / DevOps / Documentation / Migration
 
 # 3. 閱讀情境 SOP QuickRef (5 分鐘)
 scenarios/[your-scenario]/SOP_QuickRef.md
@@ -90,50 +92,58 @@ scenarios/[your-scenario]/SOP_QuickRef.md
 ```
 AISDLC_v0.09/
 │
-├── 🔴 核心維護文檔 (4 個) - 極度重要
-│   ├── AISDLC_INIT.md                 # ⭐ 框架入口 (必讀)
-│   ├── README.md                       # 本檔案 - 版本說明
-│   ├── FILE_DIRECTORY_RULES.md        # ⭐ 檔案目錄維護與分類規則
-│   └── AISDLC_v0.10_UPGRADE_SOP.md   # ⭐ 下次升版 SOP (v0.09→v0.10)
+├── 🔴 核心維護文檔 (6 個) - 極度重要
+│   ├── AISDLC_INIT.md                        # ⭐ 框架入口 (必讀)
+│   ├── README.md                              # 本檔案 - 版本說明
+│   ├── FILE_DIRECTORY_RULES.md               # ⭐ 檔案目錄維護與分類規則
+│   ├── AISDLC_v0.10_UPGRADE_SOP.md           # ⭐ 下次升版 SOP (v0.09→v0.10)
+│   ├── AISDLC_UPGRADE_SOP_CheckList.md       # ⭐ 升版執行檢查清單
+│   └── DEVELOPMENT_DIRECTORY_STRUCTURE.md    # ⭐ 專案文檔目錄結構規範
 │
 ├── 📁 agent/ - AI 角色定義
 │   ├── core/                          # 7 個核心 Agent (中文版)
-│   │   ├── 01.agent-template-zh_OK.yaml
+│   │   ├── 01.agent-template-zh.yaml
 │   │   ├── 02.ba-business-analyst-zh.yaml
 │   │   ├── 03.pm-po-agent-zh.yaml
 │   │   ├── 04.sa-analyst-zh.yaml
 │   │   ├── 05.sd-architect-zh.yaml
 │   │   ├── 06.dev-developer-zh.yaml
 │   │   ├── 07.qa-tester-zh.yaml
-│   │   └── archive_en/                # 英文版備份 (參考用)
+│   │   └── backup_en/                 # 英文版備份 (參考用)
 │   ├── specialized/                   # 14 個專業化 Agent
-│   │   ├── qa-automation.yaml
-│   │   ├── dev-senior.yaml
-│   │   ├── sd-web-architect.yaml
-│   │   └── ...
-│   ├── AGENT_COLLABORATION_PATTERNS.md
-│   ├── AGENT_PHASE2_UPDATE_GUIDE.md
 │   └── README.md
 │
 ├── 📁 workflow/ - 工作流程定義
-│   ├── core/                          # 核心 workflow
-│   │   ├── unified-requirements-extraction.md
-│   │   ├── requirements-validation-and-documentation.md
-│   │   ├── user-story-and-design.md
-│   │   ├── requirements-change-management.md
-│   │   ├── api-specification-generation.md
-│   │   └── ...
-│   └── scenario-specific/             # 場景專屬 workflow
+│   ├── core/                          # 8 個核心 Workflow
+│   │   ├── requirements-extraction.md
+│   │   ├── validation-documentation.md
+│   │   ├── user-story-design.md
+│   │   ├── change-management.md
+│   │   ├── api-specification.md
+│   │   ├── consistency-check.md
+│   │   ├── interaction-analysis.md
+│   │   └── sprint-execution.md
+│   └── scenario-specific/             # 場景專屬 Workflow
 │
 ├── 📁 docs_template/ - 文檔模板
 │   ├── core/                          # 核心模板
+│   │   ├── api/                       # API 規格模板
 │   │   ├── prd/                       # 產品需求文檔
 │   │   ├── frd/                       # 功能需求文檔
 │   │   ├── srd/                       # 系統需求文檔
-│   │   │   └── api/                   # API 規格模板
 │   │   └── tests/                     # 測試文檔
+│   ├── prd/                           # 獨立 PRD 模板（MVP 定義等）
+│   ├── srd/                           # 獨立 SRD 模板（時序圖、資料存取層等）
 │   ├── scenario_specific/             # 場景專屬模板
-│   └── support/                       # 支援文檔模板
+│   │   ├── analysis/
+│   │   ├── brownfield/
+│   │   ├── devops/
+│   │   ├── documentation/
+│   │   ├── integration/
+│   │   ├── migration/
+│   │   ├── performance/
+│   │   └── testing/
+│   └── support/                       # 支援文檔模板（風險、詞彙表、協作日誌等）
 │
 ├── 📁 scenarios/ - 10 大場景 SOP
 │   ├── greenfield/                    # 新專案開發
@@ -145,31 +155,52 @@ AISDLC_v0.09/
 │   ├── performance/                   # 效能
 │   ├── devops/                        # DevOps
 │   ├── documentation/                 # 文檔化
-│   └── SCENARIO_AGENT_MAPPING.md
+│   └── migration/                     # 技術棧遷移 🆕 2026-02-12
 │
 ├── 📁 prompts/ - 提示詞模板
-│   ├── complete-flow/                 # 完整流程提示詞
-│   ├── quick-start/                   # 快速開始提示詞
-│   └── scenario-prompts/              # 場景提示詞
+│   ├── complete-flow/
+│   ├── quick-start/
+│   └── scenario-prompts/
 │
-├── 📁 guides/ - 使用指南 (11 個文檔)
-│   ├── INDEX.md                       # 指南索引
-│   ├── QUICK_START_GUIDE.md          # 快速開始
-│   ├── SCENARIO_SELECTOR.md          # 場景選擇器
-│   ├── TUTORIAL_MODE.md              # 教學模式
-│   └── ...
+├── 📁 guides/ - 使用指南
+│   ├── README.md                      # 指南導航
+│   ├── system/                        # AI Agent 技術規範 (7 個子目錄，20 個檔案)
+│   │   ├── naming/                    # ID 命名規範
+│   │   ├── architecture/              # 架構設計規範
+│   │   ├── api/                       # API 設計規範
+│   │   ├── testing/                   # 測試規範
+│   │   ├── quality/                   # 品質管理規範
+│   │   ├── planning/                  # 規劃估算規範
+│   │   └── agent/                     # Agent 管理規範
+│   ├── user/                          # 人類使用指南 (5 個子目錄)
+│   │   ├── onboarding/                # 新手入門 (8 個檔案)
+│   │   ├── standards/                 # 標準規範 (2 個檔案)
+│   │   ├── technical/                 # 技術指引 (1 個檔案)
+│   │   ├── process/                   # 流程管理 (2 個檔案)
+│   │   └── sample/                    # 真實情境範例 (21 個檔案)
+│   └── backup/                        # 歷史文件備份
 │
 ├── 📁 tools/ - 工具腳本
+│   ├── init_project.sh                # 專案初始化腳本（macOS/Linux）
+│   ├── init_project.ps1               # 專案初始化腳本（Windows）
+│   ├── AISDLC_CLAUDE_RULES.md         # Claude Code 規則
+│   └── PROJECT_CLAUDE_Template.md     # 專案 CLAUDE.md 模板
 │
-├── 📁 docs/ - 補充文檔
-│   ├── tutorial/
-│   ├── reference/
-│   └── integration/
+├── 📁 .claude/ - Claude Code 配置
+│   └── skills/                        # 33 個 Claude Code Skills
+│
+├── 📁 docs/ - 專案文檔輸出目錄（框架即專案目錄）
+│   ├── 01_requirements/               # 需求文檔
+│   ├── 02_architecture/               # 架構設計
+│   ├── 03_testing/                    # 測試文檔
+│   ├── 04_planning/                   # 開發規劃
+│   ├── 05_development/                # 開發文檔（迭代制）
+│   ├── 06_quality/                    # 品質保證
+│   ├── 07_design/                     # 設計文檔
+│   └── 08_deployment/                 # 部署文檔
 │
 ├── 📁 build/ - 建置文檔 (層次 3, 不升版拷貝)
-│   ├── logs/                          # ⬅️ v0.09 新增
-│   │   ├── CHANGELOG_v0.09.md (可選)
-│   │   └── FILE_REORGANIZATION_LOG_v0.09.md (如有)
+│   ├── logs/                          # 版本日誌
 │   ├── planning/
 │   │   ├── active/                    # 執行中的計劃
 │   │   └── archive/                   # 已完成的計劃
@@ -178,7 +209,6 @@ AISDLC_v0.09/
 │   │   ├── kpi/                       # KPI 報告
 │   │   ├── verification/              # 驗證報告
 │   │   └── analysis/                  # 分析報告
-│   ├── systems/                       # 系統機制文檔
 │   └── README.md
 │
 └── 📁 releases/ - 發布資訊
@@ -220,31 +250,7 @@ docs/
 └── 08_deployment/             # 部署文檔
 ```
 
-**變更說明**:
-- `04_project_management/` → `04_planning/`
-  - 專注於開發規劃（Roadmap、Estimation、Task Breakdown）
-  - 移除會議協調相關內容
-
-- `05_sprint/` → `05_development/`
-  - 改為迭代制 (iteration_1/, iteration_2/)
-  - 移除 Sprint Kickoff、Review 等會議文檔
-  - 保留 Iteration Plan、Daily Progress Log、Implementation Notes
-
-- 新增 `06_quality/`
-  - Code_Quality_Standards.md
-  - Security_Compliance_Checklist.md
-  - Performance_Optimization.md
-  - Technical_Debt_Register.md
-  - QA_Review_Report.md
-
 ### 3. 🔄 迭代制開發流程
-
-**開發流程**:
-```
-需求分析 → 設計 → 迭代開發 → 測試 → 部署
-          ↑                              ↓
-          └─────────── 持續改進 ──────────┘
-```
 
 **迭代文檔結構**:
 ```
@@ -268,84 +274,15 @@ docs/05_development/
 - ✅ 快速迭代、精簡高效
 - ✅ 品質優先（新增 06_quality/）
 
-**角色分工**:
-- Developer A: 需求分析 + 前端開發 + 測試
-- Developer B: 架構設計 + 後端開發 + QA
+### 5. 🤖 Agent 自動載入機制（v0.09+ 新增）
 
----
+- 10 個情境的 Primary/Supporting Agent 自動載入配置
+- 按需載入，節省 70-85% token
 
-## 🔄 從 v0.07 升級
+### 6. 🛠️ 33 個 Claude Code Skills（v0.09+ 新增）
 
-### 升級摘要
-
-v0.09（開發專注版）是基於 v0.07 的**專為 2 人團隊設計的精簡版本**。
-
-### 主要變更
-
-**移除**:
-- ❌ 06_meeting_minutes/ 目錄及所有會議流程
-- ❌ Sprint Kickoff/Review/Retrospective 流程
-
-**調整**:
-- 🔄 04_project_management/ → 04_planning/
-- 🔄 05_sprint/ → 05_development/（迭代制）
-
-**新增**:
-- ✅ 06_quality/ 目錄（程式碼品質、安全合規、效能優化）
-- ✅ 2 人團隊協作模式
-- ✅ 迭代制開發流程
-
-### 升級建議
-
-**適合使用開發專注版的情境**:
-- ✅ 2-3 人小型開發團隊
-- ✅ 不需要頻繁會議的敏捷團隊
-- ✅ 強調文檔驅動的開發流程
-- ✅ 快速迭代、高效交付的專案
-
-**不適合的情境**:
-- ❌ 大型團隊（5 人以上）
-- ❌ 需要頻繁利害關係人會議的專案
-- ❌ 需要詳細會議記錄的合規專案
-
-### 與 v0.07 的兼容性
-
-**完全兼容**:
-- ✅ Agent 定義（7 個 Core Agents + 14 個 Specialized Agents）
-- ✅ Workflow 流程定義
-- ✅ 文檔模板（PRD/FRD/SRD/API/Tests）
-- ✅ 10 大場景 SOP
-
-**需要調整**:
-- 🔄 專案初始化腳本（使用新的目錄結構）
-- 🔄 DEVELOPMENT_DIRECTORY_STRUCTURE.md 參考
-- 🔄 CLAUDE.md 指引（已更新為開發專注版）
-
-1. ✅ **核心文檔重新命名**
-   - `FILE_CLASSIFICATION_RULES.md` → `FILE_DIRECTORY_RULES.md`
-   - 所有引用已自動更新
-
-2. ✅ **新增維護文檔**
-   - `AISDLC_v0.10_UPGRADE_SOP.md` (為下次升版準備)
-   - `FILE_DIRECTORY_RULES.md` 強化為權威定義文檔
-
-3. ✅ **build/ 目錄優化**
-   - 新增 `build/logs/` 子目錄
-   - CHANGELOG 移至 build/logs/
-
-### 兼容性
-
-- ✅ 所有 Agents 完全兼容
-- ✅ 所有 Workflows 完全兼容
-- ✅ 所有文檔模板完全兼容
-- ✅ 場景 SOP 完全兼容
-
-### 升級步驟
-
-1. 直接使用 v0.09 目錄
-2. 閱讀本 README.md 了解新特性
-3. 熟悉新的核心維護文檔位置
-4. 繼續使用原有的 workflows 和 templates
+- 透過 `/skill-name` 快速觸發 AISDLC 能力
+- 涵蓋 DevOps、整合、QA、安全、架構等
 
 ---
 
@@ -355,9 +292,11 @@ v0.09（開發專注版）是基於 v0.07 的**專為 2 人團隊設計的精簡
 
 | 文檔 | 用途 | 何時閱讀/更新 |
 |------|------|---------------|
-| [AISDLC_INIT.md](AISDLC_INIT.md) | 框架入口、workflow-agent 映射 | **每次使用前必讀** |
+| [AISDLC_INIT.md](AISDLC_INIT.md) | 框架入口、Agent 自動載入配置 | **每次使用前必讀** |
 | [FILE_DIRECTORY_RULES.md](FILE_DIRECTORY_RULES.md) | 檔案目錄維護與分類規則 | 目錄/檔案變更時立即更新 |
 | [AISDLC_v0.10_UPGRADE_SOP.md](AISDLC_v0.10_UPGRADE_SOP.md) | v0.09→v0.10 升版 SOP | 執行下次升版時 |
+| [AISDLC_UPGRADE_SOP_CheckList.md](AISDLC_UPGRADE_SOP_CheckList.md) | 升版執行強制檢查清單 | 升版過程中逐項打勾 |
+| [DEVELOPMENT_DIRECTORY_STRUCTURE.md](DEVELOPMENT_DIRECTORY_STRUCTURE.md) | 專案文檔目錄結構規範 | 初次設定專案目錄時 |
 | [README.md](README.md) | 版本說明、快速開始 | 初次使用 |
 
 ### 📚 重要參考文檔
@@ -366,40 +305,7 @@ v0.09（開發專注版）是基於 v0.07 的**專為 2 人團隊設計的精簡
 |------|------|------|
 | **CLAUDE.md** | AISDLC_ALL/ | Claude Code 專案指引 |
 | **各目錄 README.md** | 各目錄 | 目錄內容說明 |
-| **CHANGELOG** | build/logs/ | 版本變更日誌 (v0.09 起) |
-
----
-
-## 🎓 學習路徑
-
-### 1. 新用戶 (從零開始)
-
-**時間**: 約 30 分鐘
-
-1. 閱讀本 README.md (10 分鐘)
-2. 閱讀 [AISDLC_INIT.md](AISDLC_INIT.md) (5 分鐘)
-3. 閱讀 [guides/user/onboarding/QUICK_START_GUIDE.md](guides/user/onboarding/QUICK_START_GUIDE.md) (10 分鐘)
-4. 使用 [guides/user/onboarding/SCENARIO_SELECTOR.md](guides/user/onboarding/SCENARIO_SELECTOR.md) 選擇情境 (5 分鐘)
-5. 閱讀對應情境的 `SOP_QuickRef.md`
-6. 開始工作
-
-### 2. v0.04 用戶 (升級)
-
-**時間**: 約 10 分鐘
-
-1. 閱讀本 README.md 的「v0.09 新特性」區塊 (5 分鐘)
-2. 了解核心維護文檔的重新命名 (2 分鐘)
-3. 熟悉 `FILE_DIRECTORY_RULES.md` 的新定位 (3 分鐘)
-4. 繼續使用原有的 workflows 和 agents
-
-### 3. 框架維護者
-
-**時間**: 約 1 小時
-
-1. 詳細閱讀 [FILE_DIRECTORY_RULES.md](FILE_DIRECTORY_RULES.md) (20 分鐘)
-2. 閱讀 [AISDLC_v0.10_UPGRADE_SOP.md](AISDLC_v0.10_UPGRADE_SOP.md) (30 分鐘)
-3. 了解核心維護文檔的維護規則 (10 分鐘)
-4. 熟悉 build/ 目錄的新結構
+| **CHANGELOG** | build/logs/ | 版本變更日誌 |
 
 ---
 
@@ -418,7 +324,7 @@ v0.09（開發專注版）是基於 v0.07 的**專為 2 人團隊設計的精簡
 | **Performance** | [scenarios/performance/](scenarios/performance/) | 效能優化 |
 | **DevOps** | [scenarios/devops/](scenarios/devops/) | DevOps 流程 |
 | **Documentation** | [scenarios/documentation/](scenarios/documentation/) | 文檔化專案 |
-| **Migration** | [scenarios/migration/](scenarios/migration/) | 技術棧遷移 |
+| **Migration** | [scenarios/migration/](scenarios/migration/) | 技術棧遷移 🆕 |
 
 每個場景包含:
 - `SOP_QuickRef.md` - 快速參考 (5 分鐘)
@@ -427,14 +333,37 @@ v0.09（開發專注版）是基於 v0.07 的**專為 2 人團隊設計的精簡
 
 ---
 
+## 🎓 學習路徑
+
+### 1. 新用戶 (從零開始)
+
+**時間**: 約 30 分鐘
+
+1. 閱讀本 README.md (10 分鐘)
+2. 閱讀 [AISDLC_INIT.md](AISDLC_INIT.md) (5 分鐘)
+3. 閱讀 [guides/user/onboarding/QUICK_START_GUIDE.md](guides/user/onboarding/QUICK_START_GUIDE.md) (10 分鐘)
+4. 使用 [guides/user/onboarding/SCENARIO_SELECTOR.md](guides/user/onboarding/SCENARIO_SELECTOR.md) 選擇情境 (5 分鐘)
+5. 閱讀對應情境的 `SOP_QuickRef.md`
+6. 開始工作
+
+### 2. 框架維護者
+
+**時間**: 約 1 小時
+
+1. 詳細閱讀 [FILE_DIRECTORY_RULES.md](FILE_DIRECTORY_RULES.md) (20 分鐘)
+2. 閱讀 [AISDLC_v0.10_UPGRADE_SOP.md](AISDLC_v0.10_UPGRADE_SOP.md) (30 分鐘)
+3. 了解核心維護文檔的維護規則 (10 分鐘)
+
+---
+
 ## 📋 版本對照
 
 | 版本 | 發布日期 | 主要改進 | Core Agents | Scenarios | 根目錄核心文檔 |
 |------|----------|----------|-------------|-----------|----------------|
-| **v0.09** | 2025-11-01 | 核心維護機制強化 | 7 個 (中文) | 10 個 | 4 個 |
-| v0.04 | 2025-10-30 | 中文化 + 結構優化 | 7 個 (中文) | 9 個 | 3 個 |
+| **v0.09** | 2025-01-11 | 開發專注版、Agent 自動載入、33 Skills | 7 個 (中文) | 10 個 | 6 個 |
+| v0.08 | 2025-11-15 | 核心維護文檔機制強化 | 7 個 (中文) | 9 個 | 5 個 |
+| v0.07 | 2025-10-30 | 中文化 + 結構優化 | 7 個 (中文) | 9 個 | 3 個 |
 | v0.03 | 2025-10-23 | 模板簡化統一化 | 7 個 (混合) | 9 個 | 5 個 |
-| v0.02 | 2025-10-22 | 完整功能實現 | - | - | - |
 | v0.01 | 2025-10-18 | 初始版本 | - | - | - |
 
 ---
@@ -482,7 +411,6 @@ AISDLC 框架基於以下核心理念:
 
 - **快速開始**: [guides/user/onboarding/QUICK_START_GUIDE.md](guides/user/onboarding/QUICK_START_GUIDE.md)
 - **場景選擇**: [guides/user/onboarding/SCENARIO_SELECTOR.md](guides/user/onboarding/SCENARIO_SELECTOR.md)
-- **指南索引**: [guides/backup/INDEX.md](guides/backup/INDEX.md) (archived)
 - **教學模式**: [guides/user/onboarding/TUTORIAL_MODE.md](guides/user/onboarding/TUTORIAL_MODE.md)
 
 ### Agent 配置
@@ -490,11 +418,6 @@ AISDLC 框架基於以下核心理念:
 - **Core Agents**: [agent/core/README.md](agent/core/README.md)
 - **Specialized Agents**: [agent/specialized/README.md](agent/specialized/README.md)
 - **協作模式**: [agent/AGENT_COLLABORATION_PATTERNS.md](agent/AGENT_COLLABORATION_PATTERNS.md)
-
-### 場景 SOP
-
-- **場景-Agent 映射**: [scenarios/SCENARIO_AGENT_MAPPING.md](scenarios/SCENARIO_AGENT_MAPPING.md)
-- **各場景 SOP**: 位於 `scenarios/[scenario-name]/SOP.md`
 
 ---
 
@@ -520,35 +443,23 @@ AISDLC 框架基於以下核心理念:
 
 ---
 
-## 📝 變更記錄
-
-詳見: `build/logs/CHANGELOG_v0.09.md` (如有)
-
-主要變更:
-- ✅ 核心維護文檔機制強化
-- ✅ FILE_DIRECTORY_RULES.md 重新命名和定位
-- ✅ AISDLC_v0.10_UPGRADE_SOP.md 創建
-- ✅ build/logs/ 目錄引入
-- ✅ 文檔命名優化 (雙語支援)
-
----
-
 ## ⚠️ 重要提醒
 
 ### 核心維護文檔 (必須了解)
 
-1. **AISDLC_INIT.md** - 每次使用前必讀
-2. **FILE_DIRECTORY_RULES.md** - 目錄/檔案變更時必須更新
+1. **AISDLC_INIT.md** - 每次使用前必讀，包含 Agent 自動載入配置
+2. **FILE_DIRECTORY_RULES.md** - 目錄/檔案變更時必須立即更新
 3. **AISDLC_v0.10_UPGRADE_SOP.md** - 下次升版的操作指南
+4. **AISDLC_UPGRADE_SOP_CheckList.md** - 升版執行時強制逐項打勾
 
 ### 升版注意事項
 
 - UPGRADE_SOP 是為**下一次升版**準備的 (不是當前升版的記錄)
-- 升版時必須拷貝並更新 UPGRADE_SOP
+- 升版時必須先讀取 CheckList，逐項執行後打勾
 - 所有核心維護文檔都標記為 🔴 極度重要
 
 ---
 
 **版本**: v0.09
-**最後更新**: 2025-11-01
-**下一版本**: v0.09 (升版 SOP 已準備)
+**最後更新**: 2026-04-11
+**下一版本**: v0.10（升版 SOP 已準備）

@@ -43,7 +43,8 @@
 │                                                                      │
 │  ┌──────────────────────────────────────────────────────────────┐   │
 │  │                    Frontend (Next.js 15)                    │   │
-│  │    App Router + TypeScript + Tailwind CSS + Zustand         │   │
+│  │   React 18 + TypeScript + Tailwind CSS + Zustand            │   │
+│  │   Shadcn UI + Radix UI ( Accessible UI Components )           │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                   │                                  │
 │                                   ▼                                  │
@@ -135,6 +136,8 @@ com.nextkey.ecommerce/
 | 層級 | 技術 | 版本 | 備註 |
 |------|------|------|------|
 | **前端框架** | Next.js 15 | 15.x | App Router + SSR + SSG |
+| **前端 UI 框架** | React | 18.x | 元件化開發 |
+| **前端 UI 組件庫** | Shadcn UI + Radix UI | 最新 | Accessible + 無頭組件 |
 | **前端語言** | TypeScript | 5.x | 強型別 |
 | **前端樣式** | Tailwind CSS | 3.x | Utility-First |
 | **前端狀態** | Zustand | 4.x | 輕量狀態管理 |

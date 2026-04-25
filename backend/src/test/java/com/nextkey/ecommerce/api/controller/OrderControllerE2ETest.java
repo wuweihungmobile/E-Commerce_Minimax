@@ -5,7 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.OrderDto;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.user.User;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import org.junit.jupiter.api.*;
@@ -47,6 +52,7 @@ import static org.hamcrest.Matchers.*;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("integration-test")
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @DisplayName("API-M06 E2E: Order Controller REST Assured E2E 測試")
 class OrderControllerE2ETest {
@@ -63,12 +69,64 @@ class OrderControllerE2ETest {
     @Autowired
     private OrderRepository orderRepository;
 
+    @Autowired
+    private TenantRepository tenantRepository;
+
+    @Autowired
+    private ListingRepository listingRepository;
+
     private static final String BASE_URL = "/v2/orders";
     private static final String AUTH_URL = "/v2/auth";
     private static final String TEST_PASSWORD = "SecurePass123!";
 
+    // 測試用的 ROOM listing ID
+    private static UUID testRoomListingId;
+    private static UUID testTenantId;
+
     private String accessToken;
     private String userEmail;
+
+    @BeforeAll
+    static void setUpTestData(@Autowired TenantRepository tenantRepo,
+                               @Autowired ListingRepository listingRepo,
+                               @Autowired UserRepository userRepo) {
+        // 創建測試用的 Tenant
+        Tenant testTenant = Tenant.builder()
+                .name("Test Tenant for ROOM Orders")
+                .slug("test-tenant-" + System.currentTimeMillis())
+                .contactEmail("test@tenant.com")
+                .contactPhone("+886-123456789")
+                .status(Tenant.TenantStatus.ACTIVE)
+                .build();
+        testTenant = tenantRepo.save(testTenant);
+        testTenantId = testTenant.getId();
+
+        // 創建測試用的 HOST 用戶
+        User testHost = User.builder()
+                .email("host-test-" + System.currentTimeMillis() + "@example.com")
+                .passwordHash("dummy")
+                .fullName("Test Host")
+                .role(User.UserRole.HOST)
+                .status("ACTIVE")
+                .tenantId(testTenantId)
+                .build();
+        testHost = userRepo.save(testHost);
+
+        // 創建測試用的 ROOM Listing
+        Listing testRoom = Listing.builder()
+                .tenantId(testTenantId)
+                .ownerId(testHost.getId())
+                .listingType(Listing.ListingType.ROOM)
+                .title("Test ROOM Listing")
+                .description("Test room for E2E tests")
+                .basePrice(BigDecimal.valueOf(1500))
+                .status(Listing.ListingStatus.ACTIVE)
+                .build();
+        testRoom = listingRepo.save(testRoom);
+        testRoomListingId = testRoom.getId();
+
+        System.out.println("✅ Test ROOM Listing created: " + testRoomListingId);
+    }
 
     @BeforeEach
     void setUp() {
@@ -135,6 +193,7 @@ class OrderControllerE2ETest {
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(OrderDto.CreateRequest.builder()
                         .orderType("ROOM")
+                        .listingId(testRoomListingId)
                         .shippingAddress("123 Test Street")
                         .shippingRecipientName("Test User")
                         .shippingPhone("+886-912345678")
@@ -237,6 +296,7 @@ class OrderControllerE2ETest {
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(OrderDto.CreateRequest.builder()
                         .orderType("ROOM")
+                        .listingId(testRoomListingId)
                         .checkInDate(LocalDate.now().plusDays(1))
                         .checkOutDate(LocalDate.now().plusDays(2))
                         .guestCount(2)
@@ -297,6 +357,7 @@ class OrderControllerE2ETest {
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(OrderDto.CreateRequest.builder()
                         .orderType("ROOM")
+                        .listingId(testRoomListingId)
                         .checkInDate(LocalDate.now().plusDays(1))
                         .checkOutDate(LocalDate.now().plusDays(2))
                         .guestCount(2)
@@ -340,6 +401,7 @@ class OrderControllerE2ETest {
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(OrderDto.CreateRequest.builder()
                         .orderType("ROOM")
+                        .listingId(testRoomListingId)
                         .checkInDate(LocalDate.now().plusDays(1))
                         .checkOutDate(LocalDate.now().plusDays(2))
                         .guestCount(2)
@@ -381,6 +443,7 @@ class OrderControllerE2ETest {
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(OrderDto.CreateRequest.builder()
                         .orderType("ROOM")
+                        .listingId(testRoomListingId)
                         .checkInDate(LocalDate.now().plusDays(1))
                         .checkOutDate(LocalDate.now().plusDays(2))
                         .guestCount(2)
@@ -458,6 +521,7 @@ class OrderControllerE2ETest {
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(OrderDto.CreateRequest.builder()
                         .orderType("ROOM")
+                        .listingId(testRoomListingId)
                         .shippingAddress("456 Hotel Address")
                         .shippingRecipientName("Hotel Reception")
                         .shippingPhone("+886-912345678")
@@ -495,6 +559,7 @@ class OrderControllerE2ETest {
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(OrderDto.CreateRequest.builder()
                         .orderType("ROOM")
+                        .listingId(testRoomListingId)
                         .checkInDate(LocalDate.now().plusDays(1))
                         .checkOutDate(LocalDate.now().plusDays(2))
                         .guestCount(2)

@@ -126,6 +126,11 @@ public class AuthService {
             throw new BusinessException(ErrorCode.E_1004, "Account not active");
         }
 
+        // 檢查 refresh token 是否在黑名單中
+        if (!refreshTokenService.isRefreshTokenValid(userId, refreshToken)) {
+            throw new BusinessException(ErrorCode.E_1003, "Refresh token has been revoked");
+        }
+
         Tenant tenant = user.getTenantId() != null
                 ? tenantRepository.findById(user.getTenantId()).orElse(null)
                 : tenantRepository.findById(UUID.fromString(AppConstants.SYSTEM_TENANT_ID)).orElse(null);
@@ -146,6 +151,7 @@ public class AuthService {
         );
 
         String refreshToken = jwtTokenService.generateRefreshToken(user.getId());
+        refreshTokenService.storeRefreshToken(user.getId(), refreshToken);
 
         return AuthResponse.builder()
                 .accessToken(accessToken)

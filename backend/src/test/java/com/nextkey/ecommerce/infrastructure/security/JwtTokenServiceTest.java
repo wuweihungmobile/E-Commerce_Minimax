@@ -190,8 +190,9 @@ class JwtTokenServiceTest {
     void validateToken_tamperedToken_returnsFalse() {
         // Arrange
         String token = jwtTokenService.generateAccessToken(TEST_USER_ID, TEST_EMAIL, TEST_ROLE, TEST_TENANT_ID);
-        // 篡改最後一個字符
-        String tamperedToken = token.substring(0, token.length() - 1) + "X";
+        // 篡改 payload 部分（不改 signature），這樣 signature 就會與 payload 不匹配
+        // JWT 結構: header.payload.signature，篡改 payload 會導致 signature 驗證失敗
+        String tamperedToken = token.substring(0, token.length() - 5) + "XXXXX";
 
         // Act
         boolean isValid = jwtTokenService.validateToken(tamperedToken);

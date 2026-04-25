@@ -122,9 +122,8 @@ PowerShell -ExecutionPolicy Bypass -File "C:\path\to\AISDLC\AISDLC_v0.09\tools\i
 **自動初始化腳本會自動執行**：
 - ✅ 偵測作業系統（macOS/Linux/Windows）
 - ✅ 智慧偵測本地框架（已有則跳過下載）
-- ✅ 建立 AISDLC 框架連結（`AISDLC/framework/`）
-- ✅ 建立標準 docs/ 目錄結構
-- ✅ 複製 CLAUDE.md 與 .claude/skills/ 到專案根目錄
+- ✅ 建立標準 docs/ 目錄結構（在 AISDLC_v0.09/ 框架目錄下）
+- ✅ 複製 CLAUDE.md 與 .claude/skills/ 到框架根目錄
 
 ---
 
@@ -133,20 +132,11 @@ PowerShell -ExecutionPolicy Bypass -File "C:\path\to\AISDLC\AISDLC_v0.09\tools\i
 如果自動腳本不可用，可手動執行以下步驟：
 
 ```bash
-# 步驟 1: 建立 AISDLC 框架連結
-mkdir -p AISDLC
-ln -s /path/to/AISDLC_ALL/AISDLC_v0.09 AISDLC/framework
+# 步驟 1: 進入 AISDLC 框架目錄（框架即專案工作目錄）
+cd /path/to/AISDLC_ALL/AISDLC_v0.09
 
-# 步驟 2: 建立專案文檔目錄（遵循 DEVELOPMENT_DIRECTORY_STRUCTURE.md - 開發專注版）
+# 步驟 2: 建立 docs/ 子目錄（遵循 DEVELOPMENT_DIRECTORY_STRUCTURE.md - 開發專注版）
 mkdir -p docs/{01_requirements,02_architecture,03_testing,04_planning,05_development,06_quality,07_design,08_deployment}
-
-# 步驟 3: 複製 Claude Code 設定檔與 Skills
-cp AISDLC/framework/../CLAUDE.md ./CLAUDE.md
-# 如果框架包含 .claude/skills/，一併複製
-if [ -d "AISDLC/framework/.claude/skills" ]; then
-  mkdir -p .claude/skills
-  cp -r AISDLC/framework/.claude/skills/* .claude/skills/
-fi
 ```
 
 ### 完整初始化指南
@@ -154,8 +144,8 @@ fi
 📖 **詳細步驟請參閱**: [PROJECT_INITIALIZATION_GUIDE.md](guides/user/onboarding/PROJECT_INITIALIZATION_GUIDE.md)
 
 包含內容：
-- ✅ 三種框架整合方式（符號連結/完整拷貝/Git Submodule）
-- ✅ 九種情境專屬目錄設定
+- ✅ 框架即專案目錄說明
+- ✅ 十種情境專屬目錄設定
 - ✅ 文檔產出位置規範
 - ✅ 驗證檢查清單
 - ✅ 常見問題解答
@@ -163,11 +153,10 @@ fi
 ### 專案文檔目錄結構規範
 
 ```
-your-project/
-├── AISDLC/                           # AISDLC 框架（符號連結或完整拷貝）
-│   └── framework/ -> AISDLC_v0.09/
+AISDLC_v0.09/                         # 工作目錄（框架即專案目錄）
+├── AISDLC_INIT.md                    # 框架初始化配置
 ├── CLAUDE.md                         # Claude Code 設定檔
-├── .claude/skills/                   # Claude Code Skills（自動部署）
+├── .claude/skills/                   # Claude Code Skills
 └── docs/                             # 專案文檔輸出目錄（開發專注版）
     ├── 01_requirements/              # 需求文檔 (PRD, FRD, User Stories)
     ├── 02_architecture/              # 架構設計 (SRD, API Specification)
@@ -182,7 +171,7 @@ your-project/
 ### 為什麼需要專案初始化？
 
 1. **統一文檔位置** - 所有團隊成員知道文檔放在哪裡
-2. **符合 AISDLC 規範** - 確保九種情境 SOP 順利執行
+2. **符合 AISDLC 規範** - 確保十種情境 SOP 順利執行
 3. **版本控制友好** - 清晰的目錄結構易於 Git 管理
 4. **提升協作效率** - 標準化減少溝通成本
 
@@ -198,8 +187,8 @@ your-project/
 
 **自動載入流程**:
 ```yaml
-step_1: 讀取 AISDLC/framework/AISDLC_INIT.md（本檔案）
-step_2: 自動讀取 AISDLC/framework/tools/AISDLC_CLAUDE_RULES.md
+step_1: 讀取 AISDLC_INIT.md（本檔案）
+step_2: 自動讀取 tools/AISDLC_CLAUDE_RULES.md
 step_3: 自動套用所有 Claude Rules（溝通語言、文檔規範、寫檔檢查等）
 step_4: 自動偵測當前作業系統
 step_5: 檢查專案是否已初始化
@@ -523,8 +512,8 @@ auto_load_config:
     workflows:
       - "api-specification"
       - "interaction-analysis"
-      - "requirements-validation"
-      - "document-consistency-check"
+      - "requirements-validation-and-documentation"
+      - "consistency-check"
       - "user-story-design"
       - "sprint-execution"
     sop_path: "scenarios/integration/SOP.md"
@@ -864,7 +853,7 @@ auto_load_config:
 > - **核心 Agents**：`0X.{name}-zh.yaml`（如：`04.sa-analyst-zh.yaml`）
 > - **專業化 Agents**：`{name}-zh.yaml`（如：`performance-engineer-zh.yaml`）
 > - 所有 Agent 配置均為中文版（`-zh.yaml`後綴）
-> - 英文版已歸檔至 `agent/core/archive_en/`，僅供術語對照參考
+> - 英文版已歸檔至 `agent/core/backup_en/`，僅供術語對照參考
 
 ### 核心 Agents (agent/core/)
 - **`04.sa-analyst-zh.yaml`** (Amanda): 系統分析師 - 需求分析與驗證
@@ -1274,7 +1263,7 @@ LLM：
 
 映射表已載入：
 - 10 個情境專用 Workflows
-- 7 個核心 Workflows
+- 8 個核心 Workflows
 - 情境-Agent-Workflow 自動綁定
 
 執行方式：

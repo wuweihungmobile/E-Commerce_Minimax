@@ -1,7 +1,7 @@
 # M17 租戶管理測試案例 / Tenant Management Test Cases
 
 > **模組**: M17 租戶/店鋪管理
-> **版本**: v1.0
+> **版本**: v1.7
 > **建立日期**: 2026-04-10
 > **依據**: API_M17_Tenant.md, SRD_Database_Schema.md, SRD_System_Architecture.md
 > **測試框架**: JUnit 5 + Mockito (UT), Spring Boot Test (IT), REST Assured (API)
@@ -19,8 +19,9 @@
 | API | 3 | 4 | 2 | 9 | Sprint 2 | ✅ 已實現 (14項) |
 | **Sprint 2 合計** | 9 | 9 | 5 | **23** | | |
 | Admin IT | 2 | 1 | 0 | 3 | Sprint 3 | ⏳ 待實現 |
-| Admin API | 2 | 1 | 0 | 3 | Sprint 3 | ⏳ 待實現 |
-| **總合計** | 13 | 11 | 5 | **29** | | |
+| Admin API | 4 | 3 | 0 | 7 | Sprint 3 | ⏳ 待實現 |
+| RBAC E2E (StoreOwner/STORE_STAFF) | 4 | 0 | 0 | 4 | Sprint 3-A | 📋 新增 |
+| **總合計** | 19 | 13 | 5 | **37** | | |
 
 ---
 
@@ -69,8 +70,9 @@
 | IT-M17-004 | Admin審核-通過申請 | P0 | 租戶狀態 = PENDING | 1. POST /api/v2/admin/tenants/{id}/approve<br>2. 驗證狀態變為 ACTIVE | 200, status = ACTIVE | ⏳ 待實現 |
 | IT-M17-005 | Admin審核-駁回申請 | P0 | 租戶狀態 = PENDING | 1. POST /api/v2/admin/tenants/{id}/reject<br>2. 提供 reason | 200, status = REJECTED | ⏳ 待實現 |
 | IT-M17-006 | Admin審核-非Admin角色 | P1 | StoreOwner 角色 | 1. StoreOwner 嘗試呼叫 approve API | 403 Forbidden | ⏳ 待實現 |
+| IT-M17-007-02 | Admin審核-通過時Feature Toggle初始化 | P0 | 租戶狀態 = PENDING | 1. POST /api/v2/admin/tenants/{id}/approve<br>2. 驗證 6 個 Feature Toggle 預設值：RETAIL=true, BOOKING=false, CMS=true, ERP=true, DYNAMIC_PRICING=false, PROMO=false | 200, status = ACTIVE, toggles 正確初始化 | 📋 新增 |
 
-> **Note**: IT-M17-004, IT-M17-005, IT-M17-006 屬於 Sprint 3 (US-M17-007, US-M17-008)
+> **Note**: IT-M17-004, IT-M17-005, IT-M17-006, IT-M17-007-02 屬於 Sprint 3 (US-M17-007, US-M17-008)
 
 ### 2.3 Feature Toggle 更新
 
@@ -120,15 +122,28 @@
 | API-M17-007 | GET /api/v2/admin/tenants-店鋪列表 | P0 | Admin 登入 | 1. GET /api/v2/admin/tenants<br>Header: Authorization: Bearer {adminToken} | 200, data.items 包含所有店鋪 | ⏳ 待實現 |
 | API-M17-008 | POST /api/v2/admin/tenants/:id/approve-成功 | P0 | Admin + 待審核租戶 | 1. POST /api/v2/admin/tenants/{id}/approve | 200, data.status = ACTIVE | ⏳ 待實現 |
 | API-M17-009 | POST /api/v2/admin/tenants/:id/reject-成功 | P1 | Admin + 待審核租戶 | 1. POST /api/v2/admin/tenants/{id}/reject<br>Body: {"reason":"資料不全"} | 200, data.status = REJECTED | ⏳ 待實現 |
+| API-M17-007-03 | POST /api/v2/admin/tenants/:id/approve-非PENDING狀態 | P1 | Admin + ACTIVE 租戶 | 1. POST /api/v2/admin/tenants/{id}/approve | 400, error.code = E_2005 | 📋 新增 |
+| API-M17-007-04 | POST /api/v2/admin/tenants/:id/approve-非Admin角色 | P0 | BUYER 用戶 | 1. BUYER Token 呼叫 approve API | 403 Forbidden | 📋 新增 |
+| API-M17-008-03 | POST /api/v2/admin/tenants/:id/reject-空白reason | P1 | Admin + PENDING 租戶 | 1. POST /api/v2/admin/tenants/{id}/reject<br>Body: {"reason": ""} | 400 VALIDATION_ERROR | 📋 新增 |
+| API-M17-008-04 | POST /api/v2/admin/tenants/:id/reject-非Admin角色 | P0 | BUYER 用戶 | 1. BUYER Token 呼叫 reject API | 403 Forbidden | 📋 新增 |
 
 > **Note**: API-M17-007, API-M17-008, API-M17-009 屬於 Sprint 3 (US-M17-007, US-M17-008)
 
-### 3.5 Feature Toggle API
+### 3.6 StoreOwner/STORE_STAFF RBAC E2E 測試 (Sprint 3-A 補漏)
+
+| TC ID | 測試案例名稱 | 優先級 | 前置條件 | 測試步驟 | 預期結果 | 狀態 |
+|-------|-------------|--------|----------|----------|----------|------|
+| API-M17-018 | POST /api/v2/admin/tenants/:id/approve-StoreOwner角色 | P0 | StoreOwner 登入 | 1. StoreOwner Token 呼叫 approve API | 403 Forbidden | 📋 新增 |
+| API-M17-019 | POST /api/v2/admin/tenants/:id/approve-STORE_STAFF角色 | P0 | STORE_STAFF 登入 | 1. STORE_STAFF Token 呼叫 approve API | 403 Forbidden | 📋 新增 |
+| API-M17-020 | POST /api/v2/admin/tenants/:id/reject-StoreOwner角色 | P0 | StoreOwner 登入 | 1. StoreOwner Token 呼叫 reject API | 403 Forbidden | 📋 新增 |
+| API-M17-021 | POST /api/v2/admin/tenants/:id/reject-STORE_STAFF角色 | P0 | STORE_STAFF 登入 | 1. STORE_STAFF Token 呼叫 reject API | 403 Forbidden | 📋 新增 |
+
+### 3.7 Feature Toggle API
 
 | TC ID | 測試案例名稱 | 優先級 | 前置條件 | 測試步驟 | 預期結果 |
 |-------|-------------|--------|----------|----------|----------|
-| API-M17-010 | GET /api/v2/dashboard/tenants/features-查詢 | P1 | StoreOwner 登入 | 1. GET /api/v2/dashboard/tenants/features | 200, data.features 包含所有開關 | ✅ 已實現 |
-| API-M17-011 | PUT /api/v2/dashboard/tenants/features/:feature-申請 | P1 | StoreOwner 登入 | 1. PUT /api/v2/dashboard/tenants/features/DYNAMIC_PRICING_ENABLED<br>Body: {"enabled": true} | 200, data.status = PENDING_APPROVAL | ✅ 已實現 |
+| API-M17-016 | GET /api/v2/dashboard/tenants/features-查詢 | P1 | StoreOwner 登入 | 1. GET /api/v2/dashboard/tenants/features | 200, data.features 包含所有開關 | ✅ 已實現 |
+| API-M17-017 | PUT /api/v2/dashboard/tenants/features/:feature-申請 | P1 | StoreOwner 登入 | 1. PUT /api/v2/dashboard/tenants/features/DYNAMIC_PRICING_ENABLED<br>Body: {"enabled": true} | 200, data.status = PENDING_APPROVAL | ✅ 已實現 |
 | API-M17-015 | PUT /api/v2/dashboard/tenants/features/:feature-非StoreOwner | P0 | 一般會員 Token | 1. PUT /api/v2/dashboard/tenants/features/BOOKING_ENABLED<br>Body: {"enabled": true} | 403 Forbidden | ✅ 已實現 |
 
 ---
@@ -151,7 +166,7 @@
 | 驗證項目 | 測試案例 | 優先級 |
 |---------|---------|--------|
 | 多租戶資料隔離 (Tenant A 看不到 Tenant B 資料) | ISO-001, ISO-002, ISO-003 | P0 |
-| Feature Toggle 狀態正確反映 | UT-M17-008, UT-M17-009, API-M17-010 | P0 |
+| Feature Toggle 狀態正確反映 | UT-M17-008, UT-M17-009, API-M17-016 | P0 |
 | 租戶狀態機: PENDING → APPROVED → ACTIVE | IT-M17-001, IT-M17-004, IT-M17-005 | P0 |
 | 店鋪申請流程完整 | API-M17-001, IT-M17-001, IT-M17-004 | P0 |
 
@@ -170,7 +185,7 @@
 
 **文件版本**: AISDLC v0.09
 **測試框架**: JUnit 5 + Mockito, Spring Boot Test, REST Assured
-**最後更新**: 2026-04-24
+**最後更新**: 2026-04-26
 
 ## 📝 文件修訂紀錄
 
@@ -181,3 +196,6 @@
 | v1.2 | 2026-04-22 | 新增 US-M17-003/006 測試缺口修補：API-M17-012~015 (更新店鋪、功能開關角色校驗) |
 | v1.3 | 2026-04-24 | Sprint 2 測試驗證完成：14/14 API E2E 測試通過 (TenantControllerE2ETest)，新增 US-M17-004 正向成功測試，修復 Feature Toggle requiresApproval 邏輯 |
 | v1.4 | 2026-04-24 | 新增 Sprint 3 測試狀態標記（IT-M17-004~006, API-M17-007~009）|
+| v1.5 | 2026-04-25 | 新增 IT-M17-007-02：Admin審核通過時Feature Toggle初始化測試（6個 toggles 預設值驗證） |
+| v1.6 | 2026-04-26 | **Sprint 3-A 補漏**：新增 API-M17-007-03/04, API-M17-008-03/04 (非PENDING狀態/非Admin角色測試)，新增 API-M17-010~013 (StoreOwner/STORE_STAFF RBAC E2E 測試)，更新測試案例總數為 37 項 |
+| v1.7 | 2026-04-26 | 修復章節編號衝突（3.5/3.6 → 3.5/3.6/3.7）、修復 Feature Toggle API ID 重複（API-M17-010/011 → API-M17-016/017）；修復 RBAC E2E ID 衝突（API-M17-010~013 → API-M17-018~021） |

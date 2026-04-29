@@ -160,7 +160,8 @@ public class BookingService {
             throw new BusinessException(ErrorCode.E_4003, "Check-out must be after check-in");
         }
 
-        // 嘗試鎖定日期範圍
+        // 嘗試鎖定日期範圍（NO_WAIT 策略，立即返回）
+        // 如果無法立即獲取鎖，表示有並發請求在處理，拋出衝突異常
         String lockValue = roomCalendarService.lockDateRange(
                 request.getRoomListingId(),
                 request.getCheckInDate(),
@@ -171,8 +172,9 @@ public class BookingService {
             throw new BusinessException(ErrorCode.E_4001, "Date range is being modified by another user");
         }
 
+        BookingDto.BookingResponse response;
         try {
-            // 再次檢查可用性
+            // 檢查可用性
             if (!roomCalendarService.isDateRangeAvailable(
                     request.getRoomListingId(),
                     request.getCheckInDate(),
@@ -212,7 +214,7 @@ public class BookingService {
 
             booking = bookingRepository.save(booking);
 
-            // 更新日曆
+            // 更新日曆（這裡會拋出異常如果日期已被預訂）
             roomCalendarService.bookDateRange(
                     request.getRoomListingId(),
                     request.getCheckInDate(),
@@ -224,10 +226,13 @@ public class BookingService {
                     booking.getId(), userId, request.getRoomListingId(),
                     request.getCheckInDate(), request.getCheckOutDate());
 
-            return toBookingResponse(booking, listing, room, nightsCount);
+            response = toBookingResponse(booking, listing, room, nightsCount);
+
+            // 強制 flush 確保數據庫變更被 commit
+            bookingRepository.flush();
 
         } finally {
-            // 釋放鎖
+            // 釋放鎖（在 flush/commit 完成之後）
             roomCalendarService.unlockDateRange(
                     request.getRoomListingId(),
                     request.getCheckInDate(),
@@ -235,6 +240,8 @@ public class BookingService {
                     lockValue
             );
         }
+
+        return response;
     }
 
     /**

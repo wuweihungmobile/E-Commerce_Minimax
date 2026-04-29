@@ -14,6 +14,20 @@ import java.util.UUID;
 @Repository
 public interface RoomCalendarRepository extends JpaRepository<RoomCalendar, UUID> {
 
+    /**
+     * 使用 FOR UPDATE NOWAIT 鎖定特定的 RoomCalendar 記錄
+     * 如果記錄已被鎖定，立即拋出錯誤而不是等待
+     * 適用於並發 booking 衝突檢測
+     */
+    @Query(value = "SELECT * FROM room_calendar WHERE room_listing_id = :roomListingId AND calendar_date = :calendarDate FOR UPDATE NOWAIT",
+           nativeQuery = true)
+    Optional<RoomCalendar> findByRoomListingIdAndCalendarDateWithLockNowait(
+            @Param("roomListingId") UUID roomListingId,
+            @Param("calendarDate") LocalDate calendarDate);
+
+    /**
+     * 不帶鎖的查詢 - 用於檢查記錄是否存在（在事务外或需要讀取已提交數據時使用）
+     */
     Optional<RoomCalendar> findByRoomListingIdAndCalendarDate(UUID roomListingId, LocalDate calendarDate);
 
     List<RoomCalendar> findByRoomListingIdAndCalendarDateBetween(UUID roomListingId, LocalDate startDate, LocalDate endDate);

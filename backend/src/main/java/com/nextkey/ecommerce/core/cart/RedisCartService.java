@@ -59,6 +59,16 @@ public class RedisCartService {
             }
         }
 
+        // ROOM 類型房源需要日期驗證
+        if (listing.getListingType() == Listing.ListingType.ROOM) {
+            if (request.getStartDate() == null || request.getEndDate() == null) {
+                throw new IllegalArgumentException("Start date and end date are required for ROOM listing");
+            }
+            if (!request.getEndDate().isAfter(request.getStartDate())) {
+                throw new IllegalArgumentException("End date must be after start date");
+            }
+        }
+
         // 檢查是否已有相同商品在購物車
         Object existingItem = redisTemplate.opsForHash().get(cartKey, itemKey);
         int newQuantity = request.getQuantity();
@@ -81,6 +91,8 @@ public class RedisCartService {
                 .subtotal(subtotal)
                 .listingType(listing.getListingType().name())
                 .addedAt(Instant.now())
+                .startDate(request.getStartDate())
+                .endDate(request.getEndDate())
                 .build();
 
         // 儲存到 Redis
@@ -283,6 +295,8 @@ public class RedisCartService {
                 .subtotal(item.getSubtotal())
                 .listingType(item.getListingType())
                 .addedAt(item.getAddedAt())
+                .startDate(item.getStartDate())
+                .endDate(item.getEndDate())
                 .build();
     }
 
@@ -303,6 +317,8 @@ public class RedisCartService {
         private BigDecimal subtotal; // Stored in Redis for serialization
         private String listingType;
         private Instant addedAt;
+        private java.time.LocalDate startDate;
+        private java.time.LocalDate endDate;
 
         /**
          * 計算小計（僅用於建構時）

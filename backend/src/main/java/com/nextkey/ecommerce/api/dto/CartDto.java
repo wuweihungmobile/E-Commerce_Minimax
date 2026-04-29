@@ -3,6 +3,8 @@ package com.nextkey.ecommerce.api.dto;
 import jakarta.validation.constraints.*;
 import lombok.*;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.math.BigDecimal;
 import java.util.UUID;
 
@@ -78,6 +80,8 @@ public class CartDto {
         private UUID userId;
         private String cartId;
         private java.util.List<CartItemResponse> items;
+
+        @JsonProperty("totalItems")
         private Integer itemCount;
         private BigDecimal totalAmount;
         private String currency;

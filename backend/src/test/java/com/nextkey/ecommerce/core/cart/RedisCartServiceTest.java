@@ -275,9 +275,9 @@ class RedisCartServiceTest {
         @Test
         @DisplayName("updateItem_itemNotFound_throwsException")
         void updateItem_itemNotFound_throwsException() {
-            // Arrange
+            // Arrange - 使用無效的 cartItemKey (不是 UUID 格式)
             String cartItemKey = "nonexistent-key";
-            when(hashOperations.get(anyString(), eq(cartItemKey))).thenReturn(null);
+            // 此 stubbing 不會被使用，因為 UUID parsing 就會失敗
 
             // Act & Assert
             assertThatThrownBy(() -> redisCartService.updateItem(TEST_USER_ID, TEST_TENANT_ID, cartItemKey, 5))
@@ -315,9 +315,9 @@ class RedisCartServiceTest {
         @Test
         @DisplayName("removeItem_itemNotFound_throwsException")
         void removeItem_itemNotFound_throwsException() {
-            // Arrange
+            // Arrange - 使用無效的 cartItemKey (不是 UUID 格式)
             String cartItemKey = "nonexistent-key";
-            when(hashOperations.get(anyString(), eq(cartItemKey))).thenReturn(null);
+            // 此 stubbing 不會被使用，因為 UUID parsing 就會失敗
 
             // Act & Assert
             assertThatThrownBy(() -> redisCartService.removeItem(TEST_USER_ID, TEST_TENANT_ID, cartItemKey))

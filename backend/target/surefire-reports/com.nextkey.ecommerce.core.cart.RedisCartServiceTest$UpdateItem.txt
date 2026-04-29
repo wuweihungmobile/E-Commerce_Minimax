@@ -1,17 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.nextkey.ecommerce.core.cart.RedisCartServiceTest$UpdateItem
 -------------------------------------------------------------------------------
-Tests run: 2, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.044 s <<< FAILURE! -- in com.nextkey.ecommerce.core.cart.RedisCartServiceTest$UpdateItem
-com.nextkey.ecommerce.core.cart.RedisCartServiceTest$UpdateItem.updateItem_itemNotFound_throwsException -- Time elapsed: 0.011 s <<< ERROR!
-org.mockito.exceptions.misusing.UnnecessaryStubbingException: 
-
-Unnecessary stubbings detected.
-Clean & maintainable test code requires zero unnecessary code.
-Following stubbings are unnecessary (click to navigate to relevant line of code):
-  1. -> at com.nextkey.ecommerce.core.cart.RedisCartServiceTest$UpdateItem.updateItem_itemNotFound_throwsException(RedisCartServiceTest.java:280)
-Please remove unnecessary stubbings or use 'lenient' strictness. More info: javadoc for UnnecessaryStubbingException class.
-	at org.mockito.junit.jupiter.MockitoExtension.afterEach(MockitoExtension.java:192)
-	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
-	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
-	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
-
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.033 s -- in com.nextkey.ecommerce.core.cart.RedisCartServiceTest$UpdateItem

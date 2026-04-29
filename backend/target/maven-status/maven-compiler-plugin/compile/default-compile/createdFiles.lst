@@ -28,6 +28,7 @@ com/nextkey/ecommerce/api/dto/OrderDto$CreateRequest$CreateRequestBuilder.class
 com/nextkey/ecommerce/api/config/SecurityConfig.class
 com/nextkey/ecommerce/core/logistics/LogisticsService.class
 com/nextkey/ecommerce/api/controller/ReviewController.class
+com/nextkey/ecommerce/api/dto/AdminDto$TenantRejectResponse$TenantRejectResponseBuilder.class
 com/nextkey/ecommerce/api/dto/CmsDto$UpdatePageRequest$UpdatePageRequestBuilder.class
 com/nextkey/ecommerce/api/dto/CartDto$CartItemResponse$CartItemResponseBuilder.class
 com/nextkey/ecommerce/api/dto/PricingDto$RuleResponse$RuleResponseBuilder.class
@@ -43,6 +44,7 @@ com/nextkey/ecommerce/api/dto/UserInfoResponse$UserInfoResponseBuilder.class
 com/nextkey/ecommerce/api/controller/TenantController.class
 com/nextkey/ecommerce/core/order/OrderStateMachine.class
 com/nextkey/ecommerce/api/dto/ApiResponse.class
+com/nextkey/ecommerce/api/dto/AdminDto$TenantApproveRequest.class
 com/nextkey/ecommerce/core/booking/BookingService.class
 com/nextkey/ecommerce/api/dto/PaymentDto$PaymentRequest.class
 com/nextkey/ecommerce/api/filter/UserPrincipal.class
@@ -87,6 +89,7 @@ com/nextkey/ecommerce/api/dto/CmsDto$CreatePageRequest$CreatePageRequestBuilder.
 com/nextkey/ecommerce/domain/repository/NotificationRepository.class
 com/nextkey/ecommerce/api/dto/AnalyticsDto$RecentActivity$RecentActivityBuilder.class
 com/nextkey/ecommerce/domain/repository/PaymentRepository.class
+com/nextkey/ecommerce/api/dto/AdminDto$TenantApproveRequest$TenantApproveRequestBuilder.class
 com/nextkey/ecommerce/api/dto/RoomDto$UpdateRequest$UpdateRequestBuilder.class
 com/nextkey/ecommerce/domain/model/cms/Banner$BannerStatus.class
 com/nextkey/ecommerce/api/dto/AnalyticsDto$RevenueByCategory$RevenueByCategoryBuilder.class
@@ -184,6 +187,7 @@ com/nextkey/ecommerce/domain/model/cms/ContentPage$ContentStatus.class
 com/nextkey/ecommerce/api/dto/BookingDto$BookingResponse.class
 com/nextkey/ecommerce/api/dto/PaymentDto$RefundRequest.class
 com/nextkey/ecommerce/core/pricing/PricingService$AdjustmentResult.class
+com/nextkey/ecommerce/api/dto/AdminDto$TenantRejectRequest.class
 com/nextkey/ecommerce/api/dto/ChatDto$SendMessageRequest.class
 com/nextkey/ecommerce/api/dto/AnalyticsDto$OrderStats.class
 com/nextkey/ecommerce/domain/model/inventory/StockMovement$StockMovementBuilder.class
@@ -245,6 +249,7 @@ com/nextkey/ecommerce/api/dto/AuthResponse$UserInfo$UserInfoBuilder.class
 com/nextkey/ecommerce/infrastructure/security/JwtTokenService.class
 com/nextkey/ecommerce/core/pricing/PricingService.class
 com/nextkey/ecommerce/api/dto/AdminDto$UserListResponse$UserListResponseBuilder.class
+com/nextkey/ecommerce/api/dto/AdminDto$TenantApproveResponse.class
 com/nextkey/ecommerce/api/dto/ChatDto$MessageType.class
 com/nextkey/ecommerce/api/dto/OAuthDto$AuthRequest.class
 com/nextkey/ecommerce/shared/constants/AppConstants.class
@@ -408,6 +413,7 @@ com/nextkey/ecommerce/api/dto/ChatDto$MessageResponse.class
 com/nextkey/ecommerce/domain/model/tenant/TenantMember$TenantMemberBuilder.class
 com/nextkey/ecommerce/core/cart/RedisCartService.class
 com/nextkey/ecommerce/api/dto/AnalyticsDto$AnalyticsRequest$AnalyticsRequestBuilder.class
+com/nextkey/ecommerce/api/dto/AdminDto$TenantApproveResponse$TenantApproveResponseBuilder.class
 com/nextkey/ecommerce/domain/model/tenant/TenantApplication$TenantApplicationBuilder.class
 com/nextkey/ecommerce/domain/model/room/PricingRule.class
 com/nextkey/ecommerce/core/product/ProductService.class
@@ -415,6 +421,7 @@ com/nextkey/ecommerce/api/dto/NotificationDto$SendRequest.class
 com/nextkey/ecommerce/domain/repository/BannerRepository.class
 com/nextkey/ecommerce/domain/model/inventory/PurchaseOrderItem$PurchaseOrderItemBuilder.class
 com/nextkey/ecommerce/api/dto/AdminDto$TenantReviewRequest$TenantReviewRequestBuilder.class
+com/nextkey/ecommerce/api/dto/AdminDto$TenantRejectRequest$TenantRejectRequestBuilder.class
 com/nextkey/ecommerce/core/tenant/TenantService$1.class
 com/nextkey/ecommerce/api/dto/LogisticsDto$ShippingAddress$ShippingAddressBuilder.class
 com/nextkey/ecommerce/api/dto/CmsDto$BannerPosition.class
@@ -445,6 +452,7 @@ com/nextkey/ecommerce/api/dto/AnalyticsDto$DailyRevenue.class
 com/nextkey/ecommerce/api/dto/RegisterRequest$RegisterRequestBuilder.class
 com/nextkey/ecommerce/api/dto/OrderDto$CreateRequest.class
 com/nextkey/ecommerce/api/dto/LogisticsDto$TrackingEvent$TrackingEventBuilder.class
+com/nextkey/ecommerce/api/dto/AdminDto$TenantRejectResponse.class
 com/nextkey/ecommerce/api/dto/ReviewDto$ReviewSummary$ReviewSummaryBuilder.class
 com/nextkey/ecommerce/domain/model/inventory/Inventory$InventoryBuilder.class
 com/nextkey/ecommerce/domain/model/inventory/InventoryCheck$InventoryCheckBuilder.class

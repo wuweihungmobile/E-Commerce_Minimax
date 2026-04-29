@@ -59,6 +59,16 @@ public class RedisCartService {
             }
         }
 
+        // ROOM 類型房源需要日期驗證
+        if (listing.getListingType() == Listing.ListingType.ROOM) {
+            if (request.getStartDate() == null || request.getEndDate() == null) {
+                throw new IllegalArgumentException("Start date and end date are required for ROOM listing");
+            }
+            if (!request.getEndDate().isAfter(request.getStartDate())) {
+                throw new IllegalArgumentException("End date must be after start date");
+            }
+        }
+
         // 檢查是否已有相同商品在購物車
         Object existingItem = redisTemplate.opsForHash().get(cartKey, itemKey);
         int newQuantity = request.getQuantity();
@@ -81,6 +91,8 @@ public class RedisCartService {
                 .subtotal(subtotal)
                 .listingType(listing.getListingType().name())
                 .addedAt(Instant.now())
+                .startDate(request.getStartDate())
+                .endDate(request.getEndDate())
                 .build();
 
         // 儲存到 Redis
@@ -129,6 +141,21 @@ public class RedisCartService {
     }
 
     /**
+     * 更新購物車項目數量 (使用 cartItemKey)
+     */
+    public CartDto.CartItemResponse updateItem(UUID userId, UUID tenantId, String cartItemKey, int quantity) {
+        // 嘗試解析 cartItemKey，格式可能是 listingId[:skuId[:startDate:endDate]]
+        try {
+            String[] parts = cartItemKey.split(":");
+            UUID listingId = UUID.fromString(parts[0]);
+            UUID skuId = parts.length > 1 && !parts[1].isEmpty() ? UUID.fromString(parts[1]) : null;
+            return updateItem(userId, tenantId, listingId, skuId, quantity);
+        } catch (IllegalArgumentException e) {
+            throw new CartItemNotFoundException("Cart item not found: " + cartItemKey);
+        }
+    }
+
+    /**
      * 移除購物車項目
      */
     public void removeItem(UUID userId, UUID tenantId, UUID listingId, UUID skuId) {
@@ -143,6 +170,21 @@ public class RedisCartService {
 
         redisTemplate.opsForHash().delete(cartKey, itemKey);
         log.info("Removed item from cart: userId={}, listingId={}", userId, listingId);
+    }
+
+    /**
+     * 移除購物車項目 (使用 cartItemKey)
+     */
+    public void removeItem(UUID userId, UUID tenantId, String cartItemKey) {
+        // 嘗試解析 cartItemKey，格式可能是 listingId[:skuId]
+        try {
+            String[] parts = cartItemKey.split(":");
+            UUID listingId = UUID.fromString(parts[0]);
+            UUID skuId = parts.length > 1 && !parts[1].isEmpty() ? UUID.fromString(parts[1]) : null;
+            removeItem(userId, tenantId, listingId, skuId);
+        } catch (IllegalArgumentException e) {
+            throw new CartItemNotFoundException("Cart item not found: " + cartItemKey);
+        }
     }
 
     /**
@@ -164,9 +206,9 @@ public class RedisCartService {
         if (entries.isEmpty()) {
             return CartDto.CartResponse.builder()
                     .userId(userId)
-                    .cartKey(cartKey)
+                    .cartId(cartKey)
                     .items(Collections.emptyList())
-                    .totalItems(0)
+                    .itemCount(0)
                     .totalAmount(BigDecimal.ZERO)
                     .currency("TWD")
                     .updatedAt(Instant.now())
@@ -198,9 +240,9 @@ public class RedisCartService {
 
         return CartDto.CartResponse.builder()
                 .userId(userId)
-                .cartKey(cartKey)
+                .cartId(cartKey)
                 .items(items)
-                .totalItems(getTotalItemsCount(cartKey))
+                .itemCount(getTotalItemsCount(cartKey))
                 .totalAmount(totalAmount)
                 .currency("TWD")
                 .updatedAt(Instant.now())
@@ -243,7 +285,7 @@ public class RedisCartService {
         return CartDto.CartItemResponse.builder()
                 .cartItemKey(itemKey)
                 .listingId(item.getListingId())
-                .title(title)
+                .listingName(title)
                 .coverImageUrl(coverImageUrl)
                 .skuId(item.getSkuId())
                 .skuCode(item.getSkuCode())
@@ -253,6 +295,8 @@ public class RedisCartService {
                 .subtotal(item.getSubtotal())
                 .listingType(item.getListingType())
                 .addedAt(item.getAddedAt())
+                .startDate(item.getStartDate())
+                .endDate(item.getEndDate())
                 .build();
     }
 
@@ -273,6 +317,8 @@ public class RedisCartService {
         private BigDecimal subtotal; // Stored in Redis for serialization
         private String listingType;
         private Instant addedAt;
+        private java.time.LocalDate startDate;
+        private java.time.LocalDate endDate;
 
         /**
          * 計算小計（僅用於建構時）

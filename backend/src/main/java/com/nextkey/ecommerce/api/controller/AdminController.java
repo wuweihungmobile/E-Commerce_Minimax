@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -60,6 +61,32 @@ public class AdminController {
                 request.getTenantId(), request.getDecision());
         AdminDto.TenantReviewResponse response = adminService.reviewTenant(request);
         return ResponseEntity.ok(ApiResponse.success("Tenant reviewed successfully", response));
+    }
+
+    /**
+     * 審核通過租戶 (US-M17-007)
+     */
+    @PostMapping("/tenants/{tenantId}/approve")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.TenantApproveResponse>> approveTenant(
+            @PathVariable UUID tenantId,
+            @RequestBody(required = false) AdminDto.TenantApproveRequest request) {
+        log.info("Tenant approve request: tenantId={}", tenantId);
+        AdminDto.TenantApproveResponse response = adminService.approveTenant(tenantId, request);
+        return ResponseEntity.ok(ApiResponse.success("Tenant approved successfully", response));
+    }
+
+    /**
+     * 駁回租戶申請 (US-M17-008)
+     */
+    @PostMapping("/tenants/{tenantId}/reject")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.TenantRejectResponse>> rejectTenant(
+            @PathVariable UUID tenantId,
+            @Valid @RequestBody AdminDto.TenantRejectRequest request) {
+        log.info("Tenant reject request: tenantId={}, reason={}", tenantId, request.getReason());
+        AdminDto.TenantRejectResponse response = adminService.rejectTenant(tenantId, request);
+        return ResponseEntity.ok(ApiResponse.success("Tenant rejected successfully", response));
     }
 
     // ========== User Management ==========
@@ -128,6 +155,22 @@ public class AdminController {
         log.info("Delete feature toggle: tenantId={}, feature={}", tenantId, featureKey);
         adminService.deleteFeatureToggle(tenantId, featureKey);
         return ResponseEntity.ok(ApiResponse.success("Feature toggle deleted", null));
+    }
+
+    /**
+     * US-M17-009: Admin 更新租戶的 Feature Toggle
+     */
+    @PutMapping("/tenants/{tenantId}/features/{feature}")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.FeatureToggleResponse>> updateTenantFeatureToggle(
+            @PathVariable UUID tenantId,
+            @PathVariable String feature,
+            @RequestBody Map<String, Boolean> request) {
+        log.info("Admin update feature toggle: tenantId={}, feature={}, enabled={}",
+                tenantId, feature, request.get("enabled"));
+        Boolean enabled = request.get("enabled");
+        AdminDto.FeatureToggleResponse response = adminService.updateTenantFeatureToggle(tenantId, feature, enabled);
+        return ResponseEntity.ok(ApiResponse.success("Feature toggle updated", response));
     }
 
     // ========== Platform Stats ==========

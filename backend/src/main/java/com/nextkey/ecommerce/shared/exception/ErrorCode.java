@@ -18,6 +18,7 @@ public enum ErrorCode {
     E_2002("E-2002", "Tenant suspended"),
     E_2003("E-2003", "Tenant context ambiguous"),
     E_2004("E-2004", "Feature disabled for tenant"),
+    E_2005("E-2005", "Tenant status is not PENDING_REVIEW"),
     E_4031("E-4031", "Not authorized to operate this store"),
     E_4041("E-4041", "Store not found"),
 

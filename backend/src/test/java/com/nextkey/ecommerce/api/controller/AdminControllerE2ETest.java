@@ -577,7 +577,7 @@ class AdminControllerE2ETest {
     @Test
     @Order(11)
     @DisplayName("API-M17-022: POST /api/v2/admin/tenants/:id/reject - StoreOwner 角色應返回 403")
-    void rejectTenant_asStoreOwner_shouldReturn403() throws Exception {
+    void rejectTenant_asStoreOwner_shouldReturn403_forAPI17022() throws Exception {
         // 建立一個 PENDING_REVIEW 的測試店鋪
         Tenant testTenant = Tenant.builder()
                 .name("StoreOwner Reject Store")

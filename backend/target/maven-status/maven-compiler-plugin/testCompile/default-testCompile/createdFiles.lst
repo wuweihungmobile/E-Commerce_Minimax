@@ -1,13 +1,13 @@
+com/nextkey/ecommerce/core/auth/AuthServiceLoginTest.class
+com/nextkey/ecommerce/api/controller/AuthControllerE2ETest.class
+com/nextkey/ecommerce/integration/AuthControllerIntegrationTest.class
 com/nextkey/ecommerce/core/auth/AuthServiceRegisterTest.class
 com/nextkey/ecommerce/infrastructure/security/JwtTokenServiceTest.class
 com/nextkey/ecommerce/infrastructure/security/PasswordEncoderTest.class
-com/nextkey/ecommerce/core/auth/AuthServiceLoginTest.class
 com/nextkey/ecommerce/core/auth/AuthServiceRefreshTokenTest.class
 com/nextkey/ecommerce/integration/IntegrationTestConfiguration.class
 com/nextkey/ecommerce/api/controller/TenantControllerE2ETest.class
-com/nextkey/ecommerce/api/controller/AuthControllerE2ETest.class
 com/nextkey/ecommerce/integration/AuthControllerTrueIntegrationTest.class
-com/nextkey/ecommerce/integration/AuthControllerIntegrationTest.class
 com/nextkey/ecommerce/api/controller/CartControllerE2ETest.class
 com/nextkey/ecommerce/api/controller/OrderControllerE2ETest.class
 com/nextkey/ecommerce/api/controller/ProductControllerE2ETest.class

@@ -30,6 +30,7 @@ public class RolePermissionMapping {
                 Permission.ORDER_CANCEL,  // 買家可取消自己的訂單（US-M05-004）
                 Permission.BOOKING_READ,
                 Permission.BOOKING_CREATE,
+                Permission.BOOKING_CANCEL,  // 買家可取消自己的預訂
                 Permission.CART_READ,
                 Permission.CART_UPDATE,
                 Permission.CART_DELETE,

@@ -4,9 +4,12 @@ import com.nextkey.ecommerce.api.dto.PricingDto;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.PricingRule;
 import com.nextkey.ecommerce.domain.model.room.Room;
+import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.PricingRuleRepository;
+import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
+import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -35,12 +38,16 @@ public class PricingService {
     private final PricingRuleRepository pricingRuleRepository;
     private final RoomRepository roomRepository;
     private final ListingRepository listingRepository;
+    private final RoomCalendarRepository roomCalendarRepository;
+    private final FeatureToggleService featureToggleService;
 
     /**
      * 建立定價規則
      */
     @Transactional
     public PricingDto.RuleResponse createRule(PricingDto.CreateRuleRequest request) {
+        featureToggleService.checkFeatureEnabled("DYNAMIC_PRICING_ENABLED");
+
         UUID tenantId = TenantContext.getCurrentTenant();
 
         validateRuleRequest(request);
@@ -155,8 +162,8 @@ public class PricingService {
         }
 
         // 取得所有適用的規則
-        List<PricingRule> rules = pricingRuleRepository.findActiveRulesForDateRange(
-                request.getRoomListingId(), checkIn, checkOut.minusDays(1));
+        List<PricingRule> rules = new ArrayList<>(pricingRuleRepository.findActiveRulesForDateRange(
+                request.getRoomListingId(), checkIn, checkOut.minusDays(1)));
 
         // 按優先級排序
         rules.sort(Comparator.comparingInt(PricingRule::getPriority).reversed());
@@ -252,6 +259,64 @@ public class PricingService {
                 .priceType("MANUAL")
                 .appliedRuleName(overrideRule.getRuleName())
                 .updatedAt(overrideRule.getUpdatedAt())
+                .build();
+    }
+
+    /**
+     * 手動覆蓋價格（T-M12-03）
+     * 對指定日期範圍內的價格進行覆蓋
+     * 確保 BOOKED 日期不可覆蓋
+     */
+    @Transactional
+    public PricingDto.RuleOverrideResponse overridePrice(UUID ruleId, LocalDate startDate, LocalDate endDate,
+                                                          BigDecimal overridePrice, String reason) {
+        PricingRule existingRule = pricingRuleRepository.findById(ruleId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Pricing rule not found"));
+
+        UUID roomListingId = existingRule.getRoomListingId();
+        UUID tenantId = existingRule.getTenantId();
+
+        // 檢查日期範圍內是否有 BOOKED 的日期
+        List<RoomCalendar> calendars = roomCalendarRepository.findByRoomListingIdAndCalendarDateBetween(roomListingId, startDate, endDate);
+        for (RoomCalendar calendar : calendars) {
+            if (calendar.getStatus() == RoomCalendar.RoomCalendarStatus.BOOKED) {
+                throw new BusinessException(ErrorCode.E_4002,
+                        "Cannot override price for date " + calendar.getCalendarDate() + " - already booked");
+            }
+        }
+
+        // 創建覆蓋規則
+        PricingRule overrideRule = PricingRule.builder()
+                .tenantId(tenantId)
+                .roomListingId(roomListingId)
+                .ruleType(PricingRule.PricingRuleType.MANUAL_OVERRIDE)
+                .ruleName(reason != null ? reason : "Price override for " + startDate + " to " + endDate)
+                .priority(100) // 最高優先級
+                .config(Map.of(
+                        "price", overridePrice.doubleValue(),
+                        "startDate", startDate.toString(),
+                        "endDate", endDate.toString(),
+                        "originalRuleId", ruleId.toString()
+                ))
+                .validFrom(startDate)
+                .validTo(endDate)
+                .isActive(true)
+                .build();
+
+        overrideRule = pricingRuleRepository.save(overrideRule);
+
+        log.info("Override price applied: ruleId={}, roomListingId={}, startDate={}, endDate={}, price={}",
+                overrideRule.getId(), roomListingId, startDate, endDate, overridePrice);
+
+        return PricingDto.RuleOverrideResponse.builder()
+                .ruleId(overrideRule.getId())
+                .roomListingId(roomListingId)
+                .startDate(startDate)
+                .endDate(endDate)
+                .overridePrice(overridePrice)
+                .reason(reason)
+                .status("APPLIED")
+                .createdAt(overrideRule.getCreatedAt())
                 .build();
     }
 

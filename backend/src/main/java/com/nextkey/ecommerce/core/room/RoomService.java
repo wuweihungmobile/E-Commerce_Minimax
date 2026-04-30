@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.room;
 
 import com.nextkey.ecommerce.api.dto.RoomDto;
+import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.Room;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
@@ -26,6 +27,7 @@ public class RoomService {
 
     private final RoomRepository roomRepository;
     private final ListingRepository listingRepository;
+    private final FeatureToggleService featureToggleService;
 
     @Transactional(readOnly = true)
     public Page<RoomDto.ListResponse> getRooms(
@@ -66,6 +68,9 @@ public class RoomService {
 
     @Transactional
     public RoomDto.Response createRoom(RoomDto.CreateRequest request) {
+        // 檢查 BOOKING_ENABLED feature toggle - T-DEF-001-02
+        featureToggleService.checkFeatureEnabled("BOOKING_ENABLED");
+
         UUID tenantId = TenantContext.getCurrentTenant();
         UUID ownerId = TenantContext.getCurrentUser();
 
@@ -99,6 +104,48 @@ public class RoomService {
 
         room = roomRepository.save(room);
         log.info("Created room with listingId: {}", listing.getId());
+
+        return toResponse(room);
+    }
+
+    /**
+     * 從 Dashboard 建立 Room (使用 CreateListingRequest)
+     * T-DEF-001-01
+     */
+    @Transactional
+    public RoomDto.Response createRoomFromDashboard(com.nextkey.ecommerce.api.dto.CreateListingRequest request) {
+        UUID tenantId = TenantContext.getCurrentTenant();
+
+        // Create Listing first
+        Listing listing = Listing.builder()
+                .tenantId(tenantId)
+                .listingType(Listing.ListingType.ROOM)
+                .title(request.getName())
+                .description(request.getDescription())
+                .coverImageUrl(request.getCoverImageUrl())
+                .status(Listing.ListingStatus.ACTIVE)
+                .basePrice(request.getPrice())
+                .currency("TWD")
+                .tags(request.getTags())
+                .build();
+
+        listing = listingRepository.save(listing);
+
+        // Create Room
+        Room room = Room.builder()
+                .listing(listing)
+                .location(request.getLocation())
+                .latitude(request.getLatitude())
+                .longitude(request.getLongitude())
+                .maxGuests(request.getMaxGuests() != null ? request.getMaxGuests() : 2)
+                .amenities(request.getAmenities())
+                .checkInTime(request.getCheckInTime() != null ? request.getCheckInTime() : LocalTime.of(15, 0))
+                .checkOutTime(request.getCheckOutTime() != null ? request.getCheckOutTime() : LocalTime.of(11, 0))
+                .roomCount(request.getRoomCount() != null ? request.getRoomCount() : 1)
+                .build();
+
+        room = roomRepository.save(room);
+        log.info("Created room from dashboard with listingId: {}", listing.getId());
 
         return toResponse(room);
     }

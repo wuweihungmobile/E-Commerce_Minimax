@@ -36,3 +36,4 @@ redis_data/
 # Test
 *.tmp
 *.bak
+backend/target/

@@ -15,8 +15,8 @@
 
 | 任務 ID | 任務名稱 | SP | 負責人 | 優先級 | 狀態 | 備註 |
 |---------|----------|-----|--------|--------|------|------|
-| Task-M15-101 | 新增 MultipartFile Upload Endpoint | 3 | Dev | P1 | 待開始 | Sprint 9 Day 1 |
-| Task-M15-107 | MinIO 實際上傳驗證 | 2 | QA/Dev | P2 | 待開始 | Sprint 9 Day 1 |
+| Task-M15-101 | 新增 MultipartFile Upload Endpoint | 3 | Dev | P1 | ✅ 已完成 | PostController L364-381，IT-M15-010b 測試通過 |
+| Task-M15-107 | MinIO 實際上傳驗證 | 2 | QA/Dev | P2 | ✅ 已完成 | E2E Test (21/21通過)，Multipart上傳驗證成功 |
 
 ### 1.2 Frontend Tasks (待 FE Dev 執行)
 
@@ -52,7 +52,8 @@
 
 | 標準 | 目標 | 狀態 |
 |------|------|------|
-| Task-M15-101 完成 | MultipartFile Upload Endpoint 可用 | ⏳ |
+| Task-M15-101 完成 | MultipartFile Upload Endpoint 可用 | ✅ 已完成 |
+| Task-M15-107 完成 | MinIO 實際上傳驗證 | ✅ 已完成 |
 | Task-M15-102-106 完成 | FE CMS 功能實作 | ⏳ |
 | Task-M15-108 通過 | FE-BE 整合測試 17/17 通過 | ⏳ |
 | Task-M15-109 通過 | E2E 測試 5/5 通過 | ⏳ |
@@ -85,8 +86,8 @@ Sprint 8 M15 CMS Backend ✅ ─┐
 
 | 任務 | 預定進度 | 實際進度 | 狀態 | 備註 |
 |------|----------|----------|------|------|
-| Task-M15-101 | 開始執行 | - | ⏳ | - |
-| Task-M15-107 | 開始執行 | - | ⏳ | - |
+| Task-M15-101 | 開始執行 | ✅ 已完成 | ✅ | PostController L364-381 已實作 Multipart 上傳端點 |
+| Task-M15-107 | 開始執行 | ✅ 已完成 | ✅ | E2E Test 21/21通過，含 IT-M15-010b Multipart 測試 |
 
 ### Day 2 (2026-05-07)
 

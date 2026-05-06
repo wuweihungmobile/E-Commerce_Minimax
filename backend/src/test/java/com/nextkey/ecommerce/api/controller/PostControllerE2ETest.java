@@ -755,6 +755,31 @@ class PostControllerE2ETest {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // IT-M15-010b: Multipart 上傳媒體（實際上傳到 MinIO）
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    @Test
+    @Order(10)
+    @DisplayName("IT-M15-010b: POST /api/v2/dashboard/media/upload-multipart - Multipart 上傳成功")
+    void uploadMediaMultipart_shouldSucceed() throws Exception {
+        String email = uniqueEmail();
+        authToken = createStoreOwnerAndGetToken(email);
+
+        byte[] mockImageBytes = "mock-image-content".getBytes();
+
+        given()
+                .header("Authorization", "Bearer " + authToken)
+                .contentType(MediaType.MULTIPART_FORM_DATA_VALUE)
+                .multiPart("file", "test-multipart.jpg", mockImageBytes, "image/jpeg")
+                .when()
+                .post(BASE_URL + "/dashboard/media/upload-multipart")
+                .then()
+                .statusCode(200)
+                .body("success", is(true))
+                .body("data.fileName", equalTo("test-multipart.jpg"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // IT-M15-011: 媒體列表查詢（按 tenant 分隔）
     // ═══════════════════════════════════════════════════════════════════════════
 

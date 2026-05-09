@@ -333,7 +333,7 @@ class AdminServiceTest {
 
             when(tenantRepository.findAll()).thenReturn(java.util.List.of(tenant1, tenant2));
             when(userRepository.findByTenantId(any())).thenReturn(java.util.Collections.emptyList());
-            when(listingRepository.findByTenantId(any())).thenReturn(java.util.Collections.emptyList());
+            when(listingRepository.findIdsByTenantId(any())).thenReturn(java.util.Collections.emptyList());
 
             // Act
             AdminDto.TenantListResponse response = adminService.getTenants(0, 10);
@@ -372,7 +372,7 @@ class AdminServiceTest {
             Tenant tenant = buildTenant();
             when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
             when(userRepository.findByTenantId(TEST_TENANT_ID)).thenReturn(java.util.Collections.emptyList());
-            when(listingRepository.findByTenantId(TEST_TENANT_ID)).thenReturn(java.util.Collections.emptyList());
+            when(listingRepository.findIdsByTenantId(TEST_TENANT_ID)).thenReturn(java.util.Collections.emptyList());
 
             // Act
             AdminDto.TenantResponse response = adminService.getTenant(TEST_TENANT_ID);

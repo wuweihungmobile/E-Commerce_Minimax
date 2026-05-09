@@ -43,10 +43,10 @@ public class TenantController {
     }
 
     /**
-     * US-M17-002: GET /api/v2/tenants - Get my stores list
+     * US-M17-005: GET /api/v2/tenants/my - Get my stores list
      * Role: StoreOwner (authenticated)
      */
-    @GetMapping("/tenants")
+    @GetMapping("/tenants/my")
     @PreAuthorize("hasAuthority('SCOPE_store:read') or hasAuthority('ROLE_STORE_OWNER') or hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getMyTenants(
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -177,5 +177,93 @@ public class TenantController {
         }
         log.debug("[TenantController] No tenant ID found for user: {}", principal.getUserId());
         return null;
+    }
+
+    /**
+     * US-M17-006: GET /api/v2/tenants/:id/members - Get members list
+     * Role: StoreOwner+
+     */
+    @GetMapping("/tenants/{id}/members")
+    @PreAuthorize("hasAuthority('SCOPE_store:read') or hasAuthority('ROLE_STORE_OWNER') or hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getTenantMembers(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        log.info("[TenantController] getTenantMembers called: tenantId={}, user={}", id, principal.getUserId());
+
+        if (principal == null) {
+            throw new BusinessException(ErrorCode.E_1000, "Authentication required");
+        }
+
+        List<TenantMemberResponse> members = tenantService.getTenantMembers(id);
+        return ResponseEntity.ok(ApiResponse.success(Map.of("members", members)));
+    }
+
+    /**
+     * US-M17-006: POST /api/v2/tenants/:id/members - Add member (Phase 1)
+     * Role: StoreOwner
+     */
+    @PostMapping("/tenants/{id}/members")
+    @PreAuthorize("hasAuthority('SCOPE_store:write') or hasAuthority('ROLE_STORE_OWNER') or hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<ApiResponse<TenantMemberResponse>> addMember(
+            @PathVariable UUID id,
+            @Valid @RequestBody AddMemberRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        log.info("[TenantController] addMember called: tenantId={}, user={}", id, principal.getUserId());
+
+        if (principal == null) {
+            throw new BusinessException(ErrorCode.E_1000, "Authentication required");
+        }
+
+        TenantMemberResponse response = tenantService.addMember(id, request.getUserId(), principal.getUserId());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Member added successfully", response));
+    }
+
+    /**
+     * US-M17-006: PUT /api/v2/tenants/:id/members/:userId/role - Update member role
+     * Role: StoreOwner
+     */
+    @PutMapping("/tenants/{id}/members/{userId}/role")
+    @PreAuthorize("hasAuthority('SCOPE_store:write') or hasAuthority('ROLE_STORE_OWNER') or hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<ApiResponse<TenantMemberResponse>> updateMemberRole(
+            @PathVariable UUID id,
+            @PathVariable UUID userId,
+            @Valid @RequestBody Map<String, String> request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        log.info("[TenantController] updateMemberRole called: tenantId={}, targetUserId={}, user={}",
+                id, userId, principal.getUserId());
+
+        if (principal == null) {
+            throw new BusinessException(ErrorCode.E_1000, "Authentication required");
+        }
+
+        String newRole = request.get("role");
+        if (newRole == null || newRole.isBlank()) {
+            throw new BusinessException(ErrorCode.E_1001, "Role is required");
+        }
+
+        TenantMemberResponse response = tenantService.updateMemberRole(id, userId, newRole);
+        return ResponseEntity.ok(ApiResponse.success("Member role updated successfully", response));
+    }
+
+    /**
+     * US-M17-006: DELETE /api/v2/tenants/:id/members/:userId - Remove member
+     * Role: StoreOwner
+     */
+    @DeleteMapping("/tenants/{id}/members/{userId}")
+    @PreAuthorize("hasAuthority('SCOPE_store:write') or hasAuthority('ROLE_STORE_OWNER') or hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<ApiResponse<Map<String, String>>> removeMember(
+            @PathVariable UUID id,
+            @PathVariable UUID userId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        log.info("[TenantController] removeMember called: tenantId={}, targetUserId={}, user={}",
+                id, userId, principal.getUserId());
+
+        if (principal == null) {
+            throw new BusinessException(ErrorCode.E_1000, "Authentication required");
+        }
+
+        tenantService.removeMember(id, userId);
+        return ResponseEntity.ok(ApiResponse.success(Map.of("message", "Member removed successfully")));
     }
 }

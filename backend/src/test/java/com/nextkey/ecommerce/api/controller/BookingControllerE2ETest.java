@@ -11,6 +11,7 @@ import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
@@ -235,9 +236,16 @@ class BookingControllerE2ETest {
                         @Autowired UserRepository userRepo,
                         @Autowired TenantFeatureToggleRepository featureToggleRepo,
                         @Autowired BookingRepository bookingRepo,
-                        @Autowired RoomRepository roomRepo) {
+                        @Autowired RoomRepository roomRepo,
+                        @Autowired RoomCalendarRepository roomCalendarRepo) {
         // 清理測試資料
         if (testRoomListingId != null) {
+            // 先刪除關聯的 room_calendar 資料，避免 FK 約束衝突
+            roomCalendarRepo.findByListingIdAndCalendarDateBetween(
+                    testRoomListingId,
+                    LocalDate.now().minusYears(1),
+                    LocalDate.now().plusYears(1)
+            ).forEach(calendar -> roomCalendarRepo.delete(calendar));
             roomRepo.deleteById(testRoomListingId);
             listingRepo.deleteById(testRoomListingId);
         }

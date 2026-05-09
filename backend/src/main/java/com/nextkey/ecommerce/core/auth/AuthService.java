@@ -9,6 +9,7 @@ import com.nextkey.ecommerce.api.dto.RegisterResponse;
 import com.nextkey.ecommerce.api.dto.UserInfoResponse;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
+import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
@@ -35,6 +36,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final TenantRepository tenantRepository;
+    private final TenantMemberRepository tenantMemberRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenService jwtTokenService;
     private final RefreshTokenService refreshTokenService;
@@ -58,10 +60,27 @@ public class AuthService {
                 .role(role)
                 .status("ACTIVE")
                 .emailVerified(false)
+                .tenantId(request.getTenantId())
                 .metadata(new HashMap<>())
                 .build();
 
         user = userRepository.save(user);
+
+        // If tenantId is provided, create TenantMember association
+        if (request.getTenantId() != null) {
+            Tenant tenant = tenantRepository.findById(request.getTenantId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
+
+            com.nextkey.ecommerce.domain.model.tenant.TenantMember member =
+                    com.nextkey.ecommerce.domain.model.tenant.TenantMember.builder()
+                            .tenantId(request.getTenantId())
+                            .userId(user.getId())
+                            .storeRole(com.nextkey.ecommerce.domain.model.tenant.TenantMember.StoreRole.STORE_OWNER)
+                            .build();
+            tenantMemberRepository.save(member);
+            log.info("User {} associated with tenant {}", user.getEmail(), request.getTenantId());
+        }
+
         log.info("New user registered: {} ({})", user.getEmail(), user.getRole());
 
         return RegisterResponse.builder()
@@ -77,8 +96,11 @@ public class AuthService {
             return User.UserRole.BUYER;
         }
         return switch (userType) {
+            case "STORE_OWNER" -> User.UserRole.STORE_OWNER;
+            case "STORE_STAFF" -> User.UserRole.STORE_STAFF;
             case "SELLER" -> User.UserRole.SELLER;
             case "HOST" -> User.UserRole.HOST;
+            case "BUYER" -> User.UserRole.BUYER;
             default -> User.UserRole.BUYER;
         };
     }
@@ -96,10 +118,17 @@ public class AuthService {
         user.setLastLoginAt(Instant.now());
         userRepository.save(user);
 
-        // Get tenant
-        Tenant tenant = user.getTenantId() != null
-                ? tenantRepository.findById(user.getTenantId()).orElse(null)
-                : null;
+        // Get tenant - try user.tenantId first, then check TenantMember
+        Tenant tenant = null;
+        if (user.getTenantId() != null) {
+            tenant = tenantRepository.findById(user.getTenantId()).orElse(null);
+        } else {
+            // Try to find tenant from TenantMember relationship
+            var members = tenantMemberRepository.findByUserId(user.getId());
+            if (!members.isEmpty()) {
+                tenant = tenantRepository.findById(members.get(0).getTenantId()).orElse(null);
+            }
+        }
 
         log.info("User logged in: {}", user.getEmail());
 

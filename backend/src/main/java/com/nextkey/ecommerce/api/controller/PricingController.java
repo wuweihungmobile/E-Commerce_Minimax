@@ -19,7 +19,7 @@ import java.util.UUID;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/v2/dashboard/pricing")
+@RequestMapping("/v2/dashboard/pricing")
 @RequiredArgsConstructor
 public class PricingController {
 

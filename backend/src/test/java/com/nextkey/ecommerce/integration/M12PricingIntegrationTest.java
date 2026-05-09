@@ -74,7 +74,7 @@ class M12PricingIntegrationTest {
     @MockBean
     private com.nextkey.ecommerce.core.feature.FeatureToggleService featureToggleService;
 
-    private static final String BASE_URL = "/api/v2/dashboard/pricing";
+    private static final String BASE_URL = "/v2/dashboard/pricing";
     private static final String TEST_TENANT_ID = "550e8400-e29b-41d4-a716-446655440001";
     private static final UUID ROOM_LISTING_ID = UUID.fromString("660e8400-e29b-41d4-a716-446655440002");
 

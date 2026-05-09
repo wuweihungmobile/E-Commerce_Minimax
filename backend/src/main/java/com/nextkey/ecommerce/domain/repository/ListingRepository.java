@@ -38,6 +38,12 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
     @Query("SELECT l FROM Listing l WHERE l.status = 'ACTIVE' AND l.tenant.id = :tenantId")
     Page<Listing> findActiveByTenantId(@Param("tenantId") UUID tenantId, Pageable pageable);
 
+    @Query("SELECT l.id FROM Listing l WHERE l.tenant.id = :tenantId")
+    List<UUID> findIdsByTenantId(@Param("tenantId") UUID tenantId);
+
     @Query("SELECT l FROM Listing l WHERE l.tenant.id = :tenantId")
     List<Listing> findByTenantId(@Param("tenantId") UUID tenantId);
+
+    @Query("SELECT l FROM Listing l LEFT JOIN FETCH l.tenant WHERE l.id = :listingId")
+    Optional<Listing> findByIdWithTenant(@Param("listingId") UUID listingId);
 }

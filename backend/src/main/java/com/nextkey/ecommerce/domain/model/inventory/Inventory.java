@@ -45,6 +45,21 @@ public class Inventory {
     @Builder.Default
     private Integer reorderPoint = 0;
 
+    @Column(name = "sku_code")
+    private String skuCode;
+
+    @Column(name = "product_name")
+    private String productName;
+
+    @Column(name = "location")
+    private String location;
+
+    @Column(name = "last_inbound_date")
+    private Instant lastInboundDate;
+
+    @Column(name = "last_outbound_date")
+    private Instant lastOutboundDate;
+
     @Version
     private Long version; // Optimistic lock
 

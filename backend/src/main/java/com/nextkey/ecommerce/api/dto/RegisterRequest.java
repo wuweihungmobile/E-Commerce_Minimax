@@ -9,6 +9,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.UUID;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -31,7 +33,10 @@ public class RegisterRequest {
 
     private String phone;
 
-    /** 會員類型：BUYER / SELLER / HOST，預設 BUYER */
-    @Pattern(regexp = "^(BUYER|SELLER|HOST)$", message = "userType must be BUYER, SELLER, or HOST")
+    /** 會員類型：BUYER / SELLER / HOST / STORE_OWNER / STORE_STAFF，預設 BUYER */
+    @Pattern(regexp = "^(BUYER|SELLER|HOST|STORE_OWNER|STORE_STAFF)$", message = "userType must be BUYER, SELLER, HOST, STORE_OWNER, or STORE_STAFF")
     private String userType;
+
+    /** 關聯的 Tenant ID（可選） */
+    private UUID tenantId;
 }

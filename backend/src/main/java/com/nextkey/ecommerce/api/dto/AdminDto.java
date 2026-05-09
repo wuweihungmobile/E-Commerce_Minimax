@@ -201,6 +201,33 @@ public class AdminDto {
         private String reason;
     }
 
+    // ========== Tenant Status Update ==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantStatusUpdateRequest {
+        @NotBlank(message = "Status is required")
+        @jakarta.validation.constraints.Pattern(regexp = "^(SUSPENDED|ACTIVE|TERMINATED)$",
+                message = "Status must be SUSPENDED, ACTIVE, or TERMINATED")
+        private String status;
+
+        private String reason; // Required when terminating
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantStatusUpdateResponse {
+        private UUID tenantId;
+        private String previousStatus;
+        private String newStatus;
+        private String updatedAt;
+        private String updatedBy;
+    }
+
     // ========== System Config ==========
 
     @Data

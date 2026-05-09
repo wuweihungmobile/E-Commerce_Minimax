@@ -165,6 +165,8 @@ public class RolePermissionMapping {
         Set<Permission> permissions = getPermissions(role);
         List<String> authorities = new ArrayList<>();
         authorities.add("ROLE_" + role.name());
+        // Also add the role name itself (without ROLE_ prefix) for @PreAuthorize("hasAuthority('STORE_OWNER')")
+        authorities.add(role.name());
         for (Permission permission : permissions) {
             authorities.add(permission.getCode());
         }

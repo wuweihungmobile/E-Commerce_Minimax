@@ -33,12 +33,19 @@ public class TenantService {
     private static final Map<String, FeatureDefinition> FEATURE_DEFINITIONS = new LinkedHashMap<>();
 
     static {
+        // REF: Sprint 7 Plan L109-120, Sprint 7 User Stories L131-142
+        // Default values based on HYBRID (all toggles enabled by default for new stores)
         FEATURE_DEFINITIONS.put("RETAIL_ENABLED", new FeatureDefinition("RETAIL_ENABLED", "零售功能", "可上架實體商品", false, true));
-        FEATURE_DEFINITIONS.put("BOOKING_ENABLED", new FeatureDefinition("BOOKING_ENABLED", "民宿預訂功能", "可上架民宿房間", true, false));
+        FEATURE_DEFINITIONS.put("BOOKING_ENABLED", new FeatureDefinition("BOOKING_ENABLED", "民宿預訂功能", "可上架民宿房間", true, true));
         FEATURE_DEFINITIONS.put("CMS_ENABLED", new FeatureDefinition("CMS_ENABLED", "CMS 貼文功能", "可發布 CMS 貼文", false, true));
         FEATURE_DEFINITIONS.put("ERP_ENABLED", new FeatureDefinition("ERP_ENABLED", "進銷存功能", "可使用進銷存管理", false, true));
         FEATURE_DEFINITIONS.put("DYNAMIC_PRICING_ENABLED", new FeatureDefinition("DYNAMIC_PRICING_ENABLED", "動態定價功能", "可使用動態定價引擎", true, false));
         FEATURE_DEFINITIONS.put("PROMO_ENABLED", new FeatureDefinition("PROMO_ENABLED", "促銷活動功能", "可建立促銷活動", true, false));
+        // Numeric toggles (stored as JSONB config)
+        FEATURE_DEFINITIONS.put("MAX_PRODUCTS", new FeatureDefinition("MAX_PRODUCTS", "最大商品數", "店鋪可上架商品數上限", false, 100));
+        FEATURE_DEFINITIONS.put("MAX_ROOMS", new FeatureDefinition("MAX_ROOMS", "最大房源數", "店鋪可上架房源數上限", false, 20));
+        FEATURE_DEFINITIONS.put("MAX_POSTS", new FeatureDefinition("MAX_POSTS", "最大貼文數", "店鋪可發布貼文數上限", false, 50));
+        FEATURE_DEFINITIONS.put("COMMISSION_RATE", new FeatureDefinition("COMMISSION_RATE", "抽佣比例", "平台抽佣比例", false, 0.05));
     }
 
     /**
@@ -301,7 +308,7 @@ public class TenantService {
                     .featureKey(key)
                     .featureName(def.name)
                     .description(def.description)
-                    .isEnabled(toggle != null ? toggle.getIsEnabled() : def.defaultEnabled)
+                    .isEnabled(toggle != null ? toggle.getIsEnabled() : def.booleanDefault)
                     .enabledAt(toggle != null ? toggle.getEnabledAt() : null)
                     .requestedAt(toggle != null && !toggle.getIsEnabled() ? toggle.getCreatedAt() : null)
                     .build());
@@ -337,7 +344,7 @@ public class TenantService {
                 .findByTenantIdAndFeatureKey(tenantId, featureKey)
                 .orElse(null);
 
-        Boolean previousState = toggle != null ? toggle.getIsEnabled() : featureDef.defaultEnabled;
+        Boolean previousState = toggle != null ? toggle.getIsEnabled() : featureDef.booleanDefault;
 
         if (toggle == null) {
             toggle = TenantFeatureToggle.builder()
@@ -402,7 +409,8 @@ public class TenantService {
         // Apply defaults for missing features
         for (Map.Entry<String, FeatureDefinition> entry : FEATURE_DEFINITIONS.entrySet()) {
             if (!features.containsKey(entry.getKey())) {
-                features.put(entry.getKey(), entry.getValue().defaultEnabled);
+                FeatureDefinition def = entry.getValue();
+                features.put(entry.getKey(), def.isBoolean ? def.booleanDefault : false);
             }
         }
 
@@ -424,14 +432,243 @@ public class TenantService {
         final String name;
         final String description;
         final boolean requiresApproval;
-        final boolean defaultEnabled;
+        final boolean isBoolean;  // true for boolean toggle, false for numeric toggle
+        final boolean booleanDefault;  // default value for boolean toggles
+        final double numericDefault;   // default value for numeric toggles
 
+        // Boolean toggle constructor
         FeatureDefinition(String key, String name, String description, boolean requiresApproval, boolean defaultEnabled) {
             this.key = key;
             this.name = name;
             this.description = description;
             this.requiresApproval = requiresApproval;
-            this.defaultEnabled = defaultEnabled;
+            this.isBoolean = true;
+            this.booleanDefault = defaultEnabled;
+            this.numericDefault = 0;
         }
+
+        // Numeric toggle constructor
+        FeatureDefinition(String key, String name, String description, boolean requiresApproval, double defaultValue) {
+            this.key = key;
+            this.name = name;
+            this.description = description;
+            this.requiresApproval = requiresApproval;
+            this.isBoolean = false;
+            this.booleanDefault = false;
+            this.numericDefault = defaultValue;
+        }
+    }
+
+    /**
+     * US-M17-006: Get members of a tenant
+     */
+    @Transactional(readOnly = true)
+    public List<TenantMemberResponse> getTenantMembers(UUID tenantId) {
+        // Verify user belongs to this tenant
+        UUID userId = TenantContext.getCurrentUser();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.E_1000);
+        }
+
+        if (!tenantMemberRepository.existsByTenantIdAndUserId(tenantId, userId)) {
+            throw new BusinessException(ErrorCode.E_4031, "Not authorized to view this store's members");
+        }
+
+        List<TenantMember> members = tenantMemberRepository.findByTenantId(tenantId);
+        List<TenantMemberResponse> responseList = new ArrayList<>();
+
+        for (TenantMember member : members) {
+            User user = userRepository.findById(member.getUserId()).orElse(null);
+            if (user == null) {
+                continue;
+            }
+
+            responseList.add(TenantMemberResponse.builder()
+                    .userId(member.getUserId().toString())
+                    .displayName(user.getFullName())
+                    .email(user.getEmail())
+                    .avatarUrl(user.getAvatarUrl())
+                    .role(member.getStoreRole().name())
+                    .joinedAt(member.getJoinedAt())
+                    .build());
+        }
+
+        return responseList;
+    }
+
+    /**
+     * US-M17-006: Add member to tenant (Phase 1 - direct add, no email invite)
+     */
+    @Transactional
+    public TenantMemberResponse addMember(UUID tenantId, UUID userId, UUID invitedBy) {
+        // Verify current user is StoreOwner of this tenant
+        UUID currentUserId = TenantContext.getCurrentUser();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.E_1000);
+        }
+
+        if (!tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(tenantId, currentUserId, TenantMember.StoreRole.STORE_OWNER)) {
+            throw new BusinessException(ErrorCode.E_4031, "Not authorized to add members");
+        }
+
+        // Check if user is already a member
+        if (tenantMemberRepository.existsByTenantIdAndUserId(tenantId, userId)) {
+            throw new BusinessException(ErrorCode.E_4092, "User is already a member of this store");
+        }
+
+        // Verify the user exists
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2001, "User not found"));
+
+        // Create member record
+        TenantMember member = TenantMember.builder()
+                .tenantId(tenantId)
+                .userId(userId)
+                .storeRole(TenantMember.StoreRole.STORE_STAFF)  // Default role for new members
+                .invitedBy(invitedBy)
+                .joinedAt(Instant.now())
+                .build();
+
+        member = tenantMemberRepository.save(member);
+        log.info("Member added to tenant: tenantId={}, userId={}, addedBy={}", tenantId, userId, invitedBy);
+
+        return TenantMemberResponse.builder()
+                .userId(userId.toString())
+                .displayName(user.getFullName())
+                .email(user.getEmail())
+                .avatarUrl(user.getAvatarUrl())
+                .role(member.getStoreRole().name())
+                .joinedAt(member.getJoinedAt())
+                .build();
+    }
+
+    /**
+     * US-M17-006: Update member role
+     */
+    @Transactional
+    public TenantMemberResponse updateMemberRole(UUID tenantId, UUID userId, String newRole) {
+        // Verify current user is StoreOwner of this tenant
+        UUID currentUserId = TenantContext.getCurrentUser();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.E_1000);
+        }
+
+        if (!tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(tenantId, currentUserId, TenantMember.StoreRole.STORE_OWNER)) {
+            throw new BusinessException(ErrorCode.E_4031, "Not authorized to update member roles");
+        }
+
+        TenantMember member = tenantMemberRepository.findByTenantIdAndUserId(tenantId, userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2002, "Member not found"));
+
+        // Parse and validate role
+        TenantMember.StoreRole storeRole;
+        try {
+            storeRole = TenantMember.StoreRole.valueOf(newRole);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.E_1001, "Invalid role: " + newRole);
+        }
+
+        // Cannot change the original StoreOwner's role
+        if (member.getStoreRole() == TenantMember.StoreRole.STORE_OWNER) {
+            throw new BusinessException(ErrorCode.E_4031, "Cannot change the owner's role");
+        }
+
+        member.setStoreRole(storeRole);
+        member = tenantMemberRepository.save(member);
+        log.info("Member role updated: tenantId={}, userId={}, newRole={}", tenantId, userId, newRole);
+
+        User user = userRepository.findById(userId).orElse(null);
+        return TenantMemberResponse.builder()
+                .userId(userId.toString())
+                .displayName(user != null ? user.getFullName() : "")
+                .email(user != null ? user.getEmail() : "")
+                .avatarUrl(user != null ? user.getAvatarUrl() : null)
+                .role(member.getStoreRole().name())
+                .joinedAt(member.getJoinedAt())
+                .build();
+    }
+
+    /**
+     * US-M17-006: Remove member from tenant
+     */
+    @Transactional
+    public void removeMember(UUID tenantId, UUID userId) {
+        // Verify current user is StoreOwner of this tenant
+        UUID currentUserId = TenantContext.getCurrentUser();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.E_1000);
+        }
+
+        if (!tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(tenantId, currentUserId, TenantMember.StoreRole.STORE_OWNER)) {
+            throw new BusinessException(ErrorCode.E_4031, "Not authorized to remove members");
+        }
+
+        TenantMember member = tenantMemberRepository.findByTenantIdAndUserId(tenantId, userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2002, "Member not found"));
+
+        // Cannot remove yourself
+        if (member.getUserId().equals(currentUserId)) {
+            throw new BusinessException(ErrorCode.E_4031, "Cannot remove yourself from the store");
+        }
+
+        // Cannot remove the StoreOwner
+        if (member.getStoreRole() == TenantMember.StoreRole.STORE_OWNER) {
+            throw new BusinessException(ErrorCode.E_4031, "Cannot remove the store owner");
+        }
+
+        tenantMemberRepository.delete(member);
+        log.info("Member removed from tenant: tenantId={}, userId={}, removedBy={}", tenantId, userId, currentUserId);
+    }
+
+    /**
+     * Initialize feature toggles for a tenant based on business type
+     * Called when tenant status changes to ACTIVE
+     */
+    @Transactional
+    public void initializeFeatureToggles(UUID tenantId, String businessType) {
+        log.info("Initializing feature toggles for tenant: {}, businessType: {}", tenantId, businessType);
+
+        List<TenantFeatureToggle> toggles = new ArrayList<>();
+
+        // Set boolean toggles based on business type
+        boolean retailEnabled = "RETAIL_ONLY".equals(businessType) || "HYBRID".equals(businessType);
+        boolean bookingEnabled = "BOOKING_ONLY".equals(businessType) || "HYBRID".equals(businessType);
+
+        toggles.add(createToggle(tenantId, "RETAIL_ENABLED", retailEnabled));
+        toggles.add(createToggle(tenantId, "BOOKING_ENABLED", bookingEnabled));
+        toggles.add(createToggle(tenantId, "CMS_ENABLED", true));
+        toggles.add(createToggle(tenantId, "ERP_ENABLED", true));
+        toggles.add(createToggle(tenantId, "DYNAMIC_PRICING_ENABLED", false));
+        toggles.add(createToggle(tenantId, "PROMO_ENABLED", false));
+
+        // Numeric toggles
+        toggles.add(createNumericToggle(tenantId, "MAX_PRODUCTS", "RETAIL_ONLY".equals(businessType) ? 100 : ("BOOKING_ONLY".equals(businessType) ? 0 : 100)));
+        toggles.add(createNumericToggle(tenantId, "MAX_ROOMS", "RETAIL_ONLY".equals(businessType) ? 0 : ("BOOKING_ONLY".equals(businessType) ? 20 : 20)));
+        toggles.add(createNumericToggle(tenantId, "MAX_POSTS", 50));
+        toggles.add(createNumericToggle(tenantId, "COMMISSION_RATE", 0.05));
+
+        tenantFeatureToggleRepository.saveAll(toggles);
+        log.info("Feature toggles initialized for tenant: {}, count: {}", tenantId, toggles.size());
+    }
+
+    private TenantFeatureToggle createToggle(UUID tenantId, String featureKey, boolean enabled) {
+        return TenantFeatureToggle.builder()
+                .tenantId(tenantId)
+                .featureKey(featureKey)
+                .isEnabled(enabled)
+                .enabledAt(enabled ? Instant.now() : null)
+                .createdAt(Instant.now())
+                .build();
+    }
+
+    private TenantFeatureToggle createNumericToggle(UUID tenantId, String featureKey, double value) {
+        Map<String, Object> configMap = Map.of("value", value);
+        return TenantFeatureToggle.builder()
+                .tenantId(tenantId)
+                .featureKey(featureKey)
+                .isEnabled(true)  // Numeric toggles are always enabled
+                .config(configMap)
+                .createdAt(Instant.now())
+                .build();
     }
 }

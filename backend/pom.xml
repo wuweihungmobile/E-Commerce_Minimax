@@ -101,6 +101,13 @@
             <artifactId>commons-lang3</artifactId>
         </dependency>
 
+        <!-- MinIO S3 Client -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>8.5.9</version>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

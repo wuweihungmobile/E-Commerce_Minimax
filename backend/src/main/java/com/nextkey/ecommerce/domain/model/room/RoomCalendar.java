@@ -26,9 +26,6 @@ public class RoomCalendar {
     @JoinColumn(name = "room_listing_id", nullable = false)
     private Listing listing;
 
-    @Column(name = "room_listing_id", insertable = false, updatable = false)
-    private UUID roomListingId;
-
     @Column(name = "calendar_date", nullable = false)
     private LocalDate calendarDate;
 

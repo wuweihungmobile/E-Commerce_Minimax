@@ -89,6 +89,20 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success("Tenant rejected successfully", response));
     }
 
+    /**
+     * 更新租戶狀態 (US-M17-007)
+     * 支援：ACTIVE → SUSPENDED、SUSPENDED → ACTIVE、SUSPENDED → TERMINATED
+     */
+    @PutMapping("/tenants/{tenantId}/status")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.TenantStatusUpdateResponse>> updateTenantStatus(
+            @PathVariable UUID tenantId,
+            @Valid @RequestBody AdminDto.TenantStatusUpdateRequest request) {
+        log.info("Update tenant status: tenantId={}, newStatus={}", tenantId, request.getStatus());
+        AdminDto.TenantStatusUpdateResponse response = adminService.updateTenantStatus(tenantId, request);
+        return ResponseEntity.ok(ApiResponse.success("Tenant status updated successfully", response));
+    }
+
     // ========== User Management ==========
 
     /**
@@ -134,9 +148,10 @@ public class AdminController {
     }
 
     /**
-     * 取得租戶的功能開關
+     * US-M17-008: 取得租戶的功能開關 (Admin)
+     * 路徑: GET /v2/admin/tenants/{tenantId}/features
      */
-    @GetMapping("/tenants/{tenantId}/feature-toggles")
+    @GetMapping("/tenants/{tenantId}/features")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<AdminDto.TenantFeatureTogglesResponse>> getTenantFeatureToggles(
             @PathVariable UUID tenantId) {

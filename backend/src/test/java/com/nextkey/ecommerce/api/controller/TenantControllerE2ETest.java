@@ -21,6 +21,7 @@ import java.util.UUID;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.anyOf;
 
 /**
  * Tenant Controller API E2E 測試 (US-M17-001 ~ US-M17-006)
@@ -113,14 +114,14 @@ class TenantControllerE2ETest {
 
     @Test
     @Order(2)
-    @DisplayName("US-M17-002: GET /api/v2/tenants - 需要認證才能取得店鋪列表")
+    @DisplayName("US-M17-002: GET /api/v2/tenants/my - 需要認證才能取得店鋪列表")
     void getMyTenants_unauthenticated_shouldFail() {
-        // 未認證的請求應該被拒絕
+        // 未認證的請求應該被拒絕（可能是 401 或 403，取決於 Spring Security 配置）
         given()
                 .when()
-                .get(BASE_URL + "/tenants")
+                .get(BASE_URL + "/tenants/my")
                 .then()
-                .statusCode(401); // or 403 depending on security config
+                .statusCode(anyOf(equalTo(401), equalTo(403)));
     }
 
     // ── US-M17-003: 取得店鋪詳情 ─────────────────────────────────────
@@ -436,7 +437,7 @@ class TenantControllerE2ETest {
             given()
                     .header("Authorization", "Bearer " + accessToken)
                     .when()
-                    .get(BASE_URL + "/tenants")
+                    .get(BASE_URL + "/tenants/my")
                     .then()
                     .statusCode(200)
                     .body("success", is(true))

@@ -97,7 +97,7 @@
 
 | 項目 | 說明 | 負責 | 狀態 |
 |------|------|------|------|
-| MinIO 實際上傳 | 需驗證 S3/MinIO 寫入 | QA | ⏳ 待驗證 |
+| MinIO 實際上傳 | 需驗證 S3/MinIO 寫入 | QA | ✅ **已在 Sprint 9 驗證通過** |
 
 **驗證方式**:
 ```bash
@@ -111,6 +111,10 @@ POST /v2/media/upload
 
 # 3. 確認檔案出現在 MinIO 中
 ```
+
+**驗證結果 (Sprint 9)**:
+- IT-M15-010b: Multipart 上傳成功 ✅
+- E2E-M15-003: 媒體上傳流程 2/2 通過 ✅
 
 ### 5.2 Sprint 9 前置確認
 
@@ -163,12 +167,12 @@ POST /v2/media/upload
 |------|--------|--------|----------|------|
 | PM/PO 發布確認 | PM/PO | P0 | 2026-05-05 | ✅ 完成 |
 | FE 團隊 Briefing | PM | P1 | N/A (不需要) | ✅ 取消 |
-| Sprint 9 開始 | Dev Team | P1 | **2026-05-06** | ✅ 確認 |
-| 新增 MultipartFile Upload Endpoint | Dev | P1 | Sprint 9 Day 1 | ⏳ 待執行 |
-| MinIO 實際上傳驗證 | QA | P2 | Sprint 9 Day 1 | ⏳ 待驗證 |
+| Sprint 9 開始 | Dev Team | P1 | 2026-05-06 | ✅ 完成 |
+| 新增 MultipartFile Upload Endpoint | Dev | P1 | Sprint 9 Day 1 | ✅ 完成 |
+| MinIO 實際上傳驗證 | QA | P2 | Sprint 9 Day 1 | ✅ 完成 |
 
 ---
 
-**文件狀態**: ✅ **APPROVED** - Sprint 8 已核准發布
+**文件狀態**: ✅ **APPROVED** - Sprint 8 已核准發布，Sprint 9 已完成
 **準備者**: QA (Quincy)
-**最後更新**: 2026-05-05 22:15 UTC+0800
+**最後更新**: 2026-05-06 (Sprint 9 完成)

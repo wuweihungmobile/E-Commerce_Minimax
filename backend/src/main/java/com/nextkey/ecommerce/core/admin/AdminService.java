@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.admin;
 
 import com.nextkey.ecommerce.api.dto.AdminDto;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.model.user.User;
@@ -154,6 +155,96 @@ public class AdminService {
                 .rejectedBy("SYSTEM_ADMIN")
                 .reason(request.getReason())
                 .build();
+    }
+
+    /**
+     * US-M17-007: 更新租戶狀態
+     * 支援狀態轉換：
+     * - ACTIVE → SUSPENDED (Admin 暫停店鋪)
+     * - SUSPENDED → ACTIVE (Admin 恢復店鋪)
+     * - SUSPENDED → TERMINATED (Admin 終止店鋪)
+     */
+    @Transactional
+    public AdminDto.TenantStatusUpdateResponse updateTenantStatus(UUID tenantId, AdminDto.TenantStatusUpdateRequest request) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
+
+        Tenant.TenantStatus currentStatus = tenant.getStatus();
+        Tenant.TenantStatus newStatus;
+
+        try {
+            newStatus = Tenant.TenantStatus.valueOf(request.getStatus());
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.E_9000, "Invalid status: " + request.getStatus());
+        }
+
+        // 驗證狀態機轉換
+        validateStatusTransition(currentStatus, newStatus, request.getReason());
+
+        // 終止時需要填寫原因
+        if (newStatus == Tenant.TenantStatus.TERMINATED &&
+                (request.getReason() == null || request.getReason().isBlank())) {
+            throw new BusinessException(ErrorCode.E_9000, "Reason is required when terminating a tenant");
+        }
+
+        String previousStatus = currentStatus.name();
+
+        // 更新狀態
+        tenant.setStatus(newStatus);
+        tenantRepository.save(tenant);
+
+        // 如果是 SUSPENDED，自動下架所有 Listings
+        if (newStatus == Tenant.TenantStatus.SUSPENDED) {
+            deactivateTenantListings(tenantId);
+        }
+
+        // 寫入 audit log (mock - log only since no AuditLog entity exists)
+        log.info("AUDIT_LOG: Tenant status updated - tenantId={}, previousStatus={}, newStatus={}, reason={}, updatedBy=SUPER_ADMIN",
+                tenantId, previousStatus, newStatus.name(), request.getReason());
+
+        return AdminDto.TenantStatusUpdateResponse.builder()
+                .tenantId(tenantId)
+                .previousStatus(previousStatus)
+                .newStatus(newStatus.name())
+                .updatedAt(Instant.now().toString())
+                .updatedBy("SUPER_ADMIN")
+                .build();
+    }
+
+    /**
+     * 驗證狀態機轉換是否合法
+     */
+    private void validateStatusTransition(Tenant.TenantStatus currentStatus, Tenant.TenantStatus newStatus, String reason) {
+        // 相同狀態不允許
+        if (currentStatus == newStatus) {
+            throw new BusinessException(ErrorCode.E_9000, "Tenant is already in status: " + newStatus);
+        }
+
+        // 狀態機定義
+        boolean validTransition = switch (currentStatus) {
+            case ACTIVE -> newStatus == Tenant.TenantStatus.SUSPENDED;
+            case SUSPENDED -> newStatus == Tenant.TenantStatus.ACTIVE || newStatus == Tenant.TenantStatus.TERMINATED;
+            default -> false;
+        };
+
+        if (!validTransition) {
+            throw new BusinessException(ErrorCode.E_2005, "Invalid status transition from " + currentStatus + " to " + newStatus);
+        }
+    }
+
+    /**
+     * 停用租戶的所有 Listings (當店鋪被 SUSPENDED 時自動執行)
+     */
+    private void deactivateTenantListings(UUID tenantId) {
+        List<Listing> listings = listingRepository.findByTenantId(tenantId);
+        for (Listing listing : listings) {
+            if (listing.getStatus() == Listing.ListingStatus.ACTIVE) {
+                listing.setStatus(Listing.ListingStatus.INACTIVE);
+                listingRepository.save(listing);
+                log.info("Listing deactivated due to tenant suspension: listingId={}", listing.getId());
+            }
+        }
+        log.info("Deactivated all active listings for tenant: tenantId={}, count={}", tenantId, listings.size());
     }
 
     /**
@@ -402,7 +493,8 @@ public class AdminService {
 
     private AdminDto.TenantResponse toTenantResponse(Tenant tenant) {
         int userCount = userRepository.findByTenantId(tenant.getId()).size();
-        int listingCount = listingRepository.findByTenantId(tenant.getId()).size();
+        // Use findIdsByTenantId to avoid loading Listing entities with problematic tags field
+        int listingCount = listingRepository.findIdsByTenantId(tenant.getId()).size();
 
         return AdminDto.TenantResponse.builder()
                 .tenantId(tenant.getId())

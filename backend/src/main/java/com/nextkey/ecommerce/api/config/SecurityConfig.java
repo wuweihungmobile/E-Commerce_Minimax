@@ -79,6 +79,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/v2/tenants/apply").permitAll()
                 .requestMatchers("/api/v2/tenants/{id}").permitAll()
                 .requestMatchers("/v2/public/**").permitAll()
+                // M15 CMS public endpoints (前台公開 API)
+                .requestMatchers("/v2/posts").permitAll()
+                .requestMatchers("/v2/posts/**").permitAll()
+                .requestMatchers("/v2/listings/*/card").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 // All other requests require authentication
                 .anyRequest().authenticated()

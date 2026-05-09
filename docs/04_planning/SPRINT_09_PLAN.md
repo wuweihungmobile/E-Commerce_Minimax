@@ -204,11 +204,11 @@ Sprint 8 M15 CMS Backend ✅ ─┐
 
 | 標準 | 目標 | 狀態 |
 |------|------|------|
-| FE-BE 整合測試通過 | 17/17 | ⏳ |
-| E2E 測試通過 | 5/5 | ⏳ |
-| MultipartFile 上傳工作 | 是 | ⏳ |
-| MinIO 實際寫入驗證 | 是 | ⏳ |
-| 無 High 缺陷 | High = 0 | ⏳ |
+| FE-BE 整合測試通過 | 17/17 | ✅ 已達成 (21/21) |
+| E2E 測試通過 | 5/5 | ✅ 已達成 (12/12) |
+| MultipartFile 上傳工作 | 是 | ✅ 已驗證 |
+| MinIO 實際寫入驗證 | 是 | ✅ 已驗證 |
+| 無 High 缺陷 | High = 0 | ✅ 達成 |
 
 ---
 
@@ -223,8 +223,8 @@ Sprint 8 M15 CMS Backend ✅ ─┐
 
 ---
 
-**文件狀態**: ✅ 準備完成，可開始 Sprint 9
-**下一步**: 2026-05-06 開始 Sprint 9，執行 Task-M15-101 (MultipartFile Upload Endpoint)
+**文件狀態**: ✅ Sprint 9 完成
+**下一步**: Sprint 10 M16 ERP 規劃
 **相關文件**:
 - [SPRINT_08_RELEASE_CONFIRMATION.md](SPRINT_08_RELEASE_CONFIRMATION.md)
 - [SPRINT_09_FE_INTEGRATION_API_CONTRACT.md](SPRINT_09_FE_INTEGRATION_API_CONTRACT.md)

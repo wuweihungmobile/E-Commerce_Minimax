@@ -32,6 +32,15 @@ public enum ErrorCode {
     E_3006("E-3006", "Category not found"),
     E_3007("E-3007", "Brand not found"),
 
+    // CMS & Posts (E-4100s)
+    E_4100("E-4100", "Post not found"),
+    E_4101("E-4101", "Post not published"),
+    E_4102("E-4102", "Category not found"),
+    E_4103("E-4103", "Media not found"),
+    E_4104("E-4104", "Embed duplicate listing"),
+    E_4105("E-4105", "Embed listing not found"),
+    E_4106("E-4106", "Invalid post status transition"),
+
     // Room & Booking (E-4000s)
     E_4000("E-4000", "Room not found"),
     E_4001("E-4001", "Room calendar conflict"),
@@ -66,6 +75,11 @@ public enum ErrorCode {
     E_7002("E-7002", "Invalid purchase order status"),
     E_7003("E-7003", "Stock movement not found"),
     E_7004("E-7004", "Insufficient stock"),
+    E_7005("E-7005", "Invalid stock adjustment"),
+    E_7006("E-7006", "Duplicate PO number"),
+    E_7007("E-7007", "Purchase order item not found"),
+    E_7008("E-7008", "Supplier is inactive"),
+    E_7009("E-7009", "Invalid receive quantity"),
 
     // Logistics (E-7500s)
     E_7500("E-7500", "Logistics not found"),

@@ -1,6 +1,8 @@
 package com.nextkey.ecommerce.core.booking;
 
+import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.infrastructure.redis.RedisLockService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
@@ -29,6 +31,7 @@ public class RoomCalendarService {
 
     private final RoomCalendarRepository roomCalendarRepository;
     private final RedisLockService redisLockService;
+    private final ListingRepository listingRepository;
 
     private static final int CALENDAR_GENERATE_DAYS = 365; // 生成未來 365 天
 
@@ -240,7 +243,7 @@ public class RoomCalendarService {
     @Transactional
     public void releaseDateRange(UUID roomListingId, LocalDate checkIn, LocalDate checkOut) {
         List<RoomCalendar> calendars = roomCalendarRepository
-                .findByRoomListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
+                .findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
 
         for (RoomCalendar calendar : calendars) {
             if (calendar.getStatus() == RoomCalendar.RoomCalendarStatus.BOOKED) {
@@ -258,7 +261,7 @@ public class RoomCalendarService {
      */
     @Transactional(readOnly = true)
     public List<RoomCalendar> getCalendarRange(UUID roomListingId, LocalDate start, LocalDate end) {
-        return roomCalendarRepository.findByRoomListingIdAndCalendarDateBetween(roomListingId, start, end);
+        return roomCalendarRepository.findByListingIdAndCalendarDateBetween(roomListingId, start, end);
     }
 
     /**
@@ -267,7 +270,7 @@ public class RoomCalendarService {
     @Transactional
     public void setDatePrice(UUID roomListingId, LocalDate date, BigDecimal price) {
         RoomCalendar calendar = roomCalendarRepository
-                .findByRoomListingIdAndCalendarDate(roomListingId, date)
+                .findByListingIdAndCalendarDate(roomListingId, date)
                 .orElseGet(() -> createCalendarEntry(roomListingId, date));
 
         calendar.setPrice(price);
@@ -292,7 +295,7 @@ public class RoomCalendarService {
     @Transactional
     public void blockDateRange(UUID roomListingId, LocalDate checkIn, LocalDate checkOut) {
         List<RoomCalendar> calendars = roomCalendarRepository
-                .findByRoomListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
+                .findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
 
         for (RoomCalendar calendar : calendars) {
             calendar.setStatus(RoomCalendar.RoomCalendarStatus.BLOCKED);
@@ -308,7 +311,7 @@ public class RoomCalendarService {
     @Transactional
     public void unblockDateRange(UUID roomListingId, LocalDate checkIn, LocalDate checkOut) {
         List<RoomCalendar> calendars = roomCalendarRepository
-                .findByRoomListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
+                .findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
 
         for (RoomCalendar calendar : calendars) {
             if (calendar.getStatus() == RoomCalendar.RoomCalendarStatus.BLOCKED) {
@@ -332,8 +335,10 @@ public class RoomCalendarService {
      * 建立日曆條目
      */
     private RoomCalendar createCalendarEntry(UUID roomListingId, LocalDate date) {
+        Listing listing = listingRepository.findById(roomListingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Listing not found: " + roomListingId));
         return RoomCalendar.builder()
-                .roomListingId(roomListingId)
+                .listing(listing)
                 .calendarDate(date)
                 .status(RoomCalendar.RoomCalendarStatus.AVAILABLE)
                 .build();

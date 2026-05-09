@@ -33,7 +33,7 @@
 
 | 任務 ID | 任務名稱 | SP | 負責人 | 優先級 | 狀態 | 備註 |
 |---------|----------|-----|--------|--------|------|------|
-| Task-M16-109 | IT: M16 Backend Integration Tests | 3 | QA | P0 | ✅ COMPLETED | M16ErpIntegrationTest (19 test cases) |
+| Task-M16-109 | IT: M16 Backend Integration Tests | 3 | QA | P0 | ✅ COMPLETED | M16ErpIntegrationTest (36 test cases - 2026-05-09 修復後全部通過) |
 | Task-M16-110 | E2E: M16 ERP 流程測試 | 2 | QA | P1 | ✅ COMPLETED | M16ErpE2ETest (6 test cases) |
 
 ---
@@ -59,7 +59,7 @@
 | Task-M16-104 完成 | StockMovement 產生並更新庫存 | ✅ 完成 (2026-05-09) |
 | Task-M16-105 完成 | 低庫存預警查詢正常 | ✅ 完成 (2026-05-08) |
 | Task-M16-106 ~ 108 完成 | FE ERP Dashboard 頁面完整 | ✅ 完成 (2026-05-08) |
-| Task-M16-109 通過 | IT 測試 15+/15+ 通過 | ✅ 完成 (M16ErpIntegrationTest) |
+| Task-M16-109 通過 | IT 測試 15+/15+ 通過 | ✅ 完成 (M16ErpIntegrationTest: 36/36 pass - 2026-05-09) |
 | Task-M16-110 通過 | E2E 測試 5+/5+ 通過 | ✅ 完成 (M16ErpE2ETest: 6/6) |
 | 無 High 缺陷 | High = 0 | ✅ (截至 2026-05-09) |
 
@@ -172,6 +172,32 @@ DRAFT → SUBMITTED → PARTIAL_RECEIVED → RECEIVED
 ### Day 5 (2026-05-22)
 
 ### Day 6-10 (2026-05-25 ~ 2026-05-29)
+
+### Sprint 10 測試修復記錄 (2026-05-09)
+
+**問題描述**: M16ErpIntegrationTest 有 12 個測試失敗，主要原因為：
+1. PO 沒有 items 導致 IndexOutOfBoundsException
+2. HTTP 狀態碼期望值不正確 (400 vs 422)
+3. @Transactional rollback 導致 StockMovement 404
+4. Inventory API NPE 導致 500 錯誤
+
+**修復內容**:
+- [x] IT-M16-112/113/114: 為 PO 建立時同時建立 PurchaseOrderItem
+- [x] IT-M16-109/111/117: 狀態碼從 400 改為 422 (UNPROCESSABLE_ENTITY)
+- [x] IT-M16-301/302/303/304/305: 每個 StockMovement 測試建立獨立的 inventory 記錄
+- [x] IT-M16-202/203: 為 Inventory API 增加 null 檢查，並建立獨立 inventory 記錄
+- [x] IT-M16-102/103: supplierId/items 驗證失敗應返回 400
+
+**修復後結果**:
+- M16ErpIntegrationTest: 36/36 PASS ✅
+- M16ErpE2ETest: 6/6 PASS ✅
+- M01ProductIntegrationTest: 8/8 PASS ✅
+- M12PricingIntegrationTest: 6/6 PASS ✅
+
+**技術筆記**:
+- 使用 `@Transactional` 時，測試中的 JDBC INSERT 會在測試結束後被 rollback
+- 解決方案：每個需要持久化資料的測試都要在該測試內部建立自己的資料
+- `BusinessException` 的 HTTP 狀態碼由 `GlobalExceptionHandler.mapErrorCodeToStatus()` 決定
 
 ---
 

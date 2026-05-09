@@ -34,6 +34,9 @@ postgres_data/
 redis_data/
 
 # Test
+test-results/
+
+# Test
 *.tmp
 *.bak
 backend/target/

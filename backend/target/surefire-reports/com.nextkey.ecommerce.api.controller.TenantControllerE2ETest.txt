@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.nextkey.ecommerce.api.controller.TenantControllerE2ETest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.168 s -- in com.nextkey.ecommerce.api.controller.TenantControllerE2ETest

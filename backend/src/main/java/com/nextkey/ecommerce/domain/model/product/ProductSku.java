@@ -37,7 +37,6 @@ public class ProductSku {
     @Column(name = "price_override", precision = 12, scale = 2)
     private BigDecimal priceOverride;
 
-    @Enumerated(EnumType.STRING)
     @Builder.Default
     private String status = "ACTIVE";
 

@@ -56,33 +56,33 @@ public class CartController {
 
     /**
      * 更新購物車項目數量
+     * 使用 cartItemKey (格式: listingId[:skuId[:startDate:endDate]])
      */
-    @PutMapping("/items/{listingId}")
+    @PutMapping("/items/{cartItemKey}")
     @PreAuthorize("hasAuthority('cart:update')")
     public ResponseEntity<ApiResponse<CartDto.CartItemResponse>> updateItem(
             @AuthenticationPrincipal UserPrincipal principal,
-            @PathVariable UUID listingId,
-            @RequestParam(required = false) UUID skuId,
+            @PathVariable String cartItemKey,
             @Valid @RequestBody CartDto.UpdateItemRequest request) {
 
         UUID tenantId = getTenantId(principal);
         CartDto.CartItemResponse item = cartService.updateItem(
-                principal.getUserId(), tenantId, listingId, skuId, request.getQuantity());
+                principal.getUserId(), tenantId, cartItemKey, request.getQuantity());
         return ResponseEntity.ok(ApiResponse.success("Cart item updated", item));
     }
 
     /**
      * 移除購物車項目
+     * 使用 cartItemKey (格式: listingId[:skuId[:startDate:endDate]])
      */
-    @DeleteMapping("/items/{listingId}")
+    @DeleteMapping("/items/{cartItemKey}")
     @PreAuthorize("hasAuthority('cart:update')")
     public ResponseEntity<ApiResponse<Void>> removeItem(
             @AuthenticationPrincipal UserPrincipal principal,
-            @PathVariable UUID listingId,
-            @RequestParam(required = false) UUID skuId) {
+            @PathVariable String cartItemKey) {
 
         UUID tenantId = getTenantId(principal);
-        cartService.removeItem(principal.getUserId(), tenantId, listingId, skuId);
+        cartService.removeItem(principal.getUserId(), tenantId, cartItemKey);
         return ResponseEntity.ok(ApiResponse.success("Item removed from cart", null));
     }
 

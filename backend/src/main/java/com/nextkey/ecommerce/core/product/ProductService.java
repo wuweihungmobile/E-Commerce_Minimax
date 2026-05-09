@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.product;
 
 import com.nextkey.ecommerce.api.dto.ProductDto;
+import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.product.Product;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
@@ -25,6 +26,7 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final ListingRepository listingRepository;
+    private final FeatureToggleService featureToggleService;
 
     @Transactional(readOnly = true)
     public Page<ProductDto.ListResponse> getProducts(
@@ -36,7 +38,9 @@ public class ProductService {
             String sortBy,
             String sortDir) {
 
-        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
+        // Map sortBy to proper field path for Product-Listing relationship
+        String sortField = mapSortField(sortBy);
+        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortField);
         PageRequest pageRequest = PageRequest.of(page, Math.min(size, 100), sort);
 
         UUID tenantId = TenantContext.getCurrentTenant();
@@ -68,6 +72,9 @@ public class ProductService {
 
     @Transactional
     public ProductDto.Response createProduct(ProductDto.CreateRequest request) {
+        // 檢查 RETAIL_ENABLED feature toggle - T-DEF-001-02
+        featureToggleService.checkFeatureEnabled("RETAIL_ENABLED");
+
         UUID tenantId = TenantContext.getCurrentTenant();
         UUID ownerId = TenantContext.getCurrentUser();
 
@@ -97,6 +104,44 @@ public class ProductService {
 
         product = productRepository.save(product);
         log.info("Created product with listingId: {}", listing.getId());
+
+        return toResponse(product);
+    }
+
+    /**
+     * 從 Dashboard 建立 Product (使用 CreateListingRequest)
+     * T-DEF-001-01
+     */
+    @Transactional
+    public ProductDto.Response createProductFromDashboard(com.nextkey.ecommerce.api.dto.CreateListingRequest request) {
+        UUID tenantId = TenantContext.getCurrentTenant();
+
+        // Create Listing first
+        Listing listing = Listing.builder()
+                .tenantId(tenantId)
+                .listingType(Listing.ListingType.PRODUCT)
+                .title(request.getName())
+                .description(request.getDescription())
+                .coverImageUrl(request.getCoverImageUrl())
+                .status(Listing.ListingStatus.ACTIVE)
+                .basePrice(request.getPrice())
+                .currency("TWD")
+                .tags(request.getTags())
+                .build();
+
+        listing = listingRepository.save(listing);
+
+        // Create Product
+        Product product = Product.builder()
+                .listing(listing)
+                .category(request.getCategory())
+                .brand(request.getBrand())
+                .weightGrams(request.getWeightGrams())
+                .dimensionsCm(request.getDimensionsCm())
+                .build();
+
+        product = productRepository.save(product);
+        log.info("Created product from dashboard with listingId: {}", listing.getId());
 
         return toResponse(product);
     }
@@ -156,6 +201,19 @@ public class ProductService {
         listingRepository.save(listing);
 
         log.info("Deleted product with listingId: {}", listingId);
+    }
+
+    /**
+     * Map sort field names to proper JPA field paths.
+     * basePrice and createdAt are on Listing, not Product.
+     */
+    private String mapSortField(String sortBy) {
+        return switch (sortBy) {
+            case "basePrice" -> "listing.basePrice";
+            case "createdAt" -> "listing.createdAt";
+            case "updatedAt" -> "listing.updatedAt";
+            default -> sortBy;
+        };
     }
 
     private Product findProductByListingId(UUID listingId) {

@@ -245,7 +245,7 @@ docs/
 
 **範例**:
 - ✅ `01_requirements/`
-- ✅ `05_sprint/`
+- ✅ `05_development/`
 - ❌ `需求文檔/`
 - ❌ `Sprint/`
 

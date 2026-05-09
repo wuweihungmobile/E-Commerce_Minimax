@@ -171,4 +171,40 @@ public class PricingDto {
         private String appliedRuleName;
         private Instant updatedAt;
     }
+
+    // ========== Rule Override Request/Response ==========
+    // T-M12-03: 手動覆蓋價格端點
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RuleOverrideRequest {
+        @NotNull(message = "Start date is required")
+        private LocalDate startDate;
+
+        @NotNull(message = "End date is required")
+        private LocalDate endDate;
+
+        @NotNull(message = "Override price is required")
+        @Positive(message = "Override price must be positive")
+        private BigDecimal overridePrice;
+
+        private String reason;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RuleOverrideResponse {
+        private UUID ruleId;
+        private UUID roomListingId;
+        private LocalDate startDate;
+        private LocalDate endDate;
+        private BigDecimal overridePrice;
+        private String reason;
+        private String status;
+        private Instant createdAt;
+    }
 }

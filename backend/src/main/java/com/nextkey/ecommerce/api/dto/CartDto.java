@@ -3,6 +3,8 @@ package com.nextkey.ecommerce.api.dto;
 import jakarta.validation.constraints.*;
 import lombok.*;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.math.BigDecimal;
 import java.util.UUID;
 
@@ -27,6 +29,10 @@ public class CartDto {
         @Min(value = 1, message = "Quantity must be at least 1")
         @Max(value = 999, message = "Quantity cannot exceed 999")
         private Integer quantity;
+
+        // ROOM 類型房源的日期範圍（可選，對 PRODUCT 類型忽略）
+        private java.time.LocalDate startDate;
+        private java.time.LocalDate endDate;
     }
 
     @Data
@@ -49,7 +55,7 @@ public class CartDto {
     public static class CartItemResponse {
         private String cartItemKey;
         private UUID listingId;
-        private String title;
+        private String listingName;
         private String coverImageUrl;
         private UUID skuId;
         private String skuCode;
@@ -59,6 +65,9 @@ public class CartDto {
         private BigDecimal subtotal;
         private String listingType; // PRODUCT or ROOM
         private java.time.Instant addedAt;
+        // ROOM 類型房源的日期範圍
+        private java.time.LocalDate startDate;
+        private java.time.LocalDate endDate;
     }
 
     // ========== Cart Response ==========
@@ -69,9 +78,11 @@ public class CartDto {
     @AllArgsConstructor
     public static class CartResponse {
         private UUID userId;
-        private String cartKey;
+        private String cartId;
         private java.util.List<CartItemResponse> items;
-        private Integer totalItems;
+
+        @JsonProperty("totalItems")
+        private Integer itemCount;
         private BigDecimal totalAmount;
         private String currency;
         private java.time.Instant updatedAt;

@@ -1,9 +1,16 @@
 package com.nextkey.ecommerce.api.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.filter.TenantContextFilter;
 import com.nextkey.ecommerce.api.filter.JwtAuthenticationFilter;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -35,14 +42,47 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        ObjectMapper mapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.getWriter().write(mapper.writeValueAsString(ApiResponse.error(
+                        ErrorCode.E_1000.getCode(),
+                        "Authentication required"
+                    )));
+                })
+                .accessDeniedHandler((request, response, accessDeniedException) -> {
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.getWriter().write(mapper.writeValueAsString(ApiResponse.error(
+                        ErrorCode.E_1007.getCode(),
+                        "Insufficient permissions"
+                    )));
+                })
+            )
             .authorizeHttpRequests(auth -> auth
-                // Public endpoints
-                .requestMatchers("/v2/auth/**").permitAll()
+                // Public auth endpoints
+                .requestMatchers("/v2/auth/register").permitAll()
+                .requestMatchers("/v2/auth/login").permitAll()
+                .requestMatchers("/v2/auth/refresh").permitAll()
+                // Protected auth endpoints (require authentication)
+                .requestMatchers("/v2/auth/logout").authenticated()
+                .requestMatchers("/v2/auth/me").authenticated()
+                // Public tenant endpoints (Guest access for store application and viewing)
+                .requestMatchers("/api/v2/tenants/apply").permitAll()
+                .requestMatchers("/api/v2/tenants/{id}").permitAll()
                 .requestMatchers("/v2/public/**").permitAll()
+                // M15 CMS public endpoints (前台公開 API)
+                .requestMatchers("/v2/posts").permitAll()
+                .requestMatchers("/v2/posts/**").permitAll()
+                .requestMatchers("/v2/listings/*/card").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 // All other requests require authentication
                 .anyRequest().authenticated()

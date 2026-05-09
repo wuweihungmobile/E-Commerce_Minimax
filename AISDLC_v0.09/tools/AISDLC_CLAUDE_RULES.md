@@ -1,9 +1,9 @@
 # AISDLC Claude Rules 配置檔
 # AISDLC Claude Code Automated Rules Configuration
 
-> **版本**: v1.0
+> **版本**: v1.1
 > **適用範圍**: AISDLC v0.09+ 所有專案
-> **最後更新**: 2025-01-10
+> **最後更新**: 2026-04-11
 
 ---
 
@@ -156,16 +156,14 @@ cd /path/to/AISDLC
 
 **手動初始化步驟** (如腳本不可用):
 ```bash
-# 步驟 1: 進入 AISDLC_v0.09 目錄
+# 步驟 1: 進入 AISDLC_v0.09 目錄（即專案工作目錄）
 cd /path/to/AISDLC/AISDLC_v0.09
 
 # 步驟 2: 建立專案文檔目錄（遵循 DEVELOPMENT_DIRECTORY_STRUCTURE.md）
 mkdir -p docs/{01_requirements,02_architecture,03_testing,04_planning,05_development,06_quality,07_design,08_deployment}
 
-# 步驟 3: 複製 Claude Code 設定檔與 Skills 到專案根目錄
-cp ../CLAUDE.md ~/my-project/CLAUDE.md
-mkdir -p ~/my-project/.claude/skills
-cp -r .claude/skills/* ~/my-project/.claude/skills/ 2>/dev/null || true
+# 步驟 3: 確認 .claude/skills/ 已存在（33 個 Claude Code Skills）
+ls .claude/skills/ | wc -l   # 應顯示 35（33個skill目錄 + README.md + SKILL_DEVELOPMENT_PLAN.md）
 ```
 
 ---
@@ -226,7 +224,33 @@ cp -r .claude/skills/* ~/my-project/.claude/skills/ 2>/dev/null || true
 
 ---
 
-### 9. AISDLC 升版執行規範（AISDLC Upgrade Execution Policy）
+### 9. 開發-編譯-測試循環強制規則（Development-Build-Test Cycle）
+
+> **新增日期**: 2025-01-11 | **適用範圍**: 開發 AISDLC 框架或使用 AISDLC 進行專案開發時
+
+**強制執行原則**: 每完成一支程式（或一個功能單元），**必須立即執行**編譯-測試循環，**絕不累積開發**。
+
+**執行步驟**:
+```
+開發 1 支程式 → 立即編譯 → 編譯失敗？→ 🔴 立即停止 → 依錯誤修復 → 重新編譯
+                ↓
+           編譯成功 ✅ → 執行單元測試 → 測試失敗？→ 🔴 立即停止 → 依規格修復 → 重新測試
+                                          ↓
+                                     測試通過 ✅ → 繼續開發下一支程式
+```
+
+**絕對禁止**:
+- ❌ 累積開發多支程式後才一次編譯
+- ❌ 編譯失敗後繼續開發其他功能
+- ❌ 跳過單元測試
+- ❌ 測試失敗後「先跳過」（例如：將測試註解掉）
+
+**參考文檔**:
+- [Development_Build_Test_Cycle.md](../guides/user/process/Development_Build_Test_Cycle.md)
+
+---
+
+### 10. AISDLC 升版執行規範（AISDLC Upgrade Execution Policy）
 
 **強制規則** (僅適用於 AISDLC 框架維護者):
 - 🛑 **執行升版前必須先讀取 AISDLC_UPGRADE_SOP_CheckList.md**
@@ -247,15 +271,21 @@ grep -c "^- \[ \]" AISDLC_v{OLD}/AISDLC_UPGRADE_SOP_CheckList.md
 ### 當 Claude Code 載入 AISDLC_INIT.md 時，自動執行:
 
 ```yaml
-step_1: 自動偵測當前作業系統（macOS/Linux/Windows）
-step_2: 自動讀取 AISDLC_CLAUDE_RULES.md（本檔案）
-step_3: 自動套用所有 Claude Rules
-step_4: 檢查專案是否已初始化
-  - 如果未初始化: 提示執行 init_project.sh 或手動初始化
+step_1:  讀取 AISDLC_INIT.md（本檔案）
+step_2:  自動讀取 tools/AISDLC_CLAUDE_RULES.md（本檔案）
+step_3:  自動套用所有 Claude Rules（溝通語言、文檔規範、寫檔檢查等）
+step_4:  自動偵測當前作業系統（macOS/Linux/Windows）
+step_5:  檢查專案是否已初始化
+  - 如果未初始化: 提示執行 tools/init_project.sh
   - 如果已初始化: 繼續
-step_5: 識別專案情境類型（Greenfield/Brownfield/Refactoring 等）
-step_6: 載入對應 Primary 和 Supporting Agents
-step_7: 開始執行專案 Workflow
+step_6:  識別專案情境類型（透過問答或指令解析）
+step_7:  🔴 從「Agent 自動載入配置表」讀取對應情境的配置
+step_8:  🔴 自動載入 Primary Agents（讀取 YAML 並套用規則）
+step_9:  🔴 記錄 Supporting Agents 列表（按需載入）
+step_10: 載入對應 Workflows
+step_11: 🔴 確認 .claude/skills/ 已部署（33 個 Claude Code Skills）
+step_12: 顯示載入狀態確認（含可用 Skills 列表）
+step_13: 開始執行 SOP
 ```
 
 ---
@@ -321,13 +351,14 @@ step_7: 開始執行專案 Workflow
 
 | 版本 | 日期 | 變更說明 |
 |------|------|---------|
+| v1.1 | 2026-04-11 | 新增 Rule 9「開發-編譯-測試循環」；更新自動化流程對齊 AISDLC_INIT.md 13步驟；修正 Rule 5 手動初始化路徑；版本編號原 Rule 9 升為 Rule 10 |
 | v1.0 | 2025-01-10 | 初版發布，整合 CLAUDE.md, FILE_DIRECTORY_RULES.md, AISDLC_INIT.md 所有規則 |
 
 ---
 
 **文檔元數據**:
-- **文檔版本**: v1.0
+- **文檔版本**: v1.1
 - **建立日期**: 2025-01-10
-- **最後更新**: 2025-01-10
+- **最後更新**: 2026-04-11
 - **維護者**: AISDLC Framework Team
 - **文檔狀態**: Final

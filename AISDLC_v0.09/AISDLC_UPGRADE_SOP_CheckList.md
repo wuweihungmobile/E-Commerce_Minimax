@@ -6,7 +6,7 @@
 >
 > ## 📋 使用規則
 >
-> 1. **同步維護**: 本檔案與 `AISDLC_v0.11_UPGRADE_SOP.md` 同步維護
+> 1. **同步維護**: 本檔案與 `AISDLC_v0.10_UPGRADE_SOP.md` 同步維護
 > 2. **逐項打勾**: 每完成 SOP 中的一個步驟，必須立即回到本檔案打勾
 > 3. **完成標準**: 本檔案所有項目全部打勾後，升版才算完成
 > 4. **升版後重置**: 拷貝到新版本時，所有勾選狀態清除，恢復為未勾選
@@ -112,7 +112,7 @@
 
 - [ ] **2.3 拷貝 workflow/ 目錄**
   - [ ] rsync 命令已執行
-  - [ ] workflow/core/ 已拷貝 (7 個核心 Workflow)
+  - [ ] workflow/core/ 已拷貝 (8 個核心 Workflow)
   - [ ] workflow/scenario-specific/ 已拷貝
   - [ ] workflow README.md 已拷貝
 
@@ -127,7 +127,7 @@
 
 - [ ] **2.5 拷貝 scenarios/ 目錄**
   - [ ] rsync 命令已執行
-  - [ ] 9 個場景目錄已拷貝
+  - [ ] 10 個場景目錄已拷貝
   - [ ] checklists/ 目錄已包含
 
 - [ ] **2.6 拷貝 guides/ 目錄**
@@ -298,7 +298,7 @@
   - [ ] agent/ 目錄存在 (含 core/, specialized/)
   - [ ] workflow/ 目錄存在 (含 core/, scenario-specific/)
   - [ ] docs_template/ 目錄存在 (含多個子目錄)
-  - [ ] scenarios/ 目錄存在 (9 個場景)
+  - [ ] scenarios/ 目錄存在 (10 個場景)
   - [ ] guides/ 目錄存在
   - [ ] prompts/ 目錄存在
   - [ ] build/ 目錄存在 (含 logs/, planning/, reports/)
@@ -334,7 +334,8 @@
   - [ ] performance/ 存在 ← ✅ 已確認
   - [ ] devops/ 存在 ← ✅ 已確認
   - [ ] documentation/ 存在 ← ✅ 已確認
-  - [ ] 總計 9 個場景 ← ✅ 已確認
+  - [ ] migration/ 存在 ← ✅ 已確認
+  - [ ] 總計 10 個場景 ← ✅ 已確認
 
 - [ ] **5.6 文檔模板驗證**
   - [ ] PRD 模板存在 ← ✅ PRD_Universal_Template.md
@@ -447,7 +448,7 @@
   - [ ] 目錄數 >= 7 (實際: 10 個) ← ✅ 已確認
   - [ ] Agents 數 >= 21 (實際: 21 個) ← ✅ 已確認
   - [ ] Workflows 數 >= 17 (實際: 17 個) ← ✅ 已確認
-  - [ ] Scenarios 數 = 9 (實際: 9 個) ← ✅ 已確認
+  - [ ] Scenarios 數 = 10 (實際: 10 個) ← ✅ 已確認
   - [ ] v0.09 殘留 = 0 (僅版本歷史記錄,正常) ← ✅ 0 個非歷史殘留
   - [ ] CLAUDE.md Latest Version = v0.10 (已確認) ← ✅ 已確認
   - [ ] AISDLC_v0.10_UPGRADE_SOP.md 存在 (已確認) ← ✅ 已確認

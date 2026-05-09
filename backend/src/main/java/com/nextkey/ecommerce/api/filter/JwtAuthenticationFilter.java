@@ -90,6 +90,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
-        return path.startsWith("/v2/auth/") || path.startsWith("/actuator/");
+        // Only skip JWT filter for public auth endpoints (register, login, refresh)
+        // Other auth endpoints like logout and me require authentication
+        return (path.equals("/v2/auth/register") ||
+                path.equals("/v2/auth/login") ||
+                path.equals("/v2/auth/refresh") ||
+                path.startsWith("/actuator/"));
     }
 }

@@ -176,7 +176,7 @@ function Get-AISDLC {
         Write-Host "   倉庫: $GITHUB_REPO" -ForegroundColor Blue
 
         try {
-            $gitOutput = git clone --depth 1 --quiet $gitUrl $sourceDir 2>&1
+            git clone --depth 1 --quiet $gitUrl $sourceDir 2>&1 | Out-Null
 
             if ($LASTEXITCODE -ne 0) {
                 throw "Git clone failed"
@@ -223,11 +223,15 @@ function Get-AISDLC {
     $srcVersionPath = Join-Path $sourceDir $aisdlcDir
     Copy-Item -Path $srcVersionPath -Destination $destPath -Recurse -Force
 
-    # Copy CLAUDE.md if exists
-    $claudeMdPath = Join-Path $sourceDir "CLAUDE.md"
-    if (Test-Path $claudeMdPath) {
-        Copy-Item -Path $claudeMdPath -Destination $TargetDir -Force
-        Write-Host "   ✅ 複製 CLAUDE.md" -ForegroundColor Green
+    # Copy PROJECT_CLAUDE_Template.md as project CLAUDE.md
+    $claudeTemplatePath = Join-Path $sourceDir (Join-Path $aisdlcDir "tools\PROJECT_CLAUDE_Template.md")
+    $claudeDestPath = Join-Path $TargetDir "CLAUDE.md"
+    if (Test-Path $claudeTemplatePath) {
+        Copy-Item -Path $claudeTemplatePath -Destination $claudeDestPath -Force
+        Write-Host "   ✅ 產生 CLAUDE.md (from PROJECT_CLAUDE_Template.md)" -ForegroundColor Green
+    } elseif (Test-Path (Join-Path $sourceDir "CLAUDE.md")) {
+        Copy-Item -Path (Join-Path $sourceDir "CLAUDE.md") -Destination $TargetDir -Force
+        Write-Host "   ⚠️  複製 CLAUDE.md (fallback: root CLAUDE.md)" -ForegroundColor Yellow
     }
 
     # Copy .claude/skills/ to project root (Claude Code Skills discovery)
@@ -321,11 +325,11 @@ function Show-CompletionMessage {
     }
     Write-Host ""
     Write-Host "📝 下一步:" -ForegroundColor Yellow
-    Write-Host "   1. cd $TargetDir\$aisdlcDir"
-    Write-Host "   2. 閱讀 AISDLC_INIT.md 了解框架使用"
+    Write-Host "   1. 使用 Claude Code 開啟目錄: $TargetDir"
+    Write-Host "   2. 閱讀 $aisdlcDir\AISDLC_INIT.md 了解框架使用"
     Write-Host "   3. PRD 寫入 docs\01_requirements\"
     Write-Host "   4. SRD 寫入 docs\02_architecture\"
-    Write-Host "   5. 參考: guides\user\onboarding\QUICK_START_GUIDE.md"
+    Write-Host "   5. 參考: $aisdlcDir\guides\user\onboarding\QUICK_START_GUIDE.md"
     Write-Host ""
     Write-Host "🔗 專案結構:" -ForegroundColor Cyan
     Write-Host "   $TargetDir\"

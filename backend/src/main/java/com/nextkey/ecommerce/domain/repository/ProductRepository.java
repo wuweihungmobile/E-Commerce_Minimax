@@ -38,7 +38,8 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             @Param("tenantId") UUID tenantId,
             @Param("category") String category);
 
-    Optional<Product> findByListingId(UUID listingId);
+    @Query("SELECT p FROM Product p WHERE p.listing.id = :listingId AND p.listing.status != 'DELETED'")
+    Optional<Product> findByListingId(@Param("listingId") UUID listingId);
 
     boolean existsByListingId(UUID listingId);
 

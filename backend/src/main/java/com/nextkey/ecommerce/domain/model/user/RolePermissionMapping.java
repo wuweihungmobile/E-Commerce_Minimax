@@ -27,8 +27,10 @@ public class RolePermissionMapping {
                 Permission.ROOM_READ,
                 Permission.ORDER_READ,
                 Permission.ORDER_CREATE,
+                Permission.ORDER_CANCEL,  // 買家可取消自己的訂單（US-M05-004）
                 Permission.BOOKING_READ,
                 Permission.BOOKING_CREATE,
+                Permission.BOOKING_CANCEL,  // 買家可取消自己的預訂
                 Permission.CART_READ,
                 Permission.CART_UPDATE,
                 Permission.CART_DELETE,
@@ -163,6 +165,8 @@ public class RolePermissionMapping {
         Set<Permission> permissions = getPermissions(role);
         List<String> authorities = new ArrayList<>();
         authorities.add("ROLE_" + role.name());
+        // Also add the role name itself (without ROLE_ prefix) for @PreAuthorize("hasAuthority('STORE_OWNER')")
+        authorities.add(role.name());
         for (Permission permission : permissions) {
             authorities.add(permission.getCode());
         }

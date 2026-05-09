@@ -18,6 +18,9 @@ public enum ErrorCode {
     E_2002("E-2002", "Tenant suspended"),
     E_2003("E-2003", "Tenant context ambiguous"),
     E_2004("E-2004", "Feature disabled for tenant"),
+    E_2005("E-2005", "Tenant status is not PENDING_REVIEW"),
+    E_4031("E-4031", "Not authorized to operate this store"),
+    E_4041("E-4041", "Store not found"),
 
     // Listing & Product (E-3000s)
     E_3000("E-3000", "Listing not found"),
@@ -28,6 +31,15 @@ public enum ErrorCode {
     E_3005("E-3005", "Duplicate SKU code"),
     E_3006("E-3006", "Category not found"),
     E_3007("E-3007", "Brand not found"),
+
+    // CMS & Posts (E-4100s)
+    E_4100("E-4100", "Post not found"),
+    E_4101("E-4101", "Post not published"),
+    E_4102("E-4102", "Category not found"),
+    E_4103("E-4103", "Media not found"),
+    E_4104("E-4104", "Embed duplicate listing"),
+    E_4105("E-4105", "Embed listing not found"),
+    E_4106("E-4106", "Invalid post status transition"),
 
     // Room & Booking (E-4000s)
     E_4000("E-4000", "Room not found"),
@@ -63,6 +75,11 @@ public enum ErrorCode {
     E_7002("E-7002", "Invalid purchase order status"),
     E_7003("E-7003", "Stock movement not found"),
     E_7004("E-7004", "Insufficient stock"),
+    E_7005("E-7005", "Invalid stock adjustment"),
+    E_7006("E-7006", "Duplicate PO number"),
+    E_7007("E-7007", "Purchase order item not found"),
+    E_7008("E-7008", "Supplier is inactive"),
+    E_7009("E-7009", "Invalid receive quantity"),
 
     // Logistics (E-7500s)
     E_7500("E-7500", "Logistics not found"),
@@ -83,6 +100,10 @@ public enum ErrorCode {
     E_9006("E-9006", "Field too long"),
     E_9007("E-9007", "Invalid date format"),
     E_9008("E-9008", "Value out of range"),
+
+    // Tenant Application (E-4090s) - Note: API doc uses 4091, 4092 but we'll use existing ranges
+    E_4091("E-4091", "Store name already in use"),
+    E_4092("E-4092", "Store application already exists"),
 
     // System (E-9900s)
     E_9900("E-9900", "Internal server error"),

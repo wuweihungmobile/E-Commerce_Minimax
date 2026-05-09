@@ -234,7 +234,7 @@
 > - ⚠️ **維護要求**: 每次升版時，必須從上一版本的 SOP 複製並修改版本號
 >
 > **範例**:
-> - v0.07 根目錄中應有 `AISDLC_v0.09_UPGRADE_SOP.md` (用於 v0.07 → v0.09)
+> - v0.08 根目錄中應有 `AISDLC_v0.09_UPGRADE_SOP.md` (用於 v0.08 → v0.09)
 > - v0.09 根目錄中應有 `AISDLC_v0.10_UPGRADE_SOP.md` (用於 v0.09 → v0.10) ← 本檔案
 > - v0.10 根目錄中應有 `AISDLC_v0.11_UPGRADE_SOP.md` (用於 v0.10 → v0.11)
 
@@ -429,7 +429,7 @@ v0.09 對 guides/ 目錄進行了重大重組，建立了清晰的二層結構�
 3. **CLAUDE.md** - 未更新 Latest Version 指向
 4. **guides/ 目錄結構** - 🆕 v0.09 重組後，必須整體拷貝（包含 system/, user/, archive/ 子目錄）
 5. **guides/ 路徑參考** - 檢查所有檔案中的 guides/ 路徑是否正確（應使用 guides/system/ 或 guides/user/）
-6. **🆕 根目錄檔案位置規範** - 確保根目錄僅保留 4 個核心文檔，臨時檔案應移至 build/ 對應子目錄
+6. **🆕 根目錄檔案位置規範** - 確保根目錄僅保留 6 個核心文檔，臨時檔案應移至 build/ 對應子目錄
    - 歷史升版記錄 (`UPGRADE_FROM_V*.md`) → `build/reports/phase/`
    - 臨時分析報告 (`*_改善計畫報告.md`) → `build/reports/analysis/`
    - 備份檔案 (`*.backup`, `*.original`) → 升版前刪除
@@ -875,7 +875,7 @@ fi
 
 ### 1.5 清理源版本臨時檔案 🆕
 
-> **🔴 重要**: 升版前必須清理源版本的臨時檔案，確保根目錄僅保留 4 個核心文檔。
+> **🔴 重要**: 升版前必須清理源版本的臨時檔案，確保根目錄僅保留 6 個核心文檔。
 
 **執行命令**:
 
@@ -911,11 +911,13 @@ fi
 ```
 
 **檢查點**:
-- [ ] 檢查根目錄僅保留 4 個核心文檔：
+- [ ] 檢查根目錄僅保留 6 個核心文檔：
   - [ ] `AISDLC_INIT.md`
   - [ ] `README.md`
   - [ ] `FILE_DIRECTORY_RULES.md`
   - [ ] `AISDLC_v{NEXT}_UPGRADE_SOP.md`
+  - [ ] `AISDLC_UPGRADE_SOP_CheckList.md`
+  - [ ] `DEVELOPMENT_DIRECTORY_STRUCTURE.md`
 - [ ] 歷史升版記錄已移至 `build/reports/phase/`
 - [ ] 臨時分析報告已移至 `build/reports/analysis/`
 - [ ] 備份檔案已刪除 (`*.backup`, `*.original`, `*.{DATE}`)
@@ -1072,7 +1074,7 @@ fi
 - [ ] **AISDLC_v0.11_UPGRADE_SOP.md 已創建**（從 AISDLC_v0.10_UPGRADE_SOP.md 改名）← 極易遺漏！
 - [ ] **DEVELOPMENT_DIRECTORY_STRUCTURE.md 已拷貝** ← 🆕 2025-01-10 新增重要檔案
 - [ ] 無備份檔案被拷貝（*.backup, *.original 已排除）
-- [ ] 文檔數量合理（通常 8-11 個）
+- [ ] 文檔數量合理（通常 6 個）
 - [ ] **新版本 CheckList 已重置**（所有 [x] 改回 [ ]）← 🆕 2026-03-20 新增
 
 **改進說明**:
@@ -1150,19 +1152,20 @@ tree AISDLC_${NEW_VERSION}/workflow -L 2
 ```
 
 **檢查點**:
-- [ ] workflow/core/ 已拷貝 (7 個核心 Workflow)
-- [ ] workflow/supplementary/ 已拷貝 (補充 Workflow)
+- [ ] workflow/core/ 已拷貝 (8 個核心 Workflow)
+- [ ] workflow/scenario-specific/ 已拷貝 (情境專屬 Workflow)
 - [ ] workflow/README.md 已拷貝
 - [ ] ✅ 所有 README.md 自動包含
 
-**核心 Workflows (7 個)**:
+**核心 Workflows (8 個)**:
 1. requirements-extraction.md
-2. requirements-validation.md
-3. user-story.md
+2. requirements-validation-and-documentation.md
+3. user-story-and-design.md
 4. api-specification.md
 5. change-management.md
 6. consistency-check.md
 7. interaction-analysis.md
+8. sprint-execution.md
 
 ---
 
@@ -1221,9 +1224,10 @@ tree AISDLC_${NEW_VERSION}/scenarios -L 2
 - [ ] scenarios/performance/ 已拷貝
 - [ ] scenarios/devops/ 已拷貝
 - [ ] scenarios/documentation/ 已拷貝
+- [ ] scenarios/migration/ 已拷貝
 - [ ] ✅ 所有 README.md 自動包含
 
-**預期場景數量**: 9 個場景目錄
+**預期場景數量**: 10 個場景目錄
 
 ---
 
@@ -1306,9 +1310,9 @@ tree AISDLC_${NEW_VERSION}/prompts -L 2
 ```
 
 **檢查點**:
-- [ ] prompts/workflow-prompts/ 已拷貝
+- [ ] prompts/quick-start/ 已拷貝
 - [ ] prompts/complete-flow/ 已拷貝
-- [ ] prompts/examples/ 已拷貝
+- [ ] prompts/scenario-prompts/ 已拷貝
 - [ ] prompts/README.md 已拷貝
 - [ ] ✅ 所有 README.md 自動包含
 
@@ -1408,7 +1412,7 @@ fi
 
 ### 2.9.1 拷貝 .claude/ 目錄 🆕 v0.09 新增
 
-> **🔴 重要**: .claude/ 目錄包含 Claude Code Skills 技能套件（31 個 Skills），是 v0.09 新增的重要目錄。
+> **🔴 重要**: .claude/ 目錄包含 Claude Code Skills 技能套件（33 個 Skills），是 v0.09 新增的重要目錄。
 
 **執行命令**:
 
@@ -1429,7 +1433,7 @@ if [ -d "AISDLC_${OLD_VERSION}/.claude" ]; then
   # 統計 Skills 數量（Claude Code Agent Skills 標準格式）
   echo "=== Skills 統計 (SKILL.md 檔案數) ==="
   find AISDLC_${NEW_VERSION}/.claude/skills -name "SKILL.md" -type f | wc -l
-  # 預期結果: 31
+  # 預期結果: 33
   echo "✅ .claude/ 目錄拷貝完成"
 else
   echo "⚠️ 源版本不存在 .claude/ 目錄，跳過此步驟"
@@ -1439,12 +1443,12 @@ fi
 **檢查點**:
 - [ ] .claude/ 目錄已拷貝（如果源版本存在）
 - [ ] .claude/skills/ 目錄已拷貝
-- [ ] Skills 檔案數量正確（v0.09+ 應有 31 個 SKILL.md 檔案）
+- [ ] Skills 檔案數量正確（v0.09+ 應有 33 個 SKILL.md 檔案）
 - [ ] README.md 和 SKILL_DEVELOPMENT_PLAN.md 已拷貝
 
 **說明**:
 - .claude/ 是 Claude Code 的配置目錄
-- .claude/skills/ 包含 31 個 Claude Skills 技能套件（Claude Code Agent Skills 標準格式）
+- .claude/skills/ 包含 33 個 Claude Skills 技能套件（Claude Code Agent Skills 標準格式）
   - 格式: `<skill-name>/SKILL.md`（每個 Skill 一個目錄）
   - DevOps 家族: 5 個 Skills
   - Integration 家族: 10 個 Skills
@@ -1531,11 +1535,11 @@ ls -d */ | wc -l  # 應該有 9-10 個目錄（包含 docs/, tools/, releases/�
 ```
 
 **最終檢查清單**:
-- [ ] 根目錄有 8 個核心文檔
+- [ ] 根目錄有 6 個核心文檔
 - [ ] agent/ 目錄已拷貝
 - [ ] workflow/ 目錄已拷貝
 - [ ] docs_template/ 目錄已拷貝
-- [ ] scenarios/ 目錄已拷貝 (9 個場景)
+- [ ] scenarios/ 目錄已拷貝 (10 個場景)
 - [ ] guides/ 目錄已拷貝
 - [ ] prompts/ 目錄已拷貝
 - [ ] **docs/ 目錄已拷貝**（如果源版本存在）
@@ -1988,7 +1992,7 @@ find scenarios -name "*.md" -type f -exec sed -i "s/v0\.09/v0.10/g" {} \;
 # 驗證
 echo "=== 場景 SOP 版本號驗證 ==="
 grep -r "version: 0.09" scenarios/ | wc -l  # 應該是 0
-grep -r "version: 0.10" scenarios/ | wc -l  # 應該 > 25 (9 個場景 × 3 檔案)
+grep -r "version: 0.10" scenarios/ | wc -l  # 應該 > 30 (10 個場景 × 3 檔案)
 ```
 
 **檢查點**:
@@ -2297,10 +2301,10 @@ grep -rn "v0.09" . --exclude-dir=build --exclude="*.backup" | head -20
 ```
 
 **檢查點**:
-- [ ] 無 v0.09 殘留 (除了 build/ 和 archive_en/ 目錄) ← ⚠️ 執行驗證: `grep -r "v0.09" . --exclude-dir=build --exclude-dir=archive_en | wc -l`（應為 0）
+- [ ] 無 v0.09 殘留 (除了 build/ 和 backup_en/ 目錄) ← ⚠️ 執行驗證: `grep -r "v0.09" . --exclude-dir=build --exclude-dir=backup_en | wc -l`（應為 0）
 - [ ] 所有核心文檔版本號 = v0.10 ← ⚠️ 執行驗證: `grep "version:" *.md | head -5`
 - [ ] 所有 Agents 版本號 = 0.10 ← ⚠️ 執行驗證: `grep -r "version:" agent/ | grep "0.10" | wc -l`（應 >= 21）
-- [ ] 所有 Workflows 版本號 = 0.10 ← ⚠️ 執行驗證: `grep -r "version:" workflow/ | grep "0.10" | wc -l`（應 >= 7）
+- [ ] 所有 Workflows 版本號 = 0.10 ← ⚠️ 執行驗證: `grep -r "version:" workflow/ | grep "0.10" | wc -l`（應 >= 8）
 - [ ] 所有模板版本號 = 0.10 ← ⚠️ 執行驗證: `grep -r "version:" docs_template/ | grep "0.10" | wc -l`（應 >= 20）
 - [ ] 所有場景 SOP 版本號 = 0.10 ← ⚠️ 執行驗證: `grep -r "version:" scenarios/ | grep "0.10" | wc -l`（應 >= 9）
 
@@ -2463,7 +2467,7 @@ tree -L 2
 - [ ] agent/ 目錄存在 (含 core/, specialized/)
 - [ ] workflow/ 目錄存在 (含 core/, supplementary/)
 - [ ] docs_template/ 目錄存在 (含 prd/, frd/, srd/, tests/, core/, scenario_specific/)
-- [ ] scenarios/ 目錄存在 (含 9 個場景目錄)
+- [ ] scenarios/ 目錄存在 (含 10 個場景目錄)
 - [ ] guides/ 目錄存在
 - [ ] prompts/ 目錄存在
 - [ ] build/ 目錄存在 (含 logs/, planning/, reports/)
@@ -2536,7 +2540,7 @@ ls -lh workflow/core/*.md
 ```
 
 **檢查點**:
-- [ ] 核心 Workflows >= 7 個
+- [ ] 核心 Workflows >= 8 個
 - [ ] requirements-extraction.md 存在
 - [ ] api-specification.md 存在
 - [ ] consistency-check.md 存在
@@ -2555,7 +2559,7 @@ cd AISDLC_${NEW_VERSION}
 
 # 統計場景數量
 echo "=== 場景數量驗證 ==="
-ls -d scenarios/*/ | wc -l  # 應該是 9
+ls -d scenarios/*/ | wc -l  # 應該是 10
 
 # 列出所有場景
 ls -lh scenarios/
@@ -2571,7 +2575,8 @@ ls -lh scenarios/
 - [ ] performance/ 存在
 - [ ] devops/ 存在
 - [ ] documentation/ 存在
-- [ ] 總計 9 個場景
+- [ ] migration/ 存在
+- [ ] 總計 10 個場景
 
 ---
 
@@ -2620,7 +2625,7 @@ fi
 ```
 
 **檢查點**:
-- [ ] 無 v0.09 殘留 (除了 build/、archive_en/ 和 *.backup)
+- [ ] 無 v0.09 殘留 (除了 build/、backup_en/ 和 *.backup)
 - [ ] 所有版本號 = v0.10 或 0.10
 
 ---
@@ -2704,10 +2709,10 @@ cat AISDLC_${OLD_VERSION}/build/logs/statistics.log
   echo "STAGE=5.8"
   echo "COMPLETED=true"
   echo "TIMESTAMP=$(date)"
-  echo "V06_DIRS=$V06_DIRS"
-  echo "V06_FILES=$V06_FILES"
-  echo "V07_DIRS=$V07_DIRS"
-  echo "V07_FILES=$V07_FILES"
+  echo "OLD_DIRS=$OLD_DIRS"
+  echo "OLD_FILES=$OLD_FILES"
+  echo "NEW_DIRS=$NEW_DIRS"
+  echo "NEW_FILES=$NEW_FILES"
   echo "DIR_DIFF=$DIR_DIFF"
   echo "FILE_DIFF=$FILE_DIFF"
 } > build/logs/stage_5_8.checkpoint
@@ -2734,10 +2739,10 @@ source build/logs/stage_5_8.checkpoint
 echo ""
 echo "### 簡化統計比較結果"
 echo ""
-echo "| 項目 | v0.09 | v0.09 | 差異 | 分析 |"
+echo "| 項目 | v0.09 | v0.10 | 差異 | 分析 |"
 echo "|------|-------|-------|------|------|"
-echo "| 目錄數 | $V06_DIRS | $V07_DIRS | $DIR_DIFF | [需人工分析是否合理] |"
-echo "| 檔案數 | $V06_FILES | $V07_FILES | $FILE_DIFF | [需人工分析是否合理] |"
+echo "| 目錄數 | $OLD_DIRS | $NEW_DIRS | $DIR_DIFF | [需人工分析是否合理] |"
+echo "| 檔案數 | $OLD_FILES | $NEW_FILES | $FILE_DIFF | [需人工分析是否合理] |"
 ```
 
 #### 步驟 4: 人工確認（必須）
@@ -2756,7 +2761,7 @@ echo "| 檔案數 | $V06_FILES | $V07_FILES | $FILE_DIFF | [需人工分析是�
 
 > **✅ 強制執行要求**：
 > - 必須執行簡化版統計命令（見步驟 1）
-> - 必須統計源版本 (v0.09) 和目標版本 (v0.09)
+> - 必須統計源版本 (v0.09) 和目標版本 (v0.10)
 > - 必須填寫差異分析表格
 > - 必須釐清每個差異的原因
 >
@@ -2953,7 +2958,7 @@ echo "========================================="
 
 請將統計結果填入以下表格，並確認差異原因：
 
-| 目錄 | 源版本 (v0.09) | 目標版本 (v0.09) | 差異 | 差異原因 | 是否正常 |
+| 目錄 | 源版本 (v0.09) | 目標版本 (v0.10) | 差異 | 差異原因 | 是否正常 |
 |------|---------------|-----------------|------|---------|---------|
 | **agent/** | ___ 個目錄<br>___ 個檔案 | ___ 個目錄<br>___ 個檔案 | ±___ | | [ ] 是 [ ] 否 |
 | **workflow/** | ___ 個目錄<br>___ 個檔案 | ___ 個目錄<br>___ 個檔案 | ±___ | | [ ] 是 [ ] 否 |
@@ -3014,12 +3019,14 @@ echo "========================================="
 4. **根目錄 .md 檔案數差異** ⚠️
    - **預期差異**:
      - 源版本: 可能包含臨時檔案（如 `*_改善計畫報告.md`）
-     - 目標版本: 應僅有 4 個核心文檔
-   - **正常範圍**: 目標版本應 = 4 個核心文檔
+     - 目標版本: 應僅有 6 個核心文檔
+   - **正常範圍**: 目標版本應 = 6 個核心文檔
      - `AISDLC_INIT.md`
      - `README.md`
      - `FILE_DIRECTORY_RULES.md`
      - `AISDLC_v0.11_UPGRADE_SOP.md`
+     - `AISDLC_UPGRADE_SOP_CheckList.md`
+     - `DEVELOPMENT_DIRECTORY_STRUCTURE.md`
    - **釐清方式**: 檢查根目錄 .md 檔案列表
      ```bash
      echo "源版本根目錄 .md 檔案:"
@@ -3047,7 +3054,7 @@ echo "========================================="
 - [ ] 所有差異都已分析並釐清原因 ← ⚠️ 每個差異都必須有原因說明
 - [ ] 檔案減少的差異已確認為正常（archive/ 排除或 build/releases/ 不拷貝）
 - [ ] 檔案增加的差異已確認為 v0.09 預期變更
-- [ ] 根目錄 .md 檔案數 = 4 個核心文檔
+- [ ] 根目錄 .md 檔案數 = 6 個核心文檔
 - [ ] 無非預期的拷貝遺漏
 
 **如發現拷貝遺漏，請返回階段 2 補拷貝對應檔案！**
@@ -3277,7 +3284,7 @@ echo "✅ 發布包準備完成"
 - [ ] 發布包已創建 ← ⚠️ 執行驗證: `ls -lh AISDLC_v0.10/releases/*.tar.gz`
   - 檔名: `AISDLC_v0.10_release_YYYY-MM-DD.tar.gz`
 - [ ] 發布包大小合理 ← ⚠️ 必須記錄實際大小
-  - 預期範圍: > 1MB (建議 600-900 KB)
+  - 預期範圍: > 1MB (通常 5-20 MB)
   - 實際大小: _____ KB/MB ← 必須填寫
   - 位元組數: _____ bytes ← 必須填寫
 - [ ] 發布包內容驗證通過 ← ⚠️ 執行驗證: `tar -tzf releases/*.tar.gz | wc -l`
@@ -3289,13 +3296,13 @@ echo "✅ 發布包準備完成"
 **發布包資訊記錄**:
 ```
 檔名: AISDLC_v0.10_release_YYYY-MM-DD.tar.gz
-大小: _____ KB
+大小: _____ MB
 SHA256: ________________________________
-位置: ${BASE_DIR}/releases/
+位置: ${BASE_DIR}/AISDLC_${NEW_VERSION}/releases/
 ```
 
 **說明**:
-- 發布包創建在**主專案層級** (`${BASE_DIR}/releases/`)，不是版本內的 releases/ 目錄
+- 發布包創建在**版本目錄內** (`${BASE_DIR}/AISDLC_${NEW_VERSION}/releases/`)，不是專案根目錄
 - 排除 build/ 目錄以減少包大小
 - 使用日期戳記便於版本追蹤
 - SHA256 校驗和確保檔案完整性
@@ -3314,11 +3321,11 @@ cd ${BASE_DIR}
 cd AISDLC_${NEW_VERSION}
 
 # 創建 CHANGELOG (如需要)
-cat > build/logs/CHANGELOG_v0.09.md << 'EOF'
-# AISDLC v0.09 版本更新日誌
+cat > build/logs/CHANGELOG_v0.10.md << 'EOF'
+# AISDLC v0.10 版本更新日誌
 
-**發布日期**: 2025-XX-XX
-**版本**: v0.09
+**發布日期**: YYYY-XX-XX
+**版本**: v0.10
 **升版自**: v0.09
 
 ## 主要變更
@@ -3562,7 +3569,7 @@ echo "  位元組: $FILE_SIZE bytes"
   - [ ] docs_template/tests/ 存在
   - [ ] docs_template/core/ 存在
   - [ ] docs_template/scenario_specific/ 存在
-- [ ] scenarios/ 目錄存在 (9 個場景目錄)
+- [ ] scenarios/ 目錄存在 (10 個場景目錄)
 - [ ] guides/ 目錄存在
 - [ ] prompts/ 目錄存在
 - [ ] build/ 目錄存在
@@ -3613,7 +3620,7 @@ echo "  位元組: $FILE_SIZE bytes"
 
 #### A.1.6 Scenarios 驗證 (32 個檔案)
 
-**9 個場景目錄** (每個含 SOP.md, Workflow.md, checklists/):
+**10 個場景目錄** (每個含 SOP.md, Workflow.md, checklists/):
 - [ ] greenfield/
 - [ ] brownfield/
 - [ ] refactoring/
@@ -3623,6 +3630,7 @@ echo "  位元組: $FILE_SIZE bytes"
 - [ ] performance/
 - [ ] devops/
 - [ ] documentation/
+- [ ] migration/
 
 #### A.1.7 文檔模板驗證
 
@@ -3663,7 +3671,7 @@ echo "  位元組: $FILE_SIZE bytes"
 - [ ] AT_Template.md: version = 0.10
 - [ ] TC_Template.md: version = 0.10
 
-#### A.2.3 場景 SOP 版本號 (9 個場景 × 3 檔案)
+#### A.2.3 場景 SOP 版本號 (10 個場景 × 3 檔案)
 
 **Greenfield**:
 - [ ] scenarios/greenfield/SOP.md: version = 0.10
@@ -3804,7 +3812,7 @@ cd AISDLC_v0.09
 echo "=== 目錄完整性檢查 ==="
 echo "Agent 數量: $(find agent -name "*.yaml" | wc -l)"  # >= 21
 echo "Workflow 數量: $(find workflow -name "*.md" | wc -l)"  # >= 17
-echo "Scenario 數量: $(ls -d scenarios/*/ | wc -l)"  # = 9
+echo "Scenario 數量: $(ls -d scenarios/*/ | wc -l)"  # = 10
 echo "Template 數量: $(find docs_template -name "*Template.md" | wc -l)"  # >= 20
 ```
 
@@ -3886,7 +3894,7 @@ grep -rn "version: 0.10" docs_template/ | wc -l  # 應該 >= 20
 cd AISDLC_${NEW_VERSION}
 
 echo "=== 場景 SOP 版本號檢查 ==="
-grep -rn "version: 0.10" scenarios/ | wc -l  # 應該 >= 27 (9 個場景 × 3 檔案)
+grep -rn "version: 0.10" scenarios/ | wc -l  # 應該 >= 30 (10 個場景 × 3 檔案)
 ```
 
 ---

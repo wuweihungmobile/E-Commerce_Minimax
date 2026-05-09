@@ -117,24 +117,44 @@ DevOps-Engineer 整合所有配置
 
 ---
 
-## 🔗 Skills 整合對照表
+## 🛠️ Claude Code Skills 整合指引
 
-> 💡 **說明**: 以下列出各階段可觸發的 Claude Code Skills（斜線指令），協助加速 DevOps 建置。
+> 本 SOP 各階段可搭配以下 Claude Code Skills 使用。每個 Skill 均有明確的觸發時機和使用方式。
 
-| SOP 階段 | 可觸發 Skill | 用途說明 |
-|---------|-------------|---------|
-| 前置：安全基線 | `/security-audit` | OWASP Top 10 安全審查、Secret 掃描 |
-| 階段 1：啟動 | — | 手動載入 AISDLC_INIT.md |
-| 階段 2：環境規劃 | `/sd-architect` | 基礎設施架構設計（含多技術棧環境） |
-| 階段 3：CI Pipeline | `/devops-github-actions`、`/devops-gitlab-ci`、`/testing-strategy` | CI Pipeline 建置（依平台）、測試策略設計 |
-| 階段 3：DB Migration | `/integration-database` | PostgreSQL + Flyway/Liquibase DB Migration CI 整合 |
-| 階段 4：CD Pipeline | `/devops-kubernetes`、`/release-management` | K8s 部署配置、版本發布管理 |
-| 階段 5：容器化 | `/devops-docker` | Dockerfile（Spring Boot/Next.js 多階段建置）、docker-compose |
-| 階段 6：監控告警 | `/devops-monitoring` | Prometheus/Grafana 監控、Spring Boot Actuator 整合 |
-| 階段 6：安全整合 | `/security-audit` | DevSecOps：SAST/SCA/Container Scan |
-| 階段 7：文檔 | `/documentation-api` | API 文檔、Runbook 生成 |
-| 行動端 CI/CD | `/mobile-development` | Android（Gradle CI）/ macOS（Xcode/fastlane）建置與分發 Pipeline |
-| 效能測試 | `/performance-optimization` | k6/Locust 負載測試整合 CI/CD |
+### Skills 對應總覽（含觸發說明）
+
+| SOP 階段 | Skill | 觸發時機 | 觸發範例指令 | 對應 Workflow |
+|---------|-------|---------|------------|-------------|
+| **前置：安全基線** | `/security-audit` | Layer 0 建置前，審查 Secret 掃描範圍 | `/security-audit` 後描述「掃描 GitHub Actions workflow 中的 Secret 洩漏風險」 | — |
+| **階段 2：環境規劃** | `/sd-architect` | 設計基礎設施架構（多環境/多技術棧） | `/sd-architect` 後描述「設計 dev/staging/prod 三環境 + Spring Boot + Next.js 架構」 | `devops-setup-flow` |
+| **階段 3：CI Pipeline** | `/devops-github-actions` | GitHub 平台建置 CI Pipeline | `/devops-github-actions` 後描述「Spring Boot Maven 建置 + JUnit 測試 + SonarQube 掃描」 | `devops-setup-flow` |
+| **階段 3：CI Pipeline** | `/devops-gitlab-ci` | GitLab 平台建置 CI Pipeline | `/devops-gitlab-ci` 後描述「Node.js + Docker 建置 Pipeline」 | `devops-setup-flow` |
+| **階段 3：CI Pipeline** | `/testing-strategy` | CI 中設計自動化測試策略 | `/testing-strategy` 後描述「Spring Boot API 的測試金字塔設計」 | `testing-strategy-flow` |
+| **階段 3：DB Migration** | `/integration-database` | CI 整合 DB Migration（Flyway/Liquibase） | `/integration-database` 後描述「PostgreSQL + Flyway CI Migration 驗證步驟」 | — |
+| **階段 4：CD Pipeline** | `/devops-kubernetes` | K8s 部署配置設計 | `/devops-kubernetes` 後描述「Spring Boot + Next.js K8s Deployment/Service/Ingress 設計」 | `devops-setup-flow` |
+| **階段 4：CD Pipeline** | `/release-management` | 設計發布流程與版本管理 | `/release-management` 後描述「藍綠部署 + Canary 策略設計」 | — |
+| **階段 5：容器化** | `/devops-docker` | Dockerfile 建立（多階段建置） | `/devops-docker` 後描述「Spring Boot JAR 多階段建置 + Next.js SSR 容器化」 | — |
+| **階段 6：監控告警** | `/devops-monitoring` | Prometheus/Grafana 監控配置 | `/devops-monitoring` 後描述「Spring Boot Actuator + Prometheus + Grafana Dashboard 設計」 | — |
+| **階段 6：安全整合** | `/security-audit` | DevSecOps：SAST/SCA/Container Scan 整合 | `/security-audit` 後描述「CI Pipeline 加入 Semgrep SAST + Trivy Container Scan」 | — |
+| **階段 7：文檔** | `/documentation-api` | 生成 Runbook 和 API 文檔 | `/documentation-api` 後描述「撰寫 CI/CD Pipeline Runbook 和故障排除指南」 | — |
+| **行動端 CI/CD** | `/mobile-development` | Android/macOS CI 建置與分發 | `/mobile-development` 後描述「Android Gradle CI + Google Play 自動部署 Pipeline」 | — |
+| **效能測試** | `/performance-optimization` | CI 整合 k6/Locust 負載測試 | `/performance-optimization` 後描述「在 CI Pipeline 加入 k6 效能基準測試閘道」 | `performance-optimization-flow` |
+
+### Skills 選擇速決表（不確定時查這裡）
+
+| 我要做什麼 | 用這個 Skill |
+|-----------|------------|
+| 設計 CI Pipeline（GitHub） | `/devops-github-actions` |
+| 設計 CI Pipeline（GitLab） | `/devops-gitlab-ci` |
+| 設計 K8s 部署 | `/devops-kubernetes` |
+| 容器化應用（Dockerfile） | `/devops-docker` |
+| 設定監控告警 | `/devops-monitoring` |
+| 設計測試策略 | `/testing-strategy` |
+| 設計發布流程 | `/release-management` |
+| 安全審計（DevSecOps） | `/security-audit` |
+| 效能測試整合 CI | `/performance-optimization` |
+| 行動端 CI/CD | `/mobile-development` |
+| 基礎設施架構設計 | `/sd-architect` |
 
 ---
 
@@ -712,6 +732,54 @@ spec:
 | **加密傳輸** | TLS 加密所有 secret 傳輸 | 全部方案 |
 | **避免日誌洩漏** | 確保 secrets 不會出現在日誌中 | 應用程式層面 |
 | **緊急撤銷** | 可快速撤銷洩漏的 secret | Vault Lease, IAM |
+
+---
+
+## 🔴 開發-編譯-測試循環（強制規則）
+
+> 依據 AISDLC CLAUDE.md 強制規則，DevOps IaC 開發階段必須遵守此循環。
+
+```
+開發 1 個 IaC 配置 / Pipeline 步驟 / Dockerfile
+    ↓
+立即驗證（terraform plan / docker build / yaml lint）
+    ↓
+驗證失敗？ → 🔴 立即停止 → 修復 → 重新驗證
+    ↓
+驗證成功 ✅
+    ↓
+執行單元測試（terratest / docker run --rm / Pipeline dry-run）
+    ↓
+測試失敗？ → 🔴 立即停止 → 依規格修復 → 重新測試
+    ↓
+測試通過 ✅ → 繼續開發下一個配置
+```
+
+**絕對禁止**：
+- ❌ 累積多個配置後才驗證
+- ❌ 驗證失敗後繼續開發
+- ❌ 跳過 Pipeline dry-run
+- ❌ 測試失敗後跳過繼續部署
+
+**完整規範**：[Development_Build_Test_Cycle.md](../../guides/user/process/Development_Build_Test_Cycle.md)
+
+---
+
+## 📁 產出文件存放目錄指引
+
+> **🔴 重要**：各階段產出文件必須依據 [DEVELOPMENT_DIRECTORY_STRUCTURE.md](../../guides/user/onboarding/DEVELOPMENT_DIRECTORY_STRUCTURE.md) 存放至正確目錄。
+
+| 階段 | 產出文件 | 存放目錄 |
+|------|---------|---------|
+| 2 環境規劃 | 基礎設施架構設計文件、環境規劃報告 | `docs/02_architecture/` |
+| 2 環境規劃 | 工具選型決策 (ADR) | `docs/05_development/` |
+| 3 CI Pipeline | CI Pipeline 設計文件、測試策略文件 | `docs/08_deployment/` |
+| 4 CD Pipeline | CD Pipeline 設計文件、部署方案 | `docs/08_deployment/` |
+| 4 CD Pipeline | K8s 配置規格文件 | `docs/02_architecture/` |
+| 5 容器化 | 容器化方案文件 | `docs/08_deployment/` |
+| 6 監控告警 | 監控告警設計文件、SLI/SLO 定義 | `docs/06_quality/` |
+| 6 安全整合 | DevSecOps 掃描配置、安全基線文件 | `docs/06_quality/` |
+| 7 文檔 | Runbook、故障排除指南 | `docs/08_deployment/` |
 
 ---
 

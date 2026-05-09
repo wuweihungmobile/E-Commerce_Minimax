@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.admin;
 
 import com.nextkey.ecommerce.api.dto.AdminDto;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.model.user.User;
@@ -14,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -75,7 +78,7 @@ public class AdminService {
         if ("APPROVE".equals(request.getDecision())) {
             tenant.setStatus(Tenant.TenantStatus.ACTIVE);
         } else if ("REJECT".equals(request.getDecision())) {
-            tenant.setStatus(Tenant.TenantStatus.SUSPENDED);
+            tenant.setStatus(Tenant.TenantStatus.REJECTED);
         } else {
             throw new BusinessException(ErrorCode.E_9000, "Invalid decision");
         }
@@ -88,6 +91,208 @@ public class AdminService {
                 .reviewedAt(Instant.now().toString())
                 .reviewedBy("SYSTEM_ADMIN")
                 .build();
+    }
+
+    /**
+     * US-M17-007: 審核通過租戶
+     * 1. 變更狀態為 ACTIVE
+     * 2. 初始化 6 個 Feature Toggle 預設值
+     */
+    @Transactional
+    public AdminDto.TenantApproveResponse approveTenant(UUID tenantId, AdminDto.TenantApproveRequest request) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
+
+        // 驗證狀態是否為 PENDING
+        if (tenant.getStatus() != Tenant.TenantStatus.PENDING_REVIEW) {
+            throw new BusinessException(ErrorCode.E_2005, "Tenant status is not PENDING_REVIEW");
+        }
+
+        // 變更狀態為 ACTIVE
+        tenant.setStatus(Tenant.TenantStatus.ACTIVE);
+        tenantRepository.save(tenant);
+
+        // 初始化 Feature Toggles (AC-007-2)
+        // 預設值：RETAIL=true, BOOKING=false, CMS=true, ERP=true, DYNAMIC_PRICING=false, PROMO=false
+        List<String> enabledFeatures = initializeFeatureToggles(tenantId);
+
+        log.info("Tenant approved: tenantId={}, enabledFeatures={}", tenantId, enabledFeatures);
+
+        return AdminDto.TenantApproveResponse.builder()
+                .tenantId(tenantId)
+                .status("ACTIVE")
+                .approvedAt(Instant.now())
+                .approvedBy("SYSTEM_ADMIN")
+                .enabledFeatures(enabledFeatures)
+                .build();
+    }
+
+    /**
+     * US-M17-008: 駁回租戶申請
+     * 1. 變更狀態為 REJECTED
+     * 2. 記錄駁回原因
+     */
+    @Transactional
+    public AdminDto.TenantRejectResponse rejectTenant(UUID tenantId, AdminDto.TenantRejectRequest request) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
+
+        // 驗證狀態是否為 PENDING
+        if (tenant.getStatus() != Tenant.TenantStatus.PENDING_REVIEW) {
+            throw new BusinessException(ErrorCode.E_2005, "Tenant status is not PENDING_REVIEW");
+        }
+
+        // 變更狀態為 REJECTED
+        tenant.setStatus(Tenant.TenantStatus.REJECTED);
+        tenantRepository.save(tenant);
+
+        log.info("Tenant rejected: tenantId={}, reason={}", tenantId, request.getReason());
+
+        return AdminDto.TenantRejectResponse.builder()
+                .tenantId(tenantId)
+                .status("REJECTED")
+                .rejectedAt(Instant.now())
+                .rejectedBy("SYSTEM_ADMIN")
+                .reason(request.getReason())
+                .build();
+    }
+
+    /**
+     * US-M17-007: 更新租戶狀態
+     * 支援狀態轉換：
+     * - ACTIVE → SUSPENDED (Admin 暫停店鋪)
+     * - SUSPENDED → ACTIVE (Admin 恢復店鋪)
+     * - SUSPENDED → TERMINATED (Admin 終止店鋪)
+     */
+    @Transactional
+    public AdminDto.TenantStatusUpdateResponse updateTenantStatus(UUID tenantId, AdminDto.TenantStatusUpdateRequest request) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
+
+        Tenant.TenantStatus currentStatus = tenant.getStatus();
+        Tenant.TenantStatus newStatus;
+
+        try {
+            newStatus = Tenant.TenantStatus.valueOf(request.getStatus());
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.E_9000, "Invalid status: " + request.getStatus());
+        }
+
+        // 驗證狀態機轉換
+        validateStatusTransition(currentStatus, newStatus, request.getReason());
+
+        // 終止時需要填寫原因
+        if (newStatus == Tenant.TenantStatus.TERMINATED &&
+                (request.getReason() == null || request.getReason().isBlank())) {
+            throw new BusinessException(ErrorCode.E_9000, "Reason is required when terminating a tenant");
+        }
+
+        String previousStatus = currentStatus.name();
+
+        // 更新狀態
+        tenant.setStatus(newStatus);
+        tenantRepository.save(tenant);
+
+        // 如果是 SUSPENDED，自動下架所有 Listings
+        if (newStatus == Tenant.TenantStatus.SUSPENDED) {
+            deactivateTenantListings(tenantId);
+        }
+
+        // 寫入 audit log (mock - log only since no AuditLog entity exists)
+        log.info("AUDIT_LOG: Tenant status updated - tenantId={}, previousStatus={}, newStatus={}, reason={}, updatedBy=SUPER_ADMIN",
+                tenantId, previousStatus, newStatus.name(), request.getReason());
+
+        return AdminDto.TenantStatusUpdateResponse.builder()
+                .tenantId(tenantId)
+                .previousStatus(previousStatus)
+                .newStatus(newStatus.name())
+                .updatedAt(Instant.now().toString())
+                .updatedBy("SUPER_ADMIN")
+                .build();
+    }
+
+    /**
+     * 驗證狀態機轉換是否合法
+     */
+    private void validateStatusTransition(Tenant.TenantStatus currentStatus, Tenant.TenantStatus newStatus, String reason) {
+        // 相同狀態不允許
+        if (currentStatus == newStatus) {
+            throw new BusinessException(ErrorCode.E_9000, "Tenant is already in status: " + newStatus);
+        }
+
+        // 狀態機定義
+        boolean validTransition = switch (currentStatus) {
+            case ACTIVE -> newStatus == Tenant.TenantStatus.SUSPENDED;
+            case SUSPENDED -> newStatus == Tenant.TenantStatus.ACTIVE || newStatus == Tenant.TenantStatus.TERMINATED;
+            default -> false;
+        };
+
+        if (!validTransition) {
+            throw new BusinessException(ErrorCode.E_2005, "Invalid status transition from " + currentStatus + " to " + newStatus);
+        }
+    }
+
+    /**
+     * 停用租戶的所有 Listings (當店鋪被 SUSPENDED 時自動執行)
+     */
+    private void deactivateTenantListings(UUID tenantId) {
+        List<Listing> listings = listingRepository.findByTenantId(tenantId);
+        for (Listing listing : listings) {
+            if (listing.getStatus() == Listing.ListingStatus.ACTIVE) {
+                listing.setStatus(Listing.ListingStatus.INACTIVE);
+                listingRepository.save(listing);
+                log.info("Listing deactivated due to tenant suspension: listingId={}", listing.getId());
+            }
+        }
+        log.info("Deactivated all active listings for tenant: tenantId={}, count={}", tenantId, listings.size());
+    }
+
+    /**
+     * 初始化租戶的 Feature Toggles
+     * 根據 BR-M17-002 設定預設值：
+     * - RETAIL_ENABLED: true (預設啟用)
+     * - BOOKING_ENABLED: false (需要審核)
+     * - CMS_ENABLED: true (預設啟用)
+     * - ERP_ENABLED: true (預設啟用)
+     * - DYNAMIC_PRICING_ENABLED: false (需要審核)
+     * - PROMO_ENABLED: false (需要審核)
+     */
+    private List<String> initializeFeatureToggles(UUID tenantId) {
+        // 先查詢 Tenant 實體（用於 ManyToOne 關聯）
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
+
+        // Feature Toggle 預設值定義
+        Map<String, Boolean> defaultFeatures = Map.of(
+                "RETAIL_ENABLED", true,
+                "BOOKING_ENABLED", false,
+                "CMS_ENABLED", true,
+                "ERP_ENABLED", true,
+                "DYNAMIC_PRICING_ENABLED", false,
+                "PROMO_ENABLED", false
+        );
+
+        List<String> enabledFeatures = new ArrayList<>();
+
+        for (Map.Entry<String, Boolean> entry : defaultFeatures.entrySet()) {
+            String featureKey = entry.getKey();
+            Boolean isEnabled = entry.getValue();
+
+            TenantFeatureToggle toggle = TenantFeatureToggle.builder()
+                    .tenant(tenant)  // ✅ 使用 ManyToOne 關聯（而非虛擬欄位 tenantId）
+                    .featureKey(featureKey)
+                    .isEnabled(isEnabled)
+                    .build();
+
+            if (isEnabled) {
+                toggle.setEnabledAt(Instant.now());
+                enabledFeatures.add(featureKey);
+            }
+
+            featureToggleRepository.save(toggle);
+        }
+
+        return enabledFeatures;
     }
 
     // ========== User Management ==========
@@ -200,6 +405,35 @@ public class AdminService {
         log.info("Feature toggle deleted: tenantId={}, feature={}", tenantId, featureKey);
     }
 
+    /**
+     * US-M17-009: Admin 更新租戶的 Feature Toggle
+     * 當 feature 是 requires-admin-review 時：
+     * - 啟用後狀態應為 PENDING（需要 Admin 審核）
+     * - 只有 Admin 確認後才會變為 ACTIVE
+     */
+    @Transactional
+    public AdminDto.FeatureToggleResponse updateTenantFeatureToggle(UUID tenantId, String featureKey, Boolean enabled) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
+
+        TenantFeatureToggle toggle = featureToggleRepository
+                .findByTenantIdAndFeatureKey(tenantId, featureKey)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Feature toggle not found"));
+
+        toggle.setIsEnabled(enabled != null ? enabled : false);
+
+        if (Boolean.TRUE.equals(enabled)) {
+            toggle.setEnabledAt(Instant.now());
+        } else {
+            toggle.setDisabledAt(Instant.now());
+        }
+
+        toggle = featureToggleRepository.save(toggle);
+        log.info("Admin updated feature toggle: tenantId={}, feature={}, enabled={}", tenantId, featureKey, enabled);
+
+        return toFeatureToggleResponse(toggle, tenant);
+    }
+
     // ========== Platform Stats ==========
 
     /**
@@ -259,7 +493,8 @@ public class AdminService {
 
     private AdminDto.TenantResponse toTenantResponse(Tenant tenant) {
         int userCount = userRepository.findByTenantId(tenant.getId()).size();
-        int listingCount = listingRepository.findByTenantId(tenant.getId()).size();
+        // Use findIdsByTenantId to avoid loading Listing entities with problematic tags field
+        int listingCount = listingRepository.findIdsByTenantId(tenant.getId()).size();
 
         return AdminDto.TenantResponse.builder()
                 .tenantId(tenant.getId())

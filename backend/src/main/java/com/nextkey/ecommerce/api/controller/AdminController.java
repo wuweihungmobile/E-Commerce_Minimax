@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -62,6 +63,46 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success("Tenant reviewed successfully", response));
     }
 
+    /**
+     * 審核通過租戶 (US-M17-007)
+     */
+    @PostMapping("/tenants/{tenantId}/approve")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.TenantApproveResponse>> approveTenant(
+            @PathVariable UUID tenantId,
+            @RequestBody(required = false) AdminDto.TenantApproveRequest request) {
+        log.info("Tenant approve request: tenantId={}", tenantId);
+        AdminDto.TenantApproveResponse response = adminService.approveTenant(tenantId, request);
+        return ResponseEntity.ok(ApiResponse.success("Tenant approved successfully", response));
+    }
+
+    /**
+     * 駁回租戶申請 (US-M17-008)
+     */
+    @PostMapping("/tenants/{tenantId}/reject")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.TenantRejectResponse>> rejectTenant(
+            @PathVariable UUID tenantId,
+            @Valid @RequestBody AdminDto.TenantRejectRequest request) {
+        log.info("Tenant reject request: tenantId={}, reason={}", tenantId, request.getReason());
+        AdminDto.TenantRejectResponse response = adminService.rejectTenant(tenantId, request);
+        return ResponseEntity.ok(ApiResponse.success("Tenant rejected successfully", response));
+    }
+
+    /**
+     * 更新租戶狀態 (US-M17-007)
+     * 支援：ACTIVE → SUSPENDED、SUSPENDED → ACTIVE、SUSPENDED → TERMINATED
+     */
+    @PutMapping("/tenants/{tenantId}/status")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.TenantStatusUpdateResponse>> updateTenantStatus(
+            @PathVariable UUID tenantId,
+            @Valid @RequestBody AdminDto.TenantStatusUpdateRequest request) {
+        log.info("Update tenant status: tenantId={}, newStatus={}", tenantId, request.getStatus());
+        AdminDto.TenantStatusUpdateResponse response = adminService.updateTenantStatus(tenantId, request);
+        return ResponseEntity.ok(ApiResponse.success("Tenant status updated successfully", response));
+    }
+
     // ========== User Management ==========
 
     /**
@@ -107,9 +148,10 @@ public class AdminController {
     }
 
     /**
-     * 取得租戶的功能開關
+     * US-M17-008: 取得租戶的功能開關 (Admin)
+     * 路徑: GET /v2/admin/tenants/{tenantId}/features
      */
-    @GetMapping("/tenants/{tenantId}/feature-toggles")
+    @GetMapping("/tenants/{tenantId}/features")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<AdminDto.TenantFeatureTogglesResponse>> getTenantFeatureToggles(
             @PathVariable UUID tenantId) {
@@ -128,6 +170,22 @@ public class AdminController {
         log.info("Delete feature toggle: tenantId={}, feature={}", tenantId, featureKey);
         adminService.deleteFeatureToggle(tenantId, featureKey);
         return ResponseEntity.ok(ApiResponse.success("Feature toggle deleted", null));
+    }
+
+    /**
+     * US-M17-009: Admin 更新租戶的 Feature Toggle
+     */
+    @PutMapping("/tenants/{tenantId}/features/{feature}")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.FeatureToggleResponse>> updateTenantFeatureToggle(
+            @PathVariable UUID tenantId,
+            @PathVariable String feature,
+            @RequestBody Map<String, Boolean> request) {
+        log.info("Admin update feature toggle: tenantId={}, feature={}, enabled={}",
+                tenantId, feature, request.get("enabled"));
+        Boolean enabled = request.get("enabled");
+        AdminDto.FeatureToggleResponse response = adminService.updateTenantFeatureToggle(tenantId, feature, enabled);
+        return ResponseEntity.ok(ApiResponse.success("Feature toggle updated", response));
     }
 
     // ========== Platform Stats ==========

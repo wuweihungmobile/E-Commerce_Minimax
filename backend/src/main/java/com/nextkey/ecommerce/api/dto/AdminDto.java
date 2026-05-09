@@ -154,6 +154,80 @@ public class AdminDto {
         private String reviewedBy;
     }
 
+    // ========== Tenant Approve ==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantApproveRequest {
+        private List<String> approvedFeatures; // Optional: specific features to enable beyond defaults
+
+        private String notes;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantApproveResponse {
+        private UUID tenantId;
+        private String status;
+        private Instant approvedAt;
+        private String approvedBy;
+        private List<String> enabledFeatures;
+    }
+
+    // ========== Tenant Reject ==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantRejectRequest {
+        @NotBlank(message = "Reason is required")
+        private String reason;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantRejectResponse {
+        private UUID tenantId;
+        private String status;
+        private Instant rejectedAt;
+        private String rejectedBy;
+        private String reason;
+    }
+
+    // ========== Tenant Status Update ==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantStatusUpdateRequest {
+        @NotBlank(message = "Status is required")
+        @jakarta.validation.constraints.Pattern(regexp = "^(SUSPENDED|ACTIVE|TERMINATED)$",
+                message = "Status must be SUSPENDED, ACTIVE, or TERMINATED")
+        private String status;
+
+        private String reason; // Required when terminating
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantStatusUpdateResponse {
+        private UUID tenantId;
+        private String previousStatus;
+        private String newStatus;
+        private String updatedAt;
+        private String updatedBy;
+    }
+
     // ========== System Config ==========
 
     @Data

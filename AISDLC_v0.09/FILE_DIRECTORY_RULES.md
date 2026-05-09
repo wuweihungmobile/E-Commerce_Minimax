@@ -119,7 +119,7 @@
 - ❌ `/tmp/*` - 工作目錄外
 - ❌ `/var/*` - 系統目錄
 - ❌ `AISDLC_v0.xx/` (版本根目錄) - 禁止臨時檔案
-  - 根目錄僅允許 5 個核心文檔
+  - 根目錄僅允許 6 個核心文檔
   - 其他檔案應放在 `build/` 對應子目錄
 
 ### 快速檢查清單
@@ -293,11 +293,12 @@ AISDLC_v0.09/
 ├── README.md                         # 版本說明
 ├── FILE_DIRECTORY_RULES.md           # 檔案目錄規則
 ├── AISDLC_v0.0X_UPGRADE_SOP.md       # 下次升版 SOP
-└── AISDLC_UPGRADE_SOP_CheckList.md   # 升版執行檢查清單 (v0.09+)
+├── AISDLC_UPGRADE_SOP_CheckList.md   # 升版執行檢查清單 (v0.09+)
+└── DEVELOPMENT_DIRECTORY_STRUCTURE.md # 開發目錄結構規範 (v0.09+)
 ```
 
 **維護規則**:
-- ✅ 升版時必須拷貝這 5 個核心檔案
+- ✅ 升版時必須拷貝這 6 個核心檔案
 - ✅ `AISDLC_v0.0X_UPGRADE_SOP.md` 拷貝後需重新命名並更新版本號
 - ✅ `README.md` 拷貝後需針對新版本重寫
 - **檔名格式**: `AISDLC_v{NEXT_VERSION}_UPGRADE_SOP.md`
@@ -785,6 +786,7 @@ cp -r AISDLC_v0.0X/docs_template AISDLC_v0.0Y/
 cp -r AISDLC_v0.0X/prompts       AISDLC_v0.0Y/
 cp -r AISDLC_v0.0X/scenarios     AISDLC_v0.0Y/
 cp -r AISDLC_v0.0X/tools         AISDLC_v0.0Y/
+cp -r AISDLC_v0.0X/.claude       AISDLC_v0.0Y/
 
 # 參考文檔
 cp -r AISDLC_v0.0X/guides        AISDLC_v0.0Y/
@@ -870,6 +872,9 @@ touch AISDLC_v0.0Y/build/logs/CHANGELOG_v0.0Y.md
 | `AISDLC_v0.xx/README.md` | 2 | 📝 重寫 | - | 版本說明 |
 | `AISDLC_v0.xx/FILE_DIRECTORY_RULES.md` | 2 | ✅ COPY | - | 檔案目錄規則 |
 | `AISDLC_v0.xx/AISDLC_v0.YY_UPGRADE_SOP.md` | 2 | ✅ COPY+修改 | - | 升版 SOP |
+| `AISDLC_v0.xx/AISDLC_UPGRADE_SOP_CheckList.md` | 2 | ✅ COPY+重置 | - | 升版 CheckList (v0.09+) |
+| `AISDLC_v0.xx/DEVELOPMENT_DIRECTORY_STRUCTURE.md` | 2 | ✅ COPY | - | 開發目錄結構規範 (v0.09+) |
+| `AISDLC_v0.xx/.claude/` | 2 | ✅ COPY | - | Claude Code 配置與 Skills |
 | `AISDLC_v0.xx/build/README.md` | 2 | ✅ COPY | - | build/ 目錄說明 🔴 |
 | `AISDLC_v0.xx/build/logs/CHANGELOG_v0.XX.md` | 3 | 📝 新建 | - | 版本變更記錄 |
 | `AISDLC_v0.xx/build/` | 3 | ❌ 不 COPY | `build_archives/v0.xx/` | 臨時建置文件 |
@@ -971,12 +976,15 @@ AISDLC 框架中存在三類空目錄，各有不同的用途和管理方式：
 
 **範例目錄**:
 ```
-docs/                              # 專案文檔輸出目錄
-├── analysis/                      # ✅ 工作區 - 分析文檔輸出
-├── planning/                      # ✅ 工作區 - 規劃文檔輸出
-├── logs/                          # ✅ 工作區 - 日誌輸出
-├── review/                        # ✅ 工作區 - 審查記錄輸出
-└── reports/                       # ✅ 工作區 - 報告輸出
+docs/                              # 專案文檔輸出目錄（開發專注版 8 目錄）
+├── 01_requirements/               # ✅ 工作區 - PRD/FRD/User Stories
+├── 02_architecture/               # ✅ 工作區 - SRD/API Specification
+├── 03_testing/                    # ✅ 工作區 - Test Plan/Cases/Reports
+├── 04_planning/                   # ✅ 工作區 - Roadmap/Estimation/Task
+├── 05_development/                # ✅ 工作區 - Iteration Plans/Progress
+├── 06_quality/                    # ✅ 工作區 - Code Quality/Security/Perf
+├── 07_design/                     # ✅ 工作區 - UI/UX/Database Design
+└── 08_deployment/                 # ✅ 工作區 - CI/CD/Release Notes
 
 build/                             # 建置過程目錄
 ├── planning/archive/              # ✅ 工作區 - 歸檔計劃
@@ -1004,11 +1012,11 @@ build/                             # 建置過程目錄
 ```
 docs_template/scenario_specific/  # 情境專屬模板（部分預留）
 ├── documentation/                 # 🚧 預留 - 技術文檔情境模板 (v0.09+)
-├── analysis/                      # 🚧 預留 - 需求分析情境模板 (v0.09+)
+├── analysis/                      # ✅ 已實作 - 分析情境模板（3個模板）
 ├── integration/                   # 🚧 預留 - 第三方整合情境模板 (v0.09+)
 ├── testing/                       # 🚧 預留 - 測試策略情境模板 (v0.09+)
 ├── performance/                   # 🚧 預留 - 效能優化情境模板 (v0.09+)
-└── devops/                        # ✅ 已實作 - 有 CICD_Pipeline_Template.md
+└── devops/                        # ✅ 已實作 - 多個 CI/CD 模板 (2026-03-22 擴充)
 
 docs_template/support/             # 支援模板（部分預留）
 ├── operations/                    # 🚧 預留 - 營運支援模板 (v0.09+)

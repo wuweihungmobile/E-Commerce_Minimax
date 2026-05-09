@@ -2,11 +2,14 @@ package com.nextkey.ecommerce.api.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.util.UUID;
 
 @Data
 @Builder
@@ -19,11 +22,21 @@ public class RegisterRequest {
     private String email;
 
     @NotBlank(message = "Password is required")
-    @Size(min = 8, message = "Password must be at least 8 characters")
+    @Size(min = 8, max = 128, message = "Password must be between 8 and 128 characters")
+    @Pattern(
+        regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).+$",
+        message = "Password must contain uppercase, lowercase and numeric characters"
+    )
     private String password;
 
-    @NotBlank(message = "Full name is required")
     private String fullName;
 
     private String phone;
+
+    /** 會員類型：BUYER / SELLER / HOST / STORE_OWNER / STORE_STAFF，預設 BUYER */
+    @Pattern(regexp = "^(BUYER|SELLER|HOST|STORE_OWNER|STORE_STAFF)$", message = "userType must be BUYER, SELLER, HOST, STORE_OWNER, or STORE_STAFF")
+    private String userType;
+
+    /** 關聯的 Tenant ID（可選） */
+    private UUID tenantId;
 }

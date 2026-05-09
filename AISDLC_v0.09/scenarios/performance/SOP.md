@@ -201,29 +201,44 @@ ALTER SYSTEM SET log_min_duration_statement = 1000;  # 記錄 > 1 秒的查詢
 
 ---
 
-## 🎯 Claude Code Skills 整合指引 (v0.09+)
+## 🛠️ Claude Code Skills 整合指引
 
-> **🔴 重要**：在效能優化流程中，可透過 Claude Code Skills 快速觸發特定能力。以下列出各階段建議使用的 Skills。
+> 本 SOP 各階段可搭配以下 Claude Code Skills 使用。每個 Skill 均有明確的觸發時機和使用方式。
 
-### 各階段建議 Skills
+### Skills 對應總覽（含觸發說明）
 
-| 階段 | 建議 Skill | 觸發時機 |
-|------|-----------|---------|
-| 階段 1 啟動 | `/performance-optimization` | 啟動效能優化情境 |
-| 階段 2 基準測試 | `/qa-testing` | 效能測試策略制定 |
-| 階段 2 基準測試 | `/mobile-development` | 行動端效能基準測試（涉及 Android/iOS/macOS 時） |
-| 階段 3 瓶頸分析 | `/dev-review` | 代碼層級效能審查 |
-| 階段 3 瓶頸分析 | `/brownfield-analysis` | 現有系統效能瓶頸分析 |
-| 階段 4 優化策略 | `/sd-architect` | 架構級優化方案設計 |
-| 階段 4 優化策略 | `/integration-database` | 資料庫架構優化規劃（索引、連線池、讀寫分離） |
-| 階段 5 實施指引 | `/dev-review` | 優化代碼審查與實作指導 |
-| 階段 5 實施指引 | `/integration-redis` | Redis 快取整合 |
-| 階段 5 實施指引 | `/mobile-development` | 行動端效能優化實施（涉及 Android/iOS/macOS 時） |
-| 階段 6 驗證對比 | `/qa-testing` | 效能回歸測試 |
-| 階段 6 驗證對比 | `/performance-optimization` | 效能前後對比分析 |
-| 階段 7 監控 | `/devops-monitoring` | 監控告警系統設定 |
-| 階段 7 監控 | `/devops-github-actions` | CI/CD 效能測試整合 |
-| 階段 3-5 | `/security-audit` | 安全敏感效能場景（支付/加密/TLS）的安全與效能 tradeoff 審查 |
+| SOP 階段 | Skill | 觸發時機 | 觸發範例指令 | 對應 Workflow |
+|---------|-------|---------|------------|-------------|
+| **階段 1 啟動** | `/performance-optimization` | 啟動效能優化情境 | `/performance-optimization` 後描述「Spring Boot API P99 超過 2 秒，需要全面效能診斷」 | `performance-optimization-flow` |
+| **階段 2 基準測試** | `/qa-testing` | 制定效能測試策略（k6/JMeter 場景設計） | `/qa-testing` 後描述「設計電商訂單 API 的 k6 負載測試場景（目標 500 TPS）」 | `testing-strategy-flow` |
+| **階段 2 基準測試** | `/mobile-development` | 行動端效能基準測試（涉及 Android/iOS/macOS 時） | `/mobile-development` 後描述「Android 掃碼 App 的 UI 渲染效能基準測試」 | — |
+| **階段 3 瓶頸分析** | `/dev-review` | 代碼層級效能審查（N+1 查詢/記憶體洩漏） | `/dev-review` 後貼上「OrderService.findAll() 的 JPA 查詢代碼」 | — |
+| **階段 3 瓶頸分析** | `/brownfield-analysis` | 現有系統架構級效能瓶頸分析 | `/brownfield-analysis` 後描述「分析 API Gateway → Service → DB 的效能瓶頸鏈路」 | `brownfield-analysis-flow` |
+| **階段 4 優化策略** | `/sd-architect` | 架構級優化方案設計（CDN/讀寫分離/微服務拆分） | `/sd-architect` 後描述「設計讀寫分離架構解決報表查詢效能問題」 | — |
+| **階段 4 優化策略** | `/integration-database` | 資料庫效能優化規劃（索引/連線池/讀寫分離） | `/integration-database` 後描述「PostgreSQL 慢查詢索引優化和連線池調優方案」 | — |
+| **階段 5 實施指引** | `/dev-review` | 優化代碼審查（確認優化符合規格，無回歸） | `/dev-review` 後貼上「Redis 快取實作代碼，確認 Cache Aside Pattern 正確性」 | — |
+| **階段 5 實施指引** | `/integration-redis` | Redis 快取整合（API 響應快取/Session/Queue） | `/integration-redis` 後描述「商品列表 API 的 Redis 快取策略（TTL + 失效機制）」 | — |
+| **階段 5 實施指引** | `/mobile-development` | 行動端效能優化實施（涉及 Android/iOS/macOS 時） | `/mobile-development` 後描述「Android RecyclerView 列表渲染效能優化」 | — |
+| **階段 6 驗證對比** | `/qa-testing` | 效能回歸測試設計（確認優化後無功能退化） | `/qa-testing` 後描述「優化後的 API 效能回歸測試策略」 | — |
+| **階段 6 驗證對比** | `/performance-optimization` | 效能前後對比分析（P99/TPS/錯誤率） | `/performance-optimization` 後描述「優化前後的 k6 測試結果對比分析」 | — |
+| **階段 7 監控** | `/devops-monitoring` | Prometheus/Grafana 監控告警設定 | `/devops-monitoring` 後描述「設定 API P99 > 500ms 告警 + Grafana 效能 Dashboard」 | — |
+| **階段 7 監控** | `/devops-github-actions` | CI/CD 整合效能測試（Benchmark Gate） | `/devops-github-actions` 後描述「CI Pipeline 加入 k6 效能閘道（退化 > 10% 阻塞 PR）」 | `devops-setup-flow` |
+| **階段 3-5** | `/security-audit` | 安全敏感效能場景的安全與效能 tradeoff 審查 | `/security-audit` 後描述「評估 Redis Session 快取方案的安全性（Token 洩漏風險）」 | — |
+
+### Skills 選擇速決表（不確定時查這裡）
+
+| 我要做什麼 | 用這個 Skill |
+|-----------|------------|
+| 啟動效能優化分析 | `/performance-optimization` |
+| 設計效能測試場景 | `/qa-testing` |
+| 代碼層級效能審查 | `/dev-review` |
+| 架構級瓶頸分析 | `/brownfield-analysis` |
+| 架構優化方案設計 | `/sd-architect` |
+| DB 索引/查詢優化 | `/integration-database` |
+| Redis 快取整合 | `/integration-redis` |
+| 設定監控告警 | `/devops-monitoring` |
+| CI 整合效能測試 | `/devops-github-actions` |
+| 行動端效能優化 | `/mobile-development` |
 
 ---
 
@@ -249,10 +264,29 @@ ALTER SYSTEM SET log_min_duration_statement = 1000;  # 記錄 > 1 秒的查詢
 繼續優化下一個方法/查詢/配置
 ```
 
-**禁止行為**：
+**絕對禁止**：
 - ❌ 優化多個模組後才編譯
 - ❌ 編譯失敗繼續優化其他模組
 - ❌ 跳過效能測試直接優化下一個
+- ❌ 無效能數據支撐就宣稱「優化完成」
+
+**完整規範**：[Development_Build_Test_Cycle.md](../../guides/user/process/Development_Build_Test_Cycle.md)
+
+---
+
+## 📁 產出文件存放目錄指引
+
+> **🔴 重要**：各階段產出文件必須依據 [DEVELOPMENT_DIRECTORY_STRUCTURE.md](../../guides/user/onboarding/DEVELOPMENT_DIRECTORY_STRUCTURE.md) 存放至正確目錄。
+
+| 階段 | 產出文件 | 存放目錄 |
+|------|---------|---------|
+| 2 基準測試 | 效能基準報告、測試場景文檔 | `docs/03_testing/` |
+| 3 瓶頸分析 | 效能瓶頸分析報告 | `docs/06_quality/` |
+| 4 優化策略 | 優化策略文件、架構調整方案 | `docs/02_architecture/` |
+| 4 優化策略 | 優化計畫（含優先級） | `docs/04_planning/` |
+| 5 實施指引 | 實作指引、代碼審查記錄 | `docs/06_quality/` |
+| 6 驗證對比 | 效能前後對比報告、回歸測試結果 | `docs/03_testing/` |
+| 7 監控 | 監控指標定義、告警規則文檔 | `docs/06_quality/` |
 
 ---
 

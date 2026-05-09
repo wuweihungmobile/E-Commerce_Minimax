@@ -1,6 +1,8 @@
 package com.nextkey.ecommerce.api.controller;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
+import com.nextkey.ecommerce.api.dto.PricingDto;
+import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
@@ -14,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Slf4j
@@ -23,6 +26,7 @@ import java.util.UUID;
 public class ListingController {
 
     private final ListingRepository listingRepository;
+    private final PricingService pricingService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('product:read') or hasAuthority('room:read')")
@@ -67,5 +71,28 @@ public class ListingController {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_3000));
 
         return ResponseEntity.ok(ApiResponse.success(listing));
+    }
+
+    /**
+     * 動態價格計算端點
+     * T-M12-01: GET /api/v2/listings/:id/price?checkIn=YYYY-MM-DD&checkOut=YYYY-MM-DD
+     */
+    @GetMapping("/{id}/price")
+    @PreAuthorize("hasAuthority('product:read') or hasAuthority('room:read')")
+    public ResponseEntity<ApiResponse<PricingDto.CalculatePriceResponse>> getListingPrice(
+            @PathVariable UUID id,
+            @RequestParam @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate checkOut) {
+
+        log.info("Get listing price: id={}, checkIn={}, checkOut={}", id, checkIn, checkOut);
+
+        PricingDto.CalculatePriceRequest request = PricingDto.CalculatePriceRequest.builder()
+                .roomListingId(id)
+                .checkInDate(checkIn)
+                .checkOutDate(checkOut)
+                .build();
+
+        PricingDto.CalculatePriceResponse response = pricingService.calculatePrice(request);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

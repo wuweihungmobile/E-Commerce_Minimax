@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.nextkey.ecommerce.integration.AuthControllerIntegrationTest
--------------------------------------------------------------------------------
-Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 6.316 s -- in com.nextkey.ecommerce.integration.AuthControllerIntegrationTest

@@ -18,7 +18,7 @@ RUN mvn dependency:go-offline -B
 COPY src src
 
 # Build the application
-RUN mvn package -DskipTests -B
+RUN mvn package -DskipTests -Dmaven.test.skip=true -B
 
 # Stage 2: Extract Layers
 FROM eclipse-temurin:21-jdk-alpine AS extractor

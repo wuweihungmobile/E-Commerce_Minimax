@@ -98,6 +98,36 @@
 □ 如所有測試通過：繼續開發下一支程式
 ```
 
+### 階段 2.5: Code Cleanliness Check（新增）
+
+**🛑 強制執行**：每次編譯成功後、執行單元測試前，必須執行此檢查。
+
+```
+□ 執行 checkstyle 檢查（Java: mvn checkstyle:check）
+□ 檢查是否有未使用的 import（IDE unused import 警告為參考）
+□ 檢查所有宣告的變數/欄位是否有實際使用
+□ 如有未使用的 import：立即移除
+□ 如有未使用的欄位（沒有 @SuppressWarnings）：評估並處理
+□ 如有 Import 順序錯誤：立即修正
+□ 確認 IDE 與 Maven 配置一致（避免 1102 警告）
+□ 確認所有問題修復後，再次執行 mvn checkstyle:check 驗證通過
+□ 通過後才能進入單元測試階段
+```
+
+**為什麼需要這個階段**：
+- 未使用的 import/欄位是常見的技術債來源
+- Checkstyle 規則可以攔截 import 順序問題，但無法攔截「未使用的 import」
+- 提早發現問題比提交後被 CI/CD 阻擋更有效率
+
+**快捷指令（Java/Maven）**：
+```bash
+# 推薦：一次執行編譯 + checkstyle
+mvn checkstyle:check compile
+
+# 若 checkstyle 失敗，檢視輸出並修復
+# 修復完成後，再次執行確認通過
+```
+
 ### 階段 3: 文檔更新（如適用）
 
 ```

@@ -1,13 +1,19 @@
 package com.nextkey.ecommerce.api.dto;
 
-import jakarta.validation.constraints.*;
-import lombok.*;
-
 import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+
+import lombok.*;
 
 /**
  * 統一建立 Listing 的請求 DTO
@@ -19,6 +25,14 @@ import java.util.UUID;
 @AllArgsConstructor
 public class CreateListingRequest {
 
+    // Validation constraints
+    private static final int NAME_MAX_LENGTH = 200;
+    private static final int DESCRIPTION_MAX_LENGTH = 5000;
+    private static final int CATEGORY_MAX_LENGTH = 50;
+    private static final int BRAND_MAX_LENGTH = 100;
+    private static final int DIMENSIONS_MAX_LENGTH = 50;
+    private static final int LOCATION_MAX_LENGTH = 200;
+
     // ========== 通用欄位 ==========
 
     @NotBlank(message = "Listing type is required (PRODUCT or ROOM)")
@@ -26,10 +40,10 @@ public class CreateListingRequest {
     private String listingType;
 
     @NotBlank(message = "Name is required")
-    @Size(max = 200, message = "Name must be less than 200 characters")
+    @Size(max = NAME_MAX_LENGTH, message = "Name must be less than 200 characters")
     private String name;
 
-    @Size(max = 5000, message = "Description must be less than 5000 characters")
+    @Size(max = DESCRIPTION_MAX_LENGTH, message = "Description must be less than 5000 characters")
     private String description;
 
     @NotNull(message = "Price is required")
@@ -44,21 +58,21 @@ public class CreateListingRequest {
 
     // ========== Product 特定欄位 ==========
 
-    @Size(max = 50, message = "Category must be less than 50 characters")
+    @Size(max = CATEGORY_MAX_LENGTH, message = "Category must be less than 50 characters")
     private String category;
 
-    @Size(max = 100, message = "Brand must be less than 100 characters")
+    @Size(max = BRAND_MAX_LENGTH, message = "Brand must be less than 100 characters")
     private String brand;
 
     @Min(value = 1, message = "Weight must be positive")
     private Integer weightGrams;
 
-    @Size(max = 50, message = "Dimensions must be less than 50 characters")
+    @Size(max = DIMENSIONS_MAX_LENGTH, message = "Dimensions must be less than 50 characters")
     private String dimensionsCm;
 
     // ========== Room 特定欄位 ==========
 
-    @Size(max = 200, message = "Location must be less than 200 characters")
+    @Size(max = LOCATION_MAX_LENGTH, message = "Location must be less than 200 characters")
     private String location;
 
     @DecimalMin(value = "-90.0", message = "Latitude must be between -90 and 90")

@@ -1,12 +1,13 @@
 package com.nextkey.ecommerce.infrastructure.security;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.time.Duration;
+import java.util.UUID;
+
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
-import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Refresh Token 管理服務
@@ -22,12 +23,16 @@ public class RefreshTokenService {
     private static final String REFRESH_TOKEN_PREFIX = "refresh_token:";
     private static final Duration DEFAULT_TTL = Duration.ofDays(30); // 預設 30 天，與 Refresh Token 有效期相同
 
+    // Token ID extraction
+    private static final int TOKEN_ID_LENGTH = 16;
+    private static final int TOKEN_SIGNATURE_LENGTH = 43;
+
     /**
      * 儲存 Refresh Token
      * @param userId 用戶 ID
      * @param refreshToken Refresh Token 字串
      */
-    public void storeRefreshToken(UUID userId, String refreshToken) {
+    public void storeRefreshToken(final UUID userId, final String refreshToken) {
         String key = buildKey(userId, refreshToken);
         redisTemplate.opsForValue().set(key, "valid", DEFAULT_TTL);
         log.debug("Stored refresh token for user: {}", userId);
@@ -39,7 +44,7 @@ public class RefreshTokenService {
      * @param refreshToken Refresh Token 字串
      * @return true if valid, false otherwise
      */
-    public boolean isRefreshTokenValid(UUID userId, String refreshToken) {
+    public boolean isRefreshTokenValid(final UUID userId, final String refreshToken) {
         String key = buildKey(userId, refreshToken);
         return Boolean.TRUE.equals(redisTemplate.hasKey(key));
     }
@@ -49,7 +54,7 @@ public class RefreshTokenService {
      * @param userId 用戶 ID
      * @param refreshToken Refresh Token 字串
      */
-    public void blacklistRefreshToken(UUID userId, String refreshToken) {
+    public void blacklistRefreshToken(final UUID userId, final String refreshToken) {
         String key = buildKey(userId, refreshToken);
         // 刪除 key 等同於將 token 失效
         Boolean deleted = redisTemplate.delete(key);
@@ -60,7 +65,7 @@ public class RefreshTokenService {
      * 將所有 Refresh Token 加入黑名單（logout all devices）
      * @param userId 用戶 ID
      */
-    public void blacklistAllRefreshTokens(UUID userId) {
+    public void blacklistAllRefreshTokens(final UUID userId) {
         String pattern = REFRESH_TOKEN_PREFIX + userId + ":*";
         var keys = redisTemplate.keys(pattern);
         if (keys != null && !keys.isEmpty()) {
@@ -92,17 +97,12 @@ public class RefreshTokenService {
      * @return userId if valid, null otherwise
      */
     @Deprecated
-    public UUID extractUserIdFromToken(String refreshToken) {
-        try {
-            log.warn("extractUserIdFromToken is deprecated. Please use JwtTokenService.getUserId() instead.");
-            return null;
-        } catch (Exception e) {
-            log.warn("Failed to extract userId from refresh token", e);
-            return null;
-        }
+    public UUID extractUserIdFromToken(final String refreshToken) {
+        log.warn("extractUserIdFromToken is deprecated. Please use JwtTokenService.getUserId() instead.");
+        return null;
     }
 
-    private String buildKey(UUID userId, String refreshToken) {
+    private String buildKey(final UUID userId, final String refreshToken) {
         return REFRESH_TOKEN_PREFIX + userId + ":" + extractTokenId(refreshToken);
     }
 
@@ -110,7 +110,7 @@ public class RefreshTokenService {
      * 從 JWT 中提取一個簡短的 ID（使用 SHA-256 hash）
      * 使用 SHA-256 確保安全性，避免 hashCode() 的衝突問題
      */
-    private String extractTokenId(String refreshToken) {
+    private String extractTokenId(final String refreshToken) {
         if (refreshToken == null || refreshToken.length() < 10) {
             return refreshToken;
         }
@@ -119,11 +119,11 @@ public class RefreshTokenService {
             byte[] hash = digest.digest(refreshToken.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             // 使用 Base64 編碼並取前 16 個字符作為 token ID
             String base64Hash = java.util.Base64.getEncoder().encodeToString(hash);
-            return base64Hash.substring(0, Math.min(16, base64Hash.length()));
+            return base64Hash.substring(0, Math.min(TOKEN_ID_LENGTH, base64Hash.length()));
         } catch (java.security.NoSuchAlgorithmException e) {
             log.warn("SHA-256 algorithm not available, falling back to substring", e);
             // Fallback: 使用 token 的最後 43 個字符（JWT signature 部分的大約長度）
-            return refreshToken.substring(refreshToken.length() - 43);
+            return refreshToken.substring(refreshToken.length() - TOKEN_SIGNATURE_LENGTH);
         }
     }
 }

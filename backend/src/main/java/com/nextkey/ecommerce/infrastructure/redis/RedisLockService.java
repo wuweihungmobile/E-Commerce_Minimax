@@ -1,13 +1,14 @@
 package com.nextkey.ecommerce.infrastructure.redis;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.stereotype.Service;
-
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.stereotype.Service;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Redis 分散式鎖服務
@@ -22,14 +23,16 @@ public class RedisLockService {
 
     private static final String LOCK_PREFIX = "lock:";
     private static final long DEFAULT_LOCK_TIMEOUT = 60; // seconds (increased from 30 for test stability)
+    @SuppressWarnings("unused")
     private static final long LOCK_WAIT_TIMEOUT = 10; // seconds to wait for lock
+    private static final long LOCK_RETRY_INTERVAL_MS = 50; // milliseconds to wait between retries
 
     /**
      * 嘗試獲取鎖（不等待，立即返回）
      * @param resourceId 資源 ID
      * @return lockValue 如果成功，null 如果失敗
      */
-    public String tryAcquireLockNoWait(String resourceId) {
+    public String tryAcquireLockNoWait(final String resourceId) {
         String lockKey = LOCK_PREFIX + resourceId;
         String lockValue = UUID.randomUUID().toString();
 
@@ -54,7 +57,7 @@ public class RedisLockService {
      * @param timeoutSeconds 鎖過期時間
      * @return lockValue 如果成功，null 如果失敗
      */
-    public String tryAcquireLock(String resourceId, long timeoutSeconds) {
+    public String tryAcquireLock(final String resourceId, final long timeoutSeconds) {
         String lockKey = LOCK_PREFIX + resourceId;
         String lockValue = UUID.randomUUID().toString();
 
@@ -78,7 +81,7 @@ public class RedisLockService {
      * @param resourceId 資源 ID
      * @return lockValue 如果成功，null 如果失敗
      */
-    public String tryAcquireLock(String resourceId) {
+    public String tryAcquireLock(final String resourceId) {
         return tryAcquireLock(resourceId, DEFAULT_LOCK_TIMEOUT);
     }
 
@@ -88,7 +91,7 @@ public class RedisLockService {
      * @param lockValue 鎖的值（用於驗證）
      * @return 是否成功釋放
      */
-    public boolean releaseLock(String resourceId, String lockValue) {
+    public boolean releaseLock(final String resourceId, final String lockValue) {
         String lockKey = LOCK_PREFIX + resourceId;
         Object currentValue = redisTemplate.opsForValue().get(lockKey);
 
@@ -109,7 +112,7 @@ public class RedisLockService {
      * @param maxWaitSeconds 最大等待時間
      * @return lockValue 如果成功，null 如果失敗（超時）
      */
-    public String tryAcquireLockWithWait(String resourceId, long maxWaitSeconds) {
+    public String tryAcquireLockWithWait(final String resourceId, final long maxWaitSeconds) {
         long startTime = System.currentTimeMillis();
         long timeout = maxWaitSeconds * 1000;
 
@@ -138,7 +141,7 @@ public class RedisLockService {
      * @param maxWaitSeconds 最大等待時間（推薦 30 秒）
      * @return lockValue 如果成功，null 如果失敗（超時）
      */
-    public String tryAcquireLockWithWaitlong(String resourceId, long maxWaitSeconds) {
+    public String tryAcquireLockWithWaitlong(final String resourceId, final long maxWaitSeconds) {
         long startTime = System.currentTimeMillis();
         long timeoutMillis = maxWaitSeconds * 1000;
 
@@ -152,7 +155,7 @@ public class RedisLockService {
             }
 
             try {
-                TimeUnit.MILLISECONDS.sleep(50); // 等待 50ms
+                TimeUnit.MILLISECONDS.sleep(LOCK_RETRY_INTERVAL_MS); // 等待 50ms
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.warn("Lock acquisition interrupted for {}", resourceId);
@@ -167,7 +170,7 @@ public class RedisLockService {
     /**
      * 檢查鎖是否存在
      */
-    public boolean isLocked(String resourceId) {
+    public boolean isLocked(final String resourceId) {
         String lockKey = LOCK_PREFIX + resourceId;
         return Boolean.TRUE.equals(redisTemplate.hasKey(lockKey));
     }
@@ -175,7 +178,7 @@ public class RedisLockService {
     /**
      * 延長鎖的過期時間
      */
-    public boolean extendLock(String resourceId, String lockValue, long additionalSeconds) {
+    public boolean extendLock(final String resourceId, final String lockValue, final long additionalSeconds) {
         String lockKey = LOCK_PREFIX + resourceId;
         Object currentValue = redisTemplate.opsForValue().get(lockKey);
 
@@ -190,7 +193,7 @@ public class RedisLockService {
      * 強制釋放鎖（不用驗證 lockValue）
      * 用於解鎖時不知道 lockValue 的情況（如並發釋放）
      */
-    public void forceReleaseLock(String resourceId) {
+    public void forceReleaseLock(final String resourceId) {
         String lockKey = LOCK_PREFIX + resourceId;
         redisTemplate.delete(lockKey);
         log.debug("Force released lock: key={}", lockKey);

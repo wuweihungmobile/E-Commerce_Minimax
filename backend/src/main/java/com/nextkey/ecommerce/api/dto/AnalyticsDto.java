@@ -1,13 +1,13 @@
 package com.nextkey.ecommerce.api.dto;
 
-import lombok.*;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
+import lombok.*;
 
 /**
  * 分析與統計 DTO

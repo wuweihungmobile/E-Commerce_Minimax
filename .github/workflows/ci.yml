@@ -156,11 +156,11 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('backend/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
-      # Layer 1: Lint + Format Check (Backend)
+      # Layer 1: Checkstyle - 嚴格模式（不允许失败）
       - name: Checkstyle (Backend)
         run: |
           cd backend
-          mvn checkstyle:check || true
+          mvn checkstyle:check
 
       # Layer 1: Compile
       - name: Build Backend

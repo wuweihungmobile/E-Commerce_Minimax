@@ -65,6 +65,7 @@ class M02RoomIntegrationTest {
 
     private static final String BASE_URL = "/v2/rooms";
     private static final String TEST_TENANT_ID = "550e8400-e29b-41d4-a716-446655440001";
+    @SuppressWarnings("unused")
     private static final UUID TEST_USER_ID = UUID.randomUUID();
 
     // 測試資料工廠方法

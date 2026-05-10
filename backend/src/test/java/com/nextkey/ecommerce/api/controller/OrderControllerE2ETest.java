@@ -69,9 +69,11 @@ class OrderControllerE2ETest {
     @Autowired
     private OrderRepository orderRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private TenantRepository tenantRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private ListingRepository listingRepository;
 

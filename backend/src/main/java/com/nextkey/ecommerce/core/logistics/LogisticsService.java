@@ -1,5 +1,14 @@
 package com.nextkey.ecommerce.core.logistics;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.LogisticsDto;
 import com.nextkey.ecommerce.domain.model.logistics.Logistics;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -7,16 +16,11 @@ import com.nextkey.ecommerce.domain.repository.LogisticsRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 物流服務 (Mock Implementation)
@@ -29,6 +33,12 @@ public class LogisticsService {
 
     private final LogisticsRepository logisticsRepository;
     private final OrderRepository orderRepository;
+
+    // Tracking number and time constants
+    private static final int TRACKING_NUMBER_MODULO = 100000000;
+    private static final long IN_TRANSIT_HOURS_AGO = 12;
+    private static final long OUT_FOR_DELIVERY_HOURS_AGO = 2;
+    private static final long DELIVERED_HOURS_AGO = 1;
 
     /**
      * 建立物流單 (Mock)
@@ -183,13 +193,13 @@ public class LogisticsService {
 
     // ========== Helper Methods ==========
 
-    private String generateMockTrackingNumber(LogisticsDto.LogisticsProvider provider) {
+    private String generateMockTrackingNumber(final LogisticsDto.LogisticsProvider provider) {
         String prefix = provider == LogisticsDto.LogisticsProvider.HCT ? "HCT" : "TCAT";
-        return prefix + System.currentTimeMillis() % 100000000;
+        return prefix + System.currentTimeMillis() % TRACKING_NUMBER_MODULO;
     }
 
-    private String getStatusMessage(Logistics.LogisticsStatus status) {
-        return switch (status) {
+    private String getStatusMessage(final Logistics.LogisticsStatus status) {
+        return switch ( status) {
             case PENDING -> "物流單建立，等待取貨";
             case PICKED_UP -> "已取件，準備配送";
             case IN_TRANSIT -> "配送中";
@@ -200,7 +210,7 @@ public class LogisticsService {
         };
     }
 
-    private String getMockLocation(Logistics.LogisticsProvider provider) {
+    private String getMockLocation(final Logistics.LogisticsProvider provider) {
         return provider == Logistics.LogisticsProvider.HCT ? "黑貓物流中心-台北" : "新竹物流中心-新竹";
     }
 
@@ -231,14 +241,14 @@ public class LogisticsService {
                     .status("IN_TRANSIT")
                     .description("配送中")
                     .location(logistics.getLogisticsProvider() == Logistics.LogisticsProvider.HCT ? "黑貓物流-桃園" : "新竹物流-台中")
-                    .eventTime(now.minusHours(12))
+                    .eventTime(now.minusHours(IN_TRANSIT_HOURS_AGO))
                     .build());
 
             events.add(LogisticsDto.TrackingEvent.builder()
                     .status("OUT_FOR_DELIVERY")
                     .description("配送員出發")
                     .location(logistics.getShippingAddress())
-                    .eventTime(now.minusHours(2))
+                    .eventTime(now.minusHours(OUT_FOR_DELIVERY_HOURS_AGO))
                     .build());
         }
 
@@ -247,7 +257,7 @@ public class LogisticsService {
                     .status("DELIVERED")
                     .description("已簽收")
                     .location(logistics.getShippingAddress())
-                    .eventTime(now.minusHours(1))
+                    .eventTime(now.minusHours(DELIVERED_HOURS_AGO))
                     .build());
         }
 

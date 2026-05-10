@@ -129,10 +129,10 @@ public enum ErrorCode {
         return message;
     }
 
-    public String getFormattedMessage(String... args) {
+    public String getFormattedMessage(final String... args) {
         if (args.length == 0) {
             return message;
         }
-        return String.format(message, args);
+        return String.format(message, (Object) args);
     }
 }

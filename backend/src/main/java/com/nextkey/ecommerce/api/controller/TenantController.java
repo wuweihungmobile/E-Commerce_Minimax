@@ -1,22 +1,45 @@
 package com.nextkey.ecommerce.api.controller;
 
-import com.nextkey.ecommerce.api.dto.*;
-import com.nextkey.ecommerce.api.filter.UserPrincipal;
-import com.nextkey.ecommerce.core.tenant.TenantService;
-import com.nextkey.ecommerce.shared.exception.BusinessException;
-import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import com.nextkey.ecommerce.api.dto.AddMemberRequest;
+import com.nextkey.ecommerce.api.dto.ApiResponse;
+import com.nextkey.ecommerce.api.dto.FeatureToggleRequest;
+import com.nextkey.ecommerce.api.dto.FeatureToggleResponse;
+import com.nextkey.ecommerce.api.dto.FeatureToggleUpdateResponse;
+import com.nextkey.ecommerce.api.dto.TenantApplicationRequest;
+import com.nextkey.ecommerce.api.dto.TenantApplicationResponse;
+import com.nextkey.ecommerce.api.dto.TenantDetailsResponse;
+import com.nextkey.ecommerce.api.dto.TenantListResponse;
+import com.nextkey.ecommerce.api.dto.TenantMemberResponse;
+import com.nextkey.ecommerce.api.dto.TenantUpdateRequest;
+import com.nextkey.ecommerce.api.dto.TenantUpdateResponse;
+import com.nextkey.ecommerce.api.filter.UserPrincipal;
+import com.nextkey.ecommerce.core.tenant.TenantService;
+import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+
 
 @Slf4j
 @RestController
@@ -190,10 +213,6 @@ public class TenantController {
             @AuthenticationPrincipal UserPrincipal principal) {
         log.info("[TenantController] getTenantMembers called: tenantId={}, user={}", id, principal.getUserId());
 
-        if (principal == null) {
-            throw new BusinessException(ErrorCode.E_1000, "Authentication required");
-        }
-
         List<TenantMemberResponse> members = tenantService.getTenantMembers(id);
         return ResponseEntity.ok(ApiResponse.success(Map.of("members", members)));
     }
@@ -209,10 +228,6 @@ public class TenantController {
             @Valid @RequestBody AddMemberRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
         log.info("[TenantController] addMember called: tenantId={}, user={}", id, principal.getUserId());
-
-        if (principal == null) {
-            throw new BusinessException(ErrorCode.E_1000, "Authentication required");
-        }
 
         TenantMemberResponse response = tenantService.addMember(id, request.getUserId(), principal.getUserId());
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -232,10 +247,6 @@ public class TenantController {
             @AuthenticationPrincipal UserPrincipal principal) {
         log.info("[TenantController] updateMemberRole called: tenantId={}, targetUserId={}, user={}",
                 id, userId, principal.getUserId());
-
-        if (principal == null) {
-            throw new BusinessException(ErrorCode.E_1000, "Authentication required");
-        }
 
         String newRole = request.get("role");
         if (newRole == null || newRole.isBlank()) {
@@ -258,10 +269,6 @@ public class TenantController {
             @AuthenticationPrincipal UserPrincipal principal) {
         log.info("[TenantController] removeMember called: tenantId={}, targetUserId={}, user={}",
                 id, userId, principal.getUserId());
-
-        if (principal == null) {
-            throw new BusinessException(ErrorCode.E_1000, "Authentication required");
-        }
 
         tenantService.removeMember(id, userId);
         return ResponseEntity.ok(ApiResponse.success(Map.of("message", "Member removed successfully")));

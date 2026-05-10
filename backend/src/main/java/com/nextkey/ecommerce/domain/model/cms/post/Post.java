@@ -1,16 +1,36 @@
 package com.nextkey.ecommerce.domain.model.cms.post;
 
-import com.nextkey.ecommerce.domain.model.tenant.Tenant;
-import com.nextkey.ecommerce.domain.model.user.User;
-import jakarta.persistence.*;
-import lombok.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.user.User;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 /**
  * M15 CMS Post Entity
@@ -24,6 +44,8 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class Post {
+
+    private static final int DEFAULT_LIMIT = 500;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -46,7 +68,7 @@ public class Post {
     @Column(columnDefinition = "TEXT")
     private String content;
 
-    @Column(length = 500)
+    @Column(length = DEFAULT_LIMIT)
     private String excerpt;
 
     @Column(name = "featured_image_url", length = 1000)

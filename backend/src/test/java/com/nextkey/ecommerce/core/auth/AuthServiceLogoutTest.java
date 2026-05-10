@@ -7,8 +7,6 @@ import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 import com.nextkey.ecommerce.infrastructure.security.RefreshTokenService;
-import com.nextkey.ecommerce.shared.exception.BusinessException;
-import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,12 +16,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Instant;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
@@ -173,6 +169,7 @@ class AuthServiceLogoutTest {
 
     // ── 輔助方法 ───────────────────────────────────────────────────
 
+    @SuppressWarnings("unused")
     private User buildActiveUser(User.UserRole role) {
         User user = User.builder()
                 .email("user@example.com")
@@ -188,6 +185,7 @@ class AuthServiceLogoutTest {
         return user;
     }
 
+    @SuppressWarnings("unused")
     private Tenant buildTenant() {
         return Tenant.builder()
                 .id(TEST_TENANT_ID)

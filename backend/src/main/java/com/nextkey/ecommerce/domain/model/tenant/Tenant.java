@@ -1,13 +1,28 @@
 package com.nextkey.ecommerce.domain.model.tenant;
 
-import jakarta.persistence.*;
-import lombok.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "tenants")
@@ -17,6 +32,9 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class Tenant {
+
+    // Default commission rate
+    private static final double DEFAULT_COMMISSION_RATE = 0.05;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -47,7 +65,7 @@ public class Tenant {
 
     @Column(name = "commission_rate")
     @Builder.Default
-    private Double commissionRate = 0.05;
+    private Double commissionRate = DEFAULT_COMMISSION_RATE;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")

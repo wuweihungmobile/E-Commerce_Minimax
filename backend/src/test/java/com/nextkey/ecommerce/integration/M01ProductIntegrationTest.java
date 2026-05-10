@@ -28,7 +28,6 @@ import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 
 /**
  * M01 商品管理 Backend API 整合測試 (T-M01-03)
@@ -66,6 +65,7 @@ class M01ProductIntegrationTest {
 
     private static final String BASE_URL = "/v2/products";
     private static final String TEST_TENANT_ID = "550e8400-e29b-41d4-a716-446655440001";
+    @SuppressWarnings("unused")
     private static final UUID TEST_USER_ID = UUID.randomUUID();
 
     // 測試資料工廠方法

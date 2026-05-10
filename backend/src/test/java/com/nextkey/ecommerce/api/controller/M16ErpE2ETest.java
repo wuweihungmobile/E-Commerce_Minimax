@@ -3,11 +3,7 @@ package com.nextkey.ecommerce.api.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.api.dto.erp.*;
-import com.nextkey.ecommerce.domain.model.erp.Supplier;
-import com.nextkey.ecommerce.domain.model.inventory.Inventory;
-import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
-import com.nextkey.ecommerce.domain.model.product.ProductInventory;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.*;
@@ -23,7 +19,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import jakarta.persistence.EntityManager;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -31,7 +26,6 @@ import java.util.UUID;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * M16 ERP E2E 測試
@@ -64,27 +58,35 @@ class M16ErpE2ETest {
     @Autowired
     private UserRepository userRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private TenantRepository tenantRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private SupplierRepository supplierRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private ListingRepository listingRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private ProductInventoryRepository productInventoryRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private InventoryRepository inventoryRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private PurchaseOrderRepository purchaseOrderRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private EntityManager entityManager;
 
+    @SuppressWarnings("unused")
     @Autowired
     private JdbcTemplate jdbcTemplate;
 

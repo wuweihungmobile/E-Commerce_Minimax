@@ -1,17 +1,23 @@
 package com.nextkey.ecommerce.api.dto;
 
-import jakarta.validation.constraints.*;
-import lombok.*;
+import java.math.BigDecimal;
+import java.util.UUID;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.math.BigDecimal;
-import java.util.UUID;
+import lombok.*;
 
 /**
  * 購物車 DTO
  */
 public class CartDto {
+
+    // Validation constraints
+    private static final int MAX_QUANTITY = 999;
 
     // ========== Cart Item Request ==========
 
@@ -27,7 +33,7 @@ public class CartDto {
 
         @NotNull(message = "Quantity is required")
         @Min(value = 1, message = "Quantity must be at least 1")
-        @Max(value = 999, message = "Quantity cannot exceed 999")
+        @Max(value = MAX_QUANTITY, message = "Quantity cannot exceed 999")
         private Integer quantity;
 
         // ROOM 類型房源的日期範圍（可選，對 PRODUCT 類型忽略）
@@ -42,7 +48,7 @@ public class CartDto {
     public static class UpdateItemRequest {
         @NotNull(message = "Quantity is required")
         @Min(value = 1, message = "Quantity must be at least 1")
-        @Max(value = 999, message = "Quantity cannot exceed 999")
+        @Max(value = MAX_QUANTITY, message = "Quantity cannot exceed 999")
         private Integer quantity;
     }
 

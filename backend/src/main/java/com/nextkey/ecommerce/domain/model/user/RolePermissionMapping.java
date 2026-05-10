@@ -1,8 +1,14 @@
 package com.nextkey.ecommerce.domain.model.user;
 
-import org.springframework.stereotype.Component;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
-import java.util.*;
+import org.springframework.stereotype.Component;
 
 /**
  * 角色-權限映射
@@ -135,14 +141,14 @@ public class RolePermissionMapping {
     /**
      * 根據角色取得對應的權限集合
      */
-    public Set<Permission> getPermissions(User.UserRole role) {
+    public Set<Permission> getPermissions(final User.UserRole role) {
         return ROLE_PERMISSIONS.getOrDefault(role, EnumSet.noneOf(Permission.class));
     }
 
     /**
      * 檢查角色是否擁有特定權限
      */
-    public boolean hasPermission(User.UserRole role, Permission permission) {
+    public boolean hasPermission(final User.UserRole role, final Permission permission) {
         Set<Permission> permissions = getPermissions(role);
         return permissions.contains(permission);
     }
@@ -150,7 +156,7 @@ public class RolePermissionMapping {
     /**
      * 檢查角色是否擁有特定權限（使用權限字串）
      */
-    public boolean hasPermission(User.UserRole role, String permissionCode) {
+    public boolean hasPermission(final User.UserRole role, final String permissionCode) {
         return Arrays.stream(Permission.values())
                 .filter(p -> p.getCode().equals(permissionCode))
                 .findFirst()
@@ -161,7 +167,7 @@ public class RolePermissionMapping {
     /**
      * 將角色轉換為 Spring Security 使用的GrantedAuthority字符串
      */
-    public List<String> getAuthorities(User.UserRole role) {
+    public List<String> getAuthorities(final User.UserRole role) {
         Set<Permission> permissions = getPermissions(role);
         List<String> authorities = new ArrayList<>();
         authorities.add("ROLE_" + role.name());

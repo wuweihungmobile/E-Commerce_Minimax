@@ -1,18 +1,26 @@
 package com.nextkey.ecommerce.infrastructure.storage;
 
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
-import io.minio.StatObjectArgs;
-import io.minio.GetObjectArgs;
-import io.minio.RemoveObjectArgs;
-import io.minio.BucketExistsArgs;
-import io.minio.MakeBucketArgs;
-import lombok.extern.slf4j.Slf4j;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.UUID;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.io.InputStream;
-import java.util.UUID;
+import io.minio.BucketExistsArgs;
+import io.minio.GetObjectArgs;
+import io.minio.MakeBucketArgs;
+import io.minio.MinioClient;
+import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
+import io.minio.StatObjectArgs;
+import io.minio.errors.ErrorResponseException;
+import io.minio.errors.InsufficientDataException;
+import io.minio.errors.InternalException;
+import io.minio.errors.InvalidResponseException;
+import io.minio.errors.ServerException;
+import io.minio.errors.XmlParserException;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * StorageService - S3/MinIO 儲存服務
@@ -24,6 +32,7 @@ public class StorageService {
 
     private final MinioClient minioClient;
     private final String bucket;
+    @SuppressWarnings("unused")
     private final int presignedExpiry;
 
     public StorageService(
@@ -57,7 +66,10 @@ public class StorageService {
                         MakeBucketArgs.builder().bucket(bucket).build());
                 log.info("Created bucket: {}", bucket);
             }
-        } catch (Exception e) {
+        } catch (ErrorResponseException | InsufficientDataException | InternalException
+                | InvalidResponseException | ServerException | IOException
+                | java.security.InvalidKeyException | java.security.NoSuchAlgorithmException
+                | XmlParserException e) {
             log.warn("Could not initialize bucket {}: {}", bucket, e.getMessage());
         }
     }
@@ -86,7 +98,10 @@ public class StorageService {
                             .build());
             log.info("Uploaded file: {} to bucket: {}", objectName, bucket);
             return objectName;
-        } catch (Exception e) {
+        } catch (ErrorResponseException | InsufficientDataException | InternalException
+                | InvalidResponseException | ServerException | IOException
+                | java.security.InvalidKeyException | java.security.NoSuchAlgorithmException
+                | XmlParserException e) {
             log.error("Failed to upload file: {}", objectName, e);
             throw new RuntimeException("File upload failed: " + objectName, e);
         }
@@ -95,7 +110,7 @@ public class StorageService {
     /**
      * 檢查物件是否存在
      */
-    public boolean objectExists(UUID tenantId, String fileName) {
+    public boolean objectExists(final UUID tenantId, final String fileName) {
         String objectName = buildObjectName(tenantId, fileName);
         try {
             minioClient.statObject(
@@ -104,7 +119,10 @@ public class StorageService {
                             .object(objectName)
                             .build());
             return true;
-        } catch (Exception e) {
+        } catch (ErrorResponseException | InsufficientDataException | InternalException
+                | InvalidResponseException | ServerException | IOException
+                | java.security.InvalidKeyException | java.security.NoSuchAlgorithmException
+                | XmlParserException e) {
             return false;
         }
     }
@@ -112,7 +130,7 @@ public class StorageService {
     /**
      * 取得物件輸入流
      */
-    public InputStream getObject(UUID tenantId, String fileName) {
+    public InputStream getObject(final UUID tenantId, final String fileName) {
         String objectName = buildObjectName(tenantId, fileName);
         try {
             return minioClient.getObject(
@@ -120,7 +138,10 @@ public class StorageService {
                             .bucket(bucket)
                             .object(objectName)
                             .build());
-        } catch (Exception e) {
+        } catch (ErrorResponseException | InsufficientDataException | InternalException
+                | InvalidResponseException | ServerException | IOException
+                | java.security.InvalidKeyException | java.security.NoSuchAlgorithmException
+                | XmlParserException e) {
             log.error("Failed to get object: {}", objectName, e);
             throw new RuntimeException("Failed to get object: " + objectName, e);
         }
@@ -130,7 +151,7 @@ public class StorageService {
      * 刪除物件
      * 注意: objectName 應該是完整路徑（包含 tenantId 前綴）
      */
-    public void deleteObject(String objectName) {
+    public void deleteObject(final String objectName) {
         try {
             minioClient.removeObject(
                     RemoveObjectArgs.builder()
@@ -138,7 +159,10 @@ public class StorageService {
                             .object(objectName)
                             .build());
             log.info("Deleted object: {} from bucket: {}", objectName, bucket);
-        } catch (Exception e) {
+        } catch (ErrorResponseException | InsufficientDataException | InternalException
+                | InvalidResponseException | ServerException | IOException
+                | java.security.InvalidKeyException | java.security.NoSuchAlgorithmException
+                | XmlParserException e) {
             log.error("Failed to delete object: {}", objectName, e);
             throw new RuntimeException("Failed to delete object: " + objectName, e);
         }
@@ -148,7 +172,7 @@ public class StorageService {
      * 建立多租戶隔離的物件名稱
      * 格式: {tenantId}/{uuid}-{originalFileName}
      */
-    private String buildObjectName(UUID tenantId, String fileName) {
+    private String buildObjectName(final UUID tenantId, final String fileName) {
         String uuid = UUID.randomUUID().toString();
         return String.format("%s/%s-%s", tenantId.toString(), uuid, fileName);
     }

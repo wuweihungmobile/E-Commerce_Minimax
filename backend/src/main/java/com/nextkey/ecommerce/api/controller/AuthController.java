@@ -1,15 +1,30 @@
 package com.nextkey.ecommerce.api.controller;
 
-import com.nextkey.ecommerce.api.dto.*;
-import com.nextkey.ecommerce.api.filter.UserPrincipal;
-import com.nextkey.ecommerce.core.auth.AuthService;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.nextkey.ecommerce.api.dto.ApiResponse;
+import com.nextkey.ecommerce.api.dto.AuthResponse;
+import com.nextkey.ecommerce.api.dto.LoginRequest;
+import com.nextkey.ecommerce.api.dto.LogoutRequest;
+import com.nextkey.ecommerce.api.dto.LogoutResponse;
+import com.nextkey.ecommerce.api.dto.RefreshTokenRequest;
+import com.nextkey.ecommerce.api.dto.RegisterRequest;
+import com.nextkey.ecommerce.api.dto.RegisterResponse;
+import com.nextkey.ecommerce.api.dto.UserInfoResponse;
+import com.nextkey.ecommerce.api.filter.UserPrincipal;
+import com.nextkey.ecommerce.core.auth.AuthService;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @RestController

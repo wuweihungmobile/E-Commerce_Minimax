@@ -1,5 +1,25 @@
 package com.nextkey.ecommerce.api.controller;
 
+import java.util.UUID;
+
+import jakarta.validation.Valid;
+
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.M15Dto;
 import com.nextkey.ecommerce.api.filter.UserPrincipal;
@@ -14,20 +34,13 @@ import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
 import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
-import com.nextkey.ecommerce.shared.tenant.TenantContext;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
-import jakarta.validation.Valid;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.util.UUID;
+
 
 /**
  * M15 CMS Post REST API
@@ -454,6 +467,36 @@ public class PostController {
      */
     private UUID getTenantIdFromUser(UserDetails userDetails) {
         // 首先嘗試從 TenantContext 取得（因為它是在 JwtAuthenticationFilter 中設置的）
+        UUID tenantId = getTenantIdFromTenantContext();
+        if (tenantId != null) {
+            return tenantId;
+        }
+
+        // 如果 userDetails 可用，嘗試從中取得
+        if (userDetails != null) {
+            // 嘗試從 UserPrincipal 取得
+            TenantIdInfo tenantIdInfo = extractTenantIdInfoFromUserDetails(userDetails);
+            if (tenantIdInfo != null) {
+                if (tenantIdInfo.tenantIdStr != null && !tenantIdInfo.tenantIdStr.isEmpty()) {
+                    UUID directTenantId = tryParseTenantId(tenantIdInfo.tenantIdStr);
+                    if (directTenantId != null) {
+                        return directTenantId;
+                    }
+                }
+                if (tenantIdInfo.userId != null) {
+                    UUID dbTenantId = getTenantIdFromUserId(tenantIdInfo.userId);
+                    if (dbTenantId != null) {
+                        return dbTenantId;
+                    }
+                }
+            }
+        }
+
+        log.warn("Cannot find tenantId, using mock value");
+        return UUID.fromString("00000000-0000-0000-0000-000000000001");
+    }
+
+    private UUID getTenantIdFromTenantContext() {
         UUID contextUserId = TenantContext.getCurrentUser();
         if (contextUserId != null) {
             log.debug("Got userId from TenantContext: {}", contextUserId);
@@ -461,65 +504,48 @@ public class PostController {
             if (!members.isEmpty()) {
                 return members.get(0).getTenantId();
             }
-            // fallback to user.tenantId
             var userOpt = userRepository.findById(contextUserId);
             if (userOpt.isPresent() && userOpt.get().getTenantId() != null) {
                 return userOpt.get().getTenantId();
             }
         }
+        return null;
+    }
 
-        // 如果 userDetails 可用，嘗試從中取得
-        if (userDetails != null) {
-            UUID userId = null;
-            String tenantIdStr = null;
+    private record TenantIdInfo(UUID userId, String tenantIdStr) {}
 
-            try {
-                var getPrincipalMethod = userDetails.getClass().getMethod("getPrincipal");
-                Object principal = getPrincipalMethod.invoke(userDetails);
-                if (principal instanceof UserPrincipal up) {
-                    userId = up.getUserId();
-                    tenantIdStr = up.getTenantId();
-                }
-            } catch (Exception e) {
-                log.debug("Cannot get principal: {}", e.getMessage());
+    private TenantIdInfo extractTenantIdInfoFromUserDetails(UserDetails userDetails) {
+        try {
+            var getPrincipalMethod = userDetails.getClass().getMethod("getPrincipal");
+            Object principal = getPrincipalMethod.invoke(userDetails);
+            if (principal instanceof UserPrincipal up) {
+                return new TenantIdInfo(up.getUserId(), up.getTenantId());
             }
-
-            // 如果有 tenantId 直接返回
-            if (tenantIdStr != null && !tenantIdStr.isEmpty()) {
-                try {
-                    return UUID.fromString(tenantIdStr);
-                } catch (Exception e) {
-                    log.warn("Invalid tenantId format: {}", tenantIdStr);
-                }
-            }
-
-            // 否則從 userId 查詢資料庫
-            if (userId == null) {
-                try {
-                    var method = userDetails.getClass().getMethod("getUserId");
-                    Object result = method.invoke(userDetails);
-                    if (result instanceof UUID) {
-                        userId = (UUID) result;
-                    }
-                } catch (Exception e) {
-                    log.debug("Cannot get userId: {}", e.getMessage());
-                }
-            }
-
-            if (userId != null) {
-                var members = tenantMemberRepository.findByUserId(userId);
-                if (!members.isEmpty()) {
-                    return members.get(0).getTenantId();
-                }
-                var userOpt = userRepository.findById(userId);
-                if (userOpt.isPresent() && userOpt.get().getTenantId() != null) {
-                    return userOpt.get().getTenantId();
-                }
-            }
+        } catch (NoSuchMethodException | SecurityException | IllegalAccessException | java.lang.reflect.InvocationTargetException e) {
+            log.debug("Cannot get principal: {}", e.getMessage());
         }
+        return null;
+    }
 
-        log.warn("Cannot find tenantId, using mock value");
-        return UUID.fromString("00000000-0000-0000-0000-000000000001");
+    private UUID tryParseTenantId(String tenantIdStr) {
+        try {
+            return UUID.fromString(tenantIdStr);
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid tenantId format: {}", tenantIdStr);
+            return null;
+        }
+    }
+
+    private UUID getTenantIdFromUserId(UUID userId) {
+        var members = tenantMemberRepository.findByUserId(userId);
+        if (!members.isEmpty()) {
+            return members.get(0).getTenantId();
+        }
+        var userOpt = userRepository.findById(userId);
+        if (userOpt.isPresent() && userOpt.get().getTenantId() != null) {
+            return userOpt.get().getTenantId();
+        }
+        return null;
     }
 
     /**
@@ -548,7 +574,7 @@ public class PostController {
                 userId = up.getUserId();
                 log.debug("Got userId from UserPrincipal: {}", userId);
             }
-        } catch (Exception e) {
+        } catch (NoSuchMethodException | SecurityException | IllegalAccessException | java.lang.reflect.InvocationTargetException e) {
             log.debug("Cannot get principal: {}", e.getMessage());
         }
 
@@ -561,7 +587,7 @@ public class PostController {
                     userId = (UUID) result;
                     log.debug("Got userId from getUserId(): {}", userId);
                 }
-            } catch (Exception e) {
+            } catch (NoSuchMethodException | SecurityException | IllegalAccessException | java.lang.reflect.InvocationTargetException e) {
                 log.debug("Cannot get userId: {}", e.getMessage());
             }
         }

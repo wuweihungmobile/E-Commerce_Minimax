@@ -1,18 +1,11 @@
 # Gitleaks Configuration for E-Commerce Platform
 # AISDLC v0.09 - Secret Detection Layer 0
 
-[title]
-gitleaks.toml
-
-[description]
-Gitleaks configuration for detecting secrets in E-Commerce platform
-
-[rules]
-[[rules.whitelist]]
+[allowlist]
 description = "Allow localhost references"
-match = [
-  "localhost:5432",
-  "localhost:6379"
+paths = [
+  ".*localhost:5432.*",
+  ".*localhost:6379.*"
 ]
 
 # AWS Keys
@@ -63,15 +56,3 @@ regex = '''gh[pousr]_[A-Za-z0-9_]{36,}'''
 id = "slack-token"
 description = "Slack Token"
 regex = '''xox[baprs]-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*'''
-
-[allowlists]
-paths = [
-  "**/node_modules/**",
-  "**/.git/**",
-  "**/dist/**",
-  "**/build/**",
-  "**/target/**",
-  "**/coverage/**",
-  "**/.m2/**",
-  "**/.next/**"
-]

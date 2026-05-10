@@ -1,15 +1,10 @@
 package com.nextkey.ecommerce.api.controller;
 
-import com.nextkey.ecommerce.api.dto.ApiResponse;
-import com.nextkey.ecommerce.api.dto.erp.*;
-import com.nextkey.ecommerce.core.erp.InventoryService;
-import com.nextkey.ecommerce.core.erp.PurchaseOrderService;
-import com.nextkey.ecommerce.core.erp.StockMovementService;
-import com.nextkey.ecommerce.core.erp.SupplierService;
-import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import java.util.List;
+import java.util.UUID;
+
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -17,10 +12,35 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-import java.util.UUID;
+import com.nextkey.ecommerce.api.dto.ApiResponse;
+import com.nextkey.ecommerce.api.dto.erp.InventoryLedgerDto;
+import com.nextkey.ecommerce.api.dto.erp.LowStockAlertDto;
+import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderCreateRequest;
+import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderDto;
+import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderReceiveRequest;
+import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderUpdateRequest;
+import com.nextkey.ecommerce.api.dto.erp.StockMovementDto;
+import com.nextkey.ecommerce.api.dto.erp.StockMovementRequest;
+import com.nextkey.ecommerce.api.dto.erp.SupplierCreateRequest;
+import com.nextkey.ecommerce.api.dto.erp.SupplierDto;
+import com.nextkey.ecommerce.api.dto.erp.SupplierUpdateRequest;
+import com.nextkey.ecommerce.core.erp.InventoryService;
+import com.nextkey.ecommerce.core.erp.PurchaseOrderService;
+import com.nextkey.ecommerce.core.erp.StockMovementService;
+import com.nextkey.ecommerce.core.erp.SupplierService;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 庫存 API Controller
@@ -109,7 +129,7 @@ public class ErpController {
 
     @GetMapping("/purchase-orders/{id}")
     @PreAuthorize("hasAuthority('STORE_OWNER') or hasAuthority('SELLER')")
-    public ResponseEntity<ApiResponse<PurchaseOrderDto>> getPurchaseOrder(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<PurchaseOrderDto>> getPurchaseOrder(final @PathVariable UUID id) {
         UUID tenantId = TenantContext.getCurrentTenant();
         log.debug("Getting purchase order: id={}, tenantId={}", id, tenantId);
 
@@ -131,7 +151,7 @@ public class ErpController {
 
     @PutMapping("/purchase-orders/{id}/submit")
     @PreAuthorize("hasAuthority('STORE_OWNER')")
-    public ResponseEntity<ApiResponse<PurchaseOrderDto>> submitPurchaseOrder(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<PurchaseOrderDto>> submitPurchaseOrder(final @PathVariable UUID id) {
         UUID tenantId = TenantContext.getCurrentTenant();
         log.debug("Submitting purchase order: id={}, tenantId={}", id, tenantId);
 
@@ -153,7 +173,7 @@ public class ErpController {
 
     @PutMapping("/purchase-orders/{id}/cancel")
     @PreAuthorize("hasAuthority('STORE_OWNER')")
-    public ResponseEntity<ApiResponse<PurchaseOrderDto>> cancelPurchaseOrder(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<PurchaseOrderDto>> cancelPurchaseOrder(final @PathVariable UUID id) {
         UUID tenantId = TenantContext.getCurrentTenant();
         log.debug("Cancelling purchase order: id={}, tenantId={}", id, tenantId);
 

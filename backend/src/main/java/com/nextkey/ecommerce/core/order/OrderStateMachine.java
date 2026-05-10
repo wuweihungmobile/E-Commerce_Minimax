@@ -15,25 +15,36 @@ public class OrderStateMachine {
         private final String toStatus;
         private final String reason;
 
-        public TransitionResult(boolean allowed, String fromStatus, String toStatus, String reason) {
+        public TransitionResult(final boolean allowed, final String fromStatus, final String toStatus, final String reason) {
             this.allowed = allowed;
             this.fromStatus = fromStatus;
             this.toStatus = toStatus;
             this.reason = reason;
         }
 
-        public static TransitionResult allowed(String fromStatus, String toStatus) {
+        public static TransitionResult allowed(final String fromStatus, final String toStatus) {
             return new TransitionResult(true, fromStatus, toStatus, null);
         }
 
-        public static TransitionResult denied(String fromStatus, String toStatus, String reason) {
+        public static TransitionResult denied(final String fromStatus, final String toStatus, final String reason) {
             return new TransitionResult(false, fromStatus, toStatus, reason);
         }
 
-        public boolean isAllowed() { return allowed; }
-        public String getFromStatus() { return fromStatus; }
-        public String getToStatus() { return toStatus; }
-        public String getReason() { return reason; }
+        public boolean isAllowed() {
+            return allowed;
+        }
+
+        public String getFromStatus() {
+            return fromStatus;
+        }
+
+        public String getToStatus() {
+            return toStatus;
+        }
+
+        public String getReason() {
+            return reason;
+        }
     }
 
     /**
@@ -110,14 +121,14 @@ public class OrderStateMachine {
     /**
      * 檢查是否允許支付
      */
-    public static boolean canPay(String currentStatus) {
+    public static boolean canPay(final String currentStatus) {
         return "CREATED".equals(currentStatus);
     }
 
     /**
      * 檢查是否允許取消
      */
-    public static boolean canCancel(String currentStatus) {
+    public static boolean canCancel(final String currentStatus) {
         return switch (currentStatus) {
             case "CREATED", "PAID", "CONFIRMED" -> true;
             default -> false;
@@ -127,7 +138,7 @@ public class OrderStateMachine {
     /**
      * 檢查是否允許退款
      */
-    public static boolean canRefund(String currentStatus) {
+    public static boolean canRefund(final String currentStatus) {
         return switch (currentStatus) {
             case "PAID", "CANCELLED" -> true;
             default -> false;
@@ -137,7 +148,7 @@ public class OrderStateMachine {
     /**
      * 檢查是否為終態
      */
-    public static boolean isTerminalState(String status) {
+    public static boolean isTerminalState(final String status) {
         return "COMPLETED".equals(status) || "REFUNDED".equals(status);
     }
 

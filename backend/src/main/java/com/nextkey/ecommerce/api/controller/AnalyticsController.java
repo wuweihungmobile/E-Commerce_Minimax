@@ -1,15 +1,20 @@
 package com.nextkey.ecommerce.api.controller;
 
+import java.time.LocalDate;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.nextkey.ecommerce.api.dto.AnalyticsDto;
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.core.analytics.AnalyticsService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
-
-import java.time.LocalDate;
 
 /**
  * 分析 REST API (Mock Implementation)

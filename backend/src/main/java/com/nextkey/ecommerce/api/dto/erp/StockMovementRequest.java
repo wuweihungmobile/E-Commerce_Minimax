@@ -1,10 +1,11 @@
 package com.nextkey.ecommerce.api.dto.erp;
 
+import java.util.UUID;
+
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
-import lombok.*;
 
-import java.util.UUID;
+import lombok.*;
 
 /**
  * 手動庫存異動請求

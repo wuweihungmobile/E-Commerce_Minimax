@@ -1,0 +1,12 @@
+{
+    "recommendations": [
+        // Checkstyle 整合
+        "ikedby.vscode-checkstyle",
+        // Java 擴充包
+        "redhat.java",
+        // 格式化工具
+        "eshalemov.formatter",
+        // GitLens - 增強 Git 功能
+        "eamodio.gitlens"
+    ]
+}

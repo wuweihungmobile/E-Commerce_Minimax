@@ -3,7 +3,6 @@ package com.nextkey.ecommerce.api.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
-import com.nextkey.ecommerce.domain.model.tenant.TenantApplication;
 import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.*;
@@ -21,7 +20,6 @@ import java.util.UUID;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.hamcrest.Matchers.*;
-import static org.hamcrest.Matchers.anyOf;
 
 /**
  * Tenant Controller API E2E 測試 (US-M17-001 ~ US-M17-006)
@@ -56,6 +54,7 @@ class TenantControllerE2ETest {
     @Autowired
     private TenantRepository tenantRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private TenantApplicationRepository tenantApplicationRepository;
 

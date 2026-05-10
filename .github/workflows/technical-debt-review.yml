@@ -1,0 +1,161 @@
+name: 技術債檢視 / Technical Debt Review
+
+on:
+  schedule:
+    # 每 sprint 結束時執行（每 2 週）
+    # 0 9 * * MON = 每周一 09:00
+    # 改為每 2 週一執行
+    - cron: '0 9 */14 * *'
+  workflow_dispatch:
+    # 手動觸發
+
+jobs:
+  checkstyle-report:
+    name: Checkstyle 技術債報告
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: 生成 Checkstyle 報告
+        run: |
+          cd backend
+          mvn checkstyle:checkstyle
+
+      - name: 上傳報告
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkstyle-report-${{ github.run_number }}
+          path: |
+            backend/target/checkstyle-result.xml
+            backend/target/site/checkstyle.html
+          retention-days: 30
+
+      - name: 分析錯誤趨勢
+        run: |
+          echo "=== Checkstyle 錯誤分析 ==="
+          echo "錯誤數量: $(grep -c 'error' backend/target/checkstyle-result.xml)"
+          echo ""
+          echo "錯誤類型分布:"
+          grep 'error' backend/target/checkstyle-result.xml | \
+            sed 's/.*\(Checkstyle\|FinalParameters\|MagicNumber\|Javadoc\|LineLength\).*/\1/' | \
+            sort | uniq -c | sort -rn
+          echo ""
+          echo "Top 10 錯誤檔案:"
+          grep 'error' backend/target/checkstyle-result.xml | \
+            grep -oP 'file="[^"]+' | \
+            sed 's/file="//' | \
+            sort | uniq -c | sort -rn | head -10
+
+  dependency-report:
+    name: 依賴版本報告
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: 生成依賴報告
+        run: |
+          cd backend
+          mvn dependency:tree -DoutputFile=dependency-tree.txt
+
+      - name: 上傳依賴樹
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-tree-${{ github.run_number }}
+          path: backend/dependency-tree.txt
+          retention-days: 30
+
+  quality-dashboard:
+    name: 品質趨勢儀表板
+    runs-on: ubuntu-latest
+    needs: [checkstyle-report, dependency-report]
+
+    steps:
+      - name: 生成趨勢摘要
+        run: |
+          echo "========================================"
+          echo "技術債檢視報告 / Technical Debt Review"
+          echo "========================================"
+          echo "執行時間: $(date)"
+          echo "分支: ${{ github.ref_name }}"
+          echo "Run #: ${{ github.run_number }}"
+          echo ""
+          echo "請下載 checkstyle-report-* 查看詳細錯誤報告"
+          echo "請下載 dependency-tree-* 查看依賴樹"
+          echo ""
+          echo "下次自動執行: 14 天後"
+          echo "========================================"
+
+  issue-creation:
+    name: 建立技術債追蹤 Issue
+    runs-on: ubuntu-latest
+    needs: [checkstyle-report]
+    if: github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: 統計錯誤
+        id: stats
+        run: |
+          TOTAL_ERRORS=$(grep -c 'error' backend/target/checkstyle-result.xml || echo "0")
+          echo "total_errors=$TOTAL_ERRORS" >> $GITHUB_OUTPUT
+
+      - name: 建立 Issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🔴 技術債檢視報告 / Technical Debt - ' + new Date().toLocaleDateString('zh-TW'),
+              body: `
+              # 🔴 技術債檢視報告
+
+              **執行時間**: ${new Date().toLocaleString('zh-TW')}
+              **分支**: ${context.ref_name}
+
+              ## Checkstyle 錯誤統計
+
+              總錯誤數: **${{ steps.stats.outputs.total_errors }}**
+
+              ### 錯誤分布
+              請下載 \`checkstyle-report-*\` artifact 查看詳細分布。
+
+              ## 行動項目
+
+              - [ ] 回顧並更新 Checkstyle 規則
+              - [ ] 修復高優先級錯誤
+              - [ ] 更新程式碼模板
+              - [ ] 更新 Code Review Checklist
+
+              ---
+              *此 Issue 由 GitHub Actions 自動生成*
+              `,
+              labels: ['technical-debt', 'checkstyle']
+            })

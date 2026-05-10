@@ -1,5 +1,18 @@
 package com.nextkey.ecommerce.core.erp;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderCreateRequest;
 import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderDto;
 import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderReceiveRequest;
@@ -8,25 +21,20 @@ import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrderItem;
 import com.nextkey.ecommerce.domain.model.inventory.StockMovement;
 import com.nextkey.ecommerce.domain.model.product.ProductInventory;
-import com.nextkey.ecommerce.domain.repository.*;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository;
+import com.nextkey.ecommerce.domain.repository.PurchaseOrderItemRepository;
+import com.nextkey.ecommerce.domain.repository.PurchaseOrderRepository;
+import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
+import com.nextkey.ecommerce.domain.repository.SupplierRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
 
 /**
  * 採購單 Service
@@ -38,17 +46,23 @@ import java.util.stream.Collectors;
 public class PurchaseOrderService {
 
     private final PurchaseOrderRepository purchaseOrderRepository;
+    @SuppressWarnings("unused")
     private final PurchaseOrderItemRepository purchaseOrderItemRepository;
     private final SupplierRepository supplierRepository;
     private final ProductInventoryRepository productInventoryRepository;
     private final StockMovementRepository stockMovementRepository;
+    @SuppressWarnings("unused")
     private final ListingRepository listingRepository;
+
+    // PO Number generation
+    private static final int PO_NUMBER_MIN = 100000;
+    private static final int PO_NUMBER_MAX = 999999;
 
     /**
      * 建立採購單 (DRAFT)
      */
     @Transactional
-    public PurchaseOrderDto createPurchaseOrder(PurchaseOrderCreateRequest request, UUID userId) {
+    public PurchaseOrderDto createPurchaseOrder(final PurchaseOrderCreateRequest request, final UUID userId) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         // 驗證供應商存在且屬於該 tenant
@@ -100,7 +114,7 @@ public class PurchaseOrderService {
      * 取得採購單詳情
      */
     @Transactional(readOnly = true)
-    public PurchaseOrderDto getPurchaseOrder(UUID id) {
+    public PurchaseOrderDto getPurchaseOrder(final UUID id) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         PurchaseOrder po = findByIdAndTenantId(id, tenantId);
@@ -111,7 +125,7 @@ public class PurchaseOrderService {
      * 分頁列出採購單
      */
     @Transactional(readOnly = true)
-    public Page<PurchaseOrderDto> listPurchaseOrders(PurchaseOrder.POStatus status, Pageable pageable) {
+    public Page<PurchaseOrderDto> listPurchaseOrders(final PurchaseOrder.POStatus status, final Pageable pageable) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         Page<PurchaseOrder> orders;
@@ -128,7 +142,7 @@ public class PurchaseOrderService {
      * 更新採購單（僅 DRAFT 狀態可更新）
      */
     @Transactional
-    public PurchaseOrderDto updatePurchaseOrder(UUID id, PurchaseOrderUpdateRequest request) {
+    public PurchaseOrderDto updatePurchaseOrder(final UUID id, final PurchaseOrderUpdateRequest request) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         PurchaseOrder po = findByIdAndTenantId(id, tenantId);
@@ -152,7 +166,7 @@ public class PurchaseOrderService {
      * 提交採購單 (DRAFT → SUBMITTED)
      */
     @Transactional
-    public PurchaseOrderDto submitPurchaseOrder(UUID id) {
+    public PurchaseOrderDto submitPurchaseOrder(final UUID id) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         PurchaseOrder po = findByIdAndTenantId(id, tenantId);
@@ -175,7 +189,7 @@ public class PurchaseOrderService {
      * 確認收貨 (SUBMITTED/PARTIALLY_RECEIVED → RECEIVED/PARTIALLY_RECEIVED)
      */
     @Transactional
-    public PurchaseOrderDto receivePurchaseOrder(UUID id, PurchaseOrderReceiveRequest request) {
+    public PurchaseOrderDto receivePurchaseOrder(final UUID id, final PurchaseOrderReceiveRequest request) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         PurchaseOrder po = findByIdAndTenantId(id, tenantId);
@@ -221,7 +235,7 @@ public class PurchaseOrderService {
      * 取消採購單 (DRAFT/SUBMITTED → CANCELLED)
      */
     @Transactional
-    public PurchaseOrderDto cancelPurchaseOrder(UUID id) {
+    public PurchaseOrderDto cancelPurchaseOrder(final UUID id) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         PurchaseOrder po = findByIdAndTenantId(id, tenantId);
@@ -242,7 +256,7 @@ public class PurchaseOrderService {
     /**
      * 建立入庫異動
      */
-    private void createInboundMovement(UUID tenantId, PurchaseOrderItem item, int receivedQty, UUID poId) {
+    private void createInboundMovement(final UUID tenantId, final PurchaseOrderItem item, final int receivedQty, final UUID poId) {
         ProductInventory inventory = productInventoryRepository.findById(item.getSkuId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_3003,
                         String.format("SKU not found: %s", item.getSkuId())));
@@ -274,7 +288,7 @@ public class PurchaseOrderService {
     /**
      * 驗證供應商
      */
-    private void validateSupplier(UUID supplierId, UUID tenantId) {
+    private void validateSupplier(final UUID supplierId, final UUID tenantId) {
         if (!supplierRepository.existsByIdAndTenantId(supplierId, tenantId)) {
             throw new BusinessException(ErrorCode.E_7008,
                     String.format("Supplier not found or inactive: %s", supplierId));
@@ -286,14 +300,14 @@ public class PurchaseOrderService {
      */
     private String generatePoNumber() {
         String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-        int random = ThreadLocalRandom.current().nextInt(100000, 999999);
+        int random = ThreadLocalRandom.current().nextInt(PO_NUMBER_MIN, PO_NUMBER_MAX);
         return String.format("PO-%s-%d", date, random);
     }
 
     /**
      * 依 ID 和 Tenant 取得 PO
      */
-    private PurchaseOrder findByIdAndTenantId(UUID id, UUID tenantId) {
+    private PurchaseOrder findByIdAndTenantId(final UUID id, final UUID tenantId) {
         return purchaseOrderRepository.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_7001,
                         String.format("Purchase order not found: id=%s, tenantId=%s", id, tenantId)));
@@ -302,7 +316,7 @@ public class PurchaseOrderService {
     /**
      * 轉換為 DTO
      */
-    private PurchaseOrderDto toDto(PurchaseOrder po) {
+    private PurchaseOrderDto toDto(final PurchaseOrder po) {
         return PurchaseOrderDto.builder()
                 .id(po.getId())
                 .poNumber(po.getPoNumber())

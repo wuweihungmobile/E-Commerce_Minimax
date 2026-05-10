@@ -5,7 +5,6 @@ import com.nextkey.ecommerce.api.dto.AdminDto;
 import com.nextkey.ecommerce.core.admin.AdminService;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
-import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.*;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 import org.junit.jupiter.api.*;
@@ -15,7 +14,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,12 +24,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-
-import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
-import static org.hamcrest.Matchers.*;
 
 /**
  * Admin Service 整合測試 (IT-M17-004 ~ IT-M17-007-02)
@@ -56,12 +50,14 @@ class AdminServiceIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @SuppressWarnings("unused")
     @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
     private AdminService adminService;
 
+    @SuppressWarnings("unused")
     @Autowired
     private JwtTokenService jwtTokenService;
 
@@ -74,9 +70,11 @@ class AdminServiceIntegrationTest {
     @Autowired
     private TenantFeatureToggleRepository featureToggleRepository;
 
+    @SuppressWarnings("unused")
     private static final String TEST_PASSWORD = "SecurePass123!";
 
     // 測試資料工廠方法
+    @SuppressWarnings("unused")
     private String uniqueEmail() {
         return "admin-it-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 10000) + "@example.com";
     }

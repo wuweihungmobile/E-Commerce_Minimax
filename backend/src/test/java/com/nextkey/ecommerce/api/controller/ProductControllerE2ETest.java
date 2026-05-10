@@ -62,6 +62,7 @@ class ProductControllerE2ETest {
     // 測試用的 access token（每次測試前登入獲取）
     private String accessToken;
     private String userEmail;
+    @SuppressWarnings("unused")
     private static final String TEST_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
     @BeforeEach

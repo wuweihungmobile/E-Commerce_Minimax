@@ -48,10 +48,13 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=redis-dev-password
       - JAVA_OPTS=-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005
+      - STORAGE_ENDPOINT=http://minio:9000
+      - STORAGE_ACCESS_KEY=minioadmin
+      - STORAGE_SECRET_KEY=minioadmin123
     volumes:
       - ./backend:/app
       - maven_cache:/root/.m2
-    command: mvn spring-boot:run -DskipTests
+    command: mvn spring-boot:run -Dmaven.test.skip=true
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/actuator/health"]
       interval: 30s
@@ -62,8 +65,28 @@ services:
       - "8080:8080"
       - "5005:5005"  # Debug port
 
+  # =============================================
+  # MinIO Object Storage
+  # =============================================
+  minio:
+    image: minio/minio:latest
+    container_name: ecommerce-minio
+    ports:
+      - "9000:9000"   # API endpoint
+      - "9001:9001"   # Console endpoint
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+    networks:
+      - ecommerce-network
+
 # =============================================
 # Volume for Maven cache
 # =============================================
 volumes:
   maven_cache:
+  minio_data:

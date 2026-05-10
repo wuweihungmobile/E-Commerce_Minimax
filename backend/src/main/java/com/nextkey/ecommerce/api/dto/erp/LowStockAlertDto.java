@@ -1,8 +1,8 @@
 package com.nextkey.ecommerce.api.dto.erp;
 
-import lombok.*;
-
 import java.util.UUID;
+
+import lombok.*;
 
 /**
  * 低庫存預警 DTO

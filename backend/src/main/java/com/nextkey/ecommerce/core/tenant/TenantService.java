@@ -1,22 +1,42 @@
 package com.nextkey.ecommerce.core.tenant;
 
-import com.nextkey.ecommerce.api.dto.*;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.nextkey.ecommerce.api.dto.FeatureToggleResponse;
+import com.nextkey.ecommerce.api.dto.FeatureToggleUpdateResponse;
+import com.nextkey.ecommerce.api.dto.TenantApplicationRequest;
+import com.nextkey.ecommerce.api.dto.TenantApplicationResponse;
+import com.nextkey.ecommerce.api.dto.TenantDetailsResponse;
+import com.nextkey.ecommerce.api.dto.TenantListResponse;
+import com.nextkey.ecommerce.api.dto.TenantMemberResponse;
+import com.nextkey.ecommerce.api.dto.TenantUpdateRequest;
+import com.nextkey.ecommerce.api.dto.TenantUpdateResponse;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantApplication;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.model.user.User;
-import com.nextkey.ecommerce.domain.repository.*;
+import com.nextkey.ecommerce.domain.repository.TenantApplicationRepository;
+import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
+import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Instant;
-import java.util.*;
 
 @Slf4j
 @Service
@@ -32,20 +52,26 @@ public class TenantService {
     // Feature toggle definitions
     private static final Map<String, FeatureDefinition> FEATURE_DEFINITIONS = new LinkedHashMap<>();
 
+    // Numeric toggle defaults
+    private static final int DEFAULT_MAX_PRODUCTS = 100;
+    private static final int DEFAULT_MAX_ROOMS = 20;
+    private static final int DEFAULT_MAX_POSTS = 50;
+    private static final double DEFAULT_COMMISSION_RATE = 0.05;
+
     static {
         // REF: Sprint 7 Plan L109-120, Sprint 7 User Stories L131-142
         // Default values based on HYBRID (all toggles enabled by default for new stores)
-        FEATURE_DEFINITIONS.put("RETAIL_ENABLED", new FeatureDefinition("RETAIL_ENABLED", "零售功能", "可上架實體商品", false, true));
-        FEATURE_DEFINITIONS.put("BOOKING_ENABLED", new FeatureDefinition("BOOKING_ENABLED", "民宿預訂功能", "可上架民宿房間", true, true));
-        FEATURE_DEFINITIONS.put("CMS_ENABLED", new FeatureDefinition("CMS_ENABLED", "CMS 貼文功能", "可發布 CMS 貼文", false, true));
-        FEATURE_DEFINITIONS.put("ERP_ENABLED", new FeatureDefinition("ERP_ENABLED", "進銷存功能", "可使用進銷存管理", false, true));
-        FEATURE_DEFINITIONS.put("DYNAMIC_PRICING_ENABLED", new FeatureDefinition("DYNAMIC_PRICING_ENABLED", "動態定價功能", "可使用動態定價引擎", true, false));
-        FEATURE_DEFINITIONS.put("PROMO_ENABLED", new FeatureDefinition("PROMO_ENABLED", "促銷活動功能", "可建立促銷活動", true, false));
+        FEATURE_DEFINITIONS.put("RETAIL_ENABLED", new FeatureDefinition("零售功能", "可上架實體商品", false, true));
+        FEATURE_DEFINITIONS.put("BOOKING_ENABLED", new FeatureDefinition("民宿預訂功能", "可上架民宿房間", true, true));
+        FEATURE_DEFINITIONS.put("CMS_ENABLED", new FeatureDefinition("CMS 貼文功能", "可發布 CMS 貼文", false, true));
+        FEATURE_DEFINITIONS.put("ERP_ENABLED", new FeatureDefinition("進銷存功能", "可使用進銷存管理", false, true));
+        FEATURE_DEFINITIONS.put("DYNAMIC_PRICING_ENABLED", new FeatureDefinition("動態定價功能", "可使用動態定價引擎", true, false));
+        FEATURE_DEFINITIONS.put("PROMO_ENABLED", new FeatureDefinition("促銷活動功能", "可建立促銷活動", true, false));
         // Numeric toggles (stored as JSONB config)
-        FEATURE_DEFINITIONS.put("MAX_PRODUCTS", new FeatureDefinition("MAX_PRODUCTS", "最大商品數", "店鋪可上架商品數上限", false, 100));
-        FEATURE_DEFINITIONS.put("MAX_ROOMS", new FeatureDefinition("MAX_ROOMS", "最大房源數", "店鋪可上架房源數上限", false, 20));
-        FEATURE_DEFINITIONS.put("MAX_POSTS", new FeatureDefinition("MAX_POSTS", "最大貼文數", "店鋪可發布貼文數上限", false, 50));
-        FEATURE_DEFINITIONS.put("COMMISSION_RATE", new FeatureDefinition("COMMISSION_RATE", "抽佣比例", "平台抽佣比例", false, 0.05));
+        FEATURE_DEFINITIONS.put("MAX_PRODUCTS", new FeatureDefinition("最大商品數", "店鋪可上架商品數上限", false, DEFAULT_MAX_PRODUCTS));
+        FEATURE_DEFINITIONS.put("MAX_ROOMS", new FeatureDefinition("最大房源數", "店鋪可上架房源數上限", false, DEFAULT_MAX_ROOMS));
+        FEATURE_DEFINITIONS.put("MAX_POSTS", new FeatureDefinition("最大貼文數", "店鋪可發布貼文數上限", false, DEFAULT_MAX_POSTS));
+        FEATURE_DEFINITIONS.put("COMMISSION_RATE", new FeatureDefinition("抽佣比例", "平台抽佣比例", false, DEFAULT_COMMISSION_RATE));
     }
 
     /**
@@ -54,7 +80,7 @@ public class TenantService {
      * Authenticated users cannot submit duplicate pending applications
      */
     @Transactional
-    public TenantApplicationResponse createApplication(TenantApplicationRequest request, UUID userId) {
+    public TenantApplicationResponse createApplication(final TenantApplicationRequest request, final UUID userId) {
         // If user is authenticated (not Guest), check for duplicate pending applications
         if (userId != null) {
             if (tenantApplicationRepository.existsByUserIdAndStatusIn(userId,
@@ -183,7 +209,7 @@ public class TenantService {
      * For non-APPROVED/ACTIVE tenants, only return basic information
      */
     @Transactional(readOnly = true)
-    public TenantDetailsResponse getTenantDetails(UUID tenantId) {
+    public TenantDetailsResponse getTenantDetails(final UUID tenantId) {
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
 
@@ -239,7 +265,7 @@ public class TenantService {
      * Note: Requires authentication (userId must not be null)
      */
     @Transactional
-    public TenantUpdateResponse updateTenant(UUID tenantId, TenantUpdateRequest request, UUID userId) {
+    public TenantUpdateResponse updateTenant(final UUID tenantId, final TenantUpdateRequest request, final UUID userId) {
         if (userId == null) {
             throw new BusinessException(ErrorCode.E_1000);
         }
@@ -285,7 +311,7 @@ public class TenantService {
      * US-M17-005: Get feature toggles for current tenant
      */
     @Transactional(readOnly = true)
-    public FeatureToggleResponse getFeatureToggles(UUID tenantId) {
+    public FeatureToggleResponse getFeatureToggles(final UUID tenantId) {
         // Verify user belongs to this tenant
         UUID userId = TenantContext.getCurrentUser();
         if (userId != null && !tenantMemberRepository.existsByTenantIdAndUserId(tenantId, userId)) {
@@ -324,7 +350,7 @@ public class TenantService {
      * US-M17-006: Update feature toggle
      */
     @Transactional
-    public FeatureToggleUpdateResponse updateFeatureToggle(UUID tenantId, String featureKey, Boolean enabled) {
+    public FeatureToggleUpdateResponse updateFeatureToggle(final UUID tenantId, final String featureKey, final Boolean enabled) {
         UUID userId = TenantContext.getCurrentUser();
         if (userId == null) {
             throw new BusinessException(ErrorCode.E_1000);
@@ -364,37 +390,31 @@ public class TenantService {
         toggle = tenantFeatureToggleRepository.save(toggle);
 
         // Determine status based on enabled state and requiresApproval
-        String status;
-        String statusDescription;
-
-        if (enabled) {
-            // If feature requires approval and was previously disabled/not enabled,
-            // status should be PENDING_APPROVAL (waiting for platform review)
-            if (featureDef.requiresApproval && !previousState) {
-                status = "PENDING_APPROVAL";
-                statusDescription = "Feature request submitted, pending platform approval";
-            } else {
-                status = "ENABLED";
-                statusDescription = "Feature enabled";
-            }
-        } else {
-            // If disabling, check if we need to go through approval process
-            if (previousState) {
-                status = "DISABLED";
-                statusDescription = "Feature disabled";
-            } else {
-                status = "PENDING_APPROVAL";
-                statusDescription = "Feature request submitted";
-            }
-        }
+        StatusInfo statusInfo = determineToggleStatus(enabled, featureDef.requiresApproval, previousState);
 
         return FeatureToggleUpdateResponse.builder()
                 .featureKey(featureKey)
                 .previousState(previousState)
                 .newState(toggle.getIsEnabled())
-                .status(status)
-                .statusDescription(statusDescription)
+                .status(statusInfo.status)
+                .statusDescription(statusInfo.description)
                 .build();
+    }
+
+    private record StatusInfo(String status, String description) {}
+
+    private StatusInfo determineToggleStatus(boolean enabled, boolean requiresApproval, Boolean previousState) {
+        if (enabled) {
+            if (requiresApproval && !previousState) {
+                return new StatusInfo("PENDING_APPROVAL", "Feature request submitted, pending platform approval");
+            }
+            return new StatusInfo("ENABLED", "Feature enabled");
+        } else {
+            if (previousState) {
+                return new StatusInfo("DISABLED", "Feature disabled");
+            }
+            return new StatusInfo("PENDING_APPROVAL", "Feature request submitted");
+        }
     }
 
     // Helper methods
@@ -428,34 +448,28 @@ public class TenantService {
 
     // Inner class for feature definitions
     private static class FeatureDefinition {
-        final String key;
         final String name;
         final String description;
         final boolean requiresApproval;
         final boolean isBoolean;  // true for boolean toggle, false for numeric toggle
         final boolean booleanDefault;  // default value for boolean toggles
-        final double numericDefault;   // default value for numeric toggles
 
         // Boolean toggle constructor
-        FeatureDefinition(String key, String name, String description, boolean requiresApproval, boolean defaultEnabled) {
-            this.key = key;
+        FeatureDefinition(String name, String description, boolean requiresApproval, boolean defaultEnabled) {
             this.name = name;
             this.description = description;
             this.requiresApproval = requiresApproval;
             this.isBoolean = true;
             this.booleanDefault = defaultEnabled;
-            this.numericDefault = 0;
         }
 
         // Numeric toggle constructor
-        FeatureDefinition(String key, String name, String description, boolean requiresApproval, double defaultValue) {
-            this.key = key;
+        FeatureDefinition(String name, String description, boolean requiresApproval, double defaultValue) {
             this.name = name;
             this.description = description;
             this.requiresApproval = requiresApproval;
             this.isBoolean = false;
             this.booleanDefault = false;
-            this.numericDefault = defaultValue;
         }
     }
 
@@ -463,7 +477,7 @@ public class TenantService {
      * US-M17-006: Get members of a tenant
      */
     @Transactional(readOnly = true)
-    public List<TenantMemberResponse> getTenantMembers(UUID tenantId) {
+    public List<TenantMemberResponse> getTenantMembers(final UUID tenantId) {
         // Verify user belongs to this tenant
         UUID userId = TenantContext.getCurrentUser();
         if (userId == null) {
@@ -500,7 +514,7 @@ public class TenantService {
      * US-M17-006: Add member to tenant (Phase 1 - direct add, no email invite)
      */
     @Transactional
-    public TenantMemberResponse addMember(UUID tenantId, UUID userId, UUID invitedBy) {
+    public TenantMemberResponse addMember(final UUID tenantId, final UUID userId, final UUID invitedBy) {
         // Verify current user is StoreOwner of this tenant
         UUID currentUserId = TenantContext.getCurrentUser();
         if (currentUserId == null) {
@@ -546,7 +560,7 @@ public class TenantService {
      * US-M17-006: Update member role
      */
     @Transactional
-    public TenantMemberResponse updateMemberRole(UUID tenantId, UUID userId, String newRole) {
+    public TenantMemberResponse updateMemberRole(final UUID tenantId, final UUID userId, final String newRole) {
         // Verify current user is StoreOwner of this tenant
         UUID currentUserId = TenantContext.getCurrentUser();
         if (currentUserId == null) {
@@ -592,7 +606,7 @@ public class TenantService {
      * US-M17-006: Remove member from tenant
      */
     @Transactional
-    public void removeMember(UUID tenantId, UUID userId) {
+    public void removeMember(final UUID tenantId, final UUID userId) {
         // Verify current user is StoreOwner of this tenant
         UUID currentUserId = TenantContext.getCurrentUser();
         if (currentUserId == null) {
@@ -625,7 +639,7 @@ public class TenantService {
      * Called when tenant status changes to ACTIVE
      */
     @Transactional
-    public void initializeFeatureToggles(UUID tenantId, String businessType) {
+    public void initializeFeatureToggles(final UUID tenantId, final String businessType) {
         log.info("Initializing feature toggles for tenant: {}, businessType: {}", tenantId, businessType);
 
         List<TenantFeatureToggle> toggles = new ArrayList<>();
@@ -642,16 +656,20 @@ public class TenantService {
         toggles.add(createToggle(tenantId, "PROMO_ENABLED", false));
 
         // Numeric toggles
-        toggles.add(createNumericToggle(tenantId, "MAX_PRODUCTS", "RETAIL_ONLY".equals(businessType) ? 100 : ("BOOKING_ONLY".equals(businessType) ? 0 : 100)));
-        toggles.add(createNumericToggle(tenantId, "MAX_ROOMS", "RETAIL_ONLY".equals(businessType) ? 0 : ("BOOKING_ONLY".equals(businessType) ? 20 : 20)));
-        toggles.add(createNumericToggle(tenantId, "MAX_POSTS", 50));
-        toggles.add(createNumericToggle(tenantId, "COMMISSION_RATE", 0.05));
+        int maxProducts = "RETAIL_ONLY".equals(businessType) ? DEFAULT_MAX_PRODUCTS
+                : ("BOOKING_ONLY".equals(businessType) ? 0 : DEFAULT_MAX_PRODUCTS);
+        int maxRooms = "RETAIL_ONLY".equals(businessType) ? 0
+                : ("BOOKING_ONLY".equals(businessType) ? DEFAULT_MAX_ROOMS : DEFAULT_MAX_ROOMS);
+        toggles.add(createNumericToggle(tenantId, "MAX_PRODUCTS", maxProducts));
+        toggles.add(createNumericToggle(tenantId, "MAX_ROOMS", maxRooms));
+        toggles.add(createNumericToggle(tenantId, "MAX_POSTS", DEFAULT_MAX_POSTS));
+        toggles.add(createNumericToggle(tenantId, "COMMISSION_RATE", DEFAULT_COMMISSION_RATE));
 
         tenantFeatureToggleRepository.saveAll(toggles);
         log.info("Feature toggles initialized for tenant: {}, count: {}", tenantId, toggles.size());
     }
 
-    private TenantFeatureToggle createToggle(UUID tenantId, String featureKey, boolean enabled) {
+    private TenantFeatureToggle createToggle(final UUID tenantId, final String featureKey, final boolean enabled) {
         return TenantFeatureToggle.builder()
                 .tenantId(tenantId)
                 .featureKey(featureKey)
@@ -661,7 +679,7 @@ public class TenantService {
                 .build();
     }
 
-    private TenantFeatureToggle createNumericToggle(UUID tenantId, String featureKey, double value) {
+    private TenantFeatureToggle createNumericToggle(final UUID tenantId, final String featureKey, final double value) {
         Map<String, Object> configMap = Map.of("value", value);
         return TenantFeatureToggle.builder()
                 .tenantId(tenantId)

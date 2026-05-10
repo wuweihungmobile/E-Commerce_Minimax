@@ -1,23 +1,5 @@
 package com.nextkey.ecommerce.core.booking;
 
-import com.nextkey.ecommerce.api.dto.BookingDto;
-import com.nextkey.ecommerce.core.order.OrderStateMachine;
-import com.nextkey.ecommerce.domain.model.listing.Listing;
-import com.nextkey.ecommerce.domain.model.room.Room;
-import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
-import com.nextkey.ecommerce.domain.repository.*;
-import com.nextkey.ecommerce.shared.exception.BusinessException;
-import com.nextkey.ecommerce.shared.exception.ErrorCode;
-import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentTenant;
-import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentUser;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -25,6 +7,31 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.nextkey.ecommerce.api.dto.BookingDto;
+import com.nextkey.ecommerce.core.order.OrderStateMachine;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.room.Room;
+import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
+import com.nextkey.ecommerce.domain.repository.RoomRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentTenant;
+import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentUser;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 預訂服務
@@ -38,10 +45,15 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final ListingRepository listingRepository;
     private final RoomRepository roomRepository;
+    @SuppressWarnings("unused")
     private final RoomCalendarRepository roomCalendarRepository;
     private final RoomCalendarService roomCalendarService;
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
+
+    // Default check-in/out times
+    private static final LocalTime DEFAULT_CHECK_IN_TIME = LocalTime.of(15, 0);
+    private static final LocalTime DEFAULT_CHECK_OUT_TIME = LocalTime.of(11, 0);
 
     /**
      * 檢查日期範圍可用性
@@ -101,15 +113,9 @@ public class BookingService {
         }
 
         // 檢查是否有不可用的日期
-        for (RoomCalendar calendar : calendars) {
-            if (calendar.getStatus() != RoomCalendar.RoomCalendarStatus.AVAILABLE) {
-                available = false;
-                unavailableReason = "Date " + calendar.getCalendarDate() + " is " + calendar.getStatus().name().toLowerCase();
-                break;
-            }
-            totalPrice = totalPrice.add(
-                    calendar.getPrice() != null ? calendar.getPrice() : listing.getBasePrice()
-            );
+        available = checkCalendarAvailability(calendars, listing, totalPrice);
+        if (!available) {
+            unavailableReason = findFirstUnavailableReason(calendars);
         }
 
         long nightsCount = ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
@@ -125,6 +131,25 @@ public class BookingService {
                 .calendarDetails(available ? calendarDetails : null)
                 .unavailableReason(unavailableReason)
                 .build();
+    }
+
+    private boolean checkCalendarAvailability(List<RoomCalendar> calendars, Listing listing, BigDecimal totalPrice) {
+        for (RoomCalendar calendar : calendars) {
+            if (calendar.getStatus() != RoomCalendar.RoomCalendarStatus.AVAILABLE) {
+                return false;
+            }
+            totalPrice.add(calendar.getPrice() != null ? calendar.getPrice() : listing.getBasePrice());
+        }
+        return true;
+    }
+
+    private String findFirstUnavailableReason(List<RoomCalendar> calendars) {
+        for (RoomCalendar calendar : calendars) {
+            if (calendar.getStatus() != RoomCalendar.RoomCalendarStatus.AVAILABLE) {
+                return "Date " + calendar.getCalendarDate() + " is " + calendar.getStatus().name().toLowerCase();
+            }
+        }
+        return null;
     }
 
     /**
@@ -287,66 +312,98 @@ public class BookingService {
         // 如果更改日期，需要釋放舊日期並預訂新日期
         boolean dateChanged = false;
         if (request.getCheckInDate() != null || request.getCheckOutDate() != null) {
-            LocalDate newCheckIn = request.getCheckInDate() != null ? request.getCheckInDate() : booking.getCheckInDate();
-            LocalDate newCheckOut = request.getCheckOutDate() != null ? request.getCheckOutDate() : booking.getCheckOutDate();
-
-            if (!newCheckIn.equals(booking.getCheckInDate()) || !newCheckOut.equals(booking.getCheckOutDate())) {
-                dateChanged = true;
-                // 釋放舊日期
-                roomCalendarService.releaseDateRange(
-                        booking.getRoomListingId(),
-                        booking.getCheckInDate(),
-                        booking.getCheckOutDate()
-                );
-
-                // 鎖定新日期
-                String lockValue = roomCalendarService.lockDateRange(booking.getRoomListingId(), newCheckIn, newCheckOut);
-                if (lockValue == null) {
-                    throw new BusinessException(ErrorCode.E_4001, "New date range is not available");
-                }
-
-                try {
-                    // 檢查新日期是否可用
-                    if (!roomCalendarService.isDateRangeAvailable(booking.getRoomListingId(), newCheckIn, newCheckOut)) {
-                        throw new BusinessException(ErrorCode.E_4001, "New date range is not available");
-                    }
-
-                    booking.setCheckInDate(newCheckIn);
-                    booking.setCheckOutDate(newCheckOut);
-                } finally {
-                    roomCalendarService.unlockDateRange(booking.getRoomListingId(), newCheckIn, newCheckOut, lockValue);
-                }
-            }
+            dateChanged = handleDateChange(booking, request);
         }
 
         // 更新其他欄位
-        if (request.getGuestCount() != null) booking.setGuestCount(request.getGuestCount());
-        if (request.getGuestName() != null) booking.setGuestName(request.getGuestName());
-        if (request.getGuestPhone() != null) booking.setGuestPhone(request.getGuestPhone());
-        if (request.getGuestEmail() != null) booking.setGuestEmail(request.getGuestEmail());
-        if (request.getSpecialRequests() != null) booking.setSpecialRequests(request.getSpecialRequests());
+        updateBookingFields(booking, request);
 
         // 如果日期變更，重新計算金額
         if (dateChanged) {
-            BigDecimal totalAmount = calculateTotalAmount(
-                    booking.getRoomListingId(),
-                    booking.getCheckInDate(),
-                    booking.getCheckOutDate()
-            );
-            booking.setTotalAmount(totalAmount);
-
-            // 更新日曆
-            roomCalendarService.bookDateRange(
-                    booking.getRoomListingId(),
-                    booking.getCheckInDate(),
-                    booking.getCheckOutDate(),
-                    booking.getId()
-            );
+            recalculateAndBookDateRange(booking);
         }
 
         booking = bookingRepository.save(booking);
         log.info("Booking updated: id={}", bookingId);
 
+        return buildBookingResponse(booking);
+    }
+
+    private boolean handleDateChange(com.nextkey.ecommerce.domain.model.order.Booking booking, BookingDto.UpdateRequest request) {
+        LocalDate newCheckIn = request.getCheckInDate() != null ? request.getCheckInDate() : booking.getCheckInDate();
+        LocalDate newCheckOut = request.getCheckOutDate() != null ? request.getCheckOutDate() : booking.getCheckOutDate();
+
+        if (!newCheckIn.equals(booking.getCheckInDate()) || !newCheckOut.equals(booking.getCheckOutDate())) {
+            return processDateRangeChange(booking, newCheckIn, newCheckOut);
+        }
+        return false;
+    }
+
+    private boolean processDateRangeChange(com.nextkey.ecommerce.domain.model.order.Booking booking,
+            LocalDate newCheckIn, LocalDate newCheckOut) {
+        // 釋放舊日期
+        roomCalendarService.releaseDateRange(
+                booking.getRoomListingId(),
+                booking.getCheckInDate(),
+                booking.getCheckOutDate()
+        );
+
+        // 鎖定新日期
+        String lockValue = roomCalendarService.lockDateRange(booking.getRoomListingId(), newCheckIn, newCheckOut);
+        if (lockValue == null) {
+            throw new BusinessException(ErrorCode.E_4001, "New date range is not available");
+        }
+
+        try {
+            // 檢查新日期是否可用
+            if (!roomCalendarService.isDateRangeAvailable(booking.getRoomListingId(), newCheckIn, newCheckOut)) {
+                throw new BusinessException(ErrorCode.E_4001, "New date range is not available");
+            }
+
+            booking.setCheckInDate(newCheckIn);
+            booking.setCheckOutDate(newCheckOut);
+            return true;
+        } finally {
+            roomCalendarService.unlockDateRange(booking.getRoomListingId(), newCheckIn, newCheckOut, lockValue);
+        }
+    }
+
+    private void updateBookingFields(com.nextkey.ecommerce.domain.model.order.Booking booking, BookingDto.UpdateRequest request) {
+        if (request.getGuestCount() != null) {
+            booking.setGuestCount(request.getGuestCount());
+        }
+        if (request.getGuestName() != null) {
+            booking.setGuestName(request.getGuestName());
+        }
+        if (request.getGuestPhone() != null) {
+            booking.setGuestPhone(request.getGuestPhone());
+        }
+        if (request.getGuestEmail() != null) {
+            booking.setGuestEmail(request.getGuestEmail());
+        }
+        if (request.getSpecialRequests() != null) {
+            booking.setSpecialRequests(request.getSpecialRequests());
+        }
+    }
+
+    private void recalculateAndBookDateRange(com.nextkey.ecommerce.domain.model.order.Booking booking) {
+        BigDecimal totalAmount = calculateTotalAmount(
+                booking.getRoomListingId(),
+                booking.getCheckInDate(),
+                booking.getCheckOutDate()
+        );
+        booking.setTotalAmount(totalAmount);
+
+        // 更新日曆
+        roomCalendarService.bookDateRange(
+                booking.getRoomListingId(),
+                booking.getCheckInDate(),
+                booking.getCheckOutDate(),
+                booking.getId()
+        );
+    }
+
+    private BookingDto.BookingResponse buildBookingResponse(com.nextkey.ecommerce.domain.model.order.Booking booking) {
         Listing listing = listingRepository.findById(booking.getRoomListingId()).orElse(null);
         Room room = listing != null ? roomRepository.findByListingId(listing.getId()).orElse(null) : null;
         long nightsCount = ChronoUnit.DAYS.between(booking.getCheckInDate(), booking.getCheckOutDate());
@@ -357,8 +414,7 @@ public class BookingService {
      * 取消預訂
      */
     @Transactional
-    public void cancelBooking(UUID bookingId, String reason) {
-        UUID userId = getCurrentUser();
+    public void cancelBooking(final UUID bookingId, final String reason) {
         com.nextkey.ecommerce.domain.model.order.Booking booking = findBookingById(bookingId);
 
         // 檢查是否可取消
@@ -386,7 +442,7 @@ public class BookingService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4006));
     }
 
-    private BigDecimal calculateTotalAmount(UUID roomListingId, LocalDate checkIn, LocalDate checkOut) {
+    private BigDecimal calculateTotalAmount(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
         BigDecimal total = BigDecimal.ZERO;
         List<RoomCalendar> calendars = roomCalendarService.getCalendarRange(roomListingId, checkIn, checkOut.minusDays(1));
 
@@ -413,8 +469,8 @@ public class BookingService {
 
         String title = listing != null ? listing.getTitle() : "Unknown";
         String coverImageUrl = listing != null ? listing.getCoverImageUrl() : null;
-        LocalTime checkInTime = room != null ? room.getCheckInTime() : LocalTime.of(15, 0);
-        LocalTime checkOutTime = room != null ? room.getCheckOutTime() : LocalTime.of(11, 0);
+        LocalTime checkInTime = room != null ? room.getCheckInTime() : DEFAULT_CHECK_IN_TIME;
+        LocalTime checkOutTime = room != null ? room.getCheckOutTime() : DEFAULT_CHECK_OUT_TIME;
 
         return BookingDto.BookingResponse.builder()
                 .id(booking.getId())

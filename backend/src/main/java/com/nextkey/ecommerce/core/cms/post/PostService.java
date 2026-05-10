@@ -1,5 +1,17 @@
 package com.nextkey.ecommerce.core.cms.post;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.M15Dto;
 import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.cms.post.PostCategory;
@@ -7,27 +19,19 @@ import com.nextkey.ecommerce.domain.model.cms.post.PostEmbed;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
-import com.nextkey.ecommerce.domain.repository.cms.PostCategoryRepository;
-import com.nextkey.ecommerce.domain.repository.cms.PostEmbedRepository;
-import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.domain.repository.cms.PostCategoryRepository;
+import com.nextkey.ecommerce.domain.repository.cms.PostEmbedRepository;
+import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * M15 CMS Post Service
@@ -48,6 +52,9 @@ public class PostService {
     // Markdown embed pattern: {{embed:listing:<listing_id>}}
     private static final Pattern EMBED_PATTERN =
             Pattern.compile("\\{\\{embed:listing:([a-fA-F0-9\\-]+)\\}\\}");
+
+    // Post excerpt limits
+    private static final int EXCERPT_MAX_LENGTH = 500;
 
     // ========== Post CRUD ==========
 
@@ -93,9 +100,6 @@ public class PostService {
         }
 
         post = postRepository.save(post);
-
-        // 解析並儲存嵌入
-        List<UUID> embedListingIds = parseEmbeds(post, request.getContent());
 
         // 如果 autoPublish 為 true，直接發布
         if (Boolean.TRUE.equals(request.getAutoPublish())) {
@@ -192,7 +196,7 @@ public class PostService {
      * 刪除貼文（僅 DRAFT 和 ARCHIVED 狀態可刪除，已發布的貼文須先下架）
      */
     @Transactional
-    public void deletePost(UUID postId, UUID tenantId) {
+    public void deletePost(final UUID postId, final UUID tenantId) {
         Post post = getPostOrThrow(postId);
         validateTenantOwnership(post, tenantId);
 
@@ -297,7 +301,7 @@ public class PostService {
      * 解析 Markdown 內容中的嵌入語法
      * 格式: {{embed:listing:<listing_id>}}
      */
-    private List<UUID> parseEmbeds(Post post, String content) {
+    private List<UUID> parseEmbeds(final Post post, final String content) {
         if (content == null || content.isBlank()) {
             return new ArrayList<>();
         }
@@ -351,7 +355,7 @@ public class PostService {
     /**
      * 驗證嵌入不重複
      */
-    public void validateEmbedNoDuplicate(UUID postId, UUID listingId) {
+    public void validateEmbedNoDuplicate(final UUID postId, final UUID listingId) {
         if (postEmbedRepository.existsByPostIdAndListingId(postId, listingId)) {
             throw new BusinessException(ErrorCode.E_4104);
         }
@@ -359,18 +363,18 @@ public class PostService {
 
     // ========== Helper Methods ==========
 
-    private Post getPostOrThrow(UUID postId) {
+    private Post getPostOrThrow(final UUID postId) {
         return postRepository.findById(postId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4100));
     }
 
-    private void validateTenantOwnership(Post post, UUID tenantId) {
+    private void validateTenantOwnership(final Post post, final UUID tenantId) {
         if (!post.getTenant().getId().equals(tenantId)) {
             throw new BusinessException(ErrorCode.E_4031);
         }
     }
 
-    private String generateSlug(String title) {
+    private String generateSlug(final String title) {
         if (title == null || title.isBlank()) {
             return UUID.randomUUID().toString();
         }
@@ -388,7 +392,7 @@ public class PostService {
         return slug;
     }
 
-    private String generateUniqueSlug(String title, UUID excludePostId) {
+    private String generateUniqueSlug(final String title, final UUID excludePostId) {
         String slug = generateSlug(title);
         if (postRepository.existsBySlugAndIdNot(slug, excludePostId)) {
             slug = slug + "-" + UUID.randomUUID().toString().substring(0, 8);
@@ -396,7 +400,7 @@ public class PostService {
         return slug;
     }
 
-    private String generateExcerpt(String content) {
+    private String generateExcerpt(final String content) {
         if (content == null || content.isBlank()) {
             return null;
         }
@@ -409,8 +413,8 @@ public class PostService {
                 .replaceAll("\\n+", " ")  // 移除換行
                 .trim();
 
-        if (plain.length() > 500) {
-            return plain.substring(0, 500) + "...";
+        if (plain.length() > EXCERPT_MAX_LENGTH) {
+            return plain.substring(0, EXCERPT_MAX_LENGTH) + "...";
         }
         return plain;
     }

@@ -1,11 +1,13 @@
 package com.nextkey.ecommerce.api.dto;
 
-import jakarta.validation.constraints.*;
-import lombok.*;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
+
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+
+import lombok.*;
 
 /**
  * 支付 DTO

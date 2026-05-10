@@ -1,12 +1,16 @@
 package com.nextkey.ecommerce.api.dto.erp;
 
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.*;
-import lombok.*;
-
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+
+import lombok.*;
 
 /**
  * 建立採購單請求

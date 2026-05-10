@@ -1,6 +1,22 @@
 package com.nextkey.ecommerce.core.pricing;
 
+import java.math.BigDecimal;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.PricingDto;
+import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.PricingRule;
 import com.nextkey.ecommerce.domain.model.room.Room;
@@ -9,22 +25,13 @@ import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.PricingRuleRepository;
 import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
-import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.time.DayOfWeek;
-import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
-import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * 動態定價服務
@@ -37,9 +44,12 @@ public class PricingService {
 
     private final PricingRuleRepository pricingRuleRepository;
     private final RoomRepository roomRepository;
+    @SuppressWarnings("unused")
     private final ListingRepository listingRepository;
     private final RoomCalendarRepository roomCalendarRepository;
     private final FeatureToggleService featureToggleService;
+
+    private static final double TAX_RATE = 1.2;
 
     /**
      * 建立定價規則
@@ -362,7 +372,7 @@ public class PricingService {
                 DayOfWeek dow = date.getDayOfWeek();
                 boolean isWeekend = dow == DayOfWeek.FRIDAY || dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY;
                 if (isWeekend) {
-                    Double weekendMultiplier = (Double) config.getOrDefault("weekendMultiplier", 1.2);
+                    Double weekendMultiplier = (Double) config.getOrDefault("weekendMultiplier", TAX_RATE);
                     result.adjustedPrice = basePrice.multiply(BigDecimal.valueOf(weekendMultiplier));
                     result.applied = true;
                     result.type = "PERCENTAGE";

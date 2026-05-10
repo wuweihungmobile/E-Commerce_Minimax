@@ -1,5 +1,15 @@
 package com.nextkey.ecommerce.core.auth;
 
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.AuthResponse;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.LogoutRequest;
@@ -17,17 +27,9 @@ import com.nextkey.ecommerce.infrastructure.security.RefreshTokenService;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.UUID;
 
 @Slf4j
 @Service
@@ -42,7 +44,7 @@ public class AuthService {
     private final RefreshTokenService refreshTokenService;
 
     @Transactional
-    public RegisterResponse register(RegisterRequest request) {
+    public RegisterResponse register(final RegisterRequest request) {
         // Check if email already exists
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new BusinessException(ErrorCode.E_1005, "Email already registered");
@@ -68,6 +70,7 @@ public class AuthService {
 
         // If tenantId is provided, create TenantMember association
         if (request.getTenantId() != null) {
+            @SuppressWarnings("unused")
             Tenant tenant = tenantRepository.findById(request.getTenantId())
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
 
@@ -95,7 +98,7 @@ public class AuthService {
         if (userType == null) {
             return User.UserRole.BUYER;
         }
-        return switch (userType) {
+        return switch ( userType) {
             case "STORE_OWNER" -> User.UserRole.STORE_OWNER;
             case "STORE_STAFF" -> User.UserRole.STORE_STAFF;
             case "SELLER" -> User.UserRole.SELLER;
@@ -106,7 +109,7 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResponse login(LoginRequest request) {
+    public AuthResponse login(final LoginRequest request) {
         User user = userRepository.findByEmailAndStatus(request.getEmail(), "ACTIVE")
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1001));
 
@@ -136,7 +139,7 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResponse refreshToken(RefreshTokenRequest request) {
+    public AuthResponse refreshToken(final RefreshTokenRequest request) {
         String refreshToken = request.getRefreshToken();
 
         if (!jwtTokenService.validateToken(refreshToken)) {
@@ -169,7 +172,7 @@ public class AuthService {
         return generateAuthResponse(user, tenant);
     }
 
-    private AuthResponse generateAuthResponse(User user, Tenant tenant) {
+    private AuthResponse generateAuthResponse(final User user, final Tenant tenant) {
         String tenantId = tenant != null ? tenant.getId().toString() : null;
 
         String accessToken = jwtTokenService.generateAccessToken(
@@ -204,7 +207,7 @@ public class AuthService {
      * @param request 登出請求（包含 refreshToken）
      */
     @Transactional
-    public void logout(UUID userId, LogoutRequest request) {
+    public void logout(final UUID userId, final LogoutRequest request) {
         if (request.getRefreshToken() != null && !request.getRefreshToken().isEmpty()) {
             // 只失效指定的 refresh token
             refreshTokenService.blacklistRefreshToken(userId, request.getRefreshToken());
@@ -222,7 +225,7 @@ public class AuthService {
      * @return 用戶資訊
      */
     @Transactional(readOnly = true)
-    public UserInfoResponse getCurrentUser(UUID userId) {
+    public UserInfoResponse getCurrentUser(final UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1006, "User not found"));
 

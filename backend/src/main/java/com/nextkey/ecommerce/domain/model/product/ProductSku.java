@@ -1,12 +1,28 @@
 package com.nextkey.ecommerce.domain.model.product;
 
-import com.nextkey.ecommerce.domain.model.listing.Listing;
-import jakarta.persistence.*;
-import lombok.*;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+
+import com.nextkey.ecommerce.domain.model.listing.Listing;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "product_skus")
@@ -16,6 +32,8 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class ProductSku {
+
+    private static final int DECIMAL_PRECISION = 12;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -34,7 +52,7 @@ public class ProductSku {
     @Column(name = "spec_name")
     private String specName;
 
-    @Column(name = "price_override", precision = 12, scale = 2)
+    @Column(name = "price_override", precision = DECIMAL_PRECISION, scale = 2)
     private BigDecimal priceOverride;
 
     @Builder.Default

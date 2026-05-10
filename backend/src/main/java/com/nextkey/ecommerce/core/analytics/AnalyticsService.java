@@ -1,25 +1,35 @@
 package com.nextkey.ecommerce.core.analytics;
 
-import com.nextkey.ecommerce.api.dto.AnalyticsDto;
-import com.nextkey.ecommerce.domain.model.listing.Listing;
-import com.nextkey.ecommerce.domain.model.order.Order;
-import com.nextkey.ecommerce.domain.model.payment.Payment;
-import com.nextkey.ecommerce.domain.repository.*;
-import com.nextkey.ecommerce.shared.tenant.TenantContext;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.nextkey.ecommerce.api.dto.AnalyticsDto;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.order.Order;
+import com.nextkey.ecommerce.domain.model.payment.Payment;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.OrderRepository;
+import com.nextkey.ecommerce.domain.repository.PaymentRepository;
+import com.nextkey.ecommerce.domain.repository.ProductRepository;
+import com.nextkey.ecommerce.domain.repository.RoomRepository;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 分析服務 (Mock Implementation)
@@ -35,6 +45,8 @@ public class AnalyticsService {
     private final ListingRepository listingRepository;
     private final ProductRepository productRepository;
     private final RoomRepository roomRepository;
+
+    private static final int DEFAULT_PAGE_SIZE = 30;
 
     /**
      * 取得儀表板統計
@@ -79,9 +91,9 @@ public class AnalyticsService {
         int pendingOrders = orderRepository.countByTenantIdAndStatus(tenantId, Order.OrderStatus.CREATED);
 
         // 活躍 listing 統計
-        int activeProducts = productRepository.countByListing_TenantIdAndListing_Status(
+        int activeProducts = productRepository.countByListingTenantIdAndListingStatus(
                 tenantId, Listing.ListingStatus.ACTIVE);
-        int totalRooms = (int) roomRepository.countByListing_TenantId(tenantId);
+        int totalRooms = (int) roomRepository.countByListingTenantId(tenantId);
 
         return AnalyticsDto.DashboardStats.builder()
                 .todayRevenue(todayRevenue)
@@ -105,7 +117,7 @@ public class AnalyticsService {
     @Transactional(readOnly = true)
     public AnalyticsDto.RevenueStats getRevenueStats(AnalyticsDto.AnalyticsRequest request) {
         UUID tenantId = TenantContext.getCurrentTenant();
-        LocalDate startDate = request.getStartDate() != null ? request.getStartDate() : LocalDate.now().minusDays(30);
+        LocalDate startDate = request.getStartDate() != null ? request.getStartDate() : LocalDate.now().minusDays(DEFAULT_PAGE_SIZE);
         LocalDate endDate = request.getEndDate() != null ? request.getEndDate() : LocalDate.now();
 
         List<Order> orders = orderRepository.findByTenantIdAndCreatedAtBetween(

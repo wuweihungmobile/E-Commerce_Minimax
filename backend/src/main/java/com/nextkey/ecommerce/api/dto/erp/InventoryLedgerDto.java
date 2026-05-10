@@ -1,9 +1,9 @@
 package com.nextkey.ecommerce.api.dto.erp;
 
-import lombok.*;
-
 import java.time.Instant;
 import java.util.UUID;
+
+import lombok.*;
 
 /**
  * 庫存台帳 DTO

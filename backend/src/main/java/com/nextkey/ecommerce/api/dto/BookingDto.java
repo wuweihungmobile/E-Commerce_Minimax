@@ -1,18 +1,29 @@
 package com.nextkey.ecommerce.api.dto;
 
-import jakarta.validation.constraints.*;
-import lombok.*;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Future;
+import jakarta.validation.constraints.FutureOrPresent;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+
+import lombok.*;
+
 /**
  * 預訂 DTO
  */
 public class BookingDto {
+
+    // Validation constraints
+    private static final int GUEST_NAME_MAX_LENGTH = 200;
 
     // ========== Create Booking Request ==========
 
@@ -37,7 +48,7 @@ public class BookingDto {
         private Integer guestCount;
 
         @NotBlank(message = "Guest name is required")
-        @Size(max = 200, message = "Guest name too long")
+        @Size(max = GUEST_NAME_MAX_LENGTH, message = "Guest name too long")
         private String guestName;
 
         @Pattern(regexp = "^[0-9]{8,15}$", message = "Invalid phone format")

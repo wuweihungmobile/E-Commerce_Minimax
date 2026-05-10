@@ -1,8 +1,10 @@
 package com.nextkey.ecommerce.api.dto;
 
-import com.nextkey.ecommerce.domain.model.user.OAuthProvider;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+
+import com.nextkey.ecommerce.domain.model.user.OAuthProvider;
+
 import lombok.*;
 
 public class OAuthDto {

@@ -5,19 +5,19 @@ public class BusinessException extends RuntimeException {
     private final ErrorCode errorCode;
     private final String details;
 
-    public BusinessException(ErrorCode errorCode) {
+    public BusinessException(final ErrorCode errorCode) {
         super(errorCode.getMessage());
         this.errorCode = errorCode;
         this.details = null;
     }
 
-    public BusinessException(ErrorCode errorCode, String details) {
+    public BusinessException(final ErrorCode errorCode, final String details) {
         super(errorCode.getMessage() + ": " + details);
         this.errorCode = errorCode;
         this.details = details;
     }
 
-    public BusinessException(ErrorCode errorCode, String message, Throwable cause) {
+    public BusinessException(final ErrorCode errorCode, final String message, final Throwable cause) {
         super(message, cause);
         this.errorCode = errorCode;
         this.details = null;

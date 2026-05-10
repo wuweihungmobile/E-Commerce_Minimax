@@ -107,6 +107,11 @@ public class PostService {
             post = postRepository.save(post);
         }
 
+        // 解析內容中的嵌入（驗證 Listing 存在性和不重複）
+        if (request.getContent() != null && !request.getContent().isBlank()) {
+            parseEmbeds(post, request.getContent());
+        }
+
         // 載入 embeds
         List<PostEmbed> embeds = postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(post.getId());
 

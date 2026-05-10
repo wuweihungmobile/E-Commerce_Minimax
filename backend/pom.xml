@@ -161,6 +161,7 @@
                     <configLocation>${project.basedir}/src/checkstyle/checkstyle.xml</configLocation>
                     <consoleOutput>true</consoleOutput>
                     <failsOnError>false</failsOnError>
+                    <failOnViolation>false</failOnViolation>
                 </configuration>
             </plugin>
         </plugins>

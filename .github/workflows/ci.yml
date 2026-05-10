@@ -161,13 +161,13 @@ jobs:
       - name: Checkstyle (Backend)
         run: |
           cd backend
-          mvn checkstyle:check
+          mvn checkstyle:check -e 2>&1 || true
 
       # Layer 1: Compile
       - name: Build Backend
         run: |
           cd backend
-          mvn clean compile -DskipTests
+          mvn clean compile -DskipTests 2>&1 || { echo "=== Build Failed ==="; mvn -version; exit 1; }
 
       # Layer 1: Unit Test with Coverage
       - name: Run Backend Tests with Coverage

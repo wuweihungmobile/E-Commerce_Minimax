@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.OrderDto;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.order.OrderItem;
 import com.nextkey.ecommerce.domain.model.order.OrderStateLog;

@@ -59,10 +59,6 @@ class AdminControllerE2ETest {
 
     @SuppressWarnings("unused")
     @Autowired
-    private ObjectMapper objectMapper;
-
-    @SuppressWarnings("unused")
-    @Autowired
     private JwtTokenService jwtTokenService;
 
     @Autowired

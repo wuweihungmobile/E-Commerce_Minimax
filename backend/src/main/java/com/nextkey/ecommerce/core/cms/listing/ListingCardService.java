@@ -1,9 +1,15 @@
 package com.nextkey.ecommerce.core.cms.listing;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.M15Dto;
 import com.nextkey.ecommerce.domain.model.inventory.Inventory;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
-import com.nextkey.ecommerce.domain.model.room.Room;
 import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
 import com.nextkey.ecommerce.domain.repository.InventoryRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
@@ -11,14 +17,11 @@ import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.UUID;
 
 /**
  * M15 CMS ListingCard Service
@@ -31,6 +34,7 @@ public class ListingCardService {
 
     private final ListingRepository listingRepository;
     private final InventoryRepository inventoryRepository;
+    @SuppressWarnings("unused")
     private final RoomRepository roomRepository;
     private final RoomCalendarRepository roomCalendarRepository;
 

@@ -1,5 +1,11 @@
 package com.nextkey.ecommerce.core.payment;
 
+import java.math.BigDecimal;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.PaymentDto;
 import com.nextkey.ecommerce.core.order.OrderService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
@@ -10,13 +16,9 @@ import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.util.UUID;
 
 /**
  * 支付服務 (Mock Implementation)
@@ -58,7 +60,7 @@ public class PaymentService {
     /**
      * 處理訂單支付
      */
-    private Payment processOrderPayment(PaymentDto.PaymentRequest request) {
+    private Payment processOrderPayment(final PaymentDto.PaymentRequest request) {
         Order order = orderRepository.findById(request.getOrderId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
 
@@ -97,7 +99,7 @@ public class PaymentService {
     /**
      * 處理預訂支付
      */
-    private Payment processBookingPayment(PaymentDto.PaymentRequest request) {
+    private Payment processBookingPayment(final PaymentDto.PaymentRequest request) {
         Booking booking = bookingRepository.findById(request.getBookingId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4006, "Booking not found"));
 
@@ -208,7 +210,7 @@ public class PaymentService {
         return "MOCK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
 
-    private String generateIdempotencyKey(PaymentDto.PaymentRequest request) {
+    private String generateIdempotencyKey(final PaymentDto.PaymentRequest request) {
         if (request.getOrderId() != null) {
             return "ORDER-" + request.getOrderId().toString();
         } else if (request.getBookingId() != null) {

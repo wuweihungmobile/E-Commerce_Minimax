@@ -1,11 +1,12 @@
 package com.nextkey.ecommerce.api.dto;
 
-import jakarta.validation.constraints.NotNull;
-import lombok.*;
-
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
+
+import jakarta.validation.constraints.NotNull;
+
+import lombok.*;
 
 /**
  * 物流 DTO

@@ -1,5 +1,15 @@
 package com.nextkey.ecommerce.core.erp;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.erp.InventoryLedgerDto;
 import com.nextkey.ecommerce.api.dto.erp.LowStockAlertDto;
 import com.nextkey.ecommerce.api.dto.erp.StockMovementDto;
@@ -7,17 +17,11 @@ import com.nextkey.ecommerce.domain.model.inventory.Inventory;
 import com.nextkey.ecommerce.domain.repository.InventoryRepository;
 import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 庫存 Service
@@ -31,11 +35,14 @@ public class InventoryService {
     private final InventoryRepository inventoryRepository;
     private final StockMovementRepository stockMovementRepository;
 
+    // Low stock threshold multiplier
+    private static final double LOW_STOCK_MULTIPLIER = 0.5;
+
     /**
      * 取得庫存台帳列表
      */
     @Transactional(readOnly = true)
-    public Page<InventoryLedgerDto> getInventoryLedger(Pageable pageable) {
+    public Page<InventoryLedgerDto> getInventoryLedger(final Pageable pageable) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         Page<Inventory> inventories = inventoryRepository.findByTenantId(tenantId, pageable);
@@ -47,7 +54,7 @@ public class InventoryService {
      * 依 SKU 取得庫存詳情（含異動記錄）
      */
     @Transactional(readOnly = true)
-    public InventoryDetailDto getInventoryBySku(UUID skuId) {
+    public InventoryDetailDto getInventoryBySku(final UUID skuId) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         Inventory inventory = inventoryRepository.findBySkuId(skuId)
@@ -96,7 +103,7 @@ public class InventoryService {
     /**
      * 轉換為庫存台帳 DTO
      */
-    private InventoryLedgerDto toLedgerDto(Inventory inventory) {
+    private InventoryLedgerDto toLedgerDto(final Inventory inventory) {
         return InventoryLedgerDto.builder()
                 .skuId(inventory.getSkuId())
                 .totalQty(inventory.getTotalQty())
@@ -110,8 +117,8 @@ public class InventoryService {
     /**
      * 轉換為低庫存預警 DTO
      */
-    private LowStockAlertDto toLowStockAlertDto(Inventory inventory) {
-        String severity = inventory.getAvailableQty() <= inventory.getSafetyStock() * 0.5
+    private LowStockAlertDto toLowStockAlertDto(final Inventory inventory) {
+        String severity = inventory.getAvailableQty() <= inventory.getSafetyStock() * LOW_STOCK_MULTIPLIER
                 ? "CRITICAL" : "LOW";
 
         return LowStockAlertDto.builder()
@@ -125,7 +132,7 @@ public class InventoryService {
     /**
      * 轉換為異動 DTO
      */
-    private StockMovementDto toMovementDto(com.nextkey.ecommerce.domain.model.inventory.StockMovement movement) {
+    private StockMovementDto toMovementDto(final com.nextkey.ecommerce.domain.model.inventory.StockMovement movement) {
         return StockMovementDto.builder()
                 .id(movement.getId())
                 .tenantId(movement.getTenantId())

@@ -1,5 +1,15 @@
 package com.nextkey.ecommerce.core.erp;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.erp.StockMovementDto;
 import com.nextkey.ecommerce.api.dto.erp.StockMovementRequest;
 import com.nextkey.ecommerce.domain.model.inventory.StockMovement;
@@ -9,17 +19,11 @@ import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 庫存異動 Service
@@ -40,7 +44,7 @@ public class StockMovementService {
      * @return 異動記錄 DTO
      */
     @Transactional
-    public StockMovementDto createManualMovement(StockMovementRequest request, UUID userId) {
+    public StockMovementDto createManualMovement(final StockMovementRequest request, final UUID userId) {
         UUID tenantId = TenantContext.getCurrentTenant();
         UUID skuId = request.getSkuId();
 
@@ -76,29 +80,7 @@ public class StockMovementService {
         int quantity = request.getQuantity();
 
         // 根據異動類型更新庫存
-        if (movementType == StockMovement.MovementType.ADJUSTMENT) {
-            inventory.addStock(quantity);
-        } else if (movementType == StockMovement.MovementType.DAMAGE) {
-            if (beforeTotalQty < quantity) {
-                throw new BusinessException(ErrorCode.E_7004,
-                        String.format("Insufficient stock: available=%d, requested=%d", beforeTotalQty, quantity));
-            }
-            inventory.deductStock(quantity);
-        } else if (movementType == StockMovement.MovementType.TRANSFER_IN) {
-            inventory.addStock(quantity);
-        } else if (movementType == StockMovement.MovementType.TRANSFER_OUT) {
-            if (beforeTotalQty < quantity) {
-                throw new BusinessException(ErrorCode.E_7004,
-                        String.format("Insufficient stock: available=%d, requested=%d", beforeTotalQty, quantity));
-            }
-            inventory.deductStock(quantity);
-        } else if (movementType == StockMovement.MovementType.THEFT) {
-            if (beforeTotalQty < quantity) {
-                throw new BusinessException(ErrorCode.E_7004,
-                        String.format("Insufficient stock: available=%d, requested=%d", beforeTotalQty, quantity));
-            }
-            inventory.deductStock(quantity);
-        }
+        applyMovementType(inventory, movementType, quantity, beforeTotalQty);
 
         productInventoryRepository.save(inventory);
 
@@ -125,11 +107,32 @@ public class StockMovementService {
         return toDto(saved);
     }
 
+    private void applyMovementType(ProductInventory inventory, StockMovement.MovementType movementType,
+            int quantity, int beforeTotalQty) {
+        switch (movementType) {
+            case ADJUSTMENT:
+            case TRANSFER_IN:
+                inventory.addStock(quantity);
+                break;
+            case DAMAGE:
+            case TRANSFER_OUT:
+            case THEFT:
+                if (beforeTotalQty < quantity) {
+                    throw new BusinessException(ErrorCode.E_7004,
+                            String.format("Insufficient stock: available=%d, requested=%d", beforeTotalQty, quantity));
+                }
+                inventory.deductStock(quantity);
+                break;
+            default:
+                break;
+        }
+    }
+
     /**
      * 依 SKU 取得異動記錄
      */
     @Transactional(readOnly = true)
-    public List<StockMovementDto> getMovementsBySku(UUID skuId) {
+    public List<StockMovementDto> getMovementsBySku(final UUID skuId) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         List<StockMovement> movements = stockMovementRepository
@@ -144,7 +147,7 @@ public class StockMovementService {
      * 分頁取得所有異動記錄
      */
     @Transactional(readOnly = true)
-    public Page<StockMovementDto> getMovements(Pageable pageable) {
+    public Page<StockMovementDto> getMovements(final Pageable pageable) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         Page<StockMovement> movements = stockMovementRepository.findByTenantId(tenantId, pageable);
@@ -156,7 +159,7 @@ public class StockMovementService {
      * 依時間範圍取得異動記錄
      */
     @Transactional(readOnly = true)
-    public List<StockMovementDto> getMovementsByDateRange(Instant start, Instant end) {
+    public List<StockMovementDto> getMovementsByDateRange(final Instant start, final Instant end) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         List<StockMovement> movements = stockMovementRepository
@@ -170,7 +173,7 @@ public class StockMovementService {
     /**
      * 轉換為 DTO
      */
-    private StockMovementDto toDto(StockMovement movement) {
+    private StockMovementDto toDto(final StockMovement movement) {
         return StockMovementDto.builder()
                 .id(movement.getId())
                 .tenantId(movement.getTenantId())
@@ -190,7 +193,7 @@ public class StockMovementService {
     /**
      * -placeholder: 取得 tenant 下的 listing IDs
      */
-    private UUID getTenantListings(UUID tenantId) {
+    private UUID getTenantListings(final UUID tenantId) {
         // 這是簡化版本，實際需要透過 ListingRepository 查詢
         return tenantId;
     }

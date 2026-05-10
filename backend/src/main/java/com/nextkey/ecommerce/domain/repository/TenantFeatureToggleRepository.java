@@ -1,12 +1,13 @@
 package com.nextkey.ecommerce.domain.repository;
 
-import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 
 @Repository
 public interface TenantFeatureToggleRepository extends JpaRepository<TenantFeatureToggle, UUID> {

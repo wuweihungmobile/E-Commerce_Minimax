@@ -1,6 +1,9 @@
 package com.nextkey.ecommerce.domain.repository;
 
-import com.nextkey.ecommerce.domain.model.cms.Banner;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -9,9 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDate;
-import java.util.List;
-import java.util.UUID;
+import com.nextkey.ecommerce.domain.model.cms.Banner;
 
 @Repository
 public interface BannerRepository extends JpaRepository<Banner, UUID> {

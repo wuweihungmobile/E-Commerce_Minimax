@@ -17,6 +17,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.UUID;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
@@ -597,7 +598,7 @@ class CartControllerE2ETest {
                     .body(ProductDto.CreateRequest.builder()
                             .title("Multi Product " + i)
                             .category("Category" + i)
-                            .basePrice(new BigDecimal(100 + i * 10).setScale(2, BigDecimal.ROUND_HALF_UP))
+                            .basePrice(new BigDecimal(100 + i * 10).setScale(2, RoundingMode.HALF_UP))
                             .build())
                     .when()
                     .post(PRODUCT_URL)

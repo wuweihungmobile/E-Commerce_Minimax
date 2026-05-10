@@ -1,5 +1,17 @@
 package com.nextkey.ecommerce.core.review;
 
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.ReviewDto;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.review.Review;
@@ -10,19 +22,11 @@ import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 評價服務
@@ -35,6 +39,9 @@ public class ReviewService {
     private final ReviewRepository reviewRepository;
     private final ListingRepository listingRepository;
     private final UserRepository userRepository;
+
+    // Pagination default
+    private static final int DEFAULT_PAGE_SIZE = 50;
 
     /**
      * 建立評價
@@ -125,7 +132,7 @@ public class ReviewService {
      * 刪除評價（軟刪除）
      */
     @Transactional
-    public void deleteReview(UUID reviewId) {
+    public void deleteReview(final UUID reviewId) {
         UUID userId = TenantContext.getCurrentUser();
 
         Review review = reviewRepository.findById(reviewId)
@@ -152,7 +159,7 @@ public class ReviewService {
         Listing listing = listingRepository.findById(listingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Listing not found"));
 
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 50));
+        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
 
         Page<Review> reviews;
         if (minRating != null && minRating > 0) {
@@ -184,7 +191,7 @@ public class ReviewService {
      */
     @Transactional(readOnly = true)
     public ReviewDto.ReviewListResponse getUserReviews(UUID userId, int page, int size) {
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 50));
+        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
         Page<Review> reviews = reviewRepository.findByUserIdOrderByCreatedAtDesc(userId, pageRequest);
 
         List<ReviewDto.ReviewResponse> reviewResponses = reviews.getContent().stream()
@@ -207,9 +214,6 @@ public class ReviewService {
      */
     @Transactional(readOnly = true)
     public ReviewDto.RatingStats getRatingStats(UUID listingId) {
-        Listing listing = listingRepository.findById(listingId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Listing not found"));
-
         Double avgRating = reviewRepository.getAverageRatingByListingId(listingId);
         Integer totalReviews = reviewRepository.countByListingId(listingId);
         List<Object[]> distribution = reviewRepository.getRatingDistribution(listingId);

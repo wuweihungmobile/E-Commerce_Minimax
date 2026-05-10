@@ -1,10 +1,11 @@
 package com.nextkey.ecommerce.api.dto.erp;
 
+import java.time.Instant;
+
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import lombok.*;
 
-import java.time.Instant;
+import lombok.*;
 
 /**
  * 供應商 DTO

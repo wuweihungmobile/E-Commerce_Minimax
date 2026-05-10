@@ -1,17 +1,26 @@
 package com.nextkey.ecommerce.api.dto;
 
-import jakarta.validation.constraints.*;
-import lombok.*;
-
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
+import lombok.*;
+
 /**
  * 評價 DTO
  */
 public class ReviewDto {
+
+    // Validation constraints
+    private static final int CONTENT_MAX_LENGTH = 2000;
+    private static final int TITLE_MAX_LENGTH = 100;
 
     // ========== Create Request ==========
 
@@ -31,11 +40,11 @@ public class ReviewDto {
         @Max(value = 5, message = "Rating must be at most 5")
         private Integer rating;
 
-        @Size(max = 100, message = "Title must be at most 100 characters")
+        @Size(max = TITLE_MAX_LENGTH, message = "Title must be at most 100 characters")
         private String title;
 
         @NotBlank(message = "Content is required")
-        @Size(max = 2000, message = "Content must be at most 2000 characters")
+        @Size(max = CONTENT_MAX_LENGTH, message = "Content must be at most 2000 characters")
         private String content;
 
         private List<String> images;
@@ -54,10 +63,10 @@ public class ReviewDto {
         @Max(value = 5, message = "Rating must be at most 5")
         private Integer rating;
 
-        @Size(max = 100, message = "Title must be at most 100 characters")
+        @Size(max = TITLE_MAX_LENGTH, message = "Title must be at most 100 characters")
         private String title;
 
-        @Size(max = 2000, message = "Content must be at most 2000 characters")
+        @Size(max = CONTENT_MAX_LENGTH, message = "Content must be at most 2000 characters")
         private String content;
 
         private List<String> images;

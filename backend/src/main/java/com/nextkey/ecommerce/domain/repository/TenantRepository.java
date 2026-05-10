@@ -1,11 +1,12 @@
 package com.nextkey.ecommerce.domain.repository;
 
-import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import java.util.Optional;
+import java.util.UUID;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import java.util.Optional;
-import java.util.UUID;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 
 @Repository
 public interface TenantRepository extends JpaRepository<Tenant, UUID> {

@@ -1,4 +1,21 @@
 {
     "java.configuration.updateBuildConfiguration": "interactive",
-    "java.compile.nullAnalysis.mode": "automatic"
+    "java.compile.nullAnalysis.mode": "automatic",
+
+    // Checkstyle 整合設定
+    "checkstyle.enable": true,
+    "checkstyle.configPath": "backend/src/checkstyle/checkstyle.xml",
+    "checkstyle.version": "8.45.1",
+    "checkstyle.autoFormat": false,
+    "checkstyle.highlightSeverity": "error",
+
+    // 格式化設定（符合 Sun Java Style）
+    "java.format.settings.url": "backend/src/checkstyle/eclipse-java-formatter.xml",
+    "java.format.enabled": true,
+
+    // 儲存時自動格式化
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll.checkstyle": "explicit"
+    }
 }

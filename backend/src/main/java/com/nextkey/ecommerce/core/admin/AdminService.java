@@ -1,26 +1,31 @@
 package com.nextkey.ecommerce.core.admin;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.AdminDto;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.model.user.User;
-import com.nextkey.ecommerce.domain.repository.*;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.OrderRepository;
+import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 平台管理服務 (Mock Implementation)
@@ -36,6 +41,9 @@ public class AdminService {
     private final TenantFeatureToggleRepository featureToggleRepository;
     private final ListingRepository listingRepository;
     private final OrderRepository orderRepository;
+
+    // Mock values
+    private static final BigDecimal MOCK_AVERAGE_ORDER_VALUE = BigDecimal.valueOf(1500);
 
     // ========== Tenant Management ==========
 
@@ -214,7 +222,7 @@ public class AdminService {
     /**
      * 驗證狀態機轉換是否合法
      */
-    private void validateStatusTransition(Tenant.TenantStatus currentStatus, Tenant.TenantStatus newStatus, String reason) {
+    private void validateStatusTransition(final Tenant.TenantStatus currentStatus, final Tenant.TenantStatus newStatus, final String reason) {
         // 相同狀態不允許
         if (currentStatus == newStatus) {
             throw new BusinessException(ErrorCode.E_9000, "Tenant is already in status: " + newStatus);
@@ -235,7 +243,7 @@ public class AdminService {
     /**
      * 停用租戶的所有 Listings (當店鋪被 SUSPENDED 時自動執行)
      */
-    private void deactivateTenantListings(UUID tenantId) {
+    private void deactivateTenantListings(final UUID tenantId) {
         List<Listing> listings = listingRepository.findByTenantId(tenantId);
         for (Listing listing : listings) {
             if (listing.getStatus() == Listing.ListingStatus.ACTIVE) {
@@ -257,7 +265,7 @@ public class AdminService {
      * - DYNAMIC_PRICING_ENABLED: false (需要審核)
      * - PROMO_ENABLED: false (需要審核)
      */
-    private List<String> initializeFeatureToggles(UUID tenantId) {
+    private List<String> initializeFeatureToggles(final UUID tenantId) {
         // 先查詢 Tenant 實體（用於 ManyToOne 關聯）
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
@@ -400,7 +408,7 @@ public class AdminService {
      * 刪除功能開關
      */
     @Transactional
-    public void deleteFeatureToggle(UUID tenantId, String featureKey) {
+    public void deleteFeatureToggle(final UUID tenantId, final String featureKey) {
         featureToggleRepository.deleteByTenantIdAndFeatureKey(tenantId, featureKey);
         log.info("Feature toggle deleted: tenantId={}, feature={}", tenantId, featureKey);
     }
@@ -450,7 +458,7 @@ public class AdminService {
         int totalOrders = (int) orderRepository.count();
 
         // Mock GMV
-        BigDecimal totalGMV = BigDecimal.valueOf(totalOrders).multiply(BigDecimal.valueOf(1500));
+        BigDecimal totalGMV = BigDecimal.valueOf(totalOrders).multiply(MOCK_AVERAGE_ORDER_VALUE);
 
         int pendingReviews = (int) tenantRepository.findAll().stream()
                 .filter(t -> t.getStatus() == Tenant.TenantStatus.PENDING_REVIEW)

@@ -1,8 +1,8 @@
 package com.nextkey.ecommerce.shared.tenant;
 
-import lombok.extern.slf4j.Slf4j;
-
 import java.util.UUID;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class TenantContext {
@@ -10,7 +10,7 @@ public class TenantContext {
     private static final ThreadLocal<UUID> CURRENT_TENANT = new ThreadLocal<>();
     private static final ThreadLocal<UUID> CURRENT_USER = new ThreadLocal<>();
 
-    public static void setCurrentTenant(UUID tenantId) {
+    public static void setCurrentTenant(final UUID tenantId) {
         log.info("[TenantContext] setCurrentTenant: {}", tenantId);
         CURRENT_TENANT.set(tenantId);
     }
@@ -21,7 +21,7 @@ public class TenantContext {
         return tenant;
     }
 
-    public static void setCurrentUser(UUID userId) {
+    public static void setCurrentUser(final UUID userId) {
         log.info("[TenantContext] setCurrentUser: {}", userId);
         CURRENT_USER.set(userId);
     }

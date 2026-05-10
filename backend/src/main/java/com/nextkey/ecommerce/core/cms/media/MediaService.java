@@ -1,28 +1,33 @@
 package com.nextkey.ecommerce.core.cms.media;
 
-import com.nextkey.ecommerce.api.dto.M15Dto;
-import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
-import com.nextkey.ecommerce.domain.model.tenant.Tenant;
-import com.nextkey.ecommerce.domain.model.user.User;
-import com.nextkey.ecommerce.domain.repository.cms.MediaAssetRepository;
-import com.nextkey.ecommerce.domain.repository.TenantRepository;
-import com.nextkey.ecommerce.domain.repository.UserRepository;
-import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
-import com.nextkey.ecommerce.infrastructure.storage.StorageService;
-import com.nextkey.ecommerce.shared.exception.BusinessException;
-import com.nextkey.ecommerce.shared.exception.ErrorCode;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.List;
-import java.util.UUID;
+import com.nextkey.ecommerce.api.dto.M15Dto;
+import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.user.User;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.domain.repository.cms.MediaAssetRepository;
+import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
+import com.nextkey.ecommerce.infrastructure.storage.StorageService;
+import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
+
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 
 /**
  * M15 CMS MediaService
@@ -83,9 +88,6 @@ public class MediaService {
                     tenantId, fileName, inputStream, fileSize, mimeType);
         } catch (IOException e) {
             log.error("Failed to read file input stream: {}", fileName, e);
-            throw new BusinessException(ErrorCode.E_9000, "Failed to upload file: " + fileName);
-        } catch (Exception e) {
-            log.error("Failed to upload file to storage: {}", fileName, e);
             throw new BusinessException(ErrorCode.E_9000, "Failed to upload file: " + fileName);
         }
 
@@ -201,7 +203,7 @@ public class MediaService {
      * 刪除媒體（不被任何貼文引用時）
      */
     @Transactional
-    public void deleteMedia(UUID mediaId, UUID tenantId) {
+    public void deleteMedia(final UUID mediaId, final UUID tenantId) {
         MediaAsset media = getMediaOrThrow(mediaId);
 
         // 驗證 Tenant 擁有權
@@ -217,7 +219,7 @@ public class MediaService {
         // 從 S3/MinIO 刪除實際檔案
         try {
             storageService.deleteObject(media.getFilePath());
-        } catch (Exception e) {
+        } catch (DataAccessException e) {
             log.warn("Failed to delete file from storage: {}, error: {}",
                     media.getFilePath(), e.getMessage());
             // 繼續刪除 DB 記錄
@@ -245,7 +247,7 @@ public class MediaService {
      * 檢查媒體是否被使用
      */
     @Transactional(readOnly = true)
-    public boolean isMediaInUse(UUID mediaId) {
+    public boolean isMediaInUse(final UUID mediaId) {
         // 檢查 posts.featured_image_url 是否包含此 media 的路徑
         String mediaPath = mediaAssetRepository.findById(mediaId)
                 .map(MediaAsset::getFilePath)
@@ -261,12 +263,12 @@ public class MediaService {
 
     // ========== Helper Methods ==========
 
-    private MediaAsset getMediaOrThrow(UUID mediaId) {
+    private MediaAsset getMediaOrThrow(final UUID mediaId) {
         return mediaAssetRepository.findById(mediaId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4103));
     }
 
-    private void validateFileSize(Long fileSize, String mimeType) {
+    private void validateFileSize(final Long fileSize, final String mimeType) {
         long maxSize;
         if (mimeType.startsWith("image/")) {
             maxSize = MAX_IMAGE_SIZE;

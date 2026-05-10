@@ -1,5 +1,12 @@
 package com.nextkey.ecommerce.core.erp;
 
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.erp.SupplierCreateRequest;
 import com.nextkey.ecommerce.api.dto.erp.SupplierDto;
 import com.nextkey.ecommerce.api.dto.erp.SupplierUpdateRequest;
@@ -8,14 +15,11 @@ import com.nextkey.ecommerce.domain.repository.SupplierRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 供應商 Service
@@ -32,7 +36,7 @@ public class SupplierService {
      * 建立供應商
      */
     @Transactional
-    public SupplierDto createSupplier(SupplierCreateRequest request) {
+    public SupplierDto createSupplier(final SupplierCreateRequest request) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         Supplier supplier = Supplier.builder()
@@ -55,7 +59,7 @@ public class SupplierService {
      * 取得單一供應商
      */
     @Transactional(readOnly = true)
-    public SupplierDto getSupplier(UUID id) {
+    public SupplierDto getSupplier(final UUID id) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         Supplier supplier = findByIdAndTenantId(id, tenantId);
@@ -66,7 +70,7 @@ public class SupplierService {
      * 列出供應商列表
      */
     @Transactional(readOnly = true)
-    public List<SupplierDto> listSuppliers(String status) {
+    public List<SupplierDto> listSuppliers(final String status) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         List<Supplier> suppliers;
@@ -86,7 +90,7 @@ public class SupplierService {
      * 搜尋供應商（依名稱模糊比對）
      */
     @Transactional(readOnly = true)
-    public List<SupplierDto> searchSuppliers(String keyword) {
+    public List<SupplierDto> searchSuppliers(final String keyword) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         List<Supplier> suppliers = supplierRepository.searchByName(tenantId, keyword);
@@ -99,7 +103,7 @@ public class SupplierService {
      * 更新供應商
      */
     @Transactional
-    public SupplierDto updateSupplier(UUID id, SupplierUpdateRequest request) {
+    public SupplierDto updateSupplier(final UUID id, final SupplierUpdateRequest request) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         Supplier supplier = findByIdAndTenantId(id, tenantId);
@@ -132,7 +136,7 @@ public class SupplierService {
     /**
      * 依 ID 和 Tenant 取得供應商，若不存在拋例外
      */
-    private Supplier findByIdAndTenantId(UUID id, UUID tenantId) {
+    private Supplier findByIdAndTenantId(final UUID id, final UUID tenantId) {
         return supplierRepository.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_7000,
                         String.format("Supplier not found: id=%s, tenantId=%s", id, tenantId)));
@@ -141,7 +145,7 @@ public class SupplierService {
     /**
      * 轉換為 DTO
      */
-    private SupplierDto toDto(Supplier supplier) {
+    private SupplierDto toDto(final Supplier supplier) {
         return SupplierDto.builder()
                 .id(supplier.getId())
                 .name(supplier.getName())

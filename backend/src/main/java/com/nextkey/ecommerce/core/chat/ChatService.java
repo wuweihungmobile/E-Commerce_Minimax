@@ -1,5 +1,15 @@
 package com.nextkey.ecommerce.core.chat;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.ChatDto;
 import com.nextkey.ecommerce.domain.model.chat.Conversation;
 import com.nextkey.ecommerce.domain.model.chat.Message;
@@ -9,17 +19,9 @@ import com.nextkey.ecommerce.domain.repository.MessageRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 聊天服務 (Mock Implementation)
@@ -33,6 +35,10 @@ public class ChatService {
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
+
+    // Message preview and page size limits
+    private static final int MESSAGE_PREVIEW_MAX_LENGTH = 50;
+    private static final int DEFAULT_PAGE_SIZE = 50;
 
     /**
      * 建立對話
@@ -75,7 +81,8 @@ public class ChatService {
             message = messageRepository.save(message);
 
             conversation.setLastMessageId(message.getId());
-            conversation.setLastMessagePreview(request.getInitialMessage().substring(0, Math.min(50, request.getInitialMessage().length())));
+            int previewLength = Math.min(MESSAGE_PREVIEW_MAX_LENGTH, request.getInitialMessage().length());
+            conversation.setLastMessagePreview(request.getInitialMessage().substring(0, previewLength));
             conversation.setLastMessageAt(message.getCreatedAt());
             conversation = conversationRepository.save(conversation);
         }
@@ -109,7 +116,7 @@ public class ChatService {
 
         // 更新對話狀態
         conversation.setLastMessageId(message.getId());
-        conversation.setLastMessagePreview(request.getContent().substring(0, Math.min(50, request.getContent().length())));
+        conversation.setLastMessagePreview(request.getContent().substring(0, Math.min(MESSAGE_PREVIEW_MAX_LENGTH, request.getContent().length())));
         conversation.setLastMessageAt(message.getCreatedAt());
 
         // 增加未讀計數
@@ -132,7 +139,7 @@ public class ChatService {
      */
     @Transactional(readOnly = true)
     public ChatDto.ConversationListResponse getUserConversations(UUID userId, int page, int size) {
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 50));
+        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
 
         Page<Conversation> conversations = conversationRepository
                 .findByUserIdOrderByLastMessageAtDesc(userId, pageRequest);
@@ -162,7 +169,7 @@ public class ChatService {
         conversationRepository.findByIdAndUserId(conversationId, userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_9005, "Conversation not found"));
 
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 50));
+        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
 
         Page<Message> messages = messageRepository
                 .findByConversationIdAndIsDeletedFalseOrderByCreatedAtDesc(conversationId, pageRequest);
@@ -184,7 +191,7 @@ public class ChatService {
      * 標記已讀
      */
     @Transactional
-    public void markAsRead(UUID userId, UUID conversationId) {
+    public void markAsRead(final UUID userId, final UUID conversationId) {
         Conversation conversation = conversationRepository.findByIdAndUserId(conversationId, userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_9005, "Conversation not found"));
 
@@ -205,7 +212,7 @@ public class ChatService {
      * 刪除對話
      */
     @Transactional
-    public void deleteConversation(UUID userId, UUID conversationId) {
+    public void deleteConversation(final UUID userId, final UUID conversationId) {
         Conversation conversation = conversationRepository.findByIdAndUserId(conversationId, userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_9005, "Conversation not found"));
 

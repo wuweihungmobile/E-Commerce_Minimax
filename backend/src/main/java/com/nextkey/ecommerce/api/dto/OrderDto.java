@@ -1,18 +1,25 @@
 package com.nextkey.ecommerce.api.dto;
 
-import jakarta.validation.constraints.*;
-import lombok.*;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
+import lombok.*;
+
 /**
  * 訂單 DTO
  */
 public class OrderDto {
+
+    // Validation constraints
+    private static final int SHIPPING_ADDRESS_MAX_LENGTH = 500;
+    private static final int RECIPIENT_NAME_MAX_LENGTH = 200;
+    private static final int PHONE_MAX_LENGTH = 50;
 
     // ========== Create Order Request ==========
 
@@ -24,13 +31,13 @@ public class OrderDto {
         @NotNull(message = "Order type is required")
         private String orderType; // PRODUCT or ROOM
 
-        @Size(max = 500, message = "Shipping address too long")
+        @Size(max = SHIPPING_ADDRESS_MAX_LENGTH, message = "Shipping address too long")
         private String shippingAddress;
 
-        @Size(max = 200, message = "Recipient name too long")
+        @Size(max = RECIPIENT_NAME_MAX_LENGTH, message = "Recipient name too long")
         private String shippingRecipientName;
 
-        @Size(max = 50, message = "Phone too long")
+        @Size(max = PHONE_MAX_LENGTH, message = "Phone too long")
         private String shippingPhone;
 
         private String notes;

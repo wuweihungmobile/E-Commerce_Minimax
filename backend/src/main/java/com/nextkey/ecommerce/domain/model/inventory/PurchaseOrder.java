@@ -1,14 +1,29 @@
 package com.nextkey.ecommerce.domain.model.inventory;
 
-import jakarta.persistence.*;
-import lombok.*;
-
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 /**
  * 採購單 (Purchase Order)
@@ -22,6 +37,8 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class PurchaseOrder {
+
+    private static final int DECIMAL_PRECISION = 12;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -41,7 +58,7 @@ public class PurchaseOrder {
     @Builder.Default
     private POStatus status = POStatus.DRAFT;
 
-    @Column(name = "total_amount", precision = 12, scale = 2)
+    @Column(name = "total_amount", precision = DECIMAL_PRECISION, scale = 2)
     private BigDecimal totalAmount;
 
     @Column

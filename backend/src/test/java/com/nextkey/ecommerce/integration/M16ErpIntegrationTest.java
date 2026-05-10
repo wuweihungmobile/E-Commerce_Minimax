@@ -7,15 +7,11 @@ import com.nextkey.ecommerce.domain.model.inventory.Inventory;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrderItem;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
-import com.nextkey.ecommerce.domain.model.product.ProductInventory;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.*;
-import com.nextkey.ecommerce.domain.model.user.RolePermissionMapping;
-import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -63,17 +59,21 @@ class M16ErpIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Autowired
+    @SuppressWarnings("unused")
     private UserRepository userRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private TenantRepository tenantRepository;
 
     @Autowired
     private SupplierRepository supplierRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private ListingRepository listingRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private ProductInventoryRepository productInventoryRepository;
 
@@ -83,6 +83,7 @@ class M16ErpIntegrationTest {
     @Autowired
     private PurchaseOrderRepository purchaseOrderRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private EntityManager entityManager;
 
@@ -90,6 +91,7 @@ class M16ErpIntegrationTest {
     private JdbcTemplate jdbcTemplate;
 
     private static final String BASE_URL = "/api/v2/dashboard";
+    @SuppressWarnings("unused")
     private static final String TEST_PASSWORD = "SecurePass123!";
 
     // 測試資料 - 與 @WithErpSecurity annotation 的 tenantId 一致
@@ -98,13 +100,19 @@ class M16ErpIntegrationTest {
 
     private static UUID testTenantId = FIXED_TENANT_ID; // 使用固定 ID 與 @WithErpSecurity 一致
     private static UUID testStoreOwnerUserId = FIXED_STORE_OWNER_USER_ID;
+    @SuppressWarnings("unused")
     private static UUID testSellerUserId;
+    @SuppressWarnings("unused")
     private static UUID testSupplierId;
+    @SuppressWarnings("unused")
     private static UUID testListingId;
+    @SuppressWarnings("unused")
     private static UUID testSkuId;
+    @SuppressWarnings("unused")
     private static UUID testInventoryId;
-
+    @SuppressWarnings("unused")
     private String storeOwnerToken;
+    @SuppressWarnings("unused")
     private String sellerToken;
 
     // ═══════════════════════════════════════════════════════════════

@@ -1,5 +1,16 @@
 package com.nextkey.ecommerce.core.booking;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
@@ -7,18 +18,9 @@ import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.infrastructure.redis.RedisLockService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 房源日曆服務
@@ -33,6 +35,7 @@ public class RoomCalendarService {
     private final RedisLockService redisLockService;
     private final ListingRepository listingRepository;
 
+    @SuppressWarnings("unused")
     private static final int CALENDAR_GENERATE_DAYS = 365; // 生成未來 365 天
 
     /**
@@ -42,7 +45,7 @@ public class RoomCalendarService {
      * 只有第一個請求能成功創建預訂，其他請求會因為日期已被佔用而失敗
      */
     @Transactional
-    public boolean isDateRangeAvailable(UUID roomListingId, LocalDate checkIn, LocalDate checkOut) {
+    public boolean isDateRangeAvailable(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
         List<LocalDate> dates = generateDateRange(checkIn, checkOut.minusDays(1));
 
         for (LocalDate date : dates) {
@@ -77,7 +80,7 @@ public class RoomCalendarService {
      * 鎖粒度：每個日期單獨加鎖，確保同一房源同一日期只能有一個預訂操作
      * @return lockValue 如果成功，null 如果失敗（日期已被鎖）
      */
-    public String lockDateRange(UUID roomListingId, LocalDate checkIn, LocalDate checkOut) {
+    public String lockDateRange(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
         // 使用 NO_WAIT 策略 - 不等待，嘗試立即獲取鎖
         return lockDateRangeNoWait(roomListingId, checkIn, checkOut);
     }
@@ -87,7 +90,7 @@ public class RoomCalendarService {
      * 如果無法立即獲取所有日期的鎖，則立即返回失敗
      * @return lockValue 如果成功，null 如果失敗（無法立即獲取鎖）
      */
-    public String lockDateRangeNoWait(UUID roomListingId, LocalDate checkIn, LocalDate checkOut) {
+    public String lockDateRangeNoWait(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
         List<LocalDate> dates = generateDateRange(checkIn, checkOut.minusDays(1));
 
         // 使用統一的 lock key（包含所有日期）
@@ -122,7 +125,7 @@ public class RoomCalendarService {
      * @param maxWaitSeconds 每個鎖的最大等待時間
      * @return lockValue 如果成功，null 如果失敗（超時）
      */
-    public String lockDateRangeWithWait(UUID roomListingId, LocalDate checkIn, LocalDate checkOut, long maxWaitSeconds) {
+    public String lockDateRangeWithWait(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut, final long maxWaitSeconds) {
         List<LocalDate> dates = generateDateRange(checkIn, checkOut.minusDays(1));
 
         // 使用統一的 lock key（包含所有日期）
@@ -155,7 +158,7 @@ public class RoomCalendarService {
     /**
      * 釋放日期範圍鎖
      */
-    public void unlockDateRange(UUID roomListingId, LocalDate checkIn, LocalDate checkOut, String lockValue) {
+    public void unlockDateRange(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut, final String lockValue) {
         List<LocalDate> dates = generateDateRange(checkIn, checkOut.minusDays(1));
 
         // 釋放所有日期的鎖
@@ -175,7 +178,7 @@ public class RoomCalendarService {
      * 注意：此方法使用 FOR UPDATE 鎖確保並發安全
      */
     @Transactional
-    public void bookDateRange(UUID roomListingId, LocalDate checkIn, LocalDate checkOut, UUID bookingId) {
+    public void bookDateRange(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut, final UUID bookingId) {
         List<LocalDate> dates = generateDateRange(checkIn, checkOut.minusDays(1));
 
         for (LocalDate date : dates) {
@@ -241,7 +244,7 @@ public class RoomCalendarService {
      * 釋放預訂（取消預訂時呼叫）
      */
     @Transactional
-    public void releaseDateRange(UUID roomListingId, LocalDate checkIn, LocalDate checkOut) {
+    public void releaseDateRange(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
         List<RoomCalendar> calendars = roomCalendarRepository
                 .findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
 
@@ -260,7 +263,7 @@ public class RoomCalendarService {
      * 取得房源日曆（某段時間範圍）
      */
     @Transactional(readOnly = true)
-    public List<RoomCalendar> getCalendarRange(UUID roomListingId, LocalDate start, LocalDate end) {
+    public List<RoomCalendar> getCalendarRange(final UUID roomListingId, final LocalDate start, final LocalDate end) {
         return roomCalendarRepository.findByListingIdAndCalendarDateBetween(roomListingId, start, end);
     }
 
@@ -268,7 +271,7 @@ public class RoomCalendarService {
      * 設定日期價格
      */
     @Transactional
-    public void setDatePrice(UUID roomListingId, LocalDate date, BigDecimal price) {
+    public void setDatePrice(final UUID roomListingId, final LocalDate date, final BigDecimal price) {
         RoomCalendar calendar = roomCalendarRepository
                 .findByListingIdAndCalendarDate(roomListingId, date)
                 .orElseGet(() -> createCalendarEntry(roomListingId, date));
@@ -283,7 +286,7 @@ public class RoomCalendarService {
      * 批次設定日期價格
      */
     @Transactional
-    public void setDatePriceBulk(UUID roomListingId, List<LocalDate> dates, BigDecimal price) {
+    public void setDatePriceBulk(final UUID roomListingId, final List<LocalDate> dates, final BigDecimal price) {
         for (LocalDate date : dates) {
             setDatePrice(roomListingId, date, price);
         }
@@ -293,7 +296,7 @@ public class RoomCalendarService {
      * 封鎖日期（不可預訂）
      */
     @Transactional
-    public void blockDateRange(UUID roomListingId, LocalDate checkIn, LocalDate checkOut) {
+    public void blockDateRange(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
         List<RoomCalendar> calendars = roomCalendarRepository
                 .findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
 
@@ -309,7 +312,7 @@ public class RoomCalendarService {
      * 取消封鎖日期
      */
     @Transactional
-    public void unblockDateRange(UUID roomListingId, LocalDate checkIn, LocalDate checkOut) {
+    public void unblockDateRange(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
         List<RoomCalendar> calendars = roomCalendarRepository
                 .findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
 
@@ -326,7 +329,7 @@ public class RoomCalendarService {
     /**
      * 生成日期列表
      */
-    private List<LocalDate> generateDateRange(LocalDate start, LocalDate end) {
+    private List<LocalDate> generateDateRange(final LocalDate start, final LocalDate end) {
         return start.datesUntil(end.plusDays(1))
                 .collect(Collectors.toList());
     }
@@ -334,7 +337,7 @@ public class RoomCalendarService {
     /**
      * 建立日曆條目
      */
-    private RoomCalendar createCalendarEntry(UUID roomListingId, LocalDate date) {
+    private RoomCalendar createCalendarEntry(final UUID roomListingId, final LocalDate date) {
         Listing listing = listingRepository.findById(roomListingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Listing not found: " + roomListingId));
         return RoomCalendar.builder()

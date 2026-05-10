@@ -1,15 +1,19 @@
 package com.nextkey.ecommerce.core.feature;
 
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 
-import java.util.UUID;
 
 /**
  * Feature Toggle 檢查服務
@@ -26,7 +30,7 @@ public class FeatureToggleService {
      * 檢查 Feature Toggle 是否啟用
      * 若未啟用則拋出 BusinessException(ErrorCode.E_2020)
      */
-    public void checkFeatureEnabled(String featureKey) {
+    public void checkFeatureEnabled(final String featureKey) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         TenantFeatureToggle toggle = featureToggleRepository
@@ -46,7 +50,7 @@ public class FeatureToggleService {
      * 檢查 Feature Toggle 是否啟用（不回拋異常）
      * @return true if enabled, false otherwise
      */
-    public boolean isFeatureEnabled(String featureKey) {
+    public boolean isFeatureEnabled(final String featureKey) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         return featureToggleRepository

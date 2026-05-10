@@ -1,10 +1,24 @@
 package com.nextkey.ecommerce.domain.model.inventory;
 
-import jakarta.persistence.*;
-import lombok.*;
-
 import java.math.BigDecimal;
 import java.util.UUID;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 /**
  * 採購單明細 (Purchase Order Item)
@@ -18,6 +32,8 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class PurchaseOrderItem {
+
+    private static final int DECIMAL_PRECISION = 12;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -50,10 +66,10 @@ public class PurchaseOrderItem {
     @Builder.Default
     private Integer receivedQuantity = 0;
 
-    @Column(name = "unit_cost", precision = 12, scale = 2)
+    @Column(name = "unit_cost", precision = DECIMAL_PRECISION, scale = 2)
     private BigDecimal unitCost;
 
-    @Column(name = "subtotal", precision = 12, scale = 2)
+    @Column(name = "subtotal", precision = DECIMAL_PRECISION, scale = 2)
     private BigDecimal subtotal;
 
     @Column(name = "created_at")

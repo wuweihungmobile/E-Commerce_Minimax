@@ -1,18 +1,19 @@
 package com.nextkey.ecommerce.api.dto;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
 import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
 import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.cms.post.PostCategory;
 import com.nextkey.ecommerce.domain.model.cms.post.PostEmbed;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
 
 /**
  * M15 CMS DTOs
@@ -71,7 +72,7 @@ public class M15Dto {
         private Instant updatedAt;
         private List<PostEmbedResponse> embeds;
 
-        public static PostResponse from(Post post) {
+        public static PostResponse from(final Post post) {
             return PostResponse.builder()
                     .id(post.getId())
                     .tenantId(post.getTenant().getId())
@@ -119,7 +120,7 @@ public class M15Dto {
         private String listingType;
         private Integer embedOrder;
 
-        public static PostEmbedResponse from(PostEmbed embed) {
+        public static PostEmbedResponse from(final PostEmbed embed) {
             return PostEmbedResponse.builder()
                     .id(embed.getId())
                     .listingId(embed.getListingId())
@@ -162,7 +163,10 @@ public class M15Dto {
         /**
          * 從 Listing 建立卡片回應
          */
-        public static ListingCardResponse fromListing(Listing listing, java.math.BigDecimal currentPrice, Boolean inStock, Integer availableQty) {
+        public static ListingCardResponse fromListing(final Listing listing,
+                final java.math.BigDecimal currentPrice,
+                final Boolean inStock,
+                final Integer availableQty) {
             return ListingCardResponse.builder()
                     .listingId(listing.getId())
                     .listingType(listing.getListingType().name())
@@ -221,7 +225,7 @@ public class M15Dto {
         private Instant createdAt;
         private Instant updatedAt;
 
-        public static CategoryResponse from(PostCategory category) {
+        public static CategoryResponse from(final PostCategory category) {
             return CategoryResponse.builder()
                     .id(category.getId())
                     .tenantId(category.getTenant().getId())
@@ -282,7 +286,7 @@ public class M15Dto {
         private Integer durationSeconds;
         private Instant createdAt;
 
-        public static MediaResponse from(MediaAsset media) {
+        public static MediaResponse from(final MediaAsset media) {
             return MediaResponse.builder()
                     .id(media.getId())
                     .tenantId(media.getTenant().getId())

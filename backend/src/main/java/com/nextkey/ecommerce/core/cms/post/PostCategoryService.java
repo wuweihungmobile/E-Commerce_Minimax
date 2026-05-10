@@ -1,5 +1,13 @@
 package com.nextkey.ecommerce.core.cms.post;
 
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.M15Dto;
 import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.cms.post.PostCategory;
@@ -9,15 +17,10 @@ import com.nextkey.ecommerce.domain.repository.cms.PostCategoryRepository;
 import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-import java.util.UUID;
 
 /**
  * M15 CMS PostCategory Service
@@ -92,7 +95,7 @@ public class PostCategoryService {
      * 刪除分類（無貼文關聯時）
      */
     @Transactional
-    public void deleteCategory(UUID categoryId, UUID tenantId) {
+    public void deleteCategory(final UUID categoryId, final UUID tenantId) {
         PostCategory category = getCategoryOrThrow(categoryId);
 
         // 驗證 Tenant 擁有權
@@ -144,12 +147,12 @@ public class PostCategoryService {
 
     // ========== Helper Methods ==========
 
-    private PostCategory getCategoryOrThrow(UUID categoryId) {
+    private PostCategory getCategoryOrThrow(final UUID categoryId) {
         return postCategoryRepository.findById(categoryId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4102));
     }
 
-    private String generateSlug(String name) {
+    private String generateSlug(final String name) {
         if (name == null || name.isBlank()) {
             return UUID.randomUUID().toString();
         }
@@ -160,7 +163,7 @@ public class PostCategoryService {
                 .replaceAll("^-|-$", "");
     }
 
-    private String generateUniqueSlug(String name, UUID excludeId, UUID tenantId) {
+    private String generateUniqueSlug(final String name, final UUID excludeId, final UUID tenantId) {
         String slug = generateSlug(name);
         if (postCategoryRepository.existsByTenantIdAndSlugAndIdNot(tenantId, slug, excludeId)) {
             slug = slug + "-" + UUID.randomUUID().toString().substring(0, 8);

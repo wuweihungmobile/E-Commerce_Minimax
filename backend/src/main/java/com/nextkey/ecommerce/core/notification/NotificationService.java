@@ -1,5 +1,16 @@
 package com.nextkey.ecommerce.core.notification;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.dao.DataAccessException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.NotificationDto;
 import com.nextkey.ecommerce.domain.model.notification.Notification;
 import com.nextkey.ecommerce.domain.model.user.User;
@@ -7,17 +18,9 @@ import com.nextkey.ecommerce.domain.repository.NotificationRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 通知服務 (Mock Implementation)
@@ -30,6 +33,10 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
+
+    // Pagination and default values
+    private static final int DEFAULT_PAGE_SIZE = 50;
+    private static final int DEFAULT_NOTIFICATION_COUNT = 20;
 
     /**
      * 發送通知 (Mock)
@@ -77,11 +84,7 @@ public class NotificationService {
      * 廣播通知 (Mock)
      */
     @Transactional
-    public int broadcastNotification(NotificationDto.BroadcastRequest request) {
-        Notification.NotificationChannel channel = request.getChannel() != null
-                ? Notification.NotificationChannel.valueOf(request.getChannel().name())
-                : Notification.NotificationChannel.IN_APP;
-
+    public int broadcastNotification(final NotificationDto.BroadcastRequest request) {
         List<User> users;
         if (request.getTenantId() != null) {
             users = userRepository.findByTenantId(request.getTenantId());
@@ -103,7 +106,7 @@ public class NotificationService {
 
                 sendNotification(sendRequest);
                 count++;
-            } catch (Exception e) {
+            } catch (BusinessException | DataAccessException e) {
                 log.warn("Failed to send notification to user: {}", user.getId(), e);
             }
         }
@@ -119,7 +122,7 @@ public class NotificationService {
     public NotificationDto.NotificationListResponse getUserNotifications(
             UUID userId, int page, int size, Boolean unreadOnly) {
 
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 50));
+        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
 
         Page<Notification> notifications;
         if (Boolean.TRUE.equals(unreadOnly)) {
@@ -175,14 +178,14 @@ public class NotificationService {
 
         log.info("Notifications marked as read: userId={}", userId);
 
-        return getUserNotifications(userId, 0, 20, false);
+        return getUserNotifications(userId, 0, DEFAULT_NOTIFICATION_COUNT, false);
     }
 
     /**
      * 刪除通知
      */
     @Transactional
-    public void deleteNotification(UUID userId, UUID notificationId) {
+    public void deleteNotification(final UUID userId, final UUID notificationId) {
         Notification notification = notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Notification not found"));
 
@@ -209,8 +212,8 @@ public class NotificationService {
 
     // ========== Mock Helper Methods ==========
 
-    private String getRecipientForChannel(User user, Notification.NotificationChannel channel) {
-        return switch (channel) {
+    private String getRecipientForChannel(final User user, final Notification.NotificationChannel channel) {
+        return switch ( channel) {
             case EMAIL -> user.getEmail();
             case SMS -> user.getPhone();
             default -> null;

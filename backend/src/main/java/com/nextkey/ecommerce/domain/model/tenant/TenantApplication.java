@@ -1,10 +1,24 @@
 package com.nextkey.ecommerce.domain.model.tenant;
 
-import jakarta.persistence.*;
-import lombok.*;
-
 import java.time.Instant;
 import java.util.UUID;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "tenant_applications")
@@ -14,6 +28,12 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class TenantApplication {
+
+    // Column length constants
+    private static final int BUSINESS_TYPE_LENGTH = 50;
+    private static final int CONTACT_EMAIL_LENGTH = 255;
+    private static final int CONTACT_PHONE_LENGTH = 20;
+    private static final int BUSINESS_LICENSE_URL_LENGTH = 500;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -31,16 +51,16 @@ public class TenantApplication {
     @Column(name = "store_description", columnDefinition = "TEXT")
     private String storeDescription;
 
-    @Column(name = "business_type", nullable = false, length = 50)
+    @Column(name = "business_type", nullable = false, length = BUSINESS_TYPE_LENGTH)
     private String businessType;
 
-    @Column(name = "contact_email", length = 255)
+    @Column(name = "contact_email", length = CONTACT_EMAIL_LENGTH)
     private String contactEmail;
 
-    @Column(name = "contact_phone", length = 20)
+    @Column(name = "contact_phone", length = CONTACT_PHONE_LENGTH)
     private String contactPhone;
 
-    @Column(name = "business_license_url", length = 500)
+    @Column(name = "business_license_url", length = BUSINESS_LICENSE_URL_LENGTH)
     private String businessLicenseUrl;
 
     @Column(nullable = false)

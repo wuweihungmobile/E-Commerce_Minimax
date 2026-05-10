@@ -1,32 +1,41 @@
 package com.nextkey.ecommerce.core.order;
 
-import com.nextkey.ecommerce.api.dto.CartDto;
-import com.nextkey.ecommerce.api.dto.OrderDto;
-import com.nextkey.ecommerce.core.cart.RedisCartService;
-import com.nextkey.ecommerce.domain.model.listing.Listing;
-import com.nextkey.ecommerce.domain.model.order.Order;
-import com.nextkey.ecommerce.domain.model.order.OrderItem;
-import com.nextkey.ecommerce.domain.model.order.OrderStateLog;
-import com.nextkey.ecommerce.domain.model.product.Product;
-import com.nextkey.ecommerce.domain.model.product.ProductSku;
-import com.nextkey.ecommerce.domain.model.room.Room;
-import com.nextkey.ecommerce.domain.repository.*;
-import com.nextkey.ecommerce.shared.exception.BusinessException;
-import com.nextkey.ecommerce.shared.exception.ErrorCode;
-import com.nextkey.ecommerce.shared.tenant.TenantContext;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
+import com.nextkey.ecommerce.api.dto.CartDto;
+import com.nextkey.ecommerce.api.dto.OrderDto;
+import com.nextkey.ecommerce.core.cart.RedisCartService;
+import com.nextkey.ecommerce.domain.model.order.Order;
+import com.nextkey.ecommerce.domain.model.order.OrderItem;
+import com.nextkey.ecommerce.domain.model.order.OrderStateLog;
+import com.nextkey.ecommerce.domain.model.product.ProductSku;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.OrderRepository;
+import com.nextkey.ecommerce.domain.repository.OrderStateLogRepository;
+import com.nextkey.ecommerce.domain.repository.ProductRepository;
+import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
+import com.nextkey.ecommerce.domain.repository.RoomRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 訂單服務
@@ -40,8 +49,10 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final OrderStateLogRepository orderStateLogRepository;
     private final ListingRepository listingRepository;
+    @SuppressWarnings("unused")
     private final ProductRepository productRepository;
     private final ProductSkuRepository productSkuRepository;
+    @SuppressWarnings("unused")
     private final RoomRepository roomRepository;
     private final RedisCartService cartService;
     private final TenantRepository tenantRepository;
@@ -141,44 +152,16 @@ public class OrderService {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         // 驗證必填欄位
-        if (request.getListingId() == null) {
-            throw new BusinessException(ErrorCode.E_9005, "Listing ID is required for ROOM orders");
-        }
-        if (request.getCheckInDate() == null || request.getCheckOutDate() == null) {
-            throw new BusinessException(ErrorCode.E_9005, "Check-in and check-out dates are required for ROOM orders");
-        }
-        if (request.getCheckOutDate().isBefore(request.getCheckInDate())) {
-            throw new BusinessException(ErrorCode.E_4003, "Check-out must be after check-in");
-        }
+        validateRoomOrderRequest(request);
 
         // 取得 Room Listing 及其價格資訊
-        Listing roomListing = listingRepository.findById(request.getListingId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Room listing not found: " + request.getListingId()));
-
-        if (roomListing.getListingType() != Listing.ListingType.ROOM) {
-            throw new BusinessException(ErrorCode.E_9005, "Listing is not a ROOM type");
-        }
-        if (!"ACTIVE".equals(roomListing.getStatus().name())) {
-            throw new BusinessException(ErrorCode.E_3002, "Room listing not active: " + request.getListingId());
-        }
+        Listing roomListing = getActiveRoomListing(request.getListingId());
 
         // 嘗試取得租戶，若不存在則使用系統預設租戶
-        var tenant = tenantRepository.findById(tenantId)
-                .orElseGet(() -> {
-                    // 使用 AppConstants 中的系統租戶 ID
-                    var systemTenant = tenantRepository.findById(java.util.UUID.fromString(com.nextkey.ecommerce.shared.constants.AppConstants.SYSTEM_TENANT_ID));
-                    if (systemTenant.isPresent()) {
-                        return systemTenant.get();
-                    }
-                    return tenantRepository.findBySlug("platform")
-                            .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "System tenant not found"));
-                });
+        var tenant = resolveTenant(tenantId);
 
         // 計算入住晚數
-        long nights = java.time.temporal.ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
-        if (nights <= 0) {
-            throw new BusinessException(ErrorCode.E_4003, "Check-out must be after check-in");
-        }
+        long nights = calculateNights(request.getCheckInDate(), request.getCheckOutDate());
 
         // 根據 basePrice 計算總金額
         BigDecimal pricePerNight = roomListing.getBasePrice();
@@ -188,22 +171,7 @@ public class OrderService {
                 request.getListingId(), request.getCheckInDate(), request.getCheckOutDate(), nights, pricePerNight, totalAmount);
 
         // 建立 Room 訂單的 metadata，包含 guestCount 等資訊
-        java.util.Map<String, Object> orderMetadata = new java.util.HashMap<>();
-        if (request.getGuestCount() != null) {
-            orderMetadata.put("guestCount", request.getGuestCount());
-        }
-        if (request.getGuestName() != null) {
-            orderMetadata.put("guestName", request.getGuestName());
-        }
-        if (request.getGuestPhone() != null) {
-            orderMetadata.put("guestPhone", request.getGuestPhone());
-        }
-        if (request.getGuestEmail() != null) {
-            orderMetadata.put("guestEmail", request.getGuestEmail());
-        }
-        if (request.getSpecialRequests() != null) {
-            orderMetadata.put("specialRequests", request.getSpecialRequests());
-        }
+        Map<String, Object> orderMetadata = buildRoomOrderMetadata(request);
 
         // 建立 Room 訂單
         Order order = Order.builder()
@@ -226,6 +194,75 @@ public class OrderService {
 
         log.info("ROOM order created: orderId={}, userId={}", order.getId(), userId);
         return toOrderResponse(order);
+    }
+
+    private void validateRoomOrderRequest(OrderDto.CreateRequest request) {
+        if (request.getListingId() == null) {
+            throw new BusinessException(ErrorCode.E_9005, "Listing ID is required for ROOM orders");
+        }
+        if (request.getCheckInDate() == null || request.getCheckOutDate() == null) {
+            throw new BusinessException(ErrorCode.E_9005, "Check-in and check-out dates are required for ROOM orders");
+        }
+        if (request.getCheckOutDate().isBefore(request.getCheckInDate())) {
+            throw new BusinessException(ErrorCode.E_4003, "Check-out must be after check-in");
+        }
+    }
+
+    private Listing getActiveRoomListing(UUID listingId) {
+        Listing roomListing = listingRepository.findById(listingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Room listing not found: " + listingId));
+
+        if (roomListing.getListingType() != Listing.ListingType.ROOM) {
+            throw new BusinessException(ErrorCode.E_9005, "Listing is not a ROOM type");
+        }
+        if (!"ACTIVE".equals(roomListing.getStatus().name())) {
+            throw new BusinessException(ErrorCode.E_3002, "Room listing not active: " + listingId);
+        }
+        return roomListing;
+    }
+
+    private Tenant resolveTenant(UUID tenantId) {
+        return tenantRepository.findById(tenantId)
+                .orElseGet(() -> findSystemTenant());
+    }
+
+    private Tenant findSystemTenant() {
+        var systemTenantId = java.util.UUID.fromString(
+                com.nextkey.ecommerce.shared.constants.AppConstants.SYSTEM_TENANT_ID);
+        var systemTenant = tenantRepository.findById(systemTenantId);
+        if (systemTenant.isPresent()) {
+            return systemTenant.get();
+        }
+        return tenantRepository.findBySlug("platform")
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "System tenant not found"));
+    }
+
+    private long calculateNights(java.time.LocalDate checkIn, java.time.LocalDate checkOut) {
+        long nights = java.time.temporal.ChronoUnit.DAYS.between(checkIn, checkOut);
+        if (nights <= 0) {
+            throw new BusinessException(ErrorCode.E_4003, "Check-out must be after check-in");
+        }
+        return nights;
+    }
+
+    private Map<String, Object> buildRoomOrderMetadata(OrderDto.CreateRequest request) {
+        Map<String, Object> orderMetadata = new HashMap<>();
+        if (request.getGuestCount() != null) {
+            orderMetadata.put("guestCount", request.getGuestCount());
+        }
+        if (request.getGuestName() != null) {
+            orderMetadata.put("guestName", request.getGuestName());
+        }
+        if (request.getGuestPhone() != null) {
+            orderMetadata.put("guestPhone", request.getGuestPhone());
+        }
+        if (request.getGuestEmail() != null) {
+            orderMetadata.put("guestEmail", request.getGuestEmail());
+        }
+        if (request.getSpecialRequests() != null) {
+            orderMetadata.put("specialRequests", request.getSpecialRequests());
+        }
+        return orderMetadata;
     }
 
     private String buildRoomNotes(OrderDto.CreateRequest request) {
@@ -256,7 +293,6 @@ public class OrderService {
     @Transactional
     public OrderDto.BookingResponse createBooking(OrderDto.CreateRequest request) {
         UUID userId = TenantContext.getCurrentUser();
-        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 檢查必填欄位
         if (request.getCheckInDate() == null || request.getCheckOutDate() == null) {

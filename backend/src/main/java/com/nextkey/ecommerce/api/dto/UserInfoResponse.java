@@ -1,13 +1,13 @@
 package com.nextkey.ecommerce.api.dto;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
 
 /**
  * User Info Response DTO

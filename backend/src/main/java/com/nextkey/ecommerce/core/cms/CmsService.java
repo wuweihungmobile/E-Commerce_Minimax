@@ -1,5 +1,16 @@
 package com.nextkey.ecommerce.core.cms;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.CmsDto;
 import com.nextkey.ecommerce.domain.model.cms.Banner;
 import com.nextkey.ecommerce.domain.model.cms.ContentPage;
@@ -8,18 +19,11 @@ import com.nextkey.ecommerce.domain.repository.ContentPageRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * CMS 服務
@@ -31,6 +35,9 @@ public class CmsService {
 
     private final ContentPageRepository contentPageRepository;
     private final BannerRepository bannerRepository;
+
+    // Pagination default
+    private static final int DEFAULT_PAGE_SIZE = 50;
 
     // ========== Content Page ==========
 
@@ -78,14 +85,26 @@ public class CmsService {
         ContentPage page = contentPageRepository.findById(pageId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Page not found"));
 
+        updatePageFromRequest(page, request);
+        page = contentPageRepository.save(page);
+
+        log.info("Content page updated: id={}", pageId);
+
+        return toPageResponse(page);
+    }
+
+    private void updatePageFromRequest(ContentPage page, CmsDto.UpdatePageRequest request) {
+        updatePageTextFields(page, request);
+        updatePageDataFields(page, request);
+        updatePageStatusFields(page, request);
+    }
+
+    private void updatePageTextFields(ContentPage page, CmsDto.UpdatePageRequest request) {
         if (request.getTitle() != null) {
             page.setTitle(request.getTitle());
         }
         if (request.getContent() != null) {
             page.setContent(request.getContent());
-        }
-        if (request.getMetadata() != null) {
-            page.setMetadata(request.getMetadata());
         }
         if (request.getTemplate() != null) {
             page.setTemplate(request.getTemplate());
@@ -93,24 +112,27 @@ public class CmsService {
         if (request.getFeaturedImageUrl() != null) {
             page.setFeaturedImageUrl(request.getFeaturedImageUrl());
         }
+    }
+
+    private void updatePageDataFields(ContentPage page, CmsDto.UpdatePageRequest request) {
+        if (request.getMetadata() != null) {
+            page.setMetadata(request.getMetadata());
+        }
         if (request.getSections() != null) {
             page.setSections(request.getSections());
         }
+        if (request.getSortOrder() != null) {
+            page.setSortOrder(request.getSortOrder());
+        }
+    }
+
+    private void updatePageStatusFields(ContentPage page, CmsDto.UpdatePageRequest request) {
         if (request.getStatus() != null) {
             page.setStatus(ContentPage.ContentStatus.valueOf(request.getStatus().name()));
         }
         if (request.getIsIndexable() != null) {
             page.setIsIndexable(request.getIsIndexable());
         }
-        if (request.getSortOrder() != null) {
-            page.setSortOrder(request.getSortOrder());
-        }
-
-        page = contentPageRepository.save(page);
-
-        log.info("Content page updated: id={}", pageId);
-
-        return toPageResponse(page);
     }
 
     /**
@@ -151,7 +173,7 @@ public class CmsService {
      */
     @Transactional(readOnly = true)
     public CmsDto.PageListResponse getPages(int page, int size) {
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 50));
+        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
         Page<ContentPage> pages = contentPageRepository.findByStatusOrderBySortOrderAsc(
                 ContentPage.ContentStatus.PUBLISHED, pageRequest);
 
@@ -212,26 +234,77 @@ public class CmsService {
         Banner banner = bannerRepository.findById(bannerId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Banner not found"));
 
-        if (request.getTitle() != null) banner.setTitle(request.getTitle());
-        if (request.getImageUrl() != null) banner.setImageUrl(request.getImageUrl());
-        if (request.getLinkUrl() != null) banner.setLinkUrl(request.getLinkUrl());
-        if (request.getLinkType() != null) banner.setLinkType(Banner.LinkType.valueOf(request.getLinkType().name()));
-        if (request.getDescription() != null) banner.setDescription(request.getDescription());
-        if (request.getButtonText() != null) banner.setButtonText(request.getButtonText());
-        if (request.getMetadata() != null) banner.setMetadata(request.getMetadata());
-        if (request.getStartDate() != null) banner.setStartDate(request.getStartDate());
-        if (request.getEndDate() != null) banner.setEndDate(request.getEndDate());
-        if (request.getBannerType() != null) banner.setBannerType(Banner.BannerType.valueOf(request.getBannerType().name()));
-        if (request.getPosition() != null) banner.setPosition(Banner.BannerPosition.valueOf(request.getPosition().name()));
-        if (request.getStatus() != null) banner.setStatus(Banner.BannerStatus.valueOf(request.getStatus().name()));
-        if (request.getTargetAudience() != null) banner.setTargetAudience(request.getTargetAudience());
-        if (request.getSortOrder() != null) banner.setSortOrder(request.getSortOrder());
-
+        updateBannerFromRequest(banner, request);
         banner = bannerRepository.save(banner);
 
         log.info("Banner updated: id={}", bannerId);
 
         return toBannerResponse(banner);
+    }
+
+    private void updateBannerFromRequest(Banner banner, CmsDto.UpdateBannerRequest request) {
+        updateBannerTextFields(banner, request);
+        updateBannerLinkFields(banner, request);
+        updateBannerScheduleFields(banner, request);
+        updateBannerDisplayFields(banner, request);
+        updateBannerStatusFields(banner, request);
+    }
+
+    private void updateBannerTextFields(Banner banner, CmsDto.UpdateBannerRequest request) {
+        if (request.getTitle() != null) {
+            banner.setTitle(request.getTitle());
+        }
+        if (request.getDescription() != null) {
+            banner.setDescription(request.getDescription());
+        }
+        if (request.getButtonText() != null) {
+            banner.setButtonText(request.getButtonText());
+        }
+    }
+
+    private void updateBannerLinkFields(Banner banner, CmsDto.UpdateBannerRequest request) {
+        if (request.getImageUrl() != null) {
+            banner.setImageUrl(request.getImageUrl());
+        }
+        if (request.getLinkUrl() != null) {
+            banner.setLinkUrl(request.getLinkUrl());
+        }
+        if (request.getLinkType() != null) {
+            banner.setLinkType(Banner.LinkType.valueOf(request.getLinkType().name()));
+        }
+    }
+
+    private void updateBannerScheduleFields(Banner banner, CmsDto.UpdateBannerRequest request) {
+        if (request.getStartDate() != null) {
+            banner.setStartDate(request.getStartDate());
+        }
+        if (request.getEndDate() != null) {
+            banner.setEndDate(request.getEndDate());
+        }
+    }
+
+    private void updateBannerDisplayFields(Banner banner, CmsDto.UpdateBannerRequest request) {
+        if (request.getBannerType() != null) {
+            banner.setBannerType(Banner.BannerType.valueOf(request.getBannerType().name()));
+        }
+        if (request.getPosition() != null) {
+            banner.setPosition(Banner.BannerPosition.valueOf(request.getPosition().name()));
+        }
+        if (request.getTargetAudience() != null) {
+            banner.setTargetAudience(request.getTargetAudience());
+        }
+        if (request.getSortOrder() != null) {
+            banner.setSortOrder(request.getSortOrder());
+        }
+    }
+
+    private void updateBannerStatusFields(Banner banner, CmsDto.UpdateBannerRequest request) {
+        if (request.getStatus() != null) {
+            banner.setStatus(Banner.BannerStatus.valueOf(request.getStatus().name()));
+        }
+        if (request.getMetadata() != null) {
+            banner.setMetadata(request.getMetadata());
+        }
     }
 
     /**
@@ -289,7 +362,7 @@ public class CmsService {
      * 記錄點擊
      */
     @Transactional
-    public void recordBannerClick(UUID bannerId) {
+    public void recordBannerClick(final UUID bannerId) {
         bannerRepository.incrementClickCount(bannerId);
         log.debug("Banner click recorded: id={}", bannerId);
     }

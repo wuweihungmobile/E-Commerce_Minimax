@@ -126,6 +126,7 @@ class AuthControllerE2ETest {
     @Order(3)
     @DisplayName("API-M03-003: POST /v2/auth/register - Email格式錯誤，返回 400")
     void register_invalidEmailFormat_returns400() {
+        @SuppressWarnings("unused")
         String email = uniqueEmail();
 
         given()

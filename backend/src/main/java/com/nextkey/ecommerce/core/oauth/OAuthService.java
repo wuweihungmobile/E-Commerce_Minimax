@@ -1,5 +1,13 @@
 package com.nextkey.ecommerce.core.oauth;
 
+import java.util.HashMap;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
+
 import com.nextkey.ecommerce.api.dto.AuthResponse;
 import com.nextkey.ecommerce.api.dto.OAuthDto;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
@@ -11,15 +19,9 @@ import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
-
-import java.util.HashMap;
-import java.util.Optional;
-import java.util.UUID;
 
 @Slf4j
 @Service
@@ -30,13 +32,14 @@ public class OAuthService {
     private final OAuthAccountRepository oAuthAccountRepository;
     private final TenantRepository tenantRepository;
     private final JwtTokenService jwtTokenService;
+    @SuppressWarnings("unused")
     private final RestTemplate restTemplate;
 
     /**
      * 處理 OAuth 登入/註冊
      */
     @Transactional
-    public AuthResponse handleOAuthLogin(OAuthDto.AuthRequest request) {
+    public AuthResponse handleOAuthLogin(final OAuthDto.AuthRequest request) {
         // 1. 交換 access token
         OAuthUserInfo userInfo = exchangeCodeForUserInfo(request.getProvider(), request.getCode(), request.getRedirectUri());
 
@@ -57,7 +60,7 @@ public class OAuthService {
      * 將 OAuth 帳戶連結到現有用戶
      */
     @Transactional
-    public void linkOAuthAccount(UUID userId, OAuthDto.LinkRequest request) {
+    public void linkOAuthAccount(final UUID userId, final OAuthDto.LinkRequest request) {
         // 1. 交換 access token 獲取用戶資訊
         OAuthUserInfo userInfo = exchangeCodeForUserInfo(request.getProvider(), request.getCode(), request.getRedirectUri());
 
@@ -81,7 +84,7 @@ public class OAuthService {
     /**
      * 從 OAuth provider 交換授權碼以獲取用戶資訊
      */
-    private OAuthUserInfo exchangeCodeForUserInfo(OAuthProvider provider, String code, String redirectUri) {
+    private OAuthUserInfo exchangeCodeForUserInfo(final OAuthProvider provider, final String code, final String redirectUri) {
         // 根據不同 provider 調用對應的 API
         // 這裡使用 RestTemplate，实际项目中可以使用 OAuth2Client 或 WebClient
         // 为了简化，这里只是示例框架，实际实现需要根据各 provider 的 API 调整
@@ -115,7 +118,7 @@ public class OAuthService {
     /**
      * 查找或創建 OAuth 用戶
      */
-    private User findOrCreateOAuthUser(OAuthProvider provider, OAuthUserInfo userInfo) {
+    private User findOrCreateOAuthUser(final OAuthProvider provider, final OAuthUserInfo userInfo) {
         // 1. 檢查是否已有 OAuth 帳戶關聯
         Optional<OAuthAccount> existingAccount = oAuthAccountRepository.findByProviderAndProviderUserId(
                 provider.getProviderId(), userInfo.getProviderUserId());
@@ -165,7 +168,7 @@ public class OAuthService {
         return newUser;
     }
 
-    private AuthResponse generateAuthResponse(User user, Tenant tenant) {
+    private AuthResponse generateAuthResponse(final User user, final Tenant tenant) {
         String tenantId = tenant != null ? tenant.getId().toString() : null;
 
         String accessToken = jwtTokenService.generateAccessToken(

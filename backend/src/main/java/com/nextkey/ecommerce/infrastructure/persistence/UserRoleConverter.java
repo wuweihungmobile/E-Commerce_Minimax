@@ -1,14 +1,15 @@
 package com.nextkey.ecommerce.infrastructure.persistence;
 
-import com.nextkey.ecommerce.domain.model.user.User.UserRole;
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
+
+import com.nextkey.ecommerce.domain.model.user.User.UserRole;
 
 @Converter
 public class UserRoleConverter implements AttributeConverter<UserRole, String> {
 
     @Override
-    public String convertToDatabaseColumn(UserRole role) {
+    public String convertToDatabaseColumn(final UserRole role) {
         if (role == null) {
             return null;
         }
@@ -16,7 +17,7 @@ public class UserRoleConverter implements AttributeConverter<UserRole, String> {
     }
 
     @Override
-    public UserRole convertToEntityAttribute(String dbData) {
+    public UserRole convertToEntityAttribute(final String dbData) {
         if (dbData == null) {
             return null;
         }

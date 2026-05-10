@@ -1,20 +1,23 @@
 package com.nextkey.ecommerce.api.filter;
 
-import com.nextkey.ecommerce.shared.constants.AppConstants;
-import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import java.io.IOException;
+import java.util.UUID;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import java.io.IOException;
-import java.util.UUID;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Component
@@ -69,7 +72,7 @@ public class TenantContextFilter extends OncePerRequestFilter {
             }
 
             filterChain.doFilter(request, response);
-        } catch (Exception ex) {
+        } catch (IOException | ServletException ex) {
             log.error("[TenantContextFilter] Error processing request: {} {}", requestMethod, requestPath, ex);
             throw ex;
         } finally {
@@ -78,7 +81,7 @@ public class TenantContextFilter extends OncePerRequestFilter {
         }
     }
 
-    private UUID resolveEffectiveTenantId(UUID userId, String userTenantId, String requestedTenantId, String role) {
+    private UUID resolveEffectiveTenantId(final UUID userId, final String userTenantId, final String requestedTenantId, final String role) {
         // Super Admin must specify tenant via header
         if ("SUPER_ADMIN".equals(role) || "ADMIN".equals(role)) {
             if (StringUtils.hasText(requestedTenantId)) {
@@ -98,7 +101,7 @@ public class TenantContextFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) {
+    protected boolean shouldNotFilter(final HttpServletRequest request) {
         String path = request.getServletPath();
         // Don't filter auth endpoints
         return path.startsWith("/v2/auth/");

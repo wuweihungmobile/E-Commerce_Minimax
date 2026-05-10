@@ -26,10 +26,11 @@ public class IntegrationTestConfiguration {
         return Mockito.mock(RedisConnectionFactory.class);
     }
 
+    @SuppressWarnings("unchecked")
     @Bean
     @Primary
     public RedisTemplate<String, Object> redisTemplate() {
-        return Mockito.mock(RedisTemplate.class);
+        return (RedisTemplate<String, Object>) Mockito.mock(RedisTemplate.class);
     }
 
     @Bean

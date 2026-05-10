@@ -6,7 +6,6 @@ import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
-import com.nextkey.ecommerce.domain.model.room.Room;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
@@ -28,7 +27,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import jakarta.persistence.EntityManager;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -37,7 +35,6 @@ import java.util.concurrent.CompletableFuture;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Booking Controller API E2E 測試 (API-M06-001 ~ API-M06-012)
@@ -79,21 +76,27 @@ class BookingControllerE2ETest {
     @Autowired
     private BookingRepository bookingRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private TenantRepository tenantRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private ListingRepository listingRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private RoomRepository roomRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private TenantFeatureToggleRepository featureToggleRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private EntityManager entityManager;
 
+    @SuppressWarnings("unused")
     @Autowired
     private JdbcTemplate jdbcTemplate;
 

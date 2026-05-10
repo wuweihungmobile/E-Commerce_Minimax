@@ -1,11 +1,11 @@
 package com.nextkey.ecommerce.api.dto;
 
+import java.util.UUID;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.UUID;
 
 /**
  * AddMemberRequest - M17 新增成員請求 DTO

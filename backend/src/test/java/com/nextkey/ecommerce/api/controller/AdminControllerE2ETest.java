@@ -1,6 +1,5 @@
 package com.nextkey.ecommerce.api.controller;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
@@ -58,9 +57,11 @@ class AdminControllerE2ETest {
     @Autowired
     private MockMvc mockMvc;
 
+    @SuppressWarnings("unused")
     @Autowired
     private ObjectMapper objectMapper;
 
+    @SuppressWarnings("unused")
     @Autowired
     private JwtTokenService jwtTokenService;
 
@@ -77,6 +78,7 @@ class AdminControllerE2ETest {
     private TenantFeatureToggleRepository featureToggleRepository;
 
     private static final String BASE_URL = "/v2/admin";
+    @SuppressWarnings("unused")
     private static final String TEST_PASSWORD = "SecurePass123!";
 
     @BeforeEach

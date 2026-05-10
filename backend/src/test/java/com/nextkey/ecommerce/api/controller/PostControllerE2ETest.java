@@ -1,6 +1,5 @@
 package com.nextkey.ecommerce.api.controller;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
@@ -9,15 +8,11 @@ import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.cms.post.PostCategory;
 import com.nextkey.ecommerce.domain.model.cms.post.PostEmbed;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
-import com.nextkey.ecommerce.domain.model.product.Product;
-import com.nextkey.ecommerce.domain.model.room.Room;
 import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.model.user.User;
-import com.nextkey.ecommerce.domain.model.user.User.UserRole;
 import com.nextkey.ecommerce.domain.repository.*;
-import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -81,9 +76,11 @@ class PostControllerE2ETest {
     @Autowired
     private com.nextkey.ecommerce.domain.repository.cms.MediaAssetRepository mediaAssetRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private ProductRepository productRepository;
 
+    @SuppressWarnings("unused")
     @Autowired
     private RoomRepository roomRepository;
 
@@ -138,6 +135,7 @@ class PostControllerE2ETest {
                 .statusCode(201);
 
         // 2. 登入取得 token
+        @SuppressWarnings("unused")
         String loginResponse = given()
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(LoginRequest.builder()
@@ -150,9 +148,6 @@ class PostControllerE2ETest {
                 .statusCode(200)
                 .extract()
                 .asString();
-
-        JsonNode loginJson = objectMapper.readTree(loginResponse);
-        String accessToken = loginJson.path("data").path("accessToken").asText();
 
         // 3. 啟用 CMS_ENABLED feature toggle
         User user = userRepository.findByEmail(email).orElseThrow();
@@ -214,10 +209,7 @@ class PostControllerE2ETest {
                 .extract()
                 .asString();
 
-        JsonNode loginJson2 = objectMapper.readTree(loginResponse2);
-        String newAccessToken = loginJson2.path("data").path("accessToken").asText();
-
-        return newAccessToken;
+        return objectMapper.readTree(loginResponse2).path("data").path("accessToken").asText();
     }
 
     private UUID createTestCategory(UUID tenantId, Tenant tenant) {
@@ -233,6 +225,7 @@ class PostControllerE2ETest {
         return category.getId();
     }
 
+    @SuppressWarnings("unused")
     private Listing createTestListing(UUID tenantId, Tenant tenant, String title, Listing.ListingType type, Listing.ListingStatus status, BigDecimal price) {
         Listing listing = Listing.builder()
                 .tenant(tenant)
@@ -298,6 +291,7 @@ class PostControllerE2ETest {
     }
 
     // Helper: 使用 userId/tenantId 直接建立 Post，確保 author_id 不為 null
+    @SuppressWarnings("unused")
     private UUID createPostDirectly(UUID tenantId, UUID authorId, String title, String content, Post.PostStatus status, String slug) {
         Post post = Post.builder()
                 .tenant(testTenant)

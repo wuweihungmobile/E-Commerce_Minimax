@@ -1,5 +1,14 @@
 package com.nextkey.ecommerce.core.room;
 
+import java.time.LocalTime;
+import java.util.UUID;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.RoomDto;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
@@ -9,16 +18,9 @@ import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalTime;
-import java.util.UUID;
 
 @Slf4j
 @Service
@@ -28,6 +30,12 @@ public class RoomService {
     private final RoomRepository roomRepository;
     private final ListingRepository listingRepository;
     private final FeatureToggleService featureToggleService;
+
+    // Default values
+    private static final int DEFAULT_MAX_GUESTS = 2;
+    private static final int DEFAULT_ROOM_COUNT = 1;
+    private static final LocalTime DEFAULT_CHECK_IN_TIME = LocalTime.of(15, 0);
+    private static final LocalTime DEFAULT_CHECK_OUT_TIME = LocalTime.of(11, 0);
 
     @Transactional(readOnly = true)
     public Page<RoomDto.ListResponse> getRooms(
@@ -46,14 +54,14 @@ public class RoomService {
         Page<Room> rooms;
 
         if (keyword != null && !keyword.isBlank()) {
-            rooms = roomRepository.findByListing_TenantIdAndListing_Status(
+            rooms = roomRepository.findByListingTenantIdAndListingStatus(
                     tenantId, Listing.ListingStatus.ACTIVE, pageRequest);
         } else if (maxGuests != null) {
             rooms = roomRepository.findByMinGuests(maxGuests, pageRequest);
         } else if (location != null && !location.isBlank()) {
             rooms = roomRepository.findByLocation(location, pageRequest);
         } else {
-            rooms = roomRepository.findByListing_TenantIdAndListing_Status(
+            rooms = roomRepository.findByListingTenantIdAndListingStatus(
                     tenantId, Listing.ListingStatus.ACTIVE, pageRequest);
         }
 
@@ -72,7 +80,6 @@ public class RoomService {
         featureToggleService.checkFeatureEnabled("BOOKING_ENABLED");
 
         UUID tenantId = TenantContext.getCurrentTenant();
-        UUID ownerId = TenantContext.getCurrentUser();
 
         // Create Listing first
         Listing listing = Listing.builder()
@@ -95,11 +102,11 @@ public class RoomService {
                 .location(request.getLocation())
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
-                .maxGuests(request.getMaxGuests() != null ? request.getMaxGuests() : 2)
+                .maxGuests(request.getMaxGuests() != null ? request.getMaxGuests() : DEFAULT_MAX_GUESTS)
                 .amenities(request.getAmenities())
-                .checkInTime(request.getCheckInTime() != null ? request.getCheckInTime() : LocalTime.of(15, 0))
-                .checkOutTime(request.getCheckOutTime() != null ? request.getCheckOutTime() : LocalTime.of(11, 0))
-                .roomCount(request.getRoomCount() != null ? request.getRoomCount() : 1)
+                .checkInTime(request.getCheckInTime() != null ? request.getCheckInTime() : DEFAULT_CHECK_IN_TIME)
+                .checkOutTime(request.getCheckOutTime() != null ? request.getCheckOutTime() : DEFAULT_CHECK_OUT_TIME)
+                .roomCount(request.getRoomCount() != null ? request.getRoomCount() : DEFAULT_ROOM_COUNT)
                 .build();
 
         room = roomRepository.save(room);
@@ -137,11 +144,11 @@ public class RoomService {
                 .location(request.getLocation())
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
-                .maxGuests(request.getMaxGuests() != null ? request.getMaxGuests() : 2)
+                .maxGuests(request.getMaxGuests() != null ? request.getMaxGuests() : DEFAULT_MAX_GUESTS)
                 .amenities(request.getAmenities())
-                .checkInTime(request.getCheckInTime() != null ? request.getCheckInTime() : LocalTime.of(15, 0))
-                .checkOutTime(request.getCheckOutTime() != null ? request.getCheckOutTime() : LocalTime.of(11, 0))
-                .roomCount(request.getRoomCount() != null ? request.getRoomCount() : 1)
+                .checkInTime(request.getCheckInTime() != null ? request.getCheckInTime() : DEFAULT_CHECK_IN_TIME)
+                .checkOutTime(request.getCheckOutTime() != null ? request.getCheckOutTime() : DEFAULT_CHECK_OUT_TIME)
+                .roomCount(request.getRoomCount() != null ? request.getRoomCount() : DEFAULT_ROOM_COUNT)
                 .build();
 
         room = roomRepository.save(room);
@@ -155,27 +162,53 @@ public class RoomService {
         Room room = findRoomByListingId(listingId);
         Listing listing = room.getListing();
 
+        updateListingFromRequest(listing, request);
+        updateRoomFromRequest(room, request);
+
+        room = roomRepository.save(room);
+        log.info("Updated room with listingId: {}", listingId);
+
+        return toResponse(room);
+    }
+
+    private void updateListingFromRequest(Listing listing, RoomDto.UpdateRequest request) {
+        boolean updated = false;
         if (request.getTitle() != null) {
             listing.setTitle(request.getTitle());
+            updated = true;
         }
         if (request.getDescription() != null) {
             listing.setDescription(request.getDescription());
+            updated = true;
         }
         if (request.getCoverImageUrl() != null) {
             listing.setCoverImageUrl(request.getCoverImageUrl());
+            updated = true;
         }
         if (request.getBasePrice() != null) {
             listing.setBasePrice(request.getBasePrice());
+            updated = true;
         }
         if (request.getTags() != null) {
             listing.setTags(request.getTags());
+            updated = true;
         }
         if (request.getStatus() != null) {
             listing.setStatus(Listing.ListingStatus.valueOf(request.getStatus().toUpperCase()));
+            updated = true;
         }
+        if (updated) {
+            listingRepository.save(listing);
+        }
+    }
 
-        listingRepository.save(listing);
+    private void updateRoomFromRequest(Room room, RoomDto.UpdateRequest request) {
+        updateRoomLocationFields(room, request);
+        updateRoomCapacityFields(room, request);
+        updateRoomTimeFields(room, request);
+    }
 
+    private void updateRoomLocationFields(Room room, RoomDto.UpdateRequest request) {
         if (request.getLocation() != null) {
             room.setLocation(request.getLocation());
         }
@@ -185,30 +218,31 @@ public class RoomService {
         if (request.getLongitude() != null) {
             room.setLongitude(request.getLongitude());
         }
+    }
+
+    private void updateRoomCapacityFields(Room room, RoomDto.UpdateRequest request) {
         if (request.getMaxGuests() != null) {
             room.setMaxGuests(request.getMaxGuests());
         }
         if (request.getAmenities() != null) {
             room.setAmenities(request.getAmenities());
         }
+        if (request.getRoomCount() != null) {
+            room.setRoomCount(request.getRoomCount());
+        }
+    }
+
+    private void updateRoomTimeFields(Room room, RoomDto.UpdateRequest request) {
         if (request.getCheckInTime() != null) {
             room.setCheckInTime(request.getCheckInTime());
         }
         if (request.getCheckOutTime() != null) {
             room.setCheckOutTime(request.getCheckOutTime());
         }
-        if (request.getRoomCount() != null) {
-            room.setRoomCount(request.getRoomCount());
-        }
-
-        room = roomRepository.save(room);
-        log.info("Updated room with listingId: {}", listingId);
-
-        return toResponse(room);
     }
 
     @Transactional
-    public void deleteRoom(UUID listingId) {
+    public void deleteRoom(final UUID listingId) {
         Room room = findRoomByListingId(listingId);
         Listing listing = room.getListing();
 
@@ -219,7 +253,7 @@ public class RoomService {
         log.info("Deleted room with listingId: {}", listingId);
     }
 
-    private Room findRoomByListingId(UUID listingId) {
+    private Room findRoomByListingId(final UUID listingId) {
         return roomRepository.findByListingId(listingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000));
     }

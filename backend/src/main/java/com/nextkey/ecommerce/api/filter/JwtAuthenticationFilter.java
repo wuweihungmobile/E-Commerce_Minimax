@@ -1,13 +1,15 @@
 package com.nextkey.ecommerce.api.filter;
 
-import com.nextkey.ecommerce.domain.model.user.RolePermissionMapping;
-import com.nextkey.ecommerce.domain.model.user.User;
-import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
+import java.io.IOException;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -16,10 +18,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
+import com.nextkey.ecommerce.domain.model.user.RolePermissionMapping;
+import com.nextkey.ecommerce.domain.model.user.User;
+import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Component
@@ -72,14 +75,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 log.debug("Authenticated user: {} with role: {} and {} authorities",
                         email, role, grantedAuthorities.size());
             }
-        } catch (Exception ex) {
+        } catch (IllegalArgumentException | ClassCastException ex) {
             log.error("Could not set user authentication in security context", ex);
         }
 
         filterChain.doFilter(request, response);
     }
 
-    private String extractJwtFromRequest(HttpServletRequest request) {
+    private String extractJwtFromRequest(final HttpServletRequest request) {
         String bearerToken = request.getHeader(AUTHORIZATION_HEADER);
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith(BEARER_PREFIX)) {
             return bearerToken.substring(BEARER_PREFIX.length());
@@ -88,7 +91,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) {
+    protected boolean shouldNotFilter(final HttpServletRequest request) {
         String path = request.getServletPath();
         // Only skip JWT filter for public auth endpoints (register, login, refresh)
         // Other auth endpoints like logout and me require authentication

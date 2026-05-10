@@ -1,5 +1,13 @@
 package com.nextkey.ecommerce.core.product;
 
+import java.util.UUID;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nextkey.ecommerce.api.dto.ProductDto;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
@@ -9,15 +17,9 @@ import com.nextkey.ecommerce.domain.repository.ProductRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.UUID;
 
 @Slf4j
 @Service
@@ -48,7 +50,7 @@ public class ProductService {
 
         if (keyword != null && !keyword.isBlank()) {
             // Search by keyword in listing title/description
-            products = productRepository.findByListing_TenantIdAndListing_Status(
+            products = productRepository.findByListingTenantIdAndListingStatus(
                     tenantId, Listing.ListingStatus.ACTIVE, pageRequest);
         } else if (category != null && brand != null && !brand.isBlank()) {
             products = productRepository.findByCategoryAndBrand(category, brand, pageRequest);
@@ -57,7 +59,7 @@ public class ProductService {
         } else if (brand != null && !brand.isBlank()) {
             products = productRepository.findByBrand(brand, pageRequest);
         } else {
-            products = productRepository.findByListing_TenantIdAndListing_Status(
+            products = productRepository.findByListingTenantIdAndListingStatus(
                     tenantId, Listing.ListingStatus.ACTIVE, pageRequest);
         }
 
@@ -76,7 +78,6 @@ public class ProductService {
         featureToggleService.checkFeatureEnabled("RETAIL_ENABLED");
 
         UUID tenantId = TenantContext.getCurrentTenant();
-        UUID ownerId = TenantContext.getCurrentUser();
 
         // Create Listing first
         Listing listing = Listing.builder()
@@ -151,6 +152,17 @@ public class ProductService {
         Product product = findProductByListingId(listingId);
         Listing listing = product.getListing();
 
+        updateListingFromRequest(listing, request);
+        listingRepository.save(listing);
+
+        updateProductFromRequest(product, request);
+        product = productRepository.save(product);
+        log.info("Updated product with listingId: {}", listingId);
+
+        return toResponse(product);
+    }
+
+    private void updateListingFromRequest(Listing listing, ProductDto.UpdateRequest request) {
         if (request.getTitle() != null) {
             listing.setTitle(request.getTitle());
         }
@@ -169,9 +181,9 @@ public class ProductService {
         if (request.getStatus() != null) {
             listing.setStatus(Listing.ListingStatus.valueOf(request.getStatus().toUpperCase()));
         }
+    }
 
-        listingRepository.save(listing);
-
+    private void updateProductFromRequest(Product product, ProductDto.UpdateRequest request) {
         if (request.getCategory() != null) {
             product.setCategory(request.getCategory());
         }
@@ -184,15 +196,10 @@ public class ProductService {
         if (request.getDimensionsCm() != null) {
             product.setDimensionsCm(request.getDimensionsCm());
         }
-
-        product = productRepository.save(product);
-        log.info("Updated product with listingId: {}", listingId);
-
-        return toResponse(product);
     }
 
     @Transactional
-    public void deleteProduct(UUID listingId) {
+    public void deleteProduct(final UUID listingId) {
         Product product = findProductByListingId(listingId);
         Listing listing = product.getListing();
 
@@ -207,8 +214,8 @@ public class ProductService {
      * Map sort field names to proper JPA field paths.
      * basePrice and createdAt are on Listing, not Product.
      */
-    private String mapSortField(String sortBy) {
-        return switch (sortBy) {
+    private String mapSortField(final String sortBy) {
+        return switch ( sortBy) {
             case "basePrice" -> "listing.basePrice";
             case "createdAt" -> "listing.createdAt";
             case "updatedAt" -> "listing.updatedAt";
@@ -216,7 +223,7 @@ public class ProductService {
         };
     }
 
-    private Product findProductByListingId(UUID listingId) {
+    private Product findProductByListingId(final UUID listingId) {
         return productRepository.findByListingId(listingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_3000));
     }

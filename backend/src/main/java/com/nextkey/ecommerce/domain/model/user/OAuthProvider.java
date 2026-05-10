@@ -23,7 +23,7 @@ public enum OAuthProvider {
         return displayName;
     }
 
-    public static OAuthProvider fromProviderId(String providerId) {
+    public static OAuthProvider fromProviderId(final String providerId) {
         for (OAuthProvider provider : values()) {
             if (provider.providerId.equalsIgnoreCase(providerId)) {
                 return provider;

@@ -1,12 +1,29 @@
 package com.nextkey.ecommerce.domain.model.cms.media;
 
-import com.nextkey.ecommerce.domain.model.tenant.Tenant;
-import com.nextkey.ecommerce.domain.model.user.User;
-import jakarta.persistence.*;
-import lombok.*;
-
 import java.time.Instant;
 import java.util.UUID;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.user.User;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 /**
  * M15 CMS MediaAsset Entity
@@ -20,6 +37,9 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class MediaAsset {
+
+    private static final long KB = 1024;
+    private static final long MB = 1024 * 1024;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -82,12 +102,12 @@ public class MediaAsset {
      * 取得檔案大小（人類可讀格式）
      */
     public String getFormattedFileSize() {
-        if (fileSize < 1024) {
+        if (fileSize < KB) {
             return fileSize + " B";
-        } else if (fileSize < 1024 * 1024) {
-            return (fileSize / 1024) + " KB";
+        } else if (fileSize < KB * MB) {
+            return (fileSize / KB) + " KB";
         } else {
-            return String.format("%.2f MB", fileSize / (1024.0 * 1024.0));
+            return String.format("%.2f MB", fileSize / (KB * MB));
         }
     }
 

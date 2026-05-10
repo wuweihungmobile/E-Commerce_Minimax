@@ -1,6 +1,5 @@
 package com.nextkey.ecommerce.api.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.model.user.User;

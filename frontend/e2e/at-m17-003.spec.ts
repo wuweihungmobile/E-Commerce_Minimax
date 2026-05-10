@@ -66,7 +66,7 @@ test.describe('AT-M17-003: Feature Toggle 更新', () => {
       }
     } else {
       // 沒有 tenant，跳過測試
-      test.skip('No tenant available for Feature Toggle test');
+      test.skip();
     }
   });
 
@@ -88,7 +88,7 @@ test.describe('AT-M17-003: Feature Toggle 更新', () => {
       const newState = await toggleSwitch.isChecked();
       expect(newState).toBe(!initialState);
     } else {
-      test.skip('No toggle switches available');
+      test.skip();
     }
   });
 
@@ -115,7 +115,7 @@ test.describe('AT-M17-003: Feature Toggle 更新', () => {
         await expect(page.getByText(/成功|success/i)).toBeVisible({ timeout: 10000 });
       }
     } else {
-      test.skip('No editable feature toggles available');
+      test.skip();
     }
   });
 });

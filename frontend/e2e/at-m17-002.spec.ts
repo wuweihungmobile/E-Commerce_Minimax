@@ -49,7 +49,7 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
 
     if (count === 0) {
       // 如果沒有待審核，跳過測試
-      test.skip('No pending tenants to review');
+      test.skip();
       return;
     }
 
@@ -72,7 +72,7 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
       // 因為使用 alert dialog，可能已被瀏覽器阻止，所以這個測試主要驗證流程走到這裡
       expect(successVisible || true).toBeTruthy();
     } else {
-      test.skip('Approve button not visible');
+      test.skip();
     }
   });
 
@@ -87,7 +87,7 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
 
     if (count === 0) {
       // 如果沒有待審核，跳過測試
-      test.skip('No pending tenants to review');
+      test.skip();
       return;
     }
 
@@ -116,7 +116,52 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
         }
       }
     } else {
-      test.skip('Reject button not visible');
+      // No pending tenants, skip test
+      test.skip();
+    }
+  });
+
+  test('Admin 審核駁回申請', async ({ page }) => {
+    // 點擊審核中篩選查看是否有待審核項目
+    await page.click('button:has-text("審核中")');
+    await page.waitForTimeout(1000);
+
+    // 檢查是否有待審核的租戶
+    const reviewButtons = page.locator('button:has-text("審核詳情")');
+    const count = await reviewButtons.count();
+
+    if (count === 0) {
+      // 如果沒有待審核，跳過測試
+      test.skip();
+      return;
+    }
+
+    // 點擊第一個審核詳情按鈕
+    await reviewButtons.first().click();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2000);
+
+    // 點擊駁回按鈕
+    const rejectButton = page.locator('button:has-text("駁回")');
+    if (await rejectButton.isVisible()) {
+      await rejectButton.click();
+      await page.waitForTimeout(1000);
+
+      // 找到輸入框填寫駁回原因
+      const reasonInput = page.locator('input[id="rejectReason"], #rejectReason');
+      if (await reasonInput.isVisible()) {
+        await reasonInput.fill('資料不全');
+        await page.waitForTimeout(500);
+
+        // 點擊確認駁回
+        const confirmButton = page.locator('button:has-text("確認駁回")');
+        if (await confirmButton.isVisible()) {
+          await confirmButton.click();
+          await page.waitForTimeout(3000);
+        }
+      }
+    } else {
+      test.skip();
     }
   });
 });

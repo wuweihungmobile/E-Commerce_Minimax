@@ -88,7 +88,7 @@ test.describe('AT-M17-004: 店鋪 Profile 更新', () => {
       // 驗證更新成功
       await expect(page.getByText(/成功|success/i)).toBeVisible({ timeout: 10000 });
     } else {
-      test.skip('No tenants available to edit');
+      test.skip();
     }
   });
 
@@ -118,7 +118,7 @@ test.describe('AT-M17-004: 店鋪 Profile 更新', () => {
       // 驗證更新成功
       await expect(page.getByText(/成功|success/i)).toBeVisible({ timeout: 10000 });
     } else {
-      test.skip('No tenants available to edit');
+      test.skip();
     }
   });
 });

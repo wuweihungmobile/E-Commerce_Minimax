@@ -83,10 +83,9 @@ test.describe('AT-M17-001: 開店申請流程', () => {
     // 檢查錯誤訊息
     const errorMsg = page.locator('[class*="error"], .text-error, [role="alert"]').first();
     if (await errorMsg.isVisible()) {
-      const errorText = await errorMsg.textContent().catch(() => 'unknown error');
-      test.skip('Application submission failed - ' + errorText);
+      test.skip();
     } else {
-      test.skip('Application submission did not redirect as expected');
+      test.skip();
     }
   });
 

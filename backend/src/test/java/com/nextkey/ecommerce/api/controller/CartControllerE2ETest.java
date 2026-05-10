@@ -6,6 +6,7 @@ import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.ProductDto;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import org.junit.jupiter.api.*;
@@ -59,6 +60,9 @@ class CartControllerE2ETest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private TenantRepository tenantRepository;
+
     private static final String CART_URL = "/v2/cart";
     private static final String PRODUCT_URL = "/v2/products";
     private static final String AUTH_URL = "/v2/auth";
@@ -68,6 +72,7 @@ class CartControllerE2ETest {
     private String sellerToken;
     private String buyerEmail;
     private String sellerEmail;
+    private static UUID testTenantId;
 
     @BeforeEach
     void setUp() {
@@ -77,6 +82,18 @@ class CartControllerE2ETest {
         sellerEmail = "cart-seller-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 10000) + "@example.com";
 
         try {
+            // 創建測試用的 Tenant
+            com.nextkey.ecommerce.domain.model.tenant.Tenant testTenant =
+                    com.nextkey.ecommerce.domain.model.tenant.Tenant.builder()
+                            .name("Test Tenant for Cart E2E")
+                            .slug("test-cart-tenant-" + System.currentTimeMillis())
+                            .contactEmail("cart-test@tenant.com")
+                            .contactPhone("+886-123456789")
+                            .status(com.nextkey.ecommerce.domain.model.tenant.Tenant.TenantStatus.ACTIVE)
+                            .build();
+            testTenant = tenantRepository.save(testTenant);
+            testTenantId = testTenant.getId();
+
             // 註冊 SELLER 用戶（用於建立商品）
             given()
                     .contentType(MediaType.APPLICATION_JSON_VALUE)
@@ -136,6 +153,16 @@ class CartControllerE2ETest {
 
             JsonNode buyerLoginJson = objectMapper.readTree(buyerLoginResponse);
             buyerToken = buyerLoginJson.path("data").path("accessToken").asText();
+
+            // 更新 SELLER 和 BUYER 用戶的 tenantId
+            userRepository.findByEmail(sellerEmail).ifPresent(user -> {
+                user.setTenantId(testTenantId);
+                userRepository.save(user);
+            });
+            userRepository.findByEmail(buyerEmail).ifPresent(user -> {
+                user.setTenantId(testTenantId);
+                userRepository.save(user);
+            });
         } catch (Exception e) {
             throw new RuntimeException("Failed to setup test user: " + e.getMessage(), e);
         }

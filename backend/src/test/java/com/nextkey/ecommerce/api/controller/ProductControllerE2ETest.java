@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.ProductDto;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import org.junit.jupiter.api.*;
@@ -55,6 +56,9 @@ class ProductControllerE2ETest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private TenantRepository tenantRepository;
+
     private static final String BASE_URL = "/v2/products";
     private static final String AUTH_URL = "/v2/auth";
     private static final String TEST_PASSWORD = "SecurePass123!";
@@ -62,8 +66,7 @@ class ProductControllerE2ETest {
     // 測試用的 access token（每次測試前登入獲取）
     private String accessToken;
     private String userEmail;
-    @SuppressWarnings("unused")
-    private static final String TEST_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+    private static UUID testTenantId;
 
     @BeforeEach
     void setUp() {
@@ -73,6 +76,18 @@ class ProductControllerE2ETest {
         userEmail = "product-test-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 10000) + "@example.com";
 
         try {
+            // 創建測試用的 Tenant
+            com.nextkey.ecommerce.domain.model.tenant.Tenant testTenant =
+                    com.nextkey.ecommerce.domain.model.tenant.Tenant.builder()
+                            .name("Test Tenant for Product E2E")
+                            .slug("test-product-tenant-" + System.currentTimeMillis())
+                            .contactEmail("product-test@tenant.com")
+                            .contactPhone("+886-123456789")
+                            .status(com.nextkey.ecommerce.domain.model.tenant.Tenant.TenantStatus.ACTIVE)
+                            .build();
+            testTenant = tenantRepository.save(testTenant);
+            testTenantId = testTenant.getId();
+
             // 註冊
             given()
                     .contentType(MediaType.APPLICATION_JSON_VALUE)
@@ -102,6 +117,12 @@ class ProductControllerE2ETest {
 
             JsonNode loginJson = objectMapper.readTree(loginResponse);
             accessToken = loginJson.path("data").path("accessToken").asText();
+
+            // 更新用戶的 tenantId
+            userRepository.findByEmail(userEmail).ifPresent(user -> {
+                user.setTenantId(testTenantId);
+                userRepository.save(user);
+            });
         } catch (Exception e) {
             throw new RuntimeException("Failed to setup test user: " + e.getMessage(), e);
         }

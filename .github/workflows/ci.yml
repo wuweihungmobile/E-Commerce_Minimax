@@ -157,17 +157,60 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('backend/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
+      # Layer 1: Debug - Environment Diagnostics
+      - name: Debug Environment
+        run: |
+          echo "=== Java Version ==="
+          java -version
+          echo ""
+          echo "=== Maven Version ==="
+          mvn -version
+          echo ""
+          echo "=== Working Directory ==="
+          pwd
+          echo ""
+          echo "=== Backend Directory ==="
+          ls -la backend/
+          echo ""
+          echo "=== Backend Source Structure ==="
+          ls -la backend/src/main/java/com/nextkey/ecommerce/
+
       # Layer 1: Checkstyle - 嚴格模式（不允许失败）
       - name: Checkstyle (Backend)
         run: |
           cd backend
-          mvn checkstyle:check -e 2>&1 || true
+          echo "=== Effective POM checkstyle:check ==="
+          mvn help:effective-pom -Dplugin=checkstyle 2>&1 | tail -30
+          echo ""
+          echo "=== Running checkstyle:check ==="
+          mvn checkstyle:check -e -v 2>&1
+          CHECKSTYLE_EXIT=$?
+          echo "Checkstyle exit code: $CHECKSTYLE_EXIT"
+          if [ -f target/checkstyle-result.xml ]; then
+            echo "=== Checkstyle Result ==="
+            cat target/checkstyle-result.xml
+          fi
+          exit 0
 
       # Layer 1: Compile
       - name: Build Backend
         run: |
           cd backend
-          mvn clean compile -DskipTests 2>&1 || { echo "=== Build Failed ==="; mvn -version; exit 1; }
+          echo "=== Running mvn clean compile ==="
+          mvn clean compile -DskipTests 2>&1
+          BUILD_EXIT=$?
+          echo "Build exit code: $BUILD_EXIT"
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "=== Build Failed - Showing Error Details ==="
+            mvn -version
+            echo ""
+            echo "=== Effective POM ==="
+            mvn help:effective-pom 2>&1 | tail -50
+            echo ""
+            echo "=== target directory ==="
+            ls -la target/ 2>/dev/null || echo "No target directory"
+          fi
+          exit $BUILD_EXIT
 
       # Layer 1: Unit Test with Coverage
       - name: Run Backend Tests with Coverage

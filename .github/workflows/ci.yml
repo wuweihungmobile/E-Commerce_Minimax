@@ -216,13 +216,12 @@ jobs:
       - name: Run Backend Tests with Coverage
         run: |
           cd backend
-          mvn test -Dspring.profiles.active=integration-test 2>&1
+          mvn test -Dspring.profiles.active=integration-test 2>&1 | tee test_output.log
           TEST_EXIT=$?
           echo "=== Test Exit Code: $TEST_EXIT ==="
           if [ $TEST_EXIT -ne 0 ]; then
-            echo "=== Test Failures Detected ==="
-            find target/surefire-reports -name "*.txt" -exec cat {} \; 2>/dev/null | head -500 || echo "No surefire txt reports found"
-            find target/surefire-reports -name "*.xml" -exec cat {} \; 2>/dev/null | grep -E "(testcase|failure|error)" | head -100 || echo "No surefire xml reports found"
+            echo "=== Test Failures Detected - Last 300 lines ==="
+            tail -300 test_output.log
           fi
           exit $TEST_EXIT
         env:

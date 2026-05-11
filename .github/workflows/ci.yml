@@ -175,6 +175,23 @@ jobs:
           echo "=== Backend Source Structure ==="
           ls -la backend/src/main/java/com/nextkey/ecommerce/
 
+      # Layer 1: Pre-Test Health Check
+      - name: Verify Services Health
+        run: |
+          echo "=== Checking PostgreSQL ==="
+          pg_isready -h localhost -p 5432 -U koala -d nextkeytest || exit 1
+          echo "PostgreSQL is ready!"
+          echo ""
+          echo "=== Checking Redis ==="
+          redis-cli -h localhost -p 6379 -a redis-dev-password ping || exit 1
+          echo "Redis is ready!"
+          echo ""
+          echo "=== Environment Variables ==="
+          echo "SPRING_DATASOURCE_URL: $SPRING_DATASOURCE_URL"
+          echo "SPRING_PROFILES_ACTIVE: $SPRING_PROFILES_ACTIVE"
+        env:
+          SPRING_PROFILES_ACTIVE: integration-test
+
       # Layer 1: Checkstyle - 嚴格模式（不允许失败）
       - name: Checkstyle (Backend)
         run: |
@@ -216,7 +233,16 @@ jobs:
       - name: Run Backend Tests with Coverage
         run: |
           cd backend
-          mvn test -Dspring.profiles.active=integration-test
+          echo "=== Running mvn test with integration-test profile ==="
+          mvn test -Dspring.profiles.active=integration-test -e 2>&1
+          TEST_EXIT=$?
+          echo "Test exit code: $TEST_EXIT"
+          if [ $TEST_EXIT -ne 0 ]; then
+            echo "=== Test Failed - Capturing Logs ==="
+            ls -la target/surefire-reports/ 2>/dev/null || echo "No surefire reports"
+            cat target/surefire-reports/*.txt 2>/dev/null | head -200 || echo "No txt files"
+          fi
+          exit $TEST_EXIT
         env:
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/nextkeytest
           SPRING_DATASOURCE_USERNAME: koala

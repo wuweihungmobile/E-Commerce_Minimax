@@ -36,6 +36,7 @@ jobs:
   dependency-scan:
     name: Dependency Scan (Layer 0 - SCA)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,8 +52,9 @@ jobs:
       - name: Run OWASP Dependency Check (Backend)
         run: |
           cd backend
-          mvn org.owasp:dependency-check-maven:check
+          mvn org.owasp:dependency-check-maven:check -DskipTests
         continue-on-error: true
+        timeout-minutes: 10
 
       - name: Upload Backend Dependency Report
         uses: actions/upload-artifact@v4

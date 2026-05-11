@@ -406,6 +406,11 @@ jobs:
           cd frontend
           npm ci
 
+      - name: Build Frontend for E2E
+        run: |
+          cd frontend
+          npm run build
+
       - name: Install Playwright browsers
         run: |
           cd frontend
@@ -416,12 +421,6 @@ jobs:
         with:
           name: backend-jar
           path: backend/target/
-
-      - name: Download Frontend build
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-build
-          path: frontend/.next
 
       - name: Start Backend
         run: |

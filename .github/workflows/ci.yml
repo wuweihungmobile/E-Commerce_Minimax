@@ -216,7 +216,15 @@ jobs:
       - name: Run Backend Tests with Coverage
         run: |
           cd backend
-          mvn test -Dspring.profiles.active=integration-test
+          mvn test -Dspring.profiles.active=integration-test 2>&1
+          TEST_EXIT=$?
+          echo "=== Test Exit Code: $TEST_EXIT ==="
+          if [ $TEST_EXIT -ne 0 ]; then
+            echo "=== Test Failures Detected ==="
+            find target/surefire-reports -name "*.txt" -exec cat {} \; 2>/dev/null | head -500 || echo "No surefire txt reports found"
+            find target/surefire-reports -name "*.xml" -exec cat {} \; 2>/dev/null | grep -E "(testcase|failure|error)" | head -100 || echo "No surefire xml reports found"
+          fi
+          exit $TEST_EXIT
         env:
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/nextkeytest
           SPRING_DATASOURCE_USERNAME: koala

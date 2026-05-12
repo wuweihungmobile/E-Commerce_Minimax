@@ -22,11 +22,10 @@
 
 | 目標 | 推薦文件 | 預計時間 |
 |------|---------|---------|
-| **5 分鐘了解 AISDLC** | [user/onboarding/QUICK_START_GUIDE.md](user/onboarding/QUICK_START_GUIDE.md) | 5 分鐘 |
+| **5 分鐘了解 AISDLC（含決策樹）** | [user/onboarding/QUICK_START_GUIDE.md](user/onboarding/QUICK_START_GUIDE.md) | 5 分鐘 |
 | **找到適合的開發情境** | [user/onboarding/SCENARIO_SELECTOR.md](user/onboarding/SCENARIO_SELECTOR.md) | 5 分鐘 |
-| **視覺化情境決策** | [user/onboarding/SCENARIO_DECISION_TREE.md](user/onboarding/SCENARIO_DECISION_TREE.md) | 3 分鐘 |
 | **互動式教學** | [user/onboarding/TUTORIAL_MODE.md](user/onboarding/TUTORIAL_MODE.md) | 30-120 分鐘 |
-| **常用範本庫** | [user/onboarding/QUICK_START_TEMPLATES.md](user/onboarding/QUICK_START_TEMPLATES.md) | 10 分鐘 |
+| **常用範本庫（12 範本，覆蓋 10 情境）** | [user/onboarding/QUICK_START_TEMPLATES.md](user/onboarding/QUICK_START_TEMPLATES.md) | 10 分鐘 |
 | **快速優化技巧** | [user/onboarding/QUICK_WINS_GUIDE.md](user/onboarding/QUICK_WINS_GUIDE.md) | 15 分鐘 |
 | **專案初始化清單** | [user/onboarding/PROJECT_INITIALIZATION_CHECKLIST.md](user/onboarding/PROJECT_INITIALIZATION_CHECKLIST.md) | 10 分鐘 |
 | **專案初始化指南** | [user/onboarding/PROJECT_INITIALIZATION_GUIDE.md](user/onboarding/PROJECT_INITIALIZATION_GUIDE.md) | 15 分鐘 |
@@ -70,6 +69,7 @@
 | 目標 | 推薦文件 | 使用時機 |
 |------|---------|---------|
 | **文件品質檢查** | [system/quality/Document_Quality_Checklist.md](system/quality/Document_Quality_Checklist.md) | Greenfield Stage 9 |
+| **程式碼清潔度標準** | [system/quality/CODE_CLEANLINESS_STANDARDS.md](system/quality/CODE_CLEANLINESS_STANDARDS.md) | 每次 commit 前 / Code Review 時 |
 | **文檔撰寫規範** | [user/standards/PROJECT_DOCUMENTATION_STANDARDS.md](user/standards/PROJECT_DOCUMENTATION_STANDARDS.md) | 建立文件規範時 |
 | **文檔可讀性** | [user/standards/DOCUMENTATION_READABILITY_GUIDE.md](user/standards/DOCUMENTATION_READABILITY_GUIDE.md) | 撰寫文檔時 |
 | **安全設計檢查** | [system/quality/Security_Design_Checklist.md](system/quality/Security_Design_Checklist.md) | SRD 撰寫時 |
@@ -95,7 +95,7 @@
 |---------|------|------|
 | **新開發範例** | [user/sample/](user/sample/) | Android/iOS/Web 新專案啟動範例 |
 | **舊專案維護範例** | [user/sample/](user/sample/) | 多平台維護情境示範 |
-| **各情境範例** | [user/sample/](user/sample/) | DevOps、安全合規、效能、整合等共 17 個範例 |
+| **各情境範例** | [user/sample/](user/sample/) | DevOps、安全合規、效能、整合等共 21 個範例 |
 
 ---
 
@@ -122,6 +122,7 @@ guides/
 │   │   ├── AT_vs_TC_Guide.md
 │   │   └── Performance_Test_Plan_Template.md
 │   ├── quality/
+│   │   ├── CODE_CLEANLINESS_STANDARDS.md
 │   │   ├── Document_Quality_Checklist.md
 │   │   ├── Security_Design_Checklist.md
 │   │   └── Security_Threat_Modeling_Guide.md
@@ -140,7 +141,6 @@ guides/
 │   │   ├── QUICK_START_TEMPLATES.md
 │   │   ├── QUICK_WINS_GUIDE.md
 │   │   ├── SCENARIO_SELECTOR.md
-│   │   ├── SCENARIO_DECISION_TREE.md
 │   │   ├── TUTORIAL_MODE.md
 │   │   ├── PROJECT_INITIALIZATION_CHECKLIST.md
 │   │   └── PROJECT_INITIALIZATION_GUIDE.md
@@ -152,7 +152,7 @@ guides/
 │   ├── process/
 │   │   ├── Code_Review_Guidelines.md
 │   │   └── Development_Build_Test_Cycle.md
-│   └── sample/                           # 真實情境範例（17 個）
+│   └── sample/                           # 真實情境範例（21 個）
 │       ├── 新開發-Android手機APP_01.md
 │       ├── 新開發-Android手機APP_02.md
 │       ├── 新開發-iOS手機APP_記帳軟體.md
@@ -198,6 +198,7 @@ guides/
 
 ### C
 - [C4_Model_Guidelines.md](system/architecture/C4_Model_Guidelines.md) - C4 架構設計指南
+- [CODE_CLEANLINESS_STANDARDS.md](system/quality/CODE_CLEANLINESS_STANDARDS.md) - 程式碼清潔度標準（Import/欄位清潔度、IDE-Maven 配置同步）
 - [Code_Review_Guidelines.md](user/process/Code_Review_Guidelines.md) - Code Review 指南
 
 ### D
@@ -226,11 +227,10 @@ guides/
 
 ### Q
 - [QUICK_START_GUIDE.md](user/onboarding/QUICK_START_GUIDE.md) - 快速上手指南
-- [QUICK_START_TEMPLATES.md](user/onboarding/QUICK_START_TEMPLATES.md) - 快速啟動範本庫
+- [QUICK_START_TEMPLATES.md](user/onboarding/QUICK_START_TEMPLATES.md) - 快速啟動範本庫（12 範本，覆蓋全部 10 大情境）
 - [QUICK_WINS_GUIDE.md](user/onboarding/QUICK_WINS_GUIDE.md) - 快速優化指南
 
 ### S
-- [SCENARIO_DECISION_TREE.md](user/onboarding/SCENARIO_DECISION_TREE.md) - 情境選擇決策樹（視覺化）
 - [SCENARIO_SELECTOR.md](user/onboarding/SCENARIO_SELECTOR.md) - 情境選擇助手
 - [Security_Architecture_Checklist.md](system/architecture/Security_Architecture_Checklist.md) - 安全架構設計檢查清單
 - [Security_Design_Checklist.md](system/quality/Security_Design_Checklist.md) - 安全設計檢查清單
@@ -249,11 +249,11 @@ guides/
 
 ## 📊 統計資訊
 
-- **system/ 檔案數**: 20 個（給 AI Agent 使用）
-- **user/ 檔案數**: 14 個（不含 sample）
+- **system/ 檔案數**: 21 個（給 AI Agent 使用）
+- **user/ 檔案數**: 13 個（不含 sample）
 - **user/sample/ 檔案數**: 21 個（真實情境範例）
 - **backup/ 檔案數**: 5 個（歷史備份）
-- **總計**: 60 個 Markdown 檔案
+- **總計**: 61 個 Markdown 檔案
 
 ---
 
@@ -289,9 +289,11 @@ guides/
 
 ---
 
-**最後更新**: 2026-04-11
+**最後更新**: 2026-05-07
 
 **變更記錄**:
+- 2026-05-07: 全面更新 QUICK_START_TEMPLATES.md（840行→1502行），新增 6 個情境範本（Refactoring/Migration/DevOps/Testing/Documentation/Security），覆蓋 AISDLC 全部 10 大情境，共 12 個範本
+- 2026-05-07: 將 SCENARIO_DECISION_TREE.md 內容整合至 QUICK_START_GUIDE.md（詳盡版），原檔刪除
 - 2026-04-11: 補充遺漏檔案（system/ 5 個、user/ 4 個）、新增 sample/ 目錄（21 個範例）、修正 archive/ → backup/、更新統計數字
 - 2025-01-15: 新增 API_Mandatory_Checklist.md、SCENARIO_DECISION_TREE.md（v0.09 開發專注版）
 - 2025-12-01: guides/ 目錄重組（v0.09），建立 system/ 和 user/ 子目錄結構

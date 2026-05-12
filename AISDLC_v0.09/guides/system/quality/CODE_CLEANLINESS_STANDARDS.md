@@ -1,397 +1,362 @@
-# Code Cleanliness Standards
 # 程式碼清潔度標準
+# Code Cleanliness Standards
 
-> **版本**: v1.0
-> **適用範圍**: 所有 AISDLC 開發情境
-> **最後更新**: 2026-05-10
-> **角色**: 所有開發者（Dev）、程式碼審查者（Reviewer）
-
----
-
-## 🔴 強制執行聲明
-
-**本文件中所有規則皆為強制執行，違反者視為不合格的程式碼。**
-
-本標準是基於實際專案開發中發現的技術債問題（E-Commerce_Minimax 案例）制定，旨在：
-1. 杜絕未使用 import/欄位殘留
-2. 確保 Import 組織符合 Checkstyle 規範
-3. 保持 IDE 與 Maven 配置一致
-4. 建立可執行的提交前檢查流程
+> **🔴 強制標準**
+>
+> 本文件定義 AISDLC 開發流程中**程式碼清潔度的強制執行規則**。
+>
+> - **適用範圍**: 所有使用 AISDLC 框架的開發情境
+> - **執行時機**: 每次 commit 前、Code Review 時
+> - **強制程度**: 強制（非建議）— 違規時不可 commit 或合併
 
 ---
 
-## 1. Import 清潔度標準
+**版本**: v1.0
+**建立日期**: 2026-05-11
+**文檔類型**: 品質標準 | 強制規範
+**相關文檔**:
+- [Development_Build_Test_Cycle.md](../../user/process/Development_Build_Test_Cycle.md) - 開發-編譯-測試循環（含清潔度檢查步驟）
+- [Code_Review_Guidelines.md](../../user/process/Code_Review_Guidelines.md) - Code Review 指南（含 Import & Declaration Review）
+- [Document_Quality_Checklist.md](Document_Quality_Checklist.md) - 文檔品質檢查清單
 
-### 1.1 每個 Import 都必須實際被使用
+---
 
-**🛑 嚴格禁止**：
-- 宣告但從未使用的 import
-- 「預留」但實際未使用的 import
-- 複製貼上時遺漏的 import
+## 一、Import 清潔度標準（強制）
 
-**範例**：
+### 1.1 核心規則
 
-```java
-// ❌ 錯誤：import 後從未使用
-import com.fasterxml.jackson.databind.ObjectMapper;  // 從未在程式碼中出現
+| 規則 | 說明 | 違規嚴重性 |
+|------|------|-----------|
+| **無未使用的 import** | 每個 import 必須在程式碼中實際被使用，禁止「預留」或「備用」的 import | 🔴 高 |
+| **正確的 import 順序** | 必須符合 checkstyle ImportOrder 規則（見 1.2 節） | 🟡 中 |
+| **無遺漏的必要 import** | 尤其是移動/複製程式碼後，必須確認所有依賴的類別都已 import | 🔴 高 |
+| **無重複的 import** | 同一個類別不可出現兩次 import | 🟡 中 |
 
-public class AdminControllerE2ETest {
-    @Autowired
-    private JwtTokenService jwtTokenService;  // objectMapper 完全沒用到
-}
+### 1.2 Import 順序規則（Java/Spring 專案）
+
 ```
+群組 1: java.*        ← 標準 Java 庫
+群組 2: jakarta.*     ← Jakarta EE（舊版 javax）
+群組 3: javax.*       ← Java 擴展庫
+群組 4: org.*         ← Apache、Spring 等組織庫
+群組 5: com.*         ← 商業庫與自定義套件（包含自身套件）
 
-```java
-// ✅ 正確：所有 import 都有實際使用
-public class SomeController {
-    @Autowired
-    private ObjectMapper objectMapper;  // 有使用 objectMapper.writeValueAsString()
-
-    public void doSomething() {
-        String json = objectMapper.writeValueAsString(data);
-    }
-}
+每個群組之間空一行（Checkstyle 要求）
+每個群組內部按字母順序排列
 ```
-
-**例外情況**：
-- 若因特殊原因需要保留「預留」的 import，必須添加 `@SuppressWarnings("unused")` 註解
-- 這個例外不適用於從未使用的 import（那是人為疏忽，不是預留）
-
-### 1.2 Import 順序必須符合 Checkstyle 規則
-
-**標準順序**（groups 定義）：
-```
-java → jakarta → javax → org → com → 其餘
-```
-
-**詳細規則**：
-1. 每個 group 之間用空行分隔
-2. 同一 group 內的 import 依字母順序排列
-3. 不允許使用 `import *`（wildcard import）
-4. 靜態 import 放在一般 import 之後
 
 **正確範例**：
 ```java
-import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.Optional;
 
 import jakarta.persistence.EntityManager;
-import jakarta.validation.Valid;
 
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import com.nextkey.ecommerce.api.dto.OrderDto;
-import com.nextkey.ecommerce.domain.model.order.Order;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.ecommerce.domain.model.listing.Listing;
 ```
 
-**錯誤範例**：
-```java
-// ❌ 錯誤：順序不符合規範
-import org.springframework.stereotype.Service;  // 應該在 jakarta之後
-import jakarta.persistence.EntityManager;
-import java.math.BigDecimal;
-```
+### 1.3 移動/複製程式碼後的檢查流程
 
-### 1.3 移動/複製程式碼後必須檢查 Import 完整性
-
-**情境**：當移動或複製一段程式碼到新檔案時，必須：
-1. 確認所有必要的 import 都已存在
-2. 確認沒有遺漏的 import（尤其是跨 package 的引用）
-3. 確認沒有重複的 import
-
-**操作流程**：
 ```
 移動/複製程式碼
     ↓
-檢查新檔案是否有漏掉的 import（IDE 會顯示紅色錯誤）
+立即執行 mvn checkstyle:check（或 IDE 的 unused import 檢查）
     ↓
-若有漏掉，補上必要的 import
+確認所有引用的類別都已 import
     ↓
-檢查是否有重複的 import
+確認 import 順序符合規則
     ↓
-執行 mvn checkstyle:check 確認通過
+確認無多餘的 import（原始碼中不再使用的）
 ```
 
 ---
 
-## 2. 欄位/變數清潔度標準
+## 二、欄位/變數清潔度標準（強制）
 
-### 2.1 所有宣告的欄位/變數都必須實際被使用
+### 2.1 核心規則
 
-**🛑 嚴格禁止**：
-- 宣告後從未使用的欄位（除非有正當理由）
-- 預留但實際未使用的 repository 欄位
-- 從未呼叫的 service 欄位
+| 規則 | 說明 | 違規嚴重性 |
+|------|------|-----------|
+| **無未使用的欄位** | 所有宣告的類別欄位（Fields）必須在方法中實際被呼叫 | 🔴 高 |
+| **無未使用的局部變數** | 方法內的局部變數宣告後必須使用 | 🟡 中 |
+| **無未使用的靜態常量** | `static final` 常量同樣需要實際使用 | 🟡 中 |
+| **保留欄位需要標記** | 若有特殊原因需要保留未使用欄位，必須添加 `@SuppressWarnings("unused")` 並附說明 | 📝 規範 |
 
-**範例**：
+### 2.2 處理「需要保留未使用欄位」的情境
 
-```java
-// ❌ 錯誤：欄位僅宣告但從未使用
-public class M16ErpIntegrationTest {
-    @Autowired
-    private UserRepository userRepository;  // 從未使用 userRepository.findById() 等方法
-
-    @Autowired
-    private TenantRepository tenantRepository;  // 從未使用
-
-    @Autowired
-    private EntityManager entityManager;  // 從未使用
-}
-```
+**允許保留的情況**（必須同時滿足以下條件）：
+1. 有明確的業務原因（如：預計下個 Sprint 實作）
+2. 已添加 `@SuppressWarnings("unused")`
+3. 有 comment 說明保留原因
 
 ```java
-// ✅ 正確：所有欄位都有實際使用
-public class SomeService {
-    @Autowired
-    private UserRepository userRepository;  // 有使用 userRepository.findById()
-
-    @Autowired
-    private TenantRepository tenantRepository;  // 有使用 tenantRepository.findBySlug()
-}
+// ✅ 正確：保留未使用欄位並標記說明
+@SuppressWarnings("unused")  // Sprint 2 實作多租戶功能時使用
+@Autowired
+private TenantRepository tenantRepository;
 ```
 
-### 2.2 正當理由保留未使用欄位的規則
-
-若因特殊原因需要保留未使用的欄位（例如：預留未來擴展、測試環境模擬），必須：
-
-1. **添加 `@SuppressWarnings("unused")`** 註解
-2. **在註解中說明理由**
-
-**正確範例**：
+**不允許的做法**：
 ```java
-public class TestClass {
-    // 預留用於未來測試擴展
-    @SuppressWarnings("unused")
-    private String storeOwnerToken;
-
-    // 預留用於多角色測試場景
-    @SuppressWarnings("unused")
-    private static final String TEST_PASSWORD = "SecurePass123!";
-}
+// ❌ 錯誤：無標記的未使用欄位
+@Autowired
+private TenantRepository tenantRepository; // 宣告後從未使用
 ```
 
-### 2.3 確定不需要的欄位必須移除
+### 2.3 清理步驟
 
-**不要**：
-- 留空宣告「以防萬一」
-- 註解掉欄位但不移除
-- 假裝欄位還會被使用
-
-**正確做法**：
-```
-發現未使用的欄位
-    ↓
-評估：是否真的需要保留？（預留擴展？）
-    ↓
-是 → 添加 @SuppressWarnings("unused") + 說明理由
-    ↓
-否 → 直接移除（Delete）
-        ↓
-執行編譯確認不影響功能
-```
+1. 用 IDE 的「Find Usages」功能確認欄位使用情況
+2. 確定未使用後，移除欄位宣告和對應的 `@Autowired` / `@Inject` 標記
+3. 移除後立即執行編譯，確認沒有其他地方依賴此欄位
 
 ---
 
-## 3. IDE 與 Maven 配置同步標準
+## 三、IDE-Maven 配置同步規則（強制）
 
-### 3.1 VS Code settings.json 必要配置
+### 3.1 問題說明
 
-**必須包含**：
+IDE（如 VS Code + Java Extension）與 Maven 的編譯器設置不一致時，會出現以下現象：
+- IDE 顯示「1102 warning: At least one of the problems in category 'unused' is not analysed due to a compiler option being ignored」
+- Maven 編譯正常通過，但 IDE 的 unused 警告可能被忽略或不準確
+- 這會導致團隊成員誤判：IDE 無警告 ≠ checkstyle 通過
+
+### 3.2 配置同步規則
+
+**規則 1**: VS Code 必須設置自動同步建置配置
+
 ```json
+// .vscode/settings.json
 {
-    "java.configuration.updateBuildConfiguration": "automatic"
+  "java.configuration.updateBuildConfiguration": "automatic"
 }
 ```
 
-**原因**：
-- 確保 IDE 編譯器設置與 Maven 一致
-- 避免出現 `1102 warning: At least one of the problems in category 'unused' is not analysed due to a compiler option being ignored`
+**操作步驟**:
+1. `Ctrl+Shift+P` → 搜尋「Open User Settings (JSON)」
+2. 確認或新增此鍵值
+3. 重新啟動 VS Code Java Language Server（`Ctrl+Shift+P` → 「Java: Clean Java Language Server Workspace」）
 
-### 3.2 避免 1102 警告混淆
+**規則 2**: IDE 編譯器版本必須與 `pom.xml` 一致
 
-**問題說明**：
-- 1102 警告表示「IDE 的編譯器設置與 Maven 不同，導致某些檢查被忽略」
-- 這會造成：IDE 顯示沒問題，但實際上有未使用的 import/欄位
-
-**解決方案**：
-1. 確保 `.vscode/settings.json` 中 `updateBuildConfiguration` 為 `"automatic"`
-2. 提交前執行 `mvn checkstyle:check` 驗證
-3. 若 IDE 仍顯示 1102，重啟 VSCode 或執行「Reload Window」
-
----
-
-## 4. 提交前強制檢查清單
-
-**🛑 每次 commit 前都必須執行以下檢查，違規者不可 commit！**
-
-### 4.1 必須檢查的項目
-
-```
-□ mvn checkstyle:check 通過（0 violations）
-□ 無未使用的 import（所有 import 都實際被使用）
-□ 無未使用的欄位（除了有 @SuppressWarnings("unused") 的）
-□ 所有 import 都正確且完整（無漏掉、無重複）
-□ Import 順序正確（java → jakarta → javax → org → com）
-□ IDE 設置與 Maven 配置一致（無 1102 警告）
-□ mvn compile 通過
-□ mvn test 通過（若修改涉及測試）
+```xml
+<!-- pom.xml 示例 -->
+<properties>
+    <java.version>17</java.version>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+</properties>
 ```
 
-### 4.2 執行順序
+確認 IDE 的 Java 版本設置（底部狀態欄或 `Ctrl+Shift+P` → 「Java: Configure Java Runtime」）與上述版本一致。
 
-```
-完成程式碼撰寫
-    ↓
-執行 mvn checkstyle:check
-    ↓
-檢查是否有 unused import 警告
-    ↓
-修復所有問題（移除不需要的 import）
-    ↓
-再次執行 mvn checkstyle:check 確認通過
-    ↓
-執行 mvn compile 確認編譯成功
-    ↓
-執行 mvn test 確認測試通過
-    ↓
-git add + git commit
-```
-
-### 4.3 快捷指令（適用於 Java/Maven 專案）
+### 3.3 驗證方法
 
 ```bash
-# 快速檢查（推薦寫成腳本）
-./mvnw checkstyle:check && mvn compile
+# 驗證 IDE 與 Maven 一致：兩者都應通過
+mvn compile        # Maven 編譯
+mvn checkstyle:check  # Checkstyle 風格檢查
 
-# 完整檢查
-./mvnw checkstyle:check && mvn compile && mvn test
-
-# 若只想檢查 import 順序問題
-./mvnw checkstyle:check -Dcheckstyle.consoleOutput=true | grep -i "import"
+# 若 Maven 通過但 IDE 仍顯示警告 → 排查配置不一致
+# 若 checkstyle 失敗 → 修復程式碼後重試
 ```
 
 ---
 
-## 5. 問題案例與修正方法
+## 四、提交前強制檢查清單（每次 commit 前必做）
 
-### 案例 1：未使用的 ObjectMapper import
+> 🛑 **強制執行**: 以下所有項目必須通過，才能執行 `git commit`。
 
-**檔案**：AdminControllerE2ETest.java
+```
+【提交前強制自查清單】
 
-**問題**：
+Import 清潔度
+□ mvn checkstyle:check 通過（ImportOrder 及其他 style 規則無違規）
+□ 無未使用的 import（IDE unused import 警告為 0）
+□ 所有 import 順序正確（java → jakarta → javax → org → com）
+□ 無漏掉的必要 import（所有引用的類別都已正確 import）
+□ 無重複的 import
+
+欄位/變數清潔度
+□ 無未使用的欄位/變數（或已標記 @SuppressWarnings("unused") 並附說明）
+□ 未使用的 @Autowired 欄位已移除
+□ 未使用的 static final 常量已移除
+
+IDE-Maven 配置
+□ IDE 與 Maven 配置一致（無 1102 警告）
+□ mvn compile 無錯誤
+
+移動/複製程式碼後（若本次有移動/複製）
+□ 確認所有依賴的類別都已 import
+□ 確認原本的 import 中沒有因移動而多餘的項目
+```
+
+---
+
+## 五、違規範例與修正對照
+
+### P1：未使用的 import 語句
+
+**問題情境**：重構後，原本使用的類別被移除，但 import 留著。
+
 ```java
-import com.fasterxml.jackson.databind.ObjectMapper;  // 從未使用
+// ❌ 違規（AdminControllerE2ETest.java）
+import com.fasterxml.jackson.databind.ObjectMapper; // 重構後從未使用
+import jakarta.persistence.EntityManager;           // 預留但實際未用
 
+@SpringBootTest
 public class AdminControllerE2ETest {
-    // objectMapper 欄位從未使用
-    private ObjectMapper objectMapper;
+    // ObjectMapper 和 EntityManager 的引用被移除了，但 import 還在
 }
 ```
 
-**修正**：
 ```java
-// 移除 ObjectMapper import
-// 移除 objectMapper 欄位（或添加 @SuppressWarnings 若需要保留）
-
+// ✅ 修正：直接刪除未使用的 import
+@SpringBootTest
 public class AdminControllerE2ETest {
-    // 已移除未使用的 objectMapper
+    // 只保留實際使用的 import
 }
 ```
 
-### 案例 2：未使用的 EntityManager import
+**如何發現**：
+- IDE 會以灰色或警告標記未使用的 import
+- `mvn checkstyle:check` 會報告 ImportOrder 和 UnusedImports 違規
 
-**檔案**：M16ErpIntegrationTest.java
+---
 
-**問題**：
+### P2：未使用的欄位宣告
+
+**問題情境**：預留欄位或重構後遺留的 @Autowired 欄位。
+
 ```java
-import jakarta.persistence.EntityManager;  // 從未使用
-
+// ❌ 違規（M16ErpIntegrationTest.java）
+@SpringBootTest
 public class M16ErpIntegrationTest {
     @Autowired
-    private EntityManager entityManager;  // 從未使用
+    private UserRepository userRepository; // 從未在任何測試方法中使用
+
+    @Autowired
+    private TenantRepository tenantRepository; // 從未在任何測試方法中使用
+
+    @Autowired
+    private ListingRepository listingRepository; // 從未在任何測試方法中使用
 }
 ```
 
-**修正**：
 ```java
-// 移除 EntityManager import
-// 移除 entityManager 欄位
-
+// ✅ 修正選項 1：移除不需要的欄位（推薦）
+@SpringBootTest
 public class M16ErpIntegrationTest {
-    // 已移除未使用的 entityManager
+    // 只保留實際使用的 @Autowired 欄位
+}
+
+// ✅ 修正選項 2：若確實需要保留（必須附說明）
+@SpringBootTest
+public class M16ErpIntegrationTest {
+    @SuppressWarnings("unused")  // Sprint 3 實作多租戶測試時使用
+    @Autowired
+    private TenantRepository tenantRepository;
 }
 ```
 
-### 案例 3：漏掉的 Listing import
+---
 
-**檔案**：OrderService.java
+### P3：未使用的局部變數
 
-**問題**：
-```
-Listing cannot be resolved to a type
-```
+**問題情境**：`BookingController.java` 中宣告了 `listingImportList` 局部變數，但從未實際使用。
 
-**原因**：程式碼中使用了 `Listing` 類別，但缺少 import
-
-**修正**：
 ```java
-// 添加必要的 import
-import com.nextkey.ecommerce.domain.model.listing.Listing;
+// ❌ 違規（BookingController.java）
+public ResponseEntity<String> importListings(@RequestBody List<ImportRequest> requests) {
+    List<Listing> listingImportList = new ArrayList<>();  // 宣告但從未使用！
+
+    for (ImportRequest request : requests) {
+        listingRepository.save(new Listing(request));  // 直接存檔，未使用 listingImportList
+    }
+    return ResponseEntity.ok("匯入成功");
+}
 ```
 
-### 案例 4：Import 順序錯誤
-
-**檔案**：OrderService.java
-
-**問題**：Checkstyle 報告 `org.springframework.data.domain.Page` 的位置不正確
-
-**原因**：Page 在 `com.nextkey.*` import 之後，但應該在之前
-
-**修正**：
 ```java
-import org.springframework.data.domain.Page;        // 移到前面
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
+// ✅ 修正選項 1：移除未使用的局部變數（推薦）
+public ResponseEntity<String> importListings(@RequestBody List<ImportRequest> requests) {
+    for (ImportRequest request : requests) {
+        listingRepository.save(new Listing(request));
+    }
+    return ResponseEntity.ok("匯入成功");
+}
 
-import com.nextkey.ecommerce.api.dto.OrderDto;      // 在這之後
-import com.nextkey.ecommerce.domain.model.listing.Listing;
+// ✅ 修正選項 2：若確實需要此變數，則實際使用它
+public ResponseEntity<String> importListings(@RequestBody List<ImportRequest> requests) {
+    List<Listing> listingImportList = new ArrayList<>();
+    for (ImportRequest request : requests) {
+        listingImportList.add(new Listing(request));  // 實際使用變數
+    }
+    listingRepository.saveAll(listingImportList);
+    return ResponseEntity.ok("匯入成功");
+}
 ```
 
----
-
-## 6. 違反本標準的後果
-
-| 違規類型 | 嚴重程度 | 後果 |
-|---------|---------|------|
-| 未使用的 import 未移除 | 🔴 高 | Checkstyle 失敗，CI/CD 阻擋 |
-| 未使用的欄位未處理 | 🔴 高 | 技術債累積，影響程式碼可讀性 |
-| Import 順序錯誤 | 🔴 高 | Checkstyle 失敗，CI/CD 阻擋 |
-| 漏掉必要 import | 🔴 高 | 編譯失敗 |
-| 持續違反（同一檔案多次） | 🚨 極高 | 需回顧開發流程並改善 |
+**如何發現**：IDE 編譯器會對未使用的局部變數發出警告；Checkstyle 的 `UnusedLocalVariable` 規則也會捕捉此問題。
 
 ---
 
-## 7. 相關文檔
+### P4：Import 順序錯誤
 
-| 文檔 | 位置 | 說明 |
-|------|------|------|
-| **Development_Build_Test_Cycle.md** | `guides/user/process/` | 開發-編譯-測試循環機制 |
-| **Code_Review_Guidelines.md** | `guides/user/process/` | Code Review 完整指南 |
-| **dev-developer-zh.yaml** | `agent/core/` | 開發者 Agent 配置（含品質紀律） |
-| **Document_Quality_Checklist.md** | `guides/system/quality/` | 文檔品質檢查清單 |
+**問題情境**：Spring 框架 import 和自定義套件 import 順序顛倒。
+
+```java
+// ❌ 違規（OrderService.java）
+import com.example.ecommerce.domain.repository.OrderRepository; // com.* 在前
+import org.springframework.data.domain.Page;                   // org.* 在後（違規）
+import org.springframework.stereotype.Service;                  // org.* 在後（違規）
+```
+
+```java
+// ✅ 修正：依群組排列
+import org.springframework.data.domain.Page;
+import org.springframework.stereotype.Service;
+                                                    // 群組間空行
+import com.example.ecommerce.domain.repository.OrderRepository;
+```
+
+**工具輔助**：在 IDE 中使用「Organize Imports」（VS Code: `Shift+Alt+O`）可自動排序。
 
 ---
 
-## 8. 變更歷史
+### P5：IDE/Maven 配置不一致
 
-| 版本 | 日期 | 變更內容 | 作者 |
-|------|------|---------|------|
-| v1.0 | 2026-05-10 | 初版建立：基於 E-Commerce_Minimax 實際案例制定 | AISDLC Enhancement |
+**問題情境**：IDE 顯示「1102 warning」，Maven 正常通過。
+
+```
+// 症狀
+IDE 顯示：1102 warning: At least one of the problems in category 'unused'
+          is not analysed due to a compiler option being ignored
+
+Maven 執行：BUILD SUCCESS（無警告）
+```
+
+```json
+// ✅ 修正：在 .vscode/settings.json 添加
+{
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.compile.nullAnalysis.mode": "automatic"
+}
+```
+
+**驗證**：重啟 VS Code 後，1102 警告消失，IDE 的 unused 警告現在與 Maven checkstyle 結果一致。
 
 ---
 
-**本標準為 AISDLC Framework v0.09 的一部分，強制執行於所有使用 AISDLC 的開發專案。**
+## 變更歷史
+
+| 版本 | 日期 | 說明 | 作者 |
+|------|------|------|------|
+| v1.0 | 2026-05-11 | 初版建立：5大章節，涵蓋 Import/欄位/IDE-Maven/提交前清單/違規範例 | AISDLC Team |
+
+---
+
+**授權與使用**: 本文件為 **AISDLC Framework v0.09** 的一部分，遵循專案整體授權條款。

@@ -13,7 +13,7 @@
 ---
 
 **版本**: v0.09
-**最後更新**: 2026-03-20
+**最後更新**: 2026-05-11
 **文檔類型**: 架構設計文檔 | 核心維護文檔
 **適用範圍**: AISDLC v0.09 及後續版本
 **英文檔名**: FILE_DIRECTORY_RULES.md
@@ -525,8 +525,10 @@ AISDLC_v0.09/
     │   ├── testing/                   # 測試規範
     │   │   └── AT_vs_TC_Guide.md
     │   ├── quality/                   # 品質管理規範
+    │   │   ├── CODE_CLEANLINESS_STANDARDS.md  # 程式碼清潔度標準（Import/欄位清潔度、IDE-Maven配置同步、提交前強制清單）
     │   │   ├── Document_Quality_Checklist.md
-    │   │   └── Security_Design_Checklist.md
+    │   │   ├── Security_Design_Checklist.md
+    │   │   └── Security_Threat_Modeling_Guide.md
     │   ├── planning/                  # 規劃與估算規範
     │   │   ├── Estimation_Standards.md
     │   │   └── Kano_Model_Guide.md

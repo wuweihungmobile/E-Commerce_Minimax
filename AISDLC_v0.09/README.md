@@ -4,7 +4,7 @@
 
 **版本**: v0.09（開發專注版）
 **發布日期**: 2025-01-11
-**最後更新**: 2026-04-11
+**最後更新**: 2026-05-07
 **升級來源**: v0.07
 **文檔類型**: 版本說明文檔
 **維護狀態**: ✅ 正式版本
@@ -53,7 +53,7 @@ AISDLC v0.09（開發專注版）是基於 v0.07 的精簡版本，專為 **2 �
 |------|------|------|
 | **Core Agents** | 7 個 | 中文版 (`*-zh.yaml`)，主要維護 |
 | **Specialized Agents** | 14 個 | 專業領域 Agent |
-| **Workflows** | 8 個核心 + 情境專屬 | 工作流程定義 |
+| **Workflows** | 8 個核心 + 13 個情境專屬 | 工作流程定義 |
 | **文檔模板** | 50+ 個 | PRD/FRD/SRD/API/Tests/Support |
 | **場景 SOP** | 10 個 | 覆蓋主要開發情境 |
 | **核心文檔** | 6 個 | 根目錄核心維護文檔 |
@@ -110,7 +110,21 @@ AISDLC_v0.09/
 │   │   ├── 06.dev-developer-zh.yaml
 │   │   ├── 07.qa-tester-zh.yaml
 │   │   └── backup_en/                 # 英文版備份 (參考用)
-│   ├── specialized/                   # 14 個專業化 Agent
+│   ├── specialized/                   # 14 個專業化 Agent (中文版 *-zh.yaml)
+│   │   ├── code-analyzer-zh.yaml
+│   │   ├── compliance-officer-zh.yaml
+│   │   ├── dev-senior-zh.yaml
+│   │   ├── devops-engineer-zh.yaml
+│   │   ├── integration-specialist-zh.yaml
+│   │   ├── performance-engineer-zh.yaml
+│   │   ├── qa-automation-zh.yaml
+│   │   ├── qa-lead-zh.yaml
+│   │   ├── qa-mobile-tester-zh.yaml
+│   │   ├── qa-web-tester-zh.yaml
+│   │   ├── sd-mobile-architect-zh.yaml
+│   │   ├── sd-web-architect-zh.yaml
+│   │   ├── security-engineer-zh.yaml
+│   │   └── technical-writer-zh.yaml
 │   └── README.md
 │
 ├── 📁 workflow/ - 工作流程定義
@@ -123,7 +137,20 @@ AISDLC_v0.09/
 │   │   ├── consistency-check.md
 │   │   ├── interaction-analysis.md
 │   │   └── sprint-execution.md
-│   └── scenario-specific/             # 場景專屬 Workflow
+│   └── scenario-specific/             # 13 個場景專屬 Workflow
+│       ├── greenfield-complete-flow.md
+│       ├── brownfield-analysis-flow.md
+│       ├── refactoring-planning-flow.md
+│       ├── integration-analysis-flow.md
+│       ├── testing-strategy-flow.md
+│       ├── security-assessment-flow.md
+│       ├── performance-optimization-flow.md
+│       ├── devops-setup-flow.md
+│       ├── documentation-flow.md
+│       ├── documentation-reconstruction-flow.md
+│       ├── migration-planning-flow.md
+│       ├── tech-stack-selection-flow.md
+│       └── code-analysis-flow.md
 │
 ├── 📁 docs_template/ - 文檔模板
 │   ├── core/                          # 核心模板
@@ -146,7 +173,17 @@ AISDLC_v0.09/
 │   └── support/                       # 支援文檔模板（風險、詞彙表、協作日誌等）
 │
 ├── 📁 scenarios/ - 10 大場景 SOP
+│   ├── 📄 根目錄參考指南 (5 個)
+│   │   ├── SCENARIO_AGENT_MAPPING.md      # 場景與 Agent 對應表
+│   │   ├── SCENARIO_TRANSITION_GUIDE.md   # 跨場景切換指南
+│   │   ├── ERROR_RECOVERY_GUIDE.md        # 錯誤恢復指南
+│   │   ├── FRONTEND_SPECIFIC_GUIDE.md     # 前端專屬指南
+│   │   └── SCALING_GUIDE.md               # 擴展規模指南
 │   ├── greenfield/                    # 新專案開發
+│   │   ├── SOP_QuickRef.md
+│   │   ├── SOP.md
+│   │   ├── SOP_DeepDive.md
+│   │   └── Parallel_Execution_Guide.md    # 並行執行指南
 │   ├── brownfield/                    # 現有專案優化
 │   ├── refactoring/                   # 重構
 │   ├── integration/                   # 整合
@@ -183,6 +220,7 @@ AISDLC_v0.09/
 ├── 📁 tools/ - 工具腳本
 │   ├── init_project.sh                # 專案初始化腳本（macOS/Linux）
 │   ├── init_project.ps1               # 專案初始化腳本（Windows）
+│   ├── verify_traceability.sh         # 需求追溯性驗證腳本
 │   ├── AISDLC_CLAUDE_RULES.md         # Claude Code 規則
 │   └── PROJECT_CLAUDE_Template.md     # 專案 CLAUDE.md 模板
 │
@@ -212,7 +250,10 @@ AISDLC_v0.09/
 │   └── README.md
 │
 └── 📁 releases/ - 發布資訊
-    └── v0.09/
+    ├── AISDLC_v0.09_release_2026-03-20.tar.gz    # 發布包
+    ├── AISDLC_v0.09_release_2026-03-20.tar.gz.sha256  # 校驗碼
+    └── package/
+        └── README.md                              # 發布包說明
 ```
 
 ---
@@ -461,5 +502,5 @@ AISDLC 框架基於以下核心理念:
 ---
 
 **版本**: v0.09
-**最後更新**: 2026-04-11
+**最後更新**: 2026-05-07
 **下一版本**: v0.10（升版 SOP 已準備）

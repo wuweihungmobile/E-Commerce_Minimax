@@ -12,13 +12,13 @@
 
 ---
 
-**版本**: v1.0
-**最後更新**: 2025-11-21
+**版本**: v1.1
+**最後更新**: 2026-05-11
 **文檔類型**: 開發指南 | 品質管理
 **相關文檔**:
-- [code-analysis-flow.md](../workflow/scenario-specific/code-analysis-flow.md) - 代碼分析流程
-- [Security_Design_Checklist.md](./Security_Design_Checklist.md) - 安全性設計檢查清單
-- [Document_Quality_Checklist.md](./Document_Quality_Checklist.md) - 文檔品質檢查清單
+- [code-analysis-flow.md](../../../workflow/scenario-specific/code-analysis-flow.md) - 代碼分析流程
+- [Security_Design_Checklist.md](../../system/quality/Security_Design_Checklist.md) - 安全性設計檢查清單
+- [Document_Quality_Checklist.md](../../system/quality/Document_Quality_Checklist.md) - 文檔品質檢查清單
 
 ---
 
@@ -32,6 +32,7 @@
 6. [常見問題與處理方式](#常見問題與處理方式)
 7. [Code Review 工具與自動化](#code-review-工具與自動化)
 8. [Code Review 範例與案例](#code-review-範例與案例)
+9. [Import 與宣告清潔度](#9-import-與宣告清潔度-import--declaration-cleanliness)
 
 ---
 
@@ -463,42 +464,30 @@ graph TD
 - ❌ 資料庫欄位改名 → 舊資料無法讀取
   - ✅ 新增欄位，保留舊欄位，逐步遷移
 
----
+### 9. Import 與宣告清潔度（Import & Declaration Cleanliness）【強制】
 
-### 9. Import 與宣告清潔度（Import & Declaration Cleanliness）
-
-**🔴 強制檢查**：此檢查點適用於所有 PR，不可省略。
+> ⚠️ 此類別為**強制**檢查項目，發現違規時必須標記「🚨 Must Fix」，不得合併。
 
 | # | 檢查項目 | ✅/❌ | 備註 |
 |---|---------|-------|------|
-| 9.1 | 無未使用的 import（所有 import 都實際被使用） | [ ] | |
-| 9.2 | 無未使用的欄位/變數（沒有正當理由的） | [ ] | |
-| 9.3 | Import 順序正確（java → jakarta → javax → org → com） | [ ] | |
-| 9.4 | 無漏掉的必要 import（IDE 應無紅色錯誤） | [ ] | |
-| 9.5 | 無重複的 import | [ ] | |
-| 9.6 | 未使用的欄位有 @SuppressWarnings("unused") 註解 | [ ] | |
-| 9.7 | 無 1102 警告（IDE/Maven 配置不一致） | [ ] | |
+| 9.1 | 確認所有 import 都實際被使用（無未使用的 import） | [ ] | |
+| 9.2 | 確認 import 順序符合 checkstyle 規則（java → jakarta → javax → org → com） | [ ] | |
+| 9.3 | 確認沒有漏掉的必要 import（尤其是移動/複製程式碼後） | [ ] | |
+| 9.4 | 確認沒有重複的 import | [ ] | |
+| 9.5 | 確認所有宣告的欄位/變數都有實際使用 | [ ] | |
+| 9.6 | 若有未使用欄位，確認已標記 @SuppressWarnings("unused") 並附說明 | [ ] | |
+| 9.7 | 確認 IDE 與 Maven 編譯器設置一致（無 1102 警告） | [ ] | |
+| 9.8 | 確認 mvn checkstyle:check 通過（無 ImportOrder 等 style 違規） | [ ] | |
 
 **範例問題**:
-- ❌ `import com.fasterxml.jackson.databind.ObjectMapper;` 但從未使用 → 技術債
-  - ✅ 移除未使用的 import
-- ❌ `private UserRepository userRepository;` 宣告後從未呼叫 → 應移除或加註解
-  - ✅ 若預留未來使用，添加 `@SuppressWarnings("unused")` + 說明
-- ❌ `import jakarta.persistence.EntityManager;` 但程式碼中沒有使用 EntityManager → 移除
+- ❌ `import com.fasterxml.jackson.databind.ObjectMapper;` 宣告但從未使用
+  - ✅ 直接刪除此 import
+- ❌ `private UserRepository userRepository;` 宣告但從未呼叫
+  - ✅ 移除此欄位，或添加 `@SuppressWarnings("unused")` 並說明保留原因
+- ❌ `org.springframework.*` import 排在 `com.company.*` 之後（違反 ImportOrder）
+  - ✅ 依規則調整：org.* 應在 com.* 之前
 
-**檢查工具**：
-```bash
-# Java/Maven：執行 checkstyle
-mvn checkstyle:check
-
-# 若有 1102 警告，檢查 .vscode/settings.json
-# "java.configuration.updateBuildConfiguration" 應為 "automatic"
-```
-
-**審查重點**：
-- Reviewer 應主動檢查是否有「看似預留但實際從未使用」的程式碼
-- 若發現未使用的 import/欄位，要求 Author 移除或提供正當理由
-- 不允許「反正之後會用到」的未使用程式碼存在
+**參考文件**: [CODE_CLEANLINESS_STANDARDS.md](../../system/quality/CODE_CLEANLINESS_STANDARDS.md)
 
 ---
 
@@ -781,6 +770,10 @@ PR #5 (210 行): [Feature] 權限管理
 - [ ] 無註解掉的程式碼
 - [ ] 無 console.log, debugger, TODO
 - [ ] 複雜邏輯有註解說明
+- [ ] 無未使用的 import（已執行 mvn checkstyle:check 確認）
+- [ ] 無未使用的欄位/變數（或已標記 @SuppressWarnings("unused")）
+- [ ] import 順序正確（java → jakarta → javax → org → com）
+- [ ] 無漏掉的必要 import（尤其是移動/複製程式碼後）
 
 ### 效能
 - [ ] 無 N+1 查詢問題
@@ -1269,6 +1262,7 @@ async function getOrdersWithItems(userId: string) {
 | 版本 | 日期 | 變更內容 | 作者 |
 |------|------|---------|------|
 | v1.0 | 2025-11-21 | 初版建立：完整 Code Review 流程、檢查清單（8 大類 50+ 檢查點）、最佳實踐、工具推薦、2 個實際案例 | AISDLC Team |
+| v1.1 | 2026-05-11 | 新增第 9 類別：Import 與宣告清潔度（8 個強制審查項目） | AISDLC Team |
 
 ---
 
@@ -1285,7 +1279,7 @@ async function getOrdersWithItems(userId: string) {
 ---
 
 **🔗 相關文檔**:
-- [code-analysis-flow.md](../workflow/scenario-specific/code-analysis-flow.md) - 既有代碼深度分析流程
-- [Security_Design_Checklist.md](./Security_Design_Checklist.md) - 安全性設計檢查清單
-- [Document_Quality_Checklist.md](./Document_Quality_Checklist.md) - 文檔品質檢查清單
-- [Estimation_Standards.md](./Estimation_Standards.md) - Story Point 估算標準
+- [code-analysis-flow.md](../../../workflow/scenario-specific/code-analysis-flow.md) - 既有代碼深度分析流程
+- [Security_Design_Checklist.md](../../system/quality/Security_Design_Checklist.md) - 安全性設計檢查清單
+- [Document_Quality_Checklist.md](../../system/quality/Document_Quality_Checklist.md) - 文檔品質檢查清單
+- [Estimation_Standards.md](../../system/planning/Estimation_Standards.md) - Story Point 估算標準

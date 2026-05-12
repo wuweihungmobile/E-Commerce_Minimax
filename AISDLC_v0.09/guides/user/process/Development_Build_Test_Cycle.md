@@ -2,7 +2,7 @@
 
 > **版本**: v1.0
 > **適用範圍**: 所有 AISDLC 開發情境
-> **最後更新**: 2025-01-11
+> **最後更新**: 2026-05-11
 
 ---
 
@@ -10,7 +10,7 @@
 
 **🛑 強制規則**: 每完成一支程式（或一個功能單元），**必須立即執行**以下循環，**不可累積開發**。
 
-**🤖 Agent 支援**: 此規則已整合至 [dev-developer Agent](../../agent/core/06.dev-developer-zh.yaml) 的 `core_principles` 第一條和 `quality_standards` 前三條，開發時請自動載入該 Agent 確保遵守。
+**🤖 Agent 支援**: 此規則已整合至 [dev-developer Agent](../../../agent/core/06.dev-developer-zh.yaml) 的 `core_principles` 第一條和 `quality_standards` 前三條，開發時請自動載入該 Agent 確保遵守。
 
 ```
 開發 1 支程式
@@ -20,6 +20,12 @@
 編譯失敗？ → 🔴 立即停止 → 依照錯誤訊息修復 → 重新編譯
     ↓
 編譯成功 ✅
+    ↓
+執行 Code Cleanliness Check（程式碼清潔度檢查）
+    ↓
+清潔度不合格？ → 🔴 立即停止 → 清理後重新執行編譯和檢查
+    ↓
+清潔度通過 ✅
     ↓
 執行單元測試 (Unit Test)
     ↓
@@ -80,6 +86,28 @@
 □ 如無錯誤：繼續下一階段
 ```
 
+### 階段 1.5: Code Cleanliness Check（程式碼清潔度檢查）【強制】
+
+> ⚠️ 此階段為**強制執行**，不可跳過。清潔度不合格時，必須修復後重新從階段 1 開始。
+
+```
+□ 執行 checkstyle 檢查（依專案類型）:
+  - Java: `mvn checkstyle:check`（確認 ImportOrder、UnusedImports 等 style 規則）
+  - Python: `flake8` 或 `pylint`（未使用 import 和變數）
+  - TypeScript: `eslint --max-warnings 0`（no-unused-vars, no-unused-imports 規則）
+□ 確認無未使用的 import（IDE unused import 警告為參考，checkstyle 為權威）
+□ 確認無未使用的欄位/變數（除非已標記 @SuppressWarnings("unused") 或同等標記）
+□ 確認 import 順序正確（Java: java → jakarta → javax → org → com）
+□ 確認沒有漏掉的必要 import（尤其是移動/複製程式碼後）
+□ 確認 IDE 與 Maven/建置工具配置一致（Java: 無 1102 警告）
+□ 如有問題：立即修復後，重新執行階段 1（編譯）再到此階段重新驗證
+□ 全部通過：才能進入階段 2（單元測試）
+```
+
+**參考標準**: [CODE_CLEANLINESS_STANDARDS.md](../../system/quality/CODE_CLEANLINESS_STANDARDS.md)
+
+---
+
 ### 階段 2: 單元測試檢查
 
 ```
@@ -96,36 +124,6 @@
   - 修復程式碼使其符合規格
   - 重新執行測試
 □ 如所有測試通過：繼續開發下一支程式
-```
-
-### 階段 2.5: Code Cleanliness Check（新增）
-
-**🛑 強制執行**：每次編譯成功後、執行單元測試前，必須執行此檢查。
-
-```
-□ 執行 checkstyle 檢查（Java: mvn checkstyle:check）
-□ 檢查是否有未使用的 import（IDE unused import 警告為參考）
-□ 檢查所有宣告的變數/欄位是否有實際使用
-□ 如有未使用的 import：立即移除
-□ 如有未使用的欄位（沒有 @SuppressWarnings）：評估並處理
-□ 如有 Import 順序錯誤：立即修正
-□ 確認 IDE 與 Maven 配置一致（避免 1102 警告）
-□ 確認所有問題修復後，再次執行 mvn checkstyle:check 驗證通過
-□ 通過後才能進入單元測試階段
-```
-
-**為什麼需要這個階段**：
-- 未使用的 import/欄位是常見的技術債來源
-- Checkstyle 規則可以攔截 import 順序問題，但無法攔截「未使用的 import」
-- 提早發現問題比提交後被 CI/CD 阻擋更有效率
-
-**快捷指令（Java/Maven）**：
-```bash
-# 推薦：一次執行編譯 + checkstyle
-mvn checkstyle:check compile
-
-# 若 checkstyle 失敗，檢視輸出並修復
-# 修復完成後，再次執行確認通過
 ```
 
 ### 階段 3: 文檔更新（如適用）
@@ -155,6 +153,10 @@ mvn checkstyle:check compile
 4. **❌ 禁止測試失敗後「先跳過」**
    - 錯誤範例：測試失敗 → 註解掉測試 → 繼續開發
    - 正確做法：測試失敗 → 依規格修復 → 測試通過 → 才繼續
+
+5. **❌ 禁止跳過 Code Cleanliness Check**
+   - 錯誤範例：編譯成功 → 直接執行單元測試（未執行清潔度檢查）
+   - 正確做法：編譯成功 → Code Cleanliness Check 通過 → 才執行單元測試
 
 ---
 
@@ -360,16 +362,17 @@ git commit -m "feat: add UserList component"
 
 ### Agent 配置檔
 
-- **[dev-developer Agent](../../agent/core/06.dev-developer-zh.yaml)** - 🔴 開發時必須載入此 Agent
+- **[dev-developer Agent](../../../agent/core/06.dev-developer-zh.yaml)** - 🔴 開發時必須載入此 Agent
   - `core_principles` 第一條：開發-編譯-測試循環（CRITICAL）
   - `quality_standards` 前三條：編譯測試循環強制執行、編譯失敗零容忍、測試失敗零容忍
   - `dependencies`: 包含本文檔參考
 
-- **[qa-tester Agent](../../agent/core/07.qa-tester-zh.yaml)** - 測試階段使用
+- **[qa-tester Agent](../../../agent/core/07.qa-tester-zh.yaml)** - 測試階段使用
 
 ### 流程指南
 
 - [Code_Review_Guidelines.md](Code_Review_Guidelines.md) - Code Review 標準
+- [CODE_CLEANLINESS_STANDARDS.md](../../system/quality/CODE_CLEANLINESS_STANDARDS.md) - 程式碼清潔度標準（強制）
 
 ### 如何使用 dev-developer Agent
 
@@ -393,6 +396,6 @@ git commit -m "feat: add UserList component"
 **文檔元數據**:
 - **文檔版本**: v1.0
 - **建立日期**: 2025-01-11
-- **最後更新**: 2025-01-11
+- **最後更新**: 2026-05-11
 - **維護者**: AISDLC Framework Team
 - **文檔狀態**: Final

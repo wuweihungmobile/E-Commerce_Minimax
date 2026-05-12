@@ -1,22 +1,28 @@
 # AISDLC v0.09 快速啟動範本庫
 # Quick Start Templates Library
 
-**版本**: v0.03-phase4
-**建立日期**: 2025-11-03 (更新至v0.09)
+**版本**: v0.09
+**建立日期**: 2026-05-07 (v0.09 全面更新：新增 6 個情境範本，覆蓋 10 大情境)
 **用途**: 提供預配置的專案範本，實現 < 3 分鐘快速啟動
 
 ---
 
 ## 📚 範本總覽
 
-| 範本代碼 | 範本名稱 | 情境 | 技術棧 | 預估週期 | 適用規模 |
-|---------|---------|------|--------|---------|---------|
-| `ecommerce-web` | 電商網站 | Greenfield Web | React + Node.js | 2-3 月 | 中大型 |
-| `mobile-app` | 移動應用 | Greenfield Mobile | React Native | 1.5-2.5 月 | 中型 |
-| `api-service` | API 服務 | Greenfield Backend | Node.js/Python | 1-2 月 | 中型 |
-| `legacy-upgrade` | 舊系統升級 | Brownfield | (取決於原系統) | 2-4 月 | 大型 |
-| `api-integration` | API 整合 | Integration | (取決於主系統) | 2-4 週 | 小中型 |
-| `performance-tuning` | 效能優化 | Performance | (取決於系統) | 1-3 週 | 小中型 |
+| 範本代碼 | 範本名稱 | 情境 | 技術棧/重點 | 預估週期 | 適用規模 |
+|---------|---------|------|-----------|---------|---------|
+| `ecommerce-web` | 電商網站 | Greenfield Web | React + Node.js + PostgreSQL | 2-3 月 | 中大型 |
+| `mobile-app` | 移動應用 | Greenfield Mobile | React Native + Firebase | 1.5-2.5 月 | 中型 |
+| `api-service` | API 服務 | Greenfield Backend | Node.js/Python + PostgreSQL | 1-2 月 | 中型 |
+| `legacy-upgrade` | 舊系統升級 | Brownfield | 依原系統 | 2-4 月 | 大型 |
+| `api-integration` | API 整合 | Integration | 依主系統 | 2-4 週 | 小中型 |
+| `performance-tuning` | 效能優化 | Performance | 依系統 | 1-3 週 | 小中型 |
+| `code-refactoring` | 程式碼重構 | Refactoring | 依原代碼庫 | 2-6 週 | 中大型 |
+| `tech-migration` | 技術棧遷移 | Migration | 依遷移目標 | 1-4 月 | 中大型 |
+| `devops-pipeline` | CI/CD 建置 | DevOps | GitHub Actions/GitLab CI | 1-3 週 | 全規模 |
+| `test-strategy` | 測試策略建置 | Testing | 依測試框架 | 1-4 週 | 全規模 |
+| `tech-documentation` | 技術文件整理 | Documentation | Markdown/Confluence | 1-3 週 | 全規模 |
+| `security-review` | 安全審查強化 | Security | 依系統架構 | 2-4 週 | 中大型 |
 
 ---
 
@@ -105,9 +111,14 @@ primary_agents:
   - sa-analyst (Amanda): 需求分析與功能設計
 
 supporting_agents:
+  - ba-business-analyst (Beatrice): 業務驗證與利害關係人溝通
   - sd-architect (Marcus): 技術架構設計
   - dev-developer: 開發實施評估
   - qa-tester (Quincy): 測試策略與驗收標準
+
+optional_agents:
+  - security-engineer: 當涉及支付/個資等敏感資料時
+  - compliance-officer: 當有 PCI-DSS / GDPR 等合規要求時
 ```
 
 ### 推薦文檔
@@ -121,34 +132,13 @@ documents:
   - AT_Module_Template.md (按模組測試)
 ```
 
-### 使用範例
+### 快速參考
 
-```
-使用者：「AISDLC 使用範本 ecommerce-web」
-
-AI 回應：
-✅ 已載入範本: ecommerce-web (電商網站標準流程)
-
-📋 範本配置:
-   情境: Greenfield Web
-   技術棧: React + TypeScript + Node.js + PostgreSQL
-   核心模組: 5 個 (使用者/產品/購物車/結帳/後台)
-   預估週期: 2-3 個月
-
-🤖 已載入 Agents:
-   ✅ pm-po-agent (Victoria) - 產品經理
-   ✅ sa-analyst (Amanda) - 系統分析師
-   ✅ sd-architect (Marcus) - 系統設計師
-   ✅ dev-developer - 開發工程師
-   ✅ qa-tester (Quincy) - 測試工程師
-
-📝 請提供專案特定資訊:
-   1. 專案名稱: [必填，例: "MyShop 線上商城"]
-   2. 目標市場: [可選，例: "台灣 B2C 市場"]
-   3. 特殊需求: [可選，例: "支援多語系(中英日)"]
-   4. 團隊規模: [可選，預設 4-8 人]
-
-或直接輸入 "使用預設配置" 立即開始...
+```yaml
+quick_reference:
+  - scenarios/greenfield/SOP_QuickRef.md (5 分鐘快速掌握)
+  - scenarios/greenfield/SOP.md (完整流程)
+  - scenarios/greenfield/SOP_DeepDive.md (進階技術細節)
 ```
 
 ---
@@ -239,7 +229,20 @@ supporting_agents:
   - sd-architect (Marcus): 架構設計
   - dev-developer: 開發實施
   - qa-tester (Quincy): 測試策略
-  - qa-automation (AutoQA): 自動化測試 (E2E)
+  - qa-automation: 自動化測試 (E2E)
+
+optional_agents:
+  - sd-mobile-architect: 當涉及 iOS/Android 原生架構決策時
+  - qa-mobile-tester: 當需要行動端專業化測試時
+```
+
+### 快速參考
+
+```yaml
+quick_reference:
+  - scenarios/greenfield/SOP_QuickRef.md (5 分鐘快速掌握)
+  - scenarios/greenfield/SOP.md (完整流程)
+  - scenarios/greenfield/SOP_DeepDive.md (進階技術細節)
 ```
 
 ---
@@ -332,8 +335,17 @@ primary_agents:
 supporting_agents:
   - sa-analyst (Amanda): 需求分析
   - dev-developer: 實施指導
-  - qa-automation (AutoQA): API 自動化測試
+  - qa-automation: API 自動化測試
   - devops-engineer: 部署與監控
+```
+
+### 快速參考
+
+```yaml
+quick_reference:
+  - scenarios/greenfield/SOP_QuickRef.md (5 分鐘快速掌握)
+  - scenarios/greenfield/SOP.md (完整流程)
+  - scenarios/greenfield/SOP_DeepDive.md (進階技術細節)
 ```
 
 ---
@@ -412,13 +424,27 @@ strategy_options:
 ```yaml
 primary_agents:
   - sa-analyst (Amanda): 現況分析與需求整理
-  - dev-senior (Senior): 資深開發者，架構評估
+  - dev-senior: 資深開發者，架構評估
 
 supporting_agents:
-  - code-analyzer (CodeX): 代碼分析與技術債評估
+  - code-analyzer: 代碼分析與技術債評估
   - sd-architect (Marcus): 新架構設計
   - qa-tester (Quincy): 測試策略與回歸測試
   - devops-engineer: 部署策略與回退計畫
+
+optional_agents:
+  - security-engineer: 當變更涉及認證授權或安全漏洞修復時
+  - compliance-officer: 當變更由法規合規驅動時
+  - sd-mobile-architect: 當涉及行動平台擴展時
+```
+
+### 快速參考
+
+```yaml
+quick_reference:
+  - scenarios/brownfield/SOP_QuickRef.md (5 分鐘快速掌握)
+  - scenarios/brownfield/SOP.md (完整流程)
+  - scenarios/brownfield/SOP_DeepDive.md (進階技術細節)
 ```
 
 ---
@@ -523,12 +549,13 @@ implementation_phases:
 
 ```yaml
 primary_agents:
-  - integration-specialist (IntegX): 整合專家
+  - integration-specialist: 整合專家
 
 supporting_agents:
   - sd-architect (Marcus): 架構設計
   - qa-tester (Quincy): 測試策略
-  - security-engineer (SecEng): 安全審查 (如涉及敏感資料)
+  - dev-developer: 實作評估
+  - security-engineer: 安全審查 (如涉及敏感資料)
 ```
 
 ### 快速參考
@@ -642,13 +669,17 @@ optimization_workflow:
 
 ```yaml
 primary_agents:
-  - performance-engineer (Perf): 效能工程師
+  - performance-engineer: 效能工程師
 
 supporting_agents:
   - sd-architect (Marcus): 架構優化建議
-  - dev-senior (Senior): 代碼優化實施
-  - qa-automation (AutoQA): 效能測試自動化
-  - devops-engineer: 基礎設施優化
+  - dev-senior: 代碼優化實施
+  - qa-automation: 效能測試自動化
+
+optional_agents:
+  - devops-engineer: 當涉及基礎設施調整時
+  - code-analyzer: 當需要深入代碼級效能分析時
+  - security-engineer: 當優化涉及加密/安全標頭等安全相關效能時
 ```
 
 ### 快速參考
@@ -657,6 +688,607 @@ supporting_agents:
 quick_reference:
   - scenarios/performance/SOP_QuickRef.md (5 分鐘快速掌握)
   - scenarios/performance/SOP.md (完整流程)
+  - scenarios/performance/SOP_DeepDive.md (進階技術細節)
+```
+
+---
+
+## 7. code-refactoring - 程式碼重構範本
+
+### 基本資訊
+
+```yaml
+template_id: code-refactoring
+name: 程式碼重構標準流程
+scenario: Refactoring
+category: Code Quality Improvement
+estimated_duration: 2-6 週
+team_size: 2-5 人
+```
+
+### 重構類型選擇
+
+```yaml
+refactoring_types:
+  code_quality:
+    scope: 函數/類別層級
+    goal: 降低複雜度、提升可讀性
+    risk: 🟢 低
+    duration: 1-2 週
+    typical_actions:
+      - 消除重複代碼 (DRY)
+      - 拆分過長函數
+      - 改善命名
+      - 簡化條件邏輯
+
+  architecture_refactoring:
+    scope: 模組/服務層級
+    goal: 改善系統架構、降低耦合
+    risk: 🟡 中
+    duration: 3-6 週
+    typical_actions:
+      - 分離關注點 (SoC)
+      - 引入設計模式
+      - 服務解耦
+      - 依賴注入重構
+
+  test_coverage:
+    scope: 測試套件
+    goal: 提升測試覆蓋率至 80%+
+    risk: 🟢 低
+    duration: 1-3 週
+    typical_actions:
+      - 補充單元測試
+      - 引入測試框架
+      - Mock/Stub 策略
+      - 整合測試建立
+```
+
+### 重構執行流程
+
+```yaml
+refactoring_workflow:
+  phase_1_analysis:
+    - code-analyzer 掃描代碼品質指標
+    - 識別技術債熱點
+    - 評估重構優先級
+    duration: 1-3 天
+
+  phase_2_planning:
+    - sd-architect 制定重構策略
+    - 評估影響範圍
+    - 制定測試保護計畫
+    duration: 1-2 天
+
+  phase_3_execution:
+    - 建立測試保護網 (先補測試)
+    - 小步驟重構
+    - 持續驗證功能正確性
+    duration: 1-4 週
+
+  phase_4_validation:
+    - 回歸測試
+    - 效能比對
+    - 代碼審查
+    duration: 1-3 天
+```
+
+### 載入的 Agents
+
+```yaml
+primary_agents:
+  - sd-architect (Marcus): 主導重構策略設計
+
+supporting_agents:
+  - code-analyzer: 識別重構範圍與優先級
+  - dev-senior: 重構技術決策
+  - qa-tester (Quincy): 回歸測試計畫
+```
+
+### 快速參考
+
+```yaml
+quick_reference:
+  - scenarios/refactoring/SOP_QuickRef.md (5 分鐘快速掌握)
+  - scenarios/refactoring/SOP.md (完整流程)
+  - scenarios/refactoring/SOP_DeepDive.md (進階技術細節)
+```
+
+---
+
+## 8. tech-migration - 技術棧遷移範本
+
+### 基本資訊
+
+```yaml
+template_id: tech-migration
+name: 技術棧遷移標準流程
+scenario: Migration
+category: Technology Stack Migration
+estimated_duration: 1-4 個月
+team_size: 3-8 人
+```
+
+### 遷移類型
+
+```yaml
+migration_types:
+  framework_migration:
+    examples:
+      - Vue 2 → Vue 3
+      - React Class → Hooks
+      - AngularJS → Angular
+      - Express → Nest.js
+    risk: 🟡 中
+    duration: 2-6 週
+
+  language_migration:
+    examples:
+      - JavaScript → TypeScript
+      - Python 2 → Python 3
+      - PHP → Node.js
+    risk: 🟡 中
+    duration: 1-3 月
+
+  platform_migration:
+    examples:
+      - 單體 → 微服務
+      - 自建 → 雲原生
+      - 傳統部署 → 容器化
+    risk: 🔴 高
+    duration: 2-4 月
+
+  database_migration:
+    examples:
+      - MySQL → PostgreSQL
+      - MongoDB → PostgreSQL
+      - 關聯式 → 文件型
+    risk: 🔴 高
+    duration: 3-8 週
+```
+
+### 遷移策略
+
+```yaml
+migration_strategies:
+  lift_and_shift:
+    description: 原樣搬遷，最小化改動
+    risk: 🟢 低
+    適用: 雲端遷移、基礎設施遷移
+
+  replatform:
+    description: 保留核心邏輯，更換技術棧
+    risk: 🟡 中
+    適用: 框架升級、語言遷移
+
+  rearchitect:
+    description: 重新設計架構，大幅改造
+    risk: 🔴 高
+    適用: 單體→微服務、傳統→雲原生
+
+  parallel_run:
+    description: 新舊系統並行，逐步切換
+    risk: 🟡 中 (成本較高)
+    適用: 關鍵業務系統、零停機需求
+```
+
+### 載入的 Agents
+
+```yaml
+primary_agents:
+  - sd-architect (Marcus): 遷移架構設計、技術棧映射
+  - sa-analyst (Amanda): 需求重新分析、業務邏輯提取
+
+supporting_agents:
+  - code-analyzer: 舊系統代碼品質分析
+  - dev-senior: 遷移技術決策
+  - qa-tester (Quincy): 遷移驗證測試
+  - devops-engineer: 遷移期 CI/CD 與並行部署
+  - integration-specialist: 新舊系統整合、API Gateway
+
+optional_agents:
+  - pm-po-agent (Stage 1): 遷移範圍確認
+  - performance-engineer (Stage 7): 遷移後效能基準測試
+  - security-engineer (Stage 7): 新系統安全審查
+```
+
+### 快速參考
+
+```yaml
+quick_reference:
+  - scenarios/migration/SOP_QuickRef.md (5 分鐘快速掌握)
+  - scenarios/migration/SOP.md (完整流程)
+  - scenarios/migration/SOP_DeepDive.md (進階技術細節)
+```
+
+---
+
+## 9. devops-pipeline - CI/CD 建置範本
+
+### 基本資訊
+
+```yaml
+template_id: devops-pipeline
+name: CI/CD 自動化部署標準流程
+scenario: DevOps
+category: DevOps & Automation
+estimated_duration: 1-3 週
+team_size: 1-4 人
+```
+
+### 預設 CI/CD 工具棧
+
+```yaml
+ci_cd_options:
+  github_actions:
+    適用: GitHub 托管專案
+    特點: 原生整合、免費額度充足
+    範例:
+      - 自動測試 (PR trigger)
+      - Docker Build & Push
+      - Kubernetes Deploy
+
+  gitlab_ci:
+    適用: GitLab 托管專案
+    特點: 內建 Container Registry、完整 DevSecOps
+    範例:
+      - Pipeline as Code
+      - 環境管理
+      - Auto DevOps
+
+  jenkins:
+    適用: 企業自建環境
+    特點: 高度客製化、豐富插件生態
+    範例:
+      - 複雜 Pipeline
+      - 多語言支援
+      - LDAP 整合
+
+container_orchestration:
+  kubernetes:
+    工具: Helm / Kustomize / ArgoCD
+    適用: 中大型系統、微服務架構
+
+  docker_compose:
+    適用: 小型專案、本地開發環境
+
+monitoring_stack:
+  metrics: Prometheus + Grafana
+  logging: ELK Stack / Loki
+  alerting: PagerDuty / OpsGenie
+  tracing: Jaeger / Zipkin
+```
+
+### 核心配置項目
+
+```yaml
+pipeline_components:
+  1. CI Pipeline (持續整合):
+    - 代碼品質檢查 (ESLint/SonarQube)
+    - 單元測試執行
+    - 安全掃描 (SAST/Dependency Check)
+    - Docker Image Build
+
+  2. CD Pipeline (持續部署):
+    - 環境管理 (Dev/Staging/Prod)
+    - 自動化部署腳本
+    - Smoke Test 驗證
+    - 回滾機制
+
+  3. 監控與告警:
+    - 應用效能監控 (APM)
+    - 基礎設施監控
+    - 日誌集中管理
+    - 告警策略設定
+```
+
+### 載入的 Agents
+
+```yaml
+primary_agents:
+  - devops-engineer: 主導 DevOps 流程設計
+
+supporting_agents:
+  - sd-architect (Marcus): 基礎設施架構設計
+  - qa-automation: 自動化測試整合 CI/CD
+```
+
+### 快速參考
+
+```yaml
+quick_reference:
+  - scenarios/devops/SOP_QuickRef.md (5 分鐘快速掌握)
+  - scenarios/devops/SOP.md (完整流程)
+  - scenarios/devops/SOP_DeepDive.md (進階技術細節)
+```
+
+---
+
+## 10. test-strategy - 測試策略建置範本
+
+### 基本資訊
+
+```yaml
+template_id: test-strategy
+name: 測試策略建置標準流程
+scenario: Testing
+category: Quality Assurance
+estimated_duration: 1-4 週
+team_size: 2-6 人
+```
+
+### 測試層級配置
+
+```yaml
+test_pyramid:
+  unit_tests:
+    覆蓋目標: 80%+ 代碼覆蓋率
+    工具:
+      - JavaScript: Jest / Vitest
+      - Python: pytest
+      - Java: JUnit 5
+    執行時機: 每次 commit
+
+  integration_tests:
+    覆蓋目標: 關鍵業務流程 100%
+    工具:
+      - API: Supertest / REST Assured
+      - Database: Test Containers
+    執行時機: 每次 PR
+
+  e2e_tests:
+    覆蓋目標: 核心使用者旅程
+    工具:
+      - Web: Playwright / Cypress
+      - Mobile: Detox / Appium
+    執行時機: 每次 Release
+
+  performance_tests:
+    覆蓋目標: 關鍵 API 效能基準
+    工具: k6 / JMeter / Locust
+    執行時機: 每次 Release / 重大變更
+
+  security_tests:
+    覆蓋目標: OWASP Top 10
+    工具: OWASP ZAP / Burp Suite
+    執行時機: 每個 Sprint 末
+```
+
+### 測試策略重點
+
+```yaml
+strategy_focus:
+  新專案測試建置:
+    - 選擇測試框架
+    - 建立 CI 整合
+    - 制定測試規範
+    - 建立 Mock 策略
+
+  既有專案測試補強:
+    - 分析測試覆蓋缺口
+    - 優先補充高風險模組
+    - 引入測試工具
+    - 逐步提升覆蓋率
+
+  自動化測試:
+    - 識別可自動化場景
+    - 建立自動化框架
+    - CI/CD 整合
+    - 維護策略
+```
+
+### 載入的 Agents
+
+```yaml
+primary_agents:
+  - qa-lead: 主導測試策略
+
+supporting_agents:
+  - qa-automation: 自動化測試開發
+  - qa-tester (Quincy): 測試案例設計和執行
+  - dev-developer: 可測試性支援
+```
+
+### 快速參考
+
+```yaml
+quick_reference:
+  - scenarios/testing/SOP_QuickRef.md (5 分鐘快速掌握)
+  - scenarios/testing/SOP.md (完整流程)
+  - scenarios/testing/SOP_DeepDive.md (進階技術細節)
+```
+
+---
+
+## 11. tech-documentation - 技術文件整理範本
+
+### 基本資訊
+
+```yaml
+template_id: tech-documentation
+name: 技術文件整理標準流程
+scenario: Documentation
+category: Technical Documentation
+estimated_duration: 1-3 週
+team_size: 1-4 人
+```
+
+### 文件類型與工具
+
+```yaml
+documentation_types:
+  api_documentation:
+    目標: API 完整規格文件
+    工具: OpenAPI 3.0 / Swagger / Postman
+    產出: API Reference、使用範例
+
+  architecture_documentation:
+    目標: 系統架構設計文件
+    工具: C4 Model / Mermaid / PlantUML
+    產出: 架構圖、決策記錄 (ADR)
+
+  user_guide:
+    目標: 使用者操作手冊
+    工具: GitBook / Docusaurus / Confluence
+    產出: 操作指南、FAQ
+
+  developer_guide:
+    目標: 開發者上手文件
+    工具: README.md / Wiki
+    產出: 環境設定、開發流程、貢獻指南
+
+  runbook:
+    目標: 運維操作手冊
+    工具: Confluence / Notion
+    產出: 部署流程、故障處理、監控說明
+```
+
+### 文件整理流程
+
+```yaml
+documentation_workflow:
+  phase_1_audit:
+    - 現有文件盤點
+    - 識別文件缺口
+    - 確認目標受眾
+    duration: 1-2 天
+
+  phase_2_planning:
+    - 制定文件結構
+    - 選擇工具平台
+    - 分配撰寫責任
+    duration: 1 天
+
+  phase_3_writing:
+    - 技術內容撰寫
+    - 圖表製作
+    - 代碼範例整理
+    duration: 1-2 週
+
+  phase_4_review:
+    - 技術準確性審查
+    - 可讀性測試
+    - 發布與維護計畫
+    duration: 2-3 天
+```
+
+### 載入的 Agents
+
+```yaml
+primary_agents:
+  - technical-writer: 主導技術文件撰寫
+
+supporting_agents:
+  - sa-analyst (Amanda): 功能文件審查
+  - sd-architect (Marcus): 技術架構文件審查
+  - dev-senior: 複雜技術文件深度審查
+
+optional_agents:
+  - security-engineer: 當文件涉及安全架構、威脅模型時
+  - compliance-officer: 當文件涉及合規要求時
+```
+
+### 快速參考
+
+```yaml
+quick_reference:
+  - scenarios/documentation/SOP_QuickRef.md (5 分鐘快速掌握)
+  - scenarios/documentation/SOP.md (完整流程)
+  - scenarios/documentation/SOP_DeepDive.md (進階技術細節)
+```
+
+---
+
+## 12. security-review - 安全審查強化範本
+
+### 基本資訊
+
+```yaml
+template_id: security-review
+name: 安全審查強化標準流程
+scenario: Security
+category: Security Design & Review
+estimated_duration: 2-4 週
+team_size: 2-5 人
+```
+
+### 安全審查類型
+
+```yaml
+security_review_types:
+  threat_modeling:
+    目標: 識別和評估系統安全威脅
+    方法: STRIDE / PASTA / DREAD
+    產出: 威脅模型、風險優先級
+    duration: 3-5 天
+
+  security_audit:
+    目標: 全面安全性評估
+    工具: OWASP Top 10、安全掃描工具
+    產出: 安全審計報告、修復清單
+    duration: 1-2 週
+
+  penetration_testing:
+    目標: 模擬攻擊驗證防禦能力
+    工具: Burp Suite / OWASP ZAP
+    產出: 滲透測試報告、漏洞詳情
+    duration: 1-2 週
+
+  compliance_review:
+    目標: 確認符合法規要求
+    標準: GDPR / PCI-DSS / ISO 27001
+    產出: 合規對照表、差距分析
+    duration: 1-2 週
+```
+
+### 安全審查重點領域
+
+```yaml
+security_domains:
+  authentication_authorization:
+    - 認證機制安全性
+    - 授權邏輯正確性
+    - Session 管理
+    - Token 安全
+
+  data_protection:
+    - 敏感資料加密
+    - 傳輸加密 (TLS)
+    - 資料最小化原則
+    - 個資保護
+
+  input_validation:
+    - SQL Injection 防護
+    - XSS 防護
+    - CSRF 防護
+    - 輸入過濾與驗證
+
+  infrastructure_security:
+    - 網路安全配置
+    - 容器安全
+    - 密鑰管理
+    - 存取控制
+```
+
+### 載入的 Agents
+
+```yaml
+primary_agents:
+  - security-engineer: 主導安全設計和審查
+
+supporting_agents:
+  - compliance-officer: 合規審查
+  - qa-lead: 安全測試策略
+  - sd-architect (Marcus): 架構安全審查
+```
+
+### 快速參考
+
+```yaml
+quick_reference:
+  - scenarios/security/SOP_QuickRef.md (5 分鐘快速掌握)
+  - scenarios/security/SOP.md (完整流程)
+  - scenarios/security/SOP_DeepDive.md (進階技術細節)
 ```
 
 ---
@@ -665,13 +1297,26 @@ quick_reference:
 
 ### 步驟 1: 選擇範本
 
-根據您的專案情況，選擇最合適的範本：
+根據專案情況選擇最合適的範本：
 
 ```
-新專案開發 → ecommerce-web / mobile-app / api-service
-既有系統 → legacy-upgrade
-第三方整合 → api-integration
-效能問題 → performance-tuning
+新專案（全新開發）:
+  Web 應用   → ecommerce-web
+  Mobile App  → mobile-app
+  純後端 API  → api-service
+
+既有系統（維護改造）:
+  功能新增/改善 → legacy-upgrade
+  程式品質提升  → code-refactoring
+  技術棧升級    → tech-migration
+
+特定任務:
+  第三方 API 整合 → api-integration
+  效能瓶頸解決    → performance-tuning
+  CI/CD 建置     → devops-pipeline
+  測試覆蓋提升   → test-strategy
+  文件系統建立   → tech-documentation
+  安全性審查     → security-review
 ```
 
 ### 步驟 2: 使用範本啟動
@@ -681,7 +1326,8 @@ quick_reference:
 
 範例:
 - 「AISDLC 使用範本 ecommerce-web」
-- 「AISDLC 使用範本 api-integration」
+- 「AISDLC 使用範本 code-refactoring」
+- 「AISDLC 使用範本 security-review」
 ```
 
 ### 步驟 3: 客製化配置（可選）
@@ -699,7 +1345,7 @@ AI 會自動：
 1. ✅ 載入對應 Agents
 2. ✅ 應用 Smart Defaults
 3. ✅ 推薦文檔模板
-4. ✅ 提供 QuickRef (如有)
+4. ✅ 提供 SOP QuickRef
 5. ✅ 進入執行階段
 
 ---
@@ -774,7 +1420,6 @@ without_template:
   - Agent 選擇
   - 文檔模板選擇
   - 確認點模式
-  - ...
 
 with_template:
   需要決策的項目: 3-5 個
@@ -792,7 +1437,7 @@ decision_reduction: 85%
 ### 何時使用範本
 
 **✅ 建議使用**:
-- 標準類型專案（電商、社群、內容管理等）
+- 標準類型專案（電商、API 服務、CI/CD 建置等）
 - 團隊經驗豐富，熟悉範本技術棧
 - 時程緊迫，需要快速啟動
 - 新手使用者，需要引導
@@ -807,12 +1452,29 @@ decision_reduction: 85%
 - 完全非標準化的技術棧
 - 需要深度定製的流程
 
-### 範本選擇技巧
+### 常見情境組合
 
-1. **明確專案類型**: 新專案 vs 既有系統
-2. **識別核心目標**: 開發 vs 優化 vs 整合
-3. **評估團隊技能**: 選擇熟悉的技術棧範本
-4. **考慮專案規模**: 小型專案優先簡單範本
+某些任務可能需要多個範本組合使用：
+
+```yaml
+scenario_combinations:
+  新專案完整交付:
+    1. ecommerce-web (主體開發)
+    2. devops-pipeline (CI/CD 建置)
+    3. security-review (上線前安全審查)
+    順序: 並行或依序
+
+  既有系統現代化:
+    1. legacy-upgrade (功能評估與改善)
+    2. code-refactoring (代碼品質提升)
+    3. tech-migration (技術棧升級)
+    順序: 建議依序
+
+  安全合規強化:
+    1. security-review (安全審查)
+    2. test-strategy (安全測試建置)
+    順序: 安全審查先行
+```
 
 ### 範本使用後續
 
@@ -826,14 +1488,15 @@ decision_reduction: 85%
 
 ## 📚 相關文檔
 
-- [AISDLC_INIT.md](AISDLC_INIT.md) - 框架初始化（含 One-Command Launch）
+- [AISDLC_INIT.md](AISDLC_INIT.md) - 框架初始化
 - [SMART_DEFAULTS.md](SMART_DEFAULTS.md) - 智能預設值配置
+- [scenarios/SCENARIO_AGENT_MAPPING.md](scenarios/SCENARIO_AGENT_MAPPING.md) - Agent 分配權威來源
 - [scenarios/*/SOP_QuickRef.md](scenarios/) - 各情境快速參考
-- [PHASE4_VERIFICATION_REPORT.md](PHASE4_VERIFICATION_REPORT.md) - Phase 4 驗證報告
+- [QUICK_START_GUIDE.md](QUICK_START_GUIDE.md) - 快速啟動指南（含情境決策樹）
 
 ---
 
-**文檔版本**: v1.0
-**最後更新**: 2025-11-03
+**文檔版本**: v0.09
+**最後更新**: 2026-05-07
+**更新內容**: 新增 6 個情境範本 (Refactoring/Migration/DevOps/Testing/Documentation/Security)，覆蓋 AISDLC 全部 10 大情境；更新 Agent 配置對齊 SCENARIO_AGENT_MAPPING.md v0.09；補充所有範本的 SOP 引用
 **維護者**: AISDLC Framework Team
-**Phase 4 子任務**: 4.1 Fast Startup Mechanism (Template-based Start)

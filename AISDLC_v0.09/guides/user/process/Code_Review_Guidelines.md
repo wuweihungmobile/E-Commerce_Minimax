@@ -465,6 +465,43 @@ graph TD
 
 ---
 
+### 9. Import 與宣告清潔度（Import & Declaration Cleanliness）
+
+**🔴 強制檢查**：此檢查點適用於所有 PR，不可省略。
+
+| # | 檢查項目 | ✅/❌ | 備註 |
+|---|---------|-------|------|
+| 9.1 | 無未使用的 import（所有 import 都實際被使用） | [ ] | |
+| 9.2 | 無未使用的欄位/變數（沒有正當理由的） | [ ] | |
+| 9.3 | Import 順序正確（java → jakarta → javax → org → com） | [ ] | |
+| 9.4 | 無漏掉的必要 import（IDE 應無紅色錯誤） | [ ] | |
+| 9.5 | 無重複的 import | [ ] | |
+| 9.6 | 未使用的欄位有 @SuppressWarnings("unused") 註解 | [ ] | |
+| 9.7 | 無 1102 警告（IDE/Maven 配置不一致） | [ ] | |
+
+**範例問題**:
+- ❌ `import com.fasterxml.jackson.databind.ObjectMapper;` 但從未使用 → 技術債
+  - ✅ 移除未使用的 import
+- ❌ `private UserRepository userRepository;` 宣告後從未呼叫 → 應移除或加註解
+  - ✅ 若預留未來使用，添加 `@SuppressWarnings("unused")` + 說明
+- ❌ `import jakarta.persistence.EntityManager;` 但程式碼中沒有使用 EntityManager → 移除
+
+**檢查工具**：
+```bash
+# Java/Maven：執行 checkstyle
+mvn checkstyle:check
+
+# 若有 1102 警告，檢查 .vscode/settings.json
+# "java.configuration.updateBuildConfiguration" 應為 "automatic"
+```
+
+**審查重點**：
+- Reviewer 應主動檢查是否有「看似預留但實際從未使用」的程式碼
+- 若發現未使用的 import/欄位，要求 Author 移除或提供正當理由
+- 不允許「反正之後會用到」的未使用程式碼存在
+
+---
+
 ## 不同類型 PR 的審查重點
 
 ### 1. 新功能 (Feature)

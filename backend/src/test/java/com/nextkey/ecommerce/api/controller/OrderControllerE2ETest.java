@@ -166,6 +166,12 @@ class OrderControllerE2ETest {
 
             JsonNode loginJson = objectMapper.readTree(loginResponse);
             accessToken = loginJson.path("data").path("accessToken").asText();
+
+            // 更新買家用戶的 tenantId 為測試 tenant (因為註冊時不會設定 tenant)
+            userRepository.findByEmail(userEmail).ifPresent(user -> {
+                user.setTenantId(testTenantId);
+                userRepository.save(user);
+            });
         } catch (Exception e) {
             throw new RuntimeException("Failed to setup test user: " + e.getMessage(), e);
         }

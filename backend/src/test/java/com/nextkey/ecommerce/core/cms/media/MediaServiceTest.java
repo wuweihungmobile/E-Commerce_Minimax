@@ -10,6 +10,7 @@ import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.infrastructure.storage.StorageService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -55,6 +56,9 @@ class MediaServiceTest {
 
     @Mock
     private PostRepository postRepository;
+
+    @Mock
+    private StorageService storageService;
 
     @InjectMocks
     private MediaService mediaService;
@@ -504,6 +508,7 @@ class MediaServiceTest {
 
             when(mediaAssetRepository.findById(TEST_MEDIA_ID)).thenReturn(Optional.of(media));
             when(postRepository.existsByFeaturedImageUrlContaining(anyString())).thenReturn(false);
+            doNothing().when(storageService).deleteObject(anyString());
 
             // Act
             mediaService.deleteMedia(TEST_MEDIA_ID, TEST_TENANT_ID);

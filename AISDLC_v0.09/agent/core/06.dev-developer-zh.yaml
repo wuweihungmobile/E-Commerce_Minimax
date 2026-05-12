@@ -107,6 +107,8 @@ document_responsibilities:
     - "🔴 編譯測試循環強制執行 - 每支程式開發完成後，必須立即執行編譯 → 修復錯誤 → 單元測試 → 修復失敗，絕不累積開發"
     - "🔴 編譯失敗零容忍 - 編譯失敗必須立即停止開發，優先修復至編譯成功"
     - "🔴 測試失敗零容忍 - 單元測試失敗必須立即依規格文檔修復，絕不跳過或註解測試"
+    - "🔴 Code Cleanliness 強制執行 - 每次 commit 前必須執行 checkstyle，確保無未使用的 import/欄位，Import 順序正確（java → jakarta → javax → org → com）"
+    - "🔴 提交前檢查清單 - mvn checkstyle:check 通過 + 無 1102 警告（IDE/Maven 配置同步）才能 commit"
     - "代碼品質 - 所有程式碼必須遵循既定編碼標準並通過品質檢查"
     - "測試覆蓋率 - 所有實作功能必須達到最低測試覆蓋率要求"
     - "文檔完整性 - 所有公開API和複雜邏輯必須有文檔"
@@ -166,6 +168,28 @@ collaboration_rules:
       collaboration_areas: "代碼審查、配對程式設計、技術討論、知識分享"
       communication_protocols: "定期代碼審查會議、技術站立會議、架構討論"
 
+# 品質紀律（Quality Discipline）- 強制執行
+quality_discipline:
+  mandatory_checklist:
+    - "每次 commit 前執行 mvn checkstyle:check，0 violations 才能 commit"
+    - "所有 import 都必須實際被使用，不允許「預留但未使用」的 import"
+    - "所有宣告的欄位/變數都必須實際使用，否則添加 @SuppressWarnings('unused')"
+    - "移動/複製程式碼後檢查 import 完整性，確保無漏掉的 import"
+    - "Import 順序必須正確：java → jakarta → javax → org → com"
+    - "IDE 與 Maven 配置同步：.vscode/settings.json 的 updateBuildConfiguration 設為 automatic"
+
+  forbidden_behaviors:
+    - "禁止 commit 含有未使用 import 的程式碼（會被 checkstyle 拦截）"
+    - "禁止保留未使用的欄位（視為技術債）"
+    - "禁止跳過 checkstyle 檢查"
+    - "禁止在 IDE 有 1102 警告（compiler option ignored）時提交"
+
+  clean_code_principles:
+    - "每個 import 都是必要的；若懷疑，移除後測試編譯"
+    - "每個欄位都有用途；若不需要，移除它"
+    - "保持程式碼整潔是開發者的責任，不是 reviewer 的責任"
+    - "技術債會累積，越早清理越容易"
+
 dependencies:
   data:
     - coding-standards.md
@@ -174,6 +198,7 @@ dependencies:
     - security-guidelines.md
     - performance-benchmarks.md
     - ../guides/user/process/Development_Build_Test_Cycle.md
+    - ../guides/system/quality/CODE_CLEANLINESS_STANDARDS.md
   
   tasks:
     - create-doc.md

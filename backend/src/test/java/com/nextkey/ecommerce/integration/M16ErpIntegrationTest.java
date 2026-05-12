@@ -20,7 +20,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-import jakarta.persistence.EntityManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
@@ -59,33 +58,13 @@ class M16ErpIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Autowired
-    @SuppressWarnings("unused")
-    private UserRepository userRepository;
-
-    @SuppressWarnings("unused")
-    @Autowired
-    private TenantRepository tenantRepository;
-
-    @Autowired
     private SupplierRepository supplierRepository;
-
-    @SuppressWarnings("unused")
-    @Autowired
-    private ListingRepository listingRepository;
-
-    @SuppressWarnings("unused")
-    @Autowired
-    private ProductInventoryRepository productInventoryRepository;
 
     @Autowired
     private InventoryRepository inventoryRepository;
 
     @Autowired
     private PurchaseOrderRepository purchaseOrderRepository;
-
-    @SuppressWarnings("unused")
-    @Autowired
-    private EntityManager entityManager;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;

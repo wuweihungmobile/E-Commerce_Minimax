@@ -34,6 +34,14 @@
 - E2E Tests: 2m23s
 - 總執行時間: ~5m14s (修復前會無限期掛起)
 
+## 部署設定優化
+- **GitHub Environments 整合**: deploy-staging 和 deploy-production job 新增 environment 設定
+  - Staging: 自動部署到 staging 環境
+  - Production: 手動觸發，使用 production 環境
+  - 提供環境保護規則和 URL 配置
+- **SSH Key 彈性設定**: SSH key 部署改為條件式（若 secrets.STAGING_SSH_KEY 存在才執行）
+- **新建文件**: [GITHUB_ENVIRONMENTS_SETUP.md](GITHUB_ENVIRONMENTS_SETUP.md) 詳細設定指南
+
 ## 遷移指南
 1. 更新到最新 develop 分支
 2. 執行 `mvn clean test -Dspring.profiles.active=integration-test` 確認測試通過

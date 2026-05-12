@@ -457,6 +457,7 @@ jobs:
         uses: ./.github/actions/setup-ssh
         with:
           SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        continue-on-error: true
 
       - name: Deploy to Staging Server
         run: |
@@ -490,6 +491,7 @@ jobs:
         uses: ./.github/actions/setup-ssh
         with:
           SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+        continue-on-error: true
 
       - name: Deploy to Production Server
         run: |

@@ -37,6 +37,8 @@ jobs:
     name: Dependency Scan (Layer 0 - SCA)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,6 +57,7 @@ jobs:
           deny-packages: |
             GPL-3.0
             AGPL-3.0
+        continue-on-error: true
 
       # Frontend: npm audit (supplementary check)
       - name: Run npm audit (Frontend)

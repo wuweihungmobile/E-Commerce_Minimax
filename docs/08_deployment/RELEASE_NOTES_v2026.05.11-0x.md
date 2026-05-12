@@ -24,6 +24,9 @@
 - CI profile 從 `test` 改為 `integration-test` 以使用真實 PostgreSQL
 - 移除 `verify services health` 步驟（已確認服務正常）
 - 簡化 frontend build step，信賴 .next 目錄建立
+- **SCA 安全掃描升級**：使用 GitHub `dependency-review-action` 替代 OWASP Maven plugin
+  - 原因：OWASP Maven plugin 需要下載 NVD 資料庫，在 CI 環境中會無限期掛起
+  - 優勢：使用 GitHub Advisory Database，無需本地資料庫下載，快速完成
 
 ## CI/CD 改善
 - Backend Build & Test: 3m0s (優化後)

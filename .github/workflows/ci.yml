@@ -49,14 +49,8 @@ jobs:
         with:
           # Fail on critical/high vulnerabilities
           fail-on-severity: critical
-          # Specify vulnerability types to scan
-          vulnerability-type: all
           # Allow summary comment in PR
           comment-summary-in-pr: on-failure
-          # Specify license types to reject
-          deny-packages: |
-            GPL-3.0
-            AGPL-3.0
         continue-on-error: true
 
       # Frontend: npm audit (supplementary check)

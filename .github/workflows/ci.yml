@@ -41,30 +41,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Backend: Maven Dependency Check
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
+      # GitHub Native Dependency Review (replaces OWASP Maven plugin)
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
         with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: 'temurin'
-          cache: 'maven'
+          # Fail on critical/high vulnerabilities
+          fail-on-severity: critical
+          # Specify vulnerability types to scan
+          vulnerability-type: all
+          # Allow summary comment in PR
+          comment-summary-in-pr: on-failure
+          # Specify license types to reject
+          deny-packages: |
+            GPL-3.0
+            AGPL-3.0
 
-      - name: Run OWASP Dependency Check (Backend)
-        run: |
-          echo "OWASP dependency check skipped for CI performance - run locally with: mvn org.owasp:dependency-check-maven:check"
-          # cd backend && mvn org.owasp:dependency-check-maven:check -DskipTests 2>&1 || echo "OWASP check failed"
-        continue-on-error: true
-        timeout-minutes: 5
-
-      - name: Upload Backend Dependency Report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: backend-dependency-report
-          path: backend/target/dependency-check-report.html
-          retention-days: 30
-
-      # Frontend: npm audit
+      # Frontend: npm audit (supplementary check)
       - name: Run npm audit (Frontend)
         run: |
           cd frontend

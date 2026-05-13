@@ -816,6 +816,77 @@ When this framework is integrated into projects:
 - Use requirements-change-management workflow for systematic change handling
 - Maintain backward compatibility in template changes when possible
 
+## 🔴 CI/CD 修復執行強制規則（2026-05-13 新增）
+
+**CRITICAL: 修復 CI/CD Pipeline 問題時，必須嚴格遵守以下規則**
+
+### 強制執行流程
+
+**原則**: 找到真正根因後才能修復，不要盲目修復後 push 測試。
+
+**執行步驟**:
+
+1. **🔴 第一步：取得 CI 日誌**
+   - 使用 `gh run view <run-id> --log-failed` 查看 actual error message
+   - 不要猜測或假設錯誤原因
+   - error message 通常會明確指出問題所在
+
+2. **🔴 第二步：分析 actual error**
+   - 找到具體的錯誤訊息（如 `unknown flag: --requirepass`）
+   - 確認錯誤發生的位置（哪個 step、哪個命令）
+   - 不要修復不相關的設定
+
+3. **🔴 第三步：修復真正的根因**
+   - 只修復 logs 中實際指出問題的設定
+   - 修復後不要再做其他无关的改动
+   - 避免「順便修一下」的心態
+
+4. **🔴 第四步：驗證修復**
+   - 本地確認修改是合理的
+   - 不要依賴「push 後看 CI」的驗證方式
+   - 如果 CI 仍然失敗，再取得 logs 分析
+
+### 絕對禁止的行為
+
+1. **❌ 禁止盲目猜測錯誤原因**
+   - 錯誤範例: CI 失敗 → 猜測是 OWASP/checkstyle 問題 → 修這些地方
+   - 正確做法: 先看 logs 中的 actual error，再修復對應問題
+
+2. **❌ 禁止修復後立即 push 測試**
+   - 錯誤範例: 修一個地方 → push → CI 失敗 → 再修別的地方 → push → 重複 20 次
+   - 正確做法: 先分析 logs 確認根因 → 一次修復到位 → push
+
+3. **❌ 禁止修復不相關的設定**
+   - 錯誤範例: CI 失敗但 error 是 Redis flag → 去修改 checkstyle/timeout/dependencies
+   - 正確做法: 只修復 error 指出來的問題
+
+4. **❌ 禁止忽視 CI logs 中的 error message**
+   - CI logs 的 error message 是診斷問題的最佳來源的
+   - 不要猜測，要看 logs
+
+### 為什麼需要這個機制？
+
+**歷史慘痛教訓 (2026-05-10 ~ 2026-05-13)**:
+- CI Pipeline 修復了 20+ 次都失敗
+- 每次失敗都是盲目猜測 → 修復 → push → 仍然失敗
+- 根本原因: Redis docker service 的 `--requirepass` flag 語法錯誤
+- 錯誤訊息明確：`unknown flag: --requirepass`
+- 但之前 20+ 次修復都沒有看這個 error message
+
+**核心問題**:
+- 沒有先查看 CI logs 中的 actual error message
+- 修復方向錯誤（一直在修改不相關的地方）
+- 導致 20+ 次無效的 commit
+
+**解決方案**:
+- ✅ CI 失敗時，先用 `gh run view <run-id> --log-failed` 查看 actual error
+- ✅ 找到具體錯誤後才能開始修復
+- ✅ 不要盲目修復後 push 測試
+
+**🔴 違反此機制將導致 CI 修復失敗！🔴**
+
+---
+
 ## Getting Help
 
 For understanding AISDLC usage:

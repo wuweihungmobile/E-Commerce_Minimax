@@ -826,8 +826,11 @@ When this framework is integrated into projects:
 
 **執行步驟**:
 
-1. **🔴 第一步：取得 CI 日誌**
-   - 使用 `gh run view <run-id> --log-failed` 查看 actual error message
+1. **🔴 第一步：取得 CI 日誌（必須執行的命令）**
+   ```
+   gh run view <run-id> --log-failed
+   ```
+   - 這是取得 CI 失敗 logs 的**唯一正確命令**
    - 不要猜測或假設錯誤原因
    - error message 通常會明確指出問題所在
 
@@ -844,7 +847,26 @@ When this framework is integrated into projects:
 4. **🔴 第四步：驗證修復**
    - 本地確認修改是合理的
    - 不要依賴「push 後看 CI」的驗證方式
-   - 如果 CI 仍然失敗，再取得 logs 分析
+   - 如果 CI 仍然失敗，回到第一步重新取得 logs
+
+### 常用 CI 診斷命令參考
+
+```bash
+# 1. 查看最近 CI runs
+gh run list --limit 10
+
+# 2. 查看特定 run 的失敗 logs（最重要！）
+gh run view <run-id> --log-failed
+
+# 3. 查看 run 詳細資訊（含 annotations）
+gh run view <run-id> -v
+
+# 4. 查看特定 job 的 logs
+gh api repos/{owner}/{repo}/actions/jobs/{job-id}/logs
+
+# 5. 查看 run 的 job 列表
+gh run view <run-id> --json jobs
+```
 
 ### 絕對禁止的行為
 
@@ -874,12 +896,12 @@ When this framework is integrated into projects:
 - 但之前 20+ 次修復都沒有看這個 error message
 
 **核心問題**:
-- 沒有先查看 CI logs 中的 actual error message
+- 沒有先執行 `gh run view <run-id> --log-failed` 查看 actual error
 - 修復方向錯誤（一直在修改不相關的地方）
 - 導致 20+ 次無效的 commit
 
 **解決方案**:
-- ✅ CI 失敗時，先用 `gh run view <run-id> --log-failed` 查看 actual error
+- ✅ CI 失敗時，**必須先執行** `gh run view <run-id> --log-failed`
 - ✅ 找到具體錯誤後才能開始修復
 - ✅ 不要盲目修復後 push 測試
 

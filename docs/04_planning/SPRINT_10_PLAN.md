@@ -278,8 +278,8 @@ Phase 2-A: M17(部分) → M15 ✅ → M12 ✅ → M16 (Sprint 10) ← 當前
 
 ---
 
-**文件狀態**: ✅ **待 PM/PO 確認** - M17 已確認實作，Sprint 10 可隨時開始
-**下一步**: PM/PO 確認 Sprint 10 範圍和開始日期
+**文件狀態**: ✅ **COMPLETED** - Sprint 10 M16 ERP 已完成 (2026-05-13)
+**下一步**: 解決 GitHub Actions 帳單問題，進行 Sprint 10 發布評審
 **相關文件**:
 - [SPRINT_09_PLAN.md](SPRINT_09_PLAN.md)
 - [SPRINT_09_TASKS.md](../05_development/SPRINT_09_TASKS.md)

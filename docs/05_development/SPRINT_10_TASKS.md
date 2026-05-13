@@ -201,8 +201,43 @@ DRAFT → SUBMITTED → PARTIAL_RECEIVED → RECEIVED
 
 ---
 
-**最後更新**: 2026-05-07
-**下次更新**: Sprint 10 Day 1 (2026-05-18)
-**備註**: M17 Feature Toggle 已確認實作 (ERP_ENABLED)，Sprint 10 可隨時開始# Sprint 10 Progress Note
+**最後更新**: 2026-05-13
+**下次更新**: Sprint 10 發布評審
+**備註**: M17 Feature Toggle 已確認實作 (ERP_ENABLED)，Sprint 10 已完成
 
-**Sprint 10 已完成** - 2026-05-13
+---
+
+## Sprint 10 完成記錄 (2026-05-13)
+
+### 完成狀態
+
+| 區塊 | 任務 | 狀態 | 備註 |
+|------|------|------|------|
+| **Backend** | Task-M16-101 Database Migration | ✅ COMPLETED | V17~V19 migrations |
+| | Task-M16-102 Supplier CRUD APIs | ✅ COMPLETED | |
+| | Task-M16-103 PurchaseOrder CRUD + State Machine | ✅ COMPLETED | |
+| | Task-M16-104 StockMovement + Inventory Ledger | ✅ COMPLETED | |
+| | Task-M16-105 Low Stock Alert API | ✅ COMPLETED | |
+| **Frontend** | Task-M16-106 供應商管理頁面 | ✅ COMPLETED | |
+| | Task-M16-107 採購單管理頁面 | ✅ COMPLETED | |
+| | Task-M16-108 庫存台帳頁面 | ✅ COMPLETED | |
+| **QA** | Task-M16-109 IT測試 | ✅ COMPLETED | 36/36 PASS |
+| | Task-M16-110 E2E測試 | ✅ COMPLETED | 6/6 PASS |
+
+### CI Pipeline 狀態
+
+**⚠️ CI Pipeline 失敗原因**: GitHub Actions 帳單問題
+```
+The job was not started because recent account payments have failed or 
+your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+```
+
+**本地驗證結果**:
+- Backend tests: 360 tests PASS ✅
+- M16ErpIntegrationTest: 36/36 PASS ✅
+- Checkstyle: 0 violations ✅
+- Frontend build: Success (32 pages) ✅
+
+### 下一步
+
+需解決 GitHub Actions 帳單問題後，才能在 CI 環境驗證。

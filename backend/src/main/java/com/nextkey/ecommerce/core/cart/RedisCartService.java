@@ -16,12 +16,17 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import com.nextkey.ecommerce.api.dto.CartDto;
+import com.nextkey.ecommerce.core.promo.PromoService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.product.ProductSku;
+import com.nextkey.ecommerce.domain.model.promo.PromoCode;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
+import com.nextkey.ecommerce.domain.repository.PromoCodeRepository;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
+import com.nextkey.ecommerce.shared.exception.CartEmptyException;
 import com.nextkey.ecommerce.shared.exception.CartItemNotFoundException;
+import com.nextkey.ecommerce.shared.exception.PromoCodeInvalidException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +43,8 @@ public class RedisCartService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final ListingRepository listingRepository;
     private final ProductSkuRepository productSkuRepository;
+    private final PromoService promoService;
+    private final PromoCodeRepository promoCodeRepository;
 
     private static final String CART_KEY_PREFIX = AppConstants.REDIS_CART_PREFIX;
     private static final Duration CART_TTL = Duration.ofDays(30); // 購物車保留 30 天
@@ -265,6 +272,96 @@ public class RedisCartService {
         return getTotalItemsCount(cartKey);
     }
 
+    /**
+     * 套用優惠券至購物車
+     */
+    public CartDto.ApplyPromoResponse applyPromoCode(UUID userId, UUID tenantId, String promoCode) {
+        // 1. 驗證購物車不為空
+        CartDto.CartResponse cart = getCart(userId, tenantId);
+        if (cart.getItems() == null || cart.getItems().isEmpty()) {
+            throw new CartEmptyException("Cannot apply promo to empty cart");
+        }
+
+        // 2. 驗證優惠券
+        CartDto.PromoValidationResult validation = promoService.validatePromoCode(promoCode, tenantId);
+        if (!validation.isValid()) {
+            throw new PromoCodeInvalidException(promoCode, validation.getInvalidReason());
+        }
+
+        // 3. 取得 PromoCode 實體並計算折扣
+        PromoCode promo = promoCodeRepository.findByCodeIgnoreCaseAndTenantId(
+                promoCode.trim().toUpperCase(), tenantId
+        ).orElseThrow(() -> new PromoCodeInvalidException(promoCode, "INVALID"));
+
+        BigDecimal discount = promoService.computeDiscount(promo, cart.getTotalAmount());
+        BigDecimal finalAmount = cart.getTotalAmount().subtract(discount);
+
+        // 4. 更新 Redis 中的優惠券標記
+        String promoKey = getPromoKey(userId, tenantId);
+        redisTemplate.opsForValue().set(promoKey, promoCode.toUpperCase(), CART_TTL);
+
+        log.info("Applied promo code: {} to cart: {}, discount: {}", promoCode, cart.getCartId(), discount);
+
+        return CartDto.ApplyPromoResponse.builder()
+                .appliedPromoCode(promoCode.toUpperCase())
+                .discountAmount(discount)
+                .finalAmount(finalAmount)
+                .discountType(validation.getDiscountType())
+                .discountValue(validation.getDiscountValue())
+                .build();
+    }
+
+    /**
+     * 移除購物車優惠券
+     */
+    public void removePromoCode(UUID userId, UUID tenantId) {
+        String promoKey = getPromoKey(userId, tenantId);
+        redisTemplate.delete(promoKey);
+        log.info("Removed promo code from cart: userId={}", userId);
+    }
+
+    /**
+     * 驗證優惠券（不套用）
+     */
+    public CartDto.PromoValidationResult validatePromoCode(String promoCode, UUID tenantId) {
+        return promoService.validatePromoCode(promoCode, tenantId);
+    }
+
+    /**
+     * 取得購物車含優惠券資訊
+     */
+    public CartDto.CartResponse getCartWithPromo(UUID userId, UUID tenantId) {
+        CartDto.CartResponse cart = getCart(userId, tenantId);
+
+        // 檢查是否有已套用的優惠券
+        String promoKey = getPromoKey(userId, tenantId);
+        Object savedPromoCode = redisTemplate.opsForValue().get(promoKey);
+
+        if (savedPromoCode != null) {
+            cart.setAppliedPromoCode((String) savedPromoCode);
+
+            // 重新計算折扣
+            try {
+                CartDto.PromoValidationResult validation = promoService.validatePromoCode(
+                        (String) savedPromoCode, tenantId);
+                if (validation.isValid()) {
+                    PromoCode promo = promoCodeRepository.findByCodeIgnoreCaseAndTenantId(
+                            (String) savedPromoCode, tenantId
+                    ).orElse(null);
+                    if (promo != null) {
+                        BigDecimal discount = promoService.computeDiscount(promo, cart.getTotalAmount());
+                        cart.setDiscountAmount(discount);
+                        cart.setFinalAmount(cart.getTotalAmount().subtract(discount));
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to calculate promo discount for cart: {}", cart.getCartId(), e);
+            }
+        }
+
+        return cart;
+    }
+
     // ========== Helper Methods ==========
 
     private String getCartKey(UUID userId, UUID tenantId) {
@@ -276,6 +373,10 @@ public class RedisCartService {
             return listingId.toString() + ":" + skuId.toString();
         }
         return listingId.toString();
+    }
+
+    private String getPromoKey(UUID userId, UUID tenantId) {
+        return CART_KEY_PREFIX + "promo:" + userId.toString() + ":" + tenantId.toString();
     }
 
     private int getTotalItemsCount(String cartKey) {

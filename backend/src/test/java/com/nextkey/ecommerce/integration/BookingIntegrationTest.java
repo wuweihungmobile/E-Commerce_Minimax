@@ -159,7 +159,7 @@ class BookingIntegrationTest {
         UUID listingId = UUID.randomUUID();
         UUID bookingId = UUID.randomUUID();
 
-        when(bookingService.createBooking(any(BookingDto.CreateRequest.class)))
+        when(bookingService.createBooking(any(BookingDto.CreateRequest.class), any()))
                 .thenReturn(buildMockBookingResponse(bookingId, listingId));
 
         BookingDto.CreateRequest request = BookingDto.CreateRequest.builder()

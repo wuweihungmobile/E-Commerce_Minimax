@@ -60,6 +60,9 @@ public enum ErrorCode {
     E_5004("E-5004", "Cart is empty"),
     E_5005("E-5005", "Cart item not found"),
     E_5006("E-5006", "Invalid quantity"),
+    E_5007("E-5007", "Promo code invalid"),
+    E_5008("E-5008", "Promo code expired"),
+    E_5009("E-5009", "Promo code usage limit reached"),
 
     // Payment (E-6000s)
     E_6000("E-6000", "Payment not found"),

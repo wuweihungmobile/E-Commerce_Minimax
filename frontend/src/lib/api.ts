@@ -28,7 +28,11 @@ export const API_ENDPOINTS = {
     add: '/v2/cart/items',
     update: (id: string) => '/v2/cart/items/' + id,
     remove: (id: string) => '/v2/cart/items/' + id,
-    clear: '/v2/cart/clear',
+    clear: '/v2/cart',
+    count: '/v2/cart/count',
+    applyPromo: '/v2/cart/apply-promo',
+    removePromo: '/v2/cart/promo',
+    validatePromo: '/v2/cart/validate-promo',
   },
 
   // Orders

@@ -259,11 +259,11 @@ Phase 2-A: M17(部分) → M15 ✅ → M12 ✅ → M16 (Sprint 10) ← 當前
 
 | 標準 | 目標 | 狀態 |
 |------|------|------|
-| Backend IT 測試通過 | 15+/15+ | ⏳ |
-| E2E 測試通過 | 5/5 | ⏳ |
-| 採購單狀態機正確 | DRAFT→SUBMITTED→RECEIVED | ⏳ |
-| 庫存連動正確 | total_qty 更新無誤 | ⏳ |
-| 無 High 缺陷 | High = 0 | ⏳ |
+| Backend IT 測試通過 | 15+/15+ | ✅ (36/36 PASS - 2026-05-09) |
+| E2E 測試通過 | 5/5 | ✅ (6/6 PASS - 2026-05-09) |
+| 採購單狀態機正確 | DRAFT→SUBMITTED→RECEIVED | ✅ 已驗證 |
+| 庫存連動正確 | total_qty 更新無誤 | ✅ 已驗證 |
+| 無 High 缺陷 | High = 0 | ✅ 無待處理 High Bug |
 
 ---
 
@@ -278,9 +278,19 @@ Phase 2-A: M17(部分) → M15 ✅ → M12 ✅ → M16 (Sprint 10) ← 當前
 
 ---
 
-**文件狀態**: ✅ **COMPLETED** - Sprint 10 M16 ERP 已完成 (2026-05-13)
-**下一步**: 解決 GitHub Actions 帳單問題，進行 Sprint 10 發布評審
+**文件狀態**: ✅ **RELEASED** - Sprint 10 M16 ERP 已發布 (2026-05-14 QA 驗證完成)
+**下一步**:
+1. ✅ Release Notes 已建立 (docs/08_deployment/RELEASE_NOTES_v1.0-Sprint10-M16-ERP.md)
+2. ✅ Deployment Checklist 已建立 (docs/08_deployment/DEPLOYMENT_CHECKLIST_SPRINT10.md)
+3. ✅ Rollback Plan 已建立 (docs/08_deployment/ROLLBACK_PLAN_SPRINT10.md)
+4. ✅ 本地測試通過 (374 tests PASS - 2026-05-14)
+5. ✅ QA 驗證完成 (10/10 Tasks 確認 - 2026-05-14)
+6. ⚠️ CI Pipeline 等待 GitHub Actions 帳單額度恢復 (2026-06-01)
+
 **相關文件**:
 - [SPRINT_09_PLAN.md](SPRINT_09_PLAN.md)
 - [SPRINT_09_TASKS.md](../05_development/SPRINT_09_TASKS.md)
 - [E-Commerce_PRD_v1.0_Final.md](../../01_requirements/E-Commerce_PRD_v1.0_Final.md) (§6.7, §8.1.5, §9.15)
+- [RELEASE_NOTES_v1.0-Sprint10-M16-ERP.md](../08_deployment/RELEASE_NOTES_v1.0-Sprint10-M16-ERP.md)
+- [DEPLOYMENT_CHECKLIST_SPRINT10.md](../08_deployment/DEPLOYMENT_CHECKLIST_SPRINT10.md)
+- [ROLLBACK_PLAN_SPRINT10.md](../08_deployment/ROLLBACK_PLAN_SPRINT10.md)

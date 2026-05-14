@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.core.booking.BookingService;
+import com.nextkey.ecommerce.core.idempotency.IdempotencyService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +36,7 @@ import lombok.extern.slf4j.Slf4j;
 public class BookingController {
 
     private final BookingService bookingService;
+    private final IdempotencyService idempotencyService;
 
     /**
      * 檢查日期範圍可用性
@@ -52,8 +55,45 @@ public class BookingController {
     @PostMapping
     @PreAuthorize("hasAuthority('booking:create')")
     public ResponseEntity<ApiResponse<BookingDto.BookingResponse>> createBooking(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody BookingDto.CreateRequest request) {
-        BookingDto.BookingResponse booking = bookingService.createBooking(request);
+
+        // 處理 Idempotency-Key
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            // 驗證 Idempotency-Key 格式
+            if (!idempotencyService.isValidUuidV4(idempotencyKey)) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("E-9004", "Invalid Idempotency-Key format. Must be UUID v4"));
+            }
+
+            // 檢查是否為重複請求
+            if (!idempotencyService.checkAndMark(idempotencyKey)) {
+                // 重複請求 - 嘗試取得已儲存的回應
+                BookingDto.BookingResponse storedResponse = idempotencyService.getStoredResponse(idempotencyKey);
+                if (storedResponse != null) {
+                    log.info("Returning cached response for idempotent key: {}", idempotencyKey);
+                    return ResponseEntity.ok(ApiResponse.success(storedResponse));
+                }
+                // 如果還在處理中，返回 409 Conflict
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(ApiResponse.error("E_6005", "Request with this Idempotency-Key is still being processed"));
+            }
+
+            try {
+                BookingDto.BookingResponse booking = bookingService.createBooking(request, idempotencyKey);
+                // 標記完成並儲存回應
+                idempotencyService.markCompleted(idempotencyKey, booking);
+                return ResponseEntity.status(HttpStatus.CREATED)
+                        .body(ApiResponse.success("Booking created successfully", booking));
+            } catch (Exception e) {
+                // 發生錯誤時刪除 idempotency key，讓客戶端可以重試
+                idempotencyService.remove(idempotencyKey);
+                throw e;
+            }
+        }
+
+        // 沒有 Idempotency-Key 的請求（不建議，但允許）
+        BookingDto.BookingResponse booking = bookingService.createBooking(request, null);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Booking created successfully", booking));
     }

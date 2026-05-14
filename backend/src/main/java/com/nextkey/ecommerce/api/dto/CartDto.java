@@ -90,6 +90,9 @@ public class CartDto {
         @JsonProperty("totalItems")
         private Integer itemCount;
         private BigDecimal totalAmount;
+        private String appliedPromoCode;
+        private BigDecimal discountAmount;
+        private BigDecimal finalAmount;
         private String currency;
         private java.time.Instant updatedAt;
     }
@@ -118,5 +121,62 @@ public class CartDto {
         private UUID listingId;
 
         private UUID skuId; // optional, if null removes all items for this listing
+    }
+
+    // ========== Promo Validation Result ==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PromoValidationResult {
+        private boolean valid;
+        private String promoCode;
+        private String discountType; // PERCENTAGE, FIXED_AMOUNT, FREE_SHIPPING
+        private BigDecimal discountValue;
+        private BigDecimal maxDiscount; // 百分比折扣的最高金額限制
+        private String invalidReason; // INVALID, EXPIRED, USAGE_LIMIT
+
+        public static PromoValidationResult invalid(String reason, String message) {
+            return PromoValidationResult.builder()
+                    .valid(false)
+                    .invalidReason(reason + ": " + message)
+                    .build();
+        }
+
+        public static PromoValidationResult valid(String code, String type, BigDecimal value, BigDecimal max) {
+            return PromoValidationResult.builder()
+                    .valid(true)
+                    .promoCode(code)
+                    .discountType(type)
+                    .discountValue(value)
+                    .maxDiscount(max)
+                    .build();
+        }
+    }
+
+    // ========== Apply Promo Request ==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ApplyPromoRequest {
+        @NotNull(message = "Promo code is required")
+        private String promoCode;
+    }
+
+    // ========== Apply Promo Response ==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ApplyPromoResponse {
+        private String appliedPromoCode;
+        private BigDecimal discountAmount;
+        private BigDecimal finalAmount;
+        private String discountType;
+        private BigDecimal discountValue;
     }
 }

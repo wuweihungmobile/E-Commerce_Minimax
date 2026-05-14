@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
@@ -120,6 +121,48 @@ public class CartController {
         UUID tenantId = getTenantId(principal);
         int count = cartService.getCartItemCount(principal.getUserId(), tenantId);
         return ResponseEntity.ok(ApiResponse.success(count));
+    }
+
+    /**
+     * 套用優惠券
+     */
+    @PostMapping("/apply-promo")
+    @PreAuthorize("hasAuthority('cart:update')")
+    public ResponseEntity<ApiResponse<CartDto.ApplyPromoResponse>> applyPromo(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody CartDto.ApplyPromoRequest request) {
+
+        UUID tenantId = getTenantId(principal);
+        CartDto.ApplyPromoResponse result = cartService.applyPromoCode(
+                principal.getUserId(), tenantId, request.getPromoCode());
+        return ResponseEntity.ok(ApiResponse.success("Promo code applied", result));
+    }
+
+    /**
+     * 移除優惠券
+     */
+    @DeleteMapping("/promo")
+    @PreAuthorize("hasAuthority('cart:update')")
+    public ResponseEntity<ApiResponse<Void>> removePromo(
+            @AuthenticationPrincipal UserPrincipal principal) {
+
+        UUID tenantId = getTenantId(principal);
+        cartService.removePromoCode(principal.getUserId(), tenantId);
+        return ResponseEntity.ok(ApiResponse.success("Promo code removed", null));
+    }
+
+    /**
+     * 驗證優惠券（不套用）
+     */
+    @GetMapping("/validate-promo")
+    @PreAuthorize("hasAuthority('cart:read')")
+    public ResponseEntity<ApiResponse<CartDto.PromoValidationResult>> validatePromo(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam String code) {
+
+        UUID tenantId = getTenantId(principal);
+        CartDto.PromoValidationResult result = cartService.validatePromoCode(code, tenantId);
+        return ResponseEntity.ok(ApiResponse.success(result));
     }
 
     private UUID getTenantId(final UserPrincipal principal) {

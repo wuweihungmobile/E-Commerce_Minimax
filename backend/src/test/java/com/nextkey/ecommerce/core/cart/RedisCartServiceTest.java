@@ -1,10 +1,12 @@
 package com.nextkey.ecommerce.core.cart;
 
 import com.nextkey.ecommerce.api.dto.CartDto;
+import com.nextkey.ecommerce.core.promo.PromoService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.product.ProductSku;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
+import com.nextkey.ecommerce.domain.repository.PromoCodeRepository;
 import com.nextkey.ecommerce.shared.exception.CartItemNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -54,6 +56,12 @@ class RedisCartServiceTest {
     @Mock
     private ProductSkuRepository productSkuRepository;
 
+    @Mock
+    private PromoService promoService;
+
+    @Mock
+    private PromoCodeRepository promoCodeRepository;
+
     private RedisCartService redisCartService;
 
     // 測試資料
@@ -64,7 +72,7 @@ class RedisCartServiceTest {
 
     @BeforeEach
     void setUp() {
-        redisCartService = new RedisCartService(redisTemplate, listingRepository, productSkuRepository);
+        redisCartService = new RedisCartService(redisTemplate, listingRepository, productSkuRepository, promoService, promoCodeRepository);
         lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
     }
 

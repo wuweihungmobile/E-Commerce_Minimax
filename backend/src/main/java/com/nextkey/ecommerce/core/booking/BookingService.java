@@ -156,7 +156,7 @@ public class BookingService {
      * 建立預訂
      */
     @Transactional
-    public BookingDto.BookingResponse createBooking(BookingDto.CreateRequest request) {
+    public BookingDto.BookingResponse createBooking(BookingDto.CreateRequest request, String idempotencyKey) {
         UUID userId = getCurrentUser();
         UUID tenantId = getCurrentTenant();
 

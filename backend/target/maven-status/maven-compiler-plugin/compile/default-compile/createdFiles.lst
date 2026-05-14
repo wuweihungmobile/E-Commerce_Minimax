@@ -115,6 +115,7 @@ com/nextkey/ecommerce/api/dto/CmsDto$CreatePageRequest$CreatePageRequestBuilder.
 com/nextkey/ecommerce/domain/repository/NotificationRepository.class
 com/nextkey/ecommerce/api/dto/AnalyticsDto$RecentActivity$RecentActivityBuilder.class
 com/nextkey/ecommerce/domain/repository/PaymentRepository.class
+com/nextkey/ecommerce/shared/exception/CartEmptyException.class
 com/nextkey/ecommerce/api/dto/AdminDto$TenantApproveRequest$TenantApproveRequestBuilder.class
 com/nextkey/ecommerce/api/dto/RoomDto$UpdateRequest$UpdateRequestBuilder.class
 com/nextkey/ecommerce/domain/model/cms/Banner$BannerStatus.class
@@ -201,6 +202,7 @@ com/nextkey/ecommerce/api/dto/erp/StockMovementRequest.class
 com/nextkey/ecommerce/domain/model/tenant/Tenant$TenantBuilder.class
 com/nextkey/ecommerce/api/dto/FeatureToggleUpdateResponse.class
 com/nextkey/ecommerce/api/dto/AdminDto$TenantListResponse.class
+com/nextkey/ecommerce/api/dto/CartDto$PromoValidationResult$PromoValidationResultBuilder.class
 com/nextkey/ecommerce/api/dto/M15Dto$CategoryListResponse.class
 com/nextkey/ecommerce/api/dto/ApiResponse$FieldError.class
 com/nextkey/ecommerce/api/dto/LogoutRequest$LogoutRequestBuilder.class
@@ -248,6 +250,7 @@ com/nextkey/ecommerce/domain/model/user/RolePermissionMapping.class
 com/nextkey/ecommerce/api/dto/erp/StockMovementRequest$StockMovementRequestBuilder.class
 com/nextkey/ecommerce/api/dto/TenantMemberResponse$TenantMemberResponseBuilder.class
 com/nextkey/ecommerce/domain/repository/MessageRepository.class
+com/nextkey/ecommerce/domain/model/promo/PromoCode$DiscountType.class
 com/nextkey/ecommerce/core/booking/RoomCalendarService.class
 com/nextkey/ecommerce/api/dto/PaymentDto$PaymentMethod.class
 com/nextkey/ecommerce/api/dto/AdminDto$TenantListResponse$TenantListResponseBuilder.class
@@ -306,6 +309,7 @@ com/nextkey/ecommerce/api/dto/BookingDto$AvailabilityResponse$AvailabilityRespon
 com/nextkey/ecommerce/api/dto/ReviewDto$SellerReplyRequest.class
 com/nextkey/ecommerce/api/dto/NotificationDto$NotificationListResponse$NotificationListResponseBuilder.class
 com/nextkey/ecommerce/domain/model/room/PricingRule$PricingRuleType.class
+com/nextkey/ecommerce/api/dto/CartDto$ApplyPromoRequest$ApplyPromoRequestBuilder.class
 com/nextkey/ecommerce/api/dto/AuthResponse$UserInfo$UserInfoBuilder.class
 com/nextkey/ecommerce/infrastructure/security/JwtTokenService.class
 com/nextkey/ecommerce/api/dto/M15Dto$MediaResponse.class
@@ -329,6 +333,7 @@ com/nextkey/ecommerce/api/dto/PaymentDto$PaymentStatusResponse.class
 com/nextkey/ecommerce/api/dto/RoomDto$CreateRequest.class
 com/nextkey/ecommerce/api/dto/CartDto$UpdateItemRequest.class
 com/nextkey/ecommerce/api/dto/PricingDto$CreateRuleRequest$CreateRuleRequestBuilder.class
+com/nextkey/ecommerce/shared/exception/PromoCodeInvalidException.class
 com/nextkey/ecommerce/domain/model/product/ProductInventory.class
 com/nextkey/ecommerce/api/controller/RoomController.class
 com/nextkey/ecommerce/domain/model/chat/Message.class
@@ -337,6 +342,7 @@ com/nextkey/ecommerce/domain/model/notification/Notification$NotificationBuilder
 com/nextkey/ecommerce/api/dto/PricingDto$RuleResponse.class
 com/nextkey/ecommerce/api/dto/AdminDto$TenantReviewResponse$TenantReviewResponseBuilder.class
 com/nextkey/ecommerce/api/dto/OrderDto$OrderItemResponse.class
+com/nextkey/ecommerce/domain/repository/PromoCodeRepository.class
 com/nextkey/ecommerce/api/dto/OAuthDto$LinkRequest.class
 com/nextkey/ecommerce/domain/model/room/Room.class
 com/nextkey/ecommerce/domain/model/notification/Notification.class
@@ -360,6 +366,7 @@ com/nextkey/ecommerce/api/controller/ProductController.class
 com/nextkey/ecommerce/api/dto/erp/PurchaseOrderCreateRequest$PurchaseOrderItemRequest$PurchaseOrderItemRequestBuilder.class
 com/nextkey/ecommerce/core/tenant/TenantService.class
 com/nextkey/ecommerce/api/dto/UserInfoResponse$TenantInfo$TenantInfoBuilder.class
+com/nextkey/ecommerce/api/dto/CartDto$ApplyPromoRequest.class
 com/nextkey/ecommerce/api/dto/AnalyticsDto$TopListing$TopListingBuilder.class
 com/nextkey/ecommerce/api/dto/CartDto$RemoveItemRequest.class
 com/nextkey/ecommerce/domain/repository/ProductSkuRepository.class
@@ -373,6 +380,7 @@ com/nextkey/ecommerce/api/dto/FeatureToggleResponse.class
 com/nextkey/ecommerce/api/dto/erp/LowStockAlertDto$LowStockAlertDtoBuilder.class
 com/nextkey/ecommerce/domain/repository/OAuthAccountRepository.class
 com/nextkey/ecommerce/api/dto/ReviewDto$RatingStats$RatingStatsBuilder.class
+com/nextkey/ecommerce/api/dto/CartDto$ApplyPromoResponse$ApplyPromoResponseBuilder.class
 com/nextkey/ecommerce/domain/model/order/Order$OrderStatus.class
 com/nextkey/ecommerce/api/controller/CartController.class
 com/nextkey/ecommerce/core/tenant/TenantService$FeatureDefinition.class
@@ -407,6 +415,7 @@ com/nextkey/ecommerce/api/dto/erp/InventoryLedgerDto.class
 com/nextkey/ecommerce/api/dto/ReviewDto$ReviewSummary.class
 com/nextkey/ecommerce/domain/model/tenant/TenantFeatureToggle$TenantFeatureToggleBuilder.class
 com/nextkey/ecommerce/domain/model/cms/Banner$BannerPosition.class
+com/nextkey/ecommerce/core/promo/PromoService.class
 com/nextkey/ecommerce/api/dto/M15Dto$MediaUploadResponse$MediaUploadResponseBuilder.class
 com/nextkey/ecommerce/domain/repository/OrderRepository.class
 com/nextkey/ecommerce/api/dto/ReviewDto$UpdateRequest.class
@@ -462,6 +471,7 @@ com/nextkey/ecommerce/api/dto/ChatDto$ConversationListResponse.class
 com/nextkey/ecommerce/api/dto/FeatureToggleResponse$FeatureInfo.class
 com/nextkey/ecommerce/api/dto/OrderDto$OrderResponse.class
 com/nextkey/ecommerce/domain/model/payment/Payment$PaymentMethod.class
+com/nextkey/ecommerce/core/idempotency/IdempotencyService.class
 com/nextkey/ecommerce/domain/model/cms/post/PostCategory.class
 com/nextkey/ecommerce/core/notification/NotificationService$1.class
 com/nextkey/ecommerce/api/controller/AuthController.class
@@ -551,6 +561,7 @@ com/nextkey/ecommerce/api/dto/AdminDto$TenantStatusUpdateRequest$TenantStatusUpd
 com/nextkey/ecommerce/api/controller/OrderController.class
 com/nextkey/ecommerce/api/dto/BookingDto$AvailabilityRequest$AvailabilityRequestBuilder.class
 com/nextkey/ecommerce/api/dto/OrderDto$BookingResponse.class
+com/nextkey/ecommerce/api/dto/CartDto$PromoValidationResult.class
 com/nextkey/ecommerce/api/dto/AnalyticsDto$DailyRevenue.class
 com/nextkey/ecommerce/api/dto/RegisterRequest$RegisterRequestBuilder.class
 com/nextkey/ecommerce/api/dto/OrderDto$CreateRequest.class
@@ -581,8 +592,12 @@ com/nextkey/ecommerce/api/dto/erp/PurchaseOrderDto.class
 com/nextkey/ecommerce/api/dto/LoginRequest.class
 com/nextkey/ecommerce/api/dto/M15Dto$MediaUploadResponse.class
 com/nextkey/ecommerce/domain/model/room/RoomCalendar$RoomCalendarBuilder.class
+com/nextkey/ecommerce/api/dto/CartDto$ApplyPromoResponse.class
 com/nextkey/ecommerce/api/dto/AdminDto$PlatformStatsResponse$PlatformStatsResponseBuilder.class
+com/nextkey/ecommerce/domain/model/promo/PromoCode$PromoCodeBuilder.class
 com/nextkey/ecommerce/domain/model/room/Room$RoomBuilder.class
+com/nextkey/ecommerce/domain/model/promo/PromoCode.class
+com/nextkey/ecommerce/core/promo/PromoService$1.class
 com/nextkey/ecommerce/domain/model/order/Booking.class
 com/nextkey/ecommerce/domain/model/notification/Notification$NotificationChannel.class
 com/nextkey/ecommerce/api/dto/AnalyticsDto$OrderStats$OrderStatsBuilder.class

@@ -202,8 +202,27 @@ DRAFT → SUBMITTED → PARTIAL_RECEIVED → RECEIVED
 ---
 
 **最後更新**: 2026-05-13
-**下次更新**: Sprint 10 發布評審
-**備註**: M17 Feature Toggle 已確認實作 (ERP_ENABLED)，Sprint 10 已完成
+**下次更新**: Sprint 10 發布評審完成後
+**備註**: M17 Feature Toggle 已確認實作 (ERP_ENABLED)，Sprint 10 開發完成，進入發布評審階段
+
+---
+
+## 🚨 Sprint 10 發布評審狀態 (2026-05-13)
+
+### 評審狀態
+
+| 項目 | 狀態 | 備註 |
+|------|------|------|
+| 功能開發完成 | ✅ COMPLETED | M16 ERP 進銷存核心功能完成 |
+| IT 測試通過 | ✅ COMPLETED | 36/36 PASS |
+| E2E 測試通過 | ✅ COMPLETED | 6/6 PASS |
+| Code Freeze | ✅ COMPLETED | 已執行 |
+| Release Notes | ✅ COMPLETED | docs/08_deployment/RELEASE_NOTES_v1.0-Sprint10-M16-ERP.md |
+| Deployment Checklist | ✅ COMPLETED | docs/08_deployment/DEPLOYMENT_CHECKLIST_SPRINT10.md |
+| Rollback Plan | ✅ COMPLETED | docs/08_deployment/ROLLBACK_PLAN_SPRINT10.md |
+| CI Pipeline 驗證 | ⏳ PENDING | 等待 GitHub 帳單額度恢復 (2026-06-01) |
+| PM/PO 發布決策 | 🔴 PENDING | 待確認 |
+| QA 最終驗收 | 🔴 PENDING | 待確認 |
 
 ---
 
@@ -226,18 +245,16 @@ DRAFT → SUBMITTED → PARTIAL_RECEIVED → RECEIVED
 
 ### CI Pipeline 狀態
 
-**⚠️ CI Pipeline 失敗原因**: GitHub Actions 帳單問題
+**⚠️ CI Pipeline 失敗原因**: GitHub Actions 帳單問題（預計 2026-06-01 恢復）
 ```
-The job was not started because recent account payments have failed or 
-your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+The job was not started because recent account payments have failed or
+your spending limit needs to be increased.
 ```
+
+**Redis 問題已修復**: commit 37ac557 修復了 Redis Docker service 的 `--requirepass` flag 問題
 
 **本地驗證結果**:
 - Backend tests: 360 tests PASS ✅
 - M16ErpIntegrationTest: 36/36 PASS ✅
 - Checkstyle: 0 violations ✅
 - Frontend build: Success (32 pages) ✅
-
-### 下一步
-
-需解決 GitHub Actions 帳單問題後，才能在 CI 環境驗證。

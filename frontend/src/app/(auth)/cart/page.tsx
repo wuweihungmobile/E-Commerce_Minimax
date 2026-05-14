@@ -32,6 +32,9 @@ interface CartResponse {
   items: CartItem[]
   totalAmount: number
   itemCount: number
+  appliedPromoCode?: string
+  discountAmount?: number
+  finalAmount?: number
 }
 
 export default function CartPage() {
@@ -40,6 +43,10 @@ export default function CartPage() {
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [promoCode, setPromoCode] = useState('')
+  const [promoLoading, setPromoLoading] = useState(false)
+  const [promoError, setPromoError] = useState<string | null>(null)
+  const [promoSuccess, setPromoSuccess] = useState<string | null>(null)
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
@@ -142,6 +149,75 @@ export default function CartPage() {
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD' }).format(price)
+  }
+
+  const handleApplyPromo = async () => {
+    if (!promoCode.trim() || !cart) return
+
+    setPromoLoading(true)
+    setPromoError(null)
+    setPromoSuccess(null)
+
+    try {
+      // First validate
+      const validateResponse = await apiClient.get<{ data: { valid: boolean; invalidReason?: string } }>(
+        `${API_ENDPOINTS.cart.validatePromo}?code=${encodeURIComponent(promoCode)}`
+      )
+
+      const validation = validateResponse.data.data
+      if (!validation.valid) {
+        setPromoError(validation.invalidReason || '優惠券無效')
+        setPromoLoading(false)
+        return
+      }
+
+      // Then apply
+      const applyResponse = await apiClient.post<{ data: { appliedPromoCode: string; discountAmount: number; finalAmount: number } }>(
+        API_ENDPOINTS.cart.applyPromo,
+        { promoCode }
+      )
+
+      const result = applyResponse.data.data
+      setCart(prev => prev ? {
+        ...prev,
+        appliedPromoCode: result.appliedPromoCode,
+        discountAmount: result.discountAmount,
+        finalAmount: result.finalAmount,
+      } : prev)
+
+      setPromoSuccess(`已套用優惠券，折扣 ${formatPrice(result.discountAmount)}`)
+      setPromoCode('')
+    } catch (err: unknown) {
+      console.error('Failed to apply promo:', err)
+      setPromoError('優惠券套用失敗，請稍後再試')
+    } finally {
+      setPromoLoading(false)
+    }
+  }
+
+  const handleRemovePromo = async () => {
+    if (!cart) return
+
+    setPromoLoading(true)
+    setPromoError(null)
+
+    try {
+      await apiClient.delete(API_ENDPOINTS.cart.removePromo)
+
+      setCart(prev => prev ? {
+        ...prev,
+        appliedPromoCode: undefined,
+        discountAmount: undefined,
+        finalAmount: undefined,
+      } : prev)
+
+      setPromoSuccess(null)
+    } catch (err: unknown) {
+      console.error('Failed to remove promo:', err)
+      setPromoError('移除優惠券失敗，請稍後再試')
+    } finally {
+      setPromoLoading(false)
+    }
   }
 
   if (loading) {
@@ -346,10 +422,69 @@ export default function CartPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex justify-between text-lg font-medium">
-                    <span>總金額</span>
-                    <span className="text-2xl">{formatPrice(cart.totalAmount)}</span>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">小計</span>
+                      <span>{formatPrice(cart.totalAmount)}</span>
+                    </div>
+                    {cart.appliedPromoCode && (
+                      <div className="flex justify-between text-green-600">
+                        <span>優惠折抵</span>
+                        <span>-{formatPrice(cart.discountAmount || 0)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-lg font-medium border-t pt-2">
+                      <span>總金額</span>
+                      <span className="text-2xl">
+                        {cart.appliedPromoCode
+                          ? formatPrice(cart.finalAmount || cart.totalAmount)
+                          : formatPrice(cart.totalAmount)}
+                      </span>
+                    </div>
                   </div>
+
+                  {/* Promo Code Section */}
+                  <div className="border-t pt-4">
+                    {!cart.appliedPromoCode ? (
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="輸入優惠券代碼"
+                          value={promoCode}
+                          onChange={(e) => setPromoCode(e.target.value)}
+                          disabled={promoLoading}
+                        />
+                        <Button
+                          variant="outline"
+                          onClick={handleApplyPromo}
+                          disabled={promoLoading || !promoCode.trim()}
+                        >
+                          {promoLoading ? '驗證中...' : '套用'}
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <Badge variant="success" className="text-sm">
+                          已套用: {cart.appliedPromoCode}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleRemovePromo}
+                          disabled={promoLoading}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          移除
+                        </Button>
+                      </div>
+                    )}
+                    {promoError && (
+                      <p className="text-sm text-red-500 mt-1">{promoError}</p>
+                    )}
+                    {promoSuccess && (
+                      <p className="text-sm text-green-600 mt-1">{promoSuccess}</p>
+                    )}
+                  </div>
+
                   <Button
                     className="w-full"
                     size="lg"

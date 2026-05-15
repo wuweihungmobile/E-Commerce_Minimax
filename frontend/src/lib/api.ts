@@ -124,6 +124,60 @@ export const API_ENDPOINTS = {
       updateFeature: (tenantId: string, feature: string) => '/v2/admin/tenants/' + tenantId + '/features/' + feature,
     },
   },
+
+  // Media (M18)
+  media: {
+    list: '/v2/media',
+    detail: (id: string) => '/v2/media/' + id,
+    upload: '/v2/media/upload',
+    update: (id: string) => '/v2/media/' + id,
+    delete: (id: string) => '/v2/media/' + id,
+    count: '/v2/media/count',
+    categories: '/v2/media/categories',
+    createCategory: '/v2/media/categories',
+    updateCategory: (id: string) => '/v2/media/categories/' + id,
+    deleteCategory: (id: string) => '/v2/media/categories/' + id,
+  },
+
+  // Knowledge (M18)
+  knowledge: {
+    list: '/v2/knowledge',
+    detail: (id: string) => '/v2/knowledge/' + id,
+    slug: (slug: string) => '/v2/knowledge/slug/' + slug,
+    create: '/v2/knowledge',
+    update: (id: string) => '/v2/knowledge/' + id,
+    delete: (id: string) => '/v2/knowledge/' + id,
+    incrementView: (id: string) => '/v2/knowledge/' + id + '/view',
+    categories: '/v2/knowledge/categories',
+    createCategory: '/v2/knowledge/categories',
+    updateCategory: (id: string) => '/v2/knowledge/categories/' + id,
+    deleteCategory: (id: string) => '/v2/knowledge/categories/' + id,
+  },
+
+  // FAQ (M18)
+  faqs: {
+    list: '/v2/faqs',
+    detail: (id: string) => '/v2/faqs/' + id,
+    slug: (slug: string) => '/v2/faqs/slug/' + slug,
+    create: '/v2/faqs',
+    update: (id: string) => '/v2/faqs/' + id,
+    delete: (id: string) => '/v2/faqs/' + id,
+    incrementView: (id: string) => '/v2/faqs/' + id + '/view',
+    categories: '/v2/faqs/categories',
+    createCategory: '/v2/faqs/categories',
+    updateCategory: (id: string) => '/v2/faqs/categories/' + id,
+    deleteCategory: (id: string) => '/v2/faqs/categories/' + id,
+  },
+
+  // Notification Templates (M09)
+  notificationTemplates: {
+    list: '/v2/notification-templates',
+    detail: (id: string) => '/v2/notification-templates/' + id,
+    create: '/v2/dashboard/notification-templates',
+    update: (id: string) => '/v2/dashboard/notification-templates/' + id,
+    delete: (id: string) => '/v2/dashboard/notification-templates/' + id,
+    render: '/v2/notification-templates/render',
+  },
 }
 
 export default API_CONFIG

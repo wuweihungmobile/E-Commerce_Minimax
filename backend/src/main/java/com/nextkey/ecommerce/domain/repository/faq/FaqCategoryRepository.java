@@ -12,9 +12,13 @@ import com.nextkey.ecommerce.domain.model.faq.FaqCategory;
 @Repository
 public interface FaqCategoryRepository extends JpaRepository<FaqCategory, UUID> {
 
-    List<FaqCategory> findAllByOrderBySortOrderAsc();
+    List<FaqCategory> findByTenantIdOrderBySortOrderAsc(UUID tenantId);
 
-    Optional<FaqCategory> findBySlug(String slug);
+    Optional<FaqCategory> findByTenantIdAndSlug(UUID tenantId, String slug);
 
-    boolean existsBySlug(String slug);
+    boolean existsByTenantIdAndSlug(UUID tenantId, String slug);
+
+    Optional<FaqCategory> findByIdAndTenantId(UUID id, UUID tenantId);
+
+    boolean existsByIdAndTenantId(UUID id, UUID tenantId);
 }

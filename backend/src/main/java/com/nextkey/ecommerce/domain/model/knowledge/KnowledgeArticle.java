@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.domain.model.knowledge;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -90,8 +91,18 @@ public class KnowledgeArticle {
     @Builder.Default
     private Boolean isPinned = false;
 
+    @Column(name = "sort_order")
+    @Builder.Default
+    private Integer sortOrder = 0;
+
+    @Column(name = "tags", columnDefinition = "TEXT")
+    private String tags;
+
     @Column(name = "published_at")
     private Instant publishedAt;
+
+    @Column(name = "scheduled_publish_at")
+    private Instant scheduledPublishAt;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

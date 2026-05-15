@@ -17,11 +17,13 @@ import com.nextkey.ecommerce.api.dto.knowledge.KnowledgeArticleDto;
 import com.nextkey.ecommerce.api.dto.knowledge.KnowledgeCategoryDto;
 import com.nextkey.ecommerce.api.dto.knowledge.UpdateKnowledgeArticleRequest;
 import com.nextkey.ecommerce.api.dto.knowledge.UpdateKnowledgeCategoryRequest;
+import com.nextkey.ecommerce.domain.model.knowledge.ArticleVersion;
 import com.nextkey.ecommerce.domain.model.knowledge.KnowledgeArticle;
 import com.nextkey.ecommerce.domain.model.knowledge.KnowledgeArticle.ArticleStatus;
 import com.nextkey.ecommerce.domain.model.knowledge.KnowledgeCategory;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
+import com.nextkey.ecommerce.domain.repository.knowledge.ArticleVersionRepository;
 import com.nextkey.ecommerce.domain.repository.knowledge.KnowledgeArticleRepository;
 import com.nextkey.ecommerce.domain.repository.knowledge.KnowledgeCategoryRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
@@ -40,6 +42,7 @@ public class KnowledgeBaseService {
 
     private final KnowledgeArticleRepository articleRepository;
     private final KnowledgeCategoryRepository categoryRepository;
+    private final ArticleVersionRepository articleVersionRepository;
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
 
@@ -282,6 +285,93 @@ public class KnowledgeBaseService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
         article.incrementViewCount();
         articleRepository.save(article);
+    }
+
+    // ========== Article Version Control ==========
+
+    @Transactional
+    public void createVersionSnapshot(UUID articleId) {
+        UUID tenantId = getCurrentTenant();
+        KnowledgeArticle article = articleRepository.findByIdAndTenantId(articleId, tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
+
+        Integer maxVersion = articleVersionRepository.findMaxVersionNumberByArticleId(articleId);
+        int newVersion = (maxVersion != null ? maxVersion : 0) + 1;
+
+        ArticleVersion version = ArticleVersion.builder()
+                .article(article)
+                .versionNumber(newVersion)
+                .title(article.getTitle())
+                .content(article.getContent())
+                .tags(article.getTags() != null ? List.of(article.getTags().split(",")) : null)
+                .category(article.getCategory())
+                .isPublished(article.getStatus() == ArticleStatus.PUBLISHED)
+                .isPinned(article.getIsPinned())
+                .sortOrder(article.getSortOrder())
+                .tenant(article.getTenant())
+                .createdBy(article.getAuthor())
+                .build();
+
+        articleVersionRepository.save(version);
+        log.info("Created version snapshot for article: articleId={}, version={}", articleId, newVersion);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ArticleVersion> getArticleVersions(UUID articleId, int page, int size) {
+        UUID tenantId = getCurrentTenant();
+        KnowledgeArticle article = articleRepository.findByIdAndTenantId(articleId, tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
+
+        Pageable pageable = PageRequest.of(page, Math.min(size, 50), Sort.by(Sort.Direction.DESC, "versionNumber"));
+        return articleVersionRepository.findByArticleIdAndTenantId(articleId, tenantId, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public ArticleVersion getArticleVersion(UUID articleId, Integer versionNumber) {
+        UUID tenantId = getCurrentTenant();
+        articleRepository.findByIdAndTenantId(articleId, tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
+
+        return articleVersionRepository.findByArticleIdAndVersionNumber(articleId, versionNumber)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Version not found"));
+    }
+
+    @Transactional
+    public KnowledgeArticleDto restoreVersion(UUID articleId, Integer versionNumber) {
+        UUID tenantId = getCurrentTenant();
+        KnowledgeArticle article = articleRepository.findByIdAndTenantId(articleId, tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
+
+        ArticleVersion version = articleVersionRepository.findByArticleIdAndVersionNumber(articleId, versionNumber)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Version not found"));
+
+        // 建立目前版本的快照
+        createVersionSnapshot(articleId);
+
+        // 恢復到指定版本
+        article.setTitle(version.getTitle());
+        article.setContent(version.getContent());
+        article.setCategory(version.getCategory());
+        article.setIsPinned(version.getIsPinned());
+        article.setSortOrder(version.getSortOrder());
+
+        article = articleRepository.save(article);
+        log.info("Restored article to version: articleId={}, version={}", articleId, versionNumber);
+
+        return toArticleDto(article);
+    }
+
+    @Transactional
+    public KnowledgeArticleDto schedulePublish(UUID articleId, java.time.Instant scheduledTime) {
+        UUID tenantId = getCurrentTenant();
+        KnowledgeArticle article = articleRepository.findByIdAndTenantId(articleId, tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
+
+        article.setScheduledPublishAt(scheduledTime);
+        article = articleRepository.save(article);
+
+        log.info("Scheduled article for publish: articleId={}, scheduledTime={}", articleId, scheduledTime);
+        return toArticleDto(article);
     }
 
     // ========== Helper Methods ==========

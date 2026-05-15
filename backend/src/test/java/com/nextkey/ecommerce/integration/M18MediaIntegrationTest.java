@@ -32,7 +32,6 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -85,7 +84,6 @@ class M18MediaIntegrationTest {
     private static final String TEST_PASSWORD = "SecurePass123!";
 
     private UUID testTenantId;
-    private UUID testUserId;
     private String authToken;
     private MediaCategory testCategory;
     private MediaAsset testAsset;

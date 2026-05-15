@@ -79,11 +79,12 @@ public class MediaService {
                 throw new BusinessException(ErrorCode.E_3001, "Category name already exists at root level");
             }
         } else {
-            MediaCategory parent = mediaCategoryRepository.findByIdAndTenantId(request.getParentId(), tenantId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Parent category not found"));
             if (mediaCategoryRepository.existsByTenantIdAndNameAndParentId(tenantId, request.getName(), request.getParentId())) {
                 throw new BusinessException(ErrorCode.E_3001, "Category name already exists under this parent");
             }
+            // 驗證父分類存在
+            mediaCategoryRepository.findByIdAndTenantId(request.getParentId(), tenantId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Parent category not found"));
         }
 
         MediaCategory parent = null;

@@ -1,4 +1,4 @@
-package com.nextkey.ecommerce.core.knowledge;
+package com.nextkey.ecommerce.core.faq;
 
 import java.util.List;
 import java.util.UUID;
@@ -11,21 +11,16 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.nextkey.ecommerce.api.dto.knowledge.CreateKnowledgeArticleRequest;
-import com.nextkey.ecommerce.api.dto.knowledge.CreateKnowledgeCategoryRequest;
-import com.nextkey.ecommerce.api.dto.knowledge.KnowledgeArticleDto;
-import com.nextkey.ecommerce.api.dto.knowledge.KnowledgeCategoryDto;
-import com.nextkey.ecommerce.api.dto.knowledge.UpdateKnowledgeArticleRequest;
-import com.nextkey.ecommerce.api.dto.knowledge.UpdateKnowledgeCategoryRequest;
-import com.nextkey.ecommerce.domain.model.knowledge.KnowledgeArticle;
-import com.nextkey.ecommerce.domain.model.knowledge.KnowledgeArticle.ArticleStatus;
-import com.nextkey.ecommerce.domain.model.knowledge.KnowledgeCategory;
-import com.nextkey.ecommerce.domain.model.tenant.Tenant;
-import com.nextkey.ecommerce.domain.model.user.User;
-import com.nextkey.ecommerce.domain.repository.knowledge.KnowledgeArticleRepository;
-import com.nextkey.ecommerce.domain.repository.knowledge.KnowledgeCategoryRepository;
-import com.nextkey.ecommerce.domain.repository.TenantRepository;
-import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.api.dto.faq.CreateFaqArticleRequest;
+import com.nextkey.ecommerce.api.dto.faq.CreateFaqCategoryRequest;
+import com.nextkey.ecommerce.api.dto.faq.FaqArticleDto;
+import com.nextkey.ecommerce.api.dto.faq.FaqCategoryDto;
+import com.nextkey.ecommerce.api.dto.faq.UpdateFaqArticleRequest;
+import com.nextkey.ecommerce.api.dto.faq.UpdateFaqCategoryRequest;
+import com.nextkey.ecommerce.domain.model.faq.FaqArticle;
+import com.nextkey.ecommerce.domain.model.faq.FaqCategory;
+import com.nextkey.ecommerce.domain.repository.faq.FaqArticleRepository;
+import com.nextkey.ecommerce.domain.repository.faq.FaqCategoryRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentTenant;
@@ -36,48 +31,46 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class KnowledgeBaseService {
+public class FaqService {
 
-    private final KnowledgeArticleRepository articleRepository;
-    private final KnowledgeCategoryRepository categoryRepository;
-    private final TenantRepository tenantRepository;
-    private final UserRepository userRepository;
+    private final FaqArticleRepository articleRepository;
+    private final FaqCategoryRepository categoryRepository;
 
     // ========== Category Operations ==========
 
     @Transactional(readOnly = true)
-    public List<KnowledgeCategoryDto> getCategories() {
+    public List<FaqCategoryDto> getCategories() {
         UUID tenantId = getCurrentTenant();
-        List<KnowledgeCategory> categories = categoryRepository.findByTenantIdOrderBySortOrderAsc(tenantId);
+        List<FaqCategory> categories = categoryRepository.findByTenantIdOrderBySortOrderAsc(tenantId);
         return categories.stream()
                 .map(this::toCategoryDto)
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
-    public KnowledgeCategoryDto getCategory(UUID categoryId) {
+    public FaqCategoryDto getCategory(UUID categoryId) {
         UUID tenantId = getCurrentTenant();
-        KnowledgeCategory category = categoryRepository.findByIdAndTenantId(categoryId, tenantId)
+        FaqCategory category = categoryRepository.findByIdAndTenantId(categoryId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
         return toCategoryDto(category);
     }
 
     @Transactional(readOnly = true)
-    public KnowledgeCategoryDto getCategoryBySlug(String slug) {
+    public FaqCategoryDto getCategoryBySlug(String slug) {
         UUID tenantId = getCurrentTenant();
-        KnowledgeCategory category = categoryRepository.findByTenantIdAndSlug(tenantId, slug)
+        FaqCategory category = categoryRepository.findByTenantIdAndSlug(tenantId, slug)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
         return toCategoryDto(category);
     }
 
     @Transactional
-    public KnowledgeCategoryDto createCategory(CreateKnowledgeCategoryRequest request) {
+    public FaqCategoryDto createCategory(CreateFaqCategoryRequest request) {
         UUID tenantId = getCurrentTenant();
         if (categoryRepository.existsByTenantIdAndSlug(tenantId, request.getSlug())) {
             throw new BusinessException(ErrorCode.E_3001, "Category slug already exists for this tenant");
         }
 
-        KnowledgeCategory category = KnowledgeCategory.builder()
+        FaqCategory category = FaqCategory.builder()
                 .tenantId(tenantId)
                 .name(request.getName())
                 .slug(request.getSlug())
@@ -87,15 +80,15 @@ public class KnowledgeBaseService {
                 .build();
 
         category = categoryRepository.save(category);
-        log.info("Created knowledge category: id={}, name={}, tenantId={}", category.getId(), category.getName(), tenantId);
+        log.info("Created FAQ category: id={}, name={}, tenantId={}", category.getId(), category.getName(), tenantId);
 
         return toCategoryDto(category);
     }
 
     @Transactional
-    public KnowledgeCategoryDto updateCategory(UUID categoryId, UpdateKnowledgeCategoryRequest request) {
+    public FaqCategoryDto updateCategory(UUID categoryId, UpdateFaqCategoryRequest request) {
         UUID tenantId = getCurrentTenant();
-        KnowledgeCategory category = categoryRepository.findByIdAndTenantId(categoryId, tenantId)
+        FaqCategory category = categoryRepository.findByIdAndTenantId(categoryId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
 
         if (request.getName() != null) {
@@ -122,7 +115,7 @@ public class KnowledgeBaseService {
         }
 
         category = categoryRepository.save(category);
-        log.info("Updated knowledge category: id={}", categoryId);
+        log.info("Updated FAQ category: id={}", categoryId);
 
         return toCategoryDto(category);
     }
@@ -130,138 +123,123 @@ public class KnowledgeBaseService {
     @Transactional
     public void deleteCategory(UUID categoryId) {
         UUID tenantId = getCurrentTenant();
-        KnowledgeCategory category = categoryRepository.findByIdAndTenantId(categoryId, tenantId)
+        FaqCategory category = categoryRepository.findByIdAndTenantId(categoryId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
 
-        // 檢查是否有文章引用
-        Page<KnowledgeArticle> articles = articleRepository.findByCategoryId(categoryId, PageRequest.of(0, 1));
+        Page<FaqArticle> articles = articleRepository.findByCategoryId(categoryId, PageRequest.of(0, 1));
         if (articles.hasContent()) {
             throw new BusinessException(ErrorCode.E_3001, "Cannot delete category with articles");
         }
 
         categoryRepository.delete(category);
-        log.info("Deleted knowledge category: id={}, tenantId={}", categoryId, tenantId);
+        log.info("Deleted FAQ category: id={}, tenantId={}", categoryId, tenantId);
     }
 
     // ========== Article Operations ==========
 
     @Transactional(readOnly = true)
-    public Page<KnowledgeArticleDto> getArticles(int page, int size, UUID categoryId, String keyword) {
+    public Page<FaqArticleDto> getArticles(int page, int size, UUID categoryId, String keyword) {
         UUID tenantId = getCurrentTenant();
         Pageable pageable = PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt"));
 
-        Page<KnowledgeArticle> articles;
+        Page<FaqArticle> articles;
         if (keyword != null && !keyword.isBlank()) {
-            articles = articleRepository.searchByKeyword(tenantId, keyword.trim(), pageable);
+            articles = articleRepository.searchByTenantIdAndKeyword(tenantId, keyword.trim(), pageable);
         } else if (categoryId != null) {
-            articles = articleRepository.findByTenantIdAndCategoryIdAndStatus(tenantId, categoryId, ArticleStatus.PUBLISHED, pageable);
+            articles = articleRepository.findByTenantIdAndCategoryIdAndIsPublishedTrue(tenantId, categoryId, pageable);
         } else {
-            articles = articleRepository.findByTenantIdAndStatus(tenantId, ArticleStatus.PUBLISHED, pageable);
+            articles = articleRepository.findByTenantIdAndIsPublishedTrue(tenantId, pageable);
         }
 
         return articles.map(this::toArticleDto);
     }
 
     @Transactional(readOnly = true)
-    public KnowledgeArticleDto getArticle(UUID articleId) {
+    public FaqArticleDto getArticle(UUID articleId) {
         UUID tenantId = getCurrentTenant();
-        KnowledgeArticle article = articleRepository.findByIdAndTenantId(articleId, tenantId)
+        FaqArticle article = articleRepository.findByIdAndTenantId(articleId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
         return toArticleDto(article);
     }
 
     @Transactional(readOnly = true)
-    public KnowledgeArticleDto getArticleBySlug(String slug) {
-        KnowledgeArticle article = articleRepository.findPublishedBySlug(slug)
+    public FaqArticleDto getArticleBySlug(String slug) {
+        UUID tenantId = getCurrentTenant();
+        FaqArticle article = articleRepository.findByTenantIdAndSlug(tenantId, slug)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
         return toArticleDto(article);
     }
 
     @Transactional
-    public KnowledgeArticleDto createArticle(CreateKnowledgeArticleRequest request) {
+    public FaqArticleDto createArticle(CreateFaqArticleRequest request) {
         UUID tenantId = getCurrentTenant();
-        Tenant tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
-
-        KnowledgeCategory category = categoryRepository.findById(request.getCategoryId())
+        FaqCategory category = categoryRepository.findByIdAndTenantId(request.getCategoryId(), tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
 
-        // 取得系統管理員作為預設作者
-        User author = userRepository.findById(request.getAuthorId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Author not found"));
-
-        // 檢查 slug 唯一性
-        if (articleRepository.findByTenantIdAndSlug(tenantId, request.getSlug()).isPresent()) {
+        if (articleRepository.existsByTenantIdAndSlug(tenantId, request.getSlug())) {
             throw new BusinessException(ErrorCode.E_3001, "Article slug already exists for this tenant");
         }
 
-        KnowledgeArticle article = KnowledgeArticle.builder()
-                .tenant(tenant)
+        FaqArticle article = FaqArticle.builder()
+                .tenantId(tenantId)
                 .category(category)
-                .author(author)
-                .title(request.getTitle())
+                .question(request.getQuestion())
+                .answer(request.getAnswer())
                 .slug(request.getSlug())
-                .content(request.getContent())
-                .excerpt(request.getExcerpt())
-                .coverImageUrl(request.getCoverImageUrl())
-                .status(ArticleStatus.DRAFT)
+                .sortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0)
                 .isPinned(request.getIsPinned() != null ? request.getIsPinned() : false)
                 .build();
 
         article = articleRepository.save(article);
-        log.info("Created knowledge article: id={}, title={}, tenantId={}", article.getId(), article.getTitle(), tenantId);
+        log.info("Created FAQ article: id={}, question={}, tenantId={}", article.getId(), article.getQuestion(), tenantId);
 
         return toArticleDto(article);
     }
 
     @Transactional
-    public KnowledgeArticleDto updateArticle(UUID articleId, UpdateKnowledgeArticleRequest request) {
+    public FaqArticleDto updateArticle(UUID articleId, UpdateFaqArticleRequest request) {
         UUID tenantId = getCurrentTenant();
-        KnowledgeArticle article = articleRepository.findByIdAndTenantId(articleId, tenantId)
+        FaqArticle article = articleRepository.findByIdAndTenantId(articleId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
 
         if (request.getCategoryId() != null) {
-            KnowledgeCategory category = categoryRepository.findById(request.getCategoryId())
+            FaqCategory category = categoryRepository.findByIdAndTenantId(request.getCategoryId(), tenantId)
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
             article.setCategory(category);
         }
 
-        if (request.getTitle() != null) {
-            article.setTitle(request.getTitle());
+        if (request.getQuestion() != null) {
+            article.setQuestion(request.getQuestion());
+        }
+
+        if (request.getAnswer() != null) {
+            article.setAnswer(request.getAnswer());
         }
 
         if (request.getSlug() != null && !request.getSlug().equals(article.getSlug())) {
-            if (articleRepository.findByTenantIdAndSlug(tenantId, request.getSlug()).isPresent()) {
+            if (articleRepository.existsByTenantIdAndSlug(tenantId, request.getSlug())) {
                 throw new BusinessException(ErrorCode.E_3001, "Article slug already exists for this tenant");
             }
             article.setSlug(request.getSlug());
         }
 
-        if (request.getContent() != null) {
-            article.setContent(request.getContent());
-        }
-
-        if (request.getExcerpt() != null) {
-            article.setExcerpt(request.getExcerpt());
-        }
-
-        if (request.getCoverImageUrl() != null) {
-            article.setCoverImageUrl(request.getCoverImageUrl());
-        }
-
-        if (request.getStatus() != null) {
-            article.setStatus(ArticleStatus.valueOf(request.getStatus()));
-            if (request.getStatus().equals("PUBLISHED") && article.getPublishedAt() == null) {
-                article.publish();
-            }
+        if (request.getSortOrder() != null) {
+            article.setSortOrder(request.getSortOrder());
         }
 
         if (request.getIsPinned() != null) {
             article.setIsPinned(request.getIsPinned());
         }
 
+        if (request.getIsPublished() != null) {
+            article.setIsPublished(request.getIsPublished());
+            if (request.getIsPublished() && article.getPublishedAt() == null) {
+                article.publish();
+            }
+        }
+
         article = articleRepository.save(article);
-        log.info("Updated knowledge article: id={}", articleId);
+        log.info("Updated FAQ article: id={}", articleId);
 
         return toArticleDto(article);
     }
@@ -269,16 +247,17 @@ public class KnowledgeBaseService {
     @Transactional
     public void deleteArticle(UUID articleId) {
         UUID tenantId = getCurrentTenant();
-        KnowledgeArticle article = articleRepository.findByIdAndTenantId(articleId, tenantId)
+        FaqArticle article = articleRepository.findByIdAndTenantId(articleId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
 
         articleRepository.delete(article);
-        log.info("Deleted knowledge article: id={}", articleId);
+        log.info("Deleted FAQ article: id={}, tenantId={}", articleId, tenantId);
     }
 
     @Transactional
     public void incrementViewCount(UUID articleId) {
-        KnowledgeArticle article = articleRepository.findById(articleId)
+        UUID tenantId = getCurrentTenant();
+        FaqArticle article = articleRepository.findByIdAndTenantId(articleId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
         article.incrementViewCount();
         articleRepository.save(article);
@@ -286,8 +265,8 @@ public class KnowledgeBaseService {
 
     // ========== Helper Methods ==========
 
-    private KnowledgeCategoryDto toCategoryDto(KnowledgeCategory category) {
-        return KnowledgeCategoryDto.builder()
+    private FaqCategoryDto toCategoryDto(FaqCategory category) {
+        return FaqCategoryDto.builder()
                 .id(category.getId())
                 .name(category.getName())
                 .slug(category.getSlug())
@@ -299,18 +278,16 @@ public class KnowledgeBaseService {
                 .build();
     }
 
-    private KnowledgeArticleDto toArticleDto(KnowledgeArticle article) {
-        KnowledgeArticleDto.KnowledgeArticleDtoBuilder builder = KnowledgeArticleDto.builder()
+    private FaqArticleDto toArticleDto(FaqArticle article) {
+        FaqArticleDto.FaqArticleDtoBuilder builder = FaqArticleDto.builder()
                 .id(article.getId())
-                .tenantId(article.getTenantId())
-                .title(article.getTitle())
+                .question(article.getQuestion())
+                .answer(article.getAnswer())
                 .slug(article.getSlug())
-                .content(article.getContent())
-                .excerpt(article.getExcerpt())
-                .coverImageUrl(article.getCoverImageUrl())
-                .status(article.getStatus().name())
+                .sortOrder(article.getSortOrder())
                 .viewCount(article.getViewCount())
                 .isPinned(article.getIsPinned())
+                .isPublished(article.getIsPublished())
                 .publishedAt(article.getPublishedAt())
                 .createdAt(article.getCreatedAt())
                 .updatedAt(article.getUpdatedAt());
@@ -318,11 +295,6 @@ public class KnowledgeBaseService {
         if (article.getCategory() != null) {
             builder.categoryId(article.getCategory().getId())
                    .categoryName(article.getCategory().getName());
-        }
-
-        if (article.getAuthor() != null) {
-            builder.authorId(article.getAuthor().getId())
-                   .authorName(article.getAuthor().getFullName());
         }
 
         return builder.build();

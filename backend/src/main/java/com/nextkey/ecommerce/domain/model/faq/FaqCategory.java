@@ -1,4 +1,4 @@
-package com.nextkey.ecommerce.domain.model.knowledge;
+package com.nextkey.ecommerce.domain.model.faq;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -21,13 +21,13 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "knowledge_categories")
+@Table(name = "faq_categories")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class KnowledgeCategory {
+public class FaqCategory {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

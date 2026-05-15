@@ -5,11 +5,13 @@ import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
 import org.hibernate.annotations.CreationTimestamp;
@@ -21,53 +23,36 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "knowledge_categories")
+@Table(name = "knowledge_article_tags")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class KnowledgeCategory {
+public class KnowledgeArticleTag {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "tenant_id", nullable = false)
-    private UUID tenantId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "article_id", nullable = false)
+    private KnowledgeArticle article;
 
-    @Column(nullable = false, length = 100)
-    private String name;
+    @Column(name = "article_id", insertable = false, updatable = false)
+    private UUID articleId;
 
-    @Column(nullable = false, unique = true, length = 100)
-    private String slug;
-
-    @Column(columnDefinition = "TEXT")
-    private String description;
-
-    @Column(length = 50)
-    private String icon;
-
-    @Column(name = "sort_order")
-    @Builder.Default
-    private Integer sortOrder = 0;
+    @Column(nullable = false, length = 50)
+    private String tag;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;
 
-    @Column(name = "updated_at")
-    private Instant updatedAt;
-
     @PrePersist
     protected void onCreate() {
-        if (updatedAt == null) {
-            updatedAt = Instant.now();
+        if (createdAt == null) {
+            createdAt = Instant.now();
         }
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = Instant.now();
     }
 }

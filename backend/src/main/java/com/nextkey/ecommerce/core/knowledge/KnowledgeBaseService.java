@@ -319,7 +319,7 @@ public class KnowledgeBaseService {
     @Transactional(readOnly = true)
     public Page<ArticleVersion> getArticleVersions(UUID articleId, int page, int size) {
         UUID tenantId = getCurrentTenant();
-        KnowledgeArticle article = articleRepository.findByIdAndTenantId(articleId, tenantId)
+        articleRepository.findByIdAndTenantId(articleId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
 
         Pageable pageable = PageRequest.of(page, Math.min(size, 50), Sort.by(Sort.Direction.DESC, "versionNumber"));

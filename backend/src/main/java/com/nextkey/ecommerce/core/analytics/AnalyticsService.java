@@ -84,7 +84,7 @@ public class AnalyticsService {
                 tenantId, today.atStartOfDay(), today.atTime(LocalTime.MAX));
         int yesterdayOrders = orderRepository.countByTenantIdAndCreatedAtBetween(
                 tenantId, yesterday.atStartOfDay(), yesterday.atTime(LocalTime.MAX));
-        int monthOrders = (int) orderRepository.countByTenantIdAndCreatedAtBetween(
+        int monthOrders = orderRepository.countByTenantIdAndCreatedAtBetween(
                 tenantId, monthStart.atStartOfDay(), today.atTime(LocalTime.MAX));
 
         // 待處理訂單
@@ -93,7 +93,7 @@ public class AnalyticsService {
         // 活躍 listing 統計
         int activeProducts = productRepository.countByListingTenantIdAndListingStatus(
                 tenantId, Listing.ListingStatus.ACTIVE);
-        int totalRooms = (int) roomRepository.countByListingTenantId(tenantId);
+        int totalRooms = roomRepository.countByListingTenantId(tenantId);
 
         return AnalyticsDto.DashboardStats.builder()
                 .todayRevenue(todayRevenue)

@@ -27,4 +27,8 @@ public class FaqArticleDto {
     private Instant publishedAt;
     private Instant createdAt;
     private Instant updatedAt;
+
+    // Phase 2-C: 關鍵字高亮欄位
+    private String highlightedQuestion;
+    private String highlightedAnswer;
 }

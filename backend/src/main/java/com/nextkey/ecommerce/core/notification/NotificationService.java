@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -16,6 +15,7 @@ import com.nextkey.ecommerce.domain.model.notification.Notification;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.NotificationRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.infrastructure.mq.NotificationProducerService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
@@ -23,8 +23,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 通知服務 (Mock Implementation)
- * Phase 2 預留 RabbitMQ 整合
+ * 通知服務
+ * Phase 2: 使用 RabbitMQ/Redis Stream 實現非同步通知發送
  */
 @Slf4j
 @Service
@@ -33,13 +33,14 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
+    private final NotificationProducerService notificationProducerService;
 
     // Pagination and default values
     private static final int DEFAULT_PAGE_SIZE = 50;
     private static final int DEFAULT_NOTIFICATION_COUNT = 20;
 
     /**
-     * 發送通知 (Mock)
+     * 發送通知 (MQ 非同步)
      */
     @Transactional
     public NotificationDto.NotificationResponse sendNotification(NotificationDto.SendRequest request) {
@@ -55,6 +56,7 @@ public class NotificationService {
             recipient = getRecipientForChannel(user, channel);
         }
 
+        // 先建立通知記錄（預備狀態）
         Notification notification = Notification.builder()
                 .userId(user.getId())
                 .notificationType(Notification.NotificationType.valueOf(request.getNotificationType().name()))
@@ -68,20 +70,26 @@ public class NotificationService {
                 .retryCount(0)
                 .build();
 
-        // Mock: 模擬發送成功
-        notification.setIsSent(true);
-        notification.setSentAt(Instant.now());
-
         notification = notificationRepository.save(notification);
 
-        log.info("Notification sent: id={}, userId={}, type={}, channel={}",
-                notification.getId(), user.getId(), request.getNotificationType(), channel);
+        // 發送到 MQ 佇列（非同步處理）
+        try {
+            notificationProducerService.sendToQueue(request);
+            log.info("Notification queued: id={}, userId={}, type={}, channel={}",
+                    notification.getId(), user.getId(), request.getNotificationType(), channel);
+        } catch (Exception e) {
+            log.error("Failed to queue notification: id={}, error={}", notification.getId(), e.getMessage());
+            notification.setErrorMessage(e.getMessage());
+            notification.setRetryCount(notification.getRetryCount() + 1);
+            notificationRepository.save(notification);
+            throw e;
+        }
 
         return toNotificationResponse(notification);
     }
 
     /**
-     * 廣播通知 (Mock)
+     * 廣播通知 (MQ 非同步)
      */
     @Transactional
     public int broadcastNotification(final NotificationDto.BroadcastRequest request) {
@@ -104,14 +112,14 @@ public class NotificationService {
                         .channel(request.getChannel())
                         .build();
 
-                sendNotification(sendRequest);
+                notificationProducerService.sendToQueue(sendRequest);
                 count++;
-            } catch (BusinessException | DataAccessException e) {
-                log.warn("Failed to send notification to user: {}", user.getId(), e);
+            } catch (Exception e) {
+                log.warn("Failed to queue notification for user: {}", user.getId(), e);
             }
         }
 
-        log.info("Broadcast completed: type={}, count={}", request.getNotificationType(), count);
+        log.info("Broadcast queued: type={}, count={}", request.getNotificationType(), count);
         return count;
     }
 

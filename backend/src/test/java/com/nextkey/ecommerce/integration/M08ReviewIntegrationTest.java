@@ -19,9 +19,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
@@ -31,7 +28,6 @@ import com.nextkey.ecommerce.api.controller.ReviewController;
 import com.nextkey.ecommerce.api.dto.ReviewDto;
 import com.nextkey.ecommerce.core.review.BookingReviewService;
 import com.nextkey.ecommerce.core.review.ReviewService;
-import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.review.BookingReview;
 import com.nextkey.ecommerce.domain.model.review.Review;
 import com.nextkey.ecommerce.domain.repository.ReviewRepository;
@@ -67,7 +63,6 @@ public class M08ReviewIntegrationTest {
     @MockBean
     private ListingRepository listingRepository;
 
-    private UUID tenantId;
     private UUID listingId;
     private UUID userId;
     private UUID orderId;
@@ -78,7 +73,6 @@ public class M08ReviewIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        tenantId = UUID.randomUUID();
         listingId = UUID.randomUUID();
         userId = UUID.randomUUID();
         orderId = UUID.randomUUID();
@@ -111,14 +105,6 @@ public class M08ReviewIntegrationTest {
     @DisplayName("AC-001: 買家可以對已完成訂單提交評價")
     @WithMockUser(authorities = {"order:create"})
     void createReview_success() throws Exception {
-        ReviewDto.CreateRequest request = ReviewDto.CreateRequest.builder()
-                .listingId(listingId)
-                .orderId(orderId)
-                .rating(5)
-                .title("Great product!")
-                .content("Really enjoyed this product.")
-                .build();
-
         ReviewDto.ReviewResponse response = ReviewDto.ReviewResponse.builder()
                 .reviewId(reviewId)
                 .listingId(listingId)
@@ -167,10 +153,6 @@ public class M08ReviewIntegrationTest {
     @DisplayName("AC-003: 賣家/房東可以回覆評價")
     @WithMockUser(authorities = {"room:update"})
     void replyToReview_success() throws Exception {
-        ReviewDto.SellerReplyRequest request = ReviewDto.SellerReplyRequest.builder()
-                .reply("Thank you for your review!")
-                .build();
-
         ReviewDto.ReviewResponse response = ReviewDto.ReviewResponse.builder()
                 .reviewId(reviewId)
                 .rating(5)

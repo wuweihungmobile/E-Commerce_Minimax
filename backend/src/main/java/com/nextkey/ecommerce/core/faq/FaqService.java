@@ -154,6 +154,96 @@ public class FaqService {
         return articles.map(this::toArticleDto);
     }
 
+    /**
+     * 取得置頂文章列表
+     * Phase 2-C: FAQ 置頂排序功能
+     */
+    @Transactional(readOnly = true)
+    public List<FaqArticleDto> getPinnedArticles() {
+        UUID tenantId = getCurrentTenant();
+        List<FaqArticle> pinnedArticles = articleRepository.findByTenantIdAndIsPinnedTrueOrderBySortOrderAsc(tenantId);
+        return pinnedArticles.stream()
+                .map(this::toArticleDto)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 搜尋文章並高亮關鍵字
+     * Phase 2-C: 關鍵字高亮功能
+     * 返回結果包含高亮後的 question 和 answer
+     */
+    @Transactional(readOnly = true)
+    public Page<FaqArticleDto> searchArticlesWithHighlight(
+            int page, int size, String keyword, String highlightPrefix, String highlightSuffix) {
+
+        UUID tenantId = getCurrentTenant();
+        Pageable pageable = PageRequest.of(page, Math.min(size, 100));
+
+        if (keyword == null || keyword.isBlank()) {
+            return articleRepository.findByTenantIdAndIsPublishedTrue(tenantId, pageable)
+                    .map(this::toArticleDto);
+        }
+
+        Page<FaqArticle> articles = articleRepository.searchByTenantIdAndKeyword(
+                tenantId, keyword.trim(), pageable);
+
+        return articles.map(article -> {
+            FaqArticleDto dto = toArticleDto(article);
+
+            // 高亮關鍵字
+            String prefix = highlightPrefix != null ? highlightPrefix : "<mark>";
+            String suffix = highlightSuffix != null ? highlightSuffix : "</mark>";
+            String lowerKeyword = keyword.toLowerCase();
+
+            // 高亮 question
+            String highlightedQuestion = highlightKeyword(dto.getQuestion(), lowerKeyword, prefix, suffix);
+            dto.setHighlightedQuestion(highlightedQuestion);
+
+            // 高亮 answer
+            String highlightedAnswer = highlightKeyword(dto.getAnswer(), lowerKeyword, prefix, suffix);
+            dto.setHighlightedAnswer(highlightedAnswer);
+
+            return dto;
+        });
+    }
+
+    /**
+     * 取得分類統計
+     * Phase 2-C: FAQ 分類統計 API
+     */
+    @Transactional(readOnly = true)
+    public List<CategoryStatsDto> getCategoryStats() {
+        UUID tenantId = getCurrentTenant();
+        List<FaqCategory> categories = categoryRepository.findByTenantIdOrderBySortOrderAsc(tenantId);
+
+        return categories.stream().map(category -> {
+            long articleCount = articleRepository.countByTenantIdAndCategoryId(
+                    tenantId, category.getId());
+            long publishedCount = articleRepository.countByTenantIdAndCategoryIdAndIsPublishedTrue(
+                    tenantId, category.getId());
+
+            return new CategoryStatsDto(
+                    category.getId(),
+                    category.getName(),
+                    category.getSlug(),
+                    articleCount,
+                    publishedCount
+            );
+        }).collect(Collectors.toList());
+    }
+
+    /**
+     * 高亮關鍵字
+     */
+    private String highlightKeyword(String text, String keyword, String prefix, String suffix) {
+        if (text == null || keyword == null) {
+            return text;
+        }
+
+        String regex = "(?i)(" + java.util.regex.Pattern.quote(keyword) + ")";
+        return text.replaceAll(regex, prefix + "$1" + suffix);
+    }
+
     @Transactional(readOnly = true)
     public FaqArticleDto getArticle(UUID articleId) {
         UUID tenantId = getCurrentTenant();
@@ -299,4 +389,15 @@ public class FaqService {
 
         return builder.build();
     }
+
+    /**
+     * 分類統計 DTO
+     */
+    public record CategoryStatsDto(
+            UUID categoryId,
+            String categoryName,
+            String categorySlug,
+            long totalArticles,
+            long publishedArticles
+    ) {}
 }

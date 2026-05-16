@@ -22,6 +22,7 @@ import com.nextkey.ecommerce.api.dto.faq.CreateFaqCategoryRequest;
 import com.nextkey.ecommerce.api.dto.faq.FaqCategoryDto;
 import com.nextkey.ecommerce.api.dto.faq.UpdateFaqCategoryRequest;
 import com.nextkey.ecommerce.core.faq.FaqService;
+import com.nextkey.ecommerce.core.faq.FaqService.CategoryStatsDto;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -78,5 +79,18 @@ public class FaqCategoryController {
     public ResponseEntity<ApiResponse<Void>> deleteCategory(@PathVariable UUID categoryId) {
         faqService.deleteCategory(categoryId);
         return ResponseEntity.ok(ApiResponse.success("Category deleted successfully", null));
+    }
+
+    // ========== Phase 2-C: 分類統計 API ==========
+
+    /**
+     * 取得分類統計
+     * AC-003: FAQ 分類統計 API
+     */
+    @GetMapping("/stats")
+    @PreAuthorize("hasAuthority('faq:read')")
+    public ResponseEntity<ApiResponse<List<CategoryStatsDto>>> getCategoryStats() {
+        List<CategoryStatsDto> stats = faqService.getCategoryStats();
+        return ResponseEntity.ok(ApiResponse.success(stats));
     }
 }

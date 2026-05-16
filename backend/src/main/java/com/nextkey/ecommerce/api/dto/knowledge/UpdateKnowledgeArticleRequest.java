@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.api.dto.knowledge;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,4 +35,6 @@ public class UpdateKnowledgeArticleRequest {
     private List<String> tags;
 
     private Boolean isPinned;
+
+    private Instant scheduledPublishAt;
 }

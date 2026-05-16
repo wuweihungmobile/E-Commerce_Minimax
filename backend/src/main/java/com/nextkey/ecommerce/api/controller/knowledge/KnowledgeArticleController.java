@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.api.controller.knowledge;
 
+import java.time.Instant;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -118,5 +119,17 @@ public class KnowledgeArticleController {
             @PathVariable UUID articleId) {
         knowledgeBaseService.incrementViewCount(articleId);
         return ResponseEntity.ok(ApiResponse.success("View count incremented", null));
+    }
+
+    /**
+     * 排程發布文章
+     */
+    @PutMapping("/{articleId}/schedule")
+    @PreAuthorize("hasAuthority('knowledge:update')")
+    public ResponseEntity<ApiResponse<KnowledgeArticleDto>> schedulePublish(
+            @PathVariable UUID articleId,
+            @RequestParam Instant scheduledPublishAt) {
+        KnowledgeArticleDto article = knowledgeBaseService.schedulePublish(articleId, scheduledPublishAt);
+        return ResponseEntity.ok(ApiResponse.success("Article scheduled for publish", article));
     }
 }

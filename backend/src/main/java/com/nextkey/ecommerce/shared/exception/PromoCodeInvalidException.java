@@ -2,6 +2,8 @@ package com.nextkey.ecommerce.shared.exception;
 
 public class PromoCodeInvalidException extends BusinessException {
 
+    private static final long serialVersionUID = 1L;
+
     private final String promoCode;
     private final String reason;
 

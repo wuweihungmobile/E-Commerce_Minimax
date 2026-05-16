@@ -9,7 +9,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -21,7 +20,6 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -33,7 +31,6 @@ import com.nextkey.ecommerce.core.knowledge.KnowledgeBaseService;
 import com.nextkey.ecommerce.domain.model.knowledge.ArticleVersion;
 import com.nextkey.ecommerce.domain.model.knowledge.KnowledgeArticle;
 import com.nextkey.ecommerce.domain.model.knowledge.KnowledgeArticle.ArticleStatus;
-import com.nextkey.ecommerce.domain.model.knowledge.KnowledgeCategory;
 import com.nextkey.ecommerce.domain.repository.knowledge.ArticleVersionRepository;
 import com.nextkey.ecommerce.domain.repository.knowledge.KnowledgeArticleRepository;
 import com.nextkey.ecommerce.domain.repository.knowledge.KnowledgeCategoryRepository;
@@ -65,36 +62,12 @@ public class M18KnowledgePhase2IntegrationTest {
     @MockBean
     private KnowledgeBaseService knowledgeBaseService;
 
-    private UUID tenantId;
-    private UUID categoryId;
     private UUID articleId;
-    private KnowledgeArticle testArticle;
-    private KnowledgeCategory testCategory;
     private ArticleVersion testVersion;
 
     @BeforeEach
     void setUp() {
-        tenantId = UUID.randomUUID();
-        categoryId = UUID.randomUUID();
         articleId = UUID.randomUUID();
-
-        testCategory = KnowledgeCategory.builder()
-                .id(categoryId)
-                .name("Test Category")
-                .slug("test-category")
-                .description("Test category description")
-                .tenantId(tenantId)
-                .build();
-
-        testArticle = KnowledgeArticle.builder()
-                .id(articleId)
-                .title("Test Article")
-                .slug("test-article")
-                .content("Test content for the article")
-                .status(ArticleStatus.DRAFT)
-                .viewCount(0)
-                .isPinned(false)
-                .build();
 
         testVersion = ArticleVersion.builder()
                 .id(UUID.randomUUID())
@@ -135,7 +108,6 @@ public class M18KnowledgePhase2IntegrationTest {
     @DisplayName("AC-002: 可以設定文章的發布時間（排程發布）")
     @WithMockUser(authorities = {"knowledge:update"})
     void schedulePublish_success() throws Exception {
-        Instant scheduledTime = Instant.parse("2026-06-01T00:00:00Z");
         KnowledgeArticleDto scheduledArticle = KnowledgeArticleDto.builder()
                 .id(articleId)
                 .title("Test Article")

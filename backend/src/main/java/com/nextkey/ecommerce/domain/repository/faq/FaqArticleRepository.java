@@ -30,8 +30,14 @@ public interface FaqArticleRepository extends JpaRepository<FaqArticle, UUID> {
 
     List<FaqArticle> findByIsPinnedTrueAndIsPublishedTrueOrderBySortOrderAsc();
 
+    List<FaqArticle> findByTenantIdAndIsPinnedTrueOrderBySortOrderAsc(UUID tenantId);
+
     @Query("SELECT fa FROM FaqArticle fa WHERE fa.tenantId = :tenantId AND fa.isPublished = true AND " +
            "(LOWER(fa.question) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
            "LOWER(fa.answer) LIKE LOWER(CONCAT('%', :keyword, '%')))")
     Page<FaqArticle> searchByTenantIdAndKeyword(@Param("tenantId") UUID tenantId, @Param("keyword") String keyword, Pageable pageable);
+
+    long countByTenantIdAndCategoryId(UUID tenantId, UUID categoryId);
+
+    long countByTenantIdAndCategoryIdAndIsPublishedTrue(UUID tenantId, UUID categoryId);
 }

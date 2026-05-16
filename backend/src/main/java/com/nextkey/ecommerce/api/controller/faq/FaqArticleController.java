@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.api.controller.faq;
 
+import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -90,5 +91,35 @@ public class FaqArticleController {
     public ResponseEntity<ApiResponse<Void>> incrementViewCount(@PathVariable UUID articleId) {
         faqService.incrementViewCount(articleId);
         return ResponseEntity.ok(ApiResponse.success("View count incremented", null));
+    }
+
+    // ========== Phase 2-C: FAQ 進階功能 ==========
+
+    /**
+     * 取得置頂文章列表
+     * AC-001: 支援 FAQ 文章置頂排序
+     */
+    @GetMapping("/pinned")
+    @PreAuthorize("hasAuthority('faq:read')")
+    public ResponseEntity<ApiResponse<List<FaqArticleDto>>> getPinnedArticles() {
+        List<FaqArticleDto> articles = faqService.getPinnedArticles();
+        return ResponseEntity.ok(ApiResponse.success(articles));
+    }
+
+    /**
+     * 搜尋文章並高亮關鍵字
+     * AC-002: 支援搜尋關鍵字高亮顯示
+     */
+    @GetMapping("/search")
+    @PreAuthorize("hasAuthority('faq:read')")
+    public ResponseEntity<ApiResponse<Page<FaqArticleDto>>> searchArticlesWithHighlight(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String highlightPrefix,
+            @RequestParam(required = false) String highlightSuffix) {
+        Page<FaqArticleDto> articles = faqService.searchArticlesWithHighlight(
+                page, size, keyword, highlightPrefix, highlightSuffix);
+        return ResponseEntity.ok(ApiResponse.success(articles));
     }
 }

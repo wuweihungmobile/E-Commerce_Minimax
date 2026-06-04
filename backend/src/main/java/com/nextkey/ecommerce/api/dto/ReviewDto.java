@@ -108,6 +108,9 @@ public class ReviewDto {
         private Boolean isAnonymous;
         private String sellerReply;
         private Instant sellerRepliedAt;
+        private Boolean isHandled;
+        private Instant handledAt;
+        private UUID handledBy;
         private Instant createdAt;
         private Instant updatedAt;
     }

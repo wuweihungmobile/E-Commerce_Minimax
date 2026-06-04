@@ -132,4 +132,35 @@ public class ReviewController {
         ReviewDto.ReviewResponse response = reviewService.markHelpful(reviewId);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
+
+    /**
+     * 標記評價為已處理
+     */
+    @PutMapping("/{reviewId}/handle")
+    @PreAuthorize("hasAuthority('room:update') or hasAuthority('product:update')")
+    public ResponseEntity<ApiResponse<ReviewDto.ReviewResponse>> markAsHandled(
+            @PathVariable UUID reviewId,
+            @RequestParam(defaultValue = "true") Boolean handled) {
+        log.info("Mark review as handled: reviewId={}, handled={}", reviewId, handled);
+        ReviewDto.ReviewResponse response;
+        if (handled) {
+            response = reviewService.markAsHandled(reviewId);
+        } else {
+            response = reviewService.markAsUnhandled(reviewId);
+        }
+        return ResponseEntity.ok(ApiResponse.success("Review handling status updated", response));
+    }
+
+    /**
+     * 根據處理狀態取得評價列表
+     */
+    @GetMapping("/managed")
+    @PreAuthorize("hasAuthority('room:update') or hasAuthority('product:update')")
+    public ResponseEntity<ApiResponse<ReviewDto.ReviewListResponse>> getReviewsByHandlingStatus(
+            @RequestParam(required = false, defaultValue = "false") Boolean isHandled,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        ReviewDto.ReviewListResponse response = reviewService.getReviewsByHandlingStatus(isHandled, page, size);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
 }

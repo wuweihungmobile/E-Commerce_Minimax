@@ -9,6 +9,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.nextkey.ecommerce.api.dto.BookingReviewDto;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.review.BookingReview;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
@@ -39,7 +40,7 @@ public class BookingReviewService {
      * 建立預訂評價
      */
     @Transactional
-    public BookingReview createBookingReview(UUID bookingId, Integer rating, String title,
+    public BookingReviewDto.BookingReviewResponse createBookingReview(UUID bookingId, Integer rating, String title,
                                               String content, List<String> images, Boolean isAnonymous) {
         UUID userId = TenantContext.getCurrentUser();
 
@@ -68,14 +69,14 @@ public class BookingReviewService {
         log.info("Booking review created: reviewId={}, bookingId={}, rating={}",
                 review.getId(), bookingId, rating);
 
-        return review;
+        return toBookingReviewResponse(review);
     }
 
     /**
      * 房東回覆評價
      */
     @Transactional
-    public BookingReview replyToBookingReview(UUID reviewId, String reply) {
+    public BookingReviewDto.BookingReviewResponse replyToBookingReview(UUID reviewId, String reply) {
         UUID userId = TenantContext.getCurrentUser();
 
         BookingReview review = bookingReviewRepository.findById(reviewId)
@@ -93,7 +94,17 @@ public class BookingReviewService {
 
         log.info("Host replied to booking review: reviewId={}", reviewId);
 
-        return review;
+        return toBookingReviewResponse(review);
+    }
+
+    /**
+     * 取得預訂評價詳情
+     */
+    @Transactional(readOnly = true)
+    public BookingReviewDto.BookingReviewResponse getBookingReviewById(UUID reviewId) {
+        BookingReview review = bookingReviewRepository.findById(reviewId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Booking review not found"));
+        return toBookingReviewResponse(review);
     }
 
     /**
@@ -124,5 +135,26 @@ public class BookingReviewService {
         bookingReviewRepository.save(review);
 
         log.info("Booking review deleted (soft): reviewId={}", reviewId);
+    }
+
+    // ========== Helper Methods ==========
+
+    private BookingReviewDto.BookingReviewResponse toBookingReviewResponse(BookingReview review) {
+        return BookingReviewDto.BookingReviewResponse.builder()
+                .reviewId(review.getId())
+                .bookingId(review.getBookingId())
+                .userId(review.getIsAnonymous() ? null : review.getUserId())
+                .userFullName(review.getIsAnonymous() ? "Anonymous" : review.getUser().getFullName())
+                .userAvatarUrl(review.getIsAnonymous() ? null : review.getUser().getAvatarUrl())
+                .rating(review.getRating())
+                .title(review.getTitle())
+                .content(review.getContent())
+                .images(review.getImages())
+                .isAnonymous(review.getIsAnonymous())
+                .hostReply(review.getHostReply())
+                .hostRepliedAt(review.getHostRepliedAt())
+                .createdAt(review.getCreatedAt())
+                .updatedAt(review.getUpdatedAt())
+                .build();
     }
 }

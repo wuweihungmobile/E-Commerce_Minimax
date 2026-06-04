@@ -11,6 +11,7 @@ import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -38,6 +39,7 @@ import static org.hamcrest.Matchers.*;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("integration-test")
+@Import(com.nextkey.ecommerce.integration.IntegrationTestConfiguration.class)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @DisplayName("US-M17 E2E: Tenant Controller REST Assured E2E 測試")
 class TenantControllerE2ETest {

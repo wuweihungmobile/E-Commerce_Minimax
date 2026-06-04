@@ -25,6 +25,7 @@ import com.nextkey.ecommerce.api.dto.M15Dto;
 import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.core.cms.listing.ListingCardService;
 import com.nextkey.ecommerce.core.cms.media.MediaService;
+import org.springframework.beans.factory.annotation.Qualifier;
 import com.nextkey.ecommerce.core.cms.post.PostCategoryService;
 import com.nextkey.ecommerce.core.cms.post.PostService;
 import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
@@ -55,6 +56,7 @@ public class PostController {
     private final PostService postService;
     private final PostCategoryService postCategoryService;
     private final ListingCardService listingCardService;
+    @Qualifier("cmsMediaService")
     private final MediaService mediaService;
     private final TenantFeatureToggleRepository featureToggleRepository;
     private final TenantMemberRepository tenantMemberRepository;
@@ -346,12 +348,12 @@ public class PostController {
     }
 
     /**
-     * 上傳媒體（Mock）
-     * POST /api/v2/media/upload
+     * 上傳媒體（Mock - 使用路徑方式）
+     * POST /api/v2/dashboard/media/upload-by-path
      */
-    @PostMapping("/media/upload")
+    @PostMapping("/dashboard/media/upload-by-path")
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
-    public ResponseEntity<ApiResponse<M15Dto.MediaUploadResponse>> uploadMedia(
+    public ResponseEntity<ApiResponse<M15Dto.MediaUploadResponse>> uploadMediaByPath(
             @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam String fileName,
             @RequestParam String originalName,

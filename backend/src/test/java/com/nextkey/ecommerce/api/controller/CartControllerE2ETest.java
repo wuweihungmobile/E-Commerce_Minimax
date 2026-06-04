@@ -13,6 +13,7 @@ import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -46,6 +47,7 @@ import static org.hamcrest.Matchers.*;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(com.nextkey.ecommerce.integration.IntegrationTestConfiguration.class)
 @ActiveProfiles("integration-test")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @DisplayName("API-M07 E2E: Cart Controller REST Assured E2E 測試")
@@ -170,8 +172,28 @@ class CartControllerE2ETest {
 
     @AfterEach
     void tearDown() {
+        // 先清空購物車（確保測試之間的數據隔離）
+        try {
+            given()
+                    .header("Authorization", "Bearer " + buyerToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .when()
+                    .delete(CART_URL)
+                    .then()
+                    .statusCode(anyOf(is(200), is(404))); // 404 表示購物車本來就是空的
+        } catch (Exception e) {
+            // 忽略錯誤，繼續清理用戶
+            System.out.println("Warning: Failed to clear cart during teardown: " + e.getMessage());
+        }
+
+        // 清理測試用戶
         userRepository.findByEmail(buyerEmail).ifPresent(user -> userRepository.delete(user));
         userRepository.findByEmail(sellerEmail).ifPresent(user -> userRepository.delete(user));
+
+        // 清理測試 Tenant
+        if (testTenantId != null) {
+            tenantRepository.findById(testTenantId).ifPresent(tenant -> tenantRepository.delete(tenant));
+        }
     }
 
     // ── API-M07-001: 取得購物車-成功 ──────────────────────────────

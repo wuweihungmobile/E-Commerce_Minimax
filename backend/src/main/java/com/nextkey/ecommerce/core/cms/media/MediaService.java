@@ -34,7 +34,7 @@ import lombok.extern.slf4j.Slf4j;
  * 媒體庫服務，處理上傳、列表、刪除
  */
 @Slf4j
-@Service
+@Service("cmsMediaService")
 @RequiredArgsConstructor
 public class MediaService {
 

@@ -294,6 +294,70 @@ public class ReviewService {
         return toReviewResponse(review, review.getListing());
     }
 
+    /**
+     * 標記評價為已處理
+     */
+    @Transactional
+    public ReviewDto.ReviewResponse markAsHandled(UUID reviewId) {
+        UUID userId = TenantContext.getCurrentUser();
+
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
+
+        review.setIsHandled(true);
+        review.setHandledAt(Instant.now());
+        review.setHandledBy(userRepository.findById(userId).orElse(null));
+        review = reviewRepository.save(review);
+
+        log.info("Review marked as handled: reviewId={}, handledBy={}", reviewId, userId);
+
+        return toReviewResponse(review, review.getListing());
+    }
+
+    /**
+     * 標記評價為未處理
+     */
+    @Transactional
+    public ReviewDto.ReviewResponse markAsUnhandled(UUID reviewId) {
+        TenantContext.getCurrentUser(); // Validate user is authenticated
+
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
+
+        review.setIsHandled(false);
+        review.setHandledAt(null);
+        review.setHandledBy(null);
+        review = reviewRepository.save(review);
+
+        log.info("Review marked as unhandled: reviewId={}", reviewId);
+
+        return toReviewResponse(review, review.getListing());
+    }
+
+    /**
+     * 根據處理狀態取得評價列表
+     */
+    @Transactional(readOnly = true)
+    public ReviewDto.ReviewListResponse getReviewsByHandlingStatus(Boolean isHandled, int page, int size) {
+        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
+
+        Page<Review> reviews = reviewRepository.findByIsHandled(isHandled, pageRequest);
+
+        List<ReviewDto.ReviewResponse> reviewResponses = reviews.getContent().stream()
+                .map(r -> toReviewResponse(r, r.getListing()))
+                .collect(Collectors.toList());
+
+        return ReviewDto.ReviewListResponse.builder()
+                .reviews(reviewResponses)
+                .page(page)
+                .size(size)
+                .totalElements(reviews.getTotalElements())
+                .totalPages(reviews.getTotalPages())
+                .averageRating(null)
+                .totalReviews(null)
+                .build();
+    }
+
     // ========== Helper Methods ==========
 
     private ReviewDto.ReviewResponse toReviewResponse(Review review, Listing listing) {
@@ -317,6 +381,9 @@ public class ReviewService {
                 .isAnonymous(review.getIsAnonymous())
                 .sellerReply(review.getSellerReply())
                 .sellerRepliedAt(review.getSellerRepliedAt())
+                .isHandled(review.getIsHandled())
+                .handledAt(review.getHandledAt())
+                .handledBy(review.getHandledBy() != null ? review.getHandledBy().getId() : null)
                 .createdAt(review.getCreatedAt())
                 .updatedAt(review.getUpdatedAt())
                 .build();

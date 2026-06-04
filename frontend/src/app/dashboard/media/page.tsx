@@ -42,7 +42,13 @@ export default function MediaPage() {
   async function loadMedia() {
     setLoading(true);
     try {
-      const params: any = {
+      const params: {
+        page: number;
+        size: number;
+        categoryId?: string;
+        mimeType?: string;
+        keyword?: string;
+      } = {
         page,
         size: 20,
       };

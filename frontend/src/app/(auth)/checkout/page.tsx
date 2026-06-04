@@ -62,6 +62,12 @@ interface BookingResponse {
   createdAt: string
 }
 
+interface ApiResponse<T> {
+  success: boolean
+  data: T
+  message?: string
+}
+
 export default function CheckoutPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -157,7 +163,7 @@ export default function CheckoutPage() {
         specialRequests: specialRequests.trim() || undefined
       }
 
-      const response = await apiClient.post<{ data: BookingResponse }>(
+      const response = await apiClient.post<ApiResponse<BookingResponse>>(
         API_ENDPOINTS.bookings.create,
         request,
         {

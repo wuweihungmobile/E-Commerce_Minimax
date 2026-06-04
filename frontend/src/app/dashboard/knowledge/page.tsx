@@ -41,7 +41,12 @@ export default function KnowledgePage() {
   async function loadArticles() {
     setLoading(true);
     try {
-      const params: any = {
+      const params: {
+        page: number;
+        size: number;
+        categoryId?: string;
+        keyword?: string;
+      } = {
         page,
         size: 20,
       };

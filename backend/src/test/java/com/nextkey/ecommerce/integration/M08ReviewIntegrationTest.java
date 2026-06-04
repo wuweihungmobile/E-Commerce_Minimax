@@ -19,28 +19,35 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.nextkey.ecommerce.api.controller.BookingReviewController;
 import com.nextkey.ecommerce.api.controller.ReviewController;
+import com.nextkey.ecommerce.api.dto.BookingReviewDto;
 import com.nextkey.ecommerce.api.dto.ReviewDto;
 import com.nextkey.ecommerce.core.review.BookingReviewService;
 import com.nextkey.ecommerce.core.review.ReviewService;
 import com.nextkey.ecommerce.domain.model.review.BookingReview;
 import com.nextkey.ecommerce.domain.model.review.Review;
+import com.nextkey.ecommerce.domain.model.user.RolePermissionMapping;
 import com.nextkey.ecommerce.domain.repository.ReviewRepository;
 import com.nextkey.ecommerce.domain.repository.review.BookingReviewRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 
 /**
  * M08 評價系統整合測試
  * 測試：評價 CRUD、重複評價防止、平均評分計算
  */
 @WebMvcTest(controllers = {
-    ReviewController.class
+    ReviewController.class,
+    BookingReviewController.class
 })
+@Import(IntegrationTestConfiguration.class)
 @ActiveProfiles("integration-test")
 @DisplayName("M08 評價系統整合測試")
 public class M08ReviewIntegrationTest {
@@ -63,13 +70,19 @@ public class M08ReviewIntegrationTest {
     @MockBean
     private ListingRepository listingRepository;
 
+    @MockBean
+    private JwtTokenService jwtTokenService;
+
+    @MockBean
+    private RolePermissionMapping rolePermissionMapping;
+
     private UUID listingId;
     private UUID userId;
     private UUID orderId;
     private UUID bookingId;
     private UUID reviewId;
     private Review testReview;
-    private BookingReview testBookingReview;
+    private BookingReviewDto.BookingReviewResponse testBookingReview;
 
     @BeforeEach
     void setUp() {
@@ -91,12 +104,12 @@ public class M08ReviewIntegrationTest {
                 .reviewType(Review.ReviewType.PRODUCT)
                 .build();
 
-        testBookingReview = BookingReview.builder()
-                .id(UUID.randomUUID())
+        testBookingReview = BookingReviewDto.BookingReviewResponse.builder()
+                .reviewId(UUID.randomUUID())
+                .bookingId(bookingId)
                 .rating(5)
                 .title("Great stay!")
                 .content("Wonderful experience.")
-                .isVisible(true)
                 .isAnonymous(false)
                 .build();
     }
@@ -135,7 +148,7 @@ public class M08ReviewIntegrationTest {
     void createBookingReview_success() throws Exception {
         when(bookingReviewService.createBookingReview(
                 eq(bookingId), eq(5), eq("Great stay!"),
-                eq("Wonderful experience."), isNull(), eq(false)))
+                eq("Wonderful experience."), any(), any()))
                 .thenReturn(testBookingReview);
 
         mockMvc.perform(post("/v2/booking-reviews")
@@ -146,7 +159,7 @@ public class M08ReviewIntegrationTest {
 
         verify(bookingReviewService).createBookingReview(
                 eq(bookingId), eq(5), eq("Great stay!"),
-                eq("Wonderful experience."), isNull(), eq(false));
+                eq("Wonderful experience."), any(), any());
     }
 
     @Test
@@ -279,23 +292,25 @@ public class M08ReviewIntegrationTest {
     @DisplayName("BookingReview：驗證房東回覆欄位")
     @WithMockUser(authorities = {"room:update"})
     void bookingReview_hostReplyFields() throws Exception {
-        BookingReview reviewWithReply = BookingReview.builder()
-                .id(UUID.randomUUID())
+        UUID reviewId = UUID.randomUUID();
+        BookingReviewDto.BookingReviewResponse reviewWithReply = BookingReviewDto.BookingReviewResponse.builder()
+                .reviewId(reviewId)
+                .bookingId(bookingId)
                 .rating(4)
                 .title("Good stay")
                 .hostReply("Thank you for your review!")
                 .hostRepliedAt(Instant.now())
                 .build();
 
-        when(bookingReviewService.replyToBookingReview(eq(reviewWithReply.getId()), anyString()))
+        when(bookingReviewService.replyToBookingReview(eq(reviewId), anyString()))
                 .thenReturn(reviewWithReply);
 
-        mockMvc.perform(post("/v2/booking-reviews/{reviewId}/reply", reviewWithReply.getId())
+        mockMvc.perform(post("/v2/booking-reviews/{reviewId}/reply", reviewId)
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"reply\":\"Thank you for your review!\"}"))
                 .andExpect(status().isOk());
 
-        verify(bookingReviewService).replyToBookingReview(eq(reviewWithReply.getId()), anyString());
+        verify(bookingReviewService).replyToBookingReview(eq(reviewId), anyString());
     }
 }

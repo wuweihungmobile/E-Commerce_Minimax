@@ -20,6 +20,7 @@ import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -58,6 +59,7 @@ import static org.hamcrest.Matchers.*;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(com.nextkey.ecommerce.integration.IntegrationTestConfiguration.class)
 @ActiveProfiles("integration-test")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @DisplayName("API-M06 E2E: Booking Controller REST Assured E2E 測試")

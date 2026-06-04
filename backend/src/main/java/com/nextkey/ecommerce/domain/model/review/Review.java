@@ -103,6 +103,17 @@ public class Review {
     @Column(name = "seller_replied_at")
     private Instant sellerRepliedAt;
 
+    @Column(name = "is_handled")
+    @Builder.Default
+    private Boolean isHandled = false;
+
+    @Column(name = "handled_at")
+    private Instant handledAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "handled_by")
+    private User handledBy;
+
     @Column(name = "created_at")
     private Instant createdAt;
 

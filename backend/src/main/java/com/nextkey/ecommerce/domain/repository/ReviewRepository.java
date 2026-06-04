@@ -42,4 +42,6 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
             @Param("listingId") UUID listingId,
             @Param("minRating") Integer minRating,
             Pageable pageable);
+
+    Page<Review> findByIsHandled(Boolean isHandled, Pageable pageable);
 }

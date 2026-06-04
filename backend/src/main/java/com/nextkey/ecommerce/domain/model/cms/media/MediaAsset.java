@@ -29,7 +29,7 @@ import lombok.Setter;
  * M15 CMS MediaAsset Entity
  * 媒體資源實體，支援圖片、影片、文檔
  */
-@Entity
+@Entity(name = "CmsMediaAsset")
 @Table(name = "media_assets")
 @Getter
 @Setter
@@ -83,9 +83,11 @@ public class MediaAsset {
     @Builder.Default
     private Boolean isActive = true;
 
+    @Column(name = "created_at")
     @Builder.Default
     private Instant createdAt = Instant.now();
 
+    @Column(name = "updated_at")
     @Builder.Default
     private Instant updatedAt = Instant.now();
 

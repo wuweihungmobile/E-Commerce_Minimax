@@ -28,7 +28,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-@Entity
+@Entity(name = "MediaAsset")
 @Table(name = "media_assets")
 @Getter
 @Setter

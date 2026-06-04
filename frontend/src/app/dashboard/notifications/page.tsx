@@ -7,6 +7,7 @@ import {
   renderTemplate,
   NotificationTemplateDto,
   PageResponse,
+  SearchTemplateRequest,
   NOTIFICATION_TYPES,
   CHANNELS,
 } from '@/services/notification';
@@ -32,7 +33,7 @@ export default function NotificationsPage() {
   async function loadTemplates() {
     setLoading(true);
     try {
-      const params: any = {
+      const params: SearchTemplateRequest = {
         page,
         size: 20,
       };

@@ -1,299 +1,115 @@
 package com.nextkey.ecommerce.core.settlement;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import com.nextkey.ecommerce.domain.model.order.Order;
+import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementListResponse;
+import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementResponse;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
-import com.nextkey.ecommerce.domain.model.tenant.Tenant;
-import com.nextkey.ecommerce.domain.repository.OrderRepository;
-import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
-import com.nextkey.ecommerce.domain.repository.TenantRepository;
-import com.nextkey.ecommerce.shared.exception.BusinessException;
-import com.nextkey.ecommerce.shared.exception.ErrorCode;
-import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 結算服務
+ * 結算服務 Facade
+ *
+ * 拆分歷程（Sprint 16 Retro TI-002）：
+ * - 原 SettlementService 331 行，業務邏輯過於集中
+ * - 拆分為三個專責子服務：
+ *   - {@link SettlementCalculator}：純金額計算邏輯（無狀態）
+ *   - {@link SettlementGenerator}：結算單生成與查詢（含 @Scheduled）
+ *   - {@link SettlementReviewer}：結算單狀態機審核流程
+ *   - {@link SettlementMapper}：Entity ↔ DTO 轉換
+ *
+ * 設計：SettlementService 保留為 Facade，向後相容既有呼叫端
+ * - 既有測試 SettlementServiceTest 維持通過
+ * - 內部委派給三個子服務
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SettlementService {
 
-    private final SettlementStatementRepository settlementRepository;
-    private final TenantRepository tenantRepository;
-    private final OrderRepository orderRepository;
+    private final SettlementCalculator calculator;
+    private final SettlementGenerator generator;
+    private final SettlementReviewer reviewer;
+    private final SettlementMapper mapper;
 
-    // 平台抽成比例 (Phase 1 預設 10%)
-    private static final BigDecimal COMMISSION_RATE = new BigDecimal("0.10");
+    // ========== 委派方法（向後相容） ==========
 
-    /**
-     * 每週一凌晨自動生成結算單
-     * 結算上一週 (週一 00:00 至 週日 23:59) 的已完成訂單
-     */
-    @Scheduled(cron = "0 0 0 ? * MON")
-    @Transactional
+    /** @deprecated 委派給 {@link SettlementGenerator#generateWeeklyStatements()} */
+    @Deprecated
     public void generateWeeklyStatements() {
-        log.info("Starting weekly settlement statement generation");
-
-        LocalDate today = LocalDate.now();
-        // 上週一
-        LocalDate lastWeekMonday = today.with(DayOfWeek.MONDAY).minusWeeks(1);
-        // 上週日
-        LocalDate lastWeekSunday = lastWeekMonday.plusDays(6);
-
-        List<Tenant> activeTenants = tenantRepository.findByStatus(Tenant.TenantStatus.ACTIVE);
-
-        int generatedCount = 0;
-        for (Tenant tenant : activeTenants) {
-            try {
-                generateStatementForTenant(tenant.getId(), lastWeekMonday, lastWeekSunday);
-                generatedCount++;
-            } catch (Exception e) {
-                log.error("Failed to generate settlement statement for tenant: {}", tenant.getId(), e);
-            }
-        }
-
-        log.info("Weekly settlement statement generation completed. Generated {} statements", generatedCount);
+        generator.generateWeeklyStatements();
     }
 
-    /**
-     * 為指定租戶生成結算單
-     */
-    @Transactional
+    /** @deprecated 委派給 {@link SettlementGenerator#generateStatementForTenant(UUID, LocalDate, LocalDate)} */
+    @Deprecated
     public SettlementStatement generateStatementForTenant(UUID tenantId, LocalDate periodStart, LocalDate periodEnd) {
-        // 檢查是否已存在該期間的結算單
-        List<SettlementStatement> existingStatements = settlementRepository.findByTenantIdAndPeriodStartBetween(
-                tenantId, periodStart, periodEnd);
-
-        if (!existingStatements.isEmpty()) {
-            log.warn("Settlement statement already exists for tenant {} period {} to {}", tenantId, periodStart, periodEnd);
-            return existingStatements.get(0);
-        }
-
-        // 取得期間內的已完成訂單
-        List<Order> completedOrders = orderRepository.findByTenantIdAndCreatedAtBetween(
-                tenantId,
-                periodStart.atStartOfDay(),
-                periodEnd.atTime(23, 59, 59));
-
-        completedOrders = completedOrders.stream()
-                .filter(o -> o.getStatus() == Order.OrderStatus.COMPLETED ||
-                        o.getStatus() == Order.OrderStatus.DELIVERED)
-                .collect(Collectors.toList());
-
-        // 計算結算金額 (商家結算金額 = Σ(order.total_amount × (1 - commission_rate)) - 退款金額)
-        BigDecimal totalGmv = completedOrders.stream()
-                .filter(o -> o.getStatus() != Order.OrderStatus.REFUNDED)
-                .map(Order::getTotalAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        // 計算抽成金額 (僅針對已完成訂單)
-        BigDecimal commissionAmount = totalGmv.multiply(COMMISSION_RATE).setScale(2, RoundingMode.HALF_UP);
-
-        // 計算退款金額
-        BigDecimal totalRefunds = completedOrders.stream()
-                .filter(o -> o.getStatus() == Order.OrderStatus.REFUNDED)
-                .map(Order::getTotalAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        // 結算金額 = (GMV * (1 - commission_rate)) - 退款
-        BigDecimal netAmount = totalGmv.subtract(commissionAmount).subtract(totalRefunds);
-
-        // 生成結算單號
-        String statementNumber = generateStatementNumber(tenantId, periodStart);
-
-        Tenant tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_5001, "Tenant not found"));
-
-        SettlementStatement statement = SettlementStatement.builder()
-                .tenant(tenant)
-                .statementNumber(statementNumber)
-                .periodStart(periodStart)
-                .periodEnd(periodEnd)
-                .totalOrders(completedOrders.size())
-                .totalGmv(totalGmv)
-                .totalRefunds(totalRefunds)
-                .commissionAmount(commissionAmount)
-                .netSettlementAmount(netAmount)
-                .currency("TWD")
-                .status(SettlementStatement.SettlementStatus.PENDING)
-                .build();
-
-        statement = settlementRepository.save(statement);
-
-        log.info("Generated settlement statement: id={}, tenant={}, amount={}",
-                statement.getId(), tenantId, netAmount);
-
-        return statement;
+        return generator.generateStatementForTenant(tenantId, periodStart, periodEnd);
     }
 
-    /**
-     * 取得商家結算單列表
-     */
-    @Transactional(readOnly = true)
+    /** @deprecated 委派給 {@link SettlementGenerator#getStatementsByTenant(int, int)} */
+    @Deprecated
     public SettlementStatementListResponse getStatementsByTenant(int page, int size) {
-        UUID tenantId = TenantContext.getCurrentTenant();
-
-        Page<SettlementStatement> statements = settlementRepository.findByTenantIdOrderByPeriodStartDesc(
-                tenantId, PageRequest.of(page, size));
-
-        return SettlementStatementListResponse.builder()
-                .statements(statements.getContent().stream()
-                        .map(this::toStatementResponse)
-                        .collect(Collectors.toList()))
-                .page(page)
-                .size(size)
-                .totalElements(statements.getTotalElements())
-                .totalPages(statements.getTotalPages())
-                .build();
+        return generator.getStatementsByTenant(page, size);
     }
 
-    /**
-     * 取得結算單詳情
-     */
-    @Transactional(readOnly = true)
+    /** @deprecated 委派給 {@link SettlementGenerator#getStatementById(UUID)} */
+    @Deprecated
     public SettlementStatementResponse getStatementById(UUID statementId) {
-        UUID tenantId = TenantContext.getCurrentTenant();
-
-        SettlementStatement statement = settlementRepository.findByIdAndTenantId(statementId, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_5005, "Settlement statement not found"));
-
-        return toStatementResponse(statement);
+        return generator.getStatementById(statementId);
     }
 
-    /**
-     * Admin: 取得所有待審核結算單
-     */
-    @Transactional(readOnly = true)
+    /** @deprecated 委派給 {@link SettlementReviewer#getPendingReviewStatements(int, int)} */
+    @Deprecated
     public SettlementStatementListResponse getPendingReviewStatements(int page, int size) {
-        Page<SettlementStatement> statements = settlementRepository.findByStatusOrderByGeneratedAtDesc(
-                SettlementStatement.SettlementStatus.PENDING_REVIEW,
-                PageRequest.of(page, size));
-
-        return SettlementStatementListResponse.builder()
-                .statements(statements.getContent().stream()
-                        .map(this::toStatementResponse)
-                        .collect(Collectors.toList()))
-                .page(page)
-                .size(size)
-                .totalElements(statements.getTotalElements())
-                .totalPages(statements.getTotalPages())
-                .build();
+        return reviewer.getPendingReviewStatements(page, size);
     }
 
-    /**
-     * Admin: 提交結算單審核
-     */
-    @Transactional
+    /** @deprecated 委派給 {@link SettlementReviewer#submitForReview(UUID)} */
+    @Deprecated
     public SettlementStatementResponse submitForReview(UUID statementId) {
-        UUID tenantId = TenantContext.getCurrentTenant();
-
-        SettlementStatement statement = settlementRepository.findByIdAndTenantId(statementId, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_5005, "Settlement statement not found"));
-
-        if (statement.getStatus() != SettlementStatement.SettlementStatus.PENDING) {
-            throw new BusinessException(ErrorCode.E_5006, "Only PENDING statements can be submitted for review");
-        }
-
-        statement.setStatus(SettlementStatement.SettlementStatus.PENDING_REVIEW);
-        statement = settlementRepository.save(statement);
-
-        log.info("Settlement statement submitted for review: id={}", statementId);
-
-        return toStatementResponse(statement);
+        return reviewer.submitForReview(statementId);
     }
 
-    /**
-     * Admin: 批准結算單
-     */
-    @Transactional
+    /** @deprecated 委派給 {@link SettlementReviewer#approveStatement(UUID, UUID)} */
+    @Deprecated
     public SettlementStatementResponse approveStatement(UUID statementId, UUID adminId) {
-        SettlementStatement statement = settlementRepository.findById(statementId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_5005, "Settlement statement not found"));
-
-        if (statement.getStatus() != SettlementStatement.SettlementStatus.PENDING_REVIEW) {
-            throw new BusinessException(ErrorCode.E_5006, "Only PENDING_REVIEW statements can be approved");
-        }
-
-        statement.setStatus(SettlementStatement.SettlementStatus.APPROVED);
-        statement.setReviewedAt(java.time.Instant.now());
-        statement = settlementRepository.save(statement);
-
-        log.info("Settlement statement approved: id={}, by={}", statementId, adminId);
-
-        return toStatementResponse(statement);
+        return reviewer.approveStatement(statementId, adminId);
     }
 
-    /**
-     * Admin: 駁回結算單
-     */
-    @Transactional
+    /** @deprecated 委派給 {@link SettlementReviewer#rejectStatement(UUID, UUID, String)} */
+    @Deprecated
     public SettlementStatementResponse rejectStatement(UUID statementId, UUID adminId, String reason) {
-        SettlementStatement statement = settlementRepository.findById(statementId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_5005, "Settlement statement not found"));
-
-        if (statement.getStatus() != SettlementStatement.SettlementStatus.PENDING_REVIEW) {
-            throw new BusinessException(ErrorCode.E_5006, "Only PENDING_REVIEW statements can be rejected");
-        }
-
-        statement.setStatus(SettlementStatement.SettlementStatus.REJECTED);
-        statement.setReviewedAt(java.time.Instant.now());
-        statement.setRejectionReason(reason);
-        statement = settlementRepository.save(statement);
-
-        log.info("Settlement statement rejected: id={}, by={}, reason={}", statementId, adminId, reason);
-
-        return toStatementResponse(statement);
+        return reviewer.rejectStatement(statementId, adminId, reason);
     }
 
-    // ========== Helper Methods ==========
+    // ========== 對外公開的計算方法（純函數） ==========
 
-    private String generateStatementNumber(UUID tenantId, LocalDate periodStart) {
-        String dateStr = periodStart.toString().replace("-", "");
-        return "STL-" + tenantId.toString().substring(0, 8) + "-" + dateStr;
+    /** 對外公開：取得結算計算器（純函數，無副作用） */
+    public SettlementCalculator getCalculator() {
+        return calculator;
     }
 
-    private SettlementStatementResponse toStatementResponse(SettlementStatement statement) {
-        return SettlementStatementResponse.builder()
-                .id(statement.getId())
-                .statementNumber(statement.getStatementNumber())
-                .periodStart(statement.getPeriodStart())
-                .periodEnd(statement.getPeriodEnd())
-                .totalOrders(statement.getTotalOrders())
-                .totalGmv(statement.getTotalGmv())
-                .totalRefunds(statement.getTotalRefunds())
-                .commissionAmount(statement.getCommissionAmount())
-                .netSettlementAmount(statement.getNetSettlementAmount())
-                .currency(statement.getCurrency())
-                .status(statement.getStatus().name())
-                .generatedAt(statement.getGeneratedAt())
-                .reviewedAt(statement.getReviewedAt())
-                .rejectionReason(statement.getRejectionReason())
-                .approvedAt(statement.getApprovedAt())
-                .paidAt(statement.getPaidAt())
-                .notes(statement.getNotes())
-                .build();
+    /** 對外公開：取得結算單生成器 */
+    public SettlementGenerator getGenerator() {
+        return generator;
+    }
+
+    /** 對外公開：取得結算單審核器 */
+    public SettlementReviewer getReviewer() {
+        return reviewer;
     }
 
     // ========== DTO Classes ==========
 
-    @lombok.Data
+    @Data
     @lombok.Builder
     @lombok.NoArgsConstructor
     @lombok.AllArgsConstructor
@@ -317,7 +133,7 @@ public class SettlementService {
         private String notes;
     }
 
-    @lombok.Data
+    @Data
     @lombok.Builder
     @lombok.NoArgsConstructor
     @lombok.AllArgsConstructor

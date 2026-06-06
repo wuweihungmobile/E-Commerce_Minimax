@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.api.controller.payment;
 
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -32,8 +33,17 @@ import lombok.extern.slf4j.Slf4j;
 @RequestMapping("/v2/payments/webhook")
 public class StripeWebhookController {
 
-    // TODO: Phase 3 實作時從設定檔讀取
-    private static final String STRIPE_WEBHOOK_SECRET = System.getenv("STRIPE_WEBHOOK_SECRET");
+    /**
+     * Stripe Webhook 簽章驗證密鑰
+     * 從 application.yml 的 {@code stripe.webhook-secret} 注入；
+     * 留空表示未啟用 signature 驗證（測試模式）。
+     */
+    private final String stripeWebhookSecret;
+
+    public StripeWebhookController(
+            @Value("${stripe.webhook-secret:}") String stripeWebhookSecret) {
+        this.stripeWebhookSecret = stripeWebhookSecret;
+    }
 
     /**
      * 處理 Stripe Webhook 通知
@@ -54,7 +64,7 @@ public class StripeWebhookController {
 
         try {
             // 生產環境需要驗證 Stripe Signature
-            if (STRIPE_WEBHOOK_SECRET != null && !STRIPE_WEBHOOK_SECRET.isEmpty()) {
+            if (stripeWebhookSecret != null && !stripeWebhookSecret.isEmpty()) {
                 if (stripeSignature == null || stripeSignature.isEmpty()) {
                     log.error("Stripe webhook missing signature - signature verification required");
                     throw new BusinessException(ErrorCode.E_9001, "Missing Stripe signature");

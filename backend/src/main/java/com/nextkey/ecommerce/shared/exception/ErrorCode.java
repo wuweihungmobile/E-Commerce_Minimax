@@ -93,6 +93,18 @@ public enum ErrorCode {
     E_8000("E-8000", "Pricing rule not found"),
     E_8001("E_8001", "Invalid pricing rule config"),
 
+    // Review (E-1080s dedicated to Review module)
+    // 🔴 Sprint 16 US-001: 評價重複回覆
+    E_1086("E-1086", "Review already has a reply"),
+    // 🔴 Sprint 16 US-005: 多圖評價 9 張上限
+    E_1088("E-1088", "Review images count exceeds the limit: max 9, actual %d"),
+    // 🔴 Sprint 16 US-005: 評價圖片無效
+    E_1089("E-1089", "Review image is invalid: %s"),
+    // 🔴 Sprint 16 US-006: 圖片不存在
+    E_1090("E-1090", "Review image not found at index %d"),
+    // 🔴 Sprint 16 US-006: 非本人操作
+    E_1091("E-1091", "You can only operate on your own review images"),
+
     // Validation (E-9000s)
     E_9000("E-9000", "Validation error"),
     E_9001("E-9001", "Invalid email format"),

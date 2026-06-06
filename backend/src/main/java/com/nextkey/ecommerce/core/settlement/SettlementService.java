@@ -7,8 +7,6 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 
-import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementListResponse;
-import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementResponse;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
 
 import lombok.Data;
@@ -38,7 +36,6 @@ public class SettlementService {
     private final SettlementCalculator calculator;
     private final SettlementGenerator generator;
     private final SettlementReviewer reviewer;
-    private final SettlementMapper mapper;
 
     // ========== 委派方法（向後相容） ==========
 

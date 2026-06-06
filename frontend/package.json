@@ -7,10 +7,24 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "type-check": "tsc --noEmit",
+    "pre-commit-check": "eslint --fix && tsc --noEmit",
     "test": "echo \"No unit tests configured\" && exit 0",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
-    "e2e:headed": "playwright test --headed"
+    "e2e:headed": "playwright test --headed",
+    "prepare": "husky install || true"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "tsc --noEmit"
+    ]
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "npx --no-install eslint --fix $(git diff --cached --name-only --diff-filter=ACMR | grep -E '\\.(ts|tsx|js|jsx)$' || echo '') && npx --no-install tsc --noEmit"
+    }
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -35,6 +49,8 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

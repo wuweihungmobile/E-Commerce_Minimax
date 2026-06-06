@@ -22,6 +22,9 @@ public class ReviewDto {
     private static final int CONTENT_MAX_LENGTH = 2000;
     private static final int TITLE_MAX_LENGTH = 100;
 
+    // 🔴 Sprint 16 US-005: 評價圖片上限 9 張
+    public static final int MAX_REVIEW_IMAGES = 9;
+
     // ========== Create Request ==========
 
     @Data
@@ -47,6 +50,8 @@ public class ReviewDto {
         @Size(max = CONTENT_MAX_LENGTH, message = "Content must be at most 2000 characters")
         private String content;
 
+        // 🔴 Sprint 16 US-005: 評價圖片上限 9 張
+        @Size(max = MAX_REVIEW_IMAGES, message = "評價圖片最多 9 張")
         private List<String> images;
 
         private Boolean isAnonymous;
@@ -69,11 +74,18 @@ public class ReviewDto {
         @Size(max = CONTENT_MAX_LENGTH, message = "Content must be at most 2000 characters")
         private String content;
 
+        // 🔴 Sprint 16 US-005: 評價圖片上限 9 張
+        @Size(max = MAX_REVIEW_IMAGES, message = "評價圖片最多 9 張")
         private List<String> images;
     }
 
     // ========== Seller Reply Request ==========
 
+    /**
+     * @deprecated 請改用 {@link ReviewReplyDto.CreateReplyRequest}
+     *             此類別將於 Sprint 17 移除
+     */
+    @Deprecated
     @Data
     @Builder
     @NoArgsConstructor
@@ -181,5 +193,33 @@ public class ReviewDto {
         private Double threeStarPercent;
         private Double twoStarPercent;
         private Double oneStarPercent;
+    }
+
+    // ========== Image Management (Sprint 16 US-005, US-006) ==========
+
+    /**
+     * 新增單張圖片請求
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AddImageRequest {
+        @NotBlank(message = "Image URL is required")
+        @Size(max = 500, message = "Image URL must be at most 500 characters")
+        private String imageUrl;
+    }
+
+    /**
+     * 重新排序圖片請求
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ReorderImagesRequest {
+        @NotNull(message = "Image URLs are required")
+        @Size(min = 1, max = MAX_REVIEW_IMAGES, message = "評價圖片最多 9 張")
+        private List<String> imageUrls;
     }
 }

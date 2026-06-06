@@ -17,11 +17,11 @@ import com.nextkey.ecommerce.api.dto.media.MediaCategoryDto;
 import com.nextkey.ecommerce.api.dto.media.UpdateMediaCategoryRequest;
 import com.nextkey.ecommerce.api.dto.media.UpdateMediaRequest;
 import com.nextkey.ecommerce.api.dto.media.UploadMediaRequest;
-import com.nextkey.ecommerce.domain.model.media.MediaAsset;
+import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
 import com.nextkey.ecommerce.domain.model.media.MediaCategory;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
-import com.nextkey.ecommerce.domain.repository.media.MediaAssetRepository;
+import com.nextkey.ecommerce.domain.repository.cms.MediaAssetRepository;
 import com.nextkey.ecommerce.domain.repository.media.MediaCategoryRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -179,7 +179,7 @@ public class MediaService {
         if (keyword != null && !keyword.isBlank()) {
             assets = mediaAssetRepository.searchByKeyword(tenantId, keyword.trim(), pageable);
         } else if (mimeType != null && !mimeType.isBlank()) {
-            assets = mediaAssetRepository.findByMimeType(tenantId, mimeType, pageable);
+            assets = mediaAssetRepository.findByTenantIdAndMimeTypeAndIsDeletedFalse(tenantId, mimeType, pageable);
         } else if (categoryId != null) {
             assets = mediaAssetRepository.findByTenantIdAndCategoryIdAndIsDeletedFalse(tenantId, categoryId, pageable);
         } else {
@@ -340,5 +340,56 @@ public class MediaService {
         }
 
         return builder.build();
+    }
+
+    // ========== 圖片驗證方法（Sprint 16 US-005） ==========
+
+    /**
+     * 檢查媒體是否存在（Spring Data 命名風格）
+     *
+     * 用於評價上傳時檢查每個 imageUrl 對應的 mediaId 是否真實存在於 M15 Media Library。
+     *
+     * @param mediaId 媒體 ID（可為 null 或空字串）
+     * @return true 表示存在且有效；false 表示不存在
+     */
+    @Transactional(readOnly = true)
+    public boolean existsMediaById(String mediaId) {
+        if (mediaId == null || mediaId.isBlank()) {
+            return false;
+        }
+        try {
+            UUID id = UUID.fromString(mediaId);
+            return mediaAssetRepository.existsById(id);
+        } catch (IllegalArgumentException e) {
+            // mediaId 不是合法的 UUID 格式
+            return false;
+        }
+    }
+
+    /**
+     * 批次檢查多個媒體是否存在
+     *
+     * @param mediaIds 媒體 ID 列表
+     * @return 第一個無效的 mediaId，若全部有效則回傳 null
+     */
+    @Transactional(readOnly = true)
+    public String findFirstInvalidMediaId(List<String> mediaIds) {
+        if (mediaIds == null || mediaIds.isEmpty()) {
+            return null;
+        }
+        for (String mediaId : mediaIds) {
+            if (!existsMediaById(mediaId)) {
+                return mediaId;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @deprecated 請改用 {@link #existsMediaById(String)}，命名更符合 Spring Data 風格
+     */
+    @Deprecated
+    public boolean verifyMediaExists(String mediaId) {
+        return existsMediaById(mediaId);
     }
 }

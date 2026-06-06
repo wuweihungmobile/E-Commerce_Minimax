@@ -15,13 +15,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
@@ -41,6 +37,7 @@ import static org.mockito.Mockito.*;
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SettlementService Facade 委派測試 (Sprint 16 TI-002 拆分)")
+@SuppressWarnings("deprecation") // 本測試目的：驗證 Facade 對已棄用方法的委派行為
 class SettlementServiceTest {
 
     @Mock

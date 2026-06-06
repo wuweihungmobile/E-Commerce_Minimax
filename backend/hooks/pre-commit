@@ -1,0 +1,35 @@
+#!/usr/bin/env sh
+# 🔴 Sprint 16 US-007: Backend Pre-commit Hook (Java 編譯檢查)
+# 自動執行 Maven 編譯檢查，避免 CI 編譯失敗
+# 跳過方式：git commit --no-verify
+# 安裝方式：cp backend/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+# 取得 staged 變更檔案
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(java|xml|sql|yml|yaml|properties)$' || true)
+
+if [ -z "$STAGED_FILES" ]; then
+  echo "ℹ️  No staged backend files, skipping pre-commit checks"
+  exit 0
+fi
+
+echo "🔍 Backend pre-commit checks for staged files:"
+echo "$STAGED_FILES" | sed 's/^/  - /'
+echo ""
+
+# 1. 執行 Maven 編譯檢查
+echo "📝 [1/1] Running Maven compile check..."
+cd backend && mvn compile -DskipTests -q
+MVN_EXIT=$?
+cd ..
+
+if [ $MVN_EXIT -ne 0 ]; then
+  echo ""
+  echo "❌ Maven compile failed (exit code: $MVN_EXIT)"
+  echo "   Please fix compilation errors before committing."
+  echo "   Skip with: git commit --no-verify"
+  exit $MVN_EXIT
+fi
+
+echo "✅ Maven compile passed"
+echo ""
+echo "🎉 All backend pre-commit checks passed!"

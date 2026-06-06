@@ -66,6 +66,11 @@ storage:
   region: ${STORAGE_REGION:us-east-1}
   presigned-expiry: 3600  # seconds
 
+# Payment Gateway (Stripe)
+# webhook-secret 留空表示未啟用 signature 驗證（測試模式）
+stripe:
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
 # Logging
 logging:
   level:

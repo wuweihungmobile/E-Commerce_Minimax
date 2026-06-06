@@ -1,11 +1,12 @@
 # Sprint 16 Final Approval / Sprint 16 最終審議核准
 
 > **Sprint 編號**: Sprint 16
-> **期間**: 2026-07-13 ~ 2026-07-24 (計劃) / 2026-06-04 ~ 2026-06-05 (實際)
-> **完成日期**: 2026-06-05
-> **🔴 重要里程碑**: Sprint 16 全部 6 個剩餘項目完成
+> **期間**: 2026-07-13 ~ 2026-07-24 (計劃) / 2026-06-04 ~ 2026-06-06 (實際,含 JPA 修復)
+> **完成日期**: 2026-06-05 (US 開發) / 2026-06-06 (JPA 衝突修復完成)
+> **🔴 重要里程碑**: Sprint 16 全部 8 個 US 完成 + JPA 衝突修復
 > **審查方式**: Architect / SA / SD / QA 四方獨立審議
 > **審查者**: Claude Code (AI Assistant) - 模擬四方視角
+> **🔴 重要更新 (2026-06-06)**: 補上完整 mvn test 結果與 JPA 衝突修復記錄,詳見 [§1.3 重要補述](#13-重要補述-2026-06-06-完整-mvn-test-結果)
 
 ---
 
@@ -42,6 +43,56 @@
 | 新增測試 | 5 個測試類別 |
 | 新增/修改 API 端點 | 7 個 |
 | 總計程式碼新增/修改 | ~1,300 行 |
+
+### 1.3 重要補述 (2026-06-06 完整 mvn test 結果)
+
+> **🔴 2026-06-06 補述**: 本節補上 Sprint 16 開發完成後,在 Commit 階段執行完整 `mvn test` 揭露的真實測試狀況與 JPA 衝突修復記錄。
+
+#### 1.3.1 完整 mvn test 結果
+
+| 項目 | 原始 Final Approval (僅 Sprint 16 範圍) | 完整 mvn test (Sprint 16 Commit 前) |
+|------|----------------------------------------|--------------------------------------|
+| **測試範圍** | Sprint 16 新增/修改測試 (34 個) | 整個專案測試 (489 個) |
+| **通過** | 34 (100%) | 406 (83%) |
+| **失敗 (Failures)** | 0 | 61 |
+| **錯誤 (Errors)** | 0 | 22 |
+| **Sprint 16 影響** | 100% 通過 | Sprint 16 新增/修改的 29 個測試**全部 100% 通過** |
+| **長期技術債** | 未揭露 | 揭露 83 個既有測試 bug (與 Sprint 16 無關) |
+
+#### 1.3.2 JPA 衝突發現與修復
+
+| 階段 | 描述 |
+|------|------|
+| **發現時間** | 2026-06-06 Sprint 16 Commit 前執行 `mvn compile` 與 `mvn test` |
+| **根因** | `media.MediaAsset` (Sprint 10 引入) 與 `cms.MediaAsset` (Sprint 8 M15 CMS) 兩個 JPA Entity 都宣告 `@Table(name = "media_assets")`,造成 JPA Repository bean 建立失敗,連帶所有 89 個 `@SpringBootTest` 整合測試 ApplicationContext 載入失敗 |
+| **影響** | 489 個測試中 83 個失敗 (主要為 ApplicationContext 載入失敗 + Hibernate ALTER TABLE 嘗試) |
+| **修復方向** | 保留 `cms.MediaAsset` (Sprint 8 M15 CMS 原始設計,有 uploader/fileType/StorageService 整合) + 刪除 `media.MediaAsset` + 在 `cms.MediaAsset` 擴增 6 個欄位 (category/categoryId/tags/usageCount/altText/title/isDeleted) |
+| **修復工作量** | 1 小時,4 個檔案修改 + 3 個檔案刪除 + 3 個測試檔案修改 |
+| **修復後結果** | `mvn compile` BUILD SUCCESS + Sprint 16 29 個新增測試 100% 通過 + 83 個既有測試 bug 仍存在 (獨立技術債,需 Sprint 17 修復) |
+| **Commit** | `c66b8ca feat: Sprint 16 完整發佈 (US-001~US-008) + JPA 衝突修復` |
+
+#### 1.3.3 重大教訓
+
+> **🔴 Final Approval 必須跑完整 mvn test,不能只看 Sprint 範圍測試**
+>
+> 本次 Sprint 16 Final Approval 僅驗證 Sprint 16 新增/修改的 34 個測試通過率 100%,但實際整個專案 489 個測試中有 83 個失敗。這個盲點導致 JPA 衝突這個 3 個月前的技術債直到 Commit 階段才被發現。
+>
+> **Sprint 17 起必須強制**: Final Approval 流程必須跑完整 `mvn test` 並回報所有測試類別的通過狀況,不能僅列 Sprint 範圍內的測試。
+
+#### 1.3.4 既有測試 bug 統計 (Sprint 17 Action Item)
+
+| 測試類別 | 失敗數 | 原因 (推測) | Sprint 17 處理 |
+|---------|--------|------------|----------------|
+| M07PaymentMockIntegrationTest | 8 | `doNothing()` 對非 void 方法 (OrderService.updateOrderStatus) | AI-101 修復 |
+| M18KnowledgePhase2IntegrationTest | 9 | 待診斷 (可能 schema/Hibernate) | AI-101 修復 |
+| M12PricingIntegrationTest | 8 | 待診斷 | AI-101 修復 |
+| M08ReviewImageIntegrationTest | 0 | ✅ 已通過 | - |
+| M08ReviewIntegrationTest | 0 | ✅ 已通過 | - |
+| M07SettlementIntegrationTest | 0 | ✅ 已通過 | - |
+| SettlementScheduledJobIntegrationTest | 0 | ✅ 已通過 | - |
+| ReviewReplyServiceTest | 0 | ✅ 已通過 | - |
+| **Sprint 16 新增/修改測試** | **0/29** | ✅ **100% 通過** | - |
+| **其他既有測試 (M02, M16, Booking, Auth, Order, Tenant, Cart, Post 等)** | 58 | 多種獨立 bug,需逐一診斷 | AI-101 修復 |
 
 ---
 
@@ -271,10 +322,16 @@
 
 | ID | 項目 | 優先級 | 來源 |
 |----|------|--------|------|
+| **TODO-AI-101** | 🔴 修復 83 個既有測試 bug | **P0** | 2026-06-06 完整 mvn test 揭露 |
+| **TODO-AI-102** | 🔴 Sprint 15 Release 補做合併 (release/v2026.06.04-01 → main) | **P0** | 連續 2 個 Sprint 跳過 |
+| **TODO-AI-103** | 🔴 Sprint 16 Release 不能再次跳過 (建立 release/v2026.06.06-01) | **P0** | 防止連續 3 個 Sprint 跳過 |
+| **TODO-AI-104** | 🔴 Final Approval 流程改進: 必須跑完整 mvn test | **P0** | 本次 Sprint 16 JPA 衝突教訓 |
 | TODO-1 | 修正 ErrorCode E_5001/E_5005/E_5006 語意錯亂 | P2 | B-1 |
 | TODO-2 | 重構 E_8000 過於通用的問題 | P2 | B-2 |
 | TODO-3 | 移除 Review entity 的 sellerReply 欄位 | P3 | S-4 |
 | TODO-4 | 移除 `/reply` 舊路徑（已標記 @Deprecated） | P3 | B-3 完整關閉 |
+| TODO-5 | cms.MediaService 拆分 (299 行 → 2 個子服務) | P2 | TI-002 之後續 |
+| TODO-6 | Flyway 正式啟用 + 同步 V13/V22 schema | P1 | TI-101 評估 |
 
 ---
 

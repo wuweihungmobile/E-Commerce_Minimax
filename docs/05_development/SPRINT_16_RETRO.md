@@ -29,7 +29,8 @@
 | ✅ **Sprint 16 Final Approval** | 四方審議全數 APPROVED (2026-06-05) | 完成 Sprint 16 8/8 US |
 | 🔴 **JPA 衝突發現** | `media.MediaAsset` 與 `cms.MediaAsset` 對應同一 table | 揭露 Sprint 10 隱藏 3 個月的技術債 |
 | ✅ **JPA 衝突修復** | 保留 cms,刪除 media 重複 Entity/Repository | 解決長期阻塞測試啟動問題 |
-| 🔴 **Sprint 15 Release 仍未合併** | release/v2026.06.04-01 已發 PR #13 但未合併 | 已連續 2 個 Sprint 跳過 Release 流程 |
+| ✅ **Sprint 15 Release 已合併** | PR #13 + #14 已 MERGED,合併到 main (commit 401d8e2) | Sprint 15 程式碼進入 Production |
+| 🔴 **Sprint 16 Release 待執行** | 目前無 release/v2026.06.06-01 分支,develop 領先 main 5 commits | 需建立 release 分支並合併 |
 
 ---
 
@@ -93,9 +94,8 @@
 | 問題 | 影響 | 建議 | 優先級 |
 |------|------|------|--------|
 | **🔴 Final Approval 測試覆蓋不完整** | SPRINT_16_FINAL_APPROVAL.md 只列 74 個測試 (Sprint 16 新增),實際專案有 489 個測試 | **Sprint 17 起 Final Approval 必須跑完整 mvn test,不能只看新增測試** | P0 |
-| **🔴 Sprint 15 Release 仍未合併** | release/v2026.06.04-01 已發 PR #13 但未合併,連續 2 個 Sprint 跳過 Release | **Sprint 17 Day 1 補做 Sprint 15 Release,Sprint 16 Release 不能再次跳過** | P0 |
-| **Sprint 15 文件未即時更新** | Review/Retro 在最後才產出 | Sprint 中期先寫初版 Review 草稿 | P2 |
-| **Final Approval 在 Commit 之前** | 雖有 Final Approval,但 Commit 時仍發現阻斷性問題 | Commit 前必須強制跑完整 mvn test,不能只看 Final Approval | P0 |
+| ✅ **Sprint 15 Release 已合併** (2026-06-06 確認) | release/v2026.06.04-01 已通過 PR #13 + #14 合併到 main (commit 401d8e2) | Sprint 15 程式碼已進入 Production | (已解決) |
+| **🔴 Sprint 16 Release 仍未執行** | 目前無 release/v2026.06.06-01 分支,develop 領先 main 5 commits | **Sprint 17 Day 1 必須建立 release 分支並合併,不能再次跳過** | P0 |
 
 ### 3.3 技術債 (P1 重要)
 
@@ -123,7 +123,7 @@
 | ID | 行動項目 | 負責人 | 優先級 | 預估 SP | 狀態 |
 |----|----------|--------|--------|---------|------|
 | **AI-101** | 🔴 **修復 83 個既有測試 bug** (M07PaymentMockIntegrationTest doNothing, OrderService.updateOrderStatus 簽名, 等) | Dev/QA | **P0** | 3 | 待實現 |
-| **AI-102** | 🔴 **Sprint 15 Release 補做合併** (合併 release/v2026.06.04-01 → main + tag) | Dev | **P0** | 1 | 待執行 |
+| **AI-102** | ~~🔴 Sprint 15 Release 補做合併 (合併 release/v2026.06.04-01 → main + tag)~~ | Dev | ~~P0~~ | ~~1~~ | **✅ 已完成 (2026-06-06 確認 PR #13+#14 已 MERGED)** |
 | **AI-103** | 🔴 **Sprint 16 Release 不能再次跳過** (建立 release/v2026.06.06-01 → main + tag) | Dev | **P0** | 0.5 | 待執行 |
 | **AI-104** | 🔴 **Final Approval 流程改進**: 必須跑完整 mvn test (而非只看新增測試) | PM/PO + QA | **P0** | 0.5 | 待建立流程 |
 | **AI-105** | **CMS MediaService 拆分** (299 行 → MediaUploadService + MediaValidationService) | Dev | P1 | 2 | 評估中 |
@@ -211,7 +211,7 @@
 
 ### 6.3 PM/PO (Victoria) 回饋
 
-> "Sprint 16 雖然規模 12 SP 較小 (相對 Sprint 15 的 18 SP),但完成度高 (100%)。JPA 衝突修復的發現是一個重要轉捩點:這顯示我們的 Final Approval 流程需要改進,不能再只關注 Sprint 範圍內的測試。Sprint 17 必須處理:1) Sprint 15 Release 補做,2) 83 個測試 bug,3) Final Approval 流程改進。"
+> "Sprint 16 雖然規模 12 SP 較小 (相對 Sprint 15 的 18 SP),但完成度高 (100%)。JPA 衝突修復的發現是一個重要轉捩點:這顯示我們的 Final Approval 流程需要改進,不能再只關注 Sprint 範圍內的測試。Sprint 17 必須處理:1) Sprint 16 Release,2) 83 個測試 bug,3) Final Approval 流程改進。"
 
 ### 6.4 SD (Marcus) 回饋
 
@@ -228,8 +228,8 @@
 ### 7.1 流程面
 
 1. **🔴 Final Approval 測試必須完整跑**:本次 Sprint 16 的慘痛教訓。Final Approval 只跑了 Sprint 16 新增的 74 個測試,但實際專案有 489 個測試,這導致 JPA 衝突在 Final Approval 之後才被發現。**Sprint 17 起必須強制完整 mvn test**。
-2. **🔴 Release 不能連續跳過**:Sprint 15 Release 至今未合併,本次 Sprint 16 Release 又有跳過風險。Release 是 AISDLC 標準流程,跳過會造成技術債累積。
-3. **Sprint 容量調整的價值**:Sprint 16 從 18 SP 降為 12 SP 是合理的,給予 buffer 處理 Release 補做。但實際上 Sprint 16 Day 1 沒有執行 Sprint 15 Release 補做,反而直接進入 US-001 開發,違反 Plan 規劃。
+2. **🔴 Release 不能連續跳過**:Sprint 15 Release 已合併 (PR #13+#14),但 Sprint 16 Release 又有跳過風險。Release 是 AISDLC 標準流程,跳過會造成技術債累積。
+3. **Sprint 容量調整的價值**:Sprint 16 從 18 SP 降為 12 SP 是合理的,給予 buffer 處理 Release 補做。但實際上 Sprint 16 Day 1 沒有執行 Sprint 15 Release 補做(後由 Sprint 15 團隊於 2026-06-04 完成合併,跟 Sprint 16 無關)。
 4. **Pre-commit Hook 立即見效**:Sprint 16 US-007 加上 Pre-commit Hook 後,後續 commit 都自動通過 ESLint 與 tsc 檢查,有效預防 Sprint 15 的 2 個 CI 修復重演。
 
 ### 7.2 技術面
@@ -251,16 +251,14 @@
 
 ### 8.1 立即行動（合併 Release 之前 - 阻斷性）
 
-1. **🔴 建立 Sprint 15 Release Tag 候選**:確認 `release/v2026.06.04-01` 分支 CI 全綠
-2. **🔴 合併 Sprint 15 Release 分支**:將 `release/v2026.06.04-01` 合併至 `main`
-3. **🔴 建立 Sprint 15 Git Tag**:`v2026.06.04-01`
-4. **🔴 建立 Sprint 16 Release 分支**:`release/v2026.06.06-01`,從 develop 切出,跑 CI
-5. **🔴 合併 Sprint 16 Release 分支**:將 `release/v2026.06.06-01` 合併至 `main`
-6. **🔴 建立 Sprint 16 Git Tag**:`v2026.06.06-01`
+1. **🔴 建立 Sprint 16 Release 分支**:`release/v2026.06.06-01`,從 develop 切出,跑 CI
+2. **🔴 合併 Sprint 16 Release 分支**:將 `release/v2026.06.06-01` 合併至 `main` (PR #15)
+3. **🔴 建立 Sprint 16 Git Tag**:`v2026.06.06-01`
+4. ~~Sprint 15 Release 補做 (PR #13+#14 已 MERGED, 2026-06-06 確認)~~ ✅
 
 ### 8.2 Sprint 17 準備 (基於 Action Items)
 
-1. **優先實現**:AI-101 (83 個測試 bug 修復) + AI-102/103 (Release 補做) + AI-104 (Final Approval 流程改進)
+1. **優先實現**:AI-101 (83 個測試 bug 修復) + AI-103 (Sprint 16 Release 流程) + AI-104 (Final Approval 流程改進)
 2. **架構改進**:TI-101 (Flyway 評估) + AI-105 (cms.MediaService 拆分)
 3. **文件補完**:DI-101 (SPRINT_16_FINAL_APPROVAL.md 更新) + DI-103 (cms.MediaAsset 欄位文件)
 4. **流程改進**:PI-101/102/103 (檢查點建立)

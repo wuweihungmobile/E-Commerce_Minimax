@@ -323,7 +323,7 @@
 | ID | 項目 | 優先級 | 來源 |
 |----|------|--------|------|
 | **TODO-AI-101** | 🔴 修復 83 個既有測試 bug | **P0** | 2026-06-06 完整 mvn test 揭露 |
-| **TODO-AI-102** | 🔴 Sprint 15 Release 補做合併 (release/v2026.06.04-01 → main) | **P0** | 連續 2 個 Sprint 跳過 |
+| ~~**TODO-AI-102**~~ | ~~🔴 Sprint 15 Release 補做合併 (release/v2026.06.04-01 → main)~~ | ~~P0~~ | **✅ 已完成 (2026-06-06 確認 PR #13+#14 已 MERGED)** |
 | **TODO-AI-103** | 🔴 Sprint 16 Release 不能再次跳過 (建立 release/v2026.06.06-01) | **P0** | 防止連續 3 個 Sprint 跳過 |
 | **TODO-AI-104** | 🔴 Final Approval 流程改進: 必須跑完整 mvn test | **P0** | 本次 Sprint 16 JPA 衝突教訓 |
 | TODO-1 | 修正 ErrorCode E_5001/E_5005/E_5006 語意錯亂 | P2 | B-1 |

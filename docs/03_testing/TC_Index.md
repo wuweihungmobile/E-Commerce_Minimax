@@ -28,9 +28,11 @@
 | [TC_M05_Order.md](./TC_M05_Order.md) | M05 訂單管理 | 24 | 訂單建立、狀態機、庫存扣減、取消 |
 | [TC_M02_Room.md](./TC_M02_Room.md) | M02 房源管理 | 18 | 房源上架、日曆查詢、預訂衝突 |
 | [TC_M12_Pricing.md](./TC_M12_Pricing.md) | M12 動態定價 | 20 | 價格計算、規則優先級、手動覆蓋 |
+| **🆕 [TC_M07_Settlement.md](./TC_M07_Settlement.md)** | M07 金流 - 結算 | 21 | 結算單生成、查詢、Admin 審核、排程 |
+| **🆕 [TC_M08_Review.md](./TC_M08_Review.md)** | M08 評價系統 | 28 | 評價 CRUD、回覆、多圖、圖片管理 |
 | [TC_E2E.md](./TC_E2E.md) | E2E 測試 | 12 | 核心業務流程端到端測試 |
 
-**測試案例總數**: 141
+**測試案例總數**: 190 (+49 🆕 Sprint 16 新增)
 
 ---
 

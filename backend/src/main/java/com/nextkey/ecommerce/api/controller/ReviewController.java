@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.api.controller;
 
+import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -18,6 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.ReviewDto;
+import com.nextkey.ecommerce.api.dto.ReviewReplyDto;
+import com.nextkey.ecommerce.core.review.ReviewReplyService;
 import com.nextkey.ecommerce.core.review.ReviewService;
 
 import lombok.RequiredArgsConstructor;
@@ -35,6 +38,7 @@ import lombok.extern.slf4j.Slf4j;
 public class ReviewController {
 
     private final ReviewService reviewService;
+    private final ReviewReplyService reviewReplyService;
 
     /**
      * 建立評價
@@ -111,16 +115,49 @@ public class ReviewController {
     }
 
     /**
-     * 賣家回覆
+     * 賣家回覆（新路徑，推薦使用）
+     *
+     * Sprint 16 US-001: 委派給 ReviewReplyService 處理（從 ReviewService 拆分）
      */
+    @PostMapping("/{reviewId}/replies")
+    @PreAuthorize("hasAuthority('room:update') or hasAuthority('product:update')")
+    public ResponseEntity<ApiResponse<ReviewReplyDto.ReplyResponse>> replyToReview(
+            @PathVariable UUID reviewId,
+            @Valid @RequestBody ReviewReplyDto.CreateReplyRequest request) {
+        log.info("Seller reply to review: reviewId={}", reviewId);
+        ReviewReplyDto.ReplyResponse response = reviewReplyService.createReply(reviewId, request);
+        return ResponseEntity.ok(ApiResponse.success("Reply added successfully", response));
+    }
+
+    /**
+     * 賣家回覆（舊路徑，向後相容）
+     *
+     * @deprecated 請改用 {@code POST /v2/reviews/{reviewId}/replies}
+     *             此路徑將於 Sprint 17 移除
+     */
+    @Deprecated
     @PostMapping("/{reviewId}/reply")
     @PreAuthorize("hasAuthority('room:update') or hasAuthority('product:update')")
-    public ResponseEntity<ApiResponse<ReviewDto.ReviewResponse>> replyToReview(
+    public ResponseEntity<ApiResponse<ReviewReplyDto.ReplyResponse>> replyToReviewLegacy(
             @PathVariable UUID reviewId,
-            @Valid @RequestBody ReviewDto.SellerReplyRequest request) {
-        log.info("Seller reply to review: reviewId={}", reviewId);
-        ReviewDto.ReviewResponse response = reviewService.replyToReview(reviewId, request);
-        return ResponseEntity.ok(ApiResponse.success("Reply added successfully", response));
+            @Valid @RequestBody ReviewReplyDto.CreateReplyRequest request) {
+        log.warn("[DEPRECATED] Legacy /reply path used, please migrate to /replies. reviewId={}", reviewId);
+        return replyToReview(reviewId, request);
+    }
+
+    /**
+     * 取得評價的所有回覆（Sprint 16 US-001）
+     */
+    @GetMapping("/{reviewId}/replies")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<ReviewReplyDto.ReplyListResponse>> getReviewReplies(
+            @PathVariable UUID reviewId) {
+        List<ReviewReplyDto.ReplyResponse> replies = reviewReplyService.getRepliesByReviewId(reviewId);
+        ReviewReplyDto.ReplyListResponse response = ReviewReplyDto.ReplyListResponse.builder()
+                .replies(replies)
+                .totalCount(replies.size())
+                .build();
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     /**
@@ -162,5 +199,47 @@ public class ReviewController {
             @RequestParam(defaultValue = "20") int size) {
         ReviewDto.ReviewListResponse response = reviewService.getReviewsByHandlingStatus(isHandled, page, size);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    // ========== 圖片管理 API（Sprint 16 US-006） ==========
+
+    /**
+     * 新增單張圖片到評價
+     */
+    @PostMapping("/{reviewId}/images")
+    @PreAuthorize("hasAuthority('order:read')")
+    public ResponseEntity<ApiResponse<ReviewDto.ReviewResponse>> addReviewImage(
+            @PathVariable UUID reviewId,
+            @Valid @RequestBody ReviewDto.AddImageRequest request) {
+        log.info("Add image to review: reviewId={}, imageUrl={}", reviewId, request.getImageUrl());
+        ReviewDto.ReviewResponse response = reviewService.addImage(reviewId, request.getImageUrl());
+        return ResponseEntity.ok(ApiResponse.success("Image added successfully", response));
+    }
+
+    /**
+     * 刪除評價的單張圖片（依 index）
+     */
+    @DeleteMapping("/{reviewId}/images/{imageIndex}")
+    @PreAuthorize("hasAuthority('order:read')")
+    public ResponseEntity<ApiResponse<ReviewDto.ReviewResponse>> removeReviewImage(
+            @PathVariable UUID reviewId,
+            @PathVariable int imageIndex) {
+        log.info("Remove image from review: reviewId={}, imageIndex={}", reviewId, imageIndex);
+        ReviewDto.ReviewResponse response = reviewService.removeImage(reviewId, imageIndex);
+        return ResponseEntity.ok(ApiResponse.success("Image removed successfully", response));
+    }
+
+    /**
+     * 重新排序評價圖片
+     */
+    @PutMapping("/{reviewId}/images/order")
+    @PreAuthorize("hasAuthority('order:read')")
+    public ResponseEntity<ApiResponse<ReviewDto.ReviewResponse>> reorderReviewImages(
+            @PathVariable UUID reviewId,
+            @Valid @RequestBody ReviewDto.ReorderImagesRequest request) {
+        log.info("Reorder images of review: reviewId={}, newCount={}", reviewId,
+                request.getImageUrls() != null ? request.getImageUrls().size() : 0);
+        ReviewDto.ReviewResponse response = reviewService.reorderImages(reviewId, request.getImageUrls());
+        return ResponseEntity.ok(ApiResponse.success("Images reordered successfully", response));
     }
 }

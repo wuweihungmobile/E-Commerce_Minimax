@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.review;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.ReviewDto;
+import com.nextkey.ecommerce.core.media.MediaService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.review.Review;
 import com.nextkey.ecommerce.domain.model.user.User;
@@ -30,6 +32,11 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * 評價服務
+ *
+ * Sprint 16 變更：
+ * - US-005: 新增 MAX_REVIEW_IMAGES 上限驗證（最多 9 張）
+ * - US-006: 新增 addImage / removeImage / reorderImages 圖片管理方法
+ * - US-005: 整合 MediaService.verifyMediaExists 驗證每個 imageUrl
  */
 @Slf4j
 @Service
@@ -39,9 +46,13 @@ public class ReviewService {
     private final ReviewRepository reviewRepository;
     private final ListingRepository listingRepository;
     private final UserRepository userRepository;
+    private final MediaService mediaService;
 
     // Pagination default
     private static final int DEFAULT_PAGE_SIZE = 50;
+
+    // 🔴 Sprint 16 US-005: 評價圖片上限
+    public static final int MAX_REVIEW_IMAGES = ReviewDto.MAX_REVIEW_IMAGES;
 
     /**
      * 建立評價
@@ -65,6 +76,18 @@ public class ReviewService {
         if (request.getBookingId() != null) {
             if (reviewRepository.findByBookingIdAndListingId(request.getBookingId(), request.getListingId()).isPresent()) {
                 throw new BusinessException(ErrorCode.E_8000, "You have already reviewed this booking");
+            }
+        }
+
+        // 🔴 Sprint 16 US-005: 驗證圖片上限（最多 9 張）
+        validateImageCount(request.getImages());
+
+        // 🔴 Sprint 16 US-005: 驗證圖片有效性（整合 M15 Media）
+        if (request.getImages() != null && !request.getImages().isEmpty()) {
+            String invalidImageId = mediaService.findFirstInvalidMediaId(request.getImages());
+            if (invalidImageId != null) {
+                throw new BusinessException(ErrorCode.E_1089,
+                        "Invalid image: " + invalidImageId);
             }
         }
 
@@ -118,6 +141,12 @@ public class ReviewService {
             review.setContent(request.getContent());
         }
         if (request.getImages() != null) {
+            // 🔴 Sprint 16 US-005: 驗證圖片上限與有效性
+            validateImageCount(request.getImages());
+            String invalidImageId = mediaService.findFirstInvalidMediaId(request.getImages());
+            if (invalidImageId != null) {
+                throw new BusinessException(ErrorCode.E_1089, "Invalid image: " + invalidImageId);
+            }
             review.setImages(request.getImages());
         }
 
@@ -243,9 +272,16 @@ public class ReviewService {
 
     /**
      * 賣家回覆
+     *
+     * @deprecated 委派給 {@link ReviewReplyService#createReply(UUID, com.nextkey.ecommerce.api.dto.ReviewReplyDto.CreateReplyRequest)}
+     *             此方法將於 Sprint 17 移除。保留僅作向後相容。
      */
+    @Deprecated
     @Transactional
     public ReviewDto.ReviewResponse replyToReview(UUID reviewId, ReviewDto.SellerReplyRequest request) {
+        // 委派給 ReviewReplyService（向後相容層）
+        log.warn("[DEPRECATED] ReviewService.replyToReview is deprecated, please use ReviewReplyService.createReply");
+
         UUID userId = TenantContext.getCurrentUser();
 
         Review review = reviewRepository.findById(reviewId)
@@ -261,7 +297,7 @@ public class ReviewService {
         review.setSellerRepliedAt(Instant.now());
         review = reviewRepository.save(review);
 
-        log.info("Seller replied to review: reviewId={}", reviewId);
+        log.info("Seller replied to review (legacy): reviewId={}", reviewId);
 
         return toReviewResponse(review, listing);
     }
@@ -358,7 +394,149 @@ public class ReviewService {
                 .build();
     }
 
+    // ========== 圖片管理方法（Sprint 16 US-006） ==========
+
+    /**
+     * 新增單張圖片到評價
+     *
+     * @param reviewId 評價 ID
+     * @param imageUrl 圖片 URL（mediaId）
+     * @return 更新後的評價
+     * @throws BusinessException
+     *         - E_8000: 評價不存在
+     *         - E_1091: 非本人操作
+     *         - E_1088: 圖片數量超限
+     *         - E_1089: 圖片無效
+     */
+    @Transactional
+    public ReviewDto.ReviewResponse addImage(UUID reviewId, String imageUrl) {
+        UUID userId = TenantContext.getCurrentUser();
+
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
+
+        // 權限檢查：只有評價本人可以操作
+        if (!review.getUser().getId().equals(userId)) {
+            throw new BusinessException(ErrorCode.E_1091, "You can only add images to your own review");
+        }
+
+        // 驗證圖片有效
+        if (!mediaService.existsMediaById(imageUrl)) {
+            throw new BusinessException(ErrorCode.E_1089, "Invalid image: " + imageUrl);
+        }
+
+        List<String> images = review.getImages() != null ? new ArrayList<>(review.getImages()) : new ArrayList<>();
+
+        // 🔴 驗證數量上限：
+        // MAX_REVIEW_IMAGES = 9
+        // - 已有 8 張時可新增至 9 張 ✅ (8 + 1 = 9，符合)
+        // - 已有 9 張時再新增會到 10 張 ❌ (9 + 1 = 10，超限)
+        // 邏輯：size >= 9 阻擋（已達上限）
+        if (images.size() >= MAX_REVIEW_IMAGES) {
+            throw new BusinessException(ErrorCode.E_1088,
+                    String.format(ErrorCode.E_1088.getMessage(), images.size()));
+        }
+
+        images.add(imageUrl);
+        review.setImages(images);
+        review = reviewRepository.save(review);
+
+        log.info("Image added to review: reviewId={}, imageUrl={}, totalImages={}",
+                reviewId, imageUrl, images.size());
+
+        return toReviewResponse(review, review.getListing());
+    }
+
+    /**
+     * 刪除評價的單張圖片
+     *
+     * @param reviewId 評價 ID
+     * @param imageIndex 圖片 index（從 0 開始）
+     * @return 更新後的評價
+     */
+    @Transactional
+    public ReviewDto.ReviewResponse removeImage(UUID reviewId, int imageIndex) {
+        UUID userId = TenantContext.getCurrentUser();
+
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
+
+        // 權限檢查
+        if (!review.getUser().getId().equals(userId)) {
+            throw new BusinessException(ErrorCode.E_1091, "You can only remove images from your own review");
+        }
+
+        List<String> images = review.getImages() != null ? new ArrayList<>(review.getImages()) : new ArrayList<>();
+
+        if (imageIndex < 0 || imageIndex >= images.size()) {
+            throw new BusinessException(ErrorCode.E_1090,
+                    String.format(ErrorCode.E_1090.getMessage(), imageIndex));
+        }
+
+        String removedImage = images.remove(imageIndex);
+        review.setImages(images);
+        review = reviewRepository.save(review);
+
+        log.info("Image removed from review: reviewId={}, imageIndex={}, removedImage={}, remaining={}",
+                reviewId, imageIndex, removedImage, images.size());
+
+        return toReviewResponse(review, review.getListing());
+    }
+
+    /**
+     * 重新排序評價圖片
+     *
+     * @param reviewId 評價 ID
+     * @param newImageUrls 新的圖片 URL 列表（順序為目標順序）
+     * @return 更新後的評價
+     */
+    @Transactional
+    public ReviewDto.ReviewResponse reorderImages(UUID reviewId, List<String> newImageUrls) {
+        UUID userId = TenantContext.getCurrentUser();
+
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
+
+        // 權限檢查
+        if (!review.getUser().getId().equals(userId)) {
+            throw new BusinessException(ErrorCode.E_1091, "You can only reorder images of your own review");
+        }
+
+        // 驗證數量
+        validateImageCount(newImageUrls);
+
+        // 驗證內容一致性：newImageUrls 必須是原圖片集合的排列
+        List<String> currentImages = review.getImages() != null ? review.getImages() : List.of();
+        if (newImageUrls == null || newImageUrls.size() != currentImages.size()) {
+            throw new BusinessException(ErrorCode.E_1088,
+                    String.format(ErrorCode.E_1088.getMessage(),
+                            newImageUrls == null ? 0 : newImageUrls.size()));
+        }
+
+        // 確認是相同的圖片集合（透過 Set 比較）
+        if (!new java.util.HashSet<>(newImageUrls).equals(new java.util.HashSet<>(currentImages))) {
+            throw new BusinessException(ErrorCode.E_1089, "Reorder must contain the same set of images");
+        }
+
+        review.setImages(new ArrayList<>(newImageUrls));
+        review = reviewRepository.save(review);
+
+        log.info("Review images reordered: reviewId={}, count={}", reviewId, newImageUrls.size());
+
+        return toReviewResponse(review, review.getListing());
+    }
+
     // ========== Helper Methods ==========
+
+    /**
+     * 🔴 Sprint 16 US-005: 驗證圖片數量（最多 9 張）
+     */
+    private void validateImageCount(List<String> images) {
+        if (images != null && images.size() > MAX_REVIEW_IMAGES) {
+            throw new BusinessException(ErrorCode.E_1088,
+                    String.format(ErrorCode.E_1088.getMessage(), images.size()));
+        }
+    }
 
     private ReviewDto.ReviewResponse toReviewResponse(Review review, Listing listing) {
         User user = review.getUser();

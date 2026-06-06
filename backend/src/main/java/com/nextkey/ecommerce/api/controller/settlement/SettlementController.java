@@ -12,7 +12,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
-import com.nextkey.ecommerce.core.settlement.SettlementService;
+import com.nextkey.ecommerce.core.settlement.SettlementGenerator;
+import com.nextkey.ecommerce.core.settlement.SettlementReviewer;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementResponse;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementListResponse;
@@ -29,7 +30,8 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class SettlementController {
 
-    private final SettlementService settlementService;
+    private final SettlementGenerator settlementGenerator;
+    private final SettlementReviewer settlementReviewer;
 
     /**
      * 取得結算單列表 (商家)
@@ -39,7 +41,7 @@ public class SettlementController {
     public ResponseEntity<ApiResponse<SettlementStatementListResponse>> getSettlements(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        SettlementStatementListResponse response = settlementService.getStatementsByTenant(page, size);
+        SettlementStatementListResponse response = settlementGenerator.getStatementsByTenant(page, size);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -50,7 +52,7 @@ public class SettlementController {
     @PreAuthorize("hasAuthority('order:read')")
     public ResponseEntity<ApiResponse<SettlementStatementResponse>> getStatementById(
             @PathVariable UUID statementId) {
-        SettlementStatementResponse response = settlementService.getStatementById(statementId);
+        SettlementStatementResponse response = settlementGenerator.getStatementById(statementId);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -62,7 +64,7 @@ public class SettlementController {
     public ResponseEntity<ApiResponse<SettlementStatementResponse>> submitForReview(
             @PathVariable UUID statementId) {
         log.info("Submit settlement statement for review: statementId={}", statementId);
-        SettlementStatementResponse response = settlementService.submitForReview(statementId);
+        SettlementStatementResponse response = settlementReviewer.submitForReview(statementId);
         return ResponseEntity.ok(ApiResponse.success("Settlement statement submitted for review", response));
     }
 
@@ -74,7 +76,7 @@ public class SettlementController {
     public ResponseEntity<ApiResponse<SettlementStatementListResponse>> getPendingReviewStatements(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        SettlementStatementListResponse response = settlementService.getPendingReviewStatements(page, size);
+        SettlementStatementListResponse response = settlementReviewer.getPendingReviewStatements(page, size);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -87,7 +89,7 @@ public class SettlementController {
             @PathVariable UUID statementId) {
         log.info("Approve settlement statement: statementId={}", statementId);
         UUID adminId = TenantContext.getCurrentUser();
-        SettlementStatementResponse response = settlementService.approveStatement(statementId, adminId);
+        SettlementStatementResponse response = settlementReviewer.approveStatement(statementId, adminId);
         return ResponseEntity.ok(ApiResponse.success("Settlement statement approved", response));
     }
 
@@ -101,7 +103,7 @@ public class SettlementController {
             @RequestParam(required = false) String reason) {
         log.info("Reject settlement statement: statementId={}, reason={}", statementId, reason);
         UUID adminId = TenantContext.getCurrentUser();
-        SettlementStatementResponse response = settlementService.rejectStatement(statementId, adminId, reason);
+        SettlementStatementResponse response = settlementReviewer.rejectStatement(statementId, adminId, reason);
         return ResponseEntity.ok(ApiResponse.success("Settlement statement rejected", response));
     }
 }

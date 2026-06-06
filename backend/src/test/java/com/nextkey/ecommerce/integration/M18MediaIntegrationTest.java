@@ -5,12 +5,12 @@ import com.nextkey.ecommerce.api.dto.media.CreateMediaCategoryRequest;
 import com.nextkey.ecommerce.api.dto.media.UpdateMediaCategoryRequest;
 import com.nextkey.ecommerce.api.dto.media.UpdateMediaRequest;
 import com.nextkey.ecommerce.api.dto.media.UploadMediaRequest;
-import com.nextkey.ecommerce.domain.model.media.MediaAsset;
+import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
 import com.nextkey.ecommerce.domain.model.media.MediaCategory;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant.TenantStatus;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
-import com.nextkey.ecommerce.domain.repository.media.MediaAssetRepository;
+import com.nextkey.ecommerce.domain.repository.cms.MediaAssetRepository;
 import com.nextkey.ecommerce.domain.repository.media.MediaCategoryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -128,12 +128,15 @@ class M18MediaIntegrationTest {
                     .tenant(tenant)
                     .category(testCategory)
                     .fileName("test-image.jpg")
+                    .originalName("test-image.jpg")
                     .filePath("/media/test-image.jpg")
                     .fileSize(1024L)
                     .mimeType("image/jpeg")
+                    .fileType(MediaAsset.FileType.IMAGE)
                     .tags(List.of("test", "image"))
                     .usageCount(0)
                     .isDeleted(false)
+                    .isActive(true)
                     .build();
             testAsset = mediaAssetRepository.save(testAsset);
         }

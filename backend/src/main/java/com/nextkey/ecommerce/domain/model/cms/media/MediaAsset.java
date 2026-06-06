@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.domain.model.cms.media;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -16,6 +17,10 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import com.nextkey.ecommerce.domain.model.media.MediaCategory;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
 
@@ -50,8 +55,34 @@ public class MediaAsset {
     private Tenant tenant;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "uploader_id", nullable = false)
+    @JoinColumn(name = "uploader_id")
     private User uploader;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    private MediaCategory category;
+
+    @Column(name = "category_id", insertable = false, updatable = false)
+    private UUID categoryId;
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "tags", columnDefinition = "TEXT[]")
+    @Builder.Default
+    private List<String> tags = List.of();
+
+    @Column(name = "usage_count")
+    @Builder.Default
+    private Integer usageCount = 0;
+
+    @Column(name = "alt_text")
+    private String altText;
+
+    @Column(name = "title")
+    private String title;
+
+    @Column(name = "is_deleted")
+    @Builder.Default
+    private Boolean isDeleted = false;
 
     @Column(name = "file_name", nullable = false)
     private String fileName;
@@ -132,5 +163,19 @@ public class MediaAsset {
      */
     public boolean isDocument() {
         return fileType == FileType.DOCUMENT;
+    }
+
+    /**
+     * 增加使用次數 (Sprint 16 US-005/006 整合用)
+     */
+    public void incrementUsageCount() {
+        this.usageCount = (this.usageCount == null ? 0 : this.usageCount) + 1;
+    }
+
+    /**
+     * 取得 Tenant ID (供 Service 層使用)
+     */
+    public UUID getTenantId() {
+        return tenant != null ? tenant.getId() : null;
     }
 }

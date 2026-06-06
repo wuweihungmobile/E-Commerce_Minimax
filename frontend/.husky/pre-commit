@@ -1,0 +1,51 @@
+#!/usr/bin/env sh
+# 🔴 Sprint 16 US-007: Pre-commit Hook
+# 自動執行 ESLint + TypeScript 編譯檢查，避免 Sprint 15 的 2 個 CI 修復 commit 重演
+# 跳過方式：git commit --no-verify
+
+. "$(dirname -- "$0")/_/husky.sh"
+
+# 取得 staged 變更檔案
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx|js|jsx)$' || true)
+
+if [ -z "$STAGED_FILES" ]; then
+  echo "ℹ️  No staged TS/JS files, skipping pre-commit checks"
+  exit 0
+fi
+
+echo "🔍 Pre-commit checks for staged files:"
+echo "$STAGED_FILES" | sed 's/^/  - /'
+echo ""
+
+# 1. 執行 ESLint 自動修復
+echo "📝 [1/2] Running ESLint --fix on staged files..."
+npx --no-install eslint --fix $STAGED_FILES
+ESLINT_EXIT=$?
+
+if [ $ESLINT_EXIT -ne 0 ]; then
+  echo ""
+  echo "❌ ESLint failed (exit code: $ESLINT_EXIT)"
+  echo "   Please fix ESLint errors before committing."
+  echo "   Skip with: git commit --no-verify"
+  exit $ESLINT_EXIT
+fi
+
+echo "✅ ESLint passed"
+echo ""
+
+# 2. 執行 TypeScript 編譯檢查（noEmit）
+echo "🔎 [2/2] Running TypeScript type-check (tsc --noEmit)..."
+npx --no-install tsc --noEmit
+TSC_EXIT=$?
+
+if [ $TSC_EXIT -ne 0 ]; then
+  echo ""
+  echo "❌ TypeScript type-check failed (exit code: $TSC_EXIT)"
+  echo "   Please fix type errors before committing."
+  echo "   Skip with: git commit --no-verify"
+  exit $TSC_EXIT
+fi
+
+echo "✅ TypeScript type-check passed"
+echo ""
+echo "🎉 All pre-commit checks passed!"

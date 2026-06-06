@@ -1,9 +1,11 @@
 # API Index / API 規格索引
 
-> **文檔狀態**: Draft
-> **版本**: v1.0
+> **文檔狀態**: Active
+> **版本**: v1.1
 > **建立日期**: 2026-04-09
+> **最後更新**: 2026-06-05
 > **作者**: Marcus (SD-Architect)
+> **🔴 Sprint 16 US-008**: 收錄 Sprint 15 + Sprint 16 新增 API 端點
 
 ---
 
@@ -81,6 +83,30 @@
 | API-M17-008 | `/api/v2/admin/tenants/:id/approve` | POST | 審核通過店鋪 | Admin | Phase 1 |
 | API-M17-009 | `/api/v2/admin/tenants/:id/reject` | POST | 駁回店鋪申請 | Admin | Phase 1 |
 
+### 評價系統 (M08) - 🆕 Sprint 15-16 新增
+
+| API ID | 端點 | 方法 | 說明 | 角色 | Sprint |
+|--------|------|------|------|------|--------|
+| API-M08-001 | `/v2/reviews/{id}/replies` | POST | 商家回覆評價 | StoreOwner | Sprint 15 |
+| API-M08-002 | `/v2/reviews/{id}/replies` | GET | 取得評價回覆列表 | 任意已登入 | Sprint 16 (US-001) |
+| API-M08-003 | `/v2/reviews/{id}/handle` | PUT | 標記評價為已/未處理 | StoreOwner | Sprint 15 |
+| API-M08-004 | `/v2/reviews/managed` | GET | 取得待處理評價列表 | StoreOwner | Sprint 15 |
+| **🆕 API-M08-005** | `/v2/reviews/{id}/images` | POST | 新增評價圖片（總數不超過 9 張） | 評價本人 | Sprint 16 (US-006) |
+| **🆕 API-M08-006** | `/v2/reviews/{id}/images/{imageIndex}` | DELETE | 刪除評價單張圖片 | 評價本人 | Sprint 16 (US-006) |
+| **🆕 API-M08-007** | `/v2/reviews/{id}/images/order` | PUT | 重新排序評價圖片 | 評價本人 | Sprint 16 (US-006) |
+| API-M08-101 | `/v2/booking-reviews/{id}/reply` | POST | 房東回覆預訂評價 | Host | Sprint 15 |
+
+### 結算系統 (M07) - 🆕 Sprint 15-16 新增
+
+| API ID | 端點 | 方法 | 說明 | 角色 | Sprint |
+|--------|------|------|------|------|--------|
+| **🆕 API-M07-S-001** | `/v2/settlements` | GET | 商家查詢結算單列表 | StoreOwner | Sprint 15 |
+| **🆕 API-M07-S-002** | `/v2/settlements/{id}` | GET | 商家查詢結算單詳情 | StoreOwner | Sprint 15 |
+| **🆕 API-M07-S-003** | `/v2/settlements/{id}/submit` | PUT | 商家提交結算單審核 | StoreOwner | Sprint 15 |
+| **🆕 API-M07-S-004** | `/v2/admin/settlements/pending` | GET | Admin 取得待審核結算單列表 | Admin | Sprint 15 |
+| **🆕 API-M07-S-005** | `/v2/admin/settlements/{id}/approve` | PUT | Admin 批准結算單 | Admin | Sprint 15 |
+| **🆕 API-M07-S-006** | `/v2/admin/settlements/{id}/reject` | PUT | Admin 駁回結算單 | Admin | Sprint 15 |
+
 ---
 
 ## 🔗 詳細 API 規格連結
@@ -103,6 +129,13 @@
 ### M17 租戶管理
 - [API_M17_Tenant.md](./api/API_M17_Tenant.md)
 
+### M07 結算系統 (🆕 Sprint 15-16)
+- `API_M07_Settlement.md` *(Sprint 16 規劃新增，連結待建立)*
+
+### M08 評價系統 (🆕 Sprint 15-16)
+- `API_M08_Review.md` *(Sprint 16 規劃新增，連結待建立)*
+- 包含：評價回覆、標記、圖片管理 API
+
 ---
 
 ## 📝 通用錯誤碼
@@ -118,6 +151,16 @@
 | E-4001 | VALIDATION_ERROR | 400 |
 | E-5001 | SEARCH_TIMEOUT | 408 |
 | E-7001 | INTERNAL_ERROR | 500 |
+
+### 🆕 Sprint 16 新增錯誤碼
+
+| 錯誤碼 | 模組 | 說明 | HTTP 狀態 |
+|--------|------|------|-----------|
+| E-1086 | M08 評價 | 評價已有回覆（重複回覆） | 409 Conflict |
+| E-1088 | M08 評價 | 評價圖片數量超限（最多 9 張） | 400 Bad Request |
+| E-1089 | M08 評價 | 評價圖片無效（媒體不存在） | 400 Bad Request |
+| E-1090 | M08 評價 | 評價圖片不存在（index 越界） | 404 Not Found |
+| E-1091 | M08 評價 | 非評價本人操作 | 403 Forbidden |
 
 ---
 

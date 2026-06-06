@@ -30,6 +30,7 @@ import com.nextkey.ecommerce.api.controller.ReviewController;
 import com.nextkey.ecommerce.api.dto.BookingReviewDto;
 import com.nextkey.ecommerce.api.dto.ReviewDto;
 import com.nextkey.ecommerce.core.review.BookingReviewService;
+import com.nextkey.ecommerce.core.review.ReviewReplyService;
 import com.nextkey.ecommerce.core.review.ReviewService;
 import com.nextkey.ecommerce.domain.model.review.BookingReview;
 import com.nextkey.ecommerce.domain.model.review.Review;
@@ -63,6 +64,9 @@ public class M08ReviewIntegrationTest {
 
     @MockBean
     private ReviewService reviewService;
+
+    @MockBean
+    private ReviewReplyService reviewReplyService;
 
     @MockBean
     private BookingReviewService bookingReviewService;
@@ -166,26 +170,28 @@ public class M08ReviewIntegrationTest {
     @DisplayName("AC-003: 賣家/房東可以回覆評價")
     @WithMockUser(authorities = {"room:update"})
     void replyToReview_success() throws Exception {
-        ReviewDto.ReviewResponse response = ReviewDto.ReviewResponse.builder()
+        // 🔴 Sprint 16 US-001: 改用 ReviewReplyService 與 ReviewReplyDto
+        com.nextkey.ecommerce.api.dto.ReviewReplyDto.ReplyResponse response =
+                com.nextkey.ecommerce.api.dto.ReviewReplyDto.ReplyResponse.builder()
+                .replyId(UUID.randomUUID())
                 .reviewId(reviewId)
-                .rating(5)
-                .title("Great product!")
-                .sellerReply("Thank you for your review!")
-                .sellerRepliedAt(Instant.now())
+                .replierId(UUID.randomUUID())
+                .content("Thank you for your review!")
+                .createdAt(Instant.now())
                 .build();
 
-        when(reviewService.replyToReview(eq(reviewId), any(ReviewDto.SellerReplyRequest.class)))
+        when(reviewReplyService.createReply(eq(reviewId), any(com.nextkey.ecommerce.api.dto.ReviewReplyDto.CreateReplyRequest.class)))
                 .thenReturn(response);
 
-        mockMvc.perform(post("/v2/reviews/{reviewId}/reply", reviewId)
+        mockMvc.perform(post("/v2/reviews/{reviewId}/replies", reviewId)
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reply\":\"Thank you for your review!\"}"))
+                        .content("{\"content\":\"Thank you for your review!\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.sellerReply").value("Thank you for your review!"));
+                .andExpect(jsonPath("$.data.content").value("Thank you for your review!"));
 
-        verify(reviewService).replyToReview(eq(reviewId), any(ReviewDto.SellerReplyRequest.class));
+        verify(reviewReplyService).createReply(eq(reviewId), any(com.nextkey.ecommerce.api.dto.ReviewReplyDto.CreateReplyRequest.class));
     }
 
     @Test

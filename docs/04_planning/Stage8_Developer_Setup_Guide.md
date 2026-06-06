@@ -440,6 +440,69 @@ npm run build
 - [ ] Git hooks 已設定
 - [ ] Code formatting 可正常運行
 
+### 8.4 Pre-commit Hook（🔴 Sprint 16 US-007）
+
+本專案已設定 Git pre-commit hook，在 `git commit` 時自動執行：
+1. **ESLint**（含 `--fix` 自動修復）
+2. **TypeScript** 編譯檢查（`tsc --noEmit`）
+
+**目的**: 避免 Sprint 15 的 2 個 CI 修復 commit（`c5f9822`, `782e654`）重演。
+
+**設定檔位置**:
+- `frontend/.husky/pre-commit` - Frontend Pre-commit hook 腳本
+- `backend/hooks/pre-commit` - Backend Pre-commit hook 腳本（Maven 編譯檢查）
+- `frontend/package.json` - `lint-staged` 與 `husky` 設定
+
+**安裝步驟** (第一次使用時):
+```bash
+# === Frontend Hook 安裝 ===
+cd frontend
+npm install  # 自動觸發 prepare script，執行 husky install
+# 驗證 hook 已安裝
+ls -la .husky/pre-commit
+
+# === Backend Hook 安裝 ===
+# Backend 為 Maven hook，需手動安裝（不在 husky 管理）
+cd ..
+mkdir -p .git/hooks
+cp backend/hooks/pre-commit .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+# 驗證
+ls -la .git/hooks/pre-commit
+
+# 回到 backend 目錄
+cd backend
+```
+
+**跳過方式**（不推薦）:
+```bash
+git commit --no-verify -m "緊急修復"
+```
+
+**手動執行檢查**:
+```bash
+# === Frontend ===
+cd frontend
+npm run lint           # ESLint 檢查
+npm run type-check     # TypeScript 編譯檢查
+npm run pre-commit-check  # 合併執行
+
+# === Backend ===
+cd backend
+mvn compile -DskipTests -q  # Maven 編譯檢查
+```
+
+**疑難排解**:
+
+| 問題 | 解決方式 |
+|------|---------|
+| `npx: command not found` | 確認 Node.js 已安裝，`which npx` 應有輸出 |
+| `mvn: command not found` | 確認 JDK 21 + Maven 已安裝 |
+| ESLint 太慢 | 已限制只檢查 staged 檔案 |
+| Maven 編譯太慢 | 加 `-DskipTests -q` 安靜模式 |
+| 想暫時跳過 | 使用 `git commit --no-verify`（僅緊急情況） |
+| Backend hook 沒執行 | 檢查 `.git/hooks/pre-commit` 是否存在且有執行權限 |
+
 ---
 
 ## 📁 相關文件

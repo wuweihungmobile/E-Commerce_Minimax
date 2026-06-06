@@ -311,15 +311,6 @@ public class IntegrationTestConfiguration {
     }
 
     /**
-     * Mock MediaAssetRepository for core media MediaService
-     */
-    @Bean("mediaMediaAssetRepository")
-    @Primary
-    public com.nextkey.ecommerce.domain.repository.media.MediaAssetRepository mediaMediaAssetRepository() {
-        return Mockito.mock(com.nextkey.ecommerce.domain.repository.media.MediaAssetRepository.class);
-    }
-
-    /**
      * Mock TenantRepository for MediaService tenant resolution
      */
     @Bean("tenantRepository")

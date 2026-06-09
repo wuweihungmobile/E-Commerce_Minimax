@@ -16,10 +16,12 @@ import org.springframework.data.redis.core.RedisTemplate;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
@@ -74,6 +76,10 @@ public class IntegrationTestConfiguration {
             if (token == null || token.isBlank() || token.equals("invalid.jwt.token")) {
                 return false;
             }
+            // 明確拒絕過期的測試 token
+            if (token.equals("expired.invalid.token") || token.startsWith("expired-")) {
+                return false;
+            }
             // 接受所有測試用的 token 格式
             if (token.startsWith("test-token-") || token.startsWith("refresh-token-")) {
                 return true;
@@ -98,12 +104,26 @@ public class IntegrationTestConfiguration {
 
         when(mockService.isTokenExpired(anyString())).thenReturn(false);
 
-        // Mock generateAccessToken - 生成假的 JWT token
+        // Mock generateAccessToken - 生成真實的 JWT token（包含所有 claims）
         when(mockService.generateAccessToken(any(UUID.class), anyString(), anyString(), any()))
                 .thenAnswer(invocation -> {
                     UUID userId = invocation.getArgument(0);
+                    String email = invocation.getArgument(1);
                     String role = invocation.getArgument(2);
-                    return "test-token-" + userId.toString() + "-" + role;
+                    String tenantId = invocation.getArgument(3);
+                    if (tenantId == null) {
+                        tenantId = UUID.fromString("00000000-0000-0000-0000-000000000001").toString();
+                    }
+                    // 構造真實的 JWT，包含所有必要的 claims
+                    return Jwts.builder()
+                            .subject(userId.toString())
+                            .claim("email", email)
+                            .claim("role", role)
+                            .claim("tenantId", tenantId)
+                            .issuedAt(new java.util.Date())
+                            .expiration(new java.util.Date(System.currentTimeMillis() + 1800000))
+                            .signWith(secretKeySpec, Jwts.SIG.HS256)
+                            .compact();
                 });
 
         // Mock generateRefreshToken
@@ -119,14 +139,16 @@ public class IntegrationTestConfiguration {
             if (token == null || token.isBlank() || token.equals("invalid.jwt.token")) {
                 return UUID.fromString("00000000-0000-0000-0000-000000000001");
             }
-            // 解析測試 token 格式：test-token-{uuid}-{role}
+            // 解析測試 token 格式：test-token-{uuid}-{role} 或 refresh-token-{uuid}
             if (token.startsWith("test-token-") || token.startsWith("refresh-token-")) {
                 try {
                     // 提取 token 中間的 UUID 部分
+                    // refresh-token-dd3555b8-923f-4f51-b979-0ff5b8158e99 split 後:
+                    // ["refresh", "token", "dd3555b8", "923f", "4f51", "b979", "0ff5b8158e99"]
+                    // UUID 部分是 parts[2] 到 parts[6]
                     String[] parts = token.split("-");
-                    if (parts.length >= 3) {
-                        // 重新組裝 UUID：parts[2] 是 UUID 的第一部分，parts[3] 是第二部分
-                        String uuidStr = parts[1] + "-" + parts[2] + "-" + parts[3] + "-" + parts[4] + "-" + parts[5];
+                    if (parts.length >= 7) {
+                        String uuidStr = parts[2] + "-" + parts[3] + "-" + parts[4] + "-" + parts[5] + "-" + parts[6];
                         return UUID.fromString(uuidStr);
                     }
                 } catch (Exception e) {
@@ -236,13 +258,14 @@ public class IntegrationTestConfiguration {
             switch (role) {
                 case SELLER:
                 case STORE_OWNER:
-                    // SELLER 和 STORE_OWNER 有完整權限（包括 product:create）
+                    // SELLER 和 STORE_OWNER 有完整權限（包括 product:create 和 media:*）
                     return List.of(
                             "ROLE_" + role.name(), role.name(),
                             "cart:read", "cart:update", "cart:delete",
                             "product:read", "product:create", "product:update", "product:delete",
                             "order:read", "order:create", "order:update",
-                            "user:read", "user:update"
+                            "user:read", "user:update",
+                            "media:read", "media:create", "media:update", "media:delete"
                     );
                 case BUYER:
                     // BUYER 只有讀取權限，沒有 product:create
@@ -298,54 +321,5 @@ public class IntegrationTestConfiguration {
         });
 
         return mockMapping;
-    }
-
-    /**
-     * Mock MediaAssetRepository for cms MediaService
-     * 避免 MediaAssetRepository JPA 初始化問題
-     */
-    @Bean("cmsMediaAssetRepository")
-    @Primary
-    public com.nextkey.ecommerce.domain.repository.cms.MediaAssetRepository cmsMediaAssetRepository() {
-        return Mockito.mock(com.nextkey.ecommerce.domain.repository.cms.MediaAssetRepository.class);
-    }
-
-    /**
-     * Mock TenantRepository for MediaService tenant resolution
-     */
-    @Bean("tenantRepository")
-    @Primary
-    public com.nextkey.ecommerce.domain.repository.TenantRepository tenantRepository() {
-        return Mockito.mock(com.nextkey.ecommerce.domain.repository.TenantRepository.class);
-    }
-
-    /**
-     * Mock UserRepository for MediaService user resolution
-     */
-    @Bean("userRepository")
-    @Primary
-    public com.nextkey.ecommerce.domain.repository.UserRepository userRepository() {
-        return Mockito.mock(com.nextkey.ecommerce.domain.repository.UserRepository.class);
-    }
-
-    /**
-     * Mock mediaService (com.nextkey.ecommerce.core.media.MediaService)
-     * 避免 MediaAssetRepository 和 StorageService (MinIO) 初始化問題
-     */
-    @Bean("mediaService")
-    @Primary
-    public com.nextkey.ecommerce.core.media.MediaService mediaService() {
-        return Mockito.mock(com.nextkey.ecommerce.core.media.MediaService.class);
-    }
-
-    /**
-     * Mock cmsMediaService (com.nextkey.ecommerce.core.cms.media.MediaService)
-     * 避免 StorageService (MinIO) 和 MediaAssetRepository 初始化問題
-     * E2E 測試主要測試業務流程，不需要真正測試媒體上傳功能
-     */
-    @Bean("cmsMediaService")
-    @Primary
-    public com.nextkey.ecommerce.core.cms.media.MediaService cmsMediaService() {
-        return Mockito.mock(com.nextkey.ecommerce.core.cms.media.MediaService.class);
     }
 }

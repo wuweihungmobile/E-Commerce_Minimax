@@ -98,6 +98,7 @@ class M09NotificationTemplateIntegrationTest {
         if (testTenantId == null) {
             Tenant testTenant = Tenant.builder()
                     .name("Test Tenant for Notification " + System.currentTimeMillis())
+                    .slug("test-tenant-notification-" + System.currentTimeMillis())
                     .status(TenantStatus.ACTIVE)
                     .build();
             testTenant = tenantRepository.save(testTenant);
@@ -154,7 +155,7 @@ class M09NotificationTemplateIntegrationTest {
         mockMvc.perform(post("/v2/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerJson))
-                .andExpect(status().isOk());
+                .andExpect(status().isCreated());
 
         // 登入獲取 token
         String loginJson = String.format("""

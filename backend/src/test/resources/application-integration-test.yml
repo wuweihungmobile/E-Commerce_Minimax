@@ -18,6 +18,9 @@ spring:
         jdbc:
           lob:
             non_contextual_creation: true
+        types:
+          uuid:
+            preferredSqlType: UUID
 
   flyway:
     enabled: false

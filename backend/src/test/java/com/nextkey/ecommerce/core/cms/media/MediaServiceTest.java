@@ -366,7 +366,7 @@ class MediaServiceTest {
             MediaAsset media = buildMediaAsset(MediaAsset.FileType.IMAGE);
             Page<MediaAsset> mediaPage = new PageImpl<>(List.of(media));
 
-            when(mediaAssetRepository.findByTenantId(eq(TEST_TENANT_ID), any(Pageable.class)))
+            when(mediaAssetRepository.findByTenant_Id(eq(TEST_TENANT_ID), any(Pageable.class)))
                     .thenReturn(mediaPage);
 
             // Act
@@ -385,7 +385,7 @@ class MediaServiceTest {
             MediaAsset media = buildMediaAsset(MediaAsset.FileType.IMAGE);
             Page<MediaAsset> mediaPage = new PageImpl<>(List.of(media));
 
-            when(mediaAssetRepository.findByTenantIdAndFileType(
+            when(mediaAssetRepository.findByTenant_IdAndFileType(
                     eq(TEST_TENANT_ID), eq(MediaAsset.FileType.IMAGE), any(Pageable.class)))
                     .thenReturn(mediaPage);
 
@@ -404,7 +404,7 @@ class MediaServiceTest {
             // Arrange
             Page<MediaAsset> emptyPage = new PageImpl<>(List.of());
 
-            when(mediaAssetRepository.findByTenantId(eq(TEST_TENANT_ID), any(Pageable.class)))
+            when(mediaAssetRepository.findByTenant_Id(eq(TEST_TENANT_ID), any(Pageable.class)))
                     .thenReturn(emptyPage);
 
             // Act
@@ -423,7 +423,7 @@ class MediaServiceTest {
             UUID otherTenantId = UUID.randomUUID();
             Page<MediaAsset> emptyPage = new PageImpl<>(List.of());
 
-            when(mediaAssetRepository.findByTenantId(eq(otherTenantId), any(Pageable.class)))
+            when(mediaAssetRepository.findByTenant_Id(eq(otherTenantId), any(Pageable.class)))
                     .thenReturn(emptyPage);
 
             // Act
@@ -433,7 +433,7 @@ class MediaServiceTest {
             assertThat(response).isNotNull();
             assertThat(response.getItems()).isEmpty();
             // Verify different tenant ID was used
-            verify(mediaAssetRepository).findByTenantId(eq(otherTenantId), any(Pageable.class));
+            verify(mediaAssetRepository).findByTenant_Id(eq(otherTenantId), any(Pageable.class));
         }
     }
 

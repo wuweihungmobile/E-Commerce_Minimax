@@ -94,69 +94,65 @@ class M18MediaIntegrationTest {
         lenient().when(featureToggleService.isFeatureEnabled(anyString())).thenReturn(true);
         lenient().doNothing().when(featureToggleService).checkFeatureEnabled(anyString());
 
-        // 建立測試租戶
-        if (testTenantId == null) {
-            Tenant testTenant = Tenant.builder()
-                    .name("Test Tenant for Media " + System.currentTimeMillis())
-                    .status(TenantStatus.ACTIVE)
-                    .build();
-            testTenant = tenantRepository.save(testTenant);
-            testTenantId = testTenant.getId();
-        }
+        long timestamp = System.currentTimeMillis();
+
+        // 建立測試租戶 (每次都重新建立,因 @Transactional 會 rollback)
+        Tenant testTenant = Tenant.builder()
+                .name("Test Tenant for Media " + timestamp)
+                .slug("test-tenant-media-" + timestamp)
+                .status(TenantStatus.ACTIVE)
+                .build();
+        testTenant = tenantRepository.save(testTenant);
+        testTenantId = testTenant.getId();
 
         // 建立測試用戶並獲取 token
-        if (authToken == null) {
-            String email = "media-test-" + System.currentTimeMillis() + "@example.com";
-            authToken = createTestUserAndGetToken(email);
-        }
+        String email = "media-test-" + timestamp + "-" + UUID.randomUUID() + "@example.com";
+        authToken = createTestUserAndGetToken(email);
 
         // 建立測試分類
-        if (testCategory == null) {
-            testCategory = MediaCategory.builder()
-                    .tenant(tenantRepository.findById(testTenantId).orElseThrow())
-                    .name("Test Category " + System.currentTimeMillis())
-                    .description("Test Description")
-                    .sortOrder(0)
-                    .build();
-            testCategory = mediaCategoryRepository.save(testCategory);
-        }
+        testCategory = MediaCategory.builder()
+                .tenant(tenantRepository.findById(testTenantId).orElseThrow())
+                .name("Test Category " + timestamp)
+                .description("Test Description")
+                .sortOrder(0)
+                .build();
+        testCategory = mediaCategoryRepository.save(testCategory);
 
         // 建立測試媒體資產
-        if (testAsset == null) {
-            Tenant tenant = tenantRepository.findById(testTenantId).orElseThrow();
-            testAsset = MediaAsset.builder()
-                    .tenant(tenant)
-                    .category(testCategory)
-                    .fileName("test-image.jpg")
-                    .originalName("test-image.jpg")
-                    .filePath("/media/test-image.jpg")
-                    .fileSize(1024L)
-                    .mimeType("image/jpeg")
-                    .fileType(MediaAsset.FileType.IMAGE)
-                    .tags(List.of("test", "image"))
-                    .usageCount(0)
-                    .isDeleted(false)
-                    .isActive(true)
-                    .build();
-            testAsset = mediaAssetRepository.save(testAsset);
-        }
+        Tenant tenant = tenantRepository.findById(testTenantId).orElseThrow();
+        testAsset = MediaAsset.builder()
+                .tenant(tenant)
+                .category(testCategory)
+                .fileName("test-image.jpg")
+                .originalName("test-image.jpg")
+                .filePath("/media/test-image.jpg")
+                .fileSize(1024L)
+                .mimeType("image/jpeg")
+                .fileType(MediaAsset.FileType.IMAGE)
+                .tags(List.of("test", "image"))
+                .usageCount(0)
+                .isDeleted(false)
+                .isActive(true)
+                .build();
+        testAsset = mediaAssetRepository.save(testAsset);
     }
 
     private String createTestUserAndGetToken(String email) throws Exception {
-        // 建立測試用戶
+        // 建立測試用戶 (使用 SELLER 角色以取得 media:* 等權限)
         String registerJson = String.format("""
             {
                 "email": "%s",
                 "password": "%s",
                 "fullName": "Media Test User",
-                "tenantId": "%s"
+                "tenantId": "%s",
+                "userType": "SELLER"
             }
             """, email, TEST_PASSWORD, testTenantId);
 
         mockMvc.perform(post("/v2/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerJson))
-                .andExpect(status().isOk());
+                .andExpect(status().isCreated());
 
         // 登入獲取 token
         String loginJson = String.format("""

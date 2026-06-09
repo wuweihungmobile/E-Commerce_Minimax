@@ -216,9 +216,11 @@ Expected status code <200> but was <500>.
 - [x] ✅ 建立 feature/US-001-fix-test-bugs 分支
 - [x] ✅ 跑完整 mvn test,收集 109 個 bug 失敗清單
 - [x] ✅ 分類 7 類根因 (RC-1~RC-7)
-- [ ] 🔴 **修復 RC-1: M07PaymentMockIntegrationTest `doNothing()` 對非 void** (8 個,0.5 SP)
-- [ ] 🔴 **修復 RC-2: M18KnowledgePhase2IntegrationTest 缺 @MockBean** (9 個,0.2 SP)
-- [ ] 🔴 **修復 RC-3: M18MediaIntegrationTest HTTP status** (12 個,0.5 SP)
+- [x] ✅ 修復 RC-1: M07PaymentMockIntegrationTest `doNothing()` → `doReturn(null)` (8 個 errors → 8 個 Failures, register 500 為 RC-4/RC-5 範疇)
+- [x] ✅ 修復 RC-2: M18KnowledgePhase2IntegrationTest 加上 `@MockBean JwtTokenService` + `RolePermissionMapping` (9 個 errors → 0, URL 修正 `/v2/knowledge/articles/{id}/schedule` → `/v2/knowledge/{articleId}/schedule`)
+- [x] ✅ 修復 MediaService/MediaAssetRepository 方法名不匹配: `findByTenantId` → `findByTenant_Id` (6 個位置)
+- [x] ✅ 修復 M18MediaIntegrationTest register 斷言 `isOk()` → `isCreated()`, 加上 slug 欄位,使用 userType: SELLER
+- [ ] 🔴 發現額外 bug: AuthService.login 會觸發額外 `insert into tenants` (slug null) 導致 500 (RC-4/RC-5 範疇,需 Day 2 修復)
 - [ ] Day 1 EOD 跑完整 mvn test 確認 Day 1 進度
 
 ---

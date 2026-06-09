@@ -98,7 +98,8 @@ class M07PaymentMockIntegrationTest {
         lenient().doNothing().when(featureToggleService).checkFeatureEnabled(anyString());
 
         // Mock OrderService
-        lenient().doNothing().when(orderService).updateOrderStatus(any(), anyString(), anyString());
+        // 注意: updateOrderStatus 回傳 OrderResponse (非 void),改用 doReturn() 而非 doNothing()
+        lenient().doReturn(null).when(orderService).updateOrderStatus(any(), anyString(), anyString());
 
         // 建立測試租戶
         if (testTenantId == null) {

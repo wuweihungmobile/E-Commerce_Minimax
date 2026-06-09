@@ -181,9 +181,9 @@ public class MediaService {
 
         Page<MediaAsset> mediaPage;
         if (fileType != null) {
-            mediaPage = mediaAssetRepository.findByTenantIdAndFileType(tenantId, fileType, pageRequest);
+            mediaPage = mediaAssetRepository.findByTenant_IdAndFileType(tenantId, fileType, pageRequest);
         } else {
-            mediaPage = mediaAssetRepository.findByTenantId(tenantId, pageRequest);
+            mediaPage = mediaAssetRepository.findByTenant_Id(tenantId, pageRequest);
         }
 
         List<M15Dto.MediaResponse> mediaList = mediaPage.getContent().stream()

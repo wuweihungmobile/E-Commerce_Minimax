@@ -31,9 +31,11 @@ import com.nextkey.ecommerce.core.knowledge.KnowledgeBaseService;
 import com.nextkey.ecommerce.domain.model.knowledge.ArticleVersion;
 import com.nextkey.ecommerce.domain.model.knowledge.KnowledgeArticle;
 import com.nextkey.ecommerce.domain.model.knowledge.KnowledgeArticle.ArticleStatus;
+import com.nextkey.ecommerce.domain.model.user.RolePermissionMapping;
 import com.nextkey.ecommerce.domain.repository.knowledge.ArticleVersionRepository;
 import com.nextkey.ecommerce.domain.repository.knowledge.KnowledgeArticleRepository;
 import com.nextkey.ecommerce.domain.repository.knowledge.KnowledgeCategoryRepository;
+import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 
 /**
  * M18 知識管理 Phase 2-B 整合測試
@@ -61,6 +63,12 @@ public class M18KnowledgePhase2IntegrationTest {
 
     @MockBean
     private KnowledgeBaseService knowledgeBaseService;
+
+    @MockBean
+    private JwtTokenService jwtTokenService;
+
+    @MockBean
+    private RolePermissionMapping rolePermissionMapping;
 
     private UUID articleId;
     private ArticleVersion testVersion;
@@ -117,7 +125,7 @@ public class M18KnowledgePhase2IntegrationTest {
         when(knowledgeBaseService.schedulePublish(eq(articleId), any(Instant.class)))
                 .thenReturn(scheduledArticle);
 
-        mockMvc.perform(put("/v2/knowledge/articles/{articleId}/schedule", articleId)
+        mockMvc.perform(put("/v2/knowledge/{articleId}/schedule", articleId)
                         .with(csrf())
                         .param("scheduledPublishAt", "2026-06-01T00:00:00Z"))
                 .andExpect(status().isOk())

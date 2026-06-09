@@ -22,6 +22,9 @@ public class UploadMediaRequest {
     @NotBlank(message = "檔案名稱不可為空")
     private String fileName;
 
+    @NotBlank(message = "原始檔案名稱不可為空")
+    private String originalName;
+
     @NotBlank(message = "檔案路徑不可為空")
     private String filePath;
 

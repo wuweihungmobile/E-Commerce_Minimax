@@ -33,6 +33,7 @@ public interface NotificationTemplateRepository extends JpaRepository<Notificati
             NotificationType notificationType, NotificationChannel channel, UUID tenantId);
 
     @Query("SELECT t FROM NotificationTemplate t WHERE t.tenantId = :tenantId " +
+           "AND t.deletedAt IS NULL " +
            "AND (:notificationType IS NULL OR t.notificationType = :notificationType) " +
            "AND (:channel IS NULL OR t.channel = :channel) " +
            "AND (:isActive IS NULL OR t.isActive = :isActive) " +

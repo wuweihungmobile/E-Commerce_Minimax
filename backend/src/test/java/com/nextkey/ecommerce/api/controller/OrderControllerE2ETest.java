@@ -359,8 +359,8 @@ class OrderControllerE2ETest {
 
     @Test
     @Order(7)
-    @DisplayName("API-M06-007: PATCH /v2/orders/{orderId}/status - 成功更新訂單狀態，返回 200")
-    void updateOrderStatus_success_returns200() throws Exception {
+    @DisplayName("API-M06-007: PATCH /v2/orders/{orderId}/status - BUYER 無法將 CREATED 直接轉換為 CONFIRMED（狀態機驗證）")
+    void updateOrderStatus_buyerCannotTransitionCreatedToConfirmed_returns422() throws Exception {
         // 先建立訂單
         String createResponse = given()
                 .header("Authorization", "Bearer " + accessToken)
@@ -382,8 +382,9 @@ class OrderControllerE2ETest {
         JsonNode createJson = objectMapper.readTree(createResponse);
         UUID orderId = UUID.fromString(createJson.path("data").path("id").asText());
 
-        // 更新訂單狀態（需要管理員權限，此測試預期失敗或需要不同角色）
-        // 注意：一般 BUYER 角色無法更新訂單狀態，這裡測試權限不足的情況
+        // BUYER 嘗試將 CREATED 狀態直接轉換為 CONFIRMED
+        // 根據 OrderStateMachine，CREATED 只能轉換到 PAID 或 CANCELLED
+        // 因此 API 正確返回 422（業務邏輯錯誤），而非 403（權限不足）
         given()
                 .header("Authorization", "Bearer " + accessToken)
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
@@ -394,9 +395,11 @@ class OrderControllerE2ETest {
                 .when()
                 .patch(BASE_URL + "/" + orderId + "/status")
                 .then()
-                .statusCode(403); // BUYER 角色無權限
+                .statusCode(422) // 業務邏輯拒絕，而非權限不足
+                .body("code", equalTo("E-5001"))
+                .body("message", containsString("Cannot transition from CREATED to CONFIRMED"));
 
-        System.out.println("✅ API-M06-007 PASSED: BUYER 無法更新訂單狀態");
+        System.out.println("✅ API-M06-007 PASSED: BUYER 無法將 CREATED 直接轉換為 CONFIRMED");
     }
 
     // ── API-M06-008: 取消訂單-成功 ────────────────────────────────

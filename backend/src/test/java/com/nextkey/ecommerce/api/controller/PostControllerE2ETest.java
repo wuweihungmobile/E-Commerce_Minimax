@@ -730,20 +730,23 @@ class PostControllerE2ETest {
 
     @Test
     @Order(10)
-    @DisplayName("IT-M15-010: POST /api/v2/media/upload - 媒體上傳成功")
+    @DisplayName("IT-M15-010: POST /api/v2/dashboard/media/upload-by-path -媒體上傳成功（Form URL Encoded）")
     void uploadMedia_shouldSucceed() throws Exception {
         String email = uniqueEmail();
         authToken = createStoreOwnerAndGetToken(email);
 
+        // upload-by-path 使用 @RequestParam，需要使用 form URL encoded 格式
+        // 注意：實際 implementation 返回 200（ResponseEntity.ok()），而非 201
         given()
                 .header("Authorization", "Bearer " + authToken)
-                .queryParam("fileName", "test-image.jpg")
-                .queryParam("originalName", "Original Image.jpg")
-                .queryParam("fileSize", 1024 * 1024)
-                .queryParam("mimeType", "image/jpeg")
-                .queryParam("filePath", "/test-tenant/media/test-image.jpg")
+                .contentType("application/x-www-form-urlencoded")
+                .formParam("fileName", "test-image.jpg")
+                .formParam("originalName", "Original Image.jpg")
+                .formParam("fileSize", 1024 * 1024)
+                .formParam("mimeType", "image/jpeg")
+                .formParam("filePath", "/test-tenant/media/test-image.jpg")
                 .when()
-                .post(BASE_URL + "/media/upload")
+                .post(BASE_URL + "/dashboard/media/upload-by-path")
                 .then()
                 .statusCode(200)
                 .body("success", is(true))

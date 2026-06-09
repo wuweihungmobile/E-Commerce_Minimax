@@ -13,6 +13,7 @@ import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
+import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
@@ -93,6 +94,10 @@ class BookingControllerE2ETest {
     @SuppressWarnings("unused")
     @Autowired
     private TenantFeatureToggleRepository featureToggleRepository;
+
+    @SuppressWarnings("unused")
+    @Autowired
+    private TenantMemberRepository tenantMemberRepository;
 
     @SuppressWarnings("unused")
     @Autowired
@@ -227,10 +232,15 @@ class BookingControllerE2ETest {
 
     @AfterEach
     void tearDown() {
-        // 清理買家用戶的預訂和用戶
+        // 清理買家用戶的預訂和用戶（遵循 FK 約束順序）
         userRepository.findByEmail(buyerEmail).ifPresent(user -> {
+            // 1. 先刪除該用戶關聯的 tenant_members
+            tenantMemberRepository.findByUserId(user.getId())
+                    .forEach(tm -> tenantMemberRepository.delete(tm));
+            // 2. 刪除該用戶的預訂
             bookingRepository.findByUserIdOrderByCreatedAtDesc(user.getId(), Pageable.unpaged())
                     .forEach(booking -> bookingRepository.delete(booking));
+            // 3. 最後刪除用戶
             userRepository.delete(user);
         });
     }
@@ -242,23 +252,32 @@ class BookingControllerE2ETest {
                         @Autowired TenantFeatureToggleRepository featureToggleRepo,
                         @Autowired BookingRepository bookingRepo,
                         @Autowired RoomRepository roomRepo,
-                        @Autowired RoomCalendarRepository roomCalendarRepo) {
-        // 清理測試資料
+                        @Autowired RoomCalendarRepository roomCalendarRepo,
+                        @Autowired TenantMemberRepository tenantMemberRepo) {
+        // 清理測試資料（遵循 FK 約束順序）
         if (testRoomListingId != null) {
-            // 先刪除關聯的 room_calendar 資料，避免 FK 約束衝突
+            // 1. 先刪除 room_calendar（依賴 listing）
             roomCalendarRepo.findByListingIdAndCalendarDateBetween(
                     testRoomListingId,
                     LocalDate.now().minusYears(1),
                     LocalDate.now().plusYears(1)
             ).forEach(calendar -> roomCalendarRepo.delete(calendar));
+            // 2. 刪除 rooms（依賴 listing）
             roomRepo.deleteById(testRoomListingId);
+            // 3. 最後刪除 listing
             listingRepo.deleteById(testRoomListingId);
         }
         if (testHostUserId != null) {
+            // 4. 先刪除該用戶關聯的 tenant_members
+            tenantMemberRepo.findByUserId(testHostUserId)
+                    .forEach(tm -> tenantMemberRepo.delete(tm));
+            // 5. 刪除用戶
             userRepo.deleteById(testHostUserId);
         }
         if (testTenantId != null) {
+            // 6. 刪除 feature toggles（依賴 tenant）
             featureToggleRepo.deleteAll(featureToggleRepo.findByTenantId(testTenantId));
+            // 7. 最後刪除 tenant
             tenantRepo.deleteById(testTenantId);
         }
     }

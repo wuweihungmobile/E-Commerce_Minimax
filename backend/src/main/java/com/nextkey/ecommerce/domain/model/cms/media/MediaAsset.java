@@ -18,6 +18,7 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.Type;
 import org.hibernate.type.SqlTypes;
 
 import com.nextkey.ecommerce.domain.model.media.MediaCategory;
@@ -65,8 +66,7 @@ public class MediaAsset {
     @Column(name = "category_id", insertable = false, updatable = false)
     private UUID categoryId;
 
-    @JdbcTypeCode(SqlTypes.ARRAY)
-    @Column(name = "tags", columnDefinition = "TEXT[]")
+    @Column(name = "tags")
     @Builder.Default
     private List<String> tags = List.of();
 

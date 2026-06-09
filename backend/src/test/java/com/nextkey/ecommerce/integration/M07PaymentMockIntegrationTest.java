@@ -105,6 +105,7 @@ class M07PaymentMockIntegrationTest {
         if (testTenantId == null) {
             Tenant testTenant = Tenant.builder()
                     .name("Test Tenant for Payment " + System.currentTimeMillis())
+                    .slug("test-tenant-payment-" + System.currentTimeMillis())
                     .status(TenantStatus.ACTIVE)
                     .build();
             testTenant = tenantRepository.save(testTenant);
@@ -125,8 +126,9 @@ class M07PaymentMockIntegrationTest {
         // 建立測試訂單
         if (testOrderId == null) {
             com.nextkey.ecommerce.domain.model.order.Order testOrder = com.nextkey.ecommerce.domain.model.order.Order.builder()
-                    .tenantId(testTenantId)
-                    .userId(testUserId)
+                    .tenant(tenantRepository.findById(testTenantId).orElseThrow())
+                    .user(userRepository.findById(testUserId).orElseThrow())
+                    .orderType(com.nextkey.ecommerce.domain.model.listing.Listing.ListingType.PRODUCT)
                     .status(com.nextkey.ecommerce.domain.model.order.Order.OrderStatus.CREATED)
                     .totalAmount(BigDecimal.valueOf(1000.00))
                     .currency("TWD")
@@ -155,7 +157,7 @@ class M07PaymentMockIntegrationTest {
         mockMvc.perform(post("/v2/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerJson))
-                .andExpect(status().isOk());
+                .andExpect(status().isCreated());
 
         // 登入獲取 token
         String loginJson = String.format("""
@@ -181,8 +183,9 @@ class M07PaymentMockIntegrationTest {
     void testProcessPayment() throws Exception {
         // 先建立一個新訂單
         com.nextkey.ecommerce.domain.model.order.Order newOrder = com.nextkey.ecommerce.domain.model.order.Order.builder()
-                .tenantId(testTenantId)
-                .userId(testUserId)
+                .tenant(tenantRepository.findById(testTenantId).orElseThrow())
+                .user(userRepository.findById(testUserId).orElseThrow())
+                .orderType(com.nextkey.ecommerce.domain.model.listing.Listing.ListingType.PRODUCT)
                 .status(com.nextkey.ecommerce.domain.model.order.Order.OrderStatus.CREATED)
                 .totalAmount(BigDecimal.valueOf(500.00))
                 .currency("TWD")
@@ -279,8 +282,9 @@ class M07PaymentMockIntegrationTest {
     void testMockPaySuccess() throws Exception {
         // 先建立一個新訂單
         com.nextkey.ecommerce.domain.model.order.Order newOrder = com.nextkey.ecommerce.domain.model.order.Order.builder()
-                .tenantId(testTenantId)
-                .userId(testUserId)
+                .tenant(tenantRepository.findById(testTenantId).orElseThrow())
+                .user(userRepository.findById(testUserId).orElseThrow())
+                .orderType(com.nextkey.ecommerce.domain.model.listing.Listing.ListingType.PRODUCT)
                 .status(com.nextkey.ecommerce.domain.model.order.Order.OrderStatus.CREATED)
                 .totalAmount(BigDecimal.valueOf(2000.00))
                 .currency("TWD")
@@ -300,8 +304,9 @@ class M07PaymentMockIntegrationTest {
     void testMockPayFailure() throws Exception {
         // 先建立一個新訂單
         com.nextkey.ecommerce.domain.model.order.Order newOrder = com.nextkey.ecommerce.domain.model.order.Order.builder()
-                .tenantId(testTenantId)
-                .userId(testUserId)
+                .tenant(tenantRepository.findById(testTenantId).orElseThrow())
+                .user(userRepository.findById(testUserId).orElseThrow())
+                .orderType(com.nextkey.ecommerce.domain.model.listing.Listing.ListingType.PRODUCT)
                 .status(com.nextkey.ecommerce.domain.model.order.Order.OrderStatus.CREATED)
                 .totalAmount(BigDecimal.valueOf(3000.00))
                 .currency("TWD")
@@ -320,25 +325,22 @@ class M07PaymentMockIntegrationTest {
     @Order(7)
     @DisplayName("IT-M07-007: 模擬退款")
     void testMockRefund() throws Exception {
-        // 先建立一個新訂單和支付
+        // 先建立一個新訂單
         com.nextkey.ecommerce.domain.model.order.Order newOrder = com.nextkey.ecommerce.domain.model.order.Order.builder()
-                .tenantId(testTenantId)
-                .userId(testUserId)
+                .tenant(tenantRepository.findById(testTenantId).orElseThrow())
+                .user(userRepository.findById(testUserId).orElseThrow())
+                .orderType(com.nextkey.ecommerce.domain.model.listing.Listing.ListingType.PRODUCT)
                 .status(com.nextkey.ecommerce.domain.model.order.Order.OrderStatus.CREATED)
                 .totalAmount(BigDecimal.valueOf(4000.00))
                 .currency("TWD")
                 .build();
         newOrder = orderRepository.save(newOrder);
 
-        Payment payment = Payment.builder()
-                .orderId(newOrder.getId())
-                .paymentMethod(Payment.PaymentMethod.CREDIT_CARD)
-                .amount(BigDecimal.valueOf(4000.00))
-                .currency("TWD")
-                .status(Payment.PaymentStatus.SUCCESS)
-                .transactionId("MOCK-REFUND-TEST")
-                .build();
-        payment = paymentRepository.save(payment);
+        // 先呼叫 mock pay 讓訂單變成 PAID 狀態
+        mockMvc.perform(post(ORDERS_URL + "/" + newOrder.getId() + "/pay")
+                        .header("Authorization", "Bearer " + authToken)
+                        .header("X-Tenant-ID", testTenantId.toString()))
+                .andExpect(status().isOk());
 
         mockMvc.perform(post(ORDERS_URL + "/" + newOrder.getId() + "/refund")
                         .header("Authorization", "Bearer " + authToken)
@@ -357,8 +359,9 @@ class M07PaymentMockIntegrationTest {
 
         // 1. 創建訂單 (CREATED)
         com.nextkey.ecommerce.domain.model.order.Order order = com.nextkey.ecommerce.domain.model.order.Order.builder()
-                .tenantId(testTenantId)
-                .userId(testUserId)
+                .tenant(tenantRepository.findById(testTenantId).orElseThrow())
+                .user(userRepository.findById(testUserId).orElseThrow())
+                .orderType(com.nextkey.ecommerce.domain.model.listing.Listing.ListingType.PRODUCT)
                 .status(com.nextkey.ecommerce.domain.model.order.Order.OrderStatus.CREATED)
                 .totalAmount(BigDecimal.valueOf(5000.00))
                 .currency("TWD")

@@ -74,9 +74,6 @@ class M09NotificationTemplateIntegrationTest {
     private NotificationTemplateRepository notificationTemplateRepository;
 
     @MockBean
-    private NotificationTemplateService notificationTemplateService;
-
-    @MockBean
     private com.nextkey.ecommerce.core.feature.FeatureToggleService featureToggleService;
 
     private static final String TEMPLATES_URL = "/v2/notification-templates";

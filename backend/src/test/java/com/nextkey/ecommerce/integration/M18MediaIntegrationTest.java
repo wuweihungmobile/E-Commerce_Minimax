@@ -258,7 +258,7 @@ class M18MediaIntegrationTest {
                         .param("size", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content", notNullValue()))
-                .andExpect(jsonPath("$.data.page").value(0));
+                .andExpect(jsonPath("$.data.number").value(0));
     }
 
     @Test
@@ -267,6 +267,7 @@ class M18MediaIntegrationTest {
     void testUploadAsset() throws Exception {
         UploadMediaRequest request = UploadMediaRequest.builder()
                 .fileName("new-upload.jpg")
+                .originalName("New Upload.jpg")
                 .filePath("/media/new-upload.jpg")
                 .fileSize(2048L)
                 .mimeType("image/jpeg")
@@ -289,6 +290,7 @@ class M18MediaIntegrationTest {
     @DisplayName("IT-M18-007: 更新媒體資產")
     void testUpdateAsset() throws Exception {
         UpdateMediaRequest request = UpdateMediaRequest.builder()
+                .categoryId(testCategory.getId())
                 .tags(List.of("updated", "modified"))
                 .altText("Updated alt text")
                 .title("Updated title")
@@ -310,9 +312,11 @@ class M18MediaIntegrationTest {
         // 先上傳一個新資產
         UploadMediaRequest request = UploadMediaRequest.builder()
                 .fileName("to-delete.jpg")
+                .originalName("To Delete.jpg")  // original_name 是必填欄位
                 .filePath("/media/to-delete.jpg")
                 .fileSize(1024L)
                 .mimeType("image/jpeg")
+                .categoryId(testCategory.getId())
                 .build();
 
         var uploadResult = mockMvc.perform(post(MEDIA_URL + "/upload")

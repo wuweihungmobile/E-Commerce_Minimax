@@ -344,7 +344,10 @@ public class PricingService {
             switch (rule.getRuleType()) {
                 case EARLY_BIRD:
                     // 提前預訂天數檢查
-                    long daysAhead = ChronoUnit.DAYS.between(LocalDate.now(), rule.getValidFrom());
+                    // minDaysAhead 表示「需要提前預訂的天數」
+                    // 例如：minDaysAhead=7 意味著入住日期需要在 validFrom 之後至少 7 天
+                    // 即 checkIn >= validFrom + 7 才適用
+                    long daysAhead = ChronoUnit.DAYS.between(rule.getValidFrom(), date);
                     Integer minDays = (Integer) rule.getConfig().get("minDaysAhead");
                     return minDays == null || daysAhead >= minDays;
                 case LONG_STAY:
@@ -352,8 +355,9 @@ public class PricingService {
                     Integer minNights = (Integer) rule.getConfig().get("minNights");
                     return minNights == null || nights >= minNights;
                 case LAST_MINUTE:
-                    // 最後一刻檢查
-                    long daysUntilCheckIn = ChronoUnit.DAYS.between(LocalDate.now(), date);
+                    // 最後一刻檢查（使用規則的 validFrom）
+                    LocalDate lastMinuteStartDate = rule.getValidFrom();
+                    long daysUntilCheckIn = ChronoUnit.DAYS.between(lastMinuteStartDate, date);
                     Integer maxDaysAhead = (Integer) rule.getConfig().get("maxDaysAhead");
                     return maxDaysAhead == null || daysUntilCheckIn <= maxDaysAhead;
                 default:

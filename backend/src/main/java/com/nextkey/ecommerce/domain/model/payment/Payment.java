@@ -15,6 +15,9 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -64,6 +67,7 @@ public class Payment {
     @Column(name = "idempotency_key")
     private String idempotencyKey;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "payment_data", columnDefinition = "jsonb")
     private String paymentData;
 

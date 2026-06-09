@@ -274,7 +274,9 @@ public class IntegrationTestConfiguration {
                             "cart:read", "cart:update", "cart:delete",
                             "product:read",
                             "order:read", "order:create", "order:update",
-                            "user:read", "user:update"
+                            "user:read", "user:update",
+                            "notification_template:read", "notification_template:create", "notification_template:update", "notification_template:delete",
+                            "booking:read", "booking:create", "booking:cancel"
                     );
                 case HOST:
                     return List.of(

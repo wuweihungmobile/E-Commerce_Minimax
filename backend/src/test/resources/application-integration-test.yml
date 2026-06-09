@@ -21,6 +21,7 @@ spring:
         types:
           uuid:
             preferredSqlType: UUID
+        physical_naming_strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
 
   flyway:
     enabled: false

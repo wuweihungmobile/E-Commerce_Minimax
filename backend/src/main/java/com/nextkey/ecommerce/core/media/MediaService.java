@@ -209,13 +209,18 @@ public class MediaService {
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
         }
 
+        // 從 mimeType 推斷 fileType
+        MediaAsset.FileType fileType = inferFileType(request.getMimeType());
+
         MediaAsset asset = MediaAsset.builder()
                 .tenant(tenant)
                 .category(category)
                 .fileName(request.getFileName())
+                .originalName(request.getOriginalName())
                 .filePath(request.getFilePath())
                 .fileSize(request.getFileSize())
                 .mimeType(request.getMimeType())
+                .fileType(fileType)
                 .tags(request.getTags() != null ? request.getTags() : List.of())
                 .altText(request.getAltText())
                 .title(request.getTitle())
@@ -383,6 +388,22 @@ public class MediaService {
             }
         }
         return null;
+    }
+
+    /**
+     * 從 MIME Type 推斷檔案類型
+     */
+    private MediaAsset.FileType inferFileType(String mimeType) {
+        if (mimeType == null) {
+            return MediaAsset.FileType.DOCUMENT;
+        }
+        if (mimeType.startsWith("image/")) {
+            return MediaAsset.FileType.IMAGE;
+        }
+        if (mimeType.startsWith("video/")) {
+            return MediaAsset.FileType.VIDEO;
+        }
+        return MediaAsset.FileType.DOCUMENT;
     }
 
     /**

@@ -163,11 +163,14 @@ class PricingServiceTest {
         @DisplayName("UT-M12-004: 價格計算-早鳥折扣 (P0)")
         void calculatePrice_earlyBirdAppliesDiscount() {
             // Arrange: 提前30天預訂，套用早鳥折扣（使用靜態日期避免時間問題）
-            LocalDate checkIn = LocalDate.of(2026, 6, 1); // 靜態日期：2026/6/1
+            // 注意：minDaysAhead=7 表示需要入住日期在規則起始日之後至少7天
+            // 因此 checkIn 必須在 validFrom + 7 天之后
+            LocalDate validFrom = LocalDate.of(2026, 5, 25); // 規則起始日
+            LocalDate checkIn = validFrom.plusDays(8); // 提前8天預訂，滿足 minDaysAhead >= 7
             LocalDate checkOut = checkIn.plusDays(1);
 
             Room room = buildMockRoom();
-            PricingRule earlyBirdRule = buildEarlyBirdRuleWithValidFrom(checkIn);
+            PricingRule earlyBirdRule = buildEarlyBirdRuleWithValidFrom(validFrom);
 
             when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(room));
             when(pricingRuleRepository.findActiveRulesForDateRange(any(), any(), any()))
@@ -304,13 +307,14 @@ class PricingServiceTest {
         @DisplayName("UT-M12-008: 優先級-高優先級覆蓋低優先級 (P0)")
         void calculatePrice_highPriorityOverridesLowPriority() {
             // Arrange: 同一天有兩個規則，高優先級勝出（使用平日避免週末加成）
-            // 為確保早鳥規則正確觸發，validFrom 必須設為 checkIn（讓 daysAhead >= minDaysAhead）
-            LocalDate checkIn = LocalDate.of(2026, 6, 1); // 靜態日期：確保早鳥規則適用
+            // 為確保早鳥規則正確觸發，validFrom 必須早於 checkIn（讓 daysAhead >= minDaysAhead）
+            LocalDate validFrom = LocalDate.of(2026, 5, 22); // 規則起始日早於 checkIn
+            LocalDate checkIn = validFrom.plusDays(8); // 提前8天預訂，滿足 minDaysAhead >= 7
             LocalDate checkOut = checkIn.plusDays(1);
 
             Room room = buildMockRoom();
             PricingRule lowPriorityRule = buildWeekendRuleWithPriority(0);
-            PricingRule highPriorityRule = buildEarlyBirdRuleWithValidFrom(checkIn, 10);
+            PricingRule highPriorityRule = buildEarlyBirdRuleWithValidFrom(validFrom, 10);
 
             when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(room));
             when(pricingRuleRepository.findActiveRulesForDateRange(any(), any(), any()))

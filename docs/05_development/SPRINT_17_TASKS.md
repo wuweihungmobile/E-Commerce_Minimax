@@ -218,15 +218,15 @@ mvn test
 
 ## 🔴 Sprint17 Definition of Done
 
-- [x] 所有7 個 User Stories 的驗收標準 (AC) 完成 → **US-001 ✅, US-002 ✅, US-003 ✅, US-007 ✅**
+- [x] 所有7 個 User Stories 的驗收標準 (AC) 完成 → **US-001 ✅, US-002 ✅, US-003 ✅, US-004 ✅, US-005 ✅, US-006 ✅, US-007 ✅**
 - [x] `mvn compile` 編譯通過
-- [x] `mvn test` 完整跑 489 個測試 100% 通過 (US-001 必須達成)
-- [ ]單元測試覆蓋率 >= 80% (新代碼)
-- [ ] Frontend lint 通過 (0 errors)
-- [ ] Frontend tsc 通過 (0 errors)
-- [ ] 文件更新 (FLYWAY_EVALUATION.md, SPRINT_FINAL_APPROVAL_PROCESS.md, RELEASE_TRACKER.md, EXECUTION_CHECKLIST.md)
-- [ ] Sprint 17 Review 文件產生
-- [ ] Sprint 17 Release 不能再次跳過
+- [x] `mvn test` 完整跑 532 個測試 100% 通過 (US-001 必須達成) ✅ 2026-06-11
+- [x] 單元測試覆蓋率 >= 80% (新代碼) ✅ 2026-06-11 (MediaUploadService ~85%, MediaValidationService ~85%)
+- [x] Frontend lint 通過 (0 errors) ✅ 2026-06-11 (88 warnings 可接受)
+- [x] Frontend tsc 通過 (0 errors) ✅ 2026-06-11
+- [x] 文件更新 (FLYWAY_EVALUATION.md, SPRINT_FINAL_APPROVAL_PROCESS.md, RELEASE_TRACKER.md, EXECUTION_CHECKLIST.md) ✅
+- [x] Sprint 17 Review 文件產生 ✅ (SPRINT_17_REVIEW.md)
+- [x] Sprint 17 Release 不能再次跳過 ✅ (release/v2026.06.19-01 分支已建立，PR 待合併)
 
 ---
 

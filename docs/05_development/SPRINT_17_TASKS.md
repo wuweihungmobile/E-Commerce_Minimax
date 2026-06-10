@@ -84,9 +84,9 @@ mvn test
 - [x] T-003-2: 建立 `MediaUploadService` (上傳邏輯) ✅
 - [x] T-003-3: 建立 `MediaValidationService` (驗證邏輯) ✅
 - [x] T-003-4: 重構 cms.MediaService 為 Facade 模式 ✅
-- [ ] T-003-5: 建立 MediaUploadServiceTest (5+ UT) - 待建立
-- [ ] T-003-6: 建立 MediaValidationServiceTest (5+ UT) - 待建立
-- [ ] T-003-7: 更新 PostController 等呼叫端（如需要）
+- [x] T-003-5: 建立 MediaUploadServiceTest (9 UT) ✅
+- [x] T-003-6: 建立 MediaValidationServiceTest (34 UT) ✅
+- [x] T-003-7: 更新 PostController 等呼叫端（如需要）✅ (不需變更，向後相容)
 - [x] T-003-8: 驗證 mvn test 100% 通過 ✅
 
 ---
@@ -95,22 +95,22 @@ mvn test
 
 **負責人**: SD + Dev
 **優先級**: P1
-**狀態**: ⏳ 待處理
+**狀態**: ✅ **已完成** (Day 6 - 2026-06-10)
 
 | AC 驗收標準 | 狀態 | 備註 |
 |-------------|------|------|
-| AC-001: 文件 `docs/04_planning/FLYWAY_EVALUATION.md` 建立完成 | ⏳ | |
-| AC-002: 評估項目包含目前 Hibernate 自動管理的 schema 狀態 | ⏳ | |
-| AC-003: 建議方案 (A: 啟用 Flyway; B: 維持 Hibernate auto-update) | ⏳ | |
-| AC-004: 若選 A,新增 V38 migration 腳本並驗證 | ⏳ | |
+| AC-001: 文件 `docs/04_planning/FLYWAY_EVALUATION.md` 建立完成 | ✅ | 已建立 |
+| AC-002: 評估項目包含目前 Hibernate 自動管理的 schema 狀態 | ✅ | `ddl-auto: update` 高風險 |
+| AC-003: 建議方案 (A: 啟用 Flyway; B: 維持 Hibernate auto-update) | ✅ | 建議選項 A |
+| AC-004: 若選 A,新增 V38 migration 腳本並驗證 | ⏳ | 待 Sprint 18 執行 |
 
 **具體任務**:
-- [ ] T-004-1: 分析目前 Flyway 設定狀態
-- [ ] T-004-2: 檢視 V13 (cms.MediaAsset) 和 V22 (media.MediaAsset) migration內容
-- [ ] T-004-3: 評估 Hibernate auto-update vs Flyway 風險
-- [ ] T-004-4: 建立 `FLYWAY_EVALUATION.md` 文件
-- [ ] T-004-5: 如選擇啟用 Flyway，建立 V38 migration腳本
-- [ ] T-004-6: 驗證 mvn test + schema 正確性
+- [x] T-004-1: 分析目前 Flyway 設定狀態 ✅ (Flyway disabled, Hibernate ddl-auto: update)
+- [x] T-004-2: 檢視 V13 和 V22 migration內容 ✅ (衝突分析完成)
+- [x] T-004-3: 評估 Hibernate auto-update vs Flyway 風險 ✅ (文件已完成)
+- [x] T-004-4: 建立 `FLYWAY_EVALUATION.md` 文件 ✅
+- [ ] T-004-5: 如選擇啟用 Flyway，建立 V38 migration腳本 - 待 Sprint 18
+- [ ] T-004-6: 驗證 mvn test + schema 正確性 - 待 Sprint 18
 
 ---
 
@@ -118,20 +118,24 @@ mvn test
 
 **負責人**: Dev
 **優先級**: P1
-**狀態**: ⏳ 待處理
+**狀態**: 🔄 **部分完成** (Day 6 - 2026-06-10)
 
 | AC 驗收標準 | 狀態 | 備註 |
 |-------------|------|------|
-| AC-001: 移除 PostController/ReviewController 中所有 /reply 相關端點 | ⏳ | |
-| AC-002: 移除 Review entity 的 sellerReply 欄位 + V38 migration | ⏳ | |
-| AC-003: 移除相關 DTO 欄位、Service 方法 | ⏳ | |
-| AC-004: 確認所有呼叫端改用 /replies 或 ReviewReplyService | ⏳ | |
-| AC-005: 既有測試更新 + mvn test 100% 通過 | ⏳ | |
+| AC-001: 移除 PostController/ReviewController 中所有 /reply 相關端點 | ✅ | ReviewController /reply 已移除 |
+| AC-002: 移除 Review entity 的 sellerReply 欄位 + V38 migration | ⏳ | 保留（需 V38 migration） |
+| AC-003: 移除相關 DTO 欄位、Service 方法 | ⏳ | sellerReply 保留在 DTO/Service |
+| AC-004: 確認所有呼叫端改用 /replies 或 ReviewReplyService | ✅ | ReviewController 已遷移 |
+| AC-005: 既有測試更新 + mvn test 100% 通過 | ✅ | 532 tests, 0 failures |
 
 **具體任務**:
-- [ ] T-005-1: 搜尋所有 /reply 端點並確認範圍
-- [ ] T-005-2: 檢查 production資料中 sellerReply 欄位狀態
-- [ ] T-005-3: 移除 /reply 端點 (PostController, ReviewController)
+- [x] T-005-1: 搜尋所有 /reply 端點並確認範圍 ✅
+- [ ] T-005-2: 檢查 production資料中 sellerReply 欄位狀態 - 延期
+- [x] T-005-3: 移除 /reply 端點 (ReviewController) ✅
+- [ ] T-005-4: 移除 Review entity 的 sellerReply 欄位 - 延期（需 V38 migration）
+- [ ] T-005-5: 建立 V38 migration 移除 sellerReply 欄位 - 延期
+- [ ] T-005-6: 更新相關 DTO 和 Service - 延期
+- [x] T-005-7: 驗證 mvn test 100% 通過 ✅
 - [ ] T-005-4: 移除 Review entity 的 sellerReply 欄位
 - [ ] T-005-5: 建立 V38 migration 移除 sellerReply 欄位
 - [ ] T-005-6: 更新相關 DTO 和 Service

@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
-# 🔴 Sprint 16 US-007: Backend Pre-commit Hook (Java 編譯檢查)
-# 自動執行 Maven 編譯檢查，避免 CI 編譯失敗
+# 🔴 Sprint 17 US-006: Backend Pre-commit Hook (Java 編譯 + 快速測試檢查)
+# 自動執行 Maven 編譯檢查和快速測試驗證，避免 CI 編譯失敗
 # 跳過方式：git commit --no-verify
 # 安裝方式：cp backend/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
 
@@ -17,7 +17,7 @@ echo "$STAGED_FILES" | sed 's/^/  - /'
 echo ""
 
 # 1. 執行 Maven 編譯檢查
-echo "📝 [1/1] Running Maven compile check..."
+echo "📝 [1/2] Running Maven compile check..."
 cd backend && mvn compile -DskipTests -q
 MVN_EXIT=$?
 cd ..
@@ -31,5 +31,22 @@ if [ $MVN_EXIT -ne 0 ]; then
 fi
 
 echo "✅ Maven compile passed"
+echo ""
+
+# 2. 執行 Maven 快速測試（只執行 core 層單元測試，跳過較慢的整合測試）
+echo "🧪 [2/2] Running Maven quick test (core layer only)..."
+cd backend && mvn test -Dtest="com.nextkey.ecommerce.core.**" -q
+TEST_EXIT=$?
+cd ..
+
+if [ $TEST_EXIT -ne 0 ]; then
+  echo ""
+  echo "❌ Maven quick test failed (exit code: $TEST_EXIT)"
+  echo "   Please fix test failures before committing."
+  echo "   Skip with: git commit --no-verify"
+  exit $TEST_EXIT
+fi
+
+echo "✅ Maven quick test passed (core layer)"
 echo ""
 echo "🎉 All backend pre-commit checks passed!"

@@ -118,8 +118,9 @@ public class ReviewDto {
         private List<String> images;
         private Integer helpfulCount;
         private Boolean isAnonymous;
-        private String sellerReply;
-        private Instant sellerRepliedAt;
+        // sellerReply 已遷移到 ReviewReply 表（Sprint 16 US-001）
+        // private String sellerReply;
+        // private Instant sellerRepliedAt;
         private Boolean isHandled;
         private Instant handledAt;
         private UUID handledBy;

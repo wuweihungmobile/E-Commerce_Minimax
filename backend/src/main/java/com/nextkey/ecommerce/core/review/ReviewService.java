@@ -557,8 +557,9 @@ public class ReviewService {
                 .images(review.getImages())
                 .helpfulCount(review.getHelpfulCount())
                 .isAnonymous(review.getIsAnonymous())
-                .sellerReply(review.getSellerReply())
-                .sellerRepliedAt(review.getSellerRepliedAt())
+                // sellerReply 已遷移到 ReviewReply 表（Sprint 16 US-001）
+                // .sellerReply(review.getSellerReply())
+                // .sellerRepliedAt(review.getSellerRepliedAt())
                 .isHandled(review.getIsHandled())
                 .handledAt(review.getHandledAt())
                 .handledBy(review.getHandledBy() != null ? review.getHandledBy().getId() : null)

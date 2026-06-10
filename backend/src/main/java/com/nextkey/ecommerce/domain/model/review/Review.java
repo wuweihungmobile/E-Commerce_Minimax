@@ -97,11 +97,13 @@ public class Review {
     @Builder.Default
     private Boolean isAnonymous = false;
 
-    @Column(name = "seller_reply")
-    private String sellerReply;
-
-    @Column(name = "seller_replied_at")
-    private Instant sellerRepliedAt;
+    // sellerReply 欄位已於 Sprint 16 US-001 遷移到 ReviewReply 表
+    // 此處保留是為了向後相容，Sprint 17 US-005 將移除這些欄位
+    // @Column(name = "seller_reply")
+    // private String sellerReply;
+    //
+    // @Column(name = "seller_replied_at")
+    // private Instant sellerRepliedAt;
 
     @Column(name = "is_handled")
     @Builder.Default

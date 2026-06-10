@@ -106,7 +106,9 @@
 - [ ] AC-004: Sprint 18 開始執行新流程
 
 **技術備註**:
-- 文件位置:`docs/04_planning/SPRINT_FINAL_APPROVAL_PROCESS.md` (新建)
+- 文件位置:
+  - `docs/04_planning/SPRINT_FINAL_APPROVAL_PROCESS.md` (新建) ✅ 已建立
+  - `docs/04_planning/EXECUTION_CHECKLIST.md` (新建) ✅ 已建立
 - 參考:SPRINT_16_FINAL_APPROVAL.md §1.3 補述
 
 **依賴**: 無

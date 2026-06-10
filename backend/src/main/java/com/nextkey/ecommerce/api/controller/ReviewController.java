@@ -130,22 +130,6 @@ public class ReviewController {
     }
 
     /**
-     * 賣家回覆（舊路徑，向後相容）
-     *
-     * @deprecated 請改用 {@code POST /v2/reviews/{reviewId}/replies}
-     *             此路徑將於 Sprint 17 移除
-     */
-    @Deprecated
-    @PostMapping("/{reviewId}/reply")
-    @PreAuthorize("hasAuthority('room:update') or hasAuthority('product:update')")
-    public ResponseEntity<ApiResponse<ReviewReplyDto.ReplyResponse>> replyToReviewLegacy(
-            @PathVariable UUID reviewId,
-            @Valid @RequestBody ReviewReplyDto.CreateReplyRequest request) {
-        log.warn("[DEPRECATED] Legacy /reply path used, please migrate to /replies. reviewId={}", reviewId);
-        return replyToReview(reviewId, request);
-    }
-
-    /**
      * 取得評價的所有回覆（Sprint 16 US-001）
      */
     @GetMapping("/{reviewId}/replies")

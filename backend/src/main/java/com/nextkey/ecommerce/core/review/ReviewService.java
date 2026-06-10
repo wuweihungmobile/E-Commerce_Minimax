@@ -271,38 +271,6 @@ public class ReviewService {
     }
 
     /**
-     * 賣家回覆
-     *
-     * @deprecated 委派給 {@link ReviewReplyService#createReply(UUID, com.nextkey.ecommerce.api.dto.ReviewReplyDto.CreateReplyRequest)}
-     *             此方法將於 Sprint 17 移除。保留僅作向後相容。
-     */
-    @Deprecated
-    @Transactional
-    public ReviewDto.ReviewResponse replyToReview(UUID reviewId, ReviewDto.SellerReplyRequest request) {
-        // 委派給 ReviewReplyService（向後相容層）
-        log.warn("[DEPRECATED] ReviewService.replyToReview is deprecated, please use ReviewReplyService.createReply");
-
-        UUID userId = TenantContext.getCurrentUser();
-
-        Review review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
-
-        // 檢查是否是 Listing 的擁有者
-        Listing listing = review.getListing();
-        if (listing.getTenantId() == null || !listing.getOwnerId().equals(userId)) {
-            throw new BusinessException(ErrorCode.E_1007, "Only the listing owner can reply");
-        }
-
-        review.setSellerReply(request.getReply());
-        review.setSellerRepliedAt(Instant.now());
-        review = reviewRepository.save(review);
-
-        log.info("Seller replied to review (legacy): reviewId={}", reviewId);
-
-        return toReviewResponse(review, listing);
-    }
-
-    /**
      * 標記為有帮助
      */
     @Transactional

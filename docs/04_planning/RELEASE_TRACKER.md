@@ -12,6 +12,7 @@
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
 | Sprint 16 | v2026.06.06-01 | #15 | 2026-06-06 | M08 評價多圖 + M07 結算強化 + Pre-commit | ✅ |
+| Sprint 17 | v2026.06.19-01 | (待建立) | 2026-06-19 | 83個測試 bug 修復 + cms.MediaService Facade 重構 + Final Approval流程 + Flyway 評估 | ⏳ 執行中 |
 | Sprint 15 | v2026.06.04-01 | #13, #14 | 2026-06-04 | M08 商家回覆 + 評價標記 | ✅ |
 | Sprint 14 | v2026.05.16-02 | #12 | 2026-05-16 | M09 MQ 通知 + M07 Stripe 整合 | ✅ |
 | Sprint 13 | v2026.05.16-01 | #11 | 2026-05-16 | M18 知識庫版本控制 + 排程發布 | ✅ |
@@ -70,6 +71,18 @@
 | **架構異動** | JPA 衝突修復 (media.MediaAsset vs cms.MediaAsset) |
 | **技術債** | 83 個既有測試 bug (需 Sprint 17 修復) |
 | **測試覆蓋** | 新增 34 個測試，100% 通過 |
+
+### Sprint 17 (v2026.06.19-01)
+
+| 欄位 | 內容 |
+|------|------|
+| **PR** | (待建立) |
+| **合併日期** | 2026-06-19 (預定) |
+| **主要功能** | 83個測試 bug 修復 + cms.MediaService Facade 重構 + Final Approval 流程改進 + Flyway 評估 |
+| **架構異動** | cms.MediaService 重構 (Facade 模式)、V38/V39 Migration 建立 |
+| **技術債清理** | 83個測試 bug 歸零、sellerReply 欄位移除 |
+| **流程改進** | Final Approval 流程文件建立、Release Tracker 建立 |
+| **測試覆蓋** | 532 tests, 0 Failures, 0 Errors (100%) |
 
 ### Sprint 15 (v2026.06.04-01)
 
@@ -150,10 +163,11 @@ Sprint 13  → ✅ Release (v2026.05.16-01)
 Sprint 14  → ✅ Release (v2026.05.16-02)
 Sprint 15  → ✅ Release (v2026.06.04-01)
 Sprint 16  → ✅ Release (v2026.06.06-01)
-Sprint 17  → ⏳ 計劃中 (2026-06-19)
+Sprint 17  → ⏳ 執行中 (v2026.06.19-01)
 ```
 
 **連續 Release**: 8 次 (Sprint 10-16)
+**Sprint 17**: ⏳ 執行中 (不可跳過)
 
 ---
 

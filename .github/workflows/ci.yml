@@ -37,6 +37,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CONFIG_PATH: .gitleaks.toml
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
 
   dependency-scan:
     name: Dependency Scan (Layer 0 - SCA)

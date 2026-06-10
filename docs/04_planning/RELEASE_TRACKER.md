@@ -1,0 +1,205 @@
+# Release 流程追蹤表 / Release Tracker
+
+> **文件類型**: 追蹤表 (Tracker)
+> **版本**: v1.0
+> **建立日期**: 2026-06-11
+> **目的**: 追蹤每個 Sprint 的 Release 狀態，避免連續多個 Sprint 跳過 Release
+
+---
+
+## 📋 Release 總覽
+
+| Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
+|--------|-------------|---------|----------|----------|------|
+| Sprint 16 | v2026.06.06-01 | #15 | 2026-06-06 | M08 評價多圖 + M07 結算強化 + Pre-commit | ✅ |
+| Sprint 15 | v2026.06.04-01 | #13, #14 | 2026-06-04 | M08 商家回覆 + 評價標記 | ✅ |
+| Sprint 14 | v2026.05.16-02 | #12 | 2026-05-16 | M09 MQ 通知 + M07 Stripe 整合 | ✅ |
+| Sprint 13 | v2026.05.16-01 | #11 | 2026-05-16 | M18 知識庫版本控制 + 排程發布 | ✅ |
+| Sprint 12 | v2026.05.15-01 | #10 | 2026-05-15 | M18 知識管理 + M07 金流準備 + M09 通知模板 | ✅ |
+| Sprint 11 | v2026.05.12-01 | #7 | 2026-05-12 | CI/CD Pipeline 修復 | ✅ |
+| Sprint 10 | v2026.05.09-01 | #5 | 2026-05-09 | M16 ERP Backend | ✅ |
+| Sprint 9 | - | - | - | M15 CMS Backend | ⚠️ 未正式 Release |
+| Sprint 8 | - | - | - | M15 CMS Backend | ⚠️ 未正式 Release |
+| Sprint 1-7 | - | - | - | 初期開發階段 | ⚠️ 無記錄 |
+
+---
+
+## 📊 Release 統計
+
+| 項目 | 數值 |
+|------|------|
+| 正式 Release 次數 | 8 (Sprint 10-16) |
+| 跳過 Release 次數 | 2 (Sprint 8-9) |
+| 最近一次 Release | v2026.06.06-01 (Sprint 16) |
+| 最近一次跳過 | Sprint 8-9 |
+| 連續 Release 開始 | Sprint 10 |
+
+---
+
+## 🔴 Sprint 17 Release 規劃
+
+**目標**: Day 10 (2026-06-19) 執行 Sprint 17 Release，不可跳過
+
+### Release 前檢查清單
+
+| 檢查項目 | 標準 | 狀態 |
+|---------|------|------|
+| 所有 7 個 US 完成 | AC 100% 達成 | ⏳ |
+| mvn test 100% 通過 | 489 tests, 0 Failures, 0 Errors | ⏳ |
+| Final Approval 文件 | SPRINT_17_FINAL_APPROVAL.md 建立 | ⏳ |
+| 四方審議通過 | Architect/SA/SD/QA 全部 APPROVED | ⏳ |
+| 文件更新 | FLYWAY_EVALUATION.md, RELEASE_TRACKER.md 更新 | ⏳ |
+
+### 預期 Release Tag
+
+| Sprint | 預期 Tag | 預期日期 |
+|--------|----------|----------|
+| Sprint 17 | v2026.06.19-01 | 2026-06-19 |
+
+---
+
+## 📝 Release 歷史詳細資料
+
+### Sprint 16 (v2026.06.06-01)
+
+| 欄位 | 內容 |
+|------|------|
+| **PR** | #15 |
+| **合併日期** | 2026-06-06 |
+| **主要功能** | M08 評價多圖 (9張上限) + M07 結算強化 + Pre-commit Hook |
+| **架構異動** | JPA 衝突修復 (media.MediaAsset vs cms.MediaAsset) |
+| **技術債** | 83 個既有測試 bug (需 Sprint 17 修復) |
+| **測試覆蓋** | 新增 34 個測試，100% 通過 |
+
+### Sprint 15 (v2026.06.04-01)
+
+| 欄位 | 內容 |
+|------|------|
+| **PR** | #13, #14 (CI hotfix) |
+| **合併日期** | 2026-06-04 |
+| **主要功能** | M08 商家回覆評價 + 評價標記功能 |
+| **重要變更** | ReviewReply Entity 建立 (1:1 with Review) |
+| **取消功能** | sellerReply 欄位廢除 (改用 ReviewReply) |
+
+### Sprint 14 (v2026.05.16-02)
+
+| 欄位 | 內容 |
+|------|------|
+| **PR** | #12 |
+| **合併日期** | 2026-05-16 |
+| **主要功能** | M09 MQ 通知 + M07 Stripe 整合 + M18 FAQ 進階 |
+
+### Sprint 13 (v2026.05.16-01)
+
+| 欄位 | 內容 |
+|------|------|
+| **PR** | #11 |
+| **合併日期** | 2026-05-16 |
+| **主要功能** | M18 知識庫版本控制 + 排程發布 + M08 預訂評價系統 |
+
+### Sprint 12 (v2026.05.15-01)
+
+| 欄位 | 內容 |
+|------|------|
+| **PR** | #10 |
+| **合併日期** | 2026-05-15 |
+| **主要功能** | M18 知識管理 + M07 金流準備 + M09 通知模板 |
+
+### Sprint 11 (v2026.05.12-01)
+
+| 欄位 | 內容 |
+|------|------|
+| **PR** | #7 |
+| **合併日期** | 2026-05-12 |
+| **主要功能** | CI/CD Pipeline 修復 |
+
+### Sprint 10 (v2026.05.09-01)
+
+| 欄位 | 內容 |
+|------|------|
+| **PR** | #5 |
+| **合併日期** | 2026-05-09 |
+| **主要功能** | M16 ERP Backend 完成 |
+
+---
+
+## ⚠️ 未 Release 的 Sprint
+
+### Sprint 8-9 問題說明
+
+> **歷史問題**: Sprint 8 和 Sprint 9 沒有執行正式的 Release 流程，導致：
+> - M15 CMS Backend 功能未能及時進入 Production
+> - 程式碼累積在 develop 分支
+> - 技術債逐漸累積
+
+### 補救措施
+
+1. ✅ Sprint 10 時已將 M15 CMS 程式碼带入 main
+2. ✅ 後續 Sprint 都有執行 Release 流程
+3. ⚠️ 建議建立文件記錄 Sprint 8-9 的功能事實上已進入 Production
+
+---
+
+## 📈 Release 頻率趨勢
+
+```
+Sprint 10  → ✅ Release (v2026.05.09-01)
+Sprint 11  → ✅ Release (v2026.05.12-01)
+Sprint 12  → ✅ Release (v2026.05.15-01)
+Sprint 13  → ✅ Release (v2026.05.16-01)
+Sprint 14  → ✅ Release (v2026.05.16-02)
+Sprint 15  → ✅ Release (v2026.06.04-01)
+Sprint 16  → ✅ Release (v2026.06.06-01)
+Sprint 17  → ⏳ 計劃中 (2026-06-19)
+```
+
+**連續 Release**: 8 次 (Sprint 10-16)
+
+---
+
+## 🔧 使用方式
+
+### 在 Sprint Planning 時
+
+1. 開啟此文件
+2. 確認上一個 Sprint 的 Release 狀態
+3. 將 Release 追蹤加入 Sprint Planning Template 檢查清單
+
+### 在 Final Approval 時
+
+1. 確認 Release Tag 已建立
+2. 確認 PR 已合併至 main
+3. 更新此文件的 Release 狀態
+4. 建立 GitHub Release (如尚未建立)
+
+### 在 Sprint Retrospective 時
+
+1. 檢視 Release 頻率
+2. 識別任何跳過的 Release
+3. 討論改善措施
+
+---
+
+## 📚 相關文件
+
+| 文件 | 路徑 |
+|------|------|
+| Sprint 17 Plan | `docs/04_planning/SPRINT_17_PLAN.md` |
+| Sprint 17 Tasks | `docs/05_development/SPRINT_17_TASKS.md` |
+| Final Approval Process | `docs/04_planning/SPRINT_FINAL_APPROVAL_PROCESS.md` |
+| Execution Checklist | `docs/04_planning/EXECUTION_CHECKLIST.md` |
+
+---
+
+## 📝 歷史版本
+
+| 版本 | 日期 | 修改內容 |
+|------|------|----------|
+| v1.0 | 2026-06-11 | 初始建立，包含 Sprint 10-16 Release 歷史資料 |
+
+---
+
+**文件版本**: AISDLC v0.09
+**建立日期**: 2026-06-11
+**作者**: Claude Code (AI Assistant)
+**維護責任**: PM/PO (每個 Sprint 結束後更新)

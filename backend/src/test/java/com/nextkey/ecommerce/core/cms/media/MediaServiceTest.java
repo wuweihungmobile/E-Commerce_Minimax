@@ -60,6 +60,12 @@ class MediaServiceTest {
     @Mock
     private StorageService storageService;
 
+    @Mock
+    private MediaUploadService mediaUploadService;
+
+    @Mock
+    private MediaValidationService mediaValidationService;
+
     @InjectMocks
     private MediaService mediaService;
 
@@ -117,9 +123,25 @@ class MediaServiceTest {
             User uploader = buildUploader();
             MediaAsset savedMedia = buildMediaAsset(MediaAsset.FileType.IMAGE);
 
-            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
-            when(userRepository.findById(TEST_UPLOADER_ID)).thenReturn(Optional.of(uploader));
-            when(mediaAssetRepository.save(any(MediaAsset.class))).thenReturn(savedMedia);
+            M15Dto.MediaUploadResponse expectedResponse = M15Dto.MediaUploadResponse.builder()
+                    .id(TEST_MEDIA_ID)
+                    .fileName("test-file.jpg")
+                    .filePath("/media/test-path")
+                    .fileSize(1024 * 1024L)
+                    .mimeType("image/jpeg")
+                    .fileType("IMAGE")
+                    .uploadedAt(Instant.now())
+                    .build();
+
+            when(mediaUploadService.uploadMedia(
+                    eq(TEST_TENANT_ID),
+                    eq(TEST_UPLOADER_ID),
+                    eq("test-file.jpg"),
+                    eq("original-file.jpg"),
+                    eq(1024 * 1024L),
+                    eq("image/jpeg"),
+                    eq("/media/test-path")
+            )).thenReturn(expectedResponse);
 
             // Act
             M15Dto.MediaUploadResponse response = mediaService.uploadMedia(
@@ -137,32 +159,40 @@ class MediaServiceTest {
             assertThat(response.getFileName()).isEqualTo("test-file.jpg");
             assertThat(response.getFileType()).isEqualTo("IMAGE");
             assertThat(response.getId()).isEqualTo(TEST_MEDIA_ID);
-            verify(mediaAssetRepository).save(any(MediaAsset.class));
+            verify(mediaUploadService).uploadMedia(
+                    eq(TEST_TENANT_ID),
+                    eq(TEST_UPLOADER_ID),
+                    anyString(),
+                    anyString(),
+                    anyLong(),
+                    anyString(),
+                    anyString()
+            );
         }
 
         @Test
         @DisplayName("uploadMedia_video_success")
         void uploadMedia_video_success() {
             // Arrange
-            Tenant tenant = buildTenant();
-            User uploader = buildUploader();
-            MediaAsset savedMedia = MediaAsset.builder()
+            M15Dto.MediaUploadResponse expectedResponse = M15Dto.MediaUploadResponse.builder()
                     .id(TEST_MEDIA_ID)
-                    .tenant(tenant)
-                    .uploader(uploader)
                     .fileName("test-video.mp4")
-                    .originalName("original-video.mp4")
-                    .filePath("/media/" + TEST_MEDIA_ID + "/test-video.mp4")
-                    .fileSize(50 * 1024 * 1024L) // 50MB
+                    .filePath("/media/test-path")
+                    .fileSize(50 * 1024 * 1024L)
                     .mimeType("video/mp4")
-                    .fileType(MediaAsset.FileType.VIDEO)
-                    .isActive(true)
-                    .createdAt(Instant.now())
+                    .fileType("VIDEO")
+                    .uploadedAt(Instant.now())
                     .build();
 
-            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
-            when(userRepository.findById(TEST_UPLOADER_ID)).thenReturn(Optional.of(uploader));
-            when(mediaAssetRepository.save(any(MediaAsset.class))).thenReturn(savedMedia);
+            when(mediaUploadService.uploadMedia(
+                    eq(TEST_TENANT_ID),
+                    eq(TEST_UPLOADER_ID),
+                    eq("test-video.mp4"),
+                    eq("original-video.mp4"),
+                    eq(50 * 1024 * 1024L),
+                    eq("video/mp4"),
+                    eq("/media/test-path")
+            )).thenReturn(expectedResponse);
 
             // Act
             M15Dto.MediaUploadResponse response = mediaService.uploadMedia(
@@ -184,25 +214,25 @@ class MediaServiceTest {
         @DisplayName("uploadMedia_pdf_success")
         void uploadMedia_pdf_success() {
             // Arrange
-            Tenant tenant = buildTenant();
-            User uploader = buildUploader();
-            MediaAsset savedMedia = MediaAsset.builder()
+            M15Dto.MediaUploadResponse expectedResponse = M15Dto.MediaUploadResponse.builder()
                     .id(TEST_MEDIA_ID)
-                    .tenant(tenant)
-                    .uploader(uploader)
                     .fileName("test-doc.pdf")
-                    .originalName("original-doc.pdf")
-                    .filePath("/media/" + TEST_MEDIA_ID + "/test-doc.pdf")
-                    .fileSize(2 * 1024 * 1024L) // 2MB
+                    .filePath("/media/test-path")
+                    .fileSize(2 * 1024 * 1024L)
                     .mimeType("application/pdf")
-                    .fileType(MediaAsset.FileType.DOCUMENT)
-                    .isActive(true)
-                    .createdAt(Instant.now())
+                    .fileType("DOCUMENT")
+                    .uploadedAt(Instant.now())
                     .build();
 
-            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
-            when(userRepository.findById(TEST_UPLOADER_ID)).thenReturn(Optional.of(uploader));
-            when(mediaAssetRepository.save(any(MediaAsset.class))).thenReturn(savedMedia);
+            when(mediaUploadService.uploadMedia(
+                    eq(TEST_TENANT_ID),
+                    eq(TEST_UPLOADER_ID),
+                    eq("test-doc.pdf"),
+                    eq("original-doc.pdf"),
+                    eq(2 * 1024 * 1024L),
+                    eq("application/pdf"),
+                    eq("/media/test-path")
+            )).thenReturn(expectedResponse);
 
             // Act
             M15Dto.MediaUploadResponse response = mediaService.uploadMedia(
@@ -224,7 +254,15 @@ class MediaServiceTest {
         @DisplayName("uploadMedia_tenantNotFound_throwsException")
         void uploadMedia_tenantNotFound_throwsException() {
             // Arrange
-            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.empty());
+            when(mediaUploadService.uploadMedia(
+                    eq(TEST_TENANT_ID),
+                    eq(TEST_UPLOADER_ID),
+                    anyString(),
+                    anyString(),
+                    anyLong(),
+                    anyString(),
+                    anyString()
+            )).thenThrow(new BusinessException(ErrorCode.E_2000));
 
             // Act & Assert
             assertThatThrownBy(() -> mediaService.uploadMedia(
@@ -247,9 +285,15 @@ class MediaServiceTest {
         @DisplayName("uploadMedia_uploaderNotFound_throwsException")
         void uploadMedia_uploaderNotFound_throwsException() {
             // Arrange
-            Tenant tenant = buildTenant();
-            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
-            when(userRepository.findById(TEST_UPLOADER_ID)).thenReturn(Optional.empty());
+            when(mediaUploadService.uploadMedia(
+                    eq(TEST_TENANT_ID),
+                    eq(TEST_UPLOADER_ID),
+                    anyString(),
+                    anyString(),
+                    anyLong(),
+                    anyString(),
+                    anyString()
+            )).thenThrow(new BusinessException(ErrorCode.E_1006));
 
             // Act & Assert
             assertThatThrownBy(() -> mediaService.uploadMedia(
@@ -272,11 +316,15 @@ class MediaServiceTest {
         @DisplayName("uploadMedia_imageExceedsLimit_throwsException")
         void uploadMedia_imageExceedsLimit_throwsException() {
             // Arrange
-            Tenant tenant = buildTenant();
-            User uploader = buildUploader();
-
-            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
-            when(userRepository.findById(TEST_UPLOADER_ID)).thenReturn(Optional.of(uploader));
+            when(mediaUploadService.uploadMedia(
+                    eq(TEST_TENANT_ID),
+                    eq(TEST_UPLOADER_ID),
+                    anyString(),
+                    anyString(),
+                    anyLong(),
+                    anyString(),
+                    anyString()
+            )).thenThrow(new BusinessException(ErrorCode.E_9000, "File size exceeds limit"));
 
             // Act & Assert - 15MB image (limit is 10MB)
             assertThatThrownBy(() -> mediaService.uploadMedia(
@@ -300,11 +348,15 @@ class MediaServiceTest {
         @DisplayName("uploadMedia_videoExceedsLimit_throwsException")
         void uploadMedia_videoExceedsLimit_throwsException() {
             // Arrange
-            Tenant tenant = buildTenant();
-            User uploader = buildUploader();
-
-            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
-            when(userRepository.findById(TEST_UPLOADER_ID)).thenReturn(Optional.of(uploader));
+            when(mediaUploadService.uploadMedia(
+                    eq(TEST_TENANT_ID),
+                    eq(TEST_UPLOADER_ID),
+                    anyString(),
+                    anyString(),
+                    anyLong(),
+                    anyString(),
+                    anyString()
+            )).thenThrow(new BusinessException(ErrorCode.E_9000, "File size exceeds limit"));
 
             // Act & Assert - 150MB video (limit is 100MB)
             assertThatThrownBy(() -> mediaService.uploadMedia(
@@ -328,11 +380,15 @@ class MediaServiceTest {
         @DisplayName("uploadMedia_unsupportedMimeType_throwsException")
         void uploadMedia_unsupportedMimeType_throwsException() {
             // Arrange
-            Tenant tenant = buildTenant();
-            User uploader = buildUploader();
-
-            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
-            when(userRepository.findById(TEST_UPLOADER_ID)).thenReturn(Optional.of(uploader));
+            when(mediaUploadService.uploadMedia(
+                    eq(TEST_TENANT_ID),
+                    eq(TEST_UPLOADER_ID),
+                    anyString(),
+                    anyString(),
+                    anyLong(),
+                    anyString(),
+                    anyString()
+            )).thenThrow(new BusinessException(ErrorCode.E_9000, "Unsupported file type"));
 
             // Act & Assert - executable file
             assertThatThrownBy(() -> mediaService.uploadMedia(

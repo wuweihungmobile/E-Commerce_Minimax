@@ -7,6 +7,11 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+# 防止並行 CI 運行導致 artifact 配額問題
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   JAVA_VERSION: '21'
   NODE_VERSION: '20'
@@ -90,6 +95,7 @@ jobs:
       - name: Upload License Reports
         uses: actions/upload-artifact@v4
         if: always()
+        continue-on-error: true
         with:
           name: license-reports
           path: |
@@ -230,6 +236,8 @@ jobs:
 
       - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
         with:
           name: backend-coverage
           path: backend/target/site/jacoco/
@@ -243,6 +251,8 @@ jobs:
 
       - name: Upload Backend JAR
         uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
         with:
           name: backend-jar
           path: backend/target/*.jar
@@ -288,6 +298,8 @@ jobs:
 
       - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
         with:
           name: frontend-coverage
           path: frontend/coverage/
@@ -308,6 +320,8 @@ jobs:
 
       - name: Upload Frontend build
         uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
         with:
           name: frontend-build
           path: frontend/.next

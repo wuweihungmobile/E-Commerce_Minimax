@@ -93,16 +93,6 @@ jobs:
           npx license-checker --csv --out frontend-licenses.csv || true
         continue-on-error: true
 
-      - name: Upload License Reports
-        uses: actions/upload-artifact@v4
-        if: always()
-        continue-on-error: true
-        with:
-          name: license-reports
-          path: |
-            frontend-licenses.csv
-          retention-days: 30
-
   # =============================================
   # LAYER 1: Build & Verify
   # =============================================
@@ -235,29 +225,11 @@ jobs:
           mvn jacoco:check
         continue-on-error: true
 
-      - name: Upload Coverage Report
-        uses: actions/upload-artifact@v4
-        if: always()
-        continue-on-error: true
-        with:
-          name: backend-coverage
-          path: backend/target/site/jacoco/
-          retention-days: 7
-
       # Layer 1: Package
       - name: Package Backend
         run: |
           cd backend
           mvn package -DskipTests
-
-      - name: Upload Backend JAR
-        uses: actions/upload-artifact@v4
-        if: always()
-        continue-on-error: true
-        with:
-          name: backend-jar
-          path: backend/target/*.jar
-          retention-days: 7
 
   frontend:
     name: Frontend Build & Test (Layer 1)
@@ -297,15 +269,6 @@ jobs:
           cd frontend
           npm test -- --coverage --coverageThreshold.global.lines=${{ env.COVERAGE_THRESHOLD }}
 
-      - name: Upload Coverage Report
-        uses: actions/upload-artifact@v4
-        if: always()
-        continue-on-error: true
-        with:
-          name: frontend-coverage
-          path: frontend/coverage/
-          retention-days: 7
-
       # Layer 1: Build
       - name: Build Frontend
         run: |
@@ -318,15 +281,6 @@ jobs:
           fi
           echo "Build completed, .next exists:"
           ls -la .next/
-
-      - name: Upload Frontend build
-        uses: actions/upload-artifact@v4
-        if: always()
-        continue-on-error: true
-        with:
-          name: frontend-build
-          path: frontend/.next
-          retention-days: 7
 
   # =============================================
   # SAST: Static Application Security Testing
@@ -408,6 +362,20 @@ jobs:
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('backend/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
+
       - name: Install dependencies
         run: |
           cd frontend
@@ -418,16 +386,15 @@ jobs:
           cd frontend
           npm run build
 
+      - name: Build Backend for E2E
+        run: |
+          cd backend
+          mvn package -DskipTests
+
       - name: Install Playwright browsers
         run: |
           cd frontend
           npx playwright install --with-deps chromium
-
-      - name: Download Backend JAR
-        uses: actions/download-artifact@v4
-        with:
-          name: backend-jar
-          path: backend/target/
 
       - name: Start Backend
         run: |

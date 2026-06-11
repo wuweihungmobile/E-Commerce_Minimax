@@ -1,0 +1,64 @@
+#!/usr/bin/env sh
+# =============================================
+# AISDLC v0.09: Root Pre-commit Hook (整合版)
+# 自動依 staged 檔案類型，呼叫對應的 backend/frontend hook
+# 安裝方式：scripts/install-hooks.sh
+# =============================================
+
+set -e
+
+ROOT_DIR="$(git rev-parse --show-toplevel)"
+cd "$ROOT_DIR"
+
+# 取得所有 staged 檔案
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# 判斷是否有 backend 或 frontend 變更
+HAS_BACKEND=$(echo "$STAGED_FILES" | grep -E '^backend/' | head -1 || true)
+HAS_FRONTEND=$(echo "$STAGED_FILES" | grep -E '^frontend/' | head -1 || true)
+
+EXIT_CODE=0
+
+# 1. Backend 檢查
+if [ -n "$HAS_BACKEND" ] && [ -x "$ROOT_DIR/backend/hooks/pre-commit" ]; then
+  echo "🚀 Running backend pre-commit checks..."
+  echo "=========================================="
+  if ! "$ROOT_DIR/backend/hooks/pre-commit"; then
+    echo "❌ Backend pre-commit failed"
+    EXIT_CODE=1
+  fi
+  echo ""
+fi
+
+# 2. Frontend 檢查（透過 husky 自動呼叫 frontend/.husky/pre-commit）
+if [ -n "$HAS_FRONTEND" ]; then
+  echo "🚀 Running frontend pre-commit checks..."
+  echo "=========================================="
+  cd "$ROOT_DIR/frontend"
+  if [ -x "$ROOT_DIR/frontend/.husky/pre-commit" ]; then
+    if ! "$ROOT_DIR/frontend/.husky/pre-commit"; then
+      echo "❌ Frontend pre-commit failed"
+      EXIT_CODE=1
+    fi
+  else
+    echo "⚠️  Frontend husky not installed, running npm run lint + type-check directly..."
+    npm run lint
+    npm run type-check
+  fi
+  cd "$ROOT_DIR"
+  echo ""
+fi
+
+# 3. Secret detection（輕量版）
+echo "🔐 Checking for potential secrets in staged files..."
+SECRET_PATTERNS='(password|secret|api[_-]?key|access[_-]?token|private[_-]?key).*=.*[\"'\''][^\"'\'']+[\"'\'']'
+if echo "$STAGED_FILES" | xargs grep -lEi "$SECRET_PATTERNS" 2>/dev/null | grep -vE '\.example$|node_modules/|target/|\.class$' > /dev/null; then
+  echo "⚠️  WARNING: Potential secrets detected in:"
+  echo "$STAGED_FILES" | xargs grep -lEi "$SECRET_PATTERNS" 2>/dev/null | grep -vE '\.example$|node_modules/|target/|\.class$'
+  echo "Please review and ensure these are not real secrets."
+  echo "Skip with: git commit --no-verify"
+  # 不強制失敗（可能有測試資料），僅警告
+fi
+
+echo "✅ Root pre-commit checks completed"
+exit $EXIT_CODE

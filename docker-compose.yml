@@ -1,11 +1,16 @@
 # =============================================
-# E-Commerce Platform - Docker Compose (Development)
+# E-Commerce Platform - Docker Compose (Production)
 # AISDLC v0.09 - Stage 8 Development Preparation
+# 本機 = CI = 正式環境一致性保證
 # =============================================
+# 使用方式：
+#   本機開發：docker compose up（會自動合併 docker-compose.override.yml）
+#   CI 模擬： docker compose -f docker-compose.yml -f docker-compose.test.yml up
+#   正式環境：docker compose -f docker-compose.yml up -d
 
 services:
   # =============================================
-  # Frontend Service (Next.js)
+  # Frontend Service (Next.js Production)
   # =============================================
   frontend:
     build:
@@ -13,17 +18,18 @@ services:
       dockerfile: Dockerfile
       target: runner
       args:
-        - NEXT_PUBLIC_API_URL=http://localhost:8080/api/v2
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080/api/v2}
     container_name: ecommerce-frontend
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080/api/v2}
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -31,9 +37,18 @@ services:
     restart: unless-stopped
     networks:
       - ecommerce-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
 
   # =============================================
-  # Backend Service (Spring Boot)
+  # Backend Service (Spring Boot Production)
   # =============================================
   backend:
     build:
@@ -45,16 +60,17 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - SPRING_PROFILES_ACTIVE=dev
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/nextkeytest
-      - SPRING_DATASOURCE_USERNAME=koala
-      - SPRING_DATASOURCE_PASSWORD=koala5
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=validate
-      - SPRING_FLYWAY_ENABLED=true
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-nextkeytest}
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-koala}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:-koala5}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=${SPRING_JPA_HIBERNATE_DDL_AUTO:-validate}
+      - SPRING_FLYWAY_ENABLED=${SPRING_FLYWAY_ENABLED:-true}
       - SPRING_FLYWAY_LOCATIONS=classpath:db/migration
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - JWT_SECRET=${JWT_SECRET:-your-256-bit-secret-key-for-development-only}
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - SPRING_DATA_REDIS_PASSWORD=${REDIS_PASSWORD:-redis-dev-password}
+      - JWT_SECRET=${JWT_SECRET:-your-256-bit-secret-key-please-change-in-production}
       - JWT_ACCESS_TOKEN_EXPIRATION=900000
       - JWT_REFRESH_TOKEN_EXPIRATION=2592000000
     depends_on:
@@ -63,7 +79,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -71,6 +87,15 @@ services:
     restart: unless-stopped
     networks:
       - ecommerce-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
 
   # =============================================
   # PostgreSQL Database
@@ -81,15 +106,15 @@ services:
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=koala
-      - POSTGRES_PASSWORD=koala5
-      - POSTGRES_DB=nextkeytest
+      - POSTGRES_USER=${POSTGRES_USER:-koala}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-koala5}
+      - POSTGRES_DB=${POSTGRES_DB:-nextkeytest}
       - POSTGRES_INITDB_ARGS=--encoding=UTF8 --lc-collate=C --lc-ctype=C
     volumes:
-      - postgres_data:/var/lib/postgresql
+      - postgres_data:/var/lib/postgresql/data
       - ./backend/src/main/resources/db/migration:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U koala -d nextkeytest"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-koala} -d ${POSTGRES_DB:-nextkeytest}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -97,26 +122,54 @@ services:
     restart: unless-stopped
     networks:
       - ecommerce-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
 
   # =============================================
-  # Redis Cache
+  # Redis Cache - 使用 command 陣列方式正確設定密碼
   # =============================================
   redis:
     image: redis:7-alpine
     container_name: ecommerce-redis
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis-dev-password}
+    command:
+      - "redis-server"
+      - "--appendonly"
+      - "yes"
+      - "--requirepass"
+      - "${REDIS_PASSWORD:-redis-dev-password}"
+      - "--maxmemory"
+      - "256mb"
+      - "--maxmemory-policy"
+      - "allkeys-lru"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis-dev-password}", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD:-redis-dev-password}\" --no-auth-warning ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     restart: unless-stopped
     networks:
       - ecommerce-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
 
 # =============================================
 # Volumes

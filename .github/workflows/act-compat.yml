@@ -1,0 +1,159 @@
+# =============================================
+# Local CI (act-compatible)
+# AISDLC v0.09 - Stage 8 Development Preparation
+# 用途：本機使用 act 工具模擬 GitHub Actions CI 流程
+# 執行：act -W .github/workflows/act-compat.yml
+# =============================================
+# 重點修正：
+#   1. 移除 act 不支援的 GitHub 專屬 actions
+#      - gitleaks-action
+#      - dependency-review-action
+#      - setup-java cache (本機無需)
+#   2. Redis 改用 image-level 設定
+#   3. PostgreSQL 改用 postgres:18-alpine（與 docker-compose 一致）
+#   4. 不需要 secrets, GITHUB_TOKEN 等
+# =============================================
+
+name: Local CI (act-compatible)
+
+on: [push, pull_request, workflow_dispatch]
+
+concurrency:
+  group: local-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: '21'
+  NODE_VERSION: '20'
+  COVERAGE_THRESHOLD: 80
+
+jobs:
+  # =============================================
+  # Backend: 完整建置 + 測試（含 PostgreSQL + Redis）
+  # =============================================
+  backend:
+    name: Backend Build & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: koala
+          POSTGRES_PASSWORD: koala5
+          POSTGRES_DB: nextkeytest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U koala -d nextkeytest"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        env:
+          REDIS_PASSWORD: redis-dev-password
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli -a redis-dev-password --no-auth-warning ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      SPRING_PROFILES_ACTIVE: integration-test
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/nextkeytest
+      SPRING_DATASOURCE_USERNAME: koala
+      SPRING_DATASOURCE_PASSWORD: koala5
+      SPRING_DATA_REDIS_HOST: localhost
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: redis-dev-password
+      REDIS_PASSWORD: redis-dev-password
+      JWT_SECRET: act-test-secret-key-must-be-at-least-256-bits-long-for-hs256-algo
+      JWT_ACCESS_TOKEN_EXPIRATION: 900000
+      JWT_REFRESH_TOKEN_EXPIRATION: 2592000000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+
+      - name: Checkstyle (Backend)
+        run: |
+          cd backend
+          mvn checkstyle:check
+
+      - name: Verify Service Connections
+        run: |
+          echo "=== Test PostgreSQL ==="
+          PGPASSWORD=koala5 psql -h localhost -U koala -d nextkeytest -c "SELECT 1;" || exit 1
+          echo "=== Test Redis ==="
+          redis-cli -a redis-dev-password --no-auth-warning ping
+
+      - name: Compile Backend
+        run: |
+          cd backend
+          mvn clean compile -DskipTests -q
+
+      - name: Run Unit Tests
+        run: |
+          cd backend
+          mvn test -Dspring.profiles.active=test -q
+        continue-on-error: false
+
+      - name: Run Integration Tests
+        run: |
+          cd backend
+          mvn test -Dspring.profiles.active=integration-test
+        continue-on-error: false
+
+      - name: Package Backend
+        run: |
+          cd backend
+          mvn package -DskipTests
+
+  # =============================================
+  # Frontend: Lint + Type Check + Build
+  # =============================================
+  frontend:
+    name: Frontend Lint & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: ESLint
+        run: |
+          cd frontend
+          npm run lint
+        continue-on-error: false
+
+      - name: Type Check
+        run: |
+          cd frontend
+          npm run type-check
+        continue-on-error: false
+
+      - name: Build Frontend
+        run: |
+          cd frontend
+          npm run build
+        continue-on-error: false

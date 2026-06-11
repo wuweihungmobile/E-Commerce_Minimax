@@ -32,6 +32,24 @@ Thumbs.db
 # Docker volumes (local dev)
 postgres_data/
 redis_data/
+postgres_ci_data/
+redis_ci_data/
+llm_models/
+
+# Docker
+.docker/
+.devcontainer/devcontainer.json.bak
+
+# Local LLM
+models/
+
+# Act
+.act/
+
+# Tools
+.cache/
+.vercel/
+
 
 # Test
 test-results/

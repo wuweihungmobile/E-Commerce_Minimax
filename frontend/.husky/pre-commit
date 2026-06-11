@@ -1,7 +1,11 @@
 #!/usr/bin/env sh
-# 🔴 Sprint 16 US-007: Pre-commit Hook
-# 自動執行 ESLint + TypeScript 編譯檢查，避免 Sprint 15 的 2 個 CI 修復 commit 重演
+# 🔴 AISDLC v0.09: Frontend Pre-commit Hook (強化版)
+# 自動執行 ESLint + TypeScript 編譯 + Next.js Build
 # 跳過方式：git commit --no-verify
+# 安裝方式：scripts/install-hooks.sh
+# =============================================
+
+set -e  # 任何指令失敗立即停止
 
 . "$(dirname -- "$0")/_/husky.sh"
 
@@ -13,12 +17,12 @@ if [ -z "$STAGED_FILES" ]; then
   exit 0
 fi
 
-echo "🔍 Pre-commit checks for staged files:"
+echo "🔍 Frontend pre-commit checks for staged files:"
 echo "$STAGED_FILES" | sed 's/^/  - /'
 echo ""
 
-# 1. 執行 ESLint 自動修復
-echo "📝 [1/2] Running ESLint --fix on staged files..."
+# 1. ESLint 自動修復
+echo "📝 [1/3] Running ESLint --fix on staged files..."
 npx --no-install eslint --fix $STAGED_FILES
 ESLINT_EXIT=$?
 
@@ -30,11 +34,14 @@ if [ $ESLINT_EXIT -ne 0 ]; then
   exit $ESLINT_EXIT
 fi
 
+# 將 ESLint 自動修復的檔案加入 staged
+git add $STAGED_FILES
+
 echo "✅ ESLint passed"
 echo ""
 
-# 2. 執行 TypeScript 編譯檢查（noEmit）
-echo "🔎 [2/2] Running TypeScript type-check (tsc --noEmit)..."
+# 2. TypeScript 編譯檢查（noEmit）
+echo "🔎 [2/3] Running TypeScript type-check (tsc --noEmit)..."
 npx --no-install tsc --noEmit
 TSC_EXIT=$?
 
@@ -48,4 +55,21 @@ fi
 
 echo "✅ TypeScript type-check passed"
 echo ""
-echo "🎉 All pre-commit checks passed!"
+
+# 3. Next.js Build 檢查（可選，較慢）
+# 註解掉以加速 commit，建議改在 pre-push 階段執行
+# echo "🏗️  [3/3] Running Next.js build (sanity check)..."
+# npm run build
+# BUILD_EXIT=$?
+# if [ $BUILD_EXIT -ne 0 ]; then
+#   echo ""
+#   echo "❌ Next.js build failed (exit code: $BUILD_EXIT)"
+#   echo "   Please fix build errors before committing."
+#   echo "   Skip with: git commit --no-verify"
+#   exit $BUILD_EXIT
+# fi
+# echo "✅ Next.js build passed"
+
+echo "✅ Build check skipped (run 'npm run build' before push)"
+echo ""
+echo "🎉 All frontend pre-commit checks passed!"

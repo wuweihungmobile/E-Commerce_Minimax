@@ -1,0 +1,26 @@
+# act configuration file
+# 本機 CI 工具：https://github.com/nektos/act
+# 用途：在本機使用 Docker 模擬 GitHub Actions 流程
+# 執行方式：act
+# =============================================
+
+# 使用中型 runner image（含完整工具鏈）
+# catthehacker/ubuntu:act-latest 對應 ubuntu-latest
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+-P ubuntu-22.04=catthehacker/ubuntu:act-22.04
+-P ubuntu-20.04=catthehacker/ubuntu:act-20.04
+
+# Workflow 目錄（預設為 .github/workflows/，可不寫）
+# --workflows .github/workflows/
+
+# 預設事件：act 預設為 push
+# 不指定時直接執行 `act` 等同於 `act push`
+
+# 使用本機 .env 檔案（可選）
+# --env-file .env
+
+# Secrets（可選，模擬 GitHub Secrets）
+# -s GITHUB_TOKEN="$(gh auth token)"
+
+# 容器架構（macOS M1/M2 需要指定，避免 arm64 問題）
+--container-architecture linux/amd64

@@ -1,0 +1,96 @@
+# =============================================
+# E-Commerce Platform - Docker Compose (CI Test)
+# AISDLC v0.09 - Stage 8 Development Preparation
+# 用途：模擬 CI 環境，與 GitHub Actions 100% 一致
+#
+# 與正式環境差異：
+#   1. 使用一次性 volumes（測試結束自動清理）
+#   2. 開放所有 ports 給 host 存取
+#   3. 啟用更短的 healthcheck interval
+#   4. 後端執行 integration-test profile
+#   5. Redis 密碼用「明文陣列」避免 env 變數展開問題
+#
+# 使用方式：
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml up
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml down -v
+# =============================================
+
+services:
+  frontend:
+    build:
+      target: runner
+    container_name: ci-frontend
+    environment:
+      - NODE_ENV=test
+      - NEXT_PUBLIC_API_URL=http://localhost:8080/api/v2
+    healthcheck:
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  backend:
+    build:
+      target: runner
+    container_name: ci-backend
+    command: java -jar /app/application/app.jar --spring.profiles.active=integration-test
+    environment:
+      - SPRING_PROFILES_ACTIVE=integration-test
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/nextkeytest
+      - SPRING_DATASOURCE_USERNAME=koala
+      - SPRING_DATASOURCE_PASSWORD=koala5
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - SPRING_DATA_REDIS_PASSWORD=redis-dev-password
+      - REDIS_PASSWORD=redis-dev-password
+      - JWT_SECRET=ci-test-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm
+      - JWT_ACCESS_TOKEN_EXPIRATION=900000
+      - JWT_REFRESH_TOKEN_EXPIRATION=2592000000
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=validate
+      - SPRING_FLYWAY_ENABLED=true
+    healthcheck:
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: ci-postgres
+    environment:
+      - POSTGRES_USER=koala
+      - POSTGRES_PASSWORD=koala5
+      - POSTGRES_DB=nextkeytest
+    volumes:
+      - postgres_ci_data:/var/lib/postgresql/data
+    healthcheck:
+      interval: 3s
+      timeout: 2s
+      retries: 10
+      start_period: 5s
+
+  redis:
+    image: redis:7-alpine
+    container_name: ci-redis
+    command:
+      - "redis-server"
+      - "--appendonly"
+      - "no"
+      - "--save"
+      - ""
+      - "--requirepass"
+      - "redis-dev-password"
+    volumes:
+      - redis_ci_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a redis-dev-password --no-auth-warning ping | grep -q PONG"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+      start_period: 3s
+
+volumes:
+  postgres_ci_data:
+    driver: local
+  redis_ci_data:
+    driver: local

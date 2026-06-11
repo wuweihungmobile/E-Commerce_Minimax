@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
-# 🔴 Sprint 17 US-006: Backend Pre-commit Hook (Java 編譯 + 快速測試檢查)
-# 自動執行 Maven 編譯檢查和快速測試驗證，避免 CI 編譯失敗
+# 🔴 AISDLC v0.09: Backend Pre-commit Hook (強化版)
+# 自動執行 Checkstyle + Maven 編譯 + 核心層單元測試
 # 跳過方式：git commit --no-verify
-# 安裝方式：cp backend/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+# 安裝方式：scripts/install-hooks.sh
+# =============================================
 
 # 取得 staged 變更檔案
 STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(java|xml|sql|yml|yaml|properties)$' || true)
@@ -16,26 +17,43 @@ echo "🔍 Backend pre-commit checks for staged files:"
 echo "$STAGED_FILES" | sed 's/^/  - /'
 echo ""
 
-# 1. 執行 Maven 編譯檢查
-echo "📝 [1/2] Running Maven compile check..."
-cd backend && mvn compile -DskipTests -q
-MVN_EXIT=$?
+# 1. Checkstyle 檢查（快速）
+echo "📝 [1/3] Running Checkstyle (Backend)..."
+cd backend && mvn checkstyle:check -q
+CHECKSTYLE_EXIT=$?
 cd ..
 
-if [ $MVN_EXIT -ne 0 ]; then
+if [ $CHECKSTYLE_EXIT -ne 0 ]; then
   echo ""
-  echo "❌ Maven compile failed (exit code: $MVN_EXIT)"
+  echo "❌ Checkstyle failed (exit code: $CHECKSTYLE_EXIT)"
+  echo "   Please fix code style issues before committing."
+  echo "   Skip with: git commit --no-verify"
+  exit $CHECKSTYLE_EXIT
+fi
+
+echo "✅ Checkstyle passed"
+echo ""
+
+# 2. Maven 編譯檢查
+echo "🔨 [2/3] Running Maven compile (Backend)..."
+cd backend && mvn compile -DskipTests -q
+COMPILE_EXIT=$?
+cd ..
+
+if [ $COMPILE_EXIT -ne 0 ]; then
+  echo ""
+  echo "❌ Maven compile failed (exit code: $COMPILE_EXIT)"
   echo "   Please fix compilation errors before committing."
   echo "   Skip with: git commit --no-verify"
-  exit $MVN_EXIT
+  exit $COMPILE_EXIT
 fi
 
 echo "✅ Maven compile passed"
 echo ""
 
-# 2. 執行 Maven 快速測試（只執行 core 層單元測試，跳過較慢的整合測試）
-echo "🧪 [2/2] Running Maven quick test (core layer only)..."
-cd backend && mvn test -Dtest="com.nextkey.ecommerce.core.**" -q
+# 3. Maven 單元測試（核心層）
+echo "🧪 [3/3] Running Maven quick test (core layer only)..."
+cd backend && mvn test -Dtest="com.nextkey.ecommerce.core.**" -Dspring.profiles.active=test -q
 TEST_EXIT=$?
 cd ..
 

@@ -1,0 +1,103 @@
+{
+  "uuid": "ecommerce-mock-001",
+  "name": "E-Commerce Mock API",
+  "endpointPrefix": "api",
+  "latency": 0,
+  "port": 3001,
+  "hostname": "0.0.0.0",
+  "folders": [],
+  "routes": [
+    {
+      "uuid": "route-001",
+      "type": "http",
+      "documentation": "Mock 外部金流服務 - 信用卡付款",
+      "method": "post",
+      "endpoint": "payment/credit-card",
+      "responses": [
+        {
+          "uuid": "resp-001",
+          "body": "{\n  \"status\": \"success\",\n  \"transactionId\": \"MOCK-TX-{{now 'yyyyMMddHHmmss'}}\",\n  \"amount\": {{body 'amount'}},\n  \"currency\": \"TWD\",\n  \"message\": \"Mock 付款成功\"\n}",
+          "latency": 100,
+          "statusCode": 200,
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "rules": [],
+          "rulesMode": "ALL",
+          "default": true
+        }
+      ]
+    },
+    {
+      "uuid": "route-002",
+      "type": "http",
+      "documentation": "Mock 物流服務 - 查詢訂單狀態",
+      "method": "get",
+      "endpoint": "logistics/track/:trackingId",
+      "responses": [
+        {
+          "uuid": "resp-002",
+          "body": "{\n  \"trackingId\": \"{{params 'trackingId'}}\",\n  \"status\": \"in_transit\",\n  \"location\": \"台北轉運站\",\n  \"estimatedDelivery\": \"2026-06-15T18:00:00+08:00\",\n  \"history\": [\n    {\n      \"timestamp\": \"2026-06-10T10:00:00+08:00\",\n      \"status\": \"picked_up\",\n      \"location\": \"賣家出貨\"\n    },\n    {\n      \"timestamp\": \"2026-06-11T08:00:00+08:00\",\n      \"status\": \"in_transit\",\n      \"location\": \"台北轉運站\"\n    }\n  ]\n}",
+          "latency": 50,
+          "statusCode": 200,
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true
+        }
+      ]
+    },
+    {
+      "uuid": "route-003",
+      "type": "http",
+      "documentation": "Mock 簡訊服務 - 發送驗證碼",
+      "method": "post",
+      "endpoint": "sms/send",
+      "responses": [
+        {
+          "uuid": "resp-003",
+          "body": "{\n  \"success\": true,\n  \"messageId\": \"MOCK-SMS-{{now 'yyyyMMddHHmmss'}}\",\n  \"phone\": \"{{body 'phone'}}\",\n  \"message\": \"Mock 簡訊已發送\"\n}",
+          "latency": 80,
+          "statusCode": 200,
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true
+        }
+      ]
+    },
+    {
+      "uuid": "route-004",
+      "type": "http",
+      "documentation": "Mock 第三方登入 - Google OAuth",
+      "method": "get",
+      "endpoint": "auth/google/callback",
+      "responses": [
+        {
+          "uuid": "resp-004",
+          "body": "{\n  \"access_token\": \"mock-google-access-token-{{now 'x'}}\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 3600,\n  \"scope\": \"openid email profile\",\n  \"id_token\": \"mock.id.token\"\n}",
+          "latency": 200,
+          "statusCode": 200,
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true
+        }
+      ]
+    }
+  ],
+  "data": [],
+  "callbacks": []
+}

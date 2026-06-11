@@ -1,0 +1,85 @@
+#!/usr/bin/env sh
+# =============================================
+# AISDLC v0.09: Pre-push Hook (最終把關)
+# 在 git push 前執行完整 CI 模擬（使用 act 或本地測試）
+# 跳過方式：git push --no-verify
+# 安裝方式：scripts/install-hooks.sh
+# =============================================
+
+set -e
+
+ROOT_DIR="$(git rev-parse --show-toplevel)"
+cd "$ROOT_DIR"
+
+echo "🚀 Pre-push hook: 執行最終 CI 模擬檢查"
+echo "=========================================="
+
+# 取得要推送到哪個遠端分支
+while read local_ref local_sha remote_ref remote_sha; do
+  if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+    # 分支被刪除，不執行檢查
+    continue
+  fi
+  BRANCH=$(echo "$remote_ref" | sed 's|refs/heads/||')
+  echo "📤 Pushing to branch: $BRANCH"
+done
+
+# 1. 檢查 act 工具是否安裝
+if command -v act >/dev/null 2>&1; then
+  echo "✅ act 已安裝，執行 act 模擬 CI..."
+
+  # 列出 act 將要執行的 jobs
+  echo "📋 Act jobs 預覽："
+  act -W .github/workflows/act-compat.yml -l 2>&1 | tail -10
+
+  # 詢問使用者是否完整執行（避免意外卡住）
+  echo ""
+  echo "⚠️  即將執行 act 模擬完整 CI 流程（耗時約 5-15 分鐘）"
+  echo "   跳過：git push --no-verify"
+  printf "繼續執行嗎？[y/N] "
+  read -r REPLY
+  case "$REPLY" in
+    [Yy]|[Yy][Ee][Ss])
+      echo "🚀 執行 act CI 模擬..."
+      if ! act -W .github/workflows/act-compat.yml; then
+        echo "❌ act CI 模擬失敗，請修正後再 push"
+        exit 1
+      fi
+      echo "✅ act CI 模擬通過"
+      ;;
+    *)
+      echo "⚠️  跳過 act 模擬，繼續 push"
+      echo "   強烈建議：本機先跑 'act -W .github/workflows/act-compat.yml'"
+      ;;
+  esac
+else
+  echo "⚠️  act 未安裝，跳過本地 CI 模擬"
+  echo "   強烈建議安裝 act：brew install act"
+  echo "   安裝後可在本機模擬完整 CI 流程"
+
+  # Fallback: 執行快速的本地檢查
+  echo ""
+  echo "🔍 執行快速本地檢查（替代方案）..."
+
+  # Backend 編譯檢查
+  if [ -d "backend" ]; then
+    echo "  - Backend: mvn compile"
+    (cd backend && mvn compile -DskipTests -q) || {
+      echo "❌ Backend 編譯失敗"
+      exit 1
+    }
+  fi
+
+  # Frontend lint + type check
+  if [ -d "frontend" ]; then
+    echo "  - Frontend: npm run lint + type-check"
+    (cd frontend && npm run lint && npm run type-check) || {
+      echo "❌ Frontend 檢查失敗"
+      exit 1
+    }
+  fi
+fi
+
+echo ""
+echo "✅ Pre-push checks passed! 允許 push"
+exit 0

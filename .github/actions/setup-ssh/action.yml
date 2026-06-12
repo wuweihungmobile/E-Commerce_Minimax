@@ -1,0 +1,13 @@
+name: "Setup SSH Key"
+description: "Configures SSH key for deployment (placeholder - deployment not yet implemented)"
+inputs:
+  SSH_PRIVATE_KEY:
+    description: "SSH private key for deployment"
+    required: false
+runs:
+  using: "composite"
+  steps:
+    - name: Placeholder
+      run: |
+        echo "SSH setup placeholder - deployment not yet implemented"
+        echo "To implement deployment, configure actual SSH key and deployment commands"

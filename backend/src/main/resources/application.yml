@@ -29,7 +29,7 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
-    baseline-version: '37'
+    baseline-version: '0'
 
   data:
     redis:

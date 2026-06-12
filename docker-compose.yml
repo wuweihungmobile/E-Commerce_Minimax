@@ -79,7 +79,8 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health >/dev/null 2>&1 || exit 1"]
+      # 🔴 注意：Spring Boot context path 為 /api，actuator 端點為 /api/actuator/health
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/actuator/health >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

@@ -56,8 +56,8 @@ services:
       - maven_cache:/root/.m2
     command: mvn spring-boot:run -Dmaven.test.skip=true
     healthcheck:
-      # 🔴 注意：Spring Boot 預設 context path 為 /，actuator 端點為 /actuator/health
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health >/dev/null 2>&1 || exit 1"]
+      # 🔴 注意：Spring Boot context path 為 /api，actuator 端點為 /api/actuator/health
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/actuator/health >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

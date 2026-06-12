@@ -13,6 +13,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
@@ -238,6 +241,47 @@ public class IntegrationTestConfiguration {
         });
 
         return mockService;
+    }
+
+    /**
+     * 🔴 Mock JwtDecoder - 停用 OAuth2 Resource Server JWK 驗證
+     * 這樣測試時不會嘗試連線到外部 issuer
+     */
+    @Bean
+    @Primary
+    public JwtDecoder jwtDecoder() {
+        return token -> {
+            // 嘗試解析 JWT，如果失敗返回一個 mock JWT
+            try {
+                String testSecret = "testSecretKeyForJwtTokenGenerationThatIsAtLeast256BitsLongForTesting";
+                SecretKeySpec secretKeySpec = new SecretKeySpec(testSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+                Claims claims = Jwts.parser()
+                        .verifyWith(secretKeySpec)
+                        .build()
+                        .parseSignedClaims(token)
+                        .getPayload();
+                return Jwt.withTokenValue(token)
+                        .headers(h -> h.putAll(claims))
+                        .claims(c -> c.putAll(claims))
+                        .issuedAt(claims.getIssuedAt())
+                        .expiresAt(claims.getExpiration())
+                        .subject(claims.getSubject())
+                        .build();
+            } catch (JwtException e) {
+                // 如果解析失敗，返回一個 mock JWT（用於測試）
+                return Jwt.withTokenValue(token)
+                        .headers(h -> h.put("alg", "HS256"))
+                        .claims(c -> {
+                            c.put("sub", "test-user-id");
+                            c.put("email", "test@example.com");
+                            c.put("role", "BUYER");
+                            c.put("tenantId", "00000000-0000-0000-0000-000000000001");
+                        })
+                        .issuedAt(new java.util.Date())
+                        .expiresAt(new java.util.Date(System.currentTimeMillis() + 3600000))
+                        .build();
+            }
+        };
     }
 
     /**

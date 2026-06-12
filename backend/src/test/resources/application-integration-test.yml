@@ -32,12 +32,16 @@ spring:
       port: 6379
       password: redis-dev-password
 
+  # 🔴 停用 OAuth2 Resource Server JWK 驗證（避免在 CI 環境連線外部 issuer）
+  # 🔴 mock JwtDecoder bean 由 IntegrationTestConfiguration 提供
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: https://placeholder.local
+          # 不設定 issuer-uri/jwk-set-uri，使用 mock JwtDecoder
+          issuer-uri: ""
 
+# 🔴 Mock JwtDecoder bean 由 IntegrationTestConfiguration 提供
 jwt:
   secret: testSecretKeyForJwtTokenGenerationThatIsAtLeast256BitsLongForTesting
   access-token-expiration: 1800000

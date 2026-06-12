@@ -88,10 +88,11 @@ jobs:
           distribution: 'temurin'
 
       # 🔴 catthehacker/ubuntu:act-latest 預設沒有 mvn / psql / redis-cli，需手動安裝
+      # 🔴 使用 sudo 確保有足夠權限（act 容器環境需要）
       - name: Install Build Tools
         run: |
-          apt-get update -qq
-          apt-get install -y -qq maven postgresql-client redis-tools
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq maven postgresql-client redis-tools
           mvn --version
           psql --version
           redis-cli --version

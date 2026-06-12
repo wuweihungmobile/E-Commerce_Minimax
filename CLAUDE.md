@@ -71,6 +71,71 @@ Both final documents have been successfully created and updated.
 
 ---
 
+## 🔴 12-Rule Template（全域工作規則）
+
+**These rules apply to every task in this project unless explicitly overridden.**
+**原則：非平凡任務寧可謹慎也不要倉促。簡單任務可自行判斷。**
+
+### Rule 1 — Coding 前先思考
+- 明確聲明假設。有疑慮時主動提問而非猜測。
+- 當有歧義時，呈现多個可能的解釋。
+- 當有更簡單的方案時，主動提出。
+- 遇到混淆時停下來，明確指出不清除之處。
+
+### Rule 2 — 簡潔優先
+- 最少量代碼解決問題。不添加任何 speculative 的內容。
+- 不做超出需求的功能。不為單次使用的程式碼建立抽象。
+- 檢驗：資深工程師會覺得這過度複雜嗎？如果是，簡化。
+
+### Rule 3 — 精準改動
+- 只碰必須修改的東西。只清理自己的爛攤子。
+- 不「改進」相鄰的程式碼、註解或格式。
+- 不重構沒有壞的東西。配合現有風格。
+
+### Rule 4 — 目標驅動執行
+- 定義成功標準。持續迭代直到驗證通過。
+- 不只是follow steps。定義成功並迭代。
+- 強有力的成功標準讓你可以獨立循環。
+
+### Rule 5 — Model 只用於判斷呼叫
+- 適合用 model：分類、草稿、摘要、萃取。
+- 不適合用 model：路由、重試、確定性轉換。
+- 如果程式碼能回答，就用程式碼回答。
+
+### Rule 6 — Token 預算不是建議
+- 每次任務：4,000 tokens。整個 session：30,000 tokens。
+- 接近預算時，摘要並重新開始。
+- 公開揭示預算超標。不要默默超支。
+
+### Rule 7 — 公開衝突，不要平均它們
+- 當兩個模式矛盾時，選擇一個（更新近的 / 更多測試的）。
+- 解释為什麼。標記另一個待清理。
+- 不要混合矛盾的模式。
+
+### Rule 8 — 寫入前先閱讀
+- 新增程式碼前，先閱讀 exports、呼叫者、共用工具。
+- 「看起來是正交的」是危險的。如果不確定程式碼為什麼那樣結構，問。
+
+### Rule 9 — 測試驗證意圖，不只是行為
+- 測試必須編碼為什麼行為重要，不只是做了什麼。
+- 當業務邏輯變更時，無法失敗的測試是錯的。
+
+### Rule 10 — 每個重要步驟後 checkpoint
+- 摘要已完成的事項、已驗證的事項、剩餘的事項。
+- 不要從你無法描述回來的狀態繼續。
+- 如果迷失了方向，停下來重新陳述。
+
+### Rule 11 — 配合程式碼庫的慣例，即使你不同意
+- 程式碼庫內：一致性 > 個人品味。
+- 如果真的認為慣例有害，公開揭示。不要默默 fork。
+
+### Rule 12 — 大聲失敗
+- 如果任何事被默默跳過，「完成」是錯的。
+- 如果有任何測試被跳過，「測試通過」是錯的。
+- 默認公開揭示不確定性，而非隱藏它。
+
+---
+
 ## 🔴 開發-編譯-測試循環強制規則（2025-01-11 新增）
 
 **CRITICAL: 開發 AISDLC 框架或使用 AISDLC 進行專案開發時，必須嚴格遵守以下規則**
@@ -815,6 +880,44 @@ When this framework is integrated into projects:
 - Document changes should be tracked with change history
 - Use requirements-change-management workflow for systematic change handling
 - Maintain backward compatibility in template changes when possible
+
+## 🔴 CI/CD 本地驗證強制規則（2026-06-12 新增）
+
+**CRITICAL: 所有程式變更必須經過本地 CI 驗證通過後才能上傳到 GitHub**
+
+### 強制執行流程
+
+**原則**: commit 前先驗證，驗證通過才能 push。
+
+**執行步驟**:
+
+1. **🔴 第一步：commit 前本地驗證**
+   - 在 commit 時，pre-commit hook 會自動執行 checkstyle + compile + 單元測試
+   - 如果其中任何一項失敗，commit 會被拒絕
+
+2. **🔴 第二步：commit 完成後執行本地 CI**
+   - 使用 `act -W .github/workflows/act-compat.yml` 執行完整的本地 CI 驗證
+   - 或使用 `mvn verify -Dspring.profiles.active=integration-test` 執行整合測試
+
+3. **🔴 第三步：本地 CI 通過後才能 push**
+   - 只有本地 CI 全部通過，才能執行 `git push`
+   - 禁止未經本地 CI 驗證就直接 push 到 GitHub
+
+### 為什麼需要這個機制？
+
+**歷史慘痛教訓 (2026-06-12)**:
+- CI Pipeline 持續失敗，每次失敗後修復就馬上 push，導致 20+ 次無效的 commit
+- 沒有先在本地驗證，浪費 CI 資源和時間
+- 用戶抱怨：「為何沒有經過本地檢核機制」
+
+**解決方案**:
+- ✅ commit 前：pre-commit hook 自動執行基本驗證
+- ✅ commit 後：執行本地 CI 完整驗證（使用 act 或手動執行）
+- ✅ 驗證通過後：才能 push 到 GitHub
+
+**🔴 違反此機制將導致 CI 失敗並浪費資源！🔴**
+
+---
 
 ## 🔴 CI/CD 修復執行強制規則（2026-05-13 新增）
 

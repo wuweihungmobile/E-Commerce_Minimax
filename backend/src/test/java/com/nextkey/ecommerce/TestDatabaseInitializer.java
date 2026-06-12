@@ -1,6 +1,5 @@
 package com.nextkey.ecommerce;
 
-import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.boot.CommandLineRunner;
@@ -25,27 +24,23 @@ public class TestDatabaseInitializer {
             // Initialize System Tenant if not exists
             var systemTenantId = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
 
-            // Check by ID first (most reliable)
+            // 🔴 修復：只用 existsById 檢查 ID，不使用 slug 檢查
+            // 原因：V1__Initial_Schema.sql 建立的 system tenant slug 是 'platform'，不是 'system'
+            // 使用 ID 檢查是最可靠的方式，因為 ID 是唯一不變的標識符
             if (!tenantRepository.existsById(systemTenantId)) {
-                // Also check by slug to handle edge cases
-                Optional<Tenant> existingBySlug = tenantRepository.findBySlug("system");
-                if (existingBySlug.isEmpty()) {
-                    log.info("Initializing System Tenant for tests...");
-                    Tenant systemTenant = Tenant.builder()
-                            .id(systemTenantId)
-                            .name("System Tenant")
-                            .slug("system")
-                            .status(Tenant.TenantStatus.ACTIVE)
-                            .description("System-level tenant for platform-wide feature toggles")
-                            .contactEmail("system@nextkey.com")
-                            .contactPhone("0000000000")
-                            .metadata(java.util.Map.of("type", "SYSTEM"))
-                            .build();
-                    tenantRepository.saveAndFlush(systemTenant);
-                    log.info("System Tenant initialized: {}", systemTenantId);
-                } else {
-                    log.debug("System Tenant already exists (by slug): {}", existingBySlug.get().getId());
-                }
+                log.info("Initializing System Tenant for tests...");
+                Tenant systemTenant = Tenant.builder()
+                        .id(systemTenantId)
+                        .name("System Tenant")
+                        .slug("platform")  // 🔴 修正：使用與 V1__Initial_Schema.sql 一致的 slug
+                        .status(Tenant.TenantStatus.ACTIVE)
+                        .description("System-level tenant for platform-wide feature toggles")
+                        .contactEmail("system@nextkey.com")
+                        .contactPhone("0000000000")
+                        .metadata(java.util.Map.of("type", "SYSTEM"))
+                        .build();
+                tenantRepository.saveAndFlush(systemTenant);
+                log.info("System Tenant initialized: {}", systemTenantId);
             } else {
                 log.debug("System Tenant already exists: {}", systemTenantId);
             }

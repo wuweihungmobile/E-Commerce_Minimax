@@ -21,7 +21,7 @@ VALUES (
     '0000000000',
     '{"type": "SYSTEM", "purpose": "platform-config"}'
 )
-ON CONFLICT (slug) DO NOTHING;
+ON CONFLICT (id) DO NOTHING;
 
 -- =============================================
 -- 2. 驗證 System Tenant 建立成功

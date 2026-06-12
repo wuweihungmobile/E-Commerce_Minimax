@@ -385,6 +385,13 @@ jobs:
           cd frontend
           npx playwright install --with-deps chromium
 
+      - name: Clean Database
+        run: |
+          # 🔴 清理資料庫 schema，避免 Flyway migration 衝突
+          echo "=== Cleaning database schema ==="
+          PGPASSWORD=koala5 psql -h localhost -U koala -d nextkeytest -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" || true
+          echo "Database cleaned"
+
       - name: Start Backend
         run: |
           cd backend

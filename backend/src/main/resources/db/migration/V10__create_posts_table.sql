@@ -17,7 +17,7 @@ CREATE TABLE posts (
     excerpt VARCHAR(500),
     featured_image_url VARCHAR(1000),
     status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
-    category_id UUID REFERENCES post_categories(id),
+    category_id UUID,
     tags JSONB DEFAULT '[]',
     view_count INTEGER DEFAULT 0,
     published_at TIMESTAMP,

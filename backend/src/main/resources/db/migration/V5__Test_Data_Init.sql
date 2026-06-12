@@ -71,7 +71,7 @@ VALUES (
     25.0330,
     121.5654,
     4,
-    '{"wifi": true, "tv": true, "ac": true, "breakfast": true}',
+    '{"wifi", "tv", "ac", "breakfast"}',
     '15:00',
     '11:00',
     1

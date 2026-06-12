@@ -1,9 +1,12 @@
 package com.nextkey.ecommerce.integration;
 
+import com.nextkey.ecommerce.api.dto.M15Dto;
+import com.nextkey.ecommerce.core.cms.media.MediaService;
 import com.nextkey.ecommerce.domain.model.user.RolePermissionMapping;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 import com.nextkey.ecommerce.infrastructure.security.RefreshTokenService;
+import com.nextkey.ecommerce.infrastructure.storage.StorageService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +21,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
 
 import javax.crypto.spec.SecretKeySpec;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Collections;
@@ -26,6 +30,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
@@ -368,5 +373,110 @@ public class IntegrationTestConfiguration {
         });
 
         return mockMapping;
+    }
+
+    /**
+     * Mock StorageService - 避免 MinIO 連接問題
+     * 讓所有操作都不實際訪問 S3/MinIO
+     */
+    @Bean
+    @Primary
+    public StorageService storageService() {
+        StorageService mockService = Mockito.mock(StorageService.class);
+
+        // Mock uploadFile - 返回假的路徑
+        when(mockService.uploadFile(any(UUID.class), anyString(), any(), anyLong(), anyString()))
+                .thenAnswer(invocation -> {
+                    UUID tenantId = invocation.getArgument(0);
+                    String fileName = invocation.getArgument(1);
+                    return tenantId.toString() + "/" + UUID.randomUUID() + "-" + fileName;
+                });
+
+        // Mock objectExists - 總是返回 true
+        when(mockService.objectExists(any(UUID.class), anyString())).thenReturn(true);
+
+        // Mock getObject - 返回空的輸入流
+        when(mockService.getObject(any(UUID.class), anyString()))
+                .thenReturn(new ByteArrayInputStream("mock-content".getBytes()));
+
+        // Mock deleteObject - 不拋出異常
+        doNothing().when(mockService).deleteObject(anyString());
+
+        return mockService;
+    }
+
+    /**
+     * Mock MediaService - 避免實際上傳到 MinIO
+     * 這個 mock 會覆蓋 @Primary 的 StorageService mock
+     */
+    @Bean
+    @Primary
+    public MediaService mediaService() {
+        MediaService mockService = Mockito.mock(MediaService.class);
+
+        // Mock uploadMedia (MultipartFile version) - 返回假的回應
+        when(mockService.uploadMedia(any(UUID.class), any(UUID.class), any()))
+                .thenAnswer(invocation -> {
+                    Object multipartFile = invocation.getArgument(2);
+                    String fileName = "test-multipart.jpg";
+                    try {
+                        // 嘗試取得原始檔案名稱
+                        java.lang.reflect.Method getOriginalFilename = multipartFile.getClass().getMethod("getOriginalFilename");
+                        Object result = getOriginalFilename.invoke(multipartFile);
+                        if (result != null) {
+                            fileName = result.toString();
+                        }
+                    } catch (Exception e) {
+                        // 忽略，使用預設值
+                    }
+                    return M15Dto.MediaUploadResponse.builder()
+                            .fileName(fileName)
+                            .fileSize(1024L)
+                            .mimeType("image/jpeg")
+                            .filePath("/test-tenant/media/" + fileName)
+                            .build();
+                });
+
+        // Mock uploadMedia (path version) - 返回假的回應
+        when(mockService.uploadMedia(any(UUID.class), any(UUID.class), anyString(), anyString(), anyLong(), anyString(), anyString()))
+                .thenAnswer(invocation -> {
+                    String fileName = invocation.getArgument(2);
+                    return M15Dto.MediaUploadResponse.builder()
+                            .fileName(fileName)
+                            .fileSize(invocation.getArgument(4))
+                            .mimeType(invocation.getArgument(5))
+                            .filePath(invocation.getArgument(6))
+                            .build();
+                });
+
+        // Mock getMediaList - 返回空的媒體列表
+        when(mockService.getMediaList(any(UUID.class), anyInt(), anyInt(), any()))
+                .thenAnswer(invocation -> {
+                    return M15Dto.MediaListResponse.builder()
+                            .items(List.of())
+                            .totalCount(0)
+                            .page(0)
+                            .size(20)
+                            .totalPages(0)
+                            .build();
+                });
+
+        // Mock deleteMedia - 不拋出異常
+        doNothing().when(mockService).deleteMedia(any(UUID.class), any(UUID.class));
+
+        return mockService;
+    }
+
+    /**
+     * Mock MediaService (core.media) - 避免實際上傳到 MinIO
+     * 這個 mock 是為了 MediaCategoryController 等需要 MediaService 的控制器
+     */
+    @Bean
+    @Primary
+    public com.nextkey.ecommerce.core.media.MediaService coreMediaService() {
+        com.nextkey.ecommerce.core.media.MediaService mockService = Mockito.mock(com.nextkey.ecommerce.core.media.MediaService.class);
+
+        // Mock 任何可能的方法，讓它不拋異常即可
+        return mockService;
     }
 }

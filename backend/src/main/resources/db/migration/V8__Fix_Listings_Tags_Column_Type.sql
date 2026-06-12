@@ -26,8 +26,8 @@ SET tags = '[' ||
 ']'
 WHERE tags IS NOT NULL
   AND pg_typeof(tags)::text = 'text[]'
-  AND left(tags, 1) = '{'
-  AND right(tags, 1) = '}';
+  AND left(tags::text, 1) = '{'
+  AND right(tags::text, 1) = '}';
 
 -- =============================================
 -- 3. 修改欄位類型為 JSONB

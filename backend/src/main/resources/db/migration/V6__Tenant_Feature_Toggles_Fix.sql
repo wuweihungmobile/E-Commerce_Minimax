@@ -49,14 +49,14 @@ END $$;
 DELETE FROM tenant_feature_toggles WHERE tenant_id = '00000000-0000-0000-0000-000000000001';
 
 -- Boolean toggles
-INSERT INTO tenant_feature_toggles (tenant_id, feature_key, is_enabled, config, enabled_at)
+INSERT INTO tenant_feature_toggles (tenant_id, feature_key, is_enabled, config)
 VALUES
-    ('00000000-0000-0000-0000-000000000001', 'RETAIL_ENABLED', true, '{}', CURRENT_TIMESTAMP),
-    ('00000000-0000-0000-0000-000000000001', 'BOOKING_ENABLED', true, '{}', CURRENT_TIMESTAMP),
-    ('00000000-0000-0000-0000-000000000001', 'CMS_ENABLED', true, '{}', CURRENT_TIMESTAMP),
-    ('00000000-0000-0000-0000-000000000001', 'ERP_ENABLED', true, '{}', CURRENT_TIMESTAMP),
-    ('00000000-0000-0000-0000-000000000001', 'DYNAMIC_PRICING_ENABLED', true, '{}', CURRENT_TIMESTAMP),
-    ('00000000-0000-0000-0000-000000000001', 'PROMO_ENABLED', false, '{}', NULL);
+    ('00000000-0000-0000-0000-000000000001', 'RETAIL_ENABLED', true, '{}'),
+    ('00000000-0000-0000-0000-000000000001', 'BOOKING_ENABLED', true, '{}'),
+    ('00000000-0000-0000-0000-000000000001', 'CMS_ENABLED', true, '{}'),
+    ('00000000-0000-0000-0000-000000000001', 'ERP_ENABLED', true, '{}'),
+    ('00000000-0000-0000-0000-000000000001', 'DYNAMIC_PRICING_ENABLED', true, '{}'),
+    ('00000000-0000-0000-0000-000000000001', 'PROMO_ENABLED', false, '{}');
 
 -- Numeric toggles (stored in config JSONB as {"value": number})
 INSERT INTO tenant_feature_toggles (tenant_id, feature_key, is_enabled, config)

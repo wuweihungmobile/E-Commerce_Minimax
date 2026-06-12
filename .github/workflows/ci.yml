@@ -391,6 +391,10 @@ jobs:
           echo "=== Cleaning database schema ==="
           PGPASSWORD=koala5 psql -h localhost -U koala -d nextkeytest -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" || true
           echo "Database cleaned"
+          # 🔴 驗證 schema 已清理
+          sleep 5
+          TABLES=$(PGPASSWORD=koala5 psql -h localhost -U koala -d nextkeytest -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';" 2>/dev/null || echo "0")
+          echo "Tables in public schema after cleanup: $TABLES"
 
       - name: Start Backend
         run: |

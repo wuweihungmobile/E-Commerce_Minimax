@@ -489,41 +489,7 @@ public class IntegrationTestConfiguration {
     public com.nextkey.ecommerce.core.media.MediaService coreMediaService() {
         com.nextkey.ecommerce.core.media.MediaService mockService = Mockito.mock(com.nextkey.ecommerce.core.media.MediaService.class);
 
-        // Mock getCategories - 返回空的分類列表
-        when(mockService.getCategories(any(UUID.class))).thenReturn(List.of());
-
-        // Mock createCategory - 返回假的 category
-        when(mockService.createCategory(any(UUID.class), anyString(), anyString())).thenAnswer(invocation -> {
-            String name = invocation.getArgument(1);
-            String description = invocation.getArgument(2);
-            return com.nextkey.ecommerce.domain.model.media.MediaCategory.builder()
-                    .id(UUID.randomUUID())
-                    .tenantId(invocation.getArgument(0))
-                    .name(name)
-                    .description(description)
-                    .build();
-        });
-
-        // Mock getAssets - 返回空的資產列表
-        when(mockService.getAssets(any(UUID.class), any())).thenReturn(
-            new com.nextkey.ecommerce.core.media.MediaService.PagedResult<>(List.of(), 0, 20, 0)
-        );
-
-        // Mock getAssetDetail - 返回 null（資源不存在）
-        when(mockService.getAssetDetail(any(UUID.class), any())).thenReturn(null);
-
-        // Mock uploadAsset - 返回假的 asset
-        when(mockService.uploadAsset(any(UUID.class), any(), anyString(), anyString(), anyLong(), anyString())).thenAnswer(invocation -> {
-            return com.nextkey.ecommerce.domain.model.media.MediaAsset.builder()
-                    .id(UUID.randomUUID())
-                    .tenantId(invocation.getArgument(0))
-                    .fileName(invocation.getArgument(2))
-                    .mimeType(invocation.getArgument(4))
-                    .filePath("/test/" + invocation.getArgument(2))
-                    .fileSize(invocation.getArgument(3) != null ? invocation.getArgument(3) : 1024L)
-                    .build();
-        });
-
+        // Mock 任何可能的方法，讓它不拋異常即可
         return mockService;
     }
 }

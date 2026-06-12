@@ -426,10 +426,8 @@ jobs:
           done
           echo "=== Backend failed to start ==="
           echo "=== Backend log (last 50 lines) ==="
-          if [ -f backend.log ]; then
-            tail -50 backend.log
-          elif [ -f backend.log ]; then
-            tail -50 backend.log
+          if [ -f backend/backend.log ]; then
+            tail -50 backend/backend.log
           else
             echo "No backend.log found!"
             echo "=== Check if Java process is running ==="

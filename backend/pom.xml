@@ -183,7 +183,44 @@
                     <consoleOutput>true</consoleOutput>
                     <failsOnError>false</failsOnError>
                     <failOnViolation>false</failOnViolation>
+                    <suppressionsLocation>${project.basedir}/src/checkstyle/checkstyle-suppressions.xml</suppressionsLocation>
                 </configuration>
+            </plugin>
+            <!-- AISDLC v0.09: 排除 E2E 與 Integration 測試於 unit 階段
+                 E2E 測試需要真實 HTTP/DB 連線，必須在 integration-test profile 跑
+                 Integration 測試需要 Spring Context 與 DB，亦應於 integration 階段跑 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/*E2ETest.java</exclude>
+                        <exclude>**/*E2E.java</exclude>
+                        <exclude>**/*IntegrationTest.java</exclude>
+                        <exclude>**/*TrueIntegrationTest.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <!-- failsafe 跑 integration 階段（由 -Pintegration-test 觸發）-->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>**/*E2ETest.java</include>
+                        <include>**/*E2E.java</include>
+                        <include>**/*IntegrationTest.java</include>
+                        <include>**/*TrueIntegrationTest.java</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

@@ -56,7 +56,8 @@ services:
       - maven_cache:/root/.m2
     command: mvn spring-boot:run -Dmaven.test.skip=true
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/actuator/health"]
+      # 🔴 注意：Spring Boot 預設 context path 為 /，actuator 端點為 /actuator/health
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -80,12 +81,25 @@ services:
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
     networks:
       - ecommerce-network
 
 # =============================================
-# Volume for Maven cache
+# Networks（override 顯式宣告，與主檔合併時不會衝突）
+# =============================================
+networks:
+  ecommerce-network:
+    driver: bridge
+
+# =============================================
+# Volume for Maven cache + MinIO
 # =============================================
 volumes:
   maven_cache:

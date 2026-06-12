@@ -19,7 +19,13 @@ public interface SettlementStatementRepository extends JpaRepository<SettlementS
 
     Page<SettlementStatement> findByTenantIdOrderByPeriodStartDesc(UUID tenantId, Pageable pageable);
 
-    @Query("SELECT s FROM SettlementStatement s WHERE s.tenantId = :tenantId AND s.periodStart >= :startDate AND s.periodEnd <= :endDate ORDER BY s.periodStart DESC")
+    @Query("""
+            SELECT s FROM SettlementStatement s
+            WHERE s.tenantId = :tenantId
+            AND s.periodStart >= :startDate
+            AND s.periodEnd <= :endDate
+            ORDER BY s.periodStart DESC
+            """)
     List<SettlementStatement> findByTenantIdAndPeriodStartBetween(
             @Param("tenantId") UUID tenantId,
             @Param("startDate") LocalDate startDate,

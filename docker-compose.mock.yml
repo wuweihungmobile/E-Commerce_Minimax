@@ -22,12 +22,14 @@ services:
       - "3001:3001"
     volumes:
       - ./mocks/mockoon-data.json:/data/mockoon-data.json:ro
-    command: ["-d", "/data/mockoon-data.json", "-p", "3001"]
+    # 🔴 加入 -r 自動修復（避免舊版本 JSON 卡在互動式詢問）
+    command: ["-d", "/data/mockoon-data.json", "-p", "3001", "-r"]
     restart: unless-stopped
     networks:
       - ecommerce-network
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health >/dev/null 2>&1 || exit 1"]
+      # 🔴 Mockoon 預設沒有 /health 端點，改用根路徑探活
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

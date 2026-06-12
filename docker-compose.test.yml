@@ -62,7 +62,8 @@ services:
       - POSTGRES_PASSWORD=koala5
       - POSTGRES_DB=nextkeytest
     volumes:
-      - postgres_ci_data:/var/lib/postgresql/data
+      # 🔴 PostgreSQL 18+ 要求：mount 必須在 /var/lib/postgresql
+      - postgres_ci_data:/var/lib/postgresql
     healthcheck:
       interval: 3s
       timeout: 2s

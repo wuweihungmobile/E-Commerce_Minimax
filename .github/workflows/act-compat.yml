@@ -49,6 +49,7 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --health-start-period 5s
 
       redis:
         image: redis:7-alpine
@@ -57,10 +58,11 @@ jobs:
         ports:
           - 6379:6379
         options: >-
-          --health-cmd "redis-cli -a redis-dev-password --no-auth-warning ping"
+          --health-cmd "redis-cli -a redis-dev-password --no-auth-warning ping | grep -q PONG"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --health-start-period 5s
 
     env:
       SPRING_PROFILES_ACTIVE: integration-test
@@ -85,6 +87,15 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
 
+      # 🔴 catthehacker/ubuntu:act-latest 預設沒有 mvn / psql / redis-cli，需手動安裝
+      - name: Install Build Tools
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq maven postgresql-client redis-tools
+          mvn --version
+          psql --version
+          redis-cli --version
+
       - name: Checkstyle (Backend)
         run: |
           cd backend
@@ -95,23 +106,26 @@ jobs:
           echo "=== Test PostgreSQL ==="
           PGPASSWORD=koala5 psql -h localhost -U koala -d nextkeytest -c "SELECT 1;" || exit 1
           echo "=== Test Redis ==="
-          redis-cli -a redis-dev-password --no-auth-warning ping
+          redis-cli -a redis-dev-password --no-auth-warning ping | grep -q PONG || exit 1
+          echo "All services are healthy"
 
       - name: Compile Backend
         run: |
           cd backend
           mvn clean compile -DskipTests -q
 
+      # Unit tests（Surefire 自動排除 E2E/Integration）
       - name: Run Unit Tests
         run: |
           cd backend
           mvn test -Dspring.profiles.active=test -q
         continue-on-error: false
 
+      # Integration + E2E tests（Failsafe 自動只跑 E2E/Integration）
       - name: Run Integration Tests
         run: |
           cd backend
-          mvn test -Dspring.profiles.active=integration-test
+          mvn verify -Dspring.profiles.active=integration-test
         continue-on-error: false
 
       - name: Package Backend

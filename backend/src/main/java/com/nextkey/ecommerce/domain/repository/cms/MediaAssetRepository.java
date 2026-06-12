@@ -25,22 +25,22 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     /**
      * 依 Tenant 分頁查詢媒體
      */
-    Page<MediaAsset> findByTenant_Id(UUID tenantId, Pageable pageable);
+    Page<MediaAsset> findByTenantId(UUID tenantId, Pageable pageable);
 
     /**
      * 依 Tenant 和 FileType 分頁查詢
      */
-    Page<MediaAsset> findByTenant_IdAndFileType(UUID tenantId, MediaAsset.FileType fileType, Pageable pageable);
+    Page<MediaAsset> findByTenantIdAndFileType(UUID tenantId, MediaAsset.FileType fileType, Pageable pageable);
 
     /**
      * 依 Tenant 查詢（按時間倒序）
      */
-    List<MediaAsset> findByTenant_IdOrderByCreatedAtDesc(UUID tenantId);
+    List<MediaAsset> findByTenantIdOrderByCreatedAtDesc(UUID tenantId);
 
     /**
      * 依上傳者查詢
      */
-    Page<MediaAsset> findByUploader_Id(UUID uploaderId, Pageable pageable);
+    Page<MediaAsset> findByUploaderId(UUID uploaderId, Pageable pageable);
 
     /**
      * 檢查檔案是否被引用
@@ -51,25 +51,25 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     /**
      * 依 MIME Type 搜尋
      */
-    Page<MediaAsset> findByTenant_IdAndMimeTypeContaining(UUID tenantId, String mimeType, Pageable pageable);
+    Page<MediaAsset> findByTenantIdAndMimeTypeContaining(UUID tenantId, String mimeType, Pageable pageable);
 
     // ========== Sprint 16 US-005/006 多圖評價整合方法 ==========
 
     /**
      * 依 Tenant 查詢未刪除的媒體 (Sprint 16)
      */
-    Page<MediaAsset> findByTenant_IdAndIsDeletedFalse(UUID tenantId, Pageable pageable);
+    Page<MediaAsset> findByTenantIdAndIsDeletedFalse(UUID tenantId, Pageable pageable);
 
     /**
      * 依 Tenant 與 Category 查詢未刪除的媒體 (Sprint 16)
      */
-    Page<MediaAsset> findByTenant_IdAndCategoryIdAndIsDeletedFalse(
+    Page<MediaAsset> findByTenantIdAndCategoryIdAndIsDeletedFalse(
             UUID tenantId, UUID categoryId, Pageable pageable);
 
     /**
      * 依 Tenant 與精確 MIME Type 查詢未刪除的媒體 (Sprint 16)
      */
-    Page<MediaAsset> findByTenant_IdAndMimeTypeAndIsDeletedFalse(
+    Page<MediaAsset> findByTenantIdAndMimeTypeAndIsDeletedFalse(
             UUID tenantId, String mimeType, Pageable pageable);
 
     /**
@@ -92,10 +92,10 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     /**
      * 統計 Tenant 的未刪除媒體數 (Sprint 16)
      */
-    long countByTenant_IdAndIsDeletedFalse(UUID tenantId);
+    long countByTenantIdAndIsDeletedFalse(UUID tenantId);
 
     /**
      * 統計 Tenant 的媒體數 (相容舊 API, 含已刪除)
      */
-    long countByTenant_Id(UUID tenantId);
+    long countByTenantId(UUID tenantId);
 }

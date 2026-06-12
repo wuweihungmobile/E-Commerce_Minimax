@@ -158,7 +158,7 @@ public class MediaService {
         }
 
         // 檢查是否有媒體資產使用此分類
-        Page<MediaAsset> assets = mediaAssetRepository.findByTenant_IdAndCategoryIdAndIsDeletedFalse(
+        Page<MediaAsset> assets = mediaAssetRepository.findByTenantIdAndCategoryIdAndIsDeletedFalse(
                 tenantId, categoryId, PageRequest.of(0, 1));
         if (assets.hasContent()) {
             throw new BusinessException(ErrorCode.E_3001, "Cannot delete category with media assets");
@@ -179,11 +179,11 @@ public class MediaService {
         if (keyword != null && !keyword.isBlank()) {
             assets = mediaAssetRepository.searchByKeyword(tenantId, keyword.trim(), pageable);
         } else if (mimeType != null && !mimeType.isBlank()) {
-            assets = mediaAssetRepository.findByTenant_IdAndMimeTypeAndIsDeletedFalse(tenantId, mimeType, pageable);
+            assets = mediaAssetRepository.findByTenantIdAndMimeTypeAndIsDeletedFalse(tenantId, mimeType, pageable);
         } else if (categoryId != null) {
-            assets = mediaAssetRepository.findByTenant_IdAndCategoryIdAndIsDeletedFalse(tenantId, categoryId, pageable);
+            assets = mediaAssetRepository.findByTenantIdAndCategoryIdAndIsDeletedFalse(tenantId, categoryId, pageable);
         } else {
-            assets = mediaAssetRepository.findByTenant_IdAndIsDeletedFalse(tenantId, pageable);
+            assets = mediaAssetRepository.findByTenantIdAndIsDeletedFalse(tenantId, pageable);
         }
 
         return assets.map(this::toMediaAssetDto);
@@ -288,7 +288,7 @@ public class MediaService {
     @Transactional(readOnly = true)
     public Long getAssetCount() {
         UUID tenantId = getCurrentTenant();
-        return mediaAssetRepository.countByTenant_Id(tenantId);
+        return mediaAssetRepository.countByTenantId(tenantId);
     }
 
     // ========== Helper Methods ==========

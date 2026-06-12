@@ -348,7 +348,7 @@ class PostControllerE2ETest {
             // 3. 清理 MediaAsset（依賴 Tenant, User）
             if (testTenantId != null) {
                 try {
-                    mediaAssetRepository.findByTenant_IdOrderByCreatedAtDesc(testTenantId)
+                    mediaAssetRepository.findByTenantIdOrderByCreatedAtDesc(testTenantId)
                             .forEach(m -> mediaAssetRepository.delete(m));
                 } catch (Exception ignored) {}
             }

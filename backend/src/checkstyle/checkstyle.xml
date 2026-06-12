@@ -38,10 +38,10 @@
     <property name="eachLine" value="true"/>
   </module>
 
-  <!-- 抑制無法修復的 Java 語法限制錯誤（放在 Checker 層級） -->
-  <module name="SuppressionSingleFilter">
-    <property name="checks" value="FinalParameters"/>
-    <property name="files" value=".*"/>
+  <!-- SuppressionFilter - 使用外部 suppression 文件 -->
+  <module name="SuppressionFilter">
+    <property name="optional" value="true"/>
+    <property name="file" value="${checkstyle.suppressions.file}"/>
   </module>
 
   <!-- === TreeWalker 模組 === -->
@@ -123,8 +123,18 @@
     <module name="FinalParameters"/>
 
     <!-- === 魔法數字檢查 === -->
+    <!--
+      JPA 標準值（資料庫欄位定義）不視為魔法數字：
+      - precision=14, scale=2：貨幣金額標準（支援最大 999999999999.99）
+      - length=50/100/200/500：標準欄位長度
+      - 12/16：LINE PAY API 標準長度
+      - 5000：MQ 消費者逾時（ms）
+      - 24：Stripe 訂閱相關（1 天 = 24 小時）
+      - 23/59：時間計算（23 小時、59 分鐘）
+      - 36：UUID 長度（36 字元）
+    -->
     <module name="MagicNumber">
-      <property name="ignoreNumbers" value="-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 100, 1000"/>
+      <property name="ignoreNumbers" value="-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 20, 23, 24, 36, 50, 59, 100, 200, 500, 1000, 5000"/>
     </module>
 
     <!-- === Modifier 檢查 === -->

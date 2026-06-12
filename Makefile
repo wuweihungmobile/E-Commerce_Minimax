@@ -74,12 +74,54 @@ down-ci: ## 停止 CI 模擬環境
 	docker compose -f docker-compose.yml -f docker-compose.test.yml down -v
 	@echo "$(GREEN)✅ 已停止$(NC)"
 
-up-mock: ## 啟動 Mock 服務（API Mock + Local LLM）
-	@echo "$(YELLOW)🚀 啟動 Mock 服務...$(NC)"
+up-mock: ## 啟動 Mock API 服務（不含 Local LLM）
+	@echo "$(YELLOW)🚀 啟動 Mock 服務（僅 API Mock）...$(NC)"
+	docker compose -f docker-compose.yml -f docker-compose.mock.yml up -d
+	@echo "$(GREEN)✅ Mock API 服務已啟動$(NC)"
+	@echo "Mock API: http://localhost:3001"
+
+up-mock-with-llm: ## 啟動 Mock 服務 + Local LLM
+	@echo "$(YELLOW)🚀 啟動 Mock 服務 + Local LLM...$(NC)"
+	@if [ ! -f "$${LLM_MODEL_DIR:-$$HOME/models}/qwen2.5-1.5b-instruct-q4_k_m.gguf" ]; then \
+		echo "$(YELLOW)⚠️  未偵測到 LLM 模型，請先執行：make download-llm-model$(NC)"; \
+	fi
 	docker compose -f docker-compose.yml -f docker-compose.mock.yml --profile with-llm up -d
 	@echo "$(GREEN)✅ Mock 服務已啟動$(NC)"
 	@echo "Mock API: http://localhost:3001"
 	@echo "Local LLM: http://localhost:8081"
+
+down-mock: ## 停止 Mock 服務
+	@echo "$(YELLOW)🛑 停止 Mock 服務...$(NC)"
+	docker compose -f docker-compose.yml -f docker-compose.mock.yml down
+	@echo "$(GREEN)✅ 已停止$(NC)"
+
+download-llm-model: ## 下載 Local LLM 模型（Qwen2.5-1.5B，~1GB）
+	@echo "$(YELLOW)📥 下載 Local LLM 模型...$(NC)"
+	./scripts/download-llm-model.sh
+	@echo "$(GREEN)✅ 模型下載完成$(NC)"
+
+download-llm-7b: ## 下載 Local LLM 模型（Qwen2.5-7B，~4.5GB，需 16GB+ RAM）
+	@echo "$(YELLOW)📥 下載 7B Local LLM 模型...$(NC)"
+	LLM_MODEL_SIZE=7b ./scripts/download-llm-model.sh
+	@echo "$(GREEN)✅ 7B 模型下載完成$(NC)"
+
+test-mock: ## 測試 Mock API 所有端點
+	@echo "$(YELLOW)🧪 測試 Mock API...$(NC)"
+	@echo "  - 健康檢查"
+	@curl -fsS http://localhost:3001/health || (echo "❌ Mock API 沒回應" && exit 1)
+	@echo "  - 信用卡付款"
+	@curl -fsS -X POST http://localhost:3001/api/payment/credit-card \
+		-H "Content-Type: application/json" \
+		-d '{"amount": 1000}' >/dev/null && echo "    ✅ OK" || echo "    ❌ FAIL"
+	@echo "  - 物流查詢"
+	@curl -fsS http://localhost:3001/api/logistics/track/TEST-001 >/dev/null && echo "    ✅ OK" || echo "    ❌ FAIL"
+	@echo "  - 簡訊發送"
+	@curl -fsS -X POST http://localhost:3001/api/sms/send \
+		-H "Content-Type: application/json" \
+		-d '{"phone": "+886912345678"}' >/dev/null && echo "    ✅ OK" || echo "    ❌ FAIL"
+	@echo "  - Google OAuth"
+	@curl -fsS http://localhost:3001/api/auth/google/callback >/dev/null && echo "    ✅ OK" || echo "    ❌ FAIL"
+	@echo "$(GREEN)✅ Mock API 測試完成$(NC)"
 
 logs: ## 查看所有服務 logs
 	docker compose logs -f

@@ -111,7 +111,9 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-nextkeytest}
       - POSTGRES_INITDB_ARGS=--encoding=UTF8 --lc-collate=C --lc-ctype=C
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # 🔴 PostgreSQL 18+ 要求：mount 必須在 /var/lib/postgresql（而非 /var/lib/postgresql/data）
+      # 容器內部會自動在子目錄管理版本
+      - postgres_data:/var/lib/postgresql
       - ./backend/src/main/resources/db/migration:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-koala} -d ${POSTGRES_DB:-nextkeytest}"]

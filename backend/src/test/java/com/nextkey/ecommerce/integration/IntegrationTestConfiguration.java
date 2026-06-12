@@ -94,8 +94,8 @@ public class IntegrationTestConfiguration {
                     return true;
                 } catch (Exception e) {
                     log.debug("JWT parsing failed for token: {}", token.substring(0, Math.min(20, token.length())));
-                    // 保守返回 true，避免測試 token 被拒絕
-                    return true;
+                    // 解析失敗應該返回 false（拒絕無效 token），而非保守返回 true
+                    return false;
                 }
             }
             // 其他測試用的特殊字串 token，直接接受

@@ -19,6 +19,7 @@ import org.springframework.security.oauth2.jwt.JwtException;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -263,8 +264,8 @@ public class IntegrationTestConfiguration {
                 return Jwt.withTokenValue(token)
                         .headers(h -> h.putAll(claims))
                         .claims(c -> c.putAll(claims))
-                        .issuedAt(claims.getIssuedAt())
-                        .expiresAt(claims.getExpiration())
+                        .issuedAt(claims.getIssuedAt() != null ? claims.getIssuedAt().toInstant() : Instant.now())
+                        .expiresAt(claims.getExpiration() != null ? claims.getExpiration().toInstant() : Instant.now().plusSeconds(3600))
                         .subject(claims.getSubject())
                         .build();
             } catch (JwtException e) {
@@ -277,8 +278,8 @@ public class IntegrationTestConfiguration {
                             c.put("role", "BUYER");
                             c.put("tenantId", "00000000-0000-0000-0000-000000000001");
                         })
-                        .issuedAt(new java.util.Date())
-                        .expiresAt(new java.util.Date(System.currentTimeMillis() + 3600000))
+                        .issuedAt(Instant.now())
+                        .expiresAt(Instant.now().plusSeconds(3600))
                         .build();
             }
         };

@@ -53,7 +53,20 @@ public class IntegrationTestConfiguration {
     @Bean
     @Primary
     public RedisTemplate<String, Object> redisTemplate() {
-        return (RedisTemplate<String, Object>) Mockito.mock(RedisTemplate.class);
+        RedisTemplate<String, Object> mockTemplate = Mockito.mock(RedisTemplate.class);
+        org.springframework.data.redis.core.HashOperations<String, Object, Object> hashOps =
+            Mockito.mock(org.springframework.data.redis.core.HashOperations.class);
+        org.springframework.data.redis.core.ValueOperations<String, Object> valueOps =
+            Mockito.mock(org.springframework.data.redis.core.ValueOperations.class);
+
+        // Mock hash operations - 預設返回 null（表示沒有現有購物車項目）
+        when(mockTemplate.opsForHash()).thenReturn(hashOps);
+        when(mockTemplate.opsForValue()).thenReturn(valueOps);
+
+        // 配置 get() 返回 null（表示沒有現有項目）
+        when(hashOps.get(anyString(), anyString())).thenReturn(null);
+
+        return mockTemplate;
     }
 
     @Bean

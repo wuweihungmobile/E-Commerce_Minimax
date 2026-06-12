@@ -25,7 +25,7 @@ SET tags = '[' ||
     substring(tags from 2 for length(tags) - 2) ||
 ']'
 WHERE tags IS NOT NULL
-  AND tags LIKE '{%]'  -- 確認是 text[] 格式
+  AND pg_typeof(tags)::text = 'text[]'
   AND left(tags, 1) = '{'
   AND right(tags, 1) = '}';
 

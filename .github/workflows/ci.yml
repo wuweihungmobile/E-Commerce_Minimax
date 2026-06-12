@@ -387,11 +387,10 @@ jobs:
 
       - name: Clean Database
         run: |
-          # 🔴 清理 Flyway migration 記錄，讓 Flyway 重新執行 migration
-          # 不使用 DROP SCHEMA，避免刪除所有物件
-          echo "=== Cleaning Flyway migration history ==="
-          PGPASSWORD=koala5 psql -h localhost -U koala -d nextkeytest -c "DELETE FROM flyway_schema_history;" || true
-          echo "Flyway migration history cleaned"
+          # 🔴 清理資料庫 schema，讓 Flyway 重新執行所有 migration
+          echo "=== Cleaning database schema ==="
+          PGPASSWORD=koala5 psql -h localhost -U koala -d nextkeytest -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" || true
+          echo "Database cleaned"
 
       - name: Start Backend
         run: |

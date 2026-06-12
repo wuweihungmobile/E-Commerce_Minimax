@@ -181,8 +181,8 @@ class CartControllerE2ETest {
                     .delete(CART_URL)
                     .then()
                     .statusCode(anyOf(is(200), is(404))); // 404 表示購物車本來就是空的
-        } catch (Exception e) {
-            // 忽略錯誤，繼續清理用戶
+        } catch (Throwable e) {
+            // 忽略錯誤（包括 AssertionError），繼續清理用戶
             System.out.println("Warning: Failed to clear cart during teardown: " + e.getMessage());
         }
 

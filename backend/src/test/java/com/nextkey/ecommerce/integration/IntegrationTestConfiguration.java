@@ -4,7 +4,10 @@ import com.nextkey.ecommerce.api.dto.M15Dto;
 import com.nextkey.ecommerce.core.cms.media.MediaService;
 import com.nextkey.ecommerce.domain.model.user.RolePermissionMapping;
 import com.nextkey.ecommerce.domain.model.user.User;
+import com.nextkey.ecommerce.api.dto.CartDto;
+import com.nextkey.ecommerce.infrastructure.redis.RedisLockService;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
+import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.infrastructure.security.RefreshTokenService;
 import com.nextkey.ecommerce.infrastructure.storage.StorageService;
 import io.jsonwebtoken.Claims;
@@ -14,8 +17,14 @@ import org.mockito.Mockito;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.RedisCommands;
+import org.springframework.data.redis.connection.RedisKeyCommands;
+import org.springframework.data.redis.core.HashOperations;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
@@ -23,15 +32,21 @@ import org.springframework.security.oauth2.jwt.JwtException;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 
@@ -43,28 +58,112 @@ import static org.mockito.Mockito.when;
 @TestConfiguration
 public class IntegrationTestConfiguration {
 
+    // 使用 AtomicReference 來共享 mock connection（因為 @Bean 方法呼叫順序不確定）
+    private final AtomicReference<RedisConnection> connectionRef = new AtomicReference<>();
+    private final AtomicReference<RedisCommands> commandsRef = new AtomicReference<>();
+
+    /**
+     * 初始化 Redis connection mocks
+     */
+    private synchronized void initializeRedisMocks() {
+        if (connectionRef.get() == null) {
+            RedisConnection connection = Mockito.mock(RedisConnection.class);
+            RedisCommands commands = Mockito.mock(RedisCommands.class);
+
+            when(connection.isPipelined()).thenReturn(false);
+            when(connection.commands()).thenReturn(commands);
+            // Mock key commands - 使用正確的返回類型
+            when(commands.del(any(byte[][].class))).thenReturn(1L);
+            when(commands.expire(any(byte[].class), anyLong())).thenReturn(true);
+            when(commands.ttl(any(byte[].class))).thenReturn(-1L);
+            when(commands.pExpire(any(byte[].class), anyLong())).thenReturn(true);
+            when(commands.pTtl(any(byte[].class))).thenReturn(-1L);
+            when(commands.exists(any(byte[].class))).thenReturn(false);
+            // commands.type() 返回 DataType
+            when(commands.type(any(byte[].class))).thenReturn(org.springframework.data.redis.connection.DataType.NONE);
+            // commands.keys() 返回 Set<byte[]>
+            when(commands.keys(any(byte[].class))).thenReturn(java.util.Collections.emptySet());
+
+            connectionRef.set(connection);
+            commandsRef.set(commands);
+        }
+    }
+
     @Bean
     @Primary
     public RedisConnectionFactory redisConnectionFactory() {
-        return Mockito.mock(RedisConnectionFactory.class);
+        initializeRedisMocks();
+        RedisConnectionFactory factory = Mockito.mock(RedisConnectionFactory.class);
+        when(factory.getConnection()).thenReturn(connectionRef.get());
+        return factory;
     }
 
     @SuppressWarnings("unchecked")
     @Bean
     @Primary
     public RedisTemplate<String, Object> redisTemplate() {
+        initializeRedisMocks();
         RedisTemplate<String, Object> mockTemplate = Mockito.mock(RedisTemplate.class);
-        org.springframework.data.redis.core.HashOperations<String, Object, Object> hashOps =
-            Mockito.mock(org.springframework.data.redis.core.HashOperations.class);
-        org.springframework.data.redis.core.ValueOperations<String, Object> valueOps =
-            Mockito.mock(org.springframework.data.redis.core.ValueOperations.class);
+        HashOperations<String, Object, Object> hashOps = Mockito.mock(HashOperations.class);
+        ValueOperations<String, Object> valueOps = Mockito.mock(ValueOperations.class);
 
-        // Mock hash operations - 預設返回 null（表示沒有現有購物車項目）
+        // Mock opsForHash() and opsForValue()
         when(mockTemplate.opsForHash()).thenReturn(hashOps);
         when(mockTemplate.opsForValue()).thenReturn(valueOps);
 
-        // 配置 get() 返回 null（表示沒有現有項目）
-        when(hashOps.get(anyString(), anyString())).thenReturn(null);
+        // entries() 返回空 map（用於空購物車）
+        when(hashOps.entries(anyString())).thenReturn(Collections.emptyMap());
+
+        // get() 返回 null
+        when(hashOps.get(anyString(), any())).thenReturn(null);
+
+        // size() 返回 0
+        when(hashOps.size(anyString())).thenReturn(0L);
+
+        // put() 不做任何事
+        doNothing().when(hashOps).put(anyString(), anyString(), any());
+
+        // putAll() 不做任何事
+        doNothing().when(hashOps).putAll(anyString(), any());
+
+        // delete() 不做任何事
+        doNothing().when(hashOps).delete(anyString(), any(Object[].class));
+
+        // hasKey() 返回 false
+        when(hashOps.hasKey(anyString(), any())).thenReturn(false);
+
+        // values() 返回空 list
+        when(hashOps.values(anyString())).thenReturn(Collections.emptyList());
+
+        // keys() 返回空 set
+        when(hashOps.keys(anyString())).thenReturn(Collections.emptySet());
+
+        // get() 返回 null
+        when(valueOps.get(anyString())).thenReturn(null);
+
+        // increment() 返回 1
+        when(valueOps.increment(anyString())).thenReturn(1L);
+        when(valueOps.increment(anyString(), anyLong())).thenReturn(1L);
+
+        // Mock template execute() - 真正調用 callback 並傳入 mock connection
+        RedisConnection conn = connectionRef.get();
+        if (conn != null) {
+            doAnswer(invocation -> {
+                RedisCallback callback = invocation.getArgument(0);
+                return callback.doInRedis(conn);
+            }).when(mockTemplate).execute(any(RedisCallback.class));
+            doAnswer(invocation -> {
+                RedisCallback callback = invocation.getArgument(0);
+                return callback.doInRedis(conn);
+            }).when(mockTemplate).execute(any(RedisCallback.class), anyBoolean());
+        }
+
+        // Mock delete() - 返回 true 表示刪除成功
+        when(mockTemplate.delete(anyString())).thenReturn(true);
+        when(mockTemplate.delete(anyCollection())).thenReturn(1L);
+
+        // Mock expire() - 返回 true 表示設置過期時間成功
+        when(mockTemplate.expire(anyString(), any(Duration.class))).thenReturn(true);
 
         return mockTemplate;
     }
@@ -491,5 +590,28 @@ public class IntegrationTestConfiguration {
 
         // Mock 任何可能的方法，讓它不拋異常即可
         return mockService;
+    }
+
+    /**
+     * Mock RedisLockService - 避免 Redis 鎖操作失敗
+     * 這個 mock 覆蓋 @Service RedisLockService
+     */
+    @Bean
+    @Primary
+    public RedisLockService redisLockService() {
+        RedisLockService mockLockService = Mockito.mock(RedisLockService.class);
+
+        // Mock 所有可能的方法返回合理值
+        when(mockLockService.tryAcquireLockNoWait(anyString())).thenReturn(UUID.randomUUID().toString());
+        when(mockLockService.tryAcquireLock(anyString())).thenReturn(UUID.randomUUID().toString());
+        when(mockLockService.tryAcquireLock(anyString(), anyLong())).thenReturn(UUID.randomUUID().toString());
+        when(mockLockService.tryAcquireLockWithWait(anyString(), anyLong())).thenReturn(UUID.randomUUID().toString());
+        when(mockLockService.tryAcquireLockWithWaitlong(anyString(), anyLong())).thenReturn(UUID.randomUUID().toString());
+        when(mockLockService.releaseLock(anyString(), anyString())).thenReturn(true);
+        when(mockLockService.isLocked(anyString())).thenReturn(false);
+        when(mockLockService.extendLock(anyString(), anyString(), anyLong())).thenReturn(true);
+        doNothing().when(mockLockService).forceReleaseLock(anyString());
+
+        return mockLockService;
     }
 }

@@ -388,21 +388,47 @@ jobs:
       - name: Start Backend
         run: |
           cd backend
-          nohup java -jar target/*.jar --spring.profiles.active=test > backend.log 2>&1 &
+          # 🔴 使用明確的 JAR 路徑，避免 shell expansion 問題
+          JAR_FILE="target/ecommerce-1.0.0-SNAPSHOT.jar"
+          if [ ! -f "$JAR_FILE" ]; then
+            echo "ERROR: JAR file not found: $JAR_FILE"
+            ls -la target/
+            exit 1
+          fi
+          echo "Starting backend with JAR: $JAR_FILE"
+          nohup java -jar "$JAR_FILE" --spring.profiles.active=test > backend.log 2>&1 &
           echo "Backend PID: $!"
+          # 🔴 等待一下讓子程序真正啟動
+          sleep 3
+          if [ -f backend.log ]; then
+            echo "=== Backend log (first 20 lines) ==="
+            head -20 backend.log
+          fi
 
       - name: Wait for Backend Health
         run: |
+          # 🔴 等待 Backend 啟動
           for i in {1..30}; do
-            if curl -fsS http://localhost:8080/actuator/health 2>/dev/null; then
+            if curl -fsS http://localhost:8080/api/actuator/health 2>/dev/null; then
               echo "Backend is ready"
               exit 0
             fi
             echo "Waiting for backend... attempt $i"
             sleep 2
           done
-          echo "Backend failed to start"
-          cat backend.log
+          echo "=== Backend failed to start ==="
+          echo "=== Backend log (last 50 lines) ==="
+          if [ -f backend/backend.log ]; then
+            tail -50 backend/backend.log
+          elif [ -f backend.log ]; then
+            tail -50 backend.log
+          else
+            echo "No backend.log found!"
+            echo "=== Check if Java process is running ==="
+            ps aux | grep java || echo "No Java process found"
+            echo "=== List backend directory ==="
+            ls -la backend/
+          fi
           exit 1
 
       - name: Start Frontend

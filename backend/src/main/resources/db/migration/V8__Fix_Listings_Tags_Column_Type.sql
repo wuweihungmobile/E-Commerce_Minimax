@@ -22,7 +22,7 @@ SELECT id, tenant_id, tags FROM listings WHERE tags IS NOT NULL;
 -- 演算法：移除 {}，用 "," 分隔，加上 [ 和 ]
 UPDATE listings
 SET tags = '[' ||
-    substring(tags from 2 for length(tags) - 2) ||
+    substring(tags::text from 2 for length(tags::text) - 2) ||
 ']'
 WHERE tags IS NOT NULL
   AND pg_typeof(tags)::text = 'text[]'

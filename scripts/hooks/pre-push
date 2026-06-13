@@ -1,13 +1,10 @@
 #!/usr/bin/env sh
 # =============================================
-# AISDLC v0.09: Pre-push Hook (最終把關)
-# 在 git push 前執行完整 CI 模擬（使用 act 或本地測試）
+# AISDLC v0.09: Pre-Push Hook（嚴格版）
+# 目的：確保 push 前已執行本地 CI 驗證
+# 若無驗證記錄，直接執行 act 完整驗證
 # 跳過方式：git push --no-verify
 # 安裝方式：scripts/install-hooks.sh
-# =============================================
-# 環境變數：
-#   AUTO_RUN_ACT=1   自動執行 act（不等詢問；適合 CI/自動化）
-#   SKIP_ACT_PROMPT=1  跳過互動詢問，且預設不跑 act
 # =============================================
 
 set -e
@@ -15,102 +12,79 @@ set -e
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 cd "$ROOT_DIR"
 
-echo "🚀 Pre-push hook: 執行最終 CI 模擬檢查"
+echo "=========================================="
+echo "🔒 Pre-Push CI 驗證檢查"
 echo "=========================================="
 
-# 取得要推送到哪個遠端分支
-while read local_ref local_sha remote_ref remote_sha; do
-  if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
-    # 分支被刪除，不執行檢查
-    continue
-  fi
-  BRANCH=$(echo "$remote_ref" | sed 's|refs/heads/||')
-  echo "📤 Pushing to branch: $BRANCH"
-done
+# 取得目前 commit hash
+CURRENT_COMMIT=$(git rev-parse HEAD)
+CI_VALIDATED_FILE="$ROOT_DIR/.ci-validated"
 
-# 1. 檢查 act 工具是否安裝
-if command -v act >/dev/null 2>&1; then
-  echo "✅ act 已安裝"
+# 檢查是否已有針對此 commit 的驗證
+if [ -f "$CI_VALIDATED_FILE" ]; then
+    VALIDATED_COMMIT=$(cat "$CI_VALIDATED_FILE" 2>/dev/null | head -1)
+    VALIDATED_TIME=$(cat "$CI_VALIDATED_FILE" 2>/dev/null | tail -1)
 
-  # 決定是否需要詢問
-  SHOULD_RUN=0
+    if [ "$VALIDATED_COMMIT" = "$CURRENT_COMMIT" ]; then
+        echo "✅ CI 驗證記錄：已驗證 commit $VALIDATED_COMMIT"
+        echo "📅 驗證時間：$VALIDATED_TIME"
+        echo ""
+        echo "允許 push ✅"
+        exit 0
+    fi
+fi
 
-  if [ "$AUTO_RUN_ACT" = "1" ]; then
-    echo "🔧 AUTO_RUN_ACT=1，自動執行 act..."
-    SHOULD_RUN=1
-  elif [ "$SKIP_ACT_PROMPT" = "1" ]; then
-    echo "⚠️  SKIP_ACT_PROMPT=1，跳過 act（請確認本機已跑過 'make validate-all'）"
-    SHOULD_RUN=0
-  elif [ -t 0 ] && [ -t 1 ]; then
-    # 僅在 TTY 環境才詢問
-    echo "📋 Act jobs 預覽："
-    act -W .github/workflows/act-compat.yml -l 2>&1 | tail -10
+echo ""
+echo "⚠️  無有效 CI 驗證記錄"
+echo "   目前 commit：$CURRENT_COMMIT"
+echo ""
+echo "=========================================="
+echo "🔴 開始執行本地 CI 驗證..."
+echo "=========================================="
+echo ""
+
+# 檢查 act 是否可用
+if ! command -v act &> /dev/null; then
+    echo "❌ 錯誤：找不到 'act' 命令"
+    echo ""
+    echo "📦 請先安裝 act："
+    echo "   macOS: brew install act"
+    echo "   Linux: curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh | sh"
+    echo ""
+    echo "⚠️  若暫時無法安裝，可使用替代方案："
+    echo "   cd backend && mvn verify -Dspring.profiles.active=integration-test"
+    echo ""
+    exit 1
+fi
+
+# 執行 act 完整 CI 驗證
+cd "$ROOT_DIR"
+if act -W .github/workflows/act-compat.yml; then
+    # 驗證成功，創建標記檔案
+    VALIDATED_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "$CURRENT_COMMIT" > "$CI_VALIDATED_FILE"
+    echo "$VALIDATED_TIME" >> "$CI_VALIDATED_FILE"
 
     echo ""
-    echo "⚠️  即將執行 act 模擬完整 CI 流程（耗時約 5-15 分鐘）"
-    echo "   跳過 act：輸入 n / git push --no-verify"
-    printf "繼續執行嗎？[y/N] "
-    # 從 /dev/tty 讀取，避免在 pipe 環境下卡住
-    if read -r REPLY </dev/tty 2>/dev/null; then
-      case "$REPLY" in
-        [Yy]|[Yy][Ee][Ss])
-          SHOULD_RUN=1
-          ;;
-        *)
-          SHOULD_RUN=0
-          ;;
-      esac
-    else
-      # 無法讀取（例如 CI/非互動環境）— 預設不跑 act，跑 fallback
-      echo ""
-      echo "⚠️  無法讀取使用者輸入（non-TTY 環境），跳過 act 改跑快速檢查"
-      SHOULD_RUN=0
-    fi
-  else
-    # non-TTY 環境但未設 SKIP_ACT_PROMPT — 走快速檢查
-    echo "ℹ️  non-TTY 環境，跳過 act 詢問，改跑快速檢查"
-    SHOULD_RUN=0
-  fi
-
-  if [ "$SHOULD_RUN" = "1" ]; then
-    echo "🚀 執行 act CI 模擬..."
-    if ! act -W .github/workflows/act-compat.yml; then
-      echo "❌ act CI 模擬失敗，請修正後再 push"
-      exit 1
-    fi
-    echo "✅ act CI 模擬通過"
-  else
-    echo "⏭️  跳過 act 模擬"
-    echo "   強烈建議：本機先跑 'make validate-all' 或 'act -W .github/workflows/act-compat.yml'"
-  fi
+    echo "=========================================="
+    echo "✅ CI 驗證通過！已記錄驗證結果"
+    echo "📅 驗證時間：$VALIDATED_TIME"
+    echo "=========================================="
+    exit 0
 else
-  echo "⚠️  act 未安裝，跳過本地 CI 模擬"
-  echo "   強烈建議安裝 act：brew install act"
-  echo "   安裝後可在本機模擬完整 CI 流程"
-fi
-
-# 2. Fallback / 額外安全檢查（無論是否跑 act，都執行快速檢查）
-echo ""
-echo "🔍 執行快速本地檢查..."
-
-# Backend 編譯檢查
-if [ -d "backend" ]; then
-  echo "  - Backend: mvn checkstyle:check + compile"
-  (cd backend && mvn checkstyle:check -q && mvn compile -DskipTests -q) || {
-    echo "❌ Backend 檢查失敗"
+    echo ""
+    echo "=========================================="
+    echo "🔴 CI 驗證失敗！禁止 push！"
+    echo "=========================================="
+    echo ""
+    echo "❌ 錯誤：本地 CI 驗證未通過"
+    echo ""
+    echo "📋 請修復問題後重新執行驗證："
+    echo "   act -W .github/workflows/act-compat.yml"
+    echo ""
+    echo "⚠️  提示："
+    echo "   - 詳細錯誤訊息請查看上方日誌"
+    echo "   - 若要跳過驗證（不建議），使用：git push --no-verify"
+    echo ""
     exit 1
-  }
 fi
-
-# Frontend lint + type check
-if [ -d "frontend" ]; then
-  echo "  - Frontend: npm run lint + type-check"
-  (cd frontend && npm run lint && npm run type-check) || {
-    echo "❌ Frontend 檢查失敗"
-    exit 1
-  }
-fi
-
-echo ""
-echo "✅ Pre-push checks passed! 允許 push"
-exit 0

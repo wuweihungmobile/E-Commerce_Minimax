@@ -73,7 +73,7 @@ jobs:
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: redis-dev-password
       REDIS_PASSWORD: redis-dev-password
-      JWT_SECRET: act-test-secret-key-must-be-at-least-256-bits-long-for-hs256-algo
+      JWT_SECRET: testSecretKeyForJwtTokenGenerationThatIsAtLeast256BitsLongForTesting
       JWT_ACCESS_TOKEN_EXPIRATION: 900000
       JWT_REFRESH_TOKEN_EXPIRATION: 2592000000
 
@@ -107,8 +107,15 @@ jobs:
           echo "=== Test PostgreSQL ==="
           PGPASSWORD=koala5 psql -h localhost -U koala -d nextkeytest -c "SELECT 1;" || exit 1
           echo "=== Test Redis ==="
-          redis-cli -a redis-dev-password --no-auth-warning ping | grep -q PONG || exit 1
+          redis-cli -h localhost -a redis-dev-password --no-auth-warning ping | grep -q PONG || exit 1
           echo "All services are healthy"
+
+      - name: Reset Database (Avoid duplicate key errors)
+        run: |
+          echo "=== Resetting Database ==="
+          PGPASSWORD=koala5 psql -h localhost -U koala -d postgres -c "DROP DATABASE IF EXISTS nextkeytest;"
+          PGPASSWORD=koala5 psql -h localhost -U koala -d postgres -c "CREATE DATABASE nextkeytest;"
+          echo "=== Database Reset Complete ==="
 
       - name: Compile Backend
         run: |

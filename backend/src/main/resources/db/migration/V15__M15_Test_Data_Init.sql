@@ -132,13 +132,13 @@ ON CONFLICT DO NOTHING;
 -- =============================================
 -- 8. 初始化 CMS_ENABLED Feature Toggle
 -- =============================================
-INSERT INTO tenant_feature_toggles (id, tenant_id, feature_key, is_enabled, enabled_at, created_at)
+INSERT INTO tenant_feature_toggles (id, tenant_id, feature_key, is_enabled, config, created_at)
 VALUES (
     gen_random_uuid(),
     '11111111-1111-1111-1111-111111111111',
     'CMS_ENABLED',
     true,
-    CURRENT_TIMESTAMP,
+    '{}',
     CURRENT_TIMESTAMP
 )
 ON CONFLICT DO NOTHING;

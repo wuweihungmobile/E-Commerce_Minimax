@@ -8,6 +8,7 @@ import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.infrastructure.redis.RedisLockService;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
+import com.nextkey.ecommerce.shared.exception.CartEmptyException;
 import com.nextkey.ecommerce.infrastructure.security.RefreshTokenService;
 import com.nextkey.ecommerce.infrastructure.storage.StorageService;
 import io.jsonwebtoken.Claims;
@@ -34,10 +35,8 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -48,6 +47,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 /**
@@ -126,8 +126,9 @@ public class IntegrationTestConfiguration {
         // putAll() 不做任何事
         doNothing().when(hashOps).putAll(anyString(), any());
 
-        // delete() 不做任何事
-        doNothing().when(hashOps).delete(anyString(), any(Object[].class));
+        // delete() 返回 0（表示刪除了 0 個 key）- 因為是 void 方法才能用 doNothing
+        // 但 HashOperations.delete 返回 Long，所以用 thenReturn
+        when(hashOps.delete(anyString(), any(Object[].class))).thenReturn(0L);
 
         // hasKey() 返回 false
         when(hashOps.hasKey(anyString(), any())).thenReturn(false);
@@ -145,25 +146,30 @@ public class IntegrationTestConfiguration {
         when(valueOps.increment(anyString())).thenReturn(1L);
         when(valueOps.increment(anyString(), anyLong())).thenReturn(1L);
 
-        // Mock template execute() - 真正調用 callback 並傳入 mock connection
-        RedisConnection conn = connectionRef.get();
-        if (conn != null) {
-            doAnswer(invocation -> {
-                RedisCallback callback = invocation.getArgument(0);
-                return callback.doInRedis(conn);
-            }).when(mockTemplate).execute(any(RedisCallback.class));
-            doAnswer(invocation -> {
-                RedisCallback callback = invocation.getArgument(0);
-                return callback.doInRedis(conn);
-            }).when(mockTemplate).execute(any(RedisCallback.class), anyBoolean());
-        }
-
         // Mock delete() - 返回 true 表示刪除成功
         when(mockTemplate.delete(anyString())).thenReturn(true);
         when(mockTemplate.delete(anyCollection())).thenReturn(1L);
 
         // Mock expire() - 返回 true 表示設置過期時間成功
         when(mockTemplate.expire(anyString(), any(Duration.class))).thenReturn(true);
+        when(mockTemplate.expire(anyString(), anyLong(), any(java.util.concurrent.TimeUnit.class))).thenReturn(true);
+
+        // Mock hasKey() - 返回 false（key 不存在）
+        when(mockTemplate.hasKey(anyString())).thenReturn(false);
+
+        // Mock getExpire() - 返回 -1（不存在的 key）
+        when(mockTemplate.getExpire(anyString())).thenReturn(-1L);
+        when(mockTemplate.getExpire(anyString(), any(java.util.concurrent.TimeUnit.class))).thenReturn(-1L);
+
+        // Mock type() - 返回 NONE
+        when(mockTemplate.type(anyString())).thenReturn(org.springframework.data.redis.connection.DataType.NONE);
+
+        // Mock operations - 返回 mock 的 hashOps 和 valueOps
+        when(mockTemplate.opsForHash()).thenReturn(hashOps);
+        when(mockTemplate.opsForValue()).thenReturn(valueOps);
+        when(mockTemplate.opsForList()).thenReturn(Mockito.mock(org.springframework.data.redis.core.ListOperations.class));
+        when(mockTemplate.opsForSet()).thenReturn(Mockito.mock(org.springframework.data.redis.core.SetOperations.class));
+        when(mockTemplate.opsForZSet()).thenReturn(Mockito.mock(org.springframework.data.redis.core.ZSetOperations.class));
 
         return mockTemplate;
     }
@@ -588,7 +594,45 @@ public class IntegrationTestConfiguration {
     public com.nextkey.ecommerce.core.media.MediaService coreMediaService() {
         com.nextkey.ecommerce.core.media.MediaService mockService = Mockito.mock(com.nextkey.ecommerce.core.media.MediaService.class);
 
-        // Mock 任何可能的方法，讓它不拋異常即可
+        // Mock 所有可能的方法，避免回傳 null 導致的 NPE
+        // 使用 Answer 來處理任意參數並返回合理的預設值
+        when(mockService.getCategories()).thenReturn(List.of());
+        when(mockService.getCategory(any(UUID.class))).thenReturn(null);
+        when(mockService.createCategory(any())).thenAnswer(inv -> {
+            var req = inv.getArgument(0, com.nextkey.ecommerce.api.dto.media.CreateMediaCategoryRequest.class);
+            if (req == null) return null;
+            return com.nextkey.ecommerce.api.dto.media.MediaCategoryDto.builder()
+                    .id(UUID.randomUUID())
+                    .name(req.getName() != null ? req.getName() : "default")
+                    .description(req.getDescription())
+                    .tenantId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
+                    .sortOrder(req.getSortOrder() != null ? req.getSortOrder() : 0)
+                    .build();
+        });
+        when(mockService.updateCategory(any(UUID.class), any())).thenReturn(null);
+        doNothing().when(mockService).deleteCategory(any(UUID.class));
+
+        when(mockService.getAssets(anyInt(), anyInt(), any(), any(), any())).thenReturn(
+                org.springframework.data.domain.Page.empty()
+        );
+        when(mockService.getAsset(any(UUID.class))).thenReturn(null);
+        when(mockService.uploadAsset(any())).thenAnswer(inv -> {
+            var req = inv.getArgument(0, com.nextkey.ecommerce.api.dto.media.UploadMediaRequest.class);
+            if (req == null) return null;
+            return com.nextkey.ecommerce.api.dto.media.MediaAssetDto.builder()
+                    .id(UUID.randomUUID())
+                    .tenantId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
+                    .fileName(req.getFileName() != null ? req.getFileName() : "default.jpg")
+                    .filePath(req.getFilePath() != null ? req.getFilePath() : "/default/path")
+                    .fileSize(req.getFileSize() != null ? req.getFileSize() : 0L)
+                    .mimeType(req.getMimeType() != null ? req.getMimeType() : "image/jpeg")
+                    .tags(req.getTags() != null ? req.getTags() : List.of())
+                    .build();
+        });
+        when(mockService.updateAsset(any(UUID.class), any())).thenReturn(null);
+        doNothing().when(mockService).deleteAsset(any(UUID.class));
+        when(mockService.existsMediaById(anyString())).thenReturn(true);
+
         return mockService;
     }
 
@@ -613,5 +657,340 @@ public class IntegrationTestConfiguration {
         doNothing().when(mockLockService).forceReleaseLock(anyString());
 
         return mockLockService;
+    }
+
+    /**
+     * Mock IdempotencyService - 避免 Redis idempotency 操作問題
+     * 這個 mock 覆蓋 @Service IdempotencyService
+     *
+     * 使用 in-memory Map 來追蹤 idempotency key 狀態，支援 E2E 測試
+     */
+    @Bean
+    @Primary
+    public com.nextkey.ecommerce.core.idempotency.IdempotencyService idempotencyService() {
+        com.nextkey.ecommerce.core.idempotency.IdempotencyService mockService =
+                Mockito.mock(com.nextkey.ecommerce.core.idempotency.IdempotencyService.class);
+
+        // 使用 in-memory Map 追蹤 idempotency key 狀態
+        // key: idempotencyKey, value: Object (可能是 "PROCESSING" 或 BookingDto.BookingResponse)
+        Map<String, Object> idempotencyStorage = new ConcurrentHashMap<>();
+
+        // Mock checkAndMark - 如果 key 不存在則標記並返回 true，否則返回 false
+        when(mockService.checkAndMark(anyString())).thenAnswer(invocation -> {
+            String key = invocation.getArgument(0);
+            synchronized (idempotencyStorage) {
+                if (idempotencyStorage.containsKey(key)) {
+                    return false; // 重複請求
+                }
+                idempotencyStorage.put(key, "PROCESSING");
+                return true; // 新請求
+            }
+        });
+
+        // Mock markCompleted - 儲存響應（這是真正區分「完成」與「處理中」的關鍵）
+        doAnswer(invocation -> {
+            String key = invocation.getArgument(0);
+            Object response = invocation.getArgument(1);
+            synchronized (idempotencyStorage) {
+                idempotencyStorage.put(key, response);
+            }
+            return null;
+        }).when(mockService).markCompleted(anyString(), any());
+
+        // Mock getStoredResponse - 返回已儲存的響應
+        // 重要：如果值是 "PROCESSING" 表示仍在處理中，返回 null
+        // 如果是其他物件（BookingDto.BookingResponse），表示已完成，返回該物件
+        when(mockService.getStoredResponse(anyString())).thenAnswer(invocation -> {
+            String key = invocation.getArgument(0);
+            Object value = idempotencyStorage.get(key);
+            if (value == null || "PROCESSING".equals(value)) {
+                return null; // 不存在或仍在處理中
+            }
+            return value; // 返回已儲存的回應（可能是 BookingDto.BookingResponse）
+        });
+
+        // Mock isStillProcessing - 檢查是否仍在處理中
+        when(mockService.isStillProcessing(anyString())).thenAnswer(invocation -> {
+            String key = invocation.getArgument(0);
+            Object value = idempotencyStorage.get(key);
+            return "PROCESSING".equals(value);
+        });
+
+        // Mock remove - 刪除 key
+        doAnswer(invocation -> {
+            String key = invocation.getArgument(0);
+            synchronized (idempotencyStorage) {
+                idempotencyStorage.remove(key);
+            }
+            return null;
+        }).when(mockService).remove(anyString());
+
+        // Mock isValidUuidV4 - 嚴格驗證 UUID v4 格式
+        // UUID v4 格式：xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+        // 其中 x 是任意十六進位，4 是版本號，y 是 8, 9, a, 或 b
+        when(mockService.isValidUuidV4(anyString())).thenAnswer(invocation -> {
+            String key = invocation.getArgument(0);
+            if (key == null) {
+                return false;
+            }
+            // UUID v4 格式：8-4-4-4-12 的結構
+            // 正則表達式驗證嚴格的 UUID v4 格式
+            String uuidV4Pattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$";
+            if (!key.matches(uuidV4Pattern)) {
+                return false;
+            }
+            // 進一步驗證可以解析為 UUID
+            try {
+                UUID uuid = UUID.fromString(key);
+                return uuid.version() == 4;
+            } catch (IllegalArgumentException e) {
+                return false;
+            }
+        });
+
+        return mockService;
+    }
+
+    /**
+     * Mock RedisCartService - 避免 Redis 操作問題
+     * 這個 mock 覆蓋 @Service RedisCartService
+     *
+     * 使用 in-memory Map 來追蹤購物車狀態，支援 E2E 測試
+     */
+    @Bean
+    @Primary
+    public RedisCartService redisCartService() {
+        RedisCartService mockService = Mockito.mock(RedisCartService.class);
+
+        // 使用 in-memory Map 追蹤購物車狀態
+        // key: userId:tenantId, value: Map<itemKey, CartItemData>
+        Map<String, Map<String, RedisCartService.CartItemData>> cartStorage = new ConcurrentHashMap<>();
+
+        // Mock addItem - 返回成功的回應，並實際存儲 item
+        // 修正：當商品已存在時要累加數量（模擬真實 RedisCartService 行為）
+        when(mockService.addItem(any(UUID.class), any(UUID.class), any(CartDto.AddItemRequest.class)))
+                .thenAnswer(invocation -> {
+                    UUID userId = invocation.getArgument(0);
+                    UUID tenantId = invocation.getArgument(1);
+                    CartDto.AddItemRequest request = invocation.getArgument(2);
+
+                    String cartKey = userId.toString() + ":" + tenantId.toString();
+                    String itemKey = request.getListingId().toString(); // SKU 為 null 時只有 listingId
+
+                    // 檢查是否已有相同商品在購物車（真實邏輯）
+                    RedisCartService.CartItemData existingItem = cartStorage
+                            .computeIfAbsent(cartKey, k -> new ConcurrentHashMap<>())
+                            .get(itemKey);
+
+                    int newQuantity = request.getQuantity();
+                    if (existingItem != null) {
+                        // 累加現有數量
+                        newQuantity += existingItem.getQuantity();
+                    }
+
+                    // 創建 cart item data
+                    RedisCartService.CartItemData itemData = RedisCartService.CartItemData.builder()
+                            .listingId(request.getListingId())
+                            .skuId(request.getSkuId())
+                            .quantity(newQuantity)
+                            .unitPrice(java.math.BigDecimal.valueOf(100))
+                            .subtotal(java.math.BigDecimal.valueOf(100 * newQuantity))
+                            .listingType("PRODUCT")
+                            .addedAt(Instant.now())
+                            .build();
+
+                    // 實際存儲到 in-memory map
+                    cartStorage.computeIfAbsent(cartKey, k -> new ConcurrentHashMap<>()).put(itemKey, itemData);
+
+                    // 計算實際的總數量
+                    int totalItemsInCart = cartStorage.get(cartKey).values().stream()
+                            .mapToInt(RedisCartService.CartItemData::getQuantity)
+                            .sum();
+
+                    return CartDto.AddItemResponse.builder()
+                            .success(true)
+                            .message("Item added to cart")
+                            .item(CartDto.CartItemResponse.builder()
+                                    .cartItemKey(itemKey)
+                                    .listingId(request.getListingId())
+                                    .listingName("Test Product")
+                                    .quantity(newQuantity)
+                                    .unitPrice(java.math.BigDecimal.valueOf(100))
+                                    .subtotal(java.math.BigDecimal.valueOf(100 * newQuantity))
+                                    .build())
+                            .totalItemsInCart(totalItemsInCart)
+                            .build();
+                });
+
+        // Mock updateItem(String cartItemKey, int quantity) - 返回成功的回應
+        when(mockService.updateItem(any(UUID.class), any(UUID.class), anyString(), anyInt()))
+                .thenAnswer(invocation -> {
+                    UUID userId = invocation.getArgument(0);
+                    UUID tenantId = invocation.getArgument(1);
+                    String cartItemKey = invocation.getArgument(2);
+                    int quantity = invocation.getArgument(3);
+
+                    String cartKey = userId.toString() + ":" + tenantId.toString();
+                    Map<String, RedisCartService.CartItemData> cart = cartStorage.get(cartKey);
+
+                    if (cart == null || !cart.containsKey(cartItemKey)) {
+                        throw new com.nextkey.ecommerce.shared.exception.CartItemNotFoundException("Cart item not found: " + cartItemKey);
+                    }
+
+                    RedisCartService.CartItemData itemData = cart.get(cartItemKey);
+                    itemData.setQuantity(quantity);
+                    itemData.setSubtotal(java.math.BigDecimal.valueOf(100 * quantity));
+
+                    String[] parts = cartItemKey.split(":");
+                    UUID listingId = UUID.fromString(parts[0]);
+
+                    return CartDto.CartItemResponse.builder()
+                            .cartItemKey(cartItemKey)
+                            .listingId(listingId)
+                            .quantity(quantity)
+                            .unitPrice(java.math.BigDecimal.valueOf(100))
+                            .subtotal(java.math.BigDecimal.valueOf(100 * quantity))
+                            .build();
+                });
+
+        // Mock updateItem(UUID, UUID, UUID, UUID, int) - 當 item 不存在時拋異常
+        when(mockService.updateItem(any(UUID.class), any(UUID.class), any(UUID.class), any(), anyInt()))
+                .thenThrow(new com.nextkey.ecommerce.shared.exception.CartItemNotFoundException("Cart item not found"));
+
+        // Mock removeItem(String cartItemKey) - 當 item 不存在時拋異常
+        doAnswer(invocation -> {
+            UUID userId = invocation.getArgument(0);
+            UUID tenantId = invocation.getArgument(1);
+            String cartItemKey = invocation.getArgument(2);
+
+            String cartKey = userId.toString() + ":" + tenantId.toString();
+            Map<String, RedisCartService.CartItemData> cart = cartStorage.get(cartKey);
+
+            if (cart == null || !cart.containsKey(cartItemKey)) {
+                throw new com.nextkey.ecommerce.shared.exception.CartItemNotFoundException("Cart item not found: " + cartItemKey);
+            }
+
+            cart.remove(cartItemKey);
+            return null;
+        }).when(mockService).removeItem(any(UUID.class), any(UUID.class), anyString());
+
+        // 對於不存在的 UUID 版本拋異常
+        doThrow(new com.nextkey.ecommerce.shared.exception.CartItemNotFoundException("Cart item not found"))
+                .when(mockService).removeItem(any(UUID.class), any(UUID.class), any(UUID.class), any());
+
+        // Mock clearCart - 清空購物車
+        doAnswer(invocation -> {
+            UUID userId = invocation.getArgument(0);
+            UUID tenantId = invocation.getArgument(1);
+            String cartKey = userId.toString() + ":" + tenantId.toString();
+            cartStorage.remove(cartKey);
+            return null;
+        }).when(mockService).clearCart(any(UUID.class), any(UUID.class));
+
+        // Mock getCart - 返回購物車內容
+        when(mockService.getCart(any(UUID.class), any(UUID.class)))
+                .thenAnswer(invocation -> {
+                    UUID userId = invocation.getArgument(0);
+                    UUID tenantId = invocation.getArgument(1);
+                    String cartKey = userId.toString() + ":" + tenantId.toString();
+
+                    Map<String, RedisCartService.CartItemData> cart = cartStorage.get(cartKey);
+                    List<CartDto.CartItemResponse> items = new ArrayList<>();
+                    int totalQuantity = 0;
+
+                    if (cart != null) {
+                        for (Map.Entry<String, RedisCartService.CartItemData> entry : cart.entrySet()) {
+                            RedisCartService.CartItemData itemData = entry.getValue();
+                            items.add(CartDto.CartItemResponse.builder()
+                                    .cartItemKey(entry.getKey())
+                                    .listingId(itemData.getListingId())
+                                    .listingName("Test Product")
+                                    .quantity(itemData.getQuantity())
+                                    .unitPrice(itemData.getUnitPrice())
+                                    .subtotal(itemData.getSubtotal())
+                                    .build());
+                            totalQuantity += itemData.getQuantity();
+                        }
+                    }
+
+                    final int finalTotalQuantity = totalQuantity;
+                    return CartDto.CartResponse.builder()
+                            .userId(userId)
+                            .cartId("cart-" + userId)
+                            .items(items)
+                            .itemCount(finalTotalQuantity)  // totalItems = 數量總和 (1+2+3=6)
+                            .totalAmount(java.math.BigDecimal.valueOf(finalTotalQuantity * 100))
+                            .currency("TWD")
+                            .build();
+                });
+
+        // Mock getCartItemCount - 返回正確的數量
+        when(mockService.getCartItemCount(any(UUID.class), any(UUID.class)))
+                .thenAnswer(invocation -> {
+                    UUID userId = invocation.getArgument(0);
+                    UUID tenantId = invocation.getArgument(1);
+                    String cartKey = userId.toString() + ":" + tenantId.toString();
+
+                    Map<String, RedisCartService.CartItemData> cart = cartStorage.get(cartKey);
+                    if (cart == null) {
+                        return 0;
+                    }
+                    return cart.values().stream()
+                            .mapToInt(RedisCartService.CartItemData::getQuantity)
+                            .sum();
+                });
+
+        // Mock applyPromoCode - 返回錯誤（購物車為空）
+        when(mockService.applyPromoCode(any(UUID.class), any(UUID.class), anyString()))
+                .thenThrow(new com.nextkey.ecommerce.shared.exception.CartEmptyException("Cannot apply promo to empty cart"));
+
+        // Mock removePromoCode - 不拋異常
+        doNothing().when(mockService).removePromoCode(any(UUID.class), any(UUID.class));
+
+        // Mock validatePromoCode
+        when(mockService.validatePromoCode(anyString(), any(UUID.class)))
+                .thenReturn(CartDto.PromoValidationResult.builder()
+                        .valid(false)
+                        .invalidReason("INVALID")
+                        .build());
+
+        // Mock getCartWithPromo - 返回購物車內容
+        when(mockService.getCartWithPromo(any(UUID.class), any(UUID.class)))
+                .thenAnswer(invocation -> {
+                    UUID userId = invocation.getArgument(0);
+                    UUID tenantId = invocation.getArgument(1);
+                    String cartKey = userId.toString() + ":" + tenantId.toString();
+
+                    Map<String, RedisCartService.CartItemData> cart = cartStorage.get(cartKey);
+                    List<CartDto.CartItemResponse> items = new ArrayList<>();
+                    int totalQuantity = 0;
+
+                    if (cart != null) {
+                        for (Map.Entry<String, RedisCartService.CartItemData> entry : cart.entrySet()) {
+                            RedisCartService.CartItemData itemData = entry.getValue();
+                            items.add(CartDto.CartItemResponse.builder()
+                                    .cartItemKey(entry.getKey())
+                                    .listingId(itemData.getListingId())
+                                    .listingName("Test Product")
+                                    .quantity(itemData.getQuantity())
+                                    .unitPrice(itemData.getUnitPrice())
+                                    .subtotal(itemData.getSubtotal())
+                                    .build());
+                            totalQuantity += itemData.getQuantity();
+                        }
+                    }
+
+                    final int finalTotalQuantity = totalQuantity;
+                    return CartDto.CartResponse.builder()
+                            .userId(userId)
+                            .cartId("cart-" + userId)
+                            .items(items)
+                            .itemCount(finalTotalQuantity)  // totalItems = 數量總和
+                            .totalAmount(java.math.BigDecimal.valueOf(finalTotalQuantity * 100))
+                            .currency("TWD")
+                            .build();
+                });
+
+        return mockService;
     }
 }

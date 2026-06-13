@@ -5,6 +5,7 @@ import com.nextkey.ecommerce.api.dto.media.CreateMediaCategoryRequest;
 import com.nextkey.ecommerce.api.dto.media.UpdateMediaCategoryRequest;
 import com.nextkey.ecommerce.api.dto.media.UpdateMediaRequest;
 import com.nextkey.ecommerce.api.dto.media.UploadMediaRequest;
+import com.nextkey.ecommerce.core.media.MediaService;
 import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
 import com.nextkey.ecommerce.domain.model.media.MediaCategory;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
@@ -23,6 +24,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -32,8 +34,12 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -78,6 +84,10 @@ class M18MediaIntegrationTest {
 
     @MockBean
     private com.nextkey.ecommerce.core.feature.FeatureToggleService featureToggleService;
+
+    // MediaService 來自 IntegrationTestConfiguration 的 @Primary mock bean
+    @Autowired
+    private MediaService mediaService;
 
     private static final String MEDIA_URL = "/v2/media";
     private static final String CATEGORIES_URL = "/v2/media/categories";
@@ -135,6 +145,100 @@ class M18MediaIntegrationTest {
                 .isActive(true)
                 .build();
         testAsset = mediaAssetRepository.save(testAsset);
+
+        // 重新配置 MediaService mock - 使用 lenient() 避免與 IntegrationTestConfiguration 的靜態配置衝突
+        // 這些配置會覆蓋 IntegrationTestConfiguration 中的預設值，根據動態的 testTenantId 返回正確資料
+        lenient().when(mediaService.getCategories()).thenReturn(
+                mediaCategoryRepository.findByTenantIdOrderBySortOrderAsc(testTenantId)
+                        .stream().map(this::toMediaCategoryDto).toList()
+        );
+        lenient().when(mediaService.getCategory(any(UUID.class))).thenAnswer(inv -> {
+            UUID id = inv.getArgument(0);
+            return mediaCategoryRepository.findById(id).map(this::toMediaCategoryDto).orElse(null);
+        });
+        lenient().when(mediaService.createCategory(any())).thenAnswer(inv -> {
+            var req = inv.getArgument(0, CreateMediaCategoryRequest.class);
+            if (req == null) return null;
+            return com.nextkey.ecommerce.api.dto.media.MediaCategoryDto.builder()
+                    .id(UUID.randomUUID())
+                    .name(req.getName() != null ? req.getName() : "default")
+                    .description(req.getDescription())
+                    .tenantId(testTenantId)
+                    .sortOrder(req.getSortOrder() != null ? req.getSortOrder() : 0)
+                    .build();
+        });
+        lenient().when(mediaService.updateCategory(any(UUID.class), any())).thenAnswer(inv -> {
+            UUID id = inv.getArgument(0);
+            var req = inv.getArgument(1, UpdateMediaCategoryRequest.class);
+            return mediaCategoryRepository.findById(id).map(cat -> {
+                if (req != null) {
+                    if (req.getName() != null) cat.setName(req.getName());
+                    if (req.getDescription() != null) cat.setDescription(req.getDescription());
+                }
+                return toMediaCategoryDto(cat);
+            }).orElse(null);
+        });
+        lenient().doNothing().when(mediaService).deleteCategory(any(UUID.class));
+
+        lenient().when(mediaService.getAssets(anyInt(), anyInt(), any(), any(), any())).thenReturn(
+                mediaAssetRepository.findByTenantIdAndIsDeletedFalse(testTenantId,
+                        org.springframework.data.domain.PageRequest.of(0, 10))
+                        .map(this::toMediaAssetDto)
+        );
+        lenient().when(mediaService.getAsset(any(UUID.class))).thenAnswer(inv -> {
+            UUID id = inv.getArgument(0);
+            return mediaAssetRepository.findActiveByIdAndTenantId(id, testTenantId)
+                    .map(this::toMediaAssetDto).orElse(null);
+        });
+        lenient().when(mediaService.uploadAsset(any())).thenAnswer(inv -> {
+            var req = inv.getArgument(0, UploadMediaRequest.class);
+            if (req == null) return null;
+            return com.nextkey.ecommerce.api.dto.media.MediaAssetDto.builder()
+                    .id(UUID.randomUUID())
+                    .tenantId(testTenantId)
+                    .fileName(req.getFileName() != null ? req.getFileName() : "default.jpg")
+                    .filePath(req.getFilePath() != null ? req.getFilePath() : "/default/path")
+                    .fileSize(req.getFileSize() != null ? req.getFileSize() : 0L)
+                    .mimeType(req.getMimeType() != null ? req.getMimeType() : "image/jpeg")
+                    .tags(req.getTags() != null ? req.getTags() : List.of())
+                    .build();
+        });
+        lenient().when(mediaService.updateAsset(any(UUID.class), any())).thenAnswer(inv -> {
+            UUID id = inv.getArgument(0);
+            var req = inv.getArgument(1, UpdateMediaRequest.class);
+            return mediaAssetRepository.findActiveByIdAndTenantId(id, testTenantId).map(asset -> {
+                if (req != null && req.getTags() != null) asset.setTags(req.getTags());
+                return toMediaAssetDto(asset);
+            }).orElse(null);
+        });
+        lenient().doNothing().when(mediaService).deleteAsset(any(UUID.class));
+        lenient().when(mediaService.existsMediaById(anyString())).thenReturn(true);
+    }
+
+    private com.nextkey.ecommerce.api.dto.media.MediaCategoryDto toMediaCategoryDto(MediaCategory cat) {
+        return com.nextkey.ecommerce.api.dto.media.MediaCategoryDto.builder()
+                .id(cat.getId())
+                .tenantId(cat.getTenantId())
+                .name(cat.getName())
+                .description(cat.getDescription())
+                .sortOrder(cat.getSortOrder())
+                .build();
+    }
+
+    private com.nextkey.ecommerce.api.dto.media.MediaAssetDto toMediaAssetDto(MediaAsset asset) {
+        return com.nextkey.ecommerce.api.dto.media.MediaAssetDto.builder()
+                .id(asset.getId())
+                .tenantId(asset.getTenantId())
+                .categoryId(asset.getCategory() != null ? asset.getCategory().getId() : null)
+                .fileName(asset.getFileName())
+                .filePath(asset.getFilePath())
+                .fileSize(asset.getFileSize())
+                .mimeType(asset.getMimeType())
+                .tags(asset.getTags())
+                .usageCount(asset.getUsageCount())
+                .altText(asset.getAltText())
+                .title(asset.getTitle())
+                .build();
     }
 
     private String createTestUserAndGetToken(String email) throws Exception {

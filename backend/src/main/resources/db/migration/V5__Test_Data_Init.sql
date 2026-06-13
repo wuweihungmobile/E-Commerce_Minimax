@@ -14,7 +14,8 @@ VALUES (
     'ACTIVE',
     'Test Tenant for Sprint 6 QA Validation',
     '{"type": "TEST", "sprint": "SPRINT_06"}'
-);
+)
+ON CONFLICT ON CONSTRAINT tenants_pkey DO NOTHING;
 
 -- =============================================
 -- 測試 User (test-store-owner@nextkeytest.com)

@@ -16,7 +16,7 @@ VALUES (
     '0912345678',
     '{"type": "RETAIL"}'
 )
-ON CONFLICT (slug) DO NOTHING;
+ON CONFLICT ON CONSTRAINT tenants_pkey DO NOTHING;
 
 -- =============================================
 -- 2. 建立測試 Tenant（T2-M15）
@@ -32,7 +32,7 @@ VALUES (
     '0923456789',
     '{"type": "RETAIL"}'
 )
-ON CONFLICT (slug) DO NOTHING;
+ON CONFLICT ON CONSTRAINT tenants_pkey DO NOTHING;
 
 -- =============================================
 -- 3. 建立測試 User（U1-M15-StoreOwner）

@@ -10,6 +10,30 @@ set -e
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 cd "$ROOT_DIR"
 
+# 🔴 CRITICAL: 防止空 commit 繞過檢查
+# 注意：當使用 -m 選項時，Git 不會傳遞 commit message 檔案給 hook
+# 此時我們依賴 Git 本身會阻止空訊息
+# 只有當 Git 創建了 commit message 檔案時（不使用 -m），才檢查
+COMMIT_MSG=""
+if [ -n "$1" ] && [ -f "$1" ]; then
+    COMMIT_MSG=$(cat "$1" 2>/dev/null | tr -d '\n' | head -c 100)
+    # 只有在能讀取到 commit message 時才檢查
+    if [ -z "$COMMIT_MSG" ]; then
+        echo "🔴 ERROR: 空的 commit message"
+        exit 1
+    fi
+fi
+# 如果 $1 為空（使用 -m 選項），則跳過檢查
+# 因為 Git 本身會阻止 -m "" 的情況
+
+# 🔴 CRITICAL: 清除 CI 驗證記錄，強制 push 前重新驗證
+# 任何 commit 都會使之前的驗證記錄失效
+CI_VALIDATED_FILE="$ROOT_DIR/.ci-validated"
+if [ -f "$CI_VALIDATED_FILE" ]; then
+    echo "🔄 清除過期的 CI 驗證記錄 (.ci-validated)"
+    rm -f "$CI_VALIDATED_FILE"
+fi
+
 # 取得所有 staged 檔案
 STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
 

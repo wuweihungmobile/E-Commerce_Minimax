@@ -3,7 +3,7 @@
 # AISDLC v0.09: Pre-Push Hook（嚴格版）
 # 目的：確保 push 前已執行本地 CI 驗證
 # 若無驗證記錄，直接執行 act 完整驗證
-# 跳過方式：git push --no-verify
+# 跳過方式：git push --no-verify（⚠️ 不建議，會導致 CI 失敗）
 # 安裝方式：scripts/install-hooks.sh
 # =============================================
 
@@ -15,6 +15,24 @@ cd "$ROOT_DIR"
 echo "=========================================="
 echo "🔒 Pre-Push CI 驗證檢查"
 echo "=========================================="
+
+# 🔴 CRITICAL: 檢查 .ci-validated 是否被錯誤地 commit 到 Git
+# 如果這個檔案被 commit，CI 會失敗
+if git ls-files --error-unmatch .ci-validated &>/dev/null; then
+    echo ""
+    echo "🔴 ERROR: .ci-validated 已被 commit 到 Git！"
+    echo ""
+    echo "   這個檔案是本地驗證記錄，不應該被 commit。"
+    echo "   它應該在 .gitignore 中。"
+    echo ""
+    echo "   請執行以下命令修復："
+    echo "   git rm --cached .ci-validated"
+    echo "   git commit -m 'chore: remove .ci-validated from git tracking'"
+    echo ""
+    echo "   然後重新 push。"
+    echo ""
+    exit 1
+fi
 
 # 取得目前 commit hash
 CURRENT_COMMIT=$(git rev-parse HEAD)

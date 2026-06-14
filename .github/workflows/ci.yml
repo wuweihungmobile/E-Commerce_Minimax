@@ -23,10 +23,34 @@ jobs:
   # LAYER 0: Security Baseline
   # =============================================
 
+  local-ci-validation-check:
+    name: Local CI Validation Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check .ci-validated file
+        run: |
+          if git ls-files --error-unmatch .ci-validated &>/dev/null; then
+            echo "🔴 ERROR: .ci-validated is tracked by Git!"
+            echo "   This file is a LOCAL validation record and should NOT be committed."
+            echo ""
+            echo "   Please run:"
+            echo "   git rm --cached .ci-validated"
+            echo "   git commit -m 'chore: remove .ci-validated from git tracking'"
+            exit 1
+          fi
+          echo "✅ .ci-validated is not tracked by Git (correct)"
+
   secret-detection:
     name: Secret Detection (Layer 0)
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    needs: [local-ci-validation-check]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,6 +68,7 @@ jobs:
     name: Dependency Scan (Layer 0 - SCA)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: [local-ci-validation-check]
     permissions:
       contents: read
     steps:
@@ -69,6 +94,7 @@ jobs:
     name: License Compliance (Layer 0)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: [local-ci-validation-check]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -101,6 +127,7 @@ jobs:
     name: Backend Build & Test (Layer 1)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: [local-ci-validation-check, secret-detection, dependency-scan, license-compliance]
 
     services:
       postgres:
@@ -219,6 +246,7 @@ jobs:
     name: Frontend Build & Test (Layer 1)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: [local-ci-validation-check, secret-detection, dependency-scan, license-compliance]
 
     steps:
       - name: Checkout

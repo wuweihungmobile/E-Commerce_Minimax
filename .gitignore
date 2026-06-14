@@ -46,6 +46,9 @@ models/
 # Act
 .act/
 
+# Local CI Validation Record (DO NOT COMMIT!)
+.ci-validated
+
 # Tools
 .cache/
 .vercel/

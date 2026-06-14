@@ -24,15 +24,15 @@ public class TestDatabaseInitializer {
             // Initialize System Tenant if not exists
             var systemTenantId = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
 
-            // 🔴 修復：只用 existsById 檢查 ID，不使用 slug 檢查
-            // 原因：V1__Initial_Schema.sql 建立的 system tenant slug 是 'platform'，不是 'system'
-            // 使用 ID 檢查是最可靠的方式，因為 ID 是唯一不變的標識符
-            if (!tenantRepository.existsById(systemTenantId)) {
+            // 🔴 修復：同時檢查 ID 和 slug，確保 System Tenant 不重複建立
+            // 原因：V1__Initial_Schema.sql 建立的 system tenant slug 是 'platform'
+            // 只有當 ID 和 slug 都不存在時才建立，避免重複鍵衝突
+            if (!tenantRepository.existsById(systemTenantId) && !tenantRepository.existsBySlug("platform")) {
                 log.info("Initializing System Tenant for tests...");
                 Tenant systemTenant = Tenant.builder()
                         .id(systemTenantId)
                         .name("System Tenant")
-                        .slug("platform")  // 🔴 修正：使用與 V1__Initial_Schema.sql 一致的 slug
+                        .slug("platform")  // 與 V1__Initial_Schema.sql 一致
                         .status(Tenant.TenantStatus.ACTIVE)
                         .description("System-level tenant for platform-wide feature toggles")
                         .contactEmail("system@nextkey.com")
@@ -42,7 +42,7 @@ public class TestDatabaseInitializer {
                 tenantRepository.saveAndFlush(systemTenant);
                 log.info("System Tenant initialized: {}", systemTenantId);
             } else {
-                log.debug("System Tenant already exists: {}", systemTenantId);
+                log.debug("System Tenant already exists (ID={} or slug=platform), skipping", systemTenantId);
             }
         };
     }

@@ -29,7 +29,6 @@ CREATE INDEX idx_reviews_listing_id ON reviews(listing_id);
 CREATE INDEX idx_reviews_user_id ON reviews(user_id);
 CREATE INDEX idx_reviews_order_id ON reviews(order_id);
 CREATE INDEX idx_reviews_booking_id ON reviews(booking_id);
-CREATE INDEX idx_reviews_tenant_id ON reviews(tenant_id);
 CREATE INDEX idx_reviews_rating ON reviews(rating);
 CREATE INDEX idx_reviews_is_visible ON reviews(is_visible) WHERE is_visible = true;
 CREATE INDEX idx_reviews_created_at ON reviews(created_at DESC);

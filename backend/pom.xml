@@ -199,6 +199,9 @@
                         <exclude>**/*IntegrationTest.java</exclude>
                         <exclude>**/*TrueIntegrationTest.java</exclude>
                     </excludes>
+                    <!-- 🔴 確保每個測試類在獨立的 JVM 中運行，避免 SecurityContext 污染 -->
+                    <forkCount>1</forkCount>
+                    <reuseForks>false</reuseForks>
                 </configuration>
             </plugin>
             <!-- failsafe 跑 integration 階段（由 -Pintegration-test 觸發）-->
@@ -212,6 +215,9 @@
                         <include>**/*IntegrationTest.java</include>
                         <include>**/*TrueIntegrationTest.java</include>
                     </includes>
+                    <!-- 🔴 確保每個測試類在獨立的 JVM 中運行，避免 SecurityContext 污染 -->
+                    <forkCount>1</forkCount>
+                    <reuseForks>false</reuseForks>
                 </configuration>
                 <executions>
                     <execution>

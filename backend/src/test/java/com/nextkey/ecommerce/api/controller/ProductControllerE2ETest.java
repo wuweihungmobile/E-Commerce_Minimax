@@ -14,6 +14,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -46,6 +48,7 @@ import static org.hamcrest.Matchers.*;
 @Import(com.nextkey.ecommerce.integration.IntegrationTestConfiguration.class)
 @ActiveProfiles("integration-test")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @DisplayName("API-M05 E2E: Product Controller REST Assured E2E 測試")
 class ProductControllerE2ETest {
 
@@ -72,6 +75,8 @@ class ProductControllerE2ETest {
 
     @BeforeEach
     void setUp() {
+        // 🔴 清理 SecurityContext 以避免被其他測試類（如 @WithMockUser）污染
+        SecurityContextHolder.clearContext();
         RestAssuredMockMvc.mockMvc(mockMvc);
 
         // 每次測試前建立新用戶並登入獲取 token
@@ -134,6 +139,9 @@ class ProductControllerE2ETest {
     void tearDown() {
         // 清理測試用戶
         userRepository.findByEmail(userEmail).ifPresent(user -> userRepository.delete(user));
+
+        // 🔴 清理 SecurityContext 避免影響其他測試
+        SecurityContextHolder.clearContext();
     }
 
     // ── API-M05-001: 取得商品列表-成功 ─────────────────────────────

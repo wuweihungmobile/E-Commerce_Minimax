@@ -38,6 +38,8 @@ import java.util.concurrent.CompletableFuture;
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.hamcrest.Matchers.*;
 
+import org.springframework.security.core.context.SecurityContextHolder;
+
 /**
  * Booking Controller API E2E 測試 (API-M06-001 ~ API-M06-012)
  *
@@ -184,6 +186,7 @@ class BookingControllerE2ETest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.clearContext();
         RestAssuredMockMvc.mockMvc(mockMvc);
 
         buyerEmail = "booking-buyer-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 10000) + "@example.com";
@@ -243,6 +246,7 @@ class BookingControllerE2ETest {
             // 3. 最後刪除用戶
             userRepository.delete(user);
         });
+        SecurityContextHolder.clearContext();
     }
 
     @AfterAll

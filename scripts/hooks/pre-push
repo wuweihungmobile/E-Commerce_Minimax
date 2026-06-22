@@ -2,9 +2,12 @@
 # =============================================
 # AISDLC v0.09: Pre-Push Hook（嚴格版）
 # 目的：確保 push 前已執行本地 CI 驗證
-# 若無驗證記錄，直接執行 act 完整驗證
+# 由於 pre-commit 階段已執行完整 CI，本 hook 僅做驗證記錄檢查
 # 跳過方式：git push --no-verify（⚠️ 不建議，會導致 CI 失敗）
 # 安裝方式：scripts/install-hooks.sh
+# =============================================
+# OOM 處理（2026-06-16）：
+#   當 act 因記憶體不足（exit code 137）失敗時，提供替代驗證方式
 # =============================================
 
 set -e
@@ -16,18 +19,18 @@ echo "=========================================="
 echo "🔒 Pre-Push CI 驗證檢查"
 echo "=========================================="
 
-# 🔴 CRITICAL: 檢查 .ci-validated 是否被錯誤地 commit 到 Git
-# 如果這個檔案被 commit，CI 會失敗
-if git ls-files --error-unmatch .ci-validated &>/dev/null; then
+# 🔴 CRITICAL: 檢查 .ci-validation-data 是否被錯誤地 commit 到 Git
+# 如果驗證資料目錄被 commit，CI 會失敗
+if git ls-files --error-unmatch .ci-validation-data &>/dev/null; then
     echo ""
-    echo "🔴 ERROR: .ci-validated 已被 commit 到 Git！"
+    echo "🔴 ERROR: .ci-validation-data 已被 commit 到 Git！"
     echo ""
-    echo "   這個檔案是本地驗證記錄，不應該被 commit。"
+    echo "   這個目錄是本地驗證記錄，不應該被 commit。"
     echo "   它應該在 .gitignore 中。"
     echo ""
     echo "   請執行以下命令修復："
-    echo "   git rm --cached .ci-validated"
-    echo "   git commit -m 'chore: remove .ci-validated from git tracking'"
+    echo "   git rm -r --cached .ci-validation-data"
+    echo "   git commit -m 'chore: remove .ci-validation-data from git tracking'"
     echo ""
     echo "   然後重新 push。"
     echo ""
@@ -36,19 +39,108 @@ fi
 
 # 取得目前 commit hash
 CURRENT_COMMIT=$(git rev-parse HEAD)
-CI_VALIDATED_FILE="$ROOT_DIR/.ci-validated"
+CI_DATA_DIR="$ROOT_DIR/.ci-validation-data"
+CI_RECORD="$CI_DATA_DIR/commits"
+
+# 計算當前 working tree hash（防重放攻擊）
+CURRENT_TREE_HASH=$(git ls-tree -r HEAD 2>/dev/null | sha256sum | cut -d' ' -f1)
+if [ -z "$CURRENT_TREE_HASH" ]; then
+    CURRENT_TREE_HASH="empty"
+fi
+
+# =============================================
+# 🔴 v2 強化：檢查多個 push 出去的 commits 是否有驗證
+# =============================================
+echo "🔍 檢查所有即將 push 的 commits..."
+
+# 取得要 push 的 commits（從 remote 到 HEAD 的所有 commits）
+REMOTE_HEAD=""
+if git remote show origin &>/dev/null; then
+    REMOTE_HEAD=$(git rev-parse origin/$(git rev-parse --abbrev-ref HEAD) 2>/dev/null || echo "")
+fi
+
+# 如果有 remote HEAD，檢查所有未驗證的 commits
+if [ -n "$REMOTE_HEAD" ]; then
+    UNVALIDATED_COMMITS=$(git rev-list "$REMOTE_HEAD..HEAD" 2>/dev/null | tac || echo "$CURRENT_COMMIT")
+else
+    # 沒有 remote，檢查最近 10 個 commits
+    UNVALIDATED_COMMITS=$(git log -10 --pretty=format:"%H" 2>/dev/null || echo "$CURRENT_COMMIT")
+fi
+
+UNVALIDATED_COUNT=0
+if [ -f "$CI_RECORD" ]; then
+    for commit in $UNVALIDATED_COMMITS; do
+        if ! grep -q "^$commit|" "$CI_RECORD" 2>/dev/null; then
+            UNVALIDATED_COUNT=$((UNVALIDATED_COUNT + 1))
+            echo "  ⚠️  未驗證: $commit"
+        fi
+    done
+fi
+
+if [ $UNVALIDATED_COUNT -gt 0 ]; then
+    echo ""
+    echo "🔴 ERROR: 有 $UNVALIDATED_COUNT 個 commits 沒有 CI 驗證記錄！"
+    echo "=========================================="
+    echo ""
+    echo "這些 commits 可能是使用 --no-verify 繞過本地 CI 推送的。"
+    echo ""
+    echo "修復方式："
+    echo "  1. 如果是這次 commit 前就存在的歷史 commits，需要先重新驗證"
+    echo "  2. 對於新 commit，請使用正常 commit (不要 --no-verify)"
+    echo "  3. 或執行 'make validate-all' 補做 CI 驗證"
+    echo ""
+    echo "⚠️  為防止 CI 失敗，建議重新整理這些 commits："
+    echo "  git reset --soft HEAD~$UNVALIDATED_COUNT"
+    echo "  git commit -m '...'  # 會自動執行 CI 驗證"
+    echo ""
+fi
 
 # 檢查是否已有針對此 commit 的驗證
-if [ -f "$CI_VALIDATED_FILE" ]; then
-    VALIDATED_COMMIT=$(cat "$CI_VALIDATED_FILE" 2>/dev/null | head -1)
-    VALIDATED_TIME=$(cat "$CI_VALIDATED_FILE" 2>/dev/null | tail -1)
+if [ -f "$CI_RECORD" ]; then
+    VALIDATED=$(grep "^$CURRENT_COMMIT|" "$CI_RECORD" 2>/dev/null | tail -1)
+    if [ -n "$VALIDATED" ]; then
+        VALIDATED_TIME=$(echo "$VALIDATED" | cut -d'|' -f2)
+        RECORDED_TREE_HASH=$(echo "$VALIDATED" | cut -d'|' -f3)
 
-    if [ "$VALIDATED_COMMIT" = "$CURRENT_COMMIT" ]; then
-        echo "✅ CI 驗證記錄：已驗證 commit $VALIDATED_COMMIT"
-        echo "📅 驗證時間：$VALIDATED_TIME"
-        echo ""
-        echo "允許 push ✅"
-        exit 0
+        # 計算時間差（macOS 與 Linux 相容）
+        if date -j -f '%Y-%m-%d %H:%M:%S' "$VALIDATED_TIME" +%s >/dev/null 2>&1; then
+            # macOS
+            VALIDATED_EPOCH=$(date -j -f '%Y-%m-%d %H:%M:%S' "$VALIDATED_TIME" +%s 2>/dev/null || echo "0")
+        else
+            # Linux
+            VALIDATED_EPOCH=$(date -d "$VALIDATED_TIME" +%s 2>/dev/null || echo "0")
+        fi
+        NOW_EPOCH=$(date +%s)
+        AGE_SECONDS=$((NOW_EPOCH - VALIDATED_EPOCH))
+
+        # 🔴 v2 強化：有效期縮短為 10 分鐘
+        if [ $AGE_SECONDS -le 600 ]; then
+            # 🔴 v2 強化：驗證 working tree hash（防重放攻擊）
+            if [ -n "$RECORDED_TREE_HASH" ] && [ "$RECORDED_TREE_HASH" != "$CURRENT_TREE_HASH" ]; then
+                echo ""
+                echo "🔴 ERROR: Working tree 與驗證記錄不匹配！"
+                echo "=========================================="
+                echo ""
+                echo "驗證時的 tree hash: ${RECORDED_TREE_HASH:0:16}..."
+                echo "目前的 tree hash:   ${CURRENT_TREE_HASH:0:16}..."
+                echo ""
+                echo "這代表 push 前 working tree 被修改過，或使用了舊的驗證記錄。"
+                echo "請重新執行 CI 驗證："
+                echo "  make validate-all"
+                echo ""
+                # 不要 exit 1，讓它繼續走重新驗證的流程
+            else
+                echo "✅ CI 驗證記錄：已驗證 commit $CURRENT_COMMIT"
+                echo "📅 驗證時間：$VALIDATED_TIME（$((AGE_SECONDS / 60)) 分鐘前）"
+                echo "🌳 Tree hash: ${RECORDED_TREE_HASH:0:16}..."
+                echo ""
+                echo "允許 push ✅"
+                exit 0
+            fi
+        elif [ $AGE_SECONDS -gt 600 ]; then
+            echo "⚠️  驗證記錄已超過 10 分鐘，需要重新驗證"
+            echo "   驗證時間：$VALIDATED_TIME（$((AGE_SECONDS / 60)) 分鐘前）"
+        fi
     fi
 fi
 
@@ -76,33 +168,67 @@ if ! command -v act &> /dev/null; then
 fi
 
 # 執行 act 完整 CI 驗證
+# 🔴 使用 set +e 來捕獲 act 的退出碼，不讓 set -e 立即退出
+# 🔴 CRITICAL: act 失敗時退出碼可能是 0，必須檢查輸出中的 "Failure" 關鍵字
 cd "$ROOT_DIR"
-if act -W .github/workflows/act-compat.yml; then
-    # 驗證成功，創建標記檔案
+echo "🧪 執行完整本地 CI 驗證（act）..."
+echo ""
+set +e
+ACT_OUTPUT=$(act -W .github/workflows/act-compat.yml 2>&1)
+ACT_EXIT=$?
+set -e
+
+# =============================================
+# 最終結果判斷
+# =============================================
+# 🔴 檢查 act 是否真正成功（退出碼為 0 且輸出中沒有 "Failure"）
+ACT_HAS_FAILURE=$(echo "$ACT_OUTPUT" | grep -c "❌.*Failure\|Job failed\|context canceled" || true)
+if [ $ACT_EXIT -eq 0 ] && [ $ACT_HAS_FAILURE -eq 0 ]; then
+    ACT_SUCCESS=1
+else
+    ACT_SUCCESS=0
+fi
+
+if [ $ACT_SUCCESS -eq 1 ]; then
+    # 驗證成功，寫入驗證記錄
     VALIDATED_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "$CURRENT_COMMIT" > "$CI_VALIDATED_FILE"
-    echo "$VALIDATED_TIME" >> "$CI_VALIDATED_FILE"
+    CI_DATA_DIR="$ROOT_DIR/.ci-validation-data"
+    CI_RECORD="$CI_DATA_DIR/commits"
+    mkdir -p "$CI_DATA_DIR"
+
+    # 記錄格式：COMMIT_HASH|VALIDATED_TIME|SUCCESS
+    # 跨平台 sed：使用 .bak 方式（macOS / Linux 通用）
+    sed -i.bak "/^$CURRENT_COMMIT|/d" "$CI_RECORD" 2>/dev/null || \
+    grep -v "^$CURRENT_COMMIT|" "$CI_RECORD" > "$CI_RECORD.tmp" && mv "$CI_RECORD.tmp" "$CI_RECORD" 2>/dev/null || true
+    rm -f "$CI_RECORD.bak" "$CI_RECORD.tmp"
+
+    # 🔴 v2: 加入 tree hash 強化防護
+    echo "$CURRENT_COMMIT|$VALIDATED_TIME|$CURRENT_TREE_HASH|SUCCESS" >> "$CI_RECORD"
 
     echo ""
     echo "=========================================="
     echo "✅ CI 驗證通過！已記錄驗證結果"
     echo "📅 驗證時間：$VALIDATED_TIME"
+    echo "🌳 Tree hash: ${CURRENT_TREE_HASH:0:16}..."
     echo "=========================================="
     exit 0
-else
-    echo ""
-    echo "=========================================="
-    echo "🔴 CI 驗證失敗！禁止 push！"
-    echo "=========================================="
-    echo ""
-    echo "❌ 錯誤：本地 CI 驗證未通過"
-    echo ""
-    echo "📋 請修復問題後重新執行驗證："
-    echo "   act -W .github/workflows/act-compat.yml"
-    echo ""
-    echo "⚠️  提示："
-    echo "   - 詳細錯誤訊息請查看上方日誌"
-    echo "   - 若要跳過驗證（不建議），使用：git push --no-verify"
-    echo ""
-    exit 1
 fi
+
+# CI 失敗：顯示詳細錯誤訊息
+echo ""
+echo "=========================================="
+echo "🔴 CI 驗證失敗！禁止 push！"
+echo "=========================================="
+echo ""
+echo "❌ 錯誤：本地 CI 驗證未通過"
+echo ""
+echo "📋 請修復問題後重新執行驗證："
+echo "   act -W .github/workflows/act-compat.yml"
+echo "   或"
+echo "   make validate-all"
+echo ""
+echo "🔴 禁止使用 --no-verify！"
+echo "   使用 --no-verify 會導致 CI 失敗並可能導致 branch 被鎖定"
+echo "   請先在本地執行 'make validate-all' 或 'act' 修復問題"
+echo ""
+exit 1

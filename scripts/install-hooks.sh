@@ -62,26 +62,39 @@ fi
 echo "🔧 安裝 Git Hooks..."
 echo "=========================================="
 
+# 🧹 清理舊備份檔案（防止 commit-msg.bak 等舊檔案殘留）
+echo "🧹 [0/5] 清理舊的備份檔案..."
+rm -f .git/hooks/*.bak
+rm -f .git/hooks/*.old
+rm -f .git/hooks/*~
+echo "  ✅ 已清理"
+
 # 1. 安裝 root pre-commit hook
-echo "📝 [1/4] 安裝 root pre-commit hook..."
+echo "📝 [1/5] 安裝 root pre-commit hook..."
 mkdir -p .git/hooks
 cp scripts/hooks/pre-commit .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 echo "  ✅ .git/hooks/pre-commit"
 
 # 2. 安裝 pre-push hook
-echo "📤 [2/4] 安裝 pre-push hook..."
+echo "📤 [2/5] 安裝 pre-push hook..."
 cp scripts/hooks/pre-push .git/hooks/pre-push
 chmod +x .git/hooks/pre-push
 echo "  ✅ .git/hooks/pre-push"
 
-# 3. 確保 backend/hooks/pre-commit 可執行
-echo "🔨 [3/4] 確保 backend pre-commit hook 可執行..."
+# 3. 安裝 commit-msg hook（🔴 CRITICAL: 防禦 --no-verify 繞過）
+echo "📋 [3/5] 安裝 commit-msg hook..."
+cp scripts/hooks/commit-msg .git/hooks/commit-msg
+chmod +x .git/hooks/commit-msg
+echo "  ✅ .git/hooks/commit-msg"
+
+# 4. 確保 backend/hooks/pre-commit 可執行
+echo "🔨 [4/5] 確保 backend pre-commit hook 可執行..."
 chmod +x backend/hooks/pre-commit
 echo "  ✅ backend/hooks/pre-commit"
 
-# 4. 驗證 Hook 是否正確安裝
-echo "🔍 [4/4] 驗證 Hook 安裝..."
+# 5. 驗證 Hook 是否正確安裝
+echo "🔍 [5/5] 驗證 Hook 安裝..."
 if [ -f ".git/hooks/pre-commit" ] && [ -x ".git/hooks/pre-commit" ]; then
     echo "  ✅ pre-commit 已正確安裝並可執行"
 else
@@ -96,22 +109,31 @@ else
     exit 1
 fi
 
+if [ -f ".git/hooks/commit-msg" ] && [ -x ".git/hooks/commit-msg" ]; then
+    echo "  ✅ commit-msg 已正確安裝並可執行"
+else
+    echo "  ❌ commit-msg 安裝失敗！"
+    exit 1
+fi
+
 echo ""
 echo "=========================================="
 echo "✅ 所有 Hooks 安裝完成！"
 echo ""
 echo "📋 Hook 功能說明："
-echo "  📝 pre-commit: 檢查 staged 檔案（lint + compile + 核心測試）"
-echo "  📤 pre-push:   執行本地 CI 驗證，確保通過後才能 push"
+echo "  📝 pre-commit: 執行完整本地 CI 驗證（act）+ lint + compile + 核心測試"
+echo "  📋 commit-msg: 驗證 commit 是否有 CI 驗證記錄（防止 --no-verify 繞過）"
+echo "  📤 pre-push:   僅檢查 CI 驗證記錄（驗證已在 commit 時完成）"
 echo ""
 echo "🔐 安全機制："
-echo "  ✅ 任何 commit 都會清除 CI 驗證記錄"
-echo "  ✅ push 前必須通過本地 CI 驗證（act）"
-echo "  ✅ 檢查 .ci-validated 是否被錯誤 commit"
+echo "  ✅ commit 時執行完整 CI 驗證（act）"
+echo "  ✅ commit-msg 驗證 CI 記錄（即使 pre-commit 被 --no-verify 跳過）"
+echo "  ✅ push 前檢查 CI 驗證記錄"
+echo "  ✅ 檢查 .ci-validation-data 是否被錯誤 commit"
 echo ""
-echo "⚠️  跳過方式（不建議）："
-echo "  git commit --no-verify"
-echo "  git push --no-verify"
+echo "⚠️  禁止使用 --no-verify："
+echo "  git commit --no-verify  # 🔴 已封鎖，會導致 CI 失敗"
+echo "  git push --no-verify    # 🔴 已封鎖，會導致 CI 失敗"
 echo ""
 echo "🧪 測試 hooks："
 echo "  echo 'test' >> test.txt && git add test.txt && git commit -m 'test'"

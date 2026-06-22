@@ -137,14 +137,46 @@ logs-frontend: ## 查看 frontend logs
 # =============================================
 validate-all: ## 完整 CI 模擬驗證（act） - 本機最完整檢查
 	@echo "$(YELLOW)🧪 執行 act CI 模擬驗證...$(NC)"
-	act -W .github/workflows/act-compat.yml
-	@echo "$(GREEN)✅ 完整驗證通過！可以 push$(NC)"
+	@cd /Users/wuweihong/Cursor_Project/E-Commerce_Minimax && \
+	if act -W .github/workflows/act-compat.yml; then \
+		CURRENT_COMMIT=$$(git rev-parse HEAD); \
+		VALIDATED_TIME=$$(date '+%Y-%m-%d %H:%M:%S'); \
+		TREE_HASH=$$(git ls-tree -r HEAD 2>/dev/null | sha256sum | cut -d' ' -f1); \
+		if [ -z "$$TREE_HASH" ]; then TREE_HASH="empty"; fi; \
+		CI_DATA_DIR=".ci-validation-data"; \
+		CI_RECORD="$$CI_DATA_DIR/commits"; \
+		mkdir -p "$$CI_DATA_DIR"; \
+		sed -i.bak "/^$$CURRENT_COMMIT|/d" "$$CI_RECORD" 2>/dev/null || \
+		  (grep -v "^$$CURRENT_COMMIT|" "$$CI_RECORD" > "$$CI_RECORD.tmp" 2>/dev/null && mv "$$CI_RECORD.tmp" "$$CI_RECORD" 2>/dev/null) || true; \
+		rm -f "$$CI_RECORD.bak" "$$CI_RECORD.tmp"; \
+		echo "$$CURRENT_COMMIT|$$VALIDATED_TIME|$$TREE_HASH|SUCCESS" >> "$$CI_RECORD"; \
+		echo "$(GREEN)✅ 完整驗證通過！已寫入驗證記錄 $$CI_RECORD$(NC)"; \
+	else \
+		echo "$(RED)❌ 驗證失敗，請修復問題後重新執行$(NC)"; \
+		exit 1; \
+	fi
 
 validate-fast: ## 快速 CI 模擬（僅 backend + frontend）
 	@echo "$(YELLOW)⚡ 快速 CI 模擬...$(NC)"
-	act -W .github/workflows/act-compat.yml -j backend
-	act -W .github/workflows/act-compat.yml -j frontend
-	@echo "$(GREEN)✅ 快速驗證通過$(NC)"
+	@cd /Users/wuweihong/Cursor_Project/E-Commerce_Minimax && \
+	if act -W .github/workflows/act-compat.yml -j backend && \
+	   act -W .github/workflows/act-compat.yml -j frontend; then \
+		CURRENT_COMMIT=$$(git rev-parse HEAD); \
+		VALIDATED_TIME=$$(date '+%Y-%m-%d %H:%M:%S'); \
+		TREE_HASH=$$(git ls-tree -r HEAD 2>/dev/null | sha256sum | cut -d' ' -f1); \
+		if [ -z "$$TREE_HASH" ]; then TREE_HASH="empty"; fi; \
+		CI_DATA_DIR=".ci-validation-data"; \
+		CI_RECORD="$$CI_DATA_DIR/commits"; \
+		mkdir -p "$$CI_DATA_DIR"; \
+		sed -i.bak "/^$$CURRENT_COMMIT|/d" "$$CI_RECORD" 2>/dev/null || \
+		  (grep -v "^$$CURRENT_COMMIT|" "$$CI_RECORD" > "$$CI_RECORD.tmp" 2>/dev/null && mv "$$CI_RECORD.tmp" "$$CI_RECORD" 2>/dev/null) || true; \
+		rm -f "$$CI_RECORD.bak" "$$CI_RECORD.tmp"; \
+		echo "$$CURRENT_COMMIT|$$VALIDATED_TIME|$$TREE_HASH|SUCCESS" >> "$$CI_RECORD"; \
+		echo "$(GREEN)✅ 快速驗證通過！已寫入驗證記錄 $$CI_RECORD$(NC)"; \
+	else \
+		echo "$(RED)❌ 驗證失敗，請修復問題後重新執行$(NC)"; \
+		exit 1; \
+	fi
 
 validate-backend: ## 僅驗證 backend（act）
 	@echo "$(YELLOW)🔨 驗證 backend...$(NC)"

@@ -30,6 +30,8 @@ import java.util.UUID;
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.hamcrest.Matchers.*;
 
+import org.springframework.security.core.context.SecurityContextHolder;
+
 /**
  * Order Controller API E2E 測試 (API-M06-001 ~ API-M06-012)
  *
@@ -134,6 +136,7 @@ class OrderControllerE2ETest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.clearContext();
         RestAssuredMockMvc.mockMvc(mockMvc);
 
         userEmail = "order-test-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 10000) + "@example.com";
@@ -187,6 +190,7 @@ class OrderControllerE2ETest {
                     .forEach(order -> orderRepository.delete(order));
             userRepository.delete(user);
         });
+        SecurityContextHolder.clearContext();
     }
 
     // ── API-M06-001: 建立訂單-成功 ────────────────────────────────

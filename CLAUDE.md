@@ -11,6 +11,16 @@
 >
 > This file provides critical guidance for Claude Code (claude.ai/code) when working with the AISDLC Framework.
 > All instructions here OVERRIDE default behavior and must be followed exactly.
+>
+> **🔴 CRITICAL: 嚴禁使用 --no-verify 🔴**
+>
+> `git commit --no-verify` 或 `git push --no-verify` 會繞過所有 CI 驗證 Hook！
+> 這將導致：
+> - CI pipeline 失敗
+> - Branch 被鎖定
+> - 20+ 次無效 commit 的歷史教訓
+>
+> **絕對禁止使用 --no-verify！違反將導致嚴重後果！**
 
 ---
 
@@ -881,39 +891,89 @@ When this framework is integrated into projects:
 - Use requirements-change-management workflow for systematic change handling
 - Maintain backward compatibility in template changes when possible
 
-## 🔴 CI/CD 本地驗證強制規則（2026-06-12 新增）
+## 🔴 CI/CD 本地驗證強制規則（2026-06-12 新增，2026-06-14 更新）
 
 **CRITICAL: 所有程式變更必須經過本地 CI 驗證通過後才能上傳到 GitHub**
 
 ### 強制執行流程
 
-**原則**: commit 前先驗證，驗證通過才能 push。
+**原則**: commit 時執行完整 CI 驗證，驗證通過才能 push。
 
 **執行步驟**:
 
-1. **🔴 第一步：commit 前本地驗證**
-   - 在 commit 時，pre-commit hook 會自動執行 checkstyle + compile + 單元測試
+1. **🔴 第一步：commit 前本地 CI 驗證**
+   - 在 commit 時，pre-commit hook 會自動執行完整本地 CI 驗證（act）
+   - 包括：checkstyle + compile + 單元測試 + 整合測試
    - 如果其中任何一項失敗，commit 會被拒絕
+   - **注意**：這會讓 commit 變慢（約 5-10 分鐘），但可確保所有 commit 都經過完整驗證
 
-2. **🔴 第二步：commit 完成後執行本地 CI**
-   - 使用 `act -W .github/workflows/act-compat.yml` 執行完整的本地 CI 驗證
-   - 或使用 `mvn verify -Dspring.profiles.active=integration-test` 執行整合測試
+2. **🔴 第二步：commit 完成後 push**
+   - 由於 commit 時已執行完整 CI 驗證，push 前無需再次執行
+   - pre-push hook 僅檢查 CI 驗證記錄
 
-3. **🔴 第三步：本地 CI 通過後才能 push**
-   - 只有本地 CI 全部通過，才能執行 `git push`
-   - 禁止未經本地 CI 驗證就直接 push 到 GitHub
+3. **🔴 第三步：嚴禁使用 --no-verify**
+   - `git commit --no-verify` 或 `git push --no-verify` 會繞過 CI 驗證
+   - 這樣做會導致 CI pipeline 失敗，可能導致 branch 被鎖定
+   - 請先在本地修復問題
 
 ### 為什麼需要這個機制？
 
-**歷史慘痛教訓 (2026-06-12)**:
+**歷史慘痛教訓 (2026-06-12 ~ 2026-06-14)**:
 - CI Pipeline 持續失敗，每次失敗後修復就馬上 push，導致 20+ 次無效的 commit
 - 沒有先在本地驗證，浪費 CI 資源和時間
 - 用戶抱怨：「為何沒有經過本地檢核機制」
+- pre-commit hook 只做快速檢查，pre-push hook 可被 `--no-verify` 繞過
 
-**解決方案**:
-- ✅ commit 前：pre-commit hook 自動執行基本驗證
-- ✅ commit 後：執行本地 CI 完整驗證（使用 act 或手動執行）
-- ✅ 驗證通過後：才能 push 到 GitHub
+**解決方案 (2026-06-14)**:
+- ✅ commit 時：pre-commit hook 自動執行完整 CI 驗證（act）
+- ✅ push 前：pre-push hook 檢查 CI 驗證記錄
+- ✅ 嚴禁使用 `--no-verify`，否則 CI 會失敗
+
+**歷史慘痛教訓 (2026-06-16) - Hook 邏輯缺陷**:
+- 問題：hooks 一直到 23:48 才安裝，但 commits 在 16:15 就已經存在
+- 問題：pre-commit 在 commit **之前**執行，寫入的驗證記錄使用**舊 commit** 的 HEAD hash
+- 問題：commit 完成後，commit-msg 檢查時的 HEAD 已經是**新 commit**
+- 結果：兩者 hash 不一致，導致 `.ci-validation-data/commits` 一直是空的
+- 教訓：設計 hook 時必須考慮 **commit 前後 HEAD 的變化**
+
+**修復方案 (2026-06-16)**:
+- pre-commit：寫入「待驗證標記」（包含 parent hash 和 staged changes hash）
+- commit-msg：在 commit **完成後**檢查並寫入正式驗證記錄
+- 如果沒有待驗證標記也沒有驗證記錄，commit 被拒絕
+
+**歷史慘痛教訓 (2026-06-17) - Hook 攻擊面全面強化**:
+- 雖然基本防護已建立，但仍有 7 個漏洞可被攻擊：
+  1. `git commit --no-verify` 可繞過 pre-commit
+  2. 重放攻擊：用舊的驗證記錄通過新的 commit
+  3. 時間操縱：1 小時有效期太長
+  4. `git push --no-verify` 可繞過 pre-push
+  5. 多 commit push 中只驗證 HEAD（其餘 commits 可能未驗證）
+  6. 偽造驗證記錄（手動寫入 commits 檔案）
+  7. `.ci-validation-data` 被誤 commit
+
+**v2 強化方案 (2026-06-17)**:
+- ✅ **多層防禦架構**：
+  - **pre-commit**: 執行完整 CI 驗證 + 寫入「待驗證標記」到 `.ci-validation-data/pending`
+  - **commit-msg**: 檢查待驗證標記 → 確認 parent hash 匹配 → 寫入正式驗證記錄（含 TREE_HASH）
+  - **pre-push**: 檢查所有要 push 的 commits + 10 分鐘有效期 + TREE_HASH 綁定
+- ✅ **防止 --no-verify 繞過**：
+  - commit-msg 在 commit 完成後執行，無法被 --no-verify 跳過（--no-verify 只跳 pre-commit）
+  - 嚴格檢查模式：無 pending 也無驗證記錄 → 直接拒絕 commit
+- ✅ **防重放攻擊**：
+  - 每條驗證記錄綁定 `git ls-tree -r HEAD` 的 SHA-256 hash
+  - push 時重新計算 working tree hash，不匹配則拒絕
+- ✅ **縮短有效期**：從 1 小時縮短為 **10 分鐘**（600 秒）
+- ✅ **多 commit 檢查**：push 時檢查所有 commits 都有驗證記錄
+- ✅ **跨平台兼容**：`sed -i.bak` 取代 macOS 專屬的 `sed -i ''`
+- ✅ **.ci-validation-data 防護**：pre-push 檢查此目錄是否被 commit 到 Git
+- ✅ **統一驗證記錄格式**：`COMMIT|VALIDATED_TIME|TREE_HASH|SUCCESS`（4 欄位）
+- ✅ **Makefile 同步更新**：`validate-all` 和 `validate-fast` 都使用 4 欄位格式
+
+**修復確認 (2026-06-17)**:
+- 之前 92 個測試失敗 → 0 個失敗（Backend 269 個 + Frontend 全部通過）
+- 12 個 act E2E 403 錯誤 → 0 個（`TestDatabaseInitializer` 改用 JdbcTemplate 初始化 system tenant + feature toggles）
+- `make validate-all` 完整 CI 驗證一次通過
+- 所有 Hook 多層防禦已部署
 
 **🔴 違反此機制將導致 CI 失敗並浪費資源！🔴**
 

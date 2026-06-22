@@ -20,6 +20,9 @@ import java.util.UUID;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import io.restassured.http.ContentType;
 
@@ -80,7 +83,14 @@ class AdminControllerE2ETest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.clearContext();
         RestAssuredMockMvc.mockMvc(mockMvc);
+    }
+
+    @AfterEach
+    void tearDown() {
+        // 🔴 清理 SecurityContext 避免影響其他測試
+        SecurityContextHolder.clearContext();
     }
 
     // 測試資料工廠方法
@@ -647,6 +657,10 @@ class AdminControllerE2ETest {
 
     /**
      * US-M17-009-01: Admin 更新 Feature Toggle 成功
+     *
+     * 注意：TestDatabaseInitializer 安裝的 PostgreSQL trigger 會在 tenant 建立時
+     * 自動為其補上 6 個預設 feature toggles（包含 BOOKING_ENABLED），所以測試
+     * 不需要手動建立 toggle，直接透過 findBy 確認存在即可。
      */
     @Test
     @Order(13)
@@ -655,22 +669,18 @@ class AdminControllerE2ETest {
         // 建立 SUPER_ADMIN token
         String adminToken = createSuperAdminUserAndGetToken();
 
-        // 建立測試租戶並初始化 Feature Toggle
+        // 建立測試租戶（trigger 會自動為其補上 6 個預設 feature toggles）
         Tenant testTenant = Tenant.builder()
                 .name("Feature Toggle Test Tenant")
                 .slug("feature-toggle-test-" + System.currentTimeMillis())
                 .status(Tenant.TenantStatus.ACTIVE)
                 .build();
-        testTenant = tenantRepository.save(testTenant);
+        testTenant = tenantRepository.saveAndFlush(testTenant);
 
-        // 建立 Feature Toggle 記錄
-        com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle toggle =
-                com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle.builder()
-                        .tenant(testTenant)
-                        .featureKey("BOOKING_ENABLED")
-                        .isEnabled(false)
-                        .build();
-        featureToggleRepository.save(toggle);
+        // 確認 trigger 已自動建立 BOOKING_ENABLED toggle（避免重複 INSERT 造成 UNIQUE 約束失敗）
+        assertTrue(featureToggleRepository.findByTenantIdAndFeatureKey(
+                testTenant.getId(), "BOOKING_ENABLED").isPresent(),
+                "Trigger should have auto-created BOOKING_ENABLED toggle");
 
         try {
             // Admin 啟用 Feature Toggle

@@ -30,6 +30,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * M02 房源管理 Backend API 整合測試 (T-M02-03)
@@ -67,6 +68,18 @@ class M02RoomIntegrationTest {
     private static final String TEST_TENANT_ID = "550e8400-e29b-41d4-a716-446655440001";
     @SuppressWarnings("unused")
     private static final UUID TEST_USER_ID = UUID.randomUUID();
+
+    @BeforeEach
+    void setUp() {
+        // 🔴 清理 SecurityContext 避免影響其他測試
+        SecurityContextHolder.clearContext();
+    }
+
+    @AfterEach
+    void tearDown() {
+        // 🔴 清理 SecurityContext 避免影響其他測試類
+        SecurityContextHolder.clearContext();
+    }
 
     // 測試資料工廠方法
     private RoomDto.CreateRequest buildValidCreateRequest() {

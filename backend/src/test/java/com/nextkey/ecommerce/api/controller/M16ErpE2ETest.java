@@ -27,6 +27,8 @@ import java.util.UUID;
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.hamcrest.Matchers.*;
 
+import org.springframework.security.core.context.SecurityContextHolder;
+
 /**
  * M16 ERP E2E 測試
  *
@@ -174,6 +176,7 @@ class M16ErpE2ETest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.clearContext();
         RestAssuredMockMvc.mockMvc(mockMvc);
 
         storeOwnerEmail = "e2e-m16-owner-" + System.currentTimeMillis() + "@example.com";
@@ -227,6 +230,7 @@ class M16ErpE2ETest {
         userRepository.findByEmail(storeOwnerEmail).ifPresent(user -> {
             userRepository.delete(user);
         });
+        SecurityContextHolder.clearContext();
     }
 
     @AfterAll

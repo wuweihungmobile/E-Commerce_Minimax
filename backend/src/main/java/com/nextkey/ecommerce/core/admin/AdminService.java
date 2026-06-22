@@ -270,6 +270,10 @@ public class AdminService {
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
 
+        // ✅ 強制 flush 確保 tenant INSERT 觸發的 PostgreSQL trigger 已建立 toggles
+        // 避免 Hibernate 一級緩存認為 toggle 不存在而重複 INSERT 造成 UNIQUE 約束衝突
+        tenantRepository.flush();
+
         // Feature Toggle 預設值定義
         Map<String, Boolean> defaultFeatures = Map.of(
                 "RETAIL_ENABLED", true,
@@ -285,6 +289,15 @@ public class AdminService {
         for (Map.Entry<String, Boolean> entry : defaultFeatures.entrySet()) {
             String featureKey = entry.getKey();
             Boolean isEnabled = entry.getValue();
+
+            // 檢查是否已存在（冪等性：避免測試 trigger 或重複 approve 造成重複建立）
+            if (featureToggleRepository.findByTenantIdAndFeatureKey(tenantId, featureKey).isPresent()) {
+                log.debug("Feature toggle already exists: tenantId={}, featureKey={}", tenantId, featureKey);
+                if (isEnabled) {
+                    enabledFeatures.add(featureKey);
+                }
+                continue;
+            }
 
             TenantFeatureToggle toggle = TenantFeatureToggle.builder()
                     .tenant(tenant)  // ✅ 使用 ManyToOne 關聯（而非虛擬欄位 tenantId）

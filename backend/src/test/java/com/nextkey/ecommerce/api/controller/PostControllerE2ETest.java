@@ -31,6 +31,8 @@ import java.util.*;
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.hamcrest.Matchers.*;
 
+import org.springframework.security.core.context.SecurityContextHolder;
+
 /**
  * M15 CMS Post Controller E2E 測試 (IT-M15-001 ~ IT-M15-020)
  *
@@ -111,6 +113,7 @@ class PostControllerE2ETest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.clearContext();
         RestAssuredMockMvc.mockMvc(mockMvc);
     }
 
@@ -1101,5 +1104,6 @@ class PostControllerE2ETest {
     @AfterAll
     void tearDown() {
         cleanupAllTestData();
+        SecurityContextHolder.clearContext();
     }
 }

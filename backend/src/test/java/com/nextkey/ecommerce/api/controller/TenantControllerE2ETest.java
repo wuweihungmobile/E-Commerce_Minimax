@@ -22,6 +22,8 @@ import java.util.UUID;
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.hamcrest.Matchers.*;
 
+import org.springframework.security.core.context.SecurityContextHolder;
+
 /**
  * Tenant Controller API E2E 測試 (US-M17-001 ~ US-M17-006)
  *
@@ -68,7 +70,14 @@ class TenantControllerE2ETest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.clearContext();
         RestAssuredMockMvc.mockMvc(mockMvc);
+    }
+
+    @AfterEach
+    void tearDown() {
+        // 🔴 清理 SecurityContext 避免影響其他測試
+        SecurityContextHolder.clearContext();
     }
 
     // 測試資料工廠方法

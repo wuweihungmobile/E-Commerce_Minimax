@@ -48,6 +48,7 @@ models/
 
 # Local CI Validation Record (DO NOT COMMIT!)
 .ci-validated
+.ci-validation-data/
 
 # Tools
 .cache/

@@ -12,6 +12,7 @@
 #   2. Redis 改用 image-level 設定
 #   3. PostgreSQL 改用 postgres:18-alpine（與 docker-compose 一致）
 #   4. 不需要 secrets, GITHUB_TOKEN 等
+#   5. Backend/Frontend 串行執行以減少記憶體消耗（OOM 問題）
 # =============================================
 
 name: Local CI (act-compatible)
@@ -76,6 +77,7 @@ jobs:
       JWT_SECRET: testSecretKeyForJwtTokenGenerationThatIsAtLeast256BitsLongForTesting
       JWT_ACCESS_TOKEN_EXPIRATION: 900000
       JWT_REFRESH_TOKEN_EXPIRATION: 2592000000
+      SPRING_TEST_ENV: true
 
     steps:
       - name: Checkout
@@ -143,11 +145,13 @@ jobs:
 
   # =============================================
   # Frontend: Lint + Type Check + Build
+  # (依賴 Backend 完成，串行執行以減少記憶體消耗)
   # =============================================
   frontend:
     name: Frontend Lint & Build
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: [backend]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

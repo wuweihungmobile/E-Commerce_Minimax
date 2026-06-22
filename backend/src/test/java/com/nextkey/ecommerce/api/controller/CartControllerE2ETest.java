@@ -15,6 +15,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -50,6 +52,7 @@ import static org.hamcrest.Matchers.*;
 @Import(com.nextkey.ecommerce.integration.IntegrationTestConfiguration.class)
 @ActiveProfiles("integration-test")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @DisplayName("API-M07 E2E: Cart Controller REST Assured E2E 測試")
 class CartControllerE2ETest {
 
@@ -78,6 +81,8 @@ class CartControllerE2ETest {
 
     @BeforeEach
     void setUp() {
+        // 🔴 清理 SecurityContext 以避免被其他測試類（如 @WithMockUser）污染
+        SecurityContextHolder.clearContext();
         RestAssuredMockMvc.mockMvc(mockMvc);
 
         buyerEmail = "cart-buyer-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 10000) + "@example.com";
@@ -194,6 +199,9 @@ class CartControllerE2ETest {
         if (testTenantId != null) {
             tenantRepository.findById(testTenantId).ifPresent(tenant -> tenantRepository.delete(tenant));
         }
+
+        // 🔴 清理 SecurityContext 避免影響其他測試
+        SecurityContextHolder.clearContext();
     }
 
     // ── API-M07-001: 取得購物車-成功 ──────────────────────────────

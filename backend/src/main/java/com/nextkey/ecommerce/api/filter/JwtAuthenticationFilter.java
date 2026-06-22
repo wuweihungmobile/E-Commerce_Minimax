@@ -22,6 +22,7 @@ import com.nextkey.ecommerce.domain.model.user.RolePermissionMapping;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 
+import io.jsonwebtoken.JwtException;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -75,7 +76,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 log.debug("Authenticated user: {} with role: {} and {} authorities",
                         email, role, grantedAuthorities.size());
             }
-        } catch (IllegalArgumentException | ClassCastException ex) {
+        } catch (IllegalArgumentException | ClassCastException | JwtException ex) {
             log.error("Could not set user authentication in security context", ex);
         }
 

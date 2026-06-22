@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'cmd=$(echo \"$1\" | tr \"\\0\" \" \"); if echo \"$cmd\" | grep -qE \"\\-\\-no-verify|-n\"; then echo \"\"; echo \"🔴 ERROR: --no-verify is FORBIDDEN!\"; echo \"\"; echo \"This command bypasses CI validation and will cause CI failure.\"; echo \"Please remove --no-verify and try again.\"; echo \"\"; exit 1; fi' _",
+            "timeout": 5,
+            "statusMessage": "檢查 --no-verify..."
+          }
+        ]
+      }
+    ]
+  },
+  "constraints": {
+    "language": "zh-TW",
+    "requireAgentWorkflow": true,
+    "forbiddenFlags": ["--no-verify", "-n", "--no-commit"],
+    "ciValidationRequired": true
+  },
+  "memory": {
+    "persistPath": "/Users/wuweihong/.claude/projects/-Users-wuweihong-Cursor-Project-E-Commerce-Minimax/memory/"
+  }
+}

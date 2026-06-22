@@ -19,6 +19,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.hamcrest.Matchers.*;
 
+import org.springframework.security.core.context.SecurityContextHolder;
+
 /**
  * Auth Controller API E2E 測試 (API-M03-001 ~ API-M03-010)
  *
@@ -53,8 +55,15 @@ class AuthControllerE2ETest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.clearContext();
         // 設定 REST Assured MockMvc
         RestAssuredMockMvc.mockMvc(mockMvc);
+    }
+
+    @AfterEach
+    void tearDown() {
+        // 🔴 清理 SecurityContext 避免影響其他測試
+        SecurityContextHolder.clearContext();
     }
 
     // 測試資料工廠方法 - 每次生成唯一的 email

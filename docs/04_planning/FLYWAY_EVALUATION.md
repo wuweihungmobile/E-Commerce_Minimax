@@ -1,20 +1,43 @@
 # Flyway 正式啟用評估 / Flyway Production Evaluation
 
-> **Sprint**: Sprint 17
-> **日期**: 2026-06-10
+> **Sprint**: Sprint 17 → Sprint 18 啟用
+> **評估日期**: 2026-06-10
+> **啟用日期**: 2026-06-19 (Sprint 17 Release v2026.06.19-01)
+> **驗證日期**: 2026-06-22 (Sprint 18 Day 1)
 > **負責人**: SD + Dev
-> **文件版本**: v1.0
+> **文件版本**: v1.1
 
 ---
 
-## 📋 評估摘要
+## ✅ 啟用狀態 (Production Status)
 
-| 項目 | 目前狀態 | 建議 |
-|------|----------|------|
-| Flyway 狀態 | **已停用** (`enabled: false`) | 評估中 |
-| Schema 管理 | **Hibernate ddl-auto: update** | 高風險 |
-| Migration 衝突 | V13 vs V22 皆建立 `media_assets` 表 | 需修復 |
-| 版本控制 | 無 | 需建立 |
+| 項目 | 啟用前狀態 | **當前狀態** | 驗證 |
+|------|-----------|-------------|------|
+| Flyway 啟用 | ❌ `enabled: false` | ✅ **`enabled: true`** | `application.yml` 已修改 |
+| Schema 管理 | ⚠️ `ddl-auto: update` | ✅ **`ddl-auto: validate`** | `application.yml` 已修改 |
+| V38 Migration | ⏳ 計畫中 | ✅ **已建立** | `V38__Consolidate_Media_Assets_Schema.sql` |
+| V22 衝突 | 🔴 表名衝突 | ✅ **已標記廢棄** | `V22__Create_Media_Assets_Table.sql` 保留但不執行 |
+| 版本控制 | ❌ 無 | ✅ **已建立** | V1 ~ V40 共 40 個 migrations |
+| **測試結果** | - | ✅ **541 tests 100% 通過** | `mvn verify -Pintegration-test` |
+
+**Sprint 18 Day 1 驗證結果** (2026-06-22):
+```
+Unit Tests:      272 tests, 0 Failures, 0 Errors
+Integration Tests: 269 tests, 0 Failures, 0 Errors
+Total:           541 tests, 0 Failures, 0 Errors
+BUILD SUCCESS (14:33 min)
+```
+
+---
+
+## 📋 評估摘要 (歷史記錄)
+
+| 項目 | Sprint 17 評估時 | Sprint 18 啟用時 |
+|------|----------|---------|
+| Flyway 狀態 | **已停用** (`enabled: false`) | ✅ **已啟用** (`enabled: true`) |
+| Schema 管理 | **Hibernate ddl-auto: update** | ✅ **`ddl-auto: validate`** |
+| Migration 衝突 | V13 vs V22 皆建立 `media_assets` 表 | ✅ V22 已廢棄，V38 統一 schema |
+| 版本控制 | 無 | ✅ V1 ~ V40 共 40 個 migrations |
 
 ---
 

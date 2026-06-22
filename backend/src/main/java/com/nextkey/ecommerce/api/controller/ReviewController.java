@@ -1,10 +1,12 @@
 package com.nextkey.ecommerce.api.controller;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.ReviewDto;
 import com.nextkey.ecommerce.api.dto.ReviewReplyDto;
+import com.nextkey.ecommerce.api.dto.ReviewSearchCriteria;
 import com.nextkey.ecommerce.core.review.ReviewReplyService;
 import com.nextkey.ecommerce.core.review.ReviewService;
 
@@ -111,6 +114,56 @@ public class ReviewController {
     public ResponseEntity<ApiResponse<ReviewDto.RatingStats>> getRatingStats(
             @PathVariable UUID listingId) {
         ReviewDto.RatingStats response = reviewService.getRatingStats(listingId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
+     * 多維度評價搜尋（Sprint 18 US-003）
+     *
+     * 支援條件：
+     * - keyword: 關鍵字（搜尋標題或內容）
+     * - minRating/maxRating: 評分範圍
+     * - startDate/endDate: 日期範圍 (ISO-8601)
+     * - hasImages: 是否有圖片
+     * - hasReply: 是否有商家回覆
+     * - sortBy: 排序欄位 (createdAt/rating/helpfulCount)
+     * - sortDir: 排序方向 (ASC/DESC)
+     */
+    @GetMapping("/listing/{listingId}/search")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<ReviewDto.ReviewListResponse>> searchReviews(
+            @PathVariable UUID listingId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer minRating,
+            @RequestParam(required = false) Integer maxRating,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endDate,
+            @RequestParam(required = false) Boolean hasImages,
+            @RequestParam(required = false) Boolean hasReply,
+            @RequestParam(required = false) ReviewSearchCriteria.SortBy sortBy,
+            @RequestParam(required = false) ReviewSearchCriteria.SortDir sortDir,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+
+        log.info("Search reviews: listingId={}, keyword={}, minRating={}, maxRating={}, hasImages={}, hasReply={}",
+                listingId, keyword, minRating, maxRating, hasImages, hasReply);
+
+        ReviewSearchCriteria criteria = ReviewSearchCriteria.builder()
+                .listingId(listingId)
+                .keyword(keyword)
+                .minRating(minRating)
+                .maxRating(maxRating)
+                .startDate(startDate)
+                .endDate(endDate)
+                .hasImages(hasImages)
+                .hasReply(hasReply)
+                .sortBy(sortBy)
+                .sortDir(sortDir)
+                .page(page)
+                .size(size)
+                .build();
+
+        ReviewDto.ReviewListResponse response = reviewService.searchReviews(criteria);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

@@ -10,10 +10,12 @@ import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.ReviewDto;
+import com.nextkey.ecommerce.api.dto.ReviewSearchCriteria;
 import com.nextkey.ecommerce.core.media.MediaService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.review.Review;
@@ -49,7 +51,7 @@ public class ReviewService {
     private final MediaService mediaService;
 
     // Pagination default
-    private static final int DEFAULT_PAGE_SIZE = 50;
+    public static final int DEFAULT_PAGE_SIZE = 50;
 
     // 🔴 Sprint 16 US-005: 評價圖片上限
     public static final int MAX_REVIEW_IMAGES = ReviewDto.MAX_REVIEW_IMAGES;
@@ -360,6 +362,109 @@ public class ReviewService {
                 .averageRating(null)
                 .totalReviews(null)
                 .build();
+    }
+
+    // ========== Sprint 18 US-003: 多維度搜尋與篩選 ==========
+
+    /**
+     * 多維度評價搜尋
+     *
+     * 支援條件：
+     * - 關鍵字（搜尋標題或內容）
+     * - 評分範圍 (minRating/maxRating)
+     * - 日期範圍 (startDate/endDate)
+     * - 是否有圖片 (hasImages)
+     * - 是否有商家回覆 (hasReply)
+     * - 多欄位排序 (sortBy/sortDir)
+     *
+     * @param criteria 搜尋條件
+     * @return 符合條件的評價分頁結果（含平均評分、總數等統計）
+     * @throws BusinessException
+     *         - E_3000: Listing 不存在
+     */
+    @Transactional(readOnly = true)
+    public ReviewDto.ReviewListResponse searchReviews(ReviewSearchCriteria criteria) {
+        // 驗證 Listing 存在
+        Listing listing = listingRepository.findById(criteria.getListingId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Listing not found"));
+
+        // 驗證評分範圍
+        validateRatingRange(criteria.getMinRating(), criteria.getMaxRating());
+
+        // 構建排序
+        Sort sort = buildSort(criteria);
+
+        // 構建分頁
+        int page = Math.max(0, criteria.getPage());
+        int size = Math.min(Math.max(1, criteria.getSize()), DEFAULT_PAGE_SIZE);
+        PageRequest pageRequest = PageRequest.of(page, size, sort);
+
+        // 執行搜尋
+        Page<Review> reviews = reviewRepository.searchReviews(
+                criteria.getListingId(),
+                criteria.getKeyword(),
+                criteria.getMinRating(),
+                criteria.getMaxRating(),
+                criteria.getStartDate(),
+                criteria.getEndDate(),
+                criteria.getHasImages(),
+                criteria.getHasReply(),
+                pageRequest);
+
+        // 轉換為 Response
+        List<ReviewDto.ReviewResponse> reviewResponses = reviews.getContent().stream()
+                .map(r -> toReviewResponse(r, listing))
+                .collect(Collectors.toList());
+
+        // 取得統計資訊（基於整個 listing，不限搜尋條件）
+        Double avgRating = reviewRepository.getAverageRatingByListingId(criteria.getListingId());
+        Integer totalReviews = reviewRepository.countByListingId(criteria.getListingId());
+
+        return ReviewDto.ReviewListResponse.builder()
+                .reviews(reviewResponses)
+                .page(page)
+                .size(size)
+                .totalElements(reviews.getTotalElements())
+                .totalPages(reviews.getTotalPages())
+                .averageRating(avgRating != null ? avgRating : 0.0)
+                .totalReviews(totalReviews)
+                .build();
+    }
+
+    /**
+     * 驗證評分範圍
+     */
+    private void validateRatingRange(Integer minRating, Integer maxRating) {
+        if (minRating != null && (minRating < 1 || minRating > 5)) {
+            throw new BusinessException(ErrorCode.E_8000,
+                    "minRating must be between 1 and 5");
+        }
+        if (maxRating != null && (maxRating < 1 || maxRating > 5)) {
+            throw new BusinessException(ErrorCode.E_8000,
+                    "maxRating must be between 1 and 5");
+        }
+        if (minRating != null && maxRating != null && minRating > maxRating) {
+            throw new BusinessException(ErrorCode.E_8000,
+                    "minRating cannot be greater than maxRating");
+        }
+    }
+
+    /**
+     * 構建排序條件
+     */
+    private Sort buildSort(ReviewSearchCriteria criteria) {
+        ReviewSearchCriteria.SortBy sortBy = criteria.getSortBy() != null
+                ? criteria.getSortBy()
+                : ReviewSearchCriteria.SortBy.CREATED_AT;
+        ReviewSearchCriteria.SortDir sortDir = criteria.getSortDir() != null
+                ? criteria.getSortDir()
+                : ReviewSearchCriteria.SortDir.DESC;
+
+        Sort.Direction direction = sortDir == ReviewSearchCriteria.SortDir.ASC
+                ? Sort.Direction.ASC
+                : Sort.Direction.DESC;
+
+        return Sort.by(direction, sortBy.getField());
     }
 
     // ========== 圖片管理方法（Sprint 16 US-006） ==========

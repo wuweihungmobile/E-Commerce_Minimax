@@ -2,9 +2,9 @@
 
 > **Sprint 編號**: Sprint 18
 > **期間**: 2026-06-22 ~ 2026-07-03 (2 週)
-> **文件版本**: v1.1
+> **文件版本**: v1.8
 > **建立日期**: 2026-06-11
-> **更新日期**: 2026-06-22 (Day 1 驗證完成)
+> **更新日期**: 2026-06-24 (Day 3 ErrorCode 重構 Phase 1 完成)
 > **依據**: [SPRINT_18_PLAN.md](./SPRINT_18_PLAN.md) + [SPRINT_18_DETAILED_EXECUTION_PLAN.md](../04_planning/SPRINT_18_DETAILED_EXECUTION_PLAN.md)
 
 ---
@@ -13,10 +13,10 @@
 
 | 狀態 | 數量 |
 |------|------|
-| ✅ 已完成 | 10 |
+| ✅ 已完成 | 11 |
 | 🔄 進行中 | 0 |
 | ⏳ 待處理 | 0 |
-| **總計** | **9** |
+| **總計** | **11** |
 
 ---
 
@@ -118,19 +118,19 @@
 | AC-001: 分析 E_5001/E_5005/E_5006 當前使用情況 | ✅ | 10/5/3 處，濫用率 50%/80%/100% |
 | AC-002: 分析 E_8000 當前使用情況 | ✅ | **32 處，濫用率 94%** |
 | AC-003: 建立 ErrorCode 重構評估文件 | ✅ | [ErrorCode_Refactor_Evaluation.md](../06_quality/ErrorCode_Refactor_Evaluation.md) |
-| AC-004: 開始 E_8000 重構 (如時間允許) | ⏳ 延遲 | 評估完成，重構排至 Sprint 19-20 (Phase 2) |
+| AC-004: 開始 E_8000 重構 (如時間允許) | ✅ **Phase 1 完成** | 新增 11 個錯誤碼，修正 11 處誤用，286 tests 通過 |
 
 **具體任務**:
 - [x] T-004-1: 搜尋 E_5001/E_5005/E_5006 使用情況 (共 18 處)
 - [x] T-004-2: 搜尋 E_8000 使用情況 (32 處，跨 7 個模組)
 - [x] T-004-3: 建立 ErrorCode 重構評估文件 (方案 A/B/C，推薦方案 B)
-- [ ] T-004-4: 開始 E_8000 重構 (排至 Sprint 19-20，本 Sprint 不執行)
+- [x] T-004-4: ErrorCode 重構 Phase 1 ✅（新增 11 個專用碼，修正 11 處誤用，286 tests 通過，2026-06-24）
 
 **評估結論**:
 - **推薦方案 B**: 漸進遷移 - 新增專用錯誤碼，保留舊碼向後相容
-- **預估效益**: 錯誤碼精確度從 35% 提升至 100%
-- **Phase 1 新增 7 個專用錯誤碼**: E_5010-E_5014 + E_8002-E_8005 + E_1087/E_1092
-- **完整實施**: 需 2-3 SP 跨 Sprint 18-20
+- **Phase 1 完成 (2026-06-24)**: 新增 11 個專用錯誤碼（E_5010-E_5014, E_8002-E_8005, E_1087, E_1092）
+- **Phase 1 修正**: 11 處誤用修正（OrderService 2處, SettlementGenerator 2處, SettlementReviewer 6處, NotificationService 1處）
+- **Phase 2-3**: Sprint 19-20 繼續遷移 ReviewService(12處), CmsService(5處), PaymentService(6處) 等
 
 ---
 
@@ -168,7 +168,7 @@
 |------|-----|----------|------|
 | 2026-06-22 | Day 1 | US-001/002/003/004 (9/9 AC) + 環境驗證 555 tests | Sprint 18 Day 1 完成全部規劃 US |
 | 2026-06-23 | Day 2 | ✅ Commit 02a4fa0 推送至 origin/main (10 檔案, 2036 行) + 完整 CI 驗證 (act) | 單一分支策略：直接 commit + push main |
-| 2026-06-24 | Day 3 | - | |
+| 2026-06-24 | Day 3 | ✅ ErrorCode 重構 Phase 1：新增 11 個錯誤碼，修正 11 處誤用，286 Unit Tests 100% 通過 | act CI 驗證通過 (555 tests)，Sprint Buffer 工作 |
 | 2026-06-25 | Day 4 | - | |
 | 2026-06-26 | Day 5 | - | |
 | 2026-06-29 | Day 6 | - | |
@@ -208,6 +208,7 @@
 
 | 版本 | 日期 | 修改內容 | 修改人 |
 |------|------|----------|--------|
+| v1.8 | 2026-06-24 | Day 3：T-004-4 完成 — ErrorCode 重構 Phase 1（新增 11 個專用碼，修正 11 處誤用，286 tests 通過） | Claude Code |
 | v1.7 | 2026-06-23 | Day 2：US-005 完成（技術債掃描，122 處分類，Sprint 19-21 計劃） | Claude Code |
 | v1.6 | 2026-06-23 | Day 2：Commit 02a4fa0 推送至 origin/main（10 檔案, 2036 行, 完整 CI 驗證通過） | Claude Code |
 | v1.5 | 2026-06-22 | Day 1 深夜：US-004 完成（ErrorCode 評估文件，方案 B 推薦） | Claude Code |

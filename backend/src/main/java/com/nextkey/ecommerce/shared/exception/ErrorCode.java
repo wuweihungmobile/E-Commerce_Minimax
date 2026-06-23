@@ -63,6 +63,12 @@ public enum ErrorCode {
     E_5007("E-5007", "Promo code invalid"),
     E_5008("E-5008", "Promo code expired"),
     E_5009("E-5009", "Promo code usage limit reached"),
+    // 🔴 Sprint 18 US-004 Phase 1: 新增專用錯誤碼，取代 E_5001/E_5005/E_5006 誤用
+    E_5010("E-5010", "Booking status invalid"),
+    E_5011("E-5011", "Payment status invalid"),
+    E_5012("E-5012", "Refund status invalid"),
+    E_5013("E-5013", "Settlement statement not found"),
+    E_5014("E-5014", "Settlement state transition invalid"),
 
     // Payment (E-6000s)
     E_6000("E-6000", "Payment not found"),
@@ -92,10 +98,17 @@ public enum ErrorCode {
     // Pricing (E-8000s)
     E_8000("E-8000", "Pricing rule not found"),
     E_8001("E_8001", "Invalid pricing rule config"),
+    // 🔴 Sprint 18 US-004 Phase 1: 新增專用錯誤碼，取代 E_8000 誤用
+    E_8002("E-8002", "Notification not found"),
+    E_8003("E-8003", "Notification template not found"),
+    E_8004("E-8004", "CMS page not found"),
+    E_8005("E-8005", "CMS banner not found"),
 
     // Review (E-1080s dedicated to Review module)
     // 🔴 Sprint 16 US-001: 評價重複回覆
     E_1086("E-1086", "Review already has a reply"),
+    // 🔴 Sprint 18 US-004 Phase 1: 新增專用錯誤碼，取代 E_8000 誤用（Review 模組）
+    E_1087("E-1087", "Review not found"),
     // 🔴 Sprint 16 US-005: 多圖評價 9 張上限
     E_1088("E-1088", "Review images count exceeds the limit: max 9, actual %d"),
     // 🔴 Sprint 16 US-005: 評價圖片無效
@@ -104,6 +117,8 @@ public enum ErrorCode {
     E_1090("E-1090", "Review image not found at index %d"),
     // 🔴 Sprint 16 US-006: 非本人操作
     E_1091("E-1091", "You can only operate on your own review images"),
+    // 🔴 Sprint 18 US-004 Phase 1: 新增專用錯誤碼，取代 E_8000 誤用（Booking Review 模組）
+    E_1092("E-1092", "Booking review not found"),
 
     // Validation (E-9000s)
     E_9000("E-9000", "Validation error"),

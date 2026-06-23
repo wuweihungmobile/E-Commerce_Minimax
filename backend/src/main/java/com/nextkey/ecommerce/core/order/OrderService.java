@@ -379,7 +379,7 @@ public class OrderService {
         // 如果不是 ADMIN，則必須是訂單擁有者
         if (!isAdmin) {
             if (!userId.equals(order.getUserId())) {
-                throw new BusinessException(ErrorCode.E_5001, "Not authorized to cancel this order");
+                throw new BusinessException(ErrorCode.E_1007, "Not authorized to cancel this order");
             }
         }
 
@@ -424,7 +424,7 @@ public class OrderService {
 
         // 如果不是 ADMIN，則必須是訂單擁有者
         if (!isAdmin && !userId.equals(order.getUserId())) {
-            throw new BusinessException(ErrorCode.E_5001, "Not authorized to view order logs");
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to view order logs");
         }
 
         List<OrderStateLog> logs = orderStateLogRepository.findByOrderIdOrderBySequenceAsc(orderId);

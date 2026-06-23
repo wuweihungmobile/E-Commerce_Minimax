@@ -119,7 +119,7 @@ public class SettlementGenerator {
         String statementNumber = generateStatementNumber(tenantId, periodStart);
 
         Tenant tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_5001, "Tenant not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
 
         SettlementStatement statement = SettlementStatement.builder()
                 .tenant(tenant)
@@ -172,7 +172,7 @@ public class SettlementGenerator {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         SettlementStatement statement = settlementRepository.findByIdAndTenantId(statementId, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_5005, "Settlement statement not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_5013, "Settlement statement not found"));
 
         return mapper.toStatementResponse(statement);
     }

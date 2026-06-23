@@ -195,7 +195,7 @@ public class NotificationService {
     @Transactional
     public void deleteNotification(final UUID userId, final UUID notificationId) {
         Notification notification = notificationRepository.findById(notificationId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Notification not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8002, "Notification not found"));
 
         if (!notification.getUserId().equals(userId)) {
             throw new BusinessException(ErrorCode.E_1007, "Cannot delete notification of other user");

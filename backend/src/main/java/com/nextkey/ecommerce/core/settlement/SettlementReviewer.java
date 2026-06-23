@@ -51,10 +51,10 @@ public class SettlementReviewer {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         SettlementStatement statement = settlementRepository.findByIdAndTenantId(statementId, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_5005, "Settlement statement not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_5013, "Settlement statement not found"));
 
         if (statement.getStatus() != SettlementStatus.PENDING) {
-            throw new BusinessException(ErrorCode.E_5006, "Only PENDING statements can be submitted for review");
+            throw new BusinessException(ErrorCode.E_5014, "Only PENDING statements can be submitted for review");
         }
 
         statement.setStatus(SettlementStatus.PENDING_REVIEW);
@@ -71,10 +71,10 @@ public class SettlementReviewer {
     @Transactional
     public SettlementStatementResponse approveStatement(UUID statementId, UUID adminId) {
         SettlementStatement statement = settlementRepository.findById(statementId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_5005, "Settlement statement not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_5013, "Settlement statement not found"));
 
         if (statement.getStatus() != SettlementStatus.PENDING_REVIEW) {
-            throw new BusinessException(ErrorCode.E_5006, "Only PENDING_REVIEW statements can be approved");
+            throw new BusinessException(ErrorCode.E_5014, "Only PENDING_REVIEW statements can be approved");
         }
 
         statement.setStatus(SettlementStatus.APPROVED);
@@ -92,10 +92,10 @@ public class SettlementReviewer {
     @Transactional
     public SettlementStatementResponse rejectStatement(UUID statementId, UUID adminId, String reason) {
         SettlementStatement statement = settlementRepository.findById(statementId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_5005, "Settlement statement not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_5013, "Settlement statement not found"));
 
         if (statement.getStatus() != SettlementStatus.PENDING_REVIEW) {
-            throw new BusinessException(ErrorCode.E_5006, "Only PENDING_REVIEW statements can be rejected");
+            throw new BusinessException(ErrorCode.E_5014, "Only PENDING_REVIEW statements can be rejected");
         }
 
         statement.setStatus(SettlementStatus.REJECTED);

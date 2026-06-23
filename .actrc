@@ -24,3 +24,6 @@
 
 # 容器架構（macOS M1/M2 需要指定，避免 arm64 問題）
 --container-architecture linux/amd64
+
+# 掛載本機 Maven 快取，避免 act 容器內 DNS 解析失敗導致無法下載依賴
+--container-options "-v /Users/wuweihong/.m2:/root/.m2"

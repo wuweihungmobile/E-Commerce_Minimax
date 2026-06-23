@@ -1,209 +1,28 @@
 #!/usr/bin/env sh
 # =============================================
-# AISDLC v0.09: Commit-Msg Hook（強化防禦版 v2）
-# 目的：確保每個 commit 都有經過 CI 驗證（多層防禦）
+# AISDLC v0.09: Commit-Msg Hook（精簡版 v3）
+# 目的：基本 commit message 檢查
 #
-# v2 強化項目 (2026-06-17):
-# - 縮短驗證有效期為 10 分鐘
-# - 加入 working tree hash 驗證（防止重放攻擊）
-# - 嚴格拒絕無驗證記錄的 commit（包括 --no-verify）
-# - 跨平台 sed 語法（macOS / Linux 通用）
-# - 移除 set -e，改用明確錯誤檢查
+# 🔴 v3 變更（2026-06-23）：
+#   - 移除 CI 驗證記錄強制檢查
+#   - 原因：完整 act CI 驗證已移到 pre-push（「上去 GIT」這道門才強制 act）
+#     commit 是本機操作，不需要在每個 commit 強制 CI 記錄
+#   - 真正的防線在 pre-push：推送前批次跑一次 act，沒通過就擋下
 #
-# 攻擊防禦：
-# - --no-verify: commit-msg 仍會執行，無驗證記錄 → 拒絕
-# - 重放攻擊: 記錄綁定 working tree hash，hash 不匹配 → 拒絕
-# - 時間操縱: 縮短有效期至 10 分鐘
-# - 偽造記錄: 必須真的有 act 執行成功才會被記錄
+# 注意：commit-msg 在 pre-commit 成功後才執行（pre-commit 失敗則 commit 被拒絕，不會到達這裡），
+#       但它不再是 CI 驗證關卡，僅做訊息格式檢查。
 # =============================================
 
-# 明確的錯誤處理：不用 set -e，改用 if/return
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 cd "$ROOT_DIR" || exit 1
 
-# 取得當前 commit hash
-COMMIT_HASH=$(git rev-parse HEAD 2>/dev/null || echo "0000000000000000000000000000000000000000")
 COMMIT_MSG_FILE="$1"
-
-# 讀取 commit message
 COMMIT_MSG=$(cat "$COMMIT_MSG_FILE" 2>/dev/null | tr -d '\n' | head -c 200)
 
-# =============================================
-# 1. 防止空 commit message 繞過檢查
-# =============================================
+# 1. 防止空 commit message
 if [ -z "$COMMIT_MSG" ]; then
     echo "🔴 ERROR: 空的 commit message"
     exit 1
 fi
 
-# =============================================
-# 2. 檢查 commit message 中是否包含 --no-verify 字眼
-#    (作為額外警示，雖然 --no-verify 是 commit flag 不是 message)
-# =============================================
-
-# =============================================
-# 3. 檢查是否為 merge commit 或 initial commit
-# =============================================
-if [ "$COMMIT_HASH" = "0000000000000000000000000000000000000000" ]; then
-    # 這是初始 commit，無 parent 可驗證
-    # 但在這個專案中，第一個 commit 應該已經有 hooks
-    # 如果是第一個 commit 且沒有 hooks，記錄警告但不阻擋
-    if [ "$COMMIT_MSG" = "" ] || echo "$COMMIT_MSG" | grep -q "^Initial commit" 2>/dev/null; then
-        echo "⚠️  初始 commit，允許通過（無 parent 可驗證）"
-        exit 0
-    fi
-    # 否則仍然檢查驗證記錄
-fi
-
-# =============================================
-# 4. 計算 working tree hash（用於綁定驗證記錄）
-# =============================================
-CI_DATA_DIR="$ROOT_DIR/.ci-validation-data"
-CI_PENDING="$CI_DATA_DIR/pending"
-CI_RECORD="$CI_DATA_DIR/commits"
-
-mkdir -p "$CI_DATA_DIR"
-
-# 計算 staged + working tree 的 hash（防止重放攻擊）
-# 對於已 commit 的內容，使用 HEAD tree hash
-WORKING_TREE_HASH=$(git ls-tree -r HEAD 2>/dev/null | sha256sum | cut -d' ' -f1)
-if [ -z "$WORKING_TREE_HASH" ]; then
-    WORKING_TREE_HASH="empty"
-fi
-
-# =============================================
-# 5. 檢查待驗證標記（pre-commit 寫入的）
-# =============================================
-PENDING_VALID=0
-if [ -f "$CI_PENDING" ]; then
-    # 讀取待驗證標記
-    # shellcheck disable=SC1090
-    . "$CI_PENDING" 2>/dev/null || true
-
-    # 驗證 parent hash 是否匹配
-    # 🔴 修正（2026-06-22）：pre-commit 已改用 HEAD^ 記錄 PARENT_HASH
-    # 所以 commit-msg 也用 HEAD^ 來匹配
-    CURRENT_PARENT=$(git rev-parse HEAD^ 2>/dev/null || echo "0000000000000000000000000000000000000000")
-
-    if [ "$PARENT_HASH" = "$CURRENT_PARENT" ]; then
-        # 寫入正式驗證記錄
-        VALIDATED_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-
-        # 跨平台 sed：使用 .bak 方式（macOS / Linux 通用）
-        if [ -f "$CI_RECORD" ]; then
-            sed -i.bak "/^$COMMIT_HASH|/d" "$CI_RECORD" 2>/dev/null || \
-            grep -v "^$COMMIT_HASH|" "$CI_RECORD" > "$CI_RECORD.tmp" && mv "$CI_RECORD.tmp" "$CI_RECORD"
-            rm -f "$CI_RECORD.bak" "$CI_RECORD.tmp"
-        fi
-
-        # 記錄格式：COMMIT_HASH|VALIDATED_TIME|TREE_HASH|SUCCESS
-        # 🔴 v2: 使用 TREE_HASH（pre-commit 算好的）做綁定
-        FINAL_TREE_HASH="${TREE_HASH:-$WORKING_TREE_HASH}"
-        echo "$COMMIT_HASH|$VALIDATED_TIME|$FINAL_TREE_HASH|SUCCESS" >> "$CI_RECORD"
-
-        # 移除待驗證標記
-        rm -f "$CI_PENDING"
-
-        echo ""
-        echo "✅ CI 驗證記錄已寫入"
-        echo "   Commit: $COMMIT_HASH"
-        echo "   驗證時間：$VALIDATED_TIME"
-        echo "   Tree hash: ${FINAL_TREE_HASH:0:16}..."
-        echo ""
-        exit 0
-    fi
-    # pending 不匹配，繼續走嚴格檢查流程
-fi
-
-# =============================================
-# 6. 嚴格檢查：無 pending 標記時，必須有現有驗證記錄
-#    🔴 這是防止 --no-verify 的關鍵檢查
-# =============================================
-VALIDATED=""
-if [ -f "$CI_RECORD" ]; then
-    VALIDATED=$(grep "^$COMMIT_HASH|" "$CI_RECORD" 2>/dev/null | tail -1)
-fi
-
-if [ -z "$VALIDATED" ]; then
-    echo ""
-    echo "🔴 ERROR: 找不到 CI 驗證記錄！"
-    echo "=========================================="
-    echo ""
-    echo "你的 commit 沒有經過本地 CI 驗證。"
-    echo "Commit: $COMMIT_HASH"
-    echo ""
-    echo "🔴 這通常代表你使用了 --no-verify 繞過 pre-commit！"
-    echo ""
-    echo "修復方式："
-    echo "  1. 撤回這個 commit: git reset --soft HEAD~1"
-    echo "  2. 正常 commit: git commit -m \"$COMMIT_MSG\""
-    echo "  3. 或手動執行 CI 驗證:"
-    echo "     make validate-all"
-    echo "     git commit --amend --no-edit"
-    echo ""
-    echo "🔴 禁止使用 --no-verify！這會導致 CI 失敗！"
-    echo ""
-    exit 1
-fi
-
-# =============================================
-# 7. 驗證記錄存在，檢查是否過期（10 分鐘）
-#    🔴 v2 強化：從 1 小時縮短為 10 分鐘
-# =============================================
-VALIDATED_TIME=$(echo "$VALIDATED" | cut -d'|' -f2)
-RECORDED_TREE_HASH=$(echo "$VALIDATED" | cut -d'|' -f3)
-
-# 計算時間差
-if date -j -f '%Y-%m-%d %H:%M:%S' "$VALIDATED_TIME" +%s >/dev/null 2>&1; then
-    # macOS
-    VALIDATED_EPOCH=$(date -j -f '%Y-%m-%d %H:%M:%S' "$VALIDATED_TIME" +%s 2>/dev/null || echo "0")
-else
-    # Linux
-    VALIDATED_EPOCH=$(date -d "$VALIDATED_TIME" +%s 2>/dev/null || echo "0")
-fi
-NOW_EPOCH=$(date +%s)
-AGE_SECONDS=$((NOW_EPOCH - VALIDATED_EPOCH))
-
-# 有效期 10 分鐘（600 秒）
-if [ $AGE_SECONDS -gt 600 ]; then
-    echo ""
-    echo "🔴 ERROR: CI 驗證記錄已超過 10 分鐘！"
-    echo "=========================================="
-    echo ""
-    echo "最後驗證時間：$VALIDATED_TIME（$((AGE_SECONDS / 60)) 分鐘前）"
-    echo "Commit: $COMMIT_HASH"
-    echo ""
-    echo "請重新執行完整 CI 驗證："
-    echo "  make validate-all"
-    echo "  git commit --amend --no-edit"
-    echo ""
-    exit 1
-fi
-
-# =============================================
-# 8. 驗證 working tree hash（防重放攻擊）
-#    🔴 v2 強化：確保驗證記錄對應當前 working tree
-# =============================================
-if [ -n "$RECORDED_TREE_HASH" ] && [ "$RECORDED_TREE_HASH" != "$WORKING_TREE_HASH" ]; then
-    echo ""
-    echo "🔴 ERROR: Working tree 與驗證記錄不匹配！"
-    echo "=========================================="
-    echo ""
-    echo "驗證時的 tree hash: ${RECORDED_TREE_HASH:0:16}..."
-    echo "目前的 tree hash:   ${WORKING_TREE_HASH:0:16}..."
-    echo ""
-    echo "這代表 commit 後 working tree 被修改過，或使用了舊的驗證記錄。"
-    echo "請重新執行 CI 驗證："
-    echo "  make validate-all"
-    echo "  git commit --amend --no-edit"
-    echo ""
-    exit 1
-fi
-
-# =============================================
-# 9. 全部通過
-# =============================================
-echo "✅ CI 驗證記錄檢查通過（$VALIDATED_TIME）"
-echo "   Commit: $COMMIT_HASH"
-echo "   驗證時效：$((AGE_SECONDS / 60)) 分鐘前"
 exit 0

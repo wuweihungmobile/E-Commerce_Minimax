@@ -1,13 +1,17 @@
 #!/usr/bin/env sh
 # =============================================
-# AISDLC v0.09: Root Pre-commit Hook (整合版)
+# AISDLC v0.09: Root Pre-commit Hook（快速版 v3）
 # 自動依 staged 檔案類型，呼叫對應的 backend/frontend hook
-# 並執行完整本地 CI 驗證（make validate-all / act）
-# 安裝方式：scripts/install-hooks.sh
 #
-# 🔴 CRITICAL: 完整 CI 驗證現在在 commit 時執行
-#   - 可防止使用 --no-verify 繞過 CI 檢查
-#   - 確保所有 commit 都經過完整驗證
+# 🔴 v3 變更（2026-06-23）：
+#   - 移除 commit 時的完整 act CI 驗證（過去每次 commit 都要 5-10 分鐘）
+#   - commit 階段只做「快速檢查」（lint + compile + 變動模組測試 + secret 掃描）
+#   - 完整 act CI 驗證移到 pre-push（「上去 GIT」這道門才是真正的關卡）
+#
+# 為什麼這樣安全？
+#   - commit 是本機操作，不會上 GitHub
+#   - pre-push 會在推送前批次跑一次完整 act，沒通過就擋下
+#   - 「沒驗證就上去 GIT」的保證完全不變，只是 act 不再每次 commit 重跑
 # =============================================
 
 set -e
@@ -15,39 +19,20 @@ set -e
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 cd "$ROOT_DIR"
 
-# 🔴 CRITICAL: 防止空 commit 繞過檢查
-# 注意：當使用 -m 選項時，Git 不會傳遞 commit message 檔案給 hook
-# 此時我們依賴 Git 本身會阻止空訊息
-# 只有當 Git 創建了 commit message 檔案時（不使用 -m），才檢查
-COMMIT_MSG=""
-if [ -n "$1" ] && [ -f "$1" ]; then
-    COMMIT_MSG=$(cat "$1" 2>/dev/null | tr -d '\n' | head -c 100)
-    # 只有在能讀取到 commit message 時才檢查
-    if [ -z "$COMMIT_MSG" ]; then
-        echo "🔴 ERROR: 空的 commit message"
-        exit 1
-    fi
-fi
-# 如果 $1 為空（使用 -m 選項），則跳過檢查
-# 因為 Git 本身會阻止 -m "" 的情況
-
 # 取得所有 staged 檔案
 STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
 
-# 判斷是否有 backend 或 frontend 變更
 HAS_BACKEND=$(echo "$STAGED_FILES" | grep -E '^backend/' | head -1 || true)
 HAS_FRONTEND=$(echo "$STAGED_FILES" | grep -E '^frontend/' | head -1 || true)
 
 EXIT_CODE=0
 
-# =============================================
-# 階段 1: 快速檢查（lint + compile + 核心測試）
-# =============================================
 echo "=========================================="
-echo "🔍 階段 1: 快速檢查（lint + compile + 核心測試）"
+echo "🔍 Pre-commit 快速檢查（lint + compile + 核心測試）"
+echo "   （完整 act CI 驗證將在 push 前執行）"
 echo "=========================================="
 
-# 1. Backend 檢查
+# 1. Backend 快速檢查
 if [ -n "$HAS_BACKEND" ] && [ -x "$ROOT_DIR/backend/hooks/pre-commit" ]; then
   echo "🚀 Running backend pre-commit checks..."
   echo "=========================================="
@@ -58,7 +43,7 @@ if [ -n "$HAS_BACKEND" ] && [ -x "$ROOT_DIR/backend/hooks/pre-commit" ]; then
   echo ""
 fi
 
-# 2. Frontend 檢查（透過 husky 自動呼叫 frontend/.husky/pre-commit）
+# 2. Frontend 快速檢查
 if [ -n "$HAS_FRONTEND" ]; then
   echo "🚀 Running frontend pre-commit checks..."
   echo "=========================================="
@@ -70,8 +55,10 @@ if [ -n "$HAS_FRONTEND" ]; then
     fi
   else
     echo "⚠️  Frontend husky not installed, running npm run lint + type-check directly..."
-    npm run lint
-    npm run type-check
+    if ! npm run lint || ! npm run type-check; then
+      echo "❌ Frontend pre-commit failed"
+      EXIT_CODE=1
+    fi
   fi
   cd "$ROOT_DIR"
   echo ""
@@ -80,7 +67,11 @@ fi
 # 3. Secret detection（輕量版）
 echo "🔐 Checking for potential secrets in staged files..."
 SECRET_PATTERNS='(password|secret|api[_-]?key|access[_-]?token|private[_-]?key).*=.*[\"'\''][^\"'\'']+[\"'\'']'
-SECRET_FILES=$(echo "$STAGED_FILES" | xargs grep -lEi "$SECRET_PATTERNS" 2>/dev/null | grep -vE '\.example$|node_modules/|target/|\.class$|test/|Test\.java|testSecret|TestSecret|\.github/workflows/|scripts/hooks/' || true)
+if [ -n "$STAGED_FILES" ]; then
+  SECRET_FILES=$(echo "$STAGED_FILES" | xargs grep -lEi "$SECRET_PATTERNS" 2>/dev/null | grep -vE '\.example$|node_modules/|target/|\.class$|test/|Test\.java|testSecret|TestSecret|\.github/workflows/|scripts/hooks/' || true)
+else
+  SECRET_FILES=""
+fi
 if [ -n "$SECRET_FILES" ]; then
   echo "🔴 ERROR: Potential secrets detected in:"
   echo "$SECRET_FILES"
@@ -91,125 +82,18 @@ if [ -n "$SECRET_FILES" ]; then
   EXIT_CODE=1
 fi
 
-# =============================================
-# 階段 2: 完整本地 CI 驗證（make validate-all / act）
-# 🔴 CRITICAL: 這是防止繞過 Hook 的關鍵
-# =============================================
 echo ""
 echo "=========================================="
-echo "🔒 階段 2: 完整本地 CI 驗證"
-echo "=========================================="
-
-# 檢查 act 是否可用
-if ! command -v act &> /dev/null; then
-    echo ""
-    echo "❌ 錯誤：找不到 'act' 命令"
-    echo ""
-    echo "📦 請先安裝 act："
-    echo "   macOS: brew install act"
-    echo "   Linux: curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh | sh"
-    echo ""
-    echo "⚠️  若暫時無法安裝，可使用替代方案："
-    echo "   make validate-all"
-    echo ""
-    echo "🔴 沒有 act 無法執行完整 CI 驗證，拒絕 commit！"
-    exit 1
-fi
-
-# 執行 act 完整 CI 驗證
-# 🔴 使用 set +e 來捕獲 act 的退出碼，不讓 set -e 立即退出
-# 🔴 CRITICAL: act 失敗時退出碼可能是 0，必須檢查輸出中的 "Failure" 關鍵字
-echo "🧪 執行完整本地 CI 驗證（act）..."
-echo ""
-set +e
-ACT_OUTPUT=$(act -W .github/workflows/act-compat.yml 2>&1)
-ACT_EXIT=$?
-set -e
-
-# =============================================
-# 最終結果判斷
-# 🔴 CRITICAL: 必須兩個都成功才能 commit
-# =============================================
-echo ""
-echo "=========================================="
-echo "📊 驗證結果汇总"
-echo "=========================================="
-
-# 🔴 檢查 act 是否真正成功（退出碼為 0 且輸出中沒有 "Failure"）
-ACT_HAS_FAILURE=$(echo "$ACT_OUTPUT" | grep -c "❌.*Failure\|Job failed\|context canceled" || true)
-if [ $ACT_EXIT -eq 0 ] && [ $ACT_HAS_FAILURE -eq 0 ]; then
-    ACT_SUCCESS=1
-else
-    ACT_SUCCESS=0
-fi
-
-echo "  Fast Checks: $([ $EXIT_CODE -eq 0 ] && echo '✅ PASS' || echo '❌ FAIL')"
-echo "  CI (act):    $([ $ACT_SUCCESS -eq 1 ] && echo '✅ PASS' || echo '❌ FAIL')"
-echo "=========================================="
-
-# 成功：兩者都通過
-# 🔴 注意：由於 commit 尚未創建，我們無法在此時寫入驗證記錄
-#         驗證記錄將由 commit-msg hook 在 commit 完成後寫入
-if [ $EXIT_CODE -eq 0 ] && [ $ACT_SUCCESS -eq 1 ]; then
-    # 寫入一個「待驗證」標記檔案，commit-msg 會使用它來寫入正式驗證記錄
-    CI_DATA_DIR="$ROOT_DIR/.ci-validation-data"
-    CI_PENDING="$CI_DATA_DIR/pending"
-    mkdir -p "$CI_DATA_DIR"
-
-    # 記錄即將創建的 commit 的 parent hash 和 staged changes 的 hash
-    # 這樣 commit-msg 可以驗證 commit 是否真的基於這些變更
-    # 🔴 修正（2026-06-22）：使用 HEAD^ 而非 HEAD
-    # 因為新 commit 的 parent = 當前 HEAD，而 commit-msg 會計算 HEAD^（新 commit 的 parent）
-    # 對於一般 commit：HEAD^ = HEAD
-    # 對於 merge commit：HEAD^ = 第一個 parent (P1)
-    # 兩種情況下，HEAD^ 都是新 commit 的 parent
-    PARENT_HASH=$(git rev-parse HEAD^ 2>/dev/null || echo "0000000000000000000000000000000000000000")
-    STAGED_HASH=$(echo "$STAGED_FILES" | sort | sha256sum 2>/dev/null | cut -d' ' -f1 || echo "none")
-    # 🔴 v2: 加入 working tree hash（commit 後的 tree），用於防重放攻擊
-    # 將 staged 變更暫存後，計算新 tree 的 hash
-    TREE_HASH=$(git write-tree 2>/dev/null | sha256sum | cut -d' ' -f1 || echo "none")
-
-    echo "PARENT_HASH=$PARENT_HASH" > "$CI_PENDING"
-    echo "STAGED_HASH=$STAGED_HASH" >> "$CI_PENDING"
-    echo "TREE_HASH=$TREE_HASH" >> "$CI_PENDING"
-    echo "VALIDATED_TIME=$(date '+%Y-%m-%d %H:%M:%S')" >> "$CI_PENDING"
-
-    echo ""
-    echo "✅ 完整 CI 驗證通過！"
-    echo "📅 驗證時間：$(date '+%Y-%m-%d %H:%M:%S')"
-    echo "📝 Parent commit：$PARENT_HASH"
-    echo ""
-    echo "（驗證記錄將在 commit 完成後由 commit-msg hook 寫入）"
-    echo ""
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "✅ 快速檢查通過！"
+    echo "📌 提醒：完整 act CI 驗證會在 'git push' 前自動執行。"
+    echo "   想提早跑完整驗證可執行：make validate-all"
+    echo "=========================================="
     exit 0
 fi
 
-# 失敗：顯示詳細錯誤訊息
-echo ""
-echo "🔴 CI 驗證失敗！禁止 commit！"
+echo "🔴 快速檢查失敗！禁止 commit！"
+echo "   請查看上方錯誤訊息並修復。"
+echo "🔴 禁止使用 --no-verify！"
 echo "=========================================="
-
-# 顯示失敗原因
-if [ $EXIT_CODE -ne 0 ]; then
-    echo ""
-    echo "❌ Fast Checks 失敗："
-    echo "   - Backend 或 Frontend 檢查未通過"
-    echo "   - 請查看上方錯誤訊息"
-fi
-
-if [ $ACT_EXIT -ne 0 ]; then
-    echo ""
-    echo "❌ CI (act) 失敗："
-    echo "   - 整合測試或建置失敗"
-    echo "   - 請查看上方錯誤訊息"
-fi
-
-echo ""
-echo "📋 修復後重新驗證："
-echo "   act -W .github/workflows/act-compat.yml"
-echo "   或"
-echo "   make validate-all"
-echo ""
-echo "🔴 禁止使用 --no-verify！請先在本地修復問題"
-echo ""
 exit 1

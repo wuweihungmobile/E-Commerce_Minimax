@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # =============================================
 # AISDLC v0.09: Hook 安裝腳本
-# 安裝所有 Git Hooks（pre-commit + pre-push）
+# 安裝所有 Git Hooks（pre-commit + commit-msg + pre-push）
 # 使用方式：./scripts/install-hooks.sh
 # 環境變數：
 #   VERIFY_HOOKS=1  僅驗證 Hook 是否正確安裝
@@ -12,6 +12,15 @@ set -e
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 cd "$ROOT_DIR"
 
+# 跨平台 sha256：優先 sha256sum（Linux），fallback shasum -a 256（macOS）
+calc_sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | cut -d' ' -f1
+    else
+        shasum -a 256 "$1" | cut -d' ' -f1
+    fi
+}
+
 # 🔴 CRITICAL: 清理可能的衝突 .husky 目錄
 # .husky/ 和 .git/hooks/ 同時存在會造成 Hook 執行混亂
 if [ -d ".husky" ]; then
@@ -21,29 +30,7 @@ if [ -d ".husky" ]; then
     echo "  ✅ 已移除 .husky/"
 fi
 
-# 🔴 CRITICAL: 驗證 Hook 雜湊值，確保未被篡改
 VERIFY_HOOKS="${VERIFY_HOOKS:-0}"
-HOOK_ERROR=0
-
-verify_hook_hash() {
-    local hook_name="$1"
-    local expected_hash="$2"
-    local actual_hash
-
-    if [ -f ".git/hooks/$hook_name" ]; then
-        actual_hash=$(sha256sum ".git/hooks/$hook_name" 2>/dev/null | cut -d' ' -f1)
-        if [ "$actual_hash" != "$expected_hash" ]; then
-            echo "  ❌ $hook_name 雜湊驗證失敗！可能被篡改！"
-            HOOK_ERROR=1
-            return 1
-        fi
-    else
-        echo "  ❌ $hook_name 不存在！"
-        HOOK_ERROR=1
-        return 1
-    fi
-    return 0
-}
 
 if [ "$VERIFY_HOOKS" = "1" ]; then
     echo "🔍 驗證 Hook 安裝..."
@@ -51,10 +38,13 @@ if [ "$VERIFY_HOOKS" = "1" ]; then
 
     # 計算目前 Hook 的雜湊值用於日後比對
     if [ -f ".git/hooks/pre-commit" ]; then
-        echo "📝 pre-commit hash: $(sha256sum .git/hooks/pre-commit | cut -d' ' -f1)"
+        echo "📝 pre-commit hash: $(calc_sha256 .git/hooks/pre-commit)"
+    fi
+    if [ -f ".git/hooks/commit-msg" ]; then
+        echo "📋 commit-msg hash: $(calc_sha256 .git/hooks/commit-msg)"
     fi
     if [ -f ".git/hooks/pre-push" ]; then
-        echo "📤 pre-push hash: $(sha256sum .git/hooks/pre-push | cut -d' ' -f1)"
+        echo "📤 pre-push hash: $(calc_sha256 .git/hooks/pre-push)"
     fi
     exit 0
 fi
@@ -82,7 +72,7 @@ cp scripts/hooks/pre-push .git/hooks/pre-push
 chmod +x .git/hooks/pre-push
 echo "  ✅ .git/hooks/pre-push"
 
-# 3. 安裝 commit-msg hook（🔴 CRITICAL: 防禦 --no-verify 繞過）
+# 3. 安裝 commit-msg hook（基本訊息格式檢查；注意：--no-verify 同時跳過 pre-commit 和 commit-msg，唯一 CI 守門員是 pre-push）
 echo "📋 [3/5] 安裝 commit-msg hook..."
 cp scripts/hooks/commit-msg .git/hooks/commit-msg
 chmod +x .git/hooks/commit-msg
@@ -120,20 +110,20 @@ echo ""
 echo "=========================================="
 echo "✅ 所有 Hooks 安裝完成！"
 echo ""
-echo "📋 Hook 功能說明："
-echo "  📝 pre-commit: 執行完整本地 CI 驗證（act）+ lint + compile + 核心測試"
-echo "  📋 commit-msg: 驗證 commit 是否有 CI 驗證記錄（防止 --no-verify 繞過）"
-echo "  📤 pre-push:   僅檢查 CI 驗證記錄（驗證已在 commit 時完成）"
+echo "📋 Hook 功能說明（v3，2026-06-23）："
+echo "  📝 pre-commit: 快速檢查（lint + compile + 核心測試 + secret 掃描，約 1-2 分鐘）"
+echo "  📋 commit-msg: 基本訊息檢查（防止空訊息）"
+echo "  📤 pre-push:   ⭐ 唯一嚴格門：推送前批次跑一次完整 act CI（依變動範圍只跑相關 job）"
 echo ""
 echo "🔐 安全機制："
-echo "  ✅ commit 時執行完整 CI 驗證（act）"
-echo "  ✅ commit-msg 驗證 CI 記錄（即使 pre-commit 被 --no-verify 跳過）"
-echo "  ✅ push 前檢查 CI 驗證記錄"
+echo "  ✅ commit 快速、迭代順暢（不再每次 commit 重跑 act）"
+echo "  ✅ push 前必跑 act，沒通過就擋下（「沒驗證就上去 GIT」保證不變）"
+echo "  ✅ 10 分鐘內 + tree-hash 相符的 make validate-all 記錄可直接放行"
 echo "  ✅ 檢查 .ci-validation-data 是否被錯誤 commit"
 echo ""
 echo "⚠️  禁止使用 --no-verify："
-echo "  git commit --no-verify  # 🔴 已封鎖，會導致 CI 失敗"
-echo "  git push --no-verify    # 🔴 已封鎖，會導致 CI 失敗"
+echo "  git commit --no-verify  # 🔴 繞過 pre-commit + commit-msg（commit-time hooks），但 pre-push 仍會執行"
+echo "  git push --no-verify    # 🔴 已封鎖，繞過 pre-push（唯一 CI 守門員），會導致遠端 CI 失敗"
 echo ""
 echo "🧪 測試 hooks："
 echo "  echo 'test' >> test.txt && git add test.txt && git commit -m 'test'"

@@ -956,9 +956,9 @@ When this framework is integrated into projects:
   - **pre-commit**: 執行完整 CI 驗證 + 寫入「待驗證標記」到 `.ci-validation-data/pending`
   - **commit-msg**: 檢查待驗證標記 → 確認 parent hash 匹配 → 寫入正式驗證記錄（含 TREE_HASH）
   - **pre-push**: 檢查所有要 push 的 commits + 10 分鐘有效期 + TREE_HASH 綁定
-- ✅ **防止 --no-verify 繞過**：
-  - commit-msg 在 commit 完成後執行，無法被 --no-verify 跳過（--no-verify 只跳 pre-commit）
-  - 嚴格檢查模式：無 pending 也無驗證記錄 → 直接拒絕 commit
+- ~~防止 --no-verify 繞過~~（v2 已廢棄的設計）：
+  - ~~commit-msg 在 commit 完成後執行，無法被 --no-verify 跳過（--no-verify 只跳 pre-commit）~~
+  - 注意：此設計基於錯誤認知，`--no-verify` 實際上同時跳過 pre-commit 和 commit-msg（v3 已修正）
 - ✅ **防重放攻擊**：
   - 每條驗證記錄綁定 `git ls-tree -r HEAD` 的 SHA-256 hash
   - push 時重新計算 working tree hash，不匹配則拒絕
@@ -974,6 +974,15 @@ When this framework is integrated into projects:
 - 12 個 act E2E 403 錯誤 → 0 個（`TestDatabaseInitializer` 改用 JdbcTemplate 初始化 system tenant + feature toggles）
 - `make validate-all` 完整 CI 驗證一次通過
 - 所有 Hook 多層防禦已部署
+
+**架構說明 (2026-06-23) - v3 已改架構，上述 v2 三層架構已廢棄**:
+- v2 架構（pending → commit-msg → pre-push）已不再使用
+- **v3 新架構**：pre-push 是唯一 CI 守門員
+  - `pre-commit`：快速檢查（lint + compile + 核心測試 + secret 掃描，約 1-2 分鐘）
+  - `commit-msg`：基本訊息格式檢查（防止空訊息），不做 CI 驗證記錄
+  - `pre-push`：唯一嚴格門，推送前批次跑一次完整 act CI（10 分鐘快取避免重複跑）
+- v2 的「pending 標記 + commit-msg CI 記錄」機制已全部移除，不再有 `.ci-validation-data/pending`
+- 歷史記錄（v2 的慘痛教訓）保留供 AISDLC 學習參考
 
 **🔴 違反此機制將導致 CI 失敗並浪費資源！🔴**
 

@@ -26,4 +26,5 @@
 --container-architecture linux/amd64
 
 # 掛載本機 Maven 快取，避免 act 容器內 DNS 解析失敗導致無法下載依賴
---container-options "-v /Users/wuweihong/.m2:/root/.m2"
+# 注意：-v 和路徑之間不加空格，否則 Docker 會誤判為無效 volume 名稱
+--container-options -v/Users/wuweihong/.m2:/root/.m2

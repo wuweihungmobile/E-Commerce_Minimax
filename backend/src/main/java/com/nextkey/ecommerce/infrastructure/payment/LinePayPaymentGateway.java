@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
 import com.nextkey.ecommerce.domain.model.payment.Payment;
@@ -32,36 +33,27 @@ public class LinePayPaymentGateway implements PaymentGateway {
         log.info("Creating LinePay payment: orderId={}, amount={}, currency={}",
                 request.getOrderId(), request.getAmount(), request.getCurrency());
 
-        try {
-            String transactionId = "LP" + UUID.randomUUID().toString().replace("-", "").substring(0, 20).toUpperCase();
-            String orderId = "LPORD-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase();
+        String transactionId = "LP" + UUID.randomUUID().toString().replace("-", "").substring(0, 20).toUpperCase();
+        String orderId = "LPORD-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase();
 
-            Map<String, Object> metadata = new HashMap<>();
-            metadata.put("order_id", orderId);
-            if (request.getOrderId() != null) {
-                metadata.put("original_order_id", request.getOrderId().toString());
-            }
-            if (request.getBookingId() != null) {
-                metadata.put("booking_id", request.getBookingId().toString());
-            }
-
-            return PaymentGatewayRequestResponse.PaymentIntentResult.builder()
-                    .transactionId(transactionId)
-                    .clientSecret(null)
-                    .status("pending")
-                    .paymentIntentId(orderId)
-                    .amount(request.getAmount())
-                    .currency(request.getCurrency())
-                    .metadata(metadata)
-                    .build();
-
-        } catch (Exception e) {
-            log.error("Failed to create LinePay payment: {}", e.getMessage(), e);
-            return PaymentGatewayRequestResponse.PaymentIntentResult.builder()
-                    .status("failed")
-                    .errorMessage("Failed to create LinePay payment: " + e.getMessage())
-                    .build();
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("order_id", orderId);
+        if (request.getOrderId() != null) {
+            metadata.put("original_order_id", request.getOrderId().toString());
         }
+        if (request.getBookingId() != null) {
+            metadata.put("booking_id", request.getBookingId().toString());
+        }
+
+        return PaymentGatewayRequestResponse.PaymentIntentResult.builder()
+                .transactionId(transactionId)
+                .clientSecret(null)
+                .status("pending")
+                .paymentIntentId(orderId)
+                .amount(request.getAmount())
+                .currency(request.getCurrency())
+                .metadata(metadata)
+                .build();
     }
 
     @Override
@@ -69,22 +61,11 @@ public class LinePayPaymentGateway implements PaymentGateway {
             PaymentGatewayRequestResponse.PaymentConfirmRequest request) {
         log.info("Confirming LinePay payment: transactionId={}", request.getTransactionId());
 
-        try {
-            return PaymentGatewayRequestResponse.PaymentConfirmResult.builder()
-                    .success(true)
-                    .transactionId(request.getTransactionId())
-                    .status("completed")
-                    .build();
-
-        } catch (Exception e) {
-            log.error("Failed to confirm LinePay payment: {}", e.getMessage(), e);
-            return PaymentGatewayRequestResponse.PaymentConfirmResult.builder()
-                    .success(false)
-                    .transactionId(request.getTransactionId())
-                    .status("failed")
-                    .errorMessage("LinePay payment confirmation failed: " + e.getMessage())
-                    .build();
-        }
+        return PaymentGatewayRequestResponse.PaymentConfirmResult.builder()
+                .success(true)
+                .transactionId(request.getTransactionId())
+                .status("completed")
+                .build();
     }
 
     @Override
@@ -127,8 +108,8 @@ public class LinePayPaymentGateway implements PaymentGateway {
                     .status("completed")
                     .build();
 
-        } catch (Exception e) {
-            log.error("Failed to process LinePay refund: {}", e.getMessage(), e);
+        } catch (DataAccessException e) {
+            log.error("[E_5012] Failed to process LinePay refund (DataAccessException): {}", e.getMessage(), e);
             return PaymentGatewayRequestResponse.RefundResult.builder()
                     .success(false)
                     .transactionId(request.getTransactionId())
@@ -161,8 +142,8 @@ public class LinePayPaymentGateway implements PaymentGateway {
                     .currency(payment.getCurrency())
                     .build();
 
-        } catch (Exception e) {
-            log.error("Failed to get LinePay payment status: {}", e.getMessage(), e);
+        } catch (DataAccessException e) {
+            log.error("[E_6001] Failed to get LinePay payment status (DataAccessException): {}", e.getMessage(), e);
             return PaymentGatewayRequestResponse.PaymentStatusResult.builder()
                     .transactionId(transactionId)
                     .status("error")

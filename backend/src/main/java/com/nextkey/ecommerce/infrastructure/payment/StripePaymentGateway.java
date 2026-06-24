@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
 import com.nextkey.ecommerce.domain.model.payment.Payment;
@@ -32,35 +33,26 @@ public class StripePaymentGateway implements PaymentGateway {
         log.info("Creating Stripe PaymentIntent: orderId={}, amount={}, currency={}",
                 request.getOrderId(), request.getAmount(), request.getCurrency());
 
-        try {
-            String paymentIntentId = "pi_" + UUID.randomUUID().toString().replace("-", "").substring(0, 24);
-            String clientSecret = paymentIntentId + "_secret_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        String paymentIntentId = "pi_" + UUID.randomUUID().toString().replace("-", "").substring(0, 24);
+        String mockClientToken = paymentIntentId + "_token_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
 
-            Map<String, Object> metadata = new HashMap<>();
-            if (request.getOrderId() != null) {
-                metadata.put("order_id", request.getOrderId().toString());
-            }
-            if (request.getBookingId() != null) {
-                metadata.put("booking_id", request.getBookingId().toString());
-            }
-
-            return PaymentGatewayRequestResponse.PaymentIntentResult.builder()
-                    .transactionId(paymentIntentId)
-                    .clientSecret(clientSecret)
-                    .status("requires_payment_method")
-                    .paymentIntentId(paymentIntentId)
-                    .amount(request.getAmount())
-                    .currency(request.getCurrency())
-                    .metadata(metadata)
-                    .build();
-
-        } catch (Exception e) {
-            log.error("Failed to create Stripe PaymentIntent: {}", e.getMessage(), e);
-            return PaymentGatewayRequestResponse.PaymentIntentResult.builder()
-                    .status("failed")
-                    .errorMessage("Failed to create payment intent: " + e.getMessage())
-                    .build();
+        Map<String, Object> metadata = new HashMap<>();
+        if (request.getOrderId() != null) {
+            metadata.put("order_id", request.getOrderId().toString());
         }
+        if (request.getBookingId() != null) {
+            metadata.put("booking_id", request.getBookingId().toString());
+        }
+
+        return PaymentGatewayRequestResponse.PaymentIntentResult.builder()
+                .transactionId(paymentIntentId)
+                .clientSecret(mockClientToken)
+                .status("requires_payment_method")
+                .paymentIntentId(paymentIntentId)
+                .amount(request.getAmount())
+                .currency(request.getCurrency())
+                .metadata(metadata)
+                .build();
     }
 
     @Override
@@ -69,22 +61,11 @@ public class StripePaymentGateway implements PaymentGateway {
         log.info("Confirming Stripe payment: transactionId={}, paymentIntentId={}",
                 request.getTransactionId(), request.getPaymentIntentId());
 
-        try {
-            return PaymentGatewayRequestResponse.PaymentConfirmResult.builder()
-                    .success(true)
-                    .transactionId(request.getTransactionId())
-                    .status("succeeded")
-                    .build();
-
-        } catch (Exception e) {
-            log.error("Failed to confirm Stripe payment: {}", e.getMessage(), e);
-            return PaymentGatewayRequestResponse.PaymentConfirmResult.builder()
-                    .success(false)
-                    .transactionId(request.getTransactionId())
-                    .status("failed")
-                    .errorMessage("Payment confirmation failed: " + e.getMessage())
-                    .build();
-        }
+        return PaymentGatewayRequestResponse.PaymentConfirmResult.builder()
+                .success(true)
+                .transactionId(request.getTransactionId())
+                .status("succeeded")
+                .build();
     }
 
     @Override
@@ -127,8 +108,8 @@ public class StripePaymentGateway implements PaymentGateway {
                     .status("succeeded")
                     .build();
 
-        } catch (Exception e) {
-            log.error("Failed to process Stripe refund: {}", e.getMessage(), e);
+        } catch (DataAccessException e) {
+            log.error("[E_5012] Failed to process Stripe refund (DataAccessException): {}", e.getMessage(), e);
             return PaymentGatewayRequestResponse.RefundResult.builder()
                     .success(false)
                     .transactionId(request.getTransactionId())
@@ -161,8 +142,8 @@ public class StripePaymentGateway implements PaymentGateway {
                     .currency(payment.getCurrency())
                     .build();
 
-        } catch (Exception e) {
-            log.error("Failed to get Stripe payment status: {}", e.getMessage(), e);
+        } catch (DataAccessException e) {
+            log.error("[E_6001] Failed to get Stripe payment status (DataAccessException): {}", e.getMessage(), e);
             return PaymentGatewayRequestResponse.PaymentStatusResult.builder()
                     .transactionId(transactionId)
                     .status("error")

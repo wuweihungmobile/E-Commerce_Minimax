@@ -13,9 +13,9 @@
 
 | 狀態 | 數量 |
 |------|------|
-| ✅ 已完成 | 3 |
+| ✅ 已完成 | 4 |
 | 🔄 進行中 | 0 |
-| ⏳ 待處理 | 3 |
+| ⏳ 待處理 | 2 |
 | **總計** | **6** |
 
 ---
@@ -98,22 +98,22 @@
 
 **負責人**: Dev
 **優先級**: P1
-**狀態**: ⏳ **待處理**
+**狀態**: ✅ **已完成**（2026-06-24）
 
 | AC 驗收標準 | 狀態 | 備註 |
 |-------------|------|------|
-| AC-001: 掃描剩餘 E_8000 使用位置（確認 Phase 2 是否已清零） | ⏳ | |
-| AC-002: 掃描剩餘 E_5001 使用位置 | ⏳ | |
-| AC-003: 新增必要的專用錯誤碼 | ⏳ | |
-| AC-004: 遷移所有剩餘誤用 | ⏳ | |
-| AC-005: mvn test 286 Unit Tests 100% 通過 | ⏳ | |
+| AC-001: 掃描剩餘 E_8000 使用位置（確認 Phase 2 是否已清零） | ✅ | PricingService 3 處均為正確語義（"Pricing rule not found"），非誤用 |
+| AC-002: 掃描剩餘 E_5001 使用位置 | ✅ | OrderService 1 處正確語義（訂單狀態轉換無效），非誤用 |
+| AC-003: 新增必要的專用錯誤碼 | ✅ | 不需新增（現有 ErrorCode 已正確對應語義） |
+| AC-004: 遷移所有剩餘誤用 | ✅ | 無誤用需遷移，Sprint 18 Phase 2 已清零所有誤用 |
+| AC-005: mvn test 292 Unit Tests 100% 通過 | ✅ | 無程式碼變更，292 tests 已在 US-003 驗證 |
 
 **具體任務**:
-- [ ] T-004-1: 掃描 `grep -rn "E_8000\|E_5001" backend/src/main/java/ --include="*.java"`
-- [ ] T-004-2: 依掃描結果建立遷移清單
-- [ ] T-004-3: 新增必要 ErrorCode（如有需要）
-- [ ] T-004-4: 逐模組遷移（每遷移一個模組立即 mvn test）
-- [ ] T-004-5: 最終驗證 E_8000/E_5001 使用數為 0
+- [x] T-004-1: 掃描 `grep -rn "E_8000\|E_5001" backend/src/main/java/ --include="*.java"` — 找到 4 個使用位置
+- [x] T-004-2: 遷移清單分析 — E_8000×3（PricingService 正確語義）、E_5001×1（OrderService 正確語義）
+- [x] T-004-3: 不需新增 ErrorCode（正確語義，無誤用）
+- [x] T-004-4: 不需遷移（無誤用）
+- [x] T-004-5: E_8000/E_5001 誤用數 = 0 ✅（剩餘使用均為正確語義）
 
 ---
 
@@ -181,10 +181,10 @@
 | US-001 | Payment catch 細分 | 2 | 2 | 0 |
 | US-002 | RuntimeException 統一 ErrorCode | 1 | 1 | 0 |
 | US-003 | Stripe Webhook signature 驗證 | 3 | 3 | 0 |
-| US-004 | ErrorCode Phase 3 剩餘模組 | 3 | 0 | 3 |
+| US-004 | ErrorCode Phase 3 剩餘模組 | 3 | 3 | 0 |
 | US-005 | M09 下一階段新功能 | 3 | 0 | 3 |
 | US-006 | 日常開發支援 | 1 | 0 | 1 |
-| **規劃合計** | | **13** | **6** | **7** |
+| **規劃合計** | | **13** | **9** | **4** |
 
 ---
 
@@ -210,6 +210,7 @@
 | v1.1 | 2026-06-24 | US-001 完成：Payment catch(Exception) 細分（10 處），修復 BusinessException 吞掉 Bug | Claude Code |
 | v1.2 | 2026-06-24 | US-002 完成：StorageService 3 處 RuntimeException → BusinessException(E_9906)；新增 E_9906；修正計劃中 E_2003/E_9001 錯誤 | Claude Code |
 | v1.3 | 2026-06-24 | US-003 完成：新增 E_5015、StripeSignatureVerifierService（HMAC-SHA256）、修正 E_9001 誤用、6 個測試案例 | Claude Code |
+| v1.4 | 2026-06-24 | US-004 完成：掃描確認 Sprint 18 Phase 2 已清零所有 E_8000/E_5001 誤用；剩餘 4 處均為正確語義，無需遷移 | Claude Code |
 
 ---
 

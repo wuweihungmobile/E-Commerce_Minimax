@@ -69,6 +69,8 @@ public enum ErrorCode {
     E_5012("E-5012", "Refund status invalid"),
     E_5013("E-5013", "Settlement statement not found"),
     E_5014("E-5014", "Settlement state transition invalid"),
+    // 🔴 Sprint 19 US-003: Stripe Webhook Signature 驗證失敗
+    E_5015("E-5015", "Stripe webhook signature verification failed"),
 
     // Payment (E-6000s)
     E_6000("E-6000", "Payment not found"),

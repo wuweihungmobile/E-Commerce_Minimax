@@ -119,6 +119,10 @@ public enum ErrorCode {
     E_1091("E-1091", "You can only operate on your own review images"),
     // 🔴 Sprint 18 US-004 Phase 1: 新增專用錯誤碼，取代 E_8000 誤用（Booking Review 模組）
     E_1092("E-1092", "Booking review not found"),
+    // 🔴 Sprint 18 Buffer Phase 2A: 取代 E_8000 誤用（重複評價）
+    E_1093("E-1093", "You have already reviewed this item"),
+    E_1094("E-1094", "You have already reviewed this booking"),
+    E_1095("E-1095", "Invalid rating range"),
 
     // Validation (E-9000s)
     E_9000("E-9000", "Validation error"),

@@ -83,7 +83,7 @@ public class CmsService {
     @Transactional
     public CmsDto.PageResponse updatePage(UUID pageId, CmsDto.UpdatePageRequest request) {
         ContentPage page = contentPageRepository.findById(pageId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Page not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8004, "Page not found"));
 
         updatePageFromRequest(page, request);
         page = contentPageRepository.save(page);
@@ -141,7 +141,7 @@ public class CmsService {
     @Transactional
     public CmsDto.PageResponse publishPage(UUID pageId) {
         ContentPage page = contentPageRepository.findById(pageId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Page not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8004, "Page not found"));
 
         page.setStatus(ContentPage.ContentStatus.PUBLISHED);
         page.setPublishedAt(Instant.now());
@@ -159,10 +159,10 @@ public class CmsService {
     @Transactional(readOnly = true)
     public CmsDto.PageResponse getPageBySlug(String slug) {
         ContentPage page = contentPageRepository.findBySlug(slug)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Page not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8004, "Page not found"));
 
         if (page.getStatus() != ContentPage.ContentStatus.PUBLISHED) {
-            throw new BusinessException(ErrorCode.E_8000, "Page not published");
+            throw new BusinessException(ErrorCode.E_8004, "Page not published");
         }
 
         return toPageResponse(page);
@@ -232,7 +232,7 @@ public class CmsService {
     @Transactional
     public CmsDto.BannerResponse updateBanner(UUID bannerId, CmsDto.UpdateBannerRequest request) {
         Banner banner = bannerRepository.findById(bannerId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Banner not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8005, "Banner not found"));
 
         updateBannerFromRequest(banner, request);
         banner = bannerRepository.save(banner);
@@ -313,7 +313,7 @@ public class CmsService {
     @Transactional
     public CmsDto.BannerResponse publishBanner(UUID bannerId) {
         Banner banner = bannerRepository.findById(bannerId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Banner not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8005, "Banner not found"));
 
         banner.setStatus(Banner.BannerStatus.PUBLISHED);
         banner = bannerRepository.save(banner);

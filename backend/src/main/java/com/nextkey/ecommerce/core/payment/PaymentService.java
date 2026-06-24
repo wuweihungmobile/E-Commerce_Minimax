@@ -66,7 +66,7 @@ public class PaymentService {
 
         // 檢查訂單狀態
         if (order.getStatus() != Order.OrderStatus.CREATED) {
-            throw new BusinessException(ErrorCode.E_5001, "Order cannot be paid in current status");
+            throw new BusinessException(ErrorCode.E_5011, "Order cannot be paid in current status");
         }
 
         // 檢查是否已有支付記錄
@@ -105,7 +105,7 @@ public class PaymentService {
 
         // 檢查預訂狀態
         if (booking.getStatus() != Booking.BookingStatus.CREATED) {
-            throw new BusinessException(ErrorCode.E_5001, "Booking cannot be paid in current status");
+            throw new BusinessException(ErrorCode.E_5011, "Booking cannot be paid in current status");
         }
 
         // 檢查是否已有支付記錄

@@ -306,7 +306,7 @@ public class BookingService {
         // 檢查是否可更新
         if (booking.getStatus() != com.nextkey.ecommerce.domain.model.order.Booking.BookingStatus.CREATED &&
             booking.getStatus() != com.nextkey.ecommerce.domain.model.order.Booking.BookingStatus.CONFIRMED) {
-            throw new BusinessException(ErrorCode.E_5001, "Booking cannot be updated in current status");
+            throw new BusinessException(ErrorCode.E_5010, "Booking cannot be updated in current status");
         }
 
         // 如果更改日期，需要釋放舊日期並預訂新日期

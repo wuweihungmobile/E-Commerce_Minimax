@@ -70,14 +70,14 @@ public class ReviewService {
         // 檢查是否已評價
         if (request.getOrderId() != null) {
             if (reviewRepository.findByOrderIdAndListingId(request.getOrderId(), request.getListingId()).isPresent()) {
-                throw new BusinessException(ErrorCode.E_8000, "You have already reviewed this item");
+                throw new BusinessException(ErrorCode.E_1093, "You have already reviewed this item");
             }
         }
 
         // 檢查是否已預訂評價
         if (request.getBookingId() != null) {
             if (reviewRepository.findByBookingIdAndListingId(request.getBookingId(), request.getListingId()).isPresent()) {
-                throw new BusinessException(ErrorCode.E_8000, "You have already reviewed this booking");
+                throw new BusinessException(ErrorCode.E_1094, "You have already reviewed this booking");
             }
         }
 
@@ -126,7 +126,7 @@ public class ReviewService {
         UUID userId = TenantContext.getCurrentUser();
 
         Review review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
 
         // 檢查是否是本人
         if (!review.getUser().getId().equals(userId)) {
@@ -167,7 +167,7 @@ public class ReviewService {
         UUID userId = TenantContext.getCurrentUser();
 
         Review review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
 
         // 檢查是否是本人或是管理員
         if (!review.getUser().getId().equals(userId)) {
@@ -280,7 +280,7 @@ public class ReviewService {
         UUID userId = TenantContext.getCurrentUser();
 
         Review review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
 
         Map<String, Integer> votes = review.getHelpfulVotes();
         if (votes == null) {
@@ -308,7 +308,7 @@ public class ReviewService {
         UUID userId = TenantContext.getCurrentUser();
 
         Review review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
 
         review.setIsHandled(true);
         review.setHandledAt(Instant.now());
@@ -328,7 +328,7 @@ public class ReviewService {
         TenantContext.getCurrentUser(); // Validate user is authenticated
 
         Review review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
 
         review.setIsHandled(false);
         review.setHandledAt(null);
@@ -436,15 +436,15 @@ public class ReviewService {
      */
     private void validateRatingRange(Integer minRating, Integer maxRating) {
         if (minRating != null && (minRating < 1 || minRating > 5)) {
-            throw new BusinessException(ErrorCode.E_8000,
+            throw new BusinessException(ErrorCode.E_1095,
                     "minRating must be between 1 and 5");
         }
         if (maxRating != null && (maxRating < 1 || maxRating > 5)) {
-            throw new BusinessException(ErrorCode.E_8000,
+            throw new BusinessException(ErrorCode.E_1095,
                     "maxRating must be between 1 and 5");
         }
         if (minRating != null && maxRating != null && minRating > maxRating) {
-            throw new BusinessException(ErrorCode.E_8000,
+            throw new BusinessException(ErrorCode.E_1095,
                     "minRating cannot be greater than maxRating");
         }
     }
@@ -476,7 +476,7 @@ public class ReviewService {
      * @param imageUrl 圖片 URL（mediaId）
      * @return 更新後的評價
      * @throws BusinessException
-     *         - E_8000: 評價不存在
+     *         - E_1087: 評價不存在
      *         - E_1091: 非本人操作
      *         - E_1088: 圖片數量超限
      *         - E_1089: 圖片無效
@@ -486,7 +486,7 @@ public class ReviewService {
         UUID userId = TenantContext.getCurrentUser();
 
         Review review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
 
         // 權限檢查：只有評價本人可以操作
         if (!review.getUser().getId().equals(userId)) {
@@ -532,7 +532,7 @@ public class ReviewService {
         UUID userId = TenantContext.getCurrentUser();
 
         Review review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
 
         // 權限檢查
         if (!review.getUser().getId().equals(userId)) {
@@ -568,7 +568,7 @@ public class ReviewService {
         UUID userId = TenantContext.getCurrentUser();
 
         Review review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
 
         // 權限檢查
         if (!review.getUser().getId().equals(userId)) {

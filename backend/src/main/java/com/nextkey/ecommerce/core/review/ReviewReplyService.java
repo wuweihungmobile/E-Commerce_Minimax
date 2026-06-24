@@ -51,7 +51,7 @@ public class ReviewReplyService {
      * @param request  回覆請求
      * @return 建立後的回覆資料
      * @throws BusinessException
-     *         - E_8000: 評價不存在
+     *         - E_1087: 評價不存在
      *         - E_1007: 當前用戶不是該評價的 Listing 擁有者
      *         - E_1086: 已存在回覆（重複回覆）
      */
@@ -61,7 +61,7 @@ public class ReviewReplyService {
 
         // 1. 查詢評價
         Review review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Review not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
 
         // 2. 權限檢查：只有 Listing 擁有者可以回覆
         Listing listing = review.getListing();

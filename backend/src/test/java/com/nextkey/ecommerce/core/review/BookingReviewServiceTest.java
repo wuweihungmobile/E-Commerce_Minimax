@@ -145,7 +145,7 @@ class BookingReviewServiceTest {
                 () -> bookingReviewService.replyToBookingReview(REVIEW_ID, SAMPLE_REPLY)
         );
 
-        assertEquals(ErrorCode.E_8000, exception.getErrorCode());
+        assertEquals(ErrorCode.E_1092, exception.getErrorCode());
         assertTrue(exception.getMessage().contains("Booking review not found"));
 
         // 驗證沒有呼叫 save
@@ -239,7 +239,7 @@ class BookingReviewServiceTest {
                 () -> bookingReviewService.getBookingReviewById(REVIEW_ID)
         );
 
-        assertEquals(ErrorCode.E_8000, exception.getErrorCode());
+        assertEquals(ErrorCode.E_1092, exception.getErrorCode());
     }
 
     // ========== 邊界測試 ==========

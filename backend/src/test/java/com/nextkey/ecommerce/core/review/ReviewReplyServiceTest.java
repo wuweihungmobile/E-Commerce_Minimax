@@ -145,8 +145,8 @@ class ReviewReplyServiceTest {
     }
 
     @Test
-    @DisplayName("AC-001.3: 評價不存在拋出 BusinessException E_8000")
-    void createReply_ReviewNotFound_ThrowsE8000() {
+    @DisplayName("AC-001.3: 評價不存在拋出 BusinessException E_1087")
+    void createReply_ReviewNotFound_ThrowsE1087() {
         // Given
         TenantContext.setCurrentUser(ownerId);
         when(reviewRepository.findById(reviewId)).thenReturn(Optional.empty());
@@ -154,7 +154,7 @@ class ReviewReplyServiceTest {
         // When & Then
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> reviewReplyService.createReply(reviewId, createRequest));
-        assertEquals(ErrorCode.E_8000, exception.getErrorCode());
+        assertEquals(ErrorCode.E_1087, exception.getErrorCode());
         verify(reviewReplyRepository, never()).save(any(ReviewReply.class));
     }
 

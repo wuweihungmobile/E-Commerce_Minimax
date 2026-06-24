@@ -75,7 +75,7 @@ public class NotificationTemplateService {
     @Transactional(readOnly = true)
     public NotificationTemplateDto.Response getTemplate(UUID tenantId, UUID templateId) {
         NotificationTemplate template = templateRepository.findById(templateId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Template not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8003, "Template not found"));
 
         if (template.getTenantId() != null && !template.getTenantId().equals(tenantId)) {
             throw new BusinessException(ErrorCode.E_1007, "Access denied");
@@ -131,7 +131,7 @@ public class NotificationTemplateService {
             UUID templateId, NotificationTemplateDto.UpdateRequest request) {
 
         NotificationTemplate template = templateRepository.findById(templateId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Template not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8003, "Template not found"));
 
         if (template.getTenantId() != null && !template.getTenantId().equals(tenantId)) {
             throw new BusinessException(ErrorCode.E_1007, "Access denied");
@@ -184,7 +184,7 @@ public class NotificationTemplateService {
     @Transactional
     public void deleteTemplate(UUID tenantId, UUID templateId) {
         NotificationTemplate template = templateRepository.findById(templateId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Template not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8003, "Template not found"));
 
         if (template.getTenantId() != null && !template.getTenantId().equals(tenantId)) {
             throw new BusinessException(ErrorCode.E_1007, "Access denied");
@@ -206,7 +206,7 @@ public class NotificationTemplateService {
 
         NotificationTemplate template = templateRepository
                 .findByTemplateCodeAndTenantId(templateCode, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Template not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8003, "Template not found"));
 
         if (!template.getIsActive()) {
             throw new BusinessException(ErrorCode.E_8001, "Template is not active");

@@ -49,7 +49,7 @@ public class BookingReviewService {
 
         // 檢查是否已評價
         if (bookingReviewRepository.findByBookingIdAndUserId(bookingId, userId).isPresent()) {
-            throw new BusinessException(ErrorCode.E_8000, "You have already reviewed this booking");
+            throw new BusinessException(ErrorCode.E_1094, "You have already reviewed this booking");
         }
 
         BookingReview review = BookingReview.builder()
@@ -80,7 +80,7 @@ public class BookingReviewService {
         UUID userId = TenantContext.getCurrentUser();
 
         BookingReview review = bookingReviewRepository.findById(reviewId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Booking review not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1092, "Booking review not found"));
 
         // 檢查是否是房東
         Booking booking = review.getBooking();
@@ -103,7 +103,7 @@ public class BookingReviewService {
     @Transactional(readOnly = true)
     public BookingReviewDto.BookingReviewResponse getBookingReviewById(UUID reviewId) {
         BookingReview review = bookingReviewRepository.findById(reviewId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Booking review not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1092, "Booking review not found"));
         return toBookingReviewResponse(review);
     }
 
@@ -124,7 +124,7 @@ public class BookingReviewService {
         UUID userId = TenantContext.getCurrentUser();
 
         BookingReview review = bookingReviewRepository.findById(reviewId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Booking review not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1092, "Booking review not found"));
 
         // 檢查是否是本人或是管理員
         if (!review.getUserId().equals(userId)) {

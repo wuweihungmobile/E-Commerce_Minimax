@@ -65,7 +65,7 @@ public class PaymentStateService {
 
         // 檢查訂單狀態是否可以支付
         if (!OrderStateMachine.canPay(order.getStatus().name())) {
-            throw new BusinessException(ErrorCode.E_5001, "Order cannot be paid in current status");
+            throw new BusinessException(ErrorCode.E_5011, "Order cannot be paid in current status");
         }
 
         // 檢查是否已有支付記錄
@@ -104,7 +104,7 @@ public class PaymentStateService {
 
         // 檢查訂單狀態是否可以支付
         if (!OrderStateMachine.canPay(order.getStatus().name())) {
-            throw new BusinessException(ErrorCode.E_5001, "Order cannot be paid in current status");
+            throw new BusinessException(ErrorCode.E_5011, "Order cannot be paid in current status");
         }
 
         // 建立支付記錄 (Mock 失敗)
@@ -134,7 +134,7 @@ public class PaymentStateService {
 
         // 檢查是否允許退款
         if (!OrderStateMachine.canRefund(order.getStatus().name())) {
-            throw new BusinessException(ErrorCode.E_5001, "Order cannot be refunded in current status");
+            throw new BusinessException(ErrorCode.E_5012, "Order cannot be refunded in current status");
         }
 
         // 找到成功的支付記錄

@@ -271,9 +271,9 @@
 - [x] Frontend pre-commit 文件建立 ([FRONTEND_PRECOMMIT_GUIDE.md](../06_quality/FRONTEND_PRECOMMIT_GUIDE.md))
 - [x] M08 評價搜尋 API 完成 (GET /v2/reviews/listing/{listingId}/search + 14 個新測試)
 - [x] ErrorCode 重構評估文件建立 ([ErrorCode_Refactor_Evaluation.md](../06_quality/ErrorCode_Refactor_Evaluation.md))
-- [ ] Sprint 18 Review 文件產生
-- [ ] Sprint 18 Retrospective 文件產生
-- [ ] Sprint 18 Release 不能再次跳過
+- [x] Sprint 18 Review 文件產生（[SPRINT_18_REVIEW.md](./SPRINT_18_REVIEW.md)，2026-06-24）
+- [x] Sprint 18 Retrospective 文件產生（[SPRINT_18_RETRO.md](./SPRINT_18_RETRO.md)，2026-06-24）
+- [ ] Sprint 18 Release 執行（v2026.07.03-01，Sprint 結束日 2026-07-03 前）
 
 ---
 

@@ -13,9 +13,9 @@
 
 | 狀態 | 數量 |
 |------|------|
-| ✅ 已完成 | 1 |
+| ✅ 已完成 | 2 |
 | 🔄 進行中 | 0 |
-| ⏳ 待處理 | 5 |
+| ⏳ 待處理 | 4 |
 | **總計** | **6** |
 
 ---
@@ -50,22 +50,22 @@
 
 **負責人**: Dev
 **優先級**: P0
-**狀態**: ⏳ **待處理**
+**狀態**: ✅ **已完成**（2026-06-24）
 
 | AC 驗收標準 | 狀態 | 備註 |
 |-------------|------|------|
-| AC-001: 新增 `E_2003`（OAuth account already linked） | ⏳ | |
-| AC-002: 新增 `E_9001`（Storage operation failed） | ⏳ | |
-| AC-003: OAuth RuntimeException 替換（預估 1 處） | ⏳ | |
-| AC-004: Storage RuntimeException 替換（預估 3 處） | ⏳ | |
-| AC-005: mvn test 286 Unit Tests 100% 通過 | ⏳ | |
+| AC-001: ~~新增 `E_2003`（OAuth）~~ → 計劃錯誤，已修正 | ✅ | E_2003 已存在（Tenant context ambiguous）；E_1008 已覆蓋 OAuth；生產程式碼無 OAuth RuntimeException |
+| AC-002: 新增 `E_9906`（Storage operation failed） | ✅ | 原計劃 E_9001 已存在（Invalid email format），改為 E_9906 |
+| AC-003: OAuth RuntimeException 替換 | ✅ | 生產程式碼不存在，僅 E2E 測試輔助（test helper，不需修改） |
+| AC-004: Storage RuntimeException 替換（3 處） | ✅ | StorageService.java uploadFile/getObject/deleteObject → BusinessException(E_9906) |
+| AC-005: mvn test 286 Unit Tests 100% 通過 | ✅ | BUILD SUCCESS |
 
 **具體任務**:
-- [ ] T-002-1: `grep -rn "throw new RuntimeException" backend/src/` 確認所有位置
-- [ ] T-002-2: ErrorCode.java 新增 E_2003 / E_9001（與 US-001 同步）
-- [ ] T-002-3: OAuth 相關位置替換（AuthService 等）
-- [ ] T-002-4: Storage 相關位置替換（MediaService 等）
-- [ ] T-002-5: mvn test 驗證通過
+- [x] T-002-1: `grep -rn "throw new RuntimeException" backend/src/` 確認所有位置
+- [x] T-002-2: ErrorCode.java 新增 E_9906（Storage operation failed）
+- [x] T-002-3: OAuth — 生產程式碼無 RuntimeException，跳過
+- [x] T-002-4: StorageService.java 3 處 RuntimeException → BusinessException(E_9906)
+- [x] T-002-5: mvn test 286 tests, 0 Failures — BUILD SUCCESS
 
 ---
 
@@ -180,12 +180,12 @@
 | US ID | 標題 | SP | 已完成 SP | 剩餘 SP |
 |-------|------|-----|-----------|---------|
 | US-001 | Payment catch 細分 | 2 | 2 | 0 |
-| US-002 | RuntimeException 統一 ErrorCode | 1 | 0 | 1 |
+| US-002 | RuntimeException 統一 ErrorCode | 1 | 1 | 0 |
 | US-003 | Stripe Webhook signature 驗證 | 3 | 0 | 3 |
 | US-004 | ErrorCode Phase 3 剩餘模組 | 3 | 0 | 3 |
 | US-005 | M09 下一階段新功能 | 3 | 0 | 3 |
 | US-006 | 日常開發支援 | 1 | 0 | 1 |
-| **規劃合計** | | **13** | **2** | **11** |
+| **規劃合計** | | **13** | **3** | **10** |
 
 ---
 
@@ -209,6 +209,7 @@
 |------|------|----------|--------|
 | v1.0 | 2026-06-24 | 初始建立，依據 SPRINT_19_PLAN.md | Claude Code |
 | v1.1 | 2026-06-24 | US-001 完成：Payment catch(Exception) 細分（10 處），修復 BusinessException 吞掉 Bug | Claude Code |
+| v1.2 | 2026-06-24 | US-002 完成：StorageService 3 處 RuntimeException → BusinessException(E_9906)；新增 E_9906；修正計劃中 E_2003/E_9001 錯誤 | Claude Code |
 
 ---
 

@@ -145,7 +145,9 @@ public enum ErrorCode {
     E_9902("E-9902", "Redis error"),
     E_9903("E-9903", "External API error"),
     E_9904("E-9904", "Rate limit exceeded"),
-    E_9905("E-9905", "Service unavailable");
+    E_9905("E-9905", "Service unavailable"),
+    // 🔴 Sprint 19 US-002: 新增 Storage 專用錯誤碼，取代 RuntimeException
+    E_9906("E-9906", "Storage operation failed");
 
     private final String code;
     private final String message;

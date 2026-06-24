@@ -7,6 +7,9 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
+
 import io.minio.BucketExistsArgs;
 import io.minio.GetObjectArgs;
 import io.minio.MakeBucketArgs;
@@ -102,8 +105,8 @@ public class StorageService {
                 | InvalidResponseException | ServerException | IOException
                 | java.security.InvalidKeyException | java.security.NoSuchAlgorithmException
                 | XmlParserException e) {
-            log.error("Failed to upload file: {}", objectName, e);
-            throw new RuntimeException("File upload failed: " + objectName, e);
+            log.error("[E_9906] Failed to upload file: {}", objectName, e);
+            throw new BusinessException(ErrorCode.E_9906, "File upload failed: " + objectName, e);
         }
     }
 
@@ -142,8 +145,8 @@ public class StorageService {
                 | InvalidResponseException | ServerException | IOException
                 | java.security.InvalidKeyException | java.security.NoSuchAlgorithmException
                 | XmlParserException e) {
-            log.error("Failed to get object: {}", objectName, e);
-            throw new RuntimeException("Failed to get object: " + objectName, e);
+            log.error("[E_9906] Failed to get object: {}", objectName, e);
+            throw new BusinessException(ErrorCode.E_9906, "Failed to get object: " + objectName, e);
         }
     }
 
@@ -163,8 +166,8 @@ public class StorageService {
                 | InvalidResponseException | ServerException | IOException
                 | java.security.InvalidKeyException | java.security.NoSuchAlgorithmException
                 | XmlParserException e) {
-            log.error("Failed to delete object: {}", objectName, e);
-            throw new RuntimeException("Failed to delete object: " + objectName, e);
+            log.error("[E_9906] Failed to delete object: {}", objectName, e);
+            throw new BusinessException(ErrorCode.E_9906, "Failed to delete object: " + objectName, e);
         }
     }
 

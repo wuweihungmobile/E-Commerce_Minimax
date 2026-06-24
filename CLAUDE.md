@@ -1081,6 +1081,74 @@ gh run view <run-id> --json jobs
 
 ---
 
+## 🔴 Docker 管理限制規則（2026-06-24 新增）
+
+**CRITICAL: AI (Claude) 在處理 Docker 相關任務時必須嚴格遵守以下規則**
+
+### 強制規範
+
+**原則**: Docker 配置是基礎設施，任何變更都可能影響生產環境穩定性，AI 禁止自行判斷修改。
+
+#### 禁止行為（Forbidden Actions）
+
+1. **❌ 禁止新增未在核准清單的 Docker image**
+   - 核准清單位置：`docs/08_deployment/DOCKER_POLICY.md`
+   - 新增 image 前必須先更新政策文件，再由人工確認
+
+2. **❌ 禁止將已釘定版本的 image 改為 `latest`**
+   - 錯誤示範：`postgres:18-alpine` → `postgres:latest`
+   - 理由：`latest` 每次 pull 可能下載不同版本，導致環境不一致
+
+3. **❌ 禁止修改 `minio/minio:latest`、`mockoon/cli:latest`、`ghcr.io/ggerganov/llama.cpp:server` 的 image tag**
+   - 這些未釘定版本是已知技術債，等待人工決策版本號
+
+4. **❌ 禁止移除 docker-compose.mock.yml 中 `local-llm` service 的 `profiles: ["with-llm"]` 設定**
+   - 移除後每次 `docker compose up` 都會拉取 1-4GB LLM image
+   - 這是保護開發者磁碟空間和網路頻寬的關鍵設定
+
+5. **❌ 禁止在生產 docker-compose.yml 中新增 bind mount（源碼目錄掛載）**
+   - 生產環境只允許 named volumes
+
+6. **❌ 禁止移除任何 service 的 healthcheck 設定**
+   - healthcheck 是 `depends_on: condition: service_healthy` 的必要依賴
+
+7. **❌ 禁止移除 deploy.resources（CPU/記憶體資源限制）**
+
+8. **❌ 禁止在不說明原因的情況下修改 Redis `--requirepass` 或 `--maxmemory` 設定**
+   - 修改需同步更新所有 Spring Boot 環境變數
+
+#### 允許行為（Allowed Actions）
+
+1. **✅ 允許修復明確語法錯誤（如 YAML 格式問題）**
+2. **✅ 允許在明確指示下更新環境變數值（非 image tag）**
+3. **✅ 允許在明確指示下調整 healthcheck 間隔/timeout 數值**
+4. **✅ 允許查閱 docker-compose 檔案內容以回答問題**
+
+### 修改 Docker 檔案的必要流程
+
+```
+人工明確指令：「請修改 X」
+    ↓
+AI 查閱 docs/08_deployment/DOCKER_POLICY.md 確認是否在核准範圍
+    ↓
+在範圍內？ → 執行修改 → 同步更新 DOCKER_POLICY.md（若新增 image/volume）
+    ↓
+不在範圍？ → 停止 → 告知用戶需先更新政策文件並確認
+```
+
+### 為什麼需要這些規則？
+
+- Docker 配置影響生產、CI、本機開發三個環境
+- 不必要的 image pull 浪費時間和頻寬（JDK ~400MB、LLM 1-4GB）
+- image tag 不一致會導致「本機通過、CI 失敗」的難以追蹤問題
+- `latest` tag 的不可預測性是 Docker 最常見的生產事故來源之一
+
+**完整政策文件**：[docs/08_deployment/DOCKER_POLICY.md](docs/08_deployment/DOCKER_POLICY.md)
+
+**🔴 違反此規則將視為未授權的基礎設施變更！🔴**
+
+---
+
 ## Getting Help
 
 For understanding AISDLC usage:

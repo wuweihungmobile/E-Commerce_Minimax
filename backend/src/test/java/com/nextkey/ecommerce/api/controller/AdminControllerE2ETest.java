@@ -61,7 +61,6 @@ class AdminControllerE2ETest {
     @Autowired
     private MockMvc mockMvc;
 
-    @SuppressWarnings("unused")
     @Autowired
     private JwtTokenService jwtTokenService;
 

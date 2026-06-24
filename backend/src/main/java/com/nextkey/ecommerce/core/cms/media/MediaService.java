@@ -40,7 +40,6 @@ public class MediaService {
 
     // 委派的子服務（通過 @Autowired 注入）
     private final MediaUploadService mediaUploadService;
-    private final MediaValidationService mediaValidationService;
 
     /**
      * 構造函數（支援 Spring 注入）
@@ -49,13 +48,11 @@ public class MediaService {
     public MediaService(MediaAssetRepository mediaAssetRepository,
                         PostRepository postRepository,
                         StorageService storageService,
-                        MediaUploadService mediaUploadService,
-                        MediaValidationService mediaValidationService) {
+                        MediaUploadService mediaUploadService) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.postRepository = postRepository;
         this.storageService = storageService;
         this.mediaUploadService = mediaUploadService;
-        this.mediaValidationService = mediaValidationService;
     }
 
     /**

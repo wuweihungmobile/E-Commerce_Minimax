@@ -506,12 +506,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up SSH Key
-        uses: ./.github/actions/setup-ssh
-        with:
-          SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_KEY }}
-        continue-on-error: true
-
       - name: Deploy to Staging Server
         run: |
           echo "Deploying to staging server..."
@@ -540,12 +534,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up SSH Key
-        uses: ./.github/actions/setup-ssh
-        with:
-          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
-        continue-on-error: true
 
       - name: Deploy to Production Server
         run: |

@@ -1,12 +1,16 @@
 # =============================================
 # E-Commerce Platform - Docker Compose (Mock Services)
 # AISDLC v0.09 - 開發專注版
-# 用途：本機 Mock 服務，模擬外部 API 與 AI 模型
+# 用途：本機 Mock 服務，模擬外部 API
 # 使用方式：docker compose -f docker-compose.yml -f docker-compose.mock.yml up
 # =============================================
 # 包含：
-#   1. Mock Server (Mockoon 或 WireMock) - 模擬外部 API
-#   2. Local LLM (vLLM + Qwen GGUF 量化模型) - 本地 AI 推理
+#   1. Mock Server (Mockoon) - 模擬外部 API
+# =============================================
+# ⚠️ 移除說明（2026-06-24）：
+# local-llm (ghcr.io/ggerganov/llama.cpp) 已移除
+# 原因：代碼庫中無任何 LLM 呼叫（backend/frontend 均無引用）
+# 若未來需要本地 LLM，須先確認使用場景並更新 DOCKER_POLICY.md
 # =============================================
 
 services:
@@ -14,9 +18,14 @@ services:
   # Mock Server (API Mock)
   # 使用 mockoon/cli 提供 OpenAPI 規範的 Mock API
   # 預設 port: 3001
+  # 資料來源：mocks/mockoon-data.json
   # =============================================
   mock-server:
-    image: mockoon/cli:latest
+    # 🔴 版本已釘定（2026-06-24）
+    # 釘定版本：9.7.0（查詢日期：2026-06-24）
+    # 升級流程：確認 breaking changes → 更新此 tag → 更新 DOCKER_POLICY.md → 本機驗證 → CI 測試
+    # 🔴 AI 禁止修改此 image tag，版本升級需人工確認
+    image: mockoon/cli:9.7.0
     container_name: ecommerce-mock-server
     ports:
       - "3001:3001"
@@ -43,48 +52,3 @@ services:
           cpus: '0.1'
           memory: 128M
     platform: ${DOCKER_PLATFORM:-linux/amd64}
-
-  # =============================================
-  # Local LLM (vLLM + GGUF 量化模型)
-  # 用途：在本機運行輕量級 LLM 供開發測試
-  # 模型：Qwen2.5-1.5B-Instruct-GGUF (約 1GB)
-  # 注意：需要 M1/M2 Mac 或 Linux x86_64 + 至少 8GB RAM
-  # 啟用方式：MOCK_LLM=true docker compose -f docker-compose.yml -f docker-compose.mock.yml up
-  # =============================================
-  local-llm:
-    image: ghcr.io/ggerganov/llama.cpp:server
-    container_name: ecommerce-local-llm
-    profiles: ["with-llm"]  # 需明確啟用（避免預設啟動耗資源）
-    ports:
-      - "8081:8080"
-    volumes:
-      - llm_models:/models
-    environment:
-      # 使用 Qwen2.5-1.5B-Instruct Q4_K_M 量化（適合 8GB+ RAM）
-      - LLAMA_ARG_MODEL=/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
-      - LLAMA_ARG_CTX_SIZE=2048
-      - LLAMA_ARG_N_GPU_LAYERS=0  # CPU only；M1/M2 Mac 可改為 99
-      - LLAMA_ARG_THREADS=4
-    command: ["--server", "--host", "0.0.0.0", "--port", "8080"]
-    restart: unless-stopped
-    networks:
-      - ecommerce-network
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 60s
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 4G
-        reservations:
-          cpus: '1.0'
-          memory: 2G
-    platform: ${DOCKER_PLATFORM:-linux/amd64}
-
-volumes:
-  llm_models:
-    driver: local

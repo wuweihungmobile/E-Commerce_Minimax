@@ -83,9 +83,7 @@ class M16ErpIntegrationTest {
     private static UUID testSellerUserId;
     @SuppressWarnings("unused")
     private static UUID testSupplierId;
-    @SuppressWarnings("unused")
     private static UUID testListingId;
-    @SuppressWarnings("unused")
     private static UUID testSkuId;
     @SuppressWarnings("unused")
     private static UUID testInventoryId;

@@ -178,13 +178,74 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-checkstyle-plugin</artifactId>
                 <version>3.3.0</version>
+                <!-- plugin-level config: used by direct `mvn checkstyle:check` invocations (e.g., pre-commit hook) -->
                 <configuration>
                     <configLocation>${project.basedir}/src/checkstyle/checkstyle.xml</configLocation>
                     <consoleOutput>true</consoleOutput>
-                    <failsOnError>false</failsOnError>
-                    <failOnViolation>false</failOnViolation>
+                    <failsOnError>true</failsOnError>
+                    <failOnViolation>true</failOnViolation>
                     <suppressionsLocation>${project.basedir}/src/checkstyle/checkstyle-suppressions.xml</suppressionsLocation>
                 </configuration>
+                <executions>
+                    <!-- 主程式碼：完整規則，違規即失敗 -->
+                    <execution>
+                        <id>checkstyle-main</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <configLocation>${project.basedir}/src/checkstyle/checkstyle.xml</configLocation>
+                            <consoleOutput>true</consoleOutput>
+                            <failsOnError>true</failsOnError>
+                            <failOnViolation>true</failOnViolation>
+                            <suppressionsLocation>${project.basedir}/src/checkstyle/checkstyle-suppressions.xml</suppressionsLocation>
+                            <sourceDirectories>
+                                <sourceDirectory>${project.build.sourceDirectory}</sourceDirectory>
+                            </sourceDirectories>
+                        </configuration>
+                    </execution>
+                    <!-- 測試程式碼：僅檢查 UnusedImports，避免測試慣用模式的誤報 -->
+                    <execution>
+                        <id>checkstyle-test</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <configLocation>${project.basedir}/src/checkstyle/checkstyle-test.xml</configLocation>
+                            <consoleOutput>true</consoleOutput>
+                            <failsOnError>true</failsOnError>
+                            <failOnViolation>true</failOnViolation>
+                            <sourceDirectories>
+                                <sourceDirectory>${project.build.testSourceDirectory}</sourceDirectory>
+                            </sourceDirectories>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-pmd-plugin</artifactId>
+                <version>3.22.0</version>
+                <configuration>
+                    <rulesets>
+                        <ruleset>${project.basedir}/src/pmd/pmd-ruleset.xml</ruleset>
+                    </rulesets>
+                    <failOnViolation>true</failOnViolation>
+                    <printFailingErrors>true</printFailingErrors>
+                    <includeTests>true</includeTests>
+                    <excludeRoots>
+                        <excludeRoot>target/generated-sources</excludeRoot>
+                    </excludeRoots>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <!-- AISDLC v0.09: 排除 E2E 與 Integration 測試於 unit 階段
                  E2E 測試需要真實 HTTP/DB 連線，必須在 integration-test profile 跑

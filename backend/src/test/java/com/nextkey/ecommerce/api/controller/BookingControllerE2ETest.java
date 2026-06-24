@@ -97,7 +97,6 @@ class BookingControllerE2ETest {
     @Autowired
     private TenantFeatureToggleRepository featureToggleRepository;
 
-    @SuppressWarnings("unused")
     @Autowired
     private TenantMemberRepository tenantMemberRepository;
 

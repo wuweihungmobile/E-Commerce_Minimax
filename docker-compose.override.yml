@@ -69,8 +69,12 @@ services:
   # =============================================
   # MinIO Object Storage
   # =============================================
+  # 🔴 版本已釘定（2026-06-24）
+  # 釘定版本：RELEASE.2025-09-07T16-13-09Z（查詢日期：2026-06-24）
+  # 升級流程：確認 breaking changes → 更新此 tag → 更新 DOCKER_POLICY.md → 本機驗證 → CI 測試
+  # 🔴 AI 禁止修改此 image tag，版本升級需人工確認
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: ecommerce-minio
     ports:
       - "9000:9000"   # API endpoint

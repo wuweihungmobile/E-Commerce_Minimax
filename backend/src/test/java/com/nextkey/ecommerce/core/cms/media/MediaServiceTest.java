@@ -119,10 +119,6 @@ class MediaServiceTest {
         @DisplayName("uploadMedia_image_success")
         void uploadMedia_image_success() {
             // Arrange
-            Tenant tenant = buildTenant();
-            User uploader = buildUploader();
-            MediaAsset savedMedia = buildMediaAsset(MediaAsset.FileType.IMAGE);
-
             M15Dto.MediaUploadResponse expectedResponse = M15Dto.MediaUploadResponse.builder()
                     .id(TEST_MEDIA_ID)
                     .fileName("test-file.jpg")

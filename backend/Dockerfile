@@ -21,7 +21,10 @@ COPY src src
 RUN mvn package -DskipTests -Dmaven.test.skip=true -B
 
 # Stage 2: Extract Layers
-FROM eclipse-temurin:21-jdk-alpine AS extractor
+# 🔴 必須與 runner stage 使用相同 base image（eclipse-temurin:21-jre-alpine）
+# 原因：java -Djarmode=layertools 只需 JRE，使用相同 image 讓 Docker 快取命中，避免多拉一層 JDK（~400MB）
+# ❌ 禁止改回 eclipse-temurin:21-jdk-alpine，那會增加一個不必要的 image pull
+FROM eclipse-temurin:21-jre-alpine AS extractor
 WORKDIR /app
 
 # Extract layered JAR

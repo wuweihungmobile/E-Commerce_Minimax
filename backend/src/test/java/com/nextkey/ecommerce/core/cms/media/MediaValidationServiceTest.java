@@ -29,7 +29,6 @@ class MediaValidationServiceTest {
     private final MediaValidationService mediaValidationService = new MediaValidationService();
 
     // 測試資料
-    private static final long ONE_KB = 1024L;
     private static final long ONE_MB = 1024 * 1024L;
 
     // ── validateFileSize() Tests ───────────────────────────────────────

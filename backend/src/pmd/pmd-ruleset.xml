@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<ruleset name="NextKey PMD Rules"
+    xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+
+    <description>
+        Targeted PMD ruleset to catch unused local variables.
+        UnusedPrivateField is excluded to avoid false positives from Lombok (@Data/@Getter) and
+        Spring/Mockito injection annotations (@Autowired/@MockBean) which PMD 7 cannot distinguish
+        from truly unused fields without source-level annotation processing.
+    </description>
+
+    <!-- Catches local variables declared but never referenced after assignment -->
+    <rule ref="category/java/bestpractices.xml/UnusedLocalVariable"/>
+
+</ruleset>

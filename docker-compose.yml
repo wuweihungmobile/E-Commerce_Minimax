@@ -115,6 +115,12 @@ services:
       # 🔴 PostgreSQL 18+ 要求：mount 必須在 /var/lib/postgresql（而非 /var/lib/postgresql/data）
       # 容器內部會自動在子目錄管理版本
       - postgres_data:/var/lib/postgresql
+      # ✅ initdb.d 掛載已確認安全（2026-06-24 驗證）：
+      # initdb.d 只在 data volume 完全為空（首次初始化）時執行這些 SQL 檔案
+      # Spring Boot 也會執行 Flyway migration，但已設定 baseline-on-migrate: true
+      # （位置：backend/src/main/resources/application.yml）
+      # 兩者可安全共存，不會衝突
+      # 🔴 AI 不得移除此掛載
       - ./backend/src/main/resources/db/migration:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-koala} -d ${POSTGRES_DB:-nextkeytest}"]

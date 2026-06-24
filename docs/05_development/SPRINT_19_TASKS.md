@@ -197,14 +197,14 @@
 ## 🔴 Sprint 19 Definition of Done
 
 - [x] US-001~006 所有 AC 達成
-- [ ] `mvn verify -Pintegration-test` 所有測試 100% 通過（無 Failures）
-- [ ] Payment 模組無 `catch(Exception)` 過寬
-- [ ] `throw RuntimeException` 降至 0 處
-- [ ] Stripe Webhook 有 signature 驗證
-- [ ] ErrorCode `E_8000`/`E_5001` 濫用降至 0
-- [ ] Sprint 19 Review 文件建立
-- [ ] Sprint 19 Retrospective 文件建立
-- [ ] Sprint 19 Release 執行（v2026.07.18-01）
+- [x] `mvn verify -Pintegration-test` 所有測試 100% 通過（單元 295 + 整合 269 = 564 tests, 0 Failures）
+- [x] Payment 模組無 `catch(Exception)` 過寬（全部為具體例外：DataAccessException / RuntimeException / NumberFormatException 等）
+- [x] `throw RuntimeException` 降至 0 處（生產程式碼）
+- [x] Stripe Webhook 有 signature 驗證（HMAC-SHA256 via StripeSignatureVerifierService）
+- [x] ErrorCode `E_8000`/`E_5001` 濫用降至 0（剩餘 4 處均為正確語義，非誤用）
+- [x] Sprint 19 Review 文件建立（[SPRINT_19_REVIEW.md](../05_development/SPRINT_19_REVIEW.md)）
+- [x] Sprint 19 Retrospective 文件建立（[SPRINT_19_RETRO.md](../05_development/SPRINT_19_RETRO.md)）
+- [x] Sprint 19 Release 執行（v2026.07.18-01，Release Notes 已建立）
 
 ---
 

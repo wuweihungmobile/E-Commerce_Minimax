@@ -166,23 +166,23 @@
 
 **負責人**: Dev
 **優先級**: P2 (Sprint Buffer)
-**狀態**: ⏳ **待執行** (Day 4-5)
+**狀態**: ✅ **已完成** (Sprint 18 Day 3 晚間，commit 8e9205e)
 **依據**: [ErrorCode_Refactor_Evaluation.md](../06_quality/ErrorCode_Refactor_Evaluation.md) Phase 2
 
 | AC 驗收標準 | 狀態 | 備註 |
 |-------------|------|------|
-| AC-001: 新增 E_1093/E_1094/E_1095 三個 Review 專用錯誤碼 | ⏳ | 已評論/評分範圍驗證 |
-| AC-002: ReviewService 14 處 E_8000 遷移至 E_1087/E_1093/E_1094/E_1095 | ⏳ | 含新增的搜尋驗證 3 處 |
-| AC-003: ReviewReplyService 1 處 E_8000 → E_1087 | ⏳ | |
-| AC-004: BookingReviewService 4 處 E_8000 → E_1092/E_1094 | ⏳ | |
-| AC-005: mvn test 286 Unit Tests 100% 通過 | ⏳ | |
+| AC-001: 新增 E_1093/E_1094/E_1095 三個 Review 專用錯誤碼 | ✅ | E_1093 item reviewed / E_1094 booking reviewed / E_1095 rating range |
+| AC-002: ReviewService 14 處 E_8000 遷移至 E_1087/E_1093/E_1094/E_1095 | ✅ | 9+1+1+3 處全部完成 |
+| AC-003: ReviewReplyService 1 處 E_8000 → E_1087 | ✅ | |
+| AC-004: BookingReviewService 4 處 E_8000 → E_1092/E_1094 | ✅ | 3+1 處 |
+| AC-005: mvn test 286 Unit Tests 100% 通過 | ✅ | 0 Failures |
 
 **具體任務**:
-- [ ] T-006-1: ErrorCode.java 新增 E_1093（Review already submitted）/ E_1094（Booking review already submitted）/ E_1095（Invalid rating range）
-- [ ] T-006-2: ReviewService.java 遷移（14 處：9 處 E_1087 + 1 處 E_1093 + 1 處 E_1094 + 3 處 E_1095）
-- [ ] T-006-3: ReviewReplyService.java 遷移（1 處 → E_1087）
-- [ ] T-006-4: BookingReviewService.java 遷移（4 處：3 處 E_1092 + 1 處 E_1094）
-- [ ] T-006-5: mvn test 驗證 286 Unit Tests 通過
+- [x] T-006-1: ErrorCode.java 新增 E_1093 / E_1094 / E_1095
+- [x] T-006-2: ReviewService.java 遷移（14 處）
+- [x] T-006-3: ReviewReplyService.java 遷移（1 處）
+- [x] T-006-4: BookingReviewService.java 遷移（4 處）
+- [x] T-006-5: mvn test 驗證 286 Unit Tests 通過
 
 ---
 
@@ -190,19 +190,19 @@
 
 **負責人**: Dev
 **優先級**: P2 (Sprint Buffer)
-**狀態**: ⏳ **待執行** (Day 5-6)
+**狀態**: ✅ **已完成** (Sprint 18 Day 3 晚間，commit 8e9205e)
 **依據**: [ErrorCode_Refactor_Evaluation.md](../06_quality/ErrorCode_Refactor_Evaluation.md) Phase 2
 
 | AC 驗收標準 | 狀態 | 備註 |
 |-------------|------|------|
-| AC-001: NotificationTemplateService 4 處 E_8000 → E_8003 | ⏳ | |
-| AC-002: CmsService 6 處 E_8000 → E_8004/E_8005 | ⏳ | 3 處 page + 1 處 page published + 2 處 banner |
-| AC-003: mvn test 286 Unit Tests 100% 通過 | ⏳ | |
+| AC-001: NotificationTemplateService 4 處 E_8000 → E_8003 | ✅ | |
+| AC-002: CmsService 6 處 E_8000 → E_8004/E_8005 | ✅ | 4 處 page + 2 處 banner |
+| AC-003: mvn test 286 Unit Tests 100% 通過 | ✅ | 0 Failures |
 
 **具體任務**:
-- [ ] T-007-1: NotificationTemplateService.java 遷移（4 處 → E_8003）
-- [ ] T-007-2: CmsService.java 遷移（4 處 → E_8004，2 處 → E_8005）
-- [ ] T-007-3: mvn test 驗證 286 Unit Tests 通過
+- [x] T-007-1: NotificationTemplateService.java 遷移（4 處 → E_8003）
+- [x] T-007-2: CmsService.java 遷移（4 處 → E_8004，2 處 → E_8005）
+- [x] T-007-3: mvn test 驗證 286 Unit Tests 通過
 
 ---
 
@@ -210,21 +210,21 @@
 
 **負責人**: Dev
 **優先級**: P2 (Sprint Buffer)
-**狀態**: ⏳ **待執行** (Day 6-7)
+**狀態**: ✅ **已完成** (Sprint 18 Day 3 晚間，commit 8e9205e)
 **依據**: [ErrorCode_Refactor_Evaluation.md](../06_quality/ErrorCode_Refactor_Evaluation.md) Phase 2
 
 | AC 驗收標準 | 狀態 | 備註 |
 |-------------|------|------|
-| AC-001: PaymentService 2 處 E_5001 → E_5011 | ⏳ | |
-| AC-002: PaymentStateService 3 處 E_5001 → E_5011/E_5012 | ⏳ | 2 處 payment + 1 處 refund |
-| AC-003: BookingService 1 處 E_5001 → E_5010 | ⏳ | |
-| AC-004: mvn test 286 Unit Tests 100% 通過 | ⏳ | |
+| AC-001: PaymentService 2 處 E_5001 → E_5011 | ✅ | |
+| AC-002: PaymentStateService 3 處 E_5001 → E_5011/E_5012 | ✅ | 2 處 payment + 1 處 refund |
+| AC-003: BookingService 1 處 E_5001 → E_5010 | ✅ | |
+| AC-004: mvn test 286 Unit Tests 100% 通過 | ✅ | 0 Failures |
 
 **具體任務**:
-- [ ] T-008-1: PaymentService.java 遷移（2 處 → E_5011）
-- [ ] T-008-2: PaymentStateService.java 遷移（2 處 → E_5011，1 處 → E_5012）
-- [ ] T-008-3: BookingService.java 遷移（1 處 E_5001 → E_5010）
-- [ ] T-008-4: mvn test 驗證 286 Unit Tests 通過
+- [x] T-008-1: PaymentService.java 遷移（2 處 → E_5011）
+- [x] T-008-2: PaymentStateService.java 遷移（2 處 → E_5011，1 處 → E_5012）
+- [x] T-008-3: BookingService.java 遷移（1 處 E_5001 → E_5010）
+- [x] T-008-4: mvn test 驗證 286 Unit Tests 通過
 
 ---
 
@@ -237,7 +237,8 @@
 | 2026-06-22 | Day 1 | US-001/002/003/004 (9/9 AC) + 環境驗證 555 tests | Sprint 18 Day 1 完成全部規劃 US |
 | 2026-06-23 | Day 2 | ✅ Commit 02a4fa0 推送至 origin/main (10 檔案, 2036 行) + 完整 CI 驗證 (act) | 單一分支策略：直接 commit + push main |
 | 2026-06-24 | Day 3 | ✅ ErrorCode Phase 1（11 碼 + 11 處修正）+ Docker 政策 + PMD/Checkstyle 強化 + CI 清理 | f9789d6，Sprint Buffer 啟動 |
-| 2026-06-25 | Day 4 | - | US-006 ErrorCode Phase 2A 預計 |
+| 2026-06-24 | Day 3（後） | ✅ US-006/007/008 全部完成（35 處遷移 + 3 新碼 + 286 tests 通過，commit 8e9205e） | Sprint Buffer 提前完成 |
+| 2026-06-25 | Day 4 | - | |
 | 2026-06-26 | Day 5 | - | |
 | 2026-06-29 | Day 6 | - | |
 | 2026-06-30 | Day 7 | - | |
@@ -255,10 +256,10 @@
 | US-004 | ErrorCode 重構評估 | 1 | **1** ✅ | 0 |
 | US-005 | 日常開發支援 | 1 | **1** ✅ | 0 |
 | **規劃小計** | | **12** | **12** | **0** |
-| US-006 | [Buffer] ErrorCode Phase 2A — Review 遷移 | 3 | 0 | 3 |
-| US-007 | [Buffer] ErrorCode Phase 2B — Notification + CMS 遷移 | 2 | 0 | 2 |
-| US-008 | [Buffer] ErrorCode Phase 2C — Payment + BookingService 遷移 | 2 | 0 | 2 |
-| **含 Buffer 合計** | | **19/20** | **12** | **7** |
+| US-006 | [Buffer] ErrorCode Phase 2A — Review 遷移 | 3 | **3** ✅ | 0 |
+| US-007 | [Buffer] ErrorCode Phase 2B — Notification + CMS 遷移 | 2 | **2** ✅ | 0 |
+| US-008 | [Buffer] ErrorCode Phase 2C — Payment + BookingService 遷移 | 2 | **2** ✅ | 0 |
+| **含 Buffer 合計** | | **19/20** | **19** | **0** |
 
 ---
 
@@ -280,6 +281,7 @@
 
 | 版本 | 日期 | 修改內容 | 修改人 |
 |------|------|----------|--------|
+| v2.0 | 2026-06-24 | Day 3 後：US-006/007/008 全部完成（35 處遷移 + 3 新碼，286 tests 通過，commit 8e9205e） | Claude Code |
 | v1.9 | 2026-06-24 | Day 3 後：新增 Sprint Buffer US-006/007/008（ErrorCode Phase 2A/B/C），7 SP Buffer 規劃 | Claude Code |
 | v1.8 | 2026-06-24 | Day 3：T-004-4 完成 — ErrorCode 重構 Phase 1（新增 11 個專用碼，修正 11 處誤用，286 tests 通過） | Claude Code |
 | v1.7 | 2026-06-23 | Day 2：US-005 完成（技術債掃描，122 處分類，Sprint 19-21 計劃） | Claude Code |

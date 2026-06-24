@@ -34,6 +34,7 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final NotificationProducerService notificationProducerService;
+    private final NotificationPreferenceService notificationPreferenceService;
 
     // Pagination and default values
     private static final int DEFAULT_PAGE_SIZE = 50;
@@ -50,6 +51,22 @@ public class NotificationService {
         Notification.NotificationChannel channel = request.getChannel() != null
                 ? Notification.NotificationChannel.valueOf(request.getChannel().name())
                 : Notification.NotificationChannel.IN_APP;
+
+        // 檢查用戶通知偏好；停用則跳過（broadcast 不受此限）
+        Notification.NotificationType notifType =
+                Notification.NotificationType.valueOf(request.getNotificationType().name());
+        if (!notificationPreferenceService.isEnabled(user.getId(), notifType, channel)) {
+            log.warn("Notification skipped by user preference: userId={} type={} channel={}",
+                    user.getId(), request.getNotificationType(), channel);
+            return NotificationDto.NotificationResponse.builder()
+                    .userId(user.getId())
+                    .notificationType(request.getNotificationType().name())
+                    .channel(channel.name())
+                    .isSent(false)
+                    .isRead(false)
+                    .errorMessage("Skipped by user preference")
+                    .build();
+        }
 
         String recipient = request.getRecipient();
         if (recipient == null && channel != Notification.NotificationChannel.IN_APP) {

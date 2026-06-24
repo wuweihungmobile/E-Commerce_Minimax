@@ -13,9 +13,9 @@
 
 | 狀態 | 數量 |
 |------|------|
-| ✅ 已完成 | 4 |
+| ✅ 已完成 | 6 |
 | 🔄 進行中 | 0 |
-| ⏳ 待處理 | 2 |
+| ⏳ 待處理 | 0 |
 | **總計** | **6** |
 
 ---
@@ -117,24 +117,30 @@
 
 ---
 
-### US-005: M09 下一階段新功能（3 SP）
+### US-005: M09 通知用戶偏好設定 API（3 SP）
 
 **負責人**: PM/PO + Dev
 **優先級**: P1
-**狀態**: ⏳ **待處理**
+**狀態**: ✅ **已完成**（2026-06-24）
 
 | AC 驗收標準 | 狀態 | 備註 |
 |-------------|------|------|
-| AC-001: PM/PO 確認 M09 下一階段範圍 | ⏳ | Sprint 開始後第一件事 |
-| AC-002: 完成至少 1 個新 API 或業務邏輯 | ⏳ | |
-| AC-003: 所有既有測試 100% 通過 | ⏳ | |
+| AC-001: `GET /v2/notifications/preferences` — 回傳登入用戶所有偏好（含未設定者預設 enabled:true） | ✅ | NotificationPreferenceController + NotificationPreferenceService.getPreferences() |
+| AC-002: `PUT /v2/notifications/preferences` — upsert 單一偏好（notificationType + channel + enabled） | ✅ | NotificationPreferenceService.upsertPreference()；不存在則建立，存在則更新 |
+| AC-003: `sendNotification()` 發送前檢查偏好；`enabled:false` 時 log WARN 並跳過；broadcast 不受限 | ✅ | NotificationService.sendNotification() 加入 preferenceService.isEnabled() 檢查 |
+| AC-004: Flyway migration V41 — `user_notification_preferences` table（含複合唯一索引） | ✅ | V41__Create_User_Notification_Preferences.sql；UNIQUE(user_id, notification_type, channel) |
+| AC-005: NotificationPreferenceService 至少 3 個測試案例 + 所有既有 292 tests 100% 通過 | ✅ | 295 tests (292+3), 0 Failures — BUILD SUCCESS |
 
 **具體任務**:
-- [ ] T-005-1: PM/PO 確認 M09 範圍（或 M10 新模組）
-- [ ] T-005-2: SA 細化 User Story 和 AC
-- [ ] T-005-3: Dev 實作新功能
-- [ ] T-005-4: 建立測試
-- [ ] T-005-5: 驗證 mvn test 通過
+- [x] T-005-1: PM/PO 確認 M09 範圍 → 通知用戶偏好設定（2026-06-24）
+- [x] T-005-2: SA 細化 User Story 和 AC → API Contract + Entity 設計（2026-06-24）
+- [x] T-005-3-1: Flyway V41__Create_User_Notification_Preferences.sql
+- [x] T-005-3-2: `UserNotificationPreference` entity + `UserNotificationPreferenceRepository`
+- [x] T-005-3-3: `NotificationPreferenceService`（getPreferences / upsertPreference / isEnabled）
+- [x] T-005-3-4: `NotificationPreferenceController`（GET + PUT /v2/notifications/preferences）
+- [x] T-005-3-5: 修改 `NotificationService.sendNotification()` 加入偏好檢查
+- [x] T-005-4: `NotificationPreferenceServiceTest`（3 個案例：TC-001 預設 enabled/TC-002 upsert 建立/TC-003 isEnabled false）
+- [x] T-005-5: `mvn test` 295 tests, 0 Failures — BUILD SUCCESS
 
 ---
 
@@ -142,18 +148,18 @@
 
 **負責人**: Dev
 **優先級**: P2
-**狀態**: ⏳ **待處理**
+**狀態**: ✅ **已完成**（2026-06-24）
 
 | AC 驗收標準 | 狀態 | 備註 |
 |-------------|------|------|
-| AC-001: 緊急 Bug 修復（如有） | ⏳ | |
-| AC-002: PM/PO 臨時需求（如有） | ⏳ | |
-| AC-003: 團隊技術支援（如有） | ⏳ | |
+| AC-001: 緊急 Bug 修復（如有） | ✅ | 本 Sprint 無緊急 Bug |
+| AC-002: PM/PO 臨時需求（如有） | ✅ | 本 Sprint 無臨時需求 |
+| AC-003: 團隊技術支援（如有） | ✅ | 本 Sprint 無技術支援需求 |
 
 **具體任務**:
-- [ ] T-006-1: 處理緊急 Bug（如有）
-- [ ] T-006-2: 處理臨時需求（如有）
-- [ ] T-006-3: 技術支援（如有）
+- [x] T-006-1: 處理緊急 Bug（如有）— 無需處理
+- [x] T-006-2: 處理臨時需求（如有）— 無需處理
+- [x] T-006-3: 技術支援（如有）— 無需處理
 
 ---
 
@@ -182,15 +188,15 @@
 | US-002 | RuntimeException 統一 ErrorCode | 1 | 1 | 0 |
 | US-003 | Stripe Webhook signature 驗證 | 3 | 3 | 0 |
 | US-004 | ErrorCode Phase 3 剩餘模組 | 3 | 3 | 0 |
-| US-005 | M09 下一階段新功能 | 3 | 0 | 3 |
-| US-006 | 日常開發支援 | 1 | 0 | 1 |
-| **規劃合計** | | **13** | **9** | **4** |
+| US-005 | M09 通知用戶偏好設定 API | 3 | 3 | 0 |
+| US-006 | 日常開發支援 | 1 | 1 | 0 |
+| **規劃合計** | | **13** | **13** | **0** |
 
 ---
 
 ## 🔴 Sprint 19 Definition of Done
 
-- [ ] US-001~006 所有 AC 達成
+- [x] US-001~006 所有 AC 達成
 - [ ] `mvn verify -Pintegration-test` 所有測試 100% 通過（無 Failures）
 - [ ] Payment 模組無 `catch(Exception)` 過寬
 - [ ] `throw RuntimeException` 降至 0 處
@@ -211,6 +217,9 @@
 | v1.2 | 2026-06-24 | US-002 完成：StorageService 3 處 RuntimeException → BusinessException(E_9906)；新增 E_9906；修正計劃中 E_2003/E_9001 錯誤 | Claude Code |
 | v1.3 | 2026-06-24 | US-003 完成：新增 E_5015、StripeSignatureVerifierService（HMAC-SHA256）、修正 E_9001 誤用、6 個測試案例 | Claude Code |
 | v1.4 | 2026-06-24 | US-004 完成：掃描確認 Sprint 18 Phase 2 已清零所有 E_8000/E_5001 誤用；剩餘 4 處均為正確語義，無需遷移 | Claude Code |
+| v1.5 | 2026-06-24 | US-005 T-005-1/T-005-2 完成：PM/PO 確認範圍為「M09 通知用戶偏好設定 API」；SA 細化 API Contract（GET/PUT /v2/notifications/preferences）、Entity 設計、sendNotification 整合點 | Claude Code |
+| v1.6 | 2026-06-24 | US-005 完成：V41 migration、UserNotificationPreference entity/repo、NotificationPreferenceService、NotificationPreferenceController、NotificationService 偏好檢查整合、3 個測試案例；295 tests 0 Failures | Claude Code |
+| v1.7 | 2026-06-24 | US-006 完成：本 Sprint 無緊急 Bug / 臨時需求 / 技術支援需求；Sprint 19 全部 6 US 完成，13/13 SP 達成 | Claude Code |
 
 ---
 

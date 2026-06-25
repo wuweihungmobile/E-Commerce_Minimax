@@ -79,16 +79,18 @@ public class BookingController {
                         .body(ApiResponse.error("E_6005", "Request with this Idempotency-Key is still being processed"));
             }
 
+            boolean completed = false;
             try {
                 BookingDto.BookingResponse booking = bookingService.createBooking(request, idempotencyKey);
-                // 標記完成並儲存回應
                 idempotencyService.markCompleted(idempotencyKey, booking);
+                completed = true;
                 return ResponseEntity.status(HttpStatus.CREATED)
                         .body(ApiResponse.success("Booking created successfully", booking));
-            } catch (Exception e) {
-                // 發生錯誤時刪除 idempotency key，讓客戶端可以重試
-                idempotencyService.remove(idempotencyKey);
-                throw e;
+            } finally {
+                // 例外時清除 idempotency key，讓客戶端可以重試
+                if (!completed) {
+                    idempotencyService.remove(idempotencyKey);
+                }
             }
         }
 

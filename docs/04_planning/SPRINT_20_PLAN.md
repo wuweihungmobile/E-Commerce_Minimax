@@ -167,11 +167,11 @@ mvn verify -Pintegration-test
 作為 Dev，我需要審查生產程式碼中 5 處非 MQ 模組的 `catch(Exception)`，判斷哪些是過寬（需細分）、哪些是合理設計（需文件化），並完成必要的細分。
 
 **驗收標準**:
-- [ ] AC-001: 審查 5 處（SettlementGenerator / NotificationService × 2 / RedisCartService / BookingController）
-- [ ] AC-002: 對每處給出「過寬→細分」或「合理設計→加說明」的決策
-- [ ] AC-003: `BookingController` 的 `catch(Exception)` 必須細分（控制器層不應有寬泛 catch）
-- [ ] AC-004: 合理設計的 `catch(Exception)`（如 Redis 快取容錯）加上說明性 Log 或 comment
-- [ ] AC-005: `mvn test` 所有單元測試 100% 通過
+- [x] AC-001: 審查 5 處（SettlementGenerator / NotificationService × 2 / RedisCartService / BookingController）
+- [x] AC-002: 對每處給出「過寬→細分」或「合理設計→加說明」的決策
+- [x] AC-003: `BookingController` 的 `catch(Exception)` 必須細分（控制器層不應有寬泛 catch）
+- [x] AC-004: 合理設計的 `catch(Exception)`（如 Redis 快取容錯）加上說明性 Log 或 comment
+- [x] AC-005: `mvn test` 所有單元測試 100% 通過（295 tests, 0 Failures）
 
 **技術備註**:
 ```bash

@@ -354,7 +354,8 @@ public class RedisCartService {
                         cart.setFinalAmount(cart.getTotalAmount().subtract(discount));
                     }
                 }
-            } catch (Exception e) {
+            } catch (RuntimeException e) {
+                // Promo discount fallback：折扣計算失敗不影響購物車讀取，cart 仍以原價回傳
                 log.warn("Failed to calculate promo discount for cart: {}", cart.getCartId(), e);
             }
         }

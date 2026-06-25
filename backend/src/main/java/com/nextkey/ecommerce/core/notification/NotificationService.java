@@ -94,7 +94,7 @@ public class NotificationService {
             notificationProducerService.sendToQueue(request);
             log.info("Notification queued: id={}, userId={}, type={}, channel={}",
                     notification.getId(), user.getId(), request.getNotificationType(), channel);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.error("Failed to queue notification: id={}, error={}", notification.getId(), e.getMessage());
             notification.setErrorMessage(e.getMessage());
             notification.setRetryCount(notification.getRetryCount() + 1);
@@ -131,7 +131,8 @@ public class NotificationService {
 
                 notificationProducerService.sendToQueue(sendRequest);
                 count++;
-            } catch (Exception e) {
+            } catch (RuntimeException e) {
+                // Batch 廣播容錯：單一用戶入佇失敗不中斷整體廣播，其他用戶仍可收到通知
                 log.warn("Failed to queue notification for user: {}", user.getId(), e);
             }
         }

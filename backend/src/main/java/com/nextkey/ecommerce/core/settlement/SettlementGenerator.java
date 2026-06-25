@@ -77,7 +77,8 @@ public class SettlementGenerator {
             try {
                 generateStatementForTenant(tenant.getId(), lastWeekMonday, lastWeekSunday);
                 generatedCount++;
-            } catch (Exception e) {
+            } catch (RuntimeException e) {
+                // Batch 容錯：單一 tenant 失敗不中斷整個排程，確保其他 tenant 仍能完成結算
                 log.error("Failed to generate settlement statement for tenant: {}", tenant.getId(), e);
             }
         }

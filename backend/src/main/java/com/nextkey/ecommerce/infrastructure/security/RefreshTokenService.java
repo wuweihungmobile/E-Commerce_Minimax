@@ -74,34 +74,6 @@ public class RefreshTokenService {
         }
     }
 
-    /**
-     * 從 Refresh Token 中提取 userId
-     *
-     * @deprecated 此方法已棄用。由於 RefreshTokenService 與 JwtTokenService
-     * 之間存在循環依賴風險，請直接在需要的地方注入 JwtTokenService 並調用
-     * {@link JwtTokenService#getUserId(String)} 方法。
-     *
-     * 替代方案：
-     * <pre>
-     * {@code
-     * @Autowired
-     * private JwtTokenService jwtTokenService;
-     *
-     * public UUID extractUserId(String refreshToken) {
-     *     return jwtTokenService.getUserId(refreshToken);
-     * }
-     * }
-     * </pre>
-     *
-     * @param refreshToken JWT token
-     * @return userId if valid, null otherwise
-     */
-    @Deprecated
-    public UUID extractUserIdFromToken(final String refreshToken) {
-        log.warn("extractUserIdFromToken is deprecated. Please use JwtTokenService.getUserId() instead.");
-        return null;
-    }
-
     private String buildKey(final UUID userId, final String refreshToken) {
         return REFRESH_TOKEN_PREFIX + userId + ":" + extractTokenId(refreshToken);
     }

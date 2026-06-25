@@ -79,23 +79,6 @@ public class ReviewDto {
         private List<String> images;
     }
 
-    // ========== Seller Reply Request ==========
-
-    /**
-     * @deprecated 請改用 {@link ReviewReplyDto.CreateReplyRequest}
-     *             此類別將於 Sprint 17 移除
-     */
-    @Deprecated
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class SellerReplyRequest {
-        @NotBlank(message = "Reply content is required")
-        @Size(max = 1000, message = "Reply must be at most 1000 characters")
-        private String reply;
-    }
-
     // ========== Response ==========
 
     @Data

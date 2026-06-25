@@ -406,11 +406,4 @@ public class MediaService {
         return MediaAsset.FileType.DOCUMENT;
     }
 
-    /**
-     * @deprecated 請改用 {@link #existsMediaById(String)}，命名更符合 Spring Data 風格
-     */
-    @Deprecated
-    public boolean verifyMediaExists(String mediaId) {
-        return existsMediaById(mediaId);
-    }
 }

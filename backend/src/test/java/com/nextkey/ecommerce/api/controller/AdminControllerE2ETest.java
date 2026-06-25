@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.api.controller;
 
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.*;
@@ -20,8 +21,6 @@ import java.util.UUID;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import io.restassured.http.ContentType;
@@ -657,9 +656,8 @@ class AdminControllerE2ETest {
     /**
      * US-M17-009-01: Admin 更新 Feature Toggle 成功
      *
-     * 注意：TestDatabaseInitializer 安裝的 PostgreSQL trigger 會在 tenant 建立時
-     * 自動為其補上 6 個預設 feature toggles（包含 BOOKING_ENABLED），所以測試
-     * 不需要手動建立 toggle，直接透過 findBy 確認存在即可。
+     * 修復（Sprint 20 US-002）：改為自包含測試，不依賴全域 trigger 安裝狀態。
+     * trigger 已安裝時自動取用其建立的 toggle；trigger 未安裝時手動建立確保穩定。
      */
     @Test
     @Order(13)
@@ -676,10 +674,18 @@ class AdminControllerE2ETest {
                 .build();
         testTenant = tenantRepository.saveAndFlush(testTenant);
 
-        // 確認 trigger 已自動建立 BOOKING_ENABLED toggle（避免重複 INSERT 造成 UNIQUE 約束失敗）
-        assertTrue(featureToggleRepository.findByTenantIdAndFeatureKey(
-                testTenant.getId(), "BOOKING_ENABLED").isPresent(),
-                "Trigger should have auto-created BOOKING_ENABLED toggle");
+        // 確保 BOOKING_ENABLED toggle 存在（自包含，不依賴全域 trigger 安裝狀態）
+        // trigger 若已安裝則直接取用；若未安裝（CommandLineRunner 例外被吞）則手動建立
+        final Tenant finalTestTenant = testTenant;
+        featureToggleRepository.findByTenantIdAndFeatureKey(
+                testTenant.getId(), "BOOKING_ENABLED")
+                .orElseGet(() -> featureToggleRepository.saveAndFlush(
+                        TenantFeatureToggle.builder()
+                                .tenant(finalTestTenant)
+                                .featureKey("BOOKING_ENABLED")
+                                .isEnabled(false)
+                                .build()
+                ));
 
         try {
             // Admin 啟用 Feature Toggle

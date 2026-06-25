@@ -4,10 +4,12 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.domain.model.notification.Notification;
 import com.nextkey.ecommerce.domain.repository.NotificationRepository;
@@ -55,7 +57,7 @@ public class NotificationConsumerService {
 
             processMessage(message);
 
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.warn("Error consuming notifications: {}", e.getMessage());
         }
     }
@@ -77,7 +79,7 @@ public class NotificationConsumerService {
                 return objectMapper.convertValue(data, NotificationMessage.class);
             }
             return objectMapper.convertValue(messageObj, NotificationMessage.class);
-        } catch (Exception e) {
+        } catch (JsonProcessingException | IllegalArgumentException e) {
             log.error("Failed to parse notification message: {}", messageObj, e);
             return null;
         }
@@ -110,7 +112,7 @@ public class NotificationConsumerService {
 
             log.info("Notification processed successfully: messageId={}", message.getMessageId());
 
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.error("Failed to process notification message: {}", message.getMessageId(), e);
             handleFailedMessage(message);
         }
@@ -135,7 +137,7 @@ public class NotificationConsumerService {
                         RETRY_DELAY_SECONDS * message.getRetryCount(),
                         TimeUnit.SECONDS
                 );
-            } catch (Exception e) {
+            } catch (JsonProcessingException | DataAccessException e) {
                 log.error("Failed to requeue notification: messageId={}", message.getMessageId(), e);
             }
         } else {
@@ -153,7 +155,7 @@ public class NotificationConsumerService {
             String dlqKey = "notification:dlq:" + message.getMessageId();
             redisTemplate.opsForValue().set(dlqKey, objectMapper.writeValueAsString(message));
             log.info("Message moved to DLQ: messageId={}", message.getMessageId());
-        } catch (Exception e) {
+        } catch (JsonProcessingException | DataAccessException e) {
             log.error("Failed to move message to DLQ: messageId={}", message.getMessageId(), e);
         }
     }
@@ -177,7 +179,7 @@ public class NotificationConsumerService {
                     }
                 }
             }
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.warn("Error processing retry queue: {}", e.getMessage());
         }
     }

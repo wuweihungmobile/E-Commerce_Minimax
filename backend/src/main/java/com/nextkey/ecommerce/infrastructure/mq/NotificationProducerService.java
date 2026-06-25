@@ -98,7 +98,7 @@ public class NotificationProducerService {
                         .build();
                 sendToQueue(sendRequest);
                 count++;
-            } catch (Exception e) {
+            } catch (RuntimeException e) {
                 log.warn("Failed to queue notification for user: {}", user.getId(), e);
             }
         }

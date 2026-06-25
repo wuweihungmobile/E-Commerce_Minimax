@@ -171,4 +171,43 @@ public class NotificationDto {
         private String content;
         private Map<String, String> placeholders;
     }
+
+    // ========== Notification History (Sprint 20 US-005) ==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class HistoryResponse {
+        private UUID notificationId;
+        private String type;
+        private String channel;
+        private String title;
+        private String body;
+        private Boolean isRead;
+        private Instant readAt;
+        private Instant createdAt;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class HistoryListResponse {
+        private List<HistoryResponse> items;
+        private int page;
+        private int size;
+        private long totalElements;
+        private int totalPages;
+        private int unreadCount;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class HistoryUnreadCountResponse {
+        private UUID userId;
+        private int unreadCount;
+    }
 }

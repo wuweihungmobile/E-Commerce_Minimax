@@ -261,7 +261,7 @@ public class ReviewService {
 
         return ReviewDto.RatingStats.builder()
                 .listingId(listingId)
-                .averageRating(avgRating != null ? avgRating : 0.0)
+                .averageRating(avgRating) // null when no reviews (AC-002)
                 .totalReviews(totalReviews)
                 .rating1Count(ratingCounts.get(1))
                 .rating2Count(ratingCounts.get(2))

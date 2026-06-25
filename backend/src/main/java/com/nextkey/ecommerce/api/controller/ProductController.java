@@ -20,7 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.ProductDto;
+import com.nextkey.ecommerce.api.dto.ReviewDto;
 import com.nextkey.ecommerce.core.product.ProductService;
+import com.nextkey.ecommerce.core.review.ReviewService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +36,7 @@ import lombok.extern.slf4j.Slf4j;
 public class ProductController {
 
     private final ProductService productService;
+    private final ReviewService reviewService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('product:read')")
@@ -83,5 +86,18 @@ public class ProductController {
             @PathVariable UUID listingId) {
         productService.deleteProduct(listingId);
         return ResponseEntity.ok(ApiResponse.success("Product deleted successfully", null));
+    }
+
+    /**
+     * 取得商品評分統計（Sprint 20 US-006）
+     * productId 對應 listingId（Platform 層統一路徑）
+     */
+    @GetMapping("/{productId}/reviews/stats")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<ReviewDto.RatingStats>> getProductReviewStats(
+            @PathVariable UUID productId) {
+        log.info("Get review stats: productId={}", productId);
+        ReviewDto.RatingStats stats = reviewService.getRatingStats(productId);
+        return ResponseEntity.ok(ApiResponse.success(stats));
     }
 }

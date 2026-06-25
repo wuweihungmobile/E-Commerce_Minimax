@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.NotificationDto;
+import com.nextkey.ecommerce.core.notification.NotificationHistoryService;
 import com.nextkey.ecommerce.core.notification.NotificationService;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
@@ -36,6 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final NotificationHistoryService notificationHistoryService;
 
     /**
      * 發送通知 (Admin only)
@@ -110,6 +112,44 @@ public class NotificationController {
     public ResponseEntity<ApiResponse<NotificationDto.UnreadCountResponse>> getUnreadCount() {
         UUID userId = TenantContext.getCurrentUser();
         NotificationDto.UnreadCountResponse response = notificationService.getUnreadCount(userId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    // ========== Sprint 20 US-005: M09 通知歷史查詢 ==========
+
+    /**
+     * 取得通知歷史列表（分頁）
+     */
+    @GetMapping("/history")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<NotificationDto.HistoryListResponse>> getNotificationHistory(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        UUID userId = TenantContext.getCurrentUser();
+        NotificationDto.HistoryListResponse response = notificationHistoryService.getHistory(userId, page, size);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
+     * 標記單筆通知歷史為已讀
+     */
+    @PutMapping("/history/{historyId}/read")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<NotificationDto.HistoryResponse>> markHistoryAsRead(
+            @PathVariable UUID historyId) {
+        UUID userId = TenantContext.getCurrentUser();
+        NotificationDto.HistoryResponse response = notificationHistoryService.markOneAsRead(userId, historyId);
+        return ResponseEntity.ok(ApiResponse.success("Notification marked as read", response));
+    }
+
+    /**
+     * 取得通知歷史未讀計數
+     */
+    @GetMapping("/history/unread-count")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<NotificationDto.HistoryUnreadCountResponse>> getHistoryUnreadCount() {
+        UUID userId = TenantContext.getCurrentUser();
+        NotificationDto.HistoryUnreadCountResponse response = notificationHistoryService.getUnreadCount(userId);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

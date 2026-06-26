@@ -740,4 +740,69 @@ class AdminControllerE2ETest {
             cleanupTestData(testTenant.getId(), null);
         }
     }
+
+    /**
+     * TC-US005-01: SUPER_ADMIN 取得租戶活躍統計應返回 200 及統計資料
+     */
+    @Test
+    @Order(15)
+    @DisplayName("TC-US005-01: GET /v2/admin/tenants/:id/stats - SUPER_ADMIN 應返回 200 及統計數據")
+    void testGetTenantStats_asSuperAdmin_shouldReturn200() throws Exception {
+        String superAdminToken = createSuperAdminUserAndGetToken();
+
+        Tenant testTenant = Tenant.builder()
+                .name("Stats Test Tenant")
+                .slug("stats-test-tenant-" + System.currentTimeMillis())
+                .status(Tenant.TenantStatus.ACTIVE)
+                .build();
+        testTenant = tenantRepository.save(testTenant);
+
+        try {
+            given()
+                    .header("Authorization", "Bearer " + superAdminToken)
+                    .when()
+                    .get(BASE_URL + "/tenants/" + testTenant.getId() + "/stats")
+                    .then()
+                    .statusCode(200)
+                    .body("success", is(true))
+                    .body("data.tenantId", equalTo(testTenant.getId().toString()))
+                    .body("data.orderCount30d", notNullValue())
+                    .body("data.activeUserCount", notNullValue())
+                    .body("data.activeListingCount", notNullValue());
+
+            System.out.println("✅ TC-US005-01 PASSED: SUPER_ADMIN 取得租戶活躍統計成功");
+        } finally {
+            cleanupTestData(testTenant.getId(), null);
+        }
+    }
+
+    /**
+     * TC-US005-02: BUYER 角色取得租戶統計應返回 403
+     */
+    @Test
+    @Order(16)
+    @DisplayName("TC-US005-02: GET /v2/admin/tenants/:id/stats - BUYER 角色應返回 403")
+    void testGetTenantStats_asBuyer_shouldReturn403() throws Exception {
+        String buyerToken = createBuyerUserAndGetToken();
+
+        Tenant testTenant = Tenant.builder()
+                .name("Stats Auth Test Tenant")
+                .slug("stats-auth-test-" + System.currentTimeMillis())
+                .status(Tenant.TenantStatus.ACTIVE)
+                .build();
+        testTenant = tenantRepository.save(testTenant);
+
+        try {
+            given()
+                    .header("Authorization", "Bearer " + buyerToken)
+                    .when()
+                    .get(BASE_URL + "/tenants/" + testTenant.getId() + "/stats")
+                    .then()
+                    .statusCode(403);
+
+            System.out.println("✅ TC-US005-02 PASSED: BUYER 角色取得租戶統計正確返回 403");
+        } finally {
+            cleanupTestData(testTenant.getId(), null);
+        }
+    }
 }

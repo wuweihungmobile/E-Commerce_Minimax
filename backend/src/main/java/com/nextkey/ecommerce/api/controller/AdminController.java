@@ -199,6 +199,20 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success("Feature toggle updated", response));
     }
 
+    // ========== Tenant Stats ==========
+
+    /**
+     * US-005 M14: 取得租戶活躍統計
+     * 路徑: GET /v2/admin/tenants/{tenantId}/stats
+     */
+    @GetMapping("/tenants/{tenantId}/stats")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.TenantStatsResponse>> getTenantStats(
+            @PathVariable UUID tenantId) {
+        AdminDto.TenantStatsResponse response = adminService.getTenantStats(tenantId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
     // ========== Platform Stats ==========
 
     /**

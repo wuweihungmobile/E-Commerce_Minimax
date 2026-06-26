@@ -19,4 +19,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmailAndStatus(String email, String status);
 
     List<User> findByTenantId(UUID tenantId);
+
+    long countByTenantId(UUID tenantId);
 }

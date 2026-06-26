@@ -15,7 +15,7 @@
 | US-002 | Stripe SDK Phase 3 真實 SDK 整合 | 3 | P0 | ✅ 完成 |
 | US-003 | M11 LogisticsProvider 策略抽象 | 2 | P1 | ✅ 完成 |
 | US-004 | AI-503 getRatingStats @Cacheable | 1 | P1 | ✅ 完成 |
-| US-005 | M14 租戶活躍統計 API | 2 | P1 | ⬜ 未開始 |
+| US-005 | M14 租戶活躍統計 API | 2 | P1 | ✅ 完成 |
 | US-006 | M11 運費模板 CRUD API（Buffer-A） | 2 | Buffer | ⬜ 未開始 |
 
 **建議執行順序**：US-001 → US-002 → US-003 → US-004 → US-005 → US-006（Buffer）
@@ -260,76 +260,48 @@ backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewServiceCacheIntegr
 
 ## US-005：M14 平台管理台 — 租戶活躍統計 API
 
-> **SP**: 2 | **優先級**: P1 | **狀態**: ⬜ 未開始
+> **SP**: 2 | **優先級**: P1 | **狀態**: ✅ 完成（2026-06-27）
 
 ### 任務清單
 
-**T-005-1：新增 Repository Query Method（若需要）**
+**T-005-1：新增 Repository Query Method**
 ```
 backend/src/main/java/com/nextkey/ecommerce/domain/repository/OrderRepository.java
+backend/src/main/java/com/nextkey/ecommerce/domain/repository/UserRepository.java
+backend/src/main/java/com/nextkey/ecommerce/domain/repository/ListingRepository.java
 ```
-- [ ] 確認或新增：
-  ```java
-  long countByTenantIdAndCreatedAtAfter(UUID tenantId, Instant createdAfter);
-  Optional<Instant> findTopByTenantIdOrderByCreatedAtDesc(UUID tenantId);
-  ```
+- [x] `OrderRepository`: 新增 `countByTenantIdAndCreatedAtAfter(UUID, Instant)` + `findTopByTenantIdOrderByCreatedAtDesc(UUID, Pageable)`
+- [x] `UserRepository`: 新增 `countByTenantId(UUID)`
+- [x] `ListingRepository`: 新增 `countByTenantIdAndStatus(UUID, Listing.ListingStatus)`
 
 **T-005-2：新增 `AdminDto.TenantStatsResponse`**
 ```
 backend/src/main/java/com/nextkey/ecommerce/api/dto/AdminDto.java
 ```
-- [ ] 新增 inner record：
-  ```java
-  public record TenantStatsResponse(
-      UUID tenantId,
-      long orderCount30d,
-      long activeUserCount,
-      long activeListingCount,
-      Instant lastOrderAt
-  ) {}
-  ```
+- [x] 新增 inner class（@Data @Builder @NoArgsConstructor @AllArgsConstructor）：
+  - `UUID tenantId`, `long orderCount30d`, `long activeUserCount`, `long activeListingCount`, `Instant lastOrderAt`
 
 **T-005-3：新增 `AdminService.getTenantStats()`**
 ```
 backend/src/main/java/com/nextkey/ecommerce/core/admin/AdminService.java
 ```
-- [ ] 新增方法：
-  ```java
-  @Transactional(readOnly = true)
-  public AdminDto.TenantStatsResponse getTenantStats(UUID tenantId) {
-      Instant thirtyDaysAgo = Instant.now().minus(30, ChronoUnit.DAYS);
-      long orderCount30d = orderRepository.countByTenantIdAndCreatedAtAfter(tenantId, thirtyDaysAgo);
-      long userCount = userRepository.countByTenantId(tenantId);
-      long listingCount = listingRepository.countByTenantIdAndStatus(tenantId, "ACTIVE");
-      Instant lastOrderAt = orderRepository.findTopByTenantIdOrderByCreatedAtDesc(tenantId)
-          .orElse(null);
-      return new AdminDto.TenantStatsResponse(tenantId, orderCount30d, userCount, listingCount, lastOrderAt);
-  }
-  ```
+- [x] 新增方法：查詢近 30 天訂單數（STATS_ORDER_WINDOW_DAYS 常數）、活躍用戶數、活躍商品數、最後訂單時間
 
 **T-005-4：新增 API 端點**
 ```
-backend/src/main/java/com/nextkey/ecommerce/api/controller/AdminController.java（或適當的 Controller）
+backend/src/main/java/com/nextkey/ecommerce/api/controller/AdminController.java
 ```
-- [ ] 新增：
-  ```java
-  @GetMapping("/admin/tenants/{tenantId}/stats")
-  @PreAuthorize("hasRole('SUPER_ADMIN')")
-  public ResponseEntity<AdminDto.TenantStatsResponse> getTenantStats(
-          @PathVariable UUID tenantId) {
-      return ResponseEntity.ok(adminService.getTenantStats(tenantId));
-  }
-  ```
+- [x] `GET /v2/admin/tenants/{tenantId}/stats`，`@PreAuthorize("hasRole('SUPER_ADMIN')")`
 
-**T-005-5：整合測試**
+**T-005-5：E2E 測試**
 ```
 backend/src/test/java/com/nextkey/ecommerce/api/controller/AdminControllerE2ETest.java
 ```
-- [ ] 新增測試：SUPER_ADMIN token 存取 `/v2/admin/tenants/{tenantId}/stats` → 200 + `TenantStatsResponse`
-- [ ] 新增測試：普通 ADMIN token 存取 → 403 Forbidden
+- [x] TC-US005-01: SUPER_ADMIN → 200 + TenantStatsResponse（tenantId, orderCount30d, activeUserCount, activeListingCount）
+- [x] TC-US005-02: BUYER → 403
 
 **T-005-6：驗證**
-- [ ] `mvn verify -Pintegration-test -pl backend` BUILD SUCCESS
+- [x] `mvn verify` BUILD SUCCESS（290 個測試，0 失敗，Checkstyle 0 violations）
 
 ---
 

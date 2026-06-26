@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.domain.repository;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -48,4 +49,10 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     @Query("SELECT COUNT(o) FROM Order o WHERE o.tenant.id = :tenantId AND o.status = :status")
     int countByTenantIdAndStatus(@Param("tenantId") UUID tenantId, @Param("status") Order.OrderStatus status);
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.tenant.id = :tenantId AND o.createdAt >= :after")
+    long countByTenantIdAndCreatedAtAfter(@Param("tenantId") UUID tenantId, @Param("after") Instant after);
+
+    @Query("SELECT o FROM Order o WHERE o.tenant.id = :tenantId ORDER BY o.createdAt DESC")
+    List<Order> findTopByTenantIdOrderByCreatedAtDesc(@Param("tenantId") UUID tenantId, Pageable pageable);
 }

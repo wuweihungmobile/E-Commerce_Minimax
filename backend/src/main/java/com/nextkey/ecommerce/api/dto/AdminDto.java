@@ -229,6 +229,20 @@ public class AdminDto {
         private String updatedBy;
     }
 
+    // ========== Tenant Stats ==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantStatsResponse {
+        private UUID tenantId;
+        private long orderCount30d;
+        private long activeUserCount;
+        private long activeListingCount;
+        private Instant lastOrderAt;
+    }
+
     // ========== System Config ==========
 
     @Data

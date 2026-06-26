@@ -47,4 +47,6 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
 
     @Query("SELECT l FROM Listing l LEFT JOIN FETCH l.tenant WHERE l.id = :listingId")
     Optional<Listing> findByIdWithTenant(@Param("listingId") UUID listingId);
+
+    long countByTenantIdAndStatus(UUID tenantId, Listing.ListingStatus status);
 }

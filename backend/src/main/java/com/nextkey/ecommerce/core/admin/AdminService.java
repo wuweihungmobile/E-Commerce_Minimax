@@ -2,11 +2,14 @@ package com.nextkey.ecommerce.core.admin;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
+import org.springframework.data.domain.PageRequest;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +47,8 @@ public class AdminService {
 
     // Mock values
     private static final BigDecimal MOCK_AVERAGE_ORDER_VALUE = BigDecimal.valueOf(1500);
+
+    private static final long STATS_ORDER_WINDOW_DAYS = 30L;
 
     // ========== Tenant Management ==========
 
@@ -485,6 +490,37 @@ public class AdminService {
                 .totalOrders(totalOrders)
                 .totalPlatformGMV(totalGMV)
                 .pendingTenantReviews(pendingReviews)
+                .build();
+    }
+
+    // ========== Tenant Stats ==========
+
+    /**
+     * US-005 M14: 取得租戶活躍統計
+     * 包含：近 30 天訂單數、活躍用戶數、活躍商品數、最後訂單時間
+     */
+    @Transactional(readOnly = true)
+    public AdminDto.TenantStatsResponse getTenantStats(UUID tenantId) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
+
+        Instant thirtyDaysAgo = Instant.now().minus(STATS_ORDER_WINDOW_DAYS, ChronoUnit.DAYS);
+        long orderCount30d = orderRepository.countByTenantIdAndCreatedAtAfter(tenantId, thirtyDaysAgo);
+        long activeUserCount = userRepository.countByTenantId(tenantId);
+        long activeListingCount = listingRepository.countByTenantIdAndStatus(tenantId, Listing.ListingStatus.ACTIVE);
+
+        Instant lastOrderAt = orderRepository
+                .findTopByTenantIdOrderByCreatedAtDesc(tenantId, PageRequest.of(0, 1))
+                .stream().findFirst()
+                .map(order -> order.getCreatedAt())
+                .orElse(null);
+
+        return AdminDto.TenantStatsResponse.builder()
+                .tenantId(tenantId)
+                .orderCount30d(orderCount30d)
+                .activeUserCount(activeUserCount)
+                .activeListingCount(activeListingCount)
+                .lastOrderAt(lastOrderAt)
                 .build();
     }
 

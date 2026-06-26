@@ -14,7 +14,7 @@
 | US-001 | AI-502 notification_history MQ Consumer 一致性 | 2 | P0 | ✅ 完成 |
 | US-002 | Stripe SDK Phase 3 真實 SDK 整合 | 3 | P0 | ✅ 完成 |
 | US-003 | M11 LogisticsProvider 策略抽象 | 2 | P1 | ✅ 完成 |
-| US-004 | AI-503 getRatingStats @Cacheable | 1 | P1 | ⬜ 未開始 |
+| US-004 | AI-503 getRatingStats @Cacheable | 1 | P1 | ✅ 完成 |
 | US-005 | M14 租戶活躍統計 API | 2 | P1 | ⬜ 未開始 |
 | US-006 | M11 運費模板 CRUD API（Buffer-A） | 2 | Buffer | ⬜ 未開始 |
 
@@ -218,47 +218,43 @@ backend/src/test/java/com/nextkey/ecommerce/core/logistics/provider/LogisticsPro
 
 ## US-004：AI-503 — getRatingStats @Cacheable 效能優化
 
-> **SP**: 1 | **優先級**: P1 | **狀態**: ⬜ 未開始
+> **SP**: 1 | **優先級**: P1 | **狀態**: ✅ 完成（2026-06-27）
 
 ### 任務清單
 
-**T-004-1：確認 Redis Cache 配置**
+**T-004-1：啟用 Spring Cache + 設定 TTL**
 ```
-backend/src/main/resources/application.yml（或 application.properties）
+backend/src/main/java/com/nextkey/ecommerce/EcommerceApplication.java
+backend/src/main/resources/application.yml
 ```
-- [ ] 確認 `spring.cache.type=redis` 已設定
-- [ ] 新增 cache 配置（若使用 YAML）：
-  ```yaml
-  spring:
-    cache:
-      redis:
-        time-to-live: 300000  # 5 分鐘（毫秒）
-  ```
+- [x] 新增 `@EnableCaching` 至 `EcommerceApplication`
+- [x] `application.yml` 新增 `spring.cache.redis.time-to-live: 300000`（5 分鐘）
+- [x] 生產環境自動使用 `RedisCacheManager`；測試環境用 `spring.cache.type=simple` 覆蓋
 
 **T-004-2：新增 `@Cacheable` 至 `ReviewService.getRatingStats()`**
 ```
-backend/src/main/java/com/nextkey/ecommerce/core/review/ReviewService.java（或 ReviewStatsService）
+backend/src/main/java/com/nextkey/ecommerce/core/review/ReviewService.java
 ```
-- [ ] 找到 `getRatingStats(UUID productId)` 方法（Sprint 20 US-006 建立）
-- [ ] 加入 `@Cacheable(value = "ratingStats", key = "#productId")`
+- [x] `@Cacheable(value = "ratingStats", key = "#listingId")`（實際參數名為 `listingId` 非 `productId`）
 
 **T-004-3：新增 `@CacheEvict` 至 `ReviewService.createReview()`**
-- [ ] 找到 `createReview()` 方法
-- [ ] 加入 `@CacheEvict(value = "ratingStats", key = "#request.productId")`
-  （調整 key 表達式以匹配實際參數名稱）
+```
+backend/src/main/java/com/nextkey/ecommerce/core/review/ReviewService.java
+```
+- [x] `@CacheEvict(value = "ratingStats", key = "#request.listingId")`
 
-**T-004-4：單元測試**
+**T-004-4：整合測試**
 ```
-backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewServiceCacheTest.java
+backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewServiceCacheIntegrationTest.java
 ```
-- [ ] 新增 `@SpringBootTest` 快取測試：
-  - 第一次呼叫 `getRatingStats(productId)` → Repository 被呼叫 1 次
-  - 第二次呼叫（相同 productId）→ Repository 被呼叫 0 次（命中快取）
-  - 呼叫 `createReview()` 後再呼叫 `getRatingStats()` → Repository 再次被呼叫 1 次（快取失效）
+- [x] TC-R001: 第一次呼叫 → Repository 被呼叫一次
+- [x] TC-R002: 第二次呼叫（同 listingId）→ 快取命中，Repository 不呼叫
+- [x] TC-R003: 快取清除後 → Repository 再次被呼叫
+- [x] 3/3 通過（`@TestPropertySource(properties = "spring.cache.type=simple")`）
 
 **T-004-5：驗證**
-- [ ] `mvn test -pl backend -Dtest=ReviewServiceCacheTest` 全部通過
-- [ ] `mvn verify -Pintegration-test -pl backend` BUILD SUCCESS
+- [x] `mvn failsafe:integration-test -Dit.test=ReviewServiceCacheIntegrationTest` 3/3 通過
+- [x] `mvn verify` BUILD SUCCESS（Failsafe 288/288）
 
 ---
 
@@ -407,6 +403,7 @@ backend/src/main/java/com/nextkey/ecommerce/api/controller/ShippingTemplateContr
 | 2026-06-26 | US-001 完成 | Spring Boot 3.2.x RedisTemplate Micrometer proxy 問題，改用 ReflectionTestUtils 直接測 processMessage |
 | 2026-06-26 | US-002 完成 | wiremock-standalone 解決 Jetty classpath 衝突；RequestOptions per-request API key 確保執行緒安全 |
 | 2026-06-27 | US-003 完成 | LogisticsProvider 策略模式；TCAT 對應既有 enum（非 SINOPAC）；E_7500/E_7501 補正至 GlobalExceptionHandler |
+| 2026-06-27 | US-004 完成 | @EnableCaching + @Cacheable(ratingStats) + @CacheEvict；測試用 spring.cache.type=simple 避免 Redis 依賴 |
 
 ---
 
@@ -415,7 +412,7 @@ backend/src/main/java/com/nextkey/ecommerce/api/controller/ShippingTemplateContr
 | 指標 | 目標 | 實際 |
 |------|------|------|
 | P0 US 完成數 | 2/2 | 2/2 ✅ |
-| P1 US 完成數 | 3/3 | 1/3 |
+| P1 US 完成數 | 3/3 | 2/3 |
 | Buffer US 完成數 | 視進度 | — |
 | 測試數量 | 610+ | 進行中 |
 | catch(Exception) 數 | 0 | 0 ✅ |

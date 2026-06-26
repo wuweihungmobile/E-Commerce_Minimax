@@ -8,6 +8,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -60,6 +62,7 @@ public class ReviewService {
      * 建立評價
      */
     @Transactional
+    @CacheEvict(value = "ratingStats", key = "#request.listingId")
     public ReviewDto.ReviewResponse createReview(ReviewDto.CreateRequest request) {
         UUID userId = TenantContext.getCurrentUser();
 
@@ -243,6 +246,7 @@ public class ReviewService {
     /**
      * 取得評價統計
      */
+    @Cacheable(value = "ratingStats", key = "#listingId")
     @Transactional(readOnly = true)
     public ReviewDto.RatingStats getRatingStats(UUID listingId) {
         Double avgRating = reviewRepository.getAverageRatingByListingId(listingId);

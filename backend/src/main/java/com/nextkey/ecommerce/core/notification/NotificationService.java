@@ -18,8 +18,6 @@ import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.mq.NotificationProducerService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
-import com.nextkey.ecommerce.shared.tenant.TenantContext;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -36,7 +34,6 @@ public class NotificationService {
     private final UserRepository userRepository;
     private final NotificationProducerService notificationProducerService;
     private final NotificationPreferenceService notificationPreferenceService;
-    private final NotificationHistoryService notificationHistoryService;
 
     // Pagination and default values
     private static final int DEFAULT_PAGE_SIZE = 50;
@@ -102,20 +99,6 @@ public class NotificationService {
             notification.setRetryCount(notification.getRetryCount() + 1);
             notificationRepository.save(notification);
             throw e;
-        }
-
-        // 寫入通知歷史（用戶端已讀/未讀追蹤，Sprint 20 US-005）
-        try {
-            UUID tenantId = TenantContext.getCurrentTenant();
-            notificationHistoryService.createHistory(
-                    user.getId(), tenantId,
-                    request.getNotificationType().name(),
-                    channel.name(),
-                    request.getTitle(),
-                    request.getContent());
-        } catch (RuntimeException e) {
-            // 歷史寫入失敗不影響主流程，記錄警告後繼續
-            log.warn("Failed to write notification history: userId={}, error={}", user.getId(), e.getMessage());
         }
 
         return toNotificationResponse(notification);

@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nextkey.ecommerce.core.notification.NotificationHistoryService;
 import com.nextkey.ecommerce.domain.model.notification.Notification;
 import com.nextkey.ecommerce.domain.repository.NotificationRepository;
 
@@ -30,6 +31,7 @@ public class NotificationConsumerService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final NotificationRepository notificationRepository;
     private final ObjectMapper objectMapper;
+    private final NotificationHistoryService notificationHistoryService;
 
     private static final int MAX_RETRY_COUNT = 3;
     private static final long RETRY_DELAY_SECONDS = 30;
@@ -109,6 +111,20 @@ public class NotificationConsumerService {
                     .build();
 
             notificationRepository.save(notification);
+
+            // 於 Consumer ACK 後寫入歷史，保障「至少一次送達」語意（AI-502）
+            try {
+                notificationHistoryService.createHistory(
+                        message.getUserId(), null,
+                        message.getNotificationType(),
+                        message.getChannel() != null ? message.getChannel() : "IN_APP",
+                        message.getTitle(),
+                        message.getContent());
+            } catch (RuntimeException historyEx) {
+                log.warn("Failed to write notification history after ACK: messageId={}, error={}",
+                        message.getMessageId(), historyEx.getMessage());
+                // 不 re-throw，確保 ACK 正常完成
+            }
 
             log.info("Notification processed successfully: messageId={}", message.getMessageId());
 

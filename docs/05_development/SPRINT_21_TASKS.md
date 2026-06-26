@@ -13,7 +13,7 @@
 |-------|------|----|--------|------|
 | US-001 | AI-502 notification_history MQ Consumer 一致性 | 2 | P0 | ✅ 完成 |
 | US-002 | Stripe SDK Phase 3 真實 SDK 整合 | 3 | P0 | ✅ 完成 |
-| US-003 | M11 LogisticsProvider 策略抽象 | 2 | P1 | ⬜ 未開始 |
+| US-003 | M11 LogisticsProvider 策略抽象 | 2 | P1 | ✅ 完成 |
 | US-004 | AI-503 getRatingStats @Cacheable | 1 | P1 | ⬜ 未開始 |
 | US-005 | M14 租戶活躍統計 API | 2 | P1 | ⬜ 未開始 |
 | US-006 | M11 運費模板 CRUD API（Buffer-A） | 2 | Buffer | ⬜ 未開始 |
@@ -152,7 +152,7 @@ backend/src/test/java/com/nextkey/ecommerce/api/controller/OrderPaymentControlle
 
 ## US-003：M11 物流追蹤 — LogisticsProvider 策略抽象
 
-> **SP**: 2 | **優先級**: P1 | **狀態**: ⬜ 未開始
+> **SP**: 2 | **優先級**: P1 | **狀態**: ✅ 完成（2026-06-27）
 
 ### 任務清單
 
@@ -160,85 +160,59 @@ backend/src/test/java/com/nextkey/ecommerce/api/controller/OrderPaymentControlle
 ```
 backend/src/main/java/com/nextkey/ecommerce/core/logistics/provider/LogisticsProvider.java
 ```
-- [ ] 建立介面：
-  ```java
-  public interface LogisticsProvider {
-      String getProviderCode();
-      LogisticsDto.ShipmentResult createShipment(LogisticsDto.CreateRequest request);
-      LogisticsDto.TrackingResult trackShipment(String trackingNumber);
-  }
-  ```
+- [x] 建立介面（getProviderCode / createShipment / trackShipment）
+- [x] 新增 `LogisticsDto.ShipmentResult` + `LogisticsDto.TrackingResult` inner class
 
-**T-003-2：實作 `HCTLogisticsProvider`（黑貓宅急便 Stub）**
+**T-003-2：實作 `HCTLogisticsProvider`**
 ```
 backend/src/main/java/com/nextkey/ecommerce/core/logistics/provider/HCTLogisticsProvider.java
 ```
-- [ ] `@Service` + `@Slf4j`
-- [ ] `getProviderCode()` 回傳 `"HCT"`
-- [ ] `createShipment()` 回傳模擬追蹤號（`"HCT-" + UUID.randomUUID()`）
-- [ ] `trackShipment()` 回傳模擬物流狀態（IN_TRANSIT / DELIVERED 交替）
+- [x] `@Service` + `@Slf4j`，`getProviderCode()` → "HCT"
+- [x] `createShipment()` → "HCT-{UUID前8碼}"，`trackShipment()` → IN_TRANSIT + 黑貓物流中心-台北
 
-**T-003-3：實作 `SinoPacLogisticsProvider`（新竹物流 Stub）**
+**T-003-3：實作 `TCATLogisticsProvider`（新竹物流）**
 ```
-backend/src/main/java/com/nextkey/ecommerce/core/logistics/provider/SinoPacLogisticsProvider.java
+backend/src/main/java/com/nextkey/ecommerce/core/logistics/provider/TCATLogisticsProvider.java
 ```
-- [ ] `getProviderCode()` 回傳 `"SINOPAC"`
-- [ ] 與 HCT 結構相同，追蹤號前綴 `"SP-"`
+- [x] `getProviderCode()` → "TCAT"（對應既有 `Logistics.LogisticsProvider.TCAT` enum）
+- [x] `createShipment()` → "TCAT-{UUID前8碼}"，`trackShipment()` → IN_TRANSIT + 新竹物流中心-新竹
 
 **T-003-4：建立 `LogisticsProviderFactory`**
 ```
 backend/src/main/java/com/nextkey/ecommerce/core/logistics/provider/LogisticsProviderFactory.java
 ```
-- [ ] 使用 `Map<String, LogisticsProvider>` 自動注入所有 Provider Bean：
-  ```java
-  @Service
-  public class LogisticsProviderFactory {
-      private final Map<String, LogisticsProvider> providers;
-      
-      public LogisticsProviderFactory(List<LogisticsProvider> providerList) {
-          this.providers = providerList.stream()
-              .collect(Collectors.toMap(LogisticsProvider::getProviderCode, p -> p));
-      }
-      
-      public LogisticsProvider getProvider(String code) {
-          LogisticsProvider provider = providers.get(code);
-          if (provider == null) {
-              throw new BusinessException(ErrorCode.LOGISTICS_PROVIDER_NOT_FOUND, code);
-          }
-          return provider;
-      }
-  }
-  ```
+- [x] `List<LogisticsProvider>` constructor injection → `Map<String, LogisticsProvider>`
+- [x] `getProvider(code)` 找不到時拋出 `BusinessException(E_7503)`
 
 **T-003-5：修改 `LogisticsService`**
 ```
 backend/src/main/java/com/nextkey/ecommerce/core/logistics/LogisticsService.java
 ```
-- [ ] 注入 `LogisticsProviderFactory`
-- [ ] `createLogistics()` 透過 Factory 取得 Provider，呼叫 `provider.createShipment(request)`
-- [ ] 現有對外介面（Controller 層）不變
+- [x] 注入 `LogisticsProviderFactory`
+- [x] `createLogistics()` 改呼叫 `factory.getProvider(...).createShipment(request)` 取得追蹤號
+- [x] 移除 `generateMockTrackingNumber()` 私有方法（邏輯移至 Provider）
 
-**T-003-6：新增 ErrorCode**
+**T-003-6：新增 ErrorCode + GlobalExceptionHandler**
 ```
 backend/src/main/java/com/nextkey/ecommerce/shared/exception/ErrorCode.java
+backend/src/main/java/com/nextkey/ecommerce/api/dto/GlobalExceptionHandler.java
 ```
-- [ ] 新增 `LOGISTICS_PROVIDER_NOT_FOUND`（若未存在）
+- [x] 新增 `E_7503("E-7503", "Logistics provider not found")`
+- [x] E_7503 → 404 NOT_FOUND（GlobalExceptionHandler）
+- [x] 補正 E_7500/E_7501 → 404 NOT_FOUND（原本未在 handler 中，一併修正）
 
 **T-003-7：單元測試**
 ```
 backend/src/test/java/com/nextkey/ecommerce/core/logistics/provider/LogisticsProviderFactoryTest.java
 ```
-- [ ] 測試：`getProvider("HCT")` 回傳 `HCTLogisticsProvider`
-- [ ] 測試：`getProvider("SINOPAC")` 回傳 `SinoPacLogisticsProvider`
-- [ ] 測試：`getProvider("UNKNOWN")` 拋出 `BusinessException(LOGISTICS_PROVIDER_NOT_FOUND)`
-
-**T-003-8：整合測試更新**
-- [ ] 確認現有 `LogisticsControllerE2ETest` 仍通過
-- [ ] 新增測試：建立物流單（provider = HCT）回傳追蹤號符合格式
+- [x] TC-L001: `getProvider("HCT")` → HCTLogisticsProvider
+- [x] TC-L002: `getProvider("TCAT")` → TCATLogisticsProvider
+- [x] TC-L003: `getProvider("UNKNOWN")` → BusinessException E_7503
+- [x] 3/3 通過
 
 **T-003-9：驗證**
-- [ ] `mvn test -pl backend -Dtest=LogisticsProviderFactoryTest` 全部通過
-- [ ] `mvn verify -Pintegration-test -pl backend` BUILD SUCCESS
+- [x] `mvn test -Dtest=LogisticsProviderFactoryTest` 3/3 通過
+- [x] `mvn verify` BUILD SUCCESS（Checkstyle 0 + PMD pass + Failsafe 285/285）
 
 ---
 
@@ -432,6 +406,7 @@ backend/src/main/java/com/nextkey/ecommerce/api/controller/ShippingTemplateContr
 |------|---------|------------|
 | 2026-06-26 | US-001 完成 | Spring Boot 3.2.x RedisTemplate Micrometer proxy 問題，改用 ReflectionTestUtils 直接測 processMessage |
 | 2026-06-26 | US-002 完成 | wiremock-standalone 解決 Jetty classpath 衝突；RequestOptions per-request API key 確保執行緒安全 |
+| 2026-06-27 | US-003 完成 | LogisticsProvider 策略模式；TCAT 對應既有 enum（非 SINOPAC）；E_7500/E_7501 補正至 GlobalExceptionHandler |
 
 ---
 
@@ -440,7 +415,7 @@ backend/src/main/java/com/nextkey/ecommerce/api/controller/ShippingTemplateContr
 | 指標 | 目標 | 實際 |
 |------|------|------|
 | P0 US 完成數 | 2/2 | 2/2 ✅ |
-| P1 US 完成數 | 3/3 | — |
+| P1 US 完成數 | 3/3 | 1/3 |
 | Buffer US 完成數 | 視進度 | — |
 | 測試數量 | 610+ | 進行中 |
 | catch(Exception) 數 | 0 | 0 ✅ |

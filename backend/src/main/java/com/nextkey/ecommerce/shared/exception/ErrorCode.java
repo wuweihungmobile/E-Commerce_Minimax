@@ -98,6 +98,7 @@ public enum ErrorCode {
     E_7500("E-7500", "Logistics not found"),
     E_7501("E-7501", "Active logistics already exists"),
     E_7502("E-7502", "Cannot cancel delivered logistics"),
+    E_7503("E-7503", "Logistics provider not found"),
 
     // Pricing (E-8000s)
     E_8000("E-8000", "Pricing rule not found"),

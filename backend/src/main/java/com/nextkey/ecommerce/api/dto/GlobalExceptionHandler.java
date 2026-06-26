@@ -129,7 +129,7 @@ public class GlobalExceptionHandler {
         return switch ( errorCode) {
             case E_1000, E_1001, E_1002, E_1003, E_1004, E_1008 -> HttpStatus.UNAUTHORIZED;
             case E_1005, E_1006, E_2000, E_3000, E_3003, E_3006, E_4000, E_4006, E_4100, E_4101, E_4105,
-                    E_5000, E_5003, E_5005, E_6000, E_7000, E_7001,
+                    E_5000, E_5003, E_5005, E_6000, E_7000, E_7001, E_7500, E_7501, E_7503,
                     E_8002 -> HttpStatus.NOT_FOUND;
             case E_1007, E_2001, E_2002, E_2004, E_4031 -> HttpStatus.FORBIDDEN;
             case E_2003 -> HttpStatus.CONFLICT;

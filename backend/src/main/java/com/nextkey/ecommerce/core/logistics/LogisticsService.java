@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.LogisticsDto;
+import com.nextkey.ecommerce.core.logistics.provider.LogisticsProvider;
+import com.nextkey.ecommerce.core.logistics.provider.LogisticsProviderFactory;
 import com.nextkey.ecommerce.domain.model.logistics.Logistics;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.repository.LogisticsRepository;
@@ -33,9 +35,9 @@ public class LogisticsService {
 
     private final LogisticsRepository logisticsRepository;
     private final OrderRepository orderRepository;
+    private final LogisticsProviderFactory logisticsProviderFactory;
 
-    // Tracking number and time constants
-    private static final int TRACKING_NUMBER_MODULO = 100000000;
+    // Mock tracking event time constants
     private static final long IN_TRANSIT_HOURS_AGO = 12;
     private static final long OUT_FOR_DELIVERY_HOURS_AGO = 2;
     private static final long DELIVERED_HOURS_AGO = 1;
@@ -60,11 +62,14 @@ public class LogisticsService {
             throw new BusinessException(ErrorCode.E_7001, "Active logistics already exists for this order");
         }
 
-        // 建立物流單 (Mock 直接 PENDING)
+        // 透過 Provider 策略取得追蹤號
+        LogisticsProvider provider = logisticsProviderFactory.getProvider(request.getLogisticsProvider().name());
+        LogisticsDto.ShipmentResult shipment = provider.createShipment(request);
+
         Logistics logistics = Logistics.builder()
                 .orderId(order.getId())
                 .logisticsProvider(Logistics.LogisticsProvider.valueOf(request.getLogisticsProvider().name()))
-                .trackingNumber(generateMockTrackingNumber(request.getLogisticsProvider()))
+                .trackingNumber(shipment.getTrackingNumber())
                 .status(Logistics.LogisticsStatus.PENDING)
                 .receiverName(request.getReceiverName() != null ? request.getReceiverName() : order.getShippingRecipientName())
                 .receiverPhone(request.getReceiverPhone() != null ? request.getReceiverPhone() : order.getShippingPhone())
@@ -192,11 +197,6 @@ public class LogisticsService {
     }
 
     // ========== Helper Methods ==========
-
-    private String generateMockTrackingNumber(final LogisticsDto.LogisticsProvider provider) {
-        String prefix = provider == LogisticsDto.LogisticsProvider.HCT ? "HCT" : "TCAT";
-        return prefix + System.currentTimeMillis() % TRACKING_NUMBER_MODULO;
-    }
 
     private String getStatusMessage(final Logistics.LogisticsStatus status) {
         return switch ( status) {

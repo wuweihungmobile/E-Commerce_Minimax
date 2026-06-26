@@ -122,4 +122,24 @@ public class LogisticsDto {
 
         private String reason;
     }
+
+    // ========== Provider Abstractions (US-003) ==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ShipmentResult {
+        private String trackingNumber;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TrackingResult {
+        private String trackingNumber;
+        private String status;
+        private String location;
+    }
 }

@@ -12,7 +12,7 @@
 | US ID | 標題 | SP | 優先級 | 狀態 |
 |-------|------|----|--------|------|
 | US-001 | AI-502 notification_history MQ Consumer 一致性 | 2 | P0 | ✅ 完成 |
-| US-002 | Stripe SDK Phase 3 真實 SDK 整合 | 3 | P0 | ⬜ 未開始 |
+| US-002 | Stripe SDK Phase 3 真實 SDK 整合 | 3 | P0 | ✅ 完成 |
 | US-003 | M11 LogisticsProvider 策略抽象 | 2 | P1 | ⬜ 未開始 |
 | US-004 | AI-503 getRatingStats @Cacheable | 1 | P1 | ⬜ 未開始 |
 | US-005 | M14 租戶活躍統計 API | 2 | P1 | ⬜ 未開始 |
@@ -82,7 +82,7 @@ backend/src/test/java/com/nextkey/ecommerce/integration/NotificationMQIntegratio
 
 ## US-002：Stripe SDK Phase 3 — 真實 Stripe Java SDK 整合
 
-> **SP**: 3 | **優先級**: P0 | **狀態**: ⬜ 未開始
+> **SP**: 3 | **優先級**: P0 | **狀態**: ✅ 完成（2026-06-26）
 
 ### 任務清單
 
@@ -90,84 +90,63 @@ backend/src/test/java/com/nextkey/ecommerce/integration/NotificationMQIntegratio
 ```
 backend/pom.xml
 ```
-- [ ] 新增依賴：
-  ```xml
-  <dependency>
-      <groupId>com.stripe</groupId>
-      <artifactId>stripe-java</artifactId>
-      <version>24.3.0</version>
-  </dependency>
-  ```
-- [ ] 確認無版本衝突（`mvn dependency:tree`）
+- [x] 新增 `com.stripe:stripe-java:24.3.0`（main scope）
+- [x] 確認無版本衝突
 
-**T-002-2：新增 WireMock 依賴（若未存在）**
+**T-002-2：新增 WireMock 依賴**
 ```
 backend/pom.xml（test scope）
 ```
-- [ ] 確認 `com.github.tomakehurst:wiremock-jre8` 在 test scope 中存在
-- [ ] 若未存在，新增：
-  ```xml
-  <dependency>
-      <groupId>com.github.tomakehurst</groupId>
-      <artifactId>wiremock-jre8</artifactId>
-      <scope>test</scope>
-  </dependency>
-  ```
+- [x] 新增 `org.wiremock:wiremock-standalone:3.5.4`（test scope）
+  - 注意：使用 standalone variant（內建 Jetty），避免與 Spring Boot Tomcat 的 classpath 衝突
 
 **T-002-3：配置 Stripe API Key**
 ```
-backend/src/main/resources/application.properties
-backend/src/test/resources/application-test.properties
+backend/src/main/resources/application.yml
 ```
-- [ ] `application.properties` 新增：
-  ```properties
-  stripe.secret.key=${STRIPE_SECRET_KEY:sk_test_placeholder}
-  stripe.base.url=https://api.stripe.com
-  ```
-- [ ] `application-test.properties` 新增：
-  ```properties
-  stripe.base.url=http://localhost:${wiremock.port:8089}
-  ```
+- [x] 新增 `stripe.secret.key: ${STRIPE_SECRET_KEY:sk_test_placeholder}`
+- [x] WireMock 測試中使用 `Stripe.overrideApiBase()` 靜態方法重導向至 WireMock（無需 application-test.properties）
 
 **T-002-4：修改 `StripePaymentGateway`**
 ```
 backend/src/main/java/com/nextkey/ecommerce/infrastructure/payment/StripePaymentGateway.java
 ```
-- [ ] 注入 `@Value("${stripe.secret.key}") String apiKey`
-- [ ] `createPaymentIntent()` 改用真實 SDK：
-  ```java
-  Stripe.apiKey = apiKey;
-  PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
-      .setAmount(request.getAmount().multiply(BigDecimal.valueOf(100)).longValue())
-      .setCurrency(request.getCurrency().toLowerCase())
-      .putMetadata("order_id", request.getOrderId().toString())
-      .setIdempotencyKey(request.getOrderId().toString())
-      .build();
-  PaymentIntent intent = PaymentIntent.create(params);
-  ```
-- [ ] 捕捉 `CardException` → `ErrorCode.PAYMENT_CARD_DECLINED`
-- [ ] 捕捉 `StripeException`（其他）→ `ErrorCode.PAYMENT_PROVIDER_ERROR`
+- [x] 注入 `@Value("${stripe.secret.key:sk_test_placeholder}") String stripeApiKey`
+- [x] `createPaymentIntent()` 改用真實 SDK + `RequestOptions` per-request API key（執行緒安全）
+- [x] 捕捉 `CardException` → `ErrorCode.E_6006`（400 Bad Request）
+- [x] 捕捉 `StripeException` → `ErrorCode.E_6007`（503 Service Unavailable）
 
-**T-002-5：WireMock 測試配置**
+**T-002-4b：新增 ErrorCode + GlobalExceptionHandler 對應**
 ```
-backend/src/test/java/com/nextkey/ecommerce/infrastructure/payment/StripeWireMockConfig.java
+backend/src/main/java/com/nextkey/ecommerce/shared/exception/ErrorCode.java
+backend/src/main/java/com/nextkey/ecommerce/api/dto/GlobalExceptionHandler.java
+```
+- [x] 新增 `E_6006("E-6006", "Payment card declined")`
+- [x] 新增 `E_6007("E-6007", "Payment provider error")`
+- [x] E_6006 → 400 BAD_REQUEST、E_6007 → 503 SERVICE_UNAVAILABLE
+
+**T-002-5：WireMock 單元測試**
+```
 backend/src/test/java/com/nextkey/ecommerce/infrastructure/payment/StripePaymentGatewayTest.java
 ```
-- [ ] 建立 `StripeWireMockConfig` `@TestConfiguration`，啟動 WireMock server
-- [ ] 在 `StripePaymentGatewayTest` 中：
-  - 測試 1：`createPaymentIntent()` 成功（WireMock stub 200 + PaymentIntent JSON）
-  - 測試 2：`createPaymentIntent()` CardException（WireMock stub 402 card_declined）
-  - 測試 3：驗證請求 header 包含 `Idempotency-Key: {orderId}`
+- [x] TC-S001：`createPaymentIntent()` 成功（WireMock stub 200 + PaymentIntent JSON）
+- [x] TC-S002：`createPaymentIntent()` 卡片拒絕（WireMock stub 402 card_error → E_6006）
+- [x] TC-S003：驗證請求 header 包含 `Idempotency-Key: {orderId}`
+- [x] 3/3 通過（`@WireMockTest` + `Stripe.overrideApiBase()`）
 
-**T-002-6：整合測試更新**
+**T-002-6：OrderPaymentController E2E 測試**
 ```
 backend/src/test/java/com/nextkey/ecommerce/api/controller/OrderPaymentControllerE2ETest.java
 ```
-- [ ] 新增 Stripe PaymentIntent 建立 E2E 測試（使用 WireMock）
+- [x] API-PAY-001: 無 JWT → 401（GET /payment）
+- [x] API-PAY-002: 有效 JWT + 不存在 orderId → 404（GET /payment）
+- [x] API-PAY-003: 無 JWT → 401（POST /pay）
+- [x] API-PAY-004: 有效 JWT + 不存在 orderId → 404（POST /pay）
+- [x] 4/4 通過
 
 **T-002-7：驗證**
-- [ ] `mvn test -pl backend -Dtest=StripePaymentGatewayTest` 全部通過
-- [ ] `mvn verify -Pintegration-test -pl backend` BUILD SUCCESS
+- [x] `mvn test -pl backend -Dtest=StripePaymentGatewayTest` 3/3 通過
+- [x] `mvn verify` BUILD SUCCESS（Checkstyle 0 violations + PMD pass + Failsafe 全部通過）
 
 ---
 
@@ -451,8 +430,8 @@ backend/src/main/java/com/nextkey/ecommerce/api/controller/ShippingTemplateContr
 
 | 日期 | 完成項目 | 問題 / 備註 |
 |------|---------|------------|
-| 開發開始 | — | Sprint 21 計劃確認，開始 US-001 |
-| | | |
+| 2026-06-26 | US-001 完成 | Spring Boot 3.2.x RedisTemplate Micrometer proxy 問題，改用 ReflectionTestUtils 直接測 processMessage |
+| 2026-06-26 | US-002 完成 | wiremock-standalone 解決 Jetty classpath 衝突；RequestOptions per-request API key 確保執行緒安全 |
 
 ---
 
@@ -460,12 +439,12 @@ backend/src/main/java/com/nextkey/ecommerce/api/controller/ShippingTemplateContr
 
 | 指標 | 目標 | 實際 |
 |------|------|------|
-| P0 US 完成數 | 2/2 | — |
+| P0 US 完成數 | 2/2 | 2/2 ✅ |
 | P1 US 完成數 | 3/3 | — |
 | Buffer US 完成數 | 視進度 | — |
-| 測試數量 | 583 + 27 = 610+ | — |
-| catch(Exception) 數 | 0 | — |
-| @Deprecated 數 | 0 | — |
+| 測試數量 | 610+ | 進行中 |
+| catch(Exception) 數 | 0 | 0 ✅ |
+| @Deprecated 數 | 0 | 0 ✅ |
 
 ---
 

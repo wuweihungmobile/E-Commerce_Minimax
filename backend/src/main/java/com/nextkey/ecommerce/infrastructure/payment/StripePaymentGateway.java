@@ -3,20 +3,26 @@ package com.nextkey.ecommerce.infrastructure.payment;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
 import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.repository.PaymentRepository;
+import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.stripe.exception.CardException;
+import com.stripe.exception.StripeException;
+import com.stripe.model.PaymentIntent;
+import com.stripe.net.RequestOptions;
+import com.stripe.param.PaymentIntentCreateParams;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Stripe 支付網關實現
- * Phase 2-B 預留介面
+ * Stripe 支付網關實現（Phase 3 — 真實 Stripe Java SDK）
  */
 @Slf4j
 @Service
@@ -24,6 +30,9 @@ import lombok.extern.slf4j.Slf4j;
 public class StripePaymentGateway implements PaymentGateway {
 
     private final PaymentRepository paymentRepository;
+
+    @Value("${stripe.secret.key:sk_test_placeholder}")
+    private String stripeApiKey;
 
     private static final String GATEWAY_TYPE = "STRIPE";
 
@@ -33,26 +42,48 @@ public class StripePaymentGateway implements PaymentGateway {
         log.info("Creating Stripe PaymentIntent: orderId={}, amount={}, currency={}",
                 request.getOrderId(), request.getAmount(), request.getCurrency());
 
-        String paymentIntentId = "pi_" + UUID.randomUUID().toString().replace("-", "").substring(0, 24);
-        String mockClientToken = paymentIntentId + "_token_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        try {
+            PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
+                    .setAmount(request.getAmount().multiply(BigDecimal.valueOf(100)).longValue())
+                    .setCurrency(request.getCurrency().toLowerCase())
+                    .putMetadata("order_id", request.getOrderId().toString())
+                    .build();
 
-        Map<String, Object> metadata = new HashMap<>();
-        if (request.getOrderId() != null) {
-            metadata.put("order_id", request.getOrderId().toString());
-        }
-        if (request.getBookingId() != null) {
-            metadata.put("booking_id", request.getBookingId().toString());
-        }
+            String idempotencyKey = request.getIdempotencyKey() != null
+                    ? request.getIdempotencyKey()
+                    : request.getOrderId().toString();
 
-        return PaymentGatewayRequestResponse.PaymentIntentResult.builder()
-                .transactionId(paymentIntentId)
-                .clientSecret(mockClientToken)
-                .status("requires_payment_method")
-                .paymentIntentId(paymentIntentId)
-                .amount(request.getAmount())
-                .currency(request.getCurrency())
-                .metadata(metadata)
-                .build();
+            RequestOptions options = RequestOptions.builder()
+                    .setApiKey(stripeApiKey)
+                    .setIdempotencyKey(idempotencyKey)
+                    .build();
+
+            PaymentIntent intent = PaymentIntent.create(params, options);
+
+            Map<String, Object> metadata = new HashMap<>(intent.getMetadata());
+            if (request.getBookingId() != null) {
+                metadata.put("booking_id", request.getBookingId().toString());
+            }
+
+            return PaymentGatewayRequestResponse.PaymentIntentResult.builder()
+                    .transactionId(intent.getId())
+                    .clientSecret(intent.getClientSecret())
+                    .status(intent.getStatus())
+                    .paymentIntentId(intent.getId())
+                    .amount(request.getAmount())
+                    .currency(request.getCurrency())
+                    .metadata(metadata)
+                    .build();
+
+        } catch (CardException e) {
+            log.error("[E-6006] Stripe card declined: orderId={}, code={}, message={}",
+                    request.getOrderId(), e.getCode(), e.getMessage());
+            throw new BusinessException(ErrorCode.E_6006, e.getMessage());
+        } catch (StripeException e) {
+            log.error("[E-6007] Stripe provider error: orderId={}, code={}, message={}",
+                    request.getOrderId(), e.getCode(), e.getMessage());
+            throw new BusinessException(ErrorCode.E_6007, e.getMessage());
+        }
     }
 
     @Override
@@ -98,7 +129,7 @@ public class StripePaymentGateway implements PaymentGateway {
                         .build();
             }
 
-            String refundId = "re_" + UUID.randomUUID().toString().replace("-", "").substring(0, 24);
+            String refundId = "re_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 24);
 
             return PaymentGatewayRequestResponse.RefundResult.builder()
                     .success(true)

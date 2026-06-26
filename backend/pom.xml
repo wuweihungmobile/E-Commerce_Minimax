@@ -137,6 +137,19 @@
             <version>5.4.0</version>
             <scope>test</scope>
         </dependency>
+        <!-- Stripe Payment SDK (Phase 3 - 真實 SDK 整合) -->
+        <dependency>
+            <groupId>com.stripe</groupId>
+            <artifactId>stripe-java</artifactId>
+            <version>24.3.0</version>
+        </dependency>
+        <!-- WireMock for Stripe HTTP API 測試（standalone 內建 Jetty，避免版本衝突） -->
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>3.5.4</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

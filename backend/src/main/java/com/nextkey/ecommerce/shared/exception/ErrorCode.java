@@ -79,6 +79,8 @@ public enum ErrorCode {
     E_6003("E-6003", "Payment already processed"),
     E_6004("E-6004", "Invalid payment method"),
     E_6005("E-6005", "Idempotency key already used"),
+    E_6006("E-6006", "Payment card declined"),
+    E_6007("E-6007", "Payment provider error"),
 
     // ERP & Inventory (E-7000s)
     E_7000("E-7000", "Supplier not found"),

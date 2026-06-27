@@ -1,5 +1,7 @@
 package com.nextkey.ecommerce.core.logistics.provider;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -12,6 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 public class TCATLogisticsProvider implements LogisticsProvider {
 
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
+
     @Override
     public String getProviderCode() {
         return "TCAT";
@@ -19,7 +23,9 @@ public class TCATLogisticsProvider implements LogisticsProvider {
 
     @Override
     public LogisticsDto.ShipmentResult createShipment(LogisticsDto.CreateRequest request) {
-        String trackingNumber = "TCAT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String date = LocalDate.now().format(DATE_FMT);
+        String suffix = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String trackingNumber = "TCAT-" + date + "-" + suffix;
         log.info("TCAT createShipment: orderId={}, trackingNumber={}", request.getOrderId(), trackingNumber);
         return LogisticsDto.ShipmentResult.builder()
                 .trackingNumber(trackingNumber)

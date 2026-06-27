@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.OrderDto;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
+import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.order.OrderItem;
@@ -58,6 +59,7 @@ public class OrderService {
     private final RedisCartService cartService;
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
+    private final ShippingTemplateService shippingTemplateService;
 
     /**
      * 建立訂單（從購物車或直接預訂）
@@ -131,7 +133,11 @@ public class OrderService {
             totalAmount = totalAmount.add(cartItem.getSubtotal());
         }
 
-        order.setTotalAmount(totalAmount);
+        // 計算運費並加入總金額
+        BigDecimal shippingFee = shippingTemplateService.calculateFeeForTenant(tenantId, totalAmount);
+        order.setShippingFee(shippingFee);
+        order.setTotalAmount(totalAmount.add(shippingFee));
+
         order = orderRepository.save(order);
 
         // 記錄狀態日誌
@@ -140,7 +146,8 @@ public class OrderService {
         // 清除購物車
         cartService.clearCart(userId, tenantId);
 
-        log.info("Order created: orderId={}, userId={}, totalAmount={}", order.getId(), userId, totalAmount);
+        log.info("Order created: orderId={}, userId={}, totalAmount={}, shippingFee={}",
+                order.getId(), userId, order.getTotalAmount(), shippingFee);
         return toOrderResponse(order);
     }
 
@@ -489,6 +496,7 @@ public class OrderService {
                 .orderType(order.getOrderType().name())
                 .status(order.getStatus().name())
                 .totalAmount(order.getTotalAmount())
+                .shippingFee(order.getShippingFee())
                 .currency(order.getCurrency())
                 .shippingAddress(order.getShippingAddress())
                 .shippingRecipientName(order.getShippingRecipientName())

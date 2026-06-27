@@ -79,6 +79,10 @@ public class Order {
     @Column(name = "total_amount", nullable = false, precision = DECIMAL_PRECISION, scale = 2)
     private BigDecimal totalAmount;
 
+    @Column(name = "shipping_fee", nullable = false, precision = DECIMAL_PRECISION, scale = 2)
+    @Builder.Default
+    private BigDecimal shippingFee = BigDecimal.ZERO;
+
     @Column(length = 3)
     @Builder.Default
     private String currency = "TWD";

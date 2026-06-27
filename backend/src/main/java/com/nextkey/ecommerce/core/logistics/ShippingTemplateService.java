@@ -102,6 +102,18 @@ public class ShippingTemplateService {
                 .build();
     }
 
+    /**
+     * 依 tenantId 取得第一個運費模板計算運費；無模板時回傳 0（免運）。
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal calculateFeeForTenant(UUID tenantId, BigDecimal orderAmount) {
+        List<ShippingTemplate> templates = shippingTemplateRepository.findByTenantId(tenantId);
+        if (templates.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        return computeShippingFee(templates.get(0), orderAmount);
+    }
+
     private BigDecimal computeShippingFee(ShippingTemplate template, BigDecimal orderAmount) {
         BigDecimal fixedAmount = template.getFixedAmount() != null ? template.getFixedAmount() : BigDecimal.ZERO;
         if (template.getFeeType() == ShippingTemplate.FeeType.FIXED) {

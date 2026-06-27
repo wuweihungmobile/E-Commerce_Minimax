@@ -79,6 +79,7 @@ public class OrderDto {
         private String orderType;
         private String status;
         private BigDecimal totalAmount;
+        private BigDecimal shippingFee;
         private String currency;
         private String shippingAddress;
         private String shippingRecipientName;

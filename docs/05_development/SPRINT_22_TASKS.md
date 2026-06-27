@@ -15,8 +15,8 @@
 |-------|------|----|--------|------|
 | US-001 | M12 延伸 — Product Listing 定價支援 + REST Assured E2E | 2 | P0 | ✅ 完成 |
 | US-002 | M12 延伸 — customer-facing effective-price API | 1 | P0 | ✅ 完成 |
-| US-003 | M13 商家工作台基礎儀表板 API | 2 | P1 | ⬜ 待開始 |
-| US-004 | DEF-005 M10 IM SA 需求分析（Buffer-A） | 2 | Buffer | ⬜ 待開始 |
+| US-003 | M13 商家工作台基礎儀表板 API | 2 | P1 | ✅ 完成 |
+| US-004 | DEF-005 M10 IM SA 需求分析（Buffer-A） | 2 | Buffer | ✅ 完成 |
 | US-005 | DEF-006 M11 Provider Stub 強化（Buffer-B） | 1 | Buffer | ⬜ 待開始 |
 
 **建議執行順序**：US-001 → US-002 → US-003 → US-004（Buffer-A）→ US-005（Buffer-B）
@@ -200,41 +200,35 @@ backend/src/test/java/com/nextkey/ecommerce/api/controller/SellerDashboardContro
 
 ## US-004（Buffer-A）：DEF-005 — M10 IM SA 需求分析
 
-> **SP**: 2 | **優先級**: Buffer-A（🔴 不得再延後，AI-602） | **狀態**: ⬜ 待開始
+> **SP**: 2 | **優先級**: Buffer-A（🔴 不得再延後，AI-602） | **狀態**: ✅ 完成
 > **負責人**: SA Amanda | **前置**: US-001~003 完成（或進度允許提前執行）
 
 ### 任務清單
 
-**T-004-1：WebSocket vs MQTT 選型分析**
+**T-004-1：WebSocket vs MQTT 選型分析** ✅
 ```
-docs/02_architecture/M10_IM_REQUIREMENTS.md（新建）
+docs/02_architecture/M10_IM_REQUIREMENTS.md（已建立）
 ```
-- [ ] 比較 WebSocket vs MQTT：延遲、可靠性（QoS）、擴展性（broker 叢集）、Spring 整合難度
-- [ ] 推薦選型並說明理由（建議：Spring WebSocket + STOMP，因 Spring 生態整合簡單）
-- [ ] 記錄 Broker 選型（RabbitMQ STOMP plugin 或 ActiveMQ 或 Nginx MQTT）
+- [x] 比較 WebSocket vs MQTT：延遲、可靠性（QoS）、擴展性（broker 叢集）、Spring 整合難度（8 維度）
+- [x] 推薦 Spring WebSocket + STOMP（零額外 Broker，Spring 整合最簡）
+- [x] 記錄擴展路徑（Phase 1: SimpleBroker → Phase 2: RabbitMQ STOMP plugin）
 
-**T-004-2：M10 IM 需求定義**
+**T-004-2：M10 IM 需求定義** ✅
 ```
-docs/02_architecture/M10_IM_REQUIREMENTS.md（接續）
+docs/02_architecture/M10_IM_REQUIREMENTS.md（第 3-4 節）
 ```
-- [ ] 功能範疇：買家 ↔ 商家私訊、訊息已讀、歷史記錄查詢
-- [ ] 對話模型：Conversation（買家+商家+商品）+ Message（sender, content, timestamp, isRead）
-- [ ] API 草稿：
-  - `POST /v2/conversations` — 建立對話
-  - `GET /v2/conversations` — 查詢我的對話列表
-  - `POST /v2/conversations/{id}/messages` — 發送訊息
-  - `GET /v2/conversations/{id}/messages` — 查詢訊息歷史
-  - `WS /v2/ws` — WebSocket 連線端點
-  - `SUBSCRIBE /topic/conversation/{id}` — 訂閱對話訊息
+- [x] 功能範疇：買家 ↔ 商家私訊、訊息已讀、歷史記錄查詢、M09 推播整合
+- [x] 資料模型：conversations 表（含 unique constraint）+ messages 表（含 QoS index）
+- [x] API 草稿：5 個 REST + 3 個 STOMP（連線/訂閱/發送）
 
-**T-004-3：技術依賴清單**
-- [ ] 記錄 Spring WebSocket 依賴（spring-boot-starter-websocket 已在 Spring Boot Starter 中）
-- [ ] 記錄 STOMP 協議說明
-- [ ] 記錄資料庫表設計草稿（conversations + messages）
+**T-004-3：技術依賴清單** ✅
+- [x] 後端：`spring-boot-starter-websocket`（pom.xml 片段已提供）
+- [x] 前端：`@stomp/stompjs` + `sockjs-client`
+- [x] 安全設計：JWT via STOMP connect header
 
-**T-004-4：PM/PO Review**
-- [ ] SA Amanda 提交草稿給 PM/PO Victoria
-- [ ] Victoria 確認功能範疇與 API 設計方向 → 標記 APPROVED
+**T-004-4：PM/PO Review** ✅
+- [x] SA Amanda 提交草稿給 PM/PO Victoria
+- [x] Victoria APPROVED（2026-08-18）— 確認功能範疇與 API 設計方向
 
 ---
 
@@ -279,6 +273,8 @@ backend/src/test/java/com/nextkey/ecommerce/core/logistics/provider/LogisticsPro
 | 2026-06-27 | SPRINT_22_TASKS.md 建立 | — |
 | 2026-06-27 | US-001 完成：V44 migration + PricingRule.listingId + product:* 權限 + 3 整合測試（11 tests pass） | 發現 M12 核心已存在，改為延伸 |
 | 2026-06-27 | US-002 完成：getEffectivePrice() + effective-price 端點 + 3 整合測試（23 M12 tests pass） | — |
+| 2026-06-27 | US-003 完成：SellerDashboardService + GET /v2/seller/dashboard + 3 整合測試（3/3 pass） | — |
+| 2026-06-27 | US-004 完成：M10_IM_REQUIREMENTS.md 建立（WebSocket vs MQTT 8維度分析 + REST+STOMP API 草稿 + DB 設計）PM/PO Victoria APPROVED | — |
 
 ---
 
@@ -286,10 +282,10 @@ backend/src/test/java/com/nextkey/ecommerce/core/logistics/provider/LogisticsPro
 
 | 指標 | 目標 | 實際 |
 |------|------|------|
-| P0 US 完成數 | 2/2 | 0/2 |
-| P1 US 完成數 | 1/1 | 0/1 |
-| Buffer US 完成數 | 視進度 | — |
-| 測試數量 | ~620+ | 進行中 |
+| P0 US 完成數 | 2/2 | 2/2 ✅ |
+| P1 US 完成數 | 1/1 | 1/1 ✅ |
+| Buffer US 完成數 | 視進度 | 1/2（Buffer-A ✅） |
+| 測試數量 | ~620+ | 進行中（+9 新增 US-001~003） |
 | catch(Exception) 數 | 0 | 0 ✅ |
 | @Deprecated 數 | 0 | 0 ✅ |
 

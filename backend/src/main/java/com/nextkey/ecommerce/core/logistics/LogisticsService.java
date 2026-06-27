@@ -53,6 +53,12 @@ public class LogisticsService {
         Order order = orderRepository.findById(request.getOrderId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
 
+        // 訂單必須為 CONFIRMED 才能建立物流
+        if (order.getStatus() != Order.OrderStatus.CONFIRMED) {
+            throw new BusinessException(ErrorCode.E_5001,
+                    "Order must be CONFIRMED to create logistics, current status: " + order.getStatus());
+        }
+
         // 檢查是否已有物流單
         List<Logistics> existingLogistics = logisticsRepository.findByOrderId(request.getOrderId());
         boolean hasActiveLogistics = existingLogistics.stream()
@@ -79,7 +85,11 @@ public class LogisticsService {
 
         logistics = logisticsRepository.save(logistics);
 
-        log.info("Logistics created: logisticsId={}, trackingNumber={}",
+        // 同步更新訂單狀態：CONFIRMED → SHIPPING
+        order.setStatus(Order.OrderStatus.SHIPPING);
+        orderRepository.save(order);
+
+        log.info("Logistics created: logisticsId={}, trackingNumber={}, order status -> SHIPPING",
                 logistics.getId(), logistics.getTrackingNumber());
 
         return toLogisticsResponse(logistics);
@@ -172,6 +182,16 @@ public class LogisticsService {
         }
 
         logistics = logisticsRepository.save(logistics);
+
+        // 同步更新訂單狀態：物流 DELIVERED → 訂單 DELIVERED
+        if (newStatus == Logistics.LogisticsStatus.DELIVERED) {
+            orderRepository.findById(logistics.getOrderId()).ifPresent(order -> {
+                order.setStatus(Order.OrderStatus.DELIVERED);
+                orderRepository.save(order);
+                log.info("Order status updated to DELIVERED: orderId={}", order.getId());
+            });
+        }
+
         log.info("Logistics status updated: logisticsId={}, newStatus={}", logisticsId, newStatus);
 
         return toLogisticsResponse(logistics);

@@ -3,6 +3,8 @@ package com.nextkey.ecommerce.api.controller;
 import java.time.LocalDate;
 import java.util.UUID;
 
+import org.springframework.format.annotation.DateTimeFormat;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -103,6 +105,18 @@ public class ListingController {
                 .build();
 
         PricingDto.CalculatePriceResponse response = pricingService.calculatePrice(request);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @GetMapping("/{listingId}/effective-price")
+    @PreAuthorize("hasAuthority('product:read') or hasAuthority('room:read')")
+    public ResponseEntity<ApiResponse<PricingDto.EffectivePriceResponse>> getEffectivePrice(
+            @PathVariable UUID listingId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkDate,
+            @RequestParam(defaultValue = "1") int stayDays) {
+
+        log.info("Get effective price: listingId={}, checkDate={}, stayDays={}", listingId, checkDate, stayDays);
+        PricingDto.EffectivePriceResponse response = pricingService.getEffectivePrice(listingId, checkDate, stayDays);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

@@ -36,4 +36,8 @@ public interface PricingRuleRepository extends JpaRepository<PricingRule, UUID> 
             @Param("endDate") LocalDate endDate);
 
     List<PricingRule> findByTenantId(UUID tenantId);
+
+    List<PricingRule> findByListingId(UUID listingId);
+
+    List<PricingRule> findByListingIdAndIsActiveTrue(UUID listingId);
 }

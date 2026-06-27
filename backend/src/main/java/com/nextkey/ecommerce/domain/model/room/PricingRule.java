@@ -53,6 +53,9 @@ public class PricingRule {
     @Column(name = "room_listing_id")
     private UUID roomListingId;
 
+    @Column(name = "listing_id")
+    private UUID listingId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "rule_type", nullable = false)
     private PricingRuleType ruleType;

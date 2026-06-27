@@ -24,8 +24,9 @@ public class PricingDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class CreateRuleRequest {
-        @NotNull(message = "Room listing ID is required")
         private UUID roomListingId;
+
+        private UUID listingId;
 
         @NotNull(message = "Rule type is required")
         private PricingRuleType ruleType;
@@ -79,6 +80,7 @@ public class PricingDto {
         private UUID ruleId;
         private UUID tenantId;
         private UUID roomListingId;
+        private UUID listingId;
         private String ruleType;
         private String ruleName;
         private Integer priority;
@@ -207,5 +209,19 @@ public class PricingDto {
         private String reason;
         private String status;
         private Instant createdAt;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class EffectivePriceResponse {
+        private UUID listingId;
+        private LocalDate checkDate;
+        private int stayDays;
+        private BigDecimal basePrice;
+        private BigDecimal effectivePrice;
+        private String appliedRuleType;
+        private UUID appliedRuleId;
     }
 }

@@ -44,7 +44,6 @@ public class PricingService {
 
     private final PricingRuleRepository pricingRuleRepository;
     private final RoomRepository roomRepository;
-    @SuppressWarnings("unused")
     private final ListingRepository listingRepository;
     private final RoomCalendarRepository roomCalendarRepository;
     private final FeatureToggleService featureToggleService;
@@ -65,6 +64,7 @@ public class PricingService {
         PricingRule rule = PricingRule.builder()
                 .tenantId(tenantId)
                 .roomListingId(request.getRoomListingId())
+                .listingId(request.getListingId())
                 .ruleType(PricingRule.PricingRuleType.valueOf(request.getRuleType().name()))
                 .ruleName(request.getRuleName())
                 .priority(request.getPriority() != null ? request.getPriority() : 0)
@@ -117,7 +117,7 @@ public class PricingService {
      * 取得定價規則列表
      */
     @Transactional(readOnly = true)
-    public List<PricingDto.RuleResponse> getRules(UUID roomListingId, Boolean activeOnly) {
+    public List<PricingDto.RuleResponse> getRules(UUID roomListingId, UUID listingId, Boolean activeOnly) {
         UUID tenantId = TenantContext.getCurrentTenant();
         List<PricingRule> rules;
 
@@ -127,6 +127,10 @@ public class PricingService {
                     : pricingRuleRepository.findAll().stream()
                         .filter(r -> Objects.equals(r.getRoomListingId(), roomListingId))
                         .collect(Collectors.toList());
+        } else if (listingId != null) {
+            rules = activeOnly != null && activeOnly
+                    ? pricingRuleRepository.findByListingIdAndIsActiveTrue(listingId)
+                    : pricingRuleRepository.findByListingId(listingId);
         } else {
             rules = activeOnly != null && activeOnly
                     ? pricingRuleRepository.findByTenantIdAndIsActiveTrue(tenantId)
@@ -449,6 +453,7 @@ public class PricingService {
                 .ruleId(rule.getId())
                 .tenantId(rule.getTenantId())
                 .roomListingId(rule.getRoomListingId())
+                .listingId(rule.getListingId())
                 .ruleType(rule.getRuleType().name())
                 .ruleName(rule.getRuleName())
                 .priority(rule.getPriority())
@@ -459,6 +464,60 @@ public class PricingService {
                 .createdAt(rule.getCreatedAt())
                 .updatedAt(rule.getUpdatedAt())
                 .build();
+    }
+
+    /**
+     * 查詢 Listing 的有效售價（Consumer 端 — 依 listingId 定價規則）
+     */
+    @Transactional(readOnly = true)
+    public PricingDto.EffectivePriceResponse getEffectivePrice(UUID listingId, LocalDate checkDate, int stayDays) {
+        com.nextkey.ecommerce.domain.model.listing.Listing listing = listingRepository.findById(listingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Listing not found"));
+
+        BigDecimal basePrice = listing.getBasePrice();
+
+        List<PricingRule> activeRules = pricingRuleRepository.findByListingIdAndIsActiveTrue(listingId)
+                .stream()
+                .filter(r -> !checkDate.isBefore(r.getValidFrom()) && !checkDate.isAfter(r.getValidTo()))
+                .sorted(Comparator.comparingInt(PricingRule::getPriority).reversed())
+                .collect(Collectors.toList());
+
+        if (activeRules.isEmpty()) {
+            return PricingDto.EffectivePriceResponse.builder()
+                    .listingId(listingId)
+                    .checkDate(checkDate)
+                    .stayDays(stayDays)
+                    .basePrice(basePrice)
+                    .effectivePrice(basePrice)
+                    .build();
+        }
+
+        PricingRule bestRule = activeRules.get(0);
+        BigDecimal effectivePrice = applyProductRule(bestRule, basePrice);
+
+        return PricingDto.EffectivePriceResponse.builder()
+                .listingId(listingId)
+                .checkDate(checkDate)
+                .stayDays(stayDays)
+                .basePrice(basePrice)
+                .effectivePrice(effectivePrice)
+                .appliedRuleType(bestRule.getRuleType().name())
+                .appliedRuleId(bestRule.getId())
+                .build();
+    }
+
+    private BigDecimal applyProductRule(PricingRule rule, BigDecimal basePrice) {
+        Map<String, Object> config = rule.getConfig();
+        if (config == null) {
+            return basePrice;
+        }
+        Object discountPct = config.get("discountPercent");
+        if (discountPct != null) {
+            BigDecimal pct = new BigDecimal(discountPct.toString());
+            BigDecimal hundred = BigDecimal.valueOf(100);
+            return basePrice.multiply(BigDecimal.ONE.subtract(pct.divide(hundred)));
+        }
+        return basePrice;
     }
 
     private static class AdjustmentResult {

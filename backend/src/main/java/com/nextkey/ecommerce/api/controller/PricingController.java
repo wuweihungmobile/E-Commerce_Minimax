@@ -42,7 +42,7 @@ public class PricingController {
      * 建立定價規則
      */
     @PostMapping("/rules")
-    @PreAuthorize("hasAuthority('room:create')")
+    @PreAuthorize("hasAuthority('room:create') or hasAuthority('product:create')")
     public ResponseEntity<ApiResponse<PricingDto.RuleResponse>> createRule(
             @Valid @RequestBody PricingDto.CreateRuleRequest request) {
         log.info("Create pricing rule: roomListingId={}, type={}",
@@ -56,7 +56,7 @@ public class PricingController {
      * 更新定價規則
      */
     @PutMapping("/rules/{ruleId}")
-    @PreAuthorize("hasAuthority('room:update')")
+    @PreAuthorize("hasAuthority('room:update') or hasAuthority('product:update')")
     public ResponseEntity<ApiResponse<PricingDto.RuleResponse>> updateRule(
             @PathVariable UUID ruleId,
             @Valid @RequestBody PricingDto.UpdateRuleRequest request) {
@@ -69,11 +69,12 @@ public class PricingController {
      * 取得定價規則列表
      */
     @GetMapping("/rules")
-    @PreAuthorize("hasAuthority('room:read')")
+    @PreAuthorize("hasAuthority('room:read') or hasAuthority('product:read')")
     public ResponseEntity<ApiResponse<List<PricingDto.RuleResponse>>> getRules(
             @RequestParam(required = false) UUID roomListingId,
+            @RequestParam(required = false) UUID listingId,
             @RequestParam(required = false, defaultValue = "false") Boolean activeOnly) {
-        List<PricingDto.RuleResponse> response = pricingService.getRules(roomListingId, activeOnly);
+        List<PricingDto.RuleResponse> response = pricingService.getRules(roomListingId, listingId, activeOnly);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -81,7 +82,7 @@ public class PricingController {
      * 刪除定價規則
      */
     @DeleteMapping("/rules/{ruleId}")
-    @PreAuthorize("hasAuthority('room:delete')")
+    @PreAuthorize("hasAuthority('room:delete') or hasAuthority('product:delete')")
     public ResponseEntity<ApiResponse<Void>> deleteRule(@PathVariable UUID ruleId) {
         log.info("Delete pricing rule: ruleId={}", ruleId);
         pricingService.deleteRule(ruleId);
@@ -92,7 +93,7 @@ public class PricingController {
      * 計算價格
      */
     @PostMapping("/calculate")
-    @PreAuthorize("hasAuthority('room:read')")
+    @PreAuthorize("hasAuthority('room:read') or hasAuthority('product:read')")
     public ResponseEntity<ApiResponse<PricingDto.CalculatePriceResponse>> calculatePrice(
             @Valid @RequestBody PricingDto.CalculatePriceRequest request) {
         log.info("Calculate price: roomListingId={}, checkIn={}, checkOut={}",

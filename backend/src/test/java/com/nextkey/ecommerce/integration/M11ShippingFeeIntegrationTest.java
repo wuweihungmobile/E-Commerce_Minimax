@@ -25,15 +25,12 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.CartDto;
-import com.nextkey.ecommerce.api.filter.UserPrincipal;
+import com.nextkey.ecommerce.integration.util.TestSecurityContextHelper;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.logistics.ShippingTemplate;
@@ -101,14 +98,7 @@ class M11ShippingFeeIntegrationTest {
 
     @AfterEach
     void clearSecurityContext() {
-        SecurityContextHolder.clearContext();
-    }
-
-    private void setupSecurityContext() {
-        UserPrincipal principal = new UserPrincipal(USER_ID, "buyer@test.com", "BUYER", TENANT_ID.toString());
-        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                principal, null, List.of(new SimpleGrantedAuthority("order:create")));
-        SecurityContextHolder.getContext().setAuthentication(auth);
+        TestSecurityContextHelper.clear();
     }
 
     private void setupBaseMocks(BigDecimal itemPrice) {
@@ -146,7 +136,7 @@ class M11ShippingFeeIntegrationTest {
                 .items(Collections.singletonList(cartItem))
                 .build();
 
-        setupSecurityContext();
+        TestSecurityContextHelper.setUserContext(USER_ID, "buyer@test.com", TENANT_ID, "BUYER", List.of("order:create"));
 
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));

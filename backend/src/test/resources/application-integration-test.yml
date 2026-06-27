@@ -26,6 +26,9 @@ spring:
   flyway:
     enabled: false
 
+  cache:
+    type: simple
+
   data:
     redis:
       host: localhost

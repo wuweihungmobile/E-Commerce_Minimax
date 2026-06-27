@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.hamcrest.Matchers;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,12 +25,15 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.CartDto;
+import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.logistics.ShippingTemplate;
@@ -96,6 +99,18 @@ class M11ShippingFeeIntegrationTest {
     private static final UUID USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
     private static final UUID LISTING_ID = UUID.fromString("00000000-0000-0000-0000-000000000003");
 
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private void setupSecurityContext() {
+        UserPrincipal principal = new UserPrincipal(USER_ID, "buyer@test.com", "BUYER", TENANT_ID.toString());
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                principal, null, List.of(new SimpleGrantedAuthority("order:create")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
+    }
+
     private void setupBaseMocks(BigDecimal itemPrice) {
         Tenant tenant = Tenant.builder()
                 .name("Test Tenant")
@@ -131,6 +146,8 @@ class M11ShippingFeeIntegrationTest {
                 .items(Collections.singletonList(cartItem))
                 .build();
 
+        setupSecurityContext();
+
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
         when(redisCartService.getCart(USER_ID, TENANT_ID)).thenReturn(cart);
@@ -162,7 +179,6 @@ class M11ShippingFeeIntegrationTest {
 
     @Test
     @DisplayName("IT-SFEE-001: 訂單小計未達免運門檻 → totalAmount = 小計 + 運費")
-    @WithMockUser(username = "buyer", authorities = {"order:create"})
     void createOrder_belowFreeThreshold_includesShippingFee() throws Exception {
         BigDecimal itemPrice = BigDecimal.valueOf(200);
         BigDecimal shippingFee = BigDecimal.valueOf(60);
@@ -181,15 +197,14 @@ class M11ShippingFeeIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.shippingFee").value(Matchers.closeTo(60.0, 0.01)))
-                .andExpect(jsonPath("$.data.totalAmount").value(Matchers.closeTo(260.0, 0.01)));
+                .andExpect(jsonPath("$.data.shippingFee").value(60))
+                .andExpect(jsonPath("$.data.totalAmount").value(260));
     }
 
     // ── IT-SFEE-002: 小計 >= 免運門檻 → 免運 ──────────────────────
 
     @Test
     @DisplayName("IT-SFEE-002: 訂單小計達免運門檻 → shippingFee = 0，totalAmount = 小計")
-    @WithMockUser(username = "buyer", authorities = {"order:create"})
     void createOrder_aboveFreeThreshold_noShippingFee() throws Exception {
         BigDecimal itemPrice = BigDecimal.valueOf(600);
         BigDecimal shippingFee = BigDecimal.valueOf(60);
@@ -208,15 +223,14 @@ class M11ShippingFeeIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.shippingFee").value(Matchers.closeTo(0.0, 0.01)))
-                .andExpect(jsonPath("$.data.totalAmount").value(Matchers.closeTo(600.0, 0.01)));
+                .andExpect(jsonPath("$.data.shippingFee").value(0))
+                .andExpect(jsonPath("$.data.totalAmount").value(600));
     }
 
     // ── IT-SFEE-003: 無運費模板 → 免運 ───────────────────────────
 
     @Test
     @DisplayName("IT-SFEE-003: 無運費模板 → shippingFee = 0，totalAmount = 小計")
-    @WithMockUser(username = "buyer", authorities = {"order:create"})
     void createOrder_noShippingTemplate_noShippingFee() throws Exception {
         BigDecimal itemPrice = BigDecimal.valueOf(300);
 
@@ -232,7 +246,7 @@ class M11ShippingFeeIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.shippingFee").value(Matchers.closeTo(0.0, 0.01)))
-                .andExpect(jsonPath("$.data.totalAmount").value(Matchers.closeTo(300.0, 0.01)));
+                .andExpect(jsonPath("$.data.shippingFee").value(0))
+                .andExpect(jsonPath("$.data.totalAmount").value(300));
     }
 }

@@ -11,8 +11,12 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
-| Sprint 16 | v2026.06.06-01 | #15 | 2026-06-06 | M08 評價多圖 + M07 結算強化 + Pre-commit | ✅ |
+| Sprint 21 | v2026.08.15-01 | - | 2026-06-27 | MQ 一致性 + Stripe Phase 3 + M11 Provider + M14 統計 + 運費模板 | ✅ |
+| Sprint 20 | v2026.08.01-01 | - | 2026-06-26 | MQ 技術債清零 + @Deprecated 清零 + M09 通知歷史 + M08 評分統計 | ✅ |
+| Sprint 19 | v2026.07.18-01 | - | 2026-06-25 | 詳見 RELEASE_NOTES_v2026.07.18-01.md | ✅ |
+| Sprint 18 | v2026.07.03-01 | - | 2026-06-24 | 詳見 RELEASE_NOTES_v2026.07.03-01.md | ✅ |
 | Sprint 17 | v2026.06.19-01 | #17 | 2026-06-10 | US-004/005 完成 - Flyway 啟用 + sellerReply 清理 | ✅ |
+| Sprint 16 | v2026.06.06-01 | #15 | 2026-06-06 | M08 評價多圖 + M07 結算強化 + Pre-commit | ✅ |
 | Sprint 15 | v2026.06.04-01 | #13, #14 | 2026-06-04 | M08 商家回覆 + 評價標記 | ✅ |
 | Sprint 14 | v2026.05.16-02 | #12 | 2026-05-16 | M09 MQ 通知 + M07 Stripe 整合 | ✅ |
 | Sprint 13 | v2026.05.16-01 | #11 | 2026-05-16 | M18 知識庫版本控制 + 排程發布 | ✅ |
@@ -29,33 +33,42 @@
 
 | 項目 | 數值 |
 |------|------|
-| 正式 Release 次數 | 9 (Sprint 10-17) |
+| 正式 Release 次數 | 13 (Sprint 10-21) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release | v2026.06.19-01 (Sprint 17) |
+| 最近一次 Release | v2026.08.15-01 (Sprint 21) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release 開始 | Sprint 10 |
 
 ---
 
-## 🔴 Sprint 17 Release 規劃
+## ✅ Sprint 21 Release（最新）
 
-**目標**: Day 10 (2026-06-19) 執行 Sprint 17 Release，不可跳過
+| 欄位 | 內容 |
+|------|------|
+| **Tag** | v2026.08.15-01 |
+| **建立日期** | 2026-06-27 |
+| **主要功能** | MQ 通知歷史一致性 + Stripe Phase 3 + M11 Provider + M14 統計 API + 運費模板 CRUD |
+| **測試狀態** | 293 integration tests, 0 Failures |
+| **Flyway** | V43__Create_Shipping_Templates.sql |
+| **Release Notes** | [RELEASE_NOTES_v2026.08.15-01.md](../08_deployment/RELEASE_NOTES_v2026.08.15-01.md) |
+| **狀態** | ✅ 完成 |
+
+---
+
+## 🔴 Sprint 22 Release 規劃
+
+**目標**: Sprint 22 結束（2026-08-29）執行 Release，Tag = `v2026.08.29-01`
 
 ### Release 前檢查清單
 
 | 檢查項目 | 標準 | 狀態 |
 |---------|------|------|
-| 所有 7 個 US 完成 | AC 100% 達成 | ⏳ |
-| mvn test 100% 通過 | 489 tests, 0 Failures, 0 Errors | ⏳ |
-| Final Approval 文件 | SPRINT_17_FINAL_APPROVAL.md 建立 | ⏳ |
-| 四方審議通過 | Architect/SA/SD/QA 全部 APPROVED | ⏳ |
-| 文件更新 | FLYWAY_EVALUATION.md, RELEASE_TRACKER.md 更新 | ⏳ |
-
-### 預期 Release Tag
-
-| Sprint | 預期 Tag | 預期日期 |
-|--------|----------|----------|
-| Sprint 17 | v2026.06.19-01 | 2026-06-19 |
+| 所有 US 完成 | AC 100% 達成 | ⏳ |
+| mvn verify 100% 通過 | 0 Failures, 0 Errors | ⏳ |
+| Checkstyle | 0 violations | ⏳ |
+| Sprint 22 Review 文件 | SPRINT_22_REVIEW.md 建立 | ⏳ |
+| Sprint 22 Retro 文件 | SPRINT_22_RETRO.md 建立 | ⏳ |
+| RELEASE_TRACKER.md 更新 | 新增 Sprint 22 記錄 | ⏳ |
 
 ---
 
@@ -165,9 +178,13 @@ Sprint 14  → ✅ Release (v2026.05.16-02)
 Sprint 15  → ✅ Release (v2026.06.04-01)
 Sprint 16  → ✅ Release (v2026.06.06-01)
 Sprint 17  → ✅ Release (v2026.06.19-01)
+Sprint 18  → ✅ Release (v2026.07.03-01)
+Sprint 19  → ✅ Release (v2026.07.18-01)
+Sprint 20  → ✅ Release (v2026.08.01-01)
+Sprint 21  → ✅ Release (v2026.08.15-01)
 ```
 
-**連續 Release**: 9 次 (Sprint 10-17)
+**連續 Release**: 13 次 (Sprint 10-21)
 
 ---
 

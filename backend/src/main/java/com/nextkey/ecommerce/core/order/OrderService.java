@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -66,6 +67,7 @@ public class OrderService {
      * ROOM 類型訂單可以直接傳入預訂資料，不需要購物車
      * PRODUCT 類型訂單需要購物車中有商品
      */
+    @CacheEvict(value = "dashboardStats", allEntries = true)
     @Transactional
     public OrderDto.OrderResponse createOrderFromCart(OrderDto.CreateRequest request) {
         UUID userId = TenantContext.getCurrentUser();
@@ -343,6 +345,7 @@ public class OrderService {
     /**
      * 更新訂單狀態
      */
+    @CacheEvict(value = "dashboardStats", allEntries = true)
     @Transactional
     public OrderDto.OrderResponse updateOrderStatus(UUID orderId, String targetStatus, String reason) {
         UUID userId = TenantContext.getCurrentUser();
@@ -370,6 +373,7 @@ public class OrderService {
      * 取消訂單
      * 注意：前端應确保使用者具有適當權限。此方法允許訂單擁有者取消自己的訂單
      */
+    @CacheEvict(value = "dashboardStats", allEntries = true)
     @Transactional
     public OrderDto.OrderResponse cancelOrder(UUID orderId, String reason) {
         UUID userId = TenantContext.getCurrentUser();

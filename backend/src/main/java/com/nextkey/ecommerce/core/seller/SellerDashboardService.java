@@ -6,6 +6,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,7 @@ public class SellerDashboardService {
     private final OrderRepository orderRepository;
     private final ListingRepository listingRepository;
 
+    @Cacheable(value = "dashboardStats", key = "#tenantId")
     @Transactional(readOnly = true)
     public SellerDashboardDto.DashboardResponse getDashboard(UUID tenantId) {
         log.info("Getting seller dashboard for tenant: {}", tenantId);

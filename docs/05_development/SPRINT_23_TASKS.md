@@ -19,9 +19,9 @@
 | US-001 | M10 IM — Flyway V45/V46 + 整合測試 | 2 | P0 | ✅ 完成 |
 | US-002 | M10 IM — Conversation REST API 驗證 | 2 | P0 | ✅ 完成（含於 US-001 整合測試） |
 | US-003 | M10 IM — Message REST API 驗證 | 2 | P0 | ✅ 完成（含於 US-001 整合測試） |
-| US-004 | DEF-007 M11 物流與訂單履約整合（AI-704） | 3 | P1 | ⬜ 待開始 |
-| US-005 | DEF-008 ShippingTemplate 接入訂單結帳（Buffer-A） | 2 | Buffer | ⬜ 待開始 |
-| US-006 | M13 Dashboard @Cacheable（Buffer-B，AI-703） | 1 | Buffer | ⬜ 待開始 |
+| US-004 | DEF-007 M11 物流與訂單履約整合（AI-704） | 3 | P1 | ✅ 完成 |
+| US-005 | DEF-008 ShippingTemplate 接入訂單結帳（Buffer-A） | 2 | Buffer | ✅ 完成 |
+| US-006 | M13 Dashboard @Cacheable（Buffer-B，AI-703） | 1 | Buffer | ✅ 完成 |
 
 **建議執行順序**：US-001/002/003（合併交付）→ US-004 → US-005（Buffer-A）→ US-006（Buffer-B）
 
@@ -144,21 +144,23 @@
 
 ### 完成標準（DoD）
 
-- [ ] US-001/002/003：M10ChatIntegrationTest 8 個測試通過（act CI 驗證）
-- [ ] US-004：物流+訂單整合端點 3 個整合測試通過
-- [ ] （Buffer）US-005/006 依容量決定是否啟動
+- [x] US-001/002/003：M10ChatIntegrationTest 8 個測試通過（act CI 驗證）
+- [x] US-004：M11LogisticsOrderIntegrationTest 4 個整合測試通過
+- [x] US-005（Buffer-A）：M11ShippingFeeIntegrationTest 3 個整合測試通過
+- [x] US-006（Buffer-B）：SellerDashboardServiceCacheTest 3 個 Unit Tests 通過
 
-### 技術健康指標
+### 技術健康指標（最終）
 
-| 指標 | Sprint 22 基準 | Sprint 23 目標 |
+| 指標 | Sprint 22 基準 | Sprint 23 達成 |
 |------|----------------|----------------|
-| Integration Tests | ~302 | ~310（+8，M10 IT-CHAT-001~008） |
-| Checkstyle violations | 0 | 0 |
-| CI Build | ✅ GREEN | ✅ GREEN |
-| Flyway Migrations | V44 | V46 |
+| Integration Tests | ~302 | **~317**（+15）|
+| Unit Tests | ~323 | **~326**（+3）|
+| Checkstyle violations | 0 | **0** ✅ |
+| CI Build | ✅ GREEN | **✅ GREEN**（act CI make validate-all 通過）|
+| Flyway Migrations | V44 | **V47** |
 
 ---
 
-**文件版本**: v1.1（AI-701 現況調查修訂）
+**文件版本**: v1.2（Sprint 23 完成收尾）
 **最後更新**: 2026-06-27
 **執行工程師**: Dev David + Claude Code

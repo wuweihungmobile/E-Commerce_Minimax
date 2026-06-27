@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,17 +25,20 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 聊天服務 (Mock Implementation)
- * Phase 2 預留 WebSocket 整合
+ * 聊天服務
+ * Phase 2: 發送訊息後透過 STOMP 廣播到 /queue/conversations/{id}/messages
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ChatService {
 
+    private static final String STOMP_CONVERSATION_DEST = "/queue/conversations/%s/messages";
+
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
+    private final SimpMessagingTemplate messagingTemplate;
 
     // Message preview and page size limits
     private static final int MESSAGE_PREVIEW_MAX_LENGTH = 50;
@@ -131,7 +135,14 @@ public class ChatService {
         log.info("Message sent: conversationId={}, messageId={}, sender={}",
                 request.getConversationId(), message.getId(), userId);
 
-        return toMessageResponse(message);
+        ChatDto.MessageResponse messageResponse = toMessageResponse(message);
+
+        // STOMP 廣播：通知對話中的訂閱者有新訊息
+        String destination = String.format(STOMP_CONVERSATION_DEST, request.getConversationId());
+        messagingTemplate.convertAndSend(destination, messageResponse);
+        log.debug("[STOMP] Broadcast message to {}", destination);
+
+        return messageResponse;
     }
 
     /**

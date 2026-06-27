@@ -16,7 +16,7 @@
 | US-003 | M11 LogisticsProvider 策略抽象 | 2 | P1 | ✅ 完成 |
 | US-004 | AI-503 getRatingStats @Cacheable | 1 | P1 | ✅ 完成 |
 | US-005 | M14 租戶活躍統計 API | 2 | P1 | ✅ 完成 |
-| US-006 | M11 運費模板 CRUD API（Buffer-A） | 2 | Buffer | ⬜ 未開始 |
+| US-006 | M11 運費模板 CRUD API（Buffer-A） | 2 | Buffer | ✅ 完成 |
 
 **建議執行順序**：US-001 → US-002 → US-003 → US-004 → US-005 → US-006（Buffer）
 
@@ -307,8 +307,8 @@ backend/src/test/java/com/nextkey/ecommerce/api/controller/AdminControllerE2ETes
 
 ## US-006（Buffer-A）：M11 物流追蹤 — 運費模板 CRUD API
 
-> **SP**: 2 | **優先級**: Buffer-A | **狀態**: ⬜ 未開始
-> **啟動條件**: US-001~005 全部完成，且剩餘 Sprint 時間充足
+> **SP**: 2 | **優先級**: Buffer-A | **狀態**: ✅ 完成（2026-06-27）
+> **啟動條件**: US-001~005 全部完成，且剩餘 Sprint 容量充足
 
 ### 任務清單
 
@@ -316,55 +316,44 @@ backend/src/test/java/com/nextkey/ecommerce/api/controller/AdminControllerE2ETes
 ```
 backend/src/main/resources/db/migration/V43__Create_Shipping_Templates.sql
 ```
-- [ ] 建立 SQL：
-  ```sql
-  CREATE TABLE shipping_templates (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      tenant_id UUID NOT NULL REFERENCES tenants(id),
-      name VARCHAR(100) NOT NULL,
-      fee_type VARCHAR(20) NOT NULL CHECK (fee_type IN ('FIXED', 'FREE_THRESHOLD')),
-      fixed_amount DECIMAL(10,2),
-      free_threshold DECIMAL(10,2),
-      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-  );
-  CREATE INDEX idx_shipping_templates_tenant_id ON shipping_templates(tenant_id);
-  ```
+- [x] `shipping_templates` 表：id, tenant_id (FK), name, fee_type (CHECK), fixed_amount, free_threshold, created_at, updated_at
 
 **T-006-2：Domain Model**
 ```
 backend/src/main/java/com/nextkey/ecommerce/domain/model/logistics/ShippingTemplate.java
 ```
-- [ ] `@Entity`, `@Table(name = "shipping_templates")`，對應 V43 欄位
+- [x] `@Entity`, `@Table(name = "shipping_templates")`，inner enum `FeeType { FIXED, FREE_THRESHOLD }`
+- [x] 常數萃取（NAME_MAX_LENGTH/FEE_TYPE_MAX_LENGTH/DECIMAL_PRECISION/DECIMAL_SCALE）
 
 **T-006-3：Repository**
 ```
 backend/src/main/java/com/nextkey/ecommerce/domain/repository/ShippingTemplateRepository.java
 ```
-- [ ] `JpaRepository<ShippingTemplate, UUID>`
-- [ ] 新增 `findByTenantId(UUID tenantId)`
+- [x] `JpaRepository<ShippingTemplate, UUID>` + `findByTenantId(UUID)`
 
 **T-006-4：Service**
 ```
 backend/src/main/java/com/nextkey/ecommerce/core/logistics/ShippingTemplateService.java
 ```
-- [ ] CRUD 方法 + `calculateFee(UUID templateId, BigDecimal orderAmount)`
-  - `FIXED`：直接回傳 `fixedAmount`
-  - `FREE_THRESHOLD`：`orderAmount >= freeThreshold ? 0 : fixedAmount`
+- [x] CRUD: createTemplate / getTemplates / updateTemplate / deleteTemplate
+- [x] `calculateFee()` → FIXED 直接回 fixedAmount；FREE_THRESHOLD 滿額免運
+- [x] 使用 `computeShippingFee()` private 方法分離計算邏輯（Checkstyle 合規）
 
 **T-006-5：DTO + Controller**
 ```
 backend/src/main/java/com/nextkey/ecommerce/api/dto/ShippingTemplateDto.java
 backend/src/main/java/com/nextkey/ecommerce/api/controller/ShippingTemplateController.java
 ```
-- [ ] `POST/GET/PUT/DELETE /v2/shipping-templates`
+- [x] `POST/GET/PUT/DELETE /v2/shipping-templates` + `GET /v2/shipping-templates/{id}/calculate-fee`
+- [x] 使用 `TenantContext.getCurrentTenant()` 取得 tenantId
+- [x] `product:create/read/update/delete` 權限（SELLER 角色已有此權限）
 
 **T-006-6：測試**
-- [ ] 單元測試：`calculateFee()` FIXED 類型 + FREE_THRESHOLD 達標/未達標
-- [ ] 整合測試：CRUD 操作 + 運費計算 API
+- [x] 單元測試（`ShippingTemplateServiceTest`）4/4 通過：TC-ST001/002/003（calculateFee 三種情境）+ TC-ST004（E_7504 not found）
+- [x] E2E 測試（`ShippingTemplateControllerE2ETest`）3/3 通過：TC-ST-E01（建立 FIXED）+ TC-ST-E02（免運計算）+ TC-ST-E03（BUYER 403）
 
 **T-006-7：驗證**
-- [ ] `mvn verify -Pintegration-test -pl backend` BUILD SUCCESS
+- [x] `mvn verify` BUILD SUCCESS（293 tests, 0 failures, Checkstyle 0 violations）
 
 ---
 

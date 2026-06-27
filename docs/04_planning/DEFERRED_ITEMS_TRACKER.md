@@ -12,7 +12,7 @@
 
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 | 最後更新 |
 |----|------|-------------|----------|----------|---------|------|----------|
-| DEF-005 | M10 IM SA 需求分析（文件，不開發） | Sprint 21 Buffer-B | 核心 US 填滿容量，已連續延後兩次 | 無 | 2 SP | 🔴 Sprint 22 必須執行（AI-602） | 2026-06-27 |
+| DEF-007 | M11 物流與訂單履約流程整合 | Sprint 21 未規劃 | LogisticsProvider 策略完成但未接入訂單流程 | M12 定價穩定（已完成） | 3 SP | 🔴 Sprint 23 P1（AI-704） | 2026-06-27 |
 
 ---
 
@@ -20,16 +20,7 @@
 
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 | 最後更新 |
 |----|------|-------------|----------|----------|---------|------|----------|
-| DEF-006 | M11 第三方 Provider API Stub 強化 | Sprint 21 Buffer-C | 核心 US 填滿容量，Buffer-C 未啟動 | 無 | 1 SP | 🟡 Sprint 22 Buffer | 2026-06-27 |
-
----
-
-### 🟢 低優先級 - 長期規劃
-
-| ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 | 最後更新 |
-|----|------|-------------|----------|----------|---------|------|----------|
-| DEF-007 | M11 物流與訂單履約流程整合 | Sprint 21 未規劃 | LogisticsProvider 策略完成但未接入訂單流程 | M12 定價穩定後 | 3 SP | 🟢 Sprint 23+ | 2026-06-27 |
-| DEF-008 | ShippingTemplate 接入訂單結帳流程 | Sprint 21 未規劃 | 運費模板 CRUD 完成但未接入訂單結帳計算 | DEF-007 之後 | 2 SP | 🟢 Sprint 23+ | 2026-06-27 |
+| DEF-008 | ShippingTemplate 接入訂單結帳流程 | Sprint 21 未規劃 | 運費模板 CRUD 完成但未接入訂單結帳計算 | DEF-007 完成後 | 2 SP | 🟡 Sprint 23 Buffer | 2026-06-27 |
 
 ---
 
@@ -39,10 +30,31 @@
 |----|------|-------------|-------------|------|
 | DEF-001 | Booking E2E 完整預訂流程測試 | Sprint 5 | Sprint 6 | 已實作統一端點 + Feature Toggle + 測試資料，E2E 測試通過 |
 | DEF-004 | listings.tags 欄位類型修復 | Sprint 7 | Sprint 10 | V8__Fix_Listings_Tags_Column_Type.sql migration 已建立，測試通過 (6/6) |
+| DEF-005 | M10 IM SA 需求分析 | Sprint 21 Buffer-B | 連續兩次延後，Sprint 22 強制執行 | M10_IM_REQUIREMENTS.md 建立，PM/PO Victoria APPROVED |
+| DEF-006 | M11 Provider Stub 強化 | Sprint 21 Buffer-C | 容量不足，Sprint 22 Buffer-B 執行 | HCT/TCAT 追蹤號改為 {Provider}-{yyyyMMdd}-{HEX8} 格式 |
 
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 22 (2026-06-27)
+
+**新增延後**:
+- DEF-007（升級為 🔴 高優先級）: M11 物流與訂單整合 → Sprint 23 P1（AI-704 延續 AI-603）
+- DEF-008: ShippingTemplate 接入結帳流程 → Sprint 23 Buffer
+
+**移除延後（已完成）**:
+- DEF-005: M10 IM SA 需求分析 ✅ Sprint 22 US-004 完成，Victoria APPROVED
+- DEF-006: M11 Provider Stub 強化 ✅ Sprint 22 US-005 完成
+
+**更新**:
+- Sprint 22 完成，5/5 US 全數達成（含 Buffer-A + Buffer-B，100% Buffer 利用率）
+- Sprint 22 Integration Tests: ~302 tests, 0 Failures（新增 +9）
+- Sprint 22 Unit Tests: ~323（新增 +3）
+- Sprint 22 v2026.08.29-01 發布
+- Sprint 23 開始規劃（M10 IM 後端 REST + M11 訂單整合）
+
+---
 
 ### Sprint 21 (2026-06-27)
 
@@ -140,6 +152,6 @@
 
 ---
 
-**文件版本**: v1.5
+**文件版本**: v1.6
 **最後更新**: 2026-06-27
-**下次審查**: Sprint 22 Planning（須納入 DEF-005 M10 SA 分析）
+**下次審查**: Sprint 23 Planning（須優先處理 DEF-007 M11 物流整合）

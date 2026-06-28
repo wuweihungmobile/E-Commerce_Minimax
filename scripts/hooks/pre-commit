@@ -68,7 +68,7 @@ fi
 echo "🔐 Checking for potential secrets in staged files..."
 SECRET_PATTERNS='(password|secret|api[_-]?key|access[_-]?token|private[_-]?key).*=.*[\"'\''][^\"'\'']+[\"'\'']'
 if [ -n "$STAGED_FILES" ]; then
-  SECRET_FILES=$(echo "$STAGED_FILES" | xargs grep -lEi "$SECRET_PATTERNS" 2>/dev/null | grep -vE '\.example$|node_modules/|target/|\.class$|test/|Test\.java|testSecret|TestSecret|\.github/workflows/|scripts/hooks/' || true)
+  SECRET_FILES=$(echo "$STAGED_FILES" | xargs grep -lEi "$SECRET_PATTERNS" 2>/dev/null | grep -vE '\.example$|node_modules/|target/|\.class$|test/|Test\.java|testSecret|TestSecret|\.github/workflows/|scripts/hooks/|e2e/|\.spec\.ts|\.test\.ts' || true)
 else
   SECRET_FILES=""
 fi

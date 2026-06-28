@@ -61,8 +61,8 @@ public class Room {
     @Builder.Default
     private Integer maxGuests = DEFAULT_MAX_GUESTS;
 
-    @JdbcTypeCode(SqlTypes.ARRAY)
-    @Column(columnDefinition = "TEXT[]")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
     private List<String> amenities;
 
     @Column(name = "check_in_time")

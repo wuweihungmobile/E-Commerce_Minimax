@@ -17,6 +17,9 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import com.nextkey.ecommerce.domain.model.media.MediaCategory;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
@@ -62,7 +65,8 @@ public class MediaAsset {
     @Column(name = "category_id", insertable = false, updatable = false)
     private UUID categoryId;
 
-    @Column(name = "tags")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "tags", columnDefinition = "jsonb")
     @Builder.Default
     private List<String> tags = List.of();
 

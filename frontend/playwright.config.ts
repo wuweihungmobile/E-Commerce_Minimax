@@ -22,7 +22,10 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
+    // CI 已由 workflow（Start Frontend: npm run start）啟動 production server 並等待就緒，
+    // 故一律重用既有 server，避免 Playwright 另起 dev server 撞上已佔用的 3000；
+    // 本機若無 server 在跑則自動以上方 command 啟動。
+    reuseExistingServer: true,
     timeout: 120000,
   },
 });

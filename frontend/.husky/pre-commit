@@ -41,7 +41,9 @@ if [ -n "$ESLINT_FILES" ]; then
     exit $ESLINT_EXIT
   fi
   # 將 ESLint 自動修復的檔案重新加入 staged
-  echo "$ESLINT_FILES" | sed 's|^|frontend/|' | xargs git add
+  # 🔴 父 hook 已 cd 到 frontend/，git pathspec 相對 cwd，故沿用已去前綴的路徑
+  #    （重新加 frontend/ 前綴會被解析為 frontend/frontend/... 而失敗）
+  echo "$ESLINT_FILES" | xargs git add
 else
   ESLINT_EXIT=0
 fi

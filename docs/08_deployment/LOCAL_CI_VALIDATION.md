@@ -4,6 +4,10 @@
 
 > **🔴 核心原則：Push 之前，必須先在本機通過所有 CI 檢查！**
 
+> **⚠️ 注意：`make validate-all`（act）走 `ddl-auto=update`，抓不到 entity↔migration 的 schema 漂移。**
+> 修改 `@Entity` 欄位或 Flyway migration 後，請另外執行 **`make validate-schema`**（schema 漂移守門關卡）。
+> 詳見 [SCHEMA_DRIFT_GATE.md](./SCHEMA_DRIFT_GATE.md)。
+
 ---
 
 ## 📋 目錄

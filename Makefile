@@ -179,6 +179,10 @@ validate-frontend: ## 僅驗證 frontend（act）
 validate-list: ## 列出 act 將執行的所有 jobs
 	act -W .github/workflows/act-compat.yml -l
 
+validate-schema: ## schema 漂移守門：以 ddl-auto=validate + Flyway 對乾淨 DB 啟動 backend，攔截 entity↔migration 漂移
+	@echo "$(YELLOW)🔍 schema 漂移守門關卡（複製 GitHub E2E 啟動條件，本地 act 抓不到的漏洞）...$(NC)"
+	@./scripts/validate-schema.sh
+
 # =============================================
 # 本機快速檢查（無需 act）
 # =============================================

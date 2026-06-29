@@ -89,6 +89,9 @@ public class SecurityConfig {
                 .requestMatchers("/v2/posts/**").permitAll()
                 .requestMatchers("/v2/listings/*/card").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
+                // WebSocket/SockJS handshake（M10 IM）：放行 HTTP 握手；
+                // 實際身份驗證於 STOMP CONNECT frame 由 StompAuthChannelInterceptor 處理
+                .requestMatchers("/ws/**").permitAll()
                 // All other requests require authentication
                 .anyRequest().authenticated()
             )

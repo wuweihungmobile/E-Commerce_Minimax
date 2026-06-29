@@ -12,13 +12,13 @@
 | US ID | 標題 | SP | 優先級 | 狀態 |
 |-------|------|----|--------|------|
 | US-001 | 本地 schema 漂移守門關卡（AI-901） | 2 | P0 | ✅ 完成 |
-| US-002 | entity ↔ migration 一致性盤點（AI-902） | 2 | P1 | ⬜ 待開始 |
+| US-002 | entity ↔ migration 一致性盤點（AI-902） | 2 | P1 | ✅ 完成 |
 | US-003 | Conversation tenant_id 補齊（AI-802） | 2 | P1 | ⬜ 待開始 |
 | US-004 | M10 WebSocket 前端整合（@stomp/stompjs） | 3 | P1 | ⬜ 待開始 |
 | US-005 | SSH pre-push 優化（Buffer-A，AI-804） | 1 | Buffer | ⬜ 待評估 |
 | US-006 | M11 取消流程業務規則確認（Buffer-B，AI-903） | 1 | Buffer | ⬜ 待評估 |
 
-**當前進度**: 1/4 承諾 US 完成（US-001，2 SP）。
+**當前進度**: 2/4 承諾 US 完成（US-001 + US-002，4 SP / 9 SP）。
 
 ---
 
@@ -63,9 +63,30 @@
 
 ## US-002：entity ↔ migration 一致性盤點（AI-902）
 
-> **SP**: 2 | **優先級**: P1 | **狀態**: ⬜ 待開始
+> **SP**: 2 | **優先級**: P1 | **狀態**: ✅ 完成（2026-06-29）
 
-**目標**: 盤點所有 `@Entity` 欄位型別 vs Flyway DDL，建立對照清單，杜絕漂移復發。建議在 US-001 完成後執行（用守門關卡掃出殘留漂移）。
+**目標**: 盤點所有 `@Entity` 欄位型別 vs Flyway DDL，建立對照清單，杜絕漂移復發。
+
+### 完成交付物
+
+- [x] **docs/06_quality/ENTITY_MIGRATION_AUDIT.md** — 完整盤點報告（方法、基線、jsonb 對照、防漂移慣例）
+- [x] 以 US-001 守門關卡取得權威基線：`make validate-schema` → **exit 0**（51 entity 全數通過 validate）
+- [x] DEF-009 登記至 [DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md)（Logistics jsonb 慣例不一致，低優先技術債）
+
+### 盤點結果
+
+| 盤點項 | 結果 |
+|--------|------|
+| 守門關卡基線（validate + Flyway + 乾淨 DB） | ✅ exit 0，無硬漂移 |
+| Entity 表名 → CREATE TABLE migration | ✅ 50/50，零孤兒表 |
+| jsonb 集合欄位 → migration 支撐 | ✅ 22 欄位（21 entity）全部對齊 |
+| 歷史 `TEXT[]` 欄位 | ✅ 3 個（rooms.amenities/V55、article_versions.tags/V48、media_assets.tags/V54）全部已轉 jsonb |
+| `@JdbcTypeCode(SqlTypes.ARRAY)` 殘留 | ✅ 0 個 |
+| 發現的慣例不一致 | ⚠️ 1 項（Logistics）→ DEF-009，不在本 US 動工 |
+
+### 防漂移慣例（已固化於報告 §7）
+
+集合欄位一律 jsonb（禁 `SqlTypes.ARRAY` / 原生 `TEXT[]`）；每 entity 必有 CREATE TABLE migration；改 entity/migration 後 push 前必跑 `make validate-schema`；enum 以字串 + CHECK 約束存放。
 
 ---
 

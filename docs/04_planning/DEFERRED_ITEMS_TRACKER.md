@@ -16,7 +16,9 @@
 
 ### 🟡 中優先級 - 未來 Sprint 處理
 
-*目前無中優先級延後項目。*
+| ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
+|----|------|-------------|---------|---------|---------|------|
+| DEF-009 | Logistics.logisticsData jsonb 映射慣例統一 | Sprint 25（US-002 盤點發現） | 低優先：現況 `String + columnDefinition="jsonb"` 功能正常、validate 通過，與全庫 `Map + @JdbcTypeCode(SqlTypes.JSON)` 慣例不一致，但無漂移風險。為避免擴大變更面（Rule 3）暫不修改 | 待 Logistics 需結構化讀寫該欄位時一併處理 | 1 | ⚠️ 待處理（低） |
 
 ---
 
@@ -34,6 +36,18 @@
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 25 (2026-06-29，進行中)
+
+**新增延後**:
+- DEF-009（🟡 中優先，實際低急迫）: Logistics.logisticsData jsonb 映射慣例統一 — US-002 全庫盤點發現的唯一慣例不一致，列為技術債，不在本 US 動工
+
+**移除延後（已完成）**:
+- （無）
+
+**更新**:
+- US-001（P0，AI-901）✅ 完成：建立 `make validate-schema` schema 漂移守門關卡，雙向驗證（正向 exit 0 / 負向 exit 1 攔下 missing column）
+- US-002（P1，AI-902）✅ 完成：[ENTITY_MIGRATION_AUDIT.md](../06_quality/ENTITY_MIGRATION_AUDIT.md) — 51 entity 全數通過 validate，零孤兒表、零 `SqlTypes.ARRAY` 殘留、3 個歷史 `TEXT[]` 全部封閉；固化防漂移慣例
 
 ### Sprint 24 (2026-06-29)
 
@@ -189,6 +203,6 @@
 
 ---
 
-**文件版本**: v1.8
-**最後更新**: 2026-06-29
-**下次審查**: Sprint 25 Planning（無 DEF 項目；優先 AI-901 本地 schema 驗證關卡 P0 + AI-902/802/804/903）
+**文件版本**: v1.9
+**最後更新**: 2026-06-29（Sprint 25 US-001/US-002 完成，新增 DEF-009）
+**下次審查**: Sprint 25 Review（追蹤 DEF-009 + 剩餘 US-003/004）

@@ -21,7 +21,7 @@ async function registerAndLogin(page: Page, testEmail?: string) {
 
   // 嘗試登入（如果失敗就註冊）
   await page.goto('/login');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
@@ -67,7 +67,7 @@ test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
 
     // 訪問 CMS 列表頁
     await page.goto('/cms');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     console.log('CMS 列表 URL:', page.url());
@@ -79,7 +79,7 @@ test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
 
     // 訪問新建貼文頁
     await page.goto('/cms/posts/new');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     console.log('新建貼文 URL:', page.url());
@@ -103,7 +103,7 @@ test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
     await registerAndLogin(page);
 
     await page.goto('/cms');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1000);
 
     // 點擊「已發布」篩選
@@ -133,7 +133,7 @@ test.describe('E2E-M15-002: 編輯並更新貼文流程', () => {
 
     // 先訪問 CMS 列表頁
     await page.goto('/cms');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // 嘗試點擊任一篇文章的編輯按鈕
@@ -156,7 +156,7 @@ test.describe('E2E-M15-003: 媒體上傳流程', () => {
     await registerAndLogin(page);
 
     await page.goto('/cms/media');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     console.log('媒體庫 URL:', page.url());
@@ -171,7 +171,7 @@ test.describe('E2E-M15-003: 媒體上傳流程', () => {
     await registerAndLogin(page);
 
     await page.goto('/cms/media');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 點擊圖片篩選
     const imageBtn = page.locator('button:has-text("圖片")').first();
@@ -196,7 +196,7 @@ test.describe('E2E-M15-003: 媒體上傳流程', () => {
 test.describe('E2E-M15-004: 前台部落格瀏覽流程', () => {
   test('訪問前台部落格首頁', async ({ page }) => {
     await page.goto('/blog');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1000);
 
     console.log('前台首頁 URL:', page.url());
@@ -206,7 +206,7 @@ test.describe('E2E-M15-004: 前台部落格瀏覽流程', () => {
 
   test('訪問前台文章詳情（無效 slug）', async ({ page }) => {
     await page.goto('/blog/non-existent-slug-12345');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1000);
 
     console.log('文章詳情 URL:', page.url());
@@ -228,7 +228,7 @@ test.describe('E2E-M15-005: 嵌入商品卡解析流程', () => {
 
     // 前往前台部落格
     await page.goto('/blog');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1000);
 
     // 如果有文章，點擊進入詳情頁
@@ -253,7 +253,7 @@ test.describe('額外測試: Dashboard 頁面', () => {
     await registerAndLogin(page);
 
     await page.goto('/dashboard');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     console.log('Dashboard URL:', page.url());
@@ -263,7 +263,7 @@ test.describe('額外測試: Dashboard 頁面', () => {
     await registerAndLogin(page);
 
     await page.goto('/dashboard/products');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1000);
 
     console.log('商品頁 URL:', page.url());
@@ -273,7 +273,7 @@ test.describe('額外測試: Dashboard 頁面', () => {
     await registerAndLogin(page);
 
     await page.goto('/dashboard/rooms');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1000);
 
     console.log('房型頁 URL:', page.url());

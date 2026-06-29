@@ -44,7 +44,7 @@ test.describe('AT-M17-004: 店鋪 Profile 更新', () => {
     expect(accessToken).toBeTruthy();
 
     // 等待頁面穩定
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 前往店鋪列表頁面
     await page.goto('/dashboard/tenants');

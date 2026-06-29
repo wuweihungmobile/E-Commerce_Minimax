@@ -38,7 +38,7 @@ async function registerAndLogin(page: Page, testEmail?: string) {
   const password = 'Test123!';
 
   await page.goto('/login');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
@@ -80,7 +80,7 @@ test.describe('E2E-M11-001: 加入商品到購物車', () => {
 
     // 假設已有一個商品頁面，這裡訪問首頁然後點擊
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 嘗試點擊任一商品卡片
     const productCard = page.locator('[class*="card"], [class*="product"]').first();
@@ -110,7 +110,7 @@ test.describe('E2E-M11-002: 查看購物車內容', () => {
     await registerAndLogin(page);
 
     await page.goto('/cart');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     console.log('Cart URL:', page.url());
@@ -133,7 +133,7 @@ test.describe('E2E-M11-003: 套用優惠券 - 有效代碼', () => {
 
     // 前往購物車頁面
     await page.goto('/cart');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // 檢查是否有優惠券輸入框
@@ -164,7 +164,7 @@ test.describe('E2E-M11-004: 套用優惠券 - 無效代碼', () => {
     await registerAndLogin(page);
 
     await page.goto('/cart');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     const promoInput = page.locator('input[placeholder="輸入優惠券代碼"]').first();
@@ -194,7 +194,7 @@ test.describe('E2E-M11-005: 移除優惠券', () => {
     await registerAndLogin(page);
 
     await page.goto('/cart');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // 檢查是否有移除按鈕
@@ -217,7 +217,7 @@ test.describe('E2E-M11-006: 更新商品數量', () => {
     await registerAndLogin(page);
 
     await page.goto('/cart');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // 找增加按鈕 (+)
@@ -235,7 +235,7 @@ test.describe('E2E-M11-006: 更新商品數量', () => {
     await registerAndLogin(page);
 
     await page.goto('/cart');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // 找數量輸入框
@@ -260,7 +260,7 @@ test.describe('E2E-M11-007: 移除購物車商品', () => {
     await registerAndLogin(page);
 
     await page.goto('/cart');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // 找移除按鈕
@@ -283,7 +283,7 @@ test.describe('E2E-M11-008: 前往結帳頁面', () => {
     await registerAndLogin(page);
 
     await page.goto('/cart');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // 找前往結帳按鈕
@@ -310,7 +310,7 @@ test.describe('E2E-M11-009: 完整結帳流程', () => {
 
     // 前往結帳頁面
     await page.goto('/checkout');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     console.log('Checkout Page URL:', page.url());
@@ -365,7 +365,7 @@ test.describe('E2E-M11-011: 預訂成功後驗證跳轉', () => {
 
     // 嘗試完成一次預訂
     await page.goto('/checkout');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // 填寫表單

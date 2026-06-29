@@ -43,18 +43,18 @@ test.describe('AT-M17-003: Feature Toggle 更新', () => {
     expect(accessToken).toBeTruthy();
 
     // 等待頁面穩定
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 前往 Feature Toggle 管理頁面（需要 tenant ID）
     // 先嘗試取得 tenant ID
     await page.goto('/dashboard/tenants');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 嘗試從現有資料取得 tenant ID
     const tenantLink = page.locator('a[href*="/dashboard/tenants/"]').first();
     if (await tenantLink.isVisible()) {
       await tenantLink.click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
       // 現在應該在 /dashboard/tenants/[id] 頁面
       // 點擊 Features 連結
       const featuresLink = page.locator('a:has-text("功能"), a:has-text("Feature")').first();

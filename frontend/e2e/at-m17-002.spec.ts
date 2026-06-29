@@ -31,11 +31,11 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
     expect(accessToken).toBeTruthy();
 
     // 等待頁面穩定
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 前往 Admin 租戶管理頁面
     await page.goto('/admin/tenants');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('Admin 審核通過申請', async ({ page }) => {
@@ -55,7 +55,7 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
 
     // 點擊第一個審核詳情按鈕
     await reviewButtons.first().click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // 點擊核准按鈕
@@ -93,7 +93,7 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
 
     // 點擊第一個審核詳情按鈕
     await reviewButtons.first().click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // 點擊駁回按鈕

@@ -42,7 +42,7 @@ test.describe('AT-M17-001: 開店申請流程', () => {
     expect(accessToken).toBeTruthy();
 
     // 等待頁面穩定後再前往申請頁面
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 前往申請頁面
     await page.goto('/tenant/apply');

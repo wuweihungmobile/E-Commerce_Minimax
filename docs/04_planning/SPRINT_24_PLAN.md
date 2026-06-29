@@ -190,16 +190,17 @@ US-005（Buffer-B：M11 取消）     → Buffer，最後評估容量
 
 ## 8. Definition of Done（Sprint 24）
 
-- [ ] US-001~003 所有 AC 達成
-- [ ] `mvn compile` → 0 errors
-- [ ] Checkstyle → 0 violations
-- [ ] 所有新增測試通過
-- [ ] 既有 ~317 整合測試無退步
-- [ ] catch(Exception) 生產程式碼 **0 處**
-- [ ] @Deprecated 生產程式碼 **0 處**
-- [ ] Sprint 24 Review 文件建立
-- [ ] Sprint 24 Retrospective 文件建立
-- [ ] Sprint 24 Release Notes 建立（v2026.09.26-01）
+- [x] US-001~003 所有 AC 達成
+- [x] `mvn compile` → 0 errors
+- [x] Checkstyle → 0 violations
+- [x] 所有新增測試通過
+- [x] 既有測試無退步（`@Test` 靜態計數 652，無刪減）
+- [x] catch(Exception) 生產程式碼 **0 處**
+- [x] @Deprecated 生產程式碼 **0 處**
+- [x] Sprint 24 Review 文件建立（[SPRINT_24_REVIEW.md](../05_development/SPRINT_24_REVIEW.md)）
+- [x] Sprint 24 Retrospective 文件建立（[SPRINT_24_RETRO.md](../05_development/SPRINT_24_RETRO.md)）
+- [x] Sprint 24 Release Notes 建立（[v2026.09.26-01](../08_deployment/RELEASE_NOTES_v2026.09.26-01.md)）
+- [x] GitHub E2E backend 啟動修復（計畫外，Flyway V48~V55 schema 漂移修復）
 
 ---
 

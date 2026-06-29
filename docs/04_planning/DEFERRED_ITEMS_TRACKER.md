@@ -35,6 +35,25 @@
 
 ## Sprint 歷史紀錄
 
+### Sprint 24 (2026-06-29)
+
+**新增延後**:
+- （無正式 DEF 項目）Buffer US-004（SSH pre-push 優化）+ US-005（M11 物流取消流程）未啟動，改以 Retro Action Items 追蹤（AI-804 / AI-903，延續 Sprint 25）
+
+**移除延後（已完成）**:
+- （無，本 Sprint 無活躍 DEF 項目）
+
+**更新**:
+- Sprint 24 承諾範圍 100% 完成：US-001~003（7 SP，P0+P1）
+- AI-801（TestSecurityContextHelper）+ AI-803（M13 Redis TTL）完成；AI-802 / AI-804 延續 Sprint 25
+- **計畫外重大事件**：GitHub E2E 暴露 backend 啟動失敗，投入 9 個 commit 修復 schema 漂移（Flyway V48~V55：補齊 5 張缺漏建表 + 統一 ARRAY→jsonb）
+- **根因**：本地 act 用 `ddl-auto=update`，GitHub E2E 用 schema 驗證 → entity/migration 漂移本地偵測不到（已記入 Retro AI-901 P0）
+- Buffer 容量（3 SP）被 E2E 救火完全佔用，連續 3 Sprint 以來首次 Buffer 0% 啟動
+- Sprint 24 v2026.09.26-01 發布
+- **新增 Action Items（Sprint 25）**：AI-901 本地 schema 驗證關卡（P0）、AI-902 entity↔migration 一致性盤點（P1）、AI-903 M11 取消流程業務規則確認
+
+---
+
 ### Sprint 23 (2026-06-27)
 
 **新增延後**:
@@ -170,6 +189,6 @@
 
 ---
 
-**文件版本**: v1.7
-**最後更新**: 2026-06-27
-**下次審查**: Sprint 24 Planning（無 DEF 項目，聚焦技術改善 AI-801~804）
+**文件版本**: v1.8
+**最後更新**: 2026-06-29
+**下次審查**: Sprint 25 Planning（無 DEF 項目；優先 AI-901 本地 schema 驗證關卡 P0 + AI-902/802/804/903）

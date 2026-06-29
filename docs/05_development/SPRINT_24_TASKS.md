@@ -14,10 +14,12 @@
 | US-001 | TestSecurityContextHelper 整合測試標準化（AI-801） | 1 | P1 | ✅ 完成 |
 | US-002 | M10 WebSocket STOMP 後端實作（AI-701） | 4 | P1 | ✅ 完成 |
 | US-003 | M13 Dashboard Redis TTL + @CacheEvict（AI-803） | 2 | P2 | ✅ 完成 |
-| US-004 | SSH pre-push 優化（Buffer-A，AI-804） | 1 | Buffer | ⬜ 待評估 |
-| US-005 | M11 物流取消流程評估（Buffer-B） | 2 | Buffer | ⬜ 待評估 |
+| US-004 | SSH pre-push 優化（Buffer-A，AI-804） | 1 | Buffer | ⏸️ 延後 Sprint 25（AI-804） |
+| US-005 | M11 物流取消流程評估（Buffer-B） | 2 | Buffer | ⏸️ 延後 Sprint 25（AI-903，需先確認業務規則） |
 
-**當前進度**: 3/5 US 完成，7 SP（P0+P1 全部完成）
+**當前進度**: 3/3 承諾 US 完成，7 SP（P0+P1 全部完成）。Buffer（US-004/005，3 SP）因 Sprint 後段投入計畫外 E2E schema 救火（V48~V55）未啟動，延續 Sprint 25。
+
+**Sprint 24 收尾**: ✅ Review + Retro + Release Notes（v2026.09.26-01）已建立，DoD 全數通過。詳見 [SPRINT_24_REVIEW.md](./SPRINT_24_REVIEW.md) / [SPRINT_24_RETRO.md](./SPRINT_24_RETRO.md)。
 
 ---
 

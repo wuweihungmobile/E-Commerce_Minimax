@@ -11,6 +11,9 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 24 | v2026.09.26-01 | - | 2026-06-29 | M10 WebSocket STOMP 即時訊息 + M13 Redis TTL + 整合測試標準化 + E2E schema 修復(V48~V55) | ✅ |
+| Sprint 23 | v2026.09.12-01 | - | 2026-06-27 | M10 IM Migration(V45/V46) + M11 物流履約整合 + 運費接入 + M13 @Cacheable | ✅ |
+| Sprint 22 | v2026.08.29-01 | - | 2026-06-27 | 詳見 RELEASE_NOTES_v2026.08.29-01.md | ✅ |
 | Sprint 21 | v2026.08.15-01 | - | 2026-06-27 | MQ 一致性 + Stripe Phase 3 + M11 Provider + M14 統計 + 運費模板 | ✅ |
 | Sprint 20 | v2026.08.01-01 | - | 2026-06-26 | MQ 技術債清零 + @Deprecated 清零 + M09 通知歷史 + M08 評分統計 | ✅ |
 | Sprint 19 | v2026.07.18-01 | - | 2026-06-25 | 詳見 RELEASE_NOTES_v2026.07.18-01.md | ✅ |
@@ -33,24 +36,24 @@
 
 | 項目 | 數值 |
 |------|------|
-| 正式 Release 次數 | 13 (Sprint 10-21) |
+| 正式 Release 次數 | 16 (Sprint 10-24) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release | v2026.08.15-01 (Sprint 21) |
+| 最近一次 Release | v2026.09.26-01 (Sprint 24) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release 開始 | Sprint 10 |
 
 ---
 
-## ✅ Sprint 21 Release（最新）
+## ✅ Sprint 24 Release（最新）
 
 | 欄位 | 內容 |
 |------|------|
-| **Tag** | v2026.08.15-01 |
-| **建立日期** | 2026-06-27 |
-| **主要功能** | MQ 通知歷史一致性 + Stripe Phase 3 + M11 Provider + M14 統計 API + 運費模板 CRUD |
-| **測試狀態** | 293 integration tests, 0 Failures |
-| **Flyway** | V43__Create_Shipping_Templates.sql |
-| **Release Notes** | [RELEASE_NOTES_v2026.08.15-01.md](../08_deployment/RELEASE_NOTES_v2026.08.15-01.md) |
+| **Tag** | v2026.09.26-01 |
+| **建立日期** | 2026-06-29 |
+| **主要功能** | M10 WebSocket STOMP 即時訊息後端 + M13 Dashboard Redis TTL + TestSecurityContextHelper 標準化 |
+| **測試狀態** | `@Test` 靜態計數 652, catch(Exception)=0, @Deprecated=0 |
+| **Flyway** | V48~V55（E2E schema 漂移修復：補齊缺漏建表 + ARRAY→jsonb 統一） |
+| **Release Notes** | [RELEASE_NOTES_v2026.09.26-01.md](../08_deployment/RELEASE_NOTES_v2026.09.26-01.md) |
 | **狀態** | ✅ 完成 |
 
 ---
@@ -182,9 +185,12 @@ Sprint 18  → ✅ Release (v2026.07.03-01)
 Sprint 19  → ✅ Release (v2026.07.18-01)
 Sprint 20  → ✅ Release (v2026.08.01-01)
 Sprint 21  → ✅ Release (v2026.08.15-01)
+Sprint 22  → ✅ Release (v2026.08.29-01)
+Sprint 23  → ✅ Release (v2026.09.12-01)
+Sprint 24  → ✅ Release (v2026.09.26-01)
 ```
 
-**連續 Release**: 13 次 (Sprint 10-21)
+**連續 Release**: 16 次 (Sprint 10-24)
 
 ---
 

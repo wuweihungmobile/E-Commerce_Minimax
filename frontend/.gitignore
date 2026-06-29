@@ -13,6 +13,12 @@
 # testing
 /coverage
 
+# playwright（測試產生物，不入版控）
+/playwright-report/
+/test-results/
+/blob-report/
+/playwright/.cache/
+
 # next.js
 /.next/
 /out/

@@ -67,13 +67,20 @@ services:
       - "5005:5005"  # Debug port
 
   # =============================================
-  # MinIO Object Storage
+  # MinIO Object Storage（按需啟動）
   # =============================================
+  # 🔴 按需啟動（2026-06-29）：加入 profile "storage"
+  #   - 預設 `docker compose up` / `make up` 不會啟動或下載 MinIO
+  #   - 僅在需要媒體上傳功能時啟動：`make up-storage`
+  #     或 `docker compose --profile storage up -d`
+  #   - 原則：該部署的才部署、該下載的才下載
+  #   - backend 未 depends_on minio，故不啟動 MinIO 不影響後端啟動
   # 🔴 版本已釘定（2026-06-24）
   # 釘定版本：RELEASE.2025-09-07T16-13-09Z（查詢日期：2026-06-24）
   # 升級流程：確認 breaking changes → 更新此 tag → 更新 DOCKER_POLICY.md → 本機驗證 → CI 測試
   # 🔴 AI 禁止修改此 image tag，版本升級需人工確認
   minio:
+    profiles: ["storage"]
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: ecommerce-minio
     ports:

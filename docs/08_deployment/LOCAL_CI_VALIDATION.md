@@ -156,7 +156,7 @@ make up
 # CI 模擬環境（與 GitHub Actions 一致）
 make up-ci
 
-# Mock 服務（API + LLM）
+# Mock 服務（API Mock）
 make up-mock
 
 # 完整環境（dev + mock）
@@ -164,7 +164,6 @@ docker compose \
   -f docker-compose.yml \
   -f docker-compose.override.yml \
   -f docker-compose.mock.yml \
-  --profile with-llm \
   up -d
 ```
 
@@ -345,30 +344,6 @@ make up-mock
 1. 編輯 `mocks/mockoon-data.json`
 2. 重啟容器：`docker compose restart mock-server`
 
-#### 4.2 Local LLM（llama.cpp + Qwen GGUF）
-
-**用途**：在本機運行 LLM，避免依賴 OpenAI/Anthropic API
-
-**啟動**：
-```bash
-# 1. 下載模型（一次性）
-curl -L -o ~/models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
-  https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
-
-# 2. 啟動
-make up-mock
-# Local LLM: http://localhost:8081
-```
-
-**詳細指南**：[LOCAL_LLM_SETUP.md](LOCAL_LLM_SETUP.md)
-
-**測試**：
-```bash
-curl -X POST http://localhost:8081/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"你好"}]}'
-```
-
 ---
 
 ## 日常開發流程
@@ -508,10 +483,8 @@ act -W .github/workflows/act-compat.yml -v
 - **Docker Compose**: https://docs.docker.com/compose/
 - **Husky**: https://typicode.github.io/husky/
 - **Mockoon**: https://mockoon.com/docs/
-- **llama.cpp**: https://github.com/ggerganov/llama.cpp
 
 ### 專案內部文檔
-- [LOCAL_LLM_SETUP.md](LOCAL_LLM_SETUP.md) - Local LLM 詳細指南
 - [DEPLOYMENT_CHECKLIST_SPRINT10.md](DEPLOYMENT_CHECKLIST_SPRINT10.md) - 部署檢查清單
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) - Release 流程
 

@@ -45,7 +45,7 @@ setup: ## 一次性設定本機環境（安裝 act + 安裝 hooks + 複製 .env�
 # =============================================
 # Docker Compose
 # =============================================
-up: ## 啟動所有服務（含 dev override）
+up: ## 啟動所有服務（含 dev override，不含 MinIO）
 	@echo "$(YELLOW)🚀 啟動 Docker Compose...$(NC)"
 	docker compose up -d
 	@echo "$(GREEN)✅ 服務已啟動$(NC)"
@@ -53,6 +53,16 @@ up: ## 啟動所有服務（含 dev override）
 	@echo "Backend:  http://localhost:8080"
 	@echo "Postgres: localhost:5432"
 	@echo "Redis:    localhost:6379"
+	@echo "$(YELLOW)ℹ️  需媒體上傳（MinIO）請改用：make up-storage$(NC)"
+
+up-storage: ## 啟動所有服務 + MinIO 物件儲存（媒體上傳功能才需要）
+	@echo "$(YELLOW)🚀 啟動 Docker Compose（含 MinIO）...$(NC)"
+	docker compose --profile storage up -d
+	@echo "$(GREEN)✅ 服務已啟動（含 MinIO）$(NC)"
+	@echo "Frontend:      http://localhost:3000"
+	@echo "Backend:       http://localhost:8080"
+	@echo "MinIO API:     http://localhost:9000"
+	@echo "MinIO Console: http://localhost:9001"
 
 down: ## 停止所有服務
 	@echo "$(YELLOW)🛑 停止 Docker Compose...$(NC)"
@@ -74,36 +84,16 @@ down-ci: ## 停止 CI 模擬環境
 	docker compose -f docker-compose.yml -f docker-compose.test.yml down -v
 	@echo "$(GREEN)✅ 已停止$(NC)"
 
-up-mock: ## 啟動 Mock API 服務（不含 Local LLM）
+up-mock: ## 啟動 Mock API 服務（Mockoon）
 	@echo "$(YELLOW)🚀 啟動 Mock 服務（僅 API Mock）...$(NC)"
 	docker compose -f docker-compose.yml -f docker-compose.mock.yml up -d
 	@echo "$(GREEN)✅ Mock API 服務已啟動$(NC)"
 	@echo "Mock API: http://localhost:3001"
 
-up-mock-with-llm: ## 啟動 Mock 服務 + Local LLM
-	@echo "$(YELLOW)🚀 啟動 Mock 服務 + Local LLM...$(NC)"
-	@if [ ! -f "$${LLM_MODEL_DIR:-$$HOME/models}/qwen2.5-1.5b-instruct-q4_k_m.gguf" ]; then \
-		echo "$(YELLOW)⚠️  未偵測到 LLM 模型，請先執行：make download-llm-model$(NC)"; \
-	fi
-	docker compose -f docker-compose.yml -f docker-compose.mock.yml --profile with-llm up -d
-	@echo "$(GREEN)✅ Mock 服務已啟動$(NC)"
-	@echo "Mock API: http://localhost:3001"
-	@echo "Local LLM: http://localhost:8081"
-
 down-mock: ## 停止 Mock 服務
 	@echo "$(YELLOW)🛑 停止 Mock 服務...$(NC)"
 	docker compose -f docker-compose.yml -f docker-compose.mock.yml down
 	@echo "$(GREEN)✅ 已停止$(NC)"
-
-download-llm-model: ## 下載 Local LLM 模型（Qwen2.5-1.5B，~1GB）
-	@echo "$(YELLOW)📥 下載 Local LLM 模型...$(NC)"
-	./scripts/download-llm-model.sh
-	@echo "$(GREEN)✅ 模型下載完成$(NC)"
-
-download-llm-7b: ## 下載 Local LLM 模型（Qwen2.5-7B，~4.5GB，需 16GB+ RAM）
-	@echo "$(YELLOW)📥 下載 7B Local LLM 模型...$(NC)"
-	LLM_MODEL_SIZE=7b ./scripts/download-llm-model.sh
-	@echo "$(GREEN)✅ 7B 模型下載完成$(NC)"
 
 test-mock: ## 測試 Mock API 所有端點
 	@echo "$(YELLOW)🧪 測試 Mock API...$(NC)"

@@ -17,15 +17,11 @@ mocks/
 ## 🚀 快速啟動
 
 ```bash
-# 啟動 Mock API（不含 Local LLM）
+# 啟動 Mock API
 make up-mock
-
-# 啟動 Mock API + Local LLM
-make up-mock-with-llm
 
 # 或直接用 docker compose
 docker compose -f docker-compose.yml -f docker-compose.mock.yml up -d
-docker compose -f docker-compose.yml -f docker-compose.mock.yml --profile with-llm up -d
 ```
 
 ---
@@ -115,7 +111,6 @@ docker compose restart mock-server
 
 - [Mockoon 官方文檔](https://mockoon.com/docs/)
 - [Mockoon CLI GitHub](https://github.com/mockoon/mockoon/tree/main/packages/cli)
-- [本機 LLM 設定指南](../docs/08_deployment/LOCAL_LLM_SETUP.md)
 
 ---
 
@@ -124,3 +119,4 @@ docker compose restart mock-server
 | 日期 | 版本 | 變更 |
 |------|------|------|
 | 2026-06-11 | 1.0 | 初版建立（README + mockoon-data.json） |
+| 2026-06-29 | 1.1 | 移除已下線的 Local LLM 相關說明與連結 |

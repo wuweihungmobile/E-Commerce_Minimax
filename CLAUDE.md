@@ -1099,12 +1099,14 @@ gh run view <run-id> --json jobs
    - 錯誤示範：`postgres:18-alpine` → `postgres:latest`
    - 理由：`latest` 每次 pull 可能下載不同版本，導致環境不一致
 
-3. **❌ 禁止修改 `minio/minio:latest`、`mockoon/cli:latest`、`ghcr.io/ggerganov/llama.cpp:server` 的 image tag**
-   - 這些未釘定版本是已知技術債，等待人工決策版本號
+3. **❌ 禁止修改已釘定版本 image 的 tag（如 `minio/minio:RELEASE.2025-09-07T16-13-09Z`、`mockoon/cli:9.7.0`）**
+   - 版本升級需人工確認 breaking changes 並更新 DOCKER_POLICY.md 核准清單
+   - ℹ️ `ghcr.io/ggerganov/llama.cpp`（local-llm）已於 2026-06-24 移除，代碼庫無任何 LLM 呼叫，相關工具鏈已於 2026-06-29 全面清理
 
-4. **❌ 禁止移除 docker-compose.mock.yml 中 `local-llm` service 的 `profiles: ["with-llm"]` 設定**
-   - 移除後每次 `docker compose up` 都會拉取 1-4GB LLM image
-   - 這是保護開發者磁碟空間和網路頻寬的關鍵設定
+4. **❌ 禁止移除以 `profiles` 標記為「按需啟動」服務的 profile 設定（如 docker-compose.override.yml 的 `minio` 服務 `profiles: ["storage"]`）**
+   - 移除後每次 `docker compose up` 都會自動部署/下載該 image，浪費磁碟與頻寬
+   - 原則：該部署的才部署、該下載的才下載
+   - ℹ️ 原 local-llm `profiles: ["with-llm"]` 條款已廢止（服務於 2026-06-24 移除）
 
 5. **❌ 禁止在生產 docker-compose.yml 中新增 bind mount（源碼目錄掛載）**
    - 生產環境只允許 named volumes

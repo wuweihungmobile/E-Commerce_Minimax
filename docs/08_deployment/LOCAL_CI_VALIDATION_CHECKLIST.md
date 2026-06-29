@@ -32,10 +32,6 @@
   ```bash
   test -f mocks/mockoon-data.json && test -f mocks/README.md && echo "OK"
   ```
-- [ ] **0.6** Local LLM 模型已下載（可選）
-  ```bash
-  test -f ~/models/qwen2.5-1.5b-instruct-q4_k_m.gguf && echo "OK" || make download-llm-model
-  ```
 
 ### Phase 1: Docker Compose（第一道關卡：迷你正式環境）
 
@@ -52,7 +48,8 @@
   ```
 - [ ] **1.3** PostgreSQL 連線正常
   ```bash
-  PGPASSWORD=koala5 psql -h localhost -U koala -d nextkeytest -c "SELECT version();"
+  export PGPASSWORD=koala5   # 本機開發用密碼（同 docker-compose.override.yml）
+  psql -h localhost -U koala -d nextkeytest -c "SELECT version();"
   ```
 - [ ] **1.4** Redis 連線正常
   ```bash
@@ -166,19 +163,6 @@
   ```bash
   curl -sS http://localhost:3001/api/auth/google/callback | jq .
   # 應有 access_token, token_type, expires_in
-  ```
-- [ ] **4.6** Local LLM 啟動（需模型已下載）
-  ```bash
-  docker compose -f docker-compose.yml -f docker-compose.mock.yml --profile with-llm up -d local-llm
-  curl -sS -X POST http://localhost:8081/v1/chat/completions \
-    -H "Content-Type: application/json" \
-    -d '{"messages":[{"role":"user","content":"你好"}]}' | jq .
-  # 應有 choices[0].message.content
-  ```
-- [ ] **4.7** LLM 模型下載腳本冪等性
-  ```bash
-  bash scripts/download-llm-model.sh
-  # 模型已存在時應自動跳過下載
   ```
 
 ### Phase 5: 整合驗證（最終把關）

@@ -12,6 +12,7 @@
 2. **版本釘定原則**：核心服務（prod/CI）必須釘定到主版本（如 `postgres:18-alpine`），不得使用 `latest`
 3. **快取優先原則**：相同 base image 在 Dockerfile 多 stage 間共用，避免重複拉取
 4. **Volume 最小授權原則**：只掛載必要的目錄，生產環境嚴禁 bind mount 源碼
+5. **按需啟動原則（2026-06-29）**：非每次開發都需要的服務（如 MinIO 物件儲存）以 Docker Compose `profiles` 標記，預設不啟動、不下載，需要時才以 `--profile` 啟用 —— 該部署的才部署、該下載的才下載
 
 ---
 
@@ -49,7 +50,7 @@
 | `redis_data` | `/data` | Redis AOF 持久化 | ✅ 是 | prod |
 | `redis_ci_data` | `/data` | CI 測試（redis 為 ephemeral） | ⏱️ 暫存 | CI |
 | `maven_cache` | `/root/.m2` | Maven 套件快取（加速建置） | ✅ 是 | dev |
-| `minio_data` | `/data` | MinIO 物件儲存 | ✅ 是 | dev |
+| `minio_data` | `/data` | MinIO 物件儲存（profile `storage` 按需啟動） | ✅ 是 | dev |
 | ~~`llm_models`~~ | ~~`/models`~~ | ~~GGUF 模型快取~~ | ~~✅ 是~~ | ❌ 已移除（2026-06-24，local-llm 服務移除） |
 | `./frontend:/app` | `/app` | 前端 hot-reload bind mount | ❌ 暫存 | dev only |
 | `./backend:/app` | `/app` | 後端 hot-reload bind mount | ❌ 暫存 | dev only |
@@ -124,12 +125,15 @@
 ## 📊 服務架構與 Image 關係圖
 
 ```
-本機開發（docker compose up）
+本機開發（docker compose up / make up）
 ├── frontend  ← node:20-alpine (builder target)
 ├── backend   ← maven:3.9-eclipse-temurin-21 (builder target)
 ├── postgres  ← postgres:18-alpine
-├── redis     ← redis:7-alpine
-└── minio     ← minio/minio:RELEASE.2025-09-07T16-13-09Z ✅（dev only，已釘定 2026-06-24）
+└── redis     ← redis:7-alpine
+    （MinIO 預設不啟動、不下載）
+
+本機開發 + 媒體儲存（docker compose --profile storage up / make up-storage）
+└── minio     ← minio/minio:RELEASE.2025-09-07T16-13-09Z ✅（profile "storage" 按需啟動，2026-06-29）
 
 生產環境（docker compose -f docker-compose.yml up）
 ├── frontend  ← node:20-alpine (runner target，standalone build)

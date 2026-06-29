@@ -14,9 +14,13 @@ import org.springframework.transaction.annotation.Transactional;
 import com.nextkey.ecommerce.api.dto.ChatDto;
 import com.nextkey.ecommerce.domain.model.chat.Conversation;
 import com.nextkey.ecommerce.domain.model.chat.Message;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.ConversationRepository;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.MessageRepository;
+import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -38,11 +42,38 @@ public class ChatService {
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
+    private final ListingRepository listingRepository;
+    private final OrderRepository orderRepository;
     private final SimpMessagingTemplate messagingTemplate;
 
     // Message preview and page size limits
     private static final int MESSAGE_PREVIEW_MAX_LENGTH = 50;
     private static final int DEFAULT_PAGE_SIZE = 50;
+    /** System Tenant ID（V9）；無 listing/order 關聯的 DIRECT 對話退回此租戶。 */
+    private static final UUID SYSTEM_TENANT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
+    /**
+     * 依關聯實體推導對話所屬租戶（Sprint 25 US-003 / AI-802）。
+     * 規則：有 listing → 取 listing 租戶；否則有 order → 取 order 租戶；
+     * 否則（純 DIRECT 或關聯實體不存在）→ 退回 System Tenant。與 V56 回填規則一致。
+     */
+    private UUID resolveTenantId(final UUID listingId, final UUID orderId) {
+        if (listingId != null) {
+            final UUID tenantId = listingRepository.findById(listingId)
+                    .map(Listing::getTenantId).orElse(null);
+            if (tenantId != null) {
+                return tenantId;
+            }
+        }
+        if (orderId != null) {
+            final UUID tenantId = orderRepository.findById(orderId)
+                    .map(Order::getTenantId).orElse(null);
+            if (tenantId != null) {
+                return tenantId;
+            }
+        }
+        return SYSTEM_TENANT_ID;
+    }
 
     /**
      * 建立對話
@@ -59,6 +90,7 @@ public class ChatService {
         }
 
         Conversation conversation = Conversation.builder()
+                .tenantId(resolveTenantId(request.getListingId(), request.getOrderId()))
                 .listingId(request.getListingId())
                 .orderId(request.getOrderId())
                 .conversationType(request.getConversationType() != null

@@ -21,7 +21,9 @@ import com.nextkey.ecommerce.api.dto.ChatDto;
 import com.nextkey.ecommerce.domain.model.chat.Conversation;
 import com.nextkey.ecommerce.domain.model.chat.Message;
 import com.nextkey.ecommerce.domain.repository.ConversationRepository;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.MessageRepository;
+import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 
 /**
@@ -43,6 +45,12 @@ class ChatServiceStompBroadcastTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private ListingRepository listingRepository;
+
+    @Mock
+    private OrderRepository orderRepository;
 
     @Mock
     private SimpMessagingTemplate messagingTemplate;

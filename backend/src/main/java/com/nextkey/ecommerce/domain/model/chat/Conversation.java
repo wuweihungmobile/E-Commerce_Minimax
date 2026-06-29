@@ -37,6 +37,9 @@ public class Conversation {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId; // 租戶 ID - 多租戶隔離（AI-802 / Sprint 25 US-003）
+
     @Column(name = "listing_id")
     private UUID listingId; // 相關 Listing (可選)
 

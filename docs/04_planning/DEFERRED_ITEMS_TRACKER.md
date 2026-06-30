@@ -16,10 +16,7 @@
 
 ### 🟡 中優先級 - 未來 Sprint 處理
 
-| ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
-|----|------|-------------|---------|---------|---------|------|
-| DEF-013 | M09 MQ 通知缺端到端驗證 | Sprint 26（US-002 盤點發現） | backend-only 非同步（NotificationProducer→Consumer）目前以後端單元/整合為主，無「觸發→消費→可觀測結果」端到端驗證 | 待通知相關 Sprint 或需求觸發 | 1 | ⚠️ 待處理（低）→ Sprint 27 US-003（AI-1103） |
-| DEF-015 | 前端 next/font/google 建置期外部抓取 | Sprint 26（DEF-014 驗證時發現） | layout.tsx 用 next/font/google（Geist/Geist Mono）於 build 期向 fonts.googleapis.com 抓取，離線/網路不穩時 npm run build 失敗 → validate-e2e exit 2 | 改 next/font/local 或自帶字型，移除建置期外部網路依賴 | 1 | ⚠️ 待處理（低）→ Sprint 27 US-002（AI-1102） |
+*目前無中優先級延後項目（DEF-013、DEF-015 已於 Sprint 27 完成 → 活躍 DEF 歸零）。*
 
 ---
 
@@ -38,6 +35,8 @@
 | DEF-011 | cancelLogistics 錯誤碼修正（→ E_7500 系列） | Sprint 25 | Sprint 26 | US-004：改 E_7500（not found）/E_7502（delivered）+ 3 單元測試 |
 | DEF-012 | ChatService.toMessageResponse 廣播 conversationId 補正 | Sprint 25 | Sprint 26 | US-003：改由 conversation 關聯取 id + 廣播 payload 測試 |
 | DEF-014 | e2e 乾淨 DB 註冊回 401 致 10 spec 失敗 | Sprint 26 | Sprint 26 | 真因為 validate-e2e.sh 誤設 NEXT_PUBLIC_API_URL（雙 /v2），非產品 bug；修正後 27 passed/5 skip/0 fail，e2e 改 strict 預設 |
+| DEF-013 | M09 MQ 通知缺端到端驗證 | Sprint 26 | Sprint 27 | US-003：補 produce→佇列→consume 端到端測試（NotificationProduceConsumeTest，真實 ObjectMapper + 共用佇列）。**揪出並修復真 bug**：producer 用 Stream(XADD)、consumer 用 List(RPOP) 同 key 型別不相容 → 通知永不被消費；改為兩端一致 List（leftPush/rightPop） |
+| DEF-015 | 前端 next/font/google 建置期外部抓取 | Sprint 26 | Sprint 27 | US-002：layout.tsx 的 Geist 變數從未被 CSS/Tailwind 消費（死碼），移除 next/font/google import → 離線 build 不再抓 Google，零視覺影響 |
 
 ---
 
@@ -229,6 +228,6 @@
 
 ---
 
-**文件版本**: v2.0
-**最後更新**: 2026-07-01（Sprint 26 收尾：DEF-009/010/011/012/014 清償，新增 DEF-013/015；活躍 DEF 剩 2 個低優先）
-**下次審查**: Sprint 27 Planning（處理 DEF-013/015 → 活躍 DEF 歸零）
+**文件版本**: v2.1
+**最後更新**: 2026-07-01（Sprint 27 US-002/003：DEF-013、DEF-015 完成 → **活躍 DEF 歸零**；DEF-013 揪出並修復 producer/consumer Redis 型別不相容真 bug）
+**下次審查**: Sprint 27 Review

@@ -78,7 +78,9 @@ Sprint 26 清償了 DEF-009~012/014 並完成本地優先 CI 整套工程，活�
 
 ### US-002：前端字型本地化（AI-1102 / DEF-015，P1）
 
-> **SP**: 1 | **優先級**: P1 | **狀態**: 📋 規劃中
+> **SP**: 1 | **優先級**: P1 | **狀態**: ✅ 完成（移除死碼 next/font/google，離線 build 通過、零視覺影響）
+>
+> **實作**：經盤查確認 `layout.tsx` 的 `--font-geist-sans/mono` 變數**從未被 globals.css/Tailwind 消費**（Tailwind v4 @theme 無 font token）—— Geist 是 create-next-app 殘留死碼，只造成建置期抓 Google、未套用任何元素。直接移除 `next/font/google` import 與變數，`font-sans`/`font-mono` 維持 Tailwind 預設棧不變。`npm run build` 離線通過。無需新增套件/字型檔。
 
 **目標**: `app/layout.tsx` 使用 `next/font/google`（Geist / Geist Mono），build 期向 fonts.googleapis.com 抓取，離線/網路不穩時 `npm run build` 失敗 → `make validate-e2e` exit 2。改為無外部網路依賴。
 
@@ -90,7 +92,14 @@ Sprint 26 清償了 DEF-009~012/014 並完成本地優先 CI 整套工程，活�
 
 ### US-003：M09 MQ 通知端到端驗證（AI-1103 / DEF-013，P2）
 
-> **SP**: 2 | **優先級**: P2 | **狀態**: 📋 規劃中
+> **SP**: 2 | **優先級**: P2 | **狀態**: ✅ 完成（補端到端測試 + **揪出並修復真 bug**）
+>
+> 🔴 **重大發現**：補端到端測試時揪出 M09 通知的 **produce→consume 斷鏈真 bug** —— `NotificationProducerService` 用 `opsForStream().add()`（Redis Stream），但 `NotificationConsumerService` 用 `opsForList().rightPop()` 讀同一 key（`notification:stream`）。Redis 同一 key 不可同時是 Stream 與 List → consumer 對 stream key 做 RPOP 觸發 WRONGTYPE，被 catch 吞掉 → **`NotificationService.sendToQueue` 產出的通知永不被消費**（正式環境路徑，line 93/131 實際呼叫）。
+>
+> **為何潛伏至今**：3 個既有測試都繞過真實傳遞 —— `NotificationConsumerServiceTest`（mock listOps）、`NotificationMQIntegrationTest`（ReflectionTestUtils 直呼 processMessage）、`IntegrationTestConfiguration`（整個 RedisTemplate mock）。正是 REALTIME_ASYNC_E2E_DOD 預警的「後端單元測試無法證明端到端正確性」。
+>
+> **修復**：producer 改用 `opsForList().leftPush()`（與 consumer 的 rightPop 對齊，leftPush+rightPop = FIFO）。
+> **測試**：新增 `NotificationProduceConsumeTest`（真實 ObjectMapper + 共用記憶體佇列，2 測試）—— 觸發→佇列→消費→Notification 落地 + 歷史寫入 + 跨序列化內容正確；producer 若回退成 Stream 則佇列為空、消費 no-op，測試即失敗（鎖住修復）。
 
 **目標**: 依 [REALTIME_ASYNC_E2E_DOD.md](../06_quality/REALTIME_ASYNC_E2E_DOD.md)，為 M09 MQ 通知（NotificationProducer → Consumer）補「觸發 → 消費 → 可觀測結果」端到端驗證，補上 backend-only 非同步功能的端到端防線。
 

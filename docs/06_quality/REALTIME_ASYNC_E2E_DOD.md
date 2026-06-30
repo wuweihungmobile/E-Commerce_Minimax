@@ -41,10 +41,10 @@ Sprint 24 的 M10 STOMP 後端「僅以 `SimpMessagingTemplate` 單元測試」�
 | 功能 | 機制 | 真實 client / 端到端 E2E | 狀態 |
 |------|------|--------------------------|------|
 | **M10 IM 即時聊天** | STOMP over SockJS | `at-m10-chat`（Playwright 雙使用者） | ✅ 已具備 |
-| **M09 MQ 通知** | RabbitMQ（NotificationProducer→Consumer） | ❌ 無端到端（目前後端單元/整合為主） | 🟡 **列 DEF-013** |
+| **M09 MQ 通知** | Redis List（NotificationProducer→Consumer，`@Scheduled` 輪詢） | ✅ `NotificationProduceConsumeTest`（produce→佇列→consume→Notification+歷史，真實序列化） | ✅ Sprint 27 完成（DEF-013） |
 | **Settlement 結算** | `@Scheduled` 批次 | Runbook + 整合測試 | 🟢 批次型，非即時推送，現況可接受 |
 
-> **DEF-013（新增）**：M09 MQ 通知缺端到端驗證（觸發 → 消費 → 通知歷史/可觀測結果）。優先級低，待需求觸發或併入通知相關 Sprint。
+> **DEF-013（✅ Sprint 27 完成）**：補 M09 端到端測試時，揪出並修復 produce→consume 斷鏈真 bug —— producer 用 `opsForStream().add()`（Stream）、consumer 用 `opsForList().rightPop()`（List）讀同一 key，型別不相容（WRONGTYPE）致通知永不被消費；改為兩端一致 List。**驗證了本 DoD 的核心論點**：3 個既有測試（mock listOps / ReflectionTestUtils 直呼 / 整個 RedisTemplate mock）都繞過真實傳遞，唯有 produce→consume 端到端測試才抓得到。
 
 ---
 
@@ -59,7 +59,7 @@ Sprint 24 的 M10 STOMP 後端「僅以 `SimpMessagingTemplate` 單元測試」�
 - 5 個 conditional-skip 為 spec 內 `test.skip()`（乾淨 DB 無 seed admin/租戶等資料時優雅跳過），非失敗。
 - 環境異常（如建置期 Google Fonts 網路抓取失敗）需臨時放行：`E2E_GATE_STRICT=0 make validate-e2e`（不建議常態使用）。
 
-> **DEF-015（新增，低）**：前端 `next/font/google`（layout.tsx 的 Geist/Geist Mono）在建置期向 Google Fonts 抓取，離線/網路不穩時 `npm run build` 失敗 → validate-e2e exit 2。建議改 `next/font/local` 或自帶字型以移除建置期外部網路依賴。
+> **DEF-015（✅ Sprint 27 完成）**：前端 `next/font/google`（layout.tsx 的 Geist/Geist Mono）在建置期向 Google Fonts 抓取，離線時 `npm run build` 失敗。經查 Geist 變數從未被 CSS/Tailwind 消費（死碼），直接移除 import → 離線 build 通過、零視覺影響。
 
 ---
 

@@ -1,8 +1,5 @@
 package com.nextkey.ecommerce.infrastructure.mq;
 
-import java.util.HashMap;
-import java.util.Map;
-
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -67,10 +64,14 @@ public class NotificationProducerService {
      */
     private void sendMessage(NotificationMessage message) {
         try {
-            Map<String, String> messageMap = new HashMap<>();
-            messageMap.put("data", objectMapper.writeValueAsString(message));
-
-            redisTemplate.opsForStream().add(RedisStreamConfig.NOTIFICATION_STREAM, messageMap);
+            // 推入 Redis List（與 NotificationConsumerService.consumeNotifications 的 rightPop 對齊，
+            // leftPush + rightPop 構成 FIFO 佇列）。
+            // 🔴 DEF-013：原先誤用 opsForStream().add()（Redis Stream），但 consumer 以 opsForList().rightPop()
+            // 讀同一 key（notification:stream）→ 型別不相容（WRONGTYPE）被吞，訊息永不被消費。
+            // 改為兩端一致使用 List，端到端傳遞才成立。
+            redisTemplate.opsForList().leftPush(
+                    RedisStreamConfig.NOTIFICATION_STREAM,
+                    objectMapper.writeValueAsString(message));
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize notification message: {}", message.getMessageId(), e);
             throw new BusinessException(ErrorCode.E_9000, "Failed to send notification to queue");

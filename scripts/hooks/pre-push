@@ -1,21 +1,23 @@
 #!/usr/bin/env sh
 # =============================================
-# AISDLC v0.09: Pre-Push Hook（嚴格門 v4 — host 分層）
-# 目的：這是「上去 GIT」的嚴格關卡，但改為「快、且在 host 執行」。
+# AISDLC v0.09: Pre-Push Hook（嚴格門 v5 — 上 GIT = 完整測試程序）
+# 目的：push 是「上 GIT」的唯一嚴格守門；每次 push 都要跑「完整測試程序」
+#       = make validate-release（act backend+frontend + schema 漂移 + e2e，等價雲端 ci.yml）。
 #
-# 🔴 v4 變更（2026-06-30，Sprint 26 pre-push 效能改善）：
-#   - 不再於 pre-push 跑 act 容器的「完整整合測試」（單次 ~30 分鐘，太慢）。
-#   - 改為 host 直接跑「快的部分」：checkstyle + compile + 單元測試（surefire/H2，免外部 DB）
-#     + 前端 lint/type-check/build。暖快取下約 5-8 分鐘。
-#   - 完整「整合測試 + e2e」移到 `make validate-release`（部署前手動跑一次）。
-#   - schema 漂移守門（entity/migration 變動時）保留，最優先、不可略過。
+# 🔴 v5 變更（2026-06-30，使用者要求「批次 push 但上 GIT 必須做完整測試程序」）：
+#   - pre-push 不再只跑 host 快檢；改為執行完整測試程序 make validate-release（~30-45 分）。
+#   - 因為 push 已改為「低頻批次」（commit 勤、push 少），完整成本攤平、只在檢查點付一次。
+#   - 完整驗證記錄帶 FULL 標記，只有 make validate-release 寫得出
+#     → host 快檢（check-backend/frontend）不會誤放行 push。
+#   - tree-hash 相符且 30 分內的 FULL 記錄 → 直接放行（避免手動 validate-release 後 push 又重跑一次）。
+#   - 純文件/設定（無 backend/frontend 程式碼變動）→ 略過（完整測試對其無意義）。
 #
-# 分層總覽：
-#   pre-commit      ：lint + compile + 核心測試（快速）
-#   pre-push（本檔）：host 編譯 + 全單元測試 + 前端 build + schema 守門（~5-8 分）
-#   make validate-release：完整整合測試 + e2e（部署前，~30 分）
+# 分層：
+#   pre-commit            ：lint + compile + 核心測試（快速，每次 commit）
+#   pre-push（本檔）       ：完整測試程序 = make validate-release（~30-45 分，每次 push）
+#   make validate-release ：可先手動跑一次（寫 FULL 記錄）→ 隨後 git push 30 分內直接放行
 #
-# 跳過方式：git push --no-verify（⚠️ 嚴禁！會導致未驗證程式碼上庫）
+# 跳過方式：git push --no-verify（⚠️ 嚴禁！會導致未完整驗證程式碼上庫）
 # =============================================
 
 set -e
@@ -32,12 +34,15 @@ calc_sha256() {
     fi
 }
 
+# FULL 記錄有效期：30 分（tree-hash 相符為主、時間為輔；完整測試程序本身約 30-45 分）
+FULL_WINDOW_SECONDS=1800
+
 echo "=========================================="
-echo "🔒 Pre-Push 驗證（host 分層；上去 GIT 前的關卡）"
+echo "🔒 Pre-Push 完整守門（上 GIT = 完整測試程序）"
 echo "=========================================="
 
 # 🔴 檢查 .ci-validation-data 是否被錯誤地 commit 到 Git
-if git ls-files --error-unmatch .ci-validation-data &>/dev/null; then
+if git ls-files --error-unmatch .ci-validation-data >/dev/null 2>&1; then
     echo ""
     echo "🔴 ERROR: .ci-validation-data 已被 commit 到 Git！"
     echo "   這個目錄是本地驗證記錄，不應該被 commit（應在 .gitignore 中）。"
@@ -56,73 +61,20 @@ if [ -z "$CURRENT_TREE_HASH" ]; then
     CURRENT_TREE_HASH="empty"
 fi
 
-# 記錄成功並放行（共用）
-record_and_allow() {
+# 寫入 FULL 驗證記錄並放行（5 欄位：COMMIT|TIME|TREE|SUCCESS|FULL）
+record_full_and_allow() {
     VALIDATED_TIME=$(date '+%Y-%m-%d %H:%M:%S')
     mkdir -p "$CI_DATA_DIR"
     if [ -f "$CI_RECORD" ]; then
         TMPRECORD=$(mktemp)
-        grep -v "^$CURRENT_COMMIT|" "$CI_RECORD" > "$TMPRECORD" || true
+        grep -v "^$CURRENT_COMMIT|" "$CI_RECORD" > "$TMPRECORD" 2>/dev/null || true
         mv "$TMPRECORD" "$CI_RECORD"
     fi
-    echo "$CURRENT_COMMIT|$VALIDATED_TIME|$CURRENT_TREE_HASH|SUCCESS" >> "$CI_RECORD"
+    echo "$CURRENT_COMMIT|$VALIDATED_TIME|$CURRENT_TREE_HASH|SUCCESS|FULL" >> "$CI_RECORD"
 }
 
 # =============================================
-# 0. Schema 漂移守門（最優先，不可被快取記錄略過）
-#    本地單元測試以 H2/ddl-auto 啟動，抓不到 entity↔migration 漂移；
-#    本關卡以 ddl-auto=validate + Flyway 對乾淨 PostgreSQL 啟動 backend 攔截漂移。
-#    觸發：本次推送變動含 JPA entity（domain/model/*.java）或 Flyway migration（db/migration/*.sql）。
-# =============================================
-SCHEMA_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-SCHEMA_REMOTE=$(git rev-parse "origin/$SCHEMA_BRANCH" 2>/dev/null || echo "")
-if [ -n "$SCHEMA_REMOTE" ]; then
-    SCHEMA_CHANGED=$(git diff --name-only "$SCHEMA_REMOTE..HEAD" 2>/dev/null || echo "")
-    HAS_SCHEMA=$(echo "$SCHEMA_CHANGED" | grep -E '(domain/model/.*\.java$|db/migration/.*\.sql$)' | head -1 || true)
-else
-    HAS_SCHEMA="first-push"   # 首次推送 / 抓不到 remote → 保守起見一律驗 schema
-fi
-if [ -n "$HAS_SCHEMA" ]; then
-    echo ""
-    echo "🔍 偵測到 entity/migration 變動 → schema 漂移守門（ddl-auto=validate + Flyway 對乾淨 DB）..."
-    if [ -x "$ROOT_DIR/scripts/validate-schema.sh" ]; then
-        if ! "$ROOT_DIR/scripts/validate-schema.sh"; then
-            echo ""
-            echo "🔴 schema 漂移守門失敗！entity 與 migration 不一致，禁止 push！"
-            echo "   修復後重跑：make validate-schema"
-            echo "   🔴 禁止使用 --no-verify！"
-            exit 1
-        fi
-        echo "✅ schema 漂移守門通過"
-    else
-        echo "⚠️  找不到可執行的 scripts/validate-schema.sh，略過 schema 守門（請確認檔案存在）"
-    fi
-fi
-
-# =============================================
-# 1. 若已有有效驗證記錄（10 分鐘內 + tree-hash 相符）→ 直接放行
-#    涵蓋情境：剛跑過 make validate-push 或 make validate-release，或前次 push 失敗後重試。
-# =============================================
-if [ -f "$CI_RECORD" ]; then
-    VALIDATED=$(grep "^$CURRENT_COMMIT|" "$CI_RECORD" 2>/dev/null | tail -1)
-    if [ -n "$VALIDATED" ]; then
-        VALIDATED_TIME=$(echo "$VALIDATED" | cut -d'|' -f2)
-        RECORDED_TREE_HASH=$(echo "$VALIDATED" | cut -d'|' -f3)
-        if date -j -f '%Y-%m-%d %H:%M:%S' "$VALIDATED_TIME" +%s >/dev/null 2>&1; then
-            VALIDATED_EPOCH=$(date -j -f '%Y-%m-%d %H:%M:%S' "$VALIDATED_TIME" +%s 2>/dev/null || echo "0")
-        else
-            VALIDATED_EPOCH=$(date -d "$VALIDATED_TIME" +%s 2>/dev/null || echo "0")
-        fi
-        AGE_SECONDS=$(( $(date +%s) - VALIDATED_EPOCH ))
-        if [ $AGE_SECONDS -le 600 ] && [ "$RECORDED_TREE_HASH" = "$CURRENT_TREE_HASH" ]; then
-            echo "✅ 已有有效驗證記錄（$VALIDATED_TIME，$((AGE_SECONDS / 60)) 分鐘前）、tree-hash 相符 → 允許 push ✅"
-            exit 0
-        fi
-    fi
-fi
-
-# =============================================
-# 2. 依變動範圍跑 host 快速驗證
+# 1. 變動範圍：純文件/設定（無 backend/frontend 程式碼）→ 略過完整測試
 # =============================================
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 REMOTE_HEAD=$(git rev-parse "origin/$CURRENT_BRANCH" 2>/dev/null || echo "")
@@ -134,60 +86,62 @@ fi
 HAS_BE=$(echo "$CHANGED_FILES" | grep -E '^backend/' | head -1 || true)
 HAS_FE=$(echo "$CHANGED_FILES" | grep -E '^frontend/' | head -1 || true)
 
-# 純文件/設定（有 remote 可比對且無 backend/frontend code）→ 直接記錄放行
 if [ -n "$REMOTE_HEAD" ] && [ -z "$HAS_BE" ] && [ -z "$HAS_FE" ]; then
-    echo "ℹ️  本次推送無 backend/frontend 程式碼變動（純文件/設定），略過驗證。"
-    record_and_allow
-    echo "允許 push ✅"
+    echo "ℹ️  本次推送無 backend/frontend 程式碼變動（純文件/設定），完整測試對其無意義 → 允許 push ✅"
     exit 0
 fi
-# 首次推送 / 抓不到 remote → 保守驗 backend + frontend
-if [ -z "$REMOTE_HEAD" ]; then HAS_BE="all"; HAS_FE="all"; fi
 
+# =============================================
+# 2. 已有有效 FULL 驗證記錄（tree-hash 相符 + 30 分內）→ 直接放行
+#    涵蓋情境：剛手動跑過 make validate-release，或前次 push 失敗後重試。
+#    只認 FULL（完整測試程序）記錄；host 快檢不會寫 FULL，故無法誤放行。
+# =============================================
+if [ -f "$CI_RECORD" ]; then
+    VALIDATED=$(grep "^$CURRENT_COMMIT|" "$CI_RECORD" 2>/dev/null | grep '|FULL$' | tail -1)
+    if [ -n "$VALIDATED" ]; then
+        VALIDATED_TIME=$(echo "$VALIDATED" | cut -d'|' -f2)
+        RECORDED_TREE_HASH=$(echo "$VALIDATED" | cut -d'|' -f3)
+        if date -j -f '%Y-%m-%d %H:%M:%S' "$VALIDATED_TIME" +%s >/dev/null 2>&1; then
+            VALIDATED_EPOCH=$(date -j -f '%Y-%m-%d %H:%M:%S' "$VALIDATED_TIME" +%s 2>/dev/null || echo "0")
+        else
+            VALIDATED_EPOCH=$(date -d "$VALIDATED_TIME" +%s 2>/dev/null || echo "0")
+        fi
+        AGE_SECONDS=$(( $(date +%s) - VALIDATED_EPOCH ))
+        if [ "$AGE_SECONDS" -le "$FULL_WINDOW_SECONDS" ] && [ "$RECORDED_TREE_HASH" = "$CURRENT_TREE_HASH" ]; then
+            echo "✅ 已有完整(FULL)驗證記錄（$VALIDATED_TIME，$((AGE_SECONDS / 60)) 分鐘前）、tree-hash 相符 → 允許 push ✅"
+            exit 0
+        fi
+    fi
+fi
+
+# =============================================
+# 3. 執行完整測試程序：make validate-release（act + schema 漂移 + e2e）
+# =============================================
 echo ""
-echo "🔴 開始 host 快速驗證（分層；完整整合測試 + e2e 請於部署前 make validate-release）..."
+echo "🔴 開始完整測試程序：make validate-release（act backend+frontend + schema 漂移 + e2e）"
+echo "   ⏱️  完整守門約 30-45 分鐘——這是「上 GIT」前一次到位的代價；請 commit 勤、push 少（批次攤平）。"
 echo "   commit：$CURRENT_COMMIT"
+echo "   tree ：$(printf '%.16s' "$CURRENT_TREE_HASH")..."
 echo "=========================================="
-VALIDATION_FAILED=0
 
-if [ -n "$HAS_BE" ]; then
-    echo ""
-    echo "🔨 Backend（host）：checkstyle + compile + 單元測試（surefire/H2，免外部 DB）..."
-    if ! ( cd "$ROOT_DIR/backend" && mvn -q checkstyle:check test -Dspring.profiles.active=test ); then
-        echo "❌ Backend host 驗證失敗"
-        VALIDATION_FAILED=1
-    else
-        echo "✅ Backend 單元驗證通過"
-    fi
-fi
-
-if [ -n "$HAS_FE" ] && [ "$VALIDATION_FAILED" -eq 0 ]; then
-    echo ""
-    echo "🎨 Frontend（host）：lint + type-check + build..."
-    if ! ( cd "$ROOT_DIR/frontend" && npm run lint && npm run type-check && npm run build ); then
-        echo "❌ Frontend host 驗證失敗"
-        VALIDATION_FAILED=1
-    else
-        echo "✅ Frontend 驗證通過"
-    fi
-fi
-
-if [ "$VALIDATION_FAILED" -ne 0 ]; then
+if make validate-release; then
+    record_full_and_allow
     echo ""
     echo "=========================================="
-    echo "🔴 host 驗證失敗！禁止 push！"
+    echo "✅ 完整測試程序通過！允許 push ✅"
+    echo "🌳 Tree hash: $(printf '%.16s' "$CURRENT_TREE_HASH")..."
     echo "=========================================="
-    echo "📋 修復後重試。完整驗證（整合測試 + e2e）：make validate-release"
-    echo "🔴 禁止使用 --no-verify！會導致未驗證程式碼上庫。"
+    exit 0
+else
+    echo ""
+    echo "=========================================="
+    echo "🔴 完整測試程序失敗！禁止 push！"
+    echo "=========================================="
+    echo "📋 依失敗項目修復後重試；可單獨重跑定位："
+    echo "   make validate-all      # act backend+frontend"
+    echo "   make validate-schema   # entity↔migration 漂移"
+    echo "   make validate-e2e      # Playwright e2e + 乾淨 DB"
+    echo "🔴 禁止使用 --no-verify！會導致未完整驗證程式碼上庫。"
     echo ""
     exit 1
 fi
-
-record_and_allow
-echo ""
-echo "=========================================="
-echo "✅ host 快速驗證通過！允許 push ✅"
-echo "🌳 Tree hash: ${CURRENT_TREE_HASH:0:16}..."
-echo "📌 提醒：整合測試 + e2e 不在 pre-push；部署前請執行 make validate-release"
-echo "=========================================="
-exit 0

@@ -23,21 +23,26 @@
 > 還原方式：各檔 `on:` 區塊內把被註解的 `push:` / `pull_request:` / `schedule:` 取消註解即可。
 > 本地 `act` 不受影響——所有 `make validate-*` 與 pre-push hook 都以 `act -W <指定檔>` 執行，會無視 `on:` 過濾（已實測）。
 
-### 變更二：本地分層守門（2026-06-30 pre-push v4 — host 分層提速）
+### 變更二：本地分層守門（2026-06-30 pre-push v5 — 上 GIT = 完整測試程序）
 
-> **pre-push 改在 host 執行「快的部分」**（不再於 act 容器跑 ~30 分鐘整合測試），整合測試 + e2e 移到 `make validate-release`（部署前）。pre-push 從 ~30 分降到 ~5-8 分。
+> **使用者要求「批次 push 可以，但上 GIT 必須做完整測試程序」**。故 pre-push = 完整測試程序 `make validate-release`（act backend+frontend + schema 漂移 + e2e，等價雲端 ci.yml，~30-45 分）。
+> 因為 push 已改為**低頻批次**（commit 勤、push 少），完整成本只在檢查點付一次、整體等待反而比「每次 push 都跑」更低。
+>
+> （v4 曾把整合測試+e2e 移出 pre-push 以提速到 ~5-8 分；v5 依使用者要求改回「上 GIT 必跑完整」，但靠降頻 + FULL 記錄快取避免重複等待。）
 
 | 層級 | 觸發 | 內容 | 耗時 |
 |------|------|------|------|
 | **Tier 0** pre-commit | 每次 commit | lint + compile + 核心測試 + gitleaks | ~2 min |
-| **Tier 1** pre-push | 每次 push | **host**：checkstyle + compile + 全單元測試（surefire/H2，免 DB） + 前端 lint/type-check/build | **~5-8 min** |
-| **Tier 1.5** pre-push（條件） | push 含 entity/migration 變動時**自動** | `make validate-schema`（ddl-auto=validate + Flyway 對乾淨 DB） | ~3-4 min |
-| **Tier 2** release 守門 | 手動（部署前） | `make validate-release` = `validate-all`（act 完整含整合）+ `validate-schema` + `validate-e2e` | ~30+ min |
+| **Tier 1** 開發快檢（可選） | 手動，開發中 | `make check-backend` / `make check-frontend`（host 快速 compile/lint/type-check） | ~3-5 min |
+| **Tier 2** pre-push＝完整測試程序 | 每次 push（低頻批次） | `make validate-release` = `validate-all`（act 完整含整合）+ `validate-schema`（ddl-auto=validate + Flyway 對乾淨 DB）+ `validate-e2e`（Playwright + 乾淨 DB） | **~30-45 min** |
 
-**降低 push 頻率（建議）**：pre-push 有成本，請**commit 勤、push 少**——
+> 純文件/設定（無 `backend/`、`frontend/` 程式碼變動）→ pre-push 自動略過完整測試，直接放行。
+
+**降低 push 頻率（必要做法）**：完整測試程序有成本，請**commit 勤、push 少**——
 - `git commit` 隨時做（pre-commit 快）；只在「一個 US/功能完整、收尾、或要備份」時 `git push`。
-- 多個 commit **一次 push**：pre-push 只驗證最終 working tree 一次，批次 push 攤平等待。
-- 想先把等待挪到自己方便時：`make validate-push`（跑同款 host 快檢並寫 10 分鐘記錄）→ 隨後 `git push` 直接放行。
+- 多個 commit **一次 push**：pre-push 只對最終 working tree 跑一次完整測試，批次 push 攤平等待。
+- 想把等待挪到自己方便時：先手動 `make validate-release`（寫 FULL 記錄）→ **30 分鐘內** 對同一 tree `git push` 直接放行（不重跑）。
+- FULL 記錄只有 `make validate-release` 寫得出；`check-backend`/`check-frontend` 等 host 快檢**不會**放行 push（避免「只跑快檢就上庫」）。
 
 ### 變更三：新增 make target
 
@@ -45,7 +50,7 @@
 |------|------|
 | `make validate-schema` | schema 漂移守門（已串進 pre-push，改 entity/migration 時自動跑） |
 | `make validate-e2e` | 乾淨 DB → Flyway 重建 → 全棧(ddl-auto=validate) → Playwright，複製雲端 e2e job。**預設 strict**（spec 失敗即阻擋；基準 27 passed/5 skip/0 fail）；環境異常臨時放行 `E2E_GATE_STRICT=0` |
-| `make validate-release` | `validate-all` + `validate-schema` + `validate-e2e` = 雲端 `ci.yml` 等價完整守門 |
+| `make validate-release` | **完整測試程序＝ pre-push 守門內容**：`validate-all` + `validate-schema` + `validate-e2e` = 雲端 `ci.yml` 等價。手動先跑一次會寫 FULL 記錄，30 分內對同 tree push 直接放行 |
 | `make test-db-up` / `test-db-down` | 啟動/停止「整合測試 + pre-commit 核心測試」所需 DB（postgres:5432 + redis:6379，對齊 integration-test profile）。改 backend `.java/.yml/.sql` 後 commit 前先 `make test-db-up`（pre-commit 的 `@ActiveProfiles("integration-test")` 核心測試需真實 postgres），完成後 `make test-db-down` |
 
 ### 本地 vs 雲端覆蓋對照（哪些已被本地取代）
@@ -65,14 +70,16 @@ gh workflow run "技術債檢視 / Technical Debt Review" --ref main
 gh run watch   # 觀察執行
 ```
 
-### 日常正確流程（本地優先）
+### 日常正確流程（本地優先，commit 勤、push 少）
 ```bash
-# 1. 開發 → commit（pre-commit 自動把關）
+# 1. 開發 → commit（pre-commit 快檢把關）；累積多個 commit，先別急著 push
 git commit -m "feat: ..."
-# 2. push（pre-push 自動跑 act；含 entity/migration 時自動加跑 schema 守門）
-git push origin main
-# 3. release 前（手動）跑完整守門
+git commit -m "feat: ..."
+# 2.（可選）想把等待挪到方便時：先手動跑完整測試程序，會寫 FULL 記錄
 make validate-release
+# 3. 到檢查點才 push：pre-push = 完整測試程序（act + schema + e2e）
+#    若步驟 2 剛跑過且 tree 未變 → 30 分內直接放行；否則 pre-push 自動跑一次（~30-45 分）
+git push origin main
 ```
 
 > 🔴 嚴禁 `--no-verify`：會繞過 pre-push 唯一守門員，且雲端已停用自動 CI，等於完全無驗證上庫。
@@ -574,7 +581,8 @@ act -W .github/workflows/act-compat.yml -v
 |------|------|------|------|
 | 2026-06-11 | 1.0 | 初版建立（完整本地 CI 工具鏈） | Claude Code |
 | 2026-06-30 | 2.0 | 本地優先策略：三 workflow 改 workflow_dispatch only（停用雲端自動 CI）；新增 `make validate-e2e` / `validate-release`；`validate-schema` 串進 pre-push；修復 backend Dockerfile 死碼 `COPY .mvn .mvn` | Claude Code |
+| 2026-06-30 | 3.0 | pre-push v5：依使用者要求「批次 push 但上 GIT 必須完整測試程序」，pre-push = `make validate-release`（act + schema + e2e）；FULL 記錄（僅 validate-release 寫得出）+ tree-hash 30 分快取避免重跑；純文件略過；移除已失效的 `make validate-push`（host 快檢不再放行 push） | Claude Code |
 
 ---
 
-> **🔴 記住：Push 之前，務必先執行 `make validate-all`！**
+> **🔴 記住：push 即完整測試程序。想把等待挪到方便時，先手動 `make validate-release`！**

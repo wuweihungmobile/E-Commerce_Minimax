@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -91,7 +92,7 @@ class M11LogisticsOrderIntegrationTest {
                 .receiverName("測試收件人")
                 .receiverPhone("0912345678")
                 .shippingAddress("台北市信義區信義路五段7號")
-                .logisticsData("{}")
+                .logisticsData(new HashMap<>())
                 .build();
         logistics.setId(LOGISTICS_ID);
         logistics.setCreatedAt(Instant.now());

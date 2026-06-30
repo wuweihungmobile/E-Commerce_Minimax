@@ -48,15 +48,18 @@ Sprint 24 的 M10 STOMP 後端「僅以 `SimpMessagingTemplate` 單元測試」�
 
 ---
 
-## 4. 已知限制：乾淨 DB 的 E2E（at-m10-chat 等）
+## 4. e2e 已制度化為嚴格守門（DEF-014 已修復）
 
-`make validate-e2e` 以 **Flyway 重建的乾淨 DB**（無 seed/租戶）執行全部 spec，目前 10 個 spec（含 `at-m10-chat`、`at-m17-*`、`at-m11-*`）失敗，根因為**多租戶註冊流程在乾淨 DB 回 401（E_1000）**——屬既有問題，且雲端 `ci.yml` 的 e2e job 本就 `continue-on-error`（從未強制）。
+`make validate-e2e` 以 **Flyway 重建的乾淨 DB** 執行全部 spec，**預設嚴格模式（spec 失敗即阻擋）**。
 
-**處置**：
-- `make validate-e2e` 對 e2e spec 失敗預設 **advisory**（對齊雲端 continue-on-error），schema 啟動驗證則硬擋。
-- 要讓 e2e 真正成為阻擋性 DoD（`E2E_GATE_STRICT=1`），需先修復「乾淨 DB 註冊/seed」，**列 DEF-014**。
+**DEF-014 根因與修復（2026-06-30）**：先前 10 個 spec（`at-m10-chat`、`at-m17-*`、`at-m11-*`）在乾淨 DB 失敗，表象為「註冊回 401（Authentication required）」。經以 curl 對乾淨 DB backend 實測，**註冊 HTTP 201、登入 HTTP 200 全部正常**——並非產品/後端 bug。真正根因是 **`scripts/validate-e2e.sh` 誤將前端打包的 `NEXT_PUBLIC_API_URL` 設為 `.../api/v2`**：前端 `lib/api.ts` 的 `API_ENDPOINTS` 路徑已含 `/v2`（如 `/v2/auth/register`），故註冊 URL 變成 `/api/v2/v2/auth/register` → servlet path 不匹配任何 `permitAll` → 落入 `anyRequest().authenticated()` → 401。修為 `NEXT_PUBLIC_API_URL=http://localhost:8080/api`（與前端預設、雲端 `npm run build` 一致）後 → **27 passed / 5 conditional-skip / 0 failed**。
 
-> **DEF-014（新增）**：e2e 在乾淨 DB 下註冊流程回 401，致 10 個 spec 失敗；需補測試 seed（租戶/帳號）或修正註冊流程，方能將 e2e 設為 strict DoD。
+**現行政策**：
+- `make validate-e2e` 預設 **strict**：e2e spec 失敗即守門失敗（阻擋）。schema 啟動驗證亦硬擋。
+- 5 個 conditional-skip 為 spec 內 `test.skip()`（乾淨 DB 無 seed admin/租戶等資料時優雅跳過），非失敗。
+- 環境異常（如建置期 Google Fonts 網路抓取失敗）需臨時放行：`E2E_GATE_STRICT=0 make validate-e2e`（不建議常態使用）。
+
+> **DEF-015（新增，低）**：前端 `next/font/google`（layout.tsx 的 Geist/Geist Mono）在建置期向 Google Fonts 抓取，離線/網路不穩時 `npm run build` 失敗 → validate-e2e exit 2。建議改 `next/font/local` 或自帶字型以移除建置期外部網路依賴。
 
 ---
 

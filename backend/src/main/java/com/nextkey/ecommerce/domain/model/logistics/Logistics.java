@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.domain.model.logistics;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -14,6 +15,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -64,8 +68,10 @@ public class Logistics {
     @Column(name = "receiver_phone")
     private String receiverPhone;
 
+    // DEF-009：統一為全庫 jsonb 慣例（Map + @JdbcTypeCode(SqlTypes.JSON)），對齊 Order/Booking/Tenant 等。
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "logistics_data", columnDefinition = "jsonb")
-    private String logisticsData;
+    private Map<String, Object> logisticsData;
 
     @Column(name = "created_at")
     private Instant createdAt;

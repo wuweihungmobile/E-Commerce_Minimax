@@ -37,8 +37,9 @@
 | 命令 | 用途 |
 |------|------|
 | `make validate-schema` | schema 漂移守門（已串進 pre-push，改 entity/migration 時自動跑） |
-| `make validate-e2e` | **新增**：乾淨 DB → Flyway 重建 → 全棧(ddl-auto=validate) → Playwright，複製雲端 e2e job |
-| `make validate-release` | **新增**：`validate-all` + `validate-schema` + `validate-e2e` = 雲端 `ci.yml` 等價完整守門 |
+| `make validate-e2e` | 乾淨 DB → Flyway 重建 → 全棧(ddl-auto=validate) → Playwright，複製雲端 e2e job。**預設 strict**（spec 失敗即阻擋；基準 27 passed/5 skip/0 fail）；環境異常臨時放行 `E2E_GATE_STRICT=0` |
+| `make validate-release` | `validate-all` + `validate-schema` + `validate-e2e` = 雲端 `ci.yml` 等價完整守門 |
+| `make test-db-up` / `test-db-down` | 啟動/停止「整合測試 + pre-commit 核心測試」所需 DB（postgres:5432 + redis:6379，對齊 integration-test profile）。改 backend `.java/.yml/.sql` 後 commit 前先 `make test-db-up`（pre-commit 的 `@ActiveProfiles("integration-test")` 核心測試需真實 postgres），完成後 `make test-db-down` |
 
 ### 本地 vs 雲端覆蓋對照（哪些已被本地取代）
 

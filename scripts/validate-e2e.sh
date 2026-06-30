@@ -40,7 +40,11 @@ RD_PORT="${E2E_GATE_RD_PORT:-56379}"
 PG_USER="koala"; PG_PASS="koala5"; PG_DB="nextkeytest"
 BACKEND_PORT="${E2E_GATE_BACKEND_PORT:-8080}"     # 與前端打包 NEXT_PUBLIC_API_URL 預設值對齊
 FRONTEND_PORT="${E2E_GATE_FRONTEND_PORT:-3000}"   # playwright.config.ts baseURL 固定 3000
-API_URL="http://localhost:${BACKEND_PORT}/api/v2"
+# 🔴 必須是 .../api（不可含 /v2）：前端 lib/api.ts 預設 baseUrl 即 http://localhost:8080/api，
+# 且 API_ENDPOINTS 路徑已含 /v2（如 /v2/auth/register）。若這裡誤帶 /v2 會變成 /api/v2/v2/auth/register
+# → servlet path 不匹配任何 permitAll → 落入 anyRequest().authenticated() → 401「Authentication required」
+# （DEF-014 根因；雲端 e2e 的 npm run build 未設此變數，用預設 /api 故正確）。
+API_URL="http://localhost:${BACKEND_PORT}/api"
 BACKEND_HEALTH="http://localhost:${BACKEND_PORT}/api/actuator/health"
 FRONTEND_URL="http://localhost:${FRONTEND_PORT}"
 # 本地守門啟動用的虛構（非機密）JWT 簽署值，僅供 E2E 啟動，不得用於任何真實環境。
@@ -160,9 +164,10 @@ ok "frontend 就緒（:$FRONTEND_PORT）"
 
 # --- 5. 執行 Playwright E2E（baseURL=localhost:3000，reuseExistingServer）------
 #   到這裡為止：backend 以 ddl-auto=validate 對乾淨 DB 啟動成功 → schema 無漂移（硬性條件已過）。
-#   e2e spec 的 pass/fail 政策：
-#     - 預設 advisory：與雲端 ci.yml 的 e2e job（continue-on-error: true）一致 —— 報告但不阻擋。
-#     - E2E_GATE_STRICT=1：視 spec 失敗為守門失敗（阻擋），供 DoD 強制化（Sprint 26 AI-1001）。
+#   e2e spec 的 pass/fail 政策（Sprint 26 US-002/AI-1001 + DEF-014 修復後）：
+#     - 預設 STRICT：spec 失敗即視為守門失敗（阻擋）。DEF-014（乾淨 DB 註冊 401）已修復，
+#       基準為 27 passed / 5 conditional-skip / 0 failed，故 e2e 已制度化為阻擋性 DoD。
+#     - E2E_GATE_STRICT=0：臨時改為 advisory（報告但不阻擋），供環境異常時暫時放行。
 log "執行 Playwright E2E（npx playwright test）..."
 set +e
 ( cd frontend && npx playwright test )
@@ -175,12 +180,12 @@ fi
 
 echo ""
 err "Playwright 有 spec 失敗（exit $E2E_EXIT）。報告：frontend/playwright-report/"
-if [ "${E2E_GATE_STRICT:-0}" = "1" ]; then
-  err "E2E_GATE_STRICT=1 → 視為守門失敗（阻擋 release）"
-  exit 1
+if [ "${E2E_GATE_STRICT:-1}" = "0" ]; then
+  log "⚠️  E2E_GATE_STRICT=0（advisory 模式）：spec 失敗不阻擋，僅報告。"
+  log "    schema 漂移驗證已通過（backend ddl-auto=validate 成功啟動）。"
+  ok "本地 E2E 守門完成：schema ✅；e2e 有失敗（advisory，詳見報告）"
+  exit 0
 fi
-log "⚠️  預設 advisory（雲端 e2e job 本就 continue-on-error，從不阻擋）。"
-log "    高價值的 schema 漂移驗證已通過（backend ddl-auto=validate 成功啟動）。"
-log "    要讓 e2e 失敗阻擋 release：E2E_GATE_STRICT=1 make validate-e2e"
-ok "本地 E2E 守門完成：schema ✅；e2e 有既有失敗（advisory，詳見報告）"
-exit 0
+err "🔴 e2e 守門失敗（嚴格模式，阻擋 release）。基準為 0 failed；請修復失敗 spec。"
+err "    環境異常需臨時放行：E2E_GATE_STRICT=0 make validate-e2e（不建議常態使用）。"
+exit 1

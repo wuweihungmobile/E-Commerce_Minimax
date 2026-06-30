@@ -84,6 +84,29 @@ down-ci: ## 停止 CI 模擬環境
 	docker compose -f docker-compose.yml -f docker-compose.test.yml down -v
 	@echo "$(GREEN)✅ 已停止$(NC)"
 
+test-db-up: ## 啟動「整合測試 / pre-commit 核心測試」所需 DB（postgres:5432 + redis:6379，對齊 integration-test profile）
+	@echo "$(YELLOW)🗄️  啟動測試 DB（對齊 application-integration-test.yml：postgres :5432、redis :6379）...$(NC)"
+	@docker rm -f nk-test-pg nk-test-redis >/dev/null 2>&1 || true
+	@docker run -d --rm --name nk-test-pg \
+	  -e POSTGRES_USER=koala -e POSTGRES_PASSWORD=koala5 -e POSTGRES_DB=nextkeytest \
+	  -p 5432:5432 postgres:18-alpine >/dev/null
+	@docker run -d --rm --name nk-test-redis \
+	  -p 6379:6379 redis:7-alpine redis-server --requirepass redis-dev-password >/dev/null
+	@printf "$(YELLOW)   等待 postgres 就緒...$(NC)\n"
+	@for i in $$(seq 1 30); do \
+	  docker exec nk-test-pg pg_isready -U koala -d nextkeytest >/dev/null 2>&1 && break; \
+	  sleep 1; \
+	  [ $$i -eq 30 ] && { echo "$(RED)❌ postgres 30s 未就緒$(NC)"; exit 1; }; \
+	done
+	@echo "$(GREEN)✅ 測試 DB 就緒（nk-test-pg :5432 / nk-test-redis :6379）$(NC)"
+	@echo "   用途：cd backend && mvn verify -Pintegration-test ；或 git commit（pre-commit 核心測試含 @ActiveProfiles integration-test 者需真實 postgres）"
+	@echo "   $(YELLOW)注意$(NC)：佔用 :5432/:6379，若本機有 dev DB 在跑請先停。完成後執行 make test-db-down 清理。"
+
+test-db-down: ## 停止測試 DB（test-db-up 啟動的 postgres+redis）
+	@echo "$(YELLOW)🛑 停止測試 DB...$(NC)"
+	@docker rm -f nk-test-pg nk-test-redis >/dev/null 2>&1 || true
+	@echo "$(GREEN)✅ 測試 DB 已停止$(NC)"
+
 up-mock: ## 啟動 Mock API 服務（Mockoon）
 	@echo "$(YELLOW)🚀 啟動 Mock 服務（僅 API Mock）...$(NC)"
 	docker compose -f docker-compose.yml -f docker-compose.mock.yml up -d

@@ -125,7 +125,7 @@ Sprint 25 完成大量功能與守門機制，但因 GitHub 帳單封鎖，成�
 
 ### US-005（Buffer-A）：本地整合測試 DB 標準 make target（AI-1002，P2）
 
-> **SP**: 1 | **優先級**: Buffer | **狀態**: ⬜ 待評估
+> **SP**: 1 | **優先級**: Buffer | **狀態**: ✅ 完成（make test-db-up/down，docker run 核准映像，已測試）
 
 **目標**: 解決 Sprint 25 觀察到的「整合測試 DB 容器 churn」—— 提供統一的測試 DB 生命週期管理。
 
@@ -137,7 +137,11 @@ Sprint 25 完成大量功能與守門機制，但因 GitHub 帳單封鎖，成�
 
 ### US-006（Buffer-B）：Logistics jsonb 映射慣例統一（DEF-009，低）
 
-> **SP**: 1 | **優先級**: Buffer | **狀態**: ⬜ 待評估
+> **SP**: 1 | **優先級**: Buffer | **狀態**: ✅ 完成（統一為 Map + @JdbcTypeCode；validate-schema 通過）
+
+**評估結論**: `logisticsData` 僅以 `"{}"` placeholder 寫入 2 處、無結構化讀取，改動面小且低風險。已統一為全庫慣例 `Map + @JdbcTypeCode(SqlTypes.JSON)`（2 寫入點改 `new HashMap<>()`），`make validate-schema` 驗證 entity↔jsonb 對齊無漂移。
+
+**額外（DEF-014 + DEF-015）**: 處理 e2e 嚴格守門時，查明「e2e 乾淨 DB 註冊 401」根因為 validate-e2e.sh 誤設 NEXT_PUBLIC_API_URL（非產品 bug），修正後 e2e 27 passed/5 skip/0 fail，已將 `make validate-e2e` 改為 **strict 預設**（DEF-014 解）；另記錄 DEF-015（next/font/google 建置期外部抓取）。
 
 **目標**: 將 `Logistics.logisticsData` 由 `String + columnDefinition="jsonb"` 統一為全庫慣例 `Map + @JdbcTypeCode(SqlTypes.JSON)`（若評估有結構化讀寫需求）。
 

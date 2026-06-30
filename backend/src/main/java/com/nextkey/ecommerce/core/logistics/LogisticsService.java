@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.core.logistics;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -80,7 +81,7 @@ public class LogisticsService {
                 .receiverName(request.getReceiverName() != null ? request.getReceiverName() : order.getShippingRecipientName())
                 .receiverPhone(request.getReceiverPhone() != null ? request.getReceiverPhone() : order.getShippingPhone())
                 .shippingAddress(request.getShippingAddress() != null ? request.getShippingAddress() : order.getShippingAddress())
-                .logisticsData("{}")
+                .logisticsData(new HashMap<>())
                 .build();
 
         logistics = logisticsRepository.save(logistics);

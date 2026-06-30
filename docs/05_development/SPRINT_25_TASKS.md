@@ -15,10 +15,10 @@
 | US-002 | entity ↔ migration 一致性盤點（AI-902） | 2 | P1 | ✅ 完成 |
 | US-003 | Conversation tenant_id 補齊（AI-802） | 2 | P1 | ✅ 完成 |
 | US-004 | M10 WebSocket 前端整合（@stomp/stompjs） | 3 | P1 | ✅ 完成（含 live E2E） |
-| US-005 | SSH pre-push 優化（Buffer-A，AI-804） | 1 | Buffer | ⬜ 待評估 |
-| US-006 | M11 取消流程業務規則確認（Buffer-B，AI-903） | 1 | Buffer | ⬜ 待評估 |
+| US-005 | SSH pre-push 優化（Buffer-A，AI-804） | 1 | Buffer | ✅ 完成 |
+| US-006 | M11 取消流程業務規則確認（Buffer-B，AI-903） | 1 | Buffer | ✅ 完成（調查型） |
 
-**當前進度**: **4/4 承諾 US 完成（US-001~004，9 SP / 9 SP）**。US-004 即時 E2E 已於本機完整 stack（postgres+redis+backend JAR+Next dev）實跑 **通過**。
+**當前進度**: **全部完成 —— 4/4 承諾 US（9 SP）+ 2/2 Buffer US（2 SP）= 11 SP，100%+**。Sprint 25 收尾文件（Review/Retro/Release Notes）已建立。
 
 ---
 
@@ -185,10 +185,35 @@ AC-003-3 字面要求「查詢以 tenantId 範圍隔離」與 AC-003-2 已確認
 
 ## US-005（Buffer-A）：SSH pre-push 優化（AI-804）
 
-> **SP**: 1 | **優先級**: Buffer | **狀態**: ⬜ 待評估
+> **SP**: 1 | **優先級**: Buffer | **狀態**: ✅ 完成（2026-06-30）
+
+**根因**: `git push` 先連 SSH 取 remote refs → pre-push hook 跑 act CI（10–20 分鐘）→ SSH 連線閒置被 GitHub 關閉 → hook 結束後傳 pack data 時 SIGPIPE（**exit 141**）。
+
+### 完成交付物 / AC
+
+- [x] **AC-005-1**: 調查 ControlMaster/ServerAliveInterval —— remote 為 SSH、無 `~/.ssh/config`、無 keepalive
+- [x] **AC-005-2**: 評估 HTTPS push —— 需 PAT、侵入性高、未根治，**不採用**（保留備案）
+- [x] **AC-005-3**: 實作 repo-local `git config core.sshCommand "ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=30"`（keepalive ~30 分鐘容忍度，覆蓋 act 執行時間），已驗證帶參數 SSH 仍可認證
+- [x] 文件：[docs/08_deployment/SSH_PREPUSH_KEEPALIVE.md](../08_deployment/SSH_PREPUSH_KEEPALIVE.md)
+
+> 不改變 pre-push 仍跑完整 act CI 的守門機制；🔴 嚴禁 `--no-verify`。
 
 ---
 
 ## US-006（Buffer-B）：M11 物流取消流程業務規則確認（AI-903）
 
-> **SP**: 1 | **優先級**: Buffer | **狀態**: ⬜ 待評估（僅調查，不含實作）
+> **SP**: 1 | **優先級**: Buffer | **狀態**: ✅ 完成（調查型，2026-06-30）
+
+**方法**: Explore Agent 程式碼調查 + ba-analyst skill 規則驗證 + PM/PO 簽核。
+
+### 完成交付物 / AC
+
+- [x] **AC-006-1**: 狀態轉換規則確認 —— **PM/PO 決策：SHIPPING（已出貨）不可取消，改走退貨/退款**；CONFIRMED→CANCELLED 允許（此時無物流單），`canCancel()`={CREATED,PAID,CONFIRMED} 正確
+- [x] **AC-006-2**: 是否需呼叫 HCT/TCAT API —— **不需要**（可取消狀態皆在物流單建立前）
+- [x] **AC-006-3**: 產出結論 —— [docs/01_requirements/M11_Cancellation_Rules_Validation.md](../01_requirements/M11_Cancellation_Rules_Validation.md)；**依 Plan 為調查型，本 Sprint 不動程式碼**，實作延 Sprint 26（DEF-010 StateMachine 一致性、DEF-011 錯誤碼）
+
+### 關鍵發現
+
+- `OrderStateMachine` 轉換表允許 SHIPPING→CANCELLED，但 `canCancel()` 排除 SHIPPING → **不一致**（DEF-010，實務不受影響因 cancelOrder 以 canCancel 守門）
+- `cancelLogistics` 已實作（Mock，設 RETURNED），但誤用錯誤碼 E_7000/7002 → DEF-011
+- `LogisticsProvider` 無 cancelShipment、cancelOrder 未連動物流取消 → 依確認規則**本案不需新增**

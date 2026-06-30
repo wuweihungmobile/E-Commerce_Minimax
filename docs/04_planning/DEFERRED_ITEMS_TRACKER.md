@@ -19,6 +19,9 @@
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
 |----|------|-------------|---------|---------|---------|------|
 | DEF-009 | Logistics.logisticsData jsonb 映射慣例統一 | Sprint 25（US-002 盤點發現） | 低優先：現況 `String + columnDefinition="jsonb"` 功能正常、validate 通過，與全庫 `Map + @JdbcTypeCode(SqlTypes.JSON)` 慣例不一致，但無漂移風險。為避免擴大變更面（Rule 3）暫不修改 | 待 Logistics 需結構化讀寫該欄位時一併處理 | 1 | ⚠️ 待處理（低） |
+| DEF-010 | OrderStateMachine 一致性清理（SHIPPING→CANCELLED） | Sprint 25（US-006 規則確認發現） | PM/PO 確認 SHIPPING 不可取消，但 OrderStateMachine 轉換表仍允許 SHIPPING→CANCELLED，與 canCancel() 矛盾。US-006 為調查型不含實作（Rule 3） | 無（cancelOrder 已以 canCancel() 守門，實務不受影響） | 1 | ⚠️ 待處理（低） |
+| DEF-011 | cancelLogistics 錯誤碼修正（E_7000/E_7002 → E_7500 系列） | Sprint 25（US-006 規則確認發現） | cancelLogistics 誤用 Supplier/PO 錯誤碼，應改物流專用 E_7500 系列；US-006 不含實作 | 一併補物流取消整合測試 | 1 | ⚠️ 待處理（低） |
+| DEF-012 | ChatService.toMessageResponse 廣播 conversationId 補正 | Sprint 25（US-004 live E2E 發現） | STOMP 廣播 payload 的 conversationId 為 null，前端已以訂閱 id 補正；建議後端修正以利其他 client（mobile 等） | 無 | 1 | ⚠️ 待處理（低） |
 
 ---
 

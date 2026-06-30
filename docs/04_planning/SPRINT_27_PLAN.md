@@ -64,7 +64,9 @@ Sprint 26 清償了 DEF-009~012/014 並完成本地優先 CI 整套工程，活�
 
 ### US-001：產品方向決策（AI-1101，P1）🔴 需人工拍板
 
-> **SP**: 1 | **優先級**: P1 | **狀態**: 📋 規劃中
+> **SP**: 1 | **優先級**: P1 | **狀態**: ✅ 完成（PM/PO 拍板方向 (b)，產出 PRODUCT_BACKLOG + Sprint 28 計畫）
+>
+> **決策結果（2026-07-01）**：PM/PO 選 **(b) 強化既有模組**。經 3 路盤點（後端成熟度/前端覆蓋/Phase 2 文件）交叉比對，產出 [PRODUCT_BACKLOG.md](./PRODUCT_BACKLOG.md)（RICE 排序 + EPIC-BUYER 買家端閉環）。核心洞察：後端 16/18 高成熟，但買家端前端（訂單/付款/物流/評價/通知收件匣）缺失。再拍板「先補品質再加功能」→ Sprint 28 做測試補強 + 後台深化（見 [SPRINT_28_PLAN.md](./SPRINT_28_PLAN.md)），EPIC-BUYER 自 Sprint 29 起。
 
 **目標**: backlog 接近見底（活躍 DEF 僅 2 個低優先、無正式 roadmap）。由 PM/PO 決定 Sprint 28+ 走向，避免後續 Sprint 無正式開發來源、淪為隨意挑任務。
 

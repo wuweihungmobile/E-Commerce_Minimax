@@ -1,10 +1,15 @@
 name: CI/CD Pipeline (v0.09 Enhanced)
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
+  # 🔴 2026-06-30：改為「僅手動觸發」。private repo 的 GitHub Actions 有計費額度，
+  # 日常驗證一律改用本地守門（pre-commit + pre-push act + make validate-e2e/validate-schema）。
+  # 需要雲端驗證時（例如帳單恢復後做 release 雲端 E2E）再手動觸發：
+  #   gh workflow run "CI/CD Pipeline (v0.09 Enhanced)" --ref main
+  # 還原自動觸發：把下方 push/pull_request 區塊取消註解即可。
+  # push:
+  #   branches: [ main, develop ]
+  # pull_request:
+  #   branches: [ main ]
   workflow_dispatch:
 
 # 防止並行 CI 運行導致 artifact 配額問題

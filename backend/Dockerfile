@@ -8,8 +8,10 @@ FROM maven:3.9-eclipse-temurin-21 AS builder
 WORKDIR /app
 
 # Copy Maven configuration
+# 🔴 2026-06-30：移除 `COPY .mvn .mvn` —— 本專案無 Maven wrapper（.mvn 從未存在於 repo），
+# 建置直接用 maven base image 內建的 mvn；該行為死碼，會導致每次 docker build 失敗
+# （failed to compute cache key: "/.mvn": not found）。雲端 CI 走 mvn package 不經 Dockerfile，故未踩到。
 COPY pom.xml ./
-COPY .mvn .mvn
 
 # Download dependencies (cached layer)
 RUN mvn dependency:go-offline -B

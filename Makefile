@@ -183,6 +183,17 @@ validate-schema: ## schema 漂移守門：以 ddl-auto=validate + Flyway 對乾�
 	@echo "$(YELLOW)🔍 schema 漂移守門關卡（複製 GitHub E2E 啟動條件，本地 act 抓不到的漏洞）...$(NC)"
 	@./scripts/validate-schema.sh
 
+validate-e2e: ## 本地 E2E 守門：乾淨 DB → Flyway 重建 → 全棧(host JAR+npm start, ddl-auto=validate) → Playwright（複製雲端 e2e job）
+	@echo "$(YELLOW)🎭 本地 E2E 守門（複製雲端 e2e job：host 程序 + 乾淨 DB + Playwright）...$(NC)"
+	@./scripts/validate-e2e.sh
+
+validate-release: ## release 前完整本地守門：act（backend+frontend）+ schema 漂移 + E2E（= 雲端 ci.yml 等價驗證）
+	@echo "$(YELLOW)🚦 release 前完整本地守門（等價雲端 ci.yml）...$(NC)"
+	@$(MAKE) validate-all
+	@$(MAKE) validate-schema
+	@$(MAKE) validate-e2e
+	@echo "$(GREEN)✅ release 守門全數通過：act + schema + E2E，可安全部署$(NC)"
+
 # =============================================
 # 本機快速檢查（無需 act）
 # =============================================

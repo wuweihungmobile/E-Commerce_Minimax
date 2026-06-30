@@ -1,11 +1,11 @@
 name: 技術債檢視 / Technical Debt Review
 
 on:
-  schedule:
-    # 每 sprint 結束時執行（每 2 週）
-    # 0 9 * * MON = 每周一 09:00
-    # 改為每 2 週一執行
-    - cron: '0 9 */14 * *'
+  # 🔴 2026-06-30：停用每 2 週自動排程（private repo 省 Actions 費用），改為僅手動觸發。
+  # 需要技術債報告時：gh workflow run "技術債檢視 / Technical Debt Review" --ref main
+  # 還原排程：把下方 schedule 區塊取消註解即可。
+  # schedule:
+  #   - cron: '0 9 */14 * *'
   workflow_dispatch:
     # 手動觸發
 

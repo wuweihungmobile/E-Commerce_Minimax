@@ -17,7 +17,10 @@
 
 name: Local CI (act-compatible)
 
-on: [push, pull_request, workflow_dispatch]
+# 🔴 2026-06-30：本檔僅供「本地 act」使用（make validate-* / pre-push hook 以 -W 指定本檔執行）。
+# 改為僅 workflow_dispatch、移除 push/pull_request 自動觸發 → private repo 不再為這個「本地鏡像」浪費雲端 Actions 額度。
+# 本地 act 以 `act -W .github/workflows/act-compat.yml` 指定單檔執行，會無視 on: 事件過濾，故不受影響（已實測）。
+on: [workflow_dispatch]
 
 concurrency:
   group: local-ci-${{ github.ref }}

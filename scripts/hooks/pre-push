@@ -55,6 +55,38 @@ if [ -z "$CURRENT_TREE_HASH" ]; then
 fi
 
 # =============================================
+# 0. Schema 漂移守門（最優先，不可被 act 快取記錄略過）
+#    原因：本地 act 以 ddl-auto=update 啟動，抓不到 entity↔migration 漂移；
+#         GitHub E2E 以 ddl-auto=validate 啟動才會擋下。本關卡複製該啟動條件。
+#    觸發：本次推送變動含 JPA entity（domain/model/*.java）或 Flyway migration（db/migration/*.sql）。
+# =============================================
+SCHEMA_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+SCHEMA_REMOTE=$(git rev-parse "origin/$SCHEMA_BRANCH" 2>/dev/null || echo "")
+if [ -n "$SCHEMA_REMOTE" ]; then
+    SCHEMA_CHANGED=$(git diff --name-only "$SCHEMA_REMOTE..HEAD" 2>/dev/null || echo "")
+    HAS_SCHEMA=$(echo "$SCHEMA_CHANGED" | grep -E '(domain/model/.*\.java$|db/migration/.*\.sql$)' | head -1 || true)
+else
+    # 首次推送 / 抓不到 remote → 保守起見一律驗 schema
+    HAS_SCHEMA="first-push"
+fi
+if [ -n "$HAS_SCHEMA" ]; then
+    echo ""
+    echo "🔍 偵測到 entity/migration 變動 → 執行 schema 漂移守門（ddl-auto=validate + Flyway 對乾淨 DB）..."
+    if [ -x "$ROOT_DIR/scripts/validate-schema.sh" ]; then
+        if ! "$ROOT_DIR/scripts/validate-schema.sh"; then
+            echo ""
+            echo "🔴 schema 漂移守門失敗！entity 與 migration 不一致，禁止 push！"
+            echo "   修復後重跑：make validate-schema"
+            echo "   🔴 禁止使用 --no-verify！會導致遠端 schema-validation 失敗。"
+            exit 1
+        fi
+        echo "✅ schema 漂移守門通過"
+    else
+        echo "⚠️  找不到可執行的 scripts/validate-schema.sh，略過 schema 守門（請確認檔案存在且可執行）"
+    fi
+fi
+
+# =============================================
 # 1. 若已有有效驗證記錄（10 分鐘內 + tree-hash 相符）→ 直接放行
 #    涵蓋情境：使用者剛手動跑過 make validate-all
 # =============================================

@@ -10,6 +10,67 @@
 
 ---
 
+## 🔴 本地優先策略（2026-06-30 更新 — 取代雲端日常 CI）
+
+### 背景
+本 repo 為 **private**，GitHub Actions 有計費額度；且帳號層級帳單反覆封鎖，導致雲端 CI 無法穩定使用。
+策略改為 **「本地守門為主、雲端僅手動觸發」**：日常驗證完全在本地完成，不再為每次 push 燒雲端 Actions 額度。
+
+### 變更一：三個 workflow 改為「僅手動觸發」
+`ci.yml`、`act-compat.yml`、`technical-debt-review.yml` 的 `on:` 全部改為 **只剩 `workflow_dispatch`**
+（移除 `push` / `pull_request` / `schedule` 自動觸發）。→ **push 不再觸發任何雲端 run**。
+
+> 還原方式：各檔 `on:` 區塊內把被註解的 `push:` / `pull_request:` / `schedule:` 取消註解即可。
+> 本地 `act` 不受影響——所有 `make validate-*` 與 pre-push hook 都以 `act -W <指定檔>` 執行，會無視 `on:` 過濾（已實測）。
+
+### 變更二：本地三層守門（push 即等價雲端日常驗證）
+
+| 層級 | 觸發 | 內容 | 對應雲端 | 耗時 |
+|------|------|------|----------|------|
+| **Tier 0** pre-commit | 每次 commit | lint + compile + 核心測試 + gitleaks | secret/backend/frontend | ~2 min |
+| **Tier 1** pre-push | 每次 push | `act`：backend(單元+整合) + frontend | `ci.yml` backend/frontend job | ~15-20 min |
+| **Tier 1.5** pre-push（條件） | push 含 entity/migration 變動時**自動** | `make validate-schema`（ddl-auto=validate + Flyway 對乾淨 DB） | `ci.yml` e2e job 的 schema 重建 | ~2-3 min |
+| **Tier 2** release 守門 | 手動（release 前） | `make validate-e2e`（全棧 + Playwright） | `ci.yml` e2e job | ~10-20 min |
+
+### 變更三：新增 make target
+
+| 命令 | 用途 |
+|------|------|
+| `make validate-schema` | schema 漂移守門（已串進 pre-push，改 entity/migration 時自動跑） |
+| `make validate-e2e` | **新增**：乾淨 DB → Flyway 重建 → 全棧(ddl-auto=validate) → Playwright，複製雲端 e2e job |
+| `make validate-release` | **新增**：`validate-all` + `validate-schema` + `validate-e2e` = 雲端 `ci.yml` 等價完整守門 |
+
+### 本地 vs 雲端覆蓋對照（哪些已被本地取代）
+
+| 雲端 ci.yml job | 本地對應 | 狀態 |
+|-----------------|----------|------|
+| backend / frontend | `make validate-all`（act）+ pre-push | ✅ 已覆蓋 |
+| e2e（Playwright + schema 重建） | `make validate-e2e` + pre-push 的 `validate-schema` | ✅ 已覆蓋 |
+| secret-detection | pre-commit gitleaks / `make check-secret` | ✅ 已覆蓋 |
+| dependency-scan / sast / license-compliance | 低頻安全掃描，需要時手動跑 | 🟡 不進每次 push 關卡 |
+
+### 何時 / 如何手動觸發雲端
+帳單恢復後若要做雲端驗證（例如 release 雲端 E2E、或安全掃描）：
+```bash
+gh workflow run "CI/CD Pipeline (v0.09 Enhanced)" --ref main
+gh workflow run "技術債檢視 / Technical Debt Review" --ref main
+gh run watch   # 觀察執行
+```
+
+### 日常正確流程（本地優先）
+```bash
+# 1. 開發 → commit（pre-commit 自動把關）
+git commit -m "feat: ..."
+# 2. push（pre-push 自動跑 act；含 entity/migration 時自動加跑 schema 守門）
+git push origin main
+# 3. release 前（手動）跑完整守門
+make validate-release
+```
+
+> 🔴 嚴禁 `--no-verify`：會繞過 pre-push 唯一守門員，且雲端已停用自動 CI，等於完全無驗證上庫。
+
+---
+
 ## 📋 目錄
 
 1. [問題背景](#問題背景)
@@ -504,6 +565,7 @@ act -W .github/workflows/act-compat.yml -v
 | 日期 | 版本 | 變更 | 作者 |
 |------|------|------|------|
 | 2026-06-11 | 1.0 | 初版建立（完整本地 CI 工具鏈） | Claude Code |
+| 2026-06-30 | 2.0 | 本地優先策略：三 workflow 改 workflow_dispatch only（停用雲端自動 CI）；新增 `make validate-e2e` / `validate-release`；`validate-schema` 串進 pre-push；修復 backend Dockerfile 死碼 `COPY .mvn .mvn` | Claude Code |
 
 ---
 

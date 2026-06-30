@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.core.chat;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -12,6 +13,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -57,6 +60,9 @@ class ChatServiceStompBroadcastTest {
 
     @InjectMocks
     private ChatService chatService;
+
+    @Captor
+    private ArgumentCaptor<ChatDto.MessageResponse> payloadCaptor;
 
     private static final UUID USER_ID = UUID.randomUUID();
     private static final UUID CONVERSATION_ID = UUID.randomUUID();
@@ -104,5 +110,24 @@ class ChatServiceStompBroadcastTest {
 
         String expectedDest = "/queue/conversations/" + CONVERSATION_ID + "/messages";
         verify(messagingTemplate).convertAndSend(eq(expectedDest), any(ChatDto.MessageResponse.class));
+    }
+
+    @Test
+    @DisplayName("TC-STOMP-C004 (DEF-012): 廣播 payload 的 conversationId 不為 null（由關聯取得，非唯讀鏡像欄位）")
+    void sendMessage_broadcastPayload_shouldCarryNonNullConversationId() {
+        ChatDto.SendMessageRequest request = ChatDto.SendMessageRequest.builder()
+                .conversationId(CONVERSATION_ID)
+                .content("Hello STOMP")
+                .build();
+
+        chatService.sendMessage(USER_ID, request);
+
+        verify(messagingTemplate).convertAndSend(any(String.class), payloadCaptor.capture());
+        ChatDto.MessageResponse payload = payloadCaptor.getValue();
+        // DEF-012: 新建 + save 的 Message in-memory 實例唯讀 conversationId 欄位為 null，
+        // 必須由 conversation 關聯取得，否則 mobile 等以 payload 解析的 client 會拿到 null。
+        assertThat(payload.getConversationId())
+                .as("廣播 payload conversationId 不應為 null")
+                .isEqualTo(CONVERSATION_ID);
     }
 }

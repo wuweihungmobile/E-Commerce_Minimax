@@ -296,9 +296,16 @@ public class ChatService {
     private ChatDto.MessageResponse toMessageResponse(Message message) {
         User sender = userRepository.findById(message.getSenderId()).orElse(null);
 
+        // DEF-012: conversationId 唯讀鏡像欄位（@Column insertable/updatable=false）在「新建 + save」的
+        // in-memory 實例上不會被填值（僅從 DB 載入時才有值），導致 STOMP 廣播 payload conversationId=null。
+        // 改由關聯取得（LAZY proxy 取 id 不觸發查詢），fallback 唯讀欄位以相容「從 DB 載入」的路徑。
+        UUID conversationId = message.getConversation() != null
+                ? message.getConversation().getId()
+                : message.getConversationId();
+
         return ChatDto.MessageResponse.builder()
                 .messageId(message.getId())
-                .conversationId(message.getConversationId())
+                .conversationId(conversationId)
                 .senderId(message.getSenderId())
                 .senderName(sender != null ? sender.getFullName() : null)
                 .messageType(message.getMessageType().name())

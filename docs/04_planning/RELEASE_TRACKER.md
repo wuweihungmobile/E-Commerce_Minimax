@@ -11,7 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
-| Sprint 25 | v2026.10.10-01 | - | 2026-06-30 | schema 漂移守門關卡 + Conversation tenant_id(V56) + M10 WebSocket 前端整合(live E2E) + SSH keepalive + M11 取消規則確認 | 🟡 已準備，push 待帳單 |
+| Sprint 25 | v2026.10.10-01 | - | 2026-06-30 | schema 漂移守門關卡 + Conversation tenant_id(V56) + M10 WebSocket 前端整合(live E2E) + SSH keepalive + M11 取消規則確認 | ✅ 已 push（本地優先驗證；雲端改手動觸發） |
 | Sprint 24 | v2026.09.26-01 | - | 2026-06-29 | M10 WebSocket STOMP 即時訊息 + M13 Redis TTL + 整合測試標準化 + E2E schema 修復(V48~V55) | ✅ |
 | Sprint 23 | v2026.09.12-01 | - | 2026-06-27 | M10 IM Migration(V45/V46) + M11 物流履約整合 + 運費接入 + M13 @Cacheable | ✅ |
 | Sprint 22 | v2026.08.29-01 | - | 2026-06-27 | 詳見 RELEASE_NOTES_v2026.08.29-01.md | ✅ |

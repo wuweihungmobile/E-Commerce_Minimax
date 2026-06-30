@@ -64,9 +64,15 @@ Sprint 25 完成大量功能與守門機制，但因 GitHub 帳單封鎖，成�
 
 ### US-001：Sprint 25 成果入庫 + 雲端 E2E 驗證（AI-1005，P1）
 
-> **SP**: 2 | **優先級**: P1 | **狀態**: ⬜ 待開始 | **🔴 外部依賴**: GitHub Actions 帳單
+> **SP**: 2 | **優先級**: P1 | **狀態**: ✅ 已達成（改以本地優先策略）
 
-**目標**: 帳單解除後，commit Sprint 25 收尾 docs、push 全部 commits，確認 GitHub 雲端 CI/E2E（含 at-m10-chat）綠燈，使 Sprint 25 成果正式入庫。
+**🔄 2026-06-30 收斂（策略轉向本地優先）**: 原 US 假設「等帳單解除 → push → 雲端 E2E 綠燈」。實際採行**本地優先 CI**：
+- Sprint 25 全部 commits **已 push 至 origin/main**（pre-push 完整本地 act 通過、零 --no-verify）。
+- 雲端三 workflow 已改 `workflow_dispatch` only（push 不再觸發雲端，省 private repo Actions 費用）。
+- 雲端 E2E 由本地 `make validate-e2e`（host JAR + Playwright + 乾淨 DB + ddl-auto=validate）**取代**。
+- AC-001-2/3（雲端綠燈）改為「需要時手動 `gh workflow run`」，非日常阻擋條件。詳見 [LOCAL_CI_VALIDATION.md](../08_deployment/LOCAL_CI_VALIDATION.md)。
+
+**目標（原）**: 帳單解除後，commit Sprint 25 收尾 docs、push 全部 commits，確認 GitHub 雲端 CI/E2E（含 at-m10-chat）綠燈，使 Sprint 25 成果正式入庫。
 
 **AC-001-1**: Sprint 25 收尾 docs commit；全部 commits push 至 origin/main（pre-push 本地 act 通過、🔴 不得 --no-verify）
 **AC-001-2**: GitHub Actions 全 pipeline 綠燈（Layer 0/1 + E2E）
@@ -78,9 +84,10 @@ Sprint 25 完成大量功能與守門機制，但因 GitHub 帳單封鎖，成�
 
 ### US-002：WS/即時功能真實 client E2E DoD 化（AI-1001，P1）
 
-> **SP**: 2 | **優先級**: P1 | **狀態**: ⬜ 待開始
+> **SP**: 2 | **優先級**: P1 | **狀態**: ✅ 完成（DoD 文件 + 盤點，at-m10-chat 乾淨 DB 限制列 DEF-014）
 
 **目標**: 制度化本 Sprint 最大教訓 —— WebSocket/STOMP 等「需握手+序列化」功能，DoD 必須包含真實 client E2E（不可僅 SimpMessagingTemplate 單元測試）。
+**產出**: [REALTIME_ASYNC_E2E_DOD.md](../06_quality/REALTIME_ASYNC_E2E_DOD.md)（DoD 規則 + backend-only 盤點，新增 DEF-013 MQ 通知 e2e、DEF-014 乾淨 DB 註冊 401）。
 
 **AC-002-1**: 更新 DoD 標準文件（docs/06_quality 或 Document_Quality_Checklist），明訂 WS/即時功能須有真實 client（Playwright/SockJS）E2E
 **AC-002-2**: 確認 at-m10-chat 在 GitHub E2E job 穩定通過（必要時補強 selector / 等待策略，沿用 Sprint 25 經驗）
@@ -90,9 +97,10 @@ Sprint 25 完成大量功能與守門機制，但因 GitHub 帳單封鎖，成�
 
 ### US-003：後端 toMessageResponse conversationId 修正（AI-1003 / DEF-012，P1）
 
-> **SP**: 1 | **優先級**: P1 | **狀態**: ⬜ 待開始
+> **SP**: 1 | **優先級**: P1 | **狀態**: ✅ 完成（改由 conversation 關聯取 id + 廣播 payload 測試）
 
 **目標**: 修正 `ChatService.toMessageResponse` 使廣播 payload 的 `conversationId` 不為 null，利於 mobile 等未來 client（前端目前以訂閱 id 補正，屬 workaround）。
+**實作**: 根因為 Message 唯讀鏡像欄位 `conversationId`（insertable/updatable=false）在新建+save 的 in-memory 實例為 null；改由 `getConversation().getId()` 取得（LAZY proxy 取 id 不觸發查詢），fallback 唯讀欄位。新增 `ChatServiceStompBroadcastTest` 廣播 payload conversationId 非 null 測試。
 
 **AC-003-1**: `toMessageResponse` 正確填入 `conversationId`（由 message → conversation 取得）
 **AC-003-2**: 補單元測試驗證廣播/回應 payload `conversationId` 非 null
@@ -103,9 +111,10 @@ Sprint 25 完成大量功能與守門機制，但因 GitHub 帳單封鎖，成�
 
 ### US-004：M11 取消技術債清理（AI-1004 / DEF-010+011，P2）
 
-> **SP**: 2 | **優先級**: P2 | **狀態**: ⬜ 待開始
+> **SP**: 2 | **優先級**: P2 | **狀態**: ✅ 完成（StateMachine 一致性 + 錯誤碼 + 8 單元測試）
 
 **目標**: 依 Sprint 25 US-006 確認的規則（SHIPPING 不可取消）清理 M11 取消相關技術債。
+**實作**: DEF-010 移除 OrderStateMachine 的 SHIPPING→CANCELLED（canTransition + getNextValidStates），新增 OrderStateMachineTest（含「轉換表↔canCancel 一致性」不變量）；DEF-011 cancelLogistics 改用 E_7500（not found）/E_7502（delivered），新增 LogisticsServiceCancelTest 3 測試。
 
 **AC-004-1**（DEF-010）: `OrderStateMachine` 轉換表移除/限縮 `SHIPPING→CANCELLED`，與 `canCancel()`={CREATED,PAID,CONFIRMED} 對齊
 **AC-004-2**（DEF-011）: `cancelLogistics` 錯誤碼由 E_7000/E_7002 改為物流專用 E_7500 系列

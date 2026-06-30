@@ -77,9 +77,11 @@ public class OrderStateMachine {
                         "Cannot transition from CONFIRMED to " + targetStatus);
             };
 
-            // SHIPPING 可以轉到 DELIVERED
+            // SHIPPING 只可轉到 DELIVERED
+            // DEF-010：移除 SHIPPING→CANCELLED，與 canCancel()={CREATED,PAID,CONFIRMED} 對齊。
+            // 出貨後不可直接取消，須走退貨/退款流程（見 M11_Cancellation_Rules_Validation.md）。
             case "SHIPPING" -> switch (targetStatus) {
-                case "DELIVERED", "CANCELLED" -> TransitionResult.allowed(currentStatus, targetStatus);
+                case "DELIVERED" -> TransitionResult.allowed(currentStatus, targetStatus);
                 default -> TransitionResult.denied(currentStatus, targetStatus,
                         "Cannot transition from SHIPPING to " + targetStatus);
             };
@@ -160,7 +162,7 @@ public class OrderStateMachine {
             case "CREATED" -> java.util.List.of("PAID", "CANCELLED");
             case "PAID" -> java.util.List.of("CONFIRMED", "REFUNDING");
             case "CONFIRMED" -> java.util.List.of("SHIPPING", "CANCELLED");
-            case "SHIPPING" -> java.util.List.of("DELIVERED", "CANCELLED");
+            case "SHIPPING" -> java.util.List.of("DELIVERED"); // DEF-010：移除 CANCELLED
             case "DELIVERED" -> java.util.List.of("COMPLETED");
             case "CANCELLED" -> java.util.List.of("REFUNDING");
             default -> java.util.List.of();

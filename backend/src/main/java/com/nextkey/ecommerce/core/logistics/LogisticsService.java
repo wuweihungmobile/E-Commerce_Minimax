@@ -202,11 +202,12 @@ public class LogisticsService {
      */
     @Transactional
     public LogisticsDto.LogisticsResponse cancelLogistics(UUID logisticsId, String reason) {
+        // DEF-011：改用物流專用錯誤碼（原誤用 Supplier/PO 的 E_7000/E_7002）。
         Logistics logistics = logisticsRepository.findById(logisticsId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_7000));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_7500)); // Logistics not found
 
         if (logistics.getStatus() == Logistics.LogisticsStatus.DELIVERED) {
-            throw new BusinessException(ErrorCode.E_7002, "Cannot cancel delivered logistics");
+            throw new BusinessException(ErrorCode.E_7502, "Cannot cancel delivered logistics");
         }
 
         logistics.setStatus(Logistics.LogisticsStatus.RETURNED);

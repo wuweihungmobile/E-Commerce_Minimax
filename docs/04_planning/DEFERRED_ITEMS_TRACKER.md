@@ -18,13 +18,8 @@
 
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
 |----|------|-------------|---------|---------|---------|------|
-| DEF-009 | Logistics.logisticsData jsonb 映射慣例統一 | Sprint 25（US-002 盤點發現） | 低優先：現況 `String + columnDefinition="jsonb"` 功能正常、validate 通過，與全庫 `Map + @JdbcTypeCode(SqlTypes.JSON)` 慣例不一致，但無漂移風險。為避免擴大變更面（Rule 3）暫不修改 | 待 Logistics 需結構化讀寫該欄位時一併處理 | 1 | ✅ Sprint 26 US-006 完成（統一為 Map + @JdbcTypeCode；validate-schema 通過） |
-| DEF-010 | OrderStateMachine 一致性清理（SHIPPING→CANCELLED） | Sprint 25（US-006 規則確認發現） | PM/PO 確認 SHIPPING 不可取消，但 OrderStateMachine 轉換表仍允許 SHIPPING→CANCELLED，與 canCancel() 矛盾。US-006 為調查型不含實作（Rule 3） | 無（cancelOrder 已以 canCancel() 守門，實務不受影響） | 1 | ✅ Sprint 26 US-004 完成（移除 SHIPPING→CANCELLED + 一致性測試） |
-| DEF-011 | cancelLogistics 錯誤碼修正（E_7000/E_7002 → E_7500 系列） | Sprint 25（US-006 規則確認發現） | cancelLogistics 誤用 Supplier/PO 錯誤碼，應改物流專用 E_7500 系列；US-006 不含實作 | 一併補物流取消整合測試 | 1 | ✅ Sprint 26 US-004 完成（E_7500/E_7502 + 3 單元測試） |
-| DEF-012 | ChatService.toMessageResponse 廣播 conversationId 補正 | Sprint 25（US-004 live E2E 發現） | STOMP 廣播 payload 的 conversationId 為 null，前端已以訂閱 id 補正；建議後端修正以利其他 client（mobile 等） | 無 | 1 | ✅ Sprint 26 US-003 完成（改由 conversation 關聯取 id + 廣播 payload 測試） |
-| DEF-013 | M09 MQ 通知缺端到端驗證 | Sprint 26（US-002 盤點發現） | backend-only 非同步（NotificationProducer→Consumer）目前以後端單元/整合為主，無「觸發→消費→可觀測結果」端到端驗證 | 待通知相關 Sprint 或需求觸發 | 1 | ⚠️ 待處理（低） |
-| DEF-014 | e2e 乾淨 DB 註冊回 401 致 10 spec 失敗 | Sprint 26（US-002 validate-e2e 發現） | 表象為註冊 401，經 curl 實測乾淨 DB backend 註冊 201/登入 200 **皆正常**；真因為 validate-e2e.sh 誤把 NEXT_PUBLIC_API_URL 設 `/api/v2`（前端路徑已含 /v2 → 雙 /v2 → 不匹配 permitAll → 401），非產品 bug | 無 | 2 | ✅ Sprint 26 完成（修 validate-e2e.sh 為 /api → 27 passed/5 skip/0 fail；e2e 改 strict 預設） |
-| DEF-015 | 前端 next/font/google 建置期外部抓取 | Sprint 26（DEF-014 驗證時發現） | layout.tsx 用 next/font/google（Geist/Geist Mono）於 build 期向 fonts.googleapis.com 抓取，離線/網路不穩時 npm run build 失敗 → validate-e2e exit 2 | 改 next/font/local 或自帶字型，移除建置期外部網路依賴 | 1 | ⚠️ 待處理（低） |
+| DEF-013 | M09 MQ 通知缺端到端驗證 | Sprint 26（US-002 盤點發現） | backend-only 非同步（NotificationProducer→Consumer）目前以後端單元/整合為主，無「觸發→消費→可觀測結果」端到端驗證 | 待通知相關 Sprint 或需求觸發 | 1 | ⚠️ 待處理（低）→ Sprint 27 US-003（AI-1103） |
+| DEF-015 | 前端 next/font/google 建置期外部抓取 | Sprint 26（DEF-014 驗證時發現） | layout.tsx 用 next/font/google（Geist/Geist Mono）於 build 期向 fonts.googleapis.com 抓取，離線/網路不穩時 npm run build 失敗 → validate-e2e exit 2 | 改 next/font/local 或自帶字型，移除建置期外部網路依賴 | 1 | ⚠️ 待處理（低）→ Sprint 27 US-002（AI-1102） |
 
 ---
 
@@ -38,10 +33,35 @@
 | DEF-006 | M11 Provider Stub 強化 | Sprint 21 Buffer-C | Sprint 22 | HCT/TCAT 追蹤號改為 {Provider}-{yyyyMMdd}-{HEX8} 格式 |
 | DEF-007 | M11 物流與訂單履約流程整合 | Sprint 21 | Sprint 23 | createLogistics 前置驗證 + 訂單狀態同步 SHIPPING/DELIVERED，4 個整合測試通過 |
 | DEF-008 | ShippingTemplate 接入訂單結帳流程 | Sprint 21 | Sprint 23 | V47 Migration + shippingFee 欄位 + 免運門檻邏輯，3 個整合測試通過 |
+| DEF-009 | Logistics.logisticsData jsonb 映射慣例統一 | Sprint 25 | Sprint 26 | US-006：統一為 Map + @JdbcTypeCode(SqlTypes.JSON)，validate-schema 通過 |
+| DEF-010 | OrderStateMachine 一致性清理（SHIPPING→CANCELLED） | Sprint 25 | Sprint 26 | US-004：移除 SHIPPING→CANCELLED + 轉換表↔canCancel 一致性不變量測試 |
+| DEF-011 | cancelLogistics 錯誤碼修正（→ E_7500 系列） | Sprint 25 | Sprint 26 | US-004：改 E_7500（not found）/E_7502（delivered）+ 3 單元測試 |
+| DEF-012 | ChatService.toMessageResponse 廣播 conversationId 補正 | Sprint 25 | Sprint 26 | US-003：改由 conversation 關聯取 id + 廣播 payload 測試 |
+| DEF-014 | e2e 乾淨 DB 註冊回 401 致 10 spec 失敗 | Sprint 26 | Sprint 26 | 真因為 validate-e2e.sh 誤設 NEXT_PUBLIC_API_URL（雙 /v2），非產品 bug；修正後 27 passed/5 skip/0 fail，e2e 改 strict 預設 |
 
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 26 (2026-07-01)
+
+**新增延後**:
+- DEF-013（🟡 低）: M09 MQ 通知缺端到端驗證 — US-002 backend-only 盤點發現，套用 REALTIME_ASYNC_E2E_DOD（延 Sprint 27 US-003）
+- DEF-015（🟡 低）: 前端 next/font/google 建置期外部抓取 — DEF-014 驗證時發現，離線 build 失敗（延 Sprint 27 US-002）
+
+**移除延後（已完成）**:
+- DEF-009 ✅ Sprint 26 US-006（Logistics jsonb 統一 Map + @JdbcTypeCode）
+- DEF-010 ✅ Sprint 26 US-004（移除 SHIPPING→CANCELLED + 一致性不變量）
+- DEF-011 ✅ Sprint 26 US-004（cancelLogistics 錯誤碼 E_7500 系列）
+- DEF-012 ✅ Sprint 26 US-003（廣播 conversationId 改由 conversation 取得）
+- DEF-014 ✅ Sprint 26（validate-e2e.sh API_URL 修正，e2e strict）
+
+**更新**:
+- Sprint 26 承諾 7 SP + Buffer 2 SP = 9 SP 全完成（US-001~006）
+- 計畫外重大工作：本地優先 CI 整套（停用雲端自動 CI、validate-e2e/release、pre-push v4→v5、push 降頻）
+- `@Test` 靜態 668（+9）、catch(Exception)=0、@Deprecated=0、Flyway V56（無新 migration）
+- **活躍 DEF 降至 2 個低優先**（DEF-013/015），技術債近清零、backlog 見底
+- **新增 Action Items（Sprint 27）**：AI-1101 產品方向決策（P1，需人工）、AI-1102 DEF-015、AI-1103 DEF-013、AI-1104 pre-push v5 實測、AI-1105 守門腳本回歸
 
 ### Sprint 25 (2026-06-29，進行中)
 
@@ -209,6 +229,6 @@
 
 ---
 
-**文件版本**: v1.9
-**最後更新**: 2026-06-29（Sprint 25 US-001/US-002 完成，新增 DEF-009）
-**下次審查**: Sprint 25 Review（追蹤 DEF-009 + 剩餘 US-003/004）
+**文件版本**: v2.0
+**最後更新**: 2026-07-01（Sprint 26 收尾：DEF-009/010/011/012/014 清償，新增 DEF-013/015；活躍 DEF 剩 2 個低優先）
+**下次審查**: Sprint 27 Planning（處理 DEF-013/015 → 活躍 DEF 歸零）

@@ -11,6 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 27 | v2026.11.07-01 | - | 2026-07-01 | DEF-013 通知端到端斷鏈修復 + DEF-015 前端離線 build + pre-push v5 完整守門實證 + 產品方向決策(PRODUCT_BACKLOG) | ✅ 已 push（本地優先驗證；活躍 DEF 歸零） |
 | Sprint 26 | v2026.10.24-01 | - | 2026-07-01 | 本地優先 CI（停用雲端自動 CI）+ WS/即時 DoD 制度化 + M11 取消技術債清償(DEF-010/011) + 廣播 conversationId(DEF-012) + Logistics jsonb 統一(DEF-009) + e2e strict 守門 | ✅ 已 push（本地優先驗證；雲端改手動觸發） |
 | Sprint 25 | v2026.10.10-01 | - | 2026-06-30 | schema 漂移守門關卡 + Conversation tenant_id(V56) + M10 WebSocket 前端整合(live E2E) + SSH keepalive + M11 取消規則確認 | ✅ 已 push（本地優先驗證；雲端改手動觸發） |
 | Sprint 24 | v2026.09.26-01 | - | 2026-06-29 | M10 WebSocket STOMP 即時訊息 + M13 Redis TTL + 整合測試標準化 + E2E schema 修復(V48~V55) | ✅ |
@@ -38,24 +39,24 @@
 
 | 項目 | 數值 |
 |------|------|
-| 正式 Release 次數 | 18 (Sprint 10-26) |
+| 正式 Release 次數 | 19 (Sprint 10-27) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release | v2026.10.24-01 (Sprint 26) |
+| 最近一次 Release | v2026.11.07-01 (Sprint 27) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release 開始 | Sprint 10 |
 
 ---
 
-## ✅ Sprint 26 Release（最新）
+## ✅ Sprint 27 Release（最新）
 
 | 欄位 | 內容 |
 |------|------|
-| **Tag** | v2026.10.24-01 |
+| **Tag** | v2026.11.07-01 |
 | **建立日期** | 2026-07-01 |
-| **主要功能** | 本地優先 CI（停用雲端自動 CI）+ WS/即時 DoD 制度化 + M11 取消技術債清償 + 廣播 conversationId 修正 + Logistics jsonb 統一 + e2e strict 守門 |
-| **測試狀態** | `@Test` 靜態計數 668（+9）, catch(Exception)=0, @Deprecated=0 |
-| **Flyway** | V56（無新 migration；US-006 jsonb 為 entity 映射層級調整） |
-| **Release Notes** | [RELEASE_NOTES_v2026.10.24-01.md](../08_deployment/RELEASE_NOTES_v2026.10.24-01.md) |
+| **主要功能** | DEF-013 通知端到端斷鏈修復（producer Stream→List）+ DEF-015 前端離線 build + pre-push v5 完整守門端到端實證 + 產品方向決策（PRODUCT_BACKLOG + EPIC-BUYER） |
+| **測試狀態** | `@Test` 靜態計數 670（+2）, catch(Exception)=0, @Deprecated=0, **活躍 DEF=0** |
+| **Flyway** | V56（無新 migration） |
+| **Release Notes** | [RELEASE_NOTES_v2026.11.07-01.md](../08_deployment/RELEASE_NOTES_v2026.11.07-01.md) |
 | **狀態** | ✅ 完成 |
 
 ---
@@ -192,9 +193,10 @@ Sprint 23  → ✅ Release (v2026.09.12-01)
 Sprint 24  → ✅ Release (v2026.09.26-01)
 Sprint 25  → ✅ Release (v2026.10.10-01)
 Sprint 26  → ✅ Release (v2026.10.24-01)
+Sprint 27  → ✅ Release (v2026.11.07-01)
 ```
 
-**連續 Release**: 18 次 (Sprint 10-26)
+**連續 Release**: 19 次 (Sprint 10-27)
 
 ---
 

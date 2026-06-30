@@ -23,14 +23,21 @@
 > 還原方式：各檔 `on:` 區塊內把被註解的 `push:` / `pull_request:` / `schedule:` 取消註解即可。
 > 本地 `act` 不受影響——所有 `make validate-*` 與 pre-push hook 都以 `act -W <指定檔>` 執行，會無視 `on:` 過濾（已實測）。
 
-### 變更二：本地三層守門（push 即等價雲端日常驗證）
+### 變更二：本地分層守門（2026-06-30 pre-push v4 — host 分層提速）
 
-| 層級 | 觸發 | 內容 | 對應雲端 | 耗時 |
-|------|------|------|----------|------|
-| **Tier 0** pre-commit | 每次 commit | lint + compile + 核心測試 + gitleaks | secret/backend/frontend | ~2 min |
-| **Tier 1** pre-push | 每次 push | `act`：backend(單元+整合) + frontend | `ci.yml` backend/frontend job | ~15-20 min |
-| **Tier 1.5** pre-push（條件） | push 含 entity/migration 變動時**自動** | `make validate-schema`（ddl-auto=validate + Flyway 對乾淨 DB） | `ci.yml` e2e job 的 schema 重建 | ~2-3 min |
-| **Tier 2** release 守門 | 手動（release 前） | `make validate-e2e`（全棧 + Playwright） | `ci.yml` e2e job | ~10-20 min |
+> **pre-push 改在 host 執行「快的部分」**（不再於 act 容器跑 ~30 分鐘整合測試），整合測試 + e2e 移到 `make validate-release`（部署前）。pre-push 從 ~30 分降到 ~5-8 分。
+
+| 層級 | 觸發 | 內容 | 耗時 |
+|------|------|------|------|
+| **Tier 0** pre-commit | 每次 commit | lint + compile + 核心測試 + gitleaks | ~2 min |
+| **Tier 1** pre-push | 每次 push | **host**：checkstyle + compile + 全單元測試（surefire/H2，免 DB） + 前端 lint/type-check/build | **~5-8 min** |
+| **Tier 1.5** pre-push（條件） | push 含 entity/migration 變動時**自動** | `make validate-schema`（ddl-auto=validate + Flyway 對乾淨 DB） | ~3-4 min |
+| **Tier 2** release 守門 | 手動（部署前） | `make validate-release` = `validate-all`（act 完整含整合）+ `validate-schema` + `validate-e2e` | ~30+ min |
+
+**降低 push 頻率（建議）**：pre-push 有成本，請**commit 勤、push 少**——
+- `git commit` 隨時做（pre-commit 快）；只在「一個 US/功能完整、收尾、或要備份」時 `git push`。
+- 多個 commit **一次 push**：pre-push 只驗證最終 working tree 一次，批次 push 攤平等待。
+- 想先把等待挪到自己方便時：`make validate-push`（跑同款 host 快檢並寫 10 分鐘記錄）→ 隨後 `git push` 直接放行。
 
 ### 變更三：新增 make target
 

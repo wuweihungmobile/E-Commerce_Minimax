@@ -210,6 +210,19 @@ validate-e2e: ## 本地 E2E 守門：乾淨 DB → Flyway 重建 → 全棧(host
 	@echo "$(YELLOW)🎭 本地 E2E 守門（複製雲端 e2e job：host 程序 + 乾淨 DB + Playwright）...$(NC)"
 	@./scripts/validate-e2e.sh
 
+validate-push: ## pre-push 同款 host 快檢（checkstyle+compile+單元測試+前端 lint/type-check/build），通過則寫 10 分鐘驗證記錄供隨後 push 快速放行
+	@echo "$(YELLOW)⚡ host 快速驗證（= pre-push 內容；整合測試+e2e 請用 make validate-release）...$(NC)"
+	@cd "$(CURDIR)/backend" && mvn -q checkstyle:check test -Dspring.profiles.active=test
+	@cd "$(CURDIR)/frontend" && npm run lint && npm run type-check && npm run build
+	@CURRENT_COMMIT=$$(git rev-parse HEAD); \
+	  VALIDATED_TIME=$$(date '+%Y-%m-%d %H:%M:%S'); \
+	  TREE_HASH=$$(git ls-tree -r HEAD 2>/dev/null | { command -v sha256sum >/dev/null 2>&1 && sha256sum || shasum -a 256; } | cut -d' ' -f1); \
+	  [ -z "$$TREE_HASH" ] && TREE_HASH="empty"; \
+	  mkdir -p .ci-validation-data; \
+	  grep -v "^$$CURRENT_COMMIT|" .ci-validation-data/commits > .ci-validation-data/commits.tmp 2>/dev/null && mv .ci-validation-data/commits.tmp .ci-validation-data/commits || true; \
+	  echo "$$CURRENT_COMMIT|$$VALIDATED_TIME|$$TREE_HASH|SUCCESS" >> .ci-validation-data/commits; \
+	  echo "$(GREEN)✅ host 快檢通過，已寫驗證記錄（10 分鐘內 push 直接放行）$(NC)"
+
 validate-release: ## release 前完整本地守門：act（backend+frontend）+ schema 漂移 + E2E（= 雲端 ci.yml 等價驗證）
 	@echo "$(YELLOW)🚦 release 前完整本地守門（等價雲端 ci.yml）...$(NC)"
 	@$(MAKE) validate-all

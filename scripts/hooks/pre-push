@@ -1,17 +1,21 @@
 #!/usr/bin/env sh
 # =============================================
-# AISDLC v0.09: Pre-Push Hook（嚴格門 v3）
-# 目的：這是「上去 GIT」唯一的嚴格關卡
-#   - 推送前批次跑一次完整 act CI（沒通過就擋下）
-#   - 依變動範圍只跑相關 job（純前端只跑 frontend，省一半時間）
-#   - 若 10 分鐘內已有對應 tree-hash 的驗證記錄（例如剛跑過 make validate-all），則直接放行
+# AISDLC v0.09: Pre-Push Hook（嚴格門 v4 — host 分層）
+# 目的：這是「上去 GIT」的嚴格關卡，但改為「快、且在 host 執行」。
 #
-# 🔴 v3 變更（2026-06-23）：
-#   - act 從「每次 commit」移到這裡（push 前批次一次）
-#   - 驗證對象改為 HEAD 的 working tree（GitHub CI 跑的就是最終狀態）
-#   - 不再要求每個歷史 commit 都有記錄（那是舊模型，會誤擋正常推送）
+# 🔴 v4 變更（2026-06-30，Sprint 26 pre-push 效能改善）：
+#   - 不再於 pre-push 跑 act 容器的「完整整合測試」（單次 ~30 分鐘，太慢）。
+#   - 改為 host 直接跑「快的部分」：checkstyle + compile + 單元測試（surefire/H2，免外部 DB）
+#     + 前端 lint/type-check/build。暖快取下約 5-8 分鐘。
+#   - 完整「整合測試 + e2e」移到 `make validate-release`（部署前手動跑一次）。
+#   - schema 漂移守門（entity/migration 變動時）保留，最優先、不可略過。
 #
-# 跳過方式：git push --no-verify（⚠️ 嚴禁！會導致遠端 CI 失敗）
+# 分層總覽：
+#   pre-commit      ：lint + compile + 核心測試（快速）
+#   pre-push（本檔）：host 編譯 + 全單元測試 + 前端 build + schema 守門（~5-8 分）
+#   make validate-release：完整整合測試 + e2e（部署前，~30 分）
+#
+# 跳過方式：git push --no-verify（⚠️ 嚴禁！會導致未驗證程式碼上庫）
 # =============================================
 
 set -e
@@ -29,7 +33,7 @@ calc_sha256() {
 }
 
 echo "=========================================="
-echo "🔒 Pre-Push CI 驗證（上去 GIT 前的最後關卡）"
+echo "🔒 Pre-Push 驗證（host 分層；上去 GIT 前的關卡）"
 echo "=========================================="
 
 # 🔴 檢查 .ci-validation-data 是否被錯誤地 commit 到 Git
@@ -47,17 +51,27 @@ fi
 CURRENT_COMMIT=$(git rev-parse HEAD)
 CI_DATA_DIR="$ROOT_DIR/.ci-validation-data"
 CI_RECORD="$CI_DATA_DIR/commits"
-
-# 計算當前 HEAD tree hash（防重放，與 Makefile / 驗證記錄格式一致）
 CURRENT_TREE_HASH=$(git ls-tree -r HEAD 2>/dev/null | calc_sha256)
 if [ -z "$CURRENT_TREE_HASH" ]; then
     CURRENT_TREE_HASH="empty"
 fi
 
+# 記錄成功並放行（共用）
+record_and_allow() {
+    VALIDATED_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+    mkdir -p "$CI_DATA_DIR"
+    if [ -f "$CI_RECORD" ]; then
+        TMPRECORD=$(mktemp)
+        grep -v "^$CURRENT_COMMIT|" "$CI_RECORD" > "$TMPRECORD" || true
+        mv "$TMPRECORD" "$CI_RECORD"
+    fi
+    echo "$CURRENT_COMMIT|$VALIDATED_TIME|$CURRENT_TREE_HASH|SUCCESS" >> "$CI_RECORD"
+}
+
 # =============================================
-# 0. Schema 漂移守門（最優先，不可被 act 快取記錄略過）
-#    原因：本地 act 以 ddl-auto=update 啟動，抓不到 entity↔migration 漂移；
-#         GitHub E2E 以 ddl-auto=validate 啟動才會擋下。本關卡複製該啟動條件。
+# 0. Schema 漂移守門（最優先，不可被快取記錄略過）
+#    本地單元測試以 H2/ddl-auto 啟動，抓不到 entity↔migration 漂移；
+#    本關卡以 ddl-auto=validate + Flyway 對乾淨 PostgreSQL 啟動 backend 攔截漂移。
 #    觸發：本次推送變動含 JPA entity（domain/model/*.java）或 Flyway migration（db/migration/*.sql）。
 # =============================================
 SCHEMA_BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -66,169 +80,114 @@ if [ -n "$SCHEMA_REMOTE" ]; then
     SCHEMA_CHANGED=$(git diff --name-only "$SCHEMA_REMOTE..HEAD" 2>/dev/null || echo "")
     HAS_SCHEMA=$(echo "$SCHEMA_CHANGED" | grep -E '(domain/model/.*\.java$|db/migration/.*\.sql$)' | head -1 || true)
 else
-    # 首次推送 / 抓不到 remote → 保守起見一律驗 schema
-    HAS_SCHEMA="first-push"
+    HAS_SCHEMA="first-push"   # 首次推送 / 抓不到 remote → 保守起見一律驗 schema
 fi
 if [ -n "$HAS_SCHEMA" ]; then
     echo ""
-    echo "🔍 偵測到 entity/migration 變動 → 執行 schema 漂移守門（ddl-auto=validate + Flyway 對乾淨 DB）..."
+    echo "🔍 偵測到 entity/migration 變動 → schema 漂移守門（ddl-auto=validate + Flyway 對乾淨 DB）..."
     if [ -x "$ROOT_DIR/scripts/validate-schema.sh" ]; then
         if ! "$ROOT_DIR/scripts/validate-schema.sh"; then
             echo ""
             echo "🔴 schema 漂移守門失敗！entity 與 migration 不一致，禁止 push！"
             echo "   修復後重跑：make validate-schema"
-            echo "   🔴 禁止使用 --no-verify！會導致遠端 schema-validation 失敗。"
+            echo "   🔴 禁止使用 --no-verify！"
             exit 1
         fi
         echo "✅ schema 漂移守門通過"
     else
-        echo "⚠️  找不到可執行的 scripts/validate-schema.sh，略過 schema 守門（請確認檔案存在且可執行）"
+        echo "⚠️  找不到可執行的 scripts/validate-schema.sh，略過 schema 守門（請確認檔案存在）"
     fi
 fi
 
 # =============================================
 # 1. 若已有有效驗證記錄（10 分鐘內 + tree-hash 相符）→ 直接放行
-#    涵蓋情境：使用者剛手動跑過 make validate-all
+#    涵蓋情境：剛跑過 make validate-push 或 make validate-release，或前次 push 失敗後重試。
 # =============================================
 if [ -f "$CI_RECORD" ]; then
     VALIDATED=$(grep "^$CURRENT_COMMIT|" "$CI_RECORD" 2>/dev/null | tail -1)
     if [ -n "$VALIDATED" ]; then
         VALIDATED_TIME=$(echo "$VALIDATED" | cut -d'|' -f2)
         RECORDED_TREE_HASH=$(echo "$VALIDATED" | cut -d'|' -f3)
-
         if date -j -f '%Y-%m-%d %H:%M:%S' "$VALIDATED_TIME" +%s >/dev/null 2>&1; then
             VALIDATED_EPOCH=$(date -j -f '%Y-%m-%d %H:%M:%S' "$VALIDATED_TIME" +%s 2>/dev/null || echo "0")
         else
             VALIDATED_EPOCH=$(date -d "$VALIDATED_TIME" +%s 2>/dev/null || echo "0")
         fi
-        NOW_EPOCH=$(date +%s)
-        AGE_SECONDS=$((NOW_EPOCH - VALIDATED_EPOCH))
-
+        AGE_SECONDS=$(( $(date +%s) - VALIDATED_EPOCH ))
         if [ $AGE_SECONDS -le 600 ] && [ "$RECORDED_TREE_HASH" = "$CURRENT_TREE_HASH" ]; then
-            echo "✅ 已有有效 CI 驗證記錄（$VALIDATED_TIME，$((AGE_SECONDS / 60)) 分鐘前）"
-            echo "🌳 Tree hash 相符：${RECORDED_TREE_HASH:0:16}..."
-            echo "允許 push ✅"
+            echo "✅ 已有有效驗證記錄（$VALIDATED_TIME，$((AGE_SECONDS / 60)) 分鐘前）、tree-hash 相符 → 允許 push ✅"
             exit 0
-        fi
-        if [ "$RECORDED_TREE_HASH" != "$CURRENT_TREE_HASH" ]; then
-            echo "⚠️  驗證記錄的 tree-hash 與目前不符，需重新驗證"
-        elif [ $AGE_SECONDS -gt 600 ]; then
-            echo "⚠️  驗證記錄已超過 10 分鐘，需重新驗證"
         fi
     fi
 fi
 
 # =============================================
-# 2. 沒有有效記錄 → 依變動範圍跑 act
+# 2. 依變動範圍跑 host 快速驗證
 # =============================================
-# 判斷要 push 的變動範圍（決定只跑哪些 job）
-# 使用本地 ref 查詢，避免 git remote show origin 觸發 SSH 網路請求（約 2-3 秒）
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 REMOTE_HEAD=$(git rev-parse "origin/$CURRENT_BRANCH" 2>/dev/null || echo "")
-
 if [ -n "$REMOTE_HEAD" ]; then
     CHANGED_FILES=$(git diff --name-only "$REMOTE_HEAD..HEAD" 2>/dev/null || echo "")
 else
-    # 首次推送或抓不到 remote → 保守起見視為「全部」
     CHANGED_FILES=""
 fi
-
 HAS_BE=$(echo "$CHANGED_FILES" | grep -E '^backend/' | head -1 || true)
 HAS_FE=$(echo "$CHANGED_FILES" | grep -E '^frontend/' | head -1 || true)
-HAS_CI=$(echo "$CHANGED_FILES" | grep -E '^\.github/' | head -1 || true)
 
-# 決定 act 範圍
-ACT_BASE="act -W .github/workflows/act-compat.yml"
-if [ -z "$REMOTE_HEAD" ] || [ -n "$HAS_CI" ] || { [ -n "$HAS_BE" ] && [ -n "$HAS_FE" ]; }; then
-    ACT_CMD="$ACT_BASE"
-    SCOPE="完整（backend + frontend）"
-elif [ -n "$HAS_BE" ]; then
-    ACT_CMD="$ACT_BASE -j backend"
-    SCOPE="僅 backend"
-elif [ -n "$HAS_FE" ]; then
-    ACT_CMD="$ACT_BASE -j frontend"
-    SCOPE="僅 frontend"
-else
-    # 沒有 code 變動（純文件 / 設定）→ 不需跑 act，直接記錄放行
-    echo "ℹ️  本次推送無 backend/frontend 程式碼變動（純文件/設定），略過 act。"
-    VALIDATED_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-    mkdir -p "$CI_DATA_DIR"
-    if [ -f "$CI_RECORD" ]; then
-        TMPRECORD=$(mktemp)
-        grep -v "^$CURRENT_COMMIT|" "$CI_RECORD" > "$TMPRECORD" || true
-        mv "$TMPRECORD" "$CI_RECORD"
-    fi
-    echo "$CURRENT_COMMIT|$VALIDATED_TIME|$CURRENT_TREE_HASH|SUCCESS" >> "$CI_RECORD"
+# 純文件/設定（有 remote 可比對且無 backend/frontend code）→ 直接記錄放行
+if [ -n "$REMOTE_HEAD" ] && [ -z "$HAS_BE" ] && [ -z "$HAS_FE" ]; then
+    echo "ℹ️  本次推送無 backend/frontend 程式碼變動（純文件/設定），略過驗證。"
+    record_and_allow
     echo "允許 push ✅"
     exit 0
 fi
+# 首次推送 / 抓不到 remote → 保守驗 backend + frontend
+if [ -z "$REMOTE_HEAD" ]; then HAS_BE="all"; HAS_FE="all"; fi
 
 echo ""
-echo "🔴 無有效 CI 驗證記錄，開始執行本地 CI 驗證（範圍：$SCOPE）..."
+echo "🔴 開始 host 快速驗證（分層；完整整合測試 + e2e 請於部署前 make validate-release）..."
 echo "   commit：$CURRENT_COMMIT"
 echo "=========================================="
-echo ""
+VALIDATION_FAILED=0
 
-# 檢查 act 是否可用
-if ! command -v act &> /dev/null; then
-    echo "❌ 錯誤：找不到 'act' 命令"
-    echo "📦 請先安裝 act："
-    echo "   macOS: brew install act"
-    echo "   Linux: curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh | sh"
+if [ -n "$HAS_BE" ]; then
     echo ""
-    echo "⚠️  替代方案：cd backend && mvn verify -Dspring.profiles.active=integration-test"
+    echo "🔨 Backend（host）：checkstyle + compile + 單元測試（surefire/H2，免外部 DB）..."
+    if ! ( cd "$ROOT_DIR/backend" && mvn -q checkstyle:check test -Dspring.profiles.active=test ); then
+        echo "❌ Backend host 驗證失敗"
+        VALIDATION_FAILED=1
+    else
+        echo "✅ Backend 單元驗證通過"
+    fi
+fi
+
+if [ -n "$HAS_FE" ] && [ "$VALIDATION_FAILED" -eq 0 ]; then
+    echo ""
+    echo "🎨 Frontend（host）：lint + type-check + build..."
+    if ! ( cd "$ROOT_DIR/frontend" && npm run lint && npm run type-check && npm run build ); then
+        echo "❌ Frontend host 驗證失敗"
+        VALIDATION_FAILED=1
+    else
+        echo "✅ Frontend 驗證通過"
+    fi
+fi
+
+if [ "$VALIDATION_FAILED" -ne 0 ]; then
+    echo ""
+    echo "=========================================="
+    echo "🔴 host 驗證失敗！禁止 push！"
+    echo "=========================================="
+    echo "📋 修復後重試。完整驗證（整合測試 + e2e）：make validate-release"
+    echo "🔴 禁止使用 --no-verify！會導致未驗證程式碼上庫。"
+    echo ""
     exit 1
 fi
 
-# 執行 act（依範圍）
-echo "🧪 執行：$ACT_CMD"
-echo ""
-TMPLOG=$(mktemp)
-set +e
-eval "$ACT_CMD" > "$TMPLOG" 2>&1
-ACT_EXIT=$?
-set -e
-cat "$TMPLOG"   # 輸出到終端讓使用者看到完整過程
-ACT_OUTPUT=$(cat "$TMPLOG")
-rm -f "$TMPLOG"
-
-# 🔴 act 失敗時退出碼可能為 0，必須檢查輸出中的 Failure 關鍵字
-ACT_HAS_FAILURE=$(echo "$ACT_OUTPUT" | grep -c "❌.*Failure\|Job failed\|context canceled" || true)
-if [ $ACT_EXIT -eq 0 ] && [ $ACT_HAS_FAILURE -eq 0 ]; then
-    ACT_SUCCESS=1
-else
-    ACT_SUCCESS=0
-fi
-
-if [ $ACT_SUCCESS -eq 1 ]; then
-    VALIDATED_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-    mkdir -p "$CI_DATA_DIR"
-    if [ -f "$CI_RECORD" ]; then
-        TMPRECORD=$(mktemp)
-        grep -v "^$CURRENT_COMMIT|" "$CI_RECORD" > "$TMPRECORD" || true
-        mv "$TMPRECORD" "$CI_RECORD"
-    fi
-    echo "$CURRENT_COMMIT|$VALIDATED_TIME|$CURRENT_TREE_HASH|SUCCESS" >> "$CI_RECORD"
-
-    echo ""
-    echo "=========================================="
-    echo "✅ CI 驗證通過（$SCOPE）！已記錄驗證結果"
-    echo "📅 驗證時間：$VALIDATED_TIME"
-    echo "🌳 Tree hash: ${CURRENT_TREE_HASH:0:16}..."
-    echo "=========================================="
-    exit 0
-fi
-
-# 失敗
+record_and_allow
 echo ""
 echo "=========================================="
-echo "🔴 CI 驗證失敗！禁止 push！"
+echo "✅ host 快速驗證通過！允許 push ✅"
+echo "🌳 Tree hash: ${CURRENT_TREE_HASH:0:16}..."
+echo "📌 提醒：整合測試 + e2e 不在 pre-push；部署前請執行 make validate-release"
 echo "=========================================="
-echo ""
-echo "📋 請修復問題後重新執行驗證："
-echo "   make validate-all"
-echo "   或 act -W .github/workflows/act-compat.yml"
-echo ""
-echo "🔴 禁止使用 --no-verify！會導致遠端 CI 失敗並可能鎖 branch。"
-echo ""
-exit 1
+exit 0

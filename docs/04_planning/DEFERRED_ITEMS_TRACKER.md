@@ -16,7 +16,9 @@
 
 ### 🟡 中優先級 - 未來 Sprint 處理
 
-*目前無中優先級延後項目（DEF-013、DEF-015 已於 Sprint 27 完成 → 活躍 DEF 歸零）。*
+| ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
+|----|------|-------------|---------|---------|---------|------|
+| DEF-016 | Admin Audit Log 持久化 | Sprint 28（US-004 盤點發現） | `AdminService.updateTenantStatus` 的 audit 目前僅 `log.info`（無 AuditLog entity）。持久化需新 entity + repository + Flyway migration，改動面大，不宜塞進 Buffer | 建 AuditLog entity + migration；評估其他需 audit 的操作一併納入 | 2 | ⚠️ 待處理（低） |
 
 ---
 

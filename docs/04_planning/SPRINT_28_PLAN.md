@@ -90,7 +90,10 @@ Sprint 27 確立方向 (b) 並產出 RICE backlog。Sprint 28 依「品質先行
 
 ### US-004（Buffer）：後端 placeholder / audit 清理（P3）
 
-> **SP**: 1 | **優先級**: Buffer | **狀態**: 📋 規劃中
+> **SP**: 1 | **優先級**: Buffer | **狀態**: ✅ 完成（ERP 擁有權安全隙修復；audit log → DEF-016）
+>
+> **AC-004-1（ERP）✅**：`StockMovementService.getTenantListings` 原回傳 tenantId 本身、且 line 57 的 `if` body 為空 —— 手動庫存異動的**租戶擁有權檢查完全 no-op（租戶隔離安全隙）**。已修：注入 `ListingRepository`，以 SKU→listing→tenantId 實檢，非當前租戶 → E_4031、listing 不存在 → E_3003；移除 placeholder。新增 `StockMovementServiceTest`（+2）鎖住。
+> **AC-004-2（audit log）→ DEF-016**：`AdminService` 的 audit 僅 `log.info`；持久化需新 AuditLog entity + migration（改動面大），依 AC 記為 [DEF-016](./DEFERRED_ITEMS_TRACKER.md)，不強行塞入 Buffer。
 
 **目標**: 清理盤點發現的兩個小缺口。
 

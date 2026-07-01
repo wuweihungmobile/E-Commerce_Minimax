@@ -1,65 +1,202 @@
-import Image from "next/image";
+"use client"
 
-export default function Home() {
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { StorefrontShell } from "@/components/layout/StorefrontShell"
+import { SidebarNav } from "@/components/storefront/SidebarNav"
+import { SortToolbar } from "@/components/storefront/SortToolbar"
+import { ProductCard } from "@/components/storefront/ProductCard"
+import { Pagination } from "@/components/ui/pagination"
+import { Skeleton } from "@/components/ui/skeleton"
+import listingService, { type Listing, type Page } from "@/services/listing"
+
+const CATEGORIES = [
+  { id: "all", label: "全部商品" },
+  { id: "product", label: "嚴選商品" },
+  { id: "room", label: "旅宿房型" },
+]
+
+const SORT_TABS = [
+  { id: "newest", label: "最新" },
+  { id: "priceAsc", label: "價格低到高" },
+  { id: "priceDesc", label: "價格高到低" },
+]
+
+const SORT_MAP: Record<string, { sortBy: string; sortDir: "ASC" | "DESC" }> = {
+  newest: { sortBy: "createdAt", sortDir: "DESC" },
+  priceAsc: { sortBy: "basePrice", sortDir: "ASC" },
+  priceDesc: { sortBy: "basePrice", sortDir: "DESC" },
+}
+
+const HOT_KEYWORDS = ["極簡生活", "質感家居", "旅宿房型", "香氛療癒", "收納"]
+const PAGE_SIZE = 12
+
+export default function HomePage() {
+  const [cat, setCat] = useState("all")
+  const [sortTab, setSortTab] = useState("newest")
+  const [keyword, setKeyword] = useState("")
+  const [page, setPage] = useState(0) // 0-based（API）
+  const [nonce, setNonce] = useState(0) // 強制重跑查詢（避免同值操作卡 loading）
+  const [data, setData] = useState<Page<Listing> | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [needsAuth, setNeedsAuth] = useState(false)
+  const [cartCount, setCartCount] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    const { sortBy, sortDir } = SORT_MAP[sortTab]
+    listingService
+      .getListings({
+        page,
+        size: PAGE_SIZE,
+        type: cat === "all" ? undefined : (cat as "product" | "room"),
+        keyword: keyword || undefined,
+        sortBy,
+        sortDir,
+      })
+      .then((res) => {
+        if (cancelled) return
+        setData(res)
+        setNeedsAuth(false)
+        setLoading(false)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        const status =
+          err && typeof err === "object" && "response" in err
+            ? (err as { response?: { status?: number } }).response?.status
+            : undefined
+        setNeedsAuth(status === 401)
+        setData(null)
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [cat, sortTab, keyword, page, nonce])
+
+  useEffect(() => {
+    let cancelled = false
+    if (typeof window !== "undefined" && localStorage.getItem("accessToken")) {
+      listingService
+        .getCartCount()
+        .then((c) => {
+          if (!cancelled) setCartCount(c)
+        })
+        .catch(() => {
+          // 購物車數量取得失敗不影響首頁
+        })
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleSelectCat = (id: string) => {
+    setLoading(true)
+    setCat(id)
+    setPage(0)
+    setNonce((n) => n + 1)
+  }
+  const handleSort = (id: string) => {
+    setLoading(true)
+    setSortTab(id)
+    setPage(0)
+    setNonce((n) => n + 1)
+  }
+  const handleSearch = (q: string) => {
+    setLoading(true)
+    setKeyword(q)
+    setPage(0)
+    setNonce((n) => n + 1)
+  }
+  const handlePageChange = (oneBased: number) => {
+    setLoading(true)
+    setPage(oneBased - 1)
+    setNonce((n) => n + 1)
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <StorefrontShell
+      sidebar={
+        <SidebarNav items={CATEGORIES} active={cat} onSelect={handleSelectCat} />
+      }
+      cartCount={cartCount}
+      hotKeywords={HOT_KEYWORDS}
+      onSearch={handleSearch}
+    >
+      <SortToolbar
+        tabs={SORT_TABS}
+        activeTab={sortTab}
+        onTabChange={handleSort}
+        right={
+          data ? (
+            <span data-testid="result-count">共 {data.totalElements} 件</span>
+          ) : null
+        }
+      />
+
+      {loading ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
+          {Array.from({ length: PAGE_SIZE }).map((_, i) => (
+            <div key={i} className="flex flex-col gap-3">
+              <Skeleton className="aspect-square w-full rounded-lg" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-5 w-1/3" />
+            </div>
+          ))}
+        </div>
+      ) : needsAuth ? (
+        <div
+          data-testid="home-auth-empty"
+          className="flex flex-col items-center justify-center py-24 text-center gap-3"
+        >
+          <p className="text-lg text-rs-ink">登入後即可瀏覽精選商品</p>
+          <p className="text-sm text-rs-ink-muted">
+            意象若水 RUOSHUI｜生活減法，無負擔的購物體驗
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/login"
+            className="mt-2 inline-flex items-center justify-center bg-rs-primary text-white rounded-md px-6 py-2.5 text-sm font-medium transition-colors hover:bg-rs-primary-hover"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            前往登入
+          </Link>
+        </div>
+      ) : data && data.content.length > 0 ? (
+        <div
+          data-testid="product-grid"
+          className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6"
+        >
+          {data.content.map((item) => (
+            <ProductCard
+              key={item.id}
+              href={`/reviews/product/${item.id}`}
+              image={item.coverImageUrl}
+              title={item.title}
+              price={item.basePrice}
+              currency={item.currency === "TWD" ? "NT$" : item.currency}
+              features={item.tags?.slice(0, 2)}
+              logistics={item.listingType === "ROOM" ? ["旅宿"] : ["賣家宅配"]}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          ))}
         </div>
-      </main>
-    </div>
-  );
+      ) : (
+        <div
+          data-testid="home-empty"
+          className="flex flex-col items-center justify-center py-24 text-center gap-2"
+        >
+          <p className="text-lg text-rs-ink">目前沒有符合條件的商品</p>
+          <p className="text-sm text-rs-ink-muted">換個分類或關鍵字再逛逛吧</p>
+        </div>
+      )}
+
+      {data && data.totalPages > 1 && (
+        <Pagination
+          current={page + 1}
+          total={data.totalPages}
+          onChange={handlePageChange}
+        />
+      )}
+    </StorefrontShell>
+  )
 }

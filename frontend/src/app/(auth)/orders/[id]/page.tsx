@@ -10,6 +10,7 @@ import OrderService, {
   orderStatusBadgeVariant,
   isCancellable,
 } from '@/services/order'
+import OrderPaymentService, { type OrderPaymentState } from '@/services/payment'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -43,6 +44,7 @@ export default function OrderDetailPage() {
 
   const [order, setOrder] = useState<Order | null>(null)
   const [logs, setLogs] = useState<OrderStateLog[]>([])
+  const [payment, setPayment] = useState<OrderPaymentState | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -52,18 +54,24 @@ export default function OrderDetailPage() {
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
 
+  // Payment flow (Mock)
+  const [paying, setPaying] = useState(false)
+  const [payError, setPayError] = useState<string | null>(null)
+
   const load = useCallback(
     async (signal?: { cancelled: boolean }) => {
       setLoading(true)
       setError(null)
       try {
-        const [detail, stateLogs] = await Promise.all([
+        const [detail, stateLogs, paymentState] = await Promise.all([
           OrderService.getOrder(orderId),
           OrderService.getOrderLogs(orderId).catch(() => [] as OrderStateLog[]),
+          OrderPaymentService.getPaymentState(orderId).catch(() => null),
         ])
         if (signal?.cancelled) return
         setOrder(detail)
         setLogs(stateLogs)
+        setPayment(paymentState)
       } catch {
         if (signal?.cancelled) return
         setError('無法載入訂單詳情，請稍後再試')
@@ -98,6 +106,34 @@ export default function OrderDetailPage() {
       setCancelError(errorResponse?.response?.data?.message ?? '取消訂單失敗，此訂單目前狀態可能無法取消')
     } finally {
       setCancelling(false)
+    }
+  }
+
+  const handlePay = async () => {
+    setPaying(true)
+    setPayError(null)
+    try {
+      await OrderPaymentService.pay(orderId)
+      await load()
+    } catch (err: unknown) {
+      const errorResponse = err as { response?: { data?: { message?: string } } }
+      setPayError(errorResponse?.response?.data?.message ?? '付款失敗，請稍後再試')
+    } finally {
+      setPaying(false)
+    }
+  }
+
+  const handlePayFail = async () => {
+    setPaying(true)
+    setPayError(null)
+    try {
+      await OrderPaymentService.payFail(orderId, '使用者模擬付款失敗')
+      await load()
+    } catch (err: unknown) {
+      const errorResponse = err as { response?: { data?: { message?: string } } }
+      setPayError(errorResponse?.response?.data?.message ?? '操作失敗，請稍後再試')
+    } finally {
+      setPaying(false)
     }
   }
 
@@ -154,7 +190,7 @@ export default function OrderDetailPage() {
                 </div>
                 <p className="text-sm text-gray-500">建立於 {formatDateTime(order.createdAt)}</p>
               </div>
-              {isCancellable(order.status) && !showCancel && (
+              {(payment?.canCancel ?? isCancellable(order.status)) && !showCancel && (
                 <Button variant="outline" onClick={() => setShowCancel(true)}>
                   取消訂單
                 </Button>
@@ -197,6 +233,52 @@ export default function OrderDetailPage() {
                       返回
                     </Button>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Payment (Mock) */}
+            {payment?.canPay && (
+              <Card className="border-primary/30">
+                <CardHeader>
+                  <CardTitle className="text-base">付款</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {payError && (
+                    <Alert variant="destructive">
+                      <AlertDescription>{payError}</AlertDescription>
+                    </Alert>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">應付金額</span>
+                    <span className="text-xl font-bold text-gray-900">
+                      {formatPrice(order.totalAmount, order.currency)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500">目前為模擬付款（Mock），不會實際扣款。</p>
+                  <div className="flex flex-wrap gap-3">
+                    <Button onClick={handlePay} disabled={paying}>
+                      {paying ? '處理中…' : '確認付款（模擬）'}
+                    </Button>
+                    <Button variant="outline" onClick={handlePayFail} disabled={paying}>
+                      模擬付款失敗
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {payment?.paymentStatus === 'SUCCESS' && (
+              <Card className="border-green-200">
+                <CardHeader>
+                  <CardTitle className="text-base">付款資訊</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-gray-700 space-y-1">
+                  <p>
+                    付款狀態：<Badge variant="success">付款成功</Badge>
+                  </p>
+                  {payment.transactionId && <p>交易編號：{payment.transactionId}</p>}
+                  {payment.paidAt && <p>付款時間：{formatDateTime(payment.paidAt)}</p>}
                 </CardContent>
               </Card>
             )}

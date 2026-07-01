@@ -42,6 +42,11 @@ export const API_ENDPOINTS = {
     create: '/v2/orders',
     cancel: (id: string) => '/v2/orders/' + id + '/cancel',
     logs: (id: string) => '/v2/orders/' + id + '/logs',
+    // 訂單層付款（OrderPaymentController，狀態機驅動，對 Mock）
+    payment: (id: string) => '/v2/orders/' + id + '/payment',
+    pay: (id: string) => '/v2/orders/' + id + '/pay',
+    payFail: (id: string) => '/v2/orders/' + id + '/pay/fail',
+    refund: (id: string) => '/v2/orders/' + id + '/refund',
   },
 
   // Payments

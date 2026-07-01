@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* ============================================================
+   既有 shadcn/ui 中性 token（保留不動，避免破壞既有頁面）
+   ============================================================ */
 @theme {
   --color-background: hsl(0 0% 100%);
   --color-foreground: hsl(0 0% 3.9%);
@@ -25,7 +28,165 @@
   --radius: 0.5rem;
 }
 
+/* ============================================================
+   意象若水 RUOSHUI 品牌色票（5 套主題，可即時切換）
+   來源：Homepage (standalone) 設計稿，各 21 tokens
+   切換方式：<html data-theme="blue|green|lotus|pastel|test05">
+   ============================================================ */
+:root,
+[data-theme="blue"] {
+  --rs-primary: #3770bf;
+  --rs-primary-hover: #2c5c9e;
+  --rs-secondary: #8dc2ff;
+  --rs-tertiary: #e0efff;
+  --rs-accent: #f59e0b;
+  --rs-accent-hover: #d98708;
+  --rs-bg-base: #f8fafc;
+  --rs-bg-surface: #ffffff;
+  --rs-topbar-bg: #173a72;
+  --rs-header-bg: #f3f6ff;
+  --rs-topbar-text: #ffffff;
+  --rs-text-main: #1e293b;
+  --rs-text-muted: #64748b;
+  --rs-border: #e2e8f0;
+  --rs-disabled-bg: #f1f5f9;
+  --rs-disabled-text: #94a3b8;
+  --rs-success: #3f9142;
+  --rs-warning: #fbbf24;
+  --rs-error: #ef4444;
+  --rs-info: #3770bf;
+  --rs-info-soft: #8dc2ff;
+}
+
+[data-theme="green"] {
+  --rs-primary: #1d6517;
+  --rs-primary-hover: #154b11;
+  --rs-secondary: #79b425;
+  --rs-tertiary: #e2f0c5;
+  --rs-accent: #f5a623;
+  --rs-accent-hover: #db9112;
+  --rs-bg-base: #f4f8ec;
+  --rs-bg-surface: #ffffff;
+  --rs-topbar-bg: #336a29;
+  --rs-header-bg: #eaf3dc;
+  --rs-topbar-text: #ffffff;
+  --rs-text-main: #2a3626;
+  --rs-text-muted: #7a8775;
+  --rs-border: #dce3d6;
+  --rs-disabled-bg: #e8ebe5;
+  --rs-disabled-text: #a6b0a1;
+  --rs-success: #498428;
+  --rs-warning: #f5a623;
+  --rs-error: #d35b58;
+  --rs-info: #2f7da0;
+  --rs-info-soft: #55a6c3;
+}
+
+[data-theme="lotus"] {
+  --rs-primary: #1d6517;
+  --rs-primary-hover: #134a11;
+  --rs-secondary: #79b425;
+  --rs-tertiary: #dcefb0;
+  --rs-accent: #e2701b;
+  --rs-accent-hover: #c75f12;
+  --rs-bg-base: #f4f8ec;
+  --rs-bg-surface: #ffffff;
+  --rs-topbar-bg: #054204;
+  --rs-header-bg: #edf4dc;
+  --rs-topbar-text: #ffffff;
+  --rs-text-main: #20301a;
+  --rs-text-muted: #6e7a64;
+  --rs-border: #dbe4cc;
+  --rs-disabled-bg: #e9ede1;
+  --rs-disabled-text: #a6b098;
+  --rs-success: #2e7d32;
+  --rs-warning: #e0a41f;
+  --rs-error: #d14b45;
+  --rs-info: #2f7da0;
+  --rs-info-soft: #55a6c3;
+}
+
+[data-theme="pastel"] {
+  --rs-primary: #3c7184;
+  --rs-primary-hover: #2f5a6a;
+  --rs-secondary: #96c7b3;
+  --rs-tertiary: #dcede5;
+  --rs-accent: #ce7468;
+  --rs-accent-hover: #b86258;
+  --rs-bg-base: #fbf4ee;
+  --rs-bg-surface: #ffffff;
+  --rs-topbar-bg: #2c5564;
+  --rs-header-bg: #eaf2f3;
+  --rs-topbar-text: #ffffff;
+  --rs-text-main: #2a3a40;
+  --rs-text-muted: #6e8088;
+  --rs-border: #ece2d9;
+  --rs-disabled-bg: #f0ebe5;
+  --rs-disabled-text: #b4aca3;
+  --rs-success: #3e8268;
+  --rs-warning: #e0992b;
+  --rs-error: #cb5f57;
+  --rs-info: #3c7184;
+  --rs-info-soft: #6398a9;
+}
+
+[data-theme="test05"] {
+  --rs-primary: #437118;
+  --rs-primary-hover: #37600f;
+  --rs-secondary: #afd06e;
+  --rs-tertiary: #e9f2d6;
+  --rs-accent: #dd5a1e;
+  --rs-accent-hover: #c44e18;
+  --rs-bg-base: #f6f4e1;
+  --rs-bg-surface: #ffffff;
+  --rs-topbar-bg: #1d2a62;
+  --rs-header-bg: #edf2f8;
+  --rs-topbar-text: #ffffff;
+  --rs-text-main: #232a1c;
+  --rs-text-muted: #6e7464;
+  --rs-border: #e2dec6;
+  --rs-disabled-bg: #eeede0;
+  --rs-disabled-text: #aba994;
+  --rs-success: #4b8520;
+  --rs-warning: #e0a41f;
+  --rs-error: #d14b45;
+  --rs-info: #3a6ea5;
+  --rs-info-soft: #87aece;
+}
+
+/* ============================================================
+   Tailwind v4：以 inline 讓 utility 直接引用執行期 CSS 變數，
+   使 data-theme 切換即時生效（bg-rs-primary / text-rs-ink …）
+   ============================================================ */
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, "PingFang TC",
+    "Noto Sans TC", "Microsoft JhengHei", "Heiti TC", sans-serif;
+
+  --color-rs-primary: var(--rs-primary);
+  --color-rs-primary-hover: var(--rs-primary-hover);
+  --color-rs-secondary: var(--rs-secondary);
+  --color-rs-tertiary: var(--rs-tertiary);
+  --color-rs-accent: var(--rs-accent);
+  --color-rs-accent-hover: var(--rs-accent-hover);
+  --color-rs-bg-base: var(--rs-bg-base);
+  --color-rs-surface: var(--rs-bg-surface);
+  --color-rs-topbar: var(--rs-topbar-bg);
+  --color-rs-topbar-text: var(--rs-topbar-text);
+  --color-rs-header: var(--rs-header-bg);
+  --color-rs-ink: var(--rs-text-main);
+  --color-rs-ink-muted: var(--rs-text-muted);
+  --color-rs-hairline: var(--rs-border);
+  --color-rs-disabled-bg: var(--rs-disabled-bg);
+  --color-rs-disabled-text: var(--rs-disabled-text);
+  --color-rs-success: var(--rs-success);
+  --color-rs-warning: var(--rs-warning);
+  --color-rs-error: var(--rs-error);
+  --color-rs-info: var(--rs-info);
+  --color-rs-info-soft: var(--rs-info-soft);
+}
+
 body {
   background: var(--color-background);
   color: var(--color-foreground);
+  font-family: var(--font-sans);
 }

@@ -69,6 +69,12 @@ class M16ErpIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private ListingRepository listingRepository;
+
+    @Autowired
+    private TenantRepository tenantRepository;
+
     private static final String BASE_URL = "/api/v2/dashboard";
     @SuppressWarnings("unused")
     private static final String TEST_PASSWORD = "SecurePass123!";
@@ -106,26 +112,17 @@ class M16ErpIntegrationTest {
         testTenantId = FIXED_TENANT_ID;
         testStoreOwnerUserId = FIXED_STORE_OWNER_USER_ID;
 
-        // 檢查並創建 Tenant（如果不存在）
-        Tenant testTenant = tenantRepo.findById(FIXED_TENANT_ID).orElse(null);
-        if (testTenant == null) {
-            testTenant = Tenant.builder()
-                    .name("Test Tenant for M16 ERP " + System.currentTimeMillis())
-                    .slug("test-erp-tenant-" + System.currentTimeMillis())
-                    .contactEmail("erp-test@tenant.com")
-                    .contactPhone("+886-123456789")
-                    .status(Tenant.TenantStatus.ACTIVE)
-                    .build();
-            // 使用固定 ID
-            testTenant = Tenant.builder()
-                    .id(FIXED_TENANT_ID)
-                    .name("Test Tenant for M16 ERP")
-                    .slug("test-erp-tenant-" + System.currentTimeMillis())
-                    .contactEmail("erp-test@tenant.com")
-                    .contactPhone("+886-123456789")
-                    .status(Tenant.TenantStatus.ACTIVE)
-                    .build();
-            testTenant = tenantRepo.save(testTenant);
+        // 種 id=FIXED_TENANT_ID 的 tenants 列（DEF-017 修復）。
+        // Tenant.id 為 @GeneratedValue → builder .id() 會被忽略、存成隨機 id；而 @WithErpSecurity 硬編
+        // FIXED_TENANT_ID、listings.tenant_id 有 FK → 必須以 raw SQL 種固定 ID 租戶（比照 TestDatabaseInitializer）。
+        Integer tenantCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM tenants WHERE id = ?", Integer.class, FIXED_TENANT_ID);
+        if (tenantCount == null || tenantCount == 0) {
+            jdbcTemplate.update(
+                    "INSERT INTO tenants (id, name, slug, status, description, contact_email, contact_phone, metadata, created_at, updated_at) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, NOW(), NOW())",
+                    FIXED_TENANT_ID, "Test Tenant for M16 ERP", "m16-erp-fixed-" + System.currentTimeMillis(),
+                    "ACTIVE", "M16 ERP fixed-id tenant", "erp-test@tenant.com", "+886-123456789", "{}");
         }
 
         // 檢查並創建 STORE_OWNER 用戶（如果不存在）
@@ -167,6 +164,9 @@ class M16ErpIntegrationTest {
                 .build();
         testListing = listingRepo.save(testListing);
         testListingId = testListing.getId();
+        // Listing.tenantId 為 insertable=false 影子欄位，JPA save 不寫 tenant_id → 顯式 JDBC 補寫
+        // （此時 FIXED_TENANT_ID 租戶已存在，FK 滿足；DEF-017 租戶檢查依賴 listing.getTenantId() 相符）。
+        jdbcTemplate.update("UPDATE listings SET tenant_id = ? WHERE id = ?", testTenantId, testListingId);
 
         // 初始化 testSkuId (在 @BeforeAll 中必須初始化，否則後續測試會使用 null)
         // 這是因為 @BeforeAll 只執行一次，而 @Test 方法執行順序依賴於 testSkuId
@@ -1265,6 +1265,58 @@ class M16ErpIntegrationTest {
                 .andExpect(jsonPath("$.data.content").isArray());
 
         System.out.println("✅ IT-M16-306 PASSED");
+    }
+
+    @Test
+    @Order(307)
+    @DisplayName("IT-M16-307: 手動異動-跨租戶隔離（他租戶 SKU 回 403，DEF-017）")
+    void createStockMovement_crossTenant_returns403() throws Exception {
+        // 建立「其他租戶」（generated id，存在於 tenants）+ 其 listing + SKU；當前 @WithErpSecurity 為 FIXED_TENANT_ID
+        Tenant otherTenant = tenantRepository.save(Tenant.builder()
+                .name("Other Tenant " + System.currentTimeMillis())
+                .slug("other-erp-tenant-" + System.currentTimeMillis())
+                .contactEmail("other-erp@tenant.com")
+                .contactPhone("+886-000000000")
+                .status(Tenant.TenantStatus.ACTIVE)
+                .build());
+        Listing otherListing = listingRepository.save(Listing.builder()
+                .tenantId(otherTenant.getId())
+                .ownerId(otherTenant.getId())
+                .listingType(Listing.ListingType.PRODUCT)
+                .title("Other Tenant Product")
+                .description("cross-tenant isolation test")
+                .basePrice(BigDecimal.valueOf(100))
+                .status(Listing.ListingStatus.ACTIVE)
+                .build());
+        listingRepository.flush();
+        // 顯式補寫 tenant_id（insertable=false）→ 確實是「他租戶」而非 null（otherTenant 存在，FK 滿足）
+        jdbcTemplate.update("UPDATE listings SET tenant_id = ? WHERE id = ?", otherTenant.getId(), otherListing.getId());
+
+        UUID otherSku = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO product_skus (id, product_listing_id, sku_code, status, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())",
+                otherSku, otherListing.getId(), "SKU-OTHER-" + System.currentTimeMillis(), "ACTIVE"
+        );
+        jdbcTemplate.update(
+                "INSERT INTO product_inventory (sku_id, total_qty, reserved_qty, low_stock_threshold, updated_at) VALUES (?, ?, ?, ?, NOW())",
+                otherSku, 100, 0, 10
+        );
+
+        StockMovementRequest request = StockMovementRequest.builder()
+                .skuId(otherSku)
+                .movementType("TRANSFER_IN")
+                .quantity(10)
+                .notes("cross-tenant attempt")
+                .build();
+
+        // 當前租戶嘗試異動他租戶 SKU → 應被拒（403 E_1007）
+        mockMvc.perform(post(BASE_URL + "/stock-movements")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
+
+        System.out.println("✅ IT-M16-307 PASSED");
     }
 
     // ═══════════════════════════════════════════════════════════════

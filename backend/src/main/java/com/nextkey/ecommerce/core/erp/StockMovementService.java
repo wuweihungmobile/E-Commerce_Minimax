@@ -13,7 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 import com.nextkey.ecommerce.api.dto.erp.StockMovementDto;
 import com.nextkey.ecommerce.api.dto.erp.StockMovementRequest;
 import com.nextkey.ecommerce.domain.model.inventory.StockMovement;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.product.ProductInventory;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository;
 import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
@@ -36,6 +38,7 @@ public class StockMovementService {
 
     private final StockMovementRepository stockMovementRepository;
     private final ProductInventoryRepository productInventoryRepository;
+    private final ListingRepository listingRepository;
 
     /**
      * 手動庫存異動
@@ -53,9 +56,14 @@ public class StockMovementService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_3003,
                         String.format("SKU not found: skuId=%s", skuId)));
 
-        // 驗證 tenant
-        if (!inventory.getSku().getProductListingId().equals(getTenantListings(tenantId))) {
-            // 簡化檢查：直接查庫存的 tenant 關聯
+        // 驗證租戶擁有此 SKU 所屬 listing（租戶隔離，DEF-017 修復；比照 NotificationTemplateService 慣例）
+        UUID productListingId = inventory.getSku().getProductListingId();
+        Listing listing = listingRepository.findById(productListingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_3003,
+                        String.format("Listing not found for SKU: skuId=%s", skuId)));
+        // null-safe：listing 租戶為空（資料異常）或不符當前租戶 → 拒絕（避免 NPE→500）
+        if (!tenantId.equals(listing.getTenantId())) {
+            throw new BusinessException(ErrorCode.E_1007, "SKU does not belong to current tenant");
         }
 
         // 解析異動類型
@@ -188,13 +196,5 @@ public class StockMovementService {
                 .createdBy(movement.getCreatedBy())
                 .createdAt(movement.getCreatedAt())
                 .build();
-    }
-
-    /**
-     * -placeholder: 取得 tenant 下的 listing IDs
-     */
-    private UUID getTenantListings(final UUID tenantId) {
-        // 這是簡化版本，實際需要透過 ListingRepository 查詢
-        return tenantId;
     }
 }

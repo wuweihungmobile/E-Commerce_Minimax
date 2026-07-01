@@ -149,6 +149,9 @@ class M16ErpE2ETest {
                 .build();
         testListing = listingRepo.save(testListing);
         testListingId = testListing.getId();
+        // Listing.tenantId 為 insertable=false 影子欄位，JPA save 不寫 tenant_id → 顯式 JDBC 補寫
+        // （testTenantId 為既有 generated 租戶，存在於 tenants，FK 滿足；DEF-017 租戶檢查需 tenant_id 相符）。
+        jdbcTemplate.update("UPDATE listings SET tenant_id = ? WHERE id = ?", testTenantId, testListingId);
         listingRepo.flush();
 
         // 建立 ProductSku (SKU) - 必須先建立此记录才能建立 product_inventory
@@ -240,13 +243,19 @@ class M16ErpE2ETest {
                         @Autowired InventoryRepository inventoryRepo,
                         @Autowired ProductInventoryRepository productInventoryRepo,
                         @Autowired SupplierRepository supplierRepo,
-                        @Autowired PurchaseOrderRepository purchaseOrderRepo) {
+                        @Autowired PurchaseOrderRepository purchaseOrderRepo,
+                        @Autowired JdbcTemplate jdbcTemplate) {
         // 清理測試資料
         if (testTenantId != null) {
             supplierRepo.deleteAll(supplierRepo.findByTenantId(testTenantId));
             purchaseOrderRepo.deleteAll(purchaseOrderRepo.findByTenantId(testTenantId));
             productInventoryRepo.deleteAll(productInventoryRepo.findAll());
             inventoryRepo.deleteAll(inventoryRepo.findByTenantId(testTenantId));
+            // 先刪 JDBC 插入的 product_skus（引用 listings，否則刪 listing 觸發 FK violation）。
+            // DEF-017 修復後 listing 有正確 tenant_id → findByTenantId 找得到並刪，故須先清其 SKU。
+            jdbcTemplate.update(
+                    "DELETE FROM product_skus WHERE product_listing_id IN (SELECT id FROM listings WHERE tenant_id = ?)",
+                    testTenantId);
             listingRepo.deleteAll(listingRepo.findByTenantId(testTenantId));
             userRepo.deleteAll(userRepo.findByTenantId(testTenantId));
             tenantRepo.deleteById(testTenantId);

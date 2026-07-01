@@ -1,0 +1,70 @@
+# Release Notes - v2026.11.21-01 (Sprint 28)
+
+**發布日期**: 2026-11-21（規劃）／實作完成 2026-07-01
+**發布類型**: Minor（品質硬化 + 後台深化 + 安全修復）
+**Sprint**: Sprint 28
+**狀態**: ✅ **已 push origin/main（本地優先驗證全綠）**
+
+> Sprint 28 主題：品質硬化（補測試防護網）+ 營運後台深化，為 EPIC-BUYER 鋪路
+
+---
+
+## 新功能 ✨
+
+- **商家營運總覽儀表板（US-002/003）**：`/dashboard` 由 create-next-app Welcome 佔位深化為營運總覽 —— 營收統計卡（今日/昨日成長%/本月/本年）、訂單統計卡、訂單狀態總覽、**營收趨勢（近 30 天每日長條 + 淨營收/客單價）**，串接 AnalyticsController。
+
+## 安全修復 🔒
+
+- **ERP 手動庫存異動租戶隔離（US-004）**：`StockMovementService.createManualMovement` 原擁有權檢查為 no-op（`getTenantListings` 回傳 tenantId 本身 + 空 `if` body），未把關租戶隔離。修：注入 `ListingRepository`，以 SKU→listing→tenantId 實檢 —— 非當前租戶回 E_4031、listing 不存在回 E_3003。
+
+## 品質 🛡️
+
+- **低覆蓋模組測試補強（US-001）**：M14 AnalyticsService 0→7 測試（營收/成長率/AOV/分桶/分組/計數，含邊界）、M18 FaqService 0→6 測試（slug 守門/分類刪除/關鍵字高亮/統計）。`@Test` 670→685。
+
+## 改進 🚀
+
+- 新增 `services/analytics.ts` + `lib/api.ts` analytics 端點（對齊 AnalyticsController `/v2/dashboard/*`）。
+- 前端遵守 Next 16/React 19 嚴格 effect 規範。
+
+## 資料庫遷移 🗄️
+
+- 無新 Flyway migration（最新仍為 V56）。
+
+## 重大變更 ⚠️
+
+- 無破壞性 API 變更。ERP 修復後，手動庫存異動會正確拒絕跨租戶操作（原本錯誤放行）—— 屬安全強化。
+
+## 已知問題 / 後續
+
+| 項目 | 處置 |
+|------|------|
+| DEF-016 Admin audit log 持久化 | Sprint 29+（需 AuditLog entity + migration） |
+| M18 Knowledge 測試（現 1） | 後續延展 |
+| EPIC-BUYER 買家端前端閉環 | Sprint 29 起（AI-1301） |
+
+## 驗證狀態 ✅
+
+- `@Test` 靜態計數：**685**（+15）
+- catch(Exception) 生產 = 0、@Deprecated 生產 = 0
+- Checkstyle 0 violations；前端 lint 0 errors / type-check / build 通過
+- 活躍 DEF：1（DEF-016，低）
+
+## 內含 Commit（Sprint 28）
+
+| US / 項目 | Commit |
+|----------|--------|
+| US-001 測試補強（Analytics/FAQ） | `251b29b` |
+| US-002/003 後台深化（營收/訂單/趨勢） | `c4097bb` |
+| 計畫狀態更新 | `9f0879d` |
+| US-004 ERP 安全隙修復 + DEF-016 | `b98a05c` |
+
+## 貢獻者
+
+- @wuweihungmobile（PM/PO）
+- AISDLC Agents：PM Victoria / SA Amanda / SD Marcus / Dev David / QA Quincy + Claude Code
+
+---
+
+**文件版本**: v1.0
+**建立日期**: 2026-07-01
+**基於**: AISDLC v0.09 Release Management Workflow

@@ -230,6 +230,6 @@
 
 ---
 
-**文件版本**: v2.1
-**最後更新**: 2026-07-01（Sprint 27 US-002/003：DEF-013、DEF-015 完成 → **活躍 DEF 歸零**；DEF-013 揪出並修復 producer/consumer Redis 型別不相容真 bug）
-**下次審查**: Sprint 27 Review
+**文件版本**: v2.2
+**最後更新**: 2026-07-01（Sprint 28 US-004：修復 ERP 手動庫存異動租戶隔離安全隙；新增 DEF-016 Admin audit log 持久化，活躍 DEF=1）
+**下次審查**: Sprint 29 Planning（EPIC-BUYER 起手；評估 DEF-016）

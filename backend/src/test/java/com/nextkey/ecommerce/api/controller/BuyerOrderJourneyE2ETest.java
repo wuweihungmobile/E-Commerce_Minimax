@@ -268,4 +268,35 @@ class BuyerOrderJourneyE2ETest {
                 .then().statusCode(200)
                 .body("data.id", is(orderId.toString()));
     }
+
+    @Test
+    @Order(5)
+    @DisplayName("IDOR 隔離：他人不可讀取/操作買家訂單付款（DEF-019，回 403）")
+    void otherBuyerCannotAccessOrderPayment() throws Exception {
+        UUID orderId = createRoomOrder(accessToken);
+
+        // 另一位買家 D
+        String otherEmail = "buyer-d-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 10000) + "@example.com";
+        String otherToken = registerAndLogin(otherEmail);
+
+        // D 讀 A 訂單付款狀態 → 403
+        given()
+                .header("Authorization", "Bearer " + otherToken)
+                .when().get(BASE_URL + "/" + orderId + "/payment")
+                .then().statusCode(403)
+                .body("success", is(false));
+
+        // D 嘗試對 A 訂單 Mock 付款 → 403
+        given()
+                .header("Authorization", "Bearer " + otherToken)
+                .when().post(BASE_URL + "/" + orderId + "/pay")
+                .then().statusCode(403)
+                .body("success", is(false));
+
+        // A 仍可讀自己訂單付款狀態
+        given()
+                .header("Authorization", "Bearer " + accessToken)
+                .when().get(BASE_URL + "/" + orderId + "/payment")
+                .then().statusCode(200);
+    }
 }

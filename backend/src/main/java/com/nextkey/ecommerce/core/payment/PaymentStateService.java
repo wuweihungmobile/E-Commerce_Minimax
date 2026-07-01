@@ -16,6 +16,7 @@ import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +37,7 @@ public class PaymentStateService {
     public OrderPaymentStateDto getOrderPaymentState(UUID orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
+        checkOrderOwnership(order);
 
         Payment payment = paymentRepository.findByOrderId(orderId).orElse(null);
 
@@ -62,6 +64,7 @@ public class PaymentStateService {
     public OrderPaymentStateDto mockPaymentSuccess(UUID orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
+        checkOrderOwnership(order);
 
         // 檢查訂單狀態是否可以支付
         if (!OrderStateMachine.canPay(order.getStatus().name())) {
@@ -101,6 +104,7 @@ public class PaymentStateService {
     public OrderPaymentStateDto mockPaymentFailure(UUID orderId, String reason) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
+        checkOrderOwnership(order);
 
         // 檢查訂單狀態是否可以支付
         if (!OrderStateMachine.canPay(order.getStatus().name())) {
@@ -131,6 +135,7 @@ public class PaymentStateService {
     public OrderPaymentStateDto mockRefund(UUID orderId, String reason) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
+        checkOrderOwnership(order);
 
         // 檢查是否允許退款
         if (!OrderStateMachine.canRefund(order.getStatus().name())) {
@@ -155,6 +160,24 @@ public class PaymentStateService {
     }
 
     // ========== Helper Methods ==========
+
+    /**
+     * 訂單擁有權檢查（DEF-019：付款讀寫租戶/擁有權隔離）。
+     * 比照 OrderService.getOrder/cancelOrder：買家限本人訂單、admin（ROLE_ADMIN/SUPER_ADMIN）放行，
+     * 越權回 403/E_1007。杜絕任何登入者查詢/付款/退款他人訂單（IDOR）。
+     */
+    private void checkOrderOwnership(Order order) {
+        UUID userId = TenantContext.getCurrentUser();
+        org.springframework.security.core.Authentication auth =
+            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = auth != null && (
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+        );
+        if (!isAdmin && !userId.equals(order.getUserId())) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to access this order");
+        }
+    }
 
     private String generateMockTransactionId() {
         return "MOCK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();

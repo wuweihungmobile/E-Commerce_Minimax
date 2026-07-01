@@ -37,7 +37,7 @@
 > **SP**: 3 | **優先級**: P1 | **狀態**: 📋 Ready
 
 **AC-001-1**: `globals.css` 導入 5 套色票主題（blue 預設 / green / lotus / pastel / test05），各 21 個 `--color-*` token，以 `[data-theme="..."]` 選擇器定義
-**AC-001-2**: 建立 `ThemeProvider` + `ThemeSwitcher`，於 `<html>` 設 `data-theme`，localStorage 記憶選擇，預設 blue
+**AC-001-2**: 建立 `ThemeScript`（inline 防 FOUC，於 paint 前設主題）+ `themeStore.ts`（外部 store）+ `ThemeSwitcher`（`useSyncExternalStore`），於 `<html>` 設 `data-theme`，localStorage 記憶選擇，預設 blue（改用 store 模式以符合 React 19 禁 effect 內同步 setState 限制）
 **AC-001-3**: root `layout.tsx` 以 `next/font` 導入 Inter + Noto Sans TC，設為 `--font-base`；更新 metadata（title/lang zh-TW）
 **AC-001-4**: `npm run build` 0 error；`npm run lint` 0 error（含 Next 16/React 19 嚴格 hooks 規則）
 
@@ -45,7 +45,7 @@
 
 > **SP**: 5 | **優先級**: P1 | **狀態**: 📋 Ready
 
-**AC-002-1**: 擴充 `ui/badge.tsx` variant（feature/promo/rating/logistics/count/muted），對齊設計稿樣式
+**AC-002-1**: 擴充 `ui/badge.tsx` variant（promo/logistics/logisticsAlt/feature/rating/count），對齊設計稿樣式
 **AC-002-2**: 新建 `storefront/SearchBar.tsx`（input+button，onSubmit）、`storefront/SidebarNav.tsx`（items/active/onSelect）
 **AC-002-3**: 新建 `storefront/SortToolbar.tsx`（tabs + 分頁資訊）、`ui/pagination.tsx`（current/total/onChange）
 **AC-002-4**: 新建 `storefront/ProductCard.tsx`（image/title/price/was/promo/rating/sold/logistics/features/href）組合 card+badge
@@ -59,7 +59,7 @@
 **AC-003-2**: `components/layout/StorefrontFooter.tsx`（Bottom）：版權 + 隱私/條款/客服連結 + 懸浮客服鈕
 **AC-003-3**: `components/layout/StorefrontTools.tsx`（Tools）：SidebarNav + SortToolbar；設計為條件式（D2：非瀏覽頁隱藏）
 **AC-003-4**: `components/layout/StorefrontShell.tsx`：組合 TOP + (可選 Tools via `showTools` prop) + Content 插槽 + Bottom；響應式（≥1024px 顯示側欄，行動版收合）
-**AC-003-5**: root `layout.tsx` 掛載 ThemeProvider + 字體；Shell 套用至首頁（機制可全站重用）
+**AC-003-5**: root `layout.tsx` 掛載 `<ThemeScript />` + 字體（`<html>` 補 `suppressHydrationWarning` 配合 ThemeScript 於 paint 前設主題）；Shell 套用至首頁（機制可全站重用）
 **AC-003-6**: build + lint 0 error
 
 ### US-004：首頁 Content 接真實商品資料（P1）

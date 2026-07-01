@@ -61,7 +61,8 @@ function contentResolved(page: Page) {
   return page
     .getByTestId('product-grid')
     .or(page.getByTestId('home-empty'))
-    .or(page.getByTestId('home-auth-empty'));
+    .or(page.getByTestId('home-auth-empty'))
+    .or(page.getByTestId('home-error'));
 }
 
 test.describe('AT-HOMEPAGE: 賣場首頁版型瀏覽器端驗證', () => {

@@ -25,7 +25,7 @@
 
 - **CJK 字體**：Turbopack 無法 self-host next/font 的 CJK（Noto Sans TC 大量 unicode-range 子集）→ Inter self-host + 系統 CJK 字體堆疊（PingFang TC / Noto Sans TC / Microsoft JhengHei）。
 - **主題切換**：React 19 嚴格 hooks 禁 effect 內同步 setState → 改用 `useSyncExternalStore` 讀取 DOM/localStorage。
-- **首頁商品需登入**：`GET /v2/listings` 需 `product:read` 授權（非公開）→ 未登入顯示登入引導，已登入載入商品。若要公開瀏覽需後端授權調整（另評估）。
+- **首頁商品需授權（非公開）**：`GET /v2/listings` 需 `product:read` 授權 → 未登入/無權限（401/403）顯示登入引導；其他錯誤（500/網路/timeout）顯示「載入失敗，請稍後再試」錯誤狀態 + 重試鈕（不再把故障偽裝成「無商品」）；已登入且有權限則載入商品。若需公開匿名瀏覽，需後端放寬 `/v2/listings` read 授權（另評估）。
 
 ## 資料庫遷移 🗄️
 
@@ -35,7 +35,7 @@
 
 - `npm run build`（Turbopack）0 error（39 頁靜態生成）；`type-check` 0 error；`lint` 0 error（95 warnings 皆既有）。
 - `make validate-e2e`（乾淨 DB 全棧 Playwright）：新增 `at-homepage.spec.ts` **4 tests 全綠**；全棧 **33 passed / 5 skipped / 1 failed**，唯一失敗為 `at-m15-e2e 媒體庫篩選功能`（memory 記載之既有 flaky，非本 Sprint 造成）→ push 守門前重跑/處理。
-- E2E 首跑揪出並修復 E2E-HOME-03 真 bug（SearchBar 受控無 onChange + loading 卡死）。
+- E2E 首跑揪出並修復 E2E-HOME-03 真 bug：StorefrontHeader 誤傳 `value` 給 SearchBar 卻無 onChange，使輸入被鎖成唯讀（`fill()` 被重置）；修法為 Header 改傳 onSubmit-only（SearchBar 以內部 state 承接輸入），並於 page.tsx 加 `nonce` 修復同值操作 loading 卡死（SearchBar 元件自 US-002 起未曾變更、支援受控/非受控雙模式，功能無 bug）。
 
 ## 全站導入路線圖 🧭
 

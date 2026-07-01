@@ -40,6 +40,7 @@ export default function HomePage() {
   const [data, setData] = useState<Page<Listing> | null>(null)
   const [loading, setLoading] = useState(true)
   const [needsAuth, setNeedsAuth] = useState(false)
+  const [error, setError] = useState(false)
   const [cartCount, setCartCount] = useState(0)
 
   useEffect(() => {
@@ -58,6 +59,7 @@ export default function HomePage() {
         if (cancelled) return
         setData(res)
         setNeedsAuth(false)
+        setError(false)
         setLoading(false)
       })
       .catch((err: unknown) => {
@@ -66,7 +68,13 @@ export default function HomePage() {
           err && typeof err === "object" && "response" in err
             ? (err as { response?: { status?: number } }).response?.status
             : undefined
-        setNeedsAuth(status === 401)
+        if (status === 401 || status === 403) {
+          setNeedsAuth(true)
+          setError(false)
+        } else {
+          setNeedsAuth(false)
+          setError(true)
+        }
         setData(null)
         setLoading(false)
       })
@@ -115,6 +123,11 @@ export default function HomePage() {
     setPage(oneBased - 1)
     setNonce((n) => n + 1)
   }
+  const handleRetry = () => {
+    setLoading(true)
+    setError(false)
+    setNonce((n) => n + 1)
+  }
 
   return (
     <StorefrontShell
@@ -161,6 +174,21 @@ export default function HomePage() {
           >
             前往登入
           </Link>
+        </div>
+      ) : error ? (
+        <div
+          data-testid="home-error"
+          className="flex flex-col items-center justify-center py-24 text-center gap-3"
+        >
+          <p className="text-lg text-rs-ink">載入失敗，請稍後再試</p>
+          <p className="text-sm text-rs-ink-muted">請確認網路連線後重試</p>
+          <button
+            type="button"
+            onClick={handleRetry}
+            className="mt-2 inline-flex items-center justify-center bg-rs-primary text-white rounded-md px-6 py-2.5 text-sm font-medium transition-colors hover:bg-rs-primary-hover"
+          >
+            重新載入
+          </button>
         </div>
       ) : data && data.content.length > 0 ? (
         <div

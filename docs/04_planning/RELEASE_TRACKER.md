@@ -47,15 +47,74 @@
 
 | 項目 | 數值 |
 |------|------|
-| 正式 Release 次數 | 27 (Sprint 10-35) |
+| 建立 Release Tag 次數 | 26 (Sprint 10-35，連續) |
+| 已 push（已 Release） | 22 (Sprint 10-31) |
+| 待 push（Tag 已建、尚未 push） | 4 (Sprint 32-35，累積批次待完整守門 + 檢查點徵詢後 push) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release | v2027.02.13-01 (Sprint 34，待 push) |
+| 最近一次 Release Tag | v2027.02.27-01 (Sprint 35，⏳ 待 push) |
+| 最近一次已 push Release | v2027.01.02-01 (Sprint 31，隨 S29+30+31 累積批次 fb221f3) |
 | 最近一次跳過 | Sprint 8-9 |
-| 連續 Release 開始 | Sprint 10 |
+| 連續 Release Tag 開始 | Sprint 10 |
 
 ---
 
-## ⏳ Sprint 31 Release（最新）
+## ⏳ Sprint 35 Release（最新）
+
+| 欄位 | 內容 |
+|------|------|
+| **Tag** | v2027.02.27-01 |
+| **建立日期** | 2026-07-01 |
+| **主要功能** | 前端賣場版型 + 首頁改版：意象若水 RUOSHUI 設計稿套為全站共用版型（TOP/Tools/Bottom 共用 + Content 分頁）、5 套色票主題、6 個 DS 元件、共用 StorefrontShell、首頁接真實 `/v2/listings` + at-homepage E2E（4 tests） |
+| **測試狀態** | 前端 build/type-check/lint 0 error；at-homepage E2E 4 tests 全綠；全棧 33 passed（唯一失敗為既有 flaky m15，非本 Sprint）；活躍 DEF=1（DEF-019 物流賣家側） |
+| **Flyway** | V57（無新 migration；純前端變更） |
+| **Release Notes** | [RELEASE_NOTES_v2027.02.27-01.md](../08_deployment/RELEASE_NOTES_v2027.02.27-01.md) |
+| **狀態** | ⏳ 待 push（累積 S32+S33+S34+S35，完整守門 + 檢查點徵詢後 push） |
+
+---
+
+## ⏳ Sprint 34 Release
+
+| 欄位 | 內容 |
+|------|------|
+| **Tag** | v2027.02.13-01 |
+| **建立日期** | 2026-07-01 |
+| **主要功能** | 安全修復落地：DEF-017 ERP 手動庫存租戶隔離清償（AI-1701，歷時 S28→34 三度回退後落地：raw SQL 種 FIXED_TENANT_ID 租戶 + null 安全檢查 + IT-M16-307，乾淨 DB 43 tests 0 fail）；DEF-019 物流/賣家側 + 買家 live 走查延 S35 |
+| **測試狀態** | 乾淨 DB M16 43 tests 0 fail；catch(Exception)=0、@Deprecated=0；活躍 DEF=1（DEF-019 物流賣家側）|
+| **Flyway** | V57（無新 migration） |
+| **Release Notes** | [RELEASE_NOTES_v2027.02.13-01.md](../08_deployment/RELEASE_NOTES_v2027.02.13-01.md) |
+| **狀態** | ⏳ 待 push（累積 S32~S35 共同批次） |
+
+---
+
+## ⏳ Sprint 33 Release
+
+| 欄位 | 內容 |
+|------|------|
+| **Tag** | v2027.01.30-01 |
+| **建立日期** | 2026-07-01 |
+| **主要功能** | 安全修復收尾：DEF-019 訂單付款 IDOR 修復（AI-1702，getOrderPaymentState + pay/fail/refund，403）；DEF-017 三層根因完整診斷（NPE→403→FK）延 S34 |
+| **測試狀態** | `@Test` 690→691（付款越權 E2E）；catch(Exception)=0、@Deprecated=0；活躍 DEF=2（DEF-017/019 物流賣家側）|
+| **Flyway** | V57（無新 migration） |
+| **Release Notes** | [RELEASE_NOTES_v2027.01.30-01.md](../08_deployment/RELEASE_NOTES_v2027.01.30-01.md) |
+| **狀態** | ⏳ 待 push（累積 S32~S35 共同批次） |
+
+---
+
+## ⏳ Sprint 32 Release
+
+| 欄位 | 內容 |
+|------|------|
+| **Tag** | v2027.01.16-01 |
+| **建立日期** | 2026-07-01 |
+| **主要功能** | 安全修復 DEF-018 getOrder IDOR（AI-1601，403/E_1007，最小爆炸半徑）+ 買家頁面 E2E 驗證（AI-1602，at-buyer-pages 30 passed）；揪出 DEF-019 付款物流 IDOR |
+| **測試狀態** | US-001 +1（otherBuyerCannotGetOrder）、前端 e2e +3（buyer pages）；活躍 DEF=2（DEF-017/019）|
+| **Flyway** | V57（無新 migration） |
+| **Release Notes** | [RELEASE_NOTES_v2027.01.16-01.md](../08_deployment/RELEASE_NOTES_v2027.01.16-01.md) |
+| **狀態** | ⏳ 待 push（累積 S32~S35 共同批次） |
+
+---
+
+## ✅ Sprint 31 Release（最近一次已 push）
 
 | 欄位 | 內容 |
 |------|------|
@@ -65,7 +124,7 @@
 | **測試狀態** | 後端 `@Test` 689（+6）, catch(Exception)=0, @Deprecated=0, make validate-schema 無漂移, 活躍 DEF=2（DEF-017/018） |
 | **Flyway** | **V57**（audit_log） |
 | **Release Notes** | [RELEASE_NOTES_v2027.01.02-01.md](../08_deployment/RELEASE_NOTES_v2027.01.02-01.md) |
-| **狀態** | ⏳ 待 push（與 S29+30 累積批次，完整守門一次驗證） |
+| **狀態** | ✅ 已 push（S29+30+31 累積批次 fb221f3） |
 
 ---
 
@@ -79,7 +138,7 @@
 | **測試狀態** | 後端 `@Test` 683（純前端無變化）, 前端 lint 0 errors/type-check/build 通過, catch(Exception)=0, @Deprecated=0, 活躍 DEF=2 |
 | **Flyway** | V56（無新 migration；後端零變更） |
 | **Release Notes** | [RELEASE_NOTES_v2026.12.19-01.md](../08_deployment/RELEASE_NOTES_v2026.12.19-01.md) |
-| **狀態** | ⏳ 待 push（與 Sprint 29 累積批次，完整守門一次驗證） |
+| **狀態** | ✅ 已 push（S29+30+31 累積批次 fb221f3） |
 
 ---
 
@@ -93,7 +152,7 @@
 | **測試狀態** | 後端 `@Test` 683（純前端無變化）, 前端 lint 0 errors/type-check/build 通過, catch(Exception)=0, @Deprecated=0, 活躍 DEF=2 |
 | **Flyway** | V56（無新 migration；後端零變更） |
 | **Release Notes** | [RELEASE_NOTES_v2026.12.05-01.md](../08_deployment/RELEASE_NOTES_v2026.12.05-01.md) |
-| **狀態** | ⏳ 待 push（與 Sprint 30 累積批次） |
+| **狀態** | ✅ 已 push（S29+30+31 累積批次 fb221f3） |
 
 ---
 
@@ -245,9 +304,18 @@ Sprint 25  → ✅ Release (v2026.10.10-01)
 Sprint 26  → ✅ Release (v2026.10.24-01)
 Sprint 27  → ✅ Release (v2026.11.07-01)
 Sprint 28  → ✅ Release (v2026.11.21-01)
+Sprint 29  → ✅ Release (v2026.12.05-01)  [已 push，S29+30+31 累積批次]
+Sprint 30  → ✅ Release (v2026.12.19-01)  [已 push，S29+30+31 累積批次]
+Sprint 31  → ✅ Release (v2027.01.02-01)  [已 push，S29+30+31 累積批次]
+Sprint 32  → ⏳ Tag 已建 (v2027.01.16-01)  [待 push，S32~S35 累積批次]
+Sprint 33  → ⏳ Tag 已建 (v2027.01.30-01)  [待 push，S32~S35 累積批次]
+Sprint 34  → ⏳ Tag 已建 (v2027.02.13-01)  [待 push，S32~S35 累積批次]
+Sprint 35  → ⏳ Tag 已建 (v2027.02.27-01)  [待 push，S32~S35 累積批次]
 ```
 
-**連續 Release**: 20 次 (Sprint 10-28)
+**連續建立 Release Tag**: 26 次 (Sprint 10-35，未中斷)
+**已 push（已 Release）**: Sprint 10-31（22 次）
+**待 push（Tag 已建、尚未 push）**: Sprint 32-35（4 次，累積批次待完整守門 + 檢查點徵詢後 push）
 
 ---
 

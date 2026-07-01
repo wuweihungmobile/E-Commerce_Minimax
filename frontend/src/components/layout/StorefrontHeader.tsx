@@ -104,9 +104,9 @@ export function StorefrontHeader({
           >
             <ShoppingCart className="w-6 h-6 text-rs-ink" aria-hidden />
             {cartCount > 0 && (
-              <span className="absolute -top-0.5 -right-1.5">
-                <Badge variant="count">{cartCount}</Badge>
-              </span>
+              <Badge variant="count" className="absolute -top-0.5 -right-1.5">
+                {cartCount}
+              </Badge>
             )}
           </Link>
         </div>

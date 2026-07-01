@@ -26,6 +26,8 @@ export default function RootLayout({
   return (
     <html
       lang="zh-TW"
+      // data-theme 於 hydration 前由 ThemeScript 依 localStorage 改寫，故此處 suppressHydrationWarning
+      suppressHydrationWarning
       data-theme={DEFAULT_THEME}
       className={`h-full antialiased ${inter.variable}`}
     >

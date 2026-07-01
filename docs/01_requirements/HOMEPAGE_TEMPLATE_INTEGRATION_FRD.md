@@ -28,8 +28,8 @@
 | 區塊 | 設計內容 | 共用性 | Next.js 對應 |
 |------|---------|--------|-------------|
 | **TOP** | ① 頂欄 topbar（賣家中心 / 下載 App / 通知 / 幫助中心 / 語言切換）② 主頁首（RUOSHUI logo + 搜尋列 SearchBar + 熱搜關鍵字 + 購物車 badge） | **全站共用** | 共用 `layout.tsx` 內 `<StorefrontHeader />` |
-| **Tools** | ① 左側分類導覽 SidebarNav（所有分類）② 主內容區頂部排序工具列 SortToolbar（綜合/最新/月銷 + 分頁資訊） | **僅商品瀏覽頁**（D2） | 共用 `<StorefrontTools />`，非瀏覽頁隱藏 |
-| **Content** | 商品網格 ProductCard × N（首頁為 4 欄）+ Pagination | **各分頁不同** | 各路由 `page.tsx`（`{children}` 插槽） |
+| **Tools** | ① 左側分類導覽 SidebarNav（所有分類）② 主內容區頂部排序工具列 SortToolbar（最新/價格低到高/價格高到低 + 分頁資訊；設計稿原為綜合/最新/月銷，因需後端排序支援，首版改為最新/價格升降）| **僅商品瀏覽頁**（D2） | 共用 `<StorefrontTools />`，非瀏覽頁隱藏 |
+| **Content** | 商品網格 ProductCard × N（桌面 4 欄、響應式 2/3/4 欄，每頁 12 筆）+ Pagination | **各分頁不同** | 各路由 `page.tsx`（`{children}` 插槽） |
 | **Bottom** | ① 頁尾（版權 © 2026 意象若水 + 隱私權/服務條款/聯絡客服）② 懸浮客服鈕（聊聊） | **全站共用** | 共用 `layout.tsx` 內 `<StorefrontFooter />` |
 
 **設計原則**：`layout.tsx` 提供 TOP + (條件式 Tools) + Bottom，`{children}` 為 Content 插槽；各 `page.tsx` 只負責 Content。完全對應 Next.js App Router 巢狀 layout 機制。
@@ -38,16 +38,16 @@
 
 ## 3. Design System 元件（從設計稿抽出，shadcn 重建）
 
-設計稿內含完整可移植 Design System（原 `rs-*` 命名，來自 bundle `js_fadb426d.js`：6 個 React 元件 + 43 條 CSS）。依 D3 以 shadcn/ui 重建，保留原 props 語意：
+設計稿內含完整可移植 Design System（原 `rs-*` 命名，來自 bundle `js_fadb426d.js`：6 個 React 元件 + 43 條 CSS）作為規格參考。實作策略：`Badge`、`Pagination` 遵循 shadcn 慣例（`cva` / `VariantProps`）；`SearchBar` / `SidebarNav` / `SortToolbar` / `ProductCard` 為「以 Tailwind + `rs-*` token 對齊設計稿之自訂元件」，**非全數組合 shadcn 基礎元件**：
 
-| 元件 | 原始 props | shadcn 重建策略 |
+| 元件 | 原始 props | 實作重建策略 |
 |------|-----------|-----------------|
-| **Badge** | `variant`(feature/promo/rating/logistics/count/muted), `icon`, `children` | 擴充現有 `ui/badge.tsx` 的 variant |
-| **SearchBar** | `placeholder`, `buttonLabel`, `value`, `onChange`, `onSubmit` | 組合 `ui/input` + `ui/button` → `storefront/SearchBar.tsx` |
-| **SidebarNav** | `title`, `items[]`, `active`, `onSelect` | 新建 `storefront/SidebarNav.tsx` |
-| **SortToolbar** | `tabs[]`(recommend/newest/hotsale), `sort`, `page`, `totalPages` | 新建 `storefront/SortToolbar.tsx` |
-| **ProductCard** | `image`, `title`, `price`, `was`, `currency`, `promo`, `rank`, `logistics[]`, `features[]`, `rating`, `sold`, `monthlySales`, `href` | 組合 `ui/card` + Badge → `storefront/ProductCard.tsx` |
-| **Pagination** | `current`, `total`, `onChange` | 新建 `ui/pagination.tsx`（shadcn 標準元件） |
+| **Badge** | `variant`(promo/logistics/logisticsAlt/feature/rating/count), `icon`, `children` | 擴充現有 `ui/badge.tsx` 的 variant（遵循 shadcn `cva` 慣例）|
+| **SearchBar** | `placeholder`, `buttonLabel`, `value`, `onChange`, `onSubmit` | 自訂 `storefront/SearchBar.tsx`（Tailwind + 原生 input/button，支援受控/非受控雙模式）|
+| **SidebarNav** | `title`, `items[]`, `active`, `onSelect` | 自訂 `storefront/SidebarNav.tsx`（Tailwind + `rs-*` token）|
+| **SortToolbar** | `tabs[]`(newest/priceAsc/priceDesc), `sort`, `page`, `totalPages` | 自訂 `storefront/SortToolbar.tsx`（Tailwind + `rs-*` token）|
+| **ProductCard** | `image`, `title`, `price`, `was`, `currency`, `promo`, `rank`, `logistics[]`, `features[]`, `rating`, `sold`, `monthlySales`, `href` | 自訂 `storefront/ProductCard.tsx`（Tailwind + `rs-*` token；僅用到 `ui/badge`）|
+| **Pagination** | `current`, `total`, `onChange` | 新建 `ui/pagination.tsx`（遵循 shadcn `cva` 慣例）|
 
 ---
 
@@ -71,9 +71,12 @@
 
 ## 5. 資料模型與 API（首頁 Content）
 
+**後端 `/v2/listings` 實際回傳欄位**：`Listing` 僅提供 `id / tenantId / listingType / title / description / coverImageUrl / status / basePrice / currency / tags / createdAt / updatedAt`——**不提供** `was / promo / rating / sold / rank / monthlySales`。
+
 | 綁定變數 | 來源 |
 |---------|------|
-| `products[]`（title/price/was/promo/rating/sold/logistics/features）| `GET /v2/listings`（既有 buyer 商品 API，service 層 `services/product.ts` 或新增 `listings` service）|
+| `products[]` | `GET /v2/listings`（既有 buyer 商品 API，service 層 `services/listing.ts`）。**首頁 ProductCard 實際綁定範圍為 title / price(basePrice) / currency / features(tags)**；`was / promo / rating / sold / rank / monthlySales` 為設計稿裝飾欄位，後端目前不提供，首版不綁定（ProductCard 保留 props 但首頁未傳）|
+| `logistics` | **前端依 `listingType` 推導寫死**（ROOM → 「旅宿」；其餘 → 「賣家宅配」），**非後端欄位** |
 | `sidebar[]`（分類）| 商品分類（後端分類 API 或靜態分類 + 篩選）|
 | `hotKeywords[]`（熱搜）| 靜態設定或搜尋熱度 API（首版可靜態）|
 | `cartCount` | 既有購物車 service `services/cart.ts` |

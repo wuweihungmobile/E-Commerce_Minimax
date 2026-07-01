@@ -15,7 +15,7 @@
 | **規劃 SP（承諾）** | 18 SP（P1）+ 2 SP（Buffer） |
 | **完成 SP** | 18 SP（US-001~005 全完成）；US-006 延 S36 |
 | **測試結果** | build/type-check/lint 0 error；at-homepage E2E 4 tests 通過；既有 E2E 不退步 |
-| **重大事件** | 🎨 前端首度導入設計系統版型；從 6.3MB bundled 設計稿完整逆向抽出資產 |
+| **重大事件** | 🎨 前端首度導入設計系統版型；從約 6.6MB bundled 設計稿完整逆向抽出資產 |
 
 ### 1.1 重大里程碑
 
@@ -34,7 +34,7 @@
 | **先調查後動工** | 逆向設計稿 + Explore 盤點前端架構 + 讀 Next16 文件，才寫碼 | FRD + 4 項架構決策確認 |
 | **開發-編譯-測試循環** | 每個 US 完成即 build+lint+tsc，不累積 | 每階段 0 error 才進下一步 |
 | **不破壞既有** | shadcn 中性 token 完全保留，rs-* 平行新增（Rule 3/7） | 既有頁面零影響、lint 0 新增 error |
-| **E2E 揪出真 bug** | 首跑抓到 SearchBar 受控無 onChange + loading 卡死 → 修復 | E2E-HOME-03 由紅轉綠 |
+| **E2E 揪出真 bug** | 首跑抓到 StorefrontHeader 誤傳 `value` 給 SearchBar 卻無 onChange（輸入被鎖唯讀）→ Header 改傳 onSubmit-only + page.tsx 加 `nonce` 修復 loading 卡死 | E2E-HOME-03 由紅轉綠 |
 | **誠實處理技術限制** | Turbopack CJK / React19 hooks / listings 授權 三處據實調整並記錄 | Review §5、本文 §3 |
 
 ---
@@ -43,7 +43,7 @@
 
 | 問題 | 根本原因 | 影響程度 | 處置 |
 |------|----------|---------|------|
-| **🟡 SearchBar 受控/非受控混用初期出錯** | 傳 value 未配 onChange → 唯讀輸入 + loading 卡死 | 🟡 中（E2E 才抓到） | 已修（改非受控 + nonce 強制重跑）；記取「受控元件必配 onChange」 |
+| **🟡 StorefrontHeader 誤傳 value 給 SearchBar 卻無 onChange** | Header 傳 `value` 未配 onChange，使 SearchBar 被鎖成唯讀（`fill()` 被重置）+ 同值操作 loading 卡死；SearchBar 元件自 US-002 起未曾變更（本身支援受控/非受控雙模式，功能無 bug） | 🟡 中（E2E 才抓到） | 已修（Header 改傳 onSubmit-only、SearchBar 以內部 state 承接輸入 + page.tsx 加 `nonce` 強制重跑）；記取「傳 value 給受控元件必配 onChange」 |
 | **🟡 CJK 字體無法 self-host** | Turbopack 對 next/font CJK 大量 unicode-range 子集無法解析 | 🟢 低（有系統字體 fallback） | 系統 CJK 堆疊；未來評估 local woff2 子集化 |
 | **🟢 全站改版僅完成基礎+首頁** | 範圍大、分階段 | 🟢 中 | (auth) S36、dashboard/admin/cms S37（FRD §7） |
 | **🟢 首頁商品需登入才顯示** | `/v2/listings` 需 product:read | 🟢 低 | 未登入顯示引導；若要公開需後端授權調整（另評估） |
@@ -61,6 +61,9 @@
 | AI-1904 | dashboard/admin/cms 套 Shell（seller 變體） | 全站改版階段三 | Dev David | P2 | Sprint 37 |
 | AI-1905 | 首頁商品「有資料」E2E + 分頁翻頁 | 需 seed 商品，補自動化（目前手動 checklist） | QA Quincy | P3 | 後續 |
 | AI-1906 | 檢查點徵詢後 push S32~35 累積批次 | 完整守門（make validate-release）綠燈後 push | Dev David | P1 | 檢查點 |
+| AI-1907 | 首頁 home-error/重試 E2E 補測 | 四方審議 QA 建議：`page.route()` 攔截 `/v2/listings` 回 500 → 斷言 home-error + 重試鈕 → 改回 200 點重試 → 斷言 error 清除；併補 401 專屬鑑別斷言與 loading 不卡死斷言（緩解四態 `or()` 之 Rule 9 鑑別力缺口；T1 重試鈕屬「功能已上、驗收缺席」）| QA Quincy | P2 | 後續 |
+
+> **四方審議核准註記（2026-07-01）**：Sprint 35 修復後經 Architect / SA / SD / QA 四方審議核准通過。QA 提列 AI-1907（home-error/重試 E2E 補測）為後續必辦——T1 導入使用者可見重試鈕但暫無自動化驗收；並重申 push 前須跑 `make validate-release` 完整守門（DoD §5 既有項），將「修復後 4 tests 全綠」由推定轉實測，嚴禁 `--no-verify`。
 
 ---
 

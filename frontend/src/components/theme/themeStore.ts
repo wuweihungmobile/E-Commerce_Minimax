@@ -2,15 +2,15 @@
 // 僅限 client 元件匯入（使用 window / document）。
 import { DEFAULT_THEME, isTheme, THEME_STORAGE_KEY, type Theme } from "./theme"
 
-let listeners: Array<() => void> = []
+const listeners = new Set<() => void>()
 
 export function subscribeTheme(callback: () => void) {
   if (typeof window !== "undefined") {
     window.addEventListener("storage", callback)
   }
-  listeners.push(callback)
+  listeners.add(callback)
   return () => {
-    listeners = listeners.filter((l) => l !== callback)
+    listeners.delete(callback)
     if (typeof window !== "undefined") {
       window.removeEventListener("storage", callback)
     }

@@ -77,7 +77,7 @@ export function ProductCard({
         {logistics.length > 0 && (
           <div className="absolute bottom-2 left-2 flex gap-1">
             {logistics.map((l, i) => (
-              <Badge key={l} variant={i === 0 ? "logistics" : "logisticsAlt"}>
+              <Badge key={`${l}-${i}`} variant={i === 0 ? "logistics" : "logisticsAlt"}>
                 {l}
               </Badge>
             ))}

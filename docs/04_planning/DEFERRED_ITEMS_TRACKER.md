@@ -19,6 +19,9 @@
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
 |----|------|-------------|---------|---------|---------|------|
 | DEF-019 | 訂單付款/物流讀寫無擁有權檢查（IDOR 姊妹，安全） | Sprint 32（US-001 盤點發現） | US-001 修 `getOrder` 時盤點揪出**同類 IDOR 尚未修**：(a) `PaymentStateService.getOrderPaymentState`（讀，`GET /v2/orders/{id}/payment`）僅 `order:read`、無擁有權過濾；(b) `mockPaymentSuccess/Failure/Refund`（寫，`/pay`、`/pay/fail`、`/refund`，`order:update`）任何具權者可對他人訂單付款/退款；(c) `PaymentService.processOrderPayment`、`LogisticsService.createLogistics` 亦 `findById` 無過濾。讀取類同 getOrder（限本人）；寫入類語意較複雜（買家付自己單 OK、賣家建本租戶物流 OK），需個別設計，非 US-001 committed 範圍，誠實延後 | **Sprint 33 US-002 已修訂單付款側**（getOrderPaymentState 讀 + mockPaymentSuccess/Failure/mockRefund 寫 → 新增 checkOrderOwnership helper，買家限本人、admin 放行、越權 403/E_1007；補 otherBuyerCannotAccessOrderPayment 測試；本地 21 tests 0 fail）。**剩餘**：LogisticsService.createLogistics（賣家側，租戶語意非買家擁有權）+ PaymentService.processOrderPayment（若有對外入口）→ 盤點賣家/admin 角色設計租戶檢查（`createLogistics` 需 order.tenantId==當前租戶，tenant-based，恐涉 M11 測試資料對齊，比照 DEF-017）+ 補測試 | 2 | 🔶 部分完成（付款側已修；物流/賣家側續 Sprint 36，AI-1902。Sprint 35 為賣場版型 Sprint，安全項順延但未遺漏） |
+| DEF-020 | 版型 Shell 架構債（route-group layout + client 邊界下推 + 全站狀態走 URL） | Sprint 35（Architect 審查建議） | S35 首頁以「page 內手包 StorefrontShell」交付；Architect 建議 S36 導入買家頁前償還：(a) 改為 App Router route-group `app/(storefront)/layout.tsx` 承載 TOP/Footer；(b) `"use client"` 邊界下推至葉節點（Shell/Footer/Tools 轉 server component）；(c) 搜尋/購物車全站狀態改走 URL（router.push `?keyword=`）而非 page-scoped callback。現為單一店面頁，route-group layout 的重用效益於 S36 增加買家頁時才顯現，現在做屬投機抽象（Rule 2），故延後至 S36 導入前償還 | S36 (auth) 買家頁套 Shell（AI-1901）啟動前一併重構 | 3 | ⚠️ 待處理（S36 導入前償還） |
+| DEF-021 | CJK 字體品牌一致性（技術債） | Sprint 35（Turbopack 限制發現） | S35 因 Turbopack 無法 self-host next/font CJK（Noto Sans TC 大量 unicode-range 子集無法解析），改用系統 CJK 字體堆疊；系統堆疊跨平台字重/字距不一，品牌字體一致性下降。後續評估 `next/font/local` + 預先子集化 Noto Sans TC woff2 以恢復品牌字體一致性 | 需 woff2 子集化工具鏈 + 驗證 Turbopack 相容性 | 2 | ⚠️ 待處理（低急迫，有系統字體 fallback） |
+| DEF-022 | E2E 硬等待（waitForTimeout 固定 sleep） | Sprint 35（at-homepage E2E 建立時沿用既有模式） | `at-homepage.spec.ts` 註冊/登入 helper 用 `waitForTimeout` 固定 sleep（沿用 at-buyer-pages 既有模式），CI 慢時可能 flaky；後續改 `waitForURL` / `waitForResponse` 明確等待條件 | 無（純測試穩定性重構）| 1 | ⚠️ 待處理（flaky 風險，低急迫）|
 
 ---
 
@@ -46,6 +49,21 @@
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 35 (2026-07-01)
+
+**新增延後**:
+- DEF-020（🟡 中，架構債，→ Sprint 36 導入前償還，Architect 審查建議）: 版型 Shell 由「page 內手包 StorefrontShell」改為 App Router route-group `app/(storefront)/layout.tsx` 承載 TOP/Footer；`"use client"` 邊界下推至葉節點；搜尋/購物車全站狀態改走 URL。理由：現為單一店面頁，route-group 重用效益 S36 增買家頁才顯現，現在做屬投機抽象（Rule 2）
+- DEF-021（🟡 低，技術債）: CJK 字體品牌一致性 — Turbopack 無法 self-host next/font CJK，S35 改系統字體堆疊；後續評估 `next/font/local` + 子集化 Noto Sans TC woff2
+- DEF-022（🟡 低，測試穩定性）: E2E 硬等待 — at-homepage 註冊/登入 helper 用 `waitForTimeout` 固定 sleep（沿用 at-buyer-pages 模式），CI 慢時可能 flaky；後續改 `waitForURL`/`waitForResponse`
+
+**續延後**:
+- DEF-019（物流/賣家側，→ Sprint 36 AI-1902）: 付款側已於 S33 修；剩 createLogistics（tenant-based，恐涉 M11 測試資料）+ processOrderPayment。S35 為賣場版型 Sprint，安全項順延但未遺漏
+
+**更新**:
+- Sprint 35 主題「賣場店面版型基礎 + 首頁改版（意象若水 RUOSHUI 套版）」：US-001~005（P1，18 SP）全完成；US-006（DEF-019 盤點 Buffer）延 S36
+- 前端 build/type-check/lint 0 error；at-homepage E2E 4 tests 全綠；活躍 DEF：**1**（DEF-019 物流賣家側，安全）+ 3 個新技術/架構債（DEF-020/021/022，非安全）
+- 誠實紀錄：AC-005-2 E2E 覆蓋度部分達成（缺「有資料網格 + 分頁翻頁」需 seed，AI-1905）；E2E-HOME-03 真 bug 為 Header 誤傳 value 給 SearchBar（非 SearchBar 本身 bug）
 
 ### Sprint 34 (2026-07-01)
 
@@ -282,6 +300,6 @@
 
 ---
 
-**文件版本**: v2.5
-**最後更新**: 2026-07-01（Sprint 34：**US-001 DEF-017 ERP 租戶隔離落地清償**（歷時 S28→34，raw SQL 種 FIXED_TENANT_ID 租戶 + null 安全檢查 + IT-M16-307，乾淨 DB 43 tests 0 fail）。US-002 DEF-019 物流/賣家側 + US-003 買家 live 走查延 S35。活躍 DEF=1：DEF-019 物流賣家側）
-**下次審查**: Sprint 35 Planning（DEF-019 物流/賣家側 IDOR + 買家 live 走查）
+**文件版本**: v2.6
+**最後更新**: 2026-07-01（Sprint 35：賣場店面版型基礎 + 首頁改版（意象若水 RUOSHUI 套版），US-001~005 全完成。新增 3 個技術/架構債 DEF-020（Shell route-group 架構債）/DEF-021（CJK 字體品牌一致性）/DEF-022（E2E 硬等待）。活躍 DEF=1 安全項（DEF-019 物流賣家側）+ 3 非安全技術/架構債）
+**下次審查**: Sprint 36 Planning（DEF-019 物流/賣家側 IDOR + DEF-020 Shell 架構債導入前償還 + 買家 live 走查）

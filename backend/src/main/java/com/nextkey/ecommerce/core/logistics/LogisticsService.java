@@ -19,6 +19,7 @@ import com.nextkey.ecommerce.domain.repository.LogisticsRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 
 import lombok.RequiredArgsConstructor;
@@ -53,6 +54,10 @@ public class LogisticsService {
 
         Order order = orderRepository.findById(request.getOrderId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
+
+        // DEF-019：物流建立租戶擁有權檢查——賣家限本租戶訂單、admin 放行，越權回 403/E_1007。
+        // 置於狀態檢查之前，避免向未授權者洩漏訂單狀態（IDOR 正確順序）。
+        checkOrderTenant(order);
 
         // 訂單必須為 CONFIRMED 才能建立物流
         if (order.getStatus() != Order.OrderStatus.CONFIRMED) {
@@ -219,6 +224,25 @@ public class LogisticsService {
     }
 
     // ========== Helper Methods ==========
+
+    /**
+     * 物流建立租戶擁有權檢查（DEF-019：物流/賣家側租戶隔離）。
+     * 賣家限本租戶訂單（order.tenantId == 當前租戶）、admin（ROLE_ADMIN/SUPER_ADMIN）放行，
+     * 越權回 403/E_1007。杜絕任何具 order:create 權限者為他租戶訂單建立物流（IDOR）。
+     * 比照 PaymentStateService.checkOrderOwnership，惟物流為賣家側故採 tenant-based（非買家 user-based）。
+     */
+    private void checkOrderTenant(final Order order) {
+        UUID tenantId = TenantContext.getCurrentTenant();
+        org.springframework.security.core.Authentication auth =
+            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = auth != null && (
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+        );
+        if (!isAdmin && (tenantId == null || !tenantId.equals(order.getTenantId()))) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to create logistics for this order");
+        }
+    }
 
     private String getStatusMessage(final Logistics.LogisticsStatus status) {
         return switch ( status) {

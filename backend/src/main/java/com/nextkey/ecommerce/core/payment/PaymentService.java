@@ -16,6 +16,7 @@ import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,6 +64,10 @@ public class PaymentService {
     private Payment processOrderPayment(final PaymentDto.PaymentRequest request) {
         Order order = orderRepository.findById(request.getOrderId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
+
+        // DEF-019：訂單付款擁有權檢查（/v2/payments 對外入口 IDOR 修補）——買家限本人訂單、
+        // admin 放行，越權回 403/E_1007。置於狀態檢查之前，避免向未授權者洩漏訂單狀態。
+        checkOrderPaymentOwnership(order);
 
         // 檢查訂單狀態
         if (order.getStatus() != Order.OrderStatus.CREATED) {
@@ -205,6 +210,24 @@ public class PaymentService {
     }
 
     // ========== Helper Methods ==========
+
+    /**
+     * 訂單付款擁有權檢查（DEF-019：/v2/payments 訂單付款入口 IDOR 修補）。
+     * 比照 PaymentStateService.checkOrderOwnership：買家限本人訂單、admin（ROLE_ADMIN/SUPER_ADMIN）
+     * 放行，越權回 403/E_1007。杜絕任何具付款權限者為他人訂單付款（IDOR）。
+     */
+    private void checkOrderPaymentOwnership(final Order order) {
+        UUID userId = TenantContext.getCurrentUser();
+        org.springframework.security.core.Authentication auth =
+            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = auth != null && (
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+        );
+        if (!isAdmin && (userId == null || !userId.equals(order.getUserId()))) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to pay for this order");
+        }
+    }
 
     private String generateMockTransactionId() {
         return "MOCK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();

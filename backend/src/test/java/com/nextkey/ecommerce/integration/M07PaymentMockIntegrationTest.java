@@ -112,22 +112,21 @@ class M07PaymentMockIntegrationTest {
             testTenantId = testTenant.getId();
         }
 
-        // 建立測試用戶
-        if (testUserId == null) {
-            User testUser = User.builder()
-                    .tenantId(testTenantId)
-                    .email("payment-test-" + System.currentTimeMillis() + "@example.com")
-                    .fullName("Payment Test User")
-                    .build();
-            testUser = userRepository.save(testUser);
-            testUserId = testUser.getId();
+        // 獲取 auth token；DEF-019：以此 auth 使用者作為訂單擁有者，確保 API 呼叫者
+        // （token 對應的使用者）與 order.userId 一致，通過付款擁有權檢查（否則回 403/E_1007）。
+        if (authToken == null) {
+            String authEmail = "payment-auth-" + System.currentTimeMillis() + "@example.com";
+            authToken = createTestUserAndGetToken(authEmail);
+            User authUser = userRepository.findByEmail(authEmail).orElseThrow();
+            testUserId = authUser.getId();
         }
 
-        // 建立測試訂單
+        // 建立測試訂單（擁有者 = auth 使用者）
         if (testOrderId == null) {
             com.nextkey.ecommerce.domain.model.order.Order testOrder = com.nextkey.ecommerce.domain.model.order.Order.builder()
                     .tenant(tenantRepository.findById(testTenantId).orElseThrow())
                     .user(userRepository.findById(testUserId).orElseThrow())
+                    .userId(testUserId)
                     .orderType(com.nextkey.ecommerce.domain.model.listing.Listing.ListingType.PRODUCT)
                     .status(com.nextkey.ecommerce.domain.model.order.Order.OrderStatus.CREATED)
                     .totalAmount(BigDecimal.valueOf(1000.00))
@@ -135,11 +134,6 @@ class M07PaymentMockIntegrationTest {
                     .build();
             testOrder = orderRepository.save(testOrder);
             testOrderId = testOrder.getId();
-        }
-
-        // 獲取 auth token
-        if (authToken == null) {
-            authToken = createTestUserAndGetToken("payment-auth-" + System.currentTimeMillis() + "@example.com");
         }
     }
 
@@ -185,6 +179,7 @@ class M07PaymentMockIntegrationTest {
         com.nextkey.ecommerce.domain.model.order.Order newOrder = com.nextkey.ecommerce.domain.model.order.Order.builder()
                 .tenant(tenantRepository.findById(testTenantId).orElseThrow())
                 .user(userRepository.findById(testUserId).orElseThrow())
+                .userId(testUserId)
                 .orderType(com.nextkey.ecommerce.domain.model.listing.Listing.ListingType.PRODUCT)
                 .status(com.nextkey.ecommerce.domain.model.order.Order.OrderStatus.CREATED)
                 .totalAmount(BigDecimal.valueOf(500.00))
@@ -284,6 +279,7 @@ class M07PaymentMockIntegrationTest {
         com.nextkey.ecommerce.domain.model.order.Order newOrder = com.nextkey.ecommerce.domain.model.order.Order.builder()
                 .tenant(tenantRepository.findById(testTenantId).orElseThrow())
                 .user(userRepository.findById(testUserId).orElseThrow())
+                .userId(testUserId)
                 .orderType(com.nextkey.ecommerce.domain.model.listing.Listing.ListingType.PRODUCT)
                 .status(com.nextkey.ecommerce.domain.model.order.Order.OrderStatus.CREATED)
                 .totalAmount(BigDecimal.valueOf(2000.00))
@@ -306,6 +302,7 @@ class M07PaymentMockIntegrationTest {
         com.nextkey.ecommerce.domain.model.order.Order newOrder = com.nextkey.ecommerce.domain.model.order.Order.builder()
                 .tenant(tenantRepository.findById(testTenantId).orElseThrow())
                 .user(userRepository.findById(testUserId).orElseThrow())
+                .userId(testUserId)
                 .orderType(com.nextkey.ecommerce.domain.model.listing.Listing.ListingType.PRODUCT)
                 .status(com.nextkey.ecommerce.domain.model.order.Order.OrderStatus.CREATED)
                 .totalAmount(BigDecimal.valueOf(3000.00))
@@ -329,6 +326,7 @@ class M07PaymentMockIntegrationTest {
         com.nextkey.ecommerce.domain.model.order.Order newOrder = com.nextkey.ecommerce.domain.model.order.Order.builder()
                 .tenant(tenantRepository.findById(testTenantId).orElseThrow())
                 .user(userRepository.findById(testUserId).orElseThrow())
+                .userId(testUserId)
                 .orderType(com.nextkey.ecommerce.domain.model.listing.Listing.ListingType.PRODUCT)
                 .status(com.nextkey.ecommerce.domain.model.order.Order.OrderStatus.CREATED)
                 .totalAmount(BigDecimal.valueOf(4000.00))
@@ -361,6 +359,7 @@ class M07PaymentMockIntegrationTest {
         com.nextkey.ecommerce.domain.model.order.Order order = com.nextkey.ecommerce.domain.model.order.Order.builder()
                 .tenant(tenantRepository.findById(testTenantId).orElseThrow())
                 .user(userRepository.findById(testUserId).orElseThrow())
+                .userId(testUserId)
                 .orderType(com.nextkey.ecommerce.domain.model.listing.Listing.ListingType.PRODUCT)
                 .status(com.nextkey.ecommerce.domain.model.order.Order.OrderStatus.CREATED)
                 .totalAmount(BigDecimal.valueOf(5000.00))

@@ -18,8 +18,7 @@
 
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
 |----|------|-------------|---------|---------|---------|------|
-| DEF-017 | ERP 手動庫存異動租戶隔離（安全） | Sprint 28（US-004 發現） | `StockMovementService.createManualMovement` 的擁有權檢查為 no-op（`getTenantListings` 回傳 tenantId + 空 if body），未把關租戶隔離。US-004 曾實作 `ListingRepository` 檢查，但 **打破 5 個 M16 整合測試（M16ErpIntegrationTest ×4 + M16ErpE2ETest ×1）**——測試資料建 SKU 但未建對應 listing 列，且回 500。修法須連同 ERP 整合測試資料一併重做，非 Buffer 可容納，已誠實回退 | 釐清 ERP inventory→sku→listing→tenant 關聯與測試資料建置；設計正確的租戶擁有權檢查 + 補測試資料 | 3 | ⚠️ 待處理（🟡 安全，中） |
-| DEF-018 | 訂單 `getOrder` 無擁有權檢查（IDOR，安全） | Sprint 31（US-002 E2E 補測試發現） | `OrderService.getOrder`→`findOrderById` 僅 `findById(orderId)`，僅需 `order:read` 權限、無 per-user/tenant 過濾（專案無 Hibernate 全域 tenant filter）→ 任何登入者可取任意訂單詳情（含 logs）。對比 `cancelOrder` 已有擁有權檢查（E_1007）。修法（比照 cancelOrder 加 isAdmin + userId.equals(order.getUserId()) 檢查）**涉廣用方法**，恐影響 OrderPaymentController/賣家/admin 取單與多個訂單 E2E（比照 DEF-017/ERP 教訓），累積期不宜無完整守門即改 | 盤點所有 getOrder 呼叫者（買家/賣家/admin/payment）與相關 E2E；設計擁有權檢查（買家限本人、賣家限本租戶、admin 放行）+ 補測試；於可跑完整守門時處理 | 3 | ✅ Sprint 32 US-001 修復中（getOrder 加 owner/admin 檢查，越權 403/E_1007） |
+| DEF-017 | ERP 手動庫存異動租戶隔離（安全） | Sprint 28（US-004 發現） | `StockMovementService.createManualMovement` 的擁有權檢查為 no-op（`getTenantListings` 回傳 tenantId + 空 if body），未把關租戶隔離。US-004 曾實作 `ListingRepository` 檢查，但 **打破 5 個 M16 整合測試（M16ErpIntegrationTest ×4 + M16ErpE2ETest ×1）**——測試資料建 SKU 但未建對應 listing 列，且回 500。修法須連同 ERP 整合測試資料一併重做，非 Buffer 可容納，已誠實回退。**Sprint 32 US-001 再驗證（AI-1603）**：套正確修法（listingRepository.findById → `listing.getTenantId().equals(currentTenant)` 否則 E_1007）+ 新增跨租戶測試 IT-M16-307 → **307 通過（修法邏輯正確，他租戶 SKU → 403）**；但原 5 個同租戶測試（301/302/303/305 + M16ErpE2ETest adjust）仍回 500——**真因**：`findById(testListingId)`（@BeforeAll 種的 listing）在測試交易中查不到（JDBC 建 SKU 無 FK 故插入成功，JPA 卻查不到該 listing）→ E_3003（GlobalExceptionHandler 未明列 → 預設 500）。Sprint 32 依「一次嘗試綠才留」紀律於 commit 前本地攔下並再度誠實回退（main 未污染） | 重做 M16 seeding：各測試 SKU 指向「JPA 交易內可 findById 的 listing」（比照**已通過的 IT-M16-307**：交易內 `listingRepo.save`+`flush`）；順帶評估 E_3003 → 422 對應。**修法本身已驗證正確，僅缺測試資料重做** | 3 | ⚠️ 待處理（🟡 安全，中，Sprint 33 AI-1603；修法已驗證） |
 | DEF-019 | 訂單付款/物流讀寫無擁有權檢查（IDOR 姊妹，安全） | Sprint 32（US-001 盤點發現） | US-001 修 `getOrder` 時盤點揪出**同類 IDOR 尚未修**：(a) `PaymentStateService.getOrderPaymentState`（讀，`GET /v2/orders/{id}/payment`）僅 `order:read`、無擁有權過濾；(b) `mockPaymentSuccess/Failure/Refund`（寫，`/pay`、`/pay/fail`、`/refund`，`order:update`）任何具權者可對他人訂單付款/退款；(c) `PaymentService.processOrderPayment`、`LogisticsService.createLogistics` 亦 `findById` 無過濾。讀取類同 getOrder（限本人）；寫入類語意較複雜（買家付自己單 OK、賣家建本租戶物流 OK），需個別設計，非 US-001 committed 範圍，誠實延後 | 分讀/寫兩類：讀取比照 getOrder 加 owner/admin 檢查；寫入盤點各呼叫者角色語意（買家/賣家/admin）設計對應檢查 + 補越權測試；於可跑完整守門時處理 | 3 | ⚠️ 待處理（🟡 安全，中） |
 
 ---
@@ -42,10 +41,28 @@
 | DEF-013 | M09 MQ 通知缺端到端驗證 | Sprint 26 | Sprint 27 | US-003：補 produce→佇列→consume 端到端測試（NotificationProduceConsumeTest，真實 ObjectMapper + 共用佇列）。**揪出並修復真 bug**：producer 用 Stream(XADD)、consumer 用 List(RPOP) 同 key 型別不相容 → 通知永不被消費；改為兩端一致 List（leftPush/rightPop） |
 | DEF-015 | 前端 next/font/google 建置期外部抓取 | Sprint 26 | Sprint 27 | US-002：layout.tsx 的 Geist 變數從未被 CSS/Tailwind 消費（死碼），移除 next/font/google import → 離線 build 不再抓 Google，零視覺影響 |
 | DEF-016 | Admin Audit Log 持久化 | Sprint 28 | Sprint 31 | US-003：建 AuditLog entity + AuditLogRepository + V57 migration；AdminService 6 個關鍵操作寫入 audit_log（與 log.info 並存，catch 不中斷主流程）；make validate-schema 無漂移，AdminServiceIntegrationTest 稽核測試通過 |
+| DEF-018 | 訂單 getOrder 無擁有權檢查（IDOR，安全） | Sprint 31 | Sprint 32 | US-001（AI-1601）：getOrder 加 owner/admin 擁有權檢查（比照同類 cancelOrder/getOrderStateLogs 的 inline pattern），越權回 403/E_1007；findOrderById 不動保留 404 not-found 語意，最小爆炸半徑不影響 payment/賣家/admin 內部流程；補 BuyerOrderJourneyE2ETest.otherBuyerCannotGetOrder（買家 C 讀 A 訂單→403）；本地訂單 E2E 20 tests 0 fail |
 
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 32 (2026-07-01)
+
+**新增延後**:
+- DEF-019（🟡 中，安全）: 訂單付款/物流讀寫無擁有權檢查（IDOR 姊妹）— US-001 修 getOrder 時盤點揪出（getOrderPaymentState 讀 + pay/fail/refund 寫 + logistics/payment service），非 US-001 committed 範圍，誠實延後
+
+**移除延後（已完成）**:
+- DEF-018 ✅ Sprint 32 US-001（getOrder 加 owner/admin 擁有權檢查，越權 403/E_1007，最小爆炸半徑；補 otherBuyerCannotGetOrder E2E；訂單 E2E 20 tests 0 fail）
+
+**再驗證後續延後（誠實回退）**:
+- DEF-017（🟡 中，安全，→ Sprint 33 AI-1603）: US-003（Buffer/擇機）套正確修法 + 新增跨租戶測試 IT-M16-307 **通過（修法邏輯正確）**，但原 5 個同租戶 M16 測試回 500（真因：@BeforeAll 種的 listing 在測試交易中 findById 查不到 → E_3003）。依「一次嘗試綠才留」紀律於 commit 前本地攔下、再度誠實回退（main 未污染）。**修法已驗證正確，僅缺 M16 seeding 重做**，縮小 Sprint 33 範圍
+
+**更新**:
+- Sprint 32 主題「安全修復 + 買家閉環驗證」：US-001（P1 安全，DEF-018 getOrder IDOR，AI-1601）完成；US-002（P1，買家頁面 E2E，AI-1602）完成；US-003（Buffer，DEF-017，AI-1603）調查+誠實延後
+- `@Test` 靜態計數：US-001 +1（otherBuyerCannotGetOrder）；US-002 前端 e2e +3（buyer pages spec）
+- 活躍 DEF：2（DEF-017 ERP / DEF-019 付款物流 IDOR；DEF-018 已清償）
+- 誠實紀錄：US-001 盤點揪出 DEF-019；US-003 二度驗證仍需測試資料重做，延 Sprint 33
 
 ### Sprint 26 (2026-07-01)
 
@@ -233,6 +250,6 @@
 
 ---
 
-**文件版本**: v2.2
-**最後更新**: 2026-07-01（Sprint 28 US-004：發現 2 缺口並記 DEF-016 Admin audit log、DEF-017 ERP 租戶隔離；ERP 修法會打破 5 個耦合整合測試，誠實回退。活躍 DEF=2）
-**下次審查**: Sprint 29 Planning（EPIC-BUYER 起手；評估 DEF-016/017）
+**文件版本**: v2.3
+**最後更新**: 2026-07-01（Sprint 32：US-001 清償 DEF-018 getOrder IDOR；盤點新增 DEF-019 付款物流 IDOR；US-003 二度驗證 DEF-017 修法正確但缺 M16 seeding 重做，延 Sprint 33。活躍 DEF=2：DEF-017 / DEF-019）
+**下次審查**: Sprint 33 Planning（DEF-017 M16 seeding 重做 + DEF-019 付款物流 IDOR，皆安全項）

@@ -11,6 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 29 | v2026.12.05-01 | - | 2026-07-01 | EPIC-BUYER 買家端閉環起手(純前端)：M05 訂單前端(列表/詳情/取消/狀態日誌) + M09 通知收件匣 + M07 Mock 付款(訂單詳情整合) | ⏳ 待 push（累積 US-001/002/003，檢查點徵詢後完整守門） |
 | Sprint 28 | v2026.11.21-01 | - | 2026-07-01 | 品質硬化(M14/M18 測試 0→13) + 商家營運總覽儀表板(營收/訂單/趨勢) + US-004 調查(ERP 租戶隔離 no-op→DEF-017、audit→DEF-016) | ✅ 已 push（本地優先驗證） |
 | Sprint 27 | v2026.11.07-01 | - | 2026-07-01 | DEF-013 通知端到端斷鏈修復 + DEF-015 前端離線 build + pre-push v5 完整守門實證 + 產品方向決策(PRODUCT_BACKLOG) | ✅ 已 push（本地優先驗證；活躍 DEF 歸零） |
 | Sprint 26 | v2026.10.24-01 | - | 2026-07-01 | 本地優先 CI（停用雲端自動 CI）+ WS/即時 DoD 制度化 + M11 取消技術債清償(DEF-010/011) + 廣播 conversationId(DEF-012) + Logistics jsonb 統一(DEF-009) + e2e strict 守門 | ✅ 已 push（本地優先驗證；雲端改手動觸發） |
@@ -40,15 +41,29 @@
 
 | 項目 | 數值 |
 |------|------|
-| 正式 Release 次數 | 20 (Sprint 10-28) |
+| 正式 Release 次數 | 21 (Sprint 10-29) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release | v2026.11.21-01 (Sprint 28) |
+| 最近一次 Release | v2026.12.05-01 (Sprint 29，待 push) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release 開始 | Sprint 10 |
 
 ---
 
-## ✅ Sprint 28 Release（最新）
+## ⏳ Sprint 29 Release（最新）
+
+| 欄位 | 內容 |
+|------|------|
+| **Tag** | v2026.12.05-01 |
+| **建立日期** | 2026-07-01 |
+| **主要功能** | EPIC-BUYER 買家端閉環起手（純前端）：M05 訂單前端（列表/詳情/取消/狀態日誌）+ M09 通知收件匣（未讀/篩選/已讀/刪除）+ M07 Mock 付款（訂單詳情整合，CREATED→PAID） |
+| **測試狀態** | 後端 `@Test` 683（純前端無變化）, 前端 lint 0 errors/type-check/build 通過, catch(Exception)=0, @Deprecated=0, 活躍 DEF=2 |
+| **Flyway** | V56（無新 migration；後端零變更） |
+| **Release Notes** | [RELEASE_NOTES_v2026.12.05-01.md](../08_deployment/RELEASE_NOTES_v2026.12.05-01.md) |
+| **狀態** | ⏳ 待 push（累積 US-001/002/003，檢查點徵詢後跑完整守門） |
+
+---
+
+## ✅ Sprint 28 Release
 
 | 欄位 | 內容 |
 |------|------|

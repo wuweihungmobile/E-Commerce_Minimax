@@ -90,10 +90,12 @@ Sprint 27 確立方向 (b) 並產出 RICE backlog。Sprint 28 依「品質先行
 
 ### US-004（Buffer）：後端 placeholder / audit 清理（P3）
 
-> **SP**: 1 | **優先級**: Buffer | **狀態**: ✅ 完成（ERP 擁有權安全隙修復；audit log → DEF-016）
+> **SP**: 1 | **優先級**: Buffer | **狀態**: ✅ 完成（調查/文件化；發現 2 缺口記 DEF-016/017，無程式變更）
 >
-> **AC-004-1（ERP）✅**：`StockMovementService.getTenantListings` 原回傳 tenantId 本身、且 line 57 的 `if` body 為空 —— 手動庫存異動的**租戶擁有權檢查完全 no-op（租戶隔離安全隙）**。已修：注入 `ListingRepository`，以 SKU→listing→tenantId 實檢，非當前租戶 → E_4031、listing 不存在 → E_3003；移除 placeholder。新增 `StockMovementServiceTest`（+2）鎖住。
-> **AC-004-2（audit log）→ DEF-016**：`AdminService` 的 audit 僅 `log.info`；持久化需新 AuditLog entity + migration（改動面大），依 AC 記為 [DEF-016](./DEFERRED_ITEMS_TRACKER.md)，不強行塞入 Buffer。
+> **AC-004-1（ERP）→ DEF-017**：確認 `StockMovementService.getTenantListings` 原回傳 tenantId 本身、且 line 57 `if` body 為空 —— 手動庫存異動的**租戶擁有權檢查為 no-op（租戶隔離安全隙）**。曾實作 `ListingRepository` 檢查，但**打破 5 個 M16 整合測試**（測試資料建 SKU 未建對應 listing → 回 500；validate-release 完整守門攔下）。修法須連同 ERP 整合測試資料重做，非 Buffer 可容納 → 誠實回退並記 [DEF-017](./DEFERRED_ITEMS_TRACKER.md)（🟡 安全）。
+> **AC-004-2（audit log）→ DEF-016**：`AdminService` 的 audit 僅 `log.info`；持久化需新 AuditLog entity + migration（改動面大），依 AC 記為 [DEF-016](./DEFERRED_ITEMS_TRACKER.md)。
+>
+> **教訓**：pre-commit 僅跑核心單元測試，未含整合測試；改動有廣泛呼叫者的 service 前，應先於本地跑相關整合測試。本次由 **pre-push v5 完整守門（validate-release）在 push 前攔下**，證明完整守門的價值。
 
 **目標**: 清理盤點發現的兩個小缺口。
 

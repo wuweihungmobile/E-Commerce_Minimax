@@ -19,6 +19,7 @@
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
 |----|------|-------------|---------|---------|---------|------|
 | DEF-016 | Admin Audit Log 持久化 | Sprint 28（US-004 盤點發現） | `AdminService.updateTenantStatus` 的 audit 目前僅 `log.info`（無 AuditLog entity）。持久化需新 entity + repository + Flyway migration，改動面大，不宜塞進 Buffer | 建 AuditLog entity + migration；評估其他需 audit 的操作一併納入 | 2 | ⚠️ 待處理（低） |
+| DEF-017 | ERP 手動庫存異動租戶隔離（安全） | Sprint 28（US-004 發現） | `StockMovementService.createManualMovement` 的擁有權檢查為 no-op（`getTenantListings` 回傳 tenantId + 空 if body），未把關租戶隔離。US-004 曾實作 `ListingRepository` 檢查，但 **打破 5 個 M16 整合測試（M16ErpIntegrationTest ×4 + M16ErpE2ETest ×1）**——測試資料建 SKU 但未建對應 listing 列，且回 500。修法須連同 ERP 整合測試資料一併重做，非 Buffer 可容納，已誠實回退 | 釐清 ERP inventory→sku→listing→tenant 關聯與測試資料建置；設計正確的租戶擁有權檢查 + 補測試資料 | 3 | ⚠️ 待處理（🟡 安全，中） |
 
 ---
 
@@ -231,5 +232,5 @@
 ---
 
 **文件版本**: v2.2
-**最後更新**: 2026-07-01（Sprint 28 US-004：修復 ERP 手動庫存異動租戶隔離安全隙；新增 DEF-016 Admin audit log 持久化，活躍 DEF=1）
-**下次審查**: Sprint 29 Planning（EPIC-BUYER 起手；評估 DEF-016）
+**最後更新**: 2026-07-01（Sprint 28 US-004：發現 2 缺口並記 DEF-016 Admin audit log、DEF-017 ERP 租戶隔離；ERP 修法會打破 5 個耦合整合測試，誠實回退。活躍 DEF=2）
+**下次審查**: Sprint 29 Planning（EPIC-BUYER 起手；評估 DEF-016/017）

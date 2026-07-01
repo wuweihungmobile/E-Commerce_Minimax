@@ -11,7 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
-| Sprint 28 | v2026.11.21-01 | - | 2026-07-01 | 品質硬化(M14/M18 測試 0→13) + 商家營運總覽儀表板(營收/訂單/趨勢) + ERP 租戶隔離安全隙修復 | ✅ 已 push（本地優先驗證） |
+| Sprint 28 | v2026.11.21-01 | - | 2026-07-01 | 品質硬化(M14/M18 測試 0→13) + 商家營運總覽儀表板(營收/訂單/趨勢) + US-004 調查(ERP 租戶隔離 no-op→DEF-017、audit→DEF-016) | ✅ 已 push（本地優先驗證） |
 | Sprint 27 | v2026.11.07-01 | - | 2026-07-01 | DEF-013 通知端到端斷鏈修復 + DEF-015 前端離線 build + pre-push v5 完整守門實證 + 產品方向決策(PRODUCT_BACKLOG) | ✅ 已 push（本地優先驗證；活躍 DEF 歸零） |
 | Sprint 26 | v2026.10.24-01 | - | 2026-07-01 | 本地優先 CI（停用雲端自動 CI）+ WS/即時 DoD 制度化 + M11 取消技術債清償(DEF-010/011) + 廣播 conversationId(DEF-012) + Logistics jsonb 統一(DEF-009) + e2e strict 守門 | ✅ 已 push（本地優先驗證；雲端改手動觸發） |
 | Sprint 25 | v2026.10.10-01 | - | 2026-06-30 | schema 漂移守門關卡 + Conversation tenant_id(V56) + M10 WebSocket 前端整合(live E2E) + SSH keepalive + M11 取消規則確認 | ✅ 已 push（本地優先驗證；雲端改手動觸發） |
@@ -54,8 +54,8 @@
 |------|------|
 | **Tag** | v2026.11.21-01 |
 | **建立日期** | 2026-07-01 |
-| **主要功能** | 品質硬化（M14 Analytics/M18 FAQ 測試 0→13）+ 商家營運總覽儀表板（營收/訂單/趨勢）+ ERP 手動庫存異動租戶隔離安全隙修復 |
-| **測試狀態** | `@Test` 靜態計數 685（+15）, catch(Exception)=0, @Deprecated=0 |
+| **主要功能** | 品質硬化（M14 Analytics/M18 FAQ 測試 0→13）+ 商家營運總覽儀表板（營收/訂單/趨勢）+ US-004 調查（ERP 租戶隔離 no-op→DEF-017、audit→DEF-016） |
+| **測試狀態** | `@Test` 靜態計數 683（+13）, catch(Exception)=0, @Deprecated=0, 活躍 DEF=2 |
 | **Flyway** | V56（無新 migration） |
 | **Release Notes** | [RELEASE_NOTES_v2026.11.21-01.md](../08_deployment/RELEASE_NOTES_v2026.11.21-01.md) |
 | **狀態** | ✅ 完成 |

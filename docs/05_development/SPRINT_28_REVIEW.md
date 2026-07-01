@@ -17,7 +17,7 @@
 | 低覆蓋模組測試補強（US-001, P0） | ✅ 達成 | M14 Analytics 0→7、M18 FAQ 0→6 |
 | M13 商家工作台深化（US-002, P1） | ✅ 達成 | `/dashboard` 深化為營運總覽（營收/訂單卡 + 狀態總覽） |
 | M14 分析面板（US-003, P2） | ✅ 達成 | 營收趨勢（近 30 天）併入儀表板 |
-| 後端 placeholder/audit 清理（US-004, Buffer） | ✅ 達成（+揪出安全隙） | ERP 租戶隔離 no-op 修復；audit log → DEF-016 |
+| 後端 placeholder/audit 清理（US-004, Buffer） | ✅ 達成（調查/文件化） | 揪出 ERP 租戶隔離 no-op → DEF-017；audit log → DEF-016 |
 
 **Sprint 目標達成率**: 100%（承諾 P0+P1+P2 7 SP 全完成 + Buffer 1 SP）
 
@@ -30,7 +30,7 @@
 | US-001 | 低覆蓋模組測試補強（M14/M18） | 2 | **P0** | ✅ 完成 | `251b29b` |
 | US-002 | M13 商家工作台深化 | 3 | P1 | ✅ 完成 | `c4097bb` |
 | US-003 | M14 分析面板（營收趨勢） | 2 | P2 | ✅ 完成 | `c4097bb` |
-| US-004 | 後端 placeholder/audit 清理（Buffer） | 1 | Buffer | ✅ 完成（+安全隙修復） | `b98a05c` |
+| US-004 | 後端 placeholder/audit 清理（Buffer） | 1 | Buffer | ✅ 完成（調查→DEF-016/017） | `b98a05c`（後回退 ERP 程式） |
 | **完成合計** | | **8 SP** | | ✅ 100% | |
 
 ---
@@ -39,12 +39,12 @@
 
 | 測試類型 | Sprint 27 後 | Sprint 28 後 | 變化 |
 |---------|------------|------------|------|
-| `@Test` 方法總數（靜態計數） | 670 | **685** | +15（Analytics 7 + FAQ 6 + StockMovement 2） |
+| `@Test` 方法總數（靜態計數） | 670 | **683** | +13（Analytics 7 + FAQ 6） |
 | `catch (Exception)` 生產程式碼 | 0 處 | **0 處** ✅ | — |
 | `@Deprecated` 生產程式碼 | 0 處 | **0 處** ✅ | — |
 | M14 Analytics 測試 | 0 | **7** | 防護網補齊 |
 | M18 FAQ 測試 | 0 | **6** | 防護網補齊 |
-| 活躍 DEF | 0 | **1**（DEF-016，低） | audit log 持久化延後 |
+| 活躍 DEF | 0 | **2**（DEF-016 audit / DEF-017 ERP，皆低-中） | US-004 揪出並記錄 |
 
 ---
 
@@ -65,16 +65,18 @@
 
 ---
 
-## 6. US-004：ERP 租戶隔離安全隙修復（Buffer）🔴 揪出安全隙
+## 6. US-004：後端 placeholder/audit 調查（Buffer）🔴 揪出安全隙 → DEF-017
 
 | 項目 | 內容 |
 |------|------|
-| 發現 | `StockMovementService.createManualMovement` 的擁有權檢查為 no-op：`getTenantListings` 回傳 tenantId 本身、且 `if` body 為空 → 手動庫存異動未把關租戶隔離 |
-| 修復 | 注入 `ListingRepository`，以 SKU→listing→tenantId 實檢：非當前租戶 → E_4031、listing 不存在 → E_3003；移除 placeholder |
-| 測試 | 新增 `StockMovementServiceTest`（+2）鎖住 |
-| audit log | `AdminService` audit 僅 `log.info`；持久化需新 entity + migration → 記 DEF-016（依 AC-004-2 不塞入 Buffer） |
+| 發現（ERP） | `StockMovementService.createManualMovement` 的擁有權檢查為 no-op：`getTenantListings` 回傳 tenantId 本身、且 `if` body 為空 → 手動庫存異動未把關租戶隔離（安全隙） |
+| 嘗試修復 | 曾注入 `ListingRepository` 實檢，但**打破 5 個 M16 整合測試**（M16ErpIntegrationTest ×4 + M16ErpE2ETest ×1）—— 測試資料建 SKU 未建對應 listing 列 → 回 500 |
+| 處置 | **誠實回退 ERP 程式變更**（修法須連同 ERP 整合測試資料重做，非 Buffer 可容納）→ 記 **DEF-017**（🟡 安全，中） |
+| audit log | `AdminService` audit 僅 `log.info`；持久化需新 entity + migration → 記 **DEF-016** |
 
-> **價值**：延續本專案「補測試/深化時揪 bug」模式（Sprint 27 DEF-013 通知斷鏈）—— 一個 Buffer 清理任務揪出並修復租戶隔離安全隙。
+> **價值 1**：延續「補測試/深化揪 bug」模式（Sprint 27 DEF-013）—— Buffer 調查揪出租戶隔離安全隙（DEF-017）。
+> **價值 2（守門驗證）**：此回歸由 **pre-push v5 完整守門（validate-release）在 push 前攔下**（pre-commit 僅核心單元測試、抓不到整合回歸）—— 完整守門的價值再次實證。
+> **教訓**：改動有廣泛呼叫者的 service 前，先於本地跑相關整合測試。
 
 ---
 
@@ -82,10 +84,10 @@
 
 - [x] US-001~003 所有 AC 達成（P0+P1+P2）
 - [x] `mvn compile` → 0 errors；Checkstyle → 0 violations
-- [x] `@Test` 靜態計數淨增（670 → 685）；既有測試無退步
+- [x] `@Test` 靜態計數淨增（670 → 683）；既有測試無退步
 - [x] catch(Exception) 生產 **0 處**、@Deprecated 生產 **0 處**
 - [x] 前端 lint（0 errors）/type-check/build 通過
-- [x] US-004 Buffer 完成（ERP 安全隙修復 + audit log 記 DEF-016）
+- [x] US-004 Buffer 完成（調查：ERP 安全隙記 DEF-017、audit log 記 DEF-016；ERP 程式已回退）
 - [x] Sprint 28 Review / Retrospective / Release Notes 建立
 - [ ] pre-push v5 完整守門（make validate-release）—— 隨本批 push 執行
 

@@ -11,6 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 31 | v2027.01.02-01 | - | 2026-07-01 | 買家閉環後端驗證(BuyerJourney E2E) + roomTitle 填充(AI-1502) + DEF-016 audit 持久化(V57)；揪出 getOrder IDOR(DEF-018) | ⏳ 待 push（與 S29+30 累積批次） |
 | Sprint 30 | v2026.12.19-01 | - | 2026-07-01 | EPIC-BUYER 買家端閉環完成(純前端)：M06 預訂管理 + M08 評價(提交/列表) + M11 物流追蹤(訂單詳情) | ⏳ 待 push（與 Sprint 29 累積批次） |
 | Sprint 29 | v2026.12.05-01 | - | 2026-07-01 | EPIC-BUYER 買家端閉環起手(純前端)：M05 訂單前端(列表/詳情/取消/狀態日誌) + M09 通知收件匣 + M07 Mock 付款(訂單詳情整合) | ⏳ 待 push（累積 US-001/002/003，檢查點徵詢後完整守門） |
 | Sprint 28 | v2026.11.21-01 | - | 2026-07-01 | 品質硬化(M14/M18 測試 0→13) + 商家營運總覽儀表板(營收/訂單/趨勢) + US-004 調查(ERP 租戶隔離 no-op→DEF-017、audit→DEF-016) | ✅ 已 push（本地優先驗證） |
@@ -42,15 +43,29 @@
 
 | 項目 | 數值 |
 |------|------|
-| 正式 Release 次數 | 22 (Sprint 10-30) |
+| 正式 Release 次數 | 23 (Sprint 10-31) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release | v2026.12.19-01 (Sprint 30，待 push) |
+| 最近一次 Release | v2027.01.02-01 (Sprint 31，待 push) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release 開始 | Sprint 10 |
 
 ---
 
-## ⏳ Sprint 30 Release（最新）
+## ⏳ Sprint 31 Release（最新）
+
+| 欄位 | 內容 |
+|------|------|
+| **Tag** | v2027.01.02-01 |
+| **建立日期** | 2026-07-01 |
+| **主要功能** | 買家閉環後端驗證（BuyerOrderJourneyE2ETest）+ BookingListResponse roomTitle 填充（AI-1502）+ DEF-016 Admin audit log 持久化（AuditLog + V57）；US-002 揪出 getOrder IDOR（DEF-018） |
+| **測試狀態** | 後端 `@Test` 689（+6）, catch(Exception)=0, @Deprecated=0, make validate-schema 無漂移, 活躍 DEF=2（DEF-017/018） |
+| **Flyway** | **V57**（audit_log） |
+| **Release Notes** | [RELEASE_NOTES_v2027.01.02-01.md](../08_deployment/RELEASE_NOTES_v2027.01.02-01.md) |
+| **狀態** | ⏳ 待 push（與 S29+30 累積批次，完整守門一次驗證） |
+
+---
+
+## ⏳ Sprint 30 Release
 
 | 欄位 | 內容 |
 |------|------|

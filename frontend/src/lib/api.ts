@@ -56,6 +56,14 @@ export const API_ENDPOINTS = {
     callback: '/v2/payments/callback',
   },
 
+  // Logistics (M11，買家物流追蹤)
+  logistics: {
+    byOrder: (orderId: string) => '/v2/logistics/order/' + orderId,
+    detail: (logisticsId: string) => '/v2/logistics/' + logisticsId,
+    track: (logisticsId: string) => '/v2/logistics/' + logisticsId + '/track',
+    trackingDetail: (logisticsId: string) => '/v2/logistics/' + logisticsId + '/tracking-detail',
+  },
+
   // Reviews (M08，買家評價：商品/房型)
   reviews: {
     create: '/v2/reviews',

@@ -13,6 +13,11 @@ import OrderService, {
 import OrderPaymentService, { type OrderPaymentState } from '@/services/payment'
 import ReviewService from '@/services/review'
 import ReviewForm, { type ReviewFormValue } from '@/components/reviews/ReviewForm'
+import LogisticsService, {
+  type TrackingDetail,
+  LOGISTICS_STATUS_LABELS,
+  LOGISTICS_PROVIDER_LABELS,
+} from '@/services/logistics'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -47,6 +52,7 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<Order | null>(null)
   const [logs, setLogs] = useState<OrderStateLog[]>([])
   const [payment, setPayment] = useState<OrderPaymentState | null>(null)
+  const [tracking, setTracking] = useState<TrackingDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -78,6 +84,19 @@ export default function OrderDetailPage() {
         setOrder(detail)
         setLogs(stateLogs)
         setPayment(paymentState)
+
+        // 物流追蹤（僅商品訂單；無出貨回空陣列）
+        if (detail.orderType === 'PRODUCT') {
+          const shipments = await LogisticsService.getByOrder(orderId).catch(() => [])
+          const trackingDetail =
+            shipments.length > 0
+              ? await LogisticsService.getTrackingDetail(shipments[0].logisticsId).catch(() => null)
+              : null
+          if (signal?.cancelled) return
+          setTracking(trackingDetail)
+        } else {
+          setTracking(null)
+        }
       } catch {
         if (signal?.cancelled) return
         setError('無法載入訂單詳情，請稍後再試')
@@ -407,6 +426,60 @@ export default function OrderDetailPage() {
                   </CardContent>
                 </Card>
               )
+            )}
+
+            {/* 物流追蹤（商品訂單） */}
+            {order.orderType === 'PRODUCT' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">物流追蹤</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {tracking ? (
+                    <div className="space-y-4">
+                      <div className="text-sm text-gray-700 space-y-1">
+                        <p>
+                          物流商：{LOGISTICS_PROVIDER_LABELS[tracking.logisticsProvider] ?? tracking.logisticsProvider}
+                        </p>
+                        <p>物流單號：{tracking.trackingNumber}</p>
+                        <p>
+                          目前狀態：
+                          <span className="font-medium">
+                            {LOGISTICS_STATUS_LABELS[tracking.currentStatus] ?? tracking.currentStatus}
+                          </span>
+                        </p>
+                      </div>
+                      {tracking.events.length > 0 && (
+                        <ol className="space-y-4 border-t pt-4">
+                          {tracking.events.map((event, idx) => (
+                            <li key={`${event.status}-${idx}`} className="flex gap-3">
+                              <div className="flex flex-col items-center">
+                                <div
+                                  className={
+                                    'h-2.5 w-2.5 rounded-full mt-1.5 ' +
+                                    (idx === tracking.events.length - 1 ? 'bg-primary' : 'bg-gray-300')
+                                  }
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <p className="text-sm text-gray-900">
+                                  {event.description || (LOGISTICS_STATUS_LABELS[event.status] ?? event.status)}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {event.location ? event.location + ' · ' : ''}
+                                  {formatDateTime(event.eventTime)}
+                                </p>
+                              </div>
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">尚未出貨，物流資訊將於出貨後顯示。</p>
+                  )}
+                </CardContent>
+              </Card>
             )}
 
             {order.notes && (

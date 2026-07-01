@@ -48,7 +48,9 @@ Sprint 27 確立方向 (b) 並產出 RICE backlog。Sprint 28 依「品質先行
 
 ### US-001：低覆蓋模組測試補強（backlog #9，P0 品質）
 
-> **SP**: 2 | **優先級**: P0 | **狀態**: 📋 規劃中
+> **SP**: 2 | **優先級**: P0 | **狀態**: ✅ 完成（Analytics 0→7、FAQ 0→6；@Test 670→683）
+>
+> **實作**：AnalyticsServiceTest（+7，營收狀態過濾/成長率除零/AOV 零訂單/預設 31 天/分桶/狀態分組/listing 計數）、FaqServiceTest（+6，slug 守門/分類刪除守門/建文章需分類/關鍵字高亮大小寫不敏感/分類統計）。M18 Knowledge 現有 1 測試，本 US 先補真正 0 覆蓋的 Analytics/FAQ。commit `251b29b`。
 
 **目標**: M14 Analytics（**0 測試**）、M18 FAQ（**0**）、Knowledge（1）測試覆蓋過低，深化前先補核心防護網。
 
@@ -60,7 +62,9 @@ Sprint 27 確立方向 (b) 並產出 RICE backlog。Sprint 28 依「品質先行
 
 ### US-002：M13 商家工作台深化（backlog #8，P1）
 
-> **SP**: 3 | **優先級**: P1 | **狀態**: 📋 規劃中
+> **SP**: 3 | **優先級**: P1 | **狀態**: ✅ 完成（/dashboard 深化為營運總覽）
+>
+> **實作**：`/dashboard` 由 Welcome 佔位改為營收統計卡（今日/昨日成長%/本月/本年）+ 訂單統計卡 + 訂單狀態總覽，串接 AnalyticsController `/v2/dashboard/{stats,orders}`。新增 `services/analytics.ts` + `lib/api.ts` analytics 端點。Next 16 嚴格 effect（async fetch、setState 皆在 await 後）。commit `c4097bb`。
 
 **目標**: 後端 `SellerDashboardService` 已有儀表板統計/趨勢/銷售排名，但前端 `/dashboard` 框架薄弱。補商家可日常使用的營收/訂單總覽面板。
 
@@ -72,7 +76,9 @@ Sprint 27 確立方向 (b) 並產出 RICE backlog。Sprint 28 依「品質先行
 
 ### US-003：M14 平台分析面板（backlog #8，P2）
 
-> **SP**: 2 | **優先級**: P2 | **狀態**: 📋 規劃中
+> **SP**: 2 | **優先級**: P2 | **狀態**: ✅ 完成（營收趨勢分析，併入儀表板）
+>
+> **實作**：儀表板加「營收趨勢（近 30 天）」每日長條圖 + 淨營收/客單價，串 AnalyticsController `/v2/dashboard/revenue`。**設計調整**：後端 AnalyticsController 為租戶範圍（非平台級），故 M13/M14 以統一儀表板分析視圖呈現，避免另建重複的 `/admin` 面板（權限仍由既有 dashboard 進入路徑控管）。commit `c4097bb`。
 
 **目標**: 後端 `AnalyticsService` 已有平台級統計（US-001 補測試後有防護網），補 Admin 分析儀表板前端。
 

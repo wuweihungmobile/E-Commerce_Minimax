@@ -41,6 +41,7 @@ export const API_ENDPOINTS = {
     detail: (id: string) => '/v2/orders/' + id,
     create: '/v2/orders',
     cancel: (id: string) => '/v2/orders/' + id + '/cancel',
+    logs: (id: string) => '/v2/orders/' + id + '/logs',
   },
 
   // Payments

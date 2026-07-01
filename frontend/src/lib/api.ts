@@ -56,6 +56,18 @@ export const API_ENDPOINTS = {
     callback: '/v2/payments/callback',
   },
 
+  // Reviews (M08，買家評價：商品/房型)
+  reviews: {
+    create: '/v2/reviews',
+    listingReviews: (listingId: string) => '/v2/reviews/listing/' + listingId,
+    listingStats: (listingId: string) => '/v2/reviews/listing/' + listingId + '/stats',
+    userReviews: (userId: string) => '/v2/reviews/user/' + userId,
+  },
+  bookingReviews: {
+    create: '/v2/booking-reviews',
+    detail: (id: string) => '/v2/booking-reviews/' + id,
+  },
+
   // Bookings
   bookings: {
     list: '/v2/bookings',

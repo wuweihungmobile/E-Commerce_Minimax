@@ -11,6 +11,8 @@ import OrderService, {
   isCancellable,
 } from '@/services/order'
 import OrderPaymentService, { type OrderPaymentState } from '@/services/payment'
+import ReviewService from '@/services/review'
+import ReviewForm, { type ReviewFormValue } from '@/components/reviews/ReviewForm'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -57,6 +59,10 @@ export default function OrderDetailPage() {
   // Payment flow (Mock)
   const [paying, setPaying] = useState(false)
   const [payError, setPayError] = useState<string | null>(null)
+
+  // Review flow（已完成商品訂單，逐項）
+  const [reviewOpenItemId, setReviewOpenItemId] = useState<string | null>(null)
+  const [reviewedItemIds, setReviewedItemIds] = useState<Set<string>>(new Set())
 
   const load = useCallback(
     async (signal?: { cancelled: boolean }) => {
@@ -136,6 +142,23 @@ export default function OrderDetailPage() {
       setPaying(false)
     }
   }
+
+  const submitReview = async (listingId: string, itemId: string, value: ReviewFormValue) => {
+    await ReviewService.createReview({
+      listingId,
+      orderId,
+      rating: value.rating,
+      title: value.title,
+      content: value.content,
+      isAnonymous: value.isAnonymous,
+    })
+    setReviewedItemIds((prev) => new Set(prev).add(itemId))
+    setReviewOpenItemId(null)
+  }
+
+  // 商品訂單送達/完成後可評價（後端仍以「一訂單一評價」為最終權威）
+  const canReview =
+    order != null && order.orderType === 'PRODUCT' && (order.status === 'DELIVERED' || order.status === 'COMPLETED')
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -290,23 +313,56 @@ export default function OrderDetailPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {order.items.map((item) => (
-                  <div key={item.id} className="flex items-center gap-4">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={item.coverImageUrl || '/placeholder.png'}
-                      alt={item.listingTitle}
-                      className="h-16 w-16 rounded object-cover bg-gray-100 shrink-0"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 truncate">{item.listingTitle}</p>
-                      {item.specName && <p className="text-xs text-gray-500">{item.specName}</p>}
-                      <p className="text-xs text-gray-500">
-                        {formatPrice(item.unitPrice, order.currency)} × {item.quantity}
-                      </p>
+                  <div key={item.id} className="border-b last:border-b-0 pb-4 last:pb-0">
+                    <div className="flex items-center gap-4">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={item.coverImageUrl || '/placeholder.png'}
+                        alt={item.listingTitle}
+                        className="h-16 w-16 rounded object-cover bg-gray-100 shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 truncate">{item.listingTitle}</p>
+                        {item.specName && <p className="text-xs text-gray-500">{item.specName}</p>}
+                        <p className="text-xs text-gray-500">
+                          {formatPrice(item.unitPrice, order.currency)} × {item.quantity}
+                        </p>
+                      </div>
+                      <div className="text-sm font-semibold text-gray-900 shrink-0">
+                        {formatPrice(item.subtotal, order.currency)}
+                      </div>
                     </div>
-                    <div className="text-sm font-semibold text-gray-900 shrink-0">
-                      {formatPrice(item.subtotal, order.currency)}
+
+                    {/* 評價操作（商品訂單） */}
+                    <div className="flex items-center gap-3 mt-2 pl-20">
+                      <Link
+                        href={`/reviews/product/${item.listingId}`}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        查看評價
+                      </Link>
+                      {canReview &&
+                        (reviewedItemIds.has(item.id) ? (
+                          <span className="text-xs text-green-600">已送出評價 ✓</span>
+                        ) : reviewOpenItemId === item.id ? null : (
+                          <button
+                            type="button"
+                            className="text-xs text-primary hover:underline"
+                            onClick={() => setReviewOpenItemId(item.id)}
+                          >
+                            撰寫評價
+                          </button>
+                        ))}
                     </div>
+
+                    {canReview && reviewOpenItemId === item.id && (
+                      <div className="mt-3 pl-20">
+                        <ReviewForm
+                          onSubmit={(value) => submitReview(item.listingId, item.id, value)}
+                          onCancel={() => setReviewOpenItemId(null)}
+                        />
+                      </div>
+                    )}
                   </div>
                 ))}
 

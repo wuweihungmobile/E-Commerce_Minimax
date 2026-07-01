@@ -16,6 +16,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import ReviewService from '@/services/review'
+import ReviewForm, { type ReviewFormValue } from '@/components/reviews/ReviewForm'
 
 function formatPrice(amount: number, currency: string) {
   return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: currency || 'TWD' }).format(amount)
@@ -37,6 +39,10 @@ export default function BookingDetailPage() {
   const [cancelReason, setCancelReason] = useState('')
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
+
+  // Review flow（已完成/已退房預訂）
+  const [showReview, setShowReview] = useState(false)
+  const [reviewed, setReviewed] = useState(false)
 
   const load = useCallback(
     async (signal?: { cancelled: boolean }) => {
@@ -79,6 +85,21 @@ export default function BookingDetailPage() {
       setCancelling(false)
     }
   }
+
+  const submitBookingReview = async (value: ReviewFormValue) => {
+    await ReviewService.createBookingReview({
+      bookingId,
+      rating: value.rating,
+      title: value.title,
+      content: value.content,
+      isAnonymous: value.isAnonymous,
+    })
+    setReviewed(true)
+    setShowReview(false)
+  }
+
+  // 已完成/已退房預訂可評價（後端以「一預訂一評價」為最終權威）
+  const canReview = booking != null && (booking.status === 'COMPLETED' || booking.status === 'CHECKED_OUT')
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -225,6 +246,27 @@ export default function BookingDetailPage() {
                   {booking.guestPhone && <p>電話：{booking.guestPhone}</p>}
                   {booking.guestEmail && <p>Email：{booking.guestEmail}</p>}
                   {booking.specialRequests && <p>特殊要求：{booking.specialRequests}</p>}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Review（已完成/已退房預訂） */}
+            {canReview && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">評價這次住宿</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {reviewed ? (
+                    <p className="text-sm text-green-600">已送出評價 ✓ 感謝您的回饋！</p>
+                  ) : showReview ? (
+                    <ReviewForm
+                      onSubmit={submitBookingReview}
+                      onCancel={() => setShowReview(false)}
+                    />
+                  ) : (
+                    <Button onClick={() => setShowReview(true)}>撰寫評價</Button>
+                  )}
                 </CardContent>
               </Card>
             )}

@@ -179,6 +179,14 @@ export const API_ENDPOINTS = {
     deleteCategory: (id: string) => '/v2/faqs/categories/' + id,
   },
 
+  // Notifications — 買家收件匣 (M09，對齊 NotificationController /v2/notifications)
+  notifications: {
+    list: '/v2/notifications',
+    unreadCount: '/v2/notifications/unread-count',
+    read: '/v2/notifications/read',
+    delete: (id: string) => '/v2/notifications/' + id,
+  },
+
   // Notification Templates (M09)
   notificationTemplates: {
     list: '/v2/notification-templates',

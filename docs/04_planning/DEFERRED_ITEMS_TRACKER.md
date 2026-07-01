@@ -20,6 +20,7 @@
 |----|------|-------------|---------|---------|---------|------|
 | DEF-016 | Admin Audit Log 持久化 | Sprint 28（US-004 盤點發現） | `AdminService.updateTenantStatus` 的 audit 目前僅 `log.info`（無 AuditLog entity）。持久化需新 entity + repository + Flyway migration，改動面大，不宜塞進 Buffer | 建 AuditLog entity + migration；評估其他需 audit 的操作一併納入 | 2 | ⚠️ 待處理（低） |
 | DEF-017 | ERP 手動庫存異動租戶隔離（安全） | Sprint 28（US-004 發現） | `StockMovementService.createManualMovement` 的擁有權檢查為 no-op（`getTenantListings` 回傳 tenantId + 空 if body），未把關租戶隔離。US-004 曾實作 `ListingRepository` 檢查，但 **打破 5 個 M16 整合測試（M16ErpIntegrationTest ×4 + M16ErpE2ETest ×1）**——測試資料建 SKU 但未建對應 listing 列，且回 500。修法須連同 ERP 整合測試資料一併重做，非 Buffer 可容納，已誠實回退 | 釐清 ERP inventory→sku→listing→tenant 關聯與測試資料建置；設計正確的租戶擁有權檢查 + 補測試資料 | 3 | ⚠️ 待處理（🟡 安全，中） |
+| DEF-018 | 訂單 `getOrder` 無擁有權檢查（IDOR，安全） | Sprint 31（US-002 E2E 補測試發現） | `OrderService.getOrder`→`findOrderById` 僅 `findById(orderId)`，僅需 `order:read` 權限、無 per-user/tenant 過濾（專案無 Hibernate 全域 tenant filter）→ 任何登入者可取任意訂單詳情（含 logs）。對比 `cancelOrder` 已有擁有權檢查（E_1007）。修法（比照 cancelOrder 加 isAdmin + userId.equals(order.getUserId()) 檢查）**涉廣用方法**，恐影響 OrderPaymentController/賣家/admin 取單與多個訂單 E2E（比照 DEF-017/ERP 教訓），累積期不宜無完整守門即改 | 盤點所有 getOrder 呼叫者（買家/賣家/admin/payment）與相關 E2E；設計擁有權檢查（買家限本人、賣家限本租戶、admin 放行）+ 補測試；於可跑完整守門時處理 | 3 | ⚠️ 待處理（🟡 安全，中） |
 
 ---
 

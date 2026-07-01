@@ -11,6 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 36 | v2027.03.13-01 | - | 2026-07-02 | 安全收尾 + 版型架構債償還：**DEF-019 物流/賣家側 IDOR 收尾**(createLogistics tenant-based + processOrderPayment user-based，活躍安全 DEF 歸零；順帶修好 S33 遺留 M07 5 失敗) + **DEF-020 版型 Shell route-group 架構重構**(layout + client 邊界下推 + URL 搜尋，at-homepage E2E 全綠) + AI-1907 home-error/重試 E2E(at-homepage 6 tests)；買家頁套版(AI-1901)/live 走查延 S37 | ⏳ 待 push（累積 S32~S36，完整守門+徵詢後 push；含 m15 flaky 前置 AI-2001） |
 | Sprint 35 | v2027.02.27-01 | - | 2026-07-01 | 前端賣場版型 + 首頁改版：**意象若水 RUOSHUI 設計稿套為全站共用版型**(TOP/Tools/Bottom 共用 + Content 分頁)、5 套色票主題、6 個 DS 元件(shadcn 重建)、共用 StorefrontShell、首頁接真實 /v2/listings + at-homepage E2E(4 tests)；DEF-019 物流賣家側 + 買家 live 走查延 S36 | ⏳ 待 push（累積 S32~S35，完整守門+徵詢後 push） |
 | Sprint 34 | v2027.02.13-01 | - | 2026-07-01 | 安全修復落地：**DEF-017 ERP 手動庫存租戶隔離清償**(AI-1701，歷時 S28→34 三度回退後落地：raw SQL 種 FIXED_TENANT_ID 租戶+null 安全檢查+IT-M16-307，乾淨 DB 43 tests 0 fail)；DEF-019 物流/賣家側 + 買家 live 走查延 S35 | ⏳ 待 push（累積 S32~S34 共 8 commit，完整守門+徵詢後 push） |
 | Sprint 33 | v2027.01.30-01 | - | 2026-07-01 | 安全修復收尾：DEF-019 訂單付款 IDOR 修復(AI-1702，getOrderPaymentState+pay/fail/refund，403)；DEF-017 三層根因完整診斷(NPE→403→FK，@GeneratedValue+FK)延 S34；DEF-019 物流/賣家側續 S34 | ⏳ 待 push（累積 S32~S34，完整守門+徵詢後 push） |
@@ -47,11 +48,11 @@
 
 | 項目 | 數值 |
 |------|------|
-| 建立 Release Tag 次數 | 26 (Sprint 10-35，連續) |
+| 建立 Release Tag 次數 | 27 (Sprint 10-36，連續) |
 | 已 push（已 Release） | 22 (Sprint 10-31) |
-| 待 push（Tag 已建、尚未 push） | 4 (Sprint 32-35，累積批次待完整守門 + 檢查點徵詢後 push) |
+| 待 push（Tag 已建、尚未 push） | 5 (Sprint 32-36，累積批次待完整守門 + 檢查點徵詢後 push) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release Tag | v2027.02.27-01 (Sprint 35，⏳ 待 push) |
+| 最近一次 Release Tag | v2027.03.13-01 (Sprint 36，⏳ 待 push) |
 | 最近一次已 push Release | v2027.01.02-01 (Sprint 31，隨 S29+30+31 累積批次 fb221f3) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release Tag 開始 | Sprint 10 |

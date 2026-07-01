@@ -11,7 +11,8 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
-| Sprint 33 | v2027.01.30-01 | - | 2026-07-01 | 安全修復收尾：DEF-019 訂單付款 IDOR 修復(AI-1702，getOrderPaymentState+pay/fail/refund，403)；DEF-017 三層根因完整診斷(NPE→403→FK，@GeneratedValue+FK)延 S34；DEF-019 物流/賣家側續 S34 | ⏳ 待 push（累積 S32+S33，完整守門+徵詢後 push） |
+| Sprint 34 | v2027.02.13-01 | - | 2026-07-01 | 安全修復落地：**DEF-017 ERP 手動庫存租戶隔離清償**(AI-1701，歷時 S28→34 三度回退後落地：raw SQL 種 FIXED_TENANT_ID 租戶+null 安全檢查+IT-M16-307，乾淨 DB 43 tests 0 fail)；DEF-019 物流/賣家側 + 買家 live 走查延 S35 | ⏳ 待 push（累積 S32~S34 共 8 commit，完整守門+徵詢後 push） |
+| Sprint 33 | v2027.01.30-01 | - | 2026-07-01 | 安全修復收尾：DEF-019 訂單付款 IDOR 修復(AI-1702，getOrderPaymentState+pay/fail/refund，403)；DEF-017 三層根因完整診斷(NPE→403→FK，@GeneratedValue+FK)延 S34；DEF-019 物流/賣家側續 S34 | ⏳ 待 push（累積 S32~S34，完整守門+徵詢後 push） |
 | Sprint 32 | v2027.01.16-01 | - | 2026-07-01 | 安全修復 DEF-018 getOrder IDOR(AI-1601，403/E_1007，最小爆炸半徑) + 買家頁面 E2E 驗證(AI-1602，at-buyer-pages 30 passed)；揪出 DEF-019 付款物流 IDOR；DEF-017 二度驗證(修法正確缺 seeding)延 S33 | ⏳ 待 push（累積 S32+S33，完整守門，徵詢後 push） |
 | Sprint 31 | v2027.01.02-01 | - | 2026-07-01 | 買家閉環後端驗證(BuyerJourney E2E) + roomTitle 填充(AI-1502) + DEF-016 audit 持久化(V57)；揪出 getOrder IDOR(DEF-018) | ✅ 已 push（S29+30+31 累積批次 fb221f3） |
 | Sprint 30 | v2026.12.19-01 | - | 2026-07-01 | EPIC-BUYER 買家端閉環完成(純前端)：M06 預訂管理 + M08 評價(提交/列表) + M11 物流追蹤(訂單詳情) | ✅ 已 push（S29+30+31 累積批次） |
@@ -45,9 +46,9 @@
 
 | 項目 | 數值 |
 |------|------|
-| 正式 Release 次數 | 25 (Sprint 10-33) |
+| 正式 Release 次數 | 26 (Sprint 10-34) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release | v2027.01.30-01 (Sprint 33，待 push) |
+| 最近一次 Release | v2027.02.13-01 (Sprint 34，待 push) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release 開始 | Sprint 10 |
 

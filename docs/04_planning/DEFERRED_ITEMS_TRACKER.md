@@ -18,8 +18,7 @@
 
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
 |----|------|-------------|---------|---------|---------|------|
-| DEF-017 | ERP 手動庫存異動租戶隔離（安全） | Sprint 28（US-004 發現） | `StockMovementService.createManualMovement` 的擁有權檢查為 no-op（`getTenantListings` 回傳 tenantId + 空 if body），未把關租戶隔離。US-004 曾實作 `ListingRepository` 檢查，但 **打破 5 個 M16 整合測試（M16ErpIntegrationTest ×4 + M16ErpE2ETest ×1）**——測試資料建 SKU 但未建對應 listing 列，且回 500。修法須連同 ERP 整合測試資料一併重做，非 Buffer 可容納，已誠實回退。**Sprint 32 US-001 再驗證（AI-1603）**：套正確修法（listingRepository.findById → `listing.getTenantId().equals(currentTenant)` 否則 E_1007）+ 新增跨租戶測試 IT-M16-307 → **307 通過（修法邏輯正確，他租戶 SKU → 403）**；但原 5 個同租戶測試（301/302/303/305 + M16ErpE2ETest adjust）仍失敗。**Sprint 33 US-001 查 stack trace 逐層釐清真因（⚠️ 更正 Sprint 32 誤判的「E_3003 findById 查不到」）**：(1) `Listing.tenantId` 為 `@Column(insertable=false)` 影子欄位（@ManyToOne tenant 的 tenant_id），@BeforeAll 用 `.tenantId(...)` 建 listing、未設 `.tenant` 關聯 → tenant_id 存成 null → 服務端擁有權檢查 `.equals()` NPE → E-9900/500；(2) 加 null 安全後變 403（tenant_id 仍 null）；(3) 改以 JDBC 補寫 tenant_id=FIXED_TENANT_ID → **FK violation**：`Tenant.id` 為 @GeneratedValue，`@WithErpSecurity` 硬編的 FIXED_TENANT_ID 在 tenants 表**無對應列**，而 listings.tenant_id 有 FK。三層糾纏證實非 Buffer 可容納。Sprint 33 依紀律三度於 commit 前本地攔下、誠實回退（main 未污染） | **M16 tenant seeding 整套重做**：以 raw SQL 種 id=FIXED_TENANT_ID 的 tenants 列（比照 TestDatabaseInitializer 的 system tenant 做法），使 @WithErpSecurity 的 FIXED_TENANT_ID 有真實租戶列 → listing tenant_id 可設且 FK 滿足 → 套已驗證的 null 安全租戶檢查（`!tenantId.equals(listing.getTenantId())` + inject ListingRepository）。**生產修法本身正確，純卡測試基建** | 3 | ⚠️ 待處理（🟡 安全，中，Sprint 34；根因已完整三層診斷、修法已驗證） |
-| DEF-019 | 訂單付款/物流讀寫無擁有權檢查（IDOR 姊妹，安全） | Sprint 32（US-001 盤點發現） | US-001 修 `getOrder` 時盤點揪出**同類 IDOR 尚未修**：(a) `PaymentStateService.getOrderPaymentState`（讀，`GET /v2/orders/{id}/payment`）僅 `order:read`、無擁有權過濾；(b) `mockPaymentSuccess/Failure/Refund`（寫，`/pay`、`/pay/fail`、`/refund`，`order:update`）任何具權者可對他人訂單付款/退款；(c) `PaymentService.processOrderPayment`、`LogisticsService.createLogistics` 亦 `findById` 無過濾。讀取類同 getOrder（限本人）；寫入類語意較複雜（買家付自己單 OK、賣家建本租戶物流 OK），需個別設計，非 US-001 committed 範圍，誠實延後 | **Sprint 33 US-002 已修訂單付款側**（getOrderPaymentState 讀 + mockPaymentSuccess/Failure/mockRefund 寫 → 新增 checkOrderOwnership helper，買家限本人、admin 放行、越權 403/E_1007；補 otherBuyerCannotAccessOrderPayment 測試；本地 21 tests 0 fail）。**剩餘**：LogisticsService.createLogistics（賣家側，租戶語意非買家擁有權）+ PaymentService.processOrderPayment（若有對外入口）→ 盤點賣家/admin 角色設計租戶檢查 + 補測試 | 2 | 🔶 部分完成（付款側已修；物流/賣家側續 Sprint 34） |
+| DEF-019 | 訂單付款/物流讀寫無擁有權檢查（IDOR 姊妹，安全） | Sprint 32（US-001 盤點發現） | US-001 修 `getOrder` 時盤點揪出**同類 IDOR 尚未修**：(a) `PaymentStateService.getOrderPaymentState`（讀，`GET /v2/orders/{id}/payment`）僅 `order:read`、無擁有權過濾；(b) `mockPaymentSuccess/Failure/Refund`（寫，`/pay`、`/pay/fail`、`/refund`，`order:update`）任何具權者可對他人訂單付款/退款；(c) `PaymentService.processOrderPayment`、`LogisticsService.createLogistics` 亦 `findById` 無過濾。讀取類同 getOrder（限本人）；寫入類語意較複雜（買家付自己單 OK、賣家建本租戶物流 OK），需個別設計，非 US-001 committed 範圍，誠實延後 | **Sprint 33 US-002 已修訂單付款側**（getOrderPaymentState 讀 + mockPaymentSuccess/Failure/mockRefund 寫 → 新增 checkOrderOwnership helper，買家限本人、admin 放行、越權 403/E_1007；補 otherBuyerCannotAccessOrderPayment 測試；本地 21 tests 0 fail）。**剩餘**：LogisticsService.createLogistics（賣家側，租戶語意非買家擁有權）+ PaymentService.processOrderPayment（若有對外入口）→ 盤點賣家/admin 角色設計租戶檢查（`createLogistics` 需 order.tenantId==當前租戶，tenant-based，恐涉 M11 測試資料對齊，比照 DEF-017）+ 補測試 | 2 | 🔶 部分完成（付款側已修；物流/賣家側續 Sprint 35） |
 
 ---
 
@@ -42,10 +41,26 @@
 | DEF-015 | 前端 next/font/google 建置期外部抓取 | Sprint 26 | Sprint 27 | US-002：layout.tsx 的 Geist 變數從未被 CSS/Tailwind 消費（死碼），移除 next/font/google import → 離線 build 不再抓 Google，零視覺影響 |
 | DEF-016 | Admin Audit Log 持久化 | Sprint 28 | Sprint 31 | US-003：建 AuditLog entity + AuditLogRepository + V57 migration；AdminService 6 個關鍵操作寫入 audit_log（與 log.info 並存，catch 不中斷主流程）；make validate-schema 無漂移，AdminServiceIntegrationTest 稽核測試通過 |
 | DEF-018 | 訂單 getOrder 無擁有權檢查（IDOR，安全） | Sprint 31 | Sprint 32 | US-001（AI-1601）：getOrder 加 owner/admin 擁有權檢查（比照同類 cancelOrder/getOrderStateLogs 的 inline pattern），越權回 403/E_1007；findOrderById 不動保留 404 not-found 語意，最小爆炸半徑不影響 payment/賣家/admin 內部流程；補 BuyerOrderJourneyE2ETest.otherBuyerCannotGetOrder（買家 C 讀 A 訂單→403）；本地訂單 E2E 20 tests 0 fail |
+| DEF-017 | ERP 手動庫存異動租戶隔離（安全） | Sprint 28 | Sprint 34 | **歷時 Sprint 28→34（三度誠實回退後落地）**。US-001（AI-1701）：StockMovementService.createManualMovement 加 null 安全租戶檢查（inject ListingRepository → `!tenantId.equals(listing.getTenantId())`，越權 403/E_1007，移除 getTenantListings no-op）。**三層根因**：Listing.tenantId insertable=false 影子欄位（需 tenant 關聯）+ Tenant.id @GeneratedValue 使 @WithErpSecurity 硬編 FIXED_TENANT_ID 無 tenants 列 + listings FK。**修法**：M16 以 raw SQL 種 FIXED_TENANT_ID 租戶列（比照 TestDatabaseInitializer）+ JDBC UPDATE listing tenant_id + 修 @AfterAll cleanup 先刪 product_skus + IT-M16-307 跨租戶測試。乾淨 DB 43 tests 0 fail |
 
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 34 (2026-07-01)
+
+**移除延後（已完成）**:
+- DEF-017 ✅ **Sprint 34 US-001 落地清償**（歷時 Sprint 28→34，三度誠實回退後成功）：raw SQL 種 id=FIXED_TENANT_ID 租戶列（解 @GeneratedValue + FK 根因）+ JDBC UPDATE listing tenant_id（解 insertable=false 影子欄位）+ null 安全租戶檢查 + 修 @AfterAll cleanup（先刪 product_skus）+ IT-M16-307 跨租戶測試。乾淨 DB M16 43 tests 0 fail
+
+**續延後**:
+- DEF-019（物流/賣家側，→ Sprint 35）: 付款側已於 S33 修；剩 createLogistics（tenant-based，恐涉 M11 測試資料）+ processOrderPayment
+- 買家 live 走查（AI-1703，→ Sprint 35）: 需 live 環境
+
+**更新**:
+- Sprint 34 主題「安全修復落地」：US-001（P1，DEF-017 落地，AI-1701）✅ 完成；US-002（DEF-019 物流）+ US-003（買家 live）因 context/風險考量延 S35
+- `@Test`：M16 IT-M16-307 新增（跨租戶）；乾淨 DB M16 43 tests 0 fail
+- 活躍 DEF：**1**（DEF-019 物流賣家側；DEF-017 清償、DEF-018 + DEF-019 付款側已清償）
+- 里程碑：DEF-017 為近期最難項（三 Sprint、三次 commit 前攔下回退），最終以測試基建重做落地，main 全程未污染
 
 ### Sprint 33 (2026-07-01)
 
@@ -267,6 +282,6 @@
 
 ---
 
-**文件版本**: v2.4
-**最後更新**: 2026-07-01（Sprint 33：US-002 修 DEF-019 付款側 IDOR（getOrderPaymentState+pay/fail/refund）；US-001 DEF-017 三層根因完整診斷（NPE→403→FK，@GeneratedValue+listings FK）延 Sprint 34、修法已驗證僅缺 raw SQL 種 tenant。活躍 DEF=2：DEF-017 / DEF-019 物流賣家側）
-**下次審查**: Sprint 34 Planning（DEF-017 落地 + DEF-019 物流/賣家側 + 買家 live 走查，皆安全項）
+**文件版本**: v2.5
+**最後更新**: 2026-07-01（Sprint 34：**US-001 DEF-017 ERP 租戶隔離落地清償**（歷時 S28→34，raw SQL 種 FIXED_TENANT_ID 租戶 + null 安全檢查 + IT-M16-307，乾淨 DB 43 tests 0 fail）。US-002 DEF-019 物流/賣家側 + US-003 買家 live 走查延 S35。活躍 DEF=1：DEF-019 物流賣家側）
+**下次審查**: Sprint 35 Planning（DEF-019 物流/賣家側 IDOR + 買家 live 走查）

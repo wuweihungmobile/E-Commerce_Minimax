@@ -52,7 +52,8 @@
 
 ### US-003：DEF-017 ERP 租戶隔離（AI-1603，Buffer）— 調查 + 誠實延後
 - **修法已驗證正確**：套用正確擁有權檢查（`listingRepository.findById` → `listing.getTenantId().equals(currentTenant)` 否則 E_1007）+ 新增跨租戶測試 `IT-M16-307` → **307 通過（他租戶 SKU → 403）**。
-- **但缺測試資料重做**：原 5 個同租戶 M16 測試（301/302/303/305 + M16ErpE2ETest adjust）回 500——**真因**：`findById(testListingId)`（@BeforeAll 種的 listing）在測試交易中查不到（JDBC 建 SKU 無 FK 故插入成功，JPA 卻查不到）→ E_3003（handler 未明列 → 預設 500）。
+- **但缺測試資料重做**：原 5 個同租戶 M16 測試（301/302/303/305 + M16ErpE2ETest adjust）失敗。
+  > ⚠️ **根因更正（Sprint 33 US-001 查 stack trace 修正本節當時的誤判）**：真因**非** E_3003 findById 查不到，而是三層——(1) `Listing.tenantId` 為 insertable=false 影子欄位、@BeforeAll 未設 `.tenant` 關聯 → tenant_id null → `.equals()` NPE→500；(2) null 安全後 403；(3) JDBC 補寫 tenant_id 觸發 FK violation（@GeneratedValue 使 FIXED_TENANT_ID 無 tenants 列）。詳見 [DEFERRED_ITEMS_TRACKER DEF-017](../04_planning/DEFERRED_ITEMS_TRACKER.md)，延 Sprint 34。
 - **處置**：依「一次嘗試、綠才留」紀律於 **commit 前本地攔下**、**再度誠實回退（main 未污染）**（AC-003-4，比照 DEF-017/ERP 歷史教訓）。修法已驗證正確，Sprint 33 僅需重做 M16 seeding（各測試 SKU 指向交易內可 findById 的 listing，比照已通過的 IT-M16-307）→ 記 [DEF-017 更新](../04_planning/DEFERRED_ITEMS_TRACKER.md) AI-1603。
 
 ---

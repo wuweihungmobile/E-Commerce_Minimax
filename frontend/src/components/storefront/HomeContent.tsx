@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { StorefrontShell } from "@/components/layout/StorefrontShell"
 import { SidebarNav } from "@/components/storefront/SidebarNav"
 import { SortToolbar } from "@/components/storefront/SortToolbar"
@@ -28,24 +29,35 @@ const SORT_MAP: Record<string, { sortBy: string; sortDir: "ASC" | "DESC" }> = {
   priceDesc: { sortBy: "basePrice", sortDir: "DESC" },
 }
 
-const HOT_KEYWORDS = ["極簡生活", "質感家居", "旅宿房型", "香氛療癒", "收納"]
 const PAGE_SIZE = 12
 
-export default function HomePage() {
-  const [cat, setCat] = useState("all")
-  const [sortTab, setSortTab] = useState("newest")
-  const [keyword, setKeyword] = useState("")
-  const [page, setPage] = useState(0) // 0-based（API）
-  const [nonce, setNonce] = useState(0) // 強制重跑查詢（避免同值操作卡 loading）
+export interface HomeContentProps {
+  /** 分類（all/product/room），由 server page 依 URL `type` 解析 */
+  cat: string
+  /** 排序頁籤（newest/priceAsc/priceDesc），由 server page 依 URL `sort` 解析 */
+  sortTab: string
+  /** 關鍵字，由 server page 依 URL `keyword` 解析 */
+  keyword: string
+  /** 0-based 頁碼，由 server page 依 URL `page` 解析 */
+  page: number
+}
+
+// 首頁內容區（DEF-020：URL-driven 篩選）。篩選/排序/分頁改由 router.push 更新 URL query，
+// server page 依 searchParams 重新以 props 傳入 → 本元件 effect 依 props 重新取資料
+// （不再用 page-scoped state + nonce）。授權/錯誤三態分流沿用（401/403 引導、其他錯誤重試）。
+export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
+  const router = useRouter()
   const [data, setData] = useState<Page<Listing> | null>(null)
   const [loading, setLoading] = useState(true)
   const [needsAuth, setNeedsAuth] = useState(false)
   const [error, setError] = useState(false)
-  const [cartCount, setCartCount] = useState(0)
+  const [reloadKey, setReloadKey] = useState(0) // 僅供「重試同一查詢」用（非篩選變更）
 
   useEffect(() => {
+    // 注意：不在 effect 內同步 setState（React 19 嚴格 hooks 禁令）。loading 初值為 true；
+    // 篩選變更由 server page 以 key 觸發 remount（回到初值顯示 skeleton），retry 於 handler 設 loading。
     let cancelled = false
-    const { sortBy, sortDir } = SORT_MAP[sortTab]
+    const { sortBy, sortDir } = SORT_MAP[sortTab] ?? SORT_MAP.newest
     listingService
       .getListings({
         page,
@@ -81,52 +93,33 @@ export default function HomePage() {
     return () => {
       cancelled = true
     }
-  }, [cat, sortTab, keyword, page, nonce])
+  }, [cat, sortTab, keyword, page, reloadKey])
 
-  useEffect(() => {
-    let cancelled = false
-    if (typeof window !== "undefined" && localStorage.getItem("accessToken")) {
-      listingService
-        .getCartCount()
-        .then((c) => {
-          if (!cancelled) setCartCount(c)
-        })
-        .catch(() => {
-          // 購物車數量取得失敗不影響首頁
-        })
-    }
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  // 更新 URL query（保留其他篩選）。篩選變更預設回第 1 頁。
+  const navigate = useCallback(
+    (next: { cat?: string; sort?: string; page?: number }) => {
+      const c = next.cat ?? cat
+      const s = next.sort ?? sortTab
+      const p = next.page ?? 0
+      const params = new URLSearchParams()
+      if (c !== "all") params.set("type", c)
+      if (s !== "newest") params.set("sort", s)
+      if (keyword) params.set("keyword", keyword)
+      if (p > 0) params.set("page", String(p + 1)) // URL 為 1-based
+      const qs = params.toString()
+      router.push(qs ? `/?${qs}` : "/")
+    },
+    [cat, sortTab, keyword, router]
+  )
 
-  const handleSelectCat = (id: string) => {
-    setLoading(true)
-    setCat(id)
-    setPage(0)
-    setNonce((n) => n + 1)
-  }
-  const handleSort = (id: string) => {
-    setLoading(true)
-    setSortTab(id)
-    setPage(0)
-    setNonce((n) => n + 1)
-  }
-  const handleSearch = (q: string) => {
-    setLoading(true)
-    setKeyword(q)
-    setPage(0)
-    setNonce((n) => n + 1)
-  }
-  const handlePageChange = (oneBased: number) => {
-    setLoading(true)
-    setPage(oneBased - 1)
-    setNonce((n) => n + 1)
-  }
+  const handleSelectCat = (id: string) => navigate({ cat: id, page: 0 })
+  const handleSort = (id: string) => navigate({ sort: id, page: 0 })
+  const handlePageChange = (oneBased: number) => navigate({ page: oneBased - 1 })
   const handleRetry = () => {
-    setLoading(true)
+    // 事件處理器內 setState 合法（非 effect 同步）；顯示 skeleton 並重跑同一查詢
     setError(false)
-    setNonce((n) => n + 1)
+    setLoading(true)
+    setReloadKey((k) => k + 1)
   }
 
   return (
@@ -134,9 +127,6 @@ export default function HomePage() {
       sidebar={
         <SidebarNav items={CATEGORIES} active={cat} onSelect={handleSelectCat} />
       }
-      cartCount={cartCount}
-      hotKeywords={HOT_KEYWORDS}
-      onSearch={handleSearch}
     >
       <SortToolbar
         tabs={SORT_TABS}

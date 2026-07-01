@@ -18,7 +18,6 @@
 
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
 |----|------|-------------|---------|---------|---------|------|
-| DEF-020 | 版型 Shell 架構債（route-group layout + client 邊界下推 + 全站狀態走 URL） | Sprint 35（Architect 審查建議） | S35 首頁以「page 內手包 StorefrontShell」交付；Architect 建議 S36 導入買家頁前償還：(a) 改為 App Router route-group `app/(storefront)/layout.tsx` 承載 TOP/Footer；(b) `"use client"` 邊界下推至葉節點（Shell/Footer/Tools 轉 server component）；(c) 搜尋/購物車全站狀態改走 URL（router.push `?keyword=`）而非 page-scoped callback。現為單一店面頁，route-group layout 的重用效益於 S36 增加買家頁時才顯現，現在做屬投機抽象（Rule 2），故延後至 S36 導入前償還 | S36 (auth) 買家頁套 Shell（AI-1901）啟動前一併重構 | 3 | ⚠️ 待處理（S36 導入前償還） |
 | DEF-021 | CJK 字體品牌一致性（技術債） | Sprint 35（Turbopack 限制發現） | S35 因 Turbopack 無法 self-host next/font CJK（Noto Sans TC 大量 unicode-range 子集無法解析），改用系統 CJK 字體堆疊；系統堆疊跨平台字重/字距不一，品牌字體一致性下降。後續評估 `next/font/local` + 預先子集化 Noto Sans TC woff2 以恢復品牌字體一致性 | 需 woff2 子集化工具鏈 + 驗證 Turbopack 相容性 | 2 | ⚠️ 待處理（低急迫，有系統字體 fallback） |
 | DEF-022 | E2E 硬等待（waitForTimeout 固定 sleep） | Sprint 35（at-homepage E2E 建立時沿用既有模式） | `at-homepage.spec.ts` 註冊/登入 helper 用 `waitForTimeout` 固定 sleep（沿用 at-buyer-pages 既有模式），CI 慢時可能 flaky；後續改 `waitForURL` / `waitForResponse` 明確等待條件 | 無（純測試穩定性重構）| 1 | ⚠️ 待處理（flaky 風險，低急迫）|
 
@@ -43,6 +42,7 @@
 | DEF-015 | 前端 next/font/google 建置期外部抓取 | Sprint 26 | Sprint 27 | US-002：layout.tsx 的 Geist 變數從未被 CSS/Tailwind 消費（死碼），移除 next/font/google import → 離線 build 不再抓 Google，零視覺影響 |
 | DEF-016 | Admin Audit Log 持久化 | Sprint 28 | Sprint 31 | US-003：建 AuditLog entity + AuditLogRepository + V57 migration；AdminService 6 個關鍵操作寫入 audit_log（與 log.info 並存，catch 不中斷主流程）；make validate-schema 無漂移，AdminServiceIntegrationTest 稽核測試通過 |
 | DEF-018 | 訂單 getOrder 無擁有權檢查（IDOR，安全） | Sprint 31 | Sprint 32 | US-001（AI-1601）：getOrder 加 owner/admin 擁有權檢查（比照同類 cancelOrder/getOrderStateLogs 的 inline pattern），越權回 403/E_1007；findOrderById 不動保留 404 not-found 語意，最小爆炸半徑不影響 payment/賣家/admin 內部流程；補 BuyerOrderJourneyE2ETest.otherBuyerCannotGetOrder（買家 C 讀 A 訂單→403）；本地訂單 E2E 20 tests 0 fail |
+| DEF-020 | 版型 Shell 架構債（route-group layout + client 邊界下推 + 全站狀態走 URL） | Sprint 35 | Sprint 36 | US-002：Architect 審查建議三項全數償還——(a) 建 App Router route-group `app/(storefront)/layout.tsx` 承載 TOP（Header）/Bottom（Footer），首頁移入 group（換頁不重建版型）；(b) `"use client"` 邊界下推——StorefrontShell 改 grid-only server component、Footer/Tools 維持 server，僅 Header（含 SearchBar/ThemeSwitcher）client；(c) 搜尋/分類/排序/分頁改走 URL query（server page 讀 searchParams → props 傳 client `HomeContent`，官方建議免 useSearchParams+Suspense；Header 搜尋 router.push、購物車數量自取），移除 page-scoped callback 與 nonce 補丁（連帶償還 F-06）。以 key-remount 於篩選變更顯示 skeleton（避免 effect 內同步 setState，符 React 19 嚴格 hooks）。build/type-check/lint 0 error；**at-homepage E2E 4 tests 全棧全綠**（含搜尋改走 URL 的 E2E-HOME-03），既有 E2E 不退步（唯 m15 既有 flaky） |
 | DEF-019 | 訂單付款/物流讀寫無擁有權檢查（IDOR 姊妹，安全） | Sprint 32 | Sprint 36 | **歷時 S32→33→36**。S33 修訂單付款側（checkOrderOwnership，買家限本人）。**S36（AI-1902）補完物流/賣家側**：LogisticsService.createLogistics 加 tenant-based 擁有權檢查（`order.tenantId==當前租戶`、admin 放行、越權 403/E_1007，賣家側租戶語意）；PaymentService.processOrderPayment（`/v2/payments` 對外入口）加 user-based 擁有權檢查（比照 checkOrderOwnership）。**測試**：新增 LogisticsServiceOwnershipTest + PaymentServiceOwnershipTest（各 3 tests，越權→E_1007、本人/本租戶通過、admin 放行）；對齊 M07 整合測試（`@Transactional` 一級快取致影子 `userId` 為 null → builder 明確設 `.userId` + 訂單擁有者=呼叫者，**順帶修好 S33 遺留的 5 個 M07 失敗**）。乾淨 DB：M07 8 + M11 4 整合測試 0 fail、單元 353 tests 0 fail。**活躍安全 DEF 歸零**。備註：processBookingPayment（預訂付款側）非 DEF-019 範圍，如需擁有權檢查另立項評估 |
 | DEF-017 | ERP 手動庫存異動租戶隔離（安全） | Sprint 28 | Sprint 34 | **歷時 Sprint 28→34（三度誠實回退後落地）**。US-001（AI-1701）：StockMovementService.createManualMovement 加 null 安全租戶檢查（inject ListingRepository → `!tenantId.equals(listing.getTenantId())`，越權 403/E_1007，移除 getTenantListings no-op）。**三層根因**：Listing.tenantId insertable=false 影子欄位（需 tenant 關聯）+ Tenant.id @GeneratedValue 使 @WithErpSecurity 硬編 FIXED_TENANT_ID 無 tenants 列 + listings FK。**修法**：M16 以 raw SQL 種 FIXED_TENANT_ID 租戶列（比照 TestDatabaseInitializer）+ JDBC UPDATE listing tenant_id + 修 @AfterAll cleanup 先刪 product_skus + IT-M16-307 跨租戶測試。乾淨 DB 43 tests 0 fail |
 
@@ -55,9 +55,10 @@
 **完成**:
 - **DEF-019（安全，物流/賣家側 IDOR）→ ✅ 完成（AI-1902）**：S33 已修訂單付款側；S36 補完物流/賣家側——LogisticsService.createLogistics 加 tenant-based 擁有權檢查（`order.tenantId==當前租戶`、admin 放行、越權 403/E_1007）、PaymentService.processOrderPayment（`/v2/payments`）加 user-based 檢查。新增 LogisticsServiceOwnershipTest + PaymentServiceOwnershipTest（各 3 tests）。**實測揪出並修好 S33 遺留的 M07 5 個失敗**（`@Transactional` 一級快取致 Order 影子 `userId` 為 null → 測試 builder 補 `.userId` + 訂單擁有者對齊呼叫者）。乾淨 DB：M07 8 + M11 4 整合 0 fail、單元 353 0 fail。**活躍安全 DEF 歸零**。
 - **誠實揭露**：processBookingPayment（預訂付款側）與 processOrderPayment 屬同類但非 DEF-019（訂單/物流）範圍，未在本次處理；如需擁有權檢查應另立項評估。無 entity/migration 變更，schema 不受影響。
+- **DEF-020（架構債，S37 買家頁套版前置）→ ✅ 完成（US-002）**：Architect 三項建議全數償還——route-group `app/(storefront)/layout.tsx` 承載 Header/Footer、`"use client"` 邊界下推（Shell 改 grid-only server、僅 Header client）、搜尋/篩選改走 URL（server page searchParams → props 傳 client HomeContent，免 useSearchParams+Suspense；移除 nonce 連帶償還 F-06）；key-remount 顯示 skeleton 避免 effect 同步 setState。build/type-check/lint 0 error；**at-homepage E2E 4 tests 全棧全綠**（含搜尋改走 URL），既有 E2E 不退步（唯 m15 既有 flaky）。
 
 **續延後**:
-- DEF-020（架構債，S37 買家頁套版前置）/ DEF-021（CJK 字體）/ DEF-022（E2E 硬等待）：見 Sprint 35 記錄，續於 S36/後續處理。
+- DEF-021（CJK 字體）/ DEF-022（E2E 硬等待）：見 Sprint 35 記錄，續於後續處理。
 
 ---
 
@@ -312,5 +313,5 @@
 ---
 
 **文件版本**: v2.6
-**最後更新**: 2026-07-01（Sprint 36 US-001：DEF-019 物流/賣家側 IDOR 收尾——createLogistics tenant-based + processOrderPayment user-based 擁有權檢查，含 M07 測試資料對齊（順帶清 S33 遺留 5 失敗）。**活躍安全 DEF 歸零**；活躍 DEF=3 非安全技術/架構債（DEF-020 Shell 架構債 / DEF-021 CJK 字體 / DEF-022 E2E 硬等待）
-**下次審查**: Sprint 36 US-002（DEF-020 Shell route-group 架構重構，S37 買家頁套版前置）+ US-003（AI-1907 home-error E2E）；DEF-021/022 續後續
+**最後更新**: 2026-07-01（Sprint 36 US-001 DEF-019 物流/賣家側 IDOR 收尾（活躍安全 DEF 歸零）+ US-002 DEF-020 版型 Shell route-group 架構重構完成（route-group layout + client 邊界下推 + URL 搜尋，at-homepage E2E 全棧全綠）。活躍 DEF=2 非安全技術債（DEF-021 CJK 字體 / DEF-022 E2E 硬等待）
+**下次審查**: Sprint 36 US-003（AI-1907 home-error/重試 E2E 補測）；DEF-021/022 續後續；S37 (auth) 買家頁套 Shell（AI-1901，DEF-020 已鋪好 route-group 前置）

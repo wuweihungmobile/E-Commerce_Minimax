@@ -1,6 +1,8 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   ArrowDownToLine,
   Bell,
@@ -14,21 +16,47 @@ import {
 import { SearchBar } from "@/components/storefront/SearchBar"
 import { Badge } from "@/components/ui/badge"
 import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher"
+import listingService from "@/services/listing"
+
+const DEFAULT_HOT_KEYWORDS = ["極簡生活", "質感家居", "旅宿房型", "香氛療癒", "收納"]
 
 export interface StorefrontHeaderProps {
-  cartCount?: number
   hotKeywords?: string[]
-  onSearch?: (q: string) => void
   cartHref?: string
 }
 
-// TOP 區塊：頂欄（賣家中心/App/通知/幫助/語言/主題）+ 主頁首（logo + 搜尋 + 熱搜 + 購物車）。
+// TOP 區塊（全站共用，置於 route-group layout）：頂欄（賣家中心/App/通知/幫助/語言/主題）
+// + 主頁首（logo + 搜尋 + 熱搜 + 購物車）。DEF-020：搜尋走 URL（router.push `/?keyword=`）、
+// 購物車數量自行取得，Header 自足不再由頁面以 props 串接（避免 page-scoped callback）。
 export function StorefrontHeader({
-  cartCount = 0,
-  hotKeywords = [],
-  onSearch,
+  hotKeywords = DEFAULT_HOT_KEYWORDS,
   cartHref = "/cart",
 }: StorefrontHeaderProps) {
+  const router = useRouter()
+  const [cartCount, setCartCount] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    if (typeof window !== "undefined" && localStorage.getItem("accessToken")) {
+      listingService
+        .getCartCount()
+        .then((c) => {
+          if (!cancelled) setCartCount(c)
+        })
+        .catch(() => {
+          // 購物車數量取得失敗不影響頁首
+        })
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleSearch = (q: string) => {
+    const query = q.trim()
+    router.push(query ? `/?keyword=${encodeURIComponent(query)}` : "/")
+  }
+
   return (
     <header className="sticky top-0 z-[70]">
       {/* 頂欄 */}
@@ -80,7 +108,7 @@ export function StorefrontHeader({
             </span>
           </Link>
           <div className="flex-1 flex flex-col items-center">
-            <SearchBar onSubmit={onSearch} />
+            <SearchBar onSubmit={handleSearch} />
             {hotKeywords.length > 0 && (
               <div className="flex flex-wrap gap-x-4 h-5 overflow-hidden w-full max-w-[800px] mt-2 pl-0.5">
                 <span className="text-xs font-medium text-rs-info flex-none">熱搜</span>
@@ -88,7 +116,7 @@ export function StorefrontHeader({
                   <button
                     key={kw}
                     type="button"
-                    onClick={() => onSearch?.(kw)}
+                    onClick={() => handleSearch(kw)}
                     className="text-xs text-rs-ink-muted hover:text-rs-primary"
                   >
                     {kw}

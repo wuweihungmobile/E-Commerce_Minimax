@@ -6,7 +6,10 @@ import com.nextkey.ecommerce.core.admin.AdminService;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.repository.*;
+import com.nextkey.ecommerce.domain.model.audit.AuditLog;
+import com.nextkey.ecommerce.domain.repository.audit.AuditLogRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
+import org.springframework.data.domain.PageRequest;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -70,6 +73,9 @@ class AdminServiceIntegrationTest {
     @Autowired
     private TenantFeatureToggleRepository featureToggleRepository;
 
+    @Autowired
+    private AuditLogRepository auditLogRepository;
+
     @SuppressWarnings("unused")
     private static final String TEST_PASSWORD = "SecurePass123!";
 
@@ -125,6 +131,40 @@ class AdminServiceIntegrationTest {
             assertEquals(Tenant.TenantStatus.ACTIVE, updatedTenant.get().getStatus());
 
             System.out.println("✅ IT-M17-004 PASSED: Admin審核-通過申請");
+        } finally {
+            cleanupTestData(tenantId, null);
+        }
+    }
+
+    // ── DEF-016: Admin 操作稽核持久化 ────────────────────────────
+
+    @Test
+    @DisplayName("DEF-016: approveTenant 應寫入 AuditLog（TENANT_APPROVED）")
+    void approveTenant_shouldPersistAuditLog() throws Exception {
+        Tenant testTenant = Tenant.builder()
+                .name("Audit Approve Tenant")
+                .slug("audit-approve-" + System.currentTimeMillis())
+                .status(Tenant.TenantStatus.PENDING_REVIEW)
+                .contactEmail("audit-approve@example.com")
+                .build();
+        testTenant = tenantRepository.save(testTenant);
+        UUID tenantId = testTenant.getId();
+
+        try {
+            adminService.approveTenant(tenantId, AdminDto.TenantApproveRequest.builder().build());
+
+            List<AuditLog> logs = auditLogRepository
+                    .findByTenantIdOrderByCreatedAtDesc(tenantId, PageRequest.of(0, 10))
+                    .getContent();
+            assertFalse(logs.isEmpty(), "approveTenant 應產生至少一筆 audit log");
+            AuditLog log = logs.get(0);
+            assertEquals("TENANT_APPROVED", log.getAction());
+            assertEquals("TENANT", log.getEntityType());
+            assertEquals(tenantId, log.getEntityId());
+            assertEquals("ACTIVE", log.getNewValue());
+            assertNotNull(log.getCreatedAt());
+
+            System.out.println("✅ DEF-016 PASSED: approveTenant 稽核持久化");
         } finally {
             cleanupTestData(tenantId, null);
         }

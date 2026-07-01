@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.AdminDto;
+import com.nextkey.ecommerce.domain.model.audit.AuditLog;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
@@ -24,8 +25,10 @@ import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.domain.repository.audit.AuditLogRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +47,29 @@ public class AdminService {
     private final TenantFeatureToggleRepository featureToggleRepository;
     private final ListingRepository listingRepository;
     private final OrderRepository orderRepository;
+    private final AuditLogRepository auditLogRepository;
+
+    /**
+     * 記錄一筆管理操作稽核（DEF-016）。持久化到 audit_log，與既有 log.info 並存。
+     * 稽核失敗不應中斷主要業務流程。
+     */
+    private void recordAudit(String action, String entityType, UUID entityId, UUID tenantId,
+                             String oldValue, String newValue, String reason) {
+        try {
+            auditLogRepository.save(AuditLog.builder()
+                    .action(action)
+                    .entityType(entityType)
+                    .entityId(entityId)
+                    .tenantId(tenantId)
+                    .userId(TenantContext.getCurrentUser())
+                    .oldValue(oldValue)
+                    .newValue(newValue)
+                    .reason(reason)
+                    .build());
+        } catch (RuntimeException e) {
+            log.warn("Failed to persist audit log: action={}, entityId={}, error={}", action, entityId, e.getMessage());
+        }
+    }
 
     // Mock values
     private static final BigDecimal MOCK_AVERAGE_ORDER_VALUE = BigDecimal.valueOf(1500);
@@ -130,6 +156,7 @@ public class AdminService {
         List<String> enabledFeatures = initializeFeatureToggles(tenantId);
 
         log.info("Tenant approved: tenantId={}, enabledFeatures={}", tenantId, enabledFeatures);
+        recordAudit("TENANT_APPROVED", "TENANT", tenantId, tenantId, "PENDING_REVIEW", "ACTIVE", null);
 
         return AdminDto.TenantApproveResponse.builder()
                 .tenantId(tenantId)
@@ -160,6 +187,7 @@ public class AdminService {
         tenantRepository.save(tenant);
 
         log.info("Tenant rejected: tenantId={}, reason={}", tenantId, request.getReason());
+        recordAudit("TENANT_REJECTED", "TENANT", tenantId, tenantId, "PENDING_REVIEW", "REJECTED", request.getReason());
 
         return AdminDto.TenantRejectResponse.builder()
                 .tenantId(tenantId)
@@ -214,6 +242,7 @@ public class AdminService {
         // 寫入 audit log (mock - log only since no AuditLog entity exists)
         log.info("AUDIT_LOG: Tenant status updated - tenantId={}, previousStatus={}, newStatus={}, reason={}, updatedBy=SUPER_ADMIN",
                 tenantId, previousStatus, newStatus.name(), request.getReason());
+        recordAudit("TENANT_STATUS_UPDATED", "TENANT", tenantId, tenantId, previousStatus, newStatus.name(), request.getReason());
 
         return AdminDto.TenantStatusUpdateResponse.builder()
                 .tenantId(tenantId)
@@ -360,10 +389,12 @@ public class AdminService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1006));
 
+        String oldStatus = user.getStatus();
         user.setStatus(newStatus);
         user = userRepository.save(user);
 
         log.info("Admin updated user status: userId={}, newStatus={}", userId, newStatus);
+        recordAudit("USER_STATUS_UPDATED", "USER", userId, user.getTenantId(), oldStatus, newStatus, null);
         return toUserManagementResponse(user);
     }
 
@@ -397,6 +428,8 @@ public class AdminService {
 
         log.info("Feature toggle updated: tenantId={}, feature={}, enabled={}",
                 request.getTenantId(), request.getFeatureKey(), request.getIsEnabled());
+        recordAudit("FEATURE_TOGGLE_SET", "FEATURE_TOGGLE", request.getTenantId(), request.getTenantId(),
+                null, request.getFeatureKey() + "=" + request.getIsEnabled(), null);
 
         return toFeatureToggleResponse(toggle, tenant);
     }
@@ -456,6 +489,8 @@ public class AdminService {
 
         toggle = featureToggleRepository.save(toggle);
         log.info("Admin updated feature toggle: tenantId={}, feature={}, enabled={}", tenantId, featureKey, enabled);
+        recordAudit("FEATURE_TOGGLE_UPDATED", "FEATURE_TOGGLE", tenantId, tenantId,
+                null, featureKey + "=" + enabled, null);
 
         return toFeatureToggleResponse(toggle, tenant);
     }

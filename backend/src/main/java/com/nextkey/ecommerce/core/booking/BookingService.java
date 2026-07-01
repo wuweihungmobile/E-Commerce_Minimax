@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -281,7 +282,18 @@ public class BookingService {
         Page<com.nextkey.ecommerce.domain.model.order.Booking> bookings =
                 bookingRepository.findByUserIdOrderByCreatedAtDesc(userId, pageRequest);
 
-        return bookings.map(this::toBookingListResponse);
+        // 批次查詢房型標題，避免 N+1（逐筆查 listing）
+        List<UUID> listingIds = bookings.getContent().stream()
+                .map(com.nextkey.ecommerce.domain.model.order.Booking::getRoomListingId)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<UUID, String> titleMap = listingRepository.findAllById(listingIds).stream()
+                .collect(Collectors.toMap(
+                        Listing::getId,
+                        listing -> listing.getTitle() != null ? listing.getTitle() : "Unknown"));
+
+        return bookings.map(booking ->
+                toBookingListResponse(booking, titleMap.get(booking.getRoomListingId())));
     }
 
     /**
@@ -497,12 +509,15 @@ public class BookingService {
                 .build();
     }
 
-    private BookingDto.BookingListResponse toBookingListResponse(com.nextkey.ecommerce.domain.model.order.Booking booking) {
+    private BookingDto.BookingListResponse toBookingListResponse(
+            com.nextkey.ecommerce.domain.model.order.Booking booking,
+            String roomTitle) {
         long nightsCount = ChronoUnit.DAYS.between(booking.getCheckInDate(), booking.getCheckOutDate());
 
         return BookingDto.BookingListResponse.builder()
                 .id(booking.getId())
                 .roomListingId(booking.getRoomListingId())
+                .roomTitle(roomTitle != null ? roomTitle : "Unknown")
                 .checkInDate(booking.getCheckInDate())
                 .checkOutDate(booking.getCheckOutDate())
                 .guestCount(booking.getGuestCount())

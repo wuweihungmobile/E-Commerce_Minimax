@@ -338,7 +338,22 @@ public class OrderService {
      */
     @Transactional(readOnly = true)
     public OrderDto.OrderResponse getOrder(UUID orderId) {
+        UUID userId = TenantContext.getCurrentUser();
         Order order = findOrderById(orderId);
+
+        // 獲取使用者角色用於權限判斷
+        org.springframework.security.core.Authentication auth =
+            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = auth != null && (
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+        );
+
+        // 如果不是 ADMIN，則必須是訂單擁有者（DEF-018：修復 getOrder IDOR）
+        if (!isAdmin && !userId.equals(order.getUserId())) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to view this order");
+        }
+
         return toOrderResponse(order);
     }
 

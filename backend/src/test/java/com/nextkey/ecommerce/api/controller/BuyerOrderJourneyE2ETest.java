@@ -40,7 +40,8 @@ import static org.hamcrest.Matchers.*;
  *
  * 註：完整跨模組 journey（PRODUCT + 物流 + 評價）需 cart/SKU 與賣家角色，
  * 各模組已有獨立 E2E；本測試聚焦買家可觀測核心 + 擁有權隔離，低迭代風險。
- * 發現：getOrder 無擁有權檢查（IDOR）→ 記 DEF-018（修法涉廣用方法，待完整守門處理）。
+ * DEF-018（Sprint 32 US-001 修復）：getOrder 加擁有權檢查（買家限本人、admin 放行），
+ * 越權讀取回 403/E_1007；本檔 otherBuyerCannotGetOrder 驗證跨買家隔離。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -241,5 +242,30 @@ class BuyerOrderJourneyE2ETest {
                 .when().get(BASE_URL + "/" + orderId)
                 .then().statusCode(200)
                 .body("data.status", is("CREATED"));
+    }
+
+    @Test
+    @Order(4)
+    @DisplayName("IDOR 隔離：他人不可讀取買家訂單詳情（DEF-018，回 403）")
+    void otherBuyerCannotGetOrder() throws Exception {
+        UUID orderId = createRoomOrder(accessToken);
+
+        // 另一位買家 C
+        String otherEmail = "buyer-c-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 10000) + "@example.com";
+        String otherToken = registerAndLogin(otherEmail);
+
+        // C 嘗試讀取 A 的訂單詳情 → 應被拒（403 E_1007）
+        given()
+                .header("Authorization", "Bearer " + otherToken)
+                .when().get(BASE_URL + "/" + orderId)
+                .then().statusCode(403)
+                .body("success", is(false));
+
+        // A 仍可讀取自己的訂單
+        given()
+                .header("Authorization", "Bearer " + accessToken)
+                .when().get(BASE_URL + "/" + orderId)
+                .then().statusCode(200)
+                .body("data.id", is(orderId.toString()));
     }
 }

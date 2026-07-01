@@ -97,6 +97,15 @@ export const API_ENDPOINTS = {
     },
   },
 
+  // Analytics（M14，對齊 AnalyticsController /v2/dashboard/*）
+  analytics: {
+    stats: '/v2/dashboard/stats',
+    revenue: '/v2/dashboard/revenue',
+    orders: '/v2/dashboard/orders',
+    listings: '/v2/dashboard/listings',
+    activity: '/v2/dashboard/activity',
+  },
+
   // Dashboard Tenants (M17)
   dashboardTenants: {
     features: '/v2/dashboard/tenants/features',

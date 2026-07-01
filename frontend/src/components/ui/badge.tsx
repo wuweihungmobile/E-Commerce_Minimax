@@ -19,6 +19,17 @@ const badgeVariants = cva(
         outline: "text-foreground",
         warning:
           "border-transparent bg-amber-100 text-amber-800 hover:bg-amber-200",
+        // 意象若水 RUOSHUI 賣場徽章變體
+        promo: "border-transparent rounded-sm bg-rs-accent text-white",
+        logistics: "border-transparent rounded-sm bg-rs-tertiary text-rs-ink",
+        logisticsAlt:
+          "border-transparent rounded-sm bg-rs-secondary text-rs-ink",
+        feature:
+          "rounded-sm border-rs-primary text-rs-primary bg-transparent",
+        rating:
+          "border-transparent rounded-sm bg-rs-bg-base text-rs-ink-muted font-medium",
+        count:
+          "border-transparent rounded-full bg-rs-accent text-white justify-center min-w-[18px] h-[18px] px-1.5 text-[10px]",
       },
     },
     defaultVariants: {

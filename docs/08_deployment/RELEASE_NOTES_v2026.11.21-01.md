@@ -58,7 +58,10 @@
 | US-001 測試補強（Analytics/FAQ） | `251b29b` |
 | US-002/003 後台深化（營收/訂單/趨勢） | `c4097bb` |
 | 計畫狀態更新 | `9f0879d` |
-| US-004 調查（ERP→DEF-017、audit→DEF-016；ERP 程式後回退） | `b98a05c` + 回退 commit |
+| US-004 調查（ERP→DEF-017、audit→DEF-016；ERP 程式後回退） | `b98a05c` + 回退 `ba3780a` |
+| checkstyle 修復（AnalyticsServiceTest 未使用 import，完整守門攔下） | `b58c147` |
+
+> **完整守門紀錄**：首輪 `make validate-release` 因 US-001 測試的 `[UnusedImports]`（`java.time.Instant`）checkstyle 違規 BUILD FAILURE（pre-commit 漏網），修復 `b58c147` 後重驗全綠，經 FULL 快取 push（`ec429cb..b58c147`）。
 
 ## 貢獻者
 

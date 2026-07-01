@@ -89,7 +89,8 @@
 - [x] 前端 lint（0 errors）/type-check/build 通過
 - [x] US-004 Buffer 完成（調查：ERP 安全隙記 DEF-017、audit log 記 DEF-016；ERP 程式已回退）
 - [x] Sprint 28 Review / Retrospective / Release Notes 建立
-- [ ] pre-push v5 完整守門（make validate-release）—— 隨本批 push 執行
+- [x] pre-push v5 完整守門（make validate-release）通過並 push（`ec429cb..b58c147`，FULL 快取命中）
+  - 🔴 首輪 validate-release 揪出 US-001 `AnalyticsServiceTest` 未使用 import（checkstyle `[UnusedImports]`）→ 修復 `b58c147` 後重驗全綠（完整守門再次攔下 pre-commit 漏網項）
 
 ---
 

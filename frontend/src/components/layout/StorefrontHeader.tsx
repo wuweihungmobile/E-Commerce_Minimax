@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -17,6 +17,13 @@ import { SearchBar } from "@/components/storefront/SearchBar"
 import { Badge } from "@/components/ui/badge"
 import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher"
 import listingService from "@/services/listing"
+import AuthService from "@/services/auth"
+import {
+  subscribeAuth,
+  getAuthEmailSnapshot,
+  getAuthServerSnapshot,
+  notifyAuthChange,
+} from "@/services/authStore"
 
 const DEFAULT_HOT_KEYWORDS = ["極簡生活", "質感家居", "旅宿房型", "香氛療癒", "收納"]
 
@@ -34,23 +41,32 @@ export function StorefrontHeader({
 }: StorefrontHeaderProps) {
   const router = useRouter()
   const [cartCount, setCartCount] = useState(0)
+  // 帳號區為 auth-aware：以 useSyncExternalStore 讀登入 email（SSR/hydration 回 null → 顯示訪客，
+  // client 端切換為實際登入態）。避免 effect 內同步 setState（React 19 嚴格 hooks 禁令）。
+  const email = useSyncExternalStore(subscribeAuth, getAuthEmailSnapshot, getAuthServerSnapshot)
 
   useEffect(() => {
+    if (!email) return
     let cancelled = false
-    if (typeof window !== "undefined" && localStorage.getItem("accessToken")) {
-      listingService
-        .getCartCount()
-        .then((c) => {
-          if (!cancelled) setCartCount(c)
-        })
-        .catch(() => {
-          // 購物車數量取得失敗不影響頁首
-        })
-    }
+    listingService
+      .getCartCount()
+      .then((c) => {
+        if (!cancelled) setCartCount(c)
+      })
+      .catch(() => {
+        // 購物車數量取得失敗不影響頁首
+      })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [email])
+
+  const handleLogout = () => {
+    AuthService.clearAuthData()
+    notifyAuthChange()
+    setCartCount(0)
+    router.push("/login")
+  }
 
   const handleSearch = (q: string) => {
     const query = q.trim()
@@ -58,7 +74,7 @@ export function StorefrontHeader({
   }
 
   return (
-    <header className="sticky top-0 z-[70]">
+    <header className="sticky top-0 z-[70]" data-testid="storefront-header">
       {/* 頂欄 */}
       <div className="bg-rs-topbar text-rs-topbar-text text-xs">
         <div className="max-w-[1440px] mx-auto px-6 h-8 flex items-center justify-between">
@@ -74,6 +90,36 @@ export function StorefrontHeader({
             </span>
           </div>
           <div className="flex items-center gap-3">
+            {/* 帳號區（auth-aware）：已登入顯示 email/我的訂單/登出；未登入顯示 登入/註冊 */}
+            {email ? (
+              <span className="inline-flex items-center gap-3" data-testid="header-account">
+                <span className="max-w-[140px] truncate opacity-90" title={email}>
+                  {email}
+                </span>
+                <Link href="/orders" className="hover:opacity-80">
+                  我的訂單
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="cursor-pointer hover:opacity-80"
+                  data-testid="header-logout"
+                >
+                  登出
+                </button>
+                <span className="opacity-30">|</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-3" data-testid="header-guest">
+                <Link href="/login" className="hover:opacity-80" data-testid="header-login">
+                  登入
+                </Link>
+                <Link href="/register" className="hover:opacity-80">
+                  註冊
+                </Link>
+                <span className="opacity-30">|</span>
+              </span>
+            )}
             <Link href="/notifications" className="inline-flex items-center gap-1 hover:opacity-80">
               <Bell className="w-3.5 h-3.5" aria-hidden />
               通知

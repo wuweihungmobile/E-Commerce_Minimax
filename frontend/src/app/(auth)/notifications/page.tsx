@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import AuthService from '@/services/auth'
 import NotificationInboxService, {
   type InboxNotification,
   NOTIFICATION_TYPE_LABELS,
@@ -12,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { StorefrontShell } from '@/components/layout/StorefrontShell'
 
 const PAGE_SIZE = 15
 
@@ -120,27 +120,7 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center gap-4">
-              <Link href="/" className="text-xl font-bold text-gray-900">
-                NextKey
-              </Link>
-              <span className="text-gray-400">/</span>
-              <span className="text-gray-900 font-medium">通知</span>
-            </div>
-            <div className="flex items-center">
-              <span className="text-sm text-gray-600">
-                {AuthService.getCurrentUser()?.email}
-              </span>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-3xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <StorefrontShell>
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">通知收件匣</h1>
@@ -274,7 +254,6 @@ export default function NotificationsPage() {
             </Button>
           </div>
         )}
-      </main>
-    </div>
+    </StorefrontShell>
   )
 }

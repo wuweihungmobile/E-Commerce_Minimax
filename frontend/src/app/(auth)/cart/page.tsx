@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { StorefrontShell } from '@/components/layout/StorefrontShell'
 
 interface CartItem {
   cartItemKey: string
@@ -222,24 +223,8 @@ export default function CartPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <nav className="bg-white shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between h-16">
-              <div className="flex items-center">
-                <h1 className="text-xl font-bold text-gray-900">NextKey</h1>
-              </div>
-              <div className="flex items-center gap-4">
-                <Link href="/dashboard/tenants" className="text-gray-600 hover:text-gray-900">
-                  我的店鋪
-                </Link>
-              </div>
-            </div>
-          </div>
-        </nav>
-        <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          <div className="px-4 py-6 sm:px-0">
-            <Skeleton className="h-8 w-48 mb-6" />
+      <StorefrontShell>
+        <Skeleton className="h-8 w-48 mb-6" />
             <div className="space-y-4">
               {[1, 2, 3].map(i => (
                 <Card key={i}>
@@ -255,44 +240,12 @@ export default function CartPage() {
                 </Card>
               ))}
             </div>
-          </div>
-        </main>
-      </div>
+      </StorefrontShell>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/" className="text-xl font-bold text-gray-900">
-                NextKey
-              </Link>
-              <span className="text-gray-400">/</span>
-              <span className="text-gray-900 font-medium">購物車</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">
-                {AuthService.getCurrentUser()?.email}
-              </span>
-              <button
-                onClick={() => {
-                  AuthService.clearAuthData()
-                  router.push('/login')
-                }}
-                className="px-3 py-1.5 text-sm text-white bg-red-500 rounded-md hover:bg-red-600"
-              >
-                登出
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
+    <StorefrontShell>
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900">購物車</h1>
             <p className="mt-1 text-sm text-gray-600">
@@ -505,8 +458,6 @@ export default function CartPage() {
               </div>
             </div>
           )}
-        </div>
-      </main>
-    </div>
+    </StorefrontShell>
   )
 }

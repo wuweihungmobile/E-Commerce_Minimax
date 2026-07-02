@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import ReviewService from '@/services/review'
 import ReviewForm, { type ReviewFormValue } from '@/components/reviews/ReviewForm'
+import { StorefrontShell } from '@/components/layout/StorefrontShell'
 
 function formatPrice(amount: number, currency: string) {
   return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: currency || 'TWD' }).format(amount)
@@ -102,26 +103,7 @@ export default function BookingDetailPage() {
   const canReview = booking != null && (booking.status === 'COMPLETED' || booking.status === 'CHECKED_OUT')
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center gap-4">
-              <Link href="/" className="text-xl font-bold text-gray-900">
-                NextKey
-              </Link>
-              <span className="text-gray-400">/</span>
-              <Link href="/bookings" className="text-gray-600 hover:text-gray-900">
-                我的預訂
-              </Link>
-              <span className="text-gray-400">/</span>
-              <span className="text-gray-900 font-medium">預訂詳情</span>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-3xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <StorefrontShell>
         {error && (
           <Alert variant="destructive" className="mb-4">
             <AlertDescription>{error}</AlertDescription>
@@ -283,7 +265,6 @@ export default function BookingDetailPage() {
             </Card>
           )
         )}
-      </main>
-    </div>
+    </StorefrontShell>
   )
 }

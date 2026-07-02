@@ -5,7 +5,7 @@ import { MessageCircleMore } from "lucide-react"
 export function StorefrontFooter() {
   return (
     <>
-      <footer className="bg-rs-surface border-t border-rs-hairline mt-auto">
+      <footer className="bg-rs-surface border-t border-rs-hairline mt-auto" data-testid="storefront-footer">
         <div className="max-w-[1440px] mx-auto px-6 py-12 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm text-rs-ink-muted">
             © 2026 意象若水 RUOSHUI. 生活減法，無負擔的購物體驗。

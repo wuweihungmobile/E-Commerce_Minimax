@@ -25,6 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { StorefrontShell } from '@/components/layout/StorefrontShell'
 
 function formatPrice(amount: number, currency: string) {
   return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: currency || 'TWD' }).format(amount)
@@ -180,27 +181,8 @@ export default function OrderDetailPage() {
     order != null && order.orderType === 'PRODUCT' && (order.status === 'DELIVERED' || order.status === 'COMPLETED')
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center gap-4">
-              <Link href="/" className="text-xl font-bold text-gray-900">
-                NextKey
-              </Link>
-              <span className="text-gray-400">/</span>
-              <Link href="/orders" className="text-gray-600 hover:text-gray-900">
-                我的訂單
-              </Link>
-              <span className="text-gray-400">/</span>
-              <span className="text-gray-900 font-medium">訂單詳情</span>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-4xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        {error && (
+    <StorefrontShell>
+      {error && (
           <Alert variant="destructive" className="mb-4">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
@@ -531,7 +513,6 @@ export default function OrderDetailPage() {
             </Card>
           )
         )}
-      </main>
-    </div>
+    </StorefrontShell>
   )
 }

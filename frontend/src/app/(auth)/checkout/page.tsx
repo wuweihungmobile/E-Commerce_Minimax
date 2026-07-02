@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import AuthService from '@/services/auth'
 import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -11,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { StorefrontShell } from '@/components/layout/StorefrontShell'
 
 interface BookingItem {
   listingId: string
@@ -198,172 +198,133 @@ export default function CheckoutPage() {
   // Show success screen
   if (bookingId) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <nav className="bg-white shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between h-16">
-              <div className="flex items-center gap-4">
-                <Link href="/" className="text-xl font-bold text-gray-900">
-                  NextKey
-                </Link>
-              </div>
+      <StorefrontShell>
+        <Card className="max-w-xl mx-auto">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <div className="text-6xl mb-4">✓</div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">預訂成功！</h2>
+            <p className="text-gray-600 mb-4">您的預訂已完成</p>
+            <p className="text-sm text-gray-500 mb-6">預訂編號: {bookingId}</p>
+            <div className="flex gap-4">
+              <Link href="/bookings">
+                <Button variant="outline">查看我的預訂</Button>
+              </Link>
+              <Link href="/">
+                <Button>返回首頁</Button>
+              </Link>
             </div>
-          </div>
-        </nav>
-
-        <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          <div className="px-4 py-6 sm:px-0">
-            <Card className="max-w-xl mx-auto">
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <div className="text-6xl mb-4">✓</div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">預訂成功！</h2>
-                <p className="text-gray-600 mb-4">您的預訂已完成</p>
-                <p className="text-sm text-gray-500 mb-6">預訂編號: {bookingId}</p>
-                <div className="flex gap-4">
-                  <Link href="/bookings">
-                    <Button variant="outline">查看我的預訂</Button>
-                  </Link>
-                  <Link href="/">
-                    <Button>返回首頁</Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </main>
-      </div>
+          </CardContent>
+        </Card>
+      </StorefrontShell>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/" className="text-xl font-bold text-gray-900">
-                NextKey
-              </Link>
-              <span className="text-gray-400">/</span>
-              <span className="text-gray-900 font-medium">結帳</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">
-                {AuthService.getCurrentUser()?.email}
-              </span>
-            </div>
-          </div>
+    <StorefrontShell>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">填寫預訂資料</h1>
+        <p className="mt-1 text-sm text-gray-600">
+          請填寫以下資料以完成預訂
+        </p>
+      </div>
+
+      {error && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Guest Info Form */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>旅客資料</CardTitle>
+              <CardDescription>請填寫入住旅客的資料</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="guestName">姓名 *</Label>
+                <Input
+                  id="guestName"
+                  placeholder="請輸入姓名"
+                  value={guestName}
+                  onChange={(e) => setGuestName(e.target.value)}
+                />
+                {validationErrors.guestName && (
+                  <p className="text-sm text-red-500">{validationErrors.guestName}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="guestPhone">電話 *</Label>
+                <Input
+                  id="guestPhone"
+                  placeholder="0912345678"
+                  value={guestPhone}
+                  onChange={(e) => setGuestPhone(e.target.value)}
+                />
+                {validationErrors.guestPhone && (
+                  <p className="text-sm text-red-500">{validationErrors.guestPhone}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="guestEmail">Email *</Label>
+                <Input
+                  id="guestEmail"
+                  type="email"
+                  placeholder="example@email.com"
+                  value={guestEmail}
+                  onChange={(e) => setGuestEmail(e.target.value)}
+                />
+                {validationErrors.guestEmail && (
+                  <p className="text-sm text-red-500">{validationErrors.guestEmail}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="specialRequests">特殊要求（選填）</Label>
+                <Input
+                  id="specialRequests"
+                  placeholder="例如：需要嬰兒床、遲入住等"
+                  value={specialRequests}
+                  onChange={(e) => setSpecialRequests(e.target.value)}
+                />
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      </nav>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">填寫預訂資料</h1>
-            <p className="mt-1 text-sm text-gray-600">
-              請填寫以下資料以完成預訂
-            </p>
-          </div>
+        {/* Order Summary */}
+        <div>
+          <Card>
+            <CardHeader>
+              <CardTitle>訂單摘要</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="text-sm text-gray-600">
+                請從購物車選擇要預訂的房間
+              </div>
 
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+              <div className="border-t pt-4">
+                <Button
+                  className="w-full"
+                  size="lg"
+                  onClick={handleCreateBooking}
+                  disabled={loading}
+                >
+                  {loading ? '處理中...' : '確認預訂'}
+                </Button>
+              </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Guest Info Form */}
-            <div className="lg:col-span-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>旅客資料</CardTitle>
-                  <CardDescription>請填寫入住旅客的資料</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="guestName">姓名 *</Label>
-                    <Input
-                      id="guestName"
-                      placeholder="請輸入姓名"
-                      value={guestName}
-                      onChange={(e) => setGuestName(e.target.value)}
-                    />
-                    {validationErrors.guestName && (
-                      <p className="text-sm text-red-500">{validationErrors.guestName}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="guestPhone">電話 *</Label>
-                    <Input
-                      id="guestPhone"
-                      placeholder="0912345678"
-                      value={guestPhone}
-                      onChange={(e) => setGuestPhone(e.target.value)}
-                    />
-                    {validationErrors.guestPhone && (
-                      <p className="text-sm text-red-500">{validationErrors.guestPhone}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="guestEmail">Email *</Label>
-                    <Input
-                      id="guestEmail"
-                      type="email"
-                      placeholder="example@email.com"
-                      value={guestEmail}
-                      onChange={(e) => setGuestEmail(e.target.value)}
-                    />
-                    {validationErrors.guestEmail && (
-                      <p className="text-sm text-red-500">{validationErrors.guestEmail}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="specialRequests">特殊要求（選填）</Label>
-                    <Input
-                      id="specialRequests"
-                      placeholder="例如：需要嬰兒床、遲入住等"
-                      value={specialRequests}
-                      onChange={(e) => setSpecialRequests(e.target.value)}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Order Summary */}
-            <div>
-              <Card>
-                <CardHeader>
-                  <CardTitle>訂單摘要</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="text-sm text-gray-600">
-                    請從購物車選擇要預訂的房間
-                  </div>
-
-                  <div className="border-t pt-4">
-                    <Button
-                      className="w-full"
-                      size="lg"
-                      onClick={handleCreateBooking}
-                      disabled={loading}
-                    >
-                      {loading ? '處理中...' : '確認預訂'}
-                    </Button>
-                  </div>
-
-                  <div className="text-xs text-gray-500 text-center">
-                    點擊「確認預訂」即表示您同意我們的服務條款和隱私政策
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+              <div className="text-xs text-gray-500 text-center">
+                點擊「確認預訂」即表示您同意我們的服務條款和隱私政策
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      </main>
-    </div>
+      </div>
+    </StorefrontShell>
   )
 }

@@ -312,12 +312,42 @@ export function ListingDetail({ id }: { id: string }) {
                   <>
                     {" · "}
                     <span className="text-rs-ink-muted">{availability.nightsCount} 晚合計</span>{" "}
-                    <span className="text-xl font-bold text-rs-primary">
+                    {availability.discountAmount != null &&
+                      availability.discountAmount > 0 &&
+                      availability.originalTotalPrice != null && (
+                        <span
+                          data-testid="listing-original-price"
+                          className="mr-1 text-rs-ink-muted line-through"
+                        >
+                          {formatPrice(
+                            availability.currency ?? listing.currency,
+                            availability.originalTotalPrice
+                          )}
+                        </span>
+                      )}
+                    <span
+                      data-testid="listing-total-price"
+                      className="text-xl font-bold text-rs-primary"
+                    >
                       {formatPrice(
                         availability.currency ?? listing.currency,
                         availability.totalPrice
                       )}
                     </span>
+                    {availability.appliedRuleName &&
+                      availability.discountAmount != null &&
+                      availability.discountAmount > 0 && (
+                        <span
+                          data-testid="listing-discount-badge"
+                          className="ml-2 inline-block rounded bg-rs-success/10 px-2 py-0.5 text-xs text-rs-success"
+                        >
+                          {availability.appliedRuleName}｜省{" "}
+                          {formatPrice(
+                            availability.currency ?? listing.currency,
+                            availability.discountAmount
+                          )}
+                        </span>
+                      )}
                   </>
                 )}
               </div>

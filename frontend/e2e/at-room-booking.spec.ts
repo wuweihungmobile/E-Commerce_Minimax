@@ -255,4 +255,48 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
     await page.getByTestId('listing-add-cart').click();
     await expect(page.getByTestId('listing-add-success')).toBeVisible({ timeout: 10000 });
   });
+
+  test('E2E-ROOM-06: 可用性回折扣 → 顯示折扣後價 + 原價刪除線 + 折扣標籤（Sprint 43 US-004 AI-2405）', async ({ page }: { page: Page }) => {
+    await page.route(`**/v2/listings/${ROOM_ID}`, async (route) => {
+      await fulfillJson(route, 200, { success: true, data: roomListing() });
+    });
+    await page.route('**/v2/bookings/calendar**', async (route) => {
+      await fulfillJson(route, 200, { success: true, data: [] });
+    });
+    // availability 回動態定價折扣（早鳥 15% off）：原價 6400 → 折扣後 5440，省 960
+    await page.route('**/v2/bookings/availability**', async (route) => {
+      await fulfillJson(route, 200, {
+        success: true,
+        data: {
+          available: true,
+          roomListingId: ROOM_ID,
+          checkInDate: '2030-01-01',
+          checkOutDate: '2030-01-03',
+          nightsCount: 2,
+          totalPrice: 5440,
+          currency: 'TWD',
+          unavailableReason: null,
+          originalTotalPrice: 6400,
+          discountAmount: 960,
+          appliedRuleName: '早鳥 15% off',
+        },
+      });
+    });
+
+    await page.goto(`/listings/${ROOM_ID}`);
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByTestId('listing-detail')).toBeVisible({ timeout: 15000 });
+
+    await page.getByTestId('listing-checkin').fill('2030-01-01');
+    await page.getByTestId('listing-checkout').fill('2030-01-03');
+    await page.getByRole('button', { name: '查詢可用性' }).click();
+
+    await expect(page.getByTestId('listing-availability')).toBeVisible({ timeout: 10000 });
+    // 原價刪除線（6,400）、折扣後總價（5,440）、折扣標籤（規則名 + 省 960）
+    await expect(page.getByTestId('listing-original-price')).toContainText('6,400');
+    await expect(page.getByTestId('listing-total-price')).toContainText('5,440');
+    const badge = page.getByTestId('listing-discount-badge');
+    await expect(badge).toContainText('早鳥 15% off');
+    await expect(badge).toContainText('960');
+  });
 });

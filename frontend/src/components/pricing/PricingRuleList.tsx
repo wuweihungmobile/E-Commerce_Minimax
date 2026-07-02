@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import PricingService, { PricingRule, PricingRuleType } from '@/services/pricing'
 import AuthService from '@/services/auth'
+import PricingCalendarPreview from '@/components/pricing/PricingCalendarPreview'
 
 /**
  * 各規則型別的 config 參數欄位（AI-2404）。key 對齊後端 jsonb config。
@@ -178,6 +179,13 @@ export default function PricingRuleList() {
           onClose={() => { setShowForm(false); setEditingRule(null) }}
           onSaved={fetchRules}
         />
+      )}
+
+      {/* 定價預覽：輸入房源 ID 篩選後，可預覽該房源套用規則後的每日價格（AI-2405，沿用既有元件） */}
+      {filterRoom && (
+        <div data-testid="pricing-preview">
+          <PricingCalendarPreview roomListingId={filterRoom} />
+        </div>
       )}
 
       {/* Rule List */}

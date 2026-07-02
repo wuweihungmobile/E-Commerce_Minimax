@@ -74,6 +74,10 @@ export interface AvailabilityResponse {
   totalPrice: number | null
   currency: string | null
   unavailableReason: string | null
+  // 動態定價折扣（AI-2402）：套用早鳥/長住/末班車折扣時填入，否則為 null。
+  originalTotalPrice?: number | null
+  discountAmount?: number | null
+  appliedRuleName?: string | null
 }
 
 // 對齊後端 BookingDto.CalendarResponse（GET /v2/bookings/calendar 每日一筆）

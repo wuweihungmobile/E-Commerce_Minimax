@@ -1,6 +1,5 @@
 package com.nextkey.ecommerce.core.booking;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -267,30 +266,10 @@ public class RoomCalendarService {
         return roomCalendarRepository.findByListingIdAndCalendarDateBetween(roomListingId, start, end);
     }
 
-    /**
-     * 設定日期價格
-     */
-    @Transactional
-    public void setDatePrice(final UUID roomListingId, final LocalDate date, final BigDecimal price) {
-        RoomCalendar calendar = roomCalendarRepository
-                .findByListingIdAndCalendarDate(roomListingId, date)
-                .orElseGet(() -> createCalendarEntry(roomListingId, date));
-
-        calendar.setPrice(price);
-        roomCalendarRepository.save(calendar);
-
-        log.info("Set date price: room={}, date={}, price={}", roomListingId, date, price);
-    }
-
-    /**
-     * 批次設定日期價格
-     */
-    @Transactional
-    public void setDatePriceBulk(final UUID roomListingId, final List<LocalDate> dates, final BigDecimal price) {
-        for (LocalDate date : dates) {
-            setDatePrice(roomListingId, date, price);
-        }
-    }
+    // 註：setDatePrice / setDatePriceBulk（room_calendar.price 手動日價寫入路徑）已於 Sprint 45
+    // AI-2406 移除——全專案零呼叫者（死碼），room_calendar.price 恆為 NULL。手動日價唯一路徑為
+    // PricingService 的 MANUAL_OVERRIDE 規則（setCalendarPrice/overridePrice）。詳見
+    // docs/06_quality/PRICING_MECHANISM_UNIFICATION.md。
 
     /**
      * 封鎖日期（不可預訂）

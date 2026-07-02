@@ -97,7 +97,8 @@ public class BookingService {
                 .map(c -> BookingDto.CalendarResponse.builder()
                         .date(c.getCalendarDate())
                         .status(c.getStatus().name())
-                        .price(c.getPrice() != null ? c.getPrice() : listing.getBasePrice())
+                        // room_calendar.price 已停用（AI-2406，恆 NULL）→ 每日基準價一律為 basePrice
+                        .price(listing.getBasePrice())
                         .bookingId(c.getBookingId())
                         .build())
                 .collect(Collectors.toList());
@@ -191,7 +192,8 @@ public class BookingService {
 
         return calendars.stream()
                 .map(c -> {
-                    BigDecimal price = c.getPrice() != null ? c.getPrice() : listing.getBasePrice();
+                    // room_calendar.price 已停用（AI-2406，恆 NULL）→ 每日基準價一律為 basePrice
+                    BigDecimal price = listing.getBasePrice();
                     BigDecimal originalPrice = null;
                     String appliedRuleName = null;
                     if (c.getStatus() == RoomCalendar.RoomCalendarStatus.AVAILABLE) {
@@ -557,24 +559,20 @@ public class BookingService {
         return calendarBaseTotal(roomListingId, checkIn, checkOut);
     }
 
-    /** 既有計價：逐日 room_calendar 價，無記錄之日以 listing.basePrice 補齊。 */
+    /**
+     * 基準計價：每晚 listing.basePrice × 晚數（AI-2406）。
+     * room_calendar.price 手動日價機制已停用（恆 NULL、死碼），故每日基準價一律為 basePrice；
+     * 動態折扣另由 tryDynamicPricing（PricingService 規則）套用。
+     * 註：舊實作對「有記錄之日」加 room_calendar.price（恆 NULL → 加 ZERO）、對「無記錄之日」加
+     * basePrice；由於可訂區間必無既有記錄，兩者對可訂訂房結果等價，此處簡化並修正該潛在低估。
+     */
     private BigDecimal calendarBaseTotal(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
-        BigDecimal total = BigDecimal.ZERO;
-        List<RoomCalendar> calendars = roomCalendarService.getCalendarRange(roomListingId, checkIn, checkOut.minusDays(1));
-
-        for (RoomCalendar calendar : calendars) {
-            total = total.add(calendar.getPrice() != null ? calendar.getPrice() : BigDecimal.ZERO);
-        }
-
-        // 如果有些日期沒有設定價格，使用 listing 的 basePrice
-        long expectedDays = ChronoUnit.DAYS.between(checkIn, checkOut);
         Listing listing = listingRepository.findById(roomListingId).orElse(null);
-        if (listing != null && calendars.size() < expectedDays) {
-            long missingDays = expectedDays - calendars.size();
-            total = total.add(listing.getBasePrice().multiply(BigDecimal.valueOf(missingDays)));
+        if (listing == null) {
+            return BigDecimal.ZERO;
         }
-
-        return total;
+        long nights = ChronoUnit.DAYS.between(checkIn, checkOut);
+        return listing.getBasePrice().multiply(BigDecimal.valueOf(nights));
     }
 
     /**

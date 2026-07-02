@@ -35,16 +35,16 @@ function roomListing() {
   };
 }
 
-function priceResponse() {
+function availabilityResponse(available: boolean, unavailableReason: string | null = null) {
   return {
+    available,
     roomListingId: ROOM_ID,
     checkInDate: '2030-01-01',
     checkOutDate: '2030-01-03',
-    nights: 2,
-    baseTotal: 6400,
-    adjustedTotal: 6400,
-    discount: 0,
+    nightsCount: 2,
+    totalPrice: available ? 6400 : null,
     currency: 'TWD',
+    unavailableReason,
   };
 }
 
@@ -72,13 +72,12 @@ function cartWithRoom() {
 }
 
 test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
-  test('E2E-ROOM-01: 詳情頁 ROOM 選日期 → 計價 → 加入購物車', async ({ page }: { page: Page }) => {
-    await page.route(`**/v2/listings/${ROOM_ID}**`, async (route) => {
-      if (route.request().url().includes('/price')) {
-        await fulfillJson(route, 200, { success: true, data: priceResponse() });
-      } else {
-        await fulfillJson(route, 200, { success: true, data: roomListing() });
-      }
+  test('E2E-ROOM-01: 詳情頁 ROOM 選日期 → 可用性(可訂) → 加入購物車', async ({ page }: { page: Page }) => {
+    await page.route(`**/v2/listings/${ROOM_ID}`, async (route) => {
+      await fulfillJson(route, 200, { success: true, data: roomListing() });
+    });
+    await page.route('**/v2/bookings/availability**', async (route) => {
+      await fulfillJson(route, 200, { success: true, data: availabilityResponse(true) });
     });
     await page.route('**/v2/cart/items', async (route) => {
       await fulfillJson(route, 200, { success: true, data: { cartItemKey: 'k1', listingId: ROOM_ID, quantity: 1 } });
@@ -88,15 +87,39 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
     await page.waitForLoadState('domcontentloaded');
     await expect(page.getByTestId('listing-detail')).toBeVisible({ timeout: 15000 });
 
-    // 選日期 → 查詢價格
+    // 選日期 → 查詢可用性（可訂）
     await page.getByTestId('listing-checkin').fill('2030-01-01');
     await page.getByTestId('listing-checkout').fill('2030-01-03');
-    await page.getByRole('button', { name: '查詢價格' }).click();
-    await expect(page.getByTestId('listing-price')).toBeVisible({ timeout: 10000 });
+    await page.getByRole('button', { name: '查詢可用性' }).click();
+    await expect(page.getByTestId('listing-availability')).toBeVisible({ timeout: 10000 });
 
-    // 加入購物車 → 成功
+    // 可訂 → 加入購物車 → 成功
     await page.getByTestId('listing-add-cart').click();
     await expect(page.getByTestId('listing-add-success')).toBeVisible({ timeout: 10000 });
+  });
+
+  test('E2E-ROOM-04: 詳情頁 ROOM 不可預訂 → 禁用加購 + 顯示原因', async ({ page }: { page: Page }) => {
+    await page.route(`**/v2/listings/${ROOM_ID}`, async (route) => {
+      await fulfillJson(route, 200, { success: true, data: roomListing() });
+    });
+    await page.route('**/v2/bookings/availability**', async (route) => {
+      await fulfillJson(route, 200, {
+        success: true,
+        data: availabilityResponse(false, '所選日期已被預訂'),
+      });
+    });
+
+    await page.goto(`/listings/${ROOM_ID}`);
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByTestId('listing-detail')).toBeVisible({ timeout: 15000 });
+
+    await page.getByTestId('listing-checkin').fill('2030-01-01');
+    await page.getByTestId('listing-checkout').fill('2030-01-03');
+    await page.getByRole('button', { name: '查詢可用性' }).click();
+
+    // 不可預訂 → 顯示原因 + 加購鈕禁用
+    await expect(page.getByTestId('listing-unavailable')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('listing-add-cart')).toBeDisabled();
   });
 
   test('E2E-ROOM-02: checkout 建立 booking 成功', async ({ page }: { page: Page }) => {

@@ -168,25 +168,33 @@ test.describe('E2E-M15-003: 媒體上傳流程', () => {
   });
 
   test('媒體庫篩選功能', async ({ page }) => {
+    // 媒體庫載入/篩選失敗時頁面會觸發原生 alert()（media/page.tsx loadMedia catch）；
+    // 新帳號可能無 CMS 媒體權限 → getMediaList 403 → alert，該原生 dialog 於 teardown 時
+    // 會間歇造成 session 崩潰（既有 flaky 根因，S37 AI-2001）。註冊 dialog 處理器自動關閉。
+    page.on('dialog', (dialog) => {
+      void dialog.dismiss().catch(() => {});
+    });
+
     await registerAndLogin(page);
 
     await page.goto('/cms/media');
     await page.waitForLoadState('domcontentloaded');
 
-    // 點擊圖片篩選
-    const imageBtn = page.locator('button:has-text("圖片")').first();
-    if (await imageBtn.isVisible()) {
-      await imageBtn.click();
-      await page.waitForTimeout(500);
-    }
+    // 篩選鈕的 active class（bg-blue-100）由本地 filter state 控制、不依賴後端資料 → 穩定可斷言
+    const allBtn = page.getByRole('button', { name: /^全部/ });
+    const imageBtn = page.getByRole('button', { name: '圖片', exact: true });
+    await expect(allBtn).toBeVisible({ timeout: 15000 });
+    await expect(imageBtn).toBeVisible();
 
-    // 點擊全部
-    const allBtn = page.locator('button:has-text("全部")').first();
-    if (await allBtn.isVisible()) {
-      await allBtn.click();
-    }
+    // 點「圖片」→ 該鈕轉 active
+    await imageBtn.click();
+    await expect(imageBtn).toHaveClass(/bg-blue-100/, { timeout: 10000 });
 
-    console.log('篩選測試完成');
+    // 點「全部」→ 轉 active；再等網路 idle，確保篩選 refetch 完成後才結束測試，
+    // 避免 in-flight 請求（及其失敗 alert）於 teardown 時崩潰（取代原無斷言 + 固定 sleep）。
+    await allBtn.click();
+    await expect(allBtn).toHaveClass(/bg-blue-100/, { timeout: 10000 });
+    await page.waitForLoadState('networkidle');
   });
 });
 

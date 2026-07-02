@@ -955,4 +955,46 @@ class BookingControllerE2ETest {
             System.err.println("❌ IT-M06-104 failed: " + e.getMessage());
         }
     }
+
+    // ── API-M06-013: 整月日曆查詢-成功（含 BOOKED 日期）─────────────
+
+    @Test
+    @Order(17)
+    @DisplayName("API-M06-013: GET /v2/bookings/calendar - 取得日曆區間，含 @Order(1) 已訂 BOOKED 日期")
+    void getCalendar_returns200WithBookedDates() {
+        // Sprint 41 US-004 / AI-2202b：整月日曆 read-only 端點。
+        // @Order(1) 已訂 now+1 ~ now+3（nights now+1、now+2 於 room_calendar 標為 BOOKED）。
+        given()
+                .header("Authorization", "Bearer " + buyerToken)
+                .queryParam("roomListingId", testRoomListingId.toString())
+                .queryParam("startDate", LocalDate.now().plusDays(1).toString())
+                .queryParam("endDate", LocalDate.now().plusDays(2).toString())
+                .when()
+                .get(BOOKING_URL + "/calendar")
+                .then()
+                .statusCode(200)
+                .body("success", is(true))
+                .body("data", notNullValue())
+                .body("data.status", hasItem("BOOKED"));
+
+        System.out.println("✅ API-M06-013 PASSED: 整月日曆回傳 BOOKED 日期");
+    }
+
+    // ── API-M06-014: 整月日曆查詢-未授權 ──────────────────────────
+
+    @Test
+    @Order(18)
+    @DisplayName("API-M06-014: GET /v2/bookings/calendar - 未授權返回 401 或 403")
+    void getCalendar_unauthorized_returns401or403() {
+        given()
+                .queryParam("roomListingId", testRoomListingId.toString())
+                .queryParam("startDate", LocalDate.now().plusDays(1).toString())
+                .queryParam("endDate", LocalDate.now().plusDays(2).toString())
+                .when()
+                .get(BOOKING_URL + "/calendar")
+                .then()
+                .statusCode(anyOf(is(401), is(403)));
+
+        System.out.println("✅ API-M06-014 PASSED: 未授權返回 401 或 403");
+    }
 }

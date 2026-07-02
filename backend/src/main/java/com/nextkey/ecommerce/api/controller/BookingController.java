@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.api.controller;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -57,6 +58,21 @@ public class BookingController {
                 .checkOutDate(checkOutDate)
                 .build();
         final BookingDto.AvailabilityResponse result = bookingService.checkAvailability(request);
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    /**
+     * 取得房源指定日期區間的日曆狀態（整月日曆用，read-only）
+     * GET /v2/bookings/calendar?roomListingId=&startDate=&endDate=
+     */
+    @GetMapping("/calendar")
+    @PreAuthorize("hasAuthority('booking:read')")
+    public ResponseEntity<ApiResponse<List<BookingDto.CalendarResponse>>> getCalendar(
+            @RequestParam final UUID roomListingId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) final LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) final LocalDate endDate) {
+        final List<BookingDto.CalendarResponse> result =
+                bookingService.getCalendar(roomListingId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 

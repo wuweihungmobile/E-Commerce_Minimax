@@ -153,6 +153,50 @@ public class BookingService {
         return null;
     }
 
+    /** 整月日曆查詢允許的最大天數區間（防止過大區間查詢）。 */
+    private static final long MAX_CALENDAR_RANGE_DAYS = 92;
+
+    /**
+     * 取得房源指定日期區間的日曆狀態（整月日曆用，read-only）。
+     * 回傳該區間「已有 room_calendar 記錄」的每日狀態（AVAILABLE/BOOKED/BLOCKED/MAINTENANCE）；
+     * 無記錄之日期視為可預訂（由前端以 basePrice 補齊），與 checkAvailability 邏輯一致。
+     * 僅查詢既有資料，無 DB/schema 變動。（Sprint 41 US-004 / AI-2202b）
+     *
+     * @param roomListingId 房源 listing ID
+     * @param startDate     起始日（含）
+     * @param endDate       結束日（含）
+     */
+    public List<BookingDto.CalendarResponse> getCalendar(UUID roomListingId, LocalDate startDate, LocalDate endDate) {
+        Listing listing = listingRepository.findById(roomListingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000));
+
+        if (listing.getListingType() != Listing.ListingType.ROOM) {
+            throw new BusinessException(ErrorCode.E_3001, "Listing is not a room");
+        }
+
+        if (endDate.isBefore(startDate)) {
+            throw new BusinessException(ErrorCode.E_3001, "endDate must not be before startDate");
+        }
+
+        // 含頭含尾的天數；上限防止過大區間查詢
+        long rangeDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        if (rangeDays > MAX_CALENDAR_RANGE_DAYS) {
+            throw new BusinessException(ErrorCode.E_3001,
+                    "Date range too large (max " + MAX_CALENDAR_RANGE_DAYS + " days)");
+        }
+
+        List<RoomCalendar> calendars = roomCalendarService.getCalendarRange(roomListingId, startDate, endDate);
+
+        return calendars.stream()
+                .map(c -> BookingDto.CalendarResponse.builder()
+                        .date(c.getCalendarDate())
+                        .status(c.getStatus().name())
+                        .price(c.getPrice() != null ? c.getPrice() : listing.getBasePrice())
+                        .bookingId(c.getBookingId())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
     /**
      * 建立預訂
      */

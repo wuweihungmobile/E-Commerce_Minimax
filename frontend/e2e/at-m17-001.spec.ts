@@ -34,7 +34,7 @@ test.describe('AT-M17-001: 開店申請流程', () => {
     const businessTypeSelect = page.locator('button[role="combobox"]').first();
     if (await businessTypeSelect.isVisible()) {
       await businessTypeSelect.click();
-      await page.waitForTimeout(500);
+      await expect(page.locator('[role="option"]').first()).toBeVisible();
       // 點擊第一個選項
       await page.click('[role="option"]:first-child');
     }
@@ -49,7 +49,7 @@ test.describe('AT-M17-001: 開店申請流程', () => {
     await page.click('button[type="submit"]:not(:has-text("搜尋"))');
 
     // 等待可能的結果（成功導向或錯誤）
-    await page.waitForTimeout(3000);
+    await page.waitForURL('**/dashboard/tenants**', { timeout: 15000 }).catch(() => {});
 
     // 檢查是否有錯誤或成功
     const currentUrl = page.url();

@@ -32,7 +32,7 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
   test('Admin 審核通過申請', async ({ page }) => {
     // 點擊審核中篩選查看是否有待審核項目
     await page.click('button:has-text("審核中")');
-    await page.waitForTimeout(1000);
+    await page.waitForResponse(r => r.url().includes('/v2/admin/tenants'), { timeout: 15000 }).catch(() => {});
 
     // 檢查是否有待審核的租戶
     const reviewButtons = page.locator('button:has-text("審核詳情")');
@@ -47,15 +47,16 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
     // 點擊第一個審核詳情按鈕
     await reviewButtons.first().click();
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
 
     // 點擊核准按鈕
     const approveButton = page.locator('button:has-text("核准"), button:has-text("通過"), button:has-text("Approve")');
+    // 軟等待（顯式取代 sleep，但保留 skip 容忍度：admin 帳號可能無待審租戶）
+    await approveButton.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
     if (await approveButton.isVisible()) {
       await approveButton.click();
 
       // 等待成功提示（出現在頁面上或通過 dialog）
-      await page.waitForTimeout(3000);
+      await page.waitForResponse(r => r.url().includes('/approve'), { timeout: 15000 }).catch(() => {});
 
       // 驗證成功提示或 dialog
       const successVisible = await page.locator('text=/店鋪已核准|成功/i').isVisible().catch(() => false);
@@ -70,7 +71,7 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
   test('Admin 審核駁回申請', async ({ page }) => {
     // 點擊審核中篩選查看是否有待審核項目
     await page.click('button:has-text("審核中")');
-    await page.waitForTimeout(1000);
+    await page.waitForResponse(r => r.url().includes('/v2/admin/tenants'), { timeout: 15000 }).catch(() => {});
 
     // 檢查是否有待審核的租戶
     const reviewButtons = page.locator('button:has-text("審核詳情")');
@@ -85,25 +86,26 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
     // 點擊第一個審核詳情按鈕
     await reviewButtons.first().click();
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
 
     // 點擊駁回按鈕
     const rejectButton = page.locator('button:has-text("駁回")');
+    // 軟等待（顯式取代 sleep，但保留 skip 容忍度：admin 帳號可能無待審租戶）
+    await rejectButton.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
     if (await rejectButton.isVisible()) {
       await rejectButton.click();
-      await page.waitForTimeout(1000);
 
       // 找到輸入框填寫駁回原因
       const reasonInput = page.locator('input[id="rejectReason"], #rejectReason');
+      await reasonInput.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
       if (await reasonInput.isVisible()) {
         await reasonInput.fill('資料不全');
-        await page.waitForTimeout(500);
 
         // 點擊確認駁回
         const confirmButton = page.locator('button:has-text("確認駁回")');
+        await confirmButton.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
         if (await confirmButton.isVisible()) {
           await confirmButton.click();
-          await page.waitForTimeout(3000);
+          await page.waitForResponse(r => r.url().includes('/reject'), { timeout: 15000 }).catch(() => {});
         }
       }
     } else {

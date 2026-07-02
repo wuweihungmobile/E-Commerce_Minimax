@@ -22,7 +22,6 @@ test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
     // 訪問 CMS 列表頁
     await page.goto('/cms');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
 
     console.log('CMS 列表 URL:', page.url());
     expect(page.url()).toContain('/cms');
@@ -34,7 +33,6 @@ test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
     // 訪問新建貼文頁
     await page.goto('/cms/posts/new');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
 
     console.log('新建貼文 URL:', page.url());
 
@@ -58,13 +56,12 @@ test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
 
     await page.goto('/cms');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(1000);
 
     // 點擊「已發布」篩選
     const publishedBtn = page.locator('button:has-text("已發布")').first();
     if (await publishedBtn.isVisible()) {
       await publishedBtn.click();
-      await page.waitForTimeout(500);
+      await expect(publishedBtn).toHaveClass(/bg-blue-100/, { timeout: 10000 });
       console.log('已發布篩選完成');
     }
 
@@ -72,7 +69,7 @@ test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
     const draftBtn = page.locator('button:has-text("草稿")').first();
     if (await draftBtn.isVisible()) {
       await draftBtn.click();
-      await page.waitForTimeout(500);
+      await expect(draftBtn).toHaveClass(/bg-blue-100/, { timeout: 10000 });
       console.log('草稿篩選完成');
     }
   });
@@ -88,13 +85,12 @@ test.describe('E2E-M15-002: 編輯並更新貼文流程', () => {
     // 先訪問 CMS 列表頁
     await page.goto('/cms');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
 
     // 嘗試點擊任一篇文章的編輯按鈕
     const editBtn = page.locator('a:has-text("編輯"), button:has-text("編輯")').first();
     if (await editBtn.isVisible()) {
       await editBtn.click();
-      await page.waitForTimeout(2000);
+      await page.waitForURL('**/cms/posts/**', { timeout: 15000 });
       console.log('編輯頁 URL:', page.url());
     } else {
       console.log('沒有可編輯的貼文，跳過此測試');
@@ -111,7 +107,6 @@ test.describe('E2E-M15-003: 媒體上傳流程', () => {
 
     await page.goto('/cms/media');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
 
     console.log('媒體庫 URL:', page.url());
     expect(page.url()).toContain('/cms/media');
@@ -159,7 +154,6 @@ test.describe('E2E-M15-004: 前台部落格瀏覽流程', () => {
   test('訪問前台部落格首頁', async ({ page }) => {
     await page.goto('/blog');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(1000);
 
     console.log('前台首頁 URL:', page.url());
     expect(page.url()).toContain('/blog');
@@ -169,7 +163,6 @@ test.describe('E2E-M15-004: 前台部落格瀏覽流程', () => {
   test('訪問前台文章詳情（無效 slug）', async ({ page }) => {
     await page.goto('/blog/non-existent-slug-12345');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(1000);
 
     console.log('文章詳情 URL:', page.url());
 
@@ -191,13 +184,12 @@ test.describe('E2E-M15-005: 嵌入商品卡解析流程', () => {
     // 前往前台部落格
     await page.goto('/blog');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(1000);
 
     // 如果有文章，點擊進入詳情頁
     const firstPostLink = page.locator('a[href^="/blog/"]').first();
     if (await firstPostLink.isVisible()) {
       await firstPostLink.click();
-      await page.waitForTimeout(2000);
+      await page.waitForURL('**/blog/**', { timeout: 15000 });
 
       console.log('文章詳情 URL:', page.url());
       console.log('嵌入卡片解析測試完成');
@@ -216,7 +208,6 @@ test.describe('額外測試: Dashboard 頁面', () => {
 
     await page.goto('/dashboard');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
 
     console.log('Dashboard URL:', page.url());
   });
@@ -226,7 +217,6 @@ test.describe('額外測試: Dashboard 頁面', () => {
 
     await page.goto('/dashboard/products');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(1000);
 
     console.log('商品頁 URL:', page.url());
   });
@@ -236,7 +226,6 @@ test.describe('額外測試: Dashboard 頁面', () => {
 
     await page.goto('/dashboard/rooms');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(1000);
 
     console.log('房型頁 URL:', page.url());
   });

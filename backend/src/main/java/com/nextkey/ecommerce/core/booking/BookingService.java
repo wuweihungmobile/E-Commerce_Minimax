@@ -16,7 +16,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.BookingDto;
+import com.nextkey.ecommerce.api.dto.PricingDto;
+import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.order.OrderStateMachine;
+import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.Room;
 import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
@@ -51,6 +54,8 @@ public class BookingService {
     private final RoomCalendarService roomCalendarService;
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
+    private final PricingService pricingService;
+    private final FeatureToggleService featureToggleService;
 
     // Default check-in/out times
     private static final LocalTime DEFAULT_CHECK_IN_TIME = LocalTime.of(15, 0);
@@ -86,10 +91,6 @@ public class BookingService {
                 request.getCheckOutDate().minusDays(1)
         );
 
-        boolean available = true;
-        String unavailableReason = null;
-        BigDecimal totalPrice = BigDecimal.ZERO;
-
         List<BookingDto.CalendarResponse> calendarDetails = calendars.stream()
                 .map(c -> BookingDto.CalendarResponse.builder()
                         .date(c.getCalendarDate())
@@ -99,27 +100,29 @@ public class BookingService {
                         .build())
                 .collect(Collectors.toList());
 
-        // 如果日曆日期不夠，檢查是否有 BLOCKED 狀態
-        long expectedDays = ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
-        if (calendars.size() < expectedDays) {
-            // 有些日期沒有日曆記錄，預設為 AVAILABLE
-            for (long i = 0; i < expectedDays; i++) {
-                LocalDate date = request.getCheckInDate().plusDays(i);
-                boolean found = calendars.stream().anyMatch(c -> c.getCalendarDate().equals(date));
-                if (!found) {
-                    // 預設價格
-                    totalPrice = totalPrice.add(listing.getBasePrice());
-                }
-            }
-        }
-
-        // 檢查是否有不可用的日期
-        available = checkCalendarAvailability(calendars, listing, totalPrice);
-        if (!available) {
-            unavailableReason = findFirstUnavailableReason(calendars);
-        }
+        // 檢查是否有不可用的日期（無記錄之日視為可預訂，與 getCalendar 一致）
+        boolean available = calendars.stream()
+                .allMatch(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.AVAILABLE);
+        String unavailableReason = available ? null : findFirstUnavailableReason(calendars);
 
         long nightsCount = ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
+
+        // 總價：基礎（calendar/basePrice）+ 動態定價折扣（AI-2402）。
+        // 有適用折扣時回原價/折扣額/規則名，且 totalPrice 為折扣後總價；否則維持既有計價（向後相容）。
+        BigDecimal baseTotal = calendarBaseTotal(
+                request.getRoomListingId(), request.getCheckInDate(), request.getCheckOutDate());
+        BigDecimal totalPrice = baseTotal;
+        BigDecimal originalTotalPrice = null;
+        BigDecimal discountAmount = null;
+        String appliedRuleName = null;
+        PricingDto.CalculatePriceResponse dynamic = tryDynamicPricing(
+                request.getRoomListingId(), request.getCheckInDate(), request.getCheckOutDate());
+        if (dynamic != null) {
+            originalTotalPrice = dynamic.getBaseTotal();
+            totalPrice = dynamic.getAdjustedTotal();
+            discountAmount = dynamic.getDiscount();
+            appliedRuleName = firstAppliedRuleName(dynamic);
+        }
 
         return BookingDto.AvailabilityResponse.builder()
                 .available(available)
@@ -131,17 +134,10 @@ public class BookingService {
                 .currency(listing.getCurrency())
                 .calendarDetails(available ? calendarDetails : null)
                 .unavailableReason(unavailableReason)
+                .originalTotalPrice(originalTotalPrice)
+                .discountAmount(discountAmount)
+                .appliedRuleName(appliedRuleName)
                 .build();
-    }
-
-    private boolean checkCalendarAvailability(List<RoomCalendar> calendars, Listing listing, BigDecimal totalPrice) {
-        for (RoomCalendar calendar : calendars) {
-            if (calendar.getStatus() != RoomCalendar.RoomCalendarStatus.AVAILABLE) {
-                return false;
-            }
-            totalPrice.add(calendar.getPrice() != null ? calendar.getPrice() : listing.getBasePrice());
-        }
-        return true;
     }
 
     private String findFirstUnavailableReason(List<RoomCalendar> calendars) {
@@ -499,6 +495,17 @@ public class BookingService {
     }
 
     private BigDecimal calculateTotalAmount(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
+        // 動態定價折扣優先（AI-2402）：有適用折扣時以折扣後總價為準，與 availability 顯示一致。
+        PricingDto.CalculatePriceResponse dynamic = tryDynamicPricing(roomListingId, checkIn, checkOut);
+        if (dynamic != null) {
+            return dynamic.getAdjustedTotal();
+        }
+        // 無折扣（或 toggle 關閉）→ 既有 calendar/basePrice 計價（向後相容）
+        return calendarBaseTotal(roomListingId, checkIn, checkOut);
+    }
+
+    /** 既有計價：逐日 room_calendar 價，無記錄之日以 listing.basePrice 補齊。 */
+    private BigDecimal calendarBaseTotal(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
         BigDecimal total = BigDecimal.ZERO;
         List<RoomCalendar> calendars = roomCalendarService.getCalendarRange(roomListingId, checkIn, checkOut.minusDays(1));
 
@@ -515,6 +522,49 @@ public class BookingService {
         }
 
         return total;
+    }
+
+    /**
+     * 動態定價試算（AI-2402）：DYNAMIC_PRICING_ENABLED 開啟且該區間有「折扣」（adjustedTotal &lt; baseTotal）時，
+     * 回傳 PricingService 折扣後試算；否則回 null（呼叫端 fallback 既有 calendar/basePrice 計價，向後相容）。
+     *
+     * 界線：僅套用「折扣」型規則（早鳥/長住/末班車），漲價型（weekend/seasonal）維持既有計價路徑不變；
+     * 計算失敗（如無 Room/日期無效）降級為不套用，避免阻斷可用性查詢與訂房。
+     * 註：動態定價以 listing.basePrice 為基準，故當折扣生效時，per-day room_calendar 手動價不參與（改以規則基準）。
+     */
+    private PricingDto.CalculatePriceResponse tryDynamicPricing(final UUID roomListingId,
+            final LocalDate checkIn, final LocalDate checkOut) {
+        if (!featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")) {
+            return null;
+        }
+        try {
+            PricingDto.CalculatePriceResponse resp = pricingService.calculatePrice(
+                    PricingDto.CalculatePriceRequest.builder()
+                            .roomListingId(roomListingId)
+                            .checkInDate(checkIn)
+                            .checkOutDate(checkOut)
+                            .build());
+            boolean hasDiscount = resp.getAdjustedTotal() != null
+                    && resp.getBaseTotal() != null
+                    && resp.getAdjustedTotal().compareTo(resp.getBaseTotal()) < 0;
+            return hasDiscount ? resp : null;
+        } catch (BusinessException e) {
+            log.warn("Dynamic pricing calc failed for room={}, fallback to calendar pricing: {}",
+                    roomListingId, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 取套用的規則名（首個有折扣標記的 breakdown）。 */
+    private static String firstAppliedRuleName(final PricingDto.CalculatePriceResponse resp) {
+        if (resp.getBreakdown() == null) {
+            return null;
+        }
+        return resp.getBreakdown().stream()
+                .map(PricingDto.PriceBreakdown::getAppliedRuleName)
+                .filter(name -> name != null)
+                .findFirst()
+                .orElse(null);
     }
 
     private BookingDto.BookingResponse toBookingResponse(

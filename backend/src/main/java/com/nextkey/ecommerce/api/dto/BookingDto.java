@@ -173,5 +173,14 @@ public class BookingDto {
         private String currency;
         private List<CalendarResponse> calendarDetails;
         private String unavailableReason;
+
+        /**
+         * 動態定價折扣（AI-2402）：套用早鳥/長住/末班車折扣時填入。
+         * originalTotalPrice = 折扣前總價、discountAmount = 折扣金額、appliedRuleName = 套用的規則名。
+         * 無折扣時三者為 null，totalPrice 即為原價（向後相容）。
+         */
+        private BigDecimal originalTotalPrice;
+        private BigDecimal discountAmount;
+        private String appliedRuleName;
     }
 }

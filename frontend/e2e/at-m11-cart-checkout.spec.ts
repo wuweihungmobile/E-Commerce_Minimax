@@ -1,4 +1,5 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { registerAndLogin } from './helpers/auth';
 
 /**
  * AT-M11-E2E: M11 購物車 + 結帳流程 E2E 測試
@@ -28,48 +29,6 @@ const TEST_DATA = {
     validEmail: 'e2e-test@example.com'
   }
 };
-
-/**
- * 測試帳號 Helper - 每次測試建立新帳號
- */
-async function registerAndLogin(page: Page, testEmail?: string) {
-  const timestamp = Date.now();
-  const email = testEmail || `e2e-cart-${timestamp}@example.com`;
-  const password = 'Test123!';
-
-  await page.goto('/login');
-  await page.waitForLoadState('domcontentloaded');
-
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', password);
-  await page.click('button[type="submit"]:not(:has-text("搜尋"))');
-  await page.waitForTimeout(3000);
-
-  // 如果失敗，嘗試註冊
-  if (page.url().includes('/login')) {
-    const registerLink = page.locator('a:has-text("create a new account"), a:has-text("註冊")').first();
-    if (await registerLink.isVisible()) {
-      await registerLink.click();
-      await page.waitForTimeout(2000);
-    }
-
-    await page.fill('input[name="fullName"]', 'E2E Cart Test User');
-    await page.fill('input[name="email"]', email);
-    await page.fill('input[name="password"]', password);
-    await page.fill('input[name="confirmPassword"]', password);
-    await page.click('button[type="submit"]:not(:has-text("搜尋"))');
-    await page.waitForTimeout(3000);
-
-    if (page.url().includes('/login')) {
-      await page.fill('input[name="email"]', email);
-      await page.fill('input[name="password"]', password);
-      await page.click('button[type="submit"]:not(:has-text("搜尋"))');
-      await page.waitForTimeout(3000);
-    }
-  }
-
-  return { email, password };
-}
 
 /**
  * E2E-M11-001: 加入商品到購物車

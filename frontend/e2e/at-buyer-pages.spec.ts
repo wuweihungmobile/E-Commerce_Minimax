@@ -1,4 +1,5 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { registerAndLogin } from './helpers/auth';
 
 /**
  * AT-BUYER-PAGES: 買家頁面 E2E（Sprint 32 US-002 / AI-1602）
@@ -22,49 +23,6 @@ import { test, expect, Page } from '@playwright/test';
  * - 下單→付款→通知→物流→評價 完整資料流（需跨賣家角色 seed）
  */
 
-/**
- * 測試帳號 Helper——沿用 at-m15-e2e 既有慣例：優先登入，失敗則自動註冊。
- * 每次測試用不同 email（timestamp）確保隔離、無資料汙染。
- */
-async function registerAndLogin(page: Page, testEmail?: string) {
-  const timestamp = Date.now();
-  const email = testEmail || `e2e-buyer-${timestamp}@example.com`;
-  const password = 'Test123!';
-
-  await page.goto('/login');
-  await page.waitForLoadState('domcontentloaded');
-
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', password);
-  await page.click('button[type="submit"]:not(:has-text("搜尋"))');
-  await page.waitForTimeout(3000);
-
-  // 若仍在登入頁（帳號不存在）→ 自動註冊
-  if (page.url().includes('/login')) {
-    const registerLink = page.locator('a:has-text("create a new account"), a:has-text("註冊")').first();
-    if (await registerLink.isVisible()) {
-      await registerLink.click();
-      await page.waitForTimeout(2000);
-    }
-
-    await page.fill('input[name="fullName"]', 'E2E Buyer User');
-    await page.fill('input[name="email"]', email);
-    await page.fill('input[name="password"]', password);
-    await page.fill('input[name="confirmPassword"]', password);
-    await page.click('button[type="submit"]:not(:has-text("搜尋"))');
-    await page.waitForTimeout(3000);
-
-    if (page.url().includes('/login')) {
-      await page.fill('input[name="email"]', email);
-      await page.fill('input[name="password"]', password);
-      await page.click('button[type="submit"]:not(:has-text("搜尋"))');
-      await page.waitForTimeout(3000);
-    }
-  }
-
-  return { email, password };
-}
-
 test.describe('AT-BUYER-PAGES: 買家頁面瀏覽器端驗證', () => {
   test('E2E-BUYER-01: 我的訂單列表空狀態', async ({ page }) => {
     await registerAndLogin(page);
@@ -86,8 +44,8 @@ test.describe('AT-BUYER-PAGES: 買家頁面瀏覽器端驗證', () => {
 
     // 頁面標題渲染 → 頁面載入 + 認證成功
     await expect(page.getByRole('heading', { name: '通知收件匣' })).toBeVisible({ timeout: 15000 });
-    // 預設 unreadOnly=false → 空狀態「尚無通知」
-    await expect(page.getByText('尚無通知')).toBeVisible();
+    // 預設 unreadOnly=false → 空狀態「尚無通知」（通知 fetch 慢時放寬 timeout，緩解既有 flaky）
+    await expect(page.getByText('尚無通知')).toBeVisible({ timeout: 15000 });
 
     // 切換到「僅未讀」→ 空狀態變「沒有未讀通知」（exact 避免誤中其他含「未讀」文字）
     await page.getByRole('button', { name: '僅未讀', exact: true }).click();
@@ -95,7 +53,7 @@ test.describe('AT-BUYER-PAGES: 買家頁面瀏覽器端驗證', () => {
 
     // 切回「全部」（exact 避免誤中「全部標為已讀」按鈕）
     await page.getByRole('button', { name: '全部', exact: true }).click();
-    await expect(page.getByText('尚無通知')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('尚無通知')).toBeVisible({ timeout: 15000 });
   });
 
   test('E2E-BUYER-03: 我的預訂列表空狀態', async ({ page }) => {

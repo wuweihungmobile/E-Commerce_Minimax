@@ -1,4 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
+import { registerAndLogin } from './helpers/auth';
 
 /**
  * AT-HOMEPAGE: 賣場首頁版型 E2E（Sprint 35 US-005）
@@ -17,46 +18,6 @@ import { test, expect, Page } from '@playwright/test';
  *
  * 未自動化（需 seed 商品，避免 flaky）：商品網格「有資料」渲染、分頁翻頁 → 手動 checklist（AI-1905）。
  */
-
-async function registerAndLogin(page: Page, testEmail?: string) {
-  const timestamp = Date.now();
-  const email = testEmail || `e2e-home-${timestamp}@example.com`;
-  const password = 'Test123!';
-
-  await page.goto('/login');
-  await page.waitForLoadState('domcontentloaded');
-
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', password);
-  await page.click('button[type="submit"]:not(:has-text("搜尋"))');
-  await page.waitForTimeout(3000);
-
-  if (page.url().includes('/login')) {
-    const registerLink = page
-      .locator('a:has-text("create a new account"), a:has-text("註冊")')
-      .first();
-    if (await registerLink.isVisible()) {
-      await registerLink.click();
-      await page.waitForTimeout(2000);
-    }
-
-    await page.fill('input[name="fullName"]', 'E2E Home User');
-    await page.fill('input[name="email"]', email);
-    await page.fill('input[name="password"]', password);
-    await page.fill('input[name="confirmPassword"]', password);
-    await page.click('button[type="submit"]:not(:has-text("搜尋"))');
-    await page.waitForTimeout(3000);
-
-    if (page.url().includes('/login')) {
-      await page.fill('input[name="email"]', email);
-      await page.fill('input[name="password"]', password);
-      await page.click('button[type="submit"]:not(:has-text("搜尋"))');
-      await page.waitForTimeout(3000);
-    }
-  }
-
-  return { email, password };
-}
 
 // 內容區三種合法狀態任一出現即代表資料流完成、未 crash
 function contentResolved(page: Page) {

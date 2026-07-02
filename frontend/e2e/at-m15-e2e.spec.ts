@@ -1,4 +1,5 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { registerAndLogin } from './helpers/auth';
 
 /**
  * AT-M15-E2E: M15 CMS 功能 E2E 測試
@@ -10,53 +11,6 @@ import { test, expect, Page } from '@playwright/test';
  * - E2E-M15-004: 前台部落格瀏覽流程
  * - E2E-M15-005: 嵌入商品卡解析流程
  */
-
-/**
- * 測試帳號 Helper - 每次測試建立新帳號
- */
-async function registerAndLogin(page: Page, testEmail?: string) {
-  const timestamp = Date.now();
-  const email = testEmail || `e2e-${timestamp}@example.com`;
-  const password = 'Test123!';
-
-  // 嘗試登入（如果失敗就註冊）
-  await page.goto('/login');
-  await page.waitForLoadState('domcontentloaded');
-
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', password);
-  await page.click('button[type="submit"]');
-  await page.waitForTimeout(3000);
-
-  // 如果失敗，嘗試註冊
-  if (page.url().includes('/login')) {
-    // 點擊註冊連結
-    const registerLink = page.locator('a:has-text("create a new account"), a:has-text("註冊")').first();
-    if (await registerLink.isVisible()) {
-      await registerLink.click();
-      await page.waitForTimeout(2000);
-    }
-
-    // 填寫註冊表單
-    await page.fill('input[name="fullName"]', 'E2E Test User');
-    await page.fill('input[name="email"]', email);
-    await page.fill('input[name="password"]', password);
-    await page.fill('input[name="confirmPassword"]', password);
-    await page.click('button[type="submit"]');
-    await page.waitForTimeout(3000);
-
-    // 註冊後應該跳回登入頁或登入
-    if (page.url().includes('/login')) {
-      // 再次嘗試登入
-      await page.fill('input[name="email"]', email);
-      await page.fill('input[name="password"]', password);
-      await page.click('button[type="submit"]');
-      await page.waitForTimeout(3000);
-    }
-  }
-
-  return { email, password };
-}
 
 /**
  * E2E-M15-001: 建立並發布貼文流程

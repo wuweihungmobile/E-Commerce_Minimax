@@ -24,6 +24,7 @@ import {
   getAuthServerSnapshot,
   notifyAuthChange,
 } from "@/services/authStore"
+import { subscribeCartChanged } from "@/services/cartEvents"
 
 const DEFAULT_HOT_KEYWORDS = ["極簡生活", "質感家居", "旅宿房型", "香氛療癒", "收納"]
 
@@ -48,16 +49,22 @@ export function StorefrontHeader({
   useEffect(() => {
     if (!email) return
     let cancelled = false
-    listingService
-      .getCartCount()
-      .then((c) => {
-        if (!cancelled) setCartCount(c)
-      })
-      .catch(() => {
-        // 購物車數量取得失敗不影響頁首
-      })
+    const refresh = () => {
+      listingService
+        .getCartCount()
+        .then((c) => {
+          if (!cancelled) setCartCount(c)
+        })
+        .catch(() => {
+          // 購物車數量取得失敗不影響頁首
+        })
+    }
+    refresh()
+    // 加購後（詳情頁/購物車）以事件通知即時更新購物車數（layout 不隨導覽 re-render）
+    const unsubscribe = subscribeCartChanged(refresh)
     return () => {
       cancelled = true
+      unsubscribe()
     }
   }, [email])
 

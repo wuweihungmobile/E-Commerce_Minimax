@@ -188,7 +188,7 @@ export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
           {data.content.map((item) => (
             <ProductCard
               key={item.id}
-              href={`/reviews/product/${item.id}`}
+              href={`/listings/${item.id}`}
               image={item.coverImageUrl}
               title={item.title}
               price={item.basePrice}

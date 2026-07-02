@@ -17,6 +17,23 @@ export interface Listing {
   updatedAt: string
 }
 
+// ROOM 動態計價回應（GET /v2/listings/{id}/price?checkIn&checkOut）
+export interface PriceBreakdown {
+  date: string
+  price: number
+}
+export interface CalculatePriceResponse {
+  roomListingId: string
+  checkInDate: string
+  checkOutDate: string
+  nights: number
+  baseTotal: number
+  adjustedTotal: number
+  discount: number
+  currency: string
+  breakdown?: PriceBreakdown[]
+}
+
 // Spring Data Page 結構
 export interface Page<T> {
   content: T[]
@@ -53,6 +70,27 @@ class ListingService {
 
     const response = await apiClient.get<ApiResponse<Page<Listing>>>(
       API_ENDPOINTS.listings.list + "?" + params.toString()
+    )
+    return response.data.data
+  }
+
+  // 商品詳情（GET /v2/listings/{id}，需 product:read/room:read）
+  async getListingById(id: string): Promise<Listing> {
+    const response = await apiClient.get<ApiResponse<Listing>>(
+      API_ENDPOINTS.listings.detail(id)
+    )
+    return response.data.data
+  }
+
+  // ROOM 動態計價（GET /v2/listings/{id}/price?checkIn=YYYY-MM-DD&checkOut=YYYY-MM-DD）
+  async getListingPrice(
+    id: string,
+    checkIn: string,
+    checkOut: string
+  ): Promise<CalculatePriceResponse> {
+    const params = new URLSearchParams({ checkIn, checkOut })
+    const response = await apiClient.get<ApiResponse<CalculatePriceResponse>>(
+      API_ENDPOINTS.listings.detail(id) + "/price?" + params.toString()
     )
     return response.data.data
   }

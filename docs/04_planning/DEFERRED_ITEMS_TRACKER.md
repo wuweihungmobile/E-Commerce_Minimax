@@ -50,6 +50,23 @@
 
 ## Sprint 歷史紀錄
 
+### Sprint 37 (2026-07-02)
+
+**完成**:
+- **AI-1901（買家頁全頁套版）→ ✅ 完成（US-001）**：沿用 S36 DEF-020 route-group 基建，新增 `app/(auth)/layout.tsx` 承載共用 Header/Footer，10 頁移除自包 nav 改用 StorefrontShell；Header 加 auth-aware 帳號選單（useSyncExternalStore + authStore）。build/tsc/lint 0 error；`make validate-e2e` at-buyer-pages 不退步。
+- **AI-2001（m15 flaky）→ ✅ 完成（US-002）**：根因為 `loadMedia` catch 觸發原生 `alert()`，dialog 於 teardown 間歇崩潰；以 dialog 處理器 + 明確等待 + 真斷言對症修復（非重跑掩蓋）。**解鎖 `make validate-release` 守門唯一阻礙**。
+- **US-003 版型一致性 E2E**：E2E-BUYER-04/05（多頁 Header/Footer 唯一 + 帳號選單登出）。
+- **計畫外必要工作**：(1) 修 E2E 登入 helper 與 SearchBar submit 碰撞（US-001 副作用，7 檔）；(2) secret 掃描器正則收緊（消除 password 表單標籤誤報，經使用者核准）。全棧 **37 passed / 6 skipped / 0 failed**。
+
+**續延後**:
+- DEF-021（CJK 字體）：續延後（P3）。
+- DEF-022（E2E 硬等待）：續延後，將併入 AI-2101（E2E 共用登入 helper 抽取）一併處理。
+
+**新增 Action Items（S38）**:
+- AI-2101（E2E 共用登入 helper 抽取，含 DEF-022，P2）、AI-2103（商品詳情頁評估，P2）、AI-2102（secret 掃描器正/負案例測試，P3）；AI-1903 買家 live 走查續延 S38。
+
+---
+
 ### Sprint 36 (2026-07-01)
 
 **完成**:
@@ -312,6 +329,6 @@
 
 ---
 
-**文件版本**: v2.6
-**最後更新**: 2026-07-01（Sprint 36 US-001 DEF-019 物流/賣家側 IDOR 收尾（活躍安全 DEF 歸零）+ US-002 DEF-020 版型 Shell route-group 架構重構完成（route-group layout + client 邊界下推 + URL 搜尋，at-homepage E2E 全棧全綠）。活躍 DEF=2 非安全技術債（DEF-021 CJK 字體 / DEF-022 E2E 硬等待）
-**下次審查**: Sprint 36 US-003（AI-1907 home-error/重試 E2E 補測）；DEF-021/022 續後續；S37 (auth) 買家頁套 Shell（AI-1901，DEF-020 已鋪好 route-group 前置）
+**文件版本**: v2.7
+**最後更新**: 2026-07-02（Sprint 37：US-001 買家頁全頁套版（AI-1901，10 頁套共用 Header/Footer + 帳號選單）+ US-002 m15 flaky 修復（AI-2001，解鎖 release 守門）+ US-003 版型一致性 E2E；順帶修 E2E 登入 helper 碰撞 + secret 掃描器誤報。全棧 37 passed/0 failed。活躍 DEF=2 非安全技術債（DEF-021 CJK 字體 / DEF-022 E2E 硬等待，後者併入 AI-2101）
+**下次審查**: 檢查點 push S32~S37（AI-1906，m15 阻礙已清）；S38 買家 live 走查（AI-1903）+ E2E 共用 helper 抽取（AI-2101，含 DEF-022）+ 商品詳情頁評估（AI-2103）

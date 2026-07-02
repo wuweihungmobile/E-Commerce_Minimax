@@ -2,7 +2,7 @@
 
 > **建立日期**: 2026-07-02
 > **Sprint**: Sprint 41 US-006（DEF-021，續延多 Sprint 後之評估型交付）
-> **狀態**: 評估完成 → **決策建議：維持系統字體堆疊（accepted fallback），@font-face 路徑記錄為選配未來任務**
+> **狀態**: ✅ **已決策（使用者 2026-07-02 確認採選項 A）：維持系統字體堆疊為 accepted fallback；DEF-021 結案**。`@font-face` 自 host（選項 B）記錄為選配未來任務，品牌需求出現時再啟。
 > **維護者**: SD Marcus + Dev David + Claude Code
 
 ---
@@ -81,12 +81,12 @@
 
 ---
 
-## 6. 🔴 待使用者拍板
+## 6. ✅ 使用者決策（2026-07-02）
 
-- **預設（建議）**：採選項 A，DEF-021 結案為 accepted fallback。
-- **替代**：採選項 B，開正式 task 投資自 host Noto Sans TC（接受 ~1-3MB 資產與 spike 成本）。
+- **已採選項 A**：維持系統字體堆疊，DEF-021 結案為 accepted fallback。
+- **選項 B（自 host Noto Sans TC woff2）保留**：品牌一致性成為優先時再開正式 task（接受 ~1-3MB 資產與 Turbopack spike 成本）。
 
-> 依 Sprint 41 計劃 AC-006-3：P3 下**不逕行**加入大型字體二進位，需使用者明確指示才執行選項 B。
+> 依 Sprint 41 計劃 AC-006-3：P3 下**不逕行**加入大型字體二進位；選項 B 未來如啟動需再次確認。
 
 ---
 

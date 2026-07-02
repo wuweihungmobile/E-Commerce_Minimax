@@ -11,15 +11,16 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
-| Sprint 40 | v2027.05.08-01 | - | 2026-07-02 | ROOM 可用性 UX 完成（含小幅後端）：**availability 端點修復**(AI-2201，@RequestBody→@RequestParam，read-only 無 DB；原 GET+body 瀏覽器不可呼叫) + **詳情頁 ROOM 即時可用性檢查**(選日期→可訂+總價 / 不可訂+原因，不可訂禁用加購) + availability E2E。**完整 make validate-release 通過**（後端 act 330 tests 0 fail + E2E 45 passed/0 failed）。無 DB/schema 變動 | ⏳ 待 push（累積 S32~S40，已過完整守門；檢查點徵詢後 push）|
-| Sprint 39 | v2027.04.24-01 | - | 2026-07-02 | ROOM 訂房閉環補完（補強既有閉環，非從零）：**booking service 抽取 + 訂房衝突優雅處理**(US-001+002，createBooking 抽取、日期衝突 409/E-4001 等給可讀提示、詳情頁 ROOM 日期驗證) + **ROOM 訂房閉環 E2E**(US-003 AI-2104，mock：詳情計價加購→checkout 建 booking→409 衝突) + **E2E 共用登入 helper 抽取**(US-004 AI-2101，waitForURL 收 DEF-022，收斂 4 檔 + 通知 flaky 修)。全棧 44 passed/0 failed。誠實：availability 端點 GET+body 不可用→免後端 reframe；無後端/DB 變動 | ⏳ 待 push（累積 S32~S39，完整守門+徵詢後 push）|
-| Sprint 38 | v2027.04.10-01 | - | 2026-07-02 | 買家體驗補完——商品詳情頁：**買家商品詳情頁**(AI-2103，/listings/[id]，(storefront) 公開 + 401 引導；PRODUCT 數量加購 + ROOM 日期計價加購 + 三態；listing service 補 getListingById/getListingPrice；cartEvents 使 Header 購物車數即時更新；首頁連結由評價頁改導向詳情頁) + **有資料 E2E**(AI-1905，page.route mock 免 seed：首頁網格+分頁+詳情導覽+加購+401/404)。全棧 41 passed/0 failed。無後端/DB 變動 | ⏳ 待 push（累積 S32~S38，完整守門+徵詢後 push） |
-| Sprint 37 | v2027.03.27-01 | - | 2026-07-02 | 買家頁全頁套版 + 清償 push 債：**買家頁全頁套用共用賣場版型**(AI-1901，新增 (auth)/layout.tsx 承載共用 Header/Footer、10 頁移除自包 nav 改用 StorefrontShell、Header 加 auth-aware 帳號選單 useSyncExternalStore) + **m15 flaky 修復**(AI-2001，dialog 處理器+明確等待，解鎖 release 守門) + 買家頁版型一致性 E2E(BUYER-04/05)；順帶修 E2E 登入 helper SearchBar submit 碰撞 + secret 掃描器誤報收緊。全棧 37 passed/0 failed。無後端/DB 變動 | ⏳ 待 push（累積 S32~S37，完整守門+徵詢後 push；m15 阻礙已清） |
-| Sprint 36 | v2027.03.13-01 | - | 2026-07-02 | 安全收尾 + 版型架構債償還：**DEF-019 物流/賣家側 IDOR 收尾**(createLogistics tenant-based + processOrderPayment user-based，活躍安全 DEF 歸零；順帶修好 S33 遺留 M07 5 失敗) + **DEF-020 版型 Shell route-group 架構重構**(layout + client 邊界下推 + URL 搜尋，at-homepage E2E 全綠) + AI-1907 home-error/重試 E2E(at-homepage 6 tests)；買家頁套版(AI-1901)/live 走查延 S37 | ⏳ 待 push（累積 S32~S36，完整守門+徵詢後 push；含 m15 flaky 前置 AI-2001） |
-| Sprint 35 | v2027.02.27-01 | - | 2026-07-01 | 前端賣場版型 + 首頁改版：**意象若水 RUOSHUI 設計稿套為全站共用版型**(TOP/Tools/Bottom 共用 + Content 分頁)、5 套色票主題、6 個 DS 元件(shadcn 重建)、共用 StorefrontShell、首頁接真實 /v2/listings + at-homepage E2E(4 tests)；DEF-019 物流賣家側 + 買家 live 走查延 S36 | ⏳ 待 push（累積 S32~S35，完整守門+徵詢後 push） |
-| Sprint 34 | v2027.02.13-01 | - | 2026-07-01 | 安全修復落地：**DEF-017 ERP 手動庫存租戶隔離清償**(AI-1701，歷時 S28→34 三度回退後落地：raw SQL 種 FIXED_TENANT_ID 租戶+null 安全檢查+IT-M16-307，乾淨 DB 43 tests 0 fail)；DEF-019 物流/賣家側 + 買家 live 走查延 S35 | ⏳ 待 push（累積 S32~S34 共 8 commit，完整守門+徵詢後 push） |
-| Sprint 33 | v2027.01.30-01 | - | 2026-07-01 | 安全修復收尾：DEF-019 訂單付款 IDOR 修復(AI-1702，getOrderPaymentState+pay/fail/refund，403)；DEF-017 三層根因完整診斷(NPE→403→FK，@GeneratedValue+FK)延 S34；DEF-019 物流/賣家側續 S34 | ⏳ 待 push（累積 S32~S34，完整守門+徵詢後 push） |
-| Sprint 32 | v2027.01.16-01 | - | 2026-07-01 | 安全修復 DEF-018 getOrder IDOR(AI-1601，403/E_1007，最小爆炸半徑) + 買家頁面 E2E 驗證(AI-1602，at-buyer-pages 30 passed)；揪出 DEF-019 付款物流 IDOR；DEF-017 二度驗證(修法正確缺 seeding)延 S33 | ⏳ 待 push（累積 S32+S33，完整守門，徵詢後 push） |
+| Sprint 41 | v2027.05.22-01 | - | 2026-07-02 | S41 技術債徹底清償 + 整月日曆：**test DB↔act port 制度化**(AI-2301，validate-release 自動 test-db-down) + **E2E 登入 helper 完全統一**(AI-2101b，auth.ts + 重構 m10/m17-001~004) + **api.ts 端點契約清理**(AI-2202a，pricing base path + 移除死碼) + **整月日曆**(AI-2202b，read-only 後端 GET /v2/bookings/calendar + MonthCalendar 前端 + E2E-ROOM-05) + **買家閉環走查**(AI-1903，自動 validate-e2e 證據 + 手動 checklist，真人 live 走查殘留) + **CJK 字體評估**(DEF-021，決策維持系統堆疊)。本地各層驗證通過：validate-e2e **47 passed/0 fail**、schema 對齊、後端 Booking 18 tests 0 fail。read-only 無 schema 變動 | ⏳ 待 push（本 Sprint 8 commit，完整守門+徵詢後 push）|
+| Sprint 40 | v2027.05.08-01 | - | 2026-07-02 | ROOM 可用性 UX 完成（含小幅後端）：**availability 端點修復**(AI-2201，@RequestBody→@RequestParam，read-only 無 DB；原 GET+body 瀏覽器不可呼叫) + **詳情頁 ROOM 即時可用性檢查**(選日期→可訂+總價 / 不可訂+原因，不可訂禁用加購) + availability E2E。**完整 make validate-release 通過**（後端 act 330 tests 0 fail + E2E 45 passed/0 failed）。無 DB/schema 變動 | ✅ 已 push（累積 S32~S40，已過完整守門；檢查點徵詢後 push）|
+| Sprint 39 | v2027.04.24-01 | - | 2026-07-02 | ROOM 訂房閉環補完（補強既有閉環，非從零）：**booking service 抽取 + 訂房衝突優雅處理**(US-001+002，createBooking 抽取、日期衝突 409/E-4001 等給可讀提示、詳情頁 ROOM 日期驗證) + **ROOM 訂房閉環 E2E**(US-003 AI-2104，mock：詳情計價加購→checkout 建 booking→409 衝突) + **E2E 共用登入 helper 抽取**(US-004 AI-2101，waitForURL 收 DEF-022，收斂 4 檔 + 通知 flaky 修)。全棧 44 passed/0 failed。誠實：availability 端點 GET+body 不可用→免後端 reframe；無後端/DB 變動 | ✅ 已 push（累積 S32~S39，完整守門+徵詢後 push）|
+| Sprint 38 | v2027.04.10-01 | - | 2026-07-02 | 買家體驗補完——商品詳情頁：**買家商品詳情頁**(AI-2103，/listings/[id]，(storefront) 公開 + 401 引導；PRODUCT 數量加購 + ROOM 日期計價加購 + 三態；listing service 補 getListingById/getListingPrice；cartEvents 使 Header 購物車數即時更新；首頁連結由評價頁改導向詳情頁) + **有資料 E2E**(AI-1905，page.route mock 免 seed：首頁網格+分頁+詳情導覽+加購+401/404)。全棧 41 passed/0 failed。無後端/DB 變動 | ✅ 已 push（累積 S32~S38，完整守門+徵詢後 push） |
+| Sprint 37 | v2027.03.27-01 | - | 2026-07-02 | 買家頁全頁套版 + 清償 push 債：**買家頁全頁套用共用賣場版型**(AI-1901，新增 (auth)/layout.tsx 承載共用 Header/Footer、10 頁移除自包 nav 改用 StorefrontShell、Header 加 auth-aware 帳號選單 useSyncExternalStore) + **m15 flaky 修復**(AI-2001，dialog 處理器+明確等待，解鎖 release 守門) + 買家頁版型一致性 E2E(BUYER-04/05)；順帶修 E2E 登入 helper SearchBar submit 碰撞 + secret 掃描器誤報收緊。全棧 37 passed/0 failed。無後端/DB 變動 | ✅ 已 push（累積 S32~S37，完整守門+徵詢後 push；m15 阻礙已清） |
+| Sprint 36 | v2027.03.13-01 | - | 2026-07-02 | 安全收尾 + 版型架構債償還：**DEF-019 物流/賣家側 IDOR 收尾**(createLogistics tenant-based + processOrderPayment user-based，活躍安全 DEF 歸零；順帶修好 S33 遺留 M07 5 失敗) + **DEF-020 版型 Shell route-group 架構重構**(layout + client 邊界下推 + URL 搜尋，at-homepage E2E 全綠) + AI-1907 home-error/重試 E2E(at-homepage 6 tests)；買家頁套版(AI-1901)/live 走查延 S37 | ✅ 已 push（累積 S32~S36，完整守門+徵詢後 push；含 m15 flaky 前置 AI-2001） |
+| Sprint 35 | v2027.02.27-01 | - | 2026-07-01 | 前端賣場版型 + 首頁改版：**意象若水 RUOSHUI 設計稿套為全站共用版型**(TOP/Tools/Bottom 共用 + Content 分頁)、5 套色票主題、6 個 DS 元件(shadcn 重建)、共用 StorefrontShell、首頁接真實 /v2/listings + at-homepage E2E(4 tests)；DEF-019 物流賣家側 + 買家 live 走查延 S36 | ✅ 已 push（累積 S32~S35，完整守門+徵詢後 push） |
+| Sprint 34 | v2027.02.13-01 | - | 2026-07-01 | 安全修復落地：**DEF-017 ERP 手動庫存租戶隔離清償**(AI-1701，歷時 S28→34 三度回退後落地：raw SQL 種 FIXED_TENANT_ID 租戶+null 安全檢查+IT-M16-307，乾淨 DB 43 tests 0 fail)；DEF-019 物流/賣家側 + 買家 live 走查延 S35 | ✅ 已 push（累積 S32~S34 共 8 commit，完整守門+徵詢後 push） |
+| Sprint 33 | v2027.01.30-01 | - | 2026-07-01 | 安全修復收尾：DEF-019 訂單付款 IDOR 修復(AI-1702，getOrderPaymentState+pay/fail/refund，403)；DEF-017 三層根因完整診斷(NPE→403→FK，@GeneratedValue+FK)延 S34；DEF-019 物流/賣家側續 S34 | ✅ 已 push（累積 S32~S34，完整守門+徵詢後 push） |
+| Sprint 32 | v2027.01.16-01 | - | 2026-07-01 | 安全修復 DEF-018 getOrder IDOR(AI-1601，403/E_1007，最小爆炸半徑) + 買家頁面 E2E 驗證(AI-1602，at-buyer-pages 30 passed)；揪出 DEF-019 付款物流 IDOR；DEF-017 二度驗證(修法正確缺 seeding)延 S33 | ✅ 已 push（累積 S32+S33，完整守門，徵詢後 push） |
 | Sprint 31 | v2027.01.02-01 | - | 2026-07-01 | 買家閉環後端驗證(BuyerJourney E2E) + roomTitle 填充(AI-1502) + DEF-016 audit 持久化(V57)；揪出 getOrder IDOR(DEF-018) | ✅ 已 push（S29+30+31 累積批次 fb221f3） |
 | Sprint 30 | v2026.12.19-01 | - | 2026-07-01 | EPIC-BUYER 買家端閉環完成(純前端)：M06 預訂管理 + M08 評價(提交/列表) + M11 物流追蹤(訂單詳情) | ✅ 已 push（S29+30+31 累積批次） |
 | Sprint 29 | v2026.12.05-01 | - | 2026-07-01 | EPIC-BUYER 買家端閉環起手(純前端)：M05 訂單前端(列表/詳情/取消/狀態日誌) + M09 通知收件匣 + M07 Mock 付款(訂單詳情整合) | ✅ 已 push（S29+30+31 累積批次） |
@@ -52,12 +53,12 @@
 
 | 項目 | 數值 |
 |------|------|
-| 建立 Release Tag 次數 | 31 (Sprint 10-40，連續) |
-| 已 push（已 Release） | 22 (Sprint 10-31) |
-| 待 push（Tag 已建、尚未 push） | 9 (Sprint 32-40，**已通過完整 make validate-release**；檢查點徵詢後 push) |
+| 建立 Release Tag 次數 | 32 (Sprint 10-41，連續) |
+| 已 push（已 Release） | 31 (Sprint 10-40) |
+| 待 push（Tag 已建、尚未 push） | 1 (Sprint 41，本地各層驗證通過含 validate-e2e；檢查點徵詢後完整 validate-release 後 push) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release Tag | v2027.05.08-01 (Sprint 40，⏳ 待 push) |
-| 最近一次已 push Release | v2027.01.02-01 (Sprint 31，隨 S29+30+31 累積批次 fb221f3) |
+| 最近一次 Release Tag | v2027.05.22-01 (Sprint 41，⏳ 待 push) |
+| 最近一次已 push Release | v2027.05.08-01 (Sprint 40，隨 S32~S40 累積批次 2e33c6d) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release Tag 開始 | Sprint 10 |
 
@@ -73,7 +74,7 @@
 | **測試狀態** | 前端 build/type-check/lint 0 error；at-homepage E2E 4 tests 全綠；全棧 33 passed（唯一失敗為既有 flaky m15，非本 Sprint）；活躍 DEF=1（DEF-019 物流賣家側） |
 | **Flyway** | V57（無新 migration；純前端變更） |
 | **Release Notes** | [RELEASE_NOTES_v2027.02.27-01.md](../08_deployment/RELEASE_NOTES_v2027.02.27-01.md) |
-| **狀態** | ⏳ 待 push（累積 S32+S33+S34+S35，完整守門 + 檢查點徵詢後 push） |
+| **狀態** | ✅ 已 push（累積 S32+S33+S34+S35，完整守門 + 檢查點徵詢後 push） |
 
 ---
 
@@ -87,7 +88,7 @@
 | **測試狀態** | 乾淨 DB M16 43 tests 0 fail；catch(Exception)=0、@Deprecated=0；活躍 DEF=1（DEF-019 物流賣家側）|
 | **Flyway** | V57（無新 migration） |
 | **Release Notes** | [RELEASE_NOTES_v2027.02.13-01.md](../08_deployment/RELEASE_NOTES_v2027.02.13-01.md) |
-| **狀態** | ⏳ 待 push（累積 S32~S35 共同批次） |
+| **狀態** | ✅ 已 push（累積 S32~S35 共同批次） |
 
 ---
 
@@ -101,7 +102,7 @@
 | **測試狀態** | `@Test` 690→691（付款越權 E2E）；catch(Exception)=0、@Deprecated=0；活躍 DEF=2（DEF-017/019 物流賣家側）|
 | **Flyway** | V57（無新 migration） |
 | **Release Notes** | [RELEASE_NOTES_v2027.01.30-01.md](../08_deployment/RELEASE_NOTES_v2027.01.30-01.md) |
-| **狀態** | ⏳ 待 push（累積 S32~S35 共同批次） |
+| **狀態** | ✅ 已 push（累積 S32~S35 共同批次） |
 
 ---
 
@@ -115,7 +116,7 @@
 | **測試狀態** | US-001 +1（otherBuyerCannotGetOrder）、前端 e2e +3（buyer pages）；活躍 DEF=2（DEF-017/019）|
 | **Flyway** | V57（無新 migration） |
 | **Release Notes** | [RELEASE_NOTES_v2027.01.16-01.md](../08_deployment/RELEASE_NOTES_v2027.01.16-01.md) |
-| **狀態** | ⏳ 待 push（累積 S32~S35 共同批次） |
+| **狀態** | ✅ 已 push（累積 S32~S35 共同批次） |
 
 ---
 

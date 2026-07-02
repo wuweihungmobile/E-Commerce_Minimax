@@ -18,7 +18,7 @@
 
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
 |----|------|-------------|---------|---------|---------|------|
-| DEF-021 | CJK 字體品牌一致性（技術債） | Sprint 35（Turbopack 限制發現） | S35 因 Turbopack 無法 self-host next/font CJK（Noto Sans TC 大量 unicode-range 子集無法解析），改用系統 CJK 字體堆疊；系統堆疊跨平台字重/字距不一，品牌字體一致性下降。後續評估 `next/font/local` + 預先子集化 Noto Sans TC woff2 以恢復品牌字體一致性 | 需 woff2 子集化工具鏈 + 驗證 Turbopack 相容性 | 2 | ⚠️ 待處理（低急迫，有系統字體 fallback） |
+| DEF-021 | CJK 字體品牌一致性（技術債） | Sprint 35（Turbopack 限制發現） | S35 因 Turbopack 無法 self-host next/font CJK（Noto Sans TC 大量 unicode-range 子集無法解析），改用系統 CJK 字體堆疊；系統堆疊跨平台字重/字距不一，品牌字體一致性下降。後續評估 `next/font/local` + 預先子集化 Noto Sans TC woff2 以恢復品牌字體一致性 | 需 woff2 子集化工具鏈 + 驗證 Turbopack 相容性 | 2 | ✅ 已決策（S41 US-006）：維持系統字體堆疊為 **accepted fallback**；選項 B（`@font-face` 自 host 子集 woff2，技術可行、無 CSP 阻擋）記錄為選配未來任務，待品牌一致性需求由使用者拍板。詳見 [CJK_FONT_ASSESSMENT.md](../06_quality/CJK_FONT_ASSESSMENT.md) |
 | DEF-022 | E2E 硬等待（waitForTimeout 固定 sleep） | Sprint 35（at-homepage E2E 建立時沿用既有模式） | `at-homepage.spec.ts` 註冊/登入 helper 用 `waitForTimeout` 固定 sleep（沿用 at-buyer-pages 既有模式），CI 慢時可能 flaky；後續改 `waitForURL` / `waitForResponse` 明確等待條件 | 無（純測試穩定性重構）| 1 | ⚠️ 待處理（flaky 風險，低急迫）|
 
 ---
@@ -49,6 +49,33 @@
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 41 (2026-07-02)
+
+**主題**: S41 技術債徹底清償 + 整月日曆（12 SP，US-001~006 全數完成）
+
+**清償 / 完成**:
+- **AI-2301 → ✅ 完成（US-001）**：test DB↔act port 衝突制度化——`make validate-release` 於 act 前自動 `test-db-down`（冪等，涵蓋直接執行 + pre-push 兩路徑）+ `LOCAL_CI_VALIDATION.md` 開發者心智模型文件化。
+- **AI-2101b → ✅ 完成（US-002）**：E2E 登入 helper 完全統一——`auth.ts` 擴充（`registerAndLogin` 回傳 userId、新增 `loginOnly`）+ 重構 at-m10-chat、at-m17-001/002/003/004。
+- **AI-2202 → ✅ 完成（US-003 + US-004）**：api.ts 端點契約清理（pricing base path 對齊 + 移除 listings.update/delete 死碼 + bookings.calendar realign）+ 整月日曆（read-only 後端 `GET /v2/bookings/calendar` + MonthCalendar 前端 + E2E-ROOM-05）。
+- **DEF-021 → ✅ 已決策（US-006）**：CJK 字體維持系統堆疊為 accepted fallback；選項 B（自 host woff2）記錄為選配未來任務待拍板。
+
+**部分完成 / 殘留**:
+- **AI-1903（買家 live 走查）→ 🟡 部分（US-005）**：交付自動全棧走查證據（`make validate-e2e` 47 passed/0 fail）+ 手動 live 走查 checklist（`BUYER_JOURNEY_LIVE_WALKTHROUGH_CHECKLIST.md`）。**殘留**：真 DB 落地的跨角色資料流（order→pay→notify→ship→review）需 cross-role seed + 部署環境，續留待真人於 live 環境走查。
+
+**驗證**:
+- 後端 BookingControllerE2ETest 18 tests 0 fail（新增 calendar API-M06-013/014）；前端 tsc/eslint/build 0 error；`make validate-e2e` **47 passed / 5 skipped / 0 failed**、schema 對齊無漂移。後端 read-only 無 DB/migration 變動。
+
+**新增延後項目**:
+- **AI-2302（P3）**：後端 pre-commit 核心測試（@SpringBootTest 逐一啟動 Spring）耗時 → 評估移出 quick test 或平行化。
+- **AI-2202c（P3）**：整月日曆語意細化（未開放 vs 可訂顯式標記 + 整月價格顯示）。
+
+**下一 Sprint 候選**:
+- AI-1908 檢查點 push S41、AI-1903 真人 live 走查（需環境）、AI-2202c 整月日曆語意細化、AI-2302 後端 pre-commit 提速，或回歸新功能開發。
+
+**活躍 DEF**：DEF-022（E2E 硬等待，P3）；DEF-021 已決策結案（accepted fallback）。
+
+---
 
 ### Sprint 40 (2026-07-02)
 

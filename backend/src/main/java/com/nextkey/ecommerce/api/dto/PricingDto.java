@@ -109,6 +109,12 @@ public class PricingDto {
         private LocalDate checkOutDate;
 
         private Integer guestCount;
+
+        /**
+         * 下單日期（用於早鳥/末班車「今天 vs 入住日」的提前/臨近天數判斷）。
+         * 選填，未提供時服務端以今日計（AI-2401）。
+         */
+        private LocalDate bookingDate;
     }
 
     // ========== Calculate Price Response ==========

@@ -162,15 +162,15 @@ class PricingServiceTest {
         @Test
         @DisplayName("UT-M12-004: 價格計算-早鳥折扣 (P0)")
         void calculatePrice_earlyBirdAppliesDiscount() {
-            // Arrange: 提前30天預訂，套用早鳥折扣（使用靜態日期避免時間問題）
-            // 注意：minDaysAhead=7 表示需要入住日期在規則起始日之後至少7天
-            // 因此 checkIn 必須在 validFrom + 7 天之后
-            LocalDate validFrom = LocalDate.of(2026, 5, 25); // 規則起始日
-            LocalDate checkIn = validFrom.plusDays(8); // 提前8天預訂，滿足 minDaysAhead >= 7
+            // Arrange: 早鳥語意（AI-2401）= 下單日距入住日 >= minDaysAhead(7) 才適用。
+            // 明確傳 bookingDate（提前 8 天下單）使測試不受執行當日影響。
+            LocalDate checkIn = LocalDate.of(2026, 6, 2);
             LocalDate checkOut = checkIn.plusDays(1);
+            LocalDate bookingDate = checkIn.minusDays(8); // 提前 8 天下單，滿足 >= 7
 
             Room room = buildMockRoom();
-            PricingRule earlyBirdRule = buildEarlyBirdRuleWithValidFrom(validFrom);
+            // 規則有效期需涵蓋入住日
+            PricingRule earlyBirdRule = buildEarlyBirdRuleWithValidFrom(checkIn.minusDays(30));
 
             when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(room));
             when(pricingRuleRepository.findActiveRulesForDateRange(any(), any(), any()))
@@ -180,6 +180,7 @@ class PricingServiceTest {
                     .roomListingId(ROOM_LISTING_ID)
                     .checkInDate(checkIn)
                     .checkOutDate(checkOut)
+                    .bookingDate(bookingDate)
                     .build();
 
             // Act
@@ -306,11 +307,12 @@ class PricingServiceTest {
         @Test
         @DisplayName("UT-M12-008: 優先級-高優先級覆蓋低優先級 (P0)")
         void calculatePrice_highPriorityOverridesLowPriority() {
-            // Arrange: 同一天有兩個規則，高優先級勝出（使用平日避免週末加成）
-            // 為確保早鳥規則正確觸發，validFrom 必須早於 checkIn（讓 daysAhead >= minDaysAhead）
-            LocalDate validFrom = LocalDate.of(2026, 5, 22); // 規則起始日早於 checkIn
-            LocalDate checkIn = validFrom.plusDays(8); // 提前8天預訂，滿足 minDaysAhead >= 7
+            // Arrange: 同一天有兩個規則，高優先級（早鳥）勝出。
+            // 早鳥語意（AI-2401）以 bookingDate 距入住日計，明確傳提前 8 天使測試穩定。
+            LocalDate validFrom = LocalDate.of(2026, 5, 22); // 規則起始日涵蓋 checkIn
+            LocalDate checkIn = validFrom.plusDays(8);
             LocalDate checkOut = checkIn.plusDays(1);
+            LocalDate bookingDate = checkIn.minusDays(8); // 提前 8 天下單，滿足 minDaysAhead >= 7
 
             Room room = buildMockRoom();
             PricingRule lowPriorityRule = buildWeekendRuleWithPriority(0);
@@ -324,6 +326,7 @@ class PricingServiceTest {
                     .roomListingId(ROOM_LISTING_ID)
                     .checkInDate(checkIn)
                     .checkOutDate(checkOut)
+                    .bookingDate(bookingDate)
                     .build();
 
             // Act
@@ -392,6 +395,84 @@ class PricingServiceTest {
             // 實際實作是 sort 後 reversed，所以同優先級時順序決定誰勝出
             // 此測試驗證邏輯存在
             assertThat(response).isNotNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("UT-M12-010 ~ UT-M12-012: bookingDate 提前/臨近天數邊界（AI-2401）")
+    class BookingDateBoundaryTests {
+
+        @Test
+        @DisplayName("UT-M12-010: 早鳥-剛好達提前天數（daysAhead == minDaysAhead）→ 折扣生效")
+        void earlyBird_exactlyMinDaysAhead_applies() {
+            LocalDate checkIn = LocalDate.of(2026, 6, 2);
+            LocalDate checkOut = checkIn.plusDays(1);
+            LocalDate bookingDate = checkIn.minusDays(7); // 剛好 7 天（minDaysAhead=7）
+
+            Room room = buildMockRoom();
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(room));
+            when(pricingRuleRepository.findActiveRulesForDateRange(any(), any(), any()))
+                    .thenReturn(List.of(buildEarlyBirdRuleWithValidFrom(checkIn.minusDays(30))));
+
+            PricingDto.CalculatePriceResponse response = pricingService.calculatePrice(
+                    PricingDto.CalculatePriceRequest.builder()
+                            .roomListingId(ROOM_LISTING_ID)
+                            .checkInDate(checkIn).checkOutDate(checkOut)
+                            .bookingDate(bookingDate).build());
+
+            assertThat(response.getAdjustedTotal())
+                    .isEqualByComparingTo(BASE_PRICE.multiply(BigDecimal.valueOf(0.85)));
+            assertThat(response.getBreakdown().get(0).getAppliedRuleName()).isEqualTo("Early Bird 15% off");
+        }
+
+        @Test
+        @DisplayName("UT-M12-011: 早鳥-不足提前天數（daysAhead == minDaysAhead - 1）→ 不生效（原價）")
+        void earlyBird_oneDayShort_notApplied() {
+            LocalDate checkIn = LocalDate.of(2026, 6, 2);
+            LocalDate checkOut = checkIn.plusDays(1);
+            LocalDate bookingDate = checkIn.minusDays(6); // 只提前 6 天，不足 7
+
+            Room room = buildMockRoom();
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(room));
+            when(pricingRuleRepository.findActiveRulesForDateRange(any(), any(), any()))
+                    .thenReturn(List.of(buildEarlyBirdRuleWithValidFrom(checkIn.minusDays(30))));
+
+            PricingDto.CalculatePriceResponse response = pricingService.calculatePrice(
+                    PricingDto.CalculatePriceRequest.builder()
+                            .roomListingId(ROOM_LISTING_ID)
+                            .checkInDate(checkIn).checkOutDate(checkOut)
+                            .bookingDate(bookingDate).build());
+
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo(BASE_PRICE); // 原價
+            assertThat(response.getDiscount()).isEqualByComparingTo(BigDecimal.ZERO);
+        }
+
+        @Test
+        @DisplayName("UT-M12-012: 末班車-超出臨近窗口（daysUntilCheckIn > maxDaysAhead）→ 不生效")
+        void lastMinute_beyondWindow_notApplied() {
+            LocalDate checkIn = LocalDate.of(2026, 6, 2);
+            LocalDate checkOut = checkIn.plusDays(1);
+            LocalDate bookingDate = checkIn.minusDays(5); // 距入住 5 天 > maxDaysAhead=3
+
+            Room room = buildMockRoom();
+            PricingRule lastMinuteRule = PricingRule.builder()
+                    .id(UUID.randomUUID()).tenantId(TENANT_ID).roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.LAST_MINUTE)
+                    .ruleName("Last Minute 25% off").priority(5)
+                    .config(Map.of("discountPercent", 25.0, "maxDaysAhead", 3))
+                    .validFrom(checkIn.minusDays(30)).validTo(checkIn.plusDays(30)).isActive(true).build();
+
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(room));
+            when(pricingRuleRepository.findActiveRulesForDateRange(any(), any(), any()))
+                    .thenReturn(List.of(lastMinuteRule));
+
+            PricingDto.CalculatePriceResponse response = pricingService.calculatePrice(
+                    PricingDto.CalculatePriceRequest.builder()
+                            .roomListingId(ROOM_LISTING_ID)
+                            .checkInDate(checkIn).checkOutDate(checkOut)
+                            .bookingDate(bookingDate).build());
+
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo(BASE_PRICE); // 原價，末班車不適用
         }
     }
 

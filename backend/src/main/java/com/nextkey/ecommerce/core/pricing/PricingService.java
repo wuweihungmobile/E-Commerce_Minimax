@@ -175,6 +175,10 @@ public class PricingService {
             throw new BusinessException(ErrorCode.E_4003, "Check-out must be after check-in");
         }
 
+        // 下單日期：早鳥/末班車以「下單日 vs 入住日」的提前/臨近天數判斷（AI-2401）。
+        // 未提供時以今日計。
+        LocalDate bookingDate = request.getBookingDate() != null ? request.getBookingDate() : LocalDate.now();
+
         // 取得所有適用的規則
         List<PricingRule> rules = new ArrayList<>(pricingRuleRepository.findActiveRulesForDateRange(
                 request.getRoomListingId(), checkIn, checkOut.minusDays(1)));
@@ -198,7 +202,7 @@ public class PricingService {
 
             // 找出適用的規則
             for (PricingRule rule : rules) {
-                if (isRuleApplicable(rule, current, nights)) {
+                if (isRuleApplicable(rule, current, checkIn, nights, bookingDate)) {
                     AdjustmentResult adjustment = calculateAdjustment(rule, dayBasePrice, current, nights);
                     if (adjustment.applied) {
                         dayAdjustedPrice = adjustment.adjustedPrice;
@@ -342,28 +346,26 @@ public class PricingService {
         }
     }
 
-    private boolean isRuleApplicable(PricingRule rule, LocalDate date, int nights) {
+    private boolean isRuleApplicable(PricingRule rule, LocalDate date, LocalDate checkIn, int nights, LocalDate bookingDate) {
         if (!rule.getValidFrom().isAfter(date) && !rule.getValidTo().isBefore(date)) {
             // 根據規則類型進行額外檢查
             switch (rule.getRuleType()) {
                 case EARLY_BIRD:
-                    // 提前預訂天數檢查
-                    // minDaysAhead 表示「需要提前預訂的天數」
-                    // 例如：minDaysAhead=7 意味著入住日期需要在 validFrom 之後至少 7 天
-                    // 即 checkIn >= validFrom + 7 才適用
-                    long daysAhead = ChronoUnit.DAYS.between(rule.getValidFrom(), date);
-                    Integer minDays = (Integer) rule.getConfig().get("minDaysAhead");
+                    // 早鳥：以「下單日 vs 入住日」計提前天數（業界語意，AI-2401）。
+                    // minDaysAhead=7 表示需在入住日至少 7 天前下單才適用。
+                    long daysAhead = ChronoUnit.DAYS.between(bookingDate, checkIn);
+                    Integer minDays = getIntConfig(rule, "minDaysAhead");
                     return minDays == null || daysAhead >= minDays;
                 case LONG_STAY:
                     // 入住天數檢查
-                    Integer minNights = (Integer) rule.getConfig().get("minNights");
+                    Integer minNights = getIntConfig(rule, "minNights");
                     return minNights == null || nights >= minNights;
                 case LAST_MINUTE:
-                    // 最後一刻檢查（使用規則的 validFrom）
-                    LocalDate lastMinuteStartDate = rule.getValidFrom();
-                    long daysUntilCheckIn = ChronoUnit.DAYS.between(lastMinuteStartDate, date);
-                    Integer maxDaysAhead = (Integer) rule.getConfig().get("maxDaysAhead");
-                    return maxDaysAhead == null || daysUntilCheckIn <= maxDaysAhead;
+                    // 末班車：以「下單日 vs 入住日」計臨近天數（AI-2401）。
+                    // maxDaysAhead=3 表示入住日前 3 天內（含）下單才適用（不含已過期的入住日）。
+                    long daysUntilCheckIn = ChronoUnit.DAYS.between(bookingDate, checkIn);
+                    Integer maxDaysAhead = getIntConfig(rule, "maxDaysAhead");
+                    return maxDaysAhead == null || (daysUntilCheckIn >= 0 && daysUntilCheckIn <= maxDaysAhead);
                 default:
                     return true;
             }
@@ -371,16 +373,60 @@ public class PricingService {
         return false;
     }
 
+    /**
+     * 從 jsonb config 安全讀取整數（jsonb 反序列化數字型別可能為 Integer/Long/Double，
+     * 直接 cast 易 ClassCastException）。無值或無法解析回 null（AI-2401，AC-001-5）。
+     */
+    private static Integer getIntConfig(PricingRule rule, String key) {
+        Object v = configValue(rule, key);
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Number) {
+            return ((Number) v).intValue();
+        }
+        try {
+            return Integer.valueOf(v.toString().trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 從 jsonb config 安全讀取浮點數（同上，避免 (Double) cast 於 Integer 值時拋錯）。
+     */
+    private static Double getDoubleConfig(PricingRule rule, String key) {
+        Object v = configValue(rule, key);
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Number) {
+            return ((Number) v).doubleValue();
+        }
+        try {
+            return Double.valueOf(v.toString().trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static Object configValue(PricingRule rule, String key) {
+        Map<String, Object> config = rule.getConfig();
+        return config == null ? null : config.get(key);
+    }
+
     private AdjustmentResult calculateAdjustment(PricingRule rule, BigDecimal basePrice, LocalDate date, int nights) {
         AdjustmentResult result = new AdjustmentResult();
-        Map<String, Object> config = rule.getConfig();
 
         switch (rule.getRuleType()) {
             case WEEKDAY_WEEKEND:
                 DayOfWeek dow = date.getDayOfWeek();
                 boolean isWeekend = dow == DayOfWeek.FRIDAY || dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY;
                 if (isWeekend) {
-                    Double weekendMultiplier = (Double) config.getOrDefault("weekendMultiplier", TAX_RATE);
+                    Double weekendMultiplier = getDoubleConfig(rule, "weekendMultiplier");
+                    if (weekendMultiplier == null) {
+                        weekendMultiplier = TAX_RATE;
+                    }
                     result.adjustedPrice = basePrice.multiply(BigDecimal.valueOf(weekendMultiplier));
                     result.applied = true;
                     result.type = "PERCENTAGE";
@@ -389,7 +435,7 @@ public class PricingService {
                 break;
 
             case SEASONAL:
-                Double seasonalMultiplier = (Double) config.get("multiplier");
+                Double seasonalMultiplier = getDoubleConfig(rule, "multiplier");
                 if (seasonalMultiplier != null) {
                     result.adjustedPrice = basePrice.multiply(BigDecimal.valueOf(seasonalMultiplier));
                     result.applied = true;
@@ -399,7 +445,7 @@ public class PricingService {
                 break;
 
             case EARLY_BIRD:
-                Double earlyBirdDiscount = (Double) config.get("discountPercent");
+                Double earlyBirdDiscount = getDoubleConfig(rule, "discountPercent");
                 if (earlyBirdDiscount != null) {
                     result.adjustedPrice = basePrice.multiply(BigDecimal.valueOf(1 - earlyBirdDiscount / 100));
                     result.applied = true;
@@ -410,7 +456,7 @@ public class PricingService {
 
             case LONG_STAY:
                 // 根據入住天數遞增折扣
-                Double longStayDiscount = (Double) config.get("discountPercent");
+                Double longStayDiscount = getDoubleConfig(rule, "discountPercent");
                 if (longStayDiscount != null) {
                     // 入住天數越多，折扣越大（線性遞增，最高為設定值）
                     double actualDiscount = Math.min(longStayDiscount, longStayDiscount * nights / 7.0);
@@ -422,7 +468,7 @@ public class PricingService {
                 break;
 
             case LAST_MINUTE:
-                Double lastMinuteDiscount = (Double) config.get("discountPercent");
+                Double lastMinuteDiscount = getDoubleConfig(rule, "discountPercent");
                 if (lastMinuteDiscount != null) {
                     result.adjustedPrice = basePrice.multiply(BigDecimal.valueOf(1 - lastMinuteDiscount / 100));
                     result.applied = true;
@@ -432,7 +478,7 @@ public class PricingService {
                 break;
 
             case MANUAL_OVERRIDE:
-                Double overridePrice = (Double) config.get("price");
+                Double overridePrice = getDoubleConfig(rule, "price");
                 if (overridePrice != null) {
                     result.adjustedPrice = BigDecimal.valueOf(overridePrice);
                     result.applied = true;

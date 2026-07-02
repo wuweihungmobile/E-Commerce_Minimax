@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -183,14 +185,65 @@ public class BookingService {
 
         List<RoomCalendar> calendars = roomCalendarService.getCalendarRange(roomListingId, startDate, endDate);
 
+        // 每日動態定價折扣（AI-2405b）：toggle 開啟時以 PricingService 逐日 breakdown 取折扣後價。
+        // 只對可訂日套、只套折扣型（與 availability 一致），BOOKED/BLOCKED 日不受影響。
+        Map<LocalDate, PricingDto.PriceBreakdown> discountByDate = dailyDiscountMap(roomListingId, startDate, endDate);
+
         return calendars.stream()
-                .map(c -> BookingDto.CalendarResponse.builder()
-                        .date(c.getCalendarDate())
-                        .status(c.getStatus().name())
-                        .price(c.getPrice() != null ? c.getPrice() : listing.getBasePrice())
-                        .bookingId(c.getBookingId())
-                        .build())
+                .map(c -> {
+                    BigDecimal price = c.getPrice() != null ? c.getPrice() : listing.getBasePrice();
+                    BigDecimal originalPrice = null;
+                    String appliedRuleName = null;
+                    if (c.getStatus() == RoomCalendar.RoomCalendarStatus.AVAILABLE) {
+                        PricingDto.PriceBreakdown bd = discountByDate.get(c.getCalendarDate());
+                        if (bd != null && bd.getAdjustedPrice() != null && bd.getBasePrice() != null
+                                && bd.getAdjustedPrice().compareTo(bd.getBasePrice()) < 0) {
+                            originalPrice = bd.getBasePrice();
+                            price = bd.getAdjustedPrice();
+                            appliedRuleName = bd.getAppliedRuleName();
+                        }
+                    }
+                    return BookingDto.CalendarResponse.builder()
+                            .date(c.getCalendarDate())
+                            .status(c.getStatus().name())
+                            .price(price)
+                            .originalPrice(originalPrice)
+                            .appliedRuleName(appliedRuleName)
+                            .bookingId(c.getBookingId())
+                            .build();
+                })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 整月日曆每日折扣 map（AI-2405b）：DYNAMIC_PRICING_ENABLED 開啟時，以 PricingService.calculatePrice
+     * 取區間逐日 breakdown（date → PriceBreakdown）。calculatePrice 的 checkOut 為 exclusive，
+     * 故傳 endDate.plusDays(1) 以涵蓋 endDate 當日。關閉/計算失敗回空 map（呼叫端不套折扣）。
+     */
+    private Map<LocalDate, PricingDto.PriceBreakdown> dailyDiscountMap(
+            final UUID roomListingId, final LocalDate startDate, final LocalDate endDate) {
+        if (!featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")) {
+            return Collections.emptyMap();
+        }
+        try {
+            PricingDto.CalculatePriceResponse resp = pricingService.calculatePrice(
+                    PricingDto.CalculatePriceRequest.builder()
+                            .roomListingId(roomListingId)
+                            .checkInDate(startDate)
+                            .checkOutDate(endDate.plusDays(1))
+                            .build());
+            if (resp.getBreakdown() == null) {
+                return Collections.emptyMap();
+            }
+            Map<LocalDate, PricingDto.PriceBreakdown> map = new HashMap<>();
+            for (PricingDto.PriceBreakdown bd : resp.getBreakdown()) {
+                map.put(bd.getDate(), bd);
+            }
+            return map;
+        } catch (BusinessException e) {
+            log.warn("Calendar dynamic pricing failed for room={}: {}", roomListingId, e.getMessage());
+            return Collections.emptyMap();
+        }
     }
 
     /**

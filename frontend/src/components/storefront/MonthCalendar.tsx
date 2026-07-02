@@ -58,6 +58,8 @@ export function MonthCalendar({
   })
   const [statusByDate, setStatusByDate] = useState<Record<string, RoomCalendarStatus>>({})
   const [priceByDate, setPriceByDate] = useState<Record<string, number>>({})
+  // 每日折扣前原價（AI-2405b）：有折扣之日才有值，用於顯示刪除線原價
+  const [originalPriceByDate, setOriginalPriceByDate] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -72,12 +74,15 @@ export function MonthCalendar({
         if (cancelled) return
         const statusMap: Record<string, RoomCalendarStatus> = {}
         const priceMap: Record<string, number> = {}
+        const originalMap: Record<string, number> = {}
         for (const d of days) {
           statusMap[d.date] = d.status
           if (d.price != null) priceMap[d.date] = d.price
+          if (d.originalPrice != null) originalMap[d.date] = d.originalPrice
         }
         setStatusByDate(statusMap)
         setPriceByDate(priceMap)
+        setOriginalPriceByDate(originalMap)
         setError(null)
       })
       .catch(() => {
@@ -207,11 +212,25 @@ export function MonthCalendar({
             >
               <span>{day}</span>
               {!unavailable && (
-                <span
-                  data-testid={`calendar-price-${dateStr}`}
-                  className={selected ? "text-[10px] text-white/90" : "text-[10px] text-rs-ink-muted"}
-                >
-                  {formatCellPrice(currency, priceByDate[dateStr] ?? basePrice)}
+                <span className="flex flex-col items-center leading-none">
+                  {originalPriceByDate[dateStr] != null && (
+                    <span
+                      data-testid={`calendar-original-price-${dateStr}`}
+                      className={
+                        selected
+                          ? "text-[9px] text-white/70 line-through"
+                          : "text-[9px] text-rs-ink-muted line-through"
+                      }
+                    >
+                      {formatCellPrice(currency, originalPriceByDate[dateStr])}
+                    </span>
+                  )}
+                  <span
+                    data-testid={`calendar-price-${dateStr}`}
+                    className={selected ? "text-[10px] text-white/90" : "text-[10px] text-rs-ink-muted"}
+                  >
+                    {formatCellPrice(currency, priceByDate[dateStr] ?? basePrice)}
+                  </span>
                 </span>
               )}
             </button>

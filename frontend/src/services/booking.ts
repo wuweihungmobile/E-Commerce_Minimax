@@ -88,6 +88,9 @@ export interface CalendarDay {
   status: RoomCalendarStatus
   price: number | null
   bookingId: string | null
+  // 動態定價每日折扣（AI-2405b）：可訂日套折扣時填入，price 為折扣後、originalPrice 為折扣前。
+  originalPrice?: number | null
+  appliedRuleName?: string | null
 }
 
 // booking 建立錯誤碼 → 可讀訊息。

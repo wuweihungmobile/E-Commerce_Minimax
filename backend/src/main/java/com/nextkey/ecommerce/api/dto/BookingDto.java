@@ -138,6 +138,9 @@ public class BookingDto {
         private String status; // AVAILABLE, BOOKED, BLOCKED, MAINTENANCE
         private BigDecimal price;
         private UUID bookingId;
+        // 動態定價每日折扣（AI-2405b）：可訂日套折扣時填入，price 為折扣後、originalPrice 為折扣前；無折扣為 null。
+        private BigDecimal originalPrice;
+        private String appliedRuleName;
     }
 
     // ========== Availability Request ==========

@@ -299,4 +299,39 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
     await expect(badge).toContainText('早鳥 15% off');
     await expect(badge).toContainText('960');
   });
+
+  test('E2E-ROOM-07: 整月日曆每日折扣 → 格子顯示折扣後價 + 原價刪除線（Sprint 44 US-002 AI-2405b）', async ({ page }: { page: Page }) => {
+    // 用「下個月」確保為未來日
+    const now = new Date();
+    const ny = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+    const nm = now.getMonth() === 11 ? 0 : now.getMonth() + 1;
+    const pad = (n: number) => (n < 10 ? '0' + n : String(n));
+    const d = (day: number) => `${ny}-${pad(nm + 1)}-${pad(day)}`;
+    const discDay = d(6);
+
+    await page.route(`**/v2/listings/${ROOM_ID}`, async (route) => {
+      await fulfillJson(route, 200, { success: true, data: roomListing() });
+    });
+    // 日曆：第 6 日為可訂且有折扣（原價 3200 → 折扣後 2720）
+    await page.route('**/v2/bookings/calendar**', async (route) => {
+      await fulfillJson(route, 200, {
+        success: true,
+        data: [
+          { date: discDay, status: 'AVAILABLE', price: 2720, bookingId: null, originalPrice: 3200, appliedRuleName: '早鳥 15% off' },
+        ],
+      });
+    });
+
+    await page.goto(`/listings/${ROOM_ID}`);
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByTestId('listing-detail')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('listing-calendar')).toBeVisible({ timeout: 10000 });
+
+    // 切到下個月（日曆初始為本月）
+    await page.getByTestId('calendar-next').click();
+
+    // 折扣後價 + 原價刪除線
+    await expect(page.getByTestId(`calendar-price-${discDay}`)).toContainText('2,720');
+    await expect(page.getByTestId(`calendar-original-price-${discDay}`)).toContainText('3,200');
+  });
 });

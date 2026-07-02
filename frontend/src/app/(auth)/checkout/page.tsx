@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import bookingService, { type CreateBookingRequest, bookingErrorMessage } from '@/services/booking'
 
 interface BookingItem {
   listingId: string
@@ -33,39 +34,6 @@ interface CheckoutData {
   appliedPromoCode?: string
   discountAmount?: number
   finalAmount?: number
-}
-
-interface CreateBookingRequest {
-  roomListingId: string
-  checkInDate: string
-  checkOutDate: string
-  guestCount: number
-  guestName: string
-  guestPhone?: string
-  guestEmail?: string
-  specialRequests?: string
-}
-
-interface BookingResponse {
-  id: string
-  tenantId: string
-  userId: string
-  roomListingId: string
-  roomTitle: string
-  checkInDate: string
-  checkOutDate: string
-  guestCount: number
-  status: string
-  totalAmount: number
-  currency: string
-  nightsCount: number
-  createdAt: string
-}
-
-interface ApiResponse<T> {
-  success: boolean
-  data: T
-  message?: string
 }
 
 export default function CheckoutPage() {
@@ -163,33 +131,15 @@ export default function CheckoutPage() {
         specialRequests: specialRequests.trim() || undefined
       }
 
-      const response = await apiClient.post<ApiResponse<BookingResponse>>(
-        API_ENDPOINTS.bookings.create,
-        request,
-        {
-          headers: {
-            'Idempotency-Key': idempotencyKey
-          }
-        }
-      )
-
-      if (response.data.success && response.data.data) {
-        setBookingId(response.data.data.id)
-        // Clear cart after successful booking
-        await apiClient.delete(API_ENDPOINTS.cart.clear)
-      }
+      const booking = await bookingService.createBooking(request, idempotencyKey)
+      setBookingId(booking.id)
+      // Clear cart after successful booking
+      await apiClient.delete(API_ENDPOINTS.cart.clear)
     } catch (err: unknown) {
       console.error('Booking failed:', err)
-      const errorResponse = err as { response?: { data?: { code?: string; message?: string } } }
-      if (errorResponse?.response?.data?.code === 'E_6005') {
-        setError('預訂正在處理中，請稍候...')
-      } else if (errorResponse?.response?.data?.code === 'E-4001') {
-        setError('抱歉，此日期範圍已不可用，請返回選擇其他日期')
-      } else if (errorResponse?.response?.data?.code === 'E-9004') {
-        setError('請求格式錯誤，請重新嘗試')
-      } else {
-        setError('預訂失敗，請稍後再試')
-      }
+      // 後端 ErrorCode wire code 為連字號（如 E-4001 日期衝突）；統一以 bookingErrorMessage 對應可讀訊息
+      const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code
+      setError(bookingErrorMessage(code))
     } finally {
       setLoading(false)
     }

@@ -52,6 +52,34 @@ export interface BookingListItem {
   createdAt: string
 }
 
+// 對齊後端 BookingDto.CreateRequest（POST /v2/bookings）
+export interface CreateBookingRequest {
+  roomListingId: string
+  checkInDate: string
+  checkOutDate: string
+  guestCount: number
+  guestName: string
+  guestPhone?: string
+  guestEmail?: string
+  specialRequests?: string
+}
+
+// booking 建立錯誤碼 → 可讀訊息。
+// 注意：後端 ErrorCode 的 wire code 為「連字號」格式（Java 常數 E_4001 → JSON code "E-4001"）。
+const BOOKING_ERROR_MESSAGES: Record<string, string> = {
+  'E-4001': '所選日期已被預訂，請返回修改入住／退房日期',
+  'E-4000': '找不到此房型，可能已下架',
+  'E-4003': '日期範圍無效，請確認退房日晚於入住日',
+  'E-4005': '入住人數超過房型容量，請減少人數',
+  'E-3002': '此房型目前未開放預訂',
+  'E-6005': '預訂處理中，請稍候再試',
+  'E-9004': '請求格式錯誤，請重新嘗試',
+}
+
+export function bookingErrorMessage(code?: string | null): string {
+  return (code && BOOKING_ERROR_MESSAGES[code]) || '預訂失敗，請稍後再試'
+}
+
 export interface BookingQuery {
   page?: number
   size?: number
@@ -144,6 +172,17 @@ class BookingService {
       : API_ENDPOINTS.bookings.cancel(id)
     await apiClient.post(url)
   }
+
+  // 建立預訂（POST /v2/bookings）；idempotencyKey 供後端去重（避免重複送出）。
+  async createBooking(request: CreateBookingRequest, idempotencyKey: string): Promise<Booking> {
+    const response = await apiClient.post<ApiResponse<Booking>>(
+      API_ENDPOINTS.bookings.create,
+      request,
+      { headers: { 'Idempotency-Key': idempotencyKey } }
+    )
+    return response.data.data
+  }
 }
 
-export default new BookingService()
+const bookingService = new BookingService()
+export default bookingService

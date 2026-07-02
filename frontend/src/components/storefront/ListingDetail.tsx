@@ -69,9 +69,19 @@ export function ListingDetail({ id }: { id: string }) {
     setReloadKey((k) => k + 1)
   }
 
+  // ROOM 日期驗證：入住不早於今日、退房晚於入住
+  const dateError = (): string | null => {
+    const today = new Date().toISOString().slice(0, 10)
+    if (!checkIn || !checkOut) return "請選擇入住與退房日期"
+    if (checkIn < today) return "入住日期不可早於今日"
+    if (checkOut <= checkIn) return "退房日期需晚於入住日期"
+    return null
+  }
+
   const handleQuote = () => {
-    if (!checkIn || !checkOut || checkOut <= checkIn) {
-      setPriceError("請選擇有效的入住與退房日期（退房需晚於入住）")
+    const err = dateError()
+    if (err) {
+      setPriceError(err)
       setPrice(null)
       return
     }
@@ -87,9 +97,12 @@ export function ListingDetail({ id }: { id: string }) {
   const handleAddToCart = () => {
     if (!listing) return
     const isRoom = listing.listingType === "ROOM"
-    if (isRoom && (!checkIn || !checkOut || checkOut <= checkIn)) {
-      setAddError("請先選擇有效的入住與退房日期")
-      return
+    if (isRoom) {
+      const err = dateError()
+      if (err) {
+        setAddError(err)
+        return
+      }
     }
     setAdding(true)
     setAddError(null)

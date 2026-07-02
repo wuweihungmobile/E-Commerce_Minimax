@@ -19,8 +19,8 @@
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
 |----|------|-------------|---------|---------|---------|------|
 | DEF-021 | CJK 字體品牌一致性（技術債） | Sprint 35（Turbopack 限制發現） | S35 因 Turbopack 無法 self-host next/font CJK（Noto Sans TC 大量 unicode-range 子集無法解析），改用系統 CJK 字體堆疊；系統堆疊跨平台字重/字距不一，品牌字體一致性下降。後續評估 `next/font/local` + 預先子集化 Noto Sans TC woff2 以恢復品牌字體一致性 | 需 woff2 子集化工具鏈 + 驗證 Turbopack 相容性 | 2 | ✅ 已決策（S41 US-006）：維持系統字體堆疊為 **accepted fallback**；選項 B（`@font-face` 自 host 子集 woff2，技術可行、無 CSP 阻擋）記錄為選配未來任務，待品牌一致性需求由使用者拍板。詳見 [CJK_FONT_ASSESSMENT.md](../06_quality/CJK_FONT_ASSESSMENT.md) |
-| AI-2202d | 整月日曆「未開放 vs 可訂」語意 | Sprint 42（AI-2202c Part A 交付時界定） | S42 交付每日價格顯示（Part A，純前端）。「未開放 vs 可訂」顯式標記需**後端新語意**——現無「開放窗」概念，`room_calendar` 的 AVAILABLE row 為偶發，前端一律把「無記錄」視為可訂，無法區分「房源尚未開放該日曆」與「可訂」 | 需後端 room_calendar 開放窗語意設計 + 端點回傳擴充 | 3 | ⚠️ 待評估（P3，需後端語意，非純前端）|
-| AI-2406 | 定價機制統一（room_calendar 手動日價 vs 規則） | Sprint 43（US-002 揭露雙機制並存） | 折扣生效時以 PricingService（basePrice+規則）為基準，per-day room_calendar 手動價（setDatePrice）不參與；兩機制長期並存易混淆 | 評估手動日價改走 MANUAL_OVERRIDE 規則，消除雙機制 | 3 | ⚠️ 待評估（P3，架構債）|
+| AI-2406b | 漲價型規則是否計入 booking 總價 | Sprint 45（US-001 決策文件界定） | 目前 booking 計價只套折扣（adjustedTotal < baseTotal）；漲價型規則（MANUAL_OVERRIDE 調高、WEEKDAY_WEEKEND 週末加成、SEASONAL 旺季加成）不計入訂房總價，僅在 availability/calendar 顯示層呈現 → 「顯示加價、下單原價」的潛在不一致。選項 A 維持現狀 / B 全面走 PricingService（含漲價，改訂房金額行為）| **需 PO 商業決策**；若採 B 需 QA 回歸 + calculatePrice 無 Room 列優雅降級 + 更新計價測試 | 5-8 | 🔴 待 PO 決策（P2，計價行為變更）。詳見 [PRICING_MECHANISM_UNIFICATION.md](../06_quality/PRICING_MECHANISM_UNIFICATION.md) §3.2 |
+| AI-2202e | 開放窗語意實作（未開放 vs 可訂） | Sprint 45（US-002 spike 界定） | S45 spike 確認「無記錄=可訂」為 availability/booking/calendar 三層硬語意，權威區分開放窗必然需後端語意 + schema；推薦選項 A（Room 層級 `open_until_date DATE NULL`）**需 migration**，將打破 S42~S45 零-migration 慣例 | **需 PO 拍板 schema**；含 migration + 四處 booking 邏輯 + 前端 NOT_OPEN 顯示 + E2E + 既有房源 backfill（NULL 安全過渡）| 5 | 🔴 待 PO 拍板（P3，需 schema）。詳見 [CALENDAR_OPEN_WINDOW_ASSESSMENT.md](../07_design/CALENDAR_OPEN_WINDOW_ASSESSMENT.md) |
 
 ---
 
@@ -49,11 +49,37 @@
 | AI-2403 | 進階定價接入 PRODUCT/Cart 計價鏈 | Sprint 43 | Sprint 44 | US-001（AI-2403）：`RedisCartService.getCart` 讀取時對 PRODUCT 項以 `getEffectivePrice`（今日基準）套折扣（toggle+向後相容），unitPrice/subtotal 折扣後 + CartItemResponse transient 折扣欄位；`OrderService` 未改（訂單繼承 getCart 折扣後 subtotal，顯示與下單一致）；getEffectivePrice 補 appliedRuleName。schema-free。單元 3 + 真 DB 整合 45 tests 0 fail |
 | AI-2405b | 買家整月日曆每日折扣顯示 | Sprint 43 | Sprint 44 | US-002（AI-2405b）：`getCalendar` 以 `calculatePrice` 逐日 breakdown merge 折扣（checkOut exclusive→endDate+1、只可訂日、只折扣型）；CalendarResponse + CalendarDay 補 originalPrice/appliedRuleName；MonthCalendar 原價刪除線（保留 calendar-price testid + 新增 calendar-original-price）+ E2E-ROOM-07。無 schema |
 | AI-2303 | Inter 字體建置期 Google Fonts 依賴 | Sprint 42 | Sprint 44 | US-003（AI-2303）：`layout.tsx` next/font/google → next/font/local，committed Inter latin variable woff2（48KB OFL，一次性自 Google Fonts 取得）；消 build 期網路依賴（同源 DEF-015）；CJK 系統堆疊不動。build 0 error、無 next/font/google 引用 |
+| AI-2406 | 定價機制統一（room_calendar 手動日價 vs 規則） | Sprint 43 | Sprint 45 | US-001（AI-2406）：探勘揭穿「雙定價機制」實為死碼假象——`room_calendar.price` 寫入路徑 setDatePrice/setDatePriceBulk **零呼叫者**、欄位恆 NULL。移除死碼兩方法；BookingService 三處讀取（checkAvailability/getCalendar/calendarBaseTotal）移除死欄位 fallback 改直取 basePrice（**行為等價**，順帶修正 calendarBaseTotal NULL→ZERO 潛在低估）；RoomCalendar.price 註解標記停用（未加 @Deprecated 以維持 @Deprecated=0 慣例）；確立 MANUAL_OVERRIDE 為唯一手動日價路徑。決策文件 PRICING_MECHANISM_UNIFICATION.md。單元 6 + 真 DB 整合 57 tests 0 fail、schema-free。**漲價計入 booking 行為變更另立 AI-2406b（PO 決策）；DROP COLUMN 另立後續低風險** |
+| AI-2202d | 整月日曆「未開放 vs 可訂」語意 | Sprint 42 | Sprint 45 | US-002（AI-2202d，spike）：產決策文件 CALENDAR_OPEN_WINDOW_ASSESSMENT.md——記錄「無記錄=可訂」為 availability/booking/calendar 三層硬語意、room_calendar 稀疏 lazy 建立；三選項比較（A Room 層級 open_until_date【推薦，需 migration】/ B CLOSED 狀態【高風險】/ C 純前端【不建議單用】）+ 既有房源 NULL 安全過渡。**不改 production code**。**實作另立 AI-2202e（需 PO 拍板 schema）** |
 | DEF-022 | E2E 硬等待（waitForTimeout 固定 sleep） | Sprint 35 | Sprint 42 | **歷時 S35→39→42**。S39（AI-2101）已收斂登入 helper 部分；S42（US-003）完成餘下清除：5 檔（at-m11-cart-checkout、at-m15-e2e、at-m17-001/002）冗餘 `waitForTimeout` 刪除、可替換者改顯式等待（`waitForURL`/`waitForResponse`/`expect().toBeVisible()`/`toHaveClass()`）並順帶補斷言（Rule 9）；**保留** at-m10-chat STOMP SUBSCRIBE settle 例外（無 client 可觀察訊號）。**連帶根治**移除 sleep 後浮現的既有 flaky：auth helper 與 S37 共用 Header「註冊」連結碰撞（`.first()` 恆選 header 連結 + re-render 不穩定 → 改 `goto('/register')`，Playwright 快照佐證）+ 原生 alert teardown（at-m15 檔案級 dialog beforeEach + at-m17-002 dialog 處理器）。validate-e2e 46 passed/0 fail |
 
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 45 (2026-07-02)
+
+**主題**: 定價區技術債收斂（清死碼 + 語意決策）（5 SP，US-001~002 全數完成）
+
+**完成**:
+- **AI-2406 → ✅ 完成（US-001）**：定價機制統一——探勘揭穿「雙定價機制並存」實為**死碼假象**（`room_calendar.price` 寫入路徑 setDatePrice/setDatePriceBulk 零呼叫者、欄位恆 NULL）；移除死碼兩方法 + BookingService 三處讀取移除死欄位 fallback 改直取 basePrice（**行為等價**，順帶修正 calendarBaseTotal NULL→ZERO 潛在低估）；RoomCalendar.price 註解標記停用；確立 MANUAL_OVERRIDE 為唯一手動日價路徑。決策文件 PRICING_MECHANISM_UNIFICATION.md。schema-free。
+- **AI-2202d → ✅ 完成（US-002，spike）**：開放窗「未開放 vs 可訂」語意評估——決策文件 CALENDAR_OPEN_WINDOW_ASSESSMENT.md（三層硬語意 + 三選項比較 + NULL 安全過渡），不改 production code。
+
+**驗證**:
+- 後端單元 6（計價相關）+ 真 DB 整合 57（booking/M12/cart/order 計價）全過；mvn 0 error；`make validate-e2e` **48 passed / 6 skipped / 0 failed**（US-001 清理不退步；S45 無新增 E2E）、schema 對齊。**無 schema 變動**（連續 S42~S45 零 migration，Flyway V57）。`@Deprecated=0` 維持（用註解非 annotation，Rule 11）。
+- 誠實：本 Sprint 為「決策 + 低風險清理」型（5 SP 偏輕，已於規劃揭露並經使用者核准）；US-001 行為等價；重實作/行為變更均誠實另立。
+
+**新增延後項目**:
+- **AI-2406b（P2）**：漲價型規則是否計入 booking 總價（計價行為變更，需 PO 決策；選項 A 維持 / B 全面走 PricingService，5-8 SP）。
+- **AI-2202e（P3）**：開放窗語意實作（需 PO 拍板 schema；migration + 四處 booking 邏輯 + 前端 + E2E + 既有房源 backfill，5 SP）。
+- （後續低風險）room_calendar.price DROP COLUMN（`V58`，無資料無讀寫者，風險極低）。
+
+**下一 Sprint 候選**:
+- AI-1908 檢查點 push S41~S45、**AI-2406b 漲價計入 booking（需 PO 決策）**、**AI-2202e 開放窗實作（需 PO 拍板 schema）**、AI-1903 真人 live 走查（需環境）、真實金流評估（backlog #10），或回歸新功能。
+
+**里程碑**：**定價區技術債收斂**——清除 room_calendar.price 死碼機制、確立 MANUAL_OVERRIDE 為唯一手動日價路徑；開放窗語意產出完整決策文件。活躍延後：AI-2406b（P2）/ AI-2202e（P3）/ DEF-021（已決策）+ AI-1903（需環境）；活躍 DEF=0。
+
+---
 
 ### Sprint 44 (2026-07-02)
 
@@ -492,11 +518,12 @@
 
 ---
 
-**文件版本**: v2.14
-**最後更新**: 2026-07-02（Sprint 44：完成 M12 進階定價全覆蓋——US-001 AI-2403 PRODUCT/Cart 折扣（getCart 重算，OrderService 繼承）+ US-002 AI-2405b 買家日曆每日折扣（getCalendar merge）+ US-003 AI-2303 Inter 自 host 離線化。後端單元 23 + 真 DB 整合 71、validate-e2e **48 passed/0 fail**、schema 對齊、**無 schema 變動**（連續 S42~S44 零 migration）。**M12 進階定價全覆蓋達成**（ROOM+PRODUCT+買家顯示）。活躍延後 AI-2406/AI-2202d（P3）；活躍 DEF=0
+**文件版本**: v2.15
+**最後更新**: 2026-07-02（Sprint 45：定價區技術債收斂——US-001 AI-2406 定價機制統一（揭穿 room_calendar.price 死碼假象、移除死碼 + 三處讀取簡化【行為等價】、確立 MANUAL_OVERRIDE 唯一路徑、決策文件）+ US-002 AI-2202d 開放窗語意評估（spike 決策文件）。後端單元 6 + 真 DB 整合 57、validate-e2e **48 passed/0 fail**、schema 對齊、**無 schema 變動**（連續 S42~S45 零 migration）、@Deprecated=0。新增延後 AI-2406b（P2，PO 決策）/ AI-2202e（P3，PO 拍板 schema）；活躍 DEF=0
+**歷史版本 v2.14**: 2026-07-02（Sprint 44：完成 M12 進階定價全覆蓋——US-001 AI-2403 PRODUCT/Cart 折扣（getCart 重算，OrderService 繼承）+ US-002 AI-2405b 買家日曆每日折扣（getCalendar merge）+ US-003 AI-2303 Inter 自 host 離線化。後端單元 23 + 真 DB 整合 71、validate-e2e **48 passed/0 fail**、schema 對齊、**無 schema 變動**（連續 S42~S44 零 migration）。**M12 進階定價全覆蓋達成**（ROOM+PRODUCT+買家顯示）。活躍延後 AI-2406/AI-2202d（P3）；活躍 DEF=0
 **歷史版本 v2.13**: 2026-07-02（Sprint 43：M12 進階定價落地——US-001 AI-2401 早鳥/末班車語意修正（bookingDate）+ US-002 AI-2402 定價引擎接入 ROOM 計價鏈（toggle+向後相容）+ US-003 AI-2404 config 型別化編輯 UI + US-004 AI-2405 買家折扣顯示+賣家預覽+E2E-ROOM-06。後端單元 15 + 真 DB 整合 36 全過、validate-e2e **47 passed/0 fail**、schema 對齊、**無 schema 變動**。新增延後 AI-2403/2405b/2406。活躍 DEF=0
 **歷史版本 v2.12**: 2026-07-02（Sprint 42：收尾技術債——US-001 AI-2302 pre-commit 提速（@Tag slow + excludedGroups，移除 DB 依賴）+ US-002 AI-2202c Part A 日曆每日價格（純前端）+ US-003 DEF-022 E2E 硬等待清除（連帶根治 auth helper/alert flaky）。validate-e2e **46 passed/0 fail**、schema 對齊、後端 quick test 455 tests 0 fail（無 DB）。**無 production/schema 變動**。**活躍 DEF 歸零**（DEF-021 決策結案、DEF-022 完成）；新增 AI-2202d/AI-2303（P3）
 **歷史版本 v2.11**: Sprint 41：技術債徹底清償 + 整月日曆——US-001 AI-2301 test DB↔act port 制度化 + US-002 AI-2101b 登入 helper 完全統一 + US-003 AI-2202a 端點契約清理 + US-004 AI-2202b 整月日曆（read-only 後端）+ US-005 AI-1903 買家走查（自動證據+checklist，真人殘留）+ US-006 DEF-021 CJK 字體決策。validate-e2e 47 passed/0 fail。read-only 無 schema。活躍 DEF=1（DEF-022）
 **歷史版本 v2.10**: 2026-07-02（Sprint 40：ROOM 可用性 UX 完成——US-001 availability 端點 @RequestParam（後端 read-only）+ US-002 詳情頁即時可用性 + US-003 E2E。**完整 make validate-release 通過**（後端 act 330 tests 0 fail + E2E 45 passed/0 failed）。無 DB/schema 變動。活躍 DEF=1 非安全（DEF-021 CJK 字體）
 **歷史版本 v2.9**: Sprint 39：ROOM 訂房閉環補強——US-001+002 booking service 抽取 + 衝突優雅處理、US-003 ROOM 閉環 E2E（AI-2104）、US-004 E2E 共用 helper 抽取（AI-2101，收斂 4 檔 + 收 DEF-022）。全棧 44 passed/0 failed。無後端/DB 變動。誠實：availability 端點 GET+body 不可用→AI-2201。活躍 DEF=2 非安全（DEF-021 CJK 字體 / DEF-022 剩餘隨 AI-2101b）
-**下次審查**: **檢查點徵詢後 push S41~S44（AI-1908，累積 4 Sprint commit，本地各層驗證通過含 validate-e2e 48/0 fail，完整 make validate-release + 徵詢後 push，嚴禁 --no-verify）**；Sprint 45 候選：定價機制統一（AI-2406）+ 日曆開放窗語意（AI-2202d）+ 買家 live 走查（AI-1903，需環境）+ 真實金流評估（backlog #10），或其他新功能
+**下次審查**: **檢查點徵詢後 push S41~S45（AI-1908，累積 5 Sprint commit，本地各層驗證通過含 validate-e2e 48/0 fail，完整 make validate-release + 徵詢後 push，嚴禁 --no-verify）**；Sprint 46 候選：**AI-2406b 漲價計入 booking（需 PO 決策）**+ **AI-2202e 開放窗實作（需 PO 拍板 schema）**+ 買家 live 走查（AI-1903，需環境）+ 真實金流評估（backlog #10），或其他新功能

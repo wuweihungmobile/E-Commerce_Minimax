@@ -50,6 +50,21 @@
 
 ## Sprint 歷史紀錄
 
+### Sprint 38 (2026-07-02)
+
+**完成**:
+- **AI-2103（商品詳情頁）→ ✅ 完成（US-001）**：新建 `/listings/[id]`（(storefront) 公開路由 + 401 引導）;PRODUCT 數量加購 + ROOM 日期計價加購 + 三態;listing service 補 getListingById/getListingPrice;cartEvents 使 Header 購物車數即時更新;首頁連結由評價頁改導向詳情頁。無後端/DB 變動（端點/DTO 皆已存在）。
+- **AI-1905（有資料 E2E）→ ✅ 完成（US-002）**：以 **page.route mock**（免後端 seed）補首頁有資料網格 + 分頁翻頁 + 詳情導覽 + 加購 + 401/404 鑑別。全棧 **41 passed / 6 skipped / 0 failed**。
+
+**續延後**:
+- DEF-021（CJK 字體）：續延後（P3）。
+- DEF-022（E2E 硬等待）：併入 AI-2101（E2E 共用登入 helper 抽取，S39）。
+
+**新增 Action Items（S39）**:
+- AI-1903 買家 live 走查（需 live 環境）、AI-2101 E2E 共用 helper 抽取（含 DEF-022）、AI-2103b ROOM 完整訂房流程、AI-2104 登入態真實加購 E2E（P3）、AI-2102 secret 掃描器測試（P3）。
+
+---
+
 ### Sprint 37 (2026-07-02)
 
 **完成**:
@@ -329,6 +344,6 @@
 
 ---
 
-**文件版本**: v2.7
-**最後更新**: 2026-07-02（Sprint 37：US-001 買家頁全頁套版（AI-1901，10 頁套共用 Header/Footer + 帳號選單）+ US-002 m15 flaky 修復（AI-2001，解鎖 release 守門）+ US-003 版型一致性 E2E；順帶修 E2E 登入 helper 碰撞 + secret 掃描器誤報。全棧 37 passed/0 failed。活躍 DEF=2 非安全技術債（DEF-021 CJK 字體 / DEF-022 E2E 硬等待，後者併入 AI-2101）
-**下次審查**: 檢查點 push S32~S37（AI-1906，m15 阻礙已清）；S38 買家 live 走查（AI-1903）+ E2E 共用 helper 抽取（AI-2101，含 DEF-022）+ 商品詳情頁評估（AI-2103）
+**文件版本**: v2.8
+**最後更新**: 2026-07-02（Sprint 38：US-001 買家商品詳情頁（AI-2103，/listings/[id]，PRODUCT 加購 + ROOM 計價加購 + 三態）+ US-002 有資料 E2E（AI-1905，mock-based 免 seed）。全棧 41 passed/0 failed。無後端/DB 變動。活躍 DEF=2 非安全技術債（DEF-021 CJK 字體 / DEF-022 E2E 硬等待→併入 AI-2101）
+**下次審查**: 檢查點 push S32~S38（AI-1906，m15 阻礙已清）；S39 買家 live 走查（AI-1903）+ ROOM 完整訂房（AI-2103b）+ E2E 共用 helper 抽取（AI-2101，含 DEF-022）

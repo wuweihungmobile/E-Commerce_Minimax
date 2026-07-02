@@ -27,15 +27,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * BookingService 動態定價接線單元測試（Sprint 43 US-002 / AI-2402）
+ * BookingService 動態定價接線單元測試（Sprint 43 US-002 / AI-2402；Sprint 46 AI-2406b 漲價）
  *
- * 驗證 checkAvailability 的折扣三路徑（AC-002-4）：
- * - toggle 開啟且有折扣 → totalPrice 為折扣後總價 + 回傳原價/折扣額/規則名
- * - toggle 關閉 → 維持既有 calendar/basePrice 計價、不呼叫 PricingService（向後相容）
- * - toggle 開啟但無折扣 → 不套用（totalPrice 為原價）
+ * 驗證 checkAvailability 的動態定價路徑：
+ * - toggle 開啟且有折扣 → totalPrice 為折扣後總價 + 回原價/有號差額(正)/DISCOUNT/規則名
+ * - toggle 開啟且漲價（AI-2406b 選項 B）→ totalPrice 為漲價後總價 + 回原價/有號差額(負)/MARKUP/規則名
+ * - toggle 關閉 → 維持既有 basePrice 計價、不呼叫 PricingService（向後相容）
+ * - toggle 開啟但無規則生效（adjustedTotal == baseTotal）→ 不套用（totalPrice 為原價）
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("BookingService: 動態定價接線（AI-2402）")
+@DisplayName("BookingService: 動態定價接線（AI-2402 / AI-2406b）")
 class BookingServiceDynamicPricingTest {
 
     @Mock private com.nextkey.ecommerce.domain.repository.BookingRepository bookingRepository;
@@ -115,6 +116,31 @@ class BookingServiceDynamicPricingTest {
         assertThat(resp.getOriginalTotalPrice()).isEqualByComparingTo(BigDecimal.valueOf(2000));
         assertThat(resp.getDiscountAmount()).isEqualByComparingTo(BigDecimal.valueOf(300));
         assertThat(resp.getAppliedRuleName()).isEqualTo("Early Bird 15% off");
+        assertThat(resp.getPriceAdjustmentType()).isEqualTo("DISCOUNT");
+    }
+
+    @Test
+    @DisplayName("UT-BK-DP-004: toggle 開啟且漲價（AI-2406b）→ totalPrice 為漲價後總價 + 有號差額(負)/MARKUP")
+    void checkAvailability_dynamicPricingWithMarkup_returnsMarkedUpTotal() {
+        LocalDate checkIn = LocalDate.of(2026, 8, 1);
+        LocalDate checkOut = LocalDate.of(2026, 8, 3); // 2 晚
+
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(roomListing()));
+        when(roomCalendarService.getCalendarRange(any(), any(), any())).thenReturn(Collections.emptyList());
+        when(featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")).thenReturn(true);
+        // 原價 2000，週末加成 20% → 2400（漲價；選項 B 一律計入）
+        when(pricingService.calculatePrice(any()))
+                .thenReturn(pricingResponse(BigDecimal.valueOf(2000), BigDecimal.valueOf(2400), "Weekend 20% up"));
+
+        BookingDto.AvailabilityResponse resp = bookingService.checkAvailability(request(checkIn, checkOut));
+
+        assertThat(resp.isAvailable()).isTrue();
+        assertThat(resp.getTotalPrice()).isEqualByComparingTo(BigDecimal.valueOf(2400));
+        assertThat(resp.getOriginalTotalPrice()).isEqualByComparingTo(BigDecimal.valueOf(2000));
+        // 有號差額：原價 − 調整後 = 2000 − 2400 = −400（負=加價）
+        assertThat(resp.getDiscountAmount()).isEqualByComparingTo(BigDecimal.valueOf(-400));
+        assertThat(resp.getAppliedRuleName()).isEqualTo("Weekend 20% up");
+        assertThat(resp.getPriceAdjustmentType()).isEqualTo("MARKUP");
     }
 
     @Test

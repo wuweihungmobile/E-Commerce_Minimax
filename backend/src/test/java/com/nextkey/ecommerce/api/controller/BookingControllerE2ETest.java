@@ -6,10 +6,12 @@ import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.room.PricingRule;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.PricingRuleRepository;
 import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
@@ -36,6 +38,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.*;
 
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -98,6 +101,9 @@ class BookingControllerE2ETest {
     private TenantFeatureToggleRepository featureToggleRepository;
 
     @Autowired
+    private PricingRuleRepository pricingRuleRepository;
+
+    @Autowired
     private TenantMemberRepository tenantMemberRepository;
 
     @SuppressWarnings("unused")
@@ -158,6 +164,15 @@ class BookingControllerE2ETest {
                         .isEnabled(true)
                         .build();
         featureToggleRepo.save(bookingToggle);
+
+        // 啟用 DYNAMIC_PRICING_ENABLED（AI-2406b 漲價整合測試用）。
+        // 注意：test DB 有 trigger（trg_auto_init_tenant_feature_toggles）在 tenant 建立時已自動補
+        // DYNAMIC_PRICING_ENABLED=false（1 筆）→ 此處必須 UPDATE 該筆為 true，不可再 save（否則 2 筆，
+        // isFeatureEnabled 的 findByTenantIdAndFeatureKey 回 Optional 會 IncorrectResultSize 爆）。
+        // 其他測試無 PricingRule → calculatePrice 回 base==adjusted → tryDynamicPricing 回 null → 不影響既有金額。
+        jdbcTemplate.update(
+                "UPDATE tenant_feature_toggles SET is_enabled = true WHERE tenant_id = ? AND feature_key = ?",
+                testTenantId, "DYNAMIC_PRICING_ENABLED");
 
         // 創建測試用的 ROOM Listing
         Listing testRoom = Listing.builder()
@@ -996,5 +1011,78 @@ class BookingControllerE2ETest {
                 .statusCode(anyOf(is(401), is(403)));
 
         System.out.println("✅ API-M06-014 PASSED: 未授權返回 401 或 403");
+    }
+
+    // ── API-M06-015: 漲價型規則計入 booking（AI-2406b 選項 B）─────────
+
+    @Test
+    @Order(19)
+    @DisplayName("API-M06-015: 漲價型規則計入 availability 金額與建單 totalAmount（AI-2406b）")
+    void checkAvailabilityAndBooking_withMarkupRule_includesMarkup() throws Exception {
+        // basePrice=1500；MANUAL_OVERRIDE price=3000 → 每晚漲至 3000（漲價，選項 B 一律計入）
+        LocalDate checkIn = LocalDate.now().plusDays(300);
+        LocalDate checkOut = LocalDate.now().plusDays(302); // 2 晚
+        Tenant tenant = tenantRepository.findById(testTenantId).orElseThrow();
+        PricingRule markupRule = pricingRuleRepository.save(PricingRule.builder()
+                .tenant(tenant)
+                .roomListingId(testRoomListingId)
+                .ruleType(PricingRule.PricingRuleType.MANUAL_OVERRIDE)
+                .ruleName("Peak Season Manual 3000")
+                .priority(10)
+                .config(java.util.Map.of("price", 3000.0))
+                .validFrom(LocalDate.now().minusDays(1))
+                .validTo(LocalDate.now().plusDays(400))
+                .isActive(true)
+                .build());
+        try {
+            // 1) availability 金額含漲價 + 方向 MARKUP + 有號差額（負）
+            String availBody = given()
+                    .header("Authorization", "Bearer " + buyerToken)
+                    .queryParam("roomListingId", testRoomListingId.toString())
+                    .queryParam("checkInDate", checkIn.toString())
+                    .queryParam("checkOutDate", checkOut.toString())
+                    .when()
+                    .get(BOOKING_URL + "/availability")
+                    .then()
+                    .statusCode(200)
+                    .body("data.available", is(true))
+                    .extract().asString();
+            JsonNode data = objectMapper.readTree(availBody).path("data");
+            assertThat(new BigDecimal(data.path("totalPrice").asText()))
+                    .isEqualByComparingTo(BigDecimal.valueOf(6000));
+            assertThat(new BigDecimal(data.path("originalTotalPrice").asText()))
+                    .isEqualByComparingTo(BigDecimal.valueOf(3000));
+            assertThat(new BigDecimal(data.path("discountAmount").asText()))
+                    .isEqualByComparingTo(BigDecimal.valueOf(-3000));
+            assertThat(data.path("priceAdjustmentType").asText()).isEqualTo("MARKUP");
+
+            // 2) 建單 totalAmount 含漲價（顯示與收費一致）
+            String createBody = given()
+                    .header("Authorization", "Bearer " + buyerToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(BookingDto.CreateRequest.builder()
+                            .roomListingId(testRoomListingId)
+                            .checkInDate(checkIn)
+                            .checkOutDate(checkOut)
+                            .guestCount(2)
+                            .guestName("Markup Guest")
+                            .guestPhone("0912345678")
+                            .guestEmail("markup@example.com")
+                            .build())
+                    .when()
+                    .post(BOOKING_URL)
+                    .then()
+                    .statusCode(201)
+                    .body("data.status", equalTo("CREATED"))
+                    .extract().asString();
+            UUID bookingId = UUID.fromString(
+                    objectMapper.readTree(createBody).path("data").path("id").asText());
+            var booking = bookingRepository.findById(bookingId).orElseThrow();
+            assertThat(booking.getTotalAmount()).isEqualByComparingTo(BigDecimal.valueOf(6000));
+
+            System.out.println("✅ API-M06-015 PASSED: 漲價計入 availability + booking totalAmount");
+        } finally {
+            pricingRuleRepository.delete(markupRule);
+        }
     }
 }

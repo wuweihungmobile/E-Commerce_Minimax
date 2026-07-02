@@ -476,6 +476,65 @@ class PricingServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("UT-M12-013 ~ UT-M12-014: 漲價與優雅降級（AI-2406b）")
+    class MarkupAndFallbackTests {
+
+        @Test
+        @DisplayName("UT-M12-013: 手動覆蓋漲價（price > basePrice）→ adjustedTotal 含漲價")
+        void calculatePrice_manualOverrideMarkup_returnsMarkedUpTotal() {
+            LocalDate checkIn = LocalDate.of(2026, 4, 6);
+            LocalDate checkOut = LocalDate.of(2026, 4, 8); // 2 晚
+
+            Room room = buildMockRoom();
+            PricingRule manualRule = PricingRule.builder()
+                    .id(UUID.randomUUID()).tenantId(TENANT_ID).roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.MANUAL_OVERRIDE)
+                    .ruleName("Manual Override 1500").priority(10)
+                    .config(Map.of("price", 1500.0)) // 高於 basePrice 1000 → 漲價
+                    .validFrom(checkIn.minusDays(30)).validTo(checkIn.plusDays(30)).isActive(true).build();
+
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(room));
+            when(pricingRuleRepository.findActiveRulesForDateRange(any(), any(), any()))
+                    .thenReturn(List.of(manualRule));
+
+            PricingDto.CalculatePriceResponse response = pricingService.calculatePrice(
+                    PricingDto.CalculatePriceRequest.builder()
+                            .roomListingId(ROOM_LISTING_ID)
+                            .checkInDate(checkIn).checkOutDate(checkOut).build());
+
+            // 每日 1500 × 2 晚 = 3000（漲價），baseTotal = 2000
+            assertThat(response.getBaseTotal()).isEqualByComparingTo(BigDecimal.valueOf(2000));
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo(BigDecimal.valueOf(3000));
+            // discount clamp 非負：漲價時為 0（供 Booking 層改以有號差額表達）
+            assertThat(response.getDiscount()).isEqualByComparingTo(BigDecimal.ZERO);
+        }
+
+        @Test
+        @DisplayName("UT-M12-014: 無 Room 記錄但 listing 存在 → 優雅降級以 basePrice 計價（不 throw）")
+        void calculatePrice_noRoomButListingExists_fallsBackToBasePrice() {
+            LocalDate checkIn = LocalDate.of(2026, 4, 6);
+            LocalDate checkOut = LocalDate.of(2026, 4, 8); // 2 晚
+
+            Listing listing = Listing.builder().basePrice(BASE_PRICE).currency("TWD").tenantId(TENANT_ID).build();
+            listing.setId(ROOM_LISTING_ID);
+
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.empty());
+            when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listing));
+            when(pricingRuleRepository.findActiveRulesForDateRange(any(), any(), any()))
+                    .thenReturn(Collections.emptyList());
+
+            PricingDto.CalculatePriceResponse response = pricingService.calculatePrice(
+                    PricingDto.CalculatePriceRequest.builder()
+                            .roomListingId(ROOM_LISTING_ID)
+                            .checkInDate(checkIn).checkOutDate(checkOut).build());
+
+            assertThat(response).isNotNull();
+            assertThat(response.getBaseTotal()).isEqualByComparingTo(BigDecimal.valueOf(2000));
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo(BigDecimal.valueOf(2000));
+        }
+    }
+
     // ========== Helper Methods ==========
 
     private Room buildMockRoom() {

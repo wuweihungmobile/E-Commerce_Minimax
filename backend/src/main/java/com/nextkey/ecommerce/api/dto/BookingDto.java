@@ -138,9 +138,12 @@ public class BookingDto {
         private String status; // AVAILABLE, BOOKED, BLOCKED, MAINTENANCE
         private BigDecimal price;
         private UUID bookingId;
-        // 動態定價每日折扣（AI-2405b）：可訂日套折扣時填入，price 為折扣後、originalPrice 為折扣前；無折扣為 null。
+        // 動態定價每日調整（AI-2405b / AI-2406b）：可訂日有規則生效時填入——price 為調整後、originalPrice 為調整前。
+        // 調整可為折扣（price < originalPrice）或加價（price > originalPrice）；priceAdjustmentType 明示方向
+        // （DISCOUNT / MARKUP / NONE）。無規則生效時三者為 null（price 即基準價，向後相容）。
         private BigDecimal originalPrice;
         private String appliedRuleName;
+        private String priceAdjustmentType;
     }
 
     // ========== Availability Request ==========
@@ -178,12 +181,15 @@ public class BookingDto {
         private String unavailableReason;
 
         /**
-         * 動態定價折扣（AI-2402）：套用早鳥/長住/末班車折扣時填入。
-         * originalTotalPrice = 折扣前總價、discountAmount = 折扣金額、appliedRuleName = 套用的規則名。
-         * 無折扣時三者為 null，totalPrice 即為原價（向後相容）。
+         * 動態定價調整（AI-2402 / AI-2406b）：有規則生效時填入。
+         * originalTotalPrice = 調整前總價、totalPrice = 調整後總價（含漲價）、appliedRuleName = 套用的規則名。
+         * discountAmount = 有號調整差額 = originalTotalPrice − totalPrice（正=折扣、負=加價）；
+         * priceAdjustmentType 明示方向（DISCOUNT / MARKUP / NONE）。
+         * 無規則生效時四者為 null，totalPrice 即為原價（向後相容）。
          */
         private BigDecimal originalTotalPrice;
         private BigDecimal discountAmount;
         private String appliedRuleName;
+        private String priceAdjustmentType;
     }
 }

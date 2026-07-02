@@ -156,14 +156,28 @@ public class PricingService {
     }
 
     /**
+     * 取得計價用的 listing 並優雅降級（AI-2406b）：room 記錄缺失時 fallback 以 listing 取基準價
+     * （有 listing 即可計價，不因無 room 記錄即 404）；listing 或 basePrice 缺失才視為無法計價，
+     * 回明確 4xx（E_4000）而非 NPE→500。呼叫端（BookingService.tryDynamicPricing / dailyDiscountMap）
+     * 已 catch BusinessException 降級。
+     */
+    private Listing resolveListingForPricing(final UUID roomListingId) {
+        Room room = roomRepository.findByListingId(roomListingId).orElse(null);
+        Listing listing = room != null ? room.getListing()
+                : listingRepository.findById(roomListingId).orElse(null);
+        if (listing == null || listing.getBasePrice() == null) {
+            throw new BusinessException(ErrorCode.E_4000, "Room base price not available");
+        }
+        return listing;
+    }
+
+    /**
      * 計算價格（帶動態調整）
      */
     @Transactional(readOnly = true)
     public PricingDto.CalculatePriceResponse calculatePrice(PricingDto.CalculatePriceRequest request) {
-        Room room = roomRepository.findByListingId(request.getRoomListingId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Room not found"));
-
-        Listing listing = room.getListing();
+        // 優雅降級（AI-2406b）：見 resolveListingForPricing（room 記錄缺失時 fallback 以 listing 取基準價）。
+        Listing listing = resolveListingForPricing(request.getRoomListingId());
         BigDecimal basePrice = listing.getBasePrice();
         String currency = listing.getCurrency();
 

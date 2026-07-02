@@ -110,21 +110,24 @@ public class BookingService {
 
         long nightsCount = ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
 
-        // 總價：基礎（calendar/basePrice）+ 動態定價折扣（AI-2402）。
-        // 有適用折扣時回原價/折扣額/規則名，且 totalPrice 為折扣後總價；否則維持既有計價（向後相容）。
+        // 總價：基礎（basePrice × 晚數）+ 動態定價調整（AI-2402 / AI-2406b）。
+        // 有規則生效時回調整前價/有號差額/方向/規則名，且 totalPrice 為調整後總價（含漲價）；否則維持既有計價（向後相容）。
         BigDecimal baseTotal = calendarBaseTotal(
                 request.getRoomListingId(), request.getCheckInDate(), request.getCheckOutDate());
         BigDecimal totalPrice = baseTotal;
         BigDecimal originalTotalPrice = null;
         BigDecimal discountAmount = null;
         String appliedRuleName = null;
+        String priceAdjustmentType = null;
         PricingDto.CalculatePriceResponse dynamic = tryDynamicPricing(
                 request.getRoomListingId(), request.getCheckInDate(), request.getCheckOutDate());
         if (dynamic != null) {
             originalTotalPrice = dynamic.getBaseTotal();
             totalPrice = dynamic.getAdjustedTotal();
-            discountAmount = dynamic.getDiscount();
+            // 有號差額（正=折扣、負=加價）；不取 dynamic.getDiscount()（已被 clamp 非負，漲價會失真）
+            discountAmount = dynamic.getBaseTotal().subtract(dynamic.getAdjustedTotal());
             appliedRuleName = firstAppliedRuleName(dynamic);
+            priceAdjustmentType = adjustmentDirection(dynamic.getBaseTotal(), dynamic.getAdjustedTotal());
         }
 
         return BookingDto.AvailabilityResponse.builder()
@@ -140,6 +143,7 @@ public class BookingService {
                 .originalTotalPrice(originalTotalPrice)
                 .discountAmount(discountAmount)
                 .appliedRuleName(appliedRuleName)
+                .priceAdjustmentType(priceAdjustmentType)
                 .build();
     }
 
@@ -186,9 +190,9 @@ public class BookingService {
 
         List<RoomCalendar> calendars = roomCalendarService.getCalendarRange(roomListingId, startDate, endDate);
 
-        // 每日動態定價折扣（AI-2405b）：toggle 開啟時以 PricingService 逐日 breakdown 取折扣後價。
-        // 只對可訂日套、只套折扣型（與 availability 一致），BOOKED/BLOCKED 日不受影響。
-        Map<LocalDate, PricingDto.PriceBreakdown> discountByDate = dailyDiscountMap(roomListingId, startDate, endDate);
+        // 每日動態定價調整（AI-2405b / AI-2406b）：toggle 開啟時以 PricingService 逐日 breakdown 取調整後價。
+        // 只對可訂日套、含折扣「或漲價」（與 availability 一致），BOOKED/BLOCKED 日不受影響。
+        Map<LocalDate, PricingDto.PriceBreakdown> adjustmentByDate = dailyDiscountMap(roomListingId, startDate, endDate);
 
         return calendars.stream()
                 .map(c -> {
@@ -196,13 +200,15 @@ public class BookingService {
                     BigDecimal price = listing.getBasePrice();
                     BigDecimal originalPrice = null;
                     String appliedRuleName = null;
+                    String priceAdjustmentType = null;
                     if (c.getStatus() == RoomCalendar.RoomCalendarStatus.AVAILABLE) {
-                        PricingDto.PriceBreakdown bd = discountByDate.get(c.getCalendarDate());
+                        PricingDto.PriceBreakdown bd = adjustmentByDate.get(c.getCalendarDate());
                         if (bd != null && bd.getAdjustedPrice() != null && bd.getBasePrice() != null
-                                && bd.getAdjustedPrice().compareTo(bd.getBasePrice()) < 0) {
+                                && bd.getAdjustedPrice().compareTo(bd.getBasePrice()) != 0) {
                             originalPrice = bd.getBasePrice();
                             price = bd.getAdjustedPrice();
                             appliedRuleName = bd.getAppliedRuleName();
+                            priceAdjustmentType = adjustmentDirection(bd.getBasePrice(), bd.getAdjustedPrice());
                         }
                     }
                     return BookingDto.CalendarResponse.builder()
@@ -211,6 +217,7 @@ public class BookingService {
                             .price(price)
                             .originalPrice(originalPrice)
                             .appliedRuleName(appliedRuleName)
+                            .priceAdjustmentType(priceAdjustmentType)
                             .bookingId(c.getBookingId())
                             .build();
                 })
@@ -550,12 +557,12 @@ public class BookingService {
     }
 
     private BigDecimal calculateTotalAmount(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
-        // 動態定價折扣優先（AI-2402）：有適用折扣時以折扣後總價為準，與 availability 顯示一致。
+        // 動態定價調整優先（AI-2402 / AI-2406b）：有規則生效時以調整後總價為準（含漲價），與 availability 顯示一致。
         PricingDto.CalculatePriceResponse dynamic = tryDynamicPricing(roomListingId, checkIn, checkOut);
         if (dynamic != null) {
             return dynamic.getAdjustedTotal();
         }
-        // 無折扣（或 toggle 關閉）→ 既有 calendar/basePrice 計價（向後相容）
+        // 無規則生效（或 toggle 關閉）→ 既有 basePrice × 晚數計價（向後相容）
         return calendarBaseTotal(roomListingId, checkIn, checkOut);
     }
 
@@ -576,12 +583,14 @@ public class BookingService {
     }
 
     /**
-     * 動態定價試算（AI-2402）：DYNAMIC_PRICING_ENABLED 開啟且該區間有「折扣」（adjustedTotal &lt; baseTotal）時，
-     * 回傳 PricingService 折扣後試算；否則回 null（呼叫端 fallback 既有 calendar/basePrice 計價，向後相容）。
+     * 動態定價試算（AI-2402 / AI-2406b）：DYNAMIC_PRICING_ENABLED 開啟且該區間有規則生效
+     * （adjustedTotal ≠ baseTotal，含折扣「或漲價」）時，回傳 PricingService 調整後試算；
+     * 否則回 null（呼叫端 fallback 既有 calendar/basePrice 計價，向後相容）。
      *
-     * 界線：僅套用「折扣」型規則（早鳥/長住/末班車），漲價型（weekend/seasonal）維持既有計價路徑不變；
+     * AI-2406b（選項 B）：定價機制真正統一——漲價型規則（週末/旺季加成、MANUAL_OVERRIDE 調高）
+     * 自此一併計入訂房總價與可用性顯示，使顯示與收費完全一致（原僅套折扣）。
      * 計算失敗（如無 Room/日期無效）降級為不套用，避免阻斷可用性查詢與訂房。
-     * 註：動態定價以 listing.basePrice 為基準，故當折扣生效時，per-day room_calendar 手動價不參與（改以規則基準）。
+     * 註：動態定價以 listing.basePrice 為基準。
      */
     private PricingDto.CalculatePriceResponse tryDynamicPricing(final UUID roomListingId,
             final LocalDate checkIn, final LocalDate checkOut) {
@@ -595,10 +604,10 @@ public class BookingService {
                             .checkInDate(checkIn)
                             .checkOutDate(checkOut)
                             .build());
-            boolean hasDiscount = resp.getAdjustedTotal() != null
+            boolean hasAdjustment = resp.getAdjustedTotal() != null
                     && resp.getBaseTotal() != null
-                    && resp.getAdjustedTotal().compareTo(resp.getBaseTotal()) < 0;
-            return hasDiscount ? resp : null;
+                    && resp.getAdjustedTotal().compareTo(resp.getBaseTotal()) != 0;
+            return hasAdjustment ? resp : null;
         } catch (BusinessException e) {
             log.warn("Dynamic pricing calc failed for room={}, fallback to calendar pricing: {}",
                     roomListingId, e.getMessage());
@@ -606,7 +615,22 @@ public class BookingService {
         }
     }
 
-    /** 取套用的規則名（首個有折扣標記的 breakdown）。 */
+    /** 依調整前後總價判斷調整方向（DISCOUNT / MARKUP / NONE），供前端雙向顯示（AI-2406b）。 */
+    private static String adjustmentDirection(final BigDecimal original, final BigDecimal adjusted) {
+        if (original == null || adjusted == null) {
+            return "NONE";
+        }
+        int cmp = adjusted.compareTo(original);
+        if (cmp < 0) {
+            return "DISCOUNT";
+        }
+        if (cmp > 0) {
+            return "MARKUP";
+        }
+        return "NONE";
+    }
+
+    /** 取套用的規則名（首個有規則標記的 breakdown）。 */
     private static String firstAppliedRuleName(final PricingDto.CalculatePriceResponse resp) {
         if (resp.getBreakdown() == null) {
             return null;

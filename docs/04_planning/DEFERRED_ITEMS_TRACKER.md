@@ -19,7 +19,8 @@
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
 |----|------|-------------|---------|---------|---------|------|
 | DEF-021 | CJK 字體品牌一致性（技術債） | Sprint 35（Turbopack 限制發現） | S35 因 Turbopack 無法 self-host next/font CJK（Noto Sans TC 大量 unicode-range 子集無法解析），改用系統 CJK 字體堆疊；系統堆疊跨平台字重/字距不一，品牌字體一致性下降。後續評估 `next/font/local` + 預先子集化 Noto Sans TC woff2 以恢復品牌字體一致性 | 需 woff2 子集化工具鏈 + 驗證 Turbopack 相容性 | 2 | ✅ 已決策（S41 US-006）：維持系統字體堆疊為 **accepted fallback**；選項 B（`@font-face` 自 host 子集 woff2，技術可行、無 CSP 阻擋）記錄為選配未來任務，待品牌一致性需求由使用者拍板。詳見 [CJK_FONT_ASSESSMENT.md](../06_quality/CJK_FONT_ASSESSMENT.md) |
-| DEF-022 | E2E 硬等待（waitForTimeout 固定 sleep） | Sprint 35（at-homepage E2E 建立時沿用既有模式） | `at-homepage.spec.ts` 註冊/登入 helper 用 `waitForTimeout` 固定 sleep（沿用 at-buyer-pages 既有模式），CI 慢時可能 flaky；後續改 `waitForURL` / `waitForResponse` 明確等待條件 | 無（純測試穩定性重構）| 1 | ⚠️ 待處理（flaky 風險，低急迫）|
+| AI-2202d | 整月日曆「未開放 vs 可訂」語意 | Sprint 42（AI-2202c Part A 交付時界定） | S42 交付每日價格顯示（Part A，純前端）。「未開放 vs 可訂」顯式標記需**後端新語意**——現無「開放窗」概念，`room_calendar` 的 AVAILABLE row 為偶發，前端一律把「無記錄」視為可訂，無法區分「房源尚未開放該日曆」與「可訂」 | 需後端 room_calendar 開放窗語意設計 + 端點回傳擴充 | 3 | ⚠️ 待評估（P3，需後端語意，非純前端）|
+| AI-2303 | Inter 字體建置期 Google Fonts 依賴 | Sprint 42（validate-e2e 暫時性 build 失敗發現） | Turbopack build 仍以 next/font/google 抓 `Inter`（拉丁），網路抖動即 build 失敗（S42 validate-e2e 前 3 次有 2 次因此失敗，非程式）。同源 DEF-015（該次移除的是死碼 Geist；Inter 仍在用）。後續評估 `next/font/local` 自 host Inter 子集徹底離線化 | 需 Inter woff2 子集 + 驗證 Turbopack 相容 | 1 | ⚠️ 待處理（P3，低急迫，暫時性失敗可重跑）|
 
 ---
 
@@ -45,10 +46,37 @@
 | DEF-020 | 版型 Shell 架構債（route-group layout + client 邊界下推 + 全站狀態走 URL） | Sprint 35 | Sprint 36 | US-002：Architect 審查建議三項全數償還——(a) 建 App Router route-group `app/(storefront)/layout.tsx` 承載 TOP（Header）/Bottom（Footer），首頁移入 group（換頁不重建版型）；(b) `"use client"` 邊界下推——StorefrontShell 改 grid-only server component、Footer/Tools 維持 server，僅 Header（含 SearchBar/ThemeSwitcher）client；(c) 搜尋/分類/排序/分頁改走 URL query（server page 讀 searchParams → props 傳 client `HomeContent`，官方建議免 useSearchParams+Suspense；Header 搜尋 router.push、購物車數量自取），移除 page-scoped callback 與 nonce 補丁（連帶償還 F-06）。以 key-remount 於篩選變更顯示 skeleton（避免 effect 內同步 setState，符 React 19 嚴格 hooks）。build/type-check/lint 0 error；**at-homepage E2E 4 tests 全棧全綠**（含搜尋改走 URL 的 E2E-HOME-03），既有 E2E 不退步（唯 m15 既有 flaky） |
 | DEF-019 | 訂單付款/物流讀寫無擁有權檢查（IDOR 姊妹，安全） | Sprint 32 | Sprint 36 | **歷時 S32→33→36**。S33 修訂單付款側（checkOrderOwnership，買家限本人）。**S36（AI-1902）補完物流/賣家側**：LogisticsService.createLogistics 加 tenant-based 擁有權檢查（`order.tenantId==當前租戶`、admin 放行、越權 403/E_1007，賣家側租戶語意）；PaymentService.processOrderPayment（`/v2/payments` 對外入口）加 user-based 擁有權檢查（比照 checkOrderOwnership）。**測試**：新增 LogisticsServiceOwnershipTest + PaymentServiceOwnershipTest（各 3 tests，越權→E_1007、本人/本租戶通過、admin 放行）；對齊 M07 整合測試（`@Transactional` 一級快取致影子 `userId` 為 null → builder 明確設 `.userId` + 訂單擁有者=呼叫者，**順帶修好 S33 遺留的 5 個 M07 失敗**）。乾淨 DB：M07 8 + M11 4 整合測試 0 fail、單元 353 tests 0 fail。**活躍安全 DEF 歸零**。備註：processBookingPayment（預訂付款側）非 DEF-019 範圍，如需擁有權檢查另立項評估 |
 | DEF-017 | ERP 手動庫存異動租戶隔離（安全） | Sprint 28 | Sprint 34 | **歷時 Sprint 28→34（三度誠實回退後落地）**。US-001（AI-1701）：StockMovementService.createManualMovement 加 null 安全租戶檢查（inject ListingRepository → `!tenantId.equals(listing.getTenantId())`，越權 403/E_1007，移除 getTenantListings no-op）。**三層根因**：Listing.tenantId insertable=false 影子欄位（需 tenant 關聯）+ Tenant.id @GeneratedValue 使 @WithErpSecurity 硬編 FIXED_TENANT_ID 無 tenants 列 + listings FK。**修法**：M16 以 raw SQL 種 FIXED_TENANT_ID 租戶列（比照 TestDatabaseInitializer）+ JDBC UPDATE listing tenant_id + 修 @AfterAll cleanup 先刪 product_skus + IT-M16-307 跨租戶測試。乾淨 DB 43 tests 0 fail |
+| DEF-022 | E2E 硬等待（waitForTimeout 固定 sleep） | Sprint 35 | Sprint 42 | **歷時 S35→39→42**。S39（AI-2101）已收斂登入 helper 部分；S42（US-003）完成餘下清除：5 檔（at-m11-cart-checkout、at-m15-e2e、at-m17-001/002）冗餘 `waitForTimeout` 刪除、可替換者改顯式等待（`waitForURL`/`waitForResponse`/`expect().toBeVisible()`/`toHaveClass()`）並順帶補斷言（Rule 9）；**保留** at-m10-chat STOMP SUBSCRIBE settle 例外（無 client 可觀察訊號）。**連帶根治**移除 sleep 後浮現的既有 flaky：auth helper 與 S37 共用 Header「註冊」連結碰撞（`.first()` 恆選 header 連結 + re-render 不穩定 → 改 `goto('/register')`，Playwright 快照佐證）+ 原生 alert teardown（at-m15 檔案級 dialog beforeEach + at-m17-002 dialog 處理器）。validate-e2e 46 passed/0 fail |
 
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 42 (2026-07-02)
+
+**主題**: 收尾技術債（7 SP，US-001~003 全數完成）
+
+**清償 / 完成**:
+- **AI-2302 → ✅ 完成（US-001）**：backend pre-commit 提速——2 個慢速 `@SpringBootTest` 核心測試（`ReviewServiceCacheIntegrationTest`、`SellerDashboardServiceCacheTest`）加 `@Tag("slow")`，`pre-commit`/`Makefile check-backend` 加 `-DexcludedGroups=slow`；CI（act）不加排除 → pre-push 仍完整跑（零覆蓋損失）。順帶移除 pre-commit 對 test DB 的依賴（quick test 排除後為純單元）。實測 test DB DOWN 下 455 tests 0 fail。
+- **DEF-022 → ✅ 完成（US-003）**：E2E 硬等待清除（歷時 S35→39→42）——5 檔冗餘 `waitForTimeout` 刪除 + 改顯式等待 + 補斷言，保留 STOMP 例外。**連帶根治** flaky（auth helper 註冊連結碰撞 → 改 goto；原生 alert teardown → dialog 處理器）。
+
+**部分完成 / 殘留**:
+- **AI-2202c（整月日曆語意細化）→ 🟡 部分（US-002）**：交付 **Part A** 每日價格顯示（純前端，basePrice fallback）。**Part B「未開放 vs 可訂」顯式標記需後端新語意**（room_calendar 無「開放窗」概念）→ 另立 **AI-2202d** 待評估。
+
+**驗證**:
+- 後端 pre-commit quick test 於 test DB DOWN 下 455 tests 0 fail、無 DB 連線錯誤；前端 tsc/eslint/build 0 error；`make validate-e2e` **46 passed / 6 skipped / 0 failed**、schema 對齊無漂移。**無 production code/schema 變動**（後端僅測試 @Tag）。
+- 誠實：validate-e2e 反覆 4 次才綠（2 次 Turbopack build 抓 Inter 暫時性網路失敗 + DEF-022 清 sleep 後浮現的既有 flaky），第 5 次全綠，全程未放寬守門（未用 `E2E_GATE_STRICT=0`）。
+
+**新增延後項目**:
+- **AI-2202d（P3）**：整月日曆「未開放 vs 可訂」語意（需後端開放窗語意 + 端點擴充）。
+- **AI-2303（P3）**：Inter 字體建置期 Google Fonts 依賴（評估 next/font/local 自 host，同源 DEF-015）。
+
+**下一 Sprint 候選**:
+- AI-1908 檢查點 push S41+S42、AI-1903 真人 live 走查（需環境）、AI-2202d 日曆語意、AI-2303 Inter 離線化，或回歸新功能開發。
+
+**活躍 DEF**：**0 個 DEF**（DEF-021 已決策結案、DEF-022 已完成）；活躍延後轉為 Action Item 型 AI-2202d / AI-2303（皆 P3 非急迫）。
+
+---
 
 ### Sprint 41 (2026-07-02)
 
@@ -412,7 +440,9 @@
 
 ---
 
-**文件版本**: v2.10
-**最後更新**: 2026-07-02（Sprint 40：ROOM 可用性 UX 完成——US-001 availability 端點 @RequestParam（後端 read-only）+ US-002 詳情頁即時可用性 + US-003 E2E。**完整 make validate-release 通過**（後端 act 330 tests 0 fail + E2E 45 passed/0 failed）。無 DB/schema 變動。活躍 DEF=1 非安全（DEF-021 CJK 字體）
+**文件版本**: v2.12
+**最後更新**: 2026-07-02（Sprint 42：收尾技術債——US-001 AI-2302 pre-commit 提速（@Tag slow + excludedGroups，移除 DB 依賴）+ US-002 AI-2202c Part A 日曆每日價格（純前端）+ US-003 DEF-022 E2E 硬等待清除（連帶根治 auth helper/alert flaky）。validate-e2e **46 passed/0 fail**、schema 對齊、後端 quick test 455 tests 0 fail（無 DB）。**無 production/schema 變動**。**活躍 DEF 歸零**（DEF-021 決策結案、DEF-022 完成）；新增 AI-2202d/AI-2303（P3）
+**歷史版本 v2.11**: Sprint 41：技術債徹底清償 + 整月日曆——US-001 AI-2301 test DB↔act port 制度化 + US-002 AI-2101b 登入 helper 完全統一 + US-003 AI-2202a 端點契約清理 + US-004 AI-2202b 整月日曆（read-only 後端）+ US-005 AI-1903 買家走查（自動證據+checklist，真人殘留）+ US-006 DEF-021 CJK 字體決策。validate-e2e 47 passed/0 fail。read-only 無 schema。活躍 DEF=1（DEF-022）
+**歷史版本 v2.10**: 2026-07-02（Sprint 40：ROOM 可用性 UX 完成——US-001 availability 端點 @RequestParam（後端 read-only）+ US-002 詳情頁即時可用性 + US-003 E2E。**完整 make validate-release 通過**（後端 act 330 tests 0 fail + E2E 45 passed/0 failed）。無 DB/schema 變動。活躍 DEF=1 非安全（DEF-021 CJK 字體）
 **歷史版本 v2.9**: Sprint 39：ROOM 訂房閉環補強——US-001+002 booking service 抽取 + 衝突優雅處理、US-003 ROOM 閉環 E2E（AI-2104）、US-004 E2E 共用 helper 抽取（AI-2101，收斂 4 檔 + 收 DEF-022）。全棧 44 passed/0 failed。無後端/DB 變動。誠實：availability 端點 GET+body 不可用→AI-2201。活躍 DEF=2 非安全（DEF-021 CJK 字體 / DEF-022 剩餘隨 AI-2101b）
-**下次審查**: **檢查點 push S32~S40（AI-1906，已通過完整 make validate-release，技術就緒，強烈建議清償）**；S41 買家 live 走查（AI-1903）+ 整月日曆/端點契約（AI-2202）+ test DB/act port 制度化（AI-2301）
+**下次審查**: **檢查點徵詢後 push S41+S42（AI-1908，累積 15 commit，本地各層驗證通過含 validate-e2e 46/0 fail，完整 make validate-release + 徵詢後 push，嚴禁 --no-verify）**；Sprint 43 候選：買家 live 走查（AI-1903，需環境）+ 日曆「未開放 vs 可訂」語意（AI-2202d）+ Inter 字體離線化（AI-2303），或回歸新功能開發

@@ -11,6 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 42 | v2027.06.05-01 | - | 2026-07-02 | 收尾技術債：**backend pre-commit 提速**(AI-2302，2 慢測 @Tag(slow) + `-DexcludedGroups=slow`，pre-push act 仍完整跑=零覆蓋損失，順帶移除 pre-commit 對 test DB 的依賴) + **整月日曆每日價格顯示**(AI-2202c Part A，純前端，basePrice fallback) + **E2E 硬等待清除**(DEF-022，5 檔 waitForTimeout→顯式等待+補斷言，保留 STOMP 例外)；連帶根治既有 flaky（auth helper 與 S37 共用 Header「註冊」連結碰撞→改 goto；原生 alert teardown→dialog 處理器）。本地驗證：validate-e2e **46 passed/0 fail**、schema 對齊、後端 quick test 455 tests 0 fail（無 DB）。**無 production code/schema 變動**（後端僅測試 @Tag）| ⏳ 待 push（本 Sprint 5 commit，承 S41 債累積 S41+S42，完整守門+徵詢後 push）|
 | Sprint 41 | v2027.05.22-01 | - | 2026-07-02 | S41 技術債徹底清償 + 整月日曆：**test DB↔act port 制度化**(AI-2301，validate-release 自動 test-db-down) + **E2E 登入 helper 完全統一**(AI-2101b，auth.ts + 重構 m10/m17-001~004) + **api.ts 端點契約清理**(AI-2202a，pricing base path + 移除死碼) + **整月日曆**(AI-2202b，read-only 後端 GET /v2/bookings/calendar + MonthCalendar 前端 + E2E-ROOM-05) + **買家閉環走查**(AI-1903，自動 validate-e2e 證據 + 手動 checklist，真人 live 走查殘留) + **CJK 字體評估**(DEF-021，決策維持系統堆疊)。本地各層驗證通過：validate-e2e **47 passed/0 fail**、schema 對齊、後端 Booking 18 tests 0 fail。read-only 無 schema 變動 | ⏳ 待 push（本 Sprint 8 commit，完整守門+徵詢後 push）|
 | Sprint 40 | v2027.05.08-01 | - | 2026-07-02 | ROOM 可用性 UX 完成（含小幅後端）：**availability 端點修復**(AI-2201，@RequestBody→@RequestParam，read-only 無 DB；原 GET+body 瀏覽器不可呼叫) + **詳情頁 ROOM 即時可用性檢查**(選日期→可訂+總價 / 不可訂+原因，不可訂禁用加購) + availability E2E。**完整 make validate-release 通過**（後端 act 330 tests 0 fail + E2E 45 passed/0 failed）。無 DB/schema 變動 | ✅ 已 push（累積 S32~S40，已過完整守門；檢查點徵詢後 push）|
 | Sprint 39 | v2027.04.24-01 | - | 2026-07-02 | ROOM 訂房閉環補完（補強既有閉環，非從零）：**booking service 抽取 + 訂房衝突優雅處理**(US-001+002，createBooking 抽取、日期衝突 409/E-4001 等給可讀提示、詳情頁 ROOM 日期驗證) + **ROOM 訂房閉環 E2E**(US-003 AI-2104，mock：詳情計價加購→checkout 建 booking→409 衝突) + **E2E 共用登入 helper 抽取**(US-004 AI-2101，waitForURL 收 DEF-022，收斂 4 檔 + 通知 flaky 修)。全棧 44 passed/0 failed。誠實：availability 端點 GET+body 不可用→免後端 reframe；無後端/DB 變動 | ✅ 已 push（累積 S32~S39，完整守門+徵詢後 push）|
@@ -53,11 +54,11 @@
 
 | 項目 | 數值 |
 |------|------|
-| 建立 Release Tag 次數 | 32 (Sprint 10-41，連續) |
+| 建立 Release Tag 次數 | 33 (Sprint 10-42，連續) |
 | 已 push（已 Release） | 31 (Sprint 10-40) |
-| 待 push（Tag 已建、尚未 push） | 1 (Sprint 41，本地各層驗證通過含 validate-e2e；檢查點徵詢後完整 validate-release 後 push) |
+| 待 push（Tag 已建、尚未 push） | 2 (Sprint 41+42，本地各層驗證通過含 validate-e2e；累積後檢查點徵詢+完整 validate-release 後 push) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release Tag | v2027.05.22-01 (Sprint 41，⏳ 待 push) |
+| 最近一次 Release Tag | v2027.06.05-01 (Sprint 42，⏳ 待 push) |
 | 最近一次已 push Release | v2027.05.08-01 (Sprint 40，隨 S32~S40 累積批次 2e33c6d) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release Tag 開始 | Sprint 10 |

@@ -50,6 +50,26 @@
 
 ## Sprint 歷史紀錄
 
+### Sprint 39 (2026-07-02)
+
+**完成**:
+- **AI-2103b（ROOM 訂房補強）→ ✅ 補強完成（US-001+002）**：ROOM 訂房閉環原已存在（checkout 內聯建 booking）;本次補 booking service `createBooking` 抽取 + 日期衝突（409/E-4001）等錯誤優雅可讀提示 + 詳情頁 ROOM 加購前日期驗證。
+- **AI-2104（ROOM 閉環 E2E）→ ✅ 完成（US-003）**：mock 覆蓋 詳情計價加購 → checkout 建 booking 成功 → 409 衝突優雅提示。
+- **AI-2101（E2E 共用 helper）→ ✅ 完成（US-004）**：新增 `e2e/helpers/auth.ts`（waitForURL 收斂 DEF-022）,收斂 4 檔 + 通知 flaky timeout 修。全棧 **44 passed / 6 skipped / 0 failed**。
+
+**誠實揭露**:
+- `GET /v2/bookings/availability` 為 GET+@RequestBody（瀏覽器不可呼叫）→ 詳情頁即時可用性檢查改另立 **AI-2201**;US-001 縮為 checkout 409 優雅處理。
+- US-004 實際僅 4 檔可收斂（at-m10-chat 回傳 userId 保留專屬、at-m17-* beforeEach 內聯）→ 剩餘另立 **AI-2101b**。
+- ROOM 購買路徑（booking vs order 平行）未統一 → **AI-2203**。
+
+**續延後**:
+- DEF-021（CJK 字體）：續延後（P3）。DEF-022（E2E 硬等待）：US-004 已收斂登入 helper 部分,其餘隨 AI-2101b。
+
+**新增 Action Items（S40）**:
+- AI-1903 買家 live 走查、AI-2201 availability 端點修復 + 詳情頁即時可用性、AI-2202 端點契約清理、AI-2101b 登入 helper 完全統一、AI-2203 ROOM 路徑決策文檔化。
+
+---
+
 ### Sprint 38 (2026-07-02)
 
 **完成**:
@@ -344,6 +364,6 @@
 
 ---
 
-**文件版本**: v2.8
-**最後更新**: 2026-07-02（Sprint 38：US-001 買家商品詳情頁（AI-2103，/listings/[id]，PRODUCT 加購 + ROOM 計價加購 + 三態）+ US-002 有資料 E2E（AI-1905，mock-based 免 seed）。全棧 41 passed/0 failed。無後端/DB 變動。活躍 DEF=2 非安全技術債（DEF-021 CJK 字體 / DEF-022 E2E 硬等待→併入 AI-2101）
-**下次審查**: 檢查點 push S32~S38（AI-1906，m15 阻礙已清）；S39 買家 live 走查（AI-1903）+ ROOM 完整訂房（AI-2103b）+ E2E 共用 helper 抽取（AI-2101，含 DEF-022）
+**文件版本**: v2.9
+**最後更新**: 2026-07-02（Sprint 39：ROOM 訂房閉環補強——US-001+002 booking service 抽取 + 衝突優雅處理、US-003 ROOM 閉環 E2E（AI-2104）、US-004 E2E 共用 helper 抽取（AI-2101，收斂 4 檔 + 收 DEF-022）。全棧 44 passed/0 failed。無後端/DB 變動。誠實：availability 端點 GET+body 不可用→AI-2201。活躍 DEF=2 非安全（DEF-021 CJK 字體 / DEF-022 剩餘隨 AI-2101b）
+**下次審查**: 檢查點 push S32~S39（AI-1906，技術阻礙已清）；S40 買家 live 走查（AI-1903）+ availability 端點修復（AI-2201）+ 端點契約清理（AI-2202）

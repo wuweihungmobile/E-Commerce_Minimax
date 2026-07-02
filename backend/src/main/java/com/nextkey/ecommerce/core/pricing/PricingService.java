@@ -549,6 +549,7 @@ public class PricingService {
                 .effectivePrice(effectivePrice)
                 .appliedRuleType(bestRule.getRuleType().name())
                 .appliedRuleId(bestRule.getId())
+                .appliedRuleName(bestRule.getRuleName())
                 .build();
     }
 

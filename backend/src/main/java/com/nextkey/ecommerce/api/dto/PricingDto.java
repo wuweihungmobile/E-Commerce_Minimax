@@ -229,5 +229,7 @@ public class PricingDto {
         private BigDecimal effectivePrice;
         private String appliedRuleType;
         private UUID appliedRuleId;
+        // 套用的規則名（AI-2403，供購物車/訂單折扣顯示，與 ROOM appliedRuleName 對齊）
+        private String appliedRuleName;
     }
 }

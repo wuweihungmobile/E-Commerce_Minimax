@@ -62,6 +62,12 @@ class RedisCartServiceTest {
     @Mock
     private PromoCodeRepository promoCodeRepository;
 
+    @Mock
+    private com.nextkey.ecommerce.core.pricing.PricingService pricingService;
+
+    @Mock
+    private com.nextkey.ecommerce.core.feature.FeatureToggleService featureToggleService;
+
     private RedisCartService redisCartService;
 
     // 測試資料
@@ -72,7 +78,7 @@ class RedisCartServiceTest {
 
     @BeforeEach
     void setUp() {
-        redisCartService = new RedisCartService(redisTemplate, listingRepository, productSkuRepository, promoService, promoCodeRepository);
+        redisCartService = new RedisCartService(redisTemplate, listingRepository, productSkuRepository, promoService, promoCodeRepository, pricingService, featureToggleService);
         lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
     }
 

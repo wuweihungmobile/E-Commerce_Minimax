@@ -16,6 +16,9 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import com.nextkey.ecommerce.api.dto.CartDto;
+import com.nextkey.ecommerce.api.dto.PricingDto;
+import com.nextkey.ecommerce.core.feature.FeatureToggleService;
+import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.core.promo.PromoService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.product.ProductSku;
@@ -45,6 +48,8 @@ public class RedisCartService {
     private final ProductSkuRepository productSkuRepository;
     private final PromoService promoService;
     private final PromoCodeRepository promoCodeRepository;
+    private final PricingService pricingService;
+    private final FeatureToggleService featureToggleService;
 
     private static final String CART_KEY_PREFIX = AppConstants.REDIS_CART_PREFIX;
     private static final Duration CART_TTL = Duration.ofDays(30); // 購物車保留 30 天
@@ -250,7 +255,8 @@ public class RedisCartService {
             Listing listing = listingMap.get(item.getListingId());
             CartDto.CartItemResponse itemResponse = toCartItemResponse(itemKey, item, listing);
             items.add(itemResponse);
-            totalAmount = totalAmount.add(item.getSubtotal());
+            // 使用回應（可能已套動態定價折扣）之 subtotal，使總額與顯示一致（AI-2403）
+            totalAmount = totalAmount.add(itemResponse.getSubtotal());
         }
 
         return CartDto.CartResponse.builder()
@@ -392,6 +398,25 @@ public class RedisCartService {
         String title = listing != null ? listing.getTitle() : "Unknown";
         String coverImageUrl = listing != null ? listing.getCoverImageUrl() : null;
 
+        BigDecimal unitPrice = item.getUnitPrice();
+        BigDecimal subtotal = item.getSubtotal();
+        BigDecimal originalUnitPrice = null;
+        BigDecimal discountAmount = null;
+        String appliedRuleName = null;
+
+        // 動態定價（PRODUCT）：DYNAMIC_PRICING_ENABLED 開啟且規則折扣後單價低於現價時，
+        // 以折扣後單價重算 unitPrice/subtotal（讀取時算，Redis 只存 basePrice 避免 stale，AI-2403）。
+        // 界線：只套折扣（effectivePrice < 現價）；ROOM 不走此路徑（其折扣於 booking 計價，S43）。
+        PricingDto.EffectivePriceResponse discount = tryProductDiscount(item, listing);
+        if (discount != null) {
+            originalUnitPrice = unitPrice;
+            unitPrice = discount.getEffectivePrice();
+            subtotal = CartItemData.computeSubtotal(unitPrice, item.getQuantity());
+            discountAmount = originalUnitPrice.subtract(unitPrice)
+                    .multiply(BigDecimal.valueOf(item.getQuantity()));
+            appliedRuleName = discount.getAppliedRuleName();
+        }
+
         return CartDto.CartItemResponse.builder()
                 .cartItemKey(itemKey)
                 .listingId(item.getListingId())
@@ -401,13 +426,41 @@ public class RedisCartService {
                 .skuCode(item.getSkuCode())
                 .specName(item.getSpecName())
                 .quantity(item.getQuantity())
-                .unitPrice(item.getUnitPrice())
-                .subtotal(item.getSubtotal())
+                .unitPrice(unitPrice)
+                .subtotal(subtotal)
                 .listingType(item.getListingType())
                 .addedAt(item.getAddedAt())
                 .startDate(item.getStartDate())
                 .endDate(item.getEndDate())
+                .originalUnitPrice(originalUnitPrice)
+                .discountAmount(discountAmount)
+                .appliedRuleName(appliedRuleName)
                 .build();
+    }
+
+    /**
+     * PRODUCT 動態定價折扣試算（AI-2403）：toggle 開啟、為 PRODUCT、且規則折扣後單價低於現存單價時回結果，
+     * 否則回 null（呼叫端 fallback 原價，向後相容）。計算失敗降級為不套用，避免阻斷購物車。
+     * 以「今日」為規則有效期基準（PRODUCT 無入住日概念）。
+     */
+    private PricingDto.EffectivePriceResponse tryProductDiscount(CartItemData item, Listing listing) {
+        if (listing == null
+                || !"PRODUCT".equals(item.getListingType())
+                || !featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")) {
+            return null;
+        }
+        try {
+            PricingDto.EffectivePriceResponse eff = pricingService.getEffectivePrice(
+                    item.getListingId(), java.time.LocalDate.now(), 1);
+            boolean hasDiscount = eff.getEffectivePrice() != null
+                    && item.getUnitPrice() != null
+                    && eff.getEffectivePrice().compareTo(item.getUnitPrice()) < 0;
+            return hasDiscount ? eff : null;
+        } catch (RuntimeException e) {
+            log.warn("Product dynamic pricing failed for listing={}, fallback to base price: {}",
+                    item.getListingId(), e.getMessage());
+            return null;
+        }
     }
 
     /**

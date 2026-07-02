@@ -51,7 +51,7 @@
 | `make validate-schema` | schema 漂移守門（已串進 pre-push，改 entity/migration 時自動跑） |
 | `make validate-e2e` | 乾淨 DB → Flyway 重建 → 全棧(ddl-auto=validate) → Playwright，複製雲端 e2e job。**預設 strict**（spec 失敗即阻擋；基準 27 passed/5 skip/0 fail）；環境異常臨時放行 `E2E_GATE_STRICT=0` |
 | `make validate-release` | **完整測試程序＝ pre-push 守門內容**：**自動 `test-db-down`**（AI-2301）→ `validate-all` + `validate-schema` + `validate-e2e` = 雲端 `ci.yml` 等價。手動先跑一次會寫 FULL 記錄，30 分內對同 tree push 直接放行 |
-| `make test-db-up` / `test-db-down` | 啟動/停止「整合測試 + pre-commit 核心測試」所需 DB（postgres:5432 + redis:6379，對齊 integration-test profile）。改 backend `.java/.yml/.sql` 後 commit 前先 `make test-db-up`（pre-commit 的 `@ActiveProfiles("integration-test")` 核心測試需真實 postgres）。**完成後可不必手動 down——`validate-release` 已自動 down（AI-2301）**；平時清理仍可 `make test-db-down` |
+| `make test-db-up` / `test-db-down` | 啟動/停止「整合測試」所需 DB（postgres:5432 + redis:6379，對齊 integration-test profile）。**S42 AI-2302 起：backend commit 的 pre-commit quick test 已用 `-DexcludedGroups=slow` 排除需 DB 的 @SpringBootTest → 純單元測試，commit 不再需 test DB**。`test-db-up` 僅在本機手動跑整合測試（`mvn verify -Pintegration-test` 或 slow 標記測試）時需要；`validate-release` 已自動 `test-db-down`（AI-2301）|
 
 ### 變更四：test DB ↔ act port 衝突制度化（2026-07-02，AI-2301）
 
@@ -63,7 +63,7 @@
 
 | 情境 | 該做的事 | 為什麼 |
 |------|----------|--------|
-| 要 `git commit`（含 backend 變動） | 先 `make test-db-up` | pre-commit 核心 `@SpringBootTest`（integration-test profile）需真實 postgres:5432 / redis:6379 |
+| 要 `git commit`（含 backend 變動） | **無需 test DB**（S42 AI-2302）| pre-commit quick test 已 `-DexcludedGroups=slow` 排除需 DB 的 @SpringBootTest；純單元測試，無 DB 也綠 |
 | 要 `make validate-release` 或 `git push` | **什麼都不用做** | validate-release 已自動 `test-db-down` 釋放 port 給 act |
 
 **不動項**：`validate-schema` / `validate-e2e` 用非標準 port（**55432 / 56379**）本就不衝突；`.github/workflows/act-compat.yml` 的 5432/6379 是鏡像雲端 CI（GitHub runner 服務隔離），**保持不變**。
@@ -598,6 +598,7 @@ act -W .github/workflows/act-compat.yml -v
 | 2026-06-30 | 2.0 | 本地優先策略：三 workflow 改 workflow_dispatch only（停用雲端自動 CI）；新增 `make validate-e2e` / `validate-release`；`validate-schema` 串進 pre-push；修復 backend Dockerfile 死碼 `COPY .mvn .mvn` | Claude Code |
 | 2026-06-30 | 3.0 | pre-push v5：依使用者要求「批次 push 但上 GIT 必須完整測試程序」，pre-push = `make validate-release`（act + schema + e2e）；FULL 記錄（僅 validate-release 寫得出）+ tree-hash 30 分快取避免重跑；純文件略過；移除已失效的 `make validate-push`（host 快檢不再放行 push） | Claude Code |
 | 2026-07-02 | 3.1 | **AI-2301（S41 US-001）test DB↔act port 制度化**：`make validate-release` 在 `validate-all` 前自動 `test-db-down`（冪等），消除 `nk-test-redis`(6379) 與 act 服務容器的 port 衝突；直接執行與 pre-push 兩路徑一次涵蓋；新增「變更四」段落與開發者心智模型表 | Claude Code |
+| 2026-07-02 | 3.2 | **AI-2302（S42 US-001）backend pre-commit 提速 + 移除 DB 依賴**：2 個慢速 @SpringBootTest 核心測試（ReviewServiceCacheIntegrationTest / SellerDashboardServiceCacheTest）加 `@Tag("slow")`，`backend/hooks/pre-commit` 與 `make check-backend` 加 `-DexcludedGroups=slow`。quick test 變為純單元（455 tests 0 fail，**無 test DB 也通過**）；2 慢測仍由 pre-push act（`mvn test`/`mvn verify`）完整跑，零覆蓋損失。commit 心智模型更新為「無需 test DB」 | Claude Code |
 
 ---
 

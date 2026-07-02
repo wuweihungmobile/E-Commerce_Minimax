@@ -54,7 +54,8 @@ echo ""
 # 3. Maven 單元測試（核心層）
 echo "🧪 [3/3] Running Maven quick test (core layer only)..."
 # 🔴 排除 E2E 測試（需要真實 HTTP/DB，留給 CI Integration 階段）
-cd backend && mvn test -Dtest="com.nextkey.ecommerce.core.**,!com.nextkey.ecommerce.core.**.*E2E" -Dspring.profiles.active=test -q
+# 🔴 排除 @Tag("slow")（需真實 DB 的 @SpringBootTest；pre-push act 仍完整跑，零覆蓋損失）→ quick test 不再需 test DB（S42 AI-2302）
+cd backend && mvn test -Dtest="com.nextkey.ecommerce.core.**,!com.nextkey.ecommerce.core.**.*E2E" -DexcludedGroups=slow -Dspring.profiles.active=test -q
 TEST_EXIT=$?
 cd ..
 

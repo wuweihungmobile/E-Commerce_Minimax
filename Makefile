@@ -232,8 +232,8 @@ validate-release: ## 完整測試程序（= pre-push 守門 = 雲端 ci.yml）�
 check-backend: ## 本機快速檢查 backend（checkstyle + compile + test）
 	@echo "$(YELLOW)🔨 Backend 快速檢查...$(NC)"
 	cd backend && mvn checkstyle:check compile -DskipTests
-	cd backend && mvn test -Dtest="com.nextkey.ecommerce.core.**" -Dspring.profiles.active=test
-	@echo "$(GREEN)✅ Backend 檢查通過$(NC)"
+	cd backend && mvn test -Dtest="com.nextkey.ecommerce.core.**" -DexcludedGroups=slow -Dspring.profiles.active=test
+	@echo "$(GREEN)✅ Backend 檢查通過（-DexcludedGroups=slow：排除需 DB 的 @SpringBootTest，見 AI-2302）$(NC)"
 
 check-frontend: ## 本機快速檢查 frontend（lint + type-check + build）
 	@echo "$(YELLOW)🎨 Frontend 快速檢查...$(NC)"

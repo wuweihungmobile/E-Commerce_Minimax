@@ -10,6 +10,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -35,6 +36,7 @@ import com.nextkey.ecommerce.integration.IntegrationTestConfiguration;
  * - TC-R002: getRatingStats() 第二次呼叫（相同 listingId）→ 快取命中，Repository 不呼叫
  * - TC-R003: 快取清除後 getRatingStats() → Repository 再次被呼叫
  */
+@Tag("slow") // @SpringBootTest 需真實 DB → pre-commit quick test 以 -DexcludedGroups=slow 排除（pre-push act 仍完整跑）（S42 AI-2302）
 @SpringBootTest
 @ActiveProfiles("integration-test")
 @Import(IntegrationTestConfiguration.class)

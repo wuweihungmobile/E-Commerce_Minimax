@@ -82,6 +82,7 @@ export const API_ENDPOINTS = {
     detail: (id: string) => '/v2/bookings/' + id,
     create: '/v2/bookings',
     cancel: (id: string) => '/v2/bookings/' + id + '/cancel',
+    availability: '/v2/bookings/availability',
     calendar: (listingId: string) => '/v2/listings/' + listingId + '/calendar',
   },
 

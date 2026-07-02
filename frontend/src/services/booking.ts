@@ -64,6 +64,18 @@ export interface CreateBookingRequest {
   specialRequests?: string
 }
 
+// 對齊後端 BookingDto.AvailabilityResponse（GET /v2/bookings/availability）
+export interface AvailabilityResponse {
+  available: boolean
+  roomListingId: string
+  checkInDate: string
+  checkOutDate: string
+  nightsCount: number | null
+  totalPrice: number | null
+  currency: string | null
+  unavailableReason: string | null
+}
+
 // booking 建立錯誤碼 → 可讀訊息。
 // 注意：後端 ErrorCode 的 wire code 為「連字號」格式（Java 常數 E_4001 → JSON code "E-4001"）。
 const BOOKING_ERROR_MESSAGES: Record<string, string> = {
@@ -171,6 +183,19 @@ class BookingService {
       ? API_ENDPOINTS.bookings.cancel(id) + '?reason=' + encodeURIComponent(reason)
       : API_ENDPOINTS.bookings.cancel(id)
     await apiClient.post(url)
+  }
+
+  // ROOM 日期可用性查詢（GET /v2/bookings/availability，S40 端點改 @RequestParam 後可用）。
+  async checkAvailability(
+    roomListingId: string,
+    checkInDate: string,
+    checkOutDate: string
+  ): Promise<AvailabilityResponse> {
+    const params = new URLSearchParams({ roomListingId, checkInDate, checkOutDate })
+    const response = await apiClient.get<ApiResponse<AvailabilityResponse>>(
+      API_ENDPOINTS.bookings.availability + '?' + params.toString()
+    )
+    return response.data.data
   }
 
   // 建立預訂（POST /v2/bookings）；idempotencyKey 供後端去重（避免重複送出）。

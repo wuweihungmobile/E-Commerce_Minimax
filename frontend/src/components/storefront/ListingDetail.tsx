@@ -6,8 +6,9 @@ import { Droplets, Star } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import apiClient from "@/lib/axios"
 import { API_ENDPOINTS } from "@/lib/api"
-import listingService, { type Listing, type CalculatePriceResponse } from "@/services/listing"
+import listingService, { type Listing } from "@/services/listing"
 import { notifyCartChanged } from "@/services/cartEvents"
+import bookingService, { type AvailabilityResponse } from "@/services/booking"
 
 type LoadState = "loading" | "ok" | "auth" | "notfound" | "error"
 
@@ -35,9 +36,9 @@ export function ListingDetail({ id }: { id: string }) {
   // ROOM
   const [checkIn, setCheckIn] = useState("")
   const [checkOut, setCheckOut] = useState("")
-  const [price, setPrice] = useState<CalculatePriceResponse | null>(null)
-  const [pricing, setPricing] = useState(false)
-  const [priceError, setPriceError] = useState<string | null>(null)
+  const [availability, setAvailability] = useState<AvailabilityResponse | null>(null)
+  const [checking, setChecking] = useState(false)
+  const [availError, setAvailError] = useState<string | null>(null)
 
   // 加購
   const [adding, setAdding] = useState(false)
@@ -78,20 +79,21 @@ export function ListingDetail({ id }: { id: string }) {
     return null
   }
 
-  const handleQuote = () => {
+  const handleCheckAvailability = () => {
     const err = dateError()
     if (err) {
-      setPriceError(err)
-      setPrice(null)
+      setAvailError(err)
+      setAvailability(null)
       return
     }
-    setPricing(true)
-    setPriceError(null)
-    listingService
-      .getListingPrice(id, checkIn, checkOut)
-      .then((p) => setPrice(p))
-      .catch(() => setPriceError("計價失敗，請稍後再試"))
-      .finally(() => setPricing(false))
+    setChecking(true)
+    setAvailError(null)
+    setAvailability(null)
+    bookingService
+      .checkAvailability(id, checkIn, checkOut)
+      .then((a) => setAvailability(a))
+      .catch(() => setAvailError("查詢可用性失敗，請稍後再試"))
+      .finally(() => setChecking(false))
   }
 
   const handleAddToCart = () => {
@@ -101,6 +103,16 @@ export function ListingDetail({ id }: { id: string }) {
       const err = dateError()
       if (err) {
         setAddError(err)
+        return
+      }
+      // 需先查詢可用性且為可預訂；日期變動後需重查（避免加購已被訂走的日期）
+      if (
+        !availability ||
+        !availability.available ||
+        availability.checkInDate !== checkIn ||
+        availability.checkOutDate !== checkOut
+      ) {
+        setAddError("請先查詢可用性，確認可預訂後再加入購物車")
         return
       }
     }
@@ -190,6 +202,14 @@ export function ListingDetail({ id }: { id: string }) {
   }
 
   const isRoom = listing.listingType === "ROOM"
+  // ROOM 需先查詢可用性且為可預訂（且日期未變動）才可加購；PRODUCT 不受限
+  const roomAddBlocked =
+    isRoom &&
+    !(
+      availability?.available &&
+      availability.checkInDate === checkIn &&
+      availability.checkOutDate === checkOut
+    )
 
   return (
     <div data-testid="listing-detail" className="grid gap-8 lg:grid-cols-2">
@@ -264,25 +284,35 @@ export function ListingDetail({ id }: { id: string }) {
             </div>
             <button
               type="button"
-              onClick={handleQuote}
-              disabled={pricing}
+              onClick={handleCheckAvailability}
+              disabled={checking}
               className="self-start inline-flex items-center justify-center border border-rs-primary text-rs-primary rounded-md px-4 py-2 text-sm font-medium transition-colors hover:bg-rs-primary hover:text-white disabled:opacity-50"
             >
-              {pricing ? "計價中…" : "查詢價格"}
+              {checking ? "查詢中…" : "查詢可用性"}
             </button>
-            {priceError && <p className="text-sm text-rs-error">{priceError}</p>}
-            {price && (
-              <div data-testid="listing-price" className="text-sm text-rs-ink">
-                <span className="text-rs-ink-muted">{price.nights} 晚，合計</span>{" "}
-                <span className="text-xl font-bold text-rs-primary">
-                  {formatPrice(price.currency, price.adjustedTotal)}
-                </span>
-                {price.discount > 0 && (
-                  <span className="ml-2 text-xs text-rs-success">
-                    （已折 {formatPrice(price.currency, price.discount)}）
-                  </span>
+            {availError && <p className="text-sm text-rs-error">{availError}</p>}
+            {availability && availability.available && (
+              <div data-testid="listing-availability" className="text-sm text-rs-ink">
+                <span className="text-rs-success">可預訂</span>
+                {availability.nightsCount != null && availability.totalPrice != null && (
+                  <>
+                    {" · "}
+                    <span className="text-rs-ink-muted">{availability.nightsCount} 晚合計</span>{" "}
+                    <span className="text-xl font-bold text-rs-primary">
+                      {formatPrice(
+                        availability.currency ?? listing.currency,
+                        availability.totalPrice
+                      )}
+                    </span>
+                  </>
                 )}
               </div>
+            )}
+            {availability && !availability.available && (
+              <p data-testid="listing-unavailable" className="text-sm text-rs-error">
+                此日期不可預訂
+                {availability.unavailableReason ? `（${availability.unavailableReason}）` : ""}
+              </p>
             )}
           </div>
         )}
@@ -311,7 +341,7 @@ export function ListingDetail({ id }: { id: string }) {
           <button
             type="button"
             onClick={handleAddToCart}
-            disabled={adding}
+            disabled={adding || roomAddBlocked}
             data-testid="listing-add-cart"
             className="inline-flex items-center justify-center gap-2 bg-rs-primary text-white rounded-md px-6 py-3 text-base font-medium transition-colors hover:bg-rs-primary-hover disabled:opacity-50"
           >

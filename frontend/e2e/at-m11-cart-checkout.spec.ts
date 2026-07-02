@@ -42,7 +42,7 @@ async function registerAndLogin(page: Page, testEmail?: string) {
 
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
-  await page.click('button[type="submit"]');
+  await page.click('button[type="submit"]:not(:has-text("搜尋"))');
   await page.waitForTimeout(3000);
 
   // 如果失敗，嘗試註冊
@@ -57,13 +57,13 @@ async function registerAndLogin(page: Page, testEmail?: string) {
     await page.fill('input[name="email"]', email);
     await page.fill('input[name="password"]', password);
     await page.fill('input[name="confirmPassword"]', password);
-    await page.click('button[type="submit"]');
+    await page.click('button[type="submit"]:not(:has-text("搜尋"))');
     await page.waitForTimeout(3000);
 
     if (page.url().includes('/login')) {
       await page.fill('input[name="email"]', email);
       await page.fill('input[name="password"]', password);
-      await page.click('button[type="submit"]');
+      await page.click('button[type="submit"]:not(:has-text("搜尋"))');
       await page.waitForTimeout(3000);
     }
   }

@@ -24,7 +24,7 @@ test.describe('AT-M17-001: 開店申請流程', () => {
     await page.fill('input[name="email"]', testEmail);
     await page.fill('input[name="password"]', testPassword);
     await page.fill('input[name="confirmPassword"]', testPassword);
-    await page.click('button[type="submit"]');
+    await page.click('button[type="submit"]:not(:has-text("搜尋"))');
 
     // 等待註冊完成（跳轉到登入頁面）
     await page.waitForURL('**/login**', { timeout: 15000 });
@@ -32,7 +32,7 @@ test.describe('AT-M17-001: 開店申請流程', () => {
     // 現在使用註冊的帳號登入
     await page.fill('input[name="email"]', testEmail);
     await page.fill('input[name="password"]', testPassword);
-    await page.click('button[type="submit"]');
+    await page.click('button[type="submit"]:not(:has-text("搜尋"))');
 
     // 等待登入完成並驗證跳轉到 dashboard
     await page.waitForURL('**/dashboard**', { timeout: 15000 });
@@ -68,7 +68,7 @@ test.describe('AT-M17-001: 開店申請流程', () => {
     await page.fill('input[name="contactPhone"]', '0912345678');
 
     // 提交申請
-    await page.click('button[type="submit"]');
+    await page.click('button[type="submit"]:not(:has-text("搜尋"))');
 
     // 等待可能的結果（成功導向或錯誤）
     await page.waitForTimeout(3000);
@@ -94,7 +94,7 @@ test.describe('AT-M17-001: 開店申請流程', () => {
     await page.fill('input[name="storeName"]', '');
 
     // 直接提交（不填寫必填欄位）- HTML5 原生驗證會阻止提交
-    const submitButton = page.locator('button[type="submit"]');
+    const submitButton = page.locator('button[type="submit"]:not(:has-text("搜尋"))');
 
     // 嘗試點擊提交，應該觸發 HTML5 驗證
     await submitButton.click({ force: true });

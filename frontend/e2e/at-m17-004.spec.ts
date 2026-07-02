@@ -26,7 +26,7 @@ test.describe('AT-M17-004: 店鋪 Profile 更新', () => {
     await page.fill('input[name="email"]', testEmail);
     await page.fill('input[name="password"]', testPassword);
     await page.fill('input[name="confirmPassword"]', testPassword);
-    await page.click('button[type="submit"]');
+    await page.click('button[type="submit"]:not(:has-text("搜尋"))');
 
     // 等待註冊完成（跳轉到登入頁面）
     await page.waitForURL('**/login**', { timeout: 15000 });
@@ -34,7 +34,7 @@ test.describe('AT-M17-004: 店鋪 Profile 更新', () => {
     // 現在使用註冊的帳號登入
     await page.fill('input[name="email"]', testEmail);
     await page.fill('input[name="password"]', testPassword);
-    await page.click('button[type="submit"]');
+    await page.click('button[type="submit"]:not(:has-text("搜尋"))');
 
     // 等待登入完成並跳轉
     await page.waitForURL('**/dashboard**', { timeout: 15000 });
@@ -82,7 +82,7 @@ test.describe('AT-M17-004: 店鋪 Profile 更新', () => {
       }
 
       // 儲存變更
-      const submitButton = page.locator('button[type="submit"], button:has-text("儲存"), button:has-text("更新")');
+      const submitButton = page.locator('button[type="submit"]:not(:has-text("搜尋")), button:has-text("儲存"), button:has-text("更新")');
       await submitButton.click();
 
       // 驗證更新成功
@@ -112,7 +112,7 @@ test.describe('AT-M17-004: 店鋪 Profile 更新', () => {
       await storeNameInput.fill(newStoreName);
 
       // 儲存變更
-      const submitButton = page.locator('button[type="submit"], button:has-text("儲存"), button:has-text("更新")');
+      const submitButton = page.locator('button[type="submit"]:not(:has-text("搜尋")), button:has-text("儲存"), button:has-text("更新")');
       await submitButton.click();
 
       // 驗證更新成功

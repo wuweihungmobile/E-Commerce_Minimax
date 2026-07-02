@@ -30,13 +30,13 @@ async function registerAndLogin(page: Page, label: string): Promise<RegisteredUs
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
   await page.fill('input[name="confirmPassword"]', password);
-  await page.click('button[type="submit"]');
+  await page.click('button[type="submit"]:not(:has-text("搜尋"))');
 
   await page.waitForURL('**/login**', { timeout: 15000 });
 
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
-  await page.click('button[type="submit"]');
+  await page.click('button[type="submit"]:not(:has-text("搜尋"))');
   await page.waitForURL('**/dashboard**', { timeout: 15000 });
 
   const userId = await page.evaluate(() => {
@@ -52,7 +52,7 @@ async function loginExisting(page: Page, user: RegisteredUser): Promise<void> {
   await page.goto('/login');
   await page.fill('input[name="email"]', user.email);
   await page.fill('input[name="password"]', user.password);
-  await page.click('button[type="submit"]');
+  await page.click('button[type="submit"]:not(:has-text("搜尋"))');
   await page.waitForURL('**/dashboard**', { timeout: 15000 });
 }
 

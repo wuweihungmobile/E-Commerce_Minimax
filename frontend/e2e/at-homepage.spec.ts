@@ -28,7 +28,7 @@ async function registerAndLogin(page: Page, testEmail?: string) {
 
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
-  await page.click('button[type="submit"]');
+  await page.click('button[type="submit"]:not(:has-text("搜尋"))');
   await page.waitForTimeout(3000);
 
   if (page.url().includes('/login')) {
@@ -44,13 +44,13 @@ async function registerAndLogin(page: Page, testEmail?: string) {
     await page.fill('input[name="email"]', email);
     await page.fill('input[name="password"]', password);
     await page.fill('input[name="confirmPassword"]', password);
-    await page.click('button[type="submit"]');
+    await page.click('button[type="submit"]:not(:has-text("搜尋"))');
     await page.waitForTimeout(3000);
 
     if (page.url().includes('/login')) {
       await page.fill('input[name="email"]', email);
       await page.fill('input[name="password"]', password);
-      await page.click('button[type="submit"]');
+      await page.click('button[type="submit"]:not(:has-text("搜尋"))');
       await page.waitForTimeout(3000);
     }
   }
@@ -80,8 +80,8 @@ test.describe('AT-HOMEPAGE: 賣場首頁版型瀏覽器端驗證', () => {
     await expect(page.getByRole('search')).toBeVisible();
     // Tools：排序頁籤
     await expect(page.getByRole('button', { name: '最新' })).toBeVisible();
-    // Bottom：頁尾版權
-    await expect(page.getByText('生活減法，無負擔的購物體驗')).toBeVisible();
+    // Bottom：頁尾（以 footer testid 斷言，避免與首頁引導標語的相同文案產生 strict 歧義）
+    await expect(page.getByTestId('storefront-footer')).toBeVisible();
     // Content：內容區已解析（任一合法狀態）
     await expect(contentResolved(page)).toBeVisible({ timeout: 15000 });
   });

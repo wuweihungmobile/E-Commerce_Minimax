@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { loginOnly } from './helpers/auth';
 
 /**
  * AT-M17-002: Admin 審核開店申請 E2E 測試
@@ -13,18 +14,8 @@ import { test, expect } from '@playwright/test';
  */
 test.describe('AT-M17-002: Admin 審核開店申請', () => {
   test.beforeEach(async ({ page }) => {
-    // 使用 ADMIN 帳號登入系統
-    const adminEmail = 'admin@nextkey.local';
-    const adminPassword = 'Test123!';
-    await page.goto('/login');
-
-    // 填寫登入表單
-    await page.fill('input[name="email"]', adminEmail);
-    await page.fill('input[name="password"]', adminPassword);
-    await page.click('button[type="submit"]:not(:has-text("搜尋"))');
-
-    // 等待登入完成並跳轉到 dashboard
-    await page.waitForURL('**/dashboard**', { timeout: 15000 });
+    // 使用 ADMIN 帳號登入系統（共用 loginOnly，不註冊，AI-2101b 統一）
+    await loginOnly(page, 'admin@nextkey.local', 'Test123!');
 
     // 驗證 JWT token 已正確存儲
     const accessToken = await page.evaluate(() => localStorage.getItem('accessToken'));

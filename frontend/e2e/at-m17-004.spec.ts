@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { registerAndLogin } from './helpers/auth';
 
 /**
  * AT-M17-004: 店鋪 Profile 更新 E2E 測試
@@ -13,31 +14,8 @@ import { test, expect } from '@playwright/test';
  */
 test.describe('AT-M17-004: 店鋪 Profile 更新', () => {
   test.beforeEach(async ({ page }) => {
-    // 註冊新用戶（確保有有效憑證）
-    const testEmail = `test-e2e-tenant-${Date.now()}@example.com`;
-    const testPassword = 'Test123!';
-    await page.goto('/login');
-
-    // 點擊註冊連結
-    await page.click('a:has-text("create a new account")');
-
-    // 填寫註冊表單
-    await page.fill('input[name="fullName"]', 'Test Tenant E2E');
-    await page.fill('input[name="email"]', testEmail);
-    await page.fill('input[name="password"]', testPassword);
-    await page.fill('input[name="confirmPassword"]', testPassword);
-    await page.click('button[type="submit"]:not(:has-text("搜尋"))');
-
-    // 等待註冊完成（跳轉到登入頁面）
-    await page.waitForURL('**/login**', { timeout: 15000 });
-
-    // 現在使用註冊的帳號登入
-    await page.fill('input[name="email"]', testEmail);
-    await page.fill('input[name="password"]', testPassword);
-    await page.click('button[type="submit"]:not(:has-text("搜尋"))');
-
-    // 等待登入完成並跳轉
-    await page.waitForURL('**/dashboard**', { timeout: 15000 });
+    // 註冊新用戶並登入（共用 helper，AI-2101b 統一）
+    await registerAndLogin(page);
 
     // 驗證 JWT token 已正確存儲
     const accessToken = await page.evaluate(() => localStorage.getItem('accessToken'));

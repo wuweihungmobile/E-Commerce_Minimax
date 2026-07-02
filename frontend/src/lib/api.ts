@@ -14,12 +14,12 @@ export const API_ENDPOINTS = {
   },
 
   // Listings
+  // 註：update/delete 已移除——後端 DashboardListingController 僅有 POST create，無 PUT/DELETE（死碼，AI-2202a）。
+  // 反向缺口：後端有 GET /v2/listings/{id}/effective-price 但前端無需求，暫不新增（避免 speculative）。
   listings: {
     list: '/v2/listings',
     detail: (id: string) => '/v2/listings/' + id,
     create: '/v2/dashboard/listings',
-    update: (id: string) => '/v2/dashboard/listings/' + id,
-    delete: (id: string) => '/v2/dashboard/listings/' + id,
   },
 
   // Cart
@@ -139,14 +139,14 @@ export const API_ENDPOINTS = {
     updateFeature: (feature: string) => '/v2/dashboard/tenants/features/' + feature,
   },
 
-  // Pricing (M12)
+  // Pricing (M12) — 對齊後端 PricingController base path /v2/dashboard/pricing（AI-2202a 契約清理）
   pricing: {
-    rules: '/v2/pricing/rules',
-    createRule: '/v2/pricing/rules',
-    updateRule: (id: string) => '/v2/pricing/rules/' + id,
-    deleteRule: (id: string) => '/v2/pricing/rules/' + id,
-    calculate: '/v2/pricing/calculate',
-    calendarPrice: '/v2/pricing/calendar/price',
+    rules: '/v2/dashboard/pricing/rules',
+    createRule: '/v2/dashboard/pricing/rules',
+    updateRule: (id: string) => '/v2/dashboard/pricing/rules/' + id,
+    deleteRule: (id: string) => '/v2/dashboard/pricing/rules/' + id,
+    calculate: '/v2/dashboard/pricing/calculate',
+    calendarPrice: '/v2/dashboard/pricing/calendar/price',
   },
 
   // Admin

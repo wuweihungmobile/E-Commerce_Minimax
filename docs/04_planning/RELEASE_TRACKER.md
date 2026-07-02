@@ -11,6 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 44 | v2027.07.03-01 | - | 2026-07-02 | 完成 M12 進階定價全覆蓋：**PRODUCT 購物車/訂單折扣**(AI-2403，getCart 讀取重算 getEffectivePrice、訂單繼承、toggle+向後相容、CartItemResponse transient 折扣欄位) + **買家整月日曆每日折扣**(AI-2405b，getCalendar merge calculatePrice breakdown、MonthCalendar 原價刪除線、E2E-ROOM-07) + **Inter 字體自 host 離線化**(AI-2303，next/font/local + committed woff2，消 build 期 Google Fonts 依賴)。驗證：後端單元 23 + 真 DB 整合 71、validate-e2e **48 passed/0 fail**、schema 對齊。**無 schema 變動**(連續 S42~S44 零 migration)。M12 進階定價自此 ROOM+PRODUCT+買家顯示全覆蓋。誠實：schema-free(訂單不留原價欄位)、定價機制統一另立 AI-2406 | ⏳ 待 push（本 Sprint 5 commit，累積 S41~S44，完整守門+徵詢後 push）|
 | Sprint 43 | v2027.06.19-01 | - | 2026-07-02 | M12 進階定價落地（早鳥/長住/末班車折扣真正生效於 ROOM）：**語意修正**(AI-2401，早鳥/末班車改「下單日 vs 入住日」+ config Number 防護) + **定價引擎接入 ROOM 計價鏈**(AI-2402，BookingService 注入 PricingService，toggle+向後相容+availability 回折扣明細，訂房金額與顯示一致) + **config 型別化編輯 UI**(AI-2404，動態子表單取代黑箱 {} + dashboard 入口) + **買家折扣顯示 + 賣家預覽**(AI-2405，折扣後價+原價刪除線+標籤 + 沿用 PricingCalendarPreview + E2E-ROOM-06)。驗證：後端單元 15 + 真 DB 整合 36 全過、validate-e2e **47 passed/0 fail**、schema 對齊。**無 schema 變動**(沿用 jsonb config)。誠實：只接 ROOM(PRODUCT/Cart 另立 AI-2403)、買家日曆每日折扣另立 AI-2405b | ⏳ 待 push（本 Sprint 5 commit，累積 S41+S42+S43，完整守門+徵詢後 push）|
 | Sprint 42 | v2027.06.05-01 | - | 2026-07-02 | 收尾技術債：**backend pre-commit 提速**(AI-2302，2 慢測 @Tag(slow) + `-DexcludedGroups=slow`，pre-push act 仍完整跑=零覆蓋損失，順帶移除 pre-commit 對 test DB 的依賴) + **整月日曆每日價格顯示**(AI-2202c Part A，純前端，basePrice fallback) + **E2E 硬等待清除**(DEF-022，5 檔 waitForTimeout→顯式等待+補斷言，保留 STOMP 例外)；連帶根治既有 flaky（auth helper 與 S37 共用 Header「註冊」連結碰撞→改 goto；原生 alert teardown→dialog 處理器）。本地驗證：validate-e2e **46 passed/0 fail**、schema 對齊、後端 quick test 455 tests 0 fail（無 DB）。**無 production code/schema 變動**（後端僅測試 @Tag）| ⏳ 待 push（本 Sprint 5 commit，承 S41 債累積 S41+S42，完整守門+徵詢後 push）|
 | Sprint 41 | v2027.05.22-01 | - | 2026-07-02 | S41 技術債徹底清償 + 整月日曆：**test DB↔act port 制度化**(AI-2301，validate-release 自動 test-db-down) + **E2E 登入 helper 完全統一**(AI-2101b，auth.ts + 重構 m10/m17-001~004) + **api.ts 端點契約清理**(AI-2202a，pricing base path + 移除死碼) + **整月日曆**(AI-2202b，read-only 後端 GET /v2/bookings/calendar + MonthCalendar 前端 + E2E-ROOM-05) + **買家閉環走查**(AI-1903，自動 validate-e2e 證據 + 手動 checklist，真人 live 走查殘留) + **CJK 字體評估**(DEF-021，決策維持系統堆疊)。本地各層驗證通過：validate-e2e **47 passed/0 fail**、schema 對齊、後端 Booking 18 tests 0 fail。read-only 無 schema 變動 | ⏳ 待 push（本 Sprint 8 commit，完整守門+徵詢後 push）|
@@ -55,11 +56,11 @@
 
 | 項目 | 數值 |
 |------|------|
-| 建立 Release Tag 次數 | 34 (Sprint 10-43，連續) |
+| 建立 Release Tag 次數 | 35 (Sprint 10-44，連續) |
 | 已 push（已 Release） | 31 (Sprint 10-40) |
-| 待 push（Tag 已建、尚未 push） | 3 (Sprint 41+42+43，本地各層驗證通過含 validate-e2e；累積後檢查點徵詢+完整 validate-release 後 push) |
+| 待 push（Tag 已建、尚未 push） | 4 (Sprint 41+42+43+44，本地各層驗證通過含 validate-e2e；累積後檢查點徵詢+完整 validate-release 後 push) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release Tag | v2027.06.19-01 (Sprint 43，⏳ 待 push) |
+| 最近一次 Release Tag | v2027.07.03-01 (Sprint 44，⏳ 待 push) |
 | 最近一次已 push Release | v2027.05.08-01 (Sprint 40，隨 S32~S40 累積批次 2e33c6d) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release Tag 開始 | Sprint 10 |

@@ -64,13 +64,12 @@ export async function registerAndLogin(
 
   // 仍在登入頁 → 帳號不存在 → 自動註冊後再登入
   if (onLoginPage(page)) {
-    const registerLink = page
-      .locator('a:has-text("create a new account"), a:has-text("註冊")')
-      .first();
-    if (await registerLink.isVisible().catch(() => false)) {
-      await registerLink.click();
-      await page.waitForURL('**/register**', { timeout: 6000 }).catch(() => {});
-    }
+    // 直接前往 /register（不點連結）：S37 共用 StorefrontHeader 於 /login 也有一個「註冊」
+    // 連結（<a href="/register">註冊</a>），與登入表單的註冊連結文字碰撞，.first() 恆選到
+    // header 連結，而其於失敗登入後 re-render 時不穩定 → click 間歇逾時（at-buyer-pages flaky
+    // 根因）。與 helper 頂端記載的 S37「submit 與 Header 搜尋鈕碰撞」同類，改直接 goto 消除歧義。
+    await page.goto('/register');
+    await page.waitForLoadState('domcontentloaded');
 
     await page.fill('input[name="fullName"]', 'E2E Test User');
     await page.fill('input[name="email"]', email);

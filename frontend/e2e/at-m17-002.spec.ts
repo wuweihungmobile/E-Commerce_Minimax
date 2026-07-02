@@ -30,6 +30,10 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
   });
 
   test('Admin 審核通過申請', async ({ page }) => {
+    // 核准成功以原生 alert() 提示 → 註冊 dialog 處理器避免 teardown session 崩潰（m15/DEF 教訓）
+    page.on('dialog', (dialog) => {
+      void dialog.accept().catch(() => {});
+    });
     // 點擊審核中篩選查看是否有待審核項目
     await page.click('button:has-text("審核中")');
     await page.waitForResponse(r => r.url().includes('/v2/admin/tenants'), { timeout: 15000 }).catch(() => {});
@@ -69,6 +73,10 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
   });
 
   test('Admin 審核駁回申請', async ({ page }) => {
+    // 駁回成功以原生 alert() 提示 → 註冊 dialog 處理器避免 teardown session 崩潰（m15/DEF 教訓）
+    page.on('dialog', (dialog) => {
+      void dialog.accept().catch(() => {});
+    });
     // 點擊審核中篩選查看是否有待審核項目
     await page.click('button:has-text("審核中")');
     await page.waitForResponse(r => r.url().includes('/v2/admin/tenants'), { timeout: 15000 }).catch(() => {});

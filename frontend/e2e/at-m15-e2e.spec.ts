@@ -12,6 +12,15 @@ import { registerAndLogin } from './helpers/auth';
  * - E2E-M15-005: 嵌入商品卡解析流程
  */
 
+// 全域 dialog 處理器：CMS/媒體/儀表板頁在載入或操作失敗時（新帳號權限不足 → 4xx）會觸發
+// 原生 alert()，該 dialog 於 teardown 間歇造成 session 崩潰（m15 flaky 根因，S37 AI-2001）。
+// 檔案級 beforeEach 註冊自動關閉，涵蓋本檔所有測試（取代 DEF-022 移除的固定 sleep 之保護作用）。
+test.beforeEach(async ({ page }) => {
+  page.on('dialog', (dialog) => {
+    void dialog.dismiss().catch(() => {})
+  })
+})
+
 /**
  * E2E-M15-001: 建立並發布貼文流程
  */
@@ -103,6 +112,7 @@ test.describe('E2E-M15-002: 編輯並更新貼文流程', () => {
  */
 test.describe('E2E-M15-003: 媒體上傳流程', () => {
   test('訪問媒體庫頁面', async ({ page }) => {
+    // dialog 處理器已由檔案級 beforeEach 註冊（涵蓋 /cms/media 載入失敗的原生 alert）
     await registerAndLogin(page);
 
     await page.goto('/cms/media');

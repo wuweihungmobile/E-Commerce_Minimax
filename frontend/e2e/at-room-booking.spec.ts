@@ -240,6 +240,9 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
     await expect(booked).toBeVisible();
     await expect(booked).toBeDisabled();
 
+    // 可訂日顯示每日價格（無 room_calendar 記錄之日以 basePrice 補齊；AI-2202c Part A）
+    await expect(page.getByTestId(`calendar-price-${inDay}`)).toBeVisible();
+
     // 點選可訂入住 + 退房 → 同步到日期輸入框
     await page.getByTestId(`calendar-day-${inDay}`).click();
     await page.getByTestId(`calendar-day-${outDay}`).click();

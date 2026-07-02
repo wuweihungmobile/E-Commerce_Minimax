@@ -25,14 +25,29 @@ function daysInMonth(year: number, month0: number): number {
   return new Date(year, month0 + 1, 0).getDate()
 }
 
+// 日曆格價格（精簡：TWD 用 $，其餘用幣別碼前綴）
+function formatCellPrice(currency: string, value: number): string {
+  const symbol = currency === "TWD" ? "$" : currency + " "
+  return symbol + value.toLocaleString("zh-TW")
+}
+
 interface MonthCalendarProps {
   roomListingId: string
   checkIn: string
   checkOut: string
+  basePrice: number
+  currency: string
   onSelectRange: (checkIn: string, checkOut: string) => void
 }
 
-export function MonthCalendar({ roomListingId, checkIn, checkOut, onSelectRange }: MonthCalendarProps) {
+export function MonthCalendar({
+  roomListingId,
+  checkIn,
+  checkOut,
+  basePrice,
+  currency,
+  onSelectRange,
+}: MonthCalendarProps) {
   const now = new Date()
   const todayIso = iso(now.getFullYear(), now.getMonth(), now.getDate())
 
@@ -42,6 +57,7 @@ export function MonthCalendar({ roomListingId, checkIn, checkOut, onSelectRange 
     return { year: base.getFullYear(), month: base.getMonth() }
   })
   const [statusByDate, setStatusByDate] = useState<Record<string, RoomCalendarStatus>>({})
+  const [priceByDate, setPriceByDate] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -54,9 +70,14 @@ export function MonthCalendar({ roomListingId, checkIn, checkOut, onSelectRange 
       .getCalendar(roomListingId, start, end)
       .then((days: CalendarDay[]) => {
         if (cancelled) return
-        const map: Record<string, RoomCalendarStatus> = {}
-        for (const d of days) map[d.date] = d.status
-        setStatusByDate(map)
+        const statusMap: Record<string, RoomCalendarStatus> = {}
+        const priceMap: Record<string, number> = {}
+        for (const d of days) {
+          statusMap[d.date] = d.status
+          if (d.price != null) priceMap[d.date] = d.price
+        }
+        setStatusByDate(statusMap)
+        setPriceByDate(priceMap)
         setError(null)
       })
       .catch(() => {
@@ -177,14 +198,22 @@ export function MonthCalendar({ roomListingId, checkIn, checkOut, onSelectRange 
               disabled={unavailable}
               onClick={() => handleDayClick(dateStr)}
               className={[
-                "aspect-square rounded-md text-sm transition-colors",
+                "flex min-h-[3rem] flex-col items-center justify-center gap-0.5 rounded-md py-1 text-sm transition-colors",
                 unavailable
                   ? "cursor-not-allowed text-rs-ink-muted line-through opacity-40"
                   : "text-rs-ink hover:border-rs-primary",
                 selected ? "bg-rs-primary text-white" : "border border-rs-hairline",
               ].join(" ")}
             >
-              {day}
+              <span>{day}</span>
+              {!unavailable && (
+                <span
+                  data-testid={`calendar-price-${dateStr}`}
+                  className={selected ? "text-[10px] text-white/90" : "text-[10px] text-rs-ink-muted"}
+                >
+                  {formatCellPrice(currency, priceByDate[dateStr] ?? basePrice)}
+                </span>
+              )}
             </button>
           )
         })}

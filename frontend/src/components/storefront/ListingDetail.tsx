@@ -265,6 +265,8 @@ export function ListingDetail({ id }: { id: string }) {
               roomListingId={id}
               checkIn={checkIn}
               checkOut={checkOut}
+              basePrice={listing.basePrice}
+              currency={listing.currency}
               onSelectRange={(ci, co) => {
                 setCheckIn(ci)
                 setCheckOut(co)

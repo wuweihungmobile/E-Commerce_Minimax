@@ -50,8 +50,23 @@
 |------|------|
 | `make validate-schema` | schema 漂移守門（已串進 pre-push，改 entity/migration 時自動跑） |
 | `make validate-e2e` | 乾淨 DB → Flyway 重建 → 全棧(ddl-auto=validate) → Playwright，複製雲端 e2e job。**預設 strict**（spec 失敗即阻擋；基準 27 passed/5 skip/0 fail）；環境異常臨時放行 `E2E_GATE_STRICT=0` |
-| `make validate-release` | **完整測試程序＝ pre-push 守門內容**：`validate-all` + `validate-schema` + `validate-e2e` = 雲端 `ci.yml` 等價。手動先跑一次會寫 FULL 記錄，30 分內對同 tree push 直接放行 |
-| `make test-db-up` / `test-db-down` | 啟動/停止「整合測試 + pre-commit 核心測試」所需 DB（postgres:5432 + redis:6379，對齊 integration-test profile）。改 backend `.java/.yml/.sql` 後 commit 前先 `make test-db-up`（pre-commit 的 `@ActiveProfiles("integration-test")` 核心測試需真實 postgres），完成後 `make test-db-down` |
+| `make validate-release` | **完整測試程序＝ pre-push 守門內容**：**自動 `test-db-down`**（AI-2301）→ `validate-all` + `validate-schema` + `validate-e2e` = 雲端 `ci.yml` 等價。手動先跑一次會寫 FULL 記錄，30 分內對同 tree push 直接放行 |
+| `make test-db-up` / `test-db-down` | 啟動/停止「整合測試 + pre-commit 核心測試」所需 DB（postgres:5432 + redis:6379，對齊 integration-test profile）。改 backend `.java/.yml/.sql` 後 commit 前先 `make test-db-up`（pre-commit 的 `@ActiveProfiles("integration-test")` 核心測試需真實 postgres）。**完成後可不必手動 down——`validate-release` 已自動 down（AI-2301）**；平時清理仍可 `make test-db-down` |
+
+### 變更四：test DB ↔ act port 衝突制度化（2026-07-02，AI-2301）
+
+**問題**：`make test-db-up` 啟動的 `nk-test-pg`/`nk-test-redis` 佔用標準 port **5432/6379**（pre-commit 的 `@ActiveProfiles("integration-test")` 核心測試需要）；但 `make validate-release` 內的 `validate-all`（act）其服務容器**也要 host-bind 5432/6379** → `Bind for 0.0.0.0:6379 failed: port is already allocated`。兩者互斥，S40 push 曾因此卡關（依賴人工記憶「validate-release 前手動 test-db-down」）。
+
+**制度化解法（單一自動化點）**：`make validate-release` 在跑 `validate-all` 前**自動執行 `test-db-down`**（冪等 `docker rm -f ... || true`）。因 pre-push hook 也是呼叫 `make validate-release`，故**直接執行**與 **push 守門**兩條路徑一次涵蓋，開發者不再需要記得手動 down。
+
+**開發者心智模型（記住這一條即可）**：
+
+| 情境 | 該做的事 | 為什麼 |
+|------|----------|--------|
+| 要 `git commit`（含 backend 變動） | 先 `make test-db-up` | pre-commit 核心 `@SpringBootTest`（integration-test profile）需真實 postgres:5432 / redis:6379 |
+| 要 `make validate-release` 或 `git push` | **什麼都不用做** | validate-release 已自動 `test-db-down` 釋放 port 給 act |
+
+**不動項**：`validate-schema` / `validate-e2e` 用非標準 port（**55432 / 56379**）本就不衝突；`.github/workflows/act-compat.yml` 的 5432/6379 是鏡像雲端 CI（GitHub runner 服務隔離），**保持不變**。
 
 ### 本地 vs 雲端覆蓋對照（哪些已被本地取代）
 
@@ -582,6 +597,7 @@ act -W .github/workflows/act-compat.yml -v
 | 2026-06-11 | 1.0 | 初版建立（完整本地 CI 工具鏈） | Claude Code |
 | 2026-06-30 | 2.0 | 本地優先策略：三 workflow 改 workflow_dispatch only（停用雲端自動 CI）；新增 `make validate-e2e` / `validate-release`；`validate-schema` 串進 pre-push；修復 backend Dockerfile 死碼 `COPY .mvn .mvn` | Claude Code |
 | 2026-06-30 | 3.0 | pre-push v5：依使用者要求「批次 push 但上 GIT 必須完整測試程序」，pre-push = `make validate-release`（act + schema + e2e）；FULL 記錄（僅 validate-release 寫得出）+ tree-hash 30 分快取避免重跑；純文件略過；移除已失效的 `make validate-push`（host 快檢不再放行 push） | Claude Code |
+| 2026-07-02 | 3.1 | **AI-2301（S41 US-001）test DB↔act port 制度化**：`make validate-release` 在 `validate-all` 前自動 `test-db-down`（冪等），消除 `nk-test-redis`(6379) 與 act 服務容器的 port 衝突；直接執行與 pre-push 兩路徑一次涵蓋；新增「變更四」段落與開發者心智模型表 | Claude Code |
 
 ---
 

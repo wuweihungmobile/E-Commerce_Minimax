@@ -210,8 +210,10 @@ validate-e2e: ## 本地 E2E 守門：乾淨 DB → Flyway 重建 → 全棧(host
 	@echo "$(YELLOW)🎭 本地 E2E 守門（複製雲端 e2e job：host 程序 + 乾淨 DB + Playwright）...$(NC)"
 	@./scripts/validate-e2e.sh
 
-validate-release: ## 完整測試程序（= pre-push 守門 = 雲端 ci.yml）：act（backend+frontend）+ schema 漂移 + E2E；寫 FULL 記錄供 30 分內 push 直接放行
+validate-release: ## 完整測試程序（= pre-push 守門 = 雲端 ci.yml）：自動 test-db-down → act（backend+frontend）+ schema 漂移 + E2E；寫 FULL 記錄供 30 分內 push 直接放行
 	@echo "$(YELLOW)🚦 完整測試程序（等價雲端 ci.yml；pre-push 守門與部署前共用）...$(NC)"
+	@echo "$(YELLOW)   先自動停用 test DB（釋放 :5432/:6379 給 act 服務容器，制度化消除 AI-2301 port 衝突）...$(NC)"
+	@$(MAKE) test-db-down
 	@$(MAKE) validate-all
 	@$(MAKE) validate-schema
 	@$(MAKE) validate-e2e

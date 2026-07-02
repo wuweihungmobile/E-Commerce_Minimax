@@ -66,7 +66,10 @@ fi
 
 # 3. Secret detection（輕量版）
 echo "🔐 Checking for potential secrets in staged files..."
-SECRET_PATTERNS='(password|secret|api[_-]?key|access[_-]?token|private[_-]?key).*=.*[\"'\''][^\"'\'']+[\"'\'']'
+# 只比對「keyword 緊接 =/: 再接引號值」的真實賦值（如 password="xxx"、apiKey: "yyy"）；
+# 收緊自舊版 `.*=.*"..."`（會誤中 keyword 為屬性值的表單標籤，如
+# <label htmlFor="password" className="...">）。真實硬編機密仍會被攔截。
+SECRET_PATTERNS='(password|secret|api[_-]?key|access[_-]?token|private[_-]?key)[\"'\'']?[[:space:]]*[:=][[:space:]]*[\"'\''][^\"'\'']+[\"'\'']'
 if [ -n "$STAGED_FILES" ]; then
   SECRET_FILES=$(echo "$STAGED_FILES" | xargs grep -lEi "$SECRET_PATTERNS" 2>/dev/null | grep -vE '\.example$|node_modules/|target/|\.class$|test/|Test\.java|testSecret|TestSecret|\.github/workflows/|scripts/hooks/|e2e/|\.spec\.ts|\.test\.ts' || true)
 else

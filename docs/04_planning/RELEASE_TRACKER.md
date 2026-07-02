@@ -11,6 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 40 | v2027.05.08-01 | - | 2026-07-02 | ROOM 可用性 UX 完成（含小幅後端）：**availability 端點修復**(AI-2201，@RequestBody→@RequestParam，read-only 無 DB；原 GET+body 瀏覽器不可呼叫) + **詳情頁 ROOM 即時可用性檢查**(選日期→可訂+總價 / 不可訂+原因，不可訂禁用加購) + availability E2E。**完整 make validate-release 通過**（後端 act 330 tests 0 fail + E2E 45 passed/0 failed）。無 DB/schema 變動 | ⏳ 待 push（累積 S32~S40，已過完整守門；檢查點徵詢後 push）|
 | Sprint 39 | v2027.04.24-01 | - | 2026-07-02 | ROOM 訂房閉環補完（補強既有閉環，非從零）：**booking service 抽取 + 訂房衝突優雅處理**(US-001+002，createBooking 抽取、日期衝突 409/E-4001 等給可讀提示、詳情頁 ROOM 日期驗證) + **ROOM 訂房閉環 E2E**(US-003 AI-2104，mock：詳情計價加購→checkout 建 booking→409 衝突) + **E2E 共用登入 helper 抽取**(US-004 AI-2101，waitForURL 收 DEF-022，收斂 4 檔 + 通知 flaky 修)。全棧 44 passed/0 failed。誠實：availability 端點 GET+body 不可用→免後端 reframe；無後端/DB 變動 | ⏳ 待 push（累積 S32~S39，完整守門+徵詢後 push）|
 | Sprint 38 | v2027.04.10-01 | - | 2026-07-02 | 買家體驗補完——商品詳情頁：**買家商品詳情頁**(AI-2103，/listings/[id]，(storefront) 公開 + 401 引導；PRODUCT 數量加購 + ROOM 日期計價加購 + 三態；listing service 補 getListingById/getListingPrice；cartEvents 使 Header 購物車數即時更新；首頁連結由評價頁改導向詳情頁) + **有資料 E2E**(AI-1905，page.route mock 免 seed：首頁網格+分頁+詳情導覽+加購+401/404)。全棧 41 passed/0 failed。無後端/DB 變動 | ⏳ 待 push（累積 S32~S38，完整守門+徵詢後 push） |
 | Sprint 37 | v2027.03.27-01 | - | 2026-07-02 | 買家頁全頁套版 + 清償 push 債：**買家頁全頁套用共用賣場版型**(AI-1901，新增 (auth)/layout.tsx 承載共用 Header/Footer、10 頁移除自包 nav 改用 StorefrontShell、Header 加 auth-aware 帳號選單 useSyncExternalStore) + **m15 flaky 修復**(AI-2001，dialog 處理器+明確等待，解鎖 release 守門) + 買家頁版型一致性 E2E(BUYER-04/05)；順帶修 E2E 登入 helper SearchBar submit 碰撞 + secret 掃描器誤報收緊。全棧 37 passed/0 failed。無後端/DB 變動 | ⏳ 待 push（累積 S32~S37，完整守門+徵詢後 push；m15 阻礙已清） |
@@ -51,11 +52,11 @@
 
 | 項目 | 數值 |
 |------|------|
-| 建立 Release Tag 次數 | 30 (Sprint 10-39，連續) |
+| 建立 Release Tag 次數 | 31 (Sprint 10-40，連續) |
 | 已 push（已 Release） | 22 (Sprint 10-31) |
-| 待 push（Tag 已建、尚未 push） | 8 (Sprint 32-39，累積批次待完整守門 + 檢查點徵詢後 push；技術阻礙已清) |
+| 待 push（Tag 已建、尚未 push） | 9 (Sprint 32-40，**已通過完整 make validate-release**；檢查點徵詢後 push) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release Tag | v2027.04.24-01 (Sprint 39，⏳ 待 push) |
+| 最近一次 Release Tag | v2027.05.08-01 (Sprint 40，⏳ 待 push) |
 | 最近一次已 push Release | v2027.01.02-01 (Sprint 31，隨 S29+30+31 累積批次 fb221f3) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release Tag 開始 | Sprint 10 |

@@ -50,6 +50,27 @@
 
 ## Sprint 歷史紀錄
 
+### Sprint 40 (2026-07-02)
+
+**完成**:
+- **AI-2201（availability 端點 + 詳情頁即時可用性）→ ✅ 完成（US-001 後端 + US-002 前端）**：
+  - 後端：`GET /v2/bookings/availability` GET+@RequestBody → @RequestParam（read-only、無 DB/schema）;更新 BookingControllerE2ETest（API-M06-009/010 body→queryParam）+ BookingIntegrationTest（content→param）。
+  - 前端：booking service `checkAvailability` + `AvailabilityResponse`;ListingDetail ROOM 改以 availability 為主（可訂+總價 / 不可訂+原因），未確認可預訂禁用加購。
+- **US-003**：at-room-booking E2E（可訂加購 / 不可訂禁用）。
+- **完整 `make validate-release` 通過**：後端 act **330 tests 0 fail**、前端 act 0 error、E2E **45 passed / 6 skipped / 0 failed**、schema 無漂移。
+
+**誠實揭露 / 環境**:
+- 首次後端變動 read-only（僅 controller 參數綁定）。
+- test DB（5432/6379）與 act（6379）port 衝突 → 已釐清「commit 啟 test-db-up、validate-release 前 test-db-down」流程（AI-2301）。
+
+**續延後**:
+- DEF-021（CJK 字體）續延（P3）;整月日曆 UI + api.ts 端點契約（AI-2202）續延。
+
+**新增 Action Items（S41）**:
+- AI-1906 檢查點 push（已過完整守門，強烈建議清償）、AI-1903 買家 live 走查、AI-2301 test DB/act port 衝突制度化、AI-2202 整月日曆/端點契約、AI-2101b 登入 helper 完全統一。
+
+---
+
 ### Sprint 39 (2026-07-02)
 
 **完成**:
@@ -364,6 +385,7 @@
 
 ---
 
-**文件版本**: v2.9
-**最後更新**: 2026-07-02（Sprint 39：ROOM 訂房閉環補強——US-001+002 booking service 抽取 + 衝突優雅處理、US-003 ROOM 閉環 E2E（AI-2104）、US-004 E2E 共用 helper 抽取（AI-2101，收斂 4 檔 + 收 DEF-022）。全棧 44 passed/0 failed。無後端/DB 變動。誠實：availability 端點 GET+body 不可用→AI-2201。活躍 DEF=2 非安全（DEF-021 CJK 字體 / DEF-022 剩餘隨 AI-2101b）
-**下次審查**: 檢查點 push S32~S39（AI-1906，技術阻礙已清）；S40 買家 live 走查（AI-1903）+ availability 端點修復（AI-2201）+ 端點契約清理（AI-2202）
+**文件版本**: v2.10
+**最後更新**: 2026-07-02（Sprint 40：ROOM 可用性 UX 完成——US-001 availability 端點 @RequestParam（後端 read-only）+ US-002 詳情頁即時可用性 + US-003 E2E。**完整 make validate-release 通過**（後端 act 330 tests 0 fail + E2E 45 passed/0 failed）。無 DB/schema 變動。活躍 DEF=1 非安全（DEF-021 CJK 字體）
+**歷史版本 v2.9**: Sprint 39：ROOM 訂房閉環補強——US-001+002 booking service 抽取 + 衝突優雅處理、US-003 ROOM 閉環 E2E（AI-2104）、US-004 E2E 共用 helper 抽取（AI-2101，收斂 4 檔 + 收 DEF-022）。全棧 44 passed/0 failed。無後端/DB 變動。誠實：availability 端點 GET+body 不可用→AI-2201。活躍 DEF=2 非安全（DEF-021 CJK 字體 / DEF-022 剩餘隨 AI-2101b）
+**下次審查**: **檢查點 push S32~S40（AI-1906，已通過完整 make validate-release，技術就緒，強烈建議清償）**；S41 買家 live 走查（AI-1903）+ 整月日曆/端點契約（AI-2202）+ test DB/act port 制度化（AI-2301）

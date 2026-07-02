@@ -11,6 +11,35 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import PricingService, { PricingRule, PricingRuleType } from '@/services/pricing'
 import AuthService from '@/services/auth'
 
+/**
+ * 各規則型別的 config 參數欄位（AI-2404）。key 對齊後端 jsonb config。
+ * 早鳥/長住/末班車為本 Sprint 主軸折扣型；其餘型別亦提供對應單一參數編輯，
+ * 取代原本固定送出空 config `{}` 的黑箱行為。
+ */
+const CONFIG_FIELDS: Record<PricingRuleType, { key: string; label: string; step: string; hint: string }[]> = {
+  EARLY_BIRD: [
+    { key: 'minDaysAhead', label: '提前預訂天數', step: '1', hint: '下單日需早於入住日至少 N 天' },
+    { key: 'discountPercent', label: '折扣百分比 (%)', step: '0.1', hint: '例如 15 表示打 85 折' },
+  ],
+  LONG_STAY: [
+    { key: 'minNights', label: '最少住宿晚數', step: '1', hint: '住滿 N 晚起適用（折扣隨晚數遞增，上限為下方值）' },
+    { key: 'discountPercent', label: '折扣百分比上限 (%)', step: '0.1', hint: '例如 20 表示最多打 80 折' },
+  ],
+  LAST_MINUTE: [
+    { key: 'maxDaysAhead', label: '臨近入住天數', step: '1', hint: '入住日前 N 天內（含）下單適用' },
+    { key: 'discountPercent', label: '折扣百分比 (%)', step: '0.1', hint: '例如 25 表示打 75 折' },
+  ],
+  WEEKDAY_WEEKEND: [
+    { key: 'weekendMultiplier', label: '週末加成倍率', step: '0.01', hint: '例如 1.2 表示週五/六/日加成 20%' },
+  ],
+  SEASONAL: [
+    { key: 'multiplier', label: '季節加成倍率', step: '0.01', hint: '例如 1.5 表示旺季加成 50%' },
+  ],
+  MANUAL_OVERRIDE: [
+    { key: 'price', label: '覆蓋價格', step: '1', hint: '直接指定每日價格' },
+  ],
+}
+
 export default function PricingRuleList() {
   const router = useRouter()
   const [rules, setRules] = useState<PricingRule[]>([])
@@ -228,6 +257,24 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const config = formData.config as Record<string, unknown>
+  const configFields = CONFIG_FIELDS[formData.ruleType as PricingRuleType] || []
+  const configValue = (key: string): string => {
+    const v = config[key]
+    return v === undefined || v === null ? '' : String(v)
+  }
+  const setConfigField = (key: string, raw: string) => {
+    setFormData((prev) => {
+      const next = { ...(prev.config as Record<string, unknown>) }
+      if (raw === '') {
+        delete next[key]
+      } else {
+        next[key] = Number(raw)
+      }
+      return { ...prev, config: next }
+    })
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -235,6 +282,14 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
     if (!formData.roomListingId || !formData.ruleName || !formData.validFrom || !formData.validTo) {
       setError('請填寫所有必填欄位')
       return
+    }
+
+    for (const f of configFields) {
+      const v = config[f.key]
+      if (v === undefined || v === null || v === '') {
+        setError('請填寫所有折扣/規則參數')
+        return
+      }
     }
 
     setLoading(true)
@@ -302,7 +357,7 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
 
             <div>
               <label className="text-sm font-medium">規則類型</label>
-              <Select value={formData.ruleType} onValueChange={(v) => setFormData({ ...formData, ruleType: v as PricingRuleType })} disabled={!!rule}>
+              <Select value={formData.ruleType} onValueChange={(v) => setFormData({ ...formData, ruleType: v as PricingRuleType, config: {} })} disabled={!!rule}>
                 <SelectTrigger className="mt-1">
                   <SelectValue />
                 </SelectTrigger>
@@ -337,6 +392,28 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
                 className="mt-1"
               />
             </div>
+
+            {configFields.length > 0 && (
+              <div className="space-y-3 rounded-md border border-gray-100 bg-gray-50 p-3" data-testid="pricing-config-fields">
+                <p className="text-sm font-medium">規則參數</p>
+                {configFields.map((f) => (
+                  <div key={f.key}>
+                    <label className="text-sm font-medium">
+                      {f.label} <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      type="number"
+                      step={f.step}
+                      value={configValue(f.key)}
+                      onChange={(e) => setConfigField(f.key, e.target.value)}
+                      className="mt-1"
+                      data-testid={`pricing-config-${f.key}`}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">{f.hint}</p>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div>

@@ -2,8 +2,15 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import AuthService from '@/services/auth'
 import AnalyticsService, { DashboardStats, OrderStats, RevenueStats } from '@/services/analytics'
+
+const QUICK_LINKS = [
+  { href: '/dashboard/products', label: '商品管理' },
+  { href: '/dashboard/rooms', label: '房型管理' },
+  { href: '/dashboard/pricing/rules', label: '定價規則', testId: 'dashboard-pricing-link' },
+]
 
 type CurrentUser = { email: string; fullName: string; role: string }
 
@@ -106,6 +113,20 @@ export default function DashboardPage() {
 
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <h2 className="text-lg font-medium text-gray-900 mb-4">營運總覽</h2>
+
+        {/* 快速管理入口 */}
+        <section className="mb-6 flex flex-wrap gap-3">
+          {QUICK_LINKS.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              data-testid={link.testId}
+              className="inline-flex items-center rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+            >
+              {link.label}
+            </Link>
+          ))}
+        </section>
 
         {error ? (
           <div className="mb-6 rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-700">

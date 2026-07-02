@@ -9,6 +9,26 @@ export type PricingRuleType =
   | 'MANUAL_OVERRIDE'
   | 'LAST_MINUTE'
 
+/**
+ * 各規則型別的 config 參數（AI-2404）。與後端 jsonb config key 對齊：
+ * 早鳥 minDaysAhead、長住 minNights、末班車 maxDaysAhead、折扣 discountPercent、
+ * 平假日 weekendMultiplier、季節 multiplier、手動覆蓋 price。
+ */
+export interface EarlyBirdConfig { minDaysAhead: number; discountPercent: number }
+export interface LongStayConfig { minNights: number; discountPercent: number }
+export interface LastMinuteConfig { maxDaysAhead: number; discountPercent: number }
+export interface WeekdayWeekendConfig { weekendMultiplier: number }
+export interface SeasonalConfig { multiplier: number }
+export interface ManualOverrideConfig { price: number }
+
+export type PricingRuleConfig =
+  | EarlyBirdConfig
+  | LongStayConfig
+  | LastMinuteConfig
+  | WeekdayWeekendConfig
+  | SeasonalConfig
+  | ManualOverrideConfig
+
 export interface PricingRule {
   ruleId: string
   tenantId: string

@@ -76,6 +76,16 @@ export interface AvailabilityResponse {
   unavailableReason: string | null
 }
 
+// 對齊後端 BookingDto.CalendarResponse（GET /v2/bookings/calendar 每日一筆）
+export type RoomCalendarStatus = 'AVAILABLE' | 'BOOKED' | 'BLOCKED' | 'MAINTENANCE'
+
+export interface CalendarDay {
+  date: string // YYYY-MM-DD
+  status: RoomCalendarStatus
+  price: number | null
+  bookingId: string | null
+}
+
 // booking 建立錯誤碼 → 可讀訊息。
 // 注意：後端 ErrorCode 的 wire code 為「連字號」格式（Java 常數 E_4001 → JSON code "E-4001"）。
 const BOOKING_ERROR_MESSAGES: Record<string, string> = {
@@ -194,6 +204,20 @@ class BookingService {
     const params = new URLSearchParams({ roomListingId, checkInDate, checkOutDate })
     const response = await apiClient.get<ApiResponse<AvailabilityResponse>>(
       API_ENDPOINTS.bookings.availability + '?' + params.toString()
+    )
+    return response.data.data
+  }
+
+  // ROOM 整月日曆查詢（GET /v2/bookings/calendar）。回傳區間內「已有記錄」的日期狀態；
+  // 未回傳之日期由前端視為可預訂（AVAILABLE）。（Sprint 41 US-004 / AI-2202b）
+  async getCalendar(
+    roomListingId: string,
+    startDate: string,
+    endDate: string
+  ): Promise<CalendarDay[]> {
+    const params = new URLSearchParams({ roomListingId, startDate, endDate })
+    const response = await apiClient.get<ApiResponse<CalendarDay[]>>(
+      API_ENDPOINTS.bookings.calendar + '?' + params.toString()
     )
     return response.data.data
   }

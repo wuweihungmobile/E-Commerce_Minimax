@@ -83,7 +83,8 @@ export const API_ENDPOINTS = {
     create: '/v2/bookings',
     cancel: (id: string) => '/v2/bookings/' + id + '/cancel',
     availability: '/v2/bookings/availability',
-    calendar: (listingId: string) => '/v2/listings/' + listingId + '/calendar',
+    // 整月日曆（AI-2202b）：GET /v2/bookings/calendar?roomListingId=&startDate=&endDate=（query 由 service 組）
+    calendar: '/v2/bookings/calendar',
   },
 
   // Tenants (M17)

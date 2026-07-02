@@ -9,6 +9,7 @@ import { API_ENDPOINTS } from "@/lib/api"
 import listingService, { type Listing } from "@/services/listing"
 import { notifyCartChanged } from "@/services/cartEvents"
 import bookingService, { type AvailabilityResponse } from "@/services/booking"
+import { MonthCalendar } from "@/components/storefront/MonthCalendar"
 
 type LoadState = "loading" | "ok" | "auth" | "notfound" | "error"
 
@@ -260,6 +261,17 @@ export function ListingDetail({ id }: { id: string }) {
         {/* ROOM：日期選擇 + 計價 */}
         {isRoom && (
           <div className="flex flex-col gap-3 rounded-lg border border-rs-hairline p-4">
+            <MonthCalendar
+              roomListingId={id}
+              checkIn={checkIn}
+              checkOut={checkOut}
+              onSelectRange={(ci, co) => {
+                setCheckIn(ci)
+                setCheckOut(co)
+                setAvailability(null)
+                setAvailError(null)
+              }}
+            />
             <div className="flex flex-col gap-1 sm:flex-row sm:gap-4">
               <label className="flex flex-col gap-1 text-sm text-rs-ink">
                 入住日期

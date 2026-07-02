@@ -12,6 +12,10 @@ import { test, expect, Page } from '@playwright/test';
  * - E2E-BUYER-02: 通知收件匣載入 + 篩選切換（/notifications）
  * - E2E-BUYER-03: 我的預訂列表空狀態（/bookings）
  *
+ * Sprint 37 US-003（AI-1901 套版後版型一致性驗收）新增：
+ * - E2E-BUYER-04: 買家頁套用共用賣場版型（多頁 Header/Footer 一致、唯一、不重複兩套 nav）
+ * - E2E-BUYER-05: 共用 Header 帳號選單登出（登入態顯示 email/登出 → 登出後轉訪客）
+ *
  * 未自動化（需 seed 訂單/商品，避免 flaky，改由手動 checklist 驗證，見 Sprint 32 Review AC-002-3）：
  * - 訂單詳情 + 內嵌物流追蹤（/orders/[id]，需已建立訂單）
  * - 商品評價提交/列表（/reviews/product/[listingId]，需真實 listing）
@@ -32,7 +36,7 @@ async function registerAndLogin(page: Page, testEmail?: string) {
 
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
-  await page.click('button[type="submit"]');
+  await page.click('button[type="submit"]:not(:has-text("搜尋"))');
   await page.waitForTimeout(3000);
 
   // 若仍在登入頁（帳號不存在）→ 自動註冊
@@ -47,13 +51,13 @@ async function registerAndLogin(page: Page, testEmail?: string) {
     await page.fill('input[name="email"]', email);
     await page.fill('input[name="password"]', password);
     await page.fill('input[name="confirmPassword"]', password);
-    await page.click('button[type="submit"]');
+    await page.click('button[type="submit"]:not(:has-text("搜尋"))');
     await page.waitForTimeout(3000);
 
     if (page.url().includes('/login')) {
       await page.fill('input[name="email"]', email);
       await page.fill('input[name="password"]', password);
-      await page.click('button[type="submit"]');
+      await page.click('button[type="submit"]:not(:has-text("搜尋"))');
       await page.waitForTimeout(3000);
     }
   }
@@ -103,5 +107,49 @@ test.describe('AT-BUYER-PAGES: 買家頁面瀏覽器端驗證', () => {
     await expect(page.getByText('尚無預訂')).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('您目前還沒有任何旅宿預訂')).toBeVisible();
     await expect(page.getByRole('button', { name: '去逛逛' })).toBeVisible();
+  });
+});
+
+/**
+ * AT-BUYER-LAYOUT: 買家頁共用賣場版型（Sprint 37 US-001 AI-1901 / US-003）
+ *
+ * 驗證 (auth) 買家頁已由「各頁手包 nav/footer」收斂到共用 route-group layout
+ * （app/(auth)/layout.tsx 承載 StorefrontHeader + StorefrontFooter），且共用 Header
+ * 的 auth-aware 帳號選單（email/我的訂單/登出）正常運作。零後端 seed 依賴。
+ */
+test.describe('AT-BUYER-LAYOUT: 買家頁共用賣場版型（S37）', () => {
+  test('E2E-BUYER-04: 多頁套用共用 Header/Footer（唯一、不重複兩套 nav）', async ({ page }) => {
+    await registerAndLogin(page);
+
+    // 逐頁確認共用 Header/Footer 存在且「唯一」（若殘留自包 nav 會 >1）
+    for (const path of ['/orders', '/cart', '/notifications']) {
+      await page.goto(path);
+      await page.waitForLoadState('domcontentloaded');
+
+      await expect(page.getByTestId('storefront-header')).toHaveCount(1);
+      await expect(page.getByTestId('storefront-header')).toBeVisible({ timeout: 15000 });
+      await expect(page.getByTestId('storefront-footer')).toHaveCount(1);
+      await expect(page.getByTestId('storefront-footer')).toBeVisible();
+    }
+
+    // 已登入 → 帳號區顯示（email + 登出），非訪客
+    await expect(page.getByTestId('header-account')).toBeVisible();
+    await expect(page.getByTestId('header-logout')).toBeVisible();
+  });
+
+  test('E2E-BUYER-05: 共用 Header 帳號選單登出 → 轉訪客', async ({ page }) => {
+    await registerAndLogin(page);
+
+    await page.goto('/orders');
+    await page.waitForLoadState('domcontentloaded');
+
+    // 登入態：帳號選單有登出鈕
+    await expect(page.getByTestId('header-logout')).toBeVisible({ timeout: 15000 });
+    await page.getByTestId('header-logout').click();
+
+    // 登出後導向 /login，且 Header 即時轉為訪客（登入/註冊）
+    await page.waitForURL('**/login', { timeout: 10000 });
+    await expect(page.getByTestId('header-login')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('header-account')).toHaveCount(0);
   });
 });

@@ -118,8 +118,9 @@ class BookingIntegrationTest {
 
         mockMvc.perform(get(BASE_URL + "/availability")
                         .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+                        .param("roomListingId", request.getRoomListingId().toString())
+                        .param("checkInDate", request.getCheckInDate().toString())
+                        .param("checkOutDate", request.getCheckOutDate().toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.available").value(true));
@@ -143,8 +144,9 @@ class BookingIntegrationTest {
 
         mockMvc.perform(get(BASE_URL + "/availability")
                         .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+                        .param("roomListingId", request.getRoomListingId().toString())
+                        .param("checkInDate", request.getCheckInDate().toString())
+                        .param("checkOutDate", request.getCheckOutDate().toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.available").value(true))

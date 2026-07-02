@@ -1,10 +1,12 @@
 package com.nextkey.ecommerce.api.controller;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
 
 import org.springframework.data.domain.Page;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -44,8 +46,17 @@ public class BookingController {
     @GetMapping("/availability")
     @PreAuthorize("hasAuthority('booking:read')")
     public ResponseEntity<ApiResponse<BookingDto.AvailabilityResponse>> checkAvailability(
-            @Valid @RequestBody BookingDto.AvailabilityRequest request) {
-        BookingDto.AvailabilityResponse result = bookingService.checkAvailability(request);
+            @RequestParam final UUID roomListingId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) final LocalDate checkInDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) final LocalDate checkOutDate) {
+        // 改用 @RequestParam（原 GET+@RequestBody 瀏覽器無法送 body，前端無法呼叫）；
+        // service 簽名不變，內部重建 AvailabilityRequest。（S40 AI-2201）
+        final BookingDto.AvailabilityRequest request = BookingDto.AvailabilityRequest.builder()
+                .roomListingId(roomListingId)
+                .checkInDate(checkInDate)
+                .checkOutDate(checkOutDate)
+                .build();
+        final BookingDto.AvailabilityResponse result = bookingService.checkAvailability(request);
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 

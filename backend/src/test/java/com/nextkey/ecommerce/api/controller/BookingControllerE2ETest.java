@@ -631,23 +631,20 @@ class BookingControllerE2ETest {
     @Order(9)
     @DisplayName("API-M06-009: GET /v2/bookings/availability - 檢查可用性")
     void checkAvailability_returns200() {
-        // 注意：此端點使用 @RequestBody 配合 GET，這是 REST 風格問題
-        // 正確做法應該使用 @RequestParam
-        // 作為 QA，我記錄這個發現的問題
+        // S40 AI-2201：端點已改 @RequestParam（原 GET+@RequestBody 瀏覽器無法呼叫）。
+        // 以真實 testRoomListingId + 遠期日期（避開其他 @Order 測試已訂的近期日期）→ available=true。
         given()
                 .header("Authorization", "Bearer " + buyerToken)
-                .contentType(MediaType.APPLICATION_JSON_VALUE)
-                .body(BookingDto.AvailabilityRequest.builder()
-                        .roomListingId(UUID.randomUUID())
-                        .checkInDate(LocalDate.now().plusDays(10))
-                        .checkOutDate(LocalDate.now().plusDays(12))
-                        .build())
+                .queryParam("roomListingId", testRoomListingId.toString())
+                .queryParam("checkInDate", LocalDate.now().plusDays(365).toString())
+                .queryParam("checkOutDate", LocalDate.now().plusDays(367).toString())
                 .when()
                 .get(BOOKING_URL + "/availability")
                 .then()
-                .statusCode(anyOf(is(403), is(404))); // 預期 403/404 因為 GET 不支持 body
+                .statusCode(200)
+                .body("data.available", is(true));
 
-        System.out.println("✅ API-M06-009 PASSED: 可用性檢查端點存在（發現 bug: GET with body）");
+        System.out.println("✅ API-M06-009 PASSED: 可用性檢查（@RequestParam）");
     }
 
     // ── API-M06-010: 檢查日期可用性-衝突 ─────────────────────
@@ -656,21 +653,19 @@ class BookingControllerE2ETest {
     @Order(10)
     @DisplayName("API-M06-010: GET /v2/bookings/availability - 日期衝突")
     void checkAvailability_conflict_returns200() {
-        // 同上，GET with body 是 API 設計問題
+        // checkOut < checkIn（無效日期範圍）→ service 回 200 但 available=false（非丟例外）。
         given()
                 .header("Authorization", "Bearer " + buyerToken)
-                .contentType(MediaType.APPLICATION_JSON_VALUE)
-                .body(BookingDto.AvailabilityRequest.builder()
-                        .roomListingId(UUID.randomUUID())
-                        .checkInDate(LocalDate.now().plusDays(10))
-                        .checkOutDate(LocalDate.now().plusDays(5)) // checkOut < checkIn
-                        .build())
+                .queryParam("roomListingId", testRoomListingId.toString())
+                .queryParam("checkInDate", LocalDate.now().plusDays(10).toString())
+                .queryParam("checkOutDate", LocalDate.now().plusDays(5).toString())
                 .when()
                 .get(BOOKING_URL + "/availability")
                 .then()
-                .statusCode(anyOf(is(403), is(404)));
+                .statusCode(200)
+                .body("data.available", is(false));
 
-        System.out.println("✅ API-M06-010 PASSED: 可用性檢查端點存在");
+        System.out.println("✅ API-M06-010 PASSED: 無效日期範圍 available=false");
     }
 
     // ── API-M06-011: 未授權操作 ──────────────────────────────

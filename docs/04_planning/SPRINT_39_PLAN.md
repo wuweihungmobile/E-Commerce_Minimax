@@ -26,24 +26,25 @@
 
 ## 1. Sprint 39 目標
 
-> **主題**: ROOM 訂房閉環補完 —— 可用性檢查 + 服務抽取 + E2E
+> **主題**: ROOM 訂房閉環補完 —— 衝突優雅處理 + 服務抽取 + E2E + 測試基建
 
-ROOM 訂房閉環的骨幹（詳情頁帶日期加購 → checkout 建立 booking → bookings 列表）**已存在**;本 Sprint 補上關鍵缺口:(1) 詳情頁**可用性檢查**（選日期後即時查 `/v2/bookings/availability`,不可用則禁止加購並說明,杜絕加購已訂走日期到結帳才失敗）;(2) 把 checkout 內聯的 booking 建立**抽取為 `BookingService.createBooking`**（清理、可測）;(3) 補 **ROOM 訂房閉環 E2E**（mock-based）。以既有後端端點達成,**無後端/DB 變動**。
+> **🔴 範圍調整（2026-07-02，實作前發現）**：`GET /v2/bookings/availability` 為 GET+@RequestBody（瀏覽器 GET 無法送 body、前端無法呼叫）。使用者選定**純前端 /price + 409 優雅處理**（免後端）。故原「詳情頁 availability 檢查」US-001 改為「checkout 建立 booking 時優雅處理日期衝突 409/E_4001」;日期可用性回饋落在 checkout（非詳情頁）。US-004（E2E helper 抽取）提為承諾以補足容量。
+
+ROOM 訂房閉環的骨幹（詳情頁帶日期加購 → checkout 建立 booking → bookings 列表）**已存在**;本 Sprint 補上關鍵缺口:(1) checkout 建立 booking **優雅處理日期衝突**（409/E_4001 → 「日期已被預訂,請改期」,取代通用錯誤）+ 詳情頁 ROOM 加購前日期驗證微調;(2) 把 checkout 內聯的 booking 建立**抽取為 `BookingService.createBooking`**（清理、可測）;(3) 補 **ROOM 訂房閉環 E2E**（mock-based，含衝突路徑）;(4) 抽取 **E2E 共用登入 helper**（清 DEF-022）。**無後端/DB 變動**。
 
 ---
 
 ## 2. User Stories
 
-### US-001：詳情頁 ROOM 可用性檢查 + 訂房體驗強化（P1 旗艦）（前端）
+### US-001：checkout ROOM 訂房衝突優雅處理 + 詳情頁 ROOM 微調（P1 旗艦）（前端）
 
-> **SP**: 5 | **優先級**: P1 | **狀態**: 📋 Ready
-> **承自**: AI-2103b（ROOM 訂房補完）
+> **SP**: 3 | **優先級**: P1 | **狀態**: 📋 Ready
+> **承自**: AI-2103b（ROOM 訂房補完，免後端路徑）
 
-**AC-001-1**: `services/booking.ts` 補 `checkAvailability(roomListingId, checkIn, checkOut)` → `GET /v2/bookings/availability`,型別含 available/nightsCount/totalPrice/currency/unavailableReason
-**AC-001-2**: `ListingDetail` ROOM 分支:選定日期後改呼叫 **availability**（取代/整合現有 /price 計價）——顯示「可預訂 + N 晚合計」或「不可預訂 + 原因」;**不可預訂時禁用「加入購物車」**並提示
-**AC-001-3**: 可預訂時「加入購物車」維持現有帶日期加購（`POST /v2/cart/items` startDate/endDate）;加購前再次確認 available（防日期改動後未重查）
-**AC-001-4**: 日期驗證（退房 > 入住、入住不早於今日）於前端先擋,錯誤訊息清楚;testid 供 E2E（listing-availability / listing-unavailable）
-**AC-001-5**: 前端 `npm run build` + `type-check` + `lint` 0 error;無後端變動
+**AC-001-1**: `(auth)/checkout` 建立 booking 時,**優雅處理日期衝突**——後端回 409 / `E_4001`（日期已被預訂）時,顯示明確訊息「所選日期已被預訂,請返回修改日期」（取代通用「結帳失敗」）;其他 booking 錯誤（房源非 ACTIVE E_3002、超容量 E_4005 等）亦給對應可讀訊息
+**AC-001-2**: 詳情頁 `ListingDetail` ROOM 分支:維持 `/price` 計價顯示;**加購前日期驗證**（退房 > 入住、入住不早於今日）於前端先擋,錯誤訊息清楚;testid 供 E2E（沿用 listing-checkin/checkout/price）
+**AC-001-3**: 詳情頁 ROOM 加購成功後,提示可前往購物車/結帳完成訂房（引導閉環）
+**AC-001-4**: 前端 `npm run build` + `type-check` + `lint` 0 error;**無後端變動**（availability 端點 GET+body 不可用,改以建立時 409 回饋）
 
 ### US-002：BookingService.createBooking 抽取 + checkout 重構（P2）（前端）
 
@@ -63,12 +64,13 @@ ROOM 訂房閉環的骨幹（詳情頁帶日期加購 → checkout 建立 bookin
 **AC-003-2**: 鑑別:mock availability **不可預訂** → 詳情頁禁用加購 + 顯示原因（listing-unavailable）
 **AC-003-3**: `make validate-e2e` 綠;既有 E2E（at-homepage/at-buyer-pages/at-listing-detail 等）不退步
 
-### US-004（Buffer）：E2E 共用登入 helper 抽取（P3）
+### US-004：E2E 共用登入 helper 抽取（P2）（前端測試）
 
-> **SP**: 2 | **優先級**: Buffer/P3 | **狀態**: 📋 Ready
+> **SP**: 2 | **優先級**: P2（原 Buffer，因 US-001 縮減而提為承諾）| **狀態**: 📋 Ready
 > **承自**: AI-2101（含 DEF-022 硬等待）
 
-**AC-004-1**: 9 份重複 `registerAndLogin` 抽為單一共用 helper（submit 用 testid/排除搜尋鈕、改 `waitForURL` 取代固定 sleep）;各 spec 改用共用 helper;`make validate-e2e` 綠。時間允許則執行,否則順延
+**AC-004-1**: 9 份重複 `registerAndLogin` 抽為單一共用 helper（`e2e/helpers/auth.ts`）:submit 用 `:not(:has-text("搜尋"))`、以 `waitForURL` 取代固定 `waitForTimeout`（收斂 DEF-022）;各 spec 改 import 共用 helper
+**AC-004-2**: `make validate-e2e` 綠、所有既有 spec 不退步（登入流程等價）
 
 ---
 
@@ -76,13 +78,13 @@ ROOM 訂房閉環的骨幹（詳情頁帶日期加購 → checkout 建立 bookin
 
 | US | 標題 | SP | 優先級 |
 |----|------|----|--------|
-| US-001 | 詳情頁 ROOM 可用性檢查 + 訂房強化 | 5 | P1（旗艦）|
+| US-001 | checkout ROOM 訂房衝突優雅處理 + 詳情頁 ROOM 微調 | 3 | P1（旗艦）|
 | US-002 | BookingService.createBooking 抽取 + checkout 重構 | 2 | P2 |
-| US-003 | ROOM 訂房閉環 E2E（mock）| 3 | P2 |
+| US-003 | ROOM 訂房閉環 E2E（mock，含衝突路徑）| 3 | P2 |
+| US-004 | E2E 共用登入 helper 抽取（含 DEF-022）| 2 | P2 |
 | **P1+P2 承諾合計** | | **10 SP** | |
-| US-004 | E2E 共用登入 helper 抽取（Buffer）| 2 | P3 |
 
-> **Velocity 參考**：S35=18（純前端異常高）, S36=10, S37=10, S38=8。**本 Sprint 10 SP**,健康區間。閉環已存在故聚焦補強,風險集中於 availability 整合與 checkout 重構的行為等價。
+> **Velocity 參考**：S35=18（純前端異常高）, S36=10, S37=10, S38=8。**本 Sprint 10 SP**,健康區間。閉環已存在故聚焦補強;因 availability 端點不可用（GET+body）,US-001 由 availability 檢查改為 checkout 409 優雅處理（縮減）,並提 US-004（helper 抽取）為承諾補足容量。風險集中於 checkout 重構的行為等價。
 
 ---
 
@@ -140,11 +142,11 @@ US-004（Buffer）E2E 共用 helper 抽取
 
 ---
 
-## 8. 🔴 待使用者確認點
+## 8. 🔴 使用者確認點（2026-07-02 已確認）
 
-1. **日曆策略**：S39 用既有 `GET /v2/bookings/availability`（區間可用性 + 總價，**免後端變動**）完成訂房;**不**實作 `/v2/listings/{id}/calendar` 後端端點與整月日曆 UI（另立項）。是否同意此範圍?或要納入後端日曆端點（增加後端工作與 SP）?
-2. **ROOM 購買路徑**：維持現況「cart → checkout → **建立 booking**」（非走 order）。是否確認此為 ROOM 正式路徑?（探勘發現 Booking 與 Order 為平行路徑,測試用 order、checkout 用 booking;本 Sprint 依現況 booking 路徑,不統一二者）
-3. **範圍 / SP / 順序**：US-001（5）+ US-002（2）+ US-003（3）= 10 SP,US-004 Buffer;順序 US-001→002→003→004。是否核准?
+1. ✅ **日曆/可用性策略**：使用者選「純前端 /price + 409 優雅處理」（免後端）。原「用 availability 端點」不成立（該端點 GET+@RequestBody、瀏覽器無法送 body）→ 詳情頁保留 /price 計價,日期衝突回饋改在 checkout 建立 booking 時處理 409。不實作後端日曆端點（另立項）。
+2. ✅ **ROOM 購買路徑**：維持現況「cart → checkout → 建立 booking」（非走 order,不統一二者）。
+3. ✅ **範圍 / SP / 順序**：核准立即開始。US-001（3）+ US-002（2）+ US-003（3）+ US-004（2）= 10 SP;順序 US-001→002→003→004。
 
 ---
 

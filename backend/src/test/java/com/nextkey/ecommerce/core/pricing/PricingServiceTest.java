@@ -16,8 +16,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.temporal.TemporalAdjusters;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -532,6 +534,86 @@ class PricingServiceTest {
             assertThat(response).isNotNull();
             assertThat(response.getBaseTotal()).isEqualByComparingTo(BigDecimal.valueOf(2000));
             assertThat(response.getAdjustedTotal()).isEqualByComparingTo(BigDecimal.valueOf(2000));
+        }
+    }
+
+    @Nested
+    @DisplayName("UT-M12-015 ~ UT-M12-018: PRODUCT getEffectivePrice 漲價 + 折扣向後相容（AI-2406c）")
+    class ProductEffectivePriceTests {
+
+        private static final UUID PRODUCT_LISTING_ID = UUID.fromString("770e8400-e29b-41d4-a716-446655440003");
+
+        private Listing productListing() {
+            Listing listing = Listing.builder()
+                    .listingType(Listing.ListingType.PRODUCT)
+                    .basePrice(BASE_PRICE).currency("TWD").tenantId(TENANT_ID).build();
+            listing.setId(PRODUCT_LISTING_ID);
+            return listing;
+        }
+
+        private PricingRule productRule(PricingRule.PricingRuleType type, Map<String, Object> config) {
+            return PricingRule.builder()
+                    .id(UUID.randomUUID()).tenantId(TENANT_ID).listingId(PRODUCT_LISTING_ID)
+                    .ruleType(type).ruleName(type.name() + " product").priority(10)
+                    .config(config)
+                    .validFrom(LocalDate.of(2027, 1, 1)).validTo(LocalDate.of(2027, 12, 31))
+                    .isActive(true).build();
+        }
+
+        @Test
+        @DisplayName("UT-M12-015: MANUAL_OVERRIDE price>base → effectivePrice 漲價")
+        void manualOverrideMarkup() {
+            LocalDate checkDate = LocalDate.of(2027, 8, 3);
+            when(listingRepository.findById(PRODUCT_LISTING_ID)).thenReturn(Optional.of(productListing()));
+            when(pricingRuleRepository.findByListingIdAndIsActiveTrue(PRODUCT_LISTING_ID))
+                    .thenReturn(List.of(productRule(PricingRule.PricingRuleType.MANUAL_OVERRIDE, Map.of("price", 1300.0))));
+
+            PricingDto.EffectivePriceResponse resp = pricingService.getEffectivePrice(PRODUCT_LISTING_ID, checkDate, 1);
+
+            assertThat(resp.getEffectivePrice()).isEqualByComparingTo(BigDecimal.valueOf(1300)); // 1000→1300 漲價
+        }
+
+        @Test
+        @DisplayName("UT-M12-016: SEASONAL multiplier>1 → effectivePrice 漲價")
+        void seasonalMultiplierMarkup() {
+            LocalDate checkDate = LocalDate.of(2027, 8, 3);
+            when(listingRepository.findById(PRODUCT_LISTING_ID)).thenReturn(Optional.of(productListing()));
+            when(pricingRuleRepository.findByListingIdAndIsActiveTrue(PRODUCT_LISTING_ID))
+                    .thenReturn(List.of(productRule(PricingRule.PricingRuleType.SEASONAL, Map.of("multiplier", 1.2))));
+
+            PricingDto.EffectivePriceResponse resp = pricingService.getEffectivePrice(PRODUCT_LISTING_ID, checkDate, 1);
+
+            assertThat(resp.getEffectivePrice()).isEqualByComparingTo(BigDecimal.valueOf(1200)); // 1000×1.2
+        }
+
+        @Test
+        @DisplayName("UT-M12-017: WEEKDAY_WEEKEND 週末 → 漲價；平日 → 原價")
+        void weekdayWeekendMarkup() {
+            LocalDate saturday = LocalDate.of(2027, 8, 1).with(TemporalAdjusters.nextOrSame(DayOfWeek.SATURDAY));
+            LocalDate tuesday = LocalDate.of(2027, 8, 1).with(TemporalAdjusters.nextOrSame(DayOfWeek.TUESDAY));
+            when(listingRepository.findById(PRODUCT_LISTING_ID)).thenReturn(Optional.of(productListing()));
+            when(pricingRuleRepository.findByListingIdAndIsActiveTrue(PRODUCT_LISTING_ID))
+                    .thenReturn(List.of(productRule(
+                            PricingRule.PricingRuleType.WEEKDAY_WEEKEND, Map.of("weekendMultiplier", 1.5))));
+
+            assertThat(pricingService.getEffectivePrice(PRODUCT_LISTING_ID, saturday, 1).getEffectivePrice())
+                    .isEqualByComparingTo(BigDecimal.valueOf(1500)); // 週末 1000×1.5
+            assertThat(pricingService.getEffectivePrice(PRODUCT_LISTING_ID, tuesday, 1).getEffectivePrice())
+                    .isEqualByComparingTo(BASE_PRICE); // 平日原價
+        }
+
+        @Test
+        @DisplayName("UT-M12-018: SEASONAL + discountPercent（S44 向後相容）→ 仍為折扣，不退步")
+        void seasonalDiscountPercentBackwardCompat() {
+            LocalDate checkDate = LocalDate.of(2027, 8, 3);
+            when(listingRepository.findById(PRODUCT_LISTING_ID)).thenReturn(Optional.of(productListing()));
+            when(pricingRuleRepository.findByListingIdAndIsActiveTrue(PRODUCT_LISTING_ID))
+                    .thenReturn(List.of(productRule(
+                            PricingRule.PricingRuleType.SEASONAL, Map.of("discountPercent", 10.0))));
+
+            PricingDto.EffectivePriceResponse resp = pricingService.getEffectivePrice(PRODUCT_LISTING_ID, checkDate, 1);
+
+            assertThat(resp.getEffectivePrice()).isEqualByComparingTo(BigDecimal.valueOf(900)); // 1000×0.9 折扣不退步
         }
     }
 

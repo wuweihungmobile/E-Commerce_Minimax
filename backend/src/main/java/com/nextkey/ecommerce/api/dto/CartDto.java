@@ -74,11 +74,13 @@ public class CartDto {
         // ROOM 類型房源的日期範圍
         private java.time.LocalDate startDate;
         private java.time.LocalDate endDate;
-        // 動態定價折扣（AI-2403）：PRODUCT 折扣生效時填入（unitPrice/subtotal 已為折扣後），
-        // originalUnitPrice=折扣前單價、discountAmount=此項折扣金額、appliedRuleName=規則名；無折扣為 null。
+        // 動態定價調整（AI-2403 折扣；AI-2406c 放寬含漲價）：PRODUCT 規則生效時填入（unitPrice/subtotal 已為調整後），
+        // originalUnitPrice=調整前單價、discountAmount=此項有號差額（正=折扣、負=加價）、appliedRuleName=規則名、
+        // priceAdjustmentType=方向（DISCOUNT/MARKUP/NONE）；無調整為 null。
         private BigDecimal originalUnitPrice;
         private BigDecimal discountAmount;
         private String appliedRuleName;
+        private String priceAdjustmentType;
     }
 
     // ========== Cart Response ==========

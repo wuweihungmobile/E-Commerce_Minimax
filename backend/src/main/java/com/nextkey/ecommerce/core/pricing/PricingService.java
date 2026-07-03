@@ -553,7 +553,7 @@ public class PricingService {
         }
 
         PricingRule bestRule = activeRules.get(0);
-        BigDecimal effectivePrice = applyProductRule(bestRule, basePrice);
+        BigDecimal effectivePrice = applyProductRule(bestRule, basePrice, checkDate);
 
         return PricingDto.EffectivePriceResponse.builder()
                 .listingId(listingId)
@@ -567,11 +567,23 @@ public class PricingService {
                 .build();
     }
 
-    private BigDecimal applyProductRule(PricingRule rule, BigDecimal basePrice) {
+    /**
+     * PRODUCT 單日規則套用（Sprint 48 AI-2406c）：支援漲價型規則（對齊 ROOM calculateAdjustment 的 config key）。
+     * - MANUAL_OVERRIDE：config `price`（可高於 basePrice = 漲價，或低於 = 折扣）
+     * - WEEKDAY_WEEKEND：config `weekendMultiplier`（依 checkDate 星期五/六/日判定，>1 = 漲價）
+     * - SEASONAL：config `multiplier`（>1 = 漲價）
+     * 以上未命中時，**向後相容**沿用既有折扣路徑：任何規則含 config `discountPercent` → 折扣（S44 PRODUCT 行為）。
+     */
+    private BigDecimal applyProductRule(PricingRule rule, BigDecimal basePrice, LocalDate checkDate) {
         Map<String, Object> config = rule.getConfig();
         if (config == null) {
             return basePrice;
         }
+        BigDecimal markup = applyProductMarkup(rule, basePrice, checkDate);
+        if (markup != null) {
+            return markup;
+        }
+        // 向後相容：折扣型（S44 PRODUCT 以 discountPercent 表達折扣，不分 ruleType）
         Object discountPct = config.get("discountPercent");
         if (discountPct != null) {
             BigDecimal pct = new BigDecimal(discountPct.toString());
@@ -579,6 +591,27 @@ public class PricingService {
             return basePrice.multiply(BigDecimal.ONE.subtract(pct.divide(hundred)));
         }
         return basePrice;
+    }
+
+    /** 漲價型規則計算（回 null 表示此規則非漲價型或缺對應 config，交回 applyProductRule 走折扣/原價）。 */
+    private BigDecimal applyProductMarkup(PricingRule rule, BigDecimal basePrice, LocalDate checkDate) {
+        switch (rule.getRuleType()) {
+            case MANUAL_OVERRIDE:
+                Double overridePrice = getDoubleConfig(rule, "price");
+                return overridePrice != null ? BigDecimal.valueOf(overridePrice) : null;
+            case SEASONAL:
+                Double seasonalMultiplier = getDoubleConfig(rule, "multiplier");
+                return seasonalMultiplier != null
+                        ? basePrice.multiply(BigDecimal.valueOf(seasonalMultiplier)) : null;
+            case WEEKDAY_WEEKEND:
+                DayOfWeek dow = checkDate.getDayOfWeek();
+                boolean isWeekend = dow == DayOfWeek.FRIDAY || dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY;
+                Double weekendMultiplier = getDoubleConfig(rule, "weekendMultiplier");
+                return (isWeekend && weekendMultiplier != null)
+                        ? basePrice.multiply(BigDecimal.valueOf(weekendMultiplier)) : null;
+            default:
+                return null;
+        }
     }
 
     private static class AdjustmentResult {

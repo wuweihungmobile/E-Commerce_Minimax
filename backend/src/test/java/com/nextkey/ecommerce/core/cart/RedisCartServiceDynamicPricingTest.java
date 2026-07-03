@@ -113,7 +113,30 @@ class RedisCartServiceDynamicPricingTest {
         assertThat(it.getOriginalUnitPrice()).isEqualByComparingTo(BigDecimal.valueOf(500));
         assertThat(it.getDiscountAmount()).isEqualByComparingTo(BigDecimal.valueOf(150)); // (500-425)×2
         assertThat(it.getAppliedRuleName()).isEqualTo("商品早鳥 15% off");
+        assertThat(it.getPriceAdjustmentType()).isEqualTo("DISCOUNT");
         assertThat(cart.getTotalAmount()).isEqualByComparingTo(BigDecimal.valueOf(850));
+    }
+
+    @Test
+    @DisplayName("UT-CART-DP-004: toggle 開啟且漲價（AI-2406c）→ unitPrice/subtotal 漲價後 + 有號差額(負)/MARKUP")
+    void getCart_withProductMarkup_returnsMarkedUp() {
+        stubCartWithProduct();
+        when(featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")).thenReturn(true);
+        // 旺季加成：500 → 650（漲價；閘門放寬後計入）
+        when(pricingService.getEffectivePrice(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(effective(BigDecimal.valueOf(650), "商品旺季加成 30%"));
+
+        CartDto.CartResponse cart = cartService.getCart(USER_ID, TENANT_ID);
+
+        CartDto.CartItemResponse it = cart.getItems().get(0);
+        assertThat(it.getUnitPrice()).isEqualByComparingTo(BigDecimal.valueOf(650));
+        assertThat(it.getSubtotal()).isEqualByComparingTo(BigDecimal.valueOf(1300)); // 650 × 2
+        assertThat(it.getOriginalUnitPrice()).isEqualByComparingTo(BigDecimal.valueOf(500));
+        // 有號差額：(500 − 650) × 2 = −300（負=加價）
+        assertThat(it.getDiscountAmount()).isEqualByComparingTo(BigDecimal.valueOf(-300));
+        assertThat(it.getAppliedRuleName()).isEqualTo("商品旺季加成 30%");
+        assertThat(it.getPriceAdjustmentType()).isEqualTo("MARKUP");
+        assertThat(cart.getTotalAmount()).isEqualByComparingTo(BigDecimal.valueOf(1300));
     }
 
     @Test

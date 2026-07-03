@@ -403,18 +403,21 @@ public class RedisCartService {
         BigDecimal originalUnitPrice = null;
         BigDecimal discountAmount = null;
         String appliedRuleName = null;
+        String priceAdjustmentType = null;
 
-        // 動態定價（PRODUCT）：DYNAMIC_PRICING_ENABLED 開啟且規則折扣後單價低於現價時，
-        // 以折扣後單價重算 unitPrice/subtotal（讀取時算，Redis 只存 basePrice 避免 stale，AI-2403）。
-        // 界線：只套折扣（effectivePrice < 現價）；ROOM 不走此路徑（其折扣於 booking 計價，S43）。
-        PricingDto.EffectivePriceResponse discount = tryProductDiscount(item, listing);
-        if (discount != null) {
+        // 動態定價（PRODUCT）：DYNAMIC_PRICING_ENABLED 開啟且規則調整後單價 ≠ 現價時，
+        // 以調整後單價重算 unitPrice/subtotal（讀取時算，Redis 只存 basePrice 避免 stale，AI-2403）。
+        // AI-2406c：放寬含漲價（effectivePrice > 現價亦計入）；discountAmount 為有號差額
+        // （正=折扣、負=加價），priceAdjustmentType 明示方向。ROOM 不走此路徑（其計價於 booking，S43/S46）。
+        PricingDto.EffectivePriceResponse adjustment = tryProductAdjustment(item, listing);
+        if (adjustment != null) {
             originalUnitPrice = unitPrice;
-            unitPrice = discount.getEffectivePrice();
+            unitPrice = adjustment.getEffectivePrice();
             subtotal = CartItemData.computeSubtotal(unitPrice, item.getQuantity());
             discountAmount = originalUnitPrice.subtract(unitPrice)
                     .multiply(BigDecimal.valueOf(item.getQuantity()));
-            appliedRuleName = discount.getAppliedRuleName();
+            appliedRuleName = adjustment.getAppliedRuleName();
+            priceAdjustmentType = adjustmentDirection(originalUnitPrice, unitPrice);
         }
 
         return CartDto.CartItemResponse.builder()
@@ -435,15 +438,17 @@ public class RedisCartService {
                 .originalUnitPrice(originalUnitPrice)
                 .discountAmount(discountAmount)
                 .appliedRuleName(appliedRuleName)
+                .priceAdjustmentType(priceAdjustmentType)
                 .build();
     }
 
     /**
-     * PRODUCT 動態定價折扣試算（AI-2403）：toggle 開啟、為 PRODUCT、且規則折扣後單價低於現存單價時回結果，
+     * PRODUCT 動態定價調整試算（AI-2403 折扣；AI-2406c 放寬含漲價）：toggle 開啟、為 PRODUCT、
+     * 且規則調整後單價 ≠ 現存單價時回結果（含折扣 effectivePrice&lt;現價 或漲價 &gt;現價），
      * 否則回 null（呼叫端 fallback 原價，向後相容）。計算失敗降級為不套用，避免阻斷購物車。
      * 以「今日」為規則有效期基準（PRODUCT 無入住日概念）。
      */
-    private PricingDto.EffectivePriceResponse tryProductDiscount(CartItemData item, Listing listing) {
+    private PricingDto.EffectivePriceResponse tryProductAdjustment(CartItemData item, Listing listing) {
         if (listing == null
                 || !"PRODUCT".equals(item.getListingType())
                 || !featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")) {
@@ -452,15 +457,31 @@ public class RedisCartService {
         try {
             PricingDto.EffectivePriceResponse eff = pricingService.getEffectivePrice(
                     item.getListingId(), java.time.LocalDate.now(), 1);
-            boolean hasDiscount = eff.getEffectivePrice() != null
+            // AI-2406c：閘門由 `< 0`（只折扣）放寬為 `!= 0`（含漲價），對齊 ROOM S46
+            boolean hasAdjustment = eff.getEffectivePrice() != null
                     && item.getUnitPrice() != null
-                    && eff.getEffectivePrice().compareTo(item.getUnitPrice()) < 0;
-            return hasDiscount ? eff : null;
+                    && eff.getEffectivePrice().compareTo(item.getUnitPrice()) != 0;
+            return hasAdjustment ? eff : null;
         } catch (RuntimeException e) {
             log.warn("Product dynamic pricing failed for listing={}, fallback to base price: {}",
                     item.getListingId(), e.getMessage());
             return null;
         }
+    }
+
+    /** 調整方向（AI-2406c，對齊 S46 BookingService）：正=折扣、負=加價、0/ null=無。 */
+    private String adjustmentDirection(BigDecimal originalUnitPrice, BigDecimal adjustedUnitPrice) {
+        if (originalUnitPrice == null || adjustedUnitPrice == null) {
+            return "NONE";
+        }
+        int cmp = adjustedUnitPrice.compareTo(originalUnitPrice);
+        if (cmp < 0) {
+            return "DISCOUNT";
+        }
+        if (cmp > 0) {
+            return "MARKUP";
+        }
+        return "NONE";
     }
 
     /**

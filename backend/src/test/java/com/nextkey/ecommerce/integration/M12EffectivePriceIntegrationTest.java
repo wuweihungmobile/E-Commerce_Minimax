@@ -149,4 +149,37 @@ class M12EffectivePriceIntegrationTest {
                         .param("stayDays", "1"))
                 .andExpect(status().isNotFound());
     }
+
+    // ── IT-EP-004: MANUAL_OVERRIDE 漲價 → effectivePrice > basePrice（AI-2406c）──
+
+    @Test
+    @DisplayName("IT-EP-004: MANUAL_OVERRIDE price>base → effectivePrice 漲價（AI-2406c）")
+    void getEffectivePrice_withMarkupRule_returnsMarkedUpPrice() throws Exception {
+        UUID ruleId = UUID.randomUUID();
+        Listing listing = buildMockListing();
+        PricingRule markupRule = PricingRule.builder()
+                .id(ruleId)
+                .tenantId(UUID.fromString(TEST_TENANT_ID))
+                .listingId(LISTING_ID)
+                .ruleType(PricingRule.PricingRuleType.MANUAL_OVERRIDE)
+                .ruleName("商品旺季手動調高")
+                .priority(10)
+                .config(Map.of("price", 650.0)) // 高於 basePrice 500 → 漲價
+                .validFrom(LocalDate.now().minusDays(1))
+                .validTo(LocalDate.now().plusDays(30))
+                .isActive(true)
+                .build();
+
+        when(listingRepository.findById(LISTING_ID)).thenReturn(Optional.of(listing));
+        when(pricingRuleRepository.findByListingIdAndIsActiveTrue(LISTING_ID)).thenReturn(List.of(markupRule));
+
+        mockMvc.perform(get(BASE_URL)
+                        .param("checkDate", LocalDate.now().toString())
+                        .param("stayDays", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.basePrice").value(500.00))
+                .andExpect(jsonPath("$.data.effectivePrice").value(650.00))
+                .andExpect(jsonPath("$.data.appliedRuleType").value("MANUAL_OVERRIDE"));
+    }
 }

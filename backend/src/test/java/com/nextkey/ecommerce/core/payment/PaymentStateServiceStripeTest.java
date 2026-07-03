@@ -156,4 +156,70 @@ class PaymentStateServiceStripeTest {
 
         verify(paymentGatewayFactory, never()).retrieveCheckoutSession(any(), any());
     }
+
+    private Order paidOrder() {
+        Order order = Order.builder().userId(USER_ID).status(Order.OrderStatus.PAID)
+                .totalAmount(BigDecimal.valueOf(1500)).currency("TWD").build();
+        order.setId(ORDER_ID);
+        return order;
+    }
+
+    @Test
+    @DisplayName("UT-PAY-STRIPE-005: refund toggle 開 + STRIPE → 呼叫 Stripe Refund + REFUNDED + refund id")
+    void refund_toggleOnStripe_realRefund() {
+        Order order = paidOrder();
+        Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.SUCCESS)
+                .transactionId("cs_test_1").stripePaymentIntentId("pi_1").build();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(success));
+        when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
+        when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", null, "customer"))
+                .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
+                        .success(true).refundId("re_1").status("succeeded").build());
+
+        service.refundOrderPayment(ORDER_ID, "customer");
+
+        verify(paymentGatewayFactory).processRefund("STRIPE", "pi_1", null, "customer");
+        assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+        assertThat(success.getStripeRefundId()).isEqualTo("re_1");
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
+    }
+
+    @Test
+    @DisplayName("UT-PAY-STRIPE-006: refund toggle 關 → mock 退款（不呼叫 gateway）")
+    void refund_toggleOff_mockRefund() {
+        Order order = paidOrder();
+        Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.MOCK)
+                .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.SUCCESS)
+                .transactionId("MOCK-1").build();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(success));
+        when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(false);
+
+        service.refundOrderPayment(ORDER_ID, "customer");
+
+        verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any());
+        assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
+    }
+
+    @Test
+    @DisplayName("UT-PAY-STRIPE-007: markStripeRefunded（webhook）→ REFUNDED + refund id + Order REFUNDED")
+    void markStripeRefunded_updates() {
+        Order order = paidOrder();
+        Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                .status(Payment.PaymentStatus.SUCCESS).stripePaymentIntentId("pi_1").build();
+        when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(success));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        boolean updated = service.markStripeRefunded("pi_1", "re_2");
+
+        assertThat(updated).isTrue();
+        assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+        assertThat(success.getStripeRefundId()).isEqualTo("re_2");
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
+    }
 }

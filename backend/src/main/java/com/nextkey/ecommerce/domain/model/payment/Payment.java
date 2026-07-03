@@ -74,6 +74,10 @@ public class Payment {
     @Column(name = "stripe_charge_id")
     private String stripeChargeId;
 
+    // 真實金流 Phase C（Sprint 52 AI-2412）：Stripe 退款 id（re_xxx）；未退款為 null
+    @Column(name = "stripe_refund_id")
+    private String stripeRefundId;
+
     @Column(name = "idempotency_key")
     private String idempotencyKey;
 

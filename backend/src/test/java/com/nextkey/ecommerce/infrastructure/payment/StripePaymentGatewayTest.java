@@ -240,4 +240,36 @@ class StripePaymentGatewayTest {
         assertThat(result.getStatus()).isEqualTo("complete");
         assertThat(result.getPaymentIntentId()).isEqualTo("pi_paid_789");
     }
+
+    @Test
+    @DisplayName("TC-S006: processRefund 成功 — WireMock 200 Refund.create（AI-2412）")
+    void processRefund_success_returnsRefundResult() {
+        stubFor(post(urlEqualTo("/v1/refunds"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {
+                                  "id": "re_test_1",
+                                  "object": "refund",
+                                  "amount": 150000,
+                                  "currency": "twd",
+                                  "payment_intent": "pi_1",
+                                  "status": "succeeded"
+                                }
+                                """)));
+
+        PaymentGatewayRequestResponse.RefundRequest request =
+                PaymentGatewayRequestResponse.RefundRequest.builder()
+                        .transactionId("pi_1") // payment_intent id
+                        .reason("customer_request")
+                        .idempotencyKey("refund-pi_1")
+                        .build();
+
+        PaymentGatewayRequestResponse.RefundResult result = gateway.processRefund(request);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getRefundId()).isEqualTo("re_test_1");
+        assertThat(result.getStatus()).isEqualTo("succeeded");
+    }
 }

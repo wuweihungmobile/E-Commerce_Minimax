@@ -75,8 +75,8 @@ public class OrderPaymentController {
     public ResponseEntity<ApiResponse<OrderPaymentStateDto>> mockRefund(
             @PathVariable UUID orderId,
             @RequestParam(required = false) String reason) {
-        log.info("Mock refund request: orderId={}, reason={}", orderId, reason);
-        OrderPaymentStateDto state = paymentStateService.mockRefund(orderId, reason);
+        log.info("Refund request: orderId={}, reason={}", orderId, reason);
+        OrderPaymentStateDto state = paymentStateService.refundOrderPayment(orderId, reason);
         return ResponseEntity.ok(ApiResponse.success("Refund processed", state));
     }
 

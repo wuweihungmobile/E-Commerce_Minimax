@@ -80,6 +80,12 @@ public class PaymentWebhookService {
                 String paymentIntentId = obj.path("id").asText(null);
                 paymentStateService.markStripePaymentFailed(paymentIntentId);
             }
+            case "charge.refunded" -> {
+                // charge 物件的 payment_intent 為關聯的 pi id；refunds.data[0].id 為 refund id
+                String paymentIntentId = obj.path("payment_intent").asText(null);
+                String refundId = obj.path("refunds").path("data").path(0).path("id").asText(null);
+                paymentStateService.markStripeRefunded(paymentIntentId, refundId);
+            }
             default -> log.info("Stripe webhook: unhandled event type: {}", eventType);
         }
     }

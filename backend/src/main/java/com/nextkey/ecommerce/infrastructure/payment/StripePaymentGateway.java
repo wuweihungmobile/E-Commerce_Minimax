@@ -15,9 +15,11 @@ import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.stripe.exception.CardException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
+import com.stripe.model.Refund;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.PaymentIntentCreateParams;
+import com.stripe.param.RefundCreateParams;
 import com.stripe.param.checkout.SessionCreateParams;
 
 import lombok.RequiredArgsConstructor;
@@ -104,51 +106,39 @@ public class StripePaymentGateway implements PaymentGateway {
     @Override
     public PaymentGatewayRequestResponse.RefundResult processRefund(
             PaymentGatewayRequestResponse.RefundRequest request) {
-        log.info("Processing Stripe refund: transactionId={}, amount={}, reason={}",
+        // Sprint 52 Phase C（AI-2412）：真 Stripe Refund.create（request.transactionId = payment_intent id）。
+        // amount 為 null → 全額退款（Stripe 預設）；本 Sprint 只做全額退款。
+        log.info("Processing Stripe refund: paymentIntent={}, amount={}, reason={}",
                 request.getTransactionId(), request.getAmount(), request.getReason());
-
         try {
-            Payment payment = paymentRepository.findByTransactionId(request.getTransactionId())
-                    .orElse(null);
-
-            if (payment == null) {
-                return PaymentGatewayRequestResponse.RefundResult.builder()
-                        .success(false)
-                        .transactionId(request.getTransactionId())
-                        .status("failed")
-                        .errorMessage("Payment not found")
-                        .build();
+            RefundCreateParams.Builder paramsBuilder = RefundCreateParams.builder()
+                    .setPaymentIntent(request.getTransactionId());
+            if (request.getAmount() != null) {
+                paramsBuilder.setAmount(request.getAmount().multiply(BigDecimal.valueOf(100)).longValue());
             }
+            RequestOptions options = RequestOptions.builder()
+                    .setApiKey(stripeApiKey)
+                    .setIdempotencyKey(request.getIdempotencyKey() != null
+                            ? request.getIdempotencyKey() : "refund-" + request.getTransactionId())
+                    .build();
 
-            BigDecimal refundAmount = request.getAmount() != null ? request.getAmount() : payment.getAmount();
-
-            if (refundAmount.compareTo(payment.getAmount()) > 0) {
-                return PaymentGatewayRequestResponse.RefundResult.builder()
-                        .success(false)
-                        .transactionId(request.getTransactionId())
-                        .status("failed")
-                        .errorMessage("Refund amount exceeds payment amount")
-                        .build();
-            }
-
-            String refundId = "re_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 24);
+            Refund refund = Refund.create(paramsBuilder.build(), options);
 
             return PaymentGatewayRequestResponse.RefundResult.builder()
                     .success(true)
-                    .refundId(refundId)
+                    .refundId(refund.getId())
                     .transactionId(request.getTransactionId())
-                    .refundAmount(refundAmount)
-                    .status("succeeded")
+                    .refundAmount(request.getAmount())
+                    .status(refund.getStatus())
                     .build();
-
-        } catch (DataAccessException e) {
-            log.error("[E_5012] Failed to process Stripe refund (DataAccessException): {}", e.getMessage(), e);
-            return PaymentGatewayRequestResponse.RefundResult.builder()
-                    .success(false)
-                    .transactionId(request.getTransactionId())
-                    .status("failed")
-                    .errorMessage("Refund processing failed: " + e.getMessage())
-                    .build();
+        } catch (CardException e) {
+            log.error("[E-6006] Stripe refund card error: paymentIntent={}, message={}",
+                    request.getTransactionId(), e.getMessage());
+            throw new BusinessException(ErrorCode.E_6006, e.getMessage());
+        } catch (StripeException e) {
+            log.error("[E-6007] Stripe refund provider error: paymentIntent={}, message={}",
+                    request.getTransactionId(), e.getMessage());
+            throw new BusinessException(ErrorCode.E_6007, e.getMessage());
         }
     }
 
@@ -198,6 +188,11 @@ public class StripePaymentGateway implements PaymentGateway {
                     .setSuccessUrl(request.getSuccessUrl())
                     .setCancelUrl(request.getCancelUrl())
                     .putMetadata("order_id", request.getOrderId().toString())
+                    // Phase C（AI-2412）：pi 也帶 order_id metadata，使 payment_intent/charge 相關
+                    // 事件（payment_failed / charge.refunded）可由 order_id 可靠對應（補 Phase B best-effort 缺口）
+                    .setPaymentIntentData(SessionCreateParams.PaymentIntentData.builder()
+                            .putMetadata("order_id", request.getOrderId().toString())
+                            .build())
                     .addLineItem(SessionCreateParams.LineItem.builder()
                             .setQuantity(1L)
                             .setPriceData(SessionCreateParams.LineItem.PriceData.builder()

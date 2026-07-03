@@ -116,4 +116,20 @@ class PaymentWebhookServiceTest {
         verify(paymentStateService, never()).markStripePaymentSucceeded(any(), any());
         verify(processedStripeEventRepository).save(any(ProcessedStripeEvent.class));
     }
+
+    @Test
+    @DisplayName("UT-WH-006: charge.refunded → markStripeRefunded（pi + refund id）（AI-2412）")
+    void chargeRefunded_marksRefunded() {
+        String payload = """
+                {"id":"evt_5","type":"charge.refunded",
+                 "data":{"object":{"id":"ch_1","payment_intent":"pi_5",
+                   "refunds":{"data":[{"id":"re_5"}]}}}}
+                """;
+        when(processedStripeEventRepository.existsById("evt_5")).thenReturn(false);
+
+        service.handleEvent(payload);
+
+        verify(paymentStateService).markStripeRefunded("pi_5", "re_5");
+        verify(processedStripeEventRepository).save(any(ProcessedStripeEvent.class));
+    }
 }

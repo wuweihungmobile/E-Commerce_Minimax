@@ -152,10 +152,12 @@ public class PaymentStateService {
     }
 
     /**
-     * 模擬退款（Mock）
+     * 退款（Sprint 52 Phase C，AI-2412）：toggle-aware——STRIPE_PAYMENT_ENABLED 開啟且 Payment 為 STRIPE
+     * 時經 gateway 真 Stripe Refund.create（以 payment_intent 全額退款）+ 存 stripe_refund_id；
+     * 否則 mock（既有，直接標 REFUNDED）。標記 Payment REFUNDED + Order REFUNDED（冪等）。
      */
     @Transactional
-    public OrderPaymentStateDto mockRefund(UUID orderId, String reason) {
+    public OrderPaymentStateDto refundOrderPayment(UUID orderId, String reason) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
         checkOrderOwnership(order);
@@ -169,17 +171,66 @@ public class PaymentStateService {
         Payment payment = paymentRepository.findByOrderIdAndStatus(orderId, Payment.PaymentStatus.SUCCESS)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_6000, "Payment not found"));
 
-        // 標記支付為已退款
+        // 真實退款（stripe path）：toggle 開啟 + Payment 為 STRIPE → 呼叫 Stripe Refund（全額）
+        if (featureToggleService.isFeatureEnabled(STRIPE_PAYMENT_ENABLED)
+                && payment.getPaymentMethod() == Payment.PaymentMethod.STRIPE) {
+            String paymentIntentId = payment.getStripePaymentIntentId();
+            if (paymentIntentId == null) {
+                throw new BusinessException(ErrorCode.E_6001, "Missing Stripe payment intent for refund");
+            }
+            PaymentGatewayRequestResponse.RefundResult result =
+                    paymentGatewayFactory.processRefund(GATEWAY_STRIPE, paymentIntentId, null, reason);
+            if (!result.isSuccess()) {
+                throw new BusinessException(ErrorCode.E_6001,
+                        "Stripe refund failed: " + result.getErrorMessage());
+            }
+            payment.setStripeRefundId(result.getRefundId());
+            log.info("Stripe refund created: orderId={}, refundId={}", orderId, result.getRefundId());
+        }
+
+        // 標記支付為已退款 + 訂單 REFUNDED
         payment.setStatus(Payment.PaymentStatus.REFUNDED);
         paymentRepository.save(payment);
-
-        // 更新訂單狀態為 REFUNDED
         order.setStatus(Order.OrderStatus.REFUNDED);
         orderRepository.save(order);
 
-        log.info("Mock refund: orderId={}, paymentId={}, reason={}", orderId, payment.getId(), reason);
+        log.info("Refund processed: orderId={}, paymentId={}, reason={}", orderId, payment.getId(), reason);
 
         return toOrderPaymentStateDto(order, payment);
+    }
+
+    /**
+     * 標記 Stripe 退款完成（webhook charge.refunded 權威，AI-2412）：
+     * 依 payment_intent id 找 Payment → REFUNDED + Order REFUNDED。冪等：已 REFUNDED → no-op。
+     */
+    @Transactional
+    public boolean markStripeRefunded(String paymentIntentId, String refundId) {
+        if (paymentIntentId == null) {
+            return false;
+        }
+        Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntentId).orElse(null);
+        if (payment == null) {
+            log.warn("markStripeRefunded: payment not found for paymentIntent={}", paymentIntentId);
+            return false;
+        }
+        if (payment.getStatus() == Payment.PaymentStatus.REFUNDED) {
+            return false; // 冪等
+        }
+        payment.setStatus(Payment.PaymentStatus.REFUNDED);
+        if (refundId != null) {
+            payment.setStripeRefundId(refundId);
+        }
+        paymentRepository.save(payment);
+        if (payment.getOrderId() != null) {
+            Order order = orderRepository.findById(payment.getOrderId()).orElse(null);
+            if (order != null && OrderStateMachine.canRefund(order.getStatus().name())) {
+                order.setStatus(Order.OrderStatus.REFUNDED);
+                orderRepository.save(order);
+            }
+        }
+        log.info("Stripe payment marked REFUNDED (webhook): paymentIntent={}, orderId={}",
+                paymentIntentId, payment.getOrderId());
+        return true;
     }
 
     /**

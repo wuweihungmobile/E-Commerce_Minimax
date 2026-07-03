@@ -163,6 +163,20 @@ export default function OrderDetailPage() {
     }
   }
 
+  // 真實金流 Phase A（AI-2410）：建立 Stripe Checkout Session 並重導至託管付款頁
+  const handleStripeCheckout = async () => {
+    setPaying(true)
+    setPayError(null)
+    try {
+      const session = await OrderPaymentService.createCheckoutSession(orderId)
+      window.location.href = session.sessionUrl
+    } catch (err: unknown) {
+      const errorResponse = err as { response?: { data?: { message?: string } } }
+      setPayError(errorResponse?.response?.data?.message ?? '無法前往付款頁，請稍後再試')
+      setPaying(false)
+    }
+  }
+
   const submitReview = async (listingId: string, itemId: string, value: ReviewFormValue) => {
     await ReviewService.createReview({
       listingId,
@@ -279,15 +293,29 @@ export default function OrderDetailPage() {
                       {formatPrice(order.totalAmount, order.currency)}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500">目前為模擬付款（Mock），不會實際扣款。</p>
-                  <div className="flex flex-wrap gap-3">
-                    <Button onClick={handlePay} disabled={paying}>
-                      {paying ? '處理中…' : '確認付款（模擬）'}
-                    </Button>
-                    <Button variant="outline" onClick={handlePayFail} disabled={paying}>
-                      模擬付款失敗
-                    </Button>
-                  </div>
+                  {payment?.paymentProvider === 'stripe' ? (
+                    <>
+                      {/* 真實金流 Phase A（AI-2410）：重導至 Stripe 託管付款頁 */}
+                      <p className="text-xs text-gray-500">將導向 Stripe 安全付款頁完成信用卡付款。</p>
+                      <div className="flex flex-wrap gap-3">
+                        <Button data-testid="order-pay-checkout" onClick={handleStripeCheckout} disabled={paying}>
+                          {paying ? '前往付款中…' : '前往付款'}
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs text-gray-500">目前為模擬付款（Mock），不會實際扣款。</p>
+                      <div className="flex flex-wrap gap-3">
+                        <Button onClick={handlePay} disabled={paying}>
+                          {paying ? '處理中…' : '確認付款（模擬）'}
+                        </Button>
+                        <Button variant="outline" onClick={handlePayFail} disabled={paying}>
+                          模擬付款失敗
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             )}

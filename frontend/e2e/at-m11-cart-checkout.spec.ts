@@ -389,6 +389,50 @@ test.describe('E2E-M11-012: PRODUCT 動態定價雙向顯示（AI-2406c）', () 
 });
 
 /**
+ * E2E-M11-013: 真實金流 Checkout 回跳成功頁（Sprint 50 AI-2410）
+ * mock return 端點回 SUCCESS，驗成功頁顯示付款成功（Phase A：以回跳 retrieve 為狀態來源）。
+ */
+test.describe('E2E-M11-013: Stripe Checkout 回跳成功頁（AI-2410）', () => {
+  test('回跳成功頁確認付款成功', async ({ page }) => {
+    await registerAndLogin(page);
+
+    const fakeOrderId = '99999999-9999-9999-9999-999999999999';
+    // mock 後端 return 端點：回付款成功狀態
+    await page.route('**/v2/orders/*/pay/checkout/return**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            orderId: fakeOrderId,
+            orderStatus: 'PAID',
+            paymentId: 'pay-1',
+            paymentStatus: 'SUCCESS',
+            transactionId: 'cs_test_paid',
+            nextValidStates: 'CONFIRMED',
+            canPay: false,
+            canCancel: false,
+            canRefund: true,
+            paidAt: '2027-09-20T10:00:00Z',
+            updatedAt: '2027-09-20T10:00:00Z',
+            paymentProvider: 'stripe',
+          },
+        }),
+      });
+    });
+
+    await page.goto(`/orders/${fakeOrderId}/payment/success?session_id=cs_test_paid`);
+    await page.waitForLoadState('domcontentloaded');
+
+    await expect(page.getByTestId('payment-success-card')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('payment-success-paid')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('payment-success-card')).toContainText('付款成功');
+    await expect(page.getByTestId('payment-success-view-order')).toBeVisible();
+  });
+});
+
+/**
  * E2E-M11-011: 預訂成功後驗證跳轉
  */
 test.describe('E2E-M11-011: 預訂成功後驗證跳轉', () => {

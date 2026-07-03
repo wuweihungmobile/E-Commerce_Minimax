@@ -47,6 +47,9 @@ export const API_ENDPOINTS = {
     pay: (id: string) => '/v2/orders/' + id + '/pay',
     payFail: (id: string) => '/v2/orders/' + id + '/pay/fail',
     refund: (id: string) => '/v2/orders/' + id + '/refund',
+    // 真實金流 Phase A（Stripe Checkout hosted，AI-2410）
+    payCheckout: (id: string) => '/v2/orders/' + id + '/pay/checkout',
+    payCheckoutReturn: (id: string) => '/v2/orders/' + id + '/pay/checkout/return',
   },
 
   // Payments

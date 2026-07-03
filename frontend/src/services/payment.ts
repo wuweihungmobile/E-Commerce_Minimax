@@ -18,6 +18,15 @@ export interface OrderPaymentState {
   canRefund: boolean
   paidAt: string | null
   updatedAt: string | null
+  // 真實金流（AI-2410）：付款提供者（mock / stripe），前端據此決定付款 UI
+  paymentProvider?: string | null
+}
+
+// 真實金流 Phase A（AI-2410）：Stripe Checkout Session 建立回應
+export interface CheckoutSessionResponse {
+  orderId: string
+  sessionId: string
+  sessionUrl: string
 }
 
 interface ApiResponse<T> {
@@ -56,6 +65,22 @@ class OrderPaymentService {
       ? API_ENDPOINTS.orders.payFail(orderId) + '?reason=' + encodeURIComponent(reason)
       : API_ENDPOINTS.orders.payFail(orderId)
     const response = await apiClient.post<ApiResponse<OrderPaymentState>>(url)
+    return response.data.data
+  }
+
+  // 真實金流 Phase A（AI-2410）：建立 Stripe Checkout Session，回前端重導 URL
+  async createCheckoutSession(orderId: string): Promise<CheckoutSessionResponse> {
+    const response = await apiClient.post<ApiResponse<CheckoutSessionResponse>>(
+      API_ENDPOINTS.orders.payCheckout(orderId)
+    )
+    return response.data.data
+  }
+
+  // 真實金流 Phase A（AI-2410）：Checkout 回跳後以 sessionId 確認狀態
+  async confirmCheckoutReturn(orderId: string, sessionId: string): Promise<OrderPaymentState> {
+    const response = await apiClient.get<ApiResponse<OrderPaymentState>>(
+      API_ENDPOINTS.orders.payCheckoutReturn(orderId) + '?sessionId=' + encodeURIComponent(sessionId)
+    )
     return response.data.data
   }
 }

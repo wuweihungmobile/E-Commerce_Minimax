@@ -11,6 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 46 | v2027.07.31-01 | - | 2026-07-03 | 定價機制真正統一——漲價型規則計入 ROOM booking（M12 進階定價收官）：**後端 ROOM 計價全面走 adjustedTotal 含漲價**(AI-2406b，US-001，承 S45 決策 PO 拍板選項 B；BookingService 放寬三處折扣閘門【tryDynamicPricing `<baseTotal`→`≠0`、getCalendar 逐日 `<0`→`≠0`、calculateTotalAmount toggle 開即採 adjustedTotal】使 availability/月曆/建單 totalAmount 三者一律含漲價乘數；保留 toggle 關短路+失敗降級【向後相容】；計算核心不動；PricingService 抽 resolveListingForPricing 優雅降級【無 Room fallback basePrice、null 回 4xx 非 NPE→500】；DTO 中性調整語意【discountAmount 改有號差額 正=折扣/負=加價，新增 priceAdjustmentType DISCOUNT/MARKUP/NONE】) + **前端漲價雙向顯示**(AI-2406b 前端，US-002，ListingDetail/MonthCalendar 折扣維持刪除線+綠 badge「省 X」、漲價改不刪除線+橙 badge「加價 X」；booking.ts 加 priceAdjustmentType；E2E-ROOM-08/09 漲價變體)。⚠️ **行為變更**：toggle 開啟時漲價規則開始計入訂房金額（PO 拍板）。驗證：後端單元 18 + 真 DB 整合 34 全過、validate-e2e **50 passed/0 fail**（+2 漲價 E2E）、schema 對齊。**無 schema 變動**(連續 S42~S46 零 migration)。誠實：只做 ROOM(PRODUCT 另立 AI-2406c)、bestRule priority/range 查詢落差記錄不修(另立 AI-2407)、E2E 編號順延 06/07→08/09 | ⏳ 待 push（本 Sprint 3 commit，累積 S41~S46，完整守門+徵詢後 push）|
 | Sprint 45 | v2027.07.17-01 | - | 2026-07-02 | 定價區技術債收斂（清死碼 + 語意決策）：**定價機制統一**(AI-2406，US-001，揭穿「雙定價機制」實為死碼假象——`room_calendar.price` 寫入路徑 setDatePrice/setDatePriceBulk 零呼叫者、欄位恆 NULL；移除死碼 + BookingService 三處讀取移除死欄位 fallback 改直取 basePrice【行為等價，順帶修正 calendarBaseTotal NULL→ZERO 潛在低估】；RoomCalendar.price 註解標記停用；確立 MANUAL_OVERRIDE 為唯一手動日價路徑；決策文件 PRICING_MECHANISM_UNIFICATION.md 就漲價計入 booking 提選項→PO 裁決另立 AI-2406b) + **開放窗語意評估**(AI-2202d，US-002，spike，CALENDAR_OPEN_WINDOW_ASSESSMENT.md 記錄三層硬語意 + 三選項比較【推薦 A open_until_date，需 migration】+ NULL 安全過渡→PO 拍板另立 AI-2202e)。驗證：後端單元 6 + 真 DB 整合 57 全過、validate-e2e **48 passed/0 fail**、schema 對齊。**無 schema 變動**(連續 S42~S45 零 migration)。誠實：決策密集項另立 AI-2406b/AI-2202e；@Deprecated=0 慣例（用註解非 annotation）| ⏳ 待 push（本 Sprint 3 commit，累積 S41~S45，完整守門+徵詢後 push）|
 | Sprint 44 | v2027.07.03-01 | - | 2026-07-02 | 完成 M12 進階定價全覆蓋：**PRODUCT 購物車/訂單折扣**(AI-2403，getCart 讀取重算 getEffectivePrice、訂單繼承、toggle+向後相容、CartItemResponse transient 折扣欄位) + **買家整月日曆每日折扣**(AI-2405b，getCalendar merge calculatePrice breakdown、MonthCalendar 原價刪除線、E2E-ROOM-07) + **Inter 字體自 host 離線化**(AI-2303，next/font/local + committed woff2，消 build 期 Google Fonts 依賴)。驗證：後端單元 23 + 真 DB 整合 71、validate-e2e **48 passed/0 fail**、schema 對齊。**無 schema 變動**(連續 S42~S44 零 migration)。M12 進階定價自此 ROOM+PRODUCT+買家顯示全覆蓋。誠實：schema-free(訂單不留原價欄位)、定價機制統一另立 AI-2406 | ⏳ 待 push（本 Sprint 5 commit，累積 S41~S44，完整守門+徵詢後 push）|
 | Sprint 43 | v2027.06.19-01 | - | 2026-07-02 | M12 進階定價落地（早鳥/長住/末班車折扣真正生效於 ROOM）：**語意修正**(AI-2401，早鳥/末班車改「下單日 vs 入住日」+ config Number 防護) + **定價引擎接入 ROOM 計價鏈**(AI-2402，BookingService 注入 PricingService，toggle+向後相容+availability 回折扣明細，訂房金額與顯示一致) + **config 型別化編輯 UI**(AI-2404，動態子表單取代黑箱 {} + dashboard 入口) + **買家折扣顯示 + 賣家預覽**(AI-2405，折扣後價+原價刪除線+標籤 + 沿用 PricingCalendarPreview + E2E-ROOM-06)。驗證：後端單元 15 + 真 DB 整合 36 全過、validate-e2e **47 passed/0 fail**、schema 對齊。**無 schema 變動**(沿用 jsonb config)。誠實：只接 ROOM(PRODUCT/Cart 另立 AI-2403)、買家日曆每日折扣另立 AI-2405b | ⏳ 待 push（本 Sprint 5 commit，累積 S41+S42+S43，完整守門+徵詢後 push）|
@@ -57,11 +58,11 @@
 
 | 項目 | 數值 |
 |------|------|
-| 建立 Release Tag 次數 | 36 (Sprint 10-45，連續) |
+| 建立 Release Tag 次數 | 37 (Sprint 10-46，連續) |
 | 已 push（已 Release） | 31 (Sprint 10-40) |
-| 待 push（Tag 已建、尚未 push） | 5 (Sprint 41+42+43+44+45，本地各層驗證通過含 validate-e2e；累積後檢查點徵詢+完整 validate-release 後 push) |
+| 待 push（Tag 已建、尚未 push） | 6 (Sprint 41+42+43+44+45+46，本地各層驗證通過含 validate-e2e；累積後檢查點徵詢+完整 validate-release 後 push) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release Tag | v2027.07.17-01 (Sprint 45，⏳ 待 push) |
+| 最近一次 Release Tag | v2027.07.31-01 (Sprint 46，⏳ 待 push) |
 | 最近一次已 push Release | v2027.05.08-01 (Sprint 40，隨 S32~S40 累積批次 2e33c6d) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release Tag 開始 | Sprint 10 |

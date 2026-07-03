@@ -107,6 +107,8 @@ public class RoomService {
                 .checkInTime(request.getCheckInTime() != null ? request.getCheckInTime() : DEFAULT_CHECK_IN_TIME)
                 .checkOutTime(request.getCheckOutTime() != null ? request.getCheckOutTime() : DEFAULT_CHECK_OUT_TIME)
                 .roomCount(request.getRoomCount() != null ? request.getRoomCount() : DEFAULT_ROOM_COUNT)
+                .openUntilDate(request.getOpenUntilDate())
+                .bookingWindowDays(request.getBookingWindowDays())
                 .build();
 
         room = roomRepository.save(room);
@@ -206,6 +208,7 @@ public class RoomService {
         updateRoomLocationFields(room, request);
         updateRoomCapacityFields(room, request);
         updateRoomTimeFields(room, request);
+        updateRoomOpenWindowFields(room, request);
     }
 
     private void updateRoomLocationFields(Room room, RoomDto.UpdateRequest request) {
@@ -238,6 +241,17 @@ public class RoomService {
         }
         if (request.getCheckOutTime() != null) {
             room.setCheckOutTime(request.getCheckOutTime());
+        }
+    }
+
+    // 開放窗（Sprint 47 AI-2202e）：沿用部分更新慣例（非 null 才更新）；
+    // 清除開放窗（改回無限制）需另機制，與既有欄位一致。
+    private void updateRoomOpenWindowFields(Room room, RoomDto.UpdateRequest request) {
+        if (request.getOpenUntilDate() != null) {
+            room.setOpenUntilDate(request.getOpenUntilDate());
+        }
+        if (request.getBookingWindowDays() != null) {
+            room.setBookingWindowDays(request.getBookingWindowDays());
         }
     }
 
@@ -278,6 +292,8 @@ public class RoomService {
                 .checkInTime(room.getCheckInTime())
                 .checkOutTime(room.getCheckOutTime())
                 .roomCount(room.getRoomCount())
+                .openUntilDate(room.getOpenUntilDate())
+                .bookingWindowDays(room.getBookingWindowDays())
                 .createdAt(listing.getCreatedAt())
                 .updatedAt(listing.getUpdatedAt())
                 .build();

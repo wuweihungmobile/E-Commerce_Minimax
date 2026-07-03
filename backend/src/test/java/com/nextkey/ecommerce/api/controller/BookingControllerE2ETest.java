@@ -1085,4 +1085,83 @@ class BookingControllerE2ETest {
             pricingRuleRepository.delete(markupRule);
         }
     }
+
+    // ── API-M06-016: 開放窗語意三層一致（AI-2202e）─────────────
+
+    @Test
+    @Order(20)
+    @DisplayName("API-M06-016: 開放窗 open_until_date 三層一致——超窗 availability 擋 + calendar NOT_OPEN + 建單擋；窗內不退步")
+    void openWindow_beyondWindow_blockedAcrossThreeLayers() {
+        // 對共用房源設 open_until_date = 今日+10（finally 重設 NULL，不影響其他 @Order 測試）
+        LocalDate openUntil = LocalDate.now().plusDays(10);
+        jdbcTemplate.update(
+                "UPDATE rooms SET open_until_date = ? WHERE listing_id = ?",
+                java.sql.Date.valueOf(openUntil), testRoomListingId);
+        try {
+            LocalDate beyondIn = LocalDate.now().plusDays(20);
+            LocalDate beyondOut = LocalDate.now().plusDays(22);
+
+            // 1) availability 層：超窗 → 不可訂 + 未開放原因
+            given()
+                    .header("Authorization", "Bearer " + buyerToken)
+                    .queryParam("roomListingId", testRoomListingId.toString())
+                    .queryParam("checkInDate", beyondIn.toString())
+                    .queryParam("checkOutDate", beyondOut.toString())
+                    .when()
+                    .get(BOOKING_URL + "/availability")
+                    .then()
+                    .statusCode(200)
+                    .body("data.available", is(false))
+                    .body("data.unavailableReason", containsString("not open"));
+
+            // 2) calendar 層：超窗無記錄日補 NOT_OPEN
+            given()
+                    .header("Authorization", "Bearer " + buyerToken)
+                    .queryParam("roomListingId", testRoomListingId.toString())
+                    .queryParam("startDate", LocalDate.now().plusDays(11).toString())
+                    .queryParam("endDate", LocalDate.now().plusDays(20).toString())
+                    .when()
+                    .get(BOOKING_URL + "/calendar")
+                    .then()
+                    .statusCode(200)
+                    .body("data.status", hasItem("NOT_OPEN"));
+
+            // 3) booking 寫入層：超窗建單 → 擋（E-3002 → 422）
+            given()
+                    .header("Authorization", "Bearer " + buyerToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(BookingDto.CreateRequest.builder()
+                            .roomListingId(testRoomListingId)
+                            .checkInDate(beyondIn)
+                            .checkOutDate(beyondOut)
+                            .guestCount(2)
+                            .guestName("Beyond Window Guest")
+                            .guestPhone("0912345678")
+                            .guestEmail("beyond@example.com")
+                            .build())
+                    .when()
+                    .post(BOOKING_URL)
+                    .then()
+                    .statusCode(422)
+                    .body("success", is(false))
+                    .body("code", equalTo("E-3002"));
+
+            // 4) 回歸：窗內日期（今日+4 ~ +6）仍可訂
+            given()
+                    .header("Authorization", "Bearer " + buyerToken)
+                    .queryParam("roomListingId", testRoomListingId.toString())
+                    .queryParam("checkInDate", LocalDate.now().plusDays(4).toString())
+                    .queryParam("checkOutDate", LocalDate.now().plusDays(6).toString())
+                    .when()
+                    .get(BOOKING_URL + "/availability")
+                    .then()
+                    .statusCode(200)
+                    .body("data.available", is(true));
+
+            System.out.println("✅ API-M06-016 PASSED: 開放窗三層一致（超窗擋 + 窗內不退步）");
+        } finally {
+            jdbcTemplate.update(
+                    "UPDATE rooms SET open_until_date = NULL WHERE listing_id = ?", testRoomListingId);
+        }
+    }
 }

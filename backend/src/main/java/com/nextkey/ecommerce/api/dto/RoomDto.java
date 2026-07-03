@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.api.dto;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
@@ -68,6 +69,13 @@ public class RoomDto {
 
         @Min(value = 1, message = "Room count must be at least 1")
         private Integer roomCount;
+
+        // 開放窗（Sprint 47 AI-2202e）：開放至某固定日；null = 無限制
+        private LocalDate openUntilDate;
+
+        // 開放窗（Sprint 47 AI-2202e）：開放未來 N 天（滾動）；null = 無限制
+        @Min(value = 1, message = "Booking window days must be at least 1")
+        private Integer bookingWindowDays;
     }
 
     @Data
@@ -113,6 +121,13 @@ public class RoomDto {
         @Min(value = 1, message = "Room count must be at least 1")
         private Integer roomCount;
 
+        // 開放窗（Sprint 47 AI-2202e）：開放至某固定日；null = 無限制
+        private LocalDate openUntilDate;
+
+        // 開放窗（Sprint 47 AI-2202e）：開放未來 N 天（滾動）；null = 無限制
+        @Min(value = 1, message = "Booking window days must be at least 1")
+        private Integer bookingWindowDays;
+
         private String status;
     }
 
@@ -140,6 +155,9 @@ public class RoomDto {
         private LocalTime checkInTime;
         private LocalTime checkOutTime;
         private Integer roomCount;
+        // 開放窗（Sprint 47 AI-2202e）：null = 無限制
+        private LocalDate openUntilDate;
+        private Integer bookingWindowDays;
         private java.time.Instant createdAt;
         private java.time.Instant updatedAt;
     }

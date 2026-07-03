@@ -4,10 +4,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -74,6 +76,9 @@ public class BookingService {
             throw new BusinessException(ErrorCode.E_3001, "Listing is not a room");
         }
 
+        // 開放窗（AI-2202e）：room 缺失時視為無限制（維持現狀）
+        Room room = roomRepository.findByListingId(request.getRoomListingId()).orElse(null);
+
         // 檢查日期範圍
         if (request.getCheckOutDate().isBefore(request.getCheckInDate()) ||
             request.getCheckOutDate().isEqual(request.getCheckInDate())) {
@@ -104,9 +109,20 @@ public class BookingService {
                 .collect(Collectors.toList());
 
         // 檢查是否有不可用的日期（無記錄之日視為可預訂，與 getCalendar 一致）
-        boolean available = calendars.stream()
+        // 開放窗（AI-2202e）：區間含未開放日 → 不可訂，優先回未開放原因
+        LocalDate notOpenNight = firstNotOpenNight(
+                room, request.getCheckInDate(), request.getCheckOutDate());
+        boolean calendarAvailable = calendars.stream()
                 .allMatch(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.AVAILABLE);
-        String unavailableReason = available ? null : findFirstUnavailableReason(calendars);
+        boolean available = calendarAvailable && notOpenNight == null;
+        String unavailableReason;
+        if (notOpenNight != null) {
+            unavailableReason = "Date " + notOpenNight + " is not open for booking";
+        } else if (!calendarAvailable) {
+            unavailableReason = findFirstUnavailableReason(calendars);
+        } else {
+            unavailableReason = null;
+        }
 
         long nightsCount = ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
 
@@ -156,6 +172,42 @@ public class BookingService {
         return null;
     }
 
+    /** 開放窗（AI-2202e）基準日：滾動視窗 booking_window_days 以今日起算。 */
+    private LocalDate openWindowReferenceDate() {
+        return LocalDate.now();
+    }
+
+    /**
+     * 回傳訂房區間 [checkIn, checkOut)（逐晚）中第一個超出開放窗（未開放）之日期；無則 null。
+     * room 為 null 或未設開放窗（上限 null）時回 null（維持現狀「無記錄=可訂」）。
+     */
+    private LocalDate firstNotOpenNight(Room room, LocalDate checkIn, LocalDate checkOut) {
+        if (room == null) {
+            return null;
+        }
+        LocalDate openUntil = room.resolveOpenUntil(openWindowReferenceDate());
+        if (openUntil == null) {
+            return null;
+        }
+        for (LocalDate d = checkIn; d.isBefore(checkOut); d = d.plusDays(1)) {
+            if (d.isAfter(openUntil)) {
+                return d;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 訂房寫入前的開放窗守門（AI-2202e）：區間含未開放日 → 擋訂（E_3002）。
+     * 與 availability/calendar 同一 {@link Room#resolveOpenUntil} 判斷，確保三層一致。
+     */
+    private void assertWithinOpenWindow(Room room, LocalDate checkIn, LocalDate checkOut) {
+        LocalDate notOpen = firstNotOpenNight(room, checkIn, checkOut);
+        if (notOpen != null) {
+            throw new BusinessException(ErrorCode.E_3002, "Room is not open for booking on " + notOpen);
+        }
+    }
+
     /** 整月日曆查詢允許的最大天數區間（防止過大區間查詢）。 */
     private static final long MAX_CALENDAR_RANGE_DAYS = 92;
 
@@ -194,7 +246,7 @@ public class BookingService {
         // 只對可訂日套、含折扣「或漲價」（與 availability 一致），BOOKED/BLOCKED 日不受影響。
         Map<LocalDate, PricingDto.PriceBreakdown> adjustmentByDate = dailyDiscountMap(roomListingId, startDate, endDate);
 
-        return calendars.stream()
+        List<BookingDto.CalendarResponse> result = calendars.stream()
                 .map(c -> {
                     // room_calendar.price 已停用（AI-2406，恆 NULL）→ 每日基準價一律為 basePrice
                     BigDecimal price = listing.getBasePrice();
@@ -221,7 +273,36 @@ public class BookingService {
                             .bookingId(c.getBookingId())
                             .build();
                 })
-                .collect(Collectors.toList());
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        appendNotOpenDays(result, calendars, roomListingId, startDate, endDate, listing.getBasePrice());
+        return result;
+    }
+
+    /**
+     * 開放窗（AI-2202e）：對超過開放上限之「無記錄日」補一筆 NOT_OPEN CalendarResponse。
+     * 前端把「未回傳日」當可訂，故未開放日須顯式回傳；開放上限 null（無限制）則不補。
+     */
+    private void appendNotOpenDays(List<BookingDto.CalendarResponse> result, List<RoomCalendar> calendars,
+            UUID roomListingId, LocalDate startDate, LocalDate endDate, BigDecimal basePrice) {
+        Room room = roomRepository.findByListingId(roomListingId).orElse(null);
+        LocalDate openUntil = room != null ? room.resolveOpenUntil(openWindowReferenceDate()) : null;
+        if (openUntil == null) {
+            return;
+        }
+        Set<LocalDate> existingDates = calendars.stream()
+                .map(RoomCalendar::getCalendarDate)
+                .collect(Collectors.toSet());
+        for (LocalDate d = startDate; !d.isAfter(endDate); d = d.plusDays(1)) {
+            if (d.isAfter(openUntil) && !existingDates.contains(d)) {
+                result.add(BookingDto.CalendarResponse.builder()
+                        .date(d)
+                        .status("NOT_OPEN")
+                        .price(basePrice)
+                        .bookingId(null)
+                        .build());
+            }
+        }
     }
 
     /**
@@ -287,6 +368,9 @@ public class BookingService {
         if (request.getCheckOutDate().isBefore(request.getCheckInDate())) {
             throw new BusinessException(ErrorCode.E_4003, "Check-out must be after check-in");
         }
+
+        // 開放窗（AI-2202e）：區間含未開放日 → 擋訂（與 availability/calendar 三層一致）
+        assertWithinOpenWindow(room, request.getCheckInDate(), request.getCheckOutDate());
 
         // 嘗試鎖定日期範圍（NO_WAIT 策略，立即返回）
         // 如果無法立即獲取鎖，表示有並發請求在處理，拋出衝突異常
@@ -469,6 +553,10 @@ public class BookingService {
         }
 
         try {
+            // 開放窗（AI-2202e）：新日期含未開放日 → 擋（與 createBooking 一致）
+            Room room = roomRepository.findByListingId(booking.getRoomListingId()).orElse(null);
+            assertWithinOpenWindow(room, newCheckIn, newCheckOut);
+
             // 檢查新日期是否可用
             if (!roomCalendarService.isDateRangeAvailable(booking.getRoomListingId(), newCheckIn, newCheckOut)) {
                 throw new BusinessException(ErrorCode.E_4001, "New date range is not available");

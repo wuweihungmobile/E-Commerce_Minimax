@@ -64,6 +64,16 @@ public class Payment {
     @Column(name = "transaction_id")
     private String transactionId;
 
+    // 真實金流（Sprint 50 AI-2410）：Stripe 端識別碼；mock 路徑為 null
+    @Column(name = "stripe_session_id")
+    private String stripeSessionId;
+
+    @Column(name = "stripe_payment_intent_id")
+    private String stripePaymentIntentId;
+
+    @Column(name = "stripe_charge_id")
+    private String stripeChargeId;
+
     @Column(name = "idempotency_key")
     private String idempotencyKey;
 
@@ -95,10 +105,14 @@ public class Payment {
     }
 
     public enum PaymentMethod {
-        LINE_PAY, CREDIT_CARD, MOCK
+        LINE_PAY, CREDIT_CARD, MOCK,
+        // 真實金流（Sprint 50 AI-2410）
+        STRIPE
     }
 
     public enum PaymentStatus {
-        PENDING, SUCCESS, FAILED, REFUNDED
+        PENDING, SUCCESS, FAILED, REFUNDED,
+        // 真實金流（Sprint 50 AI-2410）：Checkout Session 已建、待買家於 Stripe 完成付款
+        PROCESSING
     }
 }

@@ -30,4 +30,20 @@ public interface PaymentGateway {
      * 取得網關類型
      */
     String getGatewayType();
+
+    /**
+     * 建立 Checkout Session（hosted Checkout，Sprint 50 AI-2410）。
+     * 預設不支援（僅 Stripe gateway 覆寫）；hosted Checkout 為 Stripe 特化能力。
+     */
+    default PaymentGatewayRequestResponse.CheckoutSessionResult createCheckoutSession(
+            PaymentGatewayRequestResponse.CheckoutSessionRequest request) {
+        throw new UnsupportedOperationException("Checkout session not supported by " + getGatewayType());
+    }
+
+    /**
+     * 查詢 Checkout Session 狀態（回跳後回填用，Sprint 50 AI-2410）。
+     */
+    default PaymentGatewayRequestResponse.CheckoutSessionResult retrieveCheckoutSession(String sessionId) {
+        throw new UnsupportedOperationException("Checkout session not supported by " + getGatewayType());
+    }
 }

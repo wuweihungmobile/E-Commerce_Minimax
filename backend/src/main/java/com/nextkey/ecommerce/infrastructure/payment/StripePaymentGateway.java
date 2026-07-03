@@ -15,8 +15,10 @@ import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.stripe.exception.CardException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
+import com.stripe.model.checkout.Session;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.PaymentIntentCreateParams;
+import com.stripe.param.checkout.SessionCreateParams;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -180,6 +182,78 @@ public class StripePaymentGateway implements PaymentGateway {
                     .status("error")
                     .errorMessage("Failed to get payment status: " + e.getMessage())
                     .build();
+        }
+    }
+
+    @Override
+    public PaymentGatewayRequestResponse.CheckoutSessionResult createCheckoutSession(
+            PaymentGatewayRequestResponse.CheckoutSessionRequest request) {
+        log.info("Creating Stripe Checkout Session: orderId={}, amount={}, currency={}",
+                request.getOrderId(), request.getAmount(), request.getCurrency());
+        try {
+            String productName = request.getProductName() != null
+                    ? request.getProductName() : "Order " + request.getOrderId();
+            SessionCreateParams params = SessionCreateParams.builder()
+                    .setMode(SessionCreateParams.Mode.PAYMENT)
+                    .setSuccessUrl(request.getSuccessUrl())
+                    .setCancelUrl(request.getCancelUrl())
+                    .putMetadata("order_id", request.getOrderId().toString())
+                    .addLineItem(SessionCreateParams.LineItem.builder()
+                            .setQuantity(1L)
+                            .setPriceData(SessionCreateParams.LineItem.PriceData.builder()
+                                    .setCurrency(request.getCurrency().toLowerCase())
+                                    .setUnitAmount(request.getAmount()
+                                            .multiply(BigDecimal.valueOf(100)).longValue())
+                                    .setProductData(SessionCreateParams.LineItem.PriceData.ProductData.builder()
+                                            .setName(productName)
+                                            .build())
+                                    .build())
+                            .build())
+                    .build();
+
+            RequestOptions options = RequestOptions.builder()
+                    .setApiKey(stripeApiKey)
+                    .setIdempotencyKey(request.getIdempotencyKey() != null
+                            ? request.getIdempotencyKey() : request.getOrderId().toString())
+                    .build();
+
+            Session session = Session.create(params, options);
+
+            return PaymentGatewayRequestResponse.CheckoutSessionResult.builder()
+                    .sessionId(session.getId())
+                    .sessionUrl(session.getUrl())
+                    .paymentIntentId(session.getPaymentIntent())
+                    .status(session.getStatus())
+                    .paymentStatus(session.getPaymentStatus())
+                    .build();
+        } catch (CardException e) {
+            log.error("[E-6006] Stripe checkout card declined: orderId={}, message={}",
+                    request.getOrderId(), e.getMessage());
+            throw new BusinessException(ErrorCode.E_6006, e.getMessage());
+        } catch (StripeException e) {
+            log.error("[E-6007] Stripe checkout provider error: orderId={}, message={}",
+                    request.getOrderId(), e.getMessage());
+            throw new BusinessException(ErrorCode.E_6007, e.getMessage());
+        }
+    }
+
+    @Override
+    public PaymentGatewayRequestResponse.CheckoutSessionResult retrieveCheckoutSession(String sessionId) {
+        log.info("Retrieving Stripe Checkout Session: sessionId={}", sessionId);
+        try {
+            RequestOptions options = RequestOptions.builder().setApiKey(stripeApiKey).build();
+            Session session = Session.retrieve(sessionId, options);
+            return PaymentGatewayRequestResponse.CheckoutSessionResult.builder()
+                    .sessionId(session.getId())
+                    .sessionUrl(session.getUrl())
+                    .paymentIntentId(session.getPaymentIntent())
+                    .status(session.getStatus())
+                    .paymentStatus(session.getPaymentStatus())
+                    .build();
+        } catch (StripeException e) {
+            log.error("[E-6007] Stripe retrieve session error: sessionId={}, message={}",
+                    sessionId, e.getMessage());
+            throw new BusinessException(ErrorCode.E_6007, e.getMessage());
         }
     }
 

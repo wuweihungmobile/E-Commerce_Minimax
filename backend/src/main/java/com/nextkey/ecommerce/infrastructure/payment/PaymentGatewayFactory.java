@@ -97,6 +97,23 @@ public class PaymentGatewayFactory {
         return getGateway(paymentMethod).getPaymentStatus(transactionId);
     }
 
+    /**
+     * 建立 Checkout Session（hosted Checkout，Sprint 50 AI-2410）
+     */
+    public PaymentGatewayRequestResponse.CheckoutSessionResult createCheckoutSession(
+            String paymentMethod,
+            PaymentGatewayRequestResponse.CheckoutSessionRequest request) {
+        return getGateway(paymentMethod).createCheckoutSession(request);
+    }
+
+    /**
+     * 查詢 Checkout Session 狀態
+     */
+    public PaymentGatewayRequestResponse.CheckoutSessionResult retrieveCheckoutSession(
+            String paymentMethod, String sessionId) {
+        return getGateway(paymentMethod).retrieveCheckoutSession(sessionId);
+    }
+
     private String generateIdempotencyKey(UUID orderId, UUID bookingId) {
         if (orderId != null) {
             return "ORDER-" + orderId.toString();

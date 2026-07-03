@@ -1,12 +1,16 @@
 package com.nextkey.ecommerce.core.payment;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.nextkey.ecommerce.api.dto.payment.CheckoutSessionResponse;
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
+import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.order.OrderStateMachine;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -14,21 +18,40 @@ import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.PaymentRepository;
+import com.nextkey.ecommerce.infrastructure.payment.PaymentGatewayFactory;
+import com.nextkey.ecommerce.infrastructure.payment.PaymentGatewayRequestResponse;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class PaymentStateService {
+
+    /** 真實金流 toggle（Sprint 50 AI-2410）：開啟→stripe 路徑，關閉（預設）→mock 路徑。 */
+    private static final String STRIPE_PAYMENT_ENABLED = "STRIPE_PAYMENT_ENABLED";
+    private static final String GATEWAY_STRIPE = "STRIPE";
 
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
     private final BookingRepository bookingRepository;
+    private final FeatureToggleService featureToggleService;
+    private final PaymentGatewayFactory paymentGatewayFactory;
+
+    @Value("${app.frontend-base-url:http://localhost:3000}")
+    private String frontendBaseUrl;
+
+    public PaymentStateService(PaymentRepository paymentRepository, OrderRepository orderRepository,
+            BookingRepository bookingRepository, FeatureToggleService featureToggleService,
+            PaymentGatewayFactory paymentGatewayFactory) {
+        this.paymentRepository = paymentRepository;
+        this.orderRepository = orderRepository;
+        this.bookingRepository = bookingRepository;
+        this.featureToggleService = featureToggleService;
+        this.paymentGatewayFactory = paymentGatewayFactory;
+    }
 
     /**
      * 取得訂單支付狀態
@@ -159,6 +182,105 @@ public class PaymentStateService {
         return toOrderPaymentStateDto(order, payment);
     }
 
+    /**
+     * 發起 Stripe Checkout（Sprint 50 AI-2410，Phase A，平台代收）：
+     * 建 PROCESSING 付款記錄 + 建 Checkout Session，回傳前端重導 URL。需 STRIPE_PAYMENT_ENABLED 開啟。
+     */
+    @Transactional
+    public CheckoutSessionResponse initiateStripeCheckout(UUID orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
+        checkOrderOwnership(order);
+
+        if (!featureToggleService.isFeatureEnabled(STRIPE_PAYMENT_ENABLED)) {
+            throw new BusinessException(ErrorCode.E_6002, "Stripe payment not enabled");
+        }
+        if (!OrderStateMachine.canPay(order.getStatus().name())) {
+            throw new BusinessException(ErrorCode.E_5011, "Order cannot be paid in current status");
+        }
+        if (paymentRepository.existsByOrderIdAndStatus(orderId, Payment.PaymentStatus.SUCCESS)) {
+            throw new BusinessException(ErrorCode.E_6003, "Payment already processed");
+        }
+
+        String idempotencyKey = "ORDER-CHECKOUT-" + orderId;
+        PaymentGatewayRequestResponse.CheckoutSessionRequest req =
+                PaymentGatewayRequestResponse.CheckoutSessionRequest.builder()
+                        .orderId(orderId)
+                        .amount(order.getTotalAmount())
+                        .currency(order.getCurrency())
+                        .productName("Order " + orderId)
+                        .successUrl(frontendBaseUrl + "/orders/" + orderId
+                                + "/payment/success?session_id={CHECKOUT_SESSION_ID}")
+                        .cancelUrl(frontendBaseUrl + "/orders/" + orderId + "/payment/cancel")
+                        .idempotencyKey(idempotencyKey)
+                        .build();
+
+        PaymentGatewayRequestResponse.CheckoutSessionResult result =
+                paymentGatewayFactory.createCheckoutSession(GATEWAY_STRIPE, req);
+
+        Payment payment = Payment.builder()
+                .orderId(orderId)
+                .paymentMethod(Payment.PaymentMethod.STRIPE)
+                .amount(order.getTotalAmount())
+                .currency(order.getCurrency())
+                .status(Payment.PaymentStatus.PROCESSING)
+                .transactionId(result.getSessionId())
+                .stripeSessionId(result.getSessionId())
+                .stripePaymentIntentId(result.getPaymentIntentId())
+                .idempotencyKey(idempotencyKey)
+                .build();
+        paymentRepository.save(payment);
+
+        log.info("Stripe checkout initiated: orderId={}, sessionId={}", orderId, result.getSessionId());
+
+        return CheckoutSessionResponse.builder()
+                .orderId(orderId)
+                .sessionId(result.getSessionId())
+                .sessionUrl(result.getSessionUrl())
+                .build();
+    }
+
+    /**
+     * 回跳後確認 Stripe Checkout（Sprint 50 AI-2410，Phase A）：以 sessionId retrieve 狀態，
+     * 已付款則更新 Payment=SUCCESS + Order=PAID（冪等，重入不重複）。robust webhook 事件驅動留 Phase B。
+     */
+    @Transactional
+    public OrderPaymentStateDto confirmStripeCheckout(UUID orderId, String sessionId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
+        checkOrderOwnership(order);
+
+        // 冪等：已成功則直接回狀態，不重複更新
+        Payment existingSuccess = paymentRepository
+                .findByOrderIdAndStatus(orderId, Payment.PaymentStatus.SUCCESS).orElse(null);
+        if (existingSuccess != null) {
+            return toOrderPaymentStateDto(order, existingSuccess);
+        }
+
+        PaymentGatewayRequestResponse.CheckoutSessionResult result =
+                paymentGatewayFactory.retrieveCheckoutSession(GATEWAY_STRIPE, sessionId);
+        Payment payment = paymentRepository.findByTransactionId(sessionId).orElse(null);
+
+        if ("paid".equalsIgnoreCase(result.getPaymentStatus())) {
+            if (payment != null) {
+                payment.setStatus(Payment.PaymentStatus.SUCCESS);
+                payment.setStripePaymentIntentId(result.getPaymentIntentId());
+                payment.setPaidAt(Instant.now());
+                paymentRepository.save(payment);
+            }
+            if (OrderStateMachine.canPay(order.getStatus().name())) {
+                order.setStatus(Order.OrderStatus.PAID);
+                orderRepository.save(order);
+            }
+            log.info("Stripe checkout confirmed PAID: orderId={}, sessionId={}", orderId, sessionId);
+        } else {
+            log.info("Stripe checkout not yet paid: orderId={}, sessionId={}, paymentStatus={}",
+                    orderId, sessionId, result.getPaymentStatus());
+        }
+
+        return toOrderPaymentStateDto(order, payment);
+    }
+
     // ========== Helper Methods ==========
 
     /**
@@ -194,6 +316,7 @@ public class PaymentStateService {
                 .canPay(OrderStateMachine.canPay(orderStatus))
                 .canCancel(OrderStateMachine.canCancel(orderStatus))
                 .canRefund(OrderStateMachine.canRefund(orderStatus))
+                .paymentProvider(featureToggleService.isFeatureEnabled(STRIPE_PAYMENT_ENABLED) ? "stripe" : "mock")
                 .updatedAt(order.getUpdatedAt());
 
         if (payment != null) {

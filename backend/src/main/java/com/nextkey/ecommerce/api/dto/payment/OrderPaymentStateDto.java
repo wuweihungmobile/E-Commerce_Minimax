@@ -25,4 +25,6 @@ public class OrderPaymentStateDto {
     private Boolean canRefund;
     private Instant paidAt;
     private Instant updatedAt;
+    // 真實金流（Sprint 50 AI-2410）：付款提供者（mock / stripe），前端據此決定付款 UI（重導 or mock 按鈕）
+    private String paymentProvider;
 }

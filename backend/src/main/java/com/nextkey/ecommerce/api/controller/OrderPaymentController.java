@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
+import com.nextkey.ecommerce.api.dto.payment.CheckoutSessionResponse;
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
 import com.nextkey.ecommerce.core.payment.PaymentStateService;
 
@@ -77,6 +78,31 @@ public class OrderPaymentController {
         log.info("Mock refund request: orderId={}, reason={}", orderId, reason);
         OrderPaymentStateDto state = paymentStateService.mockRefund(orderId, reason);
         return ResponseEntity.ok(ApiResponse.success("Refund processed", state));
+    }
+
+    /**
+     * 發起 Stripe Checkout（真實金流 Phase A，Sprint 50 AI-2410）：建 Checkout Session，回前端重導 URL。
+     */
+    @PostMapping("/{orderId}/pay/checkout")
+    @PreAuthorize("hasAuthority('order:update')")
+    public ResponseEntity<ApiResponse<CheckoutSessionResponse>> initiateStripeCheckout(
+            @PathVariable UUID orderId) {
+        log.info("Stripe checkout request: orderId={}", orderId);
+        CheckoutSessionResponse resp = paymentStateService.initiateStripeCheckout(orderId);
+        return ResponseEntity.ok(ApiResponse.success("Checkout session created", resp));
+    }
+
+    /**
+     * Stripe Checkout 回跳確認（真實金流 Phase A，Sprint 50 AI-2410）：以 session_id retrieve 並回填狀態。
+     */
+    @GetMapping("/{orderId}/pay/checkout/return")
+    @PreAuthorize("hasAuthority('order:read')")
+    public ResponseEntity<ApiResponse<OrderPaymentStateDto>> confirmStripeCheckout(
+            @PathVariable UUID orderId,
+            @RequestParam("sessionId") String sessionId) {
+        log.info("Stripe checkout return: orderId={}, sessionId={}", orderId, sessionId);
+        OrderPaymentStateDto state = paymentStateService.confirmStripeCheckout(orderId, sessionId);
+        return ResponseEntity.ok(ApiResponse.success(state));
     }
 
     /**

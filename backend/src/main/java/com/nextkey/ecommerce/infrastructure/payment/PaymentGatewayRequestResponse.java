@@ -122,4 +122,37 @@ public class PaymentGatewayRequestResponse {
         private String currency;
         private String errorMessage;
     }
+
+    /**
+     * Checkout Session 建立請求（Sprint 50 AI-2410，hosted Checkout，平台代收）
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CheckoutSessionRequest {
+        private UUID orderId;
+        private BigDecimal amount;
+        private String currency;
+        private String productName;   // Checkout line item 顯示名
+        private String successUrl;
+        private String cancelUrl;
+        private String idempotencyKey;
+    }
+
+    /**
+     * Checkout Session 建立結果
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CheckoutSessionResult {
+        private String sessionId;        // cs_xxx
+        private String sessionUrl;       // 前端重導 URL
+        private String paymentIntentId;  // pi_xxx（Session 完成後才有值）
+        private String status;           // open / complete / expired
+        private String paymentStatus;    // paid / unpaid / no_payment_required
+        private String errorMessage;
+    }
 }

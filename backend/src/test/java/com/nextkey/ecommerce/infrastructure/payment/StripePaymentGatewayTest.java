@@ -2,7 +2,9 @@ package com.nextkey.ecommerce.infrastructure.payment;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
@@ -166,5 +168,76 @@ class StripePaymentGatewayTest {
 
         verify(postRequestedFor(urlEqualTo("/v1/payment_intents"))
                 .withHeader("Idempotency-Key", equalTo(orderId.toString())));
+    }
+
+    @Test
+    @DisplayName("TC-S004: createCheckoutSession 成功 — WireMock 200 返回 Session（AI-2410）")
+    void createCheckoutSession_success_returnsSessionResult() {
+        UUID orderId = UUID.randomUUID();
+
+        stubFor(post(urlEqualTo("/v1/checkout/sessions"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {
+                                  "id": "cs_test_123",
+                                  "object": "checkout.session",
+                                  "url": "https://checkout.stripe.com/c/pay/cs_test_123",
+                                  "payment_intent": "pi_test_456",
+                                  "status": "open",
+                                  "payment_status": "unpaid",
+                                  "amount_total": 150000,
+                                  "currency": "twd",
+                                  "livemode": false
+                                }
+                                """)));
+
+        PaymentGatewayRequestResponse.CheckoutSessionRequest request =
+                PaymentGatewayRequestResponse.CheckoutSessionRequest.builder()
+                        .orderId(orderId)
+                        .amount(new BigDecimal("1500.00"))
+                        .currency("TWD")
+                        .productName("Order " + orderId)
+                        .successUrl("http://localhost:3000/orders/" + orderId + "/payment/success")
+                        .cancelUrl("http://localhost:3000/orders/" + orderId + "/payment/cancel")
+                        .idempotencyKey("ORDER-CHECKOUT-" + orderId)
+                        .build();
+
+        PaymentGatewayRequestResponse.CheckoutSessionResult result = gateway.createCheckoutSession(request);
+
+        assertThat(result.getSessionId()).isEqualTo("cs_test_123");
+        assertThat(result.getSessionUrl()).isEqualTo("https://checkout.stripe.com/c/pay/cs_test_123");
+        assertThat(result.getPaymentIntentId()).isEqualTo("pi_test_456");
+        assertThat(result.getStatus()).isEqualTo("open");
+        assertThat(result.getPaymentStatus()).isEqualTo("unpaid");
+    }
+
+    @Test
+    @DisplayName("TC-S005: retrieveCheckoutSession 已付款 — WireMock 200 payment_status=paid（AI-2410）")
+    void retrieveCheckoutSession_paid_returnsPaid() {
+        stubFor(get(urlPathEqualTo("/v1/checkout/sessions/cs_test_paid"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {
+                                  "id": "cs_test_paid",
+                                  "object": "checkout.session",
+                                  "url": "https://checkout.stripe.com/c/pay/cs_test_paid",
+                                  "payment_intent": "pi_paid_789",
+                                  "status": "complete",
+                                  "payment_status": "paid",
+                                  "livemode": false
+                                }
+                                """)));
+
+        PaymentGatewayRequestResponse.CheckoutSessionResult result =
+                gateway.retrieveCheckoutSession("cs_test_paid");
+
+        assertThat(result.getSessionId()).isEqualTo("cs_test_paid");
+        assertThat(result.getPaymentStatus()).isEqualTo("paid");
+        assertThat(result.getStatus()).isEqualTo("complete");
+        assertThat(result.getPaymentIntentId()).isEqualTo("pi_paid_789");
     }
 }

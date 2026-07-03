@@ -21,6 +21,10 @@
 | DEF-021 | CJK 字體品牌一致性（技術債） | Sprint 35（Turbopack 限制發現） | S35 因 Turbopack 無法 self-host next/font CJK（Noto Sans TC 大量 unicode-range 子集無法解析），改用系統 CJK 字體堆疊；系統堆疊跨平台字重/字距不一，品牌字體一致性下降。後續評估 `next/font/local` + 預先子集化 Noto Sans TC woff2 以恢復品牌字體一致性 | 需 woff2 子集化工具鏈 + 驗證 Turbopack 相容性 | 2 | ✅ 已決策（S41 US-006）：維持系統字體堆疊為 **accepted fallback**；選項 B（`@font-face` 自 host 子集 woff2，技術可行、無 CSP 阻擋）記錄為選配未來任務，待品牌一致性需求由使用者拍板。詳見 [CJK_FONT_ASSESSMENT.md](../06_quality/CJK_FONT_ASSESSMENT.md) |
 | AI-2407 | 定價規則選取語意評估 | Sprint 46（記錄不修） | `bestRule` 採「最高 priority 勝出」非最低價（漲價/折扣可能互蓋）；`findActiveRulesForDateRange` 要求規則涵蓋整段區間（部分晚數 SEASONAL 漏套）| 需探勘 + 評估逐日精準查詢影響 | 3 | ⚠️ 待評估（P3） |
 | AI-2409 | 定價計算器統一評估 | Sprint 48（兩道閘門根因） | PRODUCT（`applyProductRule` 單日）與 ROOM（`calculateAdjustment` stay-based）為兩套計算器，S48 對齊 config key 但未合併；評估抽共用「單日規則套用」核心以消分歧 | 需評估 ROOM stay-based 規則（EARLY_BIRD/LONG_STAY/LAST_MINUTE）合併風險 | 3 | ⚠️ 待評估（P4） |
+| AI-2410 | 真實金流 Phase A：卡片付款 MVP | Sprint 49（backlog #10 spike 分期） | 接回 gateway 抽象層 + createPaymentIntent（已真接線）+ 前端 Stripe.js Checkout + PAYMENT_PROVIDER toggle + payments 表加 Stripe 欄位 migration | 需 PO 決策（前端選型）+ Stripe 測試帳號 | 5 | 🔴 待 PO 決策。詳見 [PAYMENT_INTEGRATION_ASSESSMENT.md](../07_design/PAYMENT_INTEGRATION_ASSESSMENT.md) |
+| AI-2411 | 真實金流 Phase B：webhook 驅動狀態 | Sprint 49（backlog #10 spike 分期） | Webhook.constructEvent 解析事件（已真驗簽）+ 冪等 + PaymentIntent↔Order 狀態機對映（含 3DS requires_action）| 待 AI-2410 + 公開 webhook 端點 | 3 | 🔴 待 AI-2410 |
+| AI-2412 | 真實金流 Phase C：退款真串接 | Sprint 49（backlog #10 spike 分期） | processRefund 真 Refund.create + charge.refunded webhook + partially_refunded 態 | 待 AI-2411 | 2 | 🔴 待 AI-2411 |
+| AI-2413 | 真實金流 Phase D：分帳/提現 | Sprint 49（backlog #10 spike 分期） | Stripe Connect（自動）或手動分帳（沿用 settlement）；賣家 onboarding/KYC；payout | **需 PO 決策 Connect vs 手動** + 合規/KYC | 5+ | 🔴 待 PO 決策（重大架構）|
 | AI-2202f | 開放窗清除機制 | Sprint 47（部分更新慣例限制） | `updateRoom` 沿用「非 null 才更新」慣例，賣家無法把已設 open_until_date/booking_window_days 清回無限制（NULL）| 需另立顯式機制（專屬端點或 sentinel 值）| 2 | ⚠️ 待評估（P4） |
 | AI-2408 | availability reason 錯誤碼化 + i18n | Sprint 47（未開放原因為英文字串） | availability `unavailableReason` 目前為後端英文字串（"is booked"/"is not open..."），前端沿用既有路徑原樣顯示；評估碼化 + 前端訊息映射 | 需定義 reason code 枚舉 + 前端 i18n map | 2 | ⚠️ 待評估（P4） |
 
@@ -61,6 +65,30 @@
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 49 (2026-07-03)
+
+**主題**: 真實金流（Stripe）上線評估——決策先行 spike（backlog #10）（5 SP，US-001~002 全數完成）
+
+**完成**:
+- **backlog #10 評估 → ✅ 完成（US-001+US-002，spike）**：產出 [PAYMENT_INTEGRATION_ASSESSMENT.md](../07_design/PAYMENT_INTEGRATION_ASSESSMENT.md)——揭穿「Stripe 已整合」假象（兩套並行付款程式碼：上線純 Mock + 孤兒 Gateway 抽象層無人注入，S14/S21 遺留死碼）；real/stub/missing 速查表；分階段路線（Phase A 卡片 MVP→B webhook→C 退款→D 分帳）；§mock↔real toggle + §Connect vs 手動分帳 + §Stripe.js 選型 + §待 PO 決策 6 項。**不改 production code、無 schema 變更**。
+
+**驗證**:
+- 純文件、不動 code；既有測試狀態沿用 S48（後端單元 22 + 整合 54 + validate-e2e 53 passed/0 fail）；catch(Exception)/@Deprecated=0；schema-free（V58）。
+- 誠實：spike 型（決策文件非可運行功能，SP 偏輕）；真實金流實作（13 SP + 外部依賴）分 AI-2410~2413 另立；Stripe scaffolding 為 S14/S21 遺留孤兒死碼。
+
+**新增延後項目**:
+- **AI-2410（P3）**：真實金流 Phase A 卡片付款 MVP（需 PO 決策 + Stripe 帳號）。
+- **AI-2411（P3）**：Phase B webhook 驅動狀態。
+- **AI-2412（P3）**：Phase C 退款真串接。
+- **AI-2413（P3）**：Phase D 分帳/提現（需 PO 決策 Connect vs 手動）。
+
+**下一 Sprint 候選**:
+- AI-1908 檢查點 push S41~S49、**金流 §待 PO 決策 6 項 → 決策後啟動 AI-2410 卡片付款 MVP**、AI-2407 定價規則語意、AI-1903 真人 live 走查（需環境），或其他新功能。
+
+**里程碑**：**真實金流評估完成**——backlog #10 拆為 Phase A~D + 6 項 PO 決策 + 4 實作 US（AI-2410~2413）。活躍延後：AI-2407（P3）/ AI-2409（P4）/ AI-2202f（P4）/ AI-2408（P4）/ AI-2410~2413（P3，金流實作）/ DEF-021（已決策）+ AI-1903（需環境）；活躍 DEF=0。
+
+---
 
 ### Sprint 48 (2026-07-03)
 
@@ -588,8 +616,9 @@
 
 ---
 
-**文件版本**: v2.18
-**最後更新**: 2026-07-03（Sprint 48：PRODUCT/cart 漲價——AI-2406c M12 進階定價 PRODUCT 側收官。破兩道閘門：閘門 2【結構性】applyProductRule 由 discount-only 擴充支援漲價型（MANUAL_OVERRIDE/SEASONAL/WEEKDAY_WEEKEND，對齊 ROOM config key、保留 discountPercent 向後相容）+ 閘門 1 RedisCartService 折扣閘門 `<現價`→`≠現價`；CartItemResponse priceAdjustmentType + 有號 discountAmount；下單自動繼承；前端 cart/page 首次顯示 item 雙向定價 + E2E-M11-012。後端單元 22 + 真 DB 整合 54（含 IT-EP-004）、validate-e2e **53 passed/0 fail**（+1）、schema 無漂移、catch(Exception)/@Deprecated=0、**schema-free**（V58）。**M12 進階定價全面收官**（ROOM+PRODUCT 折扣+漲價皆顯示=收費）。SP 初估 3→探勘修正 8（兩道閘門）。新增延後 AI-2409（P4 計算器統一）；活躍 DEF=0
+**文件版本**: v2.19
+**最後更新**: 2026-07-03（Sprint 49：真實金流評估 spike——backlog #10。US-001+US-002 產出 PAYMENT_INTEGRATION_ASSESSMENT.md（揭穿「Stripe 已整合」假象：兩套並行付款程式碼＝上線純 Mock + 孤兒 Gateway 抽象層無人注入【S14/S21 遺留死碼】；real/stub/missing 速查表；分階段路線 Phase A 卡片 MVP→B webhook→C 退款→D 分帳；§mock↔real toggle + §Connect vs 手動 + §Stripe.js 選型 + §待 PO 決策 6 項）。**不改 code、無 schema**；既有測試沿用 S48（validate-e2e 53/0）。真實金流實作（13 SP+外部依賴）分 AI-2410~2413 另立。新增延後 AI-2410~2413（P3 金流實作）；活躍 DEF=0
+**歷史版本 v2.18**: 2026-07-03（Sprint 48：PRODUCT/cart 漲價——AI-2406c M12 進階定價 PRODUCT 側收官。破兩道閘門：閘門 2【結構性】applyProductRule 由 discount-only 擴充支援漲價型（MANUAL_OVERRIDE/SEASONAL/WEEKDAY_WEEKEND，對齊 ROOM config key、保留 discountPercent 向後相容）+ 閘門 1 RedisCartService 折扣閘門 `<現價`→`≠現價`；CartItemResponse priceAdjustmentType + 有號 discountAmount；下單自動繼承；前端 cart/page 首次顯示 item 雙向定價 + E2E-M11-012。後端單元 22 + 真 DB 整合 54（含 IT-EP-004）、validate-e2e **53 passed/0 fail**（+1）、schema 無漂移、catch(Exception)/@Deprecated=0、**schema-free**（V58）。**M12 進階定價全面收官**（ROOM+PRODUCT 折扣+漲價皆顯示=收費）。SP 初估 3→探勘修正 8（兩道閘門）。新增延後 AI-2409（P4 計算器統一）；活躍 DEF=0
 **歷史版本 v2.17**: 2026-07-03（Sprint 47：開放窗語意實作——AI-2202e 區分「未開放 vs 可訂」（PO 拍板選項 A + 滾動視窗 + host UI）。US-001 後端 V58 migration【rooms 加 open_until_date + booking_window_days，皆 nullable NULL=無限制、backfill 免異動】+ Room.resolveOpenUntil（取最早生效）三層一律呼叫 + 三層一致【getCalendar 補 NOT_OPEN 計算產物非持久化、availability 超窗擋、createBooking+reschedule 超窗擋訂 E-3002】；US-002 前端 MonthCalendar NOT_OPEN 灰底禁選不刪除線 + RoomForm 雙欄位 + E2E-ROOM-10/11。後端單元 9 + 真 DB 整合 38（含 API-M06-016）、validate-schema **無漂移**、validate-e2e **52 passed/0 fail**（+2）、catch(Exception)/@Deprecated=0。⚠️ **V58 結束 S42~S46 連續零-migration**。新增延後 AI-2202f（P4 清窗）/ AI-2408（P4 reason i18n）；活躍 DEF=0
 **歷史版本 v2.16**: 2026-07-03（Sprint 46：定價機制真正統一——AI-2406b 漲價型規則計入 ROOM booking（PO 拍板選項 B）。US-001 後端放寬三處折扣閘門【availability/月曆/建單 totalAmount 一律含漲價乘數，保留 toggle 關短路+失敗降級】+ PricingService 抽 resolveListingForPricing 優雅降級 + DTO 中性調整語意（discountAmount 有號差額 + priceAdjustmentType）；US-002 前端漲價雙向顯示（漲價不刪除線+橙 badge）+ E2E-ROOM-08/09。後端單元 18 + 真 DB 整合 34、validate-e2e **50 passed/0 fail**（+2 漲價 E2E）、schema 對齊、**無 schema 變動**（連續 S42~S46 零 migration）、catch(Exception)/@Deprecated=0。**M12 進階定價收官**（折扣+漲價皆顯示=收費）。新增延後 AI-2406c（P3 PRODUCT 漲價）/ AI-2407（P3 定價規則語意）；活躍 DEF=0
 **歷史版本 v2.15**: 2026-07-02（Sprint 45：定價區技術債收斂——US-001 AI-2406 定價機制統一（揭穿 room_calendar.price 死碼假象、移除死碼 + 三處讀取簡化【行為等價】、確立 MANUAL_OVERRIDE 唯一路徑、決策文件）+ US-002 AI-2202d 開放窗語意評估（spike 決策文件）。後端單元 6 + 真 DB 整合 57、validate-e2e **48 passed/0 fail**、schema 對齊、**無 schema 變動**（連續 S42~S45 零 migration）、@Deprecated=0。新增延後 AI-2406b（P2，PO 決策）/ AI-2202e（P3，PO 拍板 schema）；活躍 DEF=0
@@ -599,4 +628,4 @@
 **歷史版本 v2.11**: Sprint 41：技術債徹底清償 + 整月日曆——US-001 AI-2301 test DB↔act port 制度化 + US-002 AI-2101b 登入 helper 完全統一 + US-003 AI-2202a 端點契約清理 + US-004 AI-2202b 整月日曆（read-only 後端）+ US-005 AI-1903 買家走查（自動證據+checklist，真人殘留）+ US-006 DEF-021 CJK 字體決策。validate-e2e 47 passed/0 fail。read-only 無 schema。活躍 DEF=1（DEF-022）
 **歷史版本 v2.10**: 2026-07-02（Sprint 40：ROOM 可用性 UX 完成——US-001 availability 端點 @RequestParam（後端 read-only）+ US-002 詳情頁即時可用性 + US-003 E2E。**完整 make validate-release 通過**（後端 act 330 tests 0 fail + E2E 45 passed/0 failed）。無 DB/schema 變動。活躍 DEF=1 非安全（DEF-021 CJK 字體）
 **歷史版本 v2.9**: Sprint 39：ROOM 訂房閉環補強——US-001+002 booking service 抽取 + 衝突優雅處理、US-003 ROOM 閉環 E2E（AI-2104）、US-004 E2E 共用 helper 抽取（AI-2101，收斂 4 檔 + 收 DEF-022）。全棧 44 passed/0 failed。無後端/DB 變動。誠實：availability 端點 GET+body 不可用→AI-2201。活躍 DEF=2 非安全（DEF-021 CJK 字體 / DEF-022 剩餘隨 AI-2101b）
-**下次審查**: **檢查點徵詢後 push S41~S48（AI-1908，累積 8 Sprint commit，本地各層驗證通過含 validate-schema 無漂移 + validate-e2e 53/0 fail，完整 make validate-release + 徵詢後 push，嚴禁 --no-verify）**；**M12 進階定價已全面收官**（ROOM+PRODUCT 折扣+漲價）。Sprint 49 候選：AI-2407 定價規則選取語意 + AI-2409 定價計算器統一 + AI-2202f 開放窗清除 + AI-2408 availability reason i18n + 買家 live 走查（AI-1903，需環境）+ 真實金流評估（backlog #10），或啟動新 EPIC
+**下次審查**: **檢查點徵詢後 push S41~S49（AI-1908，累積 9 Sprint commit，本地各層驗證通過含 validate-schema 無漂移 + validate-e2e 53/0 fail，S49 純文件；完整 make validate-release + 徵詢後 push，嚴禁 --no-verify）**；**M12 進階定價已全面收官**；**真實金流評估已完成**（PAYMENT_INTEGRATION_ASSESSMENT.md）。Sprint 50 候選：**金流 §待 PO 決策 6 項 → 決策後啟動 AI-2410 卡片付款 MVP（Phase A）** + AI-2407 定價規則語意 + AI-1903 真人 live 走查（需環境），或啟動新 EPIC

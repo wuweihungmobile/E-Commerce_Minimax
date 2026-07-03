@@ -21,9 +21,8 @@
 | DEF-021 | CJK 字體品牌一致性（技術債） | Sprint 35（Turbopack 限制發現） | S35 因 Turbopack 無法 self-host next/font CJK（Noto Sans TC 大量 unicode-range 子集無法解析），改用系統 CJK 字體堆疊；系統堆疊跨平台字重/字距不一，品牌字體一致性下降。後續評估 `next/font/local` + 預先子集化 Noto Sans TC woff2 以恢復品牌字體一致性 | 需 woff2 子集化工具鏈 + 驗證 Turbopack 相容性 | 2 | ✅ 已決策（S41 US-006）：維持系統字體堆疊為 **accepted fallback**；選項 B（`@font-face` 自 host 子集 woff2，技術可行、無 CSP 阻擋）記錄為選配未來任務，待品牌一致性需求由使用者拍板。詳見 [CJK_FONT_ASSESSMENT.md](../06_quality/CJK_FONT_ASSESSMENT.md) |
 | AI-2407 | 定價規則選取語意評估 | Sprint 46（記錄不修） | `bestRule` 採「最高 priority 勝出」非最低價（漲價/折扣可能互蓋）；`findActiveRulesForDateRange` 要求規則涵蓋整段區間（部分晚數 SEASONAL 漏套）| 需探勘 + 評估逐日精準查詢影響 | 3 | ⚠️ 待評估（P3） |
 | AI-2409 | 定價計算器統一評估 | Sprint 48（兩道閘門根因） | PRODUCT（`applyProductRule` 單日）與 ROOM（`calculateAdjustment` stay-based）為兩套計算器，S48 對齊 config key 但未合併；評估抽共用「單日規則套用」核心以消分歧 | 需評估 ROOM stay-based 規則（EARLY_BIRD/LONG_STAY/LAST_MINUTE）合併風險 | 3 | ⚠️ 待評估（P4） |
-| AI-2414 | 真金流上線 checklist | Sprint 51（Phase B 後） | 真實金流上線前置：STRIPE_WEBHOOK_SECRET 配置、公開 webhook 端點（Stripe CLI/域名）、Stripe 測試模式端到端人工驗證（重導→付款→回跳/webhook）、真金鑰注入 | 需 live 環境 + Stripe 帳號 | 2 | ⚠️ 上線前（P2）|
-| AI-2413 | 真實金流 Phase D：分帳/提現 | Sprint 49（backlog #10 spike 分期） | Stripe Connect（自動）或手動分帳（沿用 settlement）；賣家 onboarding/KYC；payout | **需 PO 決策 Connect vs 手動** + 合規/KYC | 5+ | 🔴 待 PO 決策（重大架構）|
 | AI-2415 | 部分退款（partially_refunded）評估 | Sprint 52（Phase C 只做全額退款） | partially_refunded 狀態 + 退款金額計算 + 退款金額欄位（退單一品項/運費）| 需 PaymentStatus 擴充 + 金額欄位 | 3 | ⚠️ 待評估（P4）|
+| AI-2416 | 真實金流 Phase D-2：代收後 transfer 分潤/提現 | Sprint 53（Phase D-1 拆分） | Phase D-1（本 Sprint）只做 Connect Express 帳戶 onboarding；付款成功後平台代收款項如何 transfer 給賣家（`stripe.transfer_data`/`Transfer.create`）+ 對帳/提現介面 | 需 Phase D-1 帳戶已上線（`connectOnboardingStatus=COMPLETE`）| 5+ | ⚠️ 待評估（P3）|
 | AI-2202f | 開放窗清除機制 | Sprint 47（部分更新慣例限制） | `updateRoom` 沿用「非 null 才更新」慣例，賣家無法把已設 open_until_date/booking_window_days 清回無限制（NULL）| 需另立顯式機制（專屬端點或 sentinel 值）| 2 | ⚠️ 待評估（P4） |
 | AI-2408 | availability reason 錯誤碼化 + i18n | Sprint 47（未開放原因為英文字串） | availability `unavailableReason` 目前為後端英文字串（"is booked"/"is not open..."），前端沿用既有路徑原樣顯示；評估碼化 + 前端訊息映射 | 需定義 reason code 枚舉 + 前端 i18n map | 2 | ⚠️ 待評估（P4） |
 
@@ -62,11 +61,37 @@
 | AI-2410 | 真實金流 Phase A：卡片付款 MVP（Stripe Checkout hosted，平台代收）| Sprint 49 | Sprint 50 | 承 S49 評估 + PO 拍板（Checkout hosted + 先平台代收）。V59 payments 加 Stripe 欄位 + STRIPE method + PROCESSING；接回孤兒 gateway——StripePaymentGateway 補 createCheckoutSession（Session.create 平台代收）+ retrieveCheckoutSession；STRIPE_PAYMENT_ENABLED toggle（預設關=mock 不變）；PaymentStateService initiateStripeCheckout（建 PROCESSING+Session）+ confirmStripeCheckout（回跳 retrieve，paid→SUCCESS+Order PAID，冪等）；端點 /pay/checkout + /return；前端 orders/[id] 重導 + success/cancel + E2E-M11-013。後端單元 9（WireMock TC-S004/005）+ 真 DB 整合 25（mock 不退步）、validate-schema 無漂移、validate-e2e **54 passed/0 fail**。誠實：Phase A 僅回跳 retrieve、webhook 權威狀態留 Phase B（AI-2411）；平台代收分帳留 Phase D；⚠️ V59 打破 schema-free |
 | AI-2411 | 真實金流 Phase B：webhook 事件驅動權威狀態 | Sprint 49 | Sprint 51 | 補 Phase A「買家未回跳」缺口。PaymentWebhookService 解析 Stripe 事件（checkout.session.completed[paid]→SUCCESS+Order PAID 權威、payment_intent.payment_failed→FAILED、未知→記錄不 dispatch）；StripeWebhookController 驗簽後委派一律回 2xx；PaymentStateService 抽 markStripePaymentSucceeded/Failed 共用核心（回跳 Phase A 與 webhook 雙路徑一致）；V60 processed_stripe_events 去重 + event id 去重；雙層冪等。後端單元 9（UT-WH-001~005）+ 真 DB 整合 21（mock/Phase A 不退步）、validate-schema V60 無漂移、validate-e2e **54 passed/0 fail**。誠實：只做成功/失敗（退款留 Phase C）；失敗路徑 best-effort（pi 惰性）；測試模式跳驗簽，生產須配 secret（上線 checklist AI-2414）|
 | AI-2412 | 真實金流 Phase C：退款真串接 | Sprint 49 | Sprint 52 | StripePaymentGateway.processRefund 由 stub 改真 Refund.create（以 payment_intent 全額退款）；PaymentStateService.mockRefund 重構 refundOrderPayment toggle-aware（stripe 真退款+存 stripe_refund_id / mock 保留）；PaymentWebhookService 加 charge.refunded 權威 REFUNDED（冪等+V60 去重）；createCheckoutSession 補 pi metadata order_id（補 Phase B best-effort）；V61 payments 加 stripe_refund_id。後端單元 19（TC-S006 + 退款 005~007 + UT-WH-006）+ 真 DB 整合 21（mock/Phase A/B 不退步）、validate-schema V61 無漂移、validate-e2e **54 passed/0 fail**。誠實：只做全額退款（partial 另立 AI-2415）；測試不打真 Stripe（上線 checklist AI-2414）|
+| AI-2414 | 真金流上線 checklist | Sprint 51 | Sprint 53 | 產出 `docs/08_deployment/STRIPE_PRODUCTION_CHECKLIST.md`：金鑰/環境變數、webhook 端點註冊事件清單、Connect Platform Profile（Phase D-1 起）、測試模式端到端人工驗證項目（付款成功/失敗/退款/Connect onboarding）、正式金鑰切換順序、已知限制揭露。**文件本身為完成交付**；文件內列出的人工驗證步驟仍需使用者於測試模式親自執行（誠實揭露，非本項範圍） |
+| AI-2413 | 真實金流 Phase D-1：Stripe Connect Express 帳戶 onboarding | Sprint 49 | Sprint 53 | **PO 決策 Stripe Connect（非手動撥款）+ Express（非 Standard）**。US-001：V62 migration（tenants 加 stripe_connect_account_id/connect_onboarding_status/connect_charges_enabled/connect_payouts_enabled）；StripePaymentGateway 新增 createConnectAccount（Account.create type=express）/createAccountLink（AccountLink.create type=account_onboarding）/getConnectAccountStatus（Account.retrieve）；TenantStripeConnectService（onboarding 發起/複用既有 accountId/狀態查詢，`STRIPE_CONNECT_ENABLED` toggle 保護）；SellerDashboardController 新增 onboarding/status 端點。US-002：PaymentWebhookService 擴充 `account.updated` dispatch（反查 tenant 回填狀態，沿用 V60 去重）。後端單元 20（WireMock TC-S007~010 + UT-CONNECT-001~006 + UT-WH-007~008）+ 真 DB 整合 4（IT-CONNECT）+ 全量回歸 536 tests 0 fail、validate-schema V62 無漂移。誠實：**只做帳戶 onboarding，不做代收後 transfer 分潤**（另立 AI-2416，Phase D-2）；不含前端（賣家後台按鈕）；只做 Express（非 Standard/Custom）|
 | DEF-022 | E2E 硬等待（waitForTimeout 固定 sleep） | Sprint 35 | Sprint 42 | **歷時 S35→39→42**。S39（AI-2101）已收斂登入 helper 部分；S42（US-003）完成餘下清除：5 檔（at-m11-cart-checkout、at-m15-e2e、at-m17-001/002）冗餘 `waitForTimeout` 刪除、可替換者改顯式等待（`waitForURL`/`waitForResponse`/`expect().toBeVisible()`/`toHaveClass()`）並順帶補斷言（Rule 9）；**保留** at-m10-chat STOMP SUBSCRIBE settle 例外（無 client 可觀察訊號）。**連帶根治**移除 sleep 後浮現的既有 flaky：auth helper 與 S37 共用 Header「註冊」連結碰撞（`.first()` 恆選 header 連結 + re-render 不穩定 → 改 `goto('/register')`，Playwright 快照佐證）+ 原生 alert teardown（at-m15 檔案級 dialog beforeEach + at-m17-002 dialog 處理器）。validate-e2e 46 passed/0 fail |
 
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 53 (2026-07-04)
+
+**主題**: 真實金流 Phase D-1——Stripe Connect Express 帳戶 onboarding（8 SP，US-001~002 全數完成 + US-003/US-004 不計點文件產出）
+
+**完成**:
+- **AI-2413 → ✅ Phase D-1 完成（US-001+US-002，後端）**：Connect Express 帳戶 onboarding。V62 migration（tenants 加 4 個 Connect 欄位）；StripePaymentGateway 新增 createConnectAccount/createAccountLink/getConnectAccountStatus；TenantStripeConnectService（onboarding 發起/複用/狀態查詢，toggle 保護）；SellerDashboardController onboarding/status 端點；PaymentWebhookService 擴充 account.updated dispatch。
+- **AI-2414 → ✅ 完成（US-003）**：`STRIPE_PRODUCTION_CHECKLIST.md` 產出（金鑰/webhook/Connect/測試模式端到端驗證項目/正式金鑰切換順序）。
+- **AI-1903 → 🟡 部分（US-004，同 Sprint 41 模式）**：更新既有 `BUYER_JOURNEY_LIVE_WALKTHROUGH_CHECKLIST.md`（新增真 Stripe toggle 走查項 + 連結上線 checklist）；真人 live 走查本身仍續留待使用者執行。
+
+**驗證**:
+- 後端單元 20（StripePaymentGateway +4 含 TC-S007~010、TenantStripeConnectService 6 含 UT-CONNECT-001~006、PaymentWebhookService +2 含 UT-WH-007~008）+ 真 DB 整合 4（M13SellerStripeConnectIntegrationTest，IT-CONNECT-001~004）+ **全量回歸 536 tests 0 fail**（含 M16 ERP 37，因 TestDatabaseInitializer/M16ErpIntegrationTest 兩處 raw SQL tenant 種子需同步補新增 NOT NULL 欄位，屬既有「erp-tenant-test-seeding-gotcha」模式再現，已修正）；`make validate-schema` 無漂移（V62）。catch(Exception)/@Deprecated=0。
+- 誠實：只做帳戶 onboarding，**不做代收後 transfer 分潤**（另立 AI-2416，Phase D-2，Sprint 55）；不含前端（賣家後台按鈕串接視後續容量）；只做 Express（非 Standard/Custom）；正式上線需人工確認 Stripe Connect Platform Profile 已完成平台資料送審（非本 Sprint 可代查）。
+- **範圍決策**（PO 授權 Claude Code 逕行決策，2026-07-04）：原規劃 US-001~004 共 10 SP 高於歷史區間，下修為正式承諾 8 SP（US-001+US-002），US-003/US-004 降為不計點附屬產出；AI-2407 定價規則語意評估延後至 Sprint 54（前置調查發現規模達 5-8 SP 且需 tie-break 業務語意決策，非小型修正）。
+
+**新增延後項目**:
+- **AI-2416（P3）**：真實金流 Phase D-2，代收後 transfer 分潤/提現（需 Phase D-1 帳戶已上線）。
+
+**下一 Sprint 候選**:
+- AI-2407 定價規則選取語意評估（range 查詢 containment→overlap 修正 + 同優先級 tie-break 業務語意決策，Sprint 54 主軸）、AI-2416 Phase D-2 分帳、AI-1903 真人 live 走查（需環境）。
+
+**里程碑**：**真實金流閉環擴展至賣家 onboarding**——付款（Phase A）+ 權威狀態（Phase B）+ 退款（Phase C）+ 賣家 Connect 帳戶開通（Phase D-1）皆真實。剩代收後分潤（Phase D-2）。活躍延後：AI-2407（P3）/ AI-2409（P4）/ AI-2416（P3）/ AI-2202f（P4）/ AI-2408（P4）/ DEF-021（已決策）+ AI-1903（需環境）；活躍 DEF=0。
+
+---
 
 ### Sprint 52 (2026-07-03)
 
@@ -678,8 +703,9 @@
 
 ---
 
-**文件版本**: v2.22
-**最後更新**: 2026-07-03（Sprint 52：真實金流 Phase C 退款真串接——AI-2412（後端聚焦）。StripePaymentGateway.processRefund 由 stub 改真 Refund.create（payment_intent 全額退款）；PaymentStateService.mockRefund 重構 refundOrderPayment toggle-aware（stripe 真退款+存 stripe_refund_id / mock 保留）；PaymentWebhookService charge.refunded 權威 REFUNDED（冪等+V60 去重）；createCheckoutSession 補 pi metadata order_id（補 Phase B best-effort）；V61 stripe_refund_id。後端單元 19（TC-S006+退款 005~007+UT-WH-006）+ 真 DB 整合 21（不退步）、validate-schema V61 無漂移、validate-e2e **54 passed/0 fail**、catch(Exception)/@Deprecated=0。**真實金流付款閉環完整**（付款+權威狀態+退款）。誠實：只做全額退款；測試不打真 Stripe。⚠️ V61 schema。AI-2412 移入已完成；新增延後 AI-2415（P4 部分退款）；活躍 DEF=0
+**文件版本**: v2.23
+**最後更新**: 2026-07-04（Sprint 53：真實金流 Phase D-1 Stripe Connect Express 帳戶 onboarding——AI-2413（後端聚焦，8 SP）。V62 migration tenants 加 4 個 Connect 欄位；StripePaymentGateway 新增 createConnectAccount/createAccountLink/getConnectAccountStatus；TenantStripeConnectService（onboarding 發起/複用/狀態查詢，toggle 保護）；SellerDashboardController onboarding/status 端點；PaymentWebhookService 擴充 account.updated dispatch（反查 tenant 回填狀態，沿用 V60 去重）。後端單元 20（TC-S007~010 + UT-CONNECT-001~006 + UT-WH-007~008）+ 真 DB 整合 4（IT-CONNECT）+ **全量回歸 536 tests 0 fail**、validate-schema V62 無漂移、catch(Exception)/@Deprecated=0。同時交付 AI-2414（`STRIPE_PRODUCTION_CHECKLIST.md`）+ AI-1903 部分（更新既有走查 checklist，真人執行續留）。誠實：只做帳戶 onboarding，代收後 transfer 分潤另立 AI-2416（Phase D-2）；不含前端；只做 Express。AI-2413/AI-2414 移入已完成；新增延後 AI-2416（P3 Phase D-2）；AI-2407 定價語意評估延後 Sprint 54 主軸（前置調查發現規模 5-8 SP）；活躍 DEF=0
+**歷史版本 v2.22**: 2026-07-03（Sprint 52：真實金流 Phase C 退款真串接——AI-2412（後端聚焦）。StripePaymentGateway.processRefund 由 stub 改真 Refund.create（payment_intent 全額退款）；PaymentStateService.mockRefund 重構 refundOrderPayment toggle-aware（stripe 真退款+存 stripe_refund_id / mock 保留）；PaymentWebhookService charge.refunded 權威 REFUNDED（冪等+V60 去重）；createCheckoutSession 補 pi metadata order_id（補 Phase B best-effort）；V61 stripe_refund_id。後端單元 19（TC-S006+退款 005~007+UT-WH-006）+ 真 DB 整合 21（不退步）、validate-schema V61 無漂移、validate-e2e **54 passed/0 fail**、catch(Exception)/@Deprecated=0。**真實金流付款閉環完整**（付款+權威狀態+退款）。誠實：只做全額退款；測試不打真 Stripe。⚠️ V61 schema。AI-2412 移入已完成；新增延後 AI-2415（P4 部分退款）；活躍 DEF=0
 **歷史版本 v2.21**: 2026-07-03（Sprint 51：真實金流 Phase B webhook 驅動權威狀態——AI-2411（後端聚焦）。PaymentWebhookService 解析 Stripe 事件（checkout.session.completed[paid]→SUCCESS+Order PAID 權威、payment_intent.payment_failed→FAILED）補 Phase A 未回跳缺口；StripeWebhookController 驗簽後委派一律回 2xx；抽 markStripePaymentSucceeded/Failed 共用核心（雙路徑一致）；V60 processed_stripe_events 去重 + 雙層冪等。後端單元 9（UT-WH-001~005）+ 真 DB 整合 21（不退步）、validate-schema V60 無漂移、validate-e2e **54 passed/0 fail**、catch(Exception)/@Deprecated=0。誠實：只做成功/失敗（退款留 Phase C）；失敗 best-effort；測試模式跳驗簽。⚠️ V60 schema。AI-2411 移入已完成；新增延後 AI-2414（P2 上線 checklist）；活躍 DEF=0
 **歷史版本 v2.20**: 2026-07-03（Sprint 50：真實金流 Phase A 卡片付款 MVP——AI-2410（Stripe Checkout hosted，平台代收）。V59 payments 加 Stripe 欄位 + STRIPE method/PROCESSING；接回孤兒 gateway（createCheckoutSession/retrieve）；STRIPE_PAYMENT_ENABLED toggle（預設關=mock 不退步）；PaymentStateService initiate/confirmStripeCheckout（回跳 retrieve，冪等）；端點 /pay/checkout + /return；前端 orders/[id] 重導 + success/cancel + E2E-M11-013。後端單元 9（WireMock TC-S004/005）+ 真 DB 整合 25（mock 不退步）、validate-schema 無漂移、validate-e2e **54 passed/0 fail**（+1）、catch(Exception)/@Deprecated=0。⚠️ V59 打破 schema-free。誠實：Phase A 僅回跳 retrieve、webhook 權威狀態留 Phase B（AI-2411，上線前必要）；平台代收分帳留 Phase D。AI-2410 移入已完成；活躍 DEF=0
 **歷史版本 v2.19**: 2026-07-03（Sprint 49：真實金流評估 spike——backlog #10。US-001+US-002 產出 PAYMENT_INTEGRATION_ASSESSMENT.md（揭穿「Stripe 已整合」假象：兩套並行付款程式碼＝上線純 Mock + 孤兒 Gateway 抽象層無人注入【S14/S21 遺留死碼】；real/stub/missing 速查表；分階段路線 Phase A 卡片 MVP→B webhook→C 退款→D 分帳；§mock↔real toggle + §Connect vs 手動 + §Stripe.js 選型 + §待 PO 決策 6 項）。**不改 code、無 schema**；既有測試沿用 S48（validate-e2e 53/0）。真實金流實作（13 SP+外部依賴）分 AI-2410~2413 另立。新增延後 AI-2410~2413（P3 金流實作）；活躍 DEF=0

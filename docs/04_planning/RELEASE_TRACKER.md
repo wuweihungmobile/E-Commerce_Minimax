@@ -11,6 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 51 | v2027.10.09-01 | - | 2026-07-03 | 真實金流 Phase B——webhook 事件驅動權威狀態（AI-2411，後端聚焦）：**US-001+US-002** 補 Phase A「買家未回跳」缺口——PaymentWebhookService 解析 Stripe 事件（checkout.session.completed[paid]→SUCCESS+Order PAID【權威，未回跳也 PAID】、payment_intent.payment_failed→FAILED、未知→記錄不 dispatch）；StripeWebhookController 驗簽後委派、一律回 2xx（避免無限重送）；PaymentStateService 抽 markStripePaymentSucceeded/Failed 共用核心（回跳 Phase A 與 webhook 雙路徑一致）；V60 processed_stripe_events 事件去重表 + event id 去重；雙層冪等（去重+狀態轉移）。驗證：後端單元 9（PaymentWebhookServiceTest 5 UT-WH-001~005 + service 4）+ 真 DB 整合 21（mock/Phase A 不退步）、validate-schema V60 無漂移、validate-e2e **54 passed/0 fail**（持平，後端聚焦）。誠實：只做付款成功/失敗（退款留 Phase C）；失敗路徑 best-effort（pi 惰性）；測試模式跳驗簽，生產須配 secret + 端點；⚠️ V60 schema | ⏳ 待 push（本 Sprint 2 commit，累積 S41~S51，完整守門+徵詢後 push）|
 | Sprint 50 | v2027.09.25-01 | - | 2026-07-03 | 真實金流 Phase A——卡片付款 MVP（Stripe Checkout hosted，平台代收）：**後端 Checkout Session + gateway 接線 + toggle + V59**(AI-2410，US-001，承 S49 評估 + PO 拍板；V59 payments 加 stripe_session_id/payment_intent_id/charge_id + STRIPE method + PROCESSING；接回孤兒 gateway 抽象層——StripePaymentGateway 補 createCheckoutSession【Session.create 平台代收】+ retrieveCheckoutSession；STRIPE_PAYMENT_ENABLED toggle【預設關=mock 不變】；PaymentStateService initiateStripeCheckout【建 PROCESSING+Session 回重導 url】+ confirmStripeCheckout【回跳 retrieve，paid→SUCCESS+Order PAID，冪等】；端點 /pay/checkout + /pay/checkout/return) + **前端 Checkout 重導**(AI-2410，US-002，orders/[id] 依 paymentProvider 分支「前往付款」重導 + success/cancel 頁；hosted Checkout 無需 @stripe；E2E-M11-013)。⚠️ **行為變更**：toggle 開啟走真 Stripe 收款。⚠️ **V59 打破 schema-free**。驗證：後端單元 9（WireMock TC-S004/005 + service 4）+ 真 DB 整合 25（mock 不退步）、validate-schema 無漂移、validate-e2e **54 passed/0 fail**（+1）。誠實：Phase A 僅回跳 retrieve、webhook 權威狀態留 Phase B(AI-2411)；平台代收分帳留 Phase D；測試以 WireMock 不打真 Stripe | ⏳ 待 push（本 Sprint 3 commit，累積 S41~S50，完整守門+徵詢後 push）|
 | Sprint 49 | v2027.09.11-01 | - | 2026-07-03 | 真實金流評估——決策先行 spike（backlog #10）：**US-001+US-002 產出 PAYMENT_INTEGRATION_ASSESSMENT.md**（M12 收官後轉入平台變現關鍵評估，不寫 production code、無 schema）。揭穿「Stripe 已整合」假象——**兩套並行付款程式碼**：上線純 Mock（PaymentService/PaymentStateService）+ 孤兒 Gateway 抽象層（PaymentGatewayFactory/StripePaymentGateway 無人注入，S14/S21 遺留死碼）。real/stub/missing 速查表（真實：Stripe SDK 24.3.0/createPaymentIntent/webhook 驗簽/金鑰設定/WireMock；stub：confirm/refund/getStatus/webhook 事件處理；缺：gateway 接主流程/Stripe DB 欄位/非同步對帳/前端 Stripe.js/分帳提現）。分階段路線 Phase A 卡片 MVP→B webhook→C 退款→D 分帳；§mock↔real toggle + §Connect vs 手動分帳 + §Stripe.js 選型（Checkout PCI SAQ-A）+ §待 PO 決策 6 項 + §後續實作 US（AI-2410~2413）。實作（13 SP+外部依賴）待決策另立 | ⏳ 待 push（本 Sprint 2 commit，累積 S41~S49，完整守門+徵詢後 push）|
 | Sprint 48 | v2027.08.28-01 | - | 2026-07-03 | PRODUCT/cart 漲價——M12 進階定價 PRODUCT 側收官：**後端 PRODUCT 計價支援漲價 + 閘門放寬**(AI-2406c，US-001，承 S46 界線 PRODUCT 另立；破**兩道閘門**——閘門 2【結構性】applyProductRule 由 discount-only 擴充支援漲價型 MANUAL_OVERRIDE price/SEASONAL multiplier/WEEKDAY_WEEKEND weekendMultiplier【對齊 ROOM config key，保留 discountPercent 向後相容】、閘門 1 RedisCartService 折扣閘門 `<現價`→`≠現價`；CartItemResponse 加 priceAdjustmentType + 有號 discountAmount；下單自動繼承【OrderService 未改】) + **前端購物車定價雙向顯示**(AI-2406c，US-002，cart/page 首次顯示 item 層級定價：折扣刪除線+綠標「省」/漲價不刪除線+橙標「加價」，兼補 S44 未顯示折扣；checkout 為 ROOM 訂房頁不 itemize 未改；E2E-M11-012)。⚠️ **行為變更**：toggle 開啟時 PRODUCT 漲價計入(PO 拍板)。驗證：後端單元 22 + 真 DB 整合 54（含 IT-EP-004 漲價）、validate-e2e **53 passed/0 fail**（+1）、schema 無漂移。**M12 進階定價全面收官**(ROOM+PRODUCT 折扣+漲價皆顯示=收費)。schema-free(V58)。誠實：SP 初估 3→探勘修正 8（兩道閘門）、PRODUCT/ROOM 兩套計算器對齊 key 未合併(另立 AI-2409) | ⏳ 待 push（本 Sprint 3 commit，累積 S41~S48，完整守門+徵詢後 push）|
@@ -62,11 +63,11 @@
 
 | 項目 | 數值 |
 |------|------|
-| 建立 Release Tag 次數 | 41 (Sprint 10-50，連續) |
+| 建立 Release Tag 次數 | 42 (Sprint 10-51，連續) |
 | 已 push（已 Release） | 31 (Sprint 10-40) |
-| 待 push（Tag 已建、尚未 push） | 10 (Sprint 41~50，本地各層驗證通過含 validate-schema/validate-e2e；累積後檢查點徵詢+完整 validate-release 後 push) |
+| 待 push（Tag 已建、尚未 push） | 11 (Sprint 41~51，本地各層驗證通過含 validate-schema/validate-e2e；累積後檢查點徵詢+完整 validate-release 後 push) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release Tag | v2027.09.25-01 (Sprint 50，⏳ 待 push) |
+| 最近一次 Release Tag | v2027.10.09-01 (Sprint 51，⏳ 待 push) |
 | 最近一次已 push Release | v2027.05.08-01 (Sprint 40，隨 S32~S40 累積批次 2e33c6d) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release Tag 開始 | Sprint 10 |

@@ -83,7 +83,9 @@ export interface AvailabilityResponse {
 }
 
 // 對齊後端 BookingDto.CalendarResponse（GET /v2/bookings/calendar 每日一筆）
-export type RoomCalendarStatus = 'AVAILABLE' | 'BOOKED' | 'BLOCKED' | 'MAINTENANCE'
+// NOT_OPEN（AI-2202e）：超過房源開放窗（open_until_date / booking_window_days）之未開放日，
+// 由後端 getCalendar 計算補入（非持久化狀態）；前端灰底禁選、不刪除線（區別於已訂/封鎖）。
+export type RoomCalendarStatus = 'AVAILABLE' | 'BOOKED' | 'BLOCKED' | 'MAINTENANCE' | 'NOT_OPEN'
 
 export interface CalendarDay {
   date: string // YYYY-MM-DD

@@ -414,4 +414,69 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
     await expect(originalCell).toContainText('3,200');
     await expect(originalCell).not.toHaveClass(/line-through/);
   });
+
+  test('E2E-ROOM-10: 日曆未開放日 NOT_OPEN → 禁選 + 灰底不刪除線（Sprint 47 AI-2202e）', async ({ page }: { page: Page }) => {
+    const now = new Date();
+    const ny = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+    const nm = now.getMonth() === 11 ? 0 : now.getMonth() + 1;
+    const pad = (n: number) => (n < 10 ? '0' + n : String(n));
+    const d = (day: number) => `${ny}-${pad(nm + 1)}-${pad(day)}`;
+    const notOpenDay = d(6);
+
+    await page.route(`**/v2/listings/${ROOM_ID}`, async (route) => {
+      await fulfillJson(route, 200, { success: true, data: roomListing() });
+    });
+    // 日曆：第 6 日為未開放（超過房源開放窗）→ 後端補 NOT_OPEN（price 為 basePrice）
+    await page.route('**/v2/bookings/calendar**', async (route) => {
+      await fulfillJson(route, 200, {
+        success: true,
+        data: [
+          { date: notOpenDay, status: 'NOT_OPEN', price: 3200, bookingId: null },
+        ],
+      });
+    });
+
+    await page.goto(`/listings/${ROOM_ID}`);
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByTestId('listing-detail')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('listing-calendar')).toBeVisible({ timeout: 10000 });
+
+    await page.getByTestId('calendar-next').click();
+
+    // 未開放日：禁選（disabled + data-unavailable/not-open=true）、不刪除線（區別於 BLOCKED）
+    const cell = page.getByTestId(`calendar-day-${notOpenDay}`);
+    await expect(cell).toBeDisabled();
+    await expect(cell).toHaveAttribute('data-not-open', 'true');
+    await expect(cell).toHaveAttribute('data-unavailable', 'true');
+    await expect(cell).not.toHaveClass(/line-through/);
+  });
+
+  test('E2E-ROOM-11: 可用性回未開放 → 禁用加購 + 顯示未開放原因（Sprint 47 AI-2202e）', async ({ page }: { page: Page }) => {
+    await page.route(`**/v2/listings/${ROOM_ID}`, async (route) => {
+      await fulfillJson(route, 200, { success: true, data: roomListing() });
+    });
+    await page.route('**/v2/bookings/calendar**', async (route) => {
+      await fulfillJson(route, 200, { success: true, data: [] });
+    });
+    // availability 回未開放（超窗）：available=false + 未開放原因
+    await page.route('**/v2/bookings/availability**', async (route) => {
+      await fulfillJson(route, 200, {
+        success: true,
+        data: availabilityResponse(false, 'Date 2030-01-01 is not open for booking'),
+      });
+    });
+
+    await page.goto(`/listings/${ROOM_ID}`);
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByTestId('listing-detail')).toBeVisible({ timeout: 15000 });
+
+    await page.getByTestId('listing-checkin').fill('2030-01-01');
+    await page.getByTestId('listing-checkout').fill('2030-01-03');
+    await page.getByRole('button', { name: '查詢可用性' }).click();
+
+    const unavailable = page.getByTestId('listing-unavailable');
+    await expect(unavailable).toBeVisible({ timeout: 10000 });
+    await expect(unavailable).toContainText('not open');
+    await expect(page.getByTestId('listing-add-cart')).toBeDisabled();
+  });
 });

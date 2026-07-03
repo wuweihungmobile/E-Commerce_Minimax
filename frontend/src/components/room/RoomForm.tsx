@@ -43,6 +43,8 @@ export default function RoomForm({ roomId }: RoomFormProps) {
     checkInTime: undefined,
     checkOutTime: undefined,
     roomCount: undefined,
+    openUntilDate: undefined,
+    bookingWindowDays: undefined,
   })
 
   useEffect(() => {
@@ -73,6 +75,8 @@ export default function RoomForm({ roomId }: RoomFormProps) {
         checkInTime: room.checkInTime || undefined,
         checkOutTime: room.checkOutTime || undefined,
         roomCount: room.roomCount || undefined,
+        openUntilDate: room.openUntilDate || undefined,
+        bookingWindowDays: room.bookingWindowDays || undefined,
       })
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
@@ -311,6 +315,31 @@ export default function RoomForm({ roomId }: RoomFormProps) {
                   value={formData.checkOutTime || ''}
                   onChange={(e) => handleChange('checkOutTime', e.target.value || undefined)}
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="openUntilDate">開放預訂至（選填）</Label>
+                <Input
+                  id="openUntilDate"
+                  type="date"
+                  value={formData.openUntilDate || ''}
+                  onChange={(e) => handleChange('openUntilDate', e.target.value || undefined)}
+                />
+                <p className="text-xs text-gray-500 mt-1">開放至某固定日；未填 = 無限制</p>
+              </div>
+              <div>
+                <Label htmlFor="bookingWindowDays">開放未來天數（選填）</Label>
+                <Input
+                  id="bookingWindowDays"
+                  type="number"
+                  min="1"
+                  value={formData.bookingWindowDays ?? ''}
+                  onChange={(e) => handleChange('bookingWindowDays', e.target.value ? parseInt(e.target.value) : undefined)}
+                  placeholder="90"
+                />
+                <p className="text-xs text-gray-500 mt-1">開放未來 N 天（滾動）；與截止日兩者取最早生效</p>
               </div>
             </div>
 

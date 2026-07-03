@@ -19,6 +19,9 @@ export interface Room {
   checkInTime: string
   checkOutTime: string
   roomCount: number
+  // 開放窗（AI-2202e）：null = 無限制
+  openUntilDate?: string | null
+  bookingWindowDays?: number | null
   createdAt: string
   updatedAt: string
 }
@@ -60,6 +63,10 @@ export interface CreateRoomRequest {
   checkInTime?: string
   checkOutTime?: string
   roomCount?: number
+  // 開放窗（AI-2202e）：開放至某固定日（YYYY-MM-DD）；未填 = 無限制
+  openUntilDate?: string | null
+  // 開放窗（AI-2202e）：開放未來 N 天（滾動）；未填 = 無限制。兩者取最早生效
+  bookingWindowDays?: number | null
 }
 
 export interface UpdateRoomRequest extends CreateRoomRequest {

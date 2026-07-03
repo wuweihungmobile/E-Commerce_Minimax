@@ -11,6 +11,8 @@ const UNAVAILABLE_STATUS: ReadonlySet<RoomCalendarStatus> = new Set<RoomCalendar
   "BOOKED",
   "BLOCKED",
   "MAINTENANCE",
+  // 未開放（AI-2202e）：禁選；樣式與已訂/封鎖不同（灰底不刪除線，見下方 className）
+  "NOT_OPEN",
 ])
 
 function pad(n: number): string {
@@ -193,6 +195,7 @@ export function MonthCalendar({
           if (day === null) return <div key={"empty-" + idx} />
           const dateStr = iso(view.year, view.month, day)
           const unavailable = isUnavailable(dateStr)
+          const notOpen = statusByDate[dateStr] === "NOT_OPEN"
           const selected = inRange(dateStr)
           return (
             <button
@@ -200,12 +203,16 @@ export function MonthCalendar({
               type="button"
               data-testid={`calendar-day-${dateStr}`}
               data-unavailable={unavailable ? "true" : "false"}
+              data-not-open={notOpen ? "true" : "false"}
               disabled={unavailable}
               onClick={() => handleDayClick(dateStr)}
               className={[
                 "flex min-h-[3rem] flex-col items-center justify-center gap-0.5 rounded-md py-1 text-sm transition-colors",
+                // 未開放（NOT_OPEN，AI-2202e）：灰底禁選但不刪除線；已訂/封鎖：刪除線
                 unavailable
-                  ? "cursor-not-allowed text-rs-ink-muted line-through opacity-40"
+                  ? notOpen
+                    ? "cursor-not-allowed text-rs-ink-muted opacity-50"
+                    : "cursor-not-allowed text-rs-ink-muted line-through opacity-40"
                   : "text-rs-ink hover:border-rs-primary",
                 selected ? "bg-rs-primary text-white" : "border border-rs-hairline",
               ].join(" ")}
@@ -240,7 +247,7 @@ export function MonthCalendar({
         })}
       </div>
 
-      <p className="text-xs text-rs-ink-muted">灰色刪除線為不可預訂日；點選日期挑選入住與退房。</p>
+      <p className="text-xs text-rs-ink-muted">灰色刪除線為已訂／不可預訂日，灰色（無刪除線）為未開放日；點選日期挑選入住與退房。</p>
     </div>
   )
 }

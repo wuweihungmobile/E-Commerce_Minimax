@@ -25,6 +25,12 @@ interface CartItem {
   subtotal: number
   startDate: string | null
   endDate: string | null
+  // 動態定價調整（AI-2403 折扣 / AI-2406c 漲價）：規則生效時填入（unitPrice/subtotal 已為調整後）。
+  // discountAmount 為有號差額（正=折扣、負=加價）；priceAdjustmentType 明示方向。
+  originalUnitPrice?: number | null
+  discountAmount?: number | null
+  appliedRuleName?: string | null
+  priceAdjustmentType?: string | null
 }
 
 interface CartResponse {
@@ -300,8 +306,38 @@ export default function CartPage() {
                                 {item.listingName}
                               </h3>
                               <p className="text-sm text-gray-500 mt-1">
+                                {/* 動態定價調整（AI-2406c）：折扣（>0）原價刪除線；加價（<0）原價不刪除線 */}
+                                {item.discountAmount != null &&
+                                  item.discountAmount !== 0 &&
+                                  item.originalUnitPrice != null && (
+                                    <span
+                                      data-testid={`cart-original-price-${item.cartItemKey}`}
+                                      className={
+                                        item.discountAmount > 0
+                                          ? 'mr-1 text-gray-400 line-through'
+                                          : 'mr-1 text-gray-400'
+                                      }
+                                    >
+                                      {formatPrice(item.originalUnitPrice)}
+                                    </span>
+                                  )}
                                 單價: {formatPrice(item.unitPrice)}
                               </p>
+                              {item.appliedRuleName &&
+                                item.discountAmount != null &&
+                                item.discountAmount !== 0 && (
+                                  <span
+                                    data-testid={`cart-adjust-badge-${item.cartItemKey}`}
+                                    className={
+                                      item.discountAmount > 0
+                                        ? 'inline-block mt-1 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700'
+                                        : 'inline-block mt-1 rounded bg-orange-100 px-2 py-0.5 text-xs text-orange-700'
+                                    }
+                                  >
+                                    {item.appliedRuleName}｜{item.discountAmount > 0 ? '省 ' : '加價 '}
+                                    {formatPrice(Math.abs(item.discountAmount))}
+                                  </span>
+                                )}
                               {item.startDate && item.endDate && (
                                 <p className="text-sm text-gray-500">
                                   日期: {formatDate(item.startDate)} - {formatDate(item.endDate)}

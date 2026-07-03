@@ -306,6 +306,89 @@ test.describe('E2E-M11-009: 完整結帳流程', () => {
 });
 
 /**
+ * E2E-M11-012: PRODUCT 項動態定價顯示（Sprint 48 AI-2406c）
+ * mock /v2/cart 回含折扣 + 漲價兩項，驗購物車頁雙向顯示（折扣刪除線+綠標「省」／漲價不刪除線+橙標「加價」）。
+ */
+test.describe('E2E-M11-012: PRODUCT 動態定價雙向顯示（AI-2406c）', () => {
+  test('購物車折扣項刪除線+省、漲價項不刪除線+加價', async ({ page }) => {
+    await registerAndLogin(page);
+
+    const discountKey = 'ck-discount';
+    const markupKey = 'ck-markup';
+    await page.route('**/v2/cart', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            cartId: 'cart-1',
+            userId: 'u-1',
+            itemCount: 2,
+            totalAmount: 2150,
+            items: [
+              {
+                cartItemKey: discountKey,
+                listingId: 'p-disc',
+                listingName: '折扣商品',
+                coverImageUrl: null,
+                quantity: 1,
+                unitPrice: 850,
+                subtotal: 850,
+                startDate: null,
+                endDate: null,
+                originalUnitPrice: 1000,
+                discountAmount: 150,
+                appliedRuleName: '商品早鳥 15% off',
+                priceAdjustmentType: 'DISCOUNT',
+              },
+              {
+                cartItemKey: markupKey,
+                listingId: 'p-markup',
+                listingName: '漲價商品',
+                coverImageUrl: null,
+                quantity: 1,
+                unitPrice: 1300,
+                subtotal: 1300,
+                startDate: null,
+                endDate: null,
+                originalUnitPrice: 1000,
+                discountAmount: -300,
+                appliedRuleName: '商品旺季加成 30%',
+                priceAdjustmentType: 'MARKUP',
+              },
+            ],
+          },
+        }),
+      });
+    });
+
+    await page.goto('/cart');
+    await page.waitForLoadState('domcontentloaded');
+
+    // 折扣項：原價刪除線 + 綠標「省」
+    const discOriginal = page.getByTestId(`cart-original-price-${discountKey}`);
+    await expect(discOriginal).toBeVisible({ timeout: 10000 });
+    await expect(discOriginal).toHaveClass(/line-through/);
+    const discBadge = page.getByTestId(`cart-adjust-badge-${discountKey}`);
+    await expect(discBadge).toContainText('商品早鳥 15% off');
+    await expect(discBadge).toContainText('省');
+
+    // 漲價項：原價不刪除線 + 橙標「加價」
+    const markupOriginal = page.getByTestId(`cart-original-price-${markupKey}`);
+    await expect(markupOriginal).toBeVisible();
+    await expect(markupOriginal).not.toHaveClass(/line-through/);
+    const markupBadge = page.getByTestId(`cart-adjust-badge-${markupKey}`);
+    await expect(markupBadge).toContainText('商品旺季加成 30%');
+    await expect(markupBadge).toContainText('加價');
+  });
+});
+
+/**
  * E2E-M11-011: 預訂成功後驗證跳轉
  */
 test.describe('E2E-M11-011: 預訂成功後驗證跳轉', () => {

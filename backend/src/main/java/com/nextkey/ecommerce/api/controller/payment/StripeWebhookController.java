@@ -11,9 +11,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
+import com.nextkey.ecommerce.core.payment.PaymentWebhookService;
 import com.nextkey.ecommerce.infrastructure.payment.StripeSignatureVerifierService;
-import com.nextkey.ecommerce.shared.exception.BusinessException;
-import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -37,12 +36,15 @@ public class StripeWebhookController {
 
     private final String stripeWebhookSecret;
     private final StripeSignatureVerifierService signatureVerifier;
+    private final PaymentWebhookService paymentWebhookService;
 
     public StripeWebhookController(
             @Value("${stripe.webhook-secret:}") String stripeWebhookSecret,
-            StripeSignatureVerifierService signatureVerifier) {
+            StripeSignatureVerifierService signatureVerifier,
+            PaymentWebhookService paymentWebhookService) {
         this.stripeWebhookSecret = stripeWebhookSecret;
         this.signatureVerifier = signatureVerifier;
+        this.paymentWebhookService = paymentWebhookService;
     }
 
     /**
@@ -61,14 +63,18 @@ public class StripeWebhookController {
                 stripeSignature != null ? "present" : "missing",
                 payload.length());
 
+        // 簽章驗證（測試模式 secret 空時跳過）；無效簽章會拋例外（4xx）
         signatureVerifier.verify(payload, stripeSignature, stripeWebhookSecret);
 
+        // Phase B（AI-2411）：解析事件並權威更新狀態。處理失敗記錄但仍回 2xx，
+        // 避免 Stripe 無限重送（事件去重 + 狀態冪等保障不重複副作用）。
         try {
-            return ResponseEntity.ok(ApiResponse.success("Webhook received", "OK"));
+            paymentWebhookService.handleEvent(payload);
         } catch (RuntimeException e) {
-            log.error("Failed to process Stripe webhook: {}", e.getMessage(), e);
-            throw new BusinessException(ErrorCode.E_9000, "Webhook processing failed: " + e.getMessage());
+            log.error("Failed to process Stripe webhook event (returning 2xx to avoid retry storm): {}",
+                    e.getMessage(), e);
         }
+        return ResponseEntity.ok(ApiResponse.success("Webhook received", "OK"));
     }
 
     /**
@@ -80,12 +86,7 @@ public class StripeWebhookController {
             @RequestBody Map<String, Object> payload) {
 
         log.info("Received LinePay webhook: payload={}", payload);
-
-        try {
-            return ResponseEntity.ok(ApiResponse.success("Webhook received", "OK"));
-        } catch (RuntimeException e) {
-            log.error("Failed to process LinePay webhook: {}", e.getMessage(), e);
-            throw new BusinessException(ErrorCode.E_9000, "Webhook processing failed: " + e.getMessage());
-        }
+        // LinePay 整合預留（stub）；回 2xx 避免重送
+        return ResponseEntity.ok(ApiResponse.success("Webhook received", "OK"));
     }
 }

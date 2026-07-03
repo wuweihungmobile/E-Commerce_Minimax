@@ -259,26 +259,74 @@ public class PaymentStateService {
 
         PaymentGatewayRequestResponse.CheckoutSessionResult result =
                 paymentGatewayFactory.retrieveCheckoutSession(GATEWAY_STRIPE, sessionId);
-        Payment payment = paymentRepository.findByTransactionId(sessionId).orElse(null);
 
         if ("paid".equalsIgnoreCase(result.getPaymentStatus())) {
-            if (payment != null) {
-                payment.setStatus(Payment.PaymentStatus.SUCCESS);
-                payment.setStripePaymentIntentId(result.getPaymentIntentId());
-                payment.setPaidAt(Instant.now());
-                paymentRepository.save(payment);
-            }
-            if (OrderStateMachine.canPay(order.getStatus().name())) {
-                order.setStatus(Order.OrderStatus.PAID);
-                orderRepository.save(order);
-            }
-            log.info("Stripe checkout confirmed PAID: orderId={}, sessionId={}", orderId, sessionId);
+            // 與 webhook 路徑共用同一「標記成功 + Order PAID」核心（冪等），確保雙路徑一致
+            markStripePaymentSucceeded(sessionId, result.getPaymentIntentId());
+            log.info("Stripe checkout confirmed PAID (return): orderId={}, sessionId={}", orderId, sessionId);
         } else {
-            log.info("Stripe checkout not yet paid: orderId={}, sessionId={}, paymentStatus={}",
+            log.info("Stripe checkout not yet paid (return): orderId={}, sessionId={}, paymentStatus={}",
                     orderId, sessionId, result.getPaymentStatus());
         }
 
+        Payment payment = paymentRepository.findByTransactionId(sessionId).orElse(null);
         return toOrderPaymentStateDto(order, payment);
+    }
+
+    /**
+     * 標記 Stripe 付款成功（回跳 retrieve 與 webhook 共用核心，AI-2411）：
+     * 依 sessionId 找 Payment → SUCCESS + 回填 payment_intent + Order PAID。冪等：已 SUCCESS → no-op 回 false。
+     */
+    @Transactional
+    public boolean markStripePaymentSucceeded(String sessionId, String paymentIntentId) {
+        Payment payment = paymentRepository.findByTransactionId(sessionId).orElse(null);
+        if (payment == null) {
+            log.warn("markStripePaymentSucceeded: payment not found for session={}", sessionId);
+            return false;
+        }
+        if (payment.getStatus() == Payment.PaymentStatus.SUCCESS) {
+            return false; // 冪等：已成功
+        }
+        payment.setStatus(Payment.PaymentStatus.SUCCESS);
+        if (paymentIntentId != null) {
+            payment.setStripePaymentIntentId(paymentIntentId);
+        }
+        payment.setPaidAt(Instant.now());
+        paymentRepository.save(payment);
+
+        if (payment.getOrderId() != null) {
+            Order order = orderRepository.findById(payment.getOrderId()).orElse(null);
+            if (order != null && OrderStateMachine.canPay(order.getStatus().name())) {
+                order.setStatus(Order.OrderStatus.PAID);
+                orderRepository.save(order);
+            }
+        }
+        log.info("Stripe payment marked SUCCESS: session={}, orderId={}", sessionId, payment.getOrderId());
+        return true;
+    }
+
+    /**
+     * 標記 Stripe 付款失敗（webhook payment_intent.payment_failed，AI-2411）：
+     * 依 payment_intent id 找 Payment → FAILED（Order 維持 CREATED 可重試）。已終態則 no-op。
+     */
+    @Transactional
+    public boolean markStripePaymentFailed(String paymentIntentId) {
+        if (paymentIntentId == null) {
+            return false;
+        }
+        Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntentId).orElse(null);
+        if (payment == null) {
+            log.warn("markStripePaymentFailed: payment not found for paymentIntent={}", paymentIntentId);
+            return false;
+        }
+        if (payment.getStatus() == Payment.PaymentStatus.SUCCESS
+                || payment.getStatus() == Payment.PaymentStatus.FAILED) {
+            return false; // 已終態
+        }
+        payment.setStatus(Payment.PaymentStatus.FAILED);
+        paymentRepository.save(payment);
+        log.info("Stripe payment marked FAILED: paymentIntent={}, orderId={}", paymentIntentId, payment.getOrderId());
+        return true;
     }
 
     // ========== Helper Methods ==========

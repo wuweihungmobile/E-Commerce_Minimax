@@ -27,4 +27,9 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     List<Payment> findByOrderIdInAndStatus(List<UUID> orderIds, Payment.PaymentStatus status);
 
     Optional<Payment> findByTransactionId(String transactionId);
+
+    // 真實金流 Phase B（AI-2411）：webhook 依 Stripe session / payment_intent id 找 Payment
+    Optional<Payment> findByStripeSessionId(String stripeSessionId);
+
+    Optional<Payment> findByStripePaymentIntentId(String stripePaymentIntentId);
 }

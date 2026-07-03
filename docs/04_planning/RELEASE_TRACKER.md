@@ -11,6 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 47 | v2027.08.14-01 | - | 2026-07-03 | 開放窗語意實作——區分「未開放 vs 可訂」：**後端開放窗三層 + migration V58**(AI-2202e，US-001，承 S45 決策 PO 拍板選項 A + 追加滾動視窗 + host UI；rooms 加 open_until_date DATE + booking_window_days INT【皆 nullable、既有列 NULL=無限制、backfill 免異動、ADD COLUMN IF NOT EXISTS 冪等】；抽 Room.resolveOpenUntil【取最早生效 min】三層一律呼叫；getCalendar 超窗無記錄日補 NOT_OPEN【計算產物非持久化，抽 appendNotOpenDays 控 NPath】、checkAvailability 超窗 available=false+原因、createBooking+reschedule 超窗擋訂 E-3002【422】；RoomCalendarService 未改【擋在 caller 層更精準】；兩欄 NULL 維持現狀) + **前端開放窗顯示 + 賣家設定**(AI-2202e，US-002，MonthCalendar NOT_OPEN 灰底禁選不刪除線+data-not-open+圖例；ListingDetail 沿用既有不可訂路徑；booking.ts type；room.ts+RoomForm 雙欄位；E2E-ROOM-10/11)。⚠️ **V58 結束 S42~S46 連續零-migration**(PO 已知悉)。驗證：後端單元 9 + 真 DB 整合 38（含 API-M06-016 三層一致）、validate-schema **無漂移**、validate-e2e **52 passed/0 fail**（+2 NOT_OPEN E2E）。誠實：只做 ROOM、NOT_OPEN 計算非持久化、部分更新無法清窗(另立 AI-2202f)、reason 英文字串(另立 AI-2408) | ⏳ 待 push（本 Sprint 3 commit，累積 S41~S47，完整守門+徵詢後 push）|
 | Sprint 46 | v2027.07.31-01 | - | 2026-07-03 | 定價機制真正統一——漲價型規則計入 ROOM booking（M12 進階定價收官）：**後端 ROOM 計價全面走 adjustedTotal 含漲價**(AI-2406b，US-001，承 S45 決策 PO 拍板選項 B；BookingService 放寬三處折扣閘門【tryDynamicPricing `<baseTotal`→`≠0`、getCalendar 逐日 `<0`→`≠0`、calculateTotalAmount toggle 開即採 adjustedTotal】使 availability/月曆/建單 totalAmount 三者一律含漲價乘數；保留 toggle 關短路+失敗降級【向後相容】；計算核心不動；PricingService 抽 resolveListingForPricing 優雅降級【無 Room fallback basePrice、null 回 4xx 非 NPE→500】；DTO 中性調整語意【discountAmount 改有號差額 正=折扣/負=加價，新增 priceAdjustmentType DISCOUNT/MARKUP/NONE】) + **前端漲價雙向顯示**(AI-2406b 前端，US-002，ListingDetail/MonthCalendar 折扣維持刪除線+綠 badge「省 X」、漲價改不刪除線+橙 badge「加價 X」；booking.ts 加 priceAdjustmentType；E2E-ROOM-08/09 漲價變體)。⚠️ **行為變更**：toggle 開啟時漲價規則開始計入訂房金額（PO 拍板）。驗證：後端單元 18 + 真 DB 整合 34 全過、validate-e2e **50 passed/0 fail**（+2 漲價 E2E）、schema 對齊。**無 schema 變動**(連續 S42~S46 零 migration)。誠實：只做 ROOM(PRODUCT 另立 AI-2406c)、bestRule priority/range 查詢落差記錄不修(另立 AI-2407)、E2E 編號順延 06/07→08/09 | ⏳ 待 push（本 Sprint 3 commit，累積 S41~S46，完整守門+徵詢後 push）|
 | Sprint 45 | v2027.07.17-01 | - | 2026-07-02 | 定價區技術債收斂（清死碼 + 語意決策）：**定價機制統一**(AI-2406，US-001，揭穿「雙定價機制」實為死碼假象——`room_calendar.price` 寫入路徑 setDatePrice/setDatePriceBulk 零呼叫者、欄位恆 NULL；移除死碼 + BookingService 三處讀取移除死欄位 fallback 改直取 basePrice【行為等價，順帶修正 calendarBaseTotal NULL→ZERO 潛在低估】；RoomCalendar.price 註解標記停用；確立 MANUAL_OVERRIDE 為唯一手動日價路徑；決策文件 PRICING_MECHANISM_UNIFICATION.md 就漲價計入 booking 提選項→PO 裁決另立 AI-2406b) + **開放窗語意評估**(AI-2202d，US-002，spike，CALENDAR_OPEN_WINDOW_ASSESSMENT.md 記錄三層硬語意 + 三選項比較【推薦 A open_until_date，需 migration】+ NULL 安全過渡→PO 拍板另立 AI-2202e)。驗證：後端單元 6 + 真 DB 整合 57 全過、validate-e2e **48 passed/0 fail**、schema 對齊。**無 schema 變動**(連續 S42~S45 零 migration)。誠實：決策密集項另立 AI-2406b/AI-2202e；@Deprecated=0 慣例（用註解非 annotation）| ⏳ 待 push（本 Sprint 3 commit，累積 S41~S45，完整守門+徵詢後 push）|
 | Sprint 44 | v2027.07.03-01 | - | 2026-07-02 | 完成 M12 進階定價全覆蓋：**PRODUCT 購物車/訂單折扣**(AI-2403，getCart 讀取重算 getEffectivePrice、訂單繼承、toggle+向後相容、CartItemResponse transient 折扣欄位) + **買家整月日曆每日折扣**(AI-2405b，getCalendar merge calculatePrice breakdown、MonthCalendar 原價刪除線、E2E-ROOM-07) + **Inter 字體自 host 離線化**(AI-2303，next/font/local + committed woff2，消 build 期 Google Fonts 依賴)。驗證：後端單元 23 + 真 DB 整合 71、validate-e2e **48 passed/0 fail**、schema 對齊。**無 schema 變動**(連續 S42~S44 零 migration)。M12 進階定價自此 ROOM+PRODUCT+買家顯示全覆蓋。誠實：schema-free(訂單不留原價欄位)、定價機制統一另立 AI-2406 | ⏳ 待 push（本 Sprint 5 commit，累積 S41~S44，完整守門+徵詢後 push）|
@@ -58,11 +59,11 @@
 
 | 項目 | 數值 |
 |------|------|
-| 建立 Release Tag 次數 | 37 (Sprint 10-46，連續) |
+| 建立 Release Tag 次數 | 38 (Sprint 10-47，連續) |
 | 已 push（已 Release） | 31 (Sprint 10-40) |
-| 待 push（Tag 已建、尚未 push） | 6 (Sprint 41+42+43+44+45+46，本地各層驗證通過含 validate-e2e；累積後檢查點徵詢+完整 validate-release 後 push) |
+| 待 push（Tag 已建、尚未 push） | 7 (Sprint 41+42+43+44+45+46+47，本地各層驗證通過含 validate-schema/validate-e2e；累積後檢查點徵詢+完整 validate-release 後 push) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release Tag | v2027.07.31-01 (Sprint 46，⏳ 待 push) |
+| 最近一次 Release Tag | v2027.08.14-01 (Sprint 47，⏳ 待 push) |
 | 最近一次已 push Release | v2027.05.08-01 (Sprint 40，隨 S32~S40 累積批次 2e33c6d) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release Tag 開始 | Sprint 10 |

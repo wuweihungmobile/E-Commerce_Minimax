@@ -213,14 +213,16 @@ export function MonthCalendar({
               <span>{day}</span>
               {!unavailable && (
                 <span className="flex flex-col items-center leading-none">
+                  {/* 動態定價調整（AI-2405b / AI-2406b）：折扣（調整後<原價）原價刪除線；加價（調整後>原價）不刪除線 */}
                   {originalPriceByDate[dateStr] != null && (
                     <span
                       data-testid={`calendar-original-price-${dateStr}`}
-                      className={
-                        selected
-                          ? "text-[9px] text-white/70 line-through"
-                          : "text-[9px] text-rs-ink-muted line-through"
-                      }
+                      className={[
+                        selected ? "text-[9px] text-white/70" : "text-[9px] text-rs-ink-muted",
+                        (priceByDate[dateStr] ?? basePrice) < originalPriceByDate[dateStr]
+                          ? "line-through"
+                          : "",
+                      ].join(" ")}
                     >
                       {formatCellPrice(currency, originalPriceByDate[dateStr])}
                     </span>

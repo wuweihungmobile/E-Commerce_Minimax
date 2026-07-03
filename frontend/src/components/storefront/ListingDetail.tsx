@@ -312,12 +312,17 @@ export function ListingDetail({ id }: { id: string }) {
                   <>
                     {" · "}
                     <span className="text-rs-ink-muted">{availability.nightsCount} 晚合計</span>{" "}
+                    {/* 動態定價調整（AI-2406b）：折扣（>0）原價刪除線；加價（<0）原價不刪除線 */}
                     {availability.discountAmount != null &&
-                      availability.discountAmount > 0 &&
+                      availability.discountAmount !== 0 &&
                       availability.originalTotalPrice != null && (
                         <span
                           data-testid="listing-original-price"
-                          className="mr-1 text-rs-ink-muted line-through"
+                          className={
+                            availability.discountAmount > 0
+                              ? "mr-1 text-rs-ink-muted line-through"
+                              : "mr-1 text-rs-ink-muted"
+                          }
                         >
                           {formatPrice(
                             availability.currency ?? listing.currency,
@@ -336,15 +341,20 @@ export function ListingDetail({ id }: { id: string }) {
                     </span>
                     {availability.appliedRuleName &&
                       availability.discountAmount != null &&
-                      availability.discountAmount > 0 && (
+                      availability.discountAmount !== 0 && (
                         <span
                           data-testid="listing-discount-badge"
-                          className="ml-2 inline-block rounded bg-rs-success/10 px-2 py-0.5 text-xs text-rs-success"
+                          className={
+                            availability.discountAmount > 0
+                              ? "ml-2 inline-block rounded bg-rs-success/10 px-2 py-0.5 text-xs text-rs-success"
+                              : "ml-2 inline-block rounded bg-rs-warning/10 px-2 py-0.5 text-xs text-rs-warning"
+                          }
                         >
-                          {availability.appliedRuleName}｜省{" "}
+                          {availability.appliedRuleName}｜
+                          {availability.discountAmount > 0 ? "省 " : "加價 "}
                           {formatPrice(
                             availability.currency ?? listing.currency,
-                            availability.discountAmount
+                            Math.abs(availability.discountAmount)
                           )}
                         </span>
                       )}

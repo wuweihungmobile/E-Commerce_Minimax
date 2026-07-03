@@ -334,4 +334,84 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
     await expect(page.getByTestId(`calendar-price-${discDay}`)).toContainText('2,720');
     await expect(page.getByTestId(`calendar-original-price-${discDay}`)).toContainText('3,200');
   });
+
+  test('E2E-ROOM-08: 可用性回漲價 → 顯示漲價後價 + 原價不刪除線 + 加價標籤（Sprint 46 AI-2406b）', async ({ page }: { page: Page }) => {
+    await page.route(`**/v2/listings/${ROOM_ID}`, async (route) => {
+      await fulfillJson(route, 200, { success: true, data: roomListing() });
+    });
+    await page.route('**/v2/bookings/calendar**', async (route) => {
+      await fulfillJson(route, 200, { success: true, data: [] });
+    });
+    // availability 回漲價（週末加成 20%）：原價 6400 → 漲價後 7680，加價 1280（discountAmount 有號=負）
+    await page.route('**/v2/bookings/availability**', async (route) => {
+      await fulfillJson(route, 200, {
+        success: true,
+        data: {
+          available: true,
+          roomListingId: ROOM_ID,
+          checkInDate: '2030-01-01',
+          checkOutDate: '2030-01-03',
+          nightsCount: 2,
+          totalPrice: 7680,
+          currency: 'TWD',
+          unavailableReason: null,
+          originalTotalPrice: 6400,
+          discountAmount: -1280,
+          appliedRuleName: '週末加成 20%',
+          priceAdjustmentType: 'MARKUP',
+        },
+      });
+    });
+
+    await page.goto(`/listings/${ROOM_ID}`);
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByTestId('listing-detail')).toBeVisible({ timeout: 15000 });
+
+    await page.getByTestId('listing-checkin').fill('2030-01-01');
+    await page.getByTestId('listing-checkout').fill('2030-01-03');
+    await page.getByRole('button', { name: '查詢可用性' }).click();
+
+    await expect(page.getByTestId('listing-availability')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('listing-total-price')).toContainText('7,680');
+    const original = page.getByTestId('listing-original-price');
+    await expect(original).toContainText('6,400');
+    await expect(original).not.toHaveClass(/line-through/);
+    const badge = page.getByTestId('listing-discount-badge');
+    await expect(badge).toContainText('週末加成 20%');
+    await expect(badge).toContainText('加價');
+    await expect(badge).toContainText('1,280');
+  });
+
+  test('E2E-ROOM-09: 整月日曆每日漲價 → 格子顯示漲價後價 + 原價不刪除線（Sprint 46 AI-2406b）', async ({ page }: { page: Page }) => {
+    const now = new Date();
+    const ny = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+    const nm = now.getMonth() === 11 ? 0 : now.getMonth() + 1;
+    const pad = (n: number) => (n < 10 ? '0' + n : String(n));
+    const d = (day: number) => `${ny}-${pad(nm + 1)}-${pad(day)}`;
+    const upDay = d(6);
+
+    await page.route(`**/v2/listings/${ROOM_ID}`, async (route) => {
+      await fulfillJson(route, 200, { success: true, data: roomListing() });
+    });
+    await page.route('**/v2/bookings/calendar**', async (route) => {
+      await fulfillJson(route, 200, {
+        success: true,
+        data: [
+          { date: upDay, status: 'AVAILABLE', price: 3840, bookingId: null, originalPrice: 3200, appliedRuleName: '週末加成 20%', priceAdjustmentType: 'MARKUP' },
+        ],
+      });
+    });
+
+    await page.goto(`/listings/${ROOM_ID}`);
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByTestId('listing-detail')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('listing-calendar')).toBeVisible({ timeout: 10000 });
+
+    await page.getByTestId('calendar-next').click();
+
+    await expect(page.getByTestId(`calendar-price-${upDay}`)).toContainText('3,840');
+    const originalCell = page.getByTestId(`calendar-original-price-${upDay}`);
+    await expect(originalCell).toContainText('3,200');
+    await expect(originalCell).not.toHaveClass(/line-through/);
+  });
 });

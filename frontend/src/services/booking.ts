@@ -74,10 +74,12 @@ export interface AvailabilityResponse {
   totalPrice: number | null
   currency: string | null
   unavailableReason: string | null
-  // 動態定價折扣（AI-2402）：套用早鳥/長住/末班車折扣時填入，否則為 null。
+  // 動態定價調整（AI-2402 / AI-2406b）：有規則生效時填入，否則為 null。
+  // discountAmount = 有號差額（正=折扣、負=加價）；priceAdjustmentType 明示方向（DISCOUNT/MARKUP/NONE）。
   originalTotalPrice?: number | null
   discountAmount?: number | null
   appliedRuleName?: string | null
+  priceAdjustmentType?: string | null
 }
 
 // 對齊後端 BookingDto.CalendarResponse（GET /v2/bookings/calendar 每日一筆）
@@ -88,9 +90,11 @@ export interface CalendarDay {
   status: RoomCalendarStatus
   price: number | null
   bookingId: string | null
-  // 動態定價每日折扣（AI-2405b）：可訂日套折扣時填入，price 為折扣後、originalPrice 為折扣前。
+  // 動態定價每日調整（AI-2405b / AI-2406b）：可訂日有規則生效時填入，price 為調整後、originalPrice 為調整前。
+  // 調整可為折扣（price < originalPrice）或加價（price > originalPrice）；priceAdjustmentType 明示方向。
   originalPrice?: number | null
   appliedRuleName?: string | null
+  priceAdjustmentType?: string | null
 }
 
 // booking 建立錯誤碼 → 可讀訊息。

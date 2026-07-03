@@ -114,6 +114,30 @@ public class PaymentGatewayFactory {
         return getGateway(paymentMethod).retrieveCheckoutSession(sessionId);
     }
 
+    /**
+     * 建立 Stripe Connect Express 帳戶（Sprint 53 AI-2413 Phase D-1）
+     */
+    public PaymentGatewayRequestResponse.ConnectAccountResult createConnectAccount(
+            String paymentMethod, String email) {
+        return getGateway(paymentMethod).createConnectAccount(email);
+    }
+
+    /**
+     * 建立 Stripe Connect account link（onboarding 導轉 URL，Sprint 53 AI-2413 Phase D-1）
+     */
+    public PaymentGatewayRequestResponse.AccountLinkResult createAccountLink(
+            String paymentMethod, String accountId, String refreshUrl, String returnUrl) {
+        return getGateway(paymentMethod).createAccountLink(accountId, refreshUrl, returnUrl);
+    }
+
+    /**
+     * 查詢 Stripe Connect 帳戶狀態（Sprint 53 AI-2413 Phase D-1）
+     */
+    public PaymentGatewayRequestResponse.ConnectAccountResult getConnectAccountStatus(
+            String paymentMethod, String accountId) {
+        return getGateway(paymentMethod).getConnectAccountStatus(accountId);
+    }
+
     private String generateIdempotencyKey(UUID orderId, UUID bookingId) {
         if (orderId != null) {
             return "ORDER-" + orderId.toString();

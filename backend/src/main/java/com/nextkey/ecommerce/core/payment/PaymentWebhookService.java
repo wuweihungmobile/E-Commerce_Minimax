@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nextkey.ecommerce.core.tenant.TenantStripeConnectService;
 import com.nextkey.ecommerce.domain.model.payment.ProcessedStripeEvent;
 import com.nextkey.ecommerce.domain.repository.ProcessedStripeEventRepository;
 
@@ -13,12 +14,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Stripe webhook 事件處理（Sprint 51 AI-2411，Phase B）。
+ * Stripe webhook 事件處理（Sprint 51 AI-2411，Phase B；Sprint 53 AI-2413 Phase D-1 擴充 account.updated）。
  * 解析（已驗簽的）事件 payload → 事件 id 去重 → dispatch 至權威狀態更新（與回跳路徑共用核心）。
  *
- * 冪等雙層：(1) 事件 id 去重（processed_stripe_events）(2) 狀態轉移冪等（PaymentStateService）。
- * 本 Sprint 處理付款成功（checkout.session.completed）+ 失敗（payment_intent.payment_failed）；
- * 退款事件（charge.refunded）留 Phase C（AI-2412）。
+ * 冪等雙層：(1) 事件 id 去重（processed_stripe_events）(2) 狀態轉移冪等（PaymentStateService/TenantStripeConnectService）。
+ * 處理付款成功（checkout.session.completed）+ 失敗（payment_intent.payment_failed）+ 退款（charge.refunded）
+ * + Connect 帳戶狀態同步（account.updated，Phase D-1）。
  */
 @Slf4j
 @Service
@@ -28,6 +29,7 @@ public class PaymentWebhookService {
     private final ObjectMapper objectMapper;
     private final ProcessedStripeEventRepository processedStripeEventRepository;
     private final PaymentStateService paymentStateService;
+    private final TenantStripeConnectService tenantStripeConnectService;
 
     /**
      * 處理 Stripe webhook 事件（payload 已於 controller 驗簽）。
@@ -85,6 +87,15 @@ public class PaymentWebhookService {
                 String paymentIntentId = obj.path("payment_intent").asText(null);
                 String refundId = obj.path("refunds").path("data").path(0).path("id").asText(null);
                 paymentStateService.markStripeRefunded(paymentIntentId, refundId);
+            }
+            case "account.updated" -> {
+                // Sprint 53（AI-2413 Phase D-1）：Connect 帳戶 KYC/啟用狀態變更，回填 tenant。
+                String accountId = obj.path("id").asText(null);
+                boolean chargesEnabled = obj.path("charges_enabled").asBoolean(false);
+                boolean payoutsEnabled = obj.path("payouts_enabled").asBoolean(false);
+                boolean detailsSubmitted = obj.path("details_submitted").asBoolean(false);
+                tenantStripeConnectService.syncAccountStatusFromWebhook(
+                        accountId, chargesEnabled, payoutsEnabled, detailsSubmitted);
             }
             default -> log.info("Stripe webhook: unhandled event type: {}", eventType);
         }

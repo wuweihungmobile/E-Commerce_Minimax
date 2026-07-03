@@ -81,6 +81,7 @@ public enum ErrorCode {
     E_6005("E-6005", "Idempotency key already used"),
     E_6006("E-6006", "Payment card declined"),
     E_6007("E-6007", "Payment provider error"),
+    E_6008("E-6008", "Stripe Connect account error"),
 
     // ERP & Inventory (E-7000s)
     E_7000("E-7000", "Supplier not found"),

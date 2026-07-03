@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.payment;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nextkey.ecommerce.core.tenant.TenantStripeConnectService;
 import com.nextkey.ecommerce.domain.model.payment.ProcessedStripeEvent;
 import com.nextkey.ecommerce.domain.repository.ProcessedStripeEventRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -34,12 +36,14 @@ class PaymentWebhookServiceTest {
 
     @Mock private ProcessedStripeEventRepository processedStripeEventRepository;
     @Mock private PaymentStateService paymentStateService;
+    @Mock private TenantStripeConnectService tenantStripeConnectService;
 
     private PaymentWebhookService service;
 
     @BeforeEach
     void setUp() {
-        service = new PaymentWebhookService(new ObjectMapper(), processedStripeEventRepository, paymentStateService);
+        service = new PaymentWebhookService(new ObjectMapper(), processedStripeEventRepository,
+                paymentStateService, tenantStripeConnectService);
     }
 
     @Test
@@ -131,5 +135,36 @@ class PaymentWebhookServiceTest {
 
         verify(paymentStateService).markStripeRefunded("pi_5", "re_5");
         verify(processedStripeEventRepository).save(any(ProcessedStripeEvent.class));
+    }
+
+    @Test
+    @DisplayName("UT-WH-007: account.updated（皆啟用）→ syncAccountStatusFromWebhook(true,true,true)（AI-2413 Phase D-1）")
+    void accountUpdated_allEnabled_syncsStatus() {
+        String payload = """
+                {"id":"evt_6","type":"account.updated",
+                 "data":{"object":{"id":"acct_1","charges_enabled":true,"payouts_enabled":true,
+                   "details_submitted":true}}}
+                """;
+        when(processedStripeEventRepository.existsById("evt_6")).thenReturn(false);
+
+        service.handleEvent(payload);
+
+        verify(tenantStripeConnectService).syncAccountStatusFromWebhook("acct_1", true, true, true);
+        verify(processedStripeEventRepository).save(any(ProcessedStripeEvent.class));
+    }
+
+    @Test
+    @DisplayName("UT-WH-008: account.updated 重送 → skip（不重複 sync）（AI-2413 Phase D-1）")
+    void accountUpdated_duplicateEvent_skips() {
+        String payload = """
+                {"id":"evt_6","type":"account.updated",
+                 "data":{"object":{"id":"acct_1","charges_enabled":true,"payouts_enabled":true,
+                   "details_submitted":true}}}
+                """;
+        when(processedStripeEventRepository.existsById("evt_6")).thenReturn(true);
+
+        service.handleEvent(payload);
+
+        verify(tenantStripeConnectService, never()).syncAccountStatusFromWebhook(any(), anyBoolean(), anyBoolean(), anyBoolean());
     }
 }

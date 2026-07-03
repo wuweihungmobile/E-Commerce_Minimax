@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.infrastructure.payment;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.containing;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
@@ -271,5 +272,112 @@ class StripePaymentGatewayTest {
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getRefundId()).isEqualTo("re_test_1");
         assertThat(result.getStatus()).isEqualTo("succeeded");
+    }
+
+    @Test
+    @DisplayName("TC-S007: createConnectAccount 成功 — WireMock 200 Account.create（AI-2413 Phase D-1）")
+    void createConnectAccount_success_returnsAccountResult() {
+        stubFor(post(urlEqualTo("/v1/accounts"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {
+                                  "id": "acct_test_1",
+                                  "object": "account",
+                                  "type": "express",
+                                  "charges_enabled": false,
+                                  "payouts_enabled": false,
+                                  "details_submitted": false
+                                }
+                                """)));
+
+        PaymentGatewayRequestResponse.ConnectAccountResult result =
+                gateway.createConnectAccount("seller@example.com");
+
+        assertThat(result.getAccountId()).isEqualTo("acct_test_1");
+        assertThat(result.getChargesEnabled()).isFalse();
+        assertThat(result.getPayoutsEnabled()).isFalse();
+        assertThat(result.getDetailsSubmitted()).isFalse();
+
+        verify(postRequestedFor(urlEqualTo("/v1/accounts")));
+    }
+
+    @Test
+    @DisplayName("TC-S008: createAccountLink 成功 — WireMock 200 AccountLink.create（AI-2413 Phase D-1）")
+    void createAccountLink_success_returnsUrl() {
+        stubFor(post(urlEqualTo("/v1/account_links"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {
+                                  "object": "account_link",
+                                  "url": "https://connect.stripe.com/setup/e/acct_test_1/onboarding",
+                                  "created": 1700000000,
+                                  "expires_at": 1700000300
+                                }
+                                """)));
+
+        PaymentGatewayRequestResponse.AccountLinkResult result = gateway.createAccountLink(
+                "acct_test_1",
+                "http://localhost:3000/seller/stripe-connect/refresh",
+                "http://localhost:3000/seller/stripe-connect/return");
+
+        assertThat(result.getUrl()).isEqualTo("https://connect.stripe.com/setup/e/acct_test_1/onboarding");
+
+        verify(postRequestedFor(urlEqualTo("/v1/account_links"))
+                .withRequestBody(containing("account=acct_test_1")));
+    }
+
+    @Test
+    @DisplayName("TC-S009: getConnectAccountStatus 已完成 onboarding — WireMock 200 Account.retrieve（AI-2413 Phase D-1）")
+    void getConnectAccountStatus_completed_returnsEnabledFlags() {
+        stubFor(get(urlPathEqualTo("/v1/accounts/acct_test_2"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {
+                                  "id": "acct_test_2",
+                                  "object": "account",
+                                  "type": "express",
+                                  "charges_enabled": true,
+                                  "payouts_enabled": true,
+                                  "details_submitted": true
+                                }
+                                """)));
+
+        PaymentGatewayRequestResponse.ConnectAccountResult result =
+                gateway.getConnectAccountStatus("acct_test_2");
+
+        assertThat(result.getAccountId()).isEqualTo("acct_test_2");
+        assertThat(result.getChargesEnabled()).isTrue();
+        assertThat(result.getPayoutsEnabled()).isTrue();
+        assertThat(result.getDetailsSubmitted()).isTrue();
+    }
+
+    @Test
+    @DisplayName("TC-S010: createConnectAccount 網關錯誤 — WireMock 400 → BusinessException E_6008（AI-2413 Phase D-1）")
+    void createConnectAccount_stripeError_throwsBusinessException() {
+        stubFor(post(urlEqualTo("/v1/accounts"))
+                .willReturn(aResponse()
+                        .withStatus(400)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {
+                                  "error": {
+                                    "type": "invalid_request_error",
+                                    "message": "Invalid email"
+                                  }
+                                }
+                                """)));
+
+        assertThatThrownBy(() -> gateway.createConnectAccount("bad-email"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> {
+                    BusinessException be = (BusinessException) ex;
+                    assertThat(be.getErrorCode()).isEqualTo(ErrorCode.E_6008);
+                });
     }
 }

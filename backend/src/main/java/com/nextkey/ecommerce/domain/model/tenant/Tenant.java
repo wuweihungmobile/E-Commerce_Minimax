@@ -67,6 +67,22 @@ public class Tenant {
     @Builder.Default
     private Double commissionRate = DEFAULT_COMMISSION_RATE;
 
+    @Column(name = "stripe_connect_account_id")
+    private String stripeConnectAccountId;
+
+    @Column(name = "connect_onboarding_status", nullable = false)
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private ConnectOnboardingStatus connectOnboardingStatus = ConnectOnboardingStatus.NOT_STARTED;
+
+    @Column(name = "connect_charges_enabled", nullable = false)
+    @Builder.Default
+    private Boolean connectChargesEnabled = false;
+
+    @Column(name = "connect_payouts_enabled", nullable = false)
+    @Builder.Default
+    private Boolean connectPayoutsEnabled = false;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> metadata;
@@ -90,5 +106,10 @@ public class Tenant {
 
     public enum TenantStatus {
         PENDING_REVIEW, ACTIVE, REJECTED, SUSPENDED, TERMINATED
+    }
+
+    /** Stripe Connect Express 帳戶 onboarding 狀態（Sprint 53 AI-2413 Phase D-1）。 */
+    public enum ConnectOnboardingStatus {
+        NOT_STARTED, PENDING, COMPLETE
     }
 }

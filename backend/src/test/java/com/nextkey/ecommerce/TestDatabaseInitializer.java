@@ -80,8 +80,9 @@ public class TestDatabaseInitializer {
 
                 Timestamp now = Timestamp.from(Instant.now());
                 jdbcTemplate.update(
-                        "INSERT INTO tenants (id, name, slug, status, description, contact_email, contact_phone, metadata, created_at, updated_at) " +
-                                "VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)",
+                        "INSERT INTO tenants (id, name, slug, status, description, contact_email, contact_phone, " +
+                                "connect_onboarding_status, connect_charges_enabled, connect_payouts_enabled, metadata, created_at, updated_at) " +
+                                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)",
                         systemTenantId,
                         "System Tenant",
                         "platform",
@@ -89,6 +90,9 @@ public class TestDatabaseInitializer {
                         "System-level tenant for platform-wide feature toggles",
                         "system@nextkey.com",
                         "0000000000",
+                        "NOT_STARTED",
+                        false,
+                        false,
                         "{\"type\": \"SYSTEM\"}",
                         now,
                         now

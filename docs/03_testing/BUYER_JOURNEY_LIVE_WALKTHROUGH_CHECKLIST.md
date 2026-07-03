@@ -90,7 +90,10 @@
 
 > 以下需**跨角色資料**（買家下單 + 賣家出貨 + 系統通知/物流）落地，`page.route` mock 無法涵蓋，僅能人工於部署環境走查。
 
-- [ ] 完整金流：下單 → 付款（對 Mock 金流）→ 訂單狀態機 CREATED→PAID→...
+> **🔴 Sprint 53 更新**：S49~52 交付真實 Stripe 金流（Phase A 付款 + Phase B webhook 權威狀態 + Phase C 退款），`STRIPE_PAYMENT_ENABLED` toggle 關閉時仍為 Mock（本節原描述）；toggle 開啟時走真 Stripe Checkout + webhook + 退款，走查時應**兩種 toggle 狀態各走一次**。真 Stripe 端到端人工驗證細節另見 [STRIPE_PRODUCTION_CHECKLIST.md](../08_deployment/STRIPE_PRODUCTION_CHECKLIST.md)（AI-2414）。
+
+- [ ] 完整金流（mock）：下單 → 付款（對 Mock 金流，toggle 關閉）→ 訂單狀態機 CREATED→PAID→...
+- [ ] 完整金流（真 Stripe，toggle 開啟）：下單 → Stripe Checkout 重導 → 測試卡付款 → webhook 回填 PAID → 訂單狀態機 CREATED→PAID→...
 - [ ] 物流：賣家出貨 → 買家 `/orders/{id}` 物流追蹤（logistics tracking）顯示真資料
 - [ ] 通知：付款/出貨事件 → 買家 `/notifications` 即時收到對應通知
 - [ ] 評價：完成訂單 → `/reviews/product/{listingId}` 提交評價 → 詳情頁評分更新
@@ -122,6 +125,6 @@
 
 ---
 
-**文件版本**: v1.0
+**文件版本**: v1.1（Sprint 53 更新：反映真實 Stripe 金流 Phase A/B/C，C 節新增 toggle 開啟走查項）
 **建立者**: QA Quincy + Claude Code
 **基於**: AISDLC v0.09

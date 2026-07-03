@@ -46,4 +46,27 @@ public interface PaymentGateway {
     default PaymentGatewayRequestResponse.CheckoutSessionResult retrieveCheckoutSession(String sessionId) {
         throw new UnsupportedOperationException("Checkout session not supported by " + getGatewayType());
     }
+
+    /**
+     * 建立 Stripe Connect Express 帳戶（Sprint 53 AI-2413 Phase D-1）。
+     * 預設不支援（僅 Stripe gateway 覆寫）；Connect 為 Stripe 特化能力。
+     */
+    default PaymentGatewayRequestResponse.ConnectAccountResult createConnectAccount(String email) {
+        throw new UnsupportedOperationException("Connect account not supported by " + getGatewayType());
+    }
+
+    /**
+     * 建立 Stripe Connect account link（onboarding 導轉 URL，Sprint 53 AI-2413 Phase D-1）。
+     */
+    default PaymentGatewayRequestResponse.AccountLinkResult createAccountLink(
+            String accountId, String refreshUrl, String returnUrl) {
+        throw new UnsupportedOperationException("Connect account link not supported by " + getGatewayType());
+    }
+
+    /**
+     * 查詢 Stripe Connect 帳戶最新狀態（charges/payouts/details_submitted，Sprint 53 AI-2413 Phase D-1）。
+     */
+    default PaymentGatewayRequestResponse.ConnectAccountResult getConnectAccountStatus(String accountId) {
+        throw new UnsupportedOperationException("Connect account status not supported by " + getGatewayType());
+    }
 }

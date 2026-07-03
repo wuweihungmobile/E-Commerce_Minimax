@@ -119,10 +119,12 @@ class M16ErpIntegrationTest {
                 "SELECT COUNT(*) FROM tenants WHERE id = ?", Integer.class, FIXED_TENANT_ID);
         if (tenantCount == null || tenantCount == 0) {
             jdbcTemplate.update(
-                    "INSERT INTO tenants (id, name, slug, status, description, contact_email, contact_phone, metadata, created_at, updated_at) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, NOW(), NOW())",
+                    "INSERT INTO tenants (id, name, slug, status, description, contact_email, contact_phone, "
+                            + "connect_onboarding_status, connect_charges_enabled, connect_payouts_enabled, metadata, created_at, updated_at) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, NOW(), NOW())",
                     FIXED_TENANT_ID, "Test Tenant for M16 ERP", "m16-erp-fixed-" + System.currentTimeMillis(),
-                    "ACTIVE", "M16 ERP fixed-id tenant", "erp-test@tenant.com", "+886-123456789", "{}");
+                    "ACTIVE", "M16 ERP fixed-id tenant", "erp-test@tenant.com", "+886-123456789",
+                    "NOT_STARTED", false, false, "{}");
         }
 
         // 檢查並創建 STORE_OWNER 用戶（如果不存在）

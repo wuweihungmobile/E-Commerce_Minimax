@@ -14,10 +14,14 @@ import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.stripe.exception.CardException;
 import com.stripe.exception.StripeException;
+import com.stripe.model.Account;
+import com.stripe.model.AccountLink;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.Refund;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.RequestOptions;
+import com.stripe.param.AccountCreateParams;
+import com.stripe.param.AccountLinkCreateParams;
 import com.stripe.param.PaymentIntentCreateParams;
 import com.stripe.param.RefundCreateParams;
 import com.stripe.param.checkout.SessionCreateParams;
@@ -255,5 +259,76 @@ public class StripePaymentGateway implements PaymentGateway {
     @Override
     public String getGatewayType() {
         return GATEWAY_TYPE;
+    }
+
+    @Override
+    public PaymentGatewayRequestResponse.ConnectAccountResult createConnectAccount(String email) {
+        // Sprint 53（AI-2413 Phase D-1）：建立 Stripe Connect Express 帳戶（賣家 onboarding 第一步）。
+        log.info("Creating Stripe Connect Express account: email={}", email);
+        try {
+            AccountCreateParams.Builder paramsBuilder = AccountCreateParams.builder()
+                    .setType(AccountCreateParams.Type.EXPRESS);
+            if (email != null) {
+                paramsBuilder.setEmail(email);
+            }
+            RequestOptions options = RequestOptions.builder().setApiKey(stripeApiKey).build();
+            Account account = Account.create(paramsBuilder.build(), options);
+
+            return PaymentGatewayRequestResponse.ConnectAccountResult.builder()
+                    .accountId(account.getId())
+                    .chargesEnabled(account.getChargesEnabled())
+                    .payoutsEnabled(account.getPayoutsEnabled())
+                    .detailsSubmitted(account.getDetailsSubmitted())
+                    .build();
+        } catch (StripeException e) {
+            log.error("[E-6008] Stripe Connect account creation error: email={}, message={}",
+                    email, e.getMessage());
+            throw new BusinessException(ErrorCode.E_6008, e.getMessage());
+        }
+    }
+
+    @Override
+    public PaymentGatewayRequestResponse.AccountLinkResult createAccountLink(
+            String accountId, String refreshUrl, String returnUrl) {
+        // Sprint 53（AI-2413 Phase D-1）：account link 為一次性導轉 URL，導向 Stripe 代管 KYC 表單。
+        log.info("Creating Stripe Connect account link: accountId={}", accountId);
+        try {
+            AccountLinkCreateParams params = AccountLinkCreateParams.builder()
+                    .setAccount(accountId)
+                    .setRefreshUrl(refreshUrl)
+                    .setReturnUrl(returnUrl)
+                    .setType(AccountLinkCreateParams.Type.ACCOUNT_ONBOARDING)
+                    .build();
+            RequestOptions options = RequestOptions.builder().setApiKey(stripeApiKey).build();
+            AccountLink link = AccountLink.create(params, options);
+
+            return PaymentGatewayRequestResponse.AccountLinkResult.builder()
+                    .url(link.getUrl())
+                    .build();
+        } catch (StripeException e) {
+            log.error("[E-6008] Stripe Connect account link error: accountId={}, message={}",
+                    accountId, e.getMessage());
+            throw new BusinessException(ErrorCode.E_6008, e.getMessage());
+        }
+    }
+
+    @Override
+    public PaymentGatewayRequestResponse.ConnectAccountResult getConnectAccountStatus(String accountId) {
+        log.info("Retrieving Stripe Connect account status: accountId={}", accountId);
+        try {
+            RequestOptions options = RequestOptions.builder().setApiKey(stripeApiKey).build();
+            Account account = Account.retrieve(accountId, options);
+
+            return PaymentGatewayRequestResponse.ConnectAccountResult.builder()
+                    .accountId(account.getId())
+                    .chargesEnabled(account.getChargesEnabled())
+                    .payoutsEnabled(account.getPayoutsEnabled())
+                    .detailsSubmitted(account.getDetailsSubmitted())
+                    .build();
+        } catch (StripeException e) {
+            log.error("[E-6008] Stripe Connect account retrieve error: accountId={}, message={}",
+                    accountId, e.getMessage());
+            throw new BusinessException(ErrorCode.E_6008, e.getMessage());
+        }
     }
 }

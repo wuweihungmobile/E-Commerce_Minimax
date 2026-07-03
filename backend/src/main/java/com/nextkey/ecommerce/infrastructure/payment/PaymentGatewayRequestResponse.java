@@ -155,4 +155,32 @@ public class PaymentGatewayRequestResponse {
         private String paymentStatus;    // paid / unpaid / no_payment_required
         private String errorMessage;
     }
+
+    /**
+     * Stripe Connect Express 帳戶結果（Sprint 53 AI-2413 Phase D-1）。
+     * 用於 createConnectAccount 與 getConnectAccountStatus 兩種情境共用。
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ConnectAccountResult {
+        private String accountId;         // acct_xxx
+        private Boolean chargesEnabled;
+        private Boolean payoutsEnabled;
+        private Boolean detailsSubmitted;
+        private String errorMessage;
+    }
+
+    /**
+     * Stripe Connect account link（onboarding 導轉 URL）結果（Sprint 53 AI-2413 Phase D-1）。
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AccountLinkResult {
+        private String url;
+        private String errorMessage;
+    }
 }

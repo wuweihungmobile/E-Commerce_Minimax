@@ -9,7 +9,10 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -631,6 +634,58 @@ public class AdminService {
                 .enabledAt(toggle.getEnabledAt())
                 .disabledAt(toggle.getDisabledAt())
                 .createdAt(toggle.getCreatedAt())
+                .build();
+    }
+
+    // ========== Audit Log（Sprint 61 US-001，DEF-016 後續） ==========
+
+    /**
+     * 平台管理者查詢稽核紀錄，支援分頁與時間範圍/操作類型篩選。
+     * 以 Specification 動態組合可選條件，只有實際提供的篩選條件才會出現在查詢中，
+     * 避免對未提供的參數送出「IS NULL」比較（PostgreSQL 對純 null 參數型別推斷有已知限制）。
+     */
+    @Transactional(readOnly = true)
+    public AdminDto.AuditLogListResponse getAuditLogs(int page, int size, String action,
+                                                       Instant startDate, Instant endDate) {
+        Specification<AuditLog> spec = Specification.where(null);
+        if (action != null) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("action"), action));
+        }
+        if (startDate != null) {
+            spec = spec.and((root, query, cb) -> cb.greaterThanOrEqualTo(root.get("createdAt"), startDate));
+        }
+        if (endDate != null) {
+            spec = spec.and((root, query, cb) -> cb.lessThanOrEqualTo(root.get("createdAt"), endDate));
+        }
+
+        Page<AuditLog> result = auditLogRepository.findAll(
+                spec, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+
+        List<AdminDto.AuditLogResponse> logs = result.getContent().stream()
+                .map(this::toAuditLogResponse)
+                .collect(Collectors.toList());
+
+        return AdminDto.AuditLogListResponse.builder()
+                .logs(logs)
+                .page(page)
+                .size(size)
+                .totalElements(result.getTotalElements())
+                .totalPages(result.getTotalPages())
+                .build();
+    }
+
+    private AdminDto.AuditLogResponse toAuditLogResponse(AuditLog auditLog) {
+        return AdminDto.AuditLogResponse.builder()
+                .id(auditLog.getId())
+                .tenantId(auditLog.getTenantId())
+                .userId(auditLog.getUserId())
+                .action(auditLog.getAction())
+                .entityType(auditLog.getEntityType())
+                .entityId(auditLog.getEntityId())
+                .oldValue(auditLog.getOldValue())
+                .newValue(auditLog.getNewValue())
+                .reason(auditLog.getReason())
+                .createdAt(auditLog.getCreatedAt())
                 .build();
     }
 }

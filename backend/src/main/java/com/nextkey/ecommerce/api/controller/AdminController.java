@@ -1,5 +1,9 @@
 package com.nextkey.ecommerce.api.controller;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.UUID;
 
@@ -234,6 +238,26 @@ public class AdminController {
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<AdminDto.SystemConfigResponse>> getSystemConfig() {
         AdminDto.SystemConfigResponse response = adminService.getSystemConfig();
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    // ========== Audit Log（Sprint 61 US-001，DEF-016 後續） ==========
+
+    /**
+     * 查詢稽核紀錄（可依操作類型/時間範圍篩選、分頁）
+     */
+    @GetMapping("/audit-logs")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.AuditLogListResponse>> getAuditLogs(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String action,
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate) {
+        Instant startInstant = startDate != null ? startDate.atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        Instant endInstant = endDate != null ? endDate.atTime(LocalTime.MAX).atZone(ZoneOffset.UTC).toInstant() : null;
+        AdminDto.AuditLogListResponse response = adminService.getAuditLogs(
+                page, size, action, startInstant, endInstant);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

@@ -1,9 +1,11 @@
 package com.nextkey.ecommerce.core.admin;
 
 import com.nextkey.ecommerce.api.dto.AdminDto;
+import com.nextkey.ecommerce.domain.model.audit.AuditLog;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.repository.*;
+import com.nextkey.ecommerce.domain.repository.audit.AuditLogRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import org.junit.jupiter.api.DisplayName;
@@ -13,7 +15,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -48,6 +54,9 @@ class AdminServiceTest {
 
     @Mock
     private OrderRepository orderRepository;
+
+    @Mock
+    private AuditLogRepository auditLogRepository;
 
     @InjectMocks
     private AdminService adminService;
@@ -442,6 +451,85 @@ class AdminServiceTest {
 
             // Assert
             verify(featureToggleRepository).deleteByTenantIdAndFeatureKey(TEST_TENANT_ID, "SOME_FEATURE");
+        }
+    }
+
+    // ── getAuditLogs Tests（Sprint 61 US-001）────────────────────────────
+
+    @Nested
+    @DisplayName("getAuditLogs()")
+    class GetAuditLogs {
+
+        private AuditLog buildAuditLog() {
+            return AuditLog.builder()
+                    .id(UUID.randomUUID())
+                    .tenantId(TEST_TENANT_ID)
+                    .action("TENANT_APPROVED")
+                    .entityType("TENANT")
+                    .entityId(TEST_TENANT_ID)
+                    .createdAt(Instant.parse("2026-06-01T00:00:00Z"))
+                    .build();
+        }
+
+        @Test
+        @DisplayName("getAuditLogs_returnsPagedResult")
+        void getAuditLogs_returnsPagedResult() {
+            // Arrange
+            Page<AuditLog> page = new PageImpl<>(java.util.List.of(buildAuditLog()), PageRequest.of(0, 20), 1);
+            when(auditLogRepository.findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<AuditLog>>any(),
+                    any(org.springframework.data.domain.Pageable.class))).thenReturn(page);
+
+            // Act
+            AdminDto.AuditLogListResponse response = adminService.getAuditLogs(0, 20, null, null, null);
+
+            // Assert
+            assertThat(response.getLogs()).hasSize(1);
+            assertThat(response.getLogs().get(0).getAction()).isEqualTo("TENANT_APPROVED");
+            assertThat(response.getTotalElements()).isEqualTo(1);
+            assertThat(response.getTotalPages()).isEqualTo(1);
+            assertThat(response.getPage()).isEqualTo(0);
+            assertThat(response.getSize()).isEqualTo(20);
+        }
+
+        @Test
+        @DisplayName("getAuditLogs_withFilters_returnsFilteredPage")
+        void getAuditLogs_withFilters_returnsFilteredPage() {
+            // Arrange：驗證篩選條件存在時 service 仍正確組裝分頁結果（Specification 內容由
+            // JpaSpecificationExecutor 實際查詢時套用，屬 repository 層職責，這裡專注驗證
+            // service 對 repository 回傳值的映射邏輯）
+            Page<AuditLog> page = new PageImpl<>(java.util.Collections.emptyList());
+            when(auditLogRepository.findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<AuditLog>>any(),
+                    any(org.springframework.data.domain.Pageable.class))).thenReturn(page);
+
+            // Act
+            Instant start = Instant.parse("2026-06-01T00:00:00Z");
+            Instant end = Instant.parse("2026-06-30T23:59:59Z");
+            AdminDto.AuditLogListResponse response = adminService.getAuditLogs(0, 20, "TENANT_APPROVED", start, end);
+
+            // Assert
+            assertThat(response.getLogs()).isEmpty();
+            verify(auditLogRepository).findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<AuditLog>>any(),
+                    any(org.springframework.data.domain.Pageable.class));
+        }
+
+        @Test
+        @DisplayName("getAuditLogs_noResults_returnsEmptyList")
+        void getAuditLogs_noResults_returnsEmptyList() {
+            // Arrange
+            when(auditLogRepository.findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<AuditLog>>any(),
+                    any(org.springframework.data.domain.Pageable.class)))
+                    .thenReturn(new PageImpl<>(java.util.Collections.emptyList()));
+
+            // Act
+            AdminDto.AuditLogListResponse response = adminService.getAuditLogs(0, 20, null, null, null);
+
+            // Assert
+            assertThat(response.getLogs()).isEmpty();
+            assertThat(response.getTotalElements()).isEqualTo(0);
         }
     }
 }

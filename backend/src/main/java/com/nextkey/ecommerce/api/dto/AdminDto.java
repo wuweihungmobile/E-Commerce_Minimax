@@ -255,4 +255,35 @@ public class AdminDto {
         private String environment;
         private Map<String, String> settings;
     }
+
+    // ========== Audit Log（Sprint 61 US-001，DEF-016 後續） ==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AuditLogResponse {
+        private UUID id;
+        private UUID tenantId;
+        private UUID userId;
+        private String action;
+        private String entityType;
+        private UUID entityId;
+        private String oldValue;
+        private String newValue;
+        private String reason;
+        private Instant createdAt;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AuditLogListResponse {
+        private List<AuditLogResponse> logs;
+        private int page;
+        private int size;
+        private long totalElements;
+        private int totalPages;
+    }
 }

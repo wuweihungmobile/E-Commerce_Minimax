@@ -75,6 +75,9 @@ class AdminControllerE2ETest {
     @Autowired
     private TenantFeatureToggleRepository featureToggleRepository;
 
+    @Autowired
+    private com.nextkey.ecommerce.domain.repository.audit.AuditLogRepository auditLogRepository;
+
     private static final String BASE_URL = "/v2/admin";
     @SuppressWarnings("unused")
     private static final String TEST_PASSWORD = "SecurePass123!";
@@ -804,5 +807,62 @@ class AdminControllerE2ETest {
         } finally {
             cleanupTestData(testTenant.getId(), null);
         }
+    }
+
+    // ── Sprint 61 US-001: Admin Audit Log 查詢（DEF-016 後續） ────────────
+
+    /**
+     * API-M14-AUDIT-01: SUPER_ADMIN 成功查詢稽核紀錄
+     */
+    @Test
+    @Order(17)
+    @DisplayName("API-M14-AUDIT-01: GET /v2/admin/audit-logs - Admin 成功查詢稽核紀錄")
+    void getAuditLogs_asAdmin_shouldSucceed() throws Exception {
+        String adminToken = createSuperAdminUserAndGetToken();
+
+        com.nextkey.ecommerce.domain.model.audit.AuditLog auditLog =
+                com.nextkey.ecommerce.domain.model.audit.AuditLog.builder()
+                        .action("AUDIT_E2E_TEST_ACTION")
+                        .entityType("TENANT")
+                        .entityId(UUID.randomUUID())
+                        .createdAt(java.time.Instant.now())
+                        .build();
+        auditLogRepository.save(auditLog);
+
+        try {
+            given()
+                    .header("Authorization", "Bearer " + adminToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .when()
+                    .get(BASE_URL + "/audit-logs?action=AUDIT_E2E_TEST_ACTION")
+                    .then()
+                    .statusCode(200)
+                    .body("success", is(true))
+                    .body("data.logs", notNullValue())
+                    .body("data.totalElements", greaterThanOrEqualTo(1));
+
+            System.out.println("✅ API-M14-AUDIT-01 PASSED: Admin 成功查詢稽核紀錄");
+        } finally {
+            auditLogRepository.delete(auditLog);
+        }
+    }
+
+    /**
+     * API-M14-AUDIT-02: BUYER 角色查詢稽核紀錄應返回 403
+     */
+    @Test
+    @Order(18)
+    @DisplayName("API-M14-AUDIT-02: GET /v2/admin/audit-logs - BUYER 角色應返回 403")
+    void getAuditLogs_asBuyer_shouldReturn403() throws Exception {
+        String buyerToken = createBuyerUserAndGetToken();
+
+        given()
+                .header("Authorization", "Bearer " + buyerToken)
+                .when()
+                .get(BASE_URL + "/audit-logs")
+                .then()
+                .statusCode(403);
+
+        System.out.println("✅ API-M14-AUDIT-02 PASSED: BUYER 角色查詢稽核紀錄正確返回 403");
     }
 }

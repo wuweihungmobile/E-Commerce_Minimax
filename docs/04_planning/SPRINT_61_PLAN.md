@@ -33,7 +33,9 @@
 
 ### US-001：Admin Audit Log 查詢 API + 前端頁面（DEF-016 後續）
 
-> **SP**: 5 | **優先級**: P2 | **狀態**: 🔲 待開始
+> **SP**: 5 | **優先級**: P2 | **狀態**: ✅ 完成
+
+**誠實揭露**：實作過程中發現原規劃的靜態 JPQL（`:param IS NULL OR ...` 動態篩選寫法）在 PostgreSQL 下對純 null 參數會拋出 `could not determine data type of parameter` 錯誤（Hibernate + PostgreSQL 已知限制），已改用 `JpaSpecificationExecutor` + `Specification` 動態組合查詢條件解決，AC-001-2 的實作方式因此與原計劃描述（「透過 `AuditLogRepository` 讀取」）有調整，但功能行為與驗收標準不變。
 
 **AC-001-1**: `AdminController.java` 新增 `GET /v2/admin/audit-logs` 端點，支援分頁（`page`/`size`）、時間範圍（`startDate`/`endDate`）、操作類型（`action`）篩選；僅平台管理者角色可存取（比照既有 admin 端點的權限檢查機制）。
 
@@ -71,7 +73,7 @@
 
 ## 4. Definition of Done
 
-- [ ] US-001：`GET /v2/admin/audit-logs` 端點 + `AdminService` 查詢方法 + 前端 `admin/audit-logs/page.tsx`
+- [x] US-001：`GET /v2/admin/audit-logs` 端點 + `AdminService` 查詢方法（Specification 動態篩選）+ 前端 `admin/audit-logs/page.tsx`；E2E 測試 18/18 通過（含新增 2 個：Admin 成功查詢、BUYER 403）
 - [x] US-002：`SellerDashboardServiceTest.java` 功能測試新增（3 個測試：有資料統計正確性、無資料邊界值、pending 狀態清單查詢）
 - [ ] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）0 fail
 - [ ] `make validate-schema` 無漂移（本 Sprint 無新 migration）

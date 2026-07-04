@@ -70,10 +70,15 @@ class AnalyticsService {
     return response.data.data
   }
 
-  async getRevenueStats(startDate?: string, endDate?: string): Promise<RevenueStats> {
+  async getRevenueStats(
+    startDate?: string,
+    endDate?: string,
+    granularity?: 'DAY' | 'WEEK' | 'MONTH'
+  ): Promise<RevenueStats> {
     const params = new URLSearchParams()
     if (startDate) params.append('startDate', startDate)
     if (endDate) params.append('endDate', endDate)
+    if (granularity) params.append('granularity', granularity)
     const query = params.toString()
     const response = await apiClient.get<ApiResponse<RevenueStats>>(
       API_ENDPOINTS.analytics.revenue + (query ? '?' + query : '')

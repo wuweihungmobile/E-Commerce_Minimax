@@ -46,7 +46,7 @@
 
 ### US-002：`/dashboard/revenue` 營收報表頁
 
-> **SP**: 5 | **優先級**: P2 | **狀態**: 🔲 待開始
+> **SP**: 5 | **優先級**: P2 | **狀態**: ✅ 完成
 
 **AC-002-1**: `frontend/src/services/analytics.ts` 的 `getRevenueStats` 補上 `granularity` 參數。
 
@@ -73,7 +73,7 @@
 ## 4. Definition of Done
 
 - [ ] US-001：`getRevenueStats` granularity 修正 + 單元測試（含 WEEK/MONTH 邊界）
-- [ ] US-002：`services/analytics.ts` 補 granularity 參數 + `dashboard/revenue/page.tsx`
+- [x] US-002：`services/analytics.ts` 補 granularity 參數 + `dashboard/revenue/page.tsx`（新路由已於 build 產出）
 - [ ] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）0 fail
 - [ ] `make validate-schema` 無漂移（本 Sprint 無新 migration）
 - [ ] 前端 lint/tsc/build 0 error

@@ -129,7 +129,7 @@ class BookingServiceOpenWindowTest {
         BookingDto.AvailabilityResponse resp = bookingService.checkAvailability(request(checkIn, checkOut));
 
         assertThat(resp.isAvailable()).isFalse();
-        assertThat(resp.getUnavailableReason()).contains("not open");
+        assertThat(resp.getUnavailableReason()).isEqualTo("NOT_OPEN_FOR_BOOKING");
     }
 
     @Test

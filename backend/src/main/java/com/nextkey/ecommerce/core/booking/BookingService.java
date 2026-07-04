@@ -87,7 +87,7 @@ public class BookingService {
                     .roomListingId(request.getRoomListingId())
                     .checkInDate(request.getCheckInDate())
                     .checkOutDate(request.getCheckOutDate())
-                    .unavailableReason("Check-out must be after check-in")
+                    .unavailableReason(BookingDto.AvailabilityReasonCode.INVALID_DATE_RANGE.name())
                     .build();
         }
 
@@ -117,7 +117,7 @@ public class BookingService {
         boolean available = calendarAvailable && notOpenNight == null;
         String unavailableReason;
         if (notOpenNight != null) {
-            unavailableReason = "Date " + notOpenNight + " is not open for booking";
+            unavailableReason = BookingDto.AvailabilityReasonCode.NOT_OPEN_FOR_BOOKING.name();
         } else if (!calendarAvailable) {
             unavailableReason = findFirstUnavailableReason(calendars);
         } else {
@@ -163,10 +163,14 @@ public class BookingService {
                 .build();
     }
 
+    /**
+     * 回傳不可訂原因碼（Sprint 58 AI-2408）：`RoomCalendarStatus` 的 BOOKED/BLOCKED/MAINTENANCE
+     * 與 `BookingDto.AvailabilityReasonCode` 同名，直接取 `.name()` 即為 code。
+     */
     private String findFirstUnavailableReason(List<RoomCalendar> calendars) {
         for (RoomCalendar calendar : calendars) {
             if (calendar.getStatus() != RoomCalendar.RoomCalendarStatus.AVAILABLE) {
-                return "Date " + calendar.getCalendarDate() + " is " + calendar.getStatus().name().toLowerCase();
+                return calendar.getStatus().name();
             }
         }
         return null;

@@ -458,11 +458,11 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
     await page.route('**/v2/bookings/calendar**', async (route) => {
       await fulfillJson(route, 200, { success: true, data: [] });
     });
-    // availability 回未開放（超窗）：available=false + 未開放原因
+    // availability 回未開放（超窗）：available=false + 未開放原因碼（Sprint 58 AI-2408 碼化）
     await page.route('**/v2/bookings/availability**', async (route) => {
       await fulfillJson(route, 200, {
         success: true,
-        data: availabilityResponse(false, 'Date 2030-01-01 is not open for booking'),
+        data: availabilityResponse(false, 'NOT_OPEN_FOR_BOOKING'),
       });
     });
 
@@ -476,7 +476,7 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
 
     const unavailable = page.getByTestId('listing-unavailable');
     await expect(unavailable).toBeVisible({ timeout: 10000 });
-    await expect(unavailable).toContainText('not open');
+    await expect(unavailable).toContainText('所選日期尚未開放預訂');
     await expect(page.getByTestId('listing-add-cart')).toBeDisabled();
   });
 });

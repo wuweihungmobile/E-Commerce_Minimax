@@ -1112,7 +1112,7 @@ class BookingControllerE2ETest {
                     .then()
                     .statusCode(200)
                     .body("data.available", is(false))
-                    .body("data.unavailableReason", containsString("not open"));
+                    .body("data.unavailableReason", equalTo("NOT_OPEN_FOR_BOOKING"));
 
             // 2) calendar 層：超窗無記錄日補 NOT_OPEN
             given()

@@ -25,6 +25,20 @@ function formatPrice(currency: string, value: number): string {
   return `${symbol}${value.toLocaleString("zh-TW")}`
 }
 
+// availability 不可訂原因碼中文對照（Sprint 58 AI-2408）：後端回傳 code（見 BookingDto.AvailabilityReasonCode），
+// 全站目前無 i18n 需求（純中文介面），故不導入多語系框架，僅用查表；查無對應 code 時原樣顯示（向後相容）。
+const AVAILABILITY_REASON_MESSAGES: Record<string, string> = {
+  INVALID_DATE_RANGE: "退房日期必須晚於入住日期",
+  NOT_OPEN_FOR_BOOKING: "所選日期尚未開放預訂",
+  BOOKED: "所選日期已被預訂",
+  BLOCKED: "所選日期已被房源鎖定",
+  MAINTENANCE: "所選日期進行維護中",
+}
+
+function unavailableReasonText(reason: string): string {
+  return AVAILABILITY_REASON_MESSAGES[reason] ?? reason
+}
+
 // 買家商品詳情內容（client）：載入 GET /v2/listings/{id}，三態處理，
 // PRODUCT → 數量 + 加入購物車；ROOM → 日期選擇 + 計價 + 加入購物車（帶日期）。
 export function ListingDetail({ id }: { id: string }) {
@@ -365,7 +379,9 @@ export function ListingDetail({ id }: { id: string }) {
             {availability && !availability.available && (
               <p data-testid="listing-unavailable" className="text-sm text-rs-error">
                 此日期不可預訂
-                {availability.unavailableReason ? `（${availability.unavailableReason}）` : ""}
+                {availability.unavailableReason
+                  ? `（${unavailableReasonText(availability.unavailableReason)}）`
+                  : ""}
               </p>
             )}
           </div>

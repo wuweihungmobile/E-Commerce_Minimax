@@ -20,7 +20,6 @@
 |----|------|-------------|---------|---------|---------|------|
 | DEF-021 | CJK 字體品牌一致性（技術債） | Sprint 35（Turbopack 限制發現） | S35 因 Turbopack 無法 self-host next/font CJK（Noto Sans TC 大量 unicode-range 子集無法解析），改用系統 CJK 字體堆疊；系統堆疊跨平台字重/字距不一，品牌字體一致性下降。後續評估 `next/font/local` + 預先子集化 Noto Sans TC woff2 以恢復品牌字體一致性 | 需 woff2 子集化工具鏈 + 驗證 Turbopack 相容性 | 2 | ✅ 已決策（S41 US-006）：維持系統字體堆疊為 **accepted fallback**；選項 B（`@font-face` 自 host 子集 woff2，技術可行、無 CSP 阻擋）記錄為選配未來任務，待品牌一致性需求由使用者拍板。詳見 [CJK_FONT_ASSESSMENT.md](../06_quality/CJK_FONT_ASSESSMENT.md) |
 | AI-2416 | 真實金流 Phase D-2：代收後 transfer 分潤/提現 | Sprint 53（Phase D-1 拆分） | Phase D-1（本 Sprint）只做 Connect Express 帳戶 onboarding；付款成功後平台代收款項如何 transfer 給賣家（`stripe.transfer_data`/`Transfer.create`）+ 對帳/提現介面 | 需 Phase D-1 帳戶已上線（`connectOnboardingStatus=COMPLETE`）| 5+ | ⚠️ 待評估（P3）|
-| AI-2408 | availability reason 錯誤碼化 + i18n | Sprint 47（未開放原因為英文字串） | availability `unavailableReason` 目前為後端英文字串（"is booked"/"is not open..."），前端沿用既有路徑原樣顯示；評估碼化 + 前端訊息映射 | 需定義 reason code 枚舉 + 前端 i18n map | 2 | ⚠️ 待評估（P4） |
 
 ---
 
@@ -64,10 +63,29 @@
 | AI-2409 | 定價計算器統一評估 | Sprint 48（兩道閘門根因） | Sprint 55 | **Spike，不改 production code**。產出決策文件 `PRICING_CALCULATOR_UNIFICATION_ASSESSMENT.md`：確認 `MANUAL_OVERRIDE`/`SEASONAL`/`WEEKDAY_WEEKEND` 三型別自 S48 起已語意等價（僅程式碼重複）；`EARLY_BIRD`/`LONG_STAY`/`LAST_MINUTE` 對 PRODUCT 本無自然語意（無「目標日期」概念），非未對齊缺陷；發現 `applyProductRule` 對此三型別會靜默落入通用 `discountPercent` fallback、完全略過原 gating（`minDaysAhead`/`minNights`/`maxDaysAhead`），但確認後端 `validateRuleRequest` 無搭配驗證、前端 `PricingRuleList.tsx` 又僅支援 `roomListingId`（無 PRODUCT 定價規則管理 UI），故此落差目前僅能經直接 API 觸發，實際曝險低。比較 3 個合併選項（維持現狀 / 抽共用 helper 統一三對齊型別【建議，2-3 SP】/ 全面合併含 stay-based【不建議】），結論**非急迫，可視未來容量排入，不需 PO 決策**。誠實：純評估無程式碼變動，無需回歸測試 |
 | AI-2415 | 部分退款（任意金額，運費不退）| Sprint 52（Phase C 只做全額退款） | Sprint 56 | **PO 決策**：(1) 部分退款粒度＝任意金額（非選品項）；(2) 運費不退。US-001：V63 migration `payments` 加 `refunded_amount`；`PaymentStatus` 加 `PARTIALLY_REFUNDED`；`PaymentStateService.refundOrderPayment` 擴充 `amount` 參數（null=剩餘全額向後相容，指定需正數且不超剩餘可退額度，逾越丟 `E_6009`）；累計 `refundedAmount`，達全額轉 `REFUNDED`+`Order.REFUNDED`，未達轉 `PARTIALLY_REFUNDED`（Order 狀態不變）；`OrderPaymentController`/`OrderPaymentStateDto` 同步擴充；抽 `resolveRefundAmount`/`executeStripeRefund` 兩輔助方法消 NPathComplexity。後端單元 512（新增 UT-PAY-STRIPE-008~011 + 更新 005/006）+ 真 DB 整合 419（`M07PaymentMockIntegrationTest` 不退步）全量回歸 0 fail、`make validate-schema` 無漂移（V63）。誠實：只修真 Stripe 退款路徑（`refundOrderPayment`），**未動平行的純 Mock 路徑**（`PaymentService.processRefund`，技術債現況記錄不修）；`stripeRefundId` 僅存最後一次退款 id，多次部分退款完整歷史需獨立子表（本次不做）；webhook（`charge.refunded`）路徑仍假設全額，未解析部分退款金額 |
 | AI-2202f | 開放窗清除機制 | Sprint 47（部分更新慣例限制） | Sprint 57 | **工程設計決策（非業務）**：新增專屬清除端點，不改全域 DTO 慣例。US-001：`RoomService.clearOpenWindow` 一次性將 `openUntilDate`/`bookingWindowDays` 清回 null；`RoomController` 新增 `DELETE /v2/rooms/{listingId}/open-window`（`room:update` 權限，比照既有 `CartController.clearCart` 模式）；前端 `RoomForm.tsx` 新增「清除開放窗設定」按鈕呼叫新端點（修正清空輸入框送出不會清除的誤導性行為）。後端單元新增 `RoomServiceTest`（3 tests：清除成功/不影響其他欄位/找不到房源）+ 全量單元 515 + 真 DB 整合 422 全量回歸 0 fail、`make validate-schema` 無漂移（schema-free）、前端 build 0 error。誠實：未新增 RoomController 層級 E2E 測試（專案內 Room CRUD 端點原本就無此類測試，與既有慣例一致，非本次降低覆蓋率）|
+| AI-2408 | availability reason 錯誤碼化 | Sprint 47（未開放原因為英文字串） | Sprint 58 | **工程範圍決策（非業務）**：確認前端無任何 i18n 框架、全站純中文介面，不導入完整多語系框架，改採最小方案。US-001：`BookingDto` 新增 `AvailabilityReasonCode` enum（`INVALID_DATE_RANGE`/`NOT_OPEN_FOR_BOOKING`/`BOOKED`/`BLOCKED`/`MAINTENANCE`）；`BookingService.checkAvailability` 三處 `unavailableReason` 賦值改用 code（`RoomCalendarStatus` 三態與 code 同名，直接 `.name()`）；前端 `ListingDetail.tsx` 新增 code→中文訊息對照表，查無對應 code 時原樣顯示（向後相容）。後端單元 515（修正 `BookingServiceOpenWindowTest` 舊字串斷言）+ 真 DB 整合 422（`BookingControllerE2ETest` 21 tests，更新舊斷言）全量回歸 0 fail、`make validate-schema` 無漂移（schema-free）、前端 tsc/eslint/build 0 error（`at-room-booking.spec.ts` 同步更新 mock/斷言）。誠實：只碼化 `checkAvailability` 回傳欄位，建單/改期超窗拋出的 `BusinessException(E_3002)` 例外訊息不在本次範圍（全站 BusinessException 訊息一律英文的更大範圍問題）；開發-編譯-測試循環於全量回歸階段攔截到 `BookingServiceOpenWindowTest` 遺漏更新的舊字串斷言 |
 
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 58 (2026-07-04)
+
+**主題**: Availability reason 錯誤碼化（2 SP，US-001 完成）
+
+**完成**:
+- **AI-2408 → ✅ 完成（US-001）**：詳見「已完成延後項目」表格。`checkAvailability` 回傳結構化 reason code 取代英文字串，前端對照表顯示中文。
+
+**驗證**:
+- 後端單元 515 tests 0 fail + 真 DB 整合 422 tests 0 fail；`make validate-schema` 無漂移（schema-free）；前端 tsc/eslint/build 0 error。catch(Exception)/@Deprecated=0。
+- 誠實：只碼化 availability 欄位，未擴及全站 BusinessException 英文訊息（更大範圍問題）；範圍決策（不導入 i18n 框架）為工程判斷，未徵詢 PO；開發-編譯-測試循環於全量回歸時攔截到 `BookingServiceOpenWindowTest` 一處遺漏更新的舊字串斷言，當場修正未累積到下個 Sprint。
+
+**下一 Sprint 候選**:
+- 活躍延後項目已收斂至僅剩需外部環境/正式上線的項目：AI-2416（P3，需 Phase D-1 正式上線）、AI-1903（需 live 環境）；另有未立案的純 Mock 退款路徑整合評估（P4，技術債）。**目前無其他可自主執行的技術債項目**。
+
+**里程碑**：**M06 訂房可用性 UX 細節收尾**——reason 碼化完成，中文顯示一致性達成。活躍延後：AI-2416（P3，需環境）+ AI-1903（需環境）；活躍 DEF=0；**可自主執行的延後項目已清空**。
+
+---
 
 ### Sprint 57 (2026-07-04)
 

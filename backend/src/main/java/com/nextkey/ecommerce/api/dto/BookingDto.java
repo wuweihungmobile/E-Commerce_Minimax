@@ -192,4 +192,15 @@ public class BookingDto {
         private String appliedRuleName;
         private String priceAdjustmentType;
     }
+
+    /**
+     * availability 不可訂原因碼（Sprint 58 AI-2408）：取代原英文字串，前端依 code 查表顯示中文訊息。
+     */
+    public enum AvailabilityReasonCode {
+        INVALID_DATE_RANGE,
+        NOT_OPEN_FOR_BOOKING,
+        BOOKED,
+        BLOCKED,
+        MAINTENANCE
+    }
 }

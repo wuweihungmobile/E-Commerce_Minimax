@@ -20,6 +20,8 @@
 |----|------|-------------|---------|---------|---------|------|
 | DEF-021 | CJK 字體品牌一致性（技術債） | Sprint 35（Turbopack 限制發現） | S35 因 Turbopack 無法 self-host next/font CJK（Noto Sans TC 大量 unicode-range 子集無法解析），改用系統 CJK 字體堆疊；系統堆疊跨平台字重/字距不一，品牌字體一致性下降。後續評估 `next/font/local` + 預先子集化 Noto Sans TC woff2 以恢復品牌字體一致性 | 需 woff2 子集化工具鏈 + 驗證 Turbopack 相容性 | 2 | ✅ 已決策（S41 US-006）：維持系統字體堆疊為 **accepted fallback**；選項 B（`@font-face` 自 host 子集 woff2，技術可行、無 CSP 阻擋）記錄為選配未來任務，待品牌一致性需求由使用者拍板。詳見 [CJK_FONT_ASSESSMENT.md](../06_quality/CJK_FONT_ASSESSMENT.md) |
 | AI-2416 | 真實金流 Phase D-2：代收後 transfer 分潤/提現 | Sprint 53（Phase D-1 拆分） | Phase D-1（本 Sprint）只做 Connect Express 帳戶 onboarding；付款成功後平台代收款項如何 transfer 給賣家（`stripe.transfer_data`/`Transfer.create`）+ 對帳/提現介面 | 需 Phase D-1 帳戶已上線（`connectOnboardingStatus=COMPLETE`）| 5+ | ⚠️ 待評估（P3）|
+| AI-2417 | 純 Mock 退款路徑與真 Stripe 退款路徑整合評估 | Sprint 56（AI-2415 部分退款探勘時發現） | `PaymentService.processRefund`（`/v2/payments/refund`，純 Mock，未接 Stripe，支援任意 amount）與 `PaymentStateService.refundOrderPayment`（`/v2/orders/{id}/refund`，真 Stripe，Sprint 56 起支援部分退款）為兩套獨立退款邏輯與 API 端點，職責重疊、行為不一致（前者未追蹤 refundedAmount 累計狀態），有維護與呼叫端混淆風險 | 需釐清兩端點各自呼叫端/用途是否仍必要並存 | 3 | ⚠️ 待評估（P4）|
+| AI-2418 | 全站 BusinessException 英文訊息碼化評估 | Sprint 58（AI-2408 探勘時發現） | `BusinessException` 建構時傳入的 `message`/`details` 全站皆為英文字面值字串（如 E_3002「Room is not open for booking on ...」），與純中文前端介面不一致；AI-2408 僅碼化 availability 單一欄位，全站規模的訊息碼化範圍未知（需先探勘有多少呼叫點、是否都有對應 ErrorCode 可複用） | 需先探勘全站 `BusinessException` 呼叫點數量與現況，評估效益/成本比是否值得投入 | 未知（需先 spike 估點）| ⚠️ 待評估（P4）|
 
 ---
 

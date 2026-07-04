@@ -33,7 +33,7 @@
 
 ### US-001：修正 ProductService.getProducts 的關鍵字搜尋死碼
 
-> **SP**: 3 | **優先級**: P1 | **狀態**: 🔲 待開始
+> **SP**: 3 | **優先級**: P1 | **狀態**: ✅ 完成
 
 **AC-001-1**: `ProductRepository` 新增 `searchByTenantIdAndKeyword`，依 `Listing.title`/`Listing.description`（大小寫不敏感）比對關鍵字。
 
@@ -45,7 +45,7 @@
 
 ### US-002：AuthService 單元測試從 0 建立
 
-> **SP**: 5 | **優先級**: P1 | **狀態**: 🔲 待開始
+> **SP**: 5 | **優先級**: P1 | **狀態**: ✅ 完成
 
 **AC-002-1**: 新增 `AuthServiceTest.java`，涵蓋 `register`（成功、email 重複）、`login`（成功、密碼錯誤、帳號不存在）。
 
@@ -71,8 +71,8 @@
 
 ## 4. Definition of Done
 
-- [ ] US-001：`ProductRepository.searchByTenantIdAndKeyword` + `ProductService` 修正 + 測試
-- [ ] US-002：`AuthServiceTest.java` 新建，涵蓋 5 個方法
+- [x] US-001：`ProductRepository.searchByTenantIdAndKeyword` + `ProductService` 修正 + 測試（3 個測試）
+- [x] US-002：`AuthServiceTest.java` 新建（16 個測試，涵蓋 5 個方法）
 - [ ] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）0 fail
 - [ ] `make validate-schema` 無漂移（本 Sprint 無新 migration）
 - [ ] Sprint 66 Review / Retro / Release Notes + trackers（含後續 Sprint 67+ 待處理清單）

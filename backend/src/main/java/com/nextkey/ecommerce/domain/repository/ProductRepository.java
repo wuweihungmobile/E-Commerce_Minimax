@@ -22,6 +22,14 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             Listing.ListingStatus status,
             Pageable pageable);
 
+    @Query("SELECT p FROM Product p WHERE p.listing.tenant.id = :tenantId AND p.listing.status = 'ACTIVE' AND "
+            + "(LOWER(p.listing.title) LIKE LOWER(CONCAT('%', :keyword, '%')) "
+            + "OR LOWER(p.listing.description) LIKE LOWER(CONCAT('%', :keyword, '%')))")
+    Page<Product> searchByTenantIdAndKeyword(
+            @Param("tenantId") UUID tenantId,
+            @Param("keyword") String keyword,
+            Pageable pageable);
+
     @Query("SELECT p FROM Product p WHERE p.category = :category AND p.listing.status = 'ACTIVE'")
     Page<Product> findByCategory(@Param("category") String category, Pageable pageable);
 

@@ -49,9 +49,9 @@ public class ProductService {
         Page<Product> products;
 
         if (keyword != null && !keyword.isBlank()) {
-            // Search by keyword in listing title/description
-            products = productRepository.findByListingTenantIdAndListingStatus(
-                    tenantId, Listing.ListingStatus.ACTIVE, pageRequest);
+            // Search by keyword in listing title/description（Sprint 66 修正：先前呼叫與 else 分支
+            // 完全相同的方法，keyword 從未被實際使用，等同搜尋永遠失效、直接回傳全部上架商品）
+            products = productRepository.searchByTenantIdAndKeyword(tenantId, keyword.trim(), pageRequest);
         } else if (category != null && brand != null && !brand.isBlank()) {
             products = productRepository.findByCategoryAndBrand(category, brand, pageRequest);
         } else if (category != null && !category.isBlank()) {

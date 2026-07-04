@@ -393,10 +393,12 @@ class PricingServiceTest {
             // Act
             PricingDto.CalculatePriceResponse response = pricingService.calculatePrice(request);
 
-            // Assert: 相同優先級時，由於後建立的放在 List 前面，會被先處理
-            // 實際實作是 sort 後 reversed，所以同優先級時順序決定誰勝出
-            // 此測試驗證邏輯存在
-            assertThat(response).isNotNull();
+            // Assert: 相同優先級（5）時，較晚建立的 laterRule（weekendMultiplier=1.5）覆蓋較早建立的
+            // earlierRule（weekendMultiplier=1.3），AI-2407 tie-break 業務語意決策：後建立者優先。
+            assertThat(response.getBreakdown().get(0).getAppliedRuleName())
+                    .isEqualTo("Later Weekend Rule");
+            assertThat(response.getBreakdown().get(0).getAdjustmentValue())
+                    .isEqualByComparingTo(BigDecimal.valueOf(50));
         }
     }
 
@@ -614,6 +616,40 @@ class PricingServiceTest {
             PricingDto.EffectivePriceResponse resp = pricingService.getEffectivePrice(PRODUCT_LISTING_ID, checkDate, 1);
 
             assertThat(resp.getEffectivePrice()).isEqualByComparingTo(BigDecimal.valueOf(900)); // 1000×0.9 折扣不退步
+        }
+
+        @Test
+        @DisplayName("UT-M12-019: 同優先級時後建立覆蓋（AI-2407 tie-break，getEffectivePrice）")
+        void samePriority_laterRuleWins() {
+            LocalDate checkDate = LocalDate.of(2027, 8, 3);
+
+            PricingRule earlierRule = PricingRule.builder()
+                    .id(UUID.randomUUID()).tenantId(TENANT_ID).listingId(PRODUCT_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.SEASONAL).ruleName("Earlier Seasonal Rule")
+                    .priority(10).config(Map.of("multiplier", 1.2))
+                    .validFrom(LocalDate.of(2027, 1, 1)).validTo(LocalDate.of(2027, 12, 31))
+                    .isActive(true)
+                    .createdAt(checkDate.minusMonths(2).atStartOfDay().toInstant(ZoneOffset.UTC))
+                    .build();
+
+            PricingRule laterRule = PricingRule.builder()
+                    .id(UUID.randomUUID()).tenantId(TENANT_ID).listingId(PRODUCT_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.SEASONAL).ruleName("Later Seasonal Rule")
+                    .priority(10) // 相同優先級
+                    .config(Map.of("multiplier", 1.5)) // 更高倍率
+                    .validFrom(LocalDate.of(2027, 1, 1)).validTo(LocalDate.of(2027, 12, 31))
+                    .isActive(true)
+                    .createdAt(checkDate.minusMonths(1).atStartOfDay().toInstant(ZoneOffset.UTC)) // 後建立
+                    .build();
+
+            when(listingRepository.findById(PRODUCT_LISTING_ID)).thenReturn(Optional.of(productListing()));
+            when(pricingRuleRepository.findByListingIdAndIsActiveTrue(PRODUCT_LISTING_ID))
+                    .thenReturn(List.of(earlierRule, laterRule));
+
+            PricingDto.EffectivePriceResponse resp = pricingService.getEffectivePrice(PRODUCT_LISTING_ID, checkDate, 1);
+
+            assertThat(resp.getAppliedRuleType()).isEqualTo("SEASONAL");
+            assertThat(resp.getEffectivePrice()).isEqualByComparingTo(BigDecimal.valueOf(1500)); // 1000×1.5（後建立者）
         }
     }
 

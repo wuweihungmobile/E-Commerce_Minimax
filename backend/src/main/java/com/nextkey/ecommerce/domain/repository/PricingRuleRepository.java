@@ -28,8 +28,8 @@ public interface PricingRuleRepository extends JpaRepository<PricingRule, UUID> 
 
     @Query("SELECT p FROM PricingRule p WHERE p.roomListingId = :roomListingId " +
             "AND p.isActive = true " +
-            "AND p.validFrom <= :startDate " +
-            "AND p.validTo >= :endDate")
+            "AND p.validFrom <= :endDate " +
+            "AND p.validTo >= :startDate")
     List<PricingRule> findActiveRulesForDateRange(
             @Param("roomListingId") UUID roomListingId,
             @Param("startDate") LocalDate startDate,

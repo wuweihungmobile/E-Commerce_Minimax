@@ -19,7 +19,6 @@
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
 |----|------|-------------|---------|---------|---------|------|
 | DEF-021 | CJK 字體品牌一致性（技術債） | Sprint 35（Turbopack 限制發現） | S35 因 Turbopack 無法 self-host next/font CJK（Noto Sans TC 大量 unicode-range 子集無法解析），改用系統 CJK 字體堆疊；系統堆疊跨平台字重/字距不一，品牌字體一致性下降。後續評估 `next/font/local` + 預先子集化 Noto Sans TC woff2 以恢復品牌字體一致性 | 需 woff2 子集化工具鏈 + 驗證 Turbopack 相容性 | 2 | ✅ 已決策（S41 US-006）：維持系統字體堆疊為 **accepted fallback**；選項 B（`@font-face` 自 host 子集 woff2，技術可行、無 CSP 阻擋）記錄為選配未來任務，待品牌一致性需求由使用者拍板。詳見 [CJK_FONT_ASSESSMENT.md](../06_quality/CJK_FONT_ASSESSMENT.md) |
-| AI-2407 | 定價規則選取語意評估 | Sprint 46（記錄不修） | `bestRule` 採「最高 priority 勝出」非最低價（漲價/折扣可能互蓋）；`findActiveRulesForDateRange` 要求規則涵蓋整段區間（部分晚數 SEASONAL 漏套）| 需探勘 + 評估逐日精準查詢影響 | 3 | ⚠️ 待評估（P3） |
 | AI-2409 | 定價計算器統一評估 | Sprint 48（兩道閘門根因） | PRODUCT（`applyProductRule` 單日）與 ROOM（`calculateAdjustment` stay-based）為兩套計算器，S48 對齊 config key 但未合併；評估抽共用「單日規則套用」核心以消分歧 | 需評估 ROOM stay-based 規則（EARLY_BIRD/LONG_STAY/LAST_MINUTE）合併風險 | 3 | ⚠️ 待評估（P4） |
 | AI-2415 | 部分退款（partially_refunded）評估 | Sprint 52（Phase C 只做全額退款） | partially_refunded 狀態 + 退款金額計算 + 退款金額欄位（退單一品項/運費）| 需 PaymentStatus 擴充 + 金額欄位 | 3 | ⚠️ 待評估（P4）|
 | AI-2416 | 真實金流 Phase D-2：代收後 transfer 分潤/提現 | Sprint 53（Phase D-1 拆分） | Phase D-1（本 Sprint）只做 Connect Express 帳戶 onboarding；付款成功後平台代收款項如何 transfer 給賣家（`stripe.transfer_data`/`Transfer.create`）+ 對帳/提現介面 | 需 Phase D-1 帳戶已上線（`connectOnboardingStatus=COMPLETE`）| 5+ | ⚠️ 待評估（P3）|
@@ -64,10 +63,30 @@
 | AI-2414 | 真金流上線 checklist | Sprint 51 | Sprint 53 | 產出 `docs/08_deployment/STRIPE_PRODUCTION_CHECKLIST.md`：金鑰/環境變數、webhook 端點註冊事件清單、Connect Platform Profile（Phase D-1 起）、測試模式端到端人工驗證項目（付款成功/失敗/退款/Connect onboarding）、正式金鑰切換順序、已知限制揭露。**文件本身為完成交付**；文件內列出的人工驗證步驟仍需使用者於測試模式親自執行（誠實揭露，非本項範圍） |
 | AI-2413 | 真實金流 Phase D-1：Stripe Connect Express 帳戶 onboarding | Sprint 49 | Sprint 53 | **PO 決策 Stripe Connect（非手動撥款）+ Express（非 Standard）**。US-001：V62 migration（tenants 加 stripe_connect_account_id/connect_onboarding_status/connect_charges_enabled/connect_payouts_enabled）；StripePaymentGateway 新增 createConnectAccount（Account.create type=express）/createAccountLink（AccountLink.create type=account_onboarding）/getConnectAccountStatus（Account.retrieve）；TenantStripeConnectService（onboarding 發起/複用既有 accountId/狀態查詢，`STRIPE_CONNECT_ENABLED` toggle 保護）；SellerDashboardController 新增 onboarding/status 端點。US-002：PaymentWebhookService 擴充 `account.updated` dispatch（反查 tenant 回填狀態，沿用 V60 去重）。後端單元 20（WireMock TC-S007~010 + UT-CONNECT-001~006 + UT-WH-007~008）+ 真 DB 整合 4（IT-CONNECT）+ 全量回歸 536 tests 0 fail、validate-schema V62 無漂移。誠實：**只做帳戶 onboarding，不做代收後 transfer 分潤**（另立 AI-2416，Phase D-2）；不含前端（賣家後台按鈕）；只做 Express（非 Standard/Custom）|
 | DEF-022 | E2E 硬等待（waitForTimeout 固定 sleep） | Sprint 35 | Sprint 42 | **歷時 S35→39→42**。S39（AI-2101）已收斂登入 helper 部分；S42（US-003）完成餘下清除：5 檔（at-m11-cart-checkout、at-m15-e2e、at-m17-001/002）冗餘 `waitForTimeout` 刪除、可替換者改顯式等待（`waitForURL`/`waitForResponse`/`expect().toBeVisible()`/`toHaveClass()`）並順帶補斷言（Rule 9）；**保留** at-m10-chat STOMP SUBSCRIBE settle 例外（無 client 可觀察訊號）。**連帶根治**移除 sleep 後浮現的既有 flaky：auth helper 與 S37 共用 Header「註冊」連結碰撞（`.first()` 恆選 header 連結 + re-render 不穩定 → 改 `goto('/register')`，Playwright 快照佐證）+ 原生 alert teardown（at-m15 檔案級 dialog beforeEach + at-m17-002 dialog 處理器）。validate-e2e 46 passed/0 fail |
+| AI-2407 | 定價規則選取語意修正——overlap 查詢 + 同優先級 tie-break | Sprint 46（記錄不修） | Sprint 54 | **PO 決策同優先級「後建立者優先」**。US-001：`PricingRuleRepository.findActiveRulesForDateRange` JPQL 由 containment（`validFrom<=startDate AND validTo>=endDate`）改 overlap（`validFrom<=endDate AND validTo>=startDate`），修正部分晚數 SEASONAL 等規則被整批排除的漏套問題；`isRuleApplicable` 逐日精準判斷不變，overlap 僅放寬候選前置篩選。US-002：`calculatePrice`/`getEffectivePrice` 排序 Comparator 補 `.thenComparing(createdAt, reverseOrder())` 落實 tie-break（免 migration，`PricingRule.createdAt` 既有欄位）；修正既有空斷言測試 UT-M12-009（標題聲稱驗證「後建立覆蓋」但斷言僅 `isNotNull()`）為真斷言；新增 `getEffectivePrice` tie-break 單元測試（UT-M12-019）+ 真 DB 整合測試（API-M06-017，驗證部分晚數 SEASONAL 規則於 overlap 修正後正確生效）。後端單元 508 + 真 DB 整合 415 全量回歸 0 fail、`make validate-schema` 無漂移（schema-free）。誠實：只修正查詢語意與排序次鍵，未重寫計價核心邏輯（`isRuleApplicable`/`calculateAdjustment` 均不動）|
 
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 54 (2026-07-04)
+
+**主題**: 定價規則選取語意修正——Range 查詢 overlap 化 + 同優先級 tie-break 落實（6 SP，US-001~002 全數完成 + US-003 文件更新）
+
+**完成**:
+- **AI-2407 → ✅ 完成（US-001+US-002）**：詳見「已完成延後項目」表格。PO 決策同優先級 tie-break 業務語意為「後建立者優先」；range 查詢 containment→overlap 修正部分晚數規則漏套問題；排序 Comparator 補 createdAt 次鍵；修正既有空斷言測試 UT-M12-009。
+- **US-003 → ✅ 完成**：本文件 AI-2407 狀態更新（活躍延後移至已完成）。
+
+**驗證**:
+- 後端單元 508 tests 0 fail（含 UT-M12-009 修正 + UT-M12-019 新增）+ 真 DB 整合 415 tests 0 fail（含 API-M06-017 新增，`BookingControllerE2ETest` 21 tests 0 fail）；`make validate-schema` 無漂移（schema-free，無 migration）。catch(Exception)/@Deprecated=0。
+- 誠實：只修正查詢語意（候選規則前置篩選）與排序次鍵（tie-break），`isRuleApplicable`/`calculateAdjustment` 逐日精準計算核心不動；本 Sprint 無 migration、無前端變動。
+
+**下一 Sprint 候選**:
+- AI-1908 檢查點 push S41~S54（本 Sprint 決策先規劃後 push，收尾時徵詢）、AI-2416 真實金流 Phase D-2 分潤（需 Phase D-1 上線）、AI-2409 定價計算器統一評估、AI-2202f 開放窗清除、AI-2408 reason i18n、AI-1903 真人 live 走查（需環境）。
+
+**里程碑**：**定價規則選取語意缺口收斂**——range 查詢語意正確化 + 同優先級行為明確化（不再依賴資料庫未定義回傳順序）。活躍延後：AI-2409（P4）/ AI-2415（P4）/ AI-2416（P3）/ AI-2202f（P4）/ AI-2408（P4）/ DEF-021（已決策）+ AI-1903（需環境）；活躍 DEF=0。
+
+---
 
 ### Sprint 53 (2026-07-04)
 

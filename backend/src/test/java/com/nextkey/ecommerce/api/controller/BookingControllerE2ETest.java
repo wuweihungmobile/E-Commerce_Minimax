@@ -1164,4 +1164,56 @@ class BookingControllerE2ETest {
                     "UPDATE rooms SET open_until_date = NULL WHERE listing_id = ?", testRoomListingId);
         }
     }
+
+    // ── API-M06-017: Range 查詢 overlap 語意——規則僅覆蓋部分晚數仍生效（AI-2407）─────────
+
+    @Test
+    @Order(21)
+    @DisplayName("API-M06-017: SEASONAL 規則僅覆蓋 3 晚住宿中的中間 1 晚，仍需生效（containment→overlap 修正）")
+    void checkAvailability_seasonalRuleCoversPartialNights_stillApplies() throws Exception {
+        // basePrice=1500；SEASONAL multiplier=2.0 但 validFrom=validTo=中間那一晚（只覆蓋 3 晚中的 1 晚）。
+        // 修正前（containment）：findActiveRulesForDateRange 要求規則涵蓋整段區間，此規則被整批排除 → 無漲價。
+        // 修正後（overlap）：規則進入候選，isRuleApplicable 逐日精準判斷 → 僅中間那一晚生效。
+        LocalDate checkIn = LocalDate.now().plusDays(520);
+        LocalDate checkOut = LocalDate.now().plusDays(523); // 3 晚：+520、+521、+522
+        LocalDate partialNight = LocalDate.now().plusDays(521);
+        Tenant tenant = tenantRepository.findById(testTenantId).orElseThrow();
+        PricingRule partialSeasonalRule = pricingRuleRepository.save(PricingRule.builder()
+                .tenant(tenant)
+                .roomListingId(testRoomListingId)
+                .ruleType(PricingRule.PricingRuleType.SEASONAL)
+                .ruleName("Partial Night Seasonal 2x")
+                .priority(5)
+                .config(java.util.Map.of("multiplier", 2.0))
+                .validFrom(partialNight)
+                .validTo(partialNight)
+                .isActive(true)
+                .build());
+        try {
+            String availBody = given()
+                    .header("Authorization", "Bearer " + buyerToken)
+                    .queryParam("roomListingId", testRoomListingId.toString())
+                    .queryParam("checkInDate", checkIn.toString())
+                    .queryParam("checkOutDate", checkOut.toString())
+                    .when()
+                    .get(BOOKING_URL + "/availability")
+                    .then()
+                    .statusCode(200)
+                    .body("data.available", is(true))
+                    .extract().asString();
+            JsonNode data = objectMapper.readTree(availBody).path("data");
+            // 1500(+520) + 3000(+521 中間晚，套 2x) + 1500(+522) = 6000
+            assertThat(new BigDecimal(data.path("totalPrice").asText()))
+                    .isEqualByComparingTo(BigDecimal.valueOf(6000));
+            assertThat(new BigDecimal(data.path("originalTotalPrice").asText()))
+                    .isEqualByComparingTo(BigDecimal.valueOf(4500));
+            assertThat(new BigDecimal(data.path("discountAmount").asText()))
+                    .isEqualByComparingTo(BigDecimal.valueOf(-1500));
+            assertThat(data.path("priceAdjustmentType").asText()).isEqualTo("MARKUP");
+
+            System.out.println("✅ API-M06-017 PASSED: 部分晚數規則於 overlap 查詢下仍正確套用");
+        } finally {
+            pricingRuleRepository.delete(partialSeasonalRule);
+        }
+    }
 }

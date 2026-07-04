@@ -197,9 +197,10 @@ public class PricingService {
         List<PricingRule> rules = new ArrayList<>(pricingRuleRepository.findActiveRulesForDateRange(
                 request.getRoomListingId(), checkIn, checkOut.minusDays(1)));
 
-        // 按優先級排序；同優先級時後建立者優先（AI-2407 tie-break 業務語意決策）
+        // 按優先級排序；同優先級時後建立者優先（AI-2407 tie-break 業務語意決策）。
+        // createdAt 以 nullsLast 防護：非持久化物件（如測試手動建構）可能為 null，避免 NPE（Sprint 58 回歸修復）。
         rules.sort(Comparator.comparingInt(PricingRule::getPriority).reversed()
-                .thenComparing(PricingRule::getCreatedAt, Comparator.reverseOrder()));
+                .thenComparing(PricingRule::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
 
         // 計算每天價格
         List<PricingDto.PriceBreakdown> breakdown = new ArrayList<>();
@@ -541,7 +542,7 @@ public class PricingService {
                 .stream()
                 .filter(r -> !checkDate.isBefore(r.getValidFrom()) && !checkDate.isAfter(r.getValidTo()))
                 .sorted(Comparator.comparingInt(PricingRule::getPriority).reversed()
-                        .thenComparing(PricingRule::getCreatedAt, Comparator.reverseOrder()))
+                        .thenComparing(PricingRule::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .collect(Collectors.toList());
 
         if (activeRules.isEmpty()) {

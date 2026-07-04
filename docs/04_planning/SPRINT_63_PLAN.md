@@ -34,7 +34,7 @@
 
 ### US-001：FAQ 文章列表頁
 
-> **SP**: 5 | **優先級**: P2 | **狀態**: 🔲 待開始
+> **SP**: 5 | **優先級**: P2 | **狀態**: ✅ 完成
 
 **AC-001-1**: 新增 `frontend/src/services/faq.ts`，比照 `services/knowledge.ts` 封裝所有 `/v2/faqs` 端點（含 `getArticles`、`getArticle`、`deleteArticle`、`getPinnedArticles`、`searchArticlesWithHighlight`、`incrementViewCount`、`getCategories`）。
 
@@ -48,7 +48,7 @@
 
 ### US-002：FAQ 分類管理頁面
 
-> **SP**: 3 | **優先級**: P2 | **狀態**: 🔲 待開始
+> **SP**: 3 | **優先級**: P2 | **狀態**: ✅ 完成
 
 **AC-002-1**: `frontend/src/services/faq.ts` 補齊分類 CRUD 函式（`getCategories`、`createCategory`、`updateCategory`、`deleteCategory`、`getCategoryStats`）。
 
@@ -72,9 +72,9 @@
 
 ## 4. Definition of Done
 
-- [ ] US-001：`services/faq.ts`（文章相關函式）+ `dashboard/faq/page.tsx`
-- [ ] US-002：`services/faq.ts`（分類相關函式）+ `dashboard/faq/categories/page.tsx`
-- [ ] 前端 `npx eslint` + `npx tsc --noEmit` + `npm run build` 皆 0 error，新路由成功產出於 build
+- [x] US-001：`services/faq.ts`（文章相關函式）+ `dashboard/faq/page.tsx`
+- [x] US-002：`services/faq.ts`（分類相關函式）+ `dashboard/faq/categories/page.tsx`
+- [x] 前端 `npx eslint` + `npx tsc --noEmit` + `npm run build` 皆 0 error，新路由 `/dashboard/faq`、`/dashboard/faq/categories` 成功產出於 build
 - [ ] 後端無變動，`mvn verify -Pintegration-test` 全量回歸維持 0 fail（確認未間接影響）
 - [ ] `make validate-schema` 無漂移（無 migration）
 - [ ] Sprint 63 Review / Retro / Release Notes + trackers

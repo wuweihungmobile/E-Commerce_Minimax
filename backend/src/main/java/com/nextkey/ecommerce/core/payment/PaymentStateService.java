@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.core.payment;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -152,12 +153,15 @@ public class PaymentStateService {
     }
 
     /**
-     * 退款（Sprint 52 Phase C，AI-2412）：toggle-aware——STRIPE_PAYMENT_ENABLED 開啟且 Payment 為 STRIPE
-     * 時經 gateway 真 Stripe Refund.create（以 payment_intent 全額退款）+ 存 stripe_refund_id；
-     * 否則 mock（既有，直接標 REFUNDED）。標記 Payment REFUNDED + Order REFUNDED（冪等）。
+     * 退款（Sprint 52 Phase C，AI-2412；Sprint 56 部分退款，AI-2415）：toggle-aware——
+     * STRIPE_PAYMENT_ENABLED 開啟且 Payment 為 STRIPE 時經 gateway 真 Stripe Refund.create
+     * （可指定金額，未指定則退剩餘全額）+ 存 stripe_refund_id；否則 mock（既有）。
+     * 累計 refundedAmount；達 Payment.amount 全額才轉 REFUNDED + Order REFUNDED，
+     * 未達全額則轉 PARTIALLY_REFUNDED，Order 狀態不變（訂單持續履約，比照全額退款外的部分退款慣例）。
+     * PO 決策（2026-07-04）：運費（Order.shippingFee）不參與部分退款計算，僅退商品金額。
      */
     @Transactional
-    public OrderPaymentStateDto refundOrderPayment(UUID orderId, String reason) {
+    public OrderPaymentStateDto refundOrderPayment(UUID orderId, BigDecimal amount, String reason) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
         checkOrderOwnership(order);
@@ -167,36 +171,62 @@ public class PaymentStateService {
             throw new BusinessException(ErrorCode.E_5012, "Order cannot be refunded in current status");
         }
 
-        // 找到成功的支付記錄
+        // 找到已成功或已部分退款的支付記錄（部分退款可重複呼叫，直到全額退完）
         Payment payment = paymentRepository.findByOrderIdAndStatus(orderId, Payment.PaymentStatus.SUCCESS)
+                .or(() -> paymentRepository.findByOrderIdAndStatus(orderId, Payment.PaymentStatus.PARTIALLY_REFUNDED))
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_6000, "Payment not found"));
 
-        // 真實退款（stripe path）：toggle 開啟 + Payment 為 STRIPE → 呼叫 Stripe Refund（全額）
+        // 驗證退款金額：未指定 = 退剩餘全額（向後相容既有全額退款呼叫端）；指定時須為正數且不超過剩餘可退額度
+        BigDecimal refundAmount = resolveRefundAmount(payment, amount);
+
+        // 真實退款（stripe path）：toggle 開啟 + Payment 為 STRIPE → 呼叫 Stripe Refund（指定金額）
         if (featureToggleService.isFeatureEnabled(STRIPE_PAYMENT_ENABLED)
                 && payment.getPaymentMethod() == Payment.PaymentMethod.STRIPE) {
-            String paymentIntentId = payment.getStripePaymentIntentId();
-            if (paymentIntentId == null) {
-                throw new BusinessException(ErrorCode.E_6001, "Missing Stripe payment intent for refund");
-            }
-            PaymentGatewayRequestResponse.RefundResult result =
-                    paymentGatewayFactory.processRefund(GATEWAY_STRIPE, paymentIntentId, null, reason);
-            if (!result.isSuccess()) {
-                throw new BusinessException(ErrorCode.E_6001,
-                        "Stripe refund failed: " + result.getErrorMessage());
-            }
-            payment.setStripeRefundId(result.getRefundId());
-            log.info("Stripe refund created: orderId={}, refundId={}", orderId, result.getRefundId());
+            executeStripeRefund(orderId, payment, refundAmount, reason);
         }
 
-        // 標記支付為已退款 + 訂單 REFUNDED
-        payment.setStatus(Payment.PaymentStatus.REFUNDED);
+        // 累計已退款金額；達全額才轉 REFUNDED + Order REFUNDED，否則 PARTIALLY_REFUNDED（Order 狀態不變）
+        BigDecimal newRefundedAmount = payment.getRefundedAmount().add(refundAmount);
+        payment.setRefundedAmount(newRefundedAmount);
+        boolean fullyRefunded = newRefundedAmount.compareTo(payment.getAmount()) >= 0;
+        payment.setStatus(fullyRefunded ? Payment.PaymentStatus.REFUNDED : Payment.PaymentStatus.PARTIALLY_REFUNDED);
         paymentRepository.save(payment);
-        order.setStatus(Order.OrderStatus.REFUNDED);
-        orderRepository.save(order);
+        if (fullyRefunded) {
+            order.setStatus(Order.OrderStatus.REFUNDED);
+            orderRepository.save(order);
+        }
 
-        log.info("Refund processed: orderId={}, paymentId={}, reason={}", orderId, payment.getId(), reason);
+        log.info("Refund processed: orderId={}, paymentId={}, amount={}, fullyRefunded={}, reason={}",
+                orderId, payment.getId(), refundAmount, fullyRefunded, reason);
 
         return toOrderPaymentStateDto(order, payment);
+    }
+
+    /** 解析並驗證退款金額（AI-2415）：null = 剩餘全額；否則須為正數且不超過剩餘可退額度。 */
+    private BigDecimal resolveRefundAmount(Payment payment, BigDecimal amount) {
+        BigDecimal remaining = payment.getAmount().subtract(payment.getRefundedAmount());
+        BigDecimal refundAmount = amount != null ? amount : remaining;
+        if (refundAmount.compareTo(BigDecimal.ZERO) <= 0 || refundAmount.compareTo(remaining) > 0) {
+            throw new BusinessException(ErrorCode.E_6009,
+                    "Refund amount must be positive and not exceed remaining refundable amount: " + remaining);
+        }
+        return refundAmount;
+    }
+
+    /** 呼叫 Stripe Refund（AI-2415 起支援指定金額），成功後存 stripeRefundId（覆蓋最後一次）。 */
+    private void executeStripeRefund(UUID orderId, Payment payment, BigDecimal refundAmount, String reason) {
+        String paymentIntentId = payment.getStripePaymentIntentId();
+        if (paymentIntentId == null) {
+            throw new BusinessException(ErrorCode.E_6001, "Missing Stripe payment intent for refund");
+        }
+        PaymentGatewayRequestResponse.RefundResult result =
+                paymentGatewayFactory.processRefund(GATEWAY_STRIPE, paymentIntentId, refundAmount, reason);
+        if (!result.isSuccess()) {
+            throw new BusinessException(ErrorCode.E_6001, "Stripe refund failed: " + result.getErrorMessage());
+        }
+        // 誠實揭露：stripeRefundId 僅存最後一次退款 id，多次部分退款的完整歷史需獨立子表，本次不做
+        payment.setStripeRefundId(result.getRefundId());
+        log.info("Stripe refund created: orderId={}, refundId={}, amount={}", orderId, result.getRefundId(), refundAmount);
     }
 
     /**
@@ -422,7 +452,8 @@ public class PaymentStateService {
             builder.paymentId(payment.getId())
                    .paymentStatus(payment.getStatus().name())
                    .transactionId(payment.getTransactionId())
-                   .paidAt(payment.getPaidAt());
+                   .paidAt(payment.getPaidAt())
+                   .refundedAmount(payment.getRefundedAmount());
         }
 
         return builder.build();

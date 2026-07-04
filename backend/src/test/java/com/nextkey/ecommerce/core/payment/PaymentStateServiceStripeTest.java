@@ -175,13 +175,13 @@ class PaymentStateServiceStripeTest {
         when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
                 .thenReturn(Optional.of(success));
         when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
-        when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", null, "customer"))
+        when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", BigDecimal.valueOf(1500), "customer"))
                 .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
                         .success(true).refundId("re_1").status("succeeded").build());
 
-        service.refundOrderPayment(ORDER_ID, "customer");
+        service.refundOrderPayment(ORDER_ID, null, "customer");
 
-        verify(paymentGatewayFactory).processRefund("STRIPE", "pi_1", null, "customer");
+        verify(paymentGatewayFactory).processRefund("STRIPE", "pi_1", BigDecimal.valueOf(1500), "customer");
         assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
         assertThat(success.getStripeRefundId()).isEqualTo("re_1");
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
@@ -199,7 +199,7 @@ class PaymentStateServiceStripeTest {
                 .thenReturn(Optional.of(success));
         when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(false);
 
-        service.refundOrderPayment(ORDER_ID, "customer");
+        service.refundOrderPayment(ORDER_ID, null, "customer");
 
         verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any());
         assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
@@ -221,5 +221,87 @@ class PaymentStateServiceStripeTest {
         assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
         assertThat(success.getStripeRefundId()).isEqualTo("re_2");
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
+    }
+
+    @Test
+    @DisplayName("UT-PAY-STRIPE-008: 部分退款（金額 < 剩餘）→ PARTIALLY_REFUNDED，Order 狀態不變（AI-2415）")
+    void refund_partialAmount_staysPartiallyRefunded() {
+        Order order = paidOrder();
+        Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.SUCCESS)
+                .transactionId("cs_test_1").stripePaymentIntentId("pi_1").build();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(success));
+        when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
+        when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", BigDecimal.valueOf(500), "damaged item"))
+                .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
+                        .success(true).refundId("re_partial_1").status("succeeded").build());
+
+        service.refundOrderPayment(ORDER_ID, BigDecimal.valueOf(500), "damaged item");
+
+        assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.PARTIALLY_REFUNDED);
+        assertThat(success.getRefundedAmount()).isEqualByComparingTo(BigDecimal.valueOf(500));
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.PAID);
+    }
+
+    @Test
+    @DisplayName("UT-PAY-STRIPE-009: 第二次部分退款補足全額 → 轉 REFUNDED + Order REFUNDED（AI-2415）")
+    void refund_secondPartialCompletesFullAmount() {
+        Order order = paidOrder();
+        Payment partiallyRefunded = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.PARTIALLY_REFUNDED)
+                .refundedAmount(BigDecimal.valueOf(500))
+                .transactionId("cs_test_1").stripePaymentIntentId("pi_1").build();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(Optional.empty());
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.PARTIALLY_REFUNDED))
+                .thenReturn(Optional.of(partiallyRefunded));
+        when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
+        when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", BigDecimal.valueOf(1000), "second refund"))
+                .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
+                        .success(true).refundId("re_partial_2").status("succeeded").build());
+
+        service.refundOrderPayment(ORDER_ID, BigDecimal.valueOf(1000), "second refund");
+
+        assertThat(partiallyRefunded.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+        assertThat(partiallyRefunded.getRefundedAmount()).isEqualByComparingTo(BigDecimal.valueOf(1500));
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
+    }
+
+    @Test
+    @DisplayName("UT-PAY-STRIPE-010: 退款金額超過剩餘可退額度 → E_6009，不呼叫 gateway（AI-2415）")
+    void refund_amountExceedsRemaining_throws() {
+        Order order = paidOrder();
+        Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.SUCCESS)
+                .transactionId("cs_test_1").stripePaymentIntentId("pi_1").build();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(success));
+
+        assertThatThrownBy(() -> service.refundOrderPayment(ORDER_ID, BigDecimal.valueOf(2000), "too much"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_6009);
+        verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("UT-PAY-STRIPE-011: 退款金額為零或負數 → E_6009（AI-2415）")
+    void refund_nonPositiveAmount_throws() {
+        Order order = paidOrder();
+        Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.SUCCESS)
+                .transactionId("cs_test_1").stripePaymentIntentId("pi_1").build();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(success));
+
+        assertThatThrownBy(() -> service.refundOrderPayment(ORDER_ID, BigDecimal.ZERO, "zero"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_6009);
     }
 }

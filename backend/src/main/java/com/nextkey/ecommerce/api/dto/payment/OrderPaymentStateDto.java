@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.api.dto.payment;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -27,4 +28,6 @@ public class OrderPaymentStateDto {
     private Instant updatedAt;
     // 真實金流（Sprint 50 AI-2410）：付款提供者（mock / stripe），前端據此決定付款 UI（重導 or mock 按鈕）
     private String paymentProvider;
+    // 部分退款（Sprint 56 AI-2415）：累計已退款金額，供呼叫端判斷剩餘可退額度
+    private BigDecimal refundedAmount;
 }

@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.api.controller;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
@@ -68,15 +69,16 @@ public class OrderPaymentController {
     }
 
     /**
-     * 模擬退款（Mock）
+     * 退款（Sprint 56 AI-2415 起支援部分退款）：amount 未指定 = 退剩餘全額；指定則退該金額（不超過剩餘可退額度）。
      */
     @PostMapping("/{orderId}/refund")
     @PreAuthorize("hasAuthority('order:update')")
     public ResponseEntity<ApiResponse<OrderPaymentStateDto>> mockRefund(
             @PathVariable UUID orderId,
+            @RequestParam(required = false) BigDecimal amount,
             @RequestParam(required = false) String reason) {
-        log.info("Refund request: orderId={}, reason={}", orderId, reason);
-        OrderPaymentStateDto state = paymentStateService.refundOrderPayment(orderId, reason);
+        log.info("Refund request: orderId={}, amount={}, reason={}", orderId, amount, reason);
+        OrderPaymentStateDto state = paymentStateService.refundOrderPayment(orderId, amount, reason);
         return ResponseEntity.ok(ApiResponse.success("Refund processed", state));
     }
 

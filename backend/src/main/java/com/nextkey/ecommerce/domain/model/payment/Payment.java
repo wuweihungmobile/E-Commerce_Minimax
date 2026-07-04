@@ -78,6 +78,11 @@ public class Payment {
     @Column(name = "stripe_refund_id")
     private String stripeRefundId;
 
+    // 部分退款（Sprint 56 AI-2415）：累計已退款金額；未退款為 0
+    @Column(name = "refunded_amount", precision = DECIMAL_PRECISION, scale = 2)
+    @Builder.Default
+    private BigDecimal refundedAmount = BigDecimal.ZERO;
+
     @Column(name = "idempotency_key")
     private String idempotencyKey;
 
@@ -117,6 +122,8 @@ public class Payment {
     public enum PaymentStatus {
         PENDING, SUCCESS, FAILED, REFUNDED,
         // 真實金流（Sprint 50 AI-2410）：Checkout Session 已建、待買家於 Stripe 完成付款
-        PROCESSING
+        PROCESSING,
+        // 部分退款（Sprint 56 AI-2415）：已退款金額 > 0 但未達 amount 全額
+        PARTIALLY_REFUNDED
     }
 }

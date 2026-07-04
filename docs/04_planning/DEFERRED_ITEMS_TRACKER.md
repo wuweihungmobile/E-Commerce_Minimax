@@ -19,7 +19,6 @@
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
 |----|------|-------------|---------|---------|---------|------|
 | DEF-021 | CJK 字體品牌一致性（技術債） | Sprint 35（Turbopack 限制發現） | S35 因 Turbopack 無法 self-host next/font CJK（Noto Sans TC 大量 unicode-range 子集無法解析），改用系統 CJK 字體堆疊；系統堆疊跨平台字重/字距不一，品牌字體一致性下降。後續評估 `next/font/local` + 預先子集化 Noto Sans TC woff2 以恢復品牌字體一致性 | 需 woff2 子集化工具鏈 + 驗證 Turbopack 相容性 | 2 | ✅ 已決策（S41 US-006）：維持系統字體堆疊為 **accepted fallback**；選項 B（`@font-face` 自 host 子集 woff2，技術可行、無 CSP 阻擋）記錄為選配未來任務，待品牌一致性需求由使用者拍板。詳見 [CJK_FONT_ASSESSMENT.md](../06_quality/CJK_FONT_ASSESSMENT.md) |
-| AI-2415 | 部分退款（partially_refunded）評估 | Sprint 52（Phase C 只做全額退款） | partially_refunded 狀態 + 退款金額計算 + 退款金額欄位（退單一品項/運費）| 需 PaymentStatus 擴充 + 金額欄位 | 3 | ⚠️ 待評估（P4）|
 | AI-2416 | 真實金流 Phase D-2：代收後 transfer 分潤/提現 | Sprint 53（Phase D-1 拆分） | Phase D-1（本 Sprint）只做 Connect Express 帳戶 onboarding；付款成功後平台代收款項如何 transfer 給賣家（`stripe.transfer_data`/`Transfer.create`）+ 對帳/提現介面 | 需 Phase D-1 帳戶已上線（`connectOnboardingStatus=COMPLETE`）| 5+ | ⚠️ 待評估（P3）|
 | AI-2202f | 開放窗清除機制 | Sprint 47（部分更新慣例限制） | `updateRoom` 沿用「非 null 才更新」慣例，賣家無法把已設 open_until_date/booking_window_days 清回無限制（NULL）| 需另立顯式機制（專屬端點或 sentinel 值）| 2 | ⚠️ 待評估（P4） |
 | AI-2408 | availability reason 錯誤碼化 + i18n | Sprint 47（未開放原因為英文字串） | availability `unavailableReason` 目前為後端英文字串（"is booked"/"is not open..."），前端沿用既有路徑原樣顯示；評估碼化 + 前端訊息映射 | 需定義 reason code 枚舉 + 前端 i18n map | 2 | ⚠️ 待評估（P4） |
@@ -64,10 +63,29 @@
 | DEF-022 | E2E 硬等待（waitForTimeout 固定 sleep） | Sprint 35 | Sprint 42 | **歷時 S35→39→42**。S39（AI-2101）已收斂登入 helper 部分；S42（US-003）完成餘下清除：5 檔（at-m11-cart-checkout、at-m15-e2e、at-m17-001/002）冗餘 `waitForTimeout` 刪除、可替換者改顯式等待（`waitForURL`/`waitForResponse`/`expect().toBeVisible()`/`toHaveClass()`）並順帶補斷言（Rule 9）；**保留** at-m10-chat STOMP SUBSCRIBE settle 例外（無 client 可觀察訊號）。**連帶根治**移除 sleep 後浮現的既有 flaky：auth helper 與 S37 共用 Header「註冊」連結碰撞（`.first()` 恆選 header 連結 + re-render 不穩定 → 改 `goto('/register')`，Playwright 快照佐證）+ 原生 alert teardown（at-m15 檔案級 dialog beforeEach + at-m17-002 dialog 處理器）。validate-e2e 46 passed/0 fail |
 | AI-2407 | 定價規則選取語意修正——overlap 查詢 + 同優先級 tie-break | Sprint 46（記錄不修） | Sprint 54 | **PO 決策同優先級「後建立者優先」**。US-001：`PricingRuleRepository.findActiveRulesForDateRange` JPQL 由 containment（`validFrom<=startDate AND validTo>=endDate`）改 overlap（`validFrom<=endDate AND validTo>=startDate`），修正部分晚數 SEASONAL 等規則被整批排除的漏套問題；`isRuleApplicable` 逐日精準判斷不變，overlap 僅放寬候選前置篩選。US-002：`calculatePrice`/`getEffectivePrice` 排序 Comparator 補 `.thenComparing(createdAt, reverseOrder())` 落實 tie-break（免 migration，`PricingRule.createdAt` 既有欄位）；修正既有空斷言測試 UT-M12-009（標題聲稱驗證「後建立覆蓋」但斷言僅 `isNotNull()`）為真斷言；新增 `getEffectivePrice` tie-break 單元測試（UT-M12-019）+ 真 DB 整合測試（API-M06-017，驗證部分晚數 SEASONAL 規則於 overlap 修正後正確生效）。後端單元 508 + 真 DB 整合 415 全量回歸 0 fail、`make validate-schema` 無漂移（schema-free）。誠實：只修正查詢語意與排序次鍵，未重寫計價核心邏輯（`isRuleApplicable`/`calculateAdjustment` 均不動）|
 | AI-2409 | 定價計算器統一評估 | Sprint 48（兩道閘門根因） | Sprint 55 | **Spike，不改 production code**。產出決策文件 `PRICING_CALCULATOR_UNIFICATION_ASSESSMENT.md`：確認 `MANUAL_OVERRIDE`/`SEASONAL`/`WEEKDAY_WEEKEND` 三型別自 S48 起已語意等價（僅程式碼重複）；`EARLY_BIRD`/`LONG_STAY`/`LAST_MINUTE` 對 PRODUCT 本無自然語意（無「目標日期」概念），非未對齊缺陷；發現 `applyProductRule` 對此三型別會靜默落入通用 `discountPercent` fallback、完全略過原 gating（`minDaysAhead`/`minNights`/`maxDaysAhead`），但確認後端 `validateRuleRequest` 無搭配驗證、前端 `PricingRuleList.tsx` 又僅支援 `roomListingId`（無 PRODUCT 定價規則管理 UI），故此落差目前僅能經直接 API 觸發，實際曝險低。比較 3 個合併選項（維持現狀 / 抽共用 helper 統一三對齊型別【建議，2-3 SP】/ 全面合併含 stay-based【不建議】），結論**非急迫，可視未來容量排入，不需 PO 決策**。誠實：純評估無程式碼變動，無需回歸測試 |
+| AI-2415 | 部分退款（任意金額，運費不退）| Sprint 52（Phase C 只做全額退款） | Sprint 56 | **PO 決策**：(1) 部分退款粒度＝任意金額（非選品項）；(2) 運費不退。US-001：V63 migration `payments` 加 `refunded_amount`；`PaymentStatus` 加 `PARTIALLY_REFUNDED`；`PaymentStateService.refundOrderPayment` 擴充 `amount` 參數（null=剩餘全額向後相容，指定需正數且不超剩餘可退額度，逾越丟 `E_6009`）；累計 `refundedAmount`，達全額轉 `REFUNDED`+`Order.REFUNDED`，未達轉 `PARTIALLY_REFUNDED`（Order 狀態不變）；`OrderPaymentController`/`OrderPaymentStateDto` 同步擴充；抽 `resolveRefundAmount`/`executeStripeRefund` 兩輔助方法消 NPathComplexity。後端單元 512（新增 UT-PAY-STRIPE-008~011 + 更新 005/006）+ 真 DB 整合 419（`M07PaymentMockIntegrationTest` 不退步）全量回歸 0 fail、`make validate-schema` 無漂移（V63）。誠實：只修真 Stripe 退款路徑（`refundOrderPayment`），**未動平行的純 Mock 路徑**（`PaymentService.processRefund`，技術債現況記錄不修）；`stripeRefundId` 僅存最後一次退款 id，多次部分退款完整歷史需獨立子表（本次不做）；webhook（`charge.refunded`）路徑仍假設全額，未解析部分退款金額 |
 
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 56 (2026-07-04)
+
+**主題**: 部分退款——任意金額，運費不退（5 SP，US-001 完成）
+
+**完成**:
+- **AI-2415 → ✅ 完成（US-001）**：詳見「已完成延後項目」表格。PO 決策（任意金額粒度 + 運費不退）後，`PaymentStateService.refundOrderPayment` 支援部分退款，V63 migration + `PARTIALLY_REFUNDED` 狀態。
+
+**驗證**:
+- 後端單元 512 tests 0 fail（含新增 UT-PAY-STRIPE-008~011 + 更新 005/006）+ 真 DB 整合 419 tests 0 fail（`M07PaymentMockIntegrationTest` 8 tests 不退步）；`make validate-schema` 無漂移（V63）。catch(Exception)/@Deprecated=0。
+- 誠實：只修真 Stripe 退款路徑，未動平行的純 Mock 退款路徑（技術債，記錄不修）；`stripeRefundId` 僅存最後一次退款 id；webhook 路徑仍假設全額退款。
+
+**下一 Sprint 候選**:
+- AI-2202f 開放窗清除機制（P4）、AI-2408 availability reason 錯誤碼化 + i18n（P4）、AI-2416 真實金流 Phase D-2 分潤（P3，需 Phase D-1 上線，目前不可執行）、AI-1903 真人 live 走查（需環境，目前不可執行）、（技術債，未立案）純 Mock 退款路徑與真 Stripe 路徑整合評估。
+
+**里程碑**：**退款機制擴充支援部分金額**——與全額退款（Phase C）並存，PO 決策的兩項業務語意（任意金額粒度、運費不退）已落地。活躍延後：AI-2416（P3）/ AI-2202f（P4）/ AI-2408（P4）/ DEF-021（已決策）+ AI-1903（需環境）；活躍 DEF=0。
+
+---
 
 ### Sprint 55 (2026-07-04)
 

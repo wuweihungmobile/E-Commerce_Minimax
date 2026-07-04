@@ -84,4 +84,16 @@ public class RoomController {
         roomService.deleteRoom(listingId);
         return ResponseEntity.ok(ApiResponse.success("Room deleted successfully", null));
     }
+
+    /**
+     * 清除開放窗（Sprint 57 AI-2202f）：將 openUntilDate/bookingWindowDays 清回 null（無限制）。
+     * `updateRoom` 沿用「非 null 才更新」慣例無法清除，故另立專屬端點（比照 CartController.clearCart 模式）。
+     */
+    @DeleteMapping("/{listingId}/open-window")
+    @PreAuthorize("hasAuthority('room:update')")
+    public ResponseEntity<ApiResponse<RoomDto.Response>> clearOpenWindow(
+            @PathVariable UUID listingId) {
+        RoomDto.Response room = roomService.clearOpenWindow(listingId);
+        return ResponseEntity.ok(ApiResponse.success("Open window cleared", room));
+    }
 }

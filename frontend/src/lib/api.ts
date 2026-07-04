@@ -114,6 +114,8 @@ export const API_ENDPOINTS = {
     create: '/v2/rooms',
     update: (id: string) => '/v2/rooms/' + id,
     delete: (id: string) => '/v2/rooms/' + id,
+    // 開放窗清除（Sprint 57 AI-2202f）
+    clearOpenWindow: (id: string) => '/v2/rooms/' + id + '/open-window',
   },
 
   // Dashboard

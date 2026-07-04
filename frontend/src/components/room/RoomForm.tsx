@@ -158,6 +158,32 @@ export default function RoomForm({ roomId }: RoomFormProps) {
     }
   }
 
+  const [clearingOpenWindow, setClearingOpenWindow] = useState(false)
+
+  /**
+   * 清除開放窗（Sprint 57 AI-2202f）：清空輸入框後送出並不會清除既有值
+   * （undefined 欄位會被 JSON.stringify 省略，等同「未提供」），故編輯既有房源時
+   * 改呼叫專屬清除端點；新增房源尚未持久化，僅需清空本地表單欄位。
+   */
+  const handleClearOpenWindow = async () => {
+    if (!roomId) {
+      handleChange('openUntilDate', undefined)
+      handleChange('bookingWindowDays', undefined)
+      return
+    }
+    setClearingOpenWindow(true)
+    setGeneralError(null)
+    try {
+      await RoomService.clearOpenWindow(roomId)
+      handleChange('openUntilDate', undefined)
+      handleChange('bookingWindowDays', undefined)
+    } catch {
+      setGeneralError('清除開放窗設定失敗')
+    } finally {
+      setClearingOpenWindow(false)
+    }
+  }
+
   const handleChange = (field: keyof CreateRoomRequest, value: string | number | string[] | undefined) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
     if (errors[field as keyof FormErrors]) {
@@ -342,6 +368,19 @@ export default function RoomForm({ roomId }: RoomFormProps) {
                 <p className="text-xs text-gray-500 mt-1">開放未來 N 天（滾動）；與截止日兩者取最早生效</p>
               </div>
             </div>
+            {(formData.openUntilDate || formData.bookingWindowDays) && (
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={clearingOpenWindow}
+                  onClick={handleClearOpenWindow}
+                >
+                  {clearingOpenWindow ? '清除中...' : '清除開放窗設定（恢復無限制）'}
+                </Button>
+              </div>
+            )}
 
             <div>
               <Label htmlFor="coverImageUrl">房源圖片 URL</Label>

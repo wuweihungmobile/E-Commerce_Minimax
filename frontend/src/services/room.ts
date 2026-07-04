@@ -135,6 +135,14 @@ class RoomService {
   async deleteRoom(id: string): Promise<void> {
     await apiClient.delete(API_ENDPOINTS.rooms.delete(id))
   }
+
+  /** 清除開放窗（Sprint 57 AI-2202f）：將 openUntilDate/bookingWindowDays 皆清回無限制。 */
+  async clearOpenWindow(id: string): Promise<Room> {
+    const response = await apiClient.delete<ApiResponse<Room>>(
+      API_ENDPOINTS.rooms.clearOpenWindow(id)
+    )
+    return response.data.data
+  }
 }
 
 export default new RoomService()

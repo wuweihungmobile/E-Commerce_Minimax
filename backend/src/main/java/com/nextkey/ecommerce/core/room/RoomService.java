@@ -255,6 +255,20 @@ public class RoomService {
         }
     }
 
+    /**
+     * 清除開放窗（Sprint 57 AI-2202f）：`updateRoom` 沿用「非 null 才更新」慣例，無法把
+     * openUntilDate/bookingWindowDays 清回 NULL（無限制）；本方法一次性清除兩欄位。
+     */
+    @Transactional
+    public RoomDto.Response clearOpenWindow(final UUID listingId) {
+        Room room = findRoomByListingId(listingId);
+        room.setOpenUntilDate(null);
+        room.setBookingWindowDays(null);
+        room = roomRepository.save(room);
+        log.info("Cleared open window for room with listingId: {}", listingId);
+        return toResponse(room);
+    }
+
     @Transactional
     public void deleteRoom(final UUID listingId) {
         Room room = findRoomByListingId(listingId);

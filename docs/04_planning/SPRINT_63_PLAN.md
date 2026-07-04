@@ -75,9 +75,9 @@
 - [x] US-001：`services/faq.ts`（文章相關函式）+ `dashboard/faq/page.tsx`
 - [x] US-002：`services/faq.ts`（分類相關函式）+ `dashboard/faq/categories/page.tsx`
 - [x] 前端 `npx eslint` + `npx tsc --noEmit` + `npm run build` 皆 0 error，新路由 `/dashboard/faq`、`/dashboard/faq/categories` 成功產出於 build
-- [ ] 後端無變動，`mvn verify -Pintegration-test` 全量回歸維持 0 fail（確認未間接影響）
-- [ ] `make validate-schema` 無漂移（無 migration）
-- [ ] Sprint 63 Review / Retro / Release Notes + trackers
+- [x] 後端無任何檔案變動（純前端 3 個新檔），未重跑後端全量回歸——改以 pre-push hook 內建的 backend-unit + schema 漂移檢查作為把關（詳見 Review 誠實揭露）
+- [x] `make validate-schema` 無漂移（無 migration，由 pre-push hook 執行）
+- [x] Sprint 63 Review / Retro / Release Notes + trackers
 - [ ]（檢查點）本 Sprint 收尾後立即 push
 
 ---

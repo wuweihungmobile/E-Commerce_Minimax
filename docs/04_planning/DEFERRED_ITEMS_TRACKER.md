@@ -20,7 +20,6 @@
 |----|------|-------------|---------|---------|---------|------|
 | DEF-021 | CJK 字體品牌一致性（技術債） | Sprint 35（Turbopack 限制發現） | S35 因 Turbopack 無法 self-host next/font CJK（Noto Sans TC 大量 unicode-range 子集無法解析），改用系統 CJK 字體堆疊；系統堆疊跨平台字重/字距不一，品牌字體一致性下降。後續評估 `next/font/local` + 預先子集化 Noto Sans TC woff2 以恢復品牌字體一致性 | 需 woff2 子集化工具鏈 + 驗證 Turbopack 相容性 | 2 | ✅ 已決策（S41 US-006）：維持系統字體堆疊為 **accepted fallback**；選項 B（`@font-face` 自 host 子集 woff2，技術可行、無 CSP 阻擋）記錄為選配未來任務，待品牌一致性需求由使用者拍板。詳見 [CJK_FONT_ASSESSMENT.md](../06_quality/CJK_FONT_ASSESSMENT.md) |
 | AI-2416 | 真實金流 Phase D-2：代收後 transfer 分潤/提現 | Sprint 53（Phase D-1 拆分） | Phase D-1（本 Sprint）只做 Connect Express 帳戶 onboarding；付款成功後平台代收款項如何 transfer 給賣家（`stripe.transfer_data`/`Transfer.create`）+ 對帳/提現介面 | 需 Phase D-1 帳戶已上線（`connectOnboardingStatus=COMPLETE`）| 5+ | ⚠️ 待評估（P3）|
-| AI-2417 | 純 Mock 退款路徑與真 Stripe 退款路徑整合評估 | Sprint 56（AI-2415 部分退款探勘時發現） | `PaymentService.processRefund`（`/v2/payments/refund`，純 Mock，未接 Stripe，支援任意 amount）與 `PaymentStateService.refundOrderPayment`（`/v2/orders/{id}/refund`，真 Stripe，Sprint 56 起支援部分退款）為兩套獨立退款邏輯與 API 端點，職責重疊、行為不一致（前者未追蹤 refundedAmount 累計狀態），有維護與呼叫端混淆風險 | 需釐清兩端點各自呼叫端/用途是否仍必要並存 | 3 | ⚠️ 待評估（P4）|
 | AI-2418 | 全站 BusinessException 英文訊息碼化評估 | Sprint 58（AI-2408 探勘時發現） | `BusinessException` 建構時傳入的 `message`/`details` 全站皆為英文字面值字串（如 E_3002「Room is not open for booking on ...」），與純中文前端介面不一致；AI-2408 僅碼化 availability 單一欄位，全站規模的訊息碼化範圍未知（需先探勘有多少呼叫點、是否都有對應 ErrorCode 可複用） | 需先探勘全站 `BusinessException` 呼叫點數量與現況，評估效益/成本比是否值得投入 | 未知（需先 spike 估點）| ⚠️ 待評估（P4）|
 
 ---
@@ -66,10 +65,30 @@
 | AI-2415 | 部分退款（任意金額，運費不退）| Sprint 52（Phase C 只做全額退款） | Sprint 56 | **PO 決策**：(1) 部分退款粒度＝任意金額（非選品項）；(2) 運費不退。US-001：V63 migration `payments` 加 `refunded_amount`；`PaymentStatus` 加 `PARTIALLY_REFUNDED`；`PaymentStateService.refundOrderPayment` 擴充 `amount` 參數（null=剩餘全額向後相容，指定需正數且不超剩餘可退額度，逾越丟 `E_6009`）；累計 `refundedAmount`，達全額轉 `REFUNDED`+`Order.REFUNDED`，未達轉 `PARTIALLY_REFUNDED`（Order 狀態不變）；`OrderPaymentController`/`OrderPaymentStateDto` 同步擴充；抽 `resolveRefundAmount`/`executeStripeRefund` 兩輔助方法消 NPathComplexity。後端單元 512（新增 UT-PAY-STRIPE-008~011 + 更新 005/006）+ 真 DB 整合 419（`M07PaymentMockIntegrationTest` 不退步）全量回歸 0 fail、`make validate-schema` 無漂移（V63）。誠實：只修真 Stripe 退款路徑（`refundOrderPayment`），**未動平行的純 Mock 路徑**（`PaymentService.processRefund`，技術債現況記錄不修）；`stripeRefundId` 僅存最後一次退款 id，多次部分退款完整歷史需獨立子表（本次不做）；webhook（`charge.refunded`）路徑仍假設全額，未解析部分退款金額 |
 | AI-2202f | 開放窗清除機制 | Sprint 47（部分更新慣例限制） | Sprint 57 | **工程設計決策（非業務）**：新增專屬清除端點，不改全域 DTO 慣例。US-001：`RoomService.clearOpenWindow` 一次性將 `openUntilDate`/`bookingWindowDays` 清回 null；`RoomController` 新增 `DELETE /v2/rooms/{listingId}/open-window`（`room:update` 權限，比照既有 `CartController.clearCart` 模式）；前端 `RoomForm.tsx` 新增「清除開放窗設定」按鈕呼叫新端點（修正清空輸入框送出不會清除的誤導性行為）。後端單元新增 `RoomServiceTest`（3 tests：清除成功/不影響其他欄位/找不到房源）+ 全量單元 515 + 真 DB 整合 422 全量回歸 0 fail、`make validate-schema` 無漂移（schema-free）、前端 build 0 error。誠實：未新增 RoomController 層級 E2E 測試（專案內 Room CRUD 端點原本就無此類測試，與既有慣例一致，非本次降低覆蓋率）|
 | AI-2408 | availability reason 錯誤碼化 | Sprint 47（未開放原因為英文字串） | Sprint 58 | **工程範圍決策（非業務）**：確認前端無任何 i18n 框架、全站純中文介面，不導入完整多語系框架，改採最小方案。US-001：`BookingDto` 新增 `AvailabilityReasonCode` enum（`INVALID_DATE_RANGE`/`NOT_OPEN_FOR_BOOKING`/`BOOKED`/`BLOCKED`/`MAINTENANCE`）；`BookingService.checkAvailability` 三處 `unavailableReason` 賦值改用 code（`RoomCalendarStatus` 三態與 code 同名，直接 `.name()`）；前端 `ListingDetail.tsx` 新增 code→中文訊息對照表，查無對應 code 時原樣顯示（向後相容）。後端單元 515（修正 `BookingServiceOpenWindowTest` 舊字串斷言）+ 真 DB 整合 422（`BookingControllerE2ETest` 21 tests，更新舊斷言）全量回歸 0 fail、`make validate-schema` 無漂移（schema-free）、前端 tsc/eslint/build 0 error（`at-room-booking.spec.ts` 同步更新 mock/斷言）。誠實：只碼化 `checkAvailability` 回傳欄位，建單/改期超窗拋出的 `BusinessException(E_3002)` 例外訊息不在本次範圍（全站 BusinessException 訊息一律英文的更大範圍問題）；開發-編譯-測試循環於全量回歸階段攔截到 `BookingServiceOpenWindowTest` 遺漏更新的舊字串斷言 |
+| AI-2417 | 退款路徑整合評估 | Sprint 56（AI-2415 部分退款探勘時發現） | Sprint 59 | **Spike，不改 production code**。產出決策文件 `REFUND_PATH_CONSOLIDATION_ASSESSMENT.md`：確認 `PaymentService`（Mock，涵蓋 Order+Booking）與 `PaymentStateService`（僅 Order，真 Stripe）是整個服務類別層級平行，非單一方法重複；關鍵發現這不是意外重複，而是 Sprint 49 金流真實化計畫自始只涵蓋 Order、從未觸及 Booking 的既定範圍；確認兩條退款路徑**目前皆無前端呼叫端**（僅後端測試涵蓋）；另發現 Mock 路徑的部分退款未同步 `refundedAmount`/`PARTIALLY_REFUNDED` 狀態的潛在資料不一致陷阱（無實際風險因無呼叫端）。結論**維持現狀**（選項 A）：整合/刪除任一方屬無需求驅動的臆測性變更；若未來要讓 Booking 也走真實 Stripe，屬於擴大金流範圍的新功能決策（估 15+ SP），需 PO 評估優先級，非本次技術債清理範疇 |
+
 
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 59 (2026-07-04)
+
+**主題**: 退款路徑整合評估（3 SP，US-001 完成，Spike）
+
+**完成**:
+- **AI-2417 → ✅ 完成（US-001，Spike）**：詳見「已完成延後項目」表格。產出 `docs/06_quality/REFUND_PATH_CONSOLIDATION_ASSESSMENT.md`，結論維持現狀，不改 production code。
+
+**驗證**:
+- 純文件產出，不動 code；catch(Exception)/@Deprecated=0；schema-free。
+- 誠實：spike 型（決策文件非可運行功能，SP 偏輕）；發現的「Booking 從未有真實 Stripe」現況為既有事實而非新缺陷，不代表需要立即行動。
+
+**下一 Sprint 候選**:
+- AI-2418（全站 BusinessException 英文訊息碼化評估，P4）、AI-2416（P3，需 Phase D-1 正式上線）、AI-1903（需 live 環境）。
+
+**里程碑**：**退款路徑重疊已釐清為既定範圍而非技術債意外**。活躍延後：AI-2418（P4）/ AI-2416（P3，需環境）+ AI-1903（需環境）；活躍 DEF=0。
+
+---
 
 ### Sprint 58 (2026-07-04)
 

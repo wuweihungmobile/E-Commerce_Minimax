@@ -86,16 +86,40 @@ public class AdminService {
      */
     @Transactional(readOnly = true)
     public AdminDto.TenantListResponse getTenants(int page, int size) {
-        // Mock implementation - return all tenants
-        List<Tenant> tenants = tenantRepository.findAll();
+        return getTenants(page, size, null, null);
+    }
 
-        List<AdminDto.TenantResponse> tenantResponses = tenants.stream()
+    /**
+     * 取得租戶列表 (平台管理員)，支援 status/關鍵字（name/slug）篩選 + 真分頁（Sprint 64 修正）。
+     * 修正前 page/size 參數未被使用，實際上是 findAll() 取回全部資料後才在記憶體組裝分頁回應。
+     */
+    @Transactional(readOnly = true)
+    public AdminDto.TenantListResponse getTenants(int page, int size, Tenant.TenantStatus status, String keyword) {
+        Specification<Tenant> spec = Specification.where(null);
+        if (status != null) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("status"), status));
+        }
+        if (keyword != null && !keyword.isBlank()) {
+            String pattern = "%" + keyword.trim().toLowerCase() + "%";
+            spec = spec.and((root, query, cb) -> cb.or(
+                    cb.like(cb.lower(root.get("name")), pattern),
+                    cb.like(cb.lower(root.get("slug")), pattern)));
+        }
+
+        Page<Tenant> result = tenantRepository.findAll(
+                spec, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+
+        List<AdminDto.TenantResponse> tenantResponses = result.getContent().stream()
                 .map(this::toTenantResponse)
                 .collect(Collectors.toList());
 
         return AdminDto.TenantListResponse.builder()
                 .tenants(tenantResponses)
-                .totalCount(tenantResponses.size())
+                .totalCount((int) result.getTotalElements())
+                .page(page)
+                .size(size)
+                .totalElements(result.getTotalElements())
+                .totalPages(result.getTotalPages())
                 .build();
     }
 
@@ -360,27 +384,47 @@ public class AdminService {
      */
     @Transactional(readOnly = true)
     public AdminDto.UserListResponse getUsers(int page, int size, UUID tenantId, String role) {
-        List<User> users;
+        return getUsers(page, size, tenantId, role, null, null);
+    }
 
+    /**
+     * 取得用戶列表 (平台管理員)，支援 status/關鍵字（email/fullName）篩選 + 真分頁（Sprint 64 修正）。
+     * 修正前 page/size 參數未被使用，實際上是取回全部資料後才在記憶體組裝分頁回應。
+     */
+    @Transactional(readOnly = true)
+    public AdminDto.UserListResponse getUsers(int page, int size, UUID tenantId, String role,
+                                               String status, String keyword) {
+        Specification<User> spec = Specification.where(null);
         if (tenantId != null) {
-            users = userRepository.findByTenantId(tenantId);
-        } else {
-            users = userRepository.findAll();
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("tenantId"), tenantId));
         }
-
         if (role != null && !role.isBlank()) {
-            users = users.stream()
-                    .filter(u -> u.getRole().name().equals(role))
-                    .collect(Collectors.toList());
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("role"), User.UserRole.valueOf(role)));
+        }
+        if (status != null && !status.isBlank()) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("status"), status));
+        }
+        if (keyword != null && !keyword.isBlank()) {
+            String pattern = "%" + keyword.trim().toLowerCase() + "%";
+            spec = spec.and((root, query, cb) -> cb.or(
+                    cb.like(cb.lower(root.get("email")), pattern),
+                    cb.like(cb.lower(root.get("fullName")), pattern)));
         }
 
-        List<AdminDto.UserManagementResponse> userResponses = users.stream()
+        Page<User> result = userRepository.findAll(
+                spec, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+
+        List<AdminDto.UserManagementResponse> userResponses = result.getContent().stream()
                 .map(this::toUserManagementResponse)
                 .collect(Collectors.toList());
 
         return AdminDto.UserListResponse.builder()
                 .users(userResponses)
-                .totalCount(userResponses.size())
+                .totalCount((int) result.getTotalElements())
+                .page(page)
+                .size(size)
+                .totalElements(result.getTotalElements())
+                .totalPages(result.getTotalPages())
                 .build();
     }
 

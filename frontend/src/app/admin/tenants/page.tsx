@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Pagination } from '@/components/ui/pagination'
 import apiClient from '@/lib/axios'
 
 // Tenant interface - matches actual API response
@@ -30,24 +30,58 @@ interface ApiResponse<T> {
 interface TenantListResponse {
   tenants: Tenant[]
   totalCount: number
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
 }
 
+type FilterTab = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'
+
+const FILTER_TO_STATUS: Record<FilterTab, Tenant['status'] | undefined> = {
+  ALL: undefined,
+  PENDING: 'PENDING_REVIEW',
+  APPROVED: 'ACTIVE',
+  REJECTED: 'TERMINATED',
+}
+
+const PAGE_SIZE = 20
+
 export default function AdminTenantListPage() {
-  const router = useRouter()
   const [tenants, setTenants] = useState<Tenant[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL')
+  const [filter, setFilter] = useState<FilterTab>('ALL')
+  const [keyword, setKeyword] = useState('')
+  const [currentPage, setCurrentPage] = useState(1) // 1-based，供 Pagination 元件使用
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalElements, setTotalElements] = useState(0)
+  // 各分頁籤的數量，伺服器端篩選下需分別查詢才能同時顯示
+  const [tabCounts, setTabCounts] = useState<Record<FilterTab, number>>({
+    ALL: 0,
+    PENDING: 0,
+    APPROVED: 0,
+    REJECTED: 0,
+  })
 
-  const fetchTenants = async () => {
+  const fetchTenants = useCallback(async (page: number) => {
     setLoading(true)
     setError(null)
 
     try {
-      const response = await apiClient.get<ApiResponse<TenantListResponse>>(
-        '/v2/admin/tenants?page=0&size=50'
-      )
-      setTenants(response.data.data?.tenants || [])
+      const params: Record<string, string | number> = {
+        page: page - 1, // 後端 page 為 0-based
+        size: PAGE_SIZE,
+      }
+      const status = FILTER_TO_STATUS[filter]
+      if (status) params.status = status
+      if (keyword) params.keyword = keyword
+
+      const response = await apiClient.get<ApiResponse<TenantListResponse>>('/v2/admin/tenants', { params })
+      const data = response.data.data
+      setTenants(data?.tenants || [])
+      setTotalPages(data?.totalPages || 1)
+      setTotalElements(data?.totalElements ?? data?.totalCount ?? 0)
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { message?: string } } }
@@ -58,11 +92,49 @@ export default function AdminTenantListPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filter, keyword])
+
+  const fetchTabCounts = useCallback(async () => {
+    try {
+      const tabs: FilterTab[] = ['ALL', 'PENDING', 'APPROVED', 'REJECTED']
+      const results = await Promise.all(
+        tabs.map((tab) => {
+          const status = FILTER_TO_STATUS[tab]
+          const params: Record<string, string | number> = { page: 0, size: 1 }
+          if (status) params.status = status
+          return apiClient.get<ApiResponse<TenantListResponse>>('/v2/admin/tenants', { params })
+        })
+      )
+      const counts = {} as Record<FilterTab, number>
+      tabs.forEach((tab, i) => {
+        const data = results[i].data.data
+        counts[tab] = data?.totalElements ?? data?.totalCount ?? 0
+      })
+      setTabCounts(counts)
+    } catch (err) {
+      console.error('Failed to load tab counts:', err)
+    }
+  }, [])
 
   useEffect(() => {
-    fetchTenants()
+    fetchTabCounts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    fetchTenants(currentPage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, filter, keyword])
+
+  const handleFilterChange = (tab: FilterTab) => {
+    setFilter(tab)
+    setCurrentPage(1)
+  }
+
+  const refresh = () => {
+    fetchTenants(currentPage)
+    fetchTabCounts()
+  }
 
   const getStatusBadge = (status: Tenant['status']) => {
     const statusConfig: Record<Tenant['status'], { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline'; label: string }> = {
@@ -75,31 +147,13 @@ export default function AdminTenantListPage() {
     return <Badge variant={config.variant}>{config.label}</Badge>
   }
 
-  const filteredTenants = tenants.filter((tenant) => {
-    if (filter === 'ALL') return true
-    if (filter === 'PENDING') return tenant.status === 'PENDING_REVIEW'
-    if (filter === 'APPROVED') return tenant.status === 'ACTIVE'
-    if (filter === 'REJECTED') return tenant.status === 'TERMINATED'
-    return true
-  })
-
-  const pendingCount = tenants.filter(t => t.status === 'PENDING_REVIEW').length
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
-      </div>
-    )
-  }
-
   if (error) {
     return (
       <div className="space-y-4">
         <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md">
           {error}
         </div>
-        <Button variant="outline" onClick={fetchTenants}>
+        <Button variant="outline" onClick={refresh}>
           重試
         </Button>
       </div>
@@ -113,14 +167,14 @@ export default function AdminTenantListPage() {
         <div>
           <h1 className="text-2xl font-bold">店鋪管理</h1>
           <p className="text-muted-foreground">
-            {pendingCount > 0 ? (
-              <span className="text-warning">有待審核店鋪 {pendingCount} 間</span>
+            {tabCounts.PENDING > 0 ? (
+              <span className="text-warning">有待審核店鋪 {tabCounts.PENDING} 間</span>
             ) : (
               '目前無待審核店鋪'
             )}
           </p>
         </div>
-        <Button variant="outline" onClick={fetchTenants}>
+        <Button variant="outline" onClick={refresh}>
           重新整理
         </Button>
       </div>
@@ -130,35 +184,54 @@ export default function AdminTenantListPage() {
         <Button
           variant={filter === 'ALL' ? 'default' : 'outline'}
           size="sm"
-          onClick={() => setFilter('ALL')}
+          onClick={() => handleFilterChange('ALL')}
         >
-          全部 ({tenants.length})
+          全部 ({tabCounts.ALL})
         </Button>
         <Button
           variant={filter === 'PENDING' ? 'default' : 'outline'}
           size="sm"
-          onClick={() => setFilter('PENDING')}
+          onClick={() => handleFilterChange('PENDING')}
         >
-          審核中 ({pendingCount})
+          審核中 ({tabCounts.PENDING})
         </Button>
         <Button
           variant={filter === 'APPROVED' ? 'default' : 'outline'}
           size="sm"
-          onClick={() => setFilter('APPROVED')}
+          onClick={() => handleFilterChange('APPROVED')}
         >
-          已核准 ({tenants.filter(t => t.status === 'ACTIVE').length})
+          已核准 ({tabCounts.APPROVED})
         </Button>
         <Button
           variant={filter === 'REJECTED' ? 'default' : 'outline'}
           size="sm"
-          onClick={() => setFilter('REJECTED')}
+          onClick={() => handleFilterChange('REJECTED')}
         >
-          已拒絕 ({tenants.filter(t => t.status === 'TERMINATED').length})
+          已拒絕 ({tabCounts.REJECTED})
         </Button>
       </div>
 
+      {/* Keyword Search */}
+      <div className="flex gap-2 items-end">
+        <div className="flex-1 max-w-xs">
+          <label className="text-sm text-muted-foreground mb-1 block">搜尋店鋪名稱</label>
+          <Input
+            placeholder="輸入店鋪名稱或 slug"
+            value={keyword}
+            onChange={(e) => {
+              setKeyword(e.target.value)
+              setCurrentPage(1)
+            }}
+          />
+        </div>
+      </div>
+
       {/* Tenant List */}
-      {filteredTenants.length === 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="text-gray-500">載入中...</div>
+        </div>
+      ) : tenants.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-48">
             <p className="text-gray-500 mb-4">
@@ -168,7 +241,7 @@ export default function AdminTenantListPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {filteredTenants.map((tenant) => (
+          {tenants.map((tenant) => (
             <Card key={tenant.tenantId} className={tenant.status === 'PENDING_REVIEW' ? 'border-warning' : ''}>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -200,6 +273,11 @@ export default function AdminTenantListPage() {
           ))}
         </div>
       )}
+
+      {totalElements > 0 && (
+        <p className="text-sm text-muted-foreground text-center">共 {totalElements} 間店鋪</p>
+      )}
+      <Pagination current={currentPage} total={totalPages} onChange={setCurrentPage} />
     </div>
   )
 }

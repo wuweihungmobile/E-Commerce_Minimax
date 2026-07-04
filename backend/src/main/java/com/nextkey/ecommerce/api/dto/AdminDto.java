@@ -39,6 +39,10 @@ public class AdminDto {
     public static class TenantListResponse {
         private List<TenantResponse> tenants;
         private int totalCount;
+        private int page;
+        private int size;
+        private long totalElements;
+        private int totalPages;
     }
 
     // ========== User Management ==========
@@ -66,6 +70,10 @@ public class AdminDto {
     public static class UserListResponse {
         private List<UserManagementResponse> users;
         private int totalCount;
+        private int page;
+        private int size;
+        private long totalElements;
+        private int totalPages;
     }
 
     // ========== Feature Toggle ==========

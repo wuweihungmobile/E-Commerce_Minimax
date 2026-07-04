@@ -49,8 +49,10 @@ public class AdminController {
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<AdminDto.TenantListResponse>> getTenants(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        AdminDto.TenantListResponse response = adminService.getTenants(page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) com.nextkey.ecommerce.domain.model.tenant.Tenant.TenantStatus status,
+            @RequestParam(required = false) String keyword) {
+        AdminDto.TenantListResponse response = adminService.getTenants(page, size, status, keyword);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -129,8 +131,10 @@ public class AdminController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) UUID tenantId,
-            @RequestParam(required = false) String role) {
-        AdminDto.UserListResponse response = adminService.getUsers(page, size, tenantId, role);
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword) {
+        AdminDto.UserListResponse response = adminService.getUsers(page, size, tenantId, role, status, keyword);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

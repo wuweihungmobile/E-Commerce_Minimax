@@ -33,7 +33,7 @@
 
 ### US-001：AdminService.getTenants 真分頁化 + 篩選
 
-> **SP**: 5 | **優先級**: P2 | **狀態**: 🔲 待開始
+> **SP**: 5 | **優先級**: P2 | **狀態**: ✅ 完成
 
 **AC-001-1**: `AdminService.getTenants` 改用 `TenantRepository`（新增 `JpaSpecificationExecutor<Tenant>`）搭配 `Specification` 動態組合 `status`（可選）與 `keyword`（可選，比對 `name`/`slug`）篩選，並以 `PageRequest.of(page, size)` 做真正的資料庫分頁。
 
@@ -47,7 +47,7 @@
 
 ### US-002：AdminService.getUsers 真分頁化 + 篩選
 
-> **SP**: 3 | **優先級**: P2 | **狀態**: 🔲 待開始
+> **SP**: 3 | **優先級**: P2 | **狀態**: ✅ 完成
 
 **AC-002-1**: `AdminService.getUsers` 改用 `UserRepository`（新增 `JpaSpecificationExecutor<User>`）搭配 `Specification` 動態組合既有 `tenantId`/`role` 篩選 + 新增 `status`/關鍵字（比對 `email`/`fullName`）篩選，並以 `PageRequest.of(page, size)` 做真正分頁。
 
@@ -71,11 +71,11 @@
 
 ## 4. Definition of Done
 
-- [ ] US-001：`getTenants` 真分頁化 + 篩選 + 前端 `admin/tenants/page.tsx` 改伺服器端篩選
-- [ ] US-002：`getUsers` 真分頁化 + 篩選
+- [x] US-001：`getTenants` 真分頁化 + 篩選 + 前端 `admin/tenants/page.tsx` 改伺服器端篩選
+- [x] US-002：`getUsers` 真分頁化 + 篩選
 - [ ] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）0 fail
 - [ ] `make validate-schema` 無漂移（本 Sprint 無新 migration）
-- [ ] 前端 lint/tsc/build 0 error
+- [x] 前端 lint/tsc/build 0 error
 - [ ] Sprint 64 Review / Retro / Release Notes + trackers
 - [ ]（檢查點）本 Sprint 收尾後立即 push
 

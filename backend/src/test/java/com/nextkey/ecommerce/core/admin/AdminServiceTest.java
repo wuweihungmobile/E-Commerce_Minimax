@@ -338,7 +338,10 @@ class AdminServiceTest {
                     .status(Tenant.TenantStatus.ACTIVE)
                     .build();
 
-            when(tenantRepository.findAll()).thenReturn(java.util.List.of(tenant1, tenant2));
+            when(tenantRepository.findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<Tenant>>any(),
+                    any(org.springframework.data.domain.Pageable.class)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(tenant1, tenant2)));
             when(userRepository.findByTenantId(any())).thenReturn(java.util.Collections.emptyList());
             when(listingRepository.findIdsByTenantId(any())).thenReturn(java.util.Collections.emptyList());
 
@@ -355,7 +358,10 @@ class AdminServiceTest {
         @DisplayName("getTenants_emptyList_returnsEmptyResponse")
         void getTenants_emptyList_returnsEmptyResponse() {
             // Arrange
-            when(tenantRepository.findAll()).thenReturn(java.util.Collections.emptyList());
+            when(tenantRepository.findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<Tenant>>any(),
+                    any(org.springframework.data.domain.Pageable.class)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.Collections.emptyList()));
 
             // Act
             AdminDto.TenantListResponse response = adminService.getTenants(0, 10);
@@ -363,6 +369,29 @@ class AdminServiceTest {
             // Assert
             assertThat(response.getTotalCount()).isEqualTo(0);
             assertThat(response.getTenants()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("getTenants_withStatusAndKeyword_returnsPagedResult")
+        void getTenants_withStatusAndKeyword_returnsPagedResult() {
+            Tenant tenant = buildTenant();
+            when(tenantRepository.findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<Tenant>>any(),
+                    any(org.springframework.data.domain.Pageable.class)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(
+                            java.util.List.of(tenant),
+                            org.springframework.data.domain.PageRequest.of(1, 5), 11));
+            when(userRepository.findByTenantId(any())).thenReturn(java.util.Collections.emptyList());
+            when(listingRepository.findIdsByTenantId(any())).thenReturn(java.util.Collections.emptyList());
+
+            AdminDto.TenantListResponse response =
+                    adminService.getTenants(1, 5, Tenant.TenantStatus.ACTIVE, "test");
+
+            assertThat(response.getTenants()).hasSize(1);
+            assertThat(response.getPage()).isEqualTo(1);
+            assertThat(response.getSize()).isEqualTo(5);
+            assertThat(response.getTotalElements()).isEqualTo(11);
+            assertThat(response.getTotalPages()).isEqualTo(3);
         }
     }
 
@@ -451,6 +480,77 @@ class AdminServiceTest {
 
             // Assert
             verify(featureToggleRepository).deleteByTenantIdAndFeatureKey(TEST_TENANT_ID, "SOME_FEATURE");
+        }
+    }
+
+    // ── getUsers Tests（Sprint 64 US-002）────────────────────────────────
+
+    @Nested
+    @DisplayName("getUsers()")
+    class GetUsers {
+
+        private com.nextkey.ecommerce.domain.model.user.User buildUser(String email, String fullName) {
+            return com.nextkey.ecommerce.domain.model.user.User.builder()
+                    .id(UUID.randomUUID())
+                    .email(email)
+                    .fullName(fullName)
+                    .role(com.nextkey.ecommerce.domain.model.user.User.UserRole.BUYER)
+                    .status("ACTIVE")
+                    .build();
+        }
+
+        @Test
+        @DisplayName("getUsers_returnsPagedResult")
+        void getUsers_returnsPagedResult() {
+            com.nextkey.ecommerce.domain.model.user.User user = buildUser("buyer@example.com", "Buyer One");
+            when(userRepository.findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<
+                            com.nextkey.ecommerce.domain.model.user.User>>any(),
+                    any(org.springframework.data.domain.Pageable.class)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(user)));
+
+            AdminDto.UserListResponse response = adminService.getUsers(0, 20, null, null);
+
+            assertThat(response.getUsers()).hasSize(1);
+            assertThat(response.getUsers().get(0).getEmail()).isEqualTo("buyer@example.com");
+            assertThat(response.getTotalElements()).isEqualTo(1);
+            assertThat(response.getPage()).isEqualTo(0);
+            assertThat(response.getSize()).isEqualTo(20);
+        }
+
+        @Test
+        @DisplayName("getUsers_withStatusAndKeywordFilters_returnsPagedResult")
+        void getUsers_withStatusAndKeywordFilters_returnsPagedResult() {
+            when(userRepository.findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<
+                            com.nextkey.ecommerce.domain.model.user.User>>any(),
+                    any(org.springframework.data.domain.Pageable.class)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(
+                            java.util.List.of(),
+                            org.springframework.data.domain.PageRequest.of(2, 10), 25));
+
+            AdminDto.UserListResponse response =
+                    adminService.getUsers(2, 10, TEST_TENANT_ID, "SELLER", "ACTIVE", "buyer");
+
+            assertThat(response.getUsers()).isEmpty();
+            assertThat(response.getPage()).isEqualTo(2);
+            assertThat(response.getTotalElements()).isEqualTo(25);
+            assertThat(response.getTotalPages()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("getUsers_noResults_returnsEmptyList")
+        void getUsers_noResults_returnsEmptyList() {
+            when(userRepository.findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<
+                            com.nextkey.ecommerce.domain.model.user.User>>any(),
+                    any(org.springframework.data.domain.Pageable.class)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.Collections.emptyList()));
+
+            AdminDto.UserListResponse response = adminService.getUsers(0, 20, null, null);
+
+            assertThat(response.getUsers()).isEmpty();
+            assertThat(response.getTotalElements()).isEqualTo(0);
         }
     }
 

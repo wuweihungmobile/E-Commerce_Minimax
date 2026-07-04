@@ -12,7 +12,8 @@
 #   2. Redis 改用 image-level 設定
 #   3. PostgreSQL 改用 postgres:18-alpine（與 docker-compose 一致）
 #   4. 不需要 secrets, GITHUB_TOKEN 等
-#   5. backend-unit → backend-integration → frontend 依序執行以減少記憶體消耗（OOM 問題）
+#   5. backend-unit 先跑；backend-integration 與 frontend 皆只依賴 backend-unit，
+#      雲端上可平行執行（各自獨立 runner，無 OOM 疑慮）
 # =============================================
 
 name: Local CI (act-compatible)
@@ -250,13 +251,19 @@ jobs:
 
   # =============================================
   # Frontend: Lint + Type Check + Build
-  # (依賴 Backend Integration 完成，串行執行以減少記憶體消耗)
+  # 🔴 2026-07-04 修正：needs 改回 [backend-unit]（非 backend-integration）。
+  #    發現：act 對 `-j <job>` 會遞迴解析並執行整條 needs 鏈——`act -j frontend`
+  #    （被 make validate-fast/validate-push 呼叫）因 needs: [backend-integration]
+  #    連帶跑了本該只在雲端跑的 backend-integration（25+ 分鐘），完全違背 pre-push
+  #    輕量守門的設計初衷（兩次 validate-push 實測皆證實此問題，直到 push 時才發現）。
+  #    frontend 與 backend-integration 本無資料依賴，雲端上兩者可平行跑（各自獨立
+  #    runner，無 OOM 疑慮），只需都基於 backend-unit 通過即可。
   # =============================================
   frontend:
     name: Frontend Lint & Build
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [backend-integration]
+    needs: [backend-unit]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

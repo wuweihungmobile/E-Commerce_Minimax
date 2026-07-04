@@ -169,10 +169,10 @@ validate-all: ## 完整 CI 模擬驗證（act） - 本機最完整檢查
 		exit 1; \
 	fi
 
-validate-fast: ## 快速 CI 模擬（僅 backend + frontend）
+validate-fast: ## 快速 CI 模擬（僅 backend-unit + frontend，不含 backend-integration）
 	@echo "$(YELLOW)⚡ 快速 CI 模擬...$(NC)"
 	@cd /Users/wuweihong/Cursor_Project/E-Commerce_Minimax && \
-	if act -W .github/workflows/act-compat.yml -j backend && \
+	if act -W .github/workflows/act-compat.yml -j backend-unit && \
 	   act -W .github/workflows/act-compat.yml -j frontend; then \
 		CURRENT_COMMIT=$$(git rev-parse HEAD); \
 		VALIDATED_TIME=$$(date '+%Y-%m-%d %H:%M:%S'); \
@@ -191,9 +191,10 @@ validate-fast: ## 快速 CI 模擬（僅 backend + frontend）
 		exit 1; \
 	fi
 
-validate-backend: ## 僅驗證 backend（act）
+validate-backend: ## 僅驗證 backend（act，unit + integration 兩個 job）
 	@echo "$(YELLOW)🔨 驗證 backend...$(NC)"
-	act -W .github/workflows/act-compat.yml -j backend
+	act -W .github/workflows/act-compat.yml -j backend-unit
+	act -W .github/workflows/act-compat.yml -j backend-integration
 
 validate-frontend: ## 僅驗證 frontend（act）
 	@echo "$(YELLOW)🎨 驗證 frontend...$(NC)"
@@ -210,7 +211,14 @@ validate-e2e: ## 本地 E2E 守門：乾淨 DB → Flyway 重建 → 全棧(host
 	@echo "$(YELLOW)🎭 本地 E2E 守門（複製雲端 e2e job：host 程序 + 乾淨 DB + Playwright）...$(NC)"
 	@./scripts/validate-e2e.sh
 
-validate-release: ## 完整測試程序（= pre-push 守門 = 雲端 ci.yml）：自動 test-db-down → act（backend+frontend）+ schema 漂移 + E2E；寫 FULL 記錄供 30 分內 push 直接放行
+validate-push: ## pre-push 輕量守門（2026-07-04 起）：backend-unit（act）+ schema 漂移 + frontend 快檢，約 8-12 分鐘；完整 backend-integration/E2E 交給雲端 push 觸發
+	@echo "$(YELLOW)🚦 pre-push 輕量守門（完整整合測試已改由雲端 push 觸發，見 act-compat.yml on: push 說明）...$(NC)"
+	@$(MAKE) test-db-down
+	@$(MAKE) validate-fast
+	@$(MAKE) validate-schema
+	@echo "$(GREEN)✅ 輕量守門通過！push 後雲端會自動執行完整 backend-integration + frontend job（act-compat.yml）$(NC)"
+
+validate-release: ## 完整測試程序（雲端等價，供手動全量確認用）：自動 test-db-down → act（backend-unit+backend-integration+frontend）+ schema 漂移 + E2E；寫 FULL 記錄
 	@echo "$(YELLOW)🚦 完整測試程序（等價雲端 ci.yml；pre-push 守門與部署前共用）...$(NC)"
 	@echo "$(YELLOW)   先自動停用 test DB（釋放 :5432/:6379 給 act 服務容器，制度化消除 AI-2301 port 衝突）...$(NC)"
 	@$(MAKE) test-db-down

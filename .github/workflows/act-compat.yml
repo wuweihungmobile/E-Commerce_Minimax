@@ -1,7 +1,7 @@
 # =============================================
 # Local CI (act-compatible)
 # AISDLC v0.09 - Stage 8 Development Preparation
-# 用途：本機使用 act 工具模擬 GitHub Actions CI 流程
+# 用途：本機使用 act 工具模擬 GitHub Actions CI 流程，亦作為雲端 push 的完整驗證
 # 執行：act -W .github/workflows/act-compat.yml
 # =============================================
 # 重點修正：
@@ -12,15 +12,23 @@
 #   2. Redis 改用 image-level 設定
 #   3. PostgreSQL 改用 postgres:18-alpine（與 docker-compose 一致）
 #   4. 不需要 secrets, GITHUB_TOKEN 等
-#   5. Backend/Frontend 串行執行以減少記憶體消耗（OOM 問題）
+#   5. backend-unit → backend-integration → frontend 依序執行以減少記憶體消耗（OOM 問題）
 # =============================================
 
 name: Local CI (act-compatible)
 
-# 🔴 2026-06-30：本檔僅供「本地 act」使用（make validate-* / pre-push hook 以 -W 指定本檔執行）。
-# 改為僅 workflow_dispatch、移除 push/pull_request 自動觸發 → private repo 不再為這個「本地鏡像」浪費雲端 Actions 額度。
-# 本地 act 以 `act -W .github/workflows/act-compat.yml` 指定單檔執行，會無視 on: 事件過濾，故不受影響（已實測）。
-on: [workflow_dispatch]
+# 🔴 2026-07-04：重新啟用 push（僅 main）。背景：
+#   - 2026-06-30 曾為省 private repo Actions 額度改成僅 workflow_dispatch，push 完全不上雲端，
+#     但代價是「完整測試程序」全部壓在本地 4 核/8GB 機器跑 pre-push（25-35 分鐘、有 OOM 風險）。
+#   - push 頻率已受控（commit 勤、push 以 Sprint 收尾為單位，非当初帳單出事時的高頻重推），
+#     加上本地已先跑過輕量守門（backend-unit + validate-schema + frontend lint/type-check），
+#     雲端這次 push 大概率一次過，帳單風險應遠低於 2026-05 那次 20+ 次失敗重推。
+#   - 本檔不含部署 job（deploy-staging/production 在 ci.yml，未重新啟用 push，維持手動觸發)。
+# 本地 act 以 `act -W .github/workflows/act-compat.yml` 指定單檔執行，會無視 on: 事件過濾，不受影響。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: local-ci-${{ github.ref }}
@@ -33,12 +41,14 @@ env:
 
 jobs:
   # =============================================
-  # Backend: 完整建置 + 測試（含 PostgreSQL + Redis）
+  # Backend Unit：checkstyle + compile + surefire 單元測試（不含 failsafe 整合測試）
+  # 🔴 2026-07-04 新拆分：本地 pre-push 輕量守門只跑這個 job（約 5-8 分鐘）；
+  #    完整的 failsafe 整合測試（backend-integration）交給雲端跑，見上方 on: push 說明。
   # =============================================
-  backend:
-    name: Backend Build & Test
+  backend-unit:
+    name: Backend Unit Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 12
     services:
       postgres:
         image: postgres:18-alpine
@@ -134,6 +144,98 @@ jobs:
           mvn test -Dspring.profiles.active=test -q
         continue-on-error: false
 
+  # =============================================
+  # Backend Integration：failsafe 整合測試 + package（不含在本地 pre-push 輕量守門內）
+  # 🔴 2026-07-04 新拆分：這個 job 較慢（約 20-25 分鐘，41 支整合測試類別每支重啟 Spring
+  #    Context），本地不再於 pre-push 跑，改由雲端 push 觸發時執行。需要本地驗證時仍可手動：
+  #    act -W .github/workflows/act-compat.yml -j backend-integration
+  # =============================================
+  backend-integration:
+    name: Backend Integration Tests & Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [backend-unit]
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: koala
+          POSTGRES_PASSWORD: koala5
+          POSTGRES_DB: nextkeytest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U koala -d nextkeytest"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 5s
+
+      redis:
+        image: redis:7-alpine
+        env:
+          REDIS_PASSWORD: redis-dev-password
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli -a redis-dev-password --no-auth-warning ping | grep -q PONG"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 5s
+
+    env:
+      SPRING_PROFILES_ACTIVE: integration-test
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/nextkeytest
+      SPRING_DATASOURCE_USERNAME: koala
+      SPRING_DATASOURCE_PASSWORD: koala5
+      SPRING_DATA_REDIS_HOST: localhost
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: redis-dev-password
+      REDIS_PASSWORD: redis-dev-password
+      JWT_SECRET: testSecretKeyForJwtTokenGenerationThatIsAtLeast256BitsLongForTesting
+      JWT_ACCESS_TOKEN_EXPIRATION: 900000
+      JWT_REFRESH_TOKEN_EXPIRATION: 2592000000
+      SPRING_TEST_ENV: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+
+      - name: Install Build Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq maven postgresql-client redis-tools
+          mvn --version
+          psql --version
+          redis-cli --version
+
+      - name: Verify Service Connections
+        run: |
+          echo "=== Test PostgreSQL ==="
+          PGPASSWORD=koala5 psql -h localhost -U koala -d nextkeytest -c "SELECT 1;" || exit 1
+          echo "=== Test Redis ==="
+          redis-cli -h localhost -a redis-dev-password --no-auth-warning ping | grep -q PONG || exit 1
+          echo "All services are healthy"
+
+      - name: Reset Database (Avoid duplicate key errors)
+        run: |
+          echo "=== Resetting Database ==="
+          PGPASSWORD=koala5 psql -h localhost -U koala -d postgres -c "DROP DATABASE IF EXISTS nextkeytest;"
+          PGPASSWORD=koala5 psql -h localhost -U koala -d postgres -c "CREATE DATABASE nextkeytest;"
+          echo "=== Database Reset Complete ==="
+
+      - name: Compile Backend
+        run: |
+          cd backend
+          mvn clean compile -DskipTests -q
+
       # Integration + E2E tests（Failsafe 自動只跑 E2E/Integration）
       - name: Run Integration Tests
         run: |
@@ -148,13 +250,13 @@ jobs:
 
   # =============================================
   # Frontend: Lint + Type Check + Build
-  # (依賴 Backend 完成，串行執行以減少記憶體消耗)
+  # (依賴 Backend Integration 完成，串行執行以減少記憶體消耗)
   # =============================================
   frontend:
     name: Frontend Lint & Build
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [backend]
+    needs: [backend-integration]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -366,7 +366,7 @@ class AdminControllerE2ETest {
                     .statusCode(400)
                     .body("success", is(false))
                     .body("code", equalTo("E-2005"))
-                    .body("message", containsString("Tenant status is not PENDING_REVIEW"));
+                    .body("message", containsString("待審核"));
 
             System.out.println("✅ API-M17-007-03 PASSED: 非 PENDING 狀態審核正確返回 400");
         } finally {

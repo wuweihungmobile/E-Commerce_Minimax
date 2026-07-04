@@ -401,7 +401,7 @@ class OrderControllerE2ETest {
                 .then()
                 .statusCode(422) // 業務邏輯拒絕，而非權限不足
                 .body("code", equalTo("E-5001"))
-                .body("message", containsString("Cannot transition from CREATED to CONFIRMED"));
+                .body("message", containsString("無效的訂單狀態"));
 
         System.out.println("✅ API-M06-007 PASSED: BUYER 無法將 CREATED 直接轉換為 CONFIRMED");
     }

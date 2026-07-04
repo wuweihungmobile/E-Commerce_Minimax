@@ -31,7 +31,7 @@ public class GlobalExceptionHandler {
         HttpStatus status = mapErrorCodeToStatus(ex.getErrorCode());
 
         return ResponseEntity.status(status)
-                .body(ApiResponse.error(ex.getFullCode(), ex.getMessage()));
+                .body(ApiResponse.error(ex.getFullCode(), ex.getUserMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -51,7 +51,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(
                         ErrorCode.E_9000.getCode(),
-                        "Validation failed",
+                        "驗證失敗",
                         fieldErrors
                 ));
     }
@@ -73,7 +73,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(
                         ErrorCode.E_9000.getCode(),
-                        "Binding failed",
+                        "綁定失敗",
                         fieldErrors
                 ));
     }
@@ -86,7 +86,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(
                         ErrorCode.E_9005.getCode(),
-                        "Required request parameter '" + ex.getParameterName() + "' is not present"
+                        "缺少必填參數「" + ex.getParameterName() + "」"
                 ));
     }
 
@@ -95,7 +95,7 @@ public class GlobalExceptionHandler {
         log.warn("Authentication exception: {}", ex.getMessage());
 
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(ApiResponse.error(ErrorCode.E_1000.getCode(), "Authentication required"));
+                .body(ApiResponse.error(ErrorCode.E_1000.getCode(), "需要驗證身份"));
     }
 
     @ExceptionHandler(BadCredentialsException.class)
@@ -103,7 +103,7 @@ public class GlobalExceptionHandler {
         log.warn("Bad credentials: {}", ex.getMessage());
 
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(ApiResponse.error(ErrorCode.E_1001.getCode(), "Invalid credentials"));
+                .body(ApiResponse.error(ErrorCode.E_1001.getCode(), "帳號或密碼錯誤"));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
@@ -111,7 +111,7 @@ public class GlobalExceptionHandler {
         log.warn("Access denied: {}", ex.getMessage());
 
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(ApiResponse.error(ErrorCode.E_1007.getCode(), "Insufficient permissions"));
+                .body(ApiResponse.error(ErrorCode.E_1007.getCode(), "權限不足"));
     }
 
     @ExceptionHandler(Exception.class)
@@ -121,7 +121,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error(
                         ErrorCode.E_9900.getCode(),
-                        "An unexpected error occurred"
+                        "發生未預期的錯誤"
                 ));
     }
 

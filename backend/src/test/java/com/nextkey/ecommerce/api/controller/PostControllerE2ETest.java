@@ -589,7 +589,7 @@ class PostControllerE2ETest {
                 .statusCode(400)
                 .body("success", is(false))
                 .body("code", equalTo("E-4104"))
-                .body("message", containsString("Embed"));
+                .body("message", containsString("嵌入"));
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

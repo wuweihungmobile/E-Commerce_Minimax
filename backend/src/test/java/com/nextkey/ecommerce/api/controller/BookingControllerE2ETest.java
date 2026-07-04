@@ -404,7 +404,7 @@ class BookingControllerE2ETest {
         if (firstStatus == 400) {
             firstResponse.then()
                     .body("code", equalTo("E-4001"))
-                    .body("message", containsString("conflict"));
+                    .body("message", containsString("衝突"));
             System.out.println("✅ 第一個請求返回 E-4001 日期衝突");
         }
 
@@ -412,7 +412,7 @@ class BookingControllerE2ETest {
         if (secondStatus == 400) {
             secondResponse.then()
                     .body("code", equalTo("E-4001"))
-                    .body("message", containsString("conflict"));
+                    .body("message", containsString("衝突"));
             System.out.println("✅ 第二個請求返回 E-4001 日期衝突");
         }
 

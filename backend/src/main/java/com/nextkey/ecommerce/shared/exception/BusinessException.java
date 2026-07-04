@@ -36,4 +36,13 @@ public class BusinessException extends RuntimeException {
     public String getFullCode() {
         return errorCode.getCode();
     }
+
+    /**
+     * 給前端顯示的訊息（AI-2418 全站英文訊息碼化）：一律回傳 ErrorCode 的中文訊息，
+     * 不包含 details/自訂 message 內的動態英文細節（如具體日期、ID）——那些只透過
+     * getMessage()（含於例外本身，供伺服器端 log 使用）呈現，不外洩給使用者。
+     */
+    public String getUserMessage() {
+        return errorCode.getMessage();
+    }
 }

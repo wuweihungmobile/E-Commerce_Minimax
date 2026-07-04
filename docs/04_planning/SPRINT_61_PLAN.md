@@ -47,7 +47,7 @@
 
 ### US-002：M13 SellerDashboardService 功能測試補強
 
-> **SP**: 3 | **優先級**: P2 | **狀態**: 🔲 待開始
+> **SP**: 3 | **優先級**: P2 | **狀態**: ✅ 完成
 
 **AC-002-1**: 新增 `SellerDashboardServiceTest.java`（區別於既有僅測快取 TTL 的 `SellerDashboardServiceCacheTest`），涵蓋現有邏輯的正確性：近 7 天/30 天訂單數統計、近 30 天營收加總、活躍上架數、待處理訂單數、最後下單時間。
 
@@ -72,7 +72,7 @@
 ## 4. Definition of Done
 
 - [ ] US-001：`GET /v2/admin/audit-logs` 端點 + `AdminService` 查詢方法 + 前端 `admin/audit-logs/page.tsx`
-- [ ] US-002：`SellerDashboardServiceTest.java` 功能測試新增
+- [x] US-002：`SellerDashboardServiceTest.java` 功能測試新增（3 個測試：有資料統計正確性、無資料邊界值、pending 狀態清單查詢）
 - [ ] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）0 fail
 - [ ] `make validate-schema` 無漂移（本 Sprint 無新 migration）
 - [ ] `docs/04_planning/DEFERRED_ITEMS_TRACKER.md` DEF-016 狀態更新為完成

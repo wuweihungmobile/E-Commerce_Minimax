@@ -75,10 +75,10 @@
 
 - [x] US-001：`GET /v2/admin/audit-logs` 端點 + `AdminService` 查詢方法（Specification 動態篩選）+ 前端 `admin/audit-logs/page.tsx`；E2E 測試 18/18 通過（含新增 2 個：Admin 成功查詢、BUYER 403）
 - [x] US-002：`SellerDashboardServiceTest.java` 功能測試新增（3 個測試：有資料統計正確性、無資料邊界值、pending 狀態清單查詢）
-- [ ] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）0 fail
-- [ ] `make validate-schema` 無漂移（本 Sprint 無新 migration）
-- [ ] `docs/04_planning/DEFERRED_ITEMS_TRACKER.md` DEF-016 狀態更新為完成
-- [ ] Sprint 61 Review / Retro / Release Notes + trackers
+- [x] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）**439 + 342 = 781 tests，0 fail**
+- [x] `make validate-schema` 無漂移（本 Sprint 無新 migration）
+- [x] `docs/04_planning/DEFERRED_ITEMS_TRACKER.md` DEF-016 狀態更新為完成（commit 22d737b）
+- [x] Sprint 61 Review / Retro / Release Notes + trackers
 - [ ]（檢查點）本 Sprint 收尾後立即 push
 
 ---

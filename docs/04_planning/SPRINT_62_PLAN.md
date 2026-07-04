@@ -33,7 +33,7 @@
 
 ### US-001：KnowledgeBaseService 單元測試從 0 建立
 
-> **SP**: 5 | **優先級**: P2 | **狀態**: 🔲 待開始
+> **SP**: 5 | **優先級**: P2 | **狀態**: ✅ 完成
 
 **AC-001-1**: 新增 `KnowledgeBaseServiceTest.java`，涵蓋分類 CRUD（`getCategories`/`getCategory`/`getCategoryBySlug`/`createCategory`/`updateCategory`/`deleteCategory`）的 happy path 與至少一個例外情境（如 `getCategory` 找不到資料）。
 
@@ -47,7 +47,7 @@
 
 ### US-002：FaqService 與 AnalyticsService 測試缺口補強
 
-> **SP**: 3 | **優先級**: P2 | **狀態**: 🔲 待開始
+> **SP**: 3 | **優先級**: P2 | **狀態**: ✅ 完成
 
 **AC-002-1**: `FaqServiceTest.java` 補齊以下 11 個現有零覆蓋方法的 happy-path 測試：`getCategories`、`getCategory`、`getCategoryBySlug`、`updateCategory`、`getArticles`、`getPinnedArticles`、`getArticle`、`getArticleBySlug`、`updateArticle`、`deleteArticle`、`incrementViewCount`。
 
@@ -71,12 +71,12 @@
 
 ## 4. Definition of Done
 
-- [ ] US-001：`KnowledgeBaseServiceTest.java` 新建，涵蓋 17 個 public 方法
-- [ ] US-002：`FaqServiceTest.java` 補齊 11 個方法、`AnalyticsServiceTest.java` 補齊 `getRecentActivity`
-- [ ] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）0 fail
-- [ ] `make validate-schema` 無漂移（本 Sprint 無新 migration，純測試新增）
-- [ ] `docs/04_planning/PRODUCT_BACKLOG.md` 候選 #9 狀態更新為完成，並記錄與原描述的落差
-- [ ] Sprint 62 Review / Retro / Release Notes + trackers
+- [x] US-001：`KnowledgeBaseServiceTest.java` 新建，24 個測試涵蓋 17 個 public 方法
+- [x] US-002：`FaqServiceTest.java` 補齊 11 個方法（12 測試）、`AnalyticsServiceTest.java` 補齊 `getRecentActivity`（2 測試）
+- [x] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）**459 + 342 = 801 tests，0 fail**
+- [x] `make validate-schema` 無漂移（本 Sprint 無新 migration，純測試新增）
+- [x] `docs/04_planning/PRODUCT_BACKLOG.md` 候選 #9 狀態更新為完成（v1.4），並記錄與原描述的落差
+- [x] Sprint 62 Review / Retro / Release Notes + trackers
 - [ ]（檢查點）本 Sprint 收尾後立即 push
 
 ---

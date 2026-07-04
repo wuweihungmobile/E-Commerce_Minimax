@@ -74,10 +74,10 @@
 
 - [ ] US-001：`getRevenueStats` granularity 修正 + 單元測試（含 WEEK/MONTH 邊界）
 - [x] US-002：`services/analytics.ts` 補 granularity 參數 + `dashboard/revenue/page.tsx`（新路由已於 build 產出）
-- [ ] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）0 fail
-- [ ] `make validate-schema` 無漂移（本 Sprint 無新 migration）
-- [ ] 前端 lint/tsc/build 0 error
-- [ ] Sprint 65 Review / Retro / Release Notes + trackers
+- [x] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）**483 + 342 = 825 tests，0 fail**
+- [x] `make validate-schema` 無漂移（本 Sprint 無新 migration）
+- [x] 前端 lint/tsc/build 0 error
+- [x] Sprint 65 Review / Retro / Release Notes + trackers
 - [ ]（檢查點）本 Sprint 收尾後立即 push
 
 ---

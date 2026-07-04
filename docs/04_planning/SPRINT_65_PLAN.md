@@ -34,7 +34,7 @@
 
 ### US-001：修正 AnalyticsService.getRevenueStats 的 granularity 死碼
 
-> **SP**: 3 | **優先級**: P2 | **狀態**: 🔲 待開始
+> **SP**: 3 | **優先級**: P2 | **狀態**: ✅ 完成
 
 **AC-001-1**: `getRevenueStats` 依 `request.getGranularity()`（`DAY`/`WEEK`/`MONTH`，預設 `DAY`）將訂單分桶聚合，`WEEK` 以週一為起始、`MONTH` 以月初為起始，`DailyRevenue.date` 欄位代表該桶的起始日。
 

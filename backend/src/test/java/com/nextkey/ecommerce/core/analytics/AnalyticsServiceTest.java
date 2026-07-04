@@ -154,6 +154,52 @@ class AnalyticsServiceTest {
                 .isEqualTo(stats.getDailyRevenue().getEndDate().minusDays(30));
     }
 
+    @Test
+    @DisplayName("getRevenueStats：granularity=WEEK → 依週一為起始分桶（Sprint 65 US-001）")
+    void getRevenueStats_weekGranularity_bucketsByIsoWeek() {
+        LocalDate start = LocalDate.of(2026, 1, 5); // 週一
+        LocalDate end = LocalDate.of(2026, 1, 18);  // 兩週後的週日
+        List<Order> orders = List.of(
+                order(Order.OrderStatus.PAID, "100", LocalDate.of(2026, 1, 7)),  // 第一週
+                order(Order.OrderStatus.PAID, "200", LocalDate.of(2026, 1, 15))); // 第二週
+        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any())).thenReturn(orders);
+        when(paymentRepository.findByOrderIdInAndStatus(anyList(), any())).thenReturn(List.of());
+
+        AnalyticsDto.AnalyticsRequest req = AnalyticsDto.AnalyticsRequest.builder()
+                .startDate(start).endDate(end).granularity("WEEK").build();
+
+        AnalyticsDto.RevenueStats stats = analyticsService.getRevenueStats(req);
+
+        assertThat(stats.getDailyRevenue().getData()).hasSize(2);
+        assertThat(stats.getDailyRevenue().getData().get(0).getDate()).isEqualTo(LocalDate.of(2026, 1, 5));
+        assertThat(stats.getDailyRevenue().getData().get(0).getRevenue()).isEqualByComparingTo("100");
+        assertThat(stats.getDailyRevenue().getData().get(1).getDate()).isEqualTo(LocalDate.of(2026, 1, 12));
+        assertThat(stats.getDailyRevenue().getData().get(1).getRevenue()).isEqualByComparingTo("200");
+    }
+
+    @Test
+    @DisplayName("getRevenueStats：granularity=MONTH → 依月初為起始分桶（Sprint 65 US-001）")
+    void getRevenueStats_monthGranularity_bucketsByCalendarMonth() {
+        LocalDate start = LocalDate.of(2026, 1, 1);
+        LocalDate end = LocalDate.of(2026, 2, 28);
+        List<Order> orders = List.of(
+                order(Order.OrderStatus.PAID, "100", LocalDate.of(2026, 1, 15)),
+                order(Order.OrderStatus.PAID, "200", LocalDate.of(2026, 2, 10)));
+        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any())).thenReturn(orders);
+        when(paymentRepository.findByOrderIdInAndStatus(anyList(), any())).thenReturn(List.of());
+
+        AnalyticsDto.AnalyticsRequest req = AnalyticsDto.AnalyticsRequest.builder()
+                .startDate(start).endDate(end).granularity("MONTH").build();
+
+        AnalyticsDto.RevenueStats stats = analyticsService.getRevenueStats(req);
+
+        assertThat(stats.getDailyRevenue().getData()).hasSize(2);
+        assertThat(stats.getDailyRevenue().getData().get(0).getDate()).isEqualTo(LocalDate.of(2026, 1, 1));
+        assertThat(stats.getDailyRevenue().getData().get(0).getRevenue()).isEqualByComparingTo("100");
+        assertThat(stats.getDailyRevenue().getData().get(1).getDate()).isEqualTo(LocalDate.of(2026, 2, 1));
+        assertThat(stats.getDailyRevenue().getData().get(1).getRevenue()).isEqualByComparingTo("200");
+    }
+
     // ---- getDashboardStats ----
 
     @Test

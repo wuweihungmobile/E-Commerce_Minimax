@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.core.analytics;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -144,27 +145,8 @@ public class AnalyticsService {
                 ? totalRevenue.divide(BigDecimal.valueOf(totalOrders), 2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
-        // 每日營收
-        List<AnalyticsDto.DailyRevenue> dailyData = new ArrayList<>();
-        for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
-            final LocalDate finalDate = date;
-            BigDecimal dayRevenue = orders.stream()
-                    .filter(o -> o.getCreatedAt().atZone(ZoneId.systemDefault()).toLocalDate().equals(finalDate))
-                    .filter(o -> o.getStatus() != Order.OrderStatus.CANCELLED &&
-                            o.getStatus() != Order.OrderStatus.REFUNDED)
-                    .map(Order::getTotalAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            int dayOrders = (int) orders.stream()
-                    .filter(o -> o.getCreatedAt().atZone(ZoneId.systemDefault()).toLocalDate().equals(finalDate))
-                    .count();
-
-            dailyData.add(AnalyticsDto.DailyRevenue.builder()
-                    .date(finalDate)
-                    .revenue(dayRevenue)
-                    .orderCount(dayOrders)
-                    .build());
-        }
+        // 依 granularity 分桶聚合營收（DAY/WEEK/MONTH，Sprint 65 修正：先前 granularity 參數為死碼，恆按日分組）
+        List<AnalyticsDto.DailyRevenue> dailyData = buildRevenueBuckets(orders, startDate, endDate, request.getGranularity());
 
         return AnalyticsDto.RevenueStats.builder()
                 .totalRevenue(totalRevenue)
@@ -277,6 +259,65 @@ public class AnalyticsService {
     }
 
     // ========== Helper Methods ==========
+
+    /**
+     * 依 granularity（DAY/WEEK/MONTH，預設 DAY）將訂單分桶聚合為營收明細（Sprint 65 US-001）。
+     * WEEK 以週一為桶起始、MONTH 以月初為桶起始；DailyRevenue.date 代表該桶的起始日。
+     */
+    private List<AnalyticsDto.DailyRevenue> buildRevenueBuckets(
+            List<Order> orders, LocalDate startDate, LocalDate endDate, String granularity) {
+        String g = granularity == null ? "DAY" : granularity.toUpperCase();
+
+        List<AnalyticsDto.DailyRevenue> buckets = new ArrayList<>();
+        for (LocalDate bucketStart = bucketStart(startDate, g);
+                !bucketStart.isAfter(endDate);
+                bucketStart = nextBucketStart(bucketStart, g)) {
+
+            LocalDate bucketEnd = nextBucketStart(bucketStart, g).minusDays(1);
+            final LocalDate rangeStart = bucketStart;
+            final LocalDate rangeEnd = bucketEnd;
+
+            List<Order> bucketOrders = orders.stream()
+                    .filter(o -> {
+                        LocalDate d = o.getCreatedAt().atZone(ZoneId.systemDefault()).toLocalDate();
+                        return !d.isBefore(rangeStart) && !d.isAfter(rangeEnd);
+                    })
+                    .collect(Collectors.toList());
+
+            BigDecimal bucketRevenue = bucketOrders.stream()
+                    .filter(o -> o.getStatus() != Order.OrderStatus.CANCELLED &&
+                            o.getStatus() != Order.OrderStatus.REFUNDED)
+                    .map(Order::getTotalAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            buckets.add(AnalyticsDto.DailyRevenue.builder()
+                    .date(bucketStart)
+                    .revenue(bucketRevenue)
+                    .orderCount(bucketOrders.size())
+                    .build());
+        }
+        return buckets;
+    }
+
+    private LocalDate bucketStart(LocalDate date, String granularity) {
+        if ("WEEK".equals(granularity)) {
+            return date.with(DayOfWeek.MONDAY);
+        }
+        if ("MONTH".equals(granularity)) {
+            return date.withDayOfMonth(1);
+        }
+        return date;
+    }
+
+    private LocalDate nextBucketStart(LocalDate bucketStart, String granularity) {
+        if ("WEEK".equals(granularity)) {
+            return bucketStart.plusWeeks(1);
+        }
+        if ("MONTH".equals(granularity)) {
+            return bucketStart.plusMonths(1);
+        }
+        return bucketStart.plusDays(1);
+    }
 
     private BigDecimal calculateRevenueForDate(UUID tenantId, LocalDate date) {
         List<Order> orders = orderRepository.findByTenantIdAndCreatedAtBetween(

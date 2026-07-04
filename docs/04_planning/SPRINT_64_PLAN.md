@@ -73,10 +73,10 @@
 
 - [x] US-001：`getTenants` 真分頁化 + 篩選 + 前端 `admin/tenants/page.tsx` 改伺服器端篩選
 - [x] US-002：`getUsers` 真分頁化 + 篩選
-- [ ] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）0 fail
-- [ ] `make validate-schema` 無漂移（本 Sprint 無新 migration）
+- [x] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）**481 + 342 = 823 tests，0 fail**
+- [x] `make validate-schema` 無漂移（本 Sprint 無新 migration）
 - [x] 前端 lint/tsc/build 0 error
-- [ ] Sprint 64 Review / Retro / Release Notes + trackers
+- [x] Sprint 64 Review / Retro / Release Notes + trackers
 - [ ]（檢查點）本 Sprint 收尾後立即 push
 
 ---

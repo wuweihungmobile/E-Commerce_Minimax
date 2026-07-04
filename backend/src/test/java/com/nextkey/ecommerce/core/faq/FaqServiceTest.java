@@ -24,6 +24,7 @@ import org.springframework.data.domain.PageImpl;
 import com.nextkey.ecommerce.api.dto.faq.CreateFaqArticleRequest;
 import com.nextkey.ecommerce.api.dto.faq.CreateFaqCategoryRequest;
 import com.nextkey.ecommerce.api.dto.faq.FaqArticleDto;
+import com.nextkey.ecommerce.api.dto.faq.FaqCategoryDto;
 import com.nextkey.ecommerce.domain.model.faq.FaqArticle;
 import com.nextkey.ecommerce.domain.model.faq.FaqCategory;
 import com.nextkey.ecommerce.domain.repository.faq.FaqArticleRepository;
@@ -154,5 +155,182 @@ class FaqServiceTest {
         assertThat(stats.get(0).categoryName()).isEqualTo("General");
         assertThat(stats.get(0).totalArticles()).isEqualTo(5L);
         assertThat(stats.get(0).publishedArticles()).isEqualTo(3L);
+    }
+
+    // ── Sprint 62 US-002：補齊零覆蓋方法的 happy-path 測試 ─────────────────
+
+    private FaqCategory buildCategory(UUID id, String name, String slug) {
+        return FaqCategory.builder()
+                .id(id).tenantId(TENANT).name(name).slug(slug).sortOrder(0).build();
+    }
+
+    private FaqArticle buildArticle(UUID id, FaqCategory category, String question, String slug) {
+        return FaqArticle.builder()
+                .id(id).tenantId(TENANT).category(category)
+                .question(question).answer("Answer").slug(slug)
+                .sortOrder(0).isPinned(false).isPublished(true).build();
+    }
+
+    @Test
+    @DisplayName("getCategories：依 sortOrder 回傳全部分類")
+    void getCategories_returnsAllCategories() {
+        FaqCategory category = buildCategory(UUID.randomUUID(), "General", "general");
+        when(categoryRepository.findByTenantIdOrderBySortOrderAsc(TENANT)).thenReturn(List.of(category));
+
+        List<FaqCategoryDto> result = faqService.getCategories();
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getSlug()).isEqualTo("general");
+    }
+
+    @Test
+    @DisplayName("getCategory：找到 → 回傳 DTO")
+    void getCategory_found_returnsDto() {
+        UUID categoryId = UUID.randomUUID();
+        FaqCategory category = buildCategory(categoryId, "General", "general");
+        when(categoryRepository.findByIdAndTenantId(categoryId, TENANT)).thenReturn(Optional.of(category));
+
+        FaqCategoryDto result = faqService.getCategory(categoryId);
+
+        assertThat(result.getId()).isEqualTo(categoryId);
+    }
+
+    @Test
+    @DisplayName("getCategory：找不到 → E_4000")
+    void getCategory_notFound_throws() {
+        UUID categoryId = UUID.randomUUID();
+        when(categoryRepository.findByIdAndTenantId(categoryId, TENANT)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> faqService.getCategory(categoryId))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_4000);
+    }
+
+    @Test
+    @DisplayName("getCategoryBySlug：找到 → 回傳 DTO")
+    void getCategoryBySlug_found_returnsDto() {
+        FaqCategory category = buildCategory(UUID.randomUUID(), "General", "general");
+        when(categoryRepository.findByTenantIdAndSlug(TENANT, "general")).thenReturn(Optional.of(category));
+
+        FaqCategoryDto result = faqService.getCategoryBySlug("general");
+
+        assertThat(result.getSlug()).isEqualTo("general");
+    }
+
+    @Test
+    @DisplayName("updateCategory：更新名稱與描述")
+    void updateCategory_updatesFields() {
+        UUID categoryId = UUID.randomUUID();
+        FaqCategory category = buildCategory(categoryId, "Old Name", "general");
+        when(categoryRepository.findByIdAndTenantId(categoryId, TENANT)).thenReturn(Optional.of(category));
+        when(categoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        com.nextkey.ecommerce.api.dto.faq.UpdateFaqCategoryRequest req =
+                com.nextkey.ecommerce.api.dto.faq.UpdateFaqCategoryRequest.builder()
+                        .name("New Name").build();
+
+        FaqCategoryDto result = faqService.updateCategory(categoryId, req);
+
+        assertThat(result.getName()).isEqualTo("New Name");
+    }
+
+    @Test
+    @DisplayName("getArticles：無篩選條件 → 回傳已發布文章")
+    void getArticles_noFilters_returnsPublished() {
+        FaqCategory category = buildCategory(UUID.randomUUID(), "General", "general");
+        FaqArticle article = buildArticle(UUID.randomUUID(), category, "Q1", "q1");
+        Page<FaqArticle> page = new PageImpl<>(List.of(article));
+        when(articleRepository.findByTenantIdAndIsPublishedTrue(eq(TENANT), any())).thenReturn(page);
+
+        Page<FaqArticleDto> result = faqService.getArticles(0, 10, null, null);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getSlug()).isEqualTo("q1");
+    }
+
+    @Test
+    @DisplayName("getPinnedArticles：回傳依 sortOrder 排序的置頂文章")
+    void getPinnedArticles_returnsPinned() {
+        FaqCategory category = buildCategory(UUID.randomUUID(), "General", "general");
+        FaqArticle article = buildArticle(UUID.randomUUID(), category, "Pinned Q", "pinned-q");
+        when(articleRepository.findByTenantIdAndIsPinnedTrueOrderBySortOrderAsc(TENANT))
+                .thenReturn(List.of(article));
+
+        List<FaqArticleDto> result = faqService.getPinnedArticles();
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getSlug()).isEqualTo("pinned-q");
+    }
+
+    @Test
+    @DisplayName("getArticle：找到 → 回傳 DTO")
+    void getArticle_found_returnsDto() {
+        UUID articleId = UUID.randomUUID();
+        FaqCategory category = buildCategory(UUID.randomUUID(), "General", "general");
+        FaqArticle article = buildArticle(articleId, category, "Q1", "q1");
+        when(articleRepository.findByIdAndTenantId(articleId, TENANT)).thenReturn(Optional.of(article));
+
+        FaqArticleDto result = faqService.getArticle(articleId);
+
+        assertThat(result.getId()).isEqualTo(articleId);
+    }
+
+    @Test
+    @DisplayName("getArticleBySlug：找到 → 回傳 DTO")
+    void getArticleBySlug_found_returnsDto() {
+        FaqCategory category = buildCategory(UUID.randomUUID(), "General", "general");
+        FaqArticle article = buildArticle(UUID.randomUUID(), category, "Q1", "q1");
+        when(articleRepository.findByTenantIdAndSlug(TENANT, "q1")).thenReturn(Optional.of(article));
+
+        FaqArticleDto result = faqService.getArticleBySlug("q1");
+
+        assertThat(result.getSlug()).isEqualTo("q1");
+    }
+
+    @Test
+    @DisplayName("updateArticle：更新問題內容")
+    void updateArticle_updatesFields() {
+        UUID articleId = UUID.randomUUID();
+        FaqCategory category = buildCategory(UUID.randomUUID(), "General", "general");
+        FaqArticle article = buildArticle(articleId, category, "Old Question", "q1");
+        when(articleRepository.findByIdAndTenantId(articleId, TENANT)).thenReturn(Optional.of(article));
+        when(articleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        com.nextkey.ecommerce.api.dto.faq.UpdateFaqArticleRequest req =
+                com.nextkey.ecommerce.api.dto.faq.UpdateFaqArticleRequest.builder()
+                        .question("New Question").build();
+
+        FaqArticleDto result = faqService.updateArticle(articleId, req);
+
+        assertThat(result.getQuestion()).isEqualTo("New Question");
+    }
+
+    @Test
+    @DisplayName("deleteArticle：刪除成功")
+    void deleteArticle_deletesSuccessfully() {
+        UUID articleId = UUID.randomUUID();
+        FaqCategory category = buildCategory(UUID.randomUUID(), "General", "general");
+        FaqArticle article = buildArticle(articleId, category, "Q1", "q1");
+        when(articleRepository.findByIdAndTenantId(articleId, TENANT)).thenReturn(Optional.of(article));
+
+        faqService.deleteArticle(articleId);
+
+        org.mockito.Mockito.verify(articleRepository).delete(article);
+    }
+
+    @Test
+    @DisplayName("incrementViewCount：瀏覽數加一並儲存")
+    void incrementViewCount_incrementsAndSaves() {
+        UUID articleId = UUID.randomUUID();
+        FaqCategory category = buildCategory(UUID.randomUUID(), "General", "general");
+        FaqArticle article = buildArticle(articleId, category, "Q1", "q1");
+        int before = article.getViewCount();
+        when(articleRepository.findByIdAndTenantId(articleId, TENANT)).thenReturn(Optional.of(article));
+
+        faqService.incrementViewCount(articleId);
+
+        assertThat(article.getViewCount()).isEqualTo(before + 1);
+        org.mockito.Mockito.verify(articleRepository).save(article);
     }
 }

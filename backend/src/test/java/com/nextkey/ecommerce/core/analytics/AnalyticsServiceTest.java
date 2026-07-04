@@ -252,4 +252,36 @@ class AnalyticsServiceTest {
         assertThat(stats.getActiveRooms()).isEqualTo(1);
         assertThat(stats.getInactiveRooms()).isEqualTo(1);
     }
+
+    // ---- getRecentActivity（Sprint 62 US-002）----
+
+    @Test
+    @DisplayName("getRecentActivity：依訂單建立時間倒序組成活動項目")
+    void getRecentActivity_mapsOrdersToActivityItems() {
+        Order o = order(Order.OrderStatus.PAID, "100", LocalDate.now());
+        lenient().when(o.getCurrency()).thenReturn("TWD");
+        org.springframework.data.domain.Page<Order> page =
+                new org.springframework.data.domain.PageImpl<>(List.of(o));
+        when(orderRepository.findByTenantIdOrderByCreatedAtDesc(any(), any())).thenReturn(page);
+
+        AnalyticsDto.RecentActivity result = analyticsService.getRecentActivity(10);
+
+        assertThat(result.getItems()).hasSize(1);
+        assertThat(result.getItems().get(0).getType()).isEqualTo("ORDER_PAID");
+        assertThat(result.getItems().get(0).getDescription()).contains("100").contains("TWD");
+        assertThat(result.getTotalCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("getRecentActivity（邊界）：無訂單 → 回傳空清單")
+    void getRecentActivity_noOrders_returnsEmpty() {
+        org.springframework.data.domain.Page<Order> emptyPage =
+                new org.springframework.data.domain.PageImpl<>(List.of());
+        when(orderRepository.findByTenantIdOrderByCreatedAtDesc(any(), any())).thenReturn(emptyPage);
+
+        AnalyticsDto.RecentActivity result = analyticsService.getRecentActivity(10);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotalCount()).isZero();
+    }
 }

@@ -64,6 +64,8 @@
 3. **`booking:read` 權限調整方式的驗證過程**：修復前已透過 `grep` 確認 `RolePermissionMapping.java` 為純記憶體 Java 常數（`EnumMap<UserRole, Set<Permission>>`），Flyway migration 中出現的 `GUEST` 字樣僅為 `users.role` 欄位列舉值，與權限映射無關；因此採用風險最低的程式碼常數調整，未新增任何 migration，符合任務指示「若程式碼常數即可調整，優先採用」的要求。
 4. **未發現需額外修正的其他生產程式碼真實 bug**：本 Sprint 撰寫的擁有權檢查與既有 Order 側修復模式完全對齊（helper 命名、檢查順序、`E_1007` 錯誤碼），未在過程中發現與本次修復無關的其他缺陷。
 
+**Addendum（Sprint 68 收尾並 push 後）**：使用者看到第 1 點誠實揭露的 `cancelBooking` 殘留問題後，決定立即授權追加修復。已沿用同一個 `checkBookingOwnership` helper 補上（不重複造新方法），新增 4 個測試（他人取消 403、本人正常取消、本人取消不可取消狀態驗證擁有權先於狀態檢查、admin 取消他人預訂放行），全量回歸 0 fail。詳見 `DEFERRED_ITEMS_TRACKER.md` DEF-023 最終條目。第 2 點（`HOST` 角色權限落差）維持待決策，本次追加未變更該行為。
+
 ---
 
 ## 5. Demo 重點

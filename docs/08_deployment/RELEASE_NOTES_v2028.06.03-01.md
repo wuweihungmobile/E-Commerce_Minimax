@@ -33,8 +33,8 @@
 
 ## 技術決策 / 已知限制 ⚠️
 
-- **修復範圍精準限定於使用者明確授權的四處**：`BookingService.cancelBooking` 盤點時發現同樣缺擁有權檢查，但不在原始 `DEF-023` 記錄與本次授權範圍內，未修改，另立待決策事項。
-- **`HOST` 角色的 `booking:update` 權限與修復後行為潛在落差**：`PUT /v2/bookings/{id}` 為買家/賣家共用端點，修復後僅放行買家本人或 admin；若 `HOST` 對自己房源訂房有合法更新需求，將收到 403，需另評估是否比照 `DEF-019` 收尾時 `LogisticsService` 補上的租戶側擁有權判斷。
+- **Addendum（收尾並 push 後追加）**：Sprint 68 收尾時揭露 `BookingService.cancelBooking` 同樣缺擁有權檢查但不在當時授權範圍，使用者看到後立即授權追加修復——已沿用同一個 `checkBookingOwnership` helper 補上（不重複造新方法），新增 4 個測試，全量回歸 0 fail。DEF-023 至此徹底結案。
+- **`HOST` 角色的 `booking:update` 權限與修復後行為潛在落差（仍待決策）**：`PUT /v2/bookings/{id}` 為買家/賣家共用端點，修復後僅放行買家本人或 admin；若 `HOST` 對自己房源訂房有合法更新需求，將收到 403，需另評估是否比照 `DEF-019` 收尾時 `LogisticsService` 補上的租戶側擁有權判斷。
 - **與 Order 側完全對齊的修復模式**：helper 命名（`checkBookingOwnership`/`checkBookingPaymentOwnership`）、錯誤碼（`E_1007`）、檢查順序（置於狀態檢查之前）皆比照 `PaymentStateService.checkOrderOwnership`/`PaymentService.checkOrderPaymentOwnership`，維持程式碼庫一致性。
 
 ## 資料庫遷移 🗄️
@@ -47,7 +47,8 @@
 |----------|--------|------|
 | Sprint 68 Plan | 6119523 | Booking IDOR 緊急修復計劃（2 US / 6 SP）|
 | US-001+US-002 | 3c7fce6 | 四處擁有權檢查修復 + GUEST 移除 booking:read + 測試 |
-| Sprint 68 收尾 | （本次） | Review / Retro / Release Notes + trackers |
+| Sprint 68 收尾 | 1ac2e37 | Review / Retro / Release Notes + trackers |
+| Addendum | （本次） | 收尾並 push 後追加：`cancelBooking` 擁有權檢查（沿用同一 helper）+ 4 個測試 + tracker/文件更新 |
 
 ## 貢獻者
 

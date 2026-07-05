@@ -38,7 +38,7 @@
 
 | ID | Action Item | 内容 | 負責人 | 優先級 | Sprint |
 |----|------------|------|--------|--------|--------|
-| （待決策1） | `BookingService.cancelBooking` 擁有權檢查 | 盤點發現同樣缺擁有權檢查，但不在 `DEF-023` 原始範圍與本次授權內 | PO Victoria（決策）+ SD Marcus（評估） | 🟡 中 | 待決策，建議與 Sprint 69 `BookingService` 測試強化一併評估 |
+| ~~（待決策1）~~ | ~~`BookingService.cancelBooking` 擁有權檢查~~ | ✅ **已於 Sprint 68 收尾並 push 後追加修復解決**（使用者看到揭露後立即授權，沿用同一個 `checkBookingOwnership` helper） | — | — | ✅ 完成（Sprint 68 追加） |
 | （待決策2） | `HOST` 角色 `booking:update` 權限與 `updateBooking` 修復後行為落差 | 若 HOST 對自己房源訂房有合法更新需求，修復後將收到 403，需評估是否需比照 `LogisticsService` 補租戶側檢查 | PO Victoria（決策）+ SD Marcus（設計） | 🟡 中 | 待決策 |
 | AI-2416 | 真實金流 Phase D-2：代收後 transfer 分潤/提現 | 需 Phase D-1 帳戶已上線 | SD Marcus | P3 | 待評估（需環境） |
 | AI-1903 | 買家閉環 live 走查（真人）| 需 live 環境 | QA Quincy | P1 | 需 live 環境 |
@@ -72,7 +72,7 @@
 
 ## 7. 下一步
 
-> **檢查點**：Sprint 68 已完成，安全缺口已清零。依現行節奏，本 Sprint 收尾後立即 push。恢復例行測試強化排程：**Sprint 69 建議處理 `OrderService`（7 方法，訂單狀態機核心，`SPRINT_67_PLAN.md` 第 6 節原建議之 Sprint 68 順延至此）**，並建議一併評估本 Sprint 記錄的兩項殘留事項（`cancelBooking` 擁有權檢查、`HOST` 角色更新權限落差）。Sprint 70+ 建議 `BookingService`+`RoomCalendarService` 測試強化、Sprint 71+ ERP 模組整體。
+> **檢查點**：Sprint 68 已完成並 push。**收尾後追加**：使用者看到 `cancelBooking` 殘留揭露後立即授權追加修復，已沿用同一 helper 解決並完成全量回歸，DEF-023 徹底結案（僅剩 `HOST` 角色更新權限落差待決策，未變更行為）。恢復例行測試強化排程：**Sprint 69 建議處理 `OrderService`（7 方法，訂單狀態機核心，`SPRINT_67_PLAN.md` 第 6 節原建議之 Sprint 68 順延至此）**，並建議一併評估 `HOST` 角色更新權限落差。Sprint 70+ 建議 `BookingService`+`RoomCalendarService` 測試強化、Sprint 71+ ERP 模組整體。
 
 ---
 

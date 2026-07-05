@@ -102,8 +102,8 @@
 
 ## 6. 已知殘留事項（待人工決策，本 Sprint 不修改）
 
-1. **`BookingService.cancelBooking` 同樣缺少擁有權檢查**：盤點時發現 `cancelBooking` 亦僅 `findBookingById` 無擁有權過濾，理論上與 `DEF-023` 同源，但**不在本次授權明確列出的四處修復範圍內**（`DEF-023` 原始記錄與使用者任務指示皆僅列 `getBookingPaymentState`/`getBooking`/`updateBooking`/`processBookingPayment`）。依 Rule 3（精準改動）不擅自擴大範圍，另立追蹤項目待決策。
-2. **`HOST` 角色持有 `booking:update` 權限，但 `updateBooking` 修復後僅放行「本人（買家）或 admin」**：目前 `PUT /v2/bookings/{id}` 為買家/賣家共用同一端點，`HOST`（房源方，管理自己房源的訂房）修復後若非該筆訂房的買家本人，將收到 403。若 `HOST` 對自己房源的訂房確有合法更新需求（例如比照 `DEF-019` 收尾時 `LogisticsService` 額外補的租戶側檢查），需要另一組「租戶/房源擁有權」判斷邏輯，屬於超出本次授權的架構決策，建議由 PO/SD 評估後續是否需要（若目前 HOST 從未實際呼叫此端點，則此為關閉一個原本未被利用的 IDOR 缺口，非破壞既有合法流程）。
+1. ~~**`BookingService.cancelBooking` 同樣缺少擁有權檢查**~~：**已於 Sprint 68 收尾並 push 後追加修復解決**——使用者看到本節揭露後決定立即授權追加，沿用同一個 `checkBookingOwnership` helper 補上（不重複造新方法），新增 4 個測試，詳見 `DEFERRED_ITEMS_TRACKER.md` DEF-023 條目。
+2. **`HOST` 角色持有 `booking:update` 權限，但 `updateBooking` 修復後僅放行「本人（買家）或 admin」**：目前 `PUT /v2/bookings/{id}` 為買家/賣家共用同一端點，`HOST`（房源方，管理自己房源的訂房）修復後若非該筆訂房的買家本人，將收到 403。若 `HOST` 對自己房源的訂房確有合法更新需求（例如比照 `DEF-019` 收尾時 `LogisticsService` 額外補的租戶側檢查），需要另一組「租戶/房源擁有權」判斷邏輯，屬於超出本次授權的架構決策，建議由 PO/SD 評估後續是否需要（若目前 HOST 從未實際呼叫此端點，則此為關閉一個原本未被利用的 IDOR 缺口，非破壞既有合法流程）。**（仍待決策，本追加修復未變更此項行為）**
 
 ---
 

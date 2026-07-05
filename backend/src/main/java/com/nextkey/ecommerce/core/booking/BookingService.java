@@ -624,6 +624,7 @@ public class BookingService {
     @Transactional
     public void cancelBooking(final UUID bookingId, final String reason) {
         com.nextkey.ecommerce.domain.model.order.Booking booking = findBookingById(bookingId);
+        checkBookingOwnership(booking);
 
         // 檢查是否可取消
         if (!OrderStateMachine.canCancel(booking.getStatus().name())) {

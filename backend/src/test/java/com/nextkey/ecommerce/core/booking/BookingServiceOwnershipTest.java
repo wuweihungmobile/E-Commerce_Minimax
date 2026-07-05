@@ -38,16 +38,17 @@ import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 /**
- * BookingService.getBooking / updateBooking 擁有權隔離（DEF-023：booking 讀寫擁有權隔離，IDOR）。
+ * BookingService.getBooking / updateBooking / cancelBooking 擁有權隔離
+ * （DEF-023：booking 讀寫/取消擁有權隔離，IDOR）。
  *
- * <p>驗證：他人不可查詢/更新買家預訂（E_1007，經 GlobalExceptionHandler 映射 HTTP 403）；本人通過
- * 擁有權檢查（getBooking 續走成功回應；updateBooking 續走狀態檢查）；admin 放行。以「狀態檢查」
- * 證明擁有權**先於**狀態觸發（updateBooking 案例），比照 PaymentServiceOwnershipTest/
- * LogisticsServiceOwnershipTest 風格。
+ * <p>驗證：他人不可查詢/更新/取消買家預訂（E_1007，經 GlobalExceptionHandler 映射 HTTP 403）；
+ * 本人通過擁有權檢查（getBooking 續走成功回應；updateBooking/cancelBooking 續走狀態檢查）；
+ * admin 放行。以「狀態檢查」證明擁有權**先於**狀態觸發（updateBooking/cancelBooking 案例），
+ * 比照 PaymentServiceOwnershipTest/LogisticsServiceOwnershipTest 風格。
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("BookingService.getBooking/updateBooking 擁有權隔離（DEF-023）")
+@DisplayName("BookingService.getBooking/updateBooking/cancelBooking 擁有權隔離（DEF-023）")
 class BookingServiceOwnershipTest {
 
     @Mock
@@ -196,5 +197,64 @@ class BookingServiceOwnershipTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.E_5010);
+    }
+
+    // ========== cancelBooking ==========
+
+    @Test
+    @DisplayName("他人取消買家預訂 → E_1007（擁有權先於狀態檢查）")
+    void cancelBooking_otherUser_throwsE1007() {
+        when(bookingRepository.findById(bookingId))
+                .thenReturn(Optional.of(bookingOfUser(buyerA, Booking.BookingStatus.CREATED)));
+        TenantContext.setCurrentUser(buyerB);
+
+        assertThatThrownBy(() -> bookingService.cancelBooking(bookingId, "test"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("本人可正常取消自己的預訂")
+    void cancelBooking_sameUser_passesOwnership() {
+        when(bookingRepository.findById(bookingId))
+                .thenReturn(Optional.of(bookingOfUser(buyerA, Booking.BookingStatus.CREATED)));
+        TenantContext.setCurrentUser(buyerA);
+
+        bookingService.cancelBooking(bookingId, "test");
+
+        org.mockito.Mockito.verify(bookingRepository).save(org.mockito.ArgumentMatchers.argThat(
+                b -> b.getStatus() == Booking.BookingStatus.CANCELLED));
+    }
+
+    @Test
+    @DisplayName("本人取消不可取消狀態的預訂（擁有權通過，續走狀態檢查 → E_4007，非 E_1007）")
+    void cancelBooking_sameUser_invalidStatus_throwsE4007() {
+        // COMPLETED 為終態，OrderStateMachine.canCancel 回 false；若得 E_4007（而非 E_1007），
+        // 證明擁有權檢查先於狀態檢查通過。
+        when(bookingRepository.findById(bookingId))
+                .thenReturn(Optional.of(bookingOfUser(buyerA, Booking.BookingStatus.COMPLETED)));
+        TenantContext.setCurrentUser(buyerA);
+
+        assertThatThrownBy(() -> bookingService.cancelBooking(bookingId, "test"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_4007);
+    }
+
+    @Test
+    @DisplayName("admin 可取消他人的預訂")
+    void cancelBooking_admin_bypassesOwnership() {
+        when(bookingRepository.findById(bookingId))
+                .thenReturn(Optional.of(bookingOfUser(buyerA, Booking.BookingStatus.CREATED)));
+        TenantContext.setCurrentUser(buyerB); // 非本人
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("admin", null,
+                        List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+
+        bookingService.cancelBooking(bookingId, "test");
+
+        org.mockito.Mockito.verify(bookingRepository).save(org.mockito.ArgumentMatchers.argThat(
+                b -> b.getStatus() == Booking.BookingStatus.CANCELLED));
     }
 }

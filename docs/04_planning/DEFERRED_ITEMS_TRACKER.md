@@ -10,11 +10,9 @@
 
 ### 🔴 高優先級 - 下一 Sprint 應優先處理
 
-| ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
-|----|------|-------------|---------|---------|---------|------|
-| DEF-024 | OrderService.updateOrderStatus 無擁有權/租戶檢查（IDOR，安全） | Sprint 69（撰寫 OrderService 測試時發現） | 同檔案內 `getOrder`（DEF-018 已修）、`cancelOrder`、`getOrderStateLogs` 皆有 owner-or-admin 擁有權檢查，唯獨 `updateOrderStatus` 完全沒有，直接對任意 `orderId` 執行狀態轉換。Controller 層僅 `@PreAuthorize("hasAuthority('order:update')")` 把關，`RolePermissionMapping.java` 確認 `order:update` 由 SELLER/STORE_OWNER/ADMIN/SUPER_ADMIN 持有（非僅單一平台 ADMIN），形同任一租戶的賣家可對其他租戶訂單執行狀態轉換（跨租戶 IDOR），性質與 `DEF-018/019/023` 系列相同 | 無（比照既有 owner-or-admin inline pattern 即可修復） | 2-3 | 🔴 **✅ 已決策**：使用者於 Sprint 69 收尾時看到本發現後，決定**比照 Sprint 68（DEF-023）模式另立 Sprint 70 緊急修復**，插隊優先於例行測試強化排程 |
+（無活躍高優先級延後項目——`DEF-024` 已於 Sprint 70 修復並結案，詳見下方「已完成延後項目」）
 
-> **DEF-023**（Booking 付款擁有權檢查缺口，IDOR）已於 Sprint 68 修復並結案，詳見下方「已完成延後項目」。
+> **DEF-023**（Booking 付款擁有權檢查缺口，IDOR）已於 Sprint 68 修復並結案；**DEF-024**（`OrderService.updateOrderStatus` 跨租戶 IDOR）已於 Sprint 70 修復並結案，詳見下方「已完成延後項目」。
 
 ---
 
@@ -71,11 +69,30 @@
 | AI-2417 | 退款路徑整合評估 | Sprint 56（AI-2415 部分退款探勘時發現） | Sprint 59 | **Spike，不改 production code**。產出決策文件 `REFUND_PATH_CONSOLIDATION_ASSESSMENT.md`：確認 `PaymentService`（Mock，涵蓋 Order+Booking）與 `PaymentStateService`（僅 Order，真 Stripe）是整個服務類別層級平行，非單一方法重複；關鍵發現這不是意外重複，而是 Sprint 49 金流真實化計畫自始只涵蓋 Order、從未觸及 Booking 的既定範圍；確認兩條退款路徑**目前皆無前端呼叫端**（僅後端測試涵蓋）；另發現 Mock 路徑的部分退款未同步 `refundedAmount`/`PARTIALLY_REFUNDED` 狀態的潛在資料不一致陷阱（無實際風險因無呼叫端）。結論**維持現狀**（選項 A）：整合/刪除任一方屬無需求驅動的臆測性變更；若未來要讓 Booking 也走真實 Stripe，屬於擴大金流範圍的新功能決策（估 15+ SP），需 PO 評估優先級，非本次技術債清理範疇 |
 | AI-2418 | 全站 BusinessException 英文訊息中文化 | Sprint 58（AI-2408 探勘時發現） | Sprint 60 | **PO 決策（2026-07-04）**：完整修復——翻譯 130 個 `ErrorCode` 常數為繁體中文，動態英文細節改為僅供伺服器端 log（不再回傳前端）。探勘確認全站 383 處 `BusinessException` 呼叫、前端 90%+ 流程無中文化放行層，使用者真的會看到英文錯誤訊息（非僅 log）。US-001：`ErrorCode.java` 130 常數中文化（含 3 個帶格式化佔位符）；`BusinessException` 新增 `getUserMessage()`（僅回傳 ErrorCode 基礎訊息，不含動態細節）；`GlobalExceptionHandler` 改用 `getUserMessage()` 組成 API 回應（`getMessage()` 仍含細節供 log 用）+ 7 處硬編碼英文字串中文化；更新 4 處依賴舊英文文字的 API 層級測試斷言（其餘 19 處檢查 details 的 `.getMessage()` 斷言不受影響）。後端單元 422 + 真 DB 整合（含 failsafe `*IntegrationTest.java`/`*E2ETest.java`）**全量 890 tests 0 fail**、`make validate-schema` 無漂移（schema-free）。誠實：不修改 383 個呼叫點中 320 處的動態英文 details 字面值本身（僅不回傳前端）；若未來需在使用者訊息保留具體細節需另立結構化錯誤欄位方案，非本次範圍 |
 | DEF-023 | Booking 付款/預訂擁有權檢查缺口（IDOR，安全） | Sprint 67（撰寫 PaymentStateService 測試時發現） | Sprint 68 | 🔴 **緊急安全修復 Sprint（使用者明確授權插隊）**。US-001：比照 Order 側 `DEF-018/019` 既有模式，五處補齊擁有權檢查——`PaymentStateService.getBookingPaymentState`（新增 `checkBookingOwnership`）、`BookingService.getBooking`/`updateBooking`/`cancelBooking`（共用同一 `checkBookingOwnership` helper）、`PaymentService.processBookingPayment`（新增 `checkBookingPaymentOwnership`）：買家限本人（`booking.getUserId()`），`ROLE_ADMIN`/`ROLE_SUPER_ADMIN` 放行，越權回 403/`E_1007`，檢查置於狀態檢查之前避免洩漏資源狀態。US-002：`RolePermissionMapping.java` 移除 `GUEST` 角色的 `Permission.BOOKING_READ`（純 Java 常數變更，**無 migration**，已確認無對應 DB 權限表）。**測試**：`PaymentStateServiceTest` 新增 2 個（非本人 403 / admin 放行）、`BookingServiceOwnershipTest`（新檔，10 個：getBooking/updateBooking/cancelBooking 各 3 + cancelBooking 額外 1 個狀態機錯誤路徑）、`PaymentServiceOwnershipTest` 擴充 3 個（processBookingPayment）、新增 `RolePermissionMappingTest`（4 個：GUEST 無 booking:read、GUEST 保留 product/room:read、BUYER/ADMIN 不受影響）。**追加修復**（Sprint 68 收尾並 push 後，使用者看到誠實揭露的殘留問題後決定立即追加）：`BookingService.cancelBooking` 原本同樣完全沒有擁有權檢查（任何登入使用者可取消他人訂房），已沿用同一個 `checkBookingOwnership` helper 補上，不重複造新方法。全量回歸 `mvn verify -Pintegration-test` 0 fail；`make validate-schema` 無漂移。**殘留待決策（未變更行為）**：`HOST` 角色持有 `booking:update` 權限，修復後若非買家本人將收到 403，若日後需房源方管理自己房源訂房的合法更新流程，需另評估租戶側擁有權判斷（比照 `DEF-019` 收尾時 `LogisticsService` 的租戶側檢查） |
+| DEF-024 | OrderService.updateOrderStatus 無擁有權/租戶檢查（IDOR，安全） | Sprint 69（撰寫 OrderService 測試時發現） | Sprint 70 | 🔴 **緊急安全修復 Sprint（使用者明確授權插隊，比照 Sprint 68 DEF-023 模式）**。與 DEF-023 不同，本方法有兩種正當呼叫情境並存（買家自助付款 + 賣家管理自己租戶訂單），不可直接套用單純的 owner-or-admin 模式，動手前先完成業務情境分析並取得使用者確認。US-001：新增 `checkOrderStatusUpdateAuthorization` helper，採「訂單擁有者本人（比照 `getOrder`/`cancelOrder`/`getOrderStateLogs` 的 `DEF-018` 模式，對應買家透過付款流程觸發 CREATED→PAID）or 本租戶（比照 `LogisticsService.checkOrderTenant` 的 `DEF-019` 模式，對應賣家/店主透過 `PATCH /v2/orders/{orderId}/status` 管理自己租戶訂單，如標記出貨）or admin（`ROLE_ADMIN`/`ROLE_SUPER_ADMIN`）」三者其一放行，越權回 403/`E_1007`，置於 `OrderStateMachine.canTransition` 狀態機檢查之前避免洩漏訂單狀態。**測試**：`OrderServiceTest` 新增 3 個（他租戶賣家 403 且先於狀態機檢查觸發、本租戶賣家放行續走狀態機轉換、admin 跨租戶放行），既有買家付款流程回歸測試（`updateOrderStatus_validTransition`/`updateOrderStatus_invalidTransition_throwsE5001`）不受影響。全量回歸 `mvn verify -Pintegration-test` 606 + 342 = 948 tests 0 fail；`make validate-schema` 無漂移（本次無 entity/migration 變更） |
 
 
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 70 (2026-07-05)
+
+**主題**: 🔴 緊急安全修復——`OrderService.updateOrderStatus` 跨租戶 IDOR（`DEF-024`，3 SP，US-001 完成）
+
+**完成**:
+- **`DEF-024` → ✅ 完成（US-001）**：詳見「已完成延後項目」表格。動手前先完成業務情境分析（`updateOrderStatus` 有買家自助付款＋賣家管理自己租戶訂單兩種正當呼叫情境並存，與 Booking 側單純 owner-or-admin 案例不同），取得使用者確認後，合成既有兩個修復前例（`DEF-018` 買家 owner-or-admin 模式 + `DEF-019` `LogisticsService.checkOrderTenant` 的賣家 tenant-based 模式）為「owner OR same-tenant OR admin」三選一放行邏輯，補上 `OrderService.updateOrderStatus` 完全缺失的擁有權/租戶檢查。
+
+**驗證**:
+- 後端單元 + 真 DB 整合（`mvn verify -Pintegration-test`，含 failsafe）**606 + 342 = 948 tests，0 fail**（含本 Sprint 新增 `OrderServiceTest` 3 個擁有權/租戶案例）。
+- `make validate-schema` 無漂移（本 Sprint 無 entity/migration 變更）。
+
+**下一 Sprint 候選**:
+- 安全缺口已清零，恢復例行測試強化排程：`BookingService`/`RoomCalendarService` 其餘業務邏輯方法測試強化（Sprint 71）；ERP 模組整體測試（Sprint 72+）。
+
+**里程碑**：**Order 模組跨租戶 IDOR 缺口清零**——與 `DEF-018/019`（Order 側既有修復）、`DEF-023`（Booking 側，Sprint 68）合計完成 Order+Booking 雙模組付款/資源/租戶擁有權隔離；活躍高優先級延後項目回到 0。
+
+---
 
 ### Sprint 69 (2026-07-05)
 

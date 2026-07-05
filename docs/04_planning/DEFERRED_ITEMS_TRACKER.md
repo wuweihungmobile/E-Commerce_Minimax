@@ -25,6 +25,14 @@
 
 ---
 
+### 🟢 低優先級 - 技術債（非急迫，記錄備查）
+
+| ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
+|----|------|-------------|---------|---------|---------|------|
+| DEF-025 | `BookingService.createBooking` 的 `idempotencyKey` 參數未被使用（死碼參數） | Sprint 71（撰寫 createBooking 單元測試時發現） | `createBooking(BookingDto.CreateRequest request, String idempotencyKey)` 的 `idempotencyKey` 參數在方法本體內完全未被引用；真正的 idempotency 由 `BookingController.createBooking` 於呼叫前經 `IdempotencyService`（Redis-backed，`checkAndMark`/`markCompleted`/`remove`）把關並快取回應，`BookingService` 層此參數為傳遞後即棄置的死碼，非安全缺口（機制本身正確運作，`BookingControllerE2ETest` 已有 `createBooking_duplicateIdempotencyKey_returnsCachedResponse` 等測試涵蓋）。使用者已審閱並**明確決定**此為低優先級技術債，僅記錄不清理 | 無（純程式碼清潔度考量，清理時機自由） | 1 | ⚠️ 已記錄，**不排入排程**（使用者已決策不清理） |
+
+---
+
 ## 已完成延後項目 / Completed Deferred Items
 
 | ID | 標題 | 移出 Sprint | 完成 Sprint | 備註 |
@@ -75,6 +83,23 @@
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 71 (2026-07-06)
+
+**主題**: 多 Sprint 測試強化計劃（恢復例行排程）——`BookingService` + `RoomCalendarService` 訂房核心單元測試強化（1 US / 8 SP）
+
+**完成**:
+- **US-001 → ✅ 完成**：`RoomCalendarService`（先前零單元測試覆蓋）新建 `RoomCalendarServiceTest.java`（17 個測試），聚焦 `bookDateRange` 的 idempotency 核心邏輯（同 bookingId 重複呼叫跳過、不同 bookingId 衝突擋 E_4001、unique constraint/悲觀鎖並發衝突）、`isDateRangeAvailable`、`releaseDateRange`/`blockDateRange`/`unblockDateRange`、`lockDateRangeNoWait`/`unlockDateRange`（含部分取鎖失敗回滾已取得鎖）。`BookingService.createBooking`（先前僅由 E2E/整合測試間接涵蓋）新建 `BookingServiceCreateBookingTest.java`（12 個測試），涵蓋正常路徑 + 前置驗證錯誤路徑 + 鎖定/並發控制（含 finally 區塊無論成功失敗皆釋放鎖的健壯性）。`BookingService.updateBooking` 日期變更流程新建 `BookingServiceUpdateDateChangeTest.java`（5 個測試）。三檔合計新增 **34 個單元測試**，與 Sprint 68 `BookingServiceOwnershipTest`（10 個，涵蓋 getBooking/updateBooking/cancelBooking 擁有權檢查）互補、不重複。
+- **`DEF-025`（🟢 低優先級技術債，已記錄）**：撰寫 `createBooking` 測試時發現 `idempotencyKey` 參數為死碼（真正 idempotency 由 Controller 層 `IdempotencyService` 處理），使用者審閱後決定不清理，僅記錄備查。
+
+**驗證**:
+- 本 Sprint **僅新增測試檔案，未修改任何生產程式碼**，依既定政策（純補測試 Sprint）僅需 `mvn test`（不需全量 `mvn verify -Pintegration-test`）：**640 tests，0 fail**（含本 Sprint新增 34 個）。
+- `make validate-schema` 無漂移（本 Sprint 無 entity/migration 變更）。
+
+**下一 Sprint 候選**:
+- ERP 模組整體測試（Supplier/StockMovement/PurchaseOrder/Inventory，測試目錄完全不存在，Sprint 72+）。
+
+---
 
 ### Sprint 70 (2026-07-05)
 

@@ -12,7 +12,7 @@
 
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
 |----|------|-------------|---------|---------|---------|------|
-| （無） | | | | | | |
+| DEF-024 | OrderService.updateOrderStatus 無擁有權/租戶檢查（IDOR，安全） | Sprint 69（撰寫 OrderService 測試時發現） | 同檔案內 `getOrder`（DEF-018 已修）、`cancelOrder`、`getOrderStateLogs` 皆有 owner-or-admin 擁有權檢查，唯獨 `updateOrderStatus` 完全沒有，直接對任意 `orderId` 執行狀態轉換。Controller 層僅 `@PreAuthorize("hasAuthority('order:update')")` 把關，`RolePermissionMapping.java` 確認 `order:update` 由 SELLER/STORE_OWNER/ADMIN/SUPER_ADMIN 持有（非僅單一平台 ADMIN），形同任一租戶的賣家可對其他租戶訂單執行狀態轉換（跨租戶 IDOR），性質與 `DEF-018/019/023` 系列相同 | 無（比照既有 owner-or-admin inline pattern 即可修復） | 2-3 | 🔴 **✅ 已決策**：使用者於 Sprint 69 收尾時看到本發現後，決定**比照 Sprint 68（DEF-023）模式另立 Sprint 70 緊急修復**，插隊優先於例行測試強化排程 |
 
 > **DEF-023**（Booking 付款擁有權檢查缺口，IDOR）已於 Sprint 68 修復並結案，詳見下方「已完成延後項目」。
 
@@ -76,6 +76,28 @@
 ---
 
 ## Sprint 歷史紀錄
+
+### Sprint 69 (2026-07-05)
+
+**主題**: OrderService（訂單狀態機核心）單元測試從 0 建立（8 SP，US-001 完成）
+
+**完成**:
+- **US-001 → ✅ 完成**：新增 `OrderServiceTest.java`（42 個測試），涵蓋 `OrderService` 7 個 public 方法（`createOrderFromCart`【PRODUCT+ROOM 兩分支】、`createBooking`、`getUserOrders`、`getOrder`、`updateOrderStatus`、`cancelOrder`、`getOrderStateLogs`）的正常/邊界/錯誤路徑。先前該 Service 完全沒有 Mockito 單元測試（僅有間接涵蓋部分流程的 Controller 層 E2E/整合測試 + 不觸及 Service 本身的 `OrderStateMachineTest`）。
+
+**新增延後項目**:
+- **DEF-024（🔴 高優先級，✅ 已決策）**：撰寫測試時發現 `updateOrderStatus` 完全沒有訂單擁有權/租戶檢查（同檔案 `getOrder`/`cancelOrder`/`getOrderStateLogs` 皆有），而持有 `order:update` 權限的 SELLER/STORE_OWNER 角色分散於各租戶，形同跨租戶 IDOR，性質與 `DEF-018/019/023` 系列相同。本 Sprint 依範圍僅記錄不修改，未撰寫「證明漏洞存在」的測試。使用者收尾時看到本發現，**決定比照 Sprint 68（DEF-023）模式另立 Sprint 70 緊急修復**。
+
+**驗證**:
+- 後端單元 + 真 DB 整合（`mvn verify -Pintegration-test`，含 failsafe）**603 + 342 = 945 tests，0 fail**。
+- `make validate-schema` 無漂移（本 Sprint 無 entity/migration 變更）。
+- 誠實揭露：`Order.tenantId` 為 insertable=false/updatable=false 影子欄位，純 mock 測試無法透過 Response DTO 觀察租戶回退結果，改以 `ArgumentCaptor<Order>` 驗證實際傳入 repository 的 `Order.getTenant()`（比照既有「erp-tenant-test-seeding-gotcha」教訓，本次為單元測試層級的等價陷阱，已在測試註解中記錄）。
+
+**下一 Sprint 候選**:
+- 🔴 **Sprint 70（已決策，緊急插隊）**：DEF-024（跨租戶 IDOR 修復）；其後恢復例行排程：`BookingService`/`RoomCalendarService` 其餘業務邏輯方法測試強化（Sprint 71）；ERP 模組整體測試（Sprint 72+）。
+
+**里程碑**：**Order 模組單元測試缺口清零**——與 `PaymentStateService`（Sprint 67）、`Booking` 擁有權隔離（Sprint 68）合計完成金流/訂單/訂房三大核心模組的測試強化第一輪；活躍高優先級延後項目新增 DEF-024，已決策排入 Sprint 70 緊急修復。
+
+---
 
 ### Sprint 68 (2026-07-05)
 

@@ -492,6 +492,7 @@ public class BookingService {
     @Transactional(readOnly = true)
     public BookingDto.BookingResponse getBooking(UUID bookingId) {
         com.nextkey.ecommerce.domain.model.order.Booking booking = findBookingById(bookingId);
+        checkBookingOwnership(booking);
         Listing listing = listingRepository.findById(booking.getRoomListingId()).orElse(null);
         Room room = listing != null ? roomRepository.findByListingId(listing.getId()).orElse(null) : null;
         long nightsCount = ChronoUnit.DAYS.between(booking.getCheckInDate(), booking.getCheckOutDate());
@@ -504,6 +505,7 @@ public class BookingService {
     @Transactional
     public BookingDto.BookingResponse updateBooking(UUID bookingId, BookingDto.UpdateRequest request) {
         com.nextkey.ecommerce.domain.model.order.Booking booking = findBookingById(bookingId);
+        checkBookingOwnership(booking);
 
         // 檢查是否可更新
         if (booking.getStatus() != com.nextkey.ecommerce.domain.model.order.Booking.BookingStatus.CREATED &&
@@ -646,6 +648,24 @@ public class BookingService {
     private com.nextkey.ecommerce.domain.model.order.Booking findBookingById(UUID bookingId) {
         return bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4006));
+    }
+
+    /**
+     * 預訂擁有權檢查（DEF-023：booking 讀寫擁有權隔離）。
+     * 比照 OrderService.getOrder：買家限本人預訂、admin（ROLE_ADMIN/SUPER_ADMIN）放行，
+     * 越權回 403/E_1007。杜絕任何登入者查詢/更新他人預訂（IDOR）。
+     */
+    private void checkBookingOwnership(final com.nextkey.ecommerce.domain.model.order.Booking booking) {
+        UUID userId = getCurrentUser();
+        org.springframework.security.core.Authentication auth =
+            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = auth != null && (
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+        );
+        if (!isAdmin && !userId.equals(booking.getUserId())) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to access this booking");
+        }
     }
 
     private BigDecimal calculateTotalAmount(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {

@@ -20,6 +20,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.api.dto.PaymentDto;
 import com.nextkey.ecommerce.core.order.OrderService;
+import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
@@ -29,13 +30,14 @@ import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 /**
- * PaymentService.processOrderPayment 擁有權隔離（DEF-019：/v2/payments 訂單付款入口 IDOR 修補）。
+ * PaymentService.processOrderPayment/processBookingPayment 擁有權隔離
+ * （DEF-019：訂單付款入口；DEF-023：訂房付款入口，皆為 /v2/payments IDOR 修補）。
  *
- * <p>驗證：他人不可為買家訂單付款（E_1007，映射 HTTP 403）；本人通過擁有權檢查（續走狀態檢查）；
+ * <p>驗證：他人不可為買家訂單/預訂付款（E_1007，映射 HTTP 403）；本人通過擁有權檢查（續走狀態檢查）；
  * admin 放行。以「狀態檢查」證明擁有權**先於**狀態觸發，免除付款 happy-path 深度 mock。
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("PaymentService.processOrderPayment 擁有權隔離（DEF-019）")
+@DisplayName("PaymentService.processOrderPayment/processBookingPayment 擁有權隔離（DEF-019/DEF-023）")
 class PaymentServiceOwnershipTest {
 
     @Mock
@@ -56,6 +58,7 @@ class PaymentServiceOwnershipTest {
     private final UUID buyerA = UUID.randomUUID();
     private final UUID buyerB = UUID.randomUUID();
     private final UUID orderId = UUID.randomUUID();
+    private final UUID bookingId = UUID.randomUUID();
 
     @AfterEach
     void tearDown() {
@@ -67,9 +70,22 @@ class PaymentServiceOwnershipTest {
         return Order.builder().id(orderId).userId(userId).status(status).build();
     }
 
+    private Booking bookingOfUser(final UUID userId, final Booking.BookingStatus status) {
+        Booking booking = Booking.builder().userId(userId).status(status).build();
+        booking.setId(bookingId);
+        return booking;
+    }
+
     private PaymentDto.PaymentRequest req() {
         return PaymentDto.PaymentRequest.builder()
                 .orderId(orderId)
+                .paymentMethod(PaymentDto.PaymentMethod.MOCK)
+                .build();
+    }
+
+    private PaymentDto.PaymentRequest bookingReq() {
+        return PaymentDto.PaymentRequest.builder()
+                .bookingId(bookingId)
                 .paymentMethod(PaymentDto.PaymentMethod.MOCK)
                 .build();
     }
@@ -114,6 +130,53 @@ class PaymentServiceOwnershipTest {
                         List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
 
         assertThatThrownBy(() -> paymentService.processPayment(req()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_5011);
+    }
+
+    // ========== processBookingPayment（DEF-023） ==========
+
+    @Test
+    @DisplayName("他人為買家預訂付款 → E_1007（擁有權先於狀態檢查）")
+    void payBooking_otherUser_throwsE1007() {
+        // booking 屬 buyerA、狀態故意設 PAID（非 CREATED）；當前使用者為 buyerB。
+        // 若得 E_1007（而非狀態錯誤 E_5011），證明擁有權檢查「先於」狀態檢查觸發。
+        when(bookingRepository.findById(bookingId))
+                .thenReturn(Optional.of(bookingOfUser(buyerA, Booking.BookingStatus.PAID)));
+        TenantContext.setCurrentUser(buyerB);
+
+        assertThatThrownBy(() -> paymentService.processPayment(bookingReq()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("本人通過擁有權檢查（續走狀態檢查 → E_5011，非 E_1007）")
+    void payBooking_sameUser_passesOwnership() {
+        when(bookingRepository.findById(bookingId))
+                .thenReturn(Optional.of(bookingOfUser(buyerA, Booking.BookingStatus.PAID)));
+        TenantContext.setCurrentUser(buyerA);
+
+        // 擁有權通過 → 撞上「須 CREATED」狀態檢查 → E_5011，證明未被 E_1007 擋下。
+        assertThatThrownBy(() -> paymentService.processPayment(bookingReq()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_5011);
+    }
+
+    @Test
+    @DisplayName("admin 為他人預訂付款放行（擁有權通過，續走狀態檢查 → E_5011）")
+    void payBooking_admin_bypassesOwnership() {
+        when(bookingRepository.findById(bookingId))
+                .thenReturn(Optional.of(bookingOfUser(buyerA, Booking.BookingStatus.PAID)));
+        TenantContext.setCurrentUser(buyerB); // 非本人
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("admin", null,
+                        List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+
+        assertThatThrownBy(() -> paymentService.processPayment(bookingReq()))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.E_5011);

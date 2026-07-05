@@ -21,10 +21,11 @@ public class RolePermissionMapping {
 
     static {
         // ========== GUEST - 訪客，僅有檢視權限 ==========
+        // DEF-023：移除 BOOKING_READ——訪客本質上不應有任何預訂記錄，保留此權限形同讓任何登入者
+        // 皆可查詢 booking 相關資料，是 IDOR 的放大面。
         ROLE_PERMISSIONS.put(User.UserRole.GUEST, EnumSet.of(
                 Permission.PRODUCT_READ,
-                Permission.ROOM_READ,
-                Permission.BOOKING_READ
+                Permission.ROOM_READ
         ));
 
         // ========== BUYER - 買家，購物相關權限 ==========

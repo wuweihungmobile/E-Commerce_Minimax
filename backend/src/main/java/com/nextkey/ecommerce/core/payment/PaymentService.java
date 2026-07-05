@@ -108,6 +108,10 @@ public class PaymentService {
         Booking booking = bookingRepository.findById(request.getBookingId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4006, "Booking not found"));
 
+        // DEF-023：訂房付款擁有權檢查（/v2/payments 對外入口 IDOR 修補）——買家限本人預訂、
+        // admin 放行，越權回 403/E_1007。置於狀態檢查之前，避免向未授權者洩漏預訂狀態。
+        checkBookingPaymentOwnership(booking);
+
         // 檢查預訂狀態
         if (booking.getStatus() != Booking.BookingStatus.CREATED) {
             throw new BusinessException(ErrorCode.E_5011, "Booking cannot be paid in current status");
@@ -226,6 +230,24 @@ public class PaymentService {
         );
         if (!isAdmin && (userId == null || !userId.equals(order.getUserId()))) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to pay for this order");
+        }
+    }
+
+    /**
+     * 訂房付款擁有權檢查（DEF-023：/v2/payments 訂房付款入口 IDOR 修補）。
+     * 比照 checkOrderPaymentOwnership：買家限本人預訂、admin（ROLE_ADMIN/SUPER_ADMIN）
+     * 放行，越權回 403/E_1007。杜絕任何具付款權限者為他人預訂付款（IDOR）。
+     */
+    private void checkBookingPaymentOwnership(final Booking booking) {
+        UUID userId = TenantContext.getCurrentUser();
+        org.springframework.security.core.Authentication auth =
+            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = auth != null && (
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+        );
+        if (!isAdmin && (userId == null || !userId.equals(booking.getUserId()))) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to pay for this booking");
         }
     }
 

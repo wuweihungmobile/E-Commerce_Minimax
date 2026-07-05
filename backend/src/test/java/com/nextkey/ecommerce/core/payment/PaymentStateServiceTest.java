@@ -196,6 +196,33 @@ class PaymentStateServiceTest {
         }
 
         @Test
+        @DisplayName("UT-PAY-STATE-006b: 非本人查詢他人預訂 -> E_1007（DEF-023 修復前會直接放行，此測試證明修復後擋下）")
+        void otherUser_throwsE1007() {
+            Booking booking = Booking.builder().userId(OTHER_USER_ID).status(Booking.BookingStatus.CREATED).build();
+            booking.setId(BOOKING_ID);
+            when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
+
+            assertThatThrownBy(() -> service.getBookingPaymentState(BOOKING_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_1007);
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-006c: admin 查詢他人預訂 -> 放行")
+        void admin_bypassesOwnership() {
+            loginAsAdmin();
+            Booking booking = Booking.builder().userId(OTHER_USER_ID).status(Booking.BookingStatus.CREATED).build();
+            booking.setId(BOOKING_ID);
+            when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
+            when(paymentRepository.findByBookingId(BOOKING_ID)).thenReturn(Optional.empty());
+
+            OrderPaymentStateDto dto = service.getBookingPaymentState(BOOKING_ID);
+
+            assertThat(dto.getOrderStatus()).isEqualTo("CREATED");
+        }
+
+        @Test
         @DisplayName("UT-PAY-STATE-007: CREATED 狀態 + 無付款記錄 -> canPay=true，nextValidStates=PAID,CANCELLED")
         void created_noPayment_canPay() {
             when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(bookingOf(Booking.BookingStatus.CREATED)));

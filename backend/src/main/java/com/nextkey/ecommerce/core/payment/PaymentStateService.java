@@ -75,6 +75,7 @@ public class PaymentStateService {
     public OrderPaymentStateDto getBookingPaymentState(UUID bookingId) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4006, "Booking not found"));
+        checkBookingOwnership(booking);
 
         Payment payment = paymentRepository.findByBookingId(bookingId).orElse(null);
 
@@ -427,6 +428,24 @@ public class PaymentStateService {
         );
         if (!isAdmin && !userId.equals(order.getUserId())) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to access this order");
+        }
+    }
+
+    /**
+     * 訂房擁有權檢查（DEF-023：booking 付款讀取擁有權隔離）。
+     * 比照 checkOrderOwnership：買家限本人預訂、admin（ROLE_ADMIN/SUPER_ADMIN）放行，
+     * 越權回 403/E_1007。杜絕任何登入者查詢他人預訂付款狀態（IDOR）。
+     */
+    private void checkBookingOwnership(Booking booking) {
+        UUID userId = TenantContext.getCurrentUser();
+        org.springframework.security.core.Authentication auth =
+            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = auth != null && (
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+        );
+        if (!isAdmin && !userId.equals(booking.getUserId())) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to access this booking");
         }
     }
 

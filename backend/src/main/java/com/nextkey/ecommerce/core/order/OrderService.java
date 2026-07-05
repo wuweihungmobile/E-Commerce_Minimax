@@ -366,6 +366,11 @@ public class OrderService {
         UUID userId = TenantContext.getCurrentUser();
         Order order = findOrderById(orderId);
 
+        // DEF-024：修復跨租戶 IDOR——訂單擁有者本人（買家自助付款流程）或本租戶
+        // （賣家/店主管理自己租戶訂單，比照 LogisticsService.checkOrderTenant）或 admin 放行，
+        // 置於狀態機檢查之前避免向未授權者洩漏訂單狀態
+        checkOrderStatusUpdateAuthorization(order);
+
         String currentStatus = order.getStatus().name();
         OrderStateMachine.TransitionResult result = OrderStateMachine.canTransition(currentStatus, targetStatus);
 
@@ -382,6 +387,35 @@ public class OrderService {
 
         log.info("Order status updated: orderId={}, {} -> {}", orderId, currentStatus, targetStatus);
         return toOrderResponse(order);
+    }
+
+    /**
+     * 訂單狀態更新擁有權/租戶檢查（DEF-024：修復 updateOrderStatus 完全無檢查的跨租戶 IDOR）。
+     *
+     * <p>本方法有兩種合法呼叫情境：(1) 買家透過付款流程觸發（CREATED→PAID），呼叫端已由
+     * {@code PaymentService.checkOrderPaymentOwnership} 限定本人；(2) 賣家/店主透過
+     * {@code PATCH /v2/orders/{orderId}/status} 直接呼叫（Controller 層以 order:update 權限把關，
+     * 僅 SELLER/STORE_OWNER/ADMIN/SUPER_ADMIN 持有），用於出貨等租戶內訂單管理。
+     *
+     * <p>因此採「訂單擁有者本人（比照 getOrder/cancelOrder/getOrderStateLogs 的 DEF-018 模式）
+     * or 本租戶（比照 LogisticsService.checkOrderTenant 的 DEF-019 模式）or admin」三者其一放行，
+     * 越權回 403/E_1007。
+     */
+    private void checkOrderStatusUpdateAuthorization(final Order order) {
+        UUID userId = TenantContext.getCurrentUser();
+        UUID tenantId = TenantContext.getCurrentTenant();
+        org.springframework.security.core.Authentication auth =
+            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = auth != null && (
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+        );
+        boolean isOwner = userId != null && userId.equals(order.getUserId());
+        boolean isSameTenant = tenantId != null && tenantId.equals(order.getTenantId());
+
+        if (!isAdmin && !isOwner && !isSameTenant) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to update this order's status");
+        }
     }
 
     /**

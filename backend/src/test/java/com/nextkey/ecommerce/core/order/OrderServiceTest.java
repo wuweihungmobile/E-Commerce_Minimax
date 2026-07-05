@@ -67,8 +67,9 @@ import com.nextkey.ecommerce.shared.tenant.TenantContext;
  *
  * <p>過程中發現 {@code updateOrderStatus} 完全沒有訂單擁有權/租戶檢查（同檔案內
  * getOrder/cancelOrder/getOrderStateLogs 皆有 owner-or-admin 檢查），已記錄為 DEF-024，
- * 待人工決策，本測試類別不對此缺口撰寫「證明漏洞存在」的測試，僅在既有合法流程
- * （orderId 存在、狀態轉換合法）下驗證行為，不假設也不修改生產程式碼。
+ * 並於 Sprint 70 修復——新增 {@code checkOrderStatusUpdateAuthorization}，採「訂單擁有者本人
+ * （比照 DEF-018 買家模式）or 本租戶（比照 LogisticsService.checkOrderTenant 的 DEF-019
+ * 賣家/店主模式）or admin」三者其一放行，越權回 403/E_1007。詳見下方 updateOrderStatus 測試區塊。
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -92,6 +93,7 @@ class OrderServiceTest {
     private static final UUID USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final UUID OTHER_USER_ID = UUID.fromString("99999999-9999-9999-9999-999999999999");
     private static final UUID TENANT_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
+    private static final UUID OTHER_TENANT_ID = UUID.fromString("88888888-8888-8888-8888-888888888888");
     private static final UUID ORDER_ID = UUID.fromString("33333333-3333-3333-3333-333333333333");
     private static final UUID LISTING_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
 
@@ -629,13 +631,13 @@ class OrderServiceTest {
 
     // ========== updateOrderStatus ==========
     //
-    // 🔴 誠實揭露（DEF-024，本 Sprint 不修改）：updateOrderStatus 完全沒有訂單擁有權/租戶檢查——
-    // 同檔案內 getOrder/cancelOrder/getOrderStateLogs 皆有 owner-or-admin 檢查，唯獨此方法沒有。
-    // Controller 層僅以 @PreAuthorize("hasAuthority('order:update')") 把關，而 SELLER/STORE_OWNER
-    // 角色（非僅單一平台 ADMIN）持有此權限，形同任一租戶的賣家可對「任意 orderId」執行狀態轉換
-    // （跨租戶 IDOR）。以下測試僅驗證「合法呼叫下」的狀態機行為，不撰寫「證明漏洞存在」的測試
-    // （不將現況鎖進測試基準線），此缺口已記錄於 SPRINT_69_PLAN.md 與 DEFERRED_ITEMS_TRACKER.md
-    // 待人工決策是否及何時修復。
+    // DEF-024（Sprint 70 已修復）：updateOrderStatus 原本完全沒有訂單擁有權/租戶檢查——同檔案內
+    // getOrder/cancelOrder/getOrderStateLogs 皆有 owner-or-admin 檢查，唯獨此方法沒有，形同任一
+    // 租戶的賣家（order:update 由 SELLER/STORE_OWNER/ADMIN/SUPER_ADMIN 持有）可對「任意 orderId」
+    // 執行狀態轉換（跨租戶 IDOR）。修復後改為 checkOrderStatusUpdateAuthorization：訂單擁有者本人
+    // （比照 DEF-018 買家模式，對應買家透過付款流程觸發）or 本租戶（比照 LogisticsService.
+    // checkOrderTenant 的 DEF-019 賣家/店主模式，對應賣家直接呼叫 PATCH 端點）or admin，三者其一
+    // 放行，越權回 403/E_1007，且置於狀態機檢查之前。
 
     @Test
     @DisplayName("updateOrderStatus：合法轉換 CREATED→PAID → 成功並記錄狀態日誌")
@@ -677,6 +679,54 @@ class OrderServiceTest {
         assertThatThrownBy(() -> orderService.updateOrderStatus(ORDER_ID, "PAID", "reason"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_5000);
+    }
+
+    @Test
+    @DisplayName("updateOrderStatus：他租戶賣家對其他租戶訂單執行狀態轉換 → E_1007（先於狀態機檢查觸發）")
+    void updateOrderStatus_otherTenantNonOwner_throwsE1007() {
+        // 訂單屬 TENANT_ID、擁有者為 USER_ID；當前使用者為 OTHER_USER_ID、當前租戶為 OTHER_TENANT_ID
+        // （模擬另一租戶的賣家）。狀態故意設可合法轉換的 CREATED，若得 E_1007（而非狀態機允許轉換
+        // 成功）證明擁有權/租戶檢查先於狀態機檢查觸發，杜絕跨租戶 IDOR。
+        TenantContext.setCurrentUser(OTHER_USER_ID);
+        TenantContext.setCurrentTenant(OTHER_TENANT_ID);
+        Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> orderService.updateOrderStatus(ORDER_ID, "PAID", "cross-tenant attack"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1007);
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    @DisplayName("updateOrderStatus：本租戶賣家（非訂單擁有者）執行狀態轉換 → 放行（續走狀態機邏輯）")
+    void updateOrderStatus_sameTenantNonOwner_passesAuthorization() {
+        // 當前使用者為 OTHER_USER_ID（非訂單擁有者 USER_ID），但當前租戶與訂單租戶相同（TENANT_ID）
+        // ——模擬訂單所屬租戶內的賣家/店主標記出貨等合法操作，證明修復未破壞既有業務能力。
+        TenantContext.setCurrentUser(OTHER_USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+        Order order = orderOf(USER_ID, Order.OrderStatus.CONFIRMED);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        OrderDto.OrderResponse response = orderService.updateOrderStatus(ORDER_ID, "SHIPPING", "seller ships order");
+
+        assertThat(response.getStatus()).isEqualTo("SHIPPING");
+    }
+
+    @Test
+    @DisplayName("updateOrderStatus：admin 跨租戶放行（續走狀態機邏輯）")
+    void updateOrderStatus_admin_bypassesTenant() {
+        TenantContext.setCurrentUser(OTHER_USER_ID);
+        TenantContext.setCurrentTenant(OTHER_TENANT_ID);
+        asAdmin();
+        Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        OrderDto.OrderResponse response = orderService.updateOrderStatus(ORDER_ID, "PAID", "admin override");
+
+        assertThat(response.getStatus()).isEqualTo("PAID");
     }
 
     // ========== cancelOrder ==========

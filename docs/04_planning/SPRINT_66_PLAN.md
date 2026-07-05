@@ -73,9 +73,9 @@
 
 - [x] US-001：`ProductRepository.searchByTenantIdAndKeyword` + `ProductService` 修正 + 測試（3 個測試）
 - [x] US-002：`AuthServiceTest.java` 新建（16 個測試，涵蓋 5 個方法）
-- [ ] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）0 fail
-- [ ] `make validate-schema` 無漂移（本 Sprint 無新 migration）
-- [ ] Sprint 66 Review / Retro / Release Notes + trackers（含後續 Sprint 67+ 待處理清單）
+- [x] 後端單元 + 真 DB 整合全量回歸（`mvn verify -Pintegration-test`）**494 + 342 = 836 tests，0 fail**
+- [x] `make validate-schema` 無漂移（本 Sprint 無新 migration）
+- [x] Sprint 66 Review / Retro / Release Notes + trackers（含後續 Sprint 67+ 待處理清單）
 - [ ]（檢查點）本 Sprint 收尾後立即 push
 
 ---

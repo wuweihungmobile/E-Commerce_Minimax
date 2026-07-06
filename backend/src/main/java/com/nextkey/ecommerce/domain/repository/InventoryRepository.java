@@ -18,6 +18,11 @@ public interface InventoryRepository extends JpaRepository<Inventory, UUID> {
 
     Optional<Inventory> findBySkuId(UUID skuId);
 
+    /**
+     * 依 SKU 和 tenant 取得庫存（租戶隔離查詢，Sprint 72 DEF-026 修復）
+     */
+    Optional<Inventory> findBySkuIdAndTenantId(UUID skuId, UUID tenantId);
+
     List<Inventory> findByTenantId(UUID tenantId);
 
     Page<Inventory> findByTenantId(UUID tenantId, Pageable pageable);

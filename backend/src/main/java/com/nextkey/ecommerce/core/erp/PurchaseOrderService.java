@@ -20,6 +20,7 @@ import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderUpdateRequest;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrderItem;
 import com.nextkey.ecommerce.domain.model.inventory.StockMovement;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.product.ProductInventory;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository;
@@ -51,7 +52,6 @@ public class PurchaseOrderService {
     private final SupplierRepository supplierRepository;
     private final ProductInventoryRepository productInventoryRepository;
     private final StockMovementRepository stockMovementRepository;
-    @SuppressWarnings("unused")
     private final ListingRepository listingRepository;
 
     // PO Number generation
@@ -85,6 +85,10 @@ public class PurchaseOrderService {
         // 建立 Items
         BigDecimal totalAmount = BigDecimal.ZERO;
         for (PurchaseOrderCreateRequest.PurchaseOrderItemRequest itemRequest : request.getItems()) {
+            // 驗證品項的 listing 屬於當前租戶（DEF-027 修復，比照 StockMovementService 的 DEF-017 模式，
+            // 避免以他租戶的 listing/SKU 建立採購單，收貨時把庫存挪用到他租戶商品上）
+            validateListingOwnership(itemRequest.getListingId(), tenantId);
+
             BigDecimal subtotal = itemRequest.getUnitCost().multiply(BigDecimal.valueOf(itemRequest.getQuantity()));
 
             PurchaseOrderItem item = PurchaseOrderItem.builder()
@@ -292,6 +296,18 @@ public class PurchaseOrderService {
         if (!supplierRepository.existsByIdAndTenantId(supplierId, tenantId)) {
             throw new BusinessException(ErrorCode.E_7008,
                     String.format("Supplier not found or inactive: %s", supplierId));
+        }
+    }
+
+    /**
+     * 驗證品項的 listing 屬於當前租戶（DEF-027 修復）
+     */
+    private void validateListingOwnership(final UUID listingId, final UUID tenantId) {
+        Listing listing = listingRepository.findById(listingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_3000,
+                        String.format("Listing not found: %s", listingId)));
+        if (!tenantId.equals(listing.getTenantId())) {
+            throw new BusinessException(ErrorCode.E_1007, "Listing does not belong to current tenant");
         }
     }
 

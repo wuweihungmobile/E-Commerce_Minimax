@@ -57,7 +57,9 @@ public class InventoryService {
     public InventoryDetailDto getInventoryBySku(final UUID skuId) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
-        Inventory inventory = inventoryRepository.findBySkuId(skuId)
+        // DEF-026 修復（Sprint 72）：改用 findBySkuIdAndTenantId 做租戶隔離查詢，
+        // 避免跨租戶讀取他租戶的庫存資料（原 findBySkuId 未帶入 tenantId 過濾）。
+        Inventory inventory = inventoryRepository.findBySkuIdAndTenantId(skuId, tenantId)
                 .orElse(null);
 
         if (inventory == null) {

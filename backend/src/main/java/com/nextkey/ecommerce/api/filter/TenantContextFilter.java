@@ -82,8 +82,10 @@ public class TenantContextFilter extends OncePerRequestFilter {
     }
 
     private UUID resolveEffectiveTenantId(final UUID userId, final String userTenantId, final String requestedTenantId, final String role) {
-        // Super Admin must specify tenant via header
-        if ("SUPER_ADMIN".equals(role) || "ADMIN".equals(role)) {
+        // DEF-038：只有 SUPER_ADMIN 是平台級角色，才允許用 header 指定任意租戶。
+        // ADMIN 依 RolePermissionMapping 定義為「租戶內管理」角色，不可用 header 越權存取他人租戶，
+        // 一律強制使用自己的 userTenantId（與一般使用者相同邏輯，見下方）。
+        if ("SUPER_ADMIN".equals(role)) {
             if (StringUtils.hasText(requestedTenantId)) {
                 return UUID.fromString(requestedTenantId);
             }
@@ -91,7 +93,7 @@ public class TenantContextFilter extends OncePerRequestFilter {
             return UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
         }
 
-        // Regular users use their assigned tenant
+        // Regular users (including tenant-scoped ADMIN) use their assigned tenant
         if (StringUtils.hasText(userTenantId)) {
             return UUID.fromString(userTenantId);
         }

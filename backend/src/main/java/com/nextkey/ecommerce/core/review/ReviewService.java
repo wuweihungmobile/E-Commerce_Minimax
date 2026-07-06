@@ -222,9 +222,19 @@ public class ReviewService {
 
     /**
      * 取得用戶評價列表
+     *
+     * DEF-030 修復：原本未檢查 {@code userId} 是否為呼叫者本人，任一持有 order:read 權限的
+     * 使用者（含一般買家）皆可代入他人 userId 取得該使用者完整評價內容，繞過 isAnonymous
+     * 匿名保護（toReviewResponse 僅依 isAnonymous 隱藏 userId/userFullName/userAvatarUrl，
+     * content/rating/listingId 一律回傳）。比照 DEF-018 買家自助模式，採 owner-or-admin。
      */
     @Transactional(readOnly = true)
     public ReviewDto.ReviewListResponse getUserReviews(UUID userId, int page, int size) {
+        UUID currentUserId = TenantContext.getCurrentUser();
+        if (!isCurrentUserAdmin() && !userId.equals(currentUserId)) {
+            throw new BusinessException(ErrorCode.E_1007, "You can only view your own reviews");
+        }
+
         PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
         Page<Review> reviews = reviewRepository.findByUserIdOrderByCreatedAtDesc(userId, pageRequest);
 
@@ -313,6 +323,7 @@ public class ReviewService {
 
         Review review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
+        checkReviewManagementAuthorization(review);
 
         review.setIsHandled(true);
         review.setHandledAt(Instant.now());
@@ -333,6 +344,7 @@ public class ReviewService {
 
         Review review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
+        checkReviewManagementAuthorization(review);
 
         review.setIsHandled(false);
         review.setHandledAt(null);
@@ -345,13 +357,57 @@ public class ReviewService {
     }
 
     /**
+     * 評價管理擁有權檢查（DEF-028 修復）。
+     *
+     * <p>markAsHandled/markAsUnhandled 原本完全沒有擁有權/租戶檢查，Controller 端僅要求
+     * room:update/product:update 權限——此權限分散於各租戶的 SELLER/HOST/STORE_OWNER/ADMIN
+     * 角色，任一租戶的賣家皆可竄改其他租戶商品評價的處理狀態，屬跨租戶寫入 IDOR。
+     *
+     * <p>此操作無「本人」語意（操作者是管理商店的賣家，非評價作者），比照 DEF-024 的
+     * owner-or-same-tenant-or-admin 模式簡化為「本租戶（review 所屬 listing 的 tenant）
+     * or admin（ROLE_ADMIN/ROLE_SUPER_ADMIN）」放行，越權回 403/E_1007。
+     */
+    private void checkReviewManagementAuthorization(final Review review) {
+        UUID tenantId = TenantContext.getCurrentTenant();
+        UUID listingTenantId = review.getListing().getTenantId();
+        boolean isSameTenant = tenantId != null && tenantId.equals(listingTenantId);
+        if (!isCurrentUserAdmin() && !isSameTenant) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to manage this review");
+        }
+    }
+
+    /**
+     * 判斷目前使用者是否為系統管理員（ROLE_ADMIN 或 ROLE_SUPER_ADMIN）。
+     * 比照 OrderService.checkOrderStatusUpdateAuthorization / BookingService.checkBookingOwnership
+     * 既有前例，用於 Sprint 73 DEF-028/029/030 三處擁有權/租戶檢查的 admin 放行判斷。
+     */
+    private boolean isCurrentUserAdmin() {
+        org.springframework.security.core.Authentication auth =
+            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && (
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+        );
+    }
+
+    /**
      * 根據處理狀態取得評價列表
+     *
+     * DEF-029 修復：原本呼叫 findByIsHandled 完全無租戶過濾，任一持有 room:update/
+     * product:update 權限的賣家會取得系統中所有租戶的評價列表。非 admin 一律改用
+     * 租戶過濾查詢，僅回傳當前租戶名下 listing 的評價；admin 沿用舊查詢維持跨租戶總覽能力。
      */
     @Transactional(readOnly = true)
     public ReviewDto.ReviewListResponse getReviewsByHandlingStatus(Boolean isHandled, int page, int size) {
         PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
 
-        Page<Review> reviews = reviewRepository.findByIsHandled(isHandled, pageRequest);
+        Page<Review> reviews;
+        if (isCurrentUserAdmin()) {
+            reviews = reviewRepository.findByIsHandled(isHandled, pageRequest);
+        } else {
+            UUID tenantId = TenantContext.getCurrentTenant();
+            reviews = reviewRepository.findByIsHandledAndTenantId(isHandled, tenantId, pageRequest);
+        }
 
         List<ReviewDto.ReviewResponse> reviewResponses = reviews.getContent().stream()
                 .map(r -> toReviewResponse(r, r.getListing()))

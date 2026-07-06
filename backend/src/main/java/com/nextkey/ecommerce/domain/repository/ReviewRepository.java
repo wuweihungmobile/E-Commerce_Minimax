@@ -46,6 +46,16 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
 
     Page<Review> findByIsHandled(Boolean isHandled, Pageable pageable);
 
+    /**
+     * 依處理狀態與租戶取得評價列表（租戶隔離查詢，Sprint 73 DEF-029 修復）。
+     * Review 本身無 tenant_id 欄位，經由 listing 關聯取得所屬租戶。
+     */
+    @Query("SELECT r FROM Review r WHERE r.isHandled = :isHandled AND r.listing.tenant.id = :tenantId")
+    Page<Review> findByIsHandledAndTenantId(
+            @Param("isHandled") Boolean isHandled,
+            @Param("tenantId") UUID tenantId,
+            Pageable pageable);
+
     // ========== Sprint 18 US-003: 多維度搜尋與篩選 ==========
 
     /**

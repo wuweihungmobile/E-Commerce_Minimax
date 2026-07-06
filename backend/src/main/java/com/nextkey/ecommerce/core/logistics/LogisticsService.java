@@ -108,6 +108,9 @@ public class LogisticsService {
     public LogisticsDto.LogisticsResponse getLogistics(UUID logisticsId) {
         Logistics logistics = logisticsRepository.findById(logisticsId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_7000, "Logistics not found"));
+        // DEF-036：物流查詢租戶擁有權檢查——比照 createLogistics 的 checkOrderTenant，
+        // 杜絕任一持有 order:read 的租戶對他租戶物流單的跨租戶讀取（IDOR）。
+        checkLogisticsTenant(logistics);
         return toLogisticsResponse(logistics);
     }
 
@@ -116,6 +119,10 @@ public class LogisticsService {
      */
     @Transactional(readOnly = true)
     public List<LogisticsDto.LogisticsResponse> getLogisticsByOrderId(UUID orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
+        // DEF-036：依訂單查物流列表亦須租戶擁有權檢查，理由同上。
+        checkOrderTenant(order);
         return logisticsRepository.findByOrderId(orderId).stream()
                 .map(this::toLogisticsResponse)
                 .collect(Collectors.toList());
@@ -128,6 +135,8 @@ public class LogisticsService {
     public LogisticsDto.StatusResponse trackLogistics(UUID logisticsId) {
         Logistics logistics = logisticsRepository.findById(logisticsId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_7000));
+        // DEF-036：追蹤查詢租戶擁有權檢查，理由同上。
+        checkLogisticsTenant(logistics);
 
         // Mock 追蹤資訊
         String statusMessage = getStatusMessage(logistics.getStatus());
@@ -153,6 +162,8 @@ public class LogisticsService {
     public LogisticsDto.TrackingDetail getTrackingDetail(UUID logisticsId) {
         Logistics logistics = logisticsRepository.findById(logisticsId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_7000));
+        // DEF-036：追蹤歷史查詢租戶擁有權檢查，理由同上。
+        checkLogisticsTenant(logistics);
 
         // Mock 追蹤事件
         List<LogisticsDto.TrackingEvent> events = generateMockEvents(logistics);
@@ -179,6 +190,8 @@ public class LogisticsService {
     public LogisticsDto.LogisticsResponse updateLogisticsStatus(UUID logisticsId, Logistics.LogisticsStatus newStatus) {
         Logistics logistics = logisticsRepository.findById(logisticsId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_7000));
+        // DEF-036：狀態更新為寫入操作，租戶擁有權檢查更為關鍵（可竄改他租戶訂單的物流/送達狀態）。
+        checkLogisticsTenant(logistics);
 
         logistics.setStatus(newStatus);
         if (newStatus == Logistics.LogisticsStatus.DELIVERED) {
@@ -211,6 +224,8 @@ public class LogisticsService {
         // DEF-011：改用物流專用錯誤碼（原誤用 Supplier/PO 的 E_7000/E_7002）。
         Logistics logistics = logisticsRepository.findById(logisticsId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_7500)); // Logistics not found
+        // DEF-036：取消為寫入操作，租戶擁有權檢查須先於狀態檢查（IDOR 正確順序，避免向未授權者洩漏物流狀態）。
+        checkLogisticsTenant(logistics);
 
         if (logistics.getStatus() == Logistics.LogisticsStatus.DELIVERED) {
             throw new BusinessException(ErrorCode.E_7502, "Cannot cancel delivered logistics");
@@ -226,9 +241,9 @@ public class LogisticsService {
     // ========== Helper Methods ==========
 
     /**
-     * 物流建立租戶擁有權檢查（DEF-019：物流/賣家側租戶隔離）。
+     * 物流租戶擁有權檢查（DEF-019 建立時新增；DEF-036 擴及查詢/追蹤/狀態更新/取消等其餘方法）。
      * 賣家限本租戶訂單（order.tenantId == 當前租戶）、admin（ROLE_ADMIN/SUPER_ADMIN）放行，
-     * 越權回 403/E_1007。杜絕任何具 order:create 權限者為他租戶訂單建立物流（IDOR）。
+     * 越權回 403/E_1007。杜絕任何具 order:read/order:update 權限者存取或竄改他租戶物流單（IDOR）。
      * 比照 PaymentStateService.checkOrderOwnership，惟物流為賣家側故採 tenant-based（非買家 user-based）。
      */
     private void checkOrderTenant(final Order order) {
@@ -240,8 +255,18 @@ public class LogisticsService {
             auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
         );
         if (!isAdmin && (tenantId == null || !tenantId.equals(order.getTenantId()))) {
-            throw new BusinessException(ErrorCode.E_1007, "Not authorized to create logistics for this order");
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to access logistics for this order");
         }
+    }
+
+    /**
+     * 依物流單反查所屬訂單並執行租戶擁有權檢查（DEF-036）。
+     * 供 getLogistics/trackLogistics/getTrackingDetail/updateLogisticsStatus/cancelLogistics 共用。
+     */
+    private void checkLogisticsTenant(final Logistics logistics) {
+        Order order = orderRepository.findById(logistics.getOrderId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
+        checkOrderTenant(order);
     }
 
     private String getStatusMessage(final Logistics.LogisticsStatus status) {

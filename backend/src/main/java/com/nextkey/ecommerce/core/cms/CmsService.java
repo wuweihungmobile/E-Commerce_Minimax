@@ -84,6 +84,7 @@ public class CmsService {
     public CmsDto.PageResponse updatePage(UUID pageId, CmsDto.UpdatePageRequest request) {
         ContentPage page = contentPageRepository.findById(pageId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8004, "Page not found"));
+        checkCmsTenantOwnership(page.getTenantId());
 
         updatePageFromRequest(page, request);
         page = contentPageRepository.save(page);
@@ -142,6 +143,7 @@ public class CmsService {
     public CmsDto.PageResponse publishPage(UUID pageId) {
         ContentPage page = contentPageRepository.findById(pageId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8004, "Page not found"));
+        checkCmsTenantOwnership(page.getTenantId());
 
         page.setStatus(ContentPage.ContentStatus.PUBLISHED);
         page.setPublishedAt(Instant.now());
@@ -174,8 +176,15 @@ public class CmsService {
     @Transactional(readOnly = true)
     public CmsDto.PageListResponse getPages(int page, int size) {
         PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
-        Page<ContentPage> pages = contentPageRepository.findByStatusOrderBySortOrderAsc(
-                ContentPage.ContentStatus.PUBLISHED, pageRequest);
+        Page<ContentPage> pages;
+        if (isCurrentUserAdmin()) {
+            pages = contentPageRepository.findByStatusOrderBySortOrderAsc(
+                    ContentPage.ContentStatus.PUBLISHED, pageRequest);
+        } else {
+            UUID tenantId = TenantContext.getCurrentTenant();
+            pages = contentPageRepository.findByTenantIdAndStatusOrderBySortOrderAsc(
+                    tenantId, ContentPage.ContentStatus.PUBLISHED, pageRequest);
+        }
 
         List<CmsDto.PageResponse> responses = pages.getContent().stream()
                 .map(this::toPageResponse)
@@ -233,6 +242,7 @@ public class CmsService {
     public CmsDto.BannerResponse updateBanner(UUID bannerId, CmsDto.UpdateBannerRequest request) {
         Banner banner = bannerRepository.findById(bannerId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8005, "Banner not found"));
+        checkCmsTenantOwnership(banner.getTenantId());
 
         updateBannerFromRequest(banner, request);
         banner = bannerRepository.save(banner);
@@ -314,6 +324,7 @@ public class CmsService {
     public CmsDto.BannerResponse publishBanner(UUID bannerId) {
         Banner banner = bannerRepository.findById(bannerId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8005, "Banner not found"));
+        checkCmsTenantOwnership(banner.getTenantId());
 
         banner.setStatus(Banner.BannerStatus.PUBLISHED);
         banner = bannerRepository.save(banner);
@@ -328,8 +339,15 @@ public class CmsService {
      */
     @Transactional(readOnly = true)
     public List<CmsDto.BannerResponse> getBanners() {
-        return bannerRepository.findByStatusOrderBySortOrderAsc(Banner.BannerStatus.PUBLISHED,
-                PageRequest.of(0, 100)).getContent().stream()
+        List<Banner> banners;
+        if (isCurrentUserAdmin()) {
+            banners = bannerRepository.findByStatusOrderBySortOrderAsc(Banner.BannerStatus.PUBLISHED,
+                    PageRequest.of(0, 100)).getContent();
+        } else {
+            UUID tenantId = TenantContext.getCurrentTenant();
+            banners = bannerRepository.findByTenantIdAndStatus(tenantId, Banner.BannerStatus.PUBLISHED);
+        }
+        return banners.stream()
                 .map(this::toBannerResponse)
                 .collect(Collectors.toList());
     }
@@ -365,6 +383,40 @@ public class CmsService {
     public void recordBannerClick(final UUID bannerId) {
         bannerRepository.incrementClickCount(bannerId);
         log.debug("Banner click recorded: id={}", bannerId);
+    }
+
+    // ========== Authorization Helpers (Sprint 74 DEF-032) ==========
+
+    /**
+     * CMS 資源（頁面/橫幅）租戶擁有權檢查。
+     *
+     * <p>updatePage/publishPage/updateBanner/publishBanner 原本完全沒有擁有權/租戶檢查，
+     * Controller 端僅要求 cms:update/cms:publish 權限，此權限可能分散於各租戶的管理者角色，
+     * 任一租戶的管理者皆可竄改/發布其他租戶的頁面或橫幅，屬跨租戶寫入 IDOR，與 DEF-019
+     * （LogisticsService.createLogistics）/DEF-024/DEF-028 同一 tenant-based 模式。
+     *
+     * <p>比照既有前例，簡化為「本租戶 or admin（ROLE_ADMIN/ROLE_SUPER_ADMIN）」放行，
+     * 越權拋 E_1007。
+     */
+    private void checkCmsTenantOwnership(final UUID resourceTenantId) {
+        UUID tenantId = TenantContext.getCurrentTenant();
+        boolean isSameTenant = tenantId != null && tenantId.equals(resourceTenantId);
+        if (!isCurrentUserAdmin() && !isSameTenant) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to manage this CMS resource");
+        }
+    }
+
+    /**
+     * 判斷目前使用者是否為系統管理員（ROLE_ADMIN 或 ROLE_SUPER_ADMIN）。
+     * 比照 ReviewService.isCurrentUserAdmin 既有前例。
+     */
+    private boolean isCurrentUserAdmin() {
+        org.springframework.security.core.Authentication auth =
+            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && (
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+        );
     }
 
     // ========== Helper Methods ==========

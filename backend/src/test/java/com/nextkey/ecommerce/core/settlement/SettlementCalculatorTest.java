@@ -120,27 +120,43 @@ class SettlementCalculatorTest {
     @Test
     @DisplayName("calculateCommission: GMV 10000 抽成 10% = 1000.00")
     void calculateCommission_TenPercent() {
-        BigDecimal result = calculator.calculateCommission(new BigDecimal("10000"));
+        BigDecimal result = calculator.calculateCommission(new BigDecimal("10000"), new BigDecimal("0.10"));
         assertEquals(0, new BigDecimal("1000.00").compareTo(result));
+    }
+
+    @Test
+    @DisplayName("calculateCommission: 不同租戶 commissionRate（5%）算出不同抽成")
+    void calculateCommission_DifferentRatePerTenant() {
+        BigDecimal result = calculator.calculateCommission(new BigDecimal("10000"), new BigDecimal("0.05"));
+        assertEquals(0, new BigDecimal("500.00").compareTo(result));
     }
 
     @Test
     @DisplayName("calculateCommission: 0 元回傳 0")
     void calculateCommission_Zero() {
-        assertEquals(0, BigDecimal.ZERO.compareTo(calculator.calculateCommission(BigDecimal.ZERO)));
+        assertEquals(0, BigDecimal.ZERO.compareTo(
+                calculator.calculateCommission(BigDecimal.ZERO, new BigDecimal("0.10"))));
     }
 
     @Test
-    @DisplayName("calculateCommission: null 輸入回傳 0")
-    void calculateCommission_NullInput() {
-        assertEquals(0, BigDecimal.ZERO.compareTo(calculator.calculateCommission(null)));
+    @DisplayName("calculateCommission: gmv null 輸入回傳 0")
+    void calculateCommission_NullGmv() {
+        assertEquals(0, BigDecimal.ZERO.compareTo(
+                calculator.calculateCommission(null, new BigDecimal("0.10"))));
+    }
+
+    @Test
+    @DisplayName("calculateCommission: commissionRate null 輸入回傳 0")
+    void calculateCommission_NullRate() {
+        assertEquals(0, BigDecimal.ZERO.compareTo(
+                calculator.calculateCommission(new BigDecimal("10000"), null)));
     }
 
     @Test
     @DisplayName("calculateCommission: 超大金額四捨五入")
     void calculateCommission_LargeAmountRounding() {
         // 99999999.99 * 0.10 = 9999999.999 → 四捨五入 = 10000000.00
-        BigDecimal result = calculator.calculateCommission(new BigDecimal("99999999.99"));
+        BigDecimal result = calculator.calculateCommission(new BigDecimal("99999999.99"), new BigDecimal("0.10"));
         assertEquals(0, new BigDecimal("10000000.00").compareTo(result));
     }
 
@@ -192,7 +208,7 @@ class SettlementCalculatorTest {
         // When
         List<Order> settleable = calculator.filterSettleableOrders(orders);
         BigDecimal gmv = calculator.calculateTotalGmv(settleable);
-        BigDecimal commission = calculator.calculateCommission(gmv);
+        BigDecimal commission = calculator.calculateCommission(gmv, new BigDecimal("0.10"));
         BigDecimal refunds = calculator.calculateTotalRefunds(settleable);
         BigDecimal net = calculator.calculateNetSettlementAmount(gmv, commission, refunds);
 

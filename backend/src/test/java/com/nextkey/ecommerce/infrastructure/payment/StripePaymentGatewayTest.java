@@ -380,4 +380,57 @@ class StripePaymentGatewayTest {
                     assertThat(be.getErrorCode()).isEqualTo(ErrorCode.E_6008);
                 });
     }
+
+    @Test
+    @DisplayName("TC-S011: createTransfer 成功 — WireMock 200 Transfer.create（AI-2416 Phase D-2）")
+    void createTransfer_success_returnsTransferResult() {
+        UUID statementId = UUID.fromString("11111111-2222-3333-4444-555555555555");
+        stubFor(post(urlEqualTo("/v1/transfers"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {
+                                  "id": "tr_test_1",
+                                  "object": "transfer",
+                                  "amount": 9000,
+                                  "currency": "twd",
+                                  "destination": "acct_test_1"
+                                }
+                                """)));
+
+        PaymentGatewayRequestResponse.TransferResult result =
+                gateway.createTransfer("acct_test_1", 9000L, "twd", statementId.toString());
+
+        assertThat(result.getTransferId()).isEqualTo("tr_test_1");
+
+        verify(postRequestedFor(urlEqualTo("/v1/transfers"))
+                .withRequestBody(containing("destination=acct_test_1"))
+                .withRequestBody(containing("amount=9000"))
+                .withRequestBody(containing("metadata[settlementStatementId]=" + statementId)));
+    }
+
+    @Test
+    @DisplayName("TC-S012: createTransfer 網關錯誤 — WireMock 400 → BusinessException E_6010（AI-2416 Phase D-2）")
+    void createTransfer_stripeError_throwsBusinessException() {
+        stubFor(post(urlEqualTo("/v1/transfers"))
+                .willReturn(aResponse()
+                        .withStatus(400)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {
+                                  "error": {
+                                    "type": "invalid_request_error",
+                                    "message": "No such destination account"
+                                  }
+                                }
+                                """)));
+
+        assertThatThrownBy(() -> gateway.createTransfer("acct_invalid", 9000L, "twd", "some-statement-id"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> {
+                    BusinessException be = (BusinessException) ex;
+                    assertThat(be.getErrorCode()).isEqualTo(ErrorCode.E_6010);
+                });
+    }
 }

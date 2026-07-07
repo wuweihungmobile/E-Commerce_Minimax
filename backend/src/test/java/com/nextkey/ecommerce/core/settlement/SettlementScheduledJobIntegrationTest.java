@@ -98,7 +98,7 @@ class SettlementScheduledJobIntegrationTest {
         when(calculator.filterSettleableOrders(any()))
                 .thenAnswer(inv -> createCompletedOrders(3, "10000"));
         when(calculator.calculateTotalGmv(any())).thenReturn(new BigDecimal("30000.00"));
-        when(calculator.calculateCommission(any())).thenReturn(new BigDecimal("3000.00"));
+        when(calculator.calculateCommission(any(), any())).thenReturn(new BigDecimal("3000.00"));
         when(calculator.calculateTotalRefunds(any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any()))
                 .thenReturn(new BigDecimal("27000.00"));
@@ -179,7 +179,7 @@ class SettlementScheduledJobIntegrationTest {
                 .thenReturn(List.of());
         when(calculator.filterSettleableOrders(any())).thenReturn(List.of());
         when(calculator.calculateTotalGmv(any())).thenReturn(BigDecimal.ZERO);
-        when(calculator.calculateCommission(any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateCommission(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateTotalRefunds(any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any())).thenReturn(BigDecimal.ZERO);
         when(settlementRepository.save(any(SettlementStatement.class)))
@@ -216,7 +216,7 @@ class SettlementScheduledJobIntegrationTest {
         when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any())).thenReturn(orders);
         when(calculator.filterSettleableOrders(any())).thenReturn(orders);
         when(calculator.calculateTotalGmv(any())).thenReturn(new BigDecimal("50000.00"));
-        when(calculator.calculateCommission(any())).thenReturn(new BigDecimal("5000.00"));
+        when(calculator.calculateCommission(any(), any())).thenReturn(new BigDecimal("5000.00"));
         when(calculator.calculateTotalRefunds(any())).thenReturn(new BigDecimal("2000.00"));
         when(calculator.calculateNetSettlementAmount(any(), any(), any()))
                 .thenReturn(new BigDecimal("43000.00"));
@@ -266,7 +266,7 @@ class SettlementScheduledJobIntegrationTest {
                 .thenReturn(createCompletedOrders(2, "5000"));
         when(calculator.filterSettleableOrders(any())).thenAnswer(inv -> createCompletedOrders(2, "5000"));
         when(calculator.calculateTotalGmv(any())).thenReturn(new BigDecimal("10000.00"));
-        when(calculator.calculateCommission(any())).thenReturn(new BigDecimal("1000.00"));
+        when(calculator.calculateCommission(any(), any())).thenReturn(new BigDecimal("1000.00"));
         when(calculator.calculateTotalRefunds(any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any()))
                 .thenReturn(new BigDecimal("9000.00"));
@@ -306,7 +306,7 @@ class SettlementScheduledJobIntegrationTest {
                 .thenReturn(List.of());
         when(calculator.filterSettleableOrders(any())).thenReturn(List.of());
         when(calculator.calculateTotalGmv(any())).thenReturn(BigDecimal.ZERO);
-        when(calculator.calculateCommission(any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateCommission(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateTotalRefunds(any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any())).thenReturn(BigDecimal.ZERO);
         when(settlementRepository.save(any(SettlementStatement.class)))

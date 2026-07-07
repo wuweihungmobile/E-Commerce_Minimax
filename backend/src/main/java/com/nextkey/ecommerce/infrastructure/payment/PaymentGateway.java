@@ -69,4 +69,18 @@ public interface PaymentGateway {
     default PaymentGatewayRequestResponse.ConnectAccountResult getConnectAccountStatus(String accountId) {
         throw new UnsupportedOperationException("Connect account status not supported by " + getGatewayType());
     }
+
+    /**
+     * 將結算單審核通過後的淨額轉給賣家 Connect 帳戶（Sprint 80 AI-2416 Phase D-2）。
+     * Separate charges and transfers 模式：付款時仍 100% 進平台帳戶，本方法為事後分步轉帳。
+     *
+     * @param destinationAccountId 賣家 Stripe Connect 帳戶 id（{@code Tenant.stripeConnectAccountId}）
+     * @param amountInCents 轉帳金額（最小貨幣單位，如分）
+     * @param currency 幣別（如 twd）
+     * @param sourceReferenceId 供對帳追溯的來源識別碼（如 settlementStatementId）
+     */
+    default PaymentGatewayRequestResponse.TransferResult createTransfer(
+            String destinationAccountId, long amountInCents, String currency, String sourceReferenceId) {
+        throw new UnsupportedOperationException("Transfer not supported by " + getGatewayType());
+    }
 }

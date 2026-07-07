@@ -18,12 +18,14 @@ import com.stripe.model.Account;
 import com.stripe.model.AccountLink;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.Refund;
+import com.stripe.model.Transfer;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.AccountCreateParams;
 import com.stripe.param.AccountLinkCreateParams;
 import com.stripe.param.PaymentIntentCreateParams;
 import com.stripe.param.RefundCreateParams;
+import com.stripe.param.TransferCreateParams;
 import com.stripe.param.checkout.SessionCreateParams;
 
 import lombok.RequiredArgsConstructor;
@@ -329,6 +331,33 @@ public class StripePaymentGateway implements PaymentGateway {
             log.error("[E-6008] Stripe Connect account retrieve error: accountId={}, message={}",
                     accountId, e.getMessage());
             throw new BusinessException(ErrorCode.E_6008, e.getMessage());
+        }
+    }
+
+    @Override
+    public PaymentGatewayRequestResponse.TransferResult createTransfer(
+            String destinationAccountId, long amountInCents, String currency, String sourceReferenceId) {
+        // Sprint 80（AI-2416 Phase D-2）：Separate charges and transfers——結算單審核通過後，
+        // 將平台已代收的貨款事後分步轉給賣家 Connect 帳戶，不影響既有 createPaymentIntent/createCheckoutSession。
+        log.info("Creating Stripe Transfer: destination={}, amount={}, currency={}, sourceReferenceId={}",
+                destinationAccountId, amountInCents, currency, sourceReferenceId);
+        try {
+            TransferCreateParams params = TransferCreateParams.builder()
+                    .setAmount(amountInCents)
+                    .setCurrency(currency)
+                    .setDestination(destinationAccountId)
+                    .putMetadata("settlementStatementId", sourceReferenceId)
+                    .build();
+            RequestOptions options = RequestOptions.builder().setApiKey(stripeApiKey).build();
+            Transfer transfer = Transfer.create(params, options);
+
+            return PaymentGatewayRequestResponse.TransferResult.builder()
+                    .transferId(transfer.getId())
+                    .build();
+        } catch (StripeException e) {
+            log.error("[E-6010] Stripe Transfer error: destination={}, sourceReferenceId={}, message={}",
+                    destinationAccountId, sourceReferenceId, e.getMessage());
+            throw new BusinessException(ErrorCode.E_6010, e.getMessage());
         }
     }
 }

@@ -42,6 +42,7 @@ public class SettlementReviewer {
 
     private final SettlementStatementRepository settlementRepository;
     private final SettlementMapper mapper;
+    private final TransferService transferService;
 
     /**
      * 商家提交結算單審核（PENDING → PENDING_REVIEW）
@@ -82,6 +83,15 @@ public class SettlementReviewer {
         statement = settlementRepository.save(statement);
 
         log.info("Settlement statement approved: id={}, by={}", statementId, adminId);
+
+        // Sprint 80（AI-2416 Phase D-2）：審核通過後觸發實際 transfer。
+        // 任何失敗僅記錄，絕不回滾/中斷「審核通過」這個已持久化的 Admin 決策。
+        try {
+            transferService.createTransferForStatement(statementId);
+        } catch (RuntimeException e) {
+            log.error("Transfer trigger failed after settlement approval: statementId={}, error={}",
+                    statementId, e.getMessage(), e);
+        }
 
         return mapper.toStatementResponse(statement);
     }

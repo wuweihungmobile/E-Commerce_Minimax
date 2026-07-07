@@ -29,9 +29,6 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 public class SettlementCalculator {
 
-    /** 平台抽成比例 (Phase 1 預設 10%) */
-    public static final BigDecimal COMMISSION_RATE = new BigDecimal("0.10");
-
     /** BigDecimal 小數位精度 */
     private static final int SCALE = 2;
 
@@ -75,14 +72,18 @@ public class SettlementCalculator {
     /**
      * 計算平台抽成金額
      *
+     * Sprint 80（AI-2416）：改用租戶自訂 {@code Tenant.commissionRate}，取代先前硬編碼 10%，
+     * 使報表抽成口徑與 Phase D-2 實際 transfer 分潤金額一致（同一來源）。
+     *
      * @param gmv 總 GMV
-     * @return 抽成金額 = GMV × 10%（四捨五入至 2 位小數）
+     * @param commissionRate 該租戶的抽成比例（{@code Tenant.commissionRate}，如 0.05 代表 5%）
+     * @return 抽成金額 = GMV × commissionRate（四捨五入至 2 位小數）
      */
-    public BigDecimal calculateCommission(BigDecimal gmv) {
-        if (gmv == null) {
+    public BigDecimal calculateCommission(BigDecimal gmv, BigDecimal commissionRate) {
+        if (gmv == null || commissionRate == null) {
             return BigDecimal.ZERO.setScale(SCALE, ROUNDING_MODE);
         }
-        return gmv.multiply(COMMISSION_RATE).setScale(SCALE, ROUNDING_MODE);
+        return gmv.multiply(commissionRate).setScale(SCALE, ROUNDING_MODE);
     }
 
     /**

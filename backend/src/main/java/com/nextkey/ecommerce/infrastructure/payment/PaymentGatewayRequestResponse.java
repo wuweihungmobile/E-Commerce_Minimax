@@ -183,4 +183,16 @@ public class PaymentGatewayRequestResponse {
         private String url;
         private String errorMessage;
     }
+
+    /**
+     * Stripe Transfer 結果（Sprint 80 AI-2416 Phase D-2：結算單審核通過後分潤）。
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TransferResult {
+        private String transferId;        // tr_xxx
+        private String errorMessage;
+    }
 }

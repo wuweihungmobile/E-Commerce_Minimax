@@ -138,6 +138,15 @@ public class PaymentGatewayFactory {
         return getGateway(paymentMethod).getConnectAccountStatus(accountId);
     }
 
+    /**
+     * 將結算單淨額轉給賣家 Connect 帳戶（Sprint 80 AI-2416 Phase D-2）
+     */
+    public PaymentGatewayRequestResponse.TransferResult createTransfer(
+            String paymentMethod, String destinationAccountId, long amountInCents,
+            String currency, String sourceReferenceId) {
+        return getGateway(paymentMethod).createTransfer(destinationAccountId, amountInCents, currency, sourceReferenceId);
+    }
+
     private String generateIdempotencyKey(UUID orderId, UUID bookingId) {
         if (orderId != null) {
             return "ORDER-" + orderId.toString();

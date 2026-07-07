@@ -83,6 +83,7 @@ public enum ErrorCode {
     E_6007("E-6007", "金流服務商錯誤"),
     E_6008("E-6008", "Stripe Connect 帳戶錯誤"),
     E_6009("E-6009", "無效的退款金額"),
+    E_6010("E-6010", "Stripe Transfer 分潤轉帳錯誤"),
 
     // ERP & Inventory (E-7000s)
     E_7000("E-7000", "找不到供應商"),

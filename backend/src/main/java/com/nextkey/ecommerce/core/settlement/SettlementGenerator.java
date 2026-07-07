@@ -107,20 +107,21 @@ public class SettlementGenerator {
                 periodStart.atStartOfDay(),
                 periodEnd.atTime(23, 59, 59));
 
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
+
         // 過濾出可結算訂單
         List<Order> completedOrders = calculator.filterSettleableOrders(allOrders);
 
-        // 計算結算金額
+        // 計算結算金額（Sprint 80 AI-2416：抽成比例改用租戶自訂 commissionRate，取代先前硬編碼 10%）
         BigDecimal totalGmv = calculator.calculateTotalGmv(completedOrders);
-        BigDecimal commissionAmount = calculator.calculateCommission(totalGmv);
+        BigDecimal commissionRate = BigDecimal.valueOf(tenant.getCommissionRate());
+        BigDecimal commissionAmount = calculator.calculateCommission(totalGmv, commissionRate);
         BigDecimal totalRefunds = calculator.calculateTotalRefunds(completedOrders);
         BigDecimal netAmount = calculator.calculateNetSettlementAmount(totalGmv, commissionAmount, totalRefunds);
 
         // 生成結算單號
         String statementNumber = generateStatementNumber(tenantId, periodStart);
-
-        Tenant tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
 
         SettlementStatement statement = SettlementStatement.builder()
                 .tenant(tenant)

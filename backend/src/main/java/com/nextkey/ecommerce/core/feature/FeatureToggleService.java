@@ -52,7 +52,19 @@ public class FeatureToggleService {
      */
     public boolean isFeatureEnabled(final String featureKey) {
         UUID tenantId = TenantContext.getCurrentTenant();
+        return isFeatureEnabledForTenant(tenantId, featureKey);
+    }
 
+    /**
+     * 檢查指定租戶的 Feature Toggle 是否啟用（不依賴 {@code TenantContext}）
+     *
+     * Sprint 80（AI-2416）：{@code SettlementReviewer.approveStatement} 由 Admin 審核他人（賣家）
+     * 的結算單，呼叫當下的 {@code TenantContext} 是 Admin 自己的租戶，並非結算單所屬租戶，
+     * 不可用 {@link #isFeatureEnabled} 誤判為 Admin 自己租戶的 toggle 設定。
+     *
+     * @return true if enabled, false otherwise
+     */
+    public boolean isFeatureEnabledForTenant(final UUID tenantId, final String featureKey) {
         return featureToggleRepository
                 .findByTenantIdAndFeatureKey(tenantId, featureKey)
                 .map(TenantFeatureToggle::getIsEnabled)

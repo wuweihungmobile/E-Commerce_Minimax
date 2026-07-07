@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -67,12 +68,15 @@ public class SettlementReviewer {
     }
 
     /**
-     * Admin 批准結算單（PENDING_REVIEW → APPROVED）
+     * Admin 批准結算單（PENDING_REVIEW → APPROVED）。
+     * 非 SUPER_ADMIN 僅能批准自己租戶的結算單（Sprint 81，DEF-040 修復）。
      */
     @Transactional
-    public SettlementStatementResponse approveStatement(UUID statementId, UUID adminId) {
+    public SettlementStatementResponse approveStatement(UUID statementId, UUID adminId, boolean isSuperAdmin) {
         SettlementStatement statement = settlementRepository.findById(statementId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5013, "Settlement statement not found"));
+
+        checkTenantAccess(statement.getTenantId(), isSuperAdmin);
 
         if (statement.getStatus() != SettlementStatus.PENDING_REVIEW) {
             throw new BusinessException(ErrorCode.E_5014, "Only PENDING_REVIEW statements can be approved");
@@ -97,12 +101,15 @@ public class SettlementReviewer {
     }
 
     /**
-     * Admin 駁回結算單（PENDING_REVIEW → REJECTED）
+     * Admin 駁回結算單（PENDING_REVIEW → REJECTED）。
+     * 非 SUPER_ADMIN 僅能駁回自己租戶的結算單（Sprint 81，DEF-040 修復）。
      */
     @Transactional
-    public SettlementStatementResponse rejectStatement(UUID statementId, UUID adminId, String reason) {
+    public SettlementStatementResponse rejectStatement(UUID statementId, UUID adminId, String reason, boolean isSuperAdmin) {
         SettlementStatement statement = settlementRepository.findById(statementId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5013, "Settlement statement not found"));
+
+        checkTenantAccess(statement.getTenantId(), isSuperAdmin);
 
         if (statement.getStatus() != SettlementStatus.PENDING_REVIEW) {
             throw new BusinessException(ErrorCode.E_5014, "Only PENDING_REVIEW statements can be rejected");
@@ -119,13 +126,26 @@ public class SettlementReviewer {
     }
 
     /**
-     * Admin 取得所有待審核結算單
+     * Admin 取得待審核結算單。非 SUPER_ADMIN 僅能查自己租戶；SUPER_ADMIN 可用 {@code tenantIdOverride}
+     * 指定查詢特定租戶，未指定則維持跨租戶總覽（Sprint 81，DEF-040 修復）。
      */
     @Transactional(readOnly = true)
-    public SettlementStatementListResponse getPendingReviewStatements(int page, int size) {
-        Page<SettlementStatement> statements = settlementRepository.findByStatusOrderByGeneratedAtDesc(
-                SettlementStatus.PENDING_REVIEW,
-                PageRequest.of(page, size));
+    public SettlementStatementListResponse getPendingReviewStatements(
+            int page, int size, boolean isSuperAdmin, UUID tenantIdOverride) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<SettlementStatement> statements;
+
+        if (!isSuperAdmin) {
+            UUID callerTenantId = TenantContext.getCurrentTenant();
+            statements = settlementRepository.findByTenantIdAndStatusOrderByGeneratedAtDesc(
+                    callerTenantId, SettlementStatus.PENDING_REVIEW, pageable);
+        } else if (tenantIdOverride != null) {
+            statements = settlementRepository.findByTenantIdAndStatusOrderByGeneratedAtDesc(
+                    tenantIdOverride, SettlementStatus.PENDING_REVIEW, pageable);
+        } else {
+            statements = settlementRepository.findByStatusOrderByGeneratedAtDesc(
+                    SettlementStatus.PENDING_REVIEW, pageable);
+        }
 
         return SettlementStatementListResponse.builder()
                 .statements(statements.getContent().stream()
@@ -136,5 +156,20 @@ public class SettlementReviewer {
                 .totalElements(statements.getTotalElements())
                 .totalPages(statements.getTotalPages())
                 .build();
+    }
+
+    /**
+     * 驗證非 SUPER_ADMIN 呼叫者僅能操作自己租戶的結算單（比照 {@code TransferService.checkTenantAccess}）。
+     */
+    private void checkTenantAccess(UUID resourceTenantId, boolean isSuperAdmin) {
+        if (isSuperAdmin) {
+            return;
+        }
+        UUID callerTenantId = TenantContext.getCurrentTenant();
+        if (!resourceTenantId.equals(callerTenantId)) {
+            log.warn("Cross-tenant settlement review access denied: callerTenant={}, resourceTenant={}",
+                    callerTenantId, resourceTenantId);
+            throw new BusinessException(ErrorCode.E_1007, "No permission to access this tenant's settlement statement");
+        }
     }
 }

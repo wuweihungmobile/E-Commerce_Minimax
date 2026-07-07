@@ -40,5 +40,15 @@ public interface SettlementStatementRepository extends JpaRepository<SettlementS
             @Param("status") SettlementStatement.SettlementStatus status,
             Pageable pageable);
 
+    @Query("""
+            SELECT s FROM SettlementStatement s
+            WHERE s.tenantId = :tenantId AND s.status = :status
+            ORDER BY s.generatedAt DESC
+            """)
+    Page<SettlementStatement> findByTenantIdAndStatusOrderByGeneratedAtDesc(
+            @Param("tenantId") UUID tenantId,
+            @Param("status") SettlementStatement.SettlementStatus status,
+            Pageable pageable);
+
     boolean existsByTenantIdAndStatementNumber(UUID tenantId, String statementNumber);
 }

@@ -156,6 +156,33 @@ public class TransferService {
     }
 
     /**
+     * 處理 Stripe {@code transfer.reversed} webhook（Sprint 81，US-102）：transfer 完成後被撤銷，
+     * 代表資金已被 Stripe 拿回。將對應 {@link Transfer} 標記為 {@code REVERSED}，
+     * 結算單改回 {@code FAILED} 供人工重新處理；不自動重新分潤、不處理資金收回邏輯（範圍外）。
+     * 查無對應記錄（可能非本系統觸發的 transfer）僅記錄 warn，不拋例外。
+     */
+    @Transactional
+    public void handleTransferReversedWebhook(final String stripeTransferId) {
+        Transfer transfer = transferRepository.findByStripeTransferId(stripeTransferId).orElse(null);
+        if (transfer == null) {
+            log.warn("Stripe webhook transfer.reversed: no matching Transfer record, stripeTransferId={}",
+                    stripeTransferId);
+            return;
+        }
+
+        transfer.setStatus(TransferStatus.REVERSED);
+        transferRepository.save(transfer);
+
+        settlementRepository.findById(transfer.getSettlementStatementId()).ifPresent(statement -> {
+            statement.setStatus(SettlementStatus.FAILED);
+            settlementRepository.save(statement);
+        });
+
+        log.info("Transfer reversed via webhook: stripeTransferId={}, settlementStatementId={}",
+                stripeTransferId, transfer.getSettlementStatementId());
+    }
+
+    /**
      * 查詢呼叫者所在租戶的 transfer 記錄（對帳用）。SUPER_ADMIN 可另呼叫 {@link #getTransfersForTenant}。
      */
     @Transactional(readOnly = true)

@@ -18,4 +18,6 @@ public interface TransferRepository extends JpaRepository<Transfer, UUID> {
     Page<Transfer> findByTenantIdOrderByCreatedAtDesc(UUID tenantId, Pageable pageable);
 
     Optional<Transfer> findByIdAndTenantId(UUID id, UUID tenantId);
+
+    Optional<Transfer> findByStripeTransferId(String stripeTransferId);
 }

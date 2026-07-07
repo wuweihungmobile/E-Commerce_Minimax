@@ -24,9 +24,14 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+
+import com.nextkey.ecommerce.api.filter.UserPrincipal;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -35,7 +40,9 @@ import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -90,6 +97,20 @@ class M07SettlementIntegrationTest {
     private UUID testTenantId;
     private UUID testStatementId;
     private SettlementStatement testStatement;
+
+    /**
+     * 比照 {@code TransferControllerE2ETest}：Controller 需要 {@code @AuthenticationPrincipal UserPrincipal}，
+     * {@code @WithMockUser} 的預設 principal 型別不符會被注入 null，改用手動建構的 Authentication。
+     */
+    private Authentication authAs(final String role, final String... extraAuthorities) {
+        UserPrincipal principal = new UserPrincipal(UUID.randomUUID(), "admin@example.com", role, testTenantId != null ? testTenantId.toString() : null);
+        List<SimpleGrantedAuthority> authorities = new java.util.ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority(role));
+        for (String a : extraAuthorities) {
+            authorities.add(new SimpleGrantedAuthority(a));
+        }
+        return new UsernamePasswordAuthenticationToken(principal, null, authorities);
+    }
 
     @BeforeEach
     void setUp() {
@@ -209,8 +230,7 @@ class M07SettlementIntegrationTest {
 
     @Test
     @Order(4)
-    @DisplayName("IT-M07-S-004: Admin 取得待審核結算單列表")
-    @WithMockUser(username = "admin", authorities = {"admin:read"})
+    @DisplayName("IT-M07-S-004: Admin 取得待審核結算單列表（僅自己租戶，Sprint 81 DEF-040 修復）")
     void getPendingReviewStatements_AsAdmin_ReturnsList() throws Exception {
         // Given
         SettlementService.SettlementStatementResponse response = SettlementService.SettlementStatementResponse.builder()
@@ -225,12 +245,13 @@ class M07SettlementIntegrationTest {
                 .totalElements(1L)
                 .totalPages(1)
                 .build();
-        when(settlementReviewer.getPendingReviewStatements(0, 20)).thenReturn(listResponse);
+        when(settlementReviewer.getPendingReviewStatements(0, 20, false, null)).thenReturn(listResponse);
 
         // When & Then
         mockMvc.perform(get("/v2/admin/settlements/pending")
                         .param("page", "0")
-                        .param("size", "20"))
+                        .param("size", "20")
+                        .with(authentication(authAs("ADMIN", "admin:read"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.statements", hasSize(1)))
@@ -239,8 +260,7 @@ class M07SettlementIntegrationTest {
 
     @Test
     @Order(5)
-    @DisplayName("IT-M07-S-005: Admin 批准結算單")
-    @WithMockUser(username = "admin", authorities = {"admin:write"})
+    @DisplayName("IT-M07-S-005: Admin 批准結算單（自己租戶）")
     void approveStatement_AsAdmin_Success() throws Exception {
         // Given: 直接 mock settlementService.approveStatement
         SettlementService.SettlementStatementResponse response = SettlementService.SettlementStatementResponse.builder()
@@ -248,11 +268,12 @@ class M07SettlementIntegrationTest {
                 .status("APPROVED")
                 .approvedAt(java.time.Instant.now())
                 .build();
-        when(settlementReviewer.approveStatement(any(), any()))
+        when(settlementReviewer.approveStatement(any(), any(), eq(false)))
                 .thenReturn(response);
 
         // When & Then
-        mockMvc.perform(put("/v2/admin/settlements/{id}/approve", testStatementId))
+        mockMvc.perform(put("/v2/admin/settlements/{id}/approve", testStatementId)
+                        .with(authentication(authAs("ADMIN", "admin:write"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.status").value("APPROVED"));
@@ -260,8 +281,7 @@ class M07SettlementIntegrationTest {
 
     @Test
     @Order(6)
-    @DisplayName("IT-M07-S-006: Admin 駁回結算單（帶原因）")
-    @WithMockUser(username = "admin", authorities = {"admin:write"})
+    @DisplayName("IT-M07-S-006: Admin 駁回結算單（帶原因，自己租戶）")
     void rejectStatement_AsAdmin_WithReason() throws Exception {
         // Given
         String reason = "金額計算有誤，請重新提交";
@@ -270,16 +290,49 @@ class M07SettlementIntegrationTest {
                 .status("REJECTED")
                 .rejectionReason(reason)
                 .build();
-        when(settlementReviewer.rejectStatement(any(), any(), any()))
+        when(settlementReviewer.rejectStatement(any(), any(), any(), eq(false)))
                 .thenReturn(response);
 
         // When & Then
         mockMvc.perform(put("/v2/admin/settlements/{id}/reject", testStatementId)
-                        .param("reason", reason))
+                        .param("reason", reason)
+                        .with(authentication(authAs("ADMIN", "admin:write"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.status").value("REJECTED"))
                 .andExpect(jsonPath("$.data.rejectionReason").value(reason));
+    }
+
+    @Test
+    @Order(9)
+    @DisplayName("🔴 IT-M07-S-009: ADMIN 批准他租戶結算單應被拒絕（403，Sprint 81 DEF-040 修復）")
+    void approveStatement_AsAdminCrossTenant_Forbidden() throws Exception {
+        when(settlementReviewer.approveStatement(any(), any(), eq(false)))
+                .thenThrow(new com.nextkey.ecommerce.shared.exception.BusinessException(
+                        com.nextkey.ecommerce.shared.exception.ErrorCode.E_1007,
+                        "No permission to access this tenant's settlement statement"));
+
+        mockMvc.perform(put("/v2/admin/settlements/{id}/approve", testStatementId)
+                        .with(authentication(authAs("ADMIN", "admin:write"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @Order(10)
+    @DisplayName("IT-M07-S-010: SUPER_ADMIN 批准任意租戶結算單成功（Sprint 81 DEF-040 修復）")
+    void approveStatement_AsSuperAdmin_Success() throws Exception {
+        SettlementService.SettlementStatementResponse response = SettlementService.SettlementStatementResponse.builder()
+                .id(testStatementId)
+                .status("APPROVED")
+                .approvedAt(java.time.Instant.now())
+                .build();
+        when(settlementReviewer.approveStatement(any(), any(), eq(true)))
+                .thenReturn(response);
+
+        mockMvc.perform(put("/v2/admin/settlements/{id}/approve", testStatementId)
+                        .with(authentication(authAs("SUPER_ADMIN", "admin:write"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED"));
     }
 
     // ========== 權限測試 ==========

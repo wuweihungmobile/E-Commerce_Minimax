@@ -89,6 +89,8 @@ public class Transfer {
         COMPLETED,
         FAILED,
         // 賣家 Connect 帳戶尚未完成 onboarding，無法轉帳；結算單維持 APPROVED，支援事後補建
-        SKIPPED_ONBOARDING_INCOMPLETE
+        SKIPPED_ONBOARDING_INCOMPLETE,
+        // Stripe transfer.reversed webhook 通知：轉帳已完成但事後被撤銷（Sprint 81，US-102）
+        REVERSED
     }
 }

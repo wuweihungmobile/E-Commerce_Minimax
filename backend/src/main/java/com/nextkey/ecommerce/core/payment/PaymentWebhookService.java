@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nextkey.ecommerce.core.settlement.TransferService;
 import com.nextkey.ecommerce.core.tenant.TenantStripeConnectService;
 import com.nextkey.ecommerce.domain.model.payment.ProcessedStripeEvent;
 import com.nextkey.ecommerce.domain.repository.ProcessedStripeEventRepository;
@@ -14,12 +15,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Stripe webhook 事件處理（Sprint 51 AI-2411，Phase B；Sprint 53 AI-2413 Phase D-1 擴充 account.updated）。
+ * Stripe webhook 事件處理（Sprint 51 AI-2411，Phase B；Sprint 53 AI-2413 Phase D-1 擴充 account.updated；
+ * Sprint 81 US-102 擴充 transfer.reversed）。
  * 解析（已驗簽的）事件 payload → 事件 id 去重 → dispatch 至權威狀態更新（與回跳路徑共用核心）。
  *
  * 冪等雙層：(1) 事件 id 去重（processed_stripe_events）(2) 狀態轉移冪等（PaymentStateService/TenantStripeConnectService）。
  * 處理付款成功（checkout.session.completed）+ 失敗（payment_intent.payment_failed）+ 退款（charge.refunded）
- * + Connect 帳戶狀態同步（account.updated，Phase D-1）。
+ * + Connect 帳戶狀態同步（account.updated，Phase D-1）+ transfer 撤銷同步（transfer.reversed，Phase D-2）。
  */
 @Slf4j
 @Service
@@ -30,6 +32,7 @@ public class PaymentWebhookService {
     private final ProcessedStripeEventRepository processedStripeEventRepository;
     private final PaymentStateService paymentStateService;
     private final TenantStripeConnectService tenantStripeConnectService;
+    private final TransferService transferService;
 
     /**
      * 處理 Stripe webhook 事件（payload 已於 controller 驗簽）。
@@ -96,6 +99,11 @@ public class PaymentWebhookService {
                 boolean detailsSubmitted = obj.path("details_submitted").asBoolean(false);
                 tenantStripeConnectService.syncAccountStatusFromWebhook(
                         accountId, chargesEnabled, payoutsEnabled, detailsSubmitted);
+            }
+            case "transfer.reversed" -> {
+                // Sprint 81（US-102）：transfer 完成後被撤銷（爭議/人工撤銷），錢已被 Stripe 拿回。
+                String stripeTransferId = obj.path("id").asText(null);
+                transferService.handleTransferReversedWebhook(stripeTransferId);
             }
             default -> log.info("Stripe webhook: unhandled event type: {}", eventType);
         }

@@ -262,6 +262,37 @@ class TransferServiceTest {
     }
 
     @Test
+    @DisplayName("handleTransferReversedWebhook: 查有記錄 → Transfer 轉 REVERSED，結算單轉 FAILED")
+    void handleTransferReversedWebhook_existingTransfer_marksReversedAndFailsStatement() {
+        transferService = newService();
+        SettlementStatement statement = approvedStatement();
+        statement.setStatus(SettlementStatus.PAID);
+        Transfer completed = Transfer.builder().id(UUID.randomUUID()).settlementStatementId(STATEMENT_ID)
+                .status(TransferStatus.COMPLETED).stripeTransferId("tr_rev_1").build();
+        when(transferRepository.findByStripeTransferId("tr_rev_1")).thenReturn(Optional.of(completed));
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(transferRepository.save(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        transferService.handleTransferReversedWebhook("tr_rev_1");
+
+        assertThat(completed.getStatus()).isEqualTo(TransferStatus.REVERSED);
+        assertThat(statement.getStatus()).isEqualTo(SettlementStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("handleTransferReversedWebhook: 查無記錄 → 不拋例外，不呼叫 save")
+    void handleTransferReversedWebhook_noMatchingTransfer_doesNothing() {
+        transferService = newService();
+        when(transferRepository.findByStripeTransferId("tr_unknown")).thenReturn(Optional.empty());
+
+        transferService.handleTransferReversedWebhook("tr_unknown");
+
+        verify(transferRepository, org.mockito.Mockito.never()).save(any());
+        verify(settlementRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
     @DisplayName("getTransfersForCurrentTenant: 依 TenantContext 範圍化查詢，不可外洩他租戶參數")
     void getTransfersForCurrentTenant_scopesToCurrentTenant() {
         transferService = newService();

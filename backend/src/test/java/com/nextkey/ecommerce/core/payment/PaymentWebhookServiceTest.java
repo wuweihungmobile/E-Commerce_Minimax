@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.payment;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nextkey.ecommerce.core.settlement.TransferService;
 import com.nextkey.ecommerce.core.tenant.TenantStripeConnectService;
 import com.nextkey.ecommerce.domain.model.payment.ProcessedStripeEvent;
 import com.nextkey.ecommerce.domain.repository.ProcessedStripeEventRepository;
@@ -37,13 +38,14 @@ class PaymentWebhookServiceTest {
     @Mock private ProcessedStripeEventRepository processedStripeEventRepository;
     @Mock private PaymentStateService paymentStateService;
     @Mock private TenantStripeConnectService tenantStripeConnectService;
+    @Mock private TransferService transferService;
 
     private PaymentWebhookService service;
 
     @BeforeEach
     void setUp() {
         service = new PaymentWebhookService(new ObjectMapper(), processedStripeEventRepository,
-                paymentStateService, tenantStripeConnectService);
+                paymentStateService, tenantStripeConnectService, transferService);
     }
 
     @Test
@@ -166,5 +168,32 @@ class PaymentWebhookServiceTest {
         service.handleEvent(payload);
 
         verify(tenantStripeConnectService, never()).syncAccountStatusFromWebhook(any(), anyBoolean(), anyBoolean(), anyBoolean());
+    }
+
+    @Test
+    @DisplayName("UT-WH-009: transfer.reversed → handleTransferReversedWebhook（Sprint 81 US-102）")
+    void transferReversed_callsHandleTransferReversedWebhook() {
+        String payload = """
+                {"id":"evt_7","type":"transfer.reversed","data":{"object":{"id":"tr_1"}}}
+                """;
+        when(processedStripeEventRepository.existsById("evt_7")).thenReturn(false);
+
+        service.handleEvent(payload);
+
+        verify(transferService).handleTransferReversedWebhook("tr_1");
+        verify(processedStripeEventRepository).save(any(ProcessedStripeEvent.class));
+    }
+
+    @Test
+    @DisplayName("UT-WH-010: transfer.reversed 重送 → skip（不重複呼叫）")
+    void transferReversed_duplicateEvent_skips() {
+        String payload = """
+                {"id":"evt_7","type":"transfer.reversed","data":{"object":{"id":"tr_1"}}}
+                """;
+        when(processedStripeEventRepository.existsById("evt_7")).thenReturn(true);
+
+        service.handleEvent(payload);
+
+        verify(transferService, never()).handleTransferReversedWebhook(any());
     }
 }

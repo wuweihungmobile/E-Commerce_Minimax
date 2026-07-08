@@ -54,9 +54,9 @@ import com.nextkey.ecommerce.shared.tenant.TenantContext;
  * <p>標記為「DEF-03X：...（修復前為紅燈，修復後轉綠）」的測試，於本 Sprint 修復生產程式碼前
  * 實際執行過並確認失敗，證明對應漏洞存在；詳細過程記錄於 DEFERRED_ITEMS_TRACKER.md。
  *
- * <p>getPageBySlug / getActiveBanners（公開瀏覽端點）目前完全不做租戶過濾一事已探查確認並
- * 記錄為需業務決策事項（是否比照 PostController 改為要求呼叫端傳入 tenantId），本 Sprint
- * 依範圍僅補齊現況行為測試，不變更程式碼。
+ * <p>DEF-034（Sprint 82）：getPageBySlug / getActiveBanners / recordBannerClick（公開瀏覽端點）
+ * 原本完全不做租戶過濾，PO 拍板定位為訪客可瀏覽的公開行銷內容後，比照 PostController 模式
+ * 改為要求呼叫端明確傳入 tenantId，SecurityConfig 同步補上 permitAll。
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("CmsService 單元測試 (Sprint 74)")
@@ -253,15 +253,15 @@ class CmsServiceTest {
         assertThat(response.getStatus()).isEqualTo("PUBLISHED");
     }
 
-    // ========== getPageBySlug（現況行為，公開端點租戶範圍為待決策事項，本次不變更） ==========
+    // ========== getPageBySlug（Sprint 82 DEF-034 修復：須帶 tenantId，比照 PostController 模式） ==========
 
     @Test
     @DisplayName("getPageBySlug：已發布頁面回傳成功")
     void getPageBySlug_published_success() {
         ContentPage page = pageOf(TENANT_A, ContentPage.ContentStatus.PUBLISHED);
-        when(contentPageRepository.findBySlug("about-us")).thenReturn(Optional.of(page));
+        when(contentPageRepository.findByTenantIdAndSlug(TENANT_A, "about-us")).thenReturn(Optional.of(page));
 
-        CmsDto.PageResponse response = cmsService.getPageBySlug("about-us");
+        CmsDto.PageResponse response = cmsService.getPageBySlug("about-us", TENANT_A);
 
         assertThat(response.getSlug()).isEqualTo("about-us");
     }
@@ -269,9 +269,9 @@ class CmsServiceTest {
     @Test
     @DisplayName("getPageBySlug：頁面不存在拋出 E_8004")
     void getPageBySlug_notFound_throwsE8004() {
-        when(contentPageRepository.findBySlug("missing")).thenReturn(Optional.empty());
+        when(contentPageRepository.findByTenantIdAndSlug(TENANT_A, "missing")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> cmsService.getPageBySlug("missing"))
+        assertThatThrownBy(() -> cmsService.getPageBySlug("missing", TENANT_A))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_8004);
     }
@@ -280,11 +280,31 @@ class CmsServiceTest {
     @DisplayName("getPageBySlug：未發布頁面拋出 E_8004")
     void getPageBySlug_draft_throwsE8004() {
         ContentPage page = pageOf(TENANT_A, ContentPage.ContentStatus.DRAFT);
-        when(contentPageRepository.findBySlug("about-us")).thenReturn(Optional.of(page));
+        when(contentPageRepository.findByTenantIdAndSlug(TENANT_A, "about-us")).thenReturn(Optional.of(page));
 
-        assertThatThrownBy(() -> cmsService.getPageBySlug("about-us"))
+        assertThatThrownBy(() -> cmsService.getPageBySlug("about-us", TENANT_A))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_8004);
+    }
+
+    @Test
+    @DisplayName("🔴 getPageBySlug：缺少 tenantId 拋出 E_1002")
+    void getPageBySlug_missingTenantId_throwsE1002() {
+        assertThatThrownBy(() -> cmsService.getPageBySlug("about-us", null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1002);
+        verify(contentPageRepository, never()).findByTenantIdAndSlug(any(), any());
+    }
+
+    @Test
+    @DisplayName("🔴 getPageBySlug：他租戶同名 slug 不可見（不外洩跨租戶內容）")
+    void getPageBySlug_crossTenantSlug_notFound() {
+        when(contentPageRepository.findByTenantIdAndSlug(TENANT_B, "about-us")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> cmsService.getPageBySlug("about-us", TENANT_B))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_8004);
+        verify(contentPageRepository, never()).findBySlug(any());
     }
 
     // ========== getPages（Admin 列表） ==========
@@ -472,41 +492,71 @@ class CmsServiceTest {
         assertThat(response.get(0).getTenantId()).isEqualTo(TENANT_B);
     }
 
-    // ========== getActiveBanners（現況行為，公開端點租戶範圍為待決策事項，本次不變更） ==========
+    // ========== getActiveBanners（Sprint 82 DEF-034 修復：須帶 tenantId） ==========
 
     @Test
-    @DisplayName("getActiveBanners：指定 position 依 position 查詢")
+    @DisplayName("getActiveBanners：指定 position 依 position + tenantId 查詢")
     void getActiveBanners_withPosition() {
         Banner banner = bannerOf(TENANT_A, Banner.BannerStatus.PUBLISHED);
-        when(bannerRepository.findActiveByPosition(eq(Banner.BannerPosition.HOME_TOP), any(LocalDate.class)))
+        when(bannerRepository.findActiveByPositionAndTenantId(
+                eq(Banner.BannerPosition.HOME_TOP), eq(TENANT_A), any(LocalDate.class)))
                 .thenReturn(List.of(banner));
 
-        CmsDto.BannerListResponse response = cmsService.getActiveBanners(CmsDto.BannerPosition.HOME_TOP);
+        CmsDto.BannerListResponse response = cmsService.getActiveBanners(CmsDto.BannerPosition.HOME_TOP, TENANT_A);
 
         assertThat(response.getBanners()).hasSize(1);
         assertThat(response.getPosition()).isEqualTo("HOME_TOP");
-        verify(bannerRepository, never()).findAllActive(any());
+        verify(bannerRepository, never()).findAllActiveByTenantId(any(), any());
     }
 
     @Test
-    @DisplayName("getActiveBanners：未指定 position 查詢全部活躍橫幅")
+    @DisplayName("getActiveBanners：未指定 position 查詢本租戶全部活躍橫幅")
     void getActiveBanners_withoutPosition_queriesAll() {
         Banner banner = bannerOf(TENANT_A, Banner.BannerStatus.PUBLISHED);
-        when(bannerRepository.findAllActive(any(LocalDate.class))).thenReturn(List.of(banner));
+        when(bannerRepository.findAllActiveByTenantId(eq(TENANT_A), any(LocalDate.class))).thenReturn(List.of(banner));
 
-        CmsDto.BannerListResponse response = cmsService.getActiveBanners(null);
+        CmsDto.BannerListResponse response = cmsService.getActiveBanners(null, TENANT_A);
 
         assertThat(response.getBanners()).hasSize(1);
         assertThat(response.getPosition()).isNull();
     }
 
-    // ========== recordBannerClick ==========
+    @Test
+    @DisplayName("🔴 getActiveBanners：缺少 tenantId 拋出 E_1002")
+    void getActiveBanners_missingTenantId_throwsE1002() {
+        assertThatThrownBy(() -> cmsService.getActiveBanners(null, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1002);
+        verify(bannerRepository, never()).findAllActiveByTenantId(any(), any());
+    }
 
     @Test
-    @DisplayName("recordBannerClick：呼叫 repository 遞增點擊次數")
-    void recordBannerClick_incrementsCount() {
-        cmsService.recordBannerClick(BANNER_ID);
+    @DisplayName("🔴 getActiveBanners：他租戶橫幅不會混入本租戶查詢結果")
+    void getActiveBanners_crossTenant_notLeaked() {
+        when(bannerRepository.findAllActiveByTenantId(eq(TENANT_B), any(LocalDate.class))).thenReturn(List.of());
 
-        verify(bannerRepository).incrementClickCount(BANNER_ID);
+        CmsDto.BannerListResponse response = cmsService.getActiveBanners(null, TENANT_B);
+
+        assertThat(response.getBanners()).isEmpty();
+        verify(bannerRepository, never()).findAllActive(any());
+    }
+
+    // ========== recordBannerClick（Sprint 82 DEF-034 修復：須帶 tenantId） ==========
+
+    @Test
+    @DisplayName("recordBannerClick：呼叫 repository 遞增本租戶點擊次數")
+    void recordBannerClick_incrementsCount() {
+        cmsService.recordBannerClick(BANNER_ID, TENANT_A);
+
+        verify(bannerRepository).incrementClickCountForTenant(BANNER_ID, TENANT_A);
+    }
+
+    @Test
+    @DisplayName("🔴 recordBannerClick：缺少 tenantId 拋出 E_1002")
+    void recordBannerClick_missingTenantId_throwsE1002() {
+        assertThatThrownBy(() -> cmsService.recordBannerClick(BANNER_ID, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1002);
+        verify(bannerRepository, never()).incrementClickCountForTenant(any(), any());
     }
 }

@@ -156,11 +156,16 @@ public class CmsService {
     }
 
     /**
-     * 取得頁面 (公開)
+     * 取得頁面 (公開，訪客瀏覽用，比照 PostService.getPublishedPostBySlug 模式，
+     * Sprint 82 DEF-034 修復：呼叫端須明確傳入 tenantId 過濾，避免跨租戶內容混雜)
      */
     @Transactional(readOnly = true)
-    public CmsDto.PageResponse getPageBySlug(String slug) {
-        ContentPage page = contentPageRepository.findBySlug(slug)
+    public CmsDto.PageResponse getPageBySlug(String slug, UUID tenantId) {
+        if (tenantId == null) {
+            throw new BusinessException(ErrorCode.E_1002, "tenantId is required");
+        }
+
+        ContentPage page = contentPageRepository.findByTenantIdAndSlug(tenantId, slug)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8004, "Page not found"));
 
         if (page.getStatus() != ContentPage.ContentStatus.PUBLISHED) {
@@ -353,17 +358,22 @@ public class CmsService {
     }
 
     /**
-     * 取得活躍橫幅 (公開)
+     * 取得活躍橫幅 (公開，訪客瀏覽用，Sprint 82 DEF-034 修復：呼叫端須明確傳入 tenantId 過濾)
      */
     @Transactional(readOnly = true)
-    public CmsDto.BannerListResponse getActiveBanners(CmsDto.BannerPosition position) {
+    public CmsDto.BannerListResponse getActiveBanners(CmsDto.BannerPosition position, UUID tenantId) {
+        if (tenantId == null) {
+            throw new BusinessException(ErrorCode.E_1002, "tenantId is required");
+        }
+
         LocalDate today = LocalDate.now();
 
         List<Banner> banners;
         if (position != null) {
-            banners = bannerRepository.findActiveByPosition(Banner.BannerPosition.valueOf(position.name()), today);
+            banners = bannerRepository.findActiveByPositionAndTenantId(
+                    Banner.BannerPosition.valueOf(position.name()), tenantId, today);
         } else {
-            banners = bannerRepository.findAllActive(today);
+            banners = bannerRepository.findAllActiveByTenantId(tenantId, today);
         }
 
         List<CmsDto.BannerResponse> responses = banners.stream()
@@ -377,12 +387,15 @@ public class CmsService {
     }
 
     /**
-     * 記錄點擊
+     * 記錄點擊 (公開，Sprint 82 DEF-034 修復：呼叫端須明確傳入 tenantId，跨租戶點擊靜默無效果)
      */
     @Transactional
-    public void recordBannerClick(final UUID bannerId) {
-        bannerRepository.incrementClickCount(bannerId);
-        log.debug("Banner click recorded: id={}", bannerId);
+    public void recordBannerClick(final UUID bannerId, final UUID tenantId) {
+        if (tenantId == null) {
+            throw new BusinessException(ErrorCode.E_1002, "tenantId is required");
+        }
+        bannerRepository.incrementClickCountForTenant(bannerId, tenantId);
+        log.debug("Banner click recorded: id={}, tenantId={}", bannerId, tenantId);
     }
 
     // ========== Authorization Helpers (Sprint 74 DEF-032) ==========

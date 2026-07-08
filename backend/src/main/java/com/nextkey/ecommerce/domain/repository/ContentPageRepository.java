@@ -16,6 +16,8 @@ public interface ContentPageRepository extends JpaRepository<ContentPage, UUID> 
 
     Optional<ContentPage> findBySlug(String slug);
 
+    Optional<ContentPage> findByTenantIdAndSlug(UUID tenantId, String slug);
+
     Page<ContentPage> findByStatusOrderBySortOrderAsc(ContentPage.ContentStatus status, Pageable pageable);
 
     Page<ContentPage> findByTenantIdAndStatusOrderBySortOrderAsc(UUID tenantId, ContentPage.ContentStatus status, Pageable pageable);

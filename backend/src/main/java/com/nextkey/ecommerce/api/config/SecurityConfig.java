@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -88,6 +89,11 @@ public class SecurityConfig {
                 .requestMatchers("/v2/posts").permitAll()
                 .requestMatchers("/v2/posts/**").permitAll()
                 .requestMatchers("/v2/listings/*/card").permitAll()
+                // CMS 頁面/橫幅公開瀏覽端點（Sprint 82 DEF-034 修復，訪客行銷內容，比照 /v2/posts 模式）
+                // 🔴 務必限定 HTTP method：/v2/cms/pages/* 若不限 GET 會誤放行 PUT /v2/cms/pages/{pageId}（Admin 更新）
+                .requestMatchers(HttpMethod.GET, "/v2/cms/pages/*").permitAll()
+                .requestMatchers(HttpMethod.GET, "/v2/cms/banners/active").permitAll()
+                .requestMatchers(HttpMethod.POST, "/v2/cms/banners/*/click").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 // WebSocket/SockJS handshake（M10 IM）：放行 HTTP 握手；
                 // 實際身份驗證於 STOMP CONNECT frame 由 StompAuthChannelInterceptor 處理

@@ -85,11 +85,12 @@ public class CmsController {
     }
 
     /**
-     * 取得頁面 (公開)
+     * 取得頁面 (公開，Sprint 82 DEF-034 修復：比照 PostController 模式須帶 tenantId)
      */
     @GetMapping("/pages/{slug}")
-    public ResponseEntity<ApiResponse<CmsDto.PageResponse>> getPageBySlug(@PathVariable String slug) {
-        CmsDto.PageResponse response = cmsService.getPageBySlug(slug);
+    public ResponseEntity<ApiResponse<CmsDto.PageResponse>> getPageBySlug(
+            @PathVariable String slug, @RequestParam UUID tenantId) {
+        CmsDto.PageResponse response = cmsService.getPageBySlug(slug, tenantId);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -142,21 +143,23 @@ public class CmsController {
     }
 
     /**
-     * 取得活躍橫幅 (公開)
+     * 取得活躍橫幅 (公開，Sprint 82 DEF-034 修復：比照 PostController 模式須帶 tenantId)
      */
     @GetMapping("/banners/active")
     public ResponseEntity<ApiResponse<CmsDto.BannerListResponse>> getActiveBanners(
-            @RequestParam(required = false) CmsDto.BannerPosition position) {
-        CmsDto.BannerListResponse response = cmsService.getActiveBanners(position);
+            @RequestParam(required = false) CmsDto.BannerPosition position,
+            @RequestParam UUID tenantId) {
+        CmsDto.BannerListResponse response = cmsService.getActiveBanners(position, tenantId);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     /**
-     * 記錄橫幅點擊 (公開)
+     * 記錄橫幅點擊 (公開，Sprint 82 DEF-034 修復：比照 PostController 模式須帶 tenantId)
      */
     @PostMapping("/banners/{bannerId}/click")
-    public ResponseEntity<ApiResponse<Void>> recordBannerClick(final @PathVariable UUID bannerId) {
-        cmsService.recordBannerClick(bannerId);
+    public ResponseEntity<ApiResponse<Void>> recordBannerClick(
+            final @PathVariable UUID bannerId, @RequestParam UUID tenantId) {
+        cmsService.recordBannerClick(bannerId, tenantId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 }

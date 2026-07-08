@@ -34,11 +34,24 @@ public interface BannerRepository extends JpaRepository<Banner, UUID> {
             "ORDER BY b.sortOrder ASC")
     List<Banner> findAllActive(@Param("date") LocalDate date);
 
+    @Query("SELECT b FROM Banner b WHERE b.status = 'PUBLISHED' AND b.position = :position AND b.tenantId = :tenantId " +
+            "AND (b.startDate IS NULL OR b.startDate <= :date) " +
+            "AND (b.endDate IS NULL OR b.endDate >= :date) " +
+            "ORDER BY b.sortOrder ASC")
+    List<Banner> findActiveByPositionAndTenantId(
+            @Param("position") Banner.BannerPosition position, @Param("tenantId") UUID tenantId, @Param("date") LocalDate date);
+
+    @Query("SELECT b FROM Banner b WHERE b.status = 'PUBLISHED' AND b.tenantId = :tenantId " +
+            "AND (b.startDate IS NULL OR b.startDate <= :date) " +
+            "AND (b.endDate IS NULL OR b.endDate >= :date) " +
+            "ORDER BY b.sortOrder ASC")
+    List<Banner> findAllActiveByTenantId(@Param("tenantId") UUID tenantId, @Param("date") LocalDate date);
+
     @Modifying
     @Query("UPDATE Banner b SET b.impressionCount = b.impressionCount + 1 WHERE b.id = :bannerId")
     void incrementImpressionCount(@Param("bannerId") UUID bannerId);
 
     @Modifying
-    @Query("UPDATE Banner b SET b.clickCount = b.clickCount + 1 WHERE b.id = :bannerId")
-    void incrementClickCount(@Param("bannerId") UUID bannerId);
+    @Query("UPDATE Banner b SET b.clickCount = b.clickCount + 1 WHERE b.id = :bannerId AND b.tenantId = :tenantId")
+    void incrementClickCountForTenant(@Param("bannerId") UUID bannerId, @Param("tenantId") UUID tenantId);
 }

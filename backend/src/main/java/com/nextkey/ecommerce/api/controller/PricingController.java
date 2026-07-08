@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.api.controller;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -8,6 +9,8 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,7 +22,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
+import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.api.dto.PricingDto;
+import com.nextkey.ecommerce.api.filter.UserPrincipal;
+import com.nextkey.ecommerce.core.booking.BookingService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 
 import lombok.RequiredArgsConstructor;
@@ -36,7 +42,10 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class PricingController {
 
+    private static final String SUPER_ADMIN_ROLE = "SUPER_ADMIN";
+
     private final PricingService pricingService;
+    private final BookingService bookingService;
 
     /**
      * 建立定價規則
@@ -99,6 +108,23 @@ public class PricingController {
         log.info("Calculate price: roomListingId={}, checkIn={}, checkOut={}",
                 request.getRoomListingId(), request.getCheckInDate(), request.getCheckOutDate());
         PricingDto.CalculatePriceResponse response = pricingService.calculatePrice(request);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
+     * 房東後台預覽定價日曆（Sprint 83，PRD P0：未來 90 天定價日曆預覽）。
+     * 非 SUPER_ADMIN 僅能檢視自己租戶房源的定價日曆。
+     */
+    @GetMapping("/calendar")
+    @PreAuthorize("hasAuthority('room:read') or hasAuthority('product:read')")
+    public ResponseEntity<ApiResponse<List<BookingDto.CalendarResponse>>> getCalendarPreview(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam UUID roomListingId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
+        List<BookingDto.CalendarResponse> response =
+                bookingService.getCalendarForOwner(roomListingId, startDate, endDate, isSuperAdmin);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

@@ -8,10 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import PricingService, { CalculatePriceRequest, CalculatePriceResponse, PriceBreakdown } from '@/services/pricing'
 import AuthService from '@/services/auth'
+import type { CalendarDay } from '@/services/booking'
 
 interface PricingCalendarProps {
   roomListingId: string
 }
+
+const CALENDAR_PREVIEW_DAYS = 90
 
 export default function PricingCalendarPreview({ roomListingId }: PricingCalendarProps) {
   const router = useRouter()
@@ -22,11 +25,41 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
   const [result, setResult] = useState<CalculatePriceResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // 未來 90 天定價日曆總覽（Sprint 83，PRD P0），掛載時自動載入，不需手動選日期。
+  const [calendarDays, setCalendarDays] = useState<CalendarDay[]>([])
+  const [calendarLoading, setCalendarLoading] = useState(true)
+  const [calendarError, setCalendarError] = useState<string | null>(null)
+
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
       router.push('/login')
     }
   }, [router])
+
+  // 載入未來 90 天定價日曆（async；不在 effect 內同步 setState，遵循 React 19 嚴格 hooks，比照 MonthCalendar 既有模式）
+  useEffect(() => {
+    let cancelled = false
+    const formatDateParam = (date: Date) => date.toISOString().split('T')[0]
+    const today = new Date()
+    const start = formatDateParam(today)
+    const end = formatDateParam(new Date(today.getTime() + (CALENDAR_PREVIEW_DAYS - 1) * 24 * 60 * 60 * 1000))
+
+    PricingService.getCalendarPreview(roomListingId, start, end)
+      .then((days) => {
+        if (cancelled) return
+        setCalendarDays(days)
+        setCalendarError(null)
+      })
+      .catch(() => {
+        if (!cancelled) setCalendarError('載入定價日曆失敗')
+      })
+      .finally(() => {
+        if (!cancelled) setCalendarLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [roomListingId])
 
   const getDefaultDates = () => {
     const today = new Date()
@@ -104,6 +137,54 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
         <CardDescription>查看未來 90 天內的價格計算</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium">未來 {CALENDAR_PREVIEW_DAYS} 天日曆總覽</h3>
+          {calendarLoading && (
+            <div className="text-sm text-muted-foreground">載入中...</div>
+          )}
+          {calendarError && (
+            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
+              {calendarError}
+            </div>
+          )}
+          {!calendarLoading && !calendarError && (
+            <div className="border rounded-lg max-h-80 overflow-y-auto divide-y">
+              {calendarDays.map((day) => (
+                <div key={day.date} className="grid grid-cols-4 gap-4 p-2 items-center text-sm">
+                  <div>
+                    <div>{formatDate(day.date)}</div>
+                    <div className={`text-xs ${isWeekend(day.date) ? 'text-blue-600' : 'text-gray-500'}`}>
+                      {isWeekend(day.date) ? '週末' : '平日'}
+                    </div>
+                  </div>
+                  <div className="text-muted-foreground">
+                    {day.status === 'NOT_OPEN' ? '未開放' : day.status === 'AVAILABLE' ? '可訂' : day.status === 'BOOKED' ? '已訂' : day.status}
+                  </div>
+                  <div className="text-right">
+                    {day.originalPrice != null && (
+                      <span className="text-xs text-gray-400 line-through mr-1">
+                        {formatPrice(day.originalPrice)}
+                      </span>
+                    )}
+                    {day.price != null && <span>{formatPrice(day.price)}</span>}
+                  </div>
+                  <div className="text-right">
+                    {day.appliedRuleName && (
+                      <Badge variant="outline" className="text-xs">
+                        {day.appliedRuleName}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t pt-4">
+          <h3 className="text-sm font-medium mb-3">試算特定入住區間</h3>
+        </div>
+
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
             {error}

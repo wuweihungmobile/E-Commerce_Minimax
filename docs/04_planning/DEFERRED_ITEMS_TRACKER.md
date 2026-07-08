@@ -12,7 +12,7 @@
 
 | ID | 標題 | 原始 Sprint | 延後原因 | 前置需求 | 預估 SP | 狀態 |
 |----|------|-------------|---------|---------|---------|------|
-| （目前無 🔴 高優先級待決策項目） | | | | | | |
+| DEF-041 | `RoomService`/`ProductService` 的 `update`/`delete`/`clearOpenWindow` 完全不做租戶擁有權檢查，可跨租戶竄改/刪除他租戶房源或商品（IDOR，寫入層，已確認） | Sprint 83（開發「房東後台定價日曆預覽」新功能，比對既有房源查詢慣例時發現） | 開發 M12 定價日曆預覽功能時，因需替新端點加上租戶擁有權檢查，比對既有 `RoomService`/`ProductService` 的寫入方法作為參考前例，卻發現這兩個 Service 的核心寫入路徑完全沒有擁有權檢查：`RoomService.updateRoom`/`clearOpenWindow`/`deleteRoom` 與 `ProductService.updateProduct`/`deleteProduct`（含 `getRoom`）皆透過 `findRoomByListingId`/`findProductByListingId`（純 `findByListingId`，無 `tenantId` 過濾）取得實體後直接修改/軟刪除，`RoomController`/`ProductController` 僅檢查 `room:update`/`product:update` 等權限（分散於各租戶角色，非租戶範圍限制）。任一持有對應權限的使用者，只要取得或猜到他租戶的 `listingId`（UUID，非隨機亦不難從公開瀏覽頁取得），即可竄改該房源/商品的價格、標題、狀態，或直接軟刪除（下架）。**風險等級高於同類已修復項目**（`DEF-034`/`DEF-040` 為跨租戶讀取洩漏，本項為跨租戶寫入/刪除核心商業資料，可直接造成營運損害如惡意下架競爭對手房源、竄改價格），與 `DEF-019`/`DEF-024`/`DEF-028` 等系統性「新功能忘記加租戶擁有權檢查」模式相同，但發生在核心 Listing 管理路徑，影響面更廣（Room + Product 兩種類型皆受影響）。僅初步確認 `update`/`delete`/`clearOpenWindow`（Room）與 `update`/`delete`（Product），`create` 系列方法因固定寫入呼叫者自己的 `TenantContext.getCurrentTenant()` 應無此問題（未逐一覆核），本 Sprint 依範圍僅記錄不修改程式碼 | 無業務決策疑慮（純安全修復，比照 `DEF-019`/`LogisticsService.checkOrderTenant` 既有 tenant-based 修復模式：本租戶 or admin 放行即可），建議下一輪直接排入修復，無需徵詢業務方向 | 3 | 🔴 **新發現，建議優先修復**（Sprint 83 發現，尚未排入排程） |
 
 > **DEF-023**（Booking 付款擁有權檢查缺口，IDOR）已於 Sprint 68 修復並結案；**DEF-024**（`OrderService.updateOrderStatus` 跨租戶 IDOR）已於 Sprint 70 修復並結案；**DEF-038**（`TenantContextFilter` ADMIN 跨租戶 `X-Tenant-ID` header 無驗證信任）已於多 Sprint 測試強化計劃後的獨立追蹤任務修復並結案；**DEF-040**（`SettlementController` 結算單審核租戶過濾缺口）已於 Sprint 81 修復並結案；**DEF-034**（`CmsService` 公開瀏覽端點租戶範圍設計）已於 Sprint 82 修復並結案，詳見下方「已完成延後項目」。
 

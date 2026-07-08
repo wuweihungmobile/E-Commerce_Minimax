@@ -153,6 +153,7 @@ export const API_ENDPOINTS = {
     deleteRule: (id: string) => '/v2/dashboard/pricing/rules/' + id,
     calculate: '/v2/dashboard/pricing/calculate',
     calendarPrice: '/v2/dashboard/pricing/calendar/price',
+    calendar: '/v2/dashboard/pricing/calendar',
   },
 
   // Admin

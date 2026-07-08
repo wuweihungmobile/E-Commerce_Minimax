@@ -284,6 +284,35 @@ public class BookingService {
     }
 
     /**
+     * 房東後台預覽定價日曆（Sprint 83，PRD P0：未來 90 天定價日曆預覽）。
+     *
+     * <p>資料內容與買家 {@link #getCalendar} 完全相同（同一份日曆本就該對房東/買家一致），
+     * 差異僅在於本方法要求呼叫者必須是該房源所屬租戶（或 SUPER_ADMIN），避免任一租戶讀取
+     * 他租戶房源的定價策略明細（{@code appliedRuleName} 等屬營運機密）。
+     */
+    public List<BookingDto.CalendarResponse> getCalendarForOwner(
+            final UUID roomListingId, final LocalDate startDate, final LocalDate endDate, final boolean isSuperAdmin) {
+        Listing listing = listingRepository.findById(roomListingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000));
+        checkListingTenantOwnership(listing, isSuperAdmin);
+
+        return getCalendar(roomListingId, startDate, endDate);
+    }
+
+    /**
+     * 房源租戶擁有權檢查（Sprint 83）。非 SUPER_ADMIN 僅能檢視自己租戶房源的定價日曆。
+     */
+    private void checkListingTenantOwnership(final Listing listing, final boolean isSuperAdmin) {
+        if (isSuperAdmin) {
+            return;
+        }
+        UUID callerTenantId = getCurrentTenant();
+        if (!listing.getTenantId().equals(callerTenantId)) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to view this listing's pricing calendar");
+        }
+    }
+
+    /**
      * 開放窗（AI-2202e）：對超過開放上限之「無記錄日」補一筆 NOT_OPEN CalendarResponse。
      * 前端把「未回傳日」當可訂，故未開放日須顯式回傳；開放上限 null（無限制）則不補。
      */

@@ -1,5 +1,6 @@
 import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
+import type { CalendarDay } from '@/services/booking'
 
 export type PricingRuleType =
   | 'WEEKDAY_WEEKEND'
@@ -163,6 +164,20 @@ class PricingService {
     const response = await apiClient.post<ApiResponse<CalendarPriceResponse>>(
       API_ENDPOINTS.pricing.calendarPrice,
       request
+    )
+    return response.data.data
+  }
+
+  // 房東後台預覽定價日曆（Sprint 83，PRD P0：未來 90 天定價日曆預覽）。
+  // 回傳結構與買家整月日曆（bookingService.getCalendar）完全相同，僅多了租戶擁有權檢查。
+  async getCalendarPreview(
+    roomListingId: string,
+    startDate: string,
+    endDate: string
+  ): Promise<CalendarDay[]> {
+    const params = new URLSearchParams({ roomListingId, startDate, endDate })
+    const response = await apiClient.get<ApiResponse<CalendarDay[]>>(
+      API_ENDPOINTS.pricing.calendar + '?' + params.toString()
     )
     return response.data.data
   }

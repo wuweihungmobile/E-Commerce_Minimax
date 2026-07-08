@@ -6,6 +6,9 @@ import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.ProductDto;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.ProductRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
@@ -67,6 +70,12 @@ class CartControllerE2ETest {
 
     @Autowired
     private TenantRepository tenantRepository;
+
+    @Autowired
+    private ListingRepository listingRepository;
+
+    @Autowired
+    private ProductRepository productRepository;
 
     private static final String CART_URL = "/v2/cart";
     private static final String PRODUCT_URL = "/v2/products";
@@ -190,6 +199,14 @@ class CartControllerE2ETest {
             // 忽略錯誤（包括 AssertionError），繼續清理用戶
             System.out.println("Warning: Failed to clear cart during teardown: " + e.getMessage());
         }
+
+        // DEF-041 根因修復後 owner_id 會真正落地，刪除賣家使用者前需先清理其擁有的 listings/products，
+        // 否則會違反 listings.owner_id 的外鍵約束（比照 ProductControllerE2ETest 的修法）。
+        userRepository.findByEmail(sellerEmail).ifPresent(seller -> {
+            java.util.List<Listing> listings = listingRepository.findByOwnerId(seller.getId());
+            productRepository.deleteAllById(listings.stream().map(Listing::getId).toList());
+            listingRepository.deleteAll(listings);
+        });
 
         // 清理測試用戶
         userRepository.findByEmail(buyerEmail).ifPresent(user -> userRepository.delete(user));

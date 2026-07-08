@@ -13,8 +13,12 @@ import com.nextkey.ecommerce.api.dto.RoomDto;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.Room;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -29,6 +33,8 @@ public class RoomService {
 
     private final RoomRepository roomRepository;
     private final ListingRepository listingRepository;
+    private final TenantRepository tenantRepository;
+    private final UserRepository userRepository;
     private final FeatureToggleService featureToggleService;
 
     // Default values
@@ -80,10 +86,14 @@ public class RoomService {
         featureToggleService.checkFeatureEnabled("BOOKING_ENABLED");
 
         UUID tenantId = TenantContext.getCurrentTenant();
+        Tenant tenant = fetchTenant(tenantId);
+        User owner = fetchOwner();
 
         // Create Listing first
         Listing listing = Listing.builder()
+                .tenant(tenant)
                 .tenantId(tenantId)
+                .owner(owner)
                 .listingType(Listing.ListingType.ROOM)
                 .title(request.getTitle())
                 .description(request.getDescription())
@@ -124,10 +134,14 @@ public class RoomService {
     @Transactional
     public RoomDto.Response createRoomFromDashboard(com.nextkey.ecommerce.api.dto.CreateListingRequest request) {
         UUID tenantId = TenantContext.getCurrentTenant();
+        Tenant tenant = fetchTenant(tenantId);
+        User owner = fetchOwner();
 
         // Create Listing first
         Listing listing = Listing.builder()
+                .tenant(tenant)
                 .tenantId(tenantId)
+                .owner(owner)
                 .listingType(Listing.ListingType.ROOM)
                 .title(request.getName())
                 .description(request.getDescription())
@@ -160,9 +174,10 @@ public class RoomService {
     }
 
     @Transactional
-    public RoomDto.Response updateRoom(UUID listingId, RoomDto.UpdateRequest request) {
+    public RoomDto.Response updateRoom(UUID listingId, RoomDto.UpdateRequest request, final boolean isSuperAdmin) {
         Room room = findRoomByListingId(listingId);
         Listing listing = room.getListing();
+        checkListingTenantOwnership(listing, isSuperAdmin);
 
         updateListingFromRequest(listing, request);
         updateRoomFromRequest(room, request);
@@ -260,8 +275,9 @@ public class RoomService {
      * openUntilDate/bookingWindowDays 清回 NULL（無限制）；本方法一次性清除兩欄位。
      */
     @Transactional
-    public RoomDto.Response clearOpenWindow(final UUID listingId) {
+    public RoomDto.Response clearOpenWindow(final UUID listingId, final boolean isSuperAdmin) {
         Room room = findRoomByListingId(listingId);
+        checkListingTenantOwnership(room.getListing(), isSuperAdmin);
         room.setOpenUntilDate(null);
         room.setBookingWindowDays(null);
         room = roomRepository.save(room);
@@ -270,9 +286,10 @@ public class RoomService {
     }
 
     @Transactional
-    public void deleteRoom(final UUID listingId) {
+    public void deleteRoom(final UUID listingId, final boolean isSuperAdmin) {
         Room room = findRoomByListingId(listingId);
         Listing listing = room.getListing();
+        checkListingTenantOwnership(listing, isSuperAdmin);
 
         // Soft delete: set status to DELETED
         listing.setStatus(Listing.ListingStatus.DELETED);
@@ -284,6 +301,31 @@ public class RoomService {
     private Room findRoomByListingId(final UUID listingId) {
         return roomRepository.findByListingId(listingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000));
+    }
+
+    // DEF-041 根因修復（Sprint 84）：Listing.tenantId/ownerId 是 insertable=false 的唯讀影子欄位，
+    // 建立時必須實際設定 .tenant(...)/.owner(...) 關聯物件，否則資料庫 tenant_id/owner_id 永遠不會被寫入。
+    private Tenant fetchTenant(final UUID tenantId) {
+        return tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
+    }
+
+    private User fetchOwner() {
+        UUID userId = TenantContext.getCurrentUser();
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1006));
+    }
+
+    // DEF-041（Sprint 84）：比照 BookingService.checkListingTenantOwnership 既有模式，
+    // 非 SUPER_ADMIN 限自己租戶，SUPER_ADMIN 可跨租戶操作。
+    private void checkListingTenantOwnership(final Listing listing, final boolean isSuperAdmin) {
+        if (isSuperAdmin) {
+            return;
+        }
+        UUID callerTenantId = TenantContext.getCurrentTenant();
+        if (!listing.getTenantId().equals(callerTenantId)) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to manage this room listing");
+        }
     }
 
     private RoomDto.Response toResponse(Room room) {

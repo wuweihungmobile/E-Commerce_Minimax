@@ -6,6 +6,9 @@ import com.nextkey.ecommerce.domain.model.room.Room;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,13 +22,15 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 /**
- * RoomService 單元測試——開放窗清除機制（Sprint 57 AI-2202f）。
+ * RoomService 單元測試——開放窗清除機制（Sprint 57 AI-2202f）+
+ * DEF-041 租戶擁有權檢查（Sprint 84）。
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("RoomService: 開放窗清除機制")
+@DisplayName("RoomService: 開放窗清除機制 + 租戶擁有權檢查")
 class RoomServiceTest {
 
     @Mock
@@ -41,11 +46,24 @@ class RoomServiceTest {
     private RoomService roomService;
 
     private static final UUID LISTING_ID = UUID.fromString("880e8400-e29b-41d4-a716-446655440004");
+    private static final UUID OWNER_TENANT = UUID.fromString("880e8400-e29b-41d4-a716-446655440005");
+    private static final UUID OTHER_TENANT = UUID.fromString("880e8400-e29b-41d4-a716-446655440006");
+
+    @BeforeEach
+    void setUp() {
+        TenantContext.setCurrentTenant(OWNER_TENANT);
+    }
+
+    @AfterEach
+    void tearDown() {
+        TenantContext.clear();
+    }
 
     private Room roomWithOpenWindow() {
         Listing listing = Listing.builder()
                 .listingType(Listing.ListingType.ROOM)
                 .title("Test Room")
+                .tenantId(OWNER_TENANT)
                 .status(Listing.ListingStatus.ACTIVE)
                 .build();
         listing.setId(LISTING_ID);
@@ -67,7 +85,7 @@ class RoomServiceTest {
         when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
         when(roomRepository.save(room)).thenReturn(room);
 
-        RoomDto.Response response = roomService.clearOpenWindow(LISTING_ID);
+        RoomDto.Response response = roomService.clearOpenWindow(LISTING_ID, false);
 
         assertThat(room.getOpenUntilDate()).isNull();
         assertThat(room.getBookingWindowDays()).isNull();
@@ -82,7 +100,7 @@ class RoomServiceTest {
         when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
         when(roomRepository.save(room)).thenReturn(room);
 
-        roomService.clearOpenWindow(LISTING_ID);
+        roomService.clearOpenWindow(LISTING_ID, false);
 
         assertThat(room.getLocation()).isEqualTo("Taipei");
     }
@@ -92,7 +110,108 @@ class RoomServiceTest {
     void clearOpenWindow_roomNotFound_throws() {
         when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> roomService.clearOpenWindow(LISTING_ID))
+        assertThatThrownBy(() -> roomService.clearOpenWindow(LISTING_ID, false))
                 .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @DisplayName("UT-ROOM-004: clearOpenWindow 跨租戶（非 SUPER_ADMIN）→ 拋 E_1007")
+    void clearOpenWindow_crossTenant_throwsForbidden() {
+        TenantContext.setCurrentTenant(OTHER_TENANT);
+        Room room = roomWithOpenWindow();
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+
+        assertThatThrownBy(() -> roomService.clearOpenWindow(LISTING_ID, false))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @DisplayName("UT-ROOM-005: clearOpenWindow 跨租戶但 SUPER_ADMIN → 放行")
+    void clearOpenWindow_crossTenantSuperAdmin_allowed() {
+        TenantContext.setCurrentTenant(OTHER_TENANT);
+        Room room = roomWithOpenWindow();
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+        when(roomRepository.save(room)).thenReturn(room);
+
+        RoomDto.Response response = roomService.clearOpenWindow(LISTING_ID, true);
+
+        assertThat(response.getOpenUntilDate()).isNull();
+    }
+
+    @Test
+    @DisplayName("UT-ROOM-006: updateRoom 同租戶 → 正常更新")
+    void updateRoom_sameTenant_updatesSuccessfully() {
+        Room room = roomWithOpenWindow();
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+        when(roomRepository.save(room)).thenReturn(room);
+        RoomDto.UpdateRequest request = RoomDto.UpdateRequest.builder().location("Taichung").build();
+
+        RoomDto.Response response = roomService.updateRoom(LISTING_ID, request, false);
+
+        assertThat(response.getLocation()).isEqualTo("Taichung");
+    }
+
+    @Test
+    @DisplayName("UT-ROOM-007: updateRoom 跨租戶（非 SUPER_ADMIN）→ 拋 E_1007，不寫入")
+    void updateRoom_crossTenant_throwsForbidden() {
+        TenantContext.setCurrentTenant(OTHER_TENANT);
+        Room room = roomWithOpenWindow();
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+        RoomDto.UpdateRequest request = RoomDto.UpdateRequest.builder().location("Taichung").build();
+
+        assertThatThrownBy(() -> roomService.updateRoom(LISTING_ID, request, false))
+                .isInstanceOf(BusinessException.class);
+        assertThat(room.getLocation()).isEqualTo("Taipei");
+    }
+
+    @Test
+    @DisplayName("UT-ROOM-008: updateRoom 跨租戶但 SUPER_ADMIN → 放行")
+    void updateRoom_crossTenantSuperAdmin_allowed() {
+        TenantContext.setCurrentTenant(OTHER_TENANT);
+        Room room = roomWithOpenWindow();
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+        when(roomRepository.save(room)).thenReturn(room);
+        RoomDto.UpdateRequest request = RoomDto.UpdateRequest.builder().location("Taichung").build();
+
+        RoomDto.Response response = roomService.updateRoom(LISTING_ID, request, true);
+
+        assertThat(response.getLocation()).isEqualTo("Taichung");
+    }
+
+    @Test
+    @DisplayName("UT-ROOM-009: deleteRoom 同租戶 → 正常軟刪除")
+    void deleteRoom_sameTenant_deletesSuccessfully() {
+        Room room = roomWithOpenWindow();
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+        lenient().when(listingRepository.save(room.getListing())).thenReturn(room.getListing());
+
+        roomService.deleteRoom(LISTING_ID, false);
+
+        assertThat(room.getListing().getStatus()).isEqualTo(Listing.ListingStatus.DELETED);
+    }
+
+    @Test
+    @DisplayName("UT-ROOM-010: deleteRoom 跨租戶（非 SUPER_ADMIN）→ 拋 E_1007，不刪除")
+    void deleteRoom_crossTenant_throwsForbidden() {
+        TenantContext.setCurrentTenant(OTHER_TENANT);
+        Room room = roomWithOpenWindow();
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+
+        assertThatThrownBy(() -> roomService.deleteRoom(LISTING_ID, false))
+                .isInstanceOf(BusinessException.class);
+        assertThat(room.getListing().getStatus()).isEqualTo(Listing.ListingStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("UT-ROOM-011: deleteRoom 跨租戶但 SUPER_ADMIN → 放行")
+    void deleteRoom_crossTenantSuperAdmin_allowed() {
+        TenantContext.setCurrentTenant(OTHER_TENANT);
+        Room room = roomWithOpenWindow();
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+        when(listingRepository.save(room.getListing())).thenReturn(room.getListing());
+
+        roomService.deleteRoom(LISTING_ID, true);
+
+        assertThat(room.getListing().getStatus()).isEqualTo(Listing.ListingStatus.DELETED);
     }
 }

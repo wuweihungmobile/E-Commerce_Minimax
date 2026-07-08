@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.ProductDto;
 import com.nextkey.ecommerce.api.dto.ReviewDto;
+import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.core.product.ProductService;
 import com.nextkey.ecommerce.core.review.ReviewService;
 
@@ -34,6 +36,8 @@ import lombok.extern.slf4j.Slf4j;
 @RequestMapping("/v2/products")
 @RequiredArgsConstructor
 public class ProductController {
+
+    private static final String SUPER_ADMIN_ROLE = "SUPER_ADMIN";
 
     private final ProductService productService;
     private final ReviewService reviewService;
@@ -74,17 +78,21 @@ public class ProductController {
     @PutMapping("/{listingId}")
     @PreAuthorize("hasAuthority('product:update')")
     public ResponseEntity<ApiResponse<ProductDto.Response>> updateProduct(
+            @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable UUID listingId,
             @Valid @RequestBody ProductDto.UpdateRequest request) {
-        ProductDto.Response product = productService.updateProduct(listingId, request);
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
+        ProductDto.Response product = productService.updateProduct(listingId, request, isSuperAdmin);
         return ResponseEntity.ok(ApiResponse.success("Product updated successfully", product));
     }
 
     @DeleteMapping("/{listingId}")
     @PreAuthorize("hasAuthority('product:delete')")
     public ResponseEntity<ApiResponse<Void>> deleteProduct(
+            @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable UUID listingId) {
-        productService.deleteProduct(listingId);
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
+        productService.deleteProduct(listingId, isSuperAdmin);
         return ResponseEntity.ok(ApiResponse.success("Product deleted successfully", null));
     }
 

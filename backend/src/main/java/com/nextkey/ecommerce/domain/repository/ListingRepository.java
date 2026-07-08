@@ -36,6 +36,8 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
 
     List<Listing> findByOwnerIdAndStatus(UUID ownerId, Listing.ListingStatus status);
 
+    List<Listing> findByOwnerId(UUID ownerId);
+
     @Query("SELECT l FROM Listing l WHERE l.status = 'ACTIVE' AND l.tenant.id = :tenantId")
     Page<Listing> findActiveByTenantId(@Param("tenantId") UUID tenantId, Pageable pageable);
 

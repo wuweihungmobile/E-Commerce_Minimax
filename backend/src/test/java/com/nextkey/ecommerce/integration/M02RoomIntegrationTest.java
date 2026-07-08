@@ -2,10 +2,15 @@ package com.nextkey.ecommerce.integration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.api.dto.RoomDto;
+import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.Room;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.domain.repository.UserRepository;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -13,12 +18,16 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,10 +35,10 @@ import java.util.UUID;
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
@@ -46,7 +55,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 @ActiveProfiles("integration-test")
 @Transactional
 @DisplayName("IT-M02: M02 房源管理 Backend API 整合測試")
-@WithMockUser(username = "test-user", authorities = {"room:create", "room:read", "room:update", "room:delete"})
 class M02RoomIntegrationTest {
 
     @Autowired
@@ -62,17 +70,41 @@ class M02RoomIntegrationTest {
     private ListingRepository listingRepository;
 
     @MockBean
+    private TenantRepository tenantRepository;
+
+    @MockBean
+    private UserRepository userRepository;
+
+    @MockBean
     private com.nextkey.ecommerce.core.feature.FeatureToggleService featureToggleService;
 
     private static final String BASE_URL = "/v2/rooms";
     private static final String TEST_TENANT_ID = "550e8400-e29b-41d4-a716-446655440001";
-    @SuppressWarnings("unused")
     private static final UUID TEST_USER_ID = UUID.randomUUID();
+
+    /**
+     * DEF-041 根因修復（Sprint 84）後 Controller 需要真正的 {@code UserPrincipal}，
+     * {@code @WithMockUser} 的預設 principal 型別不符會被注入 null，改用手動建構的 Authentication
+     * （比照 {@code M07SettlementIntegrationTest.authAs}）。
+     */
+    private Authentication authAs() {
+        UserPrincipal principal = new UserPrincipal(TEST_USER_ID, "test-user@example.com", "SELLER", TEST_TENANT_ID);
+        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority("room:create"));
+        authorities.add(new SimpleGrantedAuthority("room:read"));
+        authorities.add(new SimpleGrantedAuthority("room:update"));
+        authorities.add(new SimpleGrantedAuthority("room:delete"));
+        return new UsernamePasswordAuthenticationToken(principal, null, authorities);
+    }
 
     @BeforeEach
     void setUp() {
         // 🔴 清理 SecurityContext 避免影響其他測試
         SecurityContextHolder.clearContext();
+        when(tenantRepository.findById(UUID.fromString(TEST_TENANT_ID)))
+                .thenReturn(Optional.of(Tenant.builder().id(UUID.fromString(TEST_TENANT_ID)).build()));
+        when(userRepository.findById(TEST_USER_ID))
+                .thenReturn(Optional.of(User.builder().id(TEST_USER_ID).build()));
     }
 
     @AfterEach
@@ -146,6 +178,7 @@ class M02RoomIntegrationTest {
 
         mockMvc.perform(post(BASE_URL)
                         .with(csrf())
+                        .with(authentication(authAs()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -177,6 +210,7 @@ class M02RoomIntegrationTest {
 
         mockMvc.perform(put(BASE_URL + "/{listingId}", listingId)
                         .with(csrf())
+                        .with(authentication(authAs()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -197,7 +231,8 @@ class M02RoomIntegrationTest {
         when(listingRepository.save(any(Listing.class))).thenReturn(existingListing);
 
         mockMvc.perform(delete(BASE_URL + "/{listingId}", listingId)
-                        .with(csrf()))
+                        .with(csrf())
+                        .with(authentication(authAs())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("Room deleted successfully"));

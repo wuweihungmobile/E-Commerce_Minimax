@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.ProductDto;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.ProductRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
@@ -20,7 +22,10 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
+
+import com.nextkey.ecommerce.domain.model.listing.Listing;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.hamcrest.Matchers.*;
@@ -63,6 +68,12 @@ class ProductControllerE2ETest {
 
     @Autowired
     private TenantRepository tenantRepository;
+
+    @Autowired
+    private ListingRepository listingRepository;
+
+    @Autowired
+    private ProductRepository productRepository;
 
     private static final String BASE_URL = "/v2/products";
     private static final String AUTH_URL = "/v2/auth";
@@ -137,8 +148,17 @@ class ProductControllerE2ETest {
 
     @AfterEach
     void tearDown() {
-        // 清理測試用戶
-        userRepository.findByEmail(userEmail).ifPresent(user -> userRepository.delete(user));
+        // DEF-041 根因修復後 owner_id 會真正落地，刪除使用者前需先清理其擁有的 listings，
+        // 否則會違反 listings.owner_id 的外鍵約束。注意：JWT 的 tenantId claim 是登入當下核發，
+        // 與稍後才寫回 DB 的 testTenantId 不同一個值，因此以 ownerId（來自使用者本身）查詢，而非 tenantId。
+        userRepository.findByEmail(userEmail).ifPresent(user -> {
+            List<Listing> listings = listingRepository.findByOwnerId(user.getId());
+            // Product.listingId 與 Listing.id 為同一個 PK（@MapsId），需先刪 products 再刪 listings，
+            // 否則違反 products.listing_id 外鍵約束。
+            productRepository.deleteAllById(listings.stream().map(Listing::getId).toList());
+            listingRepository.deleteAll(listings);
+            userRepository.delete(user);
+        });
 
         // 🔴 清理 SecurityContext 避免影響其他測試
         SecurityContextHolder.clearContext();

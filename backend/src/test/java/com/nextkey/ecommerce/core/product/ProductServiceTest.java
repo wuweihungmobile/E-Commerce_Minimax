@@ -1,13 +1,16 @@
 package com.nextkey.ecommerce.core.product;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
@@ -27,6 +30,7 @@ import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.product.Product;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.ProductRepository;
+import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 /**
@@ -51,6 +55,8 @@ class ProductServiceTest {
     private ProductService productService;
 
     private static final UUID TENANT = UUID.randomUUID();
+    private static final UUID OTHER_TENANT = UUID.randomUUID();
+    private static final UUID LISTING_ID = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
@@ -68,6 +74,19 @@ class ProductServiceTest {
                 .tenantId(TENANT)
                 .listingType(Listing.ListingType.PRODUCT)
                 .title(title)
+                .status(Listing.ListingStatus.ACTIVE)
+                .basePrice(BigDecimal.valueOf(100))
+                .currency("TWD")
+                .build();
+        return Product.builder().listing(listing).category("electronics").build();
+    }
+
+    private Product buildProductForListing(final UUID listingId, final UUID tenantId) {
+        Listing listing = Listing.builder()
+                .id(listingId)
+                .tenantId(tenantId)
+                .listingType(Listing.ListingType.PRODUCT)
+                .title("Test Product")
                 .status(Listing.ListingStatus.ACTIVE)
                 .basePrice(BigDecimal.valueOf(100))
                 .currency("TWD")
@@ -118,5 +137,80 @@ class ProductServiceTest {
         assertThat(result.getContent()).hasSize(1);
         verify(productRepository, org.mockito.Mockito.never())
                 .searchByTenantIdAndKeyword(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("UT-PRODUCT-004（DEF-041）: updateProduct 同租戶 → 正常更新")
+    void updateProduct_sameTenant_updatesSuccessfully() {
+        Product product = buildProductForListing(LISTING_ID, TENANT);
+        when(productRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(product));
+        when(listingRepository.save(product.getListing())).thenReturn(product.getListing());
+        when(productRepository.save(product)).thenReturn(product);
+        ProductDto.UpdateRequest request = ProductDto.UpdateRequest.builder().brand("NewBrand").build();
+
+        ProductDto.Response response = productService.updateProduct(LISTING_ID, request, false);
+
+        assertThat(response.getBrand()).isEqualTo("NewBrand");
+    }
+
+    @Test
+    @DisplayName("UT-PRODUCT-005（DEF-041）: updateProduct 跨租戶（非 SUPER_ADMIN）→ 拋 E_1007，不寫入")
+    void updateProduct_crossTenant_throwsForbidden() {
+        Product product = buildProductForListing(LISTING_ID, OTHER_TENANT);
+        when(productRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(product));
+        ProductDto.UpdateRequest request = ProductDto.UpdateRequest.builder().brand("NewBrand").build();
+
+        assertThatThrownBy(() -> productService.updateProduct(LISTING_ID, request, false))
+                .isInstanceOf(BusinessException.class);
+        assertThat(product.getBrand()).isNotEqualTo("NewBrand");
+    }
+
+    @Test
+    @DisplayName("UT-PRODUCT-006（DEF-041）: updateProduct 跨租戶但 SUPER_ADMIN → 放行")
+    void updateProduct_crossTenantSuperAdmin_allowed() {
+        Product product = buildProductForListing(LISTING_ID, OTHER_TENANT);
+        when(productRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(product));
+        when(listingRepository.save(product.getListing())).thenReturn(product.getListing());
+        when(productRepository.save(product)).thenReturn(product);
+        ProductDto.UpdateRequest request = ProductDto.UpdateRequest.builder().brand("NewBrand").build();
+
+        ProductDto.Response response = productService.updateProduct(LISTING_ID, request, true);
+
+        assertThat(response.getBrand()).isEqualTo("NewBrand");
+    }
+
+    @Test
+    @DisplayName("UT-PRODUCT-007（DEF-041）: deleteProduct 同租戶 → 正常軟刪除")
+    void deleteProduct_sameTenant_deletesSuccessfully() {
+        Product product = buildProductForListing(LISTING_ID, TENANT);
+        when(productRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(product));
+        lenient().when(listingRepository.save(product.getListing())).thenReturn(product.getListing());
+
+        productService.deleteProduct(LISTING_ID, false);
+
+        assertThat(product.getListing().getStatus()).isEqualTo(Listing.ListingStatus.DELETED);
+    }
+
+    @Test
+    @DisplayName("UT-PRODUCT-008（DEF-041）: deleteProduct 跨租戶（非 SUPER_ADMIN）→ 拋 E_1007，不刪除")
+    void deleteProduct_crossTenant_throwsForbidden() {
+        Product product = buildProductForListing(LISTING_ID, OTHER_TENANT);
+        when(productRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(product));
+
+        assertThatThrownBy(() -> productService.deleteProduct(LISTING_ID, false))
+                .isInstanceOf(BusinessException.class);
+        assertThat(product.getListing().getStatus()).isEqualTo(Listing.ListingStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("UT-PRODUCT-009（DEF-041）: deleteProduct 跨租戶但 SUPER_ADMIN → 放行")
+    void deleteProduct_crossTenantSuperAdmin_allowed() {
+        Product product = buildProductForListing(LISTING_ID, OTHER_TENANT);
+        when(productRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(product));
+        when(listingRepository.save(product.getListing())).thenReturn(product.getListing());
+
+        productService.deleteProduct(LISTING_ID, true);
+
+        assertThat(product.getListing().getStatus()).isEqualTo(Listing.ListingStatus.DELETED);
     }
 }

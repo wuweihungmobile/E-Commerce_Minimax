@@ -109,6 +109,9 @@ export function StorefrontHeader({
                 <Link href="/addresses" className="hover:opacity-80">
                   地址簿
                 </Link>
+                <Link href="/support/tickets" className="hover:opacity-80">
+                  客服工單
+                </Link>
                 <button
                   type="button"
                   onClick={handleLogout}

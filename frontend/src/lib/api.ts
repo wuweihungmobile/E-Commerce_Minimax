@@ -233,6 +233,16 @@ export const API_ENDPOINTS = {
     deleteCategory: (id: string) => '/v2/faqs/categories/' + id,
   },
 
+  // Support Tickets — 買家客服工單 (M18 Phase 2-B，Sprint 91)
+  support: {
+    tickets: {
+      list: '/v2/support/tickets',
+      create: '/v2/support/tickets',
+      detail: (id: string) => '/v2/support/tickets/' + id,
+      messages: (id: string) => '/v2/support/tickets/' + id + '/messages',
+    },
+  },
+
   // Notifications — 買家收件匣 (M09，對齊 NotificationController /v2/notifications)
   notifications: {
     list: '/v2/notifications',

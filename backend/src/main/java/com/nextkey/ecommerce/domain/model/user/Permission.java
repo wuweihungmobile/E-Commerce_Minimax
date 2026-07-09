@@ -62,7 +62,13 @@ public enum Permission {
     ADMIN_WRITE("admin:write", "執行管理後台結算審核操作"),
 
     // ========== Settlement Permissions（Sprint 86） ==========
-    SETTLEMENT_REVERSE("settlement:reverse", "結算單逆轉（SuperAdmin/財務長雙重授權）");
+    SETTLEMENT_REVERSE("settlement:reverse", "結算單逆轉（SuperAdmin/財務長雙重授權）"),
+
+    // ========== Support Ticket Permissions（Sprint 91） ==========
+    SUPPORT_TICKET_READ("support_ticket:read", "檢視客服工單"),
+    SUPPORT_TICKET_CREATE("support_ticket:create", "建立客服工單/回覆訊息"),
+    SUPPORT_TICKET_UPDATE("support_ticket:update", "更新工單狀態/指派"),
+    SUPPORT_TICKET_MANAGE_ALL("support_ticket:manage:all", "管理所有租戶客服工單");
 
     private final String code;
     private final String description;

@@ -42,7 +42,9 @@ public class RolePermissionMapping {
                 Permission.CART_UPDATE,
                 Permission.CART_DELETE,
                 Permission.USER_READ,
-                Permission.USER_UPDATE
+                Permission.USER_UPDATE,
+                Permission.SUPPORT_TICKET_READ,   // 買家提交/檢視自己的客服工單（Sprint 91）
+                Permission.SUPPORT_TICKET_CREATE
         ));
 
         // ========== SELLER - 賣家，商品管理 ==========
@@ -93,7 +95,10 @@ public class RolePermissionMapping {
                 Permission.TENANT_UPDATE,
                 Permission.USER_READ,
                 Permission.USER_CREATE,
-                Permission.USER_UPDATE
+                Permission.USER_UPDATE,
+                Permission.SUPPORT_TICKET_READ,   // 店主處理自己租戶的客服工單（Sprint 91）
+                Permission.SUPPORT_TICKET_CREATE,
+                Permission.SUPPORT_TICKET_UPDATE
         ));
 
         // ========== STORE_STAFF - 店鋪員工，受限權限 ==========
@@ -102,7 +107,10 @@ public class RolePermissionMapping {
                 Permission.ROOM_READ,
                 Permission.ORDER_READ,
                 Permission.BOOKING_READ,
-                Permission.USER_READ
+                Permission.USER_READ,
+                Permission.SUPPORT_TICKET_READ,   // 店鋪員工處理自己租戶的客服工單（Sprint 91）
+                Permission.SUPPORT_TICKET_CREATE,
+                Permission.SUPPORT_TICKET_UPDATE
         ));
 
         // ========== ADMIN - 管理員，租戶內管理 ==========
@@ -134,7 +142,11 @@ public class RolePermissionMapping {
                 Permission.USER_UPDATE,
                 Permission.USER_DELETE,
                 Permission.ADMIN_READ,
-                Permission.ADMIN_WRITE
+                Permission.ADMIN_WRITE,
+                Permission.SUPPORT_TICKET_READ,   // 平台客服工單，跨租戶（Sprint 91）
+                Permission.SUPPORT_TICKET_CREATE,
+                Permission.SUPPORT_TICKET_UPDATE,
+                Permission.SUPPORT_TICKET_MANAGE_ALL
         ));
 
         // ========== CFO - 財務長，僅結算單逆轉雙重授權（Sprint 86） ==========

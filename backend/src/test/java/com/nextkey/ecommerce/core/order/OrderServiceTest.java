@@ -35,6 +35,7 @@ import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.OrderDto;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
+import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.core.user.AddressService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -89,6 +90,7 @@ class OrderServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private ShippingTemplateService shippingTemplateService;
     @Mock private AddressService addressService;
+    @Mock private ProductInventoryService productInventoryService;
 
     @InjectMocks
     private OrderService orderService;
@@ -132,12 +134,19 @@ class OrderServiceTest {
 
     private CartDto.CartItemResponse cartItem(final UUID listingId, final UUID skuId,
             final int quantity, final BigDecimal unitPrice) {
+        return cartItem(listingId, skuId, quantity, unitPrice, "PRODUCT");
+    }
+
+    private CartDto.CartItemResponse cartItem(final UUID listingId, final UUID skuId,
+            final int quantity, final BigDecimal unitPrice, final String listingType) {
         return CartDto.CartItemResponse.builder()
+                .cartItemKey("key-" + listingId)
                 .listingId(listingId)
                 .skuId(skuId)
                 .quantity(quantity)
                 .unitPrice(unitPrice)
                 .subtotal(unitPrice.multiply(BigDecimal.valueOf(quantity)))
+                .listingType(listingType)
                 .build();
     }
 
@@ -196,8 +205,85 @@ class OrderServiceTest {
         assertThat(response.getTotalAmount()).isEqualByComparingTo(BigDecimal.valueOf(260));
         assertThat(response.getShippingFee()).isEqualByComparingTo(BigDecimal.valueOf(60));
         assertThat(response.getItems()).hasSize(1);
-        verify(cartService).clearCart(USER_ID, TENANT_ID);
+        verify(cartService).removeItem(USER_ID, TENANT_ID, "key-" + LISTING_ID);
+        verify(cartService, never()).clearCart(any(), any());
         verify(orderStateLogRepository).save(any(OrderStateLog.class));
+        // Sprint 88（AI-2422）：建單前檢查並預扣庫存
+        verify(productInventoryService).reserveForOrder(any(Order.class));
+    }
+
+    @Test
+    @DisplayName("createOrderFromCart(PRODUCT)：混合購物車（PRODUCT+ROOM）僅取用 PRODUCT 項目，ROOM 項目保留在購物車")
+    void createOrderFromCart_mixedCart_onlyProductItemsProcessed() {
+        TenantContext.setCurrentUser(USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userFixture()));
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenantFixture()));
+
+        UUID roomListingId = UUID.fromString("55555555-5555-5555-5555-555555555555");
+        CartDto.CartItemResponse productItem = cartItem(LISTING_ID, null, 2, BigDecimal.valueOf(100));
+        CartDto.CartItemResponse roomItem = cartItem(roomListingId, null, 1, BigDecimal.valueOf(500), "ROOM");
+        when(cartService.getCart(USER_ID, TENANT_ID)).thenReturn(cartOf(List.of(productItem, roomItem)));
+        when(listingRepository.findById(LISTING_ID))
+                .thenReturn(Optional.of(listingFixture(Listing.ListingType.PRODUCT, Listing.ListingStatus.ACTIVE)));
+        when(shippingTemplateService.calculateFeeForTenant(TENANT_ID, BigDecimal.valueOf(200)))
+                .thenReturn(BigDecimal.valueOf(60));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        OrderDto.OrderResponse response = orderService.createOrderFromCart(productRequest());
+
+        assertThat(response.getItems()).hasSize(1);
+        verify(listingRepository, never()).findById(roomListingId);
+        verify(cartService).removeItem(USER_ID, TENANT_ID, "key-" + LISTING_ID);
+        verify(cartService, never()).removeItem(USER_ID, TENANT_ID, "key-" + roomListingId);
+        verify(cartService, never()).clearCart(any(), any());
+    }
+
+    @Test
+    @DisplayName("createOrderFromCart(PRODUCT)：購物車僅有 ROOM 項目 → E_5004，不建立訂單")
+    void createOrderFromCart_cartHasOnlyRoomItems_throws() {
+        TenantContext.setCurrentUser(USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userFixture()));
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenantFixture()));
+
+        CartDto.CartItemResponse roomItem = cartItem(LISTING_ID, null, 1, BigDecimal.valueOf(500), "ROOM");
+        when(cartService.getCart(USER_ID, TENANT_ID)).thenReturn(cartOf(List.of(roomItem)));
+
+        assertThatThrownBy(() -> orderService.createOrderFromCart(productRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_5004);
+        verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("createOrderFromCart(PRODUCT)：庫存不足 → 拋例外且不建立訂單（reserveForOrder 交由 ProductInventoryService 判斷）")
+    void createOrderFromCart_insufficientStock_throwsAndDoesNotSaveOrder() {
+        TenantContext.setCurrentUser(USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userFixture()));
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenantFixture()));
+
+        CartDto.CartItemResponse item = cartItem(LISTING_ID, null, 2, BigDecimal.valueOf(100));
+        when(cartService.getCart(USER_ID, TENANT_ID)).thenReturn(cartOf(List.of(item)));
+        when(listingRepository.findById(LISTING_ID))
+                .thenReturn(Optional.of(listingFixture(Listing.ListingType.PRODUCT, Listing.ListingStatus.ACTIVE)));
+        when(shippingTemplateService.calculateFeeForTenant(TENANT_ID, BigDecimal.valueOf(200)))
+                .thenReturn(BigDecimal.valueOf(60));
+        org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.E_3004, "Insufficient stock"))
+                .when(productInventoryService).reserveForOrder(any(Order.class));
+
+        assertThatThrownBy(() -> orderService.createOrderFromCart(productRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_3004);
+        verify(orderRepository, never()).save(any());
+        verify(cartService, never()).removeItem(any(), any(), any());
     }
 
     @Test
@@ -821,10 +907,12 @@ class OrderServiceTest {
 
         assertThat(response.getStatus()).isEqualTo("CANCELLED");
         verify(orderStateLogRepository, times(1)).save(any(OrderStateLog.class));
+        // Sprint 88（AI-2422）：取消前為 CREATED（尚未付款）→ 釋放先前預扣的庫存
+        verify(productInventoryService).releaseForOrder(order);
     }
 
     @Test
-    @DisplayName("cancelOrder：擁有者取消 PAID 訂單 → 先 CANCELLED 再自動轉 REFUNDING，兩筆狀態日誌")
+    @DisplayName("cancelOrder：擁有者取消 PAID 訂單 → 先 CANCELLED 再自動轉 REFUNDING，兩筆狀態日誌，不釋放庫存（已扣帳）")
     void cancelOrder_owner_paid_triggersAutoRefund() {
         TenantContext.setCurrentUser(USER_ID);
         Order order = orderOf(USER_ID, Order.OrderStatus.PAID);
@@ -836,6 +924,8 @@ class OrderServiceTest {
         assertThat(response.getStatus()).isEqualTo("REFUNDING");
         verify(orderRepository, times(2)).save(any(Order.class));
         verify(orderStateLogRepository, times(2)).save(any(OrderStateLog.class));
+        // Sprint 88（AI-2422）：取消前已是 PAID（已扣帳）→ 不釋放庫存（範圍外，退款回補庫存另計）
+        verify(productInventoryService, never()).releaseForOrder(any());
     }
 
     @Test

@@ -30,6 +30,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
+import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -67,6 +68,7 @@ class PaymentStateServiceTest {
     @Mock private FeatureToggleService featureToggleService;
     @Mock private PaymentGatewayFactory paymentGatewayFactory;
     @Mock private SettlementAdjustmentService settlementAdjustmentService;
+    @Mock private ProductInventoryService productInventoryService;
 
     private PaymentStateService service;
 
@@ -78,7 +80,7 @@ class PaymentStateServiceTest {
     @BeforeEach
     void setUp() {
         service = new PaymentStateService(paymentRepository, orderRepository, bookingRepository,
-                featureToggleService, paymentGatewayFactory, settlementAdjustmentService);
+                featureToggleService, paymentGatewayFactory, settlementAdjustmentService, productInventoryService);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         TenantContext.setCurrentUser(USER_ID);
     }
@@ -343,6 +345,24 @@ class PaymentStateServiceTest {
             assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.PAID);
             assertThat(dto.getPaymentStatus()).isEqualTo("SUCCESS");
             verify(orderRepository).save(order);
+            // Sprint 88（AI-2422）：付款成功後正式扣帳
+            verify(productInventoryService).deductForOrder(order);
+        }
+
+        @Test
+        @DisplayName("Sprint 88：扣帳失敗不影響付款成功結果（比照既有結算調整慣例，log 記錄不中斷主流程）")
+        void success_deductStockFailure_doesNotFailPayment() {
+            Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+            when(paymentRepository.existsByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS)).thenReturn(false);
+            when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+            org.mockito.Mockito.doThrow(new RuntimeException("boom"))
+                    .when(productInventoryService).deductForOrder(order);
+
+            OrderPaymentStateDto dto = service.mockPaymentSuccess(ORDER_ID);
+
+            assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.PAID);
+            assertThat(dto.getPaymentStatus()).isEqualTo("SUCCESS");
         }
     }
 
@@ -739,6 +759,8 @@ class PaymentStateServiceTest {
             assertThat(result).isTrue();
             assertThat(processing.getStripePaymentIntentId()).isEqualTo("pi_existing");
             assertThat(processing.getStatus()).isEqualTo(Payment.PaymentStatus.SUCCESS);
+            // Sprint 88（AI-2422）：轉 PAID 成功後正式扣帳
+            verify(productInventoryService).deductForOrder(order);
         }
 
         @Test
@@ -769,6 +791,8 @@ class PaymentStateServiceTest {
             assertThat(result).isTrue();
             assertThat(processing.getStatus()).isEqualTo(Payment.PaymentStatus.SUCCESS);
             verify(orderRepository, never()).save(any());
+            // Sprint 88（AI-2422）：Order 狀態未轉 PAID（已是 PAID）→ 不重複扣帳
+            verify(productInventoryService, never()).deductForOrder(any());
         }
     }
 

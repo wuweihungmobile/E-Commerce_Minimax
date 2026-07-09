@@ -80,6 +80,15 @@ export interface OrderQuery {
   sortDir?: 'ASC' | 'DESC'
 }
 
+export interface CreateOrderRequest {
+  orderType: OrderType
+  addressId?: string
+  shippingAddress?: string
+  shippingRecipientName?: string
+  shippingPhone?: string
+  notes?: string
+}
+
 export interface PaginatedResponse<T> {
   content: T[]
   totalElements: number
@@ -144,6 +153,14 @@ export function orderStatusBadgeVariant(status: OrderStatus): OrderStatusBadgeVa
 }
 
 class OrderService {
+  async createOrder(request: CreateOrderRequest): Promise<Order> {
+    const response = await apiClient.post<ApiResponse<Order>>(
+      API_ENDPOINTS.orders.create,
+      request
+    )
+    return response.data.data
+  }
+
   async getOrders(query: OrderQuery = {}): Promise<PaginatedResponse<OrderListItem>> {
     const params = new URLSearchParams()
     if (query.page !== undefined) params.append('page', String(query.page))

@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.payment;
 import com.nextkey.ecommerce.api.dto.payment.CheckoutSessionResponse;
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
+import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
@@ -55,6 +56,7 @@ class PaymentStateServiceStripeTest {
     @Mock private FeatureToggleService featureToggleService;
     @Mock private PaymentGatewayFactory paymentGatewayFactory;
     @Mock private SettlementAdjustmentService settlementAdjustmentService;
+    @Mock private ProductInventoryService productInventoryService;
 
     private PaymentStateService service;
 
@@ -64,7 +66,7 @@ class PaymentStateServiceStripeTest {
     @BeforeEach
     void setUp() {
         service = new PaymentStateService(paymentRepository, orderRepository, bookingRepository,
-                featureToggleService, paymentGatewayFactory, settlementAdjustmentService);
+                featureToggleService, paymentGatewayFactory, settlementAdjustmentService, productInventoryService);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         TenantContext.setCurrentUser(USER_ID);
     }

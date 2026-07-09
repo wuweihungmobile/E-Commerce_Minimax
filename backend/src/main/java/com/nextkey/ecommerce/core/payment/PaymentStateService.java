@@ -13,6 +13,7 @@ import com.nextkey.ecommerce.api.dto.payment.CheckoutSessionResponse;
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.order.OrderStateMachine;
+import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -42,19 +43,32 @@ public class PaymentStateService {
     private final FeatureToggleService featureToggleService;
     private final PaymentGatewayFactory paymentGatewayFactory;
     private final SettlementAdjustmentService settlementAdjustmentService;
+    private final ProductInventoryService productInventoryService;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
 
     public PaymentStateService(PaymentRepository paymentRepository, OrderRepository orderRepository,
             BookingRepository bookingRepository, FeatureToggleService featureToggleService,
-            PaymentGatewayFactory paymentGatewayFactory, SettlementAdjustmentService settlementAdjustmentService) {
+            PaymentGatewayFactory paymentGatewayFactory, SettlementAdjustmentService settlementAdjustmentService,
+            ProductInventoryService productInventoryService) {
         this.paymentRepository = paymentRepository;
         this.orderRepository = orderRepository;
         this.bookingRepository = bookingRepository;
         this.featureToggleService = featureToggleService;
         this.paymentGatewayFactory = paymentGatewayFactory;
         this.settlementAdjustmentService = settlementAdjustmentService;
+        this.productInventoryService = productInventoryService;
+    }
+
+    /** Sprint 88（AI-2422）：付款成功後正式扣帳，失敗僅記錄不影響付款成功主流程（比照既有結算調整慣例）。 */
+    private void deductStockSafely(Order order) {
+        try {
+            productInventoryService.deductForOrder(order);
+        } catch (RuntimeException e) {
+            log.error("Failed to deduct stock after payment success: orderId={}, error={}",
+                    order.getId(), e.getMessage(), e);
+        }
     }
 
     /**
@@ -119,6 +133,7 @@ public class PaymentStateService {
         // 更新訂單狀態為 PAID
         order.setStatus(Order.OrderStatus.PAID);
         orderRepository.save(order);
+        deductStockSafely(order);
 
         log.info("Mock payment success: orderId={}, paymentId={}", orderId, payment.getId());
 
@@ -392,6 +407,7 @@ public class PaymentStateService {
             if (order != null && OrderStateMachine.canPay(order.getStatus().name())) {
                 order.setStatus(Order.OrderStatus.PAID);
                 orderRepository.save(order);
+                deductStockSafely(order);
             }
         }
         log.info("Stripe payment marked SUCCESS: session={}, orderId={}", sessionId, payment.getOrderId());

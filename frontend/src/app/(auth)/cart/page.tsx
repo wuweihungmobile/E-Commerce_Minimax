@@ -23,6 +23,7 @@ interface CartItem {
   quantity: number
   unitPrice: number
   subtotal: number
+  listingType?: string
   startDate: string | null
   endDate: string | null
   // 動態定價調整（AI-2403 折扣 / AI-2406c 漲價）：規則生效時填入（unitPrice/subtotal 已為調整後）。
@@ -477,7 +478,12 @@ export default function CartPage() {
                   <Button
                     className="w-full"
                     size="lg"
-                    onClick={() => router.push('/checkout')}
+                    onClick={() => {
+                      // 購物車為 ROOM/PRODUCT 共用；只要有任何 PRODUCT 項目即優先導向商品結帳頁
+                      // （該頁僅處理 PRODUCT 項目，ROOM 項目會保留在購物車供另外結帳）
+                      const hasProduct = (cart?.items || []).some((i) => i.listingType === 'PRODUCT')
+                      router.push(hasProduct ? '/checkout/product' : '/checkout')
+                    }}
                   >
                     前往結帳
                   </Button>

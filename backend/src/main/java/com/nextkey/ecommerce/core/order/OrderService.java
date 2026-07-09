@@ -19,6 +19,7 @@ import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.OrderDto;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
+import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.order.OrderItem;
@@ -64,6 +65,7 @@ public class OrderService {
     private final UserRepository userRepository;
     private final ShippingTemplateService shippingTemplateService;
     private final AddressService addressService;
+    private final ProductInventoryService productInventoryService;
 
     /**
      * 建立訂單（從購物車或直接預訂）
@@ -96,6 +98,15 @@ public class OrderService {
             throw new BusinessException(ErrorCode.E_5004, "Cart is empty");
         }
 
+        // Sprint 88：購物車為 ROOM/PRODUCT 共用，PRODUCT 訂單僅取用 PRODUCT 項目，
+        // ROOM 項目留在購物車給訂房流程另外結帳（避免誤併入商品訂單或被整個清空）
+        List<CartDto.CartItemResponse> productItems = cart.getItems().stream()
+                .filter(i -> "PRODUCT".equals(i.getListingType()))
+                .collect(Collectors.toList());
+        if (productItems.isEmpty()) {
+            throw new BusinessException(ErrorCode.E_5004, "Cart has no product items");
+        }
+
         // Sprint 87：若提供 addressId，改以地址簿內容覆蓋手動輸入的收件欄位
         // （下單當下複製一份 snapshot，日後編輯/刪除地址簿項目不影響已建立訂單）
         String shippingAddress = request.getShippingAddress();
@@ -124,7 +135,7 @@ public class OrderService {
 
         // 計算總金額並建立訂單項目
         BigDecimal totalAmount = BigDecimal.ZERO;
-        for (CartDto.CartItemResponse cartItem : cart.getItems()) {
+        for (CartDto.CartItemResponse cartItem : productItems) {
             // 檢查商品是否有效
             Listing listing = listingRepository.findById(cartItem.getListingId())
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Listing not found: " + cartItem.getListingId()));
@@ -155,13 +166,18 @@ public class OrderService {
         order.setShippingFee(shippingFee);
         order.setTotalAmount(totalAmount.add(shippingFee));
 
+        // Sprint 88（AI-2422）：建單前檢查並預扣庫存，避免超賣；庫存不足拋例外交易回滾，不留部分建立的訂單
+        productInventoryService.reserveForOrder(order);
+
         order = orderRepository.save(order);
 
         // 記錄狀態日誌
         recordStateLog(order, null, Order.OrderStatus.CREATED.name(), userId, "Order created from cart");
 
-        // 清除購物車
-        cartService.clearCart(userId, tenantId);
+        // 僅移除已處理的 PRODUCT 項目，保留購物車中其餘（如 ROOM）項目供另外結帳
+        for (CartDto.CartItemResponse cartItem : productItems) {
+            cartService.removeItem(userId, tenantId, cartItem.getCartItemKey());
+        }
 
         log.info("Order created: orderId={}, userId={}, totalAmount={}, shippingFee={}",
                 order.getId(), userId, order.getTotalAmount(), shippingFee);
@@ -481,6 +497,17 @@ public class OrderService {
 
         // 記錄狀態日誌
         recordStateLog(order, currentStatus, Order.OrderStatus.CANCELLED.name(), userId, reason);
+
+        // Sprint 88（AI-2422）：僅當取消前尚未付款（CREATED）才釋放預扣庫存；
+        // 已付款（PAID）的庫存已由 deductForOrder 正式扣帳，本次不做退款回補（範圍外）
+        if ("CREATED".equals(currentStatus)) {
+            try {
+                productInventoryService.releaseForOrder(order);
+            } catch (RuntimeException e) {
+                log.error("Failed to release reserved stock after order cancellation: orderId={}, error={}",
+                        orderId, e.getMessage(), e);
+            }
+        }
 
         // 如果已付款，需要退款流程
         if ("PAID".equals(currentStatus)) {

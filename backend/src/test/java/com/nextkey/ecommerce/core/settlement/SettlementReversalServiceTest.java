@@ -3,11 +3,14 @@ package com.nextkey.ecommerce.core.settlement;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -17,7 +20,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 
+import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementListResponse;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementResponse;
 import com.nextkey.ecommerce.domain.model.settlement.CreditNote;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
@@ -178,5 +185,37 @@ class SettlementReversalServiceTest {
         assertThatThrownBy(() -> service.initiateReversal(STATEMENT_ID, SUPER_ADMIN_ID, "SUPER_ADMIN", "reason"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5013));
+    }
+
+    @Test
+    @DisplayName("getReversalCandidateStatements：未指定 tenantId 時跨租戶查詢 PAID+REVERSAL_PENDING")
+    void getReversalCandidateStatements_noTenantOverride_queriesAcrossTenants() {
+        service = newService();
+        Page<SettlementStatement> page = new PageImpl<>(List.of(paidStatement(), reversalPendingStatement("SUPER_ADMIN")));
+        when(settlementRepository.findByStatusInOrderByGeneratedAtDesc(anyList(), any(Pageable.class)))
+                .thenReturn(page);
+        when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder().build());
+
+        SettlementStatementListResponse response = service.getReversalCandidateStatements(0, 20, null);
+
+        assertThat(response.getStatements()).hasSize(2);
+        assertThat(response.getTotalElements()).isEqualTo(2);
+        verify(settlementRepository, never()).findByTenantIdAndStatusInOrderByGeneratedAtDesc(
+                any(), anyList(), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("getReversalCandidateStatements：指定 tenantId 時限定該租戶查詢")
+    void getReversalCandidateStatements_withTenantOverride_scopesToTenant() {
+        service = newService();
+        Page<SettlementStatement> page = new PageImpl<>(List.of(paidStatement()));
+        when(settlementRepository.findByTenantIdAndStatusInOrderByGeneratedAtDesc(
+                eq(TENANT_ID), anyList(), any(Pageable.class))).thenReturn(page);
+        when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder().build());
+
+        SettlementStatementListResponse response = service.getReversalCandidateStatements(0, 20, TENANT_ID);
+
+        assertThat(response.getStatements()).hasSize(1);
+        verify(settlementRepository, never()).findByStatusInOrderByGeneratedAtDesc(anyList(), any(Pageable.class));
     }
 }

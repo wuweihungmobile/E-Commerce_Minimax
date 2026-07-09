@@ -53,6 +53,27 @@ public interface SettlementStatementRepository extends JpaRepository<SettlementS
     boolean existsByTenantIdAndStatementNumber(UUID tenantId, String statementNumber);
 
     /**
+     * 依多個狀態查詢，跨租戶（Sprint 90，M07 結算逆轉候選清單用，SUPER_ADMIN/CFO 專屬）
+     */
+    @Query("SELECT s FROM SettlementStatement s WHERE s.status IN :statuses ORDER BY s.generatedAt DESC")
+    Page<SettlementStatement> findByStatusInOrderByGeneratedAtDesc(
+            @Param("statuses") List<SettlementStatement.SettlementStatus> statuses,
+            Pageable pageable);
+
+    /**
+     * 依租戶 + 多個狀態查詢（Sprint 90，M07 結算逆轉候選清單依租戶篩選用）
+     */
+    @Query("""
+            SELECT s FROM SettlementStatement s
+            WHERE s.tenantId = :tenantId AND s.status IN :statuses
+            ORDER BY s.generatedAt DESC
+            """)
+    Page<SettlementStatement> findByTenantIdAndStatusInOrderByGeneratedAtDesc(
+            @Param("tenantId") UUID tenantId,
+            @Param("statuses") List<SettlementStatement.SettlementStatus> statuses,
+            Pageable pageable);
+
+    /**
      * 依租戶 + 訂單日期，找出涵蓋該日期的結算單（Sprint 86，PRD §6.2.1 跨週期退款判斷用）
      */
     @Query("""

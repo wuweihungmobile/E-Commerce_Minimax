@@ -181,6 +181,12 @@ export const API_ENDPOINTS = {
       approve: (id: string) => '/v2/admin/purchase-orders/' + id + '/approve',
       reject: (id: string) => '/v2/admin/purchase-orders/' + id + '/reject',
     },
+    // Settlement Reversal (M07，Sprint 86 後端 / Sprint 90 前端 + Sprint 90 新增列表端點)
+    settlements: {
+      reversalCandidates: '/v2/admin/settlements/reversal-candidates',
+      reverseInitiate: (id: string) => '/v2/admin/settlements/' + id + '/reverse/initiate',
+      reverseConfirm: (id: string) => '/v2/admin/settlements/' + id + '/reverse/confirm',
+    },
   },
 
   // Media (M18)

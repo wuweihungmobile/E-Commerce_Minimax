@@ -1,11 +1,17 @@
 package com.nextkey.ecommerce.core.settlement;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementListResponse;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementResponse;
 import com.nextkey.ecommerce.domain.model.settlement.CreditNote;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
@@ -115,6 +121,37 @@ public class SettlementReversalService {
                 + "creditNoteId={}", statementId, confirmerId, confirmerRole, creditNote.getId());
 
         return mapper.toStatementResponse(statement);
+    }
+
+    private static final List<SettlementStatus> REVERSAL_CANDIDATE_STATUSES =
+            List.of(SettlementStatus.PAID, SettlementStatus.REVERSAL_PENDING);
+
+    /**
+     * 取得逆轉候選結算單（PAID 可發起、REVERSAL_PENDING 可確認），跨租戶（Sprint 90）。
+     *
+     * <p>與 {@link SettlementReviewer#getPendingReviewStatements} 不同，此方法不區分
+     * SUPER_ADMIN/CFO——呼叫路徑已由 Controller {@code @PreAuthorize("hasAuthority('settlement:reverse')")}
+     * 鎖死，僅 SUPER_ADMIN/CFO 可觸達，且兩者對 {@link #initiateReversal}/{@link #confirmReversal}
+     * 本就一律跨租戶操作，列表理應對等，不做「限自己租戶」回退分支。
+     */
+    @Transactional(readOnly = true)
+    public SettlementStatementListResponse getReversalCandidateStatements(
+            final int page, final int size, final UUID tenantIdOverride) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<SettlementStatement> statements = tenantIdOverride != null
+                ? settlementRepository.findByTenantIdAndStatusInOrderByGeneratedAtDesc(
+                        tenantIdOverride, REVERSAL_CANDIDATE_STATUSES, pageable)
+                : settlementRepository.findByStatusInOrderByGeneratedAtDesc(REVERSAL_CANDIDATE_STATUSES, pageable);
+
+        return SettlementStatementListResponse.builder()
+                .statements(statements.getContent().stream()
+                        .map(mapper::toStatementResponse)
+                        .collect(Collectors.toList()))
+                .page(page)
+                .size(size)
+                .totalElements(statements.getTotalElements())
+                .totalPages(statements.getTotalPages())
+                .build();
     }
 
     private void validateReversalRole(final String role) {

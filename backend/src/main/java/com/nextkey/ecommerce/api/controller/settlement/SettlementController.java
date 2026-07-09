@@ -124,6 +124,20 @@ public class SettlementController {
     }
 
     /**
+     * 取得逆轉候選結算單（PAID 可發起、REVERSAL_PENDING 可確認），跨租戶（Sprint 90）。
+     */
+    @GetMapping("/admin/settlements/reversal-candidates")
+    @PreAuthorize("hasAuthority('settlement:reverse')")
+    public ResponseEntity<ApiResponse<SettlementStatementListResponse>> getReversalCandidates(
+            @RequestParam(required = false) UUID tenantId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        SettlementStatementListResponse response = settlementReversalService.getReversalCandidateStatements(
+                page, size, tenantId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
      * 發起 PAID 結算單逆轉（PAID → REVERSAL_PENDING）。僅 SUPER_ADMIN 或 CFO 可發起（Sprint 86，PRD §6.2.1）。
      */
     @PostMapping("/admin/settlements/{statementId}/reverse/initiate")

@@ -98,6 +98,17 @@ public class SupportTicketController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
+    @GetMapping("/dashboard/support/tickets/{id}")
+    @PreAuthorize("hasAuthority('support_ticket:read')")
+    public ResponseEntity<ApiResponse<TicketResponse>> getTenantTicketDetail(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable("id") UUID ticketId) {
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
+        TicketResponse response = ticketService.getTenantTicket(
+                ticketId, TenantContext.getCurrentTenant(), isSuperAdmin);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
     @PutMapping("/dashboard/support/tickets/{id}")
     @PreAuthorize("hasAuthority('support_ticket:update')")
     public ResponseEntity<ApiResponse<TicketResponse>> updateTicketStatus(
@@ -130,6 +141,14 @@ public class SupportTicketController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         TicketListResponse response = ticketService.listAllTickets(page, size);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @GetMapping("/admin/support/tickets/{id}")
+    @PreAuthorize("hasAuthority('support_ticket:manage:all')")
+    public ResponseEntity<ApiResponse<TicketResponse>> getAdminTicketDetail(
+            @PathVariable("id") UUID ticketId) {
+        TicketResponse response = ticketService.getTenantTicket(ticketId, null, true);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

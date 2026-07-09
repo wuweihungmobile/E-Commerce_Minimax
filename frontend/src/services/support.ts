@@ -88,6 +88,64 @@ class SupportService {
     )
     return response.data.data
   }
+
+  // ========== 店家層 ==========
+
+  async listTenantTickets(page: number = 0, size: number = 20): Promise<TicketListResponse> {
+    const response = await apiClient.get<ApiResponse<TicketListResponse>>(
+      API_ENDPOINTS.dashboardSupport.tickets.list,
+      { params: { page, size } }
+    )
+    return response.data.data
+  }
+
+  async getTenantTicket(id: string): Promise<SupportTicket> {
+    const response = await apiClient.get<ApiResponse<SupportTicket>>(
+      API_ENDPOINTS.dashboardSupport.tickets.detail(id)
+    )
+    return response.data.data
+  }
+
+  async updateTicketStatus(id: string, status: TicketStatus, priority?: TicketPriority): Promise<SupportTicket> {
+    const response = await apiClient.put<ApiResponse<SupportTicket>>(
+      API_ENDPOINTS.dashboardSupport.tickets.updateStatus(id),
+      { status, priority }
+    )
+    return response.data.data
+  }
+
+  async postStaffMessage(ticketId: string, message: string): Promise<SupportMessage> {
+    const response = await apiClient.post<ApiResponse<SupportMessage>>(
+      API_ENDPOINTS.dashboardSupport.tickets.messages(ticketId),
+      { message }
+    )
+    return response.data.data
+  }
+
+  // ========== 平台層 ==========
+
+  async listAllTickets(page: number = 0, size: number = 20): Promise<TicketListResponse> {
+    const response = await apiClient.get<ApiResponse<TicketListResponse>>(
+      API_ENDPOINTS.admin.support.tickets.list,
+      { params: { page, size } }
+    )
+    return response.data.data
+  }
+
+  async getAdminTicket(id: string): Promise<SupportTicket> {
+    const response = await apiClient.get<ApiResponse<SupportTicket>>(
+      API_ENDPOINTS.admin.support.tickets.detail(id)
+    )
+    return response.data.data
+  }
+
+  async assignTicket(id: string, assignedTo: string): Promise<SupportTicket> {
+    const response = await apiClient.put<ApiResponse<SupportTicket>>(
+      API_ENDPOINTS.admin.support.tickets.assign(id),
+      { assignedTo }
+    )
+    return response.data.data
+  }
 }
 
 export default new SupportService()

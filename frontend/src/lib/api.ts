@@ -187,6 +187,24 @@ export const API_ENDPOINTS = {
       reverseInitiate: (id: string) => '/v2/admin/settlements/' + id + '/reverse/initiate',
       reverseConfirm: (id: string) => '/v2/admin/settlements/' + id + '/reverse/confirm',
     },
+    // Support Tickets — 平台層 (M18 Phase 2-B，Sprint 91 後端 / Sprint 92 前端)
+    support: {
+      tickets: {
+        list: '/v2/admin/support/tickets',
+        detail: (id: string) => '/v2/admin/support/tickets/' + id,
+        assign: (id: string) => '/v2/admin/support/tickets/' + id + '/assign',
+      },
+    },
+  },
+
+  // Support Tickets — 店家層 (M18 Phase 2-B，Sprint 91 後端 / Sprint 92 前端)
+  dashboardSupport: {
+    tickets: {
+      list: '/v2/dashboard/support/tickets',
+      detail: (id: string) => '/v2/dashboard/support/tickets/' + id,
+      updateStatus: (id: string) => '/v2/dashboard/support/tickets/' + id,
+      messages: (id: string) => '/v2/dashboard/support/tickets/' + id + '/messages',
+    },
   },
 
   // Media (M18)

@@ -30,6 +30,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
+import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
@@ -65,6 +66,7 @@ class PaymentStateServiceTest {
     @Mock private BookingRepository bookingRepository;
     @Mock private FeatureToggleService featureToggleService;
     @Mock private PaymentGatewayFactory paymentGatewayFactory;
+    @Mock private SettlementAdjustmentService settlementAdjustmentService;
 
     private PaymentStateService service;
 
@@ -76,7 +78,7 @@ class PaymentStateServiceTest {
     @BeforeEach
     void setUp() {
         service = new PaymentStateService(paymentRepository, orderRepository, bookingRepository,
-                featureToggleService, paymentGatewayFactory);
+                featureToggleService, paymentGatewayFactory, settlementAdjustmentService);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         TenantContext.setCurrentUser(USER_ID);
     }

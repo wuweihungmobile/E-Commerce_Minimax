@@ -132,7 +132,17 @@ public class RolePermissionMapping {
                 Permission.USER_READ,
                 Permission.USER_CREATE,
                 Permission.USER_UPDATE,
-                Permission.USER_DELETE
+                Permission.USER_DELETE,
+                Permission.ADMIN_READ,
+                Permission.ADMIN_WRITE
+        ));
+
+        // ========== CFO - 財務長，僅結算單逆轉雙重授權（Sprint 86） ==========
+        ROLE_PERMISSIONS.put(User.UserRole.CFO, EnumSet.of(
+                Permission.TENANT_READ,
+                Permission.ORDER_READ,
+                Permission.ADMIN_READ,
+                Permission.SETTLEMENT_REVERSE
         ));
 
         // ========== SUPER_ADMIN - 超級管理員，全部權限 ==========

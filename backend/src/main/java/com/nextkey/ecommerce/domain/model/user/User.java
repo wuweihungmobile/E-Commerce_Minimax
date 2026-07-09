@@ -106,6 +106,6 @@ public class User {
     }
 
     public enum UserRole {
-        GUEST, BUYER, SELLER, HOST, STORE_OWNER, STORE_STAFF, ADMIN, SUPER_ADMIN
+        GUEST, BUYER, SELLER, HOST, STORE_OWNER, STORE_STAFF, ADMIN, SUPER_ADMIN, CFO
     }
 }

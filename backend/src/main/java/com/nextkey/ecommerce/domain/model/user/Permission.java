@@ -57,7 +57,12 @@ public enum Permission {
 
     // ========== Admin Permissions ==========
     ADMIN_PANEL("admin:panel", "進入管理後台"),
-    SYSTEM_CONFIG("system:config", "系統設定");
+    SYSTEM_CONFIG("system:config", "系統設定"),
+    ADMIN_READ("admin:read", "檢視管理後台結算審核資料"),
+    ADMIN_WRITE("admin:write", "執行管理後台結算審核操作"),
+
+    // ========== Settlement Permissions（Sprint 86） ==========
+    SETTLEMENT_REVERSE("settlement:reverse", "結算單逆轉（SuperAdmin/財務長雙重授權）");
 
     private final String code;
     private final String description;

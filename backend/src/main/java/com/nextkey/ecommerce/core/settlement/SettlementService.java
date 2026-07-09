@@ -70,6 +70,11 @@ public class SettlementService {
         private java.time.Instant approvedAt;
         private java.time.Instant paidAt;
         private String notes;
+        private BigDecimal adjustmentAmount;
+        private UUID reversalInitiatedBy;
+        private String reversalInitiatedByRole;
+        private java.time.Instant reversalRequestedAt;
+        private String reversalReason;
     }
 
     @Data

@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.payment;
 import com.nextkey.ecommerce.api.dto.payment.CheckoutSessionResponse;
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
+import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
@@ -53,6 +54,7 @@ class PaymentStateServiceStripeTest {
     @Mock private BookingRepository bookingRepository;
     @Mock private FeatureToggleService featureToggleService;
     @Mock private PaymentGatewayFactory paymentGatewayFactory;
+    @Mock private SettlementAdjustmentService settlementAdjustmentService;
 
     private PaymentStateService service;
 
@@ -62,7 +64,7 @@ class PaymentStateServiceStripeTest {
     @BeforeEach
     void setUp() {
         service = new PaymentStateService(paymentRepository, orderRepository, bookingRepository,
-                featureToggleService, paymentGatewayFactory);
+                featureToggleService, paymentGatewayFactory, settlementAdjustmentService);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         TenantContext.setCurrentUser(USER_ID);
     }
@@ -243,6 +245,49 @@ class PaymentStateServiceStripeTest {
         assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.PARTIALLY_REFUNDED);
         assertThat(success.getRefundedAmount()).isEqualByComparingTo(BigDecimal.valueOf(500));
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.PAID);
+    }
+
+    @Test
+    @DisplayName("Sprint 86: refundOrderPayment 成功後呼叫 SettlementAdjustmentService.handleOrderRefund")
+    void refund_success_invokesSettlementAdjustmentHook() {
+        Order order = paidOrder();
+        Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.SUCCESS)
+                .transactionId("cs_test_1").stripePaymentIntentId("pi_1").build();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(success));
+        when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
+        when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", BigDecimal.valueOf(500), "damaged item"))
+                .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
+                        .success(true).refundId("re_partial_1").status("succeeded").build());
+
+        service.refundOrderPayment(ORDER_ID, BigDecimal.valueOf(500), "damaged item");
+
+        verify(settlementAdjustmentService).handleOrderRefund(
+                order.getTenantId(), order.getId(), order.getCreatedAt(), BigDecimal.valueOf(500));
+    }
+
+    @Test
+    @DisplayName("Sprint 86: SettlementAdjustmentService 拋例外不影響已完成的退款主流程")
+    void refund_settlementHookThrows_doesNotFailRefund() {
+        Order order = paidOrder();
+        Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.SUCCESS)
+                .transactionId("cs_test_1").stripePaymentIntentId("pi_1").build();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(success));
+        when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
+        when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", BigDecimal.valueOf(500), "damaged item"))
+                .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
+                        .success(true).refundId("re_partial_1").status("succeeded").build());
+        org.mockito.Mockito.doThrow(new RuntimeException("settlement lookup failed"))
+                .when(settlementAdjustmentService).handleOrderRefund(any(), any(), any(), any());
+
+        service.refundOrderPayment(ORDER_ID, BigDecimal.valueOf(500), "damaged item");
+
+        assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.PARTIALLY_REFUNDED);
     }
 
     @Test

@@ -40,6 +40,12 @@ public class SettlementMapper {
                 .approvedAt(statement.getApprovedAt())
                 .paidAt(statement.getPaidAt())
                 .notes(statement.getNotes())
+                .adjustmentAmount(statement.getAdjustmentAmount())
+                .reversalInitiatedBy(statement.getReversalInitiatedBy() != null
+                        ? statement.getReversalInitiatedBy().getId() : null)
+                .reversalInitiatedByRole(statement.getReversalInitiatedByRole())
+                .reversalRequestedAt(statement.getReversalRequestedAt())
+                .reversalReason(statement.getReversalReason())
                 .build();
     }
 }

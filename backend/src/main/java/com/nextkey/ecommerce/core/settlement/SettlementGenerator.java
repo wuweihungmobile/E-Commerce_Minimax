@@ -2,8 +2,11 @@ package com.nextkey.ecommerce.core.settlement;
 
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -16,11 +19,15 @@ import org.springframework.transaction.annotation.Transactional;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementListResponse;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementResponse;
 import com.nextkey.ecommerce.domain.model.order.Order;
+import com.nextkey.ecommerce.domain.model.payment.Payment;
+import com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement.SettlementStatus;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
+import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -52,6 +59,8 @@ public class SettlementGenerator {
     private final SettlementStatementRepository settlementRepository;
     private final TenantRepository tenantRepository;
     private final OrderRepository orderRepository;
+    private final PaymentRepository paymentRepository;
+    private final SettlementAdjustmentRepository adjustmentRepository;
     private final SettlementCalculator calculator;
     private final SettlementMapper mapper;
 
@@ -117,8 +126,18 @@ public class SettlementGenerator {
         BigDecimal totalGmv = calculator.calculateTotalGmv(completedOrders);
         BigDecimal commissionRate = BigDecimal.valueOf(tenant.getCommissionRate());
         BigDecimal commissionAmount = calculator.calculateCommission(totalGmv, commissionRate);
-        BigDecimal totalRefunds = calculator.calculateTotalRefunds(completedOrders);
+        // Sprint 86：真正扣除已結算訂單的部分退款金額（PRD §6.2.1）
+        Map<UUID, BigDecimal> refundedAmountByOrderId = buildRefundedAmountMap(completedOrders);
+        BigDecimal totalRefunds = calculator.calculateTotalRefunds(completedOrders, refundedAmountByOrderId);
         BigDecimal netAmount = calculator.calculateNetSettlementAmount(totalGmv, commissionAmount, totalRefunds);
+
+        // Sprint 86：折入前期已產生、尚未套用的跨週期退款調整單（PRD §6.2.1）
+        List<SettlementAdjustment> pendingAdjustments = adjustmentRepository.findByTenantIdAndStatus(
+                tenantId, SettlementAdjustment.AdjustmentStatus.PENDING);
+        BigDecimal adjustmentAmount = pendingAdjustments.stream()
+                .map(SettlementAdjustment::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        netAmount = netAmount.add(adjustmentAmount);
 
         // 生成結算單號
         String statementNumber = generateStatementNumber(tenantId, periodStart);
@@ -133,16 +152,42 @@ public class SettlementGenerator {
                 .totalRefunds(totalRefunds)
                 .commissionAmount(commissionAmount)
                 .netSettlementAmount(netAmount)
+                .adjustmentAmount(adjustmentAmount)
                 .currency("TWD")
                 .status(SettlementStatus.PENDING)
                 .build();
 
         statement = settlementRepository.save(statement);
 
-        log.info("Generated settlement statement: id={}, tenant={}, amount={}",
-                statement.getId(), tenantId, netAmount);
+        if (!pendingAdjustments.isEmpty()) {
+            Instant now = Instant.now();
+            for (SettlementAdjustment adjustment : pendingAdjustments) {
+                adjustment.setStatus(SettlementAdjustment.AdjustmentStatus.APPLIED);
+                adjustment.setAppliedStatementId(statement.getId());
+                adjustment.setAppliedAt(now);
+            }
+            adjustmentRepository.saveAll(pendingAdjustments);
+        }
+
+        log.info("Generated settlement statement: id={}, tenant={}, amount={}, adjustmentAmount={}",
+                statement.getId(), tenantId, netAmount, adjustmentAmount);
 
         return statement;
+    }
+
+    /**
+     * 依訂單 ID 查詢對應 {@code Payment.refundedAmount}，建立退款金額對照表（Sprint 86）
+     */
+    private Map<UUID, BigDecimal> buildRefundedAmountMap(List<Order> orders) {
+        Map<UUID, BigDecimal> refundedAmountByOrderId = new HashMap<>();
+        for (Order order : orders) {
+            paymentRepository.findByOrderId(order.getId())
+                    .map(Payment::getRefundedAmount)
+                    .filter(java.util.Objects::nonNull)
+                    .filter(amount -> amount.compareTo(BigDecimal.ZERO) > 0)
+                    .ifPresent(amount -> refundedAmountByOrderId.put(order.getId(), amount));
+        }
+        return refundedAmountByOrderId;
     }
 
     /**

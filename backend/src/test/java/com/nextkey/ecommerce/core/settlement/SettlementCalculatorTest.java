@@ -160,6 +160,43 @@ class SettlementCalculatorTest {
         assertEquals(0, new BigDecimal("10000000.00").compareTo(result));
     }
 
+    // ========== calculateTotalRefunds 測試（Sprint 86 修正）==========
+
+    @Test
+    @DisplayName("calculateTotalRefunds: 無退款訂單回傳 0")
+    void calculateTotalRefunds_NoRefunds() {
+        List<Order> orders = List.of(createOrder(new BigDecimal("1000"), Order.OrderStatus.COMPLETED));
+        BigDecimal result = calculator.calculateTotalRefunds(orders, Collections.emptyMap());
+        assertEquals(0, BigDecimal.ZERO.setScale(2).compareTo(result));
+    }
+
+    @Test
+    @DisplayName("calculateTotalRefunds: 部分退款訂單（Order.status 不變）正確扣除已退款金額")
+    void calculateTotalRefunds_PartialRefund() {
+        Order order = createOrder(new BigDecimal("1000"), Order.OrderStatus.COMPLETED);
+        BigDecimal result = calculator.calculateTotalRefunds(
+                List.of(order), java.util.Map.of(order.getId(), new BigDecimal("300")));
+        assertEquals(0, new BigDecimal("300.00").compareTo(result));
+    }
+
+    @Test
+    @DisplayName("calculateTotalRefunds: 多筆訂單混合部分退款加總")
+    void calculateTotalRefunds_MultipleOrdersMixed() {
+        Order order1 = createOrder(new BigDecimal("1000"), Order.OrderStatus.COMPLETED);
+        Order order2 = createOrder(new BigDecimal("2000"), Order.OrderStatus.DELIVERED);
+        BigDecimal result = calculator.calculateTotalRefunds(
+                List.of(order1, order2), java.util.Map.of(order1.getId(), new BigDecimal("100")));
+        assertEquals(0, new BigDecimal("100.00").compareTo(result));
+    }
+
+    @Test
+    @DisplayName("calculateTotalRefunds: refundedAmountByOrderId 為 null 回傳 0")
+    void calculateTotalRefunds_NullRefundMap() {
+        List<Order> orders = List.of(createOrder(new BigDecimal("1000"), Order.OrderStatus.COMPLETED));
+        BigDecimal result = calculator.calculateTotalRefunds(orders, null);
+        assertEquals(0, BigDecimal.ZERO.setScale(2).compareTo(result));
+    }
+
     // ========== calculateNetSettlementAmount 測試 ==========
 
     @Test
@@ -209,7 +246,7 @@ class SettlementCalculatorTest {
         List<Order> settleable = calculator.filterSettleableOrders(orders);
         BigDecimal gmv = calculator.calculateTotalGmv(settleable);
         BigDecimal commission = calculator.calculateCommission(gmv, new BigDecimal("0.10"));
-        BigDecimal refunds = calculator.calculateTotalRefunds(settleable);
+        BigDecimal refunds = calculator.calculateTotalRefunds(settleable, Collections.emptyMap());
         BigDecimal net = calculator.calculateNetSettlementAmount(gmv, commission, refunds);
 
         // Then

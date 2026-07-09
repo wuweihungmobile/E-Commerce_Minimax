@@ -51,4 +51,17 @@ public interface SettlementStatementRepository extends JpaRepository<SettlementS
             Pageable pageable);
 
     boolean existsByTenantIdAndStatementNumber(UUID tenantId, String statementNumber);
+
+    /**
+     * 依租戶 + 訂單日期，找出涵蓋該日期的結算單（Sprint 86，PRD §6.2.1 跨週期退款判斷用）
+     */
+    @Query("""
+            SELECT s FROM SettlementStatement s
+            WHERE s.tenantId = :tenantId
+            AND s.periodStart <= :orderDate
+            AND s.periodEnd >= :orderDate
+            """)
+    Optional<SettlementStatement> findByTenantIdAndPeriodCovering(
+            @Param("tenantId") UUID tenantId,
+            @Param("orderDate") LocalDate orderDate);
 }

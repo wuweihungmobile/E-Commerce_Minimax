@@ -24,7 +24,9 @@ import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement.Settlem
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant.TenantStatus;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
+import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
 
 /**
@@ -57,6 +59,12 @@ class SettlementScheduledJobIntegrationTest {
     private OrderRepository orderRepository;
 
     @Mock
+    private PaymentRepository paymentRepository;
+
+    @Mock
+    private SettlementAdjustmentRepository adjustmentRepository;
+
+    @Mock
     private SettlementCalculator calculator;
 
     @Mock
@@ -76,7 +84,8 @@ class SettlementScheduledJobIntegrationTest {
 
         // 重新建立 generator 確保 mock 是 fresh
         settlementGenerator = new SettlementGenerator(
-                settlementRepository, tenantRepository, orderRepository, calculator, mapper);
+                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                adjustmentRepository, calculator, mapper);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
                 .thenReturn(List.of(tenant1, tenant2, tenant3));
@@ -99,7 +108,7 @@ class SettlementScheduledJobIntegrationTest {
                 .thenAnswer(inv -> createCompletedOrders(3, "10000"));
         when(calculator.calculateTotalGmv(any())).thenReturn(new BigDecimal("30000.00"));
         when(calculator.calculateCommission(any(), any())).thenReturn(new BigDecimal("3000.00"));
-        when(calculator.calculateTotalRefunds(any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateTotalRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any()))
                 .thenReturn(new BigDecimal("27000.00"));
 
@@ -136,7 +145,8 @@ class SettlementScheduledJobIntegrationTest {
         // Given: 1 個 tenant，已有 PENDING 結算單
         Tenant tenant = createActiveTenant("tenant-1");
         settlementGenerator = new SettlementGenerator(
-                settlementRepository, tenantRepository, orderRepository, calculator, mapper);
+                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                adjustmentRepository, calculator, mapper);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
                 .thenReturn(List.of(tenant));
@@ -168,7 +178,8 @@ class SettlementScheduledJobIntegrationTest {
         // Given: 1 個 tenant 沒有訂單
         Tenant tenant = createActiveTenant("tenant-1");
         settlementGenerator = new SettlementGenerator(
-                settlementRepository, tenantRepository, orderRepository, calculator, mapper);
+                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                adjustmentRepository, calculator, mapper);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
                 .thenReturn(List.of(tenant));
@@ -180,7 +191,7 @@ class SettlementScheduledJobIntegrationTest {
         when(calculator.filterSettleableOrders(any())).thenReturn(List.of());
         when(calculator.calculateTotalGmv(any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateCommission(any(), any())).thenReturn(BigDecimal.ZERO);
-        when(calculator.calculateTotalRefunds(any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateTotalRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any())).thenReturn(BigDecimal.ZERO);
         when(settlementRepository.save(any(SettlementStatement.class)))
                 .thenAnswer(inv -> {
@@ -204,7 +215,8 @@ class SettlementScheduledJobIntegrationTest {
         // Given: 1 個 tenant，5 筆訂單
         Tenant tenant = createActiveTenant("tenant-1");
         settlementGenerator = new SettlementGenerator(
-                settlementRepository, tenantRepository, orderRepository, calculator, mapper);
+                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                adjustmentRepository, calculator, mapper);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
                 .thenReturn(List.of(tenant));
@@ -217,7 +229,7 @@ class SettlementScheduledJobIntegrationTest {
         when(calculator.filterSettleableOrders(any())).thenReturn(orders);
         when(calculator.calculateTotalGmv(any())).thenReturn(new BigDecimal("50000.00"));
         when(calculator.calculateCommission(any(), any())).thenReturn(new BigDecimal("5000.00"));
-        when(calculator.calculateTotalRefunds(any())).thenReturn(new BigDecimal("2000.00"));
+        when(calculator.calculateTotalRefunds(any(), any())).thenReturn(new BigDecimal("2000.00"));
         when(calculator.calculateNetSettlementAmount(any(), any(), any()))
                 .thenReturn(new BigDecimal("43000.00"));
         when(settlementRepository.save(any(SettlementStatement.class)))
@@ -247,7 +259,8 @@ class SettlementScheduledJobIntegrationTest {
         Tenant tenant1 = createActiveTenant("tenant-1");
         Tenant tenant2 = createActiveTenant("tenant-2");
         settlementGenerator = new SettlementGenerator(
-                settlementRepository, tenantRepository, orderRepository, calculator, mapper);
+                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                adjustmentRepository, calculator, mapper);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
                 .thenReturn(List.of(tenant1, tenant2));
@@ -267,7 +280,7 @@ class SettlementScheduledJobIntegrationTest {
         when(calculator.filterSettleableOrders(any())).thenAnswer(inv -> createCompletedOrders(2, "5000"));
         when(calculator.calculateTotalGmv(any())).thenReturn(new BigDecimal("10000.00"));
         when(calculator.calculateCommission(any(), any())).thenReturn(new BigDecimal("1000.00"));
-        when(calculator.calculateTotalRefunds(any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateTotalRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any()))
                 .thenReturn(new BigDecimal("9000.00"));
         when(settlementRepository.save(any(SettlementStatement.class)))
@@ -296,7 +309,8 @@ class SettlementScheduledJobIntegrationTest {
                 .name("Test Tenant")
                 .build();
         settlementGenerator = new SettlementGenerator(
-                settlementRepository, tenantRepository, orderRepository, calculator, mapper);
+                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                adjustmentRepository, calculator, mapper);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE)).thenReturn(List.of(tenant));
         when(tenantRepository.findById(tenant.getId())).thenReturn(Optional.of(tenant));
@@ -307,7 +321,7 @@ class SettlementScheduledJobIntegrationTest {
         when(calculator.filterSettleableOrders(any())).thenReturn(List.of());
         when(calculator.calculateTotalGmv(any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateCommission(any(), any())).thenReturn(BigDecimal.ZERO);
-        when(calculator.calculateTotalRefunds(any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateTotalRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any())).thenReturn(BigDecimal.ZERO);
         when(settlementRepository.save(any(SettlementStatement.class)))
                 .thenAnswer(inv -> {
@@ -329,6 +343,113 @@ class SettlementScheduledJobIntegrationTest {
         // 結算單號末段應為 yyyyMMdd 格式（8 碼數字）
         String datePart = statementNumber.substring(statementNumber.lastIndexOf('-') + 1);
         assertEquals(8, datePart.length(), "Date part should be 8 chars (yyyyMMdd)");
+    }
+
+    // ========== 場景 7（Sprint 86）: 折入前期 PENDING adjustment_statements ==========
+
+    @Test
+    @DisplayName("Sprint 86: generateStatementForTenant 折入前期 PENDING adjustment_statements，並標記為 APPLIED")
+    void generateStatementForTenant_withPendingAdjustments_foldsIntoNetAmount() {
+        Tenant tenant = createActiveTenant("tenant-1");
+        settlementGenerator = new SettlementGenerator(
+                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                adjustmentRepository, calculator, mapper);
+
+        UUID otherStatementId = UUID.randomUUID();
+        com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment adjustment1 =
+                com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment.builder()
+                        .id(UUID.randomUUID())
+                        .tenantId(tenant.getId())
+                        .originalStatementId(otherStatementId)
+                        .amount(new BigDecimal("-100.00"))
+                        .status(com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment.AdjustmentStatus.PENDING)
+                        .build();
+        com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment adjustment2 =
+                com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment.builder()
+                        .id(UUID.randomUUID())
+                        .tenantId(tenant.getId())
+                        .originalStatementId(otherStatementId)
+                        .amount(new BigDecimal("-50.00"))
+                        .status(com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment.AdjustmentStatus.PENDING)
+                        .build();
+
+        when(tenantRepository.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+        when(settlementRepository.findByTenantIdAndPeriodStartBetween(any(), any(), any()))
+                .thenReturn(List.of());
+        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any())).thenReturn(List.of());
+        when(calculator.filterSettleableOrders(any())).thenReturn(List.of());
+        when(calculator.calculateTotalGmv(any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateCommission(any(), any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateTotalRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateNetSettlementAmount(any(), any(), any())).thenReturn(new BigDecimal("1000.00"));
+        when(adjustmentRepository.findByTenantIdAndStatus(tenant.getId(),
+                com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment.AdjustmentStatus.PENDING))
+                .thenReturn(List.of(adjustment1, adjustment2));
+        when(settlementRepository.save(any(SettlementStatement.class)))
+                .thenAnswer(inv -> {
+                    SettlementStatement s = inv.getArgument(0);
+                    s.setId(UUID.randomUUID());
+                    return s;
+                });
+
+        SettlementStatement result = settlementGenerator.generateStatementForTenant(
+                tenant.getId(), LocalDate.now().minusDays(7), LocalDate.now().minusDays(1));
+
+        // 1000 - 100 - 50 = 850
+        assertEquals(new BigDecimal("850.00"), result.getNetSettlementAmount());
+        assertEquals(new BigDecimal("-150.00"), result.getAdjustmentAmount());
+
+        ArgumentCaptor<List<com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment>> savedCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(adjustmentRepository).saveAll(savedCaptor.capture());
+        for (com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment applied : savedCaptor.getValue()) {
+            assertEquals(com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment.AdjustmentStatus.APPLIED,
+                    applied.getStatus());
+            assertEquals(result.getId(), applied.getAppliedStatementId());
+        }
+    }
+
+    @Test
+    @DisplayName("Sprint 86: generateStatementForTenant 依訂單查詢 Payment.refundedAmount 建立退款對照表")
+    void generateStatementForTenant_buildsRefundedAmountMapFromPayments() {
+        Tenant tenant = createActiveTenant("tenant-1");
+        settlementGenerator = new SettlementGenerator(
+                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                adjustmentRepository, calculator, mapper);
+
+        List<Order> orders = createCompletedOrders(2, "1000");
+        Order refundedOrder = orders.get(0);
+        Order untouchedOrder = orders.get(1);
+
+        when(tenantRepository.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+        when(settlementRepository.findByTenantIdAndPeriodStartBetween(any(), any(), any()))
+                .thenReturn(List.of());
+        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any())).thenReturn(orders);
+        when(calculator.filterSettleableOrders(any())).thenReturn(orders);
+        when(calculator.calculateTotalGmv(any())).thenReturn(new BigDecimal("2000.00"));
+        when(calculator.calculateCommission(any(), any())).thenReturn(new BigDecimal("200.00"));
+        when(calculator.calculateTotalRefunds(any(), any())).thenReturn(new BigDecimal("300.00"));
+        when(calculator.calculateNetSettlementAmount(any(), any(), any())).thenReturn(new BigDecimal("1500.00"));
+        when(paymentRepository.findByOrderId(refundedOrder.getId())).thenReturn(Optional.of(
+                com.nextkey.ecommerce.domain.model.payment.Payment.builder()
+                        .refundedAmount(new BigDecimal("300.00"))
+                        .build()));
+        when(paymentRepository.findByOrderId(untouchedOrder.getId())).thenReturn(Optional.empty());
+        when(settlementRepository.save(any(SettlementStatement.class)))
+                .thenAnswer(inv -> {
+                    SettlementStatement s = inv.getArgument(0);
+                    s.setId(UUID.randomUUID());
+                    return s;
+                });
+
+        settlementGenerator.generateStatementForTenant(
+                tenant.getId(), LocalDate.now().minusDays(7), LocalDate.now().minusDays(1));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<java.util.Map<UUID, BigDecimal>> mapCaptor = ArgumentCaptor.forClass(java.util.Map.class);
+        verify(calculator).calculateTotalRefunds(eq(orders), mapCaptor.capture());
+        assertEquals(new BigDecimal("300.00"), mapCaptor.getValue().get(refundedOrder.getId()));
+        assertFalse(mapCaptor.getValue().containsKey(untouchedOrder.getId()));
     }
 
     // ========== Helper Methods ==========

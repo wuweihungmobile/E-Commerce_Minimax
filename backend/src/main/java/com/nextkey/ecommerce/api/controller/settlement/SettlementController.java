@@ -7,6 +7,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.core.settlement.SettlementGenerator;
+import com.nextkey.ecommerce.core.settlement.SettlementReversalService;
 import com.nextkey.ecommerce.core.settlement.SettlementReviewer;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementResponse;
@@ -36,6 +38,7 @@ public class SettlementController {
 
     private final SettlementGenerator settlementGenerator;
     private final SettlementReviewer settlementReviewer;
+    private final SettlementReversalService settlementReversalService;
 
     /**
      * 取得結算單列表 (商家)
@@ -118,5 +121,36 @@ public class SettlementController {
         boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
         SettlementStatementResponse response = settlementReviewer.rejectStatement(statementId, adminId, reason, isSuperAdmin);
         return ResponseEntity.ok(ApiResponse.success("Settlement statement rejected", response));
+    }
+
+    /**
+     * 發起 PAID 結算單逆轉（PAID → REVERSAL_PENDING）。僅 SUPER_ADMIN 或 CFO 可發起（Sprint 86，PRD §6.2.1）。
+     */
+    @PostMapping("/admin/settlements/{statementId}/reverse/initiate")
+    @PreAuthorize("hasAuthority('settlement:reverse')")
+    public ResponseEntity<ApiResponse<SettlementStatementResponse>> initiateReversal(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID statementId,
+            @RequestParam(required = false) String reason) {
+        log.info("Initiate settlement statement reversal: statementId={}, role={}", statementId, principal.getRole());
+        UUID initiatorId = TenantContext.getCurrentUser();
+        SettlementStatementResponse response = settlementReversalService.initiateReversal(
+                statementId, initiatorId, principal.getRole(), reason);
+        return ResponseEntity.ok(ApiResponse.success("Settlement statement reversal initiated", response));
+    }
+
+    /**
+     * 確認 PAID 結算單逆轉（REVERSAL_PENDING → REVERSED），需與發起人不同角色（雙重授權，Sprint 86，PRD §6.2.1）。
+     */
+    @PostMapping("/admin/settlements/{statementId}/reverse/confirm")
+    @PreAuthorize("hasAuthority('settlement:reverse')")
+    public ResponseEntity<ApiResponse<SettlementStatementResponse>> confirmReversal(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID statementId) {
+        log.info("Confirm settlement statement reversal: statementId={}, role={}", statementId, principal.getRole());
+        UUID confirmerId = TenantContext.getCurrentUser();
+        SettlementStatementResponse response = settlementReversalService.confirmReversal(
+                statementId, confirmerId, principal.getRole());
+        return ResponseEntity.ok(ApiResponse.success("Settlement statement reversal confirmed", response));
     }
 }

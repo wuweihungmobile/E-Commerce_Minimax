@@ -10,6 +10,8 @@ import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement.Settlem
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.domain.repository.settlement.CreditNoteRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 
@@ -90,6 +92,12 @@ class M07SettlementIntegrationTest {
 
     @MockBean
     private OrderRepository orderRepository;
+
+    @MockBean
+    private UserRepository userRepository;
+
+    @MockBean
+    private CreditNoteRepository creditNoteRepository;
 
     @MockBean
     private JwtTokenService jwtTokenService;
@@ -333,6 +341,73 @@ class M07SettlementIntegrationTest {
                         .with(authentication(authAs("SUPER_ADMIN", "admin:write"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("APPROVED"));
+    }
+
+    // ========== 結算單逆轉雙重授權（Sprint 86，PRD §6.2.1）==========
+
+    @Test
+    @Order(11)
+    @DisplayName("IT-M07-S-011: SUPER_ADMIN 發起 PAID 結算單逆轉成功")
+    void initiateReversal_asSuperAdmin_success() throws Exception {
+        SettlementService.SettlementStatementResponse response = SettlementService.SettlementStatementResponse.builder()
+                .id(testStatementId)
+                .status("REVERSAL_PENDING")
+                .build();
+        when(settlementMapper.toStatementResponse(any())).thenReturn(response);
+        when(userRepository.findById(any())).thenReturn(Optional.of(
+                com.nextkey.ecommerce.domain.model.user.User.builder().id(UUID.randomUUID()).build()));
+        testStatement.setStatus(SettlementStatus.PAID);
+
+        mockMvc.perform(post("/v2/admin/settlements/{id}/reverse/initiate", testStatementId)
+                        .param("reason", "客戶投訴要求全額退款")
+                        .with(authentication(authAs("SUPER_ADMIN", "settlement:reverse"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("REVERSAL_PENDING"));
+    }
+
+    @Test
+    @Order(12)
+    @DisplayName("IT-M07-S-012: CFO 確認 SUPER_ADMIN 發起的逆轉成功（雙重授權）")
+    void confirmReversal_asCfoAfterSuperAdminInitiated_success() throws Exception {
+        SettlementService.SettlementStatementResponse response = SettlementService.SettlementStatementResponse.builder()
+                .id(testStatementId)
+                .status("REVERSED")
+                .build();
+        when(settlementMapper.toStatementResponse(any())).thenReturn(response);
+        when(userRepository.findById(any())).thenReturn(Optional.of(
+                com.nextkey.ecommerce.domain.model.user.User.builder().id(UUID.randomUUID()).build()));
+        testStatement.setStatus(SettlementStatus.REVERSAL_PENDING);
+        testStatement.setReversalInitiatedByRole("SUPER_ADMIN");
+        testStatement.setReversalReason("客戶投訴要求全額退款");
+
+        mockMvc.perform(post("/v2/admin/settlements/{id}/reverse/confirm", testStatementId)
+                        .with(authentication(authAs("CFO", "settlement:reverse"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("REVERSED"));
+    }
+
+    @Test
+    @Order(13)
+    @DisplayName("🔴 IT-M07-S-013: SUPER_ADMIN 確認自己發起的逆轉應被拒絕（同角色雙重授權檢查）")
+    void confirmReversal_sameSuperAdminRole_rejected() throws Exception {
+        testStatement.setStatus(SettlementStatus.REVERSAL_PENDING);
+        testStatement.setReversalInitiatedByRole("SUPER_ADMIN");
+
+        mockMvc.perform(post("/v2/admin/settlements/{id}/reverse/confirm", testStatementId)
+                        .with(authentication(authAs("SUPER_ADMIN", "settlement:reverse"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @Order(14)
+    @DisplayName("IT-M07-S-014: 非 SUPER_ADMIN/CFO 角色發起逆轉應被拒絕（403，缺少 settlement:reverse 權限）")
+    void initiateReversal_asStoreOwner_forbidden() throws Exception {
+        mockMvc.perform(post("/v2/admin/settlements/{id}/reverse/initiate", testStatementId)
+                        .param("reason", "測試")
+                        .with(authentication(authAs("SELLER", "order:read"))))
+                .andExpect(status().isForbidden());
     }
 
     // ========== 權限測試 ==========

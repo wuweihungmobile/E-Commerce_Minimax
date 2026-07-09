@@ -13,6 +13,7 @@ import com.nextkey.ecommerce.api.dto.payment.CheckoutSessionResponse;
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.order.OrderStateMachine;
+import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
@@ -40,18 +41,20 @@ public class PaymentStateService {
     private final BookingRepository bookingRepository;
     private final FeatureToggleService featureToggleService;
     private final PaymentGatewayFactory paymentGatewayFactory;
+    private final SettlementAdjustmentService settlementAdjustmentService;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
 
     public PaymentStateService(PaymentRepository paymentRepository, OrderRepository orderRepository,
             BookingRepository bookingRepository, FeatureToggleService featureToggleService,
-            PaymentGatewayFactory paymentGatewayFactory) {
+            PaymentGatewayFactory paymentGatewayFactory, SettlementAdjustmentService settlementAdjustmentService) {
         this.paymentRepository = paymentRepository;
         this.orderRepository = orderRepository;
         this.bookingRepository = bookingRepository;
         this.featureToggleService = featureToggleService;
         this.paymentGatewayFactory = paymentGatewayFactory;
+        this.settlementAdjustmentService = settlementAdjustmentService;
     }
 
     /**
@@ -199,6 +202,14 @@ public class PaymentStateService {
 
         log.info("Refund processed: orderId={}, paymentId={}, amount={}, fullyRefunded={}, reason={}",
                 orderId, payment.getId(), refundAmount, fullyRefunded, reason);
+
+        // Sprint 86（PRD §6.2.1）：跨結算週期退款處理，失敗不應影響已完成的退款主流程
+        try {
+            settlementAdjustmentService.handleOrderRefund(
+                    order.getTenantId(), order.getId(), order.getCreatedAt(), refundAmount);
+        } catch (RuntimeException e) {
+            log.error("Settlement adjustment failed after refund: orderId={}, error={}", orderId, e.getMessage(), e);
+        }
 
         return toOrderPaymentStateDto(order, payment);
     }

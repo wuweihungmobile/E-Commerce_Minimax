@@ -108,6 +108,23 @@ public class SettlementStatement {
     @Column(name = "notes")
     private String notes;
 
+    @Column(name = "adjustment_amount", precision = 14, scale = 2)
+    @Builder.Default
+    private BigDecimal adjustmentAmount = BigDecimal.ZERO;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reversal_initiated_by")
+    private User reversalInitiatedBy;
+
+    @Column(name = "reversal_initiated_by_role")
+    private String reversalInitiatedByRole;
+
+    @Column(name = "reversal_requested_at")
+    private Instant reversalRequestedAt;
+
+    @Column(name = "reversal_reason")
+    private String reversalReason;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
     private User createdBy;
@@ -138,6 +155,8 @@ public class SettlementStatement {
         APPROVED,
         REJECTED,
         PAID,
-        FAILED
+        FAILED,
+        REVERSAL_PENDING,
+        REVERSED
     }
 }

@@ -1,0 +1,88 @@
+package com.nextkey.ecommerce.core.settlement;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment;
+import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
+import com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository;
+import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * 跨結算週期退款處理（PRD §6.2.1，Sprint 86）
+ *
+ * <p>由 {@code PaymentStateService.refundOrderPayment} 退款成功後呼叫，依訂單所屬結算單
+ * 目前狀態決定處理方式：
+ * <ul>
+ *   <li>{@code PENDING}/{@code PENDING_REVIEW}（尚未核准撥款）：直接對該結算單做 delta 更新</li>
+ *   <li>{@code APPROVED}/{@code PAID}（已核准或已撥款，不可逆）：產生 {@code adjustment_statements}，
+ *       於下一結算週期由 {@link SettlementGenerator} 一併折入</li>
+ *   <li>{@code REJECTED}/{@code FAILED}（終態，金流未發生）或找不到對應結算單：不做事</li>
+ * </ul>
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class SettlementAdjustmentService {
+
+    private final SettlementStatementRepository settlementStatementRepository;
+    private final SettlementAdjustmentRepository settlementAdjustmentRepository;
+
+    @Transactional
+    public void handleOrderRefund(final UUID tenantId, final UUID orderId, final java.time.Instant orderCreatedAt,
+            final BigDecimal refundAmount) {
+        if (refundAmount == null || refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        LocalDate orderDate = orderCreatedAt.atZone(ZoneId.systemDefault()).toLocalDate();
+        Optional<SettlementStatement> statementOpt = settlementStatementRepository
+                .findByTenantIdAndPeriodCovering(tenantId, orderDate);
+
+        if (statementOpt.isEmpty()) {
+            log.debug("No settlement statement covers order yet, refund will be captured on next generation: "
+                    + "tenantId={}, orderId={}", tenantId, orderId);
+            return;
+        }
+
+        SettlementStatement statement = statementOpt.get();
+        switch (statement.getStatus()) {
+            case PENDING, PENDING_REVIEW -> applyDirectDeduction(statement, refundAmount);
+            case APPROVED, PAID -> createAdjustmentStatement(tenantId, orderId, statement, refundAmount);
+            default -> log.debug("Settlement statement in terminal status {} needs no refund adjustment: "
+                    + "statementId={}, orderId={}", statement.getStatus(), statement.getId(), orderId);
+        }
+    }
+
+    private void applyDirectDeduction(final SettlementStatement statement, final BigDecimal refundAmount) {
+        statement.setTotalRefunds(statement.getTotalRefunds().add(refundAmount));
+        statement.setNetSettlementAmount(statement.getNetSettlementAmount().subtract(refundAmount));
+        settlementStatementRepository.save(statement);
+        log.info("Applied direct refund deduction to PENDING settlement statement: statementId={}, refundAmount={}",
+                statement.getId(), refundAmount);
+    }
+
+    private void createAdjustmentStatement(final UUID tenantId, final UUID orderId,
+            final SettlementStatement statement, final BigDecimal refundAmount) {
+        SettlementAdjustment adjustment = SettlementAdjustment.builder()
+                .tenantId(tenantId)
+                .orderId(orderId)
+                .originalStatementId(statement.getId())
+                .adjustmentType("REFUND_DEDUCTION")
+                .amount(refundAmount.negate())
+                .status(SettlementAdjustment.AdjustmentStatus.PENDING)
+                .build();
+        settlementAdjustmentRepository.save(adjustment);
+        log.info("Created adjustment statement for refund on {} settlement statement: statementId={}, orderId={}, "
+                + "refundAmount={}", statement.getStatus(), statement.getId(), orderId, refundAmount);
+    }
+}

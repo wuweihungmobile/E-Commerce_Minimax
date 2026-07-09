@@ -3,6 +3,8 @@ package com.nextkey.ecommerce.core.settlement;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.stereotype.Component;
 
@@ -87,22 +89,23 @@ public class SettlementCalculator {
     }
 
     /**
-     * 計算退款總額
+     * 計算退款總額（Sprint 86 修正，PRD §6.2.1）
      *
-     * 註：考量到目前業務邏輯，REFUNDED 訂單會被 filterSettleableOrders
-     * 過濾掉，因此本方法在當前流程中永遠返回 0。
-     * 保留此方法以供未來流程調整（例如：先計算退款再過濾）。
+     * <p>修正前：對已過濾為 COMPLETED/DELIVERED 的訂單再篩選 status==REFUNDED，
+     * 但 {@link #filterSettleableOrders} 已排除 REFUNDED 訂單，故舊版邏輯恆為 0——
+     * 全額退款訂單本已被 GMV 排除（不需額外扣除），但**部分退款**訂單的
+     * {@code Order.status} 不變（仍是 COMPLETED/DELIVERED），其已退款金額從未被扣除。
      *
      * @param settleableOrders 已過濾的可結算訂單
+     * @param refundedAmountByOrderId 訂單 ID → 該訂單已退款金額（{@code Payment.refundedAmount}）
      * @return 退款總額
      */
-    public BigDecimal calculateTotalRefunds(List<Order> settleableOrders) {
-        if (settleableOrders == null || settleableOrders.isEmpty()) {
+    public BigDecimal calculateTotalRefunds(List<Order> settleableOrders, Map<UUID, BigDecimal> refundedAmountByOrderId) {
+        if (settleableOrders == null || settleableOrders.isEmpty() || refundedAmountByOrderId == null) {
             return BigDecimal.ZERO.setScale(SCALE, ROUNDING_MODE);
         }
         return settleableOrders.stream()
-                .filter(o -> o.getStatus() == Order.OrderStatus.REFUNDED)
-                .map(Order::getTotalAmount)
+                .map(o -> refundedAmountByOrderId.getOrDefault(o.getId(), BigDecimal.ZERO))
                 .filter(java.util.Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(SCALE, ROUNDING_MODE);

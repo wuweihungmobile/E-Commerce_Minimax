@@ -112,6 +112,9 @@ public enum ErrorCode {
     E_8003("E-8003", "找不到通知範本"),
     E_8004("E-8004", "找不到 CMS 頁面"),
     E_8005("E-8005", "找不到 CMS 橫幅"),
+    // 🔴 Sprint 87: 收貨地址簿
+    E_8006("E-8006", "找不到地址"),
+    E_8007("E-8007", "無權操作他人地址"),
 
     // Review (E-1080s dedicated to Review module)
     // 🔴 Sprint 16 US-001: 評價重複回覆

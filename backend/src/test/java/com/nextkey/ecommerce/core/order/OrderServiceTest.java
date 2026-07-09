@@ -35,10 +35,12 @@ import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.OrderDto;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
+import com.nextkey.ecommerce.core.user.AddressService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.order.OrderStateLog;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.user.Address;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
@@ -86,6 +88,7 @@ class OrderServiceTest {
     @Mock private TenantRepository tenantRepository;
     @Mock private UserRepository userRepository;
     @Mock private ShippingTemplateService shippingTemplateService;
+    @Mock private AddressService addressService;
 
     @InjectMocks
     private OrderService orderService;
@@ -195,6 +198,81 @@ class OrderServiceTest {
         assertThat(response.getItems()).hasSize(1);
         verify(cartService).clearCart(USER_ID, TENANT_ID);
         verify(orderStateLogRepository).save(any(OrderStateLog.class));
+    }
+
+    @Test
+    @DisplayName("createOrderFromCart(PRODUCT)：提供 addressId 時以地址簿內容覆蓋手動輸入收件欄位（Sprint 87）")
+    void createOrderFromCart_withAddressId_overridesShippingFields() {
+        TenantContext.setCurrentUser(USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userFixture()));
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenantFixture()));
+
+        CartDto.CartItemResponse item = cartItem(LISTING_ID, null, 2, BigDecimal.valueOf(100));
+        when(cartService.getCart(USER_ID, TENANT_ID)).thenReturn(cartOf(List.of(item)));
+        when(listingRepository.findById(LISTING_ID))
+                .thenReturn(Optional.of(listingFixture(Listing.ListingType.PRODUCT, Listing.ListingStatus.ACTIVE)));
+        when(shippingTemplateService.calculateFeeForTenant(TENANT_ID, BigDecimal.valueOf(200)))
+                .thenReturn(BigDecimal.valueOf(60));
+
+        UUID addressId = UUID.randomUUID();
+        Address address = Address.builder()
+                .id(addressId)
+                .userId(USER_ID)
+                .recipientName("王小明")
+                .phone("0912345678")
+                .postalCode("100")
+                .city("台北市")
+                .district("中正區")
+                .addressLine("忠孝東路一段1號")
+                .build();
+        when(addressService.getOwnedAddress(addressId, USER_ID)).thenReturn(address);
+
+        ArgumentCaptor<Order> orderCaptor = ArgumentCaptor.forClass(Order.class);
+        when(orderRepository.save(orderCaptor.capture())).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
+
+        OrderDto.CreateRequest request = OrderDto.CreateRequest.builder()
+                .orderType("PRODUCT")
+                .addressId(addressId)
+                .shippingRecipientName("手動輸入的名字，應被覆蓋")
+                .build();
+
+        orderService.createOrderFromCart(request);
+
+        Order savedOrder = orderCaptor.getValue();
+        assertThat(savedOrder.getShippingRecipientName()).isEqualTo("王小明");
+        assertThat(savedOrder.getShippingPhone()).isEqualTo("0912345678");
+        assertThat(savedOrder.getShippingAddress()).contains("台北市", "中正區", "忠孝東路一段1號");
+    }
+
+    @Test
+    @DisplayName("createOrderFromCart(PRODUCT)：addressId 屬於他人時拒絕（不建立訂單）")
+    void createOrderFromCart_addressIdBelongsToOtherUser_throws() {
+        TenantContext.setCurrentUser(USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userFixture()));
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenantFixture()));
+
+        CartDto.CartItemResponse item = cartItem(LISTING_ID, null, 2, BigDecimal.valueOf(100));
+        when(cartService.getCart(USER_ID, TENANT_ID)).thenReturn(cartOf(List.of(item)));
+
+        UUID addressId = UUID.randomUUID();
+        when(addressService.getOwnedAddress(addressId, USER_ID))
+                .thenThrow(new BusinessException(ErrorCode.E_8007, "Not authorized to access this address"));
+
+        OrderDto.CreateRequest request = OrderDto.CreateRequest.builder()
+                .orderType("PRODUCT")
+                .addressId(addressId)
+                .build();
+
+        assertThatThrownBy(() -> orderService.createOrderFromCart(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_8007));
+        verify(orderRepository, never()).save(any());
     }
 
     @Test

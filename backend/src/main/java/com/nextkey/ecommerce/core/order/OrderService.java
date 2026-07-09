@@ -24,7 +24,9 @@ import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.order.OrderItem;
 import com.nextkey.ecommerce.domain.model.order.OrderStateLog;
 import com.nextkey.ecommerce.domain.model.product.ProductSku;
+import com.nextkey.ecommerce.core.user.AddressService;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.user.Address;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.OrderStateLogRepository;
@@ -61,6 +63,7 @@ public class OrderService {
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
     private final ShippingTemplateService shippingTemplateService;
+    private final AddressService addressService;
 
     /**
      * 建立訂單（從購物車或直接預訂）
@@ -93,15 +96,27 @@ public class OrderService {
             throw new BusinessException(ErrorCode.E_5004, "Cart is empty");
         }
 
+        // Sprint 87：若提供 addressId，改以地址簿內容覆蓋手動輸入的收件欄位
+        // （下單當下複製一份 snapshot，日後編輯/刪除地址簿項目不影響已建立訂單）
+        String shippingAddress = request.getShippingAddress();
+        String shippingRecipientName = request.getShippingRecipientName();
+        String shippingPhone = request.getShippingPhone();
+        if (request.getAddressId() != null) {
+            Address address = addressService.getOwnedAddress(request.getAddressId(), userId);
+            shippingAddress = formatAddressLine(address);
+            shippingRecipientName = address.getRecipientName();
+            shippingPhone = address.getPhone();
+        }
+
         // 建立訂單
         Order order = Order.builder()
                 .tenant(tenant)
                 .user(user)
                 .orderType(orderType)
                 .status(Order.OrderStatus.CREATED)
-                .shippingAddress(request.getShippingAddress())
-                .shippingRecipientName(request.getShippingRecipientName())
-                .shippingPhone(request.getShippingPhone())
+                .shippingAddress(shippingAddress)
+                .shippingRecipientName(shippingRecipientName)
+                .shippingPhone(shippingPhone)
                 .notes(request.getNotes())
                 .currency("TWD")
                 .items(new ArrayList<>())
@@ -245,6 +260,19 @@ public class OrderService {
         }
         return tenantRepository.findBySlug("platform")
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "System tenant not found"));
+    }
+
+    private String formatAddressLine(final Address address) {
+        StringBuilder sb = new StringBuilder();
+        if (address.getPostalCode() != null && !address.getPostalCode().isBlank()) {
+            sb.append(address.getPostalCode()).append(' ');
+        }
+        sb.append(address.getCity());
+        if (address.getDistrict() != null && !address.getDistrict().isBlank()) {
+            sb.append(address.getDistrict());
+        }
+        sb.append(address.getAddressLine());
+        return sb.toString();
     }
 
     private long calculateNights(java.time.LocalDate checkIn, java.time.LocalDate checkOut) {

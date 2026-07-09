@@ -40,6 +40,12 @@ public class OrderDto {
         @Size(max = PHONE_MAX_LENGTH, message = "Phone too long")
         private String shippingPhone;
 
+        /**
+         * 選用：從地址簿選擇的地址 ID（Sprint 87）。提供時後端會查出該地址（驗證擁有權）
+         * 並覆蓋上方 shippingAddress/shippingRecipientName/shippingPhone 手動輸入欄位。
+         */
+        private UUID addressId;
+
         private String notes;
 
         // For ROOM (booking)

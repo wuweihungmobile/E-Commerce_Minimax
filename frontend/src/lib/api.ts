@@ -52,6 +52,15 @@ export const API_ENDPOINTS = {
     payCheckoutReturn: (id: string) => '/v2/orders/' + id + '/pay/checkout/return',
   },
 
+  // Addresses（Sprint 87，PRD §14.3.1 Phase 2-B 收貨地址簿）
+  addresses: {
+    list: '/v2/addresses',
+    create: '/v2/addresses',
+    update: (id: string) => '/v2/addresses/' + id,
+    delete: (id: string) => '/v2/addresses/' + id,
+    setDefault: (id: string) => '/v2/addresses/' + id + '/default',
+  },
+
   // Payments
   payments: {
     create: '/v2/payments',

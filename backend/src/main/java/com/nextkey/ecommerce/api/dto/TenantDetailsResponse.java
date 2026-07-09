@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.api.dto;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 import lombok.AllArgsConstructor;
@@ -21,6 +22,7 @@ public class TenantDetailsResponse {
     private String contactEmail;
     private String logoUrl;
     private String coverImageUrl;
+    private BigDecimal purchaseOrderApprovalThreshold;
     private MemberInfo member;
     private StatsInfo stats;
     private Instant createdAt;

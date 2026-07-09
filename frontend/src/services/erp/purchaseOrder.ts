@@ -3,7 +3,15 @@ import { API_ENDPOINTS_ERP } from '@/lib/api_erp'
 
 // ========== Types ==========
 
-export type POStatus = 'DRAFT' | 'SUBMITTED' | 'PARTIAL_RECEIVED' | 'RECEIVED' | 'CANCELLED'
+export type POStatus =
+  | 'DRAFT'
+  | 'SUBMITTED'
+  | 'PENDING_APPROVAL'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'PARTIALLY_RECEIVED'
+  | 'RECEIVED'
+  | 'CANCELLED'
 
 export interface PurchaseOrderItemDto {
   id: string
@@ -29,6 +37,9 @@ export interface PurchaseOrderDto {
   items: PurchaseOrderItemDto[]
   createdAt: string
   updatedAt: string
+  reviewedBy?: string
+  reviewedAt?: string
+  rejectionReason?: string
 }
 
 export interface PurchaseOrderCreateRequest {

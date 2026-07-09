@@ -56,7 +56,10 @@ export default function PurchaseOrdersPage() {
     const config: Record<POStatus, { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline' | 'warning'; label: string }> = {
       DRAFT: { variant: 'outline', label: '草稿' },
       SUBMITTED: { variant: 'default', label: '已提交' },
-      PARTIAL_RECEIVED: { variant: 'warning', label: '部分到貨' },
+      PENDING_APPROVAL: { variant: 'warning', label: '待審批' },
+      APPROVED: { variant: 'success', label: '已核准' },
+      REJECTED: { variant: 'destructive', label: '已駁回' },
+      PARTIALLY_RECEIVED: { variant: 'warning', label: '部分到貨' },
       RECEIVED: { variant: 'success', label: '已到貨' },
       CANCELLED: { variant: 'destructive', label: '已取消' },
     }
@@ -99,7 +102,10 @@ export default function PurchaseOrdersPage() {
             <option value="">所有狀態</option>
             <option value="DRAFT">草稿</option>
             <option value="SUBMITTED">已提交</option>
-            <option value="PARTIAL_RECEIVED">部分到貨</option>
+            <option value="PENDING_APPROVAL">待審批</option>
+            <option value="APPROVED">已核准</option>
+            <option value="REJECTED">已駁回</option>
+            <option value="PARTIALLY_RECEIVED">部分到貨</option>
             <option value="RECEIVED">已到貨</option>
             <option value="CANCELLED">已取消</option>
           </select>

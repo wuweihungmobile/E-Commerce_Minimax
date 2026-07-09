@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
 
@@ -273,6 +274,7 @@ class TenantServiceTest {
                 .description("Full description here")
                 .contactEmail("contact@example.com")
                 .logoUrl("http://logo.url")
+                .purchaseOrderApprovalThreshold(new BigDecimal("5000.00"))
                 .metadata(Map.of("businessType", "RETAIL_ONLY"))
                 .build();
 
@@ -305,6 +307,7 @@ class TenantServiceTest {
         assertEquals("ACTIVE", response.getStatus());
         assertEquals("Full description here", response.getStoreDescription()); // Should have full info
         assertEquals("contact@example.com", response.getContactEmail());        // Should have full info
+        assertEquals(new BigDecimal("5000.00"), response.getPurchaseOrderApprovalThreshold()); // Sprint 89: 已設定門檻須可見
         assertNotNull(response.getMember());                                    // Should have member info
         assertEquals("Store Owner", response.getMember().getDisplayName());
     }

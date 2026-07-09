@@ -254,6 +254,7 @@ public class TenantService {
                 .contactEmail(tenant.getContactEmail())
                 .logoUrl(tenant.getLogoUrl())
                 .coverImageUrl(null) // tenants table doesn't have cover_image_url
+                .purchaseOrderApprovalThreshold(tenant.getPurchaseOrderApprovalThreshold())
                 .member(memberInfo)
                 .stats(null) // Stats would require additional queries
                 .createdAt(tenant.getCreatedAt())

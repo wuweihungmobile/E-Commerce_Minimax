@@ -31,6 +31,7 @@ interface Tenant {
   status: TenantStatus
   createdAt: string
   updatedAt: string
+  purchaseOrderApprovalThreshold?: number | null
 }
 
 interface ApiResponse<T> {
@@ -48,6 +49,7 @@ interface TenantEditFormData {
   businessType: string
   contactEmail: string
   contactPhone: string
+  purchaseOrderApprovalThreshold: string
 }
 
 interface FormErrors {
@@ -55,6 +57,7 @@ interface FormErrors {
   businessType?: string
   contactEmail?: string
   contactPhone?: string
+  purchaseOrderApprovalThreshold?: string
 }
 
 export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
@@ -68,6 +71,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
     businessType: '',
     contactEmail: '',
     contactPhone: '',
+    purchaseOrderApprovalThreshold: '',
   })
   const [errors, setErrors] = useState<FormErrors>({})
 
@@ -99,6 +103,10 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
         businessType: tenantData.businessType,
         contactEmail: tenantData.contactEmail,
         contactPhone: tenantData.contactPhone,
+        purchaseOrderApprovalThreshold:
+          tenantData.purchaseOrderApprovalThreshold != null
+            ? String(tenantData.purchaseOrderApprovalThreshold)
+            : '',
       })
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
@@ -155,6 +163,14 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
       }
     }
 
+    // Purchase order approval threshold validation（選填，空值＝不設定門檻）
+    if (formData.purchaseOrderApprovalThreshold.trim()) {
+      const threshold = Number(formData.purchaseOrderApprovalThreshold)
+      if (Number.isNaN(threshold) || threshold < 0) {
+        newErrors.purchaseOrderApprovalThreshold = '請輸入不小於 0 的數字'
+      }
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -186,7 +202,17 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
     setSubmitting(true)
 
     try {
-      await apiClient.put(API_ENDPOINTS.tenants.update(tenantId), formData)
+      // 後端 purchaseOrderApprovalThreshold 為 null = 不變更此設定，故留空時不送出此欄位
+      const payload: Record<string, unknown> = {
+        storeName: formData.storeName,
+        businessType: formData.businessType,
+        contactEmail: formData.contactEmail,
+        contactPhone: formData.contactPhone,
+      }
+      if (formData.purchaseOrderApprovalThreshold.trim()) {
+        payload.purchaseOrderApprovalThreshold = Number(formData.purchaseOrderApprovalThreshold)
+      }
+      await apiClient.put(API_ENDPOINTS.tenants.update(tenantId), payload)
       // 更新成功後導向至店鋪詳情頁
       router.push(`/dashboard/tenants/${tenantId}`)
     } catch (err: unknown) {
@@ -335,6 +361,27 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
             />
             {errors.contactPhone && (
               <p className="text-error text-xs">{errors.contactPhone}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="purchaseOrderApprovalThreshold">
+              採購單金額上限（超過需 SuperAdmin 審批，留空表示不設定）
+            </Label>
+            <Input
+              id="purchaseOrderApprovalThreshold"
+              name="purchaseOrderApprovalThreshold"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="不限制"
+              value={formData.purchaseOrderApprovalThreshold}
+              onChange={handleInputChange}
+              className={errors.purchaseOrderApprovalThreshold ? 'border-error' : ''}
+              disabled={submitting}
+            />
+            {errors.purchaseOrderApprovalThreshold && (
+              <p className="text-error text-xs">{errors.purchaseOrderApprovalThreshold}</p>
             )}
           </div>
 

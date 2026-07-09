@@ -50,6 +50,9 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
     { skuId: '', skuCode: '', productName: '', quantity: 1, receivedQuantity: 0, unitPrice: 0, subtotal: 0 },
   ])
 
+  const [orderStatus, setOrderStatus] = useState<POStatus | null>(null)
+  const [rejectionReason, setRejectionReason] = useState<string | null>(null)
+
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
       router.push('/login')
@@ -77,6 +80,8 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
     setInitialLoading(true)
     try {
       const data = await PurchaseOrderService.getPurchaseOrder(orderId)
+      setOrderStatus(data.status)
+      setRejectionReason(data.rejectionReason || null)
       if (mode === 'receive') {
         setItems(data.items.map(item => ({
           skuId: item.skuId,
@@ -150,7 +155,10 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
     const config: Record<POStatus, { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline' | 'warning'; label: string }> = {
       DRAFT: { variant: 'outline', label: '草稿' },
       SUBMITTED: { variant: 'default', label: '已提交' },
-      PARTIAL_RECEIVED: { variant: 'warning', label: '部分到貨' },
+      PENDING_APPROVAL: { variant: 'warning', label: '待審批' },
+      APPROVED: { variant: 'success', label: '已核准' },
+      REJECTED: { variant: 'destructive', label: '已駁回' },
+      PARTIALLY_RECEIVED: { variant: 'warning', label: '部分到貨' },
       RECEIVED: { variant: 'success', label: '已到貨' },
       CANCELLED: { variant: 'destructive', label: '已取消' },
     }
@@ -278,17 +286,27 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
-          {mode === 'create' && '新增採購訂單'}
-          {mode === 'edit' && '編輯採購訂單'}
-          {mode === 'view' && '採購訂單詳情'}
-          {mode === 'receive' && '收貨確認'}
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle>
+            {mode === 'create' && '新增採購訂單'}
+            {mode === 'edit' && '編輯採購訂單'}
+            {mode === 'view' && '採購訂單詳情'}
+            {mode === 'receive' && '收貨確認'}
+          </CardTitle>
+          {orderStatus && getStatusBadge(orderStatus)}
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
             {error}
+          </div>
+        )}
+
+        {orderStatus === 'REJECTED' && rejectionReason && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+            <p className="text-sm font-medium">駁回原因</p>
+            <p className="text-sm mt-1">{rejectionReason}</p>
           </div>
         )}
 

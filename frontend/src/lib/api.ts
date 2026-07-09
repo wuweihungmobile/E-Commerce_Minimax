@@ -175,6 +175,12 @@ export const API_ENDPOINTS = {
       features: (id: string) => '/v2/admin/tenants/' + id + '/feature-toggles',
       updateFeature: (tenantId: string, feature: string) => '/v2/admin/tenants/' + tenantId + '/features/' + feature,
     },
+    // Purchase Order Approval (M16，Sprint 85 後端 / Sprint 89 前端)
+    purchaseOrders: {
+      pending: '/v2/admin/purchase-orders/pending',
+      approve: (id: string) => '/v2/admin/purchase-orders/' + id + '/approve',
+      reject: (id: string) => '/v2/admin/purchase-orders/' + id + '/reject',
+    },
   },
 
   // Media (M18)

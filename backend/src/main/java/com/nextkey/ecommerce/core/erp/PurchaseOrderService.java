@@ -28,6 +28,8 @@ import com.nextkey.ecommerce.domain.repository.PurchaseOrderItemRepository;
 import com.nextkey.ecommerce.domain.repository.PurchaseOrderRepository;
 import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
 import com.nextkey.ecommerce.domain.repository.SupplierRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -53,6 +55,7 @@ public class PurchaseOrderService {
     private final ProductInventoryRepository productInventoryRepository;
     private final StockMovementRepository stockMovementRepository;
     private final ListingRepository listingRepository;
+    private final TenantRepository tenantRepository;
 
     // PO Number generation
     private static final int PO_NUMBER_MIN = 100000;
@@ -167,7 +170,8 @@ public class PurchaseOrderService {
     }
 
     /**
-     * 提交採購單 (DRAFT → SUBMITTED)
+     * 提交採購單 (DRAFT → SUBMITTED，若金額超過租戶設定的審批門檻則轉 PENDING_APPROVAL)
+     * Sprint 85：PRD §6.7.2 採購審批金額上限機制。
      */
     @Transactional
     public PurchaseOrderDto submitPurchaseOrder(final UUID id) {
@@ -180,13 +184,25 @@ public class PurchaseOrderService {
                     String.format("Cannot submit PO in status: %s", po.getStatus()));
         }
 
-        po.setStatus(PurchaseOrder.POStatus.SUBMITTED);
+        po.setStatus(exceedsApprovalThreshold(tenantId, po.getTotalAmount())
+                ? PurchaseOrder.POStatus.PENDING_APPROVAL
+                : PurchaseOrder.POStatus.SUBMITTED);
         po.setSubmittedAt(Instant.now());
 
         PurchaseOrder updated = purchaseOrderRepository.save(po);
-        log.info("Submitted purchase order: id={}, tenantId={}", id, tenantId);
+        log.info("Submitted purchase order: id={}, tenantId={}, status={}", id, tenantId, updated.getStatus());
 
         return toDto(updated);
+    }
+
+    /**
+     * 判斷採購金額是否超過租戶設定的審批門檻。門檻為 null 代表該租戶未啟用此機制。
+     */
+    private boolean exceedsApprovalThreshold(final UUID tenantId, final BigDecimal totalAmount) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
+        BigDecimal threshold = tenant.getPurchaseOrderApprovalThreshold();
+        return threshold != null && totalAmount != null && totalAmount.compareTo(threshold) > 0;
     }
 
     /**
@@ -335,6 +351,7 @@ public class PurchaseOrderService {
     private PurchaseOrderDto toDto(final PurchaseOrder po) {
         return PurchaseOrderDto.builder()
                 .id(po.getId())
+                .tenantId(po.getTenantId())
                 .poNumber(po.getPoNumber())
                 .supplierId(po.getSupplierId())
                 .status(po.getStatus() != null ? po.getStatus().name() : null)
@@ -346,6 +363,9 @@ public class PurchaseOrderService {
                         .collect(Collectors.toList()))
                 .submittedAt(po.getSubmittedAt())
                 .receivedAt(po.getReceivedAt())
+                .reviewedBy(po.getReviewedBy())
+                .reviewedAt(po.getReviewedAt())
+                .rejectionReason(po.getRejectionReason())
                 .createdAt(po.getCreatedAt())
                 .updatedAt(po.getUpdatedAt())
                 .build();

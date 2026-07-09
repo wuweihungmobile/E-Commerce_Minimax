@@ -19,6 +19,8 @@ public class PurchaseOrderDto {
 
     private UUID id;
 
+    private UUID tenantId;
+
     private String poNumber;
 
     private UUID supplierId;
@@ -40,6 +42,12 @@ public class PurchaseOrderDto {
     private Instant submittedAt;
 
     private Instant receivedAt;
+
+    private UUID reviewedBy;
+
+    private Instant reviewedAt;
+
+    private String rejectionReason;
 
     private Instant createdAt;
 

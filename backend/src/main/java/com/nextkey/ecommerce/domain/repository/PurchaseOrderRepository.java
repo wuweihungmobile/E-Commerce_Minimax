@@ -65,4 +65,10 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, UU
      */
     @Query("SELECT po FROM PurchaseOrder po WHERE po.tenantId = :tenantId ORDER BY po.createdAt DESC")
     List<PurchaseOrder> findRecentByTenantId(@Param("tenantId") UUID tenantId);
+
+    /**
+     * 依狀態跨租戶取得採購單列表（分頁）。供 SUPER_ADMIN 審批機制使用（Sprint 85），
+     * 呼叫端須確保僅 SUPER_ADMIN 可觸達，此方法本身不做租戶篩選。
+     */
+    Page<PurchaseOrder> findByStatus(PurchaseOrder.POStatus status, Pageable pageable);
 }

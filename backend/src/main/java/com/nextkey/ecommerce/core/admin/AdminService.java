@@ -19,12 +19,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.AdminDto;
 import com.nextkey.ecommerce.domain.model.audit.AuditLog;
+import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
+import com.nextkey.ecommerce.domain.repository.PurchaseOrderRepository;
 import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
@@ -51,6 +53,7 @@ public class AdminService {
     private final ListingRepository listingRepository;
     private final OrderRepository orderRepository;
     private final AuditLogRepository auditLogRepository;
+    private final PurchaseOrderRepository purchaseOrderRepository;
 
     /**
      * 記錄一筆管理操作稽核（DEF-016）。持久化到 audit_log，與既有 log.info 並存。
@@ -222,6 +225,99 @@ public class AdminService {
                 .rejectedAt(Instant.now())
                 .rejectedBy("SYSTEM_ADMIN")
                 .reason(request.getReason())
+                .build();
+    }
+
+    // ========== Purchase Order Approval (Sprint 85, PRD §6.7.2) ==========
+
+    /**
+     * 取得待審批採購單列表（跨租戶）。僅供 SUPER_ADMIN 使用，此方法本身不做租戶篩選——
+     * 呼叫路徑已由 Controller 層 {@code @PreAuthorize("hasRole('SUPER_ADMIN')")} 鎖死，
+     * 跨租戶查看正是本功能存在的目的，非權限檢查遺漏。
+     */
+    @Transactional(readOnly = true)
+    public AdminDto.PurchaseOrderPendingListResponse getPendingApprovalPurchaseOrders(int page, int size) {
+        Page<PurchaseOrder> result = purchaseOrderRepository.findByStatus(
+                PurchaseOrder.POStatus.PENDING_APPROVAL,
+                PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "submittedAt")));
+
+        List<AdminDto.PurchaseOrderSummaryResponse> summaries = result.getContent().stream()
+                .map(this::toPurchaseOrderSummary)
+                .collect(Collectors.toList());
+
+        return AdminDto.PurchaseOrderPendingListResponse.builder()
+                .purchaseOrders(summaries)
+                .page(page)
+                .size(size)
+                .totalElements(result.getTotalElements())
+                .totalPages(result.getTotalPages())
+                .build();
+    }
+
+    /**
+     * 核准採購單（PENDING_APPROVAL → APPROVED）。僅 SUPER_ADMIN 可呼叫。
+     */
+    @Transactional
+    public AdminDto.PurchaseOrderSummaryResponse approvePurchaseOrder(UUID poId) {
+        PurchaseOrder po = purchaseOrderRepository.findById(poId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_7001));
+
+        if (!po.canReview()) {
+            throw new BusinessException(ErrorCode.E_7002,
+                    String.format("Cannot approve PO in status: %s", po.getStatus()));
+        }
+
+        String oldStatus = po.getStatus().name();
+        po.setStatus(PurchaseOrder.POStatus.APPROVED);
+        po.setReviewedBy(TenantContext.getCurrentUser());
+        po.setReviewedAt(Instant.now());
+        purchaseOrderRepository.save(po);
+
+        log.info("Purchase order approved: poId={}, tenantId={}", poId, po.getTenantId());
+        recordAudit("PURCHASE_ORDER_APPROVED", "PURCHASE_ORDER", poId, po.getTenantId(), oldStatus, "APPROVED", null);
+
+        return toPurchaseOrderSummary(po);
+    }
+
+    /**
+     * 駁回採購單（PENDING_APPROVAL → REJECTED）。僅 SUPER_ADMIN 可呼叫。
+     */
+    @Transactional
+    public AdminDto.PurchaseOrderSummaryResponse rejectPurchaseOrder(UUID poId, AdminDto.PurchaseOrderRejectRequest request) {
+        PurchaseOrder po = purchaseOrderRepository.findById(poId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_7001));
+
+        if (!po.canReview()) {
+            throw new BusinessException(ErrorCode.E_7002,
+                    String.format("Cannot reject PO in status: %s", po.getStatus()));
+        }
+
+        String oldStatus = po.getStatus().name();
+        po.setStatus(PurchaseOrder.POStatus.REJECTED);
+        po.setReviewedBy(TenantContext.getCurrentUser());
+        po.setReviewedAt(Instant.now());
+        po.setRejectionReason(request.getReason());
+        purchaseOrderRepository.save(po);
+
+        log.info("Purchase order rejected: poId={}, tenantId={}, reason={}", poId, po.getTenantId(), request.getReason());
+        recordAudit("PURCHASE_ORDER_REJECTED", "PURCHASE_ORDER", poId, po.getTenantId(),
+                oldStatus, "REJECTED", request.getReason());
+
+        return toPurchaseOrderSummary(po);
+    }
+
+    private AdminDto.PurchaseOrderSummaryResponse toPurchaseOrderSummary(PurchaseOrder po) {
+        return AdminDto.PurchaseOrderSummaryResponse.builder()
+                .id(po.getId())
+                .tenantId(po.getTenantId())
+                .poNumber(po.getPoNumber())
+                .status(po.getStatus().name())
+                .totalAmount(po.getTotalAmount())
+                .currency(po.getCurrency())
+                .submittedAt(po.getSubmittedAt())
+                .reviewedBy(po.getReviewedBy())
+                .reviewedAt(po.getReviewedAt())
+                .rejectionReason(po.getRejectionReason())
                 .build();
     }
 

@@ -278,7 +278,25 @@ public class TenantService {
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
 
-        // Update fields if provided
+        applyTenantUpdates(tenant, request);
+
+        tenant = tenantRepository.save(tenant);
+        log.info("Tenant updated: {}", tenantId);
+
+        return TenantUpdateResponse.builder()
+                .tenantId(tenant.getId().toString())
+                .storeName(tenant.getName())
+                .storeDescription(tenant.getDescription())
+                .contactEmail(tenant.getContactEmail())
+                .purchaseOrderApprovalThreshold(tenant.getPurchaseOrderApprovalThreshold())
+                .updatedAt(tenant.getUpdatedAt())
+                .build();
+    }
+
+    /**
+     * 套用 {@link TenantUpdateRequest} 中非 null 的欄位到 {@link Tenant}（US-M17-004）。
+     */
+    private void applyTenantUpdates(final Tenant tenant, final TenantUpdateRequest request) {
         if (request.getStoreName() != null) {
             tenant.setName(request.getStoreName());
         }
@@ -294,17 +312,9 @@ public class TenantService {
         if (request.getLogoUrl() != null) {
             tenant.setLogoUrl(request.getLogoUrl());
         }
-
-        tenant = tenantRepository.save(tenant);
-        log.info("Tenant updated: {}", tenantId);
-
-        return TenantUpdateResponse.builder()
-                .tenantId(tenant.getId().toString())
-                .storeName(tenant.getName())
-                .storeDescription(tenant.getDescription())
-                .contactEmail(tenant.getContactEmail())
-                .updatedAt(tenant.getUpdatedAt())
-                .build();
+        if (request.getPurchaseOrderApprovalThreshold() != null) {
+            tenant.setPurchaseOrderApprovalThreshold(request.getPurchaseOrderApprovalThreshold());
+        }
     }
 
     /**

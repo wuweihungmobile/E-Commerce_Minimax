@@ -2,16 +2,21 @@ package com.nextkey.ecommerce.core.admin;
 
 import com.nextkey.ecommerce.api.dto.AdminDto;
 import com.nextkey.ecommerce.domain.model.audit.AuditLog;
+import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.repository.*;
 import com.nextkey.ecommerce.domain.repository.audit.AuditLogRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -19,6 +24,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -57,6 +63,9 @@ class AdminServiceTest {
 
     @Mock
     private AuditLogRepository auditLogRepository;
+
+    @Mock
+    private PurchaseOrderRepository purchaseOrderRepository;
 
     @InjectMocks
     private AdminService adminService;
@@ -630,6 +639,142 @@ class AdminServiceTest {
             // Assert
             assertThat(response.getLogs()).isEmpty();
             assertThat(response.getTotalElements()).isEqualTo(0);
+        }
+    }
+
+    // ── Purchase Order Approval Tests（Sprint 85，PRD §6.7.2）────────────
+
+    @Nested
+    @DisplayName("採購單審批（approvePurchaseOrder / rejectPurchaseOrder / getPendingApprovalPurchaseOrders）")
+    class PurchaseOrderApproval {
+
+        private static final UUID PO_ID = UUID.fromString("550e8400-e29b-41d4-a716-446655440003");
+        private static final UUID REVIEWER_ID = UUID.fromString("550e8400-e29b-41d4-a716-446655440004");
+
+        @BeforeEach
+        void setUp() {
+            TenantContext.setCurrentUser(REVIEWER_ID);
+        }
+
+        @AfterEach
+        void tearDown() {
+            TenantContext.clear();
+        }
+
+        private PurchaseOrder buildPendingApprovalPo() {
+            return PurchaseOrder.builder()
+                    .id(PO_ID)
+                    .tenantId(TEST_TENANT_ID)
+                    .poNumber("PO-20260709-100001")
+                    .status(PurchaseOrder.POStatus.PENDING_APPROVAL)
+                    .totalAmount(BigDecimal.valueOf(50000))
+                    .currency("TWD")
+                    .submittedAt(Instant.parse("2026-07-09T00:00:00Z"))
+                    .build();
+        }
+
+        @Test
+        @DisplayName("approvePurchaseOrder：PENDING_APPROVAL → APPROVED，寫入審批人與稽核紀錄")
+        void approvePurchaseOrder_pendingApproval_transitionsToApproved() {
+            PurchaseOrder po = buildPendingApprovalPo();
+            when(purchaseOrderRepository.findById(PO_ID)).thenReturn(Optional.of(po));
+            when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            AdminDto.PurchaseOrderSummaryResponse response = adminService.approvePurchaseOrder(PO_ID);
+
+            assertThat(response.getStatus()).isEqualTo("APPROVED");
+            assertThat(response.getReviewedBy()).isEqualTo(REVIEWER_ID);
+            assertThat(response.getReviewedAt()).isNotNull();
+
+            ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
+            verify(auditLogRepository).save(auditCaptor.capture());
+            assertThat(auditCaptor.getValue().getAction()).isEqualTo("PURCHASE_ORDER_APPROVED");
+            assertThat(auditCaptor.getValue().getTenantId()).isEqualTo(TEST_TENANT_ID);
+        }
+
+        @Test
+        @DisplayName("approvePurchaseOrder：非 PENDING_APPROVAL 狀態拋出 E_7002")
+        void approvePurchaseOrder_nonPendingApprovalStatus_throwsE7002() {
+            PurchaseOrder po = buildPendingApprovalPo();
+            po.setStatus(PurchaseOrder.POStatus.DRAFT);
+            when(purchaseOrderRepository.findById(PO_ID)).thenReturn(Optional.of(po));
+
+            assertThatThrownBy(() -> adminService.approvePurchaseOrder(PO_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_7002));
+            verify(purchaseOrderRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("approvePurchaseOrder：採購單不存在拋出 E_7001")
+        void approvePurchaseOrder_notFound_throwsE7001() {
+            when(purchaseOrderRepository.findById(PO_ID)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> adminService.approvePurchaseOrder(PO_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_7001));
+        }
+
+        @Test
+        @DisplayName("rejectPurchaseOrder：PENDING_APPROVAL → REJECTED，寫入駁回原因與稽核紀錄")
+        void rejectPurchaseOrder_pendingApproval_transitionsToRejected() {
+            PurchaseOrder po = buildPendingApprovalPo();
+            when(purchaseOrderRepository.findById(PO_ID)).thenReturn(Optional.of(po));
+            when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            AdminDto.PurchaseOrderRejectRequest request = AdminDto.PurchaseOrderRejectRequest.builder()
+                    .reason("超出年度採購預算").build();
+
+            AdminDto.PurchaseOrderSummaryResponse response = adminService.rejectPurchaseOrder(PO_ID, request);
+
+            assertThat(response.getStatus()).isEqualTo("REJECTED");
+            assertThat(response.getRejectionReason()).isEqualTo("超出年度採購預算");
+            assertThat(response.getReviewedBy()).isEqualTo(REVIEWER_ID);
+
+            ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
+            verify(auditLogRepository).save(auditCaptor.capture());
+            assertThat(auditCaptor.getValue().getAction()).isEqualTo("PURCHASE_ORDER_REJECTED");
+            assertThat(auditCaptor.getValue().getReason()).isEqualTo("超出年度採購預算");
+        }
+
+        @Test
+        @DisplayName("rejectPurchaseOrder：非 PENDING_APPROVAL 狀態拋出 E_7002")
+        void rejectPurchaseOrder_nonPendingApprovalStatus_throwsE7002() {
+            PurchaseOrder po = buildPendingApprovalPo();
+            po.setStatus(PurchaseOrder.POStatus.APPROVED);
+            when(purchaseOrderRepository.findById(PO_ID)).thenReturn(Optional.of(po));
+
+            AdminDto.PurchaseOrderRejectRequest request = AdminDto.PurchaseOrderRejectRequest.builder()
+                    .reason("重複審批").build();
+
+            assertThatThrownBy(() -> adminService.rejectPurchaseOrder(PO_ID, request))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_7002));
+        }
+
+        @Test
+        @DisplayName("getPendingApprovalPurchaseOrders：跨租戶查詢待審清單（不做租戶篩選）")
+        void getPendingApprovalPurchaseOrders_returnsAcrossTenants() {
+            PurchaseOrder poOfOtherTenant = PurchaseOrder.builder()
+                    .id(UUID.randomUUID())
+                    .tenantId(UUID.randomUUID())
+                    .poNumber("PO-20260709-200002")
+                    .status(PurchaseOrder.POStatus.PENDING_APPROVAL)
+                    .totalAmount(BigDecimal.valueOf(80000))
+                    .currency("TWD")
+                    .build();
+            Page<PurchaseOrder> page = new PageImpl<>(
+                    java.util.List.of(buildPendingApprovalPo(), poOfOtherTenant), PageRequest.of(0, 20), 2);
+            when(purchaseOrderRepository.findByStatus(eq(PurchaseOrder.POStatus.PENDING_APPROVAL), any()))
+                    .thenReturn(page);
+
+            AdminDto.PurchaseOrderPendingListResponse response = adminService.getPendingApprovalPurchaseOrders(0, 20);
+
+            assertThat(response.getPurchaseOrders()).hasSize(2);
+            assertThat(response.getPurchaseOrders())
+                    .extracting(AdminDto.PurchaseOrderSummaryResponse::getTenantId)
+                    .containsExactlyInAnyOrder(TEST_TENANT_ID, poOfOtherTenant.getTenantId());
+            assertThat(response.getTotalElements()).isEqualTo(2);
         }
     }
 }

@@ -294,4 +294,44 @@ public class AdminDto {
         private long totalElements;
         private int totalPages;
     }
+
+    // ========== Purchase Order Approval (Sprint 85, PRD §6.7.2) ==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PurchaseOrderSummaryResponse {
+        private UUID id;
+        private UUID tenantId;
+        private String poNumber;
+        private String status;
+        private BigDecimal totalAmount;
+        private String currency;
+        private Instant submittedAt;
+        private UUID reviewedBy;
+        private Instant reviewedAt;
+        private String rejectionReason;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PurchaseOrderPendingListResponse {
+        private List<PurchaseOrderSummaryResponse> purchaseOrders;
+        private int page;
+        private int size;
+        private long totalElements;
+        private int totalPages;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PurchaseOrderRejectRequest {
+        @NotBlank(message = "Reason is required")
+        private String reason;
+    }
 }

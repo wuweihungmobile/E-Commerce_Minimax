@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.domain.model.tenant;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -82,6 +83,12 @@ public class Tenant {
     @Column(name = "connect_payouts_enabled", nullable = false)
     @Builder.Default
     private Boolean connectPayoutsEnabled = false;
+
+    /**
+     * 採購單審批金額上限（PRD §6.7.2，Sprint 85）。null = 不啟用審批門檻，超過此金額的採購單需 SUPER_ADMIN 核准。
+     */
+    @Column(name = "purchase_order_approval_threshold", precision = 12, scale = 2)
+    private BigDecimal purchaseOrderApprovalThreshold;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")

@@ -1,5 +1,8 @@
 package com.nextkey.ecommerce.api.dto;
 
+import java.math.BigDecimal;
+
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Size;
 
@@ -41,4 +44,10 @@ public class TenantUpdateRequest {
     private String businessType;
 
     private String status;
+
+    /**
+     * 採購單審批金額上限（PRD §6.7.2，Sprint 85）。null = 不變更此設定。
+     */
+    @DecimalMin(value = "0.0", message = "Purchase order approval threshold must not be negative")
+    private BigDecimal purchaseOrderApprovalThreshold;
 }

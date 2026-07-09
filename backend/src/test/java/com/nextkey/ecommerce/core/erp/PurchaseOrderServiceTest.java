@@ -35,12 +35,14 @@ import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrderItem;
 import com.nextkey.ecommerce.domain.model.inventory.StockMovement;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.product.ProductInventory;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository;
 import com.nextkey.ecommerce.domain.repository.PurchaseOrderItemRepository;
 import com.nextkey.ecommerce.domain.repository.PurchaseOrderRepository;
 import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
 import com.nextkey.ecommerce.domain.repository.SupplierRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -73,6 +75,9 @@ class PurchaseOrderServiceTest {
 
     @Mock
     private ListingRepository listingRepository;
+
+    @Mock
+    private TenantRepository tenantRepository;
 
     @InjectMocks
     private PurchaseOrderService purchaseOrderService;
@@ -295,10 +300,12 @@ class PurchaseOrderServiceTest {
     // ── submitPurchaseOrder ──────────────────────────────────────
 
     @Test
-    @DisplayName("submitPurchaseOrder：DRAFT → SUBMITTED")
+    @DisplayName("submitPurchaseOrder：DRAFT → SUBMITTED（租戶未設定審批門檻）")
     void submitPurchaseOrder_draft_transitionsToSubmitted() {
         PurchaseOrder po = poOf(PurchaseOrder.POStatus.DRAFT);
         when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.of(po));
+        when(tenantRepository.findById(tenantId))
+                .thenReturn(Optional.of(Tenant.builder().id(tenantId).build()));
         when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
 
         PurchaseOrderDto result = purchaseOrderService.submitPurchaseOrder(poId);
@@ -316,6 +323,35 @@ class PurchaseOrderServiceTest {
         assertThatThrownBy(() -> purchaseOrderService.submitPurchaseOrder(poId))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_7002));
+    }
+
+    @Test
+    @DisplayName("submitPurchaseOrder：金額等於門檻時仍為 SUBMITTED（僅嚴格大於才需審批）")
+    void submitPurchaseOrder_amountEqualsThreshold_staysSubmitted() {
+        PurchaseOrder po = poOf(PurchaseOrder.POStatus.DRAFT);
+        when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.of(po));
+        when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(
+                Tenant.builder().id(tenantId).purchaseOrderApprovalThreshold(BigDecimal.valueOf(100)).build()));
+        when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        PurchaseOrderDto result = purchaseOrderService.submitPurchaseOrder(poId);
+
+        assertThat(result.getStatus()).isEqualTo("SUBMITTED");
+    }
+
+    @Test
+    @DisplayName("submitPurchaseOrder：金額超過門檻時轉 PENDING_APPROVAL")
+    void submitPurchaseOrder_amountExceedsThreshold_transitionsToPendingApproval() {
+        PurchaseOrder po = poOf(PurchaseOrder.POStatus.DRAFT);
+        when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.of(po));
+        when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(
+                Tenant.builder().id(tenantId).purchaseOrderApprovalThreshold(BigDecimal.valueOf(50)).build()));
+        when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        PurchaseOrderDto result = purchaseOrderService.submitPurchaseOrder(poId);
+
+        assertThat(result.getStatus()).isEqualTo("PENDING_APPROVAL");
+        assertThat(result.getSubmittedAt()).isNotNull();
     }
 
     // ── receivePurchaseOrder ─────────────────────────────────────
@@ -418,6 +454,30 @@ class PurchaseOrderServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_7002));
     }
 
+    @Test
+    @DisplayName("receivePurchaseOrder：APPROVED（SUPER_ADMIN 已核准超額採購單）可收貨")
+    void receivePurchaseOrder_approvedStatus_canReceive() {
+        PurchaseOrder po = poOf(PurchaseOrder.POStatus.APPROVED);
+        when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.of(po));
+        when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ProductInventory inventory = ProductInventory.builder().skuId(skuId).totalQty(50).reservedQty(0).build();
+        when(productInventoryRepository.findById(skuId)).thenReturn(Optional.of(inventory));
+        when(productInventoryRepository.save(any(ProductInventory.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(stockMovementRepository.save(any(StockMovement.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        PurchaseOrderReceiveRequest request = PurchaseOrderReceiveRequest.builder()
+                .items(List.of(PurchaseOrderReceiveRequest.ReceiveItemRequest.builder()
+                        .itemId(po.getItems().get(0).getId())
+                        .receivedQuantity(10)
+                        .build()))
+                .build();
+
+        PurchaseOrderDto result = purchaseOrderService.receivePurchaseOrder(poId, request);
+
+        assertThat(result.getStatus()).isEqualTo("RECEIVED");
+    }
+
     // ── cancelPurchaseOrder ──────────────────────────────────────
 
     @Test
@@ -442,6 +502,41 @@ class PurchaseOrderServiceTest {
         PurchaseOrderDto result = purchaseOrderService.cancelPurchaseOrder(poId);
 
         assertThat(result.getStatus()).isEqualTo("CANCELLED");
+    }
+
+    @Test
+    @DisplayName("cancelPurchaseOrder：PENDING_APPROVAL 可取消（等待審批期間可撤回）")
+    void cancelPurchaseOrder_pendingApproval_cancelsSuccessfully() {
+        PurchaseOrder po = poOf(PurchaseOrder.POStatus.PENDING_APPROVAL);
+        when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.of(po));
+        when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        PurchaseOrderDto result = purchaseOrderService.cancelPurchaseOrder(poId);
+
+        assertThat(result.getStatus()).isEqualTo("CANCELLED");
+    }
+
+    @Test
+    @DisplayName("cancelPurchaseOrder：APPROVED 可取消（已核准但尚未開始收貨）")
+    void cancelPurchaseOrder_approved_cancelsSuccessfully() {
+        PurchaseOrder po = poOf(PurchaseOrder.POStatus.APPROVED);
+        when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.of(po));
+        when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        PurchaseOrderDto result = purchaseOrderService.cancelPurchaseOrder(poId);
+
+        assertThat(result.getStatus()).isEqualTo("CANCELLED");
+    }
+
+    @Test
+    @DisplayName("cancelPurchaseOrder：REJECTED 狀態無法取消（已是終態），拋出 E_7002")
+    void cancelPurchaseOrder_rejected_throwsE7002() {
+        PurchaseOrder po = poOf(PurchaseOrder.POStatus.REJECTED);
+        when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.of(po));
+
+        assertThatThrownBy(() -> purchaseOrderService.cancelPurchaseOrder(poId))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_7002));
     }
 
     @Test

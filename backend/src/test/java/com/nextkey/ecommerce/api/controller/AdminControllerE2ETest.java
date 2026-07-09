@@ -1,5 +1,7 @@
 package com.nextkey.ecommerce.api.controller;
 
+import com.nextkey.ecommerce.domain.model.erp.Supplier;
+import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
@@ -77,6 +79,12 @@ class AdminControllerE2ETest {
 
     @Autowired
     private com.nextkey.ecommerce.domain.repository.audit.AuditLogRepository auditLogRepository;
+
+    @Autowired
+    private PurchaseOrderRepository purchaseOrderRepository;
+
+    @Autowired
+    private SupplierRepository supplierRepository;
 
     private static final String BASE_URL = "/v2/admin";
     @SuppressWarnings("unused")
@@ -210,6 +218,38 @@ class AdminControllerE2ETest {
                 "SELLER",
                 tenantId.toString()
         );
+    }
+
+    /**
+     * 建立一個 PENDING_APPROVAL 狀態的採購單（含所屬 Tenant/Supplier），供 Sprint 85 審批 E2E 測試使用。
+     */
+    private PurchaseOrder createPendingApprovalPurchaseOrder() {
+        Tenant tenant = tenantRepository.save(Tenant.builder()
+                .name("PO Approval Test Store")
+                .slug("po-approval-test-" + System.currentTimeMillis())
+                .status(Tenant.TenantStatus.ACTIVE)
+                .build());
+
+        Supplier supplier = supplierRepository.save(Supplier.builder()
+                .tenantId(tenant.getId())
+                .name("Test Supplier")
+                .status(Supplier.SupplierStatus.ACTIVE)
+                .build());
+
+        return purchaseOrderRepository.save(PurchaseOrder.builder()
+                .tenantId(tenant.getId())
+                .supplierId(supplier.getId())
+                .poNumber("PO-E2E-" + System.currentTimeMillis())
+                .status(PurchaseOrder.POStatus.PENDING_APPROVAL)
+                .totalAmount(java.math.BigDecimal.valueOf(99999))
+                .currency("TWD")
+                .build());
+    }
+
+    private void cleanupPurchaseOrderTestData(PurchaseOrder po) {
+        purchaseOrderRepository.findById(po.getId()).ifPresent(purchaseOrderRepository::delete);
+        supplierRepository.findById(po.getSupplierId()).ifPresent(supplierRepository::delete);
+        cleanupTestData(po.getTenantId(), null);
     }
 
     // 清理測試資料
@@ -864,5 +904,102 @@ class AdminControllerE2ETest {
                 .statusCode(403);
 
         System.out.println("✅ API-M14-AUDIT-02 PASSED: BUYER 角色查詢稽核紀錄正確返回 403");
+    }
+
+    // ── Sprint 85（PRD §6.7.2）：採購單審批 RBAC E2E ─────────────────────
+
+    @Test
+    @Order(19)
+    @DisplayName("API-M16-APPROVAL-01: POST /v2/admin/purchase-orders/:id/approve - SUPER_ADMIN 核准成功")
+    void approvePurchaseOrder_asSuperAdmin_shouldSucceed() throws Exception {
+        String adminToken = createSuperAdminUserAndGetToken();
+        PurchaseOrder po = createPendingApprovalPurchaseOrder();
+
+        try {
+            given()
+                    .header("Authorization", "Bearer " + adminToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .when()
+                    .post(BASE_URL + "/purchase-orders/" + po.getId() + "/approve")
+                    .then()
+                    .statusCode(200)
+                    .body("success", is(true))
+                    .body("data.status", equalTo("APPROVED"));
+
+            System.out.println("✅ API-M16-APPROVAL-01 PASSED: SUPER_ADMIN 核准採購單成功");
+        } finally {
+            cleanupPurchaseOrderTestData(po);
+        }
+    }
+
+    @Test
+    @Order(20)
+    @DisplayName("API-M16-APPROVAL-02: POST /v2/admin/purchase-orders/:id/reject - SUPER_ADMIN 駁回成功")
+    void rejectPurchaseOrder_asSuperAdmin_shouldSucceed() throws Exception {
+        String adminToken = createSuperAdminUserAndGetToken();
+        PurchaseOrder po = createPendingApprovalPurchaseOrder();
+
+        try {
+            given()
+                    .header("Authorization", "Bearer " + adminToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(Map.of("reason", "超出年度採購預算"))
+                    .when()
+                    .post(BASE_URL + "/purchase-orders/" + po.getId() + "/reject")
+                    .then()
+                    .statusCode(200)
+                    .body("success", is(true))
+                    .body("data.status", equalTo("REJECTED"))
+                    .body("data.rejectionReason", equalTo("超出年度採購預算"));
+
+            System.out.println("✅ API-M16-APPROVAL-02 PASSED: SUPER_ADMIN 駁回採購單成功");
+        } finally {
+            cleanupPurchaseOrderTestData(po);
+        }
+    }
+
+    @Test
+    @Order(21)
+    @DisplayName("API-M16-APPROVAL-03: POST /v2/admin/purchase-orders/:id/approve - StoreOwner 角色應返回 403")
+    void approvePurchaseOrder_asStoreOwner_shouldReturn403() throws Exception {
+        PurchaseOrder po = createPendingApprovalPurchaseOrder();
+        String storeOwnerToken = createStoreOwnerUserAndGetToken(po.getTenantId());
+
+        try {
+            given()
+                    .header("Authorization", "Bearer " + storeOwnerToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .when()
+                    .post(BASE_URL + "/purchase-orders/" + po.getId() + "/approve")
+                    .then()
+                    .statusCode(403);
+
+            System.out.println("✅ API-M16-APPROVAL-03 PASSED: StoreOwner 角色核准採購單正確返回 403（租戶自身無法繞過 SUPER_ADMIN 審批）");
+        } finally {
+            cleanupPurchaseOrderTestData(po);
+        }
+    }
+
+    @Test
+    @Order(22)
+    @DisplayName("API-M16-APPROVAL-04: GET /v2/admin/purchase-orders/pending - SUPER_ADMIN 成功取得待審批列表")
+    void getPendingApprovalPurchaseOrders_asSuperAdmin_shouldSucceed() throws Exception {
+        String adminToken = createSuperAdminUserAndGetToken();
+        PurchaseOrder po = createPendingApprovalPurchaseOrder();
+
+        try {
+            given()
+                    .header("Authorization", "Bearer " + adminToken)
+                    .when()
+                    .get(BASE_URL + "/purchase-orders/pending")
+                    .then()
+                    .statusCode(200)
+                    .body("success", is(true))
+                    .body("data.purchaseOrders", notNullValue());
+
+            System.out.println("✅ API-M16-APPROVAL-04 PASSED: SUPER_ADMIN 成功取得待審批採購單列表");
+        } finally {
+            cleanupPurchaseOrderTestData(po);
+        }
     }
 }

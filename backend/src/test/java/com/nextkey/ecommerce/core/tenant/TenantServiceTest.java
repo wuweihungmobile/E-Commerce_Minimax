@@ -178,6 +178,35 @@ class TenantServiceTest {
     }
 
     @Test
+    @Order(4)
+    @DisplayName("updateTenant：StoreOwner 可設定採購審批金額上限（Sprint 85，PRD §6.7.2）")
+    void updateTenant_setsPurchaseOrderApprovalThreshold() {
+        UUID tenantId = TEST_TENANT_ID;
+        TenantUpdateRequest request = TenantUpdateRequest.builder()
+                .purchaseOrderApprovalThreshold(java.math.BigDecimal.valueOf(100000))
+                .build();
+
+        Tenant existingTenant = Tenant.builder()
+                .id(tenantId)
+                .name("Original Store")
+                .status(Tenant.TenantStatus.ACTIVE)
+                .build();
+
+        when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                eq(tenantId), eq(TEST_USER_ID), eq(TenantMember.StoreRole.STORE_OWNER)))
+                .thenReturn(true);
+        when(tenantRepository.findById(tenantId))
+                .thenReturn(Optional.of(existingTenant));
+        when(tenantRepository.save(any(Tenant.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        TenantUpdateResponse response = tenantService.updateTenant(tenantId, request, TEST_USER_ID);
+
+        assertEquals(java.math.BigDecimal.valueOf(100000), response.getPurchaseOrderApprovalThreshold());
+        assertEquals(java.math.BigDecimal.valueOf(100000), existingTenant.getPurchaseOrderApprovalThreshold());
+    }
+
+    @Test
     @Order(5)
     @DisplayName("updateTenant: STORE_STAFF 角色不能更新店鋪")
     void updateTenant_staffRole_shouldThrowException() {

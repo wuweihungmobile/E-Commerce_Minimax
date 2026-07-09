@@ -36,7 +36,7 @@
 | M13 商家工作台 | ⚠️ 中（11） | ⚠️ 框架薄 | 營收統計/訂單總覽深化 |
 | M14 平台分析 | ⚠️ 中（**0 測試**） | ⚠️ 缺面板 | 分析儀表板 + 測試補強 |
 | M15 CMS | ✅ 高（8） | ✅ 完整 | — |
-| M16 ERP | ✅ 高（2） | ✅ 完整 | StockMovement placeholder 清理 |
+| M16 ERP | ✅ 高（2） | ⚠️ 審批門檻無 UI | StockMovement placeholder 清理；採購審批金額上限（AI-2419，Sprint 85 後端完成）StoreOwner 設定門檻/SuperAdmin 審批清單前端頁面 |
 | M17 租戶 | ✅ 高（55） | ✅ 完整 | — |
 | M18 知識/FAQ | ✅ 高（FAQ 0 測試） | ✅ 完整 | 測試補強 |
 

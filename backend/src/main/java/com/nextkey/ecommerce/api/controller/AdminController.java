@@ -264,4 +264,43 @@ public class AdminController {
                 page, size, action, startInstant, endInstant);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
+
+    // ========== Purchase Order Approval（Sprint 85，PRD §6.7.2） ==========
+
+    /**
+     * 取得待審批採購單列表（跨租戶）
+     */
+    @GetMapping("/purchase-orders/pending")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.PurchaseOrderPendingListResponse>> getPendingApprovalPurchaseOrders(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        AdminDto.PurchaseOrderPendingListResponse response = adminService.getPendingApprovalPurchaseOrders(page, size);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
+     * 核准採購單
+     */
+    @PostMapping("/purchase-orders/{poId}/approve")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.PurchaseOrderSummaryResponse>> approvePurchaseOrder(
+            @PathVariable UUID poId) {
+        log.info("Purchase order approve request: poId={}", poId);
+        AdminDto.PurchaseOrderSummaryResponse response = adminService.approvePurchaseOrder(poId);
+        return ResponseEntity.ok(ApiResponse.success("Purchase order approved successfully", response));
+    }
+
+    /**
+     * 駁回採購單
+     */
+    @PostMapping("/purchase-orders/{poId}/reject")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.PurchaseOrderSummaryResponse>> rejectPurchaseOrder(
+            @PathVariable UUID poId,
+            @Valid @RequestBody AdminDto.PurchaseOrderRejectRequest request) {
+        log.info("Purchase order reject request: poId={}, reason={}", poId, request.getReason());
+        AdminDto.PurchaseOrderSummaryResponse response = adminService.rejectPurchaseOrder(poId, request);
+        return ResponseEntity.ok(ApiResponse.success("Purchase order rejected successfully", response));
+    }
 }

@@ -77,6 +77,15 @@ public class PurchaseOrder {
     @Column(name = "received_at")
     private Instant receivedAt;
 
+    @Column(name = "reviewed_by")
+    private UUID reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private Instant reviewedAt;
+
+    @Column(name = "rejection_reason", columnDefinition = "TEXT")
+    private String rejectionReason;
+
     @OneToMany(mappedBy = "purchaseOrder", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<PurchaseOrderItem> items = new ArrayList<>();
@@ -101,7 +110,9 @@ public class PurchaseOrder {
     public enum POStatus {
         DRAFT,
         SUBMITTED,
+        PENDING_APPROVAL,
         APPROVED,
+        REJECTED,
         ORDER,
         SHIPPED,
         RECEIVED,
@@ -117,10 +128,22 @@ public class PurchaseOrder {
     }
 
     public boolean canReceive() {
-        return this.status == POStatus.SUBMITTED || this.status == POStatus.PARTIALLY_RECEIVED;
+        return this.status == POStatus.SUBMITTED
+                || this.status == POStatus.PARTIALLY_RECEIVED
+                || this.status == POStatus.APPROVED;
     }
 
     public boolean canCancel() {
-        return this.status == POStatus.DRAFT || this.status == POStatus.SUBMITTED;
+        return this.status == POStatus.DRAFT
+                || this.status == POStatus.SUBMITTED
+                || this.status == POStatus.PENDING_APPROVAL
+                || this.status == POStatus.APPROVED;
+    }
+
+    /**
+     * 是否可由 SUPER_ADMIN 核准/駁回（Sprint 85，PRD §6.7.2）
+     */
+    public boolean canReview() {
+        return this.status == POStatus.PENDING_APPROVAL;
     }
 }

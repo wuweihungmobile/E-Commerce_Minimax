@@ -26,6 +26,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.filter.JwtAuthenticationFilter;
+import com.nextkey.ecommerce.api.filter.RateLimitFilter;
 import com.nextkey.ecommerce.api.filter.TenantContextFilter;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
@@ -36,14 +37,17 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final TenantContextFilter tenantContextFilter;
+    private final RateLimitFilter rateLimitFilter;
 
     // CORS configuration
     private static final long CORS_MAX_AGE_SECONDS = 3600L;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
-                         TenantContextFilter tenantContextFilter) {
+                         TenantContextFilter tenantContextFilter,
+                         RateLimitFilter rateLimitFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.tenantContextFilter = tenantContextFilter;
+        this.rateLimitFilter = rateLimitFilter;
     }
 
     @Bean
@@ -102,7 +106,8 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-            .addFilterAfter(tenantContextFilter, JwtAuthenticationFilter.class);
+            .addFilterAfter(tenantContextFilter, JwtAuthenticationFilter.class)
+            .addFilterAfter(rateLimitFilter, TenantContextFilter.class);
 
         return http.build();
     }
@@ -113,7 +118,8 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(List.of("http://localhost:3000", "http://localhost:8080"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Tenant-ID"));
-        configuration.setExposedHeaders(List.of("Authorization"));
+        configuration.setExposedHeaders(List.of("Authorization",
+                "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(CORS_MAX_AGE_SECONDS);
 

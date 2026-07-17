@@ -104,6 +104,7 @@
 | 2026-07-01 | v1.1 | Sprint 29 交付 #1 訂單 + #2 通知 + #3 付款前端（買家閉環起手）；#4–#6 移至 Sprint 30+ |
 | 2026-07-01 | v1.2 | Sprint 30 交付 #4 預訂 + #5 評價 + #6 物流前端 —— EPIC-BUYER 買家閉環（#1–#6）整條完成 |
 | 2026-07-02 | v1.3 | **更正過時資訊**：第 2 節 M14 Analytics / M18 FAQ「0 測試」已於 **Sprint 28**（commit 251b29b）補測（0→13），全後端現 703 @Test；第 3 節 #9 測試補強實為「增量補強」非「從 0 建立」。**Sprint 43 交付 #7 M12 進階定價**（早鳥/長住/末班車折扣真正生效於 ROOM：語意修正 AI-2401 + 接入計價鏈 AI-2402 + config UI AI-2404 + 買家顯示 AI-2405）；PRODUCT/Cart 折扣接線另立 AI-2403 |
+| 2026-07-18 | v1.5 | **重新全面比對 PRD v1.0 Final 全文**（非僅本文件與 `DEFERRED_ITEMS_TRACKER.md`，兩者可能過時，見 Sprint 91 M18 客服工單先例）發現兩項過去 92 個 Sprint 從未追蹤的落地缺口：**A1 API 限流機制**（PRD §3.3/§13.4/§16.4.2，Phase 1 已凍結規格）於 **Sprint 93 完成**；**A2 會員資料 Export+帳戶刪除**（PRD §1.5.1）需先補規格，留待下一輪。同時更正 **#10 真實金流串接描述已過時**——不僅 Sprint 49-56 完成 Checkout/webhook/退款，Sprint 80-81 更完成結算單審核通過後的 Transfer 分潤/提現，應視為已完成而非 P3 候選。重新核對 PRD 原文確認 #11 OAuth2/KYC、#12 ElasticSearch（含 PostGIS LBS）皆為 PRD §13.5 MoSCoW 明列 **Won't Have（Phase 2+ 明確排除）**，非疏漏，P3 延後判斷正確 |
 | 2026-07-05 | v1.4 | **Sprint 62 交付 #9 測試補強**：規劃前重新盤點發現 #9 描述仍過時——真正缺口是 `KnowledgeBaseService`（17 方法含版本控制）**完全零覆蓋**（唯一相關整合測試對其用 `@MockBean` 繞過）、`FaqService` 11 方法零覆蓋、`AnalyticsService.getRecentActivity` 零覆蓋，與原「0–1 測試」的粗略描述有落差。新增 `KnowledgeBaseServiceTest`（24 測試，從 0 建立）+ `FaqServiceTest`（+12 測試）+ `AnalyticsServiceTest`（+2 測試）。另發現 FAQ 前端頁面完全缺失（`/v2/faqs` API 已備妥、無頁面），性質為功能缺口非測試缺口，未排入候選清單，列為 Sprint 63 評估項目 |
 
 ---

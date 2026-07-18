@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.RefreshTokenRequest;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
+import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,6 +51,9 @@ class AuthControllerE2ETest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private JwtTokenService jwtTokenService;
 
     private static final String BASE_URL = "/v2/auth";
     private static final String TEST_PASSWORD = "SecurePass123!";
@@ -420,5 +425,126 @@ class AuthControllerE2ETest {
                 .statusCode(anyOf(is(401), is(403)));
 
         System.out.println("✅ API-M03-010 PASSED: 未授權時返回 401 或 403");
+    }
+
+    // ── AI-2428: 會員資料 Export + 帳戶刪除（Sprint 94，PRD §1.5.1）─────────
+
+    @Test
+    @Order(11)
+    @DisplayName("AI-2428-001: GET /v2/auth/me/data-export - 成功彙整個人資料")
+    void exportMyData_success_returns200() throws Exception {
+        String email = uniqueEmail();
+
+        try {
+            given()
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(RegisterRequest.builder().email(email).password(TEST_PASSWORD).userType("BUYER").build())
+                    .when()
+                    .post(BASE_URL + "/register")
+                    .then()
+                    .statusCode(201);
+
+            String loginResponse = given()
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(LoginRequest.builder().email(email).password(TEST_PASSWORD).build())
+                    .when()
+                    .post(BASE_URL + "/login")
+                    .then()
+                    .statusCode(200)
+                    .extract()
+                    .asString();
+            String accessToken = objectMapper.readTree(loginResponse).path("data").path("accessToken").asText();
+
+            given()
+                    .header("Authorization", "Bearer " + accessToken)
+                    .when()
+                    .get(BASE_URL + "/me/data-export")
+                    .then()
+                    .statusCode(200)
+                    .body("success", is(true))
+                    .body("data.profile.email", is(email))
+                    .body("data.profile.role", is("BUYER"))
+                    .body("data.knownLimitations", not(empty()));
+
+            System.out.println("✅ AI-2428-001 PASSED: 成功彙整個人資料匯出");
+        } finally {
+            cleanupUser(email);
+        }
+    }
+
+    @Test
+    @Order(12)
+    @DisplayName("AI-2428-002: DELETE /v2/auth/me - BUYER 無未結案交易時成功匿名化")
+    void deleteMyAccount_eligibleBuyer_returns200AndAnonymizes() throws Exception {
+        String email = uniqueEmail();
+
+        given()
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(RegisterRequest.builder().email(email).password(TEST_PASSWORD).userType("BUYER").build())
+                .when()
+                .post(BASE_URL + "/register")
+                .then()
+                .statusCode(201);
+
+        String loginResponse = given()
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(LoginRequest.builder().email(email).password(TEST_PASSWORD).build())
+                .when()
+                .post(BASE_URL + "/login")
+                .then()
+                .statusCode(200)
+                .extract()
+                .asString();
+        String accessToken = objectMapper.readTree(loginResponse).path("data").path("accessToken").asText();
+        java.util.UUID userId = userRepository.findByEmail(email).orElseThrow().getId();
+
+        try {
+            given()
+                    .header("Authorization", "Bearer " + accessToken)
+                    .when()
+                    .delete(BASE_URL + "/me")
+                    .then()
+                    .statusCode(200)
+                    .body("success", is(true));
+
+            User anonymized = userRepository.findById(userId).orElseThrow();
+            org.assertj.core.api.Assertions.assertThat(anonymized.getEmail())
+                    .isNotEqualTo(email).endsWith("@anonymized.local");
+            org.assertj.core.api.Assertions.assertThat(anonymized.getStatus()).isEqualTo("DELETED");
+            org.assertj.core.api.Assertions.assertThat(anonymized.getFullName()).isEqualTo("已刪除的使用者");
+
+            System.out.println("✅ AI-2428-002 PASSED: BUYER 帳戶成功匿名化");
+        } finally {
+            userRepository.findById(userId).ifPresent(userRepository::delete);
+        }
+    }
+
+    @Test
+    @Order(13)
+    @DisplayName("AI-2428-003: DELETE /v2/auth/me - 非 BUYER 角色（STORE_OWNER）拒絕，返回 403")
+    void deleteMyAccount_nonBuyerRole_returns403() {
+        String email = uniqueEmail();
+        User storeOwner = User.builder()
+                .email(email)
+                .passwordHash("$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG")
+                .role(User.UserRole.STORE_OWNER)
+                .status("ACTIVE")
+                .build();
+        storeOwner = userRepository.save(storeOwner);
+        String accessToken = jwtTokenService.generateAccessToken(storeOwner.getId(), email, "STORE_OWNER", null);
+
+        try {
+            given()
+                    .header("Authorization", "Bearer " + accessToken)
+                    .when()
+                    .delete(BASE_URL + "/me")
+                    .then()
+                    .statusCode(403)
+                    .body("code", is("E-1009"));
+
+            System.out.println("✅ AI-2428-003 PASSED: 非 BUYER 角色拒絕自助刪除");
+        } finally {
+            cleanupUser(email);
+        }
     }
 }

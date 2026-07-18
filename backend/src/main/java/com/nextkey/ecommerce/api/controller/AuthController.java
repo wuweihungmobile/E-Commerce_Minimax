@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,9 +20,11 @@ import com.nextkey.ecommerce.api.dto.LogoutResponse;
 import com.nextkey.ecommerce.api.dto.RefreshTokenRequest;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
 import com.nextkey.ecommerce.api.dto.RegisterResponse;
+import com.nextkey.ecommerce.api.dto.UserDataExportResponse;
 import com.nextkey.ecommerce.api.dto.UserInfoResponse;
 import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.core.auth.AuthService;
+import com.nextkey.ecommerce.core.user.UserPrivacyService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +36,7 @@ import lombok.extern.slf4j.Slf4j;
 public class AuthController {
 
     private final AuthService authService;
+    private final UserPrivacyService userPrivacyService;
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<RegisterResponse>> register(
@@ -84,5 +88,27 @@ public class AuthController {
         log.info("Get current user request for: {}", principal.getUserId());
         UserInfoResponse response = authService.getCurrentUser(principal.getUserId());
         return ResponseEntity.ok(ApiResponse.success("Success", response));
+    }
+
+    /**
+     * 會員資料匯出（PRD §1.5.1，Sprint 94 AI-2428）
+     */
+    @GetMapping("/me/data-export")
+    public ResponseEntity<ApiResponse<UserDataExportResponse>> exportMyData(
+            @AuthenticationPrincipal UserPrincipal principal) {
+        log.info("Data export request for user: {}", principal.getUserId());
+        UserDataExportResponse response = userPrivacyService.exportMyData();
+        return ResponseEntity.ok(ApiResponse.success("Success", response));
+    }
+
+    /**
+     * 會員自助帳戶刪除／被遺忘權（PRD §1.5.1，Sprint 94 AI-2428）
+     */
+    @DeleteMapping("/me")
+    public ResponseEntity<ApiResponse<Void>> deleteMyAccount(
+            @AuthenticationPrincipal UserPrincipal principal) {
+        log.info("Account deletion request for user: {}", principal.getUserId());
+        userPrivacyService.deleteMyAccount();
+        return ResponseEntity.ok(ApiResponse.success("Account deleted", null));
     }
 }

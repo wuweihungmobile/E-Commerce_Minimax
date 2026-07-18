@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.domain.repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -20,4 +21,6 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     Optional<Booking> findByIdAndUserId(UUID bookingId, UUID userId);
 
     Optional<Booking> findByIdAndTenantId(UUID bookingId, UUID tenantId);
+
+    boolean existsByUserIdAndStatusNotIn(UUID userId, List<Booking.BookingStatus> statuses);
 }

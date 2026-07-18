@@ -68,4 +68,6 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     long countByTenantIdAndStatusIn(
             @Param("tenantId") UUID tenantId,
             @Param("statuses") List<Order.OrderStatus> statuses);
+
+    boolean existsByUserIdAndStatusNotIn(UUID userId, List<Order.OrderStatus> statuses);
 }

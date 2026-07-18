@@ -3,6 +3,8 @@ package com.nextkey.ecommerce.core.admin;
 import com.nextkey.ecommerce.api.dto.AdminDto;
 import com.nextkey.ecommerce.domain.model.audit.AuditLog;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
+import com.nextkey.ecommerce.domain.model.order.Booking;
+import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.repository.*;
@@ -26,6 +28,8 @@ import org.springframework.data.domain.PageRequest;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -66,6 +70,12 @@ class AdminServiceTest {
 
     @Mock
     private PurchaseOrderRepository purchaseOrderRepository;
+
+    @Mock
+    private BookingRepository bookingRepository;
+
+    @Mock
+    private RoomCalendarRepository roomCalendarRepository;
 
     @InjectMocks
     private AdminService adminService;
@@ -775,6 +785,87 @@ class AdminServiceTest {
                     .extracting(AdminDto.PurchaseOrderSummaryResponse::getTenantId)
                     .containsExactlyInAnyOrder(TEST_TENANT_ID, poOfOtherTenant.getTenantId());
             assertThat(response.getTotalElements()).isEqualTo(2);
+        }
+    }
+
+    @Nested
+    @DisplayName("getMaintenanceWarnings（PRD §5.5.3，Sprint 96）")
+    class MaintenanceWarningsTests {
+
+        private RoomCalendar maintenanceCalendar(UUID bookingId) {
+            return RoomCalendar.builder()
+                    .status(RoomCalendar.RoomCalendarStatus.MAINTENANCE)
+                    .bookingId(bookingId)
+                    .build();
+        }
+
+        @Test
+        @DisplayName("入住日期在明日以內 → urgent=true")
+        void getMaintenanceWarnings_checkInWithinWindow_marksUrgent() {
+            UUID bookingId = UUID.randomUUID();
+            Booking booking = Booking.builder()
+                    .id(bookingId)
+                    .checkInDate(LocalDate.now())
+                    .guestEmail("guest@example.com")
+                    .build();
+            when(roomCalendarRepository.findByStatusAndBookingIdIsNotNull(RoomCalendar.RoomCalendarStatus.MAINTENANCE))
+                    .thenReturn(List.of(maintenanceCalendar(bookingId)));
+            when(bookingRepository.findAllById(List.of(bookingId))).thenReturn(List.of(booking));
+
+            AdminDto.MaintenanceWarningListResponse response = adminService.getMaintenanceWarnings();
+
+            assertThat(response.getWarnings()).hasSize(1);
+            assertThat(response.getWarnings().get(0).getBookingId()).isEqualTo(bookingId);
+            assertThat(response.getWarnings().get(0).getGuestEmail()).isEqualTo("guest@example.com");
+            assertThat(response.getWarnings().get(0).isUrgent()).isTrue();
+        }
+
+        @Test
+        @DisplayName("入住日期在一週後 → urgent=false")
+        void getMaintenanceWarnings_checkInFarAway_notUrgent() {
+            UUID bookingId = UUID.randomUUID();
+            Booking booking = Booking.builder()
+                    .id(bookingId)
+                    .checkInDate(LocalDate.now().plusDays(7))
+                    .guestEmail("guest2@example.com")
+                    .build();
+            when(roomCalendarRepository.findByStatusAndBookingIdIsNotNull(RoomCalendar.RoomCalendarStatus.MAINTENANCE))
+                    .thenReturn(List.of(maintenanceCalendar(bookingId)));
+            when(bookingRepository.findAllById(List.of(bookingId))).thenReturn(List.of(booking));
+
+            AdminDto.MaintenanceWarningListResponse response = adminService.getMaintenanceWarnings();
+
+            assertThat(response.getWarnings().get(0).isUrgent()).isFalse();
+        }
+
+        @Test
+        @DisplayName("同一 Booking 跨多天 MAINTENANCE 日期 → 僅回傳一筆（去重）")
+        void getMaintenanceWarnings_multiNightBooking_deduplicates() {
+            UUID bookingId = UUID.randomUUID();
+            Booking booking = Booking.builder()
+                    .id(bookingId)
+                    .checkInDate(LocalDate.now().plusDays(3))
+                    .guestEmail("guest3@example.com")
+                    .build();
+            when(roomCalendarRepository.findByStatusAndBookingIdIsNotNull(RoomCalendar.RoomCalendarStatus.MAINTENANCE))
+                    .thenReturn(List.of(maintenanceCalendar(bookingId), maintenanceCalendar(bookingId)));
+            when(bookingRepository.findAllById(List.of(bookingId))).thenReturn(List.of(booking));
+
+            AdminDto.MaintenanceWarningListResponse response = adminService.getMaintenanceWarnings();
+
+            assertThat(response.getWarnings()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("無 MAINTENANCE 日期 → 回傳空清單")
+        void getMaintenanceWarnings_noneUnderMaintenance_returnsEmptyList() {
+            when(roomCalendarRepository.findByStatusAndBookingIdIsNotNull(RoomCalendar.RoomCalendarStatus.MAINTENANCE))
+                    .thenReturn(List.of());
+
+            AdminDto.MaintenanceWarningListResponse response = adminService.getMaintenanceWarnings();
+
+            assertThat(response.getWarnings()).isEmpty();
+            verify(bookingRepository, never()).findAllById(any());
         }
     }
 }

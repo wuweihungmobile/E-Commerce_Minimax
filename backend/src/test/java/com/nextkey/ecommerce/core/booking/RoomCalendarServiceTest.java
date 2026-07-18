@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -26,7 +27,9 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.PessimisticLockingFailureException;
 
 import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.infrastructure.redis.RedisLockService;
@@ -58,6 +61,9 @@ class RoomCalendarServiceTest {
 
     @Mock
     private ListingRepository listingRepository;
+
+    @Mock
+    private BookingRepository bookingRepository;
 
     @InjectMocks
     private RoomCalendarService roomCalendarService;
@@ -295,5 +301,91 @@ class RoomCalendarServiceTest {
         roomCalendarService.unblockDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
 
         verify(roomCalendarRepository, times(1)).save(any());
+    }
+
+    // ========== markMaintenance / unmarkMaintenance（PRD §5.5.3，Sprint 96） ==========
+
+    @Test
+    @DisplayName("標記維護：AVAILABLE → MAINTENANCE，無 booking 不觸發 Booking 更新")
+    void markMaintenance_availableDates_setsMaintenanceWithoutTouchingBooking() {
+        List<RoomCalendar> calendars = List.of(calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.AVAILABLE, null));
+        when(roomCalendarRepository.findByListingIdAndCalendarDateBetween(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
+                .thenReturn(calendars);
+
+        roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
+
+        verify(roomCalendarRepository).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE));
+        verify(bookingRepository, never()).findById(any());
+    }
+
+    @Test
+    @DisplayName("標記維護：已 BOOKED 日期 → 保留 bookingId、狀態改 MAINTENANCE，且 Booking.statusFlags 標記 under_maintenance=true")
+    void markMaintenance_bookedDate_preservesBookingIdAndFlagsBooking() {
+        List<RoomCalendar> calendars = List.of(calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.BOOKED, BOOKING_ID));
+        when(roomCalendarRepository.findByListingIdAndCalendarDateBetween(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
+                .thenReturn(calendars);
+        Booking booking = Booking.builder().id(BOOKING_ID).build();
+        when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
+
+        roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
+
+        verify(roomCalendarRepository).save(argThat(
+                c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE && BOOKING_ID.equals(c.getBookingId())));
+        verify(bookingRepository).save(argThat(b -> Boolean.TRUE.equals(b.getStatusFlags().get("under_maintenance"))));
+    }
+
+    @Test
+    @DisplayName("標記維護：已是 MAINTENANCE 的日期 → 略過（idempotent，不重複 save）")
+    void markMaintenance_alreadyMaintenance_idempotentSkip() {
+        List<RoomCalendar> calendars = List.of(calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.MAINTENANCE, null));
+        when(roomCalendarRepository.findByListingIdAndCalendarDateBetween(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
+                .thenReturn(calendars);
+
+        roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
+
+        verify(roomCalendarRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("解除維護：保留 bookingId 者恢復 BOOKED，並清除 Booking 的 under_maintenance 標記")
+    void unmarkMaintenance_withBookingId_restoresBookedAndClearsFlag() {
+        List<RoomCalendar> calendars = List.of(calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.MAINTENANCE, BOOKING_ID));
+        when(roomCalendarRepository.findByListingIdAndCalendarDateBetween(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
+                .thenReturn(calendars);
+        Booking booking = Booking.builder().id(BOOKING_ID)
+                .statusFlags(new java.util.HashMap<>(Map.of("under_maintenance", true)))
+                .build();
+        when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
+
+        roomCalendarService.unmarkMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
+
+        verify(roomCalendarRepository).save(argThat(
+                c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.BOOKED && BOOKING_ID.equals(c.getBookingId())));
+        verify(bookingRepository).save(argThat(b -> !b.getStatusFlags().containsKey("under_maintenance")));
+    }
+
+    @Test
+    @DisplayName("解除維護：無 bookingId 者恢復 AVAILABLE")
+    void unmarkMaintenance_withoutBookingId_restoresAvailable() {
+        List<RoomCalendar> calendars = List.of(calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.MAINTENANCE, null));
+        when(roomCalendarRepository.findByListingIdAndCalendarDateBetween(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
+                .thenReturn(calendars);
+
+        roomCalendarService.unmarkMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
+
+        verify(roomCalendarRepository).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.AVAILABLE));
+        verify(bookingRepository, never()).findById(any());
+    }
+
+    @Test
+    @DisplayName("解除維護：非 MAINTENANCE 的日期不受影響（idempotent）")
+    void unmarkMaintenance_nonMaintenanceDates_notModified() {
+        List<RoomCalendar> calendars = List.of(calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.BLOCKED, null));
+        when(roomCalendarRepository.findByListingIdAndCalendarDateBetween(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
+                .thenReturn(calendars);
+
+        roomCalendarService.unmarkMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
+
+        verify(roomCalendarRepository, never()).save(any());
     }
 }

@@ -2,7 +2,9 @@ package com.nextkey.ecommerce.core.booking;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -12,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.infrastructure.redis.RedisLockService;
@@ -33,6 +36,9 @@ public class RoomCalendarService {
     private final RoomCalendarRepository roomCalendarRepository;
     private final RedisLockService redisLockService;
     private final ListingRepository listingRepository;
+    private final BookingRepository bookingRepository;
+
+    private static final String MAINTENANCE_FLAG = "under_maintenance";
 
     @SuppressWarnings("unused")
     private static final int CALENDAR_GENERATE_DAYS = 365; // 生成未來 365 天
@@ -303,6 +309,70 @@ public class RoomCalendarService {
         }
 
         log.info("Unblocked date range: room={}, checkIn={}, checkOut={}", roomListingId, checkIn, checkOut);
+    }
+
+    /**
+     * 標記維護狀態（PRD §5.5.3）：AVAILABLE/BLOCKED/BOOKED → MAINTENANCE。
+     * 若原狀態為 BOOKED，保留 booking_id 並在對應 Booking.statusFlags 標記 under_maintenance=true，
+     * 供 Admin Dashboard MaintenanceWarnings 列表查詢（M09 通知系統上線前的替代方案，PRD §5.5.3）。
+     * 與 blockDateRange 相同慣例：僅處理已存在的 calendar 記錄，不建立缺漏日期的記錄。
+     */
+    @Transactional
+    public void markMaintenance(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
+        List<RoomCalendar> calendars = roomCalendarRepository
+                .findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
+
+        for (RoomCalendar calendar : calendars) {
+            if (calendar.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE) {
+                continue;
+            }
+            if (calendar.getStatus() == RoomCalendar.RoomCalendarStatus.BOOKED && calendar.getBookingId() != null) {
+                flagBookingUnderMaintenance(calendar.getBookingId(), true);
+            }
+            calendar.setStatus(RoomCalendar.RoomCalendarStatus.MAINTENANCE);
+            roomCalendarRepository.save(calendar);
+        }
+
+        log.info("Marked maintenance: room={}, checkIn={}, checkOut={}", roomListingId, checkIn, checkOut);
+    }
+
+    /**
+     * 解除維護狀態：日期格保留 booking_id（維護前為 BOOKED）者恢復為 BOOKED 並清除 Booking 的
+     * under_maintenance 標記，否則恢復為 AVAILABLE。
+     */
+    @Transactional
+    public void unmarkMaintenance(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
+        List<RoomCalendar> calendars = roomCalendarRepository
+                .findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
+
+        for (RoomCalendar calendar : calendars) {
+            if (calendar.getStatus() != RoomCalendar.RoomCalendarStatus.MAINTENANCE) {
+                continue;
+            }
+            if (calendar.getBookingId() != null) {
+                calendar.setStatus(RoomCalendar.RoomCalendarStatus.BOOKED);
+                flagBookingUnderMaintenance(calendar.getBookingId(), false);
+            } else {
+                calendar.setStatus(RoomCalendar.RoomCalendarStatus.AVAILABLE);
+            }
+            roomCalendarRepository.save(calendar);
+        }
+
+        log.info("Unmarked maintenance: room={}, checkIn={}, checkOut={}", roomListingId, checkIn, checkOut);
+    }
+
+    private void flagBookingUnderMaintenance(final UUID bookingId, final boolean underMaintenance) {
+        bookingRepository.findById(bookingId).ifPresent(booking -> {
+            Map<String, Object> flags = booking.getStatusFlags() != null
+                    ? new HashMap<>(booking.getStatusFlags()) : new HashMap<>();
+            if (underMaintenance) {
+                flags.put(MAINTENANCE_FLAG, true);
+            } else {
+                flags.remove(MAINTENANCE_FLAG);
+            }
+            booking.setStatusFlags(flags);
+            bookingRepository.save(booking);
+        });
     }
 
     /**

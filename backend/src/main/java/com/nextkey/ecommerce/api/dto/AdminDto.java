@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.api.dto;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -324,6 +325,27 @@ public class AdminDto {
         private int size;
         private long totalElements;
         private int totalPages;
+    }
+
+    // ========== MAINTENANCE Warnings（PRD §5.5.3，M09 通知系統上線前的替代方案）==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MaintenanceWarningResponse {
+        private UUID bookingId;
+        private LocalDate checkInDate;
+        private String guestEmail;
+        private boolean urgent;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MaintenanceWarningListResponse {
+        private List<MaintenanceWarningResponse> warnings;
     }
 
     @Data

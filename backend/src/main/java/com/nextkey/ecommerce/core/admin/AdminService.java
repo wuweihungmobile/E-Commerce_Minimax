@@ -2,8 +2,10 @@ package com.nextkey.ecommerce.core.admin;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -21,12 +23,15 @@ import com.nextkey.ecommerce.api.dto.AdminDto;
 import com.nextkey.ecommerce.domain.model.audit.AuditLog;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.model.user.User;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.PurchaseOrderRepository;
+import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
@@ -54,6 +59,8 @@ public class AdminService {
     private final OrderRepository orderRepository;
     private final AuditLogRepository auditLogRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
+    private final BookingRepository bookingRepository;
+    private final RoomCalendarRepository roomCalendarRepository;
 
     /**
      * 記錄一筆管理操作稽核（DEF-016）。持久化到 audit_log，與既有 log.info 並存。
@@ -721,6 +728,46 @@ public class AdminService {
                 .version("1.0.0")
                 .environment("production")
                 .settings(settings)
+                .build();
+    }
+
+    // ========== MAINTENANCE Warnings（PRD §5.5.3，v0.9_R02_Loop_02 Q-LO2-106）==========
+
+    private static final int MAINTENANCE_URGENT_WINDOW_DAYS = 1;
+
+    /**
+     * MaintenanceWarnings 列表：M09（通知系統，Phase 2）上線前的替代方案，
+     * 供 Admin 人工通知受 MAINTENANCE 影響的房客（TC-LO2-M17-003）。
+     * 入住日期在今日或明日（近似 24 小時內，Booking 僅有日期粒度無精確時刻）視為緊急。
+     */
+    @Transactional(readOnly = true)
+    public AdminDto.MaintenanceWarningListResponse getMaintenanceWarnings() {
+        List<RoomCalendar> maintenanceCalendars = roomCalendarRepository
+                .findByStatusAndBookingIdIsNotNull(RoomCalendar.RoomCalendarStatus.MAINTENANCE);
+
+        List<UUID> bookingIds = maintenanceCalendars.stream()
+                .map(RoomCalendar::getBookingId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        if (bookingIds.isEmpty()) {
+            return AdminDto.MaintenanceWarningListResponse.builder().warnings(List.of()).build();
+        }
+
+        LocalDate urgentCutoff = LocalDate.now().plusDays(MAINTENANCE_URGENT_WINDOW_DAYS);
+
+        List<AdminDto.MaintenanceWarningResponse> warnings = bookingRepository.findAllById(bookingIds).stream()
+                .map(booking -> AdminDto.MaintenanceWarningResponse.builder()
+                        .bookingId(booking.getId())
+                        .checkInDate(booking.getCheckInDate())
+                        .guestEmail(booking.getGuestEmail())
+                        .urgent(!booking.getCheckInDate().isAfter(urgentCutoff))
+                        .build())
+                .sorted(Comparator.comparing(AdminDto.MaintenanceWarningResponse::getCheckInDate))
+                .collect(Collectors.toList());
+
+        return AdminDto.MaintenanceWarningListResponse.builder()
+                .warnings(warnings)
                 .build();
     }
 

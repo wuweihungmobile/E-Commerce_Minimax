@@ -245,6 +245,19 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
+    // ========== MAINTENANCE Warnings（PRD §5.5.3，Sprint 96） ==========
+
+    /**
+     * MaintenanceWarnings 列表：顯示所有受 MAINTENANCE 狀態影響的 Booking，供 Admin 人工通知房客
+     * （M09 通知系統上線前的替代方案，TC-LO2-M17-003）。
+     */
+    @GetMapping("/maintenance-warnings")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.MaintenanceWarningListResponse>> getMaintenanceWarnings() {
+        AdminDto.MaintenanceWarningListResponse response = adminService.getMaintenanceWarnings();
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
     // ========== Audit Log（Sprint 61 US-001，DEF-016 後續） ==========
 
     /**

@@ -67,4 +67,6 @@ public interface RoomCalendarRepository extends JpaRepository<RoomCalendar, UUID
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate,
             @Param("status") RoomCalendar.RoomCalendarStatus status);
+
+    List<RoomCalendar> findByStatusAndBookingIdIsNotNull(RoomCalendar.RoomCalendarStatus status);
 }

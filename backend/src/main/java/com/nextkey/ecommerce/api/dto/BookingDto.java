@@ -146,6 +146,20 @@ public class BookingDto {
         private String priceAdjustmentType;
     }
 
+    // ========== Maintenance Request（PRD §5.5.3）==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MaintenanceRequest {
+        @NotNull(message = "Start date is required")
+        private LocalDate startDate;
+
+        @NotNull(message = "End date is required")
+        private LocalDate endDate;
+    }
+
     // ========== Availability Request ==========
 
     @Data

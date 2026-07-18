@@ -358,4 +358,90 @@ class M12PricingIntegrationTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.priceType").value("MANUAL"));
     }
+
+    // ── IT-M12-009 ~ 012: 定價規則建立限制與衝突檢核（PRD §5.5.1 / Sprint 95） ──
+
+    @Test
+    @DisplayName("IT-M12-009: 建立規則-已達 50 條上限 → 400 E-4001")
+    void createRule_ruleLimitExceeded_returns400() throws Exception {
+        List<PricingRule> fiftyRules = new java.util.ArrayList<>();
+        for (int i = 0; i < 50; i++) {
+            fiftyRules.add(buildMockPricingRule(UUID.randomUUID(),
+                    PricingDto.PricingRuleType.SEASONAL, "Existing Rule " + i));
+        }
+        when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID)).thenReturn(fiftyRules);
+
+        mockMvc.perform(post(BASE_URL + "/rules")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildValidCreateRuleRequest())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("E-4001"));
+
+        verify(pricingRuleRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("IT-M12-010: 建立規則-同類型時間重疊未確認覆蓋 → 400 E-4001")
+    void createRule_overlappingSameTypeWithoutConfirm_returns400() throws Exception {
+        PricingRule existing = buildMockPricingRule(UUID.randomUUID(),
+                PricingDto.PricingRuleType.WEEKDAY_WEEKEND, "Existing Weekend Rule");
+
+        when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID))
+                .thenReturn(List.of(existing));
+
+        mockMvc.perform(post(BASE_URL + "/rules")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildValidCreateRuleRequest())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("E-4001"));
+
+        verify(pricingRuleRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("IT-M12-011: 建立規則-確認覆蓋後成功建立，舊規則軟刪除")
+    void createRule_confirmOverride_returns201AndSoftDeletesOld() throws Exception {
+        PricingRule existing = buildMockPricingRule(UUID.randomUUID(),
+                PricingDto.PricingRuleType.WEEKDAY_WEEKEND, "Existing Weekend Rule");
+
+        when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID))
+                .thenReturn(List.of(existing));
+        when(pricingRuleRepository.save(any(PricingRule.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        PricingDto.CreateRuleRequest request = PricingDto.CreateRuleRequest.builder()
+                .roomListingId(ROOM_LISTING_ID)
+                .ruleType(PricingDto.PricingRuleType.WEEKDAY_WEEKEND)
+                .ruleName("New Weekend Rule")
+                .priority(5)
+                .config(Map.of("weekendMultiplier", 1.3))
+                .validFrom(LocalDate.now())
+                .validTo(LocalDate.now().plusYears(1))
+                .confirmOverride(true)
+                .build();
+
+        mockMvc.perform(post(BASE_URL + "/rules")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true));
+
+        org.assertj.core.api.Assertions.assertThat(existing.getIsActive()).isFalse();
+        verify(pricingRuleRepository, times(2)).save(any());
+    }
+
+    @Test
+    @DisplayName("IT-M12-012: 定價日曆預覽-過去日期 → 400 E-4001")
+    void getCalendarPreview_pastStartDate_returns400() throws Exception {
+        mockMvc.perform(get(BASE_URL + "/calendar")
+                        .param("roomListingId", ROOM_LISTING_ID.toString())
+                        .param("startDate", LocalDate.now().minusDays(5).toString())
+                        .param("endDate", LocalDate.now().plusDays(5).toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("E-4001"));
+    }
 }

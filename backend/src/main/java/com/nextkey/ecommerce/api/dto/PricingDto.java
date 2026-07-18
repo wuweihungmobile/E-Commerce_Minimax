@@ -46,6 +46,12 @@ public class PricingDto {
         private LocalDate validTo;
 
         private Boolean isActive;
+
+        /**
+         * 同類型規則時間重疊時，是否確認覆蓋現有 active 規則（PRD §5.5.1）。
+         * 預設 false/null：重疊時拒絕（E-4001），需房東明確確認才軟刪除舊規則。
+         */
+        private Boolean confirmOverride;
     }
 
     @Data

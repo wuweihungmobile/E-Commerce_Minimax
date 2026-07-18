@@ -1,12 +1,15 @@
 package com.nextkey.ecommerce.core.pricing;
 
 import com.nextkey.ecommerce.api.dto.PricingDto;
+import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.PricingRule;
 import com.nextkey.ecommerce.domain.model.room.Room;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.PricingRuleRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
+import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -20,6 +23,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.temporal.TemporalAdjusters;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +55,9 @@ class PricingServiceTest {
 
     @Mock
     private ListingRepository listingRepository;
+
+    @Mock
+    private FeatureToggleService featureToggleService;
 
     @InjectMocks
     private PricingService pricingService;
@@ -650,6 +657,121 @@ class PricingServiceTest {
 
             assertThat(resp.getAppliedRuleType()).isEqualTo("SEASONAL");
             assertThat(resp.getEffectivePrice()).isEqualByComparingTo(BigDecimal.valueOf(1500)); // 1000×1.5（後建立者）
+        }
+    }
+
+    @Nested
+    @DisplayName("UT-M12-020 ~ UT-M12-023: 定價規則建立限制與衝突檢核（PRD §5.5.1 / TC-LO2-M12 / TC-PR）")
+    class RuleCreationLimitAndConflictTests {
+
+        private PricingDto.CreateRuleRequest.CreateRuleRequestBuilder baseRequest() {
+            return PricingDto.CreateRuleRequest.builder()
+                    .roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingDto.PricingRuleType.WEEKDAY_WEEKEND)
+                    .ruleName("New Weekend Rule")
+                    .config(Map.of("weekendMultiplier", 1.3))
+                    .validFrom(LocalDate.of(2026, 6, 1))
+                    .validTo(LocalDate.of(2026, 8, 31));
+        }
+
+        @Test
+        @DisplayName("TC-LO2-M12-001: 已有 50 條 active 規則時建立第 51 條 → E-4001 RULE_LIMIT_EXCEEDED")
+        void createRule_ruleLimitExceeded_throwsE4001() {
+            List<PricingRule> fiftyRules = new ArrayList<>();
+            for (int i = 0; i < 50; i++) {
+                fiftyRules.add(PricingRule.builder()
+                        .id(UUID.randomUUID())
+                        .roomListingId(ROOM_LISTING_ID)
+                        .ruleType(PricingRule.PricingRuleType.SEASONAL)
+                        .isActive(true)
+                        .validFrom(LocalDate.of(2020, 1, 1))
+                        .validTo(LocalDate.of(2020, 1, 2))
+                        .build());
+            }
+            when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID))
+                    .thenReturn(fiftyRules);
+
+            PricingDto.CreateRuleRequest request = baseRequest().build();
+
+            assertThatThrownBy(() -> pricingService.createRule(request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_4001);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("TC-PR-003/TC-LO2-M12-002: 同類型規則時間重疊且未確認覆蓋 → E-4001 拒絕，舊規則不受影響")
+        void createRule_overlappingSameTypeWithoutConfirm_throwsE4001() {
+            PricingRule existing = PricingRule.builder()
+                    .id(UUID.randomUUID())
+                    .roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.WEEKDAY_WEEKEND)
+                    .isActive(true)
+                    .validFrom(LocalDate.of(2026, 1, 1))
+                    .validTo(LocalDate.of(2026, 12, 31))
+                    .build();
+            when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID))
+                    .thenReturn(List.of(existing));
+
+            PricingDto.CreateRuleRequest request = baseRequest().build();
+
+            assertThatThrownBy(() -> pricingService.createRule(request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_4001);
+
+            assertThat(existing.getIsActive()).isTrue();
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("TC-PR-001/002: 確認覆蓋後，重疊的舊規則軟刪除，新規則寫入為 active")
+        void createRule_overlappingSameTypeWithConfirm_softDeletesOldAndCreatesNew() {
+            PricingRule existing = PricingRule.builder()
+                    .id(UUID.randomUUID())
+                    .roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.WEEKDAY_WEEKEND)
+                    .isActive(true)
+                    .validFrom(LocalDate.of(2026, 1, 1))
+                    .validTo(LocalDate.of(2026, 12, 31))
+                    .build();
+            when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID))
+                    .thenReturn(List.of(existing));
+            when(pricingRuleRepository.save(any(PricingRule.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            PricingDto.CreateRuleRequest request = baseRequest().confirmOverride(true).build();
+
+            PricingDto.RuleResponse response = pricingService.createRule(request);
+
+            assertThat(existing.getIsActive()).isFalse();
+            assertThat(response.getIsActive()).isTrue();
+            verify(pricingRuleRepository, times(2)).save(any());
+        }
+
+        @Test
+        @DisplayName("TC-PR-004 前置：不重疊的同類型規則各自有效期間，不需確認即可共存")
+        void createRule_nonOverlappingSameType_doesNotRequireConfirm() {
+            PricingRule existing = PricingRule.builder()
+                    .id(UUID.randomUUID())
+                    .roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.WEEKDAY_WEEKEND)
+                    .isActive(true)
+                    .validFrom(LocalDate.of(2025, 1, 1))
+                    .validTo(LocalDate.of(2025, 12, 31))
+                    .build();
+            when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID))
+                    .thenReturn(List.of(existing));
+            when(pricingRuleRepository.save(any(PricingRule.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            PricingDto.CreateRuleRequest request = baseRequest().build();
+
+            PricingDto.RuleResponse response = pricingService.createRule(request);
+
+            assertThat(existing.getIsActive()).isTrue();
+            assertThat(response.getIsActive()).isTrue();
+            verify(pricingRuleRepository, times(1)).save(any());
         }
     }
 

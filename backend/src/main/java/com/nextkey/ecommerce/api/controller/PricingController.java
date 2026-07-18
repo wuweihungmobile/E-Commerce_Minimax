@@ -27,6 +27,8 @@ import com.nextkey.ecommerce.api.dto.PricingDto;
 import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.core.booking.BookingService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
+import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -122,6 +124,9 @@ public class PricingController {
             @RequestParam UUID roomListingId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        if (startDate.isBefore(LocalDate.now())) {
+            throw new BusinessException(ErrorCode.E_4001, "定價預覽不支援過去日期");
+        }
         boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
         List<BookingDto.CalendarResponse> response =
                 bookingService.getCalendarForOwner(roomListingId, startDate, endDate, isSuperAdmin);

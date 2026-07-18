@@ -50,6 +50,9 @@ public class PricingService {
 
     private static final double TAX_RATE = 1.2;
 
+    /** PRD §5.5.1：每個 room_listing_id 最多 50 條 is_active=true 的定價規則。 */
+    private static final int MAX_ACTIVE_RULES_PER_ROOM = 50;
+
     /**
      * 建立定價規則
      */
@@ -60,6 +63,7 @@ public class PricingService {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         validateRuleRequest(request);
+        enforceRuleLimitAndConflict(request);
 
         PricingRule rule = PricingRule.builder()
                 .tenantId(tenantId)
@@ -359,6 +363,43 @@ public class PricingService {
     private void validateRuleRequest(PricingDto.CreateRuleRequest request) {
         if (request.getValidTo().isBefore(request.getValidFrom())) {
             throw new BusinessException(ErrorCode.E_4003, "Valid to date must be after valid from date");
+        }
+    }
+
+    /**
+     * PRD §5.5.1：50 條上限、同類型時間重疊衝突檢核與覆蓋。
+     * 房東確認覆蓋（confirmOverride=true）時，僅軟刪除與新規則時間範圍重疊的同類型舊規則，
+     * 不重疊的同類型規則（不同期間各自有效）予以保留。
+     */
+    private void enforceRuleLimitAndConflict(PricingDto.CreateRuleRequest request) {
+        List<PricingRule> activeRules = pricingRuleRepository
+                .findByRoomListingIdAndIsActiveTrue(request.getRoomListingId());
+
+        if (activeRules.size() >= MAX_ACTIVE_RULES_PER_ROOM) {
+            throw new BusinessException(ErrorCode.E_4001,
+                    "每間房的定價規則上限為 50 條，請先停用舊規則後再新增");
+        }
+
+        PricingRule.PricingRuleType ruleType = PricingRule.PricingRuleType.valueOf(request.getRuleType().name());
+        List<PricingRule> overlappingSameType = activeRules.stream()
+                .filter(r -> r.getRuleType() == ruleType)
+                .filter(r -> !r.getValidFrom().isAfter(request.getValidTo())
+                        && !r.getValidTo().isBefore(request.getValidFrom()))
+                .collect(Collectors.toList());
+
+        if (overlappingSameType.isEmpty()) {
+            return;
+        }
+
+        if (!Boolean.TRUE.equals(request.getConfirmOverride())) {
+            throw new BusinessException(ErrorCode.E_4001,
+                    "新規則與現有同類型規則時間範圍重疊，請先編輯現有規則的有效期間");
+        }
+
+        for (PricingRule old : overlappingSameType) {
+            old.setIsActive(false);
+            pricingRuleRepository.save(old);
+            log.info("Overridden pricing rule soft-deleted: ruleId={}, type={}", old.getId(), old.getRuleType());
         }
     }
 

@@ -4,8 +4,10 @@ import com.nextkey.ecommerce.api.dto.*;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantApplication;
 import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
+import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.*;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
@@ -310,5 +312,189 @@ class TenantServiceTest {
         assertEquals(new BigDecimal("5000.00"), response.getPurchaseOrderApprovalThreshold()); // Sprint 89: 已設定門檻須可見
         assertNotNull(response.getMember());                                    // Should have member info
         assertEquals("Store Owner", response.getMember().getDisplayName());
+    }
+
+    // ── 邀請確認制成員管理（PRD §7.4/§8.2.3/§9.11，Sprint 98）──────────────────
+
+    @Nested
+    @DisplayName("邀請確認制成員管理（inviteMember / acceptInvite / declineInvite）")
+    class MemberInviteTests {
+
+        private static final UUID OWNER_ID = UUID.fromString("550e8400-e29b-41d4-a716-446655440020");
+        private static final UUID INVITEE_ID = UUID.fromString("550e8400-e29b-41d4-a716-446655440021");
+
+        @BeforeEach
+        void setUp() {
+            TenantContext.setCurrentUser(OWNER_ID);
+        }
+
+        @AfterEach
+        void tearDown() {
+            TenantContext.clear();
+        }
+
+        private User buildInvitee() {
+            return User.builder().id(INVITEE_ID).fullName("Invitee").email("invitee@example.com").build();
+        }
+
+        @Test
+        @DisplayName("inviteMember：成功建立 INVITED 狀態的成員紀錄")
+        void inviteMember_success_createsInvitedRecord() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(buildInvitee()));
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.empty());
+            when(tenantMemberRepository.save(any(TenantMember.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            TenantMemberResponse response = tenantService.inviteMember(TEST_TENANT_ID, INVITEE_ID, "STORE_STAFF", OWNER_ID);
+
+            assertEquals("INVITED", response.getStatus());
+            assertNull(response.getJoinedAt());
+            verify(tenantMemberRepository).save(argThat(m ->
+                    m.getStatus() == TenantMember.MemberStatus.INVITED
+                            && m.getStoreRole() == TenantMember.StoreRole.STORE_STAFF));
+        }
+
+        @Test
+        @DisplayName("inviteMember：非 StoreOwner 呼叫 → E_4031")
+        void inviteMember_notOwner_throwsE4031() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(false);
+
+            assertThrows(BusinessException.class,
+                    () -> tenantService.inviteMember(TEST_TENANT_ID, INVITEE_ID, "STORE_STAFF", OWNER_ID));
+            verify(tenantMemberRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("inviteMember：對象已是 ACTIVE 成員 → E_4092")
+        void inviteMember_alreadyActiveMember_throwsE4092() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(buildInvitee()));
+            TenantMember activeMember = TenantMember.builder()
+                    .tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.ACTIVE).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(activeMember));
+
+            assertThrows(BusinessException.class,
+                    () -> tenantService.inviteMember(TEST_TENANT_ID, INVITEE_ID, "STORE_STAFF", OWNER_ID));
+            verify(tenantMemberRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("inviteMember：對象曾被移除（REMOVED）→ 更新既有紀錄重新邀請，而非新增")
+        void inviteMember_previouslyRemoved_reusesExistingRecord() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(buildInvitee()));
+            UUID existingId = UUID.randomUUID();
+            TenantMember removedMember = TenantMember.builder()
+                    .id(existingId).tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.REMOVED).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(removedMember));
+            when(tenantMemberRepository.save(any(TenantMember.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            tenantService.inviteMember(TEST_TENANT_ID, INVITEE_ID, "STORE_STAFF", OWNER_ID);
+
+            verify(tenantMemberRepository).save(argThat(m ->
+                    existingId.equals(m.getId()) && m.getStatus() == TenantMember.MemberStatus.INVITED));
+        }
+
+        @Test
+        @DisplayName("inviteMember：邀請角色為 STORE_OWNER → 拒絕")
+        void inviteMember_roleStoreOwner_rejected() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(buildInvitee()));
+
+            assertThrows(BusinessException.class,
+                    () -> tenantService.inviteMember(TEST_TENANT_ID, INVITEE_ID, "STORE_OWNER", OWNER_ID));
+            verify(tenantMemberRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("acceptInvite：成功接受 → 狀態轉為 ACTIVE 並填入 joinedAt")
+        void acceptInvite_success_activatesMembership() {
+            TenantContext.setCurrentUser(INVITEE_ID);
+            TenantMember invited = TenantMember.builder()
+                    .tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.INVITED).storeRole(TenantMember.StoreRole.STORE_STAFF).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(invited));
+            when(tenantMemberRepository.save(any(TenantMember.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(buildInvitee()));
+
+            TenantMemberResponse response = tenantService.acceptInvite(TEST_TENANT_ID);
+
+            assertEquals("ACTIVE", response.getStatus());
+            assertNotNull(response.getJoinedAt());
+        }
+
+        @Test
+        @DisplayName("acceptInvite：找不到邀請 → E_2002")
+        void acceptInvite_noInvite_throwsE2002() {
+            TenantContext.setCurrentUser(INVITEE_ID);
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.empty());
+
+            assertThrows(BusinessException.class, () -> tenantService.acceptInvite(TEST_TENANT_ID));
+        }
+
+        @Test
+        @DisplayName("declineInvite：成功拒絕 → 狀態轉為 REMOVED")
+        void declineInvite_success_marksRemoved() {
+            TenantContext.setCurrentUser(INVITEE_ID);
+            TenantMember invited = TenantMember.builder()
+                    .tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.INVITED).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(invited));
+            when(tenantMemberRepository.save(any(TenantMember.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            tenantService.declineInvite(TEST_TENANT_ID);
+
+            verify(tenantMemberRepository).save(argThat(m -> m.getStatus() == TenantMember.MemberStatus.REMOVED));
+        }
+
+        @Test
+        @DisplayName("getMyPendingInvites：回傳目前使用者所有待確認邀請")
+        void getMyPendingInvites_returnsInvites() {
+            TenantContext.setCurrentUser(INVITEE_ID);
+            TenantMember invited = TenantMember.builder()
+                    .id(UUID.randomUUID()).tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.INVITED).storeRole(TenantMember.StoreRole.STORE_STAFF)
+                    .invitedAt(Instant.now()).build();
+            when(tenantMemberRepository.findByUserIdAndStatus(INVITEE_ID, TenantMember.MemberStatus.INVITED))
+                    .thenReturn(List.of(invited));
+            when(tenantRepository.findById(TEST_TENANT_ID))
+                    .thenReturn(Optional.of(Tenant.builder().id(TEST_TENANT_ID).name("測試店鋪").build()));
+
+            List<TenantInviteResponse> invites = tenantService.getMyPendingInvites();
+
+            assertEquals(1, invites.size());
+            assertEquals("測試店鋪", invites.get(0).getTenantName());
+        }
+
+        @Test
+        @DisplayName("removeMember：軟刪除，狀態轉為 REMOVED（保留紀錄而非硬刪除）")
+        void removeMember_success_softDeletes() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            TenantMember activeMember = TenantMember.builder()
+                    .tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.ACTIVE).storeRole(TenantMember.StoreRole.STORE_STAFF).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(activeMember));
+            when(tenantMemberRepository.save(any(TenantMember.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            tenantService.removeMember(TEST_TENANT_ID, INVITEE_ID);
+
+            verify(tenantMemberRepository).save(argThat(m -> m.getStatus() == TenantMember.MemberStatus.REMOVED));
+            verify(tenantMemberRepository, never()).delete(any());
+        }
     }
 }

@@ -922,6 +922,12 @@ class AdminServiceTest {
                     Tenant.builder().id(inv.getArgument(0)).build()));
             when(tenantApplicationRepository.save(any(TenantApplication.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
+            com.nextkey.ecommerce.domain.model.user.User applicantUser =
+                    com.nextkey.ecommerce.domain.model.user.User.builder()
+                            .id(APPLICANT_USER_ID)
+                            .role(com.nextkey.ecommerce.domain.model.user.User.UserRole.BUYER)
+                            .build();
+            when(userRepository.findById(APPLICANT_USER_ID)).thenReturn(Optional.of(applicantUser));
 
             AdminDto.TenantApplicationApproveResponse response =
                     adminService.approveTenantApplication(APPLICATION_ID, REVIEWER_ID);
@@ -934,6 +940,8 @@ class AdminServiceTest {
             verify(tenantMemberRepository).save(argThat(m ->
                     m.getStoreRole() == TenantMember.StoreRole.STORE_OWNER
                             && APPLICANT_USER_ID.equals(m.getUserId())));
+            verify(userRepository).save(argThat(u ->
+                    u.getRole() == com.nextkey.ecommerce.domain.model.user.User.UserRole.STORE_OWNER));
             verify(tenantApplicationRepository).save(argThat(a ->
                     a.getStatus() == TenantApplication.ApplicationStatus.APPROVED
                             && a.getReviewedBy().equals(REVIEWER_ID)

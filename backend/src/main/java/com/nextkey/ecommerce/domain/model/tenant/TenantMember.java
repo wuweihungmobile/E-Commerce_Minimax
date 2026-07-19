@@ -46,12 +46,24 @@ public class TenantMember {
     @Column(name = "invited_by")
     private UUID invitedBy;
 
+    @Column(name = "invited_at")
+    private Instant invitedAt;
+
     @Column(name = "joined_at")
     private Instant joinedAt;
 
+    /** PRD §8.2.3：INVITED（待被邀請人確認）/ ACTIVE（已加入）/ REMOVED（已移除或已拒絕邀請）。 */
+    @Column(name = "status", nullable = false)
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private MemberStatus status = MemberStatus.ACTIVE;
+
     @PrePersist
     protected void onCreate() {
-        if (joinedAt == null) {
+        if (invitedAt == null) {
+            invitedAt = Instant.now();
+        }
+        if (status == MemberStatus.ACTIVE && joinedAt == null) {
             joinedAt = Instant.now();
         }
     }
@@ -60,5 +72,11 @@ public class TenantMember {
         STORE_OWNER,
         STORE_STAFF,
         STORE_MANAGER
+    }
+
+    public enum MemberStatus {
+        INVITED,
+        ACTIVE,
+        REMOVED
     }
 }

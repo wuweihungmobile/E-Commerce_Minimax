@@ -17,6 +17,7 @@ import com.nextkey.ecommerce.api.dto.FeatureToggleUpdateResponse;
 import com.nextkey.ecommerce.api.dto.TenantApplicationRequest;
 import com.nextkey.ecommerce.api.dto.TenantApplicationResponse;
 import com.nextkey.ecommerce.api.dto.TenantDetailsResponse;
+import com.nextkey.ecommerce.api.dto.TenantInviteResponse;
 import com.nextkey.ecommerce.api.dto.TenantListResponse;
 import com.nextkey.ecommerce.api.dto.TenantMemberResponse;
 import com.nextkey.ecommerce.api.dto.TenantUpdateRequest;
@@ -485,7 +486,7 @@ public class TenantService {
     }
 
     /**
-     * US-M17-006: Get members of a tenant
+     * US-M17-006: Get members of a tenant（含待確認邀請，狀態見 status 欄位；已移除者不回傳）
      */
     @Transactional(readOnly = true)
     public List<TenantMemberResponse> getTenantMembers(final UUID tenantId) {
@@ -499,7 +500,8 @@ public class TenantService {
             throw new BusinessException(ErrorCode.E_4031, "Not authorized to view this store's members");
         }
 
-        List<TenantMember> members = tenantMemberRepository.findByTenantId(tenantId);
+        List<TenantMember> members = tenantMemberRepository.findByTenantIdAndStatusNot(
+                tenantId, TenantMember.MemberStatus.REMOVED);
         List<TenantMemberResponse> responseList = new ArrayList<>();
 
         for (TenantMember member : members) {
@@ -507,62 +509,156 @@ public class TenantService {
             if (user == null) {
                 continue;
             }
-
-            responseList.add(TenantMemberResponse.builder()
-                    .userId(member.getUserId().toString())
-                    .displayName(user.getFullName())
-                    .email(user.getEmail())
-                    .avatarUrl(user.getAvatarUrl())
-                    .role(member.getStoreRole().name())
-                    .joinedAt(member.getJoinedAt())
-                    .build());
+            responseList.add(toMemberResponse(member, user));
         }
 
         return responseList;
     }
 
     /**
-     * US-M17-006: Add member to tenant (Phase 1 - direct add, no email invite)
+     * PRD §7.4/§9.11 邀請成員加入店鋪：建立 status=INVITED 的成員紀錄，需被邀請人呼叫
+     * {@link #acceptInvite} 確認後才真正生效（ACTIVE）。若曾被移除/拒絕過（REMOVED），
+     * 更新既有紀錄而非新增（{@code (tenant_id, user_id)} 有 UNIQUE 約束）。
      */
     @Transactional
-    public TenantMemberResponse addMember(final UUID tenantId, final UUID userId, final UUID invitedBy) {
-        // Verify current user is StoreOwner of this tenant
+    public TenantMemberResponse inviteMember(final UUID tenantId, final UUID userId, final String requestedRole,
+                                              final UUID invitedBy) {
         UUID currentUserId = TenantContext.getCurrentUser();
         if (currentUserId == null) {
             throw new BusinessException(ErrorCode.E_1000);
         }
 
         if (!tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(tenantId, currentUserId, TenantMember.StoreRole.STORE_OWNER)) {
-            throw new BusinessException(ErrorCode.E_4031, "Not authorized to add members");
+            throw new BusinessException(ErrorCode.E_4031, "Not authorized to invite members");
         }
 
-        // Check if user is already a member
-        if (tenantMemberRepository.existsByTenantIdAndUserId(tenantId, userId)) {
-            throw new BusinessException(ErrorCode.E_4092, "User is already a member of this store");
-        }
-
-        // Verify the user exists
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2001, "User not found"));
 
-        // Create member record
-        TenantMember member = TenantMember.builder()
-                .tenantId(tenantId)
-                .userId(userId)
-                .storeRole(TenantMember.StoreRole.STORE_STAFF)  // Default role for new members
-                .invitedBy(invitedBy)
-                .joinedAt(Instant.now())
-                .build();
+        TenantMember.StoreRole storeRole = parseInviteRole(requestedRole);
+
+        Optional<TenantMember> existing = tenantMemberRepository.findByTenantIdAndUserId(tenantId, userId);
+        TenantMember member;
+        if (existing.isPresent()) {
+            member = existing.get();
+            if (member.getStatus() != TenantMember.MemberStatus.REMOVED) {
+                throw new BusinessException(ErrorCode.E_4092, "User is already a member or has a pending invite");
+            }
+            member.setStatus(TenantMember.MemberStatus.INVITED);
+            member.setStoreRole(storeRole);
+            member.setInvitedBy(invitedBy);
+            member.setInvitedAt(Instant.now());
+            member.setJoinedAt(null);
+        } else {
+            member = TenantMember.builder()
+                    .tenantId(tenantId)
+                    .userId(userId)
+                    .storeRole(storeRole)
+                    .status(TenantMember.MemberStatus.INVITED)
+                    .invitedBy(invitedBy)
+                    .build();
+        }
 
         member = tenantMemberRepository.save(member);
-        log.info("Member added to tenant: tenantId={}, userId={}, addedBy={}", tenantId, userId, invitedBy);
+        log.info("Member invited to tenant: tenantId={}, userId={}, role={}, invitedBy={}",
+                tenantId, userId, storeRole, invitedBy);
 
+        return toMemberResponse(member, user);
+    }
+
+    /**
+     * 被邀請人接受邀請 → 狀態轉為 ACTIVE，正式成為店鋪成員。
+     */
+    @Transactional
+    public TenantMemberResponse acceptInvite(final UUID tenantId) {
+        UUID currentUserId = TenantContext.getCurrentUser();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.E_1000);
+        }
+
+        TenantMember member = tenantMemberRepository.findByTenantIdAndUserId(tenantId, currentUserId)
+                .filter(m -> m.getStatus() == TenantMember.MemberStatus.INVITED)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2002, "Invite not found"));
+
+        member.setStatus(TenantMember.MemberStatus.ACTIVE);
+        member.setJoinedAt(Instant.now());
+        member = tenantMemberRepository.save(member);
+        log.info("Member accepted invite: tenantId={}, userId={}", tenantId, currentUserId);
+
+        User user = userRepository.findById(currentUserId).orElse(null);
+        return toMemberResponse(member, user);
+    }
+
+    /**
+     * 被邀請人拒絕邀請 → 軟刪除（狀態轉為 REMOVED），保留紀錄供未來重新邀請時更新同一列。
+     */
+    @Transactional
+    public void declineInvite(final UUID tenantId) {
+        UUID currentUserId = TenantContext.getCurrentUser();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.E_1000);
+        }
+
+        TenantMember member = tenantMemberRepository.findByTenantIdAndUserId(tenantId, currentUserId)
+                .filter(m -> m.getStatus() == TenantMember.MemberStatus.INVITED)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2002, "Invite not found"));
+
+        member.setStatus(TenantMember.MemberStatus.REMOVED);
+        tenantMemberRepository.save(member);
+        log.info("Member declined invite: tenantId={}, userId={}", tenantId, currentUserId);
+    }
+
+    /**
+     * 我的待確認邀請列表（跨租戶）。
+     */
+    @Transactional(readOnly = true)
+    public List<TenantInviteResponse> getMyPendingInvites() {
+        UUID currentUserId = TenantContext.getCurrentUser();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.E_1000);
+        }
+
+        List<TenantMember> invites = tenantMemberRepository.findByUserIdAndStatus(
+                currentUserId, TenantMember.MemberStatus.INVITED);
+
+        List<TenantInviteResponse> responseList = new ArrayList<>();
+        for (TenantMember member : invites) {
+            Tenant tenant = tenantRepository.findById(member.getTenantId()).orElse(null);
+            responseList.add(TenantInviteResponse.builder()
+                    .memberId(member.getId().toString())
+                    .tenantId(member.getTenantId().toString())
+                    .tenantName(tenant != null ? tenant.getName() : null)
+                    .role(member.getStoreRole().name())
+                    .invitedAt(member.getInvitedAt())
+                    .build());
+        }
+        return responseList;
+    }
+
+    private TenantMember.StoreRole parseInviteRole(final String requestedRole) {
+        if (requestedRole == null || requestedRole.isBlank()) {
+            return TenantMember.StoreRole.STORE_STAFF;
+        }
+        TenantMember.StoreRole storeRole;
+        try {
+            storeRole = TenantMember.StoreRole.valueOf(requestedRole);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.E_1001, "Invalid role: " + requestedRole);
+        }
+        if (storeRole == TenantMember.StoreRole.STORE_OWNER) {
+            throw new BusinessException(ErrorCode.E_1001, "Cannot invite a member as STORE_OWNER");
+        }
+        return storeRole;
+    }
+
+    private TenantMemberResponse toMemberResponse(final TenantMember member, final User user) {
         return TenantMemberResponse.builder()
-                .userId(userId.toString())
-                .displayName(user.getFullName())
-                .email(user.getEmail())
-                .avatarUrl(user.getAvatarUrl())
+                .userId(member.getUserId().toString())
+                .displayName(user != null ? user.getFullName() : "")
+                .email(user != null ? user.getEmail() : "")
+                .avatarUrl(user != null ? user.getAvatarUrl() : null)
                 .role(member.getStoreRole().name())
+                .status(member.getStatus().name())
                 .joinedAt(member.getJoinedAt())
                 .build();
     }
@@ -583,6 +679,7 @@ public class TenantService {
         }
 
         TenantMember member = tenantMemberRepository.findByTenantIdAndUserId(tenantId, userId)
+                .filter(m -> m.getStatus() != TenantMember.MemberStatus.REMOVED)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2002, "Member not found"));
 
         // Parse and validate role
@@ -603,18 +700,11 @@ public class TenantService {
         log.info("Member role updated: tenantId={}, userId={}, newRole={}", tenantId, userId, newRole);
 
         User user = userRepository.findById(userId).orElse(null);
-        return TenantMemberResponse.builder()
-                .userId(userId.toString())
-                .displayName(user != null ? user.getFullName() : "")
-                .email(user != null ? user.getEmail() : "")
-                .avatarUrl(user != null ? user.getAvatarUrl() : null)
-                .role(member.getStoreRole().name())
-                .joinedAt(member.getJoinedAt())
-                .build();
+        return toMemberResponse(member, user);
     }
 
     /**
-     * US-M17-006: Remove member from tenant
+     * US-M17-006: Remove member from tenant（軟刪除：狀態轉為 REMOVED，保留紀錄供未來重新邀請）
      */
     @Transactional
     public void removeMember(final UUID tenantId, final UUID userId) {
@@ -629,6 +719,7 @@ public class TenantService {
         }
 
         TenantMember member = tenantMemberRepository.findByTenantIdAndUserId(tenantId, userId)
+                .filter(m -> m.getStatus() != TenantMember.MemberStatus.REMOVED)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2002, "Member not found"));
 
         // Cannot remove yourself
@@ -641,7 +732,8 @@ public class TenantService {
             throw new BusinessException(ErrorCode.E_4031, "Cannot remove the store owner");
         }
 
-        tenantMemberRepository.delete(member);
+        member.setStatus(TenantMember.MemberStatus.REMOVED);
+        tenantMemberRepository.save(member);
         log.info("Member removed from tenant: tenantId={}, userId={}, removedBy={}", tenantId, userId, currentUserId);
     }
 

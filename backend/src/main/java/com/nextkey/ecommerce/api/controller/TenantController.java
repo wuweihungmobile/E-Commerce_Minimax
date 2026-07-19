@@ -27,6 +27,7 @@ import com.nextkey.ecommerce.api.dto.FeatureToggleUpdateResponse;
 import com.nextkey.ecommerce.api.dto.TenantApplicationRequest;
 import com.nextkey.ecommerce.api.dto.TenantApplicationResponse;
 import com.nextkey.ecommerce.api.dto.TenantDetailsResponse;
+import com.nextkey.ecommerce.api.dto.TenantInviteResponse;
 import com.nextkey.ecommerce.api.dto.TenantListResponse;
 import com.nextkey.ecommerce.api.dto.TenantMemberResponse;
 import com.nextkey.ecommerce.api.dto.TenantUpdateRequest;
@@ -218,20 +219,60 @@ public class TenantController {
     }
 
     /**
-     * US-M17-006: POST /api/v2/tenants/:id/members - Add member (Phase 1)
+     * PRD §9.11: POST /api/v2/tenants/:id/members/invite - Invite member（Sprint 98：
+     * 需被邀請人呼叫 accept 確認後才真正生效，取代先前「直接新增即生效」的 Phase 1 簡化）
      * Role: StoreOwner
      */
-    @PostMapping("/tenants/{id}/members")
+    @PostMapping("/tenants/{id}/members/invite")
     @PreAuthorize("hasAuthority('SCOPE_store:write') or hasAuthority('ROLE_STORE_OWNER') or hasAuthority('ROLE_ADMIN')")
-    public ResponseEntity<ApiResponse<TenantMemberResponse>> addMember(
+    public ResponseEntity<ApiResponse<TenantMemberResponse>> inviteMember(
             @PathVariable UUID id,
             @Valid @RequestBody AddMemberRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
-        log.info("[TenantController] addMember called: tenantId={}, user={}", id, principal.getUserId());
+        log.info("[TenantController] inviteMember called: tenantId={}, user={}", id, principal.getUserId());
 
-        TenantMemberResponse response = tenantService.addMember(id, request.getUserId(), principal.getUserId());
+        TenantMemberResponse response =
+                tenantService.inviteMember(id, request.getUserId(), request.getRole(), principal.getUserId());
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Member added successfully", response));
+                .body(ApiResponse.success("Invitation sent successfully", response));
+    }
+
+    /**
+     * 我的待確認邀請列表（跨租戶，Sprint 98）。
+     */
+    @GetMapping("/tenants/invites/my")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getMyPendingInvites(
+            @AuthenticationPrincipal UserPrincipal principal) {
+        log.info("[TenantController] getMyPendingInvites called: user={}", principal.getUserId());
+
+        List<TenantInviteResponse> invites = tenantService.getMyPendingInvites();
+        return ResponseEntity.ok(ApiResponse.success(Map.of("invites", invites)));
+    }
+
+    /**
+     * 接受邀請 → 正式成為店鋪成員（Sprint 98）。
+     */
+    @PostMapping("/tenants/{id}/members/invite/accept")
+    public ResponseEntity<ApiResponse<TenantMemberResponse>> acceptInvite(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        log.info("[TenantController] acceptInvite called: tenantId={}, user={}", id, principal.getUserId());
+
+        TenantMemberResponse response = tenantService.acceptInvite(id);
+        return ResponseEntity.ok(ApiResponse.success("Invitation accepted", response));
+    }
+
+    /**
+     * 拒絕邀請（Sprint 98）。
+     */
+    @PostMapping("/tenants/{id}/members/invite/decline")
+    public ResponseEntity<ApiResponse<Void>> declineInvite(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        log.info("[TenantController] declineInvite called: tenantId={}, user={}", id, principal.getUserId());
+
+        tenantService.declineInvite(id);
+        return ResponseEntity.ok(ApiResponse.success("Invitation declined", null));
     }
 
     /**

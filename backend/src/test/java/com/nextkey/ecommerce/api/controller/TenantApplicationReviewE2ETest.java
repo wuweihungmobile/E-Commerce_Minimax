@@ -168,6 +168,10 @@ class TenantApplicationReviewE2ETest {
         assertThat(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
                 tenantId, buyerId, TenantMember.StoreRole.STORE_OWNER)).isTrue();
 
+        // 驗證：User.role 已同步更新為 STORE_OWNER（下次登入 JWT 才會真正拿到 StoreOwner 權限）
+        User approvedUser = userRepository.findById(buyerId).orElseThrow();
+        assertThat(approvedUser.getRole()).isEqualTo(User.UserRole.STORE_OWNER);
+
         // 驗證：申請狀態已回填為 APPROVED 並關聯 tenantId
         TenantApplication application = tenantApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow();
         assertThat(application.getStatus()).isEqualTo(TenantApplication.ApplicationStatus.APPROVED);

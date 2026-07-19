@@ -22,5 +22,6 @@ public class TenantMemberResponse {
     private String email;
     private String avatarUrl;
     private String role;         // STORE_OWNER, STORE_STAFF, STORE_MANAGER, etc.
+    private String status;       // INVITED, ACTIVE, REMOVED（PRD §8.2.3，Sprint 98）
     private Instant joinedAt;
 }

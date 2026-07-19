@@ -834,6 +834,14 @@ public class AdminService {
                 .joinedAt(Instant.now())
                 .build());
 
+        // PRD §7.4.1：JWT roles 需包含 StoreOwner，供下次登入/換發 token 時正確授權
+        // （Sprint 97 遺漏：僅建立 tenant_members 紀錄，User.role 從未同步更新，
+        // 導致核准後使用者重新登入仍拿不到 StoreOwner 權限）。
+        userRepository.findById(application.getUserId()).ifPresent(user -> {
+            user.setRole(User.UserRole.STORE_OWNER);
+            userRepository.save(user);
+        });
+
         application.setStatus(TenantApplication.ApplicationStatus.APPROVED);
         application.setTenantId(tenant.getId());
         application.setReviewedAt(Instant.now());

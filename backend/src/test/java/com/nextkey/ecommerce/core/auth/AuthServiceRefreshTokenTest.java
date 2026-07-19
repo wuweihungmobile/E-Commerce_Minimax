@@ -3,7 +3,9 @@ package com.nextkey.ecommerce.core.auth;
 import com.nextkey.ecommerce.api.dto.AuthResponse;
 import com.nextkey.ecommerce.api.dto.RefreshTokenRequest;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.model.user.User;
+import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
@@ -20,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -56,6 +59,9 @@ class AuthServiceRefreshTokenTest {
 
     @Mock
     private RefreshTokenService refreshTokenService;
+
+    @Mock
+    private TenantMemberRepository tenantMemberRepository;
 
     @InjectMocks
     private AuthService authService;
@@ -106,7 +112,7 @@ class AuthServiceRefreshTokenTest {
     }
 
     @Test
-    @DisplayName("refreshToken_validTokenWithNullTenant_usesSystemTenant")
+    @DisplayName("refreshToken_validTokenWithNullTenantAndNoMembership_usesSystemTenant")
     void refreshToken_validTokenWithNullTenant_usesSystemTenant() {
         // Arrange
         RefreshTokenRequest request = RefreshTokenRequest.builder()
@@ -127,6 +133,7 @@ class AuthServiceRefreshTokenTest {
         when(jwtTokenService.isTokenExpired(VALID_REFRESH_TOKEN)).thenReturn(false);
         when(jwtTokenService.getUserId(VALID_REFRESH_TOKEN)).thenReturn(TEST_USER_ID);
         when(userRepository.findById(TEST_USER_ID)).thenReturn(Optional.of(user));
+        when(tenantMemberRepository.findByUserId(TEST_USER_ID)).thenReturn(List.of());
         when(tenantRepository.findById(UUID.fromString(AppConstants.SYSTEM_TENANT_ID)))
                 .thenReturn(Optional.of(systemTenant));
         when(jwtTokenService.generateAccessToken(any(UUID.class), anyString(), anyString(), anyString()))
@@ -141,6 +148,46 @@ class AuthServiceRefreshTokenTest {
         // Assert
         assertThat(response).isNotNull();
         verify(tenantRepository).findById(UUID.fromString(AppConstants.SYSTEM_TENANT_ID));
+    }
+
+    @Test
+    @DisplayName("refreshToken_nullTenantButHasTenantMembership_resolvesFromTenantMember"
+            + "（Sprint 99：比照 login() 補上 tenant_members 查詢，避免誤退化為 SYSTEM_TENANT_ID）")
+    void refreshToken_nullTenantButHasMembership_resolvesFromTenantMember() {
+        // Arrange
+        RefreshTokenRequest request = RefreshTokenRequest.builder()
+                .refreshToken(VALID_REFRESH_TOKEN)
+                .build();
+
+        User user = buildActiveUser(User.UserRole.STORE_OWNER);
+        user.setTenantId(null); // User.tenantId 未同步，但 tenant_members 有正確關聯
+
+        TenantMember membership = TenantMember.builder()
+                .tenantId(TEST_TENANT_ID)
+                .userId(TEST_USER_ID)
+                .storeRole(TenantMember.StoreRole.STORE_OWNER)
+                .build();
+        Tenant tenant = buildTenant();
+
+        when(jwtTokenService.validateToken(VALID_REFRESH_TOKEN)).thenReturn(true);
+        when(jwtTokenService.isTokenExpired(VALID_REFRESH_TOKEN)).thenReturn(false);
+        when(jwtTokenService.getUserId(VALID_REFRESH_TOKEN)).thenReturn(TEST_USER_ID);
+        when(userRepository.findById(TEST_USER_ID)).thenReturn(Optional.of(user));
+        when(tenantMemberRepository.findByUserId(TEST_USER_ID)).thenReturn(List.of(membership));
+        when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(jwtTokenService.generateAccessToken(any(UUID.class), anyString(), anyString(), anyString()))
+                .thenReturn("new-access-token");
+        when(jwtTokenService.generateRefreshToken(any(UUID.class))).thenReturn("new-refresh-token");
+        when(jwtTokenService.getAccessTokenExpiration()).thenReturn(1800L);
+        when(refreshTokenService.isRefreshTokenValid(any(UUID.class), anyString())).thenReturn(true);
+
+        // Act
+        AuthResponse response = authService.refreshToken(request);
+
+        // Assert
+        assertThat(response).isNotNull();
+        verify(tenantRepository).findById(TEST_TENANT_ID);
+        verify(tenantRepository, never()).findById(UUID.fromString(AppConstants.SYSTEM_TENANT_ID));
     }
 
     // ── 無效 Refresh Token ───────────────────────────────────────────

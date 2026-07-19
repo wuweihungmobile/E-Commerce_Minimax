@@ -121,17 +121,7 @@ public class AuthService {
         user.setLastLoginAt(Instant.now());
         userRepository.save(user);
 
-        // Get tenant - try user.tenantId first, then check TenantMember
-        Tenant tenant = null;
-        if (user.getTenantId() != null) {
-            tenant = tenantRepository.findById(user.getTenantId()).orElse(null);
-        } else {
-            // Try to find tenant from TenantMember relationship
-            var members = tenantMemberRepository.findByUserId(user.getId());
-            if (!members.isEmpty()) {
-                tenant = tenantRepository.findById(members.get(0).getTenantId()).orElse(null);
-            }
-        }
+        Tenant tenant = resolveTenantForUser(user);
 
         log.info("User logged in: {}", user.getEmail());
 
@@ -163,13 +153,28 @@ public class AuthService {
             throw new BusinessException(ErrorCode.E_1003, "Refresh token has been revoked");
         }
 
-        Tenant tenant = user.getTenantId() != null
-                ? tenantRepository.findById(user.getTenantId()).orElse(null)
-                : tenantRepository.findById(UUID.fromString(AppConstants.SYSTEM_TENANT_ID)).orElse(null);
+        Tenant tenant = resolveTenantForUser(user);
 
         log.info("Token refreshed for user: {}", user.getEmail());
 
         return generateAuthResponse(user, tenant);
+    }
+
+    /**
+     * 解析使用者所屬租戶：優先採 {@code user.tenantId}，缺失時查詢 {@code tenant_members} 關聯
+     * （比照 login()/refreshToken() 應共用同一套邏輯，PRD §7.4.1 兩者皆為合法的角色/租戶授權來源
+     * ——先前 refreshToken() 未比照 login() 查詢 tenant_members，會誤退化為 SYSTEM_TENANT_ID）。
+     * 皆查無資料時退回 SYSTEM_TENANT_ID（如平台管理員無租戶歸屬）。
+     */
+    private Tenant resolveTenantForUser(final User user) {
+        if (user.getTenantId() != null) {
+            return tenantRepository.findById(user.getTenantId()).orElse(null);
+        }
+        var members = tenantMemberRepository.findByUserId(user.getId());
+        if (!members.isEmpty()) {
+            return tenantRepository.findById(members.get(0).getTenantId()).orElse(null);
+        }
+        return tenantRepository.findById(UUID.fromString(AppConstants.SYSTEM_TENANT_ID)).orElse(null);
     }
 
     private AuthResponse generateAuthResponse(final User user, final Tenant tenant) {

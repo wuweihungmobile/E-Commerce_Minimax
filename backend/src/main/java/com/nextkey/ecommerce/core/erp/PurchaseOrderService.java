@@ -30,6 +30,7 @@ import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
 import com.nextkey.ecommerce.domain.repository.SupplierRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -56,6 +57,7 @@ public class PurchaseOrderService {
     private final StockMovementRepository stockMovementRepository;
     private final ListingRepository listingRepository;
     private final TenantRepository tenantRepository;
+    private final FeatureToggleService featureToggleService;
 
     // PO Number generation
     private static final int PO_NUMBER_MIN = 100000;
@@ -66,6 +68,8 @@ public class PurchaseOrderService {
      */
     @Transactional
     public PurchaseOrderDto createPurchaseOrder(final PurchaseOrderCreateRequest request, final UUID userId) {
+        featureToggleService.checkFeatureEnabled("ERP_ENABLED");
+
         UUID tenantId = TenantContext.getCurrentTenant();
 
         // 驗證供應商存在且屬於該 tenant

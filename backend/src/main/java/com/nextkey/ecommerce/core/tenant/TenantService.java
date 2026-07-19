@@ -586,6 +586,12 @@ public class TenantService {
         log.info("Member accepted invite: tenantId={}, userId={}", tenantId, currentUserId);
 
         User user = userRepository.findById(currentUserId).orElse(null);
+        // PRD §7.4.1：JWT roles 需包含新角色，供下次登入/換發 token 時正確授權
+        // （比照 Sprint 98 對 approveTenantApplication 的修復：關聯表更新不等於 JWT 授權來源同步）。
+        if (user != null && member.getStoreRole() == TenantMember.StoreRole.STORE_STAFF) {
+            user.setRole(User.UserRole.STORE_STAFF);
+            userRepository.save(user);
+        }
         return toMemberResponse(member, user);
     }
 
@@ -645,8 +651,11 @@ public class TenantService {
         } catch (IllegalArgumentException e) {
             throw new BusinessException(ErrorCode.E_1001, "Invalid role: " + requestedRole);
         }
-        if (storeRole == TenantMember.StoreRole.STORE_OWNER) {
-            throw new BusinessException(ErrorCode.E_1001, "Cannot invite a member as STORE_OWNER");
+        if (storeRole != TenantMember.StoreRole.STORE_STAFF) {
+            // STORE_OWNER 僅能透過開店審核流程產生（Sprint 97）；STORE_MANAGER 在 User.UserRole
+            // 沒有對應值也未定義於 RolePermissionMapping（PRD 亦未提及），邀請後 JWT 永遠拿不到
+            // 對應權限，等同重現 Sprint 98/99 修復的「角色授予未同步 JWT」問題，故一併拒絕。
+            throw new BusinessException(ErrorCode.E_1001, "Only STORE_STAFF can be invited via this endpoint");
         }
         return storeRole;
     }

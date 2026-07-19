@@ -127,6 +127,18 @@ class M16ErpIntegrationTest {
                     "NOT_STARTED", false, false, "{}");
         }
 
+        // Sprint 99：PurchaseOrderService.createPurchaseOrder 新增 ERP_ENABLED 檢查，
+        // 測試租戶需種好對應的 feature toggle 才能建立採購單。
+        Integer toggleCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM tenant_feature_toggles WHERE tenant_id = ? AND feature_key = ?",
+                Integer.class, FIXED_TENANT_ID, "ERP_ENABLED");
+        if (toggleCount == null || toggleCount == 0) {
+            jdbcTemplate.update(
+                    "INSERT INTO tenant_feature_toggles (id, tenant_id, feature_key, is_enabled, created_at, updated_at) "
+                            + "VALUES (?, ?, ?, true, NOW(), NOW())",
+                    UUID.randomUUID(), FIXED_TENANT_ID, "ERP_ENABLED");
+        }
+
         // 檢查並創建 STORE_OWNER 用戶（如果不存在）
         User storeOwner = userRepo.findById(FIXED_STORE_OWNER_USER_ID).orElse(null);
         if (storeOwner == null) {

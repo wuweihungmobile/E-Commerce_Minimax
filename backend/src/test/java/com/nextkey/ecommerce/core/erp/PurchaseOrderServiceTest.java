@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.erp;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,6 +44,7 @@ import com.nextkey.ecommerce.domain.repository.PurchaseOrderRepository;
 import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
 import com.nextkey.ecommerce.domain.repository.SupplierRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -78,6 +80,9 @@ class PurchaseOrderServiceTest {
 
     @Mock
     private TenantRepository tenantRepository;
+
+    @Mock
+    private FeatureToggleService featureToggleService;
 
     @InjectMocks
     private PurchaseOrderService purchaseOrderService;
@@ -174,6 +179,24 @@ class PurchaseOrderServiceTest {
 
         assertThat(result.getId()).isEqualTo(poId);
         assertThat(result.getSupplierId()).isEqualTo(supplierId);
+    }
+
+    @Test
+    @DisplayName("createPurchaseOrder：ERP_ENABLED 功能未啟用時拒絕建立採購單（Sprint 99，PRD §7.5）")
+    void createPurchaseOrder_erpFeatureDisabled_throwsAndDoesNotSave() {
+        doThrow(new BusinessException(ErrorCode.E_2004, "Feature 'ERP_ENABLED' is disabled for this tenant"))
+                .when(featureToggleService).checkFeatureEnabled("ERP_ENABLED");
+
+        PurchaseOrderCreateRequest request = PurchaseOrderCreateRequest.builder()
+                .supplierId(supplierId)
+                .items(List.of(itemRequest(1, "10.00")))
+                .build();
+
+        assertThatThrownBy(() -> purchaseOrderService.createPurchaseOrder(request, userId))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_2004));
+
+        verify(purchaseOrderRepository, never()).save(any());
     }
 
     @Test

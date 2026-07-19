@@ -432,6 +432,21 @@ class TenantServiceTest {
 
             assertEquals("ACTIVE", response.getStatus());
             assertNotNull(response.getJoinedAt());
+            // Sprint 99：接受邀請需同步 User.role，否則下次登入 JWT 仍拿不到 StoreStaff 權限
+            // （Sprint 97/98 對 StoreOwner 的同類修復，這裡是 StoreStaff 的孿生案例）。
+            verify(userRepository).save(argThat(u -> u.getRole() == User.UserRole.STORE_STAFF));
+        }
+
+        @Test
+        @DisplayName("inviteMember：邀請角色為 STORE_MANAGER → 拒絕（User.UserRole 無對應值，接受後 JWT 永遠拿不到權限）")
+        void inviteMember_roleStoreManager_rejected() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(buildInvitee()));
+
+            assertThrows(BusinessException.class,
+                    () -> tenantService.inviteMember(TEST_TENANT_ID, INVITEE_ID, "STORE_MANAGER", OWNER_ID));
+            verify(tenantMemberRepository, never()).save(any());
         }
 
         @Test

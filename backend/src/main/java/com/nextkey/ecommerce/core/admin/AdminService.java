@@ -25,14 +25,18 @@ import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.tenant.TenantApplication;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
+import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.PurchaseOrderRepository;
 import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
+import com.nextkey.ecommerce.domain.repository.TenantApplicationRepository;
 import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
+import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.domain.repository.audit.AuditLogRepository;
@@ -61,6 +65,8 @@ public class AdminService {
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final BookingRepository bookingRepository;
     private final RoomCalendarRepository roomCalendarRepository;
+    private final TenantApplicationRepository tenantApplicationRepository;
+    private final TenantMemberRepository tenantMemberRepository;
 
     /**
      * 記錄一筆管理操作稽核（DEF-016）。持久化到 audit_log，與既有 log.info 並存。
@@ -735,6 +741,8 @@ public class AdminService {
 
     private static final int MAINTENANCE_URGENT_WINDOW_DAYS = 1;
 
+    private static final int RANDOM_SUFFIX_LENGTH = 8;
+
     /**
      * MaintenanceWarnings 列表：M09（通知系統，Phase 2）上線前的替代方案，
      * 供 Admin 人工通知受 MAINTENANCE 影響的房客（TC-LO2-M17-003）。
@@ -769,6 +777,138 @@ public class AdminService {
         return AdminDto.MaintenanceWarningListResponse.builder()
                 .warnings(warnings)
                 .build();
+    }
+
+    // ========== Tenant Application Review（PRD §7.4.1，Sprint 97）==========
+
+    /**
+     * 待審核開店申請列表。
+     */
+    @Transactional(readOnly = true)
+    public AdminDto.TenantApplicationListResponse getPendingTenantApplications() {
+        List<TenantApplication> applications = tenantApplicationRepository
+                .findByStatus(TenantApplication.ApplicationStatus.PENDING);
+
+        List<AdminDto.TenantApplicationSummaryResponse> summaries = applications.stream()
+                .map(this::toTenantApplicationSummary)
+                .collect(Collectors.toList());
+
+        return AdminDto.TenantApplicationListResponse.builder().applications(summaries).build();
+    }
+
+    /**
+     * 核准開店申請（PRD §7.4.1 Buyer → StoreOwner 角色授予流程）：
+     * 1. 建立 Tenant（ACTIVE）並初始化 Feature Toggle。
+     * 2. 於 tenant_members 建立該申請人的 StoreOwner 記錄。
+     * 3. 更新申請狀態為 APPROVED，並回填 tenantId。
+     */
+    @Transactional
+    public AdminDto.TenantApplicationApproveResponse approveTenantApplication(
+            final UUID applicationId, final UUID reviewedBy) {
+        TenantApplication application = tenantApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2006));
+
+        if (application.getStatus() != TenantApplication.ApplicationStatus.PENDING) {
+            throw new BusinessException(ErrorCode.E_2007);
+        }
+        if (application.getUserId() == null) {
+            throw new BusinessException(ErrorCode.E_2008);
+        }
+
+        Tenant tenant = Tenant.builder()
+                .name(application.getStoreName())
+                .slug(generateTenantSlug(application.getStoreName()))
+                .description(application.getStoreDescription())
+                .status(Tenant.TenantStatus.ACTIVE)
+                .contactEmail(application.getContactEmail())
+                .contactPhone(application.getContactPhone())
+                .build();
+        tenant = tenantRepository.save(tenant);
+
+        List<String> enabledFeatures = initializeFeatureToggles(tenant.getId());
+
+        tenantMemberRepository.save(TenantMember.builder()
+                .tenantId(tenant.getId())
+                .userId(application.getUserId())
+                .storeRole(TenantMember.StoreRole.STORE_OWNER)
+                .joinedAt(Instant.now())
+                .build());
+
+        application.setStatus(TenantApplication.ApplicationStatus.APPROVED);
+        application.setTenantId(tenant.getId());
+        application.setReviewedAt(Instant.now());
+        application.setReviewedBy(reviewedBy);
+        tenantApplicationRepository.save(application);
+
+        log.info("Tenant application approved: applicationId={}, tenantId={}, userId={}, enabledFeatures={}",
+                applicationId, tenant.getId(), application.getUserId(), enabledFeatures);
+        recordAudit("TENANT_APPLICATION_APPROVED", "TENANT_APPLICATION", applicationId, tenant.getId(),
+                "PENDING", "APPROVED", null);
+
+        return AdminDto.TenantApplicationApproveResponse.builder()
+                .applicationId(applicationId)
+                .tenantId(tenant.getId())
+                .status(TenantApplication.ApplicationStatus.APPROVED.name())
+                .approvedAt(application.getReviewedAt())
+                .build();
+    }
+
+    /**
+     * 駁回開店申請。不建立 Tenant，僅更新申請狀態與駁回原因。
+     */
+    @Transactional
+    public AdminDto.TenantApplicationRejectResponse rejectTenantApplication(
+            final UUID applicationId, final UUID reviewedBy, final AdminDto.TenantApplicationRejectRequest request) {
+        TenantApplication application = tenantApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2006));
+
+        if (application.getStatus() != TenantApplication.ApplicationStatus.PENDING) {
+            throw new BusinessException(ErrorCode.E_2007);
+        }
+
+        application.setStatus(TenantApplication.ApplicationStatus.REJECTED);
+        application.setReviewedAt(Instant.now());
+        application.setReviewedBy(reviewedBy);
+        application.setRejectionReason(request.getReason());
+        tenantApplicationRepository.save(application);
+
+        log.info("Tenant application rejected: applicationId={}, reason={}", applicationId, request.getReason());
+        recordAudit("TENANT_APPLICATION_REJECTED", "TENANT_APPLICATION", applicationId, null,
+                "PENDING", "REJECTED", request.getReason());
+
+        return AdminDto.TenantApplicationRejectResponse.builder()
+                .applicationId(applicationId)
+                .status(TenantApplication.ApplicationStatus.REJECTED.name())
+                .rejectedAt(application.getReviewedAt())
+                .reason(request.getReason())
+                .build();
+    }
+
+    private AdminDto.TenantApplicationSummaryResponse toTenantApplicationSummary(final TenantApplication application) {
+        return AdminDto.TenantApplicationSummaryResponse.builder()
+                .applicationId(application.getId())
+                .userId(application.getUserId())
+                .storeName(application.getStoreName())
+                .storeDescription(application.getStoreDescription())
+                .businessType(application.getBusinessType())
+                .contactEmail(application.getContactEmail())
+                .contactPhone(application.getContactPhone())
+                .status(application.getStatus().name())
+                .submittedAt(application.getSubmittedAt())
+                .build();
+    }
+
+    /** 依店名產生唯一 slug（比照 PostService/PostCategoryService 既有慣例：碰撞時附加隨機字尾）。 */
+    private String generateTenantSlug(final String storeName) {
+        String base = storeName.toLowerCase().trim().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
+        if (base.isEmpty()) {
+            base = "store";
+        }
+        String slug = base;
+        while (tenantRepository.existsBySlug(slug)) {
+            slug = base + "-" + UUID.randomUUID().toString().substring(0, RANDOM_SUFFIX_LENGTH);
+        }
+        return slug;
     }
 
     // ========== Helper Methods ==========

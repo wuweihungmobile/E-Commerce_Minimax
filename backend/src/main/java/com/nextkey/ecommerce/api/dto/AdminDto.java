@@ -348,6 +348,63 @@ public class AdminDto {
         private List<MaintenanceWarningResponse> warnings;
     }
 
+    // ========== Tenant Application Review（PRD §7.4.1，Sprint 97）==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantApplicationSummaryResponse {
+        private UUID applicationId;
+        private UUID userId;
+        private String storeName;
+        private String storeDescription;
+        private String businessType;
+        private String contactEmail;
+        private String contactPhone;
+        private String status;
+        private Instant submittedAt;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantApplicationListResponse {
+        private List<TenantApplicationSummaryResponse> applications;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantApplicationApproveResponse {
+        private UUID applicationId;
+        private UUID tenantId;
+        private String status;
+        private Instant approvedAt;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantApplicationRejectRequest {
+        @NotBlank(message = "Rejection reason is required")
+        private String reason;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantApplicationRejectResponse {
+        private UUID applicationId;
+        private String status;
+        private Instant rejectedAt;
+        private String reason;
+    }
+
     @Data
     @Builder
     @NoArgsConstructor

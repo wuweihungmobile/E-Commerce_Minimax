@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.AdminDto;
 import com.nextkey.ecommerce.api.dto.ApiResponse;
+import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.core.admin.AdminService;
 
 import lombok.RequiredArgsConstructor;
@@ -104,6 +106,47 @@ public class AdminController {
         log.info("Tenant reject request: tenantId={}, reason={}", tenantId, request.getReason());
         AdminDto.TenantRejectResponse response = adminService.rejectTenant(tenantId, request);
         return ResponseEntity.ok(ApiResponse.success("Tenant rejected successfully", response));
+    }
+
+    // ========== Tenant Application Review（PRD §7.4.1，Sprint 97） ==========
+
+    /**
+     * 待審核開店申請列表（PRD §7.4.1 Buyer → StoreOwner 角色授予流程）。
+     */
+    @GetMapping("/tenant-applications")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.TenantApplicationListResponse>> getPendingTenantApplications() {
+        AdminDto.TenantApplicationListResponse response = adminService.getPendingTenantApplications();
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
+     * 核准開店申請：建立 Tenant（ACTIVE）並將申請人設為 StoreOwner。
+     */
+    @PostMapping("/tenant-applications/{applicationId}/approve")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.TenantApplicationApproveResponse>> approveTenantApplication(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID applicationId) {
+        log.info("Tenant application approve request: applicationId={}", applicationId);
+        AdminDto.TenantApplicationApproveResponse response =
+                adminService.approveTenantApplication(applicationId, principal.getUserId());
+        return ResponseEntity.ok(ApiResponse.success("Tenant application approved successfully", response));
+    }
+
+    /**
+     * 駁回開店申請。
+     */
+    @PostMapping("/tenant-applications/{applicationId}/reject")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminDto.TenantApplicationRejectResponse>> rejectTenantApplication(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID applicationId,
+            @Valid @RequestBody AdminDto.TenantApplicationRejectRequest request) {
+        log.info("Tenant application reject request: applicationId={}, reason={}", applicationId, request.getReason());
+        AdminDto.TenantApplicationRejectResponse response =
+                adminService.rejectTenantApplication(applicationId, principal.getUserId(), request);
+        return ResponseEntity.ok(ApiResponse.success("Tenant application rejected successfully", response));
     }
 
     /**

@@ -6,7 +6,9 @@ import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.tenant.TenantApplication;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
+import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.repository.*;
 import com.nextkey.ecommerce.domain.repository.audit.AuditLogRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
@@ -76,6 +78,12 @@ class AdminServiceTest {
 
     @Mock
     private RoomCalendarRepository roomCalendarRepository;
+
+    @Mock
+    private TenantApplicationRepository tenantApplicationRepository;
+
+    @Mock
+    private TenantMemberRepository tenantMemberRepository;
 
     @InjectMocks
     private AdminService adminService;
@@ -866,6 +874,142 @@ class AdminServiceTest {
 
             assertThat(response.getWarnings()).isEmpty();
             verify(bookingRepository, never()).findAllById(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("TenantApplication 審核（PRD §7.4.1，Sprint 97）")
+    class TenantApplicationReviewTests {
+
+        private static final UUID APPLICATION_ID = UUID.fromString("770e8400-e29b-41d4-a716-446655440010");
+        private static final UUID APPLICANT_USER_ID = UUID.fromString("880e8400-e29b-41d4-a716-446655440011");
+        private static final UUID REVIEWER_ID = UUID.fromString("990e8400-e29b-41d4-a716-446655440012");
+
+        private TenantApplication buildPendingApplication() {
+            return TenantApplication.builder()
+                    .id(APPLICATION_ID)
+                    .userId(APPLICANT_USER_ID)
+                    .storeName("阿明的雜貨店")
+                    .businessType("RETAIL_ONLY")
+                    .status(TenantApplication.ApplicationStatus.PENDING)
+                    .build();
+        }
+
+        @Test
+        @DisplayName("getPendingTenantApplications：回傳 PENDING 狀態的申請清單")
+        void getPendingTenantApplications_returnsSummaries() {
+            when(tenantApplicationRepository.findByStatus(TenantApplication.ApplicationStatus.PENDING))
+                    .thenReturn(java.util.List.of(buildPendingApplication()));
+
+            AdminDto.TenantApplicationListResponse response = adminService.getPendingTenantApplications();
+
+            assertThat(response.getApplications()).hasSize(1);
+            assertThat(response.getApplications().get(0).getStoreName()).isEqualTo("阿明的雜貨店");
+        }
+
+        @Test
+        @DisplayName("approveTenantApplication：建立 ACTIVE Tenant、StoreOwner 成員，申請狀態變 APPROVED")
+        void approveTenantApplication_success_createsTenantAndStoreOwner() {
+            TenantApplication application = buildPendingApplication();
+            when(tenantApplicationRepository.findById(APPLICATION_ID)).thenReturn(Optional.of(application));
+            when(tenantRepository.existsBySlug(any())).thenReturn(false);
+            when(tenantRepository.save(any(Tenant.class))).thenAnswer(inv -> {
+                Tenant t = inv.getArgument(0);
+                t.setId(UUID.randomUUID());
+                return t;
+            });
+            when(tenantRepository.findById(any())).thenAnswer(inv -> Optional.of(
+                    Tenant.builder().id(inv.getArgument(0)).build()));
+            when(tenantApplicationRepository.save(any(TenantApplication.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            AdminDto.TenantApplicationApproveResponse response =
+                    adminService.approveTenantApplication(APPLICATION_ID, REVIEWER_ID);
+
+            assertThat(response.getStatus()).isEqualTo("APPROVED");
+            assertThat(response.getTenantId()).isNotNull();
+
+            verify(tenantRepository).save(argThat(t ->
+                    t.getStatus() == Tenant.TenantStatus.ACTIVE && "阿明的雜貨店".equals(t.getName())));
+            verify(tenantMemberRepository).save(argThat(m ->
+                    m.getStoreRole() == TenantMember.StoreRole.STORE_OWNER
+                            && APPLICANT_USER_ID.equals(m.getUserId())));
+            verify(tenantApplicationRepository).save(argThat(a ->
+                    a.getStatus() == TenantApplication.ApplicationStatus.APPROVED
+                            && a.getReviewedBy().equals(REVIEWER_ID)
+                            && a.getTenantId() != null));
+        }
+
+        @Test
+        @DisplayName("approveTenantApplication：申請不存在 → E-2006")
+        void approveTenantApplication_notFound_throwsE2006() {
+            when(tenantApplicationRepository.findById(APPLICATION_ID)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> adminService.approveTenantApplication(APPLICATION_ID, REVIEWER_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_2006));
+        }
+
+        @Test
+        @DisplayName("approveTenantApplication：非 PENDING 狀態 → E-2007")
+        void approveTenantApplication_notPending_throwsE2007() {
+            TenantApplication application = buildPendingApplication();
+            application.setStatus(TenantApplication.ApplicationStatus.APPROVED);
+            when(tenantApplicationRepository.findById(APPLICATION_ID)).thenReturn(Optional.of(application));
+
+            assertThatThrownBy(() -> adminService.approveTenantApplication(APPLICATION_ID, REVIEWER_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_2007));
+
+            verify(tenantRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("approveTenantApplication：Guest 申請（userId 為 null）→ E-2008")
+        void approveTenantApplication_guestApplication_throwsE2008() {
+            TenantApplication application = buildPendingApplication();
+            application.setUserId(null);
+            when(tenantApplicationRepository.findById(APPLICATION_ID)).thenReturn(Optional.of(application));
+
+            assertThatThrownBy(() -> adminService.approveTenantApplication(APPLICATION_ID, REVIEWER_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_2008));
+
+            verify(tenantRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("rejectTenantApplication：成功駁回，不建立 Tenant")
+        void rejectTenantApplication_success_doesNotCreateTenant() {
+            TenantApplication application = buildPendingApplication();
+            when(tenantApplicationRepository.findById(APPLICATION_ID)).thenReturn(Optional.of(application));
+            when(tenantApplicationRepository.save(any(TenantApplication.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            AdminDto.TenantApplicationRejectRequest request = AdminDto.TenantApplicationRejectRequest.builder()
+                    .reason("資料不完整").build();
+
+            AdminDto.TenantApplicationRejectResponse response =
+                    adminService.rejectTenantApplication(APPLICATION_ID, REVIEWER_ID, request);
+
+            assertThat(response.getStatus()).isEqualTo("REJECTED");
+            verify(tenantRepository, never()).save(any());
+            verify(tenantMemberRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("rejectTenantApplication：非 PENDING 狀態 → E-2007")
+        void rejectTenantApplication_notPending_throwsE2007() {
+            TenantApplication application = buildPendingApplication();
+            application.setStatus(TenantApplication.ApplicationStatus.REJECTED);
+            when(tenantApplicationRepository.findById(APPLICATION_ID)).thenReturn(Optional.of(application));
+
+            AdminDto.TenantApplicationRejectRequest request = AdminDto.TenantApplicationRejectRequest.builder()
+                    .reason("重複審核").build();
+
+            assertThatThrownBy(() -> adminService.rejectTenantApplication(APPLICATION_ID, REVIEWER_ID, request))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_2007));
         }
     }
 }

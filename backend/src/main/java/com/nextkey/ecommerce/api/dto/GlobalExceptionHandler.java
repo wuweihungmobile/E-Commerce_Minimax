@@ -128,13 +128,13 @@ public class GlobalExceptionHandler {
     private HttpStatus mapErrorCodeToStatus(final ErrorCode errorCode) {
         return switch ( errorCode) {
             case E_1000, E_1001, E_1002, E_1003, E_1004, E_1008 -> HttpStatus.UNAUTHORIZED;
-            case E_1005, E_1006, E_2000, E_3000, E_3003, E_3006, E_4000, E_4006, E_4100, E_4101, E_4105,
+            case E_1005, E_1006, E_2000, E_2006, E_3000, E_3003, E_3006, E_4000, E_4006, E_4100, E_4101, E_4105,
                     E_5000, E_5003, E_5005, E_6000, E_7000, E_7001, E_7500, E_7501, E_7503, E_7504,
                     E_8002, E_8006 -> HttpStatus.NOT_FOUND;
             case E_1007, E_2001, E_2002, E_2004, E_4031, E_8007, E_1009 -> HttpStatus.FORBIDDEN;
             case E_2003 -> HttpStatus.CONFLICT;
             case E_3004, E_4001, E_4002, E_4003, E_4004, E_4005, E_4104, E_5002, E_5004, E_5007,
-                    E_6001, E_6002, E_6003, E_6006, E_7004, E_2005 -> HttpStatus.BAD_REQUEST;
+                    E_6001, E_6002, E_6003, E_6006, E_7004, E_2005, E_2007, E_2008 -> HttpStatus.BAD_REQUEST;
             case E_4106, E_1010 -> HttpStatus.CONFLICT;
             case E_3001, E_3002, E_4008, E_5001, E_5006, E_6004, E_6005, E_7002 -> HttpStatus.UNPROCESSABLE_ENTITY;
             case E_9000, E_9001, E_9002, E_9003, E_9004, E_9005, E_9006, E_9007, E_9008 -> HttpStatus.BAD_REQUEST;

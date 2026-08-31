@@ -400,6 +400,13 @@ export default function OrderDetailPage() {
                     <span>運費</span>
                     <span>{formatPrice(order.shippingFee, order.currency)}</span>
                   </div>
+                  {/* Sprint 100：買家在購物車看到折扣，訂單也須看得到用了哪張券、折了多少 */}
+                  {order.discountAmount != null && order.discountAmount > 0 && (
+                    <div className="flex justify-between text-sm text-green-700" data-testid="order-discount">
+                      <span>優惠折扣{order.promoCode ? `（${order.promoCode}）` : ''}</span>
+                      <span>-{formatPrice(order.discountAmount, order.currency)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-base font-bold text-gray-900">
                     <span>訂單總額</span>
                     <span>{formatPrice(order.totalAmount, order.currency)}</span>

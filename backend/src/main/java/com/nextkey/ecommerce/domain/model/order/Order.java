@@ -83,6 +83,15 @@ public class Order {
     @Builder.Default
     private BigDecimal shippingFee = BigDecimal.ZERO;
 
+    /** 下單當下套用的促銷碼快照（PRD §9.5.1）；null 表示未使用優惠券。 */
+    @Column(name = "promo_code", length = 50)
+    private String promoCode;
+
+    /** 下單當下的折扣金額（PRD §9.5.1 步驟 4）；{@link #totalAmount} 已扣除本欄位。 */
+    @Column(name = "discount_amount", nullable = false, precision = DECIMAL_PRECISION, scale = 2)
+    @Builder.Default
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+
     @Column(length = 3)
     @Builder.Default
     private String currency = "TWD";

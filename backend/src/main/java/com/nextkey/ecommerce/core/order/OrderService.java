@@ -20,6 +20,11 @@ import com.nextkey.ecommerce.api.dto.OrderDto;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
+import com.nextkey.ecommerce.core.promo.PromoService;
+import com.nextkey.ecommerce.domain.model.promo.PromoCode;
+import com.nextkey.ecommerce.domain.model.promo.PromoCodeUsage;
+import com.nextkey.ecommerce.domain.repository.PromoCodeRepository;
+import com.nextkey.ecommerce.domain.repository.PromoCodeUsageRepository;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.order.OrderItem;
@@ -66,6 +71,9 @@ public class OrderService {
     private final ShippingTemplateService shippingTemplateService;
     private final AddressService addressService;
     private final ProductInventoryService productInventoryService;
+    private final PromoService promoService;
+    private final PromoCodeRepository promoCodeRepository;
+    private final PromoCodeUsageRepository promoCodeUsageRepository;
 
     /**
      * 建立訂單（從購物車或直接預訂）
@@ -164,12 +172,21 @@ public class OrderService {
         // 計算運費並加入總金額
         BigDecimal shippingFee = shippingTemplateService.calculateFeeForTenant(tenantId, totalAmount);
         order.setShippingFee(shippingFee);
-        order.setTotalAmount(totalAmount.add(shippingFee));
+
+        // Sprint 100（PRD §9.5.1）：在校驗 totalAmount 之後、寫入訂單之前重新驗證促銷碼並套用折扣。
+        // 促銷碼於加入購物車時已驗過一次，但購物車存活於 Redis TTL 期間，期間可能過期/停用/售罄，
+        // 故此處必須重驗，不可沿用加入購物車當下的結果。
+        // 只取券碼、不採信購物車算好的折扣：後者是 fallback-tolerant 的顯示用計算
+        // （券失效時靜默回退原價），不可作為收款依據。
+        PromoCode promo = applyPromoDiscount(order, cartService.getAppliedPromoCode(userId, tenantId),
+                totalAmount, shippingFee, tenantId, userId);
 
         // Sprint 88（AI-2422）：建單前檢查並預扣庫存，避免超賣；庫存不足拋例外交易回滾，不留部分建立的訂單
         productInventoryService.reserveForOrder(order);
 
         order = orderRepository.save(order);
+
+        commitPromoUsage(promo, order, userId, tenantId);
 
         // 記錄狀態日誌
         recordStateLog(order, null, Order.OrderStatus.CREATED.name(), userId, "Order created from cart");
@@ -179,9 +196,135 @@ public class OrderService {
             cartService.removeItem(userId, tenantId, cartItem.getCartItemKey());
         }
 
-        log.info("Order created: orderId={}, userId={}, totalAmount={}, shippingFee={}",
-                order.getId(), userId, order.getTotalAmount(), shippingFee);
+        log.info("Order created: orderId={}, userId={}, totalAmount={}, shippingFee={}, promoCode={}, discount={}",
+                order.getId(), userId, order.getTotalAmount(), shippingFee,
+                order.getPromoCode(), order.getDiscountAmount());
         return toOrderResponse(order);
+    }
+
+    /**
+     * 套用促銷碼折扣並設定訂單金額欄位（PRD §9.5.1 步驟 4-5）。
+     *
+     * <p>抽為獨立方法而非內嵌於 {@code createOrderFromCart}：後者的 NPath 分支複雜度已逼近
+     * checkstyle 上限，內嵌會使其超標。
+     *
+     * @return 通過驗證的促銷碼；{@code null} 表示未套用
+     */
+    private PromoCode applyPromoDiscount(final Order order, final String appliedPromoCode,
+            final BigDecimal itemsTotal, final BigDecimal shippingFee,
+            final UUID tenantId, final UUID userId) {
+        PromoCode promo = resolveValidPromoForCheckout(appliedPromoCode, tenantId, userId);
+        BigDecimal grossAmount = itemsTotal.add(shippingFee);
+        BigDecimal discount = BigDecimal.ZERO;
+        if (promo != null) {
+            // 折扣基數為商品小計（不含運費），與購物車顯示的折扣一致
+            discount = promoService.computeDiscount(promo, itemsTotal);
+            // PRD §9.5.1 步驟 5：折扣後金額不得為負
+            if (discount.compareTo(grossAmount) > 0) {
+                discount = grossAmount;
+            }
+            order.setPromoCode(promo.getCode());
+        }
+        order.setDiscountAmount(discount);
+        order.setTotalAmount(grossAmount.subtract(discount));
+        return promo;
+    }
+
+    /**
+     * 訂單成立後佔用優惠券額度（總量 + 每人限用），並清除購物車上的促銷碼，
+     * 避免同一張券被下一張訂單重複沿用。
+     */
+    private void commitPromoUsage(final PromoCode promo, final Order order,
+            final UUID userId, final UUID tenantId) {
+        if (promo == null) {
+            return;
+        }
+        promoService.incrementUsageCount(promo);
+        promoCodeUsageRepository.save(PromoCodeUsage.builder()
+                .promoCodeId(promo.getId())
+                .userId(userId)
+                .orderId(order.getId())
+                .build());
+        cartService.removePromoCode(userId, tenantId);
+    }
+
+    /**
+     * 訂單建立時的促銷碼驗證（PRD §9.5.1）。
+     *
+     * <p>依 PRD 明訂順序驗證：1. 存在且 ACTIVE → 2. 有效時間範圍 → 3. 使用上限，
+     * 前三項沿用 {@link PromoService#validatePromoCode}（與購物車套用時同一套規則）；
+     * 另加驗 {@code max_usage_per_user} 每人限用次數——該欄位自 V20 建表即存在，
+     * 但在 Sprint 100 之前全庫沒有任何程式碼讀取它。
+     *
+     * <p>驗證失敗一律拒絕下單而非靜默改以原價成立：買家在購物車看到的是折扣後金額，
+     * 若此處靜默回退原價，等同在買家不知情下多收款。
+     *
+     * @return 通過驗證的促銷碼；{@code null} 表示購物車未套用促銷碼
+     */
+    private PromoCode resolveValidPromoForCheckout(
+            final String appliedPromoCode, final UUID tenantId, final UUID userId) {
+        if (appliedPromoCode == null || appliedPromoCode.isBlank()) {
+            return null;
+        }
+        String normalized = appliedPromoCode.trim().toUpperCase(java.util.Locale.ROOT);
+
+        PromoCode promo = promoCodeRepository.findByCodeIgnoreCaseAndTenantId(normalized, tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_5007,
+                        "Promo code no longer available at checkout: " + normalized));
+
+        // 步驟 1-3：ACTIVE / 有效時間範圍 / 總量使用上限
+        if (!promo.getIsActive()) {
+            throw new BusinessException(ErrorCode.E_5007, "Promo code is inactive: " + normalized);
+        }
+        if (promo.isNotYetActive()) {
+            throw new BusinessException(ErrorCode.E_5007, "Promo code is not yet active: " + normalized);
+        }
+        if (promo.isExpired()) {
+            throw new BusinessException(ErrorCode.E_5008, "Promo code expired before checkout: " + normalized);
+        }
+        if (promo.isUsageLimitReached()) {
+            throw new BusinessException(ErrorCode.E_5009, "Promo code usage limit reached: " + normalized);
+        }
+
+        // 每人限用次數（僅計 ACTIVE 的用券紀錄；訂單取消退還後的 REVOKED 不佔額度）
+        if (promo.getMaxUsagePerUser() != null) {
+            long usedByUser = promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
+                    promo.getId(), userId, PromoCodeUsage.UsageStatus.ACTIVE);
+            if (usedByUser >= promo.getMaxUsagePerUser()) {
+                throw new BusinessException(ErrorCode.E_5009,
+                        "Promo code per-user usage limit reached: " + normalized);
+            }
+        }
+
+        return promo;
+    }
+
+    /**
+     * 訂單取消時退還優惠券額度（PRD §2630「優惠券：若已使用促銷碼，則退還」）。
+     *
+     * <p>回補 {@code promo_codes.current_usage_count} 並將該訂單的用券紀錄標記為 REVOKED，
+     * 使總量額度與每人限用額度雙雙釋放。若不做此退還，取消訂單會永久吃掉券的額度——
+     * 那等於在修復本缺口的同時親手做出下一個同類缺口。
+     */
+    private void refundPromoUsage(final Order order) {
+        if (order.getPromoCode() == null || order.getPromoCode().isBlank()) {
+            return;
+        }
+        List<PromoCodeUsage> usages = promoCodeUsageRepository.findByOrderIdAndStatus(
+                order.getId(), PromoCodeUsage.UsageStatus.ACTIVE);
+        for (PromoCodeUsage usage : usages) {
+            usage.setStatus(PromoCodeUsage.UsageStatus.REVOKED);
+            usage.setRevokedAt(java.time.Instant.now());
+            promoCodeUsageRepository.save(usage);
+
+            promoCodeRepository.findById(usage.getPromoCodeId()).ifPresent(promo -> {
+                int current = promo.getCurrentUsageCount() == null ? 0 : promo.getCurrentUsageCount();
+                promo.setCurrentUsageCount(Math.max(0, current - 1));
+                promoCodeRepository.save(promo);
+            });
+        }
+        log.info("Promo usage refunded on cancellation: orderId={}, promoCode={}, revokedCount={}",
+                order.getId(), order.getPromoCode(), usages.size());
     }
 
     /**
@@ -509,6 +652,15 @@ public class OrderService {
             }
         }
 
+        // Sprint 100（PRD §2630）：退還優惠券額度。與庫存釋放不同，此處不限 CREATED——
+        // 訂單無論在付款前或付款後取消，該次用券都不應繼續佔用總量/每人限用額度。
+        try {
+            refundPromoUsage(order);
+        } catch (RuntimeException e) {
+            log.error("Failed to refund promo usage after order cancellation: orderId={}, error={}",
+                    orderId, e.getMessage(), e);
+        }
+
         // 如果已付款，需要退款流程
         if ("PAID".equals(currentStatus)) {
             // 創建退款记录，跳轉到 REFUNDING 狀態
@@ -605,6 +757,8 @@ public class OrderService {
                 .status(order.getStatus().name())
                 .totalAmount(order.getTotalAmount())
                 .shippingFee(order.getShippingFee())
+                .promoCode(order.getPromoCode())
+                .discountAmount(order.getDiscountAmount())
                 .currency(order.getCurrency())
                 .shippingAddress(order.getShippingAddress())
                 .shippingRecipientName(order.getShippingRecipientName())

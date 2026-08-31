@@ -134,6 +134,7 @@ public class GlobalExceptionHandler {
             case E_1007, E_2001, E_2002, E_2004, E_4031, E_8007, E_1009 -> HttpStatus.FORBIDDEN;
             case E_2003 -> HttpStatus.CONFLICT;
             case E_3004, E_4001, E_4002, E_4003, E_4004, E_4005, E_4104, E_5002, E_5004, E_5007,
+                    E_5008, E_5009,
                     E_6001, E_6002, E_6003, E_6006, E_7004, E_2005, E_2007, E_2008 -> HttpStatus.BAD_REQUEST;
             case E_4106, E_1010 -> HttpStatus.CONFLICT;
             case E_3001, E_3002, E_4008, E_5001, E_5006, E_6004, E_6005, E_7002 -> HttpStatus.UNPROCESSABLE_ENTITY;

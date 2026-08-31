@@ -86,6 +86,10 @@ public class OrderDto {
         private String status;
         private BigDecimal totalAmount;
         private BigDecimal shippingFee;
+        /** 下單當下套用的促銷碼（Sprint 100，PRD §9.5.1）；null 表示未使用優惠券 */
+        private String promoCode;
+        /** 下單當下的折扣金額（Sprint 100）；totalAmount 已扣除本欄位 */
+        private BigDecimal discountAmount;
         private String currency;
         private String shippingAddress;
         private String shippingRecipientName;

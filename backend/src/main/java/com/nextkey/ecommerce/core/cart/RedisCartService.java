@@ -334,6 +334,20 @@ public class RedisCartService {
     }
 
     /**
+     * 取得購物車目前已套用的促銷碼（Sprint 100）。
+     *
+     * <p>供結帳流程（{@code OrderService}）取得券碼後自行重新驗證用——刻意不回傳折扣金額：
+     * {@link #getCartWithPromo} 的折扣是 fallback-tolerant 的顯示用計算（券失效時靜默回退原價），
+     * 不可作為收款依據，訂單金額必須以結帳當下重新驗證的結果為準（PRD §9.5.1）。
+     *
+     * @return 已套用的促銷碼；未套用時為 {@code null}
+     */
+    public String getAppliedPromoCode(UUID userId, UUID tenantId) {
+        Object savedPromoCode = redisTemplate.opsForValue().get(getPromoKey(userId, tenantId));
+        return savedPromoCode == null ? null : savedPromoCode.toString();
+    }
+
+    /**
      * 取得購物車含優惠券資訊
      */
     public CartDto.CartResponse getCartWithPromo(UUID userId, UUID tenantId) {

@@ -38,6 +38,10 @@ export interface Order {
   status: OrderStatus
   totalAmount: number
   shippingFee: number
+  /** 下單當下套用的促銷碼（Sprint 100，PRD §9.5.1）；未使用優惠券時為 null */
+  promoCode?: string | null
+  /** 下單當下的折扣金額（Sprint 100）；totalAmount 已扣除本欄位 */
+  discountAmount?: number | null
   currency: string
   shippingAddress: string | null
   shippingRecipientName: string | null

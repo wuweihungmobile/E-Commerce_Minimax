@@ -11,7 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
-| Sprint 100 | v2030.01.09-01 | - | 2026-09-01 | 優惠券機制完整斷鏈修復（PRD §9.5.1/§2630，1 US，8 SP）：**US-001** 第八輪 PRD 掃描以「孤兒錯誤碼 → 零呼叫死碼 → 欄位零讀取」三訊號連續命中，查出**目前唯一直接涉及金錢收取正確性**的缺口。**(1)** `OrderService.createOrderFromCart` 取購物車用不含 promo 的 `getCart()`、金額為 `Σsubtotal + shippingFee`，折扣從未扣除——買家在購物車看到「已套用優惠券，折扣 $XXX」，下單卻被收全額（紅燈實測 `expected: 160 but was: 260`）。**(2)** `PromoService.incrementUsageCount` 在 main 程式碼零呼叫者，`current_usage_count` 永遠是 0，`max_usage_count` 總量上限形同虛設，限量券可無限使用。**(3)** `max_usage_per_user` 自 V20 建表即存在但全庫零讀取，同一買家可無限次重複用同一張券。**(4)** 促銷碼只在加入購物車時驗一次，Redis TTL 期間過期/停用/售罄皆不被攔。**(5)** Order 無折扣欄位，導致 PRD §2630「取消時退還優惠券」在資料上根本無法實作。**(6)** 下單後購物車券碼未清除，同張券被下一單沿用。修復：V70 migration（orders 加 `promo_code`/`discount_amount`；新建 `promo_code_usages` 表，採軟撤銷 REVOKED 比照 Sprint 98 `tenant_members.status` 決策）；新增 `RedisCartService.getAppliedPromoCode`（只回券碼、刻意不回折扣——`getCartWithPromo` 的折扣是 fallback-tolerant 顯示值，券失效會靜默回退原價，不可作為收款依據）；`OrderService` 新增 `applyPromoDiscount`/`resolveValidPromoForCheckout`/`commitPromoUsage`/`refundPromoUsage`，依 PRD 明訂順序重驗且**失敗一律拒絕下單不靜默改收原價**，取消時不限 CREATED 狀態一律退還額度。啟用兩個原孤兒碼 `E_5008`/`E_5009`（修缺口同時消滅孤兒碼），連帶修正 `GlobalExceptionHandler` 未涵蓋此二碼會落入 `default → 500` 的問題。前端訂單詳情頁新增折扣列。新增測試：`OrderPromoCodeTest`（14，皆先紅燈證實）、`M11PromoCheckoutIntegrationTest`（真實 DB 完整迴路，刻意不 mock repository——既有 `M11CartPromoIntegrationTest` 正是以 `@MockBean` 繞過才讓缺口存活 99 個 Sprint）。全量回歸 `mvn verify -Pintegration-test` **1446 tests 0 fail**（單元 1055 + 整合 391），checkstyle 0 violations，`make validate-schema` V70 無漂移，前端 tsc/eslint 0 errors。誠實：`E_8009` 客服工單孤兒碼經逐方法檢視確認為**偽陽性**（擁有權檢查完整，只是回「找不到」）已排除；順帶發現 `FREE_SHIPPING` 折扣型別物流模組零處理（選此型別買家拿不到任何優惠）記錄待評估；ROOM 訂單套券（PRD US-010）、併發額度競態均列延後 | ⏳ 待 push（本 Sprint 收尾後立即 push）|
+| Sprint 100 | v2030.01.09-01 | - | 2026-09-01 | 優惠券機制完整斷鏈修復（PRD §9.5.1/§2630，1 US，8 SP）：**US-001** 第八輪 PRD 掃描以「孤兒錯誤碼 → 零呼叫死碼 → 欄位零讀取」三訊號連續命中，查出**目前唯一直接涉及金錢收取正確性**的缺口。**(1)** `OrderService.createOrderFromCart` 取購物車用不含 promo 的 `getCart()`、金額為 `Σsubtotal + shippingFee`，折扣從未扣除——買家在購物車看到「已套用優惠券，折扣 $XXX」，下單卻被收全額（紅燈實測 `expected: 160 but was: 260`）。**(2)** `PromoService.incrementUsageCount` 在 main 程式碼零呼叫者，`current_usage_count` 永遠是 0，`max_usage_count` 總量上限形同虛設，限量券可無限使用。**(3)** `max_usage_per_user` 自 V20 建表即存在但全庫零讀取，同一買家可無限次重複用同一張券。**(4)** 促銷碼只在加入購物車時驗一次，Redis TTL 期間過期/停用/售罄皆不被攔。**(5)** Order 無折扣欄位，導致 PRD §2630「取消時退還優惠券」在資料上根本無法實作。**(6)** 下單後購物車券碼未清除，同張券被下一單沿用。修復：V70 migration（orders 加 `promo_code`/`discount_amount`；新建 `promo_code_usages` 表，採軟撤銷 REVOKED 比照 Sprint 98 `tenant_members.status` 決策）；新增 `RedisCartService.getAppliedPromoCode`（只回券碼、刻意不回折扣——`getCartWithPromo` 的折扣是 fallback-tolerant 顯示值，券失效會靜默回退原價，不可作為收款依據）；`OrderService` 新增 `applyPromoDiscount`/`resolveValidPromoForCheckout`/`commitPromoUsage`/`refundPromoUsage`，依 PRD 明訂順序重驗且**失敗一律拒絕下單不靜默改收原價**，取消時不限 CREATED 狀態一律退還額度。啟用兩個原孤兒碼 `E_5008`/`E_5009`（修缺口同時消滅孤兒碼），連帶修正 `GlobalExceptionHandler` 未涵蓋此二碼會落入 `default → 500` 的問題。前端訂單詳情頁新增折扣列。新增測試：`OrderPromoCodeTest`（14，皆先紅燈證實）、`M11PromoCheckoutIntegrationTest`（真實 DB 完整迴路，刻意不 mock repository——既有 `M11CartPromoIntegrationTest` 正是以 `@MockBean` 繞過才讓缺口存活 99 個 Sprint）。全量回歸 `mvn verify -Pintegration-test` **1446 tests 0 fail**（單元 1055 + 整合 391），checkstyle 0 violations，`make validate-schema` V70 無漂移，前端 tsc/eslint 0 errors。誠實：`E_8009` 客服工單孤兒碼經逐方法檢視確認為**偽陽性**（擁有權檢查完整，只是回「找不到」）已排除；順帶發現 `FREE_SHIPPING` 折扣型別物流模組零處理（選此型別買家拿不到任何優惠）記錄待評估；ROOM 訂單套券（PRD US-010）、併發額度競態均列延後 | ✅ 已 push（2026-09-01，commit 144b219）|
 | Sprint 99 | v2029.12.26-01 | - | 2026-07-19 | StoreStaff 角色同步 + RefreshToken 租戶解析 + ERP Feature Toggle 三項修復（PRD §7.3/§7.4.1/§7.5，1 US，5 SP）：**US-001** 第七輪 PRD 掃描（延續「角色授予雙邊同步」判讀技巧）找到三個明確缺口。**(1)** `TenantService.acceptInvite()`（Sprint 98 新增）只更新 `tenant_members.status`，從未同步 `user.setRole(STORE_STAFF)`——是 Sprint 97/98 對 StoreOwner 修復的孿生遺漏，同一個 Sprint 新增的功能沒有連帶檢查；同時收斂 `inviteMember` 僅允許邀請 `STORE_STAFF`（拒絕 `STORE_MANAGER`，因 `User.UserRole` 無對應值、`RolePermissionMapping` 亦未定義其權限，邀請後同步也拿不到任何權限）。**(2)** `AuthService.refreshToken()` 在 `user.tenantId` 為 null 時直接退化為 `SYSTEM_TENANT_ID`，未比照 `login()` 查詢 `tenant_members` 取得正確租戶——抽出共用 `resolveTenantForUser()` 供兩處使用。**(3)** `PurchaseOrderService.createPurchaseOrder()` 從未檢查 `ERP_ENABLED` Feature Toggle（PRD §7.5 明訂），對照 `RETAIL_ENABLED`/`BOOKING_ENABLED`/`DYNAMIC_PRICING_ENABLED`/`CMS_ENABLED` 皆已正確實作，唯獨 ERP 模組漏掉，已補上並修正 `M16ErpIntegrationTest` 種子資料（原本繞過 `initializeFeatureToggles` 直接種 `tenants` 表，缺少對應 toggle 列）。新增/更新測試：`TenantServiceTest`（`acceptInvite` 補斷言 + 新增 `STORE_MANAGER` 拒絕測試）、`AuthServiceRefreshTokenTest`（新增 tenant_members fallback 測試）、`PurchaseOrderServiceTest`（新增 ERP_ENABLED 拒絕測試）。全量回歸 `mvn verify -Pintegration-test` **1417 tests 0 fail**（單元 1027 + 整合 390），checkstyle/PMD 0 violations，`make validate-schema` 無漂移（無 migration）。誠實：`STORE_MANAGER` 角色若未來需要真正支援，須先在 `User.UserRole`/`RolePermissionMapping` 補齊對應定義，屬較大角色體系擴充非本輪範圍；其餘 Feature Toggle 是否有類似遺漏未做全面掃描，僅修復本輪發現的 ERP_ENABLED | ✅ 已 push（2026-09-01 確認 origin/main 已對齊 Sprint 99 收尾 commit 24decc8）|
 | Sprint 98 | v2029.12.12-01 | - | 2026-07-19 | 店鋪成員邀請確認制 + Sprint 97 遺漏修復（PRD §7.4/§8.2.3/§9.11，1 US，5 SP）：**US-001** 第六輪 PRD 全文掃描找到需產品判斷的模糊地帶——PRD schema 定義 `tenant_members.status`（INVITED/ACTIVE/REMOVED）且 API 表格寫「邀請成員」，但實際上 StoreOwner 新增員工單方直接生效，被邀請人無接受/拒絕機會。經 AskUserQuestion 向使用者確認後，改為兩階段邀請確認制：新增 migration `V69`（`status`/`invited_at` 欄位，既有紀錄回填 ACTIVE 不影響現況）；`TenantService.inviteMember`（原 `addMember`）建立 INVITED 紀錄，需被邀請人呼叫 `acceptInvite`/`declineInvite` 確認；`removeMember` 改為軟刪除（狀態轉 REMOVED，避免 REMOVED 成為永遠無法觸發的孤兒 enum 值）；曾被移除者重新邀請時更新既有紀錄而非新增（UNIQUE 約束）；新增 `GET /tenants/invites/my` 待確認邀請列表。**⚠️ 實作過程中意外發現並修復 Sprint 97 的遺漏**：追查 StoreOwner 測試帳號權限時發現 `AdminService.approveTenantApplication()` 雖建立了 `tenant_members` STORE_OWNER 紀錄，卻從未同步 `User.role`，而 `AuthService.login()` 的 JWT role claim 完全來自 `User.role`（非動態查 tenant_members）——導致 Sprint 97 核准的使用者重新登入後仍拿不到 StoreOwner 權限，實質上仍無法管理自己剛核准的店鋪，違反 PRD §7.4.1「新 Token 的 JWT Payload 內 roles 陣列將包含 StoreOwner」的明文要求。已補上 `user.setRole(STORE_OWNER)` 並強化 Sprint 97 的測試斷言。新增測試：`TenantServiceTest`+10、`TenantMemberInviteE2ETest`（新檔 4 tests，真實 DB+JWT，含完整迴路）、`AdminServiceTest`/`TenantApplicationReviewE2ETest` 補強斷言。全量回歸 `mvn verify -Pintegration-test` **1413 tests 0 fail**（單元 1023 + 整合 390），checkstyle/PMD 0 violations，`make validate-schema` 驗證新 migration 與 entity 對齊無漂移。誠實：`tenant_members.role` 欄位的 PRD 字面值（SELLER/HOST）與現行 `StoreRole` enum（STORE_MANAGER）不一致，非本輪範圍；邀請通知僅能主動查詢，無 Email/站內信推播（M09 Phase 2 上線前的既有替代方案模式） | ✅ 已 push（2026-09-01 確認 origin/main 已對齊 Sprint 99 收尾 commit 24decc8）|
 | Sprint 97 | v2029.11.28-01 | - | 2026-07-19 | 開店申請 → Admin 審核 → StoreOwner 授權端到端斷點修復（PRD §7.4.1/§9.10.2/§12.1，1 US，8 SP）：**US-001** 重新全面比對 PRD 全文（含孤兒錯誤碼/零呼叫死碼/欄位從未賦值三項分析）發現目前為止最嚴重的缺口——`TenantController.createApplication()` 只寫入 `tenant_applications` 表，`AdminService.approveTenant/rejectTenant` 卻只操作既有 `tenants` 表記錄，兩者從未串接：96 個 Sprint 以來，「網友開店」這條 PRD 明訂的 P0 自助流程在提交申請後永遠卡住，Admin 端看不到、審不了，也不會產生真正的店鋪與 StoreOwner 授權，僅能靠工程師手動塞資料庫繞過（既有測試也全部如此繞過，因此存活 96 個 Sprint 未被發現）。保留既有 `reviewTenant`/`approveTenant`/`rejectTenant` 完全不動（邏輯正確，只是永遠等不到資料），新增專屬的 `TenantApplication` 審核端點：`GET /v2/admin/tenant-applications`、`POST .../{id}/approve`、`POST .../{id}/reject`。核准時依 PRD §7.4.1 逐字規格：建立 `Tenant`（ACTIVE，slug 比照既有 `PostService` 慣例產生並確保唯一）→ 初始化 6 個 Feature Toggle → 於 `tenant_members` 直接建立 STORE_OWNER 記錄（不透過需要已有 StoreOwner 才能呼叫的既有 `addMember()`）→ 回填 `TenantApplication.tenantId`/`status=APPROVED`。新增 `ErrorCode.E_2006/2007/2008`（找不到申請/狀態非待審核/訪客申請無法核准），不重用語意不準確的既有 `E_2000`/`E_2005`。新增測試：`AdminServiceTest`+8（`TenantApplicationReviewTests`）、`TenantApplicationReviewE2ETest`（新檔 5 tests，真實 DB+JWT，含**完整迴路驗證**：Buyer 申請→Admin 列表可見→核准→真正的 Tenant 已建立且 Buyer 已成為 StoreOwner）。全量回歸 `mvn verify -Pintegration-test` **1389 tests 0 fail**（單元 1003 + 整合 386），checkstyle/PMD 0 violations，`make validate-schema` 無漂移（無 migration）。誠實：`E_4091`（店鋪名稱已被使用）孤兒碼/`tenants.name` 唯一性檢查性質不同（防呆而非功能缺失），留待後續；Guest 申請目前仍無法核准（`E_2008`），PRD 未定義後續轉換路徑，維持現狀由 Admin 駁回 | ✅ 已 push（2026-09-01 確認 origin/main 已對齊 Sprint 99 收尾 commit 24decc8）|
@@ -92,12 +92,12 @@
 
 | 項目 | 數值 |
 |------|------|
-| 建立 Release Tag 次數 | 70 (Sprint 10~99 中已建 row 者；Sprint 8-9 未正式 Release) |
-| 已 push（已 Release） | 70 (全部，2026-09-01 確認 origin/main 已對齊 Sprint 99 收尾 commit 24decc8) |
+| 建立 Release Tag 次數 | 71 (Sprint 10~100 中已建 row 者；Sprint 8-9 未正式 Release) |
+| 已 push（已 Release） | 71 (全部，2026-09-01 確認 origin/main 已對齊 Sprint 100 commit 144b219) |
 | 待 push（Tag 已建、尚未 push） | 0 |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release Tag | v2029.12.26-01 (Sprint 99，✅ 已 push) |
-| 最近一次已 push Release | v2029.12.26-01 (Sprint 99，2026-09-01 確認已同步) |
+| 最近一次 Release Tag | v2030.01.09-01 (Sprint 100，✅ 已 push) |
+| 最近一次已 push Release | v2030.01.09-01 (Sprint 100，2026-09-01 確認已同步) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release Tag 開始 | Sprint 10（⚠️ **連續性已中斷**：Sprint 68/69/70/74/75/76/78/80~92 共 20 個 Sprint 未建 row，該期間 tracker 未同步維護，非未交付） |
 
@@ -398,10 +398,29 @@ Sprint 35  → ⏳ Tag 已建 (v2027.02.27-01)  [待 push，S32~S35 累積批次
 
 ---
 
+## 🔧 狀態欄維護規則（v1.3 新增）
+
+> **真相來源是 git，不是本文件。** 核對指令：
+> ```bash
+> git rev-list --left-right --count origin/main...HEAD   # 0 0 表示全數已 push
+> ```
+>
+> **為什麼狀態欄總是過時**：Sprint 收尾時先 commit（此時尚未 push，只能寫「待 push」），
+> 而 push 發生在 commit 之後。若當下就要把狀態改對，得為這一行字再跑一次完整
+> `make validate-release`（約 30-45 分鐘）才能 push，而那個 commit 又會標成「待 push」——
+> 無限循環。這正是 v1.1 累積 12 筆、v1.2 累積 27 筆過時記錄的結構性原因。
+>
+> **規則**：**下一個 Sprint 開工時，先回填上一個 Sprint 的實際 push 狀態**，
+> 隨該 Sprint 的收尾 commit 一併推送。如此過時記錄最多只有 1 筆（最新的 Sprint），
+> 不會再累積成數十筆。
+
+---
+
 ## 📝 歷史版本
 
 | 版本 | 日期 | 修改內容 |
 |------|------|----------|
+| v1.3 | 2026-09-01 | 新增 Sprint 100 row（優惠券機制完整斷鏈修復，AI-2434）並同步統計區。**新增下方「狀態欄維護規則」**：狀態欄無法在 commit 當下寫正確（push 必然發生在 commit 之後），這是它在 v1.1 累積 12 筆、v1.2 累積 27 筆過時記錄的結構性原因。規則改為「下一個 Sprint 開工時先回填上一個 Sprint 的實際 push 狀態」，使過時記錄最多只有 1 筆而非無限累積 |
 | v1.2 | 2026-09-01 | **修正 Sprint 53~99 共 27 個 row 過時「⏳ 待 push」狀態為「✅ 已 push」**（Sprint 99 收尾 commit `24decc8` 完成 `make validate-release` 全綠後已 push，`git rev-list --left-right --count origin/main...HEAD` 為 `0 0`，確認全數同步）；**重建 Release 統計區**（原數值停留在 Sprint 53，已過時 46 個 Sprint）；**誠實揭露**：Sprint 68/69/70/74/75/76/78/80~92 共 20 個 Sprint 從未建立 row，該期間（多 Sprint 測試強化計劃 + Sprint 80~92）tracker 未同步維護，原「連續」敘述已不成立，補齊需歷史考證，另案處理 |
 | v1.1 | 2026-07-04 | 新增 Sprint 53 row；**修正 Sprint 41~52 過時「⏳ 待 push」狀態為「✅ 已 push」**（確認 origin/main HEAD 已對齊 Sprint 52 收尾 commit，push 債已於本 Sprint 前清償，此前 tracker 未同步更新） |
 | v1.0 | 2026-06-11 | 初始建立，包含 Sprint 10-16 Release 歷史資料 |

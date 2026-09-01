@@ -126,12 +126,44 @@ public class PromoService {
     }
 
     /**
-     * 增加優惠券使用次數
+     * 原子佔用一次總量額度（Sprint 102，DEF-046）。
+     *
+     * <p>取代原本的 {@code incrementUsageCount(PromoCode)}——後者以「讀出物件 → 加 1 → save」
+     * 兩段式更新，與呼叫端稍早的 {@code isUsageLimitReached()} 檢查之間存在讀後寫窗口，
+     * 併發結帳可雙雙通過檢查而使限量券超發。刻意**不**保留舊簽章：舊方法的回傳型別是
+     * {@code void}，呼叫端無從得知額度是否真的取得，留著只會讓下一位呼叫者在毫無徵兆下
+     * 重新引入同一個競態（Sprint 101 移除 {@code computeDiscount} 舊多載的同一個理由）。
+     *
+     * <p>注意：本方法以資料庫敘述直接更新，傳入的 {@code promo} 物件其
+     * {@code currentUsageCount} 呼叫後即為過期值，不可再用於顯示或判斷。
+     *
+     * @param promo 已通過前置驗證的優惠券
+     * @return {@code true} 表示成功佔用一次額度；{@code false} 表示已達 {@code max_usage_count}
      */
-    public void incrementUsageCount(PromoCode promo) {
-        promo.setCurrentUsageCount(promo.getCurrentUsageCount() + 1);
-        promoCodeRepository.save(promo);
-        log.info("Incremented usage count for promo: {}, new count: {}",
-                promo.getCode(), promo.getCurrentUsageCount());
+    public boolean tryConsumeUsageQuota(PromoCode promo) {
+        int affected = promoCodeRepository.incrementUsageCountIfWithinLimit(promo.getId());
+        if (affected == 0) {
+            log.warn("Promo usage quota exhausted at commit: code={}, id={}",
+                    promo.getCode(), promo.getId());
+            return false;
+        }
+        log.info("Promo usage quota consumed: code={}, id={}", promo.getCode(), promo.getId());
+        return true;
+    }
+
+    /**
+     * 原子退還一次總量額度（Sprint 102，DEF-046）。
+     *
+     * <p>訂單取消時呼叫，與 {@link #tryConsumeUsageQuota} 對稱。
+     *
+     * @param promoCodeId 優惠券 ID
+     */
+    public void releaseUsageQuota(UUID promoCodeId) {
+        int affected = promoCodeRepository.decrementUsageCount(promoCodeId);
+        if (affected == 0) {
+            log.warn("Promo usage quota release affected no row: id={}", promoCodeId);
+            return;
+        }
+        log.info("Promo usage quota released: id={}", promoCodeId);
     }
 }

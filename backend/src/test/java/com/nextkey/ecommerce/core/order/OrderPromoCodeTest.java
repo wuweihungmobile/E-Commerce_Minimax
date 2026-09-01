@@ -196,6 +196,8 @@ class OrderPromoCodeTest {
         when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(DISCOUNT);
         when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
                 PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(0L);
+        // Sprint 102：總量額度改由原子條件式 UPDATE 取得，成功路徑必須明確 stub 為取得成功
+        when(promoService.tryConsumeUsageQuota(promo)).thenReturn(true);
         return promo;
     }
 
@@ -223,14 +225,14 @@ class OrderPromoCodeTest {
         }
 
         @Test
-        @DisplayName("已套用優惠券 → 遞增總量使用次數（修復 incrementUsageCount 零呼叫者）")
-        void incrementsUsageCount() {
+        @DisplayName("已套用優惠券 → 原子佔用一次總量額度（Sprint 102 起改用條件式 UPDATE）")
+        void consumesUsageQuota() {
             givenCartWithPromo(PROMO_CODE);
             PromoCode promo = givenValidPromo();
 
             orderService.createOrderFromCart(productRequest());
 
-            verify(promoService).incrementUsageCount(promo);
+            verify(promoService).tryConsumeUsageQuota(promo);
         }
 
         @Test
@@ -272,6 +274,7 @@ class OrderPromoCodeTest {
             when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(BigDecimal.valueOf(500));
             when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
                     PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(0L);
+            when(promoService.tryConsumeUsageQuota(promo)).thenReturn(true);
 
             OrderDto.OrderResponse response = orderService.createOrderFromCart(productRequest());
 
@@ -288,7 +291,7 @@ class OrderPromoCodeTest {
             assertThat(response.getTotalAmount()).isEqualByComparingTo(BigDecimal.valueOf(260));
             assertThat(response.getPromoCode()).isNull();
             assertThat(response.getDiscountAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-            verify(promoService, never()).incrementUsageCount(any());
+            verify(promoService, never()).tryConsumeUsageQuota(any());
             verify(promoCodeUsageRepository, never()).save(any());
             verify(cartService, never()).removePromoCode(any(), any());
         }
@@ -321,6 +324,7 @@ class OrderPromoCodeTest {
             when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(SHIPPING_FEE);
             when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
                     PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(0L);
+            when(promoService.tryConsumeUsageQuota(promo)).thenReturn(true);
 
             OrderDto.OrderResponse response = orderService.createOrderFromCart(productRequest());
 
@@ -465,16 +469,13 @@ class OrderPromoCodeTest {
             when(promoCodeUsageRepository.findByOrderIdAndStatus(
                     ORDER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(List.of(usage));
 
-            PromoCode promo = promoFixture();
-            promo.setCurrentUsageCount(5);
-            when(promoCodeRepository.findById(PROMO_ID)).thenReturn(Optional.of(promo));
-
             orderService.cancelOrder(ORDER_ID, "buyer changed mind");
 
             assertThat(usage.getStatus()).isEqualTo(PromoCodeUsage.UsageStatus.REVOKED);
             assertThat(usage.getRevokedAt()).isNotNull();
-            assertThat(promo.getCurrentUsageCount()).isEqualTo(4);
             verify(promoCodeUsageRepository).save(usage);
+            // Sprint 102：額度回補改為資料庫端的原子相對遞減，不再讀出實體改欄位再 save
+            verify(promoService).releaseUsageQuota(PROMO_ID);
         }
 
         @Test
@@ -492,31 +493,60 @@ class OrderPromoCodeTest {
             verify(promoCodeUsageRepository, never()).save(any());
         }
 
+        // 「總量次數已為 0 時取消不得回補成負數」原為本類別的單元測試，Sprint 102 起
+        // 下限保護下沉為 SQL 的 GREATEST(...)，mock 掉 Repository 的單元測試已無從驗證，
+        // 故移至 M11PromoConcurrencyIntegrationTest#releaseNeverGoesBelowZero（真實 DB）。
+    }
+
+    @Nested
+    @DisplayName("DEF-046（Sprint 102）：額度佔用的競態防護接線")
+    class UsageQuotaRaceTests {
+
         @Test
-        @DisplayName("總量次數已為 0 時取消 → 不得回補成負數")
-        void refundNeverGoesNegative() {
-            TenantContext.setCurrentUser(USER_ID);
-            Order order = orderWithPromo(Order.OrderStatus.CREATED);
-            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
-            when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
-
-            PromoCodeUsage usage = PromoCodeUsage.builder()
-                    .id(UUID.randomUUID())
-                    .promoCodeId(PROMO_ID)
-                    .userId(USER_ID)
-                    .orderId(ORDER_ID)
-                    .status(PromoCodeUsage.UsageStatus.ACTIVE)
-                    .build();
-            when(promoCodeUsageRepository.findByOrderIdAndStatus(
-                    ORDER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(List.of(usage));
-
+        @DisplayName("前置檢查通過但原子佔用失敗（券在檢查與遞增之間被搶完）→ 拒絕下單 E-5009，不留下訂單")
+        void atomicConsumeFailureRejectsOrder() {
+            givenCartWithPromo(PROMO_CODE);
             PromoCode promo = promoFixture();
-            promo.setCurrentUsageCount(0);
-            when(promoCodeRepository.findById(PROMO_ID)).thenReturn(Optional.of(promo));
+            // 前置檢查看到的是「還有額度」的快照——這正是修復前唯一的把關點
+            promo.setCurrentUsageCount(99);
+            promo.setMaxUsageCount(100);
+            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
+                    .thenReturn(Optional.of(promo));
+            when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(DISCOUNT);
+            when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
+                    PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(0L);
+            // 條件式 UPDATE 影響 0 筆：另一筆並行結帳已在這之間把最後一張搶走
+            when(promoService.tryConsumeUsageQuota(promo)).thenReturn(false);
 
-            orderService.cancelOrder(ORDER_ID, "edge case");
+            assertThatThrownBy(() -> orderService.createOrderFromCart(productRequest()))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode").isEqualTo(ErrorCode.E_5009);
 
-            assertThat(promo.getCurrentUsageCount()).isZero();
+            // 交易回滾由 @Transactional 負責，此處確認未寫入用券紀錄、未清掉購物車的券
+            verify(promoCodeUsageRepository, never()).save(any());
+            verify(cartService, never()).removePromoCode(any(), any());
+        }
+
+        @Test
+        @DisplayName("佔用成功後鎖內重查發現每人限用已滿 → 拒絕下單 E-5009（擋同一買家並發雙開）")
+        void perUserLimitRecheckedAfterQuotaLock() {
+            givenCartWithPromo(PROMO_CODE);
+            PromoCode promo = promoFixture();
+            promo.setMaxUsagePerUser(1);
+            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
+                    .thenReturn(Optional.of(promo));
+            when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(DISCOUNT);
+            when(promoService.tryConsumeUsageQuota(promo)).thenReturn(true);
+            // 前置檢查時 0 次（放行），取得行鎖後重查已變 1 次——另一筆並行請求剛提交
+            when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
+                    PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE))
+                    .thenReturn(0L, 1L);
+
+            assertThatThrownBy(() -> orderService.createOrderFromCart(productRequest()))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode").isEqualTo(ErrorCode.E_5009);
+
+            verify(promoCodeUsageRepository, never()).save(any());
         }
     }
 }

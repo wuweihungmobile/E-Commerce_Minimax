@@ -29,15 +29,16 @@ import com.nextkey.ecommerce.domain.repository.PromoCodeRepository;
 /**
  * PromoService 單元測試（Sprint 78 US-001）。
  *
- * <p>背景：{@link PromoService}（3 個 public 方法：validatePromoCode、computeDiscount、
- * incrementUsageCount）是「多 Sprint 測試強化計劃」剩餘模組之一，先前完全沒有單元測試，
+ * <p>背景：{@link PromoService}（Sprint 78 當時為 3 個 public 方法：validatePromoCode、
+ * computeDiscount、incrementUsageCount；後者已於 Sprint 102 / DEF-046 由
+ * tryConsumeUsageQuota + releaseUsageQuota 取代）是「多 Sprint 測試強化計劃」剩餘模組之一，先前完全沒有單元測試，
  * 只有 {@code M11CartPromoIntegrationTest} 這類需要完整 Spring Context 的整合測試間接涵蓋。
  *
  * <p>擁有權/租戶檢查現況：{@code validatePromoCode(promoCodeStr, tenantId)} 直接透過
  * {@code PromoCodeRepository.findByCodeIgnoreCaseAndTenantId} 以 tenantId 做查詢層級的
  * 租戶隔離（非事後過濾），設計正確——本測試以 {@link ArgumentCaptor} 驗證傳入 Repository 的
  * tenantId 與呼叫端傳入的值一致，確認沒有被忽略或替換。{@code computeDiscount} /
- * {@code incrementUsageCount} 接受呼叫端已查得的 {@code PromoCode} 物件，本身不重複做
+ * {@code tryConsumeUsageQuota} 接受呼叫端已查得的 {@code PromoCode} 物件，本身不重複做
  * 租戶檢查——檢視唯一呼叫端 {@code RedisCartService} 後確認：兩者都只會拿到先前
  * {@code validatePromoCode} 已用正確 tenantId 查出的 promo，屬合理的信任邊界（同一次
  * 呼叫鏈內、非跨模組暴露的方法），未發現需要修復的擁有權/租戶檢查缺口。
@@ -48,6 +49,8 @@ class PromoServiceTest {
 
     @Mock
     private PromoCodeRepository promoCodeRepository;
+
+    private static final UUID PROMO_ID = UUID.fromString("55555555-5555-5555-5555-555555555555");
 
     @InjectMocks
     private PromoService promoService;
@@ -355,16 +358,60 @@ class PromoServiceTest {
                 .discountValue(BigDecimal.ZERO);
     }
 
-    // ========== incrementUsageCount ==========
+    // ========== tryConsumeUsageQuota / releaseUsageQuota（Sprint 102，DEF-046）==========
 
     @Test
-    @DisplayName("incrementUsageCount：使用次數 +1 並儲存")
-    void incrementUsageCount_incrementsAndSaves() {
+    @DisplayName("tryConsumeUsageQuota：條件式 UPDATE 影響 1 筆 → 佔用成功")
+    void tryConsumeUsageQuota_returnsTrueWhenRowUpdated() {
         PromoCode promo = activePromoBuilder().currentUsageCount(3).build();
+        promo.setId(PROMO_ID);
+        when(promoCodeRepository.incrementUsageCountIfWithinLimit(PROMO_ID)).thenReturn(1);
 
-        promoService.incrementUsageCount(promo);
+        assertThat(promoService.tryConsumeUsageQuota(promo)).isTrue();
+    }
 
-        assertThat(promo.getCurrentUsageCount()).isEqualTo(4);
-        verify(promoCodeRepository, times(1)).save(eq(promo));
+    @Test
+    @DisplayName("tryConsumeUsageQuota：條件式 UPDATE 影響 0 筆（已達上限）→ 佔用失敗")
+    void tryConsumeUsageQuota_returnsFalseWhenNoRowUpdated() {
+        PromoCode promo = activePromoBuilder().currentUsageCount(3).build();
+        promo.setId(PROMO_ID);
+        when(promoCodeRepository.incrementUsageCountIfWithinLimit(PROMO_ID)).thenReturn(0);
+
+        assertThat(promoService.tryConsumeUsageQuota(promo)).isFalse();
+    }
+
+    @Test
+    @DisplayName("tryConsumeUsageQuota：不得退回讀後寫——只以 id 呼叫原子 UPDATE，絕不 save 實體")
+    void tryConsumeUsageQuota_neverFallsBackToReadModifyWrite() {
+        PromoCode promo = activePromoBuilder().currentUsageCount(3).build();
+        promo.setId(PROMO_ID);
+        when(promoCodeRepository.incrementUsageCountIfWithinLimit(PROMO_ID)).thenReturn(1);
+
+        promoService.tryConsumeUsageQuota(promo);
+
+        // 這是 DEF-046 的核心意圖：任何 save(promo) 都代表讀後寫回歸，競態視窗隨之回來
+        verify(promoCodeRepository, never()).save(any(PromoCode.class));
+        verify(promoCodeRepository, times(1)).incrementUsageCountIfWithinLimit(eq(PROMO_ID));
+    }
+
+    @Test
+    @DisplayName("releaseUsageQuota：以原子相對遞減退還額度，不 save 實體")
+    void releaseUsageQuota_usesAtomicDecrement() {
+        when(promoCodeRepository.decrementUsageCount(PROMO_ID)).thenReturn(1);
+
+        promoService.releaseUsageQuota(PROMO_ID);
+
+        verify(promoCodeRepository, times(1)).decrementUsageCount(eq(PROMO_ID));
+        verify(promoCodeRepository, never()).save(any(PromoCode.class));
+    }
+
+    @Test
+    @DisplayName("releaseUsageQuota：找不到該券（影響 0 筆）→ 不拋例外，取消訂單流程不因此中斷")
+    void releaseUsageQuota_missingRowDoesNotThrow() {
+        when(promoCodeRepository.decrementUsageCount(PROMO_ID)).thenReturn(0);
+
+        promoService.releaseUsageQuota(PROMO_ID);
+
+        verify(promoCodeRepository, times(1)).decrementUsageCount(eq(PROMO_ID));
     }
 }

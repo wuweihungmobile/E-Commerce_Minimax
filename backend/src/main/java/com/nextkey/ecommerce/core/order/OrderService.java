@@ -234,19 +234,53 @@ public class OrderService {
     /**
      * 訂單成立後佔用優惠券額度（總量 + 每人限用），並清除購物車上的促銷碼，
      * 避免同一張券被下一張訂單重複沿用。
+     *
+     * <p>Sprint 102（DEF-046）起，總量額度改由 {@code PromoService.tryConsumeUsageQuota}
+     * 以條件式 UPDATE 原子取得。{@code resolveValidPromoForCheckout} 的前置檢查僅用於
+     * 提早給出精確錯誤訊息，**不是**額度的把關者——真正的把關在這裡：檢查與遞增之間
+     * 若有任何間隙，併發結帳就能雙雙通過而超發限量券。
+     *
+     * <p>佔用失敗時拋例外讓整筆交易回滾，而非靜默改以原價成立訂單：買家在購物車看到的是
+     * 折扣後金額，靜默回退等同在買家不知情下多收款（沿用 Sprint 100 已確立的處置原則）。
      */
     private void commitPromoUsage(final PromoCode promo, final Order order,
             final UUID userId, final UUID tenantId) {
         if (promo == null) {
             return;
         }
-        promoService.incrementUsageCount(promo);
+        if (!promoService.tryConsumeUsageQuota(promo)) {
+            throw new BusinessException(ErrorCode.E_5009,
+                    "Promo code sold out during checkout: " + promo.getCode());
+        }
+        // 上一行的條件式 UPDATE 已取得該 promo 資料列的行鎖並持有至交易結束，
+        // 同一張券的併發結帳到此已序列化，此時重查每人限用才擋得住
+        // 「同一買家同時送出兩筆訂單」——只靠 resolveValidPromoForCheckout 的前置檢查，
+        // 兩筆請求會在任何一筆寫入用券紀錄之前都讀到 0，雙雙放行。
+        if (perUserLimitReached(promo, userId)) {
+            throw new BusinessException(ErrorCode.E_5009,
+                    "Promo code per-user usage limit reached: " + promo.getCode());
+        }
         promoCodeUsageRepository.save(PromoCodeUsage.builder()
                 .promoCodeId(promo.getId())
                 .userId(userId)
                 .orderId(order.getId())
                 .build());
         cartService.removePromoCode(userId, tenantId);
+    }
+
+    /**
+     * 該買家對該促銷碼是否已用盡 {@code max_usage_per_user} 額度。
+     *
+     * <p>僅計 {@code ACTIVE} 的用券紀錄；訂單取消退還後的 {@code REVOKED} 不佔額度。
+     * {@code null} 表示不限每人次數。
+     */
+    private boolean perUserLimitReached(final PromoCode promo, final UUID userId) {
+        if (promo.getMaxUsagePerUser() == null) {
+            return false;
+        }
+        long usedByUser = promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
+                promo.getId(), userId, PromoCodeUsage.UsageStatus.ACTIVE);
+        return usedByUser >= promo.getMaxUsagePerUser();
     }
 
     /**
@@ -287,14 +321,11 @@ public class OrderService {
             throw new BusinessException(ErrorCode.E_5009, "Promo code usage limit reached: " + normalized);
         }
 
-        // 每人限用次數（僅計 ACTIVE 的用券紀錄；訂單取消退還後的 REVOKED 不佔額度）
-        if (promo.getMaxUsagePerUser() != null) {
-            long usedByUser = promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
-                    promo.getId(), userId, PromoCodeUsage.UsageStatus.ACTIVE);
-            if (usedByUser >= promo.getMaxUsagePerUser()) {
-                throw new BusinessException(ErrorCode.E_5009,
-                        "Promo code per-user usage limit reached: " + normalized);
-            }
+        // 每人限用次數（僅計 ACTIVE 的用券紀錄；訂單取消退還後的 REVOKED 不佔額度）。
+        // 這裡是「提早失敗、給精確訊息」的前置檢查，真正的把關在 commitPromoUsage 的鎖內重查。
+        if (perUserLimitReached(promo, userId)) {
+            throw new BusinessException(ErrorCode.E_5009,
+                    "Promo code per-user usage limit reached: " + normalized);
         }
 
         return promo;
@@ -318,11 +349,9 @@ public class OrderService {
             usage.setRevokedAt(java.time.Instant.now());
             promoCodeUsageRepository.save(usage);
 
-            promoCodeRepository.findById(usage.getPromoCodeId()).ifPresent(promo -> {
-                int current = promo.getCurrentUsageCount() == null ? 0 : promo.getCurrentUsageCount();
-                promo.setCurrentUsageCount(Math.max(0, current - 1));
-                promoCodeRepository.save(promo);
-            });
+            // Sprint 102（DEF-046）：改為原子相對遞減。原本的「讀出 → 減 1 → save」在兩筆
+            // 用同一張券的訂單同時取消時會互相覆蓋，額度只退還一次，買家永久少一次可用額度。
+            promoService.releaseUsageQuota(usage.getPromoCodeId());
         }
         log.info("Promo usage refunded on cancellation: orderId={}, promoCode={}, revokedCount={}",
                 order.getId(), order.getPromoCode(), usages.size());

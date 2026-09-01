@@ -54,6 +54,9 @@ class PromoServiceTest {
 
     private static final UUID TENANT_ID = UUID.randomUUID();
 
+    /** 非免運券情境的運費基數：帶 0 表示「本次不考慮運費」，讓斷言聚焦在商品折扣本身。 */
+    private static final BigDecimal NO_SHIPPING = BigDecimal.ZERO;
+
     private PromoCode.PromoCodeBuilder activePromoBuilder() {
         LocalDateTime now = LocalDateTime.now();
         return PromoCode.builder()
@@ -197,22 +200,26 @@ class PromoServiceTest {
     @Test
     @DisplayName("computeDiscount：promo 為 null → 0")
     void computeDiscount_nullPromo_returnsZero() {
-        assertThat(promoService.computeDiscount(null, BigDecimal.TEN)).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(promoService.computeDiscount(null, BigDecimal.TEN, NO_SHIPPING))
+                .isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test
-    @DisplayName("computeDiscount：totalAmount 為 null → 0")
+    @DisplayName("computeDiscount：itemsTotal 為 null → 0")
     void computeDiscount_nullTotalAmount_returnsZero() {
         PromoCode promo = activePromoBuilder().build();
-        assertThat(promoService.computeDiscount(promo, null)).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(promoService.computeDiscount(promo, null, NO_SHIPPING))
+                .isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test
-    @DisplayName("computeDiscount：totalAmount 為 0 或負數 → 0")
+    @DisplayName("computeDiscount：itemsTotal 為 0 或負數 → 0")
     void computeDiscount_nonPositiveTotalAmount_returnsZero() {
         PromoCode promo = activePromoBuilder().build();
-        assertThat(promoService.computeDiscount(promo, BigDecimal.ZERO)).isEqualByComparingTo(BigDecimal.ZERO);
-        assertThat(promoService.computeDiscount(promo, new BigDecimal("-1"))).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(promoService.computeDiscount(promo, BigDecimal.ZERO, NO_SHIPPING))
+                .isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(promoService.computeDiscount(promo, new BigDecimal("-1"), NO_SHIPPING))
+                .isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test
@@ -222,7 +229,8 @@ class PromoServiceTest {
                 .minPurchaseAmount(new BigDecimal("100"))
                 .build();
 
-        assertThat(promoService.computeDiscount(promo, new BigDecimal("50"))).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(promoService.computeDiscount(promo, new BigDecimal("50"), NO_SHIPPING))
+                .isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test
@@ -233,10 +241,23 @@ class PromoServiceTest {
                 .discountValue(new BigDecimal("15"))
                 .build();
 
-        BigDecimal discount = promoService.computeDiscount(promo, new BigDecimal("333.33"));
+        BigDecimal discount = promoService.computeDiscount(promo, new BigDecimal("333.33"), NO_SHIPPING);
 
         // 333.33 * 15% = 49.9995 → HALF_UP 進位到 50.00
         assertThat(discount).isEqualByComparingTo("50.00");
+    }
+
+    @Test
+    @DisplayName("computeDiscount：PERCENTAGE 折扣基數為商品小計，運費不參與計算")
+    void computeDiscount_percentage_ignoresShippingFee() {
+        PromoCode promo = activePromoBuilder()
+                .discountType(DiscountType.PERCENTAGE)
+                .discountValue(new BigDecimal("10"))
+                .build();
+
+        // 商品小計 1000、運費 200：若誤把運費併入基數會折 120，正確應只折 100
+        assertThat(promoService.computeDiscount(promo, new BigDecimal("1000"), new BigDecimal("200")))
+                .isEqualByComparingTo("100.00");
     }
 
     @Test
@@ -248,7 +269,7 @@ class PromoServiceTest {
                 .maxDiscountAmount(new BigDecimal("30"))
                 .build();
 
-        BigDecimal discount = promoService.computeDiscount(promo, new BigDecimal("1000"));
+        BigDecimal discount = promoService.computeDiscount(promo, new BigDecimal("1000"), NO_SHIPPING);
 
         // 1000 * 50% = 500，但上限只有 30
         assertThat(discount).isEqualByComparingTo("30.00");
@@ -262,19 +283,76 @@ class PromoServiceTest {
                 .discountValue(new BigDecimal("200"))
                 .build();
 
-        assertThat(promoService.computeDiscount(promo, new BigDecimal("500"))).isEqualByComparingTo("200.00");
-        assertThat(promoService.computeDiscount(promo, new BigDecimal("100"))).isEqualByComparingTo("100.00");
+        assertThat(promoService.computeDiscount(promo, new BigDecimal("500"), NO_SHIPPING))
+                .isEqualByComparingTo("200.00");
+        assertThat(promoService.computeDiscount(promo, new BigDecimal("100"), NO_SHIPPING))
+                .isEqualByComparingTo("100.00");
+    }
+
+    // ---------- FREE_SHIPPING（Sprint 101 / AI-2435，修復 DEF-045） ----------
+
+    @Test
+    @DisplayName("computeDiscount：FREE_SHIPPING 全額折抵運費（DEF-045：此前一律回 0，買家拿不到任何優惠）")
+    void computeDiscount_freeShipping_waivesFullShippingFee() {
+        PromoCode promo = freeShippingPromoBuilder().build();
+
+        assertThat(promoService.computeDiscount(promo, new BigDecimal("500"), new BigDecimal("120")))
+                .isEqualByComparingTo("120.00");
     }
 
     @Test
-    @DisplayName("computeDiscount：FREE_SHIPPING 類型不在此處計算金額折扣（回傳 0，免運費另由物流模組處理）")
-    void computeDiscount_freeShipping_returnsZero() {
-        PromoCode promo = activePromoBuilder()
-                .discountType(DiscountType.FREE_SHIPPING)
-                .discountValue(BigDecimal.ZERO)
+    @DisplayName("computeDiscount：FREE_SHIPPING 折抵金額只跟運費走，商品小計再高也不多折")
+    void computeDiscount_freeShipping_doesNotDiscountItems() {
+        PromoCode promo = freeShippingPromoBuilder().build();
+
+        assertThat(promoService.computeDiscount(promo, new BigDecimal("9999"), new BigDecimal("60")))
+                .isEqualByComparingTo("60.00");
+    }
+
+    @Test
+    @DisplayName("computeDiscount：FREE_SHIPPING 遇店家滿額免運（運費已為 0）→ 折抵 0，故不需另做疊加排除邏輯")
+    void computeDiscount_freeShipping_alreadyFreeShipping_returnsZero() {
+        PromoCode promo = freeShippingPromoBuilder().build();
+
+        assertThat(promoService.computeDiscount(promo, new BigDecimal("2000"), BigDecimal.ZERO))
+                .isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("computeDiscount：FREE_SHIPPING 受 maxDiscountAmount 上限限制（店家可發部分折抵運費的券）")
+    void computeDiscount_freeShipping_cappedByMaxDiscount() {
+        PromoCode promo = freeShippingPromoBuilder()
+                .maxDiscountAmount(new BigDecimal("60"))
                 .build();
 
-        assertThat(promoService.computeDiscount(promo, new BigDecimal("500"))).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(promoService.computeDiscount(promo, new BigDecimal("500"), new BigDecimal("120")))
+                .isEqualByComparingTo("60.00");
+    }
+
+    @Test
+    @DisplayName("computeDiscount：FREE_SHIPPING 未達最低消費門檻 → 0（門檻一律以商品小計判斷，不含運費）")
+    void computeDiscount_freeShipping_belowMinPurchase_returnsZero() {
+        PromoCode promo = freeShippingPromoBuilder()
+                .minPurchaseAmount(new BigDecimal("1000"))
+                .build();
+
+        assertThat(promoService.computeDiscount(promo, new BigDecimal("500"), new BigDecimal("120")))
+                .isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("computeDiscount：FREE_SHIPPING 運費為 null → 0（防禦，不得 NPE）")
+    void computeDiscount_freeShipping_nullShippingFee_returnsZero() {
+        PromoCode promo = freeShippingPromoBuilder().build();
+
+        assertThat(promoService.computeDiscount(promo, new BigDecimal("500"), null))
+                .isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    private PromoCode.PromoCodeBuilder freeShippingPromoBuilder() {
+        return activePromoBuilder()
+                .discountType(DiscountType.FREE_SHIPPING)
+                .discountValue(BigDecimal.ZERO);
     }
 
     // ========== incrementUsageCount ==========

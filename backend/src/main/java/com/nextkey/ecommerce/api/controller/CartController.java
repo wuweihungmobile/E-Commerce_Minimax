@@ -46,7 +46,10 @@ public class CartController {
             @AuthenticationPrincipal UserPrincipal principal) {
 
         UUID tenantId = getTenantId(principal);
-        CartDto.CartResponse cart = cartService.getCart(principal.getUserId(), tenantId);
+        // Sprint 101（AI-2435）：改用 getCartWithPromo——此前本端點走 getCart，
+        // 完全不回傳 appliedPromoCode/discountAmount/shippingFee，買家套券後重新整理折扣即消失
+        // （券仍在 Redis、結帳會生效，故非收款錯誤，但顯示與實收對不上）
+        CartDto.CartResponse cart = cartService.getCartWithPromo(principal.getUserId(), tenantId);
         return ResponseEntity.ok(ApiResponse.success(cart));
     }
 

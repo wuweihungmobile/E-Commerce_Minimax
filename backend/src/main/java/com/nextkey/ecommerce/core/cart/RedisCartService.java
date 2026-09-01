@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.PricingDto;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
+import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.core.promo.PromoService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
@@ -50,6 +51,7 @@ public class RedisCartService {
     private final PromoCodeRepository promoCodeRepository;
     private final PricingService pricingService;
     private final FeatureToggleService featureToggleService;
+    private final ShippingTemplateService shippingTemplateService;
 
     private static final String CART_KEY_PREFIX = AppConstants.REDIS_CART_PREFIX;
     private static final Duration CART_TTL = Duration.ofDays(30); // 購物車保留 30 天
@@ -299,8 +301,9 @@ public class RedisCartService {
                 promoCode.trim().toUpperCase(), tenantId
         ).orElseThrow(() -> new PromoCodeInvalidException(promoCode, "INVALID"));
 
-        BigDecimal discount = promoService.computeDiscount(promo, cart.getTotalAmount());
-        BigDecimal finalAmount = cart.getTotalAmount().subtract(discount);
+        BigDecimal shippingFee = previewShippingFee(cart, tenantId);
+        BigDecimal discount = promoService.computeDiscount(promo, cart.getTotalAmount(), shippingFee);
+        BigDecimal finalAmount = cart.getTotalAmount().add(shippingFee).subtract(discount);
 
         // 4. 更新 Redis 中的優惠券標記
         String promoKey = getPromoKey(userId, tenantId);
@@ -310,6 +313,7 @@ public class RedisCartService {
 
         return CartDto.ApplyPromoResponse.builder()
                 .appliedPromoCode(promoCode.toUpperCase())
+                .shippingFee(shippingFee)
                 .discountAmount(discount)
                 .finalAmount(finalAmount)
                 .discountType(validation.getDiscountType())
@@ -353,6 +357,13 @@ public class RedisCartService {
     public CartDto.CartResponse getCartWithPromo(UUID userId, UUID tenantId) {
         CartDto.CartResponse cart = getCart(userId, tenantId);
 
+        // Sprint 101（AI-2435）：運費預覽與是否套券無關，一律計算並回填，
+        // 使購物車顯示的應付金額與結帳實收同構（此前購物車完全不顯示運費）
+        BigDecimal shippingFee = previewShippingFee(cart, tenantId);
+        cart.setShippingFee(shippingFee);
+        cart.setDiscountAmount(BigDecimal.ZERO);
+        cart.setFinalAmount(cart.getTotalAmount().add(shippingFee));
+
         // 檢查是否有已套用的優惠券
         String promoKey = getPromoKey(userId, tenantId);
         Object savedPromoCode = redisTemplate.opsForValue().get(promoKey);
@@ -369,9 +380,10 @@ public class RedisCartService {
                             (String) savedPromoCode, tenantId
                     ).orElse(null);
                     if (promo != null) {
-                        BigDecimal discount = promoService.computeDiscount(promo, cart.getTotalAmount());
+                        BigDecimal discount = promoService.computeDiscount(
+                                promo, cart.getTotalAmount(), shippingFee);
                         cart.setDiscountAmount(discount);
-                        cart.setFinalAmount(cart.getTotalAmount().subtract(discount));
+                        cart.setFinalAmount(cart.getTotalAmount().add(shippingFee).subtract(discount));
                     }
                 }
             } catch (RuntimeException e) {
@@ -384,6 +396,27 @@ public class RedisCartService {
     }
 
     // ========== Helper Methods ==========
+
+    /**
+     * 預估購物車運費（Sprint 101 / AI-2435）。
+     *
+     * <p>基數刻意只取 PRODUCT 項目小計，與 {@code OrderService.createOrderFromCart} 一致
+     * （後者只結 PRODUCT 項目，ROOM 另行結帳）。純 ROOM 或空購物車直接回 0——否則 FIXED 型
+     * 運費模板會對沒有實體出貨的訂房購物車顯示一筆固定運費。
+     */
+    private BigDecimal previewShippingFee(CartDto.CartResponse cart, UUID tenantId) {
+        if (cart.getItems() == null || cart.getItems().isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal productSubtotal = cart.getItems().stream()
+                .filter(item -> "PRODUCT".equals(item.getListingType()))
+                .map(CartDto.CartItemResponse::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (productSubtotal.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return shippingTemplateService.calculateFeeForTenant(tenantId, productSubtotal);
+    }
 
     private String getCartKey(UUID userId, UUID tenantId) {
         return CART_KEY_PREFIX + userId.toString() + ":" + tenantId.toString();

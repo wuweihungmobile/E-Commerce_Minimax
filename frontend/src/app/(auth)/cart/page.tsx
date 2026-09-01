@@ -40,6 +40,8 @@ interface CartResponse {
   items: CartItem[]
   totalAmount: number
   itemCount: number
+  // Sprint 101：後端一律回傳預估運費（PRODUCT 項目小計為基數），並讓 finalAmount 含運費
+  shippingFee?: number
   appliedPromoCode?: string
   discountAmount?: number
   finalAmount?: number
@@ -180,7 +182,7 @@ export default function CartPage() {
       }
 
       // Then apply
-      const applyResponse = await apiClient.post<{ data: { appliedPromoCode: string; discountAmount: number; finalAmount: number } }>(
+      const applyResponse = await apiClient.post<{ data: { appliedPromoCode: string; shippingFee: number; discountAmount: number; finalAmount: number } }>(
         API_ENDPOINTS.cart.applyPromo,
         { promoCode }
       )
@@ -189,6 +191,7 @@ export default function CartPage() {
       setCart(prev => prev ? {
         ...prev,
         appliedPromoCode: result.appliedPromoCode,
+        shippingFee: result.shippingFee,
         discountAmount: result.discountAmount,
         finalAmount: result.finalAmount,
       } : prev)
@@ -215,8 +218,9 @@ export default function CartPage() {
       setCart(prev => prev ? {
         ...prev,
         appliedPromoCode: undefined,
-        discountAmount: undefined,
-        finalAmount: undefined,
+        discountAmount: 0,
+        // 移除券後仍要收運費，不可直接清空 finalAmount 讓畫面退回「不含運費」的小計
+        finalAmount: prev.totalAmount + (prev.shippingFee ?? 0),
       } : prev)
 
       setPromoSuccess(null)
@@ -417,6 +421,14 @@ export default function CartPage() {
                       <span className="text-gray-600">小計</span>
                       <span>{formatPrice(cart.totalAmount)}</span>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">運費</span>
+                      <span>
+                        {(cart.shippingFee ?? 0) > 0
+                          ? formatPrice(cart.shippingFee ?? 0)
+                          : '免運'}
+                      </span>
+                    </div>
                     {cart.appliedPromoCode && (
                       <div className="flex justify-between text-green-600">
                         <span>優惠折抵</span>
@@ -426,9 +438,7 @@ export default function CartPage() {
                     <div className="flex justify-between text-lg font-medium border-t pt-2">
                       <span>總金額</span>
                       <span className="text-2xl">
-                        {cart.appliedPromoCode
-                          ? formatPrice(cart.finalAmount || cart.totalAmount)
-                          : formatPrice(cart.totalAmount)}
+                        {formatPrice(cart.finalAmount ?? cart.totalAmount + (cart.shippingFee ?? 0))}
                       </span>
                     </div>
                   </div>

@@ -217,8 +217,9 @@ public class OrderService {
         BigDecimal grossAmount = itemsTotal.add(shippingFee);
         BigDecimal discount = BigDecimal.ZERO;
         if (promo != null) {
-            // 折扣基數為商品小計（不含運費），與購物車顯示的折扣一致
-            discount = promoService.computeDiscount(promo, itemsTotal);
+            // PERCENTAGE / FIXED_AMOUNT 的折扣基數為商品小計，FREE_SHIPPING 則折抵運費（Sprint 101）；
+            // 兩個基數都傳入，由 PromoService 依券別決定，與購物車顯示的折扣走同一套算法
+            discount = promoService.computeDiscount(promo, itemsTotal, shippingFee);
             // PRD §9.5.1 步驟 5：折扣後金額不得為負
             if (discount.compareTo(grossAmount) > 0) {
                 discount = grossAmount;

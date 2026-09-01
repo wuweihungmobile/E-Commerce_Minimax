@@ -70,26 +70,33 @@ public class PromoService {
     }
 
     /**
-     * 計算折扣金額
+     * 計算折扣金額。
+     *
+     * <p>Sprint 101（AI-2435）起改為單一 3 參數簽章，刻意不保留原本不需傳運費的 2 參數多載：
+     * {@code FREE_SHIPPING} 的折扣基數是運費而非商品小計，若留下舊多載，呼叫端會在毫無徵兆的情況下
+     * 拿到 0 折扣——DEF-045 正是這樣產生的（原實作直接回傳 {@code BigDecimal.ZERO} 並註明
+     * 「免運費由物流模組處理」，但物流模組從未處理，選此型別的券買家拿不到任何優惠）。
+     *
+     * @param promo       優惠券；{@code null} 表示未套用
+     * @param itemsTotal  商品小計（不含運費），為最低消費門檻的判斷基數，
+     *                    亦為 PERCENTAGE / FIXED_AMOUNT 的折扣基數
+     * @param shippingFee 該筆訂單運費，FREE_SHIPPING 的折扣基數；購物車預覽與結帳必須傳入
+     *                    同一套運費算法（{@code ShippingTemplateService.calculateFeeForTenant}）的結果，
+     *                    否則會重演「購物車顯示 ≠ 實收」
+     * @return 折扣金額（含 maxDiscountAmount 上限），一律 scale 2
      */
-    public BigDecimal computeDiscount(PromoCode promo, BigDecimal totalAmount) {
-        if (promo == null || totalAmount == null || totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
+    public BigDecimal computeDiscount(PromoCode promo, BigDecimal itemsTotal, BigDecimal shippingFee) {
+        if (promo == null || itemsTotal == null || itemsTotal.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
         }
 
-        // 檢查最低消費門檻
+        // 檢查最低消費門檻（一律以商品小計為準，不含運費）
         if (promo.getMinPurchaseAmount() != null &&
-                totalAmount.compareTo(promo.getMinPurchaseAmount()) < 0) {
+                itemsTotal.compareTo(promo.getMinPurchaseAmount()) < 0) {
             return BigDecimal.ZERO;
         }
 
-        BigDecimal discount = switch (promo.getDiscountType()) {
-            case PERCENTAGE -> totalAmount
-                    .multiply(promo.getDiscountValue())
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            case FIXED_AMOUNT -> promo.getDiscountValue().min(totalAmount);
-            case FREE_SHIPPING -> BigDecimal.ZERO; // 免運費由物流模組處理
-        };
+        BigDecimal discount = rawDiscountByType(promo, itemsTotal, shippingFee);
 
         // 套用最高折扣上限
         if (promo.getMaxDiscountAmount() != null &&
@@ -98,6 +105,24 @@ public class PromoService {
         }
 
         return discount.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * 依券別計算尚未套用 maxDiscountAmount 上限的原始折扣。
+     *
+     * <p>抽為獨立方法而非內嵌於 {@link #computeDiscount}：內嵌會讓後者的 NPath 分支複雜度
+     * 衝到 288，超過 checkstyle 上限 200。
+     */
+    private BigDecimal rawDiscountByType(PromoCode promo, BigDecimal itemsTotal, BigDecimal shippingFee) {
+        return switch (promo.getDiscountType()) {
+            case PERCENTAGE -> itemsTotal
+                    .multiply(promo.getDiscountValue())
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            case FIXED_AMOUNT -> promo.getDiscountValue().min(itemsTotal);
+            // 全額折抵運費（使用者裁定 2026-09-01）：店家已設滿額免運時運費本為 0，
+            // 券自然算出 0 折扣，因此不需要另做「與滿額免運疊加」的排除邏輯
+            case FREE_SHIPPING -> shippingFee != null ? shippingFee.max(BigDecimal.ZERO) : BigDecimal.ZERO;
+        };
     }
 
     /**

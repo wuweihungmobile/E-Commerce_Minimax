@@ -97,8 +97,16 @@ public class CartDto {
         @JsonProperty("totalItems")
         private Integer itemCount;
         private BigDecimal totalAmount;
+
+        /**
+         * 預估運費（Sprint 101）：以購物車內 PRODUCT 項目小計為基數，走與結帳同一套
+         * {@code ShippingTemplateService.calculateFeeForTenant}。純 ROOM 購物車為 0。
+         */
+        private BigDecimal shippingFee;
         private String appliedPromoCode;
         private BigDecimal discountAmount;
+
+        /** 應付金額 = totalAmount + shippingFee - discountAmount（Sprint 101 起含運費）。 */
         private BigDecimal finalAmount;
         private String currency;
         private java.time.Instant updatedAt;
@@ -181,7 +189,12 @@ public class CartDto {
     @AllArgsConstructor
     public static class ApplyPromoResponse {
         private String appliedPromoCode;
+
+        /** 預估運費（Sprint 101）：FREE_SHIPPING 券的折扣基數，前端需一併顯示才能對得上總額。 */
+        private BigDecimal shippingFee;
         private BigDecimal discountAmount;
+
+        /** 應付金額 = 商品小計 + shippingFee - discountAmount（Sprint 101 起含運費）。 */
         private BigDecimal finalAmount;
         private String discountType;
         private BigDecimal discountValue;

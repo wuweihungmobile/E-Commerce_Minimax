@@ -193,7 +193,7 @@ class OrderPromoCodeTest {
         PromoCode promo = promoFixture();
         when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
                 .thenReturn(Optional.of(promo));
-        when(promoService.computeDiscount(eq(promo), any())).thenReturn(DISCOUNT);
+        when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(DISCOUNT);
         when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
                 PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(0L);
         return promo;
@@ -269,7 +269,7 @@ class OrderPromoCodeTest {
             when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
                     .thenReturn(Optional.of(promo));
             // 折扣 500 遠大於應付 260
-            when(promoService.computeDiscount(eq(promo), any())).thenReturn(BigDecimal.valueOf(500));
+            when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(BigDecimal.valueOf(500));
             when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
                     PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(0L);
 
@@ -291,6 +291,57 @@ class OrderPromoCodeTest {
             verify(promoService, never()).incrementUsageCount(any());
             verify(promoCodeUsageRepository, never()).save(any());
             verify(cartService, never()).removePromoCode(any(), any());
+        }
+    }
+
+    @Nested
+    @DisplayName("DEF-045（Sprint 101）：FREE_SHIPPING 券折抵運費")
+    class FreeShippingCheckoutTests {
+
+        @Test
+        @DisplayName("結帳計算折扣時必須把運費一併傳給 PromoService（缺了它 FREE_SHIPPING 就會靜默回 0）")
+        void passesShippingFeeToDiscountCalculation() {
+            givenCartWithPromo(PROMO_CODE);
+            PromoCode promo = givenValidPromo();
+
+            orderService.createOrderFromCart(productRequest());
+
+            // 這正是 DEF-045 的失效點：折扣基數若只傳商品小計，免運券永遠算不出金額
+            verify(promoService).computeDiscount(eq(promo), eq(ITEMS_TOTAL), eq(SHIPPING_FEE));
+        }
+
+        @Test
+        @DisplayName("免運券 → 運費被折抵，實收回到商品小計")
+        void freeShippingCouponWaivesShippingFee() {
+            givenCartWithPromo(PROMO_CODE);
+            PromoCode promo = freeShippingPromoFixture();
+            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
+                    .thenReturn(Optional.of(promo));
+            // 真實 PromoService 對 FREE_SHIPPING 現在回傳的就是運費全額
+            when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(SHIPPING_FEE);
+            when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
+                    PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(0L);
+
+            OrderDto.OrderResponse response = orderService.createOrderFromCart(productRequest());
+
+            // 小計 200 + 運費 60 - 折抵 60 = 200（修復前為 260，買家選了免運券仍被收滿運費）
+            assertThat(response.getTotalAmount()).isEqualByComparingTo(ITEMS_TOTAL);
+            assertThat(response.getDiscountAmount()).isEqualByComparingTo(SHIPPING_FEE);
+            assertThat(response.getShippingFee()).isEqualByComparingTo(SHIPPING_FEE);
+        }
+
+        private PromoCode freeShippingPromoFixture() {
+            return PromoCode.builder()
+                    .id(PROMO_ID)
+                    .code(PROMO_CODE)
+                    .discountType(PromoCode.DiscountType.FREE_SHIPPING)
+                    .discountValue(BigDecimal.ZERO)
+                    .startDate(LocalDateTime.now().minusDays(1))
+                    .endDate(LocalDateTime.now().plusDays(1))
+                    .maxUsageCount(100)
+                    .currentUsageCount(0)
+                    .isActive(true)
+                    .build();
         }
     }
 

@@ -238,7 +238,7 @@ class M11CartPromoIntegrationTest {
         when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(anyString(), any(UUID.class)))
                 .thenReturn(Optional.of(promoCode));
 
-        when(promoService.computeDiscount(any(PromoCode.class), any(BigDecimal.class)))
+        when(promoService.computeDiscount(any(PromoCode.class), any(BigDecimal.class), any(BigDecimal.class)))
                 .thenReturn(BigDecimal.valueOf(40));
 
         // Act & Assert
@@ -392,7 +392,7 @@ class M11CartPromoIntegrationTest {
         when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(anyString(), any(UUID.class)))
                 .thenReturn(Optional.of(promoCode));
 
-        when(promoService.computeDiscount(any(PromoCode.class), any(BigDecimal.class)))
+        when(promoService.computeDiscount(any(PromoCode.class), any(BigDecimal.class), any(BigDecimal.class)))
                 .thenReturn(BigDecimal.valueOf(20));
 
         // 先套用優惠券
@@ -449,7 +449,7 @@ class M11CartPromoIntegrationTest {
                 .thenReturn(Optional.of(promoCode));
 
         // 400 * 20% = 80
-        when(promoService.computeDiscount(any(PromoCode.class), any(BigDecimal.class)))
+        when(promoService.computeDiscount(any(PromoCode.class), any(BigDecimal.class), any(BigDecimal.class)))
                 .thenReturn(BigDecimal.valueOf(80));
 
         // Act & Assert
@@ -496,7 +496,7 @@ class M11CartPromoIntegrationTest {
         when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(anyString(), any(UUID.class)))
                 .thenReturn(Optional.of(promoCode));
 
-        when(promoService.computeDiscount(any(PromoCode.class), any(BigDecimal.class)))
+        when(promoService.computeDiscount(any(PromoCode.class), any(BigDecimal.class), any(BigDecimal.class)))
                 .thenReturn(BigDecimal.valueOf(50));
 
         // Act & Assert
@@ -545,7 +545,7 @@ class M11CartPromoIntegrationTest {
                 .thenReturn(Optional.of(promoCode));
 
         // 300 * 15% = 45 (未超過上限 60)
-        when(promoService.computeDiscount(any(PromoCode.class), any(BigDecimal.class)))
+        when(promoService.computeDiscount(any(PromoCode.class), any(BigDecimal.class), any(BigDecimal.class)))
                 .thenReturn(BigDecimal.valueOf(45));
 
         // Act & Assert
@@ -595,7 +595,7 @@ class M11CartPromoIntegrationTest {
                 .thenReturn(Optional.of(promoCode));
 
         // 300 * 20% = 60，但上限為 50，所以應該是 50
-        when(promoService.computeDiscount(any(PromoCode.class), any(BigDecimal.class)))
+        when(promoService.computeDiscount(any(PromoCode.class), any(BigDecimal.class), any(BigDecimal.class)))
                 .thenReturn(BigDecimal.valueOf(50));
 
         // Act & Assert

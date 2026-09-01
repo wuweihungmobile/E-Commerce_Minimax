@@ -16,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.HashOperations;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 
 import java.math.BigDecimal;
@@ -51,6 +52,9 @@ class RedisCartServiceTest {
     private HashOperations<String, Object, Object> hashOperations;
 
     @Mock
+    private ValueOperations<String, Object> valueOperations;
+
+    @Mock
     private ListingRepository listingRepository;
 
     @Mock
@@ -68,6 +72,9 @@ class RedisCartServiceTest {
     @Mock
     private com.nextkey.ecommerce.core.feature.FeatureToggleService featureToggleService;
 
+    @Mock
+    private com.nextkey.ecommerce.core.logistics.ShippingTemplateService shippingTemplateService;
+
     private RedisCartService redisCartService;
 
     // 測試資料
@@ -78,7 +85,8 @@ class RedisCartServiceTest {
 
     @BeforeEach
     void setUp() {
-        redisCartService = new RedisCartService(redisTemplate, listingRepository, productSkuRepository, promoService, promoCodeRepository, pricingService, featureToggleService);
+        redisCartService = new RedisCartService(redisTemplate, listingRepository, productSkuRepository,
+                promoService, promoCodeRepository, pricingService, featureToggleService, shippingTemplateService);
         lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
     }
 
@@ -405,6 +413,90 @@ class RedisCartServiceTest {
             assertThat(response.getItems()).hasSize(1);
             assertThat(response.getItemCount()).isEqualTo(2);
             assertThat(response.getTotalAmount()).isEqualTo(BigDecimal.valueOf(2000));
+        }
+    }
+
+    // ── getCartWithPromo 運費預覽 Tests (Sprint 101) ────────────────────
+
+    @Nested
+    @DisplayName("getCartWithPromo：運費預覽（Sprint 101 / DEF-045）")
+    class GetCartWithPromoShipping {
+
+        private static final BigDecimal SHIPPING_FEE = BigDecimal.valueOf(60);
+
+        @BeforeEach
+        void stubValueOps() {
+            lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        }
+
+        @Test
+        @DisplayName("PRODUCT 購物車 → 回填預估運費，應付金額 = 小計 + 運費")
+        void productCart_previewsShippingFee() {
+            givenCartWith("PRODUCT", Listing.ListingType.PRODUCT);
+            when(shippingTemplateService.calculateFeeForTenant(eq(TEST_TENANT_ID), any()))
+                    .thenReturn(SHIPPING_FEE);
+
+            CartDto.CartResponse response = redisCartService.getCartWithPromo(TEST_USER_ID, TEST_TENANT_ID);
+
+            // 修復前購物車完全不回傳運費，買家在購物車看不到、也對不上結帳實收
+            assertThat(response.getShippingFee()).isEqualByComparingTo(SHIPPING_FEE);
+            assertThat(response.getFinalAmount()).isEqualByComparingTo(BigDecimal.valueOf(2060));
+        }
+
+        @Test
+        @DisplayName("純 ROOM 購物車 → 運費 0，不得對訂房顯示實體出貨運費")
+        void roomOnlyCart_noShippingFee() {
+            givenCartWith("ROOM", Listing.ListingType.ROOM);
+
+            CartDto.CartResponse response = redisCartService.getCartWithPromo(TEST_USER_ID, TEST_TENANT_ID);
+
+            assertThat(response.getShippingFee()).isEqualByComparingTo(BigDecimal.ZERO);
+            verify(shippingTemplateService, never()).calculateFeeForTenant(any(), any());
+        }
+
+        @Test
+        @DisplayName("套用免運券 → 折抵金額為運費，應付金額回到商品小計")
+        void freeShippingPromo_waivesShippingFee() {
+            givenCartWith("PRODUCT", Listing.ListingType.PRODUCT);
+            when(shippingTemplateService.calculateFeeForTenant(eq(TEST_TENANT_ID), any()))
+                    .thenReturn(SHIPPING_FEE);
+            when(valueOperations.get(anyString())).thenReturn("FREESHIP");
+            when(promoService.validatePromoCode(eq("FREESHIP"), eq(TEST_TENANT_ID)))
+                    .thenReturn(CartDto.PromoValidationResult.valid(
+                            "FREESHIP", "FREE_SHIPPING", BigDecimal.ZERO, null));
+            com.nextkey.ecommerce.domain.model.promo.PromoCode promo =
+                    com.nextkey.ecommerce.domain.model.promo.PromoCode.builder()
+                            .id(UUID.randomUUID())
+                            .code("FREESHIP")
+                            .discountType(
+                                    com.nextkey.ecommerce.domain.model.promo.PromoCode.DiscountType.FREE_SHIPPING)
+                            .discountValue(BigDecimal.ZERO)
+                            .build();
+            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(eq("FREESHIP"), eq(TEST_TENANT_ID)))
+                    .thenReturn(Optional.of(promo));
+            // 運費必須傳進折扣計算，否則免運券永遠算不出金額（DEF-045）
+            when(promoService.computeDiscount(eq(promo), any(), eq(SHIPPING_FEE))).thenReturn(SHIPPING_FEE);
+
+            CartDto.CartResponse response = redisCartService.getCartWithPromo(TEST_USER_ID, TEST_TENANT_ID);
+
+            assertThat(response.getAppliedPromoCode()).isEqualTo("FREESHIP");
+            assertThat(response.getDiscountAmount()).isEqualByComparingTo(SHIPPING_FEE);
+            assertThat(response.getFinalAmount()).isEqualByComparingTo(BigDecimal.valueOf(2000));
+        }
+
+        private void givenCartWith(String listingType, Listing.ListingType type) {
+            Listing listing = buildListing(type);
+            RedisCartService.CartItemData itemData = RedisCartService.CartItemData.builder()
+                    .listingId(TEST_LISTING_ID)
+                    .quantity(2)
+                    .unitPrice(BigDecimal.valueOf(1000))
+                    .subtotal(BigDecimal.valueOf(2000))
+                    .listingType(listingType)
+                    .build();
+            Map<Object, Object> entries = new HashMap<>();
+            entries.put(TEST_LISTING_ID.toString(), itemData);
+            when(hashOperations.entries(anyString())).thenReturn(entries);
+            when(listingRepository.findAllById(anySet())).thenReturn(java.util.List.of(listing));
         }
     }
 

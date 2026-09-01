@@ -4,6 +4,7 @@
 > **版本**: v1.0
 > **更新日期**: 2026-06-10
 > **依據**: [SPRINT_FINAL_APPROVAL_PROCESS.md](./SPRINT_FINAL_APPROVAL_PROCESS.md)
+> **相關**: Sprint 產出文件的形式（Plan / Retro 併入規則）見 [SPRINT_ARTIFACT_CONVENTION.md](../05_development/SPRINT_ARTIFACT_CONVENTION.md)（Sprint 93 起適用）
 > **目的**: 確保所有 Sprint 執行時遵守統一的品質標準，特別是 Final Approval 必須執行完整 mvn test
 
 ---

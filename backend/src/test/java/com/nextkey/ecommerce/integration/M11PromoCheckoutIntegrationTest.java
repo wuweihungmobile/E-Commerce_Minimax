@@ -27,11 +27,13 @@ import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.OrderDto;
 import com.nextkey.ecommerce.api.dto.ProductDto;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
+import com.nextkey.ecommerce.domain.model.logistics.ShippingTemplate;
 import com.nextkey.ecommerce.domain.model.promo.PromoCode;
 import com.nextkey.ecommerce.domain.model.promo.PromoCodeUsage;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.PromoCodeRepository;
 import com.nextkey.ecommerce.domain.repository.PromoCodeUsageRepository;
+import com.nextkey.ecommerce.domain.repository.ShippingTemplateRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
@@ -62,6 +64,7 @@ class M11PromoCheckoutIntegrationTest {
     @Autowired private TenantRepository tenantRepository;
     @Autowired private PromoCodeRepository promoCodeRepository;
     @Autowired private PromoCodeUsageRepository promoCodeUsageRepository;
+    @Autowired private ShippingTemplateRepository shippingTemplateRepository;
 
     @MockBean private com.nextkey.ecommerce.core.feature.FeatureToggleService featureToggleService;
 
@@ -74,6 +77,10 @@ class M11PromoCheckoutIntegrationTest {
     /** 商品單價 100 x 2 = 小計 200；券固定折 100。 */
     private static final BigDecimal UNIT_PRICE = new BigDecimal("100.00");
     private static final BigDecimal DISCOUNT = new BigDecimal("100.00");
+    private static final BigDecimal ITEMS_TOTAL = new BigDecimal("200.00");
+
+    /** Sprint 101：免運券情境用的固定運費。 */
+    private static final BigDecimal SHIPPING_FEE = new BigDecimal("60.00");
 
     private String buyerToken;
     private String sellerToken;
@@ -234,5 +241,70 @@ class M11PromoCheckoutIntegrationTest {
         assertThat(afterCancel.getCurrentUsageCount()).isZero();
         assertThat(promoCodeUsageRepository
                 .findByOrderIdAndStatus(orderId, PromoCodeUsage.UsageStatus.ACTIVE)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("免運券完整迴路：購物車預覽運費 → 套券折抵運費 → 下單實收回到商品小計（DEF-045）")
+    void freeShippingPromoWaivesShippingFee() throws Exception {
+        Tenant tenant = tenantRepository.findById(tenantId).orElseThrow();
+        shippingTemplateRepository.save(ShippingTemplate.builder()
+                .tenant(tenant)
+                .name("Flat rate")
+                .feeType(ShippingTemplate.FeeType.FIXED)
+                .fixedAmount(SHIPPING_FEE)
+                .build());
+
+        String freeShipCode = "FREESHIP" + (System.nanoTime() % 100000);
+        promoCodeRepository.save(PromoCode.builder()
+                .tenant(tenant)
+                .code(freeShipCode)
+                .discountType(PromoCode.DiscountType.FREE_SHIPPING)
+                .discountValue(BigDecimal.ZERO)
+                .startDate(LocalDateTime.now().minusDays(1))
+                .endDate(LocalDateTime.now().plusDays(30))
+                .maxUsageCount(5)
+                .currentUsageCount(0)
+                .maxUsagePerUser(1)
+                .isActive(true)
+                .build());
+
+        createProductAndAddToCart();
+
+        // ── 1. 購物車即應預覽運費（修復前 GET /v2/cart 走 getCart，連 shippingFee 欄位都沒有）──
+        var cartNode = objectMapper.readTree(given()
+                .header("Authorization", "Bearer " + buyerToken)
+                .when().get(CART_URL)
+                .then().statusCode(200)
+                .extract().asString()).path("data");
+
+        assertThat(new BigDecimal(cartNode.path("shippingFee").asText()))
+                .isEqualByComparingTo(SHIPPING_FEE);
+        assertThat(new BigDecimal(cartNode.path("finalAmount").asText()))
+                .isEqualByComparingTo(ITEMS_TOTAL.add(SHIPPING_FEE));
+
+        // ── 2. 套用免運券 → 折抵金額等於運費（修復前 computeDiscount 一律回 0）──
+        var applyNode = objectMapper.readTree(given()
+                .header("Authorization", "Bearer " + buyerToken)
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(CartDto.ApplyPromoRequest.builder().promoCode(freeShipCode).build())
+                .when().post(CART_URL + "/apply-promo")
+                .then().statusCode(200)
+                .extract().asString()).path("data");
+
+        assertThat(new BigDecimal(applyNode.path("discountAmount").asText()))
+                .isEqualByComparingTo(SHIPPING_FEE);
+        assertThat(new BigDecimal(applyNode.path("finalAmount").asText()))
+                .isEqualByComparingTo(ITEMS_TOTAL);
+
+        // ── 3. 下單 → 運費真的沒被收（修復前實收 260，買家選了免運券仍付滿運費）──
+        var orderNode = objectMapper.readTree(placeOrderExpecting(201)).path("data");
+
+        assertThat(new BigDecimal(orderNode.path("shippingFee").asText()))
+                .isEqualByComparingTo(SHIPPING_FEE);
+        assertThat(new BigDecimal(orderNode.path("discountAmount").asText()))
+                .isEqualByComparingTo(SHIPPING_FEE);
+        assertThat(new BigDecimal(orderNode.path("totalAmount").asText()))
+                .isEqualByComparingTo(ITEMS_TOTAL);
+        assertThat(orderNode.path("promoCode").asText()).isEqualTo(freeShipCode);
     }
 }

@@ -154,7 +154,13 @@ jobs:
   backend-integration:
     name: Backend Integration Tests & Package
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Sprint 101（2026-09-01）25 → 45：整合測試套件已成長到 30 個類別 / 392 個測試，
+    # 本地（Apple Silicon）整合測試執行 14.4 分，雲端 ubuntu-latest 約慢一倍，
+    # 加上 setup/compile 實測需 ~34 分。原本的 25 分預算在 run 33466882327 被撞穿
+    # （25m19s 遭 cancel，步驟 1-8 全綠、無任何測試失敗，純粹是預算不足）。
+    # 45 分留約 30% 餘裕；仍保留上限以便捕捉真正的 hang，勿改成 GitHub 預設的 360。
+    # 執行時間持續成長的結構性問題另記於 DEFERRED_ITEMS_TRACKER 的 DEF-049。
+    timeout-minutes: 45
     needs: [backend-unit]
     services:
       postgres:

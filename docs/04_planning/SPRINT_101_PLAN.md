@@ -110,7 +110,11 @@ PRODUCT 購物車回填運費、純 ROOM 購物車運費為 0 且**不呼叫**�
 - 本輪新增測試淨 **+12**（以 `@Test` 實際計數核對：`PromoServiceTest` +6、`OrderPromoCodeTest` +2、`RedisCartServiceTest` +3、`M11PromoCheckoutIntegrationTest` +1）
 - Checkstyle：0 violations（過程中修正一次 NPath 超標，抽出 `rawDiscountByType`）
 - 前端 `tsc --noEmit`：0 errors；`eslint`：0 errors（94 warnings 皆為既有 anonymous default export，與本輪無關）
-- `make validate-release`：⏳ commit 後執行（push gate；結果補記於 RELEASE_TRACKER）
+- 本地 push 守門：✅ 通過（schema 無漂移、前端 build 綠燈），commit `64b0afb` 已 push
+- 雲端 CI（run 33466882327）：Backend Unit Tests ✅ 7m00s、Frontend Lint & Build ✅ 1m24s、**Backend Integration Tests & Package ❌ cancelled @ 25m19s**
+  - 根因**不是測試失敗**：該 job 步驟 1-8 全綠，第 9 步 `Run Integration Tests` 撞到 `timeout-minutes: 25` 被砍，第 10 步 Package 因此 skipped。
+  - **也不是本輪改動造成**：Sprint 99/100 的雲端 run 都因 GitHub Actions 帳單問題在 2~5 秒內失敗、從未跑到這一步，直到本次帳單恢復才第一次暴露這個早已存在的預算不足。
+  - 已於本 Sprint 一併調整為 `timeout-minutes: 45`（依實測：本地整合測試 14.4 分、雲端約慢一倍、加 setup/compile 需 ~34 分，留約 30% 餘裕），結構性成長問題另記為 DEF-049。
 
 ---
 
@@ -141,7 +145,8 @@ PRODUCT 購物車回填運費、純 ROOM 購物車運費為 0 且**不呼叫**�
 | 1 | DEF-046（併發額度競態） | Sprint 100 起連續兩輪列為候選。可複用 `RateLimitFilter`（Sprint 93）的 Redis Lua 原子操作，或改用條件式 UPDATE |
 | 2 | DEF-047（ROOM 訂單套券，PRD US-010） | 規模較大：需新增 `POST /v2/orders` ROOM 分支的促銷碼契約 + 訂房結帳前端 |
 | 3 | DEF-048（混合購物車折扣基數） | 本輪新記錄，需先確認產品期望（券是否該折抵 ROOM 項目） |
-| 4 | 第九輪 PRD 全文掃描 | 若上述皆不排入，回到 Sprint 93-100 的方法論繼續找未追蹤缺口 |
+| 4 | DEF-049（整合測試執行時間結構性成長） | 本輪新記錄。已用調高 `timeout-minutes` 止血，但每輪新增整合測試都會再逼近上限；30 個類別平均 28.7 秒且分布平坦＝Spring context 啟動主導，需先量測 context 重建次數再決定是否平行化/分片 |
+| 5 | 第九輪 PRD 全文掃描 | 若上述皆不排入，回到 Sprint 93-100 的方法論繼續找未追蹤缺口 |
 
 ---
 

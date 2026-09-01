@@ -244,11 +244,15 @@ jobs:
           cd backend
           mvn clean compile -DskipTests -q
 
-      # Integration + E2E tests（Failsafe 自動只跑 E2E/Integration）
+      # Integration + E2E tests
+      # -DskipUnitTests=true：verify 階段本來就包含 test 階段，不加這個旗標會把
+      # backend-unit job 已經跑完的同一批單元測試原封不動再跑一次（Sprint 103 的
+      # 雲端 run 33511000120 實測為 4m25s，佔該步驟 22m36s 的 19.5%，且零額外覆蓋）。
+      # 只有 surefire 被跳過，failsafe（E2E/Integration）照跑。
       - name: Run Integration Tests
         run: |
           cd backend
-          mvn verify -Dspring.profiles.active=integration-test
+          mvn verify -DskipUnitTests=true -Dspring.profiles.active=integration-test
         continue-on-error: false
 
       - name: Package Backend

@@ -277,9 +277,22 @@
                         <exclude>**/*IntegrationTest.java</exclude>
                         <exclude>**/*TrueIntegrationTest.java</exclude>
                     </excludes>
-                    <!-- Ensure each test class runs in a separate JVM to avoid SecurityContext pollution -->
+                    <!-- reuseForks=true：整個測試套件共用一個 JVM。省下的不只是每類一次 JVM
+                         冷啟動——整合測試的 Spring context 啟動在冷 JVM 裡要 31 秒，在暖 JVM 裡
+                         只要 5～8 秒（類別載入／JIT 只付一次），那才是耗時的主導項。
+                         此設定原為 false，理由寫「avoid SecurityContext pollution」；Sprint 104
+                         查證後推翻：所有測試都自己清 SecurityContext，且實測在完全不裝清理機制下
+                         跑 reuseForks=true，404 個整合測試零失敗——汙染顧慮不成立。
+                         ThreadLocalIsolationExtension 因此是**護欄而非修復**：共用 JVM 之後
+                         「不得殘留 ThreadLocal」成為永久不變量，交給一個全域擴充保證，
+                         而不是仰賴每個新測試都記得清（見其 javadoc 與註冊驗證測試）。
+                         runOrder=alphabetical 主要為了決定性——filesystem 順序在 macOS 與 Linux
+                         runner 上不同，會讓本機與雲端的快取行為和順序相依 flaky 不一致；
+                         次要才是讓同 context 設定的類別相鄰以提高快取命中。
+                         Spring context 快取上限見 src/test/resources/spring.properties。 -->
                     <forkCount>1</forkCount>
-                    <reuseForks>false</reuseForks>
+                    <reuseForks>true</reuseForks>
+                    <runOrder>alphabetical</runOrder>
                 </configuration>
             </plugin>
             <!-- failsafe 跑 integration 階段（由 -Pintegration-test 觸發）-->
@@ -293,9 +306,22 @@
                         <include>**/*IntegrationTest.java</include>
                         <include>**/*TrueIntegrationTest.java</include>
                     </includes>
-                    <!-- Ensure each test class runs in a separate JVM to avoid SecurityContext pollution -->
+                    <!-- reuseForks=true：整個測試套件共用一個 JVM。省下的不只是每類一次 JVM
+                         冷啟動——整合測試的 Spring context 啟動在冷 JVM 裡要 31 秒，在暖 JVM 裡
+                         只要 5～8 秒（類別載入／JIT 只付一次），那才是耗時的主導項。
+                         此設定原為 false，理由寫「avoid SecurityContext pollution」；Sprint 104
+                         查證後推翻：所有測試都自己清 SecurityContext，且實測在完全不裝清理機制下
+                         跑 reuseForks=true，404 個整合測試零失敗——汙染顧慮不成立。
+                         ThreadLocalIsolationExtension 因此是**護欄而非修復**：共用 JVM 之後
+                         「不得殘留 ThreadLocal」成為永久不變量，交給一個全域擴充保證，
+                         而不是仰賴每個新測試都記得清（見其 javadoc 與註冊驗證測試）。
+                         runOrder=alphabetical 主要為了決定性——filesystem 順序在 macOS 與 Linux
+                         runner 上不同，會讓本機與雲端的快取行為和順序相依 flaky 不一致；
+                         次要才是讓同 context 設定的類別相鄰以提高快取命中。
+                         Spring context 快取上限見 src/test/resources/spring.properties。 -->
                     <forkCount>1</forkCount>
-                    <reuseForks>false</reuseForks>
+                    <reuseForks>true</reuseForks>
+                    <runOrder>alphabetical</runOrder>
                 </configuration>
                 <executions>
                     <execution>
@@ -308,5 +334,39 @@
             </plugin>
         </plugins>
     </build>
+
+    <!-- 只在 CI 的整合測試 job 啟用（mvn verify -DskipUnitTests=true）。
+         該 job 跑 mvn verify，而 verify 含 test 階段，不跳過就會把 backend-unit job
+         已經跑完的同一批單元測試原封不動再跑一次（雲端實測 4m25s，零額外覆蓋）。
+
+         刻意做成 profile，而不是在 surefire 的 <configuration> 直接寫
+         <skipTests>${skipUnitTests}</skipTests>：POM 裡的顯式值會**蓋過命令列的
+         -DskipTests**，使 `mvn package -DskipTests` 失去作用。Sprint 104 第一次
+         就是這樣寫的，結果打斷了 validate-schema 的 JAR 建置（該階段無 test DB，
+         Spring context 載入失敗），也會讓 workflow 的 Package 步驟變成第三次跑單元測試。
+         profile 只在明確傳入 -DskipUnitTests=true 時才生效，預設行為完全不變。 -->
+    <profiles>
+        <profile>
+            <id>skip-unit-tests</id>
+            <activation>
+                <property>
+                    <name>skipUnitTests</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <!-- 只跳 surefire；failsafe 有自己的 skip 參數，不受影響 -->
+                            <skipTests>true</skipTests>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>

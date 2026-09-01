@@ -85,6 +85,42 @@ if [ -n "$SECRET_FILES" ]; then
   EXIT_CODE=1
 fi
 
+# 4. XML 非 BMP 字元檢查（S104 事故防呆）
+# 本機 Maven 的 XML 解析器吞得下 U+1F534 等 BMP 以外字元，act 容器裡以 apt 安裝的
+# Maven 吞不下，會在第一個 job 就以下列錯誤失敗，且本機全綠時完全看不出來：
+#   Non-parseable POM: Illegal character 0xd83d found in comment
+# 0xd83d 是 emoji 的 UTF-16 高位代理。CLAUDE.md 鼓勵用 🔴 標記，但該慣例不適用
+# 於 XML（workflow YAML 不受影響）。d444b2d 與 Sprint 104 各踩過一次。
+# 只擋 BMP 以外字元——中文註解在 BMP 內，合法。
+STAGED_XML=$(echo "$STAGED_FILES" | grep -E '\.(xml|pom)$' || true)
+if [ -n "$STAGED_XML" ]; then
+  echo "📄 Checking XML files for non-BMP characters..."
+  if ! echo "$STAGED_XML" | xargs python3 -c '
+import sys
+bad = []
+for f in sys.argv[1:]:
+    try:
+        lines = open(f, encoding="utf-8").read().splitlines()
+    except (OSError, UnicodeDecodeError):
+        continue
+    for i, line in enumerate(lines, 1):
+        for c in line:
+            if ord(c) > 0xFFFF:
+                bad.append((f, i, c, line.strip()[:60]))
+                break
+if bad:
+    print("🔴 ERROR: XML 含非 BMP 字元，CI 容器的 Maven 會拒收：")
+    for f, i, c, l in bad:
+        print(f"   {f}:{i}  {c} (U+{ord(c):04X})  | {l}")
+    print("")
+    print("⚠️  請改用純文字標記（🔴 慣例不適用於 XML）。本機 mvn 通過不代表 CI 會過。")
+    sys.exit(1)
+'; then
+    EXIT_CODE=1
+  fi
+  echo ""
+fi
+
 echo ""
 echo "=========================================="
 if [ $EXIT_CODE -eq 0 ]; then

@@ -48,11 +48,12 @@ import com.nextkey.ecommerce.domain.repository.TenantRepository;
  * 全數領走），{@link #unlimitedPromoGrantsEveryAttemptWithoutLostUpdate} 期望計數 10、
  * 實得 **1**（10 次遞增有 9 次被互相覆蓋）。換回條件式 UPDATE 後 5 個案例全綠。
  *
- * <p>Context 快取：本類別的 {@code @SpringBootTest}/{@code @AutoConfigureMockMvc}/
- * {@code @ActiveProfiles}/{@code @MockBean} 組合刻意與 {@code M11PromoCheckoutIntegrationTest}
- * 完全一致，使兩者共用同一個已快取的 Spring context——DEF-049 已量測出整合測試的耗時
- * 由 context 啟動主導，新增測試類別若順手改動這組註解，等於替 CI 再加一次冷啟動。
- * 本類別不使用 MockMvc，{@code @AutoConfigureMockMvc} 僅為對齊快取鍵而保留。
+ * <p>註解組合與 {@code M11PromoCheckoutIntegrationTest} 保持一致，純粹是同模組測試的
+ * 一致性考量，**不會**帶來 context 共用的效益：本專案的 failsafe 設定為
+ * {@code forkCount=1} + {@code reuseForks=false}（pom.xml，為避免 SecurityContext 汙染），
+ * 每個測試類別跑在各自的 JVM，Spring 的 context 快取無法跨類別共用。這也正是 DEF-049
+ * 量到「平均每類 28.7 秒且分布極平坦」的真正原因——每一個類別都付一次完整的 context 啟動。
+ * 因此本類別必然為整合測試 job 增加約一次冷啟動的時間，無法靠對齊註解規避。
  */
 @SpringBootTest
 @AutoConfigureMockMvc

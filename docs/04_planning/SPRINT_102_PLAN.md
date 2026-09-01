@@ -96,7 +96,11 @@ UPDATE promo_codes
 | 4 | 計數為 0 時退還 → 不得成為負數 | 下限保護（由 `M11PromoConcurrencyIntegrationTest` 承接，見下） |
 | 5 | 佔用 → 退還 → 可再次佔用 | 取消訂單的完整往返 |
 
-**Context 快取**：本類別的 `@SpringBootTest`/`@AutoConfigureMockMvc`/`@ActiveProfiles`/`@MockBean` 組合刻意與 `M11PromoCheckoutIntegrationTest` 完全一致，共用同一個已快取的 Spring context。DEF-049 已量測出整合測試耗時由 context 啟動主導，新類別若順手改動這組註解等於替 CI 再加一次冷啟動。本類別不使用 MockMvc，`@AutoConfigureMockMvc` 僅為對齊快取鍵而保留（已寫入 javadoc）。
+**⚠️ 一項自我更正（並且推翻了 DEF-049 的評估方向 (1)）**：本輪原先在 javadoc 與文件中寫「註解組合刻意對齊 `M11PromoCheckoutIntegrationTest` 以共用已快取的 Spring context，避免替 CI 再加一次冷啟動」。**這個說法是錯的。** 本專案 `pom.xml` 的 failsafe（與 surefire 相同）設定為 `forkCount=1` + `reuseForks=false`（原註解寫明是為避免 SecurityContext 汙染），**每個測試類別跑在各自的 JVM**，Spring 的 context 快取無法跨類別共用——註解怎麼對齊都不會共用。
+
+這件事的重要性超出本輪：**DEF-049 的評估方向 (1)「確認各測試類別的 context 設定是否因 `@MockBean`/`@ActiveProfiles` 差異而無法共用，若能收斂成少數幾種 context 可大幅縮短」在現行 fork 設定下不成立**——收斂 context 設定不會有任何效果。DEF-049 量到的「30 個類別平均 28.7 秒、分布極平坦」正是 `reuseForks=false` 的必然結果：每個類別都付一次完整的 context 啟動，所以分布當然平坦。**真正的第一支槓桿是 `reuseForks`**（需先確認當初「SecurityContext 汙染」的顧慮是否仍成立，或可用測試後清理／`@DirtiesContext` 精準處理取代全域關閉 fork 重用），其次才是分片。已回寫 DEF-049 記錄。
+
+誠實承認代價：本類別必然為整合測試 job 增加約一次冷啟動（本機實測該類別 5 個測試共 30.9 秒，其中約 29 秒是 context 啟動），無法靠對齊註解規避。註解與 `M11PromoCheckoutIntegrationTest` 保持一致仍是合理的同模組一致性選擇，只是**沒有 CI 效益**。
 
 ### `PromoServiceTest`（-1 / +5，共 27）
 
@@ -110,6 +114,20 @@ UPDATE promo_codes
 - **佔用成功後鎖內重查發現每人限用已滿** → E-5009（`COUNT` stub 依序回 `0L, 1L`，模擬並行請求剛提交）。
 
 移除 `refundNeverGoesNegative`：下限保護已下沉為 SQL 的 `GREATEST(...)`，mock 掉 Repository 的單元測試已無從驗證。**未靜默刪除**——已遷移為上表第 4 案（真實 DB），並在原處留下說明註解。
+
+### 本地守門 + 雲端 CI
+
+`make validate-release`（act 三 job + schema 漂移 + E2E）全數通過，E2E 60/60 全綠，FULL 記錄寫於 16:50:55，push 於 30 分窗口內完成。
+
+雲端 run **33489182490 三個 job 全綠**（總時長 31m）：
+
+| Job | Sprint 101（run 33471691304） | Sprint 102（本輪） | 預算 |
+|-----|------------------------------|-------------------|------|
+| Backend Unit Tests | 6m58s | 7.9m | 12m |
+| Backend Integration Tests & Package | 29m48s | **23.1m** | 45m |
+| Frontend Lint & Build | 1m26s | 1.1m | — |
+
+**⚠️ 這組數字更正了 Sprint 101 對 DEF-049 的警報**：S101 依單一樣本（29m48s／45m 預算＝餘裕 34%）記下「距離下一次撞穿只剩約 15 分鐘的成長空間」。本輪**多加了 5 個整合測試，該 job 反而快了 6.7 分**（23.1m，餘裕 48.7%）。結論：**在目前規模下，雲端 runner 的 run-to-run 變異（23.1 ~ 29.8 分，落差 29%）遠大於單一 Sprint 新增測試造成的成長**，S101 的「只剩 15 分鐘」是把一次取樣當成趨勢。DEF-049 的長期結構性成長問題仍然成立（每類都付一次 context 啟動），但**急迫性沒有 S101 記載的那麼高**，已回寫 DEF-049 記錄。
 
 ### 紅燈驗證（實跑，2026-09-01）
 

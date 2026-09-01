@@ -1,5 +1,7 @@
 package com.nextkey.ecommerce.core.product;
 
+import java.util.UUID;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,11 @@ import lombok.extern.slf4j.Slf4j;
  * 採購/庫存異動模組使用），採 reserve-at-creation / deduct-at-payment / release-on-cancel
  * 三段式，避免商品訂單前端串接後同一 SKU 可被無限超賣。
  * SKU 若無對應庫存資料列，視為未啟用庫存追蹤，不限量、略過檢查（向下相容既有 SKU）。
+ *
+ * <p>Sprint 103（DEF-050）：三段操作全數改為單一敘述的原子 UPDATE。修復前每段都是
+ * 「載入實體 → 改欄位 → save()」，併發下 10 筆請求只有 2 筆寫得進去，其餘被
+ * {@code @Version} 樂觀鎖擋成技術性例外——預扣端讓買家看到 500 且賣不完，釋放端讓
+ * 取消的庫存還不回去，扣帳端則被付款流程的 try/catch 靜默吞掉而帳實不符。
  */
 @Slf4j
 @Service
@@ -34,16 +41,13 @@ public class ProductInventoryService {
             if (item.getSku() == null) {
                 continue;
             }
-            ProductInventory inventory = productInventoryRepository.findById(item.getSku().getId()).orElse(null);
-            if (inventory == null) {
-                continue;
+            UUID skuId = item.getSku().getId();
+            // 0 筆有兩種可能：可售量不足（要擋），或該 SKU 根本沒有庫存列（未啟用追蹤，既有語意為略過）。
+            // existsById 只在失敗路徑上多付一次查詢，成功路徑維持單次往返。
+            if (productInventoryRepository.reserveIfAvailable(skuId, item.getQuantity()) == 0
+                    && productInventoryRepository.existsById(skuId)) {
+                throw new BusinessException(ErrorCode.E_3004, "Insufficient stock for SKU: " + skuId);
             }
-            if (!inventory.hasAvailableStock(item.getQuantity())) {
-                throw new BusinessException(ErrorCode.E_3004,
-                        "Insufficient stock for SKU: " + item.getSku().getId());
-            }
-            inventory.reserve(item.getQuantity());
-            productInventoryRepository.save(inventory);
         }
     }
 
@@ -54,10 +58,7 @@ public class ProductInventoryService {
             if (item.getSku() == null) {
                 continue;
             }
-            productInventoryRepository.findById(item.getSku().getId()).ifPresent(inventory -> {
-                inventory.release(item.getQuantity());
-                productInventoryRepository.save(inventory);
-            });
+            productInventoryRepository.releaseReservation(item.getSku().getId(), item.getQuantity());
         }
     }
 
@@ -68,10 +69,7 @@ public class ProductInventoryService {
             if (item.getSku() == null) {
                 continue;
             }
-            productInventoryRepository.findById(item.getSku().getId()).ifPresent(inventory -> {
-                inventory.deductStock(item.getQuantity());
-                productInventoryRepository.save(inventory);
-            });
+            productInventoryRepository.deductReserved(item.getSku().getId(), item.getQuantity());
         }
     }
 }

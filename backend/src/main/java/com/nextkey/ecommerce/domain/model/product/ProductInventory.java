@@ -67,17 +67,12 @@ public class ProductInventory {
         updatedAt = Instant.now();
     }
 
-    public boolean hasAvailableStock(final int quantity) {
-        return (totalQty - reservedQty) >= quantity;
-    }
-
-    public void reserve(final int quantity) {
-        this.reservedQty += quantity;
-    }
-
-    public void release(final int quantity) {
-        this.reservedQty = Math.max(0, this.reservedQty - quantity);
-    }
+    // Sprint 103（DEF-050）：hasAvailableStock() / reserve() / release() 已隨訂單流程改用
+    // ProductInventoryRepository 的原子 UPDATE 而移除，未保留為無人呼叫的方法——留著等於留一個
+    // 讓人無徵兆退回「載入 → 改欄位 → save()」讀後寫的入口（與 S101 移除 computeDiscount 舊多載、
+    // S102 移除 incrementUsageCount 同一個「大聲失敗」理由）。
+    // 以下兩個仍保留：M16 ERP 的進貨入庫與庫存異動（StockMovementService / PurchaseOrderService）
+    // 仍走 JPA save，其併發特性另屬 ERP 後台情境，不在 DEF-050 範圍內。
 
     public void addStock(final int quantity) {
         this.totalQty += quantity;

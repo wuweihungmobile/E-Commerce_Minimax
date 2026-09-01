@@ -114,7 +114,11 @@ PRODUCT 購物車回填運費、純 ROOM 購物車運費為 0 且**不呼叫**�
 - 雲端 CI（run 33466882327）：Backend Unit Tests ✅ 7m00s、Frontend Lint & Build ✅ 1m24s、**Backend Integration Tests & Package ❌ cancelled @ 25m19s**
   - 根因**不是測試失敗**：該 job 步驟 1-8 全綠，第 9 步 `Run Integration Tests` 撞到 `timeout-minutes: 25` 被砍，第 10 步 Package 因此 skipped。
   - **也不是本輪改動造成**：Sprint 99/100 的雲端 run 都因 GitHub Actions 帳單問題在 2~5 秒內失敗、從未跑到這一步，直到本次帳單恢復才第一次暴露這個早已存在的預算不足。
-  - 已於本 Sprint 一併調整為 `timeout-minutes: 45`（依實測：本地整合測試 14.4 分、雲端約慢一倍、加 setup/compile 需 ~34 分，留約 30% 餘裕），結構性成長問題另記為 DEF-049。
+  - 已於本 Sprint 一併調整為 `timeout-minutes: 45`（commit `09020e0`），結構性成長問題另記為 DEF-049。
+- 雲端 CI 重跑驗證（run 33471691304，含 Sprint 101 程式碼 + 逾時調整）：✅ **三個 job 全綠**
+  - Backend Unit Tests ✅ 6m58s／Backend Integration Tests & Package ✅ **29m48s**／Frontend Lint & Build ✅ 1m26s
+  - 29m48s 精準落在診斷區間：**超出舊的 25 分**（證實根因判斷正確），在新的 45 分內留 34% 餘裕。原估 ~34 分略保守，已用實測值取代 workflow 註解中的估算。
+  - 這是本專案自 Sprint 99 以來第一次雲端 CI 完整跑完並全綠（此前皆被帳單問題擋在啟動階段）。
 
 ---
 

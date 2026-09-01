@@ -124,6 +124,11 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
      * 本查詢帶具名參數，Hibernate 會把 {@code ::} 的第一個冒號當成參數前綴吃掉，
      * 送到資料庫的是 {@code '{}':jsonb} 而報 {@code syntax error at or near ":"}。
      *
+     * <p><b>{@code clearAutomatically = true} 會清掉整個持久化上下文</b>，呼叫端必須在其後
+     * 重新讀取才拿得到更新後的值（{@code ReviewService.markHelpful} 即如此）。目前唯一呼叫端
+     * 自成一筆交易，故安全；**若日後從一筆更大的交易裡呼叫本方法，該交易中其他尚未 flush
+     * 的實體會被 detach 而遺失變更**——屆時應改為呼叫端自行 {@code refresh} 單一實體。
+     *
      * @param reviewId 目標評價
      * @param userId   投票者 id 的字串形式（JSONB 的 key 必須是 text）
      * @return 受影響筆數；1 表示已登記，0 表示該評價不存在

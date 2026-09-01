@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -99,4 +100,47 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
             @Param("hasImages") Boolean hasImages,
             @Param("hasReply") Boolean hasReply,
             Pageable pageable);
+
+    /**
+     * 原子且冪等地登記一次「有幫助」投票（Sprint 105，DEF-054）。
+     *
+     * <p>取代原本 {@code ReviewService.markHelpful} 的「讀出整份 JSON map → 記憶體改 → save()」，
+     * 一次修掉該實作的兩個獨立缺陷：
+     *
+     * <ol>
+     *   <li><b>無去重</b>：原本 {@code votes.put(userId, currentVotes + 1)} 讓同一人可無限次遞增，
+     *       而前端顯示的是「N <b>人</b>覺得有幫助」、{@code helpfulCount} 又是搜尋排序欄位。
+     *       {@code ||} 合併對同一 key 只會覆寫成 1，重複呼叫不改變任何值——**天然冪等**。</li>
+     *   <li><b>讀後寫競態</b>：{@code Review} 無 {@code @Version}，併發投票會整份覆蓋而靜默漏計。
+     *       實測 10 位相異使用者同時投票只有 <b>2</b> 票存活（見
+     *       {@code M08ReviewHelpfulVotingIntegrationTest}）。改為單一敘述後由資料庫序列化。</li>
+     * </ol>
+     *
+     * <p>{@code helpful_count} 取合併後的 key 數，語意即「相異投票人數」，與前端顯示一致。
+     * SET 子句右側對 {@code helpful_votes} 的引用取的是**該列的舊值**（SQL 語意），
+     * 故兩個欄位都基於同一份合併結果，不會互相脫節。
+     *
+     * <p><b>務必使用 {@code CAST(x AS jsonb)} 而非 PostgreSQL 慣用的 {@code x::jsonb}</b>：
+     * 本查詢帶具名參數，Hibernate 會把 {@code ::} 的第一個冒號當成參數前綴吃掉，
+     * 送到資料庫的是 {@code '{}':jsonb} 而報 {@code syntax error at or near ":"}。
+     *
+     * @param reviewId 目標評價
+     * @param userId   投票者 id 的字串形式（JSONB 的 key 必須是 text）
+     * @return 受影響筆數；1 表示已登記，0 表示該評價不存在
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            UPDATE reviews
+               SET helpful_votes = COALESCE(helpful_votes, CAST('{}' AS jsonb))
+                                   || jsonb_build_object(CAST(:userId AS text), 1),
+                   helpful_count = (
+                       SELECT COUNT(*)
+                         FROM jsonb_object_keys(
+                                  COALESCE(helpful_votes, CAST('{}' AS jsonb))
+                                  || jsonb_build_object(CAST(:userId AS text), 1))
+                   ),
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE id = :reviewId
+            """, nativeQuery = true)
+    int registerHelpfulVote(@Param("reviewId") UUID reviewId, @Param("userId") String userId);
 }

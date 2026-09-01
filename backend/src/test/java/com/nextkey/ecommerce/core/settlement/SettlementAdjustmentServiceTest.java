@@ -93,15 +93,19 @@ class SettlementAdjustmentServiceTest {
         SettlementStatement statement = statementOf(SettlementStatus.PENDING);
         when(settlementStatementRepository.findByTenantIdAndPeriodCovering(eq(TENANT_ID), any()))
                 .thenReturn(Optional.of(statement));
-        when(settlementStatementRepository.save(any(SettlementStatement.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(settlementStatementRepository.applyRefundDeduction(eq(statement.getId()), any(BigDecimal.class)))
+                .thenReturn(1);
 
         service.handleOrderRefund(TENANT_ID, ORDER_ID, ORDER_CREATED_AT, new BigDecimal("100.00"));
 
-        ArgumentCaptor<SettlementStatement> captor = ArgumentCaptor.forClass(SettlementStatement.class);
-        verify(settlementStatementRepository).save(captor.capture());
-        assertThat(captor.getValue().getTotalRefunds()).isEqualByComparingTo("100.00");
-        assertThat(captor.getValue().getNetSettlementAmount()).isEqualByComparingTo("900.00");
+        // Sprint 105（DEF-053）：斷言的是「以正確的 delta 呼叫了原子敘述」，而非
+        // 修改前的「記憶體物件上的數字對不對」。後者在缺陷存在時**照樣全綠**——
+        // 併發正確性無法用 mock 掉 repository 的單執行緒測試證明，
+        // 那由 M07SettlementRefundConcurrencyIntegrationTest 壓真實 DB 負責。
+        ArgumentCaptor<BigDecimal> amountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        verify(settlementStatementRepository).applyRefundDeduction(eq(statement.getId()), amountCaptor.capture());
+        assertThat(amountCaptor.getValue()).isEqualByComparingTo("100.00");
+        verify(settlementStatementRepository, never()).save(any(SettlementStatement.class));
         verify(settlementAdjustmentRepository, never()).save(any());
     }
 
@@ -112,12 +116,13 @@ class SettlementAdjustmentServiceTest {
         SettlementStatement statement = statementOf(SettlementStatus.PENDING_REVIEW);
         when(settlementStatementRepository.findByTenantIdAndPeriodCovering(eq(TENANT_ID), any()))
                 .thenReturn(Optional.of(statement));
-        when(settlementStatementRepository.save(any(SettlementStatement.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(settlementStatementRepository.applyRefundDeduction(eq(statement.getId()), any(BigDecimal.class)))
+                .thenReturn(1);
 
         service.handleOrderRefund(TENANT_ID, ORDER_ID, ORDER_CREATED_AT, new BigDecimal("50.00"));
 
-        verify(settlementStatementRepository).save(any(SettlementStatement.class));
+        verify(settlementStatementRepository).applyRefundDeduction(eq(statement.getId()), any(BigDecimal.class));
+        verify(settlementStatementRepository, never()).save(any(SettlementStatement.class));
         verify(settlementAdjustmentRepository, never()).save(any());
     }
 

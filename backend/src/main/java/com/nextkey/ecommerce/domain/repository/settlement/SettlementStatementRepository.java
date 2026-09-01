@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.domain.repository.settlement;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -8,6 +9,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -85,4 +87,34 @@ public interface SettlementStatementRepository extends JpaRepository<SettlementS
     Optional<SettlementStatement> findByTenantIdAndPeriodCovering(
             @Param("tenantId") UUID tenantId,
             @Param("orderDate") LocalDate orderDate);
+
+    /**
+     * 原子套用退款扣除（Sprint 105，DEF-053）。
+     *
+     * <p>取代原本 {@code SettlementAdjustmentService.applyDirectDeduction} 的
+     * 「讀出金額 → 記憶體加減 → {@code save()}」。同一結算期間內**不同訂單**的退款會落在
+     * **同一列**結算單上，形成讀後寫窗口。
+     *
+     * <p>與 Sprint 103（DEF-050 庫存）的關鍵差異：{@code ProductInventory} 帶 {@code @Version}，
+     * 併發時會拋 {@code ObjectOptimisticLockingFailureException}——會失敗、看得見。
+     * {@code SettlementStatement} **沒有** {@code @Version}，因此修復前的失效模式是
+     * **靜默丟失更新**。{@code M07SettlementRefundConcurrencyIntegrationTest} 實測：
+     * 10 筆併發退款只有 **1 筆**存活（10 條執行緒全讀到 0，全寫回 10.00），
+     * 且**零例外、零日誌**——賣家因此拿到本應扣除的 90% 退款金額。
+     *
+     * <p>兩個金額欄位在同一敘述內相對增減，資料庫保證原子性；
+     * {@code COALESCE} 對齊既有語意（欄位 DEFAULT 0，但允許為 NULL）。
+     * 本表無 {@code version} 欄位，故不需比照 Sprint 103 推進版號。
+     *
+     * @return 受影響筆數；1 表示扣除成功，0 表示該 id 不存在
+     */
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+            UPDATE settlement_statements
+               SET total_refunds = COALESCE(total_refunds, 0) + :refundAmount,
+                   net_settlement_amount = COALESCE(net_settlement_amount, 0) - :refundAmount,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE id = :id
+            """, nativeQuery = true)
+    int applyRefundDeduction(@Param("id") UUID id, @Param("refundAmount") BigDecimal refundAmount);
 }

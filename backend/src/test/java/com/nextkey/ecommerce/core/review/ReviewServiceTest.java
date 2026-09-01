@@ -209,15 +209,22 @@ class ReviewServiceTest {
     // ========== markHelpful ==========
 
     @Test
-    @DisplayName("markHelpful：首次投票 helpfulCount 為 1")
-    void markHelpful_firstVote_incrementsCount() {
+    @DisplayName("markHelpful：投票委派給原子敘述登記，不再讀出整份 map 改完寫回")
+    void markHelpful_delegatesToAtomicStatement() {
         TenantContext.setCurrentUser(OTHER_USER_ID);
         Review review = reviewOf(REVIEWER_ID, listingOf(TENANT_A));
+        review.setHelpfulCount(1);
         when(reviewRepository.findById(REVIEW_ID)).thenReturn(Optional.of(review));
-        when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(reviewRepository.registerHelpfulVote(REVIEW_ID, OTHER_USER_ID.toString())).thenReturn(1);
 
         ReviewDto.ReviewResponse response = reviewService.markHelpful(REVIEW_ID);
 
+        // Sprint 105（DEF-054）：這裡只能驗證「有委派、且不再走 save() 讀後寫」。
+        // 真正的兩個性質——同一人重複投票冪等、相異使用者併發投票不互相覆蓋——
+        // 無法用 mock 掉 repository 的單執行緒測試證明（修復前這個測試照樣全綠），
+        // 由 M08ReviewHelpfulVotingIntegrationTest 壓真實 DB 負責。
+        verify(reviewRepository).registerHelpfulVote(REVIEW_ID, OTHER_USER_ID.toString());
+        verify(reviewRepository, never()).save(any(Review.class));
         assertThat(response.getHelpfulCount()).isEqualTo(1);
     }
 

@@ -63,10 +63,20 @@ public class SettlementAdjustmentService {
         }
     }
 
+    /**
+     * 以單一原子敘述套用退款扣除（Sprint 105，DEF-053）。
+     *
+     * <p>刻意**不呼叫任何 setter**：{@code statement} 仍在本交易的持久化上下文中，
+     * 只要碰了 setter，Hibernate 的髒檢查就會在交易提交時把「記憶體中的舊值 + 本次修改」
+     * 整列寫回，覆蓋掉原生 UPDATE 的結果——競態原封不動，等於白修。
+     */
     private void applyDirectDeduction(final SettlementStatement statement, final BigDecimal refundAmount) {
-        statement.setTotalRefunds(statement.getTotalRefunds().add(refundAmount));
-        statement.setNetSettlementAmount(statement.getNetSettlementAmount().subtract(refundAmount));
-        settlementStatementRepository.save(statement);
+        int affected = settlementStatementRepository.applyRefundDeduction(statement.getId(), refundAmount);
+        if (affected == 0) {
+            log.warn("Refund deduction affected no settlement statement (concurrently deleted?): "
+                    + "statementId={}, refundAmount={}", statement.getId(), refundAmount);
+            return;
+        }
         log.info("Applied direct refund deduction to PENDING settlement statement: statementId={}, refundAmount={}",
                 statement.getId(), refundAmount);
     }

@@ -287,31 +287,31 @@ public class ReviewService {
     }
 
     /**
-     * 標記為有帮助
+     * 標記為有幫助（每人一票，Sprint 105 / DEF-054）。
+     *
+     * <p>語意為**冪等**：同一使用者重複呼叫不會再增加計數，{@code helpfulCount} 代表
+     * 相異投票人數，與前端「N 人覺得有幫助」的顯示一致。此語意由使用者於 Sprint 105 拍板
+     * （規格 IT-M08-203 只定義了單次呼叫，未涵蓋重複投票）。
+     *
+     * <p>去重與計數都交給 {@link ReviewRepository#registerHelpfulVote} 的單一原子敘述。
+     * 修改前的實作把整份 JSON map 讀出、在記憶體改完再寫回，同時具有「同一人可無限灌票」
+     * 與「併發投票互相覆蓋」兩個缺陷——後者實測 10 票只存活 2 票。
      */
     @Transactional
     public ReviewDto.ReviewResponse markHelpful(UUID reviewId) {
         UUID userId = TenantContext.getCurrentUser();
 
-        Review review = reviewRepository.findById(reviewId)
+        reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
 
-        Map<String, Integer> votes = review.getHelpfulVotes();
-        if (votes == null) {
-            votes = new HashMap<>();
-        }
+        reviewRepository.registerHelpfulVote(reviewId, userId.toString());
 
-        String userIdStr = userId.toString();
-        int currentVotes = votes.getOrDefault(userIdStr, 0);
-        votes.put(userIdStr, currentVotes + 1);
+        // registerHelpfulVote 帶 clearAutomatically，先前載入的實體已失效；
+        // 重新讀取才能讓回應反映原生 UPDATE 之後的 helpfulCount。
+        Review updated = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
 
-        int totalVotes = votes.values().stream().mapToInt(Integer::intValue).sum();
-        review.setHelpfulVotes(votes);
-        review.setHelpfulCount(totalVotes);
-
-        review = reviewRepository.save(review);
-
-        return toReviewResponse(review, review.getListing());
+        return toReviewResponse(updated, updated.getListing());
     }
 
     /**

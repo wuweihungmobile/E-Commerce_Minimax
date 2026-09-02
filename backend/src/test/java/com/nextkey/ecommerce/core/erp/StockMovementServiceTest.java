@@ -3,6 +3,9 @@ package com.nextkey.ecommerce.core.erp;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -154,10 +157,11 @@ class StockMovementServiceTest {
     // ── createManualMovement：異動類型分支 ──────────────────────
 
     @Test
-    @DisplayName("createManualMovement：ADJUSTMENT 增加庫存")
+    @DisplayName("createManualMovement：ADJUSTMENT 委派原子 UPDATE 增加庫存，異動記錄取回讀後的數量")
     void createManualMovement_adjustment_increasesStock() {
         when(productInventoryRepository.findById(skuId)).thenReturn(Optional.of(inventoryOf(100)));
         when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+        when(productInventoryRepository.findTotalQtyBySkuId(skuId)).thenReturn(120);
         when(stockMovementRepository.save(any(StockMovement.class))).thenAnswer(inv -> {
             StockMovement m = inv.getArgument(0);
             m.setId(UUID.randomUUID());
@@ -173,6 +177,8 @@ class StockMovementServiceTest {
 
         StockMovementDto result = stockMovementService.createManualMovement(request, userId);
 
+        verify(productInventoryRepository).increaseTotalQty(skuId, 20);
+        // before 由「回讀值 − 本次帶號變化量」反推，故 after 來自 DB、before 與之必然自洽
         assertThat(result.getBeforeTotalQty()).isEqualTo(100);
         assertThat(result.getAfterTotalQty()).isEqualTo(120);
         assertThat(result.getMovementType()).isEqualTo("ADJUSTMENT");
@@ -180,10 +186,35 @@ class StockMovementServiceTest {
     }
 
     @Test
+    @DisplayName("createManualMovement：DEF-051 守衛——不得退回讀後寫，也不得沿用訂單出貨的扣帳敘述")
+    void createManualMovement_neverWritesThroughEntityOrOrderFlowQuery() {
+        when(productInventoryRepository.findById(skuId)).thenReturn(Optional.of(inventoryOf(100)));
+        when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+        when(productInventoryRepository.decreaseTotalQtyIfSufficient(skuId, 10)).thenReturn(1);
+        when(productInventoryRepository.findTotalQtyBySkuId(skuId)).thenReturn(90);
+        when(stockMovementRepository.save(any(StockMovement.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        StockMovementRequest request = StockMovementRequest.builder()
+                .skuId(skuId)
+                .movementType("DAMAGE")
+                .quantity(10)
+                .build();
+
+        stockMovementService.createManualMovement(request, userId);
+
+        // 讀後寫的入口：實體 setter + save()。留一個守衛，避免無徵兆退回 Sprint 113 之前的寫法
+        verify(productInventoryRepository, never()).save(any(ProductInventory.class));
+        // deductReserved 是訂單出貨的敘述（同時扣 reserved_qty）。ERP 報廢／盤虧／調撥出庫依
+        // PRD §6.7.4 只該動 total_qty——共用那條敘述正是修復前把買家已預留的貨放回可售池的原因
+        verify(productInventoryRepository, never()).deductReserved(any(UUID.class), anyInt());
+    }
+
+    @Test
     @DisplayName("createManualMovement：TRANSFER_IN 增加庫存")
     void createManualMovement_transferIn_increasesStock() {
         when(productInventoryRepository.findById(skuId)).thenReturn(Optional.of(inventoryOf(50)));
         when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+        when(productInventoryRepository.findTotalQtyBySkuId(skuId)).thenReturn(80);
         when(stockMovementRepository.save(any(StockMovement.class))).thenAnswer(inv -> inv.getArgument(0));
 
         StockMovementRequest request = StockMovementRequest.builder()
@@ -194,6 +225,7 @@ class StockMovementServiceTest {
 
         StockMovementDto result = stockMovementService.createManualMovement(request, userId);
 
+        verify(productInventoryRepository).increaseTotalQty(skuId, 30);
         assertThat(result.getAfterTotalQty()).isEqualTo(80);
     }
 
@@ -202,6 +234,8 @@ class StockMovementServiceTest {
     void createManualMovement_damage_sufficientStock_decreasesStock() {
         when(productInventoryRepository.findById(skuId)).thenReturn(Optional.of(inventoryOf(100)));
         when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+        when(productInventoryRepository.decreaseTotalQtyIfSufficient(skuId, 40)).thenReturn(1);
+        when(productInventoryRepository.findTotalQtyBySkuId(skuId)).thenReturn(60);
         when(stockMovementRepository.save(any(StockMovement.class))).thenAnswer(inv -> inv.getArgument(0));
 
         StockMovementRequest request = StockMovementRequest.builder()
@@ -212,6 +246,7 @@ class StockMovementServiceTest {
 
         StockMovementDto result = stockMovementService.createManualMovement(request, userId);
 
+        assertThat(result.getBeforeTotalQty()).isEqualTo(100);
         assertThat(result.getAfterTotalQty()).isEqualTo(60);
     }
 
@@ -221,6 +256,10 @@ class StockMovementServiceTest {
     void createManualMovement_deductTypes_insufficientStock_throwsE7004(final StockMovement.MovementType type) {
         when(productInventoryRepository.findById(skuId)).thenReturn(Optional.of(inventoryOf(5)));
         when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+        // Sprint 113（DEF-051）：庫存足夠與否下沉到 SQL 的 WHERE，0 筆＝總量不足
+        // （庫存列的存在性已由 findById 確認），錯誤訊息裡的當前數量另行回讀
+        when(productInventoryRepository.decreaseTotalQtyIfSufficient(skuId, 10)).thenReturn(0);
+        when(productInventoryRepository.findTotalQtyBySkuId(skuId)).thenReturn(5);
 
         StockMovementRequest request = StockMovementRequest.builder()
                 .skuId(skuId)

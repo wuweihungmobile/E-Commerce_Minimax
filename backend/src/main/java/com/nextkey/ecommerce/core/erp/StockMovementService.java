@@ -84,15 +84,17 @@ public class StockMovementService {
                     "Manual movement cannot use PURCHASE_RECEIPT/SALE/RESERVATION/RELEASE types");
         }
 
-        int beforeTotalQty = inventory.getTotalQty();
         int quantity = request.getQuantity();
 
-        // 根據異動類型更新庫存
-        applyMovementType(inventory, movementType, quantity, beforeTotalQty);
+        // 根據異動類型以原子 UPDATE 調整庫存（DEF-051）；回傳本次對 total_qty 的帶號變化量。
+        // 🔴 此行之後不得再碰 inventory 的任何 setter：它仍在本交易的持久化上下文中，
+        // 一旦被弄髒，Hibernate 會在提交時把過期快照整列寫回、覆蓋掉原生 UPDATE 的結果。
+        int delta = applyMovementType(skuId, movementType, quantity);
 
-        productInventoryRepository.save(inventory);
-
-        int afterTotalQty = inventory.getTotalQty();
+        // 前後數量一律回讀 DB：原子 UPDATE 之後 inventory 的快照已過期，拿它填流水帳會記錯數字。
+        // 回讀在同一交易內、且該列的行鎖尚未釋放，故 after 必為本次結果，before 由 after 反推必然自洽。
+        int afterTotalQty = currentTotalQty(skuId);
+        int beforeTotalQty = afterTotalQty - delta;
 
         // 建立異動記錄
         StockMovement movement = StockMovement.builder()
@@ -115,25 +117,39 @@ public class StockMovementService {
         return toDto(saved);
     }
 
-    private void applyMovementType(ProductInventory inventory, StockMovement.MovementType movementType,
-            int quantity, int beforeTotalQty) {
+    /**
+     * 依異動類型執行庫存調整，回傳本次對 {@code total_qty} 的帶號變化量（未動庫存的類型為 0）。
+     *
+     * <p>Sprint 113（DEF-051）改為原子 UPDATE。修復前是「先讀出總量比大小 → 再改實體 → save()」，
+     * 併發下那個比大小形同虛設：實測庫存 3 遇上 10 筆併發扣減，10 條執行緒全數通過充足性檢查，
+     * 最後是靠 {@code @Version} 樂觀鎖擋掉 8 筆——擋住了沒錯，但操作員收到的是 500 而不是「庫存不足」，
+     * 而且盤盈方向連擋都不必擋，8 筆合法異動就這樣整筆消失。
+     */
+    private int applyMovementType(final UUID skuId, final StockMovement.MovementType movementType,
+            final int quantity) {
         switch (movementType) {
             case ADJUSTMENT:
             case TRANSFER_IN:
-                inventory.addStock(quantity);
-                break;
+                productInventoryRepository.increaseTotalQty(skuId, quantity);
+                return quantity;
             case DAMAGE:
             case TRANSFER_OUT:
             case THEFT:
-                if (beforeTotalQty < quantity) {
+                // 庫存列的存在性已在上方 findById 確認過，故 0 筆只可能是總量不足
+                if (productInventoryRepository.decreaseTotalQtyIfSufficient(skuId, quantity) == 0) {
                     throw new BusinessException(ErrorCode.E_7004,
-                            String.format("Insufficient stock: available=%d, requested=%d", beforeTotalQty, quantity));
+                            String.format("Insufficient stock: available=%d, requested=%d",
+                                    currentTotalQty(skuId), quantity));
                 }
-                inventory.deductStock(quantity);
-                break;
+                return -quantity;
             default:
-                break;
+                return 0;
         }
+    }
+
+    /** 回讀庫存列的當前總量（原子 UPDATE 後實體快照已過期，不可改用 getter）。 */
+    private int currentTotalQty(final UUID skuId) {
+        return productInventoryRepository.findTotalQtyBySkuId(skuId);
     }
 
     /**

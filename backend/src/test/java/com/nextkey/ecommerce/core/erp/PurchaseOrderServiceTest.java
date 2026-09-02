@@ -387,9 +387,9 @@ class PurchaseOrderServiceTest {
         when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.of(po));
         when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        ProductInventory inventory = ProductInventory.builder().skuId(skuId).totalQty(50).reservedQty(0).build();
-        when(productInventoryRepository.findById(skuId)).thenReturn(Optional.of(inventory));
-        when(productInventoryRepository.save(any(ProductInventory.class))).thenAnswer(inv -> inv.getArgument(0));
+        // Sprint 113（DEF-051）：入庫改走原子 UPDATE（1 筆＝入庫成功），異動前後數量改由回讀 DB 取得
+        when(productInventoryRepository.increaseTotalQty(skuId, 10)).thenReturn(1);
+        when(productInventoryRepository.findTotalQtyBySkuId(skuId)).thenReturn(60);
 
         ArgumentCaptor<StockMovement> movementCaptor = ArgumentCaptor.forClass(StockMovement.class);
         when(stockMovementRepository.save(movementCaptor.capture())).thenAnswer(inv -> inv.getArgument(0));
@@ -414,6 +414,11 @@ class PurchaseOrderServiceTest {
         assertThat(movement.getReferenceId()).isEqualTo(poId);
         assertThat(movement.getBeforeTotalQty()).isEqualTo(50);
         assertThat(movement.getAfterTotalQty()).isEqualTo(60);
+
+        // DEF-051 守衛：入庫一旦退回「載入實體 → addStock() → save()」，併發收貨就會再次被樂觀鎖擋掉。
+        // 數量正確性交給 M16ErpInventoryConcurrencyIntegrationTest（mock 掉 Repository 的單元測試看不到競態）
+        verify(productInventoryRepository, never()).findById(any(UUID.class));
+        verify(productInventoryRepository, never()).save(any(ProductInventory.class));
     }
 
     @Test
@@ -424,9 +429,8 @@ class PurchaseOrderServiceTest {
         when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.of(po));
         when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        ProductInventory inventory = ProductInventory.builder().skuId(skuId).totalQty(50).reservedQty(0).build();
-        when(productInventoryRepository.findById(skuId)).thenReturn(Optional.of(inventory));
-        when(productInventoryRepository.save(any(ProductInventory.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productInventoryRepository.increaseTotalQty(skuId, 4)).thenReturn(1);
+        when(productInventoryRepository.findTotalQtyBySkuId(skuId)).thenReturn(54);
         when(stockMovementRepository.save(any(StockMovement.class))).thenAnswer(inv -> inv.getArgument(0));
 
         PurchaseOrderReceiveRequest request = PurchaseOrderReceiveRequest.builder()
@@ -484,9 +488,8 @@ class PurchaseOrderServiceTest {
         when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.of(po));
         when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        ProductInventory inventory = ProductInventory.builder().skuId(skuId).totalQty(50).reservedQty(0).build();
-        when(productInventoryRepository.findById(skuId)).thenReturn(Optional.of(inventory));
-        when(productInventoryRepository.save(any(ProductInventory.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productInventoryRepository.increaseTotalQty(skuId, 10)).thenReturn(1);
+        when(productInventoryRepository.findTotalQtyBySkuId(skuId)).thenReturn(60);
         when(stockMovementRepository.save(any(StockMovement.class))).thenAnswer(inv -> inv.getArgument(0));
 
         PurchaseOrderReceiveRequest request = PurchaseOrderReceiveRequest.builder()

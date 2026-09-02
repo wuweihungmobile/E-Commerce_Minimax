@@ -71,15 +71,12 @@ public class ProductInventory {
     // ProductInventoryRepository 的原子 UPDATE 而移除，未保留為無人呼叫的方法——留著等於留一個
     // 讓人無徵兆退回「載入 → 改欄位 → save()」讀後寫的入口（與 S101 移除 computeDiscount 舊多載、
     // S102 移除 incrementUsageCount 同一個「大聲失敗」理由）。
-    // 以下兩個仍保留：M16 ERP 的進貨入庫與庫存異動（StockMovementService / PurchaseOrderService）
-    // 仍走 JPA save，其併發特性另屬 ERP 後台情境，不在 DEF-050 範圍內。
-
-    public void addStock(final int quantity) {
-        this.totalQty += quantity;
-    }
-
-    public void deductStock(final int quantity) {
-        this.totalQty -= quantity;
-        this.reservedQty = Math.max(0, this.reservedQty - quantity);
-    }
+    //
+    // Sprint 113（DEF-051）：最後兩個 addStock() / deductStock() 也隨 M16 ERP 的手動異動與採購入庫
+    // 改走原子 UPDATE 而移除，理由同上。deductStock() 另有一個非移除不可的理由——它同時扣減
+    // reserved_qty，那是**訂單出貨**的語意；ERP 的報廢／盤虧／調撥出庫依 PRD §6.7.4 只該動
+    // total_qty，共用同一個方法正是那個缺陷的來源。
+    //
+    // 至此本實體不再提供任何數量異動方法：所有 product_inventory 的數量寫入都在
+    // ProductInventoryRepository 的原生 UPDATE 中，各自帶著自己的語意與條件。
 }

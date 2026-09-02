@@ -21,7 +21,6 @@ import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrderItem;
 import com.nextkey.ecommerce.domain.model.inventory.StockMovement;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
-import com.nextkey.ecommerce.domain.model.product.ProductInventory;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository;
 import com.nextkey.ecommerce.domain.repository.PurchaseOrderItemRepository;
@@ -279,17 +278,24 @@ public class PurchaseOrderService {
 
     /**
      * 建立入庫異動
+     *
+     * <p>Sprint 113（DEF-051）：入庫改為單一敘述的原子 UPDATE。修復前是「載入實體 →
+     * {@code addStock()} → save()」的讀後寫，10 張採購單併發收同一 SKU 實測只有 2 張入得了帳，
+     * 其餘 8 張撞 {@code ObjectOptimisticLockingFailureException} 而整筆交易回滾——貨已經到了、
+     * 系統沒入庫、採購單狀態也沒推進，操作員只看到 500。
+     *
+     * <p>0 筆即代表該 SKU 沒有庫存列，與修復前 {@code findById(...).orElseThrow()} 的 E_3003 同義，
+     * 且省掉一次往返。
      */
     private void createInboundMovement(final UUID tenantId, final PurchaseOrderItem item, final int receivedQty, final UUID poId) {
-        ProductInventory inventory = productInventoryRepository.findById(item.getSkuId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_3003,
-                        String.format("SKU not found: %s", item.getSkuId())));
+        if (productInventoryRepository.increaseTotalQty(item.getSkuId(), receivedQty) == 0) {
+            throw new BusinessException(ErrorCode.E_3003,
+                    String.format("SKU not found: %s", item.getSkuId()));
+        }
 
-        int beforeTotalQty = inventory.getTotalQty();
-        inventory.addStock(receivedQty);
-        productInventoryRepository.save(inventory);
-
-        int afterTotalQty = inventory.getTotalQty();
+        // 前後數量回讀 DB：本交易對該列的行鎖尚未釋放，讀到的必然是本次入庫的結果
+        int afterTotalQty = productInventoryRepository.findTotalQtyBySkuId(item.getSkuId());
+        int beforeTotalQty = afterTotalQty - receivedQty;
 
         StockMovement movement = StockMovement.builder()
                 .tenantId(tenantId)

@@ -15,10 +15,15 @@ import com.nextkey.ecommerce.domain.model.product.ProductInventory;
  * 產品庫存 Repository
  *
  * <p>Sprint 103（DEF-050）起，訂單流程的三段式庫存異動一律走本檔的條件式／相對 UPDATE，
- * 不再「載入實體 → 改欄位 → save()」。三條敘述都刻意帶 {@code version = version + 1}：
- * {@link ProductInventory} 有 {@code @Version} 樂觀鎖，M16 ERP 的進貨／盤點仍走 JPA save
- * （{@code StockMovementService}、{@code PurchaseOrderService}），若原生 UPDATE 不推進版號，
- * ERP 端就會拿著過期快照通過樂觀鎖檢查，把訂單流程剛寫入的數量整列覆蓋掉。
+ * 不再「載入實體 → 改欄位 → save()」。Sprint 113（DEF-051）把 M16 ERP 的手動異動與採購入庫
+ * （{@code StockMovementService}、{@code PurchaseOrderService}）一併收攏進來，至此**所有**
+ * {@code product_inventory} 的寫入都在本檔，實體上不再留任何數量 setter 型的異動入口。
+ *
+ * <p>每條敘述都刻意帶 {@code version = version + 1}：{@link ProductInventory} 有
+ * {@code @Version} 樂觀鎖，若原生 UPDATE 不推進版號，任何仍持有實體快照的路徑就會通過樂觀鎖
+ * 檢查而整列覆蓋別人剛寫入的數量。這在 Sprint 103 是為了防 ERP 覆蓋訂單流程；ERP 改為原生
+ * UPDATE 後這條路已不存在，但規則保留——版號欄位存在就必須維護，否則下一個載入實體的呼叫端
+ * 會拿到看似有效的過期版號。
  */
 @Repository
 public interface ProductInventoryRepository extends JpaRepository<ProductInventory, UUID> {
@@ -95,4 +100,65 @@ public interface ProductInventoryRepository extends JpaRepository<ProductInvento
              WHERE sku_id = :skuId
             """, nativeQuery = true)
     int deductReserved(@Param("skuId") UUID skuId, @Param("quantity") int quantity);
+
+    /**
+     * 原子增加總量（Sprint 113，DEF-051）。M16 ERP 的採購收貨入庫與盤盈／調撥入庫共用。
+     *
+     * <p>取代 {@code ProductInventory.addStock()} 的「載入 → 加 → save()」。修復前 10 張採購單
+     * 併發收同一 SKU，實測只有 2 張入得了帳，其餘 8 張以
+     * {@code ObjectOptimisticLockingFailureException} 收場——貨已經到了、系統卻沒入庫，
+     * 且採購單狀態同時沒推進（整筆交易回滾），操作員只看到 500。
+     *
+     * @return 受影響筆數；0 表示該 SKU 無庫存列
+     */
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+            UPDATE product_inventory
+               SET total_qty = total_qty + :quantity,
+                   version = version + 1,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE sku_id = :skuId
+            """, nativeQuery = true)
+    int increaseTotalQty(@Param("skuId") UUID skuId, @Param("quantity") int quantity);
+
+    /**
+     * 原子扣減總量，庫存不足則不動（Sprint 113，DEF-051）。M16 ERP 的報廢／盤虧／調撥出庫共用。
+     *
+     * <p>「總量是否足夠」與「扣減」原本分屬兩次往返，併發下形同虛設：實測庫存 3 遇上 10 筆
+     * 併發扣減，10 條執行緒**全數通過**充足性檢查（{@code insufficientStock=0}，各自讀到的都還是
+     * 別人尚未扣掉的數字），最後靠樂觀鎖擋下 8 筆而非靠庫存檢查——擋是擋住了，但操作員收到的是
+     * 技術性例外而非「庫存不足」。
+     *
+     * <p>🔴 **刻意只動 {@code total_qty}，不碰 {@code reserved_qty}**：PRD §6.7.4 明訂
+     * ADJUST_MINUS／TRANSFER_OUT／SCRAP 皆為 {@code -total_qty}，只有 OUTBOUND（訂單出貨）
+     * 才是 {@code -total_qty, -reserved_qty}。修復前 ERP 誤用共用的 {@code deductStock()}
+     * 而連預留量一起扣，等於把已被買家訂走的貨重新放回可售池（見
+     * {@code M16ErpInventoryConcurrencyIntegrationTest.manualDeductionMustNotReleaseReservedStock}）。
+     *
+     * <p>條件寫成 {@code total_qty >= :quantity} 而非可售量 {@code total_qty - reserved_qty}：
+     * 維持修復前以總量為準的既有語意——報廢／盤虧針對的是實體庫存，被預留的那幾件同樣可能破損。
+     *
+     * @return 受影響筆數；1 表示扣減成功，0 表示總量不足**或**該 SKU 無庫存列
+     */
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+            UPDATE product_inventory
+               SET total_qty = total_qty - :quantity,
+                   version = version + 1,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE sku_id = :skuId
+               AND total_qty >= :quantity
+            """, nativeQuery = true)
+    int decreaseTotalQtyIfSufficient(@Param("skuId") UUID skuId, @Param("quantity") int quantity);
+
+    /**
+     * 讀取當前總量（Sprint 113，DEF-051）。供 {@code stock_movements} 記錄異動前後數量之用。
+     *
+     * <p>刻意用原生純量查詢而非實體 getter：改為原子 UPDATE 後，持久化上下文裡的實體快照
+     * 早於那筆寫入，拿它填流水帳會記到過期的數字。純量查詢不經一級快取，且緊接在同一交易的
+     * UPDATE 之後執行——該列的行鎖尚未釋放，其他交易改不動，因此讀到的必然是本次操作的結果。
+     */
+    @Query(value = "SELECT COALESCE(total_qty, 0) FROM product_inventory WHERE sku_id = :skuId",
+            nativeQuery = true)
+    Integer findTotalQtyBySkuId(@Param("skuId") UUID skuId);
 }

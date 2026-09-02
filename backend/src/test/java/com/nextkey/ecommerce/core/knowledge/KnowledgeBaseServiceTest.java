@@ -353,21 +353,21 @@ class KnowledgeBaseServiceTest {
     @DisplayName("incrementViewCount：委派給 DB 原子遞增，不得退回讀後寫")
     void incrementViewCount_delegatesToAtomicUpdate() {
         UUID articleId = UUID.randomUUID();
-        when(articleRepository.incrementViewCount(articleId)).thenReturn(1);
+        when(articleRepository.incrementViewCount(articleId, TENANT_ID)).thenReturn(1);
 
         knowledgeBaseService.incrementViewCount(articleId);
 
-        verify(articleRepository).incrementViewCount(articleId);
+        verify(articleRepository).incrementViewCount(articleId, TENANT_ID);
         // 守衛：一旦有人改回「載入 → 記憶體 +1 → save()」，這兩行會立刻失敗
         verify(articleRepository, org.mockito.Mockito.never()).save(any());
         verify(articleRepository, org.mockito.Mockito.never()).findById(any());
     }
 
     @Test
-    @DisplayName("incrementViewCount：更新 0 筆（查無文章）→ E_4000")
+    @DisplayName("incrementViewCount：更新 0 筆（查無文章或跨租戶）→ E_4000")
     void incrementViewCount_notFound_throws() {
         UUID articleId = UUID.randomUUID();
-        when(articleRepository.incrementViewCount(articleId)).thenReturn(0);
+        when(articleRepository.incrementViewCount(articleId, TENANT_ID)).thenReturn(0);
 
         assertThatThrownBy(() -> knowledgeBaseService.incrementViewCount(articleId))
                 .isInstanceOf(BusinessException.class)

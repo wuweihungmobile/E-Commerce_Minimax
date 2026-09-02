@@ -87,6 +87,23 @@ public class ShippingTemplateService {
         log.info("Shipping template deleted: id={}", id);
     }
 
+    /**
+     * 依模板 ID 試算運費。
+     *
+     * <p>🔴 <b>刻意不做租戶過濾（DEF-037，使用者於 Sprint 107 拍板結案）。</b>
+     * 本類別的 {@code createTemplate}／{@code getTemplates}／{@code updateTemplate}／
+     * {@code deleteTemplate} 都以 {@code tenantId} 隔離，只有本方法沒有——這是**刻意的**，
+     * 用以支援買家跨店比價／試算運費：只憑 {@code templateId} 即可取得運費計算結果。
+     *
+     * <p>可接受的理由：回傳內容僅 {@code feeType}／{@code orderAmount}／{@code shippingFee}
+     * 等運費計算參數，不含 PII，也沒有任何寫入或竄改路徑。
+     *
+     * <p><b>請勿「順手」加上租戶過濾。</b>這曾三度在租戶範圍橫向掃描中被當成疏漏撿起來評估
+     * （Sprint 76 記錄、Sprint 107 結案）。要改變此設計需先確認買家比價情境不再需要它。
+     *
+     * <p>對照：{@code KnowledgeBaseService.incrementViewCount}（DEF-057）表面同型但結論相反
+     * ——那裡同類別的詳情端點已經 404，瀏覽數卻能 200 遞增，是自相矛盾而非設計。
+     */
     @Transactional(readOnly = true)
     public ShippingTemplateDto.FeeCalculationResponse calculateFee(UUID templateId, BigDecimal orderAmount) {
         ShippingTemplate template = shippingTemplateRepository.findById(templateId)

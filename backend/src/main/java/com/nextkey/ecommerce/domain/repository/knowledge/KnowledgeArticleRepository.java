@@ -53,15 +53,17 @@ public interface KnowledgeArticleRepository extends JpaRepository<KnowledgeArtic
      * {@link #findPopularByCategoryId} 以 {@code viewCount DESC} 取熱門文章，
      * 少計會直接讓排名失真。
      *
-     * <p>🔴 <b>刻意不帶租戶條件</b>：修復前的 {@code KnowledgeBaseService.incrementViewCount}
-     * 用的是無租戶範圍的 {@code findById}（同類別其餘方法都用 {@code findByIdAndTenantId}），
-     * 本輪只改併發語意、不改權限語意。該不一致已記錄為 DEF-057。
+     * <p><b>租戶條件（Sprint 107 / DEF-057）</b>：Sprint 106 沿用了修復前無租戶範圍的
+     * {@code findById}，使同一個類別對「他租戶的文章」反應不一致——列表看不到、詳情 404，
+     * 但瀏覽數端點回 200 且真的 +1。既然 {@code viewCount} 是 {@link #findPopularByCategoryId}
+     * 的排序欄位，那等於讓他租戶操縱本租戶的熱門排名。語意由使用者於 Sprint 107 拍板，
+     * 收斂為與同類別其餘端點一致。
      *
-     * @return 更新筆數；0 表示該文章不存在
+     * @return 更新筆數；0 表示該文章不存在或不屬於該租戶
      */
     @Modifying(flushAutomatically = true)
     @Query(value = "UPDATE knowledge_articles SET view_count = COALESCE(view_count, 0) + 1 "
-                 + "WHERE id = :articleId",
+                 + "WHERE id = :articleId AND tenant_id = :tenantId",
            nativeQuery = true)
-    int incrementViewCount(@Param("articleId") UUID articleId);
+    int incrementViewCount(@Param("articleId") UUID articleId, @Param("tenantId") UUID tenantId);
 }

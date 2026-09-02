@@ -286,12 +286,15 @@ public class KnowledgeBaseService {
      * {@code @Version}，那種讀後寫在併發下會靜默丟失更新，而熱門文章是以
      * {@code viewCount DESC} 取的，少計會讓排名失真。
      *
-     * <p>維持修復前的無租戶範圍語意（本類別其餘方法都用 {@code findByIdAndTenantId}，
-     * 只有這裡是 {@code findById}）；該不一致屬權限語意而非併發語意，記錄為 DEF-057。
+     * <p><b>租戶範圍（Sprint 107 / DEF-057）</b>：本方法先前是該類別唯一沒有租戶範圍的方法
+     * （其餘一律 {@code findByIdAndTenantId}），造成他租戶讀不到（詳情 404）卻遞增得動（200）
+     * 的矛盾，而 {@code viewCount} 又是熱門文章的排序欄位。租戶條件已下沉到 UPDATE 的
+     * WHERE 子句，更新 0 筆即代表「查無文章或不屬於本租戶」。
      */
     @Transactional
     public void incrementViewCount(UUID articleId) {
-        int updated = articleRepository.incrementViewCount(articleId);
+        UUID tenantId = getCurrentTenant();
+        int updated = articleRepository.incrementViewCount(articleId, tenantId);
         if (updated == 0) {
             throw new BusinessException(ErrorCode.E_4000, "Article not found");
         }

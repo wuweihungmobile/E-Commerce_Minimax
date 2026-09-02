@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,6 +40,8 @@ import com.nextkey.ecommerce.domain.repository.faq.FaqArticleRepository;
 import com.nextkey.ecommerce.domain.repository.faq.FaqCategoryRepository;
 import com.nextkey.ecommerce.domain.repository.knowledge.KnowledgeArticleRepository;
 import com.nextkey.ecommerce.domain.repository.knowledge.KnowledgeCategoryRepository;
+import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 /**
@@ -58,6 +61,13 @@ import com.nextkey.ecommerce.shared.tenant.TenantContext;
  * <p>既有的 {@code FaqServiceTest.incrementViewCount_incrementsAndSaves} 與
  * {@code KnowledgeBaseServiceTest.incrementViewCount_incrementsAndSaves} 都 mock 掉 repository、
  * 斷言「記憶體物件上的數字對不對」——正是在缺陷存在時照樣全綠的斷言。
+ *
+ * <p><b>Sprint 107 / DEF-057</b> 另加入兩個租戶隔離案例。Sprint 106 修 DEF-055 時發現
+ * {@code KnowledgeBaseService.incrementViewCount} 是該類別唯一沒有租戶範圍的方法，
+ * 造成同一個類別對「他租戶的文章」反應不一致：列表看不到、詳情 404，
+ * 但**瀏覽數端點回 200 並且真的 +1**——一篇你被禁止閱讀的文章，你可以幫它衝瀏覽數，
+ * 而瀏覽數正是 {@code findPopularByCategoryId} 的排序欄位。語意由使用者於 Sprint 107 拍板：
+ * 收斂為與同類別其餘端點一致（跨租戶即查無文章）。
  */
 @SpringBootTest
 @ActiveProfiles("integration-test")
@@ -87,13 +97,7 @@ class ViewCountConcurrencyIntegrationTest {
     @BeforeEach
     void setUp() {
         stamp = System.nanoTime();
-        tenant = tenantRepository.save(Tenant.builder()
-                .name("View Count Tenant")
-                .slug("view-" + stamp)
-                .contactEmail("view-" + stamp + "@tenant.com")
-                .contactPhone("+886-123456789")
-                .status(Tenant.TenantStatus.ACTIVE)
-                .build());
+        tenant = seedTenant("own");
 
         author = userRepository.save(User.builder()
                 .email("view-author-" + stamp + "@example.com")
@@ -106,6 +110,17 @@ class ViewCountConcurrencyIntegrationTest {
     }
 
     // ── Seeding ──────────────────────────────────────────────────────
+
+    private Tenant seedTenant(final String tag) {
+        long tenantStamp = System.nanoTime();
+        return tenantRepository.save(Tenant.builder()
+                .name("View Count Tenant " + tag)
+                .slug("view-" + tag + "-" + tenantStamp)
+                .contactEmail("view-" + tag + "-" + tenantStamp + "@tenant.com")
+                .contactPhone("+886-123456789")
+                .status(Tenant.TenantStatus.ACTIVE)
+                .build());
+    }
 
     private Post seedPublishedPost() {
         return postRepository.save(Post.builder()
@@ -250,5 +265,45 @@ class ViewCountConcurrencyIntegrationTest {
                 .as("findPopularByCategoryId 以 viewCount DESC 取熱門文章，"
                         + "%s 次瀏覽少計會直接讓排名失真", VIEWERS)
                 .isEqualTo(VIEWERS);
+    }
+
+    // ── M18 知識庫：租戶隔離（Sprint 107 / DEF-057）────────────────────
+
+    @Test
+    @DisplayName("他租戶使用者遞增知識庫文章瀏覽數 → 查無文章，且數字不得變動")
+    void knowledgeViewCountRejectsCrossTenantIncrement() {
+        UUID articleId = seedKnowledgeArticle();
+        Tenant otherTenant = seedTenant("other");
+
+        try {
+            TenantContext.setCurrentTenant(otherTenant.getId());
+            assertThatThrownBy(() -> knowledgeBaseService.incrementViewCount(articleId))
+                    .as("同類別的列表看不到、詳情 404，瀏覽數端點沒有理由回 200")
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_4000);
+        } finally {
+            TenantContext.clear();
+        }
+
+        assertThat(viewCountOf("knowledge_articles", articleId))
+                .as("viewCount 是 findPopularByCategoryId 的排序欄位；"
+                        + "他租戶若能遞增，就能操縱本租戶的熱門排名")
+                .isZero();
+    }
+
+    @Test
+    @DisplayName("本租戶使用者遞增知識庫文章瀏覽數 → 正常 +1（收斂租戶範圍不得誤傷正常路徑）")
+    void knowledgeViewCountStillWorksForOwnTenant() {
+        UUID articleId = seedKnowledgeArticle();
+
+        try {
+            TenantContext.setCurrentTenant(tenant.getId());
+            knowledgeBaseService.incrementViewCount(articleId);
+        } finally {
+            TenantContext.clear();
+        }
+
+        assertThat(viewCountOf("knowledge_articles", articleId)).isEqualTo(1);
     }
 }

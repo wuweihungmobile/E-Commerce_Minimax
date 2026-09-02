@@ -279,12 +279,22 @@ public class KnowledgeBaseService {
         log.info("Deleted knowledge article: id={}", articleId);
     }
 
+    /**
+     * 增加文章瀏覽次數（Sprint 106 / DEF-055：改為 DB 原子遞增）
+     *
+     * <p>不再載入實體後在記憶體 +1 再 {@code save()}——{@code KnowledgeArticle} 沒有
+     * {@code @Version}，那種讀後寫在併發下會靜默丟失更新，而熱門文章是以
+     * {@code viewCount DESC} 取的，少計會讓排名失真。
+     *
+     * <p>維持修復前的無租戶範圍語意（本類別其餘方法都用 {@code findByIdAndTenantId}，
+     * 只有這裡是 {@code findById}）；該不一致屬權限語意而非併發語意，記錄為 DEF-057。
+     */
     @Transactional
     public void incrementViewCount(UUID articleId) {
-        KnowledgeArticle article = articleRepository.findById(articleId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
-        article.incrementViewCount();
-        articleRepository.save(article);
+        int updated = articleRepository.incrementViewCount(articleId);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.E_4000, "Article not found");
+        }
     }
 
     // ========== Article Version Control ==========

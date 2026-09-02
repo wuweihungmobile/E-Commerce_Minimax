@@ -319,18 +319,36 @@ class FaqServiceTest {
         org.mockito.Mockito.verify(articleRepository).delete(article);
     }
 
+    /**
+     * Sprint 106 / DEF-055：本測試原本斷言「記憶體物件上的數字 +1 並 save()」，
+     * 那正是**在讀後寫競態存在時照樣全綠**的斷言（repository 已被 mock，
+     * 真正的丟失更新發生在 DB 層）。改為斷言「有委派給原子敘述、且不再走 save()」，
+     * 併發正確性交由 {@code ViewCountConcurrencyIntegrationTest} 以真實 DB 驗證。
+     */
     @Test
-    @DisplayName("incrementViewCount：瀏覽數加一並儲存")
-    void incrementViewCount_incrementsAndSaves() {
+    @DisplayName("incrementViewCount：委派給 DB 原子遞增，不得退回讀後寫")
+    void incrementViewCount_delegatesToAtomicUpdate() {
         UUID articleId = UUID.randomUUID();
-        FaqCategory category = buildCategory(UUID.randomUUID(), "General", "general");
-        FaqArticle article = buildArticle(articleId, category, "Q1", "q1");
-        int before = article.getViewCount();
-        when(articleRepository.findByIdAndTenantId(articleId, TENANT)).thenReturn(Optional.of(article));
+        when(articleRepository.incrementViewCount(articleId, TENANT)).thenReturn(1);
 
         faqService.incrementViewCount(articleId);
 
-        assertThat(article.getViewCount()).isEqualTo(before + 1);
-        org.mockito.Mockito.verify(articleRepository).save(article);
+        org.mockito.Mockito.verify(articleRepository).incrementViewCount(articleId, TENANT);
+        // 守衛：一旦有人改回「載入 → 記憶體 +1 → save()」，這兩行會立刻失敗
+        org.mockito.Mockito.verify(articleRepository, org.mockito.Mockito.never()).save(any());
+        org.mockito.Mockito.verify(articleRepository, org.mockito.Mockito.never())
+                .findByIdAndTenantId(any(), any());
+    }
+
+    @Test
+    @DisplayName("incrementViewCount：更新 0 筆（查無文章或跨租戶）→ E_4000")
+    void incrementViewCount_notFound_throws() {
+        UUID articleId = UUID.randomUUID();
+        when(articleRepository.incrementViewCount(articleId, TENANT)).thenReturn(0);
+
+        assertThatThrownBy(() -> faqService.incrementViewCount(articleId))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_4000);
     }
 }

@@ -279,8 +279,13 @@ public class PostService {
 
     /**
      * 前台：依 Slug 取得已發布貼文
+     *
+     * <p>本方法會遞增瀏覽次數，因此**不能**標成 {@code @Transactional(readOnly = true)}：
+     * Hibernate 在唯讀交易下是 {@code FlushMode.MANUAL}，原本的
+     * 「{@code post.incrementViewCount()} → {@code save()}」永遠不會被 flush，
+     * 瀏覽數不是少計而是**完全沒計**（Sprint 106 紅燈實測：單執行緒瀏覽一次仍為 0）。
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public M15Dto.PostResponse getPublishedPostBySlug(String slug, UUID tenantId) {
         if (tenantId == null) {
             throw new BusinessException(ErrorCode.E_1002, "tenantId is required");
@@ -292,12 +297,15 @@ public class PostService {
             throw new BusinessException(ErrorCode.E_4101);
         }
 
-        // 增加瀏覽次數
-        post.incrementViewCount();
-        postRepository.save(post);
+        // 增加瀏覽次數：交由 DB 原子遞增。刻意不碰 post 的任何 setter——
+        // post 仍在持久化上下文中，改了會讓髒檢查在提交時整列寫回、覆蓋這次遞增。
+        postRepository.incrementViewCount(post.getId());
 
         List<PostEmbed> embeds = postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(post.getId());
-        return buildPostResponse(post, embeds);
+        M15Dto.PostResponse response = buildPostResponse(post, embeds);
+        // post 的快照早於上面那筆遞增，補回本次瀏覽以維持既有的回應語意（前台會顯示「N 次瀏覽」）
+        response.setViewCount((post.getViewCount() == null ? 0 : post.getViewCount()) + 1);
+        return response;
     }
 
     // ========== Embed Parsing ==========

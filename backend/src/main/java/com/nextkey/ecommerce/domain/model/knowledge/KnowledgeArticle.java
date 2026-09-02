@@ -131,10 +131,6 @@ public class KnowledgeArticle {
         updatedAt = Instant.now();
     }
 
-    public void incrementViewCount() {
-        this.viewCount = (this.viewCount == null ? 0 : this.viewCount) + 1;
-    }
-
     public void publish() {
         this.status = ArticleStatus.PUBLISHED;
         if (this.publishedAt == null) {

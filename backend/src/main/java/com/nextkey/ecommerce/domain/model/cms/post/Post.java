@@ -135,11 +135,4 @@ public class Post {
     public void archive() {
         this.status = PostStatus.ARCHIVED;
     }
-
-    /**
-     * 增加瀏覽次數
-     */
-    public void incrementViewCount() {
-        this.viewCount = (this.viewCount == null ? 0 : this.viewCount) + 1;
-    }
 }

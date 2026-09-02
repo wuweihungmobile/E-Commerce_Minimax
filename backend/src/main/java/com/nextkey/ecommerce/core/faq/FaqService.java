@@ -344,13 +344,20 @@ public class FaqService {
         log.info("Deleted FAQ article: id={}, tenantId={}", articleId, tenantId);
     }
 
+    /**
+     * 增加文章瀏覽次數（Sprint 106 / DEF-055：改為 DB 原子遞增）
+     *
+     * <p>不再載入實體後在記憶體 +1 再 {@code save()}——{@code FaqArticle} 沒有
+     * {@code @Version}，那種讀後寫在併發下會靜默丟失更新。租戶條件下沉到 UPDATE 的
+     * WHERE 子句，更新 0 筆即代表「查無文章或不屬於本租戶」，錯誤語意與修復前相同。
+     */
     @Transactional
     public void incrementViewCount(UUID articleId) {
         UUID tenantId = getCurrentTenant();
-        FaqArticle article = articleRepository.findByIdAndTenantId(articleId, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
-        article.incrementViewCount();
-        articleRepository.save(article);
+        int updated = articleRepository.incrementViewCount(articleId, tenantId);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.E_4000, "Article not found");
+        }
     }
 
     // ========== Helper Methods ==========

@@ -102,10 +102,6 @@ public class FaqArticle {
         updatedAt = Instant.now();
     }
 
-    public void incrementViewCount() {
-        this.viewCount = (this.viewCount == null ? 0 : this.viewCount) + 1;
-    }
-
     public void publish() {
         this.isPublished = true;
         if (this.publishedAt == null) {

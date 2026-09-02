@@ -701,4 +701,60 @@ class PostServiceTest {
             assertThat(response.getPosts()).hasSize(1);
         }
     }
+
+    // ── getPublishedPostBySlug() Tests ─────────────────────────────────
+
+    /**
+     * Sprint 106 / DEF-055 的守衛。修復前這條路徑是
+     * 「{@code post.incrementViewCount()} → {@code save()}」，而方法又標成
+     * {@code @Transactional(readOnly = true)}——唯讀交易下 Hibernate 是
+     * {@code FlushMode.MANUAL}，遞增**永遠不會被寫進 DB**（紅燈實測：單執行緒
+     * 瀏覽一次仍為 0）。這裡守住「委派給原子敘述、不再走 save()」，
+     * 實際的持久化與併發正確性由 {@code ViewCountConcurrencyIntegrationTest} 驗證。
+     */
+    @Nested
+    @DisplayName("getPublishedPostBySlug()")
+    class GetPublishedPostBySlug {
+
+        @Test
+        @DisplayName("getPublishedPostBySlug_incrementsViewCountAtomically")
+        void getPublishedPostBySlug_incrementsViewCountAtomically() {
+            // Arrange
+            Post post = buildPost(Post.PostStatus.PUBLISHED);
+            when(postRepository.findByTenantIdAndSlug(TEST_TENANT_ID, "test-post"))
+                    .thenReturn(Optional.of(post));
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(TEST_POST_ID))
+                    .thenReturn(new ArrayList<>());
+
+            // Act
+            M15Dto.PostResponse response = postService.getPublishedPostBySlug("test-post", TEST_TENANT_ID);
+
+            // Assert
+            verify(postRepository).incrementViewCount(TEST_POST_ID);
+            // 守衛：一旦有人改回讀後寫，這兩行會立刻失敗
+            verify(postRepository, never()).save(any(Post.class));
+            assertThat(post.getViewCount())
+                    .as("實體仍在持久化上下文中，碰了 setter 會讓髒檢查在提交時整列寫回、覆蓋原子遞增")
+                    .isZero();
+            assertThat(response.getViewCount())
+                    .as("回應須包含本次瀏覽（前台顯示「N 次瀏覽」），維持修復前的回應語意")
+                    .isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("getPublishedPostBySlug_draftPost_throwsE4101")
+        void getPublishedPostBySlug_draftPost_throwsE4101() {
+            // Arrange
+            Post post = buildPost(Post.PostStatus.DRAFT);
+            when(postRepository.findByTenantIdAndSlug(TEST_TENANT_ID, "test-post"))
+                    .thenReturn(Optional.of(post));
+
+            // Act & Assert
+            assertThatThrownBy(() -> postService.getPublishedPostBySlug("test-post", TEST_TENANT_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_4101);
+            verify(postRepository, never()).incrementViewCount(any(UUID.class));
+        }
+    }
 }

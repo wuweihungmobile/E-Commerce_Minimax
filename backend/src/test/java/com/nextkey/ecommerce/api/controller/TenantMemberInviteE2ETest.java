@@ -60,7 +60,7 @@ class TenantMemberInviteE2ETest {
     @Autowired
     private JwtTokenService jwtTokenService;
 
-    private static final String BASE_URL = "/api/v2";
+    private static final String BASE_URL = "/v2";
 
     @BeforeEach
     void setUp() {

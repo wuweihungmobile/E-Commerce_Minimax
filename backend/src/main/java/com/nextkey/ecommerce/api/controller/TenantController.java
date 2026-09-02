@@ -44,7 +44,11 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/v2")
+// 🔴 這裡只能是 "/v2"，不可寫成 "/api/v2"：server.servlet.context-path 已經是 /api，
+// 再加一層會讓端點實際落在 /api/api/v2/**，前端打的 /api/v2/** 因此完全打不到
+// （Sprint 109 實測：/api/api/v2/tenants/apply → 201，/api/v2/tenants/apply → 401，
+//  與不存在的路徑同一個回應）。M17 開店申請長期無法送出的根因，見 DEF-061。
+@RequestMapping("/v2")
 @RequiredArgsConstructor
 public class TenantController {
 

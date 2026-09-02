@@ -92,7 +92,7 @@ class M16ErpE2ETest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    private static final String ERP_URL = "/api/v2/dashboard";
+    private static final String ERP_URL = "/v2/dashboard";
     private static final String AUTH_URL = "/v2/auth";
     private static final String TEST_PASSWORD = "SecurePass123!";
 

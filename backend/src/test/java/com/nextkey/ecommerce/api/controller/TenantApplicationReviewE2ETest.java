@@ -65,7 +65,7 @@ class TenantApplicationReviewE2ETest {
     @Autowired
     private JwtTokenService jwtTokenService;
 
-    private static final String TENANT_BASE_URL = "/api/v2";
+    private static final String TENANT_BASE_URL = "/v2";
     private static final String ADMIN_BASE_URL = "/v2/admin";
 
     @BeforeEach

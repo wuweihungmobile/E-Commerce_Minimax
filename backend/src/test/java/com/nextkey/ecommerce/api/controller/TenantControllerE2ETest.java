@@ -65,7 +65,7 @@ class TenantControllerE2ETest {
     @Autowired
     private TenantMemberRepository tenantMemberRepository;
 
-    private static final String BASE_URL = "/api/v2";
+    private static final String BASE_URL = "/v2";
     private static final String TEST_PASSWORD = "SecurePass123!";
 
     @BeforeEach

@@ -48,7 +48,8 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/v2/dashboard")
+// 🔴 只能是 "/v2/dashboard"，理由同 TenantController（context-path 已是 /api，DEF-061）。
+@RequestMapping("/v2/dashboard")
 @RequiredArgsConstructor
 public class ErpController {
 

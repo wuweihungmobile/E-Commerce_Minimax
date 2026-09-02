@@ -75,7 +75,7 @@ class M16ErpIntegrationTest {
     @Autowired
     private TenantRepository tenantRepository;
 
-    private static final String BASE_URL = "/api/v2/dashboard";
+    private static final String BASE_URL = "/v2/dashboard";
     @SuppressWarnings("unused")
     private static final String TEST_PASSWORD = "SecurePass123!";
 

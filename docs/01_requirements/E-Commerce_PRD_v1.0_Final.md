@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0
+> **版本**: v1.0.1（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -11,6 +11,7 @@
 > - R02_Loop_02 → Final：Victoria Loop 3 修改（QA Loop 3 最終覆核通過，零 blocker，Sprint Planning 可正式入場）
 > - **v0.9_R02 → v1.0：用戶需求確認（2026-04-09）：M12 改為 Phase 1 Must Have、新增 M18 知識管理模組**
 > - **v0.9 → v1.0：九項改善已套用（見 §21 勘誤記錄）**
+> - **v1.0 → v1.0.1（2026-09-02，Sprint 110）：M17 開店/審核流程規格與實作同步（§4.3、§7.4.1、§9.10.2，見 ER-004）**
 
 ---
 
@@ -334,25 +335,56 @@ HTTP Request
 | 平台管理台 (Admin) | Admin 可跨租戶查詢，需特殊權限 `CROSS_TENANT_READ` |
 | 店鋪後台 (Seller/Host) | 僅限查詢自身 tenant 資料 |
 
-### 4.3 租戶生命週期
+### 4.3 租戶生命週期（v1.0.1 修訂）
+
+**[Specification] 開店申請與租戶是兩個獨立實體，`Tenant` 只在 Admin 核准的當下才被建立。**
 
 ```
-[申請開店] → PENDING_REVIEW → [Admin 審核] → ACTIVE → [運營中]
-                                    │                      │
-                                    ▼                      ▼
-                               REJECTED              SUSPENDED (違規)
-                                                          │
-                                                          ▼
-                                                     TERMINATED
+階段一：開店申請 (tenant_applications)
+
+  [網友送出申請] → PENDING ──[Admin 核准]──→ APPROVED ─┐
+                      │                                 │
+                      └──[Admin 駁回]──→ REJECTED       │ 核准的同一交易內
+                         （不建立 Tenant，可重新申請）  │ 才建立 Tenant
+                                                        │
+階段二：店鋪 (tenants)                                  │
+                                                        ▼
+                            ┌──────────────────────→ ACTIVE → [運營中]
+                            │                           │
+              [Admin 恢復]  │                           │ [Admin 暫停]
+                            │                           ▼
+                            └────────────────────── SUSPENDED (違規)
+                                                        │
+                                                        │ [Admin 終止]
+                                                        ▼
+                                                   TERMINATED
 ```
+
+**階段一：`tenant_applications.status`（開店申請的狀態）**
 
 | 狀態 | 說明 |
 |------|------|
-| PENDING_REVIEW | 網友提交開店申請，等待 Admin 審核 |
-| ACTIVE | 審核通過，店鋪正常運營 |
-| REJECTED | 審核未通過 |
+| PENDING | 網友提交開店申請，等待 Admin 審核。**Admin 的待審核佇列與計數一律以此狀態為準** |
+| APPROVED | 審核通過。同一交易內建立 `Tenant`（`ACTIVE`）、`tenant_members`（`StoreOwner`）、預設 Feature Toggle，並將申請人的 `User.role` 同步為 `StoreOwner`（見 §7.4.1） |
+| REJECTED | 審核未通過，記錄 `rejection_reason`。**不建立** `Tenant`；申請人可重新送出新申請 |
+
+**階段二：`tenants.status`（店鋪本身的狀態）**
+
+| 狀態 | 說明 |
+|------|------|
+| ACTIVE | 核准當下即以此狀態建立，店鋪正常運營 |
 | SUSPENDED | 因違規被暫停，商品下架、訂單暫停受理 |
 | TERMINATED | 永久關閉 |
+| PENDING_REVIEW | ⚠️ **歷史保留值，生產環境不可達**（見下方說明） |
+| REJECTED | ⚠️ **歷史保留值，生產環境不可達**——駁回發生在階段一，不會產生 `Tenant` |
+
+> **⚠️ 為什麼 `Tenant.PENDING_REVIEW` 是不可達的保留值**
+>
+> 本文件 v1.0 原將「申請 → 審核」畫成 `tenants` 單一實體上的狀態流轉（`[申請開店] → PENDING_REVIEW → [Admin 審核] → ACTIVE`）。**實作採兩實體模型**：申請寫入 `tenant_applications`，`Tenant` 唯一的建立點是 `AdminService.approveTenantApplication`，且該處寫死 `status = ACTIVE`。因此**沒有任何生產路徑會讓 `Tenant` 進入 `PENDING_REVIEW`**——Sprint 108 逐一查證 9 個 `tenantRepository.save` 呼叫點確認，其餘 8 處皆為更新。
+>
+> 這兩個值仍保留於 `Tenant.TenantStatus` enum 與 `tenants.status` 的 DB 預設值中以維持相容，但**不應被任何新功能引用**。
+>
+> **🔴 不要以 `tenants.status = 'PENDING_REVIEW'` 查詢或計數待審核店鋪**——該查詢在生產環境恆為空。待審核佇列請查 `tenant_applications.status = 'PENDING'`。（Admin Dashboard 的「待審核店鋪數」曾因此恆為 0，見 DEF-059，Sprint 108 修復；Admin 審核台前端曾因此永遠看不到申請，見 DEF-060，Sprint 109 修復。）
 
 ### 4.4 Feature Toggle 機制
 
@@ -966,7 +998,9 @@ C 端扣減流程：
 
 **[Specification] tenant_feature_toggles 初始化時序（v0.9_R02_Loop_02 新增）**
 
-當 `tenants.status` 從 `PENDING_REVIEW` -> `ACTIVE` 時，系統自動以 `§4.4` 的預設值初始化該 Tenant 的所有 Feature Toggle 紀錄（`RETAIL_ENABLED=true`, `BOOKING_ENABLED=false` 等），**無需 Admin 手動建立**。
+當 Admin **核准開店申請**（`tenant_applications.status`: `PENDING` -> `APPROVED`）而建立出新的 `Tenant` 時，系統於同一交易內自動以 `§4.4` 的預設值初始化該 Tenant 的所有 Feature Toggle 紀錄（`RETAIL_ENABLED=true`, `BOOKING_ENABLED=false` 等），**無需 Admin 手動建立**。
+
+> ⚠️ **v1.0.1 修訂**：初始化的觸發點**不是** `tenants.status` 的 `PENDING_REVIEW -> ACTIVE` 轉換——`tenants` 表不存在該轉換（見 §4.3）。
 
 ### 6.9 M12 動態定價引擎（v1.0 更新：Phase 1 Must Have）
 
@@ -1144,10 +1178,13 @@ StoreStaff (店員)
 ```
 
 #### 7.4.1 Buyer → StoreOwner 角色授予流程 (Role Granting Spec)
-- **觸發條件**：一般買家 (`Buyer`) 提交開店申請並經 Admin 審核通過 (`ACTIVE`)。
-- **資料表變更**：
-  1. 產生新 `tenants` 紀錄。
-  2. 於 `tenant_members` 表新增紀錄，關聯 `user_id`、`tenant_id`，設定角色為 `StoreOwner`。
+- **觸發條件**：一般買家 (`Buyer`) 提交的開店申請經 Admin 核准（`tenant_applications.status`: `PENDING` → `APPROVED`）。
+- **資料表變更**（同一交易內完成，見 §4.3 階段一 → 階段二）：
+  1. 產生新 `tenants` 紀錄，狀態直接為 `ACTIVE`（**核准當下才建立**，申請階段不存在對應的 `Tenant`）。
+  2. 依 §4.4 預設值初始化該租戶的 `tenant_feature_toggles`。
+  3. 於 `tenant_members` 表新增紀錄，關聯 `user_id`、`tenant_id`，設定角色為 `StoreOwner`。
+  4. 將該 `users.role` 同步為 `StoreOwner`——否則使用者重新登入取得的 JWT 仍不含該角色（Sprint 97 遺漏，Sprint 98 補上）。
+  5. 回寫 `tenant_applications` 的 `status`、`tenant_id`、`reviewed_at`、`reviewed_by`。
 - **JWT 狀態轉換**：
   系統強制用戶重新授權（或以 Refresh Token 換發新建 Access Token）。新 Token 的 JWT Payload 內，`roles` 陣列將包含 `StoreOwner`，且附帶所屬的 `tenant_id` Claim，供 Gateway/Filter 識別。
 
@@ -1303,7 +1340,7 @@ StoreStaff (店員)
 | description | TEXT | 店鋪描述 |
 | logo_url | VARCHAR(500) | 店鋪 Logo |
 | owner_id | UUID | FK → users.id |
-| status | ENUM | PENDING_REVIEW / ACTIVE / REJECTED / SUSPENDED / TERMINATED |
+| status | ENUM | ACTIVE / SUSPENDED / TERMINATED（PENDING_REVIEW、REJECTED 為生產不可達的歷史保留值，見 §4.3） |
 | business_type | ENUM | RETAIL_ONLY / BOOKING_ONLY / HYBRID |
 | commission_rate | DECIMAL(4,3) | 平台抽成比例 (0.000 ~ 1.000) |
 | contact_email | VARCHAR(200) | 聯絡 Email |
@@ -1311,6 +1348,29 @@ StoreStaff (店員)
 | rejection_reason | TEXT | 駁回原因 |
 | created_at | TIMESTAMP | 建立時間 |
 | updated_at | TIMESTAMP | 更新時間 |
+
+> **⚠️ v1.0.1 補充**：`tenants` 紀錄只在 Admin 核准開店申請時才被建立（見 §4.3、§7.4.1）。
+> 審核前的申請資料存放於 `tenant_applications`（見 §8.2.1-A），**不在本表**。
+
+#### 8.2.1-A tenant_applications（v1.0.1 補充：開店申請）
+
+| 欄位 | 類型 | 說明 |
+|------|------|------|
+| id | UUID | PK（即 API 路徑上的 `applicationId`） |
+| tenant_id | UUID | 核准後回填 FK → tenants.id；PENDING / REJECTED 期間為 NULL |
+| user_id | UUID | 申請人（nullable：允許 Guest 送出，但 Guest 申請無法被核准，見 §9.10.2） |
+| store_name | VARCHAR(100) | 店鋪名稱 |
+| store_description | TEXT | 店鋪描述 |
+| business_type | VARCHAR(50) | RETAIL_ONLY / BOOKING_ONLY / HYBRID |
+| contact_email | VARCHAR(255) | 聯絡 Email |
+| contact_phone | VARCHAR(20) | 聯絡電話 |
+| business_license_url | VARCHAR(500) | 營業執照 URL |
+| status | ENUM | PENDING / APPROVED / REJECTED / SUSPENDED（預設 PENDING） |
+| submitted_at | TIMESTAMP | 送出時間 |
+| reviewed_at / reviewed_by | TIMESTAMP / UUID | 審核時間與審核者 |
+| rejection_reason | TEXT | 駁回原因 |
+
+**索引**：`(user_id)`、`(status)`、`(tenant_id)`
 
 #### 8.2.2 tenant_feature_toggles
 
@@ -1745,11 +1805,19 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `GET` | `/api/v2/tenants/my` | 查詢我的店鋪列表 | StoreOwner |
 | `GET` | `/api/v2/tenants/:id` | 查詢店鋪詳情 | StoreOwner/Admin |
 | `PUT` | `/api/v2/tenants/:id` | 更新店鋪 Profile | StoreOwner |
-| `GET` | `/api/v2/admin/tenants` | (Admin) 租戶列表 | Admin |
-| `PUT` | `/api/v2/admin/tenants/:id/review` | (Admin) 審核開店申請 | Admin |
-| `PUT` | `/api/v2/admin/tenants/:id/status` | (Admin) 暫停/恢復/終止 | Admin |
-| `GET` | `/api/v2/admin/tenants/:id/features` | (Admin) 查詢租戶 Feature Toggle | Admin |
-| `PUT` | `/api/v2/admin/tenants/:id/features` | (Admin) 更新 Feature Toggle | Admin |
+| `GET` | `/api/v2/admin/tenants` | (Admin) 租戶列表 | SUPER_ADMIN |
+| `GET` | `/api/v2/admin/tenant-applications` | (Admin) **待審核開店申請列表**（`status = PENDING`） | SUPER_ADMIN |
+| `POST` | `/api/v2/admin/tenant-applications/:applicationId/approve` | (Admin) **核准開店申請**，建立 Tenant（ACTIVE）並授予 StoreOwner（見 §7.4.1） | SUPER_ADMIN |
+| `POST` | `/api/v2/admin/tenant-applications/:applicationId/reject` | (Admin) **駁回開店申請**（需帶 `reason`），不建立 Tenant | SUPER_ADMIN |
+| `PUT` | `/api/v2/admin/tenants/:id/status` | (Admin) 暫停/恢復/終止（`ACTIVE` ↔ `SUSPENDED` → `TERMINATED`） | SUPER_ADMIN |
+| `GET` | `/api/v2/admin/tenants/:id/features` | (Admin) 查詢租戶 Feature Toggle | SUPER_ADMIN |
+| `PUT` | `/api/v2/admin/tenants/:id/features/:feature` | (Admin) 更新單一 Feature Toggle | SUPER_ADMIN |
+
+> **⚠️ 開店審核的入口是 `/admin/tenant-applications/*`，不是 `/admin/tenants/*`（v1.0.1 修訂）**
+>
+> v1.0 原列 `PUT /api/v2/admin/tenants/:id/review` 為審核入口，該設計對應「申請時即建立 `PENDING_REVIEW` 租戶」的舊模型。實作採 §4.3 的兩實體模型，審核對象是 `tenant_applications` 而非 `tenants`。
+>
+> 後端仍存在 `POST /v2/admin/tenants/review`、`/v2/admin/tenants/:id/approve`、`/v2/admin/tenants/:id/reject` 三個舊端點（操作既有 `Tenant`，要求 `status == PENDING_REVIEW`）。**它們在生產環境永遠等不到資料**（§4.3），已無任何前端引用，保留僅為相容，新功能不得使用。
 
 ### 9.11 M17 租戶成員 API（v0.9 新增）
 
@@ -3657,7 +3725,7 @@ M03（日曆預訂模組）在 Phase 1 開發期間需要進行規格凍結（Fe
 | **v0.9** | **2026-03-27** | **六項新需求整合：(1) 統一商品/服務模型含動態定價 (§5)；(2) CMS 內容驅動銷售 (M15, §6.6)；(3) 一體化進銷存 ERP (M16, §6.7)；(4) SaaS 平台化多租戶架構 B2B2C (M17, §4)；(5) 友善前台+強大後台管理 (§10-§12)；(6) 網友開店 RBAC 權限矩陣 (§7.3)。本文件為完整獨立規格，已全面整合 v0.8 所有內容。** | **待 Koala 核准** |
 | **v0.9_R01** | **2026-03-30** | **Loop 01 迭代修正（基於 PM QA Iteration 1）：**<br>• CR-001+CR-014：狀態機與 Payment Mock 衝突修正（§3.3, §13.3, §15.3.1）<br>• CR-003+CR-011：M06 Phase 1/2 歸屬混淆消除（§12.5, §12.6）<br>• CR-013+QA-CR-003：Phase 1 RBAC 含 Phase 2+ 模組問題（§7.3）<br>• QA-CR-001：/checkout 前端路由 Payment Mock 頁面定義（§10.1.1）<br>• QA-CR-002：M05 SDD Phase 1 Payment Mock 約束（§15.2.1, §15.3.1）<br>• CR-002：Phase 2-A 商業價值指標（§14.2.5）<br>• CR-004：Phase 1 Seller 訂單查詢 API（§9.5, §13.1）<br>• CR-005：M01 圖片上傳 API（§9.12）<br>• CR-006：M04 促銷 CRUD API（§9.5.1）<br>• CR-007：採購審批流程（§6.7.2, §9.15）<br>• CR-008：StoreFront 內容定義（§11.3.1, §12.7）<br>• CR-009：資料隱私合規框架（§1.5）<br>• CR-010：結算系統定義（§6.2.1, §8.2.9）<br>• CR-012：Guest→Buyer 轉換流程（§7.1, §12.7）<br>• CR-015：pricing_rules 數量約束（§5.5.1）<br>• CR-016：room_calendar 動態更新觸發點（§5.5.2）<br>• CR-017：stock_movements Phase 1 假設（§6.7.3, §8.2.10）<br>• CR-018：並發入庫 version 遞增策略（§5.4）<br>• CR-019：/rooms/[id] Phase 標註拆分（§10.1.1）<br>• CR-020：Cancellation Matrix Phase 1 等效狀態（§15.3.1.1）<br>• CR-021：Guest User Story（§17.3.2）<br>• QA-CR-004：多租戶容量指標（§13.4）<br>• QA-CR-005：MAINTENANCE 狀態定義（§5.5.3）<br>• QA-CR-006：pricing_rules JSON 描述修正（§5.5）<br>• QA-CR-007：GET /api/orders 描述修正（§9.5）<br>• QA-CR-008：StoreStaff 細粒度權限 Phase 說明（§7.4）<br>• QA-CR-009：settlement_statements 資料表（§8.1.5, §8.2.9）<br>• QA-CR-010：VR-M04 錯誤碼 E-4014（§16.3.5, §17.2.2）<br>• QA-CR-011：merchantId 來源說明（§13.3）<br>共計：21 Victoria CR + 11 QA 額外發現 = 32 項修改 | **待 Koala 核准** |
 | **v0.9_R02_Loop_02** | **2026-03-30** | **Loop 2 迭代修正（基於 QA Review 02）：**<br>• Q-LO2-001：Phase 1 狀態機 CONFIRMED 矛盾消除（§3.3, §15.3.1.1）；移除 Cancellation Matrix CONFIRMED 行；明確 order_state_log 初始記錄<br>• Q-LO2-002：ERP receive Transaction Atomic 保障（§6.7.3, §9.15）<br>• Q-LO2-003：PostEmbed ON DELETE CASCADE + INACTIVE/DELETED 卡片處理（§6.6.3, §8.2.5）<br>• Q-LO2-004：pricing_rules 時間範圍重疊衝突檢核（§5.5.1）；新增 TC-PR-003/004<br>• Q-LO2-005：CREDIT_NOTE 獨立表 credit_notes schema（§6.2.1, §8.2.10）；settlement_statements 新增 REVERSED 狀態<br>• Q-LO2-006：settlement_statements 重複 timestamp 區塊清除（已確認無重複）<br>• Q-LO2-101：MAINTENANCE 狀態 price = NULL 處理（§5.5.3, §6.6.3）<br>• Q-LO2-102：room_calendar 狀態轉換矩陣（§5.5.3）<br>• Q-LO2-103：pricing_rules 50 條上限 API 校驗（§9.13）<br>• Q-LO2-104：PurchaseOrder 取消後庫存不回滾 + 取消後通知（§9.15）<br>• Q-LO2-105：多租戶 tenant_id NOT NULL + FK + INDEX 全面覆蓋（§8.2 各 schema）<br>• Q-LO2-106：MAINTENANCE Booking Admin Dashboard MaintenanceWarnings 空白期替代方案（§5.5.3）<br>• Q-LO2-201：pricing_rules priority Tie-Breaking（§5.5）<br>• Q-LO2-202：stock_movements.order_item_id Phase 1 = null 前端約定（§9.15）<br>• Q-LO2-203：PostEmbed Markdown 注入防護（§6.6.3, §9.14）<br>• Q-LO2-204：M17 搶先實作 + Feature Toggle 自動初始化時序（§6.8.2, §14.2）<br>• 新增 Test Cases：TC-LO2-M12-001~004、TC-LO2-M15-001~003、TC-LO2-M16-001~002、TC-LO2-M17-001~003（共 12 項）<br>共計：16 項 QA 回應全部採納、12 項 Test Cases 新增 | **待 Koala 核准** |
-| **v1.0** | **2026-04-09** | **七項改善整合（基於 PRD v0.9_R02 審視報告）：**<br>• M12 動態定價：Phase 2-A → Phase 1 Must Have（§6.9, §13.5）<br>• M18 知識管理：新模組新增（§1.4, §6.10, §13.5）；詳細規格見 M18_Knowledge_Management_SPEC.md<br>• API 版本策略：統一為 /api/v2/ 前綴（§9.6, §9.7, §15）<br>• Test Case 編號：TC-M05-006~009 重新編號消除重複（§15.2.1）<br>• Payment Mock API：新增實作細節（§9.14）<br>• 開店申請表單：新增欄位定義（§9.10.1）<br>• M06 Phase 邊界：澄清 Phase 1 僅開放 GET/取消，POST 建立屬 Phase 2（§6.4, §6.6） | ✅ 已確認 |
+| **v1.0** | **2026-04-09** | **七項改善整合（基於 PRD v0.9_R02 審視報告）：**<br>• M12 動態定價：Phase 2-A → Phase 1 Must Have（§6.9, §13.5）<br>• M18 知識管理：新模組新增（§1.4, §6.10, §13.5）；詳細規格見 M18_Knowledge_Management_SPEC.md<br>• API 版本策略：統一為 /api/v2/ 前綴（§9.6, §9.7, §15）<br>• Test Case 編號：TC-M05-006~009 重新編號消除重複（§15.2.1）<br>• Payment Mock API：新增實作細節（§9.14）<br>• 開店申請表單：新增欄位定義（§9.10.1）<br>• M06 Phase 邊界：澄清 Phase 1 僅開放 GET/取消，POST 建立屬 Phase 2（§6.4, §6.6） | ✅ 已確認 || **v1.0.1** | **2026-09-02** | **M17 開店/審核流程規格與實作同步（Sprint 110，文件變更，無程式碼變更）：**<br>• §4.3 租戶生命週期：由 `tenants` 單一實體狀態流轉改寫為 **`tenant_applications` + `tenants` 兩實體兩階段**；標註 `Tenant.PENDING_REVIEW`／`Tenant.REJECTED` 為生產不可達的歷史保留值<br>• §7.4.1：補齊核准時同一交易內的 5 項資料表變更（Feature Toggle 初始化、`users.role` 同步、申請回寫）<br>• §9.10.2：審核入口由 `PUT /admin/tenants/:id/review` 更正為 `GET/POST /admin/tenant-applications/*`；Admin 端點角色由 `Admin` 更正為 `SUPER_ADMIN`；Feature Toggle 更新端點補上 `:feature` 路徑參數<br>• 新增 ER-004 勘誤記錄 | ✅ 已確認 |
 
 ---
 
@@ -3668,6 +3736,7 @@ M03（日曆預訂模組）在 Phase 1 開發期間需要進行規格凍結（Fe
 | ER-001 | v0.9 API 版本策略不一致：§9 為 `/api/orders`，§15 為 `/api/v1/orders` | 已統一為 `/api/v2/` | §9.6, §15 |
 | ER-002 | TC-M05-006/TC-M05-007 編號重複 | 已重新編號為 TC-M05-006~009 | §15.2.1 |
 | ER-003 | M06 Phase 1/2 邊界描述不一致 | 已澄清：Phase 1 僅 GET/取消，POST 建立屬 Phase 2 | §6.4, §6.6 |
+| ER-004 | v1.0 §4.3 將「開店申請 → 審核」描述為 `tenants` 單一實體的狀態流轉（`[申請開店] → PENDING_REVIEW → ACTIVE`），與實作的兩實體模型分歧；連帶 §9.10.2 的審核端點指向永遠等不到資料的舊端點 | 已依實作改寫為兩階段兩實體，並標註 `Tenant.PENDING_REVIEW` 為不可達的保留值（v1.0.1） | §4.3, §7.4.1, §9.10.2 |
 
 _本文檔為 E-Commerce System 的完整合併規格文件 v1.0，所有內容具有同等約束力。v0.9 所有內容已完整整合，本文件可獨立使用，無需參照 v0.9。_
 

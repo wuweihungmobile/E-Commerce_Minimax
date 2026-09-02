@@ -74,14 +74,23 @@
 | API ID | 端點 | 方法 | 說明 | 角色 | Phase |
 |--------|------|------|------|------|-------|
 | API-M17-001 | `/api/v2/tenants/apply` | POST | 申請開店 | Guest | Phase 1 |
-| API-M17-002 | `/api/v2/tenants` | GET | 取得我的店鋪列表 | StoreOwner | Phase 1 |
+| API-M17-002 | `/api/v2/tenants/my` | GET | 取得我的店鋪列表 | StoreOwner | Phase 1 |
 | API-M17-003 | `/api/v2/tenants/:id` | GET | 店鋪詳情 | Guest+ | Phase 1 |
 | API-M17-004 | `/api/v2/tenants/:id` | PUT | 更新店鋪資訊 | StoreOwner | Phase 1 |
 | API-M17-005 | `/api/v2/dashboard/tenants/features` | GET | 取得功能開關狀態 | StoreOwner+ | Phase 1 |
 | API-M17-006 | `/api/v2/dashboard/tenants/features/:feature` | PUT | 更新功能開關 | StoreOwner | Phase 1 |
-| API-M17-007 | `/api/v2/admin/tenants` | GET | 平台店鋪列表 | Admin | Phase 1 |
-| API-M17-008 | `/api/v2/admin/tenants/:id/approve` | POST | 審核通過店鋪 | Admin | Phase 1 |
-| API-M17-009 | `/api/v2/admin/tenants/:id/reject` | POST | 駁回店鋪申請 | Admin | Phase 1 |
+| API-M17-007 | `/api/v2/admin/tenants` | GET | 平台店鋪列表 | SUPER_ADMIN | Phase 1 |
+| API-M17-APP-001 | `/api/v2/admin/tenant-applications` | GET | **待審核開店申請列表**（`status = PENDING`） | SUPER_ADMIN | Phase 1 |
+| API-M17-APP-002 | `/api/v2/admin/tenant-applications/:applicationId/approve` | POST | **核准開店申請**（建立 Tenant + 授予 StoreOwner） | SUPER_ADMIN | Phase 1 |
+| API-M17-APP-003 | `/api/v2/admin/tenant-applications/:applicationId/reject` | POST | **駁回開店申請**（需帶 `reason`） | SUPER_ADMIN | Phase 1 |
+| ~~API-M17-008~~ | `/api/v2/admin/tenants/:id/approve` | POST | ⚠️ 舊流程，生產不可達（見下方說明） | SUPER_ADMIN | Phase 1 |
+| ~~API-M17-009~~ | `/api/v2/admin/tenants/:id/reject` | POST | ⚠️ 舊流程，生產不可達（見下方說明） | SUPER_ADMIN | Phase 1 |
+
+> **⚠️ 開店審核的入口是 `API-M17-APP-001~003`**（PRD §4.3 / §9.10.2、FRD BR-M17-001）
+>
+> `API-M17-008/009` 操作的是既有 `Tenant` 且要求 `status == PENDING_REVIEW`，而生產環境沒有任何路徑會讓
+> `Tenant` 進入該狀態（`Tenant` 只在核准申請時建立，且建立即 `ACTIVE`）。這兩個端點仍存在於後端、也仍被
+> Sprint 03/03-A 的歷史測試案例引用，故保留編號不刪除，但**已無前端引用，新功能不得使用**。
 
 ### 評價系統 (M08) - 🆕 Sprint 15-16 新增
 

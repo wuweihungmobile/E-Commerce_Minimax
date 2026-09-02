@@ -69,16 +69,34 @@ echo "🔐 Checking for potential secrets in staged files..."
 # 只比對「keyword 緊接 =/: 再接引號值」的真實賦值（如 password="xxx"、apiKey: "yyy"）；
 # 收緊自舊版 `.*=.*"..."`（會誤中 keyword 為屬性值的表單標籤，如
 # <label htmlFor="password" className="...">）。真實硬編機密仍會被攔截。
+#
+# 🔴 Sprint 110 變更：掃描對象由「整個 staged 檔案」改為「staged diff 的新增行」。
+#    舊版用 `grep -l` 做檔案級比對，只要檔案裡任何一處命中就整檔擋下，連本次
+#    一個字都沒改的既有內容也算。docs/01_requirements/E-Commerce_FRD_v1.0.md 自
+#    初始 commit 後從未被修改，其 M03 章節的示例 payload（"password": "SecurePass123"）
+#    因此從沒被掃到；Sprint 110 為了別的理由動到該檔，就被自己的既有內容擋下。
+#    改為只看新增行後：「本次引入的機密」照樣攔截（偵測強度不降，反而定位更準），
+#    「既有內容」不會因為碰了同一個檔案而被翻出來。
+#    🔴 不要改回檔案級比對——那會讓每一次修改含示例憑證的規格文件都被誤擋。
 SECRET_PATTERNS='(password|secret|api[_-]?key|access[_-]?token|private[_-]?key)[\"'\'']?[[:space:]]*[:=][[:space:]]*[\"'\''][^\"'\'']+[\"'\'']'
+SECRET_EXCLUDES='\.example$|node_modules/|target/|\.class$|test/|Test\.java|testSecret|TestSecret|\.github/workflows/|scripts/hooks/|e2e/|\.spec\.ts|\.test\.ts'
+SECRET_HITS=""
 if [ -n "$STAGED_FILES" ]; then
-  SECRET_FILES=$(echo "$STAGED_FILES" | xargs grep -lEi "$SECRET_PATTERNS" 2>/dev/null | grep -vE '\.example$|node_modules/|target/|\.class$|test/|Test\.java|testSecret|TestSecret|\.github/workflows/|scripts/hooks/|e2e/|\.spec\.ts|\.test\.ts' || true)
-else
-  SECRET_FILES=""
+  SCAN_FILES=$(echo "$STAGED_FILES" | grep -vE "$SECRET_EXCLUDES" || true)
+  for SECRET_FILE in $SCAN_FILES; do
+    FILE_HITS=$(git diff --cached -U0 -- "$SECRET_FILE" 2>/dev/null \
+                  | grep -E '^\+' | grep -v '^+++' \
+                  | grep -Ei "$SECRET_PATTERNS" || true)
+    if [ -n "$FILE_HITS" ]; then
+      SECRET_HITS="${SECRET_HITS}  ${SECRET_FILE}
+$(echo "$FILE_HITS" | sed 's/^/      /')
+"
+    fi
+  done
 fi
-if [ -n "$SECRET_FILES" ]; then
-  echo "🔴 ERROR: Potential secrets detected in:"
-  echo "$SECRET_FILES"
-  echo ""
+if [ -n "$SECRET_HITS" ]; then
+  echo "🔴 ERROR: Potential secrets detected in newly added lines:"
+  echo "$SECRET_HITS"
   echo "⚠️  真實機密資訊不應被 commit。若為測試資料，請使用虛構值。"
   echo "🔴 拒絕 commit！請先移除機密資訊。"
   echo ""

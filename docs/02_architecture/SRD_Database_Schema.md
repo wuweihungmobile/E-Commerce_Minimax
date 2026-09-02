@@ -125,6 +125,19 @@
 
 #### 2.1.1 `tenants` - 租戶/店鋪主檔
 
+> **🔴 本節 DDL 為設計稿，與實作的 `V1__Initial_Schema.sql` 有實質落差（2026-09-02，Sprint 110 補註）**
+>
+> 與本次「M17 開店/審核流程同步」直接相關的一點：
+> **`tenants` 沒有「申請中」狀態**——開店申請存放於獨立的 `tenant_applications` 表（見 §2.1.x 對照 `V4__Tenant_Application.sql`），
+> `tenants` 紀錄只在 Admin 核准的那一刻才被建立，且**建立即為 `ACTIVE`**（PRD §4.3、FRD BR-M17-001）。
+> 實作的 `tenants.status` 是 `VARCHAR(20) NOT NULL DEFAULT 'PENDING_REVIEW'`（無 CHECK 約束），
+> 其中 `PENDING_REVIEW`／`REJECTED` 為生產不可達的歷史保留值。
+>
+> ⚠️ 本節 DDL 的其餘欄位差異（`store_name`／`owner_id`／`business_type`／`approved_at`／`approved_by`／
+> `rejected_at`／`rejected_by`／兩個 UNIQUE 約束在實作中皆不存在；實作另有 `slug`、`metadata`、`commission_rate`
+> 及 V62／V65 追加的 Stripe Connect 與採購審批欄位）**未在本次同步中處理**，屬更大範圍的 schema 文件債。
+> **請以 `backend/src/main/resources/db/migration/` 的 Flyway 遷移為準。**
+
 ```sql
 -- ============================================
 -- Table: tenants

@@ -2,7 +2,7 @@
 
 > **API ID**: API-M17 (API-501 ~ API-509)
 > **版本**: v1.0
-> **最後更新日期**: 2026-04-09
+> **最後更新日期**: 2026-09-02（Sprint 110：審核端點由 `/admin/tenants/*` 更正為 `/admin/tenant-applications/*`）
 > **作者**: Marcus (SD-Architect)
 
 ---
@@ -12,14 +12,23 @@
 | API ID | 端點 | 方法 | 說明 | 角色 |
 |--------|------|------|------|-------|
 | API-M17-001 | `/api/v2/tenants/apply` | POST | 申請開店 | Guest |
-| API-M17-002 | `/api/v2/tenants` | GET | 取得我的店鋪列表 | StoreOwner |
+| API-M17-002 | `/api/v2/tenants/my` | GET | 取得我的店鋪列表 | StoreOwner |
 | API-M17-003 | `/api/v2/tenants/:id` | GET | 店鋪詳情 | Guest+ |
 | API-M17-004 | `/api/v2/tenants/:id` | PUT | 更新店鋪資訊 | StoreOwner |
 | API-M17-005 | `/api/v2/dashboard/tenants/features` | GET | 取得功能開關狀態 | StoreOwner+ |
 | API-M17-006 | `/api/v2/dashboard/tenants/features/:feature` | PUT | 更新功能開關 | StoreOwner |
-| API-M17-007 | `/api/v2/admin/tenants` | GET | 平台店鋪列表 | Admin |
-| API-M17-008 | `/api/v2/admin/tenants/:id/approve` | POST | 審核通過店鋪 | Admin |
-| API-M17-009 | `/api/v2/admin/tenants/:id/reject` | POST | 駁回店鋪申請 | Admin |
+| API-M17-007 | `/api/v2/admin/tenants` | GET | 平台店鋪列表 | SUPER_ADMIN |
+| API-M17-APP-001 | `/api/v2/admin/tenant-applications` | GET | 待審核開店申請列表 | SUPER_ADMIN |
+| API-M17-APP-002 | `/api/v2/admin/tenant-applications/:applicationId/approve` | POST | 核准開店申請 | SUPER_ADMIN |
+| API-M17-APP-003 | `/api/v2/admin/tenant-applications/:applicationId/reject` | POST | 駁回開店申請 | SUPER_ADMIN |
+| ~~API-M17-008~~ | `/api/v2/admin/tenants/:id/approve` | POST | ⚠️ 舊流程，生產不可達 | SUPER_ADMIN |
+| ~~API-M17-009~~ | `/api/v2/admin/tenants/:id/reject` | POST | ⚠️ 舊流程，生產不可達 | SUPER_ADMIN |
+
+> **⚠️ 開店審核走 `API-M17-APP-*`，不走 `API-M17-008/009`**（PRD §4.3 / §9.10.2、FRD BR-M17-001）
+>
+> 審核的對象是 `tenant_applications`，不是 `tenants`。`Tenant` 只在核准的那一刻才被建立、且建立即 `ACTIVE`，
+> 所以要求 `Tenant.status == PENDING_REVIEW` 的 `API-M17-008/009` 在生產環境永遠等不到資料。
+> 它們仍存在於後端且被歷史測試案例引用，故保留編號，但已無前端引用，新功能不得使用。
 
 ---
 
@@ -438,28 +447,16 @@
 
 ---
 
-## 8. API-M17-008: 審核通過店鋪（Admin）
+## 8. API-M17-APP-001: 待審核開店申請列表（Admin）
 
-- **端點**: `POST /api/v2/admin/tenants/:id/approve`
-- **描述**: 平台管理員審核通過店鋪申請
-- **對應需求**: [US-M17-001](../01_requirements/E-Commerce_FRD_v1.0.md#us-m17-001)
-- **角色**: Admin
+- **端點**: `GET /api/v2/admin/tenant-applications`
+- **描述**: 取得所有 `status = PENDING` 的開店申請，供平台管理員審核
+- **對應需求**: [US-M17-007](../01_requirements/E-Commerce_FRD_v1.0.md#us-m17-007)、PRD §7.4.1
+- **角色**: SUPER_ADMIN
 
 ### 8.1 Request
 
-**Path Parameters**:
-
-| 參數 | 類型 | 必填 | 說明 |
-|------|------|------|------|
-| id | UUID | 是 | Tenant ID |
-
-**Request Body**:
-```json
-{
-  "approvedFeatures": ["BOOKING_ENABLED"],
-  "notes": "審核通過，預設開啟基礎功能"
-}
-```
+無參數（一律回傳全部 `PENDING` 申請，不分頁）。
 
 ### 8.2 Response
 
@@ -467,14 +464,20 @@
 ```json
 {
   "code": 200,
-  "message": "Tenant approved successfully",
   "data": {
-    "tenantId": "tenant-uuid-001",
-    "storeName": "我的數位商店",
-    "status": "ACTIVE",
-    "approvedFeatures": ["BOOKING_ENABLED"],
-    "approvedAt": "2026-04-09T12:00:00.000Z",
-    "approvedBy": "admin-uuid"
+    "applications": [
+      {
+        "applicationId": "app-uuid-001",
+        "userId": "user-uuid-001",
+        "storeName": "我的數位商店",
+        "storeDescription": "3C 周邊代購",
+        "businessType": "RETAIL_ONLY",
+        "contactEmail": "owner@example.com",
+        "contactPhone": "0912345678",
+        "status": "PENDING",
+        "submittedAt": "2026-04-09T10:30:00.000Z"
+      }
+    ]
   },
   "timestamp": "2026-04-09T12:00:00.000Z",
   "requestId": "..."
@@ -483,12 +486,13 @@
 
 ---
 
-## 9. API-M17-009: 駁回店鋪申請（Admin）
+## 9. API-M17-APP-002: 核准開店申請（Admin）
 
-- **端點**: `POST /api/v2/admin/tenants/:id/reject`
-- **描述**: 平台管理員駁回店鋪申請
-- **對應需求**: [US-M17-001](../01_requirements/E-Commerce_FRD_v1.0.md#us-m17-001)
-- **角色**: Admin
+- **端點**: `POST /api/v2/admin/tenant-applications/:applicationId/approve`
+- **描述**: 平台管理員核准開店申請。於**同一交易**內建立 `Tenant`（`ACTIVE`）、初始化 Feature Toggle、
+  建立 `tenant_members`（`StoreOwner`）、同步 `users.role`，最後回寫申請狀態
+- **對應需求**: [US-M17-007](../01_requirements/E-Commerce_FRD_v1.0.md#us-m17-007)、PRD §7.4.1
+- **角色**: SUPER_ADMIN
 
 ### 9.1 Request
 
@@ -496,7 +500,52 @@
 
 | 參數 | 類型 | 必填 | 說明 |
 |------|------|------|------|
-| id | UUID | 是 | Tenant ID |
+| applicationId | UUID | 是 | **開店申請 ID**（不是 Tenant ID——此時尚無 Tenant） |
+
+**Request Body**: 無。Feature Toggle 一律以 BR-M17-002 預設值初始化，不由審核者逐項指定。
+
+### 9.2 Response
+
+**200 OK**:
+```json
+{
+  "code": 200,
+  "message": "Tenant application approved successfully",
+  "data": {
+    "applicationId": "app-uuid-001",
+    "tenantId": "tenant-uuid-001",
+    "status": "APPROVED",
+    "approvedAt": "2026-04-09T12:00:00.000Z"
+  },
+  "timestamp": "2026-04-09T12:00:00.000Z",
+  "requestId": "..."
+}
+```
+
+### 9.3 錯誤情境
+
+| 條件 | 錯誤碼 | 說明 |
+|------|--------|------|
+| 找不到該申請 | E-2006 | 找不到開店申請 |
+| 申請狀態非 PENDING | E-2007 | 已核准或已駁回的申請不可再次核准 |
+| 申請的 `user_id` 為 NULL | E-2008 | Guest 送出的申請無關聯帳號，無從授予 StoreOwner |
+
+---
+
+## 10. API-M17-APP-003: 駁回開店申請（Admin）
+
+- **端點**: `POST /api/v2/admin/tenant-applications/:applicationId/reject`
+- **描述**: 平台管理員駁回開店申請。**不建立任何 `Tenant`**，僅更新申請狀態與駁回原因
+- **對應需求**: [US-M17-008](../01_requirements/E-Commerce_FRD_v1.0.md#us-m17-008)
+- **角色**: SUPER_ADMIN
+
+### 10.1 Request
+
+**Path Parameters**:
+
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| applicationId | UUID | 是 | 開店申請 ID |
 
 **Request Body**:
 ```json
@@ -505,25 +554,37 @@
 }
 ```
 
-### 9.2 Response
+| 欄位 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| reason | string | 是（`@NotBlank`） | 駁回原因，寫入 `tenant_applications.rejection_reason` |
+
+### 10.2 Response
 
 **200 OK**:
 ```json
 {
   "code": 200,
-  "message": "Tenant application rejected",
+  "message": "Tenant application rejected successfully",
   "data": {
-    "tenantId": "tenant-uuid-001",
-    "storeName": "我的數位商店",
+    "applicationId": "app-uuid-001",
     "status": "REJECTED",
     "rejectedAt": "2026-04-09T12:00:00.000Z",
-    "rejectedBy": "admin-uuid",
     "reason": "營業執照已過期，請重新上傳有效證件"
   },
   "timestamp": "2026-04-09T12:00:00.000Z",
   "requestId": "..."
 }
 ```
+
+### 10.3 錯誤情境
+
+| 條件 | 錯誤碼 | 說明 |
+|------|--------|------|
+| reason 空白 | E-4001 | 驗證失敗（`@NotBlank`） |
+| 找不到該申請 | E-2006 | 找不到開店申請 |
+| 申請狀態非 PENDING | E-2007 | 已核准或已駁回的申請不可再次駁回 |
+
+> 駁回後申請人**可重新送出新申請**（重複申請的阻擋條件只看是否存在 `PENDING` 申請，見 API-M17-001）。
 
 ---
 

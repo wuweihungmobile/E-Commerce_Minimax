@@ -223,6 +223,23 @@ public class TokenService {
 
 ## 2. M17 租戶管理模組 (Tenant Management Module)
 
+> **🔴 實作現況與本節設計稿的差異（2026-09-02，Sprint 110 補註）**
+>
+> 本節 §2.2／§2.3 的類別草稿與序列圖為設計期產物，描述的是「申請時就建立 `Tenant`（`PENDING`）、
+> 審核時再改為 `ACTIVE`」的單實體模型。**實作採兩實體模型**（PRD §4.3、FRD BR-M17-001）：
+>
+> | 本節設計稿 | 實作現況 |
+> |------------|----------|
+> | `TenantApplicationService.apply()` | `TenantService.createApplication()`（`core/tenant/`） |
+> | 申請時 `tenantRepository.save(Tenant(PENDING))` | 申請時只寫 `tenant_applications`（`TenantApplication`，`status = PENDING`），**不建立 `Tenant`** |
+> | 申請時即建立 Owner Member、初始化 Feature Toggle | 兩者都延後到核准時，由 `AdminService.approveTenantApplication()` 在同一交易內完成 |
+> | 審核＝更新既有 `Tenant` 狀態 | 審核＝更新 `TenantApplication`；`Tenant` 於核准當下才建立，且建立即 `ACTIVE` |
+> | `Tenant.createApplication()`／`findByOwnerId()`／`existsByStoreName()` | 均不存在於實作 |
+>
+> 因此 `Tenant.PENDING_REVIEW` 在生產環境不可達。**以本節程式碼草稿為準會實作出錯誤的流程**，
+> 請以 PRD §4.3／§7.4.1、FRD BR-M17-001 與 `AdminService` 實際程式碼為準。
+> 本節保留原文作為設計決策的歷史紀錄，未改寫。
+
 ### 2.1 架構概覽
 
 ```

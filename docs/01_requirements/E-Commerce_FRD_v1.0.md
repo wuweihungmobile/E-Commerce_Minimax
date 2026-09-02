@@ -1,7 +1,7 @@
 # E-Commerce System — 功能需求文檔 (FRD) v1.0
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.0
+> **版本**: v1.2
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -2988,7 +2988,9 @@ tenants
 ├── name: VARCHAR(200)
 ├── slug: VARCHAR(100) UNIQUE -- URL-friendly
 ├── business_type: ENUM('RETAIL_ONLY', 'BOOKING_ONLY', 'HYBRID')
-├── status: ENUM('PENDING', 'ACTIVE', 'REJECTED', 'SUSPENDED', 'TERMINATED')
+├── status: ENUM('PENDING_REVIEW', 'ACTIVE', 'REJECTED', 'SUSPENDED', 'TERMINATED')
+│         -- 生產環境實際只會出現 ACTIVE / SUSPENDED / TERMINATED；
+│         -- PENDING_REVIEW、REJECTED 為歷史保留值，見 PRD §4.3 與 BR-M17-001
 ├── commission_rate: DECIMAL(5,4) DEFAULT 0.05
 ├── logo_url: VARCHAR(500)
 ├── description: TEXT
@@ -2998,6 +3000,22 @@ tenants
 ├── updated_at: TIMESTAMP
 └── INDEX (status)
 
+tenant_applications          -- 開店申請（審核前唯一存在的實體）
+├── id: UUID (PK)
+├── tenant_id: UUID             -- 核准後回填；PENDING/REJECTED 期間為 NULL
+├── user_id: UUID               -- nullable（允許 Guest 送出，但 Guest 申請無法被核准）
+├── store_name: VARCHAR(100) NOT NULL
+├── store_description: TEXT
+├── business_type: VARCHAR(50) NOT NULL
+├── contact_email: VARCHAR(255)
+├── contact_phone: VARCHAR(20)
+├── business_license_url: VARCHAR(500)
+├── status: ENUM('PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED') DEFAULT 'PENDING'
+├── submitted_at / reviewed_at: TIMESTAMP
+├── reviewed_by: UUID
+├── rejection_reason: TEXT
+└── INDEX (user_id), (status), (tenant_id)
+
 tenant_feature_toggles
 ├── id: UUID (PK)
 ├── tenant_id: UUID (FK → tenants.id)
@@ -3006,6 +3024,9 @@ tenant_feature_toggles
 ├── updated_at: TIMESTAMP
 └── UNIQUE (tenant_id, feature_key)
 ```
+
+> **🔴 `tenant_applications` 與 `tenants` 是兩張表、兩個生命週期**（PRD §4.3）：送出申請只寫 `tenant_applications`，
+> `tenants` 紀錄要到 Admin 核准的那一刻才被建立，且建立即為 `ACTIVE`。
 
 ---
 
@@ -3031,7 +3052,8 @@ tenant_feature_toggles
 **AC-M17-001-1**: 提交開店申請
 **Given** Guest 填寫開店申請表單
 **When** 提交所有必填資訊
-**Then** 建立 Tenant 記錄 (status = 'PENDING') 並通知 Admin
+**Then** 建立 `tenant_applications` 記錄 (status = 'PENDING') 並通知 Admin
+**（此時尚不建立 `tenants` 紀錄——見 BR-M17-001）**
 
 **測試資料**:
 ```json
@@ -3053,7 +3075,8 @@ tenant_feature_toggles
 | storeName 空白 | 驗證失敗 | E-4001 VALIDATION_ERROR |
 | businessType 無效 | 驗證失敗 | E-4001 VALIDATION_ERROR |
 | contactEmail 格式無效 | 驗證失敗 | E-4001 VALIDATION_ERROR |
-| 用戶已有進行中的申請 | 阻擋 | E-4002 PENDING_APPLICATION_EXISTS |
+| 用戶已有進行中的申請（`status = PENDING`） | 阻擋 | E-4092 已存在開店申請 |
+| 用戶先前的申請已被 REJECTED | 允許 | 可重新送出新申請（不沿用舊紀錄） |
 
 ---
 
@@ -3415,18 +3438,12 @@ tenant_feature_toggles
 
 #### Acceptance Criteria
 
-**AC-M17-007-1**: 審核通過開店申請
-**Given** 店鋪申請狀態為 PENDING
-**When** Admin 提交審核通過 (POST /api/v2/admin/tenants/:id/approve)
-**Then** 將店鋪狀態改為 ACTIVE，並初始化 Feature Toggle
+**AC-M17-007-1**: 核准開店申請
+**Given** `tenant_applications` 存在一筆 `status = PENDING` 的申請，且其 `user_id` 不為 NULL
+**When** Admin 提交核准 (POST /api/v2/admin/tenant-applications/:applicationId/approve)
+**Then** 於**同一交易**內依序完成：建立 `tenants` 紀錄（`status = ACTIVE`、slug 自動產生）→ 依 BR-M17-002 初始化 Feature Toggle → 建立 `tenant_members`（`StoreOwner`）→ 同步 `users.role` 為 `StoreOwner` → 將申請狀態改為 `APPROVED` 並回填 `tenant_id`／`reviewed_at`／`reviewed_by`
 
-**測試資料**:
-```json
-{
-  "approvedFeatures": ["BOOKING_ENABLED"],
-  "notes": "審核通過，預設開啟基礎功能"
-}
-```
+**測試資料**: 本端點**不需 Request Body**（申請內容取自 `tenant_applications` 該筆紀錄；Feature Toggle 一律以 BR-M17-002 預設值初始化，不由審核者逐項指定）
 
 ---
 
@@ -3438,12 +3455,12 @@ tenant_feature_toggles
 ---
 
 **AC-M17-007-3**: 多次審核
-**Given** 店鋪狀態已為 ACTIVE
-**When** Admin 再次審核
-**Then** 回傳錯誤，狀態已是 ACTIVE
+**Given** 申請狀態已非 `PENDING`（已 APPROVED 或已 REJECTED）
+**When** Admin 再次核准
+**Then** 回傳錯誤，不重複建立 `Tenant`
 
 **測試資料**:
-- 預期錯誤: `E-4001 STORE_ALREADY_APPROVED`
+- 預期錯誤: `E-2007 開店申請狀態非「待審核」`
 
 ---
 
@@ -3451,9 +3468,9 @@ tenant_feature_toggles
 
 | 條件 | 處理方式 | 預期行為 |
 |------|---------|---------|
-| 店鋪不存在 | 阻擋 | E-4041 TENANT_NOT_FOUND |
-| 店鋪狀態非 PENDING | 阻擋 | E-4001 INVALID_STORE_STATUS |
-| 核准無效的功能 | 警告但允許 | 顯示警告 |
+| 申請不存在 | 阻擋 | E-2006 找不到開店申請 |
+| 申請狀態非 PENDING | 阻擋 | E-2007 開店申請狀態非「待審核」 |
+| 申請為 Guest 送出（`user_id` 為 NULL） | 阻擋 | E-2008 訪客身份的開店申請無法核准（無從授予 StoreOwner） |
 
 ---
 
@@ -3481,9 +3498,9 @@ tenant_feature_toggles
 #### Acceptance Criteria
 
 **AC-M17-008-1**: 駁回開店申請
-**Given** 店鋪申請狀態為 PENDING
-**When** Admin 提交駁回 (POST /api/v2/admin/tenants/:id/reject)
-**Then** 將店鋪狀態改為 REJECTED，並記錄原因
+**Given** `tenant_applications` 存在一筆 `status = PENDING` 的申請
+**When** Admin 提交駁回 (POST /api/v2/admin/tenant-applications/:applicationId/reject)
+**Then** 將**申請**狀態改為 `REJECTED` 並記錄 `rejection_reason`；**不建立任何 `tenants` 紀錄**
 
 **測試資料**:
 ```json
@@ -3495,19 +3512,19 @@ tenant_feature_toggles
 ---
 
 **AC-M17-008-2**: 駁回後重新申請
-**Given** 店鋪已被駁回
+**Given** 用戶先前的申請已被駁回（`REJECTED`）
 **When** 用戶嘗試重新申請
-**Then** 允許重新建立申請（新建記錄）
+**Then** 允許重新建立申請（新建 `tenant_applications` 記錄，不沿用舊紀錄）——重複申請的阻擋條件只看是否存在 `PENDING` 申請
 
 ---
 
 **AC-M17-008-3**: 多次駁回
-**Given** 店鋪狀態已為 REJECTED
+**Given** 申請狀態已非 `PENDING`
 **When** Admin 再次駁回
-**Then** 回傳錯誤，狀態已是 REJECTED
+**Then** 回傳錯誤
 
 **測試資料**:
-- 預期錯誤: `E-4001 STORE_ALREADY_REJECTED`
+- 預期錯誤: `E-2007 開店申請狀態非「待審核」`
 
 ---
 
@@ -3515,8 +3532,9 @@ tenant_feature_toggles
 
 | 條件 | 處理方式 | 預期行為 |
 |------|---------|---------|
-| reason 空白 | 驗證失敗 | E-4001 VALIDATION_ERROR |
-| 店鋪狀態非 PENDING | 阻擋 | E-4001 INVALID_STORE_STATUS |
+| reason 空白 | 驗證失敗（`@NotBlank`） | E-4001 VALIDATION_ERROR |
+| 申請不存在 | 阻擋 | E-2006 找不到開店申請 |
+| 申請狀態非 PENDING | 阻擋 | E-2007 開店申請狀態非「待審核」 |
 
 ---
 
@@ -3538,16 +3556,33 @@ tenant_feature_toggles
 | **優先級** | P0 |
 | **類型** | 狀態轉換 |
 
-**狀態流轉**：
+**狀態流轉**（PRD §4.3；**兩張表、兩個生命週期**）：
 ```
-[申請開店] → PENDING → [Admin 審核] → ACTIVE → [運營中]
-                                    │                      │
-                                    ▼                      ▼
-                               REJECTED              SUSPENDED (違規)
-                                                          │
-                                                          ▼
-                                                     TERMINATED
+階段一：開店申請 (tenant_applications.status)
+
+  [網友送出申請] → PENDING ──[Admin 核准]──→ APPROVED ─┐
+                      │                                 │
+                      └──[Admin 駁回]──→ REJECTED       │ 核准的同一交易內
+                         （不建立 Tenant，可重新申請）  │ 才建立 Tenant
+                                                        │
+階段二：店鋪 (tenants.status)                           │
+                                                        ▼
+                            ┌──────────────────────→ ACTIVE → [運營中]
+                            │                           │
+              [Admin 恢復]  │                           │ [Admin 暫停]
+                            │                           ▼
+                            └────────────────────── SUSPENDED (違規)
+                                                        │
+                                                        │ [Admin 終止]
+                                                        ▼
+                                                   TERMINATED
 ```
+
+**規則描述**：
+1. 送出開店申請**只寫入 `tenant_applications`**，此時不存在對應的 `tenants` 紀錄。
+2. `tenants` 紀錄唯一的建立時機是 Admin 核准，且**建立即為 `ACTIVE`**。
+3. 因此 `tenants.status` 的 `PENDING_REVIEW`／`REJECTED` 在生產環境不可達，屬歷史保留值；
+   **待審核佇列與計數一律查 `tenant_applications.status = 'PENDING'`**，不可查 `tenants.status = 'PENDING_REVIEW'`。
 
 ---
 
@@ -3560,7 +3595,10 @@ tenant_feature_toggles
 | **類型** | 初始化 |
 
 **規則描述**：
-當 `tenants.status` 從 `PENDING` → `ACTIVE` 時，系統自動以預設值初始化該 Tenant 的所有 Feature Toggle 紀錄。
+當 Admin **核准開店申請**（`tenant_applications.status`: `PENDING` → `APPROVED`）而建立出新的 `Tenant` 時，
+系統於同一交易內自動以預設值初始化該 Tenant 的所有 Feature Toggle 紀錄。
+
+> ⚠️ 觸發點**不是** `tenants.status` 的狀態變化（該表不存在 `PENDING → ACTIVE` 這個轉換，見 BR-M17-001）。
 
 **預設值**：
 
@@ -3581,11 +3619,16 @@ tenant_feature_toggles
 |-------------|------|------|------|
 | `/api/v2/tenants/apply` | POST | 提交開店申請 | Guest |
 | `/api/v2/tenants/:id` | GET | 取得店鋪資訊 | Guest+ |
-| `/api/v2/dashboard/tenant/profile` | GET/PUT | 取得/更新店鋪 Profile | StoreOwner |
-| `/api/v2/admin/tenants` | GET | Admin: 店鋪列表 | Admin |
-| `/api/v2/admin/tenants/:id/approve` | POST | Admin: 核准開店 | Admin |
-| `/api/v2/admin/tenants/:id/reject` | POST | Admin: 駁回開店 | Admin |
-| `/api/v2/admin/tenants/:id/toggles` | PUT | Admin: 更新 Feature Toggle | Admin |
+| `/api/v2/tenants/:id` | PUT | 更新店鋪 Profile | StoreOwner |
+| `/api/v2/tenants/my` | GET | 取得我的店鋪列表 | StoreOwner |
+| `/api/v2/admin/tenants` | GET | Admin: 店鋪列表 | SUPER_ADMIN |
+| `/api/v2/admin/tenant-applications` | GET | Admin: 待審核開店申請列表 | SUPER_ADMIN |
+| `/api/v2/admin/tenant-applications/:applicationId/approve` | POST | Admin: 核准開店申請 | SUPER_ADMIN |
+| `/api/v2/admin/tenant-applications/:applicationId/reject` | POST | Admin: 駁回開店申請 | SUPER_ADMIN |
+| `/api/v2/admin/tenants/:id/features/:feature` | PUT | Admin: 更新單一 Feature Toggle | SUPER_ADMIN |
+
+> ⚠️ 審核對象是 `tenant_applications`，**不是** `tenants`。後端另存在 `/api/v2/admin/tenants/:id/approve`／`/reject`
+> 兩個舊端點（操作既有 `Tenant`、要求 `PENDING_REVIEW`），在生產環境永遠等不到資料，僅為相容保留，新功能不得使用。
 
 **詳細 API 規格**: 見 [docs/02_architecture/API_M17_Tenant_Management.md](../02_architecture/API_M17_Tenant_Management.md)
 
@@ -3698,6 +3741,7 @@ tenant_feature_toggles
 |------|------|----------|--------|
 | v1.0 | 2026-04-09 | 初始版本 | Amanda (SA) |
 | v1.1 | 2026-04-22 | 1. 修正租戶狀態 PENDING_REVIEW → PENDING<br>2. 修正 US-M17-001 Story Points 5→3<br>3. 修正 US-M17-006 Story Points 3→1 | AI Review |
+| v1.2 | 2026-09-02 | **M17 開店/審核流程與實作同步（Sprint 110，依 PRD v1.0.1 ER-004）**：<br>1. §8.3 補上 `tenant_applications` 資料模型；`tenants.status` 由 `PENDING` 更正回實作的 `PENDING_REVIEW`（v1.1 當年只改了名稱，未察覺**改錯了實體**——申請狀態在 `tenant_applications` 而非 `tenants`）<br>2. BR-M17-001 改寫為兩表兩階段生命週期<br>3. BR-M17-002 觸發點改為「核准申請而建立 Tenant 時」<br>4. AC-M17-001-1／US-M17-007／US-M17-008 的端點、狀態與錯誤碼對齊實作（`/admin/tenant-applications/*`、E-2006/E-2007/E-2008/E-4092）<br>5. §8.6 API 概要同步 | AI Review |
 
 ---
 

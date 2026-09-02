@@ -491,6 +491,29 @@ class AdminServiceTest {
             // GMV = orders * 1500
             assertThat(response.getTotalPlatformGMV()).isEqualTo(java.math.BigDecimal.valueOf(300000));
         }
+
+        @Test
+        @DisplayName("getPlatformStats_pendingReviewsCountsApplicationsNotTenants")
+        void getPlatformStats_pendingReviewsCountsApplicationsNotTenants() {
+            // 刻意讓「租戶」那一側也存在一筆 PENDING_REVIEW 記錄：若待審核數被改回以
+            // Tenant.status 計數，這個測試會拿到 1 而不是 3，直接擋下回歸（DEF-059）。
+            Tenant pendingTenant = Tenant.builder()
+                    .id(TEST_TENANT_ID)
+                    .name("Pending Tenant")
+                    .slug("pending-tenant")
+                    .status(Tenant.TenantStatus.PENDING_REVIEW)
+                    .build();
+            when(tenantRepository.count()).thenReturn(2L);
+            when(tenantRepository.findAll()).thenReturn(java.util.List.of(buildTenant(), pendingTenant));
+            when(tenantApplicationRepository.countByStatus(TenantApplication.ApplicationStatus.PENDING))
+                    .thenReturn(3L);
+
+            // Act
+            AdminDto.PlatformStatsResponse response = adminService.getPlatformStats();
+
+            // Assert：待審核數來自 tenant_applications，與 tenants 表的狀態無關
+            assertThat(response.getPendingTenantReviews()).isEqualTo(3);
+        }
     }
 
     // ── deleteFeatureToggle Tests ─────────────────────────────────────

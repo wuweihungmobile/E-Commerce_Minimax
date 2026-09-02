@@ -19,4 +19,6 @@ public interface TenantApplicationRepository extends JpaRepository<TenantApplica
     Optional<TenantApplication> findByUserIdAndStatus(UUID userId, TenantApplication.ApplicationStatus status);
 
     boolean existsByUserIdAndStatusIn(UUID userId, List<TenantApplication.ApplicationStatus> statuses);
+
+    long countByStatus(TenantApplication.ApplicationStatus status);
 }

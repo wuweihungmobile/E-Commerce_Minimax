@@ -269,4 +269,40 @@ class TenantApplicationReviewE2ETest {
                 .then()
                 .statusCode(403);
     }
+
+    /**
+     * 讀取平台統計的「待審核店鋪」數字（Admin Dashboard 直接顯示此欄位）。
+     */
+    private int readPendingTenantReviews(String adminToken) throws Exception {
+        String body = given()
+                .header("Authorization", "Bearer " + adminToken)
+                .when()
+                .get(ADMIN_BASE_URL + "/stats")
+                .then()
+                .statusCode(200)
+                .extract().asString();
+        return objectMapper.readTree(body).path("data").path("pendingTenantReviews").asInt();
+    }
+
+    @Test
+    @DisplayName("IT-M17-APP-006: 平台統計的待審核數必須反映真正待審核的開店申請")
+    void platformStats_pendingTenantReviews_reflectsPendingApplications() throws Exception {
+        String adminToken = createSuperAdminUserAndGetToken();
+
+        // 差分斷言：測試 DB 經 Flyway V7 已播入一筆 PENDING_REVIEW 租戶，
+        // 直接斷言 ">= 1" 會被那筆固件矇混過關（假綠）。改為量測「送出一筆申請前後的增量」，
+        // 才真正驗證統計數字與待審核申請之間的因果關係。
+        int before = readPendingTenantReviews(adminToken);
+
+        UUID[] buyerIdHolder = new UUID[1];
+        String buyerToken = createBuyerUserAndGetToken(buyerIdHolder);
+        submitApplication(buyerToken, "E2E Stats Store " + System.currentTimeMillis());
+
+        // 送出一筆待審核申請後，Admin Dashboard 的待審核數必須 +1。
+        // 修復前：統計數 Tenant.status=PENDING_REVIEW（生產無任何路徑會產生此狀態），恆定不變。
+        int after = readPendingTenantReviews(adminToken);
+        assertThat(after)
+                .as("送出開店申請後，Admin Dashboard 的待審核店鋪數應該 +1")
+                .isEqualTo(before + 1);
+    }
 }

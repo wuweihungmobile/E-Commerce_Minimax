@@ -669,9 +669,14 @@ public class AdminService {
         // Mock GMV
         BigDecimal totalGMV = BigDecimal.valueOf(totalOrders).multiply(MOCK_AVERAGE_ORDER_VALUE);
 
-        int pendingReviews = (int) tenantRepository.findAll().stream()
-                .filter(t -> t.getStatus() == Tenant.TenantStatus.PENDING_REVIEW)
-                .count();
+        // 待審核店鋪數＝待審核的「開店申請」（tenant_applications.status=PENDING）。
+        // 不可改回以 tenants.status=PENDING_REVIEW 計數：Sprint 97 起開店申請一律先寫入
+        // tenant_applications，待 Admin 核准時才建立 status=ACTIVE 的 Tenant
+        // （見 approveTenantApplication），生產環境沒有任何路徑會把 Tenant 建成 PENDING_REVIEW，
+        // 以該狀態計數會恆為 0——與同一個 Service 的 getPendingTenantApplications()
+        // 回傳 N 筆待審核申請自相矛盾（Sprint 108 修復，DEF-059）。
+        int pendingReviews = (int) tenantApplicationRepository
+                .countByStatus(TenantApplication.ApplicationStatus.PENDING);
 
         return AdminDto.PlatformStatsResponse.builder()
                 .totalTenants(totalTenants)

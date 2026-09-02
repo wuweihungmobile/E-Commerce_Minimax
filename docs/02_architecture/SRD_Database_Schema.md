@@ -1,11 +1,16 @@
 # E-Commerce 系統 — 資料庫 Schema 技術規格 v1.0
 
 > **文檔類型**: SRD - Database Schema Specification
-> **版本**: v1.0
+> **版本**: v2.0（Sprint 111：全文依實作重寫）
+> **權威來源**: `backend/src/main/resources/db/migration/` 的 Flyway 遷移
 > **依據**: E-Commerce_SRD_System_Architecture.md, E-Commerce_FRD_v1.0.md
 > **建立日期**: 2026-04-09
 > **作者**: Marcus (SD-Architect)
 > **Phase**: Phase 1 (Must Have)
+>
+> **🔴 本文件的 §1~§6 由 `scripts/validate-schema-doc.sh` 自動驗證。**
+> 資料表 DDL 是從「乾淨 DB 套完全部 Flyway 遷移」匯出的，不是手寫的；
+> 手改 DDL 而未同步遷移，或改了遷移而未更新本文件，守門都會失敗。
 
 ---
 
@@ -15,8 +20,8 @@
 |-----|------|
 | **專案名稱** | E-Commerce B2B2C 多租戶電子商務平台 |
 | **資料庫類型** | PostgreSQL 18 |
-| **多租戶策略** | Shared Schema + Tenant ID + Hibernate Filter |
-| ** Migration 工具** | Flyway 9.x |
+| **多租戶策略** | Shared Schema + Tenant ID Column + **每個查詢明確過濾**（**未**使用 Hibernate Filter，見 §4） |
+| ** Migration 工具** | Flyway（`V{整數}__{描述}.sql`，目前 70 個遷移／65 張表） |
 | **系統架構** | Clean Architecture + DDD |
 
 ---
@@ -32,90 +37,107 @@
 - **API 規格**: [API_Index.md](./API_Index.md)
 - **測試計劃**: [docs/03_testing/](../03_testing/)
 
+### 已封存
+- **原設計稿（v1.0，從未與實作對齊）**: [archive/SRD_Database_Schema_designdraft.md](./archive/SRD_Database_Schema_designdraft.md)
+  — 保留設計期意圖供考據，**不可作為開發依據**。
+
 ---
 
 ## 1. 實體關係圖 (Entity Relationship Diagram)
 
 ### 1.1 核心實體關係
 
-```
-┌──────────────┐       ┌──────────────────┐       ┌──────────────┐
-│   tenants    │       │ tenant_members   │       │    users    │
-├──────────────┤       ├──────────────────┤       ├──────────────┤
-│ id (PK)     │◄──────│ tenant_id (FK)  │       │ id (PK)     │
-│ store_name  │       │ user_id (FK)     │◄──────│ email       │
-│ status      │       │ role             │       │ status      │
-│ business_   │       │ joined_at        │       │ user_type   │
-│ type        │       └──────────────────┘       └──────┬───────┘
-└──────┬───────┘                                          │
-       │                                                  │
-       │ 1:N                                              │ 1:N
-       ▼                                                  ▼
-┌──────────────┐       ┌──────────────────┐       ┌──────────────┐
-│   listings   │       │ tenant_feature_  │       │ user_       │
-├──────────────┤       │ toggles         │       │ profiles    │
-│ id (PK)     │       ├──────────────────┤       ├──────────────┤
-│ tenant_id    │◄─────│ tenant_id (FK)  │       │ user_id (PK)│
-│ listing_type│       │ feature_key     │       │ display_    │
-│ title       │       │ is_enabled      │       │ name        │
-│ status      │       │ requested_at    │       │ phone       │
-│ base_price  │       │ enabled_at      │       │ avatar_url  │
-└──────┬───────┘       └──────────────────┘       └──────────────┘
-       │
-       │ 1:1 (listing_type)
-       ├────────────────────────┐
-       ▼                        ▼
-┌──────────────┐       ┌──────────────────┐
-│  products   │       │      rooms       │
-├──────────────┤       ├──────────────────┤
-│ listing_id  │       │ listing_id (PK) │
-│ category    │       │ location         │
-│ brand       │       │ latitude         │
-└──────────────┘       │ longitude       │
-                       │ max_guests      │
-                       │ amenities       │
-                       │ check_in_time   │
-                       │ check_out_time │
-                       └────────┬─────────┘
-                                │ 1:N
-                                ▼
-                       ┌──────────────────┐
-                       │  room_calendar   │
-                       ├──────────────────┤
-                       │ listing_id (FK)  │
-                       │ calendar_date    │
-                       │ status           │
-                       │ price_override   │
-                       └──────────────────┘
+> 以下為**實作現況**（Sprint 111 依 Flyway 遷移重繪）。欄位僅列關聯鍵與代表性欄位，完整定義見 §2。
 
-┌──────────────┐       ┌──────────────────┐
-│   orders     │       │  pricing_rules   │
-├──────────────┤       ├──────────────────┤
-│ id (PK)     │       │ id (PK)          │
-│ tenant_id   │       │ tenant_id (FK)   │
-│ user_id     │       │ listing_id       │
-│ order_number│       │ rule_type        │
-│ status      │       │ rule_name        │
-│ total_amount│       │ adjustment_type  │
-│ payment_    │       │ adjustment_value│
-│ method      │       │ priority         │
-│ created_at  │       │ is_active        │
-└──────┬───────┘       │ conditions       │
-       │                └──────────────────┘
-       │ 1:N
-       ▼
-┌──────────────┐
-│ order_items  │
-├──────────────┤
-│ id (PK)     │
-│ order_id (FK)│
-│ listing_id  │
-│ sku_id       │
-│ quantity     │
-│ unit_price  │
-│ subtotal    │
-└──────────────┘
 ```
+┌────────────────┐       ┌────────────────────┐       ┌──────────────────┐
+│    tenants     │       │  tenant_members    │       │      users       │
+├────────────────┤       ├────────────────────┤       ├──────────────────┤
+│ id (PK)        │◄──────│ tenant_id (FK)     │       │ id (PK)          │
+│ name           │       │ user_id (FK)       │──────►│ email (UK)       │
+│ slug (UK)      │       │ store_role         │       │ role             │
+│ status         │       │ status             │       │ tenant_id        │
+│ commission_rate│       │ invited_by / _at   │       │ status           │
+│ connect_*      │       │ joined_at          │       │ kyc_*            │
+└──────┬─────────┘       └────────────────────┘       └────────┬─────────┘
+       │                                                       │
+       │ 1:N                                                   │ 1:N
+       ▼                                                       ▼
+┌────────────────┐       ┌────────────────────┐       ┌──────────────────┐
+│    listings    │       │ tenant_feature_    │       │  refresh_tokens  │
+├────────────────┤       │ toggles            │       ├──────────────────┤
+│ id (PK)        │       ├────────────────────┤       │ id (PK)          │
+│ tenant_id (FK) │◄──────│ tenant_id (FK)     │       │ user_id (FK)     │
+│ listing_type   │       │ feature_key        │       │ token_hash (UK)  │
+│ title          │       │ is_enabled         │       │ expires_at       │
+│ status         │       │ config (JSONB)     │       │ revoked          │
+│ base_price     │       │ enabled_at         │       └──────────────────┘
+│ owner_id       │       │ disabled_at        │
+└──────┬─────────┘       └────────────────────┘   ⚠️ user_profiles 從未實作，
+       │                                              欄位併入 users（見 §2.2.2）
+       │ 1:1（依 listing_type）
+       ├──────────────────────────┐
+       ▼                          ▼
+┌────────────────┐       ┌────────────────────┐
+│    products    │       │       rooms        │
+├────────────────┤       ├────────────────────┤
+│ listing_id (PK)│       │ listing_id (PK)    │
+│ category       │       │ location           │
+│ brand          │       │ latitude/longitude │
+│ weight_grams   │       │ max_guests         │
+│ dimensions_cm  │       │ amenities          │
+└──────┬─────────┘       │ check_in/out_time  │
+       │ 1:1             │ room_count         │
+       ▼                 └─────────┬──────────┘
+┌────────────────┐                 │ 1:N
+│ product_skus   │                 ▼
+├────────────────┤       ┌────────────────────┐
+│ id (PK)        │       │   room_calendar    │
+└──────┬─────────┘       ├────────────────────┤
+       │ 1:1             │ id (PK)            │
+       ▼                 │ room_listing_id(FK)│
+┌────────────────┐       │ calendar_date      │
+│product_inventory│      │ status             │
+├────────────────┤       │ price              │
+│ sku_id (PK,FK) │       │ booking_id         │
+│ total_qty      │       └────────────────────┘
+│ reserved_qty   │
+│ available_qty  │  ⚠️ 主鍵是 sku_id（不是 id），
+│  （GENERATED） │     且掛在 product_skus 之下，
+│ version        │     不是 listings
+└────────────────┘
+
+┌────────────────┐       ┌────────────────────┐
+│     orders     │       │   pricing_rules    │
+├────────────────┤       ├────────────────────┤
+│ id (PK)        │       │ id (PK)            │
+│ tenant_id      │       │ tenant_id          │
+│ user_id        │       │ listing_id         │
+│ order_type     │       │ room_listing_id    │
+│ status         │       │ rule_type          │
+│ total_amount   │       │ rule_name          │
+│ shipping_fee   │       │ priority           │
+│ promo_code     │       │ config (JSONB)     │
+│ discount_amount│       │ valid_from / _to   │
+└──────┬─────────┘       │ is_active          │
+       │ 1:N             └────────────────────┘
+       ▼                  ⚠️ pricing_overrides 從未實作；手動覆蓋
+┌────────────────┐           以 rule_type='MANUAL_OVERRIDE' + config
+│  order_items   │           承載（見 §2.5.2）
+├────────────────┤
+│ id (PK)        │       ┌────────────────────┐
+│ order_id (FK)  │       │  order_state_log   │
+│ listing_id     │       ├────────────────────┤
+│ sku_id         │◄──────│ order_id (FK)      │
+│ quantity       │       │ from_status        │
+│ unit_price     │       │ to_status          │
+│ subtotal       │       │ changed_by         │
+└────────────────┘       └────────────────────┘
+```
+
+> **本文件涵蓋範圍**：實作共有 **65 張資料表**，本節與 §2 只涵蓋其中的 **14 張核心表**
+> （租戶／用戶／商品房源／訂單／定價）。其餘 51 張（金流、CMS、ERP、客服、通知、評價等）
+> 未收錄於本文件，請直接參閱 `backend/src/main/resources/db/migration/` 的 Flyway 遷移。
 
 ---
 
@@ -125,18 +147,9 @@
 
 #### 2.1.1 `tenants` - 租戶/店鋪主檔
 
-> **🔴 本節 DDL 為設計稿，與實作的 `V1__Initial_Schema.sql` 有實質落差（2026-09-02，Sprint 110 補註）**
->
-> 與本次「M17 開店/審核流程同步」直接相關的一點：
-> **`tenants` 沒有「申請中」狀態**——開店申請存放於獨立的 `tenant_applications` 表（見 §2.1.x 對照 `V4__Tenant_Application.sql`），
-> `tenants` 紀錄只在 Admin 核准的那一刻才被建立，且**建立即為 `ACTIVE`**（PRD §4.3、FRD BR-M17-001）。
-> 實作的 `tenants.status` 是 `VARCHAR(20) NOT NULL DEFAULT 'PENDING_REVIEW'`（無 CHECK 約束），
-> 其中 `PENDING_REVIEW`／`REJECTED` 為生產不可達的歷史保留值。
->
-> ⚠️ 本節 DDL 的其餘欄位差異（`store_name`／`owner_id`／`business_type`／`approved_at`／`approved_by`／
-> `rejected_at`／`rejected_by`／兩個 UNIQUE 約束在實作中皆不存在；實作另有 `slug`、`metadata`、`commission_rate`
-> 及 V62／V65 追加的 Stripe Connect 與採購審批欄位）**未在本次同步中處理**，屬更大範圍的 schema 文件債。
-> **請以 `backend/src/main/resources/db/migration/` 的 Flyway 遷移為準。**
+> `tenants` 紀錄**只在 Admin 核准開店申請時才被建立**，且建立即為 `ACTIVE`
+> （PRD §4.3、FRD BR-M17-001）。審核前的申請資料在 `tenant_applications`，不在本表。
+> 因此 `status` 的 `PENDING_REVIEW`／`REJECTED` 為生產不可達的歷史保留值。
 
 ```sql
 -- ============================================
@@ -145,40 +158,32 @@
 -- Module: M17 租戶管理
 -- ============================================
 CREATE TABLE tenants (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    store_name VARCHAR(100) NOT NULL,
-    store_description TEXT,
-    business_type VARCHAR(20) NOT NULL CHECK (business_type IN ('RETAIL_ONLY', 'BOOKING_ONLY', 'HYBRID')),
-    contact_email VARCHAR(255) NOT NULL,
-    contact_phone VARCHAR(20),
-    business_license_url VARCHAR(500),
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    name VARCHAR(200) NOT NULL,
+    slug VARCHAR(100) NOT NULL,
+    description TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING_REVIEW',
     logo_url VARCHAR(500),
-    cover_image_url VARCHAR(500),
-    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED', 'ACTIVE')),
-    owner_id UUID NOT NULL,
+    contact_email VARCHAR(255),
+    contact_phone VARCHAR(50),
+    commission_rate DOUBLE PRECISION DEFAULT 0.05,
+    metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    approved_at TIMESTAMP WITH TIME ZONE,
-    approved_by UUID,
-    rejected_at TIMESTAMP WITH TIME ZONE,
-    rejected_by UUID,
-    rejection_reason TEXT,
-    
+    stripe_connect_account_id VARCHAR(255),
+    connect_onboarding_status VARCHAR(20) NOT NULL DEFAULT 'NOT_STARTED',
+    connect_charges_enabled BOOLEAN NOT NULL DEFAULT false,
+    connect_payouts_enabled BOOLEAN NOT NULL DEFAULT false,
+    purchase_order_approval_threshold NUMERIC(12,2),
+
     -- 約束
-    CONSTRAINT uk_tenants_store_name UNIQUE (store_name),
-    CONSTRAINT uk_tenants_contact_email UNIQUE (contact_email)
+    CONSTRAINT tenants_pkey PRIMARY KEY (id),
+    CONSTRAINT tenants_slug_key UNIQUE (slug)
 );
 
 -- 索引
-CREATE INDEX idx_tenants_status ON tenants(status);
-CREATE INDEX idx_tenants_owner_id ON tenants(owner_id);
-CREATE INDEX idx_tenants_business_type ON tenants(business_type);
-CREATE INDEX idx_tenants_created_at ON tenants(created_at DESC);
-
--- 註解
-COMMENT ON TABLE tenants IS '租戶/店鋪主檔案';
-COMMENT ON COLUMN tenants.business_type IS 'RETAIL_ONLY: 僅零售, BOOKING_ONLY: 僅民宿, HYBRID: 混合型';
-COMMENT ON COLUMN tenants.status IS 'PENDING: 待審核, APPROVED: 審核通過, REJECTED: 審核駁回, SUSPENDED: 已停權, ACTIVE: 正常營運';
+CREATE INDEX idx_tenants_slug ON tenants (slug);
+CREATE INDEX idx_tenants_status ON tenants (status);
 ```
 
 #### 2.1.2 `tenant_members` - 租戶成員關聯
@@ -190,31 +195,28 @@ COMMENT ON COLUMN tenants.status IS 'PENDING: 待審核, APPROVED: 審核通過,
 -- Module: M17 租戶管理
 -- ============================================
 CREATE TABLE tenant_members (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL,
     user_id UUID NOT NULL,
-    role VARCHAR(20) NOT NULL CHECK (role IN ('OWNER', 'ADMIN', 'STAFF')),
-    display_name VARCHAR(100),
+    store_role VARCHAR(50) NOT NULL DEFAULT 'STORE_OWNER',
     invited_by UUID,
-    invited_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    joined_at TIMESTAMP WITH TIME ZONE,
-    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE', 'REMOVED')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    
+    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    invited_at TIMESTAMP WITH TIME ZONE,
+
     -- 約束
-    CONSTRAINT uk_tenant_member UNIQUE (tenant_id, user_id),
-    CONSTRAINT fk_tenant_members_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    CONSTRAINT fk_tenant_members_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    CONSTRAINT tenant_members_pkey PRIMARY KEY (id),
+    CONSTRAINT tenant_members_tenant_id_user_id_key UNIQUE (tenant_id, user_id),
+    CONSTRAINT tenant_members_invited_by_fkey FOREIGN KEY (invited_by) REFERENCES users(id),
+    CONSTRAINT tenant_members_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    CONSTRAINT tenant_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT tenant_members_status_check CHECK (status IN ('INVITED', 'ACTIVE', 'REMOVED'))
 );
 
 -- 索引
-CREATE INDEX idx_tenant_members_tenant_id ON tenant_members(tenant_id);
-CREATE INDEX idx_tenant_members_user_id ON tenant_members(user_id);
-CREATE INDEX idx_tenant_members_role ON tenant_members(role);
-
-COMMENT ON TABLE tenant_members IS '租戶成員多對多關聯表';
-COMMENT ON COLUMN tenant_members.role IS 'OWNER: 擁有者, ADMIN: 管理員, STAFF: 員工';
+CREATE INDEX idx_tenant_members_status ON tenant_members (status);
+CREATE INDEX idx_tenant_members_tenant ON tenant_members (tenant_id);
+CREATE INDEX idx_tenant_members_user ON tenant_members (user_id);
 ```
 
 #### 2.1.3 `tenant_feature_toggles` - 功能開關
@@ -226,37 +228,24 @@ COMMENT ON COLUMN tenant_members.role IS 'OWNER: 擁有者, ADMIN: 管理員, ST
 -- Module: M17 租戶管理, BR-FT-001
 -- ============================================
 CREATE TABLE tenant_feature_toggles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL,
-    feature_key VARCHAR(50) NOT NULL,
-    is_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-    requested_at TIMESTAMP WITH TIME ZONE,
-    requested_by UUID,
-    enabled_at TIMESTAMP WITH TIME ZONE,
-    enabled_by UUID,
-    disabled_at TIMESTAMP WITH TIME ZONE,
-    disabled_by UUID,
-    notes TEXT,
-    version INT NOT NULL DEFAULT 1,
+    feature_key VARCHAR(100) NOT NULL,
+    is_enabled BOOLEAN DEFAULT false,
+    config JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    
+    enabled_at TIMESTAMP WITH TIME ZONE,
+    disabled_at TIMESTAMP WITH TIME ZONE,
+
     -- 約束
-    CONSTRAINT uk_tenant_feature UNIQUE (tenant_id, feature_key),
-    CONSTRAINT fk_tenant_feature_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    CONSTRAINT chk_feature_key CHECK (feature_key IN (
-        'RETAIL_ENABLED', 'BOOKING_ENABLED', 'CMS_ENABLED', 
-        'ERP_ENABLED', 'DYNAMIC_PRICING_ENABLED', 'PROMO_ENABLED'
-    ))
+    CONSTRAINT tenant_feature_toggles_pkey PRIMARY KEY (id),
+    CONSTRAINT tenant_feature_toggles_tenant_id_feature_key_key UNIQUE (tenant_id, feature_key),
+    CONSTRAINT tenant_feature_toggles_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
 
 -- 索引
-CREATE INDEX idx_tenant_feature_tenant_id ON tenant_feature_toggles(tenant_id);
-CREATE INDEX idx_tenant_feature_key ON tenant_feature_toggles(feature_key);
-CREATE INDEX idx_tenant_feature_enabled ON tenant_feature_toggles(is_enabled) WHERE is_enabled = TRUE;
-
-COMMENT ON TABLE tenant_feature_toggles IS '租戶功能開關狀態';
-COMMENT ON COLUMN tenant_feature_toggles.feature_key IS '功能鍵: RETAIL_ENABLED, BOOKING_ENABLED, CMS_ENABLED, ERP_ENABLED, DYNAMIC_PRICING_ENABLED, PROMO_ENABLED';
+CREATE INDEX idx_feature_toggles_tenant ON tenant_feature_toggles (tenant_id);
 ```
 
 ---
@@ -272,69 +261,47 @@ COMMENT ON COLUMN tenant_feature_toggles.feature_key IS '功能鍵: RETAIL_ENABL
 -- Module: M03 認證系統
 -- ============================================
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
     email VARCHAR(255) NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    user_type VARCHAR(20) NOT NULL DEFAULT 'BUYER' CHECK (user_type IN ('BUYER', 'SELLER', 'HOST', 'ADMIN')),
-    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'SUSPENDED', 'DELETED')),
-    email_verified BOOLEAN NOT NULL DEFAULT FALSE,
-    email_verified_at TIMESTAMP WITH TIME ZONE,
+    password_hash VARCHAR(255),
+    full_name VARCHAR(200),
+    phone VARCHAR(50),
+    avatar_url VARCHAR(500),
+    role VARCHAR(50) NOT NULL DEFAULT 'BUYER',
+    tenant_id UUID,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    email_verified BOOLEAN DEFAULT false,
+    phone_verified BOOLEAN DEFAULT false,
+    kyc_status VARCHAR(20) DEFAULT 'NONE',
+    kyc_id_number_encrypted VARCHAR(500),
+    kyc_id_card_front_url VARCHAR(500),
+    kyc_id_card_back_url VARCHAR(500),
     last_login_at TIMESTAMP WITH TIME ZONE,
+    metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    suspended_at TIMESTAMP WITH TIME ZONE,
-    suspended_by UUID,
-    suspension_reason TEXT,
-    deleted_at TIMESTAMP WITH TIME ZONE,
-    
+
     -- 約束
-    CONSTRAINT uk_users_email UNIQUE (email)
+    CONSTRAINT users_pkey PRIMARY KEY (id),
+    CONSTRAINT users_email_key UNIQUE (email)
 );
 
 -- 索引
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_status ON users(status);
-CREATE INDEX idx_users_user_type ON users(user_type);
-CREATE INDEX idx_users_created_at ON users(created_at DESC);
-
-COMMENT ON TABLE users IS '使用者主檔案';
-COMMENT ON COLUMN users.user_type IS 'BUYER: 買家, SELLER: 賣家, HOST: 民宿主人, ADMIN: 平台管理員';
-COMMENT ON COLUMN users.status IS 'ACTIVE: 正常, SUSPENDED: 停權, DELETED: 已刪除';
+CREATE INDEX idx_users_email ON users (email);
+CREATE INDEX idx_users_role ON users (role);
+CREATE INDEX idx_users_status ON users (status);
+CREATE INDEX idx_users_tenant ON users (tenant_id);
 ```
 
 #### 2.2.2 `user_profiles` - 使用者擴展檔
 
-```sql
--- ============================================
--- Table: user_profiles
--- Description: 使用者擴展資訊
--- Module: M03 認證系統
--- ============================================
-CREATE TABLE user_profiles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL UNIQUE,
-    display_name VARCHAR(100),
-    phone VARCHAR(20),
-    avatar_url VARCHAR(500),
-    gender VARCHAR(10) CHECK (gender IN ('MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY')),
-    date_of_birth DATE,
-    bio TEXT,
-    default_address_id UUID,
-    notification_preferences JSONB DEFAULT '{}',
-    preferences JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    
-    -- 約束
-    CONSTRAINT fk_user_profiles_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
+> **🔴 未實作（Sprint 111 查證）**
+>
+> 本表**從未被實作**。設計期規劃的擴展檔欄位（姓名、電話、頭像、KYC 等）最終**併入 `users` 主檔**：
+> `full_name`、`phone`、`avatar_url`、`kyc_status`、`kyc_id_number_encrypted`、
+> `kyc_id_card_front_url`、`kyc_id_card_back_url`、`metadata`。
+> 程式碼中沒有 `UserProfile` entity。請見 §2.2.1 `users`。
 
--- 索引
-CREATE INDEX idx_user_profiles_user_id ON user_profiles(user_id);
-CREATE INDEX idx_user_profiles_display_name ON user_profiles(display_name);
-
-COMMENT ON TABLE user_profiles IS '使用者擴展資訊';
-```
 
 #### 2.2.3 `refresh_tokens` - Refresh Token 儲存
 
@@ -345,29 +312,25 @@ COMMENT ON TABLE user_profiles IS '使用者擴展資訊';
 -- Module: M03 認證系統
 -- ============================================
 CREATE TABLE refresh_tokens (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,
-    token_hash VARCHAR(255) NOT NULL UNIQUE,
-    device_info JSONB,
-    ip_address VARCHAR(45),
-    user_agent TEXT,
+    token_hash VARCHAR(255) NOT NULL,
+    device_info VARCHAR(500),
+    ip_address VARCHAR(50),
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    revoked BOOLEAN DEFAULT false,
     revoked_at TIMESTAMP WITH TIME ZONE,
-    revoked_by UUID,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    
+
     -- 約束
-    CONSTRAINT fk_refresh_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    CONSTRAINT refresh_tokens_pkey PRIMARY KEY (id),
+    CONSTRAINT refresh_tokens_token_hash_key UNIQUE (token_hash),
+    CONSTRAINT refresh_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- 索引
-CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
-CREATE INDEX idx_refresh_tokens_token_hash ON refresh_tokens(token_hash);
-CREATE INDEX idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
-CREATE INDEX idx_refresh_tokens_active ON refresh_tokens(user_id, revoked_at) WHERE revoked_at IS NULL;
-
-COMMENT ON TABLE refresh_tokens IS 'Refresh Token 儲存表';
-COMMENT ON COLUMN refresh_tokens.token_hash IS 'Token 的 SHA-256 哈希值，用於安全儲存和查找';
+CREATE INDEX idx_refresh_tokens_hash ON refresh_tokens (token_hash);
+CREATE INDEX idx_refresh_tokens_user ON refresh_tokens (user_id);
 ```
 
 ---
@@ -383,51 +346,33 @@ COMMENT ON COLUMN refresh_tokens.token_hash IS 'Token 的 SHA-256 哈希值，�
 -- Module: M01 商品中心, M02 房源中心
 -- ============================================
 CREATE TABLE listings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL,
-    listing_type VARCHAR(20) NOT NULL CHECK (listing_type IN ('PRODUCT', 'ROOM')),
+    listing_type VARCHAR(20) NOT NULL,
     title VARCHAR(200) NOT NULL,
     description TEXT,
     cover_image_url VARCHAR(500),
-    images TEXT[],
-    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'ACTIVE', 'INACTIVE', 'DELETED')),
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
     owner_id UUID NOT NULL,
-    base_price DECIMAL(12, 2) NOT NULL,
-    currency VARCHAR(3) NOT NULL DEFAULT 'TWD',
-    tags JSONB DEFAULT '[]',
-    location VARCHAR(200),
-    latitude DECIMAL(10, 8),
-    longitude DECIMAL(11, 8),
-    max_guests INT,
-    amenities TEXT[],
-    check_in_time TIME DEFAULT '15:00',
-    check_out_time TIME DEFAULT '11:00',
+    base_price NUMERIC(12,2) NOT NULL,
+    currency VARCHAR(3) DEFAULT 'TWD',
+    tags JSONB DEFAULT '[]'::jsonb,
+    metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    published_at TIMESTAMP WITH TIME ZONE,
-    version INT NOT NULL DEFAULT 1,
-    
+
     -- 約束
-    CONSTRAINT fk_listings_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_listings_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE RESTRICT,
-    CONSTRAINT chk_base_price_positive CHECK (base_price > 0)
+    CONSTRAINT listings_pkey PRIMARY KEY (id),
+    CONSTRAINT listings_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES users(id),
+    CONSTRAINT listings_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
 
 -- 索引
-CREATE INDEX idx_listings_tenant_id ON listings(tenant_id);
-CREATE INDEX idx_listings_owner_id ON listings(owner_id);
-CREATE INDEX idx_listings_type ON listings(listing_type);
-CREATE INDEX idx_listings_status ON listings(status);
-CREATE INDEX idx_listings_created_at ON listings(created_at DESC);
-CREATE INDEX idx_listings_location ON listings(location);
-CREATE UNIQUE INDEX idx_listings_tenant_type_status ON listings(tenant_id, listing_type, status);
-
--- 租戶隔離索引（重要：用於 Hibernate Filter）
-CREATE INDEX idx_listings_tenant_id_status ON listings(tenant_id, status);
-
-COMMENT ON TABLE listings IS '統一商品/房源抽象表，支援 PRODUCT 和 ROOM 兩種類型';
-COMMENT ON COLUMN listings.listing_type IS 'PRODUCT: 實體商品, ROOM: 民宿房源';
-COMMENT ON COLUMN listings.status IS 'DRAFT: 草稿, ACTIVE: 上架, INACTIVE: 下架, DELETED: 已刪除';
+CREATE INDEX idx_listings_created ON listings (created_at DESC);
+CREATE INDEX idx_listings_owner ON listings (owner_id);
+CREATE INDEX idx_listings_status ON listings (status);
+CREATE INDEX idx_listings_tenant ON listings (tenant_id);
+CREATE INDEX idx_listings_type ON listings (listing_type);
 ```
 
 #### 2.3.2 `products` - 商品特化資料
@@ -439,33 +384,18 @@ COMMENT ON COLUMN listings.status IS 'DRAFT: 草稿, ACTIVE: 上架, INACTIVE: �
 -- Module: M01 商品中心
 -- ============================================
 CREATE TABLE products (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    listing_id UUID NOT NULL UNIQUE,
-    category VARCHAR(50) NOT NULL,
-    subcategory VARCHAR(50),
+    listing_id UUID NOT NULL,
+    category VARCHAR(50),
     brand VARCHAR(100),
-    model VARCHAR(100),
-    weight DECIMAL(10, 3),
-    weight_unit VARCHAR(10) DEFAULT 'g',
-    dimensions JSONB,
-    ingredients TEXT,
-    nutrition_info JSONB,
-    shelf_life VARCHAR(100),
-    storage_conditions VARCHAR(100),
+    weight_grams INTEGER,
+    dimensions_cm VARCHAR(50),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    
+
     -- 約束
-    CONSTRAINT fk_products_listing FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
+    CONSTRAINT products_pkey PRIMARY KEY (listing_id),
+    CONSTRAINT products_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
 );
-
--- 索引
-CREATE INDEX idx_products_listing_id ON products(listing_id);
-CREATE INDEX idx_products_category ON products(category);
-CREATE INDEX idx_products_brand ON products(brand);
-
-COMMENT ON TABLE products IS '商品特化資料，僅用於 listing_type = PRODUCT 的房源';
-COMMENT ON COLUMN products.dimensions IS 'JSON 格式: {"length": 10, "width": 5, "height": 3, "unit": "cm"}';
 ```
 
 #### 2.3.3 `product_inventory` - 庫存管理
@@ -477,35 +407,18 @@ COMMENT ON COLUMN products.dimensions IS 'JSON 格式: {"length": 10, "width": 5
 -- Module: M01 商品中心, BR-M01-004
 -- ============================================
 CREATE TABLE product_inventory (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    listing_id UUID NOT NULL,
-    sku_id UUID,
-    quantity INT NOT NULL DEFAULT 0,
-    reserved_quantity INT NOT NULL DEFAULT 0,
-    available_quantity INT GENERATED ALWAYS AS (quantity - reserved_quantity) STORED,
-    low_stock_threshold INT DEFAULT 10,
-    reorder_point INT,
-    warehouse_location VARCHAR(50),
-    last_restocked_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    sku_id UUID NOT NULL,
+    total_qty INTEGER DEFAULT 0,
+    reserved_qty INTEGER DEFAULT 0,
+    available_qty INTEGER GENERATED ALWAYS AS ((total_qty - reserved_qty)) STORED,
+    version BIGINT DEFAULT 0,
+    low_stock_threshold INTEGER DEFAULT 10,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    version INT NOT NULL DEFAULT 1,
-    
+
     -- 約束
-    CONSTRAINT fk_inventory_listing FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE,
-    CONSTRAINT chk_quantity_non_negative CHECK (quantity >= 0),
-    CONSTRAINT chk_reserved_non_negative CHECK (reserved_quantity >= 0),
-    CONSTRAINT chk_available_non_negative CHECK (available_quantity >= 0)
+    CONSTRAINT product_inventory_pkey PRIMARY KEY (sku_id),
+    CONSTRAINT product_inventory_sku_id_fkey FOREIGN KEY (sku_id) REFERENCES product_skus(id) ON DELETE CASCADE
 );
-
--- 索引
-CREATE UNIQUE INDEX idx_inventory_listing_sku ON product_inventory(listing_id, sku_id) WHERE sku_id IS NOT NULL;
-CREATE UNIQUE INDEX idx_inventory_listing_no_sku ON product_inventory(listing_id) WHERE sku_id IS NULL;
-CREATE INDEX idx_inventory_low_stock ON product_inventory(listing_id, available_quantity) WHERE available_quantity <= low_stock_threshold;
-
-COMMENT ON TABLE product_inventory IS '商品庫存管理';
-COMMENT ON COLUMN product_inventory.reserved_quantity IS '預留數量（訂單保留中）';
-COMMENT ON COLUMN product_inventory.available_quantity IS '可用數量 = quantity - reserved_quantity';
 ```
 
 #### 2.3.4 `rooms` - 房源特化資料
@@ -517,32 +430,24 @@ COMMENT ON COLUMN product_inventory.available_quantity IS '可用數量 = quanti
 -- Module: M02 房源中心
 -- ============================================
 CREATE TABLE rooms (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    listing_id UUID NOT NULL UNIQUE,
-    total_rooms INT NOT NULL DEFAULT 1,
-    available_rooms INT NOT NULL DEFAULT 1,
-    floor INT,
-    room_size DECIMAL(8, 2),
-    room_size_unit VARCHAR(10) DEFAULT '坪',
-    bed_type VARCHAR(50),
-    bed_count INT,
-    max_adults INT DEFAULT 2,
-    max_children INT DEFAULT 0,
-    room_view VARCHAR(50),
-    smoking_allowed BOOLEAN DEFAULT FALSE,
-    pet_allowed BOOLEAN DEFAULT FALSE,
+    listing_id UUID NOT NULL,
+    location VARCHAR(200),
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    max_guests INTEGER DEFAULT 2,
+    amenities JSONB DEFAULT '[]'::jsonb,
+    check_in_time time without time zone DEFAULT '15:00:00'::time without time zone,
+    check_out_time time without time zone DEFAULT '11:00:00'::time without time zone,
+    room_count INTEGER DEFAULT 1,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    
+    open_until_date DATE,
+    booking_window_days INTEGER,
+
     -- 約束
-    CONSTRAINT fk_rooms_listing FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE,
-    CONSTRAINT chk_available_rooms CHECK (available_rooms >= 0 AND available_rooms <= total_rooms)
+    CONSTRAINT rooms_pkey PRIMARY KEY (listing_id),
+    CONSTRAINT rooms_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
 );
-
--- 索引
-CREATE INDEX idx_rooms_listing_id ON rooms(listing_id);
-
-COMMENT ON TABLE rooms IS '房源特化資料，僅用於 listing_type = ROOM 的房源';
 ```
 
 #### 2.3.5 `room_calendar` - 日曆可用性
@@ -554,33 +459,23 @@ COMMENT ON TABLE rooms IS '房源特化資料，僅用於 listing_type = ROOM �
 -- Module: M02 房源中心
 -- ============================================
 CREATE TABLE room_calendar (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    listing_id UUID NOT NULL,
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    room_listing_id UUID NOT NULL,
     calendar_date DATE NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE' CHECK (status IN ('AVAILABLE', 'BOOKED', 'BLOCKED', 'MAINTENANCE')),
-    available_count INT NOT NULL DEFAULT 0,
-    booked_count INT NOT NULL DEFAULT 0,
-    price_override DECIMAL(12, 2),
-    price_type VARCHAR(20) CHECK (price_type IN ('WEEKDAY', 'WEEKEND', 'HOLIDAY', 'PEAK_SEASON')),
-    base_price_at_date DECIMAL(12, 2),
-    min_stay_days INT DEFAULT 1,
-    max_stay_days INT DEFAULT 30,
-    reason TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    
+    status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE',
+    price NUMERIC(12,2),
+    booking_id UUID,
+
     -- 約束
-    CONSTRAINT fk_room_calendar_listing FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE,
-    CONSTRAINT uk_room_calendar_date UNIQUE (listing_id, calendar_date)
+    CONSTRAINT room_calendar_pkey PRIMARY KEY (id),
+    CONSTRAINT room_calendar_room_listing_id_calendar_date_key UNIQUE (room_listing_id, calendar_date),
+    CONSTRAINT room_calendar_room_listing_id_fkey FOREIGN KEY (room_listing_id) REFERENCES listings(id) ON DELETE CASCADE
 );
 
 -- 索引
-CREATE UNIQUE INDEX idx_room_calendar_listing_date ON room_calendar(listing_id, calendar_date);
-CREATE INDEX idx_room_calendar_date ON room_calendar(calendar_date);
-CREATE INDEX idx_room_calendar_status ON room_calendar(status) WHERE status != 'AVAILABLE';
-
-COMMENT ON TABLE room_calendar IS '房源日曆可用性與每日價格';
-COMMENT ON COLUMN room_calendar.status IS 'AVAILABLE: 可預訂, BOOKED: 已被預訂, BLOCKED: 房東封鎖, MAINTENANCE: 維護中';
+CREATE INDEX idx_room_calendar_date ON room_calendar (calendar_date);
+CREATE INDEX idx_room_calendar_room_date ON room_calendar (room_listing_id, calendar_date);
+CREATE INDEX idx_room_calendar_status ON room_calendar (status);
 ```
 
 ---
@@ -596,54 +491,36 @@ COMMENT ON COLUMN room_calendar.status IS 'AVAILABLE: 可預訂, BOOKED: 已被�
 -- Module: M05 訂單履約
 -- ============================================
 CREATE TABLE orders (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    order_number VARCHAR(50) NOT NULL UNIQUE,
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL,
     user_id UUID NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'CREATED' CHECK (status IN ('CREATED', 'PAID', 'SHIPPING', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'REFUNDING', 'REFUNDED')),
-    total_amount DECIMAL(12, 2) NOT NULL,
-    currency VARCHAR(3) NOT NULL DEFAULT 'TWD',
-    discount_amount DECIMAL(12, 2) DEFAULT 0,
-    final_amount DECIMAL(12, 2) NOT NULL,
-    payment_method VARCHAR(20) NOT NULL DEFAULT 'MOCK',
-    payment_id VARCHAR(100),
-    payment_status VARCHAR(20) DEFAULT 'PENDING',
+    order_type VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
+    total_amount NUMERIC(12,2) NOT NULL,
+    currency VARCHAR(3) DEFAULT 'TWD',
+    shipping_address TEXT,
+    shipping_recipient_name VARCHAR(200),
+    shipping_phone VARCHAR(50),
     notes TEXT,
-    shipping_address JSONB,
-    tracking_number VARCHAR(100),
-    idempotency_key UUID,
+    guest_count INTEGER,
+    metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    paid_at TIMESTAMP WITH TIME ZONE,
-    shipped_at TIMESTAMP WITH TIME ZONE,
-    delivered_at TIMESTAMP WITH TIME ZONE,
-    completed_at TIMESTAMP WITH TIME ZONE,
-    cancelled_at TIMESTAMP WITH TIME ZONE,
-    cancelled_by UUID,
-    cancellation_reason TEXT,
-    version INT NOT NULL DEFAULT 1,
-    
+    shipping_fee NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    promo_code VARCHAR(50),
+    discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+
     -- 約束
-    CONSTRAINT fk_orders_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,
-    CONSTRAINT uk_orders_idempotency UNIQUE (idempotency_key),
-    CONSTRAINT chk_final_amount_positive CHECK (final_amount >= 0)
+    CONSTRAINT orders_pkey PRIMARY KEY (id),
+    CONSTRAINT orders_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    CONSTRAINT orders_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
 -- 索引
-CREATE UNIQUE INDEX idx_orders_order_number ON orders(order_number);
-CREATE INDEX idx_orders_tenant_id ON orders(tenant_id);
-CREATE INDEX idx_orders_user_id ON orders(user_id);
-CREATE INDEX idx_orders_status ON orders(status);
-CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
-CREATE INDEX idx_orders_idempotency ON orders(idempotency_key) WHERE idempotency_key IS NOT NULL;
-
--- 租戶隔離索引
-CREATE INDEX idx_orders_tenant_status ON orders(tenant_id, status);
-
-COMMENT ON TABLE orders IS '訂單主檔案';
-COMMENT ON COLUMN orders.status IS 'CREATED: 已建立, PAID: 已付款, SHIPPING: 已出貨, DELIVERED: 已送達, COMPLETED: 已完成, CANCELLED: 已取消, REFUNDING: 退款中, REFUNDED: 已退款';
-COMMENT ON COLUMN orders.payment_method IS 'Phase 1 固定為 MOCK';
+CREATE INDEX idx_orders_created ON orders (created_at DESC);
+CREATE INDEX idx_orders_status ON orders (status);
+CREATE INDEX idx_orders_tenant ON orders (tenant_id);
+CREATE INDEX idx_orders_user ON orders (user_id);
 ```
 
 #### 2.4.2 `order_items` - 訂單明細
@@ -655,38 +532,25 @@ COMMENT ON COLUMN orders.payment_method IS 'Phase 1 固定為 MOCK';
 -- Module: M05 訂單履約
 -- ============================================
 CREATE TABLE order_items (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
     order_id UUID NOT NULL,
     listing_id UUID NOT NULL,
     sku_id UUID,
-    title VARCHAR(200) NOT NULL,
-    cover_image_url VARCHAR(500),
-    listing_type VARCHAR(20) NOT NULL CHECK (listing_type IN ('PRODUCT', 'ROOM')),
-    quantity INT NOT NULL DEFAULT 1,
-    unit_price DECIMAL(12, 2) NOT NULL,
-    subtotal DECIMAL(12, 2) NOT NULL,
-    discount_amount DECIMAL(12, 2) DEFAULT 0,
-    final_price DECIMAL(12, 2) NOT NULL,
-    check_in_date DATE,
-    check_out_date DATE,
-    guests INT,
-    booking_nights INT,
+    quantity INTEGER NOT NULL,
+    unit_price NUMERIC(12,2) NOT NULL,
+    subtotal NUMERIC(12,2) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    
+
     -- 約束
-    CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-    CONSTRAINT fk_order_items_listing FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE RESTRICT,
-    CONSTRAINT chk_quantity_positive CHECK (quantity > 0),
-    CONSTRAINT chk_unit_price_positive CHECK (unit_price >= 0)
+    CONSTRAINT order_items_pkey PRIMARY KEY (id),
+    CONSTRAINT order_items_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES listings(id),
+    CONSTRAINT order_items_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    CONSTRAINT order_items_sku_id_fkey FOREIGN KEY (sku_id) REFERENCES product_skus(id)
 );
 
 -- 索引
-CREATE INDEX idx_order_items_order_id ON order_items(order_id);
-CREATE INDEX idx_order_items_listing_id ON order_items(listing_id);
-CREATE INDEX idx_order_items_sku_id ON order_items(sku_id) WHERE sku_id IS NOT NULL;
-
-COMMENT ON TABLE order_items IS '訂單明細項目';
-COMMENT ON COLUMN order_items.listing_type IS 'PRODUCT: 商品訂購, ROOM: 民宿預訂';
+CREATE INDEX idx_order_items_listing ON order_items (listing_id);
+CREATE INDEX idx_order_items_order ON order_items (order_id);
 ```
 
 #### 2.4.3 `order_state_log` - 狀態異動日誌
@@ -698,28 +562,24 @@ COMMENT ON COLUMN order_items.listing_type IS 'PRODUCT: 商品訂購, ROOM: 民�
 -- Module: M05 訂單履約
 -- ============================================
 CREATE TABLE order_state_log (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
     order_id UUID NOT NULL,
-    sequence INT NOT NULL,
-    from_status VARCHAR(20),
-    to_status VARCHAR(20) NOT NULL,
+    sequence INTEGER NOT NULL,
+    from_status VARCHAR(50),
+    to_status VARCHAR(50) NOT NULL,
+    changed_by UUID,
     reason TEXT,
-    operator_id UUID NOT NULL,
-    operator_type VARCHAR(20) NOT NULL CHECK (operator_type IN ('BUYER', 'SELLER', 'SYSTEM', 'ADMIN')),
-    metadata JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    
+
     -- 約束
-    CONSTRAINT fk_order_state_log_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-    CONSTRAINT uk_order_state_sequence UNIQUE (order_id, sequence)
+    CONSTRAINT order_state_log_pkey PRIMARY KEY (id),
+    CONSTRAINT order_state_log_changed_by_fkey FOREIGN KEY (changed_by) REFERENCES users(id),
+    CONSTRAINT order_state_log_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 );
 
 -- 索引
-CREATE INDEX idx_order_state_log_order_id ON order_state_log(order_id);
-CREATE INDEX idx_order_state_log_created_at ON order_state_log(created_at);
-
-COMMENT ON TABLE order_state_log IS '訂單狀態異動日誌，用於狀態機審計和追蹤';
-COMMENT ON COLUMN order_state_log.operator_type IS 'BUYER: 買家操作, SELLER: 賣家操作, SYSTEM: 系統自動, ADMIN: 管理員操作';
+CREATE INDEX idx_order_state_log_order ON order_state_log (order_id);
+CREATE INDEX idx_order_state_log_sequence ON order_state_log (order_id, sequence);
 ```
 
 ---
@@ -735,78 +595,42 @@ COMMENT ON COLUMN order_state_log.operator_type IS 'BUYER: 買家操作, SELLER:
 -- Module: M12 動態定價引擎, BR-M12-001
 -- ============================================
 CREATE TABLE pricing_rules (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL,
-    listing_id UUID,
-    rule_type VARCHAR(30) NOT NULL CHECK (rule_type IN (
-        'WEEKDAY', 'WEEKEND', 'HOLIDAY', 'PEAK_SEASON',
-        'EARLY_BIRD', 'LAST_MINUTE', 'LONG_STAY', 'OVERRIDE'
-    )),
+    room_listing_id UUID,
+    rule_type VARCHAR(20) NOT NULL,
     rule_name VARCHAR(100) NOT NULL,
-    description TEXT,
-    adjustment_type VARCHAR(20) NOT NULL CHECK (adjustment_type IN ('MULTIPLIER', 'PERCENTAGE', 'FIXED')),
-    adjustment_value DECIMAL(10, 4) NOT NULL,
-    priority INT NOT NULL DEFAULT 0,
-    conditions JSONB,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    start_date DATE,
-    end_date DATE,
-    created_by UUID NOT NULL,
+    priority INTEGER DEFAULT 0,
+    config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    valid_from DATE NOT NULL,
+    valid_to DATE NOT NULL,
+    is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    version INT NOT NULL DEFAULT 1,
-    
+    listing_id UUID,
+
     -- 約束
-    CONSTRAINT fk_pricing_rules_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    CONSTRAINT fk_pricing_rules_listing FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
+    CONSTRAINT pricing_rules_pkey PRIMARY KEY (id),
+    CONSTRAINT pricing_rules_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE,
+    CONSTRAINT pricing_rules_room_listing_id_fkey FOREIGN KEY (room_listing_id) REFERENCES listings(id) ON DELETE CASCADE,
+    CONSTRAINT pricing_rules_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
 
 -- 索引
-CREATE INDEX idx_pricing_rules_tenant_id ON pricing_rules(tenant_id);
-CREATE INDEX idx_pricing_rules_listing_id ON pricing_rules(listing_id) WHERE listing_id IS NOT NULL;
-CREATE INDEX idx_pricing_rules_type ON pricing_rules(rule_type);
-CREATE INDEX idx_pricing_rules_active ON pricing_rules(is_active) WHERE is_active = TRUE;
-CREATE INDEX idx_pricing_rules_priority ON pricing_rules(priority DESC);
-
--- 租戶隔離索引
-CREATE INDEX idx_pricing_rules_tenant_listing ON pricing_rules(tenant_id, listing_id) WHERE listing_id IS NOT NULL;
-
-COMMENT ON TABLE pricing_rules IS '動態定價規則';
-COMMENT ON COLUMN pricing_rules.adjustment_type IS 'MULTIPLIER: 倍率 (1.3=漲30%), PERCENTAGE: 百分比 (-0.10=打9折), FIXED: 固定價格';
-COMMENT ON COLUMN pricing_rules.conditions IS 'JSON 格式觸發條件: {"daysOfWeek": ["FRIDAY", "SATURDAY"], "minDaysBeforeCheckIn": 7}';
+CREATE INDEX idx_pricing_rules_active ON pricing_rules (is_active);
+CREATE INDEX idx_pricing_rules_listing_id ON pricing_rules (listing_id);
+CREATE INDEX idx_pricing_rules_room ON pricing_rules (room_listing_id);
+CREATE INDEX idx_pricing_rules_tenant ON pricing_rules (tenant_id);
 ```
 
 #### 2.5.2 `pricing_overrides` - 手動價格覆蓋
 
-```sql
--- ============================================
--- Table: pricing_overrides
--- Description: 手動價格覆蓋（優先於所有規則）
--- Module: M12 動態定價引擎, API-M12-006
--- ============================================
-CREATE TABLE pricing_overrides (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    listing_id UUID NOT NULL,
-    override_date DATE NOT NULL,
-    price DECIMAL(12, 2) NOT NULL,
-    reason VARCHAR(200),
-    created_by UUID NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP WITH TIME ZONE,
-    
-    -- 約束
-    CONSTRAINT fk_pricing_overrides_listing FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE,
-    CONSTRAINT uk_pricing_override_date UNIQUE (listing_id, override_date),
-    CONSTRAINT chk_override_price_positive CHECK (price > 0)
-);
+> **🔴 未實作（Sprint 111 查證）**
+>
+> 本表**從未被實作**。設計期規劃的「手動價格覆蓋」最終**併入 `pricing_rules`**，
+> 以 `rule_type = 'MANUAL_OVERRIDE'` 加上 `config` JSONB 承載覆蓋內容
+> （見 `PricingService.java:279,330`、`PricingRule.PricingRuleType`）。請見 §2.5.1 `pricing_rules`。
 
--- 索引
-CREATE UNIQUE INDEX idx_pricing_overrides_listing_date ON pricing_overrides(listing_id, override_date);
-CREATE INDEX idx_pricing_overrides_date ON pricing_overrides(override_date);
-
-COMMENT ON TABLE pricing_overrides IS '手動價格覆蓋，優先於所有動態定價規則';
-COMMENT ON COLUMN pricing_overrides.override_date IS '被覆蓋的日期';
-```
 
 ---
 
@@ -851,6 +675,20 @@ COMMENT ON COLUMN pricing_overrides.override_date IS '被覆蓋的日期';
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
+> **Sprint 111 補正：本圖漏了 `CONFIRMED`。** `Order.OrderStatus` 實際有 **9 個值**
+> （`CREATED, PAID, CONFIRMED, SHIPPING, DELIVERED, COMPLETED, CANCELLED, REFUNDING, REFUNDED`），
+> 上圖只畫了 8 個。
+>
+> `CONFIRMED` **不由付款或物流流程自動產生**——付款成功寫入的是 `PAID`
+> （`PaymentStateService:134`），物流寫入的是 `SHIPPING`／`DELIVERED`
+> （`LogisticsService:95,208`）。它只能經由通用狀態更新端點設定
+> （`OrderService.updateOrderStatus`，L598 以 `OrderStatus.valueOf(targetStatus)` 直接寫入）。
+>
+> 而 **`LogisticsService:63` 要求訂單必須是 `CONFIRMED` 才能建立物流**，否則拋 `E_5001`。
+> 也就是說正常出貨路徑是 `PAID →（賣家手動確認）→ CONFIRMED → SHIPPING`。
+> 本文件只陳述現況，**不主張這是缺陷**——「賣家確認後才出貨」是合理設計；
+> 是否該有專屬的確認端點而非走通用 `updateOrderStatus`，未在本輪判斷。
+
 ### 3.2 Listing 狀態流轉
 
 ```
@@ -875,142 +713,185 @@ COMMENT ON COLUMN pricing_overrides.override_date IS '被覆蓋的日期';
 
 ### 3.3 租戶/店鋪狀態流轉
 
+> **Sprint 111 更正**：原圖畫的是 `PENDING → APPROVED → ACTIVE` 的單一實體狀態機，
+> 那是**第三個版本**——與 PRD v1.0 原文（`PENDING_REVIEW → ACTIVE`）和實作都不一樣。
+> 實作是**兩張表、兩個生命週期**（PRD §4.3、FRD BR-M17-001，Sprint 110 已同步）。
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      租戶狀態機                                 │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│    PENDING ──────► APPROVED ──────► ACTIVE                     │
-│        │              │               │                        │
-│        │              │               │                        │
-│        ▼              ▼               ▼                        │
-│    REJECTED       SUSPENDED        SUSPENDED                  │
-│                                                                 │
-│  ════════════════════════════════════════════════════════════  │
-│  狀態流轉說明：                                                │
-│  • PENDING → APPROVED: 管理員審核通過                          │
-│  • PENDING → REJECTED: 管理員審核駁回                          │
-│  • APPROVED/ACTIVE → SUSPENDED: 管理員停權                    │
-│  • SUSPENDED → ACTIVE: 管理員解除停權                         │
-└─────────────────────────────────────────────────────────────────┘
+階段一：開店申請 (tenant_applications.status)
+
+  [網友送出申請] → PENDING ──[Admin 核准]──→ APPROVED ─┐
+                      │                                 │
+                      └──[Admin 駁回]──→ REJECTED       │ 核准的同一交易內
+                         （不建立 Tenant，可重新申請）  │ 才建立 Tenant
+                                                        │
+階段二：店鋪 (tenants.status)                           │
+                                                        ▼
+                            ┌──────────────────────→ ACTIVE → [運營中]
+                            │                           │
+              [Admin 恢復]  │                           │ [Admin 暫停]
+                            │                           ▼
+                            └────────────────────── SUSPENDED (違規)
+                                                        │
+                                                        │ [Admin 終止]
+                                                        ▼
+                                                   TERMINATED
 ```
+
+**要點**：
+- `tenants` 紀錄只在核准當下建立，且**建立即為 `ACTIVE`**——不存在「先建店鋪再審核」。
+- `tenants.status` 的 `PENDING_REVIEW`／`REJECTED` 為生產不可達的歷史保留值
+  （enum 與 DB 預設值仍保留以維持相容，見 §2.1.1）。
+- 🔴 資料庫層**沒有** CHECK 約束把關這些狀態值（見 §6.1），合法值僅由 Java enum 與應用層維護。
 
 ---
 
 ## 4. 多租戶隔離實現 (Multi-Tenant Isolation)
 
-### 4.1 Hibernate Filter 配置
+> **🔴 Sprint 111 重寫。原文描述的機制在這個 codebase 中不存在，且該描述是危險的。**
+>
+> 原 §4.1／§4.3 宣稱「所有查詢自動附加 `tenant_id` 條件」「Hibernate 會自動轉換」，並示範了一個
+> `TenantAwareEntity` 基底類別。查證結果：**專案中沒有任何 `@FilterDef`／`@Filter`
+> （全 codebase 零命中），也沒有 `TenantAwareEntity` 這個類別。**
+>
+> 為什麼這件事重要：照原文理解，開發者會以為「只要 entity 有 `tenant_id`，查詢就自動被隔離」，
+> 因而在新增 Service 方法時不做租戶檢查。追蹤表上 **DEF-023／024／037／040／041／057**
+> 這一整串「某某方法沒有租戶過濾」的 IDOR 缺陷，正是這個誤解會導致的結果。
+
+### 4.1 實際機制：ThreadLocal 上下文 + 每個查詢明確過濾
+
+租戶隔離**不是自動的**，由兩個部分組成：
+
+1. **`TenantContextFilter`**（`api/filter/`）：每個 HTTP 請求進來時，依 JWT 與 `X-Tenant-ID`
+   header 決定當前租戶，寫入 `TenantContext` 的 `ThreadLocal`（另存當前 user）。
+2. **每一個查詢／服務方法自行過濾**：Repository 端多以
+   `findByIdAndTenantId(id, tenantId)` 這類**明確帶租戶條件的方法**取代 `findById`；
+   Service 端則呼叫 `TenantContext.getCurrentTenant()` 自行比對擁有權。
+   全 codebase 約有 **226 處**這類明確呼叫。
 
 ```java
-// 在 BaseEntity 或每個多租戶 Entity 上配置
-@MappedSuperclass
-public abstract class TenantAwareEntity {
-    
-    @Column(name = "tenant_id", nullable = false)
-    private UUID tenantId;
-    
-    // Getter/Setter
-}
+// ✅ 實際做法：Repository 明確帶 tenantId
+Optional<Order> findByIdAndTenantId(UUID orderId, UUID tenantId);
 
-// 在 Repository 層啟用 Filter
-@Repository
-public interface ListingRepository extends JpaRepository<Listing, UUID> {
-    
-    // 所有查詢自動附加 tenant_id 條件
-    List<Listing> findByStatus(ListingStatus status);
-    
-    // 若需跨租戶查詢（如管理員），使用 @Query 並明確指定
-    @Query("SELECT l FROM Listing l WHERE l.id = :id")
-    Optional<Listing> findByIdAdmin(@Param("id") UUID id);
+// ✅ 實際做法：Service 明確比對擁有權
+UUID currentTenant = TenantContext.getCurrentTenant();
+if (!order.getTenantId().equals(currentTenant)) {
+    throw new BusinessException(ErrorCode.E_1007);   // 403 跨租戶存取
 }
 ```
 
-### 4.2 Flyway Migration 命名規範
+### 4.2 這個設計的後果：漏一個就是一個 IDOR
+
+因為沒有任何自動兜底，**每新增一個讀寫租戶資料的方法，都必須自己記得加過濾**。
+漏掉不會有編譯錯誤、不會有測試自動失敗，只會安靜地變成一個跨租戶存取漏洞。
+
+🔴 **新增 Service 方法時的檢查點**：
+- 用了 `findById` 而不是 `findByIdAndTenantId` 嗎？
+- 有沒有拿 `TenantContext.getCurrentTenant()` 比對過擁有權？
+- 若刻意跨租戶（平台級 Admin 功能），是否明確檢查了角色而非「忘了加」？
+  ——「同類別其他方法都做了、只有這一個沒做」是**自相矛盾**，通常就是漏了。
+
+### 4.3 Flyway Migration 命名規範（實際）
+
+實際採用的是**單一整數版號**，不是原文寫的 `V1.0.0` 語意化版號：
 
 ```
-db/migration/
-├── V1.0.0__init_schema.sql           # 初始 schema（所有表）
-├── V1.0.1__create_tenants.sql         # 租戶相關表
-├── V1.0.2__create_users.sql           # 用戶相關表
-├── V1.0.3__create_listings.sql        # 商品/房源表
-├── V1.0.4__create_orders.sql          # 訂單相關表
-├── V1.0.5__create_pricing.sql         # 動態定價表
-└── V1.1.0__seed_initial_data.sql     # 初始資料
+backend/src/main/resources/db/migration/
+├── V1__Initial_Schema.sql              # 初始 schema
+├── V4__Tenant_Application.sql          # 開店申請表
+├── V7__M17_Test_Data_Init.sql          # M17 測試固件
+├── ...
+└── V70__Add_Promo_Code_To_Orders_And_Usages.sql
 ```
 
-### 4.3 租戶隔離最佳實踐
-
-```sql
--- 範例：带租戶隔離的查詢
--- 所有查詢都應該隐含 tenant_id 條件
-
--- ✅ 正確：通過 Hibernate Filter 自動添加
-SELECT * FROM listings WHERE status = 'ACTIVE';
--- Hibernate 會自動轉換為：
--- SELECT * FROM listings WHERE status = 'ACTIVE' AND tenant_id = :currentTenantId;
-
--- ❌ 錯誤：跨租戶查詢（除非是管理員）
-SELECT * FROM listings WHERE status = 'ACTIVE' AND tenant_id != :currentTenantId;
-```
+目前共 **70 個遷移檔**，建出 **65 張資料表**。命名慣例為
+`V{整數版號}__{描述}.sql`（雙底線分隔），版號連續遞增、不重複使用。
 
 ---
 
 ## 5. 索引設計總結
 
-### 5.1 核心查詢索引
+> 以下為**實作現況**（Sprint 111 自 Flyway 建成的 DB 匯出），僅涵蓋 §2 收錄的 14 張核心表。
 
-| 表格 | 索引名 | 欄位 | 類型 | 用途 |
-|------|--------|------|------|------|
-| `tenants` | idx_tenants_status | status | B-tree | 狀態篩選 |
-| `tenants` | idx_tenants_owner_id | owner_id | B-tree | 擁有者查詢 |
-| `users` | idx_users_email | email | B-tree | 登入查詢 |
-| `listings` | idx_listings_tenant_type_status | (tenant_id, listing_type, status) | B-tree | 店鋪列表 |
-| `listings` | idx_listings_tenant_id_status | (tenant_id, status) | B-tree | 租戶隔離 |
-| `orders` | idx_orders_tenant_status | (tenant_id, status) | B-tree | 店鋪訂單 |
-| `orders` | idx_orders_user_id | user_id | B-tree | 買家訂單 |
-| `room_calendar` | idx_room_calendar_listing_date | (listing_id, calendar_date) | B-tree | 日曆查詢 |
-| `pricing_rules` | idx_pricing_rules_tenant_listing | (tenant_id, listing_id) | B-tree | 規則查詢 |
+### 5.1 一般索引
 
-### 5.2 唯一約束索引
+| 表格 | 索引名 | 欄位 |
+|------|--------|------|
+| `listings` | idx_listings_created | (created_at DESC) |
+| `listings` | idx_listings_owner | (owner_id) |
+| `listings` | idx_listings_status | (status) |
+| `listings` | idx_listings_tenant | (tenant_id) |
+| `listings` | idx_listings_type | (listing_type) |
+| `order_items` | idx_order_items_listing | (listing_id) |
+| `order_items` | idx_order_items_order | (order_id) |
+| `order_state_log` | idx_order_state_log_order | (order_id) |
+| `order_state_log` | idx_order_state_log_sequence | (order_id, sequence) |
+| `orders` | idx_orders_created | (created_at DESC) |
+| `orders` | idx_orders_status | (status) |
+| `orders` | idx_orders_tenant | (tenant_id) |
+| `orders` | idx_orders_user | (user_id) |
+| `pricing_rules` | idx_pricing_rules_active | (is_active) |
+| `pricing_rules` | idx_pricing_rules_listing_id | (listing_id) |
+| `pricing_rules` | idx_pricing_rules_room | (room_listing_id) |
+| `pricing_rules` | idx_pricing_rules_tenant | (tenant_id) |
+| `refresh_tokens` | idx_refresh_tokens_hash | (token_hash) |
+| `refresh_tokens` | idx_refresh_tokens_user | (user_id) |
+| `room_calendar` | idx_room_calendar_date | (calendar_date) |
+| `room_calendar` | idx_room_calendar_room_date | (room_listing_id, calendar_date) |
+| `room_calendar` | idx_room_calendar_status | (status) |
+| `tenant_feature_toggles` | idx_feature_toggles_tenant | (tenant_id) |
+| `tenant_members` | idx_tenant_members_status | (status) |
+| `tenant_members` | idx_tenant_members_tenant | (tenant_id) |
+| `tenant_members` | idx_tenant_members_user | (user_id) |
+| `tenants` | idx_tenants_slug | (slug) |
+| `tenants` | idx_tenants_status | (status) |
+| `users` | idx_users_email | (email) |
+| `users` | idx_users_role | (role) |
+| `users` | idx_users_status | (status) |
+| `users` | idx_users_tenant | (tenant_id) |
 
-| 表格 | 約束名 | 欄位 | 說明 |
-|------|--------|------|------|
-| `tenants` | uk_tenants_store_name | store_name | 店鋪名稱唯一 |
-| `tenants` | uk_tenants_contact_email | contact_email | Email 唯一 |
-| `users` | uk_users_email | email | Email 唯一 |
-| `refresh_tokens` | uk_refresh_tokens_token_hash | token_hash | Token 唯一 |
-| `orders` | uk_orders_order_number | order_number | 訂單號唯一 |
-| `room_calendar` | uk_room_calendar_date | (listing_id, calendar_date) | 每日唯一 |
-| `pricing_overrides` | uk_pricing_override_date | (listing_id, override_date) | 覆蓋日期唯一 |
+⚠️ **`product_inventory`、`products`、`rooms` 目前沒有任何額外索引**（僅主鍵）。
+本文件不主張它們「應該」有——如需評估，請另行以查詢計畫佐證，不要據本表推論。
+
+### 5.2 唯一約束
+
+| 表格 | 約束名 | 欄位 |
+|------|--------|------|
+| `tenants` | tenants_slug_key | (slug) |
+| `users` | users_email_key | (email) |
+| `tenant_members` | tenant_members_tenant_id_user_id_key | (tenant_id, user_id) |
+| `tenant_feature_toggles` | tenant_feature_toggles_tenant_id_feature_key_key | (tenant_id, feature_key) |
+| `room_calendar` | room_calendar_room_listing_id_calendar_date_key | (room_listing_id, calendar_date) |
+| `refresh_tokens` | refresh_tokens_token_hash_key | (token_hash) |
+
+⚠️ **`tenants` 的 `name`／`contact_email` 沒有唯一約束**（設計稿曾規劃 `uk_tenants_store_name`、
+`uk_tenants_contact_email`，實作中不存在）；`orders` 沒有訂單號欄位，自然也沒有對應唯一約束。
 
 ---
 
 ## 6. 約束與觸發器
 
-### 6.1 業務約束 (Check Constraints)
+### 6.1 CHECK 約束（實作現況）
+
+§2 收錄的 14 張核心表中，**只有一個 CHECK 約束**：
 
 ```sql
--- 租戶業務類型
-ALTER TABLE tenants ADD CONSTRAINT chk_business_type 
-    CHECK (business_type IN ('RETAIL_ONLY', 'BOOKING_ONLY', 'HYBRID'));
-
--- 訂單狀態
-ALTER TABLE orders ADD CONSTRAINT chk_order_status 
-    CHECK (status IN ('CREATED', 'PAID', 'SHIPPING', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'REFUNDING', 'REFUNDED'));
-
--- 房源日曆狀態
-ALTER TABLE room_calendar ADD CONSTRAINT chk_calendar_status 
-    CHECK (status IN ('AVAILABLE', 'BOOKED', 'BLOCKED', 'MAINTENANCE'));
-
--- 價格正值約束
-ALTER TABLE listings ADD CONSTRAINT chk_base_price_positive CHECK (base_price > 0);
-ALTER TABLE orders ADD CONSTRAINT chk_final_amount_positive CHECK (final_amount >= 0);
+-- tenant_members.status
+CONSTRAINT tenant_members_status_check CHECK (status IN ('INVITED', 'ACTIVE', 'REMOVED'))
 ```
 
-### 6.2 時間戳自動更新觸發器
+🔴 **這是一個值得注意的事實，不是筆誤**：`tenants.status`、`orders.status`、`listings.status`、
+`room_calendar.status` 等狀態欄位在資料庫層**都沒有 CHECK 約束**，合法值僅由 Java entity 的
+enum 與應用層把關。設計稿曾規劃 `chk_business_type`、`chk_order_status`、`chk_calendar_status`、
+`chk_base_price_positive`、`chk_final_amount_positive` 等約束，**這些在實作中都不存在**
+（其中 `business_type`、`final_amount` 連欄位本身都不存在）。
+
+本文件只陳述現況，**不主張應該補上**——加 DB 層約束會影響既有資料與遷移，屬產品/架構決策。
+
+### 6.2 時間戳自動更新觸發器（實作現況）
 
 ```sql
--- 自動更新 updated_at 的函數
+-- 自動更新 updated_at 的函數（實作中確實存在）
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -1018,24 +899,25 @@ BEGIN
     RETURN NEW;
 END;
 $$ language 'plpgsql';
-
--- 套用於所有主要表格
-CREATE TRIGGER update_tenants_updated_at
-    BEFORE UPDATE ON tenants
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_users_updated_at
-    BEFORE UPDATE ON users
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_listings_updated_at
-    BEFORE UPDATE ON listings
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_orders_updated_at
-    BEFORE UPDATE ON orders
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 ```
+
+§2 收錄的 14 張表中，**有掛上此觸發器的只有 6 張**：
+
+| 表格 | 觸發器名 |
+|------|----------|
+| `tenants` | update_tenants_updated_at |
+| `users` | update_users_updated_at |
+| `listings` | update_listings_updated_at |
+| `products` | update_products_updated_at |
+| `rooms` | update_rooms_updated_at |
+| `orders` | update_orders_updated_at |
+
+⚠️ **`tenant_feature_toggles`、`pricing_rules`、`product_inventory` 有 `updated_at` 欄位但沒有觸發器**
+——這三張表的 `updated_at` 由 Hibernate（`@UpdateTimestamp` 等）在應用層維護，**繞過 SQL 直接更新
+資料庫時不會自動推進**。本文件只陳述現況，不主張補上觸發器。
+
+（全庫另有 7 個同型觸發器掛在本文件未收錄的表上：`bookings`、`carts`、`payments`、`product_skus`、
+`purchase_orders`、`suppliers`、`tenant_applications`。）
 
 ---
 
@@ -1044,9 +926,10 @@ CREATE TRIGGER update_orders_updated_at
 | 版本 | 日期 | 作者 | 變更說明 |
 |------|------|------|----------|
 | v1.0 | 2026-04-09 | Marcus (SD-Architect) | 初始版本，包含 Phase 1 所有表格定義 |
+| v2.0 | 2026-09-02 | Sprint 111 (DEF-062) | **全文依實作重寫。** 以「乾淨 DB 套完 70 個 Flyway 遷移」為權威基準比對，原 v1.0 所記 16 張表**全部漂移**（117 個幽靈欄位、55 個未記載欄位、2 張表從未實作、`product_inventory` 連主鍵都寫錯）。本版：§1 ERD 重繪；§2 的 14 張表 DDL 全部自 DB 匯出；`user_profiles`／`pricing_overrides` 改標為未實作並說明由誰取代；§3.1 補上遺漏的 `CONFIRMED`；§3.3 租戶狀態機改為兩表兩階段；**§4 重寫**（原文宣稱的 Hibernate Filter 自動隔離並不存在）；§5／§6 索引與約束改為實測清單。原設計稿封存於 `archive/`。新增 `scripts/validate-schema-doc.sh` 守門防止再漂移。 |
 
 ---
 
 **文檔版本**: AISDLC v0.09
 **模板維護**: AISDLC Framework Team
-**最後更新**: 2026-04-09
+**最後更新**: 2026-09-02（Sprint 111）

@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0.1（文件修訂；規格基準仍為 v1.0）
+> **版本**: v1.0.2（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -12,6 +12,7 @@
 > - **v0.9_R02 → v1.0：用戶需求確認（2026-04-09）：M12 改為 Phase 1 Must Have、新增 M18 知識管理模組**
 > - **v0.9 → v1.0：九項改善已套用（見 §21 勘誤記錄）**
 > - **v1.0 → v1.0.1（2026-09-02，Sprint 110）：M17 開店/審核流程規格與實作同步（§4.3、§7.4.1、§9.10.2，見 ER-004）**
+> - **v1.0.1 → v1.0.2（2026-09-02，Sprint 111）：§8.2 資料表欄位定義與實作同步（見 ER-005，DEF-062）**
 
 ---
 
@@ -1330,24 +1331,36 @@ StoreStaff (店員)
 
 ### 8.2 新增資料表欄位定義
 
+> **權威來源**：`backend/src/main/resources/db/migration/` 的 Flyway 遷移。
+> 本節的欄位清單由 `make validate-schema-doc` 自動比對把關（Sprint 111，DEF-062）——
+> 改了遷移卻沒更新這裡，或這裡列了實作沒有的欄位，守門都會失敗。
+> 完整 DDL（型別、約束、索引）見 [SRD_Database_Schema.md](../02_architecture/SRD_Database_Schema.md)。
+
 #### 8.2.1 tenants
 
 | 欄位 | 類型 | 說明 |
 |------|------|------|
 | id | UUID | PK |
-| name | VARCHAR(100) | 店鋪名稱 (UNIQUE) |
-| slug | VARCHAR(100) | URL slug (UNIQUE) |
+| name | VARCHAR(200) | 店鋪名稱（**無唯一約束**） |
+| slug | VARCHAR(100) | URL slug（UNIQUE） |
 | description | TEXT | 店鋪描述 |
+| status | VARCHAR(20) | ACTIVE / SUSPENDED / TERMINATED（PENDING_REVIEW、REJECTED 為生產不可達的歷史保留值，見 §4.3） |
 | logo_url | VARCHAR(500) | 店鋪 Logo |
-| owner_id | UUID | FK → users.id |
-| status | ENUM | ACTIVE / SUSPENDED / TERMINATED（PENDING_REVIEW、REJECTED 為生產不可達的歷史保留值，見 §4.3） |
-| business_type | ENUM | RETAIL_ONLY / BOOKING_ONLY / HYBRID |
-| commission_rate | DECIMAL(4,3) | 平台抽成比例 (0.000 ~ 1.000) |
-| contact_email | VARCHAR(200) | 聯絡 Email |
-| contact_phone | VARCHAR(20) | 聯絡電話 |
-| rejection_reason | TEXT | 駁回原因 |
+| contact_email | VARCHAR(255) | 聯絡 Email（**無唯一約束**） |
+| contact_phone | VARCHAR(50) | 聯絡電話 |
+| commission_rate | DOUBLE PRECISION | 平台抽成比例（預設 0.05） |
+| metadata | JSONB | 擴充欄位（預設 `{}`） |
 | created_at | TIMESTAMP | 建立時間 |
 | updated_at | TIMESTAMP | 更新時間 |
+| stripe_connect_account_id | VARCHAR(255) | Stripe Connect 帳戶 ID（M07 分潤） |
+| connect_onboarding_status | VARCHAR(20) | NOT_STARTED / PENDING / COMPLETE |
+| connect_charges_enabled | BOOLEAN | Stripe 是否已允許收款 |
+| connect_payouts_enabled | BOOLEAN | Stripe 是否已允許撥款 |
+| purchase_order_approval_threshold | NUMERIC(12,2) | M16 採購單需審批的金額門檻（NULL = 未設定） |
+
+> **⚠️ v1.0.2 更正（Sprint 111，DEF-062）**：本表原列的 `owner_id`、`business_type`、`rejection_reason`
+> **在實作中不存在**——擁有權由 `tenant_members`（`store_role = STORE_OWNER`）表達，
+> 經營類型與駁回原因留在 `tenant_applications`。欄位型別與長度亦已對齊實際 schema。
 
 > **⚠️ v1.0.1 補充**：`tenants` 紀錄只在 Admin 核准開店申請時才被建立（見 §4.3、§7.4.1）。
 > 審核前的申請資料存放於 `tenant_applications`（見 §8.2.1-A），**不在本表**。
@@ -1367,8 +1380,11 @@ StoreStaff (店員)
 | business_license_url | VARCHAR(500) | 營業執照 URL |
 | status | ENUM | PENDING / APPROVED / REJECTED / SUSPENDED（預設 PENDING） |
 | submitted_at | TIMESTAMP | 送出時間 |
-| reviewed_at / reviewed_by | TIMESTAMP / UUID | 審核時間與審核者 |
+| reviewed_at | TIMESTAMP | 審核時間 |
+| reviewed_by | UUID | 審核者（FK → users.id） |
 | rejection_reason | TEXT | 駁回原因 |
+| created_at | TIMESTAMP | 建立時間 |
+| updated_at | TIMESTAMP | 更新時間（由 DB 觸發器維護） |
 
 **索引**：`(user_id)`、`(status)`、`(tenant_id)`
 
@@ -1378,11 +1394,17 @@ StoreStaff (店員)
 |------|------|------|
 | id | UUID | PK |
 | tenant_id | UUID | FK → tenants.id |
-| feature_key | VARCHAR(50) | 功能鍵 (見 §4.4) |
-| feature_value | VARCHAR(200) | 值 (true/false 或數值) |
-| updated_by | UUID | FK → users.id (Admin) |
-| updated_at | TIMESTAMP | 更新時間 |
+| feature_key | VARCHAR(100) | 功能鍵（見 §4.4） |
+| is_enabled | BOOLEAN | 是否啟用 |
+| config | JSONB | 數值型設定（如 MAX_PRODUCTS 上限、COMMISSION_RATE） |
+| created_at | TIMESTAMP | 建立時間 |
+| updated_at | TIMESTAMP | 更新時間（**由 Hibernate 維護，無 DB 觸發器**） |
+| enabled_at | TIMESTAMP | 最近一次啟用時間 |
+| disabled_at | TIMESTAMP | 最近一次停用時間 |
 | UNIQUE | (tenant_id, feature_key) | |
+
+> **⚠️ v1.0.2 更正（Sprint 111）**：原列的 `feature_value`、`updated_by` 在實作中不存在。
+> 開關本身是 `is_enabled` 布林值，數值型設定放在 `config` JSONB。
 
 #### 8.2.3 tenant_members
 
@@ -1391,10 +1413,11 @@ StoreStaff (店員)
 | id | UUID | PK |
 | tenant_id | UUID | FK → tenants.id |
 | user_id | UUID | FK → users.id |
-| role | ENUM | STORE_OWNER / STORE_STAFF / SELLER / HOST |
+| store_role | VARCHAR(50) | STORE_OWNER / STORE_STAFF 等（欄位名是 `store_role`，**不是** `role`；預設 STORE_OWNER） |
 | invited_by | UUID | FK → users.id |
-| status | ENUM | INVITED / ACTIVE / REMOVED |
 | joined_at | TIMESTAMP | 加入時間 |
+| status | VARCHAR(20) | INVITED / ACTIVE / REMOVED（**本表是 14 張核心表中唯一有 DB CHECK 約束的**） |
+| invited_at | TIMESTAMP | 邀請發出時間 |
 | UNIQUE | (tenant_id, user_id) | |
 
 #### 8.2.4 posts (CMS)
@@ -1404,21 +1427,21 @@ StoreStaff (店員)
 | id | UUID | PK |
 | tenant_id | UUID | FK → tenants.id |
 | author_id | UUID | FK → users.id |
-| title | VARCHAR(200) | 貼文標題 |
-| slug | VARCHAR(200) | URL slug |
+| title | VARCHAR(255) | 貼文標題 |
+| slug | VARCHAR(355) | URL slug |
 | content | TEXT | 貼文內容 (Markdown，含 `{{embed:...}}` 標記) |
 | excerpt | VARCHAR(500) | 摘要 |
-| cover_image_url | VARCHAR(500) | 封面圖 |
+| featured_image_url | VARCHAR(1000) | 封面圖（欄位名是 `featured_image_url`，**不是** `cover_image_url`） |
+| status | VARCHAR(20) | DRAFT / SCHEDULED / PUBLISHED / ARCHIVED |
 | category_id | UUID | FK → post_categories.id |
-| status | ENUM | DRAFT / SCHEDULED / PUBLISHED / ARCHIVED |
-| scheduled_at | TIMESTAMP | 排程發布時間 |
+| tags | JSONB | 標籤 |
+| view_count | INTEGER | 瀏覽次數 |
 | published_at | TIMESTAMP | 實際發布時間 |
-| seo_title | VARCHAR(70) | SEO 標題 |
-| seo_description | VARCHAR(160) | SEO 描述 |
-| view_count | INTEGER DEFAULT 0 | 瀏覽次數 |
 | created_at | TIMESTAMP | 建立時間 |
 | updated_at | TIMESTAMP | 更新時間 |
-| INDEX | (tenant_id, status, published_at DESC) | |
+
+> **⚠️ v1.0.2 更正（Sprint 111）**：原列的 `scheduled_at`、`seo_title`、`seo_description`
+> **在實作中不存在**（`status` 雖有 `SCHEDULED` 值，但沒有排程時間欄位）；`tags` 未被記載。
 
 #### 8.2.5 post_embeds
 
@@ -1427,10 +1450,13 @@ StoreStaff (店員)
 | id | UUID | PK |
 | post_id | UUID | FK → posts.id |
 | listing_id | UUID | FK → listings.id, **ON DELETE CASCADE** |
-| embed_type | ENUM | PRODUCT_CARD / ROOM_CARD |
-| position | INTEGER | 在貼文中的位置順序 |
+| listing_type | VARCHAR(20) | PRODUCT / ROOM（欄位名是 `listing_type`，**不是** `embed_type`） |
+| embed_order | INTEGER | 在貼文中的位置順序（欄位名是 `embed_order`，**不是** `position`） |
+| created_at | TIMESTAMP | 建立時間 |
 | UNIQUE | (post_id, listing_id) | 同一貼文不重複嵌入 |
-| **tenant_id 約束** | UUID | FK -> tenants.id, NOT NULL, INDEX | 間接隔離（透過 posts.tenant_id） |
+
+> **⚠️ v1.0.2 更正（Sprint 111）**：本表**沒有 `tenant_id` 欄位**，租戶隔離完全依賴
+> `posts.tenant_id` 間接達成——原文寫「FK -> tenants.id, NOT NULL, INDEX」是不成立的。
 
 #### 8.2.6 media_assets
 
@@ -1439,14 +1465,26 @@ StoreStaff (店員)
 | id | UUID | PK |
 | tenant_id | UUID | FK → tenants.id |
 | uploader_id | UUID | FK → users.id |
-| file_name | VARCHAR(200) | 原始檔名 |
-| file_url | VARCHAR(500) | 儲存路徑 (S3: `/{tenant_id}/media/{id}.ext`) |
-| file_type | ENUM | IMAGE / VIDEO / DOCUMENT |
-| mime_type | VARCHAR(50) | MIME 類型 |
-| file_size_bytes | BIGINT | 檔案大小 |
-| alt_text | VARCHAR(200) | 替代文字 (Accessibility) |
+| file_name | VARCHAR(255) | 儲存檔名 |
+| original_name | VARCHAR(255) | 原始檔名 |
+| file_path | VARCHAR(1000) | 儲存路徑（欄位名是 `file_path`，**不是** `file_url`） |
+| file_size | BIGINT | 檔案大小（欄位名是 `file_size`，**不是** `file_size_bytes`） |
+| mime_type | VARCHAR(100) | MIME 類型 |
+| file_type | VARCHAR(20) | IMAGE / VIDEO / DOCUMENT |
+| width | INTEGER | 影像寬度 |
+| height | INTEGER | 影像高度 |
+| duration_seconds | INTEGER | 影音長度 |
+| is_active | BOOLEAN | 是否啟用 |
 | created_at | TIMESTAMP | 上傳時間 |
-| INDEX | (tenant_id, file_type) | |
+| updated_at | TIMESTAMP | 更新時間 |
+| category_id | UUID | FK → media_categories.id |
+| tags | JSONB | 標籤 |
+| usage_count | INTEGER | 被引用次數 |
+| alt_text | VARCHAR(255) | 替代文字 (Accessibility) |
+| title | VARCHAR(255) | 標題 |
+| is_deleted | BOOLEAN | 軟刪除旗標 |
+
+> **⚠️ v1.0.2 更正（Sprint 111）**：原表只列了 10 個欄位，實作有 21 個。
 
 #### 8.2.7 suppliers (ERP)
 
@@ -1454,14 +1492,14 @@ StoreStaff (店員)
 |------|------|------|
 | id | UUID | PK |
 | tenant_id | UUID | FK → tenants.id |
-| name | VARCHAR(100) | 供應商名稱 |
-| contact_name | VARCHAR(50) | 聯絡人 |
-| contact_phone | VARCHAR(20) | 電話 |
-| contact_email | VARCHAR(200) | Email |
+| name | VARCHAR(200) | 供應商名稱 |
+| contact_person | VARCHAR(200) | 聯絡人（欄位名是 `contact_person`，**不是** `contact_name`） |
+| email | VARCHAR(255) | Email（欄位名是 `email`，**不是** `contact_email`） |
+| phone | VARCHAR(50) | 電話（欄位名是 `phone`，**不是** `contact_phone`） |
 | address | TEXT | 地址 |
-| status | ENUM | ACTIVE / INACTIVE |
+| status | VARCHAR(20) | ACTIVE / INACTIVE |
 | created_at | TIMESTAMP | 建立時間 |
-| INDEX | (tenant_id) | |
+| updated_at | TIMESTAMP | 更新時間 |
 
 #### 8.2.8 purchase_orders (ERP)
 
@@ -1471,13 +1509,21 @@ StoreStaff (店員)
 | tenant_id | UUID | FK → tenants.id |
 | po_number | VARCHAR(30) | 採購單號 (Tenant 內唯一) |
 | supplier_id | UUID | FK → suppliers.id |
-| status | ENUM | DRAFT / SUBMITTED / PARTIAL_RECEIVED / RECEIVED / CANCELLED |
-| total_amount | DECIMAL(12,2) | 採購總額 |
-| currency | VARCHAR(3) DEFAULT 'TWD' | 幣別 |
+| status | VARCHAR(50) | DRAFT / SUBMITTED / PARTIAL_RECEIVED / RECEIVED / CANCELLED 等 |
+| total_amount | NUMERIC(12,2) | 採購總額 |
+| currency | VARCHAR(255) | 幣別 |
 | notes | TEXT | 備註 |
-| ordered_at | TIMESTAMP | 下單時間 |
-| expected_at | DATE | 預計到貨日 |
+| created_by | UUID | 建立者（FK → users.id） |
+| submitted_at | TIMESTAMP | 送審時間（欄位名是 `submitted_at`，**不是** `ordered_at`） |
 | received_at | TIMESTAMP | 實際收貨時間 |
+| reviewed_by | UUID | 審批者（M16 金額門檻審批，見 §6.7.2） |
+| reviewed_at | TIMESTAMP | 審批時間 |
+| rejection_reason | TEXT | 駁回原因 |
+| created_at | TIMESTAMP | 建立時間 |
+| updated_at | TIMESTAMP | 更新時間 |
+
+> **⚠️ v1.0.2 更正（Sprint 111）**：原列的 `expected_at`（預計到貨日）**在實作中不存在**；
+> `ordered_at` 實際欄位名為 `submitted_at`；審批相關 4 個欄位（Sprint 85／89 加入）原未記載。
 
 #### 8.2.9 settlement_statements（結算單 — v0.9 新增）
 
@@ -1505,8 +1551,16 @@ StoreStaff (店員)
 | created_by | UUID | FK → users.id |
 | created_at | TIMESTAMP | 建立時間 |
 | updated_at | TIMESTAMP | 更新時間 |
+| reversal_initiated_by | UUID | 逆轉發起者（Sprint 86 AI-2420） |
+| reversal_initiated_by_role | VARCHAR(20) | 發起者角色（SUPER_ADMIN / CFO，雙重授權須角色不同） |
+| reversal_requested_at | TIMESTAMP | 逆轉發起時間 |
+| reversal_reason | TEXT | 逆轉原因 |
+| adjustment_amount | NUMERIC(14,2) | 跨週期退款調整金額（Sprint 86 AI-2420） |
 | INDEX | (tenant_id, period_start DESC) | |
 | UNIQUE | (tenant_id, statement_number) | |
+
+> **⚠️ v1.0.2 補充（Sprint 111）**：Sprint 86（AI-2420，結算逆轉 + 跨週期退款調整）
+> 新增的 5 個欄位當時未回填本表，已補上。
 
 > **v0.9_R02_Loop_01 schema 修正說明**：`statement_number` 取代原 v0.9 的 `po_number`（複製錯誤）；`status` ENUM 新增 `PENDING_REVIEW` 與 `REJECTED`；`rejection_reason` 欄位與 `REJECTED` 狀態對應（原 v0.9 有欄位無狀態）；`reviewed_by` 新增；`UNIQUE` 約束修正為 `(tenant_id, statement_number)`。
 
@@ -1533,11 +1587,19 @@ StoreStaff (店員)
 |------|------|------|
 | id | UUID | PK |
 | purchase_order_id | UUID | FK → purchase_orders.id |
+| listing_id | UUID | FK → listings.id |
 | sku_id | UUID | FK → product_skus.id |
+| quantity | INTEGER | 數量 |
 | ordered_qty | INTEGER | 訂購數量 |
-| received_qty | INTEGER DEFAULT 0 | 已收貨數量 |
-| unit_cost | DECIMAL(12,2) | 進貨單價 |
-| subtotal | DECIMAL(12,2) | 小計 |
+| received_quantity | INTEGER | 已收貨數量（欄位名是 `received_quantity`，**不是** `received_qty`） |
+| unit_cost | NUMERIC(12,2) | 進貨單價 |
+| subtotal | NUMERIC(12,2) | 小計 |
+| product_name | VARCHAR(255) | 品名快照 |
+| sku_code | VARCHAR(255) | SKU 編碼快照 |
+| created_at | TIMESTAMP | 建立時間 |
+
+> **⚠️ v1.0.2 更正（Sprint 111）**：實作同時存在 `quantity` 與 `ordered_qty` 兩個數量欄位，
+> 本文件僅陳述此現況，未判斷是否為冗餘——如需釐清屬另案。
 
 #### 8.2.10 stock_movements (ERP)
 
@@ -1553,10 +1615,12 @@ StoreStaff (店員)
 | reference_id | UUID | 關聯單據 ID |
 | before_total_qty | INTEGER | 異動前總庫存 |
 | after_total_qty | INTEGER | 異動後總庫存 |
+| before_reserved_qty | INTEGER | 異動前預留量 |
+| after_reserved_qty | INTEGER | 異動後預留量 |
+| balance_after | INTEGER | 異動後結存 |
 | notes | TEXT | 備註 |
-| operated_by | UUID | FK → users.id |
+| created_by | UUID | FK → users.id（欄位名是 `created_by`，**不是** `operated_by`） |
 | created_at | TIMESTAMP | |
-| INDEX | (tenant_id, sku_id, created_at DESC) | |
 
 > **Phase 1 假設**：Phase 1 每筆訂單僅包含一個 SKU，故一個 OUTBOUND movement 對應一個 order_item。`order_item_id` 欄位 Phase 1 為 NULL，保留供 Phase 2 多 SKU 訂單拆單追蹤使用。
 
@@ -3725,7 +3789,7 @@ M03（日曆預訂模組）在 Phase 1 開發期間需要進行規格凍結（Fe
 | **v0.9** | **2026-03-27** | **六項新需求整合：(1) 統一商品/服務模型含動態定價 (§5)；(2) CMS 內容驅動銷售 (M15, §6.6)；(3) 一體化進銷存 ERP (M16, §6.7)；(4) SaaS 平台化多租戶架構 B2B2C (M17, §4)；(5) 友善前台+強大後台管理 (§10-§12)；(6) 網友開店 RBAC 權限矩陣 (§7.3)。本文件為完整獨立規格，已全面整合 v0.8 所有內容。** | **待 Koala 核准** |
 | **v0.9_R01** | **2026-03-30** | **Loop 01 迭代修正（基於 PM QA Iteration 1）：**<br>• CR-001+CR-014：狀態機與 Payment Mock 衝突修正（§3.3, §13.3, §15.3.1）<br>• CR-003+CR-011：M06 Phase 1/2 歸屬混淆消除（§12.5, §12.6）<br>• CR-013+QA-CR-003：Phase 1 RBAC 含 Phase 2+ 模組問題（§7.3）<br>• QA-CR-001：/checkout 前端路由 Payment Mock 頁面定義（§10.1.1）<br>• QA-CR-002：M05 SDD Phase 1 Payment Mock 約束（§15.2.1, §15.3.1）<br>• CR-002：Phase 2-A 商業價值指標（§14.2.5）<br>• CR-004：Phase 1 Seller 訂單查詢 API（§9.5, §13.1）<br>• CR-005：M01 圖片上傳 API（§9.12）<br>• CR-006：M04 促銷 CRUD API（§9.5.1）<br>• CR-007：採購審批流程（§6.7.2, §9.15）<br>• CR-008：StoreFront 內容定義（§11.3.1, §12.7）<br>• CR-009：資料隱私合規框架（§1.5）<br>• CR-010：結算系統定義（§6.2.1, §8.2.9）<br>• CR-012：Guest→Buyer 轉換流程（§7.1, §12.7）<br>• CR-015：pricing_rules 數量約束（§5.5.1）<br>• CR-016：room_calendar 動態更新觸發點（§5.5.2）<br>• CR-017：stock_movements Phase 1 假設（§6.7.3, §8.2.10）<br>• CR-018：並發入庫 version 遞增策略（§5.4）<br>• CR-019：/rooms/[id] Phase 標註拆分（§10.1.1）<br>• CR-020：Cancellation Matrix Phase 1 等效狀態（§15.3.1.1）<br>• CR-021：Guest User Story（§17.3.2）<br>• QA-CR-004：多租戶容量指標（§13.4）<br>• QA-CR-005：MAINTENANCE 狀態定義（§5.5.3）<br>• QA-CR-006：pricing_rules JSON 描述修正（§5.5）<br>• QA-CR-007：GET /api/orders 描述修正（§9.5）<br>• QA-CR-008：StoreStaff 細粒度權限 Phase 說明（§7.4）<br>• QA-CR-009：settlement_statements 資料表（§8.1.5, §8.2.9）<br>• QA-CR-010：VR-M04 錯誤碼 E-4014（§16.3.5, §17.2.2）<br>• QA-CR-011：merchantId 來源說明（§13.3）<br>共計：21 Victoria CR + 11 QA 額外發現 = 32 項修改 | **待 Koala 核准** |
 | **v0.9_R02_Loop_02** | **2026-03-30** | **Loop 2 迭代修正（基於 QA Review 02）：**<br>• Q-LO2-001：Phase 1 狀態機 CONFIRMED 矛盾消除（§3.3, §15.3.1.1）；移除 Cancellation Matrix CONFIRMED 行；明確 order_state_log 初始記錄<br>• Q-LO2-002：ERP receive Transaction Atomic 保障（§6.7.3, §9.15）<br>• Q-LO2-003：PostEmbed ON DELETE CASCADE + INACTIVE/DELETED 卡片處理（§6.6.3, §8.2.5）<br>• Q-LO2-004：pricing_rules 時間範圍重疊衝突檢核（§5.5.1）；新增 TC-PR-003/004<br>• Q-LO2-005：CREDIT_NOTE 獨立表 credit_notes schema（§6.2.1, §8.2.10）；settlement_statements 新增 REVERSED 狀態<br>• Q-LO2-006：settlement_statements 重複 timestamp 區塊清除（已確認無重複）<br>• Q-LO2-101：MAINTENANCE 狀態 price = NULL 處理（§5.5.3, §6.6.3）<br>• Q-LO2-102：room_calendar 狀態轉換矩陣（§5.5.3）<br>• Q-LO2-103：pricing_rules 50 條上限 API 校驗（§9.13）<br>• Q-LO2-104：PurchaseOrder 取消後庫存不回滾 + 取消後通知（§9.15）<br>• Q-LO2-105：多租戶 tenant_id NOT NULL + FK + INDEX 全面覆蓋（§8.2 各 schema）<br>• Q-LO2-106：MAINTENANCE Booking Admin Dashboard MaintenanceWarnings 空白期替代方案（§5.5.3）<br>• Q-LO2-201：pricing_rules priority Tie-Breaking（§5.5）<br>• Q-LO2-202：stock_movements.order_item_id Phase 1 = null 前端約定（§9.15）<br>• Q-LO2-203：PostEmbed Markdown 注入防護（§6.6.3, §9.14）<br>• Q-LO2-204：M17 搶先實作 + Feature Toggle 自動初始化時序（§6.8.2, §14.2）<br>• 新增 Test Cases：TC-LO2-M12-001~004、TC-LO2-M15-001~003、TC-LO2-M16-001~002、TC-LO2-M17-001~003（共 12 項）<br>共計：16 項 QA 回應全部採納、12 項 Test Cases 新增 | **待 Koala 核准** |
-| **v1.0** | **2026-04-09** | **七項改善整合（基於 PRD v0.9_R02 審視報告）：**<br>• M12 動態定價：Phase 2-A → Phase 1 Must Have（§6.9, §13.5）<br>• M18 知識管理：新模組新增（§1.4, §6.10, §13.5）；詳細規格見 M18_Knowledge_Management_SPEC.md<br>• API 版本策略：統一為 /api/v2/ 前綴（§9.6, §9.7, §15）<br>• Test Case 編號：TC-M05-006~009 重新編號消除重複（§15.2.1）<br>• Payment Mock API：新增實作細節（§9.14）<br>• 開店申請表單：新增欄位定義（§9.10.1）<br>• M06 Phase 邊界：澄清 Phase 1 僅開放 GET/取消，POST 建立屬 Phase 2（§6.4, §6.6） | ✅ 已確認 || **v1.0.1** | **2026-09-02** | **M17 開店/審核流程規格與實作同步（Sprint 110，文件變更，無程式碼變更）：**<br>• §4.3 租戶生命週期：由 `tenants` 單一實體狀態流轉改寫為 **`tenant_applications` + `tenants` 兩實體兩階段**；標註 `Tenant.PENDING_REVIEW`／`Tenant.REJECTED` 為生產不可達的歷史保留值<br>• §7.4.1：補齊核准時同一交易內的 5 項資料表變更（Feature Toggle 初始化、`users.role` 同步、申請回寫）<br>• §9.10.2：審核入口由 `PUT /admin/tenants/:id/review` 更正為 `GET/POST /admin/tenant-applications/*`；Admin 端點角色由 `Admin` 更正為 `SUPER_ADMIN`；Feature Toggle 更新端點補上 `:feature` 路徑參數<br>• 新增 ER-004 勘誤記錄 | ✅ 已確認 |
+| **v1.0** | **2026-04-09** | **七項改善整合（基於 PRD v0.9_R02 審視報告）：**<br>• M12 動態定價：Phase 2-A → Phase 1 Must Have（§6.9, §13.5）<br>• M18 知識管理：新模組新增（§1.4, §6.10, §13.5）；詳細規格見 M18_Knowledge_Management_SPEC.md<br>• API 版本策略：統一為 /api/v2/ 前綴（§9.6, §9.7, §15）<br>• Test Case 編號：TC-M05-006~009 重新編號消除重複（§15.2.1）<br>• Payment Mock API：新增實作細節（§9.14）<br>• 開店申請表單：新增欄位定義（§9.10.1）<br>• M06 Phase 邊界：澄清 Phase 1 僅開放 GET/取消，POST 建立屬 Phase 2（§6.4, §6.6） | ✅ 已確認 || **v1.0.1** | **2026-09-02** | **M17 開店/審核流程規格與實作同步（Sprint 110，文件變更，無程式碼變更）：**<br>• §4.3 租戶生命週期：由 `tenants` 單一實體狀態流轉改寫為 **`tenant_applications` + `tenants` 兩實體兩階段**；標註 `Tenant.PENDING_REVIEW`／`Tenant.REJECTED` 為生產不可達的歷史保留值<br>• §7.4.1：補齊核准時同一交易內的 5 項資料表變更（Feature Toggle 初始化、`users.role` 同步、申請回寫）<br>• §9.10.2：審核入口由 `PUT /admin/tenants/:id/review` 更正為 `GET/POST /admin/tenant-applications/*`；Admin 端點角色由 `Admin` 更正為 `SUPER_ADMIN`；Feature Toggle 更新端點補上 `:feature` 路徑參數<br>• 新增 ER-004 勘誤記錄 | ✅ 已確認 || **v1.0.2** | **2026-09-02** | **§8.2 資料表欄位定義與實作同步（Sprint 111，DEF-062，文件變更）：**<br>• 以「乾淨 DB 套完 70 個 Flyway 遷移」為權威基準逐表比對，13 張表中 **12 張漂移**<br>• 移除 21 個實作中不存在的欄位（如 `tenants.owner_id`／`business_type`、`post_embeds.tenant_id`）<br>• 補上 61 個未記載的實作欄位（Stripe Connect、M16 採購審批、Sprint 86 結算逆轉等）<br>• 更正 12 處欄位改名（`cover_image_url`→`featured_image_url`、`operated_by`→`created_by` 等）<br>• 新增 ER-005 勘誤；新增 `make validate-schema-doc` 守門防止再漂移 | ✅ 已確認 |
 
 ---
 
@@ -3737,6 +3801,7 @@ M03（日曆預訂模組）在 Phase 1 開發期間需要進行規格凍結（Fe
 | ER-002 | TC-M05-006/TC-M05-007 編號重複 | 已重新編號為 TC-M05-006~009 | §15.2.1 |
 | ER-003 | M06 Phase 1/2 邊界描述不一致 | 已澄清：Phase 1 僅 GET/取消，POST 建立屬 Phase 2 | §6.4, §6.6 |
 | ER-004 | v1.0 §4.3 將「開店申請 → 審核」描述為 `tenants` 單一實體的狀態流轉（`[申請開店] → PENDING_REVIEW → ACTIVE`），與實作的兩實體模型分歧；連帶 §9.10.2 的審核端點指向永遠等不到資料的舊端點 | 已依實作改寫為兩階段兩實體，並標註 `Tenant.PENDING_REVIEW` 為不可達的保留值（v1.0.1） | §4.3, §7.4.1, §9.10.2 |
+| ER-005 | §8.2 的資料表欄位定義與實作全面不符：13 張表中 12 張漂移，21 個欄位在實作中不存在、61 個實作欄位未記載、12 處欄位名已改。同源問題亦見於 `SRD_Database_Schema.md`（16 張表全部漂移） | 已依 Flyway 實際 schema 逐表更正（v1.0.2），並建立 `scripts/validate-schema-doc.sh` 自動守門 | §8.2 |
 
 _本文檔為 E-Commerce System 的完整合併規格文件 v1.0，所有內容具有同等約束力。v0.9 所有內容已完整整合，本文件可獨立使用，無需參照 v0.9。_
 

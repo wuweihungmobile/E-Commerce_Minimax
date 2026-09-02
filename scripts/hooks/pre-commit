@@ -103,6 +103,28 @@ if [ -n "$SECRET_HITS" ]; then
   EXIT_CODE=1
 fi
 
+# 3.5 SRD 資料庫文件漂移檢查（DEF-062 / Sprint 111）
+# 只在動到 Flyway 遷移、SRD_Database_Schema.md 或 PRD（§8.2 欄位定義）時才跑
+# （約 20-30 秒，需 docker）。
+# 為什麼要有：這份文件曾整整 100 個 Sprint 沒人發現它逐欄都是錯的（16 張表全漂移、
+# 117 個幽靈欄位、2 張表從未實作）。文件債沒有自動守門就必定重演。
+# 跳過方式（僅限 docker 不可用等環境問題）：SKIP_SCHEMA_DOC_CHECK=1 git commit ...
+SCHEMA_DOC_TOUCHED=$(echo "$STAGED_FILES" | grep -E '^backend/src/main/resources/db/migration/.*\.sql$|^docs/02_architecture/SRD_Database_Schema\.md$|^docs/01_requirements/E-Commerce_PRD_v1\.0_Final\.md$' | head -1 || true)
+if [ -n "$SCHEMA_DOC_TOUCHED" ] && [ -z "${SKIP_SCHEMA_DOC_CHECK:-}" ]; then
+  echo "📘 偵測到 Flyway 遷移或 SRD schema 文件變動 → 執行文件漂移守門..."
+  if docker version >/dev/null 2>&1; then
+    if ! ./scripts/validate-schema-doc.sh; then
+      echo "🔴 SRD_Database_Schema.md 與 Flyway 實際 schema 不一致！"
+      echo "   請執行：make sync-schema-doc（依實際 schema 重新產生文件）"
+      echo ""
+      EXIT_CODE=1
+    fi
+  else
+    echo "⚠️  docker daemon 未啟動，略過文件漂移守門（push 前請自行執行 make validate-schema-doc）"
+  fi
+  echo ""
+fi
+
 # 4. XML 非 BMP 字元檢查（S104 事故防呆）
 # 本機 Maven 的 XML 解析器吞得下 U+1F534 等 BMP 以外字元，act 容器裡以 apt 安裝的
 # Maven 吞不下，會在第一個 job 就以下列錯誤失敗，且本機全綠時完全看不出來：

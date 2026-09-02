@@ -207,6 +207,14 @@ validate-schema: ## schema 漂移守門：以 ddl-auto=validate + Flyway 對乾�
 	@echo "$(YELLOW)🔍 schema 漂移守門關卡（複製 GitHub E2E 啟動條件，本地 act 抓不到的漏洞）...$(NC)"
 	@./scripts/validate-schema.sh
 
+validate-schema-doc: ## 文件漂移守門：比對 SRD_Database_Schema.md 的 DDL 與 Flyway 實際 schema
+	@echo "$(YELLOW)📘 SRD 資料庫文件漂移守門（migration ↔ 文件；validate-schema 管的是 entity ↔ migration）...$(NC)"
+	@./scripts/validate-schema-doc.sh
+
+sync-schema-doc: ## 依 Flyway 實際 schema 重新產生 SRD_Database_Schema.md 的資料表 DDL
+	@echo "$(YELLOW)📘 依實際 schema 重新產生 SRD 資料表 DDL...$(NC)"
+	@./scripts/validate-schema-doc.sh --write
+
 validate-e2e: ## 本地 E2E 守門：乾淨 DB → Flyway 重建 → 全棧(host JAR+npm start, ddl-auto=validate) → Playwright（複製雲端 e2e job）
 	@echo "$(YELLOW)🎭 本地 E2E 守門（複製雲端 e2e job：host 程序 + 乾淨 DB + Playwright）...$(NC)"
 	@./scripts/validate-e2e.sh

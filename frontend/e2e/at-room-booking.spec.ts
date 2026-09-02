@@ -72,6 +72,42 @@ function cartWithRoom() {
   };
 }
 
+const PRODUCT_ID = '55555555-5555-5555-5555-555555555555';
+
+/** ROOM + PRODUCT 混合購物車（DEF-043 迴歸用）。 */
+function cartWithRoomAndProduct() {
+  return {
+    cartId: 'c1',
+    userId: 'u1',
+    items: [
+      {
+        cartItemKey: 'k-room',
+        listingId: ROOM_ID,
+        listingName: '若水海景房',
+        coverImageUrl: null,
+        quantity: 1,
+        unitPrice: 6400,
+        subtotal: 6400,
+        listingType: 'ROOM',
+        startDate: '2030-01-01',
+        endDate: '2030-01-03',
+      },
+      {
+        cartItemKey: 'k-product',
+        listingId: PRODUCT_ID,
+        listingName: '尚未結帳的隨行杯',
+        coverImageUrl: null,
+        quantity: 2,
+        unitPrice: 450,
+        subtotal: 900,
+        listingType: 'PRODUCT',
+      },
+    ],
+    totalAmount: 7300,
+    itemCount: 2,
+  };
+}
+
 test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
   test('E2E-ROOM-01: 詳情頁 ROOM 選日期 → 可用性(可訂) → 加入購物車', async ({ page }: { page: Page }) => {
     await page.route(`**/v2/listings/${ROOM_ID}`, async (route) => {
@@ -179,6 +215,59 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
     // 日期衝突優雅提示（bookingErrorMessage E-4001），非通用錯誤，非成功
     await expect(page.getByText('所選日期已被預訂', { exact: false })).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('預訂成功！')).toHaveCount(0);
+  });
+
+  test('E2E-ROOM-12: 混合購物車訂房 → 只移除已訂的 ROOM 項目，不整車清空（DEF-043）', async ({ page }: { page: Page }) => {
+    // 為什麼這個測試重要：checkout 只會訂 roomItems[0]，卻曾對整個購物車下 DELETE /v2/cart，
+    // 導致「尚未結帳的 PRODUCT 項目」與「第二個 ROOM 項目」被靜默刪除（DEF-043）。
+    // 斷言的是機制而非畫面：必須打單項移除端點、且絕不打整車清空端點。
+    const cartDeletePaths: string[] = [];
+
+    await page.route('**/v2/cart**', async (route) => {
+      const url = new URL(route.request().url());
+      if (route.request().method() === 'DELETE') {
+        cartDeletePaths.push(url.pathname);
+        await fulfillJson(route, 200, { success: true, data: null });
+        return;
+      }
+      if (url.pathname.endsWith('/count')) {
+        await fulfillJson(route, 200, { success: true, data: { count: 2 } });
+        return;
+      }
+      await fulfillJson(route, 200, { success: true, data: cartWithRoomAndProduct() });
+    });
+    await page.route('**/v2/bookings', async (route) => {
+      await fulfillJson(route, 201, {
+        success: true,
+        data: { id: 'bk-2', roomListingId: ROOM_ID, status: 'CREATED', totalAmount: 6400, currency: 'TWD' },
+      });
+    });
+
+    await page.goto('/checkout');
+    await page.waitForLoadState('domcontentloaded');
+
+    await page.fill('#guestName', '測試訪客');
+    await page.fill('#guestPhone', '0912345678');
+    await page.fill('#guestEmail', 'guest@example.com');
+    await page.getByRole('button', { name: '確認預訂' }).click();
+
+    // 先確認訂房確實成功，否則後面的購物車斷言會因「根本沒走到清車」而假綠
+    await expect(page.getByText('預訂成功！')).toBeVisible({ timeout: 15000 });
+
+    // 🔴 「預訂成功」畫面出現 ≠ 購物車請求已送出：checkout 是先 setBookingId（觸發 render）
+    // 才發 DELETE，兩者沒有順序保證。用畫面當訊號會做出時序相依的測試——
+    // dev server 較慢時矇混通過、production build 較快時就失敗（本測試初版即如此，
+    // 被 validate-release 攔下）。改用 expect.poll 等待請求真正被觀察到。
+    await expect
+      .poll(() => cartDeletePaths.some((path) => path.endsWith('/v2/cart/items/k-room')), {
+        timeout: 10000,
+        message: '應對已訂的 ROOM 項目呼叫單項移除端點 DELETE /v2/cart/items/k-room',
+      })
+      .toBe(true);
+
+    // 🔴 絕不可整車清空（DEF-043）：PRODUCT 項目與其他未結帳項目必須留著。
+    // 這條否定斷言放在上面的 poll 之後才安全——確認移除請求已發生，才知道流程真的走到了這一步。
+    expect(cartDeletePaths.some((path) => path.endsWith('/v2/cart'))).toBe(false);
   });
 
   test('E2E-ROOM-05: 整月日曆載入 → 已訂日禁選 → 點選可訂區間 → 可用性 + 加購', async ({ page }: { page: Page }) => {

@@ -14,6 +14,7 @@ import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import bookingService, { type CreateBookingRequest, bookingErrorMessage } from '@/services/booking'
 
 interface BookingItem {
+  cartItemKey: string
   listingId: string
   listingName: string
   coverImageUrl: string | null
@@ -133,8 +134,12 @@ export default function CheckoutPage() {
 
       const booking = await bookingService.createBooking(request, idempotencyKey)
       setBookingId(booking.id)
-      // Clear cart after successful booking
-      await apiClient.delete(API_ENDPOINTS.cart.clear)
+      // 🔴 只移除「這次真的訂掉」的那一個 ROOM 項目，不可清空整車（DEF-043）。
+      // 本流程只會為 roomItems[0] 建立預訂，若在此下 DELETE /v2/cart，購物車裡
+      // 尚未結帳的 PRODUCT 項目、以及第二個以後的 ROOM 項目都會被靜默刪除。
+      // 比照 PRODUCT 側既有作法（OrderService.createOrderFromCart 只 removeItem
+      // 已處理項目，AI-2422）與 cart/page.tsx 的移除慣例。
+      await apiClient.delete(API_ENDPOINTS.cart.remove(roomItem.cartItemKey))
     } catch (err: unknown) {
       console.error('Booking failed:', err)
       // 後端 ErrorCode wire code 為連字號（如 E-4001 日期衝突）；統一以 bookingErrorMessage 對應可讀訊息

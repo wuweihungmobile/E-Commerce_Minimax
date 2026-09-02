@@ -12,6 +12,13 @@ import { loginOnly } from './helpers/auth';
  * 5. 通過審核
  * 6. 驗證成功提示出現
  */
+/**
+ * ⚠️ 本 spec 的前提（列表中存在 PENDING_REVIEW 的租戶）無法由測試自己建立，見 DEF-058。
+ * Sprint 107 曾嘗試在 beforeEach 以 `POST /v2/tenants/apply` 自建資料，但那個 Guest 端點
+ * 只會產生 `TenantApplication`（status=PENDING），**不會**產生 admin 列表所看的
+ * `Tenant`（status=PENDING_REVIEW）——兩者是不同實體。已移除該無效 seeding，
+ * 維持「前提不成立則 test.skip()」的既有設計。
+ */
 test.describe('AT-M17-002: Admin 審核開店申請', () => {
   test.beforeEach(async ({ page }) => {
     // 使用 ADMIN 帳號登入系統（共用 loginOnly，不註冊，AI-2101b 統一）
@@ -48,28 +55,37 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
       return;
     }
 
-    // 點擊第一個審核詳情按鈕
+    // 點擊第一個審核詳情按鈕，並等「真正導航完成」
+    // 🔴 不可只用 waitForLoadState('domcontentloaded')：Next.js 的 client-side 導航不會觸發
+    // 新的 document load，該 await 會立刻返回，使後續 locator 仍在**列表頁**上求值（S107 根因）。
     await reviewButtons.first().click();
-    await page.waitForLoadState('domcontentloaded');
+    await page.waitForURL('**/admin/tenants/*/review', { timeout: 15000 });
 
-    // 點擊核准按鈕
-    const approveButton = page.locator('button:has-text("核准"), button:has-text("通過"), button:has-text("Approve")');
-    // 軟等待（顯式取代 sleep，但保留 skip 容忍度：admin 帳號可能無待審租戶）
-    await approveButton.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-    if (await approveButton.isVisible()) {
-      await approveButton.click();
-
-      // 等待成功提示（出現在頁面上或通過 dialog）
-      await page.waitForResponse(r => r.url().includes('/approve'), { timeout: 15000 }).catch(() => {});
-
-      // 驗證成功提示或 dialog
-      const successVisible = await page.locator('text=/店鋪已核准|成功/i').isVisible().catch(() => false);
-
-      // 因為使用 alert dialog，可能已被瀏覽器阻止，所以這個測試主要驗證流程走到這裡
-      expect(successVisible || true).toBeTruthy();
-    } else {
+    // 核准按鈕：用精確文字比對
+    // 🔴 不可用 :has-text("核准")：那是**子字串**比對，會命中列表頁的「已核准 (N)」篩選 tab
+    // （兩者都是 variant="outline" size="sm"，S107 的失敗 log 顯示解析到的正是該 tab 按鈕）。
+    // 該 tab 會隨 tabCounts 重新渲染而從 DOM 上被拔掉 → click 一直重試到 30s 逾時。
+    const approveButton = page.getByRole('button', { name: '核准', exact: true });
+    await approveButton.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+    if (!(await approveButton.isVisible())) {
+      // 核准鈕只在 tenant.status === 'PENDING_REVIEW' 時渲染。導到的租戶不是待審核狀態
+      // ⇒ 本測試的前提不成立（見檔頂 DEF-058），跳過而非假失敗。
       test.skip();
+      return;
     }
+
+    // 真斷言：原本是 expect(successVisible || true).toBeTruthy() ——**恆真**，
+    // 即使按鈕點錯、核准根本沒發生也照樣綠燈（S97「測試以固件繞過同一段邏輯」的又一實例）。
+    const approveResponse = page.waitForResponse(
+      (r) => r.url().includes('/approve') && r.request().method() === 'POST',
+      { timeout: 15000 }
+    );
+    await approveButton.click();
+    expect((await approveResponse).status()).toBe(200);
+
+    // 成功分支會顯示「店鋪已核准」並在 2 秒後導回列表；失敗分支是 alert（不導頁）。
+    // 斷言導頁而非斷言訊息，避開與那 2 秒 redirect 的競賽。
+    await page.waitForURL((url) => url.pathname === '/admin/tenants', { timeout: 15000 });
   });
 
   test('Admin 審核駁回申請', async ({ page }) => {
@@ -91,9 +107,9 @@ test.describe('AT-M17-002: Admin 審核開店申請', () => {
       return;
     }
 
-    // 點擊第一個審核詳情按鈕
+    // 點擊第一個審核詳情按鈕，並等「真正導航完成」（與核准測試同一根因，見上方註解）
     await reviewButtons.first().click();
-    await page.waitForLoadState('domcontentloaded');
+    await page.waitForURL('**/admin/tenants/*/review', { timeout: 15000 });
 
     // 點擊駁回按鈕
     const rejectButton = page.locator('button:has-text("駁回")');

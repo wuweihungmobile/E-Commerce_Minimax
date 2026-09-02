@@ -64,7 +64,15 @@ test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
     await registerAndLogin(page);
 
     await page.goto('/cms');
-    await page.waitForLoadState('domcontentloaded');
+    // 🔴 不可只等 domcontentloaded：它在 React hydration 完成前就返回，
+    // 此時篩選按鈕已由 SSR 渲染出來但 onClick 尚未接上，click 會是**空操作**，
+    // 後續斷言 class 變成 bg-blue-100 便會輪詢到逾時（S107 實測 14 次都是 bg-gray-100）。
+    // 列表資料由 useEffect 內的 loadPosts() 取得，故該回應到達即證明 hydration 已完成。
+    await page.waitForResponse(
+      (r) => r.url().includes('/v2/dashboard/posts') && r.request().method() === 'GET',
+      { timeout: 15000 }
+    );
+    await expect(page.locator('text=載入中...')).toBeHidden({ timeout: 10000 });
 
     // 點擊「已發布」篩選
     const publishedBtn = page.locator('button:has-text("已發布")').first();

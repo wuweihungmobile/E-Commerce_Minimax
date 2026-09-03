@@ -68,7 +68,12 @@ public enum Permission {
     SUPPORT_TICKET_READ("support_ticket:read", "檢視客服工單"),
     SUPPORT_TICKET_CREATE("support_ticket:create", "建立客服工單/回覆訊息"),
     SUPPORT_TICKET_UPDATE("support_ticket:update", "更新工單狀態/指派"),
-    SUPPORT_TICKET_MANAGE_ALL("support_ticket:manage:all", "管理所有租戶客服工單");
+    SUPPORT_TICKET_MANAGE_ALL("support_ticket:manage:all", "管理所有租戶客服工單"),
+
+    // Sprint 118（DEF-044）：退貨申請與退貨入庫確認
+    RETURN_READ("return:read", "檢視退貨單"),
+    RETURN_CREATE("return:create", "提出退貨申請"),
+    RETURN_REVIEW("return:review", "核准/駁回退貨、確認收貨入庫");
 
     private final String code;
     private final String description;

@@ -9,6 +9,8 @@ import com.nextkey.ecommerce.domain.model.inventory.StockMovement;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.order.OrderItem;
 import com.nextkey.ecommerce.domain.model.product.ProductInventory;
+import com.nextkey.ecommerce.domain.model.returns.ReturnRequest;
+import com.nextkey.ecommerce.domain.model.returns.ReturnRequestItem;
 import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository;
 import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
@@ -169,5 +171,77 @@ public class ProductInventoryService {
                                 + "stock movements need an order_item_id");
             }
         }
+    }
+
+    /**
+     * 退貨入庫（Sprint 118，DEF-044）。
+     *
+     * <p>使用者拍板的規則是「**店家實際收到貨、確認可售後才回補**」，本方法即那個時點的唯一入口。
+     * 核准退貨不會動庫存，只有收貨確認會。
+     *
+     * <p>🔴 <b>不可售數量的處理方式</b>：使用者選了「記錄但不回補，寫 SCRAP」。但 PRD §6.7.4 明訂
+     * {@code SCRAP} 是 {@code -total_qty}——若只寫一筆 SCRAP 而不先回補，那筆流水帳的前後數量會相同，
+     * 正是 Sprint 114 為 {@code RETURN} 消滅掉的「靜默 no-op」。因此本方法在同一交易內寫兩筆：
+     * <ul>
+     *   <li>{@code RETURN(+收到的總數)}——貨確實回來了</li>
+     *   <li>{@code SCRAP(-不可售數)}——其中這些當場報廢</li>
+     * </ul>
+     * 淨額為 {@code +可售數}，等同「不可售的不回補」；而台帳上看得到「退回來了，然後報廢了」，
+     * 每一筆的方向都與 PRD 的定義一致。那批不可售的貨從未進入可售池（兩筆同交易）。
+     *
+     * <p>SKU 無庫存列（未啟用庫存追蹤）時兩筆都不寫：什麼都沒發生，寫流水帳會讓台帳出現不存在的異動。
+     */
+    @Transactional
+    public void applyReturnReceipt(final ReturnRequest request, final ReturnRequestItem item,
+            final UUID operatorId) {
+        int receivedQty = item.receivedQty();
+        if (receivedQty <= 0) {
+            return;
+        }
+        UUID skuId = item.getSkuId();
+        if (productInventoryRepository.increaseTotalQty(skuId, receivedQty) == 0) {
+            // 0 筆＝該 SKU 沒有庫存列（未啟用追蹤），既有語意為略過
+            return;
+        }
+        recordReturnMovement(request, item, StockMovement.MovementType.RETURN, receivedQty,
+                receivedQty, operatorId);
+
+        int unsellableQty = item.getUnsellableQty() != null ? item.getUnsellableQty() : 0;
+        if (unsellableQty > 0) {
+            // 剛加回 receivedQty（>= unsellableQty），故此處必然扣得動；0 筆只可能是資料異常
+            if (productInventoryRepository.decreaseTotalQtyIfSufficient(skuId, unsellableQty) == 0) {
+                throw new IllegalStateException(
+                        "Cannot scrap unsellable returned units right after restocking them: skuId=" + skuId);
+            }
+            recordReturnMovement(request, item, StockMovement.MovementType.SCRAP, unsellableQty,
+                    -unsellableQty, operatorId);
+        }
+    }
+
+    /** 退貨相關流水帳；前後數量比照其餘寫入點回讀 DB 後由帶號變化量反推。 */
+    private void recordReturnMovement(final ReturnRequest request, final ReturnRequestItem item,
+            final StockMovement.MovementType movementType, final int quantity, final int totalDelta,
+            final UUID operatorId) {
+        UUID skuId = item.getSkuId();
+        int afterTotalQty = productInventoryRepository.findTotalQtyBySkuId(skuId);
+        int afterReservedQty = productInventoryRepository.findReservedQtyBySkuId(skuId);
+
+        stockMovementRepository.save(StockMovement.builder()
+                .tenantId(request.getTenantId())
+                .skuId(skuId)
+                .movementType(movementType)
+                .quantity(quantity)
+                .beforeTotalQty(afterTotalQty - totalDelta)
+                .afterTotalQty(afterTotalQty)
+                .balanceAfter(afterTotalQty)
+                .beforeReservedQty(afterReservedQty)
+                .afterReservedQty(afterReservedQty)
+                .referenceType(StockMovement.ReferenceType.ORDER)
+                .referenceId(request.getOrderId())
+                .orderItemId(item.getOrderItemId())
+                .referenceNumber(request.getReturnNumber())
+                .notes("Return receipt " + request.getReturnNumber())
+                .createdBy(operatorId)
+                .build());
     }
 }

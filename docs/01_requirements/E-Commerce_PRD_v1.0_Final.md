@@ -1625,6 +1625,56 @@ StoreStaff (店員)
 
 > **Phase 1 假設**：Phase 1 每筆訂單僅包含一個 SKU，故一個 OUTBOUND movement 對應一個 order_item。`order_item_id` 欄位 Phase 1 為 NULL，保留供 Phase 2 多 SKU 訂單拆單追蹤使用。
 
+#### 8.2.12 return_requests（退貨申請 — v1.0.3 新增，Sprint 118 / DEF-044）
+
+> **背景**：已付款訂單退款後，先前正式扣除的庫存不會回補，那批貨在系統裡永遠消失。
+> 使用者決策（2026-09-03）採「**店家實際收到貨、確認可售後才回補**」——退錢與收貨是兩件事，
+> 退款當下就把庫存加回可售池，等於在賣還沒拿回來的東西。
+>
+> **與退款流程完全獨立**：退款管錢、退貨管貨，互不強制。可以只退錢不收貨（單價低於運費時），
+> 也可以只收貨不退錢（換貨）。因此本表不參照 `payments`，也不改訂單付款狀態。
+
+| 欄位 | 類型 | 說明 |
+|------|------|------|
+| id | UUID | PK |
+| tenant_id | UUID | FK → tenants.id |
+| return_number | VARCHAR(50) | 給人看的退貨單號（RMA-yyyyMMdd-八碼），UNIQUE |
+| order_id | UUID | FK → orders.id |
+| customer_id | UUID | FK → users.id — 提出申請的買家 |
+| status | VARCHAR(20) | REQUESTED / APPROVED / REJECTED / RECEIVED / CANCELLED（🔴 **庫存只在進入 RECEIVED 時變動**） |
+| reason | TEXT | 買家填寫的退貨原因 |
+| rejection_reason | TEXT | 店家駁回理由 |
+| reviewed_by | UUID | FK → users.id — 核准/駁回者 |
+| reviewed_at | TIMESTAMP | |
+| received_by | UUID | FK → users.id — 收貨確認者 |
+| received_at | TIMESTAMP | |
+| created_at | TIMESTAMP | |
+| updated_at | TIMESTAMP | |
+
+**狀態機**：`REQUESTED` ──核准──→ `APPROVED` ──收貨確認──→ `RECEIVED`；
+`REQUESTED` 可被駁回為 `REJECTED`；`REQUESTED`／`APPROVED` 可被買家撤回為 `CANCELLED`。
+`REJECTED`／`CANCELLED` 的單**不佔用**該訂單品項的可退額度（那些貨從來沒退成）。
+
+#### 8.2.13 return_request_items（退貨品項 — v1.0.3 新增，Sprint 118 / DEF-044）
+
+| 欄位 | 類型 | 說明 |
+|------|------|------|
+| id | UUID | PK |
+| return_request_id | UUID | FK → return_requests.id（ON DELETE CASCADE） |
+| order_item_id | UUID | FK → order_items.id |
+| sku_id | UUID | FK → product_skus.id |
+| requested_qty | INTEGER | 買家申請退回的數量（> 0）；累計不得超過該訂單品項的數量 |
+| sellable_qty | INTEGER | 收貨確認時填：可再售的數量，回補庫存（寫 `RETURN` 異動）；nullable（尚未收貨） |
+| unsellable_qty | INTEGER | 收貨確認時填：損壞／缺件的數量，**不回補**；nullable |
+| created_at | TIMESTAMP | |
+
+> **不可售數量的處理**（使用者決策「記錄但不回補」）：PRD §6.7.4 明訂 `SCRAP` 是 `-total_qty`，
+> 若只寫一筆 SCRAP 而不先回補，該筆流水帳的前後數量會相同——正是 Sprint 114 為 `RETURN`
+> 消滅掉的「靜默 no-op」。故收貨確認在**同一交易**內寫兩筆：`RETURN(+收到的總數)` 與
+> `SCRAP(-不可售數)`。淨額為 `+可售數`（等同不可售的不回補），而台帳看得到「退回來了，然後報廢了」，
+> 每一筆的方向都與 §6.7.4 一致；那批不可售的貨從未進入可售池。
+
+
 ### 8.3 繼承 v0.8 的欄位定義
 
 #### [Specification] user_profiles 完整欄位定義

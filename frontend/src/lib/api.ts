@@ -269,6 +269,23 @@ export const API_ENDPOINTS = {
     delete: (id: string) => '/v2/notifications/' + id,
   },
 
+  // Returns — 買家退貨申請 (M05，Sprint 118 後端 / Sprint 119 前端，DEF-044)
+  returns: {
+    list: '/v2/returns',
+    create: '/v2/returns',
+    detail: (id: string) => '/v2/returns/' + id,
+    cancel: (id: string) => '/v2/returns/' + id + '/cancel',
+  },
+
+  // Returns — 店家層 (Sprint 118 後端 / Sprint 119 前端)
+  dashboardReturns: {
+    list: '/v2/dashboard/returns',
+    detail: (id: string) => '/v2/returns/' + id,
+    approve: (id: string) => '/v2/dashboard/returns/' + id + '/approve',
+    reject: (id: string) => '/v2/dashboard/returns/' + id + '/reject',
+    receive: (id: string) => '/v2/dashboard/returns/' + id + '/receive',
+  },
+
   // Notification Templates (M09)
   notificationTemplates: {
     list: '/v2/notification-templates',

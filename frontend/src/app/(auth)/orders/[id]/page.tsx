@@ -194,6 +194,10 @@ export default function OrderDetailPage() {
   const canReview =
     order != null && order.orderType === 'PRODUCT' && (order.status === 'DELIVERED' || order.status === 'COMPLETED')
 
+  // 商品訂單送達/完成後可申請退貨（後端 ReturnRequestService.RETURNABLE_ORDER_STATUSES 為最終權威）
+  const canReturn =
+    order != null && order.orderType === 'PRODUCT' && (order.status === 'DELIVERED' || order.status === 'COMPLETED')
+
   return (
     <StorefrontShell>
       {error && (
@@ -228,11 +232,18 @@ export default function OrderDetailPage() {
                 </div>
                 <p className="text-sm text-gray-500">建立於 {formatDateTime(order.createdAt)}</p>
               </div>
-              {(payment?.canCancel ?? isCancellable(order.status)) && !showCancel && (
-                <Button variant="outline" onClick={() => setShowCancel(true)}>
-                  取消訂單
-                </Button>
-              )}
+              <div className="flex gap-2 shrink-0">
+                {(payment?.canCancel ?? isCancellable(order.status)) && !showCancel && (
+                  <Button variant="outline" onClick={() => setShowCancel(true)}>
+                    取消訂單
+                  </Button>
+                )}
+                {canReturn && (
+                  <Link href={`/returns/new?orderId=${order.id}`}>
+                    <Button variant="outline">申請退貨</Button>
+                  </Link>
+                )}
+              </div>
             </div>
 
             {/* Cancel panel */}

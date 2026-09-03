@@ -10,6 +10,7 @@ const QUICK_LINKS = [
   { href: '/dashboard/products', label: '商品管理' },
   { href: '/dashboard/rooms', label: '房型管理' },
   { href: '/dashboard/pricing/rules', label: '定價規則', testId: 'dashboard-pricing-link' },
+  { href: '/dashboard/returns', label: '退貨審核', testId: 'dashboard-returns-link' },
 ]
 
 type CurrentUser = { email: string; fullName: string; role: string }

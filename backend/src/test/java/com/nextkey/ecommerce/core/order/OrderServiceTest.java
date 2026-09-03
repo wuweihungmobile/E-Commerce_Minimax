@@ -275,6 +275,14 @@ class OrderServiceTest {
                 .thenReturn(Optional.of(listingFixture(Listing.ListingType.PRODUCT, Listing.ListingStatus.ACTIVE)));
         when(shippingTemplateService.calculateFeeForTenant(TENANT_ID, BigDecimal.valueOf(200)))
                 .thenReturn(BigDecimal.valueOf(60));
+        // Sprint 115（DEF-065）：預扣已移到 save() 之後，故本案例必須先讓 save 回傳實體，
+        // 否則 order 會是 null，reserveForOrder(null) 不匹配 any(Order.class)（Mockito 2+ 不匹配 null），
+        // 測試會死在後續的 NPE 而不是預期的 E_3004。
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(ORDER_ID);
+            return o;
+        });
         org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.E_3004, "Insufficient stock"))
                 .when(productInventoryService).reserveForOrder(any(Order.class));
 
@@ -282,7 +290,14 @@ class OrderServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.E_3004);
-        verify(orderRepository, never()).save(any());
+        // 🔴 Sprint 115（DEF-065）移除了原本的 verify(orderRepository, never()).save(any())。
+        // 那條斷言驗的是「reserveForOrder 排在 save() 之前，所以根本沒 save」——是**機制**，
+        // 不是不變量。DEF-065 為了讓 RESERVE 流水帳拿得到 reference_id／order_item_id
+        // （兩者皆為 @GeneratedValue，save() 前是 null），把預扣移到 save() 之後，
+        // 「庫存不足時訂單不留下」改由 @Transactional 回滾保證——而 mock 測試看不到回滾。
+        // 該不變量改由 M12OrderStockLedgerIntegrationTest.IT-M12-LEDGER-009 以真實 DB 驗證：
+        // 拋 E_3004 後 orders 為空、reserved_qty 歸零、流水帳也沒有殘留。
+        // 這裡保留仍然成立、且使用者可見的那一條：購物車不得被清掉。
         verify(cartService, never()).removeItem(any(), any(), any());
     }
 

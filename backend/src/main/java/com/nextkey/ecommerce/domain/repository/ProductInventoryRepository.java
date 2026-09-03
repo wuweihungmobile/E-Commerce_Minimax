@@ -161,4 +161,16 @@ public interface ProductInventoryRepository extends JpaRepository<ProductInvento
     @Query(value = "SELECT COALESCE(total_qty, 0) FROM product_inventory WHERE sku_id = :skuId",
             nativeQuery = true)
     Integer findTotalQtyBySkuId(@Param("skuId") UUID skuId);
+
+    /**
+     * 讀取當前預留量（Sprint 115，DEF-065）。供訂單流程的 {@code RESERVE}／{@code OUTBOUND}／
+     * {@code RELEASE} 流水帳記錄異動前後的 {@code reserved_qty} 之用。
+     *
+     * <p>與 {@link #findTotalQtyBySkuId} 同一套理由：原子 UPDATE 之後實體快照已過期，
+     * 必須以不經一級快取的原生純量查詢回讀；讀取緊接在同一交易的 UPDATE 之後，
+     * 該列的行鎖尚未釋放，故拿到的必然是本次操作的結果。
+     */
+    @Query(value = "SELECT COALESCE(reserved_qty, 0) FROM product_inventory WHERE sku_id = :skuId",
+            nativeQuery = true)
+    Integer findReservedQtyBySkuId(@Param("skuId") UUID skuId);
 }

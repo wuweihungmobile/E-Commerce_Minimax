@@ -181,10 +181,15 @@ public class OrderService {
         PromoCode promo = applyPromoDiscount(order, cartService.getAppliedPromoCode(userId, tenantId),
                 totalAmount, shippingFee, tenantId, userId);
 
-        // Sprint 88（AI-2422）：建單前檢查並預扣庫存，避免超賣；庫存不足拋例外交易回滾，不留部分建立的訂單
-        productInventoryService.reserveForOrder(order);
-
         order = orderRepository.save(order);
+
+        // Sprint 88（AI-2422）：檢查並預扣庫存，避免超賣；庫存不足拋例外，整個 @Transactional
+        // 方法回滾，不留部分建立的訂單。
+        // Sprint 115（DEF-065）：刻意排在 save() 之後。預扣要同時寫下一筆 RESERVE 流水帳，
+        // 而流水帳的 reference_id／order_item_id 取自 Order 與 OrderItem 的 id——兩者皆為
+        // @GeneratedValue，save() 之前都是 null，在那個時點寫入只會得到一批查不到來源的孤兒列。
+        // 移到 save() 之後不影響超賣防護：兩者同屬一個交易，庫存不足時訂單一樣不會留下。
+        productInventoryService.reserveForOrder(order);
 
         commitPromoUsage(promo, order, userId, tenantId);
 

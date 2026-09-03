@@ -77,6 +77,15 @@ class M12InventoryConcurrencyIntegrationTest {
     private TransactionTemplate txTemplate;
     private UUID listingId;
 
+    /**
+     * Sprint 115（DEF-065）：訂單流程改為同時寫 {@code stock_movements} 流水帳，流水帳的
+     * {@code tenant_id}／{@code created_by} 取自 {@code order.getTenant()}／{@code getUser()}
+     * ——刻意走關聯物件而非 {@code getTenantId()}／{@code getUserId()}，因為那兩個是
+     * {@code insertable=false} 的影子欄位，訂單剛建立時是 null。這裡保留實體以組出與生產相同形狀的訂單。
+     */
+    private Tenant tenant;
+    private User owner;
+
     @BeforeEach
     void setUp() {
         lenient().when(featureToggleService.isFeatureEnabled(anyString())).thenReturn(true);
@@ -96,7 +105,7 @@ class M12InventoryConcurrencyIntegrationTest {
      */
     private UUID seedListing() {
         long stamp = System.nanoTime();
-        Tenant tenant = tenantRepository.save(Tenant.builder()
+        tenant = tenantRepository.save(Tenant.builder()
                 .name("Inventory Race Tenant")
                 .slug("inv-race-" + stamp)
                 .contactEmail("inv-race-" + stamp + "@tenant.com")
@@ -104,7 +113,7 @@ class M12InventoryConcurrencyIntegrationTest {
                 .status(Tenant.TenantStatus.ACTIVE)
                 .build());
 
-        User owner = userRepository.save(User.builder()
+        owner = userRepository.save(User.builder()
                 .email("inv-race-owner-" + stamp + "@example.com")
                 .passwordHash("dummy")
                 .fullName("Inventory Race Owner")
@@ -148,22 +157,39 @@ class M12InventoryConcurrencyIntegrationTest {
      * 的 SKU id 與數量，不需要真的把訂單寫進 DB，讓測試聚焦在庫存列本身。
      */
     private Order orderOf(final UUID skuId, final int quantity) {
-        Order order = Order.builder().totalAmount(BigDecimal.TEN).build();
-        order.addItem(OrderItem.builder()
+        Order order = newOrder();
+        order.addItem(persistedItem(skuId, quantity));
+        return order;
+    }
+
+    /**
+     * Sprint 115（DEF-065）：訂單與品項都必須帶 id。{@code ProductInventoryService} 會對未持久化
+     * 的訂單大聲失敗——流水帳的 {@code reference_id}／{@code order_item_id} 少了就是查不到來源的孤兒列。
+     * 這裡只補 id 與租戶／買家關聯，不真的把訂單寫進 DB：{@code stock_movements} 對這兩欄沒有 FK，
+     * 而本測試要壓的是 {@code product_inventory} 那一列，不是訂單本身。
+     */
+    private Order newOrder() {
+        return Order.builder()
+                .id(UUID.randomUUID())
+                .tenant(tenant)
+                .user(owner)
+                .totalAmount(BigDecimal.TEN)
+                .build();
+    }
+
+    private OrderItem persistedItem(final UUID skuId, final int quantity) {
+        return OrderItem.builder()
+                .id(UUID.randomUUID())
                 .sku(ProductSku.builder().id(skuId).build())
                 .quantity(quantity)
-                .build());
-        return order;
+                .build();
     }
 
     /** 多品項訂單，每項各 1 件；用於驗證單一品項失敗時整張訂單的回滾行為。 */
     private Order orderOfItems(final UUID... skuIds) {
-        Order order = Order.builder().totalAmount(BigDecimal.TEN).build();
+        Order order = newOrder();
         for (UUID skuId : skuIds) {
-            order.addItem(OrderItem.builder()
-                    .sku(ProductSku.builder().id(skuId).build())
-                    .quantity(1)
-                    .build());
+            order.addItem(persistedItem(skuId, 1));
         }
         return order;
     }

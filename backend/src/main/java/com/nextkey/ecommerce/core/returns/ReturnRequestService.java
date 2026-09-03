@@ -26,6 +26,7 @@ import com.nextkey.ecommerce.domain.model.returns.ReturnRequest;
 import com.nextkey.ecommerce.domain.model.returns.ReturnRequest.ReturnStatus;
 import com.nextkey.ecommerce.domain.model.returns.ReturnRequestItem;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
+import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
 import com.nextkey.ecommerce.domain.repository.returns.ReturnRequestRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -60,6 +61,7 @@ public class ReturnRequestService {
     private final ReturnRequestRepository returnRequestRepository;
     private final OrderRepository orderRepository;
     private final ProductInventoryService productInventoryService;
+    private final ProductSkuRepository productSkuRepository;
 
     /**
      * 可申請退貨的訂單狀態：貨得先送到買家手上，才談得上退回來。
@@ -301,15 +303,31 @@ public class ReturnRequestService {
     }
 
     private ReturnDto.Response toResponse(final ReturnRequest request) {
+        // 品項顯示資訊（SKU 編號／規格／品名）批次查詢一次，避免逐列 lazy load（Sprint 120，DEF-069）。
+        // items 理論上不會是空的（建立時已要求 @NotEmpty），但空集合送進 IN 子句沒有意義，防禦性跳過查詢。
+        Set<UUID> skuIds = request.getItems().stream()
+                .map(ReturnRequestItem::getSkuId)
+                .collect(Collectors.toSet());
+        Map<UUID, ProductSkuRepository.SkuDisplayInfo> skuDisplayInfo = skuIds.isEmpty()
+                ? Map.of()
+                : productSkuRepository.findDisplayInfoByIdIn(skuIds).stream()
+                        .collect(Collectors.toMap(ProductSkuRepository.SkuDisplayInfo::getId, Function.identity()));
+
         List<ReturnDto.ItemResponse> items = request.getItems().stream()
-                .map(item -> ReturnDto.ItemResponse.builder()
-                        .id(item.getId())
-                        .orderItemId(item.getOrderItemId())
-                        .skuId(item.getSkuId())
-                        .requestedQty(item.getRequestedQty())
-                        .sellableQty(item.getSellableQty())
-                        .unsellableQty(item.getUnsellableQty())
-                        .build())
+                .map(item -> {
+                    ProductSkuRepository.SkuDisplayInfo sku = skuDisplayInfo.get(item.getSkuId());
+                    return ReturnDto.ItemResponse.builder()
+                            .id(item.getId())
+                            .orderItemId(item.getOrderItemId())
+                            .skuId(item.getSkuId())
+                            .skuCode(sku != null ? sku.getSkuCode() : null)
+                            .specName(sku != null ? sku.getSpecName() : null)
+                            .productName(sku != null ? sku.getProductName() : null)
+                            .requestedQty(item.getRequestedQty())
+                            .sellableQty(item.getSellableQty())
+                            .unsellableQty(item.getUnsellableQty())
+                            .build();
+                })
                 .collect(Collectors.toList());
 
         return ReturnDto.Response.builder()

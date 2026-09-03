@@ -133,6 +133,10 @@ public final class ReturnDto {
         private UUID id;
         private UUID orderItemId;
         private UUID skuId;
+        /** SKU 編號／規格／品名，供列表與審核台顯示（Sprint 120，DEF-069）；SKU 已被刪除時為 null。 */
+        private String skuCode;
+        private String specName;
+        private String productName;
         private Integer requestedQty;
         /** 收貨確認後才有值。 */
         private Integer sellableQty;

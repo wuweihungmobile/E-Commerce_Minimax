@@ -252,6 +252,16 @@ class M05ReturnRequestIntegrationTest {
     }
 
     @Test
+    @DisplayName("IT-M05-RETURN-012: 品項回應帶 SKU 編號／品名（DEF-069：店家審核台曾只能顯示截斷 orderItemId）")
+    void createReturnRequest_itemResponseIncludesSkuDisplayInfo() {
+        ReturnDto.Response response = returnRequestService.createReturnRequest(createRequest(2));
+
+        ReturnDto.ItemResponse item = response.getItems().get(0);
+        assertThat(item.getSkuCode()).isEqualTo("SKU-RETURN-" + runStamp);
+        assertThat(item.getProductName()).isEqualTo("退貨測試商品");
+    }
+
+    @Test
     @DisplayName("IT-M05-RETURN-011: 買家撤回申請 → CANCELLED，該數量重新可申請")
     void cancelReturnRequest_freesUpQuantity() {
         UUID returnId = returnRequestService.createReturnRequest(createRequest(5)).getId();

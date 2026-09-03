@@ -192,8 +192,13 @@ export default function DashboardReturnDetailPage() {
           {returnRequest.items.map((item) => (
             <div key={item.id} className="flex items-center gap-4 border-b last:border-b-0 pb-4 last:pb-0">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-900">品項 #{item.orderItemId.slice(0, 8)}</p>
-                <p className="text-xs text-gray-500">申請退貨 {item.requestedQty} 件</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {item.productName ?? `品項 #${item.orderItemId.slice(0, 8)}`}
+                </p>
+                {item.specName && <p className="text-xs text-gray-500">{item.specName}</p>}
+                <p className="text-xs text-gray-500">
+                  {item.skuCode && `${item.skuCode} · `}申請退貨 {item.requestedQty} 件
+                </p>
               </div>
               {returnRequest.status === 'APPROVED' ? (
                 <div className="flex items-center gap-3 shrink-0">

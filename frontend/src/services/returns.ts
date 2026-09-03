@@ -9,6 +9,10 @@ export interface ReturnItem {
   id: string
   orderItemId: string
   skuId: string | null
+  /** SKU 編號／規格／品名，供顯示用（Sprint 120，DEF-069）；SKU 已被刪除時為 null */
+  skuCode: string | null
+  specName: string | null
+  productName: string | null
   requestedQty: number
   /** 收貨確認後才有值 */
   sellableQty: number | null

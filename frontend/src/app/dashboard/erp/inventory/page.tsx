@@ -54,11 +54,14 @@ export default function InventoryPage() {
     }
   }
 
-  const getStockStatus = (available: number, reorderPoint: number, safetyStock: number) => {
-    if (available <= safetyStock) {
+  // Sprint 116（DEF-066）：門檻改用後端實際提供的 lowStockThreshold（product_inventory 只有這一個）。
+  // 這個函式原本就存在，但「狀態」欄過去是寫死的 <Badge>正常</Badge>，從來沒有呼叫過它
+  // ——庫存見底時畫面照樣顯示正常，與台帳讀空表是同一種「看起來有、其實沒有」的問題。
+  const getStockStatus = (available: number, threshold: number) => {
+    if (available <= threshold * 0.5) {
       return { variant: 'destructive' as const, label: '危險' }
     }
-    if (available <= reorderPoint) {
+    if (available <= threshold) {
       return { variant: 'warning' as const, label: '低庫存' }
     }
     return { variant: 'success' as const, label: '正常' }
@@ -121,7 +124,6 @@ export default function InventoryPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">品名</th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">庫存</th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">可用</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">位置</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">狀態</th>
                   </tr>
                 </thead>
@@ -132,9 +134,11 @@ export default function InventoryPage() {
                       <td className="px-4 py-3 text-sm text-gray-900">{item.productName}</td>
                       <td className="px-4 py-3 text-sm text-right">{item.quantity}</td>
                       <td className="px-4 py-3 text-sm text-right">{item.availableQuantity}</td>
-                      <td className="px-4 py-3 text-sm text-gray-500">{item.location || '-'}</td>
                       <td className="px-4 py-3 text-sm">
-                        <Badge variant="success">正常</Badge>
+                        {(() => {
+                          const status = getStockStatus(item.availableQuantity, item.lowStockThreshold)
+                          return <Badge variant={status.variant}>{status.label}</Badge>
+                        })()}
                       </td>
                     </tr>
                   ))}
@@ -180,12 +184,14 @@ export default function InventoryPage() {
                       <span className="font-bold text-red-600">{alert.currentQuantity}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">補貨點：</span>
-                      <span>{alert.reorderPoint}</span>
+                      <span className="text-muted-foreground">低庫存門檻：</span>
+                      <span>{alert.lowStockThreshold}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">安全庫存：</span>
-                      <span>{alert.safetyStock}</span>
+                      <span className="text-muted-foreground">嚴重度：</span>
+                      <Badge variant={alert.severity === 'CRITICAL' ? 'destructive' : 'warning'}>
+                        {alert.severity === 'CRITICAL' ? '危險' : '低庫存'}
+                      </Badge>
                     </div>
                   </CardContent>
                 </Card>

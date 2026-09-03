@@ -3,7 +3,6 @@ package com.nextkey.ecommerce.integration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.api.dto.erp.*;
 import com.nextkey.ecommerce.domain.model.erp.Supplier;
-import com.nextkey.ecommerce.domain.model.inventory.Inventory;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrderItem;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
@@ -60,8 +59,6 @@ class M16ErpIntegrationTest {
     @Autowired
     private SupplierRepository supplierRepository;
 
-    @Autowired
-    private InventoryRepository inventoryRepository;
 
     @Autowired
     private PurchaseOrderRepository purchaseOrderRepository;
@@ -193,10 +190,6 @@ class M16ErpIntegrationTest {
             jdbcTemplate.update(
                     "INSERT INTO product_inventory (sku_id, total_qty, reserved_qty, low_stock_threshold, updated_at) VALUES (?, ?, ?, ?, NOW())",
                     testSkuId, 100, 0, 10
-            );
-            jdbcTemplate.update(
-                    "INSERT INTO inventory (id, sku_id, tenant_id, total_qty, reserved_qty, available_qty, safety_stock, reorder_point, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())",
-                    UUID.randomUUID(), testSkuId, testTenantId, 100, 0, 100, 10, 20
             );
         } catch (Exception e) {
             // 如果插入失敗，可能是因為資料表已經存在相關資料，繼續執行
@@ -420,13 +413,6 @@ class M16ErpIntegrationTest {
         jdbcTemplate.update(
                 "INSERT INTO product_inventory (sku_id, total_qty, reserved_qty, low_stock_threshold, updated_at) VALUES (?, ?, ?, ?, NOW())",
                 testSkuId, 100, 0, 10
-        );
-
-        // 建立初始庫存記錄 (inventory table)
-        UUID inventoryId = UUID.randomUUID();
-        jdbcTemplate.update(
-                "INSERT INTO inventory (id, sku_id, tenant_id, total_qty, reserved_qty, available_qty, safety_stock, reorder_point, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())",
-                inventoryId, testSkuId, testTenantId, 100, 0, 100, 10, 20
         );
 
         PurchaseOrderCreateRequest request = PurchaseOrderCreateRequest.builder()
@@ -997,27 +983,23 @@ class M16ErpIntegrationTest {
     @Order(201)
     @DisplayName("IT-M16-201: 查詢庫存列表-分頁")
     void getInventoryLedger_paged_returnsPage() throws Exception {
-        // 建立測試庫存
-        if (testSkuId != null) {
-            Inventory inventory = Inventory.builder()
-                    .tenantId(testTenantId)
-                    .skuId(testSkuId)
-                    .totalQty(100)
-                    .reservedQty(0)
-                    .availableQty(100)
-                    .safetyStock(10)
-                    .reorderPoint(20)
-                    .build();
-            inventoryRepository.save(inventory);
-        }
+        // Sprint 116（DEF-066）：種一個本測試自己的 SKU 到 product_inventory（生產程式碼真正會寫的那張）。
+        // 原本這裡 save 一筆 Inventory 實體到孤兒 inventory 表，那張表已隨 V72 移除。
+        // 🔴 不沿用 static 的 testSkuId：它會被較早順序的 @Transactional 測試重新指派並隨回滾消失。
+        seedLowStockSku("SKU-LEDGER-201-", 100);
 
+        // 🔴 斷言同時收緊：原本只驗 success 與 isArray()，**空台帳照樣通過**——
+        // DEF-066 讓台帳在生產環境上永遠是空的，而這個案例一路是綠的。
         mockMvc.perform(get(BASE_URL + "/inventory")
                         .param("page", "0")
                         .param("size", "50")
                         .with(csrf()))
                         .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.content").isArray());
+                .andExpect(jsonPath("$.data.content").isArray())
+                .andExpect(jsonPath("$.data.content").isNotEmpty())
+                .andExpect(jsonPath("$.data.content[0].quantity").isNumber())
+                .andExpect(jsonPath("$.data.content[0].skuCode").isNotEmpty());
 
         System.out.println("✅ IT-M16-201 PASSED");
     }
@@ -1036,16 +1018,16 @@ class M16ErpIntegrationTest {
                 "INSERT INTO product_inventory (sku_id, total_qty, reserved_qty, low_stock_threshold, updated_at) VALUES (?, ?, ?, ?, NOW())",
                 testSku, 100, 0, 10
         );
-        jdbcTemplate.update(
-                "INSERT INTO inventory (id, sku_id, tenant_id, total_qty, reserved_qty, available_qty, safety_stock, reorder_point, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())",
-                UUID.randomUUID(), testSku, testTenantId, 100, 0, 100, 10, 20
-        );
 
         mockMvc.perform(get(BASE_URL + "/inventory/" + testSku)
                         .with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.skuId").value(testSku.toString()));
+                .andExpect(jsonPath("$.data.skuId").value(testSku.toString()))
+                // Sprint 116（DEF-066）：數量欄位必須真的有值，否則「查得到一筆空殼」也會過
+                .andExpect(jsonPath("$.data.quantity").value(100))
+                .andExpect(jsonPath("$.data.availableQuantity").value(100))
+                .andExpect(jsonPath("$.data.skuCode").isNotEmpty());
 
         System.out.println("✅ IT-M16-202 PASSED");
     }
@@ -1067,24 +1049,18 @@ class M16ErpIntegrationTest {
     @Order(204)
     @DisplayName("IT-M16-204: 低庫存警報-有空壓警示")
     void getLowStockAlerts_withAlerts_returnsAlerts() throws Exception {
-        // 建立低庫存記錄
-        if (testSkuId != null) {
-            Inventory lowStockInventory = Inventory.builder()
-                    .tenantId(testTenantId)
-                    .skuId(testSkuId)
-                    .totalQty(5) // 低於 safetyStock(10)
-                    .reservedQty(0)
-                    .availableQty(5)
-                    .safetyStock(10)
-                    .reorderPoint(20)
-                    .build();
-            inventoryRepository.save(lowStockInventory);
-        }
+        // Sprint 116（DEF-066）：低庫存改由真實庫存表造成，並種本測試自己的 SKU
+        // （static 的 testSkuId 會被較早順序的 @Transactional 測試重新指派並隨回滾消失）
+        seedLowStockSku("SKU-LEDGER-204-", 5);
 
+        // 🔴 斷言收緊：原本只驗 success，連「預警清單是空的」都會通過
         mockMvc.perform(get(BASE_URL + "/inventory/alerts")
                         .with(csrf()))
                         .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").isNotEmpty())
+                .andExpect(jsonPath("$.data[0].currentQuantity").value(5))
+                .andExpect(jsonPath("$.data[0].severity").value("CRITICAL"));
 
         System.out.println("✅ IT-M16-204 PASSED");
     }
@@ -1343,5 +1319,25 @@ class M16ErpIntegrationTest {
                         @Autowired ListingRepository listingRepo) {
         // 清理測試資料 (由 @Transactional 管理)
         System.out.println("✅ M16 ERP IT Tests completed");
+    }
+
+    /**
+     * 種一個屬於 testTenantId 的 SKU 與 product_inventory 列（門檻固定 10），回傳 skuId。
+     *
+     * <p>Sprint 116（DEF-066）：庫存台帳的資料來源是 product_inventory，不再是孤兒的 inventory 表。
+     * 刻意每個案例自己種：static 的 {@code testSkuId} 會被較早順序的測試重新指派，
+     * 而那些測試在 {@code @Transactional} 下回滾後，該 SKU 的列已不存在。
+     */
+    private UUID seedLowStockSku(final String skuCodePrefix, final int totalQty) {
+        UUID skuId = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO product_skus (id, product_listing_id, sku_code, status, created_at, updated_at) "
+                        + "VALUES (?, ?, ?, 'ACTIVE', NOW(), NOW())",
+                skuId, testListingId, skuCodePrefix + System.nanoTime());
+        jdbcTemplate.update(
+                "INSERT INTO product_inventory (sku_id, total_qty, reserved_qty, low_stock_threshold, updated_at) "
+                        + "VALUES (?, ?, 0, 10, NOW())",
+                skuId, totalQty);
+        return skuId;
     }
 }

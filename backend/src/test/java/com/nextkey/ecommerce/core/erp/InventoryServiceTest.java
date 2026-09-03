@@ -1,8 +1,12 @@
 package com.nextkey.ecommerce.core.erp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,31 +19,34 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 import com.nextkey.ecommerce.api.dto.erp.InventoryLedgerDto;
 import com.nextkey.ecommerce.api.dto.erp.LowStockAlertDto;
-import com.nextkey.ecommerce.domain.model.inventory.Inventory;
-import com.nextkey.ecommerce.domain.repository.InventoryRepository;
+import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository;
+import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository.InventoryLedgerRow;
 import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 /**
- * {@link InventoryService} 單元測試（Sprint 72 US-001 + US-002）。
+ * {@link InventoryService} 單元測試（Sprint 72 US-001＋US-002；Sprint 116／DEF-066 改寫）。
  *
- * <p>比照 {@code M16ErpIntegrationTest}（IT-M16-201~205）業務情境涵蓋正常路徑；
- * 另含 US-002：{@code getInventoryBySku} 跨租戶讀取洩漏（已確認）的紅燈證明測試，
- * 修復後轉綠，並保留正向對照測試避免矯枉過正。
+ * <p>Sprint 116 起資料來源為 {@code product_inventory}，且「哪些列屬於本租戶」「可售量是否低於門檻」
+ * 都下沉到 SQL 的 JOIN 與 WHERE。mock 掉 Repository 的測試無從觀察那些條件——硬要驗只會變成
+ * 用固件回放自己寫的 stub（承 Sprint 103 對 {@code ProductInventoryServiceTest} 的同一判斷）。
+ * 租戶隔離、真實數量、低庫存篩選一律由 {@code M16ErpInventoryLedgerIntegrationTest} 以真實
+ * PostgreSQL 驗證（含 US-002 跨租戶洩漏的回歸案例）。
+ *
+ * <p>本檔因此只保留 mock 層級真正驗得到的東西：**DTO 對應**與**嚴重度／門檻的計算規則**。
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("InventoryService 單元測試（Sprint 72）")
+@DisplayName("InventoryService 單元測試（Sprint 72；Sprint 116 改寫）")
 class InventoryServiceTest {
 
     @Mock
-    private InventoryRepository inventoryRepository;
+    private ProductInventoryRepository productInventoryRepository;
 
     @Mock
     private StockMovementRepository stockMovementRepository;
@@ -48,7 +55,6 @@ class InventoryServiceTest {
     private InventoryService inventoryService;
 
     private final UUID tenantId = UUID.randomUUID();
-    private final UUID otherTenantId = UUID.randomUUID();
     private final UUID skuId = UUID.randomUUID();
 
     @BeforeEach
@@ -61,118 +67,108 @@ class InventoryServiceTest {
         TenantContext.clear();
     }
 
-    private Inventory inventoryOf(final UUID tid) {
-        return Inventory.builder()
-                .id(UUID.randomUUID())
-                .skuId(skuId)
-                .tenantId(tid)
-                .totalQty(100)
-                .reservedQty(10)
-                .availableQty(90)
-                .safetyStock(20)
-                .reorderPoint(30)
-                .skuCode("SKU-001")
-                .productName("Test Product")
-                .location("A-01")
-                .build();
+    /**
+     * 台帳投影的測試替身；只需回傳固定值，故用 mock 而非自訂實作類別。
+     *
+     * <p>🔴 呼叫端務必**先建好再放進 {@code thenReturn}**：本方法內部會對另一個 mock 做 stubbing，
+     * 若寫成 {@code when(repo.xxx()).thenReturn(List.of(rowOf(...)))}，外層的 {@code when(...)}
+     * 尚未完成就開始內層 stubbing，Mockito 會丟 {@code UnfinishedStubbingException}。
+     */
+    private InventoryLedgerRow rowOf(final int quantity, final int reserved, final Integer threshold) {
+        InventoryLedgerRow row = org.mockito.Mockito.mock(InventoryLedgerRow.class);
+        lenient().when(row.getSkuId()).thenReturn(skuId);
+        lenient().when(row.getSkuCode()).thenReturn("SKU-001");
+        lenient().when(row.getProductName()).thenReturn("測試商品");
+        lenient().when(row.getQuantity()).thenReturn(quantity);
+        lenient().when(row.getReservedQuantity()).thenReturn(reserved);
+        lenient().when(row.getAvailableQuantity()).thenReturn(quantity - reserved);
+        lenient().when(row.getLowStockThreshold()).thenReturn(threshold);
+        lenient().when(row.getUpdatedAt()).thenReturn(Instant.now());
+        return row;
     }
 
-    // ── getInventoryLedger ───────────────────────────────────────
-
     @Test
-    @DisplayName("getInventoryLedger：分頁依租戶過濾")
-    void getInventoryLedger_paginatedByTenant() {
-        Pageable pageable = PageRequest.of(0, 10);
-        Page<Inventory> page = new PageImpl<>(List.of(inventoryOf(tenantId)), pageable, 1);
-        when(inventoryRepository.findByTenantId(tenantId, pageable)).thenReturn(page);
+    @DisplayName("getInventoryLedger：投影完整對應到台帳 DTO（含 SKU 編號與品名）")
+    void getInventoryLedger_mapsProjectionToDto() {
+        Pageable pageable = PageRequest.of(0, 20);
+        InventoryLedgerRow row = rowOf(100, 30, 10);
+        when(productInventoryRepository.findLedgerByTenant(eq(tenantId), anyCollection(), anyCollection(),
+                eq(pageable))).thenReturn(new PageImpl<>(List.of(row)));
 
-        Page<InventoryLedgerDto> result = inventoryService.getInventoryLedger(pageable);
+        List<InventoryLedgerDto> result = inventoryService.getInventoryLedger(pageable).getContent();
 
-        assertThat(result.getTotalElements()).isEqualTo(1);
-        assertThat(result.getContent().get(0).getSkuId()).isEqualTo(skuId);
+        assertThat(result).hasSize(1);
+        InventoryLedgerDto dto = result.get(0);
+        assertThat(dto.getSkuId()).isEqualTo(skuId);
+        assertThat(dto.getQuantity()).isEqualTo(100);
+        assertThat(dto.getReservedQuantity()).isEqualTo(30);
+        assertThat(dto.getAvailableQuantity()).isEqualTo(70);
+        // 台帳沒有品名與 SKU 編號就只是一排 UUID
+        assertThat(dto.getSkuCode()).isEqualTo("SKU-001");
+        assertThat(dto.getProductName()).isEqualTo("測試商品");
     }
 
-    // ── getInventoryBySku：正常路徑 ──────────────────────────────
-
     @Test
-    @DisplayName("getInventoryBySku：本租戶 SKU 存在時回傳含異動記錄的詳情")
-    void getInventoryBySku_ownTenant_returnsDetailWithMovements() {
-        when(inventoryRepository.findBySkuIdAndTenantId(skuId, tenantId))
-                .thenReturn(Optional.of(inventoryOf(tenantId)));
+    @DisplayName("getInventoryBySku：查得到時附上該 SKU 的異動記錄")
+    void getInventoryBySku_includesMovements() {
+        InventoryLedgerRow row = rowOf(80, 5, 10);
+        when(productInventoryRepository.findLedgerRowBySkuIdAndTenant(eq(skuId), eq(tenantId),
+                anyCollection(), anyCollection())).thenReturn(Optional.of(row));
         when(stockMovementRepository.findBySkuIdAndTenantIdOrderByCreatedAtDesc(skuId, tenantId))
                 .thenReturn(List.of());
 
-        InventoryService.InventoryDetailDto result = inventoryService.getInventoryBySku(skuId);
+        InventoryService.InventoryDetailDto detail = inventoryService.getInventoryBySku(skuId);
 
-        assertThat(result).isNotNull();
-        assertThat(result.getSkuId()).isEqualTo(skuId);
-        assertThat(result.getQuantity()).isEqualTo(100);
-        assertThat(result.getAvailableQuantity()).isEqualTo(90);
-        assertThat(result.getMovements()).isEmpty();
+        assertThat(detail).isNotNull();
+        assertThat(detail.getQuantity()).isEqualTo(80);
+        assertThat(detail.getAvailableQuantity()).isEqualTo(75);
+        assertThat(detail.getMovements()).isEmpty();
     }
 
     @Test
-    @DisplayName("getInventoryBySku：SKU 不存在時回傳 null")
+    @DisplayName("getInventoryBySku：查無資料時回傳 null（他租戶的 SKU 由 SQL 的 tenant 條件擋掉）")
     void getInventoryBySku_notFound_returnsNull() {
-        when(inventoryRepository.findBySkuIdAndTenantId(skuId, tenantId)).thenReturn(Optional.empty());
+        when(productInventoryRepository.findLedgerRowBySkuIdAndTenant(eq(skuId), eq(tenantId),
+                anyCollection(), anyCollection())).thenReturn(Optional.empty());
 
-        InventoryService.InventoryDetailDto result = inventoryService.getInventoryBySku(skuId);
-
-        assertThat(result).isNull();
-    }
-
-    // ── US-002（已確認）：跨租戶讀取洩漏 ─────────────────────────
-
-    @Test
-    @DisplayName("US-002：getInventoryBySku 對他租戶的 SKU 不得洩漏庫存資料（修復前為紅燈，修復後轉綠）")
-    void getInventoryBySku_crossTenantSku_mustNotLeakOtherTenantData() {
-        // skuId 實際屬於 otherTenantId，但呼叫端目前租戶為 tenantId（並非其擁有者）。
-        // 修復前：InventoryService.getInventoryBySku 呼叫 InventoryRepository.findBySkuId(skuId)，
-        //         完全未帶入 tenantId 過濾，任何租戶皆可讀到 otherTenantId 的庫存資料
-        //         → 本測試（斷言不得洩漏）於修復前執行會失敗，證明漏洞存在（已實測驗證，見 Sprint 72 紀錄）。
-        // 修復後：Service 改用 findBySkuIdAndTenantId(skuId, tenantId)，跨租戶查詢查無結果 → 回傳 null。
-        when(inventoryRepository.findBySkuIdAndTenantId(skuId, tenantId)).thenReturn(Optional.empty());
-
-        InventoryService.InventoryDetailDto result = inventoryService.getInventoryBySku(skuId);
-
-        assertThat(result)
-                .as("跨租戶查詢不得洩漏他租戶的庫存資料")
-                .isNull();
-    }
-
-    // ── getLowStockAlerts：嚴重度判定 ────────────────────────────
-
-    @Test
-    @DisplayName("getLowStockAlerts：可用量 <= 安全庫存的一半 → CRITICAL")
-    void getLowStockAlerts_belowHalfSafetyStock_returnsCritical() {
-        Inventory low = Inventory.builder()
-                .skuId(skuId)
-                .tenantId(tenantId)
-                .availableQty(5)
-                .safetyStock(20) // 一半為 10，5 <= 10 → CRITICAL
-                .build();
-        when(inventoryRepository.findLowStockItemsByTenant(tenantId)).thenReturn(List.of(low));
-
-        List<LowStockAlertDto> result = inventoryService.getLowStockAlerts();
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getSeverity()).isEqualTo("CRITICAL");
+        assertThat(inventoryService.getInventoryBySku(skuId)).isNull();
     }
 
     @Test
-    @DisplayName("getLowStockAlerts：可用量介於安全庫存一半與安全庫存之間 → LOW")
-    void getLowStockAlerts_belowSafetyStockAboveHalf_returnsLow() {
-        Inventory low = Inventory.builder()
-                .skuId(skuId)
-                .tenantId(tenantId)
-                .availableQty(15)
-                .safetyStock(20) // 一半為 10，15 > 10 → LOW
-                .build();
-        when(inventoryRepository.findLowStockItemsByTenant(tenantId)).thenReturn(List.of(low));
+    @DisplayName("getLowStockAlerts：可售量 <= 門檻一半 → CRITICAL")
+    void getLowStockAlerts_critical() {
+        InventoryLedgerRow row = rowOf(4, 0, 10); // 可售 4 <= 10 * 0.5
+        when(productInventoryRepository.findLowStockByTenant(eq(tenantId), anyCollection(), anyCollection()))
+                .thenReturn(List.of(row));
 
-        List<LowStockAlertDto> result = inventoryService.getLowStockAlerts();
+        List<LowStockAlertDto> alerts = inventoryService.getLowStockAlerts();
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getSeverity()).isEqualTo("LOW");
+        assertThat(alerts).hasSize(1);
+        assertThat(alerts.get(0).getSeverity()).isEqualTo("CRITICAL");
+        assertThat(alerts.get(0).getCurrentQuantity()).isEqualTo(4);
+        assertThat(alerts.get(0).getLowStockThreshold()).isEqualTo(10);
+    }
+
+    @Test
+    @DisplayName("getLowStockAlerts：可售量介於門檻一半與門檻之間 → LOW")
+    void getLowStockAlerts_low() {
+        InventoryLedgerRow row = rowOf(8, 0, 10); // 5 < 8 <= 10
+        when(productInventoryRepository.findLowStockByTenant(eq(tenantId), anyCollection(), anyCollection()))
+                .thenReturn(List.of(row));
+
+        assertThat(inventoryService.getLowStockAlerts().get(0).getSeverity()).isEqualTo("LOW");
+    }
+
+    @Test
+    @DisplayName("getLowStockAlerts：門檻缺值時退回預設 10，不得因 null 而炸掉")
+    void getLowStockAlerts_nullThreshold_fallsBackToDefault() {
+        InventoryLedgerRow row = rowOf(3, 0, null);
+        when(productInventoryRepository.findLowStockByTenant(eq(tenantId), anyCollection(), anyCollection()))
+                .thenReturn(List.of(row));
+
+        LowStockAlertDto alert = inventoryService.getLowStockAlerts().get(0);
+
+        assertThat(alert.getLowStockThreshold()).isEqualTo(10);
+        assertThat(alert.getSeverity()).isEqualTo("CRITICAL");
     }
 }

@@ -50,11 +50,13 @@ export default function InventoryDetailPage() {
     }
   }
 
-  const getStockStatus = (available: number, reorderPoint: number, safetyStock: number) => {
-    if (available <= safetyStock) {
+  // Sprint 116（DEF-066）：product_inventory 只有單一低庫存門檻，沒有補貨點／安全庫存之分。
+  // 判準與列表頁、後端的 severity 一致：低於門檻一半為危險，低於門檻為低庫存。
+  const getStockStatus = (available: number, threshold: number) => {
+    if (available <= threshold * 0.5) {
       return { variant: 'destructive' as const, label: '危險', color: 'text-red-600 bg-red-100' }
     }
-    if (available <= reorderPoint) {
+    if (available <= threshold) {
       return { variant: 'warning' as const, label: '低庫存', color: 'text-yellow-600 bg-yellow-100' }
     }
     return { variant: 'success' as const, label: '正常', color: 'text-green-600 bg-green-100' }
@@ -89,7 +91,7 @@ export default function InventoryDetailPage() {
     )
   }
 
-  const status = getStockStatus(inventory.availableQuantity, inventory.reorderPoint, inventory.safetyStock)
+  const status = getStockStatus(inventory.availableQuantity, inventory.lowStockThreshold)
 
   return (
     <div className="space-y-6">
@@ -133,29 +135,23 @@ export default function InventoryDetailPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
+          {/* Sprint 116（DEF-066）：資料來源改為 product_inventory 後只有單一低庫存門檻，
+              沒有存放位置／補貨點／安全庫存——那三欄過去也一直是空的（來源表沒有任何資料）。 */}
+          <div className="grid grid-cols-2 gap-4 mt-6">
             <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">存放位置</p>
-              <p className="font-medium">{inventory.location || '-'}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">補貨點</p>
-              <p className="font-medium">{inventory.reorderPoint}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">安全庫存</p>
-              <p className="font-medium">{inventory.safetyStock}</p>
+              <p className="text-sm text-muted-foreground">低庫存門檻</p>
+              <p className="font-medium">{inventory.lowStockThreshold}</p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4 mt-6">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">最後入庫</p>
-              <p className="font-medium">{formatDate(inventory.lastInboundDate)}</p>
+              <p className="font-medium">{inventory.lastInboundDate ? formatDate(inventory.lastInboundDate) : '-'}</p>
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">最後出庫</p>
-              <p className="font-medium">{formatDate(inventory.lastOutboundDate)}</p>
+              <p className="font-medium">{inventory.lastOutboundDate ? formatDate(inventory.lastOutboundDate) : '-'}</p>
             </div>
           </div>
         </CardContent>

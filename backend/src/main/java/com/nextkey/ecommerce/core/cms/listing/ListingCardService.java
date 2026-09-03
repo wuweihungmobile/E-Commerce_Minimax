@@ -8,10 +8,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.M15Dto;
-import com.nextkey.ecommerce.domain.model.inventory.Inventory;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
-import com.nextkey.ecommerce.domain.repository.InventoryRepository;
+import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
@@ -33,7 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 public class ListingCardService {
 
     private final ListingRepository listingRepository;
-    private final InventoryRepository inventoryRepository;
+    private final ProductInventoryRepository productInventoryRepository;
     @SuppressWarnings("unused")
     private final RoomRepository roomRepository;
     private final RoomCalendarRepository roomCalendarRepository;
@@ -62,17 +61,17 @@ public class ListingCardService {
      */
     private M15Dto.ListingCardResponse buildProductCard(Listing listing) {
         // 查詢此 listing 的庫存
+        // 🔴 Sprint 116（DEF-066）：改讀 product_inventory。修復前讀的是 inventory 表——
+        // 那張表沒有任何生產程式碼寫入，因此本方法在生產環境上恆回 inStock=false／availableQty=null，
+        // 亦即每張商品卡都顯示為無庫存（目前前端尚未渲染該欄位，屬潛在影響）。
         Integer availableQty = null;
         Boolean inStock = false;
 
-        var inventories = inventoryRepository.findByListingId(listing.getId());
-        if (!inventories.isEmpty()) {
-            int totalQty = inventories.stream()
-                    .filter(i -> i.getAvailableQty() != null)
-                    .mapToInt(Inventory::getAvailableQty)
-                    .sum();
-            availableQty = totalQty;
-            inStock = totalQty > 0;
+        // 區分「沒有任何 SKU 啟用庫存追蹤」與「追蹤了但可售為 0」：前者維持既有語意不宣告缺貨
+        if (productInventoryRepository.existsByListingId(listing.getId())) {
+            Integer sum = productInventoryRepository.sumAvailableQtyByListingId(listing.getId());
+            availableQty = sum != null ? sum : 0;
+            inStock = availableQty > 0;
         }
 
         // 目前價格（取第一個庫存的有效價格或使用掛牌價）

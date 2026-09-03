@@ -1,7 +1,11 @@
 package com.nextkey.ecommerce.domain.model.inventory;
 
 import java.time.Instant;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -145,19 +149,38 @@ public class StockMovement {
     }
 
     /**
+     * 增加庫存方向的異動型別（PRD §6.7.4 方向欄為正向者）。
+     *
+     * <p>Sprint 116（DEF-066）抽為常數：庫存台帳要以 SQL 算「最近一次入庫時間」，
+     * 若在查詢裡再寫一份型別清單，就會多出一組會各自演化的重複定義——DEF-063 正是這樣來的。
+     * 這裡是唯一事實來源，{@link #isInbound()} 與台帳查詢都由它推導。
+     */
+    public static final Set<MovementType> INBOUND_TYPES = Collections.unmodifiableSet(EnumSet.of(
+            MovementType.INBOUND,
+            MovementType.TRANSFER_IN,
+            MovementType.ADJUST_PLUS,
+            MovementType.RETURN));
+
+    /** 減少庫存方向的異動型別（PRD §6.7.4 方向欄為負向者）。 */
+    public static final Set<MovementType> OUTBOUND_TYPES = Collections.unmodifiableSet(EnumSet.of(
+            MovementType.OUTBOUND,
+            MovementType.TRANSFER_OUT,
+            MovementType.ADJUST_MINUS,
+            MovementType.SCRAP));
+
+    /** 型別名稱集合，供原生查詢的 {@code IN (...)} 參數使用。 */
+    public static Set<String> typeNames(final Set<MovementType> types) {
+        return types.stream().map(Enum::name).collect(Collectors.toUnmodifiableSet());
+    }
+
+    /**
      * 異動方向判定
      */
     public boolean isInbound() {
-        return this.movementType == MovementType.INBOUND
-            || this.movementType == MovementType.TRANSFER_IN
-            || this.movementType == MovementType.ADJUST_PLUS
-            || this.movementType == MovementType.RETURN;
+        return INBOUND_TYPES.contains(this.movementType);
     }
 
     public boolean isOutbound() {
-        return this.movementType == MovementType.OUTBOUND
-            || this.movementType == MovementType.TRANSFER_OUT
-            || this.movementType == MovementType.ADJUST_MINUS
-            || this.movementType == MovementType.SCRAP;
+        return OUTBOUND_TYPES.contains(this.movementType);
     }
 }

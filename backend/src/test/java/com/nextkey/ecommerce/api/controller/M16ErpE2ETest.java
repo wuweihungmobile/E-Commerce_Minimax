@@ -78,10 +78,6 @@ class M16ErpE2ETest {
 
     @SuppressWarnings("unused")
     @Autowired
-    private InventoryRepository inventoryRepository;
-
-    @SuppressWarnings("unused")
-    @Autowired
     private PurchaseOrderRepository purchaseOrderRepository;
 
     @SuppressWarnings("unused")
@@ -167,12 +163,9 @@ class M16ErpE2ETest {
                 testSkuId, 100, 0, 10
         );
 
-        // 建立初始庫存 (inventory table)
-        UUID inventoryId = UUID.randomUUID();
-        jdbcTemplate.update(
-                "INSERT INTO inventory (id, sku_id, tenant_id, total_qty, reserved_qty, available_qty, safety_stock, reorder_point, version, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())",
-                inventoryId, testSkuId, testTenantId, 100, 0, 100, 10, 20
-        );
+        // Sprint 116（DEF-066）：原本這裡還會再種一筆 inventory 表——因為 ERP 台帳端點讀的是那張、
+        // 庫存異動端點寫的是 product_inventory。要種兩張表才測得起來，本身就是缺陷的徵兆。
+        // 台帳已改讀 product_inventory，孤兒表連同其 entity 一併移除（V72）。
 
         System.out.println("✅ E2E M16 Test data setup: tenant=" + testTenantId + ", skuId=" + testSkuId);
     }
@@ -240,7 +233,6 @@ class M16ErpE2ETest {
     static void cleanup(@Autowired TenantRepository tenantRepo,
                         @Autowired UserRepository userRepo,
                         @Autowired ListingRepository listingRepo,
-                        @Autowired InventoryRepository inventoryRepo,
                         @Autowired ProductInventoryRepository productInventoryRepo,
                         @Autowired SupplierRepository supplierRepo,
                         @Autowired PurchaseOrderRepository purchaseOrderRepo,
@@ -250,7 +242,6 @@ class M16ErpE2ETest {
             supplierRepo.deleteAll(supplierRepo.findByTenantId(testTenantId));
             purchaseOrderRepo.deleteAll(purchaseOrderRepo.findByTenantId(testTenantId));
             productInventoryRepo.deleteAll(productInventoryRepo.findAll());
-            inventoryRepo.deleteAll(inventoryRepo.findByTenantId(testTenantId));
             // 先刪 JDBC 插入的 product_skus（引用 listings，否則刪 listing 觸發 FK violation）。
             // DEF-017 修復後 listing 有正確 tenant_id → findByTenantId 找得到並刪，故須先清其 SKU。
             jdbcTemplate.update(

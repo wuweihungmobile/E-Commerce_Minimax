@@ -3,6 +3,12 @@ import { API_ENDPOINTS_ERP } from '@/lib/api_erp'
 
 // ========== Types ==========
 
+/**
+ * 庫存台帳一列（PRD §6.7.2）。
+ *
+ * Sprint 116（DEF-066）：後端資料來源由孤兒的 `inventory` 表改為真正有數字的 `product_inventory`。
+ * 隨之移除 `location`——新來源沒有儲位資料，留著只會是永遠顯示「-」的欄位。
+ */
 export interface InventoryLedgerDto {
   skuId: string
   skuCode: string
@@ -10,9 +16,10 @@ export interface InventoryLedgerDto {
   quantity: number
   reservedQuantity: number
   availableQuantity: number
-  location: string
-  lastInboundDate: string
-  lastOutboundDate: string
+  lowStockThreshold: number
+  lastInboundDate: string | null
+  lastOutboundDate: string | null
+  updatedAt: string
 }
 
 export interface InventoryDetailDto {
@@ -22,11 +29,9 @@ export interface InventoryDetailDto {
   quantity: number
   reservedQuantity: number
   availableQuantity: number
-  location: string
-  reorderPoint: number
-  safetyStock: number
-  lastInboundDate: string
-  lastOutboundDate: string
+  lowStockThreshold: number
+  lastInboundDate: string | null
+  lastOutboundDate: string | null
   movements: StockMovementSummary[]
 }
 
@@ -39,13 +44,17 @@ export interface StockMovementSummary {
   createdAt: string
 }
 
+/**
+ * 低庫存預警。Sprint 116（DEF-066）：`product_inventory` 只有單一的低庫存門檻，
+ * 沒有「補貨點」與「安全庫存」之分——硬填兩欄會讓畫面看起來有兩種門檻、實際是同一個數字。
+ */
 export interface LowStockAlertDto {
   skuId: string
   skuCode: string
   productName: string
   currentQuantity: number
-  reorderPoint: number
-  safetyStock: number
+  lowStockThreshold: number
+  severity: 'LOW' | 'CRITICAL'
 }
 
 interface ApiResponse<T> {

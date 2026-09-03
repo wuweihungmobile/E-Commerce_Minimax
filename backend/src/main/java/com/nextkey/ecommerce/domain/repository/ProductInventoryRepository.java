@@ -1,8 +1,13 @@
 package com.nextkey.ecommerce.domain.repository;
 
+import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -173,4 +178,116 @@ public interface ProductInventoryRepository extends JpaRepository<ProductInvento
     @Query(value = "SELECT COALESCE(reserved_qty, 0) FROM product_inventory WHERE sku_id = :skuId",
             nativeQuery = true)
     Integer findReservedQtyBySkuId(@Param("skuId") UUID skuId);
+
+    /**
+     * 庫存台帳一列（Sprint 116，DEF-066）。
+     *
+     * <p>{@code product_inventory} 只有數量，SKU 編號與品名分別在 {@code product_skus} 與
+     * {@code listings}，租戶歸屬也只能經由 listing 取得（該表沒有 tenant_id）。
+     * 用投影一次撈齊，避免台帳每一列都往回查一次商品。
+     */
+    interface InventoryLedgerRow {
+        UUID getSkuId();
+
+        String getSkuCode();
+
+        String getProductName();
+
+        Integer getQuantity();
+
+        Integer getReservedQuantity();
+
+        Integer getAvailableQuantity();
+
+        Integer getLowStockThreshold();
+
+        Instant getLastInboundDate();
+
+        Instant getLastOutboundDate();
+
+        Instant getUpdatedAt();
+    }
+
+    /**
+     * 台帳查詢的共用 SELECT。
+     *
+     * <p>🔴 可售量刻意**自行相減**而非讀 {@code available_qty}：該欄在 Flyway schema 是
+     * {@code GENERATED ALWAYS AS (total_qty - reserved_qty) STORED}，但整合測試的資料庫由
+     * ddl-auto 建立，同名欄位只是普通可空欄位、且因為實體標了 {@code insertable=false} 而**永遠為 NULL**。
+     * 靠它會得到「生產正確、測試全空」——正是本 Sprint 在修的同一類陷阱，不要再引入一次。
+     */
+    String LEDGER_SELECT = """
+            SELECT pi.sku_id              AS skuId,
+                   s.sku_code             AS skuCode,
+                   l.title                AS productName,
+                   pi.total_qty           AS quantity,
+                   pi.reserved_qty        AS reservedQuantity,
+                   (pi.total_qty - pi.reserved_qty) AS availableQuantity,
+                   pi.low_stock_threshold AS lowStockThreshold,
+                   (SELECT MAX(m.created_at) FROM stock_movements m
+                     WHERE m.sku_id = pi.sku_id AND m.movement_type IN (:inboundTypes))  AS lastInboundDate,
+                   (SELECT MAX(m.created_at) FROM stock_movements m
+                     WHERE m.sku_id = pi.sku_id AND m.movement_type IN (:outboundTypes)) AS lastOutboundDate,
+                   pi.updated_at          AS updatedAt
+              FROM product_inventory pi
+              JOIN product_skus s ON s.id = pi.sku_id
+              JOIN listings l     ON l.id = s.product_listing_id
+            """;
+
+    /**
+     * 租戶的庫存台帳（Sprint 116，DEF-066）。
+     *
+     * <p>🔴 修復前 ERP 台帳讀的是 {@code inventory} 表——**那張表沒有任何生產程式碼寫入**
+     * （`V50` 檔頭自承是為了讓 ddl-auto=validate 過關而補建的空殼），於是生產環境的庫存台帳永遠空白，
+     * 而真正的數字一直在本表。既有的 M16 整合測試自己 `INSERT INTO inventory` 再查，所以測試全綠。
+     *
+     * <p>異動型別清單由呼叫端從 {@code StockMovement.INBOUND_TYPES}／{@code OUTBOUND_TYPES} 傳入，
+     * 不在 SQL 裡另寫一份——避免又生出一組會各自演化的重複定義。
+     */
+    @Query(value = LEDGER_SELECT + " WHERE l.tenant_id = :tenantId",
+            countQuery = """
+                    SELECT COUNT(*) FROM product_inventory pi
+                      JOIN product_skus s ON s.id = pi.sku_id
+                      JOIN listings l     ON l.id = s.product_listing_id
+                     WHERE l.tenant_id = :tenantId
+                    """,
+            nativeQuery = true)
+    Page<InventoryLedgerRow> findLedgerByTenant(@Param("tenantId") UUID tenantId,
+            @Param("inboundTypes") Collection<String> inboundTypes,
+            @Param("outboundTypes") Collection<String> outboundTypes,
+            Pageable pageable);
+
+    /** 單一 SKU 的台帳列；租戶不符時回空（擁有權檢查下沉到 WHERE，承 DEF-026 的租戶隔離修復）。 */
+    @Query(value = LEDGER_SELECT + " WHERE l.tenant_id = :tenantId AND pi.sku_id = :skuId",
+            nativeQuery = true)
+    Optional<InventoryLedgerRow> findLedgerRowBySkuIdAndTenant(@Param("skuId") UUID skuId,
+            @Param("tenantId") UUID tenantId,
+            @Param("inboundTypes") Collection<String> inboundTypes,
+            @Param("outboundTypes") Collection<String> outboundTypes);
+
+    /** 可售量已達低庫存門檻的列（Sprint 116，DEF-066）。 */
+    @Query(value = LEDGER_SELECT
+            + " WHERE l.tenant_id = :tenantId AND (pi.total_qty - pi.reserved_qty) <= pi.low_stock_threshold",
+            nativeQuery = true)
+    List<InventoryLedgerRow> findLowStockByTenant(@Param("tenantId") UUID tenantId,
+            @Param("inboundTypes") Collection<String> inboundTypes,
+            @Param("outboundTypes") Collection<String> outboundTypes);
+
+    /** 某個 listing 底下所有 SKU 的可售量合計（賣場商品卡用；無庫存列的 SKU 不計入）。 */
+    @Query(value = """
+            SELECT COALESCE(SUM(pi.total_qty - pi.reserved_qty), 0)
+              FROM product_inventory pi
+              JOIN product_skus s ON s.id = pi.sku_id
+             WHERE s.product_listing_id = :listingId
+            """, nativeQuery = true)
+    Integer sumAvailableQtyByListingId(@Param("listingId") UUID listingId);
+
+    /** 某個 listing 底下是否有任何一個 SKU 建立了庫存列（用以區分「無庫存」與「未啟用庫存追蹤」）。 */
+    @Query(value = """
+            SELECT EXISTS (
+                SELECT 1 FROM product_inventory pi
+                  JOIN product_skus s ON s.id = pi.sku_id
+                 WHERE s.product_listing_id = :listingId)
+            """, nativeQuery = true)
+    boolean existsByListingId(@Param("listingId") UUID listingId);
 }

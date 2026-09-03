@@ -267,7 +267,7 @@ class M16ErpInventoryConcurrencyIntegrationTest {
         UUID skuId = givenSkuWithInventory(0, 0);
 
         txTemplate.executeWithoutResult(status ->
-                stockMovementService.createManualMovement(movementOf(skuId, "ADJUSTMENT", 5), userId));
+                stockMovementService.createManualMovement(movementOf(skuId, "ADJUST_PLUS", 5), userId));
 
         assertThat(totalQtyOf(skuId))
                 .as("這一條不含併發；它一失敗就代表問題不在競態，而在寫入路徑本身")
@@ -281,7 +281,7 @@ class M16ErpInventoryConcurrencyIntegrationTest {
         UUID skuId = givenSkuWithInventory(0, 0);
 
         RaceResult result = race(() ->
-                stockMovementService.createManualMovement(movementOf(skuId, "ADJUSTMENT", 1), userId));
+                stockMovementService.createManualMovement(movementOf(skuId, "ADJUST_PLUS", 1), userId));
 
         assertThat(result.unexpectedFailures())
                 .as("後台盤點併發時的樂觀鎖衝突會變成操作員看到的 500，且該筆異動整個消失。本次結果：%s", result)
@@ -301,7 +301,7 @@ class M16ErpInventoryConcurrencyIntegrationTest {
         UUID skuId = givenSkuWithInventory(3, 0);
 
         RaceResult result = race(() ->
-                stockMovementService.createManualMovement(movementOf(skuId, "DAMAGE", 1), userId));
+                stockMovementService.createManualMovement(movementOf(skuId, "ADJUST_MINUS", 1), userId));
 
         assertThat(result.unexpectedFailures())
                 .as("扣減失敗必須是語意明確的庫存不足；技術性例外會讓操作員無從判斷是否已扣。本次結果：%s", result)
@@ -320,7 +320,7 @@ class M16ErpInventoryConcurrencyIntegrationTest {
         UUID skuId = givenSkuWithInventory(10, 4);
 
         txTemplate.executeWithoutResult(status ->
-                stockMovementService.createManualMovement(movementOf(skuId, "DAMAGE", 3), userId));
+                stockMovementService.createManualMovement(movementOf(skuId, "ADJUST_MINUS", 3), userId));
 
         assertThat(totalQtyOf(skuId))
                 .as("報廢 3 件，總量 10 → 7")

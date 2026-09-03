@@ -75,13 +75,22 @@ public class StockMovementService {
                     String.format("Invalid movement type: %s", request.getMovementType()));
         }
 
-        // 驗證不允許的手動類型
-        if (movementType == StockMovement.MovementType.PURCHASE_RECEIPT
-                || movementType == StockMovement.MovementType.SALE
-                || movementType == StockMovement.MovementType.RESERVATION
+        // 驗證不允許的手動類型：這四型必須由採購單／訂單流程產生，手動建立會讓流水帳與來源單據脫鉤
+        if (movementType == StockMovement.MovementType.INBOUND
+                || movementType == StockMovement.MovementType.OUTBOUND
+                || movementType == StockMovement.MovementType.RESERVE
                 || movementType == StockMovement.MovementType.RELEASE) {
             throw new BusinessException(ErrorCode.E_7005,
-                    "Manual movement cannot use PURCHASE_RECEIPT/SALE/RESERVATION/RELEASE types");
+                    "Manual movement cannot use INBOUND/OUTBOUND/RESERVE/RELEASE types");
+        }
+
+        // RETURN 的庫存語意 PRD §6.7.4 未定義（屬 DEF-044 業務決策）。Sprint 114 之前它可以被解析、
+        // 會寫下一筆 isInbound() 為真的流水帳，但 switch 落到 default 使庫存文風不動——帳面上退了貨、
+        // 庫存卻沒回補，且沒有任何錯誤。在該項拍板前明確拒絕，不留這條靜默 no-op。
+        if (movementType == StockMovement.MovementType.RETURN) {
+            throw new BusinessException(ErrorCode.E_7005,
+                    "RETURN movement is not available: its inventory semantics are undefined "
+                            + "until the restock-on-refund decision (DEF-044) is made");
         }
 
         int quantity = request.getQuantity();
@@ -128,13 +137,13 @@ public class StockMovementService {
     private int applyMovementType(final UUID skuId, final StockMovement.MovementType movementType,
             final int quantity) {
         switch (movementType) {
-            case ADJUSTMENT:
+            case ADJUST_PLUS:
             case TRANSFER_IN:
                 productInventoryRepository.increaseTotalQty(skuId, quantity);
                 return quantity;
-            case DAMAGE:
+            case ADJUST_MINUS:
             case TRANSFER_OUT:
-            case THEFT:
+            case SCRAP:
                 // 庫存列的存在性已在上方 findById 確認過，故 0 筆只可能是總量不足
                 if (productInventoryRepository.decreaseTotalQtyIfSufficient(skuId, quantity) == 0) {
                     throw new BusinessException(ErrorCode.E_7004,

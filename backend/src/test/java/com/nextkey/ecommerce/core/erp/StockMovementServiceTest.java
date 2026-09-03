@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -112,7 +113,7 @@ class StockMovementServiceTest {
 
         StockMovementRequest request = StockMovementRequest.builder()
                 .skuId(skuId)
-                .movementType("ADJUSTMENT")
+                .movementType("ADJUST_PLUS")
                 .quantity(10)
                 .build();
 
@@ -128,7 +129,7 @@ class StockMovementServiceTest {
 
         StockMovementRequest request = StockMovementRequest.builder()
                 .skuId(skuId)
-                .movementType("ADJUSTMENT")
+                .movementType("ADJUST_PLUS")
                 .quantity(10)
                 .build();
 
@@ -145,7 +146,7 @@ class StockMovementServiceTest {
 
         StockMovementRequest request = StockMovementRequest.builder()
                 .skuId(skuId)
-                .movementType("ADJUSTMENT")
+                .movementType("ADJUST_PLUS")
                 .quantity(10)
                 .build();
 
@@ -157,7 +158,7 @@ class StockMovementServiceTest {
     // ── createManualMovement：異動類型分支 ──────────────────────
 
     @Test
-    @DisplayName("createManualMovement：ADJUSTMENT 委派原子 UPDATE 增加庫存，異動記錄取回讀後的數量")
+    @DisplayName("createManualMovement：ADJUST_PLUS 委派原子 UPDATE 增加庫存，異動記錄取回讀後的數量")
     void createManualMovement_adjustment_increasesStock() {
         when(productInventoryRepository.findById(skuId)).thenReturn(Optional.of(inventoryOf(100)));
         when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
@@ -170,7 +171,7 @@ class StockMovementServiceTest {
 
         StockMovementRequest request = StockMovementRequest.builder()
                 .skuId(skuId)
-                .movementType("ADJUSTMENT")
+                .movementType("ADJUST_PLUS")
                 .quantity(20)
                 .notes("盤盈")
                 .build();
@@ -181,7 +182,7 @@ class StockMovementServiceTest {
         // before 由「回讀值 − 本次帶號變化量」反推，故 after 來自 DB、before 與之必然自洽
         assertThat(result.getBeforeTotalQty()).isEqualTo(100);
         assertThat(result.getAfterTotalQty()).isEqualTo(120);
-        assertThat(result.getMovementType()).isEqualTo("ADJUSTMENT");
+        assertThat(result.getMovementType()).isEqualTo("ADJUST_PLUS");
         assertThat(result.getTenantId()).isEqualTo(tenantId);
     }
 
@@ -196,7 +197,7 @@ class StockMovementServiceTest {
 
         StockMovementRequest request = StockMovementRequest.builder()
                 .skuId(skuId)
-                .movementType("DAMAGE")
+                .movementType("ADJUST_MINUS")
                 .quantity(10)
                 .build();
 
@@ -240,7 +241,7 @@ class StockMovementServiceTest {
 
         StockMovementRequest request = StockMovementRequest.builder()
                 .skuId(skuId)
-                .movementType("DAMAGE")
+                .movementType("ADJUST_MINUS")
                 .quantity(40)
                 .build();
 
@@ -251,8 +252,8 @@ class StockMovementServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = StockMovement.MovementType.class, names = {"DAMAGE", "TRANSFER_OUT", "THEFT"})
-    @DisplayName("createManualMovement：DAMAGE/TRANSFER_OUT/THEFT 庫存不足時拋出 E_7004")
+    @EnumSource(value = StockMovement.MovementType.class, names = {"ADJUST_MINUS", "TRANSFER_OUT", "SCRAP"})
+    @DisplayName("createManualMovement：ADJUST_MINUS/TRANSFER_OUT/SCRAP 庫存不足時拋出 E_7004")
     void createManualMovement_deductTypes_insufficientStock_throwsE7004(final StockMovement.MovementType type) {
         when(productInventoryRepository.findById(skuId)).thenReturn(Optional.of(inventoryOf(5)));
         when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
@@ -274,8 +275,8 @@ class StockMovementServiceTest {
 
     @ParameterizedTest
     @EnumSource(value = StockMovement.MovementType.class,
-            names = {"PURCHASE_RECEIPT", "SALE", "RESERVATION", "RELEASE"})
-    @DisplayName("createManualMovement：禁止手動使用 PURCHASE_RECEIPT/SALE/RESERVATION/RELEASE，拋出 E_7005")
+            names = {"INBOUND", "OUTBOUND", "RESERVE", "RELEASE"})
+    @DisplayName("createManualMovement：禁止手動使用 INBOUND/OUTBOUND/RESERVE/RELEASE，拋出 E_7005")
     void createManualMovement_forbiddenTypes_throwsE7005(final StockMovement.MovementType type) {
         when(productInventoryRepository.findById(skuId)).thenReturn(Optional.of(inventoryOf(100)));
         when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
@@ -289,6 +290,56 @@ class StockMovementServiceTest {
         assertThatThrownBy(() -> stockMovementService.createManualMovement(request, userId))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_7005));
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = StockMovement.MovementType.class,
+            names = {"ADJUST_PLUS", "ADJUST_MINUS", "TRANSFER_IN", "TRANSFER_OUT", "SCRAP"})
+    @DisplayName("createManualMovement：DEF-063 守衛——UI 手動異動下拉的每個型別都必須被接受")
+    void createManualMovement_everyTypeOfferedByUi_isAccepted(final StockMovement.MovementType type) {
+        // DEF-063：修復前後端各用一組枚舉、中間沒有轉換層（StockMovementRequest.movementType 是 String
+        // 直接進 valueOf()），前端下拉 7 個選項只有 TRANSFER_IN/TRANSFER_OUT 認得，其餘 5 個——包含表單
+        // 預設值——送出必定 E_7005。這裡列的 5 個型別即 frontend/src/app/dashboard/erp/stock-movements/new
+        // 的下拉內容；任一側改名而未同步，這個測試會紅，不會再讓使用者在畫面上先撞到。
+        when(productInventoryRepository.findById(skuId)).thenReturn(Optional.of(inventoryOf(100)));
+        when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+        // 扣減型才會用到；加項型不會，故 lenient 以免 strict stubs 把「這一輪沒用到」報成錯
+        lenient().when(productInventoryRepository.decreaseTotalQtyIfSufficient(skuId, 10)).thenReturn(1);
+        when(productInventoryRepository.findTotalQtyBySkuId(skuId)).thenReturn(100);
+        when(stockMovementRepository.save(any(StockMovement.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        StockMovementRequest request = StockMovementRequest.builder()
+                .skuId(skuId)
+                .movementType(type.name())
+                .quantity(10)
+                .build();
+
+        StockMovementDto result = stockMovementService.createManualMovement(request, userId);
+
+        assertThat(result.getMovementType()).isEqualTo(type.name());
+    }
+
+    @Test
+    @DisplayName("createManualMovement：RETURN 明確拒絕（DEF-044 拍板前不留靜默 no-op）")
+    void createManualMovement_returnType_throwsE7005() {
+        // 修復前 RETURN 可以解析、會寫下一筆 isInbound() 為真的流水帳，但 switch 落到 default，
+        // 庫存文風不動——帳面退了貨、庫存沒回補，而且沒有任何錯誤。
+        when(productInventoryRepository.findById(skuId)).thenReturn(Optional.of(inventoryOf(100)));
+        when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+
+        StockMovementRequest request = StockMovementRequest.builder()
+                .skuId(skuId)
+                .movementType("RETURN")
+                .quantity(10)
+                .build();
+
+        assertThatThrownBy(() -> stockMovementService.createManualMovement(request, userId))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_7005));
+
+        // 關鍵：拒絕必須發生在寫入之前，否則就只是把靜默 no-op 換個地方留著
+        verify(stockMovementRepository, never()).save(any(StockMovement.class));
+        verify(productInventoryRepository, never()).increaseTotalQty(any(UUID.class), anyInt());
     }
 
     @Test
@@ -317,7 +368,7 @@ class StockMovementServiceTest {
                 .id(UUID.randomUUID())
                 .tenantId(tenantId)
                 .skuId(skuId)
-                .movementType(StockMovement.MovementType.ADJUSTMENT)
+                .movementType(StockMovement.MovementType.ADJUST_PLUS)
                 .quantity(10)
                 .build();
         when(stockMovementRepository.findBySkuIdAndTenantIdOrderByCreatedAtDesc(skuId, tenantId))
@@ -337,7 +388,7 @@ class StockMovementServiceTest {
                 .id(UUID.randomUUID())
                 .tenantId(tenantId)
                 .skuId(skuId)
-                .movementType(StockMovement.MovementType.ADJUSTMENT)
+                .movementType(StockMovement.MovementType.ADJUST_PLUS)
                 .quantity(5)
                 .build();
         Page<StockMovement> page = new PageImpl<>(List.of(movement), pageable, 1);

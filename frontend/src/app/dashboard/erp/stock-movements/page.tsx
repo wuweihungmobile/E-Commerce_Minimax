@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import StockMovementService, {
+  INBOUND_MOVEMENT_TYPES,
   StockMovementDto,
   StockMovementType,
 } from '@/services/erp/stockMovement'
@@ -48,17 +49,22 @@ export default function StockMovementsPage() {
     }
   }
 
+  // 涵蓋 PRD §6.7.4 全部型別：列表除了手動異動，也會顯示採購收貨與訂單流程產生的流水帳，
+  // 少一型就會 fallback 成裸英文代碼（DEF-063 之前 INBOUND 以外的系統型別都是這樣顯示的）。
   const getMovementBadge = (type: StockMovementType) => {
-    const config: Record<StockMovementType, { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline' | 'warning'; label: string; color: string }> = {
-      INBOUND: { variant: 'success', label: '入庫', color: 'text-green-600' },
-      OUTBOUND: { variant: 'destructive', label: '出庫', color: 'text-red-600' },
-      ADJUST_PLUS: { variant: 'default', label: '調整(+)', color: 'text-blue-600' },
-      ADJUST_MINUS: { variant: 'warning', label: '調整(-)', color: 'text-yellow-600' },
-      TRANSFER_IN: { variant: 'success', label: '轉入', color: 'text-green-600' },
-      TRANSFER_OUT: { variant: 'destructive', label: '轉出', color: 'text-red-600' },
-      SCRAP: { variant: 'secondary', label: '報廢', color: 'text-gray-600' },
+    const config: Record<StockMovementType, { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline' | 'warning'; label: string }> = {
+      INBOUND: { variant: 'success', label: '採購入庫' },
+      OUTBOUND: { variant: 'destructive', label: '訂單出貨' },
+      RESERVE: { variant: 'outline', label: '訂單預留' },
+      RELEASE: { variant: 'outline', label: '取消釋放' },
+      ADJUST_PLUS: { variant: 'default', label: '盤盈調整' },
+      ADJUST_MINUS: { variant: 'warning', label: '盤虧調整' },
+      TRANSFER_IN: { variant: 'success', label: '調撥入庫' },
+      TRANSFER_OUT: { variant: 'destructive', label: '調撥出庫' },
+      SCRAP: { variant: 'secondary', label: '報廢出庫' },
+      RETURN: { variant: 'outline', label: '退貨' },
     }
-    const c = config[type] || { variant: 'outline', label: type, color: 'text-gray-600' }
+    const c = config[type] || { variant: 'outline' as const, label: type }
     return <Badge variant={c.variant}>{c.label}</Badge>
   }
 
@@ -127,9 +133,11 @@ export default function StockMovementsPage() {
                   <td className="px-4 py-3 text-sm text-gray-900">{movement.skuCode}</td>
                   <td className="px-4 py-3 text-sm text-gray-900">{movement.productName}</td>
                   <td className="px-4 py-3 text-sm text-right font-medium">
-                    {movement.movementType.endsWith('OUT') || movement.movementType === 'ADJUST_MINUS' || movement.movementType === 'SCRAP'
-                      ? <span className="text-red-600">-{movement.quantity}</span>
-                      : <span className="text-green-600">+{movement.quantity}</span>
+                    {/* 依 PRD §6.7.4 的方向表判定，不用字串比對：'OUTBOUND'.endsWith('OUT') 為 false，
+                        原本的寫法會把訂單出貨顯示成綠色 +N */}
+                    {INBOUND_MOVEMENT_TYPES.includes(movement.movementType)
+                      ? <span className="text-green-600">+{movement.quantity}</span>
+                      : <span className="text-red-600">-{movement.quantity}</span>
                     }
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">{movement.referenceNumber || '-'}</td>

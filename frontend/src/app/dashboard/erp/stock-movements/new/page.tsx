@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import StockMovementService, {
+  ManualStockMovementType,
   StockMovementRequest,
-  StockMovementType,
 } from '@/services/erp/stockMovement'
 import AuthService from '@/services/auth'
 
@@ -19,7 +19,7 @@ export default function NewStockMovementPage() {
 
   const [formData, setFormData] = useState<StockMovementRequest>({
     skuId: '',
-    movementType: 'INBOUND',
+    movementType: 'ADJUST_PLUS',
     quantity: 1,
     referenceNumber: '',
     notes: '',
@@ -72,14 +72,17 @@ export default function NewStockMovementPage() {
     }
   }
 
-  const movementTypes: { value: StockMovementType; label: string }[] = [
-    { value: 'INBOUND', label: '入庫' },
-    { value: 'OUTBOUND', label: '出庫' },
-    { value: 'ADJUST_PLUS', label: '調整(+)' },
-    { value: 'ADJUST_MINUS', label: '調整(-)' },
-    { value: 'TRANSFER_IN', label: '轉入' },
-    { value: 'TRANSFER_OUT', label: '轉出' },
-    { value: 'SCRAP', label: '報廢' },
+  // 只列後端手動異動 API 實際接受的型別（PRD §6.7.4 用語）。
+  // DEF-063：這裡原本還有「入庫 INBOUND」與「出庫 OUTBOUND」，但那兩型是採購收貨與訂單出貨的
+  // 系統流水帳，後端一直就禁止手動建立——連同當時前後端枚舉命名不一致，7 個選項有 5 個（含預設值
+  // INBOUND）送出必定回 E_7005。手動增減庫存請用盤盈／盤虧調整。
+  // 🔴 這份清單與後端 StockMovementService 的允許集合是一組耦合，見 MANUAL_MOVEMENT_TYPES 的註記。
+  const movementTypes: { value: ManualStockMovementType; label: string }[] = [
+    { value: 'ADJUST_PLUS', label: '盤盈調整 (+)' },
+    { value: 'ADJUST_MINUS', label: '盤虧調整 (-)' },
+    { value: 'TRANSFER_IN', label: '調撥入庫 (+)' },
+    { value: 'TRANSFER_OUT', label: '調撥出庫 (-)' },
+    { value: 'SCRAP', label: '報廢出庫 (-)' },
   ]
 
   return (
@@ -125,7 +128,7 @@ export default function NewStockMovementPage() {
           <Card>
             <CardHeader>
               <CardTitle>填寫異動資料</CardTitle>
-              <CardDescription>記錄庫存的入庫、出庫或調整異動</CardDescription>
+              <CardDescription>記錄盤點調整、調撥與報廢造成的庫存異動</CardDescription>
             </CardHeader>
             <form onSubmit={handleSubmit}>
               <CardContent className="space-y-4">
@@ -161,6 +164,9 @@ export default function NewStockMovementPage() {
                         </option>
                       ))}
                     </select>
+                    <p className="text-xs text-gray-500">
+                      採購入庫與訂單出貨由採購單、訂單流程自動產生，不在此手動建立
+                    </p>
                   </div>
                 </div>
 

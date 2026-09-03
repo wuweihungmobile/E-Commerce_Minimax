@@ -409,7 +409,7 @@ class PurchaseOrderServiceTest {
         StockMovement movement = movementCaptor.getValue();
         assertThat(movement.getTenantId()).isEqualTo(tenantId);
         assertThat(movement.getSkuId()).isEqualTo(skuId);
-        assertThat(movement.getMovementType()).isEqualTo(StockMovement.MovementType.PURCHASE_RECEIPT);
+        assertThat(movement.getMovementType()).isEqualTo(StockMovement.MovementType.INBOUND);
         assertThat(movement.getReferenceType()).isEqualTo(StockMovement.ReferenceType.PURCHASE_ORDER);
         assertThat(movement.getReferenceId()).isEqualTo(poId);
         assertThat(movement.getBeforeTotalQty()).isEqualTo(50);

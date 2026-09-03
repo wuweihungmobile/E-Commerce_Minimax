@@ -233,7 +233,7 @@ public class PurchaseOrderService {
             int newReceivedQty = item.getReceivedQuantity() + receiveItem.getReceivedQuantity();
             item.setReceivedQuantity(newReceivedQty);
 
-            // 建立庫存異動 (PURCHASE_RECEIPT)
+            // 建立庫存異動 (INBOUND)
             if (receiveItem.getReceivedQuantity() > 0 && item.getSkuId() != null) {
                 createInboundMovement(tenantId, item, receiveItem.getReceivedQuantity(), po.getId());
             }
@@ -300,7 +300,7 @@ public class PurchaseOrderService {
         StockMovement movement = StockMovement.builder()
                 .tenantId(tenantId)
                 .skuId(item.getSkuId())
-                .movementType(StockMovement.MovementType.PURCHASE_RECEIPT)
+                .movementType(StockMovement.MovementType.INBOUND)
                 .quantity(receivedQty)
                 .beforeTotalQty(beforeTotalQty)
                 .afterTotalQty(afterTotalQty)

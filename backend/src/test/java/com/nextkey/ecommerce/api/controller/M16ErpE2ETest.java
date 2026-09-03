@@ -587,7 +587,7 @@ class M16ErpE2ETest {
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(StockMovementRequest.builder()
                         .skuId(testSkuId)
-                        .movementType("ADJUSTMENT")
+                        .movementType("ADJUST_PLUS")
                         .quantity(10)
                         .notes("E2E test adjustment")
                         .build())
@@ -596,7 +596,7 @@ class M16ErpE2ETest {
                 .then()
                 .statusCode(201)
                 .body("success", is(true))
-                .body("data.movementType", equalTo("ADJUSTMENT"))
+                .body("data.movementType", equalTo("ADJUST_PLUS"))
                 .body("data.quantity", equalTo(10));
 
         System.out.println("✅ E2E-M16-004 PASSED: ADJUST 異動成功");
@@ -608,24 +608,60 @@ class M16ErpE2ETest {
 
     @Test
     @Order(5)
-    @DisplayName("E2E-M16-005: OUTBOUND 庫存不足時回傳錯誤")
-    void e2e_outbound_insufficientStock_returns400() throws Exception {
-        // 嘗試 OUTBOUND 超過可用庫存
+    @DisplayName("E2E-M16-005: 扣減型異動庫存不足時回傳 E-7004")
+    void e2e_deduction_insufficientStock_returnsE7004() throws Exception {
+        // Sprint 114（DEF-063）：這個案例原本送的是 OUTBOUND，而 OUTBOUND 從來就不是手動可用的型別，
+        // 拿到的一直是 E-7005「無效的庫存調整」而非庫存不足——寬鬆的 anyOf(400, 500) 讓它綠了，
+        // 但「庫存不足」這條路徑一次都沒被驗到。改用手動確實可用的 ADJUST_MINUS，並斷言到錯誤碼。
         given()
                 .header("Authorization", "Bearer " + storeOwnerToken)
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(StockMovementRequest.builder()
                         .skuId(testSkuId)
-                        .movementType("OUTBOUND")
+                        .movementType("ADJUST_MINUS")
                         .quantity(999999) // 超過庫存
-                        .notes("Try to outbound more than available")
+                        .notes("Try to deduct more than available")
                         .build())
                 .when()
                 .post(ERP_URL + "/stock-movements")
                 .then()
-                .statusCode(anyOf(is(400), is(500))); // 預期錯誤
+                .statusCode(400)
+                .body("success", is(false))
+                .body("code", equalTo("E-7004"));
 
-        System.out.println("✅ E2E-M16-005 PASSED: 庫存不足時正確拒絕");
+        System.out.println("✅ E2E-M16-005 PASSED: 庫存不足時回傳 E-7004");
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // E2E-M16-005b: 前端下拉的每個手動異動型別都真的能送出（DEF-063 回歸）
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    @Order(6)
+    @DisplayName("E2E-M16-005b: 前端手動異動下拉的每個型別後端都接受（DEF-063 回歸）")
+    void e2e_everyManualMovementTypeOfferedByUi_isAccepted() throws Exception {
+        // DEF-063：修復前後端枚舉是兩組不同的值、中間沒有轉換層，下拉 7 個選項有 5 個（含預設值）
+        // 必定拿到 E-7005。這個案例守的就是那條耦合：UI 提供的每一個型別都必須真的能建立成功。
+        // 若日後有人動了任一側的命名，這裡會直接紅燈，而不是等使用者在畫面上撞到。
+        for (String type : List.of("ADJUST_PLUS", "ADJUST_MINUS", "TRANSFER_IN", "TRANSFER_OUT", "SCRAP")) {
+            given()
+                    .header("Authorization", "Bearer " + storeOwnerToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(StockMovementRequest.builder()
+                            .skuId(testSkuId)
+                            .movementType(type)
+                            .quantity(1)
+                            .notes("DEF-063 regression: " + type)
+                            .build())
+                    .when()
+                    .post(ERP_URL + "/stock-movements")
+                    .then()
+                    .statusCode(201)
+                    .body("success", is(true))
+                    .body("data.movementType", equalTo(type));
+        }
+
+        System.out.println("✅ E2E-M16-005b PASSED: 5 個手動異動型別全部可用");
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -633,7 +669,7 @@ class M16ErpE2ETest {
     // ═══════════════════════════════════════════════════════════════
 
     @Test
-    @Order(6)
+    @Order(7)
     @DisplayName("E2E-M16-006: 嘗試取消 PARTIALLY_RECEIVED 採購單時回傳錯誤")
     void e2e_cancelPartialReceived_returns400() throws Exception {
         // Step 1: 建立供應商

@@ -1174,7 +1174,7 @@ class M16ErpIntegrationTest {
 
     @Test
     @Order(303)
-    @DisplayName("IT-M16-303: 手動異動-ADJUSTMENT 成功")
+    @DisplayName("IT-M16-303: 手動異動-ADJUST_PLUS 成功")
     void createStockMovement_adjust_success_returns201() throws Exception {
         // 在每個測試中建立獨立的庫存記錄
         UUID testSku = UUID.randomUUID();
@@ -1189,7 +1189,7 @@ class M16ErpIntegrationTest {
 
         StockMovementRequest request = StockMovementRequest.builder()
                 .skuId(testSku)
-                .movementType("ADJUSTMENT") // 盤盈調整
+                .movementType("ADJUST_PLUS") // 盤盈調整
                 .quantity(5)
                 .notes("Test adjust movement")
                 .build();
@@ -1200,7 +1200,7 @@ class M16ErpIntegrationTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.movementType").value("ADJUSTMENT"));
+                .andExpect(jsonPath("$.data.movementType").value("ADJUST_PLUS"));
 
         System.out.println("✅ IT-M16-303 PASSED");
     }

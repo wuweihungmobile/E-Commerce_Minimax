@@ -58,8 +58,15 @@ export interface StockMovementDto {
   productName: string
   movementType: StockMovementType
   quantity: number
-  referenceNumber: string
-  notes: string
+  referenceType: string | null
+  /** 店家自填的參考單號（僅手動異動）。Sprint 117（DEF-064）起真的會被存下來。 */
+  referenceNumber: string | null
+  /**
+   * 系統推導的來源單據（唯讀）：採購收貨為採購單號、訂單異動為訂單 id 前八碼、手動異動為 null。
+   * 與 referenceNumber 是兩件事——前者是異動的來源，後者是店家自己記的單號。
+   */
+  sourceDocument: string | null
+  notes: string | null
   createdAt: string
   createdBy: string
 }

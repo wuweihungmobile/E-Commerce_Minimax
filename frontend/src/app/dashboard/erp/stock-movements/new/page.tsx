@@ -185,11 +185,14 @@ export default function NewStockMovementPage() {
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium">參考單號</label>
+                    <p className="text-xs text-gray-500">
+                      店家自己記的單號；採購單／訂單產生的異動會自動顯示來源單據
+                    </p>
                     <Input
                       name="referenceNumber"
                       value={formData.referenceNumber}
                       onChange={handleChange}
-                      placeholder="選填，如：PO-2024-001"
+                      placeholder="選填，如：盤點單 2026-09"
                     />
                   </div>
                 </div>

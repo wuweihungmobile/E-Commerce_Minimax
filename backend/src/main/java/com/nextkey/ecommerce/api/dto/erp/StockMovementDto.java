@@ -35,7 +35,18 @@ public class StockMovementDto {
 
     private String referenceType; // PURCHASE_ORDER, ORDER, MANUAL...
 
-    private String referenceNumber; // 給使用者看的參考編號
+    /**
+     * 店家自行填寫的參考單號（僅手動異動；如「盤點單 2026-09」）。Sprint 117（DEF-064）起真的會被存下來。
+     */
+    private String referenceNumber;
+
+    /**
+     * 來源單據識別（唯讀、由系統推導）：採購收貨為採購單號、訂單異動為訂單 id 前八碼、手動異動為 null。
+     *
+     * <p>與 {@link #referenceNumber} 是兩件事：前者是系統產生的異動回指來源，後者是店家自己記的單號。
+     * Sprint 117（DEF-064）依使用者拍板的選項 C，兩者並存。
+     */
+    private String sourceDocument;
 
     private UUID referenceId;
 

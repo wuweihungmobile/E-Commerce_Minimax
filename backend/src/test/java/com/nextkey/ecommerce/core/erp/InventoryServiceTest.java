@@ -27,7 +27,6 @@ import com.nextkey.ecommerce.api.dto.erp.InventoryLedgerDto;
 import com.nextkey.ecommerce.api.dto.erp.LowStockAlertDto;
 import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository;
 import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository.InventoryLedgerRow;
-import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 /**
@@ -48,8 +47,9 @@ class InventoryServiceTest {
     @Mock
     private ProductInventoryRepository productInventoryRepository;
 
+    /** Sprint 117（DEF-064）：異動記錄改由 StockMovementService 提供（含 SKU 編號與品名）。 */
     @Mock
-    private StockMovementRepository stockMovementRepository;
+    private StockMovementService stockMovementService;
 
     @InjectMocks
     private InventoryService inventoryService;
@@ -114,8 +114,7 @@ class InventoryServiceTest {
         InventoryLedgerRow row = rowOf(80, 5, 10);
         when(productInventoryRepository.findLedgerRowBySkuIdAndTenant(eq(skuId), eq(tenantId),
                 anyCollection(), anyCollection())).thenReturn(Optional.of(row));
-        when(stockMovementRepository.findBySkuIdAndTenantIdOrderByCreatedAtDesc(skuId, tenantId))
-                .thenReturn(List.of());
+        when(stockMovementService.getMovementsBySku(skuId)).thenReturn(List.of());
 
         InventoryService.InventoryDetailDto detail = inventoryService.getInventoryBySku(skuId);
 

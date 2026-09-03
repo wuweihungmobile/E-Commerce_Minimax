@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -364,15 +365,9 @@ class StockMovementServiceTest {
     @Test
     @DisplayName("getMovementsBySku：依 SKU+租戶過濾")
     void getMovementsBySku_filtersBySkuAndTenant() {
-        StockMovement movement = StockMovement.builder()
-                .id(UUID.randomUUID())
-                .tenantId(tenantId)
-                .skuId(skuId)
-                .movementType(StockMovement.MovementType.ADJUST_PLUS)
-                .quantity(10)
-                .build();
-        when(stockMovementRepository.findBySkuIdAndTenantIdOrderByCreatedAtDesc(skuId, tenantId))
-                .thenReturn(List.of(movement));
+        StockMovementRepository.StockMovementRow row = rowOf("ADJUST_PLUS", 10);
+        when(stockMovementRepository.findMovementRowsBySkuAndTenant(skuId, tenantId))
+                .thenReturn(List.of(row));
 
         List<StockMovementDto> result = stockMovementService.getMovementsBySku(skuId);
 
@@ -384,15 +379,9 @@ class StockMovementServiceTest {
     @DisplayName("getMovements：分頁依租戶過濾")
     void getMovements_paginatedByTenant() {
         Pageable pageable = PageRequest.of(0, 10);
-        StockMovement movement = StockMovement.builder()
-                .id(UUID.randomUUID())
-                .tenantId(tenantId)
-                .skuId(skuId)
-                .movementType(StockMovement.MovementType.ADJUST_PLUS)
-                .quantity(5)
-                .build();
-        Page<StockMovement> page = new PageImpl<>(List.of(movement), pageable, 1);
-        when(stockMovementRepository.findByTenantId(tenantId, pageable)).thenReturn(page);
+        StockMovementRepository.StockMovementRow row = rowOf("ADJUST_PLUS", 5);
+        Page<StockMovementRepository.StockMovementRow> page = new PageImpl<>(List.of(row), pageable, 1);
+        when(stockMovementRepository.findMovementRowsByTenant(tenantId, pageable)).thenReturn(page);
 
         Page<StockMovementDto> result = stockMovementService.getMovements(pageable);
 
@@ -404,10 +393,23 @@ class StockMovementServiceTest {
     void getMovementsByDateRange_filtersByTenantAndRange() {
         Instant start = Instant.parse("2026-01-01T00:00:00Z");
         Instant end = Instant.parse("2026-01-31T23:59:59Z");
-        when(stockMovementRepository.findByTenantIdAndDateRange(tenantId, start, end)).thenReturn(List.of());
+        when(stockMovementRepository.findMovementRowsByTenantAndDateRange(tenantId, start, end))
+                .thenReturn(List.of());
 
         List<StockMovementDto> result = stockMovementService.getMovementsByDateRange(start, end);
 
         assertThat(result).isEmpty();
+    }
+
+
+    /** 查詢路徑用的投影替身（不需對應實際實體）。 */
+    private StockMovementRepository.StockMovementRow rowOf(final String movementType, final int quantity) {
+        StockMovementRepository.StockMovementRow row = mock(StockMovementRepository.StockMovementRow.class);
+        lenient().when(row.getId()).thenReturn(UUID.randomUUID());
+        lenient().when(row.getTenantId()).thenReturn(tenantId);
+        lenient().when(row.getSkuId()).thenReturn(skuId);
+        lenient().when(row.getMovementType()).thenReturn(movementType);
+        lenient().when(row.getQuantity()).thenReturn(quantity);
+        return row;
     }
 }

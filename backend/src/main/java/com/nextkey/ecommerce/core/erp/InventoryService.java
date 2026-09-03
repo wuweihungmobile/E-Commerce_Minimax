@@ -17,7 +17,6 @@ import com.nextkey.ecommerce.api.dto.erp.StockMovementDto;
 import com.nextkey.ecommerce.domain.model.inventory.StockMovement;
 import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository;
 import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository.InventoryLedgerRow;
-import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 import lombok.RequiredArgsConstructor;
@@ -43,7 +42,13 @@ import lombok.extern.slf4j.Slf4j;
 public class InventoryService {
 
     private final ProductInventoryRepository productInventoryRepository;
-    private final StockMovementRepository stockMovementRepository;
+
+    /**
+     * Sprint 117（DEF-064）：異動記錄改為委派給 {@link StockMovementService}，
+     * 不再自己組。修復前本類別有一份重複的 {@code toMovementDto}，而它與列表用的那份一樣
+     * **沒有填 SKU 編號與品名**——庫存明細頁的異動記錄同樣缺欄位。
+     */
+    private final StockMovementService stockMovementService;
 
     /** 可售量低於門檻這個比例時升級為 CRITICAL。 */
     private static final double LOW_STOCK_MULTIPLIER = 0.5;
@@ -85,11 +90,7 @@ public class InventoryService {
             return null;
         }
 
-        List<StockMovementDto> movements = stockMovementRepository
-                .findBySkuIdAndTenantIdOrderByCreatedAtDesc(skuId, tenantId)
-                .stream()
-                .map(this::toMovementDto)
-                .collect(Collectors.toList());
+        List<StockMovementDto> movements = stockMovementService.getMovementsBySku(skuId);
 
         return InventoryDetailDto.builder()
                 .skuId(row.getSkuId())
@@ -157,26 +158,6 @@ public class InventoryService {
                 .currentQuantity(available)
                 .lowStockThreshold(threshold)
                 .severity(severity)
-                .build();
-    }
-
-    /**
-     * 轉換為異動 DTO
-     */
-    private StockMovementDto toMovementDto(final StockMovement movement) {
-        return StockMovementDto.builder()
-                .id(movement.getId())
-                .tenantId(movement.getTenantId())
-                .skuId(movement.getSkuId())
-                .movementType(movement.getMovementType() != null ? movement.getMovementType().name() : null)
-                .quantity(movement.getQuantity())
-                .beforeTotalQty(movement.getBeforeTotalQty())
-                .afterTotalQty(movement.getAfterTotalQty())
-                .referenceType(movement.getReferenceType() != null ? movement.getReferenceType().name() : null)
-                .referenceId(movement.getReferenceId())
-                .notes(movement.getNotes())
-                .createdBy(movement.getCreatedBy())
-                .createdAt(movement.getCreatedAt())
                 .build();
     }
 

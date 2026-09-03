@@ -91,6 +91,13 @@ public class StockMovement {
     @Column(name = "order_item_id")
     private UUID orderItemId;
 
+    /**
+     * 店家自填的參考單號（Sprint 117／DEF-064）。與 {@link #referenceId}／{@link #referenceType} 不同：
+     * 那兩者是系統產生的異動回指來源（採購單、訂單），本欄是店家自己記的單號。
+     */
+    @Column(name = "reference_number", length = 100)
+    private String referenceNumber;
+
     @Column(name = "notes")
     private String notes;
 

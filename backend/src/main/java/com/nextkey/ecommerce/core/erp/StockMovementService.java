@@ -115,6 +115,9 @@ public class StockMovementService {
                 .afterTotalQty(afterTotalQty)
                 .balanceAfter(afterTotalQty)
                 .referenceType(StockMovement.ReferenceType.MANUAL)
+                // Sprint 117（DEF-064）：店家自填的參考單號。修復前 StockMovementRequest 根本沒有這個
+                // 欄位，前端表單那格輸入被 Jackson 靜默忽略——打了字、送出了、什麼也沒發生。
+                .referenceNumber(request.getReferenceNumber())
                 .notes(request.getNotes())
                 .createdBy(userId)
                 .build();
@@ -123,7 +126,7 @@ public class StockMovementService {
         log.info("Created manual stock movement: id={}, tenantId={}, type={}, qty={}",
                 saved.getId(), tenantId, movementType, quantity);
 
-        return toDto(saved);
+        return toCreatedDto(saved, inventory, listing);
     }
 
     /**
@@ -168,10 +171,7 @@ public class StockMovementService {
     public List<StockMovementDto> getMovementsBySku(final UUID skuId) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
-        List<StockMovement> movements = stockMovementRepository
-                .findBySkuIdAndTenantIdOrderByCreatedAtDesc(skuId, tenantId);
-
-        return movements.stream()
+        return stockMovementRepository.findMovementRowsBySkuAndTenant(skuId, tenantId).stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
@@ -183,9 +183,7 @@ public class StockMovementService {
     public Page<StockMovementDto> getMovements(final Pageable pageable) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
-        Page<StockMovement> movements = stockMovementRepository.findByTenantId(tenantId, pageable);
-
-        return movements.map(this::toDto);
+        return stockMovementRepository.findMovementRowsByTenant(tenantId, pageable).map(this::toDto);
     }
 
     /**
@@ -195,31 +193,67 @@ public class StockMovementService {
     public List<StockMovementDto> getMovementsByDateRange(final Instant start, final Instant end) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
-        List<StockMovement> movements = stockMovementRepository
-                .findByTenantIdAndDateRange(tenantId, start, end);
-
-        return movements.stream()
+        return stockMovementRepository.findMovementRowsByTenantAndDateRange(tenantId, start, end).stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
     /**
-     * 轉換為 DTO
+     * 轉換為 DTO（投影版；Sprint 117／DEF-064）。
+     *
+     * <p>修復前的版本吃 {@link StockMovement} 實體，而實體上根本沒有 SKU 編號與品名
+     * ——那兩個 DTO 欄位因此**從來沒被填過值**，前端列表的「SKU／品名」兩欄永遠是「-」。
+     * 改吃投影後由 SQL 一次 JOIN 齊，不會有 N+1。
      */
-    private StockMovementDto toDto(final StockMovement movement) {
+    private StockMovementDto toDto(final StockMovementRepository.StockMovementRow row) {
         return StockMovementDto.builder()
-                .id(movement.getId())
-                .tenantId(movement.getTenantId())
-                .skuId(movement.getSkuId())
-                .movementType(movement.getMovementType() != null ? movement.getMovementType().name() : null)
-                .quantity(movement.getQuantity())
-                .beforeTotalQty(movement.getBeforeTotalQty())
-                .afterTotalQty(movement.getAfterTotalQty())
-                .referenceType(movement.getReferenceType() != null ? movement.getReferenceType().name() : null)
-                .referenceId(movement.getReferenceId())
-                .notes(movement.getNotes())
-                .createdBy(movement.getCreatedBy())
-                .createdAt(movement.getCreatedAt())
+                .id(row.getId())
+                .tenantId(row.getTenantId())
+                .skuId(row.getSkuId())
+                .skuCode(row.getSkuCode())
+                .productName(row.getProductName())
+                .movementType(row.getMovementType())
+                .quantity(row.getQuantity())
+                .beforeTotalQty(row.getBeforeTotalQty())
+                .afterTotalQty(row.getAfterTotalQty())
+                .referenceType(row.getReferenceType())
+                .referenceId(row.getReferenceId())
+                .referenceNumber(row.getReferenceNumber())
+                .sourceDocument(row.getSourceDocument())
+                .notes(row.getNotes())
+                .createdBy(row.getCreatedBy())
+                .createdAt(row.getCreatedAt())
+                .build();
+    }
+
+    /**
+     * 建立後的回傳值轉換（Sprint 117／DEF-064）。
+     *
+     * <p>剛建立的異動同樣要帶 SKU 編號與品名，否則「建立後回傳的那筆」與「列表查到的同一筆」
+     * 欄位不一致。這兩個值**不必回查資料庫**：SKU 來自方法開頭已載入的庫存列、品名來自
+     * 租戶檢查時已載入的 listing——兩者都在手上了。
+     *
+     * <p>手動異動的 {@code sourceDocument} 恆為 null：它是系統產生之異動的來源單據，
+     * 手動建立的沒有來源可指（店家自填的單號放在 {@code referenceNumber}，是另一回事）。
+     */
+    private StockMovementDto toCreatedDto(final StockMovement saved, final ProductInventory inventory,
+            final Listing listing) {
+        return StockMovementDto.builder()
+                .id(saved.getId())
+                .tenantId(saved.getTenantId())
+                .skuId(saved.getSkuId())
+                .skuCode(inventory.getSku() != null ? inventory.getSku().getSkuCode() : null)
+                .productName(listing.getTitle())
+                .movementType(saved.getMovementType() != null ? saved.getMovementType().name() : null)
+                .quantity(saved.getQuantity())
+                .beforeTotalQty(saved.getBeforeTotalQty())
+                .afterTotalQty(saved.getAfterTotalQty())
+                .referenceType(saved.getReferenceType() != null ? saved.getReferenceType().name() : null)
+                .referenceId(saved.getReferenceId())
+                .referenceNumber(saved.getReferenceNumber())
+                .notes(saved.getNotes())
+                .createdBy(saved.getCreatedBy())
+                .createdAt(saved.getCreatedAt())
                 .build();
     }
 }

@@ -68,6 +68,14 @@ export default function StockMovementsPage() {
     return <Badge variant={c.variant}>{c.label}</Badge>
   }
 
+  // 來源單據的前綴由 referenceType 決定，讓「PO-2026-0042」與訂單的八碼縮寫不會混淆。
+  // 後端只回單據識別、不回中文標籤——顯示用語留在前端。
+  const sourceDocumentLabel = (movement: StockMovementDto) => {
+    if (movement.referenceType === 'PURCHASE_ORDER') return `採購單 ${movement.sourceDocument}`
+    if (movement.referenceType === 'ORDER') return `訂單 #${movement.sourceDocument}`
+    return movement.sourceDocument
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -117,6 +125,7 @@ export default function StockMovementsPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">品名</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">數量</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">來源單據</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">參考單號</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">備註</th>
               </tr>
@@ -139,6 +148,11 @@ export default function StockMovementsPage() {
                       ? <span className="text-green-600">+{movement.quantity}</span>
                       : <span className="text-red-600">-{movement.quantity}</span>
                     }
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500">
+                    {movement.sourceDocument
+                      ? <span className="font-mono text-xs">{sourceDocumentLabel(movement)}</span>
+                      : '-'}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">{movement.referenceNumber || '-'}</td>
                   <td className="px-4 py-3 text-sm text-gray-500">{movement.notes || '-'}</td>

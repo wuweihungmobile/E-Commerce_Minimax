@@ -1612,7 +1612,8 @@ StoreStaff (店員)
 | movement_type | ENUM | INBOUND / OUTBOUND / RESERVE / RELEASE / ADJUST_PLUS / ADJUST_MINUS / TRANSFER_OUT / TRANSFER_IN / SCRAP |
 | quantity | INTEGER | 異動數量 (正值) |
 | reference_type | VARCHAR(30) | 關聯單據類型: PURCHASE_ORDER / ORDER / MANUAL / STOCKTAKE |
-| reference_id | UUID | 關聯單據 ID |
+| reference_id | UUID | 關聯單據 ID（**系統產生**：採購單 id、訂單 id） |
+| reference_number | VARCHAR(100) | 店家自填的參考單號（**僅手動異動**，如「盤點單 2026-09」；nullable）。與 `reference_id` 是兩件事：後者是系統產生的異動來源，本欄是操作者自己記的單號（v1.0.3 補充，Sprint 117 / DEF-064） |
 | before_total_qty | INTEGER | 異動前總庫存 |
 | after_total_qty | INTEGER | 異動後總庫存 |
 | before_reserved_qty | INTEGER | 異動前預留量 |

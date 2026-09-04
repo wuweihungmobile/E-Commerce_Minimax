@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +37,7 @@ import com.nextkey.ecommerce.api.dto.OrderDto;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
+import com.nextkey.ecommerce.core.promo.PromoService;
 import com.nextkey.ecommerce.core.user.AddressService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -91,9 +93,24 @@ class OrderServiceTest {
     @Mock private ShippingTemplateService shippingTemplateService;
     @Mock private AddressService addressService;
     @Mock private ProductInventoryService productInventoryService;
+    @Mock private PromoService promoService;
 
     @InjectMocks
     private OrderService orderService;
+
+    /**
+     * Sprint 126（DEF-048 擴大範圍）：{@code resolveValidPromoForCheckout}／
+     * {@code computeCappedDiscount} 從 {@code OrderService} 私有方法移至 {@code PromoService}
+     * 共用。本檔案的測試皆不涉及促銷碼情境（購物車未套用促銷碼時 {@code getAppliedPromoCode}
+     * 未 stub、預設回傳 null，{@code resolveValidPromoForCheckout} 未 stub 也預設回傳 null，
+     * 兩者皆與修改前行為一致，不需額外 stub）；但 {@code computeCappedDiscount} 回傳型別是
+     * {@code BigDecimal}，未 stub 的 mock 預設回傳 null 而非 {@code BigDecimal.ZERO}，
+     * 會在 {@code buildProductOrder} 的金額運算中 NPE，故仍需明確給定「無促銷碼→折扣 0」預設值。
+     */
+    @BeforeEach
+    void setUpPromoDefaults() {
+        when(promoService.computeCappedDiscount(any(), any(), any())).thenReturn(BigDecimal.ZERO);
+    }
 
     private static final UUID USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final UUID OTHER_USER_ID = UUID.fromString("99999999-9999-9999-9999-999999999999");

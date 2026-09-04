@@ -48,7 +48,10 @@ public class PromoCodeUsage {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
-    /** 商品訂單來源；與 {@link #bookingId} 恰好一個非 null（見 V76 CHECK 約束）。 */
+    /**
+     * 商品訂單來源。單一類型結帳時與 {@link #bookingId} 恰好一個非 null；
+     * 合併結帳（Sprint 126，DEF-048 擴大範圍）時兩者皆非 null（見 V77 CHECK 約束放寬）。
+     */
     @Column(name = "order_id")
     private UUID orderId;
 
@@ -69,6 +72,18 @@ public class PromoCodeUsage {
 
     @Column(name = "revoked_at")
     private Instant revokedAt;
+
+    /**
+     * 合併結帳中 Order 側已取消的時間點（Sprint 126，V77）。僅 {@link #orderId}／
+     * {@link #bookingId} 皆非 null 的合併結帳用券紀錄會用到；單一類型用券紀錄恆為 null，
+     * 其取消行為維持既有的「立即 REVOKED＋釋放額度」，不受此欄位影響。
+     */
+    @Column(name = "order_released_at")
+    private Instant orderReleasedAt;
+
+    /** 合併結帳中 Booking 側已取消的時間點（Sprint 126，V77）。語意對稱 {@link #orderReleasedAt}。 */
+    @Column(name = "booking_released_at")
+    private Instant bookingReleasedAt;
 
     @PrePersist
     protected void onCreate() {

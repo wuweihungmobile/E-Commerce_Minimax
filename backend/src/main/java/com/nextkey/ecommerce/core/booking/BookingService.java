@@ -389,7 +389,38 @@ public class BookingService {
         // 驗證房源
         Listing listing = listingRepository.findById(request.getRoomListingId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Room not found"));
+        Room room = resolveBookableRoom(listing, request);
 
+        // Sprint 124（DEF-047／PRD US-010）：訂房沒有購物車，促銷碼由 request 明確帶入。
+        // Sprint 126（DEF-048 擴大範圍）：解析與折扣計算下沉到 PromoService，與 OrderService／
+        // 合併結帳共用同一套規則。與日曆鎖定互不相干的兩件事（促銷碼查詢／總額試算 vs Redis
+        // 日曆鎖），提前計算不影響鎖定期間的併發安全——額度佔用的競態防護由
+        // PromoService.tryConsumeUsageQuota 的原子 UPDATE 負責，不依賴日曆鎖。
+        PromoCode promo = promoService.resolveValidPromoForCheckout(request.getPromoCode(), tenantId, userId);
+        BigDecimal grossAmount = calculateTotalAmount(
+                listing.getId(), request.getCheckInDate(), request.getCheckOutDate());
+        // 折扣基數為訂房總額，訂房無運費故 FREE_SHIPPING 券折扣恆為 0
+        // （比照 OrderService.createOrderFromCart 的作法，非本方法獨創）。
+        BigDecimal discount = promoService.computeCappedDiscount(promo, grossAmount, BigDecimal.ZERO);
+
+        BookingDto.BookingResponse response =
+                buildBookingCore(listing, room, request, userId, tenantId, grossAmount, promo, discount);
+
+        // 訂房成立後才佔用優惠券額度（與 OrderService.commitPromoUsage 同一理由：仍可能被同張券的
+        // 另一筆併發結帳搶先用完額度，故不可在建立 Booking 前就佔用）
+        commitPromoUsage(promo, response.getId(), userId);
+
+        return response;
+    }
+
+    /**
+     * 驗證房源可訂並取得對應 {@link Room}（房型／人數上限／日期順序／開放窗）。
+     *
+     * <p>Sprint 126（DEF-048 擴大範圍）從 {@link #createBooking} 抽出並改為 {@code public}，
+     * 供合併結帳（{@code CombinedCheckoutService}）在呼叫 {@link #buildBookingCore} 前重用同一套
+     * 驗證規則，避免複製一份。
+     */
+    public Room resolveBookableRoom(final Listing listing, final BookingDto.CreateRequest request) {
         if (listing.getListingType() != Listing.ListingType.ROOM) {
             throw new BusinessException(ErrorCode.E_3001, "Listing is not a room");
         }
@@ -398,15 +429,13 @@ public class BookingService {
             throw new BusinessException(ErrorCode.E_3002, "Room not active");
         }
 
-        Room room = roomRepository.findByListingId(request.getRoomListingId())
+        Room room = roomRepository.findByListingId(listing.getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Room data not found"));
 
-        // 檢查客人數量
         if (request.getGuestCount() > room.getMaxGuests()) {
             throw new BusinessException(ErrorCode.E_4005, "Guest count exceeds capacity: max " + room.getMaxGuests());
         }
 
-        // 檢查日期
         if (request.getCheckOutDate().isBefore(request.getCheckInDate())) {
             throw new BusinessException(ErrorCode.E_4003, "Check-out must be after check-in");
         }
@@ -414,10 +443,29 @@ public class BookingService {
         // 開放窗（AI-2202e）：區間含未開放日 → 擋訂（與 availability/calendar 三層一致）
         assertWithinOpenWindow(room, request.getCheckInDate(), request.getCheckOutDate());
 
+        return room;
+    }
+
+    /**
+     * 建立預訂核心邏輯（鎖定日期範圍 → 可用性檢查 → 建立 Booking → 更新日曆 → flush）。
+     *
+     * <p>Sprint 126（DEF-048 擴大範圍）抽出並改為 {@code public}：促銷碼與折扣「已由呼叫端算好」
+     * （見 {@link PromoService#resolveValidPromoForCheckout}／{@link PromoService#computeCappedDiscount}），
+     * 本方法只負責用給定的 {@code grossAmount}／{@code discountAmount} 建立預訂，不佔用額度
+     * （{@code commitPromoUsage}）——這件事留給呼叫端在恰當時機處理。單一類型結帳
+     * （{@link #createBooking}）與合併結帳（{@code CombinedCheckoutService}，不同套件故本方法為
+     * {@code public}）共用此方法：後者傳入分攤後的 {@code discountAmount}（依合併後總額計算、
+     * 再按小計比例分攤到 PRODUCT／ROOM 兩側，非各自獨立向 {@code computeCappedDiscount} 重新
+     * 索取——否則 FIXED_AMOUNT 券會在兩側被重複套用整筆面額），且不會接著呼叫
+     * {@code commitPromoUsage}（額度改由合併結帳呼叫端在兩側都成功後統一佔用一次）。
+     */
+    public BookingDto.BookingResponse buildBookingCore(final Listing listing, final Room room,
+            final BookingDto.CreateRequest request, final UUID userId, final UUID tenantId,
+            final BigDecimal grossAmount, final PromoCode promo, final BigDecimal discountAmount) {
         // 嘗試鎖定日期範圍（NO_WAIT 策略，立即返回）
         // 如果無法立即獲取鎖，表示有並發請求在處理，拋出衝突異常
         String lockValue = roomCalendarService.lockDateRange(
-                request.getRoomListingId(),
+                listing.getId(),
                 request.getCheckInDate(),
                 request.getCheckOutDate()
         );
@@ -430,7 +478,7 @@ public class BookingService {
         try {
             // 檢查可用性
             if (!roomCalendarService.isDateRangeAvailable(
-                    request.getRoomListingId(),
+                    listing.getId(),
                     request.getCheckInDate(),
                     request.getCheckOutDate())) {
                 throw new BusinessException(ErrorCode.E_4001, "Date range no longer available");
@@ -442,22 +490,9 @@ public class BookingService {
             var tenant = tenantRepository.findById(tenantId)
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
 
-            // 計算晚數和總金額
+            // 計算晚數
             long nightsCount = ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
-            BigDecimal grossAmount = calculateTotalAmount(
-                    request.getRoomListingId(),
-                    request.getCheckInDate(),
-                    request.getCheckOutDate()
-            );
-
-            // Sprint 124（DEF-047／PRD US-010）：結帳時套用促銷碼。訂房沒有購物車，促銷碼由
-            // request 明確帶入；折扣基數為訂房總額，訂房無運費故 FREE_SHIPPING 券折扣恆為 0
-            // （比照 OrderService.applyPromoDiscount 的作法，非本方法獨創）。
-            PromoApplication promoApplication =
-                    applyPromoDiscount(grossAmount, request.getPromoCode(), tenantId, userId);
-            PromoCode promo = promoApplication.promo();
-            BigDecimal discount = promoApplication.discount();
-            BigDecimal totalAmount = grossAmount.subtract(discount);
+            BigDecimal totalAmount = grossAmount.subtract(discountAmount);
 
             // 建立預訂
             var booking = Booking.builder()
@@ -470,7 +505,7 @@ public class BookingService {
                     .status(Booking.BookingStatus.CREATED)
                     .totalAmount(totalAmount)
                     .promoCode(promo != null ? promo.getCode() : null)
-                    .discountAmount(discount)
+                    .discountAmount(discountAmount)
                     .guestName(request.getGuestName())
                     .guestPhone(request.getGuestPhone())
                     .guestEmail(request.getGuestEmail())
@@ -481,19 +516,15 @@ public class BookingService {
 
             // 更新日曆（這裡會拋出異常如果日期已被預訂）
             roomCalendarService.bookDateRange(
-                    request.getRoomListingId(),
+                    listing.getId(),
                     request.getCheckInDate(),
                     request.getCheckOutDate(),
                     booking.getId()
             );
 
-            // 訂房成立後才佔用優惠券額度（與 OrderService.commitPromoUsage 同一理由：日曆鎖定
-            // 期間仍可能被同張券的另一筆併發結帳搶先用完額度，故不可在鎖定前就佔用）
-            commitPromoUsage(promo, booking, userId);
-
             log.info("Booking created: id={}, user={}, room={}, checkIn={}, checkOut={}, promoCode={}, discount={}",
-                    booking.getId(), userId, request.getRoomListingId(),
-                    request.getCheckInDate(), request.getCheckOutDate(), booking.getPromoCode(), discount);
+                    booking.getId(), userId, listing.getId(),
+                    request.getCheckInDate(), request.getCheckOutDate(), booking.getPromoCode(), discountAmount);
 
             response = toBookingResponse(booking, listing, room, nightsCount);
 
@@ -503,7 +534,7 @@ public class BookingService {
         } finally {
             // 釋放鎖（在 flush/commit 完成之後）
             roomCalendarService.unlockDateRange(
-                    request.getRoomListingId(),
+                    listing.getId(),
                     request.getCheckInDate(),
                     request.getCheckOutDate(),
                     lockValue
@@ -657,18 +688,13 @@ public class BookingService {
         // Sprint 124（DEF-047）：日期變更會重算總額，若這筆預訂已套用促銷碼，折扣不可被靜默丟棄
         // ——否則買家結帳當下算好的折扣，改個日期就憑空消失。不重新驗證促銷碼有效性/額度
         // （額度已在建立當下佔用完畢，不重查也不重佔），只依已記錄的券別對新總額重算折扣金額。
-        BigDecimal discount = BigDecimal.ZERO;
+        PromoCode promo = null;
         if (booking.getPromoCode() != null && !booking.getPromoCode().isBlank()) {
-            PromoCode promo = promoCodeRepository
+            promo = promoCodeRepository
                     .findByCodeIgnoreCaseAndTenantId(booking.getPromoCode(), booking.getTenantId())
                     .orElse(null);
-            if (promo != null) {
-                discount = promoService.computeDiscount(promo, grossAmount, BigDecimal.ZERO);
-                if (discount.compareTo(grossAmount) > 0) {
-                    discount = grossAmount;
-                }
-            }
         }
+        BigDecimal discount = promoService.computeCappedDiscount(promo, grossAmount, BigDecimal.ZERO);
         booking.setDiscountAmount(discount);
         booking.setTotalAmount(grossAmount.subtract(discount));
 
@@ -743,87 +769,17 @@ public class BookingService {
         }
     }
 
-    /** {@link #applyPromoDiscount} 的回傳值：通過驗證的促銷碼（可為 {@code null}）與計算出的折扣金額。 */
-    private record PromoApplication(PromoCode promo, BigDecimal discount) {
-    }
-
-    /**
-     * 訂房結帳套用促銷碼並計算折扣（Sprint 124，DEF-047）。
-     *
-     * <p>抽為獨立方法而非內嵌於 {@code createBooking}：內嵌會讓後者的 NPath 分支複雜度衝到
-     * checkstyle 上限 200（比照 {@code OrderService.applyPromoDiscount} 同一理由，見其註解）。
-     */
-    private PromoApplication applyPromoDiscount(final BigDecimal grossAmount, final String promoCodeStr,
-            final UUID tenantId, final UUID userId) {
-        PromoCode promo = resolveValidPromoForCheckout(promoCodeStr, tenantId, userId);
-        BigDecimal discount = BigDecimal.ZERO;
-        if (promo != null) {
-            discount = promoService.computeDiscount(promo, grossAmount, BigDecimal.ZERO);
-            if (discount.compareTo(grossAmount) > 0) {
-                discount = grossAmount;
-            }
-        }
-        return new PromoApplication(promo, discount);
-    }
-
-    /**
-     * 訂房結帳的促銷碼驗證（Sprint 124，DEF-047／PRD US-010）。
-     *
-     * <p>比照 {@code OrderService.resolveValidPromoForCheckout} 同一套規則（存在且 ACTIVE →
-     * 有效時間範圍 → 總量上限 → 每人限用），訂房沒有購物車可預先套用，故只有這一次驗證機會。
-     *
-     * @return 通過驗證的促銷碼；{@code null} 表示未提供促銷碼
-     */
-    private PromoCode resolveValidPromoForCheckout(
-            final String appliedPromoCode, final UUID tenantId, final UUID userId) {
-        if (appliedPromoCode == null || appliedPromoCode.isBlank()) {
-            return null;
-        }
-        String normalized = appliedPromoCode.trim().toUpperCase(java.util.Locale.ROOT);
-
-        PromoCode promo = promoCodeRepository.findByCodeIgnoreCaseAndTenantId(normalized, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_5007,
-                        "Promo code no longer available at checkout: " + normalized));
-
-        if (!promo.getIsActive()) {
-            throw new BusinessException(ErrorCode.E_5007, "Promo code is inactive: " + normalized);
-        }
-        if (promo.isNotYetActive()) {
-            throw new BusinessException(ErrorCode.E_5007, "Promo code is not yet active: " + normalized);
-        }
-        if (promo.isExpired()) {
-            throw new BusinessException(ErrorCode.E_5008, "Promo code expired before checkout: " + normalized);
-        }
-        if (promo.isUsageLimitReached()) {
-            throw new BusinessException(ErrorCode.E_5009, "Promo code usage limit reached: " + normalized);
-        }
-        if (perUserLimitReached(promo, userId)) {
-            throw new BusinessException(ErrorCode.E_5009,
-                    "Promo code per-user usage limit reached: " + normalized);
-        }
-
-        return promo;
-    }
-
-    /**
-     * 該買家對該促銷碼是否已用盡 {@code max_usage_per_user} 額度（僅計 {@code ACTIVE} 用券紀錄）。
-     */
-    private boolean perUserLimitReached(final PromoCode promo, final UUID userId) {
-        if (promo.getMaxUsagePerUser() == null) {
-            return false;
-        }
-        long usedByUser = promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
-                promo.getId(), userId, PromoCodeUsage.UsageStatus.ACTIVE);
-        return usedByUser >= promo.getMaxUsagePerUser();
-    }
-
     /**
      * 預訂成立後佔用優惠券額度（比照 {@code OrderService.commitPromoUsage}）。總量額度以
-     * {@code PromoService.tryConsumeUsageQuota} 原子取得，避免鎖定日曆期間被同張券的另一筆
-     * 併發訂房搶先用完額度；額度取得後重查每人限用次數，因該次原子更新已鎖住該券資料列，
-     * 同一買家的併發請求到此已序列化。
+     * {@code PromoService.tryConsumeUsageQuota} 原子取得，避免被同張券的另一筆併發訂房搶先
+     * 用完額度；額度取得後重查每人限用次數，因該次原子更新已鎖住該券資料列，同一買家的併發請求
+     * 到此已序列化。
+     *
+     * <p>Sprint 126（DEF-048 擴大範圍）簽章改接受 {@code bookingId} 而非整個 {@code Booking}
+     * 實體——{@link #buildBookingCore} 現在回傳 {@code BookingDto.BookingResponse}（供
+     * 合併結帳的呼叫端共用），呼叫端只需該筆預訂的 id。
      */
-    private void commitPromoUsage(final PromoCode promo, final Booking booking, final UUID userId) {
+    private void commitPromoUsage(final PromoCode promo, final UUID bookingId, final UUID userId) {
         if (promo == null) {
             return;
         }
@@ -831,19 +787,23 @@ public class BookingService {
             throw new BusinessException(ErrorCode.E_5009,
                     "Promo code sold out during checkout: " + promo.getCode());
         }
-        if (perUserLimitReached(promo, userId)) {
+        if (promoService.perUserLimitReached(promo, userId)) {
             throw new BusinessException(ErrorCode.E_5009,
                     "Promo code per-user usage limit reached: " + promo.getCode());
         }
         promoCodeUsageRepository.save(PromoCodeUsage.builder()
                 .promoCodeId(promo.getId())
                 .userId(userId)
-                .bookingId(booking.getId())
+                .bookingId(bookingId)
                 .build());
     }
 
     /**
-     * 取消預訂時退還優惠券額度（Sprint 124，DEF-047，PRD §2630 同一原則）。
+     * 取消預訂時評估是否退還優惠券額度（Sprint 124，DEF-047，PRD §2630 同一原則）。
+     *
+     * <p>Sprint 126（DEF-048 擴大範圍）改呼叫 {@link PromoService#releaseBookingSide}：單一類型
+     * 用券紀錄行為不變（立即 REVOKED＋釋放額度）；合併結帳（PRODUCT+ROOM 一次結清）用券紀錄
+     * 則依使用者拍板「兩邊都取消才退還」，只有 Order 側也已取消才會真正釋放。
      */
     private void refundPromoUsage(final Booking booking) {
         if (booking.getPromoCode() == null || booking.getPromoCode().isBlank()) {
@@ -851,17 +811,23 @@ public class BookingService {
         }
         List<PromoCodeUsage> usages = promoCodeUsageRepository.findByBookingIdAndStatus(
                 booking.getId(), PromoCodeUsage.UsageStatus.ACTIVE);
+        int revokedCount = 0;
         for (PromoCodeUsage usage : usages) {
-            usage.setStatus(PromoCodeUsage.UsageStatus.REVOKED);
-            usage.setRevokedAt(java.time.Instant.now());
-            promoCodeUsageRepository.save(usage);
-            promoService.releaseUsageQuota(usage.getPromoCodeId());
+            if (promoService.releaseBookingSide(usage)) {
+                revokedCount++;
+            }
         }
-        log.info("Promo usage refunded on booking cancellation: bookingId={}, promoCode={}, revokedCount={}",
-                booking.getId(), booking.getPromoCode(), usages.size());
+        log.info("Promo usage refund evaluated on booking cancellation: bookingId={}, promoCode={}, "
+                        + "usageCount={}, revokedCount={}",
+                booking.getId(), booking.getPromoCode(), usages.size(), revokedCount);
     }
 
-    private BigDecimal calculateTotalAmount(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
+    /**
+     * 計算訂房總額（動態定價優先，否則 basePrice × 晚數）。Sprint 126（DEF-048 擴大範圍）
+     * 改為 {@code public}：合併結帳需要在算「PRODUCT+ROOM 合併折扣」前先取得 ROOM 側小計，
+     * 供 {@code CombinedCheckoutService} 重用，不必複製一份計價邏輯。
+     */
+    public BigDecimal calculateTotalAmount(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
         // 動態定價調整優先（AI-2402 / AI-2406b）：有規則生效時以調整後總價為準（含漲價），與 availability 顯示一致。
         PricingDto.CalculatePriceResponse dynamic = tryDynamicPricing(roomListingId, checkIn, checkOut);
         if (dynamic != null) {

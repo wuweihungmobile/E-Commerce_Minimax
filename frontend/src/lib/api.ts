@@ -52,6 +52,11 @@ export const API_ENDPOINTS = {
     payCheckoutReturn: (id: string) => '/v2/orders/' + id + '/pay/checkout/return',
   },
 
+  // Checkout（合併結帳：購物車同時有 PRODUCT+ROOM 時一次結清，Sprint 126/127，DEF-048 擴大範圍）
+  checkout: {
+    mixed: '/v2/checkout/mixed',
+  },
+
   // Addresses（Sprint 87，PRD §14.3.1 Phase 2-B 收貨地址簿）
   addresses: {
     list: '/v2/addresses',

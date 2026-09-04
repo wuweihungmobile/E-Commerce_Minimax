@@ -159,16 +159,19 @@ class BookingPromoCodeTest {
             b.setId(BOOKING_ID);
             return b;
         });
+        // Sprint 126（DEF-048 擴大範圍）：resolveValidPromoForCheckout／computeCappedDiscount
+        // 從 BookingService 私有方法移至 PromoService 共用，本檔案改為 @Mock PromoService，
+        // 未 stub 的 mock 對 BigDecimal 回傳型別預設是 null 而非 BigDecimal.ZERO，
+        // 「未套用促銷碼」情境需要這個預設值才不會在金額運算中 NPE；個別測試若套用促銷碼，
+        // 會在其自己的 stub 中覆蓋此預設值（Mockito 後定義的 stub 優先）。
+        when(promoService.computeCappedDiscount(any(), any(), any())).thenReturn(BigDecimal.ZERO);
     }
 
     /** 佈置一張通過所有驗證、可折 500 元的有效券。 */
     private PromoCode givenValidPromo() {
         PromoCode promo = promoFixture();
-        when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                .thenReturn(Optional.of(promo));
-        when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(DISCOUNT);
-        when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
-                PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(0L);
+        when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID)).thenReturn(promo);
+        when(promoService.computeCappedDiscount(eq(promo), any(), any())).thenReturn(DISCOUNT);
         when(promoService.tryConsumeUsageQuota(promo)).thenReturn(true);
         return promo;
     }
@@ -211,15 +214,15 @@ class BookingPromoCodeTest {
         }
 
         @Test
-        @DisplayName("折扣大於應付金額 → 總額為 0 不得為負")
+        @DisplayName("折扣達應付金額上限 → 總額為 0 不得為負（封頂規則本身見 PromoServiceTest）")
         void discountNeverMakesTotalNegative() {
             stubHappyPath();
             PromoCode promo = promoFixture();
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.of(promo));
-            when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(BigDecimal.valueOf(5000));
-            when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
-                    PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(0L);
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID)).thenReturn(promo);
+            // Sprint 126 起「折扣不得超過毛額」的封頂邏輯下沉到 PromoService.computeCappedDiscount
+            // 內部；此處直接餵入已封頂的值（訂房毛額 = 2000），驗證 BookingService 正確採信該值
+            // 算出總額 0，不再自行二次封頂。
+            when(promoService.computeCappedDiscount(eq(promo), any(), any())).thenReturn(GROSS_AMOUNT);
             when(promoService.tryConsumeUsageQuota(promo)).thenReturn(true);
 
             BookingDto.BookingResponse response = bookingService.createBooking(createRequest(PROMO_CODE), "idem");
@@ -246,12 +249,17 @@ class BookingPromoCodeTest {
     @DisplayName("結帳驗證：無效／過期／額度用盡的促銷碼一律拒絕，不靜默改收原價")
     class CheckoutValidationTests {
 
+        // Sprint 126（DEF-048 擴大範圍）：實際驗證規則（過期/停用/額度用罄/每人限用/不存在）
+        // 已下沉到 PromoService，並在 PromoServiceTest 對真實邏輯逐一驗證。本類別改為驗證
+        // BookingService 這一層「正確傳遞 PromoService 丟出的每一種拒絕原因、且拒絕時不建立
+        // 預訂」——delegation-level 回歸保護，非重複驗證規則本身。
+
         @Test
         @DisplayName("促銷碼不存在 → E-5007，且不建立預訂")
         void unknownPromoRejected() {
             stubHappyPath();
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.empty());
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID))
+                    .thenThrow(new BusinessException(ErrorCode.E_5007, "no longer available"));
 
             assertThatThrownBy(() -> bookingService.createBooking(createRequest(PROMO_CODE), "idem"))
                     .isInstanceOf(BusinessException.class)
@@ -264,11 +272,8 @@ class BookingPromoCodeTest {
         @DisplayName("促銷碼已過期 → E-5008")
         void expiredPromoRejected() {
             stubHappyPath();
-            PromoCode expired = promoFixture();
-            expired.setStartDate(LocalDateTime.now().minusDays(10));
-            expired.setEndDate(LocalDateTime.now().minusDays(1));
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.of(expired));
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID))
+                    .thenThrow(new BusinessException(ErrorCode.E_5008, "expired"));
 
             assertThatThrownBy(() -> bookingService.createBooking(createRequest(PROMO_CODE), "idem"))
                     .isInstanceOf(BusinessException.class)
@@ -279,11 +284,8 @@ class BookingPromoCodeTest {
         @DisplayName("促銷碼總量已用罄 → E-5009")
         void usageLimitReachedRejected() {
             stubHappyPath();
-            PromoCode soldOut = promoFixture();
-            soldOut.setMaxUsageCount(100);
-            soldOut.setCurrentUsageCount(100);
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.of(soldOut));
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID))
+                    .thenThrow(new BusinessException(ErrorCode.E_5009, "usage limit reached"));
 
             assertThatThrownBy(() -> bookingService.createBooking(createRequest(PROMO_CODE), "idem"))
                     .isInstanceOf(BusinessException.class)
@@ -294,12 +296,8 @@ class BookingPromoCodeTest {
         @DisplayName("同一買家超過每人限用次數 → E-5009")
         void perUserLimitReachedRejected() {
             stubHappyPath();
-            PromoCode promo = promoFixture();
-            promo.setMaxUsagePerUser(1);
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.of(promo));
-            when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
-                    PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(1L);
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID))
+                    .thenThrow(new BusinessException(ErrorCode.E_5009, "per-user limit reached"));
 
             assertThatThrownBy(() -> bookingService.createBooking(createRequest(PROMO_CODE), "idem"))
                     .isInstanceOf(BusinessException.class)
@@ -313,13 +311,8 @@ class BookingPromoCodeTest {
         void atomicConsumeFailureRejects() {
             stubHappyPath();
             PromoCode promo = promoFixture();
-            promo.setCurrentUsageCount(99);
-            promo.setMaxUsageCount(100);
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.of(promo));
-            when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(DISCOUNT);
-            when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
-                    PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(0L);
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID)).thenReturn(promo);
+            when(promoService.computeCappedDiscount(eq(promo), any(), any())).thenReturn(DISCOUNT);
             when(promoService.tryConsumeUsageQuota(promo)).thenReturn(false);
 
             assertThatThrownBy(() -> bookingService.createBooking(createRequest(PROMO_CODE), "idem"))
@@ -354,7 +347,7 @@ class BookingPromoCodeTest {
         }
 
         @Test
-        @DisplayName("取消用券預訂 → 用券紀錄轉 REVOKED 且總量次數回補")
+        @DisplayName("取消用券預訂 → 交給 PromoService 評估該側是否可釋放額度（PRD §2630）")
         void cancelRefundsPromoUsage() {
             TenantContext.setCurrentUser(USER_ID);
             Booking booking = bookingWithPromo();
@@ -373,10 +366,11 @@ class BookingPromoCodeTest {
 
             bookingService.cancelBooking(BOOKING_ID, "buyer changed mind");
 
-            assertThat(usage.getStatus()).isEqualTo(PromoCodeUsage.UsageStatus.REVOKED);
-            assertThat(usage.getRevokedAt()).isNotNull();
-            verify(promoCodeUsageRepository).save(usage);
-            verify(promoService).releaseUsageQuota(PROMO_ID);
+            // Sprint 126（DEF-048 擴大範圍）：REVOKED 轉態／額度回補的實際規則下沉到
+            // PromoService.releaseBookingSide（單一類型立即釋放、合併結帳需雙側都取消才釋放，
+            // 見 PromoServiceTest 對此規則的直接驗證）。BookingService 這一層只負責「找出該預訂的
+            // ACTIVE 用券紀錄、逐筆交給 PromoService 評估」，故此處驗證改為確認有委派。
+            verify(promoService).releaseBookingSide(usage);
         }
 
         @Test
@@ -429,7 +423,11 @@ class BookingPromoCodeTest {
             PromoCode promo = promoFixture();
             when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
                     .thenReturn(Optional.of(promo));
-            when(promoService.computeDiscount(eq(promo), eq(BigDecimal.valueOf(3000)), any())).thenReturn(DISCOUNT);
+            // recalculateAndBookDateRange 不重新驗證促銷碼／不重佔額度，只依已記錄的券別對新總額
+            // 重算折扣（見該方法註解）——此路徑仍直接查 promoCodeRepository，非本 Sprint 126 動的
+            // resolveValidPromoForCheckout；封頂邏輯已下沉為 computeCappedDiscount。
+            when(promoService.computeCappedDiscount(eq(promo), eq(BigDecimal.valueOf(3000)), any()))
+                    .thenReturn(DISCOUNT);
 
             BookingDto.UpdateRequest request = BookingDto.UpdateRequest.builder()
                     .checkInDate(newCheckIn)

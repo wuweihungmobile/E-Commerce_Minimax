@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +26,7 @@ import org.mockito.quality.Strictness;
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
+import com.nextkey.ecommerce.core.promo.PromoService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.room.Room;
@@ -78,8 +80,22 @@ class BookingServiceUpdateDateChangeTest {
     @Mock
     private FeatureToggleService featureToggleService;
 
+    @Mock
+    private PromoService promoService;
+
     @InjectMocks
     private BookingService bookingService;
+
+    /**
+     * Sprint 126（DEF-048 擴大範圍）：{@code recalculateAndBookDateRange} 改呼叫
+     * {@code PromoService.computeCappedDiscount}（原直接呼叫 {@code computeDiscount} 並自行
+     * 封頂），未 stub 的 mock 對 {@code BigDecimal} 回傳型別預設是 null 而非
+     * {@code BigDecimal.ZERO}，本檔案的測試皆不涉及促銷碼情境，需要這個預設值才不會 NPE。
+     */
+    @BeforeEach
+    void setUpPromoDefaults() {
+        when(promoService.computeCappedDiscount(any(), any(), any())).thenReturn(BigDecimal.ZERO);
+    }
 
     private static final UUID USER_ID = UUID.randomUUID();
     private static final UUID BOOKING_ID = UUID.randomUUID();

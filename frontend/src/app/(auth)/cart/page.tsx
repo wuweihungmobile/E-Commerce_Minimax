@@ -489,10 +489,18 @@ export default function CartPage() {
                     className="w-full"
                     size="lg"
                     onClick={() => {
-                      // 購物車為 ROOM/PRODUCT 共用；只要有任何 PRODUCT 項目即優先導向商品結帳頁
-                      // （該頁僅處理 PRODUCT 項目，ROOM 項目會保留在購物車供另外結帳）
+                      // Sprint 127（DEF-048 擴大範圍）：購物車同時有 PRODUCT 與 ROOM 項目時，
+                      // 導向合併結帳頁一次結清兩者；純單一類型仍走原有兩條各自獨立的結帳頁
+                      // （該頁僅處理對應類型項目，另一類項目會保留在購物車）。
                       const hasProduct = (cart?.items || []).some((i) => i.listingType === 'PRODUCT')
-                      router.push(hasProduct ? '/checkout/product' : '/checkout')
+                      const hasRoom = (cart?.items || []).some((i) => i.listingType === 'ROOM')
+                      router.push(
+                        hasProduct && hasRoom
+                          ? '/checkout/mixed'
+                          : hasProduct
+                            ? '/checkout/product'
+                            : '/checkout'
+                      )
                     }}
                   >
                     前往結帳

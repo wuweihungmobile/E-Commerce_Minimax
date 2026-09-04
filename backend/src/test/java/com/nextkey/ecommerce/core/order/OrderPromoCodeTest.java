@@ -45,7 +45,6 @@ import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.OrderStateLogRepository;
 import com.nextkey.ecommerce.domain.repository.ProductRepository;
 import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
-import com.nextkey.ecommerce.domain.repository.PromoCodeRepository;
 import com.nextkey.ecommerce.domain.repository.PromoCodeUsageRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
@@ -92,7 +91,6 @@ class OrderPromoCodeTest {
     @Mock private AddressService addressService;
     @Mock private ProductInventoryService productInventoryService;
     @Mock private PromoService promoService;
-    @Mock private PromoCodeRepository promoCodeRepository;
     @Mock private PromoCodeUsageRepository promoCodeUsageRepository;
 
     @InjectMocks
@@ -186,16 +184,19 @@ class OrderPromoCodeTest {
             o.setId(ORDER_ID);
             return o;
         });
+        // Sprint 126（DEF-048 擴大範圍）：resolveValidPromoForCheckout／computeCappedDiscount
+        // 從 OrderService 私有方法移至 PromoService 共用，本檔案改為 @Mock PromoService，
+        // 未 stub 的 mock 對 BigDecimal 回傳型別預設是 null 而非 BigDecimal.ZERO，
+        // 「購物車未套用促銷碼」情境需要這個預設值才不會在金額運算中 NPE；
+        // 個別測試若套用促銷碼，會在其自己的 stub 中覆蓋此預設值（Mockito 後定義的 stub 優先）。
+        when(promoService.computeCappedDiscount(any(), any(), any())).thenReturn(BigDecimal.ZERO);
     }
 
     /** 佈置一張通過所有驗證、可折 100 元的有效券。 */
     private PromoCode givenValidPromo() {
         PromoCode promo = promoFixture();
-        when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                .thenReturn(Optional.of(promo));
-        when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(DISCOUNT);
-        when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
-                PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(0L);
+        when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID)).thenReturn(promo);
+        when(promoService.computeCappedDiscount(eq(promo), any(), any())).thenReturn(DISCOUNT);
         // Sprint 102：總量額度改由原子條件式 UPDATE 取得，成功路徑必須明確 stub 為取得成功
         when(promoService.tryConsumeUsageQuota(promo)).thenReturn(true);
         return promo;
@@ -264,16 +265,17 @@ class OrderPromoCodeTest {
         }
 
         @Test
-        @DisplayName("折扣大於應付金額 → 總額為 0 不得為負（PRD §9.5.1 步驟 5）")
+        @DisplayName("折扣達應付金額上限 → 總額為 0 不得為負（PRD §9.5.1 步驟 5；封頂規則本身見 PromoServiceTest）")
         void discountNeverMakesTotalNegative() {
             givenCartWithPromo(PROMO_CODE);
             PromoCode promo = promoFixture();
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.of(promo));
-            // 折扣 500 遠大於應付 260
-            when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(BigDecimal.valueOf(500));
-            when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
-                    PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(0L);
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID)).thenReturn(promo);
+            // Sprint 126 起「折扣不得超過毛額」的封頂邏輯下沉到 PromoService.computeCappedDiscount
+            // 內部（見 PromoServiceTest 對此規則的直接驗證）；此處直接餵入已封頂的值
+            // （毛額 = 小計 200 + 運費 60 = 260），驗證 OrderService 正確採信該值算出總額 0，
+            // 不再自行二次封頂。
+            when(promoService.computeCappedDiscount(eq(promo), any(), any()))
+                    .thenReturn(BigDecimal.valueOf(260));
             when(promoService.tryConsumeUsageQuota(promo)).thenReturn(true);
 
             OrderDto.OrderResponse response = orderService.createOrderFromCart(productRequest());
@@ -310,7 +312,9 @@ class OrderPromoCodeTest {
             orderService.createOrderFromCart(productRequest());
 
             // 這正是 DEF-045 的失效點：折扣基數若只傳商品小計，免運券永遠算不出金額
-            verify(promoService).computeDiscount(eq(promo), eq(ITEMS_TOTAL), eq(SHIPPING_FEE));
+            // Sprint 126：驗證對象改為 computeCappedDiscount（OrderService 現在呼叫的方法），
+            // 該方法內部會轉呼叫 computeDiscount（PromoServiceTest 直接驗證這條轉呼叫關係）
+            verify(promoService).computeCappedDiscount(eq(promo), eq(ITEMS_TOTAL), eq(SHIPPING_FEE));
         }
 
         @Test
@@ -318,12 +322,9 @@ class OrderPromoCodeTest {
         void freeShippingCouponWaivesShippingFee() {
             givenCartWithPromo(PROMO_CODE);
             PromoCode promo = freeShippingPromoFixture();
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.of(promo));
-            // 真實 PromoService 對 FREE_SHIPPING 現在回傳的就是運費全額
-            when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(SHIPPING_FEE);
-            when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
-                    PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(0L);
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID)).thenReturn(promo);
+            // 真實 PromoService 對 FREE_SHIPPING 折算出的就是運費全額
+            when(promoService.computeCappedDiscount(eq(promo), any(), any())).thenReturn(SHIPPING_FEE);
             when(promoService.tryConsumeUsageQuota(promo)).thenReturn(true);
 
             OrderDto.OrderResponse response = orderService.createOrderFromCart(productRequest());
@@ -353,15 +354,17 @@ class OrderPromoCodeTest {
     @DisplayName("缺口 4：下單時重新驗證促銷碼（PRD §9.5.1 步驟 1-3）")
     class CheckoutRevalidationTests {
 
+        // Sprint 126（DEF-048 擴大範圍）：resolveValidPromoForCheckout 的實際驗證規則（過期/停用/
+        // 額度用罄/每人限用/已刪除）已下沉到 PromoService，並在 PromoServiceTest 對真實邏輯逐一驗證。
+        // 本類別改為驗證 OrderService 這一層「正確傳遞 PromoService 丟出的每一種拒絕原因、
+        // 且拒絕時不留下訂單」——delegation-level 回歸保護，非重複驗證規則本身。
+
         @Test
         @DisplayName("券在購物車存活期間過期 → 拒絕下單（E-5008），不靜默改收原價")
         void expiredPromoRejectedAtCheckout() {
             givenCartWithPromo(PROMO_CODE);
-            PromoCode expired = promoFixture();
-            expired.setStartDate(LocalDateTime.now().minusDays(10));
-            expired.setEndDate(LocalDateTime.now().minusDays(1));
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.of(expired));
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID))
+                    .thenThrow(new BusinessException(ErrorCode.E_5008, "expired"));
 
             assertThatThrownBy(() -> orderService.createOrderFromCart(productRequest()))
                     .isInstanceOf(BusinessException.class)
@@ -374,10 +377,8 @@ class OrderPromoCodeTest {
         @DisplayName("券已停用 → 拒絕下單（E-5007）")
         void inactivePromoRejectedAtCheckout() {
             givenCartWithPromo(PROMO_CODE);
-            PromoCode inactive = promoFixture();
-            inactive.setIsActive(false);
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.of(inactive));
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID))
+                    .thenThrow(new BusinessException(ErrorCode.E_5007, "inactive"));
 
             assertThatThrownBy(() -> orderService.createOrderFromCart(productRequest()))
                     .isInstanceOf(BusinessException.class)
@@ -388,11 +389,8 @@ class OrderPromoCodeTest {
         @DisplayName("券總量已用罄 → 拒絕下單（E-5009，修復 max_usage_count 形同虛設）")
         void totalUsageLimitReachedRejected() {
             givenCartWithPromo(PROMO_CODE);
-            PromoCode soldOut = promoFixture();
-            soldOut.setMaxUsageCount(100);
-            soldOut.setCurrentUsageCount(100);
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.of(soldOut));
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID))
+                    .thenThrow(new BusinessException(ErrorCode.E_5009, "usage limit reached"));
 
             assertThatThrownBy(() -> orderService.createOrderFromCart(productRequest()))
                     .isInstanceOf(BusinessException.class)
@@ -403,13 +401,8 @@ class OrderPromoCodeTest {
         @DisplayName("同一買家超過每人限用次數 → 拒絕下單（E-5009，修復 max_usage_per_user 零讀取）")
         void perUserLimitReachedRejected() {
             givenCartWithPromo(PROMO_CODE);
-            PromoCode promo = promoFixture();
-            promo.setMaxUsagePerUser(1);
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.of(promo));
-            // 該買家已用過 1 次
-            when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
-                    PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(1L);
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID))
+                    .thenThrow(new BusinessException(ErrorCode.E_5009, "per-user limit reached"));
 
             assertThatThrownBy(() -> orderService.createOrderFromCart(productRequest()))
                     .isInstanceOf(BusinessException.class)
@@ -422,8 +415,8 @@ class OrderPromoCodeTest {
         @DisplayName("券在購物車存活期間被刪除 → 拒絕下單（E-5007）")
         void deletedPromoRejectedAtCheckout() {
             givenCartWithPromo(PROMO_CODE);
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.empty());
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID))
+                    .thenThrow(new BusinessException(ErrorCode.E_5007, "no longer available"));
 
             assertThatThrownBy(() -> orderService.createOrderFromCart(productRequest()))
                     .isInstanceOf(BusinessException.class)
@@ -452,7 +445,7 @@ class OrderPromoCodeTest {
         }
 
         @Test
-        @DisplayName("取消用券訂單 → 用券紀錄轉 REVOKED 且總量次數回補")
+        @DisplayName("取消用券訂單 → 交給 PromoService 評估該側是否可釋放額度（PRD §2630）")
         void cancelRefundsPromoUsage() {
             TenantContext.setCurrentUser(USER_ID);
             Order order = orderWithPromo(Order.OrderStatus.CREATED);
@@ -471,11 +464,11 @@ class OrderPromoCodeTest {
 
             orderService.cancelOrder(ORDER_ID, "buyer changed mind");
 
-            assertThat(usage.getStatus()).isEqualTo(PromoCodeUsage.UsageStatus.REVOKED);
-            assertThat(usage.getRevokedAt()).isNotNull();
-            verify(promoCodeUsageRepository).save(usage);
-            // Sprint 102：額度回補改為資料庫端的原子相對遞減，不再讀出實體改欄位再 save
-            verify(promoService).releaseUsageQuota(PROMO_ID);
+            // Sprint 126（DEF-048 擴大範圍）：REVOKED 轉態／額度回補的實際規則下沉到
+            // PromoService.releaseOrderSide（單一類型立即釋放、合併結帳需雙側都取消才釋放，
+            // 見 PromoServiceTest 對此規則的直接驗證）。OrderService 這一層只負責「找出該訂單的
+            // ACTIVE 用券紀錄、逐筆交給 PromoService 評估」，故此處驗證改為確認有委派。
+            verify(promoService).releaseOrderSide(usage);
         }
 
         @Test
@@ -507,14 +500,10 @@ class OrderPromoCodeTest {
         void atomicConsumeFailureRejectsOrder() {
             givenCartWithPromo(PROMO_CODE);
             PromoCode promo = promoFixture();
-            // 前置檢查看到的是「還有額度」的快照——這正是修復前唯一的把關點
-            promo.setCurrentUsageCount(99);
-            promo.setMaxUsageCount(100);
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.of(promo));
-            when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(DISCOUNT);
-            when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
-                    PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE)).thenReturn(0L);
+            // 前置檢查（resolveValidPromoForCheckout，這裡以 stub 直接模擬「通過」）看到的是
+            // 「還有額度」的快照——這正是修復前唯一的把關點
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID)).thenReturn(promo);
+            when(promoService.computeCappedDiscount(eq(promo), any(), any())).thenReturn(DISCOUNT);
             // 條件式 UPDATE 影響 0 筆：另一筆並行結帳已在這之間把最後一張搶走
             when(promoService.tryConsumeUsageQuota(promo)).thenReturn(false);
 
@@ -533,14 +522,13 @@ class OrderPromoCodeTest {
             givenCartWithPromo(PROMO_CODE);
             PromoCode promo = promoFixture();
             promo.setMaxUsagePerUser(1);
-            when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
-                    .thenReturn(Optional.of(promo));
-            when(promoService.computeDiscount(eq(promo), any(), any())).thenReturn(DISCOUNT);
+            // 前置檢查（resolveValidPromoForCheckout）以 stub 模擬「通過」——真實的每人限用計數
+            // 邏輯本身已下沉到 PromoService，由 PromoServiceTest 直接驗證。
+            when(promoService.resolveValidPromoForCheckout(PROMO_CODE, TENANT_ID, USER_ID)).thenReturn(promo);
+            when(promoService.computeCappedDiscount(eq(promo), any(), any())).thenReturn(DISCOUNT);
             when(promoService.tryConsumeUsageQuota(promo)).thenReturn(true);
-            // 前置檢查時 0 次（放行），取得行鎖後重查已變 1 次——另一筆並行請求剛提交
-            when(promoCodeUsageRepository.countByPromoCodeIdAndUserIdAndStatus(
-                    PROMO_ID, USER_ID, PromoCodeUsage.UsageStatus.ACTIVE))
-                    .thenReturn(0L, 1L);
+            // 取得行鎖後，commitPromoUsage 的鎖內重查發現已變 1 次——另一筆並行請求剛提交
+            when(promoService.perUserLimitReached(promo, USER_ID)).thenReturn(true);
 
             assertThatThrownBy(() -> orderService.createOrderFromCart(productRequest()))
                     .isInstanceOf(BusinessException.class)

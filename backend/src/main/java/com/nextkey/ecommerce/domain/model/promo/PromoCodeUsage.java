@@ -48,8 +48,16 @@ public class PromoCodeUsage {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
-    @Column(name = "order_id", nullable = false)
+    /** 商品訂單來源；與 {@link #bookingId} 恰好一個非 null（見 V76 CHECK 約束）。 */
+    @Column(name = "order_id")
     private UUID orderId;
+
+    /**
+     * 訂房來源（Sprint 124，DEF-047）。{@code order_id} 有 {@code REFERENCES orders(id)} FK，
+     * 塞入 booking id 會違反約束，故另開一欄而非沿用同一欄位存兩種語意不同的 ID。
+     */
+    @Column(name = "booking_id")
+    private UUID bookingId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)

@@ -11,7 +11,8 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
-| Sprint 123 | v2030.03.11-01 | - | 2026-09-04 | **DEF-068：schema 文件涵蓋率缺口（3 SP）**：`check_schema_doc.py` 過去只比對「文件裡已經寫到的表」，SRD §2 只有 14 張表的 DDL，`stock_movements`（Sprint 117）差點漂移未被發現——靠的是 PRD §8.2 那一半才攔下。使用者授權依序處理三項待辦，本輪排第一項。查證後實作共 65 張表、SRD+PRD 只覆蓋 26 張、**39 張完全未被任何文件提到**，三選一原記錄的 (a) 補齊全部 DDL 規模遠超原估，**拍板選 (b)+(c) 混合**：新增 SRD §2.6「已知範圍外資料表」清單（39 張依模組分類，非逐欄 DDL，如實記錄技術債不假裝解決）+ `check_schema_doc.py` 新增 `check_coverage()` 涵蓋率守門——任何實作表不在「SRD §2」∪「PRD §8.2」∪「§2.6 清單」任一處即報錯，堵住未來新表零文件的路徑；清單本身若列了已不存在的表也報錯。負向測試證實有效（暫時移除 `addresses` 一列，守門如預期點名報錯，還原後恢復綠燈）。純 `docs/`+`scripts/lib/` 變更，未動 `backend/`/`frontend/`。詳見 [SPRINT_123_PLAN.md](SPRINT_123_PLAN.md) | ⏳ 待 push |
+| Sprint 124 | v2030.03.12-01 | - | 2026-09-04 | **DEF-047：訂房結帳套用促銷碼（原估 5 SP）**：使用者授權依序處理三項待辦，本輪排第二項。**原記錄的修復目標查證後被推翻**：原記指向 `OrderService.createRoomOrder`，查證後發現前端零呼叫點，真正的訂房結帳走完全獨立的 `BookingService`／`Booking` 實體。改為修復真正被使用的路徑：`V76` 新增 `bookings.promo_code`／`discount_amount`，`promo_code_usages` 新增 `booking_id`（`order_id` 放寬可空）+ CHECK 約束；`createBooking`／`cancelBooking` 比照 Sprint 100 `OrderService` 模式移植；`updateBooking` 日期異動路徑一併處理折扣重算（`Booking` 特有風險，`Order` 沒有此功能）。新增 `BookingPromoCodeTest`（12 案例）+ 前端優惠碼輸入框。詳見 [SPRINT_124_PLAN.md](SPRINT_124_PLAN.md) | ⏳ 待 push |
+| Sprint 123 | v2030.03.11-01 | - | 2026-09-04 | **DEF-068：schema 文件涵蓋率缺口（3 SP）**：`check_schema_doc.py` 過去只比對「文件裡已經寫到的表」，SRD §2 只有 14 張表的 DDL，`stock_movements`（Sprint 117）差點漂移未被發現——靠的是 PRD §8.2 那一半才攔下。使用者授權依序處理三項待辦，本輪排第一項。查證後實作共 65 張表、SRD+PRD 只覆蓋 26 張、**39 張完全未被任何文件提到**，三選一原記錄的 (a) 補齊全部 DDL 規模遠超原估，**拍板選 (b)+(c) 混合**：新增 SRD §2.6「已知範圍外資料表」清單（39 張依模組分類，非逐欄 DDL，如實記錄技術債不假裝解決）+ `check_schema_doc.py` 新增 `check_coverage()` 涵蓋率守門——任何實作表不在「SRD §2」∪「PRD §8.2」∪「§2.6 清單」任一處即報錯，堵住未來新表零文件的路徑；清單本身若列了已不存在的表也報錯。負向測試證實有效（暫時移除 `addresses` 一列，守門如預期點名報錯，還原後恢復綠燈）。純 `docs/`+`scripts/lib/` 變更，未動 `backend/`/`frontend/`。詳見 [SPRINT_123_PLAN.md](SPRINT_123_PLAN.md) | ✅ 已 push（2026-09-04，commit `3f7688f`）。無 backend/frontend 變動（純 docs/scripts），pre-push 依規則判定純文件變動直接放行 |
 | Sprint 122 | v2030.03.10-01 | - | 2026-09-04 | **DEF-052：修正 `-Pintegration-test` 誤導性文件引用（1 SP）**：`-Pintegration-test` 是一個不存在的 Maven profile——failsafe 其實無條件綁在 `verify` 生命週期階段，`-P` 旗標對它毫無作用。使用者於高/中/低優先級候選中拍板選此項（最低風險、無需業務決策、可立即動工）。修正 `Makefile:102`／`backend/pom.xml` surefire+failsafe 註解／`docs/08_deployment/LOCAL_CI_VALIDATION.md` 共 3 處，各自加註「為何誤導」而非只刪字。**查證全庫約 80 個匹配後排除假陽性**：歷史 Sprint 記錄與 `FLYWAY_EVALUATION.md` 為時間點快照，依 Rule 3 不回頭改寫；`docker-compose.test.yml`／`scripts/validate-schema.sh` 的「integration-test profile」查證後是真實存在的 Spring profile（非 Maven `-P` 旗標），非本缺陷範圍，未誤觸。詳見 [SPRINT_122_PLAN.md](SPRINT_122_PLAN.md) | ✅ 已 push（2026-09-04，commit `5e0d5db`）。本地輕量守門（`make validate-push`）全過：act Backend Unit job succeeded、schema 漂移守門通過、frontend build 成功。**雲端 CI run 33835225748 三個 job 全綠**：Backend Unit Tests 2m50s／Backend Integration Tests & Package 6m05s／Frontend Lint & Build 1m57s |
 | Sprint 121 | v2030.03.09-01 | - | 2026-09-04 | **DEF-067：移除庫存盤點孤兒骨架（1 US，1 SP）**：回歸 AISDLC 流程盤點候選項目時，先撞見一次 `DEFERRED_ITEMS_TRACKER.md` 過時漂移——原選中的 DEF-064 早已於 Sprint 117 完整實作上線，該列誤留「待排程」3 個 Sprint（118-120）未回填，已更正移至已完成延後項目（詳見追蹤器本身的版本記錄）。改選 DEF-067：`inventory_checks` 表與 `InventoryCheck` entity 是孤兒（PRD §6.7.2 P1 庫存盤點功能骨架，`V50` 建，但無任何生產程式碼讀寫；且骨架本身也不完整——只有單頭表彙總欄位，無逐 SKU 明細子表，接上 CRUD 也做不出「盤盈/盤虧記錄」）。**使用者拍板選 (a) 移除孤兒骨架**（技術債清理），而非啟動完整功能設計——PRD 目前只有一行摘要、無 US/AC/API 規格。比照 DEF-066（`V72`）模式：刪除 `InventoryCheck.java`（無 repository/service，無需連帶移除）＋ 新增 `V75` `DROP TABLE IF EXISTS inventory_checks`。確認無殘留引用（後端/前端 grep 僅命中被刪除的 entity 自身）。**明確不變**：PRD §14.2.5 `BV-2A-04`（ERP 庫存準確率）KPI 仍無法量測，此為既有事實不因本次移除而改變；DEF-068（SRD 涵蓋率缺口）與本次無關，仍待拍板。詳見 [SPRINT_121_PLAN.md](SPRINT_121_PLAN.md) ✅ 已 push（2026-09-04，commit `1096592`）。本地 `mvn -o verify` 單元 1034／整合 454 全綠（與 S120 基準相同，本輪未新增/移除測試），checkstyle／PMD 0 violations；`make validate-schema`／`validate-schema-doc`（75 個遷移）皆通過；pre-commit hook 與 pre-push 輕量守門皆過。ℹ️ **push 過程兩度撞上 Docker Desktop 網路異常**（act 容器內 `apt-get install`／`npm ci` 各卡死一次，CPU 累積時間完全停滯），非本輪程式碼問題；重啟 Docker Desktop（500 Internal Server Error）後第三次 push 順利完成。**雲端 CI run 33824191048 三個 job 全綠**：Backend Unit 3m12s／Backend Integration 6m16s／Frontend Lint & Build 1m23s。 |
 | Sprint 120 | v2030.03.08-01 | - | 2026-09-03 | **DEF-069：退貨審核台補上商品名稱顯示（1 US，2 SP）**：Sprint 119 記錄的已知限制，使用者拍板排入排程，選項 (a)。`ProductSkuRepository` 新增 `SkuDisplayInfo` 投影（`LEFT JOIN` `product_skus`／`listings`，比照 DEF-064 教訓）；`ReturnDto.ItemResponse` 新增 `skuCode`／`specName`／`productName`；`ReturnRequestService.toResponse()` 對單一退貨單品項批次查詢一次。前端 `/dashboard/returns/[id]` 改顯示品名（無值退回截斷 ID）。新增 `IT-M05-RETURN-012`。**已知取捨**：批次僅止於單一退貨單內（低流量功能，未如 DEF-064 做整頁 JOIN 投影）。詳見 [SPRINT_120_PLAN.md](SPRINT_120_PLAN.md) ✅ 已 push（2026-09-04，commit `b10d3d2`）。本地 `mvn -o verify` 單元 1034／整合 454 全綠，checkstyle／PMD 0 violations；本地輕量守門三項全過。**雲端 CI run 33776479957 三個 job 全綠**：Backend Unit 2m51s／Backend Integration 7m30s／Frontend Lint & Build 57s |
@@ -115,12 +116,12 @@
 
 | 項目 | 數值 |
 |------|------|
-| 建立 Release Tag 次數 | 94 (Sprint 10~123 中已建 row 者，逐列計數；Sprint 8-9 未正式 Release） |
-| 已 push（已 Release） | 93 (Sprint 122 已同日 push 並回填雲端 CI 結果) |
-| 待 push（Tag 已建、尚未 push） | 1 (Sprint 123) |
+| 建立 Release Tag 次數 | 95 (Sprint 10~124 中已建 row 者，逐列計數；Sprint 8-9 未正式 Release） |
+| 已 push（已 Release） | 94 (Sprint 123 已同日 push) |
+| 待 push（Tag 已建、尚未 push） | 1 (Sprint 124) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release Tag | v2030.03.11-01 (Sprint 123，⏳ 待 push) |
-| 最近一次已 push Release | v2030.03.10-01 (Sprint 122，2026-09-04，雲端 CI run 33835225748 三 job 全綠) |
+| 最近一次 Release Tag | v2030.03.12-01 (Sprint 124，⏳ 待 push) |
+| 最近一次已 push Release | v2030.03.11-01 (Sprint 123，2026-09-04，commit `3f7688f`) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release Tag 開始 | Sprint 10（⚠️ **連續性已中斷**：Sprint 68/69/70/74/75/76/78/80~92 共 20 個 Sprint 未建 row，該期間 tracker 未同步維護，非未交付） |
 
@@ -443,6 +444,7 @@ Sprint 35  → ⏳ Tag 已建 (v2027.02.27-01)  [待 push，S32~S35 累積批次
 
 | 版本 | 日期 | 修改內容 |
 |------|------|----------|
+| v2.11 | 2026-09-04 | 新增 Sprint 124 row（DEF-047 訂房結帳套用促銷碼）並同步統計區。**依「狀態欄維護規則」開工回填 Sprint 123**：commit `3f7688f` 已 push（純 docs/scripts 變更，pre-push 依規則判定無 backend/frontend 變動直接放行，無雲端 CI 可回填）。Sprint 124 自身標為「⏳ 待 push」待下一輪開工回填 |
 | v2.10 | 2026-09-04 | 新增 Sprint 123 row（DEF-068 schema 文件涵蓋率缺口）並同步統計區。**依「狀態欄維護規則」開工核對 Sprint 122**：v2.9 已回填為「✅ 已 push」故無需再動。Sprint 123 自身標為「⏳ 待 push」待下一輪開工回填 |
 | v2.9 | 2026-09-04 | **同日立即回填 Sprint 122 push 狀態**（雲端 CI 已跑完，回填成本為零，不留到下一 Sprint）：commit `5e0d5db` 已 push，本地輕量守門（`make validate-push`）全過，雲端 CI run **33835225748** 三個 job 全綠（Backend Unit 2m50s／Backend Integration 6m05s／Frontend Lint & Build 1m57s） |
 | v2.8 | 2026-09-04 | 新增 Sprint 122 row（DEF-052 修正 `-Pintegration-test` 誤導性文件引用）並同步統計區。**依「狀態欄維護規則」開工核對 Sprint 121**：v2.7 已回填為「✅ 已 push」故無需再動。Sprint 122 自身標為「⏳ 待 push」待下一輪開工回填。**順帶更正統計區既有漂移**：「最近一次已 push Release」自 v2.7（Sprint 121 已回填為已 push）起就該改指向 Sprint 121，卻仍寫 Sprint 120，本輪一併修正 |

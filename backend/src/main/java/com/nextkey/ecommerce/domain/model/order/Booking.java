@@ -90,6 +90,15 @@ public class Booking {
     @Column(name = "total_amount", nullable = false, precision = DECIMAL_PRECISION, scale = 2)
     private BigDecimal totalAmount;
 
+    /** 下單當下套用的促銷碼快照（Sprint 124，DEF-047／PRD US-010）；null 表示未使用優惠券 */
+    @Column(name = "promo_code")
+    private String promoCode;
+
+    /** 下單當下的折扣金額（Sprint 124）；{@link #totalAmount} 已為扣除本欄位後的應付金額 */
+    @Column(name = "discount_amount", nullable = false, precision = DECIMAL_PRECISION, scale = 2)
+    @Builder.Default
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+
     @Column(name = "guest_name")
     private String guestName;
 

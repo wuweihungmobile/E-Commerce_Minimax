@@ -25,6 +25,10 @@ export interface Booking {
   guestCount: number
   status: BookingStatus
   totalAmount: number
+  /** 下單當下套用的促銷碼（Sprint 124，DEF-047／PRD US-010）；null 表示未使用優惠券 */
+  promoCode: string | null
+  /** 下單當下的折扣金額（Sprint 124）；totalAmount 已扣除本欄位 */
+  discountAmount: number
   currency: string
   guestName: string | null
   guestPhone: string | null
@@ -62,6 +66,8 @@ export interface CreateBookingRequest {
   guestPhone?: string
   guestEmail?: string
   specialRequests?: string
+  /** 選用：結帳時套用的促銷碼（Sprint 124，DEF-047／PRD US-010） */
+  promoCode?: string
 }
 
 // 對齊後端 BookingDto.AvailabilityResponse（GET /v2/bookings/availability）
@@ -109,6 +115,10 @@ const BOOKING_ERROR_MESSAGES: Record<string, string> = {
   'E-3002': '此房型目前未開放預訂',
   'E-6005': '預訂處理中，請稍候再試',
   'E-9004': '請求格式錯誤，請重新嘗試',
+  // 促銷碼相關（Sprint 124，DEF-047），對齊 BookingService.resolveValidPromoForCheckout
+  'E-5007': '促銷碼不存在或已停用',
+  'E-5008': '促銷碼已過期',
+  'E-5009': '促銷碼已達使用上限，請移除後重新預訂',
 }
 
 export function bookingErrorMessage(code?: string | null): string {

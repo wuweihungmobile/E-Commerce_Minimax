@@ -42,6 +42,11 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [bookingId, setBookingId] = useState<string | null>(null)
+  // Sprint 124（DEF-047／PRD US-010）：訂房結帳套用促銷碼。訂房沒有像 PRODUCT 購物車那樣
+  // 預先驗證/套用的兩段式流程，改為送出預訂時一併帶入，由後端一次驗證與套用。
+  const [promoCode, setPromoCode] = useState('')
+  const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null)
+  const [discountAmount, setDiscountAmount] = useState<number>(0)
 
   // Guest info form state
   const [guestName, setGuestName] = useState('')
@@ -129,11 +134,14 @@ export default function CheckoutPage() {
         guestName: guestName.trim(),
         guestPhone: guestPhone.trim(),
         guestEmail: guestEmail.trim(),
-        specialRequests: specialRequests.trim() || undefined
+        specialRequests: specialRequests.trim() || undefined,
+        promoCode: promoCode.trim() || undefined
       }
 
       const booking = await bookingService.createBooking(request, idempotencyKey)
       setBookingId(booking.id)
+      setAppliedPromoCode(booking.promoCode)
+      setDiscountAmount(booking.discountAmount || 0)
       // 🔴 只移除「這次真的訂掉」的那一個 ROOM 項目，不可清空整車（DEF-043）。
       // 本流程只會為 roomItems[0] 建立預訂，若在此下 DELETE /v2/cart，購物車裡
       // 尚未結帳的 PRODUCT 項目、以及第二個以後的 ROOM 項目都會被靜默刪除。
@@ -159,7 +167,12 @@ export default function CheckoutPage() {
             <div className="text-6xl mb-4">✓</div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">預訂成功！</h2>
             <p className="text-gray-600 mb-4">您的預訂已完成</p>
-            <p className="text-sm text-gray-500 mb-6">預訂編號: {bookingId}</p>
+            <p className="text-sm text-gray-500 mb-2">預訂編號: {bookingId}</p>
+            {appliedPromoCode && (
+              <p className="text-sm text-green-600 mb-4">
+                已套用優惠券 {appliedPromoCode}，折扣 {formatPrice(discountAmount)}
+              </p>
+            )}
             <div className="flex gap-4">
               <Link href="/bookings">
                 <Button variant="outline">查看我的預訂</Button>
@@ -260,6 +273,17 @@ export default function CheckoutPage() {
             <CardContent className="space-y-4">
               <div className="text-sm text-gray-600">
                 請從購物車選擇要預訂的房間
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="promoCode">優惠碼（選填）</Label>
+                <Input
+                  id="promoCode"
+                  placeholder="輸入優惠碼"
+                  value={promoCode}
+                  onChange={(e) => setPromoCode(e.target.value)}
+                  disabled={loading}
+                />
               </div>
 
               <div className="border-t pt-4">

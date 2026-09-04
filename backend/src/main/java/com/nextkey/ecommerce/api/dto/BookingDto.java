@@ -59,6 +59,12 @@ public class BookingDto {
 
         @Size(max = 1000, message = "Special requests too long")
         private String specialRequests;
+
+        /**
+         * 選用：結帳時套用的促銷碼（Sprint 124，DEF-047／PRD US-010）。
+         * 訂房結帳不像 PRODUCT 走購物車，沒有 Redis 儲存的已套用促銷碼，故由前端於送出訂房請求時明確帶入。
+         */
+        private String promoCode;
     }
 
     // ========== Update Booking Request ==========
@@ -95,6 +101,10 @@ public class BookingDto {
         private Integer guestCount;
         private String status;
         private BigDecimal totalAmount;
+        /** 下單當下套用的促銷碼（Sprint 124，DEF-047）；null 表示未使用優惠券 */
+        private String promoCode;
+        /** 下單當下的折扣金額（Sprint 124）；totalAmount 已扣除本欄位 */
+        private BigDecimal discountAmount;
         private String currency;
         private String guestName;
         private String guestPhone;

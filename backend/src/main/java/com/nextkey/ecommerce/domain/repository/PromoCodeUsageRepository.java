@@ -20,4 +20,7 @@ public interface PromoCodeUsageRepository extends JpaRepository<PromoCodeUsage, 
 
     /** 取消訂單時反查該訂單佔用中的用券紀錄，用於退還額度。 */
     List<PromoCodeUsage> findByOrderIdAndStatus(UUID orderId, UsageStatus status);
+
+    /** 取消預訂時反查該預訂佔用中的用券紀錄，用於退還額度（Sprint 124，DEF-047）。 */
+    List<PromoCodeUsage> findByBookingIdAndStatus(UUID bookingId, UsageStatus status);
 }

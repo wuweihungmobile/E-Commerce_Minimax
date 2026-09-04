@@ -231,6 +231,12 @@ public class PurchaseOrderService {
                             String.format("Purchase order item not found: %s", receiveItem.getItemId())));
 
             int newReceivedQty = item.getReceivedQuantity() + receiveItem.getReceivedQuantity();
+            // DEF-070：收貨數量（含累計歷次收貨）不得超過訂購量，否則庫存被虛增且狀態機失真
+            if (newReceivedQty > item.getQuantity()) {
+                throw new BusinessException(ErrorCode.E_7009,
+                        String.format("Received quantity exceeds ordered quantity: itemId=%s, ordered=%d, received=%d",
+                                item.getId(), item.getQuantity(), newReceivedQty));
+            }
             item.setReceivedQuantity(newReceivedQty);
 
             // 建立庫存異動 (INBOUND)

@@ -23,11 +23,13 @@ interface PurchaseOrderFormProps {
 }
 
 interface OrderItem {
+  id: string
   skuId: string
   skuCode: string
   productName: string
   quantity: number
   receivedQuantity: number
+  receiveQty?: number
   unitPrice: number
   subtotal: number
 }
@@ -47,7 +49,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
   })
 
   const [items, setItems] = useState<OrderItem[]>([
-    { skuId: '', skuCode: '', productName: '', quantity: 1, receivedQuantity: 0, unitPrice: 0, subtotal: 0 },
+    { id: '', skuId: '', skuCode: '', productName: '', quantity: 1, receivedQuantity: 0, unitPrice: 0, subtotal: 0 },
   ])
 
   const [orderStatus, setOrderStatus] = useState<POStatus | null>(null)
@@ -84,11 +86,14 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       setRejectionReason(data.rejectionReason || null)
       if (mode === 'receive') {
         setItems(data.items.map(item => ({
+          id: item.id,
           skuId: item.skuId,
           skuCode: item.skuCode,
           productName: item.productName,
           quantity: item.quantity,
           receivedQuantity: item.receivedQuantity,
+          // 預設帶入尚未收到的剩餘量，使用者可再調整（DEF-071：原本沒有輸入框，只會把舊的已收數量原樣送回）
+          receiveQty: Math.max(0, item.quantity - item.receivedQuantity),
           unitPrice: item.unitPrice,
           subtotal: item.subtotal,
         })))
@@ -141,8 +146,16 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
     setItems(newItems)
   }
 
+  // DEF-071：收貨模式的「本次收貨」數量，限制在 [0, 尚未收到的剩餘量] 區間
+  const handleReceiveQtyChange = (index: number, value: number) => {
+    const newItems = [...items]
+    const remaining = newItems[index].quantity - newItems[index].receivedQuantity
+    newItems[index] = { ...newItems[index], receiveQty: Math.min(Math.max(value, 0), remaining) }
+    setItems(newItems)
+  }
+
   const addItem = () => {
-    setItems([...items, { skuId: '', skuCode: '', productName: '', quantity: 1, receivedQuantity: 0, unitPrice: 0, subtotal: 0 }])
+    setItems([...items, { id: '', skuId: '', skuCode: '', productName: '', quantity: 1, receivedQuantity: 0, unitPrice: 0, subtotal: 0 }])
   }
 
   const removeItem = (index: number) => {
@@ -226,15 +239,22 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
 
   const handleReceive = async () => {
     if (!orderId) return
+    // DEF-071：原本誤送 item.receivedQuantity（既有累計已收量，非本次要收的量），
+    // 且送出的欄位是 skuId 而非後端要求的 itemId，導致收貨永遠 400 或收貨數量錯誤
+    const receiveItems = items
+      .filter(item => item.id && (item.receiveQty ?? 0) > 0)
+      .map(item => ({
+        itemId: item.id,
+        receivedQuantity: item.receiveQty ?? 0,
+      }))
+    if (receiveItems.length === 0) {
+      setError('請至少輸入一項本次收貨數量')
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      const request: PurchaseOrderReceiveRequest = {
-        items: items.filter(item => item.skuId).map(item => ({
-          skuId: item.skuId,
-          receivedQuantity: item.receivedQuantity,
-        })),
-      }
+      const request: PurchaseOrderReceiveRequest = { items: receiveItems }
       await PurchaseOrderService.receivePurchaseOrder(orderId, request)
       alert('收貨確認成功')
       router.push('/dashboard/erp/purchase-orders')
@@ -378,7 +398,10 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">單價</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">小計</th>
                   {mode === 'receive' && (
-                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">已收</th>
+                    <>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">已收</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">本次收貨</th>
+                    </>
                   )}
                   {mode === 'create' && <th className="w-16"></th>}
                 </tr>
@@ -438,9 +461,21 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
                       {item.subtotal.toLocaleString('zh-TW')}
                     </td>
                     {isReceiveMode && (
-                      <td className="px-3 py-2 text-right">
-                        <span className="text-sm">{item.receivedQuantity}</span>
-                      </td>
+                      <>
+                        <td className="px-3 py-2 text-right">
+                          <span className="text-sm">{item.receivedQuantity}</span>
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <Input
+                            type="number"
+                            min="0"
+                            max={item.quantity - item.receivedQuantity}
+                            value={item.receiveQty ?? 0}
+                            onChange={(e) => handleReceiveQtyChange(index, parseInt(e.target.value) || 0)}
+                            className="w-20 text-right"
+                          />
+                        </td>
+                      </>
                     )}
                     {mode === 'create' && (
                       <td className="px-3 py-2">

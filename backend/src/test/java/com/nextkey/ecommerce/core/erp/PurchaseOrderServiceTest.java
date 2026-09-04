@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -502,6 +503,50 @@ class PurchaseOrderServiceTest {
         PurchaseOrderDto result = purchaseOrderService.receivePurchaseOrder(poId, request);
 
         assertThat(result.getStatus()).isEqualTo("RECEIVED");
+    }
+
+    @Test
+    @DisplayName("receivePurchaseOrder：單次收貨數量超過訂購量時拋出 E_7009（DEF-070）")
+    void receivePurchaseOrder_exceedsOrderedQuantity_throwsE7009() {
+        PurchaseOrder po = poOf(PurchaseOrder.POStatus.SUBMITTED);
+        UUID itemId = po.getItems().get(0).getId();
+        when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.of(po));
+
+        PurchaseOrderReceiveRequest request = PurchaseOrderReceiveRequest.builder()
+                .items(List.of(PurchaseOrderReceiveRequest.ReceiveItemRequest.builder()
+                        .itemId(itemId)
+                        .receivedQuantity(15) // po item quantity=10，單次超收 5 件
+                        .build()))
+                .build();
+
+        assertThatThrownBy(() -> purchaseOrderService.receivePurchaseOrder(poId, request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_7009));
+
+        verifyNoInteractions(productInventoryRepository, stockMovementRepository);
+        verify(purchaseOrderRepository, never()).save(any(PurchaseOrder.class));
+    }
+
+    @Test
+    @DisplayName("receivePurchaseOrder：分批收貨累計超過訂購量時拋出 E_7009（DEF-070）")
+    void receivePurchaseOrder_cumulativeExceedsOrderedQuantity_throwsE7009() {
+        PurchaseOrder po = poOf(PurchaseOrder.POStatus.PARTIALLY_RECEIVED);
+        PurchaseOrderItem item = po.getItems().get(0);
+        item.setReceivedQuantity(8); // 訂購量 10，已收 8
+        when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.of(po));
+
+        PurchaseOrderReceiveRequest request = PurchaseOrderReceiveRequest.builder()
+                .items(List.of(PurchaseOrderReceiveRequest.ReceiveItemRequest.builder()
+                        .itemId(item.getId())
+                        .receivedQuantity(5) // 8 + 5 = 13 > 10
+                        .build()))
+                .build();
+
+        assertThatThrownBy(() -> purchaseOrderService.receivePurchaseOrder(poId, request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_7009));
+
+        verifyNoInteractions(productInventoryRepository, stockMovementRepository);
     }
 
     // ── cancelPurchaseOrder ──────────────────────────────────────

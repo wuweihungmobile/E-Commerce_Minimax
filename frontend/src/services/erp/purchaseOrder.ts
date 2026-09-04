@@ -65,7 +65,7 @@ export interface PurchaseOrderUpdateRequest {
 
 export interface PurchaseOrderReceiveRequest {
   items: Array<{
-    skuId: string
+    itemId: string
     receivedQuantity: number
   }>
 }

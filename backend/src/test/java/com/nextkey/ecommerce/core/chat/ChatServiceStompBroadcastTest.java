@@ -18,6 +18,8 @@ import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import com.nextkey.ecommerce.api.dto.ChatDto;
@@ -37,6 +39,7 @@ import com.nextkey.ecommerce.domain.repository.UserRepository;
  * <p>TC-STOMP-C003: payload 為 MessageResponse（非 null）
  */
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("TC-STOMP: ChatService STOMP 廣播行為")
 class ChatServiceStompBroadcastTest {
 
@@ -94,7 +97,8 @@ class ChatServiceStompBroadcastTest {
         saved.setId(MESSAGE_ID);
 
         when(messageRepository.save(any(Message.class))).thenReturn(saved);
-        when(conversationRepository.save(any(Conversation.class))).thenReturn(conversation);
+        // Sprint 125（DEF-056）：對話狀態更新改為 conversationRepository.recordNewMessage
+        // 原子 UPDATE，sendMessage 不再呼叫 save(Conversation)，故不再 stub 它。
         when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
     }
 
@@ -129,5 +133,49 @@ class ChatServiceStompBroadcastTest {
         assertThat(payload.getConversationId())
                 .as("廣播 payload conversationId 不應為 null")
                 .isEqualTo(CONVERSATION_ID);
+    }
+
+    // ========== Sprint 125（DEF-056）：未讀計數改為原子 UPDATE，驗證派送的遞增方向正確 ==========
+
+    @Test
+    @DisplayName("DEF-056: initiator 發訊息 → recordNewMessage 遞增 recipient 未讀（initiatorDelta=0, recipientDelta=1）")
+    void sendMessage_senderIsInitiator_incrementsRecipientUnreadOnly() {
+        ChatDto.SendMessageRequest request = ChatDto.SendMessageRequest.builder()
+                .conversationId(CONVERSATION_ID)
+                .content("Hello STOMP")
+                .build();
+
+        // conversation 於 setUp() 以 USER_ID 作為 initiatorId 建立，本測試以 USER_ID 發訊息
+        chatService.sendMessage(USER_ID, request);
+
+        verify(conversationRepository).recordNewMessage(
+                eq(CONVERSATION_ID), eq(MESSAGE_ID), eq("Hello STOMP"), any(), eq(0), eq(1));
+    }
+
+    @Test
+    @DisplayName("DEF-056: recipient 發訊息 → recordNewMessage 遞增 initiator 未讀（initiatorDelta=1, recipientDelta=0）")
+    void sendMessage_senderIsRecipient_incrementsInitiatorUnreadOnly() {
+        UUID recipientUserId = conversation.getRecipientId();
+        when(conversationRepository.findByIdAndUserId(CONVERSATION_ID, recipientUserId))
+                .thenReturn(Optional.of(conversation));
+        Message savedByRecipient = Message.builder()
+                .conversation(conversation)
+                .senderId(recipientUserId)
+                .messageType(Message.MessageType.TEXT)
+                .content("Reply from recipient")
+                .isRead(false)
+                .build();
+        savedByRecipient.setId(UUID.randomUUID());
+        when(messageRepository.save(any(Message.class))).thenReturn(savedByRecipient);
+
+        ChatDto.SendMessageRequest request = ChatDto.SendMessageRequest.builder()
+                .conversationId(CONVERSATION_ID)
+                .content("Reply from recipient")
+                .build();
+
+        chatService.sendMessage(recipientUserId, request);
+
+        verify(conversationRepository).recordNewMessage(
+                eq(CONVERSATION_ID), eq(savedByRecipient.getId()), eq("Reply from recipient"), any(), eq(1), eq(0));
     }
 }

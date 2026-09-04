@@ -150,19 +150,17 @@ public class ChatService {
 
         message = messageRepository.save(message);
 
-        // 更新對話狀態
-        conversation.setLastMessageId(message.getId());
-        conversation.setLastMessagePreview(request.getContent().substring(0, Math.min(MESSAGE_PREVIEW_MAX_LENGTH, request.getContent().length())));
-        conversation.setLastMessageAt(message.getCreatedAt());
-
-        // 增加未讀計數
-        if (conversation.getInitiatorId().equals(userId)) {
-            conversation.setRecipientUnreadCount(conversation.getRecipientUnreadCount() + 1);
-        } else {
-            conversation.setInitiatorUnreadCount(conversation.getInitiatorUnreadCount() + 1);
-        }
-
-        conversationRepository.save(conversation);
+        // Sprint 125（DEF-056）：對話狀態改為單一原子 UPDATE——last_message_* 三欄是「後寫入者
+        // 覆蓋」語意正確的絕對賦值，未讀計數則是「相對遞增」，兩者混在同一段 JPA 實體
+        // 讀-改-寫（原本的寫法）會讓同一對話的併發訊息互相覆蓋未讀計數。發訊者是 initiator
+        // 則遞增 recipient 未讀，反之遞增 initiator 未讀，兩者恰有一個為 1。
+        String preview = request.getContent()
+                .substring(0, Math.min(MESSAGE_PREVIEW_MAX_LENGTH, request.getContent().length()));
+        boolean senderIsInitiator = conversation.getInitiatorId().equals(userId);
+        conversationRepository.recordNewMessage(
+                conversation.getId(), message.getId(), preview, message.getCreatedAt(),
+                senderIsInitiator ? 0 : 1,
+                senderIsInitiator ? 1 : 0);
 
         log.info("Message sent: conversationId={}, messageId={}, sender={}",
                 request.getConversationId(), message.getId(), userId);

@@ -631,6 +631,58 @@ CREATE INDEX idx_pricing_rules_tenant ON pricing_rules (tenant_id);
 > 以 `rule_type = 'MANUAL_OVERRIDE'` 加上 `config` JSONB 承載覆蓋內容
 > （見 `PricingService.java:279,330`、`PricingRule.PricingRuleType`）。請見 §2.5.1 `pricing_rules`。
 
+### 2.6 已知範圍外資料表（技術債，DEF-068）
+
+> 🔴 **本清單受 `check_schema_doc.py` 主動守門**：Flyway 遷移新增的任何表，若沒有出現在
+> §2 的逐欄 DDL 小節、PRD §8.2 的欄位清單、或本清單中，`make validate-schema-doc` 會直接失敗。
+> 這逼開發者在新增表時做出明確決策——補齊正式文件，或至少把表名列進這裡承認技術債——
+> 而不是像過去一樣「文件沒寫的表，漂移完全不會被發現」（DEF-068 的成因）。
+>
+> 下表只列「實作存在、本文件目前未提供逐欄 DDL」的表，依模組分類供快速查找，**不是**逐欄規格；
+> 需要正式欄位定義時仍以 Flyway 遷移或 `make sync-schema-doc` 產生的 DDL 為權威來源。
+> 日後若要補正式規格，把表名從本清單移到 §2 對應小節（含 DDL 區塊）即可。
+
+| 表名 | 模組 |
+|------|------|
+| `addresses` | 會員（地址簿） |
+| `oauth_accounts` | 會員（第三方登入） |
+| `carts` | 購物車 |
+| `cart_items` | 購物車 |
+| `bookings` | 訂房 |
+| `booking_reviews` | 訂房評價 |
+| `product_skus` | 商品 SKU |
+| `promo_codes` | 促銷 |
+| `promo_code_usages` | 促銷 |
+| `payments` | 金流 |
+| `processed_stripe_events` | 金流（Stripe Webhook 冪等） |
+| `logistics` | 物流 |
+| `shipping_templates` | 物流 |
+| `reviews` | 評論 |
+| `review_replies` | 評論 |
+| `conversations` | 即時聊天 |
+| `messages` | 即時聊天 |
+| `notifications` | 通知 |
+| `notification_history` | 通知 |
+| `notification_templates` | 通知 |
+| `user_notification_preferences` | 通知 |
+| `support_tickets` | 客服 |
+| `support_messages` | 客服 |
+| `cms_banners` | CMS |
+| `cms_pages` | CMS |
+| `post_categories` | CMS／內容 |
+| `media_categories` | 媒體／CMS |
+| `knowledge_categories` | 知識庫 |
+| `knowledge_articles` | 知識庫 |
+| `knowledge_article_tags` | 知識庫 |
+| `faq_categories` | 知識庫／FAQ |
+| `faq_articles` | 知識庫／FAQ |
+| `article_versions` | 知識庫（版本歷史） |
+| `adjustment_statements` | ERP／結算 |
+| `transfers` | ERP／結算 |
+| `audit_log` | 稽核（現行） |
+| `audit_logs` | 稽核（`V1__Initial_Schema.sql` 建立，與 `audit_log` 並存，未查證是否重複——非 DEF-068 範圍，暫列存查） |
+| `_media_assets_backup` | 備份表（`V38` 遷移殘留，非 DEF-068 範圍） |
+| `listings_tags_backup` | 備份表（`V8` 遷移殘留，非 DEF-068 範圍） |
 
 ---
 

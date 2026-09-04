@@ -51,7 +51,7 @@
 | `make validate-schema` | schema 漂移守門（已串進 pre-push，改 entity/migration 時自動跑） |
 | `make validate-e2e` | 乾淨 DB → Flyway 重建 → 全棧(ddl-auto=validate) → Playwright，複製雲端 e2e job。**預設 strict**（spec 失敗即阻擋；基準 27 passed/5 skip/0 fail）；環境異常臨時放行 `E2E_GATE_STRICT=0` |
 | `make validate-release` | **完整測試程序＝ pre-push 守門內容**：**自動 `test-db-down`**（AI-2301）→ `validate-all` + `validate-schema` + `validate-e2e` = 雲端 `ci.yml` 等價。手動先跑一次會寫 FULL 記錄，30 分內對同 tree push 直接放行 |
-| `make test-db-up` / `test-db-down` | 啟動/停止「整合測試」所需 DB（postgres:5432 + redis:6379，對齊 integration-test profile）。**S42 AI-2302 起：backend commit 的 pre-commit quick test 已用 `-DexcludedGroups=slow` 排除需 DB 的 @SpringBootTest → 純單元測試，commit 不再需 test DB**。`test-db-up` 僅在本機手動跑整合測試（`mvn verify -Pintegration-test` 或 slow 標記測試）時需要；`validate-release` 已自動 `test-db-down`（AI-2301）|
+| `make test-db-up` / `test-db-down` | 啟動/停止「整合測試」所需 DB（postgres:5432 + redis:6379，對齊 integration-test profile）。**S42 AI-2302 起：backend commit 的 pre-commit quick test 已用 `-DexcludedGroups=slow` 排除需 DB 的 @SpringBootTest → 純單元測試，commit 不再需 test DB**。`test-db-up` 僅在本機手動跑整合測試（`mvn verify`——failsafe 無條件綁在 verify 階段，`-Pintegration-test` 不是存在的 profile，見 DEF-052；或 slow 標記測試）時需要；`validate-release` 已自動 `test-db-down`（AI-2301）|
 
 ### 變更四：test DB ↔ act port 衝突制度化（2026-07-02，AI-2301）
 

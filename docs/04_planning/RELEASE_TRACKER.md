@@ -11,6 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 122 | v2030.03.10-01 | - | 2026-09-04 | **DEF-052：修正 `-Pintegration-test` 誤導性文件引用（1 SP）**：`-Pintegration-test` 是一個不存在的 Maven profile——failsafe 其實無條件綁在 `verify` 生命週期階段，`-P` 旗標對它毫無作用。使用者於高/中/低優先級候選中拍板選此項（最低風險、無需業務決策、可立即動工）。修正 `Makefile:102`／`backend/pom.xml` surefire+failsafe 註解／`docs/08_deployment/LOCAL_CI_VALIDATION.md` 共 3 處，各自加註「為何誤導」而非只刪字。**查證全庫約 80 個匹配後排除假陽性**：歷史 Sprint 記錄與 `FLYWAY_EVALUATION.md` 為時間點快照，依 Rule 3 不回頭改寫；`docker-compose.test.yml`／`scripts/validate-schema.sh` 的「integration-test profile」查證後是真實存在的 Spring profile（非 Maven `-P` 旗標），非本缺陷範圍，未誤觸。詳見 [SPRINT_122_PLAN.md](SPRINT_122_PLAN.md) | ⏳ 待 push（純註解／文件變更，`mvn -o compile` BUILD SUCCESS；未跑全量回歸——不影響任何被測程式碼行為，比照 Rule 3/6 不做超出需求的驗證）|
 | Sprint 121 | v2030.03.09-01 | - | 2026-09-04 | **DEF-067：移除庫存盤點孤兒骨架（1 US，1 SP）**：回歸 AISDLC 流程盤點候選項目時，先撞見一次 `DEFERRED_ITEMS_TRACKER.md` 過時漂移——原選中的 DEF-064 早已於 Sprint 117 完整實作上線，該列誤留「待排程」3 個 Sprint（118-120）未回填，已更正移至已完成延後項目（詳見追蹤器本身的版本記錄）。改選 DEF-067：`inventory_checks` 表與 `InventoryCheck` entity 是孤兒（PRD §6.7.2 P1 庫存盤點功能骨架，`V50` 建，但無任何生產程式碼讀寫；且骨架本身也不完整——只有單頭表彙總欄位，無逐 SKU 明細子表，接上 CRUD 也做不出「盤盈/盤虧記錄」）。**使用者拍板選 (a) 移除孤兒骨架**（技術債清理），而非啟動完整功能設計——PRD 目前只有一行摘要、無 US/AC/API 規格。比照 DEF-066（`V72`）模式：刪除 `InventoryCheck.java`（無 repository/service，無需連帶移除）＋ 新增 `V75` `DROP TABLE IF EXISTS inventory_checks`。確認無殘留引用（後端/前端 grep 僅命中被刪除的 entity 自身）。**明確不變**：PRD §14.2.5 `BV-2A-04`（ERP 庫存準確率）KPI 仍無法量測，此為既有事實不因本次移除而改變；DEF-068（SRD 涵蓋率缺口）與本次無關，仍待拍板。詳見 [SPRINT_121_PLAN.md](SPRINT_121_PLAN.md) ✅ 已 push（2026-09-04，commit `1096592`）。本地 `mvn -o verify` 單元 1034／整合 454 全綠（與 S120 基準相同，本輪未新增/移除測試），checkstyle／PMD 0 violations；`make validate-schema`／`validate-schema-doc`（75 個遷移）皆通過；pre-commit hook 與 pre-push 輕量守門皆過。ℹ️ **push 過程兩度撞上 Docker Desktop 網路異常**（act 容器內 `apt-get install`／`npm ci` 各卡死一次，CPU 累積時間完全停滯），非本輪程式碼問題；重啟 Docker Desktop（500 Internal Server Error）後第三次 push 順利完成。**雲端 CI run 33824191048 三個 job 全綠**：Backend Unit 3m12s／Backend Integration 6m16s／Frontend Lint & Build 1m23s。 |
 | Sprint 120 | v2030.03.08-01 | - | 2026-09-03 | **DEF-069：退貨審核台補上商品名稱顯示（1 US，2 SP）**：Sprint 119 記錄的已知限制，使用者拍板排入排程，選項 (a)。`ProductSkuRepository` 新增 `SkuDisplayInfo` 投影（`LEFT JOIN` `product_skus`／`listings`，比照 DEF-064 教訓）；`ReturnDto.ItemResponse` 新增 `skuCode`／`specName`／`productName`；`ReturnRequestService.toResponse()` 對單一退貨單品項批次查詢一次。前端 `/dashboard/returns/[id]` 改顯示品名（無值退回截斷 ID）。新增 `IT-M05-RETURN-012`。**已知取捨**：批次僅止於單一退貨單內（低流量功能，未如 DEF-064 做整頁 JOIN 投影）。詳見 [SPRINT_120_PLAN.md](SPRINT_120_PLAN.md) ✅ 已 push（2026-09-04，commit `b10d3d2`）。本地 `mvn -o verify` 單元 1034／整合 454 全綠，checkstyle／PMD 0 violations；本地輕量守門三項全過。**雲端 CI run 33776479957 三個 job 全綠**：Backend Unit 2m51s／Backend Integration 7m30s／Frontend Lint & Build 57s |
 | Sprint 119 | v2030.03.07-01 | - | 2026-09-03 | **DEF-044：退貨申請與退貨入庫確認 — 前端串接（1 US，5 SP）**：承 [SPRINT_118_PLAN.md](SPRINT_118_PLAN.md) §8 排定，後端 API 已就緒，本輪純前端。**買家**（`(auth)` route group，比照 `/support/tickets` 版型）：`/returns` 列表、`/returns/new?orderId=` 申請表單（帶入訂單品項供勾選數量，`orderId` 於 client 端以 `URLSearchParams` 讀取而非 `useSearchParams`——比照既有付款回跳頁，避免 Suspense 邊界要求）、`/returns/[id]` 詳情＋撤回；訂單詳情頁（`DELIVERED`/`COMPLETED`）加「申請退貨」入口、`StorefrontHeader` 帳號選單加「退貨申請」連結。**店家**（比照 `/dashboard/support/tickets` 版型）：`/dashboard/returns` 審核列表、`/dashboard/returns/[id]` 核准／駁回／收貨確認表單（逐品項可售／不可售數量輸入，前端先擋加總不得超過申請數量）；dashboard 首頁 `QUICK_LINKS` 加「退貨審核」入口。新增 `services/returns.ts` + `lib/api.ts` 端點群組；錯誤訊息不另建對照表，直接顯示後端已中文化的 `err.response.data.message`（AI-2418 全站慣例）。⚠️ **刻意的已知限制**：店家審核頁因 `OrderService.getOrder` 拒絕非本人非 admin（IDOR 防護）而無法反查訂單補上商品名稱，僅顯示截斷 `orderItemId`；已記錄 **🟢 DEF-069**（低優先，待評估是否 join 補齊）。**範圍外**：未新增 E2E 規格，比照同型既有前例（M18 客服工單前端同樣無對應 E2E spec），後端 11 個整合測試已覆蓋狀態機與 IDOR。詳見 [SPRINT_119_PLAN.md](SPRINT_119_PLAN.md) ✅ 已 push（2026-09-03，commit `5723460`）。**本地輕量守門全過**：`make validate-push` act Backend Unit job succeeded、schema 漂移守門通過（entity 與 Flyway schema 對齊）、frontend build 成功（新路由正確產生）。**雲端 CI run 33766050640 三個 job 全綠**：Backend Unit 2m47s／Backend Integration 6m18s／Frontend Lint & Build 1m2s。ℹ️ **首次觸發（run 同編號）Checkstyle 因 `Connection reset` 網路瞬斷失敗**——`gh run view --log-failed` 確認錯誤為讀取 `checkstyle-suppressions.xml` 時網路中斷，與本輪程式碼無關（本輪零後端檔案變動，同一份 checkstyle 設定上一輪才剛全綠）；未修改任何設定，直接 `gh run rerun --failed` 重跑後三個 job 全綠，確認為網路瞬斷非回歸 |
@@ -113,12 +114,12 @@
 
 | 項目 | 數值 |
 |------|------|
-| 建立 Release Tag 次數 | 92 (Sprint 10~121 中已建 row 者，逐列計數；Sprint 8-9 未正式 Release） |
-| 已 push（已 Release） | 92 (Sprint 121 已同日 push 並回填雲端 CI 結果) |
-| 待 push（Tag 已建、尚未 push） | 0 |
+| 建立 Release Tag 次數 | 93 (Sprint 10~122 中已建 row 者，逐列計數；Sprint 8-9 未正式 Release） |
+| 已 push（已 Release） | 92 (Sprint 121 已同日 push 並回填雲端 CI 結果；Sprint 122 待 push) |
+| 待 push（Tag 已建、尚未 push） | 1 (Sprint 122) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release Tag | v2030.03.09-01 (Sprint 121，✅ 已 push) |
-| 最近一次已 push Release | v2030.03.08-01 (Sprint 120，2026-09-04，雲端 CI run 33776479957 三 job 全綠) |
+| 最近一次 Release Tag | v2030.03.10-01 (Sprint 122，⏳ 待 push) |
+| 最近一次已 push Release | v2030.03.09-01 (Sprint 121，2026-09-04，雲端 CI run 33824191048 三 job 全綠；此欄先前誤留 Sprint 120，本輪順帶更正) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release Tag 開始 | Sprint 10（⚠️ **連續性已中斷**：Sprint 68/69/70/74/75/76/78/80~92 共 20 個 Sprint 未建 row，該期間 tracker 未同步維護，非未交付） |
 
@@ -441,6 +442,7 @@ Sprint 35  → ⏳ Tag 已建 (v2027.02.27-01)  [待 push，S32~S35 累積批次
 
 | 版本 | 日期 | 修改內容 |
 |------|------|----------|
+| v2.8 | 2026-09-04 | 新增 Sprint 122 row（DEF-052 修正 `-Pintegration-test` 誤導性文件引用）並同步統計區。**依「狀態欄維護規則」開工核對 Sprint 121**：v2.7 已回填為「✅ 已 push」故無需再動。Sprint 122 自身標為「⏳ 待 push」待下一輪開工回填。**順帶更正統計區既有漂移**：「最近一次已 push Release」自 v2.7（Sprint 121 已回填為已 push）起就該改指向 Sprint 121，卻仍寫 Sprint 120，本輪一併修正 |
 | v2.7 | 2026-09-04 | **同日立即回填 Sprint 121 push 狀態**（雲端 CI 已跑完，回填成本為零，不留到下一 Sprint）：commit `1096592` 已 push，雲端 CI run **33824191048** 三個 job 全綠（Backend Unit 3m12s／Backend Integration 6m16s／Frontend 1m23s）。**另記一次環境故障**：push 過程中 Docker Desktop 網路異常導致 act 容器內 `apt-get install`／`npm ci` 各卡死一次（CPU 累積時間完全停滯超過預期時間，非下載慢）；`docker info` 確認為 500 Internal Server Error，重啟 Docker Desktop 後第三次 push 順利完成——記入 [validate-release-push-preflight] 類經驗，供日後同類故障快速判別 |
 | v2.6 | 2026-09-04 | 新增 Sprint 121 row（DEF-067 移除庫存盤點孤兒骨架，AI-2453）並同步統計區。**依「狀態欄維護規則」開工核對 Sprint 120**：v2.5 已回填為「✅ 已 push」故無需再動。Sprint 121 自身標為「⏳ 待 push」待下一輪開工回填 |
 | v2.5 | 2026-09-04 | **同日立即回填 Sprint 120 push 狀態**（純文件變更，成本為零，不留到下一 Sprint）：雲端 CI run **33776479957** 三 job 全綠（unit 2m51s／integration 7m30s／frontend 57s） |

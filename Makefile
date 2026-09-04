@@ -99,7 +99,7 @@ test-db-up: ## 啟動「整合測試 / pre-commit 核心測試」所需 DB（pos
 	  [ $$i -eq 30 ] && { echo "$(RED)❌ postgres 30s 未就緒$(NC)"; exit 1; }; \
 	done
 	@echo "$(GREEN)✅ 測試 DB 就緒（nk-test-pg :5432 / nk-test-redis :6379）$(NC)"
-	@echo "   用途：cd backend && mvn verify -Pintegration-test ；或 git commit（pre-commit 核心測試含 @ActiveProfiles integration-test 者需真實 postgres）"
+	@echo "   用途：cd backend && mvn verify（failsafe 無條件跑在 verify 階段，非靠 -P 觸發）；或 git commit（pre-commit 核心測試含 @ActiveProfiles integration-test 者需真實 postgres）"
 	@echo "   $(YELLOW)注意$(NC)：佔用 :5432/:6379，若本機有 dev DB 在跑請先停。完成後執行 make test-db-down 清理。"
 
 test-db-down: ## 停止測試 DB（test-db-up 啟動的 postgres+redis）

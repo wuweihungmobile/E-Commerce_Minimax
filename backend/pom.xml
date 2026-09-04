@@ -265,7 +265,8 @@
                 </executions>
             </plugin>
             <!-- AISDLC v0.09: 排除 E2E 與 Integration 測試於 unit 階段
-                 E2E 測試需要真實 HTTP/DB 連線，必須在 integration-test profile 跑
+                 E2E 測試需要真實 HTTP/DB 連線，必須在 failsafe 的 integration-test 階段跑
+                 （非 Maven profile——`-Pintegration-test` 不存在，見 DEF-052）
                  Integration 測試需要 Spring Context 與 DB，亦應於 integration 階段跑 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -295,7 +296,8 @@
                     <runOrder>alphabetical</runOrder>
                 </configuration>
             </plugin>
-            <!-- failsafe 跑 integration 階段（由 -Pintegration-test 觸發）-->
+            <!-- failsafe 無條件綁在 Maven 的 integration-test/verify 生命週期階段，
+                 `-Pintegration-test` 不是一個存在的 profile、對它毫無作用（見 DEF-052）-->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>

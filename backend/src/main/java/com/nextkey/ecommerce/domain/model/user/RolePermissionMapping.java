@@ -58,7 +58,13 @@ public class RolePermissionMapping {
                 Permission.ORDER_READ,
                 Permission.ORDER_UPDATE,
                 Permission.USER_READ,
-                Permission.USER_UPDATE
+                Permission.USER_UPDATE,
+                // cms:read/create/update 比照 PostController 既有的日常 CRUD 開放範圍
+                // （STORE_OWNER/STORE_STAFF/SELLER/HOST 皆可），僅 cms:publish 限制較高層級
+                // （Sprint 129 拍板，Sprint 130 實作，DEF-092）
+                Permission.CMS_READ,
+                Permission.CMS_CREATE,
+                Permission.CMS_UPDATE
         ));
 
         // ========== HOST - 民宿主人，房源管理 ==========
@@ -72,7 +78,11 @@ public class RolePermissionMapping {
                 Permission.PRICING_READ,
                 Permission.PRICING_UPDATE,
                 Permission.USER_READ,
-                Permission.USER_UPDATE
+                Permission.USER_UPDATE,
+                // 同 SELLER，比照 PostController 既有慣例（Sprint 129 拍板，Sprint 130 實作，DEF-092）
+                Permission.CMS_READ,
+                Permission.CMS_CREATE,
+                Permission.CMS_UPDATE
         ));
 
         // ========== STORE_OWNER - 店主，店鋪全部權限 ==========
@@ -122,7 +132,15 @@ public class RolePermissionMapping {
                 Permission.MEDIA_READ,
                 Permission.MEDIA_CREATE,
                 Permission.MEDIA_UPDATE,
-                Permission.MEDIA_DELETE
+                Permission.MEDIA_DELETE,
+                // cms:read/create/update 比照 PostController 開放給 OWNER/STAFF/SELLER/HOST；
+                // cms:publish/notification:create 限制較高層級，僅 OWNER+ADMIN
+                // （Sprint 129 拍板，Sprint 130 實作，DEF-092）
+                Permission.CMS_READ,
+                Permission.CMS_CREATE,
+                Permission.CMS_UPDATE,
+                Permission.CMS_PUBLISH,
+                Permission.NOTIFICATION_CREATE
         ));
 
         // ========== STORE_STAFF - 店鋪員工，受限權限 ==========
@@ -144,7 +162,13 @@ public class RolePermissionMapping {
                 Permission.DASHBOARD_READ,
                 Permission.FAQ_READ,
                 Permission.KNOWLEDGE_READ,
-                Permission.MEDIA_READ
+                Permission.MEDIA_READ,
+                // cms:read/create/update 比照 PostController 開放給店鋪員工（無唯讀限制，
+                // 與 dashboard/faq/knowledge/media 的員工唯讀慣例不同）；cms:publish 限制較高層級不給
+                // （Sprint 129 拍板，Sprint 130 實作，DEF-092）
+                Permission.CMS_READ,
+                Permission.CMS_CREATE,
+                Permission.CMS_UPDATE
         ));
 
         // ========== ADMIN - 管理員，租戶內管理 ==========
@@ -200,7 +224,14 @@ public class RolePermissionMapping {
                 Permission.MEDIA_READ,
                 Permission.MEDIA_CREATE,
                 Permission.MEDIA_UPDATE,
-                Permission.MEDIA_DELETE
+                Permission.MEDIA_DELETE,
+                // 平台端管理 cms/notification，跨租戶；cms:publish/notification:create
+                // 與 OWNER 同屬較高層級操作（Sprint 129 拍板，Sprint 130 實作，DEF-092）
+                Permission.CMS_READ,
+                Permission.CMS_CREATE,
+                Permission.CMS_UPDATE,
+                Permission.CMS_PUBLISH,
+                Permission.NOTIFICATION_CREATE
         ));
 
         // ========== CFO - 財務長，僅結算單逆轉雙重授權（Sprint 86） ==========

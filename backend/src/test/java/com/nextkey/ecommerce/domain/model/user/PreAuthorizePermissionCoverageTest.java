@@ -61,10 +61,11 @@ class PreAuthorizePermissionCoverageTest {
      * <p>與上面那份清單性質<b>不同</b>——SUPER_ADMIN 仍可到達這些端點，故不是「必定 403」；
      * 真正的問題是「除了 SUPER_ADMIN 以外沒有任何角色到得了」，究竟是刻意的平台專屬設計、
      * 還是漏掉授權，需要產品判斷。列在此處是為了讓<b>新增</b>的同類碼會讓測試失敗。
+     *
+     * <p>原本的 5 個碼（cms:read/create/update/publish、notification:create）已於 Sprint 130
+     * （DEF-092）判定為「忘記授權」並修復，清單保留為空集合以持續守住不再新增同類孤兒碼。
      */
-    private static final Set<String> SUPER_ADMIN_FALLBACK_ONLY = new TreeSet<>(Arrays.asList(
-            "cms:create", "cms:publish", "cms:read", "cms:update",
-            "notification:create"));
+    private static final Set<String> SUPER_ADMIN_FALLBACK_ONLY = new TreeSet<>();
 
     @Test
     @DisplayName("所有 @PreAuthorize 引用的權限碼都存在於 Permission 枚舉（已知待修者除外）")
@@ -135,6 +136,18 @@ class PreAuthorizePermissionCoverageTest {
                 "faq:read", "faq:create", "faq:update", "faq:delete",
                 "knowledge:read", "knowledge:create", "knowledge:update", "knowledge:delete",
                 "media:read", "media:create", "media:update", "media:delete");
+    }
+
+    @Test
+    @DisplayName("cms:*/notification:create 5 個權限碼已納入枚舉（DEF-092 本體，Sprint 130）")
+    void def092CodesAreDefined() {
+        Set<String> defined = Arrays.stream(Permission.values())
+                .map(Permission::getCode)
+                .collect(Collectors.toSet());
+
+        assertThat(defined).contains(
+                "cms:read", "cms:create", "cms:update", "cms:publish",
+                "notification:create");
     }
 
     @Test

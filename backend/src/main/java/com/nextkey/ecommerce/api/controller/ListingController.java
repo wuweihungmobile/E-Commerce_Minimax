@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
+import com.nextkey.ecommerce.api.dto.ListingResponse;
 import com.nextkey.ecommerce.api.dto.PricingDto;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
@@ -40,7 +41,7 @@ public class ListingController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('product:read') or hasAuthority('room:read')")
-    public ResponseEntity<ApiResponse<Page<Listing>>> getListings(
+    public ResponseEntity<ApiResponse<Page<ListingResponse>>> getListings(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String type,
@@ -71,16 +72,16 @@ public class ListingController {
             listings = listingRepository.findByStatus(Listing.ListingStatus.ACTIVE, pageRequest);
         }
 
-        return ResponseEntity.ok(ApiResponse.success(listings));
+        return ResponseEntity.ok(ApiResponse.success(listings.map(ListingResponse::fromEntity)));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('product:read') or hasAuthority('room:read')")
-    public ResponseEntity<ApiResponse<Listing>> getListing(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<ListingResponse>> getListing(@PathVariable UUID id) {
         Listing listing = listingRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_3000));
 
-        return ResponseEntity.ok(ApiResponse.success(listing));
+        return ResponseEntity.ok(ApiResponse.success(ListingResponse.fromEntity(listing)));
     }
 
     /**

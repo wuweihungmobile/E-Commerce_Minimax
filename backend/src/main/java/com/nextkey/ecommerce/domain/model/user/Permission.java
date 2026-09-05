@@ -100,7 +100,16 @@ public enum Permission {
     MEDIA_READ("media:read", "檢視媒體檔案"),
     MEDIA_CREATE("media:create", "上傳媒體檔案"),
     MEDIA_UPDATE("media:update", "更新媒體檔案"),
-    MEDIA_DELETE("media:delete", "刪除媒體檔案");
+    MEDIA_DELETE("media:delete", "刪除媒體檔案"),
+
+    // Sprint 130（DEF-092）：CmsController/NotificationController 自實作起即以
+    // hasAuthority('cms:*')/hasAuthority('notification:create') 把關，但這 5 個碼從未進入本枚舉，
+    // 導致除 SUPER_ADMIN 外沒有任何角色到得了這些端點（Sprint 128 掃描發現，Sprint 129 登記待排程）。
+    CMS_READ("cms:read", "檢視 CMS 頁面/橫幅"),
+    CMS_CREATE("cms:create", "建立 CMS 頁面/橫幅"),
+    CMS_UPDATE("cms:update", "更新 CMS 頁面/橫幅"),
+    CMS_PUBLISH("cms:publish", "發布 CMS 頁面/橫幅"),
+    NOTIFICATION_CREATE("notification:create", "發送通知");
 
     private final String code;
     private final String description;

@@ -85,4 +85,65 @@ class RolePermissionMappingTest {
         assertThat(mapping.hasPermission(User.UserRole.SUPER_ADMIN, Permission.KNOWLEDGE_DELETE)).isTrue();
         assertThat(mapping.hasPermission(User.UserRole.SUPER_ADMIN, Permission.MEDIA_DELETE)).isTrue();
     }
+
+    // ── DEF-092（Sprint 130）：cms:*/notification:create 角色授權 ──
+    // 角色分派為 Sprint 129 拍板的細緻方案（非 DEF-073/075 的 OWNER全權/STAFF唯讀/ADMIN全權 統一樣板）：
+    // cms:read/create/update 比照 PostController 既有 CRUD 開放範圍
+    // （STORE_OWNER/STORE_STAFF/SELLER/HOST 皆可，無唯讀限制）；
+    // cms:publish、notification:create 限制較高層級，僅 STORE_OWNER+ADMIN（含 SUPER_ADMIN）。
+
+    @Test
+    @DisplayName("STORE_OWNER 對 cms/notification 擁有完整權限")
+    void storeOwner_hasFullAccessToDef092Modules() {
+        assertThat(mapping.hasPermission(User.UserRole.STORE_OWNER, Permission.CMS_READ)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_OWNER, Permission.CMS_CREATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_OWNER, Permission.CMS_UPDATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_OWNER, Permission.CMS_PUBLISH)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_OWNER, Permission.NOTIFICATION_CREATE)).isTrue();
+    }
+
+    @Test
+    @DisplayName("STORE_STAFF 可 cms:read/create/update（比照 PostController，非唯讀），但無 cms:publish/notification:create")
+    void storeStaff_hasCmsCrudButNotPublishOrNotification() {
+        assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.CMS_READ)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.CMS_CREATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.CMS_UPDATE)).isTrue();
+
+        assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.CMS_PUBLISH)).isFalse();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.NOTIFICATION_CREATE)).isFalse();
+    }
+
+    @Test
+    @DisplayName("SELLER/HOST 可 cms:read/create/update（比照 PostController），但無 cms:publish/notification:create")
+    void sellerAndHost_haveCmsCrudButNotPublishOrNotification() {
+        assertThat(mapping.hasPermission(User.UserRole.SELLER, Permission.CMS_READ)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.SELLER, Permission.CMS_CREATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.SELLER, Permission.CMS_UPDATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.SELLER, Permission.CMS_PUBLISH)).isFalse();
+        assertThat(mapping.hasPermission(User.UserRole.SELLER, Permission.NOTIFICATION_CREATE)).isFalse();
+
+        assertThat(mapping.hasPermission(User.UserRole.HOST, Permission.CMS_READ)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.HOST, Permission.CMS_CREATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.HOST, Permission.CMS_UPDATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.HOST, Permission.CMS_PUBLISH)).isFalse();
+        assertThat(mapping.hasPermission(User.UserRole.HOST, Permission.NOTIFICATION_CREATE)).isFalse();
+    }
+
+    @Test
+    @DisplayName("ADMIN 對 cms/notification 擁有完整跨租戶權限（含 cms:publish/notification:create）")
+    void admin_hasFullAccessToDef092Modules() {
+        assertThat(mapping.hasPermission(User.UserRole.ADMIN, Permission.CMS_READ)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.ADMIN, Permission.CMS_CREATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.ADMIN, Permission.CMS_UPDATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.ADMIN, Permission.CMS_PUBLISH)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.ADMIN, Permission.NOTIFICATION_CREATE)).isTrue();
+    }
+
+    @Test
+    @DisplayName("SUPER_ADMIN 經 EnumSet.allOf 自動取得 cms/notification 全部權限")
+    void superAdmin_hasAllDef092Permissions() {
+        assertThat(mapping.hasPermission(User.UserRole.SUPER_ADMIN, Permission.CMS_READ)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.SUPER_ADMIN, Permission.CMS_PUBLISH)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.SUPER_ADMIN, Permission.NOTIFICATION_CREATE)).isTrue();
+    }
 }

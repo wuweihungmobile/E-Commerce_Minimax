@@ -117,7 +117,11 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of("http://localhost:3000", "http://localhost:8080"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Tenant-ID"));
+        // Idempotency-Key：訂房結帳（POST /v2/bookings）與合併結帳（POST /v2/checkout/mixed）皆帶此
+        // 自訂標頭。未列入白名單時，preflight 回應的 Access-Control-Allow-Headers 會缺少它，瀏覽器
+        // 據此封鎖真正的 POST（伺服器端不會報錯，故長期未被察覺）。Sprint 128，DEF-072。
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Tenant-ID",
+                "Idempotency-Key"));
         configuration.setExposedHeaders(List.of("Authorization",
                 "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"));
         configuration.setAllowCredentials(true);

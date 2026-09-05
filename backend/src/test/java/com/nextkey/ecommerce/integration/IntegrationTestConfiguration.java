@@ -458,7 +458,12 @@ public class IntegrationTestConfiguration {
                         "product:read", "product:create", "product:update", "product:delete",
                         "order:read", "order:create", "order:update",
                         "user:read", "user:update",
-                        "media:read", "media:create", "media:update", "media:delete"
+                        "media:read", "media:create", "media:update", "media:delete",
+                        // Sprint 128（DEF-073）：對齊生產 RolePermissionMapping——通知模板由店主管理，
+                        // 原本這四個碼被錯誤地掛在 BUYER 底下，使 M09 整合測試以買家身分通過，
+                        // 掩蓋了「生產端 Permission 枚舉根本沒有這些碼」的缺陷。
+                        "notification_template:read", "notification_template:create",
+                        "notification_template:update", "notification_template:delete"
                 ));
                 break;
             case BUYER:
@@ -467,7 +472,6 @@ public class IntegrationTestConfiguration {
                         "product:read",
                         "order:read", "order:create", "order:update",
                         "user:read", "user:update",
-                        "notification_template:read", "notification_template:create", "notification_template:update", "notification_template:delete",
                         "booking:read", "booking:create", "booking:cancel"
                 ));
                 break;

@@ -73,7 +73,15 @@ public enum Permission {
     // Sprint 118（DEF-044）：退貨申請與退貨入庫確認
     RETURN_READ("return:read", "檢視退貨單"),
     RETURN_CREATE("return:create", "提出退貨申請"),
-    RETURN_REVIEW("return:review", "核准/駁回退貨、確認收貨入庫");
+    RETURN_REVIEW("return:review", "核准/駁回退貨、確認收貨入庫"),
+
+    // Sprint 128（DEF-073）：M09 通知模板管理。
+    // NotificationTemplateController 自實作起即以 hasAuthority('notification_template:*') 把關，
+    // 但這四個碼從未進入本枚舉，導致連 SUPER_ADMIN（EnumSet.allOf）都拿不到 → 端點必定 403。
+    NOTIFICATION_TEMPLATE_READ("notification_template:read", "檢視/預覽通知模板"),
+    NOTIFICATION_TEMPLATE_CREATE("notification_template:create", "建立通知模板"),
+    NOTIFICATION_TEMPLATE_UPDATE("notification_template:update", "更新通知模板"),
+    NOTIFICATION_TEMPLATE_DELETE("notification_template:delete", "刪除通知模板");
 
     private final String code;
     private final String description;

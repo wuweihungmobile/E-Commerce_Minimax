@@ -127,7 +127,9 @@ export interface MediaResponse {
 }
 
 export interface MediaListResponse {
-  media: MediaResponse[];
+  // 後端 M15Dto.MediaListResponse 的欄位名是 items（非 media）。原本宣告為 media 導致
+  // 讀到 undefined，媒體庫從未列出任何檔案。Sprint 128，DEF-074。
+  items: MediaResponse[];
   totalCount: number;
   page: number;
   size: number;

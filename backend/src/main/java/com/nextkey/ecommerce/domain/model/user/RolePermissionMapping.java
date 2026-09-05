@@ -102,7 +102,13 @@ public class RolePermissionMapping {
                 Permission.RETURN_REVIEW,
                 Permission.SUPPORT_TICKET_READ,   // 店主處理自己租戶的客服工單（Sprint 91）
                 Permission.SUPPORT_TICKET_CREATE,
-                Permission.SUPPORT_TICKET_UPDATE
+                Permission.SUPPORT_TICKET_UPDATE,
+                // 通知模板為租戶範圍資料（Controller 以 TenantContext 取值），店主管理自己
+                // 租戶的模板；前端入口即店家後台 /dashboard/notifications（Sprint 128，DEF-073）
+                Permission.NOTIFICATION_TEMPLATE_READ,
+                Permission.NOTIFICATION_TEMPLATE_CREATE,
+                Permission.NOTIFICATION_TEMPLATE_UPDATE,
+                Permission.NOTIFICATION_TEMPLATE_DELETE
         ));
 
         // ========== STORE_STAFF - 店鋪員工，受限權限 ==========
@@ -116,7 +122,10 @@ public class RolePermissionMapping {
                 Permission.SUPPORT_TICKET_CREATE,
                 Permission.SUPPORT_TICKET_UPDATE,
                 Permission.RETURN_READ,           // 店鋪員工處理本租戶退貨（比照客服工單的授權範圍，Sprint 118）
-                Permission.RETURN_REVIEW
+                Permission.RETURN_REVIEW,
+                // 僅 READ：員工可檢視/預覽模板，但增刪改屬設定變更，保留給店主。
+                // 依本檔既有慣例——員工在設定類模組唯讀，寫入權只開放日常操作模組（工單/退貨）
+                Permission.NOTIFICATION_TEMPLATE_READ
         ));
 
         // ========== ADMIN - 管理員，租戶內管理 ==========
@@ -154,7 +163,11 @@ public class RolePermissionMapping {
                 Permission.SUPPORT_TICKET_UPDATE,
                 Permission.SUPPORT_TICKET_MANAGE_ALL,
                 Permission.RETURN_READ,           // 平台端檢視/處理退貨，跨租戶（Sprint 118，DEF-044）
-                Permission.RETURN_REVIEW
+                Permission.RETURN_REVIEW,
+                Permission.NOTIFICATION_TEMPLATE_READ,    // 平台端管理通知模板（Sprint 128，DEF-073）
+                Permission.NOTIFICATION_TEMPLATE_CREATE,
+                Permission.NOTIFICATION_TEMPLATE_UPDATE,
+                Permission.NOTIFICATION_TEMPLATE_DELETE
         ));
 
         // ========== CFO - 財務長，僅結算單逆轉雙重授權（Sprint 86） ==========

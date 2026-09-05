@@ -153,6 +153,14 @@ class M09NotificationTemplateIntegrationTest {
                         .content(registerJson))
                 .andExpect(status().isCreated());
 
+        // Sprint 128（DEF-073）：註冊預設為 BUYER，但通知模板的增刪改/預覽在生產端是店主權限
+        // （notification_template:*，見 RolePermissionMapping）。此處提升為 STORE_OWNER 後再登入，
+        // 讓 JWT 的 role claim（來自 User.role）帶出真實的店主授權，測試才會走生產授權路徑。
+        // 先前這些測試之所以會過，是因為測試固件把 notification_template:* 錯掛在 BUYER 底下。
+        User registered = userRepository.findByEmail(email).orElseThrow();
+        registered.setRole(User.UserRole.STORE_OWNER);
+        userRepository.save(registered);
+
         // 登入獲取 token
         String loginJson = String.format("""
             {

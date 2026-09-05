@@ -28,7 +28,7 @@ export default function MediaLibraryPage() {
       };
       if (filter) params.fileType = filter;
       const data = await getMediaList(params);
-      setMediaList(data.media);
+      setMediaList(data.items);
       setTotalCount(data.totalCount);
       setTotalPages(data.totalPages);
     } catch (error) {

@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.api.dto.erp;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -24,6 +25,9 @@ public class PurchaseOrderCreateRequest {
 
     @NotNull(message = "Supplier ID is required")
     private UUID supplierId;
+
+    // Sprint 129（DEF-078）：選填，容許建單時不指定預計到貨日期
+    private LocalDate expectedDeliveryDate;
 
     private String notes;
 

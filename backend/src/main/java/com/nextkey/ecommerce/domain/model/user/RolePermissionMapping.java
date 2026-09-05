@@ -108,7 +108,21 @@ public class RolePermissionMapping {
                 Permission.NOTIFICATION_TEMPLATE_READ,
                 Permission.NOTIFICATION_TEMPLATE_CREATE,
                 Permission.NOTIFICATION_TEMPLATE_UPDATE,
-                Permission.NOTIFICATION_TEMPLATE_DELETE
+                Permission.NOTIFICATION_TEMPLATE_DELETE,
+                // dashboard/faq/knowledge/media 為租戶範圍的店家後台內容管理模組（Sprint 129，DEF-075）
+                Permission.DASHBOARD_READ,
+                Permission.FAQ_READ,
+                Permission.FAQ_CREATE,
+                Permission.FAQ_UPDATE,
+                Permission.FAQ_DELETE,
+                Permission.KNOWLEDGE_READ,
+                Permission.KNOWLEDGE_CREATE,
+                Permission.KNOWLEDGE_UPDATE,
+                Permission.KNOWLEDGE_DELETE,
+                Permission.MEDIA_READ,
+                Permission.MEDIA_CREATE,
+                Permission.MEDIA_UPDATE,
+                Permission.MEDIA_DELETE
         ));
 
         // ========== STORE_STAFF - 店鋪員工，受限權限 ==========
@@ -125,7 +139,12 @@ public class RolePermissionMapping {
                 Permission.RETURN_REVIEW,
                 // 僅 READ：員工可檢視/預覽模板，但增刪改屬設定變更，保留給店主。
                 // 依本檔既有慣例——員工在設定類模組唯讀，寫入權只開放日常操作模組（工單/退貨）
-                Permission.NOTIFICATION_TEMPLATE_READ
+                Permission.NOTIFICATION_TEMPLATE_READ,
+                // dashboard/faq/knowledge/media 同樣屬設定類內容管理模組，員工唯讀（Sprint 129，DEF-075）
+                Permission.DASHBOARD_READ,
+                Permission.FAQ_READ,
+                Permission.KNOWLEDGE_READ,
+                Permission.MEDIA_READ
         ));
 
         // ========== ADMIN - 管理員，租戶內管理 ==========
@@ -167,7 +186,21 @@ public class RolePermissionMapping {
                 Permission.NOTIFICATION_TEMPLATE_READ,    // 平台端管理通知模板（Sprint 128，DEF-073）
                 Permission.NOTIFICATION_TEMPLATE_CREATE,
                 Permission.NOTIFICATION_TEMPLATE_UPDATE,
-                Permission.NOTIFICATION_TEMPLATE_DELETE
+                Permission.NOTIFICATION_TEMPLATE_DELETE,
+                // 平台端管理 dashboard/faq/knowledge/media，跨租戶（Sprint 129，DEF-075）
+                Permission.DASHBOARD_READ,
+                Permission.FAQ_READ,
+                Permission.FAQ_CREATE,
+                Permission.FAQ_UPDATE,
+                Permission.FAQ_DELETE,
+                Permission.KNOWLEDGE_READ,
+                Permission.KNOWLEDGE_CREATE,
+                Permission.KNOWLEDGE_UPDATE,
+                Permission.KNOWLEDGE_DELETE,
+                Permission.MEDIA_READ,
+                Permission.MEDIA_CREATE,
+                Permission.MEDIA_UPDATE,
+                Permission.MEDIA_DELETE
         ));
 
         // ========== CFO - 財務長，僅結算單逆轉雙重授權（Sprint 86） ==========

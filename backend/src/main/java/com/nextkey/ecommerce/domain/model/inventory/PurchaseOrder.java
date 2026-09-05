@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.domain.model.inventory;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -64,6 +65,11 @@ public class PurchaseOrder {
     @Column
     @Builder.Default
     private String currency = "TWD";
+
+    // Sprint 129（DEF-078）：欄位原本不存在，DTO 恆回傳 null，前端檢視/編輯頁對 null 呼叫
+    // .split('T') 必定拋出 TypeError。
+    @Column(name = "expected_delivery_date")
+    private LocalDate expectedDeliveryDate;
 
     @Column(columnDefinition = "TEXT")
     private String notes;

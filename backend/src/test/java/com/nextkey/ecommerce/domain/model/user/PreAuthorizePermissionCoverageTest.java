@@ -46,17 +46,13 @@ class PreAuthorizePermissionCoverageTest {
     private static final Pattern QUOTED = Pattern.compile("'([^']+)'");
 
     /**
-     * 已知尚未修復的孤兒權限碼（Sprint 128 掃描發現，使用者拍板本輪只修 notification_template 一組）。
+     * 已知尚未修復的孤兒權限碼（DEF-075 已於 Sprint 129 修復，清單保留為空集合以持續守住不再新增）。
      *
-     * <p>這些碼同樣「任何角色都拿不到 → 端點永遠 403」，已登記為 DEF-075 待排程。此清單存在的目的
+     * <p>這些碼同樣「任何角色都拿不到 → 端點永遠 403」。此清單存在的目的
      * 是讓守門測試能對<b>新增</b>的孤兒碼失敗，同時不隱藏既有債務——清單本身就是債務清冊，
      * 修掉一個就從這裡移除一個，不允許只增不減。
      */
-    private static final Set<String> KNOWN_UNMAPPED_PENDING_DEF_075 = new TreeSet<>(Arrays.asList(
-            "dashboard:read",
-            "faq:create", "faq:delete", "faq:read", "faq:update",
-            "knowledge:create", "knowledge:delete", "knowledge:read", "knowledge:update",
-            "media:create", "media:delete", "media:read", "media:update"));
+    private static final Set<String> KNOWN_UNMAPPED_PENDING_DEF_075 = new TreeSet<>();
 
     /**
      * 有 SUPER_ADMIN fallback 的孤兒碼：註解形如
@@ -125,6 +121,20 @@ class PreAuthorizePermissionCoverageTest {
                 "notification_template:create",
                 "notification_template:update",
                 "notification_template:delete");
+    }
+
+    @Test
+    @DisplayName("dashboard/faq/knowledge/media 13 個權限碼已納入枚舉（DEF-075 本體，Sprint 129）")
+    void def075CodesAreDefined() {
+        Set<String> defined = Arrays.stream(Permission.values())
+                .map(Permission::getCode)
+                .collect(Collectors.toSet());
+
+        assertThat(defined).contains(
+                "dashboard:read",
+                "faq:read", "faq:create", "faq:update", "faq:delete",
+                "knowledge:read", "knowledge:create", "knowledge:update", "knowledge:delete",
+                "media:read", "media:create", "media:update", "media:delete");
     }
 
     @Test

@@ -81,7 +81,26 @@ public enum Permission {
     NOTIFICATION_TEMPLATE_READ("notification_template:read", "檢視/預覽通知模板"),
     NOTIFICATION_TEMPLATE_CREATE("notification_template:create", "建立通知模板"),
     NOTIFICATION_TEMPLATE_UPDATE("notification_template:update", "更新通知模板"),
-    NOTIFICATION_TEMPLATE_DELETE("notification_template:delete", "刪除通知模板");
+    NOTIFICATION_TEMPLATE_DELETE("notification_template:delete", "刪除通知模板"),
+
+    // Sprint 129（DEF-075）：dashboard/faq/knowledge/media 四個模組的權限碼從未進入本枚舉，
+    // 端點對所有角色（含 SUPER_ADMIN，因為它是 EnumSet.allOf）必定 403（Sprint 128 掃描發現）。
+    DASHBOARD_READ("dashboard:read", "檢視儀表板"),
+
+    FAQ_READ("faq:read", "檢視常見問答"),
+    FAQ_CREATE("faq:create", "建立常見問答"),
+    FAQ_UPDATE("faq:update", "更新常見問答"),
+    FAQ_DELETE("faq:delete", "刪除常見問答"),
+
+    KNOWLEDGE_READ("knowledge:read", "檢視知識庫文章"),
+    KNOWLEDGE_CREATE("knowledge:create", "建立知識庫文章"),
+    KNOWLEDGE_UPDATE("knowledge:update", "更新知識庫文章"),
+    KNOWLEDGE_DELETE("knowledge:delete", "刪除知識庫文章"),
+
+    MEDIA_READ("media:read", "檢視媒體檔案"),
+    MEDIA_CREATE("media:create", "上傳媒體檔案"),
+    MEDIA_UPDATE("media:update", "更新媒體檔案"),
+    MEDIA_DELETE("media:delete", "刪除媒體檔案");
 
     private final String code;
     private final String description;

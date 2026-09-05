@@ -15,6 +15,7 @@ export type POStatus =
 
 export interface PurchaseOrderItemDto {
   id: string
+  listingId: string
   skuId: string
   skuCode: string
   productName: string
@@ -42,14 +43,24 @@ export interface PurchaseOrderDto {
   rejectionReason?: string
 }
 
+export interface ListingOption {
+  id: string
+  title: string
+  basePrice: number
+  currency: string
+}
+
 export interface PurchaseOrderCreateRequest {
   supplierId: string
-  expectedDeliveryDate: string
+  // DEF-078（Sprint 129）：選填，後端 PurchaseOrderCreateRequest 亦為選填欄位
+  expectedDeliveryDate?: string
   notes?: string
   items: Array<{
-    skuId: string
+    // DEF-076（Sprint 129）：後端 @NotNull 要求 listingId，原本前端型別中完全沒有此欄位
+    listingId: string
     quantity: number
-    unitPrice: number
+    // DEF-077（Sprint 129）：後端欄位名為 unitCost，原本前端送 unitPrice 導致必定 400
+    unitCost: number
   }>
 }
 
@@ -102,6 +113,13 @@ class PurchaseOrderService {
 
     const response = await apiClient.get<ApiResponse<PaginatedResponse<PurchaseOrderDto>>>(
       API_ENDPOINTS_ERP.purchaseOrders.list + '?' + params.toString()
+    )
+    return response.data.data
+  }
+
+  async listListingOptions(): Promise<ListingOption[]> {
+    const response = await apiClient.get<ApiResponse<ListingOption[]>>(
+      API_ENDPOINTS_ERP.purchaseOrders.listingOptions
     )
     return response.data.data
   }

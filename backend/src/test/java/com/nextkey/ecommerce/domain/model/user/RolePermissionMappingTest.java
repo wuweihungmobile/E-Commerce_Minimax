@@ -41,4 +41,48 @@ class RolePermissionMappingTest {
     void admin_stillHasBookingRead() {
         assertThat(mapping.hasPermission(User.UserRole.ADMIN, Permission.BOOKING_READ)).isTrue();
     }
+
+    // ── DEF-075（Sprint 129）：dashboard/faq/knowledge/media 角色授權 ──
+
+    @Test
+    @DisplayName("STORE_OWNER 對 dashboard/faq/knowledge/media 擁有完整權限")
+    void storeOwner_hasFullAccessToDef075Modules() {
+        assertThat(mapping.hasPermission(User.UserRole.STORE_OWNER, Permission.DASHBOARD_READ)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_OWNER, Permission.FAQ_CREATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_OWNER, Permission.FAQ_UPDATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_OWNER, Permission.FAQ_DELETE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_OWNER, Permission.KNOWLEDGE_CREATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_OWNER, Permission.MEDIA_DELETE)).isTrue();
+    }
+
+    @Test
+    @DisplayName("STORE_STAFF 對 dashboard/faq/knowledge/media 僅唯讀，無寫入權")
+    void storeStaff_isReadOnlyForDef075Modules() {
+        assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.DASHBOARD_READ)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.FAQ_READ)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.KNOWLEDGE_READ)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.MEDIA_READ)).isTrue();
+
+        assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.FAQ_CREATE)).isFalse();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.KNOWLEDGE_UPDATE)).isFalse();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.MEDIA_DELETE)).isFalse();
+    }
+
+    @Test
+    @DisplayName("ADMIN 對 dashboard/faq/knowledge/media 擁有完整跨租戶權限")
+    void admin_hasFullAccessToDef075Modules() {
+        assertThat(mapping.hasPermission(User.UserRole.ADMIN, Permission.DASHBOARD_READ)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.ADMIN, Permission.FAQ_DELETE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.ADMIN, Permission.KNOWLEDGE_DELETE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.ADMIN, Permission.MEDIA_DELETE)).isTrue();
+    }
+
+    @Test
+    @DisplayName("SUPER_ADMIN 經 EnumSet.allOf 自動取得 dashboard/faq/knowledge/media 全部權限")
+    void superAdmin_hasAllDef075Permissions() {
+        assertThat(mapping.hasPermission(User.UserRole.SUPER_ADMIN, Permission.DASHBOARD_READ)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.SUPER_ADMIN, Permission.FAQ_DELETE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.SUPER_ADMIN, Permission.KNOWLEDGE_DELETE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.SUPER_ADMIN, Permission.MEDIA_DELETE)).isTrue();
+    }
 }

@@ -1521,9 +1521,15 @@ StoreStaff (店員)
 | rejection_reason | TEXT | 駁回原因 |
 | created_at | TIMESTAMP | 建立時間 |
 | updated_at | TIMESTAMP | 更新時間 |
+| expected_delivery_date | DATE | 預計到貨日期（選填，Sprint 129／DEF-078 新增，`V78` migration） |
 
 > **⚠️ v1.0.2 更正（Sprint 111）**：原列的 `expected_at`（預計到貨日）**在實作中不存在**；
 > `ordered_at` 實際欄位名為 `submitted_at`；審批相關 4 個欄位（Sprint 85／89 加入）原未記載。
+>
+> **v1.0.3 更正（Sprint 129）**：預計到貨日欄位已於本輪重新補上，正式欄位名為
+> `expected_delivery_date`（**非** v1.0.2 更正註記中已移除的 `expected_at`）。修復背景：
+> `PurchaseOrderDto` 早有此欄位宣告但 mapper 從未賦值、實體亦無對應欄位，回應恆為 `null`，
+> 前端檢視/編輯頁對 null 呼叫 `.split()` 必定崩潰（DEF-078）。
 
 #### 8.2.9 settlement_statements（結算單 — v0.9 新增）
 

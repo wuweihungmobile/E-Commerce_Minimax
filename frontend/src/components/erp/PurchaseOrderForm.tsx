@@ -11,6 +11,7 @@ import {
   PurchaseOrderCreateRequest,
   PurchaseOrderUpdateRequest,
   PurchaseOrderReceiveRequest,
+  ListingOption,
   POStatus,
 } from '@/services/erp/purchaseOrder'
 import SupplierService, { SupplierDto } from '@/services/erp/supplier'
@@ -24,6 +25,7 @@ interface PurchaseOrderFormProps {
 
 interface OrderItem {
   id: string
+  listingId: string
   skuId: string
   skuCode: string
   productName: string
@@ -40,6 +42,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
   const [error, setError] = useState<string | null>(null)
   const [initialLoading, setInitialLoading] = useState(orderId ? true : false)
   const [suppliers, setSuppliers] = useState<SupplierDto[]>([])
+  const [listingOptions, setListingOptions] = useState<ListingOption[]>([])
 
   const [formData, setFormData] = useState<PurchaseOrderCreateRequest>({
     supplierId: '',
@@ -49,7 +52,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
   })
 
   const [items, setItems] = useState<OrderItem[]>([
-    { id: '', skuId: '', skuCode: '', productName: '', quantity: 1, receivedQuantity: 0, unitPrice: 0, subtotal: 0 },
+    { id: '', listingId: '', skuId: '', skuCode: '', productName: '', quantity: 1, receivedQuantity: 0, unitPrice: 0, subtotal: 0 },
   ])
 
   const [orderStatus, setOrderStatus] = useState<POStatus | null>(null)
@@ -63,6 +66,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
 
     if (mode === 'create') {
       fetchSuppliers()
+      fetchListingOptions()
     } else if (orderId) {
       fetchOrder()
     }
@@ -77,6 +81,16 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
     }
   }
 
+  // DEF-076：前端原本沒有任何選擇 listing 的來源，建單品項的 listingId 永遠無法送出
+  const fetchListingOptions = async () => {
+    try {
+      const data = await PurchaseOrderService.listListingOptions()
+      setListingOptions(data)
+    } catch (err) {
+      console.error('Failed to fetch listing options:', err)
+    }
+  }
+
   const fetchOrder = async () => {
     if (!orderId) return
     setInitialLoading(true)
@@ -87,6 +101,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       if (mode === 'receive') {
         setItems(data.items.map(item => ({
           id: item.id,
+          listingId: item.listingId,
           skuId: item.skuId,
           skuCode: item.skuCode,
           productName: item.productName,
@@ -100,12 +115,13 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       } else {
         setFormData({
           supplierId: data.supplierId,
-          expectedDeliveryDate: data.expectedDeliveryDate.split('T')[0],
+          // DEF-078：expectedDeliveryDate 為選填欄位，既有（修復前建立的）採購單恆為 null
+          expectedDeliveryDate: data.expectedDeliveryDate ? data.expectedDeliveryDate.split('T')[0] : '',
           notes: data.notes || '',
           items: data.items.map(item => ({
-            skuId: item.skuId,
+            listingId: item.listingId,
             quantity: item.quantity,
-            unitPrice: item.unitPrice,
+            unitCost: item.unitPrice,
           })),
         })
         setItems(data.items)
@@ -146,6 +162,18 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
     setItems(newItems)
   }
 
+  // DEF-076：選擇 listing 後同步帶入名稱作為顯示用品名（選擇器新增前，品名只能手動輸入）
+  const handleListingChange = (index: number, listingId: string) => {
+    const newItems = [...items]
+    const listing = listingOptions.find(l => l.id === listingId)
+    newItems[index] = {
+      ...newItems[index],
+      listingId,
+      productName: listing ? listing.title : newItems[index].productName,
+    }
+    setItems(newItems)
+  }
+
   // DEF-071：收貨模式的「本次收貨」數量，限制在 [0, 尚未收到的剩餘量] 區間
   const handleReceiveQtyChange = (index: number, value: number) => {
     const newItems = [...items]
@@ -155,7 +183,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
   }
 
   const addItem = () => {
-    setItems([...items, { id: '', skuId: '', skuCode: '', productName: '', quantity: 1, receivedQuantity: 0, unitPrice: 0, subtotal: 0 }])
+    setItems([...items, { id: '', listingId: '', skuId: '', skuCode: '', productName: '', quantity: 1, receivedQuantity: 0, unitPrice: 0, subtotal: 0 }])
   }
 
   const removeItem = (index: number) => {
@@ -184,7 +212,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       alert('請選擇供應商')
       return
     }
-    if (items.length === 0 || !items[0].skuId) {
+    if (items.length === 0 || !items[0].listingId) {
       alert('請至少新增一個品項')
       return
     }
@@ -194,12 +222,12 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
     try {
       const request: PurchaseOrderCreateRequest = {
         supplierId: formData.supplierId,
-        expectedDeliveryDate: formData.expectedDeliveryDate,
+        expectedDeliveryDate: formData.expectedDeliveryDate || undefined,
         notes: formData.notes,
-        items: items.filter(item => item.skuId).map(item => ({
-          skuId: item.skuId,
+        items: items.filter(item => item.listingId).map(item => ({
+          listingId: item.listingId,
           quantity: item.quantity,
-          unitPrice: item.unitPrice,
+          unitCost: item.unitPrice,
         })),
       }
       await PurchaseOrderService.createPurchaseOrder(request)
@@ -392,7 +420,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">SKU</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">商品</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">品名</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">數量</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">單價</th>
@@ -412,6 +440,17 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
                     <td className="px-3 py-2">
                       {isViewMode || mode === 'edit' ? (
                         <span className="text-sm">{item.skuCode || item.skuId}</span>
+                      ) : mode === 'create' ? (
+                        <select
+                          value={item.listingId}
+                          onChange={(e) => handleListingChange(index, e.target.value)}
+                          className="w-full border rounded-md px-3 py-2"
+                        >
+                          <option value="">請選擇商品</option>
+                          {listingOptions.map(l => (
+                            <option key={l.id} value={l.id}>{l.title}</option>
+                          ))}
+                        </select>
                       ) : (
                         <Input
                           value={item.skuId}

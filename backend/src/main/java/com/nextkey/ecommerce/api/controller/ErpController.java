@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.api.controller;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import jakarta.validation.Valid;
 
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.erp.InventoryLedgerDto;
+import com.nextkey.ecommerce.api.dto.erp.ListingOptionDto;
 import com.nextkey.ecommerce.api.dto.erp.LowStockAlertDto;
 import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderCreateRequest;
 import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderDto;
@@ -37,6 +39,8 @@ import com.nextkey.ecommerce.core.erp.InventoryService;
 import com.nextkey.ecommerce.core.erp.PurchaseOrderService;
 import com.nextkey.ecommerce.core.erp.StockMovementService;
 import com.nextkey.ecommerce.core.erp.SupplierService;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 import lombok.RequiredArgsConstructor;
@@ -57,6 +61,28 @@ public class ErpController {
     private final PurchaseOrderService purchaseOrderService;
     private final InventoryService inventoryService;
     private final StockMovementService stockMovementService;
+    private final ListingRepository listingRepository;
+
+    // ========== Listing Endpoints（供採購單品項選擇器使用，DEF-076） ==========
+
+    @GetMapping("/purchase-orders/listing-options")
+    @PreAuthorize("hasAuthority('STORE_OWNER') or hasAuthority('SELLER')")
+    public ResponseEntity<ApiResponse<List<ListingOptionDto>>> listTenantListingsForPurchaseOrder() {
+        UUID tenantId = TenantContext.getCurrentTenant();
+        log.debug("Listing tenant listings for PO picker: tenantId={}", tenantId);
+
+        Page<Listing> page = listingRepository.findByTenantIdAndStatus(
+                tenantId, Listing.ListingStatus.ACTIVE, PageRequest.of(0, 200, Sort.by("title")));
+        List<ListingOptionDto> options = page.getContent().stream()
+                .map(l -> ListingOptionDto.builder()
+                        .id(l.getId())
+                        .title(l.getTitle())
+                        .basePrice(l.getBasePrice())
+                        .currency(l.getCurrency())
+                        .build())
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(ApiResponse.success(options));
+    }
 
     // ========== Supplier Endpoints ==========
 
@@ -69,6 +95,16 @@ public class ErpController {
 
         List<SupplierDto> suppliers = supplierService.listSuppliers(status);
         return ResponseEntity.ok(ApiResponse.success(suppliers));
+    }
+
+    @GetMapping("/suppliers/{id}")
+    @PreAuthorize("hasAuthority('STORE_OWNER') or hasAuthority('SELLER')")
+    public ResponseEntity<ApiResponse<SupplierDto>> getSupplier(@PathVariable UUID id) {
+        UUID tenantId = TenantContext.getCurrentTenant();
+        log.debug("Getting supplier: id={}, tenantId={}", id, tenantId);
+
+        SupplierDto supplier = supplierService.getSupplier(id);
+        return ResponseEntity.ok(ApiResponse.success(supplier));
     }
 
     @PostMapping("/suppliers")

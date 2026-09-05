@@ -386,6 +386,105 @@ class M16ErpIntegrationTest {
         System.out.println("✅ IT-M16-008 PASSED");
     }
 
+    @Test
+    @Order(9)
+    @DisplayName("IT-M16-009: 查詢單一供應商-成功（DEF-079，Sprint 129：檢視/編輯頁原本沒有 GET 端點）")
+    void getSupplier_success_returns200() throws Exception {
+        Supplier supplier = Supplier.builder()
+                .tenantId(testTenantId)
+                .name("Detail Test Supplier")
+                .contactPerson("Alice")
+                .email("alice@example.com")
+                .status(Supplier.SupplierStatus.ACTIVE)
+                .build();
+        supplier = supplierRepository.save(supplier);
+
+        mockMvc.perform(get(BASE_URL + "/suppliers/" + supplier.getId())
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(supplier.getId().toString()))
+                .andExpect(jsonPath("$.data.name").value("Detail Test Supplier"))
+                .andExpect(jsonPath("$.data.email").value("alice@example.com"));
+
+        System.out.println("✅ IT-M16-009 PASSED");
+    }
+
+    @Test
+    @Order(10)
+    @DisplayName("IT-M16-010: 查詢單一供應商-不存在")
+    void getSupplier_notFound_returns404() throws Exception {
+        mockMvc.perform(get(BASE_URL + "/suppliers/" + UUID.randomUUID())
+                        .with(csrf()))
+                .andExpect(status().isNotFound());
+
+        System.out.println("✅ IT-M16-010 PASSED");
+    }
+
+    @Test
+    @Order(11)
+    @DisplayName("IT-M16-011: 查詢單一供應商-他租戶供應商回 404（租戶隔離）")
+    void getSupplier_otherTenant_returns404() throws Exception {
+        Supplier otherTenantSupplier = Supplier.builder()
+                .tenantId(UUID.randomUUID())
+                .name("Other Tenant Supplier")
+                .status(Supplier.SupplierStatus.ACTIVE)
+                .build();
+        otherTenantSupplier = supplierRepository.save(otherTenantSupplier);
+
+        mockMvc.perform(get(BASE_URL + "/suppliers/" + otherTenantSupplier.getId())
+                        .with(csrf()))
+                .andExpect(status().isNotFound());
+
+        System.out.println("✅ IT-M16-011 PASSED");
+    }
+
+    @Test
+    @Order(12)
+    @DisplayName("IT-M16-012: 查詢本租戶 listing 選項（供採購單選擇器使用，DEF-076，Sprint 129）")
+    void listTenantListings_returnsActiveListingsOfCurrentTenantOnly() throws Exception {
+        // 本租戶但 DRAFT 狀態：不應出現在選項中
+        Listing draftListing = Listing.builder()
+                .tenantId(testTenantId)
+                .ownerId(testStoreOwnerUserId)
+                .listingType(Listing.ListingType.PRODUCT)
+                .title("Draft Listing Should Not Appear")
+                .basePrice(BigDecimal.valueOf(10))
+                .status(Listing.ListingStatus.DRAFT)
+                .build();
+        draftListing = listingRepository.save(draftListing);
+        jdbcTemplate.update("UPDATE listings SET tenant_id = ? WHERE id = ?", testTenantId, draftListing.getId());
+
+        // 他租戶的 ACTIVE listing：不應出現在選項中（租戶隔離）
+        UUID otherTenantId = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO tenants (id, name, slug, status, connect_onboarding_status, connect_charges_enabled, "
+                        + "connect_payouts_enabled, metadata, created_at, updated_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, NOW(), NOW())",
+                otherTenantId, "Other Tenant", "other-tenant-" + System.currentTimeMillis(), "ACTIVE",
+                "NOT_STARTED", false, false, "{}");
+        Listing otherTenantListing = Listing.builder()
+                .tenantId(otherTenantId)
+                .ownerId(testStoreOwnerUserId)
+                .listingType(Listing.ListingType.PRODUCT)
+                .title("Other Tenant Listing Should Not Appear")
+                .basePrice(BigDecimal.valueOf(20))
+                .status(Listing.ListingStatus.ACTIVE)
+                .build();
+        otherTenantListing = listingRepository.save(otherTenantListing);
+        jdbcTemplate.update("UPDATE listings SET tenant_id = ? WHERE id = ?", otherTenantId, otherTenantListing.getId());
+
+        mockMvc.perform(get(BASE_URL + "/purchase-orders/listing-options")
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[*].id", hasItem(testListingId.toString())))
+                .andExpect(jsonPath("$.data[*].title", not(hasItem("Draft Listing Should Not Appear"))))
+                .andExpect(jsonPath("$.data[*].title", not(hasItem("Other Tenant Listing Should Not Appear"))));
+
+        System.out.println("✅ IT-M16-012 PASSED");
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // IT-M16-101 ~ 117: 採購單管理測試
     // ═══════════════════════════════════════════════════════════════

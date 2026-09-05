@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -237,6 +238,67 @@ class PurchaseOrderServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_1007));
 
         verify(purchaseOrderRepository, never()).save(any(PurchaseOrder.class));
+    }
+
+    // ── createPurchaseOrder / getPurchaseOrder：expectedDeliveryDate（DEF-078） ──
+
+    @Test
+    @DisplayName("createPurchaseOrder：帶 expectedDeliveryDate 時應寫入實體並回傳（DEF-078，Sprint 129）")
+    void createPurchaseOrder_withExpectedDeliveryDate_persistsAndReturnsIt() {
+        when(supplierRepository.existsByIdAndTenantId(supplierId, tenantId)).thenReturn(true);
+        when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+        when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> {
+            PurchaseOrder po = inv.getArgument(0);
+            po.setId(poId);
+            return po;
+        });
+
+        LocalDate expected = LocalDate.of(2026, 10, 1);
+        PurchaseOrderCreateRequest request = PurchaseOrderCreateRequest.builder()
+                .supplierId(supplierId)
+                .expectedDeliveryDate(expected)
+                .items(List.of(itemRequest(1, "10.00")))
+                .build();
+
+        ArgumentCaptor<PurchaseOrder> captor = ArgumentCaptor.forClass(PurchaseOrder.class);
+        PurchaseOrderDto result = purchaseOrderService.createPurchaseOrder(request, userId);
+
+        verify(purchaseOrderRepository).save(captor.capture());
+        assertThat(captor.getValue().getExpectedDeliveryDate()).isEqualTo(expected);
+        assertThat(result.getExpectedDeliveryDate()).isEqualTo("2026-10-01");
+    }
+
+    @Test
+    @DisplayName("createPurchaseOrder：未帶 expectedDeliveryDate 時實體與回傳皆為 null（選填欄位）")
+    void createPurchaseOrder_withoutExpectedDeliveryDate_staysNull() {
+        when(supplierRepository.existsByIdAndTenantId(supplierId, tenantId)).thenReturn(true);
+        when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+        when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> {
+            PurchaseOrder po = inv.getArgument(0);
+            po.setId(poId);
+            return po;
+        });
+
+        PurchaseOrderCreateRequest request = PurchaseOrderCreateRequest.builder()
+                .supplierId(supplierId)
+                .items(List.of(itemRequest(1, "10.00")))
+                .build();
+
+        PurchaseOrderDto result = purchaseOrderService.createPurchaseOrder(request, userId);
+
+        assertThat(result.getExpectedDeliveryDate()).isNull();
+    }
+
+    @Test
+    @DisplayName("getPurchaseOrder：expectedDeliveryDate 已設定時應以 ISO 日期字串回傳（前端 <input type=date> 格式）")
+    void getPurchaseOrder_withExpectedDeliveryDate_returnsIsoDateString() {
+        PurchaseOrder po = poOf(PurchaseOrder.POStatus.DRAFT);
+        po.setExpectedDeliveryDate(LocalDate.of(2026, 12, 25));
+        when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.of(po));
+
+        PurchaseOrderDto result = purchaseOrderService.getPurchaseOrder(poId);
+
+        assertThat(result.getExpectedDeliveryDate()).isEqualTo("2026-12-25");
     }
 
     // ── getPurchaseOrder ─────────────────────────────────────────

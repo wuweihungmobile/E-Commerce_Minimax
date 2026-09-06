@@ -20,7 +20,11 @@ export interface Listing {
 // ROOM 動態計價回應（GET /v2/listings/{id}/price?checkIn&checkOut）
 export interface PriceBreakdown {
   date: string
-  price: number
+  basePrice: number
+  adjustedPrice: number
+  appliedRuleName: string
+  adjustmentType: 'PERCENTAGE' | 'FIXED_AMOUNT'
+  adjustmentValue: number
 }
 export interface CalculatePriceResponse {
   roomListingId: string

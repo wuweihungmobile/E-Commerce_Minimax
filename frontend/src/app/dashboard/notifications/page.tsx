@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import {
   getTemplates,
+  createTemplate,
+  updateTemplate,
   deleteTemplate,
   renderTemplate,
   NotificationTemplateDto,
@@ -11,6 +13,36 @@ import {
   NOTIFICATION_TYPES,
   CHANNELS,
 } from '@/services/notification';
+
+interface TemplateFormState {
+  templateCode: string;
+  notificationType: string;
+  channel: string;
+  name: string;
+  subject: string;
+  contentTemplate: string;
+  isActive: boolean;
+  priority: string;
+}
+
+const EMPTY_FORM: TemplateFormState = {
+  templateCode: '',
+  notificationType: NOTIFICATION_TYPES[0].value,
+  channel: CHANNELS[0].value,
+  name: '',
+  subject: '',
+  contentTemplate: '',
+  isActive: true,
+  priority: '0',
+};
+
+function extractErrorMessage(error: unknown, fallback: string): string {
+  if (error && typeof error === 'object' && 'response' in error) {
+    const axiosErr = error as { response?: { data?: { message?: string } } };
+    return axiosErr.response?.data?.message || fallback;
+  }
+  return fallback;
+}
 
 export default function NotificationsPage() {
   const [templates, setTemplates] = useState<NotificationTemplateDto[]>([]);
@@ -25,6 +57,10 @@ export default function NotificationsPage() {
   const [previewTemplate, setPreviewTemplate] = useState<NotificationTemplateDto | null>(null);
   const [previewContent, setPreviewContent] = useState<{ subject: string; content: string } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<TemplateFormState>(EMPTY_FORM);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadTemplates();
@@ -50,6 +86,64 @@ export default function NotificationsPage() {
       alert('載入通知模板失敗，請稍後再試');
     } finally {
       setLoading(false);
+    }
+  }
+
+  function startCreate() {
+    setForm(EMPTY_FORM);
+    setEditingId(null);
+    setShowForm(true);
+  }
+
+  function startEdit(template: NotificationTemplateDto) {
+    setForm({
+      templateCode: template.templateCode,
+      notificationType: template.notificationType,
+      channel: template.channel,
+      name: template.name,
+      subject: template.subject || '',
+      contentTemplate: template.contentTemplate,
+      isActive: template.isActive,
+      priority: String(template.priority ?? 0),
+    });
+    setEditingId(template.id);
+    setShowForm(true);
+  }
+
+  function cancelForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+  }
+
+  async function handleSubmit() {
+    if (!form.templateCode.trim() || !form.name.trim() || !form.contentTemplate.trim()) {
+      alert('模板代碼、名稱與內容為必填');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const payload = {
+        templateCode: form.templateCode.trim(),
+        notificationType: form.notificationType,
+        channel: form.channel,
+        name: form.name.trim(),
+        subject: form.subject.trim() || undefined,
+        contentTemplate: form.contentTemplate,
+        isActive: form.isActive,
+        priority: Number(form.priority) || 0,
+      };
+      if (editingId) {
+        await updateTemplate(editingId, payload);
+      } else {
+        await createTemplate(payload);
+      }
+      cancelForm();
+      loadTemplates();
+    } catch (error) {
+      alert(extractErrorMessage(error, editingId ? '更新模板失敗' : '新增模板失敗'));
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -128,8 +222,16 @@ export default function NotificationsPage() {
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">通知模板</h1>
-        <div className="text-sm text-gray-500">
-          總計 {totalElements} 個模板
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-gray-500">
+            總計 {totalElements} 個模板
+          </div>
+          <button
+            onClick={startCreate}
+            className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+          >
+            新增模板
+          </button>
         </div>
       </div>
 
@@ -236,6 +338,12 @@ export default function NotificationsPage() {
                         預覽
                       </button>
                       <button
+                        onClick={() => startEdit(template)}
+                        className="text-blue-600 hover:text-blue-800"
+                      >
+                        編輯
+                      </button>
+                      <button
                         onClick={() => handleDelete(template.id)}
                         disabled={deleting === template.id}
                         className="text-red-600 hover:text-red-800 disabled:opacity-50"
@@ -286,6 +394,114 @@ export default function NotificationsPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Create/Edit Modal */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="p-6 border-b">
+              <h2 className="text-lg font-bold">{editingId ? '編輯模板' : '新增模板'}</h2>
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">模板代碼 *</label>
+                <input
+                  type="text"
+                  value={form.templateCode}
+                  onChange={(e) => setForm({ ...form, templateCode: e.target.value })}
+                  className="border rounded px-3 py-1.5 text-sm w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">名稱 *</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="border rounded px-3 py-1.5 text-sm w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">通知類型</label>
+                <select
+                  value={form.notificationType}
+                  onChange={(e) => setForm({ ...form, notificationType: e.target.value })}
+                  className="border rounded px-3 py-1.5 text-sm w-full"
+                >
+                  {NOTIFICATION_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">頻道</label>
+                <select
+                  value={form.channel}
+                  onChange={(e) => setForm({ ...form, channel: e.target.value })}
+                  className="border rounded px-3 py-1.5 text-sm w-full"
+                >
+                  {CHANNELS.map((channel) => (
+                    <option key={channel.value} value={channel.value}>{channel.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">主旨</label>
+                <input
+                  type="text"
+                  value={form.subject}
+                  onChange={(e) => setForm({ ...form, subject: e.target.value })}
+                  className="border rounded px-3 py-1.5 text-sm w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">優先級</label>
+                <input
+                  type="number"
+                  value={form.priority}
+                  onChange={(e) => setForm({ ...form, priority: e.target.value })}
+                  className="border rounded px-3 py-1.5 text-sm w-full"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  內容 * (以 {'{{變數名稱}}'} 標示變數，儲存時系統會自動偵測)
+                </label>
+                <textarea
+                  value={form.contentTemplate}
+                  onChange={(e) => setForm({ ...form, contentTemplate: e.target.value })}
+                  rows={6}
+                  className="border rounded px-3 py-1.5 text-sm w-full font-mono"
+                />
+              </div>
+              <div className="md:col-span-2 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isActive"
+                  checked={form.isActive}
+                  onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                />
+                <label htmlFor="isActive" className="text-sm text-gray-700">啟用</label>
+              </div>
+            </div>
+            <div className="flex gap-2 p-6 border-t">
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+              >
+                {submitting ? '儲存中...' : '儲存'}
+              </button>
+              <button
+                onClick={cancelForm}
+                className="px-4 py-1.5 border rounded text-sm hover:bg-gray-50"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Preview Modal */}

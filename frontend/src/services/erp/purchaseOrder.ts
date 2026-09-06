@@ -27,7 +27,7 @@ export interface PurchaseOrderItemDto {
 
 export interface PurchaseOrderDto {
   id: string
-  orderNumber: string
+  poNumber: string
   supplierId: string
   supplierName: string
   status: POStatus
@@ -65,13 +65,9 @@ export interface PurchaseOrderCreateRequest {
 }
 
 export interface PurchaseOrderUpdateRequest {
-  expectedDeliveryDate?: string
+  // 後端 PurchaseOrderUpdateRequest.java 僅支援 notes：items 需取消後重新建立，
+  // expectedDeliveryDate 不允許在 update 時修改
   notes?: string
-  items?: Array<{
-    skuId: string
-    quantity: number
-    unitPrice: number
-  }>
 }
 
 export interface PurchaseOrderReceiveRequest {

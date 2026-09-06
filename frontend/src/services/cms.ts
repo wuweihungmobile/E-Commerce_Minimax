@@ -230,11 +230,6 @@ export async function getMediaList(params?: {
   return response.data.data;
 }
 
-export async function uploadMedia(data: FormData): Promise<{ mediaId: string }> {
-  const response = await apiClient.post('/v2/media/upload', data);
-  return response.data.data;
-}
-
 export async function uploadMediaMultipart(file: File): Promise<MediaResponse> {
   const formData = new FormData();
   formData.append('file', file);

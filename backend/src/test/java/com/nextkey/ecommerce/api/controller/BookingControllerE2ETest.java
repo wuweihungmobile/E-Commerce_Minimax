@@ -884,7 +884,7 @@ class BookingControllerE2ETest {
         if (statusCode == 409) {
             secondResponse.then()
                     .body("success", is(false))
-                    .body("code", equalTo("E_6005"));
+                    .body("code", equalTo("E-6005"));
             System.out.println("✅ IT-M06-103 PASSED: Idempotency-Key 仍在處理中返回 409");
         } else if (statusCode == 200) {
             // 第一個請求已經完成，這也是預期行為

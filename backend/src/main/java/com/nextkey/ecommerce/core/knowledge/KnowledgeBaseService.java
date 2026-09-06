@@ -31,6 +31,7 @@ import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentTenant;
+import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentUser;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -189,8 +190,8 @@ public class KnowledgeBaseService {
         KnowledgeCategory category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
 
-        // 取得系統管理員作為預設作者
-        User author = userRepository.findById(request.getAuthorId())
+        // 作者由伺服器端從當前登入者推導（比照 CmsService.createPage），不信任呼叫端傳入的 authorId
+        User author = userRepository.findById(getCurrentUser())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Author not found"));
 
         // 檢查 slug 唯一性
@@ -209,6 +210,7 @@ public class KnowledgeBaseService {
                 .coverImageUrl(request.getCoverImageUrl())
                 .status(ArticleStatus.DRAFT)
                 .isPinned(request.getIsPinned() != null ? request.getIsPinned() : false)
+                .tags(request.getTags() != null ? String.join(",", request.getTags()) : null)
                 .build();
 
         article = articleRepository.save(article);
@@ -261,6 +263,10 @@ public class KnowledgeBaseService {
 
         if (request.getIsPinned() != null) {
             article.setIsPinned(request.getIsPinned());
+        }
+
+        if (request.getTags() != null) {
+            article.setTags(String.join(",", request.getTags()));
         }
 
         article = articleRepository.save(article);
@@ -414,6 +420,7 @@ public class KnowledgeBaseService {
                 .status(article.getStatus().name())
                 .viewCount(article.getViewCount())
                 .isPinned(article.getIsPinned())
+                .tags(article.getTags() != null ? List.of(article.getTags().split(",")) : null)
                 .publishedAt(article.getPublishedAt())
                 .createdAt(article.getCreatedAt())
                 .updatedAt(article.getUpdatedAt());

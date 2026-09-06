@@ -408,7 +408,25 @@ class M18MediaIntegrationTest {
 
     @Test
     @Order(8)
-    @DisplayName("IT-M18-008: 刪除媒體資產（軟刪除）")
+    @DisplayName("IT-M18-008: 只更新 tags 不帶 categoryId 應成功（partial update，DEF-085）")
+    void testUpdateAssetTagsOnly() throws Exception {
+        UpdateMediaRequest request = UpdateMediaRequest.builder()
+                .tags(List.of("only-tags"))
+                .build();
+
+        mockMvc.perform(put(MEDIA_URL + "/" + testAsset.getId())
+                        .header("Authorization", "Bearer " + authToken)
+                        .header("X-Tenant-ID", testTenantId.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.tags[*]", hasItems("only-tags")))
+                .andExpect(jsonPath("$.data.categoryId").value(testCategory.getId().toString()));
+    }
+
+    @Test
+    @Order(9)
+    @DisplayName("IT-M18-009: 刪除媒體資產（軟刪除）")
     void testDeleteAsset() throws Exception {
         // 先上傳一個新資產
         UploadMediaRequest request = UploadMediaRequest.builder()
@@ -446,8 +464,8 @@ class M18MediaIntegrationTest {
     }
 
     @Test
-    @Order(9)
-    @DisplayName("IT-M18-009: 取得單一媒體詳情")
+    @Order(10)
+    @DisplayName("IT-M18-010: 取得單一媒體詳情")
     void testGetAssetDetail() throws Exception {
         mockMvc.perform(get(MEDIA_URL + "/" + testAsset.getId())
                         .header("Authorization", "Bearer " + authToken)
@@ -458,8 +476,8 @@ class M18MediaIntegrationTest {
     }
 
     @Test
-    @Order(10)
-    @DisplayName("IT-M18-010: 依關鍵字搜尋媒體")
+    @Order(11)
+    @DisplayName("IT-M18-011: 依關鍵字搜尋媒體")
     void testSearchMedia() throws Exception {
         mockMvc.perform(get(MEDIA_URL)
                         .header("Authorization", "Bearer " + authToken)
@@ -470,8 +488,8 @@ class M18MediaIntegrationTest {
     }
 
     @Test
-    @Order(11)
-    @DisplayName("IT-M18-011: 依 MIME 類型篩選媒體")
+    @Order(12)
+    @DisplayName("IT-M18-012: 依 MIME 類型篩選媒體")
     void testFilterByMimeType() throws Exception {
         mockMvc.perform(get(MEDIA_URL)
                         .header("Authorization", "Bearer " + authToken)
@@ -482,8 +500,8 @@ class M18MediaIntegrationTest {
     }
 
     @Test
-    @Order(12)
-    @DisplayName("IT-M18-012: 依分類篩選媒體")
+    @Order(13)
+    @DisplayName("IT-M18-013: 依分類篩選媒體")
     void testFilterByCategory() throws Exception {
         mockMvc.perform(get(MEDIA_URL)
                         .header("Authorization", "Bearer " + authToken)

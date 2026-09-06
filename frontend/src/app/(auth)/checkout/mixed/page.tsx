@@ -144,7 +144,7 @@ export default function MixedCheckoutPage() {
           : { addressId: selectedAddressId || undefined }),
         guestCount: roomItem?.quantity || 1,
         guestName: guestName.trim(),
-        guestPhone: guestPhone.trim() || undefined,
+        guestPhone: guestPhone.trim().replace(/\s/g, '') || undefined,
         guestEmail: guestEmail.trim() || undefined,
         specialRequests: specialRequests.trim() || undefined,
         promoCode: promoCode.trim() || undefined,

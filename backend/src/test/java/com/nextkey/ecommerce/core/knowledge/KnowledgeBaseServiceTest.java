@@ -70,10 +70,12 @@ class KnowledgeBaseServiceTest {
     private KnowledgeBaseService knowledgeBaseService;
 
     private static final UUID TENANT_ID = UUID.randomUUID();
+    private static final UUID CURRENT_USER_ID = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
         TenantContext.setCurrentTenant(TENANT_ID);
+        TenantContext.setCurrentUser(CURRENT_USER_ID);
     }
 
     @AfterEach
@@ -267,19 +269,18 @@ class KnowledgeBaseServiceTest {
     @DisplayName("createArticle：成功建立（草稿狀態）")
     void createArticle_success() {
         UUID categoryId = UUID.randomUUID();
-        UUID authorId = UUID.randomUUID();
         Tenant tenant = buildTenant();
         KnowledgeCategory category = buildCategory(categoryId, "General", "general");
-        User author = buildAuthor(authorId);
+        User author = buildAuthor(CURRENT_USER_ID);
 
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
         when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
-        when(userRepository.findById(authorId)).thenReturn(Optional.of(author));
+        when(userRepository.findById(CURRENT_USER_ID)).thenReturn(Optional.of(author));
         when(articleRepository.findByTenantIdAndSlug(TENANT_ID, "new-article")).thenReturn(Optional.empty());
         when(articleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         CreateKnowledgeArticleRequest req = CreateKnowledgeArticleRequest.builder()
-                .categoryId(categoryId).authorId(authorId)
+                .categoryId(categoryId)
                 .title("New Article").slug("new-article").content("Content").build();
 
         KnowledgeArticleDto result = knowledgeBaseService.createArticle(req);
@@ -289,18 +290,38 @@ class KnowledgeBaseServiceTest {
     }
 
     @Test
+    @DisplayName("createArticle：tags 應被儲存並在 DTO 中讀回（DEF-083）")
+    void createArticle_savesAndReturnsTags() {
+        UUID categoryId = UUID.randomUUID();
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(buildCategory(categoryId, "General", "general")));
+        when(userRepository.findById(CURRENT_USER_ID)).thenReturn(Optional.of(buildAuthor(CURRENT_USER_ID)));
+        when(articleRepository.findByTenantIdAndSlug(TENANT_ID, "tagged-article")).thenReturn(Optional.empty());
+        when(articleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        CreateKnowledgeArticleRequest req = CreateKnowledgeArticleRequest.builder()
+                .categoryId(categoryId)
+                .title("Tagged Article").slug("tagged-article").content("Content")
+                .tags(List.of("faq", "billing"))
+                .build();
+
+        KnowledgeArticleDto result = knowledgeBaseService.createArticle(req);
+
+        assertThat(result.getTags()).containsExactly("faq", "billing");
+    }
+
+    @Test
     @DisplayName("createArticle：slug 已存在 → E_3001")
     void createArticle_duplicateSlug_throws() {
         UUID categoryId = UUID.randomUUID();
-        UUID authorId = UUID.randomUUID();
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
         when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(buildCategory(categoryId, "General", "general")));
-        when(userRepository.findById(authorId)).thenReturn(Optional.of(buildAuthor(authorId)));
+        when(userRepository.findById(CURRENT_USER_ID)).thenReturn(Optional.of(buildAuthor(CURRENT_USER_ID)));
         when(articleRepository.findByTenantIdAndSlug(TENANT_ID, "dup")).thenReturn(
-                Optional.of(buildArticle(UUID.randomUUID(), buildCategory(categoryId, "General", "general"), buildAuthor(authorId), "X", "dup")));
+                Optional.of(buildArticle(UUID.randomUUID(), buildCategory(categoryId, "General", "general"), buildAuthor(CURRENT_USER_ID), "X", "dup")));
 
         CreateKnowledgeArticleRequest req = CreateKnowledgeArticleRequest.builder()
-                .categoryId(categoryId).authorId(authorId).title("X").slug("dup").content("C").build();
+                .categoryId(categoryId).title("X").slug("dup").content("C").build();
 
         assertThatThrownBy(() -> knowledgeBaseService.createArticle(req))
                 .isInstanceOf(BusinessException.class)
@@ -328,6 +349,26 @@ class KnowledgeBaseServiceTest {
         assertThat(result.getTitle()).isEqualTo("New Title");
         assertThat(result.getStatus()).isEqualTo("PUBLISHED");
         assertThat(result.getPublishedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("updateArticle：更新 tags 應被儲存並在 DTO 中讀回（DEF-083）")
+    void updateArticle_updatesTags() {
+        UUID articleId = UUID.randomUUID();
+        KnowledgeCategory category = buildCategory(UUID.randomUUID(), "General", "general");
+        KnowledgeArticle article = KnowledgeArticle.builder()
+                .id(articleId).tenantId(TENANT_ID).category(category).author(buildAuthor(UUID.randomUUID()))
+                .title("Title").slug("slug1").content("Content").status(ArticleStatus.DRAFT)
+                .isPinned(false).sortOrder(0).build();
+        when(articleRepository.findByIdAndTenantId(articleId, TENANT_ID)).thenReturn(Optional.of(article));
+        when(articleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateKnowledgeArticleRequest req = UpdateKnowledgeArticleRequest.builder()
+                .tags(List.of("updated-tag")).build();
+
+        KnowledgeArticleDto result = knowledgeBaseService.updateArticle(articleId, req);
+
+        assertThat(result.getTags()).containsExactly("updated-tag");
     }
 
     @Test

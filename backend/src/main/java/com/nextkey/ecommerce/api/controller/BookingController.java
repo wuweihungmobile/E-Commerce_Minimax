@@ -25,6 +25,7 @@ import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.core.booking.BookingService;
 import com.nextkey.ecommerce.core.idempotency.IdempotencyService;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -103,7 +104,7 @@ public class BookingController {
                 }
                 // 如果還在處理中，返回 409 Conflict
                 return ResponseEntity.status(HttpStatus.CONFLICT)
-                        .body(ApiResponse.error("E_6005", "Request with this Idempotency-Key is still being processed"));
+                        .body(ApiResponse.error(ErrorCode.E_6005.getCode(), "Request with this Idempotency-Key is still being processed"));
             }
 
             boolean completed = false;

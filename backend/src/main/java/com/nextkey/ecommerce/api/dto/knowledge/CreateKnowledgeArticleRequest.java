@@ -20,9 +20,6 @@ public class CreateKnowledgeArticleRequest {
     @NotNull(message = "Category ID is required")
     private UUID categoryId;
 
-    @NotNull(message = "Author ID is required")
-    private UUID authorId;
-
     @NotBlank(message = "Title is required")
     @Size(max = 200, message = "Title must not exceed 200 characters")
     private String title;

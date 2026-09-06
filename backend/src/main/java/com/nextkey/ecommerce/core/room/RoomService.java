@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,19 +58,26 @@ public class RoomService {
         PageRequest pageRequest = PageRequest.of(page, Math.min(size, 100), sort);
 
         UUID tenantId = TenantContext.getCurrentTenant();
-        Page<Room> rooms;
+
+        Specification<Room> spec = (root, query, cb) -> cb.and(
+                cb.equal(root.get("listing").get("tenantId"), tenantId),
+                cb.equal(root.get("listing").get("status"), Listing.ListingStatus.ACTIVE));
 
         if (keyword != null && !keyword.isBlank()) {
-            rooms = roomRepository.findByListingTenantIdAndListingStatus(
-                    tenantId, Listing.ListingStatus.ACTIVE, pageRequest);
-        } else if (maxGuests != null) {
-            rooms = roomRepository.findByMinGuests(maxGuests, pageRequest);
-        } else if (location != null && !location.isBlank()) {
-            rooms = roomRepository.findByLocation(location, pageRequest);
-        } else {
-            rooms = roomRepository.findByListingTenantIdAndListingStatus(
-                    tenantId, Listing.ListingStatus.ACTIVE, pageRequest);
+            String pattern = "%" + keyword.trim().toLowerCase() + "%";
+            spec = spec.and((root, query, cb) -> cb.or(
+                    cb.like(cb.lower(root.get("listing").get("title")), pattern),
+                    cb.like(cb.lower(root.get("listing").get("description")), pattern)));
         }
+        if (maxGuests != null) {
+            spec = spec.and((root, query, cb) -> cb.greaterThanOrEqualTo(root.get("maxGuests"), maxGuests));
+        }
+        if (location != null && !location.isBlank()) {
+            String pattern = "%" + location.trim().toLowerCase() + "%";
+            spec = spec.and((root, query, cb) -> cb.like(cb.lower(root.get("location")), pattern));
+        }
+
+        Page<Room> rooms = roomRepository.findAll(spec, pageRequest);
 
         return rooms.map(this::toListResponse);
     }

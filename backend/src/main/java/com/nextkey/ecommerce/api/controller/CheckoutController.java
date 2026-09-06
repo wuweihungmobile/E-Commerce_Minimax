@@ -15,6 +15,7 @@ import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.CheckoutDto;
 import com.nextkey.ecommerce.core.checkout.CombinedCheckoutService;
 import com.nextkey.ecommerce.core.idempotency.IdempotencyService;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -65,7 +66,7 @@ public class CheckoutController {
                 return ResponseEntity.ok(ApiResponse.success(storedResponse));
             }
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(ApiResponse.error("E_6005", "Request with this Idempotency-Key is still being processed"));
+                    .body(ApiResponse.error(ErrorCode.E_6005.getCode(), "Request with this Idempotency-Key is still being processed"));
         }
 
         boolean completed = false;

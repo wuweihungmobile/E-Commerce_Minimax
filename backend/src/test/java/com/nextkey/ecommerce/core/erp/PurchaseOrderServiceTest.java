@@ -33,6 +33,7 @@ import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderCreateRequest;
 import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderDto;
 import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderReceiveRequest;
 import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderUpdateRequest;
+import com.nextkey.ecommerce.domain.model.erp.Supplier;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrderItem;
 import com.nextkey.ecommerce.domain.model.inventory.StockMovement;
@@ -316,6 +317,19 @@ class PurchaseOrderServiceTest {
     }
 
     @Test
+    @DisplayName("getPurchaseOrder：supplierName 應由 supplierRepository 補查後填入 DTO（DEF-082）")
+    void getPurchaseOrder_returnsSupplierName() {
+        when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId))
+                .thenReturn(Optional.of(poOf(PurchaseOrder.POStatus.DRAFT)));
+        when(supplierRepository.findById(supplierId))
+                .thenReturn(Optional.of(Supplier.builder().id(supplierId).name("測試供應商").build()));
+
+        PurchaseOrderDto result = purchaseOrderService.getPurchaseOrder(poId);
+
+        assertThat(result.getSupplierName()).isEqualTo("測試供應商");
+    }
+
+    @Test
     @DisplayName("getPurchaseOrder：不存在時拋出 E_7001")
     void getPurchaseOrder_notFound_throwsE7001() {
         when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.empty());
@@ -353,6 +367,21 @@ class PurchaseOrderServiceTest {
 
         assertThat(result.getTotalElements()).isEqualTo(1);
         assertThat(result.getContent().get(0).getStatus()).isEqualTo("SUBMITTED");
+    }
+
+    @Test
+    @DisplayName("listPurchaseOrders：supplierName 應以批次查詢一次補齊，避免逐筆 N+1（DEF-082）")
+    void listPurchaseOrders_batchFillsSupplierNames() {
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<PurchaseOrder> page = new PageImpl<>(List.of(poOf(PurchaseOrder.POStatus.DRAFT)), pageable, 1);
+        when(purchaseOrderRepository.findByTenantId(tenantId, pageable)).thenReturn(page);
+        when(supplierRepository.findAllById(List.of(supplierId)))
+                .thenReturn(List.of(Supplier.builder().id(supplierId).name("批次供應商").build()));
+
+        Page<PurchaseOrderDto> result = purchaseOrderService.listPurchaseOrders(null, pageable);
+
+        assertThat(result.getContent().get(0).getSupplierName()).isEqualTo("批次供應商");
+        verify(supplierRepository, never()).findById(any());
     }
 
     // ── updatePurchaseOrder ──────────────────────────────────────

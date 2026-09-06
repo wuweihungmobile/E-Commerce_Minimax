@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
@@ -17,6 +18,7 @@ import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderCreateRequest;
 import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderDto;
 import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderReceiveRequest;
 import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderUpdateRequest;
+import com.nextkey.ecommerce.domain.model.erp.Supplier;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrderItem;
 import com.nextkey.ecommerce.domain.model.inventory.StockMovement;
@@ -146,7 +148,15 @@ public class PurchaseOrderService {
             orders = purchaseOrderRepository.findByTenantId(tenantId, pageable);
         }
 
-        return orders.map(this::toDto);
+        Map<UUID, String> supplierNames = supplierRepository
+                .findAllById(orders.getContent().stream()
+                        .map(PurchaseOrder::getSupplierId)
+                        .distinct()
+                        .collect(Collectors.toList()))
+                .stream()
+                .collect(Collectors.toMap(Supplier::getId, Supplier::getName));
+
+        return orders.map(po -> toDto(po, supplierNames.get(po.getSupplierId())));
     }
 
     /**
@@ -366,11 +376,19 @@ public class PurchaseOrderService {
      * 轉換為 DTO
      */
     private PurchaseOrderDto toDto(final PurchaseOrder po) {
+        String supplierName = supplierRepository.findById(po.getSupplierId())
+                .map(Supplier::getName)
+                .orElse(null);
+        return toDto(po, supplierName);
+    }
+
+    private PurchaseOrderDto toDto(final PurchaseOrder po, final String supplierName) {
         return PurchaseOrderDto.builder()
                 .id(po.getId())
                 .tenantId(po.getTenantId())
                 .poNumber(po.getPoNumber())
                 .supplierId(po.getSupplierId())
+                .supplierName(supplierName)
                 .status(po.getStatus() != null ? po.getStatus().name() : null)
                 .totalAmount(po.getTotalAmount())
                 .currency(po.getCurrency())

@@ -136,7 +136,7 @@ export default function PurchaseOrdersPage() {
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <div>
-                    <CardTitle className="text-lg">{order.orderNumber}</CardTitle>
+                    <CardTitle className="text-lg">{order.poNumber}</CardTitle>
                     <CardDescription>供應商：{order.supplierName}</CardDescription>
                   </div>
                   {getStatusBadge(order.status)}

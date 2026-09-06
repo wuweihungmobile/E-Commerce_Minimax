@@ -4,29 +4,16 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.Room;
 
 @Repository
-public interface RoomRepository extends JpaRepository<Room, UUID> {
-
-    Page<Room> findByListingTenantIdAndListingStatus(
-            UUID tenantId,
-            Listing.ListingStatus status,
-            Pageable pageable);
-
-    @Query("SELECT r FROM Room r WHERE r.maxGuests >= :guests AND r.listing.status = 'ACTIVE'")
-    Page<Room> findByMinGuests(@Param("guests") Integer guests, Pageable pageable);
-
-    @Query("SELECT r FROM Room r WHERE r.location LIKE %:location% AND r.listing.status = 'ACTIVE'")
-    Page<Room> findByLocation(@Param("location") String location, Pageable pageable);
+public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificationExecutor<Room> {
 
     @Query("SELECT r FROM Room r WHERE r.listing.tenant.id = :tenantId")
     List<Room> findByTenantId(@Param("tenantId") UUID tenantId);

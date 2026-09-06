@@ -532,7 +532,7 @@ public class IntegrationTestConfiguration {
                 });
 
         // Mock objectExists - 總是返回 true
-        when(mockService.objectExists(any(UUID.class), anyString())).thenReturn(true);
+        when(mockService.objectExists(anyString())).thenReturn(true);
 
         // Mock getObject - 返回空的輸入流
         when(mockService.getObject(anyString()))
@@ -602,6 +602,13 @@ public class IntegrationTestConfiguration {
 
         // Mock deleteMedia - 不拋出異常
         doNothing().when(mockService).deleteMedia(any(UUID.class), any(UUID.class));
+
+        // Mock downloadMedia - 返回假的檔案內容（Sprint 133，DEF-097）
+        when(mockService.downloadMedia(any(UUID.class), any(UUID.class))).thenAnswer(invocation ->
+                new MediaService.MediaFile(
+                        new ByteArrayInputStream("mock-content".getBytes()),
+                        "image/jpeg",
+                        "mock-file.jpg"));
 
         return mockService;
     }

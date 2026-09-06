@@ -815,6 +815,37 @@ class PostControllerE2ETest {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // IT-M15-011b: 取得媒體檔案內容（串流回應，DEF-097）
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    @Test
+    @Order(11)
+    @DisplayName("IT-M15-011b: GET /api/v2/dashboard/media/:id/file - 取得媒體檔案內容（DEF-097）")
+    void getMediaFile_shouldSucceed() throws Exception {
+        String email = uniqueEmail();
+        authToken = createStoreOwnerAndGetToken(email);
+
+        UUID mediaId = mediaAssetRepository.save(MediaAsset.builder()
+                .tenant(testTenant)
+                .uploader(testUser)
+                .fileName("preview.jpg")
+                .originalName("Preview.jpg")
+                .fileSize(1024L)
+                .mimeType("image/jpeg")
+                .filePath("/test/media/preview.jpg")
+                .fileType(MediaAsset.FileType.IMAGE)
+                .build()).getId();
+
+        given()
+                .header("Authorization", "Bearer " + authToken)
+                .when()
+                .get(BASE_URL + "/dashboard/media/" + mediaId + "/file")
+                .then()
+                .statusCode(200)
+                .contentType("image/jpeg");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // IT-M15-012: 刪除媒體成功
     // ═══════════════════════════════════════════════════════════════════════════
 

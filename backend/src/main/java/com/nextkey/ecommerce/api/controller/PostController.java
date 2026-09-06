@@ -4,6 +4,8 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -393,6 +395,29 @@ public class PostController {
 
         M15Dto.MediaUploadResponse response = mediaService.uploadMedia(tenantId, uploaderId, file);
         return ResponseEntity.ok(ApiResponse.success("Media uploaded successfully", response));
+    }
+
+    /**
+     * 取得媒體檔案內容（串流回應，供 &lt;img&gt;/下載使用）
+     * GET /api/v2/dashboard/media/:id/file
+     * Sprint 133（DEF-097）
+     */
+    @GetMapping("/dashboard/media/{mediaId}/file")
+    @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
+    public ResponseEntity<InputStreamResource> getMediaFile(
+            @PathVariable UUID mediaId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        UUID tenantId = getTenantIdFromUser(userDetails);
+
+        // 檢查 CMS_ENABLED feature toggle
+        checkFeatureToggle(tenantId, "CMS_ENABLED");
+
+        MediaService.MediaFile file = mediaService.downloadMedia(mediaId, tenantId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(file.mimeType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + file.fileName() + "\"")
+                .body(new InputStreamResource(file.inputStream()));
     }
 
     /**

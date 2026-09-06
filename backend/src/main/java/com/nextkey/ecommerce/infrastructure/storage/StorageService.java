@@ -112,9 +112,11 @@ public class StorageService {
 
     /**
      * 檢查物件是否存在
+     * 注意: objectName 應該是完整路徑（包含 tenantId 前綴），即 uploadFile 的回傳值。
+     * （Sprint 133 修正：原簽章 (tenantId, fileName) 與 getObject 在 Sprint 132 修正前有相同的
+     * 路徑重新推導缺陷，本方法全庫零呼叫端，一併修正以保持一致，DEF-097）
      */
-    public boolean objectExists(final UUID tenantId, final String fileName) {
-        String objectName = buildObjectName(tenantId, fileName);
+    public boolean objectExists(final String objectName) {
         try {
             minioClient.statObject(
                     StatObjectArgs.builder()

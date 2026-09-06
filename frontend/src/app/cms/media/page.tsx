@@ -6,8 +6,10 @@ import {
   getMediaList,
   uploadMediaMultipart,
   deleteMedia,
+  getMediaFileBlob,
   MediaResponse,
 } from '@/services/cms';
+import { AuthenticatedImage } from '@/components/ui/authenticated-image';
 
 export default function MediaLibraryPage() {
   const [mediaList, setMediaList] = useState<MediaResponse[]>([]);
@@ -187,14 +189,12 @@ export default function MediaLibraryPage() {
               >
                 <div className="aspect-square flex items-center justify-center bg-gray-100 relative group">
                   {media.mimeType.startsWith('image/') ? (
-                    <img
-                      src={media.filePath}
+                    <AuthenticatedImage
+                      id={media.id}
+                      fetchBlob={getMediaFileBlob}
                       alt={media.originalName}
                       className="object-cover w-full h-full"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        e.currentTarget.parentElement!.innerHTML = `<div class="text-4xl">${getFileIcon(media.mimeType)}</div>`;
-                      }}
+                      fallback={<div className="text-4xl">{getFileIcon(media.mimeType)}</div>}
                     />
                   ) : (
                     <div className="text-4xl">{getFileIcon(media.mimeType)}</div>

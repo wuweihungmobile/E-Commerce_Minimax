@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.core.cms.media;
 
+import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
 
@@ -147,6 +148,28 @@ public class MediaService {
         }
 
         return M15Dto.MediaResponse.from(media);
+    }
+
+    /**
+     * 取得媒體檔案內容（供 Controller 串流回應）
+     * Sprint 133（DEF-097）：filePath 即 StorageService.uploadFile 回傳的完整物件路徑
+     */
+    @Transactional(readOnly = true)
+    public MediaFile downloadMedia(final UUID mediaId, final UUID tenantId) {
+        MediaAsset media = getMediaOrThrow(mediaId);
+
+        if (!media.getTenant().getId().equals(tenantId)) {
+            throw new BusinessException(ErrorCode.E_4031);
+        }
+
+        InputStream inputStream = storageService.getObject(media.getFilePath());
+        return new MediaFile(inputStream, media.getMimeType(), media.getOriginalName());
+    }
+
+    /**
+     * 媒體檔案串流內容（InputStream + Content-Type/檔名，供 Controller 組裝 HTTP 回應）
+     */
+    public record MediaFile(InputStream inputStream, String mimeType, String fileName) {
     }
 
     /**

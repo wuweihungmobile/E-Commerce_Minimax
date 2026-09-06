@@ -7,10 +7,12 @@ import {
   getMediaCategories,
   createMediaCategory,
   uploadMediaAssetMultipart,
+  getMediaAssetFileBlob,
   MediaAssetDto,
   MediaCategoryDto,
   PageResponse,
 } from '@/services/media';
+import { AuthenticatedImage } from '@/components/ui/authenticated-image';
 
 export default function MediaPage() {
   const [media, setMedia] = useState<MediaAssetDto[]>([]);
@@ -301,20 +303,17 @@ export default function MediaPage() {
             {media.map((item) => (
               <div key={item.id} className="bg-white rounded-lg shadow overflow-hidden border">
                 <div className="aspect-square bg-gray-100 flex items-center justify-center relative">
-                  {isImage(item.mimeType) && item.url ? (
-                    <img
-                      src={item.url}
+                  {isImage(item.mimeType) ? (
+                    <AuthenticatedImage
+                      id={item.id}
+                      fetchBlob={getMediaAssetFileBlob}
                       alt={item.fileName}
                       className="object-cover w-full h-full"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                        (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-                      }}
+                      fallback={<span className="text-4xl">{getFileTypeIcon(item.mimeType)}</span>}
                     />
-                  ) : null}
-                  <span className={`text-4xl ${isImage(item.mimeType) ? 'hidden' : ''}`}>
-                    {getFileTypeIcon(item.mimeType)}
-                  </span>
+                  ) : (
+                    <span className="text-4xl">{getFileTypeIcon(item.mimeType)}</span>
+                  )}
                 </div>
                 <div className="p-3">
                   <p className="text-sm font-medium truncate" title={item.fileName}>

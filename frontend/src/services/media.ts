@@ -131,6 +131,18 @@ export async function getMediaAssetCount(): Promise<number> {
   return response.data.data;
 }
 
+/**
+ * 取得媒體檔案內容（Sprint 133，DEF-096 回歸修復）
+ * <img src={item.url}> 直接指向需要 Bearer token 的授權端點，<img> 標籤無法附加
+ * Authorization header，故改由 apiClient 帶 token 抓取 blob 後建立 object URL
+ */
+export async function getMediaAssetFileBlob(assetId: string): Promise<Blob> {
+  const response = await apiClient.get(`/v2/media/files/${assetId}`, {
+    responseType: 'blob',
+  });
+  return response.data;
+}
+
 // Media Category APIs
 
 export async function getMediaCategories(): Promise<MediaCategoryDto[]> {

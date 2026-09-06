@@ -242,3 +242,14 @@ export async function uploadMediaMultipart(file: File): Promise<MediaResponse> {
 export async function deleteMedia(mediaId: string): Promise<void> {
   await apiClient.delete(`/v2/dashboard/media/${mediaId}`);
 }
+
+/**
+ * 取得媒體檔案內容（Sprint 133，DEF-097）
+ * filePath 為 MinIO 內部物件路徑，瀏覽器無法直接存取，故改由後端授權端點串流回應
+ */
+export async function getMediaFileBlob(mediaId: string): Promise<Blob> {
+  const response = await apiClient.get(`/v2/dashboard/media/${mediaId}/file`, {
+    responseType: 'blob',
+  });
+  return response.data;
+}

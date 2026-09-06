@@ -546,6 +546,66 @@ class MediaServiceTest {
         }
     }
 
+    // ── downloadMedia() Tests ─────────────────────────────────────────
+
+    @Nested
+    @DisplayName("downloadMedia()")
+    class DownloadMedia {
+
+        @Test
+        @DisplayName("downloadMedia_success")
+        void downloadMedia_success() {
+            // Arrange
+            MediaAsset media = buildMediaAsset(MediaAsset.FileType.IMAGE);
+            java.io.InputStream mockStream = new java.io.ByteArrayInputStream("mock-content".getBytes());
+
+            when(mediaAssetRepository.findById(TEST_MEDIA_ID)).thenReturn(Optional.of(media));
+            when(storageService.getObject(media.getFilePath())).thenReturn(mockStream);
+
+            // Act
+            MediaService.MediaFile file = mediaService.downloadMedia(TEST_MEDIA_ID, TEST_TENANT_ID);
+
+            // Assert
+            assertThat(file).isNotNull();
+            assertThat(file.inputStream()).isSameAs(mockStream);
+            assertThat(file.mimeType()).isEqualTo("image/jpeg");
+            assertThat(file.fileName()).isEqualTo("original-file.jpg");
+        }
+
+        @Test
+        @DisplayName("downloadMedia_notFound_throwsException")
+        void downloadMedia_notFound_throwsException() {
+            // Arrange
+            when(mediaAssetRepository.findById(TEST_MEDIA_ID)).thenReturn(Optional.empty());
+
+            // Act & Assert
+            assertThatThrownBy(() -> mediaService.downloadMedia(TEST_MEDIA_ID, TEST_TENANT_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> {
+                        BusinessException bex = (BusinessException) ex;
+                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_4103);
+                    });
+        }
+
+        @Test
+        @DisplayName("downloadMedia_wrongTenant_throwsException")
+        void downloadMedia_wrongTenant_throwsException() {
+            // Arrange
+            MediaAsset media = buildMediaAsset(MediaAsset.FileType.IMAGE);
+            UUID wrongTenantId = UUID.randomUUID();
+
+            when(mediaAssetRepository.findById(TEST_MEDIA_ID)).thenReturn(Optional.of(media));
+
+            // Act & Assert
+            assertThatThrownBy(() -> mediaService.downloadMedia(TEST_MEDIA_ID, wrongTenantId))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> {
+                        BusinessException bex = (BusinessException) ex;
+                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_4031);
+                    });
+        }
+    }
+
     // ── deleteMedia() Tests ───────────────────────────────────────────
 
     @Nested

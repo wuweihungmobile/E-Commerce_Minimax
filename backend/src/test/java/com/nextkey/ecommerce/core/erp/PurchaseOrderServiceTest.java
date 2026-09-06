@@ -400,6 +400,21 @@ class PurchaseOrderServiceTest {
     }
 
     @Test
+    @DisplayName("updatePurchaseOrder：DRAFT 狀態可更新預計到貨日期（DEF-095）")
+    void updatePurchaseOrder_draftStatus_updatesExpectedDeliveryDate() {
+        PurchaseOrder po = poOf(PurchaseOrder.POStatus.DRAFT);
+        when(purchaseOrderRepository.findByIdAndTenantId(poId, tenantId)).thenReturn(Optional.of(po));
+        when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        LocalDate newDate = LocalDate.of(2026, 12, 25);
+        PurchaseOrderUpdateRequest request = PurchaseOrderUpdateRequest.builder()
+                .expectedDeliveryDate(newDate).build();
+        PurchaseOrderDto result = purchaseOrderService.updatePurchaseOrder(poId, request);
+
+        assertThat(result.getExpectedDeliveryDate()).isEqualTo(newDate.toString());
+    }
+
+    @Test
     @DisplayName("updatePurchaseOrder：非 DRAFT 狀態拋出 E_7002")
     void updatePurchaseOrder_nonDraftStatus_throwsE7002() {
         PurchaseOrder po = poOf(PurchaseOrder.POStatus.SUBMITTED);

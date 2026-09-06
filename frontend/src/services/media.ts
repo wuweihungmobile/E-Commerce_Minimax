@@ -16,8 +16,12 @@ export interface MediaAssetDto {
   mimeType: string;
   tags: string[];
   usageCount: number;
+  altText?: string | null;
+  title?: string | null;
   createdAt: string;
   updatedAt: string;
+  // Sprint 132（DEF-096）：後端組出的檔案串流端點路徑，供 <img>/下載使用
+  url: string | null;
 }
 
 export interface MediaCategoryDto {
@@ -89,6 +93,27 @@ export async function getMediaAsset(assetId: string): Promise<MediaAssetDto> {
 
 export async function uploadMediaAsset(data: UploadMediaRequest): Promise<MediaAssetDto> {
   const response = await apiClient.post('/v2/media/upload', data);
+  return response.data.data;
+}
+
+/**
+ * 上傳媒體（實際二進位檔案上傳，Sprint 132，DEF-096）
+ * 分類/標籤/替代文字/標題皆為選填
+ */
+export async function uploadMediaAssetMultipart(
+  file: File,
+  options?: { categoryId?: string; tags?: string[]; altText?: string; title?: string }
+): Promise<MediaAssetDto> {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (options?.categoryId) formData.append('categoryId', options.categoryId);
+  options?.tags?.forEach((tag) => formData.append('tags', tag));
+  if (options?.altText) formData.append('altText', options.altText);
+  if (options?.title) formData.append('title', options.title);
+
+  const response = await apiClient.post('/v2/media/upload-multipart', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
   return response.data.data;
 }
 

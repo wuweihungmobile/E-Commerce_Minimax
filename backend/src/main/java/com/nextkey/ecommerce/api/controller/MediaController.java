@@ -1,11 +1,15 @@
 package com.nextkey.ecommerce.api.controller;
 
+import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.data.domain.Page;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -17,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.media.MediaAssetDto;
@@ -74,6 +79,37 @@ public class MediaController {
         MediaAssetDto asset = mediaService.uploadAsset(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Media uploaded successfully", asset));
+    }
+
+    /**
+     * 上傳媒體（MultipartFile，實際上傳到 S3/MinIO）
+     * Sprint 132（DEF-096）：分類/標籤/替代文字/標題皆為選填
+     */
+    @PostMapping(value = "/upload-multipart", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('media:create')")
+    public ResponseEntity<ApiResponse<MediaAssetDto>> uploadAssetMultipart(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(required = false) UUID categoryId,
+            @RequestParam(required = false) List<String> tags,
+            @RequestParam(required = false) String altText,
+            @RequestParam(required = false) String title) {
+        MediaAssetDto asset = mediaService.uploadAssetMultipart(file, categoryId, tags, altText, title);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Media uploaded successfully", asset));
+    }
+
+    /**
+     * 取得媒體檔案內容（串流回應，供 &lt;img&gt;/下載使用）
+     * Sprint 132（DEF-096）
+     */
+    @GetMapping("/files/{assetId}")
+    @PreAuthorize("hasAuthority('media:read')")
+    public ResponseEntity<InputStreamResource> getFile(@PathVariable UUID assetId) {
+        MediaService.AssetFile file = mediaService.downloadAsset(assetId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(file.mimeType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + file.fileName() + "\"")
+                .body(new InputStreamResource(file.inputStream()));
     }
 
     /**

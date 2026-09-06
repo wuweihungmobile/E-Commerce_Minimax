@@ -132,9 +132,11 @@ public class StorageService {
 
     /**
      * 取得物件輸入流
+     * 注意: objectName 應該是完整路徑（包含 tenantId 前綴），即 uploadFile 的回傳值。
+     * （Sprint 132 修正：原簽章 (tenantId, fileName) 透過 buildObjectName 重新產生亂數 UUID，
+     * 與實際儲存路徑不符，本方法在此修正前無任何呼叫端，從未被正確使用過）
      */
-    public InputStream getObject(final UUID tenantId, final String fileName) {
-        String objectName = buildObjectName(tenantId, fileName);
+    public InputStream getObject(final String objectName) {
         try {
             return minioClient.getObject(
                     GetObjectArgs.builder()

@@ -535,7 +535,7 @@ public class IntegrationTestConfiguration {
         when(mockService.objectExists(any(UUID.class), anyString())).thenReturn(true);
 
         // Mock getObject - 返回空的輸入流
-        when(mockService.getObject(any(UUID.class), anyString()))
+        when(mockService.getObject(anyString()))
                 .thenReturn(new ByteArrayInputStream("mock-content".getBytes()));
 
         // Mock deleteObject - 不拋出異常

@@ -177,6 +177,10 @@ public class PurchaseOrderService {
             po.setNotes(request.getNotes());
         }
 
+        if (request.getExpectedDeliveryDate() != null) {
+            po.setExpectedDeliveryDate(request.getExpectedDeliveryDate());
+        }
+
         PurchaseOrder updated = purchaseOrderRepository.save(po);
         log.info("Updated purchase order: id={}, tenantId={}", id, tenantId);
 

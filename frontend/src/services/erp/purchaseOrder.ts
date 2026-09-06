@@ -65,9 +65,10 @@ export interface PurchaseOrderCreateRequest {
 }
 
 export interface PurchaseOrderUpdateRequest {
-  // 後端 PurchaseOrderUpdateRequest.java 僅支援 notes：items 需取消後重新建立，
-  // expectedDeliveryDate 不允許在 update 時修改
+  // 後端 PurchaseOrderUpdateRequest.java 僅支援 notes/expectedDeliveryDate：
+  // items 不允許在 update 時修改，需取消後重新建立（Sprint 132，DEF-095）
   notes?: string
+  expectedDeliveryDate?: string
 }
 
 export interface PurchaseOrderReceiveRequest {

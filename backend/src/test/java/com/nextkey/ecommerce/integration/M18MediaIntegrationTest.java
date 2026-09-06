@@ -210,6 +210,32 @@ class M18MediaIntegrationTest {
         });
         lenient().doNothing().when(mediaService).deleteAsset(any(UUID.class));
         lenient().when(mediaService.existsMediaById(anyString())).thenReturn(true);
+
+        // Sprint 132（DEF-096）：真實上傳/檔案串流端點的 HTTP 層測試
+        lenient().when(mediaService.uploadAssetMultipart(any(), any(), any(), any(), any())).thenAnswer(inv -> {
+            org.springframework.web.multipart.MultipartFile file = inv.getArgument(0);
+            // Sprint 132：mock 為 class 層級單例，每個 @BeforeEach 重新 when(...) 時，Mockito 會先
+            // 以既有 stub 執行一次「探測呼叫」（此時 any() 對應的實際引數皆為 null），故須防禦 null
+            if (file == null) return null;
+            UUID categoryId = inv.getArgument(1);
+            @SuppressWarnings("unchecked")
+            List<String> tags = inv.getArgument(2);
+            return com.nextkey.ecommerce.api.dto.media.MediaAssetDto.builder()
+                    .id(UUID.randomUUID())
+                    .tenantId(testTenantId)
+                    .categoryId(categoryId)
+                    .fileName(file.getOriginalFilename())
+                    .filePath(testTenantId + "/uuid-" + file.getOriginalFilename())
+                    .fileSize(file.getSize())
+                    .mimeType(file.getContentType())
+                    .tags(tags != null ? tags : List.of())
+                    .build();
+        });
+        lenient().when(mediaService.downloadAsset(any(UUID.class))).thenAnswer(inv ->
+                new MediaService.AssetFile(
+                        new java.io.ByteArrayInputStream("mock-file-content".getBytes()),
+                        "image/jpeg",
+                        "test-image.jpg"));
     }
 
     private com.nextkey.ecommerce.api.dto.media.MediaCategoryDto toMediaCategoryDto(MediaCategory cat) {
@@ -509,5 +535,37 @@ class M18MediaIntegrationTest {
                         .param("categoryId", testCategory.getId().toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[*].categoryId", everyItem(equalTo(testCategory.getId().toString()))));
+    }
+
+    @Test
+    @Order(14)
+    @DisplayName("IT-M18-014: 上傳媒體（實際二進位檔案，DEF-096）")
+    void testUploadAssetMultipart() throws Exception {
+        org.springframework.mock.web.MockMultipartFile file = new org.springframework.mock.web.MockMultipartFile(
+                "file", "real-upload.png", "image/png", "fake-png-bytes".getBytes());
+
+        mockMvc.perform(multipart(MEDIA_URL + "/upload-multipart")
+                        .file(file)
+                        .param("categoryId", testCategory.getId().toString())
+                        .param("tags", "banner", "promo")
+                        .header("Authorization", "Bearer " + authToken)
+                        .header("X-Tenant-ID", testTenantId.toString()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.fileName").value("real-upload.png"))
+                .andExpect(jsonPath("$.data.mimeType").value("image/png"))
+                .andExpect(jsonPath("$.data.categoryId").value(testCategory.getId().toString()))
+                .andExpect(jsonPath("$.data.tags[*]", hasItems("banner", "promo")));
+    }
+
+    @Test
+    @Order(15)
+    @DisplayName("IT-M18-015: 取得媒體檔案內容（串流回應，DEF-096）")
+    void testGetFile() throws Exception {
+        mockMvc.perform(get(MEDIA_URL + "/files/" + testAsset.getId())
+                        .header("Authorization", "Bearer " + authToken)
+                        .header("X-Tenant-ID", testTenantId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.IMAGE_JPEG))
+                .andExpect(content().bytes("mock-file-content".getBytes()));
     }
 }

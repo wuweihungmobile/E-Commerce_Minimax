@@ -298,6 +298,29 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
     }
   }
 
+  const handleUpdate = async () => {
+    if (!orderId) return
+    setLoading(true)
+    setError(null)
+    try {
+      await PurchaseOrderService.updatePurchaseOrder(orderId, {
+        notes: formData.notes,
+        expectedDeliveryDate: formData.expectedDeliveryDate || undefined,
+      })
+      alert('採購訂單已更新')
+      router.push('/dashboard/erp/purchase-orders')
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosErr = err as { response?: { data?: { message?: string } } }
+        setError(axiosErr.response?.data?.message || '更新失敗')
+      } else {
+        setError('更新失敗')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleCancel = async () => {
     if (!orderId) return
     if (!confirm('確定要取消此採購訂單嗎？')) return
@@ -565,7 +588,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
         )}
         {mode === 'edit' && (
           <>
-            <Button onClick={() => {/* update */}} disabled={loading}>
+            <Button onClick={handleUpdate} disabled={loading}>
               {loading ? '更新中...' : '更新訂單'}
             </Button>
             <Button variant="outline" onClick={() => router.push('/dashboard/erp/purchase-orders')}>

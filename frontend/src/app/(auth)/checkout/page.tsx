@@ -132,7 +132,7 @@ export default function CheckoutPage() {
         checkOutDate: roomItem.endDate || '',
         guestCount: roomItem.quantity,
         guestName: guestName.trim(),
-        guestPhone: guestPhone.trim(),
+        guestPhone: guestPhone.trim().replace(/\s/g, ''),
         guestEmail: guestEmail.trim(),
         specialRequests: specialRequests.trim() || undefined,
         promoCode: promoCode.trim() || undefined

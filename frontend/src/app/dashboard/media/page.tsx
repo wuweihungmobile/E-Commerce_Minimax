@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   getMediaAssets,
   deleteMediaAsset,
   getMediaCategories,
+  createMediaCategory,
+  uploadMediaAssetMultipart,
   MediaAssetDto,
   MediaCategoryDto,
   PageResponse,
@@ -21,6 +23,14 @@ export default function MediaPage() {
   const [keyword, setKeyword] = useState<string>('');
   const [categories, setCategories] = useState<MediaCategoryDto[]>([]);
   const [deleting, setDeleting] = useState<string | null>(null);
+
+  // Sprint 132（DEF-096）：真實檔案上傳 + 快速新增分類
+  const [uploading, setUploading] = useState(false);
+  const [uploadCategoryId, setUploadCategoryId] = useState<string>('');
+  const [uploadTags, setUploadTags] = useState<string>('');
+  const [newCategoryName, setNewCategoryName] = useState<string>('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadCategories();
@@ -68,6 +78,53 @@ export default function MediaPage() {
     }
   }
 
+  async function handleUpload(file: File) {
+    setUploading(true);
+    try {
+      const tags = uploadTags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+      await uploadMediaAssetMultipart(file, {
+        categoryId: uploadCategoryId || undefined,
+        tags: tags.length > 0 ? tags : undefined,
+      });
+      alert('上傳成功');
+      setPage(0);
+      loadMedia();
+    } catch (error) {
+      console.error('Failed to upload media:', error);
+      alert('上傳失敗，請稍後再試');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleUpload(file);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }
+
+  async function handleCreateCategory() {
+    if (!newCategoryName.trim()) return;
+    setCreatingCategory(true);
+    try {
+      await createMediaCategory({ name: newCategoryName.trim() });
+      setNewCategoryName('');
+      loadCategories();
+    } catch (error) {
+      console.error('Failed to create category:', error);
+      alert('新增分類失敗，請稍後再試');
+    } finally {
+      setCreatingCategory(false);
+    }
+  }
+
   async function handleDelete(mediaId: string) {
     if (!confirm('確定要刪除這個媒體嗎？')) return;
     setDeleting(mediaId);
@@ -111,6 +168,68 @@ export default function MediaPage() {
         <h1 className="text-2xl font-bold">媒體中心</h1>
         <div className="text-sm text-gray-500">
           總計 {totalElements} 個媒體
+        </div>
+      </div>
+
+      {/* Upload */}
+      <div className="mb-4 p-4 bg-white border rounded-md flex flex-wrap items-end gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">上傳到分類（選填）</label>
+          <select
+            value={uploadCategoryId}
+            onChange={(e) => setUploadCategoryId(e.target.value)}
+            className="border rounded px-3 py-1.5 text-sm"
+          >
+            <option value="">未分類</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>{cat.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">標籤（選填，以逗號分隔）</label>
+          <input
+            type="text"
+            value={uploadTags}
+            onChange={(e) => setUploadTags(e.target.value)}
+            placeholder="banner, 首頁"
+            className="border rounded px-3 py-1.5 text-sm w-48"
+          />
+        </div>
+        <div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/x-msvideo,application/pdf"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+          >
+            {uploading ? '上傳中...' : '上傳媒體'}
+          </button>
+        </div>
+        <div className="flex items-end gap-2 ml-auto">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">新增分類</label>
+            <input
+              type="text"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              placeholder="分類名稱"
+              className="border rounded px-3 py-1.5 text-sm w-32"
+            />
+          </div>
+          <button
+            onClick={handleCreateCategory}
+            disabled={creatingCategory || !newCategoryName.trim()}
+            className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50 disabled:opacity-50"
+          >
+            {creatingCategory ? '新增中...' : '新增'}
+          </button>
         </div>
       </div>
 
@@ -182,9 +301,9 @@ export default function MediaPage() {
             {media.map((item) => (
               <div key={item.id} className="bg-white rounded-lg shadow overflow-hidden border">
                 <div className="aspect-square bg-gray-100 flex items-center justify-center relative">
-                  {isImage(item.mimeType) ? (
+                  {isImage(item.mimeType) && item.url ? (
                     <img
-                      src={item.filePath}
+                      src={item.url}
                       alt={item.fileName}
                       className="object-cover w-full h-full"
                       onError={(e) => {

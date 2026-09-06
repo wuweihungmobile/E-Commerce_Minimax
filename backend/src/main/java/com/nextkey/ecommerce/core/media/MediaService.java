@@ -1,5 +1,7 @@
 package com.nextkey.ecommerce.core.media;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -10,6 +12,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.nextkey.ecommerce.api.dto.media.CreateMediaCategoryRequest;
 import com.nextkey.ecommerce.api.dto.media.MediaAssetDto;
@@ -17,15 +20,20 @@ import com.nextkey.ecommerce.api.dto.media.MediaCategoryDto;
 import com.nextkey.ecommerce.api.dto.media.UpdateMediaCategoryRequest;
 import com.nextkey.ecommerce.api.dto.media.UpdateMediaRequest;
 import com.nextkey.ecommerce.api.dto.media.UploadMediaRequest;
+import com.nextkey.ecommerce.core.cms.media.MediaValidationService;
 import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
 import com.nextkey.ecommerce.domain.model.media.MediaCategory;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.domain.repository.cms.MediaAssetRepository;
 import com.nextkey.ecommerce.domain.repository.media.MediaCategoryRepository;
+import com.nextkey.ecommerce.infrastructure.storage.StorageService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentTenant;
+import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentUser;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +46,9 @@ public class MediaService {
     private final MediaAssetRepository mediaAssetRepository;
     private final MediaCategoryRepository mediaCategoryRepository;
     private final TenantRepository tenantRepository;
+    private final UserRepository userRepository;
+    private final StorageService storageService;
+    private final MediaValidationService mediaValidationService;
 
     // ========== Media Category Operations ==========
 
@@ -232,6 +243,86 @@ public class MediaService {
         log.info("Uploaded media asset: id={}, fileName={}, tenantId={}", asset.getId(), asset.getFileName(), tenantId);
 
         return toMediaAssetDto(asset);
+    }
+
+    /**
+     * 上傳媒體（MultipartFile，實際上傳到 S3/MinIO）
+     * Sprint 132（DEF-096）：分類/標籤/替代文字/標題皆為選填，上傳當下可先不分類
+     */
+    @Transactional
+    public MediaAssetDto uploadAssetMultipart(MultipartFile file, UUID categoryId,
+                                              List<String> tags, String altText, String title) {
+        UUID tenantId = getCurrentTenant();
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
+
+        User uploader = null;
+        UUID uploaderId = getCurrentUser();
+        if (uploaderId != null) {
+            uploader = userRepository.findById(uploaderId).orElse(null);
+        }
+
+        MediaCategory category = null;
+        if (categoryId != null) {
+            category = mediaCategoryRepository.findByIdAndTenantId(categoryId, tenantId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
+        }
+
+        String originalName = file.getOriginalFilename();
+        String mimeType = file.getContentType();
+        Long fileSize = file.getSize();
+
+        mediaValidationService.validateFileSize(fileSize, mimeType);
+        MediaAsset.FileType fileType = mediaValidationService.determineFileType(mimeType);
+
+        String storedPath;
+        try (InputStream inputStream = file.getInputStream()) {
+            storedPath = storageService.uploadFile(tenantId, originalName, inputStream, fileSize, mimeType);
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.E_9000, "Failed to upload file: " + originalName);
+        }
+
+        MediaAsset asset = MediaAsset.builder()
+                .tenant(tenant)
+                .uploader(uploader)
+                .category(category)
+                .fileName(originalName)
+                .originalName(originalName)
+                .filePath(storedPath)
+                .fileSize(fileSize)
+                .mimeType(mimeType)
+                .fileType(fileType)
+                .tags(tags != null ? tags : List.of())
+                .altText(altText)
+                .title(title)
+                .usageCount(0)
+                .isDeleted(false)
+                .build();
+
+        asset = mediaAssetRepository.save(asset);
+        log.info("Uploaded media asset (multipart): id={}, fileName={}, tenantId={}",
+                asset.getId(), asset.getFileName(), tenantId);
+
+        return toMediaAssetDto(asset);
+    }
+
+    /**
+     * 取得媒體檔案內容（供 Controller 串流回應）
+     * Sprint 132（DEF-096）：filePath 即 StorageService.uploadFile 回傳的完整物件路徑
+     */
+    @Transactional(readOnly = true)
+    public AssetFile downloadAsset(UUID assetId) {
+        UUID tenantId = getCurrentTenant();
+        MediaAsset asset = mediaAssetRepository.findActiveByIdAndTenantId(assetId, tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Media asset not found"));
+        InputStream inputStream = storageService.getObject(asset.getFilePath());
+        return new AssetFile(inputStream, asset.getMimeType(), asset.getOriginalName());
+    }
+
+    /**
+     * 媒體檔案串流內容（InputStream + Content-Type/檔名，供 Controller 組裝 HTTP 回應）
+     */
+    public record AssetFile(InputStream inputStream, String mimeType, String fileName) {
     }
 
     @Transactional

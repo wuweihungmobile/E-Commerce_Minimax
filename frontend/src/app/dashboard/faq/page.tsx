@@ -185,19 +185,23 @@ export default function FaqPage() {
                           置頂
                         </span>
                       )}
-                      <div
-                        className="text-sm font-medium text-gray-900"
-                        dangerouslySetInnerHTML={{
-                          __html: article.highlightedQuestion || article.question,
-                        }}
-                      />
+                      {article.highlightedQuestion ? (
+                        <div
+                          className="text-sm font-medium text-gray-900"
+                          dangerouslySetInnerHTML={{ __html: article.highlightedQuestion }}
+                        />
+                      ) : (
+                        <div className="text-sm font-medium text-gray-900">{article.question}</div>
+                      )}
                     </div>
-                    <div
-                      className="text-xs text-gray-500 mt-1 line-clamp-2"
-                      dangerouslySetInnerHTML={{
-                        __html: article.highlightedAnswer || article.answer,
-                      }}
-                    />
+                    {article.highlightedAnswer ? (
+                      <div
+                        className="text-xs text-gray-500 mt-1 line-clamp-2"
+                        dangerouslySetInnerHTML={{ __html: article.highlightedAnswer }}
+                      />
+                    ) : (
+                      <div className="text-xs text-gray-500 mt-1 line-clamp-2">{article.answer}</div>
+                    )}
                     <div className="text-xs text-gray-400 mt-1">
                       {article.categoryName || '未分類'} · 瀏覽 {article.viewCount || 0} ·{' '}
                       {formatDate(article.publishedAt)}

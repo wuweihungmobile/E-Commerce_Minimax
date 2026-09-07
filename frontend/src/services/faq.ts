@@ -137,8 +137,6 @@ export async function searchFaqArticlesWithHighlight(params: {
   page?: number;
   size?: number;
   keyword?: string;
-  highlightPrefix?: string;
-  highlightSuffix?: string;
 }): Promise<PageResponse<FaqArticleDto>> {
   const response = await apiClient.get('/v2/faqs/search', { params });
   return response.data.data;

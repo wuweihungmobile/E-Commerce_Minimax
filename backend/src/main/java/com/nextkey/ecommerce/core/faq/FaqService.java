@@ -10,6 +10,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.HtmlUtils;
 
 import com.nextkey.ecommerce.api.dto.faq.CreateFaqArticleRequest;
 import com.nextkey.ecommerce.api.dto.faq.CreateFaqCategoryRequest;
@@ -32,6 +33,9 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 public class FaqService {
+
+    private static final String HIGHLIGHT_PREFIX = "<mark>";
+    private static final String HIGHLIGHT_SUFFIX = "</mark>";
 
     private final FaqArticleRepository articleRepository;
     private final FaqCategoryRepository categoryRepository;
@@ -173,8 +177,7 @@ public class FaqService {
      * 返回結果包含高亮後的 question 和 answer
      */
     @Transactional(readOnly = true)
-    public Page<FaqArticleDto> searchArticlesWithHighlight(
-            int page, int size, String keyword, String highlightPrefix, String highlightSuffix) {
+    public Page<FaqArticleDto> searchArticlesWithHighlight(int page, int size, String keyword) {
 
         UUID tenantId = getCurrentTenant();
         Pageable pageable = PageRequest.of(page, Math.min(size, 100));
@@ -190,17 +193,14 @@ public class FaqService {
         return articles.map(article -> {
             FaqArticleDto dto = toArticleDto(article);
 
-            // 高亮關鍵字
-            String prefix = highlightPrefix != null ? highlightPrefix : "<mark>";
-            String suffix = highlightSuffix != null ? highlightSuffix : "</mark>";
             String lowerKeyword = keyword.toLowerCase();
 
             // 高亮 question
-            String highlightedQuestion = highlightKeyword(dto.getQuestion(), lowerKeyword, prefix, suffix);
+            String highlightedQuestion = highlightKeyword(dto.getQuestion(), lowerKeyword);
             dto.setHighlightedQuestion(highlightedQuestion);
 
             // 高亮 answer
-            String highlightedAnswer = highlightKeyword(dto.getAnswer(), lowerKeyword, prefix, suffix);
+            String highlightedAnswer = highlightKeyword(dto.getAnswer(), lowerKeyword);
             dto.setHighlightedAnswer(highlightedAnswer);
 
             return dto;
@@ -234,14 +234,17 @@ public class FaqService {
 
     /**
      * 高亮關鍵字
+     * 先對原始文字做 HTML escape 再包上高亮標籤，避免 question/answer 內容本身含有 HTML/JS
+     * 時被前端 dangerouslySetInnerHTML 原樣執行（DEF-102 修復：儲存型 XSS）。
      */
-    private String highlightKeyword(String text, String keyword, String prefix, String suffix) {
+    private String highlightKeyword(String text, String keyword) {
         if (text == null || keyword == null) {
             return text;
         }
 
+        String escapedText = HtmlUtils.htmlEscape(text);
         String regex = "(?i)(" + java.util.regex.Pattern.quote(keyword) + ")";
-        return text.replaceAll(regex, prefix + "$1" + suffix);
+        return escapedText.replaceAll(regex, HIGHLIGHT_PREFIX + "$1" + HIGHLIGHT_SUFFIX);
     }
 
     @Transactional(readOnly = true)

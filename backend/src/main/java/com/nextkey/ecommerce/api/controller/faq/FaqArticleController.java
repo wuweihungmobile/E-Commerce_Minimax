@@ -115,11 +115,8 @@ public class FaqArticleController {
     public ResponseEntity<ApiResponse<Page<FaqArticleDto>>> searchArticlesWithHighlight(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String highlightPrefix,
-            @RequestParam(required = false) String highlightSuffix) {
-        Page<FaqArticleDto> articles = faqService.searchArticlesWithHighlight(
-                page, size, keyword, highlightPrefix, highlightSuffix);
+            @RequestParam(required = false) String keyword) {
+        Page<FaqArticleDto> articles = faqService.searchArticlesWithHighlight(page, size, keyword);
         return ResponseEntity.ok(ApiResponse.success(articles));
     }
 }

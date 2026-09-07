@@ -116,11 +116,35 @@ class FaqServiceTest {
         when(articleRepository.searchByTenantIdAndKeyword(any(), eq("reset"), any())).thenReturn(page);
 
         Page<FaqArticleDto> result =
-                faqService.searchArticlesWithHighlight(0, 10, "reset", null, null);
+                faqService.searchArticlesWithHighlight(0, 10, "reset");
 
         FaqArticleDto dto = result.getContent().get(0);
         assertThat(dto.getHighlightedQuestion()).contains("<mark>reset</mark>");   // 小寫命中
         assertThat(dto.getHighlightedAnswer()).contains("<mark>Reset</mark>");     // 大寫也命中（case-insensitive）
+    }
+
+    @Test
+    @DisplayName("searchArticlesWithHighlight（DEF-102 安全修復）：question/answer 內含 HTML/JS 會被跳脫，不會原樣輸出可執行標籤")
+    void searchWithHighlight_escapesHtmlInStoredText() {
+        FaqArticle article = org.mockito.Mockito.mock(FaqArticle.class);
+        when(article.getQuestion()).thenReturn("<script>alert(1)</script> how to reset password");
+        when(article.getAnswer()).thenReturn("<img src=x onerror=alert(1)> click reset link");
+        Page<FaqArticle> page = new PageImpl<>(List.of(article));
+        when(articleRepository.searchByTenantIdAndKeyword(any(), eq("reset"), any())).thenReturn(page);
+
+        Page<FaqArticleDto> result =
+                faqService.searchArticlesWithHighlight(0, 10, "reset");
+
+        FaqArticleDto dto = result.getContent().get(0);
+        // 原始標籤不可原樣出現（否則前端 dangerouslySetInnerHTML 會直接執行）
+        assertThat(dto.getHighlightedQuestion()).doesNotContain("<script>");
+        assertThat(dto.getHighlightedAnswer()).doesNotContain("<img src=x onerror=alert(1)>");
+        // 但內容需被跳脫保留（非靜默丟資料）
+        assertThat(dto.getHighlightedQuestion()).contains("&lt;script&gt;alert(1)&lt;/script&gt;");
+        assertThat(dto.getHighlightedAnswer()).contains("&lt;img src=x onerror=alert(1)&gt;");
+        // 高亮標籤本身（伺服器端固定產生的 <mark>）仍要正常運作
+        assertThat(dto.getHighlightedQuestion()).contains("<mark>reset</mark>");
+        assertThat(dto.getHighlightedAnswer()).contains("<mark>reset</mark>");
     }
 
     @Test
@@ -131,7 +155,7 @@ class FaqServiceTest {
         when(articleRepository.findByTenantIdAndIsPublishedTrue(any(), any())).thenReturn(page);
 
         Page<FaqArticleDto> result =
-                faqService.searchArticlesWithHighlight(0, 10, "   ", null, null);
+                faqService.searchArticlesWithHighlight(0, 10, "   ");
 
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).getHighlightedQuestion()).isNull(); // 未套高亮

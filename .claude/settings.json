@@ -9,6 +9,12 @@
             "command": "bash -c 'cmd=$(echo \"$1\" | tr \"\\0\" \" \"); if echo \"$cmd\" | grep -qE \"\\-\\-no-verify|-n\"; then echo \"\"; echo \"🔴 ERROR: --no-verify is FORBIDDEN!\"; echo \"\"; echo \"This command bypasses CI validation and will cause CI failure.\"; echo \"Please remove --no-verify and try again.\"; echo \"\"; exit 1; fi' _",
             "timeout": 5,
             "statusMessage": "檢查 --no-verify..."
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/block-subagent-git-write.sh",
+            "timeout": 5,
+            "statusMessage": "檢查子 agent git commit/push 權限..."
           }
         ]
       }

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.util.List;
 
@@ -325,6 +326,136 @@ class MediaValidationServiceTest {
             List<String> types = mediaValidationService.getAllowedDocumentTypes();
             assertThat(types).hasSize(1);
             assertThat(types).contains("application/pdf");
+        }
+    }
+
+    // ── validateActualContent() Tests（DEF-099：magic bytes 與宣稱 Content-Type 比對）──
+
+    @Nested
+    @DisplayName("validateActualContent()")
+    class ValidateActualContent {
+
+        private MockMultipartFile file(String contentType, byte[] content) {
+            return new MockMultipartFile("file", "test", contentType, content);
+        }
+
+        @Test
+        @DisplayName("validateActualContent_jpegMatchesDeclaredType_noException")
+        void validateActualContent_jpegMatchesDeclaredType_noException() {
+            byte[] jpeg = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0, 0, 0, 'J', 'F', 'I', 'F'};
+            assertThatCode(() ->
+                    mediaValidationService.validateActualContent(file("image/jpeg", jpeg), "image/jpeg")
+            ).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("validateActualContent_pngMatchesDeclaredType_noException")
+        void validateActualContent_pngMatchesDeclaredType_noException() {
+            byte[] png = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0};
+            assertThatCode(() ->
+                    mediaValidationService.validateActualContent(file("image/png", png), "image/png")
+            ).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("validateActualContent_gifMatchesDeclaredType_noException")
+        void validateActualContent_gifMatchesDeclaredType_noException() {
+            byte[] gif = "GIF89a-fake-image-data".getBytes();
+            assertThatCode(() ->
+                    mediaValidationService.validateActualContent(file("image/gif", gif), "image/gif")
+            ).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("validateActualContent_webpMatchesDeclaredType_noException")
+        void validateActualContent_webpMatchesDeclaredType_noException() {
+            byte[] webp = "RIFF____WEBPVP8 ".getBytes();
+            assertThatCode(() ->
+                    mediaValidationService.validateActualContent(file("image/webp", webp), "image/webp")
+            ).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("validateActualContent_pdfMatchesDeclaredType_noException")
+        void validateActualContent_pdfMatchesDeclaredType_noException() {
+            byte[] pdf = "%PDF-1.4\n%rest-of-file".getBytes();
+            assertThatCode(() ->
+                    mediaValidationService.validateActualContent(file("application/pdf", pdf), "application/pdf")
+            ).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("validateActualContent_mp4MatchesDeclaredType_noException")
+        void validateActualContent_mp4MatchesDeclaredType_noException() {
+            byte[] mp4 = {0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 0, 0, 0, 0};
+            assertThatCode(() ->
+                    mediaValidationService.validateActualContent(file("video/mp4", mp4), "video/mp4")
+            ).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("validateActualContent_quicktimeMatchesDeclaredType_noException")
+        void validateActualContent_quicktimeMatchesDeclaredType_noException() {
+            byte[] mov = {0, 0, 0, 0x14, 'f', 't', 'y', 'p', 'q', 't', ' ', ' ', 0, 0, 0, 0};
+            assertThatCode(() ->
+                    mediaValidationService.validateActualContent(file("video/quicktime", mov), "video/quicktime")
+            ).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("validateActualContent_aviMatchesDeclaredType_noException")
+        void validateActualContent_aviMatchesDeclaredType_noException() {
+            byte[] avi = "RIFF____AVI LIST".getBytes();
+            assertThatCode(() ->
+                    mediaValidationService.validateActualContent(file("video/x-msvideo", avi), "video/x-msvideo")
+            ).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("validateActualContent_fakeContentDeclaredAsJpeg_throwsException")
+        void validateActualContent_fakeContentDeclaredAsJpeg_throwsException() {
+            byte[] html = "<script>alert(1)</script>".getBytes();
+            assertThatThrownBy(() ->
+                    mediaValidationService.validateActualContent(file("image/jpeg", html), "image/jpeg")
+            )
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> {
+                        BusinessException bex = (BusinessException) ex;
+                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_9000);
+                        assertThat(bex.getMessage()).contains("does not match declared type");
+                    });
+        }
+
+        @Test
+        @DisplayName("validateActualContent_pngBytesDeclaredAsJpeg_throwsException")
+        void validateActualContent_pngBytesDeclaredAsJpeg_throwsException() {
+            byte[] png = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+            assertThatThrownBy(() ->
+                    mediaValidationService.validateActualContent(file("image/jpeg", png), "image/jpeg")
+            )
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_9000));
+        }
+
+        @Test
+        @DisplayName("validateActualContent_mp4BytesDeclaredAsQuicktime_throwsException")
+        void validateActualContent_mp4BytesDeclaredAsQuicktime_throwsException() {
+            byte[] mp4 = {0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm'};
+            assertThatThrownBy(() ->
+                    mediaValidationService.validateActualContent(file("video/quicktime", mp4), "video/quicktime")
+            )
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_9000));
+        }
+
+        @Test
+        @DisplayName("validateActualContent_emptyFile_throwsException")
+        void validateActualContent_emptyFile_throwsException() {
+            assertThatThrownBy(() ->
+                    mediaValidationService.validateActualContent(file("image/jpeg", new byte[0]), "image/jpeg")
+            )
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_9000));
         }
     }
 }

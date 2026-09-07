@@ -223,6 +223,12 @@ public class MediaService {
         // 從 mimeType 推斷 fileType
         MediaAsset.FileType fileType = inferFileType(request.getMimeType());
 
+        // 驗證 filePath 確實屬於本租戶且物件真實存在於儲存層，防止跨租戶 IDOR（DEF-101）
+        if (!storageService.belongsToTenant(request.getFilePath(), tenantId)
+                || !storageService.objectExists(request.getFilePath())) {
+            throw new BusinessException(ErrorCode.E_9000, "Invalid file path");
+        }
+
         MediaAsset asset = MediaAsset.builder()
                 .tenant(tenant)
                 .category(category)
@@ -274,6 +280,7 @@ public class MediaService {
 
         mediaValidationService.validateFileSize(fileSize, mimeType);
         MediaAsset.FileType fileType = mediaValidationService.determineFileType(mimeType);
+        mediaValidationService.validateActualContent(file, mimeType);
 
         String storedPath;
         try (InputStream inputStream = file.getInputStream()) {
@@ -315,6 +322,10 @@ public class MediaService {
         UUID tenantId = getCurrentTenant();
         MediaAsset asset = mediaAssetRepository.findActiveByIdAndTenantId(assetId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Media asset not found"));
+        // filePath 本身是否真的屬於本租戶（而非僅資料列的 tenantId 相符）需獨立檢查，防止跨租戶 IDOR（DEF-101）
+        if (!storageService.belongsToTenant(asset.getFilePath(), tenantId)) {
+            throw new BusinessException(ErrorCode.E_4000, "Media asset not found");
+        }
         InputStream inputStream = storageService.getObject(asset.getFilePath());
         return new AssetFile(inputStream, asset.getMimeType(), asset.getOriginalName());
     }

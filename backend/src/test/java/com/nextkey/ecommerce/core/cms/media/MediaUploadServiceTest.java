@@ -241,6 +241,8 @@ class MediaUploadServiceTest {
             doNothing().when(mediaValidationService).validateFileSize(anyLong(), anyString());
             when(mediaValidationService.determineFileType("image/jpeg"))
                     .thenReturn(MediaAsset.FileType.IMAGE);
+            when(storageService.belongsToTenant("/media/test-path", TEST_TENANT_ID)).thenReturn(true);
+            when(storageService.objectExists("/media/test-path")).thenReturn(true);
             when(mediaAssetRepository.save(any(MediaAsset.class))).thenReturn(savedMedia);
 
             // Act
@@ -297,6 +299,8 @@ class MediaUploadServiceTest {
             doNothing().when(mediaValidationService).validateFileSize(anyLong(), anyString());
             when(mediaValidationService.determineFileType("application/pdf"))
                     .thenReturn(MediaAsset.FileType.DOCUMENT);
+            when(storageService.belongsToTenant("/media/test-path", TEST_TENANT_ID)).thenReturn(true);
+            when(storageService.objectExists("/media/test-path")).thenReturn(true);
             when(mediaAssetRepository.save(any(MediaAsset.class))).thenReturn(savedMedia);
 
             // Act
@@ -341,6 +345,8 @@ class MediaUploadServiceTest {
             doNothing().when(mediaValidationService).validateFileSize(anyLong(), anyString());
             when(mediaValidationService.determineFileType("video/mp4"))
                     .thenReturn(MediaAsset.FileType.VIDEO);
+            when(storageService.belongsToTenant("/media/test-path", TEST_TENANT_ID)).thenReturn(true);
+            when(storageService.objectExists("/media/test-path")).thenReturn(true);
             when(mediaAssetRepository.save(any(MediaAsset.class))).thenReturn(savedMedia);
 
             // Act
@@ -415,6 +421,41 @@ class MediaUploadServiceTest {
                         assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_9000);
                         assertThat(bex.getMessage()).contains("Unsupported file type");
                     });
+        }
+
+        @Test
+        @DisplayName("uploadMedia_pathBased_filePathNotOwnedByTenant_throwsException")
+        void uploadMedia_pathBased_filePathNotOwnedByTenant_throwsException() {
+            // Arrange：filePath 未經 belongsToTenant 檢查通過（DEF-101 IDOR 防護）
+            Tenant tenant = buildTenant();
+            User uploader = buildUploader();
+
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+            when(userRepository.findById(TEST_UPLOADER_ID)).thenReturn(Optional.of(uploader));
+            doNothing().when(mediaValidationService).validateFileSize(anyLong(), anyString());
+            when(mediaValidationService.determineFileType("image/jpeg"))
+                    .thenReturn(MediaAsset.FileType.IMAGE);
+            when(storageService.belongsToTenant("other-tenant/victim.jpg", TEST_TENANT_ID)).thenReturn(false);
+
+            // Act & Assert
+            assertThatThrownBy(() ->
+                    mediaUploadService.uploadMedia(
+                            TEST_TENANT_ID,
+                            TEST_UPLOADER_ID,
+                            "test-file.jpg",
+                            "original-file.jpg",
+                            1024 * 1024L,
+                            "image/jpeg",
+                            "other-tenant/victim.jpg"
+                    )
+            )
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> {
+                        BusinessException bex = (BusinessException) ex;
+                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_9000);
+                    });
+
+            verify(mediaAssetRepository, never()).save(any());
         }
     }
 }

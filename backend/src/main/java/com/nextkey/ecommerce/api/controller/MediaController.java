@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.data.domain.Page;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -106,9 +107,12 @@ public class MediaController {
     @PreAuthorize("hasAuthority('media:read')")
     public ResponseEntity<InputStreamResource> getFile(@PathVariable UUID assetId) {
         MediaService.AssetFile file = mediaService.downloadAsset(assetId);
+        ContentDisposition disposition = ContentDisposition.inline()
+                .filename(file.fileName(), java.nio.charset.StandardCharsets.UTF_8)
+                .build();
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(file.mimeType()))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + file.fileName() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
                 .body(new InputStreamResource(file.inputStream()));
     }
 

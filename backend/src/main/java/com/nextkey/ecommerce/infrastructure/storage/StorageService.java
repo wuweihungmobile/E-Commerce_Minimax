@@ -183,4 +183,18 @@ public class StorageService {
         String uuid = UUID.randomUUID().toString();
         return String.format("%s/%s-%s", tenantId.toString(), uuid, fileName);
     }
+
+    /**
+     * 檢查物件路徑是否屬於指定租戶（依 {@link #buildObjectName} 的命名慣例：{tenantId}/...）。
+     *
+     * <p>用於下載/註冊物件路徑時的擁有權檢查，防止呼叫端自報任意 objectName 造成跨租戶讀取（IDOR，DEF-101）。
+     *
+     * @param objectName 物件路徑
+     * @param tenantId   租戶 ID
+     * @return true 如果 objectName 屬於該租戶
+     */
+    public boolean belongsToTenant(final String objectName, final UUID tenantId) {
+        return objectName != null && tenantId != null
+                && objectName.startsWith(tenantId.toString() + "/");
+    }
 }

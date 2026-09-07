@@ -162,6 +162,11 @@ public class MediaService {
             throw new BusinessException(ErrorCode.E_4031);
         }
 
+        // filePath 本身是否真的屬於本租戶（而非僅資料列的 tenantId 相符）需獨立檢查，防止跨租戶 IDOR（DEF-101）
+        if (!storageService.belongsToTenant(media.getFilePath(), tenantId)) {
+            throw new BusinessException(ErrorCode.E_4103);
+        }
+
         InputStream inputStream = storageService.getObject(media.getFilePath());
         return new MediaFile(inputStream, media.getMimeType(), media.getOriginalName());
     }

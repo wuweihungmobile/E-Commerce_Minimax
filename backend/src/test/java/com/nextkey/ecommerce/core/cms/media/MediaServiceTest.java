@@ -560,6 +560,7 @@ class MediaServiceTest {
             java.io.InputStream mockStream = new java.io.ByteArrayInputStream("mock-content".getBytes());
 
             when(mediaAssetRepository.findById(TEST_MEDIA_ID)).thenReturn(Optional.of(media));
+            when(storageService.belongsToTenant(media.getFilePath(), TEST_TENANT_ID)).thenReturn(true);
             when(storageService.getObject(media.getFilePath())).thenReturn(mockStream);
 
             // Act
@@ -603,6 +604,26 @@ class MediaServiceTest {
                         BusinessException bex = (BusinessException) ex;
                         assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_4031);
                     });
+        }
+
+        @Test
+        @DisplayName("downloadMedia_filePathNotOwnedByTenant_throwsException")
+        void downloadMedia_filePathNotOwnedByTenant_throwsException() {
+            // Arrange：資產列的 tenantId 相符，但 filePath 本身未落在本租戶前綴下（DEF-101 IDOR 防護）
+            MediaAsset media = buildMediaAsset(MediaAsset.FileType.IMAGE);
+
+            when(mediaAssetRepository.findById(TEST_MEDIA_ID)).thenReturn(Optional.of(media));
+            when(storageService.belongsToTenant(media.getFilePath(), TEST_TENANT_ID)).thenReturn(false);
+
+            // Act & Assert
+            assertThatThrownBy(() -> mediaService.downloadMedia(TEST_MEDIA_ID, TEST_TENANT_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> {
+                        BusinessException bex = (BusinessException) ex;
+                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_4103);
+                    });
+
+            verify(storageService, never()).getObject(anyString());
         }
     }
 

@@ -66,6 +66,9 @@ public class MediaUploadService {
         // 驗證 MIME Type 並取得檔案類型
         MediaAsset.FileType fileType = mediaValidationService.determineFileType(mimeType);
 
+        // 驗證檔案實際內容（magic bytes）與宣稱的 mimeType 相符（DEF-099）
+        mediaValidationService.validateActualContent(file, mimeType);
+
         // 上傳到 S3/MinIO
         String storedPath = uploadToStorage(tenantId, fileName, file, mimeType);
 
@@ -110,6 +113,11 @@ public class MediaUploadService {
 
         // 驗證 MIME Type 並取得檔案類型
         MediaAsset.FileType fileType = mediaValidationService.determineFileType(mimeType);
+
+        // 驗證 filePath 確實屬於本租戶且物件真實存在於儲存層，防止跨租戶 IDOR（DEF-101）
+        if (!storageService.belongsToTenant(filePath, tenantId) || !storageService.objectExists(filePath)) {
+            throw new BusinessException(ErrorCode.E_9000, "Invalid file path");
+        }
 
         // 建立 MediaAsset（使用傳入的 filePath）
         MediaAsset media = createMediaAsset(tenant, uploader, fileName, originalName,

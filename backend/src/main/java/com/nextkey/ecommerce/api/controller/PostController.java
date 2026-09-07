@@ -5,6 +5,7 @@ import java.util.UUID;
 import jakarta.validation.Valid;
 
 import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -414,9 +415,12 @@ public class PostController {
         checkFeatureToggle(tenantId, "CMS_ENABLED");
 
         MediaService.MediaFile file = mediaService.downloadMedia(mediaId, tenantId);
+        ContentDisposition disposition = ContentDisposition.inline()
+                .filename(file.fileName(), java.nio.charset.StandardCharsets.UTF_8)
+                .build();
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(file.mimeType()))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + file.fileName() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
                 .body(new InputStreamResource(file.inputStream()));
     }
 

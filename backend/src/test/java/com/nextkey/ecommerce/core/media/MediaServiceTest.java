@@ -199,6 +199,7 @@ class MediaServiceTest {
                 .build();
 
         when(mediaAssetRepository.findActiveByIdAndTenantId(ASSET_ID, TENANT_ID)).thenReturn(Optional.of(asset));
+        when(storageService.belongsToTenant(TENANT_ID + "/uuid-banner.png", TENANT_ID)).thenReturn(true);
         when(storageService.getObject(TENANT_ID + "/uuid-banner.png"))
                 .thenReturn(new ByteArrayInputStream("bytes".getBytes()));
 
@@ -216,5 +217,99 @@ class MediaServiceTest {
         assertThatThrownBy(() -> mediaService.downloadAsset(ASSET_ID))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_4000));
+    }
+
+    @Test
+    @DisplayName("downloadAsset：filePath 未落在本租戶前綴下時拒絕讀取（DEF-101 IDOR 防護），且從不呼叫 StorageService.getObject")
+    void downloadAsset_filePathNotOwnedByTenant_throwsE4000AndNeverReadsObject() {
+        MediaAsset asset = MediaAsset.builder()
+                .id(ASSET_ID)
+                .tenant(buildTenant())
+                .fileName("victim.png")
+                .originalName("victim.png")
+                .filePath(UUID.randomUUID() + "/uuid-victim.png") // 另一租戶的物件路徑
+                .fileSize(100L)
+                .mimeType("image/png")
+                .fileType(MediaAsset.FileType.IMAGE)
+                .build();
+
+        when(mediaAssetRepository.findActiveByIdAndTenantId(ASSET_ID, TENANT_ID)).thenReturn(Optional.of(asset));
+
+        assertThatThrownBy(() -> mediaService.downloadAsset(ASSET_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_4000));
+
+        org.mockito.Mockito.verify(storageService, org.mockito.Mockito.never()).getObject(anyString());
+    }
+
+    // ── uploadAsset(UploadMediaRequest) ──────────────────────────────────
+
+    @Test
+    @DisplayName("uploadAsset：filePath 屬於本租戶且物件存在時成功建立 MediaAsset")
+    void uploadAsset_validFilePath_createsAsset() {
+        com.nextkey.ecommerce.api.dto.media.UploadMediaRequest request =
+                com.nextkey.ecommerce.api.dto.media.UploadMediaRequest.builder()
+                        .fileName("banner.png")
+                        .originalName("banner.png")
+                        .filePath(TENANT_ID + "/uuid-banner.png")
+                        .fileSize(100L)
+                        .mimeType("image/png")
+                        .build();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+        when(storageService.belongsToTenant(TENANT_ID + "/uuid-banner.png", TENANT_ID)).thenReturn(true);
+        when(storageService.objectExists(TENANT_ID + "/uuid-banner.png")).thenReturn(true);
+        when(mediaAssetRepository.save(any(MediaAsset.class))).thenAnswer(inv -> {
+            MediaAsset asset = inv.getArgument(0);
+            asset.setId(ASSET_ID);
+            return asset;
+        });
+
+        var dto = mediaService.uploadAsset(request);
+
+        assertThat(dto.getId()).isEqualTo(ASSET_ID);
+        assertThat(dto.getFilePath()).isEqualTo(TENANT_ID + "/uuid-banner.png");
+    }
+
+    @Test
+    @DisplayName("uploadAsset：filePath 不屬於本租戶時拋出 E_9000（DEF-101 IDOR 防護），且從不寫入資料庫")
+    void uploadAsset_filePathNotOwnedByTenant_throwsE9000AndNeverSaves() {
+        com.nextkey.ecommerce.api.dto.media.UploadMediaRequest request =
+                com.nextkey.ecommerce.api.dto.media.UploadMediaRequest.builder()
+                        .fileName("victim.png")
+                        .originalName("victim.png")
+                        .filePath(UUID.randomUUID() + "/uuid-victim.png")
+                        .fileSize(100L)
+                        .mimeType("image/png")
+                        .build();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+
+        assertThatThrownBy(() -> mediaService.uploadAsset(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_9000));
+
+        org.mockito.Mockito.verify(mediaAssetRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    @DisplayName("uploadAsset：filePath 屬於本租戶但物件實際不存在於儲存層時拋出 E_9000")
+    void uploadAsset_filePathBelongsButObjectMissing_throwsE9000() {
+        com.nextkey.ecommerce.api.dto.media.UploadMediaRequest request =
+                com.nextkey.ecommerce.api.dto.media.UploadMediaRequest.builder()
+                        .fileName("ghost.png")
+                        .originalName("ghost.png")
+                        .filePath(TENANT_ID + "/uuid-ghost.png")
+                        .fileSize(100L)
+                        .mimeType("image/png")
+                        .build();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+        when(storageService.belongsToTenant(TENANT_ID + "/uuid-ghost.png", TENANT_ID)).thenReturn(true);
+        when(storageService.objectExists(TENANT_ID + "/uuid-ghost.png")).thenReturn(false);
+
+        assertThatThrownBy(() -> mediaService.uploadAsset(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_9000));
     }
 }

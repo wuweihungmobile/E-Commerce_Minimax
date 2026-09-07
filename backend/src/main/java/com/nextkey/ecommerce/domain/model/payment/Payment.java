@@ -34,6 +34,7 @@ import lombok.Setter;
 public class Payment {
 
     private static final int DECIMAL_PRECISION = 12;
+    private static final int IDEMPOTENCY_KEY_LENGTH = 64;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -83,7 +84,7 @@ public class Payment {
     @Builder.Default
     private BigDecimal refundedAmount = BigDecimal.ZERO;
 
-    @Column(name = "idempotency_key")
+    @Column(name = "idempotency_key", length = IDEMPOTENCY_KEY_LENGTH)
     private String idempotencyKey;
 
     @JdbcTypeCode(SqlTypes.JSON)

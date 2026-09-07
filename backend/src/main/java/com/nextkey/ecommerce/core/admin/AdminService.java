@@ -286,10 +286,21 @@ public class AdminService {
         }
 
         String oldStatus = po.getStatus().name();
+        UUID reviewedBy = TenantContext.getCurrentUser();
+        Instant reviewedAt = Instant.now();
+
+        // 🔴 併發防護：approve 與 reject（或兩個併發 approve）都可能同時通過上面的 canReview() 檢查，
+        // 改用條件式原子 UPDATE（WHERE status = PENDING_APPROVAL）確保只有一邊真的轉換成功，
+        // 另一邊影響 0 列並被拒絕，而非各自用舊快照互相覆寫審批結果（含 reviewedBy/reviewedAt 稽核紀錄）。
+        int updated = purchaseOrderRepository.reviewIfStatus(poId, PurchaseOrder.POStatus.PENDING_APPROVAL,
+                PurchaseOrder.POStatus.APPROVED, reviewedBy, reviewedAt, null);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.E_7002,
+                    String.format("Cannot approve PO in status: %s", po.getStatus()));
+        }
         po.setStatus(PurchaseOrder.POStatus.APPROVED);
-        po.setReviewedBy(TenantContext.getCurrentUser());
-        po.setReviewedAt(Instant.now());
-        purchaseOrderRepository.save(po);
+        po.setReviewedBy(reviewedBy);
+        po.setReviewedAt(reviewedAt);
 
         log.info("Purchase order approved: poId={}, tenantId={}", poId, po.getTenantId());
         recordAudit("PURCHASE_ORDER_APPROVED", "PURCHASE_ORDER", poId, po.getTenantId(), oldStatus, "APPROVED", null);
@@ -311,11 +322,20 @@ public class AdminService {
         }
 
         String oldStatus = po.getStatus().name();
+        UUID reviewedBy = TenantContext.getCurrentUser();
+        Instant reviewedAt = Instant.now();
+
+        // 🔴 併發防護：見 approvePurchaseOrder 同一段說明。
+        int updated = purchaseOrderRepository.reviewIfStatus(poId, PurchaseOrder.POStatus.PENDING_APPROVAL,
+                PurchaseOrder.POStatus.REJECTED, reviewedBy, reviewedAt, request.getReason());
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.E_7002,
+                    String.format("Cannot reject PO in status: %s", po.getStatus()));
+        }
         po.setStatus(PurchaseOrder.POStatus.REJECTED);
-        po.setReviewedBy(TenantContext.getCurrentUser());
-        po.setReviewedAt(Instant.now());
+        po.setReviewedBy(reviewedBy);
+        po.setReviewedAt(reviewedAt);
         po.setRejectionReason(request.getReason());
-        purchaseOrderRepository.save(po);
 
         log.info("Purchase order rejected: poId={}, tenantId={}, reason={}", poId, po.getTenantId(), request.getReason());
         recordAudit("PURCHASE_ORDER_REJECTED", "PURCHASE_ORDER", poId, po.getTenantId(),

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -226,18 +227,35 @@ public class PaymentStateService {
         // 驗證退款金額：未指定 = 退剩餘全額（向後相容既有全額退款呼叫端）；指定時須為正數且不超過剩餘可退額度
         BigDecimal refundAmount = resolveRefundAmount(payment, amount);
 
-        // 真實退款（stripe path）：toggle 開啟 + Payment 為 STRIPE → 呼叫 Stripe Refund（指定金額）
+        // 累計已退款金額；達全額才轉 REFUNDED + Order REFUNDED，否則 PARTIALLY_REFUNDED（Order 狀態不變）
+        BigDecimal previousRefundedAmount = payment.getRefundedAmount();
+        BigDecimal newRefundedAmount = previousRefundedAmount.add(refundAmount);
+        boolean fullyRefunded = newRefundedAmount.compareTo(payment.getAmount()) >= 0;
+        Payment.PaymentStatus newPaymentStatus =
+                fullyRefunded ? Payment.PaymentStatus.REFUNDED : Payment.PaymentStatus.PARTIALLY_REFUNDED;
+
+        // 🔴 併發防護：先以 compare-and-swap 原子性佔用本次退款額度，才呼叫 Stripe——若同一筆付款被
+        // 併發送出第二次退款請求，這裡會因為 refundedAmount 已被搶先改變而影響 0 列，直接拒絕、
+        // 不呼叫 Stripe、不重複做下游結算調整，避免短付賣家或事後可退超過原始付款金額。
+        int claimed = paymentRepository.applyRefundIfUnchanged(payment.getId(), previousRefundedAmount,
+                newRefundedAmount, newPaymentStatus);
+        if (claimed == 0) {
+            throw new BusinessException(ErrorCode.E_6009,
+                    "Refund amount conflicts with a concurrent refund on the same payment, please retry");
+        }
+
+        // 真實退款（stripe path）：toggle 開啟 + Payment 為 STRIPE → 呼叫 Stripe Refund（指定金額）。
+        // 排在額度佔用「之後」：若佔用失敗直接拒絕於上方，絕不會走到這裡才呼叫外部金流。
+        // 🔴 in-memory 的 setRefundedAmount/setStatus 特意延後到 Stripe 呼叫「之後」才做：若 Stripe
+        // 失敗於此拋出，交易整體回滾（DB 的 compare-and-swap 結果也一併復原），payment 物件不應該在
+        // 記憶體裡已經呈現「已退款」——否則呼叫端若誤用這個已拋例外方法留下的物件會看到不一致的假象。
         if (featureToggleService.isFeatureEnabled(STRIPE_PAYMENT_ENABLED)
                 && payment.getPaymentMethod() == Payment.PaymentMethod.STRIPE) {
             executeStripeRefund(orderId, payment, refundAmount, reason);
         }
-
-        // 累計已退款金額；達全額才轉 REFUNDED + Order REFUNDED，否則 PARTIALLY_REFUNDED（Order 狀態不變）
-        BigDecimal newRefundedAmount = payment.getRefundedAmount().add(refundAmount);
         payment.setRefundedAmount(newRefundedAmount);
-        boolean fullyRefunded = newRefundedAmount.compareTo(payment.getAmount()) >= 0;
-        payment.setStatus(fullyRefunded ? Payment.PaymentStatus.REFUNDED : Payment.PaymentStatus.PARTIALLY_REFUNDED);
-        paymentRepository.save(payment);
+        payment.setStatus(newPaymentStatus);
+
         if (fullyRefunded) {
             String previousStatus = order.getStatus().name();
             order.setStatus(Order.OrderStatus.REFUNDED);
@@ -371,7 +389,15 @@ public class PaymentStateService {
                 .stripePaymentIntentId(result.getPaymentIntentId())
                 .idempotencyKey(idempotencyKey)
                 .build();
-        paymentRepository.save(payment);
+        // 🔴 併發防護：Stripe 端已用相同 idempotencyKey 保證兩個併發請求拿回同一個 session（result 對
+        // 兩邊呼叫端相同），但本地 payments 表先前沒有唯一約束，會各自 INSERT 出重複列。現在
+        // idempotency_key 已有唯一索引（V79），這裡改用 saveAndFlush + 捕捉違反約束，第二個請求不再
+        // 重複寫入，直接沿用（與贏家相同的）session 資訊回應呼叫端。
+        try {
+            paymentRepository.saveAndFlush(payment);
+        } catch (DataIntegrityViolationException e) {
+            log.warn("Payment record already exists for idempotencyKey (concurrent request), orderId={}", orderId);
+        }
 
         log.info("Stripe checkout initiated: orderId={}, sessionId={}", orderId, result.getSessionId());
 
@@ -426,18 +452,19 @@ public class PaymentStateService {
             log.warn("markStripePaymentSucceeded: payment not found for session={}", sessionId);
             return false;
         }
-        if (payment.getStatus() == Payment.PaymentStatus.SUCCESS) {
-            return false; // 冪等：已成功
-        }
-        payment.setStatus(Payment.PaymentStatus.SUCCESS);
-        if (paymentIntentId != null) {
-            payment.setStripePaymentIntentId(paymentIntentId);
-        }
-        payment.setPaidAt(Instant.now());
-        paymentRepository.save(payment);
+        UUID orderId = payment.getOrderId();
 
-        if (payment.getOrderId() != null) {
-            Order order = orderRepository.findById(payment.getOrderId()).orElse(null);
+        // 🔴 併發防護：原子條件式 UPDATE 取代「讀狀態→判斷→setStatus→save」，避免兩個併發呼叫
+        // （例如回跳確認流程與 webhook 幾乎同時處理同一筆付款）都通過舊有的 in-memory 檢查，
+        // 都真的執行一次下游庫存扣減（deductForOrder 是原生 UPDATE 相對扣減，重複呼叫會扣兩倍）。
+        int updated = paymentRepository.markSuccessIfNotAlready(payment.getId(), Payment.PaymentStatus.SUCCESS,
+                paymentIntentId, Instant.now());
+        if (updated == 0) {
+            return false; // 冪等：已成功，或已被併發的另一次呼叫搶先標記
+        }
+
+        if (orderId != null) {
+            Order order = orderRepository.findById(orderId).orElse(null);
             if (order != null && OrderStateMachine.canPay(order.getStatus().name())) {
                 String previousStatus = order.getStatus().name();
                 order.setStatus(Order.OrderStatus.PAID);
@@ -447,7 +474,7 @@ public class PaymentStateService {
                         null, "Stripe payment webhook success, session=" + sessionId);
             }
         }
-        log.info("Stripe payment marked SUCCESS: session={}, orderId={}", sessionId, payment.getOrderId());
+        log.info("Stripe payment marked SUCCESS: session={}, orderId={}", sessionId, orderId);
         return true;
     }
 

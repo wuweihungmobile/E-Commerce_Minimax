@@ -3,6 +3,8 @@ package com.nextkey.ecommerce.core.payment;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -498,6 +500,7 @@ class PaymentStateServiceTest {
             when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
                     .thenReturn(Optional.of(success));
             when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
+            when(paymentRepository.applyRefundIfUnchanged(any(), any(), any(), any())).thenReturn(1);
 
             assertThatThrownBy(() -> service.refundOrderPayment(ORDER_ID, null, "customer"))
                     .isInstanceOf(BusinessException.class)
@@ -520,6 +523,7 @@ class PaymentStateServiceTest {
             when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", BigDecimal.valueOf(1500), "customer"))
                     .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
                             .success(false).errorMessage("card issuer declined refund").build());
+            when(paymentRepository.applyRefundIfUnchanged(any(), any(), any(), any())).thenReturn(1);
 
             assertThatThrownBy(() -> service.refundOrderPayment(ORDER_ID, null, "customer"))
                     .isInstanceOf(BusinessException.class)
@@ -741,34 +745,54 @@ class PaymentStateServiceTest {
         }
 
         @Test
-        @DisplayName("UT-PAY-STATE-040: 已是 SUCCESS -> 冪等回傳 false，不重複設定 paidAt")
+        @DisplayName("UT-PAY-STATE-040: 已是 SUCCESS（原子 UPDATE 影響 0 列）-> 冪等回傳 false，不查訂單")
         void alreadySuccess_idempotentFalse() {
-            Instant firstPaidAt = Instant.now().minusSeconds(60);
             Payment success = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.SUCCESS)
-                    .transactionId("cs_1").paidAt(firstPaidAt).build();
+                    .transactionId("cs_1").build();
             when(paymentRepository.findByTransactionId("cs_1")).thenReturn(Optional.of(success));
+            when(paymentRepository.markSuccessIfNotAlready(any(), any(Payment.PaymentStatus.class),
+                    any(), any(Instant.class))).thenReturn(0);
 
             boolean result = service.markStripePaymentSucceeded("cs_1", "pi_new");
 
             assertThat(result).isFalse();
-            assertThat(success.getPaidAt()).isEqualTo(firstPaidAt);
-            verify(paymentRepository, never()).save(any());
+            verify(orderRepository, never()).findById(any());
         }
 
         @Test
-        @DisplayName("UT-PAY-STATE-041: paymentIntentId 為 null -> 不覆寫既有 stripePaymentIntentId")
+        @DisplayName("🔴 UT-PAY-STATE-040b: 併發搶佔（原子 UPDATE 影響 0 列）-> 冪等回傳 false，"
+                + "絕不重複扣庫存（DEF-136 前修法會讓兩邊都通過 in-memory 檢查各自扣一次）")
+        void concurrentClaim_lostRace_returnsFalseWithoutDeductingStock() {
+            Payment processing = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.PROCESSING)
+                    .transactionId("cs_1").build();
+            when(paymentRepository.findByTransactionId("cs_1")).thenReturn(Optional.of(processing));
+            // 模擬另一個併發呼叫已搶先把這筆付款標記成功，本次 UPDATE 影響 0 列
+            when(paymentRepository.markSuccessIfNotAlready(any(), any(Payment.PaymentStatus.class),
+                    any(), any(Instant.class))).thenReturn(0);
+
+            boolean result = service.markStripePaymentSucceeded("cs_1", "pi_1");
+
+            assertThat(result).isFalse();
+            verify(orderRepository, never()).findById(any());
+            verify(productInventoryService, never()).deductForOrder(any());
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-041: paymentIntentId 為 null -> 原子 UPDATE 帶 null，不覆寫既有值")
         void nullPaymentIntentId_keepsExisting() {
             Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
             Payment processing = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.PROCESSING)
                     .transactionId("cs_1").stripePaymentIntentId("pi_existing").build();
             when(paymentRepository.findByTransactionId("cs_1")).thenReturn(Optional.of(processing));
+            when(paymentRepository.markSuccessIfNotAlready(any(), any(Payment.PaymentStatus.class),
+                    any(), any(Instant.class))).thenReturn(1);
             when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
 
             boolean result = service.markStripePaymentSucceeded("cs_1", null);
 
             assertThat(result).isTrue();
-            assertThat(processing.getStripePaymentIntentId()).isEqualTo("pi_existing");
-            assertThat(processing.getStatus()).isEqualTo(Payment.PaymentStatus.SUCCESS);
+            verify(paymentRepository).markSuccessIfNotAlready(eq(processing.getId()),
+                    eq(Payment.PaymentStatus.SUCCESS), isNull(), any(Instant.class));
             // Sprint 88（AI-2422）：轉 PAID 成功後正式扣帳
             verify(productInventoryService).deductForOrder(order);
             // Sprint 135（DEF-111）：webhook 驅動的狀態轉換也須落地 order_state_log，changedBy=null（無使用者情境）
@@ -784,11 +808,12 @@ class PaymentStateServiceTest {
             Payment processing = Payment.builder().bookingId(BOOKING_ID).status(Payment.PaymentStatus.PROCESSING)
                     .transactionId("cs_1").build();
             when(paymentRepository.findByTransactionId("cs_1")).thenReturn(Optional.of(processing));
+            when(paymentRepository.markSuccessIfNotAlready(any(), any(Payment.PaymentStatus.class),
+                    any(), any(Instant.class))).thenReturn(1);
 
             boolean result = service.markStripePaymentSucceeded("cs_1", "pi_1");
 
             assertThat(result).isTrue();
-            assertThat(processing.getStatus()).isEqualTo(Payment.PaymentStatus.SUCCESS);
             verify(orderRepository, never()).findById(any());
         }
 
@@ -799,12 +824,13 @@ class PaymentStateServiceTest {
             Payment processing = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.PROCESSING)
                     .transactionId("cs_1").build();
             when(paymentRepository.findByTransactionId("cs_1")).thenReturn(Optional.of(processing));
+            when(paymentRepository.markSuccessIfNotAlready(any(), any(Payment.PaymentStatus.class),
+                    any(), any(Instant.class))).thenReturn(1);
             when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
 
             boolean result = service.markStripePaymentSucceeded("cs_1", "pi_1");
 
             assertThat(result).isTrue();
-            assertThat(processing.getStatus()).isEqualTo(Payment.PaymentStatus.SUCCESS);
             verify(orderRepository, never()).save(any());
             // Sprint 88（AI-2422）：Order 狀態未轉 PAID（已是 PAID）→ 不重複扣帳
             verify(productInventoryService, never()).deductForOrder(any());

@@ -608,6 +608,9 @@ class PromoServiceTest {
                 .orderId(ORDER_ID)
                 .status(PromoCodeUsage.UsageStatus.ACTIVE)
                 .build();
+        when(promoCodeUsageRepository.updateStatusIfCurrent(eq(usage.getId()),
+                eq(PromoCodeUsage.UsageStatus.ACTIVE), eq(PromoCodeUsage.UsageStatus.REVOKED), any()))
+                .thenReturn(1);
         when(promoCodeRepository.decrementUsageCount(PROMO_ID)).thenReturn(1);
 
         boolean released = promoService.releaseOrderSide(usage);
@@ -615,7 +618,6 @@ class PromoServiceTest {
         assertThat(released).isTrue();
         assertThat(usage.getStatus()).isEqualTo(PromoCodeUsage.UsageStatus.REVOKED);
         assertThat(usage.getRevokedAt()).isNotNull();
-        verify(promoCodeUsageRepository).save(usage);
         verify(promoCodeRepository).decrementUsageCount(PROMO_ID);
     }
 
@@ -653,6 +655,9 @@ class PromoServiceTest {
                 .status(PromoCodeUsage.UsageStatus.ACTIVE)
                 .bookingReleasedAt(Instant.now())
                 .build();
+        when(promoCodeUsageRepository.updateStatusIfCurrent(eq(usage.getId()),
+                eq(PromoCodeUsage.UsageStatus.ACTIVE), eq(PromoCodeUsage.UsageStatus.REVOKED), any()))
+                .thenReturn(1);
         when(promoCodeRepository.decrementUsageCount(PROMO_ID)).thenReturn(1);
 
         boolean released = promoService.releaseOrderSide(usage);
@@ -672,10 +677,33 @@ class PromoServiceTest {
                 .bookingId(BOOKING_ID)
                 .status(PromoCodeUsage.UsageStatus.ACTIVE)
                 .build();
+        when(promoCodeUsageRepository.updateStatusIfCurrent(eq(usage.getId()),
+                eq(PromoCodeUsage.UsageStatus.ACTIVE), eq(PromoCodeUsage.UsageStatus.REVOKED), any()))
+                .thenReturn(1);
         when(promoCodeRepository.decrementUsageCount(PROMO_ID)).thenReturn(1);
 
         assertThat(promoService.releaseBookingSide(usage)).isTrue();
         assertThat(usage.getStatus()).isEqualTo(PromoCodeUsage.UsageStatus.REVOKED);
+    }
+
+    @Test
+    @DisplayName("🔴 releaseBookingSide：併發搶佔（updateStatusIfCurrent 影響 0 列，例如已被另一併發"
+            + "呼叫搶先撤銷）-> 不重複釋放額度")
+    void releaseBookingSide_concurrentClaim_doesNotReleaseQuotaTwice() {
+        PromoCodeUsage usage = PromoCodeUsage.builder()
+                .id(UUID.randomUUID())
+                .promoCodeId(PROMO_ID)
+                .userId(USER_ID)
+                .bookingId(BOOKING_ID)
+                .status(PromoCodeUsage.UsageStatus.ACTIVE)
+                .build();
+        when(promoCodeUsageRepository.updateStatusIfCurrent(eq(usage.getId()),
+                eq(PromoCodeUsage.UsageStatus.ACTIVE), eq(PromoCodeUsage.UsageStatus.REVOKED), any()))
+                .thenReturn(0);
+
+        assertThat(promoService.releaseBookingSide(usage)).isTrue();
+        assertThat(usage.getStatus()).isEqualTo(PromoCodeUsage.UsageStatus.ACTIVE);
+        verify(promoCodeRepository, never()).decrementUsageCount(any());
     }
 
     @Test

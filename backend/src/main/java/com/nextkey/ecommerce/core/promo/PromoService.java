@@ -305,9 +305,18 @@ public class PromoService {
     }
 
     private void revokeAndReleaseQuota(final PromoCodeUsage usage) {
+        // 🔴 併發防護（DEF-136）：先以條件式原子 UPDATE（WHERE status = ACTIVE）佔用「撤銷」這個
+        // 轉換，只有真正搶到的一邊才可以繼續退還額度。原本無條件 setStatus+save 的作法，若本方法
+        // 因（releaseOrderSide/releaseBookingSide 自身的併發呼叫或重複觸發）被呼叫兩次，會讓
+        // releaseUsageQuota 也跟著執行兩次，使同一張促銷碼的已用額度被多退一次。
+        Instant revokedAt = Instant.now();
+        int updated = promoCodeUsageRepository.updateStatusIfCurrent(usage.getId(),
+                PromoCodeUsage.UsageStatus.ACTIVE, PromoCodeUsage.UsageStatus.REVOKED, revokedAt);
+        if (updated == 0) {
+            return;
+        }
         usage.setStatus(PromoCodeUsage.UsageStatus.REVOKED);
-        usage.setRevokedAt(Instant.now());
-        promoCodeUsageRepository.save(usage);
+        usage.setRevokedAt(revokedAt);
         // Sprint 102（DEF-046）：改為原子相對遞減。原本的「讀出 → 減 1 → save」在兩筆用同一張券
         // 的交易同時取消時會互相覆蓋，額度只退還一次，買家永久少一次可用額度。
         releaseUsageQuota(usage.getPromoCodeId());

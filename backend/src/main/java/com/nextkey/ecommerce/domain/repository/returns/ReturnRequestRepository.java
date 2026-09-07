@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.domain.repository.returns;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -8,6 +9,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -53,4 +55,20 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, UU
     default int sumActiveRequestedQtyByOrderItem(final UUID orderItemId) {
         return sumRequestedQtyByOrderItemExcluding(orderItemId, ReturnRequest.QUOTA_RELEASING_STATUSES);
     }
+
+    /**
+     * 併發防護（DEF-136，ReturnRequestService.receiveReturn）：條件式狀態轉換
+     * （{@code WHERE status = expectedStatus}），取代「讀狀態→判斷→setStatus→save」。
+     * 回傳受影響列數：1 代表本次成功轉換（呼叫端才可繼續執行 productInventoryService.
+     * applyReturnReceipt 的庫存加回）；0 代表已被另一併發呼叫搶先轉換，呼叫端應拒絕本次請求，
+     * 避免同一筆退貨單被併發呼叫兩次時，庫存被重複加回（幽靈庫存）。狀態以參數傳入而非寫在
+     * JPQL 裡（同檔案 sumRequestedQtyByOrderItemExcluding 的既有做法）：Hibernate 6 無法解析
+     * 巢狀枚舉的完整路徑。
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("UPDATE ReturnRequest r SET r.status = :newStatus, r.receivedBy = :receivedBy, "
+            + "r.receivedAt = :receivedAt WHERE r.id = :id AND r.status = :expectedStatus")
+    int updateStatusIfCurrent(@Param("id") UUID id, @Param("expectedStatus") ReturnRequest.ReturnStatus expectedStatus,
+            @Param("newStatus") ReturnRequest.ReturnStatus newStatus, @Param("receivedBy") UUID receivedBy,
+            @Param("receivedAt") Instant receivedAt);
 }

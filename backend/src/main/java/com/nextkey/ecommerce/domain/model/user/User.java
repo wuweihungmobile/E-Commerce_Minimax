@@ -15,6 +15,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -24,8 +25,16 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * 🔴 併發防護（DEF-136）：{@code @DynamicUpdate} 讓 Hibernate 只把「本次交易內實際被
+ * setter 改動過」的欄位包進 UPDATE 語句，而非整列覆寫。避免 AuthService.login()（僅改
+ * lastLoginAt）在 AdminService.updateUserStatus() 併發轉換 status 之後才 commit 時，
+ * 用 login() 讀取當下的舊 status 快照把剛生效的停權/封禁結果悄悄復原（同理適用於
+ * role 等其他欄位的類似讀後寫覆寫情境）。
+ */
 @Entity
 @Table(name = "users")
+@DynamicUpdate
 @Getter
 @Setter
 @NoArgsConstructor

@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.payment;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -90,7 +91,14 @@ public class PaymentService {
                 .idempotencyKey(generateIdempotencyKey(request))
                 .build();
 
-        payment = paymentRepository.save(payment);
+        // 🔴 併發防護：兩個併發請求都可能通過上面「是否已有 SUCCESS 記錄」的檢查（讀到同一份舊快照），
+        // 這裡改用 saveAndFlush + payments.idempotency_key 唯一索引（V79）做最後一道原子性防線；
+        // 若被另一個併發請求搶先寫入，直接拒絕本次重複付款，而非各自成功造成重複計入營收。
+        try {
+            payment = paymentRepository.saveAndFlush(payment);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.E_6003, "Payment already processed");
+        }
 
         // 更新訂單狀態
         orderService.updateOrderStatus(order.getId(), "PAID", "Payment received via " + request.getPaymentMethod());
@@ -133,7 +141,15 @@ public class PaymentService {
                 .idempotencyKey(generateIdempotencyKey(request))
                 .build();
 
-        payment = paymentRepository.save(payment);
+        // 🔴 併發防護：兩個併發請求都可能通過上面「是否已有 SUCCESS 記錄」的檢查（讀到同一份舊快照），
+        // 這裡改用 saveAndFlush + payments.idempotency_key 唯一索引（V79）做最後一道原子性防線；
+        // 若被另一個併發請求搶先寫入，直接拒絕本次重複付款，而非各自成功造成重複計入營收，
+        // 且避免其中一筆「幽靈」重複付款事後被拿去退款、把一個真實已付款的訂房打成取消。
+        try {
+            payment = paymentRepository.saveAndFlush(payment);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.E_6003, "Payment already processed");
+        }
 
         // 更新預訂狀態
         booking.setStatus(Booking.BookingStatus.PAID);
@@ -162,9 +178,14 @@ public class PaymentService {
 
         BigDecimal refundAmount = request.getAmount() != null ? request.getAmount() : payment.getAmount();
 
-        // Mock: 直接標記為已退款
-        payment.setStatus(Payment.PaymentStatus.REFUNDED);
-        paymentRepository.save(payment);
+        // 🔴 併發防護：兩個併發退款請求都可能通過上面「status == SUCCESS」的檢查（讀到同一份
+        // 舊快照），此處改用條件式原子 UPDATE，確保只有一邊真的轉換成功，另一邊拒絕，而非兩邊
+        // 都回應呼叫端「退款成功」（各自拿到一組不同的假 refundId，違反「同一筆付款只能退一次」）。
+        int updated = paymentRepository.updateStatusIfCurrent(payment.getId(), Payment.PaymentStatus.SUCCESS,
+                Payment.PaymentStatus.REFUNDED);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.E_6002, "Payment cannot be refunded");
+        }
 
         // 如果是訂單支付，更新訂單狀態
         if (payment.getOrderId() != null) {

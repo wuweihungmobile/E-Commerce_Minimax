@@ -37,6 +37,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
 /**
@@ -797,7 +799,8 @@ class AdminServiceTest {
         void approvePurchaseOrder_pendingApproval_transitionsToApproved() {
             PurchaseOrder po = buildPendingApprovalPo();
             when(purchaseOrderRepository.findById(PO_ID)).thenReturn(Optional.of(po));
-            when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(purchaseOrderRepository.reviewIfStatus(eq(PO_ID), eq(PurchaseOrder.POStatus.PENDING_APPROVAL),
+                    eq(PurchaseOrder.POStatus.APPROVED), any(), any(), isNull())).thenReturn(1);
 
             AdminDto.PurchaseOrderSummaryResponse response = adminService.approvePurchaseOrder(PO_ID);
 
@@ -825,6 +828,21 @@ class AdminServiceTest {
         }
 
         @Test
+        @DisplayName("🔴 approvePurchaseOrder：併發搶佔（reviewIfStatus 影響 0 列，例如已被另一併發 "
+                + "approve/reject 搶先轉換）-> E_7002，不視為成功")
+        void approvePurchaseOrder_concurrentClaim_throwsE7002() {
+            PurchaseOrder po = buildPendingApprovalPo();
+            when(purchaseOrderRepository.findById(PO_ID)).thenReturn(Optional.of(po));
+            when(purchaseOrderRepository.reviewIfStatus(eq(PO_ID), eq(PurchaseOrder.POStatus.PENDING_APPROVAL),
+                    eq(PurchaseOrder.POStatus.APPROVED), any(), any(), isNull())).thenReturn(0);
+
+            assertThatThrownBy(() -> adminService.approvePurchaseOrder(PO_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_7002));
+            verify(auditLogRepository, never()).save(any());
+        }
+
+        @Test
         @DisplayName("approvePurchaseOrder：採購單不存在拋出 E_7001")
         void approvePurchaseOrder_notFound_throwsE7001() {
             when(purchaseOrderRepository.findById(PO_ID)).thenReturn(Optional.empty());
@@ -839,7 +857,8 @@ class AdminServiceTest {
         void rejectPurchaseOrder_pendingApproval_transitionsToRejected() {
             PurchaseOrder po = buildPendingApprovalPo();
             when(purchaseOrderRepository.findById(PO_ID)).thenReturn(Optional.of(po));
-            when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(purchaseOrderRepository.reviewIfStatus(eq(PO_ID), eq(PurchaseOrder.POStatus.PENDING_APPROVAL),
+                    eq(PurchaseOrder.POStatus.REJECTED), any(), any(), eq("超出年度採購預算"))).thenReturn(1);
 
             AdminDto.PurchaseOrderRejectRequest request = AdminDto.PurchaseOrderRejectRequest.builder()
                     .reason("超出年度採購預算").build();

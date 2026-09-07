@@ -542,8 +542,16 @@ public class OrderService {
         }
 
         Order.OrderStatus newStatus = Order.OrderStatus.valueOf(targetStatus);
+
+        // 🔴 併發防護：兩個併發請求都可能通過上面的 OrderStateMachine.canTransition 檢查（讀到同一份
+        // 舊快照的 currentStatus，例如都以 PAID 為起點分別要求轉 CONFIRMED 與 REFUNDING），改用條件式
+        // 原子 UPDATE 確保只有一邊真的轉換成功，另一邊拒絕，而非用舊快照互相覆寫對方剛寫入的新狀態。
+        int updated = orderRepository.updateStatusIfCurrent(orderId, order.getStatus(), newStatus);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.E_5001,
+                    "Order status changed concurrently, please retry: " + orderId);
+        }
         order.setStatus(newStatus);
-        order = orderRepository.save(order);
 
         // 記錄狀態日誌
         recordStateLog(order, currentStatus, targetStatus, userId, reason);

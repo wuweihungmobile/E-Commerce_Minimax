@@ -229,6 +229,63 @@ class M05ReturnRequestIntegrationTest {
     }
 
     @Test
+    @DisplayName("🔴 IT-M05-RETURN-RACE: 同一筆退貨單被併發呼叫兩次 receiveReturn -> 庫存只淨回補一次"
+            + "（DEF-136：原本無併發防護時，兩邊都會各自呼叫 applyReturnReceipt 造成幽靈庫存）")
+    void receiveReturn_concurrentCalls_onlyCreditsInventoryOnce() throws Exception {
+        UUID returnId = returnRequestService.createReturnRequest(createRequest(3)).getId();
+        returnRequestService.approveReturn(returnId);
+        UUID itemId = returnRequestService.getReturnRequest(returnId).getItems().get(0).getId();
+        ReturnDto.ReceiveRequest receiveRequest = ReturnDto.ReceiveRequest.builder()
+                .items(List.of(ReturnDto.ReceiveItem.builder()
+                        .itemId(itemId).sellableQty(3).unsellableQty(0).build()))
+                .build();
+
+        int threadCount = 5;
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threadCount);
+        java.util.concurrent.CountDownLatch startGun = new java.util.concurrent.CountDownLatch(1);
+        List<java.util.concurrent.Future<Boolean>> results = new java.util.ArrayList<>(threadCount);
+        try {
+            for (int i = 0; i < threadCount; i++) {
+                java.util.concurrent.Callable<Boolean> attempt = () -> {
+                    // TenantContext 是 ThreadLocal，每條執行緒各自的 receiveReturn 呼叫都需要重新設定。
+                    TenantContext.setCurrentUser(buyerId);
+                    TenantContext.setCurrentTenant(tenantId);
+                    try {
+                        startGun.await();
+                        returnRequestService.receiveReturn(returnId, receiveRequest);
+                        return true;
+                    } catch (BusinessException e) {
+                        return false;
+                    } finally {
+                        TenantContext.clear();
+                    }
+                };
+                results.add(pool.submit(attempt));
+            }
+            startGun.countDown();
+
+            int succeeded = 0;
+            for (java.util.concurrent.Future<Boolean> f : results) {
+                if (Boolean.TRUE.equals(f.get(60, java.util.concurrent.TimeUnit.SECONDS))) {
+                    succeeded++;
+                }
+            }
+            assertThat(succeeded)
+                    .as("5 個併發請求中，應恰好只有 1 個真正成功轉換 APPROVED->RECEIVED")
+                    .isEqualTo(1);
+        } finally {
+            pool.shutdown();
+            pool.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS);
+        }
+
+        // 核心斷言：即使 5 個併發請求都嘗試收貨，庫存也只能被淨加回一次（+3），不是 +6/+9/.../+15
+        assertThat(totalQty()).isEqualTo(INITIAL_STOCK + 3);
+        assertThat(movementCount())
+                .as("只應有 1 筆 RETURN 台帳紀錄，不是每個成功/半成功的呼叫各留一筆")
+                .isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("IT-M05-RETURN-009: 訂單尚未送達不得申請退貨")
     void createReturnRequest_orderNotDelivered_throwsE5019() {
         seedOrder("CREATED");

@@ -130,6 +130,7 @@ class TransferServiceTest {
         when(transferRepository.findBySettlementStatementId(STATEMENT_ID)).thenReturn(Optional.empty());
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(readyTenant()));
         when(featureToggleService.isFeatureEnabledForTenant(TENANT_ID, "STRIPE_TRANSFER_ENABLED")).thenReturn(false);
+        when(transferRepository.saveAndFlush(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
         when(transferRepository.save(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Transfer result = transferService.createTransferForStatement(STATEMENT_ID);
@@ -151,6 +152,7 @@ class TransferServiceTest {
                 .build();
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(notReady));
         when(featureToggleService.isFeatureEnabledForTenant(TENANT_ID, "STRIPE_TRANSFER_ENABLED")).thenReturn(true);
+        when(transferRepository.saveAndFlush(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
         when(transferRepository.save(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Transfer result = transferService.createTransferForStatement(STATEMENT_ID);
@@ -170,6 +172,7 @@ class TransferServiceTest {
         when(featureToggleService.isFeatureEnabledForTenant(TENANT_ID, "STRIPE_TRANSFER_ENABLED")).thenReturn(true);
         when(paymentGatewayFactory.createTransfer(eq("STRIPE"), eq("acct_test_1"), eq(900000L), eq("TWD"), eq(STATEMENT_ID.toString())))
                 .thenReturn(PaymentGatewayRequestResponse.TransferResult.builder().transferId("tr_test_1").build());
+        when(transferRepository.saveAndFlush(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
         when(transferRepository.save(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
         when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -192,6 +195,7 @@ class TransferServiceTest {
         when(featureToggleService.isFeatureEnabledForTenant(TENANT_ID, "STRIPE_TRANSFER_ENABLED")).thenReturn(true);
         when(paymentGatewayFactory.createTransfer(anyString(), anyString(), any(Long.class), anyString(), anyString()))
                 .thenThrow(new BusinessException(ErrorCode.E_6010, "No such destination account"));
+        when(transferRepository.saveAndFlush(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
         when(transferRepository.save(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
         when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -200,6 +204,30 @@ class TransferServiceTest {
         assertThat(result.getStatus()).isEqualTo(TransferStatus.FAILED);
         assertThat(result.getFailureReason()).contains("No such destination account");
         assertThat(statement.getStatus()).isEqualTo(SettlementStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("🔴 createTransferForStatement: 併發搶佔（saveAndFlush 唯一索引衝突）應回既有記錄，絕不呼叫 Stripe")
+    void createTransferForStatement_concurrentClaim_returnsExistingWithoutCallingStripe() {
+        transferService = newService();
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(approvedStatement()));
+        Transfer completedByOtherTransaction = Transfer.builder().id(UUID.randomUUID())
+                .settlementStatementId(STATEMENT_ID).status(TransferStatus.COMPLETED)
+                .stripeTransferId("tr_winner").build();
+        // 第一次查詢（existing 檢查）回空，模擬本交易先通過檢查；saveAndFlush 才因為
+        // 另一個交易已搶先提交同一 statementId 而違反唯一索引；第二次查詢（違反後重查）拿到贏家的記錄。
+        when(transferRepository.findBySettlementStatementId(STATEMENT_ID))
+                .thenReturn(Optional.empty(), Optional.of(completedByOtherTransaction));
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(readyTenant()));
+        when(transferRepository.saveAndFlush(any(Transfer.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key"));
+
+        Transfer result = transferService.createTransferForStatement(STATEMENT_ID);
+
+        assertThat(result).isSameAs(completedByOtherTransaction);
+        verify(paymentGatewayFactory, org.mockito.Mockito.never())
+                .createTransfer(anyString(), anyString(), any(Long.class), anyString(), anyString());
+        verify(settlementRepository, org.mockito.Mockito.never()).save(any());
     }
 
     @Test
@@ -233,6 +261,7 @@ class TransferServiceTest {
         when(featureToggleService.isFeatureEnabledForTenant(TENANT_ID, "STRIPE_TRANSFER_ENABLED")).thenReturn(true);
         when(paymentGatewayFactory.createTransfer(anyString(), anyString(), any(Long.class), anyString(), anyString()))
                 .thenReturn(PaymentGatewayRequestResponse.TransferResult.builder().transferId("tr_retry_1").build());
+        when(transferRepository.saveAndFlush(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
         when(transferRepository.save(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
         when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -278,6 +307,26 @@ class TransferServiceTest {
 
         assertThat(completed.getStatus()).isEqualTo(TransferStatus.REVERSED);
         assertThat(statement.getStatus()).isEqualTo(SettlementStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("🔴 handleTransferReversedWebhook: 結算單已在人工雙重授權逆轉流程中（REVERSAL_PENDING）"
+            + "，不可被 webhook 覆寫回 FAILED")
+    void handleTransferReversedWebhook_statementInReversalPending_doesNotOverrideStatus() {
+        transferService = newService();
+        SettlementStatement statement = approvedStatement();
+        statement.setStatus(SettlementStatus.REVERSAL_PENDING);
+        Transfer completed = Transfer.builder().id(UUID.randomUUID()).settlementStatementId(STATEMENT_ID)
+                .status(TransferStatus.COMPLETED).stripeTransferId("tr_rev_2").build();
+        when(transferRepository.findByStripeTransferId("tr_rev_2")).thenReturn(Optional.of(completed));
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(transferRepository.save(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        transferService.handleTransferReversedWebhook("tr_rev_2");
+
+        assertThat(completed.getStatus()).isEqualTo(TransferStatus.REVERSED);
+        assertThat(statement.getStatus()).isEqualTo(SettlementStatus.REVERSAL_PENDING);
+        verify(settlementRepository, org.mockito.Mockito.never()).save(any());
     }
 
     @Test

@@ -228,9 +228,21 @@ public class ReturnRequestService {
             }
         }
 
+        // 🔴 併發防護：先以條件式原子 UPDATE（WHERE status = APPROVED）佔用「收貨」這個轉換，
+        // 只有真正搶到的一邊才可以繼續往下加回庫存。若同一筆退貨單被併發呼叫兩次，兩邊都可能通過
+        // 上面 requireStatus 的舊快照檢查，若無此原子佔用，兩邊都會各自呼叫一次
+        // productInventoryService.applyReturnReceipt，造成庫存被重複加回（幽靈庫存）。
+        UUID receivedBy = TenantContext.getCurrentUser();
+        Instant receivedAt = Instant.now();
+        int updated = returnRequestRepository.updateStatusIfCurrent(returnId, ReturnStatus.APPROVED,
+                ReturnStatus.RECEIVED, receivedBy, receivedAt);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.E_5017,
+                    "Return request status changed concurrently, please retry: " + returnId);
+        }
         request.setStatus(ReturnStatus.RECEIVED);
-        request.setReceivedBy(TenantContext.getCurrentUser());
-        request.setReceivedAt(Instant.now());
+        request.setReceivedBy(receivedBy);
+        request.setReceivedAt(receivedAt);
         ReturnRequest saved = returnRequestRepository.save(request);
 
         // 庫存變動排在狀態寫入之後：兩者同一交易，任一失敗全部回滾

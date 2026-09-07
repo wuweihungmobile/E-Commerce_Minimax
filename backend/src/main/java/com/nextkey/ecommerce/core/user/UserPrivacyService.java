@@ -145,7 +145,9 @@ public class UserPrivacyService {
     @Transactional
     public void deleteMyAccount() {
         UUID userId = TenantContext.getCurrentUser();
-        User user = userRepository.findById(userId)
+        // 🔴 併發防護：以悲觀鎖鎖住此使用者列（見 UserRepository.findByIdForUpdate 說明），
+        // 縮小「檢查有無未結案訂單/訂房」與「匿名化並提交」之間的競態窗口。
+        User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1006));
 
         if (user.getRole() != User.UserRole.BUYER) {

@@ -7,6 +7,7 @@ import java.util.UUID;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -82,6 +83,14 @@ public class TransferService {
                 .currency(statement.getCurrency())
                 .status(TransferStatus.PENDING)
                 .build();
+
+        // 🔴 併發防護：先以 idx_transfers_settlement_statement_id 唯一索引原子性佔位，才能呼叫
+        // Stripe，避免兩個併發請求都通過上面的 existing==null 檢查而各自真的撥款一次。
+        Transfer claimed = claimTransferSlotOrExisting(statementId, transfer);
+        if (claimed != transfer) {
+            return claimed;
+        }
+        transfer = claimed;
 
         if (!featureToggleService.isFeatureEnabledForTenant(tenant.getId(), STRIPE_TRANSFER_ENABLED)) {
             log.info("STRIPE_TRANSFER_ENABLED disabled for tenant, skipping transfer: tenantId={}, statementId={}",
@@ -173,9 +182,18 @@ public class TransferService {
         transfer.setStatus(TransferStatus.REVERSED);
         transferRepository.save(transfer);
 
+        // 🔴 只有結算單仍是 PAID（webhook 延遲送達前的預期前置狀態）才改回 FAILED；若人工雙重授權
+        // 逆轉流程（SettlementReversalService）已將其推進到 REVERSAL_PENDING/REVERSED，代表該筆
+        // 逆轉已在正式流程中處理，不可被此 webhook 無條件覆寫掉已簽核或已完成的決策。
         settlementRepository.findById(transfer.getSettlementStatementId()).ifPresent(statement -> {
-            statement.setStatus(SettlementStatus.FAILED);
-            settlementRepository.save(statement);
+            if (statement.getStatus() == SettlementStatus.PAID) {
+                statement.setStatus(SettlementStatus.FAILED);
+                settlementRepository.save(statement);
+            } else {
+                log.info("Skip settlement status override: statementId={} already in {} "
+                                + "(manual reversal flow in progress or completed)",
+                        transfer.getSettlementStatementId(), statement.getStatus());
+            }
         });
 
         log.info("Transfer reversed via webhook: stripeTransferId={}, settlementStatementId={}",
@@ -197,6 +215,23 @@ public class TransferService {
     @Transactional(readOnly = true)
     public Page<Transfer> getTransfersForTenant(final UUID tenantId, final Pageable pageable) {
         return transferRepository.findByTenantIdOrderByCreatedAtDesc(tenantId, pageable);
+    }
+
+    /**
+     * 以 {@code idx_transfers_settlement_statement_id} 唯一索引原子性佔位（saveAndFlush 立即送出
+     * INSERT）。若同一結算單已被另一交易搶先佔位並提交，會拋 {@link DataIntegrityViolationException}，
+     * 代表本次不是第一個處理者：回傳既有記錄（呼叫端應直接回傳，不再呼叫 Stripe）。
+     * 回傳值與傳入的 {@code transfer} 為同一物件參考時，代表本次成功佔位，呼叫端可繼續處理。
+     */
+    private Transfer claimTransferSlotOrExisting(final UUID statementId, final Transfer transfer) {
+        try {
+            return transferRepository.saveAndFlush(transfer);
+        } catch (DataIntegrityViolationException e) {
+            log.warn("Transfer already claimed by concurrent request, statementId={}", statementId);
+            return transferRepository.findBySettlementStatementId(statementId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.E_5014,
+                            "Concurrent transfer claim detected but record not found"));
+        }
     }
 
     private void checkTenantAccess(final UUID resourceTenantId, final boolean isSuperAdmin) {

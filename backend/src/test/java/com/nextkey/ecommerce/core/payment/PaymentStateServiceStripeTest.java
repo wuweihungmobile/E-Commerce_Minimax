@@ -73,6 +73,10 @@ class PaymentStateServiceStripeTest {
                 orderStateLogRepository);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         TenantContext.setCurrentUser(USER_ID);
+        // 🔴 DEF-136：refundOrderPayment / markStripePaymentSucceeded 併發防護預設「佔用成功」，
+        // 個別測試如需驗證衝突拒絕情境可覆寫
+        when(paymentRepository.applyRefundIfUnchanged(any(), any(), any(), any())).thenReturn(1);
+        when(paymentRepository.markSuccessIfNotAlready(any(), any(), any(), any())).thenReturn(1);
     }
 
     @AfterEach
@@ -106,11 +110,32 @@ class PaymentStateServiceStripeTest {
 
         assertThat(resp.getSessionUrl()).isEqualTo("https://checkout.stripe.com/c/pay/cs_test_1");
         assertThat(resp.getSessionId()).isEqualTo("cs_test_1");
-        // 建立 PROCESSING 付款記錄
-        verify(paymentRepository).save(org.mockito.ArgumentMatchers.argThat(p ->
+        // 建立 PROCESSING 付款記錄（DEF-136：改用 saveAndFlush 做併發防護的原子佔位）
+        verify(paymentRepository).saveAndFlush(org.mockito.ArgumentMatchers.argThat(p ->
                 p.getStatus() == Payment.PaymentStatus.PROCESSING
                         && p.getPaymentMethod() == Payment.PaymentMethod.STRIPE
                         && "cs_test_1".equals(p.getStripeSessionId())));
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-136: initiate 併發搶佔（idempotency_key 唯一索引衝突）-> 不重複寫入，"
+            + "仍回傳 Stripe 冪等回傳的 session（與贏家相同）")
+    void initiate_concurrentClaim_stillReturnsSameSessionWithoutDuplicateInsert() {
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(createdOrder()));
+        when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
+        when(paymentRepository.existsByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS)).thenReturn(false);
+        when(paymentGatewayFactory.createCheckoutSession(eq("STRIPE"), any()))
+                .thenReturn(PaymentGatewayRequestResponse.CheckoutSessionResult.builder()
+                        .sessionId("cs_test_1").sessionUrl("https://checkout.stripe.com/c/pay/cs_test_1")
+                        .paymentIntentId("pi_1").status("open").paymentStatus("unpaid").build());
+        when(paymentRepository.saveAndFlush(any(Payment.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key"));
+
+        CheckoutSessionResponse resp = service.initiateStripeCheckout(ORDER_ID);
+
+        // Stripe 自己的 idempotency key 已保證兩邊拿回同一個 session，本地衝突不應影響回應內容
+        assertThat(resp.getSessionUrl()).isEqualTo("https://checkout.stripe.com/c/pay/cs_test_1");
+        assertThat(resp.getSessionId()).isEqualTo("cs_test_1");
     }
 
     @Test
@@ -143,8 +168,10 @@ class PaymentStateServiceStripeTest {
 
         OrderPaymentStateDto state = service.confirmStripeCheckout(ORDER_ID, "cs_test_1");
 
-        assertThat(processing.getStatus()).isEqualTo(Payment.PaymentStatus.SUCCESS);
-        assertThat(processing.getStripePaymentIntentId()).isEqualTo("pi_1");
+        // DEF-136：markStripePaymentSucceeded 改以原子 UPDATE（markSuccessIfNotAlready）落地狀態轉換，
+        // 不再對 mock 出來的 entity 做 setter 呼叫，故驗證改為斷言該原子 UPDATE 確實被正確參數呼叫。
+        verify(paymentRepository).markSuccessIfNotAlready(eq(processing.getId()),
+                eq(Payment.PaymentStatus.SUCCESS), eq("pi_1"), any());
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.PAID);
         assertThat(state.getOrderStatus()).isEqualTo("PAID");
     }
@@ -364,5 +391,29 @@ class PaymentStateServiceStripeTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.E_6009);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-136: 併發搶佔（compare-and-swap 影響 0 列）-> 拒絕本次退款，絕不呼叫 Stripe")
+    void refund_concurrentClaim_rejectsWithoutCallingStripe() {
+        Order order = paidOrder();
+        Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.SUCCESS)
+                .transactionId("cs_test_1").stripePaymentIntentId("pi_1").build();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(success));
+        when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
+        // 模擬另一個併發的退款請求已搶先改變 refundedAmount，本次 compare-and-swap 影響 0 列
+        when(paymentRepository.applyRefundIfUnchanged(any(), any(), any(), any())).thenReturn(0);
+
+        assertThatThrownBy(() -> service.refundOrderPayment(ORDER_ID, BigDecimal.valueOf(500), "concurrent"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_6009);
+
+        verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any());
+        verify(settlementAdjustmentService, never()).handleOrderRefund(any(), any(), any(), any());
+        verify(orderRepository, never()).save(any());
     }
 }

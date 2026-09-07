@@ -407,7 +407,8 @@ class StripePaymentGatewayTest {
         verify(postRequestedFor(urlEqualTo("/v1/transfers"))
                 .withRequestBody(containing("destination=acct_test_1"))
                 .withRequestBody(containing("amount=9000"))
-                .withRequestBody(containing("metadata[settlementStatementId]=" + statementId)));
+                .withRequestBody(containing("metadata[settlementStatementId]=" + statementId))
+                .withHeader("Idempotency-Key", equalTo(statementId.toString())));
     }
 
     @Test

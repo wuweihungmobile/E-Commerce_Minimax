@@ -149,7 +149,7 @@ class UserPrivacyServiceTest {
     void deleteMyAccount_eligibleBuyer_anonymizesAndCleansUp() {
         User user = buyerOf(USER_ID);
         String originalEmail = user.getEmail();
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         when(orderRepository.existsByUserIdAndStatusNotIn(eq(USER_ID), anyList())).thenReturn(false);
         when(bookingRepository.existsByUserIdAndStatusNotIn(eq(USER_ID), anyList())).thenReturn(false);
 
@@ -173,7 +173,7 @@ class UserPrivacyServiceTest {
     void deleteMyAccount_nonBuyerRole_throwsE1009() {
         User storeOwner = buyerOf(USER_ID);
         storeOwner.setRole(User.UserRole.STORE_OWNER);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(storeOwner));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(storeOwner));
 
         assertThatThrownBy(() -> userPrivacyService.deleteMyAccount())
                 .isInstanceOf(BusinessException.class)
@@ -187,7 +187,7 @@ class UserPrivacyServiceTest {
     @DisplayName("deleteMyAccount：尚有未結案訂單時拒絕刪除")
     void deleteMyAccount_hasActiveOrder_throwsE1010() {
         User user = buyerOf(USER_ID);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         when(orderRepository.existsByUserIdAndStatusNotIn(eq(USER_ID), anyList())).thenReturn(true);
 
         assertThatThrownBy(() -> userPrivacyService.deleteMyAccount())
@@ -203,7 +203,7 @@ class UserPrivacyServiceTest {
     @DisplayName("deleteMyAccount：尚有未結案訂房時拒絕刪除")
     void deleteMyAccount_hasActiveBooking_throwsE1010() {
         User user = buyerOf(USER_ID);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         when(orderRepository.existsByUserIdAndStatusNotIn(eq(USER_ID), anyList())).thenReturn(false);
         when(bookingRepository.existsByUserIdAndStatusNotIn(eq(USER_ID), anyList())).thenReturn(true);
 
@@ -218,7 +218,7 @@ class UserPrivacyServiceTest {
     @Test
     @DisplayName("deleteMyAccount：找不到使用者時拋 E_1006")
     void deleteMyAccount_userNotFound_throwsE1006() {
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> userPrivacyService.deleteMyAccount())
                 .isInstanceOf(BusinessException.class)

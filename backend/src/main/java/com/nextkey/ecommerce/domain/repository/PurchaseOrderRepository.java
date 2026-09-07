@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.domain.repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -7,6 +8,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -71,4 +73,18 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, UU
      * 呼叫端須確保僅 SUPER_ADMIN 可觸達，此方法本身不做租戶篩選。
      */
     Page<PurchaseOrder> findByStatus(PurchaseOrder.POStatus status, Pageable pageable);
+
+    /**
+     * 併發防護：以條件式 UPDATE（{@code WHERE status = expectedStatus}）取代
+     * 「讀 canReview()→setStatus→save」，避免 approve 與 reject（或兩個併發 approve/reject）
+     * 都通過同一份舊快照的狀態檢查、各自覆寫審批結果。回傳受影響列數：1 代表本次成功轉換，
+     * 0 代表狀態已被另一併發呼叫搶先轉換，呼叫端應拒絕本次請求。
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("UPDATE PurchaseOrder po SET po.status = :newStatus, po.reviewedBy = :reviewedBy, "
+            + "po.reviewedAt = :reviewedAt, po.rejectionReason = :rejectionReason "
+            + "WHERE po.id = :id AND po.status = :expectedStatus")
+    int reviewIfStatus(@Param("id") UUID id, @Param("expectedStatus") PurchaseOrder.POStatus expectedStatus,
+            @Param("newStatus") PurchaseOrder.POStatus newStatus, @Param("reviewedBy") UUID reviewedBy,
+            @Param("reviewedAt") Instant reviewedAt, @Param("rejectionReason") String rejectionReason);
 }

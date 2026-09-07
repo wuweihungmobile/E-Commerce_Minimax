@@ -348,7 +348,10 @@ public class StripePaymentGateway implements PaymentGateway {
                     .setDestination(destinationAccountId)
                     .putMetadata("settlementStatementId", sourceReferenceId)
                     .build();
-            RequestOptions options = RequestOptions.builder().setApiKey(stripeApiKey).build();
+            RequestOptions options = RequestOptions.builder()
+                    .setApiKey(stripeApiKey)
+                    .setIdempotencyKey(sourceReferenceId)
+                    .build();
             Transfer transfer = Transfer.create(params, options);
 
             return PaymentGatewayRequestResponse.TransferResult.builder()

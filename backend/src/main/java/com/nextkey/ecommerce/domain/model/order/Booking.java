@@ -20,6 +20,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -33,8 +34,15 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * 🔴 併發防護（DEF-136）：{@code @DynamicUpdate} 讓 Hibernate 只把本次交易內實際被 setter
+ * 改動過的欄位包進 UPDATE 語句。BookingService.updateBooking 是「部分欄位選填→整包讀出→
+ * save()」的 PATCH 語意，若無此註解，交易 A 改日期（連帶重算金額）與交易 B 併發只改其他欄位時，
+ * 後 commit 者會用自己交易一開始讀到的舊快照把先寫入者已提交的日期/金額悄悄覆蓋回去。
+ */
 @Entity
 @Table(name = "bookings")
+@DynamicUpdate
 @Getter
 @Setter
 @NoArgsConstructor

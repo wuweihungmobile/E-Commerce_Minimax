@@ -14,6 +14,8 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.DynamicUpdate;
+
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 
 import lombok.AllArgsConstructor;
@@ -22,8 +24,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/** 🔴 併發防護（DEF-136）：見 {@link Listing} 同一段 {@code @DynamicUpdate} 說明。 */
 @Entity
 @Table(name = "products")
+@DynamicUpdate
 @Getter
 @Setter
 @NoArgsConstructor

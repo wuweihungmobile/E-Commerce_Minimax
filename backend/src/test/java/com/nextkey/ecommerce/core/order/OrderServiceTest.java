@@ -841,7 +841,8 @@ class OrderServiceTest {
         TenantContext.setCurrentUser(USER_ID);
         Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
-        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CREATED, Order.OrderStatus.PAID))
+                .thenReturn(1);
 
         OrderDto.OrderResponse response = orderService.updateOrderStatus(ORDER_ID, "PAID", "buyer paid");
 
@@ -903,7 +904,8 @@ class OrderServiceTest {
         TenantContext.setCurrentTenant(TENANT_ID);
         Order order = orderOf(USER_ID, Order.OrderStatus.CONFIRMED);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
-        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CONFIRMED, Order.OrderStatus.SHIPPING))
+                .thenReturn(1);
 
         OrderDto.OrderResponse response = orderService.updateOrderStatus(ORDER_ID, "SHIPPING", "seller ships order");
 
@@ -918,11 +920,28 @@ class OrderServiceTest {
         asAdmin();
         Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
-        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CREATED, Order.OrderStatus.PAID))
+                .thenReturn(1);
 
         OrderDto.OrderResponse response = orderService.updateOrderStatus(ORDER_ID, "PAID", "admin override");
 
         assertThat(response.getStatus()).isEqualTo("PAID");
+    }
+
+    @Test
+    @DisplayName("🔴 updateOrderStatus：併發搶佔（updateStatusIfCurrent 影響 0 列，例如另一併發請求"
+            + "已把同一訂單轉去別的下一步狀態）-> E_5001，不視為成功")
+    void updateOrderStatus_concurrentClaim_throwsE5001() {
+        TenantContext.setCurrentUser(USER_ID);
+        Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CREATED, Order.OrderStatus.PAID))
+                .thenReturn(0);
+
+        assertThatThrownBy(() -> orderService.updateOrderStatus(ORDER_ID, "PAID", "buyer paid"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_5001);
+        verify(orderStateLogRepository, never()).save(any());
     }
 
     // ========== cancelOrder ==========

@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.returns.ReturnDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.order.OrderItem;
@@ -62,6 +63,7 @@ public class ReturnRequestService {
     private final OrderRepository orderRepository;
     private final ProductInventoryService productInventoryService;
     private final ProductSkuRepository productSkuRepository;
+    private final AuditService auditService;
 
     /**
      * 可申請退貨的訂單狀態：貨得先送到買家手上，才談得上退回來。
@@ -163,7 +165,10 @@ public class ReturnRequestService {
         request.setReviewedBy(TenantContext.getCurrentUser());
         request.setReviewedAt(Instant.now());
         log.info("Return request approved: returnNumber={}", request.getReturnNumber());
-        return toResponse(returnRequestRepository.save(request));
+        ReturnDto.Response response = toResponse(returnRequestRepository.save(request));
+        auditService.record("RETURN_APPROVED", "RETURN_REQUEST", request.getId(), request.getTenantId(),
+                "REQUESTED", "APPROVED", null);
+        return response;
     }
 
     /** 店家駁回。 */
@@ -177,7 +182,10 @@ public class ReturnRequestService {
         request.setReviewedBy(TenantContext.getCurrentUser());
         request.setReviewedAt(Instant.now());
         log.info("Return request rejected: returnNumber={}", request.getReturnNumber());
-        return toResponse(returnRequestRepository.save(request));
+        ReturnDto.Response response = toResponse(returnRequestRepository.save(request));
+        auditService.record("RETURN_REJECTED", "RETURN_REQUEST", request.getId(), request.getTenantId(),
+                "REQUESTED", "REJECTED", request.getRejectionReason());
+        return response;
     }
 
     /**

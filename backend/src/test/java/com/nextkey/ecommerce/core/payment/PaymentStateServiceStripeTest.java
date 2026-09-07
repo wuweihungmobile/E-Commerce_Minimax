@@ -6,9 +6,11 @@ import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Order;
+import com.nextkey.ecommerce.domain.model.order.OrderStateLog;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
+import com.nextkey.ecommerce.domain.repository.OrderStateLogRepository;
 import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.infrastructure.payment.PaymentGatewayFactory;
 import com.nextkey.ecommerce.infrastructure.payment.PaymentGatewayRequestResponse;
@@ -57,6 +59,7 @@ class PaymentStateServiceStripeTest {
     @Mock private PaymentGatewayFactory paymentGatewayFactory;
     @Mock private SettlementAdjustmentService settlementAdjustmentService;
     @Mock private ProductInventoryService productInventoryService;
+    @Mock private OrderStateLogRepository orderStateLogRepository;
 
     private PaymentStateService service;
 
@@ -66,7 +69,8 @@ class PaymentStateServiceStripeTest {
     @BeforeEach
     void setUp() {
         service = new PaymentStateService(paymentRepository, orderRepository, bookingRepository,
-                featureToggleService, paymentGatewayFactory, settlementAdjustmentService, productInventoryService);
+                featureToggleService, paymentGatewayFactory, settlementAdjustmentService, productInventoryService,
+                orderStateLogRepository);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         TenantContext.setCurrentUser(USER_ID);
     }
@@ -189,6 +193,11 @@ class PaymentStateServiceStripeTest {
         assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
         assertThat(success.getStripeRefundId()).isEqualTo("re_1");
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
+        // Sprint 135（DEF-111）：退款驅動的 Order 狀態轉換須落地到既有 order_state_log
+        org.mockito.ArgumentCaptor<OrderStateLog> logCaptor = org.mockito.ArgumentCaptor.forClass(OrderStateLog.class);
+        verify(orderStateLogRepository).save(logCaptor.capture());
+        assertThat(logCaptor.getValue().getToStatus()).isEqualTo("REFUNDED");
+        assertThat(logCaptor.getValue().getReason()).isEqualTo("customer");
     }
 
     @Test
@@ -225,6 +234,11 @@ class PaymentStateServiceStripeTest {
         assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
         assertThat(success.getStripeRefundId()).isEqualTo("re_2");
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
+        // Sprint 135（DEF-111）：webhook 驅動，changedBy=null（無使用者情境）
+        org.mockito.ArgumentCaptor<OrderStateLog> logCaptor = org.mockito.ArgumentCaptor.forClass(OrderStateLog.class);
+        verify(orderStateLogRepository).save(logCaptor.capture());
+        assertThat(logCaptor.getValue().getToStatus()).isEqualTo("REFUNDED");
+        assertThat(logCaptor.getValue().getChangedBy()).isNull();
     }
 
     @Test

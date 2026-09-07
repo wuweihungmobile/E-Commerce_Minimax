@@ -17,9 +17,11 @@ import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
+import com.nextkey.ecommerce.domain.model.order.OrderStateLog;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
+import com.nextkey.ecommerce.domain.repository.OrderStateLogRepository;
 import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.infrastructure.payment.PaymentGatewayFactory;
 import com.nextkey.ecommerce.infrastructure.payment.PaymentGatewayRequestResponse;
@@ -44,6 +46,7 @@ public class PaymentStateService {
     private final PaymentGatewayFactory paymentGatewayFactory;
     private final SettlementAdjustmentService settlementAdjustmentService;
     private final ProductInventoryService productInventoryService;
+    private final OrderStateLogRepository orderStateLogRepository;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
@@ -51,7 +54,7 @@ public class PaymentStateService {
     public PaymentStateService(PaymentRepository paymentRepository, OrderRepository orderRepository,
             BookingRepository bookingRepository, FeatureToggleService featureToggleService,
             PaymentGatewayFactory paymentGatewayFactory, SettlementAdjustmentService settlementAdjustmentService,
-            ProductInventoryService productInventoryService) {
+            ProductInventoryService productInventoryService, OrderStateLogRepository orderStateLogRepository) {
         this.paymentRepository = paymentRepository;
         this.orderRepository = orderRepository;
         this.bookingRepository = bookingRepository;
@@ -59,6 +62,28 @@ public class PaymentStateService {
         this.paymentGatewayFactory = paymentGatewayFactory;
         this.settlementAdjustmentService = settlementAdjustmentService;
         this.productInventoryService = productInventoryService;
+        this.orderStateLogRepository = orderStateLogRepository;
+    }
+
+    /**
+     * 記錄付款流程觸發的 Order 狀態轉換到既有的 order_state_log（Sprint 135，DEF-111）。
+     * 比照 {@code OrderService.recordStateLog} 的序號規則；付款/退款狀態轉換原先只寫入
+     * 暫時性的 log.info，未落地到這張與其他 Order 狀態變更共用的稽核表。
+     */
+    private void recordOrderStateLog(Order order, String fromStatus, String toStatus, UUID changedBy, String reason) {
+        Integer maxSequence = orderStateLogRepository.findMaxSequenceByOrderId(order.getId());
+        int nextSequence = maxSequence != null ? maxSequence + 1 : 1;
+
+        OrderStateLog log = OrderStateLog.builder()
+                .order(order)
+                .sequence(nextSequence)
+                .fromStatus(fromStatus)
+                .toStatus(toStatus)
+                .changedBy(changedBy)
+                .reason(reason)
+                .build();
+
+        orderStateLogRepository.save(log);
     }
 
     /** Sprint 88（AI-2422）：付款成功後正式扣帳，失敗僅記錄不影響付款成功主流程（比照既有結算調整慣例）。 */
@@ -131,9 +156,12 @@ public class PaymentStateService {
         payment = paymentRepository.save(payment);
 
         // 更新訂單狀態為 PAID
+        String previousStatus = order.getStatus().name();
         order.setStatus(Order.OrderStatus.PAID);
         orderRepository.save(order);
         deductStockSafely(order);
+        recordOrderStateLog(order, previousStatus, Order.OrderStatus.PAID.name(),
+                TenantContext.getCurrentUser(), "Mock payment success");
 
         log.info("Mock payment success: orderId={}, paymentId={}", orderId, payment.getId());
 
@@ -211,8 +239,11 @@ public class PaymentStateService {
         payment.setStatus(fullyRefunded ? Payment.PaymentStatus.REFUNDED : Payment.PaymentStatus.PARTIALLY_REFUNDED);
         paymentRepository.save(payment);
         if (fullyRefunded) {
+            String previousStatus = order.getStatus().name();
             order.setStatus(Order.OrderStatus.REFUNDED);
             orderRepository.save(order);
+            recordOrderStateLog(order, previousStatus, Order.OrderStatus.REFUNDED.name(),
+                    TenantContext.getCurrentUser(), reason);
         }
 
         log.info("Refund processed: orderId={}, paymentId={}, amount={}, fullyRefunded={}, reason={}",
@@ -281,8 +312,11 @@ public class PaymentStateService {
         if (payment.getOrderId() != null) {
             Order order = orderRepository.findById(payment.getOrderId()).orElse(null);
             if (order != null && OrderStateMachine.canRefund(order.getStatus().name())) {
+                String previousStatus = order.getStatus().name();
                 order.setStatus(Order.OrderStatus.REFUNDED);
                 orderRepository.save(order);
+                recordOrderStateLog(order, previousStatus, Order.OrderStatus.REFUNDED.name(),
+                        null, "Stripe refund webhook (charge.refunded), refundId=" + refundId);
             }
         }
         log.info("Stripe payment marked REFUNDED (webhook): paymentIntent={}, orderId={}",
@@ -405,9 +439,12 @@ public class PaymentStateService {
         if (payment.getOrderId() != null) {
             Order order = orderRepository.findById(payment.getOrderId()).orElse(null);
             if (order != null && OrderStateMachine.canPay(order.getStatus().name())) {
+                String previousStatus = order.getStatus().name();
                 order.setStatus(Order.OrderStatus.PAID);
                 orderRepository.save(order);
                 deductStockSafely(order);
+                recordOrderStateLog(order, previousStatus, Order.OrderStatus.PAID.name(),
+                        null, "Stripe payment webhook success, session=" + sessionId);
             }
         }
         log.info("Stripe payment marked SUCCESS: session={}, orderId={}", sessionId, payment.getOrderId());

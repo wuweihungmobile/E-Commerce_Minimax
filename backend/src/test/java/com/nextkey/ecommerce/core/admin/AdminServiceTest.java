@@ -221,6 +221,84 @@ class AdminServiceTest {
         }
     }
 
+    // ── reviewTenant Tests（DEF-106：稽核日誌覆蓋率）────────────────────
+
+    @Nested
+    @DisplayName("reviewTenant()")
+    class ReviewTenant {
+
+        @Test
+        @DisplayName("reviewTenant_approve_transitionsToActiveAndRecordsAudit")
+        void reviewTenant_approve_transitionsToActiveAndRecordsAudit() {
+            Tenant tenant = buildTenant();
+            tenant.setStatus(Tenant.TenantStatus.PENDING_REVIEW);
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+            when(tenantRepository.save(any(Tenant.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            AdminDto.TenantReviewRequest request = AdminDto.TenantReviewRequest.builder()
+                    .tenantId(TEST_TENANT_ID)
+                    .decision("APPROVE")
+                    .build();
+
+            AdminDto.TenantReviewResponse response = adminService.reviewTenant(request);
+
+            assertThat(response.getStatus()).isEqualTo("ACTIVE");
+
+            ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
+            verify(auditLogRepository).save(auditCaptor.capture());
+            AuditLog saved = auditCaptor.getValue();
+            assertThat(saved.getAction()).isEqualTo("TENANT_APPROVED");
+            assertThat(saved.getEntityType()).isEqualTo("TENANT");
+            assertThat(saved.getEntityId()).isEqualTo(TEST_TENANT_ID);
+            assertThat(saved.getOldValue()).isEqualTo("PENDING_REVIEW");
+            assertThat(saved.getNewValue()).isEqualTo("ACTIVE");
+        }
+
+        @Test
+        @DisplayName("reviewTenant_reject_transitionsToRejectedAndRecordsAudit")
+        void reviewTenant_reject_transitionsToRejectedAndRecordsAudit() {
+            Tenant tenant = buildTenant();
+            tenant.setStatus(Tenant.TenantStatus.PENDING_REVIEW);
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+            when(tenantRepository.save(any(Tenant.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            AdminDto.TenantReviewRequest request = AdminDto.TenantReviewRequest.builder()
+                    .tenantId(TEST_TENANT_ID)
+                    .decision("REJECT")
+                    .build();
+
+            AdminDto.TenantReviewResponse response = adminService.reviewTenant(request);
+
+            assertThat(response.getStatus()).isEqualTo("REJECTED");
+
+            ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
+            verify(auditLogRepository).save(auditCaptor.capture());
+            assertThat(auditCaptor.getValue().getAction()).isEqualTo("TENANT_REJECTED");
+            assertThat(auditCaptor.getValue().getOldValue()).isEqualTo("PENDING_REVIEW");
+            assertThat(auditCaptor.getValue().getNewValue()).isEqualTo("REJECTED");
+        }
+
+        @Test
+        @DisplayName("reviewTenant_invalidDecision_throwsAndNeverSavesOrAudits")
+        void reviewTenant_invalidDecision_throwsAndNeverSavesOrAudits() {
+            Tenant tenant = buildTenant();
+            tenant.setStatus(Tenant.TenantStatus.PENDING_REVIEW);
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+
+            AdminDto.TenantReviewRequest request = AdminDto.TenantReviewRequest.builder()
+                    .tenantId(TEST_TENANT_ID)
+                    .decision("MAYBE")
+                    .build();
+
+            assertThatThrownBy(() -> adminService.reviewTenant(request))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_9000));
+
+            verify(tenantRepository, never()).save(any());
+            verify(auditLogRepository, never()).save(any());
+        }
+    }
+
     // ── setFeatureToggle Tests ─────────────────────────────────────────
 
     @Nested

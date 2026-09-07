@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.UserDataExportResponse;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.user.User;
@@ -76,6 +77,7 @@ public class UserPrivacyService {
     private final OAuthAccountRepository oAuthAccountRepository;
     private final TenantMemberRepository tenantMemberRepository;
     private final RefreshTokenService refreshTokenService;
+    private final AuditService auditService;
 
     @Transactional(readOnly = true)
     public UserDataExportResponse exportMyData() {
@@ -156,6 +158,7 @@ public class UserPrivacyService {
             throw new BusinessException(ErrorCode.E_1010);
         }
 
+        String oldStatus = user.getStatus();
         anonymize(user);
         userRepository.save(user);
 
@@ -164,6 +167,8 @@ public class UserPrivacyService {
         refreshTokenService.blacklistAllRefreshTokens(userId);
 
         log.info("Account anonymized (right to be forgotten): {}", userId);
+        auditService.record("USER_STATUS_UPDATED", "USER", userId, user.getTenantId(),
+                oldStatus, DELETED_STATUS, "self-service account deletion (right to be forgotten)", userId);
     }
 
     private void anonymize(final User user) {

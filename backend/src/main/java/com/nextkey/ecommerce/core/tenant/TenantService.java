@@ -22,6 +22,7 @@ import com.nextkey.ecommerce.api.dto.TenantListResponse;
 import com.nextkey.ecommerce.api.dto.TenantMemberResponse;
 import com.nextkey.ecommerce.api.dto.TenantUpdateRequest;
 import com.nextkey.ecommerce.api.dto.TenantUpdateResponse;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantApplication;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
@@ -49,6 +50,7 @@ public class TenantService {
     private final TenantFeatureToggleRepository tenantFeatureToggleRepository;
     private final TenantMemberRepository tenantMemberRepository;
     private final UserRepository userRepository;
+    private final AuditService auditService;
 
     // Feature toggle definitions
     private static final Map<String, FeatureDefinition> FEATURE_DEFINITIONS = new LinkedHashMap<>();
@@ -400,6 +402,8 @@ public class TenantService {
         }
 
         toggle = tenantFeatureToggleRepository.save(toggle);
+        auditService.record("FEATURE_TOGGLE_SELF_SERVICE_UPDATED", "FEATURE_TOGGLE", tenantId, tenantId,
+                featureKey + "=" + previousState, featureKey + "=" + toggle.getIsEnabled(), null, userId);
 
         // Determine status based on enabled state and requiresApproval
         StatusInfo statusInfo = determineToggleStatus(enabled, featureDef.requiresApproval, previousState);
@@ -562,6 +566,8 @@ public class TenantService {
         member = tenantMemberRepository.save(member);
         log.info("Member invited to tenant: tenantId={}, userId={}, role={}, invitedBy={}",
                 tenantId, userId, storeRole, invitedBy);
+        auditService.record("STORE_MEMBER_INVITED", "TENANT_MEMBER", member.getId(), tenantId,
+                null, storeRole.name(), null, currentUserId);
 
         return toMemberResponse(member, user);
     }
@@ -704,9 +710,12 @@ public class TenantService {
             throw new BusinessException(ErrorCode.E_4031, "Cannot change the owner's role");
         }
 
+        String oldRole = member.getStoreRole().name();
         member.setStoreRole(storeRole);
         member = tenantMemberRepository.save(member);
         log.info("Member role updated: tenantId={}, userId={}, newRole={}", tenantId, userId, newRole);
+        auditService.record("STORE_MEMBER_ROLE_CHANGED", "TENANT_MEMBER", member.getId(), tenantId,
+                oldRole, storeRole.name(), null, currentUserId);
 
         User user = userRepository.findById(userId).orElse(null);
         return toMemberResponse(member, user);
@@ -741,9 +750,12 @@ public class TenantService {
             throw new BusinessException(ErrorCode.E_4031, "Cannot remove the store owner");
         }
 
+        String oldStatus = member.getStatus().name();
         member.setStatus(TenantMember.MemberStatus.REMOVED);
         tenantMemberRepository.save(member);
         log.info("Member removed from tenant: tenantId={}, userId={}, removedBy={}", tenantId, userId, currentUserId);
+        auditService.record("STORE_MEMBER_REMOVED", "TENANT_MEMBER", member.getId(), tenantId,
+                oldStatus, TenantMember.MemberStatus.REMOVED.name(), null, currentUserId);
     }
 
     /**

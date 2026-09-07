@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.tenant;
 
 import com.nextkey.ecommerce.api.dto.*;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantApplication;
 import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
@@ -49,6 +50,9 @@ class TenantServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private AuditService auditService;
 
     @InjectMocks
     private TenantService tenantService;
@@ -314,6 +318,49 @@ class TenantServiceTest {
         assertEquals("Store Owner", response.getMember().getDisplayName());
     }
 
+    // ── updateFeatureToggle Tests（DEF-107：稽核日誌覆蓋率）───────────────────
+
+    @Nested
+    @DisplayName("updateFeatureToggle()")
+    class UpdateFeatureToggleTests {
+
+        @BeforeEach
+        void setUp() {
+            TenantContext.setCurrentUser(TEST_USER_ID);
+        }
+
+        @AfterEach
+        void tearDown() {
+            TenantContext.clear();
+        }
+
+        @Test
+        @DisplayName("updateFeatureToggle：成功切換並記錄稽核")
+        void updateFeatureToggle_success_recordsAudit() {
+            when(tenantMemberRepository.existsByTenantIdAndUserId(TEST_TENANT_ID, TEST_USER_ID)).thenReturn(true);
+            when(tenantFeatureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "RETAIL_ENABLED"))
+                    .thenReturn(Optional.empty());
+            when(tenantFeatureToggleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            tenantService.updateFeatureToggle(TEST_TENANT_ID, "RETAIL_ENABLED", false);
+
+            verify(auditService).record(eq("FEATURE_TOGGLE_SELF_SERVICE_UPDATED"), eq("FEATURE_TOGGLE"),
+                    eq(TEST_TENANT_ID), eq(TEST_TENANT_ID),
+                    eq("RETAIL_ENABLED=true"), eq("RETAIL_ENABLED=false"), isNull(), eq(TEST_USER_ID));
+        }
+
+        @Test
+        @DisplayName("updateFeatureToggle：非店鋪成員呼叫 → 拒絕且不記錄稽核")
+        void updateFeatureToggle_notMember_rejectedWithoutAudit() {
+            when(tenantMemberRepository.existsByTenantIdAndUserId(TEST_TENANT_ID, TEST_USER_ID)).thenReturn(false);
+
+            assertThrows(BusinessException.class,
+                    () -> tenantService.updateFeatureToggle(TEST_TENANT_ID, "RETAIL_ENABLED", false));
+            verify(tenantFeatureToggleRepository, never()).save(any());
+            verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
+        }
+    }
+
     // ── 邀請確認制成員管理（PRD §7.4/§8.2.3/§9.11，Sprint 98）──────────────────
 
     @Nested
@@ -354,6 +401,8 @@ class TenantServiceTest {
             verify(tenantMemberRepository).save(argThat(m ->
                     m.getStatus() == TenantMember.MemberStatus.INVITED
                             && m.getStoreRole() == TenantMember.StoreRole.STORE_STAFF));
+            verify(auditService).record(eq("STORE_MEMBER_INVITED"), eq("TENANT_MEMBER"), any(), eq(TEST_TENANT_ID),
+                    isNull(), eq("STORE_STAFF"), isNull(), eq(OWNER_ID));
         }
 
         @Test
@@ -402,6 +451,8 @@ class TenantServiceTest {
 
             verify(tenantMemberRepository).save(argThat(m ->
                     existingId.equals(m.getId()) && m.getStatus() == TenantMember.MemberStatus.INVITED));
+            verify(auditService).record(eq("STORE_MEMBER_INVITED"), eq("TENANT_MEMBER"), eq(existingId), eq(TEST_TENANT_ID),
+                    isNull(), eq("STORE_STAFF"), isNull(), eq(OWNER_ID));
         }
 
         @Test
@@ -510,6 +561,45 @@ class TenantServiceTest {
 
             verify(tenantMemberRepository).save(argThat(m -> m.getStatus() == TenantMember.MemberStatus.REMOVED));
             verify(tenantMemberRepository, never()).delete(any());
+            verify(auditService).record(eq("STORE_MEMBER_REMOVED"), eq("TENANT_MEMBER"), any(), eq(TEST_TENANT_ID),
+                    eq("ACTIVE"), eq("REMOVED"), isNull(), eq(OWNER_ID));
+        }
+
+        @Test
+        @DisplayName("updateMemberRole：成功變更角色並記錄稽核（DEF-107：稽核日誌覆蓋率）")
+        void updateMemberRole_success_recordsAudit() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            UUID memberRowId = UUID.randomUUID();
+            TenantMember staffMember = TenantMember.builder()
+                    .id(memberRowId).tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.ACTIVE).storeRole(TenantMember.StoreRole.STORE_STAFF).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(staffMember));
+            when(tenantMemberRepository.save(any(TenantMember.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(buildInvitee()));
+
+            tenantService.updateMemberRole(TEST_TENANT_ID, INVITEE_ID, "STORE_STAFF");
+
+            verify(auditService).record(eq("STORE_MEMBER_ROLE_CHANGED"), eq("TENANT_MEMBER"), eq(memberRowId), eq(TEST_TENANT_ID),
+                    eq("STORE_STAFF"), eq("STORE_STAFF"), isNull(), eq(OWNER_ID));
+        }
+
+        @Test
+        @DisplayName("updateMemberRole：試圖變更 StoreOwner 角色 → 拒絕且不記錄稽核")
+        void updateMemberRole_targetIsOwner_rejectedWithoutAudit() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            TenantMember ownerMember = TenantMember.builder()
+                    .tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.ACTIVE).storeRole(TenantMember.StoreRole.STORE_OWNER).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(ownerMember));
+
+            assertThrows(BusinessException.class,
+                    () -> tenantService.updateMemberRole(TEST_TENANT_ID, INVITEE_ID, "STORE_STAFF"));
+            verify(tenantMemberRepository, never()).save(any());
+            verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
         }
     }
 }

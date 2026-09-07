@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.StripeConnectDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
@@ -14,6 +15,7 @@ import com.nextkey.ecommerce.infrastructure.payment.PaymentGatewayFactory;
 import com.nextkey.ecommerce.infrastructure.payment.PaymentGatewayRequestResponse;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +36,7 @@ public class TenantStripeConnectService {
     private final TenantRepository tenantRepository;
     private final FeatureToggleService featureToggleService;
     private final PaymentGatewayFactory paymentGatewayFactory;
+    private final AuditService auditService;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
@@ -58,6 +61,9 @@ public class TenantStripeConnectService {
             tenantRepository.save(tenant);
             log.info("Stripe Connect account created: tenantId={}, accountId={}",
                     tenantId, accountResult.getAccountId());
+            auditService.record("CONNECT_ONBOARDING_INITIATED", "TENANT", tenantId, tenantId,
+                    "NOT_STARTED", Tenant.ConnectOnboardingStatus.PENDING.name(),
+                    "Stripe Connect accountId=" + accountResult.getAccountId(), TenantContext.getCurrentUser());
         }
 
         PaymentGatewayRequestResponse.AccountLinkResult linkResult = paymentGatewayFactory.createAccountLink(
@@ -100,12 +106,17 @@ public class TenantStripeConnectService {
         boolean payoutsEnabled = Boolean.TRUE.equals(result.getPayoutsEnabled());
         boolean detailsSubmitted = Boolean.TRUE.equals(result.getDetailsSubmitted());
 
+        String oldStatus = tenant.getConnectOnboardingStatus().name();
         tenant.setConnectChargesEnabled(chargesEnabled);
         tenant.setConnectPayoutsEnabled(payoutsEnabled);
         if (detailsSubmitted && chargesEnabled && payoutsEnabled) {
             tenant.setConnectOnboardingStatus(Tenant.ConnectOnboardingStatus.COMPLETE);
         }
         tenantRepository.save(tenant);
+        auditService.record("CONNECT_STATUS_SYNCED", "TENANT", tenantId, tenantId,
+                oldStatus, tenant.getConnectOnboardingStatus().name(),
+                "manual sync (getAccountStatus), chargesEnabled=" + chargesEnabled + ", payoutsEnabled=" + payoutsEnabled,
+                TenantContext.getCurrentUser());
 
         return StripeConnectDto.StatusResponse.builder()
                 .accountId(tenant.getStripeConnectAccountId())
@@ -127,6 +138,7 @@ public class TenantStripeConnectService {
             log.warn("Stripe Connect webhook: tenant not found for accountId={}", accountId);
             return false;
         }
+        String oldStatus = tenant.getConnectOnboardingStatus().name();
         tenant.setConnectChargesEnabled(chargesEnabled);
         tenant.setConnectPayoutsEnabled(payoutsEnabled);
         if (detailsSubmitted && chargesEnabled && payoutsEnabled) {
@@ -135,6 +147,10 @@ public class TenantStripeConnectService {
         tenantRepository.save(tenant);
         log.info("Stripe Connect account status synced (webhook): accountId={}, tenantId={}",
                 accountId, tenant.getId());
+        auditService.record("CONNECT_STATUS_SYNCED", "TENANT", tenant.getId(), tenant.getId(),
+                oldStatus, tenant.getConnectOnboardingStatus().name(),
+                "webhook (account.updated), chargesEnabled=" + chargesEnabled + ", payoutsEnabled=" + payoutsEnabled,
+                null);
         return true;
     }
 }

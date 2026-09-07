@@ -14,6 +14,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.nextkey.ecommerce.api.dto.StripeConnectDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
@@ -27,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -49,6 +51,7 @@ class TenantStripeConnectServiceTest {
     @Mock private TenantRepository tenantRepository;
     @Mock private FeatureToggleService featureToggleService;
     @Mock private PaymentGatewayFactory paymentGatewayFactory;
+    @Mock private AuditService auditService;
 
     private TenantStripeConnectService service;
 
@@ -56,7 +59,7 @@ class TenantStripeConnectServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new TenantStripeConnectService(tenantRepository, featureToggleService, paymentGatewayFactory);
+        service = new TenantStripeConnectService(tenantRepository, featureToggleService, paymentGatewayFactory, auditService);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
     }
 
@@ -93,6 +96,9 @@ class TenantStripeConnectServiceTest {
         assertThat(tenant.getStripeConnectAccountId()).isEqualTo("acct_new_1");
         assertThat(tenant.getConnectOnboardingStatus()).isEqualTo(Tenant.ConnectOnboardingStatus.PENDING);
         verify(tenantRepository).save(tenant);
+        // Sprint 135（DEF-112）：帳戶開通須記錄稽核
+        verify(auditService).record(eq("CONNECT_ONBOARDING_INITIATED"), eq("TENANT"), eq(TENANT_ID), eq(TENANT_ID),
+                eq("NOT_STARTED"), eq("PENDING"), any(), isNull());
     }
 
     @Test
@@ -130,6 +136,37 @@ class TenantStripeConnectServiceTest {
         assertThat(response.isPayoutsEnabled()).isTrue();
         assertThat(response.getOnboardingStatus()).isEqualTo("COMPLETE");
         assertThat(tenant.getConnectOnboardingStatus()).isEqualTo(Tenant.ConnectOnboardingStatus.COMPLETE);
+        // Sprint 135（DEF-112）：狀態同步（含手動查詢）須記錄稽核
+        verify(auditService).record(eq("CONNECT_STATUS_SYNCED"), eq("TENANT"), eq(TENANT_ID), eq(TENANT_ID),
+                eq("NOT_STARTED"), eq("COMPLETE"), any(), isNull());
+    }
+
+    @Test
+    @DisplayName("UT-CONNECT-007: webhook 同步帳戶狀態 — 找到 tenant 時回填並記錄稽核（actor=null，webhook 無使用者情境）")
+    void syncAccountStatusFromWebhook_tenantFound_updatesAndRecordsAudit() {
+        Tenant tenant = newTenant();
+        tenant.setStripeConnectAccountId("acct_1");
+        when(tenantRepository.findByStripeConnectAccountId("acct_1")).thenReturn(Optional.of(tenant));
+
+        boolean result = service.syncAccountStatusFromWebhook("acct_1", true, true, true);
+
+        assertThat(result).isTrue();
+        assertThat(tenant.getConnectOnboardingStatus()).isEqualTo(Tenant.ConnectOnboardingStatus.COMPLETE);
+        verify(tenantRepository).save(tenant);
+        verify(auditService).record(eq("CONNECT_STATUS_SYNCED"), eq("TENANT"), eq(TENANT_ID), eq(TENANT_ID),
+                eq("NOT_STARTED"), eq("COMPLETE"), any(), isNull());
+    }
+
+    @Test
+    @DisplayName("UT-CONNECT-008: webhook 同步帳戶狀態 — 找不到對應 tenant 時 no-op，不記錄稽核")
+    void syncAccountStatusFromWebhook_tenantNotFound_noOpWithoutAudit() {
+        when(tenantRepository.findByStripeConnectAccountId("acct_unknown")).thenReturn(Optional.empty());
+
+        boolean result = service.syncAccountStatusFromWebhook("acct_unknown", true, true, true);
+
+        assertThat(result).isFalse();
+        verify(tenantRepository, never()).save(any());
+        verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

@@ -157,15 +157,20 @@ public class AdminService {
         Tenant tenant = tenantRepository.findById(request.getTenantId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
 
+        String oldStatus = tenant.getStatus().name();
+        String auditAction;
         if ("APPROVE".equals(request.getDecision())) {
             tenant.setStatus(Tenant.TenantStatus.ACTIVE);
+            auditAction = "TENANT_APPROVED";
         } else if ("REJECT".equals(request.getDecision())) {
             tenant.setStatus(Tenant.TenantStatus.REJECTED);
+            auditAction = "TENANT_REJECTED";
         } else {
             throw new BusinessException(ErrorCode.E_9000, "Invalid decision");
         }
 
         tenantRepository.save(tenant);
+        recordAudit(auditAction, "TENANT", tenant.getId(), tenant.getId(), oldStatus, tenant.getStatus().name(), null);
 
         return AdminDto.TenantReviewResponse.builder()
                 .tenantId(tenant.getId())

@@ -20,10 +20,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementListResponse;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementResponse;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement.SettlementStatus;
+import com.nextkey.ecommerce.domain.model.user.User;
+import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -47,6 +50,12 @@ class SettlementReviewerTest {
     @Mock
     private TransferService transferService;
 
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private AuditService auditService;
+
     private SettlementReviewer reviewer;
 
     private static final UUID TENANT_ID = UUID.randomUUID();
@@ -55,7 +64,7 @@ class SettlementReviewerTest {
     private static final UUID ADMIN_ID = UUID.randomUUID();
 
     private SettlementReviewer newReviewer() {
-        return new SettlementReviewer(settlementRepository, mapper, transferService);
+        return new SettlementReviewer(settlementRepository, mapper, transferService, userRepository, auditService);
     }
 
     @AfterEach
@@ -89,8 +98,10 @@ class SettlementReviewerTest {
     void approveStatement_ownTenant_succeeds() {
         reviewer = newReviewer();
         SettlementStatement statement = pendingReviewStatement(TENANT_ID);
+        User admin = User.builder().id(ADMIN_ID).build();
         when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
         when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.getReferenceById(ADMIN_ID)).thenReturn(admin);
         when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder()
                 .id(STATEMENT_ID).status("APPROVED").build());
         TenantContext.setCurrentTenant(TENANT_ID);
@@ -99,7 +110,11 @@ class SettlementReviewerTest {
 
         assertThat(response.getStatus()).isEqualTo("APPROVED");
         assertThat(statement.getStatus()).isEqualTo(SettlementStatus.APPROVED);
+        assertThat(statement.getReviewedBy()).isEqualTo(admin);
+        assertThat(statement.getApprovedAt()).isNotNull();
         verify(transferService).createTransferForStatement(STATEMENT_ID);
+        verify(auditService).record(eq("SETTLEMENT_APPROVED"), eq("SETTLEMENT_STATEMENT"), eq(STATEMENT_ID), eq(TENANT_ID),
+                eq("PENDING_REVIEW"), eq("APPROVED"), any(), eq(ADMIN_ID));
     }
 
     @Test
@@ -109,6 +124,7 @@ class SettlementReviewerTest {
         SettlementStatement statement = pendingReviewStatement(OTHER_TENANT_ID);
         when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
         when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.getReferenceById(ADMIN_ID)).thenReturn(User.builder().id(ADMIN_ID).build());
         when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder()
                 .id(STATEMENT_ID).status("APPROVED").build());
         TenantContext.setCurrentTenant(TENANT_ID);
@@ -136,8 +152,10 @@ class SettlementReviewerTest {
     void rejectStatement_ownTenant_succeeds() {
         reviewer = newReviewer();
         SettlementStatement statement = pendingReviewStatement(TENANT_ID);
+        User admin = User.builder().id(ADMIN_ID).build();
         when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
         when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.getReferenceById(ADMIN_ID)).thenReturn(admin);
         when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder()
                 .id(STATEMENT_ID).status("REJECTED").build());
         TenantContext.setCurrentTenant(TENANT_ID);
@@ -145,6 +163,9 @@ class SettlementReviewerTest {
         SettlementStatementResponse response = reviewer.rejectStatement(STATEMENT_ID, ADMIN_ID, "reason", false);
 
         assertThat(response.getStatus()).isEqualTo("REJECTED");
+        assertThat(statement.getReviewedBy()).isEqualTo(admin);
+        verify(auditService).record(eq("SETTLEMENT_REJECTED"), eq("SETTLEMENT_STATEMENT"), eq(STATEMENT_ID), eq(TENANT_ID),
+                eq("PENDING_REVIEW"), eq("REJECTED"), eq("reason"), eq(ADMIN_ID));
     }
 
     @Test

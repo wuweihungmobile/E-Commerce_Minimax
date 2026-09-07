@@ -25,6 +25,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import com.nextkey.ecommerce.api.dto.UserDataExportResponse;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.AddressRepository;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
@@ -75,6 +76,8 @@ class UserPrivacyServiceTest {
     private TenantMemberRepository tenantMemberRepository;
     @Mock
     private RefreshTokenService refreshTokenService;
+    @Mock
+    private AuditService auditService;
 
     private UserPrivacyService userPrivacyService;
 
@@ -85,7 +88,7 @@ class UserPrivacyServiceTest {
         userPrivacyService = new UserPrivacyService(
                 userRepository, orderRepository, bookingRepository, reviewRepository, bookingReviewRepository,
                 addressRepository, notificationPreferenceRepository, notificationRepository, supportTicketRepository,
-                oAuthAccountRepository, tenantMemberRepository, refreshTokenService);
+                oAuthAccountRepository, tenantMemberRepository, refreshTokenService, auditService);
         TenantContext.setCurrentUser(USER_ID);
     }
 
@@ -161,6 +164,8 @@ class UserPrivacyServiceTest {
         verify(addressRepository).deleteByUserId(USER_ID);
         verify(oAuthAccountRepository).deleteByUserId(USER_ID);
         verify(refreshTokenService).blacklistAllRefreshTokens(USER_ID);
+        verify(auditService).record(eq("USER_STATUS_UPDATED"), eq("USER"), eq(USER_ID), any(),
+                eq("ACTIVE"), eq("DELETED"), any(), eq(USER_ID));
     }
 
     @Test

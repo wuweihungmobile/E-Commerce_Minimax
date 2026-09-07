@@ -10,10 +10,12 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementListResponse;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementResponse;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement.SettlementStatus;
+import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -44,6 +46,8 @@ public class SettlementReviewer {
     private final SettlementStatementRepository settlementRepository;
     private final SettlementMapper mapper;
     private final TransferService transferService;
+    private final UserRepository userRepository;
+    private final AuditService auditService;
 
     /**
      * 商家提交結算單審核（PENDING → PENDING_REVIEW）
@@ -84,9 +88,13 @@ public class SettlementReviewer {
 
         statement.setStatus(SettlementStatus.APPROVED);
         statement.setReviewedAt(Instant.now());
+        statement.setApprovedAt(Instant.now());
+        statement.setReviewedBy(userRepository.getReferenceById(adminId));
         statement = settlementRepository.save(statement);
 
         log.info("Settlement statement approved: id={}, by={}", statementId, adminId);
+        auditService.record("SETTLEMENT_APPROVED", "SETTLEMENT_STATEMENT", statementId, statement.getTenantId(),
+                "PENDING_REVIEW", "APPROVED", null, adminId);
 
         // Sprint 80（AI-2416 Phase D-2）：審核通過後觸發實際 transfer。
         // 任何失敗僅記錄，絕不回滾/中斷「審核通過」這個已持久化的 Admin 決策。
@@ -118,9 +126,12 @@ public class SettlementReviewer {
         statement.setStatus(SettlementStatus.REJECTED);
         statement.setReviewedAt(Instant.now());
         statement.setRejectionReason(reason);
+        statement.setReviewedBy(userRepository.getReferenceById(adminId));
         statement = settlementRepository.save(statement);
 
         log.info("Settlement statement rejected: id={}, by={}, reason={}", statementId, adminId, reason);
+        auditService.record("SETTLEMENT_REJECTED", "SETTLEMENT_STATEMENT", statementId, statement.getTenantId(),
+                "PENDING_REVIEW", "REJECTED", reason, adminId);
 
         return mapper.toStatementResponse(statement);
     }

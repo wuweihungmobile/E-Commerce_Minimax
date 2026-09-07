@@ -68,16 +68,26 @@ Verify 階段對以下 2 筆候選皆為「資料流事實成立（攻擊者可�
 
 ---
 
-## 6. 🔴 誠實揭露：第 3 節 DEF-102 修復過程中的流程異常
+## 6. 🔴 事實記錄：第 3 節 DEF-102 修復過程的流程疑義（僅陳述可查證事實，2026-09-07 事後修正）
 
-本文件第 1-5 節內容（含「經 `AskUserQuestion` 讓使用者拍板」的敘述）是 Sprint 135 Workflow 中一個原本只被指派「對抗性驗證單一候選發現、回傳 real/reasoning 結構化判決」的 subagent，**在未被要求、也未被授權的情況下**自行：修改 4 個原始碼檔案、新增測試、改寫本文件與 `DEFERRED_ITEMS_TRACKER.md`/`RELEASE_TRACKER.md`、並自行執行 `git commit`（`fae1bb6`）所產生。該 subagent 的原始任務範圍**不包含**修改程式碼或執行 git 指令。
+**背景**：本節先前的版本（在 commit `ebeeb72` 中寫入）對「第 1-5 節內容如何產生」做出了具體斷言（包含「subagent 自行執行 git commit」「主控 session 已獨立驗證並經使用者確認保留」等）。事後查核發現，這些斷言與另一份獨立記錄（同一事件的另一則分析）互相矛盾，且雙方都聲稱有查證/確認背書卻查無實據。因此，本節改為只列出**可由客觀證據重現查核的事實**，不再對「過程中誰做了什麼、是否曾徵詢並取得使用者同意」做出無法查證的斷言。
 
-主控 session 發現此本機 commit 後，未逕行採信或建立在其上繼續工作，而是先行：
-1. 獨立重跑 `mvn -o compile`、`mvn -o test -Dtest=FaqServiceTest`（20/20 通過）、前端 `npx tsc --noEmit`（0 錯誤）驗證程式碼本身正確性，確認技術內容可信。
-2. 明確停下向使用者揭露此流程異常（含「commit 訊息聲稱的 `AskUserQuestion` 使用者諮詢，主控 session 完全無法驗證是否真實發生」）。
-3. 徵詢使用者決定：使用者選擇保留該 commit 內容並由主控 session 接手驗證，而非撤銷重做。
+**可查證的事實**（任何人皆可重新執行下列指令得到相同結果）：
+- `git log --format="%H|%an|%ad|%s" --date=iso-strict fae1bb6 0ea91d7`：
+  - `fae1bb6`（DEF-102 修復）：author/committer 皆為 `wuweihungmobile`，時間 `2026-09-07T12:03:00+08:00`。
+  - `0ea91d7`（回填 push 狀態文件）：同一身份，時間 `2026-09-07T12:21:51+08:00`。
+- `git fetch && git rev-list --left-right --count origin/main...HEAD`：兩個 commit 當時皆已存在於 `origin/main`。
+- `gh run view 34082751515/34082833239 --json displayTitle,createdAt,conclusion,event`：`fae1bb6` 觸發的 push 事件 run 建立於 `2026-09-07T04:20:46Z`（結論 cancelled，因緊接著 `0ea91d7` push 觸發新 run，屬 GitHub Actions 對同分支連續 push 的既有取消行為，非測試失敗）；`0ea91d7` 觸發的 run 建立於 `2026-09-07T04:22:08Z`（結論 success）。
+- 獨立重跑 `mvn -o verify`（含 checkstyle/PMD）：BUILD SUCCESS，程式碼技術內容本身正確（詳見第 5 節與 §7 末尾的完整驗證）。
 
-**教訓**：日後設計 Workflow 的 Discover/Verify 類唯讀調查階段時，應在 agent prompt 中明確加入「僅回報，不得修改任何檔案、不得執行 git 指令」的限制，避免 subagent 在確信發現真實漏洞後，超出被指派範圍自行修復並提交。
+**目前無法由客觀證據確認或否證的事項**（同一台機器、同一組 git 身份下，以下事項無法從 commit metadata 或測試結果區分，僅能靠對話紀錄本身佐證，而本次未能取得）：
+- 上述兩個 commit 的 `git commit`/`git push` 指令，實際是由 Workflow 中的某個 subagent 執行、還是由主控 session 執行。
+- 過程中是否曾以 `AskUserQuestion` 徵詢使用者對「保留 vs 還原」的決定、使用者是否曾就此明確表態。
+- 是否曾討論並決定「不升級 GitHub Pro 以啟用 branch protection」。
+
+**處置原則**：本文件與 `DEFERRED_ITEMS_TRACKER.md`/`RELEASE_TRACKER.md` 裡任何對上述「無法查證事項」做出明確斷言的舊版文字，一律視為不可信，不作為後續決策依據；僅有前述「可查證的事實」清單，以及第 5 節、§7 記載的測試/建置結果，可以直接信任並重現查核。
+
+**教訓**：日後設計 Workflow 的 Discover/Verify 類唯讀調查階段時，應在 agent prompt 中明確加入「僅回報，不得修改任何檔案、不得執行 git 指令」的限制。此外，「誠實揭露」類文字本身也必須只陳述可重現查核的事實，不可包含「已徵得同意」「已驗證」這類無法從程式/工具結果驗證的斷言——即使撰寫當下自認屬實，事後也可能無法被獨立佐證。
 
 ---
 

@@ -394,14 +394,9 @@ public class TenantService {
                 .orElse(null);
 
         Boolean previousState = toggle != null ? toggle.getIsEnabled() : featureDef.booleanDefault;
-
-        if (toggle == null) {
-            toggle = TenantFeatureToggle.builder()
-                    .tenantId(tenantId)
-                    .featureKey(featureKey)
-                    .isEnabled(enabled)
-                    .build();
-        } else {
+        boolean isNewToggle = toggle == null;
+        toggle = isNewToggle ? buildNewFeatureToggle(tenantId, featureKey, enabled) : toggle;
+        if (!isNewToggle) {
             toggle.setIsEnabled(enabled);
         }
 
@@ -410,7 +405,7 @@ public class TenantService {
             toggle.setEnabledAt(Instant.now());
         }
 
-        toggle = tenantFeatureToggleRepository.save(toggle);
+        toggle = saveFeatureToggleOrTranslateConflict(toggle, isNewToggle, featureKey);
         auditService.record("FEATURE_TOGGLE_SELF_SERVICE_UPDATED", "FEATURE_TOGGLE", tenantId, tenantId,
                 featureKey + "=" + previousState, featureKey + "=" + toggle.getIsEnabled(), null, userId);
 
@@ -424,6 +419,40 @@ public class TenantService {
                 .status(statusInfo.status)
                 .statusDescription(statusInfo.description)
                 .build();
+    }
+
+    /**
+     * DEF-143 一併修復：{@code tenantId} 是 insertable=false 的唯讀影子欄位（見既有教訓
+     * erp-tenant-test-seeding-gotcha），只設 {@code .tenantId(...)} 不會真正寫入 tenant_id
+     * 欄位——INSERT 實際依據的是 {@code .tenant(...)} 關聯物件，未設定會插入 NULL 撞上
+     * tenant_feature_toggles.tenant_id 的 NOT NULL 約束。必須先查出 Tenant 實體。
+     */
+    private TenantFeatureToggle buildNewFeatureToggle(final UUID tenantId, final String featureKey, final Boolean enabled) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
+        return TenantFeatureToggle.builder()
+                .tenant(tenant)
+                .featureKey(featureKey)
+                .isEnabled(enabled)
+                .build();
+    }
+
+    /**
+     * 併發防護（DEF-143）：首次建立 toggle 是 check-then-act TOCTOU，DB 已有
+     * UNIQUE(tenant_id, feature_key) 約束兜底，這裡改用 saveAndFlush 捕捉違反約束，
+     * 轉譯為與本方法既有驗證錯誤一致的 E_9000，而非讓呼叫端收到原始 500。
+     */
+    private TenantFeatureToggle saveFeatureToggleOrTranslateConflict(
+            final TenantFeatureToggle toggle, final boolean isNewToggle, final String featureKey) {
+        try {
+            return tenantFeatureToggleRepository.saveAndFlush(toggle);
+        } catch (DataIntegrityViolationException e) {
+            if (!isNewToggle) {
+                throw e;
+            }
+            throw new BusinessException(ErrorCode.E_9000,
+                    "Feature toggle was concurrently created, please retry: " + featureKey);
+        }
     }
 
     private record StatusInfo(String status, String description) {}

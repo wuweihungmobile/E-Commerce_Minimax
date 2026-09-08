@@ -362,7 +362,8 @@ class TenantServiceTest {
             when(tenantMemberRepository.existsByTenantIdAndUserId(TEST_TENANT_ID, TEST_USER_ID)).thenReturn(true);
             when(tenantFeatureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "RETAIL_ENABLED"))
                     .thenReturn(Optional.empty());
-            when(tenantFeatureToggleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TEST_TENANT_ID).build()));
+            when(tenantFeatureToggleRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
             tenantService.updateFeatureToggle(TEST_TENANT_ID, "RETAIL_ENABLED", false);
 
@@ -379,6 +380,7 @@ class TenantServiceTest {
             assertThrows(BusinessException.class,
                     () -> tenantService.updateFeatureToggle(TEST_TENANT_ID, "RETAIL_ENABLED", false));
             verify(tenantFeatureToggleRepository, never()).save(any());
+            verify(tenantFeatureToggleRepository, never()).saveAndFlush(any());
             verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
         }
     }

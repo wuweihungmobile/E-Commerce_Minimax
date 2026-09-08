@@ -312,4 +312,44 @@ class MediaServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_9000));
     }
+
+    // ── createCategory（Sprint 143，DEF-160） ────────────────────
+
+    @Test
+    @DisplayName("createCategory：根層級併發 TOCTOU 撞上 DB 唯一約束 → 轉譯為 E_3001，而非原始 500")
+    void createCategory_concurrentDuplicateRootName_translatesToE3001() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+        when(mediaCategoryRepository.existsByTenantIdAndNameAndParentIsNull(TENANT_ID, "Banners")).thenReturn(false);
+        when(mediaCategoryRepository.saveAndFlush(any(MediaCategory.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key"));
+
+        com.nextkey.ecommerce.api.dto.media.CreateMediaCategoryRequest request =
+                com.nextkey.ecommerce.api.dto.media.CreateMediaCategoryRequest.builder()
+                        .name("Banners")
+                        .build();
+
+        assertThatThrownBy(() -> mediaService.createCategory(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_3001));
+    }
+
+    @Test
+    @DisplayName("createCategory：子層級併發 TOCTOU 撞上 DB 唯一約束 → 轉譯為 E_3001")
+    void createCategory_concurrentDuplicateChildName_translatesToE3001() {
+        MediaCategory parent = buildCategory();
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+        when(mediaCategoryRepository.existsByTenantIdAndNameAndParentId(TENANT_ID, "Sub", CATEGORY_ID)).thenReturn(false);
+        when(mediaCategoryRepository.findByIdAndTenantId(CATEGORY_ID, TENANT_ID)).thenReturn(Optional.of(parent));
+        when(mediaCategoryRepository.saveAndFlush(any(MediaCategory.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key"));
+
+        com.nextkey.ecommerce.api.dto.media.CreateMediaCategoryRequest request =
+                com.nextkey.ecommerce.api.dto.media.CreateMediaCategoryRequest.builder()
+                        .name("Sub").parentId(CATEGORY_ID)
+                        .build();
+
+        assertThatThrownBy(() -> mediaService.createCategory(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_3001));
+    }
 }

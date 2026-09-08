@@ -373,7 +373,7 @@ class AdminServiceTest {
             when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
             when(featureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "NEW_FEATURE"))
                     .thenReturn(Optional.empty());
-            when(featureToggleRepository.save(any(TenantFeatureToggle.class))).thenAnswer(i -> {
+            when(featureToggleRepository.saveAndFlush(any(TenantFeatureToggle.class))).thenAnswer(i -> {
                 TenantFeatureToggle saved = i.getArgument(0);
                 saved.setId(TEST_TOGGLE_ID);
                 return saved;
@@ -403,7 +403,7 @@ class AdminServiceTest {
             when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
             when(featureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "EXISTING_FEATURE"))
                     .thenReturn(Optional.of(existingToggle));
-            when(featureToggleRepository.save(any(TenantFeatureToggle.class))).thenAnswer(i -> i.getArgument(0));
+            when(featureToggleRepository.saveAndFlush(any(TenantFeatureToggle.class))).thenAnswer(i -> i.getArgument(0));
 
             // Act
             AdminDto.FeatureToggleResponse response = adminService.setFeatureToggle(request);

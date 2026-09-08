@@ -8,9 +8,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -593,8 +595,10 @@ public class AdminService {
         Tenant tenant = tenantRepository.findById(request.getTenantId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
 
-        TenantFeatureToggle toggle = featureToggleRepository
-                .findByTenantIdAndFeatureKey(request.getTenantId(), request.getFeatureKey())
+        Optional<TenantFeatureToggle> existingToggle = featureToggleRepository
+                .findByTenantIdAndFeatureKey(request.getTenantId(), request.getFeatureKey());
+        boolean isNewToggle = existingToggle.isEmpty();
+        TenantFeatureToggle toggle = existingToggle
                 .orElse(TenantFeatureToggle.builder()
                         .tenant(tenant)
                         .featureKey(request.getFeatureKey())
@@ -609,7 +613,18 @@ public class AdminService {
             toggle.setDisabledAt(Instant.now());
         }
 
-        toggle = featureToggleRepository.save(toggle);
+        // 併發防護（DEF-148）：首次建立 toggle 是 check-then-act TOCTOU，DB 已有
+        // UNIQUE(tenant_id, feature_key) 約束兜底，這裡改用 saveAndFlush 捕捉違反約束，
+        // 轉譯為乾淨的 E_9000 而非讓呼叫端收到原始的 DataIntegrityViolationException。
+        try {
+            toggle = featureToggleRepository.saveAndFlush(toggle);
+        } catch (DataIntegrityViolationException e) {
+            if (!isNewToggle) {
+                throw e;
+            }
+            throw new BusinessException(ErrorCode.E_9000,
+                    "Feature toggle was concurrently created, please retry: " + request.getFeatureKey());
+        }
 
         log.info("Feature toggle updated: tenantId={}, feature={}, enabled={}",
                 request.getTenantId(), request.getFeatureKey(), request.getIsEnabled());

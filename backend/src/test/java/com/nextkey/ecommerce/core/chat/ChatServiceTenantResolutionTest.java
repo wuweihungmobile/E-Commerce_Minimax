@@ -80,11 +80,14 @@ class ChatServiceTenantResolutionTest {
 
     @BeforeEach
     void setUp() {
-        // 無既有對話 → 走新建流程
-        when(conversationRepository.findByInitiatorIdAndRecipientIdAndIsActiveTrue(USER_ID, RECIPIENT_ID))
+        // 無既有對話 → 走新建流程（lenient：DEF-118 併發搶占測試會覆寫為多次呼叫的序列回傳值）
+        org.mockito.Mockito.lenient()
+                .when(conversationRepository.findByInitiatorIdAndRecipientIdAndIsActiveTrue(USER_ID, RECIPIENT_ID))
                 .thenReturn(Optional.empty());
-        // save 回傳傳入的 conversation，供後續 toConversationResponse 使用
-        when(conversationRepository.save(any(Conversation.class)))
+        // saveAndFlush 回傳傳入的 conversation，供後續 toConversationResponse 使用
+        // （lenient：DEF-118 併發搶占測試會覆寫為拋出 DataIntegrityViolationException）
+        org.mockito.Mockito.lenient()
+                .when(conversationRepository.saveAndFlush(any(Conversation.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
     }
 
@@ -146,6 +149,25 @@ class ChatServiceTenantResolutionTest {
         assertThat(savedConversation().getTenantId()).isEqualTo(SYSTEM_TENANT);
     }
 
+    @Test
+    @DisplayName("DEF-118：併發搶占失敗（另一請求已建立同一對 active 對話）→ 回傳搶贏的既有對話，而非拋出原始例外")
+    void createConversation_concurrentClaimLost_returnsRaceWinner() {
+        Conversation raceWinner = Conversation.builder()
+                .id(UUID.randomUUID()).initiatorId(USER_ID).recipientId(RECIPIENT_ID)
+                .tenantId(SYSTEM_TENANT).isActive(true).initiatorUnreadCount(0).recipientUnreadCount(0)
+                .conversationType(Conversation.ConversationType.DIRECT)
+                .build();
+        when(conversationRepository.saveAndFlush(any(Conversation.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key"));
+        when(conversationRepository.findByInitiatorIdAndRecipientIdAndIsActiveTrue(USER_ID, RECIPIENT_ID))
+                .thenReturn(Optional.empty(), Optional.of(raceWinner));
+
+        ChatDto.ConversationResponse response = chatService.createConversation(request(null, null), USER_ID);
+
+        assertThat(response.getConversationId()).isEqualTo(raceWinner.getId());
+        verify(messageRepository, never()).save(any());
+    }
+
     private ChatDto.CreateConversationRequest request(final UUID listingId, final UUID orderId) {
         return ChatDto.CreateConversationRequest.builder()
                 .recipientId(RECIPIENT_ID)
@@ -154,10 +176,10 @@ class ChatServiceTenantResolutionTest {
                 .build();
     }
 
-    /** 擷取寫入 DB 的 Conversation（建立流程在無初始訊息時恰呼叫一次 save）。 */
+    /** 擷取寫入 DB 的 Conversation（建立流程在無初始訊息時恰呼叫一次 saveAndFlush）。 */
     private Conversation savedConversation() {
         ArgumentCaptor<Conversation> captor = ArgumentCaptor.forClass(Conversation.class);
-        verify(conversationRepository).save(captor.capture());
+        verify(conversationRepository).saveAndFlush(captor.capture());
         return captor.getValue();
     }
 }

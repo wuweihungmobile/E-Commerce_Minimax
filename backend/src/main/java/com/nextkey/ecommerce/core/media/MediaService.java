@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -112,7 +113,17 @@ public class MediaService {
                 .sortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0)
                 .build();
 
-        category = mediaCategoryRepository.save(category);
+        // 併發防護（DEF-160）：上面的 existsByTenantIdAndNameAndParentIsNull/
+        // existsByTenantIdAndNameAndParentId 檢查與這裡的 save() 之間是 TOCTOU，兩個併發
+        // 請求都可能通過檢查各自建立同名分類。V82 已對應兩種情況分別建立部分唯一索引，
+        // 這裡改用 saveAndFlush 捕捉違反約束，轉譯為與上面檢查一致的 E_3001。
+        try {
+            category = mediaCategoryRepository.saveAndFlush(category);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.E_3001, request.getParentId() == null
+                    ? "Category name already exists at root level"
+                    : "Category name already exists under this parent");
+        }
         log.info("Created media category: id={}, name={}, tenantId={}", category.getId(), category.getName(), tenantId);
 
         return toMediaCategoryDto(category);

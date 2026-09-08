@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -103,7 +104,19 @@ public class ChatService {
                 .isActive(true)
                 .build();
 
-        conversation = conversationRepository.save(conversation);
+        // 併發防護（DEF-118）：上面的檢查與這裡的 save() 之間是 TOCTOU，兩個併發「發起聊天」
+        // 請求都可能通過檢查各自建立對話。V81 已對 (initiator_id, recipient_id) WHERE
+        // is_active=true 建立部分唯一索引，這裡改用 saveAndFlush 捕捉違反約束；搶輸時比照
+        // 上面「已有對話則直接回傳」的既有語意，重新查詢後回傳該筆（而非送出初始訊息或拋錯），
+        // 不建立第二筆重複的 active 對話。
+        try {
+            conversation = conversationRepository.saveAndFlush(conversation);
+        } catch (DataIntegrityViolationException e) {
+            Conversation raceWinner = conversationRepository
+                    .findByInitiatorIdAndRecipientIdAndIsActiveTrue(userId, request.getRecipientId())
+                    .orElseThrow(() -> e);
+            return toConversationResponse(raceWinner);
+        }
 
         // 發送初始消息
         if (request.getInitialMessage() != null && !request.getInitialMessage().isBlank()) {

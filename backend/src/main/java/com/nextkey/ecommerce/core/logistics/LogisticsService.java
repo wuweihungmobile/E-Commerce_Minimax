@@ -74,6 +74,16 @@ public class LogisticsService {
             throw new BusinessException(ErrorCode.E_7001, "Active logistics already exists for this order");
         }
 
+        // 併發防護（DEF-123，claim-before-external-call）：上面「訂單狀態 + 無現存物流單」
+        // 的檢查與下面呼叫物流商 API、建立 Logistics 之間沒有原子保護，兩個併發請求都可能
+        // 通過檢查各自建立一筆 Logistics，違反「一張訂單至多一筆有效物流單」的業務不變量
+        // （logistics 表對 order_id 無唯一約束兜底）。先原子搶占 CONFIRMED→SHIPPING，
+        // 只有搶到的一方才繼續呼叫物流商 API 並建立 Logistics；搶輸沿用既有的 E_5001。
+        if (orderRepository.updateStatusIfCurrent(order.getId(), Order.OrderStatus.CONFIRMED, Order.OrderStatus.SHIPPING) == 0) {
+            throw new BusinessException(ErrorCode.E_5001,
+                    "Order must be CONFIRMED to create logistics, current status: " + order.getStatus());
+        }
+
         // 透過 Provider 策略取得追蹤號
         LogisticsProvider provider = logisticsProviderFactory.getProvider(request.getLogisticsProvider().name());
         LogisticsDto.ShipmentResult shipment = provider.createShipment(request);
@@ -91,10 +101,8 @@ public class LogisticsService {
 
         logistics = logisticsRepository.save(logistics);
 
-        // 同步更新訂單狀態：CONFIRMED → SHIPPING
-        order.setStatus(Order.OrderStatus.SHIPPING);
-        orderRepository.save(order);
-
+        // 訂單狀態 CONFIRMED → SHIPPING 已由上面的 updateStatusIfCurrent 原子完成，
+        // 不再需要「讀 order → setStatus → save」的全欄位覆寫式寫入。
         log.info("Logistics created: logisticsId={}, trackingNumber={}, order status -> SHIPPING",
                 logistics.getId(), logistics.getTrackingNumber());
 
@@ -203,11 +211,20 @@ public class LogisticsService {
         logistics = logisticsRepository.save(logistics);
 
         // 同步更新訂單狀態：物流 DELIVERED → 訂單 DELIVERED
+        // 併發防護（DEF-159）：改用條件式原子 UPDATE 取代「讀 order → setStatus → save()」，
+        // 避免與同一筆訂單上其他併發寫入（例如退款觸發的狀態轉換）交錯時，本次全欄位覆寫
+        // 悄悄復原對方已提交的欄位；搶輸僅代表訂單狀態已被其他流程推進，不影響物流本身已
+        // 記錄為 DELIVERED 的結果，故不拋例外，僅記錄無法同步。
         if (newStatus == Logistics.LogisticsStatus.DELIVERED) {
             orderRepository.findById(logistics.getOrderId()).ifPresent(order -> {
-                order.setStatus(Order.OrderStatus.DELIVERED);
-                orderRepository.save(order);
-                log.info("Order status updated to DELIVERED: orderId={}", order.getId());
+                int updated = orderRepository.updateStatusIfCurrent(
+                        order.getId(), order.getStatus(), Order.OrderStatus.DELIVERED);
+                if (updated > 0) {
+                    log.info("Order status updated to DELIVERED: orderId={}", order.getId());
+                } else {
+                    log.warn("Order status not synced to DELIVERED (concurrently changed): orderId={}, currentStatus={}",
+                            order.getId(), order.getStatus());
+                }
             });
         }
 
@@ -231,8 +248,16 @@ public class LogisticsService {
             throw new BusinessException(ErrorCode.E_7502, "Cannot cancel delivered logistics");
         }
 
+        // 併發防護（DEF-158）：原子 CAS 取代 setStatus+save，避免與併發的
+        // updateLogisticsStatus(DELIVERED) 交錯時，上面基於舊快照的檢查被繞過
+        // （見 LogisticsRepository.cancelIfNotStatus）。搶輸（已被併發推進為 DELIVERED）
+        // 沿用同一個 E_7502。
+        int updated = logisticsRepository.cancelIfNotStatus(
+                logisticsId, Logistics.LogisticsStatus.DELIVERED, Logistics.LogisticsStatus.RETURNED);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.E_7502, "Cannot cancel delivered logistics");
+        }
         logistics.setStatus(Logistics.LogisticsStatus.RETURNED);
-        logistics = logisticsRepository.save(logistics);
 
         log.info("Logistics cancelled: logisticsId={}, reason={}", logisticsId, reason);
         return toLogisticsResponse(logistics);

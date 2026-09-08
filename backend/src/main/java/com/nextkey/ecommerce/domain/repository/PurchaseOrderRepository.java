@@ -5,9 +5,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import jakarta.persistence.LockModeType;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -46,6 +49,20 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, UU
      * 依 tenant 和 ID 取得採購單
      */
     Optional<PurchaseOrder> findByIdAndTenantId(UUID id, UUID tenantId);
+
+    /**
+     * 併發防護（DEF-126/127/128/129）：以 {@code SELECT ... FOR UPDATE} 鎖住採購單列，
+     * 序列化 update/submit/receive/cancel 四個寫入方法對同一張採購單的「讀狀態→驗證→改欄位→
+     * save()」複合操作（比照既有 {@code UserRepository.findByIdForUpdate}/
+     * {@code KnowledgeArticleRepository.findByIdAndTenantIdForUpdate} 模式）。
+     * {@code receivePurchaseOrder} 額外涉及 {@code PurchaseOrderItem.receivedQuantity} 的
+     * 讀後寫，僅靠 DB 約束無法防止；悲觀鎖可一次同時解決狀態欄位全欄位覆寫與品項收貨數量
+     * 讀後寫兩類問題。與 {@code AdminService} 的 {@link #reviewIfStatus} 原生條件式 UPDATE
+     * 互不衝突：Postgres 的列鎖會讓兩者對同一列的寫入自然序列化。
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT po FROM PurchaseOrder po WHERE po.id = :id AND po.tenantId = :tenantId")
+    Optional<PurchaseOrder> findByIdAndTenantIdForUpdate(@Param("id") UUID id, @Param("tenantId") UUID tenantId);
 
     /**
      * 依 tenant 和 PO Number 取得採購單

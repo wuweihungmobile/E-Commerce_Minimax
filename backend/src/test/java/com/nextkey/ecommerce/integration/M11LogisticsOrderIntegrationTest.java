@@ -17,7 +17,6 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -112,7 +111,10 @@ class M11LogisticsOrderIntegrationTest {
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
         when(logisticsRepository.findByOrderId(ORDER_ID)).thenReturn(Collections.emptyList());
         when(logisticsRepository.save(any(Logistics.class))).thenReturn(savedLogistics);
-        when(orderRepository.save(any(Order.class))).thenReturn(order);
+        // DEF-123：訂單狀態轉換改為 claim-before-external-call 的原子 CAS，
+        // 取代原本的「setStatus(SHIPPING) → save()」。
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CONFIRMED, Order.OrderStatus.SHIPPING))
+                .thenReturn(1);
 
         String body = """
             {"orderId": "%s", "logisticsProvider": "HCT"}
@@ -127,11 +129,8 @@ class M11LogisticsOrderIntegrationTest {
                 .andExpect(jsonPath("$.data.trackingNumber").value("HCT-20260901-ABCD1234"))
                 .andExpect(jsonPath("$.data.status").value("PENDING"));
 
-        // 驗證訂單狀態已更新為 SHIPPING
-        ArgumentCaptor<Order> orderCaptor = ArgumentCaptor.forClass(Order.class);
-        verify(orderRepository).save(orderCaptor.capture());
-        assert orderCaptor.getValue().getStatus() == Order.OrderStatus.SHIPPING
-                : "Expected order status SHIPPING but was " + orderCaptor.getValue().getStatus();
+        // 驗證訂單狀態已透過原子 CAS 更新為 SHIPPING
+        verify(orderRepository).updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CONFIRMED, Order.OrderStatus.SHIPPING);
     }
 
     // ── IT-SHIP-002: 非 CONFIRMED 訂單 → 422 ─────────────────────
@@ -190,17 +189,16 @@ class M11LogisticsOrderIntegrationTest {
         when(logisticsRepository.findById(LOGISTICS_ID)).thenReturn(Optional.of(logistics));
         when(logisticsRepository.save(any(Logistics.class))).thenReturn(logistics);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
-        when(orderRepository.save(any(Order.class))).thenReturn(order);
+        // DEF-159：訂單狀態同步改為原子 CAS，取代原本的「setStatus(DELIVERED) → save()」。
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.SHIPPING, Order.OrderStatus.DELIVERED))
+                .thenReturn(1);
 
         mockMvc.perform(put(BASE_URL + "/" + LOGISTICS_ID + "/status")
                         .param("status", "DELIVERED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
-        // 驗證訂單狀態已更新為 DELIVERED
-        ArgumentCaptor<Order> orderCaptor = ArgumentCaptor.forClass(Order.class);
-        verify(orderRepository).save(orderCaptor.capture());
-        assert orderCaptor.getValue().getStatus() == Order.OrderStatus.DELIVERED
-                : "Expected order status DELIVERED but was " + orderCaptor.getValue().getStatus();
+        // 驗證訂單狀態已透過原子 CAS 更新為 DELIVERED
+        verify(orderRepository).updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.SHIPPING, Order.OrderStatus.DELIVERED);
     }
 }

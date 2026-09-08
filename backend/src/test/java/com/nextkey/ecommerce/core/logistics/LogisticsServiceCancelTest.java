@@ -2,7 +2,6 @@ package com.nextkey.ecommerce.core.logistics;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import java.util.Optional;
@@ -107,10 +106,32 @@ class LogisticsServiceCancelTest {
                 .build();
         when(logisticsRepository.findById(id)).thenReturn(Optional.of(inTransit));
         when(orderRepository.findById(orderId)).thenReturn(Optional.of(orderOfTenantA()));
-        when(logisticsRepository.save(any(Logistics.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(logisticsRepository.cancelIfNotStatus(id, Logistics.LogisticsStatus.DELIVERED, Logistics.LogisticsStatus.RETURNED))
+                .thenReturn(1);
 
         logisticsService.cancelLogistics(id, "客戶取消");
 
         assertThat(inTransit.getStatus()).isEqualTo(Logistics.LogisticsStatus.RETURNED);
+    }
+
+    @Test
+    @DisplayName("DEF-158：併發搶占失敗（已被 updateLogisticsStatus 推進為 DELIVERED）→ E_7502")
+    void cancel_concurrentlyDelivered_claimLost_throwsE7502() {
+        UUID id = UUID.randomUUID();
+        Logistics inTransit = Logistics.builder()
+                .orderId(orderId)
+                .status(Logistics.LogisticsStatus.IN_TRANSIT)
+                .logisticsProvider(Logistics.LogisticsProvider.HCT)
+                .build();
+        when(logisticsRepository.findById(id)).thenReturn(Optional.of(inTransit));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(orderOfTenantA()));
+        // 讀到的舊快照仍是 IN_TRANSIT（通過上層檢查），但 CAS 執行當下已被併發推進為 DELIVERED
+        when(logisticsRepository.cancelIfNotStatus(id, Logistics.LogisticsStatus.DELIVERED, Logistics.LogisticsStatus.RETURNED))
+                .thenReturn(0);
+
+        assertThatThrownBy(() -> logisticsService.cancelLogistics(id, "客戶取消"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_7502);
     }
 }

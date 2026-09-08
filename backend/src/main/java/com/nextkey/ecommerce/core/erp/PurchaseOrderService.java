@@ -166,7 +166,7 @@ public class PurchaseOrderService {
     public PurchaseOrderDto updatePurchaseOrder(final UUID id, final PurchaseOrderUpdateRequest request) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
-        PurchaseOrder po = findByIdAndTenantId(id, tenantId);
+        PurchaseOrder po = findByIdAndTenantIdForUpdate(id, tenantId);
 
         if (!po.canSubmit()) {
             throw new BusinessException(ErrorCode.E_7002,
@@ -195,7 +195,7 @@ public class PurchaseOrderService {
     public PurchaseOrderDto submitPurchaseOrder(final UUID id) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
-        PurchaseOrder po = findByIdAndTenantId(id, tenantId);
+        PurchaseOrder po = findByIdAndTenantIdForUpdate(id, tenantId);
 
         if (!po.canSubmit()) {
             throw new BusinessException(ErrorCode.E_7002,
@@ -230,7 +230,7 @@ public class PurchaseOrderService {
     public PurchaseOrderDto receivePurchaseOrder(final UUID id, final PurchaseOrderReceiveRequest request) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
-        PurchaseOrder po = findByIdAndTenantId(id, tenantId);
+        PurchaseOrder po = findByIdAndTenantIdForUpdate(id, tenantId);
 
         if (!po.canReceive()) {
             throw new BusinessException(ErrorCode.E_7002,
@@ -282,7 +282,7 @@ public class PurchaseOrderService {
     public PurchaseOrderDto cancelPurchaseOrder(final UUID id) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
-        PurchaseOrder po = findByIdAndTenantId(id, tenantId);
+        PurchaseOrder po = findByIdAndTenantIdForUpdate(id, tenantId);
 
         if (!po.canCancel()) {
             throw new BusinessException(ErrorCode.E_7002,
@@ -372,6 +372,17 @@ public class PurchaseOrderService {
      */
     private PurchaseOrder findByIdAndTenantId(final UUID id, final UUID tenantId) {
         return purchaseOrderRepository.findByIdAndTenantId(id, tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_7001,
+                        String.format("Purchase order not found: id=%s, tenantId=%s", id, tenantId)));
+    }
+
+    /**
+     * 依 ID 和 Tenant 取得 PO（悲觀鎖，DEF-126/127/128/129：供 update/submit/receive/cancel
+     * 四個寫入方法使用，序列化「讀狀態→驗證→改欄位→save()」複合操作，見
+     * {@link PurchaseOrderRepository#findByIdAndTenantIdForUpdate}）。
+     */
+    private PurchaseOrder findByIdAndTenantIdForUpdate(final UUID id, final UUID tenantId) {
+        return purchaseOrderRepository.findByIdAndTenantIdForUpdate(id, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_7001,
                         String.format("Purchase order not found: id=%s, tenantId=%s", id, tenantId)));
     }

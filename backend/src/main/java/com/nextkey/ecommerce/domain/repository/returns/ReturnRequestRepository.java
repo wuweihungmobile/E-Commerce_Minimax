@@ -15,6 +15,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.nextkey.ecommerce.domain.model.returns.ReturnRequest;
+import com.nextkey.ecommerce.domain.model.returns.ReturnRequest.ReturnStatus;
 
 /**
  * 退貨申請 Repository（Sprint 118，DEF-044）。
@@ -71,4 +72,32 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, UU
     int updateStatusIfCurrent(@Param("id") UUID id, @Param("expectedStatus") ReturnRequest.ReturnStatus expectedStatus,
             @Param("newStatus") ReturnRequest.ReturnStatus newStatus, @Param("receivedBy") UUID receivedBy,
             @Param("receivedAt") Instant receivedAt);
+
+    /**
+     * 併發防護（DEF-130/133，ReturnRequestService.approveReturn/rejectReturn）：條件式原子
+     * UPDATE，取代「讀 REQUESTED 檢查→setStatus/reviewedBy/reviewedAt→save」。approveReturn/
+     * rejectReturn（或兩者交錯）若近乎同時對同一筆退貨單觸發，只有真正搶到 REQUESTED→目標狀態
+     * 這個轉換的一邊會成功；搶輸代表已被另一併發呼叫轉為終態，回傳 0，呼叫端應拒絕本次請求，
+     * 而非用各自的舊快照互相覆寫審核結果與稽核欄位。比照 {@code PurchaseOrderRepository.
+     * reviewIfStatus} 既有模式。
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("UPDATE ReturnRequest r SET r.status = :newStatus, r.reviewedBy = :reviewedBy, "
+            + "r.reviewedAt = :reviewedAt, r.rejectionReason = :rejectionReason "
+            + "WHERE r.id = :id AND r.status = :expectedStatus")
+    int reviewIfStatus(@Param("id") UUID id, @Param("expectedStatus") ReturnStatus expectedStatus,
+            @Param("newStatus") ReturnStatus newStatus, @Param("reviewedBy") UUID reviewedBy,
+            @Param("reviewedAt") Instant reviewedAt, @Param("rejectionReason") String rejectionReason);
+
+    /**
+     * 併發防護（DEF-131，ReturnRequestService.cancelReturnRequest）：條件式原子 UPDATE
+     * （{@code WHERE status IN (:expectedStatuses)}），取代「讀 REQUESTED/APPROVED 檢查→
+     * setStatus(CANCELLED)→save」。避免與併發的 approveReturn/rejectReturn/receiveReturn
+     * 交錯時，買家撤回的判斷基於過期快照，讓已被店家推進到其他終態的退貨單被悄悄改回
+     * CANCELLED。回傳 0 代表搶輸，呼叫端應拒絕本次請求。
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("UPDATE ReturnRequest r SET r.status = :newStatus WHERE r.id = :id AND r.status IN :expectedStatuses")
+    int cancelIfStatusIn(@Param("id") UUID id, @Param("expectedStatuses") Collection<ReturnStatus> expectedStatuses,
+            @Param("newStatus") ReturnStatus newStatus);
 }

@@ -83,7 +83,9 @@ public class ReturnRequestService {
     @Transactional
     public ReturnDto.Response createReturnRequest(final ReturnDto.CreateRequest request) {
         UUID userId = TenantContext.getCurrentUser();
-        Order order = orderRepository.findById(request.getOrderId())
+        // 併發防護（DEF-132）：悲觀鎖序列化「讀各品項已申請退貨總量→比對可退量→建立新退貨單」，
+        // 見 OrderRepository.findByIdForUpdate。
+        Order order = orderRepository.findByIdForUpdate(request.getOrderId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
 
         // 買家限本人訂單（admin 放行），比照 PaymentStateService.checkOrderOwnership
@@ -139,8 +141,16 @@ public class ReturnRequestService {
     @Transactional
     public ReturnDto.Response cancelReturnRequest(final UUID returnId) {
         ReturnRequest request = loadForCustomer(returnId);
-        requireStatus(request, EnumSet.of(ReturnStatus.REQUESTED, ReturnStatus.APPROVED));
+        Set<ReturnStatus> cancellable = EnumSet.of(ReturnStatus.REQUESTED, ReturnStatus.APPROVED);
+        requireStatus(request, cancellable);
 
+        // 併發防護（DEF-131）：原子 CAS 取代 setStatus+save，避免與併發的
+        // approveReturn/rejectReturn/receiveReturn 交錯時，上面基於舊快照的狀態檢查被繞過。
+        int updated = returnRequestRepository.cancelIfStatusIn(returnId, cancellable, ReturnStatus.CANCELLED);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.E_5017,
+                    "Return request status changed concurrently, please retry: " + returnId);
+        }
         request.setStatus(ReturnStatus.CANCELLED);
         log.info("Return request cancelled by customer: returnNumber={}", request.getReturnNumber());
         return toResponse(returnRequestRepository.save(request));
@@ -161,9 +171,19 @@ public class ReturnRequestService {
         ReturnRequest request = loadForTenant(returnId);
         requireStatus(request, EnumSet.of(ReturnStatus.REQUESTED));
 
+        // 併發防護（DEF-130）：原子 CAS 取代 setStatus+save，避免與併發的
+        // rejectReturn/cancelReturnRequest 交錯時互相以舊快照覆寫審核結果。
+        UUID reviewedBy = TenantContext.getCurrentUser();
+        Instant reviewedAt = Instant.now();
+        int updated = returnRequestRepository.reviewIfStatus(returnId, ReturnStatus.REQUESTED,
+                ReturnStatus.APPROVED, reviewedBy, reviewedAt, null);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.E_5017,
+                    "Return request status changed concurrently, please retry: " + returnId);
+        }
         request.setStatus(ReturnStatus.APPROVED);
-        request.setReviewedBy(TenantContext.getCurrentUser());
-        request.setReviewedAt(Instant.now());
+        request.setReviewedBy(reviewedBy);
+        request.setReviewedAt(reviewedAt);
         log.info("Return request approved: returnNumber={}", request.getReturnNumber());
         ReturnDto.Response response = toResponse(returnRequestRepository.save(request));
         auditService.record("RETURN_APPROVED", "RETURN_REQUEST", request.getId(), request.getTenantId(),
@@ -177,10 +197,20 @@ public class ReturnRequestService {
         ReturnRequest request = loadForTenant(returnId);
         requireStatus(request, EnumSet.of(ReturnStatus.REQUESTED));
 
+        // 併發防護（DEF-133）：與 approveReturn 共用同一個 reviewIfStatus CAS，理由同上。
+        UUID reviewedBy = TenantContext.getCurrentUser();
+        Instant reviewedAt = Instant.now();
+        String rejectionReason = body != null ? body.getRejectionReason() : null;
+        int updated = returnRequestRepository.reviewIfStatus(returnId, ReturnStatus.REQUESTED,
+                ReturnStatus.REJECTED, reviewedBy, reviewedAt, rejectionReason);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.E_5017,
+                    "Return request status changed concurrently, please retry: " + returnId);
+        }
         request.setStatus(ReturnStatus.REJECTED);
-        request.setRejectionReason(body != null ? body.getRejectionReason() : null);
-        request.setReviewedBy(TenantContext.getCurrentUser());
-        request.setReviewedAt(Instant.now());
+        request.setRejectionReason(rejectionReason);
+        request.setReviewedBy(reviewedBy);
+        request.setReviewedAt(reviewedAt);
         log.info("Return request rejected: returnNumber={}", request.getReturnNumber());
         ReturnDto.Response response = toResponse(returnRequestRepository.save(request));
         auditService.record("RETURN_REJECTED", "RETURN_REQUEST", request.getId(), request.getTenantId(),

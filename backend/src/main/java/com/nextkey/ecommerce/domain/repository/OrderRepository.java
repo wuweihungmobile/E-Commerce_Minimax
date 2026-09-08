@@ -7,9 +7,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import jakarta.persistence.LockModeType;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -30,6 +33,19 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     @Query("UPDATE Order o SET o.status = :newStatus WHERE o.id = :id AND o.status = :expectedStatus")
     int updateStatusIfCurrent(@Param("id") UUID id, @Param("expectedStatus") Order.OrderStatus expectedStatus,
             @Param("newStatus") Order.OrderStatus newStatus);
+
+    /**
+     * 併發防護（DEF-132，ReturnRequestService.createReturnRequest）：以
+     * {@code SELECT ... FOR UPDATE} 鎖住訂單列，序列化「讀各品項已申請退貨總量→比對可退量→
+     * 建立新退貨單」這段複合操作。可退量檢查是跨列 SUM 聚合（{@code
+     * ReturnRequestRepository.sumActiveRequestedQtyByOrderItem}），無法用單一 DB 唯一約束
+     * 兜底；兩個併發的退貨申請都可能讀到彼此 INSERT 之前的舊總量，各自通過檢查，使同一
+     * 訂單品項的退貨申請總量超過實際購買量。比照既有 {@code UserRepository.findByIdForUpdate}
+     * 模式。
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Order o WHERE o.id = :id")
+    Optional<Order> findByIdForUpdate(@Param("id") UUID id);
 
     Page<Order> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
 

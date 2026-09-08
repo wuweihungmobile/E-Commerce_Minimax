@@ -16,6 +16,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -25,8 +26,15 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * DEF-150/DEF-151（CmsService.publishBanner/updateBanner）：{@code @DynamicUpdate}
+ * 讓 Hibernate 只把本次交易內實際被 setter 改動過的欄位組進 UPDATE SQL，避免併發的
+ * updateBanner（部分欄位）與 publishBanner（僅 status）互相悄悄覆寫對方已提交的欄位
+ * （比照 Sprint 136 §6 既有修法）。
+ */
 @Entity
 @Table(name = "cms_banners")
+@DynamicUpdate
 @Getter
 @Setter
 @NoArgsConstructor

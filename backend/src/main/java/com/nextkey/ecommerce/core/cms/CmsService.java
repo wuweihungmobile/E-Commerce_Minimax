@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -70,7 +71,15 @@ public class CmsService {
                 .sortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0)
                 .build();
 
-        page = contentPageRepository.save(page);
+        // 併發防護（DEF-149）：上面的 findBySlug 檢查與這裡的 save() 之間是 TOCTOU，
+        // 兩個併發請求都可能通過檢查各自 INSERT；DB 端已有 cms_pages_slug_key
+        // （V49 migration，全域 UNIQUE(slug)）兜底，這裡改用 saveAndFlush 捕捉違反約束
+        // 並轉譯為既有的 E_9005，避免第二個請求收到原始的 500。
+        try {
+            page = contentPageRepository.saveAndFlush(page);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.E_9005, "Slug already exists");
+        }
 
         log.info("Content page created: id={}, slug={}", page.getId(), page.getSlug());
 

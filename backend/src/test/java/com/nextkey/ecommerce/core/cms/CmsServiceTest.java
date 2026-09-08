@@ -20,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -126,7 +127,7 @@ class CmsServiceTest {
         TenantContext.setCurrentTenant(TENANT_A);
         TenantContext.setCurrentUser(USER_ID);
         when(contentPageRepository.findBySlug("about-us")).thenReturn(Optional.empty());
-        when(contentPageRepository.save(any(ContentPage.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(contentPageRepository.saveAndFlush(any(ContentPage.class))).thenAnswer(inv -> inv.getArgument(0));
 
         CmsDto.CreatePageRequest request = CmsDto.CreatePageRequest.builder()
                 .title("About Us").slug("about-us").pageType(CmsDto.PageType.ABOUT_US).build();
@@ -151,6 +152,23 @@ class CmsServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_9005);
         verify(contentPageRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("createPage：併發 TOCTOU 撞上 DB 唯一約束（DEF-149）→ 轉譯為 E_9005，而非原始 500")
+    void createPage_concurrentDuplicateSlug_translatesToE9005() {
+        TenantContext.setCurrentTenant(TENANT_A);
+        TenantContext.setCurrentUser(USER_ID);
+        when(contentPageRepository.findBySlug("race-slug")).thenReturn(Optional.empty());
+        when(contentPageRepository.saveAndFlush(any(ContentPage.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key"));
+
+        CmsDto.CreatePageRequest request = CmsDto.CreatePageRequest.builder()
+                .title("Race").slug("race-slug").pageType(CmsDto.PageType.CUSTOM).build();
+
+        assertThatThrownBy(() -> cmsService.createPage(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_9005);
     }
 
     // ========== updatePage ==========

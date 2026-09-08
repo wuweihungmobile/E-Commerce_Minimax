@@ -92,6 +92,8 @@ class SettlementReversalServiceTest {
         when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(paidStatement()));
         when(userRepository.findById(SUPER_ADMIN_ID))
                 .thenReturn(Optional.of(User.builder().id(SUPER_ADMIN_ID).build()));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PAID, SettlementStatus.REVERSAL_PENDING)).thenReturn(1);
         when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
         when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder().build());
 
@@ -174,6 +176,25 @@ class SettlementReversalServiceTest {
         assertThatThrownBy(() -> service.confirmReversal(STATEMENT_ID, CFO_ID, "CFO"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
+    }
+
+    @Test
+    @DisplayName("initiateReversal：併發搶占發起權失敗（快照仍是 PAID）→ E_5014，不覆寫發起人")
+    void initiateReversal_concurrentClaimLost_throwsE5014() {
+        // 🔴 Sprint 137 DEF-138：模擬 SUPER_ADMIN 與 CFO 幾乎同時發起逆轉，都通過「快照 status == PAID」
+        // 的前置檢查，但只有一邊真正搶到原子 CAS（另一邊 updateStatusIfCurrent 回傳 0）。
+        service = newService();
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(paidStatement()));
+        when(userRepository.findById(SUPER_ADMIN_ID))
+                .thenReturn(Optional.of(User.builder().id(SUPER_ADMIN_ID).build()));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PAID, SettlementStatus.REVERSAL_PENDING)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.initiateReversal(STATEMENT_ID, SUPER_ADMIN_ID, "SUPER_ADMIN", "reason"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
+
+        verify(settlementRepository, never()).save(any());
     }
 
     @Test

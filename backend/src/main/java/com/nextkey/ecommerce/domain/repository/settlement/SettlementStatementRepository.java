@@ -117,4 +117,20 @@ public interface SettlementStatementRepository extends JpaRepository<SettlementS
              WHERE id = :id
             """, nativeQuery = true)
     int applyRefundDeduction(@Param("id") UUID id, @Param("refundAmount") BigDecimal refundAmount);
+
+    /**
+     * 原子搶占結算單逆轉發起權（Sprint 137 DEF-138，PAID→REVERSAL_PENDING）。取代原本
+     * {@code SettlementReversalService.initiateReversal} 「讀 status → 檢查 PAID → setStatus →
+     * save」：兩個併發發起請求（可能分屬 SUPER_ADMIN 與 CFO 兩種不同角色）都可能通過上面的快照檢查，
+     * 後 commit 者會用自己的 initiator 身份悄悄覆寫先前已寫入的發起人/角色，可能讓
+     * {@code confirmReversal} 之後比對「確認人角色須與發起人不同」時，比對到的是被覆寫後的錯誤角色，
+     * 削弱雙重授權（dual authorization）的安全承諾。
+     *
+     * @return 受影響筆數；1 代表本次成功搶占發起權，0 代表已被另一併發請求搶先發起
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("UPDATE SettlementStatement s SET s.status = :newStatus WHERE s.id = :id AND s.status = :expectedStatus")
+    int updateStatusIfCurrent(@Param("id") UUID id,
+            @Param("expectedStatus") SettlementStatement.SettlementStatus expectedStatus,
+            @Param("newStatus") SettlementStatement.SettlementStatus newStatus);
 }

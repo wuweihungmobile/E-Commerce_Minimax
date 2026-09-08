@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -105,7 +106,15 @@ public class TenantService {
                 .submittedAt(Instant.now())
                 .build();
 
-        application = tenantApplicationRepository.save(application);
+        // 🔴 併發防護（Sprint 137 DEF-141）：上面的 existsByUserIdAndStatusIn 檢查與這裡的 save() 之間
+        // 沒有原子保護，兩個併發送出的申請都可能通過檢查各自 INSERT。V80 已對
+        // (user_id) WHERE status='PENDING' 建立部分唯一索引，這裡改用 saveAndFlush 捕捉違反約束，
+        // 第二個請求直接拒絕，而不是讓兩筆 PENDING 申請都寫入成功。
+        try {
+            application = tenantApplicationRepository.saveAndFlush(application);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.E_4092, "Store application already exists");
+        }
         log.info("Tenant application created: {} for user: {}", application.getId(), userId);
 
         return TenantApplicationResponse.builder()
@@ -548,6 +557,12 @@ public class TenantService {
             if (member.getStatus() != TenantMember.MemberStatus.REMOVED) {
                 throw new BusinessException(ErrorCode.E_4092, "User is already a member or has a pending invite");
             }
+            // 🔴 併發防護（Sprint 137 DEF-165）：見 TenantMemberRepository.updateStatusIfCurrent 說明。
+            int claimed = tenantMemberRepository.updateStatusIfCurrent(member.getId(),
+                    TenantMember.MemberStatus.REMOVED, TenantMember.MemberStatus.INVITED);
+            if (claimed == 0) {
+                throw new BusinessException(ErrorCode.E_4092, "User is already a member or has a pending invite");
+            }
             member.setStatus(TenantMember.MemberStatus.INVITED);
             member.setStoreRole(storeRole);
             member.setInvitedBy(invitedBy);
@@ -586,6 +601,13 @@ public class TenantService {
                 .filter(m -> m.getStatus() == TenantMember.MemberStatus.INVITED)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2002, "Invite not found"));
 
+        // 🔴 併發防護（Sprint 137 DEF-140）：與 declineInvite/removeMember 共用同一份邀請/成員紀錄，
+        // 見 TenantMemberRepository.updateStatusIfCurrent 說明。
+        int claimed = tenantMemberRepository.updateStatusIfCurrent(member.getId(),
+                TenantMember.MemberStatus.INVITED, TenantMember.MemberStatus.ACTIVE);
+        if (claimed == 0) {
+            throw new BusinessException(ErrorCode.E_2002, "Invite not found");
+        }
         member.setStatus(TenantMember.MemberStatus.ACTIVE);
         member.setJoinedAt(Instant.now());
         member = tenantMemberRepository.save(member);
@@ -615,6 +637,12 @@ public class TenantService {
                 .filter(m -> m.getStatus() == TenantMember.MemberStatus.INVITED)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2002, "Invite not found"));
 
+        // 🔴 併發防護（Sprint 137 DEF-164）：見 acceptInvite 同一原則說明。
+        int claimed = tenantMemberRepository.updateStatusIfCurrent(member.getId(),
+                TenantMember.MemberStatus.INVITED, TenantMember.MemberStatus.REMOVED);
+        if (claimed == 0) {
+            throw new BusinessException(ErrorCode.E_2002, "Invite not found");
+        }
         member.setStatus(TenantMember.MemberStatus.REMOVED);
         tenantMemberRepository.save(member);
         log.info("Member declined invite: tenantId={}, userId={}", tenantId, currentUserId);
@@ -711,8 +739,13 @@ public class TenantService {
         }
 
         String oldRole = member.getStoreRole().name();
+        // 🔴 併發防護（Sprint 137 DEF-144）：見 TenantMemberRepository.updateRoleIfNotRemoved 說明。
+        int updated = tenantMemberRepository.updateRoleIfNotRemoved(member.getId(), storeRole,
+                TenantMember.MemberStatus.REMOVED);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.E_2002, "Member not found");
+        }
         member.setStoreRole(storeRole);
-        member = tenantMemberRepository.save(member);
         log.info("Member role updated: tenantId={}, userId={}, newRole={}", tenantId, userId, newRole);
         auditService.record("STORE_MEMBER_ROLE_CHANGED", "TENANT_MEMBER", member.getId(), tenantId,
                 oldRole, storeRole.name(), null, currentUserId);
@@ -750,7 +783,15 @@ public class TenantService {
             throw new BusinessException(ErrorCode.E_4031, "Cannot remove the store owner");
         }
 
-        String oldStatus = member.getStatus().name();
+        TenantMember.MemberStatus currentStatus = member.getStatus();
+        String oldStatus = currentStatus.name();
+        // 🔴 併發防護（Sprint 137 DEF-142）：見 acceptInvite 同一原則說明——被移除成員可能因併發的
+        // acceptInvite（INVITED→ACTIVE）而「復活」，改用條件式原子 UPDATE 只允許轉出當下讀到的狀態。
+        int claimed = tenantMemberRepository.updateStatusIfCurrent(member.getId(),
+                currentStatus, TenantMember.MemberStatus.REMOVED);
+        if (claimed == 0) {
+            throw new BusinessException(ErrorCode.E_2002, "Member not found");
+        }
         member.setStatus(TenantMember.MemberStatus.REMOVED);
         tenantMemberRepository.save(member);
         log.info("Member removed from tenant: tenantId={}, userId={}, removedBy={}", tenantId, userId, currentUserId);

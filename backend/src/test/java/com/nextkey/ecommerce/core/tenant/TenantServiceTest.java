@@ -82,7 +82,7 @@ class TenantServiceTest {
                 .submittedAt(Instant.now())
                 .build();
 
-        when(tenantApplicationRepository.save(any(TenantApplication.class)))
+        when(tenantApplicationRepository.saveAndFlush(any(TenantApplication.class)))
                 .thenReturn(savedApplication);
 
         // Act
@@ -92,7 +92,7 @@ class TenantServiceTest {
         assertNotNull(response);
         assertEquals("Test Store", response.getStoreName());
         assertEquals("PENDING", response.getStatus());
-        verify(tenantApplicationRepository, times(1)).save(any(TenantApplication.class));
+        verify(tenantApplicationRepository, times(1)).saveAndFlush(any(TenantApplication.class));
     }
 
     @Test
@@ -117,7 +117,7 @@ class TenantServiceTest {
 
         when(tenantApplicationRepository.existsByUserIdAndStatusIn(eq(TEST_USER_ID), anyList()))
                 .thenReturn(false);
-        when(tenantApplicationRepository.save(any(TenantApplication.class)))
+        when(tenantApplicationRepository.saveAndFlush(any(TenantApplication.class)))
                 .thenReturn(savedApplication);
 
         // Act
@@ -147,6 +147,28 @@ class TenantServiceTest {
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> tenantService.createApplication(request, TEST_USER_ID));
         assertTrue(exception.getMessage().contains("Store application already exists"));
+    }
+
+    @Test
+    @Order(4)
+    @DisplayName("createApplication: 併發送出時 existsByUserIdAndStatusIn 快照通過，但唯一索引搶輸 → 拋出 E_4092")
+    void createApplication_concurrentDuplicate_throwsE4092() {
+        // 🔴 Sprint 137 DEF-141：模擬同一使用者幾乎同時送出兩次申請，都通過「快照檢查目前沒有 PENDING
+        // 申請」，但只有一邊真正搶到 V80 新增的部分唯一索引，另一邊 saveAndFlush 拋出違反約束例外。
+        TenantApplicationRequest request = TenantApplicationRequest.builder()
+                .storeName("Racing Store")
+                .businessType("RETAIL_ONLY")
+                .contactEmail("racing@example.com")
+                .build();
+
+        when(tenantApplicationRepository.existsByUserIdAndStatusIn(eq(TEST_USER_ID), anyList()))
+                .thenReturn(false);
+        when(tenantApplicationRepository.saveAndFlush(any(TenantApplication.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key"));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> tenantService.createApplication(request, TEST_USER_ID));
+        assertEquals(com.nextkey.ecommerce.shared.exception.ErrorCode.E_4092, exception.getErrorCode());
     }
 
     // ── updateTenant Tests ──────────────────────────────────────────
@@ -445,6 +467,8 @@ class TenantServiceTest {
                     .status(TenantMember.MemberStatus.REMOVED).build();
             when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
                     .thenReturn(Optional.of(removedMember));
+            when(tenantMemberRepository.updateStatusIfCurrent(existingId,
+                    TenantMember.MemberStatus.REMOVED, TenantMember.MemberStatus.INVITED)).thenReturn(1);
             when(tenantMemberRepository.save(any(TenantMember.class))).thenAnswer(inv -> inv.getArgument(0));
 
             tenantService.inviteMember(TEST_TENANT_ID, INVITEE_ID, "STORE_STAFF", OWNER_ID);
@@ -453,6 +477,27 @@ class TenantServiceTest {
                     existingId.equals(m.getId()) && m.getStatus() == TenantMember.MemberStatus.INVITED));
             verify(auditService).record(eq("STORE_MEMBER_INVITED"), eq("TENANT_MEMBER"), eq(existingId), eq(TEST_TENANT_ID),
                     isNull(), eq("STORE_STAFF"), isNull(), eq(OWNER_ID));
+        }
+
+        @Test
+        @DisplayName("inviteMember：重新邀請時併發搶占失敗（快照仍是 REMOVED）→ E_4092，不寫入")
+        void inviteMember_concurrentReinviteClaimLost_throwsE4092() {
+            // 🔴 Sprint 137 DEF-165：模擬同一被移除成員被併發重新邀請兩次。
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(buildInvitee()));
+            UUID existingId = UUID.randomUUID();
+            TenantMember removedMember = TenantMember.builder()
+                    .id(existingId).tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.REMOVED).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(removedMember));
+            when(tenantMemberRepository.updateStatusIfCurrent(existingId,
+                    TenantMember.MemberStatus.REMOVED, TenantMember.MemberStatus.INVITED)).thenReturn(0);
+
+            assertThrows(BusinessException.class,
+                    () -> tenantService.inviteMember(TEST_TENANT_ID, INVITEE_ID, "STORE_STAFF", OWNER_ID));
+            verify(tenantMemberRepository, never()).save(any());
         }
 
         @Test
@@ -471,11 +516,14 @@ class TenantServiceTest {
         @DisplayName("acceptInvite：成功接受 → 狀態轉為 ACTIVE 並填入 joinedAt")
         void acceptInvite_success_activatesMembership() {
             TenantContext.setCurrentUser(INVITEE_ID);
+            UUID memberRowId = UUID.randomUUID();
             TenantMember invited = TenantMember.builder()
-                    .tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .id(memberRowId).tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
                     .status(TenantMember.MemberStatus.INVITED).storeRole(TenantMember.StoreRole.STORE_STAFF).build();
             when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
                     .thenReturn(Optional.of(invited));
+            when(tenantMemberRepository.updateStatusIfCurrent(memberRowId,
+                    TenantMember.MemberStatus.INVITED, TenantMember.MemberStatus.ACTIVE)).thenReturn(1);
             when(tenantMemberRepository.save(any(TenantMember.class))).thenAnswer(inv -> inv.getArgument(0));
             when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(buildInvitee()));
 
@@ -486,6 +534,25 @@ class TenantServiceTest {
             // Sprint 99：接受邀請需同步 User.role，否則下次登入 JWT 仍拿不到 StoreStaff 權限
             // （Sprint 97/98 對 StoreOwner 的同類修復，這裡是 StoreStaff 的孿生案例）。
             verify(userRepository).save(argThat(u -> u.getRole() == User.UserRole.STORE_STAFF));
+        }
+
+        @Test
+        @DisplayName("acceptInvite：併發搶占失敗（快照仍是 INVITED，已被 declineInvite 搶先）→ E_2002")
+        void acceptInvite_concurrentClaimLost_throwsE2002() {
+            // 🔴 Sprint 137 DEF-140：模擬同一份邀請幾乎同時被接受與拒絕。
+            TenantContext.setCurrentUser(INVITEE_ID);
+            UUID memberRowId = UUID.randomUUID();
+            TenantMember invited = TenantMember.builder()
+                    .id(memberRowId).tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.INVITED).storeRole(TenantMember.StoreRole.STORE_STAFF).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(invited));
+            when(tenantMemberRepository.updateStatusIfCurrent(memberRowId,
+                    TenantMember.MemberStatus.INVITED, TenantMember.MemberStatus.ACTIVE)).thenReturn(0);
+
+            assertThrows(BusinessException.class, () -> tenantService.acceptInvite(TEST_TENANT_ID));
+            verify(tenantMemberRepository, never()).save(any());
+            verify(userRepository, never()).save(any());
         }
 
         @Test
@@ -514,16 +581,37 @@ class TenantServiceTest {
         @DisplayName("declineInvite：成功拒絕 → 狀態轉為 REMOVED")
         void declineInvite_success_marksRemoved() {
             TenantContext.setCurrentUser(INVITEE_ID);
+            UUID memberRowId = UUID.randomUUID();
             TenantMember invited = TenantMember.builder()
-                    .tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .id(memberRowId).tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
                     .status(TenantMember.MemberStatus.INVITED).build();
             when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
                     .thenReturn(Optional.of(invited));
+            when(tenantMemberRepository.updateStatusIfCurrent(memberRowId,
+                    TenantMember.MemberStatus.INVITED, TenantMember.MemberStatus.REMOVED)).thenReturn(1);
             when(tenantMemberRepository.save(any(TenantMember.class))).thenAnswer(inv -> inv.getArgument(0));
 
             tenantService.declineInvite(TEST_TENANT_ID);
 
             verify(tenantMemberRepository).save(argThat(m -> m.getStatus() == TenantMember.MemberStatus.REMOVED));
+        }
+
+        @Test
+        @DisplayName("declineInvite：併發搶占失敗（快照仍是 INVITED，已被 acceptInvite 搶先）→ E_2002")
+        void declineInvite_concurrentClaimLost_throwsE2002() {
+            // 🔴 Sprint 137 DEF-164：與 acceptInvite 同一原則，見該處說明。
+            TenantContext.setCurrentUser(INVITEE_ID);
+            UUID memberRowId = UUID.randomUUID();
+            TenantMember invited = TenantMember.builder()
+                    .id(memberRowId).tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.INVITED).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(invited));
+            when(tenantMemberRepository.updateStatusIfCurrent(memberRowId,
+                    TenantMember.MemberStatus.INVITED, TenantMember.MemberStatus.REMOVED)).thenReturn(0);
+
+            assertThrows(BusinessException.class, () -> tenantService.declineInvite(TEST_TENANT_ID));
+            verify(tenantMemberRepository, never()).save(any());
         }
 
         @Test
@@ -550,11 +638,14 @@ class TenantServiceTest {
         void removeMember_success_softDeletes() {
             when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
                     TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            UUID memberRowId = UUID.randomUUID();
             TenantMember activeMember = TenantMember.builder()
-                    .tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .id(memberRowId).tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
                     .status(TenantMember.MemberStatus.ACTIVE).storeRole(TenantMember.StoreRole.STORE_STAFF).build();
             when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
                     .thenReturn(Optional.of(activeMember));
+            when(tenantMemberRepository.updateStatusIfCurrent(memberRowId,
+                    TenantMember.MemberStatus.ACTIVE, TenantMember.MemberStatus.REMOVED)).thenReturn(1);
             when(tenantMemberRepository.save(any(TenantMember.class))).thenAnswer(inv -> inv.getArgument(0));
 
             tenantService.removeMember(TEST_TENANT_ID, INVITEE_ID);
@@ -563,6 +654,26 @@ class TenantServiceTest {
             verify(tenantMemberRepository, never()).delete(any());
             verify(auditService).record(eq("STORE_MEMBER_REMOVED"), eq("TENANT_MEMBER"), any(), eq(TEST_TENANT_ID),
                     eq("ACTIVE"), eq("REMOVED"), isNull(), eq(OWNER_ID));
+        }
+
+        @Test
+        @DisplayName("removeMember：併發搶占失敗（狀態已被另一併發請求改變）→ E_2002，不記錄稽核")
+        void removeMember_concurrentClaimLost_throwsE2002() {
+            // 🔴 Sprint 137 DEF-142：模擬移除請求與另一併發操作（例如 acceptInvite）幾乎同時發生。
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            UUID memberRowId = UUID.randomUUID();
+            TenantMember activeMember = TenantMember.builder()
+                    .id(memberRowId).tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.ACTIVE).storeRole(TenantMember.StoreRole.STORE_STAFF).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(activeMember));
+            when(tenantMemberRepository.updateStatusIfCurrent(memberRowId,
+                    TenantMember.MemberStatus.ACTIVE, TenantMember.MemberStatus.REMOVED)).thenReturn(0);
+
+            assertThrows(BusinessException.class, () -> tenantService.removeMember(TEST_TENANT_ID, INVITEE_ID));
+            verify(tenantMemberRepository, never()).save(any());
+            verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
         }
 
         @Test
@@ -576,13 +687,34 @@ class TenantServiceTest {
                     .status(TenantMember.MemberStatus.ACTIVE).storeRole(TenantMember.StoreRole.STORE_STAFF).build();
             when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
                     .thenReturn(Optional.of(staffMember));
-            when(tenantMemberRepository.save(any(TenantMember.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(tenantMemberRepository.updateRoleIfNotRemoved(memberRowId, TenantMember.StoreRole.STORE_STAFF,
+                    TenantMember.MemberStatus.REMOVED)).thenReturn(1);
             when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(buildInvitee()));
 
             tenantService.updateMemberRole(TEST_TENANT_ID, INVITEE_ID, "STORE_STAFF");
 
             verify(auditService).record(eq("STORE_MEMBER_ROLE_CHANGED"), eq("TENANT_MEMBER"), eq(memberRowId), eq(TEST_TENANT_ID),
                     eq("STORE_STAFF"), eq("STORE_STAFF"), isNull(), eq(OWNER_ID));
+        }
+
+        @Test
+        @DisplayName("updateMemberRole：併發搶占失敗（成員已被另一併發請求移除）→ E_2002，不記錄稽核")
+        void updateMemberRole_concurrentlyRemoved_throwsE2002() {
+            // 🔴 Sprint 137 DEF-144：模擬角色變更與另一併發的 removeMember 幾乎同時發生。
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            UUID memberRowId = UUID.randomUUID();
+            TenantMember staffMember = TenantMember.builder()
+                    .id(memberRowId).tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.ACTIVE).storeRole(TenantMember.StoreRole.STORE_STAFF).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(staffMember));
+            when(tenantMemberRepository.updateRoleIfNotRemoved(memberRowId, TenantMember.StoreRole.STORE_STAFF,
+                    TenantMember.MemberStatus.REMOVED)).thenReturn(0);
+
+            assertThrows(BusinessException.class,
+                    () -> tenantService.updateMemberRole(TEST_TENANT_ID, INVITEE_ID, "STORE_STAFF"));
+            verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
         }
 
         @Test

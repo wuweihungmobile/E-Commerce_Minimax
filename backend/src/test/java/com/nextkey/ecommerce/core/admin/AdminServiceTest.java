@@ -301,6 +301,58 @@ class AdminServiceTest {
         }
     }
 
+    // ── updateTenantStatus Tests（Sprint 137 DEF-117：新增，先前此方法無測試覆蓋）───────
+
+    @Nested
+    @DisplayName("updateTenantStatus()")
+    class UpdateTenantStatus {
+
+        @Test
+        @DisplayName("ACTIVE→SUSPENDED：成功轉換並下架該租戶所有 Listing")
+        void updateTenantStatus_activeToSuspended_success() {
+            Tenant tenant = buildTenant();
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+            when(tenantRepository.updateStatusIfCurrent(TEST_TENANT_ID,
+                    Tenant.TenantStatus.ACTIVE, Tenant.TenantStatus.SUSPENDED)).thenReturn(1);
+            when(listingRepository.findByTenantId(TEST_TENANT_ID)).thenReturn(java.util.List.of());
+
+            AdminDto.TenantStatusUpdateRequest request = AdminDto.TenantStatusUpdateRequest.builder()
+                    .status("SUSPENDED")
+                    .reason("違反平台規則")
+                    .build();
+
+            AdminDto.TenantStatusUpdateResponse response = adminService.updateTenantStatus(TEST_TENANT_ID, request);
+
+            assertThat(response.getPreviousStatus()).isEqualTo("ACTIVE");
+            assertThat(response.getNewStatus()).isEqualTo("SUSPENDED");
+            verify(tenantRepository).updateStatusIfCurrent(TEST_TENANT_ID,
+                    Tenant.TenantStatus.ACTIVE, Tenant.TenantStatus.SUSPENDED);
+        }
+
+        @Test
+        @DisplayName("併發搶占狀態轉換失敗（狀態已被另一併發請求改變）→ E-9000，不下架 Listing")
+        void updateTenantStatus_concurrentClaimLost_throwsE9000() {
+            // 🔴 Sprint 137 DEF-117：模擬兩個 SUPER_ADMIN 併發下達不同狀態轉換都通過快照檢查，
+            // 但只有一邊真正搶到原子 CAS。
+            Tenant tenant = buildTenant();
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+            when(tenantRepository.updateStatusIfCurrent(TEST_TENANT_ID,
+                    Tenant.TenantStatus.ACTIVE, Tenant.TenantStatus.SUSPENDED)).thenReturn(0);
+
+            AdminDto.TenantStatusUpdateRequest request = AdminDto.TenantStatusUpdateRequest.builder()
+                    .status("SUSPENDED")
+                    .reason("違反平台規則")
+                    .build();
+
+            assertThatThrownBy(() -> adminService.updateTenantStatus(TEST_TENANT_ID, request))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_9000));
+
+            verify(listingRepository, never()).findByTenantId(any());
+            verify(auditLogRepository, never()).save(any());
+        }
+    }
+
     // ── setFeatureToggle Tests ─────────────────────────────────────────
 
     @Nested
@@ -1032,6 +1084,9 @@ class AdminServiceTest {
         void approveTenantApplication_success_createsTenantAndStoreOwner() {
             TenantApplication application = buildPendingApplication();
             when(tenantApplicationRepository.findById(APPLICATION_ID)).thenReturn(Optional.of(application));
+            when(tenantApplicationRepository.updateStatusIfCurrent(eq(APPLICATION_ID),
+                    eq(TenantApplication.ApplicationStatus.PENDING),
+                    eq(TenantApplication.ApplicationStatus.APPROVED))).thenReturn(1);
             when(tenantRepository.existsBySlug(any())).thenReturn(false);
             when(tenantRepository.save(any(Tenant.class))).thenAnswer(inv -> {
                 Tenant t = inv.getArgument(0);
@@ -1093,6 +1148,25 @@ class AdminServiceTest {
         }
 
         @Test
+        @DisplayName("approveTenantApplication：併發搶占審核權失敗（快照仍是 PENDING）→ E-2007，不建立 Tenant")
+        void approveTenantApplication_concurrentClaimLost_throwsE2007() {
+            // 🔴 Sprint 137 DEF-114：模擬兩個併發核准請求都通過「快照 status == PENDING」的前置檢查，
+            // 但只有一邊真正搶到原子 CAS（另一邊 updateStatusIfCurrent 回傳 0）。
+            TenantApplication application = buildPendingApplication();
+            when(tenantApplicationRepository.findById(APPLICATION_ID)).thenReturn(Optional.of(application));
+            when(tenantApplicationRepository.updateStatusIfCurrent(eq(APPLICATION_ID),
+                    eq(TenantApplication.ApplicationStatus.PENDING),
+                    eq(TenantApplication.ApplicationStatus.APPROVED))).thenReturn(0);
+
+            assertThatThrownBy(() -> adminService.approveTenantApplication(APPLICATION_ID, REVIEWER_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_2007));
+
+            verify(tenantRepository, never()).save(any());
+            verify(tenantMemberRepository, never()).save(any());
+        }
+
+        @Test
         @DisplayName("approveTenantApplication：Guest 申請（userId 為 null）→ E-2008")
         void approveTenantApplication_guestApplication_throwsE2008() {
             TenantApplication application = buildPendingApplication();
@@ -1111,6 +1185,9 @@ class AdminServiceTest {
         void rejectTenantApplication_success_doesNotCreateTenant() {
             TenantApplication application = buildPendingApplication();
             when(tenantApplicationRepository.findById(APPLICATION_ID)).thenReturn(Optional.of(application));
+            when(tenantApplicationRepository.updateStatusIfCurrent(eq(APPLICATION_ID),
+                    eq(TenantApplication.ApplicationStatus.PENDING),
+                    eq(TenantApplication.ApplicationStatus.REJECTED))).thenReturn(1);
             when(tenantApplicationRepository.save(any(TenantApplication.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
 
@@ -1131,6 +1208,24 @@ class AdminServiceTest {
             TenantApplication application = buildPendingApplication();
             application.setStatus(TenantApplication.ApplicationStatus.REJECTED);
             when(tenantApplicationRepository.findById(APPLICATION_ID)).thenReturn(Optional.of(application));
+
+            AdminDto.TenantApplicationRejectRequest request = AdminDto.TenantApplicationRejectRequest.builder()
+                    .reason("重複審核").build();
+
+            assertThatThrownBy(() -> adminService.rejectTenantApplication(APPLICATION_ID, REVIEWER_ID, request))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_2007));
+        }
+
+        @Test
+        @DisplayName("rejectTenantApplication：併發搶占審核權失敗（快照仍是 PENDING）→ E-2007")
+        void rejectTenantApplication_concurrentClaimLost_throwsE2007() {
+            // 🔴 Sprint 137 DEF-115：與 approveTenantApplication 同一原則，見該處說明。
+            TenantApplication application = buildPendingApplication();
+            when(tenantApplicationRepository.findById(APPLICATION_ID)).thenReturn(Optional.of(application));
+            when(tenantApplicationRepository.updateStatusIfCurrent(eq(APPLICATION_ID),
+                    eq(TenantApplication.ApplicationStatus.PENDING),
+                    eq(TenantApplication.ApplicationStatus.REJECTED))).thenReturn(0);
 
             AdminDto.TenantApplicationRejectRequest request = AdminDto.TenantApplicationRejectRequest.builder()
                     .reason("重複審核").build();

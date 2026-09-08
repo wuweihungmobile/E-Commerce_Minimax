@@ -391,9 +391,13 @@ public class AdminService {
 
         String previousStatus = currentStatus.name();
 
-        // 更新狀態
+        // 🔴 併發防護（Sprint 137 DEF-117）：見 TenantRepository.updateStatusIfCurrent 說明。
+        int updated = tenantRepository.updateStatusIfCurrent(tenantId, currentStatus, newStatus);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.E_9000,
+                    "Tenant status changed concurrently, please retry: " + tenantId);
+        }
         tenant.setStatus(newStatus);
-        tenantRepository.save(tenant);
 
         // 如果是 SUSPENDED，自動下架所有 Listings
         if (newStatus == Tenant.TenantStatus.SUSPENDED) {
@@ -845,6 +849,16 @@ public class AdminService {
             throw new BusinessException(ErrorCode.E_2008);
         }
 
+        // 🔴 併發防護（Sprint 137 DEF-114）：先原子搶占審核權（PENDING→APPROVED），成功才建立
+        // Tenant/membership；避免兩個併發核准請求都通過上面的快照檢查，各自建立出兩個獨立的
+        // ACTIVE Tenant + STORE_OWNER membership（孤兒資源）。
+        int claimed = tenantApplicationRepository.updateStatusIfCurrent(applicationId,
+                TenantApplication.ApplicationStatus.PENDING, TenantApplication.ApplicationStatus.APPROVED);
+        if (claimed == 0) {
+            throw new BusinessException(ErrorCode.E_2007);
+        }
+        application.setStatus(TenantApplication.ApplicationStatus.APPROVED);
+
         Tenant tenant = Tenant.builder()
                 .name(application.getStoreName())
                 .slug(generateTenantSlug(application.getStoreName()))
@@ -872,7 +886,6 @@ public class AdminService {
             userRepository.save(user);
         });
 
-        application.setStatus(TenantApplication.ApplicationStatus.APPROVED);
         application.setTenantId(tenant.getId());
         application.setReviewedAt(Instant.now());
         application.setReviewedBy(reviewedBy);
@@ -901,6 +914,13 @@ public class AdminService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2006));
 
         if (application.getStatus() != TenantApplication.ApplicationStatus.PENDING) {
+            throw new BusinessException(ErrorCode.E_2007);
+        }
+
+        // 🔴 併發防護（Sprint 137 DEF-115）：與 approveTenantApplication 同一原則，見該處說明。
+        int claimed = tenantApplicationRepository.updateStatusIfCurrent(applicationId,
+                TenantApplication.ApplicationStatus.PENDING, TenantApplication.ApplicationStatus.REJECTED);
+        if (claimed == 0) {
             throw new BusinessException(ErrorCode.E_2007);
         }
 

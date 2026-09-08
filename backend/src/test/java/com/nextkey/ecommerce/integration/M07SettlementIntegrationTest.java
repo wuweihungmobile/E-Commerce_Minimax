@@ -357,6 +357,10 @@ class M07SettlementIntegrationTest {
         when(userRepository.findById(any())).thenReturn(Optional.of(
                 com.nextkey.ecommerce.domain.model.user.User.builder().id(UUID.randomUUID()).build()));
         testStatement.setStatus(SettlementStatus.PAID);
+        // Sprint 137 DEF-138：settlementStatementRepository 是 @MockBean，新增的併發防護 CAS
+        // 呼叫必須顯式 stub，否則 Mockito 對未 stub 的 int 回傳方法預設回傳 0，會被誤判為併發搶占失敗。
+        when(settlementStatementRepository.updateStatusIfCurrent(eq(testStatementId),
+                eq(SettlementStatus.PAID), eq(SettlementStatus.REVERSAL_PENDING))).thenReturn(1);
 
         mockMvc.perform(post("/v2/admin/settlements/{id}/reverse/initiate", testStatementId)
                         .param("reason", "客戶投訴要求全額退款")

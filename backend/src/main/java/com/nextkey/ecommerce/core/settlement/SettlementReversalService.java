@@ -65,6 +65,13 @@ public class SettlementReversalService {
         User initiator = userRepository.findById(initiatorId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1006));
 
+        // 🔴 併發防護（Sprint 137 DEF-138）：見 SettlementStatementRepository.updateStatusIfCurrent 說明。
+        int claimed = settlementRepository.updateStatusIfCurrent(statementId,
+                SettlementStatus.PAID, SettlementStatus.REVERSAL_PENDING);
+        if (claimed == 0) {
+            throw new BusinessException(ErrorCode.E_5014, "Only PAID statements can be reversed");
+        }
+
         statement.setStatus(SettlementStatus.REVERSAL_PENDING);
         statement.setReversalInitiatedBy(initiator);
         statement.setReversalInitiatedByRole(initiatorRole);

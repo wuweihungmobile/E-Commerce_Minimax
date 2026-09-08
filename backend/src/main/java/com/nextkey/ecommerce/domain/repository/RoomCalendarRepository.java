@@ -27,6 +27,22 @@ public interface RoomCalendarRepository extends JpaRepository<RoomCalendar, UUID
             @Param("calendarDate") LocalDate calendarDate);
 
     /**
+     * 併發防護（DEF-134/135/136，RoomCalendarService.markMaintenance/releaseDateRange/
+     * unmarkMaintenance）：以 {@code FOR UPDATE NOWAIT} 鎖住整段日期範圍的記錄，取代這三個
+     * 方法原本呼叫 {@link #findByListingIdAndCalendarDateBetween} 不上鎖查詢後直接
+     * 「讀狀態→條件式改欄位→save()」。這三個方法會被併發的 bookDateRange（本檔案既有的逐日
+     * NOWAIT 鎖）、或彼此交錯呼叫時，可能造成同一 room_calendar 列的 status/booking_id 靜默
+     * 遺失更新。比照本檔案既有的單日 NOWAIT 鎖模式，改為批次版本一次鎖住整段範圍。
+     */
+    @Query(value = "SELECT * FROM room_calendar WHERE room_listing_id = :roomListingId "
+            + "AND calendar_date BETWEEN :startDate AND :endDate FOR UPDATE NOWAIT",
+           nativeQuery = true)
+    List<RoomCalendar> findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
+            @Param("roomListingId") UUID roomListingId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
+    /**
      * 不帶鎖的查詢 - 用於檢查記錄是否存在（在事务外或需要讀取已提交數據時使用）
      */
     @Query("SELECT c FROM RoomCalendar c WHERE c.listing.id = :listingId AND c.calendarDate = :calendarDate")

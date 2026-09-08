@@ -72,7 +72,7 @@ class M17MaintenanceWorkflowIntegrationTest {
     @WithMockUser(username = "host", authorities = {"room:update"})
     void markMaintenance_availableDates_returns200() throws Exception {
         RoomCalendar calendar = calendarOf(RoomCalendar.RoomCalendarStatus.AVAILABLE, null);
-        when(roomCalendarRepository.findByListingIdAndCalendarDateBetween(any(), any(), any()))
+        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(any(), any(), any()))
                 .thenReturn(List.of(calendar));
 
         String body = """
@@ -99,7 +99,7 @@ class M17MaintenanceWorkflowIntegrationTest {
         RoomCalendar calendar = calendarOf(RoomCalendar.RoomCalendarStatus.BOOKED, bookingId);
         Booking booking = Booking.builder().id(bookingId).statusFlags(new HashMap<>()).build();
 
-        when(roomCalendarRepository.findByListingIdAndCalendarDateBetween(any(), any(), any()))
+        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(any(), any(), any()))
                 .thenReturn(List.of(calendar));
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
 
@@ -124,7 +124,7 @@ class M17MaintenanceWorkflowIntegrationTest {
     @WithMockUser(username = "host", authorities = {"room:update"})
     void unmarkMaintenance_success_returns200() throws Exception {
         RoomCalendar calendar = calendarOf(RoomCalendar.RoomCalendarStatus.MAINTENANCE, null);
-        when(roomCalendarRepository.findByListingIdAndCalendarDateBetween(any(), any(), any()))
+        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(any(), any(), any()))
                 .thenReturn(List.of(calendar));
 
         mockMvc.perform(delete(MAINTENANCE_URL)

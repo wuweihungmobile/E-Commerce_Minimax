@@ -250,8 +250,7 @@ public class RoomCalendarService {
      */
     @Transactional
     public void releaseDateRange(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
-        List<RoomCalendar> calendars = roomCalendarRepository
-                .findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
+        List<RoomCalendar> calendars = lockCalendarRange(roomListingId, checkIn, checkOut);
 
         for (RoomCalendar calendar : calendars) {
             if (calendar.getStatus() == RoomCalendar.RoomCalendarStatus.BOOKED) {
@@ -319,8 +318,7 @@ public class RoomCalendarService {
      */
     @Transactional
     public void markMaintenance(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
-        List<RoomCalendar> calendars = roomCalendarRepository
-                .findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
+        List<RoomCalendar> calendars = lockCalendarRange(roomListingId, checkIn, checkOut);
 
         for (RoomCalendar calendar : calendars) {
             if (calendar.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE) {
@@ -342,8 +340,7 @@ public class RoomCalendarService {
      */
     @Transactional
     public void unmarkMaintenance(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
-        List<RoomCalendar> calendars = roomCalendarRepository
-                .findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
+        List<RoomCalendar> calendars = lockCalendarRange(roomListingId, checkIn, checkOut);
 
         for (RoomCalendar calendar : calendars) {
             if (calendar.getStatus() != RoomCalendar.RoomCalendarStatus.MAINTENANCE) {
@@ -373,6 +370,25 @@ public class RoomCalendarService {
             booking.setStatusFlags(flags);
             bookingRepository.save(booking);
         });
+    }
+
+    /**
+     * 併發防護（DEF-134/135/136）：以 {@code FOR UPDATE NOWAIT} 鎖住整段日期範圍的
+     * room_calendar 記錄，供 releaseDateRange/markMaintenance/unmarkMaintenance 共用，
+     * 序列化「讀狀態→條件式改欄位→save()」複合操作。若記錄已被併發的 bookDateRange 等交易
+     * 鎖定，比照本檔案既有的 NOWAIT 失敗處理方式，轉譯為 E_4001 而非讓
+     * {@code PessimisticLockingFailureException} 原樣拋出。
+     */
+    private List<RoomCalendar> lockCalendarRange(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
+        try {
+            return roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
+                    roomListingId, checkIn, checkOut.minusDays(1));
+        } catch (org.springframework.dao.PessimisticLockingFailureException e) {
+            log.warn("lockCalendarRange: Pessimistic lock failed for room={}, checkIn={}, checkOut={} "
+                    + "- records are locked by another transaction", roomListingId, checkIn, checkOut);
+            throw new BusinessException(ErrorCode.E_4001,
+                    "Date range " + checkIn + " to " + checkOut + " is currently being modified by another operation");
+        }
     }
 
     /**

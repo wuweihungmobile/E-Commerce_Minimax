@@ -20,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 
@@ -171,7 +172,7 @@ class KnowledgeBaseServiceTest {
     @DisplayName("createCategory：成功建立")
     void createCategory_success() {
         when(categoryRepository.existsByTenantIdAndSlug(TENANT_ID, "general")).thenReturn(false);
-        when(categoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(categoryRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
         CreateKnowledgeCategoryRequest req = CreateKnowledgeCategoryRequest.builder()
                 .name("General").slug("general").build();
 
@@ -193,6 +194,20 @@ class KnowledgeBaseServiceTest {
         KnowledgeCategoryDto result = knowledgeBaseService.updateCategory(categoryId, req);
 
         assertThat(result.getName()).isEqualTo("New Name");
+    }
+
+    @Test
+    @DisplayName("createCategory：併發 TOCTOU 撞上 DB 唯一約束（DEF-154）→ 轉譯為 E_3001，而非原始 500")
+    void createCategory_concurrentDuplicateSlug_translatesToE3001() {
+        when(categoryRepository.existsByTenantIdAndSlug(TENANT_ID, "general")).thenReturn(false);
+        when(categoryRepository.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("duplicate key"));
+        CreateKnowledgeCategoryRequest req = CreateKnowledgeCategoryRequest.builder()
+                .name("General").slug("general").build();
+
+        assertThatThrownBy(() -> knowledgeBaseService.createCategory(req))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_3001);
     }
 
     @Test
@@ -222,6 +237,23 @@ class KnowledgeBaseServiceTest {
         knowledgeBaseService.deleteCategory(categoryId);
 
         verify(categoryRepository).delete(category);
+    }
+
+    @Test
+    @DisplayName("deleteCategory：檢查通過後併發 createArticle 掛上新文章（DEF-155）"
+            + " → FK RESTRICT 擋下並轉譯為 E_3001，而非原始 500")
+    void deleteCategory_concurrentArticleCreated_translatesToE3001() {
+        UUID categoryId = UUID.randomUUID();
+        KnowledgeCategory category = buildCategory(categoryId, "General", "general");
+        when(categoryRepository.findByIdAndTenantId(categoryId, TENANT_ID)).thenReturn(Optional.of(category));
+        when(articleRepository.findByCategoryId(eq(categoryId), any())).thenReturn(new PageImpl<>(List.of()));
+        org.mockito.Mockito.doThrow(new DataIntegrityViolationException("fk violation"))
+                .when(categoryRepository).flush();
+
+        assertThatThrownBy(() -> knowledgeBaseService.deleteCategory(categoryId))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_3001);
     }
 
     // ── Article Operations ───────────────────────────────────────────
@@ -277,7 +309,7 @@ class KnowledgeBaseServiceTest {
         when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
         when(userRepository.findById(CURRENT_USER_ID)).thenReturn(Optional.of(author));
         when(articleRepository.findByTenantIdAndSlug(TENANT_ID, "new-article")).thenReturn(Optional.empty());
-        when(articleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(articleRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         CreateKnowledgeArticleRequest req = CreateKnowledgeArticleRequest.builder()
                 .categoryId(categoryId)
@@ -297,7 +329,7 @@ class KnowledgeBaseServiceTest {
         when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(buildCategory(categoryId, "General", "general")));
         when(userRepository.findById(CURRENT_USER_ID)).thenReturn(Optional.of(buildAuthor(CURRENT_USER_ID)));
         when(articleRepository.findByTenantIdAndSlug(TENANT_ID, "tagged-article")).thenReturn(Optional.empty());
-        when(articleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(articleRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         CreateKnowledgeArticleRequest req = CreateKnowledgeArticleRequest.builder()
                 .categoryId(categoryId)
@@ -322,6 +354,25 @@ class KnowledgeBaseServiceTest {
 
         CreateKnowledgeArticleRequest req = CreateKnowledgeArticleRequest.builder()
                 .categoryId(categoryId).title("X").slug("dup").content("C").build();
+
+        assertThatThrownBy(() -> knowledgeBaseService.createArticle(req))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_3001);
+    }
+
+    @Test
+    @DisplayName("createArticle：併發 TOCTOU 撞上 DB 唯一約束（DEF-153）→ 轉譯為 E_3001，而非原始 500")
+    void createArticle_concurrentDuplicateSlug_translatesToE3001() {
+        UUID categoryId = UUID.randomUUID();
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(buildCategory(categoryId, "General", "general")));
+        when(userRepository.findById(CURRENT_USER_ID)).thenReturn(Optional.of(buildAuthor(CURRENT_USER_ID)));
+        when(articleRepository.findByTenantIdAndSlug(TENANT_ID, "race-slug")).thenReturn(Optional.empty());
+        when(articleRepository.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("duplicate key"));
+
+        CreateKnowledgeArticleRequest req = CreateKnowledgeArticleRequest.builder()
+                .categoryId(categoryId).title("X").slug("race-slug").content("C").build();
 
         assertThatThrownBy(() -> knowledgeBaseService.createArticle(req))
                 .isInstanceOf(BusinessException.class)
@@ -424,7 +475,7 @@ class KnowledgeBaseServiceTest {
         UUID articleId = UUID.randomUUID();
         KnowledgeCategory category = buildCategory(UUID.randomUUID(), "General", "general");
         KnowledgeArticle article = buildArticle(articleId, category, buildAuthor(UUID.randomUUID()), "Title", "slug1");
-        when(articleRepository.findByIdAndTenantId(articleId, TENANT_ID)).thenReturn(Optional.of(article));
+        when(articleRepository.findByIdAndTenantIdForUpdate(articleId, TENANT_ID)).thenReturn(Optional.of(article));
         when(articleVersionRepository.findMaxVersionNumberByArticleId(articleId)).thenReturn(null);
 
         knowledgeBaseService.createVersionSnapshot(articleId);
@@ -441,7 +492,7 @@ class KnowledgeBaseServiceTest {
         UUID articleId = UUID.randomUUID();
         KnowledgeCategory category = buildCategory(UUID.randomUUID(), "General", "general");
         KnowledgeArticle article = buildArticle(articleId, category, buildAuthor(UUID.randomUUID()), "Title", "slug1");
-        when(articleRepository.findByIdAndTenantId(articleId, TENANT_ID)).thenReturn(Optional.of(article));
+        when(articleRepository.findByIdAndTenantIdForUpdate(articleId, TENANT_ID)).thenReturn(Optional.of(article));
         when(articleVersionRepository.findMaxVersionNumberByArticleId(articleId)).thenReturn(3);
 
         knowledgeBaseService.createVersionSnapshot(articleId);
@@ -449,6 +500,27 @@ class KnowledgeBaseServiceTest {
         org.mockito.ArgumentCaptor<ArticleVersion> captor = org.mockito.ArgumentCaptor.forClass(ArticleVersion.class);
         verify(articleVersionRepository).save(captor.capture());
         assertThat(captor.getValue().getVersionNumber()).isEqualTo(4);
+    }
+
+    /**
+     * DEF-120：{@code createVersionSnapshot} 必須用悲觀鎖版本的查詢載入文章，序列化
+     * 「讀最大版本號 → +1 → INSERT」，否則兩個併發呼叫可能算出相同版本號各自成功 INSERT
+     * （{@code article_versions} 沒有 unique 約束兜底）。守衛：一旦有人改回不上鎖的
+     * {@code findByIdAndTenantId}，這個測試會立刻失敗。
+     */
+    @Test
+    @DisplayName("createVersionSnapshot：必須用悲觀鎖查詢載入文章，不得退回不上鎖的查詢")
+    void createVersionSnapshot_usesLockedLookup() {
+        UUID articleId = UUID.randomUUID();
+        KnowledgeCategory category = buildCategory(UUID.randomUUID(), "General", "general");
+        KnowledgeArticle article = buildArticle(articleId, category, buildAuthor(UUID.randomUUID()), "Title", "slug1");
+        when(articleRepository.findByIdAndTenantIdForUpdate(articleId, TENANT_ID)).thenReturn(Optional.of(article));
+        when(articleVersionRepository.findMaxVersionNumberByArticleId(articleId)).thenReturn(null);
+
+        knowledgeBaseService.createVersionSnapshot(articleId);
+
+        verify(articleRepository).findByIdAndTenantIdForUpdate(articleId, TENANT_ID);
+        verify(articleRepository, org.mockito.Mockito.never()).findByIdAndTenantId(any(), any());
     }
 
     @Test
@@ -503,6 +575,7 @@ class KnowledgeBaseServiceTest {
         KnowledgeCategory originalCategory = buildCategory(UUID.randomUUID(), "General", "general");
         KnowledgeArticle article = buildArticle(articleId, originalCategory, buildAuthor(UUID.randomUUID()), "Current Title", "slug1");
         when(articleRepository.findByIdAndTenantId(articleId, TENANT_ID)).thenReturn(Optional.of(article));
+        when(articleRepository.findByIdAndTenantIdForUpdate(articleId, TENANT_ID)).thenReturn(Optional.of(article));
         when(articleVersionRepository.findMaxVersionNumberByArticleId(articleId)).thenReturn(1);
         when(articleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 

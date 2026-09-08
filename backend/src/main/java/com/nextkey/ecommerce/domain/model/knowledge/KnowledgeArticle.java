@@ -18,6 +18,7 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.DynamicUpdate;
 
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
@@ -28,8 +29,16 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * DEF-122/DEF-156（KnowledgeBaseService.updateArticle/schedulePublish）：
+ * DTO 層是部分欄位選填的 PATCH 語意，{@code @DynamicUpdate} 讓 Hibernate 只把本次交易內
+ * 實際被 setter 改動過的欄位組進 UPDATE SQL，避免併發的兩個部分更新互相以自己交易一開始
+ * 讀到的舊快照悄悄覆寫對方已提交的欄位（比照 Sprint 136 §6 對 Listing/Room/Product/Booking
+ * 的既有修法）。
+ */
 @Entity
 @Table(name = "knowledge_articles")
+@DynamicUpdate
 @Getter
 @Setter
 @NoArgsConstructor

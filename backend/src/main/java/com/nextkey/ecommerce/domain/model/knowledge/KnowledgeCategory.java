@@ -13,6 +13,7 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.DynamicUpdate;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -20,8 +21,14 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * DEF-157（KnowledgeBaseService.updateCategory）：{@code @DynamicUpdate} 讓 Hibernate
+ * 只把本次交易內實際被 setter 改動過的欄位組進 UPDATE SQL，避免併發部分更新互相覆寫
+ * （比照 Sprint 136 §6 既有修法）。
+ */
 @Entity
 @Table(name = "knowledge_categories")
+@DynamicUpdate
 @Getter
 @Setter
 @NoArgsConstructor

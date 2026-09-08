@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -90,7 +91,15 @@ public class KnowledgeBaseService {
                 .sortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0)
                 .build();
 
-        category = categoryRepository.save(category);
+        // 併發防護（DEF-154）：上面的 existsByTenantIdAndSlug 檢查與這裡的 save() 之間是
+        // TOCTOU，兩個併發請求都可能通過檢查各自 INSERT；DB 端已有
+        // uk_knowledge_categories_tenant_slug 唯一約束兜底，這裡改用 saveAndFlush 捕捉
+        // 違反約束並轉譯為既有的 E_3001，避免第二個請求收到原始的 500。
+        try {
+            category = categoryRepository.saveAndFlush(category);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.E_3001, "Category slug already exists for this tenant");
+        }
         log.info("Created knowledge category: id={}, name={}, tenantId={}", category.getId(), category.getName(), tenantId);
 
         return toCategoryDto(category);
@@ -143,7 +152,16 @@ public class KnowledgeBaseService {
             throw new BusinessException(ErrorCode.E_3001, "Cannot delete category with articles");
         }
 
-        categoryRepository.delete(category);
+        // 併發防護（DEF-155）：上面的檢查與這裡的 delete() 之間是極窄的 TOCTOU 視窗，
+        // 若併發的 createArticle 在此期間把新文章掛到這個分類，DB 端
+        // fk_knowledge_articles_category（ON DELETE RESTRICT）會擋下這筆刪除，
+        // 資料不會損毀，但呼叫端會收到原始的 500；這裡捕捉後轉譯為與上面相同的 E_3001。
+        try {
+            categoryRepository.delete(category);
+            categoryRepository.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.E_3001, "Cannot delete category with articles");
+        }
         log.info("Deleted knowledge category: id={}, tenantId={}", categoryId, tenantId);
     }
 
@@ -213,7 +231,15 @@ public class KnowledgeBaseService {
                 .tags(request.getTags() != null ? String.join(",", request.getTags()) : null)
                 .build();
 
-        article = articleRepository.save(article);
+        // 併發防護（DEF-153）：上面的 findByTenantIdAndSlug 檢查與這裡的 save() 之間是
+        // TOCTOU，兩個併發請求都可能通過檢查各自 INSERT；DB 端已有
+        // uk_knowledge_articles_slug (tenant_id, slug) 唯一約束兜底，這裡改用 saveAndFlush
+        // 捕捉違反約束並轉譯為既有的 E_3001，避免第二個請求收到原始的 500。
+        try {
+            article = articleRepository.saveAndFlush(article);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.E_3001, "Article slug already exists for this tenant");
+        }
         log.info("Created knowledge article: id={}, title={}, tenantId={}", article.getId(), article.getTitle(), tenantId);
 
         return toArticleDto(article);
@@ -308,10 +334,15 @@ public class KnowledgeBaseService {
 
     // ========== Article Version Control ==========
 
+    /**
+     * 建立版本快照（DEF-120：以悲觀鎖序列化「讀最大版本號 → +1 → INSERT」，
+     * 避免併發呼叫算出相同版本號各自成功 INSERT，見
+     * {@link KnowledgeArticleRepository#findByIdAndTenantIdForUpdate}）。
+     */
     @Transactional
     public void createVersionSnapshot(UUID articleId) {
         UUID tenantId = getCurrentTenant();
-        KnowledgeArticle article = articleRepository.findByIdAndTenantId(articleId, tenantId)
+        KnowledgeArticle article = articleRepository.findByIdAndTenantIdForUpdate(articleId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
 
         Integer maxVersion = articleVersionRepository.findMaxVersionNumberByArticleId(articleId);

@@ -4,9 +4,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import jakarta.persistence.LockModeType;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -33,6 +36,19 @@ public interface KnowledgeArticleRepository extends JpaRepository<KnowledgeArtic
 
     @Query("SELECT a FROM KnowledgeArticle a WHERE a.id = :id AND a.tenant.id = :tenantId")
     Optional<KnowledgeArticle> findByIdAndTenantId(@Param("id") UUID id, @Param("tenantId") UUID tenantId);
+
+    /**
+     * 併發防護（DEF-120，KnowledgeBaseService.createVersionSnapshot）：以
+     * {@code SELECT ... FOR UPDATE} 鎖住文章列，序列化「讀目前最大版本號 → +1 → INSERT」
+     * 這段複合操作。{@code article_versions} 表沒有 {@code (article_id, version_number)}
+     * 唯一約束，兩個併發請求各自算出相同的 {@code newVersion} 並各自成功 INSERT 會造成
+     * {@link com.nextkey.ecommerce.domain.repository.knowledge.ArticleVersionRepository
+     * #findByArticleIdAndVersionNumber} 之後查到重複列而丟出
+     * {@code IncorrectResultSizeDataAccessException}（持續性功能性 500，非機率性偶發）。
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM KnowledgeArticle a WHERE a.id = :id AND a.tenant.id = :tenantId")
+    Optional<KnowledgeArticle> findByIdAndTenantIdForUpdate(@Param("id") UUID id, @Param("tenantId") UUID tenantId);
 
     @Query("SELECT a FROM KnowledgeArticle a WHERE a.slug = :slug AND a.status = 'PUBLISHED'")
     Optional<KnowledgeArticle> findPublishedBySlug(@Param("slug") String slug);

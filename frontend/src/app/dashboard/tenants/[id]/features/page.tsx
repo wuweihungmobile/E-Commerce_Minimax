@@ -13,12 +13,16 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
+// 欄位名必須與後端 FeatureToggleResponse.FeatureInfo 完全一致（DEF-168）。
+// 本介面原本用 feature/displayName/enabled，與後端的 featureKey/featureName/isEnabled 全數對不上，
+// 使整個頁面只有 description 顯示得出來——名稱空白、Switch 恆為 unchecked、
+// 點擊時把 undefined 當 featureKey 送給後端。專案未配置任何 Jackson 命名策略，不會自動轉換。
 interface FeatureToggle {
-  feature: string
+  featureKey: string
   category: string
-  displayName: string
+  featureName: string
   description: string
-  enabled: boolean
+  isEnabled: boolean
   status: 'ACTIVE' | 'PENDING' | 'INACTIVE'
   requiresAdminReview: boolean
 }
@@ -90,7 +94,10 @@ export default function FeatureTogglePage() {
     setSuccessMessage(null)
 
     try {
-      await apiClient.put<{ data: { feature: string; enabled: boolean; status: string } }>(
+      // DEF-168：型別需與後端 FeatureToggleUpdateResponse 一致。原宣告為
+      // { feature, enabled, status }，三欄有兩欄對不上；因回傳值未被使用故無執行後果，
+      // 但錯誤的宣告會誤導未來的取用者，一併更正。
+      await apiClient.put<{ data: { featureKey: string; previousState: boolean; newState: boolean; status: string; statusDescription: string } }>(
         API_ENDPOINTS.dashboard.tenants.updateFeature(feature),
         { enabled } as UpdateRequest
       )
@@ -98,10 +105,10 @@ export default function FeatureTogglePage() {
       // Update local state
       setFeatures(prev =>
         prev.map(f =>
-          f.feature === feature
+          f.featureKey === feature
             ? {
                 ...f,
-                enabled,
+                isEnabled: enabled,
                 status: f.requiresAdminReview && enabled ? 'PENDING' : enabled ? 'ACTIVE' : 'INACTIVE'
               }
             : f
@@ -275,15 +282,15 @@ export default function FeatureTogglePage() {
                   <CardContent className="space-y-4">
                     {categoryFeatures.map(feature => (
                       <div
-                        key={feature.feature}
+                        key={feature.featureKey}
                         className="flex items-center justify-between p-4 border rounded-lg"
                       >
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <Label className="text-base font-medium">
-                              {feature.displayName}
+                              {feature.featureName}
                             </Label>
-                            {getStatusBadge(feature.status, feature.requiresAdminReview, feature.enabled)}
+                            {getStatusBadge(feature.status, feature.requiresAdminReview, feature.isEnabled)}
                           </div>
                           <p className="text-sm text-gray-500 mt-1">
                             {feature.description}
@@ -296,12 +303,12 @@ export default function FeatureTogglePage() {
                         </div>
                         <div className="flex items-center gap-3">
                           <Switch
-                            id={feature.feature}
-                            checked={feature.enabled}
-                            onCheckedChange={(checked) => updateFeatureToggle(feature.feature, checked)}
-                            disabled={updating === feature.feature}
+                            id={feature.featureKey}
+                            checked={feature.isEnabled}
+                            onCheckedChange={(checked) => updateFeatureToggle(feature.featureKey, checked)}
+                            disabled={updating === feature.featureKey}
                           />
-                          {updating === feature.feature && (
+                          {updating === feature.featureKey && (
                             <span className="text-sm text-gray-500">更新中...</span>
                           )}
                         </div>

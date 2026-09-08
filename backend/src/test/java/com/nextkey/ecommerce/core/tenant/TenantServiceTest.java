@@ -340,6 +340,67 @@ class TenantServiceTest {
         assertEquals("Store Owner", response.getMember().getDisplayName());
     }
 
+    // ── getFeatureToggles Tests（DEF-167：數值配額不得混入開關清單）──────────────
+
+    @Nested
+    @DisplayName("getFeatureToggles()")
+    class GetFeatureTogglesTests {
+
+        @AfterEach
+        void tearDown() {
+            TenantContext.clear();
+        }
+
+        @Test
+        @DisplayName("getFeatureToggles：只回傳布林功能開關，四個數值配額不得出現在清單中")
+        void getFeatureToggles_excludesNumericQuotas() {
+            // DEF-167：數值配額沒有 isEnabled 語意。過去它們一律以 booleanDefault(false) 回傳，
+            // 使前端功能開關頁把它們渲染成四個永遠「關閉」的假開關，且按下即汙染成布林 toggle。
+            // 本測試守的是「清單語意」——功能開關清單只能包含真正可切換的開關。
+            when(tenantFeatureToggleRepository.findByTenantId(TEST_TENANT_ID)).thenReturn(List.of());
+
+            FeatureToggleResponse response = tenantService.getFeatureToggles(TEST_TENANT_ID);
+
+            List<String> keys = response.getFeatures().stream()
+                    .map(FeatureToggleResponse.FeatureInfo::getFeatureKey)
+                    .toList();
+            assertEquals(List.of("RETAIL_ENABLED", "BOOKING_ENABLED", "CMS_ENABLED",
+                    "ERP_ENABLED", "DYNAMIC_PRICING_ENABLED", "PROMO_ENABLED"), keys);
+            assertFalse(keys.contains("MAX_PRODUCTS"));
+            assertFalse(keys.contains("MAX_ROOMS"));
+            assertFalse(keys.contains("MAX_POSTS"));
+            assertFalse(keys.contains("COMMISSION_RATE"));
+        }
+
+        @Test
+        @DisplayName("getFeatureToggles：回傳前端實際讀取的 category/status/requiresAdminReview 三欄")
+        void getFeatureToggles_providesFieldsFrontendActuallyReads() {
+            // DEF-168：前端 features/page.tsx 讀 category（分組）、status + requiresAdminReview（徽章與
+            // 審核提示）。後端過去從未提供這三欄，前端一律拿到 undefined：所有項目擠進 'other' 分組、
+            // 徽章邏輯失效、「啟用後需管理員審核」提示永不出現。本測試守的是「後端必須提供前端讀的欄位」。
+            when(tenantFeatureToggleRepository.findByTenantId(TEST_TENANT_ID)).thenReturn(List.of());
+
+            FeatureToggleResponse response = tenantService.getFeatureToggles(TEST_TENANT_ID);
+            Map<String, FeatureToggleResponse.FeatureInfo> byKey = new HashMap<>();
+            for (FeatureToggleResponse.FeatureInfo f : response.getFeatures()) {
+                byKey.put(f.getFeatureKey(), f);
+            }
+
+            // category 必須是前端 getFeatureCategoryLabel 對照表裡的鍵，否則分組標題會退化成原始字串
+            assertEquals("listing", byKey.get("RETAIL_ENABLED").getCategory());
+            assertEquals("booking", byKey.get("BOOKING_ENABLED").getCategory());
+            assertEquals("pricing", byKey.get("DYNAMIC_PRICING_ENABLED").getCategory());
+
+            // requiresAdminReview 來自 FeatureDefinition.requiresApproval，需真的反映各功能設定
+            assertFalse(byKey.get("RETAIL_ENABLED").getRequiresAdminReview());
+            assertTrue(byKey.get("DYNAMIC_PRICING_ENABLED").getRequiresAdminReview());
+
+            // status：預設啟用者為 ACTIVE；預設關閉且無紀錄者為 INACTIVE（尚未申請）
+            assertEquals("ACTIVE", byKey.get("RETAIL_ENABLED").getStatus());
+            assertEquals("INACTIVE", byKey.get("DYNAMIC_PRICING_ENABLED").getStatus());
+        }
+    }
+
     // ── updateFeatureToggle Tests（DEF-107：稽核日誌覆蓋率）───────────────────
 
     @Nested
@@ -370,6 +431,28 @@ class TenantServiceTest {
             verify(auditService).record(eq("FEATURE_TOGGLE_SELF_SERVICE_UPDATED"), eq("FEATURE_TOGGLE"),
                     eq(TEST_TENANT_ID), eq(TEST_TENANT_ID),
                     eq("RETAIL_ENABLED=true"), eq("RETAIL_ENABLED=false"), isNull(), eq(TEST_USER_ID));
+        }
+
+        @Test
+        @DisplayName("updateFeatureToggle：數值配額 key（MAX_PRODUCTS）→ 拒絕，不得寫入布林 toggle")
+        void updateFeatureToggle_numericQuotaKey_rejected() {
+            // DEF-167：MAX_PRODUCTS/MAX_ROOMS/MAX_POSTS/COMMISSION_RATE 的值存在 config JSONB 而非
+            // isEnabled。若允許經布林開關 API 切換，同一個 featureKey 會同時具有數值與布林兩種語意，
+            // 之後任何依 config 讀配額的程式都可能讀到一筆只有 isEnabled、沒有 config 的紀錄。
+            when(tenantMemberRepository.existsByTenantIdAndUserId(TEST_TENANT_ID, TEST_USER_ID)).thenReturn(true);
+
+            BusinessException ex = assertThrows(BusinessException.class,
+                    () -> tenantService.updateFeatureToggle(TEST_TENANT_ID, "MAX_PRODUCTS", true));
+
+            // 🔴 必須斷言訊息：只斷言 BusinessException 會產生假綠燈——修復前此呼叫同樣會拋
+            // BusinessException，但那是走到 buildNewFeatureToggle 時「Tenant not found」(E_2000)
+            // 的無關例外，不是「數值配額不可切換」。此斷言在紅燈驗證中實際捕捉到了該假綠燈。
+            assertTrue(ex.getMessage().contains("numeric quota"),
+                    "應因數值配額而拒絕，實際訊息：" + ex.getMessage());
+
+            verify(tenantFeatureToggleRepository, never()).save(any());
+            verify(tenantFeatureToggleRepository, never()).saveAndFlush(any());
+            verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
         }
 
         @Test

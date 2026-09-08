@@ -737,7 +737,17 @@ class TenantControllerE2ETest {
                     .then()
                     .statusCode(200)
                     .body("success", is(true))
-                    .body("data.features", notNullValue());
+                    .body("data.features", notNullValue())
+                    // 🔴 DEF-168：原本只斷言 features 非 null，完全不驗欄位名稱——正是這個寬鬆斷言
+                    // 讓「前端讀 feature/displayName/enabled、後端回 featureKey/featureName/isEnabled」
+                    // 的契約漂移長期存活而測試全綠。以下逐欄斷言前端實際會讀取的每一個欄位。
+                    .body("data.features.size()", is(6))
+                    .body("data.features[0].featureKey", notNullValue())
+                    .body("data.features[0].featureName", notNullValue())
+                    .body("data.features[0].category", notNullValue())
+                    .body("data.features[0].status", notNullValue())
+                    .body("data.features[0].requiresAdminReview", notNullValue())
+                    .body("data.features[0].isEnabled", notNullValue());
 
             System.out.println("✅ API-M17-010 PASSED: StoreOwner 成功獲取功能開關");
         } finally {

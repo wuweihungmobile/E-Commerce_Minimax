@@ -65,12 +65,14 @@ public class TenantService {
     static {
         // REF: Sprint 7 Plan L109-120, Sprint 7 User Stories L131-142
         // Default values based on HYBRID (all toggles enabled by default for new stores)
-        FEATURE_DEFINITIONS.put("RETAIL_ENABLED", new FeatureDefinition("零售功能", "可上架實體商品", false, true));
-        FEATURE_DEFINITIONS.put("BOOKING_ENABLED", new FeatureDefinition("民宿預訂功能", "可上架民宿房間", true, true));
-        FEATURE_DEFINITIONS.put("CMS_ENABLED", new FeatureDefinition("CMS 貼文功能", "可發布 CMS 貼文", false, true));
-        FEATURE_DEFINITIONS.put("ERP_ENABLED", new FeatureDefinition("進銷存功能", "可使用進銷存管理", false, true));
-        FEATURE_DEFINITIONS.put("DYNAMIC_PRICING_ENABLED", new FeatureDefinition("動態定價功能", "可使用動態定價引擎", true, false));
-        FEATURE_DEFINITIONS.put("PROMO_ENABLED", new FeatureDefinition("促銷活動功能", "可建立促銷活動", true, false));
+        // DEF-168：category 值必須對應前端 getFeatureCategoryLabel 既有的標籤鍵
+        // （listing/booking/cms/erp/promo/pricing）——該對照表一直存在，後端卻從未提供此欄位。
+        FEATURE_DEFINITIONS.put("RETAIL_ENABLED", new FeatureDefinition("零售功能", "listing", "可上架實體商品", false, true));
+        FEATURE_DEFINITIONS.put("BOOKING_ENABLED", new FeatureDefinition("民宿預訂功能", "booking", "可上架民宿房間", true, true));
+        FEATURE_DEFINITIONS.put("CMS_ENABLED", new FeatureDefinition("CMS 貼文功能", "cms", "可發布 CMS 貼文", false, true));
+        FEATURE_DEFINITIONS.put("ERP_ENABLED", new FeatureDefinition("進銷存功能", "erp", "可使用進銷存管理", false, true));
+        FEATURE_DEFINITIONS.put("DYNAMIC_PRICING_ENABLED", new FeatureDefinition("動態定價功能", "pricing", "可使用動態定價引擎", true, false));
+        FEATURE_DEFINITIONS.put("PROMO_ENABLED", new FeatureDefinition("促銷活動功能", "promo", "可建立促銷活動", true, false));
         // Numeric toggles (stored as JSONB config)
         FEATURE_DEFINITIONS.put("MAX_PRODUCTS", new FeatureDefinition("最大商品數", "店鋪可上架商品數上限", false, DEFAULT_MAX_PRODUCTS));
         FEATURE_DEFINITIONS.put("MAX_ROOMS", new FeatureDefinition("最大房源數", "店鋪可上架房源數上限", false, DEFAULT_MAX_ROOMS));
@@ -351,6 +353,15 @@ public class TenantService {
         for (Map.Entry<String, FeatureDefinition> entry : FEATURE_DEFINITIONS.entrySet()) {
             String key = entry.getKey();
             FeatureDefinition def = entry.getValue();
+
+            // DEF-167：數值配額（MAX_PRODUCTS/MAX_ROOMS/MAX_POSTS/COMMISSION_RATE）不是功能開關，不得混入開關清單。
+            // 它們的值存在 config JSONB 而非 isEnabled，過去一律以 booleanDefault(false) 回傳，
+            // 使前端 /dashboard/tenants/[id]/features 把它們渲染成四個永遠「關閉」的假開關；
+            // 按下該開關會經 updateFeatureToggle 建立布林 toggle，把數值語意的 key 汙染成布林。
+            if (!def.isBoolean) {
+                continue;
+            }
+
             TenantFeatureToggle toggle = toggleMap.get(key);
 
             features.add(FeatureToggleResponse.FeatureInfo.builder()
@@ -360,6 +371,10 @@ public class TenantService {
                     .isEnabled(toggle != null ? toggle.getIsEnabled() : def.booleanDefault)
                     .enabledAt(toggle != null ? toggle.getEnabledAt() : null)
                     .requestedAt(toggle != null && !toggle.getIsEnabled() ? toggle.getCreatedAt() : null)
+                    // DEF-168：以下三欄前端一直在讀卻從未被提供，導致分組、名稱徽章、審核提示全失效
+                    .category(def.category)
+                    .status(resolveFeatureStatus(toggle, def))
+                    .requiresAdminReview(def.requiresApproval)
                     .build());
         }
 
@@ -384,10 +399,7 @@ public class TenantService {
             throw new BusinessException(ErrorCode.E_4031, "Not authorized to update this store's features");
         }
 
-        FeatureDefinition featureDef = FEATURE_DEFINITIONS.get(featureKey);
-        if (featureDef == null) {
-            throw new BusinessException(ErrorCode.E_9000, "Unknown feature: " + featureKey);
-        }
+        FeatureDefinition featureDef = requireToggleableFeature(featureKey);
 
         TenantFeatureToggle toggle = tenantFeatureToggleRepository
                 .findByTenantIdAndFeatureKey(tenantId, featureKey)
@@ -427,6 +439,43 @@ public class TenantService {
      * 欄位——INSERT 實際依據的是 {@code .tenant(...)} 關聯物件，未設定會插入 NULL 撞上
      * tenant_feature_toggles.tenant_id 的 NOT NULL 約束。必須先查出 Tenant 實體。
      */
+    /**
+     * DEF-168：推導前端所需的功能開關狀態。
+     *
+     * <p>ACTIVE＝目前已啟用；PENDING＝已建立紀錄但未啟用且該功能需管理員審核（即已送出申請待審）；
+     * INACTIVE＝其餘（從未申請，或不需審核的單純停用）。
+     */
+    private String resolveFeatureStatus(final TenantFeatureToggle toggle, final FeatureDefinition def) {
+        boolean enabled = toggle != null ? toggle.getIsEnabled() : def.booleanDefault;
+        if (enabled) {
+            return "ACTIVE";
+        }
+        if (toggle != null && def.requiresApproval) {
+            return "PENDING";
+        }
+        return "INACTIVE";
+    }
+
+    /**
+     * 取得可切換的功能開關定義；未知 key 或數值配額一律拒絕。
+     *
+     * <p>DEF-167：數值配額（MAX_PRODUCTS/MAX_ROOMS/MAX_POSTS/COMMISSION_RATE）的值存在 config JSONB
+     * 而非 isEnabled，不可透過布林開關 API 切換，否則同一個 featureKey 會同時具有數值與布林兩種語意。
+     *
+     * <p>抽成獨立方法而非內嵌於 {@code updateFeatureToggle}，是因為內嵌會使該方法 NPath 複雜度
+     * 由 200 以下升至 384（超出 checkstyle 門檻）——比照 Sprint 143 對同一方法的既有處理方式。
+     */
+    private FeatureDefinition requireToggleableFeature(final String featureKey) {
+        FeatureDefinition featureDef = FEATURE_DEFINITIONS.get(featureKey);
+        if (featureDef == null) {
+            throw new BusinessException(ErrorCode.E_9000, "Unknown feature: " + featureKey);
+        }
+        if (!featureDef.isBoolean) {
+            throw new BusinessException(ErrorCode.E_9000, "Feature is a numeric quota, not a toggle: " + featureKey);
+        }
+        return featureDef;
+    }
+
     private TenantFeatureToggle buildNewFeatureToggle(final UUID tenantId, final String featureKey, final Boolean enabled) {
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
@@ -503,23 +552,26 @@ public class TenantService {
     // Inner class for feature definitions
     private static class FeatureDefinition {
         final String name;
+        final String category;  // DEF-168：UI 分組用，對應前端 getFeatureCategoryLabel 的標籤鍵
         final String description;
         final boolean requiresApproval;
         final boolean isBoolean;  // true for boolean toggle, false for numeric toggle
         final boolean booleanDefault;  // default value for boolean toggles
 
         // Boolean toggle constructor
-        FeatureDefinition(String name, String description, boolean requiresApproval, boolean defaultEnabled) {
+        FeatureDefinition(String name, String category, String description, boolean requiresApproval, boolean defaultEnabled) {
             this.name = name;
+            this.category = category;
             this.description = description;
             this.requiresApproval = requiresApproval;
             this.isBoolean = true;
             this.booleanDefault = defaultEnabled;
         }
 
-        // Numeric toggle constructor
+        // Numeric toggle constructor（數值配額不會出現在開關清單，category 僅為欄位完整性）
         FeatureDefinition(String name, String description, boolean requiresApproval, double defaultValue) {
             this.name = name;
+            this.category = "quota";
             this.description = description;
             this.requiresApproval = requiresApproval;
             this.isBoolean = false;
@@ -826,61 +878,5 @@ public class TenantService {
         log.info("Member removed from tenant: tenantId={}, userId={}, removedBy={}", tenantId, userId, currentUserId);
         auditService.record("STORE_MEMBER_REMOVED", "TENANT_MEMBER", member.getId(), tenantId,
                 oldStatus, TenantMember.MemberStatus.REMOVED.name(), null, currentUserId);
-    }
-
-    /**
-     * Initialize feature toggles for a tenant based on business type
-     * Called when tenant status changes to ACTIVE
-     */
-    @Transactional
-    public void initializeFeatureToggles(final UUID tenantId, final String businessType) {
-        log.info("Initializing feature toggles for tenant: {}, businessType: {}", tenantId, businessType);
-
-        List<TenantFeatureToggle> toggles = new ArrayList<>();
-
-        // Set boolean toggles based on business type
-        boolean retailEnabled = "RETAIL_ONLY".equals(businessType) || "HYBRID".equals(businessType);
-        boolean bookingEnabled = "BOOKING_ONLY".equals(businessType) || "HYBRID".equals(businessType);
-
-        toggles.add(createToggle(tenantId, "RETAIL_ENABLED", retailEnabled));
-        toggles.add(createToggle(tenantId, "BOOKING_ENABLED", bookingEnabled));
-        toggles.add(createToggle(tenantId, "CMS_ENABLED", true));
-        toggles.add(createToggle(tenantId, "ERP_ENABLED", true));
-        toggles.add(createToggle(tenantId, "DYNAMIC_PRICING_ENABLED", false));
-        toggles.add(createToggle(tenantId, "PROMO_ENABLED", false));
-
-        // Numeric toggles
-        int maxProducts = "RETAIL_ONLY".equals(businessType) ? DEFAULT_MAX_PRODUCTS
-                : ("BOOKING_ONLY".equals(businessType) ? 0 : DEFAULT_MAX_PRODUCTS);
-        int maxRooms = "RETAIL_ONLY".equals(businessType) ? 0
-                : ("BOOKING_ONLY".equals(businessType) ? DEFAULT_MAX_ROOMS : DEFAULT_MAX_ROOMS);
-        toggles.add(createNumericToggle(tenantId, "MAX_PRODUCTS", maxProducts));
-        toggles.add(createNumericToggle(tenantId, "MAX_ROOMS", maxRooms));
-        toggles.add(createNumericToggle(tenantId, "MAX_POSTS", DEFAULT_MAX_POSTS));
-        toggles.add(createNumericToggle(tenantId, "COMMISSION_RATE", DEFAULT_COMMISSION_RATE));
-
-        tenantFeatureToggleRepository.saveAll(toggles);
-        log.info("Feature toggles initialized for tenant: {}, count: {}", tenantId, toggles.size());
-    }
-
-    private TenantFeatureToggle createToggle(final UUID tenantId, final String featureKey, final boolean enabled) {
-        return TenantFeatureToggle.builder()
-                .tenantId(tenantId)
-                .featureKey(featureKey)
-                .isEnabled(enabled)
-                .enabledAt(enabled ? Instant.now() : null)
-                .createdAt(Instant.now())
-                .build();
-    }
-
-    private TenantFeatureToggle createNumericToggle(final UUID tenantId, final String featureKey, final double value) {
-        Map<String, Object> configMap = Map.of("value", value);
-        return TenantFeatureToggle.builder()
-                .tenantId(tenantId)
-                .featureKey(featureKey)
-                .isEnabled(true)  // Numeric toggles are always enabled
-                .config(configMap)
-                .createdAt(Instant.now())
-                .build();
     }
 }

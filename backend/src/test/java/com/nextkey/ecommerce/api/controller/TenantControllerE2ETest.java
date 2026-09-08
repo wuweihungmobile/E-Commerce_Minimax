@@ -453,7 +453,13 @@ class TenantControllerE2ETest {
                     .body("success", is(true))
                     .body("data.tenants", hasSize(greaterThanOrEqualTo(1)))
                     .body("data.tenants[0].storeName", notNullValue())
-                    .body("data.tenants[0].status", notNullValue());
+                    .body("data.tenants[0].status", notNullValue())
+                    // Sprint 146：getFeatureMap 與 DEF-167 同型寫法，數值配額不得以假布林值出現在 features
+                    .body("data.tenants[0].features", hasKey("RETAIL_ENABLED"))
+                    .body("data.tenants[0].features", not(hasKey("MAX_PRODUCTS")))
+                    .body("data.tenants[0].features", not(hasKey("MAX_ROOMS")))
+                    .body("data.tenants[0].features", not(hasKey("MAX_POSTS")))
+                    .body("data.tenants[0].features", not(hasKey("COMMISSION_RATE")));
 
             System.out.println("✅ US-M17-004 PASSED: StoreOwner 成功取得店鋪列表");
         } finally {

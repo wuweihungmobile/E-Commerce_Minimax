@@ -39,7 +39,9 @@ interface CartResponse {
   userId: string
   items: CartItem[]
   totalAmount: number
-  itemCount: number
+  // Sprint 146：後端 CartDto.CartResponse 以 @JsonProperty("totalItems") 序列化此欄位，
+  // 先前前端宣告為 itemCount，導致「共 __ 項商品」永遠讀到 undefined
+  totalItems: number
   // Sprint 101：後端一律回傳預估運費（PRODUCT 項目小計為基數），並讓 finalAmount 含運費
   shippingFee?: number
   appliedPromoCode?: string
@@ -140,7 +142,7 @@ export default function CartPage() {
           ...prev,
           items: remainingItems,
           totalAmount: remainingItems.reduce((sum, item) => sum + item.subtotal, 0),
-          itemCount: remainingItems.length
+          totalItems: remainingItems.length
         }
       })
     } catch (err: unknown) {
@@ -412,7 +414,7 @@ export default function CartPage() {
                 <CardHeader>
                   <CardTitle>訂單摘要</CardTitle>
                   <CardDescription>
-                    共 {cart.itemCount} 項商品
+                    共 {cart.totalItems} 項商品
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">

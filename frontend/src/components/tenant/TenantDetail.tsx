@@ -12,16 +12,17 @@ import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
 import AuthService from '@/services/auth'
 
-// Tenant status enum
-type TenantStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED'
+// Tenant status enum（Sprint 146：對齊後端 Tenant.TenantStatus 實際值域，先前的 PENDING/APPROVED 從未存在）
+type TenantStatus = 'PENDING_REVIEW' | 'ACTIVE' | 'REJECTED' | 'SUSPENDED' | 'TERMINATED'
 
-// Tenant interface
+// Tenant interface（Sprint 146：對齊 TenantDetailsResponse——欄位是 tenantId 不是 id；
+// contactPhone/updatedAt 先前後端從未回傳，本輪已補齊)
 interface Tenant {
-  id: string
+  tenantId: string
   storeName: string
   businessType: string
   contactEmail: string
-  contactPhone: string
+  contactPhone: string | null
   status: TenantStatus
   createdAt: string
   updatedAt: string
@@ -83,24 +84,24 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
   }
 
   const getStatusBadge = (status: TenantStatus) => {
+    // Sprint 146：對齊後端 Tenant.TenantStatus 實際值域（PENDING_REVIEW/ACTIVE/REJECTED/SUSPENDED/TERMINATED）
     const statusConfig: Record<TenantStatus, { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline'; label: string }> = {
-      PENDING: { variant: 'secondary', label: '審核中' },
-      APPROVED: { variant: 'success', label: '已核准' },
+      PENDING_REVIEW: { variant: 'secondary', label: '審核中' },
+      ACTIVE: { variant: 'success', label: '已核准' },
       REJECTED: { variant: 'destructive', label: '已拒絕' },
       SUSPENDED: { variant: 'destructive', label: '已停權' },
+      TERMINATED: { variant: 'destructive', label: '已終止' },
     }
     const config = statusConfig[status] || { variant: 'outline', label: status }
     return <Badge variant={config.variant}>{config.label}</Badge>
   }
 
   const getBusinessTypeLabel = (type: string) => {
+    // Sprint 146：對齊後端 TenantApplicationRequest/TenantUpdateRequest 的 businessType 值域
     const typeLabels: Record<string, string> = {
-      RETAIL: '零售',
-      WHOLESALE: '批發',
-      'F&B': '餐飲',
-      SERVICE: '服務業',
-      MANUFACTURING: '製造業',
-      OTHER: '其他',
+      RETAIL_ONLY: '零售商城',
+      BOOKING_ONLY: '民宿訂房',
+      HYBRID: '複合式（零售＋訂房）',
     }
     return typeLabels[type] || type
   }
@@ -147,12 +148,12 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
           <Button variant="outline">返回列表</Button>
         </Link>
         <div className="flex gap-2">
-          {tenant.status === 'APPROVED' && (
+          {tenant.status === 'ACTIVE' && (
             <Badge variant="success" className="text-sm px-3 py-1">
               已核准店鋪
             </Badge>
           )}
-          {isOwner && tenant.status === 'APPROVED' && (
+          {isOwner && tenant.status === 'ACTIVE' && (
             <Link href={`/dashboard/tenants/${tenantId}/edit`}>
               <Button>編輯店鋪</Button>
             </Link>
@@ -167,7 +168,7 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
             <div>
               <CardTitle className="text-2xl">{tenant.storeName}</CardTitle>
               <CardDescription className="mt-2">
-                店鋪 ID: <span className="font-mono">{tenant.id}</span>
+                店鋪 ID: <span className="font-mono">{tenant.tenantId}</span>
               </CardDescription>
             </div>
             <div className="flex flex-col items-end gap-2">
@@ -204,7 +205,7 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
               </div>
               <div className="space-y-1">
                 <Label className="text-muted-foreground">聯絡電話</Label>
-                <Input value={tenant.contactPhone} readOnly disabled />
+                <Input value={tenant.contactPhone || '未提供'} readOnly disabled />
               </div>
             </div>
           </div>
@@ -225,7 +226,7 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
             <span className="text-muted-foreground">-</span>
             <Badge variant="success">已核准</Badge>
             <span className="text-muted-foreground">-</span>
-            <Badge variant="destructive">已拒絕/已停權</Badge>
+            <Badge variant="destructive">已拒絕/已停權/已終止</Badge>
           </div>
         </CardFooter>
       </Card>

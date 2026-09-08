@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import lombok.AllArgsConstructor;
@@ -41,6 +42,9 @@ public class TenantUpdateRequest {
     @Size(max = URL_MAX_LENGTH, message = "Cover image URL must not exceed 500 characters")
     private String coverImageUrl;
 
+    // Sprint 146：值域比照 TenantApplicationRequest，此欄位先前完全未被 applyTenantUpdates 讀取
+    // （見 TenantService），本輪一併補上寫入邏輯，故也補上與申請表單一致的值域驗證。
+    @Pattern(regexp = "^(RETAIL_ONLY|BOOKING_ONLY|HYBRID)$", message = "Business type must be RETAIL_ONLY, BOOKING_ONLY, or HYBRID")
     private String businessType;
 
     private String status;

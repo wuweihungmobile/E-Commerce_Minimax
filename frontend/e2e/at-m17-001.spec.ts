@@ -48,23 +48,12 @@ test.describe('AT-M17-001: 開店申請流程', () => {
     // 提交申請
     await page.click('button[type="submit"]:not(:has-text("搜尋"))');
 
-    // 等待可能的結果（成功導向或錯誤）
-    await page.waitForURL('**/dashboard/tenants**', { timeout: 15000 }).catch(() => {});
-
-    // 檢查是否有錯誤或成功
-    const currentUrl = page.url();
-    if (currentUrl.includes('/dashboard/tenants')) {
-      // 成功導向到店鋪列表
-      return;
-    }
-
-    // 檢查錯誤訊息
-    const errorMsg = page.locator('[class*="error"], .text-error, [role="alert"]').first();
-    if (await errorMsg.isVisible()) {
-      test.skip();
-    } else {
-      test.skip();
-    }
+    // Sprint 146（DEF-179）：先前 businessType 值域與後端驗證規則完全不重疊，
+    // 每一筆申請必定 400，但本測試用 waitForURL().catch(() => {}) 吞掉逾時，
+    // 再對「兩種結果都 test.skip()」，導致這個 400 從未被本測試攔截過。
+    // 修復後應確實導向店鋪列表，故此處改為真斷言而非可被吞掉的逾時。
+    await page.waitForURL('**/dashboard/tenants**', { timeout: 15000 });
+    expect(page.url()).toContain('/dashboard/tenants');
   });
 
   test('開店申請流程 - 缺少必填欄位應顯示錯誤', async ({ page }) => {

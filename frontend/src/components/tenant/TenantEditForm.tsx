@@ -18,16 +18,17 @@ import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
 import AuthService from '@/services/auth'
 
-// Tenant status enum
-type TenantStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED'
+// Tenant status enum（Sprint 146：對齊後端 Tenant.TenantStatus 實際值域，先前的 PENDING/APPROVED 從未存在）
+type TenantStatus = 'PENDING_REVIEW' | 'ACTIVE' | 'REJECTED' | 'SUSPENDED' | 'TERMINATED'
 
-// Tenant interface
+// Tenant interface（Sprint 146：對齊 TenantDetailsResponse——欄位是 tenantId 不是 id；
+// contactPhone/updatedAt 先前後端從未回傳，本輪已補齊)
 interface Tenant {
-  id: string
+  tenantId: string
   storeName: string
   businessType: string
   contactEmail: string
-  contactPhone: string
+  contactPhone: string | null
   status: TenantStatus
   createdAt: string
   updatedAt: string
@@ -75,13 +76,11 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
   })
   const [errors, setErrors] = useState<FormErrors>({})
 
+  // Sprint 146：值域比照 TenantApplyForm 的修正，對齊後端 TenantUpdateRequest.businessType 值域
   const businessTypes = [
-    { value: 'RETAIL', label: '零售' },
-    { value: 'WHOLESALE', label: '批發' },
-    { value: 'F&B', label: '餐飲' },
-    { value: 'SERVICE', label: '服務業' },
-    { value: 'MANUFACTURING', label: '製造業' },
-    { value: 'OTHER', label: '其他' },
+    { value: 'RETAIL_ONLY', label: '零售商城' },
+    { value: 'BOOKING_ONLY', label: '民宿訂房' },
+    { value: 'HYBRID', label: '複合式（零售＋訂房）' },
   ]
 
   useEffect(() => {
@@ -102,7 +101,9 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
         storeName: tenantData.storeName,
         businessType: tenantData.businessType,
         contactEmail: tenantData.contactEmail,
-        contactPhone: tenantData.contactPhone,
+        // Sprint 146：contactPhone 在申請時為選填，既有店鋪可能從未填寫過（後端回傳 null）。
+        // 若直接指派 null/undefined，下方 validateForm() 呼叫 .trim() 會直接拋出 TypeError。
+        contactPhone: tenantData.contactPhone || '',
         purchaseOrderApprovalThreshold:
           tenantData.purchaseOrderApprovalThreshold != null
             ? String(tenantData.purchaseOrderApprovalThreshold)
@@ -387,7 +388,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
 
           <div className="pt-4 border-t">
             <p className="text-xs text-muted-foreground">
-              店鋪 ID: <span className="font-mono">{tenant.id}</span>
+              店鋪 ID: <span className="font-mono">{tenant.tenantId}</span>
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               店鋪狀態: {tenant.status}

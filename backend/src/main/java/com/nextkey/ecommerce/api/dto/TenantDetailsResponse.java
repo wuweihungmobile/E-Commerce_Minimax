@@ -20,12 +20,14 @@ public class TenantDetailsResponse {
     private String businessType;
     private String status;
     private String contactEmail;
+    private String contactPhone;
     private String logoUrl;
     private String coverImageUrl;
     private BigDecimal purchaseOrderApprovalThreshold;
     private MemberInfo member;
     private StatsInfo stats;
     private Instant createdAt;
+    private Instant updatedAt;
 
     @Data
     @Builder

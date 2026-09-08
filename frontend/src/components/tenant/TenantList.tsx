@@ -11,19 +11,21 @@ import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
 import AuthService from '@/services/auth'
 
-// Tenant status enum
-type TenantStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED'
+// Tenant status enum（Sprint 146：對齊後端 Tenant.TenantStatus 實際值域，先前的 PENDING/APPROVED 從未存在）
+type TenantStatus = 'PENDING_REVIEW' | 'ACTIVE' | 'REJECTED' | 'SUSPENDED' | 'TERMINATED'
 
-// Tenant interface
+// Tenant interface（Sprint 146：對齊真正回傳此清單的 TenantListResponse——
+// 先前呼叫的 GET /v2/tenants 後端根本不存在此路徑，畫面必定 404；
+// 修正後改呼叫既有的 GET /v2/tenants/my，回應形狀是 { tenants: [...] }，
+// 沒有 contactEmail/contactPhone/updatedAt，改用真正存在的 role/memberCount）
 interface Tenant {
-  id: string
+  tenantId: string
   storeName: string
   businessType: string
-  contactEmail: string
-  contactPhone: string
   status: TenantStatus
+  role: string
+  memberCount: number
   createdAt: string
-  updatedAt: string
 }
 
 interface ApiResponse<T> {
@@ -56,10 +58,10 @@ export default function TenantList() {
     setError(null)
 
     try {
-      const response = await apiClient.get<ApiResponse<Tenant[]>>(
+      const response = await apiClient.get<ApiResponse<{ tenants: Tenant[] }>>(
         API_ENDPOINTS.tenants.list
       )
-      setTenants(response.data.data || [])
+      setTenants(response.data.data?.tenants || [])
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { message?: string } } }
@@ -80,26 +82,35 @@ export default function TenantList() {
   }
 
   const getStatusBadge = (status: TenantStatus) => {
+    // Sprint 146：對齊後端 Tenant.TenantStatus 實際值域（PENDING_REVIEW/ACTIVE/REJECTED/SUSPENDED/TERMINATED）
     const statusConfig: Record<TenantStatus, { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline'; label: string }> = {
-      PENDING: { variant: 'secondary', label: '審核中' },
-      APPROVED: { variant: 'success', label: '已核准' },
+      PENDING_REVIEW: { variant: 'secondary', label: '審核中' },
+      ACTIVE: { variant: 'success', label: '已核准' },
       REJECTED: { variant: 'destructive', label: '已拒絕' },
       SUSPENDED: { variant: 'destructive', label: '已停權' },
+      TERMINATED: { variant: 'destructive', label: '已終止' },
     }
     const config = statusConfig[status] || { variant: 'outline', label: status }
     return <Badge variant={config.variant}>{config.label}</Badge>
   }
 
   const getBusinessTypeLabel = (type: string) => {
+    // Sprint 146：對齊後端 TenantApplicationRequest/TenantUpdateRequest 的 businessType 值域
     const typeLabels: Record<string, string> = {
-      RETAIL: '零售',
-      WHOLESALE: '批發',
-      'F&B': '餐飲',
-      SERVICE: '服務業',
-      MANUFACTURING: '製造業',
-      OTHER: '其他',
+      RETAIL_ONLY: '零售商城',
+      BOOKING_ONLY: '民宿訂房',
+      HYBRID: '複合式（零售＋訂房）',
     }
     return typeLabels[type] || type
+  }
+
+  const getRoleLabel = (role: string) => {
+    const roleLabels: Record<string, string> = {
+      STORE_OWNER: '店主',
+      STORE_MANAGER: '管理員',
+      STORE_STAFF: '員工',
+    }
+    return roleLabels[role] || role
   }
 
   const filteredTenants = tenants.filter((tenant) =>
@@ -168,8 +179,8 @@ export default function TenantList() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredTenants.map((tenant) => (
-            <Card key={tenant.id} className="relative">
-              {currentTenantId === tenant.id && (
+            <Card key={tenant.tenantId} className="relative">
+              {currentTenantId === tenant.tenantId && (
                 <div className="absolute top-2 right-2">
                   <Badge variant="default">目前店鋪</Badge>
                 </div>
@@ -186,27 +197,27 @@ export default function TenantList() {
                   {getStatusBadge(tenant.status)}
                 </div>
                 <div className="text-sm">
-                  <span className="text-muted-foreground">聯絡信箱：</span>
-                  {tenant.contactEmail}
+                  <span className="text-muted-foreground">我的角色：</span>
+                  {getRoleLabel(tenant.role)}
                 </div>
                 <div className="text-sm">
-                  <span className="text-muted-foreground">聯絡電話：</span>
-                  {tenant.contactPhone}
+                  <span className="text-muted-foreground">成員數：</span>
+                  {tenant.memberCount}
                 </div>
                 <div className="text-xs text-muted-foreground">
                   建立時間：{new Date(tenant.createdAt).toLocaleDateString('zh-TW')}
                 </div>
               </CardContent>
               <CardFooter className="flex gap-2">
-                <Link href={`/dashboard/tenants/${tenant.id}`} className="flex-1">
+                <Link href={`/dashboard/tenants/${tenant.tenantId}`} className="flex-1">
                   <Button variant="outline" className="w-full">
                     查看詳情
                   </Button>
                 </Link>
-                {tenant.status === 'APPROVED' && currentTenantId !== tenant.id && (
+                {tenant.status === 'ACTIVE' && currentTenantId !== tenant.tenantId && (
                   <Button
                     variant="secondary"
-                    onClick={() => handleSwitchTenant(tenant.id)}
+                    onClick={() => handleSwitchTenant(tenant.tenantId)}
                   >
                     切換至此店鋪
                   </Button>

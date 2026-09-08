@@ -236,6 +236,35 @@ class TenantServiceTest {
     }
 
     @Test
+    @Order(4)
+    @DisplayName("updateTenant：businessType 先前完全未被 applyTenantUpdates 讀取，本輪補上寫入 metadata（Sprint 146）")
+    void updateTenant_writesBusinessTypeToMetadata() {
+        UUID tenantId = TEST_TENANT_ID;
+        TenantUpdateRequest request = TenantUpdateRequest.builder()
+                .businessType("BOOKING_ONLY")
+                .build();
+
+        Tenant existingTenant = Tenant.builder()
+                .id(tenantId)
+                .name("Original Store")
+                .status(Tenant.TenantStatus.ACTIVE)
+                .metadata(Map.of("businessType", "RETAIL_ONLY"))
+                .build();
+
+        when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                eq(tenantId), eq(TEST_USER_ID), eq(TenantMember.StoreRole.STORE_OWNER)))
+                .thenReturn(true);
+        when(tenantRepository.findById(tenantId))
+                .thenReturn(Optional.of(existingTenant));
+        when(tenantRepository.save(any(Tenant.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        tenantService.updateTenant(tenantId, request, TEST_USER_ID);
+
+        assertEquals("BOOKING_ONLY", existingTenant.getMetadata().get("businessType"));
+    }
+
+    @Test
     @Order(5)
     @DisplayName("updateTenant: STORE_STAFF 角色不能更新店鋪")
     void updateTenant_staffRole_shouldThrowException() {
@@ -301,9 +330,11 @@ class TenantServiceTest {
                 .status(Tenant.TenantStatus.ACTIVE)
                 .description("Full description here")
                 .contactEmail("contact@example.com")
+                .contactPhone("+886-912345678")
                 .logoUrl("http://logo.url")
                 .purchaseOrderApprovalThreshold(new BigDecimal("5000.00"))
                 .metadata(Map.of("businessType", "RETAIL_ONLY"))
+                .updatedAt(Instant.parse("2026-09-08T10:00:00Z"))
                 .build();
 
         TenantMember ownerMember = TenantMember.builder()
@@ -335,6 +366,10 @@ class TenantServiceTest {
         assertEquals("ACTIVE", response.getStatus());
         assertEquals("Full description here", response.getStoreDescription()); // Should have full info
         assertEquals("contact@example.com", response.getContactEmail());        // Should have full info
+        // Sprint 146：contactPhone/updatedAt 先前完全沒有被 DTO/mapper 帶出，
+        // 導致前端 TenantDetail.tsx 的「聯絡電話」「最後更新」永遠讀到 undefined
+        assertEquals("+886-912345678", response.getContactPhone());
+        assertEquals(Instant.parse("2026-09-08T10:00:00Z"), response.getUpdatedAt());
         assertEquals(new BigDecimal("5000.00"), response.getPurchaseOrderApprovalThreshold()); // Sprint 89: 已設定門檻須可見
         assertNotNull(response.getMember());                                    // Should have member info
         assertEquals("Store Owner", response.getMember().getDisplayName());
@@ -398,6 +433,55 @@ class TenantServiceTest {
             // status：預設啟用者為 ACTIVE；預設關閉且無紀錄者為 INACTIVE（尚未申請）
             assertEquals("ACTIVE", byKey.get("RETAIL_ENABLED").getStatus());
             assertEquals("INACTIVE", byKey.get("DYNAMIC_PRICING_ENABLED").getStatus());
+        }
+    }
+
+    // ── getTenantsListByUser Tests（Sprint 146：getFeatureMap 與 DEF-167 同型寫法）──
+
+    @Nested
+    @DisplayName("getTenantsListByUser()")
+    class GetTenantsListByUserTests {
+
+        @AfterEach
+        void tearDown() {
+            TenantContext.clear();
+        }
+
+        @Test
+        @DisplayName("getTenantsListByUser：features 只含布林功能開關，四個數值配額不得出現")
+        void getTenantsListByUser_featuresExcludeNumericQuotas() {
+            // Sprint 146：getFeatureMap 與 DEF-167 修復前的 getFeatureToggles 同一種寫法——
+            // 把數值配額（MAX_PRODUCTS 等）以 booleanDefault(false) 塞進 Map<String, Boolean>。
+            // 此端點（GET /v2/tenants/my）目前無任何前端呼叫點，但契約本身仍不應對外洩漏假布林值。
+            TenantContext.setCurrentUser(TEST_USER_ID);
+
+            TenantMember member = TenantMember.builder()
+                    .tenantId(TEST_TENANT_ID)
+                    .userId(TEST_USER_ID)
+                    .storeRole(TenantMember.StoreRole.STORE_OWNER)
+                    .build();
+            Tenant tenant = Tenant.builder()
+                    .id(TEST_TENANT_ID)
+                    .name("Test Store")
+                    .status(Tenant.TenantStatus.ACTIVE)
+                    .createdAt(Instant.now())
+                    .build();
+
+            when(tenantMemberRepository.findByUserId(TEST_USER_ID)).thenReturn(List.of(member));
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+            when(tenantMemberRepository.countByTenantId(TEST_TENANT_ID)).thenReturn(1L);
+            when(tenantFeatureToggleRepository.findByTenantId(TEST_TENANT_ID)).thenReturn(List.of());
+
+            List<TenantListResponse> result = tenantService.getTenantsListByUser();
+
+            assertEquals(1, result.size());
+            Map<String, Boolean> features = result.get(0).getFeatures();
+            assertEquals(Set.of("RETAIL_ENABLED", "BOOKING_ENABLED", "CMS_ENABLED",
+                    "ERP_ENABLED", "DYNAMIC_PRICING_ENABLED", "PROMO_ENABLED"), features.keySet());
+            assertFalse(features.containsKey("MAX_PRODUCTS"));
+            assertFalse(features.containsKey("MAX_ROOMS"));
+            assertFalse(features.containsKey("MAX_POSTS"));
+            assertFalse(features.containsKey("COMMISSION_RATE"));
         }
     }
 

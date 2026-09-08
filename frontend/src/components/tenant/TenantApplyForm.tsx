@@ -42,13 +42,13 @@ export default function TenantApplyForm() {
   })
   const [errors, setErrors] = useState<FormErrors>({})
 
+  // Sprint 146：先前送出的值（RETAIL/WHOLESALE/F&B/SERVICE/MANUFACTURING/OTHER）與後端
+  // TenantApplicationRequest.businessType 的 @Pattern 值域（RETAIL_ONLY/BOOKING_ONLY/HYBRID）
+  // 完全不重疊，導致每一筆開店申請都必定 400。值域對齊 PRD §9.10.1。
   const businessTypes = [
-    { value: 'RETAIL', label: '零售' },
-    { value: 'WHOLESALE', label: '批發' },
-    { value: 'F&B', label: '餐飲' },
-    { value: 'SERVICE', label: '服務業' },
-    { value: 'MANUFACTURING', label: '製造業' },
-    { value: 'OTHER', label: '其他' },
+    { value: 'RETAIL_ONLY', label: '零售商城' },
+    { value: 'BOOKING_ONLY', label: '民宿訂房' },
+    { value: 'HYBRID', label: '複合式（零售＋訂房）' },
   ]
 
   const validateForm = (): boolean => {

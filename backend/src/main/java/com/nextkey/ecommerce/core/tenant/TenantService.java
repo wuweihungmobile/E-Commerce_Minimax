@@ -266,12 +266,14 @@ public class TenantService {
                         ? tenant.getMetadata().get("businessType").toString() : "RETAIL_ONLY")
                 .status(tenant.getStatus().name())
                 .contactEmail(tenant.getContactEmail())
+                .contactPhone(tenant.getContactPhone())
                 .logoUrl(tenant.getLogoUrl())
                 .coverImageUrl(null) // tenants table doesn't have cover_image_url
                 .purchaseOrderApprovalThreshold(tenant.getPurchaseOrderApprovalThreshold())
                 .member(memberInfo)
                 .stats(null) // Stats would require additional queries
                 .createdAt(tenant.getCreatedAt())
+                .updatedAt(tenant.getUpdatedAt())
                 .build();
     }
 
@@ -329,6 +331,15 @@ public class TenantService {
         }
         if (request.getPurchaseOrderApprovalThreshold() != null) {
             tenant.setPurchaseOrderApprovalThreshold(request.getPurchaseOrderApprovalThreshold());
+        }
+        if (request.getBusinessType() != null) {
+            // Sprint 146：先前此欄位在 request 中完全未被讀取，前端送出的變更會被靜默丟棄。
+            // businessType 存於 metadata JSONB（見 getTenantDetails/getTenantsListByUser），
+            // 新建 Map 而非原地修改，確保 Hibernate 對 JSON 型別的變更偵測能正確觸發 UPDATE。
+            Map<String, Object> metadata = tenant.getMetadata() != null
+                    ? new HashMap<>(tenant.getMetadata()) : new HashMap<>();
+            metadata.put("businessType", request.getBusinessType());
+            tenant.setMetadata(metadata);
         }
     }
 
@@ -526,14 +537,23 @@ public class TenantService {
         Map<String, Boolean> features = new HashMap<>();
 
         for (TenantFeatureToggle toggle : toggles) {
+            // 同 DEF-167：數值配額（MAX_PRODUCTS/MAX_ROOMS/MAX_POSTS/COMMISSION_RATE）不是布林功能開關，
+            // 不得混入這份 Map<String, Boolean>。
+            FeatureDefinition def = FEATURE_DEFINITIONS.get(toggle.getFeatureKey());
+            if (def != null && !def.isBoolean) {
+                continue;
+            }
             features.put(toggle.getFeatureKey(), toggle.getIsEnabled());
         }
 
-        // Apply defaults for missing features
+        // Apply defaults for missing features（僅布林類型）
         for (Map.Entry<String, FeatureDefinition> entry : FEATURE_DEFINITIONS.entrySet()) {
+            FeatureDefinition def = entry.getValue();
+            if (!def.isBoolean) {
+                continue;
+            }
             if (!features.containsKey(entry.getKey())) {
-                FeatureDefinition def = entry.getValue();
-                features.put(entry.getKey(), def.isBoolean ? def.booleanDefault : false);
+                features.put(entry.getKey(), def.booleanDefault);
             }
         }
 

@@ -107,7 +107,7 @@ export const API_ENDPOINTS = {
   // Tenants (M17)
   tenants: {
     apply: '/v2/tenants/apply',
-    list: '/v2/tenants',  // 取得當前用戶的店鋪列表
+    list: '/v2/tenants/my',  // 取得當前用戶的店鋪列表（Sprint 146：修正誤打成不存在的裸 /v2/tenants 路徑）
     detail: (id: string) => '/v2/tenants/' + id,
     update: (id: string) => '/v2/tenants/' + id,
   },

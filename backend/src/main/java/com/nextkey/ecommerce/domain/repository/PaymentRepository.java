@@ -55,6 +55,21 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     int updateStatusIfCurrent(@Param("id") UUID id, @Param("expectedStatus") Payment.PaymentStatus expectedStatus,
             @Param("newStatus") Payment.PaymentStatus newStatus);
 
+    /**
+     * 併發防護（DEF-162，PaymentStateService.markStripeRefunded）：以條件式 UPDATE
+     * （{@code WHERE status <> newStatus}）取代「讀 status==REFUNDED 冪等檢查→setStatus/
+     * setStripeRefundId→save」。Stripe webhook 可能對同一筆退款事件重複送達，兩個併發呼叫
+     * 都可能通過同一份舊快照的冪等檢查，各自對訂單寫入重複的 order_state_log。回傳受影響
+     * 列數：1 代表本次成功轉換（呼叫端才可繼續同步訂單狀態/寫稽核）；0 代表已是 REFUNDED
+     * 或已被另一併發 webhook 搶先處理，呼叫端應視為冪等 no-op。
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("UPDATE Payment p SET p.status = :newStatus, "
+            + "p.stripeRefundId = COALESCE(:refundId, p.stripeRefundId) "
+            + "WHERE p.id = :id AND p.status <> :newStatus")
+    int markRefundedIfNotAlready(@Param("id") UUID id, @Param("newStatus") Payment.PaymentStatus newStatus,
+            @Param("refundId") String refundId);
+
     Optional<Payment> findByOrderId(UUID orderId);
 
     Optional<Payment> findByBookingId(UUID bookingId);

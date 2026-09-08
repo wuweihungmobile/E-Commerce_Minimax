@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.order;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -952,6 +953,8 @@ class OrderServiceTest {
         TenantContext.setCurrentUser(USER_ID);
         Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.updateStatusIfCurrent(any(), any(Order.OrderStatus.class), eq(Order.OrderStatus.CANCELLED)))
+                .thenReturn(1);
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 
         OrderDto.OrderResponse response = orderService.cancelOrder(ORDER_ID, "changed mind");
@@ -968,12 +971,15 @@ class OrderServiceTest {
         TenantContext.setCurrentUser(USER_ID);
         Order order = orderOf(USER_ID, Order.OrderStatus.PAID);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.updateStatusIfCurrent(any(), any(Order.OrderStatus.class), eq(Order.OrderStatus.CANCELLED)))
+                .thenReturn(1);
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 
         OrderDto.OrderResponse response = orderService.cancelOrder(ORDER_ID, "refund me");
 
         assertThat(response.getStatus()).isEqualTo("REFUNDING");
-        verify(orderRepository, times(2)).save(any(Order.class));
+        // DEF-124：CANCELLED 轉換改走原子 CAS（不再呼叫 save），僅 REFUNDING 這一步仍用 save()
+        verify(orderRepository, times(1)).save(any(Order.class));
         verify(orderStateLogRepository, times(2)).save(any(OrderStateLog.class));
         // Sprint 88（AI-2422）：取消前已是 PAID（已扣帳）→ 不釋放庫存（範圍外，退款回補庫存另計）
         verify(productInventoryService, never()).releaseForOrder(any());
@@ -985,12 +991,14 @@ class OrderServiceTest {
         TenantContext.setCurrentUser(USER_ID);
         Order order = orderOf(USER_ID, Order.OrderStatus.CONFIRMED);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
-        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.updateStatusIfCurrent(any(), any(Order.OrderStatus.class), eq(Order.OrderStatus.CANCELLED)))
+                .thenReturn(1);
 
         OrderDto.OrderResponse response = orderService.cancelOrder(ORDER_ID, "reason");
 
         assertThat(response.getStatus()).isEqualTo("CANCELLED");
-        verify(orderRepository, times(1)).save(any(Order.class));
+        // DEF-124：CANCELLED 轉換改走原子 CAS，非 PAID 訂單全程不再呼叫 save()
+        verify(orderRepository, never()).save(any(Order.class));
     }
 
     @Test
@@ -1012,6 +1020,8 @@ class OrderServiceTest {
         asAdmin();
         Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.updateStatusIfCurrent(any(), any(Order.OrderStatus.class), eq(Order.OrderStatus.CANCELLED)))
+                .thenReturn(1);
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 
         OrderDto.OrderResponse response = orderService.cancelOrder(ORDER_ID, "admin cancels");
@@ -1030,6 +1040,23 @@ class OrderServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_5002);
         verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    @DisplayName("DEF-124：併發搶占失敗（已被另一併發取消請求搶先轉換）→ E_5002，絕不重複釋放庫存/優惠券額度")
+    void cancelOrder_concurrentClaimLost_throwsE5002WithoutReleasingStock() {
+        TenantContext.setCurrentUser(USER_ID);
+        Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        // 模擬另一個併發的 cancelOrder 呼叫已搶先把這張訂單轉為 CANCELLED，本次 UPDATE 影響 0 列
+        when(orderRepository.updateStatusIfCurrent(any(), any(Order.OrderStatus.class), eq(Order.OrderStatus.CANCELLED)))
+                .thenReturn(0);
+
+        assertThatThrownBy(() -> orderService.cancelOrder(ORDER_ID, "too slow"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_5002);
+        verify(productInventoryService, never()).releaseForOrder(any());
+        verify(orderStateLogRepository, never()).save(any(OrderStateLog.class));
     }
 
     @Test

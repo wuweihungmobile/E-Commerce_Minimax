@@ -144,6 +144,16 @@ public class PaymentStateService {
             throw new BusinessException(ErrorCode.E_6003, "Payment already processed");
         }
 
+        // 併發防護（DEF-125，claim-before-side-effects）：先原子搶占「目前狀態→PAID」這個轉換，
+        // 只有搶到的一方才繼續建立 Payment 記錄與扣庫存。上面兩個檢查都是 check-then-act，
+        // 兩個併發的 mockPaymentSuccess 呼叫都可能通過同一份舊快照，各自建立一筆 SUCCESS
+        // Payment、各自扣一次庫存，造成帳實不符（比照 markStripePaymentSucceeded 既有修法）。
+        String previousStatus = order.getStatus().name();
+        if (orderRepository.updateStatusIfCurrent(order.getId(), order.getStatus(), Order.OrderStatus.PAID) == 0) {
+            throw new BusinessException(ErrorCode.E_5011, "Order cannot be paid in current status");
+        }
+        order.setStatus(Order.OrderStatus.PAID);
+
         // 建立支付記錄 (Mock 直接成功)
         Payment payment = Payment.builder()
                 .orderId(orderId)
@@ -156,10 +166,6 @@ public class PaymentStateService {
 
         payment = paymentRepository.save(payment);
 
-        // 更新訂單狀態為 PAID
-        String previousStatus = order.getStatus().name();
-        order.setStatus(Order.OrderStatus.PAID);
-        orderRepository.save(order);
         deductStockSafely(order);
         recordOrderStateLog(order, previousStatus, Order.OrderStatus.PAID.name(),
                 TenantContext.getCurrentUser(), "Mock payment success");
@@ -319,14 +325,13 @@ public class PaymentStateService {
             log.warn("markStripeRefunded: payment not found for paymentIntent={}", paymentIntentId);
             return false;
         }
-        if (payment.getStatus() == Payment.PaymentStatus.REFUNDED) {
-            return false; // 冪等
+        // 併發防護（DEF-162）：CAS 取代「讀 status==REFUNDED 冪等檢查→setStatus→save」，
+        // 避免 Stripe webhook 對同一筆退款事件重複送達時，兩邊都通過舊快照的冪等檢查，
+        // 各自對訂單寫入重複的 order_state_log。
+        int updated = paymentRepository.markRefundedIfNotAlready(payment.getId(), Payment.PaymentStatus.REFUNDED, refundId);
+        if (updated == 0) {
+            return false; // 已是 REFUNDED 或已被另一併發 webhook 搶先處理（冪等）
         }
-        payment.setStatus(Payment.PaymentStatus.REFUNDED);
-        if (refundId != null) {
-            payment.setStripeRefundId(refundId);
-        }
-        paymentRepository.save(payment);
         if (payment.getOrderId() != null) {
             Order order = orderRepository.findById(payment.getOrderId()).orElse(null);
             if (order != null && OrderStateMachine.canRefund(order.getStatus().name())) {

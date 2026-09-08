@@ -253,13 +253,14 @@ class PaymentStateServiceStripeTest {
         Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
                 .status(Payment.PaymentStatus.SUCCESS).stripePaymentIntentId("pi_1").build();
         when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(success));
+        when(paymentRepository.markRefundedIfNotAlready(any(), any(Payment.PaymentStatus.class), any()))
+                .thenReturn(1);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
 
         boolean updated = service.markStripeRefunded("pi_1", "re_2");
 
         assertThat(updated).isTrue();
-        assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
-        assertThat(success.getStripeRefundId()).isEqualTo("re_2");
+        verify(paymentRepository).markRefundedIfNotAlready(any(), eq(Payment.PaymentStatus.REFUNDED), eq("re_2"));
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
         // Sprint 135（DEF-111）：webhook 驅動，changedBy=null（無使用者情境）
         org.mockito.ArgumentCaptor<OrderStateLog> logCaptor = org.mockito.ArgumentCaptor.forClass(OrderStateLog.class);

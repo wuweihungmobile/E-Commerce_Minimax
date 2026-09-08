@@ -619,8 +619,15 @@ public class OrderService {
         }
 
         String currentStatus = order.getStatus().name();
+        // 併發防護（DEF-124）：先原子搶占「目前狀態→CANCELLED」這個轉換，只有搶到的一方才
+        // 繼續往下釋放預扣庫存／退還優惠券額度。這兩個下游操作本身雖是原子的相對量增減
+        // （releaseReservation 原生 UPDATE、優惠券額度遞增），但若 cancelOrder 本身被併發
+        // 呼叫兩次都通過上面的舊快照狀態檢查，仍會各自呼叫一次，造成庫存被重複釋放（幻影
+        // 庫存）、優惠券額度被重複退還（超發）。
+        if (orderRepository.updateStatusIfCurrent(order.getId(), order.getStatus(), Order.OrderStatus.CANCELLED) == 0) {
+            throw new BusinessException(ErrorCode.E_5002, "Order cannot be cancelled in current status");
+        }
         order.setStatus(Order.OrderStatus.CANCELLED);
-        order = orderRepository.save(order);
 
         // 記錄狀態日誌
         recordStateLog(order, currentStatus, Order.OrderStatus.CANCELLED.name(), userId, reason);

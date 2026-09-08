@@ -450,6 +450,8 @@ class OrderPromoCodeTest {
             TenantContext.setCurrentUser(USER_ID);
             Order order = orderWithPromo(Order.OrderStatus.CREATED);
             when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+            when(orderRepository.updateStatusIfCurrent(any(), any(Order.OrderStatus.class), eq(Order.OrderStatus.CANCELLED)))
+                    .thenReturn(1);
             when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 
             PromoCodeUsage usage = PromoCodeUsage.builder()
@@ -478,6 +480,8 @@ class OrderPromoCodeTest {
             Order order = orderWithPromo(Order.OrderStatus.CREATED);
             order.setPromoCode(null);
             when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+            when(orderRepository.updateStatusIfCurrent(any(), any(Order.OrderStatus.class), eq(Order.OrderStatus.CANCELLED)))
+                    .thenReturn(1);
             when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 
             orderService.cancelOrder(ORDER_ID, "buyer changed mind");

@@ -14,6 +14,8 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.DynamicUpdate;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -25,9 +27,15 @@ import lombok.Setter;
  *
  * <p>{@code tenantId} 為 {@code null} 表示平台工單（無關聯店家，如帳號/技術問題），
  * 僅 ADMIN/SUPER_ADMIN 可見；非 null 時表示與特定店家相關（通常因 {@code orderId} 帶入時反查得出）。
+ *
+ * <p>🔴 併發防護（DEF-163，SupportTicketService.updateStatus）：{@code @DynamicUpdate} 讓
+ * Hibernate 只把本次交易內實際被 setter 改動過的欄位組進 UPDATE SQL，避免併發的
+ * {@code updateStatus}（status/priority/resolvedAt）與 {@code assignTicket}（assignedTo）
+ * 互相以自己交易一開始讀到的舊快照悄悄覆寫對方已提交的欄位（比照 Sprint 136 §6 既有修法）。
  */
 @Entity
 @Table(name = "support_tickets")
+@DynamicUpdate
 @Getter
 @Setter
 @NoArgsConstructor

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -42,6 +43,9 @@ public class SupportTicketService {
 
     private static final DateTimeFormatter TICKET_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
+    /** DEF-139：ticket_number 唯一約束衝突時的有界重試次數（同一天同一 prefix 底下的 counter 碰撞）。 */
+    private static final int TICKET_NUMBER_MAX_ATTEMPTS = 3;
+
     private final SupportTicketRepository ticketRepository;
     private final OrderRepository orderRepository;
     private final SupportMessageService messageService;
@@ -59,16 +63,35 @@ public class SupportTicketService {
             tenantId = order.getTenantId();
         }
 
-        SupportTicket ticket = SupportTicket.builder()
-                .tenantId(tenantId)
-                .ticketNumber(generateTicketNumber())
-                .category(parseEnum(TicketCategory.class, request.getCategory(), ErrorCode.E_8010))
-                .subject(request.getSubject())
-                .description(request.getDescription())
-                .customerId(customerId)
-                .orderId(request.getOrderId())
-                .build();
-        ticket = ticketRepository.save(ticket);
+        TicketCategory category = parseEnum(TicketCategory.class, request.getCategory(), ErrorCode.E_8010);
+
+        // 併發防護（DEF-139）：generateTicketNumber() 的 countByTicketNumberStartingWith 是
+        // check-then-act，同一天同一 prefix 內兩個併發請求可能算出相同編號。DB 已有
+        // ticket_number UNIQUE 約束兜底資料完整性，但敗方原本會收到未攔截的原始 500。
+        // 由於編號是系統產生、非使用者輸入，改為捕捉違反約束後重新產生編號並有界重試，
+        // 對使用者而言完全無感，不需要手動重新送出表單。
+        SupportTicket ticket = null;
+        for (int attempt = 1; attempt <= TICKET_NUMBER_MAX_ATTEMPTS; attempt++) {
+            SupportTicket candidate = SupportTicket.builder()
+                    .tenantId(tenantId)
+                    .ticketNumber(generateTicketNumber())
+                    .category(category)
+                    .subject(request.getSubject())
+                    .description(request.getDescription())
+                    .customerId(customerId)
+                    .orderId(request.getOrderId())
+                    .build();
+            try {
+                ticket = ticketRepository.saveAndFlush(candidate);
+                break;
+            } catch (DataIntegrityViolationException e) {
+                if (attempt == TICKET_NUMBER_MAX_ATTEMPTS) {
+                    throw e;
+                }
+                log.warn("createTicket: ticketNumber collision, retrying: attempt={}, ticketNumber={}",
+                        attempt, candidate.getTicketNumber());
+            }
+        }
         log.info("Support ticket created: id={}, ticketNumber={}, customerId={}", ticket.getId(),
                 ticket.getTicketNumber(), customerId);
         return toResponse(ticket);

@@ -344,13 +344,16 @@ class PaymentStateServiceTest {
             Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
             when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
             when(paymentRepository.existsByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS)).thenReturn(false);
+            when(orderRepository.updateStatusIfCurrent(any(), any(Order.OrderStatus.class), eq(Order.OrderStatus.PAID)))
+                    .thenReturn(1);
             when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
 
             OrderPaymentStateDto dto = service.mockPaymentSuccess(ORDER_ID);
 
             assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.PAID);
             assertThat(dto.getPaymentStatus()).isEqualTo("SUCCESS");
-            verify(orderRepository).save(order);
+            // DEF-125：PAID 轉換改走原子 CAS（claim-before-side-effects），不再呼叫 save()
+            verify(orderRepository, never()).save(any(Order.class));
             // Sprint 88（AI-2422）：付款成功後正式扣帳
             verify(productInventoryService).deductForOrder(order);
             // Sprint 135（DEF-111）：付款驅動的 Order 狀態轉換須落地到既有 order_state_log
@@ -367,6 +370,8 @@ class PaymentStateServiceTest {
             Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
             when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
             when(paymentRepository.existsByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS)).thenReturn(false);
+            when(orderRepository.updateStatusIfCurrent(any(), any(Order.OrderStatus.class), eq(Order.OrderStatus.PAID)))
+                    .thenReturn(1);
             when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
             org.mockito.Mockito.doThrow(new RuntimeException("boom"))
                     .when(productInventoryService).deductForOrder(order);
@@ -375,6 +380,24 @@ class PaymentStateServiceTest {
 
             assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.PAID);
             assertThat(dto.getPaymentStatus()).isEqualTo("SUCCESS");
+        }
+
+        @Test
+        @DisplayName("🔴 DEF-125：併發搶占失敗（原子 UPDATE 影響 0 列）-> E_5011，絕不重複建立付款/扣庫存")
+        void concurrentClaim_lostRace_throwsE5011WithoutDuplicateSideEffects() {
+            Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+            when(paymentRepository.existsByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS)).thenReturn(false);
+            // 模擬另一個併發的 mockPaymentSuccess 呼叫已搶先把這張訂單轉為 PAID，本次 UPDATE 影響 0 列
+            when(orderRepository.updateStatusIfCurrent(any(), any(Order.OrderStatus.class), eq(Order.OrderStatus.PAID)))
+                    .thenReturn(0);
+
+            assertThatThrownBy(() -> service.mockPaymentSuccess(ORDER_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_5011);
+            verify(paymentRepository, never()).save(any(Payment.class));
+            verify(productInventoryService, never()).deductForOrder(any());
         }
     }
 
@@ -574,19 +597,20 @@ class PaymentStateServiceTest {
         }
 
         @Test
-        @DisplayName("UT-PAY-STATE-029: refundId 為 null -> 更新為 REFUNDED，但保留既有 stripeRefundId")
+        @DisplayName("UT-PAY-STATE-029: refundId 為 null -> 更新為 REFUNDED，CAS 保留既有 stripeRefundId")
         void nullRefundId_keepsExistingRefundId() {
             Order order = orderOf(USER_ID, Order.OrderStatus.PAID);
             Payment success = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.SUCCESS)
                     .stripeRefundId("re_prior").build();
             when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(success));
+            when(paymentRepository.markRefundedIfNotAlready(any(), any(Payment.PaymentStatus.class), any()))
+                    .thenReturn(1);
             when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
 
             boolean result = service.markStripeRefunded("pi_1", null);
 
             assertThat(result).isTrue();
-            assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
-            assertThat(success.getStripeRefundId()).isEqualTo("re_prior");
+            verify(paymentRepository).markRefundedIfNotAlready(any(), eq(Payment.PaymentStatus.REFUNDED), isNull());
         }
 
         @Test
@@ -595,13 +619,30 @@ class PaymentStateServiceTest {
             Order order = orderOf(USER_ID, Order.OrderStatus.REFUNDED);
             Payment success = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.SUCCESS).build();
             when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(success));
+            when(paymentRepository.markRefundedIfNotAlready(any(), any(Payment.PaymentStatus.class), any()))
+                    .thenReturn(1);
             when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
 
             boolean result = service.markStripeRefunded("pi_1", "re_1");
 
             assertThat(result).isTrue();
-            assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
             verify(orderRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("🔴 UT-PAY-STATE-030b：併發搶佔（原子 UPDATE 影響 0 列，例如 webhook 重複送達）"
+                + "-> 冪等回傳 false，絕不重複寫入 order_state_log（DEF-162）")
+        void concurrentClaim_lostRace_returnsFalseWithoutDuplicateAudit() {
+            Payment success = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.SUCCESS).build();
+            when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(success));
+            // 模擬另一個併發 webhook 呼叫已搶先把這筆付款標記 REFUNDED，本次 UPDATE 影響 0 列
+            when(paymentRepository.markRefundedIfNotAlready(any(), any(Payment.PaymentStatus.class), any()))
+                    .thenReturn(0);
+
+            boolean result = service.markStripeRefunded("pi_1", "re_1");
+
+            assertThat(result).isFalse();
+            verify(orderRepository, never()).findById(any());
         }
     }
 

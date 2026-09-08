@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -77,7 +79,7 @@ class SupportTicketServiceTest {
     void createTicket_withoutOrderId_hasNullTenantId() {
         SupportTicketService service = newService();
         when(ticketRepository.countByTicketNumberStartingWith(anyString())).thenReturn(0L);
-        when(ticketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(ticketRepository.saveAndFlush(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
 
         CreateTicketRequest request = CreateTicketRequest.builder()
                 .category("TECHNICAL").subject("帳號問題").description("無法登入").build();
@@ -95,7 +97,7 @@ class SupportTicketServiceTest {
         Order order = Order.builder().id(ORDER_ID).tenantId(TENANT_ID).userId(CUSTOMER_ID).build();
         when(orderRepository.findByIdAndUserId(ORDER_ID, CUSTOMER_ID)).thenReturn(Optional.of(order));
         when(ticketRepository.countByTicketNumberStartingWith(anyString())).thenReturn(0L);
-        when(ticketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(ticketRepository.saveAndFlush(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
 
         CreateTicketRequest request = CreateTicketRequest.builder()
                 .category("PRODUCT").subject("商品瑕疵").description("收到商品破損").orderId(ORDER_ID).build();
@@ -117,6 +119,40 @@ class SupportTicketServiceTest {
         assertThatThrownBy(() -> service.createTicket(request, CUSTOMER_ID))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5000));
+    }
+
+    @Test
+    @DisplayName("DEF-139：ticketNumber 併發撞唯一約束 → 重新產生編號並重試，對使用者無感成功")
+    void createTicket_ticketNumberCollision_retriesAndSucceeds() {
+        SupportTicketService service = newService();
+        when(ticketRepository.countByTicketNumberStartingWith(anyString())).thenReturn(0L);
+        when(ticketRepository.saveAndFlush(any(SupportTicket.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key"))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        CreateTicketRequest request = CreateTicketRequest.builder()
+                .category("TECHNICAL").subject("帳號問題").description("無法登入").build();
+
+        TicketResponse response = service.createTicket(request, CUSTOMER_ID);
+
+        assertThat(response).isNotNull();
+        verify(ticketRepository, times(2)).saveAndFlush(any(SupportTicket.class));
+    }
+
+    @Test
+    @DisplayName("DEF-139：連續撞約束超過重試上限 → 原樣拋出，不無限重試")
+    void createTicket_ticketNumberCollisionExceedsRetries_throws() {
+        SupportTicketService service = newService();
+        when(ticketRepository.countByTicketNumberStartingWith(anyString())).thenReturn(0L);
+        when(ticketRepository.saveAndFlush(any(SupportTicket.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key"));
+
+        CreateTicketRequest request = CreateTicketRequest.builder()
+                .category("TECHNICAL").subject("帳號問題").description("無法登入").build();
+
+        assertThatThrownBy(() -> service.createTicket(request, CUSTOMER_ID))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        verify(ticketRepository, times(3)).saveAndFlush(any(SupportTicket.class));
     }
 
     @Test

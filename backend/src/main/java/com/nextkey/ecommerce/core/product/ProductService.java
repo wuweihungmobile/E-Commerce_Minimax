@@ -18,6 +18,7 @@ import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.ProductRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -84,6 +85,11 @@ public class ProductService {
         featureToggleService.checkFeatureEnabled("RETAIL_ENABLED");
 
         UUID tenantId = TenantContext.getCurrentTenant();
+        // Sprint 147：MAX_PRODUCTS 數量配額強制執行（PRD §4.4）
+        featureToggleService.checkQuotaNotExceeded(AppConstants.QUOTA_MAX_PRODUCTS,
+                listingRepository.countByTenantIdAndListingTypeAndStatus(
+                        tenantId, Listing.ListingType.PRODUCT, Listing.ListingStatus.ACTIVE));
+
         Tenant tenant = fetchTenant(tenantId);
         User owner = fetchOwner();
 
@@ -126,6 +132,12 @@ public class ProductService {
     @Transactional
     public ProductDto.Response createProductFromDashboard(com.nextkey.ecommerce.api.dto.CreateListingRequest request) {
         UUID tenantId = TenantContext.getCurrentTenant();
+        // Sprint 147：MAX_PRODUCTS 數量配額強制執行（PRD §4.4）——RETAIL_ENABLED 已由呼叫端
+        // DashboardListingController 檢查，此處僅補配額檢查，避免重複查詢 toggle
+        featureToggleService.checkQuotaNotExceeded(AppConstants.QUOTA_MAX_PRODUCTS,
+                listingRepository.countByTenantIdAndListingTypeAndStatus(
+                        tenantId, Listing.ListingType.PRODUCT, Listing.ListingStatus.ACTIVE));
+
         Tenant tenant = fetchTenant(tenantId);
         User owner = fetchOwner();
 
@@ -168,6 +180,15 @@ public class ProductService {
         Listing listing = product.getListing();
         checkListingTenantOwnership(listing, isSuperAdmin);
 
+        // Sprint 147：MAX_PRODUCTS 數量配額強制執行（PRD §4.4）——僅在「由非 ACTIVE 轉入 ACTIVE」
+        // 時檢查，避免既有 ACTIVE 商品因其他欄位更新被誤擋，也堵住「先建滿額→下架一筆→建立新的→
+        // 再把舊的重新上架」這個繞過建立時檢查的路徑
+        if (isActivatingListing(listing.getStatus(), request.getStatus())) {
+            featureToggleService.checkQuotaNotExceeded(AppConstants.QUOTA_MAX_PRODUCTS,
+                    listingRepository.countByTenantIdAndListingTypeAndStatus(
+                            listing.getTenantId(), Listing.ListingType.PRODUCT, Listing.ListingStatus.ACTIVE));
+        }
+
         updateListingFromRequest(listing, request);
         listingRepository.save(listing);
 
@@ -176,6 +197,12 @@ public class ProductService {
         log.info("Updated product with listingId: {}", listingId);
 
         return toResponse(product);
+    }
+
+    private boolean isActivatingListing(final Listing.ListingStatus currentStatus, final String requestedStatus) {
+        return requestedStatus != null
+                && currentStatus != Listing.ListingStatus.ACTIVE
+                && Listing.ListingStatus.ACTIVE == Listing.ListingStatus.valueOf(requestedStatus.toUpperCase());
     }
 
     private void updateListingFromRequest(Listing listing, ProductDto.UpdateRequest request) {

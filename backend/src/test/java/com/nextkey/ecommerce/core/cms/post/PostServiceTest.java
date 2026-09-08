@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.cms.post;
 
 import com.nextkey.ecommerce.api.dto.M15Dto;
+import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.cms.post.PostCategory;
 import com.nextkey.ecommerce.domain.model.cms.post.PostEmbed;
@@ -13,6 +14,7 @@ import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import org.junit.jupiter.api.DisplayName;
@@ -69,6 +71,9 @@ class PostServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private FeatureToggleService featureToggleService;
 
     @InjectMocks
     private PostService postService;
@@ -277,6 +282,37 @@ class PostServiceTest {
             // Assert
             assertThat(response).isNotNull();
             assertThat(response.getStatus()).isEqualTo("PUBLISHED");
+        }
+
+        @Test
+        @DisplayName("Sprint 147: createPost 帶 autoPublish 但 MAX_POSTS 已達上限 → 拋 BusinessException，不再多存一次")
+        void createPost_autoPublishOverQuota_throwsException() {
+            // Arrange
+            Tenant tenant = buildTenant();
+            User author = buildAuthor();
+            Post draftPost = buildPost(Post.PostStatus.DRAFT);
+
+            M15Dto.CreatePostRequest request = M15Dto.CreatePostRequest.builder()
+                    .title("Test Post")
+                    .content("Test content")
+                    .autoPublish(true)
+                    .build();
+
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+            when(userRepository.findById(TEST_AUTHOR_ID)).thenReturn(Optional.of(author));
+            when(postRepository.existsBySlug(anyString())).thenReturn(false);
+            when(postRepository.save(any(Post.class))).thenReturn(draftPost);
+            when(postRepository.countByTenantIdAndStatus(TEST_TENANT_ID, Post.PostStatus.PUBLISHED))
+                    .thenReturn((long) AppConstants.QUOTA_MAX_POSTS);
+            doThrow(new BusinessException(ErrorCode.E_2009))
+                    .when(featureToggleService)
+                    .checkQuotaNotExceeded(AppConstants.QUOTA_MAX_POSTS, (long) AppConstants.QUOTA_MAX_POSTS);
+
+            // Act & Assert
+            assertThatThrownBy(() -> postService.createPost(TEST_TENANT_ID, TEST_AUTHOR_ID, request))
+                    .isInstanceOf(BusinessException.class);
+            // 只有一開始建立 DRAFT 的那次 save，配額檢查擋下後不會再多存一次「已發布」版本
+            verify(postRepository, times(1)).save(any(Post.class));
         }
 
         @Test
@@ -533,6 +569,43 @@ class PostServiceTest {
                         assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_4106);
                         assertThat(bex.getMessage()).contains("already published");
                     });
+        }
+
+        @Test
+        @DisplayName("Sprint 147: publishPost 已達 MAX_POSTS 配額 → 拋 BusinessException，不寫入")
+        void publishPost_quotaExceeded_throwsAndDoesNotSave() {
+            // Arrange
+            Post draftPost = buildPost(Post.PostStatus.DRAFT);
+            when(postRepository.findById(TEST_POST_ID)).thenReturn(Optional.of(draftPost));
+            when(postRepository.countByTenantIdAndStatus(TEST_TENANT_ID, Post.PostStatus.PUBLISHED))
+                    .thenReturn((long) AppConstants.QUOTA_MAX_POSTS);
+            doThrow(new BusinessException(ErrorCode.E_2009))
+                    .when(featureToggleService)
+                    .checkQuotaNotExceeded(AppConstants.QUOTA_MAX_POSTS, (long) AppConstants.QUOTA_MAX_POSTS);
+
+            // Act & Assert
+            assertThatThrownBy(() -> postService.publishPost(TEST_POST_ID, TEST_TENANT_ID))
+                    .isInstanceOf(BusinessException.class);
+            verify(postRepository, never()).save(any(Post.class));
+            assertThat(draftPost.getStatus()).isEqualTo(Post.PostStatus.DRAFT);
+        }
+
+        @Test
+        @DisplayName("Sprint 147: publishPost 配額未達上限 → 正常發布，且以正確數量呼叫配額檢查")
+        void publishPost_underQuota_checksQuotaAndPublishes() {
+            // Arrange
+            Post draftPost = buildPost(Post.PostStatus.DRAFT);
+            Post publishedPost = buildPost(Post.PostStatus.PUBLISHED);
+            when(postRepository.findById(TEST_POST_ID)).thenReturn(Optional.of(draftPost));
+            when(postRepository.countByTenantIdAndStatus(TEST_TENANT_ID, Post.PostStatus.PUBLISHED)).thenReturn(5L);
+            when(postRepository.save(any(Post.class))).thenReturn(publishedPost);
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(any(UUID.class))).thenReturn(new ArrayList<>());
+
+            // Act
+            postService.publishPost(TEST_POST_ID, TEST_TENANT_ID);
+
+            // Assert
+            verify(featureToggleService).checkQuotaNotExceeded(AppConstants.QUOTA_MAX_POSTS, 5L);
         }
     }
 

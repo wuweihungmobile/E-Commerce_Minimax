@@ -150,4 +150,28 @@ class FeatureToggleServiceTest {
                 .findByTenantIdAndFeatureKey(tenantCaptor.capture(), eq(FEATURE_KEY));
         assertThat(tenantCaptor.getAllValues()).containsExactly(tenantA, tenantB);
     }
+
+    // ========== Sprint 147：checkQuotaNotExceeded（MAX_PRODUCTS/MAX_ROOMS/MAX_POSTS 強制執行）==========
+
+    @Test
+    @DisplayName("checkQuotaNotExceeded：目前數量低於上限時不拋例外")
+    void checkQuotaNotExceeded_belowLimit_doesNotThrow() {
+        featureToggleService.checkQuotaNotExceeded(100, 99L);
+    }
+
+    @Test
+    @DisplayName("checkQuotaNotExceeded：目前數量剛好等於上限時拋出 BusinessException(E-2009)")
+    void checkQuotaNotExceeded_atLimit_throwsBusinessException() {
+        assertThatThrownBy(() -> featureToggleService.checkQuotaNotExceeded(100, 100L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(com.nextkey.ecommerce.shared.exception.ErrorCode.E_2009));
+    }
+
+    @Test
+    @DisplayName("checkQuotaNotExceeded：目前數量超過上限時仍拋出 BusinessException(E-2009)")
+    void checkQuotaNotExceeded_overLimit_throwsBusinessException() {
+        assertThatThrownBy(() -> featureToggleService.checkQuotaNotExceeded(100, 101L))
+                .isInstanceOf(BusinessException.class);
+    }
 }

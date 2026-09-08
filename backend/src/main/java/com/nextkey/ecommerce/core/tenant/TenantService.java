@@ -34,6 +34,7 @@ import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
 import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -57,9 +58,8 @@ public class TenantService {
     private static final Map<String, FeatureDefinition> FEATURE_DEFINITIONS = new LinkedHashMap<>();
 
     // Numeric toggle defaults
-    private static final int DEFAULT_MAX_PRODUCTS = 100;
-    private static final int DEFAULT_MAX_ROOMS = 20;
-    private static final int DEFAULT_MAX_POSTS = 50;
+    // Sprint 147：MAX_PRODUCTS/MAX_ROOMS/MAX_POSTS 改引用 AppConstants 單一事實來源，
+    // 避免與 ProductService/RoomService/PostService 的配額強制檢查各自維護一份數字造成漂移。
     private static final double DEFAULT_COMMISSION_RATE = 0.05;
 
     static {
@@ -74,9 +74,9 @@ public class TenantService {
         FEATURE_DEFINITIONS.put("DYNAMIC_PRICING_ENABLED", new FeatureDefinition("動態定價功能", "pricing", "可使用動態定價引擎", true, false));
         FEATURE_DEFINITIONS.put("PROMO_ENABLED", new FeatureDefinition("促銷活動功能", "promo", "可建立促銷活動", true, false));
         // Numeric toggles (stored as JSONB config)
-        FEATURE_DEFINITIONS.put("MAX_PRODUCTS", new FeatureDefinition("最大商品數", "店鋪可上架商品數上限", false, DEFAULT_MAX_PRODUCTS));
-        FEATURE_DEFINITIONS.put("MAX_ROOMS", new FeatureDefinition("最大房源數", "店鋪可上架房源數上限", false, DEFAULT_MAX_ROOMS));
-        FEATURE_DEFINITIONS.put("MAX_POSTS", new FeatureDefinition("最大貼文數", "店鋪可發布貼文數上限", false, DEFAULT_MAX_POSTS));
+        FEATURE_DEFINITIONS.put("MAX_PRODUCTS", new FeatureDefinition("最大商品數", "店鋪可上架商品數上限", false, AppConstants.QUOTA_MAX_PRODUCTS));
+        FEATURE_DEFINITIONS.put("MAX_ROOMS", new FeatureDefinition("最大房源數", "店鋪可上架房源數上限", false, AppConstants.QUOTA_MAX_ROOMS));
+        FEATURE_DEFINITIONS.put("MAX_POSTS", new FeatureDefinition("最大貼文數", "店鋪可發布貼文數上限", false, AppConstants.QUOTA_MAX_POSTS));
         FEATURE_DEFINITIONS.put("COMMISSION_RATE", new FeatureDefinition("抽佣比例", "平台抽佣比例", false, DEFAULT_COMMISSION_RATE));
     }
 

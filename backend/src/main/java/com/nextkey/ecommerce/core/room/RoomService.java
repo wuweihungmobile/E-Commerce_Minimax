@@ -20,6 +20,7 @@ import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -94,6 +95,11 @@ public class RoomService {
         featureToggleService.checkFeatureEnabled("BOOKING_ENABLED");
 
         UUID tenantId = TenantContext.getCurrentTenant();
+        // Sprint 147：MAX_ROOMS 數量配額強制執行（PRD §4.4）
+        featureToggleService.checkQuotaNotExceeded(AppConstants.QUOTA_MAX_ROOMS,
+                listingRepository.countByTenantIdAndListingTypeAndStatus(
+                        tenantId, Listing.ListingType.ROOM, Listing.ListingStatus.ACTIVE));
+
         Tenant tenant = fetchTenant(tenantId);
         User owner = fetchOwner();
 
@@ -142,6 +148,12 @@ public class RoomService {
     @Transactional
     public RoomDto.Response createRoomFromDashboard(com.nextkey.ecommerce.api.dto.CreateListingRequest request) {
         UUID tenantId = TenantContext.getCurrentTenant();
+        // Sprint 147：MAX_ROOMS 數量配額強制執行（PRD §4.4）——BOOKING_ENABLED 已由呼叫端
+        // DashboardListingController 檢查，此處僅補配額檢查，避免重複查詢 toggle
+        featureToggleService.checkQuotaNotExceeded(AppConstants.QUOTA_MAX_ROOMS,
+                listingRepository.countByTenantIdAndListingTypeAndStatus(
+                        tenantId, Listing.ListingType.ROOM, Listing.ListingStatus.ACTIVE));
+
         Tenant tenant = fetchTenant(tenantId);
         User owner = fetchOwner();
 
@@ -187,6 +199,13 @@ public class RoomService {
         Listing listing = room.getListing();
         checkListingTenantOwnership(listing, isSuperAdmin);
 
+        // Sprint 147：MAX_ROOMS 數量配額強制執行（PRD §4.4）——僅在「由非 ACTIVE 轉入 ACTIVE」時檢查
+        if (isActivatingListing(listing.getStatus(), request.getStatus())) {
+            featureToggleService.checkQuotaNotExceeded(AppConstants.QUOTA_MAX_ROOMS,
+                    listingRepository.countByTenantIdAndListingTypeAndStatus(
+                            listing.getTenantId(), Listing.ListingType.ROOM, Listing.ListingStatus.ACTIVE));
+        }
+
         updateListingFromRequest(listing, request);
         updateRoomFromRequest(room, request);
 
@@ -194,6 +213,12 @@ public class RoomService {
         log.info("Updated room with listingId: {}", listingId);
 
         return toResponse(room);
+    }
+
+    private boolean isActivatingListing(final Listing.ListingStatus currentStatus, final String requestedStatus) {
+        return requestedStatus != null
+                && currentStatus != Listing.ListingStatus.ACTIVE
+                && Listing.ListingStatus.ACTIVE == Listing.ListingStatus.valueOf(requestedStatus.toUpperCase());
     }
 
     private void updateListingFromRequest(Listing listing, RoomDto.UpdateRequest request) {

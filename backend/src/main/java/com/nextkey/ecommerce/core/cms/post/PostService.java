@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.M15Dto;
+import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.cms.post.PostCategory;
 import com.nextkey.ecommerce.domain.model.cms.post.PostEmbed;
@@ -25,6 +26,7 @@ import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.domain.repository.cms.PostCategoryRepository;
 import com.nextkey.ecommerce.domain.repository.cms.PostEmbedRepository;
 import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
@@ -48,6 +50,7 @@ public class PostService {
     private final ListingRepository listingRepository;
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
+    private final FeatureToggleService featureToggleService;
 
     // Markdown embed pattern: {{embed:listing:<listing_id>}}
     private static final Pattern EMBED_PATTERN =
@@ -103,6 +106,10 @@ public class PostService {
 
         // 如果 autoPublish 為 true，直接發布
         if (Boolean.TRUE.equals(request.getAutoPublish())) {
+            // Sprint 147：MAX_POSTS 數量配額強制執行（PRD §4.4）——此時新貼文仍是 DRAFT
+            // （上面剛 save 完），計數不含它本身
+            featureToggleService.checkQuotaNotExceeded(AppConstants.QUOTA_MAX_POSTS,
+                    postRepository.countByTenantIdAndStatus(tenantId, Post.PostStatus.PUBLISHED));
             post.publish();
             post = postRepository.save(post);
         }
@@ -170,6 +177,10 @@ public class PostService {
         if (post.getStatus() == Post.PostStatus.PUBLISHED) {
             throw new BusinessException(ErrorCode.E_4106, "Post is already published");
         }
+
+        // Sprint 147：MAX_POSTS 數量配額強制執行（PRD §4.4）
+        featureToggleService.checkQuotaNotExceeded(AppConstants.QUOTA_MAX_POSTS,
+                postRepository.countByTenantIdAndStatus(tenantId, Post.PostStatus.PUBLISHED));
 
         post.publish();
         post = postRepository.save(post);

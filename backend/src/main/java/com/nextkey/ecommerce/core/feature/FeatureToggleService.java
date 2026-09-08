@@ -47,6 +47,20 @@ public class FeatureToggleService {
     }
 
     /**
+     * 檢查數量配額是否已達上限（Sprint 147：MAX_PRODUCTS/MAX_ROOMS/MAX_POSTS 強制執行，見 PRD §4.4）
+     * 若目前啟用中/上架中數量已達到（或超過）上限則拋出 BusinessException(ErrorCode.E_2009)
+     *
+     * @param limit 配額上限（見 {@link com.nextkey.ecommerce.shared.constants.AppConstants} 的 QUOTA_MAX_* 常數）
+     * @param currentActiveCount 該租戶目前啟用中/上架中的數量
+     */
+    public void checkQuotaNotExceeded(final int limit, final long currentActiveCount) {
+        if (currentActiveCount >= limit) {
+            log.warn("Quota exceeded: limit={}, current={}", limit, currentActiveCount);
+            throw new BusinessException(ErrorCode.E_2009);
+        }
+    }
+
+    /**
      * 檢查 Feature Toggle 是否啟用（不回拋異常）
      * @return true if enabled, false otherwise
      */

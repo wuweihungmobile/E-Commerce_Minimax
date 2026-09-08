@@ -51,4 +51,8 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
     Optional<Listing> findByIdWithTenant(@Param("listingId") UUID listingId);
 
     long countByTenantIdAndStatus(UUID tenantId, Listing.ListingStatus status);
+
+    // Sprint 147：MAX_PRODUCTS/MAX_ROOMS 數量配額強制執行需依 listingType 分別計數
+    long countByTenantIdAndListingTypeAndStatus(
+            UUID tenantId, Listing.ListingType listingType, Listing.ListingStatus status);
 }

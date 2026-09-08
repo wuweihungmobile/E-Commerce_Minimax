@@ -96,4 +96,9 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
      */
     @Query("SELECT COUNT(p) > 0 FROM Post p WHERE p.featuredImageUrl LIKE %:filePath%")
     boolean existsByFeaturedImageUrlContaining(@Param("filePath") String filePath);
+
+    /**
+     * Sprint 147：MAX_POSTS 數量配額強制執行——計算目前已發布中的貼文數
+     */
+    long countByTenantIdAndStatus(UUID tenantId, Post.PostStatus status);
 }

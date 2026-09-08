@@ -53,6 +53,11 @@ public class AppConstants {
     public static final String FEATURE_DYNAMIC_PRICING_ENABLED = "DYNAMIC_PRICING_ENABLED";
     public static final String FEATURE_PROMO_ENABLED = "PROMO_ENABLED";
 
+    // Quota Limits (Sprint 147: MAX_PRODUCTS/MAX_ROOMS/MAX_POSTS 數量配額強制執行，見 PRD §4.4)
+    public static final int QUOTA_MAX_PRODUCTS = 100;
+    public static final int QUOTA_MAX_ROOMS = 20;
+    public static final int QUOTA_MAX_POSTS = 50;
+
     // Redis Keys
     public static final String REDIS_CART_PREFIX = "cart:";
     public static final String REDIS_LOCK_PREFIX = "lock:";

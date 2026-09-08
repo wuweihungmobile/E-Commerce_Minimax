@@ -424,6 +424,16 @@ HTTP Request
 - Toggle 狀態建議快取至 Redis，TTL 60 秒，避免每次 API 呼叫均穿透資料庫。
 - Feature Toggle 的變更（即 `tenant_feature_toggles` 表寫入）需經 Admin 角色授權，並寫入 `audit_logs`。
 
+**[Specification] 數量配額驗證（Sprint 147 新增）**
+
+> 本文件先前僅將 `MAX_PRODUCTS`／`MAX_ROOMS`／`MAX_POSTS`／`COMMISSION_RATE` 列為上表的預設值，未定義任何驗證邏輯（Sprint 145 DEF-167 查證確認：這四個 key 在此之前於生產程式碼中零強制執行點）。本節正式補上前三者的強制執行規格。`COMMISSION_RATE` 性質與另三者不同——它是比例值而非數量上限，平台抽佣實際透過 `Tenant.commissionRate` 欄位獨立運作，**不屬於本節規範範圍**，維持現狀不動。
+
+1. **計數範圍**：僅計「目前上架中／啟用中」的項目——Product／Room 計其所屬 `Listing.status = ACTIVE` 者，Post 計其 `status = PUBLISHED` 者。已下架（`INACTIVE`/`DELETED`）或未發布（`DRAFT`/`ARCHIVED`）的項目不計入配額。
+2. **驗證時機**：任何會使一筆 Product／Room 的 Listing 轉入 `ACTIVE`、或使一篇 Post 轉入 `PUBLISHED` 的操作**之前**，須先查詢該租戶目前啟用中的數量；若已達到對應配額上限，拒絕該操作、不寫入資料庫。涵蓋範圍包含但不限於：建立時直接標記為上架/發布、既有項目由非啟用狀態更新為啟用狀態。
+3. **配額來源**：本次採用上表所列的全域預設值（`MAX_PRODUCTS=100`／`MAX_ROOMS=20`／`MAX_POSTS=50`），**不支援逐租戶客製化覆寫**；若未來需要平台管理員為個別租戶調整配額，屬獨立需求，另行規劃與排程。
+4. **錯誤碼**：新增 `E-2009 QUOTA_EXCEEDED`，HTTP 400，訊息：「已達店鋪配額上限（%s，上限 %d 筆）」。
+5. **實作約束**：與前述布林開關驗證相同，配額驗證應在 Repository 層或 Service 層執行，不得在 Controller 層執行。
+
 ---
 
 ## 5. 統一商品/服務模型 (Unified Listing Model)

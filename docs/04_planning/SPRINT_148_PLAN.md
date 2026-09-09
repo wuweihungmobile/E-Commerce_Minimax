@@ -112,7 +112,7 @@ Sprint 147 完成配額強制政策實作並 push 後，`DEFERRED_ITEMS_TRACKER.
 |---|------|------|------|------|
 | 1 | DEF-184 修復（Controller 層布林開關檢查搬移） | Sprint 147 §8 item 6 | ✅ 完成 | 移入已完成延後項目 |
 | 2 | DEF-183 修復（`getUserMessage()` 佔位符機制） | Sprint 147 §8 item 5 | ✅ 完成 | 移入已完成延後項目 |
-| 3 | `RELEASE_TRACKER` 回填本輪 push 狀態與雲端 CI 結果 | 本輪交付後 | ⬜ 待回填 | 依慣例留待下一 Sprint 開工回填，或成本為零時同日回填 |
+| 3 | `RELEASE_TRACKER` 回填本輪 push 狀態與雲端 CI 結果 | 本輪交付後 | ✅ 完成（同日立即回填） | commit `a860f40` 已 push，雲端 CI run 34365227691 三個 job 全綠，詳見 `RELEASE_TRACKER.md` v2.35 |
 | 4 | DEF-103/104/105 三筆輸入驗證 | S135 登記 | ⬜ 待排程 | 低優先級，已在追蹤器 |
 | 5 | `/dashboard/tenants/[id]/features` 顯示頁補上配額用量 | S147 §6 範圍外 | ⬜ 待排程 | 需先確認是否要做（新功能，非技術債） |
 

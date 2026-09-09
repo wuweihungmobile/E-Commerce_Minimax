@@ -148,8 +148,10 @@ public class RoomService {
     @Transactional
     public RoomDto.Response createRoomFromDashboard(com.nextkey.ecommerce.api.dto.CreateListingRequest request) {
         UUID tenantId = TenantContext.getCurrentTenant();
-        // Sprint 147：MAX_ROOMS 數量配額強制執行（PRD §4.4）——BOOKING_ENABLED 已由呼叫端
-        // DashboardListingController 檢查，此處僅補配額檢查，避免重複查詢 toggle
+        // Sprint 148（DEF-184）：BOOKING_ENABLED 檢查從 DashboardListingController 搬進 Service 層，
+        // 遵循 PRD §4.4「Feature Toggle 驗證...不得在 Controller 層執行」的分層規範
+        featureToggleService.checkFeatureEnabled("BOOKING_ENABLED");
+        // Sprint 147：MAX_ROOMS 數量配額強制執行（PRD §4.4）
         featureToggleService.checkQuotaNotExceeded(AppConstants.QUOTA_MAX_ROOMS,
                 listingRepository.countByTenantIdAndListingTypeAndStatus(
                         tenantId, Listing.ListingType.ROOM, Listing.ListingStatus.ACTIVE));

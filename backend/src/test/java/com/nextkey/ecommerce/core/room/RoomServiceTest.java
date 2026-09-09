@@ -307,4 +307,45 @@ class RoomServiceTest {
         verify(featureToggleService, never()).checkQuotaNotExceeded(anyInt(), anyLong());
         verify(listingRepository, never()).countByTenantIdAndListingTypeAndStatus(any(), any(), any());
     }
+
+    // ========== Sprint 148（DEF-184）：BOOKING_ENABLED 檢查搬移至 Service 層 ==========
+
+    @Test
+    @DisplayName("Sprint 148（DEF-184）: createRoomFromDashboard 的 BOOKING_ENABLED 停用 → 拋 BusinessException，未建立 Listing")
+    void createRoomFromDashboard_bookingDisabled_throwsAndDoesNotCreateListing() {
+        doThrow(new BusinessException(ErrorCode.E_2004, "Feature 'BOOKING_ENABLED' is disabled for this tenant"))
+                .when(featureToggleService).checkFeatureEnabled("BOOKING_ENABLED");
+
+        com.nextkey.ecommerce.api.dto.CreateListingRequest request =
+                com.nextkey.ecommerce.api.dto.CreateListingRequest.builder()
+                        .listingType("ROOM").name("停用開關房源").price(java.math.BigDecimal.valueOf(100)).build();
+
+        assertThatThrownBy(() -> roomService.createRoomFromDashboard(request))
+                .isInstanceOf(BusinessException.class);
+        verify(listingRepository, never()).save(any());
+        verify(listingRepository, never()).countByTenantIdAndListingTypeAndStatus(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Sprint 148（DEF-184）: createRoomFromDashboard 的 BOOKING_ENABLED 啟用 → 正常建立，且確實檢查了開關")
+    void createRoomFromDashboard_bookingEnabled_createsSuccessfullyAndChecksToggle() {
+        UUID userId = UUID.randomUUID();
+        TenantContext.setCurrentUser(userId);
+        when(listingRepository.countByTenantIdAndListingTypeAndStatus(
+                OWNER_TENANT, Listing.ListingType.ROOM, Listing.ListingStatus.ACTIVE))
+                .thenReturn(1L);
+        when(tenantRepository.findById(OWNER_TENANT)).thenReturn(Optional.of(Tenant.builder().id(OWNER_TENANT).build()));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(User.builder().id(userId).build()));
+        when(listingRepository.save(any(Listing.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(roomRepository.save(any(Room.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        com.nextkey.ecommerce.api.dto.CreateListingRequest request =
+                com.nextkey.ecommerce.api.dto.CreateListingRequest.builder()
+                        .listingType("ROOM").name("Dashboard新房源").price(java.math.BigDecimal.valueOf(100)).build();
+
+        RoomDto.Response response = roomService.createRoomFromDashboard(request);
+
+        assertThat(response.getTitle()).isEqualTo("Dashboard新房源");
+        verify(featureToggleService).checkFeatureEnabled("BOOKING_ENABLED");
+    }
 }

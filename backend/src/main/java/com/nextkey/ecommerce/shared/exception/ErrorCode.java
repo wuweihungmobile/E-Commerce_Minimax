@@ -195,10 +195,18 @@ public enum ErrorCode {
         return message;
     }
 
-    public String getFormattedMessage(final String... args) {
+    /**
+     * 將訊息模板中的 {@code %d}/{@code %s} 等佔位符代入實際值（Sprint 148，DEF-183）。
+     *
+     * <p>參數型別為 {@code Object...} 而非 {@code String...}：先前簽章若傳入單一
+     * {@code String[]}，因 varargs 展開規則會把整個陣列當成第一個格式化參數（而非展開成
+     * 多個參數），對 {@code %d} 這類非字串格式碼會直接拋 {@code IllegalFormatConversionException}。
+     * 本方法先前全庫零呼叫點，此問題從未被觸發。
+     */
+    public String getFormattedMessage(final Object... args) {
         if (args.length == 0) {
             return message;
         }
-        return String.format(message, (Object) args);
+        return String.format(message, args);
     }
 }

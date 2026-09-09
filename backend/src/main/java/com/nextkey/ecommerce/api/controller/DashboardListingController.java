@@ -11,7 +11,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.CreateListingRequest;
-import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.product.ProductService;
 import com.nextkey.ecommerce.core.room.RoomService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
@@ -32,7 +31,6 @@ public class DashboardListingController {
 
     private final ProductService productService;
     private final RoomService roomService;
-    private final FeatureToggleService featureToggleService;
 
     /**
      * 統一建立 Listing (商品或房間)
@@ -52,16 +50,11 @@ public class DashboardListingController {
         Object response;
 
         if ("PRODUCT".equalsIgnoreCase(request.getListingType())) {
-            // 檢查 RETAIL_ENABLED feature toggle
-            featureToggleService.checkFeatureEnabled("RETAIL_ENABLED");
-
-            // 呼叫 ProductService
+            // Sprint 148（DEF-184）：RETAIL_ENABLED 檢查已搬進 ProductService.createProductFromDashboard
+            // （PRD §4.4 規定 Feature Toggle 驗證不得在 Controller 層執行）
             response = productService.createProductFromDashboard(request);
         } else if ("ROOM".equalsIgnoreCase(request.getListingType())) {
-            // 檢查 BOOKING_ENABLED feature toggle
-            featureToggleService.checkFeatureEnabled("BOOKING_ENABLED");
-
-            // 呼叫 RoomService
+            // Sprint 148（DEF-184）：BOOKING_ENABLED 檢查已搬進 RoomService.createRoomFromDashboard
             response = roomService.createRoomFromDashboard(request);
         } else {
             throw new BusinessException(ErrorCode.E_3001, "Invalid listing type: " + request.getListingType());

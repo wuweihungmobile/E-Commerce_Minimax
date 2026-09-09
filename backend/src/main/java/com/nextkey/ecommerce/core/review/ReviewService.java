@@ -91,8 +91,8 @@ public class ReviewService {
         if (request.getImages() != null && !request.getImages().isEmpty()) {
             String invalidImageId = mediaService.findFirstInvalidMediaId(request.getImages());
             if (invalidImageId != null) {
-                throw new BusinessException(ErrorCode.E_1089,
-                        "Invalid image: " + invalidImageId);
+                // Sprint 148（DEF-183）：讓使用者看到實際的無效圖片 ID，而非原始未代入的「%s」模板
+                throw BusinessException.withFormattedMessage(ErrorCode.E_1089, invalidImageId);
             }
         }
 
@@ -150,7 +150,8 @@ public class ReviewService {
             validateImageCount(request.getImages());
             String invalidImageId = mediaService.findFirstInvalidMediaId(request.getImages());
             if (invalidImageId != null) {
-                throw new BusinessException(ErrorCode.E_1089, "Invalid image: " + invalidImageId);
+                // Sprint 148（DEF-183）：讓使用者看到實際的無效圖片 ID，而非原始未代入的「%s」模板
+                throw BusinessException.withFormattedMessage(ErrorCode.E_1089, invalidImageId);
             }
             review.setImages(request.getImages());
         }
@@ -555,7 +556,8 @@ public class ReviewService {
 
         // 驗證圖片有效
         if (!mediaService.existsMediaById(imageUrl)) {
-            throw new BusinessException(ErrorCode.E_1089, "Invalid image: " + imageUrl);
+            // Sprint 148（DEF-183）：讓使用者看到實際的無效圖片 ID，而非原始未代入的「%s」模板
+            throw BusinessException.withFormattedMessage(ErrorCode.E_1089, imageUrl);
         }
 
         List<String> images = review.getImages() != null ? new ArrayList<>(review.getImages()) : new ArrayList<>();
@@ -566,8 +568,8 @@ public class ReviewService {
         // - 已有 9 張時再新增會到 10 張 ❌ (9 + 1 = 10，超限)
         // 邏輯：size >= 9 阻擋（已達上限）
         if (images.size() >= MAX_REVIEW_IMAGES) {
-            throw new BusinessException(ErrorCode.E_1088,
-                    String.format(ErrorCode.E_1088.getMessage(), images.size()));
+            // Sprint 148（DEF-183）：讓使用者看到實際張數，而非原始未代入的「%d」模板
+            throw BusinessException.withFormattedMessage(ErrorCode.E_1088, images.size());
         }
 
         images.add(imageUrl);
@@ -602,8 +604,8 @@ public class ReviewService {
         List<String> images = review.getImages() != null ? new ArrayList<>(review.getImages()) : new ArrayList<>();
 
         if (imageIndex < 0 || imageIndex >= images.size()) {
-            throw new BusinessException(ErrorCode.E_1090,
-                    String.format(ErrorCode.E_1090.getMessage(), imageIndex));
+            // Sprint 148（DEF-183）：讓使用者看到實際的索引值，而非原始未代入的「%d」模板
+            throw BusinessException.withFormattedMessage(ErrorCode.E_1090, imageIndex);
         }
 
         String removedImage = images.remove(imageIndex);
@@ -641,9 +643,9 @@ public class ReviewService {
         // 驗證內容一致性：newImageUrls 必須是原圖片集合的排列
         List<String> currentImages = review.getImages() != null ? review.getImages() : List.of();
         if (newImageUrls == null || newImageUrls.size() != currentImages.size()) {
-            throw new BusinessException(ErrorCode.E_1088,
-                    String.format(ErrorCode.E_1088.getMessage(),
-                            newImageUrls == null ? 0 : newImageUrls.size()));
+            // Sprint 148（DEF-183）：讓使用者看到實際張數，而非原始未代入的「%d」模板
+            throw BusinessException.withFormattedMessage(
+                    ErrorCode.E_1088, newImageUrls == null ? 0 : newImageUrls.size());
         }
 
         // 確認是相同的圖片集合（透過 Set 比較）
@@ -666,8 +668,8 @@ public class ReviewService {
      */
     private void validateImageCount(List<String> images) {
         if (images != null && images.size() > MAX_REVIEW_IMAGES) {
-            throw new BusinessException(ErrorCode.E_1088,
-                    String.format(ErrorCode.E_1088.getMessage(), images.size()));
+            // Sprint 148（DEF-183）：讓使用者看到實際張數，而非原始未代入的「%d」模板
+            throw BusinessException.withFormattedMessage(ErrorCode.E_1088, images.size());
         }
     }
 

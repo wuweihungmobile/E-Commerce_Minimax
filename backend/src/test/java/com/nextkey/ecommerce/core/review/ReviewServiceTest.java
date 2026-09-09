@@ -392,4 +392,60 @@ class ReviewServiceTest {
 
         assertThat(response.getReviews()).hasSize(1);
     }
+
+    // ========== Sprint 148（DEF-183）：圖片管理錯誤訊息實際代入動態值 ==========
+    //
+    // addImage/removeImage/reorderImages 本身的一般行為已由 M08ReviewImageIntegrationTest 涵蓋
+    // （見本檔案頂端說明），但該測試把 ReviewService 整個 mock 掉，無法驗證訊息內容；本節專門
+    // 針對 DEF-183 這個「訊息模板佔位符從未被實際代入值」的新修復做端到端驗證，非重複造測試。
+
+    @Test
+    @DisplayName("DEF-183：addImage 已達 9 張上限 → getUserMessage() 顯示實際張數，不含 %d")
+    void addImage_atQuota_userMessageShowsActualCount() {
+        TenantContext.setCurrentUser(REVIEWER_ID);
+        Review review = reviewOf(REVIEWER_ID, listingOf(TENANT_A));
+        review.setImages(List.of("m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9"));
+        when(reviewRepository.findById(REVIEW_ID)).thenReturn(Optional.of(review));
+        when(mediaService.existsMediaById("m10")).thenReturn(true);
+
+        assertThatThrownBy(() -> reviewService.addImage(REVIEW_ID, "m10"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getUserMessage())
+                .asString()
+                .contains("9")
+                .doesNotContain("%d");
+    }
+
+    @Test
+    @DisplayName("DEF-183：removeImage 索引超出範圍 → getUserMessage() 顯示實際索引，不含 %d")
+    void removeImage_invalidIndex_userMessageShowsActualIndex() {
+        TenantContext.setCurrentUser(REVIEWER_ID);
+        Review review = reviewOf(REVIEWER_ID, listingOf(TENANT_A));
+        review.setImages(List.of("m1", "m2"));
+        when(reviewRepository.findById(REVIEW_ID)).thenReturn(Optional.of(review));
+
+        assertThatThrownBy(() -> reviewService.removeImage(REVIEW_ID, 5))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getUserMessage())
+                .asString()
+                .contains("5")
+                .doesNotContain("%d");
+    }
+
+    @Test
+    @DisplayName("DEF-183：addImage 傳入無效媒體 ID → getUserMessage() 顯示該 ID，不含 %s")
+    void addImage_invalidMedia_userMessageShowsActualImageId() {
+        TenantContext.setCurrentUser(REVIEWER_ID);
+        Review review = reviewOf(REVIEWER_ID, listingOf(TENANT_A));
+        review.setImages(List.of());
+        when(reviewRepository.findById(REVIEW_ID)).thenReturn(Optional.of(review));
+        when(mediaService.existsMediaById("invalid-media")).thenReturn(false);
+
+        assertThatThrownBy(() -> reviewService.addImage(REVIEW_ID, "invalid-media"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getUserMessage())
+                .asString()
+                .contains("invalid-media")
+                .doesNotContain("%s");
+    }
 }

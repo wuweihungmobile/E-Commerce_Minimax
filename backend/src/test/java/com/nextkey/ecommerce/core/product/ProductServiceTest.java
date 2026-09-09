@@ -305,4 +305,45 @@ class ProductServiceTest {
         verify(featureToggleService, never()).checkQuotaNotExceeded(anyInt(), anyLong());
         verify(listingRepository, never()).countByTenantIdAndListingTypeAndStatus(any(), any(), any());
     }
+
+    // ========== Sprint 148（DEF-184）：RETAIL_ENABLED 檢查搬移至 Service 層 ==========
+
+    @Test
+    @DisplayName("Sprint 148（DEF-184）: createProductFromDashboard 的 RETAIL_ENABLED 停用 → 拋 BusinessException，未建立 Listing")
+    void createProductFromDashboard_retailDisabled_throwsAndDoesNotCreateListing() {
+        doThrow(new BusinessException(ErrorCode.E_2004, "Feature 'RETAIL_ENABLED' is disabled for this tenant"))
+                .when(featureToggleService).checkFeatureEnabled("RETAIL_ENABLED");
+
+        com.nextkey.ecommerce.api.dto.CreateListingRequest request =
+                com.nextkey.ecommerce.api.dto.CreateListingRequest.builder()
+                        .listingType("PRODUCT").name("停用開關商品").price(BigDecimal.valueOf(100)).build();
+
+        assertThatThrownBy(() -> productService.createProductFromDashboard(request))
+                .isInstanceOf(BusinessException.class);
+        verify(listingRepository, never()).save(any());
+        verify(listingRepository, never()).countByTenantIdAndListingTypeAndStatus(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Sprint 148（DEF-184）: createProductFromDashboard 的 RETAIL_ENABLED 啟用 → 正常建立，且確實檢查了開關")
+    void createProductFromDashboard_retailEnabled_createsSuccessfullyAndChecksToggle() {
+        UUID userId = UUID.randomUUID();
+        TenantContext.setCurrentUser(userId);
+        when(listingRepository.countByTenantIdAndListingTypeAndStatus(
+                TENANT, Listing.ListingType.PRODUCT, Listing.ListingStatus.ACTIVE))
+                .thenReturn(1L);
+        when(tenantRepository.findById(TENANT)).thenReturn(Optional.of(Tenant.builder().id(TENANT).build()));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(User.builder().id(userId).build()));
+        when(listingRepository.save(any(Listing.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        com.nextkey.ecommerce.api.dto.CreateListingRequest request =
+                com.nextkey.ecommerce.api.dto.CreateListingRequest.builder()
+                        .listingType("PRODUCT").name("Dashboard新商品").price(BigDecimal.valueOf(100)).build();
+
+        ProductDto.Response response = productService.createProductFromDashboard(request);
+
+        assertThat(response.getTitle()).isEqualTo("Dashboard新商品");
+        verify(featureToggleService).checkFeatureEnabled("RETAIL_ENABLED");
+    }
 }

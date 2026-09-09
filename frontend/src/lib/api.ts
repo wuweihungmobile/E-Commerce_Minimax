@@ -82,6 +82,14 @@ export const API_ENDPOINTS = {
     trackingDetail: (logisticsId: string) => '/v2/logistics/' + logisticsId + '/tracking-detail',
   },
 
+  // Shipping Templates（M11 US-006，商家運費模板：固定運費/免運門檻，Sprint 150 補前端入口）
+  shippingTemplates: {
+    list: '/v2/shipping-templates',
+    create: '/v2/shipping-templates',
+    update: (id: string) => '/v2/shipping-templates/' + id,
+    delete: (id: string) => '/v2/shipping-templates/' + id,
+  },
+
   // Reviews (M08，買家評價：商品/房型)
   reviews: {
     create: '/v2/reviews',
@@ -134,11 +142,9 @@ export const API_ENDPOINTS = {
   },
 
   // Dashboard
+  // Sprint 150：移除 analytics/listings/orders/bookings 四個死碼 key——全庫零呼叫點，
+  // 與下方 analytics group（實際被 services/analytics.ts 使用）路徑重複但從未被引用。
   dashboard: {
-    analytics: '/v2/dashboard/analytics',
-    listings: '/v2/dashboard/listings',
-    orders: '/v2/dashboard/orders',
-    bookings: '/v2/dashboard/bookings',
     tenants: {
       features: '/v2/dashboard/tenants/features',
       updateFeature: (feature: string) => '/v2/dashboard/tenants/features/' + feature,
@@ -152,12 +158,6 @@ export const API_ENDPOINTS = {
     orders: '/v2/dashboard/orders',
     listings: '/v2/dashboard/listings',
     activity: '/v2/dashboard/activity',
-  },
-
-  // Dashboard Tenants (M17)
-  dashboardTenants: {
-    features: '/v2/dashboard/tenants/features',
-    updateFeature: (feature: string) => '/v2/dashboard/tenants/features/' + feature,
   },
 
   // Pricing (M12) — 對齊後端 PricingController base path /v2/dashboard/pricing（AI-2202a 契約清理）

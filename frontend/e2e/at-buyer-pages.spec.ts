@@ -103,7 +103,15 @@ test.describe('AT-BUYER-LAYOUT: 買家頁共用賣場版型（S37）', () => {
 
     // 登入態：帳號選單有登出鈕
     await expect(page.getByTestId('header-logout')).toBeVisible({ timeout: 15000 });
+
+    // DEF-185：登出必須實際呼叫後端 /v2/auth/logout 失效 refresh token，
+    // 而非只清 localStorage（否則被竊 refresh token 於登出後 7 天內仍可用）
+    const logoutRequest = page.waitForRequest(
+      (req) => req.url().includes('/v2/auth/logout') && req.method() === 'POST',
+      { timeout: 10000 }
+    );
     await page.getByTestId('header-logout').click();
+    await logoutRequest;
 
     // 登出後導向 /login，且 Header 即時轉為訪客（登入/註冊）
     await page.waitForURL('**/login', { timeout: 10000 });

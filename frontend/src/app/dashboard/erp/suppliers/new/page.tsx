@@ -37,8 +37,8 @@ export default function NewSupplierPage() {
                 {AuthService.getCurrentUser()?.email}
               </span>
               <button
-                onClick={() => {
-                  AuthService.clearAuthData()
+                onClick={async () => {
+                  await AuthService.logout()
                   router.push('/login')
                 }}
                 className="px-3 py-1.5 text-sm text-white bg-red-500 rounded-md hover:bg-red-600"

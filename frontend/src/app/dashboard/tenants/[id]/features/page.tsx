@@ -208,8 +208,8 @@ export default function FeatureTogglePage() {
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-600">{user.email}</span>
               <button
-                onClick={() => {
-                  AuthService.clearAuthData()
+                onClick={async () => {
+                  await AuthService.logout()
                   router.push('/login')
                 }}
                 className="px-3 py-1.5 text-sm text-white bg-red-500 rounded-md hover:bg-red-600"

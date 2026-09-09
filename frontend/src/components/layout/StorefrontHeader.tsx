@@ -68,8 +68,8 @@ export function StorefrontHeader({
     }
   }, [email])
 
-  const handleLogout = () => {
-    AuthService.clearAuthData()
+  const handleLogout = async () => {
+    await AuthService.logout()
     notifyAuthChange()
     setCartCount(0)
     router.push("/login")

@@ -11,6 +11,7 @@ export const API_ENDPOINTS = {
     register: '/v2/auth/register',
     login: '/v2/auth/login',
     refresh: '/v2/auth/refresh',
+    logout: '/v2/auth/logout',
   },
 
   // Listings

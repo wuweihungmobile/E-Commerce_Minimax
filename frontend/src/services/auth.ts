@@ -64,6 +64,21 @@ class AuthService {
     return response.data.data
   }
 
+  // Logout: 通知後端失效 refresh token，再清除本機資料
+  // 後端呼叫刻意 best-effort（catch 吞掉錯誤）——網路異常或 token 已過期
+  // 都不應阻擋使用者登出，本機資料仍會被清除
+  async logout(): Promise<void> {
+    if (typeof window !== 'undefined') {
+      const refreshToken = localStorage.getItem('refreshToken')
+      try {
+        await apiClient.post(API_ENDPOINTS.auth.logout, refreshToken ? { refreshToken } : {})
+      } catch {
+        // best-effort，忽略錯誤
+      }
+    }
+    this.clearAuthData()
+  }
+
   // Store auth data in localStorage
   storeAuthData(authResponse: AuthResponse): void {
     if (typeof window !== 'undefined') {

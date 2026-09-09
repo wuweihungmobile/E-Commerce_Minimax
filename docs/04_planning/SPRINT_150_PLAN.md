@@ -123,7 +123,7 @@ if (templates.isEmpty()) { return BigDecimal.ZERO; }
 | 2 | DEF-187 運費模板設定頁 | Sprint 150 自選掃描發現 | ✅ 完成 | 移入已完成延後項目 |
 | 3 | 執行 `make validate-e2e` 並回填本節結果 | 本輪交付前 | ✅ 完成 | 57 passed / 4 skipped / 0 failed，與既有基準一致 |
 | 4 | DEF-188 賣家訂單管理（列表+詳情+出貨，含後端租戶範圍查詢/讀取授權對稱化） | Sprint 150 §4 追加調查 | ⬜ 待排程 | **使用者已拍板排入 Sprint 151**，範圍見 §4 |
-| 5 | `RELEASE_TRACKER` 回填本輪 push 狀態與雲端 CI 結果 | 本輪交付後 | ⬜ 待執行 | push 後同日回填 |
+| 5 | `RELEASE_TRACKER` 回填本輪 push 狀態與雲端 CI 結果 | 本輪交付後 | ✅ 完成 | commit `a0e48c3` 已 push，雲端 CI run 34385903502 第三次重試三個 job 全綠（前兩次因 GitHub runner Google Chrome apt repo hash mismatch 失敗，與本輪程式碼無關） |
 | 6 | DEF-103/104/105 三筆輸入驗證 | S135 登記 | ⬜ 待排程 | 低優先級，已拍板不排入排程 |
 | 7 | `/dashboard/tenants/[id]/features` 顯示頁補上配額用量 | S147 §6 範圍外 | ⬜ 待排程 | 需先確認是否要做（新功能，非技術債） |
 | 8 | 會員資料匯出／自助刪除帳戶補前端入口 | S149 §7 範圍外 | ⬜ 待排程 | 後端已完整，需先確認 UI 位置與是否要做 |
@@ -139,3 +139,4 @@ if (templates.isEmpty()) { return BigDecimal.ZERO; }
 - `DEF-188` 一開始被誤判為與 `DEF-187` 同型（純前端補入口），追加調查（§4）後發現後端本身也有讀寫授權不對稱的既有疏漏，**如實更正範圍認知**而非依原始（不準確的）判斷倉促動手——這正是 Rule 1「遇到混淆時停下來」與過去 `DEF-047`「原記錄的修復目標查證後被推翻」教訓的直接應用。
 - `DEF-187` 未新增 Playwright E2E 規格，如實記錄原因（既有 E2E helper 無法取得 ACTIVE 賣家租戶測試帳號，這是先於本輪存在的基礎設施缺口）而非略過不提；改以真實 Docker 環境手動功能驗證替代，過程記錄於 §6。
 - 本輪零後端程式碼變動，`mvn verify`/`make validate-schema` 皆未執行——如實記錄為「本輪範圍不需要」。
+- push 後雲端 CI 前兩次嘗試失敗，依 CLAUDE.md「先看 `gh run view --log-failed` 找 actual error，不盲目猜測」的規則確認為 GitHub runner 內建 Google Chrome apt repo 索引檔 Hash Sum mismatch（`apt-get update` 於 `Install Build Tools` 步驟以 exit code 100 中止），與本輪程式碼零關聯（本輪零後端檔案變動，本地 act 執行同一份 job 已全綠）；未修改任何 workflow 設定，等待後第三次重試三個 job 全綠，證實純屬暫時性 runner 問題。

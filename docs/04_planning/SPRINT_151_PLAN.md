@@ -167,7 +167,7 @@ Sprint 150 §4 已查明的缺口（本輪逐一處理）：
 | 5 | `DEF-190`：`LogisticsService.checkOrderTenant` 同型漏洞（追溯至 DEF-019/Sprint 32） | 修 DEF-189 時比對發現，經 `AskUserQuestion` 徵詢後一併修 | ✅ 完成 | 詳見 §2.1.2 |
 | 6 | 執行 `mvn -o verify` 完整回歸並回填本節結果 | 本輪交付前 | ✅ 完成 | 見 §5.1，1237 單元 + 477 整合，0 failed |
 | 7 | `DEF-191`：`SELLER` 角色缺 `order:create`，無法呼叫 `POST /v2/logistics` 建立物流單 | 本輪手動 Docker 驗證發現 | ⚠️ 已記錄，待排程 | 詳見 §5.3，需業務決策（放行 SELLER 或改端點權限），非本輪擅自變更 |
-| 8 | `RELEASE_TRACKER`/`DEFERRED_ITEMS_TRACKER` 回填本輪 push 狀態與雲端 CI 結果 | 本輪交付後 | ⬜ 待回填 | |
+| 8 | `RELEASE_TRACKER`/`DEFERRED_ITEMS_TRACKER` 回填本輪 push 狀態與雲端 CI 結果 | 本輪交付後 | ✅ 完成 | commit `6ab60e8` 已 push，雲端 CI run 34435711766 第一次嘗試三個 job 全綠 |
 | 9 | 賣家訂單詳情頁狀態變更歷史（State Log 時間軸） | 本輪 §4 範圍外 | ⬜ 待排程 | 低優先級，可獨立小型追加 |
 | 10 | `DEF-103/104/105` 三筆輸入驗證 | S135 登記 | ⬜ 待排程 | 低優先級，已拍板不排入排程 |
 | 11 | `/dashboard/tenants/[id]/features` 顯示頁補上配額用量 | S147 §6 範圍外 | ⬜ 待排程 | 需先確認是否要做 |

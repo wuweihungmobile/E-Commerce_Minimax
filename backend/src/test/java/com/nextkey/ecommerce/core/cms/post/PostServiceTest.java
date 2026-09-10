@@ -431,6 +431,99 @@ class PostServiceTest {
                         assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_4105);
                     });
         }
+
+        // ── DEF-105（Sprint 154）：title/content 危險標記偵測 ───────────
+        //
+        // 改採「偵測即拒絕」而非消毒改寫：因為前台目前把 content 當純文字顯示
+        // （見 frontend/src/app/blog/[slug]/page.tsx renderContentWithEmbeds），
+        // 消毒函式庫的 HTML 實體編碼副作用（&→&amp; 等）會讓正常內容顯示成亂碼。
+
+        @Test
+        @DisplayName("DEF-105: createPost_titleWithScriptTag_throwsE9009")
+        void createPost_titleWithScriptTag_throwsE9009() {
+            // Arrange
+            M15Dto.CreatePostRequest request = M15Dto.CreatePostRequest.builder()
+                    .title("Hello <script>alert(1)</script>")
+                    .content("Test content")
+                    .build();
+
+            // Act & Assert
+            assertThatThrownBy(() -> postService.createPost(TEST_TENANT_ID, TEST_AUTHOR_ID, request))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> {
+                        BusinessException bex = (BusinessException) ex;
+                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_9009);
+                    });
+            // 驗證是在碰任何 repository 前就短路拒絕，不會意外建立 tenant/author 查詢副作用
+            verifyNoInteractions(tenantRepository, postRepository);
+        }
+
+        @Test
+        @DisplayName("DEF-105: createPost_contentWithEventHandlerAttribute_throwsE9009")
+        void createPost_contentWithEventHandlerAttribute_throwsE9009() {
+            // Arrange
+            M15Dto.CreatePostRequest request = M15Dto.CreatePostRequest.builder()
+                    .title("Test Post")
+                    .content("<img src=x onerror=alert(document.cookie)>")
+                    .build();
+
+            // Act & Assert
+            assertThatThrownBy(() -> postService.createPost(TEST_TENANT_ID, TEST_AUTHOR_ID, request))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> {
+                        BusinessException bex = (BusinessException) ex;
+                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_9009);
+                    });
+        }
+
+        @Test
+        @DisplayName("DEF-105: createPost_contentWithJavascriptUriMarkdownLink_throwsE9009")
+        void createPost_contentWithJavascriptUriMarkdownLink_throwsE9009() {
+            // Arrange: Markdown 連結語法 [text](javascript:...) 不含 HTML 角括號標籤，
+            // 但若未來加上 markdown-to-HTML 渲染會變成可執行的 <a href="javascript:...">，
+            // 故此檢查刻意不侷限於 <script> 等標籤，同時比對危險 URI scheme
+            M15Dto.CreatePostRequest request = M15Dto.CreatePostRequest.builder()
+                    .title("Test Post")
+                    .content("[點我看優惠](javascript:alert(document.cookie))")
+                    .build();
+
+            // Act & Assert
+            assertThatThrownBy(() -> postService.createPost(TEST_TENANT_ID, TEST_AUTHOR_ID, request))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> {
+                        BusinessException bex = (BusinessException) ex;
+                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_9009);
+                    });
+        }
+
+        @Test
+        @DisplayName("DEF-105: createPost_plainProseWithAmpersandAndAngleBrackets_notFalselyRejected")
+        void createPost_plainProseWithAmpersandAndAngleBrackets_notFalselyRejected() {
+            // Arrange：反例守衛——確保防禦性檢查不會誤傷含常見符號的合法內容。
+            // 這正是本輪選擇「偵測即拒絕」而非「消毒改寫」的理由：後者會靜默把
+            // & 改寫成 &amp;，讓「Q&A」這類再平常不過的標題永久顯示成亂碼。
+            Tenant tenant = buildTenant();
+            User author = buildAuthor();
+            Post savedPost = buildPost(Post.PostStatus.DRAFT);
+
+            M15Dto.CreatePostRequest request = M15Dto.CreatePostRequest.builder()
+                    .title("Q&A: 常見問題")
+                    .content("溫度必須 < 100 度，濕度 > 50%，服務由 Tom & Jerry 提供")
+                    .build();
+
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+            when(userRepository.findById(TEST_AUTHOR_ID)).thenReturn(Optional.of(author));
+            when(postRepository.existsBySlug(anyString())).thenReturn(false);
+            when(postRepository.save(any(Post.class))).thenReturn(savedPost);
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(any(UUID.class))).thenReturn(new ArrayList<>());
+
+            // Act
+            M15Dto.PostResponse response = postService.createPost(TEST_TENANT_ID, TEST_AUTHOR_ID, request);
+
+            // Assert
+            assertThat(response).isNotNull();
+            verify(postRepository).save(any(Post.class));
+        }
     }
 
     // ── updatePost() Tests ─────────────────────────────────────────────
@@ -524,6 +617,29 @@ class PostServiceTest {
                         BusinessException bex = (BusinessException) ex;
                         assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_4031);
                     });
+        }
+
+        @Test
+        @DisplayName("DEF-105: updatePost_contentWithScriptTag_throwsE9009AndDoesNotSave")
+        void updatePost_contentWithScriptTag_throwsE9009AndDoesNotSave() {
+            // Arrange
+            Post existingPost = buildPost(Post.PostStatus.DRAFT);
+            M15Dto.UpdatePostRequest request = M15Dto.UpdatePostRequest.builder()
+                    .content("<iframe src=\"https://evil.example.com\"></iframe>")
+                    .build();
+
+            when(postRepository.findById(TEST_POST_ID)).thenReturn(Optional.of(existingPost));
+
+            // Act & Assert
+            assertThatThrownBy(() -> postService.updatePost(TEST_POST_ID, TEST_TENANT_ID, request))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> {
+                        BusinessException bex = (BusinessException) ex;
+                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_9009);
+                    });
+            // 驗證拒絕發生在改任何欄位之前，既有內容不會被部分覆寫
+            verify(postRepository, never()).save(any(Post.class));
+            assertThat(existingPost.getContent()).isEqualTo("Test content");
         }
     }
 

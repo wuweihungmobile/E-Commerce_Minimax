@@ -51,6 +51,8 @@ public class CreateListingRequest {
     @DecimalMax(value = "999999999.99", message = "Price is too large")
     private BigDecimal price;
 
+    @Pattern(regexp = "^(?!\\s*(?i:javascript|data|vbscript|file):).*$",
+            message = "Cover image URL must not use javascript/data/vbscript/file protocol")
     private String coverImageUrl;
 
     @Size(max = 10, message = "Maximum 10 tags allowed")

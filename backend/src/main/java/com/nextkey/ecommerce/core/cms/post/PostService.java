@@ -56,6 +56,16 @@ public class PostService {
     private static final Pattern EMBED_PATTERN =
             Pattern.compile("\\{\\{embed:listing:([a-fA-F0-9\\-]+)\\}\\}");
 
+    // DEF-105（Sprint 154）：title/content 目前是純文字/Markdown 來源，前台以純文字顯示、
+    // 未經任何 HTML/Markdown 渲染，故非可利用漏洞；本檢查僅屬防禦性強化，偵測到即拒絕存檔，
+    // 不對合法內容做任何改寫——避免消毒函式庫慣有的 HTML 實體編碼把常見的 &/</> 字元
+    // 永久改寫成 &amp;/&lt;/&gt; 亂碼（現行純文字渲染方式下會直接顯示亂碼給使用者）。
+    // 若未來新增 Markdown-to-HTML 或 dangerouslySetInnerHTML 渲染路徑，該處必須自行
+    // 針對其實際輸出情境（HTML sink）另行消毒，不可假設這裡的檢查已經足夠。
+    private static final Pattern DANGEROUS_MARKUP_PATTERN = Pattern.compile(
+            "<\\s*(script|iframe|object|embed|style)\\b|on\\w+\\s*=|javascript:|vbscript:|data:text/html",
+            Pattern.CASE_INSENSITIVE);
+
     // Post excerpt limits
     private static final int EXCERPT_MAX_LENGTH = 500;
 
@@ -70,6 +80,9 @@ public class PostService {
         if (request.getTitle() == null || request.getTitle().trim().isEmpty()) {
             throw new BusinessException(ErrorCode.E_9005, "Title is required");
         }
+
+        // DEF-105：偵測危險標記，拒絕存檔
+        validateNoUnsafeMarkup(request.getTitle(), request.getContent());
 
         // 驗證 Tenant 存在
         Tenant tenant = tenantRepository.findById(tenantId)
@@ -134,6 +147,9 @@ public class PostService {
 
         // 驗證 Tenant 擁有權
         validateTenantOwnership(post, tenantId);
+
+        // DEF-105：偵測危險標記，拒絕存檔
+        validateNoUnsafeMarkup(request.getTitle(), request.getContent());
 
         // 更新欄位
         if (request.getTitle() != null) {
@@ -395,6 +411,19 @@ public class PostService {
     private void validateTenantOwnership(final Post post, final UUID tenantId) {
         if (!post.getTenant().getId().equals(tenantId)) {
             throw new BusinessException(ErrorCode.E_4031);
+        }
+    }
+
+    /**
+     * DEF-105：偵測 title/content 是否含危險標記（{@code <script>}、事件屬性、
+     * {@code javascript:}/{@code vbscript:} 等），偵測到即拒絕存檔，不做任何改寫。
+     */
+    private void validateNoUnsafeMarkup(final String title, final String content) {
+        if (title != null && DANGEROUS_MARKUP_PATTERN.matcher(title).find()) {
+            throw new BusinessException(ErrorCode.E_9009, "Title contains disallowed markup");
+        }
+        if (content != null && DANGEROUS_MARKUP_PATTERN.matcher(content).find()) {
+            throw new BusinessException(ErrorCode.E_9009, "Content contains disallowed markup");
         }
     }
 

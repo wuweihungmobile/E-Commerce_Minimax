@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 
 import lombok.*;
 
@@ -114,6 +115,8 @@ public class CmsDto {
         @NotBlank(message = "Image URL is required")
         private String imageUrl;
 
+        @Pattern(regexp = "^(?!\\s*(?i:javascript|data|vbscript|file):).*$",
+                message = "Link URL must not use javascript/data/vbscript/file protocol")
         private String linkUrl;
         private LinkType linkType;
         private String description;
@@ -139,6 +142,8 @@ public class CmsDto {
     public static class UpdateBannerRequest {
         private String title;
         private String imageUrl;
+        @Pattern(regexp = "^(?!\\s*(?i:javascript|data|vbscript|file):).*$",
+                message = "Link URL must not use javascript/data/vbscript/file protocol")
         private String linkUrl;
         private LinkType linkType;
         private String description;

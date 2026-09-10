@@ -167,6 +167,8 @@ public enum ErrorCode {
     E_9006("E-9006", "欄位長度超過限制"),
     E_9007("E-9007", "無效的日期格式"),
     E_9008("E-9008", "數值超出範圍"),
+    // 🔴 Sprint 154: DEF-105 防禦性強化——title/content 偵測到危險標記（<script>/事件屬性/javascript: 等）
+    E_9009("E-9009", "內容包含不允許的標記"),
 
     // Tenant Application (E-4090s) - Note: API doc uses 4091, 4092 but we'll use existing ranges
     E_4091("E-4091", "店鋪名稱已被使用"),

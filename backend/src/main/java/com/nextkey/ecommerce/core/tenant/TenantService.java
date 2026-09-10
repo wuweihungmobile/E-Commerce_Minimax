@@ -24,16 +24,20 @@ import com.nextkey.ecommerce.api.dto.TenantMemberResponse;
 import com.nextkey.ecommerce.api.dto.TenantUpdateRequest;
 import com.nextkey.ecommerce.api.dto.TenantUpdateResponse;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.domain.model.cms.post.Post;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantApplication;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.model.user.User;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.TenantApplicationRepository;
 import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
 import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -53,6 +57,10 @@ public class TenantService {
     private final TenantMemberRepository tenantMemberRepository;
     private final UserRepository userRepository;
     private final AuditService auditService;
+    /** Sprint 153：供 getFeatureToggles 計算 MAX_PRODUCTS/MAX_ROOMS 目前用量（ACTIVE 商品/房源數）。 */
+    private final ListingRepository listingRepository;
+    /** Sprint 153：供 getFeatureToggles 計算 MAX_POSTS 目前用量（PUBLISHED 貼文數）。 */
+    private final PostRepository postRepository;
 
     // Feature toggle definitions
     private static final Map<String, FeatureDefinition> FEATURE_DEFINITIONS = new LinkedHashMap<>();
@@ -392,7 +400,42 @@ public class TenantService {
         return FeatureToggleResponse.builder()
                 .tenantId(tenantId.toString())
                 .features(features)
+                .quotas(getQuotaUsage(tenantId))
                 .build();
+    }
+
+    /**
+     * Sprint 153（Sprint 147 §6 範圍外項目）：計算 MAX_PRODUCTS/MAX_ROOMS/MAX_POSTS 目前用量，
+     * 供 `/dashboard/tenants/[id]/features` 顯示頁呈現「目前用量 / 上限」。計數口徑比照
+     * {@code FeatureToggleService.checkQuotaNotExceeded} 既有呼叫端（ProductService/RoomService/
+     * PostService）的真正檢查條件（ACTIVE 商品/房源、PUBLISHED 貼文），確保顯示的用量與實際會被
+     * 攔截的用量一致，不是另一套獨立算法。上限直接引用 {@link AppConstants} 常數（單一事實來源，
+     * 見 Sprint 147 §3 對 FEATURE_DEFINITIONS 的既有說明），不從 FeatureDefinition 的
+     * booleanDefault 讀取（數值建構子刻意不保留該值）。
+     */
+    private List<FeatureToggleResponse.QuotaInfo> getQuotaUsage(final UUID tenantId) {
+        List<FeatureToggleResponse.QuotaInfo> quotas = new ArrayList<>();
+        quotas.add(FeatureToggleResponse.QuotaInfo.builder()
+                .featureKey("MAX_PRODUCTS")
+                .featureName(FEATURE_DEFINITIONS.get("MAX_PRODUCTS").name)
+                .limit(AppConstants.QUOTA_MAX_PRODUCTS)
+                .currentUsage(listingRepository.countByTenantIdAndListingTypeAndStatus(
+                        tenantId, Listing.ListingType.PRODUCT, Listing.ListingStatus.ACTIVE))
+                .build());
+        quotas.add(FeatureToggleResponse.QuotaInfo.builder()
+                .featureKey("MAX_ROOMS")
+                .featureName(FEATURE_DEFINITIONS.get("MAX_ROOMS").name)
+                .limit(AppConstants.QUOTA_MAX_ROOMS)
+                .currentUsage(listingRepository.countByTenantIdAndListingTypeAndStatus(
+                        tenantId, Listing.ListingType.ROOM, Listing.ListingStatus.ACTIVE))
+                .build());
+        quotas.add(FeatureToggleResponse.QuotaInfo.builder()
+                .featureKey("MAX_POSTS")
+                .featureName(FEATURE_DEFINITIONS.get("MAX_POSTS").name)
+                .limit(AppConstants.QUOTA_MAX_POSTS)
+                .currentUsage(postRepository.countByTenantIdAndStatus(tenantId, Post.PostStatus.PUBLISHED))
+                .build());
+        return quotas;
     }
 
     /**

@@ -2,11 +2,14 @@ package com.nextkey.ecommerce.core.tenant;
 
 import com.nextkey.ecommerce.api.dto.*;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.domain.model.cms.post.Post;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantApplication;
 import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.*;
+import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 import org.junit.jupiter.api.*;
@@ -53,6 +56,12 @@ class TenantServiceTest {
 
     @Mock
     private AuditService auditService;
+
+    @Mock
+    private ListingRepository listingRepository;
+
+    @Mock
+    private PostRepository postRepository;
 
     @InjectMocks
     private TenantService tenantService;
@@ -433,6 +442,35 @@ class TenantServiceTest {
             // status：預設啟用者為 ACTIVE；預設關閉且無紀錄者為 INACTIVE（尚未申請）
             assertEquals("ACTIVE", byKey.get("RETAIL_ENABLED").getStatus());
             assertEquals("INACTIVE", byKey.get("DYNAMIC_PRICING_ENABLED").getStatus());
+        }
+
+        @Test
+        @DisplayName("Sprint 153（Sprint 147 §6 範圍外項目）：quotas 回傳三個數值配額的上限與目前用量，"
+                + "計數口徑須與 checkQuotaNotExceeded 實際攔截條件一致（ACTIVE 商品/房源、PUBLISHED 貼文）")
+        void getFeatureToggles_returnsQuotaUsageMatchingEnforcementCriteria() {
+            when(tenantFeatureToggleRepository.findByTenantId(TEST_TENANT_ID)).thenReturn(List.of());
+            when(listingRepository.countByTenantIdAndListingTypeAndStatus(
+                    TEST_TENANT_ID, Listing.ListingType.PRODUCT, Listing.ListingStatus.ACTIVE))
+                    .thenReturn(37L);
+            when(listingRepository.countByTenantIdAndListingTypeAndStatus(
+                    TEST_TENANT_ID, Listing.ListingType.ROOM, Listing.ListingStatus.ACTIVE))
+                    .thenReturn(5L);
+            when(postRepository.countByTenantIdAndStatus(TEST_TENANT_ID, Post.PostStatus.PUBLISHED))
+                    .thenReturn(12L);
+
+            FeatureToggleResponse response = tenantService.getFeatureToggles(TEST_TENANT_ID);
+
+            Map<String, FeatureToggleResponse.QuotaInfo> byKey = new HashMap<>();
+            for (FeatureToggleResponse.QuotaInfo q : response.getQuotas()) {
+                byKey.put(q.getFeatureKey(), q);
+            }
+            assertEquals(3, byKey.size());
+            assertEquals(100, byKey.get("MAX_PRODUCTS").getLimit());
+            assertEquals(37L, byKey.get("MAX_PRODUCTS").getCurrentUsage());
+            assertEquals(20, byKey.get("MAX_ROOMS").getLimit());
+            assertEquals(5L, byKey.get("MAX_ROOMS").getCurrentUsage());
+            assertEquals(50, byKey.get("MAX_POSTS").getLimit());
+            assertEquals(12L, byKey.get("MAX_POSTS").getCurrentUsage());
         }
     }
 

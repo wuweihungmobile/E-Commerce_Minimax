@@ -80,6 +80,18 @@ stripe:
   secret:
     key: ${STRIPE_SECRET_KEY:sk_test_placeholder}
 
+# OAuth（Sprint 153，item 13：real 交換邏輯，client-id/secret 留空表示尚未設定，
+# OAuthService 會回 E-1096 而非誤把空字串當真的憑證送給 provider）
+oauth:
+  google:
+    client-id: ${OAUTH_GOOGLE_CLIENT_ID:}
+    client-secret: ${OAUTH_GOOGLE_CLIENT_SECRET:}
+  github:
+    client-id: ${OAUTH_GITHUB_CLIENT_ID:}
+    client-secret: ${OAUTH_GITHUB_CLIENT_SECRET:}
+  # redirect_uri 允許清單：僅比對 origin（scheme+host+port），逗號分隔多個環境網域
+  allowed-redirect-origins: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:http://localhost:3000}
+
 # Logging
 logging:
   level:

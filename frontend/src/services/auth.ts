@@ -27,6 +27,30 @@ export interface AuthResponse {
   }
 }
 
+// 對齊後端 UserDataExportResponse（Sprint 153，Sprint 149 §7 範圍外項目：補前端入口）
+export interface UserDataExport {
+  profile: {
+    userId: string
+    email: string
+    fullName: string
+    phone: string | null
+    role: string
+    createdAt: string
+  }
+  orders: unknown[]
+  bookings: unknown[]
+  productReviews: unknown[]
+  bookingReviews: unknown[]
+  addresses: unknown[]
+  notificationPreferences: unknown[]
+  notifications: unknown[]
+  supportTickets: unknown[]
+  oauthProviders: string[]
+  tenantMemberships: unknown[]
+  knownLimitations: string[]
+  exportedAt: string
+}
+
 export interface ApiResponse<T> {
   success: boolean
   code?: string
@@ -99,6 +123,18 @@ class AuthService {
       localStorage.removeItem('user')
       localStorage.removeItem('tenantId')
     }
+  }
+
+  // 會員資料匯出（PRD §1.5.1，Sprint 153：補前端入口，後端 Sprint 94 早已完成）
+  async exportMyData(): Promise<UserDataExport> {
+    const response = await apiClient.get<ApiResponse<UserDataExport>>(API_ENDPOINTS.auth.dataExport)
+    return response.data.data
+  }
+
+  // 會員自助帳戶刪除／被遺忘權（PRD §1.5.1，Sprint 153：補前端入口）
+  // 成功後後端已將此使用者全部 refresh token 加入黑名單，呼叫端須自行清除本機資料並導向登出後頁面
+  async deleteMyAccount(): Promise<void> {
+    await apiClient.delete(API_ENDPOINTS.auth.deleteMe)
   }
 
   // Get current user from localStorage

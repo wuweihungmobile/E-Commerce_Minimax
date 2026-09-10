@@ -15,6 +15,23 @@ public class FeatureToggleResponse {
 
     private String tenantId;
     private java.util.List<FeatureInfo> features;
+    /**
+     * 數量配額用量（MAX_PRODUCTS/MAX_ROOMS/MAX_POSTS，Sprint 153：Sprint 147 §6 範圍外項目補齊）。
+     * 與 {@link #features} 分開回傳——數值配額不是布林開關，不應與開關清單混在一起
+     * （見 {@code TenantService.getFeatureToggles} 對 DEF-167 的既有說明）。
+     */
+    private java.util.List<QuotaInfo> quotas;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class QuotaInfo {
+        private String featureKey;
+        private String featureName;
+        private int limit;
+        private long currentUsage;
+    }
 
     @Data
     @Builder

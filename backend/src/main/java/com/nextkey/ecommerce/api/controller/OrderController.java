@@ -126,7 +126,7 @@ public class OrderController {
 
     /**
      * 取得訂單狀態日誌
-     * 允許訂單擁有者查看自己的訂單日誌，或 ADMIN/SUPER_ADMIN 查看任何訂單日誌
+     * 允許訂單擁有者、同租戶賣家/店主（Sprint 153），或 ADMIN/SUPER_ADMIN 查看訂單日誌
      * 注意：實際授權邏輯在 service 層處理
      */
     @GetMapping("/{orderId}/logs")

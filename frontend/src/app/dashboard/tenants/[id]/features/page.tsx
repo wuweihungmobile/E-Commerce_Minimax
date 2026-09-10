@@ -27,8 +27,17 @@ interface FeatureToggle {
   requiresAdminReview: boolean
 }
 
+// Sprint 153（S147 §6 範圍外項目）：數值配額用量，與 features 分開回傳
+interface QuotaInfo {
+  featureKey: string
+  featureName: string
+  limit: number
+  currentUsage: number
+}
+
 interface FeatureToggleResponse {
   features: FeatureToggle[]
+  quotas: QuotaInfo[]
 }
 
 interface UpdateRequest {
@@ -40,6 +49,7 @@ export default function FeatureTogglePage() {
   const [tenantId, setTenantId] = useState<string | null>(null)
   const [user, setUser] = useState<{ email: string; role: string; tenantId: string | null } | null>(null)
   const [features, setFeatures] = useState<FeatureToggle[]>([])
+  const [quotas, setQuotas] = useState<QuotaInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -78,6 +88,7 @@ export default function FeatureTogglePage() {
         API_ENDPOINTS.dashboard.tenants.features
       )
       setFeatures(response.data.data.features)
+      setQuotas(response.data.data.quotas ?? [])
     } catch (err: unknown) {
       console.error('Failed to fetch features:', err)
       setError('載入功能開關失敗，請稍後再試')
@@ -267,6 +278,37 @@ export default function FeatureTogglePage() {
             </Card>
           ) : (
             <div className="space-y-6">
+              {quotas.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>數量配額</CardTitle>
+                    <CardDescription className="mt-1">店鋪目前用量 / 上限</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {quotas.map((quota) => {
+                      const ratio = quota.limit > 0 ? Math.min(quota.currentUsage / quota.limit, 1) : 0
+                      const isNearLimit = quota.limit > 0 && quota.currentUsage / quota.limit >= 0.9
+                      return (
+                        <div key={quota.featureKey}>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium text-gray-900">{quota.featureName}</span>
+                            <span className={isNearLimit ? 'text-amber-600 font-medium' : 'text-gray-600'}>
+                              {quota.currentUsage} / {quota.limit}
+                            </span>
+                          </div>
+                          <div className="mt-1.5 h-2 w-full rounded-full bg-gray-100">
+                            <div
+                              className={`h-2 rounded-full ${isNearLimit ? 'bg-amber-500' : 'bg-primary'}`}
+                              style={{ width: `${ratio * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </CardContent>
+                </Card>
+              )}
+
               {Object.entries(groupedFeatures).map(([category, categoryFeatures]) => (
                 <Card key={category}>
                   <CardHeader>

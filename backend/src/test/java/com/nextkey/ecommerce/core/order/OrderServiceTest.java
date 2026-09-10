@@ -1240,10 +1240,40 @@ class OrderServiceTest {
     }
 
     @Test
-    @DisplayName("getOrderStateLogs：非擁有者、非 admin 查詢他人訂單日誌 → E_1007")
+    @DisplayName("getOrderStateLogs：非擁有者、非 admin、非同租戶查詢他人訂單日誌 → E_1007")
     void getOrderStateLogs_otherUser_throwsE1007() {
         TenantContext.setCurrentUser(OTHER_USER_ID);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(orderOf(USER_ID, Order.OrderStatus.CREATED)));
+
+        assertThatThrownBy(() -> orderService.getOrderStateLogs(ORDER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("Sprint 153（Sprint 151 §6 #9）：本租戶賣家（非訂單擁有者）查詢狀態日誌 → 放行"
+            + "（比照 getOrder_sameTenantNonOwner_passesAuthorization 的 DEF-188 same-tenant 分支）")
+    void getOrderStateLogs_sameTenantNonOwner_passesAuthorization() {
+        TenantContext.setCurrentUser(OTHER_USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+        Order order = orderOf(USER_ID, Order.OrderStatus.PAID);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderStateLogRepository.findByOrderIdOrderBySequenceAsc(ORDER_ID))
+                .thenReturn(List.of(stateLog(order, 1, null, "CREATED"), stateLog(order, 2, "CREATED", "PAID")));
+
+        List<OrderDto.StateLogResponse> logs = orderService.getOrderStateLogs(ORDER_ID);
+
+        assertThat(logs).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("Sprint 153：兩個都未歸屬任何店鋪的一般使用者（皆落在系統租戶）"
+            + "→ 查詢他人訂單狀態日誌仍 E_1007，same-tenant 分支不得對系統租戶放行")
+    void getOrderStateLogs_bothUsersOnSystemTenant_throwsE1007() {
+        TenantContext.setCurrentUser(OTHER_USER_ID);
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+        when(orderRepository.findById(ORDER_ID))
+                .thenReturn(Optional.of(orderOfTenant(USER_ID, Order.OrderStatus.PAID, SYSTEM_TENANT_ID)));
 
         assertThatThrownBy(() -> orderService.getOrderStateLogs(ORDER_ID))
                 .isInstanceOf(BusinessException.class)

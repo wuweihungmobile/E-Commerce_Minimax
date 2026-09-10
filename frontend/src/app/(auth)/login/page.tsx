@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import AuthService from '@/services/auth'
+import { isOAuthProviderConfigured, startOAuthFlow, type OAuthProviderId } from '@/services/oauth'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -11,6 +12,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Sprint 153（item 13）：既有 Google/Facebook/Apple 按鈕列從未接上任何 onClick（死碼，
+  // 且 Facebook/Apple 後端 OAuthProvider 枚舉根本不存在對應值）。改為 Google/GitHub 兩個
+  // 真正可用的按鈕，且只在對應 client-id 已設定時才顯示，避免出現一個必然失敗的按鈕。
+  const oauthProviders: OAuthProviderId[] = (['google', 'github'] as const).filter(
+    isOAuthProviderConfigured
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -122,28 +130,32 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-6">
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300" />
+        {oauthProviders.length > 0 && (
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white text-gray-500">Or continue with</span>
+              </div>
             </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">Or continue with</span>
-            </div>
-          </div>
 
-          <div className="mt-6 grid grid-cols-3 gap-3">
-            <button className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-              Google
-            </button>
-            <button className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-              Facebook
-            </button>
-            <button className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-              Apple
-            </button>
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              {oauthProviders.map((provider) => (
+                <button
+                  key={provider}
+                  type="button"
+                  data-testid={`oauth-login-${provider}`}
+                  onClick={() => startOAuthFlow(provider, 'login')}
+                  className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  {provider === 'google' ? 'Google' : 'GitHub'}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

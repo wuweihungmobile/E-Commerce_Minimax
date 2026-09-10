@@ -33,8 +33,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 分析服務 (Mock Implementation)
- * Phase 1 提供基礎統計數據
+ * 分析服務
+ *
+ * <p>Sprint 153（Sprint 150 §7 範圍外項目）：修正過時的「Mock Implementation」Javadoc——
+ * 各方法皆透過 {@link OrderRepository}/{@link PaymentRepository}/{@link ListingRepository} 等
+ * 既有 repository 查詢真實資料庫資料，並非模擬/假資料，純文件修正，無行為變更。
  */
 @Slf4j
 @Service

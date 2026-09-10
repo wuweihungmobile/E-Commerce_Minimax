@@ -707,24 +707,19 @@ public class OrderService {
 
     /**
      * 取得訂單狀態日誌
+     *
+     * <p>Sprint 153（Sprint 151 §6 #9 追加項目）：比照 {@link #getOrder} 在 Sprint 151（DEF-188）
+     * 補上 same-tenant 分支的理由，本方法原本只有 owner-or-admin，改用
+     * {@link #checkOrderTenantAuthorization} 統一三選一放行條件——賣家/店主既然已能透過
+     * {@code GET /v2/orders/{orderId}} 讀取同租戶訂單詳情、透過 {@code PATCH .../status} 寫入狀態，
+     * 沒有理由唯獨看不到同一筆訂單的狀態變更時間軸，此前的差異純屬 Sprint 151 刻意劃定的範圍邊界
+     * （見 SPRINT_151_PLAN.md §4），非授權設計上的刻意限制。
      */
     @Transactional(readOnly = true)
     public List<OrderDto.StateLogResponse> getOrderStateLogs(UUID orderId) {
-        UUID userId = TenantContext.getCurrentUser();
         Order order = findOrderById(orderId);
 
-        // 獲取使用者角色用於權限判斷
-        org.springframework.security.core.Authentication auth =
-            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        boolean isAdmin = auth != null && (
-            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
-            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
-        );
-
-        // 如果不是 ADMIN，則必須是訂單擁有者
-        if (!isAdmin && !userId.equals(order.getUserId())) {
-            throw new BusinessException(ErrorCode.E_1007, "Not authorized to view order logs");
-        }
+        checkOrderTenantAuthorization(order);
 
         List<OrderStateLog> logs = orderStateLogRepository.findByOrderIdOrderBySequenceAsc(orderId);
         return logs.stream()

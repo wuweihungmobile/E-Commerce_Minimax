@@ -17,7 +17,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 分析 REST API (Mock Implementation)
+ * 分析 REST API
+ *
+ * <p>Sprint 153（Sprint 150 §7 範圍外項目）：修正過時的「Mock Implementation」Javadoc，
+ * 見 {@link AnalyticsService} 類別註解說明，純文件修正，無行為變更。
  */
 @Slf4j
 @RestController

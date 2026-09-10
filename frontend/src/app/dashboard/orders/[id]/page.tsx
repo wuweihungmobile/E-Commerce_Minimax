@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import OrderService, {
   type Order,
   type OrderStatus,
+  type OrderStateLog,
   ORDER_STATUS_LABELS,
   orderStatusBadgeVariant,
 } from '@/services/order'
@@ -45,6 +46,11 @@ function formatDateTime(dateStr: string) {
   })
 }
 
+// Sprint 153（Sprint 151 §6 #9）：比照 (auth)/orders/[id] 買家詳情頁既有的同名 helper
+function statusLabel(status: string) {
+  return ORDER_STATUS_LABELS[status as keyof typeof ORDER_STATUS_LABELS] ?? status
+}
+
 export default function DashboardOrderDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -52,6 +58,7 @@ export default function DashboardOrderDetailPage() {
 
   const [order, setOrder] = useState<Order | null>(null)
   const [shipments, setShipments] = useState<LogisticsResponse[]>([])
+  const [logs, setLogs] = useState<OrderStateLog[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -69,8 +76,12 @@ export default function DashboardOrderDetailPage() {
     setLoading(true)
     setError(null)
     try {
-      const detail = await OrderService.getOrder(orderId)
+      const [detail, stateLogs] = await Promise.all([
+        OrderService.getOrder(orderId),
+        OrderService.getOrderLogs(orderId).catch(() => [] as OrderStateLog[]),
+      ])
       setOrder(detail)
+      setLogs(stateLogs)
       if (detail.orderType === 'PRODUCT') {
         const list = await LogisticsService.getByOrder(orderId).catch(() => [])
         setShipments(list)
@@ -106,6 +117,8 @@ export default function DashboardOrderDetailPage() {
     try {
       const updated = await OrderService.updateOrderStatus(orderId, targetStatus, reason)
       setOrder(updated)
+      const stateLogs = await OrderService.getOrderLogs(orderId).catch(() => [] as OrderStateLog[])
+      setLogs(stateLogs)
     } catch (err) {
       setActionError(extractErrorMessage(err, '更新訂單狀態失敗'))
     } finally {
@@ -381,6 +394,34 @@ export default function DashboardOrderDetailPage() {
               <CardTitle className="text-base">備註</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-gray-700">{order.notes}</CardContent>
+          </Card>
+        )}
+
+        {/* 訂單狀態紀錄（Sprint 153，Sprint 151 §6 #9：比照買家詳情頁既有時間軸樣式） */}
+        {logs.length > 0 && (
+          <Card className="mx-4 sm:mx-0">
+            <CardHeader>
+              <CardTitle className="text-base">訂單狀態紀錄</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ol className="space-y-4">
+                {logs.map((logEntry) => (
+                  <li key={logEntry.id} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className="h-2.5 w-2.5 rounded-full bg-gray-400 mt-1.5" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-900">
+                        {logEntry.fromStatus ? `${statusLabel(logEntry.fromStatus)} → ` : ''}
+                        <span className="font-medium">{statusLabel(logEntry.toStatus)}</span>
+                      </p>
+                      <p className="text-xs text-gray-500">{formatDateTime(logEntry.createdAt)}</p>
+                      {logEntry.reason && <p className="text-xs text-gray-500">原因：{logEntry.reason}</p>}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </CardContent>
           </Card>
         )}
       </main>

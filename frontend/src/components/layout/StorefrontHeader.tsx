@@ -115,6 +115,9 @@ export function StorefrontHeader({
                 <Link href="/support/tickets" className="hover:opacity-80">
                   客服工單
                 </Link>
+                <Link href="/account" className="hover:opacity-80">
+                  帳戶設定
+                </Link>
                 <button
                   type="button"
                   onClick={handleLogout}

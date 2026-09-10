@@ -23,6 +23,14 @@ export function getAuthEmailSnapshot(): string | null {
   return AuthService.getCurrentUser()?.email ?? null
 }
 
+// client 快照：登入回角色字串，未登入回 null（primitive）。
+// Sprint 153：(auth)/account 頁需依角色決定是否顯示「刪除帳戶」，同理不可在 render 期
+// 直接呼叫 AuthService.getCurrentUser()（SSR 期 window 不存在會與 client 端 hydration 結果不同）。
+export function getAuthRoleSnapshot(): string | null {
+  if (!AuthService.isAuthenticated()) return null
+  return AuthService.getCurrentUser()?.role ?? null
+}
+
 // server / hydration 快照：一律 null（SSR 無 localStorage），確保 hydration 無 mismatch
 export function getAuthServerSnapshot(): null {
   return null

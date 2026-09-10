@@ -9,6 +9,7 @@ import AnalyticsService, { DashboardStats, OrderStats, RevenueStats } from '@/se
 const QUICK_LINKS = [
   { href: '/dashboard/products', label: '商品管理' },
   { href: '/dashboard/rooms', label: '房型管理' },
+  { href: '/dashboard/orders', label: '訂單管理', testId: 'dashboard-orders-link' },
   { href: '/dashboard/pricing/rules', label: '定價規則', testId: 'dashboard-pricing-link' },
   { href: '/dashboard/returns', label: '退貨審核', testId: 'dashboard-returns-link' },
   { href: '/dashboard/shipping', label: '運費模板設定', testId: 'dashboard-shipping-link' },
@@ -159,22 +160,27 @@ export default function DashboardPage() {
           />
         </section>
 
-        {/* 訂單狀態總覽 */}
+        {/* 訂單狀態總覽（Sprint 151，DEF-188：各狀態數字連結至 /dashboard/orders 對應篩選，
+            補上先前「有統計數字、無管理入口」的缺口） */}
         <section className="mt-6 bg-white rounded-lg shadow p-6">
           <h3 className="text-base font-medium text-gray-900 mb-4">訂單狀態總覽</h3>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
             {[
-              { label: '待付款', value: orderStats?.pendingPayment ?? 0 },
-              { label: '待出貨', value: orderStats?.pendingShipment ?? 0 },
-              { label: '運送中', value: orderStats?.inTransit ?? 0 },
-              { label: '已送達', value: orderStats?.delivered ?? 0 },
-              { label: '已完成', value: orderStats?.completed ?? 0 },
-              { label: '已取消', value: orderStats?.cancelled ?? 0 },
+              { label: '待付款', value: orderStats?.pendingPayment ?? 0, status: 'CREATED' },
+              { label: '待出貨', value: orderStats?.pendingShipment ?? 0, status: 'PAID' },
+              { label: '運送中', value: orderStats?.inTransit ?? 0, status: 'SHIPPING' },
+              { label: '已送達', value: orderStats?.delivered ?? 0, status: 'DELIVERED' },
+              { label: '已完成', value: orderStats?.completed ?? 0, status: 'COMPLETED' },
+              { label: '已取消', value: orderStats?.cancelled ?? 0, status: 'CANCELLED' },
             ].map((item) => (
-              <div key={item.label} className="text-center">
+              <Link
+                key={item.label}
+                href={`/dashboard/orders?status=${item.status}`}
+                className="text-center rounded-md py-1 hover:bg-gray-50"
+              >
                 <p className="text-2xl font-semibold text-gray-900">{item.value}</p>
                 <p className="mt-1 text-xs text-gray-500">{item.label}</p>
-              </div>
+              </Link>
             ))}
           </div>
           <p className="mt-4 text-sm text-gray-500">

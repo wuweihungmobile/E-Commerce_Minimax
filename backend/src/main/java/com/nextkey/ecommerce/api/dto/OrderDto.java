@@ -136,6 +136,11 @@ public class OrderDto {
         private BigDecimal totalAmount;
         private String currency;
         private Integer itemCount;
+        /**
+         * 收件人姓名（Sprint 151，DEF-188：賣家訂單列表需要識別買家，供出貨作業使用；
+         * 買家自己查詢列表時看到的是自己填寫的收件人，無額外資訊揭露疑慮）。
+         */
+        private String shippingRecipientName;
         private Instant createdAt;
     }
 

@@ -17,6 +17,7 @@ import com.nextkey.ecommerce.domain.model.logistics.Logistics;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.repository.LogisticsRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -266,10 +267,23 @@ public class LogisticsService {
     // ========== Helper Methods ==========
 
     /**
+     * 「沒有真正租戶」的預設佔位租戶 ID（見 {@code TenantContextFilter.resolveEffectiveTenantId}）。
+     * {@link #checkOrderTenant} 的租戶比對需明確排除它，見該方法 Javadoc。
+     */
+    private static final UUID SYSTEM_TENANT_UUID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
+
+    /**
      * 物流租戶擁有權檢查（DEF-019 建立時新增；DEF-036 擴及查詢/追蹤/狀態更新/取消等其餘方法）。
      * 賣家限本租戶訂單（order.tenantId == 當前租戶）、admin（ROLE_ADMIN/SUPER_ADMIN）放行，
      * 越權回 403/E_1007。杜絕任何具 order:read/order:update 權限者存取或竄改他租戶物流單（IDOR）。
      * 比照 PaymentStateService.checkOrderOwnership，惟物流為賣家側故採 tenant-based（非買家 user-based）。
+     *
+     * <p>🔴 Sprint 151（DEF-190，修 `OrderService` 的 DEF-189 時比對發現的同型既有漏洞，隨手
+     * 一併修復）：{@code TenantContextFilter.resolveEffectiveTenantId} 對「使用者未歸屬任何實際
+     * 租戶」（一般 BUYER、或尚未通過審核的 SELLER）一律 fallback 到同一個常數
+     * {@code AppConstants.SYSTEM_TENANT_ID}，任兩個未加入店鋪的一般使用者會落在同一個租戶值。
+     * 租戶比對若未排除這個佔位值，等於任一使用者都能讀取/竄改任一其他使用者掛在系統租戶下訂單的
+     * 物流記錄——正是本方法原本要防堵的同一種跨使用者 IDOR。
      */
     private void checkOrderTenant(final Order order) {
         UUID tenantId = TenantContext.getCurrentTenant();
@@ -279,7 +293,9 @@ public class LogisticsService {
             auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
             auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
         );
-        if (!isAdmin && (tenantId == null || !tenantId.equals(order.getTenantId()))) {
+        boolean isSameTenant = tenantId != null && tenantId.equals(order.getTenantId())
+                && !tenantId.equals(SYSTEM_TENANT_UUID);
+        if (!isAdmin && !isSameTenant) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to access logistics for this order");
         }
     }

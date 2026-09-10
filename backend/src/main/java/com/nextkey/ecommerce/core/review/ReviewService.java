@@ -379,7 +379,7 @@ public class ReviewService {
 
     /**
      * 判斷目前使用者是否為系統管理員（ROLE_ADMIN 或 ROLE_SUPER_ADMIN）。
-     * 比照 OrderService.checkOrderStatusUpdateAuthorization / BookingService.checkBookingOwnership
+     * 比照 OrderService.checkOrderTenantAuthorization / BookingService.checkBookingOwnership
      * 既有前例，用於 Sprint 73 DEF-028/029/030 三處擁有權/租戶檢查的 admin 放行判斷。
      */
     private boolean isCurrentUserAdmin() {

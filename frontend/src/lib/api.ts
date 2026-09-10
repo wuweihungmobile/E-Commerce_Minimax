@@ -43,6 +43,11 @@ export const API_ENDPOINTS = {
     create: '/v2/orders',
     cancel: (id: string) => '/v2/orders/' + id + '/cancel',
     logs: (id: string) => '/v2/orders/' + id + '/logs',
+    updateStatus: (id: string) => '/v2/orders/' + id + '/status',
+    // 賣家/店主層：當前租戶收到的訂單列表（Sprint 151，DEF-188）。
+    // 對齊 OrderController.getTenantOrders；不叫 /v2/dashboard/orders 是因為該路徑已被
+    // AnalyticsController.getOrderStats（訂單統計）佔用。
+    tenantList: '/v2/orders/tenant',
     // 訂單層付款（OrderPaymentController，狀態機驅動，對 Mock）
     payment: (id: string) => '/v2/orders/' + id + '/payment',
     pay: (id: string) => '/v2/orders/' + id + '/pay',
@@ -76,6 +81,7 @@ export const API_ENDPOINTS = {
 
   // Logistics (M11，買家物流追蹤)
   logistics: {
+    create: '/v2/logistics',
     byOrder: (orderId: string) => '/v2/logistics/order/' + orderId,
     detail: (logisticsId: string) => '/v2/logistics/' + logisticsId,
     track: (logisticsId: string) => '/v2/logistics/' + logisticsId + '/track',

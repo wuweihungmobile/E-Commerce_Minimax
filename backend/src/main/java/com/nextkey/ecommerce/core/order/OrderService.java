@@ -41,6 +41,7 @@ import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -73,6 +74,12 @@ public class OrderService {
     private final ProductInventoryService productInventoryService;
     private final PromoService promoService;
     private final PromoCodeUsageRepository promoCodeUsageRepository;
+
+    /**
+     * 「沒有真正租戶」的預設佔位租戶 ID（見 {@code TenantContextFilter.resolveEffectiveTenantId}）。
+     * {@link #checkOrderTenantAuthorization} 的 same-tenant 分支需明確排除它，見該方法 Javadoc。
+     */
+    private static final UUID SYSTEM_TENANT_UUID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
 
     /**
      * 建立訂單（從購物車或直接預訂）
@@ -501,23 +508,39 @@ public class OrderService {
      */
     @Transactional(readOnly = true)
     public OrderDto.OrderResponse getOrder(UUID orderId) {
-        UUID userId = TenantContext.getCurrentUser();
         Order order = findOrderById(orderId);
 
-        // 獲取使用者角色用於權限判斷
-        org.springframework.security.core.Authentication auth =
-            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        boolean isAdmin = auth != null && (
-            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
-            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
-        );
-
-        // 如果不是 ADMIN，則必須是訂單擁有者（DEF-018：修復 getOrder IDOR）
-        if (!isAdmin && !userId.equals(order.getUserId())) {
-            throw new BusinessException(ErrorCode.E_1007, "Not authorized to view this order");
-        }
+        // DEF-018：owner-or-admin 基礎防護；Sprint 151（DEF-188）補上 same-tenant 分支，
+        // 比照 checkOrderTenantAuthorization 既有的三選一放行條件，消除「賣家能透過
+        // PATCH .../status 寫入、卻無法用 GET 讀取同一筆訂單」的讀寫授權不對稱。
+        checkOrderTenantAuthorization(order);
 
         return toOrderResponse(order);
+    }
+
+    /**
+     * 取得當前租戶（賣家/店主）收到的訂單列表（Sprint 151，DEF-188）。
+     *
+     * <p>比照 {@link #getUserOrders} 的分頁/排序處理，額外支援選填的狀態篩選——
+     * 有 status 時走 {@code findByTenantIdAndStatus}，否則走既有的
+     * {@code findByTenantIdOrderByCreatedAtDesc}（兩者皆為既有 repository 方法，未新增查詢）。
+     * 無租戶內容（例如買家帳號呼叫本方法）時 tenantId 為 null，查詢結果自然為空頁，不特別拋錯。
+     */
+    @Transactional(readOnly = true)
+    public Page<OrderDto.OrderListResponse> getTenantOrders(int page, int size, String sortBy, String sortDir,
+            String status) {
+        UUID tenantId = TenantContext.getCurrentTenant();
+        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
+        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 100), sort);
+
+        Page<Order> orders;
+        if (status != null && !status.isBlank()) {
+            Order.OrderStatus orderStatus = Order.OrderStatus.valueOf(status);
+            orders = orderRepository.findByTenantIdAndStatus(tenantId, orderStatus, pageRequest);
+        } else {
+            orders = orderRepository.findByTenantIdOrderByCreatedAtDesc(tenantId, pageRequest);
+        }
+        return orders.map(this::toOrderListResponse);
     }
 
     /**
@@ -532,7 +555,7 @@ public class OrderService {
         // DEF-024：修復跨租戶 IDOR——訂單擁有者本人（買家自助付款流程）或本租戶
         // （賣家/店主管理自己租戶訂單，比照 LogisticsService.checkOrderTenant）或 admin 放行，
         // 置於狀態機檢查之前避免向未授權者洩漏訂單狀態
-        checkOrderStatusUpdateAuthorization(order);
+        checkOrderTenantAuthorization(order);
 
         String currentStatus = order.getStatus().name();
         OrderStateMachine.TransitionResult result = OrderStateMachine.canTransition(currentStatus, targetStatus);
@@ -561,18 +584,35 @@ public class OrderService {
     }
 
     /**
-     * 訂單狀態更新擁有權/租戶檢查（DEF-024：修復 updateOrderStatus 完全無檢查的跨租戶 IDOR）。
+     * 訂單讀取／狀態更新的擁有權/租戶檢查（DEF-024：修復 updateOrderStatus 完全無檢查的跨租戶
+     * IDOR；Sprint 151／DEF-188：getOrder 比照補上 same-tenant 分支，消除「賣家能寫入自己讀不到
+     * 的資料」的讀寫授權不對稱——此前 getOrder 只有 owner-or-admin，賣家能透過 PATCH .../status
+     * 操作同租戶訂單，卻無法用 GET 讀取同一筆訂單）。
      *
-     * <p>本方法有兩種合法呼叫情境：(1) 買家透過付款流程觸發（CREATED→PAID），呼叫端已由
+     * <p>本方法有三種合法呼叫情境：(1) 買家透過付款流程觸發（CREATED→PAID），呼叫端已由
      * {@code PaymentService.checkOrderPaymentOwnership} 限定本人；(2) 賣家/店主透過
-     * {@code PATCH /v2/orders/{orderId}/status} 直接呼叫（Controller 層以 order:update 權限把關，
-     * 僅 SELLER/STORE_OWNER/ADMIN/SUPER_ADMIN 持有），用於出貨等租戶內訂單管理。
+     * {@code PATCH /v2/orders/{orderId}/status} 或 {@code GET /v2/orders/{orderId}} 直接呼叫
+     * （Controller 層分別以 order:update／order:read 權限把關，皆為 SELLER/STORE_OWNER/
+     * ADMIN/SUPER_ADMIN 持有），用於出貨等租戶內訂單管理；(3) 買家查看自己的訂單詳情
+     * （比照 cancelOrder/getOrderStateLogs 的 DEF-018 模式）。
      *
-     * <p>因此採「訂單擁有者本人（比照 getOrder/cancelOrder/getOrderStateLogs 的 DEF-018 模式）
-     * or 本租戶（比照 LogisticsService.checkOrderTenant 的 DEF-019 模式）or admin」三者其一放行，
-     * 越權回 403/E_1007。
+     * <p>因此採「訂單擁有者本人 or 本租戶（比照 LogisticsService.checkOrderTenant 的 DEF-019
+     * 模式）or admin」三者其一放行，越權回 403/E_1007。
+     *
+     * <p>🔴 Sprint 151（DEF-188 修復過程中查證發現的既有漏洞，隨本次改動一併修復）：
+     * {@code TenantContextFilter.resolveEffectiveTenantId} 對「使用者未歸屬任何實際租戶」
+     * （一般 BUYER 帳號、或尚未通過審核的 SELLER）一律 fallback 到同一個常數
+     * {@link AppConstants#SYSTEM_TENANT_ID}——也就是說任兩個未加入店鋪的一般使用者，
+     * {@code TenantContext.getCurrentTenant()} 會是**同一個值**。若讓 same-tenant 分支對這個
+     * 系統租戶也放行，等於任一買家都能讀取/操作任一其他買家掛在系統租戶下的訂單（例如未指定
+     * 店鋪的 ROOM 訂單），形成本方法原本要防堵的同一種跨使用者 IDOR。此漏洞自 DEF-024（Sprint 70）
+     * 起即存在於 {@code updateOrderStatus}，因先前沒有測試以「兩個一般買家帳號」的組合驗證
+     * PATCH 路徑而未被發現；本次因 {@code getOrder} 開始共用此方法，觸發既有的
+     * {@code BuyerOrderJourneyE2ETest.otherBuyerCannotGetOrder}（DEF-018）紅燈而被揭露。
+     * 修法：same-tenant 分支明確排除系統租戶——系統租戶是「沒有真正租戶」的預設佔位值，
+     * 不是有效的多租戶隔離邊界。
      */
-    private void checkOrderStatusUpdateAuthorization(final Order order) {
+    private void checkOrderTenantAuthorization(final Order order) {
         UUID userId = TenantContext.getCurrentUser();
         UUID tenantId = TenantContext.getCurrentTenant();
         org.springframework.security.core.Authentication auth =
@@ -582,7 +622,8 @@ public class OrderService {
             auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
         );
         boolean isOwner = userId != null && userId.equals(order.getUserId());
-        boolean isSameTenant = tenantId != null && tenantId.equals(order.getTenantId());
+        boolean isSameTenant = tenantId != null && tenantId.equals(order.getTenantId())
+                && !tenantId.equals(SYSTEM_TENANT_UUID);
 
         if (!isAdmin && !isOwner && !isSameTenant) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to update this order's status");
@@ -791,6 +832,7 @@ public class OrderService {
                 .totalAmount(order.getTotalAmount())
                 .currency(order.getCurrency())
                 .itemCount(order.getItems().size())
+                .shippingRecipientName(order.getShippingRecipientName())
                 .createdAt(order.getCreatedAt())
                 .build();
     }

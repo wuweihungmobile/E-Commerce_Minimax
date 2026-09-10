@@ -76,6 +76,28 @@ public class OrderController {
     }
 
     /**
+     * 取得當前租戶（賣家/店主）收到的訂單列表（Sprint 151，DEF-188）。
+     *
+     * <p>比照 {@code /v2/dashboard/returns}（{@code ReturnRequestController}）的「店家層」分層路由
+     * 慣例，本應命名為 {@code /v2/dashboard/orders}，但該路徑已被 {@code AnalyticsController
+     * .getOrderStats}（訂單統計彙總）佔用，故改於 {@code OrderController} 底下以 {@code /tenant}
+     * 區分（比照 {@code MediaCategoryController} 的 {@code /root} 與 {@code /{categoryId}}
+     * 同層並存的既有寫法，Spring 對靜態路徑段的比對優先於路徑變數，不會與下方 {@code /{orderId}}
+     * 衝突）。選填 {@code status} 依訂單狀態篩選，供出貨作業頁面依「待出貨」等狀態過濾使用。
+     */
+    @GetMapping("/tenant")
+    @PreAuthorize("hasAuthority('order:read')")
+    public ResponseEntity<ApiResponse<Page<OrderDto.OrderListResponse>>> getTenantOrders(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "DESC") String sortDir,
+            @RequestParam(required = false) String status) {
+        Page<OrderDto.OrderListResponse> orders = orderService.getTenantOrders(page, size, sortBy, sortDir, status);
+        return ResponseEntity.ok(ApiResponse.success(orders));
+    }
+
+    /**
      * 更新訂單狀態
      */
     @PatchMapping("/{orderId}/status")

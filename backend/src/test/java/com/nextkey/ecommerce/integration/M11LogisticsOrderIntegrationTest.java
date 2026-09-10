@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +24,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +32,7 @@ import com.nextkey.ecommerce.domain.model.logistics.Logistics;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.repository.LogisticsRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
+import com.nextkey.ecommerce.integration.util.TestSecurityContextHelper;
 
 /**
  * M11 物流與訂單履約整合測試 (Sprint 23 US-004 / DEF-007 / AI-704)
@@ -41,6 +42,17 @@ import com.nextkey.ecommerce.domain.repository.OrderRepository;
  * - IT-SHIP-002: POST /v2/logistics（非 CONFIRMED 訂單）→ 422
  * - IT-SHIP-003: POST /v2/logistics（已有物流單）→ 409
  * - IT-SHIP-004: PUT /v2/logistics/{id}/status DELIVERED → 訂單狀態 → DELIVERED
+ *
+ * <p>Sprint 151（DEF-190 修復的副作用）：原本用 {@code @WithMockUser} 搭配「巧合」等於
+ * {@code AppConstants.SYSTEM_TENANT_ID} 的訂單 tenantId 讓 {@code LogisticsService
+ * .checkOrderTenant} 的 same-tenant 檢查通過——{@code @WithMockUser} 建立的是 Spring Security
+ * 內建 {@code User} principal，非本專案的 {@code UserPrincipal}，{@code TenantContextFilter}
+ * 因此無法解析出真正的 tenantId，一律 fallback 到系統租戶（見
+ * {@code TestSecurityContextHelper} 既有 Javadoc 對此已有的警示）。DEF-190 修復後
+ * {@code checkOrderTenant} 明確排除系統租戶，此僥倖巧合不再成立，IT-SHIP-001/004 直接 403，
+ * IT-SHIP-002/003 則因 {@code .is4xxClientError()} 寬鬆斷言而「假綠燈」（403 也算 4xx，
+ * 實際上根本沒驗到原本要測的 422/409 分支）。改用既有的 {@code TestSecurityContextHelper}
+ * 建立真正的 {@code UserPrincipal}，租戶 ID 改用與系統租戶不同的專屬常數，恢復測試原意。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -65,10 +77,19 @@ class M11LogisticsOrderIntegrationTest {
     private static final String BASE_URL = "/v2/logistics";
     private static final UUID ORDER_ID = UUID.fromString("10000000-0000-0000-0000-000000000001");
     private static final UUID LOGISTICS_ID = UUID.fromString("20000000-0000-0000-0000-000000000001");
+    // DEF-190：刻意選一個與 AppConstants.SYSTEM_TENANT_ID（00000000-...-0001）不同的值，
+    // 確保測試驗的是「真正的同租戶」而非巧合落在系統租戶 fallback。
+    private static final UUID TENANT_ID = UUID.fromString("40000000-0000-0000-0000-000000000001");
+    private static final UUID SELLER_USER_ID = UUID.fromString("40000000-0000-0000-0000-000000000002");
+
+    @AfterEach
+    void clearSecurityContext() {
+        TestSecurityContextHelper.clear();
+    }
 
     private Order buildConfirmedOrder() {
         Order order = Order.builder()
-                .tenantId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
+                .tenantId(TENANT_ID)
                 .userId(UUID.fromString("00000000-0000-0000-0000-000000000002"))
                 .shippingRecipientName("測試收件人")
                 .shippingPhone("0912345678")
@@ -103,8 +124,8 @@ class M11LogisticsOrderIntegrationTest {
 
     @Test
     @DisplayName("IT-SHIP-001: POST /v2/logistics（CONFIRMED 訂單）→ 200 + 追蹤號，訂單變 SHIPPING")
-    @WithMockUser(username = "seller", authorities = {"order:create"})
     void createLogistics_confirmedOrder_returns200AndUpdatesOrderToShipping() throws Exception {
+        TestSecurityContextHelper.setUserContext(SELLER_USER_ID, TENANT_ID, "SELLER", "order:create");
         Order order = buildConfirmedOrder();
         Logistics savedLogistics = buildPendingLogistics();
 
@@ -137,8 +158,8 @@ class M11LogisticsOrderIntegrationTest {
 
     @Test
     @DisplayName("IT-SHIP-002: POST /v2/logistics（CREATED 訂單，未確認）→ 4xx")
-    @WithMockUser(username = "seller", authorities = {"order:create"})
     void createLogistics_notConfirmedOrder_returns4xx() throws Exception {
+        TestSecurityContextHelper.setUserContext(SELLER_USER_ID, TENANT_ID, "SELLER", "order:create");
         Order order = buildConfirmedOrder();
         order.setStatus(Order.OrderStatus.CREATED);
 
@@ -158,8 +179,8 @@ class M11LogisticsOrderIntegrationTest {
 
     @Test
     @DisplayName("IT-SHIP-003: POST /v2/logistics（已有物流單）→ 409")
-    @WithMockUser(username = "seller", authorities = {"order:create"})
     void createLogistics_activeLogisticsExists_returns409() throws Exception {
+        TestSecurityContextHelper.setUserContext(SELLER_USER_ID, TENANT_ID, "SELLER", "order:create");
         Order order = buildConfirmedOrder();
         Logistics existingLogistics = buildPendingLogistics();
 
@@ -180,8 +201,8 @@ class M11LogisticsOrderIntegrationTest {
 
     @Test
     @DisplayName("IT-SHIP-004: PUT /v2/logistics/{id}/status DELIVERED → 訂單狀態 → DELIVERED")
-    @WithMockUser(username = "seller", authorities = {"order:update"})
     void updateLogisticsStatus_delivered_updatesOrderToDelivered() throws Exception {
+        TestSecurityContextHelper.setUserContext(SELLER_USER_ID, TENANT_ID, "SELLER", "order:update");
         Logistics logistics = buildPendingLogistics();
         Order order = buildConfirmedOrder();
         order.setStatus(Order.OrderStatus.SHIPPING);

@@ -14,6 +14,14 @@ export type LogisticsStatus =
   | 'FAILED'
   | 'RETURNED'
 
+export interface CreateLogisticsRequest {
+  orderId: string
+  logisticsProvider: LogisticsProvider
+  receiverName?: string
+  receiverPhone?: string
+  shippingAddress?: string
+}
+
 export interface LogisticsResponse {
   logisticsId: string
   orderId: string
@@ -75,6 +83,15 @@ export const LOGISTICS_PROVIDER_LABELS: Record<LogisticsProvider, string> = {
 }
 
 class LogisticsService {
+  /** 賣家/店主：建立物流單（出貨），訂單須為 CONFIRMED，成功後訂單自動轉為 SHIPPING */
+  async createLogistics(request: CreateLogisticsRequest): Promise<LogisticsResponse> {
+    const response = await apiClient.post<ApiResponse<LogisticsResponse>>(
+      API_ENDPOINTS.logistics.create,
+      request
+    )
+    return response.data.data
+  }
+
   async getByOrder(orderId: string): Promise<LogisticsResponse[]> {
     const response = await apiClient.get<ApiResponse<LogisticsResponse[]>>(
       API_ENDPOINTS.logistics.byOrder(orderId)

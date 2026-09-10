@@ -62,20 +62,26 @@ import com.nextkey.ecommerce.shared.tenant.TenantContext;
 /**
  * OrderService 單元測試（Sprint 69 US-001）。
  *
- * <p>背景：{@link OrderService} 是訂單狀態機核心（7 個 public 方法：createOrderFromCart、
- * createBooking、getUserOrders、getOrder、updateOrderStatus、cancelOrder、getOrderStateLogs），
- * 先前**完全沒有** {@code OrderServiceTest.java} 這類以 Mockito mock repository 的純單元測試——
- * 只有 {@code OrderControllerE2ETest}/{@code OrderPaymentControllerE2ETest}/
+ * <p>背景：{@link OrderService} 是訂單狀態機核心（8 個 public 方法：createOrderFromCart、
+ * createBooking、getUserOrders、getTenantOrders、getOrder、updateOrderStatus、cancelOrder、
+ * getOrderStateLogs），先前**完全沒有** {@code OrderServiceTest.java} 這類以 Mockito mock
+ * repository 的純單元測試——只有 {@code OrderControllerE2ETest}/{@code OrderPaymentControllerE2ETest}/
  * {@code BuyerOrderJourneyE2ETest}/{@code M11LogisticsOrderIntegrationTest} 這類需要完整
  * Spring Context + 真實 DB 的 Controller 層 E2E/整合測試間接涵蓋部分流程，
  * 以及獨立的 {@code OrderStateMachineTest}（純狀態機邏輯，不涉及 OrderService 本身）。
- * 本測試類別補齊 OrderService 本身的單元測試缺口，目標為 7 個方法的正常/邊界/錯誤路徑覆蓋。
+ * 本測試類別補齊 OrderService 本身的單元測試缺口，目標為各方法的正常/邊界/錯誤路徑覆蓋。
  *
  * <p>過程中發現 {@code updateOrderStatus} 完全沒有訂單擁有權/租戶檢查（同檔案內
  * getOrder/cancelOrder/getOrderStateLogs 皆有 owner-or-admin 檢查），已記錄為 DEF-024，
  * 並於 Sprint 70 修復——新增 {@code checkOrderStatusUpdateAuthorization}，採「訂單擁有者本人
  * （比照 DEF-018 買家模式）or 本租戶（比照 LogisticsService.checkOrderTenant 的 DEF-019
  * 賣家/店主模式）or admin」三者其一放行，越權回 403/E_1007。詳見下方 updateOrderStatus 測試區塊。
+ *
+ * <p>Sprint 151（DEF-188）：{@code getOrder} 補上同一組 same-tenant 檢查——此前它仍是
+ * owner-or-admin，形成「賣家能 PATCH .../status 寫入、卻無法 GET 讀取同一筆訂單」的讀寫授權
+ * 不對稱。修復方式為改用同一份檢查邏輯（方法改名為 {@code checkOrderTenantAuthorization}），
+ * 而非另寫一份重複判斷，見下方 getOrder 測試區塊新增案例；同時新增 {@code getTenantOrders}
+ * （賣家訂單列表，供 {@code GET /v2/orders/tenant} 使用）。
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -119,6 +125,8 @@ class OrderServiceTest {
     private static final UUID OTHER_TENANT_ID = UUID.fromString("88888888-8888-8888-8888-888888888888");
     private static final UUID ORDER_ID = UUID.fromString("33333333-3333-3333-3333-333333333333");
     private static final UUID LISTING_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
+    /** 「沒有真正租戶」的預設佔位租戶（Sprint 151 新增，見 checkOrderTenantAuthorization 的系統租戶排除測試） */
+    private static final UUID SYSTEM_TENANT_ID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
 
     @AfterEach
     void tearDown() {
@@ -173,9 +181,14 @@ class OrderServiceTest {
     }
 
     private Order orderOf(final UUID userId, final Order.OrderStatus status) {
+        return orderOfTenant(userId, status, TENANT_ID);
+    }
+
+    /** Sprint 151 新增：可指定租戶（供系統租戶排除測試複用，其餘既有呼叫端仍經 orderOf 固定用 TENANT_ID） */
+    private Order orderOfTenant(final UUID userId, final Order.OrderStatus status, final UUID tenantId) {
         Order order = Order.builder()
                 .userId(userId)
-                .tenantId(TENANT_ID)
+                .tenantId(tenantId)
                 .orderType(Listing.ListingType.PRODUCT)
                 .status(status)
                 .totalAmount(BigDecimal.valueOf(1000))
@@ -826,12 +839,112 @@ class OrderServiceTest {
                 .extracting("errorCode").isEqualTo(ErrorCode.E_5000);
     }
 
+    @Test
+    @DisplayName("Sprint 151（DEF-188）：本租戶賣家（非訂單擁有者）查詢訂單詳情 → 放行"
+            + "（修復前 getOrder 僅 owner-or-admin，賣家能 PATCH 狀態卻無法 GET 同一筆訂單）")
+    void getOrder_sameTenantNonOwner_passesAuthorization() {
+        TenantContext.setCurrentUser(OTHER_USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(orderOf(USER_ID, Order.OrderStatus.PAID)));
+
+        OrderDto.OrderResponse response = orderService.getOrder(ORDER_ID);
+
+        assertThat(response.getId()).isEqualTo(ORDER_ID);
+    }
+
+    @Test
+    @DisplayName("Sprint 151（DEF-188）：他租戶賣家查詢訂單詳情 → E_1007（租戶檢查未因改用共用方法而失效）")
+    void getOrder_otherTenantNonOwner_throwsE1007() {
+        TenantContext.setCurrentUser(OTHER_USER_ID);
+        TenantContext.setCurrentTenant(OTHER_TENANT_ID);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(orderOf(USER_ID, Order.OrderStatus.PAID)));
+
+        assertThatThrownBy(() -> orderService.getOrder(ORDER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("🔴 Sprint 151（DEF-188 修復過程中發現並隨手修復的既有漏洞）：兩個都未歸屬任何店鋪的"
+            + "一般使用者（皆落在系統租戶 SYSTEM_TENANT_ID）→ 查詢他人訂單詳情仍 E_1007，"
+            + "same-tenant 分支不得對系統租戶放行（否則任一買家可讀任一買家掛在系統租戶下的訂單）")
+    void getOrder_bothUsersOnSystemTenant_throwsE1007() {
+        TenantContext.setCurrentUser(OTHER_USER_ID);
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+        when(orderRepository.findById(ORDER_ID))
+                .thenReturn(Optional.of(orderOfTenant(USER_ID, Order.OrderStatus.PAID, SYSTEM_TENANT_ID)));
+
+        assertThatThrownBy(() -> orderService.getOrder(ORDER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1007);
+    }
+
+    // ========== getTenantOrders（Sprint 151，DEF-188） ==========
+
+    @Test
+    @DisplayName("getTenantOrders：無 status 篩選 → 走 findByTenantIdOrderByCreatedAtDesc，"
+            + "回應含 shippingRecipientName 供賣家識別買家")
+    void getTenantOrders_noStatusFilter_usesTenantOrderByCreatedAt() {
+        TenantContext.setCurrentTenant(TENANT_ID);
+        Order order = orderOf(USER_ID, Order.OrderStatus.PAID);
+        order.setShippingRecipientName("王小明");
+        when(orderRepository.findByTenantIdOrderByCreatedAtDesc(eq(TENANT_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(order)));
+
+        Page<OrderDto.OrderListResponse> result = orderService.getTenantOrders(0, 20, "createdAt", "DESC", null);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getShippingRecipientName()).isEqualTo("王小明");
+        verify(orderRepository, never()).findByTenantIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("getTenantOrders：帶 status 篩選 → 走 findByTenantIdAndStatus")
+    void getTenantOrders_withStatusFilter_usesTenantAndStatus() {
+        TenantContext.setCurrentTenant(TENANT_ID);
+        when(orderRepository.findByTenantIdAndStatus(eq(TENANT_ID), eq(Order.OrderStatus.PAID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(orderOf(USER_ID, Order.OrderStatus.PAID))));
+
+        Page<OrderDto.OrderListResponse> result = orderService.getTenantOrders(0, 20, "createdAt", "DESC", "PAID");
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(orderRepository, never()).findByTenantIdOrderByCreatedAtDesc(any(), any());
+    }
+
+    @Test
+    @DisplayName("getTenantOrders：size 超過上限時裁切為 100（比照 getUserOrders 既有行為）")
+    void getTenantOrders_capsPageSizeAt100() {
+        TenantContext.setCurrentTenant(TENANT_ID);
+        when(orderRepository.findByTenantIdOrderByCreatedAtDesc(eq(TENANT_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        orderService.getTenantOrders(0, 500, "createdAt", "DESC", null);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(orderRepository).findByTenantIdOrderByCreatedAtDesc(eq(TENANT_ID), captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(100);
+    }
+
+    @Test
+    @DisplayName("getTenantOrders：無租戶內容（tenantId 為 null，例如買家帳號誤呼叫）→ 傳 null 給 repository，"
+            + "不特別拋錯（交由 repository 查出空頁）")
+    void getTenantOrders_nullTenant_passesNullThrough() {
+        // 未呼叫 TenantContext.setCurrentTenant，getCurrentTenant() 回傳 null
+        when(orderRepository.findByTenantIdOrderByCreatedAtDesc(eq((UUID) null), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        Page<OrderDto.OrderListResponse> result = orderService.getTenantOrders(0, 20, "createdAt", "DESC", null);
+
+        assertThat(result.getContent()).isEmpty();
+    }
+
     // ========== updateOrderStatus ==========
     //
     // DEF-024（Sprint 70 已修復）：updateOrderStatus 原本完全沒有訂單擁有權/租戶檢查——同檔案內
     // getOrder/cancelOrder/getOrderStateLogs 皆有 owner-or-admin 檢查，唯獨此方法沒有，形同任一
     // 租戶的賣家（order:update 由 SELLER/STORE_OWNER/ADMIN/SUPER_ADMIN 持有）可對「任意 orderId」
-    // 執行狀態轉換（跨租戶 IDOR）。修復後改為 checkOrderStatusUpdateAuthorization：訂單擁有者本人
+    // 執行狀態轉換（跨租戶 IDOR）。修復後改為 checkOrderTenantAuthorization（Sprint 151 改名，
+    // 見類別開頭說明；當時名為 checkOrderStatusUpdateAuthorization）：訂單擁有者本人
     // （比照 DEF-018 買家模式，對應買家透過付款流程觸發）or 本租戶（比照 LogisticsService.
     // checkOrderTenant 的 DEF-019 賣家/店主模式，對應賣家直接呼叫 PATCH 端點）or admin，三者其一
     // 放行，越權回 403/E_1007，且置於狀態機檢查之前。
@@ -891,6 +1004,23 @@ class OrderServiceTest {
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.updateOrderStatus(ORDER_ID, "PAID", "cross-tenant attack"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1007);
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    @DisplayName("🔴 Sprint 151（DEF-188 修復過程中發現並隨手修復的既有漏洞，追溯至 DEF-024/Sprint 70）："
+            + "兩個都未歸屬任何店鋪的一般使用者（皆落在系統租戶）→ 執行狀態轉換仍 E_1007，不得因"
+            + "same-tenant 分支誤放行（此前任一買家理論上可竄改任一買家掛在系統租戶下的訂單狀態，"
+            + "先前無測試以此組合覆蓋而未被發現）")
+    void updateOrderStatus_bothUsersOnSystemTenant_throwsE1007() {
+        TenantContext.setCurrentUser(OTHER_USER_ID);
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+        Order order = orderOfTenant(USER_ID, Order.OrderStatus.CREATED, SYSTEM_TENANT_ID);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> orderService.updateOrderStatus(ORDER_ID, "PAID", "cross-user attack via system tenant"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_1007);
         verify(orderRepository, never()).save(any(Order.class));

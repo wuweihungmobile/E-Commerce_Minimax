@@ -63,6 +63,8 @@ export interface OrderListItem {
   totalAmount: number
   currency: string
   itemCount: number
+  /** 收件人姓名（Sprint 151，DEF-188：賣家訂單列表用來識別買家） */
+  shippingRecipientName?: string | null
   createdAt: string
 }
 
@@ -82,6 +84,11 @@ export interface OrderQuery {
   size?: number
   sortBy?: string
   sortDir?: 'ASC' | 'DESC'
+}
+
+export interface TenantOrderQuery extends OrderQuery {
+  /** 選填：依訂單狀態篩選（Sprint 151，DEF-188），對齊 GET /v2/orders/tenant 的 status 參數 */
+  status?: OrderStatus
 }
 
 export interface CreateOrderRequest {
@@ -181,6 +188,30 @@ class OrderService {
   async getOrder(id: string): Promise<Order> {
     const response = await apiClient.get<ApiResponse<Order>>(
       API_ENDPOINTS.orders.detail(id)
+    )
+    return response.data.data
+  }
+
+  /** 賣家/店主：當前租戶收到的訂單列表（Sprint 151，DEF-188） */
+  async getTenantOrders(query: TenantOrderQuery = {}): Promise<PaginatedResponse<OrderListItem>> {
+    const params = new URLSearchParams()
+    if (query.page !== undefined) params.append('page', String(query.page))
+    if (query.size !== undefined) params.append('size', String(query.size))
+    if (query.sortBy) params.append('sortBy', query.sortBy)
+    if (query.sortDir) params.append('sortDir', query.sortDir)
+    if (query.status) params.append('status', query.status)
+    const qs = params.toString()
+    const response = await apiClient.get<ApiResponse<PaginatedResponse<OrderListItem>>>(
+      API_ENDPOINTS.orders.tenantList + (qs ? '?' + qs : '')
+    )
+    return response.data.data
+  }
+
+  /** 賣家/店主：更新訂單狀態（PATCH /v2/orders/{id}/status，出貨等租戶內訂單管理操作） */
+  async updateOrderStatus(id: string, targetStatus: OrderStatus, reason?: string): Promise<Order> {
+    const response = await apiClient.patch<ApiResponse<Order>>(
+      API_ENDPOINTS.orders.updateStatus(id),
+      { targetStatus, reason }
     )
     return response.data.data
   }

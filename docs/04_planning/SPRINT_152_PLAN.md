@@ -108,7 +108,7 @@ public ResponseEntity<ApiResponse<LogisticsDto.LogisticsResponse>> createLogisti
 | 2 | 執行 `mvn -o verify` 完整回歸並回填本節結果 | 本輪交付前 | ✅ 完成 | 見 §5.1，1239 單元 + 478 整合，0 failed，checkstyle 0 違規 |
 | 3 | 真實 Docker 環境手動驗證 SELLER 建立物流單 | 本輪交付前 | ✅ 完成 | 見 §5.3，200 + 訂單原子轉 SHIPPING |
 | 4 | `make validate-e2e` 回歸確認無 schema/前端漂移 | 本輪交付前 | ✅ 完成 | 見 §5.3，57 passed / 4 skipped，與既有基準一致 |
-| 5 | `RELEASE_TRACKER`/`DEFERRED_ITEMS_TRACKER` 回填本輪 push 狀態與雲端 CI 結果 | 本輪交付後 | ⏳ 待執行 | |
+| 5 | `RELEASE_TRACKER`/`DEFERRED_ITEMS_TRACKER` 回填本輪 push 狀態與雲端 CI 結果 | 本輪交付後 | ✅ 完成 | commit `0398c14` 已 push，雲端 CI run 34463473944 三個 job 第一次嘗試即全綠 |
 | 6 | 賣家訂單詳情頁狀態變更歷史（State Log 時間軸） | Sprint 151 §6 #9 | ⬜ 待排程 | 低優先級，可獨立小型追加 |
 | 7 | `DEF-103/104/105` 三筆輸入驗證 | S135 登記 | ⬜ 待排程 | 低優先級，已拍板不排入排程 |
 | 8 | `/dashboard/tenants/[id]/features` 顯示頁補上配額用量 | S147 §6 範圍外 | ⬜ 待排程 | 需先確認是否要做 |

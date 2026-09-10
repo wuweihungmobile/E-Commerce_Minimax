@@ -125,7 +125,8 @@ class M11LogisticsOrderIntegrationTest {
     @Test
     @DisplayName("IT-SHIP-001: POST /v2/logistics（CONFIRMED 訂單）→ 200 + 追蹤號，訂單變 SHIPPING")
     void createLogistics_confirmedOrder_returns200AndUpdatesOrderToShipping() throws Exception {
-        TestSecurityContextHelper.setUserContext(SELLER_USER_ID, TENANT_ID, "SELLER", "order:create");
+        // DEF-191（Sprint 152）：createLogistics 改用 order:update 授權，見 LogisticsController Javadoc。
+        TestSecurityContextHelper.setUserContext(SELLER_USER_ID, TENANT_ID, "SELLER", "order:update");
         Order order = buildConfirmedOrder();
         Logistics savedLogistics = buildPendingLogistics();
 
@@ -154,12 +155,42 @@ class M11LogisticsOrderIntegrationTest {
         verify(orderRepository).updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CONFIRMED, Order.OrderStatus.SHIPPING);
     }
 
+    // ── DEF-191（Sprint 152）：鎖住授權需求已改為 order:update ──────
+
+    @Test
+    @DisplayName("DEF-191: 僅持有舊授權 order:create（無 order:update）→ 403，證明修法已生效")
+    void createLogistics_onlyLegacyOrderCreateAuthority_returns403() throws Exception {
+        // 修法前這組授權足以通過 @PreAuthorize；修法後 order:create 單獨已不足夠，
+        // 必須是 order:update（SELLER 角色實際持有的權限，見 RolePermissionMappingTest
+        // #seller_hasOrderUpdateButNotOrderCreate）。此測試證明「舊授權不再放行」，
+        // 與 IT-SHIP-001（僅 order:update 即可放行）互為一體兩面的驗證。
+        // 訂單/物流查詢比照 IT-SHIP-001 完整 mock，確保若授權意外放行，斷言看到的會是
+        // 明確的 200（而非因未 mock 資料而巧合得到的 404），讓紅燈訊號不模稜兩可。
+        TestSecurityContextHelper.setUserContext(SELLER_USER_ID, TENANT_ID, "SELLER", "order:create");
+        Order order = buildConfirmedOrder();
+        Logistics savedLogistics = buildPendingLogistics();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(logisticsRepository.findByOrderId(ORDER_ID)).thenReturn(Collections.emptyList());
+        when(logisticsRepository.save(any(Logistics.class))).thenReturn(savedLogistics);
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CONFIRMED, Order.OrderStatus.SHIPPING))
+                .thenReturn(1);
+
+        String body = """
+            {"orderId": "%s", "logisticsProvider": "HCT"}
+            """.formatted(ORDER_ID);
+
+        mockMvc.perform(post(BASE_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden());
+    }
+
     // ── IT-SHIP-002: 非 CONFIRMED 訂單 → 422 ─────────────────────
 
     @Test
     @DisplayName("IT-SHIP-002: POST /v2/logistics（CREATED 訂單，未確認）→ 4xx")
     void createLogistics_notConfirmedOrder_returns4xx() throws Exception {
-        TestSecurityContextHelper.setUserContext(SELLER_USER_ID, TENANT_ID, "SELLER", "order:create");
+        TestSecurityContextHelper.setUserContext(SELLER_USER_ID, TENANT_ID, "SELLER", "order:update");
         Order order = buildConfirmedOrder();
         order.setStatus(Order.OrderStatus.CREATED);
 
@@ -180,7 +211,7 @@ class M11LogisticsOrderIntegrationTest {
     @Test
     @DisplayName("IT-SHIP-003: POST /v2/logistics（已有物流單）→ 409")
     void createLogistics_activeLogisticsExists_returns409() throws Exception {
-        TestSecurityContextHelper.setUserContext(SELLER_USER_ID, TENANT_ID, "SELLER", "order:create");
+        TestSecurityContextHelper.setUserContext(SELLER_USER_ID, TENANT_ID, "SELLER", "order:update");
         Order order = buildConfirmedOrder();
         Logistics existingLogistics = buildPendingLogistics();
 

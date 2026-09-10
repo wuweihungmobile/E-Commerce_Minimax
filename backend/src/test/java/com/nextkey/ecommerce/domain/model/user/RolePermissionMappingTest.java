@@ -146,4 +146,24 @@ class RolePermissionMappingTest {
         assertThat(mapping.hasPermission(User.UserRole.SUPER_ADMIN, Permission.CMS_PUBLISH)).isTrue();
         assertThat(mapping.hasPermission(User.UserRole.SUPER_ADMIN, Permission.NOTIFICATION_CREATE)).isTrue();
     }
+
+    // ── DEF-191（Sprint 152）：SELLER 有 order:update 卻無 order:create，
+    // 曾導致能把訂單確認到 CONFIRMED 卻無法建立物流單完成出貨。修法是把
+    // LogisticsController.createLogistics 的 @PreAuthorize 改用 order:update，
+    // 而非在此擴大 SELLER 的權限清單——以下測試鎖住這個刻意的權限矩陣邊界，
+    // 避免未來有人「順手」幫 SELLER 加回 ORDER_CREATE 而破壞此決策的依據。
+
+    @Test
+    @DisplayName("SELLER 持有 order:update 但不持有 order:create（DEF-191 權限矩陣邊界）")
+    void seller_hasOrderUpdateButNotOrderCreate() {
+        assertThat(mapping.hasPermission(User.UserRole.SELLER, Permission.ORDER_UPDATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.SELLER, Permission.ORDER_CREATE)).isFalse();
+    }
+
+    @Test
+    @DisplayName("STORE_OWNER 同時持有 order:create 與 order:update（不受 DEF-191 修法影響）")
+    void storeOwner_hasBothOrderCreateAndOrderUpdate() {
+        assertThat(mapping.hasPermission(User.UserRole.STORE_OWNER, Permission.ORDER_CREATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_OWNER, Permission.ORDER_UPDATE)).isTrue();
+    }
 }

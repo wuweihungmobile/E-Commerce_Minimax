@@ -38,9 +38,17 @@ public class LogisticsController {
 
     /**
      * 建立物流單
+     *
+     * <p>DEF-191（Sprint 152）：權限由 {@code order:create} 改為 {@code order:update}。
+     * 建立物流單語意上是「管理既有訂單的履約進度」而非「建立新訂單」，
+     * {@code SELLER} 角色原本就有 {@code order:update}（可把訂單確認到 CONFIRMED）
+     * 卻沒有 {@code order:create}，導致能推進到 CONFIRMED 卻無法建立物流單完成出貨——
+     * 相鄰兩步驟所需最低角色不一致。改用 {@code order:update} 後不需擴大
+     * {@code RolePermissionMapping} 的 SELLER 權限清單即可補上此缺口
+     * （{@code STORE_OWNER}/{@code ADMIN} 本就同時具備兩個權限，行為不受影響）。
      */
     @PostMapping
-    @PreAuthorize("hasAuthority('order:create')")
+    @PreAuthorize("hasAuthority('order:update')")
     public ResponseEntity<ApiResponse<LogisticsDto.LogisticsResponse>> createLogistics(
             @Valid @RequestBody LogisticsDto.CreateRequest request) {
         log.info("Create logistics request: orderId={}, provider={}",

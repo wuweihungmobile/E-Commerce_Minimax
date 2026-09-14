@@ -10,6 +10,8 @@ import com.nextkey.ecommerce.domain.model.cms.post.PostCategory;
 import com.nextkey.ecommerce.domain.model.cms.post.PostEmbed;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 
+import jakarta.validation.constraints.Pattern;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -31,6 +33,9 @@ public class M15Dto {
         private String content;
         private UUID categoryId;
         private List<String> tags;
+
+        @Pattern(regexp = "^(?!\\s*(?i:javascript|data|vbscript|file):).*$",
+                message = "Featured image URL must not use javascript/data/vbscript/file protocol")
         private String featuredImageUrl;
         private Boolean autoPublish;
     }
@@ -44,6 +49,9 @@ public class M15Dto {
         private String content;
         private UUID categoryId;
         private List<String> tags;
+
+        @Pattern(regexp = "^(?!\\s*(?i:javascript|data|vbscript|file):).*$",
+                message = "Featured image URL must not use javascript/data/vbscript/file protocol")
         private String featuredImageUrl;
     }
 

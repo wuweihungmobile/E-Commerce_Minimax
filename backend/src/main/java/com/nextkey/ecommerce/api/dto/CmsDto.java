@@ -113,6 +113,8 @@ public class CmsDto {
         private String title;
 
         @NotBlank(message = "Image URL is required")
+        @Pattern(regexp = "^(?!\\s*(?i:javascript|data|vbscript|file):).*$",
+                message = "Image URL must not use javascript/data/vbscript/file protocol")
         private String imageUrl;
 
         @Pattern(regexp = "^(?!\\s*(?i:javascript|data|vbscript|file):).*$",
@@ -141,6 +143,8 @@ public class CmsDto {
     @AllArgsConstructor
     public static class UpdateBannerRequest {
         private String title;
+        @Pattern(regexp = "^(?!\\s*(?i:javascript|data|vbscript|file):).*$",
+                message = "Image URL must not use javascript/data/vbscript/file protocol")
         private String imageUrl;
         @Pattern(regexp = "^(?!\\s*(?i:javascript|data|vbscript|file):).*$",
                 message = "Link URL must not use javascript/data/vbscript/file protocol")

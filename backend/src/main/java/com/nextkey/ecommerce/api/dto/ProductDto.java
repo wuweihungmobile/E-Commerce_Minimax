@@ -9,6 +9,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import lombok.*;
@@ -48,6 +49,8 @@ public class ProductDto {
         @DecimalMax(value = "999999999.99", message = "Base price is too large")
         private BigDecimal basePrice;
 
+        @Pattern(regexp = "^(?!\\s*(?i:javascript|data|vbscript|file):).*$",
+                message = "Cover image URL must not use javascript/data/vbscript/file protocol")
         private String coverImageUrl;
 
         @Size(max = 10, message = "Maximum 10 tags allowed")
@@ -81,6 +84,8 @@ public class ProductDto {
         @DecimalMax(value = "999999999.99", message = "Base price is too large")
         private BigDecimal basePrice;
 
+        @Pattern(regexp = "^(?!\\s*(?i:javascript|data|vbscript|file):).*$",
+                message = "Cover image URL must not use javascript/data/vbscript/file protocol")
         private String coverImageUrl;
 
         @Size(max = 10, message = "Maximum 10 tags allowed")

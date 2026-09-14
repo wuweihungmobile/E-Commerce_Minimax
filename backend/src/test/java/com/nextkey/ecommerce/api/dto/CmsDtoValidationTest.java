@@ -24,6 +24,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 查證時全代碼庫沒有任何前端消費端讀取此欄位（零 sink），非可利用漏洞，S135 記錄為低優先級、
  * 待未來真正串接該 API 時一併處理。本輪僅補上 DTO 層驗證，不影響 {@code linkType} 為
  * LISTING/PAGE/CATEGORY 時 {@code linkUrl} 可能存放 ID/相對路徑而非完整網址的既有彈性。
+ *
+ * <p>DEF-198 回歸測試（Sprint 156）：同一個 {@code CreateBannerRequest}/{@code UpdateBannerRequest}
+ * 的手足欄位 {@code imageUrl} 與 {@code linkUrl} 同型缺口（同樣零前端消費端），比照 DEF-104 已建立
+ * 的防禦性修復先例補上同一協定驗證。
  */
 class CmsDtoValidationTest {
 
@@ -95,5 +99,51 @@ class CmsDtoValidationTest {
     void dangerousProtocol_failsValidation(String linkUrl) {
         assertThat(createViolationsOnLinkUrl(linkUrl)).isNotEmpty();
         assertThat(updateViolationsOnLinkUrl(linkUrl)).isNotEmpty();
+    }
+
+    private Set<ConstraintViolation<CmsDto.CreateBannerRequest>> createViolationsOnImageUrl(String imageUrl) {
+        CmsDto.CreateBannerRequest request = validCreateRequestBuilder().imageUrl(imageUrl).build();
+        return validator.validate(request).stream()
+                .filter(v -> v.getPropertyPath().toString().equals("imageUrl"))
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
+    private Set<ConstraintViolation<CmsDto.UpdateBannerRequest>> updateViolationsOnImageUrl(String imageUrl) {
+        CmsDto.UpdateBannerRequest request = CmsDto.UpdateBannerRequest.builder().imageUrl(imageUrl).build();
+        return validator.validate(request).stream()
+                .filter(v -> v.getPropertyPath().toString().equals("imageUrl"))
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
+    @ParameterizedTest(name = "合法網址不應觸發驗證錯誤：{0}")
+    @ValueSource(strings = {
+            "https://example.com/banner.png",
+            "/uploads/banner.png"
+    })
+    @DisplayName("DEF-198：合法 http(s) 網址或相對路徑應通過驗證")
+    void legitimateImageUrl_passesValidation(String imageUrl) {
+        assertThat(createViolationsOnImageUrl(imageUrl)).isEmpty();
+        assertThat(updateViolationsOnImageUrl(imageUrl)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("DEF-198：UpdateBannerRequest 的 imageUrl 為 null（選填欄位）應通過驗證")
+    void nullImageUrl_onUpdate_passesValidation() {
+        assertThat(updateViolationsOnImageUrl(null)).isEmpty();
+    }
+
+    @ParameterizedTest(name = "危險協定應被拒絕：{0}")
+    @ValueSource(strings = {
+            "javascript:alert(document.cookie)",
+            "JavaScript:alert(1)",
+            "  javascript:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "vbscript:msgbox(1)",
+            "file:///etc/passwd"
+    })
+    @DisplayName("DEF-198：javascript/data/vbscript/file 協定（含大小寫與前導空白繞過）應被拒絕")
+    void dangerousProtocolOnImageUrl_failsValidation(String imageUrl) {
+        assertThat(createViolationsOnImageUrl(imageUrl)).isNotEmpty();
+        assertThat(updateViolationsOnImageUrl(imageUrl)).isNotEmpty();
     }
 }

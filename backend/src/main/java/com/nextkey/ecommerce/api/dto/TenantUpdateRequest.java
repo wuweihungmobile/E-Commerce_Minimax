@@ -36,9 +36,16 @@ public class TenantUpdateRequest {
     @Size(max = CONTACT_PHONE_MAX_LENGTH, message = "Contact phone must not exceed 20 characters")
     private String contactPhone;
 
+    // DEF-194（Sprint 155）：與 DEF-104（CmsDto Banner linkUrl）同型——有寫入/持久化（Tenant.logoUrl）
+    // 且經公開端點 GET /v2/tenants/{id} 回傳，目前雖零前端消費端（非可利用），仍比照同批防禦性修復。
     @Size(max = URL_MAX_LENGTH, message = "Logo URL must not exceed 500 characters")
+    @Pattern(regexp = "^(?!\\s*(?i:javascript|data|vbscript|file):).*$",
+            message = "Logo URL must not use javascript/data/vbscript/file protocol")
     private String logoUrl;
 
+    // DEF-193（Sprint 155）：此欄位從未被 applyTenantUpdates 讀取、Tenant 實體無對應欄位，
+    // getTenantDetails 恆回傳 null——完全死欄位（送出值必被靜默丟棄），非協定驗證缺口，
+    // 故刻意不加 @Pattern（驗證一個永遠被丟棄的值沒有意義）。僅維持既有 @Size，如實記錄於此。
     @Size(max = URL_MAX_LENGTH, message = "Cover image URL must not exceed 500 characters")
     private String coverImageUrl;
 

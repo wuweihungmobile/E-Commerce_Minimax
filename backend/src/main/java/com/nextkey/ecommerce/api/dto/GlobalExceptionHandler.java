@@ -5,6 +5,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
@@ -104,6 +105,20 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ApiResponse.error(ErrorCode.E_1001.getCode(), "帳號或密碼錯誤"));
+    }
+
+    /**
+     * Sprint 162：request body 中強型別 enum 欄位帶非法字面值（或其他 JSON 語法/型別錯誤）時，
+     * Jackson 在進入 Controller 方法前就會拋出此例外，先前落入下方 catch-all 變成 500。
+     * 此例外只會源自 client 送出的 body 本身有問題，從無合法情境是伺服器端錯誤，故統一回 400。
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadableException(
+            final HttpMessageNotReadableException ex) {
+        log.warn("Malformed request body: {}", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ErrorCode.E_9000.getCode(), "請求格式錯誤"));
     }
 
     @ExceptionHandler(AccessDeniedException.class)

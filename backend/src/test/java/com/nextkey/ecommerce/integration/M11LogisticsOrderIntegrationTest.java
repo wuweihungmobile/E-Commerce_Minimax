@@ -253,4 +253,27 @@ class M11LogisticsOrderIntegrationTest {
         // 驗證訂單狀態已透過原子 CAS 更新為 DELIVERED
         verify(orderRepository).updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.SHIPPING, Order.OrderStatus.DELIVERED);
     }
+
+    // ── Sprint 162: 強型別 enum 欄位的 JSON 反序列化非法值 → 400（而非 500） ─────
+    //
+    // 延續 Sprint 161 §4 誠實揭露：logisticsProvider 欄位本身已是 LogisticsProvider enum，
+    // 非法字面值會在 Jackson 反序列化階段（進入 Controller 方法前）拋出
+    // HttpMessageNotReadableException，先前全域例外處理器未攔截此類型，落入 catch-all 變成 500。
+
+    @Test
+    @DisplayName("Sprint 162: POST /v2/logistics logisticsProvider 帶非法列舉字面值 → 400（E-9000），而非 500")
+    void createLogistics_invalidLogisticsProviderLiteral_returns400NotInternalServerError() throws Exception {
+        TestSecurityContextHelper.setUserContext(SELLER_USER_ID, TENANT_ID, "SELLER", "order:update");
+
+        String body = """
+            {"orderId": "%s", "logisticsProvider": "NOT_A_REAL_PROVIDER"}
+            """.formatted(ORDER_ID);
+
+        mockMvc.perform(post(BASE_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("E-9000"));
+    }
 }

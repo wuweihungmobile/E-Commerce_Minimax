@@ -1,5 +1,7 @@
 package com.nextkey.ecommerce.api.controller;
 
+import java.util.UUID;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.nextkey.ecommerce.integration.IntegrationTestConfiguration;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -23,6 +26,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * UUID 字串時，Spring 在進入 Controller 方法前的參數綁定階段就會拋出
  * {@code MethodArgumentTypeMismatchException}，先前全域例外處理器未攔截此類型，
  * 落入 catch-all 變成 500，而非正確的 400。
+ *
+ * <p>第二個案例（新增於同日）補上 Sprint 163 §7 誠實揭露未驗證的部分：確認
+ * {@code @RequestParam LocalDate} 型別轉換失敗（而非 {@code UUID}）也拋出同一個
+ * {@code MethodArgumentTypeMismatchException}，同樣受同一 handler 保護，非另一種
+ * 需要額外處理的例外子類型。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -39,6 +47,18 @@ class RequestParamTypeMismatchValidationTest {
     @DisplayName("GET /v2/orders/{orderId} 帶非 UUID 字串 → 400（E-9000），而非 500")
     void getOrder_nonUuidPathVariable_returns400NotInternalServerError() throws Exception {
         mockMvc.perform(get("/v2/orders/not-a-real-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("E-9000"));
+    }
+
+    @Test
+    @WithMockUser(username = "seller", authorities = "room:update")
+    @DisplayName("DELETE .../maintenance startDate 帶非法日期字串 → 400（E-9000），而非 500")
+    void unmarkMaintenance_invalidLocalDateQueryParam_returns400NotInternalServerError() throws Exception {
+        mockMvc.perform(delete("/v2/dashboard/rooms/" + UUID.randomUUID() + "/maintenance")
+                        .param("startDate", "not-a-real-date")
+                        .param("endDate", "2026-01-01"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("E-9000"));

@@ -56,4 +56,4 @@
 
 - §3 的「延伸而非重新徵詢」是本輪主動的判斷呼叫，未透過 `AskUserQuestion` 重新確認範圍——理由是這與 Sprint 162 剛拍板的決策屬同一性質例外（框架層級、只會源自 client 輸入錯誤），但這仍是一次自主判斷，記錄於此供使用者覆核。
 - 只驗證了 `OrderController.getOrder` 一個代表端點的行為改變（500→400），未逐一手動驗證其餘 34 個命中檔案的每個端點，而是依賴「這是框架層級的全域例外處理器，作用於所有 Controller」的機制性推論（與 Sprint 162 同一立場）。
-- 未評估 `@RequestParam LocalDate`（日期格式錯誤）是否會拋出完全相同的 `MethodArgumentTypeMismatchException`，還是其他子類型／不同例外（例如 `DateTimeParseException` 包裝方式可能因 Spring 版本而異）——本輪僅以 UUID 型別的路徑變數做紅燈驗證，未對 `LocalDate` 查詢參數另做一次獨立的紅燈確認。
+- ~~未評估 `@RequestParam LocalDate`（日期格式錯誤）是否會拋出完全相同的 `MethodArgumentTypeMismatchException`~~ **同日已補驗證關閉**：新增 `RoomCalendarController.unmarkMaintenance`（`@RequestParam @DateTimeFormat LocalDate startDate`）案例，實測確認 `LocalDate` 型別轉換失敗同樣拋出 `MethodArgumentTypeMismatchException`（非其他子類型），受同一 handler 保護。`RequestParamTypeMismatchValidationTest` 現有 2 個案例（UUID 路徑變數 + LocalDate 查詢參數），皆為綠燈（修復已在 main 分支生效，此為鎖定既有正確行為的回歸測試，非紅燈先行）。

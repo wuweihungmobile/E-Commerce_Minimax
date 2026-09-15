@@ -1108,8 +1108,10 @@
 
 ---
 
-**文件版本**: v2.48
-**最後更新**: 2026-09-15（**Sprint 158**：回應 Sprint 157 誠實揭露的未探查範圍，重新查證同批（Sprint 156）登記、同屬「不排入排程」的 `DEF-199`/`DEF-200`/`DEF-201` 死路徑判準是否也像 `DEF-195` 一樣被誤判。逐一以 `grep`/`find`/程式碼閱讀重新核對三項的具體技術判準（CMS 自訂頁無 `pages/` 目錄、知識庫建立函式零呼叫、評論 `images` 欄位確認未被送出），結論：三者判準均維持成立，與 `DEF-195` 不同——`DEF-195` 是「排程紀律用語被誤讀為安全判斷」，而 `DEF-199`~`201` 原始記錄本身就是具體可驗證的技術判準，本輪查證後與現狀一致，無需修復，本輪無程式碼變更。詳見 [SPRINT_158_PLAN.md](SPRINT_158_PLAN.md)。
+**文件版本**: v2.49
+**最後更新**: 2026-09-15（**Sprint 159**：`DEFERRED_ITEMS_TRACKER.md` 已無任何待排程項目，改對後端契約層做四角度防禦性掃描（非延續既有缺陷家族）：① Mass Assignment（`@RequestBody` 是否有裸 entity 綁定）② 裸實體回應外洩（`DEF-093` 同型回歸複查）③ 缺 `@Valid` 導致驗證被靜默跳過 ④ 巢狀 `List<Dto>` 欄位缺 cascade `@Valid`。四角度皆為 CLEAN：43 個 Controller 的 78 個相異 `@RequestBody` 型別全數為專用 DTO，零裸 entity 綁定；`DEF-093` 後無回歸，零 Controller 直接回傳 entity；5 處缺 `@Valid` 的 DTO 逐一核對後確認皆無任何驗證 annotation，缺標註不構成實質繞過；巢狀清單欄位命中的 9 處中 6 處為回應 DTO（不需驗證）、3 處（`ReturnDto`/`PurchaseOrder*Request`）已正確標註 `@NotEmpty`+`@Valid`。本輪無程式碼變更，屬「無新漏洞」Sprint（同 S77/S78 先例）。詳見 [SPRINT_159_PLAN.md](SPRINT_159_PLAN.md)。
+
+**Sprint 158**：回應 Sprint 157 誠實揭露的未探查範圍，重新查證同批（Sprint 156）登記、同屬「不排入排程」的 `DEF-199`/`DEF-200`/`DEF-201` 死路徑判準是否也像 `DEF-195` 一樣被誤判。逐一以 `grep`/`find`/程式碼閱讀重新核對三項的具體技術判準（CMS 自訂頁無 `pages/` 目錄、知識庫建立函式零呼叫、評論 `images` 欄位確認未被送出），結論：三者判準均維持成立，與 `DEF-195` 不同——`DEF-195` 是「排程紀律用語被誤讀為安全判斷」，而 `DEF-199`~`201` 原始記錄本身就是具體可驗證的技術判準，本輪查證後與現狀一致，無需修復，本輪無程式碼變更。詳見 [SPRINT_158_PLAN.md](SPRINT_158_PLAN.md)。
 
 **Sprint 157**：重新查證 Sprint 155 記錄但刻意未擴大範圍的 `DEF-195`（`TenantApplicationRequest.businessLicenseUrl` 缺協定白名單驗證），發現其字面「不排入排程」實為排程紀律考量而非安全判斷結論——送出此欄位的端點 `POST /tenant/apply` 是前端 `TenantApplyForm.tsx` 真實在用的活流程，不同於 `DEF-199`~`201` 那種整個功能零前端呼叫點的死路徑，故比照 `DEF-104/194/198` 同型防禦性修復補上 `@Pattern`。新增 `TenantApplicationRequestValidationTest`（11 案例），紅燈先行證實修復前 6 個危險協定案例失敗、修復後全數通過。`mvn -o verify` **1340 個單元測試 + 478 個整合測試，0 failed**，checkstyle 0 違規；`make validate-e2e` **62 passed / 4 skipped / 0 failed**。詳見 [SPRINT_157_PLAN.md](SPRINT_157_PLAN.md)。
 

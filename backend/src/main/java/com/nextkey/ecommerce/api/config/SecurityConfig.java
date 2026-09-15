@@ -102,6 +102,13 @@ public class SecurityConfig {
                 // WebSocket/SockJS handshake（M10 IM）：放行 HTTP 握手；
                 // 實際身份驗證於 STOMP CONNECT frame 由 StompAuthChannelInterceptor 處理
                 .requestMatchers("/ws/**").permitAll()
+                // Stripe webhook（Sprint 160 DEF-202 修復）：Stripe 伺服器回呼永遠不會帶 JWT，
+                // 先前缺此規則導致 .anyRequest().authenticated() 一律回 401，webhook 事實上完全
+                // 不可達（實測驗證，見 StripeWebhookReachabilityTest）。真正的身份驗證由
+                // StripeWebhookController 內的 StripeSignatureVerifierService（HMAC-SHA256 signature）
+                // 把關，非 JWT，故此處 permitAll 正確。只放行 /stripe，/linepay 為未串接的 stub
+                // （零 signature 驗證機制），刻意維持需要驗證，避免開放無防護的公開端點。
+                .requestMatchers(HttpMethod.POST, "/v2/payments/webhook/stripe").permitAll()
                 // All other requests require authentication
                 .anyRequest().authenticated()
             )

@@ -47,10 +47,10 @@ public class NotificationTemplateService {
         NotificationChannel channel = null;
 
         if (request.getNotificationType() != null && !request.getNotificationType().isEmpty()) {
-            notificationType = NotificationType.valueOf(request.getNotificationType());
+            notificationType = parseNotificationType(request.getNotificationType());
         }
         if (request.getChannel() != null && !request.getChannel().isEmpty()) {
-            channel = NotificationChannel.valueOf(request.getChannel());
+            channel = parseChannel(request.getChannel());
         }
 
         Page<NotificationTemplate> page = templateRepository.searchTemplates(
@@ -103,8 +103,8 @@ public class NotificationTemplateService {
         NotificationTemplate template = NotificationTemplate.builder()
                 .tenantId(tenantId)
                 .templateCode(request.getTemplateCode())
-                .notificationType(NotificationType.valueOf(request.getNotificationType()))
-                .channel(NotificationChannel.valueOf(request.getChannel()))
+                .notificationType(parseNotificationType(request.getNotificationType()))
+                .channel(parseChannel(request.getChannel()))
                 .name(request.getName())
                 .subject(request.getSubject())
                 .contentTemplate(request.getContentTemplate())
@@ -145,10 +145,10 @@ public class NotificationTemplateService {
         }
 
         if (request.getNotificationType() != null) {
-            template.setNotificationType(NotificationType.valueOf(request.getNotificationType()));
+            template.setNotificationType(parseNotificationType(request.getNotificationType()));
         }
         if (request.getChannel() != null) {
-            template.setChannel(NotificationChannel.valueOf(request.getChannel()));
+            template.setChannel(parseChannel(request.getChannel()));
         }
         if (request.getName() != null) {
             template.setName(request.getName());
@@ -265,5 +265,21 @@ public class NotificationTemplateService {
                     entry.getValue() != null ? entry.getValue() : "");
         }
         return result;
+    }
+
+    private NotificationType parseNotificationType(String value) {
+        try {
+            return NotificationType.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.E_9000, "Invalid notificationType: " + value);
+        }
+    }
+
+    private NotificationChannel parseChannel(String value) {
+        try {
+            return NotificationChannel.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.E_9000, "Invalid channel: " + value);
+        }
     }
 }

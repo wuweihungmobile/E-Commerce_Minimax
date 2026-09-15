@@ -539,7 +539,13 @@ public class AdminService {
             spec = spec.and((root, query, cb) -> cb.equal(root.get("tenantId"), tenantId));
         }
         if (role != null && !role.isBlank()) {
-            spec = spec.and((root, query, cb) -> cb.equal(root.get("role"), User.UserRole.valueOf(role)));
+            User.UserRole userRole;
+            try {
+                userRole = User.UserRole.valueOf(role);
+            } catch (IllegalArgumentException e) {
+                throw new BusinessException(ErrorCode.E_9000, "Invalid role: " + role);
+            }
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("role"), userRole));
         }
         if (status != null && !status.isBlank()) {
             spec = spec.and((root, query, cb) -> cb.equal(root.get("status"), status));

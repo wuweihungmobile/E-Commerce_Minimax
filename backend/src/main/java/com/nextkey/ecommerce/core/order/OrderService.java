@@ -96,7 +96,12 @@ public class OrderService {
         var user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1006));
 
-        Listing.ListingType orderType = Listing.ListingType.valueOf(request.getOrderType());
+        Listing.ListingType orderType;
+        try {
+            orderType = Listing.ListingType.valueOf(request.getOrderType());
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.E_3001, "Invalid order type: " + request.getOrderType());
+        }
 
         // ROOM 類型訂單：直接建立預訂訂單，不需要 tenant lookup
         if (orderType == Listing.ListingType.ROOM) {
@@ -535,7 +540,12 @@ public class OrderService {
 
         Page<Order> orders;
         if (status != null && !status.isBlank()) {
-            Order.OrderStatus orderStatus = Order.OrderStatus.valueOf(status);
+            Order.OrderStatus orderStatus;
+            try {
+                orderStatus = Order.OrderStatus.valueOf(status);
+            } catch (IllegalArgumentException e) {
+                throw new BusinessException(ErrorCode.E_5001, "Invalid order status: " + status);
+            }
             orders = orderRepository.findByTenantIdAndStatus(tenantId, orderStatus, pageRequest);
         } else {
             orders = orderRepository.findByTenantIdOrderByCreatedAtDesc(tenantId, pageRequest);

@@ -124,7 +124,11 @@ public class SupplierService {
             supplier.setAddress(request.getAddress());
         }
         if (request.getStatus() != null) {
-            supplier.setStatus(Supplier.SupplierStatus.valueOf(request.getStatus().toUpperCase()));
+            try {
+                supplier.setStatus(Supplier.SupplierStatus.valueOf(request.getStatus().toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                throw new BusinessException(ErrorCode.E_7010, "Invalid supplier status: " + request.getStatus());
+            }
         }
 
         Supplier updated = supplierRepository.save(supplier);

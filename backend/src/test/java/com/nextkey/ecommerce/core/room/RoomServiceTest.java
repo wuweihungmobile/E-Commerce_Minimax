@@ -170,6 +170,18 @@ class RoomServiceTest {
     }
 
     @Test
+    @DisplayName("Sprint 161：updateRoom 非法 status 拋出 BusinessException（E_9000），而非未攔截的 IllegalArgumentException")
+    void updateRoom_invalidStatus_throwsBusinessException() {
+        Room room = roomWithOpenWindow();
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+        RoomDto.UpdateRequest request = RoomDto.UpdateRequest.builder().status("NOT_A_REAL_STATUS").build();
+
+        assertThatThrownBy(() -> roomService.updateRoom(LISTING_ID, request, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_9000);
+    }
+
+    @Test
     @DisplayName("UT-ROOM-007: updateRoom 跨租戶（非 SUPER_ADMIN）→ 拋 E_1007，不寫入")
     void updateRoom_crossTenant_throwsForbidden() {
         TenantContext.setCurrentTenant(OTHER_TENANT);

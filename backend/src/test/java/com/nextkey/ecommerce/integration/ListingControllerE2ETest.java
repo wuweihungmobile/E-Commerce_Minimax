@@ -121,4 +121,13 @@ class ListingControllerE2ETest {
                         org.hamcrest.Matchers.containsString(SECRET_PASSWORD_HASH))))
                 .andExpect(jsonPath("$.data.content[0].title").value("測試商品"));
     }
+
+    @Test
+    @DisplayName("Sprint 161：GET /v2/listings?type=無效值 回傳 422（E-3001），而非未攔截 IllegalArgumentException 造成的 500")
+    void getListings_invalidType_returns422NotInternalServerError() throws Exception {
+        mockMvc.perform(get("/v2/listings").param("type", "NOT_A_REAL_TYPE"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("E-3001"));
+    }
 }

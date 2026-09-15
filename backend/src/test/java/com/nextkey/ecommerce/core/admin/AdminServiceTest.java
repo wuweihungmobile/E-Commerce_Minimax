@@ -721,6 +721,14 @@ class AdminServiceTest {
         }
 
         @Test
+        @DisplayName("Sprint 161：getUsers 非法 role 篩選拋出 BusinessException（E_9000），而非未攔截的 IllegalArgumentException")
+        void getUsers_invalidRoleFilter_throwsBusinessException() {
+            assertThatThrownBy(() -> adminService.getUsers(0, 20, null, "NOT_A_REAL_ROLE", null, null))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode").isEqualTo(ErrorCode.E_9000);
+        }
+
+        @Test
         @DisplayName("getUsers_noResults_returnsEmptyList")
         void getUsers_noResults_returnsEmptyList() {
             when(userRepository.findAll(

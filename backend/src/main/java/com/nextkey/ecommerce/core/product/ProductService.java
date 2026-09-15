@@ -224,7 +224,11 @@ public class ProductService {
             listing.setTags(request.getTags());
         }
         if (request.getStatus() != null) {
-            listing.setStatus(Listing.ListingStatus.valueOf(request.getStatus().toUpperCase()));
+            try {
+                listing.setStatus(Listing.ListingStatus.valueOf(request.getStatus().toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                throw new BusinessException(ErrorCode.E_9000, "Invalid status: " + request.getStatus());
+            }
         }
     }
 

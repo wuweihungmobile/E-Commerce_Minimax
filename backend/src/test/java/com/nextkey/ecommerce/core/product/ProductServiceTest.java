@@ -168,6 +168,18 @@ class ProductServiceTest {
     }
 
     @Test
+    @DisplayName("Sprint 161：updateProduct 非法 status 拋出 BusinessException（E_9000），而非未攔截的 IllegalArgumentException")
+    void updateProduct_invalidStatus_throwsBusinessException() {
+        Product product = buildProductForListing(LISTING_ID, TENANT);
+        when(productRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(product));
+        ProductDto.UpdateRequest request = ProductDto.UpdateRequest.builder().status("NOT_A_REAL_STATUS").build();
+
+        assertThatThrownBy(() -> productService.updateProduct(LISTING_ID, request, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_9000);
+    }
+
+    @Test
     @DisplayName("UT-PRODUCT-005（DEF-041）: updateProduct 跨租戶（非 SUPER_ADMIN）→ 拋 E_1007，不寫入")
     void updateProduct_crossTenant_throwsForbidden() {
         Product product = buildProductForListing(LISTING_ID, OTHER_TENANT);

@@ -56,13 +56,13 @@ public class ListingController {
 
         if (keyword != null && !keyword.isBlank()) {
             if (type != null && !type.isBlank()) {
-                Listing.ListingType listingType = Listing.ListingType.valueOf(type.toUpperCase());
+                Listing.ListingType listingType = parseListingType(type);
                 listings = listingRepository.searchByTypeAndKeyword(listingType, keyword, pageRequest);
             } else {
                 listings = listingRepository.searchByKeyword(keyword, pageRequest);
             }
         } else if (type != null && !type.isBlank()) {
-            Listing.ListingType listingType = Listing.ListingType.valueOf(type.toUpperCase());
+            Listing.ListingType listingType = parseListingType(type);
             listings = listingRepository.findByListingTypeAndStatus(
                     listingType,
                     Listing.ListingStatus.ACTIVE,
@@ -73,6 +73,14 @@ public class ListingController {
         }
 
         return ResponseEntity.ok(ApiResponse.success(listings.map(ListingResponse::fromEntity)));
+    }
+
+    private Listing.ListingType parseListingType(final String type) {
+        try {
+            return Listing.ListingType.valueOf(type.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.E_3001, "Invalid listing type: " + type);
+        }
     }
 
     @GetMapping("/{id}")

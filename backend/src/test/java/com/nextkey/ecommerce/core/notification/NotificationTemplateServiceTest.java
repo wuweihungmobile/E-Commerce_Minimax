@@ -29,6 +29,7 @@ import com.nextkey.ecommerce.api.dto.notification.NotificationTemplateDto;
 import com.nextkey.ecommerce.domain.model.notification.NotificationTemplate;
 import com.nextkey.ecommerce.domain.repository.NotificationTemplateRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
 /**
  * NotificationTemplateService 單元測試（Sprint 77 US-001）
@@ -87,6 +88,23 @@ class NotificationTemplateServiceTest {
 
         assertEquals(1, response.getTemplates().size());
         verify(templateRepository).searchTemplates(eq(TENANT_ID), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Sprint 161：getTemplates 非法 notificationType/channel 篩選拋出 BusinessException（E_9000），"
+            + "而非未攔截的 IllegalArgumentException")
+    void getTemplates_invalidFilters_throwsBusinessException() {
+        NotificationTemplateDto.SearchRequest invalidType = NotificationTemplateDto.SearchRequest.builder()
+                .notificationType("NOT_A_REAL_TYPE").page(0).size(20).build();
+        BusinessException typeEx = assertThrows(BusinessException.class,
+                () -> templateService.getTemplates(TENANT_ID, invalidType));
+        assertEquals(ErrorCode.E_9000, typeEx.getErrorCode());
+
+        NotificationTemplateDto.SearchRequest invalidChannel = NotificationTemplateDto.SearchRequest.builder()
+                .channel("NOT_A_REAL_CHANNEL").page(0).size(20).build();
+        BusinessException channelEx = assertThrows(BusinessException.class,
+                () -> templateService.getTemplates(TENANT_ID, invalidChannel));
+        assertEquals(ErrorCode.E_9000, channelEx.getErrorCode());
     }
 
     // ========== getTemplate ==========

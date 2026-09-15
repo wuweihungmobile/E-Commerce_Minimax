@@ -420,6 +420,20 @@ class OrderServiceTest {
     }
 
     @Test
+    @DisplayName("Sprint 161：createOrderFromCart 非法 orderType 拋出 BusinessException（E_3001），而非未攔截的 IllegalArgumentException")
+    void createOrderFromCart_invalidOrderType_throwsBusinessException() {
+        TenantContext.setCurrentUser(USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userFixture()));
+
+        OrderDto.CreateRequest request = OrderDto.CreateRequest.builder().orderType("NOT_A_REAL_TYPE").build();
+
+        assertThatThrownBy(() -> orderService.createOrderFromCart(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_3001);
+    }
+
+    @Test
     @DisplayName("createOrderFromCart(PRODUCT)：租戶不存在 → E_2000")
     void createOrderFromCart_tenantNotFound() {
         TenantContext.setCurrentUser(USER_ID);
@@ -909,6 +923,16 @@ class OrderServiceTest {
 
         assertThat(result.getContent()).hasSize(1);
         verify(orderRepository, never()).findByTenantIdOrderByCreatedAtDesc(any(), any());
+    }
+
+    @Test
+    @DisplayName("Sprint 161：getTenantOrders 非法 status 篩選拋出 BusinessException（E_5001），而非未攔截的 IllegalArgumentException")
+    void getTenantOrders_invalidStatusFilter_throwsBusinessException() {
+        TenantContext.setCurrentTenant(TENANT_ID);
+
+        assertThatThrownBy(() -> orderService.getTenantOrders(0, 20, "createdAt", "DESC", "NOT_A_REAL_STATUS"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_5001);
     }
 
     @Test

@@ -217,4 +217,17 @@ class SupplierServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_7000));
     }
+
+    @Test
+    @DisplayName("updateSupplier：非法 status 字串拋出 BusinessException（E_7010），而非未攔截的 IllegalArgumentException")
+    void updateSupplier_invalidStatus_throwsBusinessExceptionNotIllegalArgument() {
+        Supplier existing = supplierOf(supplierId, tenantId, Supplier.SupplierStatus.ACTIVE);
+        when(supplierRepository.findByIdAndTenantId(supplierId, tenantId)).thenReturn(Optional.of(existing));
+
+        SupplierUpdateRequest request = SupplierUpdateRequest.builder().status("DELETED").build();
+
+        assertThatThrownBy(() -> supplierService.updateSupplier(supplierId, request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_7010));
+    }
 }

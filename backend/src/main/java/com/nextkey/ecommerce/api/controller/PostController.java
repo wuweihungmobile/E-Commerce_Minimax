@@ -124,7 +124,12 @@ public class PostController {
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
 
-        Post.PostStatus postStatus = status != null ? Post.PostStatus.valueOf(status.toUpperCase()) : null;
+        Post.PostStatus postStatus;
+        try {
+            postStatus = status != null ? Post.PostStatus.valueOf(status.toUpperCase()) : null;
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.E_9000, "Invalid status: " + status);
+        }
         M15Dto.PostListResponse response = postService.getPosts(tenantId, page, size, postStatus);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
@@ -345,7 +350,12 @@ public class PostController {
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
 
-        MediaAsset.FileType type = fileType != null ? MediaAsset.FileType.valueOf(fileType.toUpperCase()) : null;
+        MediaAsset.FileType type;
+        try {
+            type = fileType != null ? MediaAsset.FileType.valueOf(fileType.toUpperCase()) : null;
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.E_9000, "Invalid fileType: " + fileType);
+        }
         M15Dto.MediaListResponse response = mediaService.getMediaList(tenantId, page, size, type);
         return ResponseEntity.ok(ApiResponse.success(response));
     }

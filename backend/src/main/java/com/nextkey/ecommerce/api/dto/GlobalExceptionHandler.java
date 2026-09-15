@@ -140,7 +140,7 @@ public class GlobalExceptionHandler {
             // 從未真正拋出過），語意上「OAuth 帳號已綁定其他使用者」屬於資料衝突而非認證失敗，
             // 移到與 E_4106/E_1010 同組的 CONFLICT，比照 E_2003（已存在類）語意更貼近。
             case E_4106, E_1010, E_1008 -> HttpStatus.CONFLICT;
-            case E_3001, E_3002, E_4008, E_5001, E_5006, E_6004, E_6005, E_7002 -> HttpStatus.UNPROCESSABLE_ENTITY;
+            case E_3001, E_3002, E_4008, E_5001, E_5006, E_6004, E_6005, E_7002, E_7010 -> HttpStatus.UNPROCESSABLE_ENTITY;
             case E_9000, E_9001, E_9002, E_9003, E_9004, E_9005, E_9006, E_9007, E_9008 -> HttpStatus.BAD_REQUEST;
             case E_9904 -> HttpStatus.TOO_MANY_REQUESTS;
             case E_6007, E_9903, E_9905, E_1096 -> HttpStatus.SERVICE_UNAVAILABLE;

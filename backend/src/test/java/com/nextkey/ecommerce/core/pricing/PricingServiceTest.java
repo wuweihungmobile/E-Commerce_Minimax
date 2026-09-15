@@ -625,6 +625,37 @@ class PricingServiceTest {
             assertThat(resp.getEffectivePrice()).isEqualByComparingTo(BigDecimal.valueOf(900)); // 1000×0.9 折扣不退步
         }
 
+        /**
+         * Sprint 166（DEF-218）：折扣向後相容分支（見上方 UT-M12-018）直接對 config 的
+         * {@code discountPercent} 呼叫 {@code new BigDecimal(discountPct.toString())}，
+         * 未比照同檔案其餘所有 config 讀取（{@code getDoubleConfig}）具備的 try/catch 防護。
+         * {@code config} 是 {@code Map<String, Object>}，寫入端（{@code PricingController}
+         * {@code POST/PUT /v2/dashboard/pricing/rules}）未驗證其內容型別，賣家送入非數字字串
+         * （如誤填 "10%"）會被原樣存入。讀取端是 {@code GET /v2/listings/{id}/effective-price}
+         * （{@code product:read}/{@code room:read} 即可呼叫，一般買家瀏覽商品即會觸發）與加入
+         * 購物車（{@code RedisCartService}），故此缺陷會讓「該商品」對「任何」買家瀏覽/加入購物車
+         * 都拋出未攔截的 {@code NumberFormatException}（{@code IllegalArgumentException} 子類別）。
+         */
+        @Test
+        @DisplayName("Sprint 166（DEF-218）：discountPercent 為非數字字串時，getEffectivePrice"
+                + "不可讓 NumberFormatException 未攔截往外拋")
+        void discountPercentNonNumericString_doesNotThrow() {
+            LocalDate checkDate = LocalDate.of(2027, 8, 3);
+            when(listingRepository.findById(PRODUCT_LISTING_ID)).thenReturn(Optional.of(productListing()));
+            when(pricingRuleRepository.findByListingIdAndIsActiveTrue(PRODUCT_LISTING_ID))
+                    .thenReturn(List.of(productRule(
+                            PricingRule.PricingRuleType.SEASONAL, Map.of("discountPercent", "10%"))));
+
+            assertThatCode(() -> pricingService.getEffectivePrice(PRODUCT_LISTING_ID, checkDate, 1))
+                    .as("非數字格式的 discountPercent 應被安全忽略（回退為原價），而非讓例外未攔截往外拋")
+                    .doesNotThrowAnyException();
+
+            PricingDto.EffectivePriceResponse resp = pricingService.getEffectivePrice(PRODUCT_LISTING_ID, checkDate, 1);
+            assertThat(resp.getEffectivePrice())
+                    .as("解析失敗時應回退為原價，比照 getDoubleConfig 既有的 null-safe 語意")
+                    .isEqualByComparingTo(BASE_PRICE);
+        }
+
         @Test
         @DisplayName("UT-M12-019: 同優先級時後建立覆蓋（AI-2407 tie-break，getEffectivePrice）")
         void samePriority_laterRuleWins() {

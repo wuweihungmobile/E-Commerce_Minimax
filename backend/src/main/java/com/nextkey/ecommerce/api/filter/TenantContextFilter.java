@@ -9,13 +9,19 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 import lombok.extern.slf4j.Slf4j;
@@ -61,6 +67,13 @@ public class TenantContextFilter extends OncePerRequestFilter {
     private static final Set<String> UNAUTHENTICATED_AUTH_PATHS =
             Set.of("/v2/auth/register", "/v2/auth/login", "/v2/auth/refresh", "/v2/auth/oauth/login");
 
+    // 與 RateLimitFilter 同理自行建構（非 @Autowired）：此 filter 在 @WebMvcTest 等窄切片測試中
+    // 也可能被直接 new 出來（見既有 TenantContextFilterTest），不應依賴 Spring 容器注入。
+    // 需註冊 JavaTimeModule，否則 ApiResponse.timestamp（Instant）序列化會拋例外（同 RateLimitFilter）。
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
@@ -91,12 +104,23 @@ public class TenantContextFilter extends OncePerRequestFilter {
                 TenantContext.setCurrentUser(userId);
 
                 // Determine which tenant to use
-                UUID effectiveTenantId = resolveEffectiveTenantId(
-                        userId,
-                        userTenantId,
-                        requestedTenantId,
-                        role
-                );
+                UUID effectiveTenantId;
+                try {
+                    effectiveTenantId = resolveEffectiveTenantId(
+                            userId,
+                            userTenantId,
+                            requestedTenantId,
+                            role
+                    );
+                } catch (IllegalArgumentException ex) {
+                    // DEF-217：requestedTenantId（X-Tenant-ID header，SUPER_ADMIN 專用）或
+                    // userTenantId 非合法 UUID 格式時，UUID.fromString 會拋出未攔截的例外。
+                    // 此 filter 執行於 DispatcherServlet 之前，GlobalExceptionHandler 攔不到，
+                    // 必須就地寫回應，不可讓例外繼續往外拋（會變成容器層級的 500 錯誤頁）。
+                    log.warn("[TenantContextFilter] Invalid tenant id format, requestedTenantId={}", requestedTenantId);
+                    writeInvalidTenantIdResponse(response);
+                    return;
+                }
 
                 TenantContext.setCurrentTenant(effectiveTenantId);
 
@@ -115,6 +139,13 @@ public class TenantContextFilter extends OncePerRequestFilter {
             log.debug("[TenantContextFilter] Clearing tenant context");
             TenantContext.clear();
         }
+    }
+
+    private void writeInvalidTenantIdResponse(final HttpServletResponse response) throws IOException {
+        response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.getWriter().write(objectMapper.writeValueAsString(
+                ApiResponse.error(ErrorCode.E_9000.getCode(), "X-Tenant-ID 格式錯誤")));
     }
 
     private UUID resolveEffectiveTenantId(final UUID userId, final String userTenantId, final String requestedTenantId, final String role) {

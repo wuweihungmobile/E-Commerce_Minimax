@@ -234,4 +234,37 @@ class TenantContextFilterTest {
 
         assertThat(capturedUser[0]).isEqualTo(userId);
     }
+
+    /**
+     * Sprint 166（DEF-217）：{@code resolveEffectiveTenantId} 的 SUPER_ADMIN 分支對
+     * {@code X-Tenant-ID} header 直接呼叫 {@code UUID.fromString(requestedTenantId)}（第 126 行），
+     * 未包 try/catch。此 filter 執行於 DispatcherServlet **之前**，丟出的 {@code IllegalArgumentException}
+     * 無法被 {@code GlobalExceptionHandler}（{@code @RestControllerAdvice}）攔截——與 Sprint 162/163
+     * 的 {@code HttpMessageNotReadableException}/{@code MethodArgumentTypeMismatchException}
+     * 不同層級，那兩者發生於 DispatcherServlet 分派過程中，此處發生於 Servlet Filter 鏈，
+     * 全域例外處理器結構性地攔不到。
+     */
+    @Test
+    @DisplayName("Sprint 166（DEF-217）：SUPER_ADMIN 帶入非法格式的 X-Tenant-ID header 時，"
+            + "filter 不可讓未攔截例外往外拋，且必須回應 400 而非讓請求繼續往下傳遞")
+    void superAdminInvalidTenantHeaderFormat_doesNotThrowAndShortCircuits() throws Exception {
+        UUID superAdminUserId = UUID.randomUUID();
+        authenticateAs(superAdminUserId, null, "SUPER_ADMIN");
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/v2/orders");
+        request.addHeader(TENANT_HEADER, "not-a-real-uuid");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean[] chainInvoked = new boolean[1];
+        FilterChain capturingChain = (req, res) -> chainInvoked[0] = true;
+
+        filter.doFilter(request, response, capturingChain);
+
+        assertThat(chainInvoked[0])
+                .as("非法 X-Tenant-ID 必須在 filter 內就被擋下，不可放行到下一層（避免 TenantContext 帶著"
+                        + "未設定/錯誤的租戶繼續往下）")
+                .isFalse();
+        assertThat(response.getStatus()).isEqualTo(400);
+        assertThat(response.getContentAsString()).contains("E-9000");
+    }
 }

@@ -628,9 +628,12 @@ public class PricingService {
             return markup;
         }
         // 向後相容：折扣型（S44 PRODUCT 以 discountPercent 表達折扣，不分 ruleType）
-        Object discountPct = config.get("discountPercent");
-        if (discountPct != null) {
-            BigDecimal pct = new BigDecimal(discountPct.toString());
+        // Sprint 166（DEF-218）：改用 getDoubleConfig（與本檔案其餘所有 config 讀取一致的
+        // null-safe 解析），取代直接 new BigDecimal(discountPct.toString())——後者對非數字字串
+        // （如賣家誤填 "10%"）會拋出未攔截的 NumberFormatException。
+        Double discountPercent = getDoubleConfig(rule, "discountPercent");
+        if (discountPercent != null) {
+            BigDecimal pct = BigDecimal.valueOf(discountPercent);
             BigDecimal hundred = BigDecimal.valueOf(100);
             return basePrice.multiply(BigDecimal.ONE.subtract(pct.divide(hundred)));
         }

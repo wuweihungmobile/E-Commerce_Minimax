@@ -41,6 +41,7 @@ import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentTenant;
 import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentUser;
 
@@ -551,7 +552,7 @@ public class BookingService {
     public Page<BookingDto.BookingListResponse> getUserBookings(int page, int size, String sortBy, String sortDir) {
         UUID userId = getCurrentUser();
         Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 100), sort);
+        PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
 
         Page<com.nextkey.ecommerce.domain.model.order.Booking> bookings =
                 bookingRepository.findByUserIdOrderByCreatedAtDesc(userId, pageRequest);

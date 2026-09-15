@@ -14,7 +14,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +27,7 @@ import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.ProductRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -244,7 +244,7 @@ public class AnalyticsService {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         Page<Order> recentOrders = orderRepository.findByTenantIdOrderByCreatedAtDesc(
-                tenantId, PageRequest.of(0, Math.min(limit, 100)));
+                tenantId, PageableUtils.of(0, limit, 100));
 
         List<AnalyticsDto.ActivityItem> items = recentOrders.getContent().stream()
                 .map(order -> AnalyticsDto.ActivityItem.builder()

@@ -18,6 +18,7 @@ import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.mq.NotificationProducerService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -147,7 +148,7 @@ public class NotificationService {
     public NotificationDto.NotificationListResponse getUserNotifications(
             UUID userId, int page, int size, Boolean unreadOnly) {
 
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
+        PageRequest pageRequest = PageableUtils.of(page, size, DEFAULT_PAGE_SIZE);
 
         Page<Notification> notifications;
         if (Boolean.TRUE.equals(unreadOnly)) {

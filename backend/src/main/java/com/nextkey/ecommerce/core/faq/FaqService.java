@@ -24,6 +24,7 @@ import com.nextkey.ecommerce.domain.repository.faq.FaqArticleRepository;
 import com.nextkey.ecommerce.domain.repository.faq.FaqCategoryRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentTenant;
 
 import lombok.RequiredArgsConstructor;
@@ -144,7 +145,7 @@ public class FaqService {
     @Transactional(readOnly = true)
     public Page<FaqArticleDto> getArticles(int page, int size, UUID categoryId, String keyword) {
         UUID tenantId = getCurrentTenant();
-        Pageable pageable = PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = PageableUtils.of(page, size, 100, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<FaqArticle> articles;
         if (keyword != null && !keyword.isBlank()) {
@@ -180,7 +181,7 @@ public class FaqService {
     public Page<FaqArticleDto> searchArticlesWithHighlight(int page, int size, String keyword) {
 
         UUID tenantId = getCurrentTenant();
-        Pageable pageable = PageRequest.of(page, Math.min(size, 100));
+        Pageable pageable = PageableUtils.of(page, size, 100);
 
         if (keyword == null || keyword.isBlank()) {
             return articleRepository.findByTenantIdAndIsPublishedTrue(tenantId, pageable)

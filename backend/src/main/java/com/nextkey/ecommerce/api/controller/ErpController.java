@@ -42,6 +42,7 @@ import com.nextkey.ecommerce.core.erp.SupplierService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -140,7 +141,7 @@ public class ErpController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         UUID tenantId = TenantContext.getCurrentTenant();
-        Pageable pageable = PageRequest.of(page, Math.min(size, 100), Sort.by("createdAt").descending());
+        Pageable pageable = PageableUtils.of(page, size, 100, Sort.by("createdAt").descending());
 
         log.debug("Listing purchase orders: tenantId={}, status={}, page={}", tenantId, status, page);
 
@@ -226,7 +227,7 @@ public class ErpController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
         UUID tenantId = TenantContext.getCurrentTenant();
-        Pageable pageable = PageRequest.of(page, Math.min(size, 100));
+        Pageable pageable = PageableUtils.of(page, size, 100);
 
         log.debug("Getting inventory ledger: tenantId={}, page={}", tenantId, page);
 
@@ -281,7 +282,7 @@ public class ErpController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
         UUID tenantId = TenantContext.getCurrentTenant();
-        Pageable pageable = PageRequest.of(page, Math.min(size, 100), Sort.by("createdAt").descending());
+        Pageable pageable = PageableUtils.of(page, size, 100, Sort.by("createdAt").descending());
 
         log.debug("Getting stock movements: tenantId={}, page={}", tenantId, page);
 

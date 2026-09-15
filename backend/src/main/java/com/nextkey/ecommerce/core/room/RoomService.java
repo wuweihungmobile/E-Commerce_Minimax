@@ -24,6 +24,7 @@ import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -56,7 +57,7 @@ public class RoomService {
             String sortDir) {
 
         Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 100), sort);
+        PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
 
         UUID tenantId = TenantContext.getCurrentTenant();
 

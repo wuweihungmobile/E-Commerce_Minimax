@@ -18,6 +18,7 @@ import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
 import com.nextkey.ecommerce.infrastructure.storage.StorageService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -84,7 +85,7 @@ public class MediaService {
      */
     @Transactional(readOnly = true)
     public M15Dto.MediaListResponse getMediaList(UUID tenantId, int page, int size, MediaAsset.FileType fileType) {
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 100));
+        PageRequest pageRequest = PageableUtils.of(page, size, 100);
 
         Page<MediaAsset> mediaPage;
         if (fileType != null) {

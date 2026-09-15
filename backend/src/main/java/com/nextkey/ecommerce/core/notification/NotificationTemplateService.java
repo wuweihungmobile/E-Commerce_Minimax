@@ -9,7 +9,6 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +20,7 @@ import com.nextkey.ecommerce.domain.model.notification.NotificationTemplate.Noti
 import com.nextkey.ecommerce.domain.repository.NotificationTemplateRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,7 +41,7 @@ public class NotificationTemplateService {
     public NotificationTemplateDto.ListResponse getTemplates(
             UUID tenantId, NotificationTemplateDto.SearchRequest request) {
 
-        Pageable pageable = PageRequest.of(request.getPage(), Math.min(request.getSize(), 100));
+        Pageable pageable = PageableUtils.of(request.getPage(), request.getSize(), 100);
 
         NotificationType notificationType = null;
         NotificationChannel channel = null;

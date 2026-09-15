@@ -20,6 +20,7 @@ import com.nextkey.ecommerce.domain.repository.ContentPageRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 
 import lombok.RequiredArgsConstructor;
@@ -189,7 +190,7 @@ public class CmsService {
      */
     @Transactional(readOnly = true)
     public CmsDto.PageListResponse getPages(int page, int size) {
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
+        PageRequest pageRequest = PageableUtils.of(page, size, DEFAULT_PAGE_SIZE);
         Page<ContentPage> pages;
         if (isCurrentUserAdmin()) {
             pages = contentPageRepository.findByStatusOrderBySortOrderAsc(

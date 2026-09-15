@@ -28,6 +28,7 @@ import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 
 import lombok.RequiredArgsConstructor;
@@ -194,7 +195,7 @@ public class ReviewService {
         Listing listing = listingRepository.findById(listingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Listing not found"));
 
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
+        PageRequest pageRequest = PageableUtils.of(page, size, DEFAULT_PAGE_SIZE);
 
         Page<Review> reviews;
         if (minRating != null && minRating > 0) {
@@ -236,7 +237,7 @@ public class ReviewService {
             throw new BusinessException(ErrorCode.E_1007, "You can only view your own reviews");
         }
 
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
+        PageRequest pageRequest = PageableUtils.of(page, size, DEFAULT_PAGE_SIZE);
         Page<Review> reviews = reviewRepository.findByUserIdOrderByCreatedAtDesc(userId, pageRequest);
 
         List<ReviewDto.ReviewResponse> reviewResponses = reviews.getContent().stream()
@@ -400,7 +401,7 @@ public class ReviewService {
      */
     @Transactional(readOnly = true)
     public ReviewDto.ReviewListResponse getReviewsByHandlingStatus(Boolean isHandled, int page, int size) {
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
+        PageRequest pageRequest = PageableUtils.of(page, size, DEFAULT_PAGE_SIZE);
 
         Page<Review> reviews;
         if (isCurrentUserAdmin()) {
@@ -456,9 +457,7 @@ public class ReviewService {
         Sort sort = buildSort(criteria);
 
         // 構建分頁
-        int page = Math.max(0, criteria.getPage());
-        int size = Math.min(Math.max(1, criteria.getSize()), DEFAULT_PAGE_SIZE);
-        PageRequest pageRequest = PageRequest.of(page, size, sort);
+        PageRequest pageRequest = PageableUtils.of(criteria.getPage(), criteria.getSize(), DEFAULT_PAGE_SIZE, sort);
 
         // 執行搜尋
         Page<Review> reviews = reviewRepository.searchReviews(
@@ -483,8 +482,8 @@ public class ReviewService {
 
         return ReviewDto.ReviewListResponse.builder()
                 .reviews(reviewResponses)
-                .page(page)
-                .size(size)
+                .page(pageRequest.getPageNumber())
+                .size(pageRequest.getPageSize())
                 .totalElements(reviews.getTotalElements())
                 .totalPages(reviews.getTotalPages())
                 .averageRating(avgRating != null ? avgRating : 0.0)

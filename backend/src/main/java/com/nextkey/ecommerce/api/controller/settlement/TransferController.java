@@ -3,7 +3,6 @@ package com.nextkey.ecommerce.api.controller.settlement;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,6 +20,7 @@ import com.nextkey.ecommerce.core.settlement.TransferService;
 import com.nextkey.ecommerce.core.settlement.TransferService.TransferListResponse;
 import com.nextkey.ecommerce.core.settlement.TransferService.TransferResponse;
 import com.nextkey.ecommerce.domain.model.settlement.Transfer;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,7 +48,7 @@ public class TransferController {
             @RequestParam(required = false) UUID tenantId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(page, Math.min(size, 100));
+        Pageable pageable = PageableUtils.of(page, size, 100);
         boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
 
         Page<Transfer> transfers;

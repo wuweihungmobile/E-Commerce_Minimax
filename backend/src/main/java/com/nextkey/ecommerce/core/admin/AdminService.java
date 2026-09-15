@@ -45,6 +45,7 @@ import com.nextkey.ecommerce.domain.repository.audit.AuditLogRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -125,7 +126,7 @@ public class AdminService {
         }
 
         Page<Tenant> result = tenantRepository.findAll(
-                spec, PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt")));
+                spec, PageableUtils.of(page, size, 100, Sort.by(Sort.Direction.DESC, "createdAt")));
 
         List<AdminDto.TenantResponse> tenantResponses = result.getContent().stream()
                 .map(this::toTenantResponse)
@@ -259,7 +260,7 @@ public class AdminService {
     public AdminDto.PurchaseOrderPendingListResponse getPendingApprovalPurchaseOrders(int page, int size) {
         Page<PurchaseOrder> result = purchaseOrderRepository.findByStatus(
                 PurchaseOrder.POStatus.PENDING_APPROVAL,
-                PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.ASC, "submittedAt")));
+                PageableUtils.of(page, size, 100, Sort.by(Sort.Direction.ASC, "submittedAt")));
 
         List<AdminDto.PurchaseOrderSummaryResponse> summaries = result.getContent().stream()
                 .map(this::toPurchaseOrderSummary)
@@ -558,7 +559,7 @@ public class AdminService {
         }
 
         Page<User> result = userRepository.findAll(
-                spec, PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt")));
+                spec, PageableUtils.of(page, size, 100, Sort.by(Sort.Direction.DESC, "createdAt")));
 
         List<AdminDto.UserManagementResponse> userResponses = result.getContent().stream()
                 .map(this::toUserManagementResponse)
@@ -1065,7 +1066,7 @@ public class AdminService {
         }
 
         Page<AuditLog> result = auditLogRepository.findAll(
-                spec, PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt")));
+                spec, PageableUtils.of(page, size, 100, Sort.by(Sort.Direction.DESC, "createdAt")));
 
         List<AdminDto.AuditLogResponse> logs = result.getContent().stream()
                 .map(this::toAuditLogResponse)

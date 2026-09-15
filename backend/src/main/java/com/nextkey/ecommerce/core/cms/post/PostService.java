@@ -29,6 +29,7 @@ import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 
 import lombok.RequiredArgsConstructor;
@@ -253,7 +254,7 @@ public class PostService {
      */
     @Transactional(readOnly = true)
     public M15Dto.PostListResponse getPosts(UUID tenantId, int page, int size, Post.PostStatus status) {
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt"));
+        PageRequest pageRequest = PageableUtils.of(page, size, 100, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<Post> postPage;
         if (status != null) {
@@ -285,7 +286,7 @@ public class PostService {
      */
     @Transactional(readOnly = true)
     public M15Dto.PostListResponse getPublishedPosts(UUID tenantId, int page, int size) {
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "publishedAt"));
+        PageRequest pageRequest = PageableUtils.of(page, size, 100, Sort.by(Sort.Direction.DESC, "publishedAt"));
         Page<Post> postPage = postRepository.findPublishedByTenantId(tenantId, pageRequest);
 
         List<M15Dto.PostResponse> posts = postPage.getContent().stream()

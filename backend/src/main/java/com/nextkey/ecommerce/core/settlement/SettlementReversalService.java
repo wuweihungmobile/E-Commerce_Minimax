@@ -6,7 +6,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +21,7 @@ import com.nextkey.ecommerce.domain.repository.settlement.CreditNoteRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -144,7 +144,7 @@ public class SettlementReversalService {
     @Transactional(readOnly = true)
     public SettlementStatementListResponse getReversalCandidateStatements(
             final int page, final int size, final UUID tenantIdOverride) {
-        Pageable pageable = PageRequest.of(page, Math.min(size, 100));
+        Pageable pageable = PageableUtils.of(page, size, 100);
         Page<SettlementStatement> statements = tenantIdOverride != null
                 ? settlementRepository.findByTenantIdAndStatusInOrderByGeneratedAtDesc(
                         tenantIdOverride, REVERSAL_CANDIDATE_STATUSES, pageable)

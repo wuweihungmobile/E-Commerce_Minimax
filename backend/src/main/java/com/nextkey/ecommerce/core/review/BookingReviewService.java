@@ -18,6 +18,7 @@ import com.nextkey.ecommerce.domain.repository.review.BookingReviewRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -112,7 +113,7 @@ public class BookingReviewService {
      */
     @Transactional(readOnly = true)
     public Page<BookingReview> getBookingReviews(UUID bookingId, int page, int size) {
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
+        PageRequest pageRequest = PageableUtils.of(page, size, DEFAULT_PAGE_SIZE);
         return bookingReviewRepository.findByBookingIdAndIsVisibleTrueOrderByCreatedAtDesc(bookingId, pageRequest);
     }
 

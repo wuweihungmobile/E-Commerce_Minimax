@@ -31,6 +31,7 @@ import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentTenant;
 import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentUser;
 
@@ -170,7 +171,7 @@ public class KnowledgeBaseService {
     @Transactional(readOnly = true)
     public Page<KnowledgeArticleDto> getArticles(int page, int size, UUID categoryId, String keyword) {
         UUID tenantId = getCurrentTenant();
-        Pageable pageable = PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = PageableUtils.of(page, size, 100, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<KnowledgeArticle> articles;
         if (keyword != null && !keyword.isBlank()) {
@@ -372,7 +373,7 @@ public class KnowledgeBaseService {
         articleRepository.findByIdAndTenantId(articleId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
 
-        Pageable pageable = PageRequest.of(page, Math.min(size, 50), Sort.by(Sort.Direction.DESC, "versionNumber"));
+        Pageable pageable = PageableUtils.of(page, size, 50, Sort.by(Sort.Direction.DESC, "versionNumber"));
         return articleVersionRepository.findByArticleIdAndTenantId(articleId, tenantId, pageable);
     }
 

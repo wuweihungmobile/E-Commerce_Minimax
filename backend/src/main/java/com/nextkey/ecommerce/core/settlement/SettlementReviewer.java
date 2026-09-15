@@ -5,7 +5,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +17,7 @@ import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement.Settlem
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
@@ -143,7 +143,7 @@ public class SettlementReviewer {
     @Transactional(readOnly = true)
     public SettlementStatementListResponse getPendingReviewStatements(
             int page, int size, boolean isSuperAdmin, UUID tenantIdOverride) {
-        Pageable pageable = PageRequest.of(page, Math.min(size, 100));
+        Pageable pageable = PageableUtils.of(page, size, 100);
         Page<SettlementStatement> statements;
 
         if (!isSuperAdmin) {

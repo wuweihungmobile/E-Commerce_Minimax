@@ -9,7 +9,6 @@ import java.util.stream.Collectors;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -29,6 +28,7 @@ import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.support.SupportTicketRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -100,7 +100,7 @@ public class SupportTicketService {
     @Transactional(readOnly = true)
     public TicketListResponse listMyTickets(final UUID customerId, final int page, final int size) {
         Page<SupportTicket> tickets = ticketRepository.findByCustomerIdOrderByCreatedAtDesc(
-                customerId, PageRequest.of(page, Math.min(size, 100)));
+                customerId, PageableUtils.of(page, size, 100));
         return toListResponse(tickets, page, size);
     }
 
@@ -120,7 +120,7 @@ public class SupportTicketService {
     public TicketListResponse listTenantTickets(
             final UUID tenantId, final int page, final int size) {
         Page<SupportTicket> tickets = ticketRepository.findByTenantIdOrderByCreatedAtDesc(
-                tenantId, PageRequest.of(page, Math.min(size, 100)));
+                tenantId, PageableUtils.of(page, size, 100));
         return toListResponse(tickets, page, size);
     }
 
@@ -137,7 +137,7 @@ public class SupportTicketService {
      */
     @Transactional(readOnly = true)
     public TicketListResponse listAllTickets(final int page, final int size) {
-        Pageable pageable = PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = PageableUtils.of(page, size, 100, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<SupportTicket> tickets = ticketRepository.findAll(pageable);
         return toListResponse(tickets, page, size);
     }

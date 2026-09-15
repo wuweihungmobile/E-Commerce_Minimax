@@ -25,6 +25,7 @@ import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -193,7 +194,7 @@ public class ChatService {
      */
     @Transactional(readOnly = true)
     public ChatDto.ConversationListResponse getUserConversations(UUID userId, int page, int size) {
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
+        PageRequest pageRequest = PageableUtils.of(page, size, DEFAULT_PAGE_SIZE);
 
         Page<Conversation> conversations = conversationRepository
                 .findByUserIdOrderByLastMessageAtDesc(userId, pageRequest);
@@ -223,7 +224,7 @@ public class ChatService {
         conversationRepository.findByIdAndUserId(conversationId, userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_9005, "Conversation not found"));
 
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, DEFAULT_PAGE_SIZE));
+        PageRequest pageRequest = PageableUtils.of(page, size, DEFAULT_PAGE_SIZE);
 
         Page<Message> messages = messageRepository
                 .findByConversationIdAndIsDeletedFalseOrderByCreatedAtDesc(conversationId, pageRequest);

@@ -15,6 +15,7 @@ import com.nextkey.ecommerce.domain.model.notification.NotificationHistory;
 import com.nextkey.ecommerce.domain.repository.NotificationHistoryRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -55,7 +56,7 @@ public class NotificationHistoryService {
      */
     @Transactional(readOnly = true)
     public NotificationDto.HistoryListResponse getHistory(UUID userId, int page, int size) {
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, MAX_PAGE_SIZE));
+        PageRequest pageRequest = PageableUtils.of(page, size, MAX_PAGE_SIZE);
         Page<NotificationHistory> historyPage =
                 historyRepository.findByUserIdOrderByCreatedAtDesc(userId, pageRequest);
 

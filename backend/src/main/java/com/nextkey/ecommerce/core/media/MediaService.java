@@ -33,6 +33,7 @@ import com.nextkey.ecommerce.domain.repository.media.MediaCategoryRepository;
 import com.nextkey.ecommerce.infrastructure.storage.StorageService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentTenant;
 import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentUser;
 
@@ -195,7 +196,7 @@ public class MediaService {
     @Transactional(readOnly = true)
     public Page<MediaAssetDto> getAssets(int page, int size, UUID categoryId, String mimeType, String keyword) {
         UUID tenantId = getCurrentTenant();
-        Pageable pageable = PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = PageableUtils.of(page, size, 100, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<MediaAsset> assets;
         if (keyword != null && !keyword.isBlank()) {

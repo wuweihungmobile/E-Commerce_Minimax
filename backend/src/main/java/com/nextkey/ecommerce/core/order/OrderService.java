@@ -45,6 +45,7 @@ import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -502,7 +503,7 @@ public class OrderService {
     public Page<OrderDto.OrderListResponse> getUserOrders(int page, int size, String sortBy, String sortDir) {
         UUID userId = TenantContext.getCurrentUser();
         Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 100), sort);
+        PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
 
         Page<Order> orders = orderRepository.findByUserIdOrderByCreatedAtDesc(userId, pageRequest);
         return orders.map(this::toOrderListResponse);
@@ -536,7 +537,7 @@ public class OrderService {
             String status) {
         UUID tenantId = TenantContext.getCurrentTenant();
         Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
-        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 100), sort);
+        PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
 
         Page<Order> orders;
         if (status != null && !status.isBlank()) {

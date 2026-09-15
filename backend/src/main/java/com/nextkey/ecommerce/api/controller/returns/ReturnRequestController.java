@@ -5,7 +5,6 @@ import java.util.UUID;
 import jakarta.validation.Valid;
 
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.returns.ReturnDto;
 import com.nextkey.ecommerce.core.returns.ReturnRequestService;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,8 +37,6 @@ import lombok.extern.slf4j.Slf4j;
 @RequestMapping("/v2")
 @RequiredArgsConstructor
 public class ReturnRequestController {
-
-    private static final int DEFAULT_PAGE_SIZE = 20;
 
     private final ReturnRequestService returnRequestService;
 
@@ -59,7 +57,7 @@ public class ReturnRequestController {
             @RequestParam(defaultValue = "0") final int page,
             @RequestParam(defaultValue = "20") final int size) {
         Page<ReturnDto.Response> result = returnRequestService
-                .getMyReturnRequests(PageRequest.of(page, size > 0 ? Math.min(size, 100) : DEFAULT_PAGE_SIZE));
+                .getMyReturnRequests(PageableUtils.of(page, size, 100));
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 
@@ -86,7 +84,7 @@ public class ReturnRequestController {
             @RequestParam(defaultValue = "0") final int page,
             @RequestParam(defaultValue = "20") final int size) {
         Page<ReturnDto.Response> result = returnRequestService
-                .getTenantReturnRequests(PageRequest.of(page, size > 0 ? Math.min(size, 100) : DEFAULT_PAGE_SIZE));
+                .getTenantReturnRequests(PageableUtils.of(page, size, 100));
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 

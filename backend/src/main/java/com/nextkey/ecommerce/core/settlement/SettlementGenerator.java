@@ -11,7 +11,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +31,7 @@ import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRep
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -198,7 +198,7 @@ public class SettlementGenerator {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         Page<SettlementStatement> statements = settlementRepository.findByTenantIdOrderByPeriodStartDesc(
-                tenantId, PageRequest.of(page, Math.min(size, 100)));
+                tenantId, PageableUtils.of(page, size, 100));
 
         return SettlementStatementListResponse.builder()
                 .statements(statements.getContent().stream()

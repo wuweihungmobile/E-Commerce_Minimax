@@ -41,7 +41,7 @@ public class NotificationTemplateService {
     public NotificationTemplateDto.ListResponse getTemplates(
             UUID tenantId, NotificationTemplateDto.SearchRequest request) {
 
-        Pageable pageable = PageRequest.of(request.getPage(), request.getSize());
+        Pageable pageable = PageRequest.of(request.getPage(), Math.min(request.getSize(), 100));
 
         NotificationType notificationType = null;
         NotificationChannel channel = null;

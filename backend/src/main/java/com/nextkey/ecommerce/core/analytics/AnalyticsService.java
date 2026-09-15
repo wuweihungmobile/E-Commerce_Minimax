@@ -244,7 +244,7 @@ public class AnalyticsService {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         Page<Order> recentOrders = orderRepository.findByTenantIdOrderByCreatedAtDesc(
-                tenantId, PageRequest.of(0, limit));
+                tenantId, PageRequest.of(0, Math.min(limit, 100)));
 
         List<AnalyticsDto.ActivityItem> items = recentOrders.getContent().stream()
                 .map(order -> AnalyticsDto.ActivityItem.builder()

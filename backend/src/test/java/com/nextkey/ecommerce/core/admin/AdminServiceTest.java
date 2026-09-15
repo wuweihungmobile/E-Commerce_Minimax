@@ -552,6 +552,24 @@ class AdminServiceTest {
             assertThat(response.getTotalElements()).isEqualTo(11);
             assertThat(response.getTotalPages()).isEqualTo(3);
         }
+
+        @Test
+        @DisplayName("Sprint 164: size 帶超大值時，實際查詢頁面大小上限為 100（避免資源耗盡）")
+        void getTenants_hugeSize_cappedAt100() {
+            when(tenantRepository.findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<Tenant>>any(),
+                    any(org.springframework.data.domain.Pageable.class)))
+                    .thenReturn(new PageImpl<>(java.util.List.of()));
+
+            adminService.getTenants(0, 999999999, null, null);
+
+            ArgumentCaptor<org.springframework.data.domain.Pageable> captor =
+                    ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+            verify(tenantRepository).findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<Tenant>>any(),
+                    captor.capture());
+            assertThat(captor.getValue().getPageSize()).isEqualTo(100);
+        }
     }
 
     // ── getTenant Tests ────────────────────────────────────────────────
@@ -701,6 +719,26 @@ class AdminServiceTest {
         }
 
         @Test
+        @DisplayName("Sprint 164: size 帶超大值時，實際查詢頁面大小上限為 100（避免資源耗盡）")
+        void getUsers_hugeSize_cappedAt100() {
+            when(userRepository.findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<
+                            com.nextkey.ecommerce.domain.model.user.User>>any(),
+                    any(org.springframework.data.domain.Pageable.class)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of()));
+
+            adminService.getUsers(0, 999999999, null, null);
+
+            ArgumentCaptor<org.springframework.data.domain.Pageable> captor =
+                    ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+            verify(userRepository).findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<
+                            com.nextkey.ecommerce.domain.model.user.User>>any(),
+                    captor.capture());
+            assertThat(captor.getValue().getPageSize()).isEqualTo(100);
+        }
+
+        @Test
         @DisplayName("getUsers_withStatusAndKeywordFilters_returnsPagedResult")
         void getUsers_withStatusAndKeywordFilters_returnsPagedResult() {
             when(userRepository.findAll(
@@ -780,6 +818,24 @@ class AdminServiceTest {
             assertThat(response.getTotalPages()).isEqualTo(1);
             assertThat(response.getPage()).isEqualTo(0);
             assertThat(response.getSize()).isEqualTo(20);
+        }
+
+        @Test
+        @DisplayName("Sprint 164: size 帶超大值時，實際查詢頁面大小上限為 100（避免資源耗盡）")
+        void getAuditLogs_hugeSize_cappedAt100() {
+            when(auditLogRepository.findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<AuditLog>>any(),
+                    any(org.springframework.data.domain.Pageable.class)))
+                    .thenReturn(new PageImpl<>(java.util.List.of()));
+
+            adminService.getAuditLogs(0, 999999999, null, null, null);
+
+            ArgumentCaptor<org.springframework.data.domain.Pageable> captor =
+                    ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+            verify(auditLogRepository).findAll(
+                    org.mockito.ArgumentMatchers.<org.springframework.data.jpa.domain.Specification<AuditLog>>any(),
+                    captor.capture());
+            assertThat(captor.getValue().getPageSize()).isEqualTo(100);
         }
 
         @Test
@@ -973,6 +1029,20 @@ class AdminServiceTest {
                     .extracting(AdminDto.PurchaseOrderSummaryResponse::getTenantId)
                     .containsExactlyInAnyOrder(TEST_TENANT_ID, poOfOtherTenant.getTenantId());
             assertThat(response.getTotalElements()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("Sprint 164: size 帶超大值時，實際查詢頁面大小上限為 100（SUPER_ADMIN 跨租戶端點，避免資源耗盡）")
+        void getPendingApprovalPurchaseOrders_hugeSize_cappedAt100() {
+            when(purchaseOrderRepository.findByStatus(eq(PurchaseOrder.POStatus.PENDING_APPROVAL), any()))
+                    .thenReturn(new PageImpl<>(java.util.List.of()));
+
+            adminService.getPendingApprovalPurchaseOrders(0, 999999999);
+
+            ArgumentCaptor<org.springframework.data.domain.Pageable> captor =
+                    ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+            verify(purchaseOrderRepository).findByStatus(eq(PurchaseOrder.POStatus.PENDING_APPROVAL), captor.capture());
+            assertThat(captor.getValue().getPageSize()).isEqualTo(100);
         }
     }
 

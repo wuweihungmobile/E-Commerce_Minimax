@@ -143,7 +143,7 @@ public class SettlementReviewer {
     @Transactional(readOnly = true)
     public SettlementStatementListResponse getPendingReviewStatements(
             int page, int size, boolean isSuperAdmin, UUID tenantIdOverride) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(page, Math.min(size, 100));
         Page<SettlementStatement> statements;
 
         if (!isSuperAdmin) {

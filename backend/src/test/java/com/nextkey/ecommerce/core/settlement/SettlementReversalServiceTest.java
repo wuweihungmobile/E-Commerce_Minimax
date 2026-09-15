@@ -239,4 +239,18 @@ class SettlementReversalServiceTest {
         assertThat(response.getStatements()).hasSize(1);
         verify(settlementRepository, never()).findByStatusInOrderByGeneratedAtDesc(anyList(), any(Pageable.class));
     }
+
+    @Test
+    @DisplayName("Sprint 164: size 帶超大值時，實際查詢頁面大小上限為 100（避免資源耗盡）")
+    void getReversalCandidateStatements_hugeSize_cappedAt100() {
+        SettlementReversalService service = newService();
+        when(settlementRepository.findByStatusInOrderByGeneratedAtDesc(anyList(), any(Pageable.class)))
+                .thenReturn(Page.empty());
+
+        service.getReversalCandidateStatements(0, 999999999, null);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(settlementRepository).findByStatusInOrderByGeneratedAtDesc(anyList(), captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(100);
+    }
 }

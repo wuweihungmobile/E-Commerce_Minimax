@@ -59,7 +59,7 @@ public class ReturnRequestController {
             @RequestParam(defaultValue = "0") final int page,
             @RequestParam(defaultValue = "20") final int size) {
         Page<ReturnDto.Response> result = returnRequestService
-                .getMyReturnRequests(PageRequest.of(page, size > 0 ? size : DEFAULT_PAGE_SIZE));
+                .getMyReturnRequests(PageRequest.of(page, size > 0 ? Math.min(size, 100) : DEFAULT_PAGE_SIZE));
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 
@@ -86,7 +86,7 @@ public class ReturnRequestController {
             @RequestParam(defaultValue = "0") final int page,
             @RequestParam(defaultValue = "20") final int size) {
         Page<ReturnDto.Response> result = returnRequestService
-                .getTenantReturnRequests(PageRequest.of(page, size > 0 ? size : DEFAULT_PAGE_SIZE));
+                .getTenantReturnRequests(PageRequest.of(page, size > 0 ? Math.min(size, 100) : DEFAULT_PAGE_SIZE));
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 

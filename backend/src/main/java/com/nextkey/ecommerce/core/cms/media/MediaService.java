@@ -84,7 +84,7 @@ public class MediaService {
      */
     @Transactional(readOnly = true)
     public M15Dto.MediaListResponse getMediaList(UUID tenantId, int page, int size, MediaAsset.FileType fileType) {
-        PageRequest pageRequest = PageRequest.of(page, size);
+        PageRequest pageRequest = PageRequest.of(page, Math.min(size, 100));
 
         Page<MediaAsset> mediaPage;
         if (fileType != null) {

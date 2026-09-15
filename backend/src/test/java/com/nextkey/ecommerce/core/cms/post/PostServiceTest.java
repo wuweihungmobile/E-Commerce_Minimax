@@ -21,6 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -888,6 +889,39 @@ class PostServiceTest {
             // Assert
             assertThat(response).isNotNull();
             assertThat(response.getPosts()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("Sprint 164: size 帶超大值時，實際查詢頁面大小上限為 100（而非無界，避免資源耗盡）")
+        void getPosts_hugeSize_cappedAt100() {
+            when(postRepository.findByTenantId(eq(TEST_TENANT_ID), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of()));
+
+            postService.getPosts(TEST_TENANT_ID, 0, 999999999, null);
+
+            ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+            verify(postRepository).findByTenantId(eq(TEST_TENANT_ID), captor.capture());
+            assertThat(captor.getValue().getPageSize()).isEqualTo(100);
+        }
+    }
+
+    // ── getPublishedPosts() Tests（Sprint 164）───────────────────────────
+
+    @Nested
+    @DisplayName("getPublishedPosts()")
+    class GetPublishedPosts {
+
+        @Test
+        @DisplayName("Sprint 164: size 帶超大值時，實際查詢頁面大小上限為 100（公開端點，無需登入即可觸發）")
+        void getPublishedPosts_hugeSize_cappedAt100() {
+            when(postRepository.findPublishedByTenantId(eq(TEST_TENANT_ID), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of()));
+
+            postService.getPublishedPosts(TEST_TENANT_ID, 0, 999999999);
+
+            ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+            verify(postRepository).findPublishedByTenantId(eq(TEST_TENANT_ID), captor.capture());
+            assertThat(captor.getValue().getPageSize()).isEqualTo(100);
         }
     }
 

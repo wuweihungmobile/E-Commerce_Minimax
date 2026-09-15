@@ -144,7 +144,7 @@ public class SettlementReversalService {
     @Transactional(readOnly = true)
     public SettlementStatementListResponse getReversalCandidateStatements(
             final int page, final int size, final UUID tenantIdOverride) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(page, Math.min(size, 100));
         Page<SettlementStatement> statements = tenantIdOverride != null
                 ? settlementRepository.findByTenantIdAndStatusInOrderByGeneratedAtDesc(
                         tenantIdOverride, REVERSAL_CANDIDATE_STATUSES, pageable)

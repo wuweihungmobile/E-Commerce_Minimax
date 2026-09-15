@@ -91,6 +91,23 @@ class NotificationTemplateServiceTest {
     }
 
     @Test
+    @DisplayName("Sprint 164: size 帶超大值時，實際查詢頁面大小上限為 100（避免資源耗盡）")
+    void getTemplates_hugeSize_cappedAt100() {
+        when(templateRepository.searchTemplates(eq(TENANT_ID), any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        NotificationTemplateDto.SearchRequest request = NotificationTemplateDto.SearchRequest.builder()
+                .page(0).size(999999999).build();
+
+        templateService.getTemplates(TENANT_ID, request);
+
+        ArgumentCaptor<org.springframework.data.domain.Pageable> captor =
+                ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+        verify(templateRepository).searchTemplates(eq(TENANT_ID), any(), any(), any(), captor.capture());
+        assertEquals(100, captor.getValue().getPageSize());
+    }
+
+    @Test
     @DisplayName("Sprint 161：getTemplates 非法 notificationType/channel 篩選拋出 BusinessException（E_9000），"
             + "而非未攔截的 IllegalArgumentException")
     void getTemplates_invalidFilters_throwsBusinessException() {

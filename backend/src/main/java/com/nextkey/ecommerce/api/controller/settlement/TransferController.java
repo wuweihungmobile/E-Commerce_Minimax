@@ -48,7 +48,7 @@ public class TransferController {
             @RequestParam(required = false) UUID tenantId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(page, Math.min(size, 100));
         boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
 
         Page<Transfer> transfers;

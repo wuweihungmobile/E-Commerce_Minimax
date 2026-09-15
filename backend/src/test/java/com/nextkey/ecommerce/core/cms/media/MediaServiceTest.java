@@ -15,6 +15,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -428,6 +429,19 @@ class MediaServiceTest {
             assertThat(response).isNotNull();
             assertThat(response.getItems()).hasSize(1);
             assertThat(response.getTotalCount()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("Sprint 164: size 帶超大值時，實際查詢頁面大小上限為 100（避免資源耗盡）")
+        void getMediaList_hugeSize_cappedAt100() {
+            when(mediaAssetRepository.findByTenantId(eq(TEST_TENANT_ID), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of()));
+
+            mediaService.getMediaList(TEST_TENANT_ID, 0, 999999999, null);
+
+            ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+            verify(mediaAssetRepository).findByTenantId(eq(TEST_TENANT_ID), captor.capture());
+            assertThat(captor.getValue().getPageSize()).isEqualTo(100);
         }
 
         @Test

@@ -125,7 +125,7 @@ public class AdminService {
         }
 
         Page<Tenant> result = tenantRepository.findAll(
-                spec, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+                spec, PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt")));
 
         List<AdminDto.TenantResponse> tenantResponses = result.getContent().stream()
                 .map(this::toTenantResponse)
@@ -259,7 +259,7 @@ public class AdminService {
     public AdminDto.PurchaseOrderPendingListResponse getPendingApprovalPurchaseOrders(int page, int size) {
         Page<PurchaseOrder> result = purchaseOrderRepository.findByStatus(
                 PurchaseOrder.POStatus.PENDING_APPROVAL,
-                PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "submittedAt")));
+                PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.ASC, "submittedAt")));
 
         List<AdminDto.PurchaseOrderSummaryResponse> summaries = result.getContent().stream()
                 .map(this::toPurchaseOrderSummary)
@@ -558,7 +558,7 @@ public class AdminService {
         }
 
         Page<User> result = userRepository.findAll(
-                spec, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+                spec, PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt")));
 
         List<AdminDto.UserManagementResponse> userResponses = result.getContent().stream()
                 .map(this::toUserManagementResponse)
@@ -1065,7 +1065,7 @@ public class AdminService {
         }
 
         Page<AuditLog> result = auditLogRepository.findAll(
-                spec, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+                spec, PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt")));
 
         List<AdminDto.AuditLogResponse> logs = result.getContent().stream()
                 .map(this::toAuditLogResponse)

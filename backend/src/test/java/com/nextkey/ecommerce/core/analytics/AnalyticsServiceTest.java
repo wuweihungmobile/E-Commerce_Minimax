@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -329,5 +331,20 @@ class AnalyticsServiceTest {
 
         assertThat(result.getItems()).isEmpty();
         assertThat(result.getTotalCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("Sprint 164: getRecentActivity limit 帶超大值時，實際查詢頁面大小上限為 100（避免資源耗盡）")
+    void getRecentActivity_hugeLimit_cappedAt100() {
+        org.springframework.data.domain.Page<Order> emptyPage =
+                new org.springframework.data.domain.PageImpl<>(List.of());
+        when(orderRepository.findByTenantIdOrderByCreatedAtDesc(any(), any())).thenReturn(emptyPage);
+
+        analyticsService.getRecentActivity(999999999);
+
+        ArgumentCaptor<org.springframework.data.domain.Pageable> captor =
+                ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+        verify(orderRepository).findByTenantIdOrderByCreatedAtDesc(any(), captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(100);
     }
 }

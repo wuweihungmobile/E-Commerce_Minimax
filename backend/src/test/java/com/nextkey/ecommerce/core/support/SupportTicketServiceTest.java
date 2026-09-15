@@ -16,6 +16,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -256,5 +257,51 @@ class SupportTicketServiceTest {
 
         assertThat(response.getTickets()).hasSize(1);
         assertThat(response.getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Sprint 164: listMyTickets size 帶超大值時，實際查詢頁面大小上限為 100（買家自助端點，避免資源耗盡）")
+    void listMyTickets_hugeSize_cappedAt100() {
+        SupportTicketService service = newService();
+        when(ticketRepository.findByCustomerIdOrderByCreatedAtDesc(
+                org.mockito.ArgumentMatchers.eq(CUSTOMER_ID), org.mockito.ArgumentMatchers.any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.listMyTickets(CUSTOMER_ID, 0, 999999999);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(ticketRepository).findByCustomerIdOrderByCreatedAtDesc(
+                org.mockito.ArgumentMatchers.eq(CUSTOMER_ID), captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(100);
+    }
+
+    @Test
+    @DisplayName("Sprint 164: listTenantTickets size 帶超大值時，實際查詢頁面大小上限為 100（避免資源耗盡）")
+    void listTenantTickets_hugeSize_cappedAt100() {
+        SupportTicketService service = newService();
+        when(ticketRepository.findByTenantIdOrderByCreatedAtDesc(
+                org.mockito.ArgumentMatchers.eq(TENANT_ID), org.mockito.ArgumentMatchers.any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.listTenantTickets(TENANT_ID, 0, 999999999);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(ticketRepository).findByTenantIdOrderByCreatedAtDesc(
+                org.mockito.ArgumentMatchers.eq(TENANT_ID), captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(100);
+    }
+
+    @Test
+    @DisplayName("Sprint 164: listAllTickets size 帶超大值時，實際查詢頁面大小上限為 100（平台跨租戶端點，避免資源耗盡）")
+    void listAllTickets_hugeSize_cappedAt100() {
+        SupportTicketService service = newService();
+        when(ticketRepository.findAll(org.mockito.ArgumentMatchers.any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.listAllTickets(0, 999999999);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(ticketRepository).findAll(captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(100);
     }
 }

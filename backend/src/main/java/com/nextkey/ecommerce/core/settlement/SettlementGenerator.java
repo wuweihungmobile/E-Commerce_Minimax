@@ -198,7 +198,7 @@ public class SettlementGenerator {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         Page<SettlementStatement> statements = settlementRepository.findByTenantIdOrderByPeriodStartDesc(
-                tenantId, PageRequest.of(page, size));
+                tenantId, PageRequest.of(page, Math.min(size, 100)));
 
         return SettlementStatementListResponse.builder()
                 .statements(statements.getContent().stream()

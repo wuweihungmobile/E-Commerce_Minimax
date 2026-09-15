@@ -15,6 +15,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -119,6 +120,21 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(ErrorCode.E_9000.getCode(), "請求格式錯誤"));
+    }
+
+    /**
+     * Sprint 163：延伸 Sprint 162 的全域 400 修法（見 {@link #handleHttpMessageNotReadableException}）
+     * 到 {@code @PathVariable}/{@code @RequestParam} 的型別轉換失敗（如 UUID/LocalDate 欄位帶入
+     * 無法解析的字串）。此例外與 {@code HttpMessageNotReadableException} 同一性質：只會源自
+     * client 送出的參數本身有問題，從無合法情境是伺服器端錯誤，故沿用相同的全域 400 決策。
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentTypeMismatchException(
+            final MethodArgumentTypeMismatchException ex) {
+        log.warn("Method argument type mismatch: {}", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ErrorCode.E_9000.getCode(), "請求參數格式錯誤"));
     }
 
     @ExceptionHandler(AccessDeniedException.class)

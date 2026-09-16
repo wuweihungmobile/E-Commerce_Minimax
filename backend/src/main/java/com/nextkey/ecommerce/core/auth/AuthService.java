@@ -23,6 +23,7 @@ import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
+import com.nextkey.ecommerce.infrastructure.security.LoginAttemptService;
 import com.nextkey.ecommerce.infrastructure.security.RefreshTokenService;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
@@ -42,6 +43,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenService jwtTokenService;
     private final RefreshTokenService refreshTokenService;
+    private final LoginAttemptService loginAttemptService;
 
     @Transactional
     public RegisterResponse register(final RegisterRequest request) {
@@ -110,12 +112,26 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(final LoginRequest request) {
-        User user = userRepository.findByEmailAndStatus(request.getEmail(), "ACTIVE")
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_1001));
+        String email = request.getEmail();
+
+        // DEF-220：帳號暫時鎖定檢查須在查詢/比對密碼之前，鎖定期間內一律拒絕，
+        // 不對密碼做 bcrypt 比對，避免鎖定機制本身可被繞過
+        if (loginAttemptService.isLocked(email)) {
+            throw new BusinessException(ErrorCode.E_1004, "Too many failed login attempts");
+        }
+
+        User user = userRepository.findByEmailAndStatus(email, "ACTIVE")
+                .orElseThrow(() -> {
+                    loginAttemptService.recordFailedAttempt(email);
+                    return new BusinessException(ErrorCode.E_1001);
+                });
 
         if (user.getPasswordHash() == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            loginAttemptService.recordFailedAttempt(email);
             throw new BusinessException(ErrorCode.E_1001);
         }
+
+        loginAttemptService.resetAttempts(email);
 
         // Update last login
         user.setLastLoginAt(Instant.now());

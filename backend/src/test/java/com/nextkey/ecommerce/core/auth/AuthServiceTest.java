@@ -33,6 +33,7 @@ import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
+import com.nextkey.ecommerce.infrastructure.security.LoginAttemptService;
 import com.nextkey.ecommerce.infrastructure.security.RefreshTokenService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -59,6 +60,8 @@ class AuthServiceTest {
     private JwtTokenService jwtTokenService;
     @Mock
     private RefreshTokenService refreshTokenService;
+    @Mock
+    private LoginAttemptService loginAttemptService;
 
     @InjectMocks
     private AuthService authService;
@@ -196,6 +199,66 @@ class AuthServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(ErrorCode.E_1001);
+        }
+
+        @Test
+        @DisplayName("login_accountLocked_throwsE1004AndNeverChecksPassword（DEF-220：帳號鎖定須在密碼驗證前擋下）")
+        void login_accountLocked_throwsE1004AndNeverChecksPassword() {
+            LoginRequest request = LoginRequest.builder()
+                    .email("buyer@example.com").password("whatever").build();
+            when(loginAttemptService.isLocked("buyer@example.com")).thenReturn(true);
+
+            assertThatThrownBy(() -> authService.login(request))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_1004);
+
+            verify(userRepository, never()).findByEmailAndStatus(any(), any());
+            verify(passwordEncoder, never()).matches(any(), any());
+        }
+
+        @Test
+        @DisplayName("login_wrongPassword_recordsFailedAttempt（DEF-220）")
+        void login_wrongPassword_recordsFailedAttempt() {
+            User user = buildActiveUser();
+            LoginRequest request = LoginRequest.builder()
+                    .email("buyer@example.com").password("wrong-password").build();
+            when(userRepository.findByEmailAndStatus("buyer@example.com", "ACTIVE"))
+                    .thenReturn(Optional.of(user));
+            when(passwordEncoder.matches("wrong-password", "hashed-password")).thenReturn(false);
+
+            assertThatThrownBy(() -> authService.login(request)).isInstanceOf(BusinessException.class);
+
+            verify(loginAttemptService).recordFailedAttempt("buyer@example.com");
+        }
+
+        @Test
+        @DisplayName("login_userNotFound_recordsFailedAttempt（DEF-220：不存在的 email 也計入，避免帳號列舉繞過鎖定）")
+        void login_userNotFound_recordsFailedAttempt() {
+            LoginRequest request = LoginRequest.builder()
+                    .email("nobody@example.com").password("x").build();
+            when(userRepository.findByEmailAndStatus("nobody@example.com", "ACTIVE"))
+                    .thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> authService.login(request)).isInstanceOf(BusinessException.class);
+
+            verify(loginAttemptService).recordFailedAttempt("nobody@example.com");
+        }
+
+        @Test
+        @DisplayName("login_validCredentials_resetsFailedAttempts（DEF-220）")
+        void login_validCredentials_resetsFailedAttempts() {
+            User user = buildActiveUser();
+            LoginRequest request = LoginRequest.builder()
+                    .email("buyer@example.com").password("correct-password").build();
+            when(userRepository.findByEmailAndStatus("buyer@example.com", "ACTIVE"))
+                    .thenReturn(Optional.of(user));
+            when(passwordEncoder.matches("correct-password", "hashed-password")).thenReturn(true);
+            stubGeneratedTokens();
+
+            authService.login(request);
+
+            verify(loginAttemptService).resetAttempts("buyer@example.com");
         }
     }
 

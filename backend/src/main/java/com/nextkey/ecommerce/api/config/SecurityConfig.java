@@ -26,6 +26,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.filter.JwtAuthenticationFilter;
+import com.nextkey.ecommerce.api.filter.LoginRateLimitFilter;
 import com.nextkey.ecommerce.api.filter.RateLimitFilter;
 import com.nextkey.ecommerce.api.filter.TenantContextFilter;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -38,16 +39,19 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final TenantContextFilter tenantContextFilter;
     private final RateLimitFilter rateLimitFilter;
+    private final LoginRateLimitFilter loginRateLimitFilter;
 
     // CORS configuration
     private static final long CORS_MAX_AGE_SECONDS = 3600L;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
                          TenantContextFilter tenantContextFilter,
-                         RateLimitFilter rateLimitFilter) {
+                         RateLimitFilter rateLimitFilter,
+                         LoginRateLimitFilter loginRateLimitFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.tenantContextFilter = tenantContextFilter;
         this.rateLimitFilter = rateLimitFilter;
+        this.loginRateLimitFilter = loginRateLimitFilter;
     }
 
     @Bean
@@ -114,7 +118,10 @@ public class SecurityConfig {
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterAfter(tenantContextFilter, JwtAuthenticationFilter.class)
-            .addFilterAfter(rateLimitFilter, TenantContextFilter.class);
+            .addFilterAfter(rateLimitFilter, TenantContextFilter.class)
+            // DEF-220：/v2/auth/login 專屬 per-IP 限流，補上 RateLimitFilter 刻意排除 /v2/auth/**
+            // 留下的缺口（登入前無租戶身分可綁定，故獨立於租戶限流之外）
+            .addFilterAfter(loginRateLimitFilter, RateLimitFilter.class);
 
         return http.build();
     }

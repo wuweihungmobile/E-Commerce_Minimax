@@ -24,7 +24,7 @@ import org.springframework.web.cors.CorsConfiguration;
 class SecurityConfigCorsTest {
 
     /** corsConfigurationSource() 不使用任何 filter 相依，可安全以 null 建構。 */
-    private final SecurityConfig securityConfig = new SecurityConfig(null, null, null);
+    private final SecurityConfig securityConfig = new SecurityConfig(null, null, null, null);
 
     private CorsConfiguration configFor(String path) {
         MockHttpServletRequest request = new MockHttpServletRequest();

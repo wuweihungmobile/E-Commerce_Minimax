@@ -34,6 +34,12 @@ apiClient.interceptors.request.use(
   }
 )
 
+// DEF-219：後端 refreshToken() 改為 rotation（換發後舊 token 立即失效並偵測重放）。
+// 若多個並發請求同時收到 401，各自獨立呼叫 /v2/auth/refresh 會讓除了第一個以外的請求
+// 都拿著「已被換發過」的舊 token 去打，被後端判定為重放攻擊、撤銷全部 session。
+// 這裡以單一共用 Promise 讓同一批 401 只觸發一次真正的 refresh 呼叫，其餘請求等待並共用結果。
+let refreshPromise: Promise<string> | null = null
+
 // Response interceptor
 apiClient.interceptors.response.use(
   (response) => {
@@ -49,13 +55,21 @@ apiClient.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refreshToken')
         if (refreshToken) {
-          const response = await axios.post(`${API_CONFIG.baseUrl}/v2/auth/refresh`, {
-            refreshToken,
-          })
+          if (!refreshPromise) {
+            refreshPromise = axios
+              .post(`${API_CONFIG.baseUrl}/v2/auth/refresh`, { refreshToken })
+              .then((response) => {
+                const { accessToken, refreshToken: newRefreshToken } = response.data.data
+                localStorage.setItem('accessToken', accessToken)
+                localStorage.setItem('refreshToken', newRefreshToken)
+                return accessToken as string
+              })
+              .finally(() => {
+                refreshPromise = null
+              })
+          }
 
-          const { accessToken, refreshToken: newRefreshToken } = response.data.data
-          localStorage.setItem('accessToken', accessToken)
-          localStorage.setItem('refreshToken', newRefreshToken)
+          const accessToken = await refreshPromise
 
           if (originalRequest.headers) {
             originalRequest.headers.Authorization = `Bearer ${accessToken}`

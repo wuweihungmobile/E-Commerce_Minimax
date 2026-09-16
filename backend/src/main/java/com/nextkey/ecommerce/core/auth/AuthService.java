@@ -148,12 +148,23 @@ public class AuthService {
             throw new BusinessException(ErrorCode.E_1004, "Account not active");
         }
 
+        // DEF-219：refresh token rotation 重放偵測——同一個 token 若已被換發過卻再次出現，
+        // 視為外洩訊號，撤銷該使用者名下所有 refresh token，強制全裝置重新登入
+        if (refreshTokenService.isRefreshTokenReused(userId, refreshToken)) {
+            refreshTokenService.blacklistAllRefreshTokens(userId);
+            log.warn("Refresh token reuse detected for user: {}, all sessions revoked", userId);
+            throw new BusinessException(ErrorCode.E_1003, "Refresh token reuse detected; all sessions revoked");
+        }
+
         // 檢查 refresh token 是否在黑名單中
         if (!refreshTokenService.isRefreshTokenValid(userId, refreshToken)) {
             throw new BusinessException(ErrorCode.E_1003, "Refresh token has been revoked");
         }
 
         Tenant tenant = resolveTenantForUser(user);
+
+        // DEF-219：rotation——本次用來換發的舊 token 立即失效，避免同一 token 可在效期內被重複使用
+        refreshTokenService.rotateRefreshToken(userId, refreshToken);
 
         log.info("Token refreshed for user: {}", user.getEmail());
 

@@ -23,6 +23,11 @@ public class RefreshTokenService {
     private static final String REFRESH_TOKEN_PREFIX = "refresh_token:";
     private static final Duration DEFAULT_TTL = Duration.ofDays(30); // 預設 30 天，與 Refresh Token 有效期相同
 
+    // Token 狀態值：VALID 為尚未被換發過的現行 token；USED 為已被拿去換發過新 token 的舊 token
+    // （保留 USED 標記而非直接刪除 key，是為了讓 rotation 後的重放攻擊能被 isRefreshTokenReused 偵測到）
+    private static final String STATUS_VALID = "valid";
+    private static final String STATUS_USED = "used";
+
     // Token ID extraction
     private static final int TOKEN_ID_LENGTH = 16;
     private static final int TOKEN_SIGNATURE_LENGTH = 43;
@@ -34,19 +39,43 @@ public class RefreshTokenService {
      */
     public void storeRefreshToken(final UUID userId, final String refreshToken) {
         String key = buildKey(userId, refreshToken);
-        redisTemplate.opsForValue().set(key, "valid", DEFAULT_TTL);
+        redisTemplate.opsForValue().set(key, STATUS_VALID, DEFAULT_TTL);
         log.debug("Stored refresh token for user: {}", userId);
     }
 
     /**
-     * 驗證 Refresh Token 是否有效
+     * 驗證 Refresh Token 是否有效（尚未被換發過）
      * @param userId 用戶 ID
      * @param refreshToken Refresh Token 字串
      * @return true if valid, false otherwise
      */
     public boolean isRefreshTokenValid(final UUID userId, final String refreshToken) {
         String key = buildKey(userId, refreshToken);
-        return Boolean.TRUE.equals(redisTemplate.hasKey(key));
+        return STATUS_VALID.equals(redisTemplate.opsForValue().get(key));
+    }
+
+    /**
+     * 檢查 Refresh Token 是否為「已被換發過」卻又再次被拿來使用（重放攻擊訊號）
+     * @param userId 用戶 ID
+     * @param refreshToken Refresh Token 字串
+     * @return true 表示偵測到重放
+     */
+    public boolean isRefreshTokenReused(final UUID userId, final String refreshToken) {
+        String key = buildKey(userId, refreshToken);
+        return STATUS_USED.equals(redisTemplate.opsForValue().get(key));
+    }
+
+    /**
+     * 將 Refresh Token 標記為已使用（rotation）。與 {@link #blacklistRefreshToken} 不同，
+     * 此方法保留 key 並標記狀態，而非直接刪除，讓同一個 token 之後若再被使用可被
+     * {@link #isRefreshTokenReused} 偵測為重放攻擊。
+     * @param userId 用戶 ID
+     * @param refreshToken 剛被用來換發新 token 的舊 Refresh Token 字串
+     */
+    public void rotateRefreshToken(final UUID userId, final String refreshToken) {
+        String key = buildKey(userId, refreshToken);
+        redisTemplate.opsForValue().set(key, STATUS_USED, DEFAULT_TTL);
+        log.debug("Rotated (marked used) refresh token for user: {}", userId);
     }
 
     /**

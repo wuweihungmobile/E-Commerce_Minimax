@@ -280,6 +280,44 @@ class AuthServiceTest {
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(ErrorCode.E_1004);
         }
+
+        @Test
+        @DisplayName("refreshToken_validToken_rotatesOldRefreshToken（DEF-219：換發後舊 token 須立即失效）")
+        void refreshToken_validToken_rotatesOldRefreshToken() {
+            User user = buildActiveUser();
+            RefreshTokenRequest request = RefreshTokenRequest.builder().refreshToken("valid-refresh").build();
+            when(jwtTokenService.validateToken("valid-refresh")).thenReturn(true);
+            when(jwtTokenService.isTokenExpired("valid-refresh")).thenReturn(false);
+            when(jwtTokenService.getUserId("valid-refresh")).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            when(refreshTokenService.isRefreshTokenValid(USER_ID, "valid-refresh")).thenReturn(true);
+            stubGeneratedTokens();
+
+            authService.refreshToken(request);
+
+            verify(refreshTokenService).rotateRefreshToken(USER_ID, "valid-refresh");
+        }
+
+        @Test
+        @DisplayName("refreshToken_reusedToken_revokesAllSessionsAndThrowsE1003（DEF-219：重放偵測）")
+        void refreshToken_reusedToken_revokesAllSessionsAndThrows() {
+            User user = buildActiveUser();
+            RefreshTokenRequest request = RefreshTokenRequest.builder().refreshToken("reused-token").build();
+            when(jwtTokenService.validateToken("reused-token")).thenReturn(true);
+            when(jwtTokenService.isTokenExpired("reused-token")).thenReturn(false);
+            when(jwtTokenService.getUserId("reused-token")).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            when(refreshTokenService.isRefreshTokenReused(USER_ID, "reused-token")).thenReturn(true);
+
+            assertThatThrownBy(() -> authService.refreshToken(request))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_1003);
+
+            verify(refreshTokenService).blacklistAllRefreshTokens(USER_ID);
+            verify(jwtTokenService, never()).generateAccessToken(any(), any(), any(), any());
+            verify(refreshTokenService, never()).storeRefreshToken(any(), any());
+        }
     }
 
     // ── logout ────────────────────────────────────────────────────────

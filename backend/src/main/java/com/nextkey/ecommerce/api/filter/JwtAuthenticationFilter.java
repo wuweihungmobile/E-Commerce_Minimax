@@ -76,7 +76,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 log.debug("Authenticated user: {} with role: {} and {} authorities",
                         email, role, grantedAuthorities.size());
             }
-        } catch (IllegalArgumentException | ClassCastException | JwtException ex) {
+        } catch (IllegalArgumentException | ClassCastException | JwtException | NullPointerException ex) {
+            // NullPointerException（DEF-222）：refresh token 沒有 role/email/tenantId claim，
+            // 若被當 Bearer token 送來，User.UserRole.valueOf(null) 會拋出 NPE 而非 IAE。
             log.error("Could not set user authentication in security context", ex);
         }
 

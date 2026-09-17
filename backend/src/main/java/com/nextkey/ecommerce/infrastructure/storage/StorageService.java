@@ -181,7 +181,28 @@ public class StorageService {
      */
     private String buildObjectName(final UUID tenantId, final String fileName) {
         String uuid = UUID.randomUUID().toString();
-        return String.format("%s/%s-%s", tenantId.toString(), uuid, fileName);
+        return String.format("%s/%s-%s", tenantId.toString(), uuid, sanitizeFileName(fileName));
+    }
+
+    /**
+     * 移除檔名中的路徑分隔符與穿越序列，只保留最終檔名片段（DEF-221）。
+     *
+     * <p>{@code fileName} 完全由上傳請求宣告（{@code MultipartFile#getOriginalFilename()}
+     * 與本機檔案系統無關），未經過濾就直接拼進物件鍵：`../` 序列會讓 MinIO SDK
+     * 拋出未攔截的 {@code IllegalArgumentException}（落入全域 catch-all 變 500），
+     * 而 `\` 型路徑則完全不受 SDK 內建檢查防護。此處只剝離路徑片段，保留其餘字元
+     * （含中文檔名），避免誤傷合法檔名。
+     */
+    private static String sanitizeFileName(final String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return "file";
+        }
+        int lastSeparator = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
+        String base = lastSeparator >= 0 ? fileName.substring(lastSeparator + 1) : fileName;
+        if (base.isBlank() || base.equals(".") || base.equals("..")) {
+            return "file";
+        }
+        return base;
     }
 
     /**

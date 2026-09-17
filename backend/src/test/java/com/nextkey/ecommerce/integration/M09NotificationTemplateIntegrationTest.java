@@ -391,7 +391,11 @@ class M09NotificationTemplateIntegrationTest {
                         .header("X-Tenant-ID", testTenantId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
-                .andExpect(status().is5xxServerError());
+                // Sprint 171（DEF-223）：GlobalExceptionHandler 先前對 E_8003 無明確映射，誤回 500；
+                // 修復後回應語意正確的 404，原本的 is5xxServerError() 只斷言「有錯誤」未斷言確切語意，
+                // 掩蓋了這個缺口，改為精確斷言狀態碼與錯誤碼。
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("E-8003"));
     }
 
     @Test
@@ -423,6 +427,12 @@ class M09NotificationTemplateIntegrationTest {
                         .header("X-Tenant-ID", testTenantId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
-                .andExpect(status().is5xxServerError());
+                // Sprint 171（DEF-223）：GlobalExceptionHandler 先前對 E_8001 無明確映射，誤回 500；
+                // 修復後回應語意正確的 422，原本的 is5xxServerError() 只斷言「有錯誤」未斷言確切語意，
+                // 掩蓋了這個缺口，改為精確斷言狀態碼與錯誤碼。
+                // 誠實揭露（DEF-224，待排程，本輪未修）：此處實際拋出的 E_8001（「無效的定價規則設定」）
+                // 是既有程式碼誤用定價規則錯誤碼於通知範本停用情境，訊息語意對不上，非本輪缺口範圍。
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("E-8001"));
     }
 }

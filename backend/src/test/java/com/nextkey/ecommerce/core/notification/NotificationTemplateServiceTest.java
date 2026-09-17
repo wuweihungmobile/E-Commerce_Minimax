@@ -367,15 +367,17 @@ class NotificationTemplateServiceTest {
     }
 
     @Test
-    @DisplayName("TC-T019: renderTemplate — 模板未啟用應拋出 BusinessException(E_8001)")
+    @DisplayName("TC-T019: renderTemplate — 模板未啟用應拋出 BusinessException(E_8011)")
     void renderTemplate_inactive_throwsBusinessException() {
         NotificationTemplate inactive = buildTemplate(TENANT_ID);
         inactive.setIsActive(false);
         when(templateRepository.findByTemplateCodeAndTenantId("ORDER_CONFIRMED_EMAIL", TENANT_ID))
                 .thenReturn(Optional.of(inactive));
 
-        assertThrows(BusinessException.class,
+        // DEF-224：先前誤用 E_8001（「無效的定價規則設定」，語意對不上），改用專屬的 E_8011。
+        BusinessException exception = assertThrows(BusinessException.class,
                 () -> templateService.renderTemplate(TENANT_ID, "ORDER_CONFIRMED_EMAIL", Map.of()));
+        assertEquals(ErrorCode.E_8011, exception.getErrorCode());
     }
 
     @Test

@@ -209,7 +209,7 @@ public class NotificationTemplateService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8003, "Template not found"));
 
         if (!template.getIsActive()) {
-            throw new BusinessException(ErrorCode.E_8001, "Template is not active");
+            throw new BusinessException(ErrorCode.E_8011, "Template is not active");
         }
 
         String content = render(template.getContentTemplate(), variables);

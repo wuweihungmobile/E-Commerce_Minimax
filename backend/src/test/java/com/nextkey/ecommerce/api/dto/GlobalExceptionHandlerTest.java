@@ -58,7 +58,7 @@ class GlobalExceptionHandlerTest {
         // 403 FORBIDDEN
         for (ErrorCode code : new ErrorCode[] {ErrorCode.E_1007, ErrorCode.E_1009, ErrorCode.E_2001,
                 ErrorCode.E_2002, ErrorCode.E_2004, ErrorCode.E_4031, ErrorCode.E_7008, ErrorCode.E_8007,
-                ErrorCode.E_8009, ErrorCode.E_1091}) {
+                ErrorCode.E_8009, ErrorCode.E_1091, ErrorCode.E_8011}) {
             expected.put(code, HttpStatus.FORBIDDEN);
         }
 

@@ -107,6 +107,9 @@ public class PricingService {
         if (request.getValidTo() != null) {
             rule.setValidTo(request.getValidTo());
         }
+        if (rule.getValidTo().isBefore(rule.getValidFrom())) {
+            throw new BusinessException(ErrorCode.E_4003, "Valid to date must be after valid from date");
+        }
         if (request.getIsActive() != null) {
             rule.setIsActive(request.getIsActive());
         }

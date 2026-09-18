@@ -806,6 +806,61 @@ class PricingServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("UT-M12-024 ~ UT-M12-025: 定價規則更新的日期範圍驗證（DEF-225）")
+    class RuleUpdateValidationTests {
+
+        @Test
+        @DisplayName("DEF-225: 更新 validTo 早於既有 validFrom → E-4003，不寫入")
+        void updateRule_validToBeforeExistingValidFrom_throwsE4003() {
+            UUID ruleId = UUID.randomUUID();
+            PricingRule existing = PricingRule.builder()
+                    .id(ruleId)
+                    .roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.WEEKDAY_WEEKEND)
+                    .isActive(true)
+                    .validFrom(LocalDate.of(2026, 6, 1))
+                    .validTo(LocalDate.of(2026, 8, 31))
+                    .build();
+            when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(existing));
+
+            PricingDto.UpdateRuleRequest request = PricingDto.UpdateRuleRequest.builder()
+                    .validTo(LocalDate.of(2026, 1, 1))
+                    .build();
+
+            assertThatThrownBy(() -> pricingService.updateRule(ruleId, request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_4003);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("DEF-225: 更新 validFrom 晚於既有 validTo → E-4003，不寫入")
+        void updateRule_validFromAfterExistingValidTo_throwsE4003() {
+            UUID ruleId = UUID.randomUUID();
+            PricingRule existing = PricingRule.builder()
+                    .id(ruleId)
+                    .roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.WEEKDAY_WEEKEND)
+                    .isActive(true)
+                    .validFrom(LocalDate.of(2026, 6, 1))
+                    .validTo(LocalDate.of(2026, 8, 31))
+                    .build();
+            when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(existing));
+
+            PricingDto.UpdateRuleRequest request = PricingDto.UpdateRuleRequest.builder()
+                    .validFrom(LocalDate.of(2026, 12, 1))
+                    .build();
+
+            assertThatThrownBy(() -> pricingService.updateRule(ruleId, request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_4003);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+    }
+
     // ========== Helper Methods ==========
 
     private Room buildMockRoom() {

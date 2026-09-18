@@ -622,6 +622,14 @@ public class BookingService {
         LocalDate newCheckIn = request.getCheckInDate() != null ? request.getCheckInDate() : booking.getCheckInDate();
         LocalDate newCheckOut = request.getCheckOutDate() != null ? request.getCheckOutDate() : booking.getCheckOutDate();
 
+        // 比照 resolveBookableRoom 對 createBooking 的驗證（同一條業務規則的 update 入口）：
+        // 檢查合併後的最終日期，涵蓋只改單一欄位的部分更新情境。未檢查前，無效區間會一路流到
+        // RoomCalendarService.lockDateRange 的 LocalDate.datesUntil() 拋出未受攔截的
+        // IllegalArgumentException（GlobalExceptionHandler 只有 catch-all，變成裸露 500）。
+        if (newCheckOut.isBefore(newCheckIn)) {
+            throw new BusinessException(ErrorCode.E_4003, "Check-out must be after check-in");
+        }
+
         if (!newCheckIn.equals(booking.getCheckInDate()) || !newCheckOut.equals(booking.getCheckOutDate())) {
             return processDateRangeChange(booking, newCheckIn, newCheckOut);
         }

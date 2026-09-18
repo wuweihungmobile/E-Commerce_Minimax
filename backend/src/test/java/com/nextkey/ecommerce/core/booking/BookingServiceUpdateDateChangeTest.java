@@ -254,4 +254,26 @@ class BookingServiceUpdateDateChangeTest {
 
         verify(roomCalendarService).unlockDateRange(ROOM_LISTING_ID, newCheckIn, newCheckOut, "newLockValue");
     }
+
+    @Test
+    @DisplayName("新日期 checkOut 早於 checkIn（僅改單一欄位、沿用既有 checkIn 亦適用）→ E_4003，且不觸碰日曆服務")
+    void updateBooking_mergedDateRangeInvalid_throwsE4003WithoutTouchingCalendar() {
+        TenantContext.setCurrentUser(USER_ID);
+        when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(existingBooking()));
+
+        // 比照 DEF-225 的部分更新情境：只送 checkOutDate，checkInDate 沿用既有值 OLD_CHECK_IN，
+        // 但新 checkOutDate 早於 OLD_CHECK_IN，合併後即為無效區間（真實 RoomCalendarService 會在
+        // LocalDate.datesUntil() 拋出未受攔截的 IllegalArgumentException，變成裸露 500）。
+        BookingDto.UpdateRequest request = BookingDto.UpdateRequest.builder()
+                .checkOutDate(OLD_CHECK_IN.minusDays(1))
+                .build();
+
+        assertThatThrownBy(() -> bookingService.updateBooking(BOOKING_ID, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_4003);
+
+        verify(roomCalendarService, never()).releaseDateRange(any(), any(), any());
+        verify(roomCalendarService, never()).lockDateRange(any(), any(), any());
+    }
 }

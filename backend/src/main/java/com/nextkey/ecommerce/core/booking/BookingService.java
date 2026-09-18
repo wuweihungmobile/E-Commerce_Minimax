@@ -671,6 +671,13 @@ public class BookingService {
 
     private void updateBookingFields(com.nextkey.ecommerce.domain.model.order.Booking booking, BookingDto.UpdateRequest request) {
         if (request.getGuestCount() != null) {
+            // 比照 resolveBookableRoom 對 createBooking 的人數上限檢查（同一條業務規則的 update 入口）：
+            // 先前完全沒有對應檢查，可把人數改到超過房源容納上限。room 缺失時視為無限制，
+            // 與 processDateRangeChange 的 assertWithinOpenWindow 對缺失 room 的既有容錯方式一致。
+            Room room = roomRepository.findByListingId(booking.getRoomListingId()).orElse(null);
+            if (room != null && request.getGuestCount() > room.getMaxGuests()) {
+                throw new BusinessException(ErrorCode.E_4005, "Guest count exceeds capacity: max " + room.getMaxGuests());
+            }
             booking.setGuestCount(request.getGuestCount());
         }
         if (request.getGuestName() != null) {

@@ -276,4 +276,25 @@ class BookingServiceUpdateDateChangeTest {
         verify(roomCalendarService, never()).releaseDateRange(any(), any(), any());
         verify(roomCalendarService, never()).lockDateRange(any(), any(), any());
     }
+
+    @Test
+    @DisplayName("DEF-227：guestCount 超過房源人數上限 → E_4005，不寫入且不觸碰日曆服務")
+    void updateBooking_guestCountExceedsRoomCapacity_throwsE4005() {
+        TenantContext.setCurrentUser(USER_ID);
+        when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(existingBooking()));
+        when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(Room.builder().maxGuests(2).build()));
+
+        // 比照 resolveBookableRoom 對 createBooking 的人數上限檢查（先前 updateBooking 完全沒有對應檢查）。
+        BookingDto.UpdateRequest request = BookingDto.UpdateRequest.builder()
+                .guestCount(5)
+                .build();
+
+        assertThatThrownBy(() -> bookingService.updateBooking(BOOKING_ID, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_4005);
+
+        verify(roomCalendarService, never()).releaseDateRange(any(), any(), any());
+        verify(bookingRepository, never()).save(any());
+    }
 }

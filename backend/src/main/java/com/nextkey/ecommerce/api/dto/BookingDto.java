@@ -76,10 +76,20 @@ public class BookingDto {
     public static class UpdateRequest {
         private LocalDate checkInDate;
         private LocalDate checkOutDate;
+
+        @Min(value = 1, message = "Guest count must be at least 1")
         private Integer guestCount;
+
+        @Size(max = GUEST_NAME_MAX_LENGTH, message = "Guest name too long")
         private String guestName;
+
+        @Pattern(regexp = "^[0-9]{8,15}$", message = "Invalid phone format")
         private String guestPhone;
+
+        @Email(message = "Invalid email format")
         private String guestEmail;
+
+        @Size(max = 1000, message = "Special requests too long")
         private String specialRequests;
     }
 

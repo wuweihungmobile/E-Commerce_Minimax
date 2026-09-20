@@ -1,5 +1,7 @@
 package com.nextkey.ecommerce.api.dto.erp;
 
+import jakarta.validation.constraints.Email;
+
 import lombok.*;
 
 /**
@@ -16,6 +18,7 @@ public class SupplierUpdateRequest {
 
     private String contactPerson;
 
+    @Email(message = "Invalid email format")
     private String email;
 
     private String phone;

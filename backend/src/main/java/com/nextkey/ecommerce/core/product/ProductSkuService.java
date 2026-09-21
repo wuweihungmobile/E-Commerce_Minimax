@@ -1,8 +1,10 @@
 package com.nextkey.ecommerce.core.product;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +38,8 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class ProductSkuService {
 
+    private static final Set<String> VALID_SKU_STATUSES = Set.of("ACTIVE", "INACTIVE");
+
     private final ProductSkuRepository productSkuRepository;
     private final ProductInventoryRepository productInventoryRepository;
     private final ListingRepository listingRepository;
@@ -57,7 +61,15 @@ public class ProductSkuService {
                 .priceOverride(request.getPriceOverride())
                 .status("ACTIVE")
                 .build();
-        sku = productSkuRepository.save(sku);
+        // DEF-232 併發防護（比照 Sprint 137 DEF-141 既有模式）：上面的 existsBySkuCode 檢查與這裡的
+        // 寫入之間沒有原子保護，兩個併發請求都可能通過檢查各自嘗試寫入同一個 skuCode。product_skus.sku_code
+        // 已有 DB 層 UNIQUE 約束擋底、不會真的寫入重複資料，但沒有這層 catch 時，第二個請求會在
+        // flush 時撞 ConstraintViolationException，未被任何地方接住而落入全域 500，而非預期的 409。
+        try {
+            sku = productSkuRepository.saveAndFlush(sku);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.E_3005, "SKU code already exists: " + request.getSkuCode());
+        }
 
         // ProductInventory.id 透過 @MapsId 衍生自 sku 關聯物件本身（見該實體），僅設定
         // skuId 純量欄位不足以讓 Hibernate 產生 ID，會拋 IdentifierGenerationException。
@@ -109,7 +121,14 @@ public class ProductSkuService {
             sku.setPriceOverride(request.getPriceOverride());
         }
         if (request.getStatus() != null) {
-            sku.setStatus(request.getStatus());
+            // DEF-233：先前直接寫入未經驗證的字串，可寫入任意值；比照 SupplierService.updateSupplier
+            // 既有的狀態白名單驗證模式（ProductSku.status 為純 String 欄位，非 Java enum，故以
+            // Set 比對取代 enum.valueOf）
+            String status = request.getStatus().toUpperCase();
+            if (!VALID_SKU_STATUSES.contains(status)) {
+                throw new BusinessException(ErrorCode.E_3008, "Invalid SKU status: " + request.getStatus());
+            }
+            sku.setStatus(status);
         }
         sku = productSkuRepository.save(sku);
 

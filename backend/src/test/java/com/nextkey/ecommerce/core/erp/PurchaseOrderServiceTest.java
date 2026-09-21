@@ -42,6 +42,7 @@ import com.nextkey.ecommerce.domain.model.product.ProductInventory;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository;
+import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
 import com.nextkey.ecommerce.domain.repository.PurchaseOrderItemRepository;
 import com.nextkey.ecommerce.domain.repository.PurchaseOrderRepository;
 import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
@@ -74,6 +75,9 @@ class PurchaseOrderServiceTest {
 
     @Mock
     private ProductInventoryRepository productInventoryRepository;
+
+    @Mock
+    private ProductSkuRepository productSkuRepository;
 
     @Mock
     private StockMovementRepository stockMovementRepository;
@@ -156,6 +160,7 @@ class PurchaseOrderServiceTest {
     void createPurchaseOrder_success_aggregatesAmountAndInjectsTenant() {
         when(supplierRepository.existsByIdAndTenantId(supplierId, tenantId)).thenReturn(true);
         when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+        when(productSkuRepository.existsByIdAndProductListingId(skuId, listingId)).thenReturn(true);
         when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> {
             PurchaseOrder po = inv.getArgument(0);
             po.setId(poId);
@@ -241,6 +246,57 @@ class PurchaseOrderServiceTest {
         verify(purchaseOrderRepository, never()).save(any(PurchaseOrder.class));
     }
 
+    @Test
+    @DisplayName("DEF-231：createPurchaseOrder 品項的 skuId 不屬於同品項 listingId 時應拒絕（跨租戶庫存挪用）")
+    void createPurchaseOrder_skuNotBelongingToListing_mustBeRejected() {
+        // 情境還原：攻擊者用「自己」合法的 listingId（通過 listing 租戶檢查），但 skuId 填入
+        // 從公開的 GET /v2/products/{listingId}/skus 端點查到的「他租戶」真實 SKU UUID，
+        // 意圖在收貨時把庫存挪用到他租戶的 SKU 上。
+        when(supplierRepository.existsByIdAndTenantId(supplierId, tenantId)).thenReturn(true);
+        when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+        when(productSkuRepository.existsByIdAndProductListingId(skuId, listingId)).thenReturn(false);
+
+        PurchaseOrderCreateRequest request = PurchaseOrderCreateRequest.builder()
+                .supplierId(supplierId)
+                .items(List.of(itemRequest(5, "10.00")))
+                .build();
+
+        // 修復前：createPurchaseOrder 完全不驗證 skuId 是否屬於 listingId，本斷言會失敗，證明漏洞存在。
+        assertThatThrownBy(() -> purchaseOrderService.createPurchaseOrder(request, userId))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_3003));
+
+        verify(purchaseOrderRepository, never()).save(any(PurchaseOrder.class));
+    }
+
+    @Test
+    @DisplayName("DEF-231：createPurchaseOrder 品項的 skuId 為 null（尚未選規格）時不驗證 SKU 歸屬，仍可建單")
+    void createPurchaseOrder_nullSkuId_skipsSkuOwnershipCheck() {
+        when(supplierRepository.existsByIdAndTenantId(supplierId, tenantId)).thenReturn(true);
+        when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+        when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> {
+            PurchaseOrder po = inv.getArgument(0);
+            po.setId(poId);
+            return po;
+        });
+
+        PurchaseOrderCreateRequest.PurchaseOrderItemRequest itemWithoutSku =
+                PurchaseOrderCreateRequest.PurchaseOrderItemRequest.builder()
+                        .listingId(listingId)
+                        .skuId(null)
+                        .quantity(1)
+                        .unitCost(new BigDecimal("10.00"))
+                        .build();
+        PurchaseOrderCreateRequest request = PurchaseOrderCreateRequest.builder()
+                .supplierId(supplierId)
+                .items(List.of(itemWithoutSku))
+                .build();
+
+        purchaseOrderService.createPurchaseOrder(request, userId);
+
+        verify(productSkuRepository, never()).existsByIdAndProductListingId(any(), any());
+    }
+
     // ── createPurchaseOrder / getPurchaseOrder：expectedDeliveryDate（DEF-078） ──
 
     @Test
@@ -248,6 +304,7 @@ class PurchaseOrderServiceTest {
     void createPurchaseOrder_withExpectedDeliveryDate_persistsAndReturnsIt() {
         when(supplierRepository.existsByIdAndTenantId(supplierId, tenantId)).thenReturn(true);
         when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+        when(productSkuRepository.existsByIdAndProductListingId(skuId, listingId)).thenReturn(true);
         when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> {
             PurchaseOrder po = inv.getArgument(0);
             po.setId(poId);
@@ -274,6 +331,7 @@ class PurchaseOrderServiceTest {
     void createPurchaseOrder_withoutExpectedDeliveryDate_staysNull() {
         when(supplierRepository.existsByIdAndTenantId(supplierId, tenantId)).thenReturn(true);
         when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+        when(productSkuRepository.existsByIdAndProductListingId(skuId, listingId)).thenReturn(true);
         when(purchaseOrderRepository.save(any(PurchaseOrder.class))).thenAnswer(inv -> {
             PurchaseOrder po = inv.getArgument(0);
             po.setId(poId);

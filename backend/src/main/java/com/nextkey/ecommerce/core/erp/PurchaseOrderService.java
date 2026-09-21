@@ -25,6 +25,7 @@ import com.nextkey.ecommerce.domain.model.inventory.StockMovement;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.ProductInventoryRepository;
+import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
 import com.nextkey.ecommerce.domain.repository.PurchaseOrderItemRepository;
 import com.nextkey.ecommerce.domain.repository.PurchaseOrderRepository;
 import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
@@ -55,6 +56,7 @@ public class PurchaseOrderService {
     private final PurchaseOrderItemRepository purchaseOrderItemRepository;
     private final SupplierRepository supplierRepository;
     private final ProductInventoryRepository productInventoryRepository;
+    private final ProductSkuRepository productSkuRepository;
     private final StockMovementRepository stockMovementRepository;
     private final ListingRepository listingRepository;
     private final TenantRepository tenantRepository;
@@ -97,6 +99,12 @@ public class PurchaseOrderService {
             // 驗證品項的 listing 屬於當前租戶（DEF-027 修復，比照 StockMovementService 的 DEF-017 模式，
             // 避免以他租戶的 listing/SKU 建立採購單，收貨時把庫存挪用到他租戶商品上）
             validateListingOwnership(itemRequest.getListingId(), tenantId);
+            // DEF-231：先前只驗證 listingId 屬於呼叫者租戶，未驗證 skuId 是否真的屬於這個 listingId，
+            // 可用自己的 listingId 搭配他租戶的真實 SKU UUID（SKU 列表端點本身刻意公開可查）建立採購單，
+            // 收貨時把庫存挪用到他租戶的 SKU 上。skuId 為選填（品項可能尚未建立規格），故僅在有值時檢查。
+            if (itemRequest.getSkuId() != null) {
+                validateSkuOwnership(itemRequest.getSkuId(), itemRequest.getListingId());
+            }
 
             BigDecimal subtotal = itemRequest.getUnitCost().multiply(BigDecimal.valueOf(itemRequest.getQuantity()));
 
@@ -355,6 +363,19 @@ public class PurchaseOrderService {
                         String.format("Listing not found: %s", listingId)));
         if (!tenantId.equals(listing.getTenantId())) {
             throw new BusinessException(ErrorCode.E_1007, "Listing does not belong to current tenant");
+        }
+    }
+
+    /**
+     * 驗證品項的 SKU 屬於同一品項已驗證過的 listing（DEF-231 修復）。
+     *
+     * <p>與 {@link ProductSkuService#updateSku} 對「SKU 存在但不屬於此 listing」的既有回應方式一致：
+     * 一律回傳 E_3003「SKU not found」，不區分「真的不存在」與「存在但屬於別的 listing／租戶」，
+     * 避免藉由錯誤訊息差異洩漏他租戶 SKU 是否存在。
+     */
+    private void validateSkuOwnership(final UUID skuId, final UUID listingId) {
+        if (!productSkuRepository.existsByIdAndProductListingId(skuId, listingId)) {
+            throw new BusinessException(ErrorCode.E_3003, "SKU not found: " + skuId);
         }
     }
 

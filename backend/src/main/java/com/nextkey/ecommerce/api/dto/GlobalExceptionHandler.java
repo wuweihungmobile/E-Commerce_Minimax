@@ -183,7 +183,7 @@ public class GlobalExceptionHandler {
             // 移到與 E_4106/E_1010 同組的 CONFLICT，比照 E_2003（已存在類）語意更貼近。
             case E_4106, E_1010, E_1008, E_1086, E_1093, E_1094, E_3005, E_4091, E_4092, E_5014,
                     E_7006, E_8010 -> HttpStatus.CONFLICT;
-            case E_3001, E_3002, E_4008, E_5001, E_5006, E_6004, E_6005, E_7002, E_7010,
+            case E_3001, E_3002, E_3008, E_4008, E_5001, E_5006, E_6004, E_6005, E_7002, E_7010,
                     E_5010, E_5011, E_5012, E_6009, E_7005, E_7009, E_8001 -> HttpStatus.UNPROCESSABLE_ENTITY;
             case E_9000, E_9001, E_9002, E_9003, E_9004, E_9005, E_9006, E_9007, E_9008 -> HttpStatus.BAD_REQUEST;
             case E_9904 -> HttpStatus.TOO_MANY_REQUESTS;

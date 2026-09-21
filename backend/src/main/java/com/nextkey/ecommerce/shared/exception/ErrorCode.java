@@ -39,6 +39,8 @@ public enum ErrorCode {
     E_3005("E-3005", "SKU 代碼重複"),
     E_3006("E-3006", "找不到分類"),
     E_3007("E-3007", "找不到品牌"),
+    // Sprint 179（DEF-233）：SkuDto.UpdateRequest.status 先前無白名單驗證，可寫入任意字串
+    E_3008("E-3008", "無效的 SKU 狀態"),
 
     // CMS & Posts (E-4100s)
     E_4100("E-4100", "找不到文章"),

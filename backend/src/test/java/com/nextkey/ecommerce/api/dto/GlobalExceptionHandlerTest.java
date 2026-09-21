@@ -83,10 +83,10 @@ class GlobalExceptionHandlerTest {
         }
 
         // 422 UNPROCESSABLE_ENTITY
-        for (ErrorCode code : new ErrorCode[] {ErrorCode.E_3001, ErrorCode.E_3002, ErrorCode.E_4008,
-                ErrorCode.E_5001, ErrorCode.E_5006, ErrorCode.E_6004, ErrorCode.E_6005, ErrorCode.E_7002,
-                ErrorCode.E_7010, ErrorCode.E_5010, ErrorCode.E_5011, ErrorCode.E_5012, ErrorCode.E_6009,
-                ErrorCode.E_7005, ErrorCode.E_7009, ErrorCode.E_8001}) {
+        for (ErrorCode code : new ErrorCode[] {ErrorCode.E_3001, ErrorCode.E_3002, ErrorCode.E_3008,
+                ErrorCode.E_4008, ErrorCode.E_5001, ErrorCode.E_5006, ErrorCode.E_6004, ErrorCode.E_6005,
+                ErrorCode.E_7002, ErrorCode.E_7010, ErrorCode.E_5010, ErrorCode.E_5011, ErrorCode.E_5012,
+                ErrorCode.E_6009, ErrorCode.E_7005, ErrorCode.E_7009, ErrorCode.E_8001}) {
             expected.put(code, HttpStatus.UNPROCESSABLE_ENTITY);
         }
 

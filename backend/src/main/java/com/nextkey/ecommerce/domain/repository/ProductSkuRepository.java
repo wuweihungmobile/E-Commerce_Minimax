@@ -21,6 +21,8 @@ public interface ProductSkuRepository extends JpaRepository<ProductSku, UUID> {
 
     boolean existsBySkuCode(String skuCode);
 
+    boolean existsByIdAndProductListingId(UUID id, UUID productListingId);
+
     /**
      * SKU 編號／規格／品名的顯示用投影（Sprint 120，DEF-069）。
      *

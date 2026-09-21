@@ -21,6 +21,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import com.nextkey.ecommerce.api.dto.SkuDto;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
@@ -100,7 +101,7 @@ class ProductSkuServiceTest {
         when(productSkuRepository.existsBySkuCode("SKU-001")).thenReturn(false);
 
         UUID skuId = UUID.randomUUID();
-        when(productSkuRepository.save(any(ProductSku.class))).thenAnswer(invocation -> {
+        when(productSkuRepository.saveAndFlush(any(ProductSku.class))).thenAnswer(invocation -> {
             ProductSku sku = invocation.getArgument(0);
             sku.setId(skuId);
             return sku;
@@ -142,7 +143,29 @@ class ProductSkuServiceTest {
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.E_3005);
 
-        verify(productSkuRepository, never()).save(any());
+        verify(productSkuRepository, never()).saveAndFlush(any());
+        verify(productInventoryRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("建立 SKU：DEF-232 併發競態——existsBySkuCode 檢查通過後，flush 時才撞見他請求已搶先寫入的"
+            + "同一 skuCode，應轉譯為 E-3005 409，而非讓 DataIntegrityViolationException 落入全域 500")
+    void createSku_concurrentDuplicateSkuCode_racesPastCheckThenActWindow_throwsConflictNot500() {
+        when(listingRepository.findById(LISTING_ID)).thenReturn(Optional.of(buildProductListing(TENANT)));
+        // 兩個併發請求都在對方 commit 前通過這個檢查
+        when(productSkuRepository.existsBySkuCode("SKU-001")).thenReturn(false);
+        when(productSkuRepository.saveAndFlush(any(ProductSku.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint"));
+
+        SkuDto.CreateRequest request = SkuDto.CreateRequest.builder().skuCode("SKU-001").build();
+
+        // 修復前：createSku 沒有 catch DataIntegrityViolationException，本斷言會失敗
+        // （實際拋出的是未經轉譯的 DataIntegrityViolationException，最終落入全域 500）。
+        assertThatThrownBy(() -> productSkuService.createSku(LISTING_ID, request, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_3005);
+
         verify(productInventoryRepository, never()).save(any());
     }
 
@@ -181,7 +204,7 @@ class ProductSkuServiceTest {
     void createSku_differentTenantButSuperAdmin_succeeds() {
         when(listingRepository.findById(LISTING_ID)).thenReturn(Optional.of(buildProductListing(OTHER_TENANT)));
         when(productSkuRepository.existsBySkuCode("SKU-001")).thenReturn(false);
-        when(productSkuRepository.save(any(ProductSku.class))).thenAnswer(invocation -> {
+        when(productSkuRepository.saveAndFlush(any(ProductSku.class))).thenAnswer(invocation -> {
             ProductSku sku = invocation.getArgument(0);
             sku.setId(UUID.randomUUID());
             return sku;
@@ -273,5 +296,53 @@ class ProductSkuServiceTest {
                 .isEqualTo(ErrorCode.E_3003);
 
         verify(productSkuRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("更新 SKU：DEF-233 status 帶入白名單以外的字串時拒絕，不寫入未經驗證的值")
+    void updateSku_invalidStatus_throwsUnprocessable() {
+        when(listingRepository.findById(LISTING_ID)).thenReturn(Optional.of(buildProductListing(TENANT)));
+
+        UUID skuId = UUID.randomUUID();
+        ProductSku sku = ProductSku.builder()
+                .id(skuId)
+                .productListingId(LISTING_ID)
+                .skuCode("SKU-001")
+                .status("ACTIVE")
+                .build();
+        when(productSkuRepository.findById(skuId)).thenReturn(Optional.of(sku));
+
+        SkuDto.UpdateRequest request = SkuDto.UpdateRequest.builder().status("FOOBAR").build();
+
+        // 修復前：直接寫入未經驗證的字串，本斷言會失敗（不會拋例外，且下方 save 驗證也會失敗）。
+        assertThatThrownBy(() -> productSkuService.updateSku(LISTING_ID, skuId, request, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_3008);
+
+        verify(productSkuRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("更新 SKU：DEF-233 status 允許小寫輸入，正規化為大寫寫入")
+    void updateSku_lowercaseStatus_normalizesToUppercase() {
+        when(listingRepository.findById(LISTING_ID)).thenReturn(Optional.of(buildProductListing(TENANT)));
+
+        UUID skuId = UUID.randomUUID();
+        ProductSku sku = ProductSku.builder()
+                .id(skuId)
+                .productListingId(LISTING_ID)
+                .skuCode("SKU-001")
+                .status("ACTIVE")
+                .build();
+        when(productSkuRepository.findById(skuId)).thenReturn(Optional.of(sku));
+        when(productSkuRepository.save(any(ProductSku.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(productInventoryRepository.findById(skuId)).thenReturn(Optional.empty());
+
+        SkuDto.UpdateRequest request = SkuDto.UpdateRequest.builder().status("inactive").build();
+
+        SkuDto.Response response = productSkuService.updateSku(LISTING_ID, skuId, request, false);
+
+        assertThat(response.getStatus()).isEqualTo("INACTIVE");
     }
 }

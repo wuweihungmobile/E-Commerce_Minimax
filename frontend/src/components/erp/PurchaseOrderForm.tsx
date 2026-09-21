@@ -375,6 +375,15 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
   const isReceiveMode = mode === 'receive'
   const totalAmount = items.reduce((sum, item) => sum + item.subtotal, 0)
 
+  // DEF-234：狀態轉換條件比照後端 PurchaseOrder.canSubmit()/canCancel()/canReceive()
+  // （domain/model/inventory/PurchaseOrder.java），detail 頁先前完全沒有依狀態顯示這些操作入口，
+  // 導致訂單建立後永遠卡在 DRAFT，收貨頁也無法從任何畫面點擊到達。
+  const canSubmit = orderStatus === 'DRAFT'
+  const canCancel = orderStatus === 'DRAFT' || orderStatus === 'SUBMITTED'
+    || orderStatus === 'PENDING_APPROVAL' || orderStatus === 'APPROVED'
+  const canReceive = orderStatus === 'SUBMITTED' || orderStatus === 'PARTIALLY_RECEIVED'
+    || orderStatus === 'APPROVED'
+
   return (
     <Card>
       <CardHeader>
@@ -622,6 +631,21 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       <CardFooter className="flex gap-2 flex-wrap">
         {mode === 'view' && (
           <>
+            {canSubmit && (
+              <Button onClick={handleSubmit} disabled={loading}>
+                {loading ? '提交中...' : '提交訂單'}
+              </Button>
+            )}
+            {canReceive && orderId && (
+              <Link href={`/dashboard/erp/purchase-orders/${orderId}/receive`}>
+                <Button>前往收貨</Button>
+              </Link>
+            )}
+            {canCancel && (
+              <Button variant="outline" onClick={handleCancel} disabled={loading}>
+                取消訂單
+              </Button>
+            )}
             <Link href="/dashboard/erp/purchase-orders">
               <Button variant="outline">返回列表</Button>
             </Link>

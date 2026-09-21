@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.api.dto;
 
+import java.time.LocalDate;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -108,5 +109,51 @@ class BookingDtoValidationTest {
                 .specialRequests("a".repeat(1001))
                 .build();
         assertThat(violationsOn("specialRequests", request)).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("DEF-229：checkInDate 為過去日期應被拒絕，與 CreateRequest 的 @FutureOrPresent 語意一致")
+    void checkInDatePast_failsValidation() {
+        BookingDto.UpdateRequest request = BookingDto.UpdateRequest.builder()
+                .checkInDate(LocalDate.now().minusDays(1))
+                .build();
+        assertThat(violationsOn("checkInDate", request)).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("DEF-229：checkInDate 為今天或未來日期應通過驗證")
+    void checkInDateTodayOrFuture_passesValidation() {
+        BookingDto.UpdateRequest today = BookingDto.UpdateRequest.builder()
+                .checkInDate(LocalDate.now())
+                .build();
+        BookingDto.UpdateRequest future = BookingDto.UpdateRequest.builder()
+                .checkInDate(LocalDate.now().plusDays(1))
+                .build();
+
+        assertThat(violationsOn("checkInDate", today)).isEmpty();
+        assertThat(violationsOn("checkInDate", future)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("DEF-229：checkOutDate 為今天或過去日期應被拒絕，與 CreateRequest 的 @Future 語意一致")
+    void checkOutDateNotStrictlyFuture_failsValidation() {
+        BookingDto.UpdateRequest today = BookingDto.UpdateRequest.builder()
+                .checkOutDate(LocalDate.now())
+                .build();
+        BookingDto.UpdateRequest past = BookingDto.UpdateRequest.builder()
+                .checkOutDate(LocalDate.now().minusDays(1))
+                .build();
+
+        assertThat(violationsOn("checkOutDate", today)).isNotEmpty();
+        assertThat(violationsOn("checkOutDate", past)).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("DEF-229：checkOutDate 為未來日期應通過驗證")
+    void checkOutDateFuture_passesValidation() {
+        BookingDto.UpdateRequest request = BookingDto.UpdateRequest.builder()
+                .checkOutDate(LocalDate.now().plusDays(1))
+                .build();
+        assertThat(violationsOn("checkOutDate", request)).isEmpty();
     }
 }

@@ -74,7 +74,10 @@ public class BookingDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class UpdateRequest {
+        @FutureOrPresent(message = "Check-in date must be today or in the future")
         private LocalDate checkInDate;
+
+        @Future(message = "Check-out date must be in the future")
         private LocalDate checkOutDate;
 
         @Min(value = 1, message = "Guest count must be at least 1")

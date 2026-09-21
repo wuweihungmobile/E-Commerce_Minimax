@@ -22,6 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.nextkey.ecommerce.api.controller.ProductController;
 import com.nextkey.ecommerce.api.dto.ReviewDto;
 import com.nextkey.ecommerce.core.product.ProductService;
+import com.nextkey.ecommerce.core.product.ProductSkuService;
 import com.nextkey.ecommerce.core.review.ReviewService;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 
@@ -47,6 +48,11 @@ class M08ReviewStatsIntegrationTest {
 
     @MockBean
     private ReviewService reviewService;
+
+    // Sprint 178：ProductController 新增 SKU 管理端點後多了這個建構子相依，此為 @WebMvcTest
+    // 只載入 ProductController 的窄範圍 slice context，未宣告的相依無法自動注入
+    @MockBean
+    private ProductSkuService productSkuService;
 
     @MockBean
     private JwtTokenService jwtTokenService;

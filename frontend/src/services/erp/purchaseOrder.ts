@@ -43,11 +43,20 @@ export interface PurchaseOrderDto {
   rejectionReason?: string
 }
 
+export interface ListingOptionSku {
+  id: string
+  skuCode: string
+  specName: string | null
+}
+
 export interface ListingOption {
   id: string
   title: string
   basePrice: number
   currency: string
+  // Sprint 178：此商品已建立的規格（SKU）。空陣列代表尚未建立任何規格，需先至商品編輯頁新增
+  // 規格才能在採購單中選擇——否則收貨時 skuId 缺失，庫存不會真正入帳（見 SkuManager 元件說明）。
+  skus: ListingOptionSku[]
 }
 
 export interface PurchaseOrderCreateRequest {
@@ -58,6 +67,9 @@ export interface PurchaseOrderCreateRequest {
   items: Array<{
     // DEF-076（Sprint 129）：後端 @NotNull 要求 listingId，原本前端型別中完全沒有此欄位
     listingId: string
+    // Sprint 178：後端選填但收貨入庫依賴此值（item.getSkuId() != null 才會觸發庫存增加），
+    // 前端表單強制使用者選擇後才能加入品項，故此處視同必填
+    skuId: string
     quantity: number
     // DEF-077（Sprint 129）：後端欄位名為 unitCost，原本前端送 unitPrice 導致必定 400
     unitCost: number

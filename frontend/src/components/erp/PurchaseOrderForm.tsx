@@ -120,6 +120,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
           notes: data.notes || '',
           items: data.items.map(item => ({
             listingId: item.listingId,
+            skuId: item.skuId,
             quantity: item.quantity,
             unitCost: item.unitPrice,
           })),
@@ -163,6 +164,8 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
   }
 
   // DEF-076：選擇 listing 後同步帶入名稱作為顯示用品名（選擇器新增前，品名只能手動輸入）
+  // Sprint 178：換商品後先前選的 SKU 已不適用，一併清空；若該商品僅有一個規格則直接帶入，
+  // 減少多一次點擊（多規格情境仍需使用者自行選擇，避免誤收錯規格）
   const handleListingChange = (index: number, listingId: string) => {
     const newItems = [...items]
     const listing = listingOptions.find(l => l.id === listingId)
@@ -170,7 +173,18 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       ...newItems[index],
       listingId,
       productName: listing ? listing.title : newItems[index].productName,
+      skuId: listing && listing.skus.length === 1 ? listing.skus[0].id : '',
+      skuCode: listing && listing.skus.length === 1 ? listing.skus[0].skuCode : '',
     }
+    setItems(newItems)
+  }
+
+  // Sprint 178：帶入 SKU 代碼作為顯示用途，供「品名」欄旁的規格識別
+  const handleSkuChange = (index: number, skuId: string) => {
+    const newItems = [...items]
+    const listing = listingOptions.find(l => l.id === newItems[index].listingId)
+    const sku = listing?.skus.find(s => s.id === skuId)
+    newItems[index] = { ...newItems[index], skuId, skuCode: sku ? sku.skuCode : '' }
     setItems(newItems)
   }
 
@@ -216,6 +230,12 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       alert('請至少新增一個品項')
       return
     }
+    // Sprint 178：skuId 缺失時收貨不會真正入庫（見 SkuManager 元件說明），前端強制要求選擇規格
+    const selectedItems = items.filter(item => item.listingId)
+    if (selectedItems.some(item => !item.skuId)) {
+      alert('請為每個品項選擇規格（SKU）；若商品尚未建立規格，請先至商品編輯頁新增')
+      return
+    }
 
     setLoading(true)
     setError(null)
@@ -224,8 +244,9 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
         supplierId: formData.supplierId,
         expectedDeliveryDate: formData.expectedDeliveryDate || undefined,
         notes: formData.notes,
-        items: items.filter(item => item.listingId).map(item => ({
+        items: selectedItems.map(item => ({
           listingId: item.listingId,
+          skuId: item.skuId,
           quantity: item.quantity,
           unitCost: item.unitPrice,
         })),
@@ -444,6 +465,9 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">商品</th>
+                  {mode === 'create' && (
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">規格（SKU）</th>
+                  )}
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">品名</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">數量</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">單價</th>
@@ -482,6 +506,33 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
                         />
                       )}
                     </td>
+                    {mode === 'create' && (
+                      <td className="px-3 py-2">
+                        {(() => {
+                          const listing = listingOptions.find(l => l.id === item.listingId)
+                          if (!item.listingId) {
+                            return <span className="text-sm text-gray-400">請先選擇商品</span>
+                          }
+                          if (!listing || listing.skus.length === 0) {
+                            return <span className="text-sm text-red-500">尚未建立規格，請先至商品編輯頁新增</span>
+                          }
+                          return (
+                            <select
+                              value={item.skuId}
+                              onChange={(e) => handleSkuChange(index, e.target.value)}
+                              className="w-full border rounded-md px-3 py-2"
+                            >
+                              <option value="">請選擇規格</option>
+                              {listing.skus.map(s => (
+                                <option key={s.id} value={s.id}>
+                                  {s.skuCode}{s.specName ? ` - ${s.specName}` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          )
+                        })()}
+                      </td>
+                    )}
                     <td className="px-3 py-2">
                       {isViewMode || mode === 'edit' ? (
                         <span className="text-sm">{item.productName}</span>
@@ -557,7 +608,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
               </tbody>
               <tfoot className="bg-gray-50">
                 <tr>
-                  <td colSpan={4} className="px-3 py-2 text-right font-medium">總金額：</td>
+                  <td colSpan={mode === 'create' ? 5 : 4} className="px-3 py-2 text-right font-medium">總金額：</td>
                   <td className="px-3 py-2 text-right font-bold text-lg">
                     {totalAmount.toLocaleString('zh-TW')} 元
                   </td>

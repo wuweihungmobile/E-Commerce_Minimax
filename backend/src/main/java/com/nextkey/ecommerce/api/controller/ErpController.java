@@ -40,7 +40,9 @@ import com.nextkey.ecommerce.core.erp.PurchaseOrderService;
 import com.nextkey.ecommerce.core.erp.StockMovementService;
 import com.nextkey.ecommerce.core.erp.SupplierService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.product.ProductSku;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 import com.nextkey.ecommerce.shared.util.PageableUtils;
 
@@ -63,6 +65,7 @@ public class ErpController {
     private final InventoryService inventoryService;
     private final StockMovementService stockMovementService;
     private final ListingRepository listingRepository;
+    private final ProductSkuRepository productSkuRepository;
 
     // ========== Listing Endpoints（供採購單品項選擇器使用，DEF-076） ==========
 
@@ -80,9 +83,22 @@ public class ErpController {
                         .title(l.getTitle())
                         .basePrice(l.getBasePrice())
                         .currency(l.getCurrency())
+                        // Sprint 178：附上此商品已建立的 SKU，供品項選擇器挑選；
+                        // 無 SKU 的商品回傳空陣列，前端據此提示需先建立規格才能加入採購單。
+                        .skus(productSkuRepository.findByProductListingId(l.getId()).stream()
+                                .map(this::toSkuOption)
+                                .collect(Collectors.toList()))
                         .build())
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.success(options));
+    }
+
+    private ListingOptionDto.SkuOptionDto toSkuOption(final ProductSku sku) {
+        return ListingOptionDto.SkuOptionDto.builder()
+                .id(sku.getId())
+                .skuCode(sku.getSkuCode())
+                .specName(sku.getSpecName())
+                .build();
     }
 
     // ========== Supplier Endpoints ==========

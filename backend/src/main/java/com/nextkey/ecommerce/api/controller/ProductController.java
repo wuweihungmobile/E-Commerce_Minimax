@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.api.controller;
 
+import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -22,8 +23,10 @@ import org.springframework.web.bind.annotation.RestController;
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.ProductDto;
 import com.nextkey.ecommerce.api.dto.ReviewDto;
+import com.nextkey.ecommerce.api.dto.SkuDto;
 import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.core.product.ProductService;
+import com.nextkey.ecommerce.core.product.ProductSkuService;
 import com.nextkey.ecommerce.core.review.ReviewService;
 
 import lombok.RequiredArgsConstructor;
@@ -41,6 +44,7 @@ public class ProductController {
 
     private final ProductService productService;
     private final ReviewService reviewService;
+    private final ProductSkuService productSkuService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('product:read')")
@@ -107,5 +111,40 @@ public class ProductController {
         log.info("Get review stats: productId={}", productId);
         ReviewDto.RatingStats stats = reviewService.getRatingStats(productId);
         return ResponseEntity.ok(ApiResponse.success(stats));
+    }
+
+    /**
+     * 商品規格（SKU）管理（Sprint 178）。見 {@link ProductSkuService} 類註解說明背景。
+     */
+    @PostMapping("/{listingId}/skus")
+    @PreAuthorize("hasAuthority('product:update')")
+    public ResponseEntity<ApiResponse<SkuDto.Response>> createSku(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID listingId,
+            @Valid @RequestBody SkuDto.CreateRequest request) {
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
+        SkuDto.Response sku = productSkuService.createSku(listingId, request, isSuperAdmin);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("SKU created successfully", sku));
+    }
+
+    @GetMapping("/{listingId}/skus")
+    @PreAuthorize("hasAuthority('product:read')")
+    public ResponseEntity<ApiResponse<List<SkuDto.Response>>> listSkus(
+            @PathVariable UUID listingId) {
+        List<SkuDto.Response> skus = productSkuService.listSkus(listingId);
+        return ResponseEntity.ok(ApiResponse.success(skus));
+    }
+
+    @PutMapping("/{listingId}/skus/{skuId}")
+    @PreAuthorize("hasAuthority('product:update')")
+    public ResponseEntity<ApiResponse<SkuDto.Response>> updateSku(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID listingId,
+            @PathVariable UUID skuId,
+            @Valid @RequestBody SkuDto.UpdateRequest request) {
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
+        SkuDto.Response sku = productSkuService.updateSku(listingId, skuId, request, isSuperAdmin);
+        return ResponseEntity.ok(ApiResponse.success("SKU updated successfully", sku));
     }
 }

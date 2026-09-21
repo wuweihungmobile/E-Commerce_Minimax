@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import ProductForm from '@/components/product/ProductForm'
+import SkuManager from '@/components/product/SkuManager'
 import AuthService from '@/services/auth'
 
 export default function EditProductPage() {
@@ -53,8 +54,9 @@ export default function EditProductPage() {
       </nav>
 
       <main className="max-w-3xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
+        <div className="px-4 py-6 sm:px-0 space-y-6">
           <ProductForm productId={params.id as string} />
+          <SkuManager listingId={params.id as string} />
         </div>
       </main>
     </div>

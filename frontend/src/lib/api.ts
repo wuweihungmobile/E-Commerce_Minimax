@@ -140,6 +140,9 @@ export const API_ENDPOINTS = {
     create: '/v2/products',
     update: (id: string) => '/v2/products/' + id,
     delete: (id: string) => '/v2/products/' + id,
+    // 商品規格（SKU）管理（Sprint 178）
+    skus: (listingId: string) => '/v2/products/' + listingId + '/skus',
+    updateSku: (listingId: string, skuId: string) => '/v2/products/' + listingId + '/skus/' + skuId,
   },
 
   // Rooms (M02)

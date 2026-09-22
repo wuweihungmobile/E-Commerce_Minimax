@@ -12,6 +12,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.nextkey.ecommerce.api.dto.knowledge.ArticleVersionDto;
 import com.nextkey.ecommerce.api.dto.knowledge.CreateKnowledgeArticleRequest;
 import com.nextkey.ecommerce.api.dto.knowledge.CreateKnowledgeCategoryRequest;
 import com.nextkey.ecommerce.api.dto.knowledge.KnowledgeArticleDto;
@@ -373,23 +374,57 @@ public class KnowledgeBaseService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ArticleVersion> getArticleVersions(UUID articleId, int page, int size) {
+    public Page<ArticleVersionDto> getArticleVersions(UUID articleId, int page, int size) {
         UUID tenantId = getCurrentTenant();
         articleRepository.findByIdAndTenantId(articleId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
 
         Pageable pageable = PageableUtils.of(page, size, 50, Sort.by(Sort.Direction.DESC, "versionNumber"));
-        return articleVersionRepository.findByArticleIdAndTenantId(articleId, tenantId, pageable);
+        return articleVersionRepository.findByArticleIdAndTenantId(articleId, tenantId, pageable)
+                .map(this::toArticleVersionDto);
     }
 
     @Transactional(readOnly = true)
-    public ArticleVersion getArticleVersion(UUID articleId, Integer versionNumber) {
+    public ArticleVersionDto getArticleVersion(UUID articleId, Integer versionNumber) {
         UUID tenantId = getCurrentTenant();
         articleRepository.findByIdAndTenantId(articleId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
 
-        return articleVersionRepository.findByArticleIdAndVersionNumber(articleId, versionNumber)
+        ArticleVersion version = articleVersionRepository.findByArticleIdAndVersionNumber(articleId, versionNumber)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Version not found"));
+        return toArticleVersionDto(version);
+    }
+
+    /**
+     * DEF-249：見 {@link ArticleVersionDto} 說明——只挑選純量欄位，不回傳
+     * {@code ArticleVersion.createdBy}/{@code article}/{@code category}/{@code tenant} 等
+     * LAZY 關聯物件本身。
+     */
+    private ArticleVersionDto toArticleVersionDto(ArticleVersion version) {
+        ArticleVersionDto.ArticleVersionDtoBuilder builder = ArticleVersionDto.builder()
+                .id(version.getId())
+                .articleId(version.getArticleId())
+                .versionNumber(version.getVersionNumber())
+                .title(version.getTitle())
+                .content(version.getContent())
+                .tags(version.getTags())
+                .isPublished(version.getIsPublished())
+                .isPinned(version.getIsPinned())
+                .sortOrder(version.getSortOrder())
+                .tenantId(version.getTenantId())
+                .createdAt(version.getCreatedAt());
+
+        if (version.getCategory() != null) {
+            builder.categoryId(version.getCategory().getId())
+                   .categoryName(version.getCategory().getName());
+        }
+
+        if (version.getCreatedBy() != null) {
+            builder.createdById(version.getCreatedBy().getId())
+                   .createdByName(version.getCreatedBy().getFullName());
+        }
+
+        return builder.build();
     }
 
     @Transactional

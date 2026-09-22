@@ -19,6 +19,8 @@ import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -49,6 +51,19 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
+    /**
+     * DEF-249（Sprint 183）：全域防線——先前只在個別 Controller（如 DEF-093 修復的
+     * {@code ListingController}）逐一改回傳 DTO 來避免裸實體序列化外洩本欄位，根因（本欄位本身
+     * 沒有 {@code @JsonIgnore}）從未真正堵住。{@code ArticleVersionController} 後來又重蹈覆轍
+     * （見 {@code ArticleVersion.createdBy}/{@code KnowledgeArticle.author} 兩條 LAZY 關聯鏈），
+     * 任何持有 {@code knowledge:read} 權限者（含最低信任等級的 STORE_STAFF）皆可取得文章作者的
+     * 密碼雜湊，離線暴力破解後可完整接管帳號。本專案 {@code spring.jpa.open-in-view} 為預設
+     * {@code true} 且未註冊 Hibernate Jackson 模組，任何回傳裸實體、且該實體有指向 {@code User}
+     * 的 LAZY 關聯的端點都會真的觸發懶載入並序列化出本欄位，而非拋出例外——因此在欄位本身補上
+     * {@code @JsonIgnore}，一次性堵住所有現在及未來可能出現的同類外洩路徑，不再逐一依賴每個
+     * Controller 都正確改用 DTO。
+     */
+    @JsonIgnore
     @Column(name = "password_hash")
     private String passwordHash;
 

@@ -24,6 +24,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 
+import com.nextkey.ecommerce.api.dto.knowledge.ArticleVersionDto;
 import com.nextkey.ecommerce.api.dto.knowledge.CreateKnowledgeArticleRequest;
 import com.nextkey.ecommerce.api.dto.knowledge.CreateKnowledgeCategoryRequest;
 import com.nextkey.ecommerce.api.dto.knowledge.KnowledgeArticleDto;
@@ -566,10 +567,37 @@ class KnowledgeBaseServiceTest {
         when(articleVersionRepository.findByArticleIdAndTenantId(eq(articleId), eq(TENANT_ID), any()))
                 .thenReturn(new PageImpl<>(List.of(version)));
 
-        Page<ArticleVersion> result = knowledgeBaseService.getArticleVersions(articleId, 0, 10);
+        Page<ArticleVersionDto> result = knowledgeBaseService.getArticleVersions(articleId, 0, 10);
 
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).getVersionNumber()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-249：getArticleVersions/getArticleVersion 回傳 DTO，不得挾帶 createdBy"
+            + "（User 實體）本身——先前直接回傳裸 ArticleVersion 實體，其 LAZY createdBy 關聯"
+            + "會被序列化出去，外洩 User.passwordHash")
+    void getArticleVersions_doesNotExposeCreatedByUserEntity() {
+        UUID articleId = UUID.randomUUID();
+        KnowledgeCategory category = buildCategory(UUID.randomUUID(), "General", "general");
+        User author = buildAuthor(UUID.randomUUID());
+        author.setPasswordHash("$2a$10$superSecretHashShouldNeverLeak");
+        KnowledgeArticle article = buildArticle(articleId, category, author, "Title", "slug1");
+        when(articleRepository.findByIdAndTenantId(articleId, TENANT_ID)).thenReturn(Optional.of(article));
+        ArticleVersion version = ArticleVersion.builder()
+                .id(UUID.randomUUID()).article(article).versionNumber(1).title("Title").content("Content")
+                .createdBy(author).build();
+        when(articleVersionRepository.findByArticleIdAndTenantId(eq(articleId), eq(TENANT_ID), any()))
+                .thenReturn(new PageImpl<>(List.of(version)));
+
+        Page<ArticleVersionDto> result = knowledgeBaseService.getArticleVersions(articleId, 0, 10);
+
+        ArticleVersionDto dto = result.getContent().get(0);
+        assertThat(dto.getCreatedById()).isEqualTo(author.getId());
+        assertThat(dto.getCreatedByName()).isEqualTo("Author Name");
+        // DTO 型別本身沒有任何欄位能持有 User 實體，以下斷言證明回傳型別不再是可序列化出
+        // passwordHash 的裸實體——若未來有人不慎把回傳型別改回 ArticleVersion，此行會編譯失敗。
+        assertThat((Object) dto).isNotInstanceOf(ArticleVersion.class);
     }
 
     @Test

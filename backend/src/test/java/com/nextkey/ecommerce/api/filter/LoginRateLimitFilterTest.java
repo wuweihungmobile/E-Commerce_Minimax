@@ -72,8 +72,9 @@ class LoginRateLimitFilterTest {
     }
 
     @Test
-    @DisplayName("shouldNotFilter：只有 POST /v2/auth/login 不被排除")
-    void shouldNotFilter_onlyExcludesPostLogin() {
+    @DisplayName("🔴 DEF-250：shouldNotFilter：POST /v2/auth/login 與 POST /v2/auth/register 皆不被排除"
+            + "（先前 register 被排除、完全無限流，可用於無限速率枚舉 email 或 bcrypt 資源耗盡攻擊）")
+    void shouldNotFilter_coversBothPostLoginAndPostRegister() {
         LoginRateLimitFilter filter = newFilter();
         MockHttpServletRequest loginPost = new MockHttpServletRequest("POST", "/v2/auth/login");
         loginPost.setServletPath("/v2/auth/login");
@@ -81,10 +82,56 @@ class LoginRateLimitFilterTest {
         loginGet.setServletPath("/v2/auth/login");
         MockHttpServletRequest registerPost = new MockHttpServletRequest("POST", "/v2/auth/register");
         registerPost.setServletPath("/v2/auth/register");
+        MockHttpServletRequest registerGet = new MockHttpServletRequest("GET", "/v2/auth/register");
+        registerGet.setServletPath("/v2/auth/register");
 
         assertThat(filter.shouldNotFilter(loginPost)).isFalse();
         assertThat(filter.shouldNotFilter(loginGet)).isTrue();
-        assertThat(filter.shouldNotFilter(registerPost)).isTrue();
+        assertThat(filter.shouldNotFilter(registerPost)).isFalse();
+        assertThat(filter.shouldNotFilter(registerGet)).isTrue();
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-250：POST /v2/auth/register 配額耗盡時同樣回傳 429（先前完全不受限流）")
+    void registerPath_deniedRequest_returns429() throws Exception {
+        LoginRateLimitFilter filter = newFilter();
+        when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any(), any(), any()))
+                .thenReturn("0:0:600");
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/v2/auth/register");
+        request.setServletPath("/v2/auth/register");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        boolean[] chainCalled = {false};
+        FilterChain chain = (req, res) -> chainCalled[0] = true;
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(chainCalled[0]).isFalse();
+        assertThat(response.getStatus()).isEqualTo(429);
+    }
+
+    @Test
+    @DisplayName("登入與註冊路徑使用不同 Redis key（配額互相獨立，登入 burst 不會誤耗盡註冊配額）")
+    void loginAndRegister_useIndependentRateLimitKeys() throws Exception {
+        LoginRateLimitFilter filter = newFilter();
+        when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any(), any(), any()))
+                .thenReturn("1:7:0");
+
+        MockHttpServletRequest loginRequest = new MockHttpServletRequest("POST", "/v2/auth/login");
+        loginRequest.setServletPath("/v2/auth/login");
+        loginRequest.setRemoteAddr("203.0.113.5");
+        filter.doFilter(loginRequest, new MockHttpServletResponse(), (req, res) -> { });
+
+        MockHttpServletRequest registerRequest = new MockHttpServletRequest("POST", "/v2/auth/register");
+        registerRequest.setServletPath("/v2/auth/register");
+        registerRequest.setRemoteAddr("203.0.113.5");
+        filter.doFilter(registerRequest, new MockHttpServletResponse(), (req, res) -> { });
+
+        org.mockito.ArgumentCaptor<java.util.List<String>> keysCaptor = org.mockito.ArgumentCaptor.forClass(java.util.List.class);
+        org.mockito.Mockito.verify(redisTemplate, org.mockito.Mockito.times(2))
+                .execute(any(RedisScript.class), keysCaptor.capture(), any(), any(), any(), any());
+        java.util.List<java.util.List<String>> capturedKeys = keysCaptor.getAllValues();
+        assertThat(capturedKeys.get(0)).isNotEqualTo(capturedKeys.get(1));
     }
 
     @Test

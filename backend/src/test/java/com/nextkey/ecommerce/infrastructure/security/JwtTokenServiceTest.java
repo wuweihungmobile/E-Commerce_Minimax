@@ -45,6 +45,18 @@ class JwtTokenServiceTest {
         jwtTokenService = new JwtTokenService(TEST_SECRET, ACCESS_TOKEN_EXPIRATION, REFRESH_TOKEN_EXPIRATION);
     }
 
+    // ── DEF-251（Sprint 183）：拒絕使用寫在原始碼中的預設密鑰啟動 ──────────────
+
+    @Test
+    @DisplayName("🔴 DEF-251：建構子帶入 application.yml 的預設密鑰字串 → 拒絕建立，fail-fast")
+    void constructor_withInsecureDefaultSecret_throwsIllegalStateException() {
+        assertThatThrownBy(() -> new JwtTokenService(
+                "your-256-bit-secret-key-change-in-production-min-32-chars",
+                ACCESS_TOKEN_EXPIRATION, REFRESH_TOKEN_EXPIRATION))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("JWT_SECRET");
+    }
+
     // ── UT-M03-006: JWT Token產生-payload正確 ──────────────────────────
 
     @Test

@@ -26,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.nextkey.ecommerce.api.controller.knowledge.ArticleVersionController;
 import com.nextkey.ecommerce.api.controller.knowledge.KnowledgeArticleController;
+import com.nextkey.ecommerce.api.dto.knowledge.ArticleVersionDto;
 import com.nextkey.ecommerce.api.dto.knowledge.KnowledgeArticleDto;
 import com.nextkey.ecommerce.core.knowledge.KnowledgeBaseService;
 import com.nextkey.ecommerce.domain.model.knowledge.ArticleVersion;
@@ -71,14 +72,15 @@ public class M18KnowledgePhase2IntegrationTest {
     private RolePermissionMapping rolePermissionMapping;
 
     private UUID articleId;
-    private ArticleVersion testVersion;
+    private ArticleVersionDto testVersion;
 
     @BeforeEach
     void setUp() {
         articleId = UUID.randomUUID();
 
-        testVersion = ArticleVersion.builder()
+        testVersion = ArticleVersionDto.builder()
                 .id(UUID.randomUUID())
+                .articleId(articleId)
                 .versionNumber(1)
                 .title("Version 1")
                 .content("Content version 1")
@@ -92,7 +94,7 @@ public class M18KnowledgePhase2IntegrationTest {
     @DisplayName("AC-001: 可以查看文章的版本歷史")
     @WithMockUser(authorities = {"knowledge:read"})
     void getArticleVersions_success() throws Exception {
-        Page<ArticleVersion> versionPage = new PageImpl<>(
+        Page<ArticleVersionDto> versionPage = new PageImpl<>(
                 List.of(testVersion),
                 PageRequest.of(0, 20),
                 1

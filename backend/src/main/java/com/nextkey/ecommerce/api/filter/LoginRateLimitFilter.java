@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.api.filter;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.Set;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -26,14 +27,22 @@ import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 登入端點每來源 IP 限流（Sprint 168，DEF-220）。
+ * 登入/註冊端點每來源 IP 限流（Sprint 168，DEF-220；Sprint 183，DEF-250 擴大覆蓋註冊端點）。
  *
  * <p>背景：{@link RateLimitFilter} 的每租戶限流刻意排除整個 {@code /v2/auth/**}（登入前無租戶
  * 身分可綁定），導致 {@code POST /v2/auth/login} 完全沒有任何節流機制——這是 Sprint 93 當時的
- * 工程範圍決策，未評估其安全後果。此 Filter 專門補上這個缺口，只套用在登入端點本身，以來源 IP
- * 為維度（與 {@link com.nextkey.ecommerce.infrastructure.security.LoginAttemptService} 的
- * per-account 鎖定互為雙層防護：IP 節流先擋掉高速自動化攻擊，帳號鎖定則防止攻擊者跨多個 IP
- * 輪流對同一帳號慢速嘗試）。
+ * 工程範圍決策，未評估其安全後果。此 Filter 專門補上這個缺口，以來源 IP 為維度（與
+ * {@link com.nextkey.ecommerce.infrastructure.security.LoginAttemptService} 的 per-account
+ * 鎖定互為雙層防護：IP 節流先擋掉高速自動化攻擊，帳號鎖定則防止攻擊者跨多個 IP 輪流對同一帳號
+ * 慢速嘗試）。
+ *
+ * <p><b>DEF-250（Sprint 183）</b>：{@code POST /v2/auth/register} 先前與登入端點同樣被
+ * {@code RateLimitFilter} 排除，卻不像登入端點有 {@code LoginAttemptService} 這層帳號鎖定
+ * 補防——完全沒有任何節流，可被用來無限速率枚舉任意 email 是否已註冊（`E_1005` vs 成功
+ * 回應的差異）、或發動 bcrypt 雜湊運算成本高的 CPU 資源耗盡攻擊、或無限量灌入垃圾帳號。
+ * 比照登入端點的既有判準（30/分鐘已足以涵蓋合法的共用 IP/NAT 併發情境，又遠低於真正自動化
+ * 攻擊的量級），一併套用相同容量，改以「路徑+IP」而非單純 IP 作為 Redis key 維度，讓登入與
+ * 註冊的配額互相獨立（登入 burst 不會誤耗盡註冊配額，反之亦然）。
  *
  * <p>本專案沒有反向代理／CDN 在前端終止連線（見 {@code docker-compose.yml} 無 nginx/traefik
  * service），故直接信任 {@link HttpServletRequest#getRemoteAddr()} 作為真實來源 IP；刻意不採信
@@ -56,8 +65,10 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 public class LoginRateLimitFilter extends OncePerRequestFilter {
 
-    private static final String KEY_PREFIX = "ratelimit:login_ip:";
+    private static final String KEY_PREFIX = "ratelimit:auth_ip:";
     private static final String LOGIN_PATH = "/v2/auth/login";
+    private static final String REGISTER_PATH = "/v2/auth/register";
+    private static final Set<String> RATE_LIMITED_PATHS = Set.of(LOGIN_PATH, REGISTER_PATH);
     private static final double CAPACITY = 30.0;
     private static final double WINDOW_MS = 60_000.0;
     private static final double REFILL_PER_MS = CAPACITY / WINDOW_MS;
@@ -123,12 +134,13 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
         }
 
         String clientIp = request.getRemoteAddr();
+        String rateLimitKey = KEY_PREFIX + request.getServletPath() + ":" + clientIp;
 
         String result;
         try {
             result = redisTemplate.execute(
                     RATE_LIMIT_SCRIPT,
-                    Collections.singletonList(KEY_PREFIX + clientIp),
+                    Collections.singletonList(rateLimitKey),
                     String.valueOf(CAPACITY),
                     String.valueOf(REFILL_PER_MS),
                     String.valueOf(System.currentTimeMillis()),
@@ -156,8 +168,8 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.getWriter().write(objectMapper.writeValueAsString(
                     ApiResponse.error(ErrorCode.E_9904.getCode(), ErrorCode.E_9904.getMessage())));
-            log.warn("[LoginRateLimitFilter] IP {} exceeded login rate limit, retry after {}s",
-                    clientIp, retryAfterSeconds);
+            log.warn("[LoginRateLimitFilter] IP {} exceeded rate limit on {}, retry after {}s",
+                    clientIp, request.getServletPath(), retryAfterSeconds);
             return;
         }
 
@@ -166,6 +178,6 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(final HttpServletRequest request) {
-        return !(HttpMethod.POST.matches(request.getMethod()) && LOGIN_PATH.equals(request.getServletPath()));
+        return !(HttpMethod.POST.matches(request.getMethod()) && RATE_LIMITED_PATHS.contains(request.getServletPath()));
     }
 }

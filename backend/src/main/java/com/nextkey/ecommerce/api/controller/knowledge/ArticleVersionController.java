@@ -13,9 +13,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
+import com.nextkey.ecommerce.api.dto.knowledge.ArticleVersionDto;
 import com.nextkey.ecommerce.api.dto.knowledge.KnowledgeArticleDto;
 import com.nextkey.ecommerce.core.knowledge.KnowledgeBaseService;
-import com.nextkey.ecommerce.domain.model.knowledge.ArticleVersion;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,11 +36,11 @@ public class ArticleVersionController {
      */
     @GetMapping("/{articleId}/versions")
     @PreAuthorize("hasAuthority('knowledge:read')")
-    public ResponseEntity<ApiResponse<Page<ArticleVersion>>> getArticleVersions(
+    public ResponseEntity<ApiResponse<Page<ArticleVersionDto>>> getArticleVersions(
             @PathVariable UUID articleId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Page<ArticleVersion> versions = knowledgeBaseService.getArticleVersions(articleId, page, size);
+        Page<ArticleVersionDto> versions = knowledgeBaseService.getArticleVersions(articleId, page, size);
         return ResponseEntity.ok(ApiResponse.success(versions));
     }
 
@@ -49,10 +49,10 @@ public class ArticleVersionController {
      */
     @GetMapping("/{articleId}/versions/{versionNumber}")
     @PreAuthorize("hasAuthority('knowledge:read')")
-    public ResponseEntity<ApiResponse<ArticleVersion>> getArticleVersion(
+    public ResponseEntity<ApiResponse<ArticleVersionDto>> getArticleVersion(
             @PathVariable UUID articleId,
             @PathVariable Integer versionNumber) {
-        ArticleVersion version = knowledgeBaseService.getArticleVersion(articleId, versionNumber);
+        ArticleVersionDto version = knowledgeBaseService.getArticleVersion(articleId, versionNumber);
         return ResponseEntity.ok(ApiResponse.success(version));
     }
 

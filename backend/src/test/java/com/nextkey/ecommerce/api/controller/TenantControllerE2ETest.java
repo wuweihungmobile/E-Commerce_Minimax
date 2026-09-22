@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.api.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.*;
@@ -64,6 +65,9 @@ class TenantControllerE2ETest {
 
     @Autowired
     private TenantMemberRepository tenantMemberRepository;
+
+    @Autowired
+    private TenantFeatureToggleRepository tenantFeatureToggleRepository;
 
     private static final String BASE_URL = "/v2";
     private static final String TEST_PASSWORD = "SecurePass123!";
@@ -846,9 +850,20 @@ class TenantControllerE2ETest {
                     .then()
                     .statusCode(200)
                     .body("success", is(true))
-                    .body("data.status", equalTo("PENDING_APPROVAL"));
+                    .body("data.status", equalTo("PENDING_APPROVAL"))
+                    // DEF-247：先前本測試只斷言回應文字，未驗證實際落地狀態——舊程式碼雖回應
+                    // PENDING_APPROVAL，isEnabled 卻已被直接寫入 true，等同店主自助跳過平台審核。
+                    // 補上 newState 與下方 DB 直查斷言，確保回應文字與實際狀態一致。
+                    .body("data.newState", is(false));
 
-            System.out.println("✅ API-M17-011 PASSED: StoreOwner 申請功能開關成功");
+            // DEF-247：直查 DB，證明「需審核功能」在店主自助申請後，isEnabled 仍確實維持
+            // false（真正待審核），而非只有回應文字聲稱如此。
+            TenantFeatureToggle toggle = tenantFeatureToggleRepository
+                    .findByTenantIdAndFeatureKey(testTenant.getId(), "DYNAMIC_PRICING_ENABLED")
+                    .orElseThrow();
+            org.assertj.core.api.Assertions.assertThat(toggle.getIsEnabled()).isFalse();
+
+            System.out.println("✅ API-M17-011 PASSED: StoreOwner 申請功能開關成功，且未繞過審核直接啟用");
         } finally {
             cleanupTenantData(testTenant.getId(), testUser.getId());
         }

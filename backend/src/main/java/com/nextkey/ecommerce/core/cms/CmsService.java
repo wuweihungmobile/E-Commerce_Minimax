@@ -139,7 +139,16 @@ public class CmsService {
 
     private void updatePageStatusFields(ContentPage page, CmsDto.UpdatePageRequest request) {
         if (request.getStatus() != null) {
-            page.setStatus(ContentPage.ContentStatus.valueOf(request.getStatus().name()));
+            ContentPage.ContentStatus newStatus = ContentPage.ContentStatus.valueOf(request.getStatus().name());
+            // Sprint 182（DEF-246）：cms:update（SELLER/HOST/STORE_OWNER/STORE_STAFF 皆持有）先前可
+            // 藉此欄位直接把頁面轉為 PUBLISHED，完全繞過刻意分層、只給 OWNER+ADMIN 的 cms:publish
+            // 權限（見上方 CMS_* 權限註解、PublishPage 端點）。改為 PUBLISHED 一律拒絕，須改呼叫
+            // POST /v2/cms/pages/{id}/publish；DRAFT/ARCHIVED 等非 publish-tier 狀態不受影響。
+            if (newStatus == ContentPage.ContentStatus.PUBLISHED) {
+                throw new BusinessException(ErrorCode.E_1007,
+                        "Publishing requires cms:publish permission, use the publish endpoint instead");
+            }
+            page.setStatus(newStatus);
         }
         if (request.getIsIndexable() != null) {
             page.setIsIndexable(request.getIsIndexable());
@@ -325,7 +334,15 @@ public class CmsService {
 
     private void updateBannerStatusFields(Banner banner, CmsDto.UpdateBannerRequest request) {
         if (request.getStatus() != null) {
-            banner.setStatus(Banner.BannerStatus.valueOf(request.getStatus().name()));
+            Banner.BannerStatus newStatus = Banner.BannerStatus.valueOf(request.getStatus().name());
+            // Sprint 182（DEF-246）：比照 updatePageStatusFields，cms:update 持有者先前可藉此欄位
+            // 繞過 cms:publish 直接發布橫幅。PUBLISHED 一律拒絕，須改呼叫
+            // POST /v2/cms/banners/{id}/publish。
+            if (newStatus == Banner.BannerStatus.PUBLISHED) {
+                throw new BusinessException(ErrorCode.E_1007,
+                        "Publishing requires cms:publish permission, use the publish endpoint instead");
+            }
+            banner.setStatus(newStatus);
         }
         if (request.getMetadata() != null) {
             banner.setMetadata(request.getMetadata());

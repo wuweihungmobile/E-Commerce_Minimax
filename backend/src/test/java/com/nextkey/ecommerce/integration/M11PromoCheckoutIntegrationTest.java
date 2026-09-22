@@ -65,6 +65,8 @@ class M11PromoCheckoutIntegrationTest {
     @Autowired private PromoCodeRepository promoCodeRepository;
     @Autowired private PromoCodeUsageRepository promoCodeUsageRepository;
     @Autowired private ShippingTemplateRepository shippingTemplateRepository;
+    @Autowired private com.nextkey.ecommerce.domain.repository.UserRepository userRepository;
+    @Autowired private com.nextkey.ecommerce.domain.repository.TenantMemberRepository tenantMemberRepository;
 
     @MockBean private com.nextkey.ecommerce.core.feature.FeatureToggleService featureToggleService;
 
@@ -131,13 +133,28 @@ class M11PromoCheckoutIntegrationTest {
                 .build());
     }
 
+    /**
+     * DEF-244：{@code RegisterRequest} 已移除 {@code tenantId} 欄位——先前帶入任一已存在的租戶
+     * UUID 就能讓公開註冊端點無條件寫入一筆 {@code storeRole=STORE_OWNER} 的真實 tenant_members
+     * 紀錄，等同任何未登入訪客都能奪取任一店鋪的管理權限。改為註冊後直接寫入 tenant_members
+     * （測試專用的既有正確建立管道，比照 {@code AuthControllerE2ETest} 用 repository 直接建構
+     * STORE_OWNER 的手法），登入時 {@code AuthService.resolveTenantForUser} 才會依此關聯解析出
+     * 正確的 tenantId 寫入 JWT。
+     */
     private String registerAndLogin(final String email, final String fullName, final String userType) {
         given().contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(RegisterRequest.builder()
                         .email(email).password(TEST_PASSWORD).fullName(fullName)
-                        .userType(userType).tenantId(tenantId).build())
+                        .userType(userType).build())
                 .when().post(AUTH_URL + "/register")
                 .then().statusCode(201);
+
+        UUID userId = userRepository.findByEmail(email).orElseThrow().getId();
+        tenantMemberRepository.save(com.nextkey.ecommerce.domain.model.tenant.TenantMember.builder()
+                .tenantId(tenantId)
+                .userId(userId)
+                .storeRole(com.nextkey.ecommerce.domain.model.tenant.TenantMember.StoreRole.STORE_OWNER)
+                .build());
 
         return given().contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(LoginRequest.builder().email(email).password(TEST_PASSWORD).build())

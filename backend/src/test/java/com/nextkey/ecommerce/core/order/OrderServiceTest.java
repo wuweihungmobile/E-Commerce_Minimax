@@ -1009,15 +1009,17 @@ class OrderServiceTest {
     // 放行，越權回 403/E_1007，且置於狀態機檢查之前。
 
     @Test
-    @DisplayName("updateOrderStatus：合法轉換 CREATED→PAID → 成功並記錄狀態日誌")
-    void updateOrderStatus_validTransition() {
+    @DisplayName("updateOrderStatus：系統觸發（付款子系統）CREATED→PAID → 成功並記錄狀態日誌")
+    void updateOrderStatus_systemTriggeredPaidTransition_succeedsAndLogsState() {
+        // DEF-245：PAID 屬付款子系統專屬狀態，僅 PaymentService 以 systemTriggered=true 呼叫
+        // 才能成功轉換，比照 PaymentService.processOrderPayment 的真實呼叫方式。
         TenantContext.setCurrentUser(USER_ID);
         Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
         when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CREATED, Order.OrderStatus.PAID))
                 .thenReturn(1);
 
-        OrderDto.OrderResponse response = orderService.updateOrderStatus(ORDER_ID, "PAID", "buyer paid");
+        OrderDto.OrderResponse response = orderService.updateOrderStatus(ORDER_ID, "PAID", "buyer paid", true);
 
         assertThat(response.getStatus()).isEqualTo("PAID");
         ArgumentCaptor<OrderStateLog> logCaptor = ArgumentCaptor.forClass(OrderStateLog.class);
@@ -1025,6 +1027,35 @@ class OrderServiceTest {
         assertThat(logCaptor.getValue().getFromStatus()).isEqualTo("CREATED");
         assertThat(logCaptor.getValue().getToStatus()).isEqualTo("PAID");
         assertThat(logCaptor.getValue().getReason()).isEqualTo("buyer paid");
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-245：非系統觸發（PATCH /v2/orders/{id}/status 外部端點）直接指定 PAID"
+            + " → E_5001，不得繞過付款子系統偽造已付款")
+    void updateOrderStatus_externalCallTargetingPaid_throwsE5001() {
+        TenantContext.setCurrentUser(USER_ID);
+        Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> orderService.updateOrderStatus(ORDER_ID, "PAID", "forged payment"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_5001);
+        verify(orderRepository, never()).updateStatusIfCurrent(any(), any(), any());
+        verify(orderStateLogRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-245：非系統觸發直接指定 REFUNDED → E_5001，不得繞過付款子系統偽造已退款")
+    void updateOrderStatus_externalCallTargetingRefunded_throwsE5001() {
+        TenantContext.setCurrentUser(USER_ID);
+        Order order = orderOf(USER_ID, Order.OrderStatus.REFUNDING);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> orderService.updateOrderStatus(ORDER_ID, "REFUNDED", "forged refund"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_5001);
+        verify(orderRepository, never()).updateStatusIfCurrent(any(), any(), any());
+        verify(orderStateLogRepository, never()).save(any());
     }
 
     @Test
@@ -1103,32 +1134,51 @@ class OrderServiceTest {
     }
 
     @Test
-    @DisplayName("updateOrderStatus：admin 跨租戶放行（續走狀態機邏輯）")
+    @DisplayName("updateOrderStatus：admin 跨租戶放行（續走狀態機邏輯，以非付款狀態驗證租戶檢查本身）")
     void updateOrderStatus_admin_bypassesTenant() {
+        TenantContext.setCurrentUser(OTHER_USER_ID);
+        TenantContext.setCurrentTenant(OTHER_TENANT_ID);
+        asAdmin();
+        Order order = orderOf(USER_ID, Order.OrderStatus.CONFIRMED);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CONFIRMED, Order.OrderStatus.SHIPPING))
+                .thenReturn(1);
+
+        OrderDto.OrderResponse response = orderService.updateOrderStatus(ORDER_ID, "SHIPPING", "admin ships on seller's behalf");
+
+        assertThat(response.getStatus()).isEqualTo("SHIPPING");
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-245：即使 admin 跨租戶放行租戶檢查，仍不得透過此端點直接偽造 PAID"
+            + "（經使用者拍板：完全封鎖，無角色例外）")
+    void updateOrderStatus_admin_cannotForgePaidStatus() {
         TenantContext.setCurrentUser(OTHER_USER_ID);
         TenantContext.setCurrentTenant(OTHER_TENANT_ID);
         asAdmin();
         Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
-        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CREATED, Order.OrderStatus.PAID))
-                .thenReturn(1);
 
-        OrderDto.OrderResponse response = orderService.updateOrderStatus(ORDER_ID, "PAID", "admin override");
-
-        assertThat(response.getStatus()).isEqualTo("PAID");
+        assertThatThrownBy(() -> orderService.updateOrderStatus(ORDER_ID, "PAID", "admin override"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_5001);
+        verify(orderRepository, never()).updateStatusIfCurrent(any(), any(), any());
     }
 
     @Test
     @DisplayName("🔴 updateOrderStatus：併發搶佔（updateStatusIfCurrent 影響 0 列，例如另一併發請求"
             + "已把同一訂單轉去別的下一步狀態）-> E_5001，不視為成功")
     void updateOrderStatus_concurrentClaim_throwsE5001() {
+        // DEF-245：改用 systemTriggered=true（比照 PaymentService 真實呼叫方式），確保本測試
+        // 驗證的是 updateStatusIfCurrent 併發搶佔邏輯本身，而非被 PAID 的外部呼叫限制先行擋下
+        // （兩者剛好同為 E_5001，若不區分會誤以為測試通過，實際上已測不到原本要驗證的行為）。
         TenantContext.setCurrentUser(USER_ID);
         Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
         when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CREATED, Order.OrderStatus.PAID))
                 .thenReturn(0);
 
-        assertThatThrownBy(() -> orderService.updateOrderStatus(ORDER_ID, "PAID", "buyer paid"))
+        assertThatThrownBy(() -> orderService.updateOrderStatus(ORDER_ID, "PAID", "buyer paid", true))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_5001);
         verify(orderStateLogRepository, never()).save(any());

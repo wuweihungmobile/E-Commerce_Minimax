@@ -62,6 +62,12 @@ class M11CartPromoIntegrationTest {
     @Autowired
     private TenantRepository tenantRepository;
 
+    @Autowired
+    private com.nextkey.ecommerce.domain.repository.UserRepository userRepository;
+
+    @Autowired
+    private com.nextkey.ecommerce.domain.repository.TenantMemberRepository tenantMemberRepository;
+
     @MockBean
     private PromoService promoService;
 
@@ -107,6 +113,9 @@ class M11CartPromoIntegrationTest {
             testTenantId = testTenant.getId();
 
             // 註冊 SELLER 用戶
+            // DEF-244：RegisterRequest 已移除 tenantId 欄位（先前帶入任一已存在租戶 UUID 就能讓
+            // 公開註冊端點無條件寫入 STORE_OWNER 成員紀錄，等同任何未登入訪客可奪取任一店鋪）。
+            // 改為註冊後直接寫入 tenant_members，登入時才會依此關聯解析出正確的 tenantId。
             given()
                     .contentType(MediaType.APPLICATION_JSON_VALUE)
                     .body(RegisterRequest.builder()
@@ -114,12 +123,16 @@ class M11CartPromoIntegrationTest {
                             .password(TEST_PASSWORD)
                             .fullName("Promo Seller")
                             .userType("SELLER")
-                            .tenantId(testTenantId)
                             .build())
                     .when()
                     .post(AUTH_URL + "/register")
                     .then()
                     .statusCode(201);
+            tenantMemberRepository.save(com.nextkey.ecommerce.domain.model.tenant.TenantMember.builder()
+                    .tenantId(testTenantId)
+                    .userId(userRepository.findByEmail(sellerEmail).orElseThrow().getId())
+                    .storeRole(com.nextkey.ecommerce.domain.model.tenant.TenantMember.StoreRole.STORE_OWNER)
+                    .build());
 
             // SELLER 登入
             sellerToken = given()
@@ -135,7 +148,7 @@ class M11CartPromoIntegrationTest {
                     .extract()
                     .path("data.accessToken");
 
-            // 註冊 BUYER 用戶
+            // 註冊 BUYER 用戶（DEF-244：同上，改為註冊後直接寫入 tenant_members）
             given()
                     .contentType(MediaType.APPLICATION_JSON_VALUE)
                     .body(RegisterRequest.builder()
@@ -143,12 +156,16 @@ class M11CartPromoIntegrationTest {
                             .password(TEST_PASSWORD)
                             .fullName("Promo Buyer")
                             .userType("BUYER")
-                            .tenantId(testTenantId)
                             .build())
                     .when()
                     .post(AUTH_URL + "/register")
                     .then()
                     .statusCode(201);
+            tenantMemberRepository.save(com.nextkey.ecommerce.domain.model.tenant.TenantMember.builder()
+                    .tenantId(testTenantId)
+                    .userId(userRepository.findByEmail(buyerEmail).orElseThrow().getId())
+                    .storeRole(com.nextkey.ecommerce.domain.model.tenant.TenantMember.StoreRole.STORE_OWNER)
+                    .build());
 
             // BUYER 登入
             buyerToken = given()

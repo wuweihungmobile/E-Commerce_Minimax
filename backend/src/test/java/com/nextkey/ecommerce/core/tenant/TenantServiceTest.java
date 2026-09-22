@@ -6,6 +6,7 @@ import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantApplication;
+import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.*;
@@ -553,6 +554,49 @@ class TenantServiceTest {
             verify(auditService).record(eq("FEATURE_TOGGLE_SELF_SERVICE_UPDATED"), eq("FEATURE_TOGGLE"),
                     eq(TEST_TENANT_ID), eq(TEST_TENANT_ID),
                     eq("RETAIL_ENABLED=true"), eq("RETAIL_ENABLED=false"), isNull(), eq(TEST_USER_ID));
+        }
+
+        @Test
+        @DisplayName("🔴 DEF-247：需審核功能（DYNAMIC_PRICING_ENABLED）店主自助申請啟用"
+                + " → isEnabled 實際仍寫入 false（真正待審核，非直接生效）")
+        void updateFeatureToggle_requiresApprovalFeature_newRequest_staysDisabled() {
+            when(tenantMemberRepository.existsByTenantIdAndUserId(TEST_TENANT_ID, TEST_USER_ID)).thenReturn(true);
+            when(tenantFeatureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "DYNAMIC_PRICING_ENABLED"))
+                    .thenReturn(Optional.empty());
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TEST_TENANT_ID).build()));
+            when(tenantFeatureToggleRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            FeatureToggleUpdateResponse response =
+                    tenantService.updateFeatureToggle(TEST_TENANT_ID, "DYNAMIC_PRICING_ENABLED", true);
+
+            assertEquals("PENDING_APPROVAL", response.getStatus());
+            // 修復前此處會是 true——回應文字說「待審核」但實際已直接生效，即店主自助繞過平台審核。
+            assertEquals(false, response.getNewState());
+
+            ArgumentCaptor<TenantFeatureToggle> captor = ArgumentCaptor.forClass(TenantFeatureToggle.class);
+            verify(tenantFeatureToggleRepository).saveAndFlush(captor.capture());
+            assertEquals(false, captor.getValue().getIsEnabled());
+        }
+
+        @Test
+        @DisplayName("updateFeatureToggle：需審核功能已啟用中，重複確認 enabled=true → 維持已啟用"
+                + "（不因本次修法而誤將既有已啟用功能打回未啟用）")
+        void updateFeatureToggle_requiresApprovalFeature_alreadyEnabled_staysEnabled() {
+            when(tenantMemberRepository.existsByTenantIdAndUserId(TEST_TENANT_ID, TEST_USER_ID)).thenReturn(true);
+            TenantFeatureToggle existing = TenantFeatureToggle.builder()
+                    .tenant(Tenant.builder().id(TEST_TENANT_ID).build())
+                    .featureKey("DYNAMIC_PRICING_ENABLED")
+                    .isEnabled(true)
+                    .build();
+            when(tenantFeatureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "DYNAMIC_PRICING_ENABLED"))
+                    .thenReturn(Optional.of(existing));
+            when(tenantFeatureToggleRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            FeatureToggleUpdateResponse response =
+                    tenantService.updateFeatureToggle(TEST_TENANT_ID, "DYNAMIC_PRICING_ENABLED", true);
+
+            assertEquals(true, response.getNewState());
+            assertEquals(true, existing.getIsEnabled());
         }
 
         @Test

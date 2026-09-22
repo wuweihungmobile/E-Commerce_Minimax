@@ -461,13 +461,24 @@ public class TenantService {
 
         Boolean previousState = toggle != null ? toggle.getIsEnabled() : featureDef.booleanDefault;
         boolean isNewToggle = toggle == null;
-        toggle = isNewToggle ? buildNewFeatureToggle(tenantId, featureKey, enabled) : toggle;
+
+        // Sprint 182（DEF-247）：先前無論 requiresApproval 為何，isEnabled 一律直接寫入呼叫端要求的
+        // enabled 值——回應的 status/statusDescription 會誠實顯示 PENDING_APPROVAL，但 DB 裡的
+        // isEnabled 其實已經是 true，且目前系統完全沒有任何管理員審核/核准端點會把它改回來，等同店主
+        // 自助就能啟用刻意標記需平台審核的功能（DYNAMIC_PRICING_ENABLED/PROMO_ENABLED/
+        // BOOKING_ENABLED），回應文字則謊稱「尚待審核」。修法：僅在「需審核 且 此次為新啟用要求
+        // （非重複確認已啟用中）」時，實際寫入值改為 false（真正保持未啟用），讓回應文字與實際狀態
+        // 一致；停用（enabled=false）與不需審核的功能不受影響，沿用原行為。
+        boolean pendingApproval = featureDef.requiresApproval && enabled && !previousState;
+        boolean effectiveEnabled = !pendingApproval && enabled;
+
+        toggle = isNewToggle ? buildNewFeatureToggle(tenantId, featureKey, effectiveEnabled) : toggle;
         if (!isNewToggle) {
-            toggle.setIsEnabled(enabled);
+            toggle.setIsEnabled(effectiveEnabled);
         }
 
         // If enabling, set enabledAt; if disabling, set disabledAt
-        if (enabled && !previousState) {
+        if (effectiveEnabled && !previousState) {
             toggle.setEnabledAt(Instant.now());
         }
 

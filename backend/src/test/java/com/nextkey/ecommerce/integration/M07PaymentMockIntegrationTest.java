@@ -31,6 +31,7 @@ import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -99,7 +100,8 @@ class M07PaymentMockIntegrationTest {
 
         // Mock OrderService
         // 注意: updateOrderStatus 回傳 OrderResponse (非 void),改用 doReturn() 而非 doNothing()
-        lenient().doReturn(null).when(orderService).updateOrderStatus(any(), anyString(), anyString());
+        // DEF-245：PaymentService 改呼叫 4 參數版本（systemTriggered=true）
+        lenient().doReturn(null).when(orderService).updateOrderStatus(any(), anyString(), anyString(), anyBoolean());
 
         // 建立測試租戶
         if (testTenantId == null) {

@@ -228,6 +228,21 @@ class CmsServiceTest {
         assertThat(response.getTitle()).isEqualTo("Admin Edit");
     }
 
+    @Test
+    @DisplayName("🔴 DEF-246：updatePage 不得藉由 status=PUBLISHED 繞過 cms:publish 權限分層"
+            + "（須改走 publishPage 端點）→ E_1007")
+    void updatePage_statusPublished_mustBeRejected() {
+        TenantContext.setCurrentTenant(TENANT_A);
+        ContentPage page = pageOf(TENANT_A, ContentPage.ContentStatus.DRAFT);
+        when(contentPageRepository.findById(PAGE_ID)).thenReturn(Optional.of(page));
+
+        assertThatThrownBy(() -> cmsService.updatePage(PAGE_ID,
+                CmsDto.UpdatePageRequest.builder().status(CmsDto.ContentStatus.PUBLISHED).build()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1007);
+        verify(contentPageRepository, never()).save(any());
+    }
+
     // ========== publishPage ==========
 
     @Test
@@ -416,6 +431,21 @@ class CmsServiceTest {
 
         assertThatThrownBy(() -> cmsService.updateBanner(BANNER_ID,
                 CmsDto.UpdateBannerRequest.builder().title("Hacked").build()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1007);
+        verify(bannerRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-246：updateBanner 不得藉由 status=PUBLISHED 繞過 cms:publish 權限分層"
+            + "（須改走 publishBanner 端點）→ E_1007")
+    void updateBanner_statusPublished_mustBeRejected() {
+        TenantContext.setCurrentTenant(TENANT_A);
+        Banner banner = bannerOf(TENANT_A, Banner.BannerStatus.DRAFT);
+        when(bannerRepository.findById(BANNER_ID)).thenReturn(Optional.of(banner));
+
+        assertThatThrownBy(() -> cmsService.updateBanner(BANNER_ID,
+                CmsDto.UpdateBannerRequest.builder().status(CmsDto.ContentStatus.PUBLISHED).build()))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_1007);
         verify(bannerRepository, never()).save(any());

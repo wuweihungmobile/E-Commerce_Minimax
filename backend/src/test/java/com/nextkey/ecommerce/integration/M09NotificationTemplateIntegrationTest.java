@@ -143,10 +143,9 @@ class M09NotificationTemplateIntegrationTest {
             {
                 "email": "%s",
                 "password": "%s",
-                "fullName": "Notification Auth User",
-                "tenantId": "%s"
+                "fullName": "Notification Auth User"
             }
-            """, email, TEST_PASSWORD, testTenantId);
+            """, email, TEST_PASSWORD);
 
         mockMvc.perform(post("/v2/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -157,8 +156,14 @@ class M09NotificationTemplateIntegrationTest {
         // （notification_template:*，見 RolePermissionMapping）。此處提升為 STORE_OWNER 後再登入，
         // 讓 JWT 的 role claim（來自 User.role）帶出真實的店主授權，測試才會走生產授權路徑。
         // 先前這些測試之所以會過，是因為測試固件把 notification_template:* 錯掛在 BUYER 底下。
+        //
+        // Sprint 182（DEF-244）：註冊請求不再接受呼叫端自帶的 tenantId（任何人皆可偽造租戶 UUID
+        // 取得該租戶的店主權限，見 AuthService/RegisterRequest 修復）。測試改為註冊後直接透過
+        // repository 賦予 testTenantId，比照本檔既有的角色提升手法，維持測試對「真實生產授權路徑」
+        // 的驗證意圖，同時不再依賴已移除的不安全機制。
         User registered = userRepository.findByEmail(email).orElseThrow();
         registered.setRole(User.UserRole.STORE_OWNER);
+        registered.setTenantId(testTenantId);
         userRepository.save(registered);
 
         // 登入獲取 token

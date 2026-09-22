@@ -126,11 +126,12 @@ class AuthServiceTest {
         }
 
         @Test
-        @DisplayName("register_withTenantId_createsTenantMemberAssociation")
-        void register_withTenantId_createsTenantMemberAssociation() {
+        @DisplayName("DEF-244: register 不再接受 tenantId，不得建立任何租戶關聯（防止未登入訪客透過"
+                + "公開註冊端點奪取任一店鋪的 STORE_OWNER 權限）")
+        void register_doesNotCreateAnyTenantAssociation() {
             RegisterRequest request = RegisterRequest.builder()
                     .email("store@example.com").password("Password123!")
-                    .tenantId(TENANT_ID).build();
+                    .userType("SELLER").build();
             when(userRepository.existsByEmail("store@example.com")).thenReturn(false);
             when(passwordEncoder.encode(any())).thenReturn("hashed");
             when(userRepository.save(any())).thenAnswer(inv -> {
@@ -138,12 +139,11 @@ class AuthServiceTest {
                 u.setId(USER_ID);
                 return u;
             });
-            when(tenantRepository.findById(TENANT_ID))
-                    .thenReturn(Optional.of(Tenant.builder().id(TENANT_ID).name("Test Tenant").build()));
 
             authService.register(request);
 
-            verify(tenantMemberRepository).save(any());
+            verify(tenantMemberRepository, never()).save(any());
+            verify(tenantRepository, never()).findById(any());
         }
     }
 

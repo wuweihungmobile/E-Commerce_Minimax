@@ -1,7 +1,5 @@
 package com.nextkey.ecommerce.api.dto;
 
-import java.util.UUID;
-
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -37,10 +35,16 @@ public class RegisterRequest {
 
     private String phone;
 
-    /** 會員類型：BUYER / SELLER / HOST / STORE_OWNER / STORE_STAFF，預設 BUYER */
-    @Pattern(regexp = "^(BUYER|SELLER|HOST|STORE_OWNER|STORE_STAFF)$", message = "userType must be BUYER, SELLER, HOST, STORE_OWNER, or STORE_STAFF")
+    /**
+     * 會員類型：BUYER / SELLER / HOST，預設 BUYER。
+     *
+     * <p>DEF-244：先前也接受 STORE_OWNER/STORE_STAFF，且另有一個 {@code tenantId} 欄位——只要
+     * 帶入任一已存在的租戶 UUID，{@code AuthService.register} 會無條件在 tenant_members 寫入一筆
+     * {@code storeRole=STORE_OWNER} 的真實成員紀錄，等同任何未經驗證的訪客都能透過這個完全公開、
+     * 無需登入的端點直接奪取任一店鋪的真實管理權限。STORE_OWNER 只能透過既有的
+     * {@code TenantApplicationRequest} → {@code AdminService.approveTenantApplication}
+     * 審核流程取得；STORE_STAFF 只能透過既有店主的邀請流程加入，皆不應由此公開端點直接授予。
+     */
+    @Pattern(regexp = "^(BUYER|SELLER|HOST)$", message = "userType must be BUYER, SELLER, or HOST")
     private String userType;
-
-    /** 關聯的 Tenant ID（可選） */
-    private UUID tenantId;
 }

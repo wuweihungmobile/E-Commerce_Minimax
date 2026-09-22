@@ -5,7 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.RefreshTokenRequest;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
+import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
@@ -51,6 +54,12 @@ class AuthControllerE2ETest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private TenantRepository tenantRepository;
+
+    @Autowired
+    private TenantMemberRepository tenantMemberRepository;
 
     @Autowired
     private JwtTokenService jwtTokenService;
@@ -545,6 +554,75 @@ class AuthControllerE2ETest {
             System.out.println("✅ AI-2428-003 PASSED: 非 BUYER 角色拒絕自助刪除");
         } finally {
             cleanupUser(email);
+        }
+    }
+
+    // ── DEF-244: 公開註冊端點先前可被用來奪取任一店鋪的 STORE_OWNER 權限 ──
+
+    @Test
+    @Order(14)
+    @DisplayName("DEF-244: POST /v2/auth/register - userType=STORE_OWNER 應被拒絕，返回 400")
+    void register_storeOwnerUserType_returns400() {
+        String email = uniqueEmail();
+
+        // 修復前：STORE_OWNER 是合法的 userType，本斷言會失敗（實際回 201）。
+        given()
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(RegisterRequest.builder()
+                        .email(email)
+                        .password(TEST_PASSWORD)
+                        .userType("STORE_OWNER")
+                        .build())
+                .when()
+                .post(BASE_URL + "/register")
+                .then()
+                .statusCode(400);
+
+        org.assertj.core.api.Assertions.assertThat(userRepository.findByEmail(email)).isEmpty();
+        System.out.println("✅ DEF-244 PASSED: userType=STORE_OWNER 於註冊時被拒絕");
+    }
+
+    @Test
+    @Order(15)
+    @DisplayName("DEF-244: POST /v2/auth/register - 帶入任意租戶 UUID 不得建立任何 tenant_members 關聯")
+    void register_withArbitraryTenantIdField_createsNoTenantMembership() throws Exception {
+        String email = uniqueEmail();
+        Tenant victimTenant = tenantRepository.save(Tenant.builder()
+                .name("DEF-244 Victim Tenant")
+                .slug("def-244-victim-" + System.currentTimeMillis())
+                .contactEmail("victim-" + System.currentTimeMillis() + "@example.com")
+                .contactPhone("+886-000000000")
+                .status(Tenant.TenantStatus.ACTIVE)
+                .build());
+
+        try {
+            // 修復前：RegisterRequest 還有 tenantId 欄位，帶入此值會讓 AuthService.register
+            // 無條件在 tenant_members 寫入一筆 storeRole=STORE_OWNER 的真實成員紀錄——任何未登入
+            // 訪客只要知道任一既有店鋪的 UUID 就能奪取其管理權限。DTO 已移除該欄位，這裡改用
+            // 手寫 JSON 模擬「繞過型別檢查、直接打 API」的攻擊者視角，確認此欄位現在被靜默忽略。
+            String rawBody = objectMapper.createObjectNode()
+                    .put("email", email)
+                    .put("password", TEST_PASSWORD)
+                    .put("userType", "SELLER")
+                    .put("tenantId", victimTenant.getId().toString())
+                    .toString();
+
+            given()
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(rawBody)
+                    .when()
+                    .post(BASE_URL + "/register")
+                    .then()
+                    .statusCode(201);
+
+            User created = userRepository.findByEmail(email).orElseThrow();
+            org.assertj.core.api.Assertions.assertThat(created.getTenantId()).isNull();
+            org.assertj.core.api.Assertions.assertThat(tenantMemberRepository.findByUserId(created.getId())).isEmpty();
+
+            System.out.println("✅ DEF-244 PASSED: 帶入的 tenantId 被靜默忽略，未建立任何租戶關聯");
+        } finally {
+            cleanupUser(email);
+            tenantRepository.deleteById(victimTenant.getId());
         }
     }
 }

@@ -562,11 +562,44 @@ public class OrderService {
     }
 
     /**
-     * 更新訂單狀態
+     * DEF-245：{@code PAID}/{@code REFUNDED} 屬於「聲稱金流已實際發生」的狀態，本方法是
+     * {@code PATCH /v2/orders/{orderId}/status} 的唯一實作，任何持有 {@code order:update}
+     * 權限者（SELLER/STORE_OWNER/ADMIN，見 RolePermissionMapping）皆可呼叫——先前無任何限制，
+     * 可在完全沒有真實付款/退款紀錄的情況下，直接偽造訂單已付款或已退款，用於灌水業績/結算，
+     * 或向買家謊報退款已完成。修法：一律封鎖這兩個狀態透過本端點直接指定（不對任何角色例外，
+     * 含 ADMIN/SUPER_ADMIN——經使用者拍板採最嚴格方案），僅保留給受信任的內部付款子系統
+     * （{@link com.nextkey.ecommerce.core.payment.PaymentService}）以 {@code systemTriggered=true}
+     * 呼叫下方 4 參數版本。
+     */
+    private static final java.util.Set<String> PAYMENT_SYSTEM_ONLY_STATUSES = java.util.Set.of("PAID", "REFUNDED");
+
+    /**
+     * 更新訂單狀態（外部呼叫入口，例如 {@code PATCH /v2/orders/{orderId}/status}）。
+     *
+     * <p>此重載方法與下方 4 參數版本各自標註 {@code @CacheEvict}/{@code @Transactional}
+     * （而非只標在其中一個、內部靠 {@code this.} 呼叫另一個）：Spring AOP 代理只會攔截「從物件
+     * 外部進來」的呼叫，同一物件內部以 {@code this.} 互呼會繞過代理，讓被呼叫方法自身的註解失效
+     * （self-invocation 陷阱）。兩個簽章都是會被外部 bean 直接呼叫的真實入口
+     * （{@link com.nextkey.ecommerce.api.controller.OrderController} 呼叫 3 參數版本、
+     * {@link com.nextkey.ecommerce.core.payment.PaymentService} 呼叫 4 參數版本），因此都必須
+     * 各自完整標註，才能確保兩條路徑的快取清除/交易邊界都真的生效（`RedisCacheConfigTest`
+     * 以反射驗證 3 參數版本的 `@CacheEvict` 存在，即為此陷阱的既有防護測試）。
      */
     @CacheEvict(value = "dashboardStats", allEntries = true)
     @Transactional
     public OrderDto.OrderResponse updateOrderStatus(UUID orderId, String targetStatus, String reason) {
+        return updateOrderStatus(orderId, targetStatus, reason, false);
+    }
+
+    /**
+     * 更新訂單狀態。{@code systemTriggered=true} 僅供
+     * {@link com.nextkey.ecommerce.core.payment.PaymentService} 等受信任的內部服務在完成真實
+     * 付款/退款後呼叫，繞過 DEF-245 對 {@code PAID}/{@code REFUNDED} 的直接指定限制。
+     */
+    @CacheEvict(value = "dashboardStats", allEntries = true)
+    @Transactional
+    public OrderDto.OrderResponse updateOrderStatus(
+            UUID orderId, String targetStatus, String reason, boolean systemTriggered) {
         UUID userId = TenantContext.getCurrentUser();
         Order order = findOrderById(orderId);
 
@@ -574,6 +607,12 @@ public class OrderService {
         // （賣家/店主管理自己租戶訂單，比照 LogisticsService.checkOrderTenant）或 admin 放行，
         // 置於狀態機檢查之前避免向未授權者洩漏訂單狀態
         checkOrderTenantAuthorization(order);
+
+        // DEF-245：見上方 PAYMENT_SYSTEM_ONLY_STATUSES 說明。
+        if (!systemTriggered && PAYMENT_SYSTEM_ONLY_STATUSES.contains(targetStatus)) {
+            throw new BusinessException(ErrorCode.E_5001,
+                    targetStatus + " status can only be set by the payment system, not directly via this endpoint");
+        }
 
         String currentStatus = order.getStatus().name();
         OrderStateMachine.TransitionResult result = OrderStateMachine.canTransition(currentStatus, targetStatus);

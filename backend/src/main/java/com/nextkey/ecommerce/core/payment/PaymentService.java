@@ -100,8 +100,10 @@ public class PaymentService {
             throw new BusinessException(ErrorCode.E_6003, "Payment already processed");
         }
 
-        // 更新訂單狀態
-        orderService.updateOrderStatus(order.getId(), "PAID", "Payment received via " + request.getPaymentMethod());
+        // 更新訂單狀態（DEF-245：PAID 屬付款子系統專屬狀態，systemTriggered=true 繞過
+        // OrderService.updateOrderStatus 對外部呼叫的直接指定限制——此處已完成真實付款記錄）
+        orderService.updateOrderStatus(order.getId(), "PAID",
+                "Payment received via " + request.getPaymentMethod(), true);
 
         log.info("Order payment processed: paymentId={}, transactionId={}",
                 payment.getId(), payment.getTransactionId());

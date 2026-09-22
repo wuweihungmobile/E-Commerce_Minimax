@@ -178,13 +178,15 @@ class M16ErpE2ETest {
         storeOwnerEmail = "e2e-m16-owner-" + System.currentTimeMillis() + "@example.com";
 
         try {
-            // 註冊 STORE_OWNER 用戶
+            // 註冊一般會員，角色與 tenantId 在下方直接以 repository 覆寫成 STORE_OWNER
+            // （DEF-244：userType 不再接受 STORE_OWNER，公開註冊端點只能建立 BUYER/SELLER/HOST；
+            // 本測試本就在註冊後直接覆寫 role/tenantId，此處註冊時的 userType 無關緊要）
             given()
                     .contentType(MediaType.APPLICATION_JSON_VALUE)
                     .body(com.nextkey.ecommerce.api.dto.RegisterRequest.builder()
                             .email(storeOwnerEmail)
                             .password(TEST_PASSWORD)
-                            .userType("STORE_OWNER")
+                            .userType("BUYER")
                             .build())
                     .when()
                     .post(AUTH_URL + "/register")

@@ -56,6 +56,10 @@ public class AuthService {
         User.UserRole role = resolveUserRole(request.getUserType());
 
         // Create new user
+        // DEF-244：先前還會依 request.getTenantId() 寫入 User.tenantId 並在 tenant_members
+        // 建立 STORE_OWNER 成員紀錄，讓完全公開、無需登入的註冊端點可被用來奪取任一店鋪的
+        // 真實管理權限。註冊一律不建立任何租戶關聯，僅能透過既有的 TenantApplicationRequest
+        // 審核流程或店主邀請流程取得。
         User user = User.builder()
                 .email(request.getEmail())
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
@@ -64,27 +68,10 @@ public class AuthService {
                 .role(role)
                 .status("ACTIVE")
                 .emailVerified(false)
-                .tenantId(request.getTenantId())
                 .metadata(new HashMap<>())
                 .build();
 
         user = userRepository.save(user);
-
-        // If tenantId is provided, create TenantMember association
-        if (request.getTenantId() != null) {
-            @SuppressWarnings("unused")
-            Tenant tenant = tenantRepository.findById(request.getTenantId())
-                    .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
-
-            com.nextkey.ecommerce.domain.model.tenant.TenantMember member =
-                    com.nextkey.ecommerce.domain.model.tenant.TenantMember.builder()
-                            .tenantId(request.getTenantId())
-                            .userId(user.getId())
-                            .storeRole(com.nextkey.ecommerce.domain.model.tenant.TenantMember.StoreRole.STORE_OWNER)
-                            .build();
-            tenantMemberRepository.save(member);
-            log.info("User {} associated with tenant {}", user.getEmail(), request.getTenantId());
-        }
 
         log.info("New user registered: {} ({})", user.getEmail(), user.getRole());
 
@@ -96,13 +83,17 @@ public class AuthService {
                 .build();
     }
 
+    /**
+     * DEF-244：STORE_OWNER/STORE_STAFF 故意不在此列——兩者只能分別透過既有的
+     * {@code TenantApplicationRequest} 審核流程、店主邀請流程取得，不可由公開註冊端點直接授予
+     * （{@link RegisterRequest#getUserType()} 的 {@code @Pattern} 已在 DTO 層擋下這兩個值，
+     * 此處的 {@code default} 分支僅為缺乏 Bean Validation 保護的其他呼叫端提供防禦性後備）。
+     */
     private User.UserRole resolveUserRole(String userType) {
         if (userType == null) {
             return User.UserRole.BUYER;
         }
         return switch ( userType) {
-            case "STORE_OWNER" -> User.UserRole.STORE_OWNER;
-            case "STORE_STAFF" -> User.UserRole.STORE_STAFF;
             case "SELLER" -> User.UserRole.SELLER;
             case "HOST" -> User.UserRole.HOST;
             case "BUYER" -> User.UserRole.BUYER;

@@ -259,6 +259,7 @@ class MediaServiceTest {
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
         when(storageService.belongsToTenant(TENANT_ID + "/uuid-banner.png", TENANT_ID)).thenReturn(true);
         when(storageService.objectExists(TENANT_ID + "/uuid-banner.png")).thenReturn(true);
+        when(mediaValidationService.determineFileType("image/png")).thenReturn(MediaAsset.FileType.IMAGE);
         when(mediaAssetRepository.save(any(MediaAsset.class))).thenAnswer(inv -> {
             MediaAsset asset = inv.getArgument(0);
             asset.setId(ASSET_ID);
@@ -269,6 +270,55 @@ class MediaServiceTest {
 
         assertThat(dto.getId()).isEqualTo(ASSET_ID);
         assertThat(dto.getFilePath()).isEqualTo(TENANT_ID + "/uuid-banner.png");
+        org.mockito.Mockito.verify(mediaValidationService).validateFileSize(100L, "image/png");
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-254：uploadAsset 指定不在白名單內的 mimeType（如 text/html）→ 拋出 E_9000，"
+            + "不得靜默落到 DOCUMENT 類型（先前用不拋錯的私有 inferFileType，任意字串皆放行）")
+    void uploadAsset_disallowedMimeType_throwsE9000() {
+        com.nextkey.ecommerce.api.dto.media.UploadMediaRequest request =
+                com.nextkey.ecommerce.api.dto.media.UploadMediaRequest.builder()
+                        .fileName("payload.html")
+                        .originalName("payload.html")
+                        .filePath(TENANT_ID + "/uuid-payload.html")
+                        .fileSize(100L)
+                        .mimeType("text/html")
+                        .build();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+        when(mediaValidationService.determineFileType("text/html"))
+                .thenThrow(new BusinessException(ErrorCode.E_9000, "Unsupported file type: text/html"));
+
+        assertThatThrownBy(() -> mediaService.uploadAsset(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_9000));
+
+        org.mockito.Mockito.verify(mediaAssetRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-254：uploadAsset 指定超過大小上限的 fileSize → 拋出 E_9000，"
+            + "不得繞過 uploadAssetMultipart 既有的大小驗證")
+    void uploadAsset_fileSizeExceedsLimit_throwsE9000() {
+        com.nextkey.ecommerce.api.dto.media.UploadMediaRequest request =
+                com.nextkey.ecommerce.api.dto.media.UploadMediaRequest.builder()
+                        .fileName("huge.png")
+                        .originalName("huge.png")
+                        .filePath(TENANT_ID + "/uuid-huge.png")
+                        .fileSize(999_999_999L)
+                        .mimeType("image/png")
+                        .build();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+        org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.E_9000, "File size exceeds limit"))
+                .when(mediaValidationService).validateFileSize(999_999_999L, "image/png");
+
+        assertThatThrownBy(() -> mediaService.uploadAsset(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_9000));
+
+        org.mockito.Mockito.verify(mediaAssetRepository, org.mockito.Mockito.never()).save(any());
     }
 
     @Test

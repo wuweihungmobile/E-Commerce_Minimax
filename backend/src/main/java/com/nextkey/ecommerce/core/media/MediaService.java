@@ -232,8 +232,15 @@ public class MediaService {
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
         }
 
-        // 從 mimeType 推斷 fileType
-        MediaAsset.FileType fileType = inferFileType(request.getMimeType());
+        // DEF-254（Sprint 184）：先前用不拋錯的私有 inferFileType 推斷 fileType，任意字串（如
+        // "text/html"）皆靜默落到 DOCUMENT，與 uploadAssetMultipart 既有的白名單驗證慣例不一致。
+        // 此端點雖不接受檔案內容本身（僅重新登記既有 filePath 的 metadata），但呼叫端仍可藉此把
+        // 已通過 magic-bytes 檢查上傳的檔案，重新登記成任意自訂 mimeType——GET .../files/{assetId}
+        // 會原樣照抄此 mimeType 作為回應 Content-Type header。改用與 uploadAssetMultipart 相同的
+        // mediaValidationService 白名單驗證（會拋例外），不允許的 mimeType 一律拒絕；一併驗證檔案
+        // 大小上限，維持與另一條上傳路徑一致的防護。
+        mediaValidationService.validateFileSize(request.getFileSize(), request.getMimeType());
+        MediaAsset.FileType fileType = mediaValidationService.determineFileType(request.getMimeType());
 
         // 驗證 filePath 確實屬於本租戶且物件真實存在於儲存層，防止跨租戶 IDOR（DEF-101）
         if (!storageService.belongsToTenant(request.getFilePath(), tenantId)
@@ -502,22 +509,6 @@ public class MediaService {
             }
         }
         return null;
-    }
-
-    /**
-     * 從 MIME Type 推斷檔案類型
-     */
-    private MediaAsset.FileType inferFileType(String mimeType) {
-        if (mimeType == null) {
-            return MediaAsset.FileType.DOCUMENT;
-        }
-        if (mimeType.startsWith("image/")) {
-            return MediaAsset.FileType.IMAGE;
-        }
-        if (mimeType.startsWith("video/")) {
-            return MediaAsset.FileType.VIDEO;
-        }
-        return MediaAsset.FileType.DOCUMENT;
     }
 
 }

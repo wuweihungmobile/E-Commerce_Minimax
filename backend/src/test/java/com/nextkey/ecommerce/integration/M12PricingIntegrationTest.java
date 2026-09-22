@@ -224,6 +224,7 @@ class M12PricingIntegrationTest {
 
     @Test
     @DisplayName("IT-M12-005: 查詢規則列表-依房源篩選")
+    // DEF-255：getRules 補上租戶擁有權檢查後需要先查得 listing 才能驗證，理由同 IT-M12-001。
     void getRules_filterByRoomListingId_returnsRules() throws Exception {
         UUID ruleId1 = UUID.randomUUID();
         UUID ruleId2 = UUID.randomUUID();
@@ -233,6 +234,7 @@ class M12PricingIntegrationTest {
                 buildMockPricingRule(ruleId2, PricingDto.PricingRuleType.EARLY_BIRD, "Early Bird Rule")
         );
 
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(buildMockListing()));
         when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID)).thenReturn(rules);
 
         mockMvc.perform(get(BASE_URL + "/rules")

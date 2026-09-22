@@ -1010,6 +1010,60 @@ class PricingServiceTest {
 
             verify(pricingRuleRepository, never()).save(any());
         }
+
+        // DEF-255（Sprint 185）：getRules 先前完全沒有租戶擁有權檢查——本檔其餘 5 個寫入方法皆已在
+        // DEF-242 補上檢查，唯獨這個讀取/列表方法當時未被同一輪修復觸及，任一持有 room:read/
+        // product:read 權限者皆可取得任意租戶完整的定價規則明細。
+
+        @Test
+        @DisplayName("🔴 DEF-255：getRules 帶入他租戶的 roomListingId → E_1007，不得列出他租戶定價規則")
+        void getRules_roomListingBelongsToDifferentTenant_throwsE1007() {
+            when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listingOf(otherTenantId)));
+
+            assertThatThrownBy(() -> pricingService.getRules(ROOM_LISTING_ID, null, true, false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(pricingRuleRepository, never()).findByRoomListingIdAndIsActiveTrue(any());
+        }
+
+        @Test
+        @DisplayName("🔴 DEF-255：getRules 帶入他租戶的 listingId → E_1007，不得列出他租戶定價規則")
+        void getRules_listingBelongsToDifferentTenant_throwsE1007() {
+            when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listingOf(otherTenantId)));
+
+            assertThatThrownBy(() -> pricingService.getRules(null, ROOM_LISTING_ID, true, false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(pricingRuleRepository, never()).findByListingIdAndIsActiveTrue(any());
+        }
+
+        @Test
+        @DisplayName("getRules：本租戶的 roomListingId → 放行（續走既有查詢邏輯）")
+        void getRules_roomListingBelongsToSameTenant_returnsRules() {
+            when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listingOf(TENANT_ID)));
+            PricingRule rule = PricingRule.builder()
+                    .id(UUID.randomUUID()).tenantId(TENANT_ID).roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.SEASONAL).isActive(true)
+                    .validFrom(LocalDate.of(2026, 1, 1)).validTo(LocalDate.of(2026, 12, 31)).build();
+            when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID)).thenReturn(List.of(rule));
+
+            List<PricingDto.RuleResponse> response = pricingService.getRules(ROOM_LISTING_ID, null, true, false);
+
+            assertThat(response).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("getRules：SUPER_ADMIN 可跨租戶查詢（擁有權檢查略過，不查詢 listing）")
+        void getRules_superAdminBypassesOwnership() {
+            when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID)).thenReturn(List.of());
+
+            List<PricingDto.RuleResponse> response = pricingService.getRules(ROOM_LISTING_ID, null, true, true);
+
+            assertThat(response).isEmpty();
+            verify(listingRepository, never()).findById(any());
+        }
     }
 
     // ========== Helper Methods ==========

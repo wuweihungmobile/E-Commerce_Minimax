@@ -20,6 +20,7 @@ import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.infrastructure.redis.RedisLockService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -315,9 +316,18 @@ public class RoomCalendarService {
      * 若原狀態為 BOOKED，保留 booking_id 並在對應 Booking.statusFlags 標記 under_maintenance=true，
      * 供 Admin Dashboard MaintenanceWarnings 列表查詢（M09 通知系統上線前的替代方案，PRD §5.5.3）。
      * 與 blockDateRange 相同慣例：僅處理已存在的 calendar 記錄，不建立缺漏日期的記錄。
+     *
+     * <p>DEF-256（Sprint 185）：先前完全沒有租戶擁有權檢查——任一持有 {@code room:update} 權限者
+     * （任意租戶的 SELLER/HOST/STORE_OWNER/STORE_STAFF）皆可對他租戶的 {@code roomListingId}
+     * 標記維護狀態，破壞其房源可訂性，且若該日期已被預訂，還會連帶把該筆 {@code Booking} 標記
+     * {@code under_maintenance=true}。比照本專案既有的 {@code checkListingTenantOwnership} 慣例
+     * （見 {@code PricingService}/{@code BookingService}）補上檢查。
      */
     @Transactional
-    public void markMaintenance(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
+    public void markMaintenance(
+            final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut,
+            final boolean isSuperAdmin) {
+        checkListingTenantOwnership(roomListingId, isSuperAdmin);
         List<RoomCalendar> calendars = lockCalendarRange(roomListingId, checkIn, checkOut);
 
         for (RoomCalendar calendar : calendars) {
@@ -337,9 +347,14 @@ public class RoomCalendarService {
     /**
      * 解除維護狀態：日期格保留 booking_id（維護前為 BOOKED）者恢復為 BOOKED 並清除 Booking 的
      * under_maintenance 標記，否則恢復為 AVAILABLE。
+     *
+     * <p>DEF-256（Sprint 185）：見 {@link #markMaintenance} 說明，同一租戶擁有權檢查缺口。
      */
     @Transactional
-    public void unmarkMaintenance(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
+    public void unmarkMaintenance(
+            final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut,
+            final boolean isSuperAdmin) {
+        checkListingTenantOwnership(roomListingId, isSuperAdmin);
         List<RoomCalendar> calendars = lockCalendarRange(roomListingId, checkIn, checkOut);
 
         for (RoomCalendar calendar : calendars) {
@@ -370,6 +385,21 @@ public class RoomCalendarService {
             booking.setStatusFlags(flags);
             bookingRepository.save(booking);
         });
+    }
+
+    /**
+     * 房源租戶擁有權檢查（DEF-256），比照本專案既有的 {@code checkListingTenantOwnership} 慣例
+     * （見 {@code PricingService}）。
+     */
+    private void checkListingTenantOwnership(final UUID targetListingId, final boolean isSuperAdmin) {
+        if (isSuperAdmin) {
+            return;
+        }
+        Listing listing = listingRepository.findById(targetListingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Listing not found"));
+        if (!listing.getTenantId().equals(TenantContext.getCurrentTenant())) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to manage this room's maintenance status");
+        }
     }
 
     /**

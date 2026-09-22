@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.BookingDto;
+import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.core.booking.RoomCalendarService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -36,31 +38,38 @@ public class RoomCalendarController {
 
     private final RoomCalendarService roomCalendarService;
 
+    private static final String SUPER_ADMIN_ROLE = "SUPER_ADMIN";
+
     @PostMapping
     @PreAuthorize("hasAuthority('room:update')")
     public ResponseEntity<ApiResponse<Void>> markMaintenance(
+            @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable UUID roomListingId,
             @Valid @RequestBody BookingDto.MaintenanceRequest request) {
         if (request.getEndDate().isBefore(request.getStartDate())) {
             throw new BusinessException(ErrorCode.E_4003, "End date must be after start date");
         }
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
         log.info("Mark maintenance: roomListingId={}, startDate={}, endDate={}",
                 roomListingId, request.getStartDate(), request.getEndDate());
-        roomCalendarService.markMaintenance(roomListingId, request.getStartDate(), request.getEndDate());
+        roomCalendarService.markMaintenance(
+                roomListingId, request.getStartDate(), request.getEndDate(), isSuperAdmin);
         return ResponseEntity.ok(ApiResponse.success("Dates marked as under maintenance", null));
     }
 
     @DeleteMapping
     @PreAuthorize("hasAuthority('room:update')")
     public ResponseEntity<ApiResponse<Void>> unmarkMaintenance(
+            @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable UUID roomListingId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         if (endDate.isBefore(startDate)) {
             throw new BusinessException(ErrorCode.E_4003, "End date must be after start date");
         }
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
         log.info("Unmark maintenance: roomListingId={}, startDate={}, endDate={}", roomListingId, startDate, endDate);
-        roomCalendarService.unmarkMaintenance(roomListingId, startDate, endDate);
+        roomCalendarService.unmarkMaintenance(roomListingId, startDate, endDate, isSuperAdmin);
         return ResponseEntity.ok(ApiResponse.success("Maintenance cleared", null));
     }
 }

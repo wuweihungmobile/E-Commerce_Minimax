@@ -312,7 +312,7 @@ class RoomCalendarServiceTest {
         when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
                 ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(calendars);
 
-        roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
+        roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, true);
 
         verify(roomCalendarRepository).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE));
         verify(bookingRepository, never()).findById(any());
@@ -327,7 +327,7 @@ class RoomCalendarServiceTest {
         Booking booking = Booking.builder().id(BOOKING_ID).build();
         when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
 
-        roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
+        roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, true);
 
         verify(roomCalendarRepository).save(argThat(
                 c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE && BOOKING_ID.equals(c.getBookingId())));
@@ -341,7 +341,7 @@ class RoomCalendarServiceTest {
         when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
                 ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(calendars);
 
-        roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
+        roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, true);
 
         verify(roomCalendarRepository, never()).save(any());
     }
@@ -357,7 +357,7 @@ class RoomCalendarServiceTest {
                 .build();
         when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
 
-        roomCalendarService.unmarkMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
+        roomCalendarService.unmarkMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, true);
 
         verify(roomCalendarRepository).save(argThat(
                 c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.BOOKED && BOOKING_ID.equals(c.getBookingId())));
@@ -371,7 +371,7 @@ class RoomCalendarServiceTest {
         when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
                 ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(calendars);
 
-        roomCalendarService.unmarkMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
+        roomCalendarService.unmarkMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, true);
 
         verify(roomCalendarRepository).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.AVAILABLE));
         verify(bookingRepository, never()).findById(any());
@@ -384,7 +384,7 @@ class RoomCalendarServiceTest {
         when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
                 ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(calendars);
 
-        roomCalendarService.unmarkMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
+        roomCalendarService.unmarkMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, true);
 
         verify(roomCalendarRepository, never()).save(any());
     }
@@ -397,9 +397,71 @@ class RoomCalendarServiceTest {
                 ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
                 .thenThrow(new PessimisticLockingFailureException("locked"));
 
-        assertThatThrownBy(() -> roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT))
+        assertThatThrownBy(() -> roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, true))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.E_4001);
+    }
+
+    // ========== DEF-256（Sprint 185）：租戶擁有權檢查 ==========
+
+    @Test
+    @DisplayName("🔴 DEF-256：markMaintenance 對他租戶的 roomListingId 呼叫 → E_1007，不得竄改他租戶"
+            + "房源的維護狀態")
+    void markMaintenance_crossTenantListing_throwsE1007() {
+        Listing otherTenantListing = Listing.builder().id(ROOM_LISTING_ID).tenantId(UUID.randomUUID()).build();
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(otherTenantListing));
+        com.nextkey.ecommerce.shared.tenant.TenantContext.setCurrentTenant(UUID.randomUUID());
+
+        try {
+            assertThatThrownBy(() -> roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, false))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.E_1007);
+            verify(roomCalendarRepository, never())
+                    .findByRoomListingIdAndCalendarDateBetweenWithLockNowait(any(), any(), any());
+        } finally {
+            com.nextkey.ecommerce.shared.tenant.TenantContext.clear();
+        }
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-256：unmarkMaintenance 對他租戶的 roomListingId 呼叫 → E_1007")
+    void unmarkMaintenance_crossTenantListing_throwsE1007() {
+        Listing otherTenantListing = Listing.builder().id(ROOM_LISTING_ID).tenantId(UUID.randomUUID()).build();
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(otherTenantListing));
+        com.nextkey.ecommerce.shared.tenant.TenantContext.setCurrentTenant(UUID.randomUUID());
+
+        try {
+            assertThatThrownBy(() ->
+                    roomCalendarService.unmarkMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, false))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.E_1007);
+            verify(roomCalendarRepository, never())
+                    .findByRoomListingIdAndCalendarDateBetweenWithLockNowait(any(), any(), any());
+        } finally {
+            com.nextkey.ecommerce.shared.tenant.TenantContext.clear();
+        }
+    }
+
+    @Test
+    @DisplayName("markMaintenance：本租戶的 roomListingId → 放行（續走既有維護邏輯）")
+    void markMaintenance_sameTenantListing_passesAuthorization() {
+        UUID tenantId = UUID.randomUUID();
+        Listing ownListing = Listing.builder().id(ROOM_LISTING_ID).tenantId(tenantId).build();
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(ownListing));
+        com.nextkey.ecommerce.shared.tenant.TenantContext.setCurrentTenant(tenantId);
+        List<RoomCalendar> calendars = List.of(calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.AVAILABLE, null));
+        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
+                ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(calendars);
+
+        try {
+            roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, false);
+
+            verify(roomCalendarRepository).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE));
+        } finally {
+            com.nextkey.ecommerce.shared.tenant.TenantContext.clear();
+        }
     }
 }

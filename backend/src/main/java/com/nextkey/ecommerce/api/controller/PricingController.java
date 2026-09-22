@@ -86,10 +86,13 @@ public class PricingController {
     @GetMapping("/rules")
     @PreAuthorize("hasAuthority('room:read') or hasAuthority('product:read')")
     public ResponseEntity<ApiResponse<List<PricingDto.RuleResponse>>> getRules(
+            @AuthenticationPrincipal UserPrincipal principal,
             @RequestParam(required = false) UUID roomListingId,
             @RequestParam(required = false) UUID listingId,
             @RequestParam(required = false, defaultValue = "false") Boolean activeOnly) {
-        List<PricingDto.RuleResponse> response = pricingService.getRules(roomListingId, listingId, activeOnly);
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
+        List<PricingDto.RuleResponse> response =
+                pricingService.getRules(roomListingId, listingId, activeOnly, isSuperAdmin);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

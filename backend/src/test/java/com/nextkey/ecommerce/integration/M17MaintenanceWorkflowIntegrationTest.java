@@ -1,8 +1,10 @@
 package com.nextkey.ecommerce.integration;
 
+import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
+import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,7 +58,11 @@ class M17MaintenanceWorkflowIntegrationTest {
     @MockBean
     private BookingRepository bookingRepository;
 
+    @MockBean
+    private ListingRepository listingRepository;
+
     private static final UUID ROOM_LISTING_ID = UUID.fromString("660e8400-e29b-41d4-a716-446655440002");
+    private static final String TEST_TENANT_ID = "550e8400-e29b-41d4-a716-446655440001";
     private static final String MAINTENANCE_URL = "/v2/dashboard/rooms/" + ROOM_LISTING_ID + "/maintenance";
 
     private RoomCalendar calendarOf(RoomCalendar.RoomCalendarStatus status, UUID bookingId) {
@@ -67,11 +73,21 @@ class M17MaintenanceWorkflowIntegrationTest {
                 .build();
     }
 
+    private Listing ownListing() {
+        Listing listing = Listing.builder().tenantId(UUID.fromString(TEST_TENANT_ID)).build();
+        listing.setId(ROOM_LISTING_ID);
+        return listing;
+    }
+
     @Test
     @DisplayName("IT-M17-001: 房東標記維護-AVAILABLE 日期成功")
-    @WithMockUser(username = "host", authorities = {"room:update"})
+    // DEF-256：markMaintenance/unmarkMaintenance 補上租戶擁有權檢查後，同 M12Pricing*IntegrationTest
+    // 既有理由改用 WithErpSecurity（WithMockUser 的 principal 非 UserPrincipal 型別，新增的
+    // @AuthenticationPrincipal 解析為 null 而 NPE）並補上 listingRepository stub。
+    @WithErpSecurity(tenantId = TEST_TENANT_ID, authorities = {"room:update"})
     void markMaintenance_availableDates_returns200() throws Exception {
         RoomCalendar calendar = calendarOf(RoomCalendar.RoomCalendarStatus.AVAILABLE, null);
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(ownListing()));
         when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(any(), any(), any()))
                 .thenReturn(List.of(calendar));
 
@@ -93,12 +109,13 @@ class M17MaintenanceWorkflowIntegrationTest {
 
     @Test
     @DisplayName("IT-M17-002: 房東標記維護-已 BOOKED 日期保留 bookingId 並標記 Booking under_maintenance")
-    @WithMockUser(username = "host", authorities = {"room:update"})
+    @WithErpSecurity(tenantId = TEST_TENANT_ID, authorities = {"room:update"})
     void markMaintenance_bookedDates_flagsBooking() throws Exception {
         UUID bookingId = UUID.randomUUID();
         RoomCalendar calendar = calendarOf(RoomCalendar.RoomCalendarStatus.BOOKED, bookingId);
         Booking booking = Booking.builder().id(bookingId).statusFlags(new HashMap<>()).build();
 
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(ownListing()));
         when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(any(), any(), any()))
                 .thenReturn(List.of(calendar));
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
@@ -121,9 +138,10 @@ class M17MaintenanceWorkflowIntegrationTest {
 
     @Test
     @DisplayName("IT-M17-003: 房東解除維護-成功")
-    @WithMockUser(username = "host", authorities = {"room:update"})
+    @WithErpSecurity(tenantId = TEST_TENANT_ID, authorities = {"room:update"})
     void unmarkMaintenance_success_returns200() throws Exception {
         RoomCalendar calendar = calendarOf(RoomCalendar.RoomCalendarStatus.MAINTENANCE, null);
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(ownListing()));
         when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(any(), any(), any()))
                 .thenReturn(List.of(calendar));
 

@@ -133,11 +133,17 @@ class M12PricingProductIntegrationTest {
 
     @Test
     @DisplayName("IT-M12-010: 商品商家使用 product:read 查詢 listingId 規則列表")
-    @WithMockUser(username = "seller", authorities = {"product:read"})
+    // DEF-255：getRules 補上租戶擁有權檢查後，同 IT-M12-009 理由改用 WithErpSecurity 並補上
+    // listingRepository stub（否則 @AuthenticationPrincipal 解析為 null 而 NPE，或擁有權檢查查無
+    // listing 而 404）。
+    @WithErpSecurity(tenantId = "550e8400-e29b-41d4-a716-446655440001", authorities = {"product:read"})
     void getRules_withListingId_returnsRuleList() throws Exception {
         UUID ruleId = UUID.randomUUID();
         PricingRule rule = buildMockProductPricingRule(ruleId);
 
+        Listing listing = Listing.builder().tenantId(UUID.fromString(TEST_TENANT_ID)).build();
+        listing.setId(LISTING_ID);
+        when(listingRepository.findById(LISTING_ID)).thenReturn(Optional.of(listing));
         when(pricingRuleRepository.findByListingId(LISTING_ID)).thenReturn(List.of(rule));
 
         mockMvc.perform(get(BASE_URL + "/rules")

@@ -130,19 +130,30 @@ public class PricingService {
 
     /**
      * 取得定價規則列表
+     *
+     * <p>DEF-255（Sprint 185）：帶入 {@code roomListingId}/{@code listingId} 查詢時，先前完全沒有
+     * 驗證該 listing/room 是否屬於呼叫者租戶——查詢直接對整張表過濾（甚至 {@code roomListingId}
+     * 的非 {@code activeOnly} 分支是 {@code findAll()} 全表掃描），任一持有 {@code room:read}/
+     * {@code product:read} 權限者（GUEST 亦持有）皆可取得任意租戶完整的定價規則明細（折扣金額/
+     * 百分比、有效期間等商業敏感資訊）。本檔其餘 5 個寫入方法（{@code createRule} 等）皆已在
+     * DEF-242 修復時補上 {@code checkListingTenantOwnership}/{@code checkRuleTenantOwnership}，
+     * 唯獨這個讀取／列表方法當時未被同一輪修復觸及。比照既有慣例補上同一道檢查。
      */
     @Transactional(readOnly = true)
-    public List<PricingDto.RuleResponse> getRules(UUID roomListingId, UUID listingId, Boolean activeOnly) {
+    public List<PricingDto.RuleResponse> getRules(
+            UUID roomListingId, UUID listingId, Boolean activeOnly, boolean isSuperAdmin) {
         UUID tenantId = TenantContext.getCurrentTenant();
         List<PricingRule> rules;
 
         if (roomListingId != null) {
+            checkListingTenantOwnership(roomListingId, isSuperAdmin);
             rules = activeOnly != null && activeOnly
                     ? pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(roomListingId)
                     : pricingRuleRepository.findAll().stream()
                         .filter(r -> Objects.equals(r.getRoomListingId(), roomListingId))
                         .collect(Collectors.toList());
         } else if (listingId != null) {
+            checkListingTenantOwnership(listingId, isSuperAdmin);
             rules = activeOnly != null && activeOnly
                     ? pricingRuleRepository.findByListingIdAndIsActiveTrue(listingId)
                     : pricingRuleRepository.findByListingId(listingId);

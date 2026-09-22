@@ -211,9 +211,16 @@ public class OrderService {
                 throw new BusinessException(ErrorCode.E_3002, "Listing not active: " + cartItem.getListingId());
             }
 
+            // DEF-237 縱深防禦：即使 RedisCartService.addItem 已在寫入購物車前驗證 skuId 屬於
+            // 同一個 listingId，Redis 購物車項目 TTL 長達 30 天，修復前已寫入的舊資料（或未來任何
+            // 繞過購物車直接建構 CartItemResponse 的呼叫路徑）仍可能帶著不屬於此 listing 的 skuId
+            // 流到這裡。比照既有「skuId 找不到」的容錯語意，不屬於此 listing 的 SKU 一律視為未選規格。
             ProductSku sku = null;
             if (cartItem.getSkuId() != null) {
-                sku = productSkuRepository.findById(cartItem.getSkuId()).orElse(null);
+                ProductSku candidate = productSkuRepository.findById(cartItem.getSkuId()).orElse(null);
+                if (candidate != null && listing.getId().equals(candidate.getProductListingId())) {
+                    sku = candidate;
+                }
             }
 
             OrderItem item = OrderItem.builder()

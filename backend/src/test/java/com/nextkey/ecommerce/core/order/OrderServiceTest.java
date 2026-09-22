@@ -43,6 +43,7 @@ import com.nextkey.ecommerce.core.user.AddressService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.order.OrderStateLog;
+import com.nextkey.ecommerce.domain.model.product.ProductSku;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.Address;
 import com.nextkey.ecommerce.domain.model.user.User;
@@ -512,6 +513,40 @@ class OrderServiceTest {
         OrderDto.OrderResponse response = orderService.createOrderFromCart(productRequest());
 
         assertThat(response.getItems().get(0).getSkuId()).isNull();
+    }
+
+    @Test
+    @DisplayName("DEF-237：cartItem 的 skuId 真實存在但屬於另一個 listing → 視同未選規格，不得掛上他租戶的 SKU（縱深防禦，比照 skuId 找不到的容錯語意）")
+    void createOrderFromCart_skuBelongsToDifferentListing_fallsBackToNullSku() {
+        // 注意：OrderItem.skuId 是 insertable=false/updatable=false 的影子欄位，純 Mockito mock
+        // （無真實持久化）永遠回不填，response.getItems().get(0).getSkuId() 不論修復與否恆為 null，
+        // 斷言不出行為差異；改以 ArgumentCaptor 驗證實際傳入 orderRepository.save 的
+        // OrderItem.getSku()（關聯物件本身，非影子欄位）是否為 null，比照既有 tenant 影子欄位測試手法。
+        TenantContext.setCurrentUser(USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+        UUID skuId = UUID.randomUUID();
+        UUID otherListingId = UUID.randomUUID();
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userFixture()));
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenantFixture()));
+        when(cartService.getCart(USER_ID, TENANT_ID))
+                .thenReturn(cartOf(List.of(cartItem(LISTING_ID, skuId, 1, BigDecimal.TEN))));
+        when(listingRepository.findById(LISTING_ID))
+                .thenReturn(Optional.of(listingFixture(Listing.ListingType.PRODUCT, Listing.ListingStatus.ACTIVE)));
+        ProductSku otherListingSku = ProductSku.builder()
+                .id(skuId)
+                .productListingId(otherListingId)
+                .skuCode("VICTIM-SKU")
+                .build();
+        when(productSkuRepository.findById(skuId)).thenReturn(Optional.of(otherListingSku));
+        when(shippingTemplateService.calculateFeeForTenant(any(), any())).thenReturn(BigDecimal.ZERO);
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        orderService.createOrderFromCart(productRequest());
+
+        ArgumentCaptor<Order> captor = ArgumentCaptor.forClass(Order.class);
+        verify(orderRepository).save(captor.capture());
+        // 修復前：直接把 otherListingSku 掛上 OrderItem.sku，本斷言會失敗。
+        assertThat(captor.getValue().getItems().get(0).getSku()).isNull();
     }
 
     // ========== createOrderFromCart：ROOM（createRoomOrder 分支） ==========

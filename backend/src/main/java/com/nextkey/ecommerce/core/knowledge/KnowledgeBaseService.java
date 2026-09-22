@@ -147,8 +147,8 @@ public class KnowledgeBaseService {
         KnowledgeCategory category = categoryRepository.findByIdAndTenantId(categoryId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
 
-        // 檢查是否有文章引用
-        Page<KnowledgeArticle> articles = articleRepository.findByCategoryId(categoryId, PageRequest.of(0, 1));
+        // 檢查是否有文章引用（DEF-239 縱深防禦：限定本租戶，避免他租戶掛錯的文章讓這裡永遠刪不掉）
+        Page<KnowledgeArticle> articles = articleRepository.findByCategoryIdAndTenantId(categoryId, tenantId, PageRequest.of(0, 1));
         if (articles.hasContent()) {
             throw new BusinessException(ErrorCode.E_3001, "Cannot delete category with articles");
         }
@@ -206,7 +206,11 @@ public class KnowledgeBaseService {
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
 
-        KnowledgeCategory category = categoryRepository.findById(request.getCategoryId())
+        // DEF-239：先前用 findById 未過濾租戶，可把文章掛到他租戶的分類下（categoryId 可從對方
+        // 公開的知識庫頁面枚舉取得），且會讓受害租戶因 deleteCategory 的引用檢查看見這筆文章
+        // 而永久無法刪除自己的分類。比照本檔 getCategory/updateCategory/deleteCategory 既有的
+        // 租戶範圍查詢慣例。
+        KnowledgeCategory category = categoryRepository.findByIdAndTenantId(request.getCategoryId(), tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
 
         // 作者由伺服器端從當前登入者推導（比照 CmsService.createPage），不信任呼叫端傳入的 authorId
@@ -253,7 +257,8 @@ public class KnowledgeBaseService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
 
         if (request.getCategoryId() != null) {
-            KnowledgeCategory category = categoryRepository.findById(request.getCategoryId())
+            // DEF-239：同 createArticle，改用租戶範圍查詢
+            KnowledgeCategory category = categoryRepository.findByIdAndTenantId(request.getCategoryId(), tenantId)
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
             article.setCategory(category);
         }

@@ -68,10 +68,12 @@ public class NotificationService {
                     .build();
         }
 
-        String recipient = request.getRecipient();
-        if (recipient == null && channel != Notification.NotificationChannel.IN_APP) {
-            recipient = getRecipientForChannel(user, channel);
-        }
+        // DEF-238（Sprint 180）：先前允許呼叫端經 request.getRecipient() 任意指定收件位址，
+        // 與 userId 對應使用者的真實註冊聯絡方式完全脫鉤，等同把平台自己的可信通知管線
+        // 變成內容可控的開放中繼站。一律改用使用者本人註冊資料，不再信任呼叫端輸入。
+        String recipient = channel != Notification.NotificationChannel.IN_APP
+                ? getRecipientForChannel(user, channel)
+                : null;
 
         // 先建立通知記錄（預備狀態）
         Notification notification = Notification.builder()

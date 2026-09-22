@@ -41,9 +41,13 @@ public class NotificationController {
 
     /**
      * 發送通知 (Admin only)
+     *
+     * <p>DEF-238（Sprint 180）：先前 notification:create 也授予 STORE_OWNER/ADMIN，但
+     * {@link NotificationService#sendNotification} 對目標 userId 完全不做租戶範圍檢查，
+     * 任一店主可對系統內任何使用者發送通知。經使用者拍板收斂為僅限 SUPER_ADMIN。
      */
     @PostMapping("/send")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasAuthority('notification:create')")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<NotificationDto.NotificationResponse>> sendNotification(
             @Valid @RequestBody NotificationDto.SendRequest request) {
         log.info("Send notification: userId={}, type={}", request.getUserId(), request.getNotificationType());

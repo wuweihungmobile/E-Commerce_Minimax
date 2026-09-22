@@ -109,9 +109,9 @@ public class PostService {
                 .status(Post.PostStatus.DRAFT)
                 .build();
 
-        // 設定分類
+        // 設定分類（DEF-240：改用租戶範圍查詢，避免掛到他租戶的分類）
         if (request.getCategoryId() != null) {
-            PostCategory category = postCategoryRepository.findById(request.getCategoryId())
+            PostCategory category = postCategoryRepository.findByIdAndTenantId(request.getCategoryId(), tenantId)
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_4102));
             post.setCategory(category);
         }
@@ -171,7 +171,8 @@ public class PostService {
             post.setTags(request.getTags());
         }
         if (request.getCategoryId() != null) {
-            PostCategory category = postCategoryRepository.findById(request.getCategoryId())
+            // DEF-240：同 createPost，改用租戶範圍查詢
+            PostCategory category = postCategoryRepository.findByIdAndTenantId(request.getCategoryId(), tenantId)
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_4102));
             post.setCategory(category);
         }

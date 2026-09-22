@@ -158,6 +158,30 @@ class NotificationServiceTest {
     }
 
     @Test
+    @DisplayName("DEF-238: sendNotification — 呼叫端指定的 recipient 一律被忽略，強制改用使用者本人註冊 email，"
+            + "避免平台通知管線被當成內容可控的開放中繼站")
+    void sendNotification_callerSuppliedRecipient_isIgnoredInFavorOfUserOwnContact() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(buildUser()));
+        when(notificationPreferenceService.isEnabled(any(), any(), eq(Notification.NotificationChannel.EMAIL)))
+                .thenReturn(true);
+        when(notificationRepository.save(any(Notification.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        NotificationDto.SendRequest request = NotificationDto.SendRequest.builder()
+                .userId(USER_ID)
+                .notificationType(NotificationDto.NotificationType.PAYMENT_SUCCESS)
+                .title("付款成功")
+                .content("您的付款已成功")
+                .channel(NotificationDto.Channel.EMAIL)
+                .recipient("attacker-controlled@evil.example.com")
+                .build();
+
+        // 修復前：recipient 會直接採用呼叫端指定的任意字串，本斷言會失敗。
+        NotificationDto.NotificationResponse response = notificationService.sendNotification(request);
+
+        assertEquals("buyer@example.com", response.getRecipient());
+    }
+
+    @Test
     @DisplayName("TC-S005: sendNotification — MQ 入佇失敗時記錄錯誤訊息、遞增重試次數並拋出例外")
     void sendNotification_queueFails_recordsErrorAndRethrows() {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(buildUser()));

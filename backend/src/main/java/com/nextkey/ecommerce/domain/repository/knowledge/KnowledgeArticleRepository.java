@@ -61,6 +61,14 @@ public interface KnowledgeArticleRepository extends JpaRepository<KnowledgeArtic
     Page<KnowledgeArticle> findByCategoryId(UUID categoryId, Pageable pageable);
 
     /**
+     * 租戶範圍的分類引用檢查（DEF-239 縱深防禦）。即使 createArticle/updateArticle 已改用
+     * {@code findByIdAndTenantId} 驗證 categoryId 歸屬，deleteCategory 的引用檢查若仍用不分租戶的
+     * {@link #findByCategoryId}，任何跨租戶掛錯的既有髒資料（或未來新的寫入路徑重蹈覆轍）依舊會讓
+     * 受害租戶的分類永久刪不掉。
+     */
+    Page<KnowledgeArticle> findByCategoryIdAndTenantId(UUID categoryId, UUID tenantId, Pageable pageable);
+
+    /**
      * 原子遞增瀏覽次數（Sprint 106 / DEF-055）
      *
      * <p>取代「{@code findById} → 記憶體 +1 → {@code save()}」的讀後寫。

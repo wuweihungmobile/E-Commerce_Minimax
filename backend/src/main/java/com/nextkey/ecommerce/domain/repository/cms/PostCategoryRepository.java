@@ -49,4 +49,11 @@ public interface PostCategoryRepository extends JpaRepository<PostCategory, UUID
      * 依 Tenant 查詢並排序
      */
     List<PostCategory> findByTenantIdOrderBySortOrderAsc(UUID tenantId);
+
+    /**
+     * 依 ID 與 Tenant 查詢（DEF-240）：PostService.createPost/updatePost 先前用不分租戶的
+     * findById 驗證 categoryId，可把貼文掛到他租戶的分類下（分類名稱因此外洩到本租戶的公開
+     * 貼文回應）。比照本模組既有的 findByTenantIdAndSlug 等租戶範圍查詢慣例。
+     */
+    Optional<PostCategory> findByIdAndTenantId(UUID id, UUID tenantId);
 }

@@ -134,13 +134,15 @@ public class RolePermissionMapping {
                 Permission.MEDIA_UPDATE,
                 Permission.MEDIA_DELETE,
                 // cms:read/create/update 比照 PostController 開放給 OWNER/STAFF/SELLER/HOST；
-                // cms:publish/notification:create 限制較高層級，僅 OWNER+ADMIN
-                // （Sprint 129 拍板，Sprint 130 實作，DEF-092）
+                // cms:publish 限制較高層級，僅 OWNER+ADMIN（Sprint 129 拍板，Sprint 130 實作，DEF-092）
                 Permission.CMS_READ,
                 Permission.CMS_CREATE,
                 Permission.CMS_UPDATE,
-                Permission.CMS_PUBLISH,
-                Permission.NOTIFICATION_CREATE
+                Permission.CMS_PUBLISH
+                // DEF-238（Sprint 180）：notification:create 先前授予本角色，但
+                // NotificationService.sendNotification 對目標 userId 完全不做租戶範圍檢查，任一
+                // STORE_OWNER 可對系統內任何使用者發送通知。經使用者拍板改為僅限 SUPER_ADMIN
+                // 可呼叫（此權限已從本角色與 ADMIN 移除，該端點目前前端亦零呼叫點）。
         ));
 
         // ========== STORE_STAFF - 店鋪員工，受限權限 ==========
@@ -225,13 +227,13 @@ public class RolePermissionMapping {
                 Permission.MEDIA_CREATE,
                 Permission.MEDIA_UPDATE,
                 Permission.MEDIA_DELETE,
-                // 平台端管理 cms/notification，跨租戶；cms:publish/notification:create
-                // 與 OWNER 同屬較高層級操作（Sprint 129 拍板，Sprint 130 實作，DEF-092）
+                // 平台端管理 cms，跨租戶；cms:publish 與 OWNER 同屬較高層級操作
+                // （Sprint 129 拍板，Sprint 130 實作，DEF-092）
                 Permission.CMS_READ,
                 Permission.CMS_CREATE,
                 Permission.CMS_UPDATE,
-                Permission.CMS_PUBLISH,
-                Permission.NOTIFICATION_CREATE
+                Permission.CMS_PUBLISH
+                // DEF-238（Sprint 180）：notification:create 已移除，見 STORE_OWNER 區塊註解
         ));
 
         // ========== CFO - 財務長，僅結算單逆轉雙重授權（Sprint 86） ==========

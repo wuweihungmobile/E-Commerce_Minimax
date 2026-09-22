@@ -196,7 +196,7 @@ class PostServiceTest {
 
             when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
             when(userRepository.findById(TEST_AUTHOR_ID)).thenReturn(Optional.of(author));
-            when(postCategoryRepository.findById(TEST_CATEGORY_ID)).thenReturn(Optional.of(category));
+            when(postCategoryRepository.findByIdAndTenantId(TEST_CATEGORY_ID, TEST_TENANT_ID)).thenReturn(Optional.of(category));
             when(postRepository.existsBySlug(anyString())).thenReturn(false);
             when(postRepository.save(any(Post.class))).thenReturn(savedPost);
             when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(any(UUID.class))).thenReturn(new ArrayList<>());
@@ -207,7 +207,32 @@ class PostServiceTest {
             // Assert
             assertThat(response).isNotNull();
             assertThat(response.getCategoryId()).isEqualTo(TEST_CATEGORY_ID);
-            verify(postCategoryRepository).findById(TEST_CATEGORY_ID);
+            verify(postCategoryRepository).findByIdAndTenantId(TEST_CATEGORY_ID, TEST_TENANT_ID);
+        }
+
+        @Test
+        @DisplayName("DEF-240：createPost 帶入他租戶的 categoryId 時應拒絕（找不到分類），不得把貼文掛到他租戶分類下")
+        void createPost_categoryBelongsToDifferentTenant_throwsException() {
+            Tenant tenant = buildTenant();
+            User author = buildAuthor();
+
+            M15Dto.CreatePostRequest request = M15Dto.CreatePostRequest.builder()
+                    .title("Cross Tenant Post")
+                    .content("Test content")
+                    .categoryId(TEST_CATEGORY_ID)
+                    .build();
+
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+            when(userRepository.findById(TEST_AUTHOR_ID)).thenReturn(Optional.of(author));
+            // 修復前：postCategoryRepository.findById(TEST_CATEGORY_ID) 不分租戶，他租戶的分類一樣查得到。
+            // 修復後：findByIdAndTenantId 在分類屬於他租戶時回傳空。
+            when(postCategoryRepository.findByIdAndTenantId(TEST_CATEGORY_ID, TEST_TENANT_ID))
+                    .thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> postService.createPost(TEST_TENANT_ID, TEST_AUTHOR_ID, request))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_4102);
         }
 
         @Test
@@ -567,7 +592,7 @@ class PostServiceTest {
                     .build();
 
             when(postRepository.findById(TEST_POST_ID)).thenReturn(Optional.of(existingPost));
-            when(postCategoryRepository.findById(TEST_CATEGORY_ID)).thenReturn(Optional.of(category));
+            when(postCategoryRepository.findByIdAndTenantId(TEST_CATEGORY_ID, TEST_TENANT_ID)).thenReturn(Optional.of(category));
             when(postRepository.save(any(Post.class))).thenReturn(existingPost);
             when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(any(UUID.class))).thenReturn(new ArrayList<>());
 
@@ -576,7 +601,7 @@ class PostServiceTest {
 
             // Assert
             assertThat(response).isNotNull();
-            verify(postCategoryRepository).findById(TEST_CATEGORY_ID);
+            verify(postCategoryRepository).findByIdAndTenantId(TEST_CATEGORY_ID, TEST_TENANT_ID);
         }
 
         @Test

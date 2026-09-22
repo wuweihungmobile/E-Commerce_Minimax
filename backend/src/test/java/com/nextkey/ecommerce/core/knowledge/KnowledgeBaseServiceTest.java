@@ -218,7 +218,7 @@ class KnowledgeBaseServiceTest {
         when(categoryRepository.findByIdAndTenantId(categoryId, TENANT_ID)).thenReturn(Optional.of(category));
         Page<KnowledgeArticle> nonEmpty = new PageImpl<>(List.of(buildArticle(
                 UUID.randomUUID(), category, buildAuthor(UUID.randomUUID()), "Q", "q")));
-        when(articleRepository.findByCategoryId(eq(categoryId), any())).thenReturn(nonEmpty);
+        when(articleRepository.findByCategoryIdAndTenantId(eq(categoryId), eq(TENANT_ID), any())).thenReturn(nonEmpty);
 
         assertThatThrownBy(() -> knowledgeBaseService.deleteCategory(categoryId))
                 .isInstanceOf(BusinessException.class)
@@ -232,7 +232,7 @@ class KnowledgeBaseServiceTest {
         UUID categoryId = UUID.randomUUID();
         KnowledgeCategory category = buildCategory(categoryId, "General", "general");
         when(categoryRepository.findByIdAndTenantId(categoryId, TENANT_ID)).thenReturn(Optional.of(category));
-        when(articleRepository.findByCategoryId(eq(categoryId), any())).thenReturn(new PageImpl<>(List.of()));
+        when(articleRepository.findByCategoryIdAndTenantId(eq(categoryId), eq(TENANT_ID), any())).thenReturn(new PageImpl<>(List.of()));
 
         knowledgeBaseService.deleteCategory(categoryId);
 
@@ -246,7 +246,7 @@ class KnowledgeBaseServiceTest {
         UUID categoryId = UUID.randomUUID();
         KnowledgeCategory category = buildCategory(categoryId, "General", "general");
         when(categoryRepository.findByIdAndTenantId(categoryId, TENANT_ID)).thenReturn(Optional.of(category));
-        when(articleRepository.findByCategoryId(eq(categoryId), any())).thenReturn(new PageImpl<>(List.of()));
+        when(articleRepository.findByCategoryIdAndTenantId(eq(categoryId), eq(TENANT_ID), any())).thenReturn(new PageImpl<>(List.of()));
         org.mockito.Mockito.doThrow(new DataIntegrityViolationException("fk violation"))
                 .when(categoryRepository).flush();
 
@@ -306,7 +306,7 @@ class KnowledgeBaseServiceTest {
         User author = buildAuthor(CURRENT_USER_ID);
 
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
-        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+        when(categoryRepository.findByIdAndTenantId(categoryId, TENANT_ID)).thenReturn(Optional.of(category));
         when(userRepository.findById(CURRENT_USER_ID)).thenReturn(Optional.of(author));
         when(articleRepository.findByTenantIdAndSlug(TENANT_ID, "new-article")).thenReturn(Optional.empty());
         when(articleRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -322,11 +322,30 @@ class KnowledgeBaseServiceTest {
     }
 
     @Test
+    @DisplayName("DEF-239：createArticle 帶入他租戶的 categoryId 時應拒絕（找不到分類），不得把文章掛到他租戶分類下")
+    void createArticle_categoryBelongsToDifferentTenant_throwsNotFound() {
+        UUID categoryId = UUID.randomUUID();
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+        // 修復前：categoryRepository.findById(categoryId) 不分租戶，他租戶的分類一樣查得到。
+        // 修復後：findByIdAndTenantId(categoryId, TENANT_ID) 在分類屬於他租戶時回傳空。
+        when(categoryRepository.findByIdAndTenantId(categoryId, TENANT_ID)).thenReturn(Optional.empty());
+
+        CreateKnowledgeArticleRequest req = CreateKnowledgeArticleRequest.builder()
+                .categoryId(categoryId)
+                .title("Cross Tenant Article").slug("cross-tenant-article").content("Content").build();
+
+        assertThatThrownBy(() -> knowledgeBaseService.createArticle(req))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_4000);
+    }
+
+    @Test
     @DisplayName("createArticle：tags 應被儲存並在 DTO 中讀回（DEF-083）")
     void createArticle_savesAndReturnsTags() {
         UUID categoryId = UUID.randomUUID();
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
-        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(buildCategory(categoryId, "General", "general")));
+        when(categoryRepository.findByIdAndTenantId(categoryId, TENANT_ID)).thenReturn(Optional.of(buildCategory(categoryId, "General", "general")));
         when(userRepository.findById(CURRENT_USER_ID)).thenReturn(Optional.of(buildAuthor(CURRENT_USER_ID)));
         when(articleRepository.findByTenantIdAndSlug(TENANT_ID, "tagged-article")).thenReturn(Optional.empty());
         when(articleRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -347,7 +366,7 @@ class KnowledgeBaseServiceTest {
     void createArticle_duplicateSlug_throws() {
         UUID categoryId = UUID.randomUUID();
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
-        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(buildCategory(categoryId, "General", "general")));
+        when(categoryRepository.findByIdAndTenantId(categoryId, TENANT_ID)).thenReturn(Optional.of(buildCategory(categoryId, "General", "general")));
         when(userRepository.findById(CURRENT_USER_ID)).thenReturn(Optional.of(buildAuthor(CURRENT_USER_ID)));
         when(articleRepository.findByTenantIdAndSlug(TENANT_ID, "dup")).thenReturn(
                 Optional.of(buildArticle(UUID.randomUUID(), buildCategory(categoryId, "General", "general"), buildAuthor(CURRENT_USER_ID), "X", "dup")));
@@ -366,7 +385,7 @@ class KnowledgeBaseServiceTest {
     void createArticle_concurrentDuplicateSlug_translatesToE3001() {
         UUID categoryId = UUID.randomUUID();
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
-        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(buildCategory(categoryId, "General", "general")));
+        when(categoryRepository.findByIdAndTenantId(categoryId, TENANT_ID)).thenReturn(Optional.of(buildCategory(categoryId, "General", "general")));
         when(userRepository.findById(CURRENT_USER_ID)).thenReturn(Optional.of(buildAuthor(CURRENT_USER_ID)));
         when(articleRepository.findByTenantIdAndSlug(TENANT_ID, "race-slug")).thenReturn(Optional.empty());
         when(articleRepository.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("duplicate key"));

@@ -61,7 +61,6 @@ public class RedisCartService {
      */
     public CartDto.AddItemResponse addItem(UUID userId, UUID tenantId, CartDto.AddItemRequest request) {
         String cartKey = getCartKey(userId, tenantId);
-        String itemKey = getItemKey(request.getListingId(), request.getSkuId());
 
         // 檢查商品是否存在
         Listing listing = listingRepository.findById(request.getListingId())
@@ -71,15 +70,24 @@ public class RedisCartService {
         String skuCode = null;
         String specName = null;
 
-        // 如果有 SKU，獲取 SKU 資訊
-        if (request.getSkuId() != null) {
-            ProductSku sku = productSkuRepository.findById(request.getSkuId()).orElse(null);
-            if (sku != null) {
+        // 如果有 SKU，獲取 SKU 資訊。DEF-237：先前只用 skuId 單獨查表，從未驗證此 SKU 是否真的
+        // 屬於 request.getListingId()——可用自己的 listing 搭配他租戶的真實 SKU UUID（可從公開的
+        // GET /v2/products/{listingId}/skus 查到）加入購物車，經 OrderService.buildProductOrder
+        // 結帳後任意竄改他租戶庫存。不屬於此 listing 的 skuId 視同「SKU 不存在」，比照既有的
+        // 「skuId 找不到」容錯語意（不拋例外、靜默退回無規格），不引入新的失敗模式。
+        UUID effectiveSkuId = request.getSkuId();
+        if (effectiveSkuId != null) {
+            ProductSku sku = productSkuRepository.findById(effectiveSkuId).orElse(null);
+            if (sku != null && request.getListingId().equals(sku.getProductListingId())) {
                 unitPrice = sku.getPriceOverride() != null ? sku.getPriceOverride() : unitPrice;
                 skuCode = sku.getSkuCode();
                 specName = sku.getSpecName();
+            } else {
+                effectiveSkuId = null;
             }
         }
+
+        String itemKey = getItemKey(request.getListingId(), effectiveSkuId);
 
         // ROOM 類型房源需要日期驗證
         if (listing.getListingType() == Listing.ListingType.ROOM) {
@@ -105,7 +113,7 @@ public class RedisCartService {
         BigDecimal subtotal = CartItemData.computeSubtotal(unitPrice, newQuantity);
         CartItemData item = CartItemData.builder()
                 .listingId(request.getListingId())
-                .skuId(request.getSkuId())
+                .skuId(effectiveSkuId)
                 .skuCode(skuCode)
                 .specName(specName)
                 .quantity(newQuantity)

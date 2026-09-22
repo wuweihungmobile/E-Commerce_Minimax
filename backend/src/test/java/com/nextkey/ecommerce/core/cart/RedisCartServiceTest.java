@@ -103,6 +103,7 @@ class RedisCartServiceTest {
     private ProductSku buildSku() {
         return ProductSku.builder()
                 .id(TEST_SKU_ID)
+                .productListingId(TEST_LISTING_ID)
                 .skuCode("SKU-001")
                 .specName("Spec A")
                 .priceOverride(BigDecimal.valueOf(1200))
@@ -191,6 +192,37 @@ class RedisCartServiceTest {
             // Assert
             assertThat(response.getItem().getUnitPrice()).isEqualTo(BigDecimal.valueOf(1200)); // SKU price override
             assertThat(response.getItem().getSkuCode()).isEqualTo("SKU-001");
+        }
+
+        @Test
+        @DisplayName("DEF-237：skuId 真實存在但不屬於這個 listingId 時，視同未選規格（不得沿用他人 SKU 的價格/代碼，也不得把該 skuId 存入購物車）")
+        void addItem_skuBelongsToDifferentListing_treatedAsNoSku() {
+            // 情境還原：攻擊者用自己的 listing（TEST_LISTING_ID），搭配從公開的
+            // GET /v2/products/{listingId}/skus 查到的「他租戶」真實 SKU UUID（otherListingSku
+            // 實際屬於 otherListingId，非 TEST_LISTING_ID）。
+            UUID otherListingId = UUID.randomUUID();
+            Listing listing = buildListing(Listing.ListingType.PRODUCT);
+            ProductSku otherListingSku = ProductSku.builder()
+                    .id(TEST_SKU_ID)
+                    .productListingId(otherListingId)
+                    .skuCode("VICTIM-SKU")
+                    .specName("他租戶規格")
+                    .priceOverride(BigDecimal.valueOf(1))
+                    .build();
+            CartDto.AddItemRequest request = buildAddItemRequest(TEST_LISTING_ID, TEST_SKU_ID, null, null, 1);
+
+            when(listingRepository.findById(TEST_LISTING_ID)).thenReturn(Optional.of(listing));
+            when(productSkuRepository.findById(TEST_SKU_ID)).thenReturn(Optional.of(otherListingSku));
+            when(hashOperations.get(anyString(), anyString())).thenReturn(null);
+            when(hashOperations.entries(anyString())).thenReturn(new HashMap<>());
+
+            CartDto.AddItemResponse response = redisCartService.addItem(TEST_USER_ID, TEST_TENANT_ID, request);
+
+            // 修復前：會直接採用他租戶 SKU 的價格/代碼，且把他租戶的 skuId 存入購物車項目，
+            // 這三個斷言都會失敗。
+            assertThat(response.getItem().getSkuId()).isNull();
+            assertThat(response.getItem().getSkuCode()).isNull();
+            assertThat(response.getItem().getUnitPrice()).isEqualByComparingTo(BigDecimal.valueOf(1000)); // 退回 listing 原價
         }
 
         @Test

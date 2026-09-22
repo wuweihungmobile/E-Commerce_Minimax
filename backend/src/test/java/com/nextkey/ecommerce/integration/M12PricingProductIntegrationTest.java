@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.integration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.api.dto.PricingDto;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.PricingRule;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.PricingRuleRepository;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.hasSize;
@@ -101,12 +103,20 @@ class M12PricingProductIntegrationTest {
 
     @Test
     @DisplayName("IT-M12-009: 商品商家使用 product:create 建立定價規則（listingId）")
-    @WithMockUser(username = "seller", authorities = {"product:create", "product:read", "product:update", "product:delete"})
+    // DEF-242/243：改用 WithErpSecurity 取代 WithMockUser，理由同 M12PricingIntegrationTest
+    // ——WithMockUser 的 principal 非 UserPrincipal 型別，會讓新增的 @AuthenticationPrincipal
+    // 解析為 null 而 NPE（500）。
+    @WithErpSecurity(tenantId = "550e8400-e29b-41d4-a716-446655440001",
+            authorities = {"product:create", "product:read", "product:update", "product:delete"})
     void createRule_withProductAuthority_andListingId_returns201() throws Exception {
         PricingDto.CreateRuleRequest request = buildProductPricingRuleRequest();
         UUID savedRuleId = UUID.randomUUID();
         PricingRule savedRule = buildMockProductPricingRule(savedRuleId);
 
+        // DEF-242：createRule 新增了租戶擁有權檢查，需要先查得 listing 才能驗證
+        Listing listing = Listing.builder().tenantId(UUID.fromString(TEST_TENANT_ID)).build();
+        listing.setId(LISTING_ID);
+        when(listingRepository.findById(LISTING_ID)).thenReturn(Optional.of(listing));
         when(pricingRuleRepository.save(any(PricingRule.class))).thenReturn(savedRule);
 
         mockMvc.perform(post(BASE_URL + "/rules")

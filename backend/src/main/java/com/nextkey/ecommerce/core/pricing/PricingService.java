@@ -57,10 +57,16 @@ public class PricingService {
      * 建立定價規則
      */
     @Transactional
-    public PricingDto.RuleResponse createRule(PricingDto.CreateRuleRequest request) {
+    public PricingDto.RuleResponse createRule(PricingDto.CreateRuleRequest request, boolean isSuperAdmin) {
         featureToggleService.checkFeatureEnabled("DYNAMIC_PRICING_ENABLED");
 
         UUID tenantId = TenantContext.getCurrentTenant();
+
+        // DEF-242：先前完全未驗證 roomListingId/listingId 是否屬於呼叫者租戶，任一賣家可對他租戶的
+        // 商品/房源植入定價規則（如 MANUAL_OVERRIDE 改成 0.01 元），該規則會在買家結帳時被
+        // getEffectivePrice/calculatePrice 當作權威售價套用，等同間接的金額竄改。
+        checkListingTenantOwnership(request.getRoomListingId() != null
+                ? request.getRoomListingId() : request.getListingId(), isSuperAdmin);
 
         validateRuleRequest(request);
         enforceRuleLimitAndConflict(request);
@@ -88,9 +94,11 @@ public class PricingService {
      * 更新定價規則
      */
     @Transactional
-    public PricingDto.RuleResponse updateRule(UUID ruleId, PricingDto.UpdateRuleRequest request) {
+    public PricingDto.RuleResponse updateRule(UUID ruleId, PricingDto.UpdateRuleRequest request, boolean isSuperAdmin) {
         PricingRule rule = pricingRuleRepository.findById(ruleId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Pricing rule not found"));
+        // DEF-242：同 createRule，先前未驗證規則屬於呼叫者租戶
+        checkRuleTenantOwnership(rule.getTenantId(), isSuperAdmin);
 
         if (request.getRuleName() != null) {
             rule.setRuleName(request.getRuleName());
@@ -153,9 +161,11 @@ public class PricingService {
      * 刪除定價規則
      */
     @Transactional
-    public void deleteRule(UUID ruleId) {
+    public void deleteRule(UUID ruleId, boolean isSuperAdmin) {
         PricingRule rule = pricingRuleRepository.findById(ruleId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Pricing rule not found"));
+        // DEF-242：同 createRule，先前未驗證規則屬於呼叫者租戶
+        checkRuleTenantOwnership(rule.getTenantId(), isSuperAdmin);
 
         rule.setIsActive(false);
         pricingRuleRepository.save(rule);
@@ -271,9 +281,11 @@ public class PricingService {
      * 設定日曆價格（手動覆蓋）
      */
     @Transactional
-    public PricingDto.CalendarPriceResponse setCalendarPrice(PricingDto.SetCalendarPriceRequest request) {
+    public PricingDto.CalendarPriceResponse setCalendarPrice(PricingDto.SetCalendarPriceRequest request, boolean isSuperAdmin) {
         Room room = roomRepository.findByListingId(request.getRoomListingId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000));
+        // DEF-242：同 createRule，先前未驗證房源屬於呼叫者租戶
+        checkRuleTenantOwnership(room.getListing().getTenantId(), isSuperAdmin);
 
         // 創建手動覆蓋規則
         PricingRule overrideRule = PricingRule.builder()
@@ -310,9 +322,11 @@ public class PricingService {
      */
     @Transactional
     public PricingDto.RuleOverrideResponse overridePrice(UUID ruleId, LocalDate startDate, LocalDate endDate,
-                                                          BigDecimal overridePrice, String reason) {
+                                                          BigDecimal overridePrice, String reason, boolean isSuperAdmin) {
         PricingRule existingRule = pricingRuleRepository.findById(ruleId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Pricing rule not found"));
+        // DEF-242：同 createRule，先前未驗證規則屬於呼叫者租戶
+        checkRuleTenantOwnership(existingRule.getTenantId(), isSuperAdmin);
 
         UUID roomListingId = existingRule.getRoomListingId();
         UUID tenantId = existingRule.getTenantId();
@@ -362,6 +376,36 @@ public class PricingService {
     }
 
     // ========== Helper Methods ==========
+
+    /**
+     * 定價規則租戶擁有權檢查（DEF-242），比照本專案既有的
+     * {@code checkListingTenantOwnership}/{@code checkOrderTenantAuthorization} 慣例。
+     * 用於已知規則 {@code tenantId}（更新/刪除/覆蓋既有規則）的情境。
+     */
+    private void checkRuleTenantOwnership(final UUID resourceTenantId, final boolean isSuperAdmin) {
+        if (isSuperAdmin) {
+            return;
+        }
+        if (!Objects.equals(TenantContext.getCurrentTenant(), resourceTenantId)) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to manage this pricing rule");
+        }
+    }
+
+    /**
+     * 定價規則租戶擁有權檢查（DEF-242）。用於建立新規則時，依請求帶入的 listing 反查其租戶。
+     * {@code targetListingId} 為 null 時（理論上不應發生，DTO 未強制其中一者必填）略過檢查，
+     * 交由下游邏輯處理，不在此新增額外的必填限制。
+     */
+    private void checkListingTenantOwnership(final UUID targetListingId, final boolean isSuperAdmin) {
+        if (isSuperAdmin || targetListingId == null) {
+            return;
+        }
+        Listing listing = listingRepository.findById(targetListingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Listing not found"));
+        if (!listing.getTenantId().equals(TenantContext.getCurrentTenant())) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to manage pricing for this listing");
+        }
+    }
 
     private void validateRuleRequest(PricingDto.CreateRuleRequest request) {
         if (request.getValidTo().isBefore(request.getValidFrom())) {

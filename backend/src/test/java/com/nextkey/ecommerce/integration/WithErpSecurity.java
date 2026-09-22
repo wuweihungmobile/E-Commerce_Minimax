@@ -11,6 +11,7 @@ import com.nextkey.ecommerce.api.filter.UserPrincipal;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,6 +35,13 @@ public @interface WithErpSecurity {
     String role() default "STORE_OWNER";
 
     /**
+     * 額外授予的細粒度權限碼（如 "room:create"），與 role 衍生的
+     * ROLE_xxx/xxx 授權並存（DEF-242/243：取代 @WithMockUser 以提供真實
+     * UserPrincipal，同時保留既有測試對特定 authority 字串的依賴）。
+     */
+    String[] authorities() default {};
+
+    /**
      * 工廠類 - 創建自定義 SecurityContext
      */
     class WithErpSecurityContextFactory implements WithSecurityContextFactory<WithErpSecurity> {
@@ -47,10 +55,13 @@ public @interface WithErpSecurity {
             UUID tenantId = UUID.fromString(annotation.tenantId());
 
             // 創建權限
-            List<SimpleGrantedAuthority> authorities = List.of(
+            List<SimpleGrantedAuthority> authorities = new ArrayList<>(List.of(
                     new SimpleGrantedAuthority("ROLE_" + annotation.role()),
                     new SimpleGrantedAuthority(annotation.role())
-            );
+            ));
+            for (String extra : annotation.authorities()) {
+                authorities.add(new SimpleGrantedAuthority(extra));
+            }
 
             // 創建 UserPrincipal (與 JwtAuthenticationFilter 一致)
             UserPrincipal principal = new UserPrincipal(

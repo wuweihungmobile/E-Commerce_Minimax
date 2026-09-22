@@ -55,10 +55,12 @@ public class PricingController {
     @PostMapping("/rules")
     @PreAuthorize("hasAuthority('room:create') or hasAuthority('product:create')")
     public ResponseEntity<ApiResponse<PricingDto.RuleResponse>> createRule(
+            @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody PricingDto.CreateRuleRequest request) {
         log.info("Create pricing rule: roomListingId={}, type={}",
                 request.getRoomListingId(), request.getRuleType());
-        PricingDto.RuleResponse response = pricingService.createRule(request);
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
+        PricingDto.RuleResponse response = pricingService.createRule(request, isSuperAdmin);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Pricing rule created", response));
     }
@@ -69,10 +71,12 @@ public class PricingController {
     @PutMapping("/rules/{ruleId}")
     @PreAuthorize("hasAuthority('room:update') or hasAuthority('product:update')")
     public ResponseEntity<ApiResponse<PricingDto.RuleResponse>> updateRule(
+            @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable UUID ruleId,
             @Valid @RequestBody PricingDto.UpdateRuleRequest request) {
         log.info("Update pricing rule: ruleId={}", ruleId);
-        PricingDto.RuleResponse response = pricingService.updateRule(ruleId, request);
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
+        PricingDto.RuleResponse response = pricingService.updateRule(ruleId, request, isSuperAdmin);
         return ResponseEntity.ok(ApiResponse.success("Pricing rule updated", response));
     }
 
@@ -94,9 +98,12 @@ public class PricingController {
      */
     @DeleteMapping("/rules/{ruleId}")
     @PreAuthorize("hasAuthority('room:delete') or hasAuthority('product:delete')")
-    public ResponseEntity<ApiResponse<Void>> deleteRule(@PathVariable UUID ruleId) {
+    public ResponseEntity<ApiResponse<Void>> deleteRule(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID ruleId) {
         log.info("Delete pricing rule: ruleId={}", ruleId);
-        pricingService.deleteRule(ruleId);
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
+        pricingService.deleteRule(ruleId, isSuperAdmin);
         return ResponseEntity.ok(ApiResponse.success("Pricing rule deleted", null));
     }
 
@@ -139,10 +146,12 @@ public class PricingController {
     @PostMapping("/calendar/price")
     @PreAuthorize("hasAuthority('room:update')")
     public ResponseEntity<ApiResponse<PricingDto.CalendarPriceResponse>> setCalendarPrice(
+            @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody PricingDto.SetCalendarPriceRequest request) {
         log.info("Set calendar price: roomListingId={}, date={}, price={}",
                 request.getRoomListingId(), request.getDate(), request.getPrice());
-        PricingDto.CalendarPriceResponse response = pricingService.setCalendarPrice(request);
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
+        PricingDto.CalendarPriceResponse response = pricingService.setCalendarPrice(request, isSuperAdmin);
         return ResponseEntity.ok(ApiResponse.success("Calendar price set", response));
     }
 }

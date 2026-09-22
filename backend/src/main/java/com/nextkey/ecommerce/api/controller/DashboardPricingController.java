@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.PricingDto;
+import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -31,6 +33,8 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class DashboardPricingController {
 
+    private static final String SUPER_ADMIN_ROLE = "SUPER_ADMIN";
+
     private final PricingService pricingService;
 
     /**
@@ -44,6 +48,7 @@ public class DashboardPricingController {
     @PostMapping("/rules/{ruleId}/override")
     @PreAuthorize("hasAuthority('room:update')")
     public ResponseEntity<ApiResponse<PricingDto.RuleOverrideResponse>> overridePrice(
+            @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable UUID ruleId,
             @Valid @RequestBody PricingDto.RuleOverrideRequest request) {
 
@@ -55,12 +60,14 @@ public class DashboardPricingController {
             throw new BusinessException(ErrorCode.E_4003, "End date must be after start date");
         }
 
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
         PricingDto.RuleOverrideResponse response = pricingService.overridePrice(
                 ruleId,
                 request.getStartDate(),
                 request.getEndDate(),
                 request.getOverridePrice(),
-                request.getReason()
+                request.getReason(),
+                isSuperAdmin
         );
 
         return ResponseEntity.ok(ApiResponse.success("Price override applied", response));

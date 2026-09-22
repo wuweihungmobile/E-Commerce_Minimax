@@ -172,11 +172,22 @@ public class PaymentService {
         Payment payment = paymentRepository.findById(request.getPaymentId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_6000, "Payment not found"));
 
+        // DEF-243：先前完全未做擁有權檢查，任何具備 order:update/booking:update 權限者
+        // （一般賣家帳號皆有）可對任意租戶的 paymentId 觸發退款。比照 processOrderPayment/
+        // processBookingPayment 既有慣例，置於狀態檢查之前，避免向未授權者洩漏付款狀態；
+        // 一併保留載入的 order/booking 供下方狀態更新重用，不重複查詢（抽出獨立方法以控制
+        // processRefund 本身的 NPath 複雜度）。
+        RefundTarget target = resolveAndAuthorizeRefundTarget(payment);
+
         if (payment.getStatus() != Payment.PaymentStatus.SUCCESS) {
             throw new BusinessException(ErrorCode.E_6002, "Payment cannot be refunded");
         }
 
         BigDecimal refundAmount = request.getAmount() != null ? request.getAmount() : payment.getAmount();
+        // DEF-243：先前無上限檢查，呼叫端可指定超過原始付款金額的任意退款金額（灌水）。
+        if (refundAmount.compareTo(payment.getAmount()) > 0) {
+            throw new BusinessException(ErrorCode.E_6009, "Refund amount exceeds payment amount");
+        }
 
         // 🔴 併發防護：兩個併發退款請求都可能通過上面「status == SUCCESS」的檢查（讀到同一份
         // 舊快照），此處改用條件式原子 UPDATE，確保只有一邊真的轉換成功，另一邊拒絕，而非兩邊
@@ -188,21 +199,15 @@ public class PaymentService {
         }
 
         // 如果是訂單支付，更新訂單狀態
-        if (payment.getOrderId() != null) {
-            Order order = orderRepository.findById(payment.getOrderId()).orElse(null);
-            if (order != null && order.getStatus() == Order.OrderStatus.REFUNDING) {
-                order.setStatus(Order.OrderStatus.REFUNDED);
-                orderRepository.save(order);
-            }
+        if (target.order != null && target.order.getStatus() == Order.OrderStatus.REFUNDING) {
+            target.order.setStatus(Order.OrderStatus.REFUNDED);
+            orderRepository.save(target.order);
         }
 
         // 如果是預訂支付，更新預訂狀態
-        if (payment.getBookingId() != null) {
-            Booking booking = bookingRepository.findById(payment.getBookingId()).orElse(null);
-            if (booking != null) {
-                booking.setStatus(Booking.BookingStatus.CANCELLED);
-                bookingRepository.save(booking);
-            }
+        if (target.booking != null) {
+            target.booking.setStatus(Booking.BookingStatus.CANCELLED);
+            bookingRepository.save(target.booking);
         }
 
         log.info("Refund processed: paymentId={}, amount={}", request.getPaymentId(), refundAmount);
@@ -215,6 +220,37 @@ public class PaymentService {
                 .reason(request.getReason())
                 .processedAt(java.time.Instant.now())
                 .build();
+    }
+
+    /**
+     * 解析付款所屬的訂單/訂房並套用既有擁有權檢查（DEF-243）；至多其一非 null。
+     * 抽出為獨立方法以控制 {@link #processRefund} 本身的 NPath 複雜度。
+     */
+    private RefundTarget resolveAndAuthorizeRefundTarget(final Payment payment) {
+        if (payment.getOrderId() != null) {
+            Order order = orderRepository.findById(payment.getOrderId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
+            checkOrderPaymentOwnership(order);
+            return new RefundTarget(order, null);
+        }
+        if (payment.getBookingId() != null) {
+            Booking booking = bookingRepository.findById(payment.getBookingId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.E_4006, "Booking not found"));
+            checkBookingPaymentOwnership(booking);
+            return new RefundTarget(null, booking);
+        }
+        return new RefundTarget(null, null);
+    }
+
+    /** 退款目標容器：{@code order}/{@code booking} 至多其一非 null。 */
+    private static final class RefundTarget {
+        private final Order order;
+        private final Booking booking;
+
+        private RefundTarget(final Order order, final Booking booking) {
+            this.order = order;
+            this.booking = booking;
+        }
     }
 
     /**

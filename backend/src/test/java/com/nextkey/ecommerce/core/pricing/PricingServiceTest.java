@@ -10,6 +10,8 @@ import com.nextkey.ecommerce.domain.repository.PricingRuleRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -66,6 +68,14 @@ class PricingServiceTest {
     private static final UUID TENANT_ID = UUID.fromString("550e8400-e29b-41d4-a716-446655440001");
     private static final UUID ROOM_LISTING_ID = UUID.fromString("660e8400-e29b-41d4-a716-446655440002");
     private static final BigDecimal BASE_PRICE = BigDecimal.valueOf(1000);
+
+    // DEF-242：createRule/updateRule/deleteRule/setCalendarPrice/overridePrice 新增租戶擁有權檢查後
+    // 需要呼叫者租戶脈絡；其餘既有測試（價格計算/有效售價）不讀取 TenantContext，設定對其無影響。
+    // 清除交由全域註冊的 ThreadLocalIsolationExtension 於每個測試後自動處理，不需手動 @AfterEach。
+    @BeforeEach
+    void setUpTenantContext() {
+        TenantContext.setCurrentTenant(TENANT_ID);
+    }
 
     @Nested
     @DisplayName("UT-M12-001 ~ UT-M12-004: 價格計算基礎")
@@ -695,6 +705,14 @@ class PricingServiceTest {
     @DisplayName("UT-M12-020 ~ UT-M12-023: 定價規則建立限制與衝突檢核（PRD §5.5.1 / TC-LO2-M12 / TC-PR）")
     class RuleCreationLimitAndConflictTests {
 
+        // DEF-242：createRule 新增了租戶擁有權檢查，需要先查得 listing 才能驗證。
+        @BeforeEach
+        void mockListingOwnership() {
+            Listing listing = Listing.builder().tenantId(TENANT_ID).build();
+            listing.setId(ROOM_LISTING_ID);
+            when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listing));
+        }
+
         private PricingDto.CreateRuleRequest.CreateRuleRequestBuilder baseRequest() {
             return PricingDto.CreateRuleRequest.builder()
                     .roomListingId(ROOM_LISTING_ID)
@@ -724,7 +742,7 @@ class PricingServiceTest {
 
             PricingDto.CreateRuleRequest request = baseRequest().build();
 
-            assertThatThrownBy(() -> pricingService.createRule(request))
+            assertThatThrownBy(() -> pricingService.createRule(request, false))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_4001);
 
@@ -747,7 +765,7 @@ class PricingServiceTest {
 
             PricingDto.CreateRuleRequest request = baseRequest().build();
 
-            assertThatThrownBy(() -> pricingService.createRule(request))
+            assertThatThrownBy(() -> pricingService.createRule(request, false))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_4001);
 
@@ -773,7 +791,7 @@ class PricingServiceTest {
 
             PricingDto.CreateRuleRequest request = baseRequest().confirmOverride(true).build();
 
-            PricingDto.RuleResponse response = pricingService.createRule(request);
+            PricingDto.RuleResponse response = pricingService.createRule(request, false);
 
             assertThat(existing.getIsActive()).isFalse();
             assertThat(response.getIsActive()).isTrue();
@@ -798,7 +816,7 @@ class PricingServiceTest {
 
             PricingDto.CreateRuleRequest request = baseRequest().build();
 
-            PricingDto.RuleResponse response = pricingService.createRule(request);
+            PricingDto.RuleResponse response = pricingService.createRule(request, false);
 
             assertThat(existing.getIsActive()).isTrue();
             assertThat(response.getIsActive()).isTrue();
@@ -816,6 +834,7 @@ class PricingServiceTest {
             UUID ruleId = UUID.randomUUID();
             PricingRule existing = PricingRule.builder()
                     .id(ruleId)
+                    .tenantId(TENANT_ID)
                     .roomListingId(ROOM_LISTING_ID)
                     .ruleType(PricingRule.PricingRuleType.WEEKDAY_WEEKEND)
                     .isActive(true)
@@ -828,7 +847,7 @@ class PricingServiceTest {
                     .validTo(LocalDate.of(2026, 1, 1))
                     .build();
 
-            assertThatThrownBy(() -> pricingService.updateRule(ruleId, request))
+            assertThatThrownBy(() -> pricingService.updateRule(ruleId, request, false))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_4003);
 
@@ -841,6 +860,7 @@ class PricingServiceTest {
             UUID ruleId = UUID.randomUUID();
             PricingRule existing = PricingRule.builder()
                     .id(ruleId)
+                    .tenantId(TENANT_ID)
                     .roomListingId(ROOM_LISTING_ID)
                     .ruleType(PricingRule.PricingRuleType.WEEKDAY_WEEKEND)
                     .isActive(true)
@@ -853,9 +873,140 @@ class PricingServiceTest {
                     .validFrom(LocalDate.of(2026, 12, 1))
                     .build();
 
-            assertThatThrownBy(() -> pricingService.updateRule(ruleId, request))
+            assertThatThrownBy(() -> pricingService.updateRule(ruleId, request, false))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_4003);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("DEF-242: 定價規則租戶擁有權檢查")
+    class RuleTenantOwnershipTests {
+
+        private final UUID otherTenantId = UUID.randomUUID();
+
+        private Listing listingOf(final UUID tenantId) {
+            Listing listing = Listing.builder().tenantId(tenantId).build();
+            listing.setId(ROOM_LISTING_ID);
+            return listing;
+        }
+
+        @Test
+        @DisplayName("createRule：賣家對他租戶的 roomListingId 植入定價規則 → E_1007，不寫入")
+        void createRule_listingBelongsToDifferentTenant_throwsE1007() {
+            // 修復前：完全不驗證 listing 歸屬，本斷言會失敗——他租戶的商品可被植入
+            // 例如 MANUAL_OVERRIDE price=0.01 的規則，買家結帳時會被當作權威售價套用。
+            when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listingOf(otherTenantId)));
+
+            PricingDto.CreateRuleRequest request = PricingDto.CreateRuleRequest.builder()
+                    .roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingDto.PricingRuleType.MANUAL_OVERRIDE)
+                    .ruleName("Malicious override")
+                    .config(Map.of("price", 0.01))
+                    .validFrom(LocalDate.of(2026, 1, 1))
+                    .validTo(LocalDate.of(2026, 12, 31))
+                    .build();
+
+            assertThatThrownBy(() -> pricingService.createRule(request, false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("createRule：SUPER_ADMIN 可跨租戶建立規則（擁有權檢查略過，不查詢 listing）")
+        void createRule_superAdminBypassesOwnership() {
+            when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID))
+                    .thenReturn(List.of());
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            PricingDto.CreateRuleRequest request = PricingDto.CreateRuleRequest.builder()
+                    .roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingDto.PricingRuleType.SEASONAL)
+                    .ruleName("Admin rule")
+                    .config(Map.of("multiplier", 1.2))
+                    .validFrom(LocalDate.of(2026, 1, 1))
+                    .validTo(LocalDate.of(2026, 12, 31))
+                    .build();
+
+            PricingDto.RuleResponse response = pricingService.createRule(request, true);
+
+            assertThat(response.getRuleName()).isEqualTo("Admin rule");
+        }
+
+        @Test
+        @DisplayName("updateRule：賣家更新他租戶的規則 → E_1007，不寫入")
+        void updateRule_ruleBelongsToDifferentTenant_throwsE1007() {
+            UUID ruleId = UUID.randomUUID();
+            PricingRule existing = PricingRule.builder()
+                    .id(ruleId).tenantId(otherTenantId).roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.MANUAL_OVERRIDE)
+                    .isActive(true).validFrom(LocalDate.of(2026, 1, 1)).validTo(LocalDate.of(2026, 12, 31))
+                    .build();
+            when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(existing));
+
+            PricingDto.UpdateRuleRequest request = PricingDto.UpdateRuleRequest.builder()
+                    .config(Map.of("price", 0.01)).build();
+
+            assertThatThrownBy(() -> pricingService.updateRule(ruleId, request, false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("deleteRule：賣家刪除他租戶的規則 → E_1007，不寫入")
+        void deleteRule_ruleBelongsToDifferentTenant_throwsE1007() {
+            UUID ruleId = UUID.randomUUID();
+            PricingRule existing = PricingRule.builder()
+                    .id(ruleId).tenantId(otherTenantId).roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.SEASONAL).isActive(true).build();
+            when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(existing));
+
+            assertThatThrownBy(() -> pricingService.deleteRule(ruleId, false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("setCalendarPrice：賣家對他租戶的房源手動覆蓋日曆價格 → E_1007，不寫入")
+        void setCalendarPrice_roomBelongsToDifferentTenant_throwsE1007() {
+            Listing listing = listingOf(otherTenantId);
+            Room room = Room.builder().listing(listing).build();
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(room));
+
+            PricingDto.SetCalendarPriceRequest request = PricingDto.SetCalendarPriceRequest.builder()
+                    .roomListingId(ROOM_LISTING_ID)
+                    .date(LocalDate.of(2026, 6, 1))
+                    .price(BigDecimal.valueOf(0.01))
+                    .build();
+
+            assertThatThrownBy(() -> pricingService.setCalendarPrice(request, false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("overridePrice：賣家覆蓋他租戶的規則價格 → E_1007，不寫入")
+        void overridePrice_ruleBelongsToDifferentTenant_throwsE1007() {
+            UUID ruleId = UUID.randomUUID();
+            PricingRule existing = PricingRule.builder()
+                    .id(ruleId).tenantId(otherTenantId).roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.MANUAL_OVERRIDE).isActive(true).build();
+            when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(existing));
+
+            assertThatThrownBy(() -> pricingService.overridePrice(ruleId, LocalDate.of(2026, 6, 1),
+                    LocalDate.of(2026, 6, 5), BigDecimal.valueOf(0.01), "malicious", false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
 
             verify(pricingRuleRepository, never()).save(any());
         }

@@ -32,7 +32,6 @@ import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
 
 /**
  * M12 動態定價 Backend API 整合測試 (T-M12-06)
@@ -53,7 +52,12 @@ import org.springframework.security.test.context.support.WithMockUser;
 @ActiveProfiles("integration-test")
 @Transactional
 @DisplayName("IT-M12: M12 動態定價 Backend API 整合測試")
-@WithMockUser(username = "test-user", authorities = {"room:create", "room:read", "room:update", "room:delete"})
+// DEF-242/243：改用 WithErpSecurity 取代 WithMockUser——後者的 principal 不是本專案的
+// UserPrincipal 型別，PricingController 新增的 @AuthenticationPrincipal UserPrincipal 解析結果
+// 恆為 null，呼叫 principal.getRole() 會 NPE（500）。WithErpSecurity 同時提供真實 UserPrincipal
+// 與 TenantContext（tenantId 對齊本檔測試資料的 TEST_TENANT_ID），authorities() 保留原本細粒度權限碼。
+@WithErpSecurity(tenantId = "550e8400-e29b-41d4-a716-446655440001",
+        authorities = {"room:create", "room:read", "room:update", "room:delete"})
 class M12PricingIntegrationTest {
 
     @Autowired
@@ -139,6 +143,8 @@ class M12PricingIntegrationTest {
         UUID savedRuleId = UUID.randomUUID();
         PricingRule savedRule = buildMockPricingRule(savedRuleId, request.getRuleType(), request.getRuleName());
 
+        // DEF-242：createRule 新增了租戶擁有權檢查，需要先查得 listing 才能驗證
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(buildMockListing()));
         when(pricingRuleRepository.save(any(PricingRule.class))).thenReturn(savedRule);
 
         mockMvc.perform(post(BASE_URL + "/rules")
@@ -369,6 +375,7 @@ class M12PricingIntegrationTest {
             fiftyRules.add(buildMockPricingRule(UUID.randomUUID(),
                     PricingDto.PricingRuleType.SEASONAL, "Existing Rule " + i));
         }
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(buildMockListing()));
         when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID)).thenReturn(fiftyRules);
 
         mockMvc.perform(post(BASE_URL + "/rules")
@@ -388,6 +395,7 @@ class M12PricingIntegrationTest {
         PricingRule existing = buildMockPricingRule(UUID.randomUUID(),
                 PricingDto.PricingRuleType.WEEKDAY_WEEKEND, "Existing Weekend Rule");
 
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(buildMockListing()));
         when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID))
                 .thenReturn(List.of(existing));
 
@@ -407,6 +415,7 @@ class M12PricingIntegrationTest {
         PricingRule existing = buildMockPricingRule(UUID.randomUUID(),
                 PricingDto.PricingRuleType.WEEKDAY_WEEKEND, "Existing Weekend Rule");
 
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(buildMockListing()));
         when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID))
                 .thenReturn(List.of(existing));
         when(pricingRuleRepository.save(any(PricingRule.class)))

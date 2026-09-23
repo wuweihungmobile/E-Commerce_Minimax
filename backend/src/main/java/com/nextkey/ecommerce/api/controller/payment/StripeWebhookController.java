@@ -38,13 +38,40 @@ public class StripeWebhookController {
     private final StripeSignatureVerifierService signatureVerifier;
     private final PaymentWebhookService paymentWebhookService;
 
+    /**
+     * DEF-262（Sprint 188）：{@code stripe.webhook-secret} 留空時
+     * {@link StripeSignatureVerifierService#verify} 會靜默跳過簽章驗證（測試模式設計，
+     * 見該類別 javadoc）。此端點在 {@code SecurityConfig} 為 {@code permitAll()}（Stripe
+     * 回呼不帶 JWT），若 prod 環境忘記設定 {@code STRIPE_WEBHOOK_SECRET} 環境變數，任何人皆可
+     * 未經驗證直接 POST 偽造的 Stripe event payload，偽造付款成功/退款/Connect KYC 狀態——與
+     * DEF-251（JWT_SECRET 預設值）同一模式。dev/test/integration-test 環境仍允許留空，
+     * 以便無真實 Stripe 帳號時可手動測試（見 StripeWebhookReachabilityTest）。
+     */
     public StripeWebhookController(
             @Value("${stripe.webhook-secret:}") String stripeWebhookSecret,
+            @Value("${spring.profiles.active:}") String activeProfiles,
             StripeSignatureVerifierService signatureVerifier,
             PaymentWebhookService paymentWebhookService) {
+        if (isProdProfile(activeProfiles) && (stripeWebhookSecret == null || stripeWebhookSecret.isBlank())) {
+            throw new IllegalStateException(
+                    "STRIPE_WEBHOOK_SECRET 未設定：prod 環境下這會讓 Stripe webhook 簽章驗證被靜默跳過，"
+                            + "任何人皆可偽造付款成功/退款事件。請設定環境變數 STRIPE_WEBHOOK_SECRET 後再啟動。");
+        }
         this.stripeWebhookSecret = stripeWebhookSecret;
         this.signatureVerifier = signatureVerifier;
         this.paymentWebhookService = paymentWebhookService;
+    }
+
+    private static boolean isProdProfile(String activeProfiles) {
+        if (activeProfiles == null) {
+            return false;
+        }
+        for (String profile : activeProfiles.split(",")) {
+            if ("prod".equalsIgnoreCase(profile.trim())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

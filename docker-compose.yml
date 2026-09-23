@@ -73,6 +73,10 @@ services:
       - JWT_SECRET=${JWT_SECRET:-your-256-bit-secret-key-please-change-in-production}
       - JWT_ACCESS_TOKEN_EXPIRATION=900000
       - JWT_REFRESH_TOKEN_EXPIRATION=2592000000
+      # Sprint 188 (DEF-262)：先前未傳遞，prod profile 下會讓 StripeWebhookController
+      # 的簽章驗證 fail-fast 恆定觸發，導致容器完全開不起來
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_placeholder}
     depends_on:
       postgres:
         condition: service_healthy

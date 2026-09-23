@@ -35,6 +35,7 @@ public class NotificationConsumerService {
 
     private static final int MAX_RETRY_COUNT = 3;
     private static final long RETRY_DELAY_SECONDS = 30;
+    private static final String RETRY_KEY_PREFIX = "notification:retry:";
 
     /**
      * 定時從佇列消費通知訊息
@@ -144,9 +145,10 @@ public class NotificationConsumerService {
             log.warn("Requeueing notification: messageId={}, retryCount={}",
                     message.getMessageId(), message.getRetryCount());
 
-            // 延遲重新排隊（使用 sorted set 实现延迟）
+            // Sprint 188 (DEF-261)：key 必須以 messageId 區分，
+            // 舊版僅以 retryCount 層級命名會讓同一層級的不同訊息互相覆蓋而遺失
             try {
-                String retryKey = "notification:retry:" + message.getRetryCount();
+                String retryKey = RETRY_KEY_PREFIX + message.getMessageId();
                 redisTemplate.opsForValue().set(
                         retryKey,
                         objectMapper.writeValueAsString(message),
@@ -182,17 +184,22 @@ public class NotificationConsumerService {
     @Scheduled(fixedDelay = 5000)
     public void processRetryQueue() {
         try {
-            // 檢查各重試等級的佇列
-            for (int retryCount = 1; retryCount <= MAX_RETRY_COUNT; retryCount++) {
-                String retryKey = "notification:retry:" + retryCount;
-                Object messageObj = redisTemplate.opsForValue().get(retryKey);
+            // Sprint 188 (DEF-261)：以 messageId 為 key，須逐一掃描而非假設固定的重試等級數量
+            var retryKeys = redisTemplate.keys(RETRY_KEY_PREFIX + "*");
+            if (retryKeys == null || retryKeys.isEmpty()) {
+                return;
+            }
 
-                if (messageObj != null) {
-                    NotificationMessage message = parseMessage(messageObj);
-                    if (message != null && message.getRetryCount() >= retryCount) {
-                        redisTemplate.delete(retryKey);
-                        processMessage(message);
-                    }
+            for (String retryKey : retryKeys) {
+                Object messageObj = redisTemplate.opsForValue().get(retryKey);
+                if (messageObj == null) {
+                    continue;
+                }
+
+                redisTemplate.delete(retryKey);
+                NotificationMessage message = parseMessage(messageObj);
+                if (message != null) {
+                    processMessage(message);
                 }
             }
         } catch (RuntimeException e) {

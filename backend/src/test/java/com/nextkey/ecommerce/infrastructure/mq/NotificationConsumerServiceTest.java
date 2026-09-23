@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.infrastructure.mq;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -7,10 +8,13 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -22,6 +26,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -124,5 +129,52 @@ class NotificationConsumerServiceTest {
 
         // notification 仍然被 save（主流程不中斷）
         verify(notificationRepository, times(1)).save(any());
+    }
+
+    // ========== TC-C003（Sprint 188 紅燈：重試佇列 key 碰撞導致訊息遺失） ==========
+
+    @Test
+    @DisplayName("TC-C003: 兩則不同訊息在同一重試層級（retryCount）失敗時，各自的重試佇列 key 不應互相覆蓋")
+    void handleFailedMessage_twoDifferentMessagesAtSameRetryLevel_mustNotOverwriteEachOther()
+            throws JsonProcessingException {
+        // Arrange：用一個真正會保存 key/value 的假 Redis String store 取代單純的 mock 驗證，
+        // 才能觀察到「後寫入的 key 覆蓋先前的 key」這種真實的資料遺失行為。
+        Map<String, Object> fakeRedisStringStore = new HashMap<>();
+        ValueOperations<String, Object> valueOperations = org.mockito.Mockito.mock(ValueOperations.class);
+        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        lenient().doAnswer(invocation -> {
+            fakeRedisStringStore.put(invocation.getArgument(0), invocation.getArgument(1));
+            return null;
+        }).when(valueOperations).set(anyString(), any(), anyLong(), any(TimeUnit.class));
+
+        UUID otherMessageId = UUID.randomUUID();
+        NotificationMessage messageA = buildMessage();
+        NotificationMessage messageB = NotificationMessage.builder()
+                .messageId(otherMessageId)
+                .userId(USER_ID)
+                .notificationType("ORDER_CONFIRMED")
+                .title("另一則通知")
+                .content("內容 B")
+                .channel("IN_APP")
+                .build();
+
+        String jsonA = "{\"messageId\":\"" + MESSAGE_ID + "\"}";
+        String jsonB = "{\"messageId\":\"" + otherMessageId + "\"}";
+
+        when(redisTemplate.opsForList()).thenReturn(listOperations);
+        when(listOperations.rightPop(anyString(), anyLong(), any(TimeUnit.class)))
+                .thenReturn(jsonA, jsonB);
+        when(objectMapper.readValue(jsonA, NotificationMessage.class)).thenReturn(messageA);
+        when(objectMapper.readValue(jsonB, NotificationMessage.class)).thenReturn(messageB);
+        when(objectMapper.writeValueAsString(messageA)).thenReturn("SERIALIZED_A");
+        when(objectMapper.writeValueAsString(messageB)).thenReturn("SERIALIZED_B");
+        when(notificationRepository.save(any())).thenThrow(new RuntimeException("boom"));
+
+        // Act：兩則「不同」訊息各自處理失敗一次，皆從 retryCount 0 -> 1（同一重試層級）
+        consumerService.consumeNotifications();
+        consumerService.consumeNotifications();
+
+        // Assert：兩則訊息都必須能在重試佇列中各自找到，不可因 key 相同而互相覆蓋遺失
+        assertThat(fakeRedisStringStore.values()).contains("SERIALIZED_A", "SERIALIZED_B");
     }
 }

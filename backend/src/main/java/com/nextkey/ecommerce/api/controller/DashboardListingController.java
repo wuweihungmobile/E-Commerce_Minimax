@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.api.controller;
 import jakarta.validation.Valid;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -49,11 +50,18 @@ public class DashboardListingController {
 
         Object response;
 
+        // DEF-263（Sprint 189）：類別級 @PreAuthorize 是 OR 條件（方便共用單一端點），但下方會依
+        // listingType 分流到型別專屬的 ProductService/RoomService——其個別單一用途端點
+        // （ProductController/RoomController）分別只要求 product:create/room:create。若不在此
+        // 逐分支補上對應權限，僅持有 room:create 的 HOST 角色即可經此端點建立 PRODUCT listing
+        // （反之 SELLER 可建立 ROOM listing），繞過角色權限模型。
         if ("PRODUCT".equalsIgnoreCase(request.getListingType())) {
+            requireAuthority("product:create");
             // Sprint 148（DEF-184）：RETAIL_ENABLED 檢查已搬進 ProductService.createProductFromDashboard
             // （PRD §4.4 規定 Feature Toggle 驗證不得在 Controller 層執行）
             response = productService.createProductFromDashboard(request);
         } else if ("ROOM".equalsIgnoreCase(request.getListingType())) {
+            requireAuthority("room:create");
             // Sprint 148（DEF-184）：BOOKING_ENABLED 檢查已搬進 RoomService.createRoomFromDashboard
             response = roomService.createRoomFromDashboard(request);
         } else {
@@ -61,5 +69,14 @@ public class DashboardListingController {
         }
 
         return ResponseEntity.ok(ApiResponse.success("Listing created successfully", response));
+    }
+
+    private void requireAuthority(final String authority) {
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        boolean granted = auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals(authority));
+        if (!granted) {
+            throw new AccessDeniedException("Missing required authority: " + authority);
+        }
     }
 }

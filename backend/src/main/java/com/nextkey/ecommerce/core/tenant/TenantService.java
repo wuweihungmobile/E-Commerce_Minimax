@@ -266,6 +266,14 @@ public class TenantService {
             }
         }
 
+        // DEF-264：本端點是 SecurityConfig 明文放行的公開端點（Guest+，見 Controller Javadoc），
+        // 但 purchaseOrderApprovalThreshold 是 M16 ERP 採購審批門檻（Sprint 85/89），僅供店鋪
+        // 成員自助編輯時預填使用（見 TenantEditForm.tsx），對匿名訪客/其他租戶無任何合法用途，
+        // 屬內部經營設定不當外洩。僅在呼叫者是本租戶成員時才回傳，其餘一律隱藏為 null。
+        UUID currentUserId = TenantContext.getCurrentUser();
+        boolean isTenantMember = currentUserId != null
+                && tenantMemberRepository.existsByTenantIdAndUserId(tenantId, currentUserId);
+
         return TenantDetailsResponse.builder()
                 .tenantId(tenant.getId().toString())
                 .storeName(tenant.getName())
@@ -277,7 +285,7 @@ public class TenantService {
                 .contactPhone(tenant.getContactPhone())
                 .logoUrl(tenant.getLogoUrl())
                 .coverImageUrl(null) // tenants table doesn't have cover_image_url
-                .purchaseOrderApprovalThreshold(tenant.getPurchaseOrderApprovalThreshold())
+                .purchaseOrderApprovalThreshold(isTenantMember ? tenant.getPurchaseOrderApprovalThreshold() : null)
                 .member(memberInfo)
                 .stats(null) // Stats would require additional queries
                 .createdAt(tenant.getCreatedAt())

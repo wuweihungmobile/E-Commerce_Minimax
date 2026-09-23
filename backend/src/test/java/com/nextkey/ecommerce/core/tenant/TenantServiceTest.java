@@ -330,8 +330,8 @@ class TenantServiceTest {
 
     @Test
     @Order(7)
-    @DisplayName("getTenantDetails: ACTIVE 狀態返回完整資訊")
-    void getTenantDetails_activeStatus_returnsFullInfo() {
+    @DisplayName("getTenantDetails: ACTIVE 狀態、呼叫者為本租戶成員時返回完整資訊（含採購審批門檻）")
+    void getTenantDetails_activeStatus_tenantMember_returnsFullInfo() {
         // Arrange
         UUID tenantId = TEST_TENANT_ID;
         Tenant activeTenant = Tenant.builder()
@@ -366,23 +366,72 @@ class TenantServiceTest {
                 .thenReturn(List.of(ownerMember));
         when(userRepository.findById(TEST_USER_ID))
                 .thenReturn(Optional.of(owner));
+        // DEF-264：purchaseOrderApprovalThreshold 僅在呼叫者是本租戶成員時才可見
+        when(tenantMemberRepository.existsByTenantIdAndUserId(tenantId, TEST_USER_ID))
+                .thenReturn(true);
 
-        // Act
+        try {
+            TenantContext.setCurrentUser(TEST_USER_ID);
+
+            // Act
+            TenantDetailsResponse response = tenantService.getTenantDetails(tenantId);
+
+            // Assert
+            assertNotNull(response);
+            assertEquals("Active Store", response.getStoreName());
+            assertEquals("ACTIVE", response.getStatus());
+            assertEquals("Full description here", response.getStoreDescription()); // Should have full info
+            assertEquals("contact@example.com", response.getContactEmail());        // Should have full info
+            // Sprint 146：contactPhone/updatedAt 先前完全沒有被 DTO/mapper 帶出，
+            // 導致前端 TenantDetail.tsx 的「聯絡電話」「最後更新」永遠讀到 undefined
+            assertEquals("+886-912345678", response.getContactPhone());
+            assertEquals(Instant.parse("2026-09-08T10:00:00Z"), response.getUpdatedAt());
+            // Sprint 89: 已設定門檻須可見（僅限本租戶成員，見下方 DEF-264 案例）
+            assertEquals(new BigDecimal("5000.00"), response.getPurchaseOrderApprovalThreshold());
+            assertNotNull(response.getMember());                                    // Should have member info
+            assertEquals("Store Owner", response.getMember().getDisplayName());
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    @Order(8)
+    @DisplayName("getTenantDetails（DEF-264）：ACTIVE 狀態、呼叫者非本租戶成員（含匿名訪客）時採購審批門檻須隱藏")
+    void getTenantDetails_activeStatus_nonMember_hidesPurchaseOrderApprovalThreshold() {
+        // Arrange
+        // DEF-264：GET /v2/tenants/{id} 是 SecurityConfig 明文放行的公開端點（Guest+），
+        // purchaseOrderApprovalThreshold 卻是內部 ERP 採購審批門檻（Sprint 85/89 為了讓
+        // TenantEditForm 預填現值而加，但誤把此欄位掛在公開端點上）——任何匿名訪客或其他
+        // 租戶成員皆可讀到任一店鋪的內部門檻設定，屬不當外洩。其餘公開店面資訊
+        // （contactEmail/contactPhone/logoUrl 等）維持既有公開設計，不受本修復影響。
+        UUID tenantId = TEST_TENANT_ID;
+        Tenant activeTenant = Tenant.builder()
+                .id(tenantId)
+                .name("Active Store")
+                .status(Tenant.TenantStatus.ACTIVE)
+                .description("Full description here")
+                .contactEmail("contact@example.com")
+                .contactPhone("+886-912345678")
+                .logoUrl("http://logo.url")
+                .purchaseOrderApprovalThreshold(new BigDecimal("5000.00"))
+                .metadata(Map.of("businessType", "RETAIL_ONLY"))
+                .updatedAt(Instant.parse("2026-09-08T10:00:00Z"))
+                .build();
+
+        when(tenantRepository.findById(tenantId))
+                .thenReturn(Optional.of(activeTenant));
+        when(tenantMemberRepository.findByTenantId(tenantId))
+                .thenReturn(List.of());
+
+        // Act：匿名訪客情境，未呼叫 TenantContext.setCurrentUser，getCurrentUser() 維持 null
         TenantDetailsResponse response = tenantService.getTenantDetails(tenantId);
 
         // Assert
         assertNotNull(response);
+        assertNull(response.getPurchaseOrderApprovalThreshold()); // 內部門檻不得外洩給匿名訪客
+        assertEquals("contact@example.com", response.getContactEmail());  // 公開店面資訊維持可見
         assertEquals("Active Store", response.getStoreName());
-        assertEquals("ACTIVE", response.getStatus());
-        assertEquals("Full description here", response.getStoreDescription()); // Should have full info
-        assertEquals("contact@example.com", response.getContactEmail());        // Should have full info
-        // Sprint 146：contactPhone/updatedAt 先前完全沒有被 DTO/mapper 帶出，
-        // 導致前端 TenantDetail.tsx 的「聯絡電話」「最後更新」永遠讀到 undefined
-        assertEquals("+886-912345678", response.getContactPhone());
-        assertEquals(Instant.parse("2026-09-08T10:00:00Z"), response.getUpdatedAt());
-        assertEquals(new BigDecimal("5000.00"), response.getPurchaseOrderApprovalThreshold()); // Sprint 89: 已設定門檻須可見
-        assertNotNull(response.getMember());                                    // Should have member info
-        assertEquals("Store Owner", response.getMember().getDisplayName());
     }
 
     // ── getFeatureToggles Tests（DEF-167：數值配額不得混入開關清單）──────────────

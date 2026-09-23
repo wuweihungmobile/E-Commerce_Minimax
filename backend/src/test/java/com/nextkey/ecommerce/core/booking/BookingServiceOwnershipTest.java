@@ -24,6 +24,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.api.dto.BookingDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
@@ -77,6 +78,9 @@ class BookingServiceOwnershipTest {
 
     @Mock
     private FeatureToggleService featureToggleService;
+
+    @Mock
+    private AuditService auditService;
 
     @InjectMocks
     private BookingService bookingService;
@@ -225,6 +229,12 @@ class BookingServiceOwnershipTest {
 
         org.mockito.Mockito.verify(bookingRepository).save(org.mockito.ArgumentMatchers.argThat(
                 b -> b.getStatus() == Booking.BookingStatus.CANCELLED));
+        // DEF-257：訂房取消須寫入稽核紀錄
+        org.mockito.Mockito.verify(auditService).record(
+                org.mockito.ArgumentMatchers.eq("BOOKING_CANCELLED"), org.mockito.ArgumentMatchers.eq("BOOKING"),
+                org.mockito.ArgumentMatchers.eq(bookingId), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq("CREATED"), org.mockito.ArgumentMatchers.eq("CANCELLED"),
+                org.mockito.ArgumentMatchers.eq("test"));
     }
 
     @Test

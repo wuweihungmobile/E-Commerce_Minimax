@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.payment.CheckoutSessionResponse;
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.order.OrderStateMachine;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
@@ -48,6 +49,7 @@ public class PaymentStateService {
     private final SettlementAdjustmentService settlementAdjustmentService;
     private final ProductInventoryService productInventoryService;
     private final OrderStateLogRepository orderStateLogRepository;
+    private final AuditService auditService;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
@@ -55,7 +57,8 @@ public class PaymentStateService {
     public PaymentStateService(PaymentRepository paymentRepository, OrderRepository orderRepository,
             BookingRepository bookingRepository, FeatureToggleService featureToggleService,
             PaymentGatewayFactory paymentGatewayFactory, SettlementAdjustmentService settlementAdjustmentService,
-            ProductInventoryService productInventoryService, OrderStateLogRepository orderStateLogRepository) {
+            ProductInventoryService productInventoryService, OrderStateLogRepository orderStateLogRepository,
+            AuditService auditService) {
         this.paymentRepository = paymentRepository;
         this.orderRepository = orderRepository;
         this.bookingRepository = bookingRepository;
@@ -64,6 +67,7 @@ public class PaymentStateService {
         this.settlementAdjustmentService = settlementAdjustmentService;
         this.productInventoryService = productInventoryService;
         this.orderStateLogRepository = orderStateLogRepository;
+        this.auditService = auditService;
     }
 
     /**
@@ -171,6 +175,8 @@ public class PaymentStateService {
                 TenantContext.getCurrentUser(), "Mock payment success");
 
         log.info("Mock payment success: orderId={}, paymentId={}", orderId, payment.getId());
+        auditService.record("ORDER_PAYMENT_MOCK_SUCCESS", "PAYMENT", payment.getId(), order.getTenantId(),
+                previousStatus, Order.OrderStatus.PAID.name(), null, TenantContext.getCurrentUser());
 
         return toOrderPaymentStateDto(order, payment);
     }
@@ -202,6 +208,8 @@ public class PaymentStateService {
         payment = paymentRepository.save(payment);
 
         log.info("Mock payment failure: orderId={}, paymentId={}, reason={}", orderId, payment.getId(), reason);
+        auditService.record("ORDER_PAYMENT_MOCK_FAILURE", "PAYMENT", payment.getId(), order.getTenantId(),
+                null, "FAILED", reason, TenantContext.getCurrentUser());
 
         return toOrderPaymentStateDto(order, payment);
     }
@@ -272,6 +280,9 @@ public class PaymentStateService {
 
         log.info("Refund processed: orderId={}, paymentId={}, amount={}, fullyRefunded={}, reason={}",
                 orderId, payment.getId(), refundAmount, fullyRefunded, reason);
+        auditService.record("ORDER_PAYMENT_REFUNDED", "PAYMENT", payment.getId(), order.getTenantId(),
+                "refunded=" + previousRefundedAmount, "refunded=" + newRefundedAmount + ",status=" + newPaymentStatus,
+                reason, TenantContext.getCurrentUser());
 
         // Sprint 86（PRD §6.2.1）：跨結算週期退款處理，失敗不應影響已完成的退款主流程
         try {
@@ -332,8 +343,12 @@ public class PaymentStateService {
         if (updated == 0) {
             return false; // 已是 REFUNDED 或已被另一併發 webhook 搶先處理（冪等）
         }
+        UUID refundTenantId = null;
         if (payment.getOrderId() != null) {
             Order order = orderRepository.findById(payment.getOrderId()).orElse(null);
+            if (order != null) {
+                refundTenantId = order.getTenantId();
+            }
             if (order != null && OrderStateMachine.canRefund(order.getStatus().name())) {
                 String previousStatus = order.getStatus().name();
                 order.setStatus(Order.OrderStatus.REFUNDED);
@@ -344,6 +359,8 @@ public class PaymentStateService {
         }
         log.info("Stripe payment marked REFUNDED (webhook): paymentIntent={}, orderId={}",
                 paymentIntentId, payment.getOrderId());
+        auditService.record("STRIPE_PAYMENT_REFUNDED_WEBHOOK", "PAYMENT", payment.getId(), refundTenantId,
+                null, "REFUNDED", "refundId=" + refundId);
         return true;
     }
 
@@ -468,8 +485,12 @@ public class PaymentStateService {
             return false; // 冪等：已成功，或已被併發的另一次呼叫搶先標記
         }
 
+        UUID successTenantId = null;
         if (orderId != null) {
             Order order = orderRepository.findById(orderId).orElse(null);
+            if (order != null) {
+                successTenantId = order.getTenantId();
+            }
             if (order != null && OrderStateMachine.canPay(order.getStatus().name())) {
                 String previousStatus = order.getStatus().name();
                 order.setStatus(Order.OrderStatus.PAID);
@@ -480,6 +501,8 @@ public class PaymentStateService {
             }
         }
         log.info("Stripe payment marked SUCCESS: session={}, orderId={}", sessionId, orderId);
+        auditService.record("STRIPE_PAYMENT_SUCCEEDED_WEBHOOK", "PAYMENT", payment.getId(), successTenantId,
+                null, "SUCCESS", "session=" + sessionId);
         return true;
     }
 
@@ -504,6 +527,10 @@ public class PaymentStateService {
         payment.setStatus(Payment.PaymentStatus.FAILED);
         paymentRepository.save(payment);
         log.info("Stripe payment marked FAILED: paymentIntent={}, orderId={}", paymentIntentId, payment.getOrderId());
+        UUID failedTenantId = payment.getOrderId() != null
+                ? orderRepository.findById(payment.getOrderId()).map(Order::getTenantId).orElse(null) : null;
+        auditService.record("STRIPE_PAYMENT_FAILED_WEBHOOK", "PAYMENT", payment.getId(), failedTenantId,
+                null, "FAILED", "paymentIntent=" + paymentIntentId);
         return true;
     }
 

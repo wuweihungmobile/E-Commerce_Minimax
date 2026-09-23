@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.PaymentDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.order.OrderService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -35,6 +36,7 @@ public class PaymentService {
     private final OrderRepository orderRepository;
     private final BookingRepository bookingRepository;
     private final OrderService orderService;
+    private final AuditService auditService;
 
     /**
      * 處理支付（Mock）
@@ -107,6 +109,8 @@ public class PaymentService {
 
         log.info("Order payment processed: paymentId={}, transactionId={}",
                 payment.getId(), payment.getTransactionId());
+        auditService.record("ORDER_PAYMENT_PROCESSED", "PAYMENT", payment.getId(), order.getTenantId(),
+                null, "amount=" + payment.getAmount(), null);
 
         return payment;
     }
@@ -159,6 +163,8 @@ public class PaymentService {
 
         log.info("Booking payment processed: paymentId={}, transactionId={}",
                 payment.getId(), payment.getTransactionId());
+        auditService.record("BOOKING_PAYMENT_PROCESSED", "PAYMENT", payment.getId(), booking.getTenantId(),
+                null, "amount=" + payment.getAmount(), null);
 
         return payment;
     }
@@ -213,6 +219,8 @@ public class PaymentService {
         }
 
         log.info("Refund processed: paymentId={}, amount={}", request.getPaymentId(), refundAmount);
+        auditService.record("PAYMENT_REFUNDED", "PAYMENT", payment.getId(), target.tenantId(),
+                "SUCCESS", "REFUNDED", request.getReason());
 
         return PaymentDto.RefundResponse.builder()
                 .refundId(UUID.randomUUID()) // Mock refund ID
@@ -253,6 +261,14 @@ public class PaymentService {
         private PaymentTarget(final Order order, final Booking booking) {
             this.order = order;
             this.booking = booking;
+        }
+
+        /** 所屬租戶（供稽核紀錄使用）：order/booking 至多其一非 null，皆為 null 時回傳 null。 */
+        private UUID tenantId() {
+            if (order != null) {
+                return order.getTenantId();
+            }
+            return booking != null ? booking.getTenantId() : null;
         }
     }
 

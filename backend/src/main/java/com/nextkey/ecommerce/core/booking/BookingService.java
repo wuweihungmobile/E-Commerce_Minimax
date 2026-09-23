@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.api.dto.PricingDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.order.OrderStateMachine;
 import com.nextkey.ecommerce.core.pricing.PricingService;
@@ -70,6 +71,7 @@ public class BookingService {
     private final PromoService promoService;
     private final PromoCodeRepository promoCodeRepository;
     private final PromoCodeUsageRepository promoCodeUsageRepository;
+    private final AuditService auditService;
 
     // Default check-in/out times
     private static final LocalTime DEFAULT_CHECK_IN_TIME = LocalTime.of(15, 0);
@@ -526,6 +528,8 @@ public class BookingService {
             log.info("Booking created: id={}, user={}, room={}, checkIn={}, checkOut={}, promoCode={}, discount={}",
                     booking.getId(), userId, listing.getId(),
                     request.getCheckInDate(), request.getCheckOutDate(), booking.getPromoCode(), discountAmount);
+            auditService.record("BOOKING_CREATED", "BOOKING", booking.getId(), tenantId,
+                    null, "totalAmount=" + totalAmount, null, userId);
 
             response = toBookingResponse(booking, listing, room, nightsCount);
 
@@ -598,6 +602,9 @@ public class BookingService {
             throw new BusinessException(ErrorCode.E_5010, "Booking cannot be updated in current status");
         }
 
+        String oldSnapshot = "checkIn=" + booking.getCheckInDate() + ",checkOut=" + booking.getCheckOutDate()
+                + ",guests=" + booking.getGuestCount();
+
         // 如果更改日期，需要釋放舊日期並預訂新日期
         boolean dateChanged = false;
         if (request.getCheckInDate() != null || request.getCheckOutDate() != null) {
@@ -614,6 +621,10 @@ public class BookingService {
 
         booking = bookingRepository.save(booking);
         log.info("Booking updated: id={}", bookingId);
+        String newSnapshot = "checkIn=" + booking.getCheckInDate() + ",checkOut=" + booking.getCheckOutDate()
+                + ",guests=" + booking.getGuestCount();
+        auditService.record("BOOKING_UPDATED", "BOOKING", booking.getId(), booking.getTenantId(),
+                oldSnapshot, newSnapshot, null);
 
         return buildBookingResponse(booking);
     }
@@ -750,6 +761,7 @@ public class BookingService {
                 booking.getCheckOutDate()
         );
 
+        String oldStatus = booking.getStatus().name();
         booking.setStatus(com.nextkey.ecommerce.domain.model.order.Booking.BookingStatus.CANCELLED);
         bookingRepository.save(booking);
 
@@ -758,6 +770,8 @@ public class BookingService {
         refundPromoUsage(booking);
 
         log.info("Booking cancelled: id={}, reason={}", bookingId, reason);
+        auditService.record("BOOKING_CANCELLED", "BOOKING", booking.getId(), booking.getTenantId(),
+                oldStatus, com.nextkey.ecommerce.domain.model.order.Booking.BookingStatus.CANCELLED.name(), reason);
     }
 
     // ========== Helper Methods ==========

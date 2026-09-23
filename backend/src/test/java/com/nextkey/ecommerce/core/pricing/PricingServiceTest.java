@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.pricing;
 
 import com.nextkey.ecommerce.api.dto.PricingDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.PricingRule;
@@ -60,6 +61,9 @@ class PricingServiceTest {
 
     @Mock
     private FeatureToggleService featureToggleService;
+
+    @Mock
+    private AuditService auditService;
 
     @InjectMocks
     private PricingService pricingService;
@@ -821,6 +825,17 @@ class PricingServiceTest {
             assertThat(existing.getIsActive()).isTrue();
             assertThat(response.getIsActive()).isTrue();
             verify(pricingRuleRepository, times(1)).save(any());
+        }
+
+        @Test
+        @DisplayName("DEF-257: createRule 成功後寫入稽核紀錄")
+        void createRule_success_recordsAuditLog() {
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            pricingService.createRule(baseRequest().build(), false);
+
+            verify(auditService).record(eq("PRICING_RULE_CREATED"), eq("PRICING_RULE"), any(),
+                    eq(TENANT_ID), isNull(), eq("WEEKDAY_WEEKEND"), isNull());
         }
     }
 

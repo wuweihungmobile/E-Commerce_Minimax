@@ -3,6 +3,9 @@ package com.nextkey.ecommerce.core.payment;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -22,6 +25,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.api.dto.PaymentDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.order.OrderService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -58,6 +62,9 @@ class PaymentServiceRefundOwnershipTest {
 
     @Mock
     private OrderService orderService;
+
+    @Mock
+    private AuditService auditService;
 
     @InjectMocks
     private PaymentService paymentService;
@@ -125,6 +132,9 @@ class PaymentServiceRefundOwnershipTest {
         PaymentDto.RefundResponse response = paymentService.processRefund(refundRequest(BigDecimal.valueOf(1000)));
 
         assertThat(response.getRefundAmount()).isEqualByComparingTo(BigDecimal.valueOf(1000));
+        // DEF-257：退款須寫入稽核紀錄
+        verify(auditService).record(eq("PAYMENT_REFUNDED"), eq("PAYMENT"), eq(paymentId), isNull(),
+                eq("SUCCESS"), eq("REFUNDED"), eq("test"));
     }
 
     @Test

@@ -16,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.nextkey.ecommerce.api.dto.PaymentDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.order.OrderService;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
@@ -44,6 +45,9 @@ class PaymentServiceRefundConcurrencyTest {
 
     @Mock
     private OrderService orderService;
+
+    @Mock
+    private AuditService auditService;
 
     @InjectMocks
     private PaymentService paymentService;

@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.OrderDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
@@ -75,6 +76,7 @@ public class OrderService {
     private final ProductInventoryService productInventoryService;
     private final PromoService promoService;
     private final PromoCodeUsageRepository promoCodeUsageRepository;
+    private final AuditService auditService;
 
     /**
      * 「沒有真正租戶」的預設佔位租戶 ID（見 {@code TenantContextFilter.resolveEffectiveTenantId}）。
@@ -253,6 +255,8 @@ public class OrderService {
         productInventoryService.reserveForOrder(order);
 
         recordStateLog(order, null, Order.OrderStatus.CREATED.name(), userId, "Order created from cart");
+        auditService.record("ORDER_CREATED", "ORDER", order.getId(), tenant.getId(),
+                null, "totalAmount=" + order.getTotalAmount(), null, userId);
 
         return toOrderResponse(order);
     }
@@ -637,6 +641,8 @@ public class OrderService {
         recordStateLog(order, currentStatus, targetStatus, userId, reason);
 
         log.info("Order status updated: orderId={}, {} -> {}", orderId, currentStatus, targetStatus);
+        auditService.record("ORDER_STATUS_UPDATED", "ORDER", order.getId(), order.getTenantId(),
+                currentStatus, targetStatus, reason, userId);
         return toOrderResponse(order);
     }
 
@@ -729,6 +735,8 @@ public class OrderService {
 
         // 記錄狀態日誌
         recordStateLog(order, currentStatus, Order.OrderStatus.CANCELLED.name(), userId, reason);
+        auditService.record("ORDER_CANCELLED", "ORDER", order.getId(), order.getTenantId(),
+                currentStatus, Order.OrderStatus.CANCELLED.name(), reason, userId);
 
         // Sprint 88（AI-2422）：僅當取消前尚未付款（CREATED）才釋放預扣庫存；
         // 已付款（PAID）的庫存已由 deductForOrder 正式扣帳，本次不做退款回補（範圍外）

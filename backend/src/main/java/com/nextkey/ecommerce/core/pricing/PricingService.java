@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.PricingDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.PricingRule;
@@ -47,6 +48,7 @@ public class PricingService {
     private final ListingRepository listingRepository;
     private final RoomCalendarRepository roomCalendarRepository;
     private final FeatureToggleService featureToggleService;
+    private final AuditService auditService;
 
     private static final double TAX_RATE = 1.2;
 
@@ -86,6 +88,8 @@ public class PricingService {
 
         rule = pricingRuleRepository.save(rule);
         log.info("Created pricing rule: ruleId={}, type={}", rule.getId(), rule.getRuleType());
+        auditService.record("PRICING_RULE_CREATED", "PRICING_RULE", rule.getId(), tenantId,
+                null, rule.getRuleType().name(), null);
 
         return toRuleResponse(rule);
     }
@@ -99,6 +103,9 @@ public class PricingService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Pricing rule not found"));
         // DEF-242：同 createRule，先前未驗證規則屬於呼叫者租戶
         checkRuleTenantOwnership(rule.getTenantId(), isSuperAdmin);
+
+        String oldSnapshot = String.format("priority=%d,active=%s,validFrom=%s,validTo=%s",
+                rule.getPriority(), rule.getIsActive(), rule.getValidFrom(), rule.getValidTo());
 
         if (request.getRuleName() != null) {
             rule.setRuleName(request.getRuleName());
@@ -124,6 +131,10 @@ public class PricingService {
 
         rule = pricingRuleRepository.save(rule);
         log.info("Updated pricing rule: ruleId={}", ruleId);
+        String newSnapshot = String.format("priority=%d,active=%s,validFrom=%s,validTo=%s",
+                rule.getPriority(), rule.getIsActive(), rule.getValidFrom(), rule.getValidTo());
+        auditService.record("PRICING_RULE_UPDATED", "PRICING_RULE", rule.getId(), rule.getTenantId(),
+                oldSnapshot, newSnapshot, null);
 
         return toRuleResponse(rule);
     }
@@ -181,6 +192,8 @@ public class PricingService {
         rule.setIsActive(false);
         pricingRuleRepository.save(rule);
         log.info("Deactivated pricing rule: ruleId={}", ruleId);
+        auditService.record("PRICING_RULE_DEACTIVATED", "PRICING_RULE", ruleId, rule.getTenantId(),
+                "active=true", "active=false", null);
     }
 
     /**
@@ -315,6 +328,9 @@ public class PricingService {
 
         log.info("Set calendar price: listingId={}, date={}, price={}",
                 request.getRoomListingId(), request.getDate(), request.getPrice());
+        auditService.record("PRICING_CALENDAR_PRICE_SET", "PRICING_RULE", overrideRule.getId(),
+                overrideRule.getTenantId(), null,
+                "date=" + request.getDate() + ",price=" + request.getPrice(), request.getReason());
 
         return PricingDto.CalendarPriceResponse.builder()
                 .roomListingId(request.getRoomListingId())
@@ -373,6 +389,8 @@ public class PricingService {
 
         log.info("Override price applied: ruleId={}, roomListingId={}, startDate={}, endDate={}, price={}",
                 overrideRule.getId(), roomListingId, startDate, endDate, overridePrice);
+        auditService.record("PRICING_RULE_OVERRIDDEN", "PRICING_RULE", overrideRule.getId(), tenantId,
+                "originalRuleId=" + ruleId, "price=" + overridePrice + ",range=" + startDate + ".." + endDate, reason);
 
         return PricingDto.RuleOverrideResponse.builder()
                 .ruleId(overrideRule.getId())

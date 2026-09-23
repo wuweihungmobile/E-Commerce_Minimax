@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.booking;
 
 import com.nextkey.ecommerce.api.dto.BookingDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
@@ -46,6 +47,7 @@ class BookingServiceOpenWindowTest {
     @Mock private com.nextkey.ecommerce.domain.repository.UserRepository userRepository;
     @Mock private PricingService pricingService;
     @Mock private FeatureToggleService featureToggleService;
+    @Mock private AuditService auditService;
 
     @InjectMocks private BookingService bookingService;
 

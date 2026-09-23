@@ -29,6 +29,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.OrderDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
@@ -92,6 +93,7 @@ class OrderPromoCodeTest {
     @Mock private ProductInventoryService productInventoryService;
     @Mock private PromoService promoService;
     @Mock private PromoCodeUsageRepository promoCodeUsageRepository;
+    @Mock private AuditService auditService;
 
     @InjectMocks
     private OrderService orderService;

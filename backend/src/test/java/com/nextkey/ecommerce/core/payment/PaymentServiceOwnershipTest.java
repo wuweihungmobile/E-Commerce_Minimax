@@ -19,6 +19,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.api.dto.PaymentDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.order.OrderService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -52,6 +53,9 @@ class PaymentServiceOwnershipTest {
 
     @Mock
     private OrderService orderService;
+
+    @Mock
+    private AuditService auditService;
 
     @InjectMocks
     private PaymentService paymentService;

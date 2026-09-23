@@ -31,6 +31,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
@@ -74,6 +75,7 @@ class PaymentStateServiceTest {
     @Mock private SettlementAdjustmentService settlementAdjustmentService;
     @Mock private ProductInventoryService productInventoryService;
     @Mock private OrderStateLogRepository orderStateLogRepository;
+    @Mock private AuditService auditService;
 
     private PaymentStateService service;
 
@@ -86,7 +88,7 @@ class PaymentStateServiceTest {
     void setUp() {
         service = new PaymentStateService(paymentRepository, orderRepository, bookingRepository,
                 featureToggleService, paymentGatewayFactory, settlementAdjustmentService, productInventoryService,
-                orderStateLogRepository);
+                orderStateLogRepository, auditService);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         TenantContext.setCurrentUser(USER_ID);
     }
@@ -362,6 +364,9 @@ class PaymentStateServiceTest {
             assertThat(logCaptor.getValue().getFromStatus()).isEqualTo("CREATED");
             assertThat(logCaptor.getValue().getToStatus()).isEqualTo("PAID");
             assertThat(logCaptor.getValue().getChangedBy()).isEqualTo(USER_ID);
+            // DEF-257：付款成功須寫入稽核紀錄
+            verify(auditService).record(eq("ORDER_PAYMENT_MOCK_SUCCESS"), eq("PAYMENT"), any(),
+                    eq(order.getTenantId()), eq("CREATED"), eq("PAID"), isNull(), eq(USER_ID));
         }
 
         @Test

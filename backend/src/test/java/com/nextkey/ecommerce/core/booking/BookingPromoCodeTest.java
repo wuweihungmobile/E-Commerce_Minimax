@@ -28,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import com.nextkey.ecommerce.api.dto.BookingDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.core.promo.PromoService;
@@ -78,6 +79,7 @@ class BookingPromoCodeTest {
     @Mock private PromoService promoService;
     @Mock private PromoCodeRepository promoCodeRepository;
     @Mock private PromoCodeUsageRepository promoCodeUsageRepository;
+    @Mock private AuditService auditService;
 
     @InjectMocks
     private BookingService bookingService;

@@ -35,6 +35,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.OrderDto;
+import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
@@ -102,6 +103,7 @@ class OrderServiceTest {
     @Mock private AddressService addressService;
     @Mock private ProductInventoryService productInventoryService;
     @Mock private PromoService promoService;
+    @Mock private AuditService auditService;
 
     @InjectMocks
     private OrderService orderService;
@@ -1027,6 +1029,9 @@ class OrderServiceTest {
         assertThat(logCaptor.getValue().getFromStatus()).isEqualTo("CREATED");
         assertThat(logCaptor.getValue().getToStatus()).isEqualTo("PAID");
         assertThat(logCaptor.getValue().getReason()).isEqualTo("buyer paid");
+        // DEF-257：金流/訂單生命週期狀態轉換須寫入稽核紀錄
+        verify(auditService).record(eq("ORDER_STATUS_UPDATED"), eq("ORDER"), eq(ORDER_ID),
+                eq(order.getTenantId()), eq("CREATED"), eq("PAID"), eq("buyer paid"), eq(USER_ID));
     }
 
     @Test

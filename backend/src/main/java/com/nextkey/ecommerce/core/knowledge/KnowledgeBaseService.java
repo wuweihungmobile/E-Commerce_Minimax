@@ -194,9 +194,20 @@ public class KnowledgeBaseService {
         return toArticleDto(article);
     }
 
+    /**
+     * DEF-260（Sprint 186）：先前呼叫 {@code findPublishedBySlug(slug)}，該查詢完全不過濾租戶——
+     * 本類別其餘所有依 ID/slug 查詢單筆資源的方法（{@code getArticle}/{@code getCategoryBySlug}
+     * 等）皆一致以 {@code getCurrentTenant()} 搭配 {@code findByIdAndTenantId}/
+     * {@code findByTenantIdAndSlug} 過濾租戶，唯獨這支被遺漏。任一持有 {@code knowledge:read}
+     * 權限者（含最低信任等級的 {@code STORE_STAFF}）只要取得他租戶已發布文章的 slug，即可讀到
+     * 該租戶知識庫文章的完整內容，繞過知識庫模組的租戶隔離設計。比照本類別既有的
+     * {@code getCategoryBySlug} 慣例補上租戶範圍查詢，並保留原本「僅回傳已發布文章」的語意。
+     */
     @Transactional(readOnly = true)
     public KnowledgeArticleDto getArticleBySlug(String slug) {
-        KnowledgeArticle article = articleRepository.findPublishedBySlug(slug)
+        UUID tenantId = getCurrentTenant();
+        KnowledgeArticle article = articleRepository.findByTenantIdAndSlug(tenantId, slug)
+                .filter(a -> a.getStatus() == ArticleStatus.PUBLISHED)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Article not found"));
         return toArticleDto(article);
     }

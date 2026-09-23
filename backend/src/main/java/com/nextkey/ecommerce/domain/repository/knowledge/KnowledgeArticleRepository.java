@@ -50,9 +50,6 @@ public interface KnowledgeArticleRepository extends JpaRepository<KnowledgeArtic
     @Query("SELECT a FROM KnowledgeArticle a WHERE a.id = :id AND a.tenant.id = :tenantId")
     Optional<KnowledgeArticle> findByIdAndTenantIdForUpdate(@Param("id") UUID id, @Param("tenantId") UUID tenantId);
 
-    @Query("SELECT a FROM KnowledgeArticle a WHERE a.slug = :slug AND a.status = 'PUBLISHED'")
-    Optional<KnowledgeArticle> findPublishedBySlug(@Param("slug") String slug);
-
     List<KnowledgeArticle> findByTenantIdAndIsPinnedTrueAndStatus(UUID tenantId, ArticleStatus status);
 
     @Query("SELECT a FROM KnowledgeArticle a WHERE a.category.id = :categoryId AND a.status = 'PUBLISHED' ORDER BY a.viewCount DESC")

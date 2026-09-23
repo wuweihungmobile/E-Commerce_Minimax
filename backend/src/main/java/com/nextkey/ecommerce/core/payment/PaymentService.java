@@ -179,7 +179,7 @@ public class PaymentService {
         // processBookingPayment 既有慣例，置於狀態檢查之前，避免向未授權者洩漏付款狀態；
         // 一併保留載入的 order/booking 供下方狀態更新重用，不重複查詢（抽出獨立方法以控制
         // processRefund 本身的 NPath 複雜度）。
-        RefundTarget target = resolveAndAuthorizeRefundTarget(payment);
+        PaymentTarget target = resolveAndAuthorizePaymentTarget(payment);
 
         if (payment.getStatus() != Payment.PaymentStatus.SUCCESS) {
             throw new BusinessException(ErrorCode.E_6002, "Payment cannot be refunded");
@@ -225,31 +225,32 @@ public class PaymentService {
     }
 
     /**
-     * 解析付款所屬的訂單/訂房並套用既有擁有權檢查（DEF-243）；至多其一非 null。
-     * 抽出為獨立方法以控制 {@link #processRefund} 本身的 NPath 複雜度。
+     * 解析付款所屬的訂單/訂房並套用既有擁有權檢查（DEF-243，Sprint 186 起改名並供
+     * {@link #getPaymentStatus} 共用）；至多其一非 null。抽出為獨立方法以控制
+     * {@link #processRefund} 本身的 NPath 複雜度。
      */
-    private RefundTarget resolveAndAuthorizeRefundTarget(final Payment payment) {
+    private PaymentTarget resolveAndAuthorizePaymentTarget(final Payment payment) {
         if (payment.getOrderId() != null) {
             Order order = orderRepository.findById(payment.getOrderId())
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
             checkOrderPaymentOwnership(order);
-            return new RefundTarget(order, null);
+            return new PaymentTarget(order, null);
         }
         if (payment.getBookingId() != null) {
             Booking booking = bookingRepository.findById(payment.getBookingId())
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_4006, "Booking not found"));
             checkBookingPaymentOwnership(booking);
-            return new RefundTarget(null, booking);
+            return new PaymentTarget(null, booking);
         }
-        return new RefundTarget(null, null);
+        return new PaymentTarget(null, null);
     }
 
-    /** 退款目標容器：{@code order}/{@code booking} 至多其一非 null。 */
-    private static final class RefundTarget {
+    /** 付款所屬目標容器：{@code order}/{@code booking} 至多其一非 null。 */
+    private static final class PaymentTarget {
         private final Order order;
         private final Booking booking;
 
-        private RefundTarget(final Order order, final Booking booking) {
+        private PaymentTarget(final Order order, final Booking booking) {
             this.order = order;
             this.booking = booking;
         }
@@ -257,11 +258,19 @@ public class PaymentService {
 
     /**
      * 取得支付狀態
+     *
+     * <p>DEF-260（Sprint 186）：先前完全沒有擁有權檢查——`GET /v2/payments/{paymentId}`
+     * 僅要求 {@code order:read}/{@code booking:read}（幾乎所有已登入角色皆持有），任何使用者只要
+     * 取得任一 {@code paymentId} 即可查得該筆付款的狀態，與同檔案內 {@code processOrderPayment}/
+     * {@code processBookingPayment}/{@code processRefund}（皆已修復 DEF-019/023/243）形成明顯
+     * 不對稱。重用 {@link #resolveAndAuthorizePaymentTarget} 套用相同的擁有權檢查（買家限本人
+     * 訂單/預訂、admin 放行）。
      */
     @Transactional(readOnly = true)
     public PaymentDto.PaymentStatusResponse getPaymentStatus(UUID paymentId) {
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_6000));
+        resolveAndAuthorizePaymentTarget(payment);
 
         return PaymentDto.PaymentStatusResponse.builder()
                 .paymentId(payment.getId())

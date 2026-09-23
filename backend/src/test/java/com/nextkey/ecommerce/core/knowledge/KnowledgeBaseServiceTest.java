@@ -287,15 +287,45 @@ class KnowledgeBaseServiceTest {
     }
 
     @Test
-    @DisplayName("getArticleBySlug：找到已發布文章 → 回傳 DTO")
+    @DisplayName("getArticleBySlug：找到本租戶已發布文章 → 回傳 DTO")
     void getArticleBySlug_found_returnsDto() {
         KnowledgeCategory category = buildCategory(UUID.randomUUID(), "General", "general");
         KnowledgeArticle article = buildArticle(UUID.randomUUID(), category, buildAuthor(UUID.randomUUID()), "Title", "slug1");
-        when(articleRepository.findPublishedBySlug("slug1")).thenReturn(Optional.of(article));
+        when(articleRepository.findByTenantIdAndSlug(TENANT_ID, "slug1")).thenReturn(Optional.of(article));
 
         KnowledgeArticleDto result = knowledgeBaseService.getArticleBySlug("slug1");
 
         assertThat(result.getSlug()).isEqualTo("slug1");
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-260：getArticleBySlug 對他租戶的 slug（查無本租戶記錄）→ E_4000，"
+            + "不得讀到他租戶已發布的知識庫文章")
+    void getArticleBySlug_belongsToDifferentTenant_throwsE4000() {
+        // 修復前：直接呼叫 findPublishedBySlug（全庫查詢，不分租戶），任一租戶的 slug 皆查得到。
+        // 修復後：findByTenantIdAndSlug(TENANT_ID, slug) 對他租戶的 slug 查無記錄。
+        when(articleRepository.findByTenantIdAndSlug(TENANT_ID, "other-tenant-slug")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> knowledgeBaseService.getArticleBySlug("other-tenant-slug"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_4000);
+    }
+
+    @Test
+    @DisplayName("getArticleBySlug：本租戶但未發布（DRAFT）→ E_4000，維持原本僅回傳已發布文章的語意")
+    void getArticleBySlug_draftStatus_throwsE4000() {
+        KnowledgeCategory category = buildCategory(UUID.randomUUID(), "General", "general");
+        KnowledgeArticle draft = KnowledgeArticle.builder()
+                .id(UUID.randomUUID()).tenantId(TENANT_ID).category(category).author(buildAuthor(UUID.randomUUID()))
+                .title("Draft").slug("draft-slug").content("Content").status(ArticleStatus.DRAFT)
+                .isPinned(false).sortOrder(0).build();
+        when(articleRepository.findByTenantIdAndSlug(TENANT_ID, "draft-slug")).thenReturn(Optional.of(draft));
+
+        assertThatThrownBy(() -> knowledgeBaseService.getArticleBySlug("draft-slug"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_4000);
     }
 
     @Test

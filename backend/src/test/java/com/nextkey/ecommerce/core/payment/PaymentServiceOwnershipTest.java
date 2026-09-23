@@ -22,6 +22,7 @@ import com.nextkey.ecommerce.api.dto.PaymentDto;
 import com.nextkey.ecommerce.core.order.OrderService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
+import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.PaymentRepository;
@@ -180,5 +181,57 @@ class PaymentServiceOwnershipTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.E_5011);
+    }
+
+    // ========== getPaymentStatus（DEF-260，Sprint 186） ==========
+
+    private final UUID paymentId = UUID.randomUUID();
+
+    private Payment paymentForOrder() {
+        return Payment.builder().id(paymentId).orderId(orderId)
+                .status(Payment.PaymentStatus.SUCCESS).transactionId("MOCK-TX").build();
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-260：他人查詢買家訂單的付款狀態 → E_1007（先前完全無擁有權檢查）")
+    void getPaymentStatus_otherUser_throwsE1007() {
+        when(paymentRepository.findById(paymentId)).thenReturn(Optional.of(paymentForOrder()));
+        when(orderRepository.findById(orderId))
+                .thenReturn(Optional.of(orderOfUser(buyerA, Order.OrderStatus.PAID)));
+        TenantContext.setCurrentUser(buyerB);
+
+        assertThatThrownBy(() -> paymentService.getPaymentStatus(paymentId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("本人查詢自己訂單的付款狀態 → 放行，回傳正確狀態")
+    void getPaymentStatus_sameUser_returnsStatus() {
+        when(paymentRepository.findById(paymentId)).thenReturn(Optional.of(paymentForOrder()));
+        when(orderRepository.findById(orderId))
+                .thenReturn(Optional.of(orderOfUser(buyerA, Order.OrderStatus.PAID)));
+        TenantContext.setCurrentUser(buyerA);
+
+        PaymentDto.PaymentStatusResponse response = paymentService.getPaymentStatus(paymentId);
+
+        org.assertj.core.api.Assertions.assertThat(response.getStatus()).isEqualTo("SUCCESS");
+    }
+
+    @Test
+    @DisplayName("admin 查詢他人訂單的付款狀態 → 放行")
+    void getPaymentStatus_admin_bypassesOwnership() {
+        when(paymentRepository.findById(paymentId)).thenReturn(Optional.of(paymentForOrder()));
+        when(orderRepository.findById(orderId))
+                .thenReturn(Optional.of(orderOfUser(buyerA, Order.OrderStatus.PAID)));
+        TenantContext.setCurrentUser(buyerB); // 非本人
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("admin", null,
+                        List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+
+        PaymentDto.PaymentStatusResponse response = paymentService.getPaymentStatus(paymentId);
+
+        org.assertj.core.api.Assertions.assertThat(response.getStatus()).isEqualTo("SUCCESS");
     }
 }

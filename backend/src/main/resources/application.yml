@@ -62,7 +62,8 @@ app:
   host: 0.0.0.0
   port: 8080
   cors:
-    allowed-origins: http://localhost:3000,http://localhost:8080
+    # 逗號分隔多個前端來源；正式環境以 APP_CORS_ALLOWED_ORIGINS 覆寫（不可用 *，因 allowCredentials=true）
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8080}
 
 # Storage (MinIO/S3)
 storage:

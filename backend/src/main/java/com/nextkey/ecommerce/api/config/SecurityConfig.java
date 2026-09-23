@@ -5,6 +5,7 @@ import java.util.List;
 
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -17,6 +18,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -43,6 +45,14 @@ public class SecurityConfig {
 
     // CORS configuration
     private static final long CORS_MAX_AGE_SECONDS = 3600L;
+
+    /**
+     * 逗號分隔的 CORS 允許來源，來源為 application.yml 的 app.cors.allowed-origins
+     * （環境變數 APP_CORS_ALLOWED_ORIGINS 可覆寫）。前端 NEXT_PUBLIC_API_URL 於 build 時可指向正式後端網域，
+     * 瀏覽器跨源直連，故正式環境必須能設定自己的前端來源。Sprint 191，DEF-265。
+     */
+    @Value("${app.cors.allowed-origins}")
+    private String corsAllowedOriginsRaw;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
                          TenantContextFilter tenantContextFilter,
@@ -129,7 +139,10 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:3000", "http://localhost:8080"));
+        configuration.setAllowedOrigins(Arrays.stream(corsAllowedOriginsRaw.split(","))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .toList());
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         // Idempotency-Key：訂房結帳（POST /v2/bookings）與合併結帳（POST /v2/checkout/mixed）皆帶此
         // 自訂標頭。未列入白名單時，preflight 回應的 Access-Control-Allow-Headers 會缺少它，瀏覽器

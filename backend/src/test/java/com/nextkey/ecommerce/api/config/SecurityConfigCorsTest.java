@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.cors.CorsConfiguration;
 
 /**
@@ -25,6 +27,12 @@ class SecurityConfigCorsTest {
 
     /** corsConfigurationSource() 不使用任何 filter 相依，可安全以 null 建構。 */
     private final SecurityConfig securityConfig = new SecurityConfig(null, null, null, null);
+
+    /** 允許來源改由 app.cors.allowed-origins 注入（DEF-265），本測試只關心標頭，來源值任意即可。 */
+    @BeforeEach
+    void setUp() {
+        ReflectionTestUtils.setField(securityConfig, "corsAllowedOriginsRaw", "http://localhost:3000");
+    }
 
     private CorsConfiguration configFor(String path) {
         MockHttpServletRequest request = new MockHttpServletRequest();

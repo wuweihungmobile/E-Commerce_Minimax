@@ -397,6 +397,50 @@ class PaymentStateServiceStripeTest {
     }
 
     @Test
+    @DisplayName("Sprint 192（DEF-267）: 退款金額超過 2 位小數（500.005）→ E_6009，不佔用額度、不呼叫 gateway")
+    void refund_subCentAmount_throwsBeforeAnyMoneyMoves() {
+        // Stripe 換算 amount × 100 後以 longValue() 截斷（500.005 → 50000 分 = 500.00），
+        // 而 payments.refunded_amount 是 NUMERIC(12,2) 四捨五入（500.005 → 500.01）：
+        // 同一筆退款兩邊帳差一分，且 500.005 累計到全額時狀態判斷與實際落庫值也會不一致。
+        Order order = paidOrder();
+        Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.SUCCESS)
+                .transactionId("cs_test_1").stripePaymentIntentId("pi_1").build();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(success));
+
+        assertThatThrownBy(() -> service.refundOrderPayment(ORDER_ID, new BigDecimal("500.005"), "sub-cent"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_6009);
+        verify(paymentRepository, never()).applyRefundIfUnchanged(any(), any(), any(), any());
+        verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Sprint 192（DEF-267）: 退款金額 500.500（僅尾端補零，數值仍為 2 位小數）→ 允許，不可誤擋")
+    void refund_trailingZeroScale_isAccepted() {
+        Order order = paidOrder();
+        Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.SUCCESS)
+                .transactionId("cs_test_1").stripePaymentIntentId("pi_1").build();
+        BigDecimal amount = new BigDecimal("500.500");
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(success));
+        when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
+        when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", amount, "trailing zero"))
+                .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
+                        .success(true).refundId("re_tz_1").status("succeeded").build());
+
+        service.refundOrderPayment(ORDER_ID, amount, "trailing zero");
+
+        assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.PARTIALLY_REFUNDED);
+        assertThat(success.getRefundedAmount()).isEqualByComparingTo("500.50");
+    }
+
+    @Test
     @DisplayName("🔴 DEF-136: 併發搶佔（compare-and-swap 影響 0 列）-> 拒絕本次退款，絕不呼叫 Stripe")
     void refund_concurrentClaim_rejectsWithoutCallingStripe() {
         Order order = paidOrder();

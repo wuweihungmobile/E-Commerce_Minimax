@@ -40,6 +40,8 @@ public class PaymentStateService {
     /** 真實金流 toggle（Sprint 50 AI-2410）：開啟→stripe 路徑，關閉（預設）→mock 路徑。 */
     private static final String STRIPE_PAYMENT_ENABLED = "STRIPE_PAYMENT_ENABLED";
     private static final String GATEWAY_STRIPE = "STRIPE";
+    /** 退款金額允許的最大小數位數（幣別最小單位：分），見 {@link #resolveRefundAmount}。 */
+    private static final int REFUND_AMOUNT_MAX_SCALE = 2;
 
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
@@ -295,8 +297,19 @@ public class PaymentStateService {
         return toOrderPaymentStateDto(order, payment);
     }
 
-    /** 解析並驗證退款金額（AI-2415）：null = 剩餘全額；否則須為正數且不超過剩餘可退額度。 */
+    /**
+     * 解析並驗證退款金額（AI-2415）：null = 剩餘全額；否則須為正數且不超過剩餘可退額度。
+     *
+     * <p>DEF-267：呼叫端指定的金額另須落在幣別最小單位（至多 2 位小數）。Stripe 換算
+     * {@code amount × 100} 後以 {@code longValue()} 截斷，而 {@code payments.refunded_amount} 是
+     * NUMERIC(12,2) 四捨五入，對 {@code 500.005} 兩邊會分別得到 500.00 與 500.01。以數值判斷而非
+     * 字面 scale（{@code 500.500} 只是尾端補零，仍合法）。
+     */
     private BigDecimal resolveRefundAmount(Payment payment, BigDecimal amount) {
+        if (amount != null && amount.stripTrailingZeros().scale() > REFUND_AMOUNT_MAX_SCALE) {
+            throw new BusinessException(ErrorCode.E_6009,
+                    "Refund amount must not have more than " + REFUND_AMOUNT_MAX_SCALE + " decimal places");
+        }
         BigDecimal remaining = payment.getAmount().subtract(payment.getRefundedAmount());
         BigDecimal refundAmount = amount != null ? amount : remaining;
         if (refundAmount.compareTo(BigDecimal.ZERO) <= 0 || refundAmount.compareTo(remaining) > 0) {

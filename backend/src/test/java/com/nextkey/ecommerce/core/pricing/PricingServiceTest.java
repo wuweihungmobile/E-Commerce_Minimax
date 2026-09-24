@@ -1081,6 +1081,179 @@ class PricingServiceTest {
         }
     }
 
+    /**
+     * DEF-266：動態定價的計算結果（單晚/總額/有效售價）過去從未捨入至幣別精度，ROOM 側還經 double
+     * 運算（{@code 1 - 7.0 / 100 = 0.9299999999999999}）。只靠 Postgres NUMERIC(_, 2) 在寫入時隱性
+     * 四捨五入，導致：精確平手值（{@code .xx5}）被浮點雜訊往下捨、API 回應/稽核日誌帶長尾小數、
+     * 逐晚明細與總額對不上。本專案其餘金額計算（PromoService／SettlementCalculator）一律
+     * {@code setScale(2, HALF_UP)}，定價需與之一致。
+     */
+    @Nested
+    @DisplayName("DEF-266: 動態定價結果須捨入至 2 位小數（HALF_UP），且不含 double 浮點雜訊")
+    class MoneyPrecisionTests {
+
+        private static final LocalDate TUESDAY = LocalDate.of(2027, 3, 2);
+        private static final LocalDate SATURDAY = LocalDate.of(2027, 3, 6);
+
+        private Room roomWithBasePrice(final String basePrice) {
+            Listing listing = Listing.builder()
+                    .basePrice(new BigDecimal(basePrice))
+                    .currency("TWD")
+                    .tenantId(TENANT_ID)
+                    .build();
+            listing.setId(ROOM_LISTING_ID);
+            return Room.builder().listing(listing).build();
+        }
+
+        private PricingRule roomRule(final PricingRule.PricingRuleType type, final Map<String, Object> config) {
+            return PricingRule.builder()
+                    .id(UUID.randomUUID())
+                    .tenantId(TENANT_ID)
+                    .roomListingId(ROOM_LISTING_ID)
+                    .ruleType(type)
+                    .ruleName(type.name() + " money-precision")
+                    .priority(10)
+                    .config(config)
+                    .validFrom(LocalDate.of(2027, 1, 1))
+                    .validTo(LocalDate.of(2027, 12, 31))
+                    .isActive(true)
+                    .build();
+        }
+
+        private PricingDto.CalculatePriceResponse calculate(final Room room, final PricingRule rule,
+                final LocalDate checkIn, final int nights) {
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(room));
+            when(pricingRuleRepository.findActiveRulesForDateRange(any(), any(), any()))
+                    .thenReturn(List.of(rule));
+            return pricingService.calculatePrice(PricingDto.CalculatePriceRequest.builder()
+                    .roomListingId(ROOM_LISTING_ID)
+                    .checkInDate(checkIn)
+                    .checkOutDate(checkIn.plusDays(nights))
+                    .bookingDate(checkIn.minusDays(30))
+                    .build());
+        }
+
+        @Test
+        @DisplayName("ROOM 折扣：精確平手值 1234.50 × 0.93 = 1148.085 須 HALF_UP 為 1148.09，不可被 double 雜訊往下捨成 1148.08")
+        void roomDiscount_exactHalfCentTie_roundsHalfUp() {
+            // 7% 折扣的倍率在 double 下為 0.9299999999999999（非 0.93），乘出 1148.0849999…，
+            // 交給 DB 隱性四捨五入就會變成 1148.08——少收一分錢。
+            PricingRule rule = roomRule(PricingRule.PricingRuleType.EARLY_BIRD,
+                    Map.of("discountPercent", 7.0, "minDaysAhead", 7));
+
+            PricingDto.CalculatePriceResponse response = calculate(roomWithBasePrice("1234.50"), rule, TUESDAY, 1);
+
+            assertThat(response.getBreakdown().get(0).getAdjustedPrice()).isEqualByComparingTo("1148.09");
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo("1148.09");
+        }
+
+        @Test
+        @DisplayName("ROOM 折扣：非平手值也不可帶長尾小數（1234.00 × 0.93 須為 1147.62，而非 1147.6199999…）")
+        void roomDiscount_result_hasNoFloatingNoise() {
+            PricingRule rule = roomRule(PricingRule.PricingRuleType.EARLY_BIRD,
+                    Map.of("discountPercent", 7.0, "minDaysAhead", 7));
+
+            PricingDto.CalculatePriceResponse response = calculate(roomWithBasePrice("1234.00"), rule, TUESDAY, 1);
+
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo("1147.62");
+            assertThat(response.getAdjustedTotal().scale()).isLessThanOrEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("ROOM 長住折扣：逐晚價格與總額皆為 2 位小數，且逐晚加總等於總額（3 晚 × 914.29 = 2742.87）")
+        void roomLongStay_nightlyAndTotalAreCents_andSumsMatch() {
+            // 20% × 3/7 = 8.5714…% → 每晚 1000 × 0.9142857… = 914.2857…；逐晚各自捨入為 914.29。
+            PricingRule rule = roomRule(PricingRule.PricingRuleType.LONG_STAY,
+                    Map.of("discountPercent", 20.0, "minNights", 3));
+
+            PricingDto.CalculatePriceResponse response = calculate(roomWithBasePrice("1000"), rule, TUESDAY, 3);
+
+            BigDecimal nightlySum = BigDecimal.ZERO;
+            for (PricingDto.PriceBreakdown night : response.getBreakdown()) {
+                assertThat(night.getAdjustedPrice()).isEqualByComparingTo("914.29");
+                assertThat(night.getAdjustedPrice().scale()).isLessThanOrEqualTo(2);
+                nightlySum = nightlySum.add(night.getAdjustedPrice());
+            }
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo("2742.87");
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo(nightlySum);
+            assertThat(response.getDiscount()).isEqualByComparingTo("257.13");
+        }
+
+        @Test
+        @DisplayName("ROOM 週末加成：百分比顯示值不含浮點雜訊（倍率 1.07 → adjustmentValue 恰為 7，而非 7.000000000000006）")
+        void roomWeekendMultiplier_adjustmentValue_hasNoFloatingNoise() {
+            PricingRule rule = roomRule(PricingRule.PricingRuleType.WEEKDAY_WEEKEND,
+                    Map.of("weekendMultiplier", 1.07));
+
+            PricingDto.CalculatePriceResponse response = calculate(roomWithBasePrice("1000"), rule, SATURDAY, 1);
+
+            PricingDto.PriceBreakdown night = response.getBreakdown().get(0);
+            assertThat(night.getAdjustedPrice()).isEqualByComparingTo("1070.00");
+            assertThat(night.getAdjustmentValue()).isEqualByComparingTo("7");
+            assertThat(night.getAdjustmentValue().stripTrailingZeros().scale())
+                    .as("7% 的顯示值不可帶 double 運算殘留的長尾位數")
+                    .isLessThanOrEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("ROOM 手動覆蓋價：超過 2 位小數的覆蓋價須捨入為 1234.57")
+        void roomManualOverride_subCentPrice_isRounded() {
+            PricingRule rule = roomRule(PricingRule.PricingRuleType.MANUAL_OVERRIDE,
+                    Map.of("price", 1234.567));
+
+            PricingDto.CalculatePriceResponse response = calculate(roomWithBasePrice("1000"), rule, TUESDAY, 1);
+
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo("1234.57");
+            assertThat(response.getAdjustedTotal().scale()).isLessThanOrEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("PRODUCT 折扣：99.99 × 0.925 = 92.49075 須捨入為 92.49（購物車單價/小計不可帶 5 位小數）")
+        void productDiscount_effectivePrice_isRoundedToCents() {
+            Listing listing = Listing.builder()
+                    .listingType(Listing.ListingType.PRODUCT)
+                    .basePrice(new BigDecimal("99.99")).currency("TWD").tenantId(TENANT_ID).build();
+            UUID productId = UUID.fromString("770e8400-e29b-41d4-a716-446655440003");
+            listing.setId(productId);
+            PricingRule rule = PricingRule.builder()
+                    .id(UUID.randomUUID()).tenantId(TENANT_ID).listingId(productId)
+                    .ruleType(PricingRule.PricingRuleType.SEASONAL).ruleName("product discount").priority(10)
+                    .config(Map.of("discountPercent", 7.5))
+                    .validFrom(LocalDate.of(2027, 1, 1)).validTo(LocalDate.of(2027, 12, 31))
+                    .isActive(true).build();
+            when(listingRepository.findById(productId)).thenReturn(Optional.of(listing));
+            when(pricingRuleRepository.findByListingIdAndIsActiveTrue(productId)).thenReturn(List.of(rule));
+
+            PricingDto.EffectivePriceResponse resp = pricingService.getEffectivePrice(productId, TUESDAY, 1);
+
+            assertThat(resp.getEffectivePrice()).isEqualByComparingTo("92.49");
+            assertThat(resp.getEffectivePrice().scale()).isLessThanOrEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("PRODUCT 漲價：99.99 × 1.15 = 114.9885 須捨入為 114.99")
+        void productMarkup_effectivePrice_isRoundedToCents() {
+            Listing listing = Listing.builder()
+                    .listingType(Listing.ListingType.PRODUCT)
+                    .basePrice(new BigDecimal("99.99")).currency("TWD").tenantId(TENANT_ID).build();
+            UUID productId = UUID.fromString("770e8400-e29b-41d4-a716-446655440003");
+            listing.setId(productId);
+            PricingRule rule = PricingRule.builder()
+                    .id(UUID.randomUUID()).tenantId(TENANT_ID).listingId(productId)
+                    .ruleType(PricingRule.PricingRuleType.SEASONAL).ruleName("product markup").priority(10)
+                    .config(Map.of("multiplier", 1.15))
+                    .validFrom(LocalDate.of(2027, 1, 1)).validTo(LocalDate.of(2027, 12, 31))
+                    .isActive(true).build();
+            when(listingRepository.findById(productId)).thenReturn(Optional.of(listing));
+            when(pricingRuleRepository.findByListingIdAndIsActiveTrue(productId)).thenReturn(List.of(rule));
+
+            PricingDto.EffectivePriceResponse resp = pricingService.getEffectivePrice(productId, TUESDAY, 1);
+
+            assertThat(resp.getEffectivePrice()).isEqualByComparingTo("114.99");
+            assertThat(resp.getEffectivePrice().scale()).isLessThanOrEqualTo(2);
+        }
+    }
+
     // ========== Helper Methods ==========
 
     private Room buildMockRoom() {

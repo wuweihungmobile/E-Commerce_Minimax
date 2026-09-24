@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.pricing;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -51,6 +52,17 @@ public class PricingService {
     private final AuditService auditService;
 
     private static final double TAX_RATE = 1.2;
+
+    /**
+     * 動態定價結果的幣別精度與捨入模式（DEF-266），與 PromoService／SettlementCalculator 一致
+     * （2 位小數、HALF_UP）。價格在此處就捨入，而不是交給 DB 欄位隱性四捨五入。
+     */
+    private static final int PRICE_SCALE = 2;
+    private static final RoundingMode PRICE_ROUNDING = RoundingMode.HALF_UP;
+    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
+    private static final BigDecimal LONG_STAY_FULL_DISCOUNT_NIGHTS = BigDecimal.valueOf(7);
+    /** 長住折扣按晚數線性遞增時（非整除）的中間精度；最終價格仍會捨入至 {@link #PRICE_SCALE}。 */
+    private static final int PERCENT_INTERMEDIATE_SCALE = 10;
 
     /** PRD §5.5.1：每個 room_listing_id 最多 50 條 is_active=true 的定價規則。 */
     private static final int MAX_ACTIVE_RULES_PER_ROOM = 50;
@@ -560,30 +572,33 @@ public class PricingService {
                     if (weekendMultiplier == null) {
                         weekendMultiplier = TAX_RATE;
                     }
-                    result.adjustedPrice = basePrice.multiply(BigDecimal.valueOf(weekendMultiplier));
+                    BigDecimal weekendFactor = BigDecimal.valueOf(weekendMultiplier);
+                    result.adjustedPrice = roundToPriceScale(basePrice.multiply(weekendFactor));
                     result.applied = true;
                     result.type = "PERCENTAGE";
-                    result.value = BigDecimal.valueOf((weekendMultiplier - 1) * 100);
+                    result.value = weekendFactor.subtract(BigDecimal.ONE).multiply(HUNDRED);
                 }
                 break;
 
             case SEASONAL:
                 Double seasonalMultiplier = getDoubleConfig(rule, "multiplier");
                 if (seasonalMultiplier != null) {
-                    result.adjustedPrice = basePrice.multiply(BigDecimal.valueOf(seasonalMultiplier));
+                    BigDecimal seasonalFactor = BigDecimal.valueOf(seasonalMultiplier);
+                    result.adjustedPrice = roundToPriceScale(basePrice.multiply(seasonalFactor));
                     result.applied = true;
                     result.type = "PERCENTAGE";
-                    result.value = BigDecimal.valueOf((seasonalMultiplier - 1) * 100);
+                    result.value = seasonalFactor.subtract(BigDecimal.ONE).multiply(HUNDRED);
                 }
                 break;
 
             case EARLY_BIRD:
                 Double earlyBirdDiscount = getDoubleConfig(rule, "discountPercent");
                 if (earlyBirdDiscount != null) {
-                    result.adjustedPrice = basePrice.multiply(BigDecimal.valueOf(1 - earlyBirdDiscount / 100));
+                    BigDecimal earlyBirdPercent = BigDecimal.valueOf(earlyBirdDiscount);
+                    result.adjustedPrice = roundToPriceScale(basePrice.multiply(discountFactor(earlyBirdPercent)));
                     result.applied = true;
                     result.type = "PERCENTAGE";
-                    result.value = BigDecimal.valueOf(earlyBirdDiscount);
+                    result.value = earlyBirdPercent;
                 }
                 break;
 
@@ -592,28 +607,32 @@ public class PricingService {
                 Double longStayDiscount = getDoubleConfig(rule, "discountPercent");
                 if (longStayDiscount != null) {
                     // 入住天數越多，折扣越大（線性遞增，最高為設定值）
-                    double actualDiscount = Math.min(longStayDiscount, longStayDiscount * nights / 7.0);
-                    result.adjustedPrice = basePrice.multiply(BigDecimal.valueOf(1 - actualDiscount / 100));
+                    BigDecimal maxPercent = BigDecimal.valueOf(longStayDiscount);
+                    BigDecimal scaledPercent = maxPercent.multiply(BigDecimal.valueOf(nights))
+                            .divide(LONG_STAY_FULL_DISCOUNT_NIGHTS, PERCENT_INTERMEDIATE_SCALE, PRICE_ROUNDING);
+                    BigDecimal actualDiscount = maxPercent.min(scaledPercent);
+                    result.adjustedPrice = roundToPriceScale(basePrice.multiply(discountFactor(actualDiscount)));
                     result.applied = true;
                     result.type = "PERCENTAGE";
-                    result.value = BigDecimal.valueOf(actualDiscount);
+                    result.value = actualDiscount;
                 }
                 break;
 
             case LAST_MINUTE:
                 Double lastMinuteDiscount = getDoubleConfig(rule, "discountPercent");
                 if (lastMinuteDiscount != null) {
-                    result.adjustedPrice = basePrice.multiply(BigDecimal.valueOf(1 - lastMinuteDiscount / 100));
+                    BigDecimal lastMinutePercent = BigDecimal.valueOf(lastMinuteDiscount);
+                    result.adjustedPrice = roundToPriceScale(basePrice.multiply(discountFactor(lastMinutePercent)));
                     result.applied = true;
                     result.type = "PERCENTAGE";
-                    result.value = BigDecimal.valueOf(lastMinuteDiscount);
+                    result.value = lastMinutePercent;
                 }
                 break;
 
             case MANUAL_OVERRIDE:
                 Double overridePrice = getDoubleConfig(rule, "price");
                 if (overridePrice != null) {
-                    result.adjustedPrice = BigDecimal.valueOf(overridePrice);
+                    result.adjustedPrice = roundToPriceScale(BigDecimal.valueOf(overridePrice));
                     result.applied = true;
                     result.type = "FIXED_AMOUNT";
                     result.value = result.adjustedPrice.subtract(basePrice);
@@ -709,9 +728,7 @@ public class PricingService {
         // （如賣家誤填 "10%"）會拋出未攔截的 NumberFormatException。
         Double discountPercent = getDoubleConfig(rule, "discountPercent");
         if (discountPercent != null) {
-            BigDecimal pct = BigDecimal.valueOf(discountPercent);
-            BigDecimal hundred = BigDecimal.valueOf(100);
-            return basePrice.multiply(BigDecimal.ONE.subtract(pct.divide(hundred)));
+            return roundToPriceScale(basePrice.multiply(discountFactor(BigDecimal.valueOf(discountPercent))));
         }
         return basePrice;
     }
@@ -721,20 +738,34 @@ public class PricingService {
         switch (rule.getRuleType()) {
             case MANUAL_OVERRIDE:
                 Double overridePrice = getDoubleConfig(rule, "price");
-                return overridePrice != null ? BigDecimal.valueOf(overridePrice) : null;
+                return overridePrice != null ? roundToPriceScale(BigDecimal.valueOf(overridePrice)) : null;
             case SEASONAL:
                 Double seasonalMultiplier = getDoubleConfig(rule, "multiplier");
                 return seasonalMultiplier != null
-                        ? basePrice.multiply(BigDecimal.valueOf(seasonalMultiplier)) : null;
+                        ? roundToPriceScale(basePrice.multiply(BigDecimal.valueOf(seasonalMultiplier))) : null;
             case WEEKDAY_WEEKEND:
                 DayOfWeek dow = checkDate.getDayOfWeek();
                 boolean isWeekend = dow == DayOfWeek.FRIDAY || dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY;
                 Double weekendMultiplier = getDoubleConfig(rule, "weekendMultiplier");
                 return (isWeekend && weekendMultiplier != null)
-                        ? basePrice.multiply(BigDecimal.valueOf(weekendMultiplier)) : null;
+                        ? roundToPriceScale(basePrice.multiply(BigDecimal.valueOf(weekendMultiplier))) : null;
             default:
                 return null;
         }
+    }
+
+    /**
+     * 折扣百分比 → 價格倍率（{@code 1 - percent / 100}），全程 BigDecimal 精確運算。
+     * 除以 100 必然可整除（不會拋 ArithmeticException），且避免 double 的
+     * {@code 1 - 7.0 / 100 = 0.9299999999999999} 雜訊（DEF-266）。
+     */
+    private static BigDecimal discountFactor(final BigDecimal percent) {
+        return BigDecimal.ONE.subtract(percent.divide(HUNDRED));
+    }
+
+    /** 動態定價結果捨入至幣別精度（DEF-266）。 */
+    private static BigDecimal roundToPriceScale(final BigDecimal amount) {
+        return amount.setScale(PRICE_SCALE, PRICE_ROUNDING);
     }
 
     private static class AdjustmentResult {

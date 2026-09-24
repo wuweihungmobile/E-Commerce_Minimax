@@ -30,6 +30,7 @@ import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import com.nextkey.ecommerce.shared.time.BusinessTime;
 
 
 import lombok.RequiredArgsConstructor;
@@ -63,6 +64,17 @@ public class PricingService {
     private static final BigDecimal LONG_STAY_FULL_DISCOUNT_NIGHTS = BigDecimal.valueOf(7);
     /** 長住折扣按晚數線性遞增時（非整除）的中間精度；最終價格仍會捨入至 {@link #PRICE_SCALE}。 */
     private static final int PERCENT_INTERMEDIATE_SCALE = 10;
+
+    /**
+     * 定價規則 {@code config} 數值範圍（DEF-268，使用者 2026-09-24 拍板）：不允許免費，故折扣須介於
+     * 0 與 100 之間（不含兩端）、覆蓋價與倍率須大於 0；加價倍率上限 {@link #MAX_PRICE_MULTIPLIER}
+     * 用來擋打錯字（想輸入 1.3 卻打成 130）。
+     */
+    private static final double MAX_DISCOUNT_PERCENT_EXCLUSIVE = 100;
+    private static final double MAX_PRICE_MULTIPLIER = 10;
+    /** 會被驗證範圍的 config 鍵（跨規則類型共用：PRODUCT 的 discountPercent 可掛在任何規則類型上）。 */
+    private static final List<String> RANGE_CHECKED_CONFIG_KEYS = List.of(
+            "discountPercent", "multiplier", "weekendMultiplier", "price", "minNights", "minDaysAhead");
 
     /** PRD §5.5.1：每個 room_listing_id 最多 50 條 is_active=true 的定價規則。 */
     private static final int MAX_ACTIVE_RULES_PER_ROOM = 50;
@@ -126,6 +138,7 @@ public class PricingService {
             rule.setPriority(request.getPriority());
         }
         if (request.getConfig() != null) {
+            validateRuleConfig(request.getConfig());
             rule.setConfig(request.getConfig());
         }
         if (request.getValidFrom() != null) {
@@ -243,12 +256,14 @@ public class PricingService {
         }
 
         // 下單日期：早鳥/末班車以「下單日 vs 入住日」的提前/臨近天數判斷（AI-2401）。
-        // 未提供時以今日計。
-        LocalDate bookingDate = request.getBookingDate() != null ? request.getBookingDate() : LocalDate.now();
+        // 未提供時以營運時區（UTC+8）的今日計（DEF-269：不可用 JVM 預設時區，正式環境為 UTC 會少算一天）。
+        LocalDate bookingDate = request.getBookingDate() != null ? request.getBookingDate() : BusinessTime.today();
 
         // 取得所有適用的規則
         List<PricingRule> rules = new ArrayList<>(pricingRuleRepository.findActiveRulesForDateRange(
                 request.getRoomListingId(), checkIn, checkOut.minusDays(1)));
+        // DEF-268：資料庫裡既存的壞規則（建立驗證上線前寫入）一律略過，照原價/次一優先級規則計價
+        rules.removeIf(rule -> !isRuleConfigUsable(rule));
 
         // 按優先級排序；同優先級時後建立者優先（AI-2407 tie-break 業務語意決策）。
         // createdAt 以 nullsLast 防護：非持久化物件（如測試手動建構）可能為 null，避免 NPE（Sprint 58 回歸修復）。
@@ -452,6 +467,67 @@ public class PricingService {
         if (request.getValidTo().isBefore(request.getValidFrom())) {
             throw new BusinessException(ErrorCode.E_4003, "Valid to date must be after valid from date");
         }
+        validateRuleConfig(request.getConfig());
+    }
+
+    /** 建立/更新規則時拒絕超出範圍的 config（DEF-268），回 E-8001。 */
+    private static void validateRuleConfig(final Map<String, Object> config) {
+        String violation = findConfigViolation(config);
+        if (violation != null) {
+            throw new BusinessException(ErrorCode.E_8001, violation);
+        }
+    }
+
+    /** 計算價格時略過 config 超出範圍的既存規則（DEF-268）；記 warn 而非靜默。 */
+    private boolean isRuleConfigUsable(final PricingRule rule) {
+        String violation = findConfigViolation(rule.getConfig());
+        if (violation == null) {
+            return true;
+        }
+        log.warn("Skipping pricing rule with invalid config: ruleId={}, {}", rule.getId(), violation);
+        return false;
+    }
+
+    /**
+     * 回傳 config 第一個違規的描述，無違規回 null。值為 null 視為未設定（不違規）；
+     * 存在但不是有限數字（含 NaN/Infinity/"10%"）一律視為違規。
+     */
+    private static String findConfigViolation(final Map<String, Object> config) {
+        if (config == null) {
+            return null;
+        }
+        for (String key : RANGE_CHECKED_CONFIG_KEYS) {
+            Object raw = config.get(key);
+            if (raw == null) {
+                continue;
+            }
+            Double value = parseFiniteDouble(raw);
+            if (value == null) {
+                return "config." + key + " must be a finite number";
+            }
+            String problem = rangeProblem(key, value);
+            if (problem != null) {
+                return "config." + key + " " + problem + " (got " + value + ")";
+            }
+        }
+        return null;
+    }
+
+    private static String rangeProblem(final String key, final double value) {
+        switch (key) {
+            case "discountPercent":
+                return value > 0 && value < MAX_DISCOUNT_PERCENT_EXCLUSIVE
+                        ? null : "must be greater than 0 and less than 100";
+            case "multiplier":
+            case "weekendMultiplier":
+                return value > 0 && value <= MAX_PRICE_MULTIPLIER
+                        ? null : "must be greater than 0 and at most 10";
+            case "price":
+                return value > 0 ? null : "must be greater than 0";
+            default:
+                // minNights / minDaysAhead（FRD：≤ 0 驗證失敗）
+                return value >= 1 ? null : "must be at least 1";
+        }
     }
 
     /**
@@ -542,17 +618,26 @@ public class PricingService {
      */
     private static Double getDoubleConfig(PricingRule rule, String key) {
         Object v = configValue(rule, key);
-        if (v == null) {
-            return null;
-        }
+        return v == null ? null : parseFiniteDouble(v);
+    }
+
+    /**
+     * 將 jsonb config 的值解析為「有限」double；無法解析回 null。DEF-268：NaN/Infinity 也視為無法解析——
+     * 先前 {@code Double.valueOf("NaN")} 會成功，之後 {@code BigDecimal.valueOf(NaN)} 才拋
+     * NumberFormatException（BookingService.tryDynamicPricing 只攔 BusinessException，導致 500）。
+     */
+    private static Double parseFiniteDouble(final Object v) {
+        double parsed;
         if (v instanceof Number) {
-            return ((Number) v).doubleValue();
+            parsed = ((Number) v).doubleValue();
+        } else {
+            try {
+                parsed = Double.parseDouble(v.toString().trim());
+            } catch (NumberFormatException e) {
+                return null;
+            }
         }
-        try {
-            return Double.valueOf(v.toString().trim());
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        return Double.isFinite(parsed) ? parsed : null;
     }
 
     private static Object configValue(PricingRule rule, String key) {
@@ -677,6 +762,7 @@ public class PricingService {
         List<PricingRule> activeRules = pricingRuleRepository.findByListingIdAndIsActiveTrue(listingId)
                 .stream()
                 .filter(r -> !checkDate.isBefore(r.getValidFrom()) && !checkDate.isAfter(r.getValidTo()))
+                .filter(this::isRuleConfigUsable) // DEF-268：略過既存的壞規則
                 .sorted(Comparator.comparingInt(PricingRule::getPriority).reversed()
                         .thenComparing(PricingRule::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .collect(Collectors.toList());

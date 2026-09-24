@@ -12,11 +12,14 @@ import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import com.nextkey.ecommerce.shared.time.BusinessTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -1251,6 +1254,268 @@ class PricingServiceTest {
 
             assertThat(resp.getEffectivePrice()).isEqualByComparingTo("114.99");
             assertThat(resp.getEffectivePrice().scale()).isLessThanOrEqualTo(2);
+        }
+    }
+
+    /**
+     * DEF-268（使用者 2026-09-24 拍板）：定價規則 {@code config} 數值先前完全無範圍驗證——
+     * {@code discountPercent=150} 算出 -500.00、{@code multiplier=-2} 算出 -2000.00、{@code "NaN"} 拋
+     * NumberFormatException。拍板規則：建立/更新時拒絕（E-8001）＋計算時略過既有的壞規則；
+     * 不允許免費（折扣須 0~100% 不含兩端、覆蓋價須 &gt; 0）；加價倍率須 &gt; 0 且 ≤ 10。
+     */
+    @Nested
+    @DisplayName("DEF-268: 定價規則 config 範圍驗證（建立/更新拒絕）")
+    class RuleConfigValidationTests {
+
+        // lenient：updateRule 測試不經 listing 擁有權查詢；save 預設回傳入參，使「缺少驗證」的紅燈
+        // 乾淨地表現為「沒有拋例外」，而非 mock 回傳 null 造成的 NPE。
+        @BeforeEach
+        void mockListingOwnershipAndSave() {
+            Listing listing = Listing.builder().tenantId(TENANT_ID).build();
+            listing.setId(ROOM_LISTING_ID);
+            lenient().when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listing));
+            lenient().when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+        }
+
+        private PricingDto.CreateRuleRequest requestWithConfig(final Map<String, Object> config) {
+            return PricingDto.CreateRuleRequest.builder()
+                    .roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingDto.PricingRuleType.EARLY_BIRD)
+                    .ruleName("config range")
+                    .config(config)
+                    .validFrom(LocalDate.of(2026, 6, 1))
+                    .validTo(LocalDate.of(2026, 8, 31))
+                    .build();
+        }
+
+        @ParameterizedTest(name = "建立規則 {0}={1} → E-8001，不寫入")
+        @CsvSource({
+            "discountPercent,150", "discountPercent,100", "discountPercent,0", "discountPercent,-20",
+            "multiplier,-2", "multiplier,0", "multiplier,10.01",
+            "weekendMultiplier,130", "weekendMultiplier,0",
+            "price,-100", "price,0",
+            "minNights,0", "minDaysAhead,0"
+        })
+        void createRule_outOfRangeValue_throwsE8001(final String key, final double value) {
+            assertThatThrownBy(() -> pricingService.createRule(requestWithConfig(Map.of(key, value)), false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_8001);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @ParameterizedTest(name = "建立規則 discountPercent=\"{0}\"（非有限數字）→ E-8001，不寫入")
+        @CsvSource({"NaN", "Infinity", "-Infinity", "'10%'", "abc"})
+        void createRule_nonNumericValue_throwsE8001(final String value) {
+            assertThatThrownBy(() -> pricingService.createRule(
+                    requestWithConfig(Map.of("discountPercent", value)), false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_8001);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @ParameterizedTest(name = "建立規則 邊界值 {0}={1} → 允許（不可誤擋合法設定）")
+        @CsvSource({
+            "discountPercent,99.99", "discountPercent,0.01", "discountPercent,15",
+            "multiplier,10", "multiplier,0.5", "weekendMultiplier,1.3",
+            "price,0.01", "minNights,1", "minDaysAhead,1"
+        })
+        void createRule_boundaryValue_isAccepted(final String key, final double value) {
+            PricingDto.RuleResponse response = pricingService.createRule(requestWithConfig(Map.of(key, value)), false);
+
+            assertThat(response).isNotNull();
+            verify(pricingRuleRepository).save(any(PricingRule.class));
+        }
+
+        @Test
+        @DisplayName("建立規則 config 含未知鍵（如 startDate/originalRuleId/weekdayMultiplier）→ 不驗證，允許")
+        void createRule_unknownKeys_areIgnored() {
+            PricingDto.RuleResponse response = pricingService.createRule(requestWithConfig(
+                    Map.of("discountPercent", 10.0, "weekdayMultiplier", 1.0, "startDate", "2026-06-01")), false);
+
+            assertThat(response).isNotNull();
+        }
+
+        @Test
+        @DisplayName("更新規則 config 超出範圍（discountPercent=150）→ E-8001，不寫入")
+        void updateRule_outOfRangeConfig_throwsE8001() {
+            UUID ruleId = UUID.randomUUID();
+            PricingRule existing = PricingRule.builder()
+                    .id(ruleId).tenantId(TENANT_ID).roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.EARLY_BIRD).isActive(true)
+                    .config(Map.of("discountPercent", 10.0))
+                    .validFrom(LocalDate.of(2026, 6, 1)).validTo(LocalDate.of(2026, 8, 31)).build();
+            when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(existing));
+
+            PricingDto.UpdateRuleRequest request = PricingDto.UpdateRuleRequest.builder()
+                    .config(Map.of("discountPercent", 150.0)).build();
+
+            assertThatThrownBy(() -> pricingService.updateRule(ruleId, request, false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_8001);
+
+            verify(pricingRuleRepository, never()).save(any());
+            assertThat(existing.getConfig()).as("拒絕時不可已改動既有規則的 config")
+                    .containsEntry("discountPercent", 10.0);
+        }
+
+        @Test
+        @DisplayName("更新規則 config 合法（discountPercent=20）→ 允許並寫入")
+        void updateRule_validConfig_isAccepted() {
+            UUID ruleId = UUID.randomUUID();
+            PricingRule existing = PricingRule.builder()
+                    .id(ruleId).tenantId(TENANT_ID).roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.EARLY_BIRD).isActive(true).priority(1)
+                    .config(Map.of("discountPercent", 10.0))
+                    .validFrom(LocalDate.of(2026, 6, 1)).validTo(LocalDate.of(2026, 8, 31)).build();
+            when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(existing));
+
+            pricingService.updateRule(ruleId, PricingDto.UpdateRuleRequest.builder()
+                    .config(Map.of("discountPercent", 20.0)).build(), false);
+
+            assertThat(existing.getConfig()).containsEntry("discountPercent", 20.0);
+        }
+    }
+
+    @Nested
+    @DisplayName("DEF-268: 計算時略過資料庫裡既存的壞規則（不可算出負價/免費/例外）")
+    class BadStoredRuleSkippedTests {
+
+        private PricingRule storedRule(final PricingRule.PricingRuleType type, final int priority,
+                final Map<String, Object> config) {
+            return PricingRule.builder()
+                    .id(UUID.randomUUID()).tenantId(TENANT_ID).roomListingId(ROOM_LISTING_ID)
+                    .ruleType(type).ruleName(type.name() + " p" + priority).priority(priority)
+                    .config(config)
+                    .validFrom(LocalDate.of(2027, 1, 1)).validTo(LocalDate.of(2027, 12, 31))
+                    .isActive(true).build();
+        }
+
+        private PricingDto.CalculatePriceResponse calculateOneNight(final PricingRule... rules) {
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(buildMockRoom()));
+            when(pricingRuleRepository.findActiveRulesForDateRange(any(), any(), any()))
+                    .thenReturn(List.of(rules));
+            return pricingService.calculatePrice(PricingDto.CalculatePriceRequest.builder()
+                    .roomListingId(ROOM_LISTING_ID)
+                    .checkInDate(LocalDate.of(2027, 3, 6)).checkOutDate(LocalDate.of(2027, 3, 7))
+                    .bookingDate(LocalDate.of(2027, 2, 1)).build());
+        }
+
+        @ParameterizedTest(name = "ROOM 既存壞規則 {0}={1} → 略過，照原價 1000（不可為負價/免費）")
+        @CsvSource({
+            "discountPercent,150", "discountPercent,100", "multiplier,-2", "weekendMultiplier,130", "price,-100", "price,0"
+        })
+        void room_badStoredRule_isSkipped_chargesBasePrice(final String key, final double value) {
+            PricingRule.PricingRuleType type = switch (key) {
+                case "multiplier" -> PricingRule.PricingRuleType.SEASONAL;
+                case "weekendMultiplier" -> PricingRule.PricingRuleType.WEEKDAY_WEEKEND;
+                case "price" -> PricingRule.PricingRuleType.MANUAL_OVERRIDE;
+                default -> PricingRule.PricingRuleType.EARLY_BIRD;
+            };
+
+            PricingDto.CalculatePriceResponse response = calculateOneNight(storedRule(type, 10, Map.of(key, value)));
+
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo("1000");
+            assertThat(response.getBreakdown().get(0).getAppliedRuleName()).isNull();
+        }
+
+        @Test
+        @DisplayName("ROOM 既存 discountPercent=\"NaN\" 字串 → 略過，不拋 NumberFormatException，照原價")
+        void room_nanStoredRule_doesNotThrow() {
+            PricingDto.CalculatePriceResponse response = calculateOneNight(
+                    storedRule(PricingRule.PricingRuleType.EARLY_BIRD, 10, Map.of("discountPercent", "NaN")));
+
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo("1000");
+        }
+
+        @Test
+        @DisplayName("ROOM 最高優先級規則是壞的 → 略過它，改套用次一優先級的合法規則（10% → 900）")
+        void room_badTopPriorityRule_fallsThroughToNextValidRule() {
+            PricingDto.CalculatePriceResponse response = calculateOneNight(
+                    storedRule(PricingRule.PricingRuleType.EARLY_BIRD, 20, Map.of("discountPercent", 150.0)),
+                    storedRule(PricingRule.PricingRuleType.LAST_MINUTE, 5, Map.of("discountPercent", 10.0)));
+
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo("900");
+            assertThat(response.getBreakdown().get(0).getAppliedRuleName()).isEqualTo("LAST_MINUTE p5");
+        }
+
+        @Test
+        @DisplayName("PRODUCT 既存 discountPercent=150 → 略過，有效售價維持原價 1000（不可為負價）")
+        void product_badStoredRule_isSkipped() {
+            UUID productId = UUID.fromString("770e8400-e29b-41d4-a716-446655440003");
+            Listing listing = Listing.builder().listingType(Listing.ListingType.PRODUCT)
+                    .basePrice(BASE_PRICE).currency("TWD").tenantId(TENANT_ID).build();
+            listing.setId(productId);
+            PricingRule bad = PricingRule.builder()
+                    .id(UUID.randomUUID()).tenantId(TENANT_ID).listingId(productId)
+                    .ruleType(PricingRule.PricingRuleType.SEASONAL).ruleName("bad").priority(10)
+                    .config(Map.of("discountPercent", 150.0))
+                    .validFrom(LocalDate.of(2027, 1, 1)).validTo(LocalDate.of(2027, 12, 31))
+                    .isActive(true).build();
+            when(listingRepository.findById(productId)).thenReturn(Optional.of(listing));
+            when(pricingRuleRepository.findByListingIdAndIsActiveTrue(productId)).thenReturn(List.of(bad));
+
+            PricingDto.EffectivePriceResponse resp =
+                    pricingService.getEffectivePrice(productId, LocalDate.of(2027, 3, 2), 1);
+
+            assertThat(resp.getEffectivePrice()).isEqualByComparingTo("1000");
+            assertThat(resp.getAppliedRuleName()).isNull();
+        }
+    }
+
+    /**
+     * DEF-269：未帶 {@code bookingDate} 時以「今天」計早鳥／末班車資格。過去用 JVM 預設時區
+     * （正式環境 UTC）的 {@code LocalDate.now()}，台灣時間每天 00:00～08:00 會少算一天：
+     * 早鳥被誤發（提前天數多算 1 天，發出未達門檻的折扣）、末班車漏發。改用營運時區（UTC+8）。
+     */
+    @Nested
+    @DisplayName("DEF-269: 預設下單日以營運時區（UTC+8）計，不受 JVM 時區影響")
+    class BusinessDateTests {
+
+        /** UTC 2027-01-31 16:30 = 台灣 2027-02-01 00:30（UTC 日期比營運日期早一天）。 */
+        private static final String TAIPEI_2027_02_01_0030 = "2027-01-31T16:30:00Z";
+
+        private PricingRule rule(final PricingRule.PricingRuleType type, final Map<String, Object> config) {
+            return PricingRule.builder()
+                    .id(UUID.randomUUID()).tenantId(TENANT_ID).roomListingId(ROOM_LISTING_ID)
+                    .ruleType(type).ruleName(type.name()).priority(10).config(config)
+                    .validFrom(LocalDate.of(2027, 1, 1)).validTo(LocalDate.of(2027, 12, 31))
+                    .isActive(true).build();
+        }
+
+        /** 不帶 bookingDate（走預設「今天」），台灣現在為 2027-02-01 00:30。 */
+        private PricingDto.CalculatePriceResponse calculateOnDefaultBookingDate(
+                final PricingRule rule, final LocalDate checkIn) {
+            BusinessTime.useClockForTesting(java.time.Clock.fixed(
+                    java.time.Instant.parse(TAIPEI_2027_02_01_0030), ZoneOffset.UTC));
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(buildMockRoom()));
+            when(pricingRuleRepository.findActiveRulesForDateRange(any(), any(), any())).thenReturn(List.of(rule));
+            return pricingService.calculatePrice(PricingDto.CalculatePriceRequest.builder()
+                    .roomListingId(ROOM_LISTING_ID)
+                    .checkInDate(checkIn).checkOutDate(checkIn.plusDays(1)).build());
+        }
+
+        @Test
+        @DisplayName("末班車 maxDaysAhead=0：台灣 2/1 00:30 訂 2/1 入住 → 當日訂當日住，折扣適用（不可因 UTC 仍是 1/31 而漏發）")
+        void lastMinute_sameDayInTaipei_applies() {
+            PricingDto.CalculatePriceResponse response = calculateOnDefaultBookingDate(
+                    rule(PricingRule.PricingRuleType.LAST_MINUTE, Map.of("discountPercent", 10.0, "maxDaysAhead", 0)),
+                    LocalDate.of(2027, 2, 1));
+
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo("900");
+        }
+
+        @Test
+        @DisplayName("早鳥 minDaysAhead=8：台灣 2/1 訂 2/8 入住只提前 7 天 → 不適用（不可用 UTC 1/31 多算成 8 天而誤發折扣）")
+        void earlyBird_sevenDaysInTaipei_doesNotMeetEightDayThreshold() {
+            PricingDto.CalculatePriceResponse response = calculateOnDefaultBookingDate(
+                    rule(PricingRule.PricingRuleType.EARLY_BIRD, Map.of("discountPercent", 10.0, "minDaysAhead", 8)),
+                    LocalDate.of(2027, 2, 8));
+
+            assertThat(response.getAdjustedTotal())
+                    .as("提前僅 7 天未達 8 天門檻，不應發放早鳥折扣（否則是未賺得的折扣＝少收錢）")
+                    .isEqualByComparingTo("1000");
         }
     }
 

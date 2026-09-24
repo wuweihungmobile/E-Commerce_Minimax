@@ -7,6 +7,7 @@ import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.Room;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.shared.time.BusinessTime;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -132,6 +133,25 @@ class BookingServiceOpenWindowTest {
 
         assertThat(resp.isAvailable()).isFalse();
         assertThat(resp.getUnavailableReason()).isEqualTo("NOT_OPEN_FOR_BOOKING");
+    }
+
+    @Test
+    @DisplayName("DEF-269: 滾動開放窗以營運時區（UTC+8）的今天起算——台灣 2/1 00:30、窗 3 天 → 2/4 仍可訂")
+    void checkAvailability_rollingWindow_usesBusinessDate() {
+        // UTC 仍是 1/31；若以 UTC 日期起算，窗只到 2/3，2/4 會被誤判為未開放（少賣一天）
+        BusinessTime.useClockForTesting(java.time.Clock.fixed(
+                java.time.Instant.parse("2027-01-31T16:30:00Z"), java.time.ZoneOffset.UTC));
+        Room room = Room.builder().bookingWindowDays(3).build();
+
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(roomListing()));
+        when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(room));
+        when(roomCalendarService.getCalendarRange(any(), any(), any())).thenReturn(Collections.emptyList());
+
+        BookingDto.AvailabilityResponse resp = bookingService.checkAvailability(
+                request(LocalDate.of(2027, 2, 4), LocalDate.of(2027, 2, 5)));
+
+        assertThat(resp.isAvailable()).isTrue();
+        assertThat(resp.getUnavailableReason()).isNull();
     }
 
     @Test

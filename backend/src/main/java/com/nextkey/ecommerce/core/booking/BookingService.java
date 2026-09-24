@@ -42,6 +42,7 @@ import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.time.BusinessTime;
 import com.nextkey.ecommerce.shared.util.PageableUtils;
 import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentTenant;
 import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentUser;
@@ -188,9 +189,9 @@ public class BookingService {
         return null;
     }
 
-    /** 開放窗（AI-2202e）基準日：滾動視窗 booking_window_days 以今日起算。 */
+    /** 開放窗（AI-2202e）基準日：滾動視窗 booking_window_days 以營運時區（UTC+8）的今日起算（DEF-269）。 */
     private LocalDate openWindowReferenceDate() {
-        return LocalDate.now();
+        return BusinessTime.today();
     }
 
     /**

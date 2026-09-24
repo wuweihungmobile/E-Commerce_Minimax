@@ -97,6 +97,24 @@ class RedisCartServiceDynamicPricingTest {
     }
 
     @Test
+    @DisplayName("DEF-269: 商品促銷價以營運時區（UTC+8）的今天查詢有效規則（台灣 2/1 00:30 → 查 2/1，非 UTC 的 1/31）")
+    void getCart_productRuleLookup_usesBusinessDate() {
+        com.nextkey.ecommerce.shared.time.BusinessTime.useClockForTesting(java.time.Clock.fixed(
+                Instant.parse("2027-01-31T16:30:00Z"), java.time.ZoneOffset.UTC));
+        stubCartWithProduct();
+        when(featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")).thenReturn(true);
+        // 只有以「台灣的今天 2027-02-01」查詢才回傳促銷價；其他日期一律無規則（mock 預設回 null）
+        when(pricingService.getEffectivePrice(LISTING_ID, java.time.LocalDate.of(2027, 2, 1), 1))
+                .thenReturn(effective(BigDecimal.valueOf(425), "商品促銷 2/1 起"));
+
+        CartDto.CartResponse cart = cartService.getCart(USER_ID, TENANT_ID);
+
+        CartDto.CartItemResponse it = cart.getItems().get(0);
+        assertThat(it.getUnitPrice()).isEqualByComparingTo(BigDecimal.valueOf(425));
+        assertThat(it.getAppliedRuleName()).isEqualTo("商品促銷 2/1 起");
+    }
+
+    @Test
     @DisplayName("UT-CART-DP-001: toggle 開啟且有折扣 → unitPrice/subtotal 折扣後 + 原價/折扣額/規則名")
     void getCart_withProductDiscount_returnsDiscounted() {
         stubCartWithProduct();

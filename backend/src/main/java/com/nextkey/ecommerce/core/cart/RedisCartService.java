@@ -31,6 +31,7 @@ import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.CartEmptyException;
 import com.nextkey.ecommerce.shared.exception.CartItemNotFoundException;
 import com.nextkey.ecommerce.shared.exception.PromoCodeInvalidException;
+import com.nextkey.ecommerce.shared.time.BusinessTime;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -511,7 +512,7 @@ public class RedisCartService {
         }
         try {
             PricingDto.EffectivePriceResponse eff = pricingService.getEffectivePrice(
-                    item.getListingId(), java.time.LocalDate.now(), 1);
+                    item.getListingId(), BusinessTime.today(), 1);
             // AI-2406c：閘門由 `< 0`（只折扣）放寬為 `!= 0`（含漲價），對齊 ROOM S46
             boolean hasAdjustment = eff.getEffectivePrice() != null
                     && item.getUnitPrice() != null

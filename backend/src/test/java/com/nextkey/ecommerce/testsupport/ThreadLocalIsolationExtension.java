@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import com.nextkey.ecommerce.shared.time.BusinessTime;
 
 /**
  * 全域 ThreadLocal 隔離擴充。
@@ -49,5 +50,8 @@ public class ThreadLocalIsolationExtension implements AfterEachCallback, AfterAl
     private static void clearThreadLocals() {
         TenantContext.clear();
         SecurityContextHolder.clearContext();
+        // DEF-269：測試可用 BusinessTime.useClockForTesting 固定「現在」；同一 JVM 循序跑全部測試，
+        // 故比照 ThreadLocal 由此全域擴充統一還原，讓時鐘洩漏在結構上不可能發生。
+        BusinessTime.resetClock();
     }
 }

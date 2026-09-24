@@ -19,6 +19,7 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.shared.time.BusinessTime;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -117,12 +118,13 @@ public class PromoCode {
         FREE_SHIPPING
     }
 
+    /** 起訖時間是賣家輸入的營運時區（UTC+8）牆上時間，須與營運時區的現在比對（DEF-269）。 */
     public boolean isExpired() {
-        return LocalDateTime.now().isAfter(endDate);
+        return BusinessTime.now().isAfter(endDate);
     }
 
     public boolean isNotYetActive() {
-        return LocalDateTime.now().isBefore(startDate);
+        return BusinessTime.now().isBefore(startDate);
     }
 
     public boolean isUsageLimitReached() {

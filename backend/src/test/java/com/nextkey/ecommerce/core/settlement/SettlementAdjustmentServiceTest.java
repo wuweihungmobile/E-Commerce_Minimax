@@ -63,6 +63,28 @@ class SettlementAdjustmentServiceTest {
     }
 
     @Test
+    @DisplayName("DEF-271: 訂單日期以營運時區（UTC+8）換算——UTC 1/3 17:00 = 台灣 1/4（週一）01:00，屬 1/4 起的結算週")
+    void handleOrderRefund_mapsOrderInstantToBusinessDate_notJvmDate() {
+        java.util.TimeZone original = java.util.TimeZone.getDefault();
+        try {
+            for (String jvmZone : new String[] {"UTC", "Pacific/Honolulu", "Asia/Taipei"}) {
+                java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone(jvmZone));
+                org.mockito.Mockito.clearInvocations(settlementStatementRepository);
+                when(settlementStatementRepository.findByTenantIdAndPeriodCovering(any(), any()))
+                        .thenReturn(Optional.empty());
+
+                newService().handleOrderRefund(TENANT_ID, ORDER_ID, Instant.parse("2027-01-03T17:00:00Z"),
+                        new BigDecimal("100"));
+
+                verify(settlementStatementRepository).findByTenantIdAndPeriodCovering(
+                        TENANT_ID, LocalDate.of(2027, 1, 4));
+            }
+        } finally {
+            java.util.TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
     @DisplayName("handleOrderRefund：找不到涵蓋期間的結算單時不做事")
     void handleOrderRefund_noStatementFound_doesNothing() {
         service = newService();

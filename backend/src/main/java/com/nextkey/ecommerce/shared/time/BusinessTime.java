@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.shared.time;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -19,8 +20,11 @@ import java.time.ZoneId;
  */
 public final class BusinessTime {
 
+    /** 營運時區 ID（獨立成編譯期常數，供 {@code @Scheduled(zone = ...)} 這類註解屬性使用）。 */
+    public static final String ZONE_ID = "Asia/Taipei";
+
     /** 營運時區（台灣無日光節約時間，故用 Asia/Taipei 而非固定偏移）。 */
-    public static final ZoneId ZONE = ZoneId.of("Asia/Taipei");
+    public static final ZoneId ZONE = ZoneId.of(ZONE_ID);
 
     private static volatile Clock clock = Clock.system(ZONE);
 
@@ -35,6 +39,14 @@ public final class BusinessTime {
     /** 營運時區的現在（無時區的牆上時間，與賣家輸入的 {@code LocalDateTime} 起訖時間同一語意）。 */
     public static LocalDateTime now() {
         return LocalDateTime.now(clock);
+    }
+
+    /**
+     * 營運日 {@code date} 的 00:00 對應的絕對時刻。以 {@code startOfDay(d)} 與 {@code startOfDay(d.plusDays(1))}
+     * 組成半開區間 {@code [d 00:00, d+1 00:00)}，相鄰兩日／兩週共用同一個邊界時刻，不重疊也不留縫。
+     */
+    public static Instant startOfDay(final LocalDate date) {
+        return date.atStartOfDay(ZONE).toInstant();
     }
 
     /**

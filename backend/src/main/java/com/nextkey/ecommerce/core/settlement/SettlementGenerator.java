@@ -31,6 +31,7 @@ import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRep
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import com.nextkey.ecommerce.shared.time.BusinessTime;
 import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
@@ -68,12 +69,14 @@ public class SettlementGenerator {
      * 每週一凌晨自動生成結算單
      * 結算上一週 (週一 00:00 至 週日 23:59) 的已完成訂單
      */
-    @Scheduled(cron = "0 0 0 ? * MON")
+    // DEF-271（使用者 2026-09-24 拍板）：結算週以營運時區（UTC+8）切分。未指定 zone 時 Spring 以 JVM
+    // 預設時區解讀 cron，正式容器（UTC）會變成「台灣週一 08:00」才觸發，且與開發機（台灣）切出不同的週期。
+    @Scheduled(cron = "0 0 0 ? * MON", zone = BusinessTime.ZONE_ID)
     @Transactional
     public void generateWeeklyStatements() {
         log.info("Starting weekly settlement statement generation");
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = BusinessTime.today();
         // 上週一
         LocalDate lastWeekMonday = today.with(DayOfWeek.MONDAY).minusWeeks(1);
         // 上週日
@@ -110,11 +113,13 @@ public class SettlementGenerator {
             return existingStatements.get(0);
         }
 
-        // 取得期間內的所有訂單
-        List<Order> allOrders = orderRepository.findByTenantIdAndCreatedAtBetween(
+        // 取得期間內的所有訂單。DEF-270／DEF-272：以營運時區的絕對時刻半開區間 [週一 00:00, 次週一 00:00) 查詢——
+        // 舊寫法以 LocalDateTime 綁定 Instant 欄位，Hibernate 6 直接拋 QueryArgumentException（週結算單從未成功
+        // 產生過）；且上界 atTime(23, 59, 59) 會漏掉最後一秒的訂單，永遠不被結算。相鄰兩期共用同一個邊界時刻。
+        List<Order> allOrders = orderRepository.findByTenantIdAndCreatedAtInRange(
                 tenantId,
-                periodStart.atStartOfDay(),
-                periodEnd.atTime(23, 59, 59));
+                BusinessTime.startOfDay(periodStart),
+                BusinessTime.startOfDay(periodEnd.plusDays(1)));
 
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));

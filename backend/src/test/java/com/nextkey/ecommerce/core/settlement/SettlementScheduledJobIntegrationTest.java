@@ -100,7 +100,7 @@ class SettlementScheduledJobIntegrationTest {
         when(tenantRepository.findById(tenant3.getId())).thenReturn(Optional.of(tenant3));
 
         // 模擬每個租戶的訂單（3 筆 COMPLETED）
-        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any()))
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any()))
                 .thenReturn(createCompletedOrders(3, "10000"));
 
         // 模擬金額計算
@@ -186,7 +186,7 @@ class SettlementScheduledJobIntegrationTest {
         when(tenantRepository.findById(tenant.getId())).thenReturn(Optional.of(tenant));
         when(settlementRepository.findByTenantIdAndPeriodStartBetween(any(), any(), any()))
                 .thenReturn(List.of());
-        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any()))
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any()))
                 .thenReturn(List.of());
         when(calculator.filterSettleableOrders(any())).thenReturn(List.of());
         when(calculator.calculateTotalGmv(any())).thenReturn(BigDecimal.ZERO);
@@ -225,7 +225,7 @@ class SettlementScheduledJobIntegrationTest {
                 .thenReturn(List.of());
 
         List<Order> orders = createCompletedOrders(5, "10000");
-        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any())).thenReturn(orders);
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(orders);
         when(calculator.filterSettleableOrders(any())).thenReturn(orders);
         when(calculator.calculateTotalGmv(any())).thenReturn(new BigDecimal("50000.00"));
         when(calculator.calculateCommission(any(), any())).thenReturn(new BigDecimal("5000.00"));
@@ -275,7 +275,7 @@ class SettlementScheduledJobIntegrationTest {
                 eq(tenant2.getId()), any(), any()))
                 .thenReturn(List.of());
         when(tenantRepository.findById(tenant2.getId())).thenReturn(Optional.of(tenant2));
-        when(orderRepository.findByTenantIdAndCreatedAtBetween(eq(tenant2.getId()), any(), any()))
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(eq(tenant2.getId()), any(), any()))
                 .thenReturn(createCompletedOrders(2, "5000"));
         when(calculator.filterSettleableOrders(any())).thenAnswer(inv -> createCompletedOrders(2, "5000"));
         when(calculator.calculateTotalGmv(any())).thenReturn(new BigDecimal("10000.00"));
@@ -316,7 +316,7 @@ class SettlementScheduledJobIntegrationTest {
         when(tenantRepository.findById(tenant.getId())).thenReturn(Optional.of(tenant));
         when(settlementRepository.findByTenantIdAndPeriodStartBetween(any(), any(), any()))
                 .thenReturn(List.of());
-        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any()))
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any()))
                 .thenReturn(List.of());
         when(calculator.filterSettleableOrders(any())).thenReturn(List.of());
         when(calculator.calculateTotalGmv(any())).thenReturn(BigDecimal.ZERO);
@@ -376,7 +376,7 @@ class SettlementScheduledJobIntegrationTest {
         when(tenantRepository.findById(tenant.getId())).thenReturn(Optional.of(tenant));
         when(settlementRepository.findByTenantIdAndPeriodStartBetween(any(), any(), any()))
                 .thenReturn(List.of());
-        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any())).thenReturn(List.of());
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(List.of());
         when(calculator.filterSettleableOrders(any())).thenReturn(List.of());
         when(calculator.calculateTotalGmv(any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateCommission(any(), any())).thenReturn(BigDecimal.ZERO);
@@ -424,7 +424,7 @@ class SettlementScheduledJobIntegrationTest {
         when(tenantRepository.findById(tenant.getId())).thenReturn(Optional.of(tenant));
         when(settlementRepository.findByTenantIdAndPeriodStartBetween(any(), any(), any()))
                 .thenReturn(List.of());
-        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any())).thenReturn(orders);
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(orders);
         when(calculator.filterSettleableOrders(any())).thenReturn(orders);
         when(calculator.calculateTotalGmv(any())).thenReturn(new BigDecimal("2000.00"));
         when(calculator.calculateCommission(any(), any())).thenReturn(new BigDecimal("200.00"));

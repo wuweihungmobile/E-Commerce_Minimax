@@ -104,7 +104,7 @@ class AnalyticsServiceTest {
                 order(Order.OrderStatus.CONFIRMED, "200", mid),
                 order(Order.OrderStatus.CREATED, "50", mid),        // 不入營收（未付款）
                 order(Order.OrderStatus.CANCELLED, "999", mid));     // 不入營收
-        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any())).thenReturn(orders);
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(orders);
 
         Payment refund = org.mockito.Mockito.mock(Payment.class);
         when(refund.getAmount()).thenReturn(new BigDecimal("50"));
@@ -128,7 +128,7 @@ class AnalyticsServiceTest {
     @Test
     @DisplayName("getRevenueStats（邊界）：零訂單 → AOV/營收皆為 0，不發生除以零")
     void getRevenueStats_zeroOrders_returnsZeroAov() {
-        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any())).thenReturn(List.of());
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(List.of());
         when(paymentRepository.findByOrderIdInAndStatus(anyList(), any())).thenReturn(List.of());
 
         AnalyticsDto.AnalyticsRequest req = AnalyticsDto.AnalyticsRequest.builder()
@@ -145,7 +145,7 @@ class AnalyticsServiceTest {
     @Test
     @DisplayName("getRevenueStats（邊界）：未帶日期 → 預設區間為近 30 天（含端點共 31 天）")
     void getRevenueStats_nullDates_defaultsTo31DayRange() {
-        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any())).thenReturn(List.of());
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(List.of());
         when(paymentRepository.findByOrderIdInAndStatus(anyList(), any())).thenReturn(List.of());
 
         AnalyticsDto.RevenueStats stats =
@@ -164,7 +164,7 @@ class AnalyticsServiceTest {
         List<Order> orders = List.of(
                 order(Order.OrderStatus.PAID, "100", LocalDate.of(2026, 1, 7)),  // 第一週
                 order(Order.OrderStatus.PAID, "200", LocalDate.of(2026, 1, 15))); // 第二週
-        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any())).thenReturn(orders);
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(orders);
         when(paymentRepository.findByOrderIdInAndStatus(anyList(), any())).thenReturn(List.of());
 
         AnalyticsDto.AnalyticsRequest req = AnalyticsDto.AnalyticsRequest.builder()
@@ -187,7 +187,7 @@ class AnalyticsServiceTest {
         List<Order> orders = List.of(
                 order(Order.OrderStatus.PAID, "100", LocalDate.of(2026, 1, 15)),
                 order(Order.OrderStatus.PAID, "200", LocalDate.of(2026, 2, 10)));
-        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any())).thenReturn(orders);
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(orders);
         when(paymentRepository.findByOrderIdInAndStatus(anyList(), any())).thenReturn(List.of());
 
         AnalyticsDto.AnalyticsRequest req = AnalyticsDto.AnalyticsRequest.builder()
@@ -215,10 +215,10 @@ class AnalyticsServiceTest {
         List<Order> monthOrders = List.of(order(Order.OrderStatus.PAID, "120", LocalDate.now()));     // 本月：120
         List<Order> yearOrders = List.of(order(Order.OrderStatus.PAID, "120", LocalDate.now()));      // 本年：120
         // 4 次呼叫依序：今日 / 昨日 / 本月 / 本年
-        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any()))
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any()))
                 .thenReturn(todayOrders, yesterdayOrders, monthOrders, yearOrders);
         // 3 次 count 呼叫依序：今日 / 昨日 / 本月
-        when(orderRepository.countByTenantIdAndCreatedAtBetween(any(), any(), any()))
+        when(orderRepository.countByTenantIdAndCreatedAtInRange(any(), any(), any()))
                 .thenReturn(5, 3, 20);
         when(orderRepository.countByTenantIdAndStatus(any(), any())).thenReturn(2);
         when(productRepository.countByListingTenantIdAndListingStatus(any(), any())).thenReturn(7);
@@ -239,13 +239,13 @@ class AnalyticsServiceTest {
     @DisplayName("getDashboardStats（邊界）：昨日營收為 0 → 成長率保持 0（不除以零）")
     void getDashboardStats_zeroYesterday_growthStaysZero() {
         List<Order> todayOrders = List.of(order(Order.OrderStatus.PAID, "120", LocalDate.now())); // 今日：120
-        when(orderRepository.findByTenantIdAndCreatedAtBetween(any(), any(), any()))
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any()))
                 .thenReturn(
                         todayOrders, // 今日：120
                         List.of(),   // 昨日：0
                         List.of(),   // 本月
                         List.of());  // 本年
-        when(orderRepository.countByTenantIdAndCreatedAtBetween(any(), any(), any())).thenReturn(1, 0, 1);
+        when(orderRepository.countByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(1, 0, 1);
         when(orderRepository.countByTenantIdAndStatus(any(), any())).thenReturn(0);
         when(productRepository.countByListingTenantIdAndListingStatus(any(), any())).thenReturn(0);
         when(roomRepository.countByListingTenantId(any())).thenReturn(0);

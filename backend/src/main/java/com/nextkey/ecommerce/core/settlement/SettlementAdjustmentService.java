@@ -2,7 +2,6 @@ package com.nextkey.ecommerce.core.settlement;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -13,6 +12,7 @@ import com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
+import com.nextkey.ecommerce.shared.time.BusinessTime;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,7 +44,9 @@ public class SettlementAdjustmentService {
             return;
         }
 
-        LocalDate orderDate = orderCreatedAt.atZone(ZoneId.systemDefault()).toLocalDate();
+        // DEF-271：結算週以營運時區（UTC+8）切分，訂單歸屬的日期必須用同一個時區換算，
+        // 否則正式容器（UTC）會把台灣週一 00:00～08:00 的訂單歸到上一週，與 SettlementGenerator 的期間對不上
+        LocalDate orderDate = orderCreatedAt.atZone(BusinessTime.ZONE).toLocalDate();
         Optional<SettlementStatement> statementOpt = settlementStatementRepository
                 .findByTenantIdAndPeriodCovering(tenantId, orderDate);
 

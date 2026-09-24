@@ -2,7 +2,6 @@ package com.nextkey.ecommerce.domain.repository;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -64,17 +63,32 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     @Query("SELECT o FROM Order o WHERE o.tenant.id = :tenantId")
     List<Order> findByTenantId(@Param("tenantId") UUID tenantId);
 
-    @Query("SELECT o FROM Order o WHERE o.tenant.id = :tenantId AND o.createdAt >= :start AND o.createdAt <= :end")
-    List<Order> findByTenantIdAndCreatedAtBetween(
+    /**
+     * 依建立時間的<b>絕對時刻半開區間</b> {@code [startInclusive, endExclusive)} 查詢（DEF-270／DEF-272）。
+     *
+     * <p><b>參數必須是 {@link Instant}</b>：{@code Order.createdAt} 是 {@code Instant}，先前這兩個查詢
+     * （{@code findByTenantIdAndCreatedAtBetween}／{@code countByTenantIdAndCreatedAtBetween}）以
+     * {@code LocalDateTime} 綁定參數，Hibernate 6 直接拋 {@code QueryArgumentException}（型別不符）——
+     * 週結算單與儀表板／營收統計在真實資料庫每次都失敗，但所有測試都 mock 了本 Repository 而從未被抓到。
+     *
+     * <p>用半開區間而非 {@code BETWEEN}：呼叫端慣用 {@code atTime(23, 59, 59)} 當上界會漏掉最後一秒的訂單。
+     * 結算這類「每筆訂單必須恰好歸屬一期」的金額邏輯，相鄰兩期的 {@code endExclusive} 與下一期的
+     * {@code startInclusive} 是同一個時刻，不重疊也不留縫。
+     */
+    @Query("SELECT o FROM Order o WHERE o.tenant.id = :tenantId AND o.createdAt >= :startInclusive"
+            + " AND o.createdAt < :endExclusive")
+    List<Order> findByTenantIdAndCreatedAtInRange(
             @Param("tenantId") UUID tenantId,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end);
+            @Param("startInclusive") Instant startInclusive,
+            @Param("endExclusive") Instant endExclusive);
 
-    @Query("SELECT COUNT(o) FROM Order o WHERE o.tenant.id = :tenantId AND o.createdAt >= :start AND o.createdAt <= :end")
-    int countByTenantIdAndCreatedAtBetween(
+    /** 同 {@link #findByTenantIdAndCreatedAtInRange}，僅計數。 */
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.tenant.id = :tenantId AND o.createdAt >= :startInclusive"
+            + " AND o.createdAt < :endExclusive")
+    int countByTenantIdAndCreatedAtInRange(
             @Param("tenantId") UUID tenantId,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end);
+            @Param("startInclusive") Instant startInclusive,
+            @Param("endExclusive") Instant endExclusive);
 
     @Query("SELECT COUNT(o) FROM Order o WHERE o.tenant.id = :tenantId AND o.status = :status")
     int countByTenantIdAndStatus(@Param("tenantId") UUID tenantId, @Param("status") Order.OrderStatus status);

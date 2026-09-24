@@ -4,8 +4,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -27,6 +25,7 @@ import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.ProductRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
+import com.nextkey.ecommerce.shared.time.BusinessTime;
 import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
@@ -58,7 +57,7 @@ public class AnalyticsService {
     @Transactional(readOnly = true)
     public AnalyticsDto.DashboardStats getDashboardStats() {
         UUID tenantId = TenantContext.getCurrentTenant();
-        LocalDate today = LocalDate.now();
+        LocalDate today = BusinessTime.today();
         LocalDate yesterday = today.minusDays(1);
         LocalDate monthStart = today.withDayOfMonth(1);
         LocalDate yearStart = today.withDayOfYear(1);
@@ -84,12 +83,12 @@ public class AnalyticsService {
         }
 
         // 訂單統計
-        int todayOrders = orderRepository.countByTenantIdAndCreatedAtBetween(
-                tenantId, today.atStartOfDay(), today.atTime(LocalTime.MAX));
-        int yesterdayOrders = orderRepository.countByTenantIdAndCreatedAtBetween(
-                tenantId, yesterday.atStartOfDay(), yesterday.atTime(LocalTime.MAX));
-        int monthOrders = orderRepository.countByTenantIdAndCreatedAtBetween(
-                tenantId, monthStart.atStartOfDay(), today.atTime(LocalTime.MAX));
+        int todayOrders = orderRepository.countByTenantIdAndCreatedAtInRange(
+                tenantId, BusinessTime.startOfDay(today), BusinessTime.startOfDay(today.plusDays(1)));
+        int yesterdayOrders = orderRepository.countByTenantIdAndCreatedAtInRange(
+                tenantId, BusinessTime.startOfDay(yesterday), BusinessTime.startOfDay(today));
+        int monthOrders = orderRepository.countByTenantIdAndCreatedAtInRange(
+                tenantId, BusinessTime.startOfDay(monthStart), BusinessTime.startOfDay(today.plusDays(1)));
 
         // 待處理訂單
         int pendingOrders = orderRepository.countByTenantIdAndStatus(tenantId, Order.OrderStatus.CREATED);
@@ -121,11 +120,11 @@ public class AnalyticsService {
     @Transactional(readOnly = true)
     public AnalyticsDto.RevenueStats getRevenueStats(AnalyticsDto.AnalyticsRequest request) {
         UUID tenantId = TenantContext.getCurrentTenant();
-        LocalDate startDate = request.getStartDate() != null ? request.getStartDate() : LocalDate.now().minusDays(DEFAULT_PAGE_SIZE);
-        LocalDate endDate = request.getEndDate() != null ? request.getEndDate() : LocalDate.now();
+        LocalDate startDate = request.getStartDate() != null ? request.getStartDate() : BusinessTime.today().minusDays(DEFAULT_PAGE_SIZE);
+        LocalDate endDate = request.getEndDate() != null ? request.getEndDate() : BusinessTime.today();
 
-        List<Order> orders = orderRepository.findByTenantIdAndCreatedAtBetween(
-                tenantId, startDate.atStartOfDay(), endDate.atTime(LocalTime.MAX));
+        List<Order> orders = orderRepository.findByTenantIdAndCreatedAtInRange(
+                tenantId, BusinessTime.startOfDay(startDate), BusinessTime.startOfDay(endDate.plusDays(1)));
 
         BigDecimal totalRevenue = orders.stream()
                 .filter(o -> o.getStatus() == Order.OrderStatus.PAID ||
@@ -282,7 +281,7 @@ public class AnalyticsService {
 
             List<Order> bucketOrders = orders.stream()
                     .filter(o -> {
-                        LocalDate d = o.getCreatedAt().atZone(ZoneId.systemDefault()).toLocalDate();
+                        LocalDate d = o.getCreatedAt().atZone(BusinessTime.ZONE).toLocalDate();
                         return !d.isBefore(rangeStart) && !d.isAfter(rangeEnd);
                     })
                     .collect(Collectors.toList());
@@ -323,8 +322,8 @@ public class AnalyticsService {
     }
 
     private BigDecimal calculateRevenueForDate(UUID tenantId, LocalDate date) {
-        List<Order> orders = orderRepository.findByTenantIdAndCreatedAtBetween(
-                tenantId, date.atStartOfDay(), date.atTime(LocalTime.MAX));
+        List<Order> orders = orderRepository.findByTenantIdAndCreatedAtInRange(
+                tenantId, BusinessTime.startOfDay(date), BusinessTime.startOfDay(date.plusDays(1)));
 
         return orders.stream()
                 .filter(o -> o.getStatus() != Order.OrderStatus.CANCELLED &&
@@ -334,8 +333,8 @@ public class AnalyticsService {
     }
 
     private BigDecimal calculateRevenueForDateRange(UUID tenantId, LocalDate startDate, LocalDate endDate) {
-        List<Order> orders = orderRepository.findByTenantIdAndCreatedAtBetween(
-                tenantId, startDate.atStartOfDay(), endDate.atTime(LocalTime.MAX));
+        List<Order> orders = orderRepository.findByTenantIdAndCreatedAtInRange(
+                tenantId, BusinessTime.startOfDay(startDate), BusinessTime.startOfDay(endDate.plusDays(1)));
 
         return orders.stream()
                 .filter(o -> o.getStatus() != Order.OrderStatus.CANCELLED &&

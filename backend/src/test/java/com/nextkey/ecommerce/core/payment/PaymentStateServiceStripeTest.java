@@ -311,7 +311,7 @@ class PaymentStateServiceStripeTest {
         service.refundOrderPayment(ORDER_ID, BigDecimal.valueOf(500), "damaged item");
 
         verify(settlementAdjustmentService).handleOrderRefund(
-                order.getTenantId(), order.getId(), order.getCreatedAt(), BigDecimal.valueOf(500));
+                order.getTenantId(), order.getId(), BigDecimal.valueOf(500));
     }
 
     @Test
@@ -329,7 +329,7 @@ class PaymentStateServiceStripeTest {
                 .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
                         .success(true).refundId("re_partial_1").status("succeeded").build());
         org.mockito.Mockito.doThrow(new RuntimeException("settlement lookup failed"))
-                .when(settlementAdjustmentService).handleOrderRefund(any(), any(), any(), any());
+                .when(settlementAdjustmentService).handleOrderRefund(any(), any(), any());
 
         service.refundOrderPayment(ORDER_ID, BigDecimal.valueOf(500), "damaged item");
 
@@ -460,7 +460,7 @@ class PaymentStateServiceStripeTest {
                 .isEqualTo(ErrorCode.E_6009);
 
         verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any());
-        verify(settlementAdjustmentService, never()).handleOrderRefund(any(), any(), any(), any());
+        verify(settlementAdjustmentService, never()).handleOrderRefund(any(), any(), any());
         verify(orderRepository, never()).save(any());
     }
 }

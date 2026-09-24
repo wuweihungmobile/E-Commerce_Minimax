@@ -113,19 +113,20 @@ public class SettlementGenerator {
             return existingStatements.get(0);
         }
 
-        // 取得期間內的所有訂單。DEF-270／DEF-272：以營運時區的絕對時刻半開區間 [週一 00:00, 次週一 00:00) 查詢——
-        // 舊寫法以 LocalDateTime 綁定 Instant 欄位，Hibernate 6 直接拋 QueryArgumentException（週結算單從未成功
-        // 產生過）；且上界 atTime(23, 59, 59) 會漏掉最後一秒的訂單，永遠不被結算。相鄰兩期共用同一個邊界時刻。
-        List<Order> allOrders = orderRepository.findByTenantIdAndCreatedAtInRange(
+        // DEF-273（使用者 2026-09-24 拍板）：納入「所有已完成且尚未被任何結算單認領」的訂單，不論哪週下單。
+        // 舊寫法只撈「下單時間落在本期」的訂單且要求結算當下已完成——週間下單、下週才送達的訂單，
+        // 之後任何一期都撈不到，永遠不會被結算。上界只排除「本期結束之後才建立」的訂單（DEF-270：半開區間，
+        // 不用 atTime(23, 59, 59)，否則漏掉最後一秒）；時刻以營運時區換算（DEF-271／DEF-272）。
+        List<Order> unsettledOrders = orderRepository.findUnsettledByTenantIdAndStatusInAndCreatedAtBefore(
                 tenantId,
-                BusinessTime.startOfDay(periodStart),
+                SettlementCalculator.SETTLEABLE_STATUSES,
                 BusinessTime.startOfDay(periodEnd.plusDays(1)));
 
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
 
-        // 過濾出可結算訂單
-        List<Order> completedOrders = calculator.filterSettleableOrders(allOrders);
+        // 過濾出可結算訂單（查詢已限狀態，此處是與 calculator 同一份規則的防線）
+        List<Order> completedOrders = calculator.filterSettleableOrders(unsettledOrders);
 
         // 計算結算金額（Sprint 80 AI-2416：抽成比例改用租戶自訂 commissionRate，取代先前硬編碼 10%）
         BigDecimal totalGmv = calculator.calculateTotalGmv(completedOrders);
@@ -163,6 +164,19 @@ public class SettlementGenerator {
                 .build();
 
         statement = settlementRepository.save(statement);
+
+        // DEF-273：原子認領這批訂單（UPDATE ... WHERE settled_statement_id IS NULL）。認領筆數不足代表有訂單在
+        // 讀取與認領之間被另一個結算搶先認領（例如兩個節點同時跑排程）——必須回滾整張結算單，否則同一筆訂單
+        // 會被兩張結算單各結算一次。IllegalStateException 由 generateWeeklyStatements 逐租戶攔截並記錄，下次重試。
+        if (!completedOrders.isEmpty()) {
+            List<UUID> orderIds = completedOrders.stream().map(Order::getId).toList();
+            int claimed = orderRepository.markSettled(orderIds, statement.getId());
+            if (claimed != orderIds.size()) {
+                throw new IllegalStateException("Settlement claimed " + claimed + " of " + orderIds.size()
+                        + " orders for tenant " + tenantId + " (concurrent settlement?), rolling back statement "
+                        + statement.getStatementNumber());
+            }
+        }
 
         if (!pendingAdjustments.isEmpty()) {
             Instant now = Instant.now();

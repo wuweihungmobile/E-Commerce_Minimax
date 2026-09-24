@@ -96,8 +96,8 @@ class SettlementGeneratorBusinessWeekTest {
     }
 
     @Test
-    @DisplayName("期間查詢用台灣時區的絕對時刻半開區間 [週一 00:00, 次週一 00:00)，與 JVM 預設時區無關")
-    void periodQuery_usesBusinessZoneInstants_independentOfJvmZone() {
+    @DisplayName("結算查詢的「建立時間上界」是台灣時區的次週一 00:00（不含），與 JVM 預設時區無關")
+    void settlementQuery_upperBoundIsNextBusinessMonday_independentOfJvmZone() {
         TimeZone original = TimeZone.getDefault();
         try {
             for (String jvmZone : new String[] {"UTC", "Pacific/Honolulu", "Asia/Taipei"}) {
@@ -106,18 +106,19 @@ class SettlementGeneratorBusinessWeekTest {
                 when(settlementRepository.findByTenantIdAndPeriodStartBetween(any(), any(), any()))
                         .thenReturn(List.of());
                 when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant()));
-                when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(List.of());
+                when(orderRepository.findUnsettledByTenantIdAndStatusInAndCreatedAtBefore(any(), any(), any()))
+                        .thenReturn(List.of());
                 when(adjustmentRepository.findByTenantIdAndStatus(any(), any())).thenReturn(List.of());
                 when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(i -> i.getArgument(0));
 
                 newGenerator().generateStatementForTenant(TENANT_ID, LocalDate.of(2027, 1, 4), LocalDate.of(2027, 1, 10));
 
-                ArgumentCaptor<Instant> from = ArgumentCaptor.forClass(Instant.class);
-                ArgumentCaptor<Instant> to = ArgumentCaptor.forClass(Instant.class);
-                verify(orderRepository).findByTenantIdAndCreatedAtInRange(eq(TENANT_ID), from.capture(), to.capture());
-                // 台灣 2027-01-04 00:00 = UTC 2027-01-03 16:00；上界是「次一週一 00:00」（不含）
-                assertThat(from.getValue()).as("JVM 時區 %s", jvmZone).isEqualTo(Instant.parse("2027-01-03T16:00:00Z"));
-                assertThat(to.getValue()).as("JVM 時區 %s", jvmZone).isEqualTo(Instant.parse("2027-01-10T16:00:00Z"));
+                ArgumentCaptor<Instant> createdBefore = ArgumentCaptor.forClass(Instant.class);
+                verify(orderRepository).findUnsettledByTenantIdAndStatusInAndCreatedAtBefore(
+                        eq(TENANT_ID), eq(SettlementCalculator.SETTLEABLE_STATUSES), createdBefore.capture());
+                // 期間 1/4~1/10（台灣）→ 上界是「次一週一 2027-01-11 00:00 台灣」= UTC 2027-01-10 16:00（不含）
+                assertThat(createdBefore.getValue()).as("JVM 時區 %s", jvmZone)
+                        .isEqualTo(Instant.parse("2027-01-10T16:00:00Z"));
             }
         } finally {
             TimeZone.setDefault(original);

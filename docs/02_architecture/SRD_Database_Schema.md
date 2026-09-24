@@ -509,17 +509,21 @@ CREATE TABLE orders (
     shipping_fee NUMERIC(10,2) NOT NULL DEFAULT 0.00,
     promo_code VARCHAR(50),
     discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    settled_statement_id UUID,
 
     -- 約束
     CONSTRAINT orders_pkey PRIMARY KEY (id),
+    CONSTRAINT orders_settled_statement_id_fkey FOREIGN KEY (settled_statement_id) REFERENCES settlement_statements(id),
     CONSTRAINT orders_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     CONSTRAINT orders_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
 -- 索引
 CREATE INDEX idx_orders_created ON orders (created_at DESC);
+CREATE INDEX idx_orders_settled_statement ON orders (settled_statement_id) WHERE (settled_statement_id IS NOT NULL);
 CREATE INDEX idx_orders_status ON orders (status);
 CREATE INDEX idx_orders_tenant ON orders (tenant_id);
+CREATE INDEX idx_orders_unsettled ON orders (tenant_id, created_at) WHERE ((settled_statement_id IS NULL) AND ((status)::text = ANY ((ARRAY['DELIVERED'::character varying, 'COMPLETED'::character varying])::text[])));
 CREATE INDEX idx_orders_user ON orders (user_id);
 ```
 

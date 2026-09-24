@@ -121,6 +121,15 @@ public class Order {
     @Column(name = "updated_at")
     private Instant updatedAt;
 
+    /**
+     * 結算此訂單的結算單（DEF-273）；NULL = 尚未結算。<b>唯讀映射</b>：只有結算流程以原生 UPDATE 寫入
+     * （{@code OrderRepository.markSettled}／{@code releaseOrdersOfStatement}），實體對它
+     * {@code insertable = false, updatable = false}，避免任何後續的實體更新把記憶體中的舊值寫回、
+     * 蓋掉併發的結算標記（同 {@code SettlementStatement.applyRefundDeduction} 不呼叫 setter 的理由）。
+     */
+    @Column(name = "settled_statement_id", insertable = false, updatable = false)
+    private UUID settledStatementId;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<OrderItem> items = new ArrayList<>();

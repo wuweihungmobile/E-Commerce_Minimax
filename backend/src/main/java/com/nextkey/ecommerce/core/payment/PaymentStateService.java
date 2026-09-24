@@ -289,7 +289,7 @@ public class PaymentStateService {
         // Sprint 86（PRD §6.2.1）：跨結算週期退款處理，失敗不應影響已完成的退款主流程
         try {
             settlementAdjustmentService.handleOrderRefund(
-                    order.getTenantId(), order.getId(), order.getCreatedAt(), refundAmount);
+                    order.getTenantId(), order.getId(), refundAmount);
         } catch (RuntimeException e) {
             log.error("Settlement adjustment failed after refund: orderId={}, error={}", orderId, e.getMessage(), e);
         }

@@ -82,6 +82,43 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
             @Param("startInclusive") Instant startInclusive,
             @Param("endExclusive") Instant endExclusive);
 
+    /**
+     * 某租戶「尚未結算、且已處於可結算狀態」的訂單，限建立時間早於 {@code createdBefore}（DEF-273）。
+     *
+     * <p>結算歸屬以「尚未被任何結算單認領」為準，而不是以下單週歸屬：週間下單、下週才送達的訂單，
+     * 在它變成可結算狀態後的第一次結算就會被撈到。認領以 {@link #markSettled} 原子完成。
+     */
+    @Query("SELECT o FROM Order o WHERE o.tenant.id = :tenantId AND o.status IN :statuses"
+            + " AND o.settledStatementId IS NULL AND o.createdAt < :createdBefore")
+    List<Order> findUnsettledByTenantIdAndStatusInAndCreatedAtBefore(
+            @Param("tenantId") UUID tenantId,
+            @Param("statuses") List<Order.OrderStatus> statuses,
+            @Param("createdBefore") Instant createdBefore);
+
+    /**
+     * 原子認領訂單（DEF-273）：只有 {@code settled_statement_id IS NULL} 的訂單會被標記。
+     * 回傳實際標記筆數——若小於 {@code ids.size()}，代表有訂單在讀取與認領之間被另一個結算搶先認領
+     * （例如兩個節點同時執行排程），呼叫端必須回滾整張結算單，否則同一筆訂單會被兩張結算單各結算一次。
+     * 刻意用原生 UPDATE 而非實體 setter，理由見 {@code Order#settledStatementId}。
+     */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "UPDATE orders SET settled_statement_id = :statementId"
+            + " WHERE id IN (:ids) AND settled_statement_id IS NULL", nativeQuery = true)
+    int markSettled(@Param("ids") List<UUID> ids, @Param("statementId") UUID statementId);
+
+    /**
+     * 釋放某結算單認領的所有訂單（DEF-273）：結算單被駁回（終態、資金未發生）時呼叫，
+     * 讓這些訂單在下一次結算重新被撈到。FAILED（可重試撥款）與 REVERSED（會計沖銷）不釋放。
+     */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "UPDATE orders SET settled_statement_id = NULL WHERE settled_statement_id = :statementId",
+            nativeQuery = true)
+    int releaseOrdersOfStatement(@Param("statementId") UUID statementId);
+
+    /** 訂單被哪張結算單結算；尚未結算（或訂單不存在）回 empty。供退款調整定位結算單。 */
+    @Query("SELECT o.settledStatementId FROM Order o WHERE o.id = :orderId AND o.settledStatementId IS NOT NULL")
+    Optional<UUID> findSettledStatementId(@Param("orderId") UUID orderId);
+
     /** 同 {@link #findByTenantIdAndCreatedAtInRange}，僅計數。 */
     @Query("SELECT COUNT(o) FROM Order o WHERE o.tenant.id = :tenantId AND o.createdAt >= :startInclusive"
             + " AND o.createdAt < :endExclusive")

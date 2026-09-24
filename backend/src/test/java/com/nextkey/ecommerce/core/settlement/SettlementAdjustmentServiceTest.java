@@ -8,7 +8,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
@@ -23,14 +22,18 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement.SettlementStatus;
+import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
 
 /**
  * SettlementAdjustmentService 單元測試（Sprint 86，PRD §6.2.1 跨結算週期退款處理機制）。
+ *
+ * <p>Sprint 195（DEF-273）：結算單改由「訂單被哪張結算單結算」（{@code orders.settled_statement_id}）定位，
+ * 不再用下單日期猜測；真實資料庫的定位正確性由 {@code SettlementExactlyOnceIntegrationTest} 守住。
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("SettlementAdjustmentService 單元測試（Sprint 86）")
+@DisplayName("SettlementAdjustmentService 單元測試（Sprint 86／195）")
 class SettlementAdjustmentServiceTest {
 
     @Mock
@@ -39,15 +42,18 @@ class SettlementAdjustmentServiceTest {
     @Mock
     private SettlementAdjustmentRepository settlementAdjustmentRepository;
 
+    @Mock
+    private OrderRepository orderRepository;
+
     private SettlementAdjustmentService service;
 
     private static final UUID TENANT_ID = UUID.randomUUID();
     private static final UUID ORDER_ID = UUID.randomUUID();
     private static final UUID STATEMENT_ID = UUID.randomUUID();
-    private static final Instant ORDER_CREATED_AT = Instant.parse("2026-06-15T10:00:00Z");
 
     private SettlementAdjustmentService newService() {
-        return new SettlementAdjustmentService(settlementStatementRepository, settlementAdjustmentRepository);
+        return new SettlementAdjustmentService(settlementStatementRepository, settlementAdjustmentRepository,
+                orderRepository);
     }
 
     private SettlementStatement statementOf(SettlementStatus status) {
@@ -62,50 +68,48 @@ class SettlementAdjustmentServiceTest {
                 .build();
     }
 
-    @Test
-    @DisplayName("DEF-271: 訂單日期以營運時區（UTC+8）換算——UTC 1/3 17:00 = 台灣 1/4（週一）01:00，屬 1/4 起的結算週")
-    void handleOrderRefund_mapsOrderInstantToBusinessDate_notJvmDate() {
-        java.util.TimeZone original = java.util.TimeZone.getDefault();
-        try {
-            for (String jvmZone : new String[] {"UTC", "Pacific/Honolulu", "Asia/Taipei"}) {
-                java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone(jvmZone));
-                org.mockito.Mockito.clearInvocations(settlementStatementRepository);
-                when(settlementStatementRepository.findByTenantIdAndPeriodCovering(any(), any()))
-                        .thenReturn(Optional.empty());
-
-                newService().handleOrderRefund(TENANT_ID, ORDER_ID, Instant.parse("2027-01-03T17:00:00Z"),
-                        new BigDecimal("100"));
-
-                verify(settlementStatementRepository).findByTenantIdAndPeriodCovering(
-                        TENANT_ID, LocalDate.of(2027, 1, 4));
-            }
-        } finally {
-            java.util.TimeZone.setDefault(original);
-        }
+    /** 這筆訂單已被 {@link #STATEMENT_ID} 這張結算單結算。 */
+    private void orderSettledBy(final SettlementStatement statement) {
+        when(orderRepository.findSettledStatementId(ORDER_ID)).thenReturn(Optional.of(STATEMENT_ID));
+        when(settlementStatementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
     }
 
     @Test
-    @DisplayName("handleOrderRefund：找不到涵蓋期間的結算單時不做事")
-    void handleOrderRefund_noStatementFound_doesNothing() {
+    @DisplayName("handleOrderRefund：訂單尚未被任何結算單結算時不做事（退款會在它被結算時由 Payment.refundedAmount 帶入）")
+    void handleOrderRefund_orderNotSettledYet_doesNothing() {
         service = newService();
-        when(settlementStatementRepository.findByTenantIdAndPeriodCovering(eq(TENANT_ID), any()))
-                .thenReturn(Optional.empty());
+        when(orderRepository.findSettledStatementId(ORDER_ID)).thenReturn(Optional.empty());
 
-        service.handleOrderRefund(TENANT_ID, ORDER_ID, ORDER_CREATED_AT, new BigDecimal("100"));
+        service.handleOrderRefund(TENANT_ID, ORDER_ID, new BigDecimal("100"));
 
+        verify(settlementStatementRepository, never()).applyRefundDeduction(any(), any());
         verify(settlementStatementRepository, never()).save(any());
         verify(settlementAdjustmentRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("handleOrderRefund：refundAmount 為 0 或 null 不做事")
+    @DisplayName("handleOrderRefund：結算單屬於其他租戶時不做事（防禦性租戶隔離）")
+    void handleOrderRefund_statementOfOtherTenant_doesNothing() {
+        service = newService();
+        SettlementStatement otherTenantStatement = statementOf(SettlementStatus.PENDING);
+        otherTenantStatement.setTenantId(UUID.randomUUID());
+        orderSettledBy(otherTenantStatement);
+
+        service.handleOrderRefund(TENANT_ID, ORDER_ID, new BigDecimal("100"));
+
+        verify(settlementStatementRepository, never()).applyRefundDeduction(any(), any());
+        verify(settlementAdjustmentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("handleOrderRefund：refundAmount 為 0 或 null 不做事，也不查詢結算單")
     void handleOrderRefund_zeroOrNullAmount_doesNothing() {
         service = newService();
 
-        service.handleOrderRefund(TENANT_ID, ORDER_ID, ORDER_CREATED_AT, BigDecimal.ZERO);
-        service.handleOrderRefund(TENANT_ID, ORDER_ID, ORDER_CREATED_AT, null);
+        service.handleOrderRefund(TENANT_ID, ORDER_ID, BigDecimal.ZERO);
+        service.handleOrderRefund(TENANT_ID, ORDER_ID, null);
 
-        verify(settlementStatementRepository, never()).findByTenantIdAndPeriodCovering(any(), any());
+        verify(orderRepository, never()).findSettledStatementId(any());
     }
 
     @Test
@@ -113,12 +117,11 @@ class SettlementAdjustmentServiceTest {
     void handleOrderRefund_pendingStatement_appliesDirectDeduction() {
         service = newService();
         SettlementStatement statement = statementOf(SettlementStatus.PENDING);
-        when(settlementStatementRepository.findByTenantIdAndPeriodCovering(eq(TENANT_ID), any()))
-                .thenReturn(Optional.of(statement));
+        orderSettledBy(statement);
         when(settlementStatementRepository.applyRefundDeduction(eq(statement.getId()), any(BigDecimal.class)))
                 .thenReturn(1);
 
-        service.handleOrderRefund(TENANT_ID, ORDER_ID, ORDER_CREATED_AT, new BigDecimal("100.00"));
+        service.handleOrderRefund(TENANT_ID, ORDER_ID, new BigDecimal("100.00"));
 
         // Sprint 105（DEF-053）：斷言的是「以正確的 delta 呼叫了原子敘述」，而非
         // 修改前的「記憶體物件上的數字對不對」。後者在缺陷存在時**照樣全綠**——
@@ -136,12 +139,11 @@ class SettlementAdjustmentServiceTest {
     void handleOrderRefund_pendingReviewStatement_appliesDirectDeduction() {
         service = newService();
         SettlementStatement statement = statementOf(SettlementStatus.PENDING_REVIEW);
-        when(settlementStatementRepository.findByTenantIdAndPeriodCovering(eq(TENANT_ID), any()))
-                .thenReturn(Optional.of(statement));
+        orderSettledBy(statement);
         when(settlementStatementRepository.applyRefundDeduction(eq(statement.getId()), any(BigDecimal.class)))
                 .thenReturn(1);
 
-        service.handleOrderRefund(TENANT_ID, ORDER_ID, ORDER_CREATED_AT, new BigDecimal("50.00"));
+        service.handleOrderRefund(TENANT_ID, ORDER_ID, new BigDecimal("50.00"));
 
         verify(settlementStatementRepository).applyRefundDeduction(eq(statement.getId()), any(BigDecimal.class));
         verify(settlementStatementRepository, never()).save(any(SettlementStatement.class));
@@ -153,10 +155,9 @@ class SettlementAdjustmentServiceTest {
     void handleOrderRefund_approvedStatement_createsAdjustmentStatement() {
         service = newService();
         SettlementStatement statement = statementOf(SettlementStatus.APPROVED);
-        when(settlementStatementRepository.findByTenantIdAndPeriodCovering(eq(TENANT_ID), any()))
-                .thenReturn(Optional.of(statement));
+        orderSettledBy(statement);
 
-        service.handleOrderRefund(TENANT_ID, ORDER_ID, ORDER_CREATED_AT, new BigDecimal("200.00"));
+        service.handleOrderRefund(TENANT_ID, ORDER_ID, new BigDecimal("200.00"));
 
         ArgumentCaptor<SettlementAdjustment> captor = ArgumentCaptor.forClass(SettlementAdjustment.class);
         verify(settlementAdjustmentRepository).save(captor.capture());
@@ -174,26 +175,40 @@ class SettlementAdjustmentServiceTest {
     @DisplayName("handleOrderRefund：PAID 結算單產生 adjustment_statement")
     void handleOrderRefund_paidStatement_createsAdjustmentStatement() {
         service = newService();
-        SettlementStatement statement = statementOf(SettlementStatus.PAID);
-        when(settlementStatementRepository.findByTenantIdAndPeriodCovering(eq(TENANT_ID), any()))
-                .thenReturn(Optional.of(statement));
+        orderSettledBy(statementOf(SettlementStatus.PAID));
 
-        service.handleOrderRefund(TENANT_ID, ORDER_ID, ORDER_CREATED_AT, new BigDecimal("300.00"));
+        service.handleOrderRefund(TENANT_ID, ORDER_ID, new BigDecimal("300.00"));
 
         verify(settlementAdjustmentRepository).save(any(SettlementAdjustment.class));
         verify(settlementStatementRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("handleOrderRefund：REJECTED/FAILED 終態結算單不做事")
-    void handleOrderRefund_terminalStatuses_doNothing() {
+    @DisplayName("Sprint 195: FAILED 結算單（可用 retryFailedTransfer 重試撥款）→ 產生 adjustment_statement，不可被當終態忽略")
+    void handleOrderRefund_failedStatement_createsAdjustmentStatement() {
+        // FAILED 不是終態：管理端重試撥款會把它改回 APPROVED 並以結算單當下的淨額撥款。退款若被忽略，
+        // 重試撥款時賣家會拿到已退款訂單的全額（少收錢）。與 APPROVED 同屬「款項將撥/已撥」，比照產生調整單，
+        // 由下一期結算單折入扣除。
         service = newService();
-        for (SettlementStatus status : new SettlementStatus[] {SettlementStatus.REJECTED, SettlementStatus.FAILED}) {
-            SettlementStatement statement = statementOf(status);
-            when(settlementStatementRepository.findByTenantIdAndPeriodCovering(eq(TENANT_ID), any()))
-                    .thenReturn(Optional.of(statement));
+        orderSettledBy(statementOf(SettlementStatus.FAILED));
 
-            service.handleOrderRefund(TENANT_ID, ORDER_ID, ORDER_CREATED_AT, new BigDecimal("10.00"));
+        service.handleOrderRefund(TENANT_ID, ORDER_ID, new BigDecimal("10.00"));
+
+        ArgumentCaptor<SettlementAdjustment> captor = ArgumentCaptor.forClass(SettlementAdjustment.class);
+        verify(settlementAdjustmentRepository).save(captor.capture());
+        assertThat(captor.getValue().getOriginalStatementId()).isEqualTo(STATEMENT_ID);
+        assertThat(captor.getValue().getAmount()).isEqualByComparingTo("-10.00");
+    }
+
+    @Test
+    @DisplayName("handleOrderRefund：REJECTED／REVERSAL_PENDING／REVERSED 結算單不做事")
+    void handleOrderRefund_otherTerminalStatuses_doNothing() {
+        service = newService();
+        for (SettlementStatus status : new SettlementStatus[] {
+                SettlementStatus.REJECTED, SettlementStatus.REVERSAL_PENDING, SettlementStatus.REVERSED}) {
+            orderSettledBy(statementOf(status));
+
+            service.handleOrderRefund(TENANT_ID, ORDER_ID, new BigDecimal("10.00"));
         }
 
         verify(settlementStatementRepository, never()).save(any());

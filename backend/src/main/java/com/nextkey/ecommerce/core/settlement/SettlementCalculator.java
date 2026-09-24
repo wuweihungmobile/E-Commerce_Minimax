@@ -38,6 +38,14 @@ public class SettlementCalculator {
     private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
 
     /**
+     * 可結算的訂單狀態（COMPLETED 或 DELIVERED）。單一來源：{@link #filterSettleableOrders} 與
+     * 結算查詢（{@code OrderRepository.findUnsettledByTenantIdAndStatusInAndCreatedAtBefore}）共用，
+     * 兩處不會對「什麼算可結算」有不同答案。
+     */
+    public static final List<Order.OrderStatus> SETTLEABLE_STATUSES =
+            List.of(Order.OrderStatus.COMPLETED, Order.OrderStatus.DELIVERED);
+
+    /**
      * 過濾出「可結算」訂單（COMPLETED 或 DELIVERED 狀態）
      *
      * @param orders 原始訂單列表
@@ -48,8 +56,7 @@ public class SettlementCalculator {
             return List.of();
         }
         return orders.stream()
-                .filter(o -> o.getStatus() == Order.OrderStatus.COMPLETED ||
-                        o.getStatus() == Order.OrderStatus.DELIVERED)
+                .filter(o -> SETTLEABLE_STATUSES.contains(o.getStatus()))
                 .toList();
     }
 

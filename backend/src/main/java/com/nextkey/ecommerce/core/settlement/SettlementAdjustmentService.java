@@ -1,7 +1,6 @@
 package com.nextkey.ecommerce.core.settlement;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -10,9 +9,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
+import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
-import com.nextkey.ecommerce.shared.time.BusinessTime;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,13 +19,14 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * 跨結算週期退款處理（PRD §6.2.1，Sprint 86）
  *
- * <p>由 {@code PaymentStateService.refundOrderPayment} 退款成功後呼叫，依訂單所屬結算單
- * 目前狀態決定處理方式：
+ * <p>由 {@code PaymentStateService.refundOrderPayment} 退款成功後呼叫。結算單以「訂單被哪張結算單結算」
+ * （{@code orders.settled_statement_id}）定位；依該結算單目前狀態決定處理方式：
  * <ul>
  *   <li>{@code PENDING}/{@code PENDING_REVIEW}（尚未核准撥款）：直接對該結算單做 delta 更新</li>
- *   <li>{@code APPROVED}/{@code PAID}（已核准或已撥款，不可逆）：產生 {@code adjustment_statements}，
- *       於下一結算週期由 {@link SettlementGenerator} 一併折入</li>
- *   <li>{@code REJECTED}/{@code FAILED}（終態，金流未發生）或找不到對應結算單：不做事</li>
+ *   <li>{@code APPROVED}/{@code PAID}/{@code FAILED}（已核准、已撥款，或撥款失敗待重試——款項將撥/已撥）：
+ *       產生 {@code adjustment_statements}，於下一結算週期由 {@link SettlementGenerator} 一併折入</li>
+ *   <li>{@code REJECTED}/{@code REVERSAL_PENDING}/{@code REVERSED}，或訂單尚未被任何結算單結算：不做事
+ *       （被駁回結算單的訂單已釋放、之後重新結算時由 {@code Payment.refundedAmount} 帶入退款）</li>
  * </ul>
  */
 @Slf4j
@@ -36,22 +36,23 @@ public class SettlementAdjustmentService {
 
     private final SettlementStatementRepository settlementStatementRepository;
     private final SettlementAdjustmentRepository settlementAdjustmentRepository;
+    private final OrderRepository orderRepository;
 
     @Transactional
-    public void handleOrderRefund(final UUID tenantId, final UUID orderId, final java.time.Instant orderCreatedAt,
-            final BigDecimal refundAmount) {
+    public void handleOrderRefund(final UUID tenantId, final UUID orderId, final BigDecimal refundAmount) {
         if (refundAmount == null || refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
 
-        // DEF-271：結算週以營運時區（UTC+8）切分，訂單歸屬的日期必須用同一個時區換算，
-        // 否則正式容器（UTC）會把台灣週一 00:00～08:00 的訂單歸到上一週，與 SettlementGenerator 的期間對不上
-        LocalDate orderDate = orderCreatedAt.atZone(BusinessTime.ZONE).toLocalDate();
-        Optional<SettlementStatement> statementOpt = settlementStatementRepository
-                .findByTenantIdAndPeriodCovering(tenantId, orderDate);
+        // DEF-273：以「這筆訂單被哪張結算單結算」定位（orders.settled_statement_id），而不是用下單日期猜測——
+        // 週間下單、下週才送達的訂單由下一期結算，下單日期落入的那一期根本沒含這筆，用日期會扣錯結算單，
+        // 且對尚未結算的訂單也會誤扣。未結算的訂單不動任何結算單：退款會在它被結算時由 Payment.refundedAmount 帶入。
+        Optional<SettlementStatement> statementOpt = orderRepository.findSettledStatementId(orderId)
+                .flatMap(settlementStatementRepository::findById)
+                .filter(s -> tenantId.equals(s.getTenantId()));
 
         if (statementOpt.isEmpty()) {
-            log.debug("No settlement statement covers order yet, refund will be captured on next generation: "
+            log.debug("Order not settled yet, refund will be captured when it is settled: "
                     + "tenantId={}, orderId={}", tenantId, orderId);
             return;
         }
@@ -59,7 +60,10 @@ public class SettlementAdjustmentService {
         SettlementStatement statement = statementOpt.get();
         switch (statement.getStatus()) {
             case PENDING, PENDING_REVIEW -> applyDirectDeduction(statement, refundAmount);
-            case APPROVED, PAID -> createAdjustmentStatement(tenantId, orderId, statement, refundAmount);
+            // FAILED 不是終態：retryFailedTransfer 會把它改回 APPROVED 並以結算單當下的淨額撥款。
+            // 退款若被忽略，重試撥款時賣家會拿到已退款訂單的全額——與 APPROVED 同屬「款項將撥/已撥」，
+            // 比照產生調整單，由下一期結算單折入扣除。
+            case APPROVED, PAID, FAILED -> createAdjustmentStatement(tenantId, orderId, statement, refundAmount);
             default -> log.debug("Settlement statement in terminal status {} needs no refund adjustment: "
                     + "statementId={}, orderId={}", statement.getStatus(), statement.getId(), orderId);
         }

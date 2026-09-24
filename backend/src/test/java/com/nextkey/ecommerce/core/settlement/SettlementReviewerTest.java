@@ -57,6 +57,12 @@ class SettlementReviewerTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private com.nextkey.ecommerce.domain.repository.OrderRepository orderRepository;
+
+    @Mock
+    private com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository adjustmentRepository;
+
     private SettlementReviewer reviewer;
 
     private static final UUID TENANT_ID = UUID.randomUUID();
@@ -65,7 +71,8 @@ class SettlementReviewerTest {
     private static final UUID ADMIN_ID = UUID.randomUUID();
 
     private SettlementReviewer newReviewer() {
-        return new SettlementReviewer(settlementRepository, mapper, transferService, userRepository, auditService);
+        return new SettlementReviewer(settlementRepository, mapper, transferService, userRepository, auditService,
+                orderRepository, adjustmentRepository);
     }
 
     @AfterEach

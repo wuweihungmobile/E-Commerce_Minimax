@@ -14,7 +14,9 @@ import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStateme
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementResponse;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement.SettlementStatus;
+import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.util.PageableUtils;
@@ -48,6 +50,8 @@ public class SettlementReviewer {
     private final TransferService transferService;
     private final UserRepository userRepository;
     private final AuditService auditService;
+    private final OrderRepository orderRepository;
+    private final SettlementAdjustmentRepository adjustmentRepository;
 
     /**
      * 商家提交結算單審核（PENDING → PENDING_REVIEW）
@@ -132,6 +136,14 @@ public class SettlementReviewer {
         log.info("Settlement statement rejected: id={}, by={}, reason={}", statementId, adminId, reason);
         auditService.record("SETTLEMENT_REJECTED", "SETTLEMENT_STATEMENT", statementId, statement.getTenantId(),
                 "PENDING_REVIEW", "REJECTED", reason, adminId);
+
+        // DEF-273：駁回是終態、資金未發生——釋放這張結算單認領的訂單與折入的調整單，讓下一期重新結算；
+        // 否則訂單永遠掛在一張死掉的結算單上（又是「永遠不被結算」），調整單（賣家該被扣的退款）也隨之消失。
+        // 刻意不釋放 FAILED（retryFailedTransfer 可把它改回 APPROVED 重試撥款，釋放會雙重撥款）與 REVERSED（會計沖銷）。
+        int releasedOrders = orderRepository.releaseOrdersOfStatement(statementId);
+        int releasedAdjustments = adjustmentRepository.releaseAppliedTo(statementId);
+        log.info("Released settlement claims on rejection: statementId={}, orders={}, adjustments={}",
+                statementId, releasedOrders, releasedAdjustments);
 
         return mapper.toStatementResponse(statement);
     }

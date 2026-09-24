@@ -3,7 +3,6 @@ package com.nextkey.ecommerce.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +25,9 @@ import org.springframework.test.context.ActiveProfiles;
 
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.domain.repository.UserRepository;
 
 /**
  * 結算單退款扣除的併發正確性整合測試（Sprint 105，DEF-053；真實 PostgreSQL）。
@@ -53,6 +54,7 @@ class M07SettlementRefundConcurrencyIntegrationTest {
     @Autowired private SettlementAdjustmentService settlementAdjustmentService;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private TenantRepository tenantRepository;
+    @Autowired private UserRepository userRepository;
 
     /** 併發執行緒數＝同一結算期間內同時發生的退款筆數。 */
     private static final int THREADS = 10;
@@ -63,14 +65,20 @@ class M07SettlementRefundConcurrencyIntegrationTest {
     /** 結算單初始淨結算金額。 */
     private static final BigDecimal INITIAL_NET = new BigDecimal("1000.00");
 
-    /** 訂單日期，落在結算單期間內。 */
-    private static final LocalDate ORDER_DATE = LocalDate.of(2026, 3, 15);
-
     private UUID tenantId;
+    private UUID buyerId;
 
     @BeforeEach
     void setUp() {
         tenantId = seedTenant();
+        buyerId = userRepository.save(User.builder()
+                .email("stl-race-buyer-" + System.nanoTime() + "@example.com")
+                .passwordHash("dummy")
+                .fullName("Race Buyer")
+                .role(User.UserRole.BUYER)
+                .status("ACTIVE")
+                .tenantId(tenantId)
+                .build()).getId();
     }
 
     /**
@@ -89,7 +97,7 @@ class M07SettlementRefundConcurrencyIntegrationTest {
     }
 
     /**
-     * 種一張涵蓋 {@link #ORDER_DATE} 的結算單。以 raw SQL 而非 JPA builder：
+     * 種一張結算單。以 raw SQL 而非 JPA builder：
      * {@code SettlementStatement.tenantId} 是 {@code insertable = false} 的影子欄位，
      * 用 builder 設它會寫成 null 而撞 NOT NULL（既知陷阱，見 Sprint 103 記錄）。
      */
@@ -105,6 +113,18 @@ class M07SettlementRefundConcurrencyIntegrationTest {
                         ?, 'TWD', ?, NOW(), NOW(), NOW())
                 """, statementId, tenantId, "STL-RACE-" + System.nanoTime(), INITIAL_NET, status);
         return statementId;
+    }
+
+    /** 種一筆已被 {@code statementId} 這張結算單結算的訂單（orders.settled_statement_id 指向它）。 */
+    private UUID seedSettledOrder(final UUID statementId) {
+        UUID orderId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO orders (id, tenant_id, user_id, order_type, status, total_amount,
+                                    shipping_fee, discount_amount, currency, settled_statement_id,
+                                    created_at, updated_at)
+                VALUES (?, ?, ?, 'PRODUCT', 'COMPLETED', 120.00, 0.00, 0.00, 'TWD', ?, NOW(), NOW())
+                """, orderId, tenantId, buyerId, statementId);
+        return orderId;
     }
 
     private BigDecimal totalRefundsOf(final UUID statementId) {
@@ -130,22 +150,25 @@ class M07SettlementRefundConcurrencyIntegrationTest {
      * <p>每條執行緒用**不同的 orderId**——這正是真實情境：同一結算期間內多張訂單各自退款，
      * 全部落在同一列結算單上。回傳未預期例外的分類，避免把失敗模式吞掉。
      */
-    private Map<String, Integer> race() throws Exception {
+    private Map<String, Integer> race(final UUID statementId) throws Exception {
+        // DEF-273：退款以「訂單被哪張結算單結算」定位，所以每條執行緒需要一筆已被這張結算單結算的真實訂單
+        List<UUID> settledOrderIds = new ArrayList<>(THREADS);
+        for (int i = 0; i < THREADS; i++) {
+            settledOrderIds.add(seedSettledOrder(statementId));
+        }
         ExecutorService pool = Executors.newFixedThreadPool(THREADS);
         CountDownLatch startGun = new CountDownLatch(1);
         Map<String, Integer> unexpected = new ConcurrentHashMap<>();
         List<Future<?>> results = new ArrayList<>(THREADS);
         try {
             for (int i = 0; i < THREADS; i++) {
+                final UUID orderId = settledOrderIds.get(i);
                 Callable<Void> attempt = () -> {
                     startGun.await();
                     try {
                         // 直接呼叫 @Transactional 的服務方法：每條執行緒各自開一筆交易，
                         // 讀後寫的窗口才會真的存在。共用交易會退化成單執行緒。
-                        settlementAdjustmentService.handleOrderRefund(
-                                tenantId, UUID.randomUUID(),
-                                ORDER_DATE.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant(),
-                                REFUND_EACH);
+                        settlementAdjustmentService.handleOrderRefund(tenantId, orderId, REFUND_EACH);
                     } catch (RuntimeException e) {
                         unexpected.merge(e.getClass().getSimpleName(), 1, Integer::sum);
                     }
@@ -170,7 +193,7 @@ class M07SettlementRefundConcurrencyIntegrationTest {
         UUID statementId = seedStatement("PENDING");
         BigDecimal expectedRefunds = REFUND_EACH.multiply(BigDecimal.valueOf(THREADS));
 
-        Map<String, Integer> unexpected = race();
+        Map<String, Integer> unexpected = race(statementId);
 
         assertThat(unexpected)
                 .as("退款扣除不應拋出技術性例外；若出現樂觀鎖衝突之類的例外，代表修法選錯方向。本次結果：%s",
@@ -193,7 +216,7 @@ class M07SettlementRefundConcurrencyIntegrationTest {
     void concurrentRefundsOnApprovedStatementCreateAllAdjustments() throws Exception {
         UUID statementId = seedStatement("APPROVED");
 
-        Map<String, Integer> unexpected = race();
+        Map<String, Integer> unexpected = race(statementId);
 
         assertThat(unexpected).as("本次結果：%s", unexpected).isEmpty();
 

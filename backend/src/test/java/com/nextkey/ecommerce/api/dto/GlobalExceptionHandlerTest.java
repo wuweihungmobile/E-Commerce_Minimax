@@ -12,6 +12,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.ServletWebRequest;
 
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -134,5 +136,15 @@ class GlobalExceptionHandlerTest {
                 .isEqualTo(expectedStatus);
         assertThat(response.getBody().getCode()).isEqualTo(errorCode.getCode());
         assertThat(response.getBody().getMessage()).isEqualTo(errorCode.getMessage());
+    }
+
+    @Test
+    @DisplayName("Sprint 199（DEF-279）：真正未預期的例外仍回 500 + E-9900——新增的 404／405／415 處理器不可吞掉 catch-all 的職責")
+    void handleGenericException_unexpectedError_stillReturns500() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleGenericException(
+                new IllegalStateException("boom"), new ServletWebRequest(new MockHttpServletRequest()));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody().getCode()).isEqualTo(ErrorCode.E_9900.getCode());
     }
 }

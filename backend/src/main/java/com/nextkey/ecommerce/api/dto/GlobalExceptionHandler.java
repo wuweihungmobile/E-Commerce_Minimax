@@ -10,12 +10,16 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.BindException;
+import org.springframework.web.ErrorResponse;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -143,6 +147,48 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResponse.error(ErrorCode.E_1007.getCode(), "權限不足"));
+    }
+
+    /**
+     * Sprint 199（DEF-279）：Spring 6.1 起路由不存在會拋 {@link NoResourceFoundException}，先前沒有專屬處理器而落入
+     * 下方 catch-all，變成 500 加一筆 ERROR 堆疊——打錯路徑的用戶端或掃描器會被當成後端故障、觸發 5xx 告警。
+     * 這是呼叫端的錯，故回 404、只記一行 WARN。
+     *
+     * <p>錯誤碼沿用 {@code E_4041}：SRD 將它定義為全域的「資源不存在」；前端沒有針對此碼做任何分支。
+     * 文字使用專屬訊息，不使用 {@code E_4041} 的預設文字「找不到店鋪」。
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFoundException(final NoResourceFoundException ex) {
+        log.warn("No route matches: {} {}", ex.getHttpMethod(), ex.getResourcePath());
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ErrorCode.E_4041.getCode(), "找不到請求的資源"));
+    }
+
+    /**
+     * Sprint 199：與 {@link #handleNoResourceFoundException} 同一個根因、同一種修法——路徑存在但 HTTP 方法不對，
+     * 先前也是 500。狀態碼與 {@code Allow} 標頭交給例外自己（{@link ErrorResponse}）決定，RFC 9110 要求 405
+     * 必須帶 {@code Allow}。錯誤碼沿用 {@code E_9000}，與 Sprint 162 對「請求本身有問題」的處理一致。
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHttpRequestMethodNotSupportedException(
+            final HttpRequestMethodNotSupportedException ex) {
+        return unsupportedRequestForm(ex, "不支援的請求方法");
+    }
+
+    /** Sprint 199：請求的 Content-Type 不被端點接受（415），同上。 */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHttpMediaTypeNotSupportedException(
+            final HttpMediaTypeNotSupportedException ex) {
+        return unsupportedRequestForm(ex, "不支援的內容型別");
+    }
+
+    private ResponseEntity<ApiResponse<Void>> unsupportedRequestForm(final ErrorResponse ex, final String message) {
+        log.warn("Unsupported request form: {} - {}", ex.getStatusCode(), ex.getBody().getDetail());
+
+        return ResponseEntity.status(ex.getStatusCode())
+                .headers(ex.getHeaders())
+                .body(ApiResponse.error(ErrorCode.E_9000.getCode(), message));
     }
 
     @ExceptionHandler(Exception.class)

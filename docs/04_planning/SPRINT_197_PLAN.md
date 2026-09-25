@@ -56,13 +56,17 @@ Sprint 192、193、196 的收尾都把「`SecurityConfig` 沒有顯式 `headers(
 
 **前端**：`tsc --noEmit` 與 `eslint next.config.ts` 通過；`npm run build` 成功；**production** `next start` 以 curl 驗證 `/login`（200）、`/_next/static/nonexistent.js`（404）、`/no-such-page`（404）皆帶三個標頭；`at-security-headers.spec.ts` 對 production server 3/3 通過。
 
-**尚未執行**：`git commit` 的 pre-commit 與 `git push` 的 pre-push 守門，以及雲端 CI（含 `at-m10-chat` 等 E2E）——結果不在本文件中。
+**本機 E2E 守門** `make validate-e2e`（乾淨 DB → Flyway 重建 → host 全棧、`ddl-auto=validate` → Playwright）：schema 對齊無漂移；列出 69 個，**65 passed、4 skipped、0 failed**，log 中無 flaky／retry 字樣；含 `at-m10-chat`（聊天 STOMP happy path）與 `at-security-headers` 的 3 個。4 個 skipped 是既有 `at-m17-003`／`at-m17-004` 的條件式 `test.skip()`，非本輪引入，我沒有檢視它們為何被跳過。
+
+**commit／push**：pre-commit（checkstyle、編譯、核心測試、ESLint、tsc）通過，commit `8dbf5d5`；pre-push 輕量守門（Backend Unit Tests、Frontend Lint & Build、schema-gate 三段皆出現在輸出中）整體通過，push `d404f0b..8dbf5d5`；**雲端 CI**（push 觸發的 `act-compat.yml`）run 36087142091 **三個 job 全綠**：Backend Unit Tests 2m54s／Backend Integration Tests & Package 5m32s／Frontend Lint & Build 1m05s。
+
+**更正（過程揭露）**：本文件初稿曾寫「聊天 E2E 會在 push 後的雲端 CI 跑」，這是錯的——push 觸發的雲端 CI **不含 Playwright E2E**，E2E 只有本機 `make validate-e2e` 與手動觸發的 `ci.yml`（`Makefile` 中 `validate-push` 的註解「E2E 交給雲端 push 觸發」與現況不符，此為既有的文件落差，本輪未動）。我查證後改為實際跑本機 E2E 守門，結果如上。
 
 ## 7. 誠實揭露
 
 - **後端正式的回歸測試是 MockMvc；真實 Tomcat 只交叉驗證了 3 個端點**（401／200／200）。403、400、CORS preflight 只有 MockMvc 的證據——兩者走同一條過濾鏈，但不完全等價。
 - **前端「修改前」的基準是 `next dev` 的實測**（登入頁只有 `Cache-Control` 與 `X-Powered-By`）；修改後另以 production 建置驗證（§6），但「修改前」沒有對 production 再測一次。
-- **SockJS iframe 後備傳輸未驗證**：探針對 `/ws/iframe.html` 回 404（我沒有追查原因）。推論是 iframe 傳輸原本就被既有的 `X-Frame-Options: DENY` 擋下，新增的 `default-src 'none'` 不會讓它更糟；此為推論，沒有實測。聊天實際走 SockJS 的哪一種傳輸我沒有確認，本輪也**沒有在本機跑聊天 E2E**（`at-m10-chat` 需完整 docker 堆疊）；它會在 push 後的雲端 CI 跑，那是這項的實際檢驗。
+- **SockJS iframe 後備傳輸未驗證**：探針對 `/ws/iframe.html` 回 404（我沒有追查原因）。推論是 iframe 傳輸原本就被既有的 `X-Frame-Options: DENY` 擋下，新增的 `default-src 'none'` 不會讓它更糟；此為推論，沒有實測。聊天實際走 SockJS 的哪一種傳輸我沒有確認；但本機 E2E 守門中 `at-m10-chat`（聊天 STOMP happy path）通過（§6），代表新標頭沒有破壞聊天連線。
 - **HSTS 在代理後方不送**是實測事實，但是否構成問題取決於 TLS 在哪終止（repo 內沒有），需要使用者告知部署方式才能決定要設 `server.forward-headers-strategy` 還是在邊緣層加。
 - **前端仍沒有限制 script 來源的 CSP**，XSS 縱深防禦這一層是缺的；SRD 寫的「CSP Header」對前端頁面尚未完全落實。
 - `X-Request-ID` 與 PRD 的 `error.requestId` 都沒有實作；PRD 的錯誤封包（`{error:{code,message,details,requestId}}`）與實作的 `ApiResponse` 形狀本身就不同，這比單一標頭大，需決策。
@@ -81,4 +85,4 @@ Sprint 192、193、196 的收尾都把「`SecurityConfig` 沒有顯式 `headers(
 2. **前端 `script-src` CSP**：選項是 nonce（強制所有頁面動態渲染）、或先以 `Content-Security-Policy-Report-Only` 觀察，或暫不做。
 3. **DEF-280**：錯誤封包契約（`X-Request-ID`／`error.requestId`）要讓實作向 PRD 靠攏，還是修 PRD 反映現況。
 4. **DEF-279**：未知路徑 500→404，改動小，可直接排入下一輪。
-5. 本輪 commit／push 與雲端 CI 結果，於下一輪開工時回填 `RELEASE_TRACKER.md` 狀態欄。
+5. 本輪已 commit／push，雲端 CI 全綠；`RELEASE_TRACKER.md` 狀態欄已於同日回填。

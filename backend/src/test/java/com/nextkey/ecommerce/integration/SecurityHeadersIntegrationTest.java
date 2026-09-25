@@ -11,6 +11,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -89,7 +91,8 @@ class SecurityHeadersIntegrationTest {
                 .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3000")));
     }
 
-    private static final String HSTS = "max-age=31536000 ; includeSubDomains";
+    // 只涵蓋送出此標頭的網域本身，刻意不含 includeSubDomains（見 IT-SEC-HDR-11）
+    private static final String HSTS = "max-age=31536000";
 
     @Test
     @DisplayName("IT-SEC-HDR-06: HTTPS 請求帶 Strict-Transport-Security")
@@ -119,5 +122,23 @@ class SecurityHeadersIntegrationTest {
                 .andExpect(header().doesNotExist("Strict-Transport-Security"));
         mockMvc.perform(get("/v2/auth/me").header("X-Forwarded-Proto", "http"))
                 .andExpect(header().doesNotExist("Strict-Transport-Security"));
+    }
+
+    @Test
+    @DisplayName("IT-SEC-HDR-10: 代理標頭的邊界寫法——不分大小寫、逗號後有空白照樣採信；第一段是 http 則不送")
+    void forwardedProtoEdgeCases() throws Exception {
+        mockMvc.perform(get("/v2/auth/me").header("X-Forwarded-Proto", "HTTPS"))
+                .andExpect(header().string("Strict-Transport-Security", HSTS));
+        mockMvc.perform(get("/v2/auth/me").header("X-Forwarded-Proto", "https, http"))
+                .andExpect(header().string("Strict-Transport-Security", HSTS));
+        mockMvc.perform(get("/v2/auth/me").header("X-Forwarded-Proto", "http,https"))
+                .andExpect(header().doesNotExist("Strict-Transport-Security"));
+    }
+
+    @Test
+    @DisplayName("IT-SEC-HDR-11: HSTS 不含 includeSubDomains——子網域是否都能走 https 無從驗證，而該指示一年內無法反悔")
+    void hsts_doesNotCoverSubdomains() throws Exception {
+        mockMvc.perform(get("/v2/auth/me").secure(true))
+                .andExpect(header().string("Strict-Transport-Security", not(containsString("includeSubDomains"))));
     }
 }

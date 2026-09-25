@@ -97,7 +97,9 @@
 ## 8. 下一步 / Action Items
 
 0. **push 尚未執行**：使用者 2026-07-08 的免確認 push 授權涵蓋的是「金流／租戶隔離安全修復」的 commit；本輪是錯誤處理的修正，**不在該授權明文範圍內**，所以我只 commit、不 push，等使用者決定（`RELEASE_TRACKER` 狀態欄標為「⏳ 待 push」）。
+   - **後續（Sprint 200，2026-09-26）**：使用者回覆「請依照慣例commit + Push to main」，已授權推送，見 [SPRINT_200_PLAN.md](SPRINT_200_PLAN.md) §6。
 1. **部署確認**（沿用 Sprint 198）：請向維運確認前方代理有送 `X-Forwarded-Proto`；staging 第一次上線時看一眼瀏覽器主控台有無 CSP 違規訊息（有問題可先設 `CSP_REPORT_ONLY=1`）。
 2. **HSTS `includeSubDomains`**：請確認所有子網域都能走 https；若不確定，最保守的做法是先縮短 `max-age` 或拿掉 `includeSubDomains`，這需要你決定。
+   - **後續（Sprint 200）**：無法驗證子網域，已依保守方向**拿掉 `includeSubDomains`**，並對齊前後端判斷，見 [SPRINT_200_PLAN.md](SPRINT_200_PLAN.md) §2、§3。
 3. **產品決策（不急）**：錯誤畫面是否顯示 `X-Request-ID`；PRD 錯誤封包形狀要不要與實作對齊。
 4. **DEF-281**（防火牆拒絕的請求回 401 而非 400、內容缺 `requestId`）：低優先，需先查證成因再決定修法；可直接排入下一輪。

@@ -82,7 +82,10 @@ public class SecurityConfig {
             .headers(headers -> headers
                 .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none'"))
                 .referrerPolicy(referrer -> referrer.policy(ReferrerPolicy.NO_REFERRER))
-                .httpStrictTransportSecurity(hsts -> hsts.requestMatcher(SecurityConfig::isHttpsRequest)))
+                // 不含 includeSubDomains：子網域是否都能走 https 無從驗證，而該指示送出後一年內無法收回
+                .httpStrictTransportSecurity(hsts -> hsts
+                    .requestMatcher(SecurityConfig::isHttpsRequest)
+                    .includeSubDomains(false)))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint((request, response, authException) -> {

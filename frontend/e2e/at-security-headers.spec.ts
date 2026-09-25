@@ -15,7 +15,8 @@ import { test, expect, Page } from '@playwright/test';
  * - E2E-SEC-HDR-05: nonce 每次請求不同，且 HTML 中每個 <script> 都帶當次 nonce
  * - E2E-SEC-HDR-06: 真實瀏覽器載入主要頁面，零 CSP 違規、inline 主題 script 確實執行
  * - E2E-SEC-HDR-07: 被注入的 inline 事件處理器（XSS 典型手法）確實被瀏覽器擋下
- * - E2E-SEC-HDR-08: HSTS 只在代理告知 https 時才送（純 http 不送）
+ * - E2E-SEC-HDR-08: HSTS 只在代理告知 https 時才送（純 http 不送），且不含 includeSubDomains
+ * - E2E-SEC-HDR-09: 代理標頭的邊界寫法（大小寫、多層、空白）與後端判斷一致
  */
 
 function directive(csp: string, name: string): string[] {
@@ -133,10 +134,25 @@ test.describe('AT-SEC-HDR: 前端頁面安全標頭與 CSP', () => {
     const plain = await request.get('/login');
     expect(plain.headers()['strict-transport-security']).toBeUndefined();
 
+    // 刻意不含 includeSubDomains：子網域是否都能走 https 無從驗證，而該指示送出後一年內無法收回
     const behindProxy = await request.get('/login', { headers: { 'X-Forwarded-Proto': 'https' } });
-    expect(behindProxy.headers()['strict-transport-security']).toBe('max-age=31536000; includeSubDomains');
+    expect(behindProxy.headers()['strict-transport-security']).toBe('max-age=31536000');
 
     const plainHttpForwarded = await request.get('/login', { headers: { 'X-Forwarded-Proto': 'http' } });
     expect(plainHttpForwarded.headers()['strict-transport-security']).toBeUndefined();
+  });
+
+  // 與後端 SecurityConfig.isHttpsRequest 同一套判斷：取第一段、去空白、不分大小寫等於 https
+  // （IT-SEC-HDR-08、IT-SEC-HDR-10）。兩邊條件不一致，前後端就會對同一請求做出不同的 HSTS 決定。
+  test('E2E-SEC-HDR-09: 代理標頭的邊界寫法與後端判斷一致', async ({ request }) => {
+    const hsts = async (proto: string) =>
+      (await request.get('/login', { headers: { 'X-Forwarded-Proto': proto } })).headers()[
+        'strict-transport-security'
+      ];
+
+    expect(await hsts('HTTPS')).toBe('max-age=31536000');
+    expect(await hsts('https, http')).toBe('max-age=31536000');
+    expect(await hsts('http,https')).toBeUndefined();
+    expect(await hsts('httpsx')).toBeUndefined();
   });
 });

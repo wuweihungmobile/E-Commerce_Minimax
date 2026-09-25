@@ -1188,8 +1188,12 @@
 
 ---
 
-**文件版本**: v2.89
-**最後更新**: 2026-09-25（**Sprint 199**：使用者貼上 Sprint 198 總結並要求「確認合理性並繼續完成任務」。**合理性查證**：逐項對照程式碼與 commit `a305ae5`，未發現不實；提醒 HSTS 值帶 `includeSubDomains`（一年）、且前端／後端 HSTS 條件不完全等價（大寫未實測）。**繼續**：我理解為處理總結留下的唯一待處理項 `DEF-279`（推論，使用者未逐字確認）。先以整合測試探針紅燈實測，發現範圍比記錄更大——**404、405、415 全部回 500** 並各寫一筆 ERROR 堆疊；根因是 `GlobalExceptionHandler` 沒接住 Spring 6.1 宣告為 4xx 的 `ErrorResponse` 例外。**修復**：`NoResourceFoundException`→404（沿用 SRD 全域 `E-4041`）、`HttpRequestMethodNotSupportedException`→405（帶 `Allow`）、`HttpMediaTypeNotSupportedException`→415（`E-9000`），皆只記一行 WARN，`DEF-279` 結案；**406 未處理**（無法證明會被走到，處理器已移除）。**新登記** 🟢 `DEF-281`：被 Spring Security 防火牆拒絕的請求（`%0A`、`//`）回 401 而非 400、內容缺 `requestId`（成因未查證）。新增 5 個測試（後端 1732 單元 +1、534 整合 +4，0 失敗，checkstyle 0 違規）；突變驗證恰好 2 紅；真實 Tomcat 驗證三種情況各只一行 WARN 且帶 `requestId`、ERROR 為 0。**尚未 push**（免確認授權涵蓋金流／租戶隔離安全修復，不含此類 commit）。詳見 [SPRINT_199_PLAN.md](SPRINT_199_PLAN.md)）
+**文件版本**: v2.90
+**最後更新**: 2026-09-26（**Sprint 200**：使用者對 Sprint 199 留下的待決項回覆「請依照慣例commit + Push to main」「請完成https」「若需要我的決定，請先以最佳理想化進行處理」。**HSTS**：子網域是否都能走 https 無從驗證、`includeSubDomains` 送出後一年內無法收回，取保守值——後端與前端皆**拿掉 `includeSubDomains`**（`max-age` 一年、不加 `preload` 不變）；加回是一行改動。**前後端判斷對齊**：實測前端對 `X-Forwarded-Proto: HTTPS` 大寫不送 HSTS（後端會送），改為與後端同一套判斷（取第一段、去空白、不分大小寫）。程式內其餘 HTTPS 工作經查證無需補（無 cookie、無寫死的非 localhost `http://`）。新增後端 2 個測試（`SecurityHeadersIntegrationTest` 9→11）、前端 spec 1 個（8→9），紅燈先行。**未新增／未結案任何 DEF**；`DEF-281` 維持待處理。**揭露**：已 push 的 Sprint 198 帶 `includeSubDomains`，若已部署且瀏覽器收過，本輪不會撤回（需送 `max-age=0`），無部署資訊、推測尚未部署；`max-age` 仍為一年；僅 chromium 驗證。驗證結果與詳情見 [SPRINT_200_PLAN.md](SPRINT_200_PLAN.md)）
+
+---
+
+**歷史版本 v2.89**: 2026-09-25（**Sprint 199**：使用者貼上 Sprint 198 總結並要求「確認合理性並繼續完成任務」。**合理性查證**：逐項對照程式碼與 commit `a305ae5`，未發現不實；提醒 HSTS 值帶 `includeSubDomains`（一年）、且前端／後端 HSTS 條件不完全等價（大寫未實測）。**繼續**：我理解為處理總結留下的唯一待處理項 `DEF-279`（推論，使用者未逐字確認）。先以整合測試探針紅燈實測，發現範圍比記錄更大——**404、405、415 全部回 500** 並各寫一筆 ERROR 堆疊；根因是 `GlobalExceptionHandler` 沒接住 Spring 6.1 宣告為 4xx 的 `ErrorResponse` 例外。**修復**：`NoResourceFoundException`→404（沿用 SRD 全域 `E-4041`）、`HttpRequestMethodNotSupportedException`→405（帶 `Allow`）、`HttpMediaTypeNotSupportedException`→415（`E-9000`），皆只記一行 WARN，`DEF-279` 結案；**406 未處理**（無法證明會被走到，處理器已移除）。**新登記** 🟢 `DEF-281`：被 Spring Security 防火牆拒絕的請求（`%0A`、`//`）回 401 而非 400、內容缺 `requestId`（成因未查證）。新增 5 個測試（後端 1732 單元 +1、534 整合 +4，0 失敗，checkstyle 0 違規）；突變驗證恰好 2 紅；真實 Tomcat 驗證三種情況各只一行 WARN 且帶 `requestId`、ERROR 為 0。**尚未 push**（免確認授權涵蓋金流／租戶隔離安全修復，不含此類 commit）。詳見 [SPRINT_199_PLAN.md](SPRINT_199_PLAN.md)）
 
 ---
 

@@ -62,6 +62,13 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
     /**
      * 多維度評價搜尋
      *
+     * <p>「是否有圖片」不可用 HQL 的 {@code SIZE(r.images)}：{@code images} 是 JSON 欄位（基本屬性，非集合），
+     * Hibernate 在 SQL 翻譯階段會拋 {@code ClassCastException}，且啟動時的查詢驗證抓不到（DEF-277）。
+     * 改用 {@code jsonb_array_length}；SQL NULL 與 {@code []} 都視為沒有圖片。
+     *
+     * <p>{@code keyword} 為 null 時，出現在 {@code CONCAT} 引數位置的參數沒有型別脈絡，Hibernate 會把 null 綁成
+     * {@code bytea}，PostgreSQL 報 {@code function lower(bytea) does not exist}——所以每個出現處都要 {@code CAST}。
+     *
      * @param listingId 商品/房型 ID（必要）
      * @param keyword 關鍵字（搜尋標題或內容，可為 null）
      * @param minRating 最低評分（可為 null）
@@ -77,16 +84,17 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
         SELECT r FROM Review r
         WHERE r.listingId = :listingId
           AND r.isVisible = true
-          AND (:keyword IS NULL OR LOWER(r.title) LIKE LOWER(CONCAT('%', :keyword, '%'))
-               OR LOWER(r.content) LIKE LOWER(CONCAT('%', :keyword, '%')))
+          AND (CAST(:keyword AS string) IS NULL
+               OR LOWER(r.title) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%'))
+               OR LOWER(r.content) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%')))
           AND (:minRating IS NULL OR r.rating >= :minRating)
           AND (:maxRating IS NULL OR r.rating <= :maxRating)
-          AND (:startDate IS NULL OR r.createdAt >= :startDate)
-          AND (:endDate IS NULL OR r.createdAt <= :endDate)
-          AND (:hasImages IS NULL
-               OR (:hasImages = true AND r.images IS NOT NULL AND SIZE(r.images) > 0)
-               OR (:hasImages = false AND (r.images IS NULL OR SIZE(r.images) = 0)))
-          AND (:hasReply IS NULL
+          AND (CAST(:startDate AS Instant) IS NULL OR r.createdAt >= :startDate)
+          AND (CAST(:endDate AS Instant) IS NULL OR r.createdAt <= :endDate)
+          AND (CAST(:hasImages AS Boolean) IS NULL
+               OR (:hasImages = true AND COALESCE(FUNCTION('jsonb_array_length', r.images), 0) > 0)
+               OR (:hasImages = false AND COALESCE(FUNCTION('jsonb_array_length', r.images), 0) = 0))
+          AND (CAST(:hasReply AS Boolean) IS NULL
                OR (:hasReply = true AND EXISTS (SELECT 1 FROM ReviewReply rr WHERE rr.reviewId = r.id))
                OR (:hasReply = false AND NOT EXISTS (SELECT 1 FROM ReviewReply rr WHERE rr.reviewId = r.id)))
     """)

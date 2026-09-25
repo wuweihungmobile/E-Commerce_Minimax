@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeScript } from "@/components/theme/ThemeScript";
@@ -20,11 +21,15 @@ export const metadata: Metadata = {
   description: "意象若水 RUOSHUI 電商平台",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // nonce 由 src/proxy.ts 每次請求產生（嚴格 CSP）。讀取請求標頭會讓所有頁面改為動態渲染——
+  // 這是 nonce 型 CSP 的必要條件：靜態頁在 build 時沒有請求，無 nonce 可套用，script 會被 CSP 擋下。
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
       lang="zh-TW"
@@ -34,7 +39,7 @@ export default function RootLayout({
       className={`h-full antialiased ${inter.variable}`}
     >
       <body className="min-h-full flex flex-col">
-        <ThemeScript />
+        <ThemeScript nonce={nonce} />
         {children}
       </body>
     </html>

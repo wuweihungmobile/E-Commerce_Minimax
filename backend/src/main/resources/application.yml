@@ -95,6 +95,9 @@ oauth:
 
 # Logging
 logging:
+  # 每行日誌帶入請求追蹤 ID（RequestIdFilter 寫入 MDC；請求範圍外顯示為空），使用者回報的 X-Request-ID 可直接 grep
+  pattern:
+    level: "%5p [%X{requestId:-}]"
   level:
     root: INFO
     com.nextkey.ecommerce: DEBUG

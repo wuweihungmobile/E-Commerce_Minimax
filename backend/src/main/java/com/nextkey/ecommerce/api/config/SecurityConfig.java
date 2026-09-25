@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.api.config;
 import java.util.Arrays;
 import java.util.List;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -33,6 +34,7 @@ import com.nextkey.ecommerce.api.filter.LoginRateLimitFilter;
 import com.nextkey.ecommerce.api.filter.RateLimitFilter;
 import com.nextkey.ecommerce.api.filter.TenantContextFilter;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.trace.RequestId;
 
 @Configuration
 @EnableWebSecurity
@@ -75,10 +77,12 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             // 安全標頭（PRD 16.4.1：錯誤回應需帶 nosniff、X-Frame-Options: DENY；SRD：CSP）。
             // nosniff／X-Frame-Options: DENY／Cache-Control: no-store 是 Spring Security 預設；此處補預設沒有的
-            // CSP 與 Referrer-Policy。本服務只回 JSON（無 Swagger 或 HTML 頁），default-src 'none' 不會擋到功能。
+            // CSP 與 Referrer-Policy，並讓 HSTS 在 TLS 由代理終止時也送（見 isHttpsRequest）。
+            // 本服務只回 JSON（無 Swagger 或 HTML 頁），default-src 'none' 不會擋到功能。
             .headers(headers -> headers
                 .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none'"))
-                .referrerPolicy(referrer -> referrer.policy(ReferrerPolicy.NO_REFERRER)))
+                .referrerPolicy(referrer -> referrer.policy(ReferrerPolicy.NO_REFERRER))
+                .httpStrictTransportSecurity(hsts -> hsts.requestMatcher(SecurityConfig::isHttpsRequest)))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint((request, response, authException) -> {
@@ -143,6 +147,20 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * HSTS 只能在 HTTPS 回應上送（瀏覽器對 http 回應中的 HSTS 一律忽略）。TLS 通常在應用前方的代理／負載平衡器
+     * 終止，後端收到的是 http，Spring 預設的 {@code request.isSecure()} 因此恆為 false、HSTS 永遠不送；
+     * 這裡同時採信 {@code X-Forwarded-Proto}（多層代理時取第一段）。此標頭可被呼叫端偽造，但偽造只會讓 http
+     * 回應多帶一個瀏覽器本來就會忽略的標頭，沒有安全影響。
+     */
+    static boolean isHttpsRequest(HttpServletRequest request) {
+        if (request.isSecure()) {
+            return true;
+        }
+        String forwardedProto = request.getHeader("X-Forwarded-Proto");
+        return forwardedProto != null && "https".equalsIgnoreCase(forwardedProto.split(",")[0].trim());
+    }
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
@@ -156,8 +174,10 @@ public class SecurityConfig {
         // 據此封鎖真正的 POST（伺服器端不會報錯，故長期未被察覺）。Sprint 128，DEF-072。
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Tenant-ID",
                 "Idempotency-Key"));
+        // X-Request-ID：跨源時瀏覽器預設讀不到自訂回應標頭，需列入才能讓前端取得（DEF-280）
         configuration.setExposedHeaders(List.of("Authorization",
-                "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"));
+                "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After",
+                RequestId.HEADER));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(CORS_MAX_AGE_SECONDS);
 

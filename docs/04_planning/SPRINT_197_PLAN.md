@@ -74,6 +74,8 @@ Sprint 192、193、196 的收尾都把「`SecurityConfig` 沒有顯式 `headers(
 
 ## 8. 使用者決策與下一步 / Action Items
 
+> **後續（Sprint 198）**：下列第 1～3 項已由使用者回覆處理（HSTS、前端 CSP 授權我依「最佳化理想化」判斷；DEF-280 要求實作），結果見 [SPRINT_198_PLAN.md](SPRINT_198_PLAN.md)。第 4 項（DEF-279）仍待處理。以下維持當時的原文。
+
 **使用者決策**：本輪沒有向使用者提問（沒有 AskUserQuestion）。下列是我自行做的判斷，使用者可推翻：
 1. 把「請繼續完成任務」解讀為 Sprint 196 建議的安全標頭方向（見 §1）。
 2. 範圍從 `SecurityConfig` 延伸到前端 `next.config.ts`——實測發現前端才是缺口最大處，且已查證改動不影響功能（§4）。

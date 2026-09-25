@@ -26,8 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 在過濾鏈之外產生，這些防護會悄悄消失、且不會有任何功能測試變紅。此測試走完整過濾鏈，
  * 逐一驗證各種回應類型（200／400／401／403／CORS preflight）都帶齊標頭。
  *
- * <p>刻意不斷言 HSTS 在「代理後方（X-Forwarded-Proto: https）」的行為：專案內沒有定義 TLS 終止層，
- * 該行為取決於部署拓撲，鎖死它等於替未決的基礎設施決策背書。
+ * <p>HSTS：TLS 通常由應用前方的代理終止，後端收到 http，Spring 預設的 isSecure() 恆為 false 而永遠不送。
+ * 決策（Sprint 198）：同時採信 X-Forwarded-Proto——偽造只會讓 http 回應多帶一個瀏覽器會忽略的標頭。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -89,10 +89,35 @@ class SecurityHeadersIntegrationTest {
                 .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3000")));
     }
 
+    private static final String HSTS = "max-age=31536000 ; includeSubDomains";
+
     @Test
     @DisplayName("IT-SEC-HDR-06: HTTPS 請求帶 Strict-Transport-Security")
     void https_hasHsts() throws Exception {
         mockMvc.perform(get("/v2/auth/me").secure(true))
-                .andExpect(header().string("Strict-Transport-Security", "max-age=31536000 ; includeSubDomains"));
+                .andExpect(header().string("Strict-Transport-Security", HSTS));
+    }
+
+    @Test
+    @DisplayName("IT-SEC-HDR-07: TLS 由代理終止（http + X-Forwarded-Proto: https）仍帶 HSTS")
+    void behindTlsTerminatingProxy_hasHsts() throws Exception {
+        mockMvc.perform(get("/v2/auth/me").header("X-Forwarded-Proto", "https"))
+                .andExpect(header().string("Strict-Transport-Security", HSTS));
+    }
+
+    @Test
+    @DisplayName("IT-SEC-HDR-08: 多層代理（https,http）以第一段為準，仍帶 HSTS")
+    void multiHopProxy_usesFirstHop() throws Exception {
+        mockMvc.perform(get("/v2/auth/me").header("X-Forwarded-Proto", "https,http"))
+                .andExpect(header().string("Strict-Transport-Security", HSTS));
+    }
+
+    @Test
+    @DisplayName("IT-SEC-HDR-09: 純 http（含 X-Forwarded-Proto: http）不帶 HSTS——瀏覽器不該在明文連線上被要求記住")
+    void plainHttp_hasNoHsts() throws Exception {
+        mockMvc.perform(get("/v2/auth/me"))
+                .andExpect(header().doesNotExist("Strict-Transport-Security"));
+        mockMvc.perform(get("/v2/auth/me").header("X-Forwarded-Proto", "http"))
+                .andExpect(header().doesNotExist("Strict-Transport-Security"));
     }
 }

@@ -82,7 +82,7 @@ Bean Validation／資料繫結失敗：HTTP 400、`code` 為 `E-9000`，`errors`
 | Content-Type 不被端點接受 | 415 | `E-9000` | 不支援的內容型別 | Sprint 199 |
 | 限流：每租戶 API（100 req/min）；登入、註冊、忘記密碼、重設密碼、Email 驗證（含重寄）每來源 IP 每路徑 30 次／分鐘 | 429 | `E-9904` | 已超過速率限制 | 帶 `Retry-After`；每租戶限流另帶 `X-RateLimit-Limit`／`-Remaining`／`-Reset` |
 | 未預期例外 | 500 | `E-9900` | 發生未預期的錯誤 | 不回顯例外訊息；後端寫一筆 ERROR 堆疊 |
-| Servlet 容器的 ERROR 分派（見 §2.1） | 400／404／5xx | `E-9000`／`E-4041`／`E-9900` | 請求格式錯誤／找不到請求的資源／發生未預期的錯誤 | Sprint 201（DEF-281）、Sprint 202（DEF-282） |
+| Servlet 容器的 ERROR 分派（見 §2.1）、Tomcat 連接器層的拒絕（見 §2.2） | 400／404／5xx | `E-9000`／`E-4041`／`E-9900` | 請求格式錯誤／找不到請求的資源／發生未預期的錯誤 | Sprint 201（DEF-281）、202（DEF-282）、206（DEF-283） |
 
 ### 2.1 容器 ERROR 分派（防火牆拒絕的請求）
 
@@ -94,9 +94,20 @@ Bean Validation／資料繫結失敗：HTTP 400、`code` 為 `E-9000`，`errors`
 - 安全標頭由 `SecurityHeaderPolicy` 套用（見 [SRD §5.4](./SRD_System_Architecture.md)），與一般回應同一份政策。
 - `SecurityConfig` 只對 **ERROR 分派**放行；直接請求 `/error` 是一般請求，仍須通過驗證。
 
-### 2.2 已知限制：Tomcat 連接器層的拒絕（DEF-283）
+### 2.2 Tomcat 連接器層的拒絕（Sprint 206，DEF-283）
 
-路徑含編碼斜線（`%2f`）或編碼反斜線（`%5C`）的請求，由 Tomcat 連接器**在進入 Servlet 之前**拒絕，回 Tomcat 內建的 HTML 錯誤頁（`400`、`text/html`），沒有本文件的 JSON 封包、沒有 `X-Request-ID`、沒有安全標頭，應用日誌也不會有紀錄。詳見 [DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md) DEF-283。
+路徑含編碼斜線（`%2f`）、編碼反斜線（`%5C`）、無效百分比編碼（`%zz`），或超過長度上限的請求，由 Tomcat 連接器**在進入 Servlet 之前**拒絕——Spring、過濾鏈、`ApiErrorController` 都碰不到。此前這類回應是 Tomcat 內建的 HTML 錯誤頁（沒有 JSON 封包、沒有 `X-Request-ID`、沒有安全標頭，應用日誌也沒有痕跡）。
+
+現在由 `ApiErrorReportValve` 接手：只換掉 Host 上**負責寫錯誤頁的那個 valve**，**不放寬任何 Tomcat 的拒絕規則**——這些請求依舊被 Tomcat 擋在應用之外，只改「拒絕之後回什麼」。回應與 §1 同一個封包：
+
+- 狀態碼沿用 Tomcat 決定的（上述情況為 `400`）；`code`／`message` 與 §2.1 相同（404→`E-4041`、其他 4xx→`E-9000`、5xx→`E-9900`），對應邏輯只有一份（`ContainerErrorResponse`，兩條容器路徑共用）。
+- `X-Request-ID`：請求沒進過 `RequestIdFilter`，故**重新產生 UUID**，同時放進標頭與內容。
+- 安全標頭：套用 `SecurityHeaderPolicy`，與一般回應同一份。
+- **不回顯路徑**，日誌只記狀態碼與 requestId（`WARN`）——路徑是呼叫端控制的字串。
+- 順帶一併修正：請求落在 context path（`/api`）**之外**（如 `GET /`）原本也是 Tomcat 的 HTML 404 頁，現在是 JSON `404 E-4041`。
+- 仍有 `Connection: close`（Tomcat 對這類錯誤請求的既有行為，valve 不改）。
+
+**評估過但未採用**：設定 Tomcat 系統屬性（`ALLOW_ENCODED_SLASH` 等）放行這類請求，讓 Spring 防火牆處理。該做法**移除 Tomcat 的一層預設拒絕**，只剩 Spring 防火牆把關，且沒有必要——valve 已達成目標。**此方案未實測**（因 valve 已滿足，且會放寬防護）。
 
 ---
 
@@ -104,8 +115,8 @@ Bean Validation／資料繫結失敗：HTTP 400、`code` 為 `E-9000`，`errors`
 
 | 標頭 | 適用 | 說明 |
 |------|------|------|
-| `X-Request-ID` | **所有回應**（含 401／403／429、容器 ERROR 分派） | 沿用呼叫端帶入的值（僅接受 `[A-Za-z0-9._-]{1,64}`，否則重新產生 UUID，避免換行字元偽造日誌行）；由 `RequestIdFilter` 於過濾鏈最前端寫入並放進日誌 MDC |
-| `X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、`Cache-Control`、CSP、`Referrer-Policy`、HSTS | 後端所有回應（§2.2 的 Tomcat 連接器層拒絕除外；HSTS 只在 HTTPS 請求送出） | 見 [SRD §5.4](./SRD_System_Architecture.md) |
+| `X-Request-ID` | **所有回應**（含 401／403／429、容器 ERROR 分派、Tomcat 連接器層拒絕） | 沿用呼叫端帶入的值（僅接受 `[A-Za-z0-9._-]{1,64}`，否則重新產生 UUID，避免換行字元偽造日誌行）；由 `RequestIdFilter` 於過濾鏈最前端寫入並放進日誌 MDC |
+| `X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、`Cache-Control`、CSP、`Referrer-Policy`、HSTS | 後端所有回應（含 §2.1 容器 ERROR 分派與 §2.2 Tomcat 連接器層拒絕；HSTS 只在 HTTPS 請求送出） | 見 [SRD §5.4](./SRD_System_Architecture.md) |
 | `Content-Type: application/json` | 所有回應 | 容器 ERROR 分派明確指定，不隨 `Accept` 協商 |
 | `Retry-After`、`X-RateLimit-*` | 429 | 見 §2 |
 

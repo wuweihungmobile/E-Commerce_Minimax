@@ -1,7 +1,7 @@
-# E-Commerce System — 系統需求文檔 (SRD) v1.2
+# E-Commerce System — 系統需求文檔 (SRD) v1.3
 
 > **文檔類型**: SRD (System Requirements Document)
-> **版本**: v1.2（v1.0 → v1.1：Sprint 203 文件一致性檢查；v1.1 → v1.2：Sprint 204 新增 §5.5，見 §9 修訂歷史）
+> **版本**: v1.3（v1.0 → v1.1：Sprint 203 文件一致性檢查；v1.1 → v1.2：Sprint 204 新增 §5.5；v1.2 → v1.3：Sprint 206 §5.4.1 連接器層錯誤，見 §9 修訂歷史）
 > **依據**: E-Commerce_PRD_v1.0_Final.md, E-Commerce_FRD_v1.0.md
 > **建立日期**: 2026-04-09
 > **作者**: Marcus (SD-Architect)
@@ -379,7 +379,7 @@ SuperAdmin
 
 **單一來源**：政策只定義在 `SecurityHeaderPolicy`，兩處套用同一份——`SecurityConfig`（Spring Security 的 `HeaderWriterFilter`，涵蓋一般請求的回應）與 `ApiErrorController`（Servlet 容器的 ERROR 分派；`HeaderWriterFilter` 沿用 `OncePerRequestFilter` 預設而不處理該分派，防火牆拒絕的請求原本因此完全沒有安全標頭，DEF-282）。日後改任何標頭只改 `SecurityHeaderPolicy`。
 
-**已知限制**：Tomcat 連接器層自己拒絕的請求（`%2f`、`%5C`）不進入應用，沒有任何標頭，見 [API_Error_Codes.md §2.2](./API_Error_Codes.md)（DEF-283）。
+**Tomcat 連接器層的拒絕**（Sprint 206，DEF-283）：路徑含 `%2f`、`%5C`、無效百分比編碼或超長的請求，由 Tomcat 在進入 Servlet 前拒絕，原本回 HTML 錯誤頁、無任何標頭。`ApiErrorReportValve` 只換掉 Host 上寫錯誤頁的 valve，改回 JSON 封包、`X-Request-ID` 與同一份 `SecurityHeaderPolicy`，**不放寬任何 Tomcat 的拒絕規則**；封包對應只有一份（`ContainerErrorResponse`，與 `ApiErrorController` 共用）。細節見 [API_Error_Codes.md §2.2](./API_Error_Codes.md)。
 
 #### 5.4.2 前端頁面（Next.js）
 
@@ -671,6 +671,7 @@ SuperAdmin
 | v1.0 | 2026-04-09 | Marcus (SD-Architect) | 初始版本 |
 | v1.1 | 2026-09-26 | Claude Code（Sprint 203） | 文件一致性檢查（DEF-280）：§4.2／§4.3 改為實際的扁平回應封包並指向新增的 [API_Error_Codes.md](./API_Error_Codes.md)；新增 §4.4 時間與時區慣例（DEF-269／271）；新增 §5.4 回應安全標頭、請求追蹤與 CORS（Sprint 191、197～202，DEF-265／278／279／280／281／282）。此前這些行為只存在於 Sprint 計畫與程式碼 |
 | v1.2 | 2026-09-26 | Claude Code（Sprint 204） | 新增 §5.5 一次性連結：忘記密碼與 Email 驗證（Redis token、`EmailSender`／`canDeliver()`、與開店申請前置條件的關係） |
+| v1.3 | 2026-09-27 | Claude Code（Sprint 206） | §5.4.1：Tomcat 連接器層的拒絕改回 JSON 封包＋`X-Request-ID`＋安全標頭（DEF-283） |
 
 ---
 

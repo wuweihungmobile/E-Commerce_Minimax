@@ -116,6 +116,44 @@ class ContainerErrorDispatchIntegrationTest {
         assertThat(mapper.readTree(response.body()).path("code").asText()).isEqualTo("E-1000");
     }
 
+    @ParameterizedTest(name = "路徑 {0}")
+    @ValueSource(strings = {"/v2/x%2fy", "/v2/x%2Fy", "/v2/x%5Cy"})
+    @DisplayName("IT-ERRDISP-07（Sprint 206，DEF-283）: Tomcat 連接器層自己拒絕的請求（%2f、%5C）也回 JSON 封包"
+            + "＋requestId＋完整安全標頭，而非 Tomcat 內建的 HTML 錯誤頁")
+    void connectorRejectedRequest_isJsonEnvelopeWithHeaders(final String path) throws Exception {
+        HttpResponse<String> response = get(path);
+
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.headers().firstValue("Content-Type")).hasValueSatisfying(
+                type -> assertThat(type).startsWith("application/json"));
+        assertThat(response.body()).doesNotContain("<html").doesNotContain("Apache Tomcat");
+
+        JsonNode body = mapper.readTree(response.body());
+        assertThat(body.path("success").asBoolean(true)).isFalse();
+        assertThat(body.path("code").asText()).isEqualTo("E-9000");
+        String headerId = response.headers().firstValue("X-Request-ID").orElse(null);
+        assertThat(headerId).matches(UUID_PATTERN);
+        assertThat(body.path("requestId").asText()).isEqualTo(headerId);
+
+        EXPECTED_SECURITY_HEADERS.forEach((name, value) -> assertThat(response.headers().allValues(name))
+                .as("%s 的 %s", path, name).containsExactly(value));
+    }
+
+    @Test
+    @DisplayName("IT-ERRDISP-08（Sprint 206）: 連接器層的回應不回顯呼叫端控制的路徑（防日誌／內容偽造），"
+            + "且 context path 之外的請求也是 JSON 404 而非 Tomcat 頁")
+    void connectorLevelResponses_doNotEchoThePath_andOutsideContextIsJson404() throws Exception {
+        HttpResponse<String> rejected = get("/v2/secret-marker%2fy");
+        assertThat(rejected.body()).doesNotContain("secret-marker");
+
+        HttpResponse<String> outsideContext = client.send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/")).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(outsideContext.statusCode()).isEqualTo(404);
+        assertThat(mapper.readTree(outsideContext.body()).path("code").asText()).isEqualTo("E-4041");
+        assertThat(outsideContext.headers().firstValue("X-Request-ID").orElse(null)).matches(UUID_PATTERN);
+    }
+
     private HttpResponse<String> getWithHeader(final String pathAfterContext, final String name, final String value)
             throws Exception {
         URI uri = URI.create("http://localhost:" + port + contextPath + pathAfterContext);

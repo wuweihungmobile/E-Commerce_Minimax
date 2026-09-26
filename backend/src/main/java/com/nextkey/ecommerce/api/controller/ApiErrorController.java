@@ -12,9 +12,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.nextkey.ecommerce.api.config.ContainerErrorResponse;
 import com.nextkey.ecommerce.api.config.SecurityHeaderPolicy;
 import com.nextkey.ecommerce.api.dto.ApiResponse;
-import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.trace.RequestId;
 
 /**
@@ -53,8 +53,7 @@ public class ApiErrorController implements ErrorController {
 
         HttpStatusCode status = resolveStatus(request);
 
-        ApiResponse<Void> body = ApiResponse.error(codeOf(status), messageOf(status));
-        body.setRequestId(response.getHeader(RequestId.HEADER));
+        ApiResponse<Void> body = ContainerErrorResponse.forStatus(status, response.getHeader(RequestId.HEADER));
 
         // 明確指定 Content-Type，不隨請求的 Accept 協商：瀏覽器與掃描器的 Accept 五花八門，
         // 錯誤回應不應因此變成另一種格式，甚至協商失敗又觸發一次錯誤。
@@ -65,19 +64,5 @@ public class ApiErrorController implements ErrorController {
     private static HttpStatusCode resolveStatus(final HttpServletRequest request) {
         Object attribute = request.getAttribute(RequestDispatcher.ERROR_STATUS_CODE);
         return attribute instanceof Integer code ? HttpStatusCode.valueOf(code) : HttpStatus.NOT_FOUND;
-    }
-
-    private static String codeOf(final HttpStatusCode status) {
-        if (status.value() == HttpStatus.NOT_FOUND.value()) {
-            return ErrorCode.E_4041.getCode();
-        }
-        return status.is4xxClientError() ? ErrorCode.E_9000.getCode() : ErrorCode.E_9900.getCode();
-    }
-
-    private static String messageOf(final HttpStatusCode status) {
-        if (status.value() == HttpStatus.NOT_FOUND.value()) {
-            return "找不到請求的資源";
-        }
-        return status.is4xxClientError() ? "請求格式錯誤" : "發生未預期的錯誤";
     }
 }

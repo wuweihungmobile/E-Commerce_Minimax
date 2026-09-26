@@ -2,7 +2,8 @@
 
 > **建立日期**: 2026-07-04
 > **Sprint**: Sprint 53 US-003（AI-2414）
-> **對應成果**: Sprint 49~53 真實金流 Phase A（付款）+ B（webhook 權威狀態）+ C（退款）+ D-1（Connect Express onboarding）
+> **對應成果**: Sprint 49~53 真實金流 Phase A（付款）+ B（webhook 權威狀態）+ C（退款）+ D-1（Connect Express onboarding）；**Sprint 56 部分退款**；**Sprint 80 Phase D-2（結算單核准後 Transfer 撥款給賣家）**
+> **最後更新**: 2026-09-27（Sprint 205）——核對程式現況後更正 §F 已過時的「已知限制」（部分退款與 Transfer 早已實作），並補上 D-2 分潤的上線項目（`STRIPE_TRANSFER_ENABLED`、`transfer.reversed`、撥款走查）。**本文件仍是「人工逐項確認」清單，AI 不能代替 Dashboard 操作與測試模式端到端走查。**
 > **用途**: 供人工在**正式上線 Stripe 真金鑰前**逐項確認，避免測試模式設定誤帶入生產
 > **維護者**: QA Quincy + Dev David + Claude Code
 
@@ -19,7 +20,7 @@
 - [ ] `STRIPE_SECRET_KEY` 已於正式環境設為正式金鑰（`sk_live_...`），**非** `sk_test_...` 或預設 `sk_test_placeholder`
 - [ ] `STRIPE_WEBHOOK_SECRET` 已設定為 Stripe Dashboard 該 webhook 端點對應的 signing secret（`whsec_...`），**非空字串**（空字串會跳過驗簽，測試模式限定）
 - [ ] 金鑰透過密鑰管理（環境變數 / secret manager）注入，**未**寫入任何 commit 到的檔案（`application.yml` 僅保留 `${STRIPE_SECRET_KEY:sk_test_placeholder}` 佔位）
-- [ ] 正式環境的 `STRIPE_PAYMENT_ENABLED` / `STRIPE_CONNECT_ENABLED` feature toggle 依上線排程開啟（預設關閉，避免未就緒時誤放行真金流）
+- [ ] 正式環境的 `STRIPE_PAYMENT_ENABLED` / `STRIPE_CONNECT_ENABLED` / `STRIPE_TRANSFER_ENABLED`（Sprint 80 起，分潤撥款，**逐租戶**開關）feature toggle 依上線排程開啟（預設關閉，避免未就緒時誤放行真金流）
 
 ## B. Webhook 端點
 
@@ -29,6 +30,7 @@
   - [ ] `payment_intent.payment_failed`
   - [ ] `charge.refunded`
   - [ ] `account.updated`（Connect，Phase D-1 起）
+  - [ ] `transfer.reversed`（Phase D-2 起：Stripe 收回已撥款項時，本地 Transfer 標為 `REVERSED`、結算單回 `FAILED`）
 - [ ] Dashboard 顯示該端點最近測試事件回應 `200 OK`（非 4xx/5xx）
 
 ## C. Stripe Connect Platform Profile（Phase D-1 起適用）
@@ -44,11 +46,15 @@
 - [ ] **付款成功**：下單 → Checkout 重導 → 測試卡付款成功 → webhook `checkout.session.completed` 送達 → 本地 Payment=SUCCESS、Order=PAID
 - [ ] **付款失敗**：下單 → Checkout 使用拒絕測試卡（`4000 0000 0000 0002`）→ webhook `payment_intent.payment_failed` 送達 → 本地 Payment=FAILED
 - [ ] **退款**：對已付款訂單觸發退款 → Stripe Dashboard 顯示退款成功 → webhook `charge.refunded` 送達（或 service 主動退款路徑）→ 本地 Payment/Order=REFUNDED
+- [ ] **部分退款**（Sprint 56）：對已付款訂單退一部分金額 → 本地 Payment=`PARTIALLY_REFUNDED`、**Order 狀態不變**（訂單持續履約）；再退至累計全額 → Payment/Order=`REFUNDED`。運費不參與部分退款（PO 決策 2026-07-04）。退款金額小數位數超過 2 位會被拒絕（`E-6009`，Sprint 192）
 - [ ] **Connect onboarding**（Phase D-1 起）：賣家發起 onboarding → 導向 Stripe 代管 KYC 表單（測試模式可用假資料完成）→ 完成後 `account.updated` webhook 送達 → 本地 tenant `connect_onboarding_status=COMPLETE`
+- [ ] **分潤撥款 Transfer**（Phase D-2，Sprint 80）：租戶 Connect 為 `COMPLETE` 且該租戶 `STRIPE_TRANSFER_ENABLED` 開啟 → Admin 核准結算單（`APPROVED`）→ 後端呼叫 Stripe Transfer → 本地 Transfer=`COMPLETED`、結算單=`PAID`，Stripe Dashboard 可見對應 transfer。**反向也要驗**：Connect 未就緒或 toggle 關閉時，Transfer 應為 `SKIPPED_ONBOARDING_INCOMPLETE`（不撥款），補齊條件後可由管理端重試（`TransferController`）
+- [ ] **`transfer.reversed`**：在 Dashboard 收回一筆測試 transfer → webhook 送達 → 本地 Transfer=`REVERSED`、結算單回 `FAILED`（**不會自動重新分潤，也不處理資金收回**，見 §F）
+> ⚠️ **結算單的來源**：結算單只由每週一 00:00（**台灣時間**）的排程產生，**目前沒有手動觸發或補產的入口**（見 `DEFERRED_ITEMS_TRACKER.md` DEF-287）。測試模式走查上面兩個撥款項目時，需等到排程執行，或使用已存在的結算單；**不要照 [SETTLEMENT_JOB_RUNBOOK.md](SETTLEMENT_JOB_RUNBOOK.md) 的手動觸發步驟操作，那些步驟已與程式不符**（見該文件檔頭更正）。
 
 ## E. 正式金鑰切換
 
-- [ ] 切換順序：先確認 A、B、C 節皆完成 → 才將 `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` 換為正式金鑰 → 最後才開啟 `STRIPE_PAYMENT_ENABLED`/`STRIPE_CONNECT_ENABLED` toggle
+- [ ] 切換順序：先確認 A、B、C 節皆完成 → 才將 `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` 換為正式金鑰 → 再開啟 `STRIPE_PAYMENT_ENABLED`/`STRIPE_CONNECT_ENABLED` toggle → **最後才逐租戶開啟 `STRIPE_TRANSFER_ENABLED`**（會真的把錢撥給賣家；先確認該租戶 Connect 已 `COMPLETE`、且至少一筆小額結算單以測試模式走查過 §D）
 - [ ] 切換後**立即**以小額真實金額（可退款）人工驗證一次付款 + 退款，確認正式環境串接無誤
 - [ ] 若切換後發現異常，toggle 可即時關閉降級回 Mock 路徑（不需重新部署）
 
@@ -56,9 +62,15 @@
 
 ## F. 已知限制（誠實揭露）
 
-- **只做全額退款**：部分退款（partially_refunded）尚未支援（Sprint 52 Retro AI-2415，待評估）
-- **代收後分潤（Transfer）尚未實作**：Phase D-1（本文件涵蓋）只做 Connect 帳戶開通；代收後 transfer 給賣家為獨立 Phase D-2（另立 Sprint），本 checklist E 節「正式金鑰切換」不代表分潤已可上線
-- **confirmPayment/getPaymentStatus 仍為 stub**：Checkout 流程未使用，若未來加 Stripe Elements 直連流程需另行實作
+> **Sprint 205 更正**：本節原有兩條（「只做全額退款」「Transfer 尚未實作」）在撰寫後不久就過時了——部分退款於 Sprint 56、Transfer 於 Sprint 80 完成，但本節從未回頭更新。以下已依程式現況重寫。
+
+- **部分退款已支援**（Sprint 56）：累計退款達全額才轉 `REFUNDED`。**限制**：`payments.stripe_refund_id` 只存**最後一次**退款的 id（程式註解已誠實記載），多次部分退款只能靠 Stripe 端查全部退款。
+- **分潤 Transfer 已實作**（Sprint 80）：結算單核准後撥款；失敗或略過可由管理端重試。**限制**：
+  - `transfer.reversed` 只把 Transfer 標為 `REVERSED`、結算單回 `FAILED`，**不自動重新分潤、不處理資金收回**（人工處理）。
+  - **沒有手動觸發／補產結算單的入口**，只有每週一 00:00（台灣時間）的排程（DEF-287）。排程當週某租戶失敗或漏產，目前只能等下週或直接操作資料庫。
+  - **未以真實（或測試模式）Stripe 端到端走查過**——這是 §D 的人工項目，AI 無法代替。
+- **`confirmPayment` 仍是 stub**（恆回成功，Checkout 流程未使用它）；**`getPaymentStatus` 讀本地資料庫而非向 Stripe 查詢**。若未來加 Stripe Elements 直連流程需另行實作。
+- **金額換算**：Stripe 以「分」為單位，程式以 `amount × 100` 取 `longValue()`（截斷）換算；Sprint 192（DEF-267）已在退款入口拒絕小數位數超過 2 位的金額，避免與資料庫四捨五入產生一分錢差異。
 
 ---
 

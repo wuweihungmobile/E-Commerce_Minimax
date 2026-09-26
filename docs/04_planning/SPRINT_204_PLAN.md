@@ -80,6 +80,7 @@
 - **前端** `tsc --noEmit` 無錯誤；`eslint` 對新增／修改檔案無錯誤（僅 `services/auth.ts` 既有的 `import/no-anonymous-default-export` 警告，非本輪造成）；`next build` 成功（含在 E2E 腳本內），三個新路由為**動態**（與嚴格 nonce CSP 相容）。
 - **本輪沒有 Flyway 遷移**（token 走 Redis）；`make validate-schema-doc` 不適用。
 - **未執行**：`make validate-release` 完整守門（屬 push 流程，見 §7）。
+- **commit 時 pre-commit 的 secret 掃描誤判兩處（未繞過 hook）**：規則是「以 `password` 結尾的鍵 ＝ 字串常值」，命中 `frontend/src/lib/api.ts` 兩個 API 路徑常數（鍵名 `forgotPassword`、`resetPassword`，值是 URL 路徑，不是機密），以及 `API_M03_Auth.md` 範例 JSON 裡的 `newPassword` 欄位（值是示範用的假密碼）。**處理**：路徑常數改鍵名為 `passwordForgot`／`passwordReset`（掃描規則只看鍵名結尾）、文件範例改用欄位表。**E2E 是在改名之前跑的**，改名後只重跑了 `tsc --noEmit`（所有引用由型別檢查保證），沒有重跑 Playwright；push 前的完整守門（`make validate-release`，含 E2E）會再驗一次。
 - **中途遇到的環境問題**：Sprint 203 收尾時測試用 PostgreSQL 沒開，5 個 Spring 上下文測試類別載入失敗（`localhost:5432` refused）；`make test-db-up` 後全綠，非程式問題。
 
 ## 6. 範圍外（延後）

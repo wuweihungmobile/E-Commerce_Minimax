@@ -5,6 +5,18 @@
 > **🔴 Sprint 16 US-003 / Retro AI-003**: 補上 Staging 環境實測 Runbook
 > **基於**: [SPRINT_16_PLAN.md](../04_planning/SPRINT_16_PLAN.md) US-003, [SPRINT_15_RETRO.md](../05_development/SPRINT_15_RETRO.md) AI-003
 
+> **⚠️ Sprint 205 更正（2026-09-27）：本 Runbook 建立於 Sprint 16，之後結算邏輯已大幅改動，下列敘述與程式不符，請勿照做。**
+>
+> | 本文件的說法 | 實際（依程式碼查證） |
+> |-------------|-------------------|
+> | §2 觸發時間為 **UTC** 週一 00:00 | Sprint 194（DEF-271）起是 `@Scheduled(cron = "0 0 0 ? * MON", zone = "Asia/Taipei")`，即**台灣時間**週一 00:00 |
+> | §3.2 環境變數 `SETTLEMENT_TRIGGER_MODE=MANUAL` | 程式碼**沒有任何地方讀取**這個變數，設了無效 |
+> | §3.3 以 `scheduling.settlement.cron` 覆蓋 cron | cron 是**寫死在 `@Scheduled` 註解**，不可由設定覆蓋；「替代方案」不存在 |
+> | §3.3／§4.1 手動觸發或「透過 admin 介面」補建結算單 | **沒有任何手動觸發或補產入口**（`generateWeeklyStatements` 只被排程呼叫），見 DEF-287 |
+> | §2 結算範圍「上週一 ~ 上週日」 | 結算單期間仍是上週，但 Sprint 195（PRD §6.2.1）起**納入所有「已完成且尚未結算」的訂單，不限下單週**（`orders.settled_statement_id`）；首張結算單會包含全部歷史已完成訂單 |
+>
+> 其餘章節（§3.4 驗證 SQL、§4 異常處理等）**未重新核對**，引用前請先與程式碼比對。撥款（Transfer）的上線項目見 [STRIPE_PRODUCTION_CHECKLIST.md](STRIPE_PRODUCTION_CHECKLIST.md)。
+
 ---
 
 ## 1. 為什麼需要這個 Runbook？

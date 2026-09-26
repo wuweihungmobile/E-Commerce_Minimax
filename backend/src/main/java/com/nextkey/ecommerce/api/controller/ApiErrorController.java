@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.nextkey.ecommerce.api.config.SecurityHeaderPolicy;
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.trace.RequestId;
@@ -29,6 +30,9 @@ import com.nextkey.ecommerce.shared.trace.RequestId;
  * 容器轉送時標頭仍保留；但日誌 MDC 在第一輪結束時已清除，{@link ApiResponse#error} 從 MDC 取得的值是空的，
  * 所以在此補上。
  *
+ * <p>安全標頭（Sprint 202，DEF-282）：這條路徑不經過 Spring Security 的 {@code HeaderWriterFilter}，
+ * 由此處套用 {@link SecurityHeaderPolicy}——與 {@code SecurityConfig} 用的是同一份，不是複製。
+ *
  * <p>只處理「容器內部的 ERROR 分派」——{@code SecurityConfig} 只對該分派類型放行；
  * 直接請求 {@code /error} 的人仍須通過驗證。內容刻意不回顯路徑或例外訊息：路徑是呼叫端控制的字串，
  * 而防火牆拒絕的正是含換行字元等日誌偽造用的寫法。
@@ -43,6 +47,10 @@ public class ApiErrorController implements ErrorController {
     @RequestMapping("${server.error.path:${error.path:/error}}")
     public ResponseEntity<ApiResponse<Void>> error(final HttpServletRequest request,
                                                    final HttpServletResponse response) {
+        // ERROR 分派不會經過 Spring Security 的 HeaderWriterFilter（它沿用 OncePerRequestFilter 預設，
+        // 不處理該分派），這條路徑的回應因此原本一個安全標頭都沒有；在此套用與其他回應同一份政策（DEF-282）。
+        SecurityHeaderPolicy.apply(request, response);
+
         HttpStatusCode status = resolveStatus(request);
 
         ApiResponse<Void> body = ApiResponse.error(codeOf(status), messageOf(status));

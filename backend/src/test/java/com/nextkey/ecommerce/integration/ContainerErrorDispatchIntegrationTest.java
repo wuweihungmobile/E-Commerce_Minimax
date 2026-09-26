@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -16,6 +17,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -40,6 +42,20 @@ class ContainerErrorDispatchIntegrationTest {
 
     private static final String UUID_PATTERN =
             "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
+    /**
+     * 後端一律要帶的安全標頭（PRD 16.4.1 明列 nosniff 與 X-Frame-Options: DENY；其餘為 SecurityHeaderPolicy 的內容）。
+     * 逐值比對而非只看「有沒有」：政策改動時這裡會跟著紅，提醒同步確認。
+     */
+    private static final Map<String, String> EXPECTED_SECURITY_HEADERS = Map.of(
+            "X-Content-Type-Options", "nosniff",
+            "X-Frame-Options", "DENY",
+            "X-XSS-Protection", "0",
+            "Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'",
+            "Referrer-Policy", "no-referrer",
+            "Cache-Control", "no-cache, no-store, max-age=0, must-revalidate",
+            "Pragma", "no-cache",
+            "Expires", "0");
 
     @LocalServerPort
     private int port;
@@ -98,5 +114,41 @@ class ContainerErrorDispatchIntegrationTest {
 
         assertThat(response.statusCode()).isEqualTo(401);
         assertThat(mapper.readTree(response.body()).path("code").asText()).isEqualTo("E-1000");
+    }
+
+    private HttpResponse<String> getWithHeader(final String pathAfterContext, final String name, final String value)
+            throws Exception {
+        URI uri = URI.create("http://localhost:" + port + contextPath + pathAfterContext);
+        return client.send(HttpRequest.newBuilder(uri).header(name, value).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(delimiter = '|', value = {
+            "一般 401（過濾鏈有跑）|/v2/auth/me|401",
+            "防火牆拒絕 %0A（容器 ERROR 分派）|/v2/x%0AFORGED-LOG-LINE|400",
+            "防火牆拒絕 //（容器 ERROR 分派）|/v2//auth/me|400"})
+    @DisplayName("IT-ERRDISP-05: 不論回應走哪條路徑，安全標頭一律齊全且相同（DEF-282：ERROR 分派原本一個都沒有）")
+    void everyErrorResponse_carriesTheSameSecurityHeaders(
+            final String scenario, final String path, final int expectedStatus) throws Exception {
+        HttpResponse<String> response = get(path);
+
+        assertThat(response.statusCode()).isEqualTo(expectedStatus);
+        // containsExactly：恰好一個值——若日後過濾器與控制器同時寫入而產生重複標頭，這裡會抓到
+        EXPECTED_SECURITY_HEADERS.forEach((name, value) -> assertThat(response.headers().allValues(name))
+                .as("%s 的 %s", scenario, name).containsExactly(value));
+    }
+
+    @Test
+    @DisplayName("IT-ERRDISP-06: ERROR 分派的回應與其他回應一樣，只在 HTTPS（含代理轉送）才帶 HSTS")
+    void hstsOnErrorDispatch_followsTheSameRuleAsOtherResponses() throws Exception {
+        HttpResponse<String> behindTlsProxy = getWithHeader("/v2/x%0AFORGED-LOG-LINE", "X-Forwarded-Proto", "https");
+        assertThat(behindTlsProxy.statusCode()).isEqualTo(400);
+        assertThat(behindTlsProxy.headers().allValues("Strict-Transport-Security"))
+                .containsExactly("max-age=31536000");
+
+        HttpResponse<String> plainHttp = get("/v2/x%0AFORGED-LOG-LINE");
+        assertThat(plainHttp.statusCode()).isEqualTo(400);
+        assertThat(plainHttp.headers().firstValue("Strict-Transport-Security")).isEmpty();
     }
 }

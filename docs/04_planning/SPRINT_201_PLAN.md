@@ -86,9 +86,9 @@
 
 ## 7. Push
 
-**尚未 push。** Sprint 200 收尾時使用者的 push 授權「針對該輪、未說明為常設」；2026-07-08 的免確認授權範圍是金流／租戶隔離安全修復，本輪（錯誤處理修正）不在其中。等使用者決定。
+✅ **已 push**（`2a8b9fd..6c62bfa main -> main`，2026-09-26；Sprint 202 起點使用者回覆「commit + Push to main」）。當時我因授權範圍未涵蓋而未推，等使用者決定。push 前完整守門通過（含第一次因 Docker daemon 500 失敗、重啟後重跑），雲端 CI 全綠（run 36242648761）。詳見 [SPRINT_202_PLAN.md](SPRINT_202_PLAN.md) §2。
 
 ## 8. 下一步
 
-1. **DEF-282**（ERROR 分派回應缺安全標頭）：需先決定修法（見 §5）。
+1. ~~**DEF-282**（ERROR 分派回應缺安全標頭）：需先決定修法（見 §5）。~~ → **已於 Sprint 202 修復**（使用者選「共用政策＋控制器套用」），見 [SPRINT_202_PLAN.md](SPRINT_202_PLAN.md)。
 2. 沿用 Sprint 198～200 的維運確認：前方代理有送 `X-Forwarded-Proto`；staging 首次上線看瀏覽器主控台有無 CSP 違規（有問題先設 `CSP_REPORT_ONLY=1`）；已 push 的 Sprint 198 帶過 `includeSubDomains`，若已部署且瀏覽器收過，需送 `max-age=0`；日後確認所有子網域走 https 才考慮加回 `includeSubDomains`。

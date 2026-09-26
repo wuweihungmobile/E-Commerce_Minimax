@@ -4,7 +4,6 @@ import java.util.Arrays;
 import java.util.List;
 
 import jakarta.servlet.DispatcherType;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -20,7 +19,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -77,16 +75,12 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             // 安全標頭（PRD 16.4.1：錯誤回應需帶 nosniff、X-Frame-Options: DENY；SRD：CSP）。
-            // nosniff／X-Frame-Options: DENY／Cache-Control: no-store 是 Spring Security 預設；此處補預設沒有的
-            // CSP 與 Referrer-Policy，並讓 HSTS 在 TLS 由代理終止時也送（見 isHttpsRequest）。
-            // 本服務只回 JSON（無 Swagger 或 HTML 頁），default-src 'none' 不會擋到功能。
-            .headers(headers -> headers
-                .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none'"))
-                .referrerPolicy(referrer -> referrer.policy(ReferrerPolicy.NO_REFERRER))
-                // 不含 includeSubDomains：子網域是否都能走 https 無從驗證，而該指示送出後一年內無法收回
-                .httpStrictTransportSecurity(hsts -> hsts
-                    .requestMatcher(SecurityConfig::isHttpsRequest)
-                    .includeSubDomains(false)))
+            // 政策的唯一定義處是 SecurityHeaderPolicy，這裡關掉 Spring 預設、逐一套用同一份；
+            // 容器 ERROR 分派的回應不會經過 HeaderWriterFilter，由 ApiErrorController 套用同一份（DEF-282）。
+            .headers(headers -> {
+                headers.defaultsDisabled();
+                SecurityHeaderPolicy.writers().forEach(headers::addHeaderWriter);
+            })
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint((request, response, authException) -> {
@@ -154,20 +148,6 @@ public class SecurityConfig {
             .addFilterAfter(loginRateLimitFilter, RateLimitFilter.class);
 
         return http.build();
-    }
-
-    /**
-     * HSTS 只能在 HTTPS 回應上送（瀏覽器對 http 回應中的 HSTS 一律忽略）。TLS 通常在應用前方的代理／負載平衡器
-     * 終止，後端收到的是 http，Spring 預設的 {@code request.isSecure()} 因此恆為 false、HSTS 永遠不送；
-     * 這裡同時採信 {@code X-Forwarded-Proto}（多層代理時取第一段）。此標頭可被呼叫端偽造，但偽造只會讓 http
-     * 回應多帶一個瀏覽器本來就會忽略的標頭，沒有安全影響。
-     */
-    static boolean isHttpsRequest(HttpServletRequest request) {
-        if (request.isSecure()) {
-            return true;
-        }
-        String forwardedProto = request.getHeader("X-Forwarded-Proto");
-        return forwardedProto != null && "https".equalsIgnoreCase(forwardedProto.split(",")[0].trim());
     }
 
     @Bean

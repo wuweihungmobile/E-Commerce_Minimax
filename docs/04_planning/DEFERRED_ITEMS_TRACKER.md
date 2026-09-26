@@ -1191,7 +1191,7 @@
 ---
 
 **文件版本**: v2.91
-**最後更新**: 2026-09-26（**Sprint 202**：使用者貼上 Sprint 201 總結並逐項回覆——push 回「commit + Push to main」（Sprint 201 已 push，`2a8b9fd..6c62bfa`，雲端 CI 全綠 run 36242648761；第一次守門因 Docker daemon 500 失敗、重啟後重跑通過）、DEF-282 回「修，請給我 sample 與互動選擇」。我以 `AskUserQuestion` 提供三個方案（附程式碼範例），使用者實際選「共用政策＋控制器套用」，並選修完後 commit 並 push。**修復**：新增 `SecurityHeaderPolicy`（後端安全標頭政策的唯一定義處），`SecurityConfig` 與 `ApiErrorController` 共用；`DEF-282` 結案。新增 `IT-ERRDISP-05`（3 案例）／`06` 共 4 個整合測試，紅燈先行（基準線 3 紅）、突變驗證兩輪（14 紅）；`mvn -o clean verify` 單元 1732（不變）／整合 **545**（+4）0 失敗、checkstyle 0 違規；真實 Tomcat 逐一實測各種防火牆拒絕種類。**新登記** 🟢 `DEF-283`：Tomcat 連接器層自己拒絕的請求（`%2f`、`%5C`）回 HTML 錯誤頁、不進應用，應用程式碼修不到（維運層決定）。**揭露**：5xx 路徑仍未實測；push 前守門與 push 結果見 RELEASE_TRACKER。詳見 [SPRINT_202_PLAN.md](SPRINT_202_PLAN.md)）
+**最後更新**: 2026-09-26（**Sprint 202**：使用者貼上 Sprint 201 總結並逐項回覆——push 回「commit + Push to main」（Sprint 201 已 push，`2a8b9fd..6c62bfa`，雲端 CI 全綠 run 36242648761；第一次守門因 Docker daemon 500 失敗、重啟後重跑通過）、DEF-282 回「修，請給我 sample 與互動選擇」。我以 `AskUserQuestion` 提供三個方案（附程式碼範例），使用者實際選「共用政策＋控制器套用」，並選修完後 commit 並 push。**修復**：新增 `SecurityHeaderPolicy`（後端安全標頭政策的唯一定義處），`SecurityConfig` 與 `ApiErrorController` 共用；`DEF-282` 結案。新增 `IT-ERRDISP-05`（3 案例）／`06` 共 4 個整合測試，紅燈先行（基準線 3 紅）、突變驗證兩輪（14 紅）；`mvn -o clean verify` 單元 1732（不變）／整合 **545**（+4）0 失敗、checkstyle 0 違規；真實 Tomcat 逐一實測各種防火牆拒絕種類。**新登記** 🟢 `DEF-283`：Tomcat 連接器層自己拒絕的請求（`%2f`、`%5C`）回 HTML 錯誤頁、不進應用，應用程式碼修不到（維運層決定）。**揭露**：5xx 路徑仍未實測。**已 push**（`6c62bfa..4a22086`），push 前完整守門通過（整合 545 個 0 失敗、E2E 71 passed／4 skipped），✅ 雲端 CI 全綠（run 36247194330）。詳見 [SPRINT_202_PLAN.md](SPRINT_202_PLAN.md)）
 
 ---
 

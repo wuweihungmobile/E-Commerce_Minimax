@@ -92,7 +92,7 @@
 
 ## 7. Push
 
-見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) Sprint 202 列（push 後回填）。
+✅ **已 push**（`6c62bfa..4a22086 main -> main`，2026-09-26；使用者已選「修完後 commit 並 push」）。push 前 `make validate-release` 完整守門通過：act 三個 job 全過、後端整合 545 個 0 失敗、schema 對齊、E2E **71 passed／4 skipped**（與基準一致）；pre-push 找到 FULL 記錄直接放行。✅ 雲端 CI 全綠（run 36247194330，三個 job 皆 success）。
 
 ## 8. 下一步
 

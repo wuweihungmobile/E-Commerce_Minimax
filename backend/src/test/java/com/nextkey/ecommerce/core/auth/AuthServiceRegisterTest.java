@@ -16,6 +16,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -48,6 +50,9 @@ class AuthServiceRegisterTest {
 
     @Mock
     private JwtTokenService jwtTokenService;
+
+    @Mock
+    private AccountSecurityService accountSecurityService;
 
     @InjectMocks
     private AuthService authService;
@@ -99,6 +104,59 @@ class AuthServiceRegisterTest {
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(userCaptor.capture());
         assertThat(userCaptor.getValue().getRole()).isEqualTo(User.UserRole.BUYER);
+    }
+
+    @Test
+    @DisplayName("Sprint 204 FRD AC-M03-007-1: 註冊成功後對新會員寄驗證信（沒有交易時直接寄）")
+    void register_success_sendsVerificationMail() {
+        UUID userId = UUID.randomUUID();
+        stubSuccessfulRegistration(userId);
+
+        authService.register(RegisterRequest.builder().email(TEST_EMAIL).password(TEST_PASSWORD).build());
+
+        verify(accountSecurityService).sendEmailVerificationQuietly(userId);
+    }
+
+    @Test
+    @DisplayName("Sprint 204: 在交易中註冊時，驗證信要等交易「提交之後」才寄（提交失敗不可對從未存在的帳號寄連結）")
+    void register_inTransaction_sendsVerificationMailOnlyAfterCommit() {
+        UUID userId = UUID.randomUUID();
+        stubSuccessfulRegistration(userId);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            authService.register(RegisterRequest.builder().email(TEST_EMAIL).password(TEST_PASSWORD).build());
+
+            // 提交之前：還沒寄
+            verifyNoInteractions(accountSecurityService);
+
+            // 模擬交易提交
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+            verify(accountSecurityService).sendEmailVerificationQuietly(userId);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("Sprint 204: Email 已被註冊而失敗時，不寄任何信")
+    void register_duplicateEmail_sendsNoMail() {
+        when(userRepository.existsByEmail(TEST_EMAIL)).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.register(
+                RegisterRequest.builder().email(TEST_EMAIL).password(TEST_PASSWORD).build()))
+                .isInstanceOf(BusinessException.class);
+
+        verifyNoInteractions(accountSecurityService);
+    }
+
+    private void stubSuccessfulRegistration(final UUID userId) {
+        User savedUser = User.builder().email(TEST_EMAIL).passwordHash(ENCODED_PASSWORD)
+                .role(User.UserRole.BUYER).status("ACTIVE").build();
+        savedUser.setId(userId);
+        savedUser.setCreatedAt(Instant.now());
+        when(userRepository.existsByEmail(TEST_EMAIL)).thenReturn(false);
+        when(passwordEncoder.encode(TEST_PASSWORD)).thenReturn(ENCODED_PASSWORD);
+        when(userRepository.save(any(User.class))).thenReturn(savedUser);
     }
 
     @Test

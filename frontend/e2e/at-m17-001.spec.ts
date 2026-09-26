@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { registerAndLogin } from './helpers/auth';
+import { verifyEmailViaMailbox } from './helpers/mailbox';
 
 /**
  * AT-M17-001: 開店申請流程 E2E 測試
@@ -13,7 +14,11 @@ import { registerAndLogin } from './helpers/auth';
 test.describe('AT-M17-001: 開店申請流程', () => {
   test.beforeEach(async ({ page }) => {
     // 註冊新用戶並登入（共用 helper，AI-2101b 統一）
-    await registerAndLogin(page);
+    const { email } = await registerAndLogin(page);
+
+    // Sprint 204（PRD §7.4.2）：已登入者提交開店申請的前置條件是已驗證 Email。
+    // 走真實流程：註冊時後端寄出驗證信（Mock 寫進後端日誌），從日誌取連結並開啟。
+    await verifyEmailViaMailbox(page, email);
 
     // 驗證 JWT token 已正確存儲
     const accessToken = await page.evaluate(() => localStorage.getItem('accessToken'));

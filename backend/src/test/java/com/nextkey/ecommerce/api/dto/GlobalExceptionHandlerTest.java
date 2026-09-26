@@ -60,7 +60,7 @@ class GlobalExceptionHandlerTest {
         // 403 FORBIDDEN
         for (ErrorCode code : new ErrorCode[] {ErrorCode.E_1007, ErrorCode.E_1009, ErrorCode.E_2001,
                 ErrorCode.E_2002, ErrorCode.E_2004, ErrorCode.E_4031, ErrorCode.E_7008, ErrorCode.E_8007,
-                ErrorCode.E_8009, ErrorCode.E_1091, ErrorCode.E_8011}) {
+                ErrorCode.E_8009, ErrorCode.E_1091, ErrorCode.E_8011, ErrorCode.E_1012}) {
             expected.put(code, HttpStatus.FORBIDDEN);
         }
 
@@ -80,7 +80,7 @@ class GlobalExceptionHandlerTest {
                 ErrorCode.E_6003, ErrorCode.E_6006, ErrorCode.E_7004, ErrorCode.E_7502, ErrorCode.E_1097,
                 ErrorCode.E_1088, ErrorCode.E_1089, ErrorCode.E_1095, ErrorCode.E_9009,
                 ErrorCode.E_9000, ErrorCode.E_9001, ErrorCode.E_9002, ErrorCode.E_9003, ErrorCode.E_9004,
-                ErrorCode.E_9005, ErrorCode.E_9006, ErrorCode.E_9007, ErrorCode.E_9008}) {
+                ErrorCode.E_9005, ErrorCode.E_9006, ErrorCode.E_9007, ErrorCode.E_9008, ErrorCode.E_1011}) {
             expected.put(code, HttpStatus.BAD_REQUEST);
         }
 

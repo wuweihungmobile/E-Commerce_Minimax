@@ -1,7 +1,7 @@
-# E-Commerce System — 系統需求文檔 (SRD) v1.1
+# E-Commerce System — 系統需求文檔 (SRD) v1.2
 
 > **文檔類型**: SRD (System Requirements Document)
-> **版本**: v1.1（v1.0 → v1.1：Sprint 203 文件一致性檢查，見 §9 修訂歷史）
+> **版本**: v1.2（v1.0 → v1.1：Sprint 203 文件一致性檢查；v1.1 → v1.2：Sprint 204 新增 §5.5，見 §9 修訂歷史）
 > **依據**: E-Commerce_PRD_v1.0_Final.md, E-Commerce_FRD_v1.0.md
 > **建立日期**: 2026-04-09
 > **作者**: Marcus (SD-Architect)
@@ -402,6 +402,40 @@ SuperAdmin
 
 前端來源由 `app.cors.allowed-origins` 設定，執行環境以 **`APP_CORS_ALLOWED_ORIGINS`**（逗號分隔）覆寫，預設 `http://localhost:3000,http://localhost:8080`。因 `allowCredentials=true`，**不可使用 `*`**（Spring 會拒絕這個組合，由 `SecurityConfigCorsOriginsTest` 釘住）。非 localhost 部署（前端以 `NEXT_PUBLIC_API_URL` 指向正式後端網域並由瀏覽器跨源直連）必須設定此變數，否則所有 API 呼叫被 CORS 封鎖（DEF-265）。允許方法：`GET／POST／PUT／PATCH／DELETE／OPTIONS`；允許請求標頭：`Authorization`、`Content-Type`、`X-Tenant-ID`、`Idempotency-Key`；暴露回應標頭：`Authorization`、`X-RateLimit-*`、`Retry-After`、`X-Request-ID`。
 
+### 5.5 一次性連結：忘記密碼與 Email 驗證（Sprint 204，DEF-252／253）
+
+需求見 PRD §7.4.2、FRD US-M03-006／007／BR-M03-003；端點見 [API_M03_Auth.md](./api/API_M03_Auth.md) §6～§9。
+
+| 元件 | 位置 | 職責 |
+|------|------|------|
+| `AccountTokenService` | `infrastructure/security` | 簽發與消耗一次性 token，存於 **Redis**（無新資料表、無 Flyway 遷移） |
+| `AccountSecurityService` | `core/auth` | 忘記密碼／重設密碼／Email 驗證／開店申請前置條件的流程 |
+| `EmailSender` | `infrastructure/email` | 寄信介面；`canDeliver()` 表示是否真能寄出信 |
+| `LoggingEmailSender` | `infrastructure/email` | Phase 1 唯一實作：日誌型 Mock |
+
+**Token 設計（為什麼放 Redis）**：token 天生短命（重設 30 分鐘、驗證 24 小時）、要能原子地「取出並作廢」、過期就該消失——正是 TTL＋`GETDEL` 擅長的。Redis 被清空的代價只是使用者重新申請一次連結。
+
+| 性質 | 做法 |
+|------|------|
+| 不可猜測 | 32 位元組 `SecureRandom`，Base64URL |
+| 不存原文 | Redis 只存 SHA-256；key 為 `account_token:{用途}:{雜湊}` → 會員 id |
+| 一次性、原子 | 消耗用 `GETDEL`：兩個併發請求只有一個成功（16 執行緒實測恰好 1 個） |
+| 每（用途, 會員）一個有效連結 | `account_token_latest:{用途}:{會員 id}` 指向目前的雜湊；簽發新的會作廢舊的 |
+| 寄信冷卻 | `account_token_cooldown:{用途}:{會員 id}`，`SET NX EX 60` |
+| 過期 | 每個 key 皆有 TTL，不超過該用途的有效期 |
+
+**不揭露帳號是否存在**：`POST /password/forgot` 的回應與 Email 是否存在、是否冷卻中、寄信是否成功完全無關；Controller 也不把 Email 寫進日誌。**已知限制**：存在的帳號多做 Redis 與寄信，回應時間有差異；Mock 是即時的所以可忽略，**接上會阻塞的真實寄信服務時須改為非同步寄送**，否則成為時序側通道。
+
+**連結網址**：`{app.frontend-base-url}/reset-password?token=…`、`/verify-email?token=…`。`app.frontend-base-url` 預設 `http://localhost:3000`，非 localhost 部署必須以環境變數 `APP_FRONTEND_BASE_URL` 設定（Stripe 導回網址也用同一個設定）。
+
+**寄信通道與 `canDeliver()`**：
+- 非 `prod` profile：`LoggingEmailSender` 把信件全文（含連結）寫進日誌，`canDeliver() = true`。開發者與 E2E 從日誌取連結（E2E 見 `frontend/e2e/helpers/mailbox.ts`，日誌路徑由環境變數 `E2E_BACKEND_LOG` 提供）。
+- `prod` profile：**不記錄內容**（連結等同密碼重設憑證，任何能讀日誌的人都能接管帳號），`canDeliver() = false`，啟動時記 WARN。
+- **開店申請的 Email 驗證前置條件只在 `canDeliver() = true` 時生效**：沒有信可寄就無從驗證，強制檢查只會鎖死所有申請者。接上真實寄信服務（新增 `EmailSender` 實作並標 `@Primary`，`canDeliver()` 回 `true`）後自動生效。
+- **在接上真實寄信服務之前，這兩項功能不可宣告可在正式環境上線。**
+
+**與既有機制的關係**：重設密碼成功會呼叫 `RefreshTokenService.blacklistAllRefreshTokens` 並解除 `LoginAttemptService` 的登入鎖定；四個端點都納入 `LoginRateLimitFilter`（每來源 IP、每路徑 30 次／分鐘）；三個公開端點在 `SecurityConfig` 為 `permitAll`。
+
 ---
 
 ## 6. 資料模型 (Data Model)
@@ -636,6 +670,7 @@ SuperAdmin
 |------|------|------|----------|
 | v1.0 | 2026-04-09 | Marcus (SD-Architect) | 初始版本 |
 | v1.1 | 2026-09-26 | Claude Code（Sprint 203） | 文件一致性檢查（DEF-280）：§4.2／§4.3 改為實際的扁平回應封包並指向新增的 [API_Error_Codes.md](./API_Error_Codes.md)；新增 §4.4 時間與時區慣例（DEF-269／271）；新增 §5.4 回應安全標頭、請求追蹤與 CORS（Sprint 191、197～202，DEF-265／278／279／280／281／282）。此前這些行為只存在於 Sprint 計畫與程式碼 |
+| v1.2 | 2026-09-26 | Claude Code（Sprint 204） | 新增 §5.5 一次性連結：忘記密碼與 Email 驗證（Redis token、`EmailSender`／`canDeliver()`、與開店申請前置條件的關係） |
 
 ---
 

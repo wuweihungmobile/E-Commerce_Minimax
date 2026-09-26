@@ -63,6 +63,21 @@ export interface ApiResponse<T> {
   }>
 }
 
+// 從 axios 錯誤取出後端 ApiResponse 的 code／message 與 HTTP 狀態（Sprint 204：三個新頁面與開店申請表單共用）
+export interface ApiErrorInfo {
+  status?: number
+  code?: string
+  message?: string
+}
+
+export function getApiErrorInfo(error: unknown): ApiErrorInfo {
+  if (error && typeof error === 'object' && 'response' in error) {
+    const response = (error as { response?: { status?: number; data?: { code?: string; message?: string } } }).response
+    return { status: response?.status, code: response?.data?.code, message: response?.data?.message }
+  }
+  return {}
+}
+
 class AuthService {
   async login(request: LoginRequest): Promise<AuthResponse> {
     const response = await apiClient.post<ApiResponse<AuthResponse>>(
@@ -123,6 +138,26 @@ class AuthService {
       localStorage.removeItem('user')
       localStorage.removeItem('tenantId')
     }
+  }
+
+  // Sprint 204（FRD US-M03-006）：申請密碼重設連結。後端不論 Email 是否存在都回同樣的成功，這裡也不區分
+  async requestPasswordReset(email: string): Promise<void> {
+    await apiClient.post(API_ENDPOINTS.auth.passwordForgot, { email })
+  }
+
+  // Sprint 204（FRD US-M03-006）：以連結重設密碼；連結無效／過期／已使用回 400 E-1011
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    await apiClient.post(API_ENDPOINTS.auth.passwordReset, { token, newPassword })
+  }
+
+  // Sprint 204（FRD US-M03-007）：以連結完成 Email 驗證；不需登入
+  async verifyEmail(token: string): Promise<void> {
+    await apiClient.post(API_ENDPOINTS.auth.verifyEmail, { token })
+  }
+
+  // Sprint 204（FRD US-M03-007）：重寄驗證信給目前登入的會員（需登入）
+  async resendEmailVerification(): Promise<void> {
+    await apiClient.post(API_ENDPOINTS.auth.resendVerification)
   }
 
   // 會員資料匯出（PRD §1.5.1，Sprint 153：補前端入口，後端 Sprint 94 早已完成）

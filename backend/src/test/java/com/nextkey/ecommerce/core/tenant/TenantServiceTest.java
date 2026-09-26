@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.core.tenant;
 
 import com.nextkey.ecommerce.api.dto.*;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.core.auth.AccountSecurityService;
 import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
@@ -12,6 +13,7 @@ import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.*;
 import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -57,6 +59,9 @@ class TenantServiceTest {
 
     @Mock
     private AuditService auditService;
+
+    @Mock
+    private AccountSecurityService accountSecurityService;
 
     @Mock
     private ListingRepository listingRepository;
@@ -137,6 +142,38 @@ class TenantServiceTest {
         assertNotNull(response);
         assertEquals("Authenticated Store", response.getStoreName());
         verify(tenantApplicationRepository, times(1)).existsByUserIdAndStatusIn(eq(TEST_USER_ID), anyList());
+    }
+
+    @Test
+    @DisplayName("Sprint 204 FRD AC-M03-007-4: 已認證申請者必須通過 Email 驗證前置條件；未驗證 → E_1012，且不建立申請")
+    void createApplication_unverifiedEmail_isBlockedBeforeAnythingIsSaved() {
+        TenantApplicationRequest request = TenantApplicationRequest.builder()
+                .storeName("Unverified Store").businessType("RETAIL_ONLY").contactEmail("u@example.com").build();
+        doThrow(new BusinessException(ErrorCode.E_1012))
+                .when(accountSecurityService).requireVerifiedEmailForStoreApplication(TEST_USER_ID);
+
+        BusinessException thrown = assertThrows(BusinessException.class,
+                () -> tenantService.createApplication(request, TEST_USER_ID));
+
+        assertEquals(ErrorCode.E_1012, thrown.getErrorCode());
+        verify(tenantApplicationRepository, never()).saveAndFlush(any(TenantApplication.class));
+    }
+
+    @Test
+    @DisplayName("Sprint 204: 已認證申請者會被檢查；訪客（userId=null）完全不檢查（訪客申請本就無法被核准 E_2008）")
+    void createApplication_emailPrecondition_appliesToAuthenticatedOnly() {
+        TenantApplicationRequest request = TenantApplicationRequest.builder()
+                .storeName("Any Store").businessType("RETAIL_ONLY").contactEmail("a@example.com").build();
+        TenantApplication saved = TenantApplication.builder().id(UUID.randomUUID())
+                .storeName("Any Store").businessType("RETAIL_ONLY")
+                .status(TenantApplication.ApplicationStatus.PENDING).submittedAt(Instant.now()).build();
+        when(tenantApplicationRepository.saveAndFlush(any(TenantApplication.class))).thenReturn(saved);
+
+        tenantService.createApplication(request, null);
+        verifyNoInteractions(accountSecurityService);
+
+        tenantService.createApplication(request, TEST_USER_ID);
+        verify(accountSecurityService).requireVerifiedEmailForStoreApplication(TEST_USER_ID);
     }
 
     @Test

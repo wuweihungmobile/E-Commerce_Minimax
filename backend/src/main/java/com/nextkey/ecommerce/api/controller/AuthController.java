@@ -14,15 +14,19 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.AuthResponse;
+import com.nextkey.ecommerce.api.dto.ForgotPasswordRequest;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.LogoutRequest;
 import com.nextkey.ecommerce.api.dto.LogoutResponse;
 import com.nextkey.ecommerce.api.dto.RefreshTokenRequest;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
 import com.nextkey.ecommerce.api.dto.RegisterResponse;
+import com.nextkey.ecommerce.api.dto.ResetPasswordRequest;
 import com.nextkey.ecommerce.api.dto.UserDataExportResponse;
 import com.nextkey.ecommerce.api.dto.UserInfoResponse;
+import com.nextkey.ecommerce.api.dto.VerifyEmailRequest;
 import com.nextkey.ecommerce.api.filter.UserPrincipal;
+import com.nextkey.ecommerce.core.auth.AccountSecurityService;
 import com.nextkey.ecommerce.core.auth.AuthService;
 import com.nextkey.ecommerce.core.user.UserPrivacyService;
 
@@ -36,6 +40,7 @@ import lombok.extern.slf4j.Slf4j;
 public class AuthController {
 
     private final AuthService authService;
+    private final AccountSecurityService accountSecurityService;
     private final UserPrivacyService userPrivacyService;
 
     @PostMapping("/register")
@@ -61,6 +66,42 @@ public class AuthController {
         log.info("Refresh token request");
         AuthResponse response = authService.refreshToken(request);
         return ResponseEntity.ok(ApiResponse.success("Token refreshed", response));
+    }
+
+    /**
+     * 申請密碼重設連結（Sprint 204，FRD US-M03-006）。<b>回應與 Email 是否存在、是否冷卻中、寄信是否成功完全無關</b>，
+     * 且刻意不把 Email 寫進日誌：這個端點的行為不能成為帳號列舉的管道。
+     */
+    @PostMapping("/password/forgot")
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request) {
+        accountSecurityService.requestPasswordReset(request.getEmail());
+        return ResponseEntity.ok(ApiResponse.success(
+                "If the email is registered, a password reset link has been sent", null));
+    }
+
+    /** 以重設連結設定新密碼（Sprint 204，FRD US-M03-006）。 */
+    @PostMapping("/password/reset")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request) {
+        accountSecurityService.resetPassword(request.getToken(), request.getNewPassword());
+        return ResponseEntity.ok(ApiResponse.success("Password has been reset", null));
+    }
+
+    /** 以驗證連結完成 Email 驗證（Sprint 204，FRD US-M03-007）。不需登入：連結常在另一個瀏覽器開啟。 */
+    @PostMapping("/email/verify")
+    public ResponseEntity<ApiResponse<Void>> verifyEmail(
+            @Valid @RequestBody VerifyEmailRequest request) {
+        accountSecurityService.verifyEmail(request.getToken());
+        return ResponseEntity.ok(ApiResponse.success("Email verified", null));
+    }
+
+    /** 重寄驗證信給目前登入的會員（Sprint 204，FRD US-M03-007）。已驗證或冷卻中一律回成功、不寄信。 */
+    @PostMapping("/email/verify/send")
+    public ResponseEntity<ApiResponse<Void>> resendEmailVerification(
+            @AuthenticationPrincipal UserPrincipal principal) {
+        accountSecurityService.sendEmailVerification(principal.getUserId());
+        return ResponseEntity.ok(ApiResponse.success("Verification email requested", null));
     }
 
     @PostMapping("/logout")

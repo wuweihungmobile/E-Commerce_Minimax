@@ -83,13 +83,22 @@ class TenantApplicationReviewE2ETest {
         return "tenant-app-e2e-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 10000) + "@example.com";
     }
 
+    /**
+     * 建立買家並取得 token。預設 Email 已驗證：Sprint 204 起，已登入者提交開店申請的前置條件是已驗證 Email
+     * （PRD §7.4.2），既有的審核流程測試關心的是審核，不是驗證，所以用已驗證的申請者。
+     */
     private String createBuyerUserAndGetToken(UUID[] userIdOut) {
+        return createBuyerUserAndGetToken(userIdOut, true);
+    }
+
+    private String createBuyerUserAndGetToken(UUID[] userIdOut, boolean emailVerified) {
         String email = uniqueEmail();
         User buyer = User.builder()
                 .email(email)
                 .passwordHash("$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG")
                 .role(User.UserRole.BUYER)
                 .status("ACTIVE")
+                .emailVerified(emailVerified)
                 .build();
         buyer = userRepository.save(buyer);
         userIdOut[0] = buyer.getId();
@@ -304,5 +313,35 @@ class TenantApplicationReviewE2ETest {
         assertThat(after)
                 .as("送出開店申請後，Admin Dashboard 的待審核店鋪數應該 +1")
                 .isEqualTo(before + 1);
+    }
+    @Test
+    @DisplayName("IT-M17-APP-007（Sprint 204，FRD AC-M03-007-4）: Email 尚未驗證的已登入申請者 → 403 E-1012 且不建立申請；驗證後即可申請")
+    void unverifiedApplicant_isBlockedUntilEmailVerified() throws Exception {
+        UUID[] buyerIdHolder = new UUID[1];
+        String buyerToken = createBuyerUserAndGetToken(buyerIdHolder, false);
+        UUID buyerId = buyerIdHolder[0];
+        Map<String, String> body = Map.of(
+                "storeName", "Unverified Store " + System.currentTimeMillis(),
+                "businessType", "RETAIL_ONLY",
+                "contactEmail", "store@example.com",
+                "contactPhone", "0912345678");
+
+        given().header("Authorization", "Bearer " + buyerToken)
+                .contentType(MediaType.APPLICATION_JSON_VALUE).body(body)
+                .when().post(TENANT_BASE_URL + "/tenants/apply")
+                .then().statusCode(403).body("code", equalTo("E-1012"));
+        assertThat(tenantApplicationRepository.existsByUserIdAndStatusIn(buyerId,
+                java.util.List.of(com.nextkey.ecommerce.domain.model.tenant.TenantApplication.ApplicationStatus.PENDING)))
+                .as("被擋下的申請不可留下任何紀錄").isFalse();
+
+        // 驗證 Email 之後，同一位申請者就能申請
+        User user = userRepository.findById(buyerId).orElseThrow();
+        user.setEmailVerified(true);
+        userRepository.save(user);
+
+        given().header("Authorization", "Bearer " + buyerToken)
+                .contentType(MediaType.APPLICATION_JSON_VALUE).body(body)
+                .when().post(TENANT_BASE_URL + "/tenants/apply")
+                .then().statusCode(201);
     }
 }

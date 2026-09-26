@@ -24,6 +24,7 @@ import com.nextkey.ecommerce.api.dto.TenantMemberResponse;
 import com.nextkey.ecommerce.api.dto.TenantUpdateRequest;
 import com.nextkey.ecommerce.api.dto.TenantUpdateResponse;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.core.auth.AccountSecurityService;
 import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
@@ -57,6 +58,7 @@ public class TenantService {
     private final TenantMemberRepository tenantMemberRepository;
     private final UserRepository userRepository;
     private final AuditService auditService;
+    private final AccountSecurityService accountSecurityService;
     /** Sprint 153：供 getFeatureToggles 計算 MAX_PRODUCTS/MAX_ROOMS 目前用量（ACTIVE 商品/房源數）。 */
     private final ListingRepository listingRepository;
     /** Sprint 153：供 getFeatureToggles 計算 MAX_POSTS 目前用量（PUBLISHED 貼文數）。 */
@@ -95,6 +97,12 @@ public class TenantService {
      */
     @Transactional
     public TenantApplicationResponse createApplication(final TenantApplicationRequest request, final UUID userId) {
+        // Sprint 204（PRD §7.4.2、FRD US-M03-007）：已登入的申請者須已驗證 Email。訪客（userId 為 null）不檢查——
+        // 訪客申請本就無法被核准（E-2008）。寄信服務無法真正寄出信的環境，此檢查由 Service 自行略過。
+        if (userId != null) {
+            accountSecurityService.requireVerifiedEmailForStoreApplication(userId);
+        }
+
         // If user is authenticated (not Guest), check for duplicate pending applications
         if (userId != null) {
             if (tenantApplicationRepository.existsByUserIdAndStatusIn(userId,

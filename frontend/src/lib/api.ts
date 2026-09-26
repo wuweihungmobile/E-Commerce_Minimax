@@ -18,6 +18,11 @@ export const API_ENDPOINTS = {
     // Sprint 153（item 13）：既有 stub（Sprint 78 記錄）改為真正可用的 OAuth 登入/連結
     oauthLogin: '/v2/auth/oauth/login',
     oauthLink: '/v2/auth/oauth/link',
+    // Sprint 204（DEF-252/253）：忘記密碼／重設密碼／Email 驗證。四個都是 POST；前三個不需登入（連結常在另一個瀏覽器開啟）
+    passwordForgot: '/v2/auth/password/forgot',
+    passwordReset: '/v2/auth/password/reset',
+    verifyEmail: '/v2/auth/email/verify',
+    resendVerification: '/v2/auth/email/verify/send',
   },
 
   // Listings

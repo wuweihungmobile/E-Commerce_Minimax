@@ -15,6 +15,7 @@ import {
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
+import AuthService, { getApiErrorInfo } from '@/services/auth'
 
 interface TenantApplyFormData {
   storeName: string
@@ -34,6 +35,9 @@ export default function TenantApplyForm() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Sprint 204（FRD AC-M03-007-4）：已登入但 Email 尚未驗證時，後端回 403 E-1012；這裡提供「重寄驗證信」
+  const [needsEmailVerification, setNeedsEmailVerification] = useState(false)
+  const [resendMessage, setResendMessage] = useState<string | null>(null)
   const [formData, setFormData] = useState<TenantApplyFormData>({
     storeName: '',
     businessType: '',
@@ -111,6 +115,8 @@ export default function TenantApplyForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setNeedsEmailVerification(false)
+    setResendMessage(null)
 
     if (!validateForm()) {
       return
@@ -123,14 +129,23 @@ export default function TenantApplyForm() {
       // 申請成功後導向至店鋪列表頁
       router.push('/dashboard/tenants')
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '申請失敗，請稍後再試')
-      } else {
-        setError('申請失敗，請稍後再試')
+      const { code, message } = getApiErrorInfo(err)
+      if (code === 'E-1012') {
+        setNeedsEmailVerification(true)
       }
+      setError(message || '申請失敗，請稍後再試')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleResendVerification = async () => {
+    setResendMessage(null)
+    try {
+      await AuthService.resendEmailVerification()
+      setResendMessage('驗證信已寄出（若您的信箱尚未驗證）。請點擊信中的連結完成驗證後，再回來送出申請。')
+    } catch {
+      setResendMessage('暫時無法寄出驗證信，請稍後再試。')
     }
   }
 
@@ -147,6 +162,14 @@ export default function TenantApplyForm() {
           {error && (
             <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md text-sm">
               {error}
+              {needsEmailVerification && (
+                <div className="mt-2 space-y-1">
+                  <Button type="button" variant="outline" size="sm" onClick={handleResendVerification}>
+                    重新寄送驗證信
+                  </Button>
+                  {resendMessage && <p className="text-xs">{resendMessage}</p>}
+                </div>
+              )}
             </div>
           )}
 

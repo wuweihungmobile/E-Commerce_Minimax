@@ -170,7 +170,8 @@ ok "frontend 就緒（:$FRONTEND_PORT）"
 #     - E2E_GATE_STRICT=0：臨時改為 advisory（報告但不阻擋），供環境異常時暫時放行。
 log "執行 Playwright E2E（npx playwright test）..."
 set +e
-( cd frontend && npx playwright test )
+# Sprint 204：忘記密碼／Email 驗證的信件是日誌型 Mock，E2E 從後端日誌取一次性連結（frontend/e2e/helpers/mailbox.ts）
+( cd frontend && E2E_BACKEND_LOG="$BACKEND_LOG" npx playwright test )
 E2E_EXIT=$?
 set -e
 if [ "$E2E_EXIT" -eq 0 ]; then

@@ -24,6 +24,10 @@
 | API-M03-003 | `/api/v2/auth/refresh` | POST | 刷新 Access Token | Guest+ | Phase 1 |
 | API-M03-004 | `/api/v2/auth/logout` | POST | 會員登出 | Buyer+ | Phase 1 |
 | API-M03-005 | `/api/v2/auth/me` | GET | 取得當前用戶資訊 | Buyer+ | Phase 1 |
+| API-M03-006 | `/api/v2/auth/password/forgot` | POST | 申請密碼重設連結（Sprint 204） | Guest | Phase 1 |
+| API-M03-007 | `/api/v2/auth/password/reset` | POST | 以連結重設密碼（Sprint 204） | Guest | Phase 1 |
+| API-M03-008 | `/api/v2/auth/email/verify` | POST | 以連結完成 Email 驗證（Sprint 204） | Guest | Phase 1 |
+| API-M03-009 | `/api/v2/auth/email/verify/send` | POST | 重寄驗證信（Sprint 204） | Buyer+ | Phase 1 |
 
 ### 商品中心 (M01)
 

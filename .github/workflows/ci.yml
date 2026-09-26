@@ -491,6 +491,9 @@ jobs:
           exit 1
 
       - name: Run E2E Tests
+        # Sprint 204：忘記密碼／Email 驗證的信件是日誌型 Mock，E2E 從後端日誌取一次性連結（frontend/e2e/helpers/mailbox.ts）
+        env:
+          E2E_BACKEND_LOG: ${{ github.workspace }}/backend/backend.log
         run: |
           cd frontend
           npx playwright test

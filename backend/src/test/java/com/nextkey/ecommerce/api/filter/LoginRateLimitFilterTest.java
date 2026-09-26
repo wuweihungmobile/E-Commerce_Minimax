@@ -11,6 +11,8 @@ import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.QueryTimeoutException;
@@ -89,6 +91,21 @@ class LoginRateLimitFilterTest {
         assertThat(filter.shouldNotFilter(loginGet)).isTrue();
         assertThat(filter.shouldNotFilter(registerPost)).isFalse();
         assertThat(filter.shouldNotFilter(registerGet)).isTrue();
+    }
+
+    @ParameterizedTest(name = "POST {0}")
+    @ValueSource(strings = {"/v2/auth/password/forgot", "/v2/auth/password/reset",
+            "/v2/auth/email/verify", "/v2/auth/email/verify/send"})
+    @DisplayName("Sprint 204：忘記密碼／重設密碼／Email 驗證（含重寄）的 POST 受限流；同路徑 GET 不受")
+    void shouldNotFilter_coversAccountSecurityEndpoints(final String path) {
+        LoginRateLimitFilter filter = newFilter();
+        MockHttpServletRequest post = new MockHttpServletRequest("POST", path);
+        post.setServletPath(path);
+        MockHttpServletRequest get = new MockHttpServletRequest("GET", path);
+        get.setServletPath(path);
+
+        assertThat(filter.shouldNotFilter(post)).isFalse();
+        assertThat(filter.shouldNotFilter(get)).isTrue();
     }
 
     @Test

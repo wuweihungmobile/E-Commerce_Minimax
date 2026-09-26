@@ -4,6 +4,8 @@
 > **版本**: v1.0
 > **最後更新日期**: 2026-04-09
 > **作者**: Marcus (SD-Architect)
+>
+> **⚠️ 修訂註記（Sprint 203／204）**：本文件 §1～§5（API-M03-001～005）是 v1.0 的原文，其回應範例（數字 `code`、`errors[].code`）與文末「錯誤碼對照表」**與實作不一致，且尚未逐項重新核對**。回應封包與錯誤碼一律以 [API_Error_Codes.md](../API_Error_Codes.md) 為準。**§6～§9（Sprint 204 新增）已依實際行為撰寫**。
 
 ---
 
@@ -16,6 +18,10 @@
 | API-M03-003 | `/api/v2/auth/refresh` | POST | 刷新 Access Token | Guest+ |
 | API-M03-004 | `/api/v2/auth/logout` | POST | 會員登出 | Buyer+ |
 | API-M03-005 | `/api/v2/auth/me` | GET | 取得當前用戶資訊 | Buyer+ |
+| API-M03-006 | `/api/v2/auth/password/forgot` | POST | 申請密碼重設連結（Sprint 204） | Guest |
+| API-M03-007 | `/api/v2/auth/password/reset` | POST | 以連結重設密碼（Sprint 204） | Guest |
+| API-M03-008 | `/api/v2/auth/email/verify` | POST | 以連結完成 Email 驗證（Sprint 204） | Guest |
+| API-M03-009 | `/api/v2/auth/email/verify/send` | POST | 重寄驗證信（Sprint 204） | Buyer+ |
 
 ---
 
@@ -309,7 +315,109 @@
 
 ---
 
-## 📝 錯誤碼對照表
+## 6. API-M03-006: 申請密碼重設連結（Sprint 204）
+
+- **端點**: `POST /api/v2/auth/password/forgot`
+- **描述**: 以註冊 Email 申請一次性重設連結（30 分鐘有效）
+- **對應需求**: [US-M03-006](../../01_requirements/E-Commerce_FRD_v1.0.md)、[PRD §7.4.2](../../01_requirements/E-Commerce_PRD_v1.0_Final.md)
+- **角色**: Guest（不需登入）
+- **限流**: 每來源 IP、每路徑 30 次／分鐘（`LoginRateLimitFilter`），超過回 `429 E-9904`
+
+**Request Body**:
+```json
+{ "email": "user@example.com" }
+```
+
+**200 OK**（**Email 是否已註冊、是否冷卻中、寄信是否成功，回應完全相同**）:
+```json
+{
+  "success": true,
+  "message": "If the email is registered, a password reset link has been sent",
+  "timestamp": "2026-09-26T10:30:00Z"
+}
+```
+
+| 情境 | 行為 |
+|------|------|
+| 帳號存在、可用密碼登入 | 簽發連結並寄信 |
+| Email 不存在、帳號已停用、僅以 OAuth 登入（沒有密碼） | 不寄信，回應相同 |
+| 同一帳號 60 秒內已寄過 | 不再寄信，回應相同 |
+| 寄信失敗 | 記錄錯誤，回應相同 |
+| Email 格式不合 | `400 E-9000`（帶 `errors`） |
+
+---
+
+## 7. API-M03-007: 重設密碼（Sprint 204）
+
+- **端點**: `POST /api/v2/auth/password/reset`
+- **描述**: 以重設連結中的 token 設定新密碼
+- **對應需求**: US-M03-006（AC-M03-006-2／006-3）
+- **角色**: Guest（不需登入）
+
+**Request Body**（JSON，兩個欄位）:
+
+| 欄位 | 必填 | 規則 |
+|------|:----:|------|
+| `token` | 是 | 重設連結中的 token；不可空白、最長 128 字元 |
+| `newPassword` | 是 | 新密碼；規則同註冊：8～128 字元、含大小寫與數字 |
+
+**200 OK**: `{ "success": true, "message": "Password has been reset", … }`
+
+成功後：連結立即失效；該會員**所有 Refresh Token 失效**（需重新登入）；登入鎖定解除。**已簽發的 Access Token 無法撤銷**，最長仍可使用至其自然到期。
+
+| 狀態 | `code` | 說明 |
+|:----:|--------|------|
+| 400 | `E-9000` | 新密碼格式不合。**連結不會被消耗**（格式驗證在 Service 之前），可改好再送 |
+| 400 | `E-1011` | 連結無效、已使用、已過期、被新連結取代，或帳號已不可用（不區分原因） |
+| 429 | `E-9904` | 來源 IP 短時間請求過多 |
+
+---
+
+## 8. API-M03-008: Email 驗證（Sprint 204）
+
+- **端點**: `POST /api/v2/auth/email/verify`
+- **描述**: 以驗證信中的 token 完成 Email 驗證（24 小時有效、一次性）
+- **對應需求**: US-M03-007（AC-M03-007-2）
+- **角色**: Guest（**不需登入**：連結常在另一個瀏覽器或裝置開啟）
+
+**Request Body**: `{ "token": "<連結中的 token>" }`
+
+**200 OK**: `{ "success": true, "message": "Email verified", … }`；已驗證的會員再開一次連結也回成功。
+
+| 狀態 | `code` | 說明 |
+|:----:|--------|------|
+| 400 | `E-9000` | token 空白或過長 |
+| 400 | `E-1011` | 連結無效、已使用、已過期或被新連結取代 |
+| 429 | `E-9904` | 來源 IP 短時間請求過多 |
+
+---
+
+## 9. API-M03-009: 重寄驗證信（Sprint 204）
+
+- **端點**: `POST /api/v2/auth/email/verify/send`
+- **描述**: 重寄 Email 驗證信給**目前登入的會員本人**（無法替他人重寄）；新連結使舊連結失效
+- **對應需求**: US-M03-007（AC-M03-007-3）
+- **角色**: Buyer+（需 `Authorization: Bearer`）
+
+**Request Body**: 無。
+
+**200 OK**: `{ "success": true, "message": "Verification email requested", … }`。**已驗證、或 60 秒內已寄過時不寄信，回應仍是成功**。
+
+| 狀態 | `code` | 說明 |
+|:----:|--------|------|
+| 401 | `E-1000` | 未登入 |
+| 503 | `E-9905` | 寄信服務暫時無法使用（使用者主動要求重寄時才讓使用者知道；註冊時自動寄的失敗則靜默略過） |
+| 429 | `E-9904` | 來源 IP 短時間請求過多 |
+
+**註冊時**：註冊成功（交易提交後）會自動寄一次驗證信，失敗不影響註冊。
+
+**開店申請前置條件**（`POST /api/v2/tenants/apply`）：已登入的申請者若 Email 未驗證，回 `403 E-1012`。訪客（未登入）不受此限。**此前置條件只在寄信服務能真正寄出信的環境生效**（見 PRD §7.4.2）。
+
+---
+
+> **⚠️ 下表是 v1.0 的舊錯誤碼，與實作不一致，請勿引用**；以 [API_Error_Codes.md](../API_Error_Codes.md) 為準。
+
+## 📝 錯誤碼對照表（v1.0 舊碼，已由 API_Error_Codes.md 取代）
 
 | 錯誤碼 | HTTP 狀態 | 說明 | 處理建議 |
 |--------|-----------|------|----------|

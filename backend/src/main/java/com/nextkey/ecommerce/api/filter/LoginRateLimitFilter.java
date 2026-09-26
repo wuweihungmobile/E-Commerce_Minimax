@@ -44,6 +44,9 @@ import lombok.extern.slf4j.Slf4j;
  * 攻擊的量級），一併套用相同容量，改以「路徑+IP」而非單純 IP 作為 Redis key 維度，讓登入與
  * 註冊的配額互相獨立（登入 burst 不會誤耗盡註冊配額，反之亦然）。
  *
+ * <p><b>Sprint 204</b>：另涵蓋忘記密碼、重設密碼、Email 驗證（含重寄）四個端點（見 {@code RATE_LIMITED_PATHS}），
+ * 同樣以「路徑+IP」獨立計量。
+ *
  * <p>本專案沒有反向代理／CDN 在前端終止連線（見 {@code docker-compose.yml} 無 nginx/traefik
  * service），故直接信任 {@link HttpServletRequest#getRemoteAddr()} 作為真實來源 IP；刻意不採信
  * {@code X-Forwarded-For} 之類的 client 可自訂 header，否則攻擊者只要每次帶不同的偽造標頭值
@@ -68,7 +71,11 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
     private static final String KEY_PREFIX = "ratelimit:auth_ip:";
     private static final String LOGIN_PATH = "/v2/auth/login";
     private static final String REGISTER_PATH = "/v2/auth/register";
-    private static final Set<String> RATE_LIMITED_PATHS = Set.of(LOGIN_PATH, REGISTER_PATH);
+    // Sprint 204：忘記密碼、重設密碼、Email 驗證（含重寄）同樣是公開或可被腳本呼叫的端點，比照套用。
+    // 重設與驗證會做 Redis 查詢，重寄與忘記密碼會寄信，都不該讓來源 IP 無限速率呼叫。
+    private static final Set<String> RATE_LIMITED_PATHS = Set.of(LOGIN_PATH, REGISTER_PATH,
+            "/v2/auth/password/forgot", "/v2/auth/password/reset",
+            "/v2/auth/email/verify", "/v2/auth/email/verify/send");
     private static final double CAPACITY = 30.0;
     private static final double WINDOW_MS = 60_000.0;
     private static final double REFILL_PER_MS = CAPACITY / WINDOW_MS;

@@ -1,5 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 import { loginOnly, registerAndLogin } from './helpers/auth';
+import { verifyEmailViaMailbox } from './helpers/mailbox';
 
 /**
  * AT-M17-002: Admin 審核開店申請 E2E 測試
@@ -41,7 +42,9 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
  * 後端核准時會拋 E_2008（無法授予 StoreOwner），前提就不成立了。
  */
 async function submitApplicationAsNewBuyer(page: Page): Promise<string> {
-  await registerAndLogin(page);
+  const { email } = await registerAndLogin(page);
+  // Sprint 204（PRD §7.4.2）：已登入者提交開店申請的前置條件是已驗證 Email
+  await verifyEmailViaMailbox(page, email);
 
   const token = await page.evaluate(() => localStorage.getItem('accessToken'));
   expect(token, '買家註冊登入後應取得 accessToken').toBeTruthy();

@@ -9,6 +9,8 @@ import java.util.UUID;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.nextkey.ecommerce.api.dto.AuthResponse;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
@@ -44,6 +46,7 @@ public class AuthService {
     private final JwtTokenService jwtTokenService;
     private final RefreshTokenService refreshTokenService;
     private final LoginAttemptService loginAttemptService;
+    private final AccountSecurityService accountSecurityService;
 
     @Transactional
     public RegisterResponse register(final RegisterRequest request) {
@@ -75,12 +78,32 @@ public class AuthService {
 
         log.info("New user registered: {} ({})", user.getEmail(), user.getRole());
 
+        sendVerificationMailAfterCommit(user.getId());
+
         return RegisterResponse.builder()
                 .userId(user.getId())
                 .email(user.getEmail())
                 .userType(user.getRole().name())
                 .createdAt(user.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * 註冊成功後寄 Email 驗證信（Sprint 204，FRD AC-M03-007-1）。交易提交<b>之後</b>才寄：若提交失敗（例如兩個請求同時註冊同一個
+     * Email、後者在提交時撞唯一約束），不會對一個從未存在的帳號寄出連結。寄信失敗不影響註冊，見
+     * {@link AccountSecurityService#sendEmailVerificationQuietly}。
+     */
+    private void sendVerificationMailAfterCommit(final UUID userId) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            accountSecurityService.sendEmailVerificationQuietly(userId);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                accountSecurityService.sendEmailVerificationQuietly(userId);
+            }
+        });
     }
 
     /**

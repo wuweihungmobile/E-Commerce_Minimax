@@ -100,6 +100,30 @@
 | API-M03-009 | GET /api/v2/auth/me-成功取得 | P0 | 有效 Access Token | 1. GET /api/v2/auth/me<br>Header: Authorization: Bearer {token} | 200, data 包含 userId, email, profile |
 | API-M03-010 | GET /api/v2/auth/me-未授權 | P1 | 無 Token | 1. GET /api/v2/auth/me | 401, message="JWT invalid" |
 
+### 3.5 忘記密碼、重設密碼、Email 驗證 API（Sprint 204）
+
+> 對應 FRD US-M03-006／007。「自動化」欄為實際守住該案例的測試。
+
+| TC ID | 測試案例名稱 | 優先級 | 預期結果 | 自動化 |
+|-------|-------------|--------|----------|--------|
+| API-M03-011 | forgot：任何 Email 都回同樣的 200（不揭露帳號是否存在） | P0 | 200，訊息相同 | `AuthAccountSecurityControllerE2ETest`、`AccountSecurityServiceTest`、E2E「未註冊的 Email…」 |
+| API-M03-012 | forgot：Email 格式不合 | P1 | 400 E-9000，不進 Service | `AuthAccountSecurityControllerE2ETest` |
+| API-M03-013 | forgot：60 秒冷卻中不再寄信但回應相同 | P0 | 不簽發、不寄信 | `AccountSecurityServiceTest`、`AccountTokenServiceIntegrationTest` |
+| API-M03-014 | reset：有效連結 → 密碼更新、Refresh Token 全失效、登入鎖定解除 | P0 | 200 | `AccountSecurityServiceTest`、E2E「申請連結 → 收信重設…」 |
+| API-M03-015 | reset：新密碼太弱 | P0 | 400 E-9000，**連結不被消耗** | `AuthAccountSecurityControllerE2ETest` |
+| API-M03-016 | reset：連結無效／已用／過期／被取代 | P0 | 400 E-1011 | `AccountSecurityServiceTest`、`AccountTokenServiceIntegrationTest`、E2E |
+| API-M03-017 | reset：16 個併發使用同一連結 | P0 | 恰好 1 個成功 | `AccountTokenServiceIntegrationTest`（真 Redis） |
+| API-M03-018 | reset 後舊密碼立刻失效、新密碼可登入 | P0 | 登入行為 | E2E `at-account-security.spec.ts` |
+| API-M03-019 | Redis 不存 token 原文、所有 key 有 TTL | P0 | 只有雜湊 | `AccountTokenServiceIntegrationTest` |
+| API-M03-020 | verify：連結有效 → emailVerified = true；已驗證者再開回成功 | P0 | 200 | `AccountSecurityServiceTest` |
+| API-M03-021 | verify：不需登入；連結無效 | P0 | 200／400 E-1011 | `AuthAccountSecurityControllerE2ETest`、E2E |
+| API-M03-022 | verify/send：未登入 401；登入後只替本人重寄；已驗證／冷卻中不寄 | P0 | 401／200 | `AuthAccountSecurityControllerE2ETest`、`AccountSecurityServiceTest` |
+| API-M03-023 | 註冊成功後寄驗證信，且等交易提交之後才寄；寄信失敗不影響註冊 | P0 | 交易後觸發 | `AuthServiceRegisterTest`、`AccountSecurityServiceTest` |
+| API-M03-024 | 開店申請：已登入未驗證 → 403 E-1012 且不建立申請；驗證後可申請；訪客不受限 | P0 | 403／201 | `TenantApplicationReviewE2ETest`（IT-M17-APP-007）、`TenantServiceTest`、E2E |
+| API-M03-025 | 寄信服務無法寄出信時前置條件不生效 | P0 | 不檢查 | `AccountSecurityServiceTest`、`LoggingEmailSenderTest` |
+| API-M03-026 | 正式環境（prod）日誌不得出現連結、token、收件人 | P0 | 只記 WARN | `LoggingEmailSenderTest` |
+| API-M03-027 | 四個端點受每來源 IP 限流 | P1 | 429 E-9904 | `LoginRateLimitFilterTest` |
+
 ---
 
 ## 4. RBAC 權限測試

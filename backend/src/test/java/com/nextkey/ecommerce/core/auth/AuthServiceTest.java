@@ -62,6 +62,8 @@ class AuthServiceTest {
     private RefreshTokenService refreshTokenService;
     @Mock
     private LoginAttemptService loginAttemptService;
+    @Mock
+    private AccountSecurityService accountSecurityService;
 
     @InjectMocks
     private AuthService authService;

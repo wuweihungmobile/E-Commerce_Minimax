@@ -19,6 +19,8 @@
 
 ## 2. 模組現況總覽（後端 × 前端）
 
+> **⚠️ 本節與第 3 節是 Sprint 27（2026-07-01）的快照，已大幅過時**（例如 M05/M06/M08/M09/M11 買家端前端已於 Sprint 29/30 完成、M07 已不是 Mock）。現況以第 5 節決策紀錄與第 6 節維護表為準（Sprint 203 補註）。
+
 | 模組 | 後端成熟度 | 前端覆蓋 | 強化機會 |
 |------|-----------|---------|---------|
 | M01 商品 | ✅ 高（16 測試） | ✅ 完整 | ES 全文檢索（長期） |
@@ -59,7 +61,7 @@
 | 7 | ✅ **M12 進階定價（早鳥/長住/末班車折扣）— Sprint 43 完成** | 後端深化 | 5 | 1.5 | 0.85 | 3 | **2.1** | P2 |
 | 8 | M13/M14 後台深化（營收統計 + 分析面板） | 後端+前端 | 5 | 2 | 0.8 | 5 | **1.6** | P2 |
 | 9 | ✅ **測試補強（M14 Analytics/M18 FAQ/Knowledge）— Sprint 62 完成** | 品質硬化 | 3 | 1 | 0.95 | 2 | **1.4** | P2 |
-| 10 | M07 真實金流串接（Stripe 真串接 + 分帳/退款/提現） | 後端深化 | 9 | 3 | 0.5 | 13 | **1.04** | P3 |
+| 10 | ✅ **M07 真實金流串接（Stripe 真串接 + 分帳/退款/提現）— 程式已於 Sprint 49~56、80 完成，僅剩人工上線步驟** | 後端深化 | 9 | 3 | 0.5 | 13 | **1.04** | P3 |
 | 11 | M03 OAuth2 / KYC 實名 | 後端深化 | 7 | 1.5 | 0.7 | 8 | **0.92** | P3 |
 | 12 | M01 ElasticSearch 全文檢索 | 基建 | 8 | 1.5 | 0.6 | 13 | **0.55** | P3 |
 
@@ -91,7 +93,7 @@
 
 1. ✅ **產品方向**：採方向 (b) 強化既有模組；EPIC-BUYER（買家端閉環）為主軸 epic。
 2. ✅ **Sprint 28 取向**：**先補品質再加功能** —— Sprint 28 = #9 測試補強 + #8 後台深化（見 [SPRINT_28_PLAN.md](./SPRINT_28_PLAN.md)）；EPIC-BUYER #1–#6 自 **Sprint 29** 起。
-3. ⏳ **M07 真實金流（#10）**：待買家端 UI 閉環完成後，視商業上線時程單獨開 Sprint（13 SP + 外部依賴）。
+3. ✅/⏳ **M07 真實金流（#10）**：**程式層已完成**（Sprint 49~53 付款/webhook/退款/Connect onboarding、Sprint 56 部分退款、Sprint 80 結算單核准後 Transfer 撥款）；**尚未完成的是只有人能做的上線步驟**（Stripe Dashboard 金鑰/webhook 註冊/Connect 審核、測試模式端到端走查、正式金鑰切換），見 [STRIPE_PRODUCTION_CHECKLIST.md](../08_deployment/STRIPE_PRODUCTION_CHECKLIST.md)（Sprint 203 更正：原文「待開 Sprint」為過時敘述）。
 4. ⏳ **長期基建（ES 檢索 #12、OAuth2/KYC #11）**：暫列 P3，待商業需求觸發。
 
 ---
@@ -112,6 +114,7 @@
 | 2026-09-01 | v2.1 | **第八輪掃描以「孤兒錯誤碼 → 零呼叫死碼 → 欄位零讀取」三訊號連續命中，找到目前唯一直接涉及金錢收取正確性的缺口：優惠券機制完整斷鏈**，於 **Sprint 100 修復**。PRD §9.5.1 明訂促銷碼須於「M05 訂單建立時」驗證並套用，實際上 `OrderService.createOrderFromCart` 取購物車用不含 promo 的 `getCart()`、金額為 `Σsubtotal + shippingFee`，**買家在購物車看到折扣、下單卻被收全額**；`PromoService.incrementUsageCount` 全庫零呼叫者（`current_usage_count` 永遠是 0 → 限量券可無限使用）；`max_usage_per_user` 自 V20 建表即存在但零讀取。另依 PRD §2630 補上取消訂單時的額度退還（否則修一個缺口會親手做出下一個）。**存活 99 個 Sprint 的原因**：既有唯一的 `M11CartPromoIntegrationTest` 以 `@MockBean` 隔離了 `PromoService`/`PromoCodeRepository` 且完全不涉及下單——再次印證 Sprint 97 記錄的警訊模式「所有相關測試都用固件繞過同一段業務邏輯」。**誠實**：`E_8009` 客服工單孤兒碼經逐方法檢視後確認為偽陽性（擁有權檢查完整，只是以「找不到」回應），已排除；順帶發現 `FREE_SHIPPING` 折扣型別在物流模組完全無對應處理（選此型別的券買家拿不到任何優惠），記錄待評估未擴大範圍 |
 | 2026-07-19 | v2.0 | 第七輪掃描延續「角色授予雙邊同步」判讀技巧，找到三個明確缺口並於 **Sprint 99** 修復：(1) `acceptInvite`（Sprint 98 新增）同樣未同步 `User.role`，是 StoreOwner 修復的孿生案例——同一個 Sprint 新增的功能沒有連帶檢查是關鍵教訓；(2) `AuthService.refreshToken()` 租戶解析邏輯與 `login()` 不一致，會誤退化為 SYSTEM_TENANT_ID；(3) `PurchaseOrderService` 從未檢查 `ERP_ENABLED` Feature Toggle，對照其餘模組皆已正確實作，唯獨 ERP 漏掉 |
 | 2026-07-05 | v1.4 | **Sprint 62 交付 #9 測試補強**：規劃前重新盤點發現 #9 描述仍過時——真正缺口是 `KnowledgeBaseService`（17 方法含版本控制）**完全零覆蓋**（唯一相關整合測試對其用 `@MockBean` 繞過）、`FaqService` 11 方法零覆蓋、`AnalyticsService.getRecentActivity` 零覆蓋，與原「0–1 測試」的粗略描述有落差。新增 `KnowledgeBaseServiceTest`（24 測試，從 0 建立）+ `FaqServiceTest`（+12 測試）+ `AnalyticsServiceTest`（+2 測試）。另發現 FAQ 前端頁面完全缺失（`/v2/faqs` API 已備妥、無頁面），性質為功能缺口非測試缺口，未排入候選清單，列為 Sprint 63 評估項目 |
+| 2026-09-26 | v2.2 | **Sprint 203 文件一致性檢查**：（1）§2/§3 標註為 Sprint 27 快照、已過時；（2）#10 M07 真實金流更正為「程式層已完成（Sprint 49~56、80），僅剩人工上線步驟」——原列為 P3 待開的 13 SP 大項實際早已實作；（3）本文件自 Sprint 100 起未再追蹤產品面待辦，之後的 Sprint 皆為缺陷掃描與修復，產品面候選見 Sprint 203 收尾建議（A 帳號功能：DEF-252/253）|
 
 ---
 

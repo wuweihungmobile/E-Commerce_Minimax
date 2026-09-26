@@ -6,6 +6,8 @@
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
 > **AISDLC 版本**: v0.09
+>
+> **⚠️ 修訂註記（Sprint 203，2026-09-26，DEF-280）**：本文件引用的 `E-XXXX` 錯誤碼（約 95 處，如定價規則驗證的 `E-4001 VALIDATION_ERROR`）沿用 PRD 的舊錯誤碼表，與實作**不一致**。錯誤碼與 HTTP 狀態碼以 [API_Error_Codes.md](../02_architecture/API_Error_Codes.md) 為準；本文件內文保留原樣，未逐處改寫。
 
 ---
 

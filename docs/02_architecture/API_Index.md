@@ -6,6 +6,10 @@
 > **最後更新**: 2026-06-05
 > **作者**: Marcus (SD-Architect)
 > **🔴 Sprint 16 US-008**: 收錄 Sprint 15 + Sprint 16 新增 API 端點
+>
+> **錯誤契約**: 所有 API 共用同一個回應封包與錯誤碼表，見 [API_Error_Codes.md](./API_Error_Codes.md)（Sprint 203）。
+>
+> **⚠️ 完整性未保證（Sprint 203 揭露）**: 本索引最後更新於 2026-06-05，僅收錄 48 個端點；同日核對後端 controller 有約 305 個 `@*Mapping` 註解。**本索引不是完整端點清單**，見 DEF-286。
 
 ---
 

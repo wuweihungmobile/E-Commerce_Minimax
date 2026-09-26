@@ -2074,9 +2074,9 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 
 | 規則 | 說明 |
 |------|------|
-| `X-Idempotency-Key` | 所有 POST/PUT/DELETE 必帶，24h Redis 攔截 |
+| `X-Idempotency-Key` | 所有 POST/PUT/DELETE 必帶，24h Redis 攔截　**【Sprint 203 修訂註記】此全域規範尚未落實：實作的標頭名為 `Idempotency-Key`（無 `X-` 前綴），且目前只有 `POST /v2/bookings`、`POST /v2/checkout/mixed` 兩個端點讀取，且為選帶（`required = false`）；見 DEF-285** |
 | `X-Tenant-ID` | **B 端 API（`/api/v2/dashboard/*`）必須攜帶**。單租戶用戶：系統自動使用唯一 Tenant ID（向後相容）；多租戶用戶：**必須**明確指定，否則回傳 `E-2003 TENANT_CONTEXT_AMBIGUOUS`（400）；不存在的 tenant_id 回傳 `E-2002 CROSS_TENANT_ACCESS_DENIED`（403）。C 端 API（`/api/v2/listings` 等）不需此 Header，跨租戶查詢不受限制。 |
-| 錯誤格式 | `{ "error": { "code": "E-XXXX", "message": "...", "details": [...], "requestId": "...", "timestamp": "..." } }` |
+| 錯誤格式 | `{ "error": { "code": "E-XXXX", "message": "...", "details": [...], "requestId": "...", "timestamp": "..." } }`　**【Sprint 203 修訂註記】實作為扁平封包，以 [API_Error_Codes.md](../02_architecture/API_Error_Codes.md) 為準（DEF-280）** |
 | 分頁格式 | `?page=0&size=20&sort=createdAt,desc` |
 | API 前綴 | 新增 API: `/api/v2/*`；v0.8 既有: `/api/v1/*` |
 
@@ -3023,6 +3023,8 @@ COMPLETED (terminal)
 > **版本：** v1.0.0 | **日期：** 2026-03-25 | **作者：** Amanda (sa-analyst)
 > **狀態：** Phase 1 正式附錄
 > **本節完整繼承 v0.8 §11。v0.9 修正：§9.17 全域 API 錯誤格式統一為此處的巢狀 `error` 包裹格式。**
+>
+> **⚠️ 修訂註記（Sprint 203，2026-09-26，DEF-280）：本節（§16）與 §17.2 對「錯誤回應格式」與「E-XXXX 錯誤碼」的規定，已由 [API_Error_Codes.md](../02_architecture/API_Error_Codes.md) 取代。** 實作採扁平封包 `{ success, code, message, errors, timestamp, requestId }`（`requestId` 在頂層，非 `error.requestId`；欄位級錯誤為 `errors[{field, message, rejectedValue}]`），錯誤碼以 `ErrorCode.java` 為準——本節錯誤碼表的 23 個碼中，19 個與實作的碼字串重疊、其中 18 個意義不同，另 4 個（`E-2020`、`E-4012`、`E-4013`、`E-4014`）實作沒有。本節內文保留原樣作為歷史規格，**不可再作為實作或測試的依據**。API 路徑前綴同理以 `/api/v2/*` 為準。
 
 ### 16.1 ErrorResponse Schema
 
@@ -3330,6 +3332,8 @@ TooManyRequests:
 8. G-8：M06 Phase 歸屬歧義消除（原規格 §6, §9.7, §13.1 更新）
 
 ### 17.2 錯誤碼統一映射表
+
+> **⚠️ 修訂註記（Sprint 203）**：本節已由 [API_Error_Codes.md](../02_architecture/API_Error_Codes.md) 取代，見 §16 開頭的修訂註記。
 
 #### 17.2.1 錯誤碼結構
 

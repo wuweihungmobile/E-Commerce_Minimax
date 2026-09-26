@@ -1190,83 +1190,78 @@ public class RuleEngine {
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
+### 5.4 價格精度與規則設定驗證（Sprint 192／193 補充）
+
+以下兩項是實作後補記的規格，先前只存在於 Sprint 計畫與程式碼。
+
+#### 5.4.1 金額精度與捨入（DEF-266、DEF-267）
+
+| 項目 | 規則 |
+|------|------|
+| 動態定價運算 | 全程 `BigDecimal`，不混入 `double`（`1 - 7.0 / 100 = 0.9299999999999999` 之類的雜訊會讓 1234.50 × 7% 折扣落庫為 1148.08 而非 1148.09，少收一分） |
+| 捨入時點 | **在源頭逐晚捨入**至 2 位小數、`RoundingMode.HALF_UP`（`PricingService.PRICE_SCALE`／`PRICE_ROUNDING`），逐晚加總恆等於總額；不交給資料庫 `NUMERIC(_,2)` 隱性四捨五入。與 `PromoService`、`SettlementCalculator` 同一慣例 |
+| 退款金額位數 | `PaymentStateService.refundOrderPayment` 拒絕小數位數超過 2 位的退款金額（`stripTrailingZeros().scale() > 2`，回 `E-6009`）。`500.005` 在 Stripe（換算為分後截斷）與資料庫（四捨五入）會得到不同結果；`500.500` 以數值判斷，不誤擋 |
+
+#### 5.4.2 定價規則 `config` 的數值範圍（DEF-268，使用者於 Sprint 193 拍板）
+
+`config` 是自由格式 `Map<String, Object>`，DB 也沒有金額 `CHECK`，所以由 `PricingService.findConfigViolation` 檢查（值為 `null` 視為未設定；存在但不是有限數字，含 `NaN`、`Infinity`、`"10%"`，一律違規）：
+
+| `config` 鍵 | 合法範圍 |
+|------------|---------|
+| `discountPercent` | 大於 0 且**小於 100**（不允許免費） |
+| `multiplier`、`weekendMultiplier` | 大於 0 且**不超過 10**（加價倍率上限） |
+| `price`（覆蓋價） | 大於 0 |
+| `minNights`、`minDaysAhead` | 至少 1 |
+
+- **建立／更新規則時**：違規拒絕，回 HTTP 422、`E-8001`（FRD §定價規則驗證表寫的是 `E-4001 VALIDATION_ERROR`，已被 [API_Error_Codes.md](./API_Error_Codes.md) 取代）。
+- **計算價格時**：略過既存的違規規則並記一筆 WARN（不靜默），避免壞規則讓訂房出現負價或 500。
+- FRD 只明訂下限（`≤ 0` 驗證失敗）；上限（`discountPercent` 小於 100、倍率不超過 10）是 Sprint 193 補的規格。`discountPercent > 50` 仍是 FRD 所述「警告但允許」。
+
 ---
 
 ## 6. 異常處理架構 (Exception Handling)
 
-### 6.1 異常層級結構
+> **Sprint 203 改寫**：v1.0 此節描述的 `ECommerceException` 例外階層、`ErrorResponse.of("E4041", …)` 與一份自成一格的錯誤碼表，**從未存在於程式碼**（全庫只有下列一個基底例外與一個處理器）。已改寫為實際架構；錯誤碼與 HTTP 狀態碼以 [API_Error_Codes.md](./API_Error_Codes.md) 為準。
+
+### 6.1 例外結構
 
 ```
 com.nextkey.ecommerce.shared.exception/
-├── ECommerceException.java              # 基底異常
-│   ├── validation/                      # 驗證異常
-│   │   ├── ValidationException.java
-│   │   └── FieldValidationException.java
-│   ├── domain/                          # 領域異常
-│   │   ├── EntityNotFoundException.java
-│   │   ├── DuplicateEntityException.java
-│   │   ├── InvalidStateTransitionException.java
-│   │   └── BusinessRuleViolationException.java
-│   ├── auth/                            # 認證異常
-│   │   ├── InvalidCredentialsException.java
-│   │   ├── AccountSuspendedException.java
-│   │   └── TokenExpiredException.java
-│   ├── inventory/                        # 庫存異常
-│   │   └── InsufficientInventoryException.java
-│   └── pricing/                          # 定價異常
-│       └── FeatureNotEnabledException.java
+├── ErrorCode.java                 # enum：錯誤碼字串（"E-XXXX"）＋預設中文訊息
+├── BusinessException.java         # 唯一的業務例外基底，持有 ErrorCode
+│   ├── CartEmptyException.java
+│   ├── CartItemNotFoundException.java
+│   └── PromoCodeInvalidException.java
+com.nextkey.ecommerce.api.dto/
+├── ApiResponse.java               # 統一回應封包（成功與失敗同形，見 SRD_System_Architecture §4）
+└── GlobalExceptionHandler.java    # @RestControllerAdvice，唯一的例外→回應對應處
+com.nextkey.ecommerce.api.controller/
+└── ApiErrorController.java        # 容器 ERROR 分派（sendError 後對 /error 的內部轉送）
 ```
+
+- 業務規則違反一律丟 `BusinessException(ErrorCode, …)`；**不新增**例外子類別來表達不同錯誤，差異由 `ErrorCode` 表達。
+- 給使用者看的訊息預設是 `ErrorCode` 的中文訊息，**不回顯**例外內的動態英文細節（AI-2418）；只有經 `BusinessException.withFormattedMessage` 建構、且訊息模板本就設計了佔位符（張數、索引）的例外，才把代入後的文字回給使用者。
 
 ### 6.2 統一異常處理
 
-```java
-@RestControllerAdvice
-public class GlobalExceptionHandler {
-    
-    @ExceptionHandler(EntityNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleNotFound(EntityNotFoundException ex) {
-        return ResponseEntity
-            .status(HttpStatus.NOT_FOUND)
-            .body(ErrorResponse.of("E4041", ex.getMessage()));
-    }
-    
-    @ExceptionHandler(DuplicateEntityException.class)
-    public ResponseEntity<ErrorResponse> handleDuplicate(DuplicateEntityException ex) {
-        return ResponseEntity
-            .status(HttpStatus.CONFLICT)
-            .body(ErrorResponse.of("E4091", ex.getMessage()));
-    }
-    
-    @ExceptionHandler(InsufficientInventoryException.class)
-    public ResponseEntity<ErrorResponse> handleInsufficientInventory(InsufficientInventoryException ex) {
-        return ResponseEntity
-            .status(HttpStatus.UNPROCESSABLE_ENTITY)
-            .body(ErrorResponse.of("E4021", ex.getMessage(), ex.getDetails()));
-    }
-}
-```
+`GlobalExceptionHandler` 對應規則（完整表格見 [API_Error_Codes.md §2](./API_Error_Codes.md)）：
+
+| 例外 | HTTP | `code` |
+|------|:----:|--------|
+| `BusinessException` | 依 `ErrorCode`（`mapErrorCodeToStatus`） | 該例外的 `ErrorCode` |
+| `MethodArgumentNotValidException`、`BindException`、`HttpMessageNotReadableException`、`MethodArgumentTypeMismatchException` | 400 | `E-9000`（前兩者帶 `errors`） |
+| `MissingServletRequestParameterException` | 400 | `E-9005` |
+| `AuthenticationException`／`BadCredentialsException` | 401 | `E-1000`／`E-1001` |
+| `AccessDeniedException` | 403 | `E-1007` |
+| `NoResourceFoundException` | 404 | `E-4041` |
+| `HttpRequestMethodNotSupportedException`、`HttpMediaTypeNotSupportedException` | 405／415 | `E-9000` |
+| 其他 `Exception` | 500 | `E-9900` |
+
+`mapErrorCodeToStatus` 是**窮舉的 `switch`、沒有 `default`**：新增 `ErrorCode` 卻沒決定 HTTP 狀態碼會直接編譯失敗，而不是靜默落入 500（Sprint 171，DEF-223）。
 
 ### 6.3 錯誤碼對照表
 
-| 錯誤碼 | HTTP 狀態 | 說明 | 對應模組 |
-|--------|-----------|------|----------|
-| E-1001 | 401 | JWT 無效 | M03 |
-| E-1002 | 401 | JWT 過期 | M03 |
-| E-2001 | 403 | 無權限 | 全域 |
-| E-2003 | 403 | 租戶上下文不明 | 全域 |
-| E-2020 | 403 | 功能未啟用 | M12/M17 |
-| E-3001 | 409 | Email 已被註冊 | M03 |
-| E-3002 | 401 | 登入認證失敗 | M03 |
-| E-3003 | 403 | 帳號被停用 | M03 |
-| E-4001 | 400 | 驗證失敗 | 全域 |
-| E-4021 | 422 | 庫存不足 | M05 |
-| E-4022 | 409 | 併發衝突 | M05 |
-| E-4023 | 400 | 狀態轉換不允許 | M05 |
-| E-4024 | 403 | 非訂單擁有者 | M05 |
-| E-4025 | 404 | 訂單不存在 | M05 |
-| E-4041 | 404 | 資源不存在 | 全域 |
-| E-4091 | 409 | 資源名稱衝突 | 全域 |
-| E-4092 | 409 | 申請已存在 | M17 |
+已移至 [API_Error_Codes.md §4](./API_Error_Codes.md)（138 個錯誤碼，由 `ErrorCodeDocDriftTest` 與程式碼逐列比對）。v1.0 在此列出的 17 個錯誤碼中，**12 個與實作不符**（`E-1001`、`E-2001`、`E-3001`～`E-3003`、`E-4001` 在實作中意義不同；`E-2020`、`E-4021`～`E-4025` 在實作中不存在），只有 `E-1002`、`E-2003`、`E-4041`、`E-4091`、`E-4092` 大致相符；不可再引用該表。
 
 ---
 
@@ -1275,9 +1270,10 @@ public class GlobalExceptionHandler {
 | 版本 | 日期 | 作者 | 變更說明 |
 |------|------|------|----------|
 | v1.0 | 2026-04-09 | Marcus (SD-Architect) | 初始版本，包含 Phase 1 核心模組技術設計 |
+| v1.1 | 2026-09-26 | Claude Code（Sprint 203） | 文件一致性檢查（DEF-280）：§6 異常處理架構改寫為實際架構（原描述的例外階層與錯誤碼表從未存在於程式碼），錯誤碼移至 [API_Error_Codes.md](./API_Error_Codes.md)；新增 §5.4 價格精度與規則設定驗證（Sprint 192／193）。**未逐段核對**其餘章節（§1～§5.3）與程式碼的一致性，例如 §4.3 的 `X-Idempotency-Key` 標頭與實作的 `Idempotency-Key` 不同（見 DEF-285） |
 
 ---
 
 **文檔版本**: AISDLC v0.09
 **模板維護**: AISDLC Framework Team
-**最後更新**: 2026-04-09
+**最後更新**: 2026-09-26

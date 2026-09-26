@@ -1,7 +1,7 @@
-# E-Commerce System — 系統需求文檔 (SRD) v1.0
+# E-Commerce System — 系統需求文檔 (SRD) v1.1
 
 > **文檔類型**: SRD (System Requirements Document)
-> **版本**: v1.0
+> **版本**: v1.1（v1.0 → v1.1：Sprint 203 文件一致性檢查，見 §9 修訂歷史）
 > **依據**: E-Commerce_PRD_v1.0_Final.md, E-Commerce_FRD_v1.0.md
 > **建立日期**: 2026-04-09
 > **作者**: Marcus (SD-Architect)
@@ -17,7 +17,7 @@
 | **系統類型** | B2B2C 多租戶電子商務 + 民宿預訂系統 |
 | **文檔狀態** | Draft |
 | **System Architect** | Marcus (SD-Architect) |
-| **最後更新** | 2026-04-09 |
+| **最後更新** | 2026-09-26 |
 
 ---
 
@@ -29,6 +29,7 @@
 
 ### 下游文檔
 - **API 規格**: [docs/02_architecture/API_Index.md](./API_Index.md)
+- **API 錯誤契約與錯誤碼**: [API_Error_Codes.md](./API_Error_Codes.md)
 - **AT 連結**: [docs/03_testing/](../03_testing/) (驗收測試)
 
 ---
@@ -276,33 +277,44 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
 
 ### 4.2 API 統一回應格式
 
+所有回應使用**扁平封包** `ApiResponse`（成功與失敗同形，沒有巢狀的 `error` 包裹）。欄位定義見 [API_Error_Codes.md §1](./API_Error_Codes.md)。
+
 ```json
 {
-  "code": 200,
-  "message": "Success",
+  "success": true,
   "data": { ... },
-  "timestamp": "2026-04-09T10:30:00.000Z",
-  "requestId": "550e8400-e29b-41d4-a716-446655440000"
+  "timestamp": "2026-09-26T10:30:00Z"
 }
 ```
+
+成功回應**不帶** `requestId`（成功 payload 是前端已依賴的契約，不因追蹤功能多出欄位）；值為 `null` 的欄位不出現在 JSON。
 
 ### 4.3 錯誤回應格式
 
 ```json
 {
-  "code": 400,
-  "message": "Validation failed",
-  "errors": [
-    {
-      "field": "email",
-      "message": "Email 格式不正確",
-      "code": "INVALID_FORMAT"
-    }
-  ],
-  "timestamp": "2026-04-09T10:30:00.000Z",
-  "requestId": "..."
+  "success": false,
+  "code": "E-5000",
+  "message": "找不到訂單",
+  "timestamp": "2026-09-26T10:30:00Z",
+  "requestId": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
+
+欄位級驗證錯誤（HTTP 400、`code` 為 `E-9000`）另帶 `errors`，每筆 `{ "field", "message", "rejectedValue" }`。`requestId` 與回應標頭 `X-Request-ID` 相同。
+
+**錯誤碼、HTTP 狀態碼對照、各類例外的對應方式**，以 [API_Error_Codes.md](./API_Error_Codes.md) 為準；該文件**取代** v1.0 在此處的舊格式（`code` 為數字、`errors[].code`），以及 PRD §9.17／§16／§17.2 的巢狀格式與錯誤碼表（Sprint 203，DEF-280）。
+
+### 4.4 時間與時區慣例
+
+| 項目 | 規則 |
+|------|------|
+| API 時間戳（`timestamp` 等 `Instant` 欄位） | ISO 8601、UTC（結尾 `Z`） |
+| 營運時區 | **Asia/Taipei（UTC+8）**，PRD／FRD 明訂。由 `shared/time/BusinessTime` 提供「營運時區的今天／現在」與「營運日 00:00 對應的絕對時刻」 |
+| 適用邏輯 | 判斷**資格、有效期、價格適用日、統計與結算區間**的邏輯，一律使用營運時區，不取 JVM 預設時區。CI 與正式容器（`eclipse-temurin:21-jre-alpine`，未設 `TZ`）是 UTC、開發機是 Asia/Taipei，取預設時區會使結果隨部署環境不同（DEF-269：台灣時間每天 00:00～08:00 「今天」變成前一天）。目前使用 `BusinessTime` 的類別：`PricingService`、`PromoCode`、`BookingService`、`RedisCartService`、`AnalyticsService`、`SettlementGenerator` |
+| 期間表示 | 以絕對時刻的**半開區間** `[start, end)`：`BusinessTime.startOfDay(d)` 與 `startOfDay(d.plusDays(1))` 組成一日，相鄰兩日／兩週共用同一個邊界時刻，不重疊也不留縫 |
+| 排程 | 週結算為 `@Scheduled(cron = "0 0 0 ? * MON", zone = "Asia/Taipei")`；未指定 `zone` 時 Spring 以 JVM 時區解讀 cron |
+| 不在此列 | 僅用於稽核戳記、單號日期字串等不影響金額的 `LocalDate.now()`／`LocalDateTime.now()` |
 
 ---
 
@@ -344,10 +356,51 @@ SuperAdmin
 | 防護機制 | 實作 |
 |---------|------|
 | **SQL Injection** | JPA PreparedStatement |
-| **XSS** | 輸出編碼 + CSP Header |
+| **XSS** | 輸出編碼 + CSP Header（後端與前端各一份政策，見 §5.4） |
 | **CSRF** | SameSite Cookie + CSRF Token |
 | **Rate Limiting** | Redis + 令牌桶演算法 |
 | **密碼儲存** | bcrypt (cost factor = 12) |
+| **回應安全標頭、請求追蹤、CORS** | 見 §5.4 |
+
+### 5.4 回應安全標頭、請求追蹤與 CORS（Sprint 197～202、191）
+
+#### 5.4.1 後端回應（`SecurityHeaderPolicy`，唯一定義處）
+
+後端只回 JSON（無 HTML 頁），政策為：
+
+| 標頭 | 值 | 備註 |
+|------|----|------|
+| `X-Content-Type-Options` | `nosniff` | |
+| `X-Frame-Options` | `DENY` | |
+| `Content-Security-Policy` | `default-src 'none'; frame-ancestors 'none'` | 純 JSON 回應，不需載入任何資源 |
+| `Referrer-Policy` | `no-referrer` | |
+| `Strict-Transport-Security` | `max-age=31536000` | **只在 HTTPS 請求送出**：`request.isSecure()`，或 `X-Forwarded-Proto` 第一段（多層代理 `https,http`）為 `https`（不分大小寫）。**不含 `includeSubDomains`、不含 `preload`**：子網域是否都能走 https 無從驗證，而該指示送出後一年內無法收回 |
+| `Cache-Control`／`Pragma`／`Expires`、`X-XSS-Protection: 0` | Spring Security 預設值 | |
+
+**單一來源**：政策只定義在 `SecurityHeaderPolicy`，兩處套用同一份——`SecurityConfig`（Spring Security 的 `HeaderWriterFilter`，涵蓋一般請求的回應）與 `ApiErrorController`（Servlet 容器的 ERROR 分派；`HeaderWriterFilter` 沿用 `OncePerRequestFilter` 預設而不處理該分派，防火牆拒絕的請求原本因此完全沒有安全標頭，DEF-282）。日後改任何標頭只改 `SecurityHeaderPolicy`。
+
+**已知限制**：Tomcat 連接器層自己拒絕的請求（`%2f`、`%5C`）不進入應用，沒有任何標頭，見 [API_Error_Codes.md §2.2](./API_Error_Codes.md)（DEF-283）。
+
+#### 5.4.2 前端頁面（Next.js）
+
+| 來源 | 標頭 | 備註 |
+|------|------|------|
+| `next.config.ts` | `X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`；`poweredByHeader: false` | |
+| `next.config.ts` | `Strict-Transport-Security: max-age=31536000` | 只在請求帶 `X-Forwarded-Proto: https`（第一段、不分大小寫）時送出；判斷與值與後端一致，同樣不含 `includeSubDomains`／`preload` |
+| `src/proxy.ts` | `Content-Security-Policy`（**每次請求一個 nonce**） | `script-src 'self' 'nonce-…' 'strict-dynamic'`（開發模式另加 `'unsafe-eval'`）；`style-src 'self' 'unsafe-inline'`；`img-src 'self' data: blob: https:`（後端為明文 http 時另加 `http:`）；`font-src 'self' data:`；`connect-src 'self'` 加後端 HTTP／WS 來源；`object-src 'none'`；`base-uri 'self'`；`form-action 'self'`；`frame-ancestors 'none'`；刻意不加 `upgrade-insecure-requests`（http 部署會把打向後端的請求也升級而全部失敗） |
+
+- **為何用嚴格 nonce CSP**：token 存在 `localStorage`，XSS 一旦成功即可竊取 token；nonce ＋ `strict-dynamic` 使被注入的 inline script、inline 事件處理器與外部 script 都無法執行。
+- **代價**：所有頁面必須動態渲染（每次請求一個新 nonce），無法靜態預先產生。
+- **新增 inline script 或第三方 script 前**必須先確認 CSP 是否放行，否則會被瀏覽器擋下。
+- **緊急開關**：執行環境設 `CSP_REPORT_ONLY=1`，改送 `Content-Security-Policy-Report-Only`（只回報不攔截；瀏覽器主控台仍列出違規），用於部署後發現 CSP 擋到未預期資源時先恢復功能，不必改程式。
+
+#### 5.4.3 請求追蹤（`X-Request-ID`）
+
+`RequestIdFilter` 排在過濾鏈最前端（早於 Spring Security），每個回應都帶 `X-Request-ID` 並寫入日誌 MDC，讓使用者回報的 ID 直接對到後端日誌。沿用呼叫端帶入的值，但只接受 `[A-Za-z0-9._-]{1,64}`，否則重新產生 UUID——該值會被印進日誌，不驗證的話呼叫端可帶入換行字元偽造日誌行。詳見 [API_Error_Codes.md §3](./API_Error_Codes.md)。
+
+#### 5.4.4 CORS
+
+前端來源由 `app.cors.allowed-origins` 設定，執行環境以 **`APP_CORS_ALLOWED_ORIGINS`**（逗號分隔）覆寫，預設 `http://localhost:3000,http://localhost:8080`。因 `allowCredentials=true`，**不可使用 `*`**（Spring 會拒絕這個組合，由 `SecurityConfigCorsOriginsTest` 釘住）。非 localhost 部署（前端以 `NEXT_PUBLIC_API_URL` 指向正式後端網域並由瀏覽器跨源直連）必須設定此變數，否則所有 API 呼叫被 CORS 封鎖（DEF-265）。允許方法：`GET／POST／PUT／PATCH／DELETE／OPTIONS`；允許請求標頭：`Authorization`、`Content-Type`、`X-Tenant-ID`、`Idempotency-Key`；暴露回應標頭：`Authorization`、`X-RateLimit-*`、`Retry-After`、`X-Request-ID`。
 
 ---
 
@@ -582,9 +635,10 @@ SuperAdmin
 | 版本 | 日期 | 作者 | 變更說明 |
 |------|------|------|----------|
 | v1.0 | 2026-04-09 | Marcus (SD-Architect) | 初始版本 |
+| v1.1 | 2026-09-26 | Claude Code（Sprint 203） | 文件一致性檢查（DEF-280）：§4.2／§4.3 改為實際的扁平回應封包並指向新增的 [API_Error_Codes.md](./API_Error_Codes.md)；新增 §4.4 時間與時區慣例（DEF-269／271）；新增 §5.4 回應安全標頭、請求追蹤與 CORS（Sprint 191、197～202，DEF-265／278／279／280／281／282）。此前這些行為只存在於 Sprint 計畫與程式碼 |
 
 ---
 
 **文檔版本**: AISDLC v0.09
 **模板維護**: AISDLC Framework Team
-**最後更新**: 2026-04-09
+**最後更新**: 2026-09-26

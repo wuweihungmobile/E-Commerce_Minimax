@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.api.config;
 import java.util.Arrays;
 import java.util.List;
 
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -106,6 +107,11 @@ public class SecurityConfig {
                 })
             )
             .authorizeHttpRequests(auth -> auth
+                // 容器內部的 ERROR 分派（DEF-281）：防火牆拒絕請求等情況呼叫 sendError 後，Servlet 容器會對 /error
+                // 再分派一次，這次分派重新走過本過濾鏈、身分是匿名（JWT 過濾器預設不處理 ERROR 分派），
+                // 不放行就會把原本的 400 蓋成 401「需要驗證身份」。只限 ERROR 分派：直接請求 /error 是
+                // REQUEST 分派，仍受下方 anyRequest().authenticated() 約束。內容由 ApiErrorController 產生。
+                .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                 // Public auth endpoints
                 .requestMatchers("/v2/auth/register").permitAll()
                 .requestMatchers("/v2/auth/login").permitAll()

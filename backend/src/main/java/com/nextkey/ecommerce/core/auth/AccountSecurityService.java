@@ -1,6 +1,8 @@
 package com.nextkey.ecommerce.core.auth;
 
 import java.util.UUID;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
@@ -28,9 +30,11 @@ import lombok.extern.slf4j.Slf4j;
  * <p>與 {@link AuthService} 分開：這裡的流程都由「一封信裡的一次性連結」驅動，性質與登入／註冊不同，
  * 且不依賴 {@code AuthService} 的任何內部狀態。
  *
- * <p><b>已知限制（時序）</b>：申請重設連結時，「帳號存在」的路徑比「不存在」多做 Redis 與寄信，
- * 回應時間會有差異。目前的 Mock 寄信是即時的，差異可忽略；接上真實寄信服務（會阻塞）之後，
- * 應改為非同步寄送，否則會成為 Email 是否已註冊的時序側通道。回應內容本身兩種情況完全相同。
+ * <p><b>時序側通道防護（Sprint 211，DEF-290）</b>：申請重設連結時，「帳號存在」的路徑本會比「不存在」
+ * 多做一次寄信；Sprint 209 接上真實 SMTP（阻塞式網路呼叫）後，這個差異會被放大成可觀測的時序側通道，
+ * 洩漏 Email 是否已註冊。故此處把實際寄信動作丟給 {@link #passwordResetMailExecutor} 背景執行，
+ * {@link #requestPasswordReset} 回應前不等待寄信完成，兩種路徑的回應時間不再有差異。回應內容本身
+ * 兩種情況完全相同。
  */
 @Slf4j
 @Service
@@ -45,6 +49,12 @@ public class AccountSecurityService {
     private final EmailSender emailSender;
     private final RefreshTokenService refreshTokenService;
     private final LoginAttemptService loginAttemptService;
+
+    /**
+     * 只用來把「重設密碼」的實際寄信動作移出請求執行緒（見上方時序側通道說明）。虛擬執行緒成本極低，
+     * 這裡是唯一用途，不需要納入 Spring 生命週期管理——最差情況等同目前寄信失敗即放棄的既有行為。
+     */
+    private final Executor passwordResetMailExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
@@ -67,16 +77,19 @@ public class AccountSecurityService {
             return;
         }
         String token = tokenService.issue(Purpose.PASSWORD_RESET, user.getId());
-        try {
-            emailSender.send(user.getEmail(), "【E-Commerce】重設您的密碼",
-                    "您好，我們收到了重設密碼的申請。\n\n"
-                    + "請於 30 分鐘內點擊下列連結設定新密碼（連結只能使用一次）：\n"
-                    + linkTo("/reset-password", token) + "\n\n"
-                    + "如果這不是您本人的操作，請忽略這封信，您的密碼不會改變。");
-        } catch (EmailDeliveryException e) {
-            // 不可讓寄信失敗改變回應（否則失敗與否成為帳號是否存在的訊號）
-            log.error("Password reset mail delivery failed: user={}", user.getId(), e);
-        }
+        String body = "您好，我們收到了重設密碼的申請。\n\n"
+                + "請於 30 分鐘內點擊下列連結設定新密碼（連結只能使用一次）：\n"
+                + linkTo("/reset-password", token) + "\n\n"
+                + "如果這不是您本人的操作，請忽略這封信，您的密碼不會改變。";
+        // 實際寄信丟到背景執行緒：呼叫端不可因為這裡阻塞而讓回應時間洩漏帳號是否存在。
+        passwordResetMailExecutor.execute(() -> {
+            try {
+                emailSender.send(user.getEmail(), "【E-Commerce】重設您的密碼", body);
+            } catch (EmailDeliveryException e) {
+                // 不可讓寄信失敗改變回應（否則失敗與否成為帳號是否存在的訊號）
+                log.error("Password reset mail delivery failed: user={}", user.getId(), e);
+            }
+        });
     }
 
     /**

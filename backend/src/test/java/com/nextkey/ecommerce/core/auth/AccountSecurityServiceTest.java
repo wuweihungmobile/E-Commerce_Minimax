@@ -6,16 +6,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -97,8 +103,32 @@ class AccountSecurityServiceTest {
             service.requestPasswordReset(EMAIL);
 
             ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
-            verify(emailSender).send(eq(EMAIL), anyString(), body.capture());
+            verify(emailSender, timeout(2000)).send(eq(EMAIL), anyString(), body.capture());
             assertThat(body.getValue()).contains("http://app.test/reset-password?token=" + TOKEN);
+        }
+
+        @Test
+        @DisplayName("DEF-290: 寄信丟給背景執行緒，回應不等待寄信完成（否則會是帳號是否存在的時序側通道）")
+        void doesNotBlockOnMailDelivery() throws InterruptedException {
+            when(userRepository.findByEmailAndStatus(EMAIL, "ACTIVE")).thenReturn(Optional.of(user));
+            when(tokenService.tryAcquireSendSlot(Purpose.PASSWORD_RESET, userId)).thenReturn(true);
+            when(tokenService.issue(Purpose.PASSWORD_RESET, userId)).thenReturn(TOKEN);
+            CountDownLatch sendStarted = new CountDownLatch(1);
+            CountDownLatch releaseSend = new CountDownLatch(1);
+            doAnswer(invocation -> {
+                sendStarted.countDown();
+                // 模擬真實 SMTP 的阻塞：若 requestPasswordReset 同步等待這裡，測試會逾時失敗。
+                releaseSend.await(2, TimeUnit.SECONDS);
+                return null;
+            }).when(emailSender).send(any(), any(), any());
+
+            Instant start = Instant.now();
+            service.requestPasswordReset(EMAIL);
+            Duration elapsed = Duration.between(start, Instant.now());
+
+            assertThat(elapsed).isLessThan(Duration.ofMillis(500));
+            assertThat(sendStarted.await(1, TimeUnit.SECONDS)).as("背景執行緒應已開始寄信").isTrue();
+            releaseSend.countDown();
         }
 
         @Test
@@ -143,6 +173,7 @@ class AccountSecurityServiceTest {
             doThrow(new EmailDeliveryException("smtp down", null)).when(emailSender).send(any(), any(), any());
 
             assertThatCode(() -> service.requestPasswordReset(EMAIL)).doesNotThrowAnyException();
+            verify(emailSender, timeout(2000)).send(any(), any(), any());
         }
     }
 

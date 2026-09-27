@@ -76,4 +76,4 @@ Sprint 203～208 收尾後，使用者以 `AskUserQuestion` 選擇「真實寄�
 
 ## 9. Push
 
-**尚未 push。** 新功能，且上一輪 push（Sprint 208）已因本輪發現的 §4.2 問題被 pre-push 擋下一次；本輪修好後需重新走完整 push 流程。
+**已 push（2026-09-27，`8b0b0c0..b4fadc8 main -> main`，與 Sprint 209 一併推出；雲端 CI 全綠 run 36312251866）。** 以下為 push 前的記載： 新功能，且上一輪 push（Sprint 208）已因本輪發現的 §4.2 問題被 pre-push 擋下一次；本輪修好後需重新走完整 push 流程。

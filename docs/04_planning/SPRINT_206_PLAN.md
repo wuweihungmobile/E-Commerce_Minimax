@@ -79,7 +79,7 @@ Sprint 203 的 `AskUserQuestion`：「C（DEF-283）怎麼處理」→ 使用者
 
 ## 8. Push
 
-**尚未 push。** 使用者未授權；Sprint 203～206 完成後一併詢問。
+**已 push（2026-09-27，使用者回覆「請繼續完成任務，依照慣例commit + Push to Main」；Sprint 203～207 五個 commit 一併推出，`1953552..c92de38`；push 前輕量守門通過，雲端 CI 全綠 run 36290661252）。** 以下為 push 前的記載： 使用者未授權；Sprint 203～206 完成後一併詢問。
 
 ## 9. 下一步
 

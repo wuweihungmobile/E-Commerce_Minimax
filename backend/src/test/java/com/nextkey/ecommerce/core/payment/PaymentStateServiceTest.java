@@ -535,7 +535,7 @@ class PaymentStateServiceTest {
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(ErrorCode.E_6001);
             assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.SUCCESS);
-            verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any());
+            verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any(), any());
         }
 
         @Test
@@ -548,7 +548,7 @@ class PaymentStateServiceTest {
             when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
                     .thenReturn(Optional.of(success));
             when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
-            when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", BigDecimal.valueOf(1500), "customer"))
+            when(paymentGatewayFactory.processRefund(eq("STRIPE"), eq("pi_1"), eq(BigDecimal.valueOf(1500)), eq("customer"), any()))
                     .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
                             .success(false).errorMessage("card issuer declined refund").build());
             when(paymentRepository.applyRefundIfUnchanged(any(), any(), any(), any())).thenReturn(1);

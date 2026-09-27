@@ -71,19 +71,24 @@ public class PaymentGatewayFactory {
 
     /**
      * 處理退款
+     *
+     * <p>DEF-288：冪等鍵由呼叫端提供。原本這裡固定組成 {@code refund-<transactionId>}，同一筆付款的每次
+     * 部分退款都會送同一把鍵；只有呼叫端知道「這是第幾次邏輯退款」（累計已退額），所以鍵必須由它決定。
+     * 舊的四參數簽章刻意移除而非保留多載，讓遺漏的呼叫端在編譯期就失敗。
      */
     public PaymentGatewayRequestResponse.RefundResult processRefund(
             String paymentMethod,
             String transactionId,
             BigDecimal amount,
-            String reason) {
+            String reason,
+            String idempotencyKey) {
 
         PaymentGatewayRequestResponse.RefundRequest request =
                 PaymentGatewayRequestResponse.RefundRequest.builder()
                         .transactionId(transactionId)
                         .amount(amount)
                         .reason(reason)
-                        .idempotencyKey("refund-" + transactionId)
+                        .idempotencyKey(idempotencyKey)
                         .build();
 
         return getGateway(paymentMethod).processRefund(request);

@@ -212,13 +212,13 @@ class PaymentStateServiceStripeTest {
         when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
                 .thenReturn(Optional.of(success));
         when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
-        when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", BigDecimal.valueOf(1500), "customer"))
+        when(paymentGatewayFactory.processRefund(eq("STRIPE"), eq("pi_1"), eq(BigDecimal.valueOf(1500)), eq("customer"), any()))
                 .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
                         .success(true).refundId("re_1").status("succeeded").build());
 
         service.refundOrderPayment(ORDER_ID, null, "customer");
 
-        verify(paymentGatewayFactory).processRefund("STRIPE", "pi_1", BigDecimal.valueOf(1500), "customer");
+        verify(paymentGatewayFactory).processRefund(eq("STRIPE"), eq("pi_1"), eq(BigDecimal.valueOf(1500)), eq("customer"), any());
         assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
         assertThat(success.getStripeRefundId()).isEqualTo("re_1");
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
@@ -243,7 +243,7 @@ class PaymentStateServiceStripeTest {
 
         service.refundOrderPayment(ORDER_ID, null, "customer");
 
-        verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any());
+        verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any(), any());
         assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
     }
@@ -282,7 +282,7 @@ class PaymentStateServiceStripeTest {
         when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
                 .thenReturn(Optional.of(success));
         when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
-        when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", BigDecimal.valueOf(500), "damaged item"))
+        when(paymentGatewayFactory.processRefund(eq("STRIPE"), eq("pi_1"), eq(BigDecimal.valueOf(500)), eq("damaged item"), any()))
                 .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
                         .success(true).refundId("re_partial_1").status("succeeded").build());
 
@@ -304,7 +304,7 @@ class PaymentStateServiceStripeTest {
         when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
                 .thenReturn(Optional.of(success));
         when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
-        when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", BigDecimal.valueOf(500), "damaged item"))
+        when(paymentGatewayFactory.processRefund(eq("STRIPE"), eq("pi_1"), eq(BigDecimal.valueOf(500)), eq("damaged item"), any()))
                 .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
                         .success(true).refundId("re_partial_1").status("succeeded").build());
 
@@ -325,7 +325,7 @@ class PaymentStateServiceStripeTest {
         when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
                 .thenReturn(Optional.of(success));
         when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
-        when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", BigDecimal.valueOf(500), "damaged item"))
+        when(paymentGatewayFactory.processRefund(eq("STRIPE"), eq("pi_1"), eq(BigDecimal.valueOf(500)), eq("damaged item"), any()))
                 .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
                         .success(true).refundId("re_partial_1").status("succeeded").build());
         org.mockito.Mockito.doThrow(new RuntimeException("settlement lookup failed"))
@@ -350,7 +350,7 @@ class PaymentStateServiceStripeTest {
         when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.PARTIALLY_REFUNDED))
                 .thenReturn(Optional.of(partiallyRefunded));
         when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
-        when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", BigDecimal.valueOf(1000), "second refund"))
+        when(paymentGatewayFactory.processRefund(eq("STRIPE"), eq("pi_1"), eq(BigDecimal.valueOf(1000)), eq("second refund"), any()))
                 .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
                         .success(true).refundId("re_partial_2").status("succeeded").build());
 
@@ -376,7 +376,7 @@ class PaymentStateServiceStripeTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.E_6009);
-        verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any());
+        verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -415,7 +415,7 @@ class PaymentStateServiceStripeTest {
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.E_6009);
         verify(paymentRepository, never()).applyRefundIfUnchanged(any(), any(), any(), any());
-        verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any());
+        verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -430,7 +430,7 @@ class PaymentStateServiceStripeTest {
         when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
                 .thenReturn(Optional.of(success));
         when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
-        when(paymentGatewayFactory.processRefund("STRIPE", "pi_1", amount, "trailing zero"))
+        when(paymentGatewayFactory.processRefund(eq("STRIPE"), eq("pi_1"), eq(amount), eq("trailing zero"), any()))
                 .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
                         .success(true).refundId("re_tz_1").status("succeeded").build());
 
@@ -459,7 +459,7 @@ class PaymentStateServiceStripeTest {
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.E_6009);
 
-        verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any());
+        verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any(), any());
         verify(settlementAdjustmentService, never()).handleOrderRefund(any(), any(), any());
         verify(orderRepository, never()).save(any());
     }

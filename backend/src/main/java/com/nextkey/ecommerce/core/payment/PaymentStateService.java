@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.payment;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -267,7 +268,7 @@ public class PaymentStateService {
         // 記憶體裡已經呈現「已退款」——否則呼叫端若誤用這個已拋例外方法留下的物件會看到不一致的假象。
         if (featureToggleService.isFeatureEnabled(STRIPE_PAYMENT_ENABLED)
                 && payment.getPaymentMethod() == Payment.PaymentMethod.STRIPE) {
-            executeStripeRefund(orderId, payment, refundAmount, reason);
+            executeStripeRefund(orderId, payment, previousRefundedAmount, refundAmount, reason);
         }
         payment.setRefundedAmount(newRefundedAmount);
         payment.setStatus(newPaymentStatus);
@@ -320,13 +321,20 @@ public class PaymentStateService {
     }
 
     /** 呼叫 Stripe Refund（AI-2415 起支援指定金額），成功後存 stripeRefundId（覆蓋最後一次）。 */
-    private void executeStripeRefund(UUID orderId, Payment payment, BigDecimal refundAmount, String reason) {
+    private void executeStripeRefund(UUID orderId, Payment payment, BigDecimal refundedBefore,
+            BigDecimal refundAmount, String reason) {
         String paymentIntentId = payment.getStripePaymentIntentId();
         if (paymentIntentId == null) {
             throw new BusinessException(ErrorCode.E_6001, "Missing Stripe payment intent for refund");
         }
-        PaymentGatewayRequestResponse.RefundResult result =
-                paymentGatewayFactory.processRefund(GATEWAY_STRIPE, paymentIntentId, refundAmount, reason);
+        // DEF-288：冪等鍵綁定「這一次邏輯退款」＝付款意圖＋退款前累計已退額＋本次金額。原本恆為
+        // refund-<pi>，同一筆付款的每次部分退款都送同一把鍵：依 Stripe 文件，相同鍵＋不同金額會被拒、
+        // 相同鍵＋相同金額會回傳第一次的結果而不建立新退款，本地卻已累計兩次。累計額來自呼叫端 CAS
+        // 前讀到的值，故「Stripe 失敗、本地回滾後重試同一筆退款」會得到相同的鍵，仍由 Stripe 去重。
+        String idempotencyKey = "refund-" + paymentIntentId + "-" + refundedBefore.setScale(2, RoundingMode.HALF_UP)
+                .toPlainString() + "-" + refundAmount.setScale(2, RoundingMode.HALF_UP).toPlainString();
+        PaymentGatewayRequestResponse.RefundResult result = paymentGatewayFactory.processRefund(
+                GATEWAY_STRIPE, paymentIntentId, refundAmount, reason, idempotencyKey);
         if (!result.isSuccess()) {
             throw new BusinessException(ErrorCode.E_6001, "Stripe refund failed: " + result.getErrorMessage());
         }

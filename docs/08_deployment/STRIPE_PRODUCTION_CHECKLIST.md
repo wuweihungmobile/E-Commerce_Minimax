@@ -47,6 +47,7 @@
 - [ ] **付款失敗**：下單 → Checkout 使用拒絕測試卡（`4000 0000 0000 0002`）→ webhook `payment_intent.payment_failed` 送達 → 本地 Payment=FAILED
 - [ ] **退款**：對已付款訂單觸發退款 → Stripe Dashboard 顯示退款成功 → webhook `charge.refunded` 送達（或 service 主動退款路徑）→ 本地 Payment/Order=REFUNDED
 - [ ] **部分退款**（Sprint 56）：對已付款訂單退一部分金額 → 本地 Payment=`PARTIALLY_REFUNDED`、**Order 狀態不變**（訂單持續履約）；再退至累計全額 → Payment/Order=`REFUNDED`。運費不參與部分退款（PO 決策 2026-07-04）。退款金額小數位數超過 2 位會被拒絕（`E-6009`，Sprint 192）
+  - **必須在同一筆訂單上連續退兩次，且兩次間隔在 24 小時內**，並到 Stripe Dashboard 確認出現**兩筆**退款、金額各如預期（Sprint 207，DEF-288）。原本送給 Stripe 的冪等鍵對同一筆付款恆相同，依 Stripe 文件第二次會被拒或被當成重送而不建立新退款；修復後鍵已綁定累計已退額，**但這個行為只在本機以 WireMock 驗證過送出的鍵，從未對真實 Stripe 驗證**。建議兩次都試：一次金額不同、一次金額相同（例如先退 100 再退 100）。若兩次退款在 Dashboard 只看到一筆，本修復無效，請回報
 - [ ] **Connect onboarding**（Phase D-1 起）：賣家發起 onboarding → 導向 Stripe 代管 KYC 表單（測試模式可用假資料完成）→ 完成後 `account.updated` webhook 送達 → 本地 tenant `connect_onboarding_status=COMPLETE`
 - [ ] **分潤撥款 Transfer**（Phase D-2，Sprint 80）：租戶 Connect 為 `COMPLETE` 且該租戶 `STRIPE_TRANSFER_ENABLED` 開啟 → Admin 核准結算單（`APPROVED`）→ 後端呼叫 Stripe Transfer → 本地 Transfer=`COMPLETED`、結算單=`PAID`，Stripe Dashboard 可見對應 transfer。**反向也要驗**：Connect 未就緒或 toggle 關閉時，Transfer 應為 `SKIPPED_ONBOARDING_INCOMPLETE`（不撥款），補齊條件後可由管理端重試（`TransferController`）
 - [ ] **`transfer.reversed`**：在 Dashboard 收回一筆測試 transfer → webhook 送達 → 本地 Transfer=`REVERSED`、結算單回 `FAILED`（**不會自動重新分潤，也不處理資金收回**，見 §F）

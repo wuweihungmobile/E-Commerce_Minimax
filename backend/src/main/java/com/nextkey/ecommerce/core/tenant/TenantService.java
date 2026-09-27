@@ -904,6 +904,15 @@ public class TenantService {
             throw new BusinessException(ErrorCode.E_1001, "Invalid role: " + newRole);
         }
 
+        // DEF-289（Sprint 210）：比照 parseInviteRole 既有限制——STORE_OWNER 僅能透過開店審核流程
+        // 產生（Sprint 97），STORE_MANAGER 在 RolePermissionMapping 無對應權限、JWT 永遠拿不到授權，
+        // 是死角色。inviteMember 已擋下這兩種角色，但此端點先前完全沒有相同限制，可把既有成員的
+        // TenantMember.storeRole 直接改成 STORE_OWNER/STORE_MANAGER，形成與 inviteMember 不一致的
+        // 缺口（產生未經審核流程的第二位「店主」列，或指派永久失效的角色）。
+        if (storeRole != TenantMember.StoreRole.STORE_STAFF) {
+            throw new BusinessException(ErrorCode.E_1001, "Only STORE_STAFF is a valid role for this endpoint");
+        }
+
         // Cannot change the original StoreOwner's role
         if (member.getStoreRole() == TenantMember.StoreRole.STORE_OWNER) {
             throw new BusinessException(ErrorCode.E_4031, "Cannot change the owner's role");

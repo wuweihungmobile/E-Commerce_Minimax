@@ -1070,5 +1070,50 @@ class TenantServiceTest {
             verify(tenantMemberRepository, never()).save(any());
             verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
         }
+
+        @Test
+        @DisplayName("updateMemberRole：把角色設為 STORE_OWNER → 拒絕（DEF-289：STORE_OWNER 僅能透過開店審核流程產生）")
+        void updateMemberRole_newRoleStoreOwner_rejected() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            TenantMember staffMember = TenantMember.builder()
+                    .id(UUID.randomUUID()).tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.ACTIVE).storeRole(TenantMember.StoreRole.STORE_STAFF).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(staffMember));
+            // lenient：若角色白名單檢查被誤刪，流程會走到底並成功，而非巧合地因其他理由拋錯，
+            // 確保這個測試真正鎖住「角色檢查」本身，而不是被 updateRoleIfNotRemoved 的
+            // Mockito 預設回傳值（int 0 → E_2002）意外撐出一個假紅燈/假綠燈。
+            lenient().when(tenantMemberRepository.updateRoleIfNotRemoved(any(), any(), eq(TenantMember.MemberStatus.REMOVED)))
+                    .thenReturn(1);
+            lenient().when(tenantMemberRepository.save(any(TenantMember.class))).thenAnswer(inv -> inv.getArgument(0));
+            lenient().when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(buildInvitee()));
+
+            assertThrows(BusinessException.class,
+                    () -> tenantService.updateMemberRole(TEST_TENANT_ID, INVITEE_ID, "STORE_OWNER"));
+            verify(tenantMemberRepository, never()).save(any());
+            verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("updateMemberRole：把角色設為 STORE_MANAGER → 拒絕（DEF-289：無對應權限定義的死角色）")
+        void updateMemberRole_newRoleStoreManager_rejected() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            TenantMember staffMember = TenantMember.builder()
+                    .id(UUID.randomUUID()).tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.ACTIVE).storeRole(TenantMember.StoreRole.STORE_STAFF).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(staffMember));
+            lenient().when(tenantMemberRepository.updateRoleIfNotRemoved(any(), any(), eq(TenantMember.MemberStatus.REMOVED)))
+                    .thenReturn(1);
+            lenient().when(tenantMemberRepository.save(any(TenantMember.class))).thenAnswer(inv -> inv.getArgument(0));
+            lenient().when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(buildInvitee()));
+
+            assertThrows(BusinessException.class,
+                    () -> tenantService.updateMemberRole(TEST_TENANT_ID, INVITEE_ID, "STORE_MANAGER"));
+            verify(tenantMemberRepository, never()).save(any());
+            verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
+        }
     }
 }

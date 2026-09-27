@@ -1,7 +1,9 @@
 package com.nextkey.ecommerce.api.controller.settlement;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -121,6 +123,26 @@ public class SettlementController {
         boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
         SettlementStatementResponse response = settlementReviewer.rejectStatement(statementId, adminId, reason, isSuperAdmin);
         return ResponseEntity.ok(ApiResponse.success("Settlement statement rejected", response));
+    }
+
+    /**
+     * Admin: 手動觸發/補產結算單（DEF-287，Sprint 208）。{@code settlement:generate} 只授予
+     * SUPER_ADMIN（見 {@code RolePermissionMapping}），用於排程漏產補救或上線前 Stripe 測試模式走查。
+     * {@code periodEnd} 未指定則預設 {@code periodStart + 6} 天（比照週結算的天數）。
+     * 冪等：同租戶＋期間已有結算單會直接回傳既有的，不會重複產生。
+     */
+    @PostMapping("/admin/settlements/generate")
+    @PreAuthorize("hasAuthority('settlement:generate')")
+    public ResponseEntity<ApiResponse<SettlementStatementResponse>> generateStatement(
+            @RequestParam UUID tenantId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate periodStart,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate periodEnd) {
+        LocalDate resolvedPeriodEnd = periodEnd != null ? periodEnd : periodStart.plusDays(6);
+        log.info("Manually generate settlement statement: tenantId={}, periodStart={}, periodEnd={}",
+                tenantId, periodStart, resolvedPeriodEnd);
+        SettlementStatementResponse response =
+                settlementGenerator.generateStatementManually(tenantId, periodStart, resolvedPeriodEnd);
+        return ResponseEntity.ok(ApiResponse.success("Settlement statement generated", response));
     }
 
     /**

@@ -210,6 +210,26 @@ public class SettlementGenerator {
     }
 
     /**
+     * 手動觸發/補產結算單（DEF-287，Sprint 208）：{@code settlement:generate} 專用（僅 SUPER_ADMIN）。
+     *
+     * <p>用途：(1) {@link #generateWeeklyStatements} 當週某租戶失敗或漏產時的補產；(2) 上線前以
+     * Stripe 測試模式走查撥款時，不必等到下週一排程才有結算單可測。
+     *
+     * <p>刻意只加驗證與轉換，不重複實作防護：{@link #generateStatementForTenant} 既有的「同租戶＋
+     * 期間已有結算單就直接回傳既有的」冪等檢查與「原子認領訂單」併發防護，對排程與本方法一視同仁，
+     * 手動觸發不會讓同一筆訂單被兩張結算單重複結算。
+     */
+    @Transactional
+    public SettlementStatementResponse generateStatementManually(
+            UUID tenantId, LocalDate periodStart, LocalDate periodEnd) {
+        if (periodEnd.isBefore(periodStart)) {
+            throw new BusinessException(ErrorCode.E_9008, "periodEnd must not be before periodStart");
+        }
+        SettlementStatement statement = generateStatementForTenant(tenantId, periodStart, periodEnd);
+        return mapper.toStatementResponse(statement);
+    }
+
+    /**
      * 取得商家結算單列表（分頁）
      */
     @Transactional(readOnly = true)

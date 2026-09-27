@@ -2091,7 +2091,7 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 
 | 規則 | 說明 |
 |------|------|
-| `X-Idempotency-Key` | 所有 POST/PUT/DELETE 必帶，24h Redis 攔截　**【Sprint 203 修訂註記】此全域規範尚未落實：實作的標頭名為 `Idempotency-Key`（無 `X-` 前綴），且目前只有 `POST /v2/bookings`、`POST /v2/checkout/mixed` 兩個端點讀取，且為選帶（`required = false`）；見 DEF-285** |
+| `X-Idempotency-Key` | 所有 POST/PUT/DELETE 必帶，24h Redis 攔截　**【Sprint 208 修訂註記，取代 Sprint 203 版】DEF-285 拍板：範圍收斂為「涉及金流或庫存副作用的寫入端點」，不要求全部 174 個 POST/PUT/DELETE 端點——多數端點（評價、媒體、地址簿等）重送的代價低且可由使用者自行察覺重複，強制所有呼叫端都要生成並保存冪等鍵，成本大於它防的風險。標頭名維持實作現況 `Idempotency-Key`（無 `X-` 前綴）：這是目前 IETF 對自訂標頭的建議做法，`X-` 前綴已在 RFC 6648 中被建議棄用，改 PRD 對齊實作而非反過來。現況（Sprint 208）：`POST /v2/bookings`、`POST /v2/checkout/mixed`、`POST /v2/orders` 三個建單端點皆選帶（`required = false`，向後相容）；Stripe Checkout（`POST /v2/orders/{id}/pay/checkout`）與退款（DEF-288）另有以伺服器端狀態（DB 唯一索引／退款累計額）為準的冪等防護，不依賴用戶端標頭。**仍未解決**：兩個沒有共用冪等鍵的獨立請求對同一購物車的併發競態（推論、未重現，見 [DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md) DEF-285）；其餘約 160 個非金流端點未逐一核對。** |
 | `X-Tenant-ID` | **B 端 API（`/api/v2/dashboard/*`）必須攜帶**。單租戶用戶：系統自動使用唯一 Tenant ID（向後相容）；多租戶用戶：**必須**明確指定，否則回傳 `E-2003 TENANT_CONTEXT_AMBIGUOUS`（400）；不存在的 tenant_id 回傳 `E-2002 CROSS_TENANT_ACCESS_DENIED`（403）。C 端 API（`/api/v2/listings` 等）不需此 Header，跨租戶查詢不受限制。 |
 | 錯誤格式 | `{ "error": { "code": "E-XXXX", "message": "...", "details": [...], "requestId": "...", "timestamp": "..." } }`　**【Sprint 203 修訂註記】實作為扁平封包，以 [API_Error_Codes.md](../02_architecture/API_Error_Codes.md) 為準（DEF-280）** |
 | 分頁格式 | `?page=0&size=20&sort=createdAt,desc` |

@@ -14,13 +14,16 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.OrderDto;
+import com.nextkey.ecommerce.core.idempotency.IdempotencyService;
 import com.nextkey.ecommerce.core.order.OrderService;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,17 +40,61 @@ import lombok.extern.slf4j.Slf4j;
 public class OrderController {
 
     private final OrderService orderService;
+    private final IdempotencyService idempotencyService;
 
     /**
-     * 建立訂單（從購物車）
+     * 建立訂單（從購物車）。
+     *
+     * <p>DEF-285（Sprint 208）：本端點原本是全庫寫入端點盤點（Sprint 207）中，金流關鍵路徑裡唯一
+     * 完全沒有冪等保護的一個——{@code BookingController.createBooking}／{@code CheckoutController
+     * .checkoutMixedCart} 都已支援。比照兩者既有作法，選帶 {@code Idempotency-Key}（非 {@code X-}
+     * 前綴，PRD §9.17 已修訂為以實作為準）：帶了就走 Redis 檢查並快取回應，不帶則維持原行為
+     * （向後相容既有呼叫端）。
+     *
+     * <p>解決的問題：同一個邏輯建單請求因網路逾時被重送（PRD 原文的動機）。**不解決**兩個
+     * 沒有共用鍵的獨立請求對同一購物車的併發競態（見 SPRINT_207_PLAN.md §2.1，該項仍待處理，
+     * 併入 DEF-285 的後續範圍）。
      */
     @PostMapping
     @PreAuthorize("hasAuthority('order:create')")
     public ResponseEntity<ApiResponse<OrderDto.OrderResponse>> createOrder(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody OrderDto.CreateRequest request) {
-        OrderDto.OrderResponse order = orderService.createOrderFromCart(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Order created successfully", order));
+
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            OrderDto.OrderResponse order = orderService.createOrderFromCart(request);
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(ApiResponse.success("Order created successfully", order));
+        }
+
+        if (!idempotencyService.isValidUuidV4(idempotencyKey)) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("E-9004", "Invalid Idempotency-Key format. Must be UUID v4"));
+        }
+
+        if (!idempotencyService.checkAndMark(idempotencyKey)) {
+            OrderDto.OrderResponse storedResponse = idempotencyService.getStoredResponse(idempotencyKey);
+            if (storedResponse != null) {
+                log.info("Returning cached response for idempotent key: {}", idempotencyKey);
+                return ResponseEntity.ok(ApiResponse.success(storedResponse));
+            }
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error(ErrorCode.E_6005.getCode(),
+                            "Request with this Idempotency-Key is still being processed"));
+        }
+
+        boolean completed = false;
+        try {
+            OrderDto.OrderResponse order = orderService.createOrderFromCart(request);
+            idempotencyService.markCompleted(idempotencyKey, order);
+            completed = true;
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(ApiResponse.success("Order created successfully", order));
+        } finally {
+            if (!completed) {
+                idempotencyService.remove(idempotencyKey);
+            }
+        }
     }
 
     /**

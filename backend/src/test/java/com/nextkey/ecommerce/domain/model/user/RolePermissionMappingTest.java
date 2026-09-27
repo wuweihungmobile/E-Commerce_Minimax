@@ -149,6 +149,15 @@ class RolePermissionMappingTest {
         assertThat(mapping.hasPermission(User.UserRole.SUPER_ADMIN, Permission.NOTIFICATION_CREATE)).isTrue();
     }
 
+    @Test
+    @DisplayName("settlement:generate 僅 SUPER_ADMIN 持有（DEF-287，Sprint 208）：ADMIN/CFO/STORE_OWNER 皆無")
+    void settlementGenerate_isSuperAdminOnly() {
+        assertThat(mapping.hasPermission(User.UserRole.SUPER_ADMIN, Permission.SETTLEMENT_GENERATE)).isTrue();
+        assertThat(mapping.hasPermission(User.UserRole.ADMIN, Permission.SETTLEMENT_GENERATE)).isFalse();
+        assertThat(mapping.hasPermission(User.UserRole.CFO, Permission.SETTLEMENT_GENERATE)).isFalse();
+        assertThat(mapping.hasPermission(User.UserRole.STORE_OWNER, Permission.SETTLEMENT_GENERATE)).isFalse();
+    }
+
     // ── DEF-191（Sprint 152）：SELLER 有 order:update 卻無 order:create，
     // 曾導致能把訂單確認到 CONFIRMED 卻無法建立物流單完成出貨。修法是把
     // LogisticsController.createLogistics 的 @PreAuthorize 改用 order:update，

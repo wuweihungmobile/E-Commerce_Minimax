@@ -212,7 +212,7 @@ public class GlobalExceptionHandler {
     private HttpStatus mapErrorCodeToStatus(final ErrorCode errorCode) {
         return switch ( errorCode) {
             case E_1000, E_1001, E_1002, E_1003, E_1004 -> HttpStatus.UNAUTHORIZED;
-            case E_1005, E_1006, E_2000, E_2006, E_3000, E_3003, E_3006, E_3007, E_4000, E_4006, E_4041,
+            case E_1006, E_2000, E_2006, E_3000, E_3003, E_3006, E_3007, E_4000, E_4006, E_4041,
                     E_4100, E_4101, E_4102, E_4103, E_4105, E_5000, E_5003, E_5005, E_5013, E_5016,
                     E_6000, E_7000, E_7001, E_7003, E_7007, E_7500, E_7501, E_7503, E_7504,
                     E_8000, E_8002, E_8003, E_8004, E_8005, E_8006, E_8008,
@@ -227,7 +227,10 @@ public class GlobalExceptionHandler {
             // Sprint 153：E_1008 原本掛在 E_1000~E_1004 這組 UNAUTHORIZED（Sprint 78 stub 時代預留，
             // 從未真正拋出過），語意上「OAuth 帳號已綁定其他使用者」屬於資料衝突而非認證失敗，
             // 移到與 E_4106/E_1010 同組的 CONFLICT，比照 E_2003（已存在類）語意更貼近。
-            case E_4106, E_1010, E_1008, E_1086, E_1093, E_1094, E_3005, E_4091, E_4092, E_5014,
+            // Sprint 208（DEF-284）：E_1005「電子郵件已被註冊」原掛在上面的 NOT_FOUND 組，與同語意的
+            // E_2003／E_1008／E_3005／E_4092 等「已存在」類不一致（唯一被 404 的例外）；grep 確認前端
+            // 與任何已知呼叫端皆未依賴這個 404，改到這裡才與其他「已存在」錯誤一致。
+            case E_4106, E_1010, E_1008, E_1005, E_1086, E_1093, E_1094, E_3005, E_4091, E_4092, E_5014,
                     E_7006, E_8010 -> HttpStatus.CONFLICT;
             case E_3001, E_3002, E_3008, E_4008, E_5001, E_5006, E_6004, E_6005, E_7002, E_7010,
                     E_5010, E_5011, E_5012, E_6009, E_7005, E_7009, E_8001 -> HttpStatus.UNPROCESSABLE_ENTITY;

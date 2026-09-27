@@ -63,6 +63,9 @@ public enum Permission {
 
     // ========== Settlement Permissions（Sprint 86） ==========
     SETTLEMENT_REVERSE("settlement:reverse", "結算單逆轉（SuperAdmin/財務長雙重授權）"),
+    // Sprint 208（DEF-287）：手動觸發/補產結算單。刻意不加入任何角色的 EnumSet，只靠 SUPER_ADMIN
+    // 的 EnumSet.allOf(Permission.class) 取得——比照 NOTIFICATION_CREATE 限縮為 SUPER_ADMIN 專用的既有作法。
+    SETTLEMENT_GENERATE("settlement:generate", "手動觸發/補產結算單（SuperAdmin 專用）"),
 
     // ========== Support Ticket Permissions（Sprint 91） ==========
     SUPPORT_TICKET_READ("support_ticket:read", "檢視客服工單"),

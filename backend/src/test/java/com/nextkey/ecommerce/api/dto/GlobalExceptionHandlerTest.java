@@ -45,7 +45,7 @@ class GlobalExceptionHandlerTest {
         }
 
         // 404 NOT_FOUND
-        for (ErrorCode code : new ErrorCode[] {ErrorCode.E_1005, ErrorCode.E_1006, ErrorCode.E_2000,
+        for (ErrorCode code : new ErrorCode[] {ErrorCode.E_1006, ErrorCode.E_2000,
                 ErrorCode.E_2006, ErrorCode.E_3000, ErrorCode.E_3003, ErrorCode.E_3006, ErrorCode.E_3007,
                 ErrorCode.E_4000, ErrorCode.E_4006, ErrorCode.E_4041, ErrorCode.E_4100, ErrorCode.E_4101,
                 ErrorCode.E_4102, ErrorCode.E_4103, ErrorCode.E_4105, ErrorCode.E_5000, ErrorCode.E_5003,
@@ -65,9 +65,11 @@ class GlobalExceptionHandlerTest {
         }
 
         // 409 CONFLICT
-        for (ErrorCode code : new ErrorCode[] {ErrorCode.E_2003, ErrorCode.E_4106, ErrorCode.E_1008,
-                ErrorCode.E_1010, ErrorCode.E_1086, ErrorCode.E_1093, ErrorCode.E_1094, ErrorCode.E_3005,
-                ErrorCode.E_4091, ErrorCode.E_4092, ErrorCode.E_5014, ErrorCode.E_7006, ErrorCode.E_8010}) {
+        // Sprint 208（DEF-284）：E_1005 從 404 移到這裡，見 GlobalExceptionHandler 的同編號註解。
+        for (ErrorCode code : new ErrorCode[] {ErrorCode.E_2003, ErrorCode.E_4106, ErrorCode.E_1005,
+                ErrorCode.E_1008, ErrorCode.E_1010, ErrorCode.E_1086, ErrorCode.E_1093, ErrorCode.E_1094,
+                ErrorCode.E_3005, ErrorCode.E_4091, ErrorCode.E_4092, ErrorCode.E_5014, ErrorCode.E_7006,
+                ErrorCode.E_8010}) {
             expected.put(code, HttpStatus.CONFLICT);
         }
 

@@ -109,10 +109,13 @@ class AuthControllerIntegrationTest {
 
         when(userRepository.existsByEmail(TEST_EMAIL)).thenReturn(true);
 
+        // Sprint 208（DEF-284）：測試名稱／DisplayName 從一開始就寫「returns409」，但斷言原本
+        // 檢查 404（isNotFound）——名字與斷言互相矛盾，是本次修復前就存在的既有不一致。
+        // mapErrorCodeToStatus 把 E_1005 移入 CONFLICT 組後，斷言改為與名稱一致的 409。
         mockMvc.perform(post("/v2/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isNotFound())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("E-1005"));
     }

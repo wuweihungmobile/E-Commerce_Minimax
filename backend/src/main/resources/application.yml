@@ -51,6 +51,27 @@ spring:
         jwt:
           issuer-uri: ${JWT_ISSUER_URI:https://placeholder.local}
 
+  # 真實寄信服務：Google Workspace SMTP（Sprint 209，接上 DEF-252／253）。
+  # username 留空表示尚未設定——SmtpEmailSender 靠 spring.mail.username 存在與否決定要不要啟用
+  # （@ConditionalOnProperty），留空時完全不建立該 bean，維持 LoggingEmailSender 既有行為
+  # （本機開發／CI／既有測試不受影響，含 E2E 從日誌取一次性連結的機制）。
+  # password 須為應用程式密碼（App Password），不是登入密碼；該 Google 帳戶需先開啟兩步驟驗證。
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
 # JWT Configuration
 jwt:
   secret: ${JWT_SECRET:your-256-bit-secret-key-change-in-production-min-32-chars}
@@ -64,6 +85,11 @@ app:
   cors:
     # 逗號分隔多個前端來源；正式環境以 APP_CORS_ALLOWED_ORIGINS 覆寫（不可用 *，因 allowCredentials=true）
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8080}
+  mail:
+    # 寄件位址：預設沿用 spring.mail.username（一定能通過 Gmail 驗證）。改成其他位址前，
+    # 須先在該 Google 帳戶的「設定 → 帳戶與匯入 → 代收郵件」新增並驗證為寄件別名，否則 Gmail
+    # 會拒絕寄送或直接改回驗證帳號。
+    from: ${SMTP_FROM_ADDRESS:}
 
 # Storage (MinIO/S3)
 storage:
@@ -114,3 +140,10 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+  health:
+    # Sprint 209：spring-boot-starter-mail 存在即自動註冊 MailHealthIndicator，會對外連
+    # SMTP 伺服器做即時連線測試。整體應用健康狀態（k8s/docker healthcheck、部署守門用）
+    # 不該因為 Gmail SMTP 短暫不通就整個判定 DOWN——寄信只是輔助功能（忘記密碼／Email 驗證），
+    # 不是核心服務；停用後改由 EmailSender.canDeliver()／寄送時的例外處理各自負責。
+    mail:
+      enabled: false

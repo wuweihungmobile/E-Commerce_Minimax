@@ -11,6 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 209 | v2030.04.66-01 | - | 2026-09-27 | **接上真實寄信服務（Google Workspace SMTP）**——使用者對「真實寄信服務要接哪一個」選 Other：「我使用google workspace，請改使用這個」。新增 `SmtpEmailSender`（`@ConditionalOnExpression` 判斷 `spring.mail.username` 是否非空才啟用，取代 `LoggingEmailSender`）。**過程中用真實 Spring context 驗證抓到兩個單元測試看不到的問題**：(1) 一開始用 `@ConditionalOnProperty` 判斷不出「YAML 給了空字串預設值」與「真的沒設定」的差異，完全沒設定 SMTP 的環境也會誤判為已設定；(2) `spring-boot-starter-mail` 自動掛的 `MailHealthIndicator` 會對外連 `smtp.gmail.com`，在 act 容器內連不出去，拖累 `/api/actuator/health` 逾時，**實際擋下了 Sprint 208 的 push**（`schema-gate` 150 秒健康等待失敗）；已用 `management.health.mail.enabled: false` 停用。單元 1788（+3）／整合 568（+3）／checkstyle 0，4 種突變全被抓到。**誠實揭露**：沒有真實憑證，未對 Google 帳號驗證過、未真的寄出過一封信，需使用者提供 `SMTP_USERNAME`／`SMTP_PASSWORD`（應用程式密碼）並手動測試收信。詳見 [SPRINT_209_PLAN.md](SPRINT_209_PLAN.md) | ⏳ 待 push（尚未 push；上一輪 push 因本輪發現的問題被擋下一次，修好後需重新走完整流程） |
 | Sprint 208 | v2030.04.65-01 | - | 2026-09-27 | **DEF-287／285／284 三項待辦（1 修復 + 1 決策落實 + 1 修復）**——使用者選 DEF-287 後貼上完整五項清單要求「請依序做完」。新增 `POST /v2/admin/settlements/generate`（SUPER_ADMIN 專用，DEF-287 結案）；PRD §9.17 冪等規範收斂為金流/庫存關鍵端點並補上 `POST /v2/orders` 的 `Idempotency-Key`（DEF-285 決策落實，購物車併發競態與約 160 個非金流端點仍未查）；`E_1005` 從 404 改 409（DEF-284 結案，另修好一支名稱與斷言矛盾的既有整合測試）。單元 1785（+11）／整合 565／checkstyle 0，紅燈先行、多種突變全被抓到。剩兩項（真實寄信服務選型、維運三件事＋Stripe 走查）需人工憑證或環境操作，AI 無法完成。詳見 [SPRINT_208_PLAN.md](SPRINT_208_PLAN.md) | ⏳ 待 push（尚未 push；含新功能與一個 API 契約變更，不在免確認授權範圍） |
 | Sprint 207 | v2030.04.64-01 | - | 2026-09-27 | **`DEF-285` 盤點的前置步驟，順帶修復 Stripe 退款冪等鍵（新登記並結案 `DEF-288`）**——使用者回覆「需要我操作的部分，先行跳過」（維運三件事、Stripe 走查），剩下的三項待辦（`DEF-284`／`285`／`287`）追蹤表都標明需使用者決定，故只做 `DEF-285` 註記的「先做的一步」（不需決定）：盤點金流關鍵寫入端點的重送保護（174 個寫入端點只查了訂單／結帳／訂房／付款／退款，其餘約 160 個未查）。**發現**：`PaymentGatewayFactory.processRefund` 把 Stripe 冪等鍵固定為 `refund-<PaymentIntent id>`，同一筆付款每次部分退款都送同一把鍵；以 WireMock（service→factory→真實 gateway 全走真的）**驗證了送出的鍵相同**，Stripe 對同鍵的反應依文件推論、**未對真實 Stripe 驗證**（無金鑰）。**修復**：鍵綁定「付款意圖＋退款前累計已退額＋本次金額」；factory 改由呼叫端傳鍵並移除舊四參數簽章。新增單元 3 個（紅燈先行；3 種突變全被抓到）。`POST /v2/orders` 併發重複下單為**推論、未重現**，併入 `DEF-285`。`STRIPE_PRODUCTION_CHECKLIST.md` §D 要求走查連續退兩次。詳見 [SPRINT_207_PLAN.md](SPRINT_207_PLAN.md) | ✅ 已 push（2026-09-27，`1953552..c92de38 main -> main`，Sprint 203～207 五個 commit 一併推出；push 前輕量守門通過（backend-unit＋schema 漂移＋frontend），雲端 CI 全綠 run 36290661252（Backend Unit／Backend Integration & Package／Frontend Lint & Build 三個 job 皆 success）；使用者回覆「請繼續完成任務，依照慣例commit + Push to Main」） |
 | Sprint 206 | v2030.04.63-01 | - | 2026-09-27 | **Tomcat 連接器層的錯誤回應改回 JSON 封包（`DEF-283` 結案；C）**——使用者在 Sprint 203 選「先實測可行性，再決定」。**原記錄的判斷有誤**：Sprint 202 推論「應用程式碼修不到、需 Tomcat 設定或前方代理」，未實測；本輪以真實 Tomcat 實測，自訂 Host 的 `ErrorReportValve`（`ApiErrorReportValve`，由 `ApiErrorReportValveCustomizer` 註冊）能讓 `%2f`、`%5C` 這類由連接器在進入 Servlet 前拒絕的請求回 JSON 封包＋`X-Request-ID`（與內容一致）＋與一般回應逐值相同的 8 個安全標頭，且**不放寬任何 Tomcat 規則**（請求依舊被 Tomcat 擋在應用之外，日誌只記狀態碼與 requestId、不含路徑）。順帶修正 `%zz`、超長路徑、context path 外的 `/`（原為 HTML 404）。封包對應抽成 `ContainerErrorResponse`，與 `ApiErrorController` 共用單一來源。放寬 `ALLOW_ENCODED_SLASH` 的方案**未實測**（valve 已滿足、且會移除一層防護）。**驗證**：真實 Tomcat 的 `RANDOM_PORT` 整合測試 IT-ERRDISP-07（3 路徑）／08、`ContainerErrorResponseTest`（7）；**4 種突變全被抓到**；單元 **1771**（+7）、整合 **565**（+4）、checkstyle 0 違規、E2E **76 passed／4 skipped／0 failed**。**誠實揭露**：valve 是 Tomcat 內部 API 擴充點（大版本升級須確認相容）；我踩到 zsh 的 `path` 變數會洗掉 PATH 的陷阱（已記憶）；**維運三件事（`X-Forwarded-Proto`、staging CSP、Sprint 198 若已部署送 `max-age=0`）AI 做不到，仍在使用者手上**。詳見 [SPRINT_206_PLAN.md](SPRINT_206_PLAN.md) | ✅ 已 push（2026-09-27，`1953552..c92de38 main -> main`，Sprint 203～207 五個 commit 一併推出；push 前輕量守門通過（backend-unit＋schema 漂移＋frontend），雲端 CI 全綠 run 36290661252（Backend Unit／Backend Integration & Package／Frontend Lint & Build 三個 job 皆 success）；使用者回覆「請繼續完成任務，依照慣例commit + Push to Main」） |
@@ -200,11 +201,11 @@
 
 | 項目 | 數值 |
 |------|------|
-| 建立 Release Tag 次數 | 179 (Sprint 10~208 中已建 row 者，逐列計數；Sprint 8-9 未正式 Release）。⚠️ **既有落差揭露**：本欄為**文件記帳**（有 row 即計一次），與實際 git tag 不符——`git tag` 實際只有 14 個、最新為 `v2026.08.01-01`，本表 `v2030.xx` 系列編號從未真正建立為 git tag。此落差非本輪造成，僅記錄不擅自改動計數慣例 |
+| 建立 Release Tag 次數 | 180 (Sprint 10~209 中已建 row 者，逐列計數；Sprint 8-9 未正式 Release）。⚠️ **既有落差揭露**：本欄為**文件記帳**（有 row 即計一次），與實際 git tag 不符——`git tag` 實際只有 14 個、最新為 `v2026.08.01-01`，本表 `v2030.xx` 系列編號從未真正建立為 git tag。此落差非本輪造成，僅記錄不擅自改動計數慣例 |
 | 已 push（已 Release） | 178 (Sprint 199、200、201、202、203～207 push 後雲端 CI 全綠，最新 run 36290661252) |
-| 待 push（Tag 已建、尚未 push） | 1 (Sprint 208) |
+| 待 push（Tag 已建、尚未 push） | 2 (Sprint 208、209；Sprint 208 曾嘗試 push 但被 pre-push 擋下，將與 209 一併重推) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release Tag | v2030.04.65-01 (Sprint 208) |
+| 最近一次 Release Tag | v2030.04.66-01 (Sprint 209) |
 | 最近一次已 push Release | v2030.04.64-01 (Sprint 207，2026-09-27，commit `c92de38`，雲端 CI 已確認全綠，run 36290661252) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release Tag 開始 | Sprint 10（⚠️ **連續性已中斷**：Sprint 68/69/70/74/75/76/78/80~92 共 20 個 Sprint 未建 row，該期間 tracker 未同步維護，非未交付） |
@@ -528,6 +529,7 @@ Sprint 35  → ⏳ Tag 已建 (v2027.02.27-01)  [待 push，S32~S35 累積批次
 
 | 版本 | 日期 | 修改內容 |
 |------|------|----------|
+| v3.35 | 2026-09-27 | 新增 Sprint 209 row（接上真實寄信服務 Google Workspace SMTP；記錄 Sprint 208 push 被本輪發現的問題擋下一次）並同步統計區（建立 Tag 次數 180、待 push 2、最近 Tag 為 Sprint 209）。狀態標為「⏳ 待 push」，使用者未授權 push |
 | v3.34 | 2026-09-27 | 新增 Sprint 208 row（DEF-287／285／284 三項待辦：結算單手動觸發入口、PRD 冪等規範決策落實、`E_1005` 狀態碼修正）並同步統計區（建立 Tag 次數 179、待 push 1、最近 Tag 為 Sprint 208）。狀態標為「⏳ 待 push」，使用者未授權 push |
 | v3.33 | 2026-09-27 | **回填 Sprint 203～207 的 push 狀態**：`1953552..c92de38 main -> main` 已 push（使用者回覆「請繼續完成任務，依照慣例commit + Push to Main」），push 前輕量守門（backend-unit＋schema 漂移＋frontend）通過，✅ 雲端 CI 全綠（run 36290661252，三個 job 皆 success）。同步統計區（已 push 178、待 push 0、最近一次已 push 為 Sprint 207）。注意：push 前**未**跑 `make validate-release`（E2E 在 Sprint 206 收尾時跑過 76 passed，之後只有 Sprint 207 的後端退款鍵變動）。 |
 | v3.32 | 2026-09-27 | 新增 Sprint 207 row（`DEF-285` 金流關鍵寫入端點盤點；新登記並結案 `DEF-288` Stripe 退款冪等鍵；新增單元 3 個，含 3 種突變驗證）並同步統計區（建立 Tag 次數 178、待 push 5、最近 Tag 為 Sprint 207）。狀態標為「⏳ 待 push」，使用者未授權 push |

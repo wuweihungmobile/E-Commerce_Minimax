@@ -27,15 +27,12 @@ import org.springframework.web.client.RestTemplate;
 
 import com.nextkey.ecommerce.api.dto.AuthResponse;
 import com.nextkey.ecommerce.api.dto.OAuthDto;
-import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.core.auth.AuthService;
 import com.nextkey.ecommerce.domain.model.user.OAuthAccount;
 import com.nextkey.ecommerce.domain.model.user.OAuthProvider;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.OAuthAccountRepository;
-import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
-import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
-import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
@@ -62,8 +59,7 @@ public class OAuthService {
 
     private final UserRepository userRepository;
     private final OAuthAccountRepository oAuthAccountRepository;
-    private final TenantRepository tenantRepository;
-    private final JwtTokenService jwtTokenService;
+    private final AuthService authService;
     private final RestTemplate restTemplate;
 
     @Value("${oauth.google.client-id:}")
@@ -92,14 +88,10 @@ public class OAuthService {
         // 2. 查找或創建用戶
         User user = findOrCreateOAuthUser(request.getProvider(), userInfo);
 
-        // 3. 獲取租戶
-        Tenant tenant = user.getTenantId() != null
-                ? tenantRepository.findById(user.getTenantId()).orElse(null)
-                : tenantRepository.findById(UUID.fromString(AppConstants.SYSTEM_TENANT_ID)).orElse(null);
-
-        // 4. 生成 JWT token
+        // 3. 簽發 session（DEF-296：帳號狀態、refresh token 登記、租戶解析一律與密碼登入共用 AuthService 的同一份邏輯）
+        AuthResponse response = authService.completeLogin(user);
         log.info("OAuth login successful for user: {} via {}", user.getEmail(), request.getProvider());
-        return generateAuthResponse(user, tenant);
+        return response;
     }
 
     /**
@@ -196,6 +188,12 @@ public class OAuthService {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(accessToken);
         Map<String, Object> userInfo = getJson(GOOGLE_USERINFO_URL, headers, OAuthProvider.GOOGLE);
+
+        // DEF-296：findOrCreateOAuthUser 會憑 email 自動連結既有帳號、並把新帳號標為已驗證，所以只能接受 Google 已驗證的
+        // email（比照 GitHub 只取 verified 信箱）。v2 userinfo 的欄位名是 verified_email（OIDC 端點才叫 email_verified）。
+        if (!Boolean.TRUE.equals(userInfo.get("verified_email"))) {
+            throw new BusinessException(ErrorCode.E_9903, "Google account email is not verified");
+        }
 
         return OAuthUserInfo.builder()
                 .provider(OAuthProvider.GOOGLE.getProviderId())
@@ -356,7 +354,8 @@ public class OAuthService {
         }
 
         // 3. 創建新用戶
-        UUID systemTenantId = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
+        // DEF-296：比照 register（DEF-244）不帶任何租戶——租戶由 tenant_members 決定。原本寫死 SYSTEM 租戶，
+        // 而開店核准只建 tenant_members、不改 User.tenantId，登入時「tenantId 非 null 就直接用」，店主永遠拿到 SYSTEM。
         User newUser = User.builder()
                 .email(userInfo.getEmail())
                 .fullName(userInfo.getName())
@@ -364,7 +363,6 @@ public class OAuthService {
                 .role(User.UserRole.BUYER)
                 .status("ACTIVE")
                 .emailVerified(true) // OAuth provider 已驗證 email
-                .tenantId(systemTenantId)
                 .metadata(new HashMap<>())
                 .build();
         newUser = userRepository.save(newUser);
@@ -379,33 +377,6 @@ public class OAuthService {
 
         log.info("Created new OAuth user: {}", newUser.getEmail());
         return newUser;
-    }
-
-    private AuthResponse generateAuthResponse(final User user, final Tenant tenant) {
-        String tenantId = tenant != null ? tenant.getId().toString() : null;
-
-        String accessToken = jwtTokenService.generateAccessToken(
-                user.getId(),
-                user.getEmail(),
-                user.getRole().name(),
-                tenantId
-        );
-
-        String refreshToken = jwtTokenService.generateRefreshToken(user.getId());
-
-        return AuthResponse.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
-                .tokenType("Bearer")
-                .expiresIn(jwtTokenService.getAccessTokenExpiration())
-                .user(AuthResponse.UserInfo.builder()
-                        .id(user.getId())
-                        .email(user.getEmail())
-                        .fullName(user.getFullName())
-                        .role(user.getRole().name())
-                        .tenantId(tenantId)
-                        .build())
-                .build();
     }
 
     /**

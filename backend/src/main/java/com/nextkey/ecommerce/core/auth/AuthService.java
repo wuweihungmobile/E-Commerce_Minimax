@@ -150,15 +150,30 @@ public class AuthService {
 
         loginAttemptService.resetAttempts(email);
 
-        // Update last login
+        log.info("User logged in: {}", user.getEmail());
+
+        return completeLogin(user);
+    }
+
+    /**
+     * 身分已驗證（密碼或 OAuth provider）之後簽發 session 的唯一入口（DEF-296）。
+     *
+     * <p>{@code OAuthService} 原本自己複製了一份 JWT 簽發，沒有跟上這裡後來的修正：不檢查帳號狀態（停權帳號照樣登入）、
+     * refresh token 沒有登記（換發必定失敗）、租戶解析沒有 {@code tenant_members} 回退。新增登入方式時一律呼叫本方法，
+     * 不要再自己產生 token。
+     */
+    @Transactional
+    public AuthResponse completeLogin(final User user) {
+        // 密碼登入已由 findByEmailAndStatus 篩掉非 ACTIVE 帳號（回 E-1001，不透露帳號是否存在）；
+        // 這裡是其他登入方式的防線，比照 refreshToken() 回 E-1004。
+        if (!"ACTIVE".equals(user.getStatus())) {
+            throw new BusinessException(ErrorCode.E_1004, "Account not active");
+        }
+
         user.setLastLoginAt(Instant.now());
         userRepository.save(user);
 
-        Tenant tenant = resolveTenantForUser(user);
-
-        log.info("User logged in: {}", user.getEmail());
-
-        return generateAuthResponse(user, tenant);
+        return generateAuthResponse(user, resolveTenantForUser(user));
     }
 
     @Transactional

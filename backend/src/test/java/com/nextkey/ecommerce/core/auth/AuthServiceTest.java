@@ -151,6 +151,63 @@ class AuthServiceTest {
         }
     }
 
+    // ── completeLogin（DEF-296：所有登入方式共用的 session 簽發入口）──────
+
+    @Nested
+    @DisplayName("completeLogin()")
+    class CompleteLogin {
+
+        @Test
+        @DisplayName("DEF-296：非 ACTIVE 帳號（例如停權）→ E-1004，不簽發任何 token、不登記 refresh token、不更新登入時間")
+        void completeLogin_inactiveAccount_throwsE1004WithoutIssuingTokens() {
+            User suspended = buildActiveUser();
+            suspended.setStatus("SUSPENDED");
+
+            assertThatThrownBy(() -> authService.completeLogin(suspended))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_1004);
+
+            verify(jwtTokenService, never()).generateAccessToken(any(), any(), any(), any());
+            verify(jwtTokenService, never()).generateRefreshToken(any());
+            verify(refreshTokenService, never()).storeRefreshToken(any(), any());
+            verify(userRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("DEF-296：簽發的 refresh token 必須登記到 RefreshTokenService，否則之後的換發一律被判為已撤銷")
+        void completeLogin_registersIssuedRefreshToken() {
+            User user = buildActiveUser();
+            stubGeneratedTokens();
+
+            AuthResponse response = authService.completeLogin(user);
+
+            assertThat(response.getRefreshToken()).isEqualTo("refresh-token");
+            verify(refreshTokenService).storeRefreshToken(USER_ID, "refresh-token");
+            assertThat(user.getLastLoginAt()).isNotNull();
+            verify(userRepository).save(user);
+        }
+
+        @Test
+        @DisplayName("DEF-296：User.tenantId 為 null 時由 tenant_members 決定 JWT 租戶（店主拿到自己的店，不是 SYSTEM）")
+        void completeLogin_resolvesTenantFromMembership() {
+            User owner = buildActiveUser();
+            owner.setRole(User.UserRole.STORE_OWNER);
+            when(tenantMemberRepository.findByUserId(USER_ID)).thenReturn(java.util.List.of(
+                    com.nextkey.ecommerce.domain.model.tenant.TenantMember.builder()
+                            .tenantId(TENANT_ID).userId(USER_ID).build()));
+            // 對任何 id 都回對應的租戶，讓「查錯租戶」反映在下面的斷言上，而不是 Mockito 的 stub 不符
+            when(tenantRepository.findById(any())).thenAnswer(inv ->
+                    Optional.of(Tenant.builder().id(inv.getArgument(0)).name("tenant").build()));
+            stubGeneratedTokens();
+
+            AuthResponse response = authService.completeLogin(owner);
+
+            assertThat(response.getUser().getTenantId()).isEqualTo(TENANT_ID.toString());
+            verify(jwtTokenService).generateAccessToken(USER_ID, "buyer@example.com", "STORE_OWNER", TENANT_ID.toString());
+        }
+    }
+
     // ── login ─────────────────────────────────────────────────────────
 
     @Nested

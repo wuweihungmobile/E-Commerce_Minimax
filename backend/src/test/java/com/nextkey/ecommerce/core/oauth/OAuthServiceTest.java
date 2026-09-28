@@ -18,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -32,14 +33,12 @@ import org.springframework.web.client.RestTemplate;
 
 import com.nextkey.ecommerce.api.dto.AuthResponse;
 import com.nextkey.ecommerce.api.dto.OAuthDto;
-import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.core.auth.AuthService;
 import com.nextkey.ecommerce.domain.model.user.OAuthAccount;
 import com.nextkey.ecommerce.domain.model.user.OAuthProvider;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.OAuthAccountRepository;
-import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
-import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
@@ -57,7 +56,10 @@ import com.nextkey.ecommerce.shared.exception.ErrorCode;
  * (5) provider API 失敗／回應缺欄位時包成 {@link ErrorCode#E_9903}；
  * (6) {@code linkOAuthAccount} 的 provider_user_id 衝突改回傳結構化的
  * {@code BusinessException(E_1008)}（該錯誤碼 Sprint 78 stub 時代已預留卻從未真正拋出過），
- * 不再是不會被 {@code GlobalExceptionHandler} 攔截的 {@code IllegalStateException}。
+ * 不再是不會被 {@code GlobalExceptionHandler} 攔截的 {@code IllegalStateException}；
+ * (7) Sprint 215（DEF-296）：session 一律交給 {@code AuthService.completeLogin} 簽發、Google 的 email 必須已驗證、
+ * 新建帳號不綁死 SYSTEM 租戶。簽發後的 session 能否換發、JWT 帶哪個租戶，本類別 mock 掉 {@code AuthService} 看不到，
+ * 由 {@code OAuthLoginSessionIntegrationTest}（真 Redis＋真 JWT）負責。
  *
  * <p>OAuth 特有的安全考量中，state/CSRF 防護採前端 sessionStorage 產生+比對的標準 SPA 作法
  * （見 {@code frontend/src/services/oauth.ts}），後端無須也未持有 state，故不在本測試範圍內。
@@ -71,8 +73,7 @@ class OAuthServiceTest {
 
     @Mock private UserRepository userRepository;
     @Mock private OAuthAccountRepository oAuthAccountRepository;
-    @Mock private TenantRepository tenantRepository;
-    @Mock private JwtTokenService jwtTokenService;
+    @Mock private AuthService authService;
     @Mock private RestTemplate restTemplate;
 
     @InjectMocks
@@ -98,6 +99,18 @@ class OAuthServiceTest {
                 .thenThrow(new RestClientException("connection refused"));
     }
 
+    /** session 簽發本身由 AuthService 負責（其行為見 AuthServiceTest 與 OAuthLoginSessionIntegrationTest），這裡只回填使用者。 */
+    private void stubCompleteLogin() {
+        when(authService.completeLogin(any(User.class))).thenAnswer(inv -> {
+            User user = inv.getArgument(0);
+            return AuthResponse.builder()
+                    .accessToken("access-jwt")
+                    .refreshToken("refresh-jwt")
+                    .user(AuthResponse.UserInfo.builder().id(user.getId()).email(user.getEmail()).build())
+                    .build();
+        });
+    }
+
     // ========== 未設定 client 憑證 ==========
 
     @Test
@@ -111,7 +124,7 @@ class OAuthServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_1096);
 
-        verifyNoInteractions(restTemplate, userRepository, oAuthAccountRepository, tenantRepository, jwtTokenService);
+        verifyNoInteractions(restTemplate, userRepository, oAuthAccountRepository, authService);
     }
 
     @Test
@@ -125,7 +138,7 @@ class OAuthServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_1096);
 
-        verifyNoInteractions(restTemplate, userRepository, oAuthAccountRepository, tenantRepository, jwtTokenService);
+        verifyNoInteractions(restTemplate, userRepository, oAuthAccountRepository, authService);
     }
 
     // ========== redirect_uri 白名單 ==========
@@ -168,8 +181,8 @@ class OAuthServiceTest {
         mockExchange("https://oauth2.googleapis.com/token", HttpMethod.POST,
                 Map.of("access_token", "google-access-token"));
         mockExchange("https://www.googleapis.com/oauth2/v2/userinfo", HttpMethod.GET,
-                Map.of("id", "google-uid-1", "email", "newuser@example.com", "name", "New User",
-                        "picture", "https://example.com/avatar.png"));
+                Map.of("id", "google-uid-1", "email", "newuser@example.com", "verified_email", true,
+                        "name", "New User", "picture", "https://example.com/avatar.png"));
 
         when(oAuthAccountRepository.findByProviderAndProviderUserId("google", "google-uid-1"))
                 .thenReturn(Optional.empty());
@@ -181,20 +194,19 @@ class OAuthServiceTest {
             u.setId(newUserId);
             return u;
         });
-
-        UUID systemTenantId = UUID.fromString(com.nextkey.ecommerce.shared.constants.AppConstants.SYSTEM_TENANT_ID);
-        when(tenantRepository.findById(systemTenantId))
-                .thenReturn(Optional.of(Tenant.builder().id(systemTenantId).name("System").build()));
-        when(jwtTokenService.generateAccessToken(eq(newUserId), eq("newuser@example.com"), eq("BUYER"), any()))
-                .thenReturn("access-jwt");
-        when(jwtTokenService.generateRefreshToken(newUserId)).thenReturn("refresh-jwt");
-        when(jwtTokenService.getAccessTokenExpiration()).thenReturn(3600L);
+        stubCompleteLogin();
 
         AuthResponse response = oAuthService.handleOAuthLogin(request);
 
         assertThat(response.getAccessToken()).isEqualTo("access-jwt");
         assertThat(response.getUser().getEmail()).isEqualTo("newuser@example.com");
         verify(oAuthAccountRepository).save(any(OAuthAccount.class));
+
+        // DEF-296：比照 register（DEF-244）新帳號不帶任何租戶；原本寫死 SYSTEM，開店後登入仍拿到 SYSTEM 租戶
+        ArgumentCaptor<User> created = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(created.capture());
+        assertThat(created.getValue().getTenantId()).isNull();
+        assertThat(created.getValue().getStatus()).isEqualTo("ACTIVE");
     }
 
     @Test
@@ -206,7 +218,8 @@ class OAuthServiceTest {
         mockExchange("https://oauth2.googleapis.com/token", HttpMethod.POST,
                 Map.of("access_token", "google-access-token"));
         mockExchange("https://www.googleapis.com/oauth2/v2/userinfo", HttpMethod.GET,
-                Map.of("id", "google-uid-existing", "email", "existing@example.com", "name", "Existing"));
+                Map.of("id", "google-uid-existing", "email", "existing@example.com", "verified_email", true,
+                        "name", "Existing"));
 
         UUID existingUserId = UUID.randomUUID();
         when(oAuthAccountRepository.findByProviderAndProviderUserId("google", "google-uid-existing"))
@@ -216,15 +229,71 @@ class OAuthServiceTest {
         User existingUser = User.builder().id(existingUserId).email("existing@example.com")
                 .role(User.UserRole.BUYER).build();
         when(userRepository.findById(existingUserId)).thenReturn(Optional.of(existingUser));
-        when(jwtTokenService.generateAccessToken(any(), any(), any(), any())).thenReturn("access-jwt");
-        when(jwtTokenService.generateRefreshToken(any())).thenReturn("refresh-jwt");
-        when(jwtTokenService.getAccessTokenExpiration()).thenReturn(3600L);
+        stubCompleteLogin();
 
         AuthResponse response = oAuthService.handleOAuthLogin(request);
 
         assertThat(response.getUser().getEmail()).isEqualTo("existing@example.com");
         verify(userRepository, never()).save(any(User.class));
         verify(oAuthAccountRepository, never()).save(any(OAuthAccount.class));
+    }
+
+    @Test
+    @DisplayName("handleOAuthLogin：session 一律交給 AuthService.completeLogin 簽發（DEF-296：帳號狀態、refresh token 登記、"
+            + "租戶解析與密碼登入共用同一份邏輯），其例外原樣往外拋、不自行產生 token")
+    void handleOAuthLogin_delegatesSessionIssuanceToAuthService() {
+        OAuthDto.AuthRequest request = OAuthDto.AuthRequest.builder()
+                .provider(OAuthProvider.GOOGLE).code("auth-code").redirectUri(REDIRECT_URI).build();
+        mockExchange("https://oauth2.googleapis.com/token", HttpMethod.POST,
+                Map.of("access_token", "google-access-token"));
+        mockExchange("https://www.googleapis.com/oauth2/v2/userinfo", HttpMethod.GET,
+                Map.of("id", "google-uid-suspended", "email", "suspended@example.com", "verified_email", true));
+
+        UUID userId = UUID.randomUUID();
+        when(oAuthAccountRepository.findByProviderAndProviderUserId("google", "google-uid-suspended"))
+                .thenReturn(Optional.of(OAuthAccount.builder().userId(userId).provider("google")
+                        .providerUserId("google-uid-suspended").build()));
+        User suspended = User.builder().id(userId).email("suspended@example.com")
+                .role(User.UserRole.BUYER).status("SUSPENDED").build();
+        when(userRepository.findById(userId)).thenReturn(Optional.of(suspended));
+        when(authService.completeLogin(suspended)).thenThrow(new BusinessException(ErrorCode.E_1004, "Account not active"));
+
+        assertThatThrownBy(() -> oAuthService.handleOAuthLogin(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1004);
+        verify(authService).completeLogin(suspended);
+    }
+
+    @Test
+    @DisplayName("handleOAuthLogin：Google 回報 verified_email=false → E_9903，不可憑此 email 自動連結既有帳號或建立帳號（DEF-296）")
+    void handleOAuthLogin_googleUnverifiedEmail_throwsE9903WithoutTouchingAccounts() {
+        OAuthDto.AuthRequest request = OAuthDto.AuthRequest.builder()
+                .provider(OAuthProvider.GOOGLE).code("auth-code").redirectUri(REDIRECT_URI).build();
+        mockExchange("https://oauth2.googleapis.com/token", HttpMethod.POST,
+                Map.of("access_token", "google-access-token"));
+        mockExchange("https://www.googleapis.com/oauth2/v2/userinfo", HttpMethod.GET,
+                Map.of("id", "google-uid-x", "email", "victim@example.com", "verified_email", false));
+
+        assertThatThrownBy(() -> oAuthService.handleOAuthLogin(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_9903);
+        verifyNoInteractions(userRepository, oAuthAccountRepository, authService);
+    }
+
+    @Test
+    @DisplayName("handleOAuthLogin：Google 回應缺 verified_email 欄位 → 視同未驗證（E_9903），不預設信任")
+    void handleOAuthLogin_googleMissingVerifiedEmailField_throwsE9903() {
+        OAuthDto.AuthRequest request = OAuthDto.AuthRequest.builder()
+                .provider(OAuthProvider.GOOGLE).code("auth-code").redirectUri(REDIRECT_URI).build();
+        mockExchange("https://oauth2.googleapis.com/token", HttpMethod.POST,
+                Map.of("access_token", "google-access-token"));
+        mockExchange("https://www.googleapis.com/oauth2/v2/userinfo", HttpMethod.GET,
+                Map.of("id", "google-uid-y", "email", "someone@example.com"));
+
+        assertThatThrownBy(() -> oAuthService.handleOAuthLogin(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_9903);
+        verifyNoInteractions(userRepository, oAuthAccountRepository, authService);
     }
 
     // ========== GITHUB 成功流程 + email fallback ==========
@@ -248,9 +317,7 @@ class OAuthServiceTest {
             u.setId(UUID.randomUUID());
             return u;
         });
-        when(jwtTokenService.generateAccessToken(any(), any(), any(), any())).thenReturn("access-jwt");
-        when(jwtTokenService.generateRefreshToken(any())).thenReturn("refresh-jwt");
-        when(jwtTokenService.getAccessTokenExpiration()).thenReturn(3600L);
+        stubCompleteLogin();
 
         AuthResponse response = oAuthService.handleOAuthLogin(request);
 
@@ -290,9 +357,7 @@ class OAuthServiceTest {
             u.setId(UUID.randomUUID());
             return u;
         });
-        when(jwtTokenService.generateAccessToken(any(), any(), any(), any())).thenReturn("access-jwt");
-        when(jwtTokenService.generateRefreshToken(any())).thenReturn("refresh-jwt");
-        when(jwtTokenService.getAccessTokenExpiration()).thenReturn(3600L);
+        stubCompleteLogin();
 
         AuthResponse response = oAuthService.handleOAuthLogin(request);
 
@@ -340,7 +405,7 @@ class OAuthServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_9903);
 
-        verifyNoInteractions(userRepository, oAuthAccountRepository, tenantRepository, jwtTokenService);
+        verifyNoInteractions(userRepository, oAuthAccountRepository, authService);
     }
 
     @Test
@@ -369,7 +434,7 @@ class OAuthServiceTest {
         mockExchange("https://oauth2.googleapis.com/token", HttpMethod.POST,
                 Map.of("access_token", "google-access-token"));
         mockExchange("https://www.googleapis.com/oauth2/v2/userinfo", HttpMethod.GET,
-                Map.of("id", "google-uid-taken", "email", "taken@example.com"));
+                Map.of("id", "google-uid-taken", "email", "taken@example.com", "verified_email", true));
         when(oAuthAccountRepository.existsByProviderAndProviderUserId("google", "google-uid-taken"))
                 .thenReturn(true);
 

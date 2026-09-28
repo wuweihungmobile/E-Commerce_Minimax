@@ -129,19 +129,22 @@ public class AuthService {
         String email = request.getEmail();
 
         // DEF-220：帳號暫時鎖定檢查須在查詢/比對密碼之前，鎖定期間內一律拒絕，
-        // 不對密碼做 bcrypt 比對，避免鎖定機制本身可被繞過
-        if (loginAttemptService.isLocked(email)) {
+        // 不對密碼做 bcrypt 比對，避免鎖定機制本身可被繞過。
+        // DEF-293：「計入本次嘗試」與「判斷是否鎖定」必須是同一個原子步驟且在驗密碼之前——
+        // 若改回「先檢查、驗完才計入」，同時到達的請求會在任何一個計入之前全部通過檢查（中間隔著一次 bcrypt），
+        // 門檻就只擋得住依序的猜測。因此驗證失敗後不需要（也不可以）再計入一次；成功才歸零。
+        if (loginAttemptService.countAttemptAndCheckLocked(email)) {
             throw new BusinessException(ErrorCode.E_1004, "Too many failed login attempts");
         }
 
         User user = userRepository.findByEmailAndStatus(email, "ACTIVE")
                 .orElseThrow(() -> {
-                    loginAttemptService.recordFailedAttempt(email);
+                    log.warn("Failed login attempt for email: {} (no active account)", email);
                     return new BusinessException(ErrorCode.E_1001);
                 });
 
         if (user.getPasswordHash() == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            loginAttemptService.recordFailedAttempt(email);
+            log.warn("Failed login attempt for email: {} (wrong password)", email);
             throw new BusinessException(ErrorCode.E_1001);
         }
 

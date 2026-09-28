@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -208,7 +210,7 @@ class AuthServiceTest {
         void login_accountLocked_throwsE1004AndNeverChecksPassword() {
             LoginRequest request = LoginRequest.builder()
                     .email("buyer@example.com").password("whatever").build();
-            when(loginAttemptService.isLocked("buyer@example.com")).thenReturn(true);
+            when(loginAttemptService.countAttemptAndCheckLocked("buyer@example.com")).thenReturn(true);
 
             assertThatThrownBy(() -> authService.login(request))
                     .isInstanceOf(BusinessException.class)
@@ -220,8 +222,8 @@ class AuthServiceTest {
         }
 
         @Test
-        @DisplayName("login_wrongPassword_recordsFailedAttempt（DEF-220）")
-        void login_wrongPassword_recordsFailedAttempt() {
+        @DisplayName("login_wrongPassword_countsAttemptBeforeVerifyingPassword（DEF-293：先計入再驗密碼，否則併發猜測會全部通過鎖定檢查）")
+        void login_wrongPassword_countsAttemptBeforeVerifyingPassword() {
             User user = buildActiveUser();
             LoginRequest request = LoginRequest.builder()
                     .email("buyer@example.com").password("wrong-password").build();
@@ -231,12 +233,15 @@ class AuthServiceTest {
 
             assertThatThrownBy(() -> authService.login(request)).isInstanceOf(BusinessException.class);
 
-            verify(loginAttemptService).recordFailedAttempt("buyer@example.com");
+            InOrder inOrder = inOrder(loginAttemptService, passwordEncoder);
+            inOrder.verify(loginAttemptService).countAttemptAndCheckLocked("buyer@example.com");
+            inOrder.verify(passwordEncoder).matches("wrong-password", "hashed-password");
+            verify(loginAttemptService, never()).resetAttempts(any());
         }
 
         @Test
-        @DisplayName("login_userNotFound_recordsFailedAttempt（DEF-220：不存在的 email 也計入，避免帳號列舉繞過鎖定）")
-        void login_userNotFound_recordsFailedAttempt() {
+        @DisplayName("login_userNotFound_countsAttempt（DEF-220：不存在的 email 也計入，避免帳號列舉繞過鎖定）")
+        void login_userNotFound_countsAttempt() {
             LoginRequest request = LoginRequest.builder()
                     .email("nobody@example.com").password("x").build();
             when(userRepository.findByEmailAndStatus("nobody@example.com", "ACTIVE"))
@@ -244,7 +249,7 @@ class AuthServiceTest {
 
             assertThatThrownBy(() -> authService.login(request)).isInstanceOf(BusinessException.class);
 
-            verify(loginAttemptService).recordFailedAttempt("nobody@example.com");
+            verify(loginAttemptService).countAttemptAndCheckLocked("nobody@example.com");
         }
 
         @Test

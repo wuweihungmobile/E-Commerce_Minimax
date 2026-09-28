@@ -193,8 +193,15 @@ public class AuthService {
 
         Tenant tenant = resolveTenantForUser(user);
 
-        // DEF-219：rotation——本次用來換發的舊 token 立即失效，避免同一 token 可在效期內被重複使用
-        refreshTokenService.rotateRefreshToken(userId, refreshToken);
+        // DEF-219：rotation——本次用來換發的舊 token 立即失效，避免同一 token 可在效期內被重複使用。
+        // Sprint 213：上面的「是否有效」檢查與這裡的輪替是兩個獨立時間點，同時到達的請求會全部通過檢查；
+        // 輪替本身是原子的「有效→已使用」，輸掉的請求代表同一個 token 被同時使用兩次——與先後兩次使用
+        // 的重放是同一種外洩訊號，比照上面撤銷全部 session。
+        if (!refreshTokenService.tryRotateRefreshToken(userId, refreshToken)) {
+            refreshTokenService.blacklistAllRefreshTokens(userId);
+            log.warn("Concurrent refresh with the same token for user: {}, all sessions revoked", userId);
+            throw new BusinessException(ErrorCode.E_1003, "Refresh token reuse detected; all sessions revoked");
+        }
 
         log.info("Token refreshed for user: {}", user.getEmail());
 

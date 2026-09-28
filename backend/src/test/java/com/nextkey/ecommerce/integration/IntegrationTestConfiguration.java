@@ -179,6 +179,7 @@ public class IntegrationTestConfiguration {
         // Mock 所有的方法，讓它們不回報錯誤
         doNothing().when(mockService).storeRefreshToken(any(), anyString());
         when(mockService.isRefreshTokenValid(any(), anyString())).thenReturn(true);
+        when(mockService.tryRotateRefreshToken(any(), anyString())).thenReturn(true);
         doNothing().when(mockService).blacklistRefreshToken(any(), anyString());
         doNothing().when(mockService).blacklistAllRefreshTokens(any());
 

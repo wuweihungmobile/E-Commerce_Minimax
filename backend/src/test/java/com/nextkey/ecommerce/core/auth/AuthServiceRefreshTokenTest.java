@@ -97,6 +97,7 @@ class AuthServiceRefreshTokenTest {
         when(jwtTokenService.generateRefreshToken(any(UUID.class))).thenReturn("new-refresh-token");
         when(jwtTokenService.getAccessTokenExpiration()).thenReturn(1800L);
         when(refreshTokenService.isRefreshTokenValid(any(UUID.class), anyString())).thenReturn(true);
+        when(refreshTokenService.tryRotateRefreshToken(any(UUID.class), anyString())).thenReturn(true);
 
         // Act
         AuthResponse response = authService.refreshToken(request);
@@ -141,6 +142,7 @@ class AuthServiceRefreshTokenTest {
         when(jwtTokenService.generateRefreshToken(any(UUID.class))).thenReturn("new-refresh-token");
         when(jwtTokenService.getAccessTokenExpiration()).thenReturn(1800L);
         when(refreshTokenService.isRefreshTokenValid(any(UUID.class), anyString())).thenReturn(true);
+        when(refreshTokenService.tryRotateRefreshToken(any(UUID.class), anyString())).thenReturn(true);
 
         // Act
         AuthResponse response = authService.refreshToken(request);
@@ -180,6 +182,7 @@ class AuthServiceRefreshTokenTest {
         when(jwtTokenService.generateRefreshToken(any(UUID.class))).thenReturn("new-refresh-token");
         when(jwtTokenService.getAccessTokenExpiration()).thenReturn(1800L);
         when(refreshTokenService.isRefreshTokenValid(any(UUID.class), anyString())).thenReturn(true);
+        when(refreshTokenService.tryRotateRefreshToken(any(UUID.class), anyString())).thenReturn(true);
 
         // Act
         AuthResponse response = authService.refreshToken(request);

@@ -280,6 +280,7 @@ class AuthServiceTest {
             when(jwtTokenService.getUserId("valid-refresh")).thenReturn(USER_ID);
             when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
             when(refreshTokenService.isRefreshTokenValid(USER_ID, "valid-refresh")).thenReturn(true);
+            when(refreshTokenService.tryRotateRefreshToken(USER_ID, "valid-refresh")).thenReturn(true);
             stubGeneratedTokens();
 
             AuthResponse response = authService.refreshToken(request);
@@ -356,11 +357,35 @@ class AuthServiceTest {
             when(jwtTokenService.getUserId("valid-refresh")).thenReturn(USER_ID);
             when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
             when(refreshTokenService.isRefreshTokenValid(USER_ID, "valid-refresh")).thenReturn(true);
+            when(refreshTokenService.tryRotateRefreshToken(USER_ID, "valid-refresh")).thenReturn(true);
             stubGeneratedTokens();
 
             authService.refreshToken(request);
 
-            verify(refreshTokenService).rotateRefreshToken(USER_ID, "valid-refresh");
+            verify(refreshTokenService).tryRotateRefreshToken(USER_ID, "valid-refresh");
+        }
+
+        @Test
+        @DisplayName("refreshToken_lostRotationRace_revokesAllSessionsAndThrowsE1003"
+                + "（Sprint 213：通過有效檢查後輸掉輪替競爭，不可換發）")
+        void refreshToken_lostRotationRace_revokesAllSessionsAndThrows() {
+            User user = buildActiveUser();
+            RefreshTokenRequest request = RefreshTokenRequest.builder().refreshToken("raced-token").build();
+            when(jwtTokenService.validateToken("raced-token")).thenReturn(true);
+            when(jwtTokenService.isTokenExpired("raced-token")).thenReturn(false);
+            when(jwtTokenService.getUserId("raced-token")).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            when(refreshTokenService.isRefreshTokenValid(USER_ID, "raced-token")).thenReturn(true);
+            when(refreshTokenService.tryRotateRefreshToken(USER_ID, "raced-token")).thenReturn(false);
+
+            assertThatThrownBy(() -> authService.refreshToken(request))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_1003);
+
+            verify(refreshTokenService).blacklistAllRefreshTokens(USER_ID);
+            verify(jwtTokenService, never()).generateAccessToken(any(), any(), any(), any());
+            verify(refreshTokenService, never()).storeRefreshToken(any(), any());
         }
 
         @Test

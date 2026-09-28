@@ -1,12 +1,15 @@
 package com.nextkey.ecommerce.infrastructure.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.util.Collections;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.RedisScript;
 
 /**
  * RefreshTokenService 單元測試（Sprint 167，DEF-219）。
@@ -110,14 +114,36 @@ class RefreshTokenServiceTest {
         assertThat(refreshTokenService.isRefreshTokenReused(USER_ID, TOKEN)).isFalse();
     }
 
+    // 腳本本身的原子性與序列化行為只有真實 Redis 驗證得了，見 RefreshTokenServiceIntegrationTest；
+    // 這裡只釘住 Java 端「腳本回傳值如何對應成 boolean」與「送給腳本的 key／參數」。
+
     @Test
-    @DisplayName("rotateRefreshToken：將舊 token 狀態改為 used（DEF-219 rotation）")
-    void rotateRefreshToken_marksTokenUsed() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+    @DisplayName("tryRotateRefreshToken：腳本回傳 1（本次完成輪替）→ true，且以 valid→used 為參數")
+    @SuppressWarnings("unchecked")
+    void tryRotateRefreshToken_scriptReturnsOne_returnsTrue() {
+        String key = "refresh_token:" + USER_ID + ":" + expectedTokenId();
+        when(redisTemplate.execute(any(RedisScript.class), eq(Collections.singletonList(key)),
+                eq("valid"), eq("used"))).thenReturn(1L);
 
-        refreshTokenService.rotateRefreshToken(USER_ID, TOKEN);
+        assertThat(refreshTokenService.tryRotateRefreshToken(USER_ID, TOKEN)).isTrue();
+    }
 
-        verify(valueOperations).set(anyString(), eq("used"), eq(Duration.ofDays(30)));
+    @Test
+    @DisplayName("tryRotateRefreshToken：腳本回傳 0（token 已被別人輪替或撤銷）→ false")
+    @SuppressWarnings("unchecked")
+    void tryRotateRefreshToken_scriptReturnsZero_returnsFalse() {
+        when(redisTemplate.execute(any(RedisScript.class), anyList(), eq("valid"), eq("used"))).thenReturn(0L);
+
+        assertThat(refreshTokenService.tryRotateRefreshToken(USER_ID, TOKEN)).isFalse();
+    }
+
+    @Test
+    @DisplayName("tryRotateRefreshToken：腳本回傳 null（管線／交易中）→ false（不確定就不可換發）")
+    @SuppressWarnings("unchecked")
+    void tryRotateRefreshToken_scriptReturnsNull_returnsFalse() {
+        when(redisTemplate.execute(any(RedisScript.class), anyList(), eq("valid"), eq("used"))).thenReturn(null);
+
+        assertThat(refreshTokenService.tryRotateRefreshToken(USER_ID, TOKEN)).isFalse();
     }
 
     @Test

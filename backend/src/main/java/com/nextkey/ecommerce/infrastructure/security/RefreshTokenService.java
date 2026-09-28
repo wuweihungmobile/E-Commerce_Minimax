@@ -1,9 +1,11 @@
 package com.nextkey.ecommerce.infrastructure.security;
 
 import java.time.Duration;
+import java.util.Collections;
 import java.util.UUID;
 
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
@@ -27,6 +29,14 @@ public class RefreshTokenService {
     // （保留 USED 標記而非直接刪除 key，是為了讓 rotation 後的重放攻擊能被 isRefreshTokenReused 偵測到）
     private static final String STATUS_VALID = "valid";
     private static final String STATUS_USED = "used";
+
+    // TTL 直接寫進腳本而不當參數傳：參數會被值序列化器加上 JSON 引號，Redis 的 EX 不接受
+    private static final DefaultRedisScript<Long> ROTATE_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('GET', KEYS[1]) == ARGV[1] then\n"
+            + "  redis.call('SET', KEYS[1], ARGV[2], 'EX', " + DEFAULT_TTL.toSeconds() + ")\n"
+            + "  return 1\n"
+            + "end\n"
+            + "return 0", Long.class);
 
     // Token ID extraction
     private static final int TOKEN_ID_LENGTH = 16;
@@ -66,16 +76,28 @@ public class RefreshTokenService {
     }
 
     /**
-     * 將 Refresh Token 標記為已使用（rotation）。與 {@link #blacklistRefreshToken} 不同，
+     * 原子地把 Refresh Token 由「有效」轉為「已使用」（rotation）。與 {@link #blacklistRefreshToken} 不同，
      * 此方法保留 key 並標記狀態，而非直接刪除，讓同一個 token 之後若再被使用可被
      * {@link #isRefreshTokenReused} 偵測為重放攻擊。
+     *
+     * <p><b>「比對狀態」與「改寫狀態」必須是同一個 Redis 指令</b>（Sprint 213）：先 {@link #isRefreshTokenValid}
+     * 再單獨寫入「已使用」的兩步做法，讓同時到達的多個請求全部通過檢查、各自換發出新的 Refresh Token
+     * （實測 16 個併發請求 16 個成功），輪替與重放偵測整個被繞過。這裡用 Lua 腳本讓 Redis 單執行緒保證
+     * 只有一個呼叫者看得到「有效」。
+     *
      * @param userId 用戶 ID
-     * @param refreshToken 剛被用來換發新 token 的舊 Refresh Token 字串
+     * @param refreshToken 準備用來換發新 token 的舊 Refresh Token 字串
+     * @return {@code true} 表示由這次呼叫完成輪替（呼叫端可以換發）；{@code false} 表示 token 在這之前已被
+     *         別的請求輪替或撤銷，呼叫端不可換發
      */
-    public void rotateRefreshToken(final UUID userId, final String refreshToken) {
-        String key = buildKey(userId, refreshToken);
-        redisTemplate.opsForValue().set(key, STATUS_USED, DEFAULT_TTL);
-        log.debug("Rotated (marked used) refresh token for user: {}", userId);
+    public boolean tryRotateRefreshToken(final UUID userId, final String refreshToken) {
+        // 參數交給 RedisTemplate 的值序列化器處理，才會與 storeRefreshToken 寫入的位元組完全一致
+        // （生產環境以 JSON 序列化，字串會帶引號，直接在腳本裡寫字面值比對不到）
+        Long rotated = redisTemplate.execute(ROTATE_SCRIPT,
+                Collections.singletonList(buildKey(userId, refreshToken)), STATUS_VALID, STATUS_USED);
+        boolean won = Long.valueOf(1L).equals(rotated);
+        log.debug("Rotate refresh token for user: {}, won: {}", userId, won);
+        return won;
     }
 
     /**

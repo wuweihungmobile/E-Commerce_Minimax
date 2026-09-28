@@ -136,4 +136,67 @@ class SettlementConcurrentClaimIntegrationTest {
                 BigDecimal.class, tenantId);
         assertThat(gmv).as("GMV 加總同理，不可重複計算").isEqualByComparingTo(BigDecimal.valueOf(ORDERS * 100L));
     }
+
+    /**
+     * 補上與上面測試互補的既有覆蓋缺口（Sprint 212 自選掃描角度）——那個測試的 Javadoc 自承
+     * 「刻意讓每條執行緒用不同期間，不會被同期間冪等檢查擋下」，只壓 {@link #generateStatementForTenant}
+     * 的原子認領（{@code markSettled}），從未真正驗證<b>同一個期間</b>被多條執行緒同時搶時，開頭那段
+     * 「查有沒有既有結算單、沒有就建立」的 check-then-act（{@code existingStatements.isEmpty()} 與
+     * 寫入之間沒有原子保護）是否安全。{@link SettlementGeneratorManualTriggerTest} 的 Javadoc 也逕自
+     * 宣稱這段「已有測試覆蓋」，但兩份既有測試檔都是 mock，從未在真實 DB 下驗證過。
+     *
+     * <p><b>查證結果：這條路徑其實安全</b>，但保護它的不是這段冪等檢查本身，而是 DEF-273 既有的
+     * 「原子認領訂單，認領數不足就整張回滾」機制順帶接住了它：即使人為在冪等檢查後插入 200ms 延遲
+     * 拉寬 race window（曾用來診斷、已還原），落後的執行緒也只會在 {@code markSettled} 認領到 0 筆
+     * 訂單時拋出 {@code IllegalStateException} 並整筆回滾（連同它自己剛 {@code save()} 的重複結算單
+     * 一併撤銷），從未真正走到 {@code settlement_statements(tenant_id, statement_number)} 的 UNIQUE
+     * 約束衝突。保留本測試作為此不變量的永久回歸守門，避免未來重構誤觸。
+     */
+    @Test
+    @DisplayName("8 個結算同時搶同一個期間 → 只產生一張結算單，落後者只能收到 IllegalStateException")
+    void concurrentGenerations_sameTenantAndPeriod_producesExactlyOneStatement() throws Exception {
+        LocalDate start = LocalDate.of(2027, 1, 11);
+        LocalDate end = start.plusDays(6);
+        ExecutorService pool = Executors.newFixedThreadPool(THREADS);
+        CountDownLatch startGun = new CountDownLatch(1);
+        Map<String, Integer> failures = new ConcurrentHashMap<>();
+        List<Future<?>> results = new ArrayList<>(THREADS);
+        try {
+            for (int i = 0; i < THREADS; i++) {
+                Callable<Void> attempt = () -> {
+                    startGun.await();
+                    try {
+                        settlementGenerator.generateStatementForTenant(tenantId, start, end);
+                    } catch (RuntimeException e) {
+                        failures.merge(e.getClass().getSimpleName(), 1, Integer::sum);
+                    }
+                    return null;
+                };
+                results.add(pool.submit(attempt));
+            }
+            startGun.countDown();
+            for (Future<?> f : results) {
+                f.get(120, TimeUnit.SECONDS);
+            }
+        } finally {
+            pool.shutdown();
+            pool.awaitTermination(30, TimeUnit.SECONDS);
+        }
+
+        assertThat(failures.keySet())
+                .as("同期間競態的落後者只能以「認領不足」的 IllegalStateException 回滾，不可讓底層技術性例外"
+                        + "（如唯一鍵衝突）未經轉譯就直接冒出。本次結果：%s", failures)
+                .isSubsetOf("IllegalStateException");
+
+        Integer statementCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM settlement_statements WHERE tenant_id = ? AND period_start = ?",
+                Integer.class, tenantId, start);
+        assertThat(statementCount).as("同一租戶＋期間，無論幾條執行緒同時搶，最終只能有一張結算單").isEqualTo(1);
+
+        Integer settledTotal = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(total_orders), 0) FROM settlement_statements WHERE tenant_id = ?",
+                Integer.class, tenantId);
+        assertThat(settledTotal).as("那張唯一的結算單必須把 40 筆訂單全數結算，不可漏算或重複算")
+                .isEqualTo(ORDERS);
+    }
 }

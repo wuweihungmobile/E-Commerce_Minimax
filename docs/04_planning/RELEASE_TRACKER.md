@@ -11,6 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 212 | v2030.04.69-01 | - | 2026-09-28 | **調查結算單同期間併發生成的競態風險——查證後確認既有機制已妥善保護，未發現缺陷，補齊測試覆蓋**——Sprint 211 收尾後再次無 AI 可獨立處理的活躍待辦。本輪嘗試多個角度：`/v2/auth/**` 來源 IP 節流（`LoginRateLimitFilter` 已完整涵蓋，未發現缺陷）、Settlement／Transfer 租戶授權（均正確，未發現缺陷）。深入查證 `SettlementGenerator.generateStatementForTenant` 的冪等檢查（`existingStatements.isEmpty()` 與寫入之間無原子保護）是否有競態風險——既有 `SettlementConcurrentClaimIntegrationTest` 的 Javadoc 自承「刻意讓每條執行緒用不同期間」迴避了這條路徑，`SettlementGeneratorManualTriggerTest` 卻逕自宣稱「已有測試覆蓋」（實際只是 Mockito 單元測試，從未在真實 DB 驗證）。**查證方法**：新增真實 Postgres 8 執行緒併發測試，並人為插入 200ms 延遲拉寬 race window 做嚴謹複驗。**結果**：此路徑其實安全——保護它的是既有 DEF-273「原子認領訂單、認領不足就整張回滾」機制順帶接住（落後執行緒清一色收到 `IllegalStateException` 並完整回滾，從未真正觸發 UNIQUE 約束衝突）。未修改任何生產程式碼；新增測試永久鎖住此不變量。單元 **1791**（持平）／整合 **569**（+1）／0 failures／checkstyle 0 違規，`mvn -o verify` 全量通過（8:18 min）。詳見 [SPRINT_212_PLAN.md](SPRINT_212_PLAN.md) | ⏳ 待 push |
 | Sprint 211 | v2030.04.68-01 | - | 2026-09-28 | **忘記密碼端點的時序側通道（`DEF-290` 新登記並結案）**——Sprint 210 收尾後再次無 AI 可獨立處理的活躍待辦，本輪自選角度回頭檢視 Sprint 209 自己在 `AccountSecurityService` 留下的「已知限制（時序）」註解：Mock 寄信換成真實 Google Workspace SMTP（阻塞式網路呼叫）後，原本「可忽略」的時序差異變成真實的帳號列舉側通道。**發現**：`requestPasswordReset` 對「帳號存在且不在冷卻中」路徑同步等待真實 SMTP 完成才回應，與「不存在」／「冷卻中」兩條路徑的回應時間有可觀測差異。**修復**：新增僅供此用途的虛擬執行緒 `Executor`，把實際寄信動作移出請求執行緒，冷卻檢查與 token 簽發維持同步；刻意不擴大到已登入會員的 `sendEmailVerification`（需如實回報寄信失敗、不構成列舉攻擊面）。紅燈先行：新增 `doesNotBlockOnMailDelivery`，用 `CountDownLatch` 模擬 2 秒 SMTP 延遲，對未修復程式碼實測 `elapsed=2.03s` 斷言失敗證實缺口；突變驗證（暫時拿掉背景執行緒包裹）確認正確變回紅燈。單元 **1791**（+1）／整合 568（持平）／0 failures／checkstyle 0 違規，`mvn -o verify` 全量通過（9:01 min）。詳見 [SPRINT_211_PLAN.md](SPRINT_211_PLAN.md) | ✅ 已 push（2026-09-28，`68ec641..1b7793f main -> main`；push 前輕量守門（backend-unit＋schema 漂移＋frontend）通過，✅ 雲端 CI 全綠 run 36334443508，三個 job 皆 success：Backend Unit 2m30s／Frontend Lint & Build 1m05s／Backend Integration & Package 4m36s） |
 | Sprint 210 | v2030.04.67-01 | - | 2026-09-27 | **成員角色指派白名單缺口（`DEF-289` 新登記並結案）**——使用者選擇「開新 Sprint，自選掃描角度找新缺陷」。本輪逐一核對 `TenantService` 所有成員異動方法，發現 `updateMemberRole`（`PUT /v2/tenants/{id}/members/{userId}/role`）未落實與 `inviteMember`/`parseInviteRole` 相同的角色白名單（STORE_OWNER 僅能經開店審核流程產生、STORE_MANAGER 無對應權限是死角色），可把既有成員角色直接改成這兩者。**已查證影響範圍**：呼叫者需先是該租戶既有 STORE_OWNER（租戶範圍檢查正確，非跨租戶 IDOR）；`updateMemberRole` 不同步 `User.role`／JWT 授權，全庫也沒有其他授權檢查依賴 `TenantMember.storeRole`，今天沒有可外部利用的攻擊路徑，前端亦無呼叫點；真正風險是違反平台自己宣告的不變量與指派死角色的功能陷阱。**修復**：比照 `parseInviteRole` 補上相同白名單檢查。紅燈先行：`TenantServiceTest` 新增 2 案例，對未修復程式碼執行皆確認失敗；突變驗證（暫時移除檢查）確認正確變回紅燈。單元 **1790**（+2）／整合 568（持平）／0 failures／checkstyle 0 違規，`mvn -o verify` 全量通過。詳見 [SPRINT_210_PLAN.md](SPRINT_210_PLAN.md) | ✅ 已 push（2026-09-27，`51c4739..9303c42 main -> main`；push 前輕量守門（backend-unit＋schema 漂移＋frontend）通過，✅ 雲端 CI 全綠 run 36330824386，三個 job 皆 success） |
 | Sprint 209 | v2030.04.66-01 | - | 2026-09-27 | **接上真實寄信服務（Google Workspace SMTP）**——使用者對「真實寄信服務要接哪一個」選 Other：「我使用google workspace，請改使用這個」。新增 `SmtpEmailSender`（`@ConditionalOnExpression` 判斷 `spring.mail.username` 是否非空才啟用，取代 `LoggingEmailSender`）。**過程中用真實 Spring context 驗證抓到兩個單元測試看不到的問題**：(1) 一開始用 `@ConditionalOnProperty` 判斷不出「YAML 給了空字串預設值」與「真的沒設定」的差異，完全沒設定 SMTP 的環境也會誤判為已設定；(2) `spring-boot-starter-mail` 自動掛的 `MailHealthIndicator` 會對外連 `smtp.gmail.com`，在 act 容器內連不出去，拖累 `/api/actuator/health` 逾時，**實際擋下了 Sprint 208 的 push**（`schema-gate` 150 秒健康等待失敗）；已用 `management.health.mail.enabled: false` 停用。單元 1788（+3）／整合 568（+3）／checkstyle 0，4 種突變全被抓到。**誠實揭露**：沒有真實憑證，未對 Google 帳號驗證過、未真的寄出過一封信，需使用者提供 `SMTP_USERNAME`／`SMTP_PASSWORD`（應用程式密碼）並手動測試收信。詳見 [SPRINT_209_PLAN.md](SPRINT_209_PLAN.md) | ✅ 已 push（2026-09-27，`8b0b0c0..b4fadc8 main -> main`；上一輪 push 因 §4.2 問題被 pre-push 擋下一次，修好後重跑輕量守門通過，✅ 雲端 CI 全綠 run 36312251866，三個 job 皆 success） |
@@ -203,11 +204,11 @@
 
 | 項目 | 數值 |
 |------|------|
-| 建立 Release Tag 次數 | 182 (Sprint 10~211 中已建 row 者，逐列計數；Sprint 8-9 未正式 Release）。⚠️ **既有落差揭露**：本欄為**文件記帳**（有 row 即計一次），與實際 git tag 不符——`git tag` 實際只有 14 個、最新為 `v2026.08.01-01`，本表 `v2030.xx` 系列編號從未真正建立為 git tag。此落差非本輪造成，僅記錄不擅自改動計數慣例 |
+| 建立 Release Tag 次數 | 183 (Sprint 10~212 中已建 row 者，逐列計數；Sprint 8-9 未正式 Release）。⚠️ **既有落差揭露**：本欄為**文件記帳**（有 row 即計一次），與實際 git tag 不符——`git tag` 實際只有 14 個、最新為 `v2026.08.01-01`，本表 `v2030.xx` 系列編號從未真正建立為 git tag。此落差非本輪造成，僅記錄不擅自改動計數慣例 |
 | 已 push（已 Release） | 182 (Sprint 199、200、201、202、203～211 push 後雲端 CI 全綠，最新 run 36334443508) |
-| 待 push（Tag 已建、尚未 push） | 0 |
+| 待 push（Tag 已建、尚未 push） | 1 (Sprint 212) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release Tag | v2030.04.68-01 (Sprint 211) |
+| 最近一次 Release Tag | v2030.04.69-01 (Sprint 212) |
 | 最近一次已 push Release | v2030.04.68-01 (Sprint 211，2026-09-28，commit `1b7793f`，雲端 CI 已確認全綠，run 36334443508) |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release Tag 開始 | Sprint 10（⚠️ **連續性已中斷**：Sprint 68/69/70/74/75/76/78/80~92 共 20 個 Sprint 未建 row，該期間 tracker 未同步維護，非未交付） |
@@ -532,6 +533,7 @@ Sprint 35  → ⏳ Tag 已建 (v2027.02.27-01)  [待 push，S32~S35 累積批次
 | 版本 | 日期 | 修改內容 |
 |------|------|----------|
 | v3.40 | 2026-09-28 | **Sprint 211 狀態於同日確定，依 v1.5 補充的判準直接回填**（push 與雲端 CI 結果本來就要查證，順帶回填狀態成本為零，不觸發「為一行字再跑一次完整驗證」的循環）：`68ec641..1b7793f main -> main` 已 push，push 前輕量守門通過，✅ 雲端 CI 全綠（run 36334443508，三個 job 皆 success：Backend Unit 2m30s／Frontend Lint & Build 1m05s／Backend Integration & Package 4m36s）。同步統計區（已 push 182、待 push 0、最近一次已 push 為 Sprint 211） |
+| v3.41 | 2026-09-28 | 新增 Sprint 212 row（調查結算單同期間併發生成的競態風險；查證後確認既有 DEF-273 機制已妥善保護，未發現缺陷，新增真實 Postgres 併發測試補齊覆蓋）並同步統計區（建立 Tag 次數 183、待 push 1、最近 Tag 為 Sprint 212）。狀態標為「⏳ 待 push」 |
 | v3.39 | 2026-09-28 | 新增 Sprint 211 row（忘記密碼端點時序側通道，`DEF-290` 新登記並結案；新增虛擬執行緒背景寄信、紅燈先行＋突變驗證）並同步統計區（建立 Tag 次數 182、待 push 1、最近 Tag 為 Sprint 211）。狀態標為「⏳ 待 push」 |
 | v3.38 | 2026-09-27 | 回填 Sprint 210 的 push 狀態：`51c4739..9303c42 main -> main` 已 push（安全性修復，依既有授權慣例直接推送），push 前輕量守門通過，✅ 雲端 CI 全綠（run 36330824386，三個 job 皆 success）。同步統計區（已 push 181、待 push 0、最近一次已 push 為 Sprint 210） |
 | v3.37 | 2026-09-27 | 新增 Sprint 210 row（成員角色指派白名單缺口 `DEF-289` 新登記並結案；`updateMemberRole` 補上與 `inviteMember` 對稱的角色白名單檢查，紅燈先行＋突變驗證）並同步統計區（建立 Tag 次數 181、待 push 1、最近 Tag 為 Sprint 210）。狀態標為「⏳ 待 push」 |

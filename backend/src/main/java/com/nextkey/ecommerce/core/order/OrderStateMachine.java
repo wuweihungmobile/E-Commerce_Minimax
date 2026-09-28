@@ -139,10 +139,14 @@ public class OrderStateMachine {
 
     /**
      * 檢查是否允許退款
+     *
+     * <p>REFUNDING 是「已付款訂單被取消、等著退款」（{@code OrderService.cancelOrder} 對 PAID 訂單會轉到這裡）。
+     * 原本不在清單內，退款端點與 Stripe 退款 webhook 都拒絕它，而 REFUNDING→REFUNDED 又只允許付款子系統轉換
+     * （DEF-245）——這些訂單的錢沒有任何正規途徑能退回（DEF-300）。
      */
     public static boolean canRefund(final String currentStatus) {
         return switch (currentStatus) {
-            case "PAID", "CANCELLED" -> true;
+            case "PAID", "CANCELLED", "REFUNDING" -> true;
             default -> false;
         };
     }

@@ -363,8 +363,8 @@ class OrderControllerE2ETest {
 
     @Test
     @Order(7)
-    @DisplayName("API-M06-007: PATCH /v2/orders/{orderId}/status - BUYER 無法將 CREATED 直接轉換為 CONFIRMED（狀態機驗證）")
-    void updateOrderStatus_buyerCannotTransitionCreatedToConfirmed_returns422() throws Exception {
+    @DisplayName("API-M06-007: PATCH /v2/orders/{orderId}/status - BUYER 不可變更訂單狀態（授權層 403，訂單不變）")
+    void updateOrderStatus_buyerCannotChangeOrderStatus_returns403() throws Exception {
         // 先建立訂單
         String createResponse = given()
                 .header("Authorization", "Bearer " + accessToken)
@@ -386,9 +386,10 @@ class OrderControllerE2ETest {
         JsonNode createJson = objectMapper.readTree(createResponse);
         UUID orderId = UUID.fromString(createJson.path("data").path("id").asText());
 
-        // BUYER 嘗試將 CREATED 狀態直接轉換為 CONFIRMED
-        // 根據 OrderStateMachine，CREATED 只能轉換到 PAID 或 CANCELLED
-        // 因此 API 正確返回 422（業務邏輯錯誤），而非 403（權限不足）
+        // Sprint 216（DEF-298）：此案例原本斷言 BUYER 得到 422（狀態機拒絕）「而非 403」，但那只成立於
+        // 整合測試手抄權限清單多給 BUYER order:update 的時候——生產 BUYER 沒有 order:update。
+        // 買家本來就不該能改訂單狀態：服務層放行訂單本人，若授權層放行，買家能把自己的訂單直接
+        // 改成已出貨／已完成。狀態機的非法轉換由 OrderServiceTest.updateOrderStatus_invalidTransition_throwsE5001 涵蓋。
         given()
                 .header("Authorization", "Bearer " + accessToken)
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
@@ -399,11 +400,16 @@ class OrderControllerE2ETest {
                 .when()
                 .patch(BASE_URL + "/" + orderId + "/status")
                 .then()
-                .statusCode(422) // 業務邏輯拒絕，而非權限不足
-                .body("code", equalTo("E-5001"))
-                .body("message", containsString("無效的訂單狀態"));
+                .statusCode(403)
+                .body("code", equalTo("E-1007"));
 
-        System.out.println("✅ API-M06-007 PASSED: BUYER 無法將 CREATED 直接轉換為 CONFIRMED");
+        given()
+                .header("Authorization", "Bearer " + accessToken)
+                .when()
+                .get(BASE_URL + "/" + orderId)
+                .then()
+                .statusCode(200)
+                .body("data.status", equalTo("CREATED"));
     }
 
     // ── API-M06-008: 取消訂單-成功 ────────────────────────────────

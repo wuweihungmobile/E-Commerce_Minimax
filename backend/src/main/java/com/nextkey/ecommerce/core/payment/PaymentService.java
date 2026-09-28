@@ -37,6 +37,7 @@ public class PaymentService {
     private final BookingRepository bookingRepository;
     private final OrderService orderService;
     private final AuditService auditService;
+    private final PaymentStateService paymentStateService;
 
     /**
      * 處理支付（Mock）
@@ -71,6 +72,8 @@ public class PaymentService {
         // DEF-019：訂單付款擁有權檢查（/v2/payments 對外入口 IDOR 修補）——買家限本人訂單、
         // admin 放行，越權回 403/E_1007。置於狀態檢查之前，避免向未授權者洩漏訂單狀態。
         checkOrderPaymentOwnership(order);
+        // DEF-299：本端點建立的是「直接成功」的 Mock 付款（付款方式由呼叫端自填），不可在真實金流下使用
+        paymentStateService.requireMockPaymentAllowed();
 
         // 檢查訂單狀態
         if (order.getStatus() != Order.OrderStatus.CREATED) {
@@ -125,6 +128,7 @@ public class PaymentService {
         // DEF-023：訂房付款擁有權檢查（/v2/payments 對外入口 IDOR 修補）——買家限本人預訂、
         // admin 放行，越權回 403/E_1007。置於狀態檢查之前，避免向未授權者洩漏預訂狀態。
         checkBookingPaymentOwnership(booking);
+        paymentStateService.requireMockPaymentAllowed();
 
         // 檢查預訂狀態
         if (booking.getStatus() != Booking.BookingStatus.CREATED) {

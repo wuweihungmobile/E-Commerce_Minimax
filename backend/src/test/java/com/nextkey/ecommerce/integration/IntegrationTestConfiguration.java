@@ -471,7 +471,10 @@ public class IntegrationTestConfiguration {
                 authorities.addAll(Arrays.asList(
                         "cart:read", "cart:update", "cart:delete",
                         "product:read",
-                        "order:read", "order:create", "order:update",
+                        // Sprint 216（DEF-298）：生產 BUYER 從來沒有 order:update。這裡原本多給了它，
+                        // 讓付款端點（當時要求 order:update）在整合測試裡對買家放行，掩蓋了
+                        // 「一般買家根本付不了款」；也讓買家看起來能呼叫退款、改訂單狀態等端點。
+                        "order:read", "order:create",
                         "user:read", "user:update",
                         "booking:read", "booking:create", "booking:cancel"
                 ));

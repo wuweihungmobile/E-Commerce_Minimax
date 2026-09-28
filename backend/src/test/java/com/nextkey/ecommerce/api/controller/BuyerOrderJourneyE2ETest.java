@@ -12,6 +12,7 @@ import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
@@ -60,6 +62,8 @@ class BuyerOrderJourneyE2ETest {
     private UserRepository userRepository;
     @Autowired
     private OrderRepository orderRepository;
+    @Autowired
+    private JwtTokenService jwtTokenService;
 
     private static final String BASE_URL = "/v2/orders";
     private static final String AUTH_URL = "/v2/auth";
@@ -298,5 +302,42 @@ class BuyerOrderJourneyE2ETest {
                 .header("Authorization", "Bearer " + accessToken)
                 .when().get(BASE_URL + "/" + orderId + "/payment")
                 .then().statusCode(200);
+    }
+
+    @Test
+    @Order(6)
+    @DisplayName("買家付款後取消：訂單進入退款中，管理員能以退款端點完成退款（DEF-300）")
+    void paidOrderCancelledByBuyerCanBeRefunded() {
+        UUID orderId = createRoomOrder(accessToken);
+        given().header("Authorization", "Bearer " + accessToken)
+                .when().post(BASE_URL + "/" + orderId + "/pay")
+                .then().statusCode(200);
+
+        // 已付款訂單取消 → CANCELLED → REFUNDING（等待退款）
+        given().header("Authorization", "Bearer " + accessToken)
+                .when().post(BASE_URL + "/" + orderId + "/cancel")
+                .then().statusCode(200)
+                .body("data.status", is("REFUNDING"));
+
+        // REFUNDING 的意思就是「等著退款」；退款端點必須接受它，否則買家的錢沒有任何正規途徑退回
+        given().header("Authorization", "Bearer " + createAdminToken())
+                .when().post(BASE_URL + "/" + orderId + "/refund")
+                .then().statusCode(200)
+                .body("data.orderStatus", is("REFUNDED"))
+                .body("data.paymentStatus", is("REFUNDED"));
+
+        assertThat(orderRepository.findById(orderId).orElseThrow().getStatus())
+                .isEqualTo(com.nextkey.ecommerce.domain.model.order.Order.OrderStatus.REFUNDED);
+    }
+
+    private String createAdminToken() {
+        User admin = userRepository.save(User.builder()
+                .email("journey-admin-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 10000) + "@example.com")
+                .passwordHash("dummy")
+                .fullName("Journey Admin")
+                .role(User.UserRole.ADMIN)
+                .status("ACTIVE")
+                .build());
+        return jwtTokenService.generateAccessToken(admin.getId(), admin.getEmail(), "ADMIN", null);
     }
 }

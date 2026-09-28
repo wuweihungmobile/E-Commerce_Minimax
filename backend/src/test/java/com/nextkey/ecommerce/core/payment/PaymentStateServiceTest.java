@@ -635,6 +635,24 @@ class PaymentStateServiceTest {
         }
 
         @Test
+        @DisplayName("UT-PAY-STATE-030c：買家取消已付款訂單後（REFUNDING），Stripe 退款完成的 webhook 必須把訂單轉 REFUNDED"
+                + "（DEF-300：原本 REFUNDING 不可退款，訂單永遠停在退款中）")
+        void refundingOrder_webhookCompletesRefund() {
+            Order order = orderOf(USER_ID, Order.OrderStatus.REFUNDING);
+            Payment success = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.SUCCESS).build();
+            when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(success));
+            when(paymentRepository.markRefundedIfNotAlready(any(), any(Payment.PaymentStatus.class), any()))
+                    .thenReturn(1);
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+            boolean result = service.markStripeRefunded("pi_1", "re_1");
+
+            assertThat(result).isTrue();
+            assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
+            verify(orderRepository).save(order);
+        }
+
+        @Test
         @DisplayName("🔴 UT-PAY-STATE-030b：併發搶佔（原子 UPDATE 影響 0 列，例如 webhook 重複送達）"
                 + "-> 冪等回傳 false，絕不重複寫入 order_state_log（DEF-162）")
         void concurrentClaim_lostRace_returnsFalseWithoutDuplicateAudit() {

@@ -140,6 +140,7 @@ public class PaymentStateService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
         checkOrderOwnership(order);
+        requireMockPaymentAllowed();
 
         // 檢查訂單狀態是否可以支付
         if (!OrderStateMachine.canPay(order.getStatus().name())) {
@@ -192,6 +193,7 @@ public class PaymentStateService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
         checkOrderOwnership(order);
+        requireMockPaymentAllowed();
 
         // 檢查訂單狀態是否可以支付
         if (!OrderStateMachine.canPay(order.getStatus().name())) {
@@ -553,6 +555,22 @@ public class PaymentStateService {
         auditService.record("STRIPE_PAYMENT_FAILED_WEBHOOK", "PAYMENT", payment.getId(), failedTenantId,
                 null, "FAILED", "paymentIntent=" + paymentIntentId);
         return true;
+    }
+
+    /**
+     * Mock 付款只在未啟用真實金流時可用（DEF-299）。
+     *
+     * <p>Mock 付款不收錢就把訂單／預訂標成已付款。啟用 Stripe 後若仍可呼叫，買家不必付款就能拿到商品。
+     * 原本擋住這件事的只是「買家剛好沒有 {@code order:update}」（DEF-298 修正付款端點權限後就不再成立），
+     * 而舊版 {@code POST /v2/payments} 買家本來就能呼叫。所有 Mock 付款入口一律呼叫本方法；判斷與
+     * {@link #getOrderPaymentState} 回給前端的 {@code paymentProvider} 相同，前端在 Stripe 模式本就不顯示
+     * Mock 付款按鈕。
+     */
+    public void requireMockPaymentAllowed() {
+        if (featureToggleService.isFeatureEnabled(STRIPE_PAYMENT_ENABLED)) {
+            throw new BusinessException(ErrorCode.E_6004,
+                    "Mock payment is not available while Stripe payment is enabled");
+        }
     }
 
     // ========== Helper Methods ==========

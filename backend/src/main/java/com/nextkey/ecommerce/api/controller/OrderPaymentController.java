@@ -45,9 +45,14 @@ public class OrderPaymentController {
 
     /**
      * 模擬支付成功（Mock）
+     *
+     * <p>付款三端點（本端點、{@code /pay/fail}、{@code /pay/checkout}）原本只接受 {@code order:update}，
+     * 但買家（BUYER）從來沒有這個權限——一般買家建立訂單後付款一律 403（DEF-298）。付款屬於下單的一部分，
+     * 比照舊版 {@code POST /v2/payments} 以 {@code order:create} 放行；保留 {@code order:update} 使原本
+     * 能呼叫的角色不受影響。能不能付「這一筆」仍由服務層的本人或 ADMIN 檢查決定。
      */
     @PostMapping("/{orderId}/pay")
-    @PreAuthorize("hasAuthority('order:update')")
+    @PreAuthorize("hasAuthority('order:create') or hasAuthority('order:update')")
     public ResponseEntity<ApiResponse<OrderPaymentStateDto>> mockPaySuccess(
             @PathVariable UUID orderId) {
         log.info("Mock pay success request: orderId={}", orderId);
@@ -59,7 +64,7 @@ public class OrderPaymentController {
      * 模擬支付失敗（Mock）
      */
     @PostMapping("/{orderId}/pay/fail")
-    @PreAuthorize("hasAuthority('order:update')")
+    @PreAuthorize("hasAuthority('order:create') or hasAuthority('order:update')")
     public ResponseEntity<ApiResponse<OrderPaymentStateDto>> mockPayFailure(
             @PathVariable UUID orderId,
             @RequestParam(required = false) String reason) {
@@ -86,7 +91,7 @@ public class OrderPaymentController {
      * 發起 Stripe Checkout（真實金流 Phase A，Sprint 50 AI-2410）：建 Checkout Session，回前端重導 URL。
      */
     @PostMapping("/{orderId}/pay/checkout")
-    @PreAuthorize("hasAuthority('order:update')")
+    @PreAuthorize("hasAuthority('order:create') or hasAuthority('order:update')")
     public ResponseEntity<ApiResponse<CheckoutSessionResponse>> initiateStripeCheckout(
             @PathVariable UUID orderId) {
         log.info("Stripe checkout request: orderId={}", orderId);

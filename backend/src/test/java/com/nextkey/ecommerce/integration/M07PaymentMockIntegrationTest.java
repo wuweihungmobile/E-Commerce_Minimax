@@ -10,6 +10,7 @@ import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.core.order.OrderService;
+import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.MethodOrderer;
@@ -83,6 +84,9 @@ class M07PaymentMockIntegrationTest {
     @MockBean
     private com.nextkey.ecommerce.core.feature.FeatureToggleService featureToggleService;
 
+    @Autowired
+    private JwtTokenService jwtTokenService;
+
     private static final String PAYMENTS_URL = "/v2/payments";
     private static final String ORDERS_URL = "/v2/orders";
     private static final String TEST_PASSWORD = "SecurePass123!";
@@ -96,6 +100,9 @@ class M07PaymentMockIntegrationTest {
     void setUp() throws Exception {
         // Mock FeatureToggleService
         lenient().when(featureToggleService.isFeatureEnabled(anyString())).thenReturn(true);
+        // Sprint 216（DEF-299）：本類別測的是 Phase 1 Mock 模式。上一行把所有功能（含 STRIPE_PAYMENT_ENABLED）
+        // 都設為啟用，等於在「已啟用 Stripe」下斷言 Mock 付款成功——那正是啟用 Stripe 後不付錢就能標 PAID 的缺陷。
+        lenient().when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(false);
         lenient().doNothing().when(featureToggleService).checkFeatureEnabled(anyString());
 
         // Mock OrderService
@@ -171,6 +178,22 @@ class M07PaymentMockIntegrationTest {
 
         String response = loginResult.getResponse().getContentAsString();
         return objectMapper.readTree(response).path("data").path("accessToken").asText();
+    }
+
+    /**
+     * 退款由 ADMIN 執行（Sprint 216，DEF-298）：兩個退款端點都要求 {@code order:update}，生產買家沒有這個權限
+     * （服務層放行訂單本人，買家若拿得到就能自己退款）。原本以買家身分退款，只在整合測試手抄權限清單
+     * 多給 BUYER {@code order:update} 時成立。
+     */
+    private String createAdminToken() {
+        User admin = userRepository.save(User.builder()
+                .email("payment-admin-" + System.currentTimeMillis() + "@example.com")
+                .passwordHash("dummy")
+                .fullName("Payment Admin")
+                .role(User.UserRole.ADMIN)
+                .status("ACTIVE")
+                .build());
+        return jwtTokenService.generateAccessToken(admin.getId(), admin.getEmail(), "ADMIN", null);
     }
 
     @Test
@@ -253,7 +276,7 @@ class M07PaymentMockIntegrationTest {
             """, payment.getId());
 
         mockMvc.perform(post(PAYMENTS_URL + "/refund")
-                        .header("Authorization", "Bearer " + authToken)
+                        .header("Authorization", "Bearer " + createAdminToken())
                         .header("X-Tenant-ID", testTenantId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -343,7 +366,7 @@ class M07PaymentMockIntegrationTest {
                 .andExpect(status().isOk());
 
         mockMvc.perform(post(ORDERS_URL + "/" + newOrder.getId() + "/refund")
-                        .header("Authorization", "Bearer " + authToken)
+                        .header("Authorization", "Bearer " + createAdminToken())
                         .header("X-Tenant-ID", testTenantId.toString())
                         .param("reason", "Customer cancelled"))
                 .andExpect(status().isOk())

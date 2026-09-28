@@ -55,6 +55,9 @@ class PaymentServiceConcurrencyTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private PaymentStateService paymentStateService;
+
     @InjectMocks
     private PaymentService paymentService;
 

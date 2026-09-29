@@ -10,7 +10,9 @@ import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
 import com.nextkey.ecommerce.domain.model.media.MediaCategory;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant.TenantStatus;
+import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.domain.repository.cms.MediaAssetRepository;
 import com.nextkey.ecommerce.domain.repository.media.MediaCategoryRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -72,6 +74,9 @@ class M18MediaIntegrationTest {
 
     @Autowired
     private TenantRepository tenantRepository;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @Autowired
     private MediaCategoryRepository mediaCategoryRepository;
@@ -265,21 +270,27 @@ class M18MediaIntegrationTest {
     }
 
     private String createTestUserAndGetToken(String email) throws Exception {
-        // 建立測試用戶 (使用 SELLER 角色以取得 media:* 等權限)
         String registerJson = String.format("""
             {
                 "email": "%s",
                 "password": "%s",
-                "fullName": "Media Test User",
-                "tenantId": "%s",
-                "userType": "SELLER"
+                "fullName": "Media Test User"
             }
-            """, email, TEST_PASSWORD, testTenantId);
+            """, email, TEST_PASSWORD);
 
         mockMvc.perform(post("/v2/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerJson))
                 .andExpect(status().isCreated());
+
+        // Sprint 217（DEF-304）：原本以 SELLER 註冊「以取得 media:* 權限」，但那是整合測試手抄權限清單多給的——
+        // 生產 SELLER 沒有 media:*，PRD「RBAC 權限（M18 相關）」的上傳媒體也只列店主／店員／管理員。
+        // 比照 M09NotificationTemplateIntegrationTest，註冊後提升為本測試租戶的店主再登入，走生產授權路徑。
+        // （註冊請求原本帶的 tenantId 自 DEF-244 起已不被採用，一併拿掉。）
+        User registered = userRepository.findByEmail(email).orElseThrow();
+        registered.setRole(User.UserRole.STORE_OWNER);
+        registered.setTenantId(testTenantId);
+        userRepository.save(registered);
 
         // 登入獲取 token
         String loginJson = String.format("""

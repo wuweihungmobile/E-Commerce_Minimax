@@ -2,9 +2,6 @@ package com.nextkey.ecommerce.integration;
 
 import com.nextkey.ecommerce.api.dto.M15Dto;
 import com.nextkey.ecommerce.core.cms.media.MediaService;
-import com.nextkey.ecommerce.domain.model.user.RolePermissionMapping;
-import com.nextkey.ecommerce.domain.model.user.User;
-import com.nextkey.ecommerce.domain.model.user.Permission;
 import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.infrastructure.redis.RedisLockService;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
@@ -410,113 +407,11 @@ public class IntegrationTestConfiguration {
         };
     }
 
-    /**
-     * Mock RolePermissionMapping - 根據不同角色返回正確的權限
-     * 這樣 SELLER/BUYER 角色測試才能正確區分權限
-     *
-     * 🔴 修復：使用 spy 並明確 stub 每個角色，避免 any() matcher 在 Docker 環境中可能的問題
-     */
-    @Bean
-    @Primary
-    public RolePermissionMapping rolePermissionMapping() {
-        // 先建立真實實例
-        RolePermissionMapping realMapping = new RolePermissionMapping();
-
-        // 使用 spy 委託給真實實例，確保在任何環境都能正確工作
-        RolePermissionMapping spyMapping = Mockito.spy(realMapping);
-
-        // 🔴 明確 stub 每個角色，避免依賴 any() matcher
-        Mockito.doReturn(getAuthoritiesForRole(User.UserRole.SELLER)).when(spyMapping).getAuthorities(User.UserRole.SELLER);
-        Mockito.doReturn(getAuthoritiesForRole(User.UserRole.BUYER)).when(spyMapping).getAuthorities(User.UserRole.BUYER);
-        Mockito.doReturn(getAuthoritiesForRole(User.UserRole.STORE_OWNER)).when(spyMapping).getAuthorities(User.UserRole.STORE_OWNER);
-        Mockito.doReturn(getAuthoritiesForRole(User.UserRole.STORE_STAFF)).when(spyMapping).getAuthorities(User.UserRole.STORE_STAFF);
-        Mockito.doReturn(getAuthoritiesForRole(User.UserRole.HOST)).when(spyMapping).getAuthorities(User.UserRole.HOST);
-        Mockito.doReturn(getAuthoritiesForRole(User.UserRole.ADMIN)).when(spyMapping).getAuthorities(User.UserRole.ADMIN);
-        Mockito.doReturn(getAuthoritiesForRole(User.UserRole.SUPER_ADMIN)).when(spyMapping).getAuthorities(User.UserRole.SUPER_ADMIN);
-        Mockito.doReturn(getAuthoritiesForRole(User.UserRole.GUEST)).when(spyMapping).getAuthorities(User.UserRole.GUEST);
-
-        // 也 stub hasPermission 方法，回傳 true 表示允許所有權限（測試環境）
-        Mockito.doReturn(true).when(spyMapping).hasPermission(any(User.UserRole.class), anyString());
-        Mockito.doReturn(true).when(spyMapping).hasPermission(any(User.UserRole.class), any(Permission.class));
-
-        return spyMapping;
-    }
-
-    /**
-     * 取得特定角色的完整權限列表
-     * 與真實 RolePermissionMapping 的實作保持一致
-     */
-    private List<String> getAuthoritiesForRole(User.UserRole role) {
-        List<String> authorities = new ArrayList<>();
-        authorities.add("ROLE_" + role.name());
-        authorities.add(role.name());
-
-        switch (role) {
-            case SELLER:
-            case STORE_OWNER:
-                authorities.addAll(Arrays.asList(
-                        "cart:read", "cart:update", "cart:delete",
-                        "product:read", "product:create", "product:update", "product:delete",
-                        "order:read", "order:create", "order:update",
-                        "user:read", "user:update",
-                        "media:read", "media:create", "media:update", "media:delete",
-                        // Sprint 128（DEF-073）：對齊生產 RolePermissionMapping——通知模板由店主管理，
-                        // 原本這四個碼被錯誤地掛在 BUYER 底下，使 M09 整合測試以買家身分通過，
-                        // 掩蓋了「生產端 Permission 枚舉根本沒有這些碼」的缺陷。
-                        "notification_template:read", "notification_template:create",
-                        "notification_template:update", "notification_template:delete"
-                ));
-                break;
-            case BUYER:
-                authorities.addAll(Arrays.asList(
-                        "cart:read", "cart:update", "cart:delete",
-                        "product:read",
-                        // Sprint 216（DEF-298）：生產 BUYER 從來沒有 order:update。這裡原本多給了它，
-                        // 讓付款端點（當時要求 order:update）在整合測試裡對買家放行，掩蓋了
-                        // 「一般買家根本付不了款」；也讓買家看起來能呼叫退款、改訂單狀態等端點。
-                        "order:read", "order:create",
-                        "user:read", "user:update",
-                        "booking:read", "booking:create", "booking:cancel"
-                ));
-                break;
-            case HOST:
-                authorities.addAll(Arrays.asList(
-                        "room:read", "room:create", "room:update", "room:delete",
-                        "booking:read", "booking:create", "booking:update", "booking:cancel",
-                        "user:read", "user:update"
-                ));
-                break;
-            case SUPER_ADMIN:
-                authorities.addAll(Arrays.asList(
-                        "cart:read", "cart:update", "cart:delete",
-                        "product:read", "product:create", "product:update", "product:delete",
-                        "room:read", "room:create", "room:update", "room:delete",
-                        "order:read", "order:create", "order:update", "order:delete",
-                        "booking:read", "booking:create", "booking:update", "booking:cancel",
-                        "user:read", "user:update", "user:create", "user:delete",
-                        "tenant:read", "tenant:update", "tenant:create"
-                ));
-                break;
-            case ADMIN:
-                authorities.addAll(Arrays.asList(
-                        "cart:read", "cart:update", "cart:delete",
-                        "product:read", "product:create", "product:update", "product:delete",
-                        "room:read", "room:create", "room:update", "room:delete",
-                        "order:read", "order:create", "order:update", "order:delete",
-                        "booking:read", "booking:create", "booking:update", "booking:cancel",
-                        "user:read", "user:update", "user:create", "user:delete"
-                ));
-                break;
-            case GUEST:
-                authorities.addAll(Arrays.asList("product:read", "room:read"));
-                break;
-            default:
-                // STORE_STAFF 等其他角色返回基本權限
-                authorities.addAll(Arrays.asList("product:read", "room:read", "order:read"));
-                break;
-        }
-        return authorities;
-    }
+    // Sprint 217（DEF-304）：這裡原本以 spy 覆寫 RolePermissionMapping，每個角色回傳一份手抄權限清單，
+    // 並把 hasPermission 一律 stub 成 true。那份清單與生產權限表長期不一致（例如 SELLER／STORE_OWNER／ADMIN
+    // 能用購物車、BUYER 多了 order:update），整合測試因此能以生產不存在的權限通過——DEF-298「一般買家付不了款」
+    // 就是被它蓋住的。現在不再覆寫：JwtAuthenticationFilter 取得的就是生產的 @Component，
+    // 權限要改只改 RolePermissionMapping 一處。IntegrationContextUsesProductionPermissionsIntegrationTest 守住這件事。
 
     /**
      * Mock StorageService - 避免 MinIO 連接問題

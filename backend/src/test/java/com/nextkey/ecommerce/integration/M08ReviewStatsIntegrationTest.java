@@ -24,6 +24,7 @@ import com.nextkey.ecommerce.api.dto.ReviewDto;
 import com.nextkey.ecommerce.core.product.ProductService;
 import com.nextkey.ecommerce.core.product.ProductSkuService;
 import com.nextkey.ecommerce.core.review.ReviewService;
+import com.nextkey.ecommerce.domain.model.user.RolePermissionMapping;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 
 /**
@@ -35,7 +36,9 @@ import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
  * - IT-M08S-003: GET /v2/products/{id}/reviews/stats — 未授權應回傳 401
  */
 @WebMvcTest(controllers = {ProductController.class})
-@Import(IntegrationTestConfiguration.class)
+// Sprint 217（DEF-304）：@WebMvcTest 不掃描 @Component，JwtAuthenticationFilter 需要的權限表原本由
+// IntegrationTestConfiguration 以手抄清單提供；該覆寫已移除，改為把生產的 RolePermissionMapping 本身載入 slice。
+@Import({IntegrationTestConfiguration.class, RolePermissionMapping.class})
 @ActiveProfiles("integration-test")
 @DisplayName("IT-M08S: M08 評分統計端點測試")
 class M08ReviewStatsIntegrationTest {

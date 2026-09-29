@@ -99,7 +99,7 @@ public class PaymentStateService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
         checkOrderOwnership(order);
 
-        Payment payment = paymentRepository.findByOrderId(orderId).orElse(null);
+        Payment payment = paymentRepository.findEffectiveByOrderId(orderId).orElse(null);
 
         return toOrderPaymentStateDto(order, payment);
     }
@@ -113,7 +113,7 @@ public class PaymentStateService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4006, "Booking not found"));
         checkBookingOwnership(booking);
 
-        Payment payment = paymentRepository.findByBookingId(bookingId).orElse(null);
+        Payment payment = paymentRepository.findEffectiveByBookingId(bookingId).orElse(null);
 
         return toBookingPaymentStateDto(booking, payment);
     }

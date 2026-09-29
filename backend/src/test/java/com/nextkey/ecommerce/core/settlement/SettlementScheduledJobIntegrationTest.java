@@ -437,11 +437,11 @@ class SettlementScheduledJobIntegrationTest {
         when(calculator.calculateCommission(any(), any())).thenReturn(new BigDecimal("200.00"));
         when(calculator.calculateTotalRefunds(any(), any())).thenReturn(new BigDecimal("300.00"));
         when(calculator.calculateNetSettlementAmount(any(), any(), any())).thenReturn(new BigDecimal("1500.00"));
-        when(paymentRepository.findByOrderId(refundedOrder.getId())).thenReturn(Optional.of(
+        when(paymentRepository.findEffectiveByOrderId(refundedOrder.getId())).thenReturn(Optional.of(
                 com.nextkey.ecommerce.domain.model.payment.Payment.builder()
                         .refundedAmount(new BigDecimal("300.00"))
                         .build()));
-        when(paymentRepository.findByOrderId(untouchedOrder.getId())).thenReturn(Optional.empty());
+        when(paymentRepository.findEffectiveByOrderId(untouchedOrder.getId())).thenReturn(Optional.empty());
         when(settlementRepository.save(any(SettlementStatement.class)))
                 .thenAnswer(inv -> {
                     SettlementStatement s = inv.getArgument(0);

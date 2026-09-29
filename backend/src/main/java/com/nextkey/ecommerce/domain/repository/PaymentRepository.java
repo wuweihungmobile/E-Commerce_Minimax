@@ -70,9 +70,25 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     int markRefundedIfNotAlready(@Param("id") UUID id, @Param("newStatus") Payment.PaymentStatus newStatus,
             @Param("refundId") String refundId);
 
-    Optional<Payment> findByOrderId(UUID orderId);
+    /**
+     * 這張訂單的所有付款紀錄，由新到舊（Sprint 220，DEF-309）。多筆是正常情況（先付款失敗再成功），
+     * 所以不再提供回傳單一 {@code Optional} 的 {@code findByOrderId}——多於一筆會拋
+     * {@code IncorrectResultSizeDataAccessException}。要「這張訂單目前的付款」用 {@link #findEffectiveByOrderId}。
+     */
+    List<Payment> findAllByOrderIdOrderByCreatedAtDesc(UUID orderId);
 
-    Optional<Payment> findByBookingId(UUID bookingId);
+    /** 這筆訂房的所有付款紀錄，由新到舊；見 {@link #findAllByOrderIdOrderByCreatedAtDesc}。 */
+    List<Payment> findAllByBookingIdOrderByCreatedAtDesc(UUID bookingId);
+
+    /** 最能代表這張訂單付款狀況的一筆（規則見 {@link Payment#pickEffective}）。 */
+    default Optional<Payment> findEffectiveByOrderId(final UUID orderId) {
+        return Payment.pickEffective(findAllByOrderIdOrderByCreatedAtDesc(orderId));
+    }
+
+    /** 最能代表這筆訂房付款狀況的一筆（規則見 {@link Payment#pickEffective}）。 */
+    default Optional<Payment> findEffectiveByBookingId(final UUID bookingId) {
+        return Payment.pickEffective(findAllByBookingIdOrderByCreatedAtDesc(bookingId));
+    }
 
     boolean existsByOrderIdAndStatus(UUID orderId, Payment.PaymentStatus status);
 

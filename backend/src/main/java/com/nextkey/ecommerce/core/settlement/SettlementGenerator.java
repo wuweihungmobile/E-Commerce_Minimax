@@ -200,7 +200,7 @@ public class SettlementGenerator {
     private Map<UUID, BigDecimal> buildRefundedAmountMap(List<Order> orders) {
         Map<UUID, BigDecimal> refundedAmountByOrderId = new HashMap<>();
         for (Order order : orders) {
-            paymentRepository.findByOrderId(order.getId())
+            paymentRepository.findEffectiveByOrderId(order.getId())
                     .map(Payment::getRefundedAmount)
                     .filter(java.util.Objects::nonNull)
                     .filter(amount -> amount.compareTo(BigDecimal.ZERO) > 0)

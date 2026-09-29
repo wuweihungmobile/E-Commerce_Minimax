@@ -2,6 +2,9 @@ package com.nextkey.ecommerce.domain.model.payment;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.Optional;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -114,6 +117,22 @@ public class Payment {
         updatedAt = Instant.now();
     }
 
+    /**
+     * 從同一張訂單／訂房的多筆付款紀錄中挑出最能代表它付款狀況的一筆（Sprint 220，DEF-309）。
+     *
+     * <p>{@code payments.order_id}／{@code booking_id} 沒有唯一約束，而多筆是正常情況：Mock 模式先「模擬付款失敗」再
+     * 付款成功會留下一筆 FAILED 加一筆 SUCCESS。原本 {@code findByOrderId} 回傳單一 {@code Optional}，多於一筆時
+     * 拋 {@code IncorrectResultSizeDataAccessException}——付款狀態端點永遠 500、週結算對該租戶整個失敗。
+     *
+     * <p>優先順序：已有金流結果的（SUCCESS／PARTIALLY_REFUNDED／REFUNDED）→ 進行中的結帳（PROCESSING）→ PENDING →
+     * FAILED；同一順位取建立時間較晚者。
+     */
+    public static Optional<Payment> pickEffective(final Collection<Payment> payments) {
+        return payments.stream().min(Comparator
+                .comparingInt((Payment p) -> p.getStatus().effectiveRank())
+                .thenComparing(Payment::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+    }
+
     public enum PaymentMethod {
         LINE_PAY, CREDIT_CARD, MOCK,
         // 真實金流（Sprint 50 AI-2410）
@@ -125,6 +144,16 @@ public class Payment {
         // 真實金流（Sprint 50 AI-2410）：Checkout Session 已建、待買家於 Stripe 完成付款
         PROCESSING,
         // 部分退款（Sprint 56 AI-2415）：已退款金額 > 0 但未達 amount 全額
-        PARTIALLY_REFUNDED
+        PARTIALLY_REFUNDED;
+
+        /** {@link Payment#pickEffective} 的優先順序：數字越小越能代表付款狀況。 */
+        int effectiveRank() {
+            return switch (this) {
+                case SUCCESS, PARTIALLY_REFUNDED, REFUNDED -> 0;
+                case PROCESSING -> 1;
+                case PENDING -> 2;
+                case FAILED -> 3;
+            };
+        }
     }
 }

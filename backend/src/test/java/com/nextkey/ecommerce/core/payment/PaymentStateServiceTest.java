@@ -146,7 +146,7 @@ class PaymentStateServiceTest {
         @DisplayName("UT-PAY-STATE-003: 本人查詢 + 無付款記錄 -> dto 不含 payment 欄位")
         void ownerNoPayment_returnsStateWithoutPayment() {
             when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(orderOf(USER_ID, Order.OrderStatus.CREATED)));
-            when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.empty());
+            when(paymentRepository.findEffectiveByOrderId(ORDER_ID)).thenReturn(Optional.empty());
 
             OrderPaymentStateDto dto = service.getOrderPaymentState(ORDER_ID);
 
@@ -161,7 +161,7 @@ class PaymentStateServiceTest {
             Payment payment = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.SUCCESS)
                     .transactionId("MOCK-1").build();
             when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(orderOf(USER_ID, Order.OrderStatus.PAID)));
-            when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
+            when(paymentRepository.findEffectiveByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
 
             OrderPaymentStateDto dto = service.getOrderPaymentState(ORDER_ID);
 
@@ -174,7 +174,7 @@ class PaymentStateServiceTest {
         void admin_bypassesOwnership() {
             loginAsAdmin();
             when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(orderOf(OTHER_USER_ID, Order.OrderStatus.CREATED)));
-            when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.empty());
+            when(paymentRepository.findEffectiveByOrderId(ORDER_ID)).thenReturn(Optional.empty());
 
             OrderPaymentStateDto dto = service.getOrderPaymentState(ORDER_ID);
 
@@ -225,7 +225,7 @@ class PaymentStateServiceTest {
             Booking booking = Booking.builder().userId(OTHER_USER_ID).status(Booking.BookingStatus.CREATED).build();
             booking.setId(BOOKING_ID);
             when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
-            when(paymentRepository.findByBookingId(BOOKING_ID)).thenReturn(Optional.empty());
+            when(paymentRepository.findEffectiveByBookingId(BOOKING_ID)).thenReturn(Optional.empty());
 
             OrderPaymentStateDto dto = service.getBookingPaymentState(BOOKING_ID);
 
@@ -236,7 +236,7 @@ class PaymentStateServiceTest {
         @DisplayName("UT-PAY-STATE-007: CREATED 狀態 + 無付款記錄 -> canPay=true，nextValidStates=PAID,CANCELLED")
         void created_noPayment_canPay() {
             when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(bookingOf(Booking.BookingStatus.CREATED)));
-            when(paymentRepository.findByBookingId(BOOKING_ID)).thenReturn(Optional.empty());
+            when(paymentRepository.findEffectiveByBookingId(BOOKING_ID)).thenReturn(Optional.empty());
 
             OrderPaymentStateDto dto = service.getBookingPaymentState(BOOKING_ID);
 
@@ -251,7 +251,7 @@ class PaymentStateServiceTest {
             Payment payment = Payment.builder().bookingId(BOOKING_ID).status(Payment.PaymentStatus.SUCCESS)
                     .transactionId("MOCK-2").paidAt(Instant.now()).build();
             when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(bookingOf(Booking.BookingStatus.PAID)));
-            when(paymentRepository.findByBookingId(BOOKING_ID)).thenReturn(Optional.of(payment));
+            when(paymentRepository.findEffectiveByBookingId(BOOKING_ID)).thenReturn(Optional.of(payment));
 
             OrderPaymentStateDto dto = service.getBookingPaymentState(BOOKING_ID);
 
@@ -263,7 +263,7 @@ class PaymentStateServiceTest {
         @DisplayName("UT-PAY-STATE-009: PAID 狀態 -> canRefund=true，nextValidStates=CONFIRMED,CANCELLED")
         void paid_canRefund() {
             when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(bookingOf(Booking.BookingStatus.PAID)));
-            when(paymentRepository.findByBookingId(BOOKING_ID)).thenReturn(Optional.empty());
+            when(paymentRepository.findEffectiveByBookingId(BOOKING_ID)).thenReturn(Optional.empty());
 
             OrderPaymentStateDto dto = service.getBookingPaymentState(BOOKING_ID);
 
@@ -276,7 +276,7 @@ class PaymentStateServiceTest {
         @DisplayName("UT-PAY-STATE-010: COMPLETED 狀態（終態）-> nextValidStates 為空、不可付款/取消/退款")
         void completed_terminalState_noNextStates() {
             when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(bookingOf(Booking.BookingStatus.COMPLETED)));
-            when(paymentRepository.findByBookingId(BOOKING_ID)).thenReturn(Optional.empty());
+            when(paymentRepository.findEffectiveByBookingId(BOOKING_ID)).thenReturn(Optional.empty());
 
             OrderPaymentStateDto dto = service.getBookingPaymentState(BOOKING_ID);
 

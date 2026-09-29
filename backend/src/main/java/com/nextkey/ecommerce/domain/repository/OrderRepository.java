@@ -18,6 +18,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.nextkey.ecommerce.domain.model.order.Order;
+import com.nextkey.ecommerce.domain.model.payment.Payment;
 
 @Repository
 public interface OrderRepository extends JpaRepository<Order, UUID> {
@@ -149,4 +150,40 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
             @Param("statuses") List<Order.OrderStatus> statuses);
 
     boolean existsByUserIdAndStatusNotIn(UUID userId, List<Order.OrderStatus> statuses);
+
+    /**
+     * 逾時未付款訂單的 ID（Sprint 219，DEF-302），依建立時間由舊到新。條件與 {@link #cancelIfExpiredUnpaid} 相同：
+     * 建立時間早於 {@code cutoff} 且仍是 CREATED，並排除已有成功付款、或在 {@code cutoff} 之後開始過結帳
+     * （PROCESSING）的訂單。查詢只用來挑候選，真正把關的是取消時那條條件式 UPDATE。
+     */
+    @Query("""
+            SELECT o.id FROM Order o
+            WHERE o.status = :created AND o.createdAt < :cutoff
+              AND NOT EXISTS (
+                  SELECT 1 FROM Payment p
+                  WHERE p.orderId = o.id
+                    AND (p.status = :success OR (p.status = :processing AND p.createdAt > :cutoff)))
+            ORDER BY o.createdAt ASC
+            """)
+    List<UUID> findExpiredUnpaidOrderIds(@Param("created") Order.OrderStatus created,
+            @Param("cutoff") Instant cutoff, @Param("success") Payment.PaymentStatus success,
+            @Param("processing") Payment.PaymentStatus processing, Pageable pageable);
+
+    /**
+     * 逾時未付款訂單的原子取消（Sprint 219，DEF-302）：把「仍是 CREATED、建立時間早於 cutoff、沒有成功付款、
+     * 也沒有 cutoff 之後開始的結帳」與狀態轉換寫在同一條 UPDATE，與買家付款的 {@link #updateStatusIfCurrent}
+     * 搶同一個狀態，恰好一邊成功。回傳 1 表示本次取消成功，0 表示已不符條件。
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            UPDATE Order o SET o.status = :cancelled
+            WHERE o.id = :id AND o.status = :created AND o.createdAt < :cutoff
+              AND NOT EXISTS (
+                  SELECT 1 FROM Payment p
+                  WHERE p.orderId = o.id
+                    AND (p.status = :success OR (p.status = :processing AND p.createdAt > :cutoff)))
+            """)
+    int cancelIfExpiredUnpaid(@Param("id") UUID id, @Param("created") Order.OrderStatus created,
+            @Param("cancelled") Order.OrderStatus cancelled, @Param("cutoff") Instant cutoff,
+            @Param("success") Payment.PaymentStatus success, @Param("processing") Payment.PaymentStatus processing);
 }

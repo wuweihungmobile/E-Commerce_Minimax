@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -176,5 +177,72 @@ class NotificationConsumerServiceTest {
 
         // Assert：兩則訊息都必須能在重試佇列中各自找到，不可因 key 相同而互相覆蓋遺失
         assertThat(fakeRedisStringStore.values()).contains("SERIALIZED_A", "SERIALIZED_B");
+    }
+
+    // ========== TC-C004~006（Sprint 219，DEF-305：單筆通知更新預建列，不再新增第二列） ==========
+
+    private NotificationMessage buildMessageWithNotificationId(final UUID notificationId) {
+        NotificationMessage message = buildMessage();
+        message.setNotificationId(notificationId);
+        return message;
+    }
+
+    @Test
+    @DisplayName("TC-C004: 訊息帶預建列 id → 更新那一列（isSent=true）而不是新增，歷史仍只寫一筆")
+    void consumeNotifications_withNotificationId_updatesPrecreatedRow() throws JsonProcessingException {
+        UUID notificationId = UUID.randomUUID();
+        String json = "{\"messageId\":\"" + MESSAGE_ID + "\"}";
+        stubRedisAndParser(json, buildMessageWithNotificationId(notificationId));
+        Notification precreated = Notification.builder()
+                .id(notificationId)
+                .userId(USER_ID)
+                .notificationType(Notification.NotificationType.ORDER_CONFIRMED)
+                .title("訂單已確認")
+                .channel(Notification.NotificationChannel.IN_APP)
+                .isSent(false)
+                .build();
+        when(notificationRepository.findById(notificationId)).thenReturn(java.util.Optional.of(precreated));
+
+        consumerService.consumeNotifications();
+
+        assertThat(precreated.getIsSent()).isTrue();
+        assertThat(precreated.getSentAt()).isNotNull();
+        verify(notificationRepository, times(1)).save(precreated);
+        verify(notificationHistoryService, times(1)).createHistory(
+                eq(USER_ID), isNull(), eq("ORDER_CONFIRMED"), eq("IN_APP"), eq("訂單已確認"), eq("您的訂單已確認"));
+    }
+
+    @Test
+    @DisplayName("TC-C005: 預建列還看不到（交易尚未提交）→ 不新增重複列、不寫歷史，走重試佇列")
+    void consumeNotifications_precreatedRowNotVisible_retriesInsteadOfInserting() throws JsonProcessingException {
+        UUID notificationId = UUID.randomUUID();
+        String json = "{\"messageId\":\"" + MESSAGE_ID + "\"}";
+        NotificationMessage message = buildMessageWithNotificationId(notificationId);
+        stubRedisAndParser(json, message);
+        when(notificationRepository.findById(notificationId)).thenReturn(java.util.Optional.empty());
+        ValueOperations<String, Object> valueOperations = org.mockito.Mockito.mock(ValueOperations.class);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(objectMapper.writeValueAsString(message)).thenReturn("SERIALIZED");
+
+        consumerService.consumeNotifications();
+
+        verify(notificationRepository, never()).save(any());
+        verify(notificationHistoryService, never()).createHistory(any(), any(), any(), any(), any(), any());
+        verify(valueOperations).set(eq("notification:retry:" + MESSAGE_ID), eq("SERIALIZED"), anyLong(),
+                any(TimeUnit.class));
+        assertThat(message.getRetryCount()).as("重試次數遞增").isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("TC-C006: 沒有預建列 id（廣播）→ 照舊新增一列，不查詢既有列")
+    void consumeNotifications_withoutNotificationId_insertsNewRow() throws JsonProcessingException {
+        String json = "{\"messageId\":\"" + MESSAGE_ID + "\"}";
+        stubRedisAndParser(json, buildMessage());
+        when(notificationRepository.save(any())).thenReturn(buildSavedNotification());
+
+        consumerService.consumeNotifications();
+
+        verify(notificationRepository, times(1)).save(any());
+        verify(notificationRepository, never()).findById(any());
     }
 }

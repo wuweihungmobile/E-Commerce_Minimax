@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -45,6 +46,7 @@ import com.nextkey.ecommerce.core.user.AddressService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.order.OrderStateLog;
+import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.model.product.ProductSku;
 import com.nextkey.ecommerce.domain.model.promo.PromoCodeUsage;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
@@ -1279,6 +1281,51 @@ class OrderServiceTest {
         orderService.updateOrderStatus(ORDER_ID, "CONFIRMED", "accepted");
 
         verifyNoInteractions(productInventoryService);
+    }
+
+    // ========== cancelExpiredUnpaidOrder：未付款逾時取消（Sprint 219，DEF-302） ==========
+
+    private static final java.time.Instant TIMEOUT_CUTOFF = java.time.Instant.parse("2026-09-29T12:00:00Z");
+
+    @Test
+    @DisplayName("DEF-302：搶到逾時取消 → 補償與買家取消相同（釋放預留、退還優惠券），狀態紀錄與稽核記為系統操作")
+    void cancelExpiredUnpaidOrder_claimed_compensatesAsSystem() {
+        Order order = orderOf(USER_ID, Order.OrderStatus.CANCELLED);
+        order.setPromoCode("SAVE10");
+        PromoCodeUsage usage = PromoCodeUsage.builder().orderId(ORDER_ID).build();
+        when(orderRepository.cancelIfExpiredUnpaid(ORDER_ID, Order.OrderStatus.CREATED, Order.OrderStatus.CANCELLED,
+                TIMEOUT_CUTOFF, Payment.PaymentStatus.SUCCESS, Payment.PaymentStatus.PROCESSING)).thenReturn(1);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(promoCodeUsageRepository.findByOrderIdAndStatus(ORDER_ID, PromoCodeUsage.UsageStatus.ACTIVE))
+                .thenReturn(List.of(usage));
+
+        boolean cancelled = orderService.cancelExpiredUnpaidOrder(ORDER_ID, TIMEOUT_CUTOFF);
+
+        assertThat(cancelled).isTrue();
+        verify(productInventoryService).releaseOnCancellation(order, Order.OrderStatus.CREATED);
+        verify(promoService).releaseOrderSide(usage);
+        org.mockito.ArgumentCaptor<OrderStateLog> logs = org.mockito.ArgumentCaptor.forClass(OrderStateLog.class);
+        verify(orderStateLogRepository).save(logs.capture());
+        assertThat(logs.getValue().getFromStatus()).isEqualTo("CREATED");
+        assertThat(logs.getValue().getToStatus()).isEqualTo("CANCELLED");
+        assertThat(logs.getValue().getChangedBy()).as("系統操作沒有使用者").isNull();
+        assertThat(logs.getValue().getReason()).isEqualTo("Unpaid order timed out");
+        verify(auditService).record(eq("ORDER_CANCELLED"), eq("ORDER"), eq(ORDER_ID), eq(TENANT_ID),
+                eq("CREATED"), eq("CANCELLED"), eq("Unpaid order timed out"), isNull());
+        // 未付款：不進退款
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    @DisplayName("DEF-302：條件式 UPDATE 沒搶到（已付款、已取消、有進行中的結帳…）→ 什麼都不做")
+    void cancelExpiredUnpaidOrder_notClaimed_doesNothing() {
+        when(orderRepository.cancelIfExpiredUnpaid(any(), any(), any(), any(), any(), any())).thenReturn(0);
+
+        boolean cancelled = orderService.cancelExpiredUnpaidOrder(ORDER_ID, TIMEOUT_CUTOFF);
+
+        assertThat(cancelled).isFalse();
+        verify(orderRepository, never()).findById(any());
+        verifyNoInteractions(productInventoryService, orderStateLogRepository, auditService);
     }
 
     // ========== cancelOrder ==========

@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.order;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -29,6 +30,7 @@ import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.order.OrderItem;
 import com.nextkey.ecommerce.domain.model.order.OrderStateLog;
+import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.model.product.ProductSku;
 import com.nextkey.ecommerce.core.user.AddressService;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
@@ -790,6 +792,38 @@ public class OrderService {
         recordStateLog(saved, Order.OrderStatus.CANCELLED.name(), Order.OrderStatus.REFUNDING.name(), actorUserId,
                 "Order was paid: refund pending");
         return saved;
+    }
+
+    /**
+     * 取消一張逾時未付款的訂單（Sprint 219，DEF-302；由 {@link OrderTimeoutService} 逐張呼叫）。
+     *
+     * <p>「仍未付款」與「已逾時」的判斷、以及狀態轉換，都包在同一條條件式 UPDATE（
+     * {@code OrderRepository.cancelIfExpiredUnpaid}）：與買家付款（CREATED→PAID 的 CAS）搶同一個狀態，
+     * 恰好一邊成功。另外不取消已有成功付款、或在 24 小時內開始過 Stripe 結帳的訂單——Stripe Checkout 工作階段預設
+     * 建立後 24 小時才到期，太早取消會讓買家仍能付款成功、訂單卻已取消（錢收了沒有訂單）。
+     *
+     * <p>搶到之後的補償與買家自己取消完全相同（{@link #compensateCancellation}，取消前為 CREATED：釋放預留、
+     * 退還優惠券）。操作者為系統，狀態紀錄與稽核的使用者為 null。
+     *
+     * @return {@code true} 表示本次取消了這張訂單；{@code false} 表示它已不符條件（已付款、已被取消、
+     *         有進行中的結帳…），什麼都沒做
+     */
+    @CacheEvict(value = "dashboardStats", allEntries = true)
+    @Transactional
+    public boolean cancelExpiredUnpaidOrder(final UUID orderId, final Instant cutoff) {
+        if (orderRepository.cancelIfExpiredUnpaid(orderId, Order.OrderStatus.CREATED, Order.OrderStatus.CANCELLED,
+                cutoff, Payment.PaymentStatus.SUCCESS, Payment.PaymentStatus.PROCESSING) == 0) {
+            return false;
+        }
+        // 上面是批次 UPDATE，沒有載入過實體，這裡讀到的就是剛提交在本交易內的新狀態
+        Order order = findOrderById(orderId);
+        recordStateLog(order, Order.OrderStatus.CREATED.name(), Order.OrderStatus.CANCELLED.name(), null,
+                "Unpaid order timed out");
+        auditService.record("ORDER_CANCELLED", "ORDER", order.getId(), order.getTenantId(),
+                Order.OrderStatus.CREATED.name(), Order.OrderStatus.CANCELLED.name(), "Unpaid order timed out", null);
+        compensateCancellation(order, Order.OrderStatus.CREATED, null);
+        log.info("Unpaid order cancelled on timeout: orderId={}", orderId);
+        return true;
     }
 
     /**

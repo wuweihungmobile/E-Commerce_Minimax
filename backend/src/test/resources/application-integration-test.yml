@@ -51,5 +51,9 @@ jwt:
   refresh-token-expiration: 2592000000
 
 app:
+  # 整合測試不跑排程（DEF-305）：背景任務會碰到測試資料與 mock 的 Redis，讓結果不可預期。
+  # 排程本身由 SchedulingConfigTest 守護，逾時取消由 OrderTimeoutIntegrationTest 直接呼叫服務驗證。
+  scheduling:
+    enabled: false
   cors:
     allowed-origins: http://localhost:3000

@@ -93,7 +93,7 @@ class NotificationServiceTest {
         NotificationDto.SendRequest request = buildSendRequest();
 
         assertThrows(BusinessException.class, () -> notificationService.sendNotification(request));
-        verify(notificationProducerService, never()).sendToQueue(any());
+        org.mockito.Mockito.verifyNoInteractions(notificationProducerService);
     }
 
     @Test
@@ -108,7 +108,7 @@ class NotificationServiceTest {
 
         assertFalse(response.getIsSent());
         assertEquals("Skipped by user preference", response.getErrorMessage());
-        verify(notificationProducerService, never()).sendToQueue(any());
+        org.mockito.Mockito.verifyNoInteractions(notificationProducerService);
         verify(notificationRepository, never()).save(any());
     }
 
@@ -128,7 +128,9 @@ class NotificationServiceTest {
         assertNotNull(response);
         assertEquals(USER_ID, response.getUserId());
         assertEquals("IN_APP", response.getChannel());
-        verify(notificationProducerService, times(1)).sendToQueue(any(NotificationDto.SendRequest.class));
+        // Sprint 219（DEF-305）：帶上預建列的 id，消費者才會更新這一列而不是再新增一列
+        verify(notificationProducerService, times(1))
+                .sendToQueue(any(NotificationDto.SendRequest.class), eq(NOTIFICATION_ID));
 
         ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
         verify(notificationRepository, times(1)).save(captor.capture());
@@ -188,7 +190,7 @@ class NotificationServiceTest {
         when(notificationPreferenceService.isEnabled(any(), any(), any())).thenReturn(true);
         when(notificationRepository.save(any(Notification.class))).thenAnswer(inv -> inv.getArgument(0));
         RuntimeException queueError = new RuntimeException("Redis unavailable");
-        org.mockito.Mockito.doThrow(queueError).when(notificationProducerService).sendToQueue(any());
+        org.mockito.Mockito.doThrow(queueError).when(notificationProducerService).sendToQueue(any(), any());
 
         NotificationDto.SendRequest request = buildSendRequest();
 

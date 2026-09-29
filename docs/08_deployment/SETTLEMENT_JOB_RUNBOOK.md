@@ -17,6 +17,13 @@
 >
 > 其餘章節（§3.4 驗證 SQL、§4 異常處理等）**未重新核對**，引用前請先與程式碼比對。撥款（Transfer）的上線項目見 [STRIPE_PRODUCTION_CHECKLIST.md](STRIPE_PRODUCTION_CHECKLIST.md)。
 
+> **🔴 Sprint 219 更正（2026-09-30，DEF-305）：這個排程在此之前從未自動執行過。** 全專案自第一個 commit 起就沒有 `@EnableScheduling`，`@Scheduled` 不會被 Spring 處理；§4.4 列的「應用是否啟用 `@EnableScheduling`」檢查項從來沒有人真的檢查過。Sprint 219 起由 `SchedulingConfig` 啟用（專屬執行緒池 `app-scheduler-*`）：
+>
+> - **啟用後第一個台灣時間週一 00:00 會自動產生結算單**，且依 Sprint 195 的語意納入**所有「已完成且尚未結算」的訂單、不限下單週**——若正式環境已有歷史已完成訂單，第一張結算單會很大。結算單產生後是待審核狀態，撥款要經過審核／核准，不會因產生而動錢。
+> - 想在正式環境先人工確認再讓它自動跑：部署時設 `APP_SCHEDULING_ENABLED=false`（同時關閉通知佇列消費與未付款訂單取消），用管理員手動觸發端點 `POST /v2/admin/settlements/generate`（SUPER_ADMIN，Sprint 208／DEF-287）檢視結果，之後再開。
+> - 相關設定：`APP_SCHEDULING_ENABLED`（預設 true）、`APP_SCHEDULING_POOL_SIZE`（預設 4）、`ORDER_UNPAID_TIMEOUT_HOURS`（預設 24）、`ORDER_TIMEOUT_CHECK_INTERVAL_MS`（預設 300000）、`ORDER_TIMEOUT_INITIAL_DELAY_MS`（預設 60000）、`ORDER_TIMEOUT_BATCH_SIZE`（預設 100）。
+> - 多個後端實例同時執行是安全的：結算單有「同期間已存在」的冪等檢查與訂單原子認領（Sprint 212 已驗證），佇列消費用 Redis 原子 pop，未付款訂單取消是 CAS。
+
 ---
 
 ## 1. 為什麼需要這個 Runbook？

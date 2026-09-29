@@ -1,5 +1,7 @@
 package com.nextkey.ecommerce.infrastructure.mq;
 
+import java.util.UUID;
+
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -29,9 +31,18 @@ public class NotificationProducerService {
     private final ObjectMapper objectMapper;
 
     /**
-     * 發送通知到 MQ
+     * 發送通知到 MQ（廣播用：沒有預先建立的 Notification 列，消費者會新增一列）
      */
     public void sendToQueue(NotificationDto.SendRequest request) {
+        sendToQueue(request, null);
+    }
+
+    /**
+     * 發送通知到 MQ。{@code notificationId} 是呼叫端在送出前已預先建立的 Notification 列（單筆通知，見
+     * {@code NotificationService.sendNotification}）；帶入後消費者更新那一列而不是再新增一列（Sprint 219，DEF-305：
+     * 排程啟用前消費者從未執行，「預建一列＋消費者再建一列」的重複沒有人看過）。
+     */
+    public void sendToQueue(NotificationDto.SendRequest request, UUID notificationId) {
         User user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1006, "User not found"));
 
@@ -53,6 +64,7 @@ public class NotificationProducerService {
                 channel.name(),
                 recipient
         );
+        message.setNotificationId(notificationId);
 
         sendMessage(message);
         log.info("Notification sent to queue: messageId={}, userId={}, type={}",

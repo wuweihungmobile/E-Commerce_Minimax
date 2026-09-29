@@ -91,9 +91,9 @@ public class NotificationService {
 
         notification = notificationRepository.save(notification);
 
-        // 發送到 MQ 佇列（非同步處理）
+        // 發送到 MQ 佇列（非同步處理）。帶上預建列的 id，消費者更新這一列而不是再新增一列（DEF-305）
         try {
-            notificationProducerService.sendToQueue(request);
+            notificationProducerService.sendToQueue(request, notification.getId());
             log.info("Notification queued: id={}, userId={}, type={}, channel={}",
                     notification.getId(), user.getId(), request.getNotificationType(), channel);
         } catch (RuntimeException e) {

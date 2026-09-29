@@ -96,22 +96,11 @@ public class NotificationConsumerService {
             log.info("Processing notification: messageId={}, userId={}, type={}",
                     message.getMessageId(), message.getUserId(), message.getNotificationType());
 
-            // 創建通知記錄
-            Notification notification = Notification.builder()
-                    .userId(message.getUserId())
-                    .notificationType(Notification.NotificationType.valueOf(message.getNotificationType()))
-                    .title(message.getTitle())
-                    .content(message.getContent())
-                    .data(message.getData())
-                    .channel(Notification.NotificationChannel.valueOf(message.getChannel()))
-                    .recipient(message.getRecipient())
-                    .isSent(true)
-                    .sentAt(message.getCreatedAt() != null ? message.getCreatedAt() : Instant.now())
-                    .retryCount(message.getRetryCount())
-                    .errorMessage(message.getErrorMessage())
-                    .build();
-
-            notificationRepository.save(notification);
+            if (message.getNotificationId() != null) {
+                markPrecreatedNotificationSent(message);
+            } else {
+                notificationRepository.save(buildSentNotification(message));
+            }
 
             // 於 Consumer ACK 後寫入歷史，保障「至少一次送達」語意（AI-502）
             try {
@@ -133,6 +122,45 @@ public class NotificationConsumerService {
             log.error("Failed to process notification message: {}", message.getMessageId(), e);
             handleFailedMessage(message);
         }
+    }
+
+    /** 廣播（沒有預建列）：新增一列已送出的通知。 */
+    private Notification buildSentNotification(final NotificationMessage message) {
+        return Notification.builder()
+                .userId(message.getUserId())
+                .notificationType(Notification.NotificationType.valueOf(message.getNotificationType()))
+                .title(message.getTitle())
+                .content(message.getContent())
+                .data(message.getData())
+                .channel(Notification.NotificationChannel.valueOf(message.getChannel()))
+                .recipient(message.getRecipient())
+                .isSent(true)
+                .sentAt(sentAtOf(message))
+                .retryCount(message.getRetryCount())
+                .errorMessage(message.getErrorMessage())
+                .build();
+    }
+
+    /**
+     * 單筆通知：更新送出前預先建立的那一列，而不是再新增第二列（Sprint 219，DEF-305）。
+     *
+     * <p>預建列與入佇在同一個 {@code @Transactional} 方法裡，訊息推進 Redis 時預建列的交易可能還沒提交
+     * （BRPOP 一有訊息就醒來，毫秒級的窗口確實存在）。找不到時不新增重複列，改拋例外交給既有的重試機制
+     * （{@link #handleFailedMessage}：約 5 秒後重試、最多 3 次，之後進 DLQ）。
+     */
+    private void markPrecreatedNotificationSent(final NotificationMessage message) {
+        Notification notification = notificationRepository.findById(message.getNotificationId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Pre-created notification not visible yet: " + message.getNotificationId()));
+        notification.setIsSent(true);
+        notification.setSentAt(sentAtOf(message));
+        notification.setRetryCount(message.getRetryCount());
+        notification.setErrorMessage(message.getErrorMessage());
+        notificationRepository.save(notification);
+    }
+
+    private Instant sentAtOf(final NotificationMessage message) {
+        return message.getCreatedAt() != null ? message.getCreatedAt() : Instant.now();
     }
 
     /**

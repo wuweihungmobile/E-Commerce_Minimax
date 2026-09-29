@@ -20,6 +20,11 @@ import lombok.NoArgsConstructor;
 public class NotificationMessage {
 
     private UUID messageId;
+    /**
+     * 送出前已預先建立的 {@code Notification} 列（單筆通知，見 {@code NotificationService.sendNotification}）的 id；
+     * 廣播沒有預建列，為 null（Sprint 219，DEF-305）。消費者據此更新那一列，而不是再新增第二列。
+     */
+    private UUID notificationId;
     private UUID userId;
     private String notificationType;
     private String title;

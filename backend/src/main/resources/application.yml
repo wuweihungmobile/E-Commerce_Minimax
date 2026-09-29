@@ -82,6 +82,16 @@ jwt:
 app:
   host: 0.0.0.0
   port: 8080
+  # 排程總開關與專屬執行緒池大小（DEF-305；SchedulingConfig）。整合測試 profile 關閉；緊急時可設 APP_SCHEDULING_ENABLED=false
+  scheduling:
+    enabled: ${APP_SCHEDULING_ENABLED:true}
+    pool-size: ${APP_SCHEDULING_POOL_SIZE:4}
+  # 未付款訂單逾時自動取消（DEF-302；使用者 2026-09-29 拍板 24 小時）
+  order-timeout:
+    unpaid-hours: ${ORDER_UNPAID_TIMEOUT_HOURS:24}
+    check-interval-ms: ${ORDER_TIMEOUT_CHECK_INTERVAL_MS:300000}
+    initial-delay-ms: ${ORDER_TIMEOUT_INITIAL_DELAY_MS:60000}
+    batch-size: ${ORDER_TIMEOUT_BATCH_SIZE:100}
   cors:
     # 逗號分隔多個前端來源；正式環境以 APP_CORS_ALLOWED_ORIGINS 覆寫（不可用 *，因 allowCredentials=true）
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8080}

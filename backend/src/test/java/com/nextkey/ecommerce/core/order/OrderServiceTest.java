@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -45,6 +46,7 @@ import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.order.OrderStateLog;
 import com.nextkey.ecommerce.domain.model.product.ProductSku;
+import com.nextkey.ecommerce.domain.model.promo.PromoCodeUsage;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.Address;
 import com.nextkey.ecommerce.domain.model.user.User;
@@ -53,6 +55,7 @@ import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.OrderStateLogRepository;
 import com.nextkey.ecommerce.domain.repository.ProductRepository;
 import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
+import com.nextkey.ecommerce.domain.repository.PromoCodeUsageRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
@@ -103,6 +106,7 @@ class OrderServiceTest {
     @Mock private AddressService addressService;
     @Mock private ProductInventoryService productInventoryService;
     @Mock private PromoService promoService;
+    @Mock private PromoCodeUsageRepository promoCodeUsageRepository;
     @Mock private AuditService auditService;
 
     @InjectMocks
@@ -1189,6 +1193,94 @@ class OrderServiceTest {
         verify(orderStateLogRepository, never()).save(any());
     }
 
+    // ========== updateOrderStatus：取消與出貨的庫存／優惠券補償（Sprint 218，DEF-301／DEF-303） ==========
+
+    /** 以本租戶賣家身分（非訂單擁有者）操作，比照 updateOrderStatus_sameTenantNonOwner_passesAuthorization。 */
+    private void asSameTenantSeller() {
+        TenantContext.setCurrentUser(OTHER_USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+    }
+
+    @Test
+    @DisplayName("DEF-301：賣家以 PATCH 取消未付款訂單 → 釋放預留並退還優惠券，與買家取消相同（PRD TC-M05-015）")
+    void updateOrderStatus_sellerCancelsCreatedOrder_compensates() {
+        asSameTenantSeller();
+        Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
+        order.setPromoCode("SAVE10");
+        PromoCodeUsage usage = PromoCodeUsage.builder().orderId(ORDER_ID).build();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CREATED, Order.OrderStatus.CANCELLED))
+                .thenReturn(1);
+        when(promoCodeUsageRepository.findByOrderIdAndStatus(ORDER_ID, PromoCodeUsage.UsageStatus.ACTIVE))
+                .thenReturn(List.of(usage));
+
+        OrderDto.OrderResponse response = orderService.updateOrderStatus(ORDER_ID, "CANCELLED", "out of stock");
+
+        assertThat(response.getStatus()).isEqualTo("CANCELLED");
+        verify(productInventoryService).releaseOnCancellation(order, Order.OrderStatus.CREATED);
+        verify(promoService).releaseOrderSide(usage);
+        // 未付款：不進退款
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    @DisplayName("賣家以 PATCH 取消已付款訂單（PAID→CANCELLED）→ 補償後轉 REFUNDING")
+    void updateOrderStatus_sellerCancelsPaidOrder_goesToRefunding() {
+        asSameTenantSeller();
+        Order order = orderOf(USER_ID, Order.OrderStatus.PAID);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.PAID, Order.OrderStatus.CANCELLED))
+                .thenReturn(1);
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        OrderDto.OrderResponse response = orderService.updateOrderStatus(ORDER_ID, "CANCELLED", "cannot fulfil");
+
+        assertThat(response.getStatus()).isEqualTo("REFUNDING");
+        verify(productInventoryService).releaseOnCancellation(order, Order.OrderStatus.PAID);
+        assertRefundPendingLogged();
+    }
+
+    @Test
+    @DisplayName("DEF-301：REFUNDING 只能由取消進入——PATCH 直接指定（原本 PAID→REFUNDING 會跳過補償）→ E_5001")
+    void updateOrderStatus_targetRefunding_isRejected() {
+        asSameTenantSeller();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(orderOf(USER_ID, Order.OrderStatus.PAID)));
+
+        assertThatThrownBy(() -> orderService.updateOrderStatus(ORDER_ID, "REFUNDING", "skip compensation"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_5001);
+        verify(orderRepository, never()).updateStatusIfCurrent(any(), any(), any());
+        verifyNoInteractions(productInventoryService);
+    }
+
+    @Test
+    @DisplayName("DEF-303 (6)：PATCH 出貨（CONFIRMED→SHIPPING）時才扣庫存（PRD §6.7.3）")
+    void updateOrderStatus_toShipping_deductsStock() {
+        asSameTenantSeller();
+        Order order = orderOf(USER_ID, Order.OrderStatus.CONFIRMED);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CONFIRMED, Order.OrderStatus.SHIPPING))
+                .thenReturn(1);
+
+        orderService.updateOrderStatus(ORDER_ID, "SHIPPING", "shipped");
+
+        verify(productInventoryService).deductOnShipment(order);
+        verify(productInventoryService, never()).releaseOnCancellation(any(), any());
+    }
+
+    @Test
+    @DisplayName("PATCH 確認訂單（PAID→CONFIRMED）不動庫存：預留保留到出貨")
+    void updateOrderStatus_toConfirmed_leavesInventoryAlone() {
+        asSameTenantSeller();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(orderOf(USER_ID, Order.OrderStatus.PAID)));
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.PAID, Order.OrderStatus.CONFIRMED))
+                .thenReturn(1);
+
+        orderService.updateOrderStatus(ORDER_ID, "CONFIRMED", "accepted");
+
+        verifyNoInteractions(productInventoryService);
+    }
+
     // ========== cancelOrder ==========
 
     @Test
@@ -1205,13 +1297,13 @@ class OrderServiceTest {
 
         assertThat(response.getStatus()).isEqualTo("CANCELLED");
         verify(orderStateLogRepository, times(1)).save(any(OrderStateLog.class));
-        // Sprint 88（AI-2422）：取消前為 CREATED（尚未付款）→ 釋放先前預扣的庫存
-        verify(productInventoryService).releaseForOrder(order);
+        // Sprint 88（AI-2422）起取消會釋放預扣；Sprint 218 改由流水帳決定釋放多少，並告知取消前狀態
+        verify(productInventoryService).releaseOnCancellation(order, Order.OrderStatus.CREATED);
     }
 
     @Test
-    @DisplayName("cancelOrder：擁有者取消 PAID 訂單 → 先 CANCELLED 再自動轉 REFUNDING，兩筆狀態日誌，不釋放庫存（已扣帳）")
-    void cancelOrder_owner_paid_triggersAutoRefund() {
+    @DisplayName("cancelOrder：擁有者取消 PAID 訂單 → 先 CANCELLED 再轉 REFUNDING（等待退款），釋放預留")
+    void cancelOrder_owner_paid_goesToRefunding() {
         TenantContext.setCurrentUser(USER_ID);
         Order order = orderOf(USER_ID, Order.OrderStatus.PAID);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
@@ -1224,25 +1316,41 @@ class OrderServiceTest {
         assertThat(response.getStatus()).isEqualTo("REFUNDING");
         // DEF-124：CANCELLED 轉換改走原子 CAS（不再呼叫 save），僅 REFUNDING 這一步仍用 save()
         verify(orderRepository, times(1)).save(any(Order.class));
-        verify(orderStateLogRepository, times(2)).save(any(OrderStateLog.class));
-        // Sprint 88（AI-2422）：取消前已是 PAID（已扣帳）→ 不釋放庫存（範圍外，退款回補庫存另計）
-        verify(productInventoryService, never()).releaseForOrder(any());
+        assertRefundPendingLogged();
+        // Sprint 218（DEF-303 (6)）：付款不再扣帳，出貨前取消已付款訂單同樣釋放預留（原本斷言「不釋放」＝缺陷本身）
+        verify(productInventoryService).releaseOnCancellation(order, Order.OrderStatus.PAID);
     }
 
     @Test
-    @DisplayName("cancelOrder：擁有者取消 CONFIRMED 訂單 → CANCELLED（非 PAID 不觸發自動退款）")
-    void cancelOrder_owner_confirmed_noAutoRefund() {
+    @DisplayName("DEF-303 (4)：擁有者取消 CONFIRMED（已付款）訂單 → 同樣轉 REFUNDING，不是停在 CANCELLED")
+    void cancelOrder_owner_confirmed_goesToRefunding() {
+        // 本案例原本斷言「CONFIRMED 取消只到 CANCELLED、不觸發退款」——CONFIRMED 只能由 PAID 轉入，同樣已付款，
+        // 停在 CANCELLED 等於錢沒有下一步可退（Sprint 218 改正）。
         TenantContext.setCurrentUser(USER_ID);
         Order order = orderOf(USER_ID, Order.OrderStatus.CONFIRMED);
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
         when(orderRepository.updateStatusIfCurrent(any(), any(Order.OrderStatus.class), eq(Order.OrderStatus.CANCELLED)))
                 .thenReturn(1);
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 
         OrderDto.OrderResponse response = orderService.cancelOrder(ORDER_ID, "reason");
 
-        assertThat(response.getStatus()).isEqualTo("CANCELLED");
-        // DEF-124：CANCELLED 轉換改走原子 CAS，非 PAID 訂單全程不再呼叫 save()
-        verify(orderRepository, never()).save(any(Order.class));
+        assertThat(response.getStatus()).isEqualTo("REFUNDING");
+        assertRefundPendingLogged();
+        verify(productInventoryService).releaseOnCancellation(order, Order.OrderStatus.CONFIRMED);
+    }
+
+    /**
+     * 已付款訂單取消會留下兩筆狀態紀錄（→CANCELLED、CANCELLED→REFUNDING）。第二筆的理由原本寫
+     * 「Automatic refund triggered」，實際上沒有觸發任何退款（DEF-303 (5)），改為如實描述。
+     */
+    private void assertRefundPendingLogged() {
+        org.mockito.ArgumentCaptor<OrderStateLog> logs = org.mockito.ArgumentCaptor.forClass(OrderStateLog.class);
+        verify(orderStateLogRepository, times(2)).save(logs.capture());
+        OrderStateLog refundLog = logs.getAllValues().get(1);
+        assertThat(refundLog.getFromStatus()).isEqualTo("CANCELLED");
+        assertThat(refundLog.getToStatus()).isEqualTo("REFUNDING");
+        assertThat(refundLog.getReason()).isEqualTo("Order was paid: refund pending");
     }
 
     @Test
@@ -1299,7 +1407,7 @@ class OrderServiceTest {
         assertThatThrownBy(() -> orderService.cancelOrder(ORDER_ID, "too slow"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_5002);
-        verify(productInventoryService, never()).releaseForOrder(any());
+        verifyNoInteractions(productInventoryService);
         verify(orderStateLogRepository, never()).save(any(OrderStateLog.class));
     }
 

@@ -8,9 +8,11 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -314,7 +316,10 @@ class M12InventoryConcurrencyIntegrationTest {
     void concurrentReleaseRestoresExactly() throws Exception {
         UUID skuId = givenSkuWithInventory(THREADS, THREADS);
 
-        RaceResult result = race(() -> productInventoryService.releaseForOrder(orderOf(skuId, 1)));
+        // 記憶體中的訂單沒有流水帳，走 releaseOnCancellation「無流水帳且取消前為 CREATED → 依數量釋放」那條路，
+        // 壓的正是 releaseReservation 那條原子 UPDATE（Sprint 218 前的 releaseForOrder 同一句 SQL）
+        RaceResult result = race(() -> productInventoryService.releaseOnCancellation(
+                orderOf(skuId, 1), Order.OrderStatus.CREATED));
 
         assertThat(result.unexpectedFailures())
                 .as("釋放失敗代表取消訂單沒把庫存還回去，該批貨等於被永久鎖死。本次結果：%s", result)
@@ -326,15 +331,22 @@ class M12InventoryConcurrencyIntegrationTest {
     }
 
     @Test
-    @DisplayName("10 筆付款併發扣帳同一 SKU → 總量與預扣量同步精準歸零")
+    @DisplayName("10 筆出貨併發扣帳同一 SKU → 總量與預扣量同步精準歸零（Sprint 218 起扣帳在出貨）")
     void concurrentDeductKeepsLedgerExact() throws Exception {
-        UUID skuId = givenSkuWithInventory(THREADS, THREADS);
+        UUID skuId = givenSkuWithInventory(THREADS, 0);
+        // 出貨扣帳依流水帳扣「仍在預留中」的數量，所以每張訂單先各自預扣（寫下 RESERVE），再同時出貨
+        Queue<Order> reserved = new ConcurrentLinkedQueue<>();
+        for (int i = 0; i < THREADS; i++) {
+            Order order = orderOf(skuId, 1);
+            txTemplate.executeWithoutResult(status -> productInventoryService.reserveForOrder(order));
+            reserved.add(order);
+        }
+        assertThat(reservedQtyOf(skuId)).isEqualTo(THREADS);
 
-        RaceResult result = race(() -> productInventoryService.deductForOrder(orderOf(skuId, 1)));
+        RaceResult result = race(() -> productInventoryService.deductOnShipment(reserved.remove()));
 
         assertThat(result.unexpectedFailures())
-                .as("扣帳失敗會被 PaymentStateService.deductStockSafely 靜默吞掉——"
-                        + "付款成功但庫存沒扣，該 SKU 從此帳實不符並持續可賣。本次結果：%s", result)
+                .as("出貨扣帳失敗會讓整筆出貨回滾；若是樂觀鎖之類的技術性例外，賣家只會看到 500。本次結果：%s", result)
                 .isEmpty();
         assertThat(result.granted()).isEqualTo(THREADS);
         assertThat(totalQtyOf(skuId)).isZero();
@@ -347,7 +359,7 @@ class M12InventoryConcurrencyIntegrationTest {
         UUID skuId = givenSkuWithInventory(STOCK, 0);
 
         txTemplate.executeWithoutResult(status ->
-                productInventoryService.releaseForOrder(orderOf(skuId, 1)));
+                productInventoryService.releaseOnCancellation(orderOf(skuId, 1), Order.OrderStatus.CREATED));
 
         // 語意與修復前的 ProductInventory.release() 內 Math.max(0, ...) 一致；
         // 該保護下沉到 SQL 後，mock 掉 Repository 的單元測試已無從驗證。

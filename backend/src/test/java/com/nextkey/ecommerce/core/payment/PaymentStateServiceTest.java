@@ -33,7 +33,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
-import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -73,7 +72,6 @@ class PaymentStateServiceTest {
     @Mock private FeatureToggleService featureToggleService;
     @Mock private PaymentGatewayFactory paymentGatewayFactory;
     @Mock private SettlementAdjustmentService settlementAdjustmentService;
-    @Mock private ProductInventoryService productInventoryService;
     @Mock private OrderStateLogRepository orderStateLogRepository;
     @Mock private AuditService auditService;
 
@@ -87,7 +85,7 @@ class PaymentStateServiceTest {
     @BeforeEach
     void setUp() {
         service = new PaymentStateService(paymentRepository, orderRepository, bookingRepository,
-                featureToggleService, paymentGatewayFactory, settlementAdjustmentService, productInventoryService,
+                featureToggleService, paymentGatewayFactory, settlementAdjustmentService,
                 orderStateLogRepository, auditService);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         TenantContext.setCurrentUser(USER_ID);
@@ -356,8 +354,6 @@ class PaymentStateServiceTest {
             assertThat(dto.getPaymentStatus()).isEqualTo("SUCCESS");
             // DEF-125：PAID 轉換改走原子 CAS（claim-before-side-effects），不再呼叫 save()
             verify(orderRepository, never()).save(any(Order.class));
-            // Sprint 88（AI-2422）：付款成功後正式扣帳
-            verify(productInventoryService).deductForOrder(order);
             // Sprint 135（DEF-111）：付款驅動的 Order 狀態轉換須落地到既有 order_state_log
             org.mockito.ArgumentCaptor<OrderStateLog> logCaptor = org.mockito.ArgumentCaptor.forClass(OrderStateLog.class);
             verify(orderStateLogRepository).save(logCaptor.capture());
@@ -369,23 +365,8 @@ class PaymentStateServiceTest {
                     eq(order.getTenantId()), eq("CREATED"), eq("PAID"), isNull(), eq(USER_ID));
         }
 
-        @Test
-        @DisplayName("Sprint 88：扣帳失敗不影響付款成功結果（比照既有結算調整慣例，log 記錄不中斷主流程）")
-        void success_deductStockFailure_doesNotFailPayment() {
-            Order order = orderOf(USER_ID, Order.OrderStatus.CREATED);
-            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
-            when(paymentRepository.existsByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS)).thenReturn(false);
-            when(orderRepository.updateStatusIfCurrent(any(), any(Order.OrderStatus.class), eq(Order.OrderStatus.PAID)))
-                    .thenReturn(1);
-            when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
-            org.mockito.Mockito.doThrow(new RuntimeException("boom"))
-                    .when(productInventoryService).deductForOrder(order);
-
-            OrderPaymentStateDto dto = service.mockPaymentSuccess(ORDER_ID);
-
-            assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.PAID);
-            assertThat(dto.getPaymentStatus()).isEqualTo("SUCCESS");
-        }
+        // Sprint 218（DEF-303 (6)）：原本這裡有「扣帳失敗不影響付款成功」的案例。付款已不再動庫存（出貨才扣，
+        // 見 ProductInventoryService.deductOnShipment），該行為不存在，案例移除；PaymentStateService 也不再依賴庫存服務。
 
         @Test
         @DisplayName("🔴 DEF-125：併發搶占失敗（原子 UPDATE 影響 0 列）-> E_5011，絕不重複建立付款/扣庫存")
@@ -402,7 +383,6 @@ class PaymentStateServiceTest {
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(ErrorCode.E_5011);
             verify(paymentRepository, never()).save(any(Payment.class));
-            verify(productInventoryService, never()).deductForOrder(any());
         }
     }
 
@@ -838,7 +818,6 @@ class PaymentStateServiceTest {
 
             assertThat(result).isFalse();
             verify(orderRepository, never()).findById(any());
-            verify(productInventoryService, never()).deductForOrder(any());
         }
 
         @Test
@@ -857,8 +836,6 @@ class PaymentStateServiceTest {
             assertThat(result).isTrue();
             verify(paymentRepository).markSuccessIfNotAlready(eq(processing.getId()),
                     eq(Payment.PaymentStatus.SUCCESS), isNull(), any(Instant.class));
-            // Sprint 88（AI-2422）：轉 PAID 成功後正式扣帳
-            verify(productInventoryService).deductForOrder(order);
             // Sprint 135（DEF-111）：webhook 驅動的狀態轉換也須落地 order_state_log，changedBy=null（無使用者情境）
             org.mockito.ArgumentCaptor<OrderStateLog> logCaptor = org.mockito.ArgumentCaptor.forClass(OrderStateLog.class);
             verify(orderStateLogRepository).save(logCaptor.capture());
@@ -896,8 +873,6 @@ class PaymentStateServiceTest {
 
             assertThat(result).isTrue();
             verify(orderRepository, never()).save(any());
-            // Sprint 88（AI-2422）：Order 狀態未轉 PAID（已是 PAID）→ 不重複扣帳
-            verify(productInventoryService, never()).deductForOrder(any());
         }
     }
 

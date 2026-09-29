@@ -17,6 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.nextkey.ecommerce.core.logistics.provider.LogisticsProviderFactory;
+import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.domain.model.logistics.Logistics;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.repository.LogisticsRepository;
@@ -44,6 +45,9 @@ class LogisticsServiceCancelTest {
 
     @Mock
     private LogisticsProviderFactory logisticsProviderFactory;
+
+    @Mock
+    private ProductInventoryService productInventoryService;
 
     @InjectMocks
     private LogisticsService logisticsService;

@@ -1,5 +1,8 @@
 package com.nextkey.ecommerce.core.product;
 
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -37,6 +40,10 @@ import lombok.extern.slf4j.Slf4j;
  * 流水帳一筆都不會留，庫存台帳（PRD §6.7.3 列為 P0）對 C 端的所有進出完全沒有資料。
  * 這同時是 DEF-063 能存活那麼久的原因：那三型從來沒被寫入過，所以後端枚舉把它們拼成
  * {@code RESERVATION}／{@code SALE} 也沒有人發現。
+ *
+ * <p>Sprint 218（DEF-303 (6)）：三段式改為 reserve-at-creation / deduct-at-<b>shipment</b> / release-on-cancel，
+ * 對齊 PRD §6.7.3。付款不再動庫存；出貨前的取消（不論是否已付款）一律釋放預留。出貨扣帳與取消釋放都依本訂單的流水帳
+ * 決定數量，以正確處理改版前「付款即扣帳」的在途訂單，見 {@link #deductOnShipment}、{@link #releaseOnCancellation}。
  */
 @Slf4j
 @Service
@@ -64,39 +71,126 @@ public class ProductInventoryService {
                 continue;
             }
             // PRD §6.7.4：RESERVE 為 +reserved_qty，total_qty 不動
-            recordMovement(order, item, StockMovement.MovementType.RESERVE, 0, item.getQuantity());
+            recordMovement(order, item, StockMovement.MovementType.RESERVE, item.getQuantity(),
+                    0, item.getQuantity(), null);
         }
     }
 
-    /** 訂單於未付款（CREATED）狀態被取消時，釋放先前預扣的庫存。 */
+    /**
+     * 出貨時把該訂單仍在預留中的數量正式扣帳（Sprint 218，DEF-303 (6)；PRD §6.7.3「訂單出貨 → OUTBOUND」）。
+     *
+     * <p>Sprint 88～217 的扣帳發生在付款成功時，與 PRD 不符，也是「出貨前取消已付款訂單，庫存不回補」的根源：
+     * 付款後貨還在倉庫，{@code total_qty} 卻已經扣掉，取消時能做的只剩釋放預留，而預留早在付款時就轉成扣帳了。
+     * 改成出貨才扣之後，出貨前的取消（不論付款與否）都只是釋放預留（{@link #releaseOnCancellation}）。
+     *
+     * <p>每個品項扣多少，依流水帳算出「還在預留中」的數量（RESERVE − RELEASE − OUTBOUND），而不是無條件扣
+     * {@code item.getQuantity()}：改版前付款、改版後才出貨的訂單，付款當時已寫過 OUTBOUND，再扣一次就是重複扣帳。
+     * 完全沒有流水帳的品項（Sprint 115 之前建立的訂單，或 SKU 未啟用庫存追蹤）一律不動——無從判斷付款時是否扣過，
+     * 寧可 {@code total_qty} 與 {@code reserved_qty} 同時偏高（可售量不受影響），也不冒重複扣帳、扣走別張訂單預留的風險。
+     */
     @Transactional
-    public void releaseForOrder(Order order) {
+    public void deductOnShipment(final Order order) {
         requirePersisted(order);
+        Map<UUID, Map<StockMovement.MovementType, Integer>> ledger = ledgerByOrderItem(order);
         for (OrderItem item : order.getItems()) {
             if (item.getSku() == null) {
                 continue;
             }
-            if (productInventoryRepository.releaseReservation(item.getSku().getId(), item.getQuantity()) > 0) {
-                // PRD §6.7.4：RELEASE 為 -reserved_qty，total_qty 不動
-                recordMovement(order, item, StockMovement.MovementType.RELEASE, 0, -item.getQuantity());
-            }
-        }
-    }
-
-    /** 付款成功時將預扣正式轉為扣帳（totalQty 與 reservedQty 同時扣除）。 */
-    @Transactional
-    public void deductForOrder(Order order) {
-        requirePersisted(order);
-        for (OrderItem item : order.getItems()) {
-            if (item.getSku() == null) {
+            Map<StockMovement.MovementType, Integer> moved = ledger.get(item.getId());
+            if (moved == null) {
+                log.info("No stock ledger for order item, stock left untouched on shipment: orderId={}, orderItemId={}",
+                        order.getId(), item.getId());
                 continue;
             }
-            if (productInventoryRepository.deductReserved(item.getSku().getId(), item.getQuantity()) > 0) {
+            int outstanding = outstandingReservation(moved);
+            if (outstanding > 0
+                    && productInventoryRepository.deductReserved(item.getSku().getId(), outstanding) > 0) {
                 // PRD §6.7.4：OUTBOUND 為 -total_qty, -reserved_qty
-                recordMovement(order, item, StockMovement.MovementType.OUTBOUND,
-                        -item.getQuantity(), -item.getQuantity());
+                recordMovement(order, item, StockMovement.MovementType.OUTBOUND, outstanding,
+                        -outstanding, -outstanding, null);
             }
         }
+    }
+
+    /**
+     * 出貨前取消訂單時的庫存補償（Sprint 218，DEF-301／DEF-303 (6)；PRD §6.7.3「訂單取消 → RELEASE」、
+     * §15.2.5「庫存釋放：實時歸還至 M02」）。所有取消入口共用。
+     *
+     * <p>依流水帳逐品項處理，兩者都以流水帳為準，重複呼叫不會多釋放或多加回：
+     * <ul>
+     *   <li>還在預留中的數量（RESERVE − RELEASE − OUTBOUND）→ 釋放，寫 RELEASE。付款不再扣帳之後，這是唯一會發生的情況。</li>
+     *   <li>改版前付款時就扣過帳、尚未加回的數量（OUTBOUND − ADJUST_PLUS）→ 把 {@code total_qty} 加回，寫 ADJUST_PLUS。
+     *       本方法只在出貨前被呼叫，此時的 OUTBOUND 必然來自改版前的「付款即扣帳」。PRD §6.7.4 沒有「撤銷出庫」這個型別，
+     *       以盤盈調整記錄這筆帳面更正，備註寫明原因。</li>
+     * </ul>
+     *
+     * <p>完全沒有流水帳的品項是 Sprint 115 之前建立的訂單：取消前為 CREATED 時必然仍在預留中（Sprint 88 起建單即預扣），
+     * 沿用改版前「依品項數量釋放」；已付款的則無從判斷付款時是否扣過帳，不動——可售量寧可偏低，
+     * 也不冒把別張訂單的預留釋放掉的風險。
+     */
+    @Transactional
+    public void releaseOnCancellation(final Order order, final Order.OrderStatus statusBeforeCancel) {
+        requirePersisted(order);
+        Map<UUID, Map<StockMovement.MovementType, Integer>> ledger = ledgerByOrderItem(order);
+        for (OrderItem item : order.getItems()) {
+            if (item.getSku() == null) {
+                continue;
+            }
+            UUID skuId = item.getSku().getId();
+            Map<StockMovement.MovementType, Integer> moved = ledger.get(item.getId());
+            if (moved == null) {
+                releaseWithoutLedger(order, item, statusBeforeCancel);
+                continue;
+            }
+            int outstanding = outstandingReservation(moved);
+            if (outstanding > 0 && productInventoryRepository.releaseReservation(skuId, outstanding) > 0) {
+                // PRD §6.7.4：RELEASE 為 -reserved_qty，total_qty 不動
+                recordMovement(order, item, StockMovement.MovementType.RELEASE, outstanding, 0, -outstanding, null);
+            }
+            int deductedBeforeShipment = moved.getOrDefault(StockMovement.MovementType.OUTBOUND, 0)
+                    - moved.getOrDefault(StockMovement.MovementType.ADJUST_PLUS, 0);
+            if (deductedBeforeShipment > 0
+                    && productInventoryRepository.increaseTotalQty(skuId, deductedBeforeShipment) > 0) {
+                recordMovement(order, item, StockMovement.MovementType.ADJUST_PLUS, deductedBeforeShipment,
+                        deductedBeforeShipment, 0,
+                        "Order cancelled before shipment: reverse the deduction taken at payment (pre-Sprint 218)");
+            }
+        }
+    }
+
+    /** 沒有流水帳可依據的品項（見 {@link #releaseOnCancellation}）。 */
+    private void releaseWithoutLedger(final Order order, final OrderItem item,
+            final Order.OrderStatus statusBeforeCancel) {
+        if (statusBeforeCancel != Order.OrderStatus.CREATED) {
+            log.warn("No stock ledger for a paid order item, stock left untouched on cancellation: "
+                    + "orderId={}, orderItemId={}", order.getId(), item.getId());
+            return;
+        }
+        if (productInventoryRepository.releaseReservation(item.getSku().getId(), item.getQuantity()) > 0) {
+            recordMovement(order, item, StockMovement.MovementType.RELEASE, item.getQuantity(),
+                    0, -item.getQuantity(), null);
+        }
+    }
+
+    /** 還在預留中的數量：RESERVE − RELEASE − OUTBOUND（OUTBOUND 同時消耗預留）。 */
+    private static int outstandingReservation(final Map<StockMovement.MovementType, Integer> moved) {
+        return moved.getOrDefault(StockMovement.MovementType.RESERVE, 0)
+                - moved.getOrDefault(StockMovement.MovementType.RELEASE, 0)
+                - moved.getOrDefault(StockMovement.MovementType.OUTBOUND, 0);
+    }
+
+    /** 這張訂單每個品項各寫過哪些流水帳、各多少（依 {@code order_item_id} 彙總）。 */
+    private Map<UUID, Map<StockMovement.MovementType, Integer>> ledgerByOrderItem(final Order order) {
+        Map<UUID, Map<StockMovement.MovementType, Integer>> ledger = new HashMap<>();
+        for (StockMovement movement : stockMovementRepository.findByReferenceTypeAndReferenceId(
+                StockMovement.ReferenceType.ORDER, order.getId())) {
+            if (movement.getOrderItemId() == null) {
+                continue;
+            }
+            ledger.computeIfAbsent(movement.getOrderItemId(), id -> new EnumMap<>(StockMovement.MovementType.class))
+                    .merge(movement.getMovementType(), movement.getQuantity(), Integer::sum);
+        }
+        return ledger;
     }
 
     /**
@@ -115,11 +209,14 @@ public class ProductInventoryService {
      * 記到的會是「應扣值」而非實際值。這裡刻意不為了那個異常狀態多付一次讀取——
      * 真正該處理的是讓它不發生，而不是把它記得更漂亮。
      *
+     * @param quantity      本次異動數量（Sprint 218 起不一定等於品項數量：出貨扣帳與取消釋放依流水帳算出剩餘量）
      * @param totalDelta    本次對 {@code total_qty} 的帶號變化量
      * @param reservedDelta 本次對 {@code reserved_qty} 的帶號變化量
+     * @param notes         備註；{@code null} 時為「Order &lt;型別&gt;」
      */
     private void recordMovement(final Order order, final OrderItem item,
-            final StockMovement.MovementType movementType, final int totalDelta, final int reservedDelta) {
+            final StockMovement.MovementType movementType, final int quantity, final int totalDelta,
+            final int reservedDelta, final String notes) {
         UUID skuId = item.getSku().getId();
         int afterTotalQty = productInventoryRepository.findTotalQtyBySkuId(skuId);
         int afterReservedQty = productInventoryRepository.findReservedQtyBySkuId(skuId);
@@ -131,7 +228,7 @@ public class ProductInventoryService {
                 .tenantId(order.getTenant().getId())
                 .skuId(skuId)
                 .movementType(movementType)
-                .quantity(item.getQuantity())
+                .quantity(quantity)
                 .beforeTotalQty(afterTotalQty - totalDelta)
                 .afterTotalQty(afterTotalQty)
                 .balanceAfter(afterTotalQty)
@@ -140,13 +237,13 @@ public class ProductInventoryService {
                 .referenceType(StockMovement.ReferenceType.ORDER)
                 .referenceId(order.getId())
                 .orderItemId(item.getId())
-                .notes("Order " + movementType.name().toLowerCase())
+                .notes(notes != null ? notes : "Order " + movementType.name().toLowerCase())
                 .createdBy(order.getUser().getId())
                 .build();
 
         stockMovementRepository.save(movement);
         log.debug("Recorded order stock movement: type={}, skuId={}, qty={}, orderId={}",
-                movementType, skuId, item.getQuantity(), order.getId());
+                movementType, skuId, quantity, order.getId());
     }
 
     /**

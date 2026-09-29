@@ -20,8 +20,11 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.api.dto.LogisticsDto;
+import com.nextkey.ecommerce.core.logistics.provider.LogisticsProvider;
 import com.nextkey.ecommerce.core.logistics.provider.LogisticsProviderFactory;
+import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.logistics.Logistics;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.repository.LogisticsRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
@@ -52,6 +55,7 @@ class LogisticsServiceTest {
     @Mock private LogisticsRepository logisticsRepository;
     @Mock private OrderRepository orderRepository;
     @Mock private LogisticsProviderFactory logisticsProviderFactory;
+    @Mock private ProductInventoryService productInventoryService;
 
     @InjectMocks
     private LogisticsService logisticsService;
@@ -145,5 +149,50 @@ class LogisticsServiceTest {
         assertThatThrownBy(() -> logisticsService.getLogisticsByOrderId(ORDER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_5000);
+    }
+
+    // ========== createLogistics：出貨才扣庫存（Sprint 218，DEF-303 (6)） ==========
+
+    @Test
+    @DisplayName("建立物流單搶到 CONFIRMED→SHIPPING → 同一交易內依 PRD §6.7.3 出貨扣帳")
+    void createLogistics_claimsShipping_deductsStock() {
+        TenantContext.setCurrentTenant(TENANT_ID);
+        Order order = orderOfTenant(TENANT_ID);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(logisticsRepository.findByOrderId(ORDER_ID)).thenReturn(List.of());
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CONFIRMED, Order.OrderStatus.SHIPPING))
+                .thenReturn(1);
+        LogisticsProvider provider = org.mockito.Mockito.mock(LogisticsProvider.class);
+        when(logisticsProviderFactory.getProvider("HCT")).thenReturn(provider);
+        when(provider.createShipment(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(LogisticsDto.ShipmentResult.builder().trackingNumber("HCT-1").build());
+        when(logisticsRepository.save(org.mockito.ArgumentMatchers.any(Logistics.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        logisticsService.createLogistics(shipmentRequest());
+
+        org.mockito.Mockito.verify(productInventoryService).deductOnShipment(order);
+    }
+
+    @Test
+    @DisplayName("併發下沒搶到 CONFIRMED→SHIPPING → E_5001，不扣庫存（避免同一張訂單扣兩次）")
+    void createLogistics_lostShippingClaim_doesNotDeduct() {
+        TenantContext.setCurrentTenant(TENANT_ID);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(orderOfTenant(TENANT_ID)));
+        when(logisticsRepository.findByOrderId(ORDER_ID)).thenReturn(List.of());
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CONFIRMED, Order.OrderStatus.SHIPPING))
+                .thenReturn(0);
+
+        assertThatThrownBy(() -> logisticsService.createLogistics(shipmentRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_5001);
+        org.mockito.Mockito.verifyNoInteractions(productInventoryService);
+    }
+
+    private LogisticsDto.CreateRequest shipmentRequest() {
+        return LogisticsDto.CreateRequest.builder()
+                .orderId(ORDER_ID)
+                .logisticsProvider(LogisticsDto.LogisticsProvider.HCT)
+                .build();
     }
 }

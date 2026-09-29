@@ -34,7 +34,7 @@ import com.nextkey.ecommerce.shared.exception.ErrorCode;
 /**
  * ProductInventoryService 單元測試（Sprint 88，AI-2422；Sprint 103／115 改寫）。
  *
- * <p>驗證 reserve-at-creation / deduct-at-payment / release-on-cancel 三段式庫存操作的
+ * <p>驗證 reserve-at-creation / deduct-at-shipment（Sprint 218 前為 deduct-at-payment）/ release-on-cancel 三段式庫存操作的
  * **派送行為**：哪些品項會被略過、原子敘述收到什麼參數、0 筆回傳如何被解讀，
  * 以及（Sprint 115／DEF-065 起）每段是否寫下對應型別的流水帳。
  *
@@ -184,62 +184,142 @@ class ProductInventoryServiceTest {
         verify(stockMovementRepository, never()).save(any());
     }
 
-    @Test
-    @DisplayName("releaseForOrder：以品項數量呼叫原子釋放，不讀取也不寫回實體，並寫下 RELEASE 流水帳")
-    void releaseForOrder_releasesAtomically() {
-        when(productInventoryRepository.releaseReservation(SKU_ID, 4)).thenReturn(1);
-        givenReadBack(100, 6);
-        Order order = orderWithItems(itemWithSku(sku(SKU_ID), 4));
+    // ── Sprint 218：出貨扣帳與取消釋放依流水帳決定數量 ──────────
 
-        service.releaseForOrder(order);
-
-        verify(productInventoryRepository).releaseReservation(SKU_ID, 4);
-        verify(productInventoryRepository, never()).findById(any());
-        verify(productInventoryRepository, never()).save(any());
-        assertThat(capturedMovement().getMovementType()).isEqualTo(StockMovement.MovementType.RELEASE);
+    /** 讓 findByReferenceTypeAndReferenceId 回傳指定品項已寫過的流水帳。 */
+    private void givenLedger(final Order order, final OrderItem item, final Object... typeAndQuantity) {
+        List<StockMovement> movements = new java.util.ArrayList<>();
+        for (int i = 0; i < typeAndQuantity.length; i += 2) {
+            movements.add(StockMovement.builder()
+                    .orderItemId(item.getId())
+                    .movementType((StockMovement.MovementType) typeAndQuantity[i])
+                    .quantity((Integer) typeAndQuantity[i + 1])
+                    .build());
+        }
+        when(stockMovementRepository.findByReferenceTypeAndReferenceId(StockMovement.ReferenceType.ORDER, order.getId()))
+                .thenReturn(movements);
     }
 
     @Test
-    @DisplayName("releaseForOrder：庫存列不存在（0 筆）→ 不留流水帳")
-    void releaseForOrder_noInventoryRow_writesNoMovement() {
-        when(productInventoryRepository.releaseReservation(SKU_ID, 4)).thenReturn(0);
-        Order order = orderWithItems(itemWithSku(sku(SKU_ID), 4));
+    @DisplayName("deductOnShipment：流水帳只有 RESERVE → 扣掉仍在預留中的數量，寫 OUTBOUND")
+    void deductOnShipment_reservedItem_deductsOutstanding() {
+        OrderItem item = itemWithSku(sku(SKU_ID), 3);
+        Order order = orderWithItems(item);
+        givenLedger(order, item, StockMovement.MovementType.RESERVE, 3);
+        when(productInventoryRepository.deductReserved(SKU_ID, 3)).thenReturn(1);
+        givenReadBack(97, 0);
 
-        service.releaseForOrder(order);
+        service.deductOnShipment(order);
 
+        verify(productInventoryRepository).deductReserved(SKU_ID, 3);
+        StockMovement movement = capturedMovement();
+        assertThat(movement.getMovementType()).isEqualTo(StockMovement.MovementType.OUTBOUND);
+        assertThat(movement.getQuantity()).isEqualTo(3);
+        assertThat(movement.getBeforeTotalQty()).isEqualTo(100);
+        assertThat(movement.getBeforeReservedQty()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("deductOnShipment：改版前付款時已寫過 OUTBOUND → 不再扣一次")
+    void deductOnShipment_alreadyDeductedAtPayment_skips() {
+        OrderItem item = itemWithSku(sku(SKU_ID), 3);
+        Order order = orderWithItems(item);
+        givenLedger(order, item, StockMovement.MovementType.RESERVE, 3, StockMovement.MovementType.OUTBOUND, 3);
+
+        service.deductOnShipment(order);
+
+        verify(productInventoryRepository, never()).deductReserved(any(), anyInt());
         verify(stockMovementRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("deductForOrder：以品項數量呼叫原子扣帳，不讀取也不寫回實體，並寫下 OUTBOUND 流水帳")
-    void deductForOrder_deductsAtomically() {
-        when(productInventoryRepository.deductReserved(SKU_ID, 3)).thenReturn(1);
-        givenReadBack(97, 0);
-        Order order = orderWithItems(itemWithSku(sku(SKU_ID), 3));
+    @DisplayName("deductOnShipment：沒有任何流水帳（Sprint 115 前的訂單）→ 不動庫存，避免重複扣帳")
+    void deductOnShipment_noLedger_leavesStockUntouched() {
+        OrderItem item = itemWithSku(sku(SKU_ID), 3);
+        Order order = orderWithItems(item);
+        givenLedger(order, item);
 
-        service.deductForOrder(order);
+        service.deductOnShipment(order);
 
-        verify(productInventoryRepository).deductReserved(SKU_ID, 3);
-        verify(productInventoryRepository, never()).findById(any());
-        verify(productInventoryRepository, never()).save(any());
-
-        StockMovement movement = capturedMovement();
-        assertThat(movement.getMovementType()).isEqualTo(StockMovement.MovementType.OUTBOUND);
-        // PRD §6.7.4：OUTBOUND 同時遞減 total_qty 與 reserved_qty，兩者的前值都由 after 反推
-        assertThat(movement.getBeforeTotalQty()).isEqualTo(100);
-        assertThat(movement.getAfterTotalQty()).isEqualTo(97);
-        assertThat(movement.getBeforeReservedQty()).isEqualTo(3);
-        assertThat(movement.getAfterReservedQty()).isZero();
+        verify(productInventoryRepository, never()).deductReserved(any(), anyInt());
+        verify(stockMovementRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("deductForOrder：庫存列不存在（0 筆）→ 不留流水帳")
-    void deductForOrder_noInventoryRow_writesNoMovement() {
-        when(productInventoryRepository.deductReserved(SKU_ID, 3)).thenReturn(0);
-        Order order = orderWithItems(itemWithSku(sku(SKU_ID), 3));
+    @DisplayName("releaseOnCancellation：仍在預留中 → 釋放該數量，寫 RELEASE（不論取消前是否已付款）")
+    void releaseOnCancellation_reservedItem_releasesOutstanding() {
+        OrderItem item = itemWithSku(sku(SKU_ID), 4);
+        Order order = orderWithItems(item);
+        givenLedger(order, item, StockMovement.MovementType.RESERVE, 4);
+        when(productInventoryRepository.releaseReservation(SKU_ID, 4)).thenReturn(1);
+        givenReadBack(100, 6);
 
-        service.deductForOrder(order);
+        service.releaseOnCancellation(order, Order.OrderStatus.PAID);
 
+        verify(productInventoryRepository).releaseReservation(SKU_ID, 4);
+        verify(productInventoryRepository, never()).increaseTotalQty(any(), anyInt());
+        assertThat(capturedMovement().getMovementType()).isEqualTo(StockMovement.MovementType.RELEASE);
+    }
+
+    @Test
+    @DisplayName("releaseOnCancellation：改版前付款即扣帳 → 以 ADJUST_PLUS 把總量加回，不動預留")
+    void releaseOnCancellation_deductedAtPayment_reversesDeduction() {
+        OrderItem item = itemWithSku(sku(SKU_ID), 2);
+        Order order = orderWithItems(item);
+        givenLedger(order, item, StockMovement.MovementType.RESERVE, 2, StockMovement.MovementType.OUTBOUND, 2);
+        when(productInventoryRepository.increaseTotalQty(SKU_ID, 2)).thenReturn(1);
+        givenReadBack(100, 0);
+
+        service.releaseOnCancellation(order, Order.OrderStatus.PAID);
+
+        verify(productInventoryRepository, never()).releaseReservation(any(), anyInt());
+        StockMovement movement = capturedMovement();
+        assertThat(movement.getMovementType()).isEqualTo(StockMovement.MovementType.ADJUST_PLUS);
+        assertThat(movement.getQuantity()).isEqualTo(2);
+        assertThat(movement.getBeforeTotalQty()).isEqualTo(98);
+        assertThat(movement.getAfterTotalQty()).isEqualTo(100);
+        assertThat(movement.getOrderItemId()).isEqualTo(item.getId());
+    }
+
+    @Test
+    @DisplayName("releaseOnCancellation：已釋放過（流水帳有 RELEASE）→ 不重複釋放")
+    void releaseOnCancellation_alreadyReleased_isIdempotent() {
+        OrderItem item = itemWithSku(sku(SKU_ID), 4);
+        Order order = orderWithItems(item);
+        givenLedger(order, item, StockMovement.MovementType.RESERVE, 4, StockMovement.MovementType.RELEASE, 4);
+
+        service.releaseOnCancellation(order, Order.OrderStatus.CREATED);
+
+        verify(productInventoryRepository, never()).releaseReservation(any(), anyInt());
+        verify(stockMovementRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("releaseOnCancellation：沒有流水帳且取消前為 CREATED → 沿用改版前依數量釋放")
+    void releaseOnCancellation_noLedgerCreated_releasesByQuantity() {
+        OrderItem item = itemWithSku(sku(SKU_ID), 4);
+        Order order = orderWithItems(item);
+        givenLedger(order, item);
+        when(productInventoryRepository.releaseReservation(SKU_ID, 4)).thenReturn(1);
+        givenReadBack(100, 0);
+
+        service.releaseOnCancellation(order, Order.OrderStatus.CREATED);
+
+        verify(productInventoryRepository).releaseReservation(SKU_ID, 4);
+        assertThat(capturedMovement().getMovementType()).isEqualTo(StockMovement.MovementType.RELEASE);
+    }
+
+    @Test
+    @DisplayName("releaseOnCancellation：沒有流水帳且已付款 → 無從判斷是否扣過帳，不動庫存")
+    void releaseOnCancellation_noLedgerPaid_leavesStockUntouched() {
+        OrderItem item = itemWithSku(sku(SKU_ID), 4);
+        Order order = orderWithItems(item);
+        givenLedger(order, item);
+
+        service.releaseOnCancellation(order, Order.OrderStatus.CONFIRMED);
+
+        verify(productInventoryRepository, never()).releaseReservation(any(), anyInt());
+        verify(productInventoryRepository, never()).increaseTotalQty(any(), anyInt());
         verify(stockMovementRepository, never()).save(any());
     }
 }

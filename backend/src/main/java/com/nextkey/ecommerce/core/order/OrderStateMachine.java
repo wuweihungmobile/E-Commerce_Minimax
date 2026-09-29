@@ -63,9 +63,12 @@ public class OrderStateMachine {
                         "Cannot transition from CREATED to " + targetStatus);
             };
 
-            // PAID 可以轉到 CONFIRMED, REFUNDING
+            // PAID 可以轉到 CONFIRMED, CANCELLED
+            // Sprint 218（DEF-301）：原本是 CONFIRMED, REFUNDING。PAID→REFUNDING 讓賣家不經取消就把已付款訂單送去退款，
+            // 跳過了取消補償（釋放預留、退還優惠券）。PRD §15.2.5 的 CREATED(=PAID)「cancel by any」即取消，
+            // 改為 PAID→CANCELLED，由 OrderService 的取消補償接著轉 REFUNDING。
             case "PAID" -> switch (targetStatus) {
-                case "CONFIRMED", "REFUNDING" -> TransitionResult.allowed(currentStatus, targetStatus);
+                case "CONFIRMED", "CANCELLED" -> TransitionResult.allowed(currentStatus, targetStatus);
                 default -> TransitionResult.denied(currentStatus, targetStatus,
                         "Cannot transition from PAID to " + targetStatus);
             };
@@ -164,7 +167,7 @@ public class OrderStateMachine {
     public static java.util.List<String> getNextValidStates(String currentStatus) {
         return switch (currentStatus) {
             case "CREATED" -> java.util.List.of("PAID", "CANCELLED");
-            case "PAID" -> java.util.List.of("CONFIRMED", "REFUNDING");
+            case "PAID" -> java.util.List.of("CONFIRMED", "CANCELLED");
             case "CONFIRMED" -> java.util.List.of("SHIPPING", "CANCELLED");
             case "SHIPPING" -> java.util.List.of("DELIVERED"); // DEF-010：移除 CANCELLED
             case "DELIVERED" -> java.util.List.of("COMPLETED");

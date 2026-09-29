@@ -30,7 +30,6 @@ import com.github.tomakehurst.wiremock.junit5.WireMockTest;
 import com.github.tomakehurst.wiremock.stubbing.Scenario;
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
-import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
@@ -90,7 +89,7 @@ class PaymentRefundIdempotencyKeyTest {
 
         service = new PaymentStateService(paymentRepository, orderRepository, mock(BookingRepository.class),
                 featureToggleService, factory, mock(SettlementAdjustmentService.class),
-                mock(ProductInventoryService.class), mock(OrderStateLogRepository.class), mock(AuditService.class));
+                mock(OrderStateLogRepository.class), mock(AuditService.class));
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         TenantContext.setCurrentUser(USER_ID);
 

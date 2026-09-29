@@ -113,15 +113,15 @@ class M12OrderStockLedgerIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT-M12-LEDGER-002: 付款扣帳 → 寫下一筆 OUTBOUND，total 與 reserved 同時遞減")
-    void deductForOrder_writesOutboundMovement() {
-        UUID skuId = givenSkuWithInventory(100, 30);
+    @DisplayName("IT-M12-LEDGER-002: 出貨扣帳 → 寫下一筆 OUTBOUND，total 與 reserved 同時遞減（Sprint 218 起在出貨、不在付款）")
+    void deductOnShipment_writesOutboundMovement() {
+        UUID skuId = givenSkuWithInventory(100, 25);
         Order order = persistedOrderOf(skuId, 5);
+        productInventoryService.reserveForOrder(order);
 
-        productInventoryService.deductForOrder(order);
+        productInventoryService.deductOnShipment(order);
 
-        Map<String, Object> row = singleMovementOf(skuId);
-        assertThat(row.get("movement_type")).isEqualTo("OUTBOUND");
+        Map<String, Object> row = movementOf(skuId, "OUTBOUND");
         assertThat(row.get("quantity")).isEqualTo(5);
         // PRD §6.7.4：OUTBOUND 為 -total_qty, -reserved_qty
         assertThat(row.get("before_total_qty")).isEqualTo(100);
@@ -132,15 +132,15 @@ class M12OrderStockLedgerIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT-M12-LEDGER-003: 未付款取消釋放 → 寫下一筆 RELEASE，只動 reserved")
-    void releaseForOrder_writesReleaseMovement() {
-        UUID skuId = givenSkuWithInventory(100, 40);
+    @DisplayName("IT-M12-LEDGER-003: 出貨前取消釋放 → 寫下一筆 RELEASE，只動 reserved")
+    void releaseOnCancellation_writesReleaseMovement() {
+        UUID skuId = givenSkuWithInventory(100, 25);
         Order order = persistedOrderOf(skuId, 15);
+        productInventoryService.reserveForOrder(order);
 
-        productInventoryService.releaseForOrder(order);
+        productInventoryService.releaseOnCancellation(order, Order.OrderStatus.CREATED);
 
-        Map<String, Object> row = singleMovementOf(skuId);
-        assertThat(row.get("movement_type")).isEqualTo("RELEASE");
+        Map<String, Object> row = movementOf(skuId, "RELEASE");
         assertThat(row.get("quantity")).isEqualTo(15);
         // PRD §6.7.4：RELEASE 為 -reserved_qty，total_qty 不動
         assertThat(row.get("before_reserved_qty")).isEqualTo(40);
@@ -158,8 +158,8 @@ class M12OrderStockLedgerIntegrationTest {
         Order order = persistedOrderOf(skuId, 3);
 
         productInventoryService.reserveForOrder(order);
-        productInventoryService.deductForOrder(order);
-        productInventoryService.releaseForOrder(order);
+        productInventoryService.deductOnShipment(order);
+        productInventoryService.releaseOnCancellation(order, Order.OrderStatus.CREATED);
 
         // 沒有庫存列就沒有異動可言：寫一筆 before/after 皆為 0 的流水帳會讓台帳出現不存在的異動
         assertThat(movementCountOf(skuId)).isZero();
@@ -392,6 +392,14 @@ class M12OrderStockLedgerIntegrationTest {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT * FROM stock_movements WHERE sku_id = ?", skuId);
         assertThat(rows).as("預期 SKU %s 恰有一筆庫存流水帳", skuId).hasSize(1);
+        return rows.get(0);
+    }
+
+    /** 某型別恰好一筆的流水帳（出貨／取消前必有一筆 RESERVE，不能再用 singleMovementOf）。 */
+    private Map<String, Object> movementOf(final UUID skuId, final String movementType) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT * FROM stock_movements WHERE sku_id = ? AND movement_type = ?", skuId, movementType);
+        assertThat(rows).as("預期 SKU %s 恰有一筆 %s 流水帳", skuId, movementType).hasSize(1);
         return rows.get(0);
     }
 

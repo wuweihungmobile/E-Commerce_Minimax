@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.nextkey.ecommerce.api.dto.LogisticsDto;
 import com.nextkey.ecommerce.core.logistics.provider.LogisticsProvider;
 import com.nextkey.ecommerce.core.logistics.provider.LogisticsProviderFactory;
+import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.domain.model.logistics.Logistics;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.repository.LogisticsRepository;
@@ -39,6 +40,7 @@ public class LogisticsService {
     private final LogisticsRepository logisticsRepository;
     private final OrderRepository orderRepository;
     private final LogisticsProviderFactory logisticsProviderFactory;
+    private final ProductInventoryService productInventoryService;
 
     // Mock tracking event time constants
     private static final long IN_TRANSIT_HOURS_AGO = 12;
@@ -84,6 +86,10 @@ public class LogisticsService {
             throw new BusinessException(ErrorCode.E_5001,
                     "Order must be CONFIRMED to create logistics, current status: " + order.getStatus());
         }
+
+        // Sprint 218（DEF-303 (6)）：出貨才扣庫存（PRD §6.7.3「訂單出貨 → OUTBOUND」），與上面的狀態轉換同一交易。
+        // 付款不再扣帳，出貨前的取消因此一律只是釋放預留。
+        productInventoryService.deductOnShipment(order);
 
         // 透過 Provider 策略取得追蹤號
         LogisticsProvider provider = logisticsProviderFactory.getProvider(request.getLogisticsProvider().name());

@@ -16,7 +16,6 @@ import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.order.OrderStateMachine;
-import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -50,7 +49,6 @@ public class PaymentStateService {
     private final FeatureToggleService featureToggleService;
     private final PaymentGatewayFactory paymentGatewayFactory;
     private final SettlementAdjustmentService settlementAdjustmentService;
-    private final ProductInventoryService productInventoryService;
     private final OrderStateLogRepository orderStateLogRepository;
     private final AuditService auditService;
 
@@ -60,15 +58,13 @@ public class PaymentStateService {
     public PaymentStateService(PaymentRepository paymentRepository, OrderRepository orderRepository,
             BookingRepository bookingRepository, FeatureToggleService featureToggleService,
             PaymentGatewayFactory paymentGatewayFactory, SettlementAdjustmentService settlementAdjustmentService,
-            ProductInventoryService productInventoryService, OrderStateLogRepository orderStateLogRepository,
-            AuditService auditService) {
+            OrderStateLogRepository orderStateLogRepository, AuditService auditService) {
         this.paymentRepository = paymentRepository;
         this.orderRepository = orderRepository;
         this.bookingRepository = bookingRepository;
         this.featureToggleService = featureToggleService;
         this.paymentGatewayFactory = paymentGatewayFactory;
         this.settlementAdjustmentService = settlementAdjustmentService;
-        this.productInventoryService = productInventoryService;
         this.orderStateLogRepository = orderStateLogRepository;
         this.auditService = auditService;
     }
@@ -92,16 +88,6 @@ public class PaymentStateService {
                 .build();
 
         orderStateLogRepository.save(log);
-    }
-
-    /** Sprint 88（AI-2422）：付款成功後正式扣帳，失敗僅記錄不影響付款成功主流程（比照既有結算調整慣例）。 */
-    private void deductStockSafely(Order order) {
-        try {
-            productInventoryService.deductForOrder(order);
-        } catch (RuntimeException e) {
-            log.error("Failed to deduct stock after payment success: orderId={}, error={}",
-                    order.getId(), e.getMessage(), e);
-        }
     }
 
     /**
@@ -153,9 +139,9 @@ public class PaymentStateService {
         }
 
         // 併發防護（DEF-125，claim-before-side-effects）：先原子搶占「目前狀態→PAID」這個轉換，
-        // 只有搶到的一方才繼續建立 Payment 記錄與扣庫存。上面兩個檢查都是 check-then-act，
+        // 只有搶到的一方才繼續建立 Payment 記錄。上面兩個檢查都是 check-then-act，
         // 兩個併發的 mockPaymentSuccess 呼叫都可能通過同一份舊快照，各自建立一筆 SUCCESS
-        // Payment、各自扣一次庫存，造成帳實不符（比照 markStripePaymentSucceeded 既有修法）。
+        // Payment（當年還會各自扣一次庫存；Sprint 218 起付款不再扣庫存），比照 markStripePaymentSucceeded 既有修法。
         String previousStatus = order.getStatus().name();
         if (orderRepository.updateStatusIfCurrent(order.getId(), order.getStatus(), Order.OrderStatus.PAID) == 0) {
             throw new BusinessException(ErrorCode.E_5011, "Order cannot be paid in current status");
@@ -174,7 +160,7 @@ public class PaymentStateService {
 
         payment = paymentRepository.save(payment);
 
-        deductStockSafely(order);
+        // Sprint 218（DEF-303 (6)）：付款不再扣庫存，預留保留到出貨才扣（PRD §6.7.3，見 ProductInventoryService）
         recordOrderStateLog(order, previousStatus, Order.OrderStatus.PAID.name(),
                 TenantContext.getCurrentUser(), "Mock payment success");
 
@@ -501,7 +487,7 @@ public class PaymentStateService {
 
         // 🔴 併發防護：原子條件式 UPDATE 取代「讀狀態→判斷→setStatus→save」，避免兩個併發呼叫
         // （例如回跳確認流程與 webhook 幾乎同時處理同一筆付款）都通過舊有的 in-memory 檢查，
-        // 都真的執行一次下游庫存扣減（deductForOrder 是原生 UPDATE 相對扣減，重複呼叫會扣兩倍）。
+        // 都真的執行一次下游副作用（當年是庫存扣減，Sprint 218 起付款不再扣庫存；重複的仍會是狀態紀錄與稽核）。
         int updated = paymentRepository.markSuccessIfNotAlready(payment.getId(), Payment.PaymentStatus.SUCCESS,
                 paymentIntentId, Instant.now());
         if (updated == 0) {
@@ -518,7 +504,6 @@ public class PaymentStateService {
                 String previousStatus = order.getStatus().name();
                 order.setStatus(Order.OrderStatus.PAID);
                 orderRepository.save(order);
-                deductStockSafely(order);
                 recordOrderStateLog(order, previousStatus, Order.OrderStatus.PAID.name(),
                         null, "Stripe payment webhook success, session=" + sessionId);
             }

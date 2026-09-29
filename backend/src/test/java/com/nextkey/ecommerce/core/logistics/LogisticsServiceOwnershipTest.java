@@ -20,6 +20,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.api.dto.LogisticsDto;
 import com.nextkey.ecommerce.core.logistics.provider.LogisticsProviderFactory;
+import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.repository.LogisticsRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
@@ -46,6 +47,9 @@ class LogisticsServiceOwnershipTest {
 
     @Mock
     private LogisticsProviderFactory logisticsProviderFactory;
+
+    @Mock
+    private ProductInventoryService productInventoryService;
 
     @InjectMocks
     private LogisticsService logisticsService;

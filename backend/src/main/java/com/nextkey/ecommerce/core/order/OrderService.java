@@ -617,6 +617,12 @@ public class OrderService {
             throw new BusinessException(ErrorCode.E_5001,
                     targetStatus + " status can only be set by the payment system, not directly via this endpoint");
         }
+        // Sprint 218（DEF-301）：REFUNDING 代表「已付款訂單被取消、等待退款」，只能由取消流程進入。直接指定就跳過了
+        // 取消補償（釋放預留、退還優惠券）；要取消已付款訂單請指定 CANCELLED，補償後會自動轉 REFUNDING。
+        if (Order.OrderStatus.REFUNDING.name().equals(targetStatus)) {
+            throw new BusinessException(ErrorCode.E_5001,
+                    "REFUNDING is entered only by cancelling a paid order; request CANCELLED instead");
+        }
 
         String currentStatus = order.getStatus().name();
         OrderStateMachine.TransitionResult result = OrderStateMachine.canTransition(currentStatus, targetStatus);
@@ -643,6 +649,14 @@ public class OrderService {
         log.info("Order status updated: orderId={}, {} -> {}", orderId, currentStatus, targetStatus);
         auditService.record("ORDER_STATUS_UPDATED", "ORDER", order.getId(), order.getTenantId(),
                 currentStatus, targetStatus, reason, userId);
+
+        if (newStatus == Order.OrderStatus.SHIPPING) {
+            // Sprint 218（DEF-303 (6)）：出貨才扣庫存（PRD §6.7.3），與建立物流單（LogisticsService）同一規則
+            productInventoryService.deductOnShipment(order);
+        } else if (newStatus == Order.OrderStatus.CANCELLED) {
+            // Sprint 218（DEF-301）：賣家以本端點取消，補償與 POST /cancel 相同（PRD TC-M05-015）
+            order = compensateCancellation(order, Order.OrderStatus.valueOf(currentStatus), userId);
+        }
         return toOrderResponse(order);
     }
 
@@ -722,13 +736,14 @@ public class OrderService {
             throw new BusinessException(ErrorCode.E_5002, "Order cannot be cancelled in current status");
         }
 
-        String currentStatus = order.getStatus().name();
+        Order.OrderStatus previousStatus = order.getStatus();
+        String currentStatus = previousStatus.name();
         // 併發防護（DEF-124）：先原子搶占「目前狀態→CANCELLED」這個轉換，只有搶到的一方才
         // 繼續往下釋放預扣庫存／退還優惠券額度。這兩個下游操作本身雖是原子的相對量增減
         // （releaseReservation 原生 UPDATE、優惠券額度遞增），但若 cancelOrder 本身被併發
         // 呼叫兩次都通過上面的舊快照狀態檢查，仍會各自呼叫一次，造成庫存被重複釋放（幻影
         // 庫存）、優惠券額度被重複退還（超發）。
-        if (orderRepository.updateStatusIfCurrent(order.getId(), order.getStatus(), Order.OrderStatus.CANCELLED) == 0) {
+        if (orderRepository.updateStatusIfCurrent(order.getId(), previousStatus, Order.OrderStatus.CANCELLED) == 0) {
             throw new BusinessException(ErrorCode.E_5002, "Order cannot be cancelled in current status");
         }
         order.setStatus(Order.OrderStatus.CANCELLED);
@@ -738,36 +753,43 @@ public class OrderService {
         auditService.record("ORDER_CANCELLED", "ORDER", order.getId(), order.getTenantId(),
                 currentStatus, Order.OrderStatus.CANCELLED.name(), reason, userId);
 
-        // Sprint 88（AI-2422）：僅當取消前尚未付款（CREATED）才釋放預扣庫存；
-        // 已付款（PAID）的庫存已由 deductForOrder 正式扣帳，本次不做退款回補（範圍外）
-        if ("CREATED".equals(currentStatus)) {
-            try {
-                productInventoryService.releaseForOrder(order);
-            } catch (RuntimeException e) {
-                log.error("Failed to release reserved stock after order cancellation: orderId={}, error={}",
-                        orderId, e.getMessage(), e);
-            }
-        }
-
-        // Sprint 100（PRD §2630）：退還優惠券額度。與庫存釋放不同，此處不限 CREATED——
-        // 訂單無論在付款前或付款後取消，該次用券都不應繼續佔用總量/每人限用額度。
-        try {
-            refundPromoUsage(order);
-        } catch (RuntimeException e) {
-            log.error("Failed to refund promo usage after order cancellation: orderId={}, error={}",
-                    orderId, e.getMessage(), e);
-        }
-
-        // 如果已付款，需要退款流程
-        if ("PAID".equals(currentStatus)) {
-            // 創建退款记录，跳轉到 REFUNDING 狀態
-            order.setStatus(Order.OrderStatus.REFUNDING);
-            order = orderRepository.save(order);
-            recordStateLog(order, Order.OrderStatus.CANCELLED.name(), Order.OrderStatus.REFUNDING.name(), userId, "Automatic refund triggered");
-        }
+        order = compensateCancellation(order, previousStatus, userId);
 
         log.info("Order cancelled: orderId={}", orderId);
         return toOrderResponse(order);
+    }
+
+    /**
+     * 訂單取消的補償（PRD §15.2.5「RETAIL 取消補償邏輯」）。所有取消入口共用這一份：買家／管理員的
+     * {@code POST /cancel} 與賣家的 {@code PATCH /status → CANCELLED}（Sprint 218，DEF-301：原本只有前者有補償，
+     * 賣家取消的訂單會一直佔著預扣庫存與優惠券額度）。呼叫前訂單須已由呼叫端以 CAS 轉為 CANCELLED。
+     *
+     * <ul>
+     *   <li>庫存：出貨前的取消一律釋放預留（PRD §6.7.3）。Sprint 218 起付款不再扣帳，「已付款但尚未出貨」的貨也還在預留中，
+     *       見 {@link ProductInventoryService#releaseOnCancellation}（DEF-303 (6)）。</li>
+     *   <li>優惠券：退還額度（PRD「若已使用促銷碼，則退還」）。</li>
+     *   <li>已付款（PAID／CONFIRMED）：轉 REFUNDING 等待退款（PRD「若已支付，觸發退款流程」）。原本只有 PAID 會轉，
+     *       CONFIRMED 同樣已付款卻停在 CANCELLED，錢沒有下一步可退（DEF-303 (4)）。狀態紀錄原本寫
+     *       「Automatic refund triggered」，但實際上沒有觸發任何退款（DEF-303 (5)），改為如實描述。</li>
+     * </ul>
+     *
+     * <p>不再以 try/catch 吞掉庫存或優惠券的失敗：PRD §15.3.1.2 要求狀態變更與資源釋放在同一交易內原子提交。
+     * 何況兩者都經過交易代理，例外一拋出，交易就已被標成 rollback-only，吞掉只會讓提交時改丟
+     * {@code UnexpectedRollbackException}，並不會讓取消在資源沒釋放的情況下成立。
+     */
+    private Order compensateCancellation(final Order order, final Order.OrderStatus statusBeforeCancel,
+            final UUID actorUserId) {
+        productInventoryService.releaseOnCancellation(order, statusBeforeCancel);
+        refundPromoUsage(order);
+
+        if (statusBeforeCancel != Order.OrderStatus.PAID && statusBeforeCancel != Order.OrderStatus.CONFIRMED) {
+            return order;
+        }
+        order.setStatus(Order.OrderStatus.REFUNDING);
+        Order saved = orderRepository.save(order);
+        recordStateLog(saved, Order.OrderStatus.CANCELLED.name(), Order.OrderStatus.REFUNDING.name(), actorUserId,
+                "Order was paid: refund pending");
+        return saved;
     }
 
     /**

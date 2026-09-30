@@ -73,6 +73,8 @@ class PaymentRefundIdempotencyKeyTest {
 
     private PaymentStateService service;
     private Payment payment;
+    private Order order;
+    private FeatureToggleService featureToggleService;
 
     @BeforeEach
     void setUp(final WireMockRuntimeInfo wri) {
@@ -85,7 +87,7 @@ class PaymentRefundIdempotencyKeyTest {
 
         PaymentRepository paymentRepository = mock(PaymentRepository.class);
         OrderRepository orderRepository = mock(OrderRepository.class);
-        FeatureToggleService featureToggleService = mock(FeatureToggleService.class);
+        featureToggleService = mock(FeatureToggleService.class);
 
         service = new PaymentStateService(paymentRepository, orderRepository, mock(BookingRepository.class),
                 featureToggleService, factory, mock(SettlementAdjustmentService.class),
@@ -93,7 +95,7 @@ class PaymentRefundIdempotencyKeyTest {
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         TenantContext.setCurrentUser(USER_ID);
 
-        Order order = Order.builder().userId(USER_ID).status(Order.OrderStatus.PAID)
+        order = Order.builder().userId(USER_ID).status(Order.OrderStatus.PAID)
                 .totalAmount(BigDecimal.valueOf(1500)).currency("TWD").build();
         order.setId(ORDER_ID);
         payment = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
@@ -157,6 +159,25 @@ class PaymentRefundIdempotencyKeyTest {
         List<String> keys = sentIdempotencyKeys();
         assertThat(keys).hasSize(2);
         assertThat(keys.get(0)).isEqualTo(keys.get(1));
+    }
+
+    @Test
+    @DisplayName("UT-REFUND-KEY-004（Sprint 226）: 自動退款（系統，沒有登入使用者）＋STRIPE_PAYMENT_ENABLED 已關閉 → "
+            + "真實 Stripe gateway 仍收到恰好一次全額退款請求，帶這筆 payment_intent 與冪等鍵")
+    void automaticRefund_sendsTheRefundToStripeEvenWhenTheToggleIsOff() {
+        TenantContext.clear();
+        order.setStatus(Order.OrderStatus.REFUNDING);
+        when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(false);
+        stubStripeRefundSuccess();
+
+        service.refundOrderPaymentAsSystem(ORDER_ID, "Automatic refund: order cancelled");
+
+        var sent = findAll(postRequestedFor(urlEqualTo(REFUNDS_PATH)));
+        assertThat(sent).as("錢已經在 Stripe，不能只在本地標成已退款").hasSize(1);
+        assertThat(sent.get(0).getBodyAsString()).contains("payment_intent=pi_1");
+        assertThat(sent.get(0).getHeader("Idempotency-Key")).isEqualTo("refund-pi_1-0.00-1500.00");
+        assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
     }
 
     private void stubStripeRefundSuccess() {

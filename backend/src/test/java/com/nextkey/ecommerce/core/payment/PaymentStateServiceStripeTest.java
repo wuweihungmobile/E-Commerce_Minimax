@@ -186,6 +186,9 @@ class PaymentStateServiceStripeTest {
                 .thenReturn(PaymentGatewayRequestResponse.CheckoutSessionResult.builder()
                         .sessionId("cs_test_1").paymentIntentId("pi_1").status("complete").paymentStatus("paid").build());
         when(paymentRepository.findByTransactionId("cs_test_1")).thenReturn(Optional.of(processing));
+        // Sprint 226（DEF-308）：訂單轉 PAID 也是條件式 UPDATE（與取消搶同一個狀態）
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CREATED, Order.OrderStatus.PAID))
+                .thenReturn(1);
 
         OrderPaymentStateDto state = service.confirmStripeCheckout(ORDER_ID, "cs_test_1");
 
@@ -265,6 +268,107 @@ class PaymentStateServiceStripeTest {
         verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any(), any());
         assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
+    }
+
+    @Test
+    @DisplayName("🔴 UT-PAY-STRIPE-012（Sprint 226）: STRIPE 付款即使 toggle 已關閉，退款仍經 Stripe——不能只在本地標成已退款")
+    void refund_stripePayment_toggleOff_stillRefundsThroughStripe() {
+        Order order = paidOrder();
+        Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.SUCCESS)
+                .transactionId("cs_test_1").stripePaymentIntentId("pi_1").build();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(success));
+        // toggle 只決定「新的付款」走哪條路；這筆錢已經在 Stripe 了
+        when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(false);
+        when(paymentGatewayFactory.processRefund(eq("STRIPE"), eq("pi_1"), eq(BigDecimal.valueOf(1500)), any(), any()))
+                .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
+                        .success(true).refundId("re_1").status("succeeded").build());
+
+        service.refundOrderPayment(ORDER_ID, null, "customer");
+
+        verify(paymentGatewayFactory).processRefund(eq("STRIPE"), eq("pi_1"), eq(BigDecimal.valueOf(1500)), any(), any());
+        assertThat(success.getStripeRefundId()).isEqualTo("re_1");
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
+    }
+
+    private Order refundingOrder() {
+        Order order = Order.builder().userId(USER_ID).status(Order.OrderStatus.REFUNDING)
+                .totalAmount(BigDecimal.valueOf(1500)).currency("TWD").build();
+        order.setId(ORDER_ID);
+        return order;
+    }
+
+    @Test
+    @DisplayName("UT-PAY-STRIPE-013（Sprint 226，DEF-303 (5)）: 自動退款（系統）→ 不做擁有權檢查，經 Stripe 退剩餘全額，"
+            + "訂單 REFUNDING → REFUNDED，狀態紀錄操作者為 null")
+    void refundAsSystem_refundsRemainingThroughStripeWithoutOwnershipCheck() {
+        TenantContext.clear(); // 排程執行緒：沒有登入使用者
+        Order order = refundingOrder();
+        Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.SUCCESS)
+                .transactionId("cs_test_1").stripePaymentIntentId("pi_1").build();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(success));
+        when(paymentGatewayFactory.processRefund(eq("STRIPE"), eq("pi_1"), eq(BigDecimal.valueOf(1500)), any(), any()))
+                .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
+                        .success(true).refundId("re_1").status("succeeded").build());
+
+        OrderPaymentStateDto state = service.refundOrderPaymentAsSystem(ORDER_ID, "Automatic refund");
+
+        assertThat(state.getOrderStatus()).isEqualTo("REFUNDED");
+        assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+        assertThat(success.getRefundedAmount()).isEqualByComparingTo("1500");
+        org.mockito.ArgumentCaptor<OrderStateLog> logCaptor = org.mockito.ArgumentCaptor.forClass(OrderStateLog.class);
+        verify(orderStateLogRepository).save(logCaptor.capture());
+        assertThat(logCaptor.getValue().getFromStatus()).isEqualTo("REFUNDING");
+        assertThat(logCaptor.getValue().getToStatus()).isEqualTo("REFUNDED");
+        assertThat(logCaptor.getValue().getChangedBy()).as("系統操作沒有使用者").isNull();
+        assertThat(logCaptor.getValue().getReason()).isEqualTo("Automatic refund");
+    }
+
+    @Test
+    @DisplayName("UT-PAY-STRIPE-014（Sprint 226）: 系統只處理 REFUNDING——其他狀態的訂單（例如還是 PAID）→ E_5012，"
+            + "不佔用退款額度、不呼叫 Stripe")
+    void refundAsSystem_nonRefundingOrder_isRejectedBeforeAnyMoneyMoves() {
+        TenantContext.clear();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(paidOrder()));
+
+        assertThatThrownBy(() -> service.refundOrderPaymentAsSystem(ORDER_ID, "x"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_5012);
+
+        verify(paymentRepository, never()).applyRefundIfUnchanged(any(), any(), any(), any());
+        verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("UT-PAY-STRIPE-015（Sprint 226）: Stripe 拒絕退款 → 拋出（交易整體回滾），訂單與付款在記憶體裡都不呈現已退款；"
+            + "不留稽核與狀態紀錄")
+    void refundAsSystem_stripeFailure_throwsAndLeavesOrderRefunding() {
+        TenantContext.clear();
+        Order order = refundingOrder();
+        Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.SUCCESS)
+                .transactionId("cs_test_1").stripePaymentIntentId("pi_1").build();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(success));
+        when(paymentGatewayFactory.processRefund(any(), any(), any(), any(), any()))
+                .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
+                        .success(false).errorMessage("charge_already_refunded").build());
+
+        assertThatThrownBy(() -> service.refundOrderPaymentAsSystem(ORDER_ID, "x"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("charge_already_refunded");
+
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDING);
+        assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.SUCCESS);
+        assertThat(success.getRefundedAmount()).isEqualByComparingTo("0");
+        verify(orderStateLogRepository, never()).save(any());
     }
 
     @Test

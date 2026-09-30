@@ -265,6 +265,33 @@ public class PaymentStateService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
         checkOrderOwnership(order);
+        return refundOrderPaymentCore(order, amount, reason);
+    }
+
+    /**
+     * 自動退款（Sprint 226，DEF-303 (5)／DEF-308）：系統（{@code RefundProcessingService} 排程）對「等待退款」
+     * （{@code REFUNDING}）的訂單退還剩餘全額。PRD §15.2.5「若已支付，觸發 M04 退款流程」。
+     *
+     * <p>與 {@link #refundOrderPayment} 共用同一個退款核心（額度 CAS、Stripe 呼叫與冪等鍵、訂單轉 REFUNDED、
+     * 狀態紀錄、結算調整），差別只有兩點：呼叫者是系統而不是登入使用者，所以不做擁有權檢查，狀態紀錄與稽核的操作者為
+     * null；以及只處理 {@code REFUNDING}——系統不主動退款給其他狀態的訂單（退款金額一律是剩餘全額，不接受部分退款）。
+     *
+     * <p>失敗（Stripe 拒絕、找不到可退款的付款…）一律拋出並回滾整個交易，訂單維持 {@code REFUNDING}，由呼叫端決定
+     * 何時重試；不會出現「本地標成已退款、Stripe 沒退」的半套狀態。
+     */
+    @Transactional
+    public OrderPaymentStateDto refundOrderPaymentAsSystem(UUID orderId, String reason) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
+        if (order.getStatus() != Order.OrderStatus.REFUNDING) {
+            throw new BusinessException(ErrorCode.E_5012, "Order is not waiting for a refund");
+        }
+        return refundOrderPaymentCore(order, null, reason);
+    }
+
+    /** 退款核心：呼叫端已載入訂單並完成授權（使用者）或狀態確認（系統）。 */
+    private OrderPaymentStateDto refundOrderPaymentCore(Order order, BigDecimal amount, String reason) {
+        UUID orderId = order.getId();
 
         // 檢查是否允許退款
         if (!OrderStateMachine.canRefund(order.getStatus().name())) {
@@ -296,13 +323,14 @@ public class PaymentStateService {
                     "Refund amount conflicts with a concurrent refund on the same payment, please retry");
         }
 
-        // 真實退款（stripe path）：toggle 開啟 + Payment 為 STRIPE → 呼叫 Stripe Refund（指定金額）。
+        // 真實退款（stripe path）：Payment 為 STRIPE → 一律呼叫 Stripe Refund（指定金額）。
+        // Sprint 226：原本還要求 STRIPE_PAYMENT_ENABLED 開啟。那個開關只決定「新的付款」走哪條路；已經在 Stripe 收下的錢，
+        // 開關之後被關掉，也不能只在本地標成已退款——錢沒退回去而系統說退了（自動退款上線後這會是靜默的錯帳）。
         // 排在額度佔用「之後」：若佔用失敗直接拒絕於上方，絕不會走到這裡才呼叫外部金流。
         // 🔴 in-memory 的 setRefundedAmount/setStatus 特意延後到 Stripe 呼叫「之後」才做：若 Stripe
         // 失敗於此拋出，交易整體回滾（DB 的 compare-and-swap 結果也一併復原），payment 物件不應該在
         // 記憶體裡已經呈現「已退款」——否則呼叫端若誤用這個已拋例外方法留下的物件會看到不一致的假象。
-        if (featureToggleService.isFeatureEnabled(STRIPE_PAYMENT_ENABLED)
-                && payment.getPaymentMethod() == Payment.PaymentMethod.STRIPE) {
+        if (payment.getPaymentMethod() == Payment.PaymentMethod.STRIPE) {
             executeStripeRefund(orderId, payment, previousRefundedAmount, refundAmount, reason);
         }
         payment.setRefundedAmount(newRefundedAmount);
@@ -642,13 +670,7 @@ public class PaymentStateService {
             Order order = orderRepository.findById(orderId).orElse(null);
             if (order != null) {
                 successTenantId = order.getTenantId();
-            }
-            if (order != null && OrderStateMachine.canPay(order.getStatus().name())) {
-                String previousStatus = order.getStatus().name();
-                order.setStatus(Order.OrderStatus.PAID);
-                orderRepository.save(order);
-                recordOrderStateLog(order, previousStatus, Order.OrderStatus.PAID.name(),
-                        null, "Stripe payment webhook success, session=" + sessionId);
+                markOrderPaidByStripe(order, payment, sessionId);
             }
         } else if (payment.getBookingId() != null) {
             successTenantId = markBookingPaidByStripe(payment, sessionId);
@@ -657,6 +679,49 @@ public class PaymentStateService {
         auditService.record("STRIPE_PAYMENT_SUCCEEDED_WEBHOOK", "PAYMENT", payment.getId(), successTenantId,
                 null, "SUCCESS", "session=" + sessionId);
         return true;
+    }
+
+    /**
+     * Stripe 付款成功後把訂單推進到 PAID（與訂房的 {@link #markBookingPaidByStripe} 對稱）。
+     *
+     * <p>Sprint 226（DEF-308）：原本是「讀狀態→{@code canPay}→setStatus→save」。管理員、賣家、買家自己取消，或逾時取消，
+     * 都可能發生在買家還停在 Stripe 付款頁的時候：付款成功、錢已收，訂單卻已是 {@code CANCELLED}，而這裡什麼都不做——
+     * 沒有退款、沒有告警。併發時更糟：save 會用舊快照把剛取消的訂單寫回 {@code PAID}，已釋放的預留與優惠券額度沒有人收回。
+     * 改用條件式 UPDATE 搶占 {@code CREATED → PAID}（取消也是同一種條件式 UPDATE），恰好一邊成功；
+     * 搶不到就走 {@link #queueRefundForUnpayableOrder}。
+     */
+    private void markOrderPaidByStripe(Order order, Payment payment, String sessionId) {
+        if (orderRepository.updateStatusIfCurrent(order.getId(), Order.OrderStatus.CREATED,
+                Order.OrderStatus.PAID) == 1) {
+            order.setStatus(Order.OrderStatus.PAID);
+            recordOrderStateLog(order, Order.OrderStatus.CREATED.name(), Order.OrderStatus.PAID.name(),
+                    null, "Stripe payment webhook success, session=" + sessionId);
+            return;
+        }
+        queueRefundForUnpayableOrder(order, payment, sessionId);
+    }
+
+    /**
+     * 付款成功但訂單已不可付款（DEF-308）：錢收了、訂單沒成立。訂單是 {@code CANCELLED}（逾時、被管理員／賣家／買家取消）時，
+     * 把它轉 {@code REFUNDING}（條件式 UPDATE，狀態紀錄註明原因）交給自動退款；這筆付款是該訂單唯一的付款，
+     * 退款金額就是付款金額。其他狀態（例如已經 {@code PAID} 又收到一筆）不自動處理——那是重複付款，該退哪一筆沒有唯一答案，
+     * 留稽核紀錄與錯誤日誌讓人處理，不再靜默。兩種情況都寫一筆 {@code STRIPE_PAYMENT_ORDER_NOT_PAYABLE}。
+     */
+    private void queueRefundForUnpayableOrder(Order order, Payment payment, String sessionId) {
+        boolean queued = orderRepository.updateStatusIfCurrent(order.getId(), Order.OrderStatus.CANCELLED,
+                Order.OrderStatus.REFUNDING) == 1;
+        Order.OrderStatus current = queued ? Order.OrderStatus.CANCELLED
+                : orderRepository.findStatusById(order.getId()).orElse(order.getStatus());
+        if (queued) {
+            order.setStatus(Order.OrderStatus.REFUNDING);
+            recordOrderStateLog(order, Order.OrderStatus.CANCELLED.name(), Order.OrderStatus.REFUNDING.name(), null,
+                    "Payment received after cancellation: refund pending, session=" + sessionId);
+        }
+        log.error("Stripe payment succeeded but the order is not payable (money collected, order not paid): "
+                + "orderId={}, orderStatus={}, refundQueued={}, session={}", order.getId(), current, queued, sessionId);
+        auditService.record("STRIPE_PAYMENT_ORDER_NOT_PAYABLE", "PAYMENT", payment.getId(), order.getTenantId(),
+                current.name(), "SUCCESS", "session=" + sessionId + ",orderId=" + order.getId()
+                        + ",refundQueued=" + queued);
     }
 
     /**

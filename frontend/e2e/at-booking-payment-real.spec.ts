@@ -305,4 +305,50 @@ test.describe('AT-BOOKING-PAYMENT-REAL: 訂房付款（真實後端）', () => {
     const bookingState = await page.request.get(`${API_BASE}/v2/orders/bookings/${mixedBooking!.id}/payment`, { headers });
     expect((await bookingState.json()).data.orderStatus, '訂房那一半也要付款（Sprint 222）').toBe('PAID');
   });
+
+  test('E2E-BPAYR-07: 取消已付款訂單 → 自動退款（REFUNDING → REFUNDED），款項全額退回（Sprint 226，DEF-303 (5)）', async ({ page }: { page: Page }) => {
+    await loginOnly(page, buyer.email, buyer.password);
+    const headers = { Authorization: `Bearer ${await accessToken(page)}` };
+
+    const add = await page.request.post(`${API_BASE}/v2/cart/items`, { headers, data: { listingId: productId, quantity: 2 } });
+    expect(add.status(), await add.text()).toBeLessThan(300);
+    const created = await page.request.post(`${API_BASE}/v2/orders`, {
+      headers,
+      data: {
+        orderType: 'PRODUCT',
+        shippingAddress: '台北市信義區信義路五段 7 號',
+        shippingRecipientName: 'E2E 買家',
+        shippingPhone: '0912345678',
+      },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    const orderId = (await created.json()).data.id as string;
+    const pay = await page.request.post(`${API_BASE}/v2/orders/${orderId}/pay`, { headers });
+    expect(pay.status(), await pay.text()).toBe(200);
+
+    const cancel = await page.request.post(`${API_BASE}/v2/orders/${orderId}/cancel?reason=E2E`, { headers });
+    expect(cancel.status(), await cancel.text()).toBe(200);
+    // 取消已付款訂單先進入「等待退款」；排程（E2E 堆疊把間隔調成數秒）隨後把款項退回並轉 REFUNDED。
+    // 速度不是重點，可能在這一刻就已經退完，所以這裡只排除「取消後訂單不是 REFUNDING／REFUNDED」的異常狀態
+    expect(['REFUNDING', 'REFUNDED']).toContain((await cancel.json()).data.status);
+
+    await expect
+      .poll(
+        async () => {
+          const r = await page.request.get(`${API_BASE}/v2/orders/${orderId}/payment`, { headers });
+          return (await r.json()).data.orderStatus as string;
+        },
+        { timeout: 60_000, intervals: [1000, 2000, 3000], message: '已付款訂單取消後應由自動退款排程退回款項' }
+      )
+      .toBe('REFUNDED');
+
+    const refunded = (await (await page.request.get(`${API_BASE}/v2/orders/${orderId}/payment`, { headers })).json()).data;
+    expect(refunded.paymentStatus).toBe('REFUNDED');
+    expect(Number(refunded.refundedAmount), '全額退回').toBe(PRODUCT_PRICE * 2);
+
+    // 買家在訂單詳情看得到結果
+    await page.goto(`/orders/${orderId}`);
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByTestId('order-refund-card')).toContainText('款項已退回', { timeout: 15000 });
+  });
 });

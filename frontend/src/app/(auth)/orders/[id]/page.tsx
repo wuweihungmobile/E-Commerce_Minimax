@@ -346,6 +346,25 @@ export default function OrderDetailPage() {
               </Card>
             )}
 
+            {/* 退款（Sprint 226，DEF-303 (5)）：取消已付款訂單後系統自動退款；REFUNDING ＝ 處理中，REFUNDED ＝ 已退回 */}
+            {(order.status === 'REFUNDING' || order.status === 'REFUNDED') && (
+              <Card className="border-amber-200" data-testid="order-refund-card">
+                <CardHeader>
+                  <CardTitle className="text-base">退款資訊</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-gray-700 space-y-1">
+                  {order.status === 'REFUNDING' ? (
+                    <p>退款處理中，系統會自動把款項退回原付款方式，請稍後重新整理查看結果。</p>
+                  ) : (
+                    <p>款項已退回原付款方式。</p>
+                  )}
+                  {payment?.refundedAmount != null && payment.refundedAmount > 0 && (
+                    <p>已退款金額：{formatPrice(payment.refundedAmount, order.currency)}</p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             {/* Items */}
             <Card>
               <CardHeader>

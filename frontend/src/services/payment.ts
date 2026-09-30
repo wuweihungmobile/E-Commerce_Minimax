@@ -20,6 +20,8 @@ export interface OrderPaymentState {
   updatedAt: string | null
   // 真實金流（AI-2410）：付款提供者（mock / stripe），前端據此決定付款 UI
   paymentProvider?: string | null
+  // 累計已退款金額（Sprint 56 起後端就有回傳；Sprint 226 起前端顯示）；未退款為 0
+  refundedAmount?: number | null
 }
 
 // 真實金流 Phase A（AI-2410）：Stripe Checkout Session 建立回應

@@ -102,6 +102,14 @@ app:
     check-interval-ms: ${BOOKING_TIMEOUT_CHECK_INTERVAL_MS:300000}
     initial-delay-ms: ${BOOKING_TIMEOUT_INITIAL_DELAY_MS:60000}
     batch-size: ${BOOKING_TIMEOUT_BATCH_SIZE:100}
+  # 自動退款（DEF-303 (5)／DEF-308；使用者 2026-10-01 回覆「請依照最佳化進行！」）：排程把 REFUNDING 訂單的款項退回原付款方式。
+  # 失敗的訂單以指數退避重試（retry-base-minutes 起、上限 retry-max-minutes），不會卡住其他訂單。
+  refund:
+    check-interval-ms: ${APP_REFUND_CHECK_INTERVAL_MS:60000}
+    initial-delay-ms: ${APP_REFUND_INITIAL_DELAY_MS:45000}
+    batch-size: ${APP_REFUND_BATCH_SIZE:50}
+    retry-base-minutes: ${APP_REFUND_RETRY_BASE_MINUTES:5}
+    retry-max-minutes: ${APP_REFUND_RETRY_MAX_MINUTES:360}
   cors:
     # 逗號分隔多個前端來源；正式環境以 APP_CORS_ALLOWED_ORIGINS 覆寫（不可用 *，因 allowCredentials=true）
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8080}

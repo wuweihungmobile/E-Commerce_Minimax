@@ -280,8 +280,8 @@ CREATED (= PAID)  ──→ SHIPPING ──→ DELIVERED ──→ COMPLETED
 | DELIVERED | 已送達 | complete, refund |
 | COMPLETED | 已完成 | — |
 | CANCELLED | 已取消 | — |
-| REFUNDING | 退款中 | — |
-| REFUNDED | 已退款 | — |
+| REFUNDING | 退款中（已付款訂單被取消，或 Stripe 付款成功時訂單已被取消）。**Sprint 226 起由排程（`RefundProcessingService`，每分鐘）自動把款項退回原付款方式**，失敗以指數退避重試並留 `AUTO_REFUND_FAILED` 稽核；管理員仍可用 `POST /v2/orders/{id}/refund` 手動退款 | — |
+| REFUNDED | 已退款（自動退款或管理員退款完成） | — |
 
 ---
 

@@ -131,7 +131,8 @@ class SchedulingConfigTest {
                 "NotificationConsumerService.consumeNotifications",
                 "NotificationConsumerService.processRetryQueue",
                 "OrderTimeoutService.cancelExpiredUnpaidOrders",
-                "BookingTimeoutService.cancelExpiredUnpaidBookings");
+                "BookingTimeoutService.cancelExpiredUnpaidBookings",
+                "RefundProcessingService.processPendingRefunds");
     }
 
     private static Class<?> loadWithoutInit(final String className) throws ClassNotFoundException {

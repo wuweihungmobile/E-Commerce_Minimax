@@ -830,6 +830,9 @@ class PaymentStateServiceTest {
             when(paymentRepository.markSuccessIfNotAlready(any(), any(Payment.PaymentStatus.class),
                     any(), any(Instant.class))).thenReturn(1);
             when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+            // Sprint 226（DEF-308）：訂單轉 PAID 也是條件式 UPDATE（與取消搶同一個狀態）
+            when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CREATED, Order.OrderStatus.PAID))
+                    .thenReturn(1);
 
             boolean result = service.markStripePaymentSucceeded("cs_1", null);
 
@@ -873,6 +876,60 @@ class PaymentStateServiceTest {
 
             assertThat(result).isTrue();
             verify(orderRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("🔴 UT-PAY-STATE-045（Sprint 226，DEF-308）: 訂單已 CANCELLED 才收到付款成功 -> 轉 REFUNDING 交給自動退款，"
+                + "狀態紀錄註明原因，留稽核（refundQueued=true）")
+        void paymentAfterCancellation_movesOrderToRefunding() {
+            Order order = orderOf(USER_ID, Order.OrderStatus.CANCELLED);
+            Payment processing = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.PROCESSING)
+                    .transactionId("cs_1").build();
+            when(paymentRepository.findByTransactionId("cs_1")).thenReturn(Optional.of(processing));
+            when(paymentRepository.markSuccessIfNotAlready(any(), any(Payment.PaymentStatus.class),
+                    any(), any(Instant.class))).thenReturn(1);
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+            when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CREATED, Order.OrderStatus.PAID))
+                    .thenReturn(0);
+            when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CANCELLED,
+                    Order.OrderStatus.REFUNDING)).thenReturn(1);
+
+            boolean result = service.markStripePaymentSucceeded("cs_1", "pi_1");
+
+            assertThat(result).isTrue();
+            assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDING);
+            org.mockito.ArgumentCaptor<OrderStateLog> logCaptor =
+                    org.mockito.ArgumentCaptor.forClass(OrderStateLog.class);
+            verify(orderStateLogRepository).save(logCaptor.capture());
+            assertThat(logCaptor.getValue().getFromStatus()).isEqualTo("CANCELLED");
+            assertThat(logCaptor.getValue().getToStatus()).isEqualTo("REFUNDING");
+            assertThat(logCaptor.getValue().getChangedBy()).as("webhook 沒有使用者").isNull();
+            assertThat(logCaptor.getValue().getReason()).contains("Payment received after cancellation");
+            verify(auditService).record(eq("STRIPE_PAYMENT_ORDER_NOT_PAYABLE"), eq("PAYMENT"), any(), any(),
+                    eq("CANCELLED"), eq("SUCCESS"), org.mockito.ArgumentMatchers.contains("refundQueued=true"));
+            verify(orderRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-046（Sprint 226，DEF-308）: 訂單既不是 CREATED 也不是 CANCELLED（已 PAID 又收到一筆）"
+                + " -> 不自動退款、不動訂單，留稽核（refundQueued=false）——重複付款該退哪一筆沒有唯一答案")
+        void paymentOnAlreadyPaidOrder_isAuditedNotRefunded() {
+            Order order = orderOf(USER_ID, Order.OrderStatus.PAID);
+            Payment processing = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.PROCESSING)
+                    .transactionId("cs_1").build();
+            when(paymentRepository.findByTransactionId("cs_1")).thenReturn(Optional.of(processing));
+            when(paymentRepository.markSuccessIfNotAlready(any(), any(Payment.PaymentStatus.class),
+                    any(), any(Instant.class))).thenReturn(1);
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+            when(orderRepository.findStatusById(ORDER_ID)).thenReturn(Optional.of(Order.OrderStatus.PAID));
+
+            boolean result = service.markStripePaymentSucceeded("cs_1", "pi_1");
+
+            assertThat(result).isTrue();
+            assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.PAID);
+            verify(orderStateLogRepository, never()).save(any());
+            verify(auditService).record(eq("STRIPE_PAYMENT_ORDER_NOT_PAYABLE"), eq("PAYMENT"), any(), any(),
+                    eq("PAID"), eq("SUCCESS"), org.mockito.ArgumentMatchers.contains("refundQueued=false"));
         }
     }
 

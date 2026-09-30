@@ -194,6 +194,13 @@ public class PaymentService {
         if (payment.getStatus() != Payment.PaymentStatus.SUCCESS) {
             throw new BusinessException(ErrorCode.E_6002, "Payment cannot be refunded");
         }
+        // Sprint 226（DEF-303 (3)）：本端點只改本地狀態、從不呼叫 Stripe。Stripe 付款若從這裡「退款」，付款被標成 REFUNDED、
+        // 錢卻沒有退回買家——而且不會再有人去退（狀態已是終態）。Stripe 付款只能走真的會退款的路徑：
+        // POST /v2/orders/{id}/refund，或取消訂單後的自動退款。
+        if (payment.getPaymentMethod() == Payment.PaymentMethod.STRIPE) {
+            throw new BusinessException(ErrorCode.E_6002,
+                    "Stripe payments cannot be refunded through this endpoint; use the order refund endpoint");
+        }
 
         BigDecimal refundAmount = request.getAmount() != null ? request.getAmount() : payment.getAmount();
         // DEF-243：先前無上限檢查，呼叫端可指定超過原始付款金額的任意退款金額（灌水）。

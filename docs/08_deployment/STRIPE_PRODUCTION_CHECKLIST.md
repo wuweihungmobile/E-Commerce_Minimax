@@ -48,6 +48,8 @@
 - [ ] **退款**：對已付款訂單觸發退款 → Stripe Dashboard 顯示退款成功 → webhook `charge.refunded` 送達（或 service 主動退款路徑）→ 本地 Payment/Order=REFUNDED
 - [ ] **部分退款**（Sprint 56）：對已付款訂單退一部分金額 → 本地 Payment=`PARTIALLY_REFUNDED`、**Order 狀態不變**（訂單持續履約）；再退至累計全額 → Payment/Order=`REFUNDED`。運費不參與部分退款（PO 決策 2026-07-04）。退款金額小數位數超過 2 位會被拒絕（`E-6009`，Sprint 192）
   - **必須在同一筆訂單上連續退兩次，且兩次間隔在 24 小時內**，並到 Stripe Dashboard 確認出現**兩筆**退款、金額各如預期（Sprint 207，DEF-288）。原本送給 Stripe 的冪等鍵對同一筆付款恆相同，依 Stripe 文件第二次會被拒或被當成重送而不建立新退款；修復後鍵已綁定累計已退額，**但這個行為只在本機以 WireMock 驗證過送出的鍵，從未對真實 Stripe 驗證**。建議兩次都試：一次金額不同、一次金額相同（例如先退 100 再退 100）。若兩次退款在 Dashboard 只看到一筆，本修復無效，請回報
+- [ ] **取消已付款訂單 → 自動退款**（Sprint 226，DEF-303 (5)；此前只有管理員呼叫退款 API 才會動錢）：對已付款訂單按「取消訂單」→ 訂單先變 `REFUNDING` → **約 1 分鐘內**（`APP_REFUND_CHECK_INTERVAL_MS`，預設 60000）排程經 Stripe 全額退回 → Dashboard 出現退款、本地 Payment/Order=`REFUNDED`。若 Stripe 拒絕，訂單維持 `REFUNDING`、稽核紀錄出現 `AUTO_REFUND_FAILED`（含 Stripe 的錯誤原因），並以 5、10、20… 分鐘（上限 6 小時）退避重試。**尚未對真實 Stripe 驗證**：Stripe 對「同冪等鍵」的反應與退款延遲都只依文件推論
+- [ ] **付款成功時訂單已被取消**（DEF-308）：發起 Checkout 後先不付款，到另一個分頁取消該訂單，再回 Checkout 用測試卡付款 → webhook 送達後訂單應由 `CANCELLED` 轉 `REFUNDING`（狀態紀錄註明「Payment received after cancellation」、稽核 `STRIPE_PAYMENT_ORDER_NOT_PAYABLE`），隨後自動全額退回
 - [ ] **Connect onboarding**（Phase D-1 起）：賣家發起 onboarding → 導向 Stripe 代管 KYC 表單（測試模式可用假資料完成）→ 完成後 `account.updated` webhook 送達 → 本地 tenant `connect_onboarding_status=COMPLETE`
 - [ ] **分潤撥款 Transfer**（Phase D-2，Sprint 80）：租戶 Connect 為 `COMPLETE` 且該租戶 `STRIPE_TRANSFER_ENABLED` 開啟 → Admin 核准結算單（`APPROVED`）→ 後端呼叫 Stripe Transfer → 本地 Transfer=`COMPLETED`、結算單=`PAID`，Stripe Dashboard 可見對應 transfer。**反向也要驗**：Connect 未就緒或 toggle 關閉時，Transfer 應為 `SKIPPED_ONBOARDING_INCOMPLETE`（不撥款），補齊條件後可由管理端重試（`TransferController`）
 - [ ] **`transfer.reversed`**：在 Dashboard 收回一筆測試 transfer → webhook 送達 → 本地 Transfer=`REVERSED`、結算單回 `FAILED`（**不會自動重新分潤，也不處理資金收回**，見 §F）
@@ -58,6 +60,7 @@
 - [ ] 切換順序：先確認 A、B、C 節皆完成 → 才將 `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` 換為正式金鑰 → 再開啟 `STRIPE_PAYMENT_ENABLED`/`STRIPE_CONNECT_ENABLED` toggle → **最後才逐租戶開啟 `STRIPE_TRANSFER_ENABLED`**（會真的把錢撥給賣家；先確認該租戶 Connect 已 `COMPLETE`、且至少一筆小額結算單以測試模式走查過 §D）
 - [ ] 切換後**立即**以小額真實金額（可退款）人工驗證一次付款 + 退款，確認正式環境串接無誤
 - [ ] 若切換後發現異常，toggle 可即時關閉降級回 Mock 路徑（不需重新部署）
+  - ⚠️ **Sprint 226 起**：關閉 `STRIPE_PAYMENT_ENABLED` 只影響**新的付款**；已在 Stripe 收下的款項，退款仍一律經 Stripe（付款方式為 STRIPE 的付款不會因為 toggle 被關掉而只在本地標成已退款）。自動退款依賴排程，`APP_SCHEDULING_ENABLED=false` 會連它一起關閉——此時取消已付款訂單只會停在 `REFUNDING`，需管理員手動退款
 
 ---
 

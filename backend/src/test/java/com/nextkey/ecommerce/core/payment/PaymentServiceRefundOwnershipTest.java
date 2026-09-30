@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -152,6 +153,26 @@ class PaymentServiceRefundOwnershipTest {
         PaymentDto.RefundResponse response = paymentService.processRefund(refundRequest(BigDecimal.valueOf(1000)));
 
         assertThat(response.getRefundAmount()).isEqualByComparingTo(BigDecimal.valueOf(1000));
+    }
+
+    @Test
+    @DisplayName("🔴 Sprint 226（DEF-303 (3)）：Stripe 付款不能從這個只改本地狀態的端點退款 → E_6002，付款維持 SUCCESS"
+            + "（修復前：付款被標成 REFUNDED、錢沒有退回去）")
+    void refund_stripePayment_isRejectedBecauseThisEndpointNeverCallsStripe() {
+        Payment stripePayment = Payment.builder().id(paymentId).orderId(orderId)
+                .paymentMethod(Payment.PaymentMethod.STRIPE)
+                .status(Payment.PaymentStatus.SUCCESS).amount(BigDecimal.valueOf(1000)).build();
+        when(paymentRepository.findById(paymentId)).thenReturn(Optional.of(stripePayment));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(orderOfUser(buyerA)));
+        TenantContext.setCurrentUser(buyerA);
+
+        assertThatThrownBy(() -> paymentService.processRefund(refundRequest(BigDecimal.valueOf(1000))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_6002);
+
+        verify(paymentRepository, never()).updateStatusIfCurrent(any(), any(), any());
+        verify(auditService, never()).record(eq("PAYMENT_REFUNDED"), any(), any(), any(), any(), any(), any());
     }
 
     // ========== 訂房付款退款的擁有權隔離 ==========

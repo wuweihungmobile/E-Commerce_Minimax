@@ -35,6 +35,21 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
             @Param("newStatus") Order.OrderStatus newStatus);
 
     /**
+     * 訂單目前在資料庫裡的狀態。以純量查詢取得而非載入實體：open-in-view 讓同一個請求共用 persistence context，
+     * 先前載入的實體不會反映條件式 UPDATE 的結果；需要「現在到底是什麼狀態」（例如稽核紀錄）時用這個。
+     */
+    @Query("SELECT o.status FROM Order o WHERE o.id = :id")
+    Optional<Order.OrderStatus> findStatusById(@Param("id") UUID id);
+
+    /**
+     * 等待退款（REFUNDING）的訂單 ID，由小到大（Sprint 226，DEF-303 (5)）。以 id 為游標逐頁取出
+     * （{@code id > afterId}）而不是偏移分頁：處理成功的訂單會離開 REFUNDING，偏移會跳過下一頁的第一批。
+     */
+    @Query("SELECT o.id FROM Order o WHERE o.status = :refunding AND o.id > :afterId ORDER BY o.id ASC")
+    List<UUID> findRefundingOrderIdsAfter(@Param("refunding") Order.OrderStatus refunding,
+            @Param("afterId") UUID afterId, Pageable pageable);
+
+    /**
      * 併發防護（DEF-132，ReturnRequestService.createReturnRequest）：以
      * {@code SELECT ... FOR UPDATE} 鎖住訂單列，序列化「讀各品項已申請退貨總量→比對可退量→
      * 建立新退貨單」這段複合操作。可退量檢查是跨列 SUM 聚合（{@code

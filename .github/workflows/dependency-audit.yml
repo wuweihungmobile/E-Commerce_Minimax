@@ -1,0 +1,48 @@
+name: 依賴安全審計 / Dependency Audit
+
+# 🔴 2026-10-01（DEF-314 後續，Sprint 228）：前端正式相依的每週安全審計——失敗只通知，不擋任何 push。
+#
+# 為什麼不放進 push 關卡：新的安全公告隨時會出現，與當次 push 改了什麼無關。阻擋性的審計會讓「某天突然出現一則公告」
+# 變成所有不相干的 push 一起變紅，還要在沒有人改相依的情況下被迫升級。使用者對此回覆「請依照最佳化進行」，採折衷：
+#   - 每週一跑一次 `npm audit --omit=dev --audit-level=high`（只看正式相依、high 以上）；有漏洞就讓這個 workflow 失敗，
+#     GitHub 會通知（排程 workflow 失敗會通知最後修改它的人），但不影響 main 的任何關卡。
+#   - 需要時也能手動觸發：gh workflow run "依賴安全審計 / Dependency Audit" --ref main
+#   - 本機隨時可用 `make audit-deps`（同一條指令）。
+#
+# 費用：`npm audit` 只讀 package-lock.json，不需要 npm ci 或建置，一次約 20～40 秒（計費上取整為 1 分鐘）。
+# 本專案曾為省 private repo 的 Actions 額度停用排程（見 technical-debt-review.yml）；這是目前唯一啟用的排程。
+# 不需要時把下方 schedule 區塊註解掉即可（workflow_dispatch 仍可手動執行）。
+#
+# 已知限制：只涵蓋前端 npm 相依。後端 Maven 相依沒有任何排程掃描（ci.yml 的 dependency-review-action 只在 PR 上跑，
+# 而本專案只用 main 分支、不開 PR）；建議在 GitHub 倉庫設定啟用 Dependabot alerts（免費、不耗 Actions 額度）。
+on:
+  schedule:
+    - cron: '0 1 * * 1'   # 每週一 01:00 UTC（台灣時間 09:00）
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-audit
+  cancel-in-progress: false
+
+jobs:
+  frontend-audit:
+    name: Frontend npm audit（正式相依，high 以上即失敗）
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: npm audit（--omit=dev，high 以上失敗；結果寫進 job summary）
+        working-directory: frontend
+        run: |
+          set -o pipefail
+          npm audit --omit=dev --audit-level=high | tee -a "$GITHUB_STEP_SUMMARY"

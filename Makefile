@@ -215,6 +215,10 @@ sync-schema-doc: ## 依 Flyway 實際 schema 重新產生 SRD_Database_Schema.md
 	@echo "$(YELLOW)📘 依實際 schema 重新產生 SRD 資料表 DDL...$(NC)"
 	@./scripts/validate-schema-doc.sh --write
 
+audit-deps: ## 前端正式相依安全審計（與每週排程 dependency-audit.yml 同一條指令；不接入任何守門，見 DEF-314）
+	@echo "$(YELLOW)🛡️  npm audit（正式相依，high 以上視為失敗）...$(NC)"
+	@cd frontend && npm audit --omit=dev --audit-level=high
+
 validate-e2e: ## 本地 E2E 守門：乾淨 DB → Flyway 重建 → 全棧(host JAR+npm start, ddl-auto=validate) → Playwright（複製雲端 e2e job）
 	@echo "$(YELLOW)🎭 本地 E2E 守門（複製雲端 e2e job：host 程序 + 乾淨 DB + Playwright）...$(NC)"
 	@./scripts/validate-e2e.sh

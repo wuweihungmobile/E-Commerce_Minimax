@@ -26,7 +26,7 @@ Sprint 224 修掉前端 `next`／`axios` 的 critical／high 漏洞（`DEF-314`�
 - workflow YAML 可解析（排程與手動觸發、三個步驟如預期）。
 - `make audit-deps`：`found 0 vulnerabilities`（Sprint 224 升級後）。
 - **反向驗證（指令確實會失敗）**：在暫存目錄以已知有漏洞的 `axios@1.15.0` 建 lockfile，`npm audit --omit=dev --audit-level=high` 結束碼為 **1**（含 `| tee` 與 `set -o pipefail` 之後），輸出「1 high severity vulnerability」——workflow 的步驟會因此失敗。
-- 雲端首次實跑：待 push 後以 `gh workflow run` 手動觸發一次並回填結果（見下方「回填」）。
+- **雲端首次實跑**：push 後以 `gh workflow run "依賴安全審計 / Dependency Audit" --ref main` 手動觸發一次，✅ **成功，17 秒**（run 36767879139；`npm audit` 在雲端同樣回報 0 個高風險漏洞）。排程本身（每週一 01:00 UTC）要等到週一才會第一次自動執行，未能在本輪看到。推送觸發的 `Local CI` 雲端 CI 全綠（run 36767866005）。
 
 ## 5. 決策與已知限制
 

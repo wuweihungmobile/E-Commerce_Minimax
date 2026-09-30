@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -182,6 +185,33 @@ class BookingServiceCreateBookingTest {
         verify(roomCalendarService).bookDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, savedBookingId);
         verify(roomCalendarService).unlockDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, "lockValue");
         verify(bookingRepository).flush();
+    }
+
+    @Test
+    @DisplayName("Sprint 225（DEF-311）：新訂房寫入付款期限＝建立時間＋24 小時，回應帶出同一個時間")
+    void createBooking_setsPaymentDueAtTwentyFourHoursAhead() {
+        TenantContext.setCurrentUser(USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+        stubHappyPathUpToLock();
+        when(roomCalendarService.isDateRangeAvailable(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT)).thenReturn(true);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(User.builder().id(USER_ID).build()));
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TENANT_ID).build()));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> {
+            Booking b = inv.getArgument(0);
+            b.setId(UUID.randomUUID());
+            return b;
+        });
+
+        Instant before = Instant.now();
+        BookingDto.BookingResponse response = bookingService.createBooking(createRequest(), "idem-key");
+        Instant after = Instant.now();
+
+        ArgumentCaptor<Booking> saved = ArgumentCaptor.forClass(Booking.class);
+        verify(bookingRepository).save(saved.capture());
+        assertThat(saved.getValue().getPaymentDueAt())
+                .as("沒有付款期限的訂房永不逾時，新訂房必須有")
+                .isBetween(before.plus(Duration.ofHours(24)), after.plus(Duration.ofHours(24)));
+        assertThat(response.getPaymentDueAt()).isEqualTo(saved.getValue().getPaymentDueAt());
     }
 
     // ========== 前置驗證錯誤路徑 ==========

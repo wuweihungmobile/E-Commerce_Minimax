@@ -203,6 +203,7 @@ Authorization: Bearer <token>
     "guestCount": 2,
     "status": "CREATED",
     "totalAmount": 3000.00,
+    "paymentDueAt": "2026-04-29T10:30:00Z",
     "currency": "TWD",
     "guestName": "王小明",
     "guestPhone": "0912345678",
@@ -239,6 +240,7 @@ Authorization: Bearer <token>
 2. **價格計算**: 總金額 = Σ(每日價格)，每日價格來自 RoomCalendar
 3. **日曆更新**: 預訂成功後，自動將日期格標記為 `BOOKED`
 4. **UUID 產生**: 預訂 ID 由系統自動產生 (UUID)
+5. **付款期限（Sprint 225，DEF-311）**: 新預訂的 `paymentDueAt` ＝ 建立時間 ＋ 24 小時（`BOOKING_PAYMENT_TIMEOUT_HOURS`）。排程每 5 分鐘把付款期限已過、仍是 `CREATED` 的預訂取消（釋放日期格、退還優惠券額度）；已付款、或 24 小時內開始過 Stripe 結帳的不取消。**歷史預訂**（Sprint 225 之前建立）的 `paymentDueAt` 為 `null`，永不逾時取消
 
 ---
 
@@ -550,6 +552,7 @@ Authorization: Bearer <token>
 | guestCount | integer | 客人數量 |
 | status | string | 預訂狀態 |
 | totalAmount | decimal | 總金額 |
+| paymentDueAt | datetime | 付款期限 (ISO 8601)；逾時仍未付款的預訂會被自動取消，`null` ＝ 歷史預訂、不會逾時 |
 | currency | string | 幣別 (預設 TWD) |
 | guestName | string | 客人姓名 |
 | guestPhone | string | 客人電話 |

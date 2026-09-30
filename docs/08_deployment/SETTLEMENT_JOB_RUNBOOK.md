@@ -21,7 +21,7 @@
 >
 > - **啟用後第一個台灣時間週一 00:00 會自動產生結算單**，且依 Sprint 195 的語意納入**所有「已完成且尚未結算」的訂單、不限下單週**——若正式環境已有歷史已完成訂單，第一張結算單會很大。結算單產生後是待審核狀態，撥款要經過審核／核准，不會因產生而動錢。
 > - 想在正式環境先人工確認再讓它自動跑：部署時設 `APP_SCHEDULING_ENABLED=false`（同時關閉通知佇列消費與未付款訂單取消），用管理員手動觸發端點 `POST /v2/admin/settlements/generate`（SUPER_ADMIN，Sprint 208／DEF-287）檢視結果，之後再開。
-> - 相關設定：`APP_SCHEDULING_ENABLED`（預設 true）、`APP_SCHEDULING_POOL_SIZE`（預設 4）、`ORDER_UNPAID_TIMEOUT_HOURS`（預設 24）、`ORDER_TIMEOUT_CHECK_INTERVAL_MS`（預設 300000）、`ORDER_TIMEOUT_INITIAL_DELAY_MS`（預設 60000）、`ORDER_TIMEOUT_BATCH_SIZE`（預設 100）。
+> - 相關設定：`APP_SCHEDULING_ENABLED`（預設 true）、`APP_SCHEDULING_POOL_SIZE`（預設 4）、`ORDER_UNPAID_TIMEOUT_HOURS`（預設 24）、`ORDER_TIMEOUT_CHECK_INTERVAL_MS`（預設 300000）、`ORDER_TIMEOUT_INITIAL_DELAY_MS`（預設 60000）、`ORDER_TIMEOUT_BATCH_SIZE`（預設 100）。**Sprint 225 起另有未付款訂房逾時取消**（`DEF-311`）：`BOOKING_PAYMENT_TIMEOUT_HOURS`（預設 24，只影響**新建立**的訂房；歷史訂房沒有付款期限，永不逾時）、`BOOKING_STRIPE_SESSION_HOURS`（預設 24）、`BOOKING_TIMEOUT_CHECK_INTERVAL_MS`（預設 300000）、`BOOKING_TIMEOUT_INITIAL_DELAY_MS`（預設 60000）、`BOOKING_TIMEOUT_BATCH_SIZE`（預設 100）；`APP_SCHEDULING_ENABLED=false` 同樣會關閉它。
 > - 多個後端實例同時執行是安全的：結算單有「同期間已存在」的冪等檢查與訂單原子認領（Sprint 212 已驗證），佇列消費用 Redis 原子 pop，未付款訂單取消是 CAS。
 
 ---

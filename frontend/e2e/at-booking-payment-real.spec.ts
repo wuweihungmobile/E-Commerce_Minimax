@@ -155,12 +155,21 @@ test.describe('AT-BOOKING-PAYMENT-REAL: 訂房付款（真實後端）', () => {
     expect(Number(booking.totalAmount)).toBe(NIGHT_PRICE * 2);
     bookingId = booking.id as string;
 
+    // Sprint 225（DEF-311）：新訂房帶付款期限＝約 24 小時後（歷史訂房才是 null）。經 HTTP 序列化的 Instant 要是可解析的時間
+    const hoursToDeadline = (new Date(booking.paymentDueAt).getTime() - Date.now()) / 3_600_000;
+    expect(hoursToDeadline, `paymentDueAt=${booking.paymentDueAt}`).toBeGreaterThan(23.9);
+    expect(hoursToDeadline).toBeLessThan(24.1);
+
     const replay = await page.request.post(`${API_BASE}/v2/bookings`, {
       headers: { ...headers, 'Idempotency-Key': idempotencyKey },
       data: body,
     });
     expect(replay.status(), await replay.text()).toBe(200);
-    expect((await replay.json()).data.id, '同一把鍵重送應回同一筆訂房').toBe(bookingId);
+    const replayed = (await replay.json()).data;
+    expect(replayed.id, '同一把鍵重送應回同一筆訂房').toBe(bookingId);
+    // 重放的回應是從 Redis 反序列化回來的：付款期限（Instant）經過一輪存取，時間不能變、也不能變成別的形狀
+    expect(new Date(replayed.paymentDueAt).getTime(), `replayed paymentDueAt=${replayed.paymentDueAt}`)
+      .toBe(new Date(booking.paymentDueAt).getTime());
 
     const list = await page.request.get(`${API_BASE}/v2/bookings`, { headers });
     expect(list.status(), await list.text()).toBe(200);

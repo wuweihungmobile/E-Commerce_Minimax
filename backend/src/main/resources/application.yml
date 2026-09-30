@@ -93,6 +93,15 @@ app:
     check-interval-ms: ${ORDER_TIMEOUT_CHECK_INTERVAL_MS:300000}
     initial-delay-ms: ${ORDER_TIMEOUT_INITIAL_DELAY_MS:60000}
     batch-size: ${ORDER_TIMEOUT_BATCH_SIZE:100}
+  # 未付款訂房逾時自動取消（DEF-311；使用者 2026-10-01 對建議方案回覆「依照建議」）：新訂房建立時寫入付款期限
+  # payment_due_at = 建立時間 + payment-hours；歷史訂房（NULL）永不逾時。stripe-session-hours 是 Stripe Checkout 工作階段
+  # 的有效時間：在這段時間內開始過結帳的訂房不取消，以免錢收了、訂房卻已取消。
+  booking-timeout:
+    payment-hours: ${BOOKING_PAYMENT_TIMEOUT_HOURS:24}
+    stripe-session-hours: ${BOOKING_STRIPE_SESSION_HOURS:24}
+    check-interval-ms: ${BOOKING_TIMEOUT_CHECK_INTERVAL_MS:300000}
+    initial-delay-ms: ${BOOKING_TIMEOUT_INITIAL_DELAY_MS:60000}
+    batch-size: ${BOOKING_TIMEOUT_BATCH_SIZE:100}
   cors:
     # 逗號分隔多個前端來源；正式環境以 APP_CORS_ALLOWED_ORIGINS 覆寫（不可用 *，因 allowCredentials=true）
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8080}

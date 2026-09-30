@@ -114,6 +114,8 @@ public class BookingDto {
         private Integer guestCount;
         private String status;
         private BigDecimal totalAmount;
+        /** 付款期限（Sprint 225，DEF-311）；逾時仍未付款的訂房會被自動取消。null＝歷史訂房，不會逾時 */
+        private java.time.Instant paymentDueAt;
         /** 下單當下套用的促銷碼（Sprint 124，DEF-047）；null 表示未使用優惠券 */
         private String promoCode;
         /** 下單當下的折扣金額（Sprint 124）；totalAmount 已扣除本欄位 */

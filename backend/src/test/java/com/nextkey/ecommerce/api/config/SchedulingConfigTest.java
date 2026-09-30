@@ -130,7 +130,8 @@ class SchedulingConfigTest {
                 "SettlementGenerator.generateWeeklyStatements",
                 "NotificationConsumerService.consumeNotifications",
                 "NotificationConsumerService.processRetryQueue",
-                "OrderTimeoutService.cancelExpiredUnpaidOrders");
+                "OrderTimeoutService.cancelExpiredUnpaidOrders",
+                "BookingTimeoutService.cancelExpiredUnpaidBookings");
     }
 
     private static Class<?> loadWithoutInit(final String className) throws ClassNotFoundException {

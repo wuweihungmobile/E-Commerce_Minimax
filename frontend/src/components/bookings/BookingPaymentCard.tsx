@@ -14,6 +14,8 @@ interface BookingPaymentCardProps {
   /** 應付金額（訂房總額）；付款狀態端點不回金額，由呼叫端帶入 */
   totalAmount: number
   currency: string
+  /** 付款期限（Sprint 225，DEF-311）；有值才顯示「請於…前完成付款」。歷史訂房沒有期限（null／未帶）。 */
+  paymentDueAt?: string | null
   /** 付款成功後通知呼叫端（例如重新載入訂房詳情以更新狀態標籤） */
   onPaid?: () => void
 }
@@ -37,7 +39,13 @@ function formatDateTime(dateStr: string) {
  * 依後端回報的付款提供者決定畫面：mock → 模擬付款按鈕；stripe → 重導至 Stripe 託管付款頁。
  * 已付款顯示付款資訊；沒有可付款也沒有付款紀錄（例如已取消）時不顯示任何東西。
  */
-export default function BookingPaymentCard({ bookingId, totalAmount, currency, onPaid }: BookingPaymentCardProps) {
+export default function BookingPaymentCard({
+  bookingId,
+  totalAmount,
+  currency,
+  paymentDueAt,
+  onPaid,
+}: BookingPaymentCardProps) {
   const [state, setState] = useState<OrderPaymentState | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -120,6 +128,11 @@ export default function BookingPaymentCard({ bookingId, totalAmount, currency, o
             <span className="text-sm text-gray-600">應付金額</span>
             <span className="text-xl font-bold text-gray-900">{formatPrice(totalAmount, currency)}</span>
           </div>
+          {paymentDueAt && (
+            <p className="text-sm text-amber-700" data-testid="booking-payment-due">
+              請於 {formatDateTime(paymentDueAt)} 前完成付款，逾時預訂將自動取消並釋出日期。
+            </p>
+          )}
           {state.paymentProvider === 'stripe' ? (
             <>
               <p className="text-xs text-gray-500">將導向 Stripe 安全付款頁完成信用卡付款。</p>

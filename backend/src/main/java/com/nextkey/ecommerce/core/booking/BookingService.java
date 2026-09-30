@@ -1,6 +1,8 @@
 package com.nextkey.ecommerce.core.booking;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
@@ -13,6 +15,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -28,6 +31,7 @@ import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.core.promo.PromoService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Booking;
+import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.model.promo.PromoCode;
 import com.nextkey.ecommerce.domain.model.promo.PromoCodeUsage;
 import com.nextkey.ecommerce.domain.model.room.Room;
@@ -73,6 +77,13 @@ public class BookingService {
     private final PromoCodeRepository promoCodeRepository;
     private final PromoCodeUsageRepository promoCodeUsageRepository;
     private final AuditService auditService;
+
+    /**
+     * 訂房的付款期限（小時，Sprint 225，DEF-311）。新訂房建立時寫入 {@code payment_due_at}；預設值同時寫在欄位上，
+     * 不經 Spring 建構的單元測試不會得到 0 小時（訂房一建立就逾時）。
+     */
+    @Value("${app.booking-timeout.payment-hours:24}")
+    private long paymentHours = 24;
 
     // Default check-in/out times
     private static final LocalTime DEFAULT_CHECK_IN_TIME = LocalTime.of(15, 0);
@@ -508,6 +519,7 @@ public class BookingService {
                     .guestCount(request.getGuestCount())
                     .status(Booking.BookingStatus.CREATED)
                     .totalAmount(totalAmount)
+                    .paymentDueAt(Instant.now().plus(Duration.ofHours(paymentHours)))
                     .promoCode(promo != null ? promo.getCode() : null)
                     .discountAmount(discountAmount)
                     .guestName(request.getGuestName())
@@ -775,6 +787,39 @@ public class BookingService {
                 oldStatus, com.nextkey.ecommerce.domain.model.order.Booking.BookingStatus.CANCELLED.name(), reason);
     }
 
+    /**
+     * 取消一筆逾時未付款的訂房（Sprint 225，DEF-311；由 {@code BookingTimeoutService} 逐筆呼叫）。
+     *
+     * <p>「仍未付款」與「已逾時」的判斷、以及狀態轉換，都包在同一條條件式 UPDATE（
+     * {@link BookingRepository#cancelIfPaymentExpired}）：與買家付款（CREATED→PAID 的 CAS）搶同一個狀態，恰好一邊成功。
+     * 另外不取消已有成功付款、或在 {@code checkoutCutoff} 之後開始過 Stripe 結帳的訂房——Stripe Checkout 工作階段
+     * 預設建立後 24 小時才到期，太早取消會讓買家仍能付款成功、訂房卻已取消（錢收了沒有訂房）。
+     *
+     * <p>搶到之後的補償與買家自己取消相同：釋放日曆、退還優惠券額度。兩者與狀態轉換在同一個交易內，日曆釋放失敗
+     * （例如整段日期正被別的交易鎖住）整個交易回滾，這筆留待下一輪。操作者為系統，稽核的使用者為 null。
+     *
+     * @return {@code true} 表示本次取消了這筆訂房；{@code false} 表示它已不符條件（已付款、已被取消、
+     *         有進行中的結帳…），什麼都沒做
+     */
+    @Transactional
+    public boolean cancelExpiredUnpaidBooking(final UUID bookingId, final Instant now, final Instant checkoutCutoff) {
+        if (bookingRepository.cancelIfPaymentExpired(bookingId, Booking.BookingStatus.CREATED,
+                Booking.BookingStatus.CANCELLED, now, checkoutCutoff, Payment.PaymentStatus.SUCCESS,
+                Payment.PaymentStatus.PROCESSING) == 0) {
+            return false;
+        }
+        // 上面是批次 UPDATE，沒有載入過實體，這裡讀到的就是剛提交在本交易內的新狀態
+        Booking booking = findBookingById(bookingId);
+        roomCalendarService.releaseDateRange(booking.getRoomListingId(), booking.getCheckInDate(),
+                booking.getCheckOutDate());
+        refundPromoUsage(booking);
+        auditService.record("BOOKING_CANCELLED", "BOOKING", booking.getId(), booking.getTenantId(),
+                Booking.BookingStatus.CREATED.name(), Booking.BookingStatus.CANCELLED.name(),
+                "Unpaid booking timed out", null);
+        log.info("Unpaid booking cancelled on timeout: bookingId={}", bookingId);
+        return true;
+    }
+
     // ========== Helper Methods ==========
 
     private com.nextkey.ecommerce.domain.model.order.Booking findBookingById(UUID bookingId) {
@@ -967,6 +1012,7 @@ public class BookingService {
                 .guestCount(booking.getGuestCount())
                 .status(booking.getStatus().name())
                 .totalAmount(booking.getTotalAmount())
+                .paymentDueAt(booking.getPaymentDueAt())
                 .promoCode(booking.getPromoCode())
                 .discountAmount(booking.getDiscountAmount())
                 .currency("TWD")

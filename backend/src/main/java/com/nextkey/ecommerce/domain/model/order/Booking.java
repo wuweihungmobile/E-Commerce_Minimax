@@ -119,6 +119,13 @@ public class Booking {
     @Column(name = "special_requests", columnDefinition = "TEXT")
     private String specialRequests;
 
+    /**
+     * 付款期限（Sprint 225，DEF-311）：CREATED 且超過此時間仍未付款的訂房由 {@code BookingTimeoutService} 取消。
+     * 新訂房為建立時間＋24 小時；NULL＝歷史訂房（過去沒有付款入口），永不逾時。
+     */
+    @Column(name = "payment_due_at")
+    private Instant paymentDueAt;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "status_flags", columnDefinition = "jsonb")
     private Map<String, Object> statusFlags;

@@ -13,6 +13,7 @@ import { test, expect, Page, Route } from '@playwright/test';
  * - E2E-BPAY-08: 付款狀態載入失敗 → 降級提示
  * - E2E-BPAY-09: 訂房結帳完成畫面帶付款區塊，可直接付款
  * - E2E-BPAY-10: 合併結帳（Mock）→ 訂單與訂房兩邊都付款
+ * - E2E-BPAY-11: 待付款訂房顯示付款期限；歷史訂房（沒有期限）不顯示（Sprint 225，DEF-311）
  *
  * 全程 mock API，(auth) 頁沒有登入守門。
  */
@@ -24,7 +25,7 @@ async function fulfillJson(route: Route, status: number, body: object) {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-function booking(status: string) {
+function booking(status: string, paymentDueAt: string | null = null) {
   return {
     id: BOOKING_ID,
     tenantId: 't1',
@@ -37,6 +38,7 @@ function booking(status: string) {
     guestCount: 2,
     status,
     totalAmount: 6400,
+    paymentDueAt,
     promoCode: null,
     discountAmount: 0,
     currency: 'TWD',
@@ -380,5 +382,28 @@ test.describe('AT-BOOKING-PAYMENT: 訂房付款（S222）', () => {
         message: '合併結帳（Mock）應同時付款訂單與訂房兩邊',
       })
       .toEqual([`/v2/bookings/${BOOKING_ID}/pay`, `/v2/orders/${ORDER_ID}/pay`].sort());
+  });
+
+  test('E2E-BPAY-11: 待付款訂房顯示付款期限；歷史訂房（沒有期限）不顯示', async ({ page }: { page: Page }) => {
+    let dueAt: string | null = '2030-01-02T07:30:00Z';
+    await page.route(`**/v2/bookings/${BOOKING_ID}`, async (route) => {
+      await fulfillJson(route, 200, { success: true, data: booking('CREATED', dueAt) });
+    });
+    await page.route(`**/v2/orders/bookings/${BOOKING_ID}/payment`, async (route) => {
+      await fulfillJson(route, 200, { success: true, data: paymentState() });
+    });
+
+    await page.goto(`/bookings/${BOOKING_ID}`);
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByTestId('booking-payment-card')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('booking-payment-due')).toContainText('前完成付款');
+    await expect(page.getByTestId('booking-payment-due')).toContainText('2030');
+
+    // 歷史訂房：付款期限為 null，後端不會逾時取消它，畫面也不能說「逾時將自動取消」
+    dueAt = null;
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByTestId('booking-payment-card')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('booking-payment-due')).toHaveCount(0);
   });
 });

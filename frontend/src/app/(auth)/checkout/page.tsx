@@ -46,6 +46,7 @@ export default function CheckoutPage() {
   const [bookingTotal, setBookingTotal] = useState<number>(0)
   const [bookingCurrency, setBookingCurrency] = useState<string>('TWD')
   const [bookingId, setBookingId] = useState<string | null>(null)
+  const [paymentDueAt, setPaymentDueAt] = useState<string | null>(null)
   // Sprint 124（DEF-047／PRD US-010）：訂房結帳套用促銷碼。訂房沒有像 PRODUCT 購物車那樣
   // 預先驗證/套用的兩段式流程，改為送出預訂時一併帶入，由後端一次驗證與套用。
   const [promoCode, setPromoCode] = useState('')
@@ -146,6 +147,7 @@ export default function CheckoutPage() {
       setBookingId(booking.id)
       setBookingTotal(booking.totalAmount)
       setBookingCurrency(booking.currency)
+      setPaymentDueAt(booking.paymentDueAt)
       setAppliedPromoCode(booking.promoCode)
       setDiscountAmount(booking.discountAmount || 0)
       // 🔴 只移除「這次真的訂掉」的那一個 ROOM 項目，不可清空整車（DEF-043）。
@@ -182,7 +184,12 @@ export default function CheckoutPage() {
               </p>
             )}
             <div className="w-full mb-6">
-              <BookingPaymentCard bookingId={bookingId} totalAmount={bookingTotal} currency={bookingCurrency} />
+              <BookingPaymentCard
+                bookingId={bookingId}
+                totalAmount={bookingTotal}
+                currency={bookingCurrency}
+                paymentDueAt={paymentDueAt}
+              />
             </div>
             <div className="flex gap-4">
               <Link href="/bookings">

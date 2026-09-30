@@ -188,6 +188,7 @@ export default function BookingDetailPage() {
               bookingId={booking.id}
               totalAmount={booking.totalAmount}
               currency={booking.currency}
+              paymentDueAt={booking.paymentDueAt}
               onPaid={() => load()}
             />
 

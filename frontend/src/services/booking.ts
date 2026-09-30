@@ -25,6 +25,8 @@ export interface Booking {
   guestCount: number
   status: BookingStatus
   totalAmount: number
+  /** 付款期限（Sprint 225，DEF-311）；逾時仍未付款的訂房會被自動取消。null＝歷史訂房，不會逾時 */
+  paymentDueAt: string | null
   /** 下單當下套用的促銷碼（Sprint 124，DEF-047／PRD US-010）；null 表示未使用優惠券 */
   promoCode: string | null
   /** 下單當下的折扣金額（Sprint 124）；totalAmount 已扣除本欄位 */

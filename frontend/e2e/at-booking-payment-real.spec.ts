@@ -30,6 +30,11 @@ function isoDate(daysFromNow: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** 營運時區（台北）的今天：退款規則（PRD Q14）以此為準，不能用 UTC 日期（台北 00:00～08:00 兩者差一天）。 */
+function taipeiToday(): string {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+}
+
 async function accessToken(page: Page): Promise<string> {
   const token = await page.evaluate(() => localStorage.getItem('accessToken'));
   expect(token, '應已登入並持有 accessToken').toBeTruthy();
@@ -350,5 +355,97 @@ test.describe('AT-BOOKING-PAYMENT-REAL: 訂房付款（真實後端）', () => {
     await page.goto(`/orders/${orderId}`);
     await page.waitForLoadState('domcontentloaded');
     await expect(page.getByTestId('order-refund-card')).toContainText('款項已退回', { timeout: 15000 });
+  });
+
+  test('E2E-BPAYR-08: 已付款訂房離入住還有好幾天 → 取消 → 全額退款（付款 REFUNDED、訂房 COMPLETED），日曆釋放（Sprint 227，DEF-312）', async ({ page }: { page: Page }) => {
+    await loginOnly(page, buyer.email, buyer.password);
+    const headers = { Authorization: `Bearer ${await accessToken(page)}` };
+    const checkIn = isoDate(70);
+    const checkOut = isoDate(72);
+    const created = await page.request.post(`${API_BASE}/v2/bookings`, {
+      headers: { ...headers, 'Idempotency-Key': randomUUID() },
+      data: {
+        roomListingId: roomId,
+        checkInDate: checkIn,
+        checkOutDate: checkOut,
+        guestCount: 2,
+        guestName: 'E2E 買家',
+        guestPhone: '0912345678',
+        guestEmail: buyer.email,
+      },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    const id = (await created.json()).data.id as string;
+    const pay = await page.request.post(`${API_BASE}/v2/bookings/${id}/pay`, { headers });
+    expect(pay.status(), await pay.text()).toBe(200);
+
+    const cancel = await page.request.post(`${API_BASE}/v2/bookings/${id}/cancel?reason=E2E`, { headers });
+    expect(cancel.status(), await cancel.text()).toBe(200);
+    const result = (await cancel.json()).data;
+    expect(result.canceledBy).toBe('CUSTOMER');
+    // 取消當下只決定退款（PRD Q14：入住前 >= 24 小時全額退）；排程隨後把款項退回。速度不是重點，可能這一刻已退完
+    expect(['PENDING', 'COMPLETED']).toContain(result.refundStatus);
+    expect(Number(result.refundAmount), '全額退款').toBe(NIGHT_PRICE * 2);
+
+    await expect
+      .poll(
+        async () => {
+          const r = await page.request.get(`${API_BASE}/v2/orders/bookings/${id}/payment`, { headers });
+          return (await r.json()).data.paymentStatus as string;
+        },
+        { timeout: 60_000, intervals: [1000, 2000, 3000], message: '已付款訂房取消後應由自動退款排程退回款項' }
+      )
+      .toBe('REFUNDED');
+    const detail = (await (await page.request.get(`${API_BASE}/v2/bookings/${id}`, { headers })).json()).data;
+    expect(detail.status).toBe('CANCELLED');
+    expect(detail.refundStatus).toBe('COMPLETED');
+
+    // 日曆釋放：同一段日期又可以訂了
+    const availability = await page.request.get(
+      `${API_BASE}/v2/bookings/availability?roomListingId=${roomId}&checkInDate=${checkIn}&checkOutDate=${checkOut}`,
+      { headers }
+    );
+    expect((await availability.json()).data.available, '取消後日期應回到可訂').toBe(true);
+
+    await page.goto(`/bookings/${id}`);
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByTestId('booking-refund-card')).toContainText('已退款', { timeout: 15000 });
+  });
+
+  test('E2E-BPAYR-09: 已付款訂房入住前不足 24 小時（今天入住）→ 取消 → 依 Q14 不退款，付款維持成功（Sprint 227，DEF-312）', async ({ page }: { page: Page }) => {
+    await loginOnly(page, buyer.email, buyer.password);
+    const headers = { Authorization: `Bearer ${await accessToken(page)}` };
+    const today = taipeiToday();
+    const created = await page.request.post(`${API_BASE}/v2/bookings`, {
+      headers: { ...headers, 'Idempotency-Key': randomUUID() },
+      data: {
+        roomListingId: roomId,
+        checkInDate: today,
+        checkOutDate: isoDate(2),
+        guestCount: 2,
+        guestName: 'E2E 買家',
+        guestPhone: '0912345678',
+        guestEmail: buyer.email,
+      },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    const id = (await created.json()).data.id as string;
+    const pay = await page.request.post(`${API_BASE}/v2/bookings/${id}/pay`, { headers });
+    expect(pay.status(), await pay.text()).toBe(200);
+
+    const cancel = await page.request.post(`${API_BASE}/v2/bookings/${id}/cancel`, { headers });
+    expect(cancel.status(), await cancel.text()).toBe(200);
+    const result = (await cancel.json()).data;
+    expect(result.refundStatus, '入住當天取消，距入住不足 24 小時').toBe('NONE');
+    expect(result.refundAmount).toBeNull();
+
+    // 排程（E2E 堆疊每 3 秒一輪）跑過幾輪之後，付款仍是成功、沒有被退
+    await page.waitForTimeout(8_000);
+    const state = (await (await page.request.get(`${API_BASE}/v2/orders/bookings/${id}/payment`, { headers })).json()).data;
+    expect(state.paymentStatus).toBe('SUCCESS');
+    expect(Number(state.refundedAmount ?? 0)).toBe(0);
+    const detail = (await (await page.request.get(`${API_BASE}/v2/bookings/${id}`, { headers })).json()).data;
+    expect(detail.status).toBe('CANCELLED');
+    expect(detail.refundStatus).toBe('NONE');
   });
 });

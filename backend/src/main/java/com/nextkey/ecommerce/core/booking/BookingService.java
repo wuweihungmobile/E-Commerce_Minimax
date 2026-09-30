@@ -38,6 +38,7 @@ import com.nextkey.ecommerce.domain.model.room.Room;
 import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.PromoCodeRepository;
 import com.nextkey.ecommerce.domain.repository.PromoCodeUsageRepository;
 import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
@@ -77,6 +78,7 @@ public class BookingService {
     private final PromoCodeRepository promoCodeRepository;
     private final PromoCodeUsageRepository promoCodeUsageRepository;
     private final AuditService auditService;
+    private final PaymentRepository paymentRepository;
 
     /**
      * 訂房的付款期限（小時，Sprint 225，DEF-311）。新訂房建立時寫入 {@code payment_due_at}；預設值同時寫在欄位上，
@@ -755,15 +757,34 @@ public class BookingService {
     }
 
     /**
-     * 取消預訂
+     * 取消預訂，並依 PRD §15.2.5／Q14 決定這次取消的退款（Sprint 227，DEF-312）。
+     *
+     * <ul>
+     *   <li>買家本人取消：入住前 &gt;= 24 小時全額退款、&lt; 24 小時不退款；管理員代為取消視為商家／平台取消，一律全額退款
+     *       （{@link BookingRefundPolicy}）。未付款的訂房沒有款項可退。</li>
+     *   <li>應退金額與取消方、取消時間記在訂房上（{@code refund_status}：{@code PENDING}＝等待自動退款），由
+     *       {@code RefundProcessingService} 排程退回原付款方式；本方法不呼叫金流（外部呼叫不該在取消的交易與請求裡）。</li>
+     * </ul>
+     *
+     * <p>🔴 併發防護：先以條件式 UPDATE 搶占「目前狀態 → CANCELLED」。原本是「讀狀態→判斷→setStatus→save」，兩個併發取消
+     * 都通過舊快照的狀態檢查，各自決定一次退款、各自釋放一次日曆與優惠券——啟用自動退款後就是重複退款。
      */
     @Transactional
-    public void cancelBooking(final UUID bookingId, final String reason) {
-        com.nextkey.ecommerce.domain.model.order.Booking booking = findBookingById(bookingId);
+    public BookingDto.CancelResponse cancelBooking(final UUID bookingId, final String reason) {
+        Booking booking = findBookingById(bookingId);
         checkBookingOwnership(booking);
 
         // 檢查是否可取消
-        if (!OrderStateMachine.canCancel(booking.getStatus().name())) {
+        final Booking.BookingStatus previousStatus = booking.getStatus();
+        if (!OrderStateMachine.canCancel(previousStatus.name())) {
+            throw new BusinessException(ErrorCode.E_4007, "Booking cannot be cancelled");
+        }
+        // PRD Q14：只有買家本人取消才看 24 小時門檻；非本人（checkBookingOwnership 只放行管理員）是平台／商家取消
+        final Booking.CancelledBy cancelledBy = getCurrentUser().equals(booking.getUserId())
+                ? Booking.CancelledBy.CUSTOMER : Booking.CancelledBy.MERCHANT;
+        final Instant now = Instant.now();
+
+        if (bookingRepository.updateStatusIfCurrent(bookingId, previousStatus, Booking.BookingStatus.CANCELLED) == 0) {
             throw new BusinessException(ErrorCode.E_4007, "Booking cannot be cancelled");
         }
 
@@ -774,17 +795,63 @@ public class BookingService {
                 booking.getCheckOutDate()
         );
 
-        String oldStatus = booking.getStatus().name();
-        booking.setStatus(com.nextkey.ecommerce.domain.model.order.Booking.BookingStatus.CANCELLED);
-        bookingRepository.save(booking);
-
         // Sprint 124（DEF-047，PRD §2630 同一原則）：取消預訂需退還優惠券額度，
         // 否則被取消的預訂會永久佔用一次總量/每人限用額度
         refundPromoUsage(booking);
 
-        log.info("Booking cancelled: id={}, reason={}", bookingId, reason);
+        final BigDecimal refundAmount = decideRefundAmount(booking, previousStatus, cancelledBy, now);
+        final boolean refundPending = refundAmount.signum() > 0;
+        booking.setStatus(Booking.BookingStatus.CANCELLED);
+        booking.setCancelledAt(now);
+        booking.setCancelledBy(cancelledBy);
+        booking.setRefundStatus(refundPending ? Booking.RefundStatus.PENDING : Booking.RefundStatus.NONE);
+        booking.setRefundAmount(refundPending ? refundAmount : null);
+        bookingRepository.save(booking);
+
+        log.info("Booking cancelled: id={}, reason={}, cancelledBy={}, refundStatus={}, refundAmount={}", bookingId,
+                reason, cancelledBy, booking.getRefundStatus(), booking.getRefundAmount());
         auditService.record("BOOKING_CANCELLED", "BOOKING", booking.getId(), booking.getTenantId(),
-                oldStatus, com.nextkey.ecommerce.domain.model.order.Booking.BookingStatus.CANCELLED.name(), reason);
+                previousStatus.name(), Booking.BookingStatus.CANCELLED.name(), reason);
+        if (previousStatus == Booking.BookingStatus.PAID || previousStatus == Booking.BookingStatus.CONFIRMED) {
+            // 已付款訂房的退款決定留下可查的紀錄：事後「為什麼退了／為什麼沒退」要有依據（PRD Q14）
+            auditService.record("BOOKING_REFUND_DECIDED", "BOOKING", booking.getId(), booking.getTenantId(), null,
+                    refundPending ? "PENDING amount=" + refundAmount.toPlainString() : "NONE",
+                    "canceledBy=" + cancelledBy + ",checkInDate=" + booking.getCheckInDate());
+        }
+
+        return BookingDto.CancelResponse.builder()
+                .bookingId(booking.getId())
+                .status(Booking.BookingStatus.CANCELLED.name())
+                .canceledAt(now)
+                .canceledBy(cancelledBy.name())
+                .refundStatus(booking.getRefundStatus().name())
+                .refundAmount(booking.getRefundAmount())
+                .build();
+    }
+
+    /**
+     * 這次取消的應退金額（PRD Q14）。只有已付款的訂房才有款項可退；以付款「還可退的金額」為基準
+     * （{@code 付款金額 - 已退金額}），入住時刻以房型設定的入住時間為準（沒有房型資料時用預設 15:00）。
+     */
+    private BigDecimal decideRefundAmount(final Booking booking, final Booking.BookingStatus previousStatus,
+            final Booking.CancelledBy cancelledBy, final Instant now) {
+        if (previousStatus != Booking.BookingStatus.PAID && previousStatus != Booking.BookingStatus.CONFIRMED) {
+            return BigDecimal.ZERO;
+        }
+        Payment payment = paymentRepository.findEffectiveByBookingId(booking.getId())
+                .filter(p -> p.getStatus() == Payment.PaymentStatus.SUCCESS
+                        || p.getStatus() == Payment.PaymentStatus.PARTIALLY_REFUNDED)
+                .orElse(null);
+        if (payment == null) {
+            log.warn("Paid booking cancelled but no refundable payment found: bookingId={}, status={}",
+                    booking.getId(), previousStatus);
+            return BigDecimal.ZERO;
+        }
+        LocalTime checkInTime = roomRepository.findByListingId(booking.getRoomListingId())
+                .map(Room::getCheckInTime).orElse(DEFAULT_CHECK_IN_TIME);
+        Instant checkInAt = BookingRefundPolicy.checkInInstant(booking.getCheckInDate(), checkInTime);
+        return BookingRefundPolicy.refundAmount(payment.getAmount().subtract(payment.getRefundedAmount()),
+                cancelledBy, now, checkInAt);
     }
 
     /**
@@ -804,8 +871,8 @@ public class BookingService {
     @Transactional
     public boolean cancelExpiredUnpaidBooking(final UUID bookingId, final Instant now, final Instant checkoutCutoff) {
         if (bookingRepository.cancelIfPaymentExpired(bookingId, Booking.BookingStatus.CREATED,
-                Booking.BookingStatus.CANCELLED, now, checkoutCutoff, Payment.PaymentStatus.SUCCESS,
-                Payment.PaymentStatus.PROCESSING) == 0) {
+                Booking.BookingStatus.CANCELLED, Booking.CancelledBy.SYSTEM, now, checkoutCutoff,
+                Payment.PaymentStatus.SUCCESS, Payment.PaymentStatus.PROCESSING) == 0) {
             return false;
         }
         // 上面是批次 UPDATE，沒有載入過實體，這裡讀到的就是剛提交在本交易內的新狀態
@@ -1013,6 +1080,10 @@ public class BookingService {
                 .status(booking.getStatus().name())
                 .totalAmount(booking.getTotalAmount())
                 .paymentDueAt(booking.getPaymentDueAt())
+                .canceledAt(booking.getCancelledAt())
+                .canceledBy(booking.getCancelledBy() != null ? booking.getCancelledBy().name() : null)
+                .refundStatus(booking.getRefundStatus().name())
+                .refundAmount(booking.getRefundAmount())
                 .promoCode(booking.getPromoCode())
                 .discountAmount(booking.getDiscountAmount())
                 .currency("TWD")

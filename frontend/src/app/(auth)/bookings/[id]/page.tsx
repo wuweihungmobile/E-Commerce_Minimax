@@ -6,7 +6,9 @@ import { useParams } from 'next/navigation'
 import BookingService, {
   type Booking,
   BOOKING_STATUS_LABELS,
+  CANCELLATION_POLICY_SUMMARY,
   bookingStatusBadgeVariant,
+  cancelResultMessage,
   isBookingCancellable,
 } from '@/services/booking'
 import { Button } from '@/components/ui/button'
@@ -41,6 +43,8 @@ export default function BookingDetailPage() {
   const [cancelReason, setCancelReason] = useState('')
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
+  // 取消成功後的說明（Sprint 227，PRD Q14）：有沒有退款、退多少
+  const [cancelNotice, setCancelNotice] = useState<string | null>(null)
 
   // Review flow（已完成/已退房預訂）
   const [showReview, setShowReview] = useState(false)
@@ -76,7 +80,11 @@ export default function BookingDetailPage() {
     setCancelling(true)
     setCancelError(null)
     try {
-      await BookingService.cancelBooking(bookingId, cancelReason.trim() || undefined)
+      const wasPaid = booking?.status === 'PAID' || booking?.status === 'CONFIRMED'
+      const result = await BookingService.cancelBooking(bookingId, cancelReason.trim() || undefined)
+      setCancelNotice(
+        cancelResultMessage(result, wasPaid, (amount) => formatPrice(amount, booking?.currency ?? 'TWD'))
+      )
       setShowCancel(false)
       setCancelReason('')
       await load()
@@ -155,6 +163,9 @@ export default function BookingDetailPage() {
                       <AlertDescription>{cancelError}</AlertDescription>
                     </Alert>
                   )}
+                  <p className="text-sm text-gray-600" data-testid="booking-cancel-policy">
+                    {CANCELLATION_POLICY_SUMMARY}
+                  </p>
                   <div className="space-y-2">
                     <Label htmlFor="cancelReason">取消原因（選填）</Label>
                     <Input
@@ -179,6 +190,29 @@ export default function BookingDetailPage() {
                       返回
                     </Button>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* 取消結果（Sprint 227，DEF-312）：這次取消有沒有退款、退多少 */}
+            {cancelNotice && (
+              <Alert data-testid="booking-cancel-notice">
+                <AlertDescription>{cancelNotice}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* 退款資訊（Sprint 227，PRD Q14）：取消已付款訂房後依取消政策決定的退款進度 */}
+            {booking.status === 'CANCELLED' && booking.refundStatus !== 'NONE' && booking.refundAmount != null && (
+              <Card className="border-amber-200" data-testid="booking-refund-card">
+                <CardHeader>
+                  <CardTitle className="text-base">退款資訊</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-gray-700 space-y-1">
+                  {booking.refundStatus === 'PENDING' ? (
+                    <p>退款處理中：將退款 {formatPrice(booking.refundAmount, booking.currency)}，系統會自動退回原付款方式，請稍後重新整理查看結果。</p>
+                  ) : (
+                    <p>已退款 {formatPrice(booking.refundAmount, booking.currency)}，款項已退回原付款方式。</p>
+                  )}
                 </CardContent>
               </Card>
             )}

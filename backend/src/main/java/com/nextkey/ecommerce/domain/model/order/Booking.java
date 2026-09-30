@@ -51,6 +51,7 @@ import lombok.Setter;
 public class Booking {
 
     private static final int DECIMAL_PRECISION = 12;
+    private static final int REFUND_ENUM_LENGTH = 20;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -126,6 +127,25 @@ public class Booking {
     @Column(name = "payment_due_at")
     private Instant paymentDueAt;
 
+    /** 取消時間（Sprint 227，DEF-312）；NULL＝未取消，或歷史取消（當時沒有記錄）。 */
+    @Column(name = "cancelled_at")
+    private Instant cancelledAt;
+
+    /** 取消方（Sprint 227）：決定退款規則（PRD Q14：只有買家本人取消才看 24 小時門檻）。 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancelled_by", length = REFUND_ENUM_LENGTH)
+    private CancelledBy cancelledBy;
+
+    /** 退款進度（Sprint 227，PRD §15.2.5 的 {@code refundStatus}）；排程把 PENDING 退完後轉 COMPLETED。 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "refund_status", nullable = false, length = REFUND_ENUM_LENGTH)
+    @Builder.Default
+    private RefundStatus refundStatus = RefundStatus.NONE;
+
+    /** 取消時決定的應退金額（Sprint 227，PRD Q14）；{@link RefundStatus#NONE} 時為 null。 */
+    @Column(name = "refund_amount", precision = DECIMAL_PRECISION, scale = 2)
+    private BigDecimal refundAmount;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "status_flags", columnDefinition = "jsonb")
     private Map<String, Object> statusFlags;
@@ -153,5 +173,15 @@ public class Booking {
 
     public enum BookingStatus {
         CREATED, PAID, CONFIRMED, CHECKED_IN, CHECKED_OUT, COMPLETED, CANCELLED
+    }
+
+    /** 取消方（PRD §15.2.5 的 {@code canceledBy}）：買家本人／商家（含管理員代為取消）／系統（逾時）。 */
+    public enum CancelledBy {
+        CUSTOMER, MERCHANT, SYSTEM
+    }
+
+    /** 退款進度（PRD §15.2.5 的 {@code refundStatus}）：不需退款／等待自動退款／已退回。 */
+    public enum RefundStatus {
+        NONE, PENDING, COMPLETED
     }
 }

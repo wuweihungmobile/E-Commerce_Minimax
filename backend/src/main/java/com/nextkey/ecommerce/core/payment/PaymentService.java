@@ -201,6 +201,12 @@ public class PaymentService {
             throw new BusinessException(ErrorCode.E_6002,
                     "Stripe payments cannot be refunded through this endpoint; use the order refund endpoint");
         }
+        // Sprint 227（DEF-312）：訂房付款的退款只能經「取消訂房」——PRD Q14 依取消方與入住前時間決定退多少，同時釋放日曆、退還優惠券。
+        // 原本這裡把訂房標成 CANCELLED 卻不釋放日曆（日期被永久佔住），也不看 Q14。
+        if (payment.getBookingId() != null) {
+            throw new BusinessException(ErrorCode.E_6002,
+                    "Booking payments are refunded by cancelling the booking (POST /v2/bookings/{id}/cancel)");
+        }
 
         BigDecimal refundAmount = request.getAmount() != null ? request.getAmount() : payment.getAmount();
         // DEF-243：先前無上限檢查，呼叫端可指定超過原始付款金額的任意退款金額（灌水）。
@@ -221,12 +227,6 @@ public class PaymentService {
         if (target.order != null && target.order.getStatus() == Order.OrderStatus.REFUNDING) {
             target.order.setStatus(Order.OrderStatus.REFUNDED);
             orderRepository.save(target.order);
-        }
-
-        // 如果是預訂支付，更新預訂狀態
-        if (target.booking != null) {
-            target.booking.setStatus(Booking.BookingStatus.CANCELLED);
-            bookingRepository.save(target.booking);
         }
 
         log.info("Refund processed: paymentId={}, amount={}", request.getPaymentId(), refundAmount);

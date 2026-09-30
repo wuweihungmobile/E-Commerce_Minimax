@@ -134,6 +134,12 @@ class BookingTimeoutIntegrationTest {
         assertThat(audit.get("new_value")).isEqualTo("CANCELLED");
         assertThat(audit.get("reason")).isEqualTo("Unpaid booking timed out");
         assertThat(audit.get("user_id")).as("系統取消沒有操作使用者").isNull();
+        // Sprint 227：PRD §15.2.5 的取消方／取消時間；逾時取消是 SYSTEM，未付款所以沒有退款
+        Map<String, Object> cancelled = jdbcTemplate.queryForMap(
+                "SELECT cancelled_by, cancelled_at, refund_status FROM bookings WHERE id = ?", bookingId);
+        assertThat(cancelled.get("cancelled_by")).isEqualTo("SYSTEM");
+        assertThat(cancelled.get("cancelled_at")).isNotNull();
+        assertThat(cancelled.get("refund_status")).isEqualTo("NONE");
     }
 
     @Test

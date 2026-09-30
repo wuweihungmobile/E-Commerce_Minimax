@@ -190,6 +190,23 @@ class PaymentServiceRefundOwnershipTest {
                 .isEqualTo(ErrorCode.E_1007);
     }
 
+    @Test
+    @DisplayName("🔴 Sprint 227（DEF-312）：訂房付款不能從這個端點退款 → E_6002，付款仍是 SUCCESS、訂房不被動（修復前：付款標 REFUNDED、"
+            + "訂房標 CANCELLED 卻不釋放日曆，也不看 Q14）")
+    void refund_bookingPayment_isRejectedBecauseRefundsGoThroughBookingCancellation() {
+        when(paymentRepository.findById(paymentId)).thenReturn(Optional.of(bookingPayment(BigDecimal.valueOf(500))));
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(bookingOfUser(buyerA)));
+        TenantContext.setCurrentUser(buyerA);
+
+        assertThatThrownBy(() -> paymentService.processRefund(refundRequest(BigDecimal.valueOf(500))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_6002);
+
+        verify(paymentRepository, never()).updateStatusIfCurrent(any(), any(), any());
+        verify(bookingRepository, never()).save(any());
+    }
+
     // ========== 退款金額上限 ==========
 
     @Test

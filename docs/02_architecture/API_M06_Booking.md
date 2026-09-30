@@ -483,28 +483,49 @@ Authorization: Bearer <token>
 
 #### Response
 
-**200 OK** - 預訂取消成功
+**200 OK** - 預訂取消成功（Sprint 227 起回應帶出退款資訊，PRD §15.2.5）
 
 ```json
 {
   "code": 200,
   "message": "Booking cancelled successfully",
-  "data": null
+  "data": {
+    "bookingId": "7c9e6679-9225-4c8b-ac0f-8e8b6d2a1f3a",
+    "status": "CANCELLED",
+    "canceledAt": "2026-05-20T10:00:00Z",
+    "canceledBy": "CUSTOMER",
+    "refundStatus": "PENDING",
+    "refundAmount": 3000.00
+  }
 }
 ```
+
+| 欄位 | 說明 |
+|------|------|
+| canceledBy | `CUSTOMER` 買家本人／`MERCHANT` 商家或管理員代為取消（目前只有管理員能代為取消，見 `DEF-316`） |
+| refundStatus | `NONE` 不需退款（未付款，或依 Q14 不退）／`PENDING` 等待自動退款（排程每分鐘處理）；詳情端點還可能是 `COMPLETED`（已退回） |
+| refundAmount | 應退金額；`refundStatus` 為 `NONE` 時為 `null` |
 
 ##### Error Responses
 
 | HTTP Status | Error Code | 描述 |
 |-------------|------------|------|
-| 400 | E-4007 | Booking cannot be cancelled |
+| 400 | E-4007 | Booking cannot be cancelled（狀態不允許，或同一筆被另一個請求搶先取消） |
 | 404 | E-4006 | Booking not found |
 
 ##### Business Logic
 
 1. **狀態檢查**: 透過 `OrderStateMachine.canCancel()` 判斷是否可取消
-2. **日曆釋放**: 取消後自動釋放日期格，標記為 `AVAILABLE`
-3. **日誌記錄**: 取消原因會被記錄到日誌
+2. **併發防護**: 以條件式 UPDATE 搶占「目前狀態 → `CANCELLED`」，同一筆被同時取消只有一個成功（其餘 E-4007），退款只決定一次
+3. **日曆釋放**: 取消後自動釋放日期格，標記為 `AVAILABLE`（不論退不退款）；優惠券額度一併退還
+4. **退款規則（PRD §15.2.5／Q14，Sprint 227）**:
+   - 只有**已付款**（`PAID`／`CONFIRMED`）的預訂有款項可退；未付款取消 `refundStatus = NONE`
+   - 買家本人取消：入住前 **>= 24 小時**全額退款；**< 24 小時**（含入住時間已過）不退款。入住時刻是入住日當天、房型設定的入住時間（預設 15:00），以營運時區（Asia/Taipei）計算
+   - 商家（含管理員代為取消）、系統取消：一律全額退款
+   - 遲到付款：買家還在 Stripe 付款頁時預訂被取消，之後付款成功 → 付款金額全額退回（不適用 24 小時門檻：預訂沒有成立）
+5. **退款執行**: 取消當下只決定並記錄（`refund_status = PENDING`、`refund_amount`），不呼叫金流；`RefundProcessingService` 排程把款項退回原付款方式（Stripe 付款經 Stripe，不看 `STRIPE_PAYMENT_ENABLED`），成功後 `refundStatus = COMPLETED`；失敗整個交易回滾、留 `AUTO_REFUND_FAILED` 稽核並指數退避重試
+6. **稽核**: `BOOKING_CANCELLED`；已付款者另寫 `BOOKING_REFUND_DECIDED`（含「退多少／不退」與取消方、入住日，事後爭議的依據）
+7. **舊版 `POST /v2/payments/refund`** 不再接受訂房付款（E-6002）：退款只能經取消預訂
 
 ---
 
@@ -553,6 +574,10 @@ Authorization: Bearer <token>
 | status | string | 預訂狀態 |
 | totalAmount | decimal | 總金額 |
 | paymentDueAt | datetime | 付款期限 (ISO 8601)；逾時仍未付款的預訂會被自動取消，`null` ＝ 歷史預訂、不會逾時 |
+| canceledAt | datetime | 取消時間 (ISO 8601)；未取消（或歷史取消）為 `null`（Sprint 227） |
+| canceledBy | string | 取消方 `CUSTOMER`／`MERCHANT`／`SYSTEM`（逾時）；未取消（或歷史取消）為 `null` |
+| refundStatus | string | 退款進度 `NONE`／`PENDING`／`COMPLETED`（PRD §15.2.5） |
+| refundAmount | decimal | 取消時決定的應退金額（PRD Q14）；`refundStatus` 為 `NONE` 時為 `null` |
 | currency | string | 幣別 (預設 TWD) |
 | guestName | string | 客人姓名 |
 | guestPhone | string | 客人電話 |

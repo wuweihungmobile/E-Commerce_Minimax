@@ -166,14 +166,14 @@ public class BookingController {
     }
 
     /**
-     * 取消預訂
+     * 取消預訂。回應告訴買家這次取消有沒有退款、退多少（PRD §15.2.5／Q14，Sprint 227）。
      */
     @PostMapping("/{bookingId}/cancel")
     @PreAuthorize("hasAuthority('booking:cancel')")
-    public ResponseEntity<ApiResponse<Void>> cancelBooking(
+    public ResponseEntity<ApiResponse<BookingDto.CancelResponse>> cancelBooking(
             @PathVariable UUID bookingId,
             @RequestParam(required = false) String reason) {
-        bookingService.cancelBooking(bookingId, reason);
-        return ResponseEntity.ok(ApiResponse.success("Booking cancelled successfully", null));
+        BookingDto.CancelResponse result = bookingService.cancelBooking(bookingId, reason);
+        return ResponseEntity.ok(ApiResponse.success("Booking cancelled successfully", result));
     }
 }

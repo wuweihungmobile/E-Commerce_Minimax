@@ -3,17 +3,25 @@ package com.nextkey.ecommerce.core.payment;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -31,6 +39,10 @@ import lombok.extern.slf4j.Slf4j;
  * 也不該在取消的資料庫交易裡——外部呼叫與交易無法一起回滾。{@code REFUNDING} 本身就是持久的「待退款」標記：取消與排程各自是
  * 獨立的交易，任何一步失敗都不會留下半套狀態，下一輪自然重試；多個後端實例同時跑也安全，額度由
  * {@code payments.refunded_amount} 的 compare-and-swap 保證同一筆付款只會被退一次。
+ *
+ * <p><b>訂房（Sprint 227，DEF-312）：</b>訂房沒有 {@code REFUNDING} 狀態，取消時依 PRD Q14 決定的應退金額記在訂房的
+ * {@code refund_status = PENDING}（同樣是持久的待退款標記）；本排程用同一套游標、退避與失敗隔離把它們退完
+ * （{@link PaymentStateService#refundBookingPaymentAsSystem}），成功後轉 {@code COMPLETED}。
  *
  * <p><b>失敗處理：</b>逐張各自一個交易，一張失敗（Stripe 拒絕、找不到可退款的付款…）只留下它自己——交易整體回滾，訂單維持
  * {@code REFUNDING}，並寫一筆 {@code AUTO_REFUND_FAILED} 稽核紀錄讓人看得到原因。失敗的訂單以指數退避
@@ -50,9 +62,11 @@ public class RefundProcessingService {
     private static final int MAX_PAGES_PER_RUN = 20;
 
     private static final String REASON = "Automatic refund: order cancelled";
+    private static final String BOOKING_REASON = "Automatic refund: booking cancelled";
     private static final int MAX_ERROR_LENGTH = 500;
 
     private final OrderRepository orderRepository;
+    private final BookingRepository bookingRepository;
     private final PaymentStateService paymentStateService;
     private final AuditService auditService;
 
@@ -72,9 +86,11 @@ public class RefundProcessingService {
     @Scheduled(fixedDelayString = "${app.refund.check-interval-ms:60000}",
             initialDelayString = "${app.refund.initial-delay-ms:45000}")
     public void processPendingRefunds() {
-        int refunded = processPendingOrderRefunds(Instant.now());
-        if (refunded > 0) {
-            log.info("Automatic refunds: refunded {} orders", refunded);
+        Instant now = Instant.now();
+        int orders = processPendingOrderRefunds(now);
+        int bookings = processPendingBookingRefunds(now);
+        if (orders + bookings > 0) {
+            log.info("Automatic refunds: refunded {} orders and {} bookings", orders, bookings);
         }
     }
 
@@ -84,17 +100,41 @@ public class RefundProcessingService {
      * @param now 判斷退避是否結束的基準時間（測試可指定；排程傳入現在）
      */
     public int processPendingOrderRefunds(final Instant now) {
+        return sweep(now, new Target("ORDER",
+                (afterId, page) -> orderRepository.findRefundingOrderIdsAfter(Order.OrderStatus.REFUNDING, afterId, page),
+                orderId -> paymentStateService.refundOrderPaymentAsSystem(orderId, REASON),
+                orderId -> orderRepository.findStatusById(orderId)
+                        .filter(status -> status != Order.OrderStatus.REFUNDING).isPresent(),
+                orderId -> orderRepository.findById(orderId).map(Order::getTenantId).orElse(null),
+                Order.OrderStatus.REFUNDING.name()));
+    }
+
+    /**
+     * 退款給 {@code now} 當下所有等待退款（{@code refund_status = PENDING}）且不在退避期間的訂房，回傳實際退款成功的筆數
+     * （Sprint 227，DEF-312）。
+     */
+    public int processPendingBookingRefunds(final Instant now) {
+        return sweep(now, new Target("BOOKING",
+                (afterId, page) -> bookingRepository.findPendingRefundBookingIds(Booking.RefundStatus.PENDING, afterId,
+                        page),
+                bookingId -> paymentStateService.refundBookingPaymentAsSystem(bookingId, BOOKING_REASON),
+                bookingId -> bookingRepository.findRefundStatusById(bookingId)
+                        .filter(status -> status != Booking.RefundStatus.PENDING).isPresent(),
+                bookingId -> bookingRepository.findById(bookingId).map(Booking::getTenantId).orElse(null),
+                Booking.RefundStatus.PENDING.name()));
+    }
+
+    private int sweep(final Instant now, final Target target) {
         pruneRetryStates(now);
         int refunded = 0;
         UUID cursor = NIL_UUID;
         for (int page = 0; page < MAX_PAGES_PER_RUN; page++) {
-            List<UUID> ids = orderRepository.findRefundingOrderIdsAfter(Order.OrderStatus.REFUNDING, cursor,
-                    PageRequest.of(0, batchSize));
+            List<UUID> ids = target.pageAfter().apply(cursor, PageRequest.of(0, batchSize));
             if (ids.isEmpty()) {
                 break;
             }
-            for (UUID orderId : ids) {
-                if (refundOne(orderId, now)) {
+            for (UUID id : ids) {
+                if (refundOne(target, id, now)) {
                     refunded++;
                 }
             }
@@ -103,54 +143,52 @@ public class RefundProcessingService {
         return refunded;
     }
 
-    private boolean refundOne(final UUID orderId, final Instant now) {
-        RetryState state = retryStates.get(orderId);
+    private boolean refundOne(final Target target, final UUID id, final Instant now) {
+        RetryState state = retryStates.get(id);
         if (state != null && now.isBefore(state.nextAttemptAt)) {
             return false; // 上次失敗，還在退避期間
         }
         try {
-            paymentStateService.refundOrderPaymentAsSystem(orderId, REASON);
-            retryStates.remove(orderId);
+            target.refund().accept(id);
+            retryStates.remove(id);
             return true;
         } catch (RuntimeException e) {
-            if (handledByAnotherWorker(orderId)) {
-                log.info("Automatic refund skipped, the order was handled concurrently: orderId={}", orderId);
+            if (target.handledByAnotherWorker().test(id)) {
+                log.info("Automatic refund skipped, the {} was handled concurrently: id={}",
+                        target.entityType().toLowerCase(Locale.ROOT), id);
                 return false;
             }
-            recordFailure(orderId, state, now, e);
+            recordFailure(target, id, state, now, e);
             return false;
         }
     }
 
-    /**
-     * 失敗的當下訂單已不再等待退款＝另一個處理者（多實例的另一台、或管理員手動退款）搶先做完了：這不是失敗，不寫稽核、不退避。
-     * 搶輸的一方會在行鎖釋放後才發現額度已被佔走（{@code E-6009}）或狀態已變（{@code E-5012}），那時對方的交易已提交，
-     * 所以這裡讀到的一定是最新狀態。
-     */
-    private boolean handledByAnotherWorker(final UUID orderId) {
-        return orderRepository.findStatusById(orderId)
-                .filter(status -> status != Order.OrderStatus.REFUNDING)
-                .isPresent();
-    }
-
-    private void recordFailure(final UUID orderId, final RetryState previous, final Instant now,
+    private void recordFailure(final Target target, final UUID id, final RetryState previous, final Instant now,
             final RuntimeException error) {
         int attempts = previous == null ? 1 : previous.attempts + 1;
         // 5 分鐘起，每次加倍，上限 retry-max-minutes（位移量封頂以免溢位）
         long backoffMinutes = Math.min(retryMaxMinutes, retryBaseMinutes << Math.min(attempts - 1, 20));
         Instant next = now.plus(Duration.ofMinutes(backoffMinutes));
-        retryStates.put(orderId, new RetryState(attempts, next));
+        retryStates.put(id, new RetryState(attempts, next));
 
         String message = String.valueOf(error.getMessage());
         if (message.length() > MAX_ERROR_LENGTH) {
             message = message.substring(0, MAX_ERROR_LENGTH);
         }
-        log.error("Automatic refund failed, order stays REFUNDING and will be retried: orderId={}, attempt={}, "
-                + "nextAttemptAt={}, error={}", orderId, attempts, next, message, error);
-        UUID tenantId = orderRepository.findById(orderId).map(Order::getTenantId).orElse(null);
-        auditService.record("AUTO_REFUND_FAILED", "ORDER", orderId, tenantId,
-                Order.OrderStatus.REFUNDING.name(), Order.OrderStatus.REFUNDING.name(),
+        log.error("Automatic refund failed, the {} stays pending and will be retried: id={}, attempt={}, "
+                + "nextAttemptAt={}, error={}", target.entityType().toLowerCase(Locale.ROOT), id, attempts,
+                next, message, error);
+        auditService.record("AUTO_REFUND_FAILED", target.entityType(), id, target.tenantOf().apply(id),
+                target.pendingMarker(), target.pendingMarker(),
                 "attempt=" + attempts + ",nextAttemptAt=" + next + ",error=" + message);
+    }
+
+    /**
+     * 一種等待退款的對象（訂單或訂房）：怎麼分頁取出、怎麼退一筆、怎麼判斷已被別的處理者處理、失敗稽核要記哪個租戶。
+     * 訂單與訂房共用同一套游標、退避與失敗隔離。
+     */
+    private record Target(String entityType, BiFunction<UUID, Pageable, List<UUID>> pageAfter, Consumer<UUID> refund,
+            Predicate<UUID> handledByAnotherWorker, Function<UUID, UUID> tenantOf, String pendingMarker) {
     }
 
     /**

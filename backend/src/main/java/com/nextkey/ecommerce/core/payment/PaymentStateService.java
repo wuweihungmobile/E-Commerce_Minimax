@@ -289,6 +289,61 @@ public class PaymentStateService {
         return refundOrderPaymentCore(order, null, reason);
     }
 
+    /**
+     * 自動退款（Sprint 227，DEF-312／DEF-308 訂房側）：系統（{@code RefundProcessingService} 排程）退還「已取消、等待退款」
+     * （{@code refund_status = PENDING}）的訂房款項，金額是取消時依 PRD Q14 決定的 {@code refund_amount}。
+     *
+     * <p>與訂單版（{@link #refundOrderPaymentAsSystem}）同一個做法：先以 compare-and-swap 佔用付款的退款額度，再呼叫 Stripe
+     * （付款方式為 STRIPE 一律經 Stripe；冪等鍵同為付款意圖＋退款前累計額＋本次金額），最後把訂房 {@code PENDING → COMPLETED}。
+     * 失敗（Stripe 拒絕、找不到可退款的付款…）一律拋出並回滾整個交易，訂房維持 {@code PENDING}，由呼叫端決定何時重試。
+     * 訂房不參與結算（結算只算訂單），所以沒有結算調整。
+     */
+    @Transactional
+    public void refundBookingPaymentAsSystem(UUID bookingId, String reason) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4006, "Booking not found"));
+        if (booking.getStatus() != Booking.BookingStatus.CANCELLED
+                || booking.getRefundStatus() != Booking.RefundStatus.PENDING || booking.getRefundAmount() == null) {
+            throw new BusinessException(ErrorCode.E_5012, "Booking is not waiting for a refund");
+        }
+        Payment payment = paymentRepository.findEffectiveByBookingId(bookingId)
+                .filter(p -> p.getStatus() == Payment.PaymentStatus.SUCCESS
+                        || p.getStatus() == Payment.PaymentStatus.PARTIALLY_REFUNDED)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_6000, "Payment not found"));
+
+        BigDecimal previousRefundedAmount = payment.getRefundedAmount();
+        BigDecimal remaining = payment.getAmount().subtract(previousRefundedAmount);
+        BigDecimal refundAmount = booking.getRefundAmount().min(remaining);
+        if (refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(ErrorCode.E_6009, "Refund amount must be positive: " + refundAmount);
+        }
+        BigDecimal newRefundedAmount = previousRefundedAmount.add(refundAmount);
+        Payment.PaymentStatus newPaymentStatus = newRefundedAmount.compareTo(payment.getAmount()) >= 0
+                ? Payment.PaymentStatus.REFUNDED : Payment.PaymentStatus.PARTIALLY_REFUNDED;
+
+        // 🔴 併發防護：同 refundOrderPaymentCore——先 CAS 佔用額度，才呼叫 Stripe
+        if (paymentRepository.applyRefundIfUnchanged(payment.getId(), previousRefundedAmount, newRefundedAmount,
+                newPaymentStatus) == 0) {
+            throw new BusinessException(ErrorCode.E_6009,
+                    "Refund amount conflicts with a concurrent refund on the same payment, please retry");
+        }
+        if (payment.getPaymentMethod() == Payment.PaymentMethod.STRIPE) {
+            executeStripeRefund(bookingId, payment, previousRefundedAmount, refundAmount, reason);
+        }
+        payment.setRefundedAmount(newRefundedAmount);
+        payment.setStatus(newPaymentStatus);
+
+        // 條件式 UPDATE：0 代表別的處理者已先完成，冪等
+        bookingRepository.completeRefundIfPending(bookingId, Booking.RefundStatus.PENDING,
+                Booking.RefundStatus.COMPLETED);
+
+        log.info("Booking refund processed: bookingId={}, paymentId={}, amount={}, reason={}", bookingId,
+                payment.getId(), refundAmount, reason);
+        auditService.record("BOOKING_PAYMENT_REFUNDED", "PAYMENT", payment.getId(), booking.getTenantId(),
+                "refunded=" + previousRefundedAmount, "refunded=" + newRefundedAmount + ",status=" + newPaymentStatus,
+                reason, TenantContext.getCurrentUser());
+    }
+
     /** 退款核心：呼叫端已載入訂單並完成授權（使用者）或狀態確認（系統）。 */
     private OrderPaymentStateDto refundOrderPaymentCore(Order order, BigDecimal amount, String reason) {
         UUID orderId = order.getId();
@@ -739,10 +794,20 @@ public class PaymentStateService {
         }
         if (bookingRepository.updateStatusIfCurrent(booking.getId(), Booking.BookingStatus.CREATED,
                 Booking.BookingStatus.PAID) == 0) {
+            // Sprint 227（DEF-308 訂房側）：訂房已被取消（逾時、或買家還在 Stripe 頁時先取消）→ 付款金額全額退回：
+            // 訂房沒有成立、買家什麼都沒拿到，不適用 Q14 的 24 小時門檻。條件式 UPDATE 同時確認訂房仍是 CANCELLED
+            // 且尚未有退款安排；其他狀態（例如已 PAID 又收到一筆＝重複付款）不自動處理，只留稽核與錯誤日誌。
+            boolean queued = bookingRepository.requestRefundIfCancelled(booking.getId(),
+                    Booking.BookingStatus.CANCELLED, Booking.RefundStatus.NONE, Booking.RefundStatus.PENDING,
+                    payment.getAmount()) == 1;
+            Booking.BookingStatus current = queued ? Booking.BookingStatus.CANCELLED
+                    : bookingRepository.findStatusById(booking.getId()).orElse(booking.getStatus());
             log.error("Stripe payment succeeded but the booking is not payable (money collected, booking not paid): "
-                    + "bookingId={}, bookingStatus={}, session={}", booking.getId(), booking.getStatus(), sessionId);
+                    + "bookingId={}, bookingStatus={}, refundQueued={}, session={}", booking.getId(), current, queued,
+                    sessionId);
             auditService.record("STRIPE_PAYMENT_BOOKING_NOT_PAYABLE", "PAYMENT", payment.getId(), booking.getTenantId(),
-                    booking.getStatus().name(), "SUCCESS", "session=" + sessionId + ",bookingId=" + booking.getId());
+                    current.name(), "SUCCESS", "session=" + sessionId + ",bookingId=" + booking.getId()
+                            + ",refundQueued=" + queued);
         } else {
             booking.setStatus(Booking.BookingStatus.PAID);
         }

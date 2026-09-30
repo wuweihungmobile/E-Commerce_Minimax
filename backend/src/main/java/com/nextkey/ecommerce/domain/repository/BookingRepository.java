@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.domain.repository;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -52,11 +53,12 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     /**
      * 逾時未付款訂房的原子取消（Sprint 225，DEF-311）：把「仍是 CREATED、付款期限已過、沒有成功付款、也沒有
      * checkoutCutoff 之後開始的結帳」與狀態轉換寫在同一條 UPDATE，與買家付款的 {@link #updateStatusIfCurrent}
-     * 搶同一個狀態，恰好一邊成功。回傳 1 表示本次取消成功，0 表示已不符條件。
+     * 搶同一個狀態，恰好一邊成功。回傳 1 表示本次取消成功，0 表示已不符條件。Sprint 227 起一併記錄取消時間與取消方
+     * （{@code cancelledBy}，逾時取消為 SYSTEM）。
      */
     @Modifying(flushAutomatically = true)
     @Query("""
-            UPDATE Booking b SET b.status = :cancelled
+            UPDATE Booking b SET b.status = :cancelled, b.cancelledAt = :now, b.cancelledBy = :cancelledBy
             WHERE b.id = :id AND b.status = :created AND b.paymentDueAt IS NOT NULL AND b.paymentDueAt < :now
               AND NOT EXISTS (
                   SELECT 1 FROM Payment p
@@ -64,9 +66,50 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                     AND (p.status = :success OR (p.status = :processing AND p.createdAt > :checkoutCutoff)))
             """)
     int cancelIfPaymentExpired(@Param("id") UUID id, @Param("created") Booking.BookingStatus created,
-            @Param("cancelled") Booking.BookingStatus cancelled, @Param("now") Instant now,
-            @Param("checkoutCutoff") Instant checkoutCutoff, @Param("success") Payment.PaymentStatus success,
-            @Param("processing") Payment.PaymentStatus processing);
+            @Param("cancelled") Booking.BookingStatus cancelled, @Param("cancelledBy") Booking.CancelledBy cancelledBy,
+            @Param("now") Instant now, @Param("checkoutCutoff") Instant checkoutCutoff,
+            @Param("success") Payment.PaymentStatus success, @Param("processing") Payment.PaymentStatus processing);
+
+    /**
+     * 訂房目前在資料庫裡的狀態。以純量查詢取得而非載入實體：open-in-view 讓同一個請求共用 persistence context，
+     * 先前載入的實體不會反映條件式 UPDATE 的結果（與 {@code OrderRepository.findStatusById} 同一理由）。
+     */
+    @Query("SELECT b.status FROM Booking b WHERE b.id = :id")
+    Optional<Booking.BookingStatus> findStatusById(@Param("id") UUID id);
+
+    /** 訂房目前的退款進度（純量查詢，理由同 {@link #findStatusById}）。 */
+    @Query("SELECT b.refundStatus FROM Booking b WHERE b.id = :id")
+    Optional<Booking.RefundStatus> findRefundStatusById(@Param("id") UUID id);
+
+    /**
+     * 等待退款（{@code refundStatus = PENDING}）的訂房 ID，由小到大（Sprint 227，DEF-312）。以 id 為游標逐頁取出
+     * （{@code id > afterId}），理由同 {@code OrderRepository.findRefundingOrderIdsAfter}。
+     */
+    @Query("SELECT b.id FROM Booking b WHERE b.refundStatus = :pending AND b.id > :afterId ORDER BY b.id ASC")
+    List<UUID> findPendingRefundBookingIds(@Param("pending") Booking.RefundStatus pending,
+            @Param("afterId") UUID afterId, Pageable pageable);
+
+    /**
+     * 退款完成：{@code PENDING → COMPLETED}（條件式 UPDATE）。回傳 0 代表已被另一個處理者搶先完成，呼叫端視為冪等。
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("UPDATE Booking b SET b.refundStatus = :completed WHERE b.id = :id AND b.refundStatus = :pending")
+    int completeRefundIfPending(@Param("id") UUID id, @Param("pending") Booking.RefundStatus pending,
+            @Param("completed") Booking.RefundStatus completed);
+
+    /**
+     * 把一筆「已取消、尚未安排退款」的訂房排入自動退款（{@code NONE → PENDING}，並記下應退金額）。用於付款成功時訂房已被取消
+     * （DEF-308）：錢已收、訂房沒成立，全額退回。條件式 UPDATE 同時確認訂房仍是 CANCELLED 且尚未有退款安排；
+     * 回傳 0 代表不符條件（不是已取消，或已有退款安排）。
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            UPDATE Booking b SET b.refundStatus = :pending, b.refundAmount = :amount
+            WHERE b.id = :id AND b.status = :cancelled AND b.refundStatus = :none
+            """)
+    int requestRefundIfCancelled(@Param("id") UUID id, @Param("cancelled") Booking.BookingStatus cancelled,
+            @Param("none") Booking.RefundStatus none, @Param("pending") Booking.RefundStatus pending,
+            @Param("amount") BigDecimal amount);
 
     Page<Booking> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
 

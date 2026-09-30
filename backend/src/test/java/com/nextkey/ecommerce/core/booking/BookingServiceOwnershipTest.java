@@ -223,6 +223,9 @@ class BookingServiceOwnershipTest {
     void cancelBooking_sameUser_passesOwnership() {
         when(bookingRepository.findById(bookingId))
                 .thenReturn(Optional.of(bookingOfUser(buyerA, Booking.BookingStatus.CREATED)));
+        // Sprint 227（DEF-312）：取消先以條件式 UPDATE 搶占「目前狀態 → CANCELLED」
+        when(bookingRepository.updateStatusIfCurrent(bookingId, Booking.BookingStatus.CREATED,
+                Booking.BookingStatus.CANCELLED)).thenReturn(1);
         TenantContext.setCurrentUser(buyerA);
 
         bookingService.cancelBooking(bookingId, "test");
@@ -257,6 +260,8 @@ class BookingServiceOwnershipTest {
     void cancelBooking_admin_bypassesOwnership() {
         when(bookingRepository.findById(bookingId))
                 .thenReturn(Optional.of(bookingOfUser(buyerA, Booking.BookingStatus.CREATED)));
+        when(bookingRepository.updateStatusIfCurrent(bookingId, Booking.BookingStatus.CREATED,
+                Booking.BookingStatus.CANCELLED)).thenReturn(1);
         TenantContext.setCurrentUser(buyerB); // 非本人
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("admin", null,

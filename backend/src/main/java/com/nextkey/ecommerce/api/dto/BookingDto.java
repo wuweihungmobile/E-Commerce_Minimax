@@ -116,6 +116,14 @@ public class BookingDto {
         private BigDecimal totalAmount;
         /** 付款期限（Sprint 225，DEF-311）；逾時仍未付款的訂房會被自動取消。null＝歷史訂房，不會逾時 */
         private java.time.Instant paymentDueAt;
+        /** 取消時間（Sprint 227，DEF-312）；未取消（或歷史取消）為 null。欄位名沿用 PRD §15.2.5 的拼法 */
+        private java.time.Instant canceledAt;
+        /** 取消方（CUSTOMER／MERCHANT／SYSTEM）；未取消（或歷史取消）為 null */
+        private String canceledBy;
+        /** 退款進度（NONE／PENDING／COMPLETED，PRD §15.2.5）；NONE＝不需退款（未付款或依 Q14 不退） */
+        private String refundStatus;
+        /** 應退金額（PRD Q14）；refundStatus 為 NONE 時為 null */
+        private BigDecimal refundAmount;
         /** 下單當下套用的促銷碼（Sprint 124，DEF-047）；null 表示未使用優惠券 */
         private String promoCode;
         /** 下單當下的折扣金額（Sprint 124）；totalAmount 已扣除本欄位 */
@@ -130,6 +138,25 @@ public class BookingDto {
         private LocalTime checkOutTime;
         private java.time.Instant createdAt;
         private java.time.Instant updatedAt;
+    }
+
+    // ========== Cancel Response（PRD §15.2.5）==========
+
+    /** 取消預訂的結果：告訴買家這次取消有沒有退款、退多少（PRD Q14）。 */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CancelResponse {
+        private UUID bookingId;
+        private String status;
+        private java.time.Instant canceledAt;
+        /** CUSTOMER 買家本人／MERCHANT 商家或管理員代為取消 */
+        private String canceledBy;
+        /** NONE 不需退款（未付款，或入住前不足 24 小時依 Q14 不退）／PENDING 等待自動退款 */
+        private String refundStatus;
+        /** 應退金額；refundStatus 為 NONE 時為 null */
+        private BigDecimal refundAmount;
     }
 
     // ========== Booking List Response ==========

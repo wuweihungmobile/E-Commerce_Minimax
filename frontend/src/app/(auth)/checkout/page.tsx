@@ -12,7 +12,11 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import BookingPaymentCard from '@/components/bookings/BookingPaymentCard'
-import bookingService, { type CreateBookingRequest, bookingErrorMessage } from '@/services/booking'
+import bookingService, {
+  type CreateBookingRequest,
+  CANCELLATION_POLICY_SUMMARY,
+  bookingErrorMessage,
+} from '@/services/booking'
 import { notifyCartChanged } from '@/services/cartEvents'
 
 interface BookingItem {
@@ -303,6 +307,11 @@ export default function CheckoutPage() {
                   disabled={loading}
                 />
               </div>
+
+              {/* PRD US-012：確認預訂前顯示取消政策摘要（Q14，Sprint 227） */}
+              <p className="text-xs text-gray-600" data-testid="checkout-cancel-policy">
+                {CANCELLATION_POLICY_SUMMARY}
+              </p>
 
               <div className="border-t pt-4">
                 <Button

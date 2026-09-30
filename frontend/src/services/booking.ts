@@ -13,6 +13,19 @@ export type BookingStatus =
   | 'COMPLETED'
   | 'CANCELLED'
 
+export type CanceledBy = 'CUSTOMER' | 'MERCHANT' | 'SYSTEM'
+export type RefundStatus = 'NONE' | 'PENDING' | 'COMPLETED'
+
+/** 取消預訂的結果（POST /v2/bookings/{id}/cancel，PRD §15.2.5）：這次取消有沒有退款、退多少 */
+export interface CancelBookingResult {
+  bookingId: string
+  status: BookingStatus
+  canceledAt: string
+  canceledBy: CanceledBy
+  refundStatus: RefundStatus
+  refundAmount: number | null
+}
+
 export interface Booking {
   id: string
   tenantId: string
@@ -27,6 +40,14 @@ export interface Booking {
   totalAmount: number
   /** 付款期限（Sprint 225，DEF-311）；逾時仍未付款的訂房會被自動取消。null＝歷史訂房，不會逾時 */
   paymentDueAt: string | null
+  /** 取消時間（Sprint 227，DEF-312）；未取消（或歷史取消）為 null。欄位名沿用 PRD §15.2.5 的拼法 */
+  canceledAt: string | null
+  /** 取消方：CUSTOMER 買家本人／MERCHANT 商家或管理員代為取消／SYSTEM 系統（逾時）；未取消為 null */
+  canceledBy: CanceledBy | null
+  /** 退款進度（PRD §15.2.5）：NONE 不需退款（未付款，或依 Q14 不退）／PENDING 等待自動退款／COMPLETED 已退回 */
+  refundStatus: RefundStatus
+  /** 應退金額（PRD Q14）；refundStatus 為 NONE 時為 null */
+  refundAmount: number | null
   /** 下單當下套用的促銷碼（Sprint 124，DEF-047／PRD US-010）；null 表示未使用優惠券 */
   promoCode: string | null
   /** 下單當下的折扣金額（Sprint 124）；totalAmount 已扣除本欄位 */
@@ -192,6 +213,25 @@ export function bookingStatusBadgeVariant(status: BookingStatus): BookingStatusB
   }
 }
 
+/** 取消政策摘要（PRD §15.2.5／Q14）：確認預訂前與取消時都顯示（PRD US-012 驗收標準）。 */
+export const CANCELLATION_POLICY_SUMMARY =
+  '取消政策：入住前 24 小時（含）以上取消可全額退款；入住前不足 24 小時取消不退款；商家取消一律全額退款。'
+
+/**
+ * 取消結果的說明文字：告訴買家這次取消有沒有退款、退多少。
+ * 回應的 NONE 分不出「沒付過款」與「付過款但依 Q14 不退」，所以由呼叫端告知取消前是否已付款；金額格式也由呼叫端提供。
+ */
+export function cancelResultMessage(
+  result: CancelBookingResult,
+  wasPaid: boolean,
+  formatMoney: (amount: number) => string
+): string {
+  if (result.refundStatus === 'PENDING' && result.refundAmount != null) {
+    return `預訂已取消，將退款 ${formatMoney(result.refundAmount)}，系統會自動退回原付款方式。`
+  }
+  return wasPaid ? '預訂已取消。入住前不足 24 小時，依取消政策本次不退款。' : '預訂已取消。'
+}
+
 class BookingService {
   async getBookings(query: BookingQuery = {}): Promise<PaginatedResponse<BookingListItem>> {
     const params = new URLSearchParams()
@@ -213,11 +253,12 @@ class BookingService {
     return response.data.data
   }
 
-  async cancelBooking(id: string, reason?: string): Promise<void> {
+  async cancelBooking(id: string, reason?: string): Promise<CancelBookingResult> {
     const url = reason
       ? API_ENDPOINTS.bookings.cancel(id) + '?reason=' + encodeURIComponent(reason)
       : API_ENDPOINTS.bookings.cancel(id)
-    await apiClient.post(url)
+    const response = await apiClient.post<ApiResponse<CancelBookingResult>>(url)
+    return response.data.data
   }
 
   // ROOM 日期可用性查詢（GET /v2/bookings/availability，S40 端點改 @RequestParam 後可用）。

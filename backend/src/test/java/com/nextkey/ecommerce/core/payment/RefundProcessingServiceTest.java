@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -26,7 +27,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -43,6 +46,7 @@ class RefundProcessingServiceTest {
     private static final UUID NIL = new UUID(0L, 0L);
 
     @Mock private OrderRepository orderRepository;
+    @Mock private BookingRepository bookingRepository;
     @Mock private PaymentStateService paymentStateService;
     @Mock private AuditService auditService;
 
@@ -213,6 +217,75 @@ class RefundProcessingServiceTest {
                 contains("attempt=1"));
         verify(auditService, never()).record(eq("AUTO_REFUND_FAILED"), eq("ORDER"), eq(id(1)), any(), any(), any(),
                 contains("attempt=2"));
+    }
+
+    // ========== 訂房（Sprint 227，DEF-312）==========
+
+    private void givenBookingPages(final UUID cursor, final List<UUID> ids) {
+        when(bookingRepository.findPendingRefundBookingIds(eq(Booking.RefundStatus.PENDING), eq(cursor),
+                any(Pageable.class))).thenReturn(ids);
+    }
+
+    @Test
+    @DisplayName("訂房：逐頁以 id 為游標走完所有等待退款的訂房，經系統入口 refundBookingPaymentAsSystem 退款")
+    void bookings_walkEveryPageAndRefundThroughTheSystemEntry() {
+        givenBookingPages(NIL, List.of(id(1), id(2)));
+        givenBookingPages(id(2), List.of(id(3)));
+        givenBookingPages(id(3), List.of());
+
+        int refunded = service.processPendingBookingRefunds(NOW);
+
+        assertThat(refunded).isEqualTo(3);
+        verify(paymentStateService).refundBookingPaymentAsSystem(eq(id(1)), anyString());
+        verify(paymentStateService).refundBookingPaymentAsSystem(eq(id(2)), anyString());
+        verify(paymentStateService).refundBookingPaymentAsSystem(eq(id(3)), anyString());
+        verify(paymentStateService, never()).refundOrderPaymentAsSystem(any(), anyString());
+    }
+
+    @Test
+    @DisplayName("訂房：失敗只留下它自己，稽核記 BOOKING（含原因與退避）；退避期間不重試")
+    void bookings_failureIsAuditedAsBookingAndBackedOff() {
+        givenBookingPages(NIL, List.of(id(1), id(2)));
+        givenBookingPages(id(2), List.of());
+        doThrow(new BusinessException(ErrorCode.E_6001, "Stripe refund failed: charge_already_refunded"))
+                .when(paymentStateService).refundBookingPaymentAsSystem(eq(id(1)), anyString());
+        when(bookingRepository.findById(id(1))).thenReturn(Optional.empty());
+
+        int refunded = service.processPendingBookingRefunds(NOW);
+        service.processPendingBookingRefunds(NOW.plusSeconds(60));
+
+        assertThat(refunded).as("另一筆照常退款").isEqualTo(1);
+        verify(paymentStateService, times(1)).refundBookingPaymentAsSystem(eq(id(1)), anyString());
+        verify(auditService).record(eq("AUTO_REFUND_FAILED"), eq("BOOKING"), eq(id(1)), any(), eq("PENDING"),
+                eq("PENDING"), contains("charge_already_refunded"));
+    }
+
+    @Test
+    @DisplayName("訂房：失敗時退款進度已不再是 PENDING（別的處理者搶先退完）→ 不算失敗：不寫稽核、不退避")
+    void bookings_failureBecauseAnotherWorkerWonTheRace_isNotAFailure() {
+        givenBookingPages(NIL, List.of(id(1)));
+        givenBookingPages(id(1), List.of());
+        doThrow(new BusinessException(ErrorCode.E_6009, "Refund amount conflicts with a concurrent refund"))
+                .when(paymentStateService).refundBookingPaymentAsSystem(eq(id(1)), anyString());
+        when(bookingRepository.findRefundStatusById(id(1))).thenReturn(Optional.of(Booking.RefundStatus.COMPLETED));
+
+        service.processPendingBookingRefunds(NOW);
+
+        verify(auditService, never()).record(eq("AUTO_REFUND_FAILED"), anyString(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("排程進入點一輪同時處理訂單與訂房")
+    void scheduledEntryProcessesOrdersAndBookings() {
+        givenPages(NIL, List.of(id(1)));
+        givenPages(id(1), List.of());
+        givenBookingPages(NIL, List.of(id(2)));
+        givenBookingPages(id(2), List.of());
+
+        service.processPendingRefunds();
+
+        verify(paymentStateService).refundOrderPaymentAsSystem(eq(id(1)), anyString());
+        verify(paymentStateService).refundBookingPaymentAsSystem(eq(id(2)), anyString());
     }
 
     @Test

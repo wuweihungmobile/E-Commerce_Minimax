@@ -457,6 +457,43 @@ class PaymentStateServiceBookingTest {
         }
 
         @Test
+        @DisplayName("🔴 Sprint 227（DEF-308）：訂房已被取消才收到付款成功 → 把付款金額全額排入自動退款（PENDING），稽核記 refundQueued=true")
+        void paymentAfterCancellation_queuesFullRefund() {
+            Payment payment = paymentOfBooking();
+            payment.setAmount(new BigDecimal("3000.00"));
+            when(paymentRepository.findByTransactionId("cs_1")).thenReturn(Optional.of(payment));
+            bookingExists(Booking.BookingStatus.CANCELLED);
+            when(bookingRepository.updateStatusIfCurrent(any(), any(), any())).thenReturn(0);
+            when(bookingRepository.requestRefundIfCancelled(BOOKING_ID, Booking.BookingStatus.CANCELLED,
+                    Booking.RefundStatus.NONE, Booking.RefundStatus.PENDING, new BigDecimal("3000.00"))).thenReturn(1);
+
+            boolean changed = service.markStripePaymentSucceeded("cs_1", "pi_1");
+
+            assertThat(changed).isTrue();
+            verify(auditService).record(eq("STRIPE_PAYMENT_BOOKING_NOT_PAYABLE"), eq("PAYMENT"), eq(PAYMENT_ID),
+                    eq(TENANT_ID), eq("CANCELLED"), eq("SUCCESS"),
+                    org.mockito.ArgumentMatchers.contains("refundQueued=true"));
+        }
+
+        @Test
+        @DisplayName("Sprint 227（DEF-308）：訂房不是 CANCELLED（例如已 PAID 又收到一筆＝重複付款）→ 不排退款，稽核記 refundQueued=false 與目前狀態")
+        void paymentOnAlreadyPaidBooking_isAuditedNotRefunded() {
+            Payment payment = paymentOfBooking();
+            payment.setAmount(new BigDecimal("3000.00"));
+            when(paymentRepository.findByTransactionId("cs_1")).thenReturn(Optional.of(payment));
+            bookingExists(Booking.BookingStatus.CREATED);
+            when(bookingRepository.updateStatusIfCurrent(any(), any(), any())).thenReturn(0);
+            when(bookingRepository.requestRefundIfCancelled(any(), any(), any(), any(), any())).thenReturn(0);
+            when(bookingRepository.findStatusById(BOOKING_ID)).thenReturn(Optional.of(Booking.BookingStatus.PAID));
+
+            service.markStripePaymentSucceeded("cs_1", "pi_1");
+
+            verify(auditService).record(eq("STRIPE_PAYMENT_BOOKING_NOT_PAYABLE"), eq("PAYMENT"), eq(PAYMENT_ID),
+                    eq(TENANT_ID), eq("PAID"), eq("SUCCESS"),
+                    org.mockito.ArgumentMatchers.contains("refundQueued=false"));
+        }
+
+        @Test
         @DisplayName("付款早已標成功（重送／另一條路徑搶先）→ 不再動訂房、不寫稽核")
         void alreadyMarked_doesNothing() {
             when(paymentRepository.findByTransactionId("cs_1")).thenReturn(Optional.of(paymentOfBooking()));
@@ -467,6 +504,162 @@ class PaymentStateServiceBookingTest {
             assertThat(changed).isFalse();
             verify(bookingRepository, never()).updateStatusIfCurrent(any(), any(), any());
             verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any());
+        }
+    }
+
+    // ========== 自動退款（Sprint 227，DEF-312）==========
+
+    @Nested
+    @DisplayName("refundBookingPaymentAsSystem")
+    class RefundBookingPaymentAsSystem {
+
+        private Booking pendingBooking(final String refundAmount) {
+            Booking booking = bookingOf(USER_ID, Booking.BookingStatus.CANCELLED);
+            booking.setRefundStatus(Booking.RefundStatus.PENDING);
+            booking.setRefundAmount(new BigDecimal(refundAmount));
+            return booking;
+        }
+
+        private Payment paidPayment(final Payment.PaymentMethod method, final String refunded) {
+            return Payment.builder().id(PAYMENT_ID).bookingId(BOOKING_ID).paymentMethod(method)
+                    .status(new BigDecimal(refunded).signum() > 0 ? Payment.PaymentStatus.PARTIALLY_REFUNDED
+                            : Payment.PaymentStatus.SUCCESS)
+                    .amount(new BigDecimal("3000.00")).refundedAmount(new BigDecimal(refunded))
+                    .stripePaymentIntentId("pi_1").build();
+        }
+
+        private void given(final Booking booking, final Payment payment) {
+            TenantContext.clear(); // 排程執行緒：沒有登入使用者
+            when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
+            when(paymentRepository.findEffectiveByBookingId(BOOKING_ID)).thenReturn(Optional.of(payment));
+            when(paymentRepository.applyRefundIfUnchanged(any(), any(), any(), any())).thenReturn(1);
+        }
+
+        @Test
+        @DisplayName("Mock 付款：全額退回 → 付款 REFUNDED、訂房退款進度 PENDING → COMPLETED（條件式更新），不呼叫 Stripe，留稽核")
+        void mockPayment_isRefundedAndBookingCompleted() {
+            Payment payment = paidPayment(Payment.PaymentMethod.MOCK, "0");
+            given(pendingBooking("3000.00"), payment);
+
+            service.refundBookingPaymentAsSystem(BOOKING_ID, "Automatic refund: booking cancelled");
+
+            assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+            assertThat(payment.getRefundedAmount()).isEqualByComparingTo("3000.00");
+            verify(paymentRepository).applyRefundIfUnchanged(eq(PAYMENT_ID), eq(BigDecimal.ZERO),
+                    eq(new BigDecimal("3000.00")), eq(Payment.PaymentStatus.REFUNDED));
+            verify(bookingRepository).completeRefundIfPending(BOOKING_ID, Booking.RefundStatus.PENDING,
+                    Booking.RefundStatus.COMPLETED);
+            verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any(), any());
+            verify(auditService).record(eq("BOOKING_PAYMENT_REFUNDED"), eq("PAYMENT"), eq(PAYMENT_ID), eq(TENANT_ID),
+                    any(), any(), eq("Automatic refund: booking cancelled"), any());
+        }
+
+        @Test
+        @DisplayName("Stripe 付款：經 Stripe 退一次（冪等鍵＝付款意圖＋退款前累計額＋金額），即使 STRIPE_PAYMENT_ENABLED 已關閉；存 refund id")
+        void stripePayment_isRefundedThroughStripeEvenWhenToggleIsOff() {
+            Payment payment = paidPayment(Payment.PaymentMethod.STRIPE, "0");
+            given(pendingBooking("3000.00"), payment);
+            when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(false);
+            when(paymentGatewayFactory.processRefund(eq("STRIPE"), eq("pi_1"), eq(new BigDecimal("3000.00")), any(),
+                    eq("refund-pi_1-0.00-3000.00"))).thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
+                    .success(true).refundId("re_1").status("succeeded").build());
+
+            service.refundBookingPaymentAsSystem(BOOKING_ID, "Automatic refund: booking cancelled");
+
+            assertThat(payment.getStripeRefundId()).isEqualTo("re_1");
+            assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+            verify(bookingRepository).completeRefundIfPending(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Stripe 拒絕 → 拋出（交易整體回滾）：訂房不被標完成，付款在記憶體裡仍是 SUCCESS")
+        void stripeFailure_throwsAndDoesNotCompleteTheBooking() {
+            Payment payment = paidPayment(Payment.PaymentMethod.STRIPE, "0");
+            given(pendingBooking("3000.00"), payment);
+            when(paymentGatewayFactory.processRefund(any(), any(), any(), any(), any()))
+                    .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
+                            .success(false).errorMessage("charge_already_refunded").build());
+
+            assertThatThrownBy(() -> service.refundBookingPaymentAsSystem(BOOKING_ID, "x"))
+                    .isInstanceOf(BusinessException.class).hasMessageContaining("charge_already_refunded");
+
+            assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.SUCCESS);
+            verify(bookingRepository, never()).completeRefundIfPending(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("訂房不在等待退款（退款進度不是 PENDING，或還沒取消）→ E_5012，不佔用額度、不呼叫 Stripe")
+        void bookingNotWaitingForRefund_isRejectedBeforeAnyMoneyMoves() {
+            Booking notPending = pendingBooking("3000.00");
+            notPending.setRefundStatus(Booking.RefundStatus.COMPLETED);
+            given(notPending, paidPayment(Payment.PaymentMethod.STRIPE, "0"));
+
+            assertThatThrownBy(() -> service.refundBookingPaymentAsSystem(BOOKING_ID, "x"))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_5012));
+
+            Booking notCancelled = pendingBooking("3000.00");
+            notCancelled.setStatus(Booking.BookingStatus.PAID);
+            given(notCancelled, paidPayment(Payment.PaymentMethod.STRIPE, "0"));
+            assertThatThrownBy(() -> service.refundBookingPaymentAsSystem(BOOKING_ID, "x"))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_5012));
+
+            verify(paymentRepository, never()).applyRefundIfUnchanged(any(), any(), any(), any());
+            verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("找不到可退款的付款 → E_6000（大聲失敗，不假裝退了）")
+        void noRefundablePayment_failsLoudly() {
+            TenantContext.clear();
+            when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(pendingBooking("3000.00")));
+            when(paymentRepository.findEffectiveByBookingId(BOOKING_ID)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.refundBookingPaymentAsSystem(BOOKING_ID, "x"))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_6000));
+        }
+
+        @Test
+        @DisplayName("額度 CAS 被另一個處理者搶先（影響 0 列）→ E_6009，不呼叫 Stripe、不標完成")
+        void concurrentClaim_isRejectedWithoutCallingStripe() {
+            given(pendingBooking("3000.00"), paidPayment(Payment.PaymentMethod.STRIPE, "0"));
+            when(paymentRepository.applyRefundIfUnchanged(any(), any(), any(), any())).thenReturn(0);
+
+            assertThatThrownBy(() -> service.refundBookingPaymentAsSystem(BOOKING_ID, "x"))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_6009));
+
+            verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any(), any());
+            verify(bookingRepository, never()).completeRefundIfPending(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("應退金額小於付款金額（例如只退 2000）→ 付款轉 PARTIALLY_REFUNDED，訂房仍標完成")
+        void partialRefundAmount_leavesPaymentPartiallyRefunded() {
+            Payment payment = paidPayment(Payment.PaymentMethod.MOCK, "0");
+            given(pendingBooking("2000.00"), payment);
+
+            service.refundBookingPaymentAsSystem(BOOKING_ID, "x");
+
+            assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.PARTIALLY_REFUNDED);
+            assertThat(payment.getRefundedAmount()).isEqualByComparingTo("2000.00");
+            verify(bookingRepository).completeRefundIfPending(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("付款已先退掉一部分 → 只退「還可退的金額」，不超過付款總額")
+        void alreadyPartiallyRefunded_refundsOnlyTheRemainder() {
+            Payment payment = paidPayment(Payment.PaymentMethod.MOCK, "2000.00");
+            given(pendingBooking("3000.00"), payment);
+
+            service.refundBookingPaymentAsSystem(BOOKING_ID, "x");
+
+            assertThat(payment.getRefundedAmount()).isEqualByComparingTo("3000.00");
+            assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+            verify(paymentRepository).applyRefundIfUnchanged(eq(PAYMENT_ID), eq(new BigDecimal("2000.00")),
+                    eq(new BigDecimal("3000.00")), eq(Payment.PaymentStatus.REFUNDED));
         }
     }
 }

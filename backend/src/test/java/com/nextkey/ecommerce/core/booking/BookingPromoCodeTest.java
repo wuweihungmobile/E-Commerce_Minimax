@@ -355,6 +355,9 @@ class BookingPromoCodeTest {
             Booking booking = bookingWithPromo();
             when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
             when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+            // Sprint 227（DEF-312）：取消先以條件式 UPDATE 搶占「目前狀態 → CANCELLED」
+            when(bookingRepository.updateStatusIfCurrent(BOOKING_ID, Booking.BookingStatus.CREATED,
+                    Booking.BookingStatus.CANCELLED)).thenReturn(1);
 
             PromoCodeUsage usage = PromoCodeUsage.builder()
                     .id(UUID.randomUUID())
@@ -383,6 +386,9 @@ class BookingPromoCodeTest {
             booking.setPromoCode(null);
             when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
             when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+            // Sprint 227（DEF-312）：取消先以條件式 UPDATE 搶占「目前狀態 → CANCELLED」
+            when(bookingRepository.updateStatusIfCurrent(BOOKING_ID, Booking.BookingStatus.CREATED,
+                    Booking.BookingStatus.CANCELLED)).thenReturn(1);
 
             bookingService.cancelBooking(BOOKING_ID, "buyer changed mind");
 

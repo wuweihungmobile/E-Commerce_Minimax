@@ -184,20 +184,27 @@ public class StripePaymentGateway implements PaymentGateway {
     @Override
     public PaymentGatewayRequestResponse.CheckoutSessionResult createCheckoutSession(
             PaymentGatewayRequestResponse.CheckoutSessionRequest request) {
-        log.info("Creating Stripe Checkout Session: orderId={}, amount={}, currency={}",
-                request.getOrderId(), request.getAmount(), request.getCurrency());
+        // 訂單與訂房共用同一個 hosted Checkout（Sprint 221）：metadata 帶回是哪一種、哪一筆
+        boolean forOrder = request.getOrderId() != null;
+        if (!forOrder && request.getBookingId() == null) {
+            throw new IllegalArgumentException("Checkout session requires an orderId or a bookingId");
+        }
+        String referenceKey = forOrder ? "order_id" : "booking_id";
+        String referenceId = (forOrder ? request.getOrderId() : request.getBookingId()).toString();
+        log.info("Creating Stripe Checkout Session: {}={}, amount={}, currency={}",
+                referenceKey, referenceId, request.getAmount(), request.getCurrency());
         try {
             String productName = request.getProductName() != null
-                    ? request.getProductName() : "Order " + request.getOrderId();
+                    ? request.getProductName() : (forOrder ? "Order " : "Booking ") + referenceId;
             SessionCreateParams params = SessionCreateParams.builder()
                     .setMode(SessionCreateParams.Mode.PAYMENT)
                     .setSuccessUrl(request.getSuccessUrl())
                     .setCancelUrl(request.getCancelUrl())
-                    .putMetadata("order_id", request.getOrderId().toString())
+                    .putMetadata(referenceKey, referenceId)
                     // Phase C（AI-2412）：pi 也帶 order_id metadata，使 payment_intent/charge 相關
                     // 事件（payment_failed / charge.refunded）可由 order_id 可靠對應（補 Phase B best-effort 缺口）
                     .setPaymentIntentData(SessionCreateParams.PaymentIntentData.builder()
-                            .putMetadata("order_id", request.getOrderId().toString())
+                            .putMetadata(referenceKey, referenceId)
                             .build())
                     .addLineItem(SessionCreateParams.LineItem.builder()
                             .setQuantity(1L)
@@ -215,7 +222,7 @@ public class StripePaymentGateway implements PaymentGateway {
             RequestOptions options = RequestOptions.builder()
                     .setApiKey(stripeApiKey)
                     .setIdempotencyKey(request.getIdempotencyKey() != null
-                            ? request.getIdempotencyKey() : request.getOrderId().toString())
+                            ? request.getIdempotencyKey() : referenceId)
                     .build();
 
             Session session = Session.create(params, options);
@@ -228,12 +235,12 @@ public class StripePaymentGateway implements PaymentGateway {
                     .paymentStatus(session.getPaymentStatus())
                     .build();
         } catch (CardException e) {
-            log.error("[E-6006] Stripe checkout card declined: orderId={}, message={}",
-                    request.getOrderId(), e.getMessage());
+            log.error("[E-6006] Stripe checkout card declined: {}={}, message={}",
+                    referenceKey, referenceId, e.getMessage());
             throw new BusinessException(ErrorCode.E_6006, e.getMessage());
         } catch (StripeException e) {
-            log.error("[E-6007] Stripe checkout provider error: orderId={}, message={}",
-                    request.getOrderId(), e.getMessage());
+            log.error("[E-6007] Stripe checkout provider error: {}={}, message={}",
+                    referenceKey, referenceId, e.getMessage());
             throw new BusinessException(ErrorCode.E_6007, e.getMessage());
         }
     }

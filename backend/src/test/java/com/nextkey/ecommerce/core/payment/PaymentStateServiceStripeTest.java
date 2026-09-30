@@ -118,9 +118,31 @@ class PaymentStateServiceStripeTest {
     }
 
     @Test
-    @DisplayName("🔴 DEF-136: initiate 併發搶佔（idempotency_key 唯一索引衝突）-> 不重複寫入，"
-            + "仍回傳 Stripe 冪等回傳的 session（與贏家相同）")
-    void initiate_concurrentClaim_stillReturnsSameSessionWithoutDuplicateInsert() {
+    @DisplayName("🔴 DEF-136／DEF-310: initiate 再次發起（付款紀錄已存在）-> 不再寫第二列，"
+            + "仍回傳 Stripe 冪等回傳的 session（與第一次相同）")
+    void initiate_secondStart_reusesExistingPaymentRowWithoutDuplicateInsert() {
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(createdOrder()));
+        when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
+        when(paymentRepository.existsByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS)).thenReturn(false);
+        when(paymentGatewayFactory.createCheckoutSession(eq("STRIPE"), any()))
+                .thenReturn(PaymentGatewayRequestResponse.CheckoutSessionResult.builder()
+                        .sessionId("cs_test_1").sessionUrl("https://checkout.stripe.com/c/pay/cs_test_1")
+                        .paymentIntentId("pi_1").status("open").paymentStatus("unpaid").build());
+        when(paymentRepository.findByIdempotencyKey("ORDER-CHECKOUT-" + ORDER_ID))
+                .thenReturn(Optional.of(Payment.builder().orderId(ORDER_ID).build()));
+
+        CheckoutSessionResponse resp = service.initiateStripeCheckout(ORDER_ID);
+
+        // Stripe 自己的 idempotency key 已保證重複的請求拿回同一個 session，本地不再寫第二列
+        assertThat(resp.getSessionUrl()).isEqualTo("https://checkout.stripe.com/c/pay/cs_test_1");
+        assertThat(resp.getSessionId()).isEqualTo("cs_test_1");
+        verify(paymentRepository, never()).saveAndFlush(any(Payment.class));
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-310: initiate 查與寫之間的極小競態（唯一索引擋下第二列）-> E_6005（可重試），"
+            + "不可只記 log 就照常回傳（違反約束的例外已把交易標成 rollback-only，提交時會變 500）")
+    void initiate_raceBetweenLookupAndInsert_isReportedAsRetryable() {
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(createdOrder()));
         when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
         when(paymentRepository.existsByOrderIdAndStatus(ORDER_ID, Payment.PaymentStatus.SUCCESS)).thenReturn(false);
@@ -131,11 +153,10 @@ class PaymentStateServiceStripeTest {
         when(paymentRepository.saveAndFlush(any(Payment.class)))
                 .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key"));
 
-        CheckoutSessionResponse resp = service.initiateStripeCheckout(ORDER_ID);
-
-        // Stripe 自己的 idempotency key 已保證兩邊拿回同一個 session，本地衝突不應影響回應內容
-        assertThat(resp.getSessionUrl()).isEqualTo("https://checkout.stripe.com/c/pay/cs_test_1");
-        assertThat(resp.getSessionId()).isEqualTo("cs_test_1");
+        assertThatThrownBy(() -> service.initiateStripeCheckout(ORDER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_6005);
     }
 
     @Test

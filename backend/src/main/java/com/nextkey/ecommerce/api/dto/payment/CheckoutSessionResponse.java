@@ -17,6 +17,8 @@ import lombok.NoArgsConstructor;
 @Builder
 public class CheckoutSessionResponse {
     private UUID orderId;
+    /** 訂房付款的結帳（Sprint 221）：與 {@link #orderId} 二擇一，另一個為 null。 */
+    private UUID bookingId;
     private String sessionId;
     private String sessionUrl;
 }

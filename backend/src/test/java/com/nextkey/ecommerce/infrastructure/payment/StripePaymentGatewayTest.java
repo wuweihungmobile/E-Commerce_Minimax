@@ -4,6 +4,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.containing;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.notContaining;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
@@ -433,5 +434,77 @@ class StripePaymentGatewayTest {
                     BusinessException be = (BusinessException) ex;
                     assertThat(be.getErrorCode()).isEqualTo(ErrorCode.E_6010);
                 });
+    }
+
+    @Test
+    @DisplayName("TC-S013: createCheckoutSession 訂房 — Stripe 收到的請求以 booking_id（而非 order_id）為 metadata，冪等鍵沿用呼叫端給的值（Sprint 221）")
+    void createCheckoutSession_forBooking_sendsBookingMetadata() {
+        UUID bookingId = UUID.randomUUID();
+        stubCheckoutSession("cs_test_booking");
+
+        PaymentGatewayRequestResponse.CheckoutSessionRequest request =
+                PaymentGatewayRequestResponse.CheckoutSessionRequest.builder()
+                        .bookingId(bookingId)
+                        .amount(new BigDecimal("3000.00"))
+                        .currency("TWD")
+                        .productName("Booking " + bookingId)
+                        .successUrl("http://localhost:3000/bookings/" + bookingId + "/payment/success")
+                        .cancelUrl("http://localhost:3000/bookings/" + bookingId + "/payment/cancel")
+                        .idempotencyKey("BOOKING-CHECKOUT-" + bookingId)
+                        .build();
+
+        PaymentGatewayRequestResponse.CheckoutSessionResult result = gateway.createCheckoutSession(request);
+
+        assertThat(result.getSessionId()).isEqualTo("cs_test_booking");
+        verify(postRequestedFor(urlEqualTo("/v1/checkout/sessions"))
+                .withHeader("Idempotency-Key", equalTo("BOOKING-CHECKOUT-" + bookingId))
+                .withRequestBody(containing("metadata[booking_id]=" + bookingId))
+                .withRequestBody(containing("payment_intent_data[metadata][booking_id]=" + bookingId))
+                .withRequestBody(containing("[unit_amount]=300000"))
+                .withRequestBody(notContaining("order_id")));
+    }
+
+    @Test
+    @DisplayName("TC-S014: createCheckoutSession 訂單 — 仍以 order_id 為 metadata、不帶 booking_id（訂房支援不可改變訂單既有請求）")
+    void createCheckoutSession_forOrder_stillSendsOrderMetadata() {
+        UUID orderId = UUID.randomUUID();
+        stubCheckoutSession("cs_test_order");
+
+        gateway.createCheckoutSession(PaymentGatewayRequestResponse.CheckoutSessionRequest.builder()
+                .orderId(orderId)
+                .amount(new BigDecimal("1500.00"))
+                .currency("TWD")
+                .successUrl("http://localhost:3000/orders/" + orderId + "/payment/success")
+                .cancelUrl("http://localhost:3000/orders/" + orderId + "/payment/cancel")
+                .idempotencyKey("ORDER-CHECKOUT-" + orderId)
+                .build());
+
+        verify(postRequestedFor(urlEqualTo("/v1/checkout/sessions"))
+                .withHeader("Idempotency-Key", equalTo("ORDER-CHECKOUT-" + orderId))
+                .withRequestBody(containing("metadata[order_id]=" + orderId))
+                .withRequestBody(containing("payment_intent_data[metadata][order_id]=" + orderId))
+                .withRequestBody(containing("Order+" + orderId))
+                .withRequestBody(notContaining("booking_id")));
+    }
+
+    @Test
+    @DisplayName("TC-S015: createCheckoutSession 沒有 orderId 也沒有 bookingId → 立即拒絕，不呼叫 Stripe")
+    void createCheckoutSession_withoutReference_isRejectedBeforeCallingStripe() {
+        assertThatThrownBy(() -> gateway.createCheckoutSession(
+                PaymentGatewayRequestResponse.CheckoutSessionRequest.builder()
+                        .amount(new BigDecimal("100.00")).currency("TWD").build()))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verify(0, postRequestedFor(urlEqualTo("/v1/checkout/sessions")));
+    }
+
+    private void stubCheckoutSession(final String sessionId) {
+        stubFor(post(urlEqualTo("/v1/checkout/sessions"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"id\": \"" + sessionId + "\", \"object\": \"checkout.session\", "
+                                + "\"url\": \"https://checkout.stripe.com/c/pay/" + sessionId + "\", "
+                                + "\"status\": \"open\", \"payment_status\": \"unpaid\"}")));
     }
 }

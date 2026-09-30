@@ -132,6 +132,8 @@ public class PaymentGatewayRequestResponse {
     @AllArgsConstructor
     public static class CheckoutSessionRequest {
         private UUID orderId;
+        /** 訂房付款（Sprint 221）：與 {@link #orderId} 二擇一；Stripe 端以 metadata 的 {@code booking_id} 帶回。 */
+        private UUID bookingId;
         private BigDecimal amount;
         private String currency;
         private String productName;   // Checkout line item 顯示名

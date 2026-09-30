@@ -6,6 +6,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -40,6 +43,8 @@ public class PaymentStateService {
     /** 真實金流 toggle（Sprint 50 AI-2410）：開啟→stripe 路徑，關閉（預設）→mock 路徑。 */
     private static final String STRIPE_PAYMENT_ENABLED = "STRIPE_PAYMENT_ENABLED";
     private static final String GATEWAY_STRIPE = "STRIPE";
+    /** 訂房沒有幣別欄位（{@code BookingService} 的回應同樣寫死 TWD）。 */
+    private static final String BOOKING_CURRENCY = "TWD";
     /** 退款金額允許的最大小數位數（幣別最小單位：分），見 {@link #resolveRefundAmount}。 */
     private static final int REFUND_AMOUNT_MAX_SCALE = 2;
 
@@ -54,6 +59,10 @@ public class PaymentStateService {
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
+
+    /** 只用於重新整理被條件式 UPDATE 改過的付款實體，見 {@link #confirmStripeBookingCheckout}。 */
+    @PersistenceContext
+    private EntityManager entityManager;
 
     public PaymentStateService(PaymentRepository paymentRepository, OrderRepository orderRepository,
             BookingRepository bookingRepository, FeatureToggleService featureToggleService,
@@ -203,6 +212,44 @@ public class PaymentStateService {
                 null, "FAILED", reason, TenantContext.getCurrentUser());
 
         return toOrderPaymentStateDto(order, payment);
+    }
+
+    /**
+     * 模擬訂房付款完成（Mock，Sprint 221，DEF-303 (1)）：訂房 CREATED → PAID，並留下一筆成功的 Mock 付款。
+     *
+     * <p>與 {@link #mockPaymentSuccess} 同一模式：先以條件式 UPDATE 搶占「CREATED → PAID」這個轉換，只有搶到的一方才建立
+     * 付款紀錄。前面的狀態與已付款檢查都是 check-then-act，兩個併發請求會通過同一份舊快照，若各自建立一筆 SUCCESS 付款，
+     * 同一筆訂房的營收就被重複計入。
+     */
+    @Transactional
+    public OrderPaymentStateDto mockBookingPaymentSuccess(UUID bookingId) {
+        Booking booking = loadOwnedBooking(bookingId);
+        requireMockPaymentAllowed();
+        requireBookingPayable(booking);
+        if (paymentRepository.existsByBookingIdAndStatus(bookingId, Payment.PaymentStatus.SUCCESS)) {
+            throw new BusinessException(ErrorCode.E_6003, "Payment already processed");
+        }
+        if (bookingRepository.updateStatusIfCurrent(bookingId, Booking.BookingStatus.CREATED,
+                Booking.BookingStatus.PAID) == 0) {
+            throw new BusinessException(ErrorCode.E_5011, "Booking cannot be paid in current status");
+        }
+        booking.setStatus(Booking.BookingStatus.PAID);
+
+        Payment payment = paymentRepository.save(Payment.builder()
+                .bookingId(bookingId)
+                .paymentMethod(Payment.PaymentMethod.MOCK)
+                .amount(booking.getTotalAmount())
+                .currency(BOOKING_CURRENCY)
+                .status(Payment.PaymentStatus.SUCCESS)
+                .transactionId(generateMockTransactionId())
+                .build());
+
+        log.info("Mock booking payment success: bookingId={}, paymentId={}", bookingId, payment.getId());
+        auditService.record("BOOKING_PAYMENT_MOCK_SUCCESS", "PAYMENT", payment.getId(), booking.getTenantId(),
+                Booking.BookingStatus.CREATED.name(), Booking.BookingStatus.PAID.name(), null,
+                TenantContext.getCurrentUser());
+
+        return toBookingPaymentStateDto(booking, payment);
     }
 
     /**
@@ -420,14 +467,18 @@ public class PaymentStateService {
                 .stripePaymentIntentId(result.getPaymentIntentId())
                 .idempotencyKey(idempotencyKey)
                 .build();
-        // 🔴 併發防護：Stripe 端已用相同 idempotencyKey 保證兩個併發請求拿回同一個 session（result 對
-        // 兩邊呼叫端相同），但本地 payments 表先前沒有唯一約束，會各自 INSERT 出重複列。現在
-        // idempotency_key 已有唯一索引（V79），這裡改用 saveAndFlush + 捕捉違反約束，第二個請求不再
-        // 重複寫入，直接沿用（與贏家相同的）session 資訊回應呼叫端。
-        try {
-            paymentRepository.saveAndFlush(payment);
-        } catch (DataIntegrityViolationException e) {
-            log.warn("Payment record already exists for idempotencyKey (concurrent request), orderId={}", orderId);
+        // 🔴 併發防護：Stripe 端已用相同 idempotencyKey 保證重複的請求拿回同一個 session（result 對每次呼叫相同），
+        // 本地 payments 表的 idempotency_key 有唯一索引（V79），所以已經有這一列就不再寫。
+        // Sprint 221（DEF-310）：原本是「寫入、捕捉 DataIntegrityViolationException、記 log 後照常回傳」，但違反約束的例外
+        // 發生在 repository 的交易代理內，會把外層交易標成 rollback-only——捕捉沒有用，買家在 Stripe 頁按返回再按一次
+        // 「前往付款」（正常操作，不是罕見競態）時，請求在提交時以 UnexpectedRollbackException（500）收場。
+        // 改為先查再寫；查與寫之間的極小競態由唯一索引兜底，輸家收到可重試的 E-6005。
+        if (paymentRepository.findByIdempotencyKey(idempotencyKey).isEmpty()) {
+            try {
+                paymentRepository.saveAndFlush(payment);
+            } catch (DataIntegrityViolationException e) {
+                throw new BusinessException(ErrorCode.E_6005, "Checkout for this order is already being created");
+            }
         }
 
         log.info("Stripe checkout initiated: orderId={}, sessionId={}", orderId, result.getSessionId());
@@ -473,6 +524,98 @@ public class PaymentStateService {
     }
 
     /**
+     * 發起訂房的 Stripe Checkout（Sprint 221，DEF-303 (1)）：與 {@link #initiateStripeCheckout} 同一模式——建 PROCESSING
+     * 付款紀錄＋建 Checkout Session，回傳前端重導 URL。需 STRIPE_PAYMENT_ENABLED 開啟。
+     *
+     * <p>同一筆訂房再次發起（買家在 Stripe 頁按了返回、重新付款）會以相同的冪等鍵拿回 Stripe 端同一個 session，這時不能
+     * 再寫一列：{@code payments.idempotency_key} 有唯一索引，重複寫入的例外發生在 repository 的交易代理內，會把外層交易
+     * 標成 rollback-only，即使在這裡捕捉，整個請求仍在提交時以 500 收場。所以先查再寫；查與寫之間的極小競態由唯一索引
+     * 兜底，輸家收到「處理中」的可重試錯誤（{@code E-6005}），資料不會壞。
+     */
+    @Transactional
+    public CheckoutSessionResponse initiateStripeBookingCheckout(UUID bookingId) {
+        Booking booking = loadOwnedBooking(bookingId);
+        if (!featureToggleService.isFeatureEnabled(STRIPE_PAYMENT_ENABLED)) {
+            throw new BusinessException(ErrorCode.E_6002, "Stripe payment not enabled");
+        }
+        requireBookingPayable(booking);
+        if (paymentRepository.existsByBookingIdAndStatus(bookingId, Payment.PaymentStatus.SUCCESS)) {
+            throw new BusinessException(ErrorCode.E_6003, "Payment already processed");
+        }
+
+        String idempotencyKey = "BOOKING-CHECKOUT-" + bookingId;
+        PaymentGatewayRequestResponse.CheckoutSessionResult result = paymentGatewayFactory.createCheckoutSession(
+                GATEWAY_STRIPE, PaymentGatewayRequestResponse.CheckoutSessionRequest.builder()
+                        .bookingId(bookingId)
+                        .amount(booking.getTotalAmount())
+                        .currency(BOOKING_CURRENCY)
+                        .productName("Booking " + bookingId)
+                        .successUrl(frontendBaseUrl + "/bookings/" + bookingId
+                                + "/payment/success?session_id={CHECKOUT_SESSION_ID}")
+                        .cancelUrl(frontendBaseUrl + "/bookings/" + bookingId + "/payment/cancel")
+                        .idempotencyKey(idempotencyKey)
+                        .build());
+
+        if (paymentRepository.findByIdempotencyKey(idempotencyKey).isEmpty()) {
+            try {
+                paymentRepository.saveAndFlush(Payment.builder()
+                        .bookingId(bookingId)
+                        .paymentMethod(Payment.PaymentMethod.STRIPE)
+                        .amount(booking.getTotalAmount())
+                        .currency(BOOKING_CURRENCY)
+                        .status(Payment.PaymentStatus.PROCESSING)
+                        .transactionId(result.getSessionId())
+                        .stripeSessionId(result.getSessionId())
+                        .stripePaymentIntentId(result.getPaymentIntentId())
+                        .idempotencyKey(idempotencyKey)
+                        .build());
+            } catch (DataIntegrityViolationException e) {
+                throw new BusinessException(ErrorCode.E_6005, "Checkout for this booking is already being created");
+            }
+        }
+
+        log.info("Stripe booking checkout initiated: bookingId={}, sessionId={}", bookingId, result.getSessionId());
+        return CheckoutSessionResponse.builder()
+                .bookingId(bookingId)
+                .sessionId(result.getSessionId())
+                .sessionUrl(result.getSessionUrl())
+                .build();
+    }
+
+    /**
+     * 回跳後確認訂房的 Stripe Checkout（Sprint 221，DEF-303 (1)）：以 sessionId retrieve 狀態，已付款則走與 webhook
+     * 相同的 {@link #markStripePaymentSucceeded}（付款 SUCCESS＋訂房 PAID，冪等）。
+     *
+     * <p>付款與訂房是用條件式 UPDATE 改的（不經過 persistence context），而這個方法在更新前已載入付款實體；open-in-view
+     * 又讓同一個 request 的多個交易共用同一個 persistence context，所以之後不論在交易內或提交後再讀，讀到的都是更新前的舊實體
+     * （狀態仍是 PROCESSING，訂房卻已是 PAID——同一份回應自相矛盾）。因此更新後重新整理付款實體，再組回應。
+     */
+    @Transactional
+    public OrderPaymentStateDto confirmStripeBookingCheckout(UUID bookingId, String sessionId) {
+        Booking booking = loadOwnedBooking(bookingId);
+        // 只認屬於這筆訂房的 session：否則可以拿別筆訂房（甚至別人）的 session 來「確認」這一筆
+        Payment payment = paymentRepository.findByTransactionId(sessionId)
+                .filter(p -> bookingId.equals(p.getBookingId()))
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_6000, "Payment not found"));
+        if (payment.getStatus() == Payment.PaymentStatus.SUCCESS) {
+            return toBookingPaymentStateDto(booking, payment); // 冪等：已成功（webhook 先到），不必再問 Stripe
+        }
+
+        PaymentGatewayRequestResponse.CheckoutSessionResult result =
+                paymentGatewayFactory.retrieveCheckoutSession(GATEWAY_STRIPE, sessionId);
+        if ("paid".equalsIgnoreCase(result.getPaymentStatus())) {
+            markStripePaymentSucceeded(sessionId, result.getPaymentIntentId());
+            entityManager.refresh(payment);
+            log.info("Stripe booking checkout confirmed PAID (return): bookingId={}, sessionId={}", booking.getId(),
+                    sessionId);
+        } else {
+            log.info("Stripe booking checkout not yet paid (return): bookingId={}, sessionId={}, paymentStatus={}",
+                    booking.getId(), sessionId, result.getPaymentStatus());
+        }
+        return toBookingPaymentStateDto(booking, payment);
+    }
+
+    /**
      * 標記 Stripe 付款成功（回跳 retrieve 與 webhook 共用核心，AI-2411）：
      * 依 sessionId 找 Payment → SUCCESS + 回填 payment_intent + Order PAID。冪等：已 SUCCESS → no-op 回 false。
      */
@@ -507,11 +650,38 @@ public class PaymentStateService {
                 recordOrderStateLog(order, previousStatus, Order.OrderStatus.PAID.name(),
                         null, "Stripe payment webhook success, session=" + sessionId);
             }
+        } else if (payment.getBookingId() != null) {
+            successTenantId = markBookingPaidByStripe(payment, sessionId);
         }
         log.info("Stripe payment marked SUCCESS: session={}, orderId={}", sessionId, orderId);
         auditService.record("STRIPE_PAYMENT_SUCCEEDED_WEBHOOK", "PAYMENT", payment.getId(), successTenantId,
                 null, "SUCCESS", "session=" + sessionId);
         return true;
+    }
+
+    /**
+     * Stripe 付款成功後把訂房推進到 PAID（Sprint 221）。用條件式 UPDATE 搶占 CREATED → PAID；搶不到代表訂房已不是待付款
+     * （例如買家在 Stripe 頁面停留時先把它取消了，日曆已釋放）——付款已經成功、錢已收，但訂房不成立。這裡不把它拉回已付款
+     * （日曆可能已被別人訂走），也不自動退款（要不要退、怎麼退是產品決定，見 DEF-308），只留下可查的稽核紀錄，
+     * 不再靜默。回傳訂房所屬租戶供呼叫端寫稽核。
+     */
+    private UUID markBookingPaidByStripe(Payment payment, String sessionId) {
+        Booking booking = bookingRepository.findById(payment.getBookingId()).orElse(null);
+        if (booking == null) {
+            log.warn("markStripePaymentSucceeded: booking not found: bookingId={}, session={}",
+                    payment.getBookingId(), sessionId);
+            return null;
+        }
+        if (bookingRepository.updateStatusIfCurrent(booking.getId(), Booking.BookingStatus.CREATED,
+                Booking.BookingStatus.PAID) == 0) {
+            log.error("Stripe payment succeeded but the booking is not payable (money collected, booking not paid): "
+                    + "bookingId={}, bookingStatus={}, session={}", booking.getId(), booking.getStatus(), sessionId);
+            auditService.record("STRIPE_PAYMENT_BOOKING_NOT_PAYABLE", "PAYMENT", payment.getId(), booking.getTenantId(),
+                    booking.getStatus().name(), "SUCCESS", "session=" + sessionId + ",bookingId=" + booking.getId());
+        } else {
+            booking.setStatus(Booking.BookingStatus.PAID);
+        }
+        return booking.getTenantId();
     }
 
     /**
@@ -535,11 +705,20 @@ public class PaymentStateService {
         payment.setStatus(Payment.PaymentStatus.FAILED);
         paymentRepository.save(payment);
         log.info("Stripe payment marked FAILED: paymentIntent={}, orderId={}", paymentIntentId, payment.getOrderId());
-        UUID failedTenantId = payment.getOrderId() != null
-                ? orderRepository.findById(payment.getOrderId()).map(Order::getTenantId).orElse(null) : null;
-        auditService.record("STRIPE_PAYMENT_FAILED_WEBHOOK", "PAYMENT", payment.getId(), failedTenantId,
+        auditService.record("STRIPE_PAYMENT_FAILED_WEBHOOK", "PAYMENT", payment.getId(), tenantOfPayment(payment),
                 null, "FAILED", "paymentIntent=" + paymentIntentId);
         return true;
+    }
+
+    /** 付款所屬訂單或訂房的租戶（供稽核紀錄使用）；兩者都沒有（或已不存在）時為 null。 */
+    private UUID tenantOfPayment(Payment payment) {
+        if (payment.getOrderId() != null) {
+            return orderRepository.findById(payment.getOrderId()).map(Order::getTenantId).orElse(null);
+        }
+        if (payment.getBookingId() != null) {
+            return bookingRepository.findById(payment.getBookingId()).map(Booking::getTenantId).orElse(null);
+        }
+        return null;
     }
 
     /**
@@ -596,6 +775,26 @@ public class PaymentStateService {
         }
     }
 
+    /** 載入訂房並確認呼叫者是本人（或 admin）——比 {@link #getBookingPaymentState} 多一個共用入口，供付款動作使用。 */
+    private Booking loadOwnedBooking(UUID bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4006, "Booking not found"));
+        checkBookingOwnership(booking);
+        return booking;
+    }
+
+    /** 只有待付款（CREATED）的訂房可以付款——已付款、已取消（日曆已釋放）的都不行。 */
+    private void requireBookingPayable(Booking booking) {
+        if (booking.getStatus() != Booking.BookingStatus.CREATED) {
+            throw new BusinessException(ErrorCode.E_5011, "Booking cannot be paid in current status");
+        }
+    }
+
+    /** 目前的付款提供者（mock / stripe）；前端據此決定顯示模擬付款按鈕或重導 Stripe。 */
+    private String paymentProvider() {
+        return featureToggleService.isFeatureEnabled(STRIPE_PAYMENT_ENABLED) ? "stripe" : "mock";
+    }
+
     private String generateMockTransactionId() {
         return "MOCK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
@@ -611,7 +810,7 @@ public class PaymentStateService {
                 .canPay(OrderStateMachine.canPay(orderStatus))
                 .canCancel(OrderStateMachine.canCancel(orderStatus))
                 .canRefund(OrderStateMachine.canRefund(orderStatus))
-                .paymentProvider(featureToggleService.isFeatureEnabled(STRIPE_PAYMENT_ENABLED) ? "stripe" : "mock")
+                .paymentProvider(paymentProvider())
                 .updatedAt(order.getUpdatedAt());
 
         if (payment != null) {
@@ -637,13 +836,15 @@ public class PaymentStateService {
                 .canPay(Booking.BookingStatus.CREATED.name().equals(bookingStatus))
                 .canCancel(bookingStatus.equals("CREATED") || bookingStatus.equals("PAID"))
                 .canRefund(bookingStatus.equals("PAID"))
+                .paymentProvider(paymentProvider())
                 .updatedAt(booking.getUpdatedAt());
 
         if (payment != null) {
             builder.paymentId(payment.getId())
                    .paymentStatus(payment.getStatus().name())
                    .transactionId(payment.getTransactionId())
-                   .paidAt(payment.getPaidAt());
+                   .paidAt(payment.getPaidAt())
+                   .refundedAmount(payment.getRefundedAmount());
         }
 
         return builder.build();

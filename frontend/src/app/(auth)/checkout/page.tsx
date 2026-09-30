@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import BookingPaymentCard from '@/components/bookings/BookingPaymentCard'
 import bookingService, { type CreateBookingRequest, bookingErrorMessage } from '@/services/booking'
 
 interface BookingItem {
@@ -41,6 +42,8 @@ export default function CheckoutPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [bookingTotal, setBookingTotal] = useState<number>(0)
+  const [bookingCurrency, setBookingCurrency] = useState<string>('TWD')
   const [bookingId, setBookingId] = useState<string | null>(null)
   // Sprint 124（DEF-047／PRD US-010）：訂房結帳套用促銷碼。訂房沒有像 PRODUCT 購物車那樣
   // 預先驗證/套用的兩段式流程，改為送出預訂時一併帶入，由後端一次驗證與套用。
@@ -140,6 +143,8 @@ export default function CheckoutPage() {
 
       const booking = await bookingService.createBooking(request, idempotencyKey)
       setBookingId(booking.id)
+      setBookingTotal(booking.totalAmount)
+      setBookingCurrency(booking.currency)
       setAppliedPromoCode(booking.promoCode)
       setDiscountAmount(booking.discountAmount || 0)
       // 🔴 只移除「這次真的訂掉」的那一個 ROOM 項目，不可清空整車（DEF-043）。
@@ -166,13 +171,16 @@ export default function CheckoutPage() {
           <CardContent className="flex flex-col items-center justify-center py-12">
             <div className="text-6xl mb-4">✓</div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">預訂成功！</h2>
-            <p className="text-gray-600 mb-4">您的預訂已完成</p>
+            <p className="text-gray-600 mb-4">您的預訂已建立，請於下方完成付款</p>
             <p className="text-sm text-gray-500 mb-2">預訂編號: {bookingId}</p>
             {appliedPromoCode && (
               <p className="text-sm text-green-600 mb-4">
                 已套用優惠券 {appliedPromoCode}，折扣 {formatPrice(discountAmount)}
               </p>
             )}
+            <div className="w-full mb-6">
+              <BookingPaymentCard bookingId={bookingId} totalAmount={bookingTotal} currency={bookingCurrency} />
+            </div>
             <div className="flex gap-4">
               <Link href="/bookings">
                 <Button variant="outline">查看我的預訂</Button>

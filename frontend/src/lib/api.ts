@@ -125,6 +125,11 @@ export const API_ENDPOINTS = {
     detail: (id: string) => '/v2/bookings/' + id,
     create: '/v2/bookings',
     cancel: (id: string) => '/v2/bookings/' + id + '/cancel',
+    // 訂房付款（BookingPaymentController，Sprint 221）；付款狀態沿用訂單控制器下的既有路徑
+    payment: (id: string) => '/v2/orders/bookings/' + id + '/payment',
+    pay: (id: string) => '/v2/bookings/' + id + '/pay',
+    payCheckout: (id: string) => '/v2/bookings/' + id + '/pay/checkout',
+    payCheckoutReturn: (id: string) => '/v2/bookings/' + id + '/pay/checkout/return',
     availability: '/v2/bookings/availability',
     // 整月日曆（AI-2202b）：GET /v2/bookings/calendar?roomListingId=&startDate=&endDate=（query 由 service 組）
     calendar: '/v2/bookings/calendar',

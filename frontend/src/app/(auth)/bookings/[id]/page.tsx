@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import BookingPaymentCard from '@/components/bookings/BookingPaymentCard'
 import ReviewService from '@/services/review'
 import ReviewForm, { type ReviewFormValue } from '@/components/reviews/ReviewForm'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
@@ -181,6 +182,14 @@ export default function BookingDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Payment（Sprint 222，DEF-303 (1)）：待付款顯示付款區塊，已付款顯示付款資訊，已取消且無付款紀錄則不顯示 */}
+            <BookingPaymentCard
+              bookingId={booking.id}
+              totalAmount={booking.totalAmount}
+              currency={booking.currency}
+              onPaid={() => load()}
+            />
 
             {/* Stay info */}
             <Card>

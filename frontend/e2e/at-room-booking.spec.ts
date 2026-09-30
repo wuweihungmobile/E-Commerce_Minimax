@@ -173,6 +173,9 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
         await fulfillJson(route, 200, { success: true, data: cartWithRoom() });
       }
     });
+    await page.route('**/v2/orders/bookings/*/payment', async (route) => {
+      await fulfillJson(route, 200, { success: true, data: { orderId: 'bk-1', orderStatus: 'CREATED', canPay: true, canCancel: true, canRefund: false, paymentProvider: 'mock', nextValidStates: 'PAID,CANCELLED' } });
+    });
     await page.route('**/v2/bookings', async (route) => {
       await fulfillJson(route, 201, {
         success: true,
@@ -235,6 +238,9 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
         return;
       }
       await fulfillJson(route, 200, { success: true, data: cartWithRoomAndProduct() });
+    });
+    await page.route('**/v2/orders/bookings/*/payment', async (route) => {
+      await fulfillJson(route, 200, { success: true, data: { orderId: 'bk-2', orderStatus: 'CREATED', canPay: true, canCancel: true, canRefund: false, paymentProvider: 'mock', nextValidStates: 'PAID,CANCELLED' } });
     });
     await page.route('**/v2/bookings', async (route) => {
       await fulfillJson(route, 201, {

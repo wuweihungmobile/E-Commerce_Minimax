@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
 import OrderPaymentService from '@/services/payment'
+import BookingPaymentService from '@/services/bookingPayment'
 import AddressService, { type Address } from '@/services/address'
 import checkoutService, { checkoutErrorMessage, type MixedCheckoutRequest } from '@/services/checkout'
 import { Button } from '@/components/ui/button'
@@ -159,6 +160,14 @@ export default function MixedCheckoutPage() {
         return
       }
       await OrderPaymentService.pay(result.order.id)
+      // 訂房那一半也要付款（Sprint 222，DEF-303 (1)）；失敗時導向訂房詳情，可在那裡重新付款。
+      // Stripe 模式仍是分開付款：上面已導向訂單的 Stripe 頁，訂房可到「我的預訂」付款。
+      try {
+        await BookingPaymentService.pay(result.booking.id)
+      } catch {
+        router.push(`/bookings/${result.booking.id}`)
+        return
+      }
       router.push(`/orders/${result.order.id}`)
     } catch (err: unknown) {
       const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code

@@ -6,8 +6,9 @@ server:
 spring:
   application:
     name: nextkey-ecommerce
-  main:
-    allow-bean-definition-overriding: true
+  # 刻意不設 spring.main.allow-bean-definition-overriding（預設 false，DEF-313）：
+  # 曾為了讓「redisTemplate 重複」的啟動錯誤消失而開成 true，兩個同名 bean 因此靜默互相覆蓋、誰贏取決於註冊順序，
+  # 打包成 JAR 後贏的是沒有 JavaTimeModule 的那個，購物車與訂房都回 500。同名 bean 應該在啟動時就失敗。
   cache:
     redis:
       time-to-live: 300000  # 5 minutes (milliseconds)

@@ -197,7 +197,7 @@ export function StorefrontHeader({
           >
             <ShoppingCart className="w-6 h-6 text-rs-ink" aria-hidden />
             {cartCount > 0 && (
-              <Badge variant="count" className="absolute -top-0.5 -right-1.5">
+              <Badge variant="count" className="absolute -top-0.5 -right-1.5" data-testid="header-cart-count">
                 {cartCount}
               </Badge>
             )}

@@ -11,6 +11,7 @@
 
 | Sprint | Release Tag | PR 號碼 | 合併日期 | 主要功能 | 狀態 |
 |--------|-------------|---------|----------|----------|------|
+| Sprint 223 | v2030.04.80-01 | - | 2026-09-30 | **訂房付款前端首次對真實後端走訪：抓到打包版後端購物車「加入商品」與帶冪等鍵的訂房／合併結帳都回 500（`DEF-313` 新登記並結案）；新登記 `DEF-314`（前端相依套件 critical／high 漏洞，排入 Sprint 224）、`DEF-315`（同一秒簽發的 Refresh Token 相同，低風險）**——使用者貼上 Sprint 217～222 總結並說「請繼續完成任務！」（推論：補上總結自己承認的驗證缺口；`DEF-311`／`312`／`308`／`303` (5) 屬產品決策，未動）。全套 `validate-e2e` 第一次跑 85 通過／4 略過／1 失敗（`E2E-M11-009` 逾時，非 Sprint 222 回歸：單獨跑 22～24 秒、全套 2 個 worker 並行才超過 30 秒，改給 60 秒）；訂房付款主流程對真實後端＋真實瀏覽器全部正確，但 `RedisConfig` 與 `RedisStreamConfig` 各宣告一個同名 `redisTemplate`，`allow-bean-definition-overriding` 讓它們靜默互相覆蓋，JAR 裡沒有 `JavaTimeModule` 的那個贏 → `Instant`／`LocalDate` 存不進 Redis。刪除重複 bean、拿掉覆蓋開關；`RedisTemplateBeanWiringTest`＋`BeanNameUniquenessTest` 紅燈先行；新增永久真實後端 E2E `at-booking-payment-real.spec.ts`（6 案例：訂房、冪等重放、購物車、商品結帳、合併結帳、越權）；突變驗證兩處轉紅。同輪修結帳頁沒通知 Header 更新購物車徽章。後端 `mvn clean verify` 單元 1877／整合 641／0 失敗／checkstyle 0／PMD 通過；全套 `validate-e2e` 96 個測試 92 通過／4 略過／0 失敗。詳見 [SPRINT_223_PLAN.md](SPRINT_223_PLAN.md) | ⏳ 待 push（commit 後回填） |
 | Sprint 222 | v2030.04.79-01 | - | 2026-09-30 | **訂房付款前端（`DEF-303` (1) 完成）**——共用 `BookingPaymentCard`（依 `paymentProvider` 顯示模擬付款或重導 Stripe）用於訂房詳情與結帳完成畫面；新增 Stripe 回跳成功/取消頁；合併結帳 Mock 模式兩邊都付款。新 E2E 10 案例＋既有 2 案例補 mock，兩個 spec 22 案例全過；突變驗證轉紅；tsc/eslint 乾淨。**限制**：合併結帳 Stripe 模式仍分兩次付款；全程 mock，未跑 `make validate-e2e`。詳見 [SPRINT_222_PLAN.md](SPRINT_222_PLAN.md) | ✅ 已 push（2026-09-30，`2ad429e..7770f31 main -> main`；push 前輕量守門通過，✅ 雲端 CI 全綠 run 36652573885） |
 | Sprint 221 | v2030.04.78-01 | - | 2026-09-30 | **訂房付款後端（`DEF-303` (1)）＋訂單「按返回再付款」會 500（`DEF-310` 新登記並結案）；新登記 `DEF-311`/`DEF-312` 待決定**——使用者回覆 DEF-303「前端訂房流程完全沒有付款步驟。==> 以下請處理，符合邏輯」。訂房原本付不了款（舊版 `POST /v2/payments` 的 `orderId` 必填）。新增 `BookingPaymentController`（Mock 付款、Stripe 發起、回跳確認；付款動作放行 `booking:create` 或 `booking:update`，因買家沒有 update）、Stripe metadata 支援 `booking_id`、webhook 訂房分支、`BookingRepository.updateStatusIfCurrent`。**實測發現**：訂單 Stripe 第二次發起結帳在真實資料庫拋 `UnexpectedRollbackException`（捕捉唯一索引例外無效，交易已 rollback-only），改先查再寫；open-in-view＋條件式 UPDATE 讀到舊實體，改 `EntityManager.refresh`。**測試**：單元 +25、整合 +22（真實 PostgreSQL＋HTTP 層生產權限）、五個突變驗證皆轉紅。全量 `mvn -o clean verify`：單元 1872/整合 641/0 失敗/checkstyle 0/PMD 通過。**未做**：訂房取消退款（DEF-312）、訂房逾時（DEF-311）等使用者決定；前端 Sprint 222。詳見 [SPRINT_221_PLAN.md](SPRINT_221_PLAN.md) | ✅ 已 push（2026-09-30，`1aa5fe9..2ad429e main -> main`；push 前輕量守門通過；雲端 CI 見下一列回填） |
 | Sprint 220 | v2030.04.77-01 | - | 2026-09-30 | **同一張訂單有多筆付款紀錄時，付款狀態端點與週結算都會拋例外（`DEF-309` 新登記並結案）**——Sprint 219 啟用排程後規劃訂房付款時，讀到 `PaymentRepository.findByOrderId` 回傳單一 `Optional`，而 `payments.order_id` 沒有唯一約束。Mock 模式先「模擬付款失敗」（訂單詳情頁按鈕）再付款成功會留下兩列，`findByOrderId` 拋 `IncorrectResultSizeDataAccessException`：該訂單的付款狀態端點永遠出錯；`SettlementGenerator.buildRefundedAmountMap` 對每張已完成訂單查退款，租戶只要有一張這樣的訂單，週結算對該租戶整個失敗（catch 後繼續下一租戶，每週都產不出結算單）。**修復**：移除 `findByOrderId`／`findByBookingId`，改 List 查詢＋`findEffectiveBy…`，挑選規則 `Payment.pickEffective`（已有金流結果 → PROCESSING → PENDING → FAILED，同順位取最新；不是單純取最新一筆）。**測試**：`MultiplePaymentRowsIntegrationTest`（新，2 案例，真實 PostgreSQL，含結算），修正前紅燈；`PaymentPickEffectiveTest`（新，6）；兩種突變皆被抓到。全量 `mvn -o clean verify`：單元 1847（+6）／整合 619（+2）／0 失敗／checkstyle 0／PMD 通過。詳見 [SPRINT_220_PLAN.md](SPRINT_220_PLAN.md) | ✅ 已 push（2026-09-30，`479798d..1aa5fe9 main -> main`；push 前輕量守門通過，✅ 雲端 CI 全綠 run 36603855683，Backend Unit/Integration/Frontend 三個 job 皆 success，8m50s） |
@@ -215,12 +216,12 @@
 
 | 項目 | 數值 |
 |------|------|
-| 建立 Release Tag 次數 | 193 (Sprint 10~222 中已建 row 者，逐列計數；Sprint 8-9 未正式 Release）。⚠️ **既有落差揭露**：本欄為**文件記帳**（有 row 即計一次），與實際 git tag 不符——`git tag` 實際只有 14 個、最新為 `v2026.08.01-01`，本表 `v2030.xx` 系列編號從未真正建立為 git tag。此落差非本輪造成，僅記錄不擅自改動計數慣例 |
+| 建立 Release Tag 次數 | 194 (Sprint 10~223 中已建 row 者，逐列計數；Sprint 8-9 未正式 Release）。⚠️ **既有落差揭露**：本欄為**文件記帳**（有 row 即計一次），與實際 git tag 不符——`git tag` 實際只有 14 個、最新為 `v2026.08.01-01`，本表 `v2030.xx` 系列編號從未真正建立為 git tag。此落差非本輪造成，僅記錄不擅自改動計數慣例 |
 | 已 push（已 Release） | 193 (Sprint 199、200、201、202、203～222 push 後雲端 CI 全綠，最新 run 36652573885) |
-| 待 push（Tag 已建、尚未 push） | 0 |
+| 待 push（Tag 已建、尚未 push） | 1 (Sprint 223) |
 | 跳過 Release 次數 | 2 (Sprint 8-9) |
-| 最近一次 Release Tag | v2030.04.77-01 (Sprint 220) |
-| 最近一次已 push Release | v2030.04.76-01 (Sprint 219，2026-09-30，commit `479798d`，雲端 CI 已確認全綠，run 36599391368) |
+| 最近一次 Release Tag | v2030.04.80-01 (Sprint 223) |
+| 最近一次已 push Release | v2030.04.79-01 (Sprint 222，2026-09-30，commit `7770f31`，雲端 CI 已確認全綠，run 36652573885；後續 docs 回填 commit `35f8caf` 亦全綠，run 36653249008)。⚠️ 本欄與「最近一次 Release Tag」自 Sprint 220 起沒有隨 row 更新（斷更，Sprint 223 補正） |
 | 最近一次跳過 | Sprint 8-9 |
 | 連續 Release Tag 開始 | Sprint 10（⚠️ **連續性已中斷**：Sprint 68/69/70/74/75/76/78/80~92 共 20 個 Sprint 未建 row，該期間 tracker 未同步維護，非未交付） |
 

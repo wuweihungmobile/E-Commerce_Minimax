@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import BookingPaymentCard from '@/components/bookings/BookingPaymentCard'
 import bookingService, { type CreateBookingRequest, bookingErrorMessage } from '@/services/booking'
+import { notifyCartChanged } from '@/services/cartEvents'
 
 interface BookingItem {
   cartItemKey: string
@@ -153,6 +154,8 @@ export default function CheckoutPage() {
       // 比照 PRODUCT 側既有作法（OrderService.createOrderFromCart 只 removeItem
       // 已處理項目，AI-2422）與 cart/page.tsx 的移除慣例。
       await apiClient.delete(API_ENDPOINTS.cart.remove(roomItem.cartItemKey))
+      // Header 不隨導覽重新渲染，要主動通知，否則右上角購物車徽章停在移除前的數字（Sprint 223 真實走訪時發現）
+      notifyCartChanged()
     } catch (err: unknown) {
       console.error('Booking failed:', err)
       // 後端 ErrorCode wire code 為連字號（如 E-4001 日期衝突）；統一以 bookingErrorMessage 對應可讀訊息

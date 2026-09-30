@@ -256,6 +256,9 @@ test.describe('E2E-M11-008: 前往結帳頁面', () => {
  */
 test.describe('E2E-M11-009: 完整結帳流程', () => {
   test('填寫旅客資料並提交預訂', async ({ page }) => {
+    // 購物車是空的，沒有 /v2/bookings 請求可等，下方 waitForResponse 一定空等滿 15 秒；加上註冊登入約 8 秒，
+    // 單獨跑就要 22~24 秒，全套 2 個 worker 並行時超過預設的 30 秒（2026-09-30 validate-e2e 實測逾時失敗）。
+    test.setTimeout(60_000);
     await registerAndLogin(page);
 
     // 前往結帳頁面
@@ -437,6 +440,8 @@ test.describe('E2E-M11-013: Stripe Checkout 回跳成功頁（AI-2410）', () =>
  */
 test.describe('E2E-M11-011: 預訂成功後驗證跳轉', () => {
   test('預訂成功後應該看到預訂編號', async ({ page }) => {
+    // 與 E2E-M11-009 同樣的空等 15 秒（空購物車沒有 /v2/bookings 請求），同樣貼著預設 30 秒上限。
+    test.setTimeout(60_000);
     await registerAndLogin(page);
 
     // 嘗試完成一次預訂

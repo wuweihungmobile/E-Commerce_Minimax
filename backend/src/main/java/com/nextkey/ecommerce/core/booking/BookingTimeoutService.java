@@ -10,6 +10,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
@@ -40,6 +41,7 @@ public class BookingTimeoutService {
 
     private final BookingRepository bookingRepository;
     private final BookingService bookingService;
+    private final BuyerNotificationService buyerNotificationService;
 
     /**
      * Stripe Checkout 工作階段的有效時間（小時）。在這段時間內開始過結帳的訂房不取消：工作階段還開著，買家仍可能
@@ -91,12 +93,18 @@ public class BookingTimeoutService {
     }
 
     private boolean cancelOne(final UUID bookingId, final Instant now, final Instant checkoutCutoff) {
+        final boolean cancelled;
         try {
-            return bookingService.cancelExpiredUnpaidBooking(bookingId, now, checkoutCutoff);
+            cancelled = bookingService.cancelExpiredUnpaidBooking(bookingId, now, checkoutCutoff);
         } catch (RuntimeException e) {
             log.error("Failed to cancel expired unpaid booking, will retry next run: bookingId={}, error={}",
                     bookingId, e.getMessage(), e);
             return false;
         }
+        if (cancelled) {
+            // 取消的交易已提交；只有真的取消了這筆才通知（PRD US-014）。通知永不拋例外，也不影響取消結果
+            buyerNotificationService.notifyBookingPaymentTimeout(bookingId);
+        }
+        return cancelled;
     }
 }

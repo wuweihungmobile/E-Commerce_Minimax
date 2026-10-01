@@ -140,6 +140,15 @@ class BookingTimeoutIntegrationTest {
         assertThat(cancelled.get("cancelled_by")).isEqualTo("SYSTEM");
         assertThat(cancelled.get("cancelled_at")).isNotNull();
         assertThat(cancelled.get("refund_status")).isEqualTo("NONE");
+
+        // Sprint 229（PRD US-014）：逾時取消後買家收到站內通知；data 帶 listingId，前端用它提供「重新預訂」連結
+        List<Map<String, Object>> notices = notificationsOfBuyer();
+        assertThat(notices).as("取消後通知買家一次").hasSize(1);
+        assertThat(notices.get(0).get("notification_type")).isEqualTo("ORDER_CANCELLED");
+        assertThat(notices.get(0).get("title")).isEqualTo("訂房因逾期未付款已取消");
+        assertThat((String) notices.get(0).get("content")).contains("Booking Timeout Room", "超過付款期限", "重新預訂");
+        assertThat((String) notices.get(0).get("data")).contains(bookingId.toString(), roomListingId.toString(),
+                "PAYMENT_TIMEOUT");
     }
 
     @Test
@@ -153,6 +162,7 @@ class BookingTimeoutIntegrationTest {
 
         assertThat(bookingStatus(bookingId)).isEqualTo("CREATED");
         assertThat(bookedNights(bookingId)).isEqualTo(2);
+        assertThat(notificationsOfBuyer()).as("沒取消就不通知").isEmpty();
     }
 
     @Test
@@ -179,6 +189,7 @@ class BookingTimeoutIntegrationTest {
 
         assertThat(bookingStatus(bookingId)).isEqualTo("PAID");
         assertThat(bookedNights(bookingId)).isEqualTo(2);
+        assertThat(notificationsOfBuyer()).as("已付款的訂房沒有被取消，不能對買家說「逾期未付款已取消」").isEmpty();
     }
 
     @Test
@@ -285,6 +296,7 @@ class BookingTimeoutIntegrationTest {
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM audit_log WHERE entity_id = ? AND action = 'BOOKING_CANCELLED'",
                 Integer.class, bookingId)).isEqualTo(1);
+        assertThat(notificationsOfBuyer()).as("只有真的取消的那一輪通知，第二輪不再通知").hasSize(1);
     }
 
     // ── 固件與身分 ──────────────────────────────────────────
@@ -395,6 +407,12 @@ class BookingTimeoutIntegrationTest {
                 + "created_at, updated_at) VALUES (?, 4, 1, '15:00'::time, '11:00'::time, NOW(), NOW())",
                 roomListingId);
         nextNight = 5;
+    }
+
+    /** 這個測試的買家收到的通知（每個測試都建新買家，不會混到共用資料庫裡別人的通知）。 */
+    private List<Map<String, Object>> notificationsOfBuyer() {
+        return jdbcTemplate.queryForList("SELECT notification_type, title, content, data::text AS data "
+                + "FROM notifications WHERE user_id = ? ORDER BY created_at", buyer.getId());
     }
 
     private String bookingStatus(final UUID bookingId) {

@@ -122,6 +122,7 @@ class OrderAutoRefundIntegrationTest {
         buyerCancels(orderId);
         assertThat(orderStatus(orderId)).as("取消已付款訂單先進入 REFUNDING 等待退款").isEqualTo("REFUNDING");
         BigDecimal total = orderTotal(orderId);
+        assertThat(refundNoticesOfBuyer()).as("錢還沒退，不能先說退款完成").isEmpty();
 
         runSweeper(Instant.now());
 
@@ -138,6 +139,14 @@ class OrderAutoRefundIntegrationTest {
         assertThat(log.get("reason")).isEqualTo("Automatic refund: order cancelled");
         assertThat(auditCount("ORDER_PAYMENT_REFUNDED", paymentId(orderId))).isEqualTo(1);
         verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any(), any());
+
+        // Sprint 229：退款完成後買家收到站內通知（REFUND_COMPLETED 通過資料庫約束），金額是實際退的累計額
+        List<Map<String, Object>> notices = refundNoticesOfBuyer();
+        assertThat(notices).as("退款完成後通知買家一次").hasSize(1);
+        assertThat(notices.get(0).get("title")).isEqualTo("退款已完成");
+        assertThat((String) notices.get(0).get("content")).contains("#" + orderId.toString().substring(0, 8),
+                "已退回原付款方式");
+        assertThat((String) notices.get(0).get("data")).contains(orderId.toString(), "refundAmount");
     }
 
     @Test
@@ -152,6 +161,7 @@ class OrderAutoRefundIntegrationTest {
 
         assertThat(auditCount("ORDER_PAYMENT_REFUNDED", paymentId(orderId))).isEqualTo(1);
         assertThat(orderStateLogCount(orderId, "REFUNDED")).isEqualTo(1);
+        assertThat(refundNoticesOfBuyer()).as("只有真的退款的那一輪通知，第二輪不再通知").hasSize(1);
     }
 
     @Test
@@ -164,6 +174,7 @@ class OrderAutoRefundIntegrationTest {
 
         assertThat(orderStatus(orderId)).isEqualTo("PAID");
         assertThat(paymentStatus(orderId)).isEqualTo("SUCCESS");
+        assertThat(refundNoticesOfBuyer()).isEmpty();
     }
 
     // ── Stripe 付款 ───────────────────────────────────────────
@@ -233,6 +244,7 @@ class OrderAutoRefundIntegrationTest {
         assertThat(payment.get("stripe_refund_id")).isNull();
         assertThat(orderStateLogCount(orderId, "REFUNDED")).isZero();
         assertThat(auditCountForEntity("AUTO_REFUND_FAILED", orderId)).isEqualTo(1);
+        assertThat(refundNoticesOfBuyer()).as("退款失敗：錢沒退，不能通知買家已退款").isEmpty();
         verify(paymentGatewayFactory, times(1)).processRefund(eq("STRIPE"), eq(pi), any(), any(), any());
 
         runSweeper(t0.plus(Duration.ofMinutes(1)));
@@ -245,6 +257,7 @@ class OrderAutoRefundIntegrationTest {
         assertThat(orderStatus(orderId)).isEqualTo("REFUNDED");
         assertThat(jdbcTemplate.queryForObject("SELECT refunded_amount FROM payments WHERE order_id = ?",
                 BigDecimal.class, orderId)).isEqualByComparingTo(total);
+        assertThat(refundNoticesOfBuyer()).as("失敗重試後成功，只通知一次").hasSize(1);
     }
 
     @Test
@@ -265,6 +278,9 @@ class OrderAutoRefundIntegrationTest {
 
         assertThat(orderStatus(bad)).isEqualTo("REFUNDING");
         assertThat(orderStatus(good)).isEqualTo("REFUNDED");
+        List<Map<String, Object>> notices = refundNoticesOfBuyer();
+        assertThat(notices).as("只有退款成功的那張通知").hasSize(1);
+        assertThat((String) notices.get(0).get("data")).contains(good.toString()).doesNotContain(bad.toString());
     }
 
     @Test
@@ -293,6 +309,7 @@ class OrderAutoRefundIntegrationTest {
         assertThat(jdbcTemplate.queryForObject("SELECT refunded_amount FROM payments WHERE order_id = ?",
                 BigDecimal.class, orderId)).as("只退一次，不會多退").isEqualByComparingTo(total);
         assertThat(orderStateLogCount(orderId, "REFUNDED")).isEqualTo(1);
+        assertThat(refundNoticesOfBuyer()).as("多個處理者同時退，買家只收到一則退款完成通知").hasSize(1);
     }
 
     @Test
@@ -305,6 +322,7 @@ class OrderAutoRefundIntegrationTest {
 
         assertThat(orderStatus(orderId)).isEqualTo("REFUNDING");
         assertThat(auditCountForEntity("AUTO_REFUND_FAILED", orderId)).isEqualTo(1);
+        assertThat(refundNoticesOfBuyer()).as("沒有退成就不通知，不假裝退了").isEmpty();
     }
 
     // ── DEF-308：付款成功時訂單已取消 ─────────────────────────
@@ -345,6 +363,7 @@ class OrderAutoRefundIntegrationTest {
                 org.mockito.ArgumentMatchers.argThat(a -> a != null && a.compareTo(total) == 0), any(), any());
         assertThat(orderStatus(orderId)).isEqualTo("REFUNDED");
         assertThat(paymentStatus(orderId)).isEqualTo("REFUNDED");
+        assertThat(refundNoticesOfBuyer()).as("DEF-308：遲到的付款也會退回，買家收到退款完成通知").hasSize(1);
     }
 
     @Test
@@ -543,6 +562,12 @@ class OrderAutoRefundIntegrationTest {
                 INSERT INTO product_inventory (sku_id, total_qty, reserved_qty, low_stock_threshold, version, updated_at)
                 VALUES (?, ?, 0, 10, 0, NOW())
                 """, skuId, STOCK);
+    }
+
+    /** 這個測試的買家收到的「退款完成」通知（每個測試都建新買家，不會混到共用資料庫裡別人的通知）。 */
+    private List<Map<String, Object>> refundNoticesOfBuyer() {
+        return jdbcTemplate.queryForList("SELECT title, content, data::text AS data FROM notifications "
+                + "WHERE user_id = ? AND notification_type = 'REFUND_COMPLETED' ORDER BY created_at", buyer.getId());
     }
 
     private String orderStatus(final UUID orderId) {

@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.booking;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -17,12 +18,14 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
@@ -39,6 +42,7 @@ class BookingTimeoutServiceTest {
 
     @Mock private BookingRepository bookingRepository;
     @Mock private BookingService bookingService;
+    @Mock private BuyerNotificationService buyerNotificationService;
 
     @InjectMocks
     private BookingTimeoutService service;
@@ -138,5 +142,26 @@ class BookingTimeoutServiceTest {
 
         assertThat(cancelled).isEqualTo(20);
         verify(bookingRepository, times(20)).findExpiredUnpaidBookingIds(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("通知（PRD US-014）：取消之後才通知，而且只通知真的被取消的訂房；已不符條件或取消失敗的不通知")
+    void notifiesOnlyTheBookingsThatWereActuallyCancelled() {
+        UUID cancelled = UUID.randomUUID();
+        UUID noLongerEligible = UUID.randomUUID();
+        UUID failed = UUID.randomUUID();
+        givenBatches(List.of(cancelled, noLongerEligible), List.of(failed));
+        when(bookingService.cancelExpiredUnpaidBooking(eq(cancelled), any(), any())).thenReturn(true);
+        when(bookingService.cancelExpiredUnpaidBooking(eq(noLongerEligible), any(), any())).thenReturn(false);
+        when(bookingService.cancelExpiredUnpaidBooking(eq(failed), any(), any()))
+                .thenThrow(new IllegalStateException("boom"));
+
+        service.cancelExpiredUnpaidBookings(NOW);
+
+        InOrder inOrder = inOrder(bookingService, buyerNotificationService);
+        inOrder.verify(bookingService).cancelExpiredUnpaidBooking(eq(cancelled), any(), any());
+        inOrder.verify(buyerNotificationService).notifyBookingPaymentTimeout(cancelled);
+        verify(buyerNotificationService, never()).notifyBookingPaymentTimeout(noLongerEligible);
+        verify(buyerNotificationService, never()).notifyBookingPaymentTimeout(failed);
     }
 }

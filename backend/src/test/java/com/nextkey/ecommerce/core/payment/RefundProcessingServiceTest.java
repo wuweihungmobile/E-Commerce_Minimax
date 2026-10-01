@@ -1,11 +1,13 @@
 package com.nextkey.ecommerce.core.payment;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -27,6 +30,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
@@ -49,6 +53,7 @@ class RefundProcessingServiceTest {
     @Mock private BookingRepository bookingRepository;
     @Mock private PaymentStateService paymentStateService;
     @Mock private AuditService auditService;
+    @Mock private BuyerNotificationService buyerNotificationService;
 
     @InjectMocks
     private RefundProcessingService service;
@@ -295,5 +300,67 @@ class RefundProcessingServiceTest {
 
         assertThat(service.processPendingOrderRefunds(NOW)).isZero();
         verify(paymentStateService, never()).refundOrderPaymentAsSystem(any(), anyString());
+    }
+
+    // ========== 退款完成通知（Sprint 229）==========
+
+    @Test
+    @DisplayName("通知：訂單退款成功才通知買家；失敗的那張不通知（錢沒退，不能說已退）")
+    void orders_notifyOnlyTheOnesActuallyRefunded() {
+        givenPages(NIL, List.of(id(1), id(2)));
+        givenPages(id(2), List.of());
+        givenFailing(id(1));
+
+        service.processPendingOrderRefunds(NOW);
+
+        verify(buyerNotificationService).notifyOrderRefunded(id(2));
+        verify(buyerNotificationService, never()).notifyOrderRefunded(id(1));
+    }
+
+    @Test
+    @DisplayName("通知：被別的處理者搶先退完的那張也不通知（通知歸退款成功的那一方，否則買家收到兩次）")
+    void orders_notNotifiedWhenAnotherWorkerWonTheRace() {
+        givenPages(NIL, List.of(id(1)));
+        givenPages(id(1), List.of());
+        when(paymentStateService.refundOrderPaymentAsSystem(eq(id(1)), anyString()))
+                .thenThrow(new BusinessException(ErrorCode.E_6009, "Refund amount conflicts with a concurrent refund"));
+        when(orderRepository.findStatusById(id(1))).thenReturn(Optional.of(Order.OrderStatus.REFUNDED));
+
+        service.processPendingOrderRefunds(NOW);
+
+        verify(buyerNotificationService, never()).notifyOrderRefunded(any());
+    }
+
+    @Test
+    @DisplayName("通知：訂房退款成功才通知買家；失敗的那筆不通知")
+    void bookings_notifyOnlyTheOnesActuallyRefunded() {
+        givenBookingPages(NIL, List.of(id(1), id(2)));
+        givenBookingPages(id(2), List.of());
+        doThrow(new BusinessException(ErrorCode.E_6001, "Stripe refund failed"))
+                .when(paymentStateService).refundBookingPaymentAsSystem(eq(id(1)), anyString());
+        when(bookingRepository.findById(id(1))).thenReturn(Optional.empty());
+
+        service.processPendingBookingRefunds(NOW);
+
+        verify(buyerNotificationService).notifyBookingRefunded(id(2));
+        verify(buyerNotificationService, never()).notifyBookingRefunded(id(1));
+        verify(buyerNotificationService, never()).notifyOrderRefunded(any());
+    }
+
+    @Test
+    @DisplayName("通知發生在退款之後：退款先完成、才通知；通知的例外不會被當成退款失敗（不寫失敗稽核、不進退避）")
+    void notificationComesAfterTheRefundAndIsNeverClassifiedAsARefundFailure() {
+        givenPages(NIL, List.of(id(1)));
+        doThrow(new IllegalStateException("notification contract broken"))
+                .when(buyerNotificationService).notifyOrderRefunded(id(1));
+
+        assertThatThrownBy(() -> service.processPendingOrderRefunds(NOW))
+                .as("通知的例外照實浮出（大聲失敗），而不是被退款迴圈當成『退款失敗』吞掉")
+                .isInstanceOf(IllegalStateException.class);
+
+        InOrder inOrder = inOrder(paymentStateService, buyerNotificationService);
+        inOrder.verify(paymentStateService).refundOrderPaymentAsSystem(eq(id(1)), anyString());
+        inOrder.verify(buyerNotificationService).notifyOrderRefunded(id(1));
+        verify(auditService, never()).record(eq("AUTO_REFUND_FAILED"), anyString(), any(), any(), any(), any(), any());
     }
 }

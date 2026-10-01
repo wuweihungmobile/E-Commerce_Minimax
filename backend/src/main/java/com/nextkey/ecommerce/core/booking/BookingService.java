@@ -21,11 +21,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.api.dto.PricingDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.order.OrderStateMachine;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.core.promo.PromoService;
@@ -79,6 +82,7 @@ public class BookingService {
     private final PromoCodeUsageRepository promoCodeUsageRepository;
     private final AuditService auditService;
     private final PaymentRepository paymentRepository;
+    private final BuyerNotificationService buyerNotificationService;
 
     /**
      * 訂房的付款期限（小時，Sprint 225，DEF-311）。新訂房建立時寫入 {@code payment_due_at}；預設值同時寫在欄位上，
@@ -818,6 +822,10 @@ public class BookingService {
                     refundPending ? "PENDING amount=" + refundAmount.toPlainString() : "NONE",
                     "canceledBy=" + cancelledBy + ",checkInDate=" + booking.getCheckInDate());
         }
+        // PRD US-005：取消後即時收到退款狀態通知（買家本人取消、商家或管理員代為取消都通知）
+        final boolean wasPaid = previousStatus == Booking.BookingStatus.PAID
+                || previousStatus == Booking.BookingStatus.CONFIRMED;
+        notifyAfterCommit(() -> buyerNotificationService.notifyBookingCancelled(bookingId, wasPaid));
 
         return BookingDto.CancelResponse.builder()
                 .bookingId(booking.getId())
@@ -827,6 +835,23 @@ public class BookingService {
                 .refundStatus(booking.getRefundStatus().name())
                 .refundAmount(booking.getRefundAmount())
                 .build();
+    }
+
+    /**
+     * 交易提交<b>之後</b>才通知：買家看到的通知必須對應一個真的已取消的訂房，取消回滾了就不該通知；預建列與入佇也要在
+     * 資料列可見之後（見 {@link BuyerNotificationService}）。沒有交易同步（不經 Spring 交易的單元測試）時直接呼叫。
+     */
+    private void notifyAfterCommit(final Runnable notification) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            notification.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                notification.run();
+            }
+        });
     }
 
     /**

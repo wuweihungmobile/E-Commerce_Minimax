@@ -25,6 +25,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
@@ -81,6 +82,9 @@ class BookingServiceOwnershipTest {
 
     @Mock
     private AuditService auditService;
+
+    @Mock
+    private BuyerNotificationService buyerNotificationService;
 
     @InjectMocks
     private BookingService bookingService;

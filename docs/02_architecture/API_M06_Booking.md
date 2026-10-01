@@ -240,7 +240,7 @@ Authorization: Bearer <token>
 2. **價格計算**: 總金額 = Σ(每日價格)，每日價格來自 RoomCalendar
 3. **日曆更新**: 預訂成功後，自動將日期格標記為 `BOOKED`
 4. **UUID 產生**: 預訂 ID 由系統自動產生 (UUID)
-5. **付款期限（Sprint 225，DEF-311）**: 新預訂的 `paymentDueAt` ＝ 建立時間 ＋ 24 小時（`BOOKING_PAYMENT_TIMEOUT_HOURS`）。排程每 5 分鐘把付款期限已過、仍是 `CREATED` 的預訂取消（釋放日期格、退還優惠券額度）；已付款、或 24 小時內開始過 Stripe 結帳的不取消。**歷史預訂**（Sprint 225 之前建立）的 `paymentDueAt` 為 `null`，永不逾時取消
+5. **付款期限（Sprint 225，DEF-311）**: 新預訂的 `paymentDueAt` ＝ 建立時間 ＋ 24 小時（`BOOKING_PAYMENT_TIMEOUT_HOURS`）。排程每 5 分鐘把付款期限已過、仍是 `CREATED` 的預訂取消（釋放日期格、退還優惠券額度）；已付款、或 24 小時內開始過 Stripe 結帳的不取消。**歷史預訂**（Sprint 225 之前建立）的 `paymentDueAt` 為 `null`，永不逾時取消；逾時取消後（Sprint 229，PRD US-014）會通知訂房人「訂房因逾期未付款已取消」並附「重新預訂」連結（站內通知，`data.listingId`）
 
 ---
 
@@ -526,6 +526,7 @@ Authorization: Bearer <token>
 5. **退款執行**: 取消當下只決定並記錄（`refund_status = PENDING`、`refund_amount`），不呼叫金流；`RefundProcessingService` 排程把款項退回原付款方式（Stripe 付款經 Stripe，不看 `STRIPE_PAYMENT_ENABLED`），成功後 `refundStatus = COMPLETED`；失敗整個交易回滾、留 `AUTO_REFUND_FAILED` 稽核並指數退避重試
 6. **稽核**: `BOOKING_CANCELLED`；已付款者另寫 `BOOKING_REFUND_DECIDED`（含「退多少／不退」與取消方、入住日，事後爭議的依據）
 7. **舊版 `POST /v2/payments/refund`** 不再接受訂房付款（E-6002）：退款只能經取消預訂
+8. **通知（Sprint 229，PRD US-005「取消後即時收到退款狀態通知」）**: 取消的交易**提交之後**，對訂房人送出站內通知（類型 `ORDER_CANCELLED`，標題「訂房已取消」），內容依結果分五種：尚未付款不需退款／全額退款處理中（含金額）／入住前不足 24 小時依政策不退款／商家取消（點名商家，含金額）／商家取消卻找不到可退款付款（交客服確認）。買家本人取消、商家或管理員代為取消**都通知**，收件人一律是訂房人。退款由排程退回後，再送一則 `REFUND_COMPLETED`「退款已完成」。通知是**盡力而為**：失敗只留警告日誌，不影響取消結果，也不會補送（見 `SPRINT_229_PLAN.md` §6）
 
 ---
 

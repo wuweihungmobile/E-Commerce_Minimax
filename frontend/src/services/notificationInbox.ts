@@ -15,6 +15,7 @@ export type NotificationType =
   | 'BOOKING_REMINDER'
   | 'PAYMENT_SUCCESS'
   | 'PAYMENT_FAILED'
+  | 'REFUND_COMPLETED'
   | 'REVIEW_REQUEST'
   | 'NEW_MESSAGE'
   | 'SYSTEM_ANNOUNCEMENT'
@@ -71,6 +72,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   BOOKING_REMINDER: '預訂提醒',
   PAYMENT_SUCCESS: '付款成功',
   PAYMENT_FAILED: '付款失敗',
+  REFUND_COMPLETED: '退款完成',
   REVIEW_REQUEST: '邀請評價',
   NEW_MESSAGE: '新訊息',
   SYSTEM_ANNOUNCEMENT: '系統公告',

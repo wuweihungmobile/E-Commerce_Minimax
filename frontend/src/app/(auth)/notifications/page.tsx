@@ -30,8 +30,9 @@ function formatDateTime(dateStr: string) {
   })
 }
 
-function orderIdOf(n: InboxNotification): string | null {
-  const id = n.data?.orderId
+// 通知的 data 帶著對象的 id（訂單、訂房、房源）；不是字串就當作沒有
+function dataIdOf(n: InboxNotification, key: 'orderId' | 'bookingId' | 'listingId'): string | null {
+  const id = n.data?.[key]
   return typeof id === 'string' ? id : null
 }
 
@@ -181,7 +182,9 @@ export default function NotificationsPage() {
         ) : (
           <div className="space-y-3">
             {notifications.map((n) => {
-              const orderId = orderIdOf(n)
+              const orderId = dataIdOf(n, 'orderId')
+              const bookingId = dataIdOf(n, 'bookingId')
+              const listingId = dataIdOf(n, 'listingId')
               return (
                 <Card key={n.notificationId} className={n.isRead ? '' : 'border-l-4 border-l-primary'}>
                   <CardContent className="py-4">
@@ -199,9 +202,25 @@ export default function NotificationsPage() {
                         {orderId && (
                           <Link
                             href={`/orders/${orderId}`}
-                            className="text-xs text-primary hover:underline mt-1 inline-block"
+                            className="text-xs text-primary hover:underline mt-1 mr-3 inline-block"
                           >
                             查看訂單 →
+                          </Link>
+                        )}
+                        {bookingId && (
+                          <Link
+                            href={`/bookings/${bookingId}`}
+                            className="text-xs text-primary hover:underline mt-1 mr-3 inline-block"
+                          >
+                            查看訂房 →
+                          </Link>
+                        )}
+                        {listingId && (
+                          <Link
+                            href={`/listings/${listingId}`}
+                            className="text-xs text-primary hover:underline mt-1 inline-block"
+                          >
+                            重新預訂 →
                           </Link>
                         )}
                       </div>

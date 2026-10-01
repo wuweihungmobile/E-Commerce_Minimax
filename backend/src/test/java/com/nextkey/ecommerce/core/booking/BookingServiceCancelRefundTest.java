@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.booking;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -27,9 +28,12 @@ import org.mockito.quality.Strictness;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.promo.PromoService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
@@ -61,6 +65,7 @@ class BookingServiceCancelRefundTest {
     @Mock private RoomCalendarService roomCalendarService;
     @Mock private PromoService promoService;
     @Mock private AuditService auditService;
+    @Mock private BuyerNotificationService buyerNotificationService;
 
     @InjectMocks
     private BookingService bookingService;
@@ -226,5 +231,94 @@ class BookingServiceCancelRefundTest {
         verify(roomCalendarService, never()).releaseDateRange(any(), any(), any());
         verify(bookingRepository, never()).save(any());
         verify(auditService, never()).record(eq("BOOKING_REFUND_DECIDED"), any(), any(), any(), any(), any(), any());
+    }
+
+    // ========== 取消後通知買家（Sprint 229，PRD US-005「取消後即時收到退款狀態通知」）==========
+
+    @Test
+    @DisplayName("通知：已付款的訂房取消 → 通知買家，並標明「取消前已付款」（文案才分得出沒付過款與依政策不退）")
+    void paidCancel_notifiesTheBuyerAsPaid() {
+        givenBooking(booking(Booking.BookingStatus.PAID, BusinessTime.today().plusDays(5)));
+        givenPayment(Payment.PaymentStatus.SUCCESS, BigDecimal.ZERO);
+        actAsBuyer();
+
+        bookingService.cancelBooking(bookingId, "changed my mind");
+
+        verify(buyerNotificationService).notifyBookingCancelled(bookingId, true);
+    }
+
+    @Test
+    @DisplayName("通知：未付款的訂房取消 → 也通知買家，但標明「沒付過款」")
+    void unpaidCancel_notifiesTheBuyerAsUnpaid() {
+        givenBooking(booking(Booking.BookingStatus.CREATED, BusinessTime.today().plusDays(5)));
+        actAsBuyer();
+
+        bookingService.cancelBooking(bookingId, "changed my mind");
+
+        verify(buyerNotificationService).notifyBookingCancelled(bookingId, false);
+    }
+
+    @Test
+    @DisplayName("通知：管理員（商家／平台）代為取消 → 買家同樣收到通知（被取消的人最需要知道）")
+    void adminCancel_stillNotifiesTheBooker() {
+        givenBooking(booking(Booking.BookingStatus.PAID, BusinessTime.today().minusDays(1)));
+        givenPayment(Payment.PaymentStatus.SUCCESS, BigDecimal.ZERO);
+        actAsAdmin();
+
+        bookingService.cancelBooking(bookingId, "host cancelled");
+
+        verify(buyerNotificationService).notifyBookingCancelled(bookingId, true);
+    }
+
+    @Test
+    @DisplayName("通知：取消被拒絕（併發搶輸、狀態不可取消）→ 沒有取消就不通知")
+    void rejectedCancel_sendsNoNotice() {
+        Booking paid = booking(Booking.BookingStatus.PAID, BusinessTime.today().plusDays(5));
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(paid));
+        when(bookingRepository.updateStatusIfCurrent(bookingId, Booking.BookingStatus.PAID,
+                Booking.BookingStatus.CANCELLED)).thenReturn(0);
+        actAsBuyer();
+
+        assertThatThrownBy(() -> bookingService.cancelBooking(bookingId, "x")).isInstanceOf(BusinessException.class);
+
+        verify(buyerNotificationService, never()).notifyBookingCancelled(any(), anyBoolean());
+    }
+
+    @Test
+    @DisplayName("🔴 在交易裡：通知等到提交之後才送；提交前不送，交易回滾則永遠不送（不能通知一個其實沒取消成功的訂房）")
+    void insideATransaction_theNoticeWaitsForCommit() {
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            givenBooking(booking(Booking.BookingStatus.PAID, BusinessTime.today().plusDays(5)));
+            givenPayment(Payment.PaymentStatus.SUCCESS, BigDecimal.ZERO);
+            actAsBuyer();
+
+            bookingService.cancelBooking(bookingId, "changed my mind");
+
+            verify(buyerNotificationService, never()).notifyBookingCancelled(any(), anyBoolean());
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+            verify(buyerNotificationService).notifyBookingCancelled(bookingId, true);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("🔴 交易回滾 → 通知永遠不送")
+    void rolledBackTransaction_neverSendsTheNotice() {
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            givenBooking(booking(Booking.BookingStatus.PAID, BusinessTime.today().plusDays(5)));
+            givenPayment(Payment.PaymentStatus.SUCCESS, BigDecimal.ZERO);
+            actAsBuyer();
+
+            bookingService.cancelBooking(bookingId, "changed my mind");
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+
+            verify(buyerNotificationService, never()).notifyBookingCancelled(any(), anyBoolean());
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 }

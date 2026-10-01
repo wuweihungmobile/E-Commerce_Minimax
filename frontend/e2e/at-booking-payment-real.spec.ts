@@ -41,6 +41,21 @@ async function accessToken(page: Page): Promise<string> {
   return token as string;
 }
 
+type InboxNotice = {
+  notificationType: string;
+  title: string;
+  content: string;
+  data?: Record<string, unknown>;
+};
+
+/** 買家收件匣裡與某張訂單／訂房有關的通知（Sprint 229）。同一個買家帳號跨案例共用，所以用 data 裡的 id 對應，不能只看類型。 */
+async function inboxNoticesFor(page: Page, headers: Record<string, string>, entityId: string): Promise<InboxNotice[]> {
+  const response = await page.request.get(`${API_BASE}/v2/notifications?page=0&size=50`, { headers });
+  expect(response.status(), await response.text()).toBe(200);
+  const all = (await response.json()).data.notifications as InboxNotice[];
+  return all.filter((n) => JSON.stringify(n.data ?? {}).includes(entityId));
+}
+
 /** 店主註冊→驗證 Email→申請開店→管理員核准並開啟訂房→店主重新登入→建立一間 ROOM 房源與一件 PRODUCT 商品，回傳兩者的 id。 */
 async function seedStore(page: Page): Promise<{ roomId: string; productId: string }> {
   const owner = await registerAndLogin(page);
@@ -355,6 +370,20 @@ test.describe('AT-BOOKING-PAYMENT-REAL: 訂房付款（真實後端）', () => {
     await page.goto(`/orders/${orderId}`);
     await page.waitForLoadState('domcontentloaded');
     await expect(page.getByTestId('order-refund-card')).toContainText('款項已退回', { timeout: 15000 });
+
+    // Sprint 229：退款完成後買家收到站內通知。REFUND_COMPLETED 能寫進 notifications，代表真實 Flyway 資料庫的
+    // CHECK 約束（V86）已放寬——後端整合測試的資料庫是 Hibernate 建的，看不到這件事
+    await expect
+      .poll(async () => (await inboxNoticesFor(page, headers, orderId)).map((n) => n.notificationType), {
+        timeout: 15_000,
+        message: '退款完成後買家收件匣應有「退款完成」通知',
+      })
+      .toContain('REFUND_COMPLETED');
+    await page.goto('/notifications');
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByText('退款已完成').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('退款完成', { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: '查看訂單 →' }).first()).toBeVisible();
   });
 
   test('E2E-BPAYR-08: 已付款訂房離入住還有好幾天 → 取消 → 全額退款（付款 REFUNDED、訂房 COMPLETED），日曆釋放（Sprint 227，DEF-312）', async ({ page }: { page: Page }) => {
@@ -387,6 +416,12 @@ test.describe('AT-BOOKING-PAYMENT-REAL: 訂房付款（真實後端）', () => {
     expect(['PENDING', 'COMPLETED']).toContain(result.refundStatus);
     expect(Number(result.refundAmount), '全額退款').toBe(NIGHT_PRICE * 2);
 
+    // Sprint 229（PRD US-005「取消後即時收到退款狀態通知」）：取消請求一回來，通知就已經在收件匣（不必等排程）
+    const cancelNotice = (await inboxNoticesFor(page, headers, id)).find((n) => n.notificationType === 'ORDER_CANCELLED');
+    expect(cancelNotice, '取消後即時收到通知').toBeTruthy();
+    expect(cancelNotice!.title).toBe('訂房已取消');
+    expect(cancelNotice!.content).toContain(`退款 NT$${(NIGHT_PRICE * 2).toLocaleString('en-US')}`);
+
     await expect
       .poll(
         async () => {
@@ -410,6 +445,19 @@ test.describe('AT-BOOKING-PAYMENT-REAL: 訂房付款（真實後端）', () => {
     await page.goto(`/bookings/${id}`);
     await page.waitForLoadState('domcontentloaded');
     await expect(page.getByTestId('booking-refund-card')).toContainText('已退款', { timeout: 15000 });
+
+    // Sprint 229：退款完成後再收到「退款已完成」；收件匣畫面能連到這筆訂房
+    await expect
+      .poll(async () => (await inboxNoticesFor(page, headers, id)).map((n) => n.notificationType), {
+        timeout: 15_000,
+        message: '退款完成後買家收件匣應有「退款完成」通知',
+      })
+      .toContain('REFUND_COMPLETED');
+    await page.goto('/notifications');
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByText('訂房已取消').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('退款已完成').first()).toBeVisible();
+    await expect(page.getByRole('link', { name: '查看訂房 →' }).first()).toBeVisible();
   });
 
   test('E2E-BPAYR-09: 已付款訂房入住前不足 24 小時（今天入住）→ 取消 → 依 Q14 不退款，付款維持成功（Sprint 227，DEF-312）', async ({ page }: { page: Page }) => {
@@ -447,5 +495,12 @@ test.describe('AT-BOOKING-PAYMENT-REAL: 訂房付款（真實後端）', () => {
     const detail = (await (await page.request.get(`${API_BASE}/v2/bookings/${id}`, { headers })).json()).data;
     expect(detail.status).toBe('CANCELLED');
     expect(detail.refundStatus).toBe('NONE');
+
+    // Sprint 229：通知明說依政策不退款；錢沒退，就不會有「退款完成」
+    const notices = await inboxNoticesFor(page, headers, id);
+    const cancelNotice = notices.find((n) => n.notificationType === 'ORDER_CANCELLED');
+    expect(cancelNotice, '取消後即時收到通知').toBeTruthy();
+    expect(cancelNotice!.content).toContain('不予退款');
+    expect(notices.map((n) => n.notificationType), '沒退款就不能通知買家退款完成').not.toContain('REFUND_COMPLETED');
   });
 });

@@ -19,6 +19,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
@@ -69,6 +70,7 @@ public class RefundProcessingService {
     private final BookingRepository bookingRepository;
     private final PaymentStateService paymentStateService;
     private final AuditService auditService;
+    private final BuyerNotificationService buyerNotificationService;
 
     @Value("${app.refund.batch-size:50}")
     private int batchSize;
@@ -106,7 +108,7 @@ public class RefundProcessingService {
                 orderId -> orderRepository.findStatusById(orderId)
                         .filter(status -> status != Order.OrderStatus.REFUNDING).isPresent(),
                 orderId -> orderRepository.findById(orderId).map(Order::getTenantId).orElse(null),
-                Order.OrderStatus.REFUNDING.name()));
+                Order.OrderStatus.REFUNDING.name(), buyerNotificationService::notifyOrderRefunded));
     }
 
     /**
@@ -121,7 +123,7 @@ public class RefundProcessingService {
                 bookingId -> bookingRepository.findRefundStatusById(bookingId)
                         .filter(status -> status != Booking.RefundStatus.PENDING).isPresent(),
                 bookingId -> bookingRepository.findById(bookingId).map(Booking::getTenantId).orElse(null),
-                Booking.RefundStatus.PENDING.name()));
+                Booking.RefundStatus.PENDING.name(), buyerNotificationService::notifyBookingRefunded));
     }
 
     private int sweep(final Instant now, final Target target) {
@@ -150,8 +152,6 @@ public class RefundProcessingService {
         }
         try {
             target.refund().accept(id);
-            retryStates.remove(id);
-            return true;
         } catch (RuntimeException e) {
             if (target.handledByAnotherWorker().test(id)) {
                 log.info("Automatic refund skipped, the {} was handled concurrently: id={}",
@@ -161,6 +161,11 @@ public class RefundProcessingService {
             recordFailure(target, id, state, now, e);
             return false;
         }
+        retryStates.remove(id);
+        // 退款交易已提交。通知在上面失敗判斷的 try 之外：它不拋例外（BuyerNotificationService 的契約），
+        // 就算有人改壞了它，也不會被當成「退款失敗」而進入退避與重試
+        target.notifyRefunded().accept(id);
+        return true;
     }
 
     private void recordFailure(final Target target, final UUID id, final RetryState previous, final Instant now,
@@ -185,10 +190,11 @@ public class RefundProcessingService {
 
     /**
      * 一種等待退款的對象（訂單或訂房）：怎麼分頁取出、怎麼退一筆、怎麼判斷已被別的處理者處理、失敗稽核要記哪個租戶。
-     * 訂單與訂房共用同一套游標、退避與失敗隔離。
+     * 訂單與訂房共用同一套游標、退避與失敗隔離。退款成功後通知買家（{@code notifyRefunded}，Sprint 229）。
      */
     private record Target(String entityType, BiFunction<UUID, Pageable, List<UUID>> pageAfter, Consumer<UUID> refund,
-            Predicate<UUID> handledByAnotherWorker, Function<UUID, UUID> tenantOf, String pendingMarker) {
+            Predicate<UUID> handledByAnotherWorker, Function<UUID, UUID> tenantOf, String pendingMarker,
+            Consumer<UUID> notifyRefunded) {
     }
 
     /**

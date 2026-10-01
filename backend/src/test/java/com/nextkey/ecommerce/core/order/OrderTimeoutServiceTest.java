@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.order;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -17,12 +18,14 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
@@ -39,6 +42,7 @@ class OrderTimeoutServiceTest {
 
     @Mock private OrderRepository orderRepository;
     @Mock private OrderService orderService;
+    @Mock private BuyerNotificationService buyerNotificationService;
 
     @InjectMocks
     private OrderTimeoutService service;
@@ -133,5 +137,25 @@ class OrderTimeoutServiceTest {
 
         assertThat(cancelled).isEqualTo(20);
         verify(orderRepository, times(20)).findExpiredUnpaidOrderIds(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("通知（PRD US-014）：取消之後才通知，而且只通知真的被取消的訂單；已不符條件或取消失敗的不通知")
+    void notifiesOnlyTheOrdersThatWereActuallyCancelled() {
+        UUID cancelled = UUID.randomUUID();
+        UUID noLongerEligible = UUID.randomUUID();
+        UUID failed = UUID.randomUUID();
+        givenBatches(List.of(cancelled, noLongerEligible), List.of(failed));
+        when(orderService.cancelExpiredUnpaidOrder(eq(cancelled), any())).thenReturn(true);
+        when(orderService.cancelExpiredUnpaidOrder(eq(noLongerEligible), any())).thenReturn(false);
+        when(orderService.cancelExpiredUnpaidOrder(eq(failed), any())).thenThrow(new IllegalStateException("boom"));
+
+        service.cancelExpiredUnpaidOrders(NOW);
+
+        InOrder inOrder = inOrder(orderService, buyerNotificationService);
+        inOrder.verify(orderService).cancelExpiredUnpaidOrder(eq(cancelled), any());
+        inOrder.verify(buyerNotificationService).notifyOrderPaymentTimeout(cancelled);
+        verify(buyerNotificationService, never()).notifyOrderPaymentTimeout(noLongerEligible);
+        verify(buyerNotificationService, never()).notifyOrderPaymentTimeout(failed);
     }
 }

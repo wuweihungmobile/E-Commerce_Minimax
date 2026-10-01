@@ -10,6 +10,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
@@ -37,6 +38,7 @@ public class OrderTimeoutService {
 
     private final OrderRepository orderRepository;
     private final OrderService orderService;
+    private final BuyerNotificationService buyerNotificationService;
 
     @Value("${app.order-timeout.unpaid-hours:24}")
     private long unpaidHours;
@@ -83,12 +85,18 @@ public class OrderTimeoutService {
     }
 
     private boolean cancelOne(final UUID orderId, final Instant cutoff) {
+        final boolean cancelled;
         try {
-            return orderService.cancelExpiredUnpaidOrder(orderId, cutoff);
+            cancelled = orderService.cancelExpiredUnpaidOrder(orderId, cutoff);
         } catch (RuntimeException e) {
             log.error("Failed to cancel expired unpaid order, will retry next run: orderId={}, error={}",
                     orderId, e.getMessage(), e);
             return false;
         }
+        if (cancelled) {
+            // 取消的交易已提交；只有真的取消了這張才通知（PRD US-014）。通知永不拋例外，也不影響取消結果
+            buyerNotificationService.notifyOrderPaymentTimeout(orderId);
+        }
+        return cancelled;
     }
 }

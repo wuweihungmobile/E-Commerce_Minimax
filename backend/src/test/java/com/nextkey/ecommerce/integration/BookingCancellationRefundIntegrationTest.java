@@ -253,6 +253,7 @@ class BookingCancellationRefundIntegrationTest {
         assertThat(paymentStatus(bookingId)).as("回滾：付款沒有被標成已退款").isEqualTo("SUCCESS");
         assertThat(paymentRefundedAmount(bookingId)).isEqualByComparingTo("0");
         assertThat(auditCount("AUTO_REFUND_FAILED", bookingId)).isEqualTo(1);
+        assertThat(notificationsOf("REFUND_COMPLETED")).as("退款失敗：錢沒退，不能通知買家已退款").isEmpty();
         verify(paymentGatewayFactory, times(1)).processRefund(eq("STRIPE"), eq(pi), any(), any(), any());
 
         runSweeper(t0.plus(Duration.ofMinutes(1)));
@@ -264,6 +265,7 @@ class BookingCancellationRefundIntegrationTest {
         verify(paymentGatewayFactory, times(2)).processRefund(eq("STRIPE"), eq(pi), any(), any(), any());
         assertThat(refundStatus(bookingId)).isEqualTo("COMPLETED");
         assertThat(paymentStatus(bookingId)).isEqualTo("REFUNDED");
+        assertThat(notificationsOf("REFUND_COMPLETED")).as("失敗重試後成功，只通知一次").hasSize(1);
     }
 
     @Test
@@ -308,6 +310,7 @@ class BookingCancellationRefundIntegrationTest {
         assertThat(results.stream().filter(Objects::isNull).count()).as("恰好一個取消成功").isEqualTo(1);
         assertThat(results.stream().filter(Objects::nonNull).toList()).containsOnly(ErrorCode.E_4007);
         assertThat(auditCount("BOOKING_REFUND_DECIDED", bookingId)).as("退款只決定一次").isEqualTo(1);
+        assertThat(notificationsOf("ORDER_CANCELLED")).as("4 個同時取消只有搶到的那一個通知，買家不會收到 4 則").hasSize(1);
         assertThat(promoUsageCount(promo)).as("優惠券額度只退一次，不會變成負數").isZero();
         runSweeper(Instant.now());
         assertThat(paymentStatus(bookingId)).isEqualTo("REFUNDED");
@@ -339,6 +342,7 @@ class BookingCancellationRefundIntegrationTest {
         assertThat(paymentRefundedAmount(bookingId)).as("只退一次，不會多退").isEqualByComparingTo(paid);
         assertThat(refundStatus(bookingId)).isEqualTo("COMPLETED");
         assertThat(auditCount("BOOKING_PAYMENT_REFUNDED", paymentId(bookingId))).isEqualTo(1);
+        assertThat(notificationsOf("REFUND_COMPLETED")).as("多個處理者同時退，買家只收到一則退款完成通知").hasSize(1);
     }
 
     // ── DEF-308 訂房側：付款成功時訂房已取消 ─────────────────────
@@ -413,6 +417,75 @@ class BookingCancellationRefundIntegrationTest {
         }
     }
 
+    // ── 買家通知（Sprint 229，PRD US-005「取消後即時收到退款狀態通知」）─────────────
+
+    @Test
+    @DisplayName("取消已付款訂房 → 買家立刻收到站內通知（說明全額退款處理中）；排程退回後再收到「退款已完成」。"
+            + "資料列真的寫進資料庫：取消交易提交之後才送，且新交易的寫入有被提交")
+    void cancellationAndRefundCompletion_notifyTheBuyer() {
+        UUID bookingId = buyerBooks(10, null);
+        buyerPaysWithMock(bookingId);
+
+        buyerCancels(bookingId);
+
+        List<Map<String, Object>> cancelled = notificationsOf("ORDER_CANCELLED");
+        assertThat(cancelled).as("取消後即時一則通知").hasSize(1);
+        assertThat(cancelled.get(0).get("title")).isEqualTo("訂房已取消");
+        assertThat((String) cancelled.get(0).get("content")).contains("Booking Refund Room", "您已取消", "退款 NT$3,000",
+                "已進入處理");
+        assertThat((String) cancelled.get(0).get("data")).contains(bookingId.toString());
+        assertThat(notificationsOf("REFUND_COMPLETED")).as("錢還沒退，不能先說退款完成").isEmpty();
+
+        runSweeper(Instant.now());
+
+        List<Map<String, Object>> refunded = notificationsOf("REFUND_COMPLETED");
+        assertThat(refunded).as("排程退回後一則退款完成通知（REFUND_COMPLETED 通過資料庫約束）").hasSize(1);
+        assertThat(refunded.get(0).get("title")).isEqualTo("退款已完成");
+        assertThat((String) refunded.get(0).get("content")).contains("Booking Refund Room", "NT$3,000", "已退回原付款方式");
+        assertThat((String) refunded.get(0).get("data")).contains(bookingId.toString());
+    }
+
+    @Test
+    @DisplayName("入住前不足 24 小時取消 → 通知明說依政策不退款；排程不會再補一則「退款完成」")
+    void tooLateCancellation_isToldNoRefund_andNeverGetsARefundNotice() {
+        UUID bookingId = buyerBooks(0, null);
+        buyerPaysWithMock(bookingId);
+
+        buyerCancels(bookingId);
+        runSweeper(Instant.now());
+
+        List<Map<String, Object>> cancelled = notificationsOf("ORDER_CANCELLED");
+        assertThat(cancelled).hasSize(1);
+        assertThat((String) cancelled.get(0).get("content")).contains("不足 24 小時", "不予退款");
+        assertThat(notificationsOf("REFUND_COMPLETED")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("取消未付款訂房 → 通知說明尚未付款、不需退款")
+    void unpaidCancellation_isToldNothingToRefund() {
+        UUID bookingId = buyerBooks(10, null);
+
+        buyerCancels(bookingId);
+
+        List<Map<String, Object>> cancelled = notificationsOf("ORDER_CANCELLED");
+        assertThat(cancelled).hasSize(1);
+        assertThat((String) cancelled.get(0).get("content")).contains("尚未付款", "不需退款");
+    }
+
+    @Test
+    @DisplayName("商家／平台（管理員）代為取消 → 被取消的買家收到通知，點名是商家取消並說明全額退款")
+    void merchantCancellation_notifiesTheBuyer() {
+        UUID bookingId = buyerBooks(0, null);
+        buyerPaysWithMock(bookingId);
+
+        asAdmin();
+        bookingService.cancelBooking(bookingId, "host cancelled");
+
+        List<Map<String, Object>> cancelled = notificationsOf("ORDER_CANCELLED");
+        assertThat(cancelled).as("通知的收件人是訂房的買家，不是操作的管理員").hasSize(1);
+        assertThat((String) cancelled.get(0).get("content")).contains("商家已取消您的訂房", "退款 NT$3,000");
+    }
+
     // ── 其他 ─────────────────────────────────────────────────
 
     @Test
@@ -425,6 +498,7 @@ class BookingCancellationRefundIntegrationTest {
         assertThatThrownBy(() -> buyerCancels(bookingId)).isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_4007);
         assertThat(auditCount("BOOKING_REFUND_DECIDED", bookingId)).isEqualTo(1);
+        assertThat(notificationsOf("ORDER_CANCELLED")).as("被拒絕的第二次取消不會再通知一次").hasSize(1);
     }
 
     // ── 固件與身分 ──────────────────────────────────────────
@@ -617,6 +691,12 @@ class BookingCancellationRefundIntegrationTest {
     private int promoUsageCount(final String code) {
         return jdbcTemplate.queryForObject("SELECT current_usage_count FROM promo_codes WHERE code = ?",
                 Integer.class, code);
+    }
+
+    /** 這個測試的買家收到的某類通知（每個測試都建新買家，所以不會混到共用資料庫裡別人的通知）。 */
+    private List<Map<String, Object>> notificationsOf(final String type) {
+        return jdbcTemplate.queryForList("SELECT title, content, data::text AS data FROM notifications "
+                + "WHERE user_id = ? AND notification_type = ? ORDER BY created_at", buyer.getId(), type);
     }
 
     private int auditCount(final String action, final UUID entityId) {

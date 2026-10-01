@@ -111,6 +111,7 @@ public class Notification {
         BOOKING_REMINDER,
         PAYMENT_SUCCESS,
         PAYMENT_FAILED,
+        REFUND_COMPLETED,
         REVIEW_REQUEST,
         NEW_MESSAGE,
         SYSTEM_ANNOUNCEMENT

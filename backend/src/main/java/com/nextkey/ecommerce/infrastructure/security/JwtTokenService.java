@@ -70,6 +70,10 @@ public class JwtTokenService {
 
         return Jwts.builder()
                 .subject(userId.toString())
+                // DEF-315（Sprint 230）：iat 只到秒，同一使用者同一秒內簽發的兩顆 token 位元組完全相同。換發出的新 token 若與
+                // 舊 token 相同，兩者在 Redis 共用同一個 key——輪替剛標成「已使用」的 key 又被寫回「有效」，重放偵測與原子輪替
+                // 都被繞過。隨機 jti 讓每一顆都不同；驗證不要求 jti，部署前簽發、沒有 jti 的舊 token 仍然有效。
+                .id(UUID.randomUUID().toString())
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(secretKey)

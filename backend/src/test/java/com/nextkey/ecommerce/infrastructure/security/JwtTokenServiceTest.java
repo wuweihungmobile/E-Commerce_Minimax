@@ -2,12 +2,17 @@ package com.nextkey.ecommerce.infrastructure.security;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.SignatureException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -374,5 +379,44 @@ class JwtTokenServiceTest {
 
         // Assert
         assertThat(isExpired).isFalse();
+    }
+
+    // ── DEF-315（Sprint 230）：同一秒簽發的 Refresh Token 不可相同 ───────────────────
+
+    @Test
+    @DisplayName("🔴 DEF-315：同一使用者連續簽發的 Refresh Token 一律不同（iat 只到秒，沒有 jti 時同一秒內位元組完全相同）")
+    void generateRefreshToken_issuedBackToBack_areAllDistinct() {
+        Set<String> tokens = new HashSet<>();
+        for (int i = 0; i < 50; i++) {
+            tokens.add(jwtTokenService.generateRefreshToken(TEST_USER_ID));
+        }
+
+        assertThat(tokens).as("50 顆連續簽發（必然落在同一秒內）的 token 不可有重複").hasSize(50);
+    }
+
+    @Test
+    @DisplayName("DEF-315：Refresh Token 帶隨機 jti，同一使用者兩顆的 jti 不同")
+    void generateRefreshToken_carriesRandomJti() {
+        Claims first = jwtTokenService.getClaims(jwtTokenService.generateRefreshToken(TEST_USER_ID));
+        Claims second = jwtTokenService.getClaims(jwtTokenService.generateRefreshToken(TEST_USER_ID));
+
+        assertThat(first.getId()).isNotBlank();
+        assertThat(first.getId()).isNotEqualTo(second.getId());
+        assertThat(first.getSubject()).as("其他內容不變").isEqualTo(TEST_USER_ID.toString());
+    }
+
+    @Test
+    @DisplayName("DEF-315 向下相容：部署前簽發、沒有 jti 的舊 Refresh Token 仍然驗證通過（驗證不強制 jti）")
+    void refreshTokenWithoutJti_issuedBeforeTheFix_stillValidates() {
+        String legacy = Jwts.builder()
+                .subject(TEST_USER_ID.toString())
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + REFRESH_TOKEN_EXPIRATION))
+                .signWith(Keys.hmacShaKeyFor(TEST_SECRET.getBytes(StandardCharsets.UTF_8)))
+                .compact();
+
+        assertThat(jwtTokenService.validateToken(legacy)).isTrue();
+        assertThat(jwtTokenService.getUserId(legacy)).isEqualTo(TEST_USER_ID);
+        assertThat(jwtTokenService.getClaims(legacy).getId()).as("舊 token 本來就沒有 jti").isNull();
     }
 }

@@ -113,6 +113,22 @@ class BookingServiceOwnershipTest {
         return booking;
     }
 
+    /** 比照 {@code OrderServiceTest.orderOfTenant}：供 Sprint 231（DEF-306/DEF-316）same-tenant 分支測試。 */
+    private Booking bookingOfUserAndTenant(
+            final UUID userId, final UUID tenantId, final Booking.BookingStatus status) {
+        Booking booking = bookingOfUser(userId, status);
+        booking.setTenantId(tenantId);
+        return booking;
+    }
+
+    private void actAs(final UUID userId, final UUID tenantId, final String roleAuthority) {
+        TenantContext.setCurrentUser(userId);
+        TenantContext.setCurrentTenant(tenantId);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(userId.toString(), null,
+                        List.of(new SimpleGrantedAuthority(roleAuthority))));
+    }
+
     // ========== getBooking ==========
 
     @Test
@@ -155,6 +171,36 @@ class BookingServiceOwnershipTest {
         BookingDto.BookingResponse response = bookingService.getBooking(bookingId);
 
         assertThat(response.getId()).isEqualTo(bookingId);
+    }
+
+    @Test
+    @DisplayName("Sprint 231（DEF-306/DEF-316）：本租戶商家（非訂房買家本人）查詢預訂詳情 → 放行"
+            + "（此前僅 owner-or-admin，商家持有 booking:read 也無法查看自己租戶的訂房）")
+    void getBooking_sameTenantNonOwner_passesOwnership() {
+        UUID tenantId = UUID.randomUUID();
+        when(bookingRepository.findById(bookingId))
+                .thenReturn(Optional.of(bookingOfUserAndTenant(buyerA, tenantId, Booking.BookingStatus.CREATED)));
+        when(listingRepository.findById(org.mockito.ArgumentMatchers.any())).thenReturn(Optional.empty());
+        actAs(UUID.randomUUID(), tenantId, "ROLE_STORE_OWNER"); // 非買家本人，但同租戶
+
+        BookingDto.BookingResponse response = bookingService.getBooking(bookingId);
+
+        assertThat(response.getId()).isEqualTo(bookingId);
+    }
+
+    @Test
+    @DisplayName("Sprint 231：他租戶商家查詢預訂詳情 → 仍 E_1007（租戶檢查未因此失效）")
+    void getBooking_differentTenantNonOwner_throwsE1007() {
+        UUID tenantId = UUID.randomUUID();
+        UUID otherTenantId = UUID.randomUUID();
+        when(bookingRepository.findById(bookingId))
+                .thenReturn(Optional.of(bookingOfUserAndTenant(buyerA, tenantId, Booking.BookingStatus.CREATED)));
+        actAs(UUID.randomUUID(), otherTenantId, "ROLE_STORE_OWNER");
+
+        assertThatThrownBy(() -> bookingService.getBooking(bookingId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
     }
 
     // ========== updateBooking ==========
@@ -275,5 +321,72 @@ class BookingServiceOwnershipTest {
 
         org.mockito.Mockito.verify(bookingRepository).save(org.mockito.ArgumentMatchers.argThat(
                 b -> b.getStatus() == Booking.BookingStatus.CANCELLED));
+    }
+
+    // ========== cancelBooking：租戶範圍（Sprint 231，DEF-306/DEF-316） ==========
+
+    @Test
+    @DisplayName("本租戶 STORE_OWNER（非訂房買家本人）可取消自己租戶的訂房，取消方判定為 MERCHANT"
+            + "（此前 checkBookingOwnership 無租戶分支，即使持有 booking:cancel 仍 403）")
+    void cancelBooking_sameTenantStoreOwner_passesOwnership() {
+        UUID tenantId = UUID.randomUUID();
+        UUID storeOwnerId = UUID.randomUUID();
+        when(bookingRepository.findById(bookingId))
+                .thenReturn(Optional.of(bookingOfUserAndTenant(buyerA, tenantId, Booking.BookingStatus.CREATED)));
+        when(bookingRepository.updateStatusIfCurrent(bookingId, Booking.BookingStatus.CREATED,
+                Booking.BookingStatus.CANCELLED)).thenReturn(1);
+        actAs(storeOwnerId, tenantId, "ROLE_STORE_OWNER");
+
+        BookingDto.CancelResponse response = bookingService.cancelBooking(bookingId, "merchant cancelled");
+
+        assertThat(response.getCanceledBy()).isEqualTo("MERCHANT");
+        org.mockito.Mockito.verify(bookingRepository).save(org.mockito.ArgumentMatchers.argThat(
+                b -> b.getStatus() == Booking.BookingStatus.CANCELLED));
+    }
+
+    @Test
+    @DisplayName("本租戶 HOST（非訂房買家本人）可取消自己租戶的訂房（PRD §7.3 M06 Host RX*）")
+    void cancelBooking_sameTenantHost_passesOwnership() {
+        UUID tenantId = UUID.randomUUID();
+        when(bookingRepository.findById(bookingId))
+                .thenReturn(Optional.of(bookingOfUserAndTenant(buyerA, tenantId, Booking.BookingStatus.CREATED)));
+        when(bookingRepository.updateStatusIfCurrent(bookingId, Booking.BookingStatus.CREATED,
+                Booking.BookingStatus.CANCELLED)).thenReturn(1);
+        actAs(UUID.randomUUID(), tenantId, "ROLE_HOST");
+
+        BookingDto.CancelResponse response = bookingService.cancelBooking(bookingId, "merchant cancelled");
+
+        assertThat(response.getCanceledBy()).isEqualTo("MERCHANT");
+    }
+
+    @Test
+    @DisplayName("他租戶 STORE_OWNER 取消訂房 → E_1007（租戶範圍檢查未因新分支而失效）")
+    void cancelBooking_differentTenantStoreOwner_throwsE1007() {
+        UUID tenantId = UUID.randomUUID();
+        UUID otherTenantId = UUID.randomUUID();
+        when(bookingRepository.findById(bookingId))
+                .thenReturn(Optional.of(bookingOfUserAndTenant(buyerA, tenantId, Booking.BookingStatus.CREATED)));
+        actAs(UUID.randomUUID(), otherTenantId, "ROLE_STORE_OWNER");
+
+        assertThatThrownBy(() -> bookingService.cancelBooking(bookingId, "test"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("🔴 兩個都未歸屬任何店鋪的一般買家（皆落在系統租戶 SYSTEM_TENANT_ID）→ 取消他人訂房仍 E_1007，"
+            + "same-tenant 分支不得對系統租戶放行（否則任一買家可取消任一買家掛在系統租戶下的訂房，"
+            + "比照 OrderServiceTest.getOrder_bothUsersOnSystemTenant_throwsE1007 的既有教訓）")
+    void cancelBooking_bothUsersOnSystemTenant_throwsE1007() {
+        UUID systemTenantId = UUID.fromString(com.nextkey.ecommerce.shared.constants.AppConstants.SYSTEM_TENANT_ID);
+        when(bookingRepository.findById(bookingId))
+                .thenReturn(Optional.of(bookingOfUserAndTenant(buyerA, systemTenantId, Booking.BookingStatus.CREATED)));
+        actAs(buyerB, systemTenantId, "ROLE_BUYER");
+
+        assertThatThrownBy(() -> bookingService.cancelBooking(bookingId, "test"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
     }
 }

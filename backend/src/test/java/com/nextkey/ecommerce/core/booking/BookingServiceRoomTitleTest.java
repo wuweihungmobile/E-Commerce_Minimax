@@ -77,6 +77,7 @@ class BookingServiceRoomTitleTest {
                 .status(Booking.BookingStatus.CONFIRMED)
                 .totalAmount(BigDecimal.valueOf(5000))
                 .createdAt(Instant.now())
+                .guestName("Test Guest")
                 .build();
     }
 
@@ -119,5 +120,77 @@ class BookingServiceRoomTitleTest {
                 bookingService.getUserBookings(0, 20, "createdAt", "DESC");
 
         assertThat(result.getContent().get(0).getRoomTitle()).isEqualTo("Unknown");
+    }
+
+    @Test
+    @DisplayName("Sprint 231（DEF-316）：列表回應應填入訂房人姓名（商家端需要識別是誰訂的）")
+    void getUserBookings_populatesGuestName() {
+        UUID userId = UUID.randomUUID();
+        UUID listingId = UUID.randomUUID();
+        TenantContext.setCurrentUser(userId);
+
+        Page<Booking> page = new PageImpl<>(List.of(booking(userId, listingId)));
+        when(bookingRepository.findByUserIdOrderByCreatedAtDesc(eq(userId), any(Pageable.class)))
+                .thenReturn(page);
+        when(listingRepository.findAllById(anyList())).thenReturn(List.of());
+
+        Page<BookingDto.BookingListResponse> result =
+                bookingService.getUserBookings(0, 20, "createdAt", "DESC");
+
+        assertThat(result.getContent().get(0).getGuestName()).isEqualTo("Test Guest");
+    }
+
+    // ========== getTenantBookings（Sprint 231，DEF-316：商家端訂房列表） ==========
+
+    @Test
+    @DisplayName("getTenantBookings：走 findByTenantIdOrderByCreatedAtDesc，回應含 roomTitle 與 guestName")
+    void getTenantBookings_populatesRoomTitleAndGuestName() {
+        UUID tenantId = UUID.randomUUID();
+        UUID listingId = UUID.randomUUID();
+        TenantContext.setCurrentTenant(tenantId);
+
+        Page<Booking> page = new PageImpl<>(List.of(booking(UUID.randomUUID(), listingId)));
+        when(bookingRepository.findByTenantIdOrderByCreatedAtDesc(eq(tenantId), any(Pageable.class)))
+                .thenReturn(page);
+        Listing listing = mock(Listing.class);
+        when(listing.getId()).thenReturn(listingId);
+        when(listing.getTitle()).thenReturn("Deluxe Room");
+        when(listingRepository.findAllById(anyList())).thenReturn(List.of(listing));
+
+        Page<BookingDto.BookingListResponse> result =
+                bookingService.getTenantBookings(0, 20, "createdAt", "DESC");
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getRoomTitle()).isEqualTo("Deluxe Room");
+        assertThat(result.getContent().get(0).getGuestName()).isEqualTo("Test Guest");
+    }
+
+    @Test
+    @DisplayName("getTenantBookings：size 超過上限時裁切為 100（比照 getTenantOrders 既有行為）")
+    void getTenantBookings_capsPageSizeAt100() {
+        UUID tenantId = UUID.randomUUID();
+        TenantContext.setCurrentTenant(tenantId);
+        when(bookingRepository.findByTenantIdOrderByCreatedAtDesc(eq(tenantId), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        bookingService.getTenantBookings(0, 500, "createdAt", "DESC");
+
+        org.mockito.ArgumentCaptor<Pageable> captor = org.mockito.ArgumentCaptor.forClass(Pageable.class);
+        org.mockito.Mockito.verify(bookingRepository).findByTenantIdOrderByCreatedAtDesc(eq(tenantId), captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(100);
+    }
+
+    @Test
+    @DisplayName("getTenantBookings：無租戶內容（tenantId 為 null，例如買家帳號誤呼叫）→ 傳 null 給 repository，"
+            + "不特別拋錯（比照 getTenantOrders 既有行為）")
+    void getTenantBookings_nullTenant_passesNullThrough() {
+        // 未呼叫 TenantContext.setCurrentTenant，getCurrentTenant() 回傳 null
+        when(bookingRepository.findByTenantIdOrderByCreatedAtDesc(eq((UUID) null), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        Page<BookingDto.BookingListResponse> result =
+                bookingService.getTenantBookings(0, 20, "createdAt", "DESC");
+
+        assertThat(result.getContent()).isEmpty();
     }
 }

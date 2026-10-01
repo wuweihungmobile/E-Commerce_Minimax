@@ -1216,4 +1216,61 @@ class BookingControllerE2ETest {
             pricingRuleRepository.delete(partialSeasonalRule);
         }
     }
+
+    /**
+     * API-M06-018（Sprint 231，DEF-316）：真實 HTTP 層驗證新路由 {@code GET /v2/dashboard/bookings}
+     * 的 {@code @RequestMapping}／{@code @PreAuthorize} 沒有寫錯——這兩者皆為字串（路徑、SpEL），
+     * 語法錯誤不保證在 Spring context 啟動時就失敗，只有真的送一次 HTTP 請求才會觸發。
+     * 把 {@code @BeforeEach} 已建立的買家帳號（tenantId 已設為 {@code testTenantId}）直接升級為
+     * {@code STORE_OWNER} 並重新登入（authorities 以登入當下的 DB 角色重新計算），
+     * 比另外走一次完整開店審核流程更輕量，且沿用既有 {@code @AfterEach} 清理。
+     */
+    @Test
+    @Order(22)
+    @DisplayName("API-M06-018: GET /v2/dashboard/bookings - 本租戶 STORE_OWNER 可呼叫，回應含本租戶的訂房")
+    void getTenantBookings_asStoreOwner_returnsOwnTenantBookings() throws Exception {
+        userRepository.findByEmail(buyerEmail).ifPresent(user -> {
+            user.setRole(User.UserRole.STORE_OWNER);
+            userRepository.save(user);
+        });
+
+        String storeOwnerLoginResponse = given()
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(LoginRequest.builder().email(buyerEmail).password(TEST_PASSWORD).build())
+                .when()
+                .post(AUTH_URL + "/login")
+                .then()
+                .statusCode(200)
+                .extract()
+                .asString();
+        String storeOwnerToken = objectMapper.readTree(storeOwnerLoginResponse).path("data").path("accessToken").asText();
+
+        // 先用這個 STORE_OWNER 帳號建一筆自己租戶的訂房，確認列表真的回傳得到（不只是空頁掩蓋 404/403）。
+        LocalDate checkIn = LocalDate.now().plusDays(60);
+        given()
+                .header("Authorization", "Bearer " + storeOwnerToken)
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(BookingDto.CreateRequest.builder()
+                        .roomListingId(testRoomListingId)
+                        .checkInDate(checkIn)
+                        .checkOutDate(checkIn.plusDays(1))
+                        .guestCount(1)
+                        .guestName("Dashboard Smoke Test")
+                        .build())
+                .when()
+                .post(BOOKING_URL)
+                .then()
+                .statusCode(201);
+
+        given()
+                .header("Authorization", "Bearer " + storeOwnerToken)
+                .when()
+                .get("/v2/dashboard/bookings")
+                .then()
+                .statusCode(200)
+                .body("success", is(true))
+                .body("data.content.guestName", hasItem("Dashboard Smoke Test"));
+
+        System.out.println("✅ API-M06-018 PASSED: /v2/dashboard/bookings 真實 HTTP 呼叫成功，路由與權限字串皆正確");
+    }
 }

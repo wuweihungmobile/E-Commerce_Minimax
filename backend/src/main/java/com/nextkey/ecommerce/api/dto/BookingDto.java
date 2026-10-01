@@ -177,6 +177,13 @@ public class BookingDto {
         private String currency;
         private Integer nightsCount;
         private java.time.Instant createdAt;
+        /**
+         * 訂房人姓名（Sprint 231，DEF-316：商家端訂房列表需要識別訂房人；比照
+         * {@code OrderDto.OrderListResponse.shippingRecipientName}（Sprint 151，DEF-188）的既有模式——
+         * 買家自己查詢列表時看到的是自己填寫的姓名，無額外資訊揭露疑慮，本欄位由共用的
+         * {@code BookingService.toBookingListResponse} 填充，買家與商家兩層列表共用同一個 DTO）。
+         */
+        private String guestName;
     }
 
     // ========== Calendar Response ==========

@@ -42,6 +42,13 @@ class RolePermissionMappingTest {
         assertThat(mapping.hasPermission(User.UserRole.ADMIN, Permission.BOOKING_READ)).isTrue();
     }
 
+    @Test
+    @DisplayName("HOST 持有 BOOKING_CANCEL（Sprint 231，DEF-306/DEF-316：PRD §7.3 M06 Host 應為 RX*，"
+            + "此前完全沒有這個權限，連帶 checkBookingOwnership 的租戶範圍檢查一併補上）")
+    void host_hasBookingCancel() {
+        assertThat(mapping.hasPermission(User.UserRole.HOST, Permission.BOOKING_CANCEL)).isTrue();
+    }
+
     // ── DEF-075（Sprint 129）：dashboard/faq/knowledge/media 角色授權 ──
 
     @Test

@@ -75,6 +75,9 @@ public class RolePermissionMapping {
                 Permission.ROOM_DELETE,
                 Permission.BOOKING_READ,
                 Permission.BOOKING_UPDATE,
+                // PRD §7.3 M06 預訂管理：Host 應為 RX*（Sprint 231，DEF-306/DEF-316）。
+                // checkBookingOwnership 的租戶範圍檢查同輪補上，否則有權限也仍 403。
+                Permission.BOOKING_CANCEL,
                 Permission.PRICING_READ,
                 Permission.PRICING_UPDATE,
                 Permission.USER_READ,

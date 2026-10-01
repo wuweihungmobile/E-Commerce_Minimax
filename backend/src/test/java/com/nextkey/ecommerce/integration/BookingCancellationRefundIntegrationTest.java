@@ -99,7 +99,12 @@ class BookingCancellationRefundIntegrationTest {
     private Tenant tenant;
     private User buyer;
     private User admin;
+    private User storeOwner;
     private UUID roomListingId;
+
+    // Sprint 231（DEF-316）：跨租戶商家取消需要第二個租戶與店主
+    private Tenant otherTenant;
+    private User otherTenantStoreOwner;
 
     @BeforeEach
     void setUp() {
@@ -211,6 +216,60 @@ class BookingCancellationRefundIntegrationTest {
 
         assertThat(paymentStatus(bookingId)).isEqualTo("REFUNDED");
         assertThat(refundStatus(bookingId)).isEqualTo("COMPLETED");
+    }
+
+    // ── 商家端訂房管理（Sprint 231，DEF-316）：STORE_OWNER 本人（非管理員）取消自己租戶的訂房 ──
+
+    @Test
+    @DisplayName("Sprint 231：本租戶 STORE_OWNER（非管理員、非訂房買家本人）可取消自己租戶的訂房，"
+            + "入住前不足 24 小時仍一律全額退款（取消方 MERCHANT）；此前 checkBookingOwnership 無租戶分支，"
+            + "即使持有 booking:cancel 仍 403（DEF-316 的核心缺口）")
+    void sameTenantStoreOwner_canCancel_isStillFullyRefunded() {
+        UUID bookingId = buyerBooks(0, null);
+        BigDecimal paid = bookingTotal(bookingId);
+        buyerPaysWithMock(bookingId);
+
+        asStoreOwner();
+        BookingDto.CancelResponse response = bookingService.cancelBooking(bookingId, "store owner cancelled");
+
+        assertThat(response.getCanceledBy()).isEqualTo("MERCHANT");
+        assertThat(response.getRefundStatus()).isEqualTo("PENDING");
+        assertThat(response.getRefundAmount()).isEqualByComparingTo(paid);
+
+        runSweeper(Instant.now());
+
+        assertThat(paymentStatus(bookingId)).isEqualTo("REFUNDED");
+        assertThat(refundStatus(bookingId)).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    @DisplayName("Sprint 231：他租戶 STORE_OWNER 取消訂房 → 403（E_1007），租戶隔離未因新分支而失效"
+            + "（真實 Postgres：兩個真正持久化的租戶，而非 mock）")
+    void differentTenantStoreOwner_cannotCancel() {
+        UUID bookingId = buyerBooks(10, null);
+
+        asOtherTenantStoreOwner();
+
+        assertThatThrownBy(() -> bookingService.cancelBooking(bookingId, "cross-tenant attempt"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
+        assertThat(bookingStatus(bookingId)).as("越權請求不得變更訂房狀態").isEqualTo("CREATED");
+    }
+
+    @Test
+    @DisplayName("Sprint 231：getTenantBookings 只回傳本租戶的訂房，看不到其他租戶的（真實 Postgres 查詢驗證租戶隔離，"
+            + "findByTenantIdOrderByCreatedAtDesc 此前完全沒有呼叫者）")
+    void getTenantBookings_onlyReturnsOwnTenantBookings() {
+        UUID ownBookingId = buyerBooks(10, null);
+
+        asStoreOwner();
+        var ownResult = bookingService.getTenantBookings(0, 20, "createdAt", "DESC");
+        asOtherTenantStoreOwner();
+        var otherResult = bookingService.getTenantBookings(0, 20, "createdAt", "DESC");
+
+        assertThat(ownResult.getContent()).extracting("id").contains(ownBookingId);
+        assertThat(otherResult.getContent()).extracting("id").doesNotContain(ownBookingId);
     }
 
     // ── Stripe 付款 ──────────────────────────────────────────
@@ -616,16 +675,26 @@ class BookingCancellationRefundIntegrationTest {
     }
 
     private void asBuyer() {
-        act(buyer);
+        act(buyer, tenant);
     }
 
     private void asAdmin() {
-        act(admin);
+        act(admin, tenant);
     }
 
-    private void act(final User user) {
+    /** Sprint 231（DEF-316）：本租戶店主，非訂房買家本人，用於驗證 checkBookingOwnership 的 same-tenant 分支。 */
+    private void asStoreOwner() {
+        act(storeOwner, tenant);
+    }
+
+    /** Sprint 231（DEF-316）：他租戶店主，用於驗證跨租戶取消仍被擋下。 */
+    private void asOtherTenantStoreOwner() {
+        act(otherTenantStoreOwner, otherTenant);
+    }
+
+    private void act(final User user, final Tenant actingTenant) {
         TenantContext.setCurrentUser(user.getId());
-        TenantContext.setCurrentTenant(tenant.getId());
+        TenantContext.setCurrentTenant(actingTenant.getId());
         List<SimpleGrantedAuthority> authorities = new RolePermissionMapping().getAuthorities(user.getRole())
                 .stream().map(SimpleGrantedAuthority::new).toList();
         SecurityContextHolder.getContext().setAuthentication(
@@ -637,16 +706,24 @@ class BookingCancellationRefundIntegrationTest {
         tenant = tenantRepository.save(Tenant.builder().name("Booking Refund Tenant").slug("booking-refund-" + stamp)
                 .contactEmail("booking-refund-" + stamp + "@tenant.com").contactPhone("+886-123456789")
                 .status(Tenant.TenantStatus.ACTIVE).build());
-        User host = userRepository.save(User.builder().email("booking-refund-host-" + stamp + "@example.com")
+        storeOwner = userRepository.save(User.builder().email("booking-refund-host-" + stamp + "@example.com")
                 .passwordHash("dummy").fullName("Host").role(User.UserRole.STORE_OWNER).status("ACTIVE")
                 .tenantId(tenant.getId()).build());
         buyer = userRepository.save(User.builder().email("booking-refund-buyer-" + stamp + "@example.com")
                 .passwordHash("dummy").fullName("Buyer").role(User.UserRole.BUYER).status("ACTIVE").build());
         admin = userRepository.save(User.builder().email("booking-refund-admin-" + stamp + "@example.com")
                 .passwordHash("dummy").fullName("Admin").role(User.UserRole.ADMIN).status("ACTIVE").build());
-        roomListingId = listingRepository.save(Listing.builder().tenant(tenant).owner(host)
+        roomListingId = listingRepository.save(Listing.builder().tenant(tenant).owner(storeOwner)
                 .listingType(Listing.ListingType.ROOM).title("Booking Refund Room")
                 .basePrice(new BigDecimal("1500.00")).status(Listing.ListingStatus.ACTIVE).build()).getId();
+        otherTenant = tenantRepository.save(Tenant.builder().name("Booking Refund Other Tenant")
+                .slug("booking-refund-other-" + stamp)
+                .contactEmail("booking-refund-other-" + stamp + "@tenant.com").contactPhone("+886-123456789")
+                .status(Tenant.TenantStatus.ACTIVE).build());
+        otherTenantStoreOwner = userRepository.save(User.builder()
+                .email("booking-refund-other-host-" + stamp + "@example.com")
+                .passwordHash("dummy").fullName("Other Host").role(User.UserRole.STORE_OWNER).status("ACTIVE")
+                .tenantId(otherTenant.getId()).build());
         jdbcTemplate.update("INSERT INTO rooms (listing_id, max_guests, room_count, check_in_time, check_out_time, "
                 + "created_at, updated_at) VALUES (?, 4, 1, '15:00'::time, '11:00'::time, NOW(), NOW())", roomListingId);
         // integration-test profile 以 ddl-auto=update 建表，沒有 Flyway V79 的 payments.idempotency_key 唯一索引；補上生產有的那條

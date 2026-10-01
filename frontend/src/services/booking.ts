@@ -77,6 +77,8 @@ export interface BookingListItem {
   currency: string
   nightsCount: number
   createdAt: string
+  /** 訂房人姓名（Sprint 231，DEF-316）：商家端列表用來識別是誰訂的；買家查自己的列表也會看到自己填的姓名 */
+  guestName: string | null
 }
 
 // 對齊後端 BookingDto.CreateRequest（POST /v2/bookings）
@@ -258,6 +260,23 @@ class BookingService {
       ? API_ENDPOINTS.bookings.cancel(id) + '?reason=' + encodeURIComponent(reason)
       : API_ENDPOINTS.bookings.cancel(id)
     const response = await apiClient.post<ApiResponse<CancelBookingResult>>(url)
+    return response.data.data
+  }
+
+  // ========== 店家層（Sprint 231，DEF-316） ==========
+
+  // 店鋪訂房列表（GET /v2/dashboard/bookings，PRD §9.16）；取消沿用上面的 cancelBooking，
+  // 後端 checkBookingOwnership 依租戶放行同一個端點。
+  async listTenantBookings(query: BookingQuery = {}): Promise<PaginatedResponse<BookingListItem>> {
+    const params = new URLSearchParams()
+    if (query.page !== undefined) params.append('page', String(query.page))
+    if (query.size !== undefined) params.append('size', String(query.size))
+    if (query.sortBy) params.append('sortBy', query.sortBy)
+    if (query.sortDir) params.append('sortDir', query.sortDir)
+    const qs = params.toString()
+    const response = await apiClient.get<ApiResponse<PaginatedResponse<BookingListItem>>>(
+      API_ENDPOINTS.dashboardBookings.list + (qs ? '?' + qs : '')
+    )
     return response.data.data
   }
 

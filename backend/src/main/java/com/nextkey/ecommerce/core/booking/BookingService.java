@@ -48,6 +48,7 @@ import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.time.BusinessTime;
@@ -94,6 +95,14 @@ public class BookingService {
     // Default check-in/out times
     private static final LocalTime DEFAULT_CHECK_IN_TIME = LocalTime.of(15, 0);
     private static final LocalTime DEFAULT_CHECK_OUT_TIME = LocalTime.of(11, 0);
+
+    /**
+     * 系統租戶（比照 {@code OrderService.SYSTEM_TENANT_UUID}／DEF-188 的教訓）：未歸屬任何實際租戶的
+     * 使用者（一般 BUYER、未審核的 SELLER）一律 fallback 到這個常數，任兩個這樣的使用者
+     * {@code TenantContext.getCurrentTenant()} 會是同一個值。{@link #checkBookingOwnership} 的
+     * same-tenant 分支必須明確排除它，否則形同任一買家可操作任一其他買家掛在系統租戶下的訂房。
+     */
+    private static final UUID SYSTEM_TENANT_UUID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
 
     /**
      * 檢查日期範圍可用性
@@ -595,6 +604,35 @@ public class BookingService {
     }
 
     /**
+     * 取得當前租戶（商家：STORE_OWNER／HOST／STORE_STAFF 唯讀）的訂房列表（Sprint 231，DEF-316）。
+     * PRD §9.16「GET /api/v2/dashboard/bookings」；比照 {@link #getUserBookings} 的分頁/排序與
+     * 批次查詢房型標題處理，改用 {@code findByTenantIdOrderByCreatedAtDesc}（既有 repository 方法，
+     * 原本沒有任何呼叫者）。無租戶內容時 tenantId 為 null，查詢結果自然為空頁，不特別拋錯
+     * （比照 {@code OrderService.getTenantOrders} 既有行為）。
+     */
+    @Transactional(readOnly = true)
+    public Page<BookingDto.BookingListResponse> getTenantBookings(int page, int size, String sortBy, String sortDir) {
+        UUID tenantId = getCurrentTenant();
+        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
+        PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
+
+        Page<com.nextkey.ecommerce.domain.model.order.Booking> bookings =
+                bookingRepository.findByTenantIdOrderByCreatedAtDesc(tenantId, pageRequest);
+
+        List<UUID> listingIds = bookings.getContent().stream()
+                .map(com.nextkey.ecommerce.domain.model.order.Booking::getRoomListingId)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<UUID, String> titleMap = listingRepository.findAllById(listingIds).stream()
+                .collect(Collectors.toMap(
+                        Listing::getId,
+                        listing -> listing.getTitle() != null ? listing.getTitle() : "Unknown"));
+
+        return bookings.map(booking ->
+                toBookingListResponse(booking, titleMap.get(booking.getRoomListingId())));
+    }
+
+    /**
      * 取得預訂詳情
      */
     @Transactional(readOnly = true)
@@ -920,19 +958,28 @@ public class BookingService {
     }
 
     /**
-     * 預訂擁有權檢查（DEF-023：booking 讀寫擁有權隔離）。
-     * 比照 OrderService.getOrder：買家限本人預訂、admin（ROLE_ADMIN/SUPER_ADMIN）放行，
-     * 越權回 403/E_1007。杜絕任何登入者查詢/更新他人預訂（IDOR）。
+     * 預訂擁有權檢查（DEF-023：booking 讀寫擁有權隔離）。比照 OrderService.getOrder：買家限本人預訂、
+     * admin（ROLE_ADMIN/SUPER_ADMIN）放行，越權回 403/E_1007。杜絕任何登入者查詢/更新他人預訂（IDOR）。
+     *
+     * <p>Sprint 231（DEF-306/DEF-316）新增 same-tenant 分支，比照
+     * {@code OrderService.checkOrderTenantAuthorization}：商家（STORE_OWNER／HOST，持有 booking:cancel
+     * 或 booking:read）需能存取/取消自己租戶房源的訂房，此前僅 admin 或買家本人放行，PRD §7.3
+     * 要求的商家端訂房管理（RX*）因此完全不可達。same-tenant 必須排除 {@link #SYSTEM_TENANT_UUID}，
+     * 否則任兩個未歸屬任何租戶的一般買家會落在同一個「租戶」下，形同放行跨買家存取。
      */
     private void checkBookingOwnership(final com.nextkey.ecommerce.domain.model.order.Booking booking) {
         UUID userId = getCurrentUser();
+        UUID tenantId = getCurrentTenant();
         org.springframework.security.core.Authentication auth =
             org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         boolean isAdmin = auth != null && (
             auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
             auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
         );
-        if (!isAdmin && !userId.equals(booking.getUserId())) {
+        boolean isOwner = userId.equals(booking.getUserId());
+        boolean isSameTenant = tenantId != null && tenantId.equals(booking.getTenantId())
+                && !tenantId.equals(SYSTEM_TENANT_UUID);
+        if (!isAdmin && !isOwner && !isSameTenant) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to access this booking");
         }
     }
@@ -1141,6 +1188,7 @@ public class BookingService {
                 .currency("TWD")
                 .nightsCount((int) nightsCount)
                 .createdAt(booking.getCreatedAt())
+                .guestName(booking.getGuestName())
                 .build();
     }
 }

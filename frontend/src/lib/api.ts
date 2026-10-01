@@ -135,6 +135,12 @@ export const API_ENDPOINTS = {
     calendar: '/v2/bookings/calendar',
   },
 
+  // Bookings — 店家層 (Sprint 231，DEF-316)；取消沿用上面 bookings.cancel（同一端點，
+  // 後端 checkBookingOwnership 依租戶放行，非另開店家層專用取消路由）
+  dashboardBookings: {
+    list: '/v2/dashboard/bookings',
+  },
+
   // Tenants (M17)
   tenants: {
     apply: '/v2/tenants/apply',

@@ -193,7 +193,7 @@ class AuthServiceTest {
         void completeLogin_resolvesTenantFromMembership() {
             User owner = buildActiveUser();
             owner.setRole(User.UserRole.STORE_OWNER);
-            when(tenantMemberRepository.findByUserId(USER_ID)).thenReturn(java.util.List.of(
+            when(tenantMemberRepository.findByUserIdAndStatus(USER_ID, com.nextkey.ecommerce.domain.model.tenant.TenantMember.MemberStatus.ACTIVE)).thenReturn(java.util.List.of(
                     com.nextkey.ecommerce.domain.model.tenant.TenantMember.builder()
                             .tenantId(TENANT_ID).userId(USER_ID).build()));
             // 對任何 id 都回對應的租戶，讓「查錯租戶」反映在下面的斷言上，而不是 Mockito 的 stub 不符

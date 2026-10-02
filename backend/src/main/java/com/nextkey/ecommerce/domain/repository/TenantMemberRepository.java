@@ -21,7 +21,12 @@ public interface TenantMemberRepository extends JpaRepository<TenantMember, UUID
 
     Optional<TenantMember> findByTenantIdAndUserId(UUID tenantId, UUID userId);
 
-    boolean existsByTenantIdAndUserId(UUID tenantId, UUID userId);
+    /**
+     * 該使用者是否為這間店鋪「目前有效」的成員（Sprint 235，DEF-329）。受邀未接受（{@code INVITED}）與已移除
+     * （{@code REMOVED}）的人不算；成員資格檢查一律用這個，不要用不看狀態的 {@code exists…}，否則被移除的人
+     * 仍會通過「是成員」的檢查。
+     */
+    boolean existsByTenantIdAndUserIdAndStatus(UUID tenantId, UUID userId, TenantMember.MemberStatus status);
 
     boolean existsByTenantIdAndUserIdAndStoreRole(UUID tenantId, UUID userId, TenantMember.StoreRole storeRole);
 

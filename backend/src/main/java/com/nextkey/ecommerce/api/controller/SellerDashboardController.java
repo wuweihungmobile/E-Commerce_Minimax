@@ -39,9 +39,13 @@ public class SellerDashboardController {
 
     /**
      * 發起（或重新產生）Stripe Connect Express 帳戶 onboarding link（Sprint 53 AI-2413 Phase D-1）。
+     *
+     * <p>Sprint 235（DEF-327）：只限店主（{@code STORE_OWNER}）。原本是 {@code hasRole('SELLER')}——自助註冊即得、不建租戶，
+     * 而核准開店後的角色是 STORE_OWNER，所以真正的店主反而呼叫不了，只有沒有店鋪的 SELLER 能呼叫（在系統租戶上建立
+     * Connect 帳戶，見 {@link com.nextkey.ecommerce.core.tenant.TenantStripeConnectService}）。
      */
     @PostMapping("/stripe-connect/onboarding")
-    @PreAuthorize("hasRole('SELLER')")
+    @PreAuthorize("hasRole('STORE_OWNER')")
     public ResponseEntity<ApiResponse<StripeConnectDto.OnboardingResponse>> initiateStripeConnectOnboarding() {
         UUID tenantId = TenantContext.getCurrentTenant();
         log.info("Stripe Connect onboarding request: tenantId={}", tenantId);
@@ -53,7 +57,7 @@ public class SellerDashboardController {
      * 查詢 Stripe Connect 帳戶最新狀態（Sprint 53 AI-2413 Phase D-1）。
      */
     @GetMapping("/stripe-connect/status")
-    @PreAuthorize("hasRole('SELLER')")
+    @PreAuthorize("hasRole('STORE_OWNER')")
     public ResponseEntity<ApiResponse<StripeConnectDto.StatusResponse>> getStripeConnectStatus() {
         UUID tenantId = TenantContext.getCurrentTenant();
         StripeConnectDto.StatusResponse response = tenantStripeConnectService.getAccountStatus(tenantId);

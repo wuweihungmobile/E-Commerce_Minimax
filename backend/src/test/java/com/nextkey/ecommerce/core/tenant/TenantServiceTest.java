@@ -404,7 +404,7 @@ class TenantServiceTest {
         when(userRepository.findById(TEST_USER_ID))
                 .thenReturn(Optional.of(owner));
         // DEF-264：purchaseOrderApprovalThreshold 僅在呼叫者是本租戶成員時才可見
-        when(tenantMemberRepository.existsByTenantIdAndUserId(tenantId, TEST_USER_ID))
+        when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(tenantId, TEST_USER_ID, TenantMember.MemberStatus.ACTIVE))
                 .thenReturn(true);
 
         try {
@@ -504,6 +504,31 @@ class TenantServiceTest {
         }
 
         @Test
+        @DisplayName("Sprint 235：getFeatureToggles 呼叫者不是有效（ACTIVE）成員（受邀未接受、已移除）→ E_4031，不查任何開關")
+        void getFeatureToggles_nonActiveMember_rejected() {
+            TenantContext.setCurrentUser(TEST_USER_ID);
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(
+                    TEST_TENANT_ID, TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(false);
+
+            BusinessException ex = assertThrows(BusinessException.class,
+                    () -> tenantService.getFeatureToggles(TEST_TENANT_ID));
+
+            assertEquals(ErrorCode.E_4031, ex.getErrorCode());
+            verify(tenantFeatureToggleRepository, never()).findByTenantId(any());
+        }
+
+        @Test
+        @DisplayName("Sprint 235：getFeatureToggles 有效（ACTIVE）成員照常取得")
+        void getFeatureToggles_activeMember_allowed() {
+            TenantContext.setCurrentUser(TEST_USER_ID);
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(
+                    TEST_TENANT_ID, TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(true);
+            when(tenantFeatureToggleRepository.findByTenantId(TEST_TENANT_ID)).thenReturn(List.of());
+
+            assertNotNull(tenantService.getFeatureToggles(TEST_TENANT_ID));
+        }
+
+        @Test
         @DisplayName("getFeatureToggles：回傳前端實際讀取的 category/status/requiresAdminReview 三欄")
         void getFeatureToggles_providesFieldsFrontendActuallyReads() {
             // DEF-168：前端 features/page.tsx 讀 category（分組）、status + requiresAdminReview（徽章與
@@ -592,7 +617,7 @@ class TenantServiceTest {
                     .createdAt(Instant.now())
                     .build();
 
-            when(tenantMemberRepository.findByUserId(TEST_USER_ID)).thenReturn(List.of(member));
+            when(tenantMemberRepository.findByUserIdAndStatus(TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(List.of(member));
             when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
             when(tenantMemberRepository.countByTenantId(TEST_TENANT_ID)).thenReturn(1L);
             when(tenantFeatureToggleRepository.findByTenantId(TEST_TENANT_ID)).thenReturn(List.of());
@@ -607,6 +632,25 @@ class TenantServiceTest {
             assertFalse(features.containsKey("MAX_ROOMS"));
             assertFalse(features.containsKey("MAX_POSTS"));
             assertFalse(features.containsKey("COMMISSION_RATE"));
+        }
+
+        @Test
+        @DisplayName("Sprint 235：getTenantsByUser 只依有效（ACTIVE）成員資格列出店鋪，不使用不看狀態的查詢")
+        void getTenantsByUser_onlyActiveMemberships() {
+            TenantContext.setCurrentUser(TEST_USER_ID);
+            TenantMember member = TenantMember.builder()
+                    .tenantId(TEST_TENANT_ID).userId(TEST_USER_ID).storeRole(TenantMember.StoreRole.STORE_STAFF).build();
+            Tenant tenant = Tenant.builder()
+                    .id(TEST_TENANT_ID).name("Test Store").status(Tenant.TenantStatus.ACTIVE).createdAt(Instant.now()).build();
+            when(tenantMemberRepository.findByUserIdAndStatus(TEST_USER_ID, TenantMember.MemberStatus.ACTIVE))
+                    .thenReturn(List.of(member));
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+            when(tenantMemberRepository.countByTenantId(TEST_TENANT_ID)).thenReturn(1L);
+            when(tenantFeatureToggleRepository.findByTenantId(TEST_TENANT_ID)).thenReturn(List.of());
+
+            tenantService.getTenantsByUser();
+
+            verify(tenantMemberRepository, never()).findByUserId(any());
         }
     }
 
@@ -629,7 +673,7 @@ class TenantServiceTest {
         @Test
         @DisplayName("updateFeatureToggle：成功切換並記錄稽核")
         void updateFeatureToggle_success_recordsAudit() {
-            when(tenantMemberRepository.existsByTenantIdAndUserId(TEST_TENANT_ID, TEST_USER_ID)).thenReturn(true);
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(TEST_TENANT_ID, TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(true);
             when(tenantFeatureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "RETAIL_ENABLED"))
                     .thenReturn(Optional.empty());
             when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TEST_TENANT_ID).build()));
@@ -646,7 +690,7 @@ class TenantServiceTest {
         @DisplayName("🔴 DEF-247：需審核功能（DYNAMIC_PRICING_ENABLED）店主自助申請啟用"
                 + " → isEnabled 實際仍寫入 false（真正待審核，非直接生效）")
         void updateFeatureToggle_requiresApprovalFeature_newRequest_staysDisabled() {
-            when(tenantMemberRepository.existsByTenantIdAndUserId(TEST_TENANT_ID, TEST_USER_ID)).thenReturn(true);
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(TEST_TENANT_ID, TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(true);
             when(tenantFeatureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "DYNAMIC_PRICING_ENABLED"))
                     .thenReturn(Optional.empty());
             when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TEST_TENANT_ID).build()));
@@ -668,7 +712,7 @@ class TenantServiceTest {
         @DisplayName("updateFeatureToggle：需審核功能已啟用中，重複確認 enabled=true → 維持已啟用"
                 + "（不因本次修法而誤將既有已啟用功能打回未啟用）")
         void updateFeatureToggle_requiresApprovalFeature_alreadyEnabled_staysEnabled() {
-            when(tenantMemberRepository.existsByTenantIdAndUserId(TEST_TENANT_ID, TEST_USER_ID)).thenReturn(true);
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(TEST_TENANT_ID, TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(true);
             TenantFeatureToggle existing = TenantFeatureToggle.builder()
                     .tenant(Tenant.builder().id(TEST_TENANT_ID).build())
                     .featureKey("DYNAMIC_PRICING_ENABLED")
@@ -691,7 +735,7 @@ class TenantServiceTest {
             // DEF-167：MAX_PRODUCTS/MAX_ROOMS/MAX_POSTS/COMMISSION_RATE 的值存在 config JSONB 而非
             // isEnabled。若允許經布林開關 API 切換，同一個 featureKey 會同時具有數值與布林兩種語意，
             // 之後任何依 config 讀配額的程式都可能讀到一筆只有 isEnabled、沒有 config 的紀錄。
-            when(tenantMemberRepository.existsByTenantIdAndUserId(TEST_TENANT_ID, TEST_USER_ID)).thenReturn(true);
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(TEST_TENANT_ID, TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(true);
 
             BusinessException ex = assertThrows(BusinessException.class,
                     () -> tenantService.updateFeatureToggle(TEST_TENANT_ID, "MAX_PRODUCTS", true));
@@ -710,7 +754,7 @@ class TenantServiceTest {
         @Test
         @DisplayName("updateFeatureToggle：非店鋪成員呼叫 → 拒絕且不記錄稽核")
         void updateFeatureToggle_notMember_rejectedWithoutAudit() {
-            when(tenantMemberRepository.existsByTenantIdAndUserId(TEST_TENANT_ID, TEST_USER_ID)).thenReturn(false);
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(TEST_TENANT_ID, TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(false);
 
             assertThrows(BusinessException.class,
                     () -> tenantService.updateFeatureToggle(TEST_TENANT_ID, "RETAIL_ENABLED", false));
@@ -1011,6 +1055,94 @@ class TenantServiceTest {
             assertThrows(BusinessException.class, () -> tenantService.removeMember(TEST_TENANT_ID, INVITEE_ID));
             verify(tenantMemberRepository, never()).save(any());
             verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Sprint 235：getTenantMembers 呼叫者不是有效（ACTIVE）成員（受邀未接受、已移除）→ E_4031，看不到名單")
+        void getTenantMembers_nonActiveMember_rejected() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(false);
+
+            BusinessException ex = assertThrows(BusinessException.class,
+                    () -> tenantService.getTenantMembers(TEST_TENANT_ID));
+
+            assertEquals(ErrorCode.E_4031, ex.getErrorCode());
+            verify(tenantMemberRepository, never()).findByTenantIdAndStatusNot(any(), any());
+        }
+
+        @Test
+        @DisplayName("Sprint 235：getTenantMembers 有效（ACTIVE）成員照常取得名單")
+        void getTenantMembers_activeMember_allowed() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(true);
+            when(tenantMemberRepository.findByTenantIdAndStatusNot(TEST_TENANT_ID, TenantMember.MemberStatus.REMOVED))
+                    .thenReturn(List.of());
+
+            assertTrue(tenantService.getTenantMembers(TEST_TENANT_ID).isEmpty());
+        }
+
+        // ===== Sprint 235（DEF-329）：移除成員時收回店員角色 =====
+        //
+        // acceptInvite 會把 user.role 設成 STORE_STAFF，JWT 的角色取自 user.role；只改成員狀態、不改角色，
+        // 被移除的店員下次登入或換發 token 仍帶員工權限（真實全棧實測重現）。
+
+        /** 安排一次成功的移除（店主身分、成員是 ACTIVE 的店員、原子轉換成功）。 */
+        private void arrangeSuccessfulRemoval() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            UUID memberRowId = UUID.randomUUID();
+            TenantMember activeMember = TenantMember.builder()
+                    .id(memberRowId).tenantId(TEST_TENANT_ID).userId(INVITEE_ID)
+                    .status(TenantMember.MemberStatus.ACTIVE).storeRole(TenantMember.StoreRole.STORE_STAFF).build();
+            when(tenantMemberRepository.findByTenantIdAndUserId(TEST_TENANT_ID, INVITEE_ID))
+                    .thenReturn(Optional.of(activeMember));
+            when(tenantMemberRepository.updateStatusIfCurrent(memberRowId,
+                    TenantMember.MemberStatus.ACTIVE, TenantMember.MemberStatus.REMOVED)).thenReturn(1);
+            when(tenantMemberRepository.save(any(TenantMember.class))).thenAnswer(inv -> inv.getArgument(0));
+        }
+
+        @Test
+        @DisplayName("Sprint 235：removeMember 移除後沒有任何有效成員資格的 STORE_STAFF → 角色收回成 BUYER")
+        void removeMember_staffWithNoOtherActiveMembership_revokesStaffRole() {
+            arrangeSuccessfulRemoval();
+            User staff = User.builder().id(INVITEE_ID).role(User.UserRole.STORE_STAFF).build();
+            when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(staff));
+            when(tenantMemberRepository.findByUserIdAndStatus(INVITEE_ID, TenantMember.MemberStatus.ACTIVE))
+                    .thenReturn(List.of());
+
+            tenantService.removeMember(TEST_TENANT_ID, INVITEE_ID);
+
+            assertEquals(User.UserRole.BUYER, staff.getRole());
+            verify(userRepository).save(staff);
+        }
+
+        @Test
+        @DisplayName("Sprint 235：removeMember 被移除者仍是別間店鋪的有效成員 → 角色不得降級")
+        void removeMember_staffStillActiveElsewhere_keepsStaffRole() {
+            arrangeSuccessfulRemoval();
+            User staff = User.builder().id(INVITEE_ID).role(User.UserRole.STORE_STAFF).build();
+            when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(staff));
+            when(tenantMemberRepository.findByUserIdAndStatus(INVITEE_ID, TenantMember.MemberStatus.ACTIVE))
+                    .thenReturn(List.of(TenantMember.builder().tenantId(UUID.randomUUID()).userId(INVITEE_ID).build()));
+
+            tenantService.removeMember(TEST_TENANT_ID, INVITEE_ID);
+
+            assertEquals(User.UserRole.STORE_STAFF, staff.getRole());
+            verify(userRepository, never()).save(any(User.class));
+        }
+
+        @Test
+        @DisplayName("Sprint 235：removeMember 被移除者的角色不是 STORE_STAFF（例如 SELLER）→ 角色與成員查詢都不動")
+        void removeMember_nonStaffRole_leavesRoleUntouched() {
+            arrangeSuccessfulRemoval();
+            User seller = User.builder().id(INVITEE_ID).role(User.UserRole.SELLER).build();
+            when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(seller));
+
+            tenantService.removeMember(TEST_TENANT_ID, INVITEE_ID);
+
+            assertEquals(User.UserRole.SELLER, seller.getRole());
+            verify(userRepository, never()).save(any(User.class));
+            verify(tenantMemberRepository, never()).findByUserIdAndStatus(any(), any());
         }
 
         @Test

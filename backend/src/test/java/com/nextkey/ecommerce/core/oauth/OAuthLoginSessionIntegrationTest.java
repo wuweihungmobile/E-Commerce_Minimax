@@ -111,7 +111,7 @@ class OAuthLoginSessionIntegrationTest {
         userRepository = mock(UserRepository.class);
         oAuthAccountRepository = mock(OAuthAccountRepository.class);
         tenantMemberRepository = mock(TenantMemberRepository.class);
-        when(tenantMemberRepository.findByUserId(any())).thenReturn(List.of());
+        when(tenantMemberRepository.findByUserIdAndStatus(any(), any())).thenReturn(List.of());
         TenantRepository tenantRepository = mock(TenantRepository.class);
         when(tenantRepository.findById(any())).thenAnswer(inv ->
                 Optional.of(Tenant.builder().id(inv.getArgument(0)).name("tenant").build()));
@@ -182,7 +182,7 @@ class OAuthLoginSessionIntegrationTest {
         UUID storeTenantId = UUID.randomUUID();
         User owner = activeUser(null);
         owner.setRole(User.UserRole.STORE_OWNER);
-        when(tenantMemberRepository.findByUserId(userId)).thenReturn(List.of(membership(storeTenantId)));
+        when(tenantMemberRepository.findByUserIdAndStatus(userId, TenantMember.MemberStatus.ACTIVE)).thenReturn(List.of(membership(storeTenantId)));
         linkGoogleAccount("google-uid-owner", owner);
         googleReturns("google-uid-owner", owner.getEmail(), true);
 
@@ -219,7 +219,7 @@ class OAuthLoginSessionIntegrationTest {
         // 模擬開店核准（AdminService.approveTenantApplication：只建 tenant_members、把角色改成 STORE_OWNER）
         UUID storeTenantId = UUID.randomUUID();
         createdUser.setRole(User.UserRole.STORE_OWNER);
-        when(tenantMemberRepository.findByUserId(userId)).thenReturn(List.of(membership(storeTenantId)));
+        when(tenantMemberRepository.findByUserIdAndStatus(userId, TenantMember.MemberStatus.ACTIVE)).thenReturn(List.of(membership(storeTenantId)));
         linkGoogleAccount("google-uid-new", createdUser);
 
         AuthResponse secondLogin = oAuthService.handleOAuthLogin(googleLoginRequest());

@@ -17,6 +17,7 @@ import com.nextkey.ecommerce.api.dto.StripeConnectDto;
 import com.nextkey.ecommerce.core.tenant.TenantStripeConnectService;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -51,9 +52,9 @@ class M13SellerStripeConnectIntegrationTest {
     private static final String STATUS_URL = "/v2/seller/dashboard/stripe-connect/status";
 
     @Test
-    @DisplayName("IT-CONNECT-001: SELLER 發起 onboarding → 200 + onboardingUrl")
-    @WithMockUser(username = "seller", roles = {"SELLER"})
-    void initiateOnboarding_asSeller_returns200WithUrl() throws Exception {
+    @DisplayName("IT-CONNECT-001: STORE_OWNER（店主）發起 onboarding → 200 + onboardingUrl")
+    @WithMockUser(username = "owner", roles = {"STORE_OWNER"})
+    void initiateOnboarding_asStoreOwner_returns200WithUrl() throws Exception {
         when(tenantStripeConnectService.initiateOnboarding(any(UUID.class)))
                 .thenReturn(StripeConnectDto.OnboardingResponse.builder()
                         .onboardingUrl("https://connect.stripe.com/setup/e/acct_1/onboarding")
@@ -67,7 +68,7 @@ class M13SellerStripeConnectIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT-CONNECT-002: BUYER（無 SELLER 角色）發起 onboarding → 403")
+    @DisplayName("IT-CONNECT-002: BUYER（非店主）發起 onboarding → 403")
     @WithMockUser(username = "buyer", authorities = {"order:create"})
     void initiateOnboarding_asBuyer_returns403() throws Exception {
         mockMvc.perform(post(ONBOARDING_URL))
@@ -75,9 +76,9 @@ class M13SellerStripeConnectIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT-CONNECT-003: SELLER 查詢狀態 → 200 + 狀態欄位")
-    @WithMockUser(username = "seller", roles = {"SELLER"})
-    void getStatus_asSeller_returns200WithStatus() throws Exception {
+    @DisplayName("IT-CONNECT-003: STORE_OWNER（店主）查詢狀態 → 200 + 狀態欄位")
+    @WithMockUser(username = "owner", roles = {"STORE_OWNER"})
+    void getStatus_asStoreOwner_returns200WithStatus() throws Exception {
         when(tenantStripeConnectService.getAccountStatus(any(UUID.class)))
                 .thenReturn(StripeConnectDto.StatusResponse.builder()
                         .accountId("acct_1").onboardingStatus("PENDING")
@@ -95,5 +96,28 @@ class M13SellerStripeConnectIntegrationTest {
     void initiateOnboarding_noJwt_returns401() throws Exception {
         mockMvc.perform(post(ONBOARDING_URL))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // Sprint 235（DEF-327）：原本是 hasRole('SELLER')——自助註冊即得、不建租戶；核准開店後的角色是 STORE_OWNER，
+    // 真正的店主反而呼叫不了，只有沒有店鋪的 SELLER 能呼叫（在系統租戶上建立 Connect 帳戶）。
+
+    @Test
+    @DisplayName("IT-CONNECT-005: SELLER（自助註冊、沒有店鋪）發起 onboarding → 403，不得呼叫到服務")
+    @WithMockUser(username = "seller", roles = {"SELLER"})
+    void initiateOnboarding_asSelfRegisteredSeller_returns403() throws Exception {
+        mockMvc.perform(post(ONBOARDING_URL))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(tenantStripeConnectService);
+    }
+
+    @Test
+    @DisplayName("IT-CONNECT-006: SELLER（自助註冊、沒有店鋪）查詢狀態 → 403，不得呼叫到服務")
+    @WithMockUser(username = "seller", roles = {"SELLER"})
+    void getStatus_asSelfRegisteredSeller_returns403() throws Exception {
+        mockMvc.perform(get(STATUS_URL))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(tenantStripeConnectService);
     }
 }

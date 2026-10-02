@@ -157,7 +157,7 @@ public class TenantService {
         }
 
         // Get tenant memberships for this user
-        List<TenantMember> memberships = tenantMemberRepository.findByUserId(userId);
+        List<TenantMember> memberships = tenantMemberRepository.findByUserIdAndStatus(userId, TenantMember.MemberStatus.ACTIVE);
         List<TenantListResponse> tenantList = new ArrayList<>();
 
         for (TenantMember member : memberships) {
@@ -200,7 +200,7 @@ public class TenantService {
         }
 
         // Get tenant memberships for this user
-        List<TenantMember> memberships = tenantMemberRepository.findByUserId(userId);
+        List<TenantMember> memberships = tenantMemberRepository.findByUserIdAndStatus(userId, TenantMember.MemberStatus.ACTIVE);
         List<TenantListResponse> tenantList = new ArrayList<>();
 
         for (TenantMember member : memberships) {
@@ -280,7 +280,8 @@ public class TenantService {
         // 屬內部經營設定不當外洩。僅在呼叫者是本租戶成員時才回傳，其餘一律隱藏為 null。
         UUID currentUserId = TenantContext.getCurrentUser();
         boolean isTenantMember = currentUserId != null
-                && tenantMemberRepository.existsByTenantIdAndUserId(tenantId, currentUserId);
+                && tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(
+                        tenantId, currentUserId, TenantMember.MemberStatus.ACTIVE);
 
         return TenantDetailsResponse.builder()
                 .tenantId(tenant.getId().toString())
@@ -374,7 +375,8 @@ public class TenantService {
     public FeatureToggleResponse getFeatureToggles(final UUID tenantId) {
         // Verify user belongs to this tenant
         UUID userId = TenantContext.getCurrentUser();
-        if (userId != null && !tenantMemberRepository.existsByTenantIdAndUserId(tenantId, userId)) {
+        if (userId != null && !tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(
+                tenantId, userId, TenantMember.MemberStatus.ACTIVE)) {
             throw new BusinessException(ErrorCode.E_4031, "Not authorized to view this store's features");
         }
 
@@ -465,7 +467,7 @@ public class TenantService {
         }
 
         // Verify user is owner of this tenant
-        if (!tenantMemberRepository.existsByTenantIdAndUserId(tenantId, userId)) {
+        if (!tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(tenantId, userId, TenantMember.MemberStatus.ACTIVE)) {
             throw new BusinessException(ErrorCode.E_4031, "Not authorized to update this store's features");
         }
 
@@ -680,7 +682,7 @@ public class TenantService {
             throw new BusinessException(ErrorCode.E_1000);
         }
 
-        if (!tenantMemberRepository.existsByTenantIdAndUserId(tenantId, userId)) {
+        if (!tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(tenantId, userId, TenantMember.MemberStatus.ACTIVE)) {
             throw new BusinessException(ErrorCode.E_4031, "Not authorized to view this store's members");
         }
 
@@ -975,7 +977,26 @@ public class TenantService {
         member.setStatus(TenantMember.MemberStatus.REMOVED);
         tenantMemberRepository.save(member);
         log.info("Member removed from tenant: tenantId={}, userId={}, removedBy={}", tenantId, userId, currentUserId);
+        revokeStaffRoleIfNoActiveMembership(userId);
         auditService.record("STORE_MEMBER_REMOVED", "TENANT_MEMBER", member.getId(), tenantId,
                 oldStatus, TenantMember.MemberStatus.REMOVED.name(), null, currentUserId);
+    }
+
+    /**
+     * 成員被移除後收回「店員」角色（Sprint 235，DEF-329）。{@link #acceptInvite} 會把 {@code user.role} 設成
+     * {@code STORE_STAFF}，而 JWT 的角色取自 {@code user.role}；只把成員狀態改成 REMOVED、不改角色，被移除的店員
+     * 下次登入或換發 token 仍帶員工權限（真實全棧實測）。若他仍是別間店鋪的有效成員，角色維持不變；
+     * 其他角色（例如店主、管理員）不動。已簽發的 access token 在有效期內（15 分鐘）仍可使用，那是 JWT 不複驗成員狀態的
+     * 既有限制（DEF-331 (d)），不在此處理。
+     */
+    private void revokeStaffRoleIfNoActiveMembership(final UUID userId) {
+        userRepository.findById(userId).ifPresent(user -> {
+            if (user.getRole() == User.UserRole.STORE_STAFF
+                    && tenantMemberRepository.findByUserIdAndStatus(userId, TenantMember.MemberStatus.ACTIVE).isEmpty()) {
+                user.setRole(User.UserRole.BUYER);
+                userRepository.save(user);
+                log.info("Staff role revoked after removal: userId={}", userId);
+            }
+        });
     }
 }

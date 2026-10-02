@@ -10,6 +10,8 @@ import com.nextkey.ecommerce.api.dto.StripeConnectDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
+import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.infrastructure.payment.PaymentGatewayFactory;
 import com.nextkey.ecommerce.infrastructure.payment.PaymentGatewayRequestResponse;
@@ -34,6 +36,7 @@ public class TenantStripeConnectService {
     private static final String GATEWAY_STRIPE = "STRIPE";
 
     private final TenantRepository tenantRepository;
+    private final TenantMemberRepository tenantMemberRepository;
     private final FeatureToggleService featureToggleService;
     private final PaymentGatewayFactory paymentGatewayFactory;
     private final AuditService auditService;
@@ -48,6 +51,7 @@ public class TenantStripeConnectService {
      */
     @Transactional
     public StripeConnectDto.OnboardingResponse initiateOnboarding(UUID tenantId) {
+        requireStoreOwner(tenantId);
         featureToggleService.checkFeatureEnabled(STRIPE_CONNECT_ENABLED);
 
         Tenant tenant = tenantRepository.findById(tenantId)
@@ -86,6 +90,7 @@ public class TenantStripeConnectService {
      */
     @Transactional
     public StripeConnectDto.StatusResponse getAccountStatus(UUID tenantId) {
+        requireStoreOwner(tenantId);
         featureToggleService.checkFeatureEnabled(STRIPE_CONNECT_ENABLED);
 
         Tenant tenant = tenantRepository.findById(tenantId)
@@ -124,6 +129,25 @@ public class TenantStripeConnectService {
                 .chargesEnabled(chargesEnabled)
                 .payoutsEnabled(payoutsEnabled)
                 .build();
+    }
+
+    /**
+     * Stripe Connect 的開通與狀態查詢只限「這間店鋪的店主」（Sprint 235，DEF-327）。
+     *
+     * <p>原本兩個端點只要求 {@code hasRole('SELLER')}（自助註冊即得、不建租戶），而 {@link #initiateOnboarding}
+     * 對任何租戶都會建立 Connect Express 帳戶並回傳一次性 onboarding 連結——沒有店鋪的 SELLER 呼叫時租戶是系統租戶，
+     * 帳戶會建在系統租戶上；持連結者完成 KYC 後綁自己的銀行帳戶，系統租戶結算單被核准時撥款就會撥給他
+     * （推論，未驗 Stripe 端；前置條件是系統租戶的 {@code STRIPE_CONNECT_ENABLED} 被開啟）。
+     * 所以這裡要求：租戶是真正的店鋪租戶（{@link TenantContext#isStoreTenant}），且呼叫者在資料庫裡是該店鋪的店主。
+     * 放在 service 層而不只靠 controller 的角色檢查，日後任何新的呼叫路徑也都被涵蓋。
+     */
+    private void requireStoreOwner(final UUID tenantId) {
+        UUID userId = TenantContext.getCurrentUser();
+        if (!TenantContext.isStoreTenant(tenantId) || userId == null
+                || !tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                        tenantId, userId, TenantMember.StoreRole.STORE_OWNER)) {
+            throw new BusinessException(ErrorCode.E_1007, "Only the store owner can manage Stripe Connect");
+        }
     }
 
     /**

@@ -97,7 +97,7 @@ class AuthServiceLoginConcurrencyIntegrationTest {
         TenantRepository tenantRepository = mock(TenantRepository.class);
         when(tenantRepository.findById(any())).thenReturn(Optional.empty());
         TenantMemberRepository tenantMemberRepository = mock(TenantMemberRepository.class);
-        when(tenantMemberRepository.findByUserId(any())).thenReturn(List.of());
+        when(tenantMemberRepository.findByUserIdAndStatus(any(), any())).thenReturn(List.of());
 
         JwtTokenService jwtTokenService = mock(JwtTokenService.class);
         when(jwtTokenService.generateAccessToken(any(), any(), any(), any())).thenReturn("access-token");

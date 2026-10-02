@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.tenant;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,11 +18,15 @@ import com.nextkey.ecommerce.api.dto.StripeConnectDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
+import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.infrastructure.payment.PaymentGatewayFactory;
 import com.nextkey.ecommerce.infrastructure.payment.PaymentGatewayRequestResponse;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -49,6 +54,7 @@ import static org.mockito.Mockito.when;
 class TenantStripeConnectServiceTest {
 
     @Mock private TenantRepository tenantRepository;
+    @Mock private TenantMemberRepository tenantMemberRepository;
     @Mock private FeatureToggleService featureToggleService;
     @Mock private PaymentGatewayFactory paymentGatewayFactory;
     @Mock private AuditService auditService;
@@ -56,11 +62,22 @@ class TenantStripeConnectServiceTest {
     private TenantStripeConnectService service;
 
     private static final UUID TENANT_ID = UUID.fromString("33333333-3333-3333-3333-333333333333");
+    private static final UUID OWNER_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
 
     @BeforeEach
     void setUp() {
-        service = new TenantStripeConnectService(tenantRepository, featureToggleService, paymentGatewayFactory, auditService);
+        service = new TenantStripeConnectService(
+                tenantRepository, tenantMemberRepository, featureToggleService, paymentGatewayFactory, auditService);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
+        // Sprint 235（DEF-327）：呼叫者是這間店鋪的店主（既有案例的前提）；拒絕案例各自覆寫
+        TenantContext.setCurrentUser(OWNER_ID);
+        when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+    }
+
+    @AfterEach
+    void tearDown() {
+        TenantContext.clear();
     }
 
     private Tenant newTenant() {
@@ -98,7 +115,7 @@ class TenantStripeConnectServiceTest {
         verify(tenantRepository).save(tenant);
         // Sprint 135（DEF-112）：帳戶開通須記錄稽核
         verify(auditService).record(eq("CONNECT_ONBOARDING_INITIATED"), eq("TENANT"), eq(TENANT_ID), eq(TENANT_ID),
-                eq("NOT_STARTED"), eq("PENDING"), any(), isNull());
+                eq("NOT_STARTED"), eq("PENDING"), any(), eq(OWNER_ID));
     }
 
     @Test
@@ -138,7 +155,7 @@ class TenantStripeConnectServiceTest {
         assertThat(tenant.getConnectOnboardingStatus()).isEqualTo(Tenant.ConnectOnboardingStatus.COMPLETE);
         // Sprint 135（DEF-112）：狀態同步（含手動查詢）須記錄稽核
         verify(auditService).record(eq("CONNECT_STATUS_SYNCED"), eq("TENANT"), eq(TENANT_ID), eq(TENANT_ID),
-                eq("NOT_STARTED"), eq("COMPLETE"), any(), isNull());
+                eq("NOT_STARTED"), eq("COMPLETE"), any(), eq(OWNER_ID));
     }
 
     @Test
@@ -203,5 +220,72 @@ class TenantStripeConnectServiceTest {
         assertThatThrownBy(() -> service.initiateOnboarding(TENANT_ID))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_2000));
+    }
+
+    // ========== Sprint 235（DEF-327）：只有真正店鋪的店主能開通／查詢 Stripe Connect ==========
+    //
+    // 修復前兩個端點只要求 hasRole('SELLER')（自助註冊即得、不建租戶），沒有店鋪的 SELLER 呼叫時租戶是系統租戶，
+    // initiateOnboarding 會在系統租戶上建立 Connect 帳戶並把一次性 onboarding 連結交給他。
+
+    private static final UUID SYSTEM_TENANT_ID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
+
+    @Test
+    @DisplayName("UT-CONNECT-009: 呼叫者的租戶是系統租戶（沒有店鋪）— 拒絕 onboarding（E_1007），不查租戶、不碰 Stripe")
+    void initiateOnboarding_systemTenantCaller_rejectedBeforeAnythingElse() {
+        // 即使這個使用者在別處是某店鋪的店主，只要這次請求的租戶是系統租戶就不行；也讓 repository「找得到」，才分辨得出是守門擋下的
+        when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                SYSTEM_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+        when(tenantRepository.findById(SYSTEM_TENANT_ID)).thenReturn(Optional.of(newTenant()));
+
+        assertThatThrownBy(() -> service.initiateOnboarding(SYSTEM_TENANT_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_1007));
+
+        verify(tenantRepository, never()).findById(any());
+        verify(paymentGatewayFactory, never()).createConnectAccount(anyString(), anyString());
+        verify(paymentGatewayFactory, never()).createAccountLink(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("UT-CONNECT-010: 真實店鋪租戶、但呼叫者不是該店鋪的店主（例如店員）— 拒絕 onboarding（E_1007）")
+    void initiateOnboarding_notStoreOwner_rejected() {
+        when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(false);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(newTenant()));
+
+        assertThatThrownBy(() -> service.initiateOnboarding(TENANT_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_1007));
+
+        verify(tenantRepository, never()).findById(any());
+        verify(paymentGatewayFactory, never()).createConnectAccount(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("UT-CONNECT-011: 沒有使用者脈絡 — 拒絕 onboarding（E_1007）")
+    void initiateOnboarding_noUserContext_rejected() {
+        TenantContext.clear();
+
+        assertThatThrownBy(() -> service.initiateOnboarding(TENANT_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_1007));
+
+        verify(paymentGatewayFactory, never()).createConnectAccount(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("UT-CONNECT-012: 狀態查詢同樣只限店主——系統租戶的呼叫者拒絕（E_1007），不呼叫 Stripe")
+    void getAccountStatus_systemTenantCaller_rejected() {
+        Tenant systemTenant = newTenant();
+        systemTenant.setStripeConnectAccountId("acct_system");
+        when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                SYSTEM_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+        when(tenantRepository.findById(SYSTEM_TENANT_ID)).thenReturn(Optional.of(systemTenant));
+
+        assertThatThrownBy(() -> service.getAccountStatus(SYSTEM_TENANT_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_1007));
+
+        verify(paymentGatewayFactory, never()).getConnectAccountStatus(anyString(), anyString());
     }
 }

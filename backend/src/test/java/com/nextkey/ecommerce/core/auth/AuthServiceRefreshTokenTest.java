@@ -134,7 +134,7 @@ class AuthServiceRefreshTokenTest {
         when(jwtTokenService.isTokenExpired(VALID_REFRESH_TOKEN)).thenReturn(false);
         when(jwtTokenService.getUserId(VALID_REFRESH_TOKEN)).thenReturn(TEST_USER_ID);
         when(userRepository.findById(TEST_USER_ID)).thenReturn(Optional.of(user));
-        when(tenantMemberRepository.findByUserId(TEST_USER_ID)).thenReturn(List.of());
+        when(tenantMemberRepository.findByUserIdAndStatus(TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(List.of());
         when(tenantRepository.findById(UUID.fromString(AppConstants.SYSTEM_TENANT_ID)))
                 .thenReturn(Optional.of(systemTenant));
         when(jwtTokenService.generateAccessToken(any(UUID.class), anyString(), anyString(), anyString()))
@@ -175,7 +175,7 @@ class AuthServiceRefreshTokenTest {
         when(jwtTokenService.isTokenExpired(VALID_REFRESH_TOKEN)).thenReturn(false);
         when(jwtTokenService.getUserId(VALID_REFRESH_TOKEN)).thenReturn(TEST_USER_ID);
         when(userRepository.findById(TEST_USER_ID)).thenReturn(Optional.of(user));
-        when(tenantMemberRepository.findByUserId(TEST_USER_ID)).thenReturn(List.of(membership));
+        when(tenantMemberRepository.findByUserIdAndStatus(TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(List.of(membership));
         when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
         when(jwtTokenService.generateAccessToken(any(UUID.class), anyString(), anyString(), anyString()))
                 .thenReturn("new-access-token");

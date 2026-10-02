@@ -105,7 +105,7 @@ class AuthServiceRefreshSameSecondIntegrationTest {
         TenantRepository tenantRepository = mock(TenantRepository.class);
         when(tenantRepository.findById(any())).thenReturn(Optional.empty());
         TenantMemberRepository tenantMemberRepository = mock(TenantMemberRepository.class);
-        when(tenantMemberRepository.findByUserId(any())).thenReturn(List.of());
+        when(tenantMemberRepository.findByUserIdAndStatus(any(), any())).thenReturn(List.of());
 
         authService = new AuthService(userRepository, tenantRepository, tenantMemberRepository,
                 mock(PasswordEncoder.class), new JwtTokenService(JWT_SECRET, ACCESS_TOKEN_EXPIRATION,

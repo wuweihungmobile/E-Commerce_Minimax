@@ -34,6 +34,7 @@ import com.nextkey.ecommerce.core.cms.post.PostService;
 import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
 import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
+import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
 import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
@@ -541,7 +542,7 @@ public class PostController {
         UUID contextUserId = TenantContext.getCurrentUser();
         if (contextUserId != null) {
             log.debug("Got userId from TenantContext: {}", contextUserId);
-            var members = tenantMemberRepository.findByUserId(contextUserId);
+            var members = tenantMemberRepository.findByUserIdAndStatus(contextUserId, TenantMember.MemberStatus.ACTIVE);
             if (!members.isEmpty()) {
                 return members.get(0).getTenantId();
             }
@@ -578,7 +579,7 @@ public class PostController {
     }
 
     private UUID getTenantIdFromUserId(UUID userId) {
-        var members = tenantMemberRepository.findByUserId(userId);
+        var members = tenantMemberRepository.findByUserIdAndStatus(userId, TenantMember.MemberStatus.ACTIVE);
         if (!members.isEmpty()) {
             return members.get(0).getTenantId();
         }

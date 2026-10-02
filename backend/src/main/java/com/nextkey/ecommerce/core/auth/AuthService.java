@@ -20,6 +20,7 @@ import com.nextkey.ecommerce.api.dto.RegisterRequest;
 import com.nextkey.ecommerce.api.dto.RegisterResponse;
 import com.nextkey.ecommerce.api.dto.UserInfoResponse;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
@@ -236,7 +237,9 @@ public class AuthService {
         if (user.getTenantId() != null) {
             return tenantRepository.findById(user.getTenantId()).orElse(null);
         }
-        var members = tenantMemberRepository.findByUserId(user.getId());
+        // Sprint 235（DEF-329）：只採有效（ACTIVE）成員。受邀未接受（INVITED）與已移除（REMOVED）的人不得帶店鋪租戶登入——
+        // 原本不看狀態，被移除的店員登入／換發 token 仍帶店鋪租戶，只是受邀的買家也一樣。
+        var members = tenantMemberRepository.findByUserIdAndStatus(user.getId(), TenantMember.MemberStatus.ACTIVE);
         if (!members.isEmpty()) {
             return tenantRepository.findById(members.get(0).getTenantId()).orElse(null);
         }

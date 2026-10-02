@@ -414,12 +414,18 @@ public class BookingService {
     @Transactional
     public BookingDto.BookingResponse createBooking(BookingDto.CreateRequest request, String idempotencyKey) {
         UUID userId = getCurrentUser();
-        UUID tenantId = getCurrentTenant();
 
         // 驗證房源
         Listing listing = listingRepository.findById(request.getRoomListingId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Room not found"));
         Room room = resolveBookableRoom(listing, request);
+
+        // Sprint 236（DEF-319）：訂房歸屬「房源所屬的店鋪」，不是下單者的租戶。一般消費者不屬於任何店鋪，他們的租戶脈絡
+        // 是系統租戶佔位值（不是 null，且全體共用），原本訂房因此蓋成系統租戶：商家端的訂房管理（Sprint 231）對真實客人
+        // 永遠是 0 筆、店主讀不到也處理不了客人的訂房。促銷碼同樣以店鋪租戶解析——促銷碼是店鋪層的設定
+        // （PRD §4.4：店主／賣家建立促銷活動要查 PROMO_ENABLED；PC-005：Phase 1 不支援跨商家優惠），改日期重算折扣時
+        // （recalculateAndBookDateRange）也是以 booking.tenantId 查券，兩邊必須是同一個租戶。
+        UUID tenantId = listing.getTenantId();
 
         // Sprint 124（DEF-047／PRD US-010）：訂房沒有購物車，促銷碼由 request 明確帶入。
         // Sprint 126（DEF-048 擴大範圍）：解析與折扣計算下沉到 PromoService，與 OrderService／

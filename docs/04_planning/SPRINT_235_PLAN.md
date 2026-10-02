@@ -92,8 +92,8 @@
 - **`make validate-schema-doc`**：對乾淨 PostgreSQL 依序套用 **87 個** Flyway 遷移（含 `V87`），SRD／PRD 文件與實際 schema 一致，通過。`V87` 的語法與可套用性因此在真實 PostgreSQL 18 上確認過。
 - **`make validate-e2e`**：**129 個測試 125 通過／4 略過（既有基準）／0 失敗（3.5 分鐘）**；schema 對齊（`ddl-auto=validate` 對 Flyway 乾淨重建的資料庫啟動成功，含 `V87`）。新增的 4 個成員撤銷案例（MREV-01～04）全綠，修復前 MREV-01 實測轉紅（§4）。第一次就通過、沒有出現 Sprint 234 的限流失敗（那兩個修正已就位）
 - **前端**：`tsc --noEmit`、`eslint` 通過（本輪只新增一個 spec，前端 `src` 沒有變動）。
-- **push 與雲端 CI**：（push 後於回填 commit 補上）
-- **耗時觀察（承 Sprint 233、234）**：本機全量 `mvn verify` 本輪 15 分 10 秒（Sprint 234：17 分 19 秒；Sprint 233：15 分 21 秒）。雲端整合 job 近六次為 5m01s／6m02s／6m00s／4m15s／7m47s／7m46s；本輪 push 後的數字是第三個資料點。
+- **push 與雲端 CI**：已 push（2026-10-03，`ae63b79..172f0fe main -> main`，含 `a947ce8`（`validate-schema-doc` 的 `pg_isready` 修復）；pre-push 輕量守門通過）。✅ 雲端 CI 全綠 run **37050004694**，三個 job 全部 success，共 10 分 40 秒：Backend Unit 2m30s／Frontend Lint & Build 1m06s／Backend Integration & Package **8m03s**。
+- **耗時觀察（承 Sprint 233、234）**：本機全量 `mvn verify` 本輪 15 分 10 秒（Sprint 234：17 分 19 秒；Sprint 233：15 分 21 秒）。雲端整合 job 近七次為 5m01s／6m02s／6m00s／4m15s／7m47s／7m46s／**8m03s（本輪）**：Sprint 233 起連續三次落在 7m46s～8m03s，高於 bcrypt 12 之前的四次（4m15s～6m02s），第三個資料點仍指向同一個方向；**仍未量測、不能算證實**（本輪另外多了 23 個測試，也可能貢獻一小部分）。
 
 ## 6. 範圍外（延後）、已知限制與待決定
 

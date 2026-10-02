@@ -6,12 +6,14 @@ import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.promo.PromoCode;
 import com.nextkey.ecommerce.domain.model.room.PricingRule;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.PricingRuleRepository;
+import com.nextkey.ecommerce.domain.repository.PromoCodeRepository;
 import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
@@ -34,6 +36,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -102,6 +105,9 @@ class BookingControllerE2ETest {
 
     @Autowired
     private PricingRuleRepository pricingRuleRepository;
+
+    @Autowired
+    private PromoCodeRepository promoCodeRepository;
 
     @Autowired
     private TenantMemberRepository tenantMemberRepository;
@@ -174,9 +180,13 @@ class BookingControllerE2ETest {
                 "UPDATE tenant_feature_toggles SET is_enabled = true WHERE tenant_id = ? AND feature_key = ?",
                 testTenantId, "DYNAMIC_PRICING_ENABLED");
 
-        // 創建測試用的 ROOM Listing
+        // 創建測試用的 ROOM Listing。tenantId／ownerId 是 insertable=false 的唯讀影子欄位，寫入資料庫的是
+        // tenant／owner 關聯；只設影子欄位會讓 listings.tenant_id 存成 NULL（測試庫由 Hibernate 建，欄位可為 NULL，
+        // 與 Flyway 的 NOT NULL 不同）。訂房歸屬「房源所屬店鋪」（Sprint 236，DEF-319）要讀這個欄位，必須兩者都設。
         Listing testRoom = Listing.builder()
+                .tenant(testTenant)
                 .tenantId(testTenantId)
+                .owner(testHost)
                 .ownerId(testHostUserId)
                 .listingType(Listing.ListingType.ROOM)
                 .title("Test ROOM Listing for Booking E2E")
@@ -1346,6 +1356,179 @@ class BookingControllerE2ETest {
                     userRepository.delete(user);
                 });
             }
+        }
+    }
+
+    /**
+     * API-M06-020（Sprint 236，DEF-319）：沒有店鋪的買家訂房，訂房歸屬「房源所屬的店鋪」。
+     *
+     * <p>Sprint 232 以真實全棧實測：訂房原本蓋成下單者的租戶（沒有店鋪的消費者＝系統租戶佔位值），店主的
+     * 商家端訂房管理對真實客人永遠是 0 筆，店主也讀不到、處理不了客人的訂房。本案例用兩個真實註冊、沒有店鋪的買家，
+     * 加上房源所屬店鋪的店主，驗證歸屬、商家端可見度與跨買家隔離。
+     */
+    @Test
+    @Order(24)
+    @DisplayName("API-M06-020: 沒有店鋪的買家訂房 → 歸屬房源所屬店鋪；店主在商家端看得到且讀得到；另一個沒有店鋪的買家看不到")
+    void tenantlessBuyerBooking_belongsToTheRoomsStore() throws Exception {
+        String bookerEmail = "booking-store-a-" + System.currentTimeMillis() + "@example.com";
+        String viewerEmail = "booking-store-b-" + System.currentTimeMillis() + "@example.com";
+        try {
+            String bookerToken = registerAndLoginTenantlessBuyer(bookerEmail);
+            String viewerToken = registerAndLoginTenantlessBuyer(viewerEmail);
+
+            LocalDate checkIn = LocalDate.now().plusDays(150);
+            var created = given()
+                    .header("Authorization", "Bearer " + bookerToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(BookingDto.CreateRequest.builder()
+                            .roomListingId(testRoomListingId)
+                            .checkInDate(checkIn)
+                            .checkOutDate(checkIn.plusDays(1))
+                            .guestCount(1)
+                            .guestName("Store-Owned Consumer Guest")
+                            .build())
+                    .when()
+                    .post(BOOKING_URL);
+            assertThat(created.getStatusCode()).as("沒有店鋪的買家訂房：%s", created.getBody().asString()).isEqualTo(201);
+            UUID bookingId = UUID.fromString(created.path("data.id"));
+
+            // 歸屬：資料庫裡的訂房是房源所屬店鋪的，不是系統租戶的
+            assertThat(bookingRepository.findById(bookingId).orElseThrow().getTenantId())
+                    .as("訂房必須歸屬房源所屬的店鋪")
+                    .isEqualTo(testTenantId);
+
+            // 店主（房源所屬店鋪的 STORE_OWNER）：商家端列表看得到，也讀得到這筆訂房
+            userRepository.findByEmail(buyerEmail).ifPresent(user -> {
+                user.setRole(User.UserRole.STORE_OWNER);
+                userRepository.save(user);
+            });
+            String storeOwnerToken = objectMapper.readTree(given()
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(LoginRequest.builder().email(buyerEmail).password(TEST_PASSWORD).build())
+                    .when().post(AUTH_URL + "/login")
+                    .then().statusCode(200).extract().asString()).path("data").path("accessToken").asText();
+            given().header("Authorization", "Bearer " + storeOwnerToken)
+                    .when().get("/v2/dashboard/bookings?size=100")
+                    .then().statusCode(200)
+                    .body("data.content.guestName", hasItem("Store-Owned Consumer Guest"));
+            given().header("Authorization", "Bearer " + storeOwnerToken)
+                    .when().get(BOOKING_URL + "/" + bookingId)
+                    .then().statusCode(200)
+                    .body("data.id", is(bookingId.toString()));
+
+            // 訂房人自己仍讀得到自己的訂房
+            given().header("Authorization", "Bearer " + bookerToken)
+                    .when().get(BOOKING_URL + "/" + bookingId)
+                    .then().statusCode(200);
+
+            // 另一個沒有店鋪的買家：商家端列表是空的、讀不到別人的訂房
+            given().header("Authorization", "Bearer " + viewerToken)
+                    .when().get("/v2/dashboard/bookings?size=100")
+                    .then().statusCode(200)
+                    .body("data.content", hasSize(0));
+            given().header("Authorization", "Bearer " + viewerToken)
+                    .when().get(BOOKING_URL + "/" + bookingId)
+                    .then().statusCode(403);
+        } finally {
+            deleteUsersAndTheirBookings(bookerEmail, viewerEmail);
+        }
+    }
+
+    /**
+     * API-M06-021（Sprint 236，DEF-319）：促銷碼是店鋪層的設定，沒有店鋪的買家訂房時以房源所屬店鋪解析。
+     *
+     * <p>原本促銷碼以買家的租戶（系統租戶）解析，店主在自己店鋪建立的券，真實消費者永遠用不到。改成店鋪租戶後，
+     * 訂房的 {@code tenantId} 與券的租戶一致，改日期重算折扣時（依 {@code booking.tenantId} 查券）才找得到券。
+     */
+    @Test
+    @Order(25)
+    @DisplayName("API-M06-021: 沒有店鋪的買家用店鋪的促銷碼訂房 → 折扣照常套用；店主改日期重算折扣仍找得到券")
+    void tenantlessBuyer_usesTheStoresPromoCode() throws Exception {
+        String bookerEmail = "booking-promo-" + System.currentTimeMillis() + "@example.com";
+        String promoCode = "S236" + (System.nanoTime() % 1_000_000);
+        UUID promoId = null;
+        try {
+            String bookerToken = registerAndLoginTenantlessBuyer(bookerEmail);
+            Tenant storeTenant = tenantRepository.findById(testTenantId).orElseThrow();
+            promoId = promoCodeRepository.save(PromoCode.builder()
+                    .tenant(storeTenant)
+                    .code(promoCode)
+                    .discountType(PromoCode.DiscountType.FIXED_AMOUNT)
+                    .discountValue(new BigDecimal("100"))
+                    .startDate(LocalDateTime.now().minusDays(1))
+                    .endDate(LocalDateTime.now().plusDays(30))
+                    .maxUsageCount(5)
+                    .currentUsageCount(0)
+                    .maxUsagePerUser(1)
+                    .isActive(true)
+                    .build()).getId();
+
+            LocalDate checkIn = LocalDate.now().plusDays(170);
+            var created = given()
+                    .header("Authorization", "Bearer " + bookerToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(BookingDto.CreateRequest.builder()
+                            .roomListingId(testRoomListingId)
+                            .checkInDate(checkIn)
+                            .checkOutDate(checkIn.plusDays(1))
+                            .guestCount(1)
+                            .guestName("Promo Consumer Guest")
+                            .promoCode(promoCode)
+                            .build())
+                    .when()
+                    .post(BOOKING_URL);
+            assertThat(created.getStatusCode()).as("沒有店鋪的買家用店鋪促銷碼訂房：%s", created.getBody().asString()).isEqualTo(201);
+            assertThat(new BigDecimal(created.path("data.discountAmount").toString()))
+                    .as("店鋪的促銷碼要對真實消費者生效").isEqualByComparingTo("100");
+            UUID bookingId = UUID.fromString(created.path("data.id"));
+
+            // 改日期要 booking:update，一般買家沒有，是店主端的動作；訂房蓋成店鋪租戶後，店主才改得到消費者的訂房
+            // （修復前訂房蓋成買家的系統租戶，店主端 checkBookingOwnership 的同租戶判斷永遠不成立）。
+            // 把 setUp() 建立的帳號（tenantId 已是房源租戶）升級為 STORE_OWNER 並重新登入。
+            userRepository.findByEmail(buyerEmail).ifPresent(user -> {
+                user.setRole(User.UserRole.STORE_OWNER);
+                userRepository.save(user);
+            });
+            String storeOwnerToken = objectMapper.readTree(given()
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(LoginRequest.builder().email(buyerEmail).password(TEST_PASSWORD).build())
+                    .when().post(AUTH_URL + "/login")
+                    .then().statusCode(200)
+                    .extract().asString()).path("data").path("accessToken").asText();
+
+            // 改日期（延後 5 天）重算：依 booking.tenantId 查券，必須找得到店鋪的券，折扣不可被靜默丟棄
+            given().header("Authorization", "Bearer " + storeOwnerToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(BookingDto.UpdateRequest.builder()
+                            .checkInDate(checkIn.plusDays(5))
+                            .checkOutDate(checkIn.plusDays(6))
+                            .build())
+                    .when().put(BOOKING_URL + "/" + bookingId)
+                    .then().statusCode(200)
+                    .body("data.discountAmount", comparesEqualTo(100.0f))
+                    .body("data.promoCode", is(promoCode));
+        } finally {
+            deleteUsersAndTheirBookings(bookerEmail);
+            if (promoId != null) {
+                jdbcTemplate.update("DELETE FROM promo_code_usages WHERE promo_code_id = ?", promoId);
+                promoCodeRepository.deleteById(promoId);
+            }
+        }
+    }
+
+    /** 刪除這些使用者與他們的訂房（遵循 FK 約束順序），避免影響本類別其他案例共用的房源日期。 */
+    private void deleteUsersAndTheirBookings(String... emails) {
+        for (String email : emails) {
+            userRepository.findByEmail(email).ifPresent(user -> {
+                tenantMemberRepository.findByUserId(user.getId())
+                        .forEach(tm -> tenantMemberRepository.delete(tm));
+                bookingRepository.findByUserIdOrderByCreatedAtDesc(user.getId(), Pageable.unpaged())
+                        .forEach(booking -> {
+                            jdbcTemplate.update("DELETE FROM promo_code_usages WHERE booking_id = ?", booking.getId());
+                            bookingRepository.delete(booking);
+                        });
+                userRepository.delete(user);
+            });
         }
     }
 

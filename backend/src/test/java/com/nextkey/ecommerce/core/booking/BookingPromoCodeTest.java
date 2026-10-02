@@ -89,6 +89,8 @@ class BookingPromoCodeTest {
     private static final UUID ROOM_LISTING_ID = UUID.randomUUID();
     private static final UUID USER_ID = UUID.randomUUID();
     private static final UUID TENANT_ID = UUID.randomUUID();
+    private static final UUID SYSTEM_TENANT_ID =
+            UUID.fromString(com.nextkey.ecommerce.shared.constants.AppConstants.SYSTEM_TENANT_ID);
     private static final UUID BOOKING_ID = UUID.randomUUID();
     private static final UUID PROMO_ID = UUID.randomUUID();
     private static final String PROMO_CODE = "ROOM500";
@@ -114,6 +116,8 @@ class BookingPromoCodeTest {
                 .status(Listing.ListingStatus.ACTIVE)
                 .build();
         listing.setId(ROOM_LISTING_ID);
+        // Sprint 236（DEF-319）：訂房歸屬「房源所屬的店鋪」，不是下單者的租戶，所以房源必須有租戶
+        listing.setTenantId(TENANT_ID);
         return listing;
     }
 
@@ -196,6 +200,21 @@ class BookingPromoCodeTest {
             assertThat(response.getTotalAmount()).isEqualByComparingTo(BigDecimal.valueOf(1500));
             assertThat(response.getDiscountAmount()).isEqualByComparingTo(DISCOUNT);
             assertThat(response.getPromoCode()).isEqualTo(PROMO_CODE);
+        }
+
+        @Test
+        @DisplayName("Sprint 236（DEF-319）：沒有店鋪的買家（系統租戶）訂房，促銷碼以房源所屬的店鋪租戶解析，折扣照常套用")
+        void tenantlessBuyer_promoIsResolvedInTheRoomsStoreTenant() {
+            // 本檔案其他案例的 stubHappyPath 把買家與房源放在同一個租戶，等於用固件繞過了「買家租戶≠房源租戶」這個
+            // 真實情境；這裡把買家覆寫成沒有店鋪的使用者，券只在房源所屬的店鋪租戶解析得到。
+            stubHappyPath();
+            TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+            givenValidPromo();
+
+            BookingDto.BookingResponse response = bookingService.createBooking(createRequest(PROMO_CODE), "idem");
+
+            assertThat(response.getDiscountAmount()).isEqualByComparingTo(DISCOUNT);
+            verify(promoService, never()).resolveValidPromoForCheckout(PROMO_CODE, SYSTEM_TENANT_ID, USER_ID);
         }
 
         @Test

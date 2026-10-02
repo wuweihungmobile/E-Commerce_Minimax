@@ -3,6 +3,8 @@ package com.nextkey.ecommerce.core.booking;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -129,6 +131,8 @@ class BookingServiceCreateBookingTest {
                 .status(Listing.ListingStatus.ACTIVE)
                 .build();
         listing.setId(ROOM_LISTING_ID);
+        // Sprint 236（DEF-319）：訂房歸屬「房源所屬的店鋪」，不是下單者的租戶，所以房源必須有租戶
+        listing.setTenantId(TENANT_ID);
         return listing;
     }
 
@@ -397,5 +401,41 @@ class BookingServiceCreateBookingTest {
                 .isEqualTo(ErrorCode.E_2000);
 
         verify(roomCalendarService).unlockDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, "lockValue");
+    }
+
+    // ========== Sprint 236（DEF-319）：訂房歸屬房源所屬的店鋪，不是下單者的租戶 ==========
+    //
+    // 真實全棧實測（Sprint 232）：沒有店鋪的一般消費者，租戶脈絡是系統租戶佔位值（不是 null，全體共用）。
+    // 原本訂房蓋成這個租戶，店主的商家端訂房管理對真實客人永遠是 0 筆。
+
+    private static final UUID SYSTEM_TENANT_ID = UUID.fromString(com.nextkey.ecommerce.shared.constants.AppConstants.SYSTEM_TENANT_ID);
+
+    @Test
+    @DisplayName("Sprint 236：沒有店鋪的買家（系統租戶）訂房 → 訂房蓋成房源所屬的店鋪，不是系統租戶")
+    void createBooking_tenantlessBuyer_isStampedWithTheRoomsStoreTenant() {
+        TenantContext.setCurrentUser(USER_ID);
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+        stubHappyPathUpToLock();
+        when(roomCalendarService.isDateRangeAvailable(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT)).thenReturn(true);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(User.builder().id(USER_ID).build()));
+        // 兩個租戶都「找得到」，才分辨得出程式碼選了哪一個（只提供店鋪的話，選錯會因為找不到而拋例外，無法說明選的理由）
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TENANT_ID).build()));
+        lenient().when(tenantRepository.findById(SYSTEM_TENANT_ID))
+                .thenReturn(Optional.of(Tenant.builder().id(SYSTEM_TENANT_ID).build()));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> {
+            Booking b = inv.getArgument(0);
+            b.setId(UUID.randomUUID());
+            return b;
+        });
+
+        bookingService.createBooking(createRequest(), "idem-key");
+
+        ArgumentCaptor<Booking> saved = ArgumentCaptor.forClass(Booking.class);
+        verify(bookingRepository).save(saved.capture());
+        assertThat(saved.getValue().getTenant().getId())
+                .as("訂房必須歸屬房源所屬的店鋪，店主才看得到、處理得了")
+                .isEqualTo(TENANT_ID);
+        verify(tenantRepository, never()).findById(SYSTEM_TENANT_ID);
+        verify(auditService).record(eq("BOOKING_CREATED"), eq("BOOKING"), any(), eq(TENANT_ID), any(), any(), any(), eq(USER_ID));
     }
 }

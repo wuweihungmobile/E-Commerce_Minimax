@@ -607,14 +607,21 @@ public class BookingService {
      * 取得當前租戶（商家：STORE_OWNER／HOST／STORE_STAFF 唯讀）的訂房列表（Sprint 231，DEF-316）。
      * PRD §9.16「GET /api/v2/dashboard/bookings」；比照 {@link #getUserBookings} 的分頁/排序與
      * 批次查詢房型標題處理，改用 {@code findByTenantIdOrderByCreatedAtDesc}（既有 repository 方法，
-     * 原本沒有任何呼叫者）。無租戶內容時 tenantId 為 null，查詢結果自然為空頁，不特別拋錯
-     * （比照 {@code OrderService.getTenantOrders} 既有行為）。
+     * 原本沒有任何呼叫者）。沒有店鋪的呼叫者（一般買家）回空頁，不查詢、不拋錯（比照
+     * {@code OrderService.getTenantOrders}）：這類使用者的租戶不是 null，而是 {@link #SYSTEM_TENANT_UUID}
+     * 佔位值，而 {@code bookings.tenant_id} 恰好也會蓋成這個值（建立訂房取呼叫者的租戶脈絡），
+     * 直接拿它查等於把所有一般買家的訂房（含訂房人姓名）交給任一登入者（Sprint 232 實測；本方法原註解
+     * 「tenantId 為 null 故自然為空頁」的前提不成立，是從 {@code getTenantOrders} 抄來的同一個錯誤假設）。
      */
     @Transactional(readOnly = true)
     public Page<BookingDto.BookingListResponse> getTenantBookings(int page, int size, String sortBy, String sortDir) {
         UUID tenantId = getCurrentTenant();
         Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
         PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
+
+        if (tenantId == null || tenantId.equals(SYSTEM_TENANT_UUID)) {
+            return Page.empty(pageRequest);
+        }
 
         Page<com.nextkey.ecommerce.domain.model.order.Booking> bookings =
                 bookingRepository.findByTenantIdOrderByCreatedAtDesc(tenantId, pageRequest);

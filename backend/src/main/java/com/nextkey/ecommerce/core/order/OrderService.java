@@ -543,7 +543,10 @@ public class OrderService {
      * <p>比照 {@link #getUserOrders} 的分頁/排序處理，額外支援選填的狀態篩選——
      * 有 status 時走 {@code findByTenantIdAndStatus}，否則走既有的
      * {@code findByTenantIdOrderByCreatedAtDesc}（兩者皆為既有 repository 方法，未新增查詢）。
-     * 無租戶內容（例如買家帳號呼叫本方法）時 tenantId 為 null，查詢結果自然為空頁，不特別拋錯。
+     * 沒有店鋪的呼叫者（一般買家）回空頁，不查詢、不拋錯：這類使用者的租戶不是 null，而是
+     * {@link #SYSTEM_TENANT_UUID} 佔位值（見其說明），而 {@code orders.tenant_id} 恰好也會蓋成這個值
+     * （建單取呼叫者的租戶脈絡），直接拿它查等於把所有一般買家的訂單（含收件人）交給任一登入者
+     * （Sprint 232 實測，原註解「tenantId 為 null 故自然為空頁」的前提不成立）。
      */
     @Transactional(readOnly = true)
     public Page<OrderDto.OrderListResponse> getTenantOrders(int page, int size, String sortBy, String sortDir,
@@ -551,6 +554,10 @@ public class OrderService {
         UUID tenantId = TenantContext.getCurrentTenant();
         Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
         PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
+
+        if (tenantId == null || tenantId.equals(SYSTEM_TENANT_UUID)) {
+            return Page.empty(pageRequest);
+        }
 
         Page<Order> orders;
         if (status != null && !status.isBlank()) {

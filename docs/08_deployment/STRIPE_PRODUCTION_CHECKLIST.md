@@ -24,7 +24,7 @@
 
 ## B. Webhook 端點
 
-- [ ] `POST /v2/payments/webhook/stripe` 端點對外可公開存取（HTTPS，非 localhost）
+- [ ] `POST /api/v2/payments/webhook/stripe` 端點對外可公開存取（HTTPS，非 localhost）。**注意 `/api` 前綴**：後端 `server.servlet.context-path` 是 `/api`（`application.yml`），Stripe Dashboard 註冊的 URL 必須含它；若前方反向代理改寫路徑，以對外實際可達的 URL 為準（Sprint 232 更正：原寫 `/v2/payments/webhook/stripe`，漏了前綴）
 - [ ] Stripe Dashboard 已註冊該端點，並勾選以下事件：
   - [ ] `checkout.session.completed`
   - [ ] `payment_intent.payment_failed`
@@ -55,7 +55,7 @@
 - [ ] **Connect onboarding**（Phase D-1 起）：賣家發起 onboarding → 導向 Stripe 代管 KYC 表單（測試模式可用假資料完成）→ 完成後 `account.updated` webhook 送達 → 本地 tenant `connect_onboarding_status=COMPLETE`
 - [ ] **分潤撥款 Transfer**（Phase D-2，Sprint 80）：租戶 Connect 為 `COMPLETE` 且該租戶 `STRIPE_TRANSFER_ENABLED` 開啟 → Admin 核准結算單（`APPROVED`）→ 後端呼叫 Stripe Transfer → 本地 Transfer=`COMPLETED`、結算單=`PAID`，Stripe Dashboard 可見對應 transfer。**反向也要驗**：Connect 未就緒或 toggle 關閉時，Transfer 應為 `SKIPPED_ONBOARDING_INCOMPLETE`（不撥款），補齊條件後可由管理端重試（`TransferController`）
 - [ ] **`transfer.reversed`**：在 Dashboard 收回一筆測試 transfer → webhook 送達 → 本地 Transfer=`REVERSED`、結算單回 `FAILED`（**不會自動重新分潤，也不處理資金收回**，見 §F）
-> ⚠️ **結算單的來源**：結算單只由每週一 00:00（**台灣時間**）的排程產生，**目前沒有手動觸發或補產的入口**（見 `DEFERRED_ITEMS_TRACKER.md` DEF-287）。測試模式走查上面兩個撥款項目時，需等到排程執行，或使用已存在的結算單；**不要照 [SETTLEMENT_JOB_RUNBOOK.md](SETTLEMENT_JOB_RUNBOOK.md) 的手動觸發步驟操作，那些步驟已與程式不符**（見該文件檔頭更正）。
+> ⚠️ **結算單的來源**：結算單只由每週一 00:00（**台灣時間**）的排程產生，**手動觸發／補產入口自 Sprint 208 起有 `POST /v2/admin/settlements/generate`**（僅 SUPER_ADMIN，`settlement:generate`；參數 `tenantId`、`periodStart`、選填 `periodEnd`，未指定則為 `periodStart` ＋ 6 天；冪等，同租戶同期間會回既有結算單；DEF-287 已結案）。測試模式走查上面兩個撥款項目時，可先用這個端點產出結算單；**不要照 [SETTLEMENT_JOB_RUNBOOK.md](SETTLEMENT_JOB_RUNBOOK.md) §3 的 Actuator／環境變數步驟操作，那些步驟已與程式不符**（見該文件檔頭更正）。（Sprint 232 更正：本段原寫「目前沒有手動觸發或補產的入口」，Sprint 208 新增端點後未回頭更新。）
 
 ## E. 正式金鑰切換
 
@@ -73,7 +73,7 @@
 - **部分退款已支援**（Sprint 56）：累計退款達全額才轉 `REFUNDED`。**限制**：`payments.stripe_refund_id` 只存**最後一次**退款的 id（程式註解已誠實記載），多次部分退款只能靠 Stripe 端查全部退款。
 - **分潤 Transfer 已實作**（Sprint 80）：結算單核准後撥款；失敗或略過可由管理端重試。**限制**：
   - `transfer.reversed` 只把 Transfer 標為 `REVERSED`、結算單回 `FAILED`，**不自動重新分潤、不處理資金收回**（人工處理）。
-  - **沒有手動觸發／補產結算單的入口**，只有每週一 00:00（台灣時間）的排程（DEF-287）。排程當週某租戶失敗或漏產，目前只能等下週或直接操作資料庫。
+  - 手動觸發／補產結算單：`POST /v2/admin/settlements/generate`（SUPER_ADMIN，Sprint 208；冪等）。排程當週某租戶失敗或漏產，可用它補產，不必等下週或直接操作資料庫。（Sprint 232 更正：本項原寫「沒有手動觸發／補產結算單的入口」。）
   - **未以真實（或測試模式）Stripe 端到端走查過**——這是 §D 的人工項目，AI 無法代替。
 - **`confirmPayment` 仍是 stub**（恆回成功，Checkout 流程未使用它）；**`getPaymentStatus` 讀本地資料庫而非向 Stripe 查詢**。若未來加 Stripe Elements 直連流程需另行實作。
 - **金額換算**：Stripe 以「分」為單位，程式以 `amount × 100` 取 `longValue()`（截斷）換算；Sprint 192（DEF-267）已在退款入口拒絕小數位數超過 2 位的金額，避免與資料庫四捨五入產生一分錢差異。

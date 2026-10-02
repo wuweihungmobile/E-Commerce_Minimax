@@ -330,6 +330,48 @@ class BuyerOrderJourneyE2ETest {
                 .isEqualTo(com.nextkey.ecommerce.domain.model.order.Order.OrderStatus.REFUNDED);
     }
 
+    @Test
+    @Order(7)
+    @DisplayName("Sprint 232：沒有店鋪的買家呼叫賣家訂單列表 GET /v2/orders/tenant → 空頁，看不到別的買家下的訂單")
+    void tenantlessBuyerCannotListOtherBuyersOrdersViaTenantEndpoint() throws Exception {
+        // 與本類別其他案例不同：這裡兩個買家都不屬於任何店鋪（真實消費者）。他們的租戶脈絡是系統租戶佔位值，
+        // 下的單也蓋成這個租戶；賣家訂單列表原本直接拿呼叫者的租戶去查，於是任一登入者都看得到所有一般買家
+        // 的訂單（含收件人姓名）。本類別的 registerAndLogin 一律把買家放進房源租戶，所以先前都沒碰到。
+        long stamp = System.currentTimeMillis();
+        String bookerToken = registerAndLoginTenantless("journey-tenantless-a-" + stamp + "@example.com");
+        String viewerToken = registerAndLoginTenantless("journey-tenantless-b-" + stamp + "@example.com");
+
+        UUID orderId = createRoomOrder(bookerToken);
+
+        given()
+                .header("Authorization", "Bearer " + bookerToken)
+                .when().get(BASE_URL + "?page=0&size=20")
+                .then().statusCode(200)
+                .body("data.content.id", hasItem(orderId.toString()));
+
+        given()
+                .header("Authorization", "Bearer " + viewerToken)
+                .when().get(BASE_URL + "/tenant?page=0&size=100")
+                .then().statusCode(200)
+                .body("success", is(true))
+                .body("data.content", hasSize(0));
+    }
+
+    /** 註冊並登入一個不屬於任何店鋪的 BUYER（不像 {@link #registerAndLogin} 把買家放進房源租戶），回傳 access token。 */
+    private String registerAndLoginTenantless(String email) throws Exception {
+        given()
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(RegisterRequest.builder().email(email).password(TEST_PASSWORD).userType("BUYER").build())
+                .when().post(AUTH_URL + "/register")
+                .then().statusCode(201);
+        String loginResponse = given()
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(LoginRequest.builder().email(email).password(TEST_PASSWORD).build())
+                .when().post(AUTH_URL + "/login")
+                .then().statusCode(200).extract().asString();
+        return objectMapper.readTree(loginResponse).path("data").path("accessToken").asText();
+    }
+
     private String createAdminToken() {
         User admin = userRepository.save(User.builder()
                 .email("journey-admin-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 10000) + "@example.com")

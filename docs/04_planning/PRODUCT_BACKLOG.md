@@ -115,6 +115,7 @@
 | 2026-07-19 | v2.0 | 第七輪掃描延續「角色授予雙邊同步」判讀技巧，找到三個明確缺口並於 **Sprint 99** 修復：(1) `acceptInvite`（Sprint 98 新增）同樣未同步 `User.role`，是 StoreOwner 修復的孿生案例——同一個 Sprint 新增的功能沒有連帶檢查是關鍵教訓；(2) `AuthService.refreshToken()` 租戶解析邏輯與 `login()` 不一致，會誤退化為 SYSTEM_TENANT_ID；(3) `PurchaseOrderService` 從未檢查 `ERP_ENABLED` Feature Toggle，對照其餘模組皆已正確實作，唯獨 ERP 漏掉 |
 | 2026-07-05 | v1.4 | **Sprint 62 交付 #9 測試補強**：規劃前重新盤點發現 #9 描述仍過時——真正缺口是 `KnowledgeBaseService`（17 方法含版本控制）**完全零覆蓋**（唯一相關整合測試對其用 `@MockBean` 繞過）、`FaqService` 11 方法零覆蓋、`AnalyticsService.getRecentActivity` 零覆蓋，與原「0–1 測試」的粗略描述有落差。新增 `KnowledgeBaseServiceTest`（24 測試，從 0 建立）+ `FaqServiceTest`（+12 測試）+ `AnalyticsServiceTest`（+2 測試）。另發現 FAQ 前端頁面完全缺失（`/v2/faqs` API 已備妥、無頁面），性質為功能缺口非測試缺口，未排入候選清單，列為 Sprint 63 評估項目 |
 | 2026-09-26 | v2.2 | **Sprint 203 文件一致性檢查**：（1）§2/§3 標註為 Sprint 27 快照、已過時；（2）#10 M07 真實金流更正為「程式層已完成（Sprint 49~56、80），僅剩人工上線步驟」——原列為 P3 待開的 13 SP 大項實際早已實作；（3）本文件自 Sprint 100 起未再追蹤產品面待辦，之後的 Sprint 皆為缺陷掃描與修復，產品面候選見 Sprint 203 收尾建議（A 帳號功能：DEF-252/253）|
+| 2026-10-02 | v2.3 | **Sprint 232 文件一致性檢查（第二輪）＋真實全棧實測**：產品面候選（自 Sprint 100 起未再追蹤）重新盤點。**PRD 載明、後端已完成而前端缺席或失效者**：店鋪成員管理 UI（PRD §10.1.2 `/dashboard/members`，後端 7 個端點零前端呼叫）、店鋪前台 `/stores/[slug]`（4 條路由，後端無以 slug 取店鋪的端點、FRD 無記載）、頁尾 `/privacy`／`/terms` 與 M15 嵌入卡片連結失效、DEF-318 的通知事件。**更根本的是 DEF-319：訂單／訂房蓋成「下單者的租戶」而非「賣家的租戶」，商家端對真實消費者的單永遠 0 筆——在它修好之前，賣家訂單管理（Sprint 151）與商家端訂房管理（Sprint 231）對真實客人無效，也應視為本 backlog 的最高優先項**。詳見 [SPRINT_232_PLAN.md](SPRINT_232_PLAN.md)、DEF-319～323 |
 
 ---
 

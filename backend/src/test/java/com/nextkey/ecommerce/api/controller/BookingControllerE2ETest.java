@@ -1273,4 +1273,100 @@ class BookingControllerE2ETest {
 
         System.out.println("✅ API-M06-018 PASSED: /v2/dashboard/bookings 真實 HTTP 呼叫成功，路由與權限字串皆正確");
     }
+
+    /**
+     * API-M06-019（Sprint 232）：沒有店鋪的一般買家不得從商家端列表看到別人的訂房。
+     *
+     * <p>本類別（含 API-M06-018）的 {@link #setUp()} 一律把買家的 tenantId 設成房源所屬租戶，等於讓買家與商家
+     * 同在一個租戶——沒有任何一個案例是「真實消費者」（註冊後不屬於任何店鋪）。這種使用者的租戶脈絡是系統租戶
+     * 佔位值，建立訂房也蓋成這個租戶；商家端列表原本直接拿它查詢，於是任何登入者都看得到所有一般買家的訂房
+     * （含訂房人姓名）。Sprint 232 以真實後端實測發現。本案例用兩個都沒有店鋪的買家重現這個情境。
+     */
+    @Test
+    @Order(23)
+    @DisplayName("API-M06-019: GET /v2/dashboard/bookings - 沒有店鋪的一般買家看不到別人的訂房（含自己的）")
+    void getTenantBookings_asTenantlessBuyer_seesNoBookings() throws Exception {
+        String bookerEmail = "booking-tenantless-a-" + System.currentTimeMillis() + "@example.com";
+        String viewerEmail = "booking-tenantless-b-" + System.currentTimeMillis() + "@example.com";
+        try {
+            String bookerToken = registerAndLoginTenantlessBuyer(bookerEmail);
+            String viewerToken = registerAndLoginTenantlessBuyer(viewerEmail);
+
+            // 本類別其他案例已用掉 +60／+70／+80／+90 天，同一間房（room_count=1）日期重疊會回 E-4001
+            LocalDate checkIn = LocalDate.now().plusDays(130);
+            var created = given()
+                    .header("Authorization", "Bearer " + bookerToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(BookingDto.CreateRequest.builder()
+                            .roomListingId(testRoomListingId)
+                            .checkInDate(checkIn)
+                            .checkOutDate(checkIn.plusDays(1))
+                            .guestCount(1)
+                            .guestName("Tenantless Consumer Guest")
+                            .build())
+                    .when()
+                    .post(BOOKING_URL);
+            assertThat(created.getStatusCode()).as("沒有店鋪的買家訂房：%s", created.getBody().asString()).isEqualTo(201);
+
+            // 另一個沒有店鋪的買家呼叫商家端列表：不得看到上面那筆
+            given()
+                    .header("Authorization", "Bearer " + viewerToken)
+                    .when()
+                    .get("/v2/dashboard/bookings")
+                    .then()
+                    .statusCode(200)
+                    .body("success", is(true))
+                    .body("data.content", hasSize(0));
+
+            // 訂房人自己呼叫也是空的：商家端列表是店鋪的功能，買家看自己的訂房走 GET /v2/bookings
+            given()
+                    .header("Authorization", "Bearer " + bookerToken)
+                    .when()
+                    .get("/v2/dashboard/bookings")
+                    .then()
+                    .statusCode(200)
+                    .body("data.content", hasSize(0));
+
+            given()
+                    .header("Authorization", "Bearer " + bookerToken)
+                    .when()
+                    .get(BOOKING_URL)
+                    .then()
+                    .statusCode(200)
+                    .body("data.content.guestName", hasItem("Tenantless Consumer Guest"));
+
+            System.out.println("✅ API-M06-019 PASSED: 沒有店鋪的買家呼叫 /v2/dashboard/bookings 一律空頁");
+        } finally {
+            for (String email : new String[] {bookerEmail, viewerEmail}) {
+                userRepository.findByEmail(email).ifPresent(user -> {
+                    tenantMemberRepository.findByUserId(user.getId())
+                            .forEach(tm -> tenantMemberRepository.delete(tm));
+                    bookingRepository.findByUserIdOrderByCreatedAtDesc(user.getId(), Pageable.unpaged())
+                            .forEach(booking -> bookingRepository.delete(booking));
+                    userRepository.delete(user);
+                });
+            }
+        }
+    }
+
+    /** 註冊並登入一個不屬於任何店鋪的 BUYER（不像 {@link #setUp()} 把買家放進房源租戶），回傳 access token。 */
+    private String registerAndLoginTenantlessBuyer(String email) throws Exception {
+        given()
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(RegisterRequest.builder().email(email).password(TEST_PASSWORD).userType("BUYER").build())
+                .when()
+                .post(AUTH_URL + "/register")
+                .then()
+                .statusCode(201);
+        String loginResponse = given()
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(LoginRequest.builder().email(email).password(TEST_PASSWORD).build())
+                .when()
+                .post(AUTH_URL + "/login")
+                .then()
+                .statusCode(200)
+                .extract()
+                .asString();
+        return objectMapper.readTree(loginResponse).path("data").path("accessToken").asText();
+    }
 }

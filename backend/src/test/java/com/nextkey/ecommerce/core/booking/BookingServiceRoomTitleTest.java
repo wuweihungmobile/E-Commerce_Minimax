@@ -33,6 +33,7 @@ import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 /**
@@ -181,16 +182,28 @@ class BookingServiceRoomTitleTest {
     }
 
     @Test
-    @DisplayName("getTenantBookings：無租戶內容（tenantId 為 null，例如買家帳號誤呼叫）→ 傳 null 給 repository，"
-            + "不特別拋錯（比照 getTenantOrders 既有行為）")
-    void getTenantBookings_nullTenant_passesNullThrough() {
+    @DisplayName("getTenantBookings：無租戶內容（tenantId 為 null）→ 回空頁、完全不查詢，不拋錯")
+    void getTenantBookings_nullTenant_returnsEmptyPageWithoutQuerying() {
         // 未呼叫 TenantContext.setCurrentTenant，getCurrentTenant() 回傳 null
-        when(bookingRepository.findByTenantIdOrderByCreatedAtDesc(eq((UUID) null), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of()));
+        Page<BookingDto.BookingListResponse> result =
+                bookingService.getTenantBookings(0, 20, "createdAt", "DESC");
+
+        assertThat(result.getContent()).isEmpty();
+        org.mockito.Mockito.verify(bookingRepository, org.mockito.Mockito.never())
+                .findByTenantIdOrderByCreatedAtDesc(any(), any());
+    }
+
+    @Test
+    @DisplayName("Sprint 232：沒有店鋪的一般買家（租戶是系統租戶佔位值，不是 null）呼叫 → 回空頁、完全不查詢。"
+            + "一般買家訂房蓋的正是這個租戶，查下去就把所有買家的訂房（含訂房人姓名）交給任一登入者")
+    void getTenantBookings_systemTenantCaller_returnsEmptyPageWithoutQuerying() {
+        TenantContext.setCurrentTenant(UUID.fromString(AppConstants.SYSTEM_TENANT_ID));
 
         Page<BookingDto.BookingListResponse> result =
                 bookingService.getTenantBookings(0, 20, "createdAt", "DESC");
 
         assertThat(result.getContent()).isEmpty();
+        org.mockito.Mockito.verify(bookingRepository, org.mockito.Mockito.never())
+                .findByTenantIdOrderByCreatedAtDesc(any(), any());
     }
 }

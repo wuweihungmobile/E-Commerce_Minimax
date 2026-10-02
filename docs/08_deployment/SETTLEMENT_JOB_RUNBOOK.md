@@ -12,7 +12,8 @@
 > | §2 觸發時間為 **UTC** 週一 00:00 | Sprint 194（DEF-271）起是 `@Scheduled(cron = "0 0 0 ? * MON", zone = "Asia/Taipei")`，即**台灣時間**週一 00:00 |
 > | §3.2 環境變數 `SETTLEMENT_TRIGGER_MODE=MANUAL` | 程式碼**沒有任何地方讀取**這個變數，設了無效 |
 > | §3.3 以 `scheduling.settlement.cron` 覆蓋 cron | cron 是**寫死在 `@Scheduled` 註解**，不可由設定覆蓋；「替代方案」不存在 |
-> | §3.3／§4.1 手動觸發或「透過 admin 介面」補建結算單 | **沒有任何手動觸發或補產入口**（`generateWeeklyStatements` 只被排程呼叫），見 DEF-287 |
+> | §3.3／§4.1 手動觸發或「透過 admin 介面」補建結算單 | Sprint 205 當時**沒有**任何手動觸發或補產入口（`generateWeeklyStatements` 至今仍只被排程呼叫），見 DEF-287；**Sprint 208 起有 `POST /v2/admin/settlements/generate`**（見下方 Sprint 219 更正；Sprint 232 補上本註記，本列原文在 Sprint 208 之後未更新而自相矛盾） |
+> | §6 緊急回滾：`ENABLE_SCHEDULED_JOBS=false`＋`grep "Scheduling disabled"` | **兩者在程式與設定中都不存在**，照做不會停掉任何排程；真正的開關是 `APP_SCHEDULING_ENABLED`（Sprint 232 已改寫 §6） |
 > | §2 結算範圍「上週一 ~ 上週日」 | 結算單期間仍是上週，但 Sprint 195（PRD §6.2.1）起**納入所有「已完成且尚未結算」的訂單，不限下單週**（`orders.settled_statement_id`）；首張結算單會包含全部歷史已完成訂單 |
 >
 > 其餘章節（§3.4 驗證 SQL、§4 異常處理等）**未重新核對**，引用前請先與程式碼比對。撥款（Transfer）的上線項目見 [STRIPE_PRODUCTION_CHECKLIST.md](STRIPE_PRODUCTION_CHECKLIST.md)。
@@ -219,16 +220,22 @@ histogram_quantile(0.99, settlement_generation_duration_seconds)
 若生產環境結算單生成出現嚴重問題：
 
 ```bash
-# 1. 停用 Scheduled Job
-kubectl set env deployment/backend -n production ENABLE_SCHEDULED_JOBS=false
+# 1. 停用 Scheduled Job（總開關，啟動時讀取；kubectl set env 會觸發滾動重啟）
+kubectl set env deployment/backend -n production APP_SCHEDULING_ENABLED=false
 
-# 2. 確認已停用
-kubectl logs -n production deployment/backend | grep "Scheduling disabled"
+# 2. 確認已套用。後端沒有「排程已停用」的日誌行（SchedulingConfig 只在啟用時載入、不輸出任何訊息），
+#    所以不能 grep 該字串；改確認滾動更新完成，以及執行中的 Pod 讀到的環境變數
+kubectl rollout status deployment/backend -n production
+kubectl exec -n production deployment/backend -- printenv APP_SCHEDULING_ENABLED   # 應印出 false
 
 # 3. 聯繫 DBA 處理資料
 # - 刪除錯誤的結算單
 # - 或重跑結算（修改 periodStart 強制觸發）
 ```
+
+> ⚠️ **這個開關關掉的不只是結算，而是所有 `@Scheduled`**：每週結算、通知佇列消費、未付款訂單／訂房的逾時取消，以及**自動退款**（`RefundProcessingService`）。關閉期間，已付款後取消的訂單停在 `REFUNDING`、訂房停在 `refund_status=PENDING`，買家的錢要等重新啟用後才會退回。**目前沒有「只停結算、不停退款」的開關**（各 `@Scheduled` 的 cron 寫死在註解、沒有各自的開關），要做到需要改程式；在那之前，停用排程就必須同時評估退款延遲的影響。
+>
+> **Sprint 232 更正**：本節原寫的 `ENABLE_SCHEDULED_JOBS` 與日誌字串 "Scheduling disabled" 在程式與設定中都不存在（全庫搜尋 0 筆；`APP_SCHEDULING_ENABLED` 則在 `application.yml`、`SchedulingConfig` 命中以驗證搜尋有效），緊急時照原文操作會以為排程已停、實際照跑（含週一自動結算與自動退款）。
 
 ---
 

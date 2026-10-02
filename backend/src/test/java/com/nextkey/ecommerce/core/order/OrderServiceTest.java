@@ -993,16 +993,29 @@ class OrderServiceTest {
     }
 
     @Test
-    @DisplayName("getTenantOrders：無租戶內容（tenantId 為 null，例如買家帳號誤呼叫）→ 傳 null 給 repository，"
-            + "不特別拋錯（交由 repository 查出空頁）")
-    void getTenantOrders_nullTenant_passesNullThrough() {
+    @DisplayName("getTenantOrders：無租戶內容（tenantId 為 null）→ 回空頁、完全不查詢，不拋錯")
+    void getTenantOrders_nullTenant_returnsEmptyPageWithoutQuerying() {
         // 未呼叫 TenantContext.setCurrentTenant，getCurrentTenant() 回傳 null
-        when(orderRepository.findByTenantIdOrderByCreatedAtDesc(eq((UUID) null), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of()));
-
         Page<OrderDto.OrderListResponse> result = orderService.getTenantOrders(0, 20, "createdAt", "DESC", null);
 
         assertThat(result.getContent()).isEmpty();
+        verify(orderRepository, never()).findByTenantIdOrderByCreatedAtDesc(any(), any());
+        verify(orderRepository, never()).findByTenantIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Sprint 232：沒有店鋪的一般買家（租戶是系統租戶佔位值，不是 null）呼叫 → 回空頁、完全不查詢。"
+            + "一般買家下的單蓋的正是這個租戶，查下去就把所有買家的訂單（含收件人）交給任一登入者")
+    void getTenantOrders_systemTenantCaller_returnsEmptyPageWithoutQuerying() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+
+        Page<OrderDto.OrderListResponse> noFilter = orderService.getTenantOrders(0, 20, "createdAt", "DESC", null);
+        Page<OrderDto.OrderListResponse> withFilter = orderService.getTenantOrders(0, 20, "createdAt", "DESC", "PAID");
+
+        assertThat(noFilter.getContent()).isEmpty();
+        assertThat(withFilter.getContent()).isEmpty();
+        verify(orderRepository, never()).findByTenantIdOrderByCreatedAtDesc(any(), any());
+        verify(orderRepository, never()).findByTenantIdAndStatus(any(), any(), any());
     }
 
     // ========== updateOrderStatus ==========

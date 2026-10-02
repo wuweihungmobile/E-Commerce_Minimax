@@ -21,6 +21,8 @@ Sprint 232 結尾我以 `AskUserQuestion` 提出四個決定，使用者全部�
 
 `/privacy`、`/terms` 需要使用者提供法務文字，我不能代寫，不排入。
 
+> **排程更新（Sprint 234）**：上表 234 起的 Sprint 編號已順延，現行排程見 [SPRINT_234_PLAN.md](SPRINT_234_PLAN.md) §1.1（插入「系統租戶假設全面稽核與止血」與「`DEF-327`～`DEF-329`」兩輪）。本表保留原貌作為當時的決定紀錄。
+
 ### 1.2 查證（動手前讀程式碼，非憑記憶）
 
 1. **出貨的 JWT 預設密鑰共 3 個**（[SPRINT_232_PLAN.md](SPRINT_232_PLAN.md) §1.3 C1 已讀碼確認，本輪再核對全庫）：`application.yml`:78（`...-key-change-in-production-min-32-chars`）、`docker-compose.yml`:73（`...-key-please-change-in-production`）、`.env.example`:19（`...-key-please-change-in-production-min-32-chars`）。`JwtTokenService` 只用 `equals` 擋第一個。其餘出現 `JWT_SECRET` 之處（CI workflow、`docker-compose.test.yml`、`scripts/validate-*.sh`、測試）都是**明確的測試值**，不是預設值，本來就該被接受。
@@ -66,7 +68,7 @@ Sprint 232 結尾我以 `AskUserQuestion` 提出四個決定，使用者全部�
 - **定點執行**：`JwtTokenServiceTest` 26、`JwtSecretShippedDefaultsTest` 1、`PasswordEncoderTest` 9 全過；各自經突變驗證（見 §4）。
 - **`make validate-e2e`**：第一次 **115 通過／1 失敗／4 略過**（失敗＝`E2E-BPAYR-08`，原因見 §3）；修正輔助函式、重建前端後重跑 **121 個測試：117 通過／4 略過（與 Sprint 231、232 基準相同的 4 個）／0 失敗，5.9 分鐘**；schema 對齊。
 - **前端**：`tsc --noEmit`、`eslint`（登入頁與輔助函式）、`next build` 皆通過。
-- **push 與雲端 CI**：（push 後於回填 commit 補上）
+- **push 與雲端 CI**：已 push（2026-10-02，`da002b9..7cf0e78 main -> main`；pre-push 輕量守門通過）。✅ 雲端 CI 全綠 run **37019154415**，三個 job 全部 success，共 10 分 36 秒：Backend Unit 2m43s／Frontend Lint & Build 0m58s／Backend Integration & Package 7m47s。**觀察（未歸因，記於 [SPRINT_234_PLAN.md](SPRINT_234_PLAN.md) §5）**：整合 job 的 7m47s 是近五次中最長（前四次依序 5m01s、6m02s、6m00s、4m15s）。bcrypt 12 讓每次註冊／登入變慢而整合測試大量註冊登入，是一個**假說**，但雲端 runner 耗時本來就有 ±1.5 分鐘的變異，單一資料點不下結論。
 
 ## 6. 範圍外（延後）與已知限制
 
@@ -80,5 +82,5 @@ Sprint 232 結尾我以 `AskUserQuestion` 提出四個決定，使用者全部�
 
 ## 8. 下一步／Action Items
 
-1. **Sprint 234：DEF-319 訂房側**（先做單一房源、沒有拆單問題的一半）：`buildBookingCore` 改蓋房源所屬租戶＋Flyway 回填歷史訂房＋優惠券租戶解析的決定（若 PRD 沒寫清楚，以 `AskUserQuestion` 請使用者拍板，不自己猜）；`at-seller-dashboard-real.spec.ts` 的 SDASH-03／04 移除 `test.fail()`。
+1. ~~**Sprint 234：DEF-319 訂房側**~~ **排程已更新（Sprint 234 計畫書 §1.1）**：本輪讀碼時發現的退貨申請與客服工單缺口與 Sprint 232 同型，故 Sprint 234 改做「系統租戶假設全面稽核與止血」（`DEF-325`），Sprint 235 處理 `DEF-327`～`DEF-329`，**DEF-319 順延為 Sprint 236（訂房）～237（訂單）**。內容不變：訂房側先做單一房源、沒有拆單問題的一半（`buildBookingCore` 改蓋房源所屬租戶＋Flyway 回填歷史訂房＋優惠券租戶解析的決定，若 PRD 沒寫清楚以 `AskUserQuestion` 請使用者拍板，不自己猜）；`at-seller-dashboard-real.spec.ts` 的 SDASH-03／04 移除 `test.fail()`。
 2. 收尾核對三份追蹤文件（DEFERRED_ITEMS_TRACKER、RELEASE_TRACKER、本計畫書）都已更新。

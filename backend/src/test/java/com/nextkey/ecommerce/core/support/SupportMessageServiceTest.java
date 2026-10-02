@@ -3,6 +3,9 @@ package com.nextkey.ecommerce.core.support;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -22,6 +25,7 @@ import com.nextkey.ecommerce.domain.model.support.SupportMessage.SenderType;
 import com.nextkey.ecommerce.domain.model.support.SupportTicket;
 import com.nextkey.ecommerce.domain.repository.support.SupportMessageRepository;
 import com.nextkey.ecommerce.domain.repository.support.SupportTicketRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
@@ -42,6 +46,8 @@ class SupportMessageServiceTest {
     private static final UUID CUSTOMER_ID = UUID.randomUUID();
     private static final UUID TENANT_ID = UUID.randomUUID();
     private static final UUID STAFF_ID = UUID.randomUUID();
+    /** 沒有店鋪的使用者（一般買家）的租戶：系統租戶佔位值，不是 null，且所有這類使用者共用。 */
+    private static final UUID SYSTEM_TENANT_ID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
 
     private SupportMessageService newService() {
         return new SupportMessageService(messageRepository, ticketRepository);
@@ -119,5 +125,55 @@ class SupportMessageServiceTest {
 
         assertThat(messages).hasSize(1);
         assertThat(messages.get(0).getMessage()).isEqualTo("m1");
+    }
+
+    // ========== Sprint 234：沒有店鋪的呼叫者（系統租戶）不得讀寫店家層訊息 ==========
+    //
+    // 真實全棧實測：修復前，一個沒有店鋪的買家 B 能以 STAFF 身分在別的買家 A 的工單發言，A 的工單裡出現
+    // 「我是客服人員，請提供您的信用卡末四碼」這種釣魚訊息。原因是 A 的工單租戶（取自訂單）與 B 的租戶都是系統租戶佔位值。
+
+    @Test
+    @DisplayName("Sprint 234：postAsStaff 系統租戶的非 SUPER_ADMIN 呼叫者 → 找不到（E_8008），不查工單、不寫任何訊息")
+    void postAsStaff_systemTenantCaller_throwsE8008AndWritesNothing() {
+        SupportMessageService service = newService();
+        CreateMessageRequest request = CreateMessageRequest.builder().message("我是客服人員，請提供卡號").build();
+
+        assertThatThrownBy(() -> service.postAsStaff(TICKET_ID, request, STAFF_ID, SYSTEM_TENANT_ID, false))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_8008));
+
+        verify(ticketRepository, never()).findByIdAndTenantId(any(), any());
+        verify(messageRepository, never()).save(any(SupportMessage.class));
+    }
+
+    @Test
+    @DisplayName("Sprint 234：listMessagesAsStaff 系統租戶的非 SUPER_ADMIN 呼叫者 → 找不到（E_8008），不查工單、不查訊息")
+    void listMessagesAsStaff_systemTenantCaller_throwsE8008() {
+        SupportMessageService service = newService();
+        // 刻意讓「若沒有守門，這張工單會被找到」。mock 預設回 Optional.empty()，那樣沒有守門時也會因為
+        // 「找不到」拋出同一個 E_8008，測試就分辨不出是守門擋下的、還是單純沒資料——突變驗證時這個案例
+        // 在拿掉守門後仍然通過（Sprint 234 計畫書 §4 的 M04），所以改成找得到，並驗證完全沒去查。
+        lenient().when(ticketRepository.findByIdAndTenantId(TICKET_ID, SYSTEM_TENANT_ID))
+                .thenReturn(Optional.of(ticket()));
+
+        assertThatThrownBy(() -> service.listMessagesAsStaff(TICKET_ID, SYSTEM_TENANT_ID, false))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_8008));
+
+        verify(ticketRepository, never()).findByIdAndTenantId(any(), any());
+        verify(messageRepository, never()).findByTicketIdOrderByCreatedAtAsc(any());
+    }
+
+    @Test
+    @DisplayName("Sprint 234：SUPER_ADMIN 即使租戶是系統租戶，仍可在任何工單回覆（平台客服不受影響）")
+    void postAsStaff_superAdminInSystemTenant_stillWorks() {
+        SupportMessageService service = newService();
+        when(ticketRepository.findById(TICKET_ID)).thenReturn(Optional.of(ticket()));
+        when(messageRepository.save(any(SupportMessage.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        MessageResponse response = service.postAsStaff(
+                TICKET_ID, CreateMessageRequest.builder().message("平台客服回覆").build(), STAFF_ID, SYSTEM_TENANT_ID, true);
+
+        assertThat(response.getSenderType()).isEqualTo(SenderType.STAFF.name());
     }
 }

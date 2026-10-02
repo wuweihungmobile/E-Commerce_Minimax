@@ -18,6 +18,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 /**
@@ -64,7 +65,12 @@ class RateLimitFilterIntegrationTest {
     private static final int BURST_AFTER_QUOTA = 20;
 
     private boolean sendRequest(final RateLimitFilter filter) throws Exception {
+        return sendRequestFrom(filter, "127.0.0.1");
+    }
+
+    private boolean sendRequestFrom(final RateLimitFilter filter, final String remoteAddr) throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/v2/orders");
+        request.setRemoteAddr(remoteAddr);
         MockHttpServletResponse response = new MockHttpServletResponse();
         boolean[] chainCalled = {false};
         FilterChain chain = (req, res) -> chainCalled[0] = true;
@@ -113,5 +119,30 @@ class RateLimitFilterIntegrationTest {
 
         TenantContext.setCurrentTenant(tenantB);
         assertThat(sendRequest(filter)).as("租戶 B 的配額不受租戶 A 影響").isTrue();
+    }
+
+    @Test
+    @DisplayName("Sprint 234（DEF-328）：系統租戶下，使用者 A 耗盡配額不影響使用者 B，也不影響匿名來源 IP")
+    void systemTenantUsers_haveIndependentQuotas() throws Exception {
+        RateLimitFilter filter = new RateLimitFilter(new FixedObjectProvider<>(redisTemplate));
+        TenantContext.setCurrentTenant(UUID.fromString(AppConstants.SYSTEM_TENANT_ID));
+
+        TenantContext.setCurrentUser(UUID.randomUUID());
+        for (int i = 0; i < 100; i++) {
+            sendRequest(filter);
+        }
+        assertThat(anyDeniedWithinBurst(filter, BURST_AFTER_QUOTA))
+                .as("使用者 A 應已耗盡自己的配額")
+                .isTrue();
+
+        TenantContext.setCurrentUser(UUID.randomUUID());
+        assertThat(sendRequest(filter))
+                .as("同樣沒有店鋪的使用者 B 不受 A 影響（修復前兩人共用系統租戶那一個桶）")
+                .isTrue();
+
+        TenantContext.setCurrentUser(null);
+        assertThat(sendRequestFrom(filter, "10.234." + (int) (Math.random() * 250) + "." + (int) (Math.random() * 250)))
+                .as("匿名請求（以來源 IP 為單位）也不受使用者 A 影響")
+                .isTrue();
     }
 }

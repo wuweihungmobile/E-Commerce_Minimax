@@ -13,6 +13,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.api.dto.returns.ReturnDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
@@ -24,6 +31,7 @@ import com.nextkey.ecommerce.domain.model.returns.ReturnRequest.ReturnStatus;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
 import com.nextkey.ecommerce.domain.repository.returns.ReturnRequestRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -61,6 +69,8 @@ class ReturnRequestServiceTest {
     private static final UUID TENANT_ID = UUID.randomUUID();
     private static final UUID RETURN_ID = UUID.randomUUID();
     private static final UUID REVIEWER_ID = UUID.randomUUID();
+    /** 沒有店鋪的使用者（一般買家）的租戶：系統租戶佔位值，不是 null，且所有這類使用者共用。 */
+    private static final UUID SYSTEM_TENANT_ID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
 
     @BeforeEach
     void setUp() {
@@ -73,6 +83,7 @@ class ReturnRequestServiceTest {
     @AfterEach
     void tearDown() {
         TenantContext.clear();
+        SecurityContextHolder.clearContext();
     }
 
     private ReturnRequest requestedReturn() {
@@ -220,5 +231,96 @@ class ReturnRequestServiceTest {
 
         verify(orderRepository).findByIdForUpdate(orderId);
         verify(orderRepository, never()).findById(orderId);
+    }
+
+    // ========== Sprint 234：沒有店鋪的呼叫者（系統租戶）不得碰到店家層退貨申請 ==========
+    //
+    // 一般消費者的退貨申請蓋的是訂單的租戶（系統租戶），BUYER 又持有 return:read；店家層端點原本用「呼叫者的租戶」
+    // 查詢與比對，任何買家都能列出所有消費者的退貨申請，也能憑 id 讀取（系統租戶彼此互為「同租戶」）。
+
+    private ReturnRequest returnOfSystemTenant(final UUID customerId) {
+        return ReturnRequest.builder()
+                .id(RETURN_ID)
+                .tenantId(SYSTEM_TENANT_ID)
+                .customerId(customerId)
+                .returnNumber("RMA-20261002-SYS00001")
+                .status(ReturnStatus.REQUESTED)
+                .build();
+    }
+
+    @Test
+    @DisplayName("Sprint 234：getTenantReturnRequests 系統租戶的非 admin 呼叫者 → 空頁，完全不查詢")
+    void getTenantReturnRequests_systemTenantNonAdmin_returnsEmptyWithoutQuerying() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+        Pageable pageable = PageRequest.of(0, 20);
+
+        Page<ReturnDto.Response> result = returnRequestService.getTenantReturnRequests(pageable);
+
+        assertThat(result.getContent()).isEmpty();
+        verify(returnRequestRepository, never()).findByTenantIdOrderByCreatedAtDesc(any(), any());
+    }
+
+    @Test
+    @DisplayName("Sprint 234：getTenantReturnRequests 真正的店鋪租戶照常查詢本租戶的退貨申請")
+    void getTenantReturnRequests_storeTenant_stillQueries() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(returnRequestRepository.findByTenantIdOrderByCreatedAtDesc(TENANT_ID, pageable))
+                .thenReturn(new PageImpl<>(List.of(requestedReturn())));
+
+        Page<ReturnDto.Response> result = returnRequestService.getTenantReturnRequests(pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Sprint 234：getTenantReturnRequests admin 在系統租戶脈絡下維持原行為（平台端檢視）")
+    void getTenantReturnRequests_adminInSystemTenant_stillQueries() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                "admin", "n/a", List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+        Pageable pageable = PageRequest.of(0, 20);
+        when(returnRequestRepository.findByTenantIdOrderByCreatedAtDesc(SYSTEM_TENANT_ID, pageable))
+                .thenReturn(new PageImpl<>(List.of(returnOfSystemTenant(UUID.randomUUID()))));
+
+        Page<ReturnDto.Response> result = returnRequestService.getTenantReturnRequests(pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Sprint 234：getReturnRequest 兩個都在系統租戶的一般買家，不得讀取對方的退貨申請（E_1007）")
+    void getReturnRequest_otherBuyerInSystemTenant_throwsE1007() {
+        UUID owner = UUID.randomUUID();
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+        TenantContext.setCurrentUser(UUID.randomUUID());
+        when(returnRequestRepository.findById(RETURN_ID)).thenReturn(Optional.of(returnOfSystemTenant(owner)));
+
+        assertThatThrownBy(() -> returnRequestService.getReturnRequest(RETURN_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("Sprint 234：getReturnRequest 退貨申請的提出人本人，在系統租戶下仍可讀取自己的申請")
+    void getReturnRequest_owner_inSystemTenant_stillWorks() {
+        UUID owner = UUID.randomUUID();
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+        TenantContext.setCurrentUser(owner);
+        when(returnRequestRepository.findById(RETURN_ID)).thenReturn(Optional.of(returnOfSystemTenant(owner)));
+
+        ReturnDto.Response response = returnRequestService.getReturnRequest(RETURN_ID);
+
+        assertThat(response.getId()).isEqualTo(RETURN_ID);
+    }
+
+    @Test
+    @DisplayName("Sprint 234：approveReturn 系統租戶的非 admin 呼叫者 → E_1007（店家層載入也要求真正的店鋪租戶）")
+    void approveReturn_systemTenantCaller_throwsE1007() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+        when(returnRequestRepository.findById(RETURN_ID)).thenReturn(Optional.of(returnOfSystemTenant(UUID.randomUUID())));
+
+        assertThatThrownBy(() -> returnRequestService.approveReturn(RETURN_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1007);
     }
 }

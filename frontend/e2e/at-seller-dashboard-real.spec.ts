@@ -1,7 +1,7 @@
 import { test, expect, Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { registerAndLogin, loginOnly } from './helpers/auth';
-import { verifyEmailViaMailbox } from './helpers/mailbox';
+import { Account, authHeaders, seedStore } from './helpers/store';
 
 /**
  * AT-SELLER-DASHBOARD-REAL: 商家端訂單／訂房管理（真實後端，完全不 mock）—— Sprint 232
@@ -24,7 +24,6 @@ import { verifyEmailViaMailbox } from './helpers/mailbox';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 const WEB_BASE = 'http://localhost:3000';
-const PASSWORD = 'Test123!';
 const NIGHT_PRICE = 3200;
 const PRODUCT_PRICE = 450;
 const GUEST_NAME = 'E2E 住客王小明';
@@ -36,93 +35,6 @@ function isoDate(daysFromNow: number): string {
   const d = new Date();
   d.setDate(d.getDate() + daysFromNow);
   return d.toISOString().slice(0, 10);
-}
-
-async function accessToken(page: Page): Promise<string> {
-  const token = await page.evaluate(() => localStorage.getItem('accessToken'));
-  expect(token, '應已登入並持有 accessToken').toBeTruthy();
-  return token as string;
-}
-
-async function authHeaders(page: Page): Promise<{ Authorization: string }> {
-  return { Authorization: `Bearer ${await accessToken(page)}` };
-}
-
-type Account = { email: string; password: string };
-
-/** 店主註冊→驗證 Email→申請開店→管理員核准並開啟訂房→店主重新登入→建立 ROOM 房源與 PRODUCT 商品。 */
-async function seedStore(page: Page): Promise<{ roomId: string; productId: string; owner: Account }> {
-  const owner = await registerAndLogin(page);
-  await verifyEmailViaMailbox(page, owner.email);
-
-  const storeName = `E2E 商家端管理店 ${Date.now()}`;
-  const apply = await page.request.post(`${API_BASE}/v2/tenants/apply`, {
-    headers: await authHeaders(page),
-    data: {
-      storeName,
-      storeDescription: 'AT-SELLER-DASHBOARD-REAL 自建前提',
-      businessType: 'HYBRID',
-      contactEmail: `store-${Date.now()}@example.com`,
-      contactPhone: '0912345678',
-    },
-  });
-  expect(apply.status(), await apply.text()).toBe(201);
-
-  await page.evaluate(() => localStorage.clear());
-  await loginOnly(page, 'admin@nextkey.local', PASSWORD);
-  const adminHeaders = await authHeaders(page);
-  const pending = await page.request.get(`${API_BASE}/v2/admin/tenant-applications`, { headers: adminHeaders });
-  expect(pending.status(), await pending.text()).toBe(200);
-  const applications = (await pending.json()).data.applications as Array<{ applicationId: string; storeName: string }>;
-  const application = applications.find((a) => a.storeName === storeName);
-  expect(application, '待審核列表應含剛送出的申請').toBeTruthy();
-  const approve = await page.request.post(
-    `${API_BASE}/v2/admin/tenant-applications/${application!.applicationId}/approve`,
-    { headers: adminHeaders }
-  );
-  expect(approve.status(), await approve.text()).toBe(200);
-  const tenantId = (await approve.json()).data.tenantId as string;
-  // 核准後 BOOKING_ENABLED 預設 false（需管理員開啟），沒開就建立不了房源（403 E-2004）
-  const toggle = await page.request.put(`${API_BASE}/v2/admin/tenants/${tenantId}/features/BOOKING_ENABLED`, {
-    headers: adminHeaders,
-    data: { enabled: true },
-  });
-  expect(toggle.status(), await toggle.text()).toBe(200);
-
-  await page.evaluate(() => localStorage.clear());
-  await loginOnly(page, owner.email, owner.password);
-  const ownerHeaders = await authHeaders(page);
-  const room = await page.request.post(`${API_BASE}/v2/dashboard/listings`, {
-    headers: ownerHeaders,
-    data: {
-      listingType: 'ROOM',
-      name: 'E2E 商家端海景房',
-      description: 'AT-SELLER-DASHBOARD-REAL',
-      price: NIGHT_PRICE,
-      location: '花蓮',
-      maxGuests: 2,
-      roomCount: 5,
-    },
-  });
-  expect(room.status(), await room.text()).toBe(200);
-  // 商品不建 SKU／庫存列＝未啟用庫存追蹤，下單時略過預扣，不需要另外進貨
-  const product = await page.request.post(`${API_BASE}/v2/dashboard/listings`, {
-    headers: ownerHeaders,
-    data: {
-      listingType: 'PRODUCT',
-      name: 'E2E 商家端隨行杯',
-      description: 'AT-SELLER-DASHBOARD-REAL',
-      price: PRODUCT_PRICE,
-      category: '生活',
-      brand: 'E2E',
-    },
-  });
-  expect(product.status(), await product.text()).toBe(200);
-  return {
-    roomId: (await room.json()).data.listingId as string,
-    productId: (await product.json()).data.listingId as string,
-    owner: { email: owner.email, password: owner.password },
-  };
 }
 
 type BookingListItem = { id: string; guestName?: string | null; status: string };
@@ -155,7 +67,12 @@ test.describe('AT-SELLER-DASHBOARD-REAL: 商家端訂單／訂房管理（真實
     test.setTimeout(120_000);
     const page = await browser.newPage({ baseURL: WEB_BASE });
     try {
-      ({ roomId, productId, owner } = await seedStore(page));
+      ({ roomId, productId, owner } = await seedStore(page, {
+        businessType: 'HYBRID',
+        storeLabel: 'E2E 商家端管理店',
+        room: { name: 'E2E 商家端海景房', price: NIGHT_PRICE },
+        product: { name: 'E2E 商家端隨行杯', price: PRODUCT_PRICE },
+      }) as { roomId: string; productId: string; owner: Account });
     } finally {
       await page.close();
     }

@@ -91,10 +91,12 @@ public class SupportTicketController {
     @GetMapping("/dashboard/support/tickets")
     @PreAuthorize("hasAuthority('support_ticket:read')")
     public ResponseEntity<ApiResponse<TicketListResponse>> listTenantTickets(
+            @AuthenticationPrincipal UserPrincipal principal,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         UUID tenantId = TenantContext.getCurrentTenant();
-        TicketListResponse response = ticketService.listTenantTickets(tenantId, page, size);
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
+        TicketListResponse response = ticketService.listTenantTickets(tenantId, page, size, isSuperAdmin);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

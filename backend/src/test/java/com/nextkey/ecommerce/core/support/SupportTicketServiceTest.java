@@ -34,6 +34,7 @@ import com.nextkey.ecommerce.domain.model.support.SupportTicket.TicketStatus;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.support.SupportTicketRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
 /**
@@ -56,6 +57,8 @@ class SupportTicketServiceTest {
     private static final UUID TENANT_ID = UUID.randomUUID();
     private static final UUID TICKET_ID = UUID.randomUUID();
     private static final UUID ORDER_ID = UUID.randomUUID();
+    /** 沒有店鋪的使用者（一般買家）的租戶：系統租戶佔位值，不是 null，且所有這類使用者共用。 */
+    private static final UUID SYSTEM_TENANT_ID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
 
     private SupportTicketService newService() {
         return new SupportTicketService(ticketRepository, orderRepository, messageService);
@@ -253,7 +256,7 @@ class SupportTicketServiceTest {
                 org.mockito.ArgumentMatchers.eq(TENANT_ID), org.mockito.ArgumentMatchers.any(Pageable.class)))
                 .thenReturn(page);
 
-        var response = service.listTenantTickets(TENANT_ID, 0, 20);
+        var response = service.listTenantTickets(TENANT_ID, 0, 20, false);
 
         assertThat(response.getTickets()).hasSize(1);
         assertThat(response.getTotalElements()).isEqualTo(1);
@@ -283,7 +286,7 @@ class SupportTicketServiceTest {
                 org.mockito.ArgumentMatchers.eq(TENANT_ID), org.mockito.ArgumentMatchers.any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        service.listTenantTickets(TENANT_ID, 0, 999999999);
+        service.listTenantTickets(TENANT_ID, 0, 999999999, false);
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
         verify(ticketRepository).findByTenantIdOrderByCreatedAtDesc(
@@ -303,5 +306,61 @@ class SupportTicketServiceTest {
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
         verify(ticketRepository).findAll(captor.capture());
         assertThat(captor.getValue().getPageSize()).isEqualTo(100);
+    }
+
+    // ========== Sprint 234：沒有店鋪的呼叫者（系統租戶）不得碰到店家層工單 ==========
+    //
+    // 一般消費者的訂單蓋系統租戶、工單的租戶取自訂單，所以消費者的工單也是系統租戶；BUYER 持有 support_ticket:read／create，
+    // 而店家層端點原本直接拿「呼叫者的租戶」查詢與比對——任何買家都能列出、讀取別人的工單，並以 STAFF 身分發言
+    // （真實全棧實測重現）。以下案例斷言：系統租戶的非 SUPER_ADMIN 呼叫者，repository 完全不會被查詢。
+
+    @Test
+    @DisplayName("Sprint 234：listTenantTickets 系統租戶的非 SUPER_ADMIN 呼叫者 → 空頁，完全不查詢")
+    void listTenantTickets_systemTenantCaller_returnsEmptyWithoutQuerying() {
+        SupportTicketService service = newService();
+
+        var response = service.listTenantTickets(SYSTEM_TENANT_ID, 0, 20, false);
+
+        assertThat(response.getTickets()).isEmpty();
+        assertThat(response.getTotalElements()).isZero();
+        verify(ticketRepository, never()).findByTenantIdOrderByCreatedAtDesc(any(), any());
+    }
+
+    @Test
+    @DisplayName("Sprint 234：listTenantTickets 租戶為 null 的非 SUPER_ADMIN 呼叫者 → 空頁，完全不查詢")
+    void listTenantTickets_nullTenantCaller_returnsEmptyWithoutQuerying() {
+        SupportTicketService service = newService();
+
+        var response = service.listTenantTickets(null, 0, 20, false);
+
+        assertThat(response.getTickets()).isEmpty();
+        verify(ticketRepository, never()).findByTenantIdOrderByCreatedAtDesc(any(), any());
+    }
+
+    @Test
+    @DisplayName("Sprint 234：getTenantTicket／updateStatus 系統租戶的非 SUPER_ADMIN 呼叫者 → 找不到（E_8008），完全不查詢")
+    void staffOperations_systemTenantCaller_throwsE8008WithoutQuerying() {
+        SupportTicketService service = newService();
+        UpdateTicketStatusRequest request = new UpdateTicketStatusRequest();
+        request.setStatus("IN_PROGRESS");
+
+        assertThatThrownBy(() -> service.getTenantTicket(TICKET_ID, SYSTEM_TENANT_ID, false))
+                .isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(ErrorCode.E_8008);
+        assertThatThrownBy(() -> service.updateStatus(TICKET_ID, request, SYSTEM_TENANT_ID, false))
+                .isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(ErrorCode.E_8008);
+
+        verify(ticketRepository, never()).findByIdAndTenantId(any(), any());
+        verify(ticketRepository, never()).findById(any());
+    }
+
+    @Test
+    @DisplayName("Sprint 234：SUPER_ADMIN 即使租戶是系統租戶，仍可跨租戶查詢（平台客服不受影響）")
+    void getTenantTicket_superAdminInSystemTenant_stillWorks() {
+        SupportTicketService service = newService();
+        when(ticketRepository.findById(TICKET_ID)).thenReturn(Optional.of(ticket(TicketStatus.OPEN)));
+
+        TicketResponse response = service.getTenantTicket(TICKET_ID, SYSTEM_TENANT_ID, true);
+
+        assertThat(response.getId()).isEqualTo(TICKET_ID);
     }
 }

@@ -464,6 +464,7 @@ public class GlobalExceptionHandler {
 - [ ] 單元測試覆蓋 ≥ 80%
 - [ ] 效能考量 (N+1 查詢等)
 - [ ] 多租戶隔離正確
+  - 店家層端點若以「呼叫者的租戶」查詢或比對擁有權，必須先用 `TenantContext.isStoreTenant` 排除系統租戶：沒有加入任何店鋪的使用者（一般買家，以及尚未開店的 SELLER／HOST）的租戶是系統租戶佔位值，**不是 null**，且全體共用；一般消費者建立的資料（訂單、客服工單、退貨申請）也蓋成它，所以「租戶相同」對這些人恆成立。`TenantContext.hasTenant()` 對系統租戶也回 true，不能拿來判斷（Sprint 232～234 連續三輪的教訓）
 - [ ] 無硬編碼敏感資訊
 
 ### 4.2 Review 流程

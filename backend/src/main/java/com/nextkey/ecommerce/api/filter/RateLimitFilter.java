@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.api.filter;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Collections;
+import java.util.UUID;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -29,9 +30,17 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * 每租戶 API 限流（Token Bucket，PRD §3.3/§13.4/§16.4.2：每租戶 100 req/min，超過回傳 429）。
  *
- * <p>限流維度僅「每租戶」——PRD 全文唯一明確要求的維度，未提及 per-IP/per-user 疊加，故不額外實作。
- * 未解析出租戶身分的請求（{@code /v2/auth/**} 登入前、{@code /actuator/**} 健康檢查）不納入限流，
- * 因這些路徑無業務租戶可綁定，排除範圍比照 {@link TenantContextFilter}。
+ * <p>真正的店鋪租戶以「每租戶」為限流單位——PRD 全文唯一明確要求的維度，未提及 per-IP/per-user 疊加，
+ * 故不對店鋪租戶額外疊加。未解析出租戶身分的請求（{@code /v2/auth/**} 登入前、{@code /actuator/**} 健康檢查）
+ * 不納入限流，因這些路徑無業務租戶可綁定，排除範圍比照 {@link TenantContextFilter}。
+ *
+ * <p><b>沒有店鋪的使用者例外（Sprint 234，DEF-328）</b>：一般買家與匿名請求的租戶是系統租戶佔位值
+ * （{@link TenantContext#isStoreTenant}），全體共用同一個；若也以「租戶」為單位，所有一般買家加匿名訪客合用
+ * 一個 100 次／分的桶，任一人（或一支爬蟲）打滿就讓全體收到 429——真實全棧 E2E 在兩三個並行 worker 下就把它耗盡，
+ * 管理員後台與其他受測流程一起被 429（後端日誌 {@code Tenant 0000…0001 exceeded rate limit}）。PRD 沒有定義
+ * 「不屬於任何店鋪的使用者」的限流單位，此為工程決策：已登入者以<b>使用者</b>、匿名者以<b>來源 IP</b> 為單位，
+ * 容量與店鋪相同（100 次／分）。來源 IP 用 {@link HttpServletRequest#getRemoteAddr()}，刻意不採信
+ * {@code X-Forwarded-For}，理由同 {@link LoginRateLimitFilter}。
  *
  * <p>Token Bucket 狀態存於 Redis（容量 100、每 60 秒完全補滿），以單支 Lua script 原子讀取-補充-扣除，
  * 避免高併發下的 race condition。Redis 故障時 fail-open（放行請求，僅記錄錯誤日誌），避免快取層
@@ -45,6 +54,8 @@ import lombok.extern.slf4j.Slf4j;
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final String KEY_PREFIX = "ratelimit:tenant:";
+    private static final String USER_KEY_PREFIX = "ratelimit:user:";
+    private static final String IP_KEY_PREFIX = "ratelimit:ip:";
     private static final double CAPACITY = 100.0;
     private static final double WINDOW_MS = 60_000.0;
     private static final double REFILL_PER_MS = CAPACITY / WINDOW_MS;
@@ -119,18 +130,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
+        String bucketKey = bucketKey(tenantId, TenantContext.getCurrentUser(), request.getRemoteAddr());
 
         String result;
         try {
             result = redisTemplate.execute(
                     RATE_LIMIT_SCRIPT,
-                    Collections.singletonList(KEY_PREFIX + tenantId),
+                    Collections.singletonList(bucketKey),
                     String.valueOf(CAPACITY),
                     String.valueOf(REFILL_PER_MS),
                     String.valueOf(System.currentTimeMillis()),
                     TTL_SECONDS);
         } catch (DataAccessException ex) {
-            log.error("[RateLimitFilter] Redis unavailable, failing open for tenant {}", tenantId, ex);
+            log.error("[RateLimitFilter] Redis unavailable, failing open for bucket {}", bucketKey, ex);
             filterChain.doFilter(request, response);
             return;
         }
@@ -138,7 +150,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if (result == null) {
             // 防禦性處理：某些測試環境會將 RedisConnectionFactory 整個 mock 掉（未真正拋出
             // DataAccessException，而是靜默回傳 null），語意上等同 Redis 不可用，比照 fail-open。
-            log.error("[RateLimitFilter] Redis script returned null, failing open for tenant {}", tenantId);
+            log.error("[RateLimitFilter] Redis script returned null, failing open for bucket {}", bucketKey);
             filterChain.doFilter(request, response);
             return;
         }
@@ -160,11 +172,22 @@ public class RateLimitFilter extends OncePerRequestFilter {
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.getWriter().write(objectMapper.writeValueAsString(
                     ApiResponse.error(ErrorCode.E_9904.getCode(), ErrorCode.E_9904.getMessage())));
-            log.warn("[RateLimitFilter] Tenant {} exceeded rate limit, retry after {}s", tenantId, retryAfterSeconds);
+            log.warn("[RateLimitFilter] Bucket {} exceeded rate limit, retry after {}s", bucketKey, retryAfterSeconds);
             return;
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * 限流的單位（Sprint 234，DEF-328）：真正的店鋪租戶以租戶為單位；沒有店鋪的使用者共用系統租戶佔位值，
+     * 改以使用者（已登入）或來源 IP（匿名）為單位，避免全體一般買家合用一個桶。
+     */
+    private static String bucketKey(final UUID tenantId, final UUID userId, final String remoteAddr) {
+        if (TenantContext.isStoreTenant(tenantId)) {
+            return KEY_PREFIX + tenantId;
+        }
+        return userId != null ? USER_KEY_PREFIX + userId : IP_KEY_PREFIX + remoteAddr;
     }
 
     @Override

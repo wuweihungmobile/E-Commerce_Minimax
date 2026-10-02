@@ -206,6 +206,10 @@ public class TransferService {
     @Transactional(readOnly = true)
     public Page<Transfer> getTransfersForCurrentTenant(final Pageable pageable) {
         UUID tenantId = TenantContext.getCurrentTenant();
+        // Sprint 234：沒有店鋪的呼叫者（系統租戶）回空頁，理由同結算單列表
+        if (!TenantContext.isStoreTenant(tenantId)) {
+            return Page.empty(pageable);
+        }
         return transferRepository.findByTenantIdOrderByCreatedAtDesc(tenantId, pageable);
     }
 

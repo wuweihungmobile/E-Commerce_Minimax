@@ -235,6 +235,17 @@ public class SettlementGenerator {
     @Transactional(readOnly = true)
     public SettlementStatementListResponse getStatementsByTenant(int page, int size) {
         UUID tenantId = TenantContext.getCurrentTenant();
+        // Sprint 234：沒有店鋪的呼叫者（系統租戶）回空；BUYER 持有此端點要求的 order:read，
+        // 而每週結算會替每個 ACTIVE 租戶（含系統租戶）產生結算單，原本任何買家都讀得到平台的 GMV、抽成與退款
+        if (!TenantContext.isStoreTenant(tenantId)) {
+            return SettlementStatementListResponse.builder()
+                    .statements(java.util.Collections.emptyList())
+                    .page(page)
+                    .size(size)
+                    .totalElements(0L)
+                    .totalPages(0)
+                    .build();
+        }
 
         Page<SettlementStatement> statements = settlementRepository.findByTenantIdOrderByPeriodStartDesc(
                 tenantId, PageableUtils.of(page, size, 100));
@@ -256,6 +267,9 @@ public class SettlementGenerator {
     @Transactional(readOnly = true)
     public SettlementStatementResponse getStatementById(UUID statementId) {
         UUID tenantId = TenantContext.getCurrentTenant();
+        if (!TenantContext.isStoreTenant(tenantId)) {
+            throw new BusinessException(ErrorCode.E_5013, "Settlement statement not found");
+        }
 
         SettlementStatement statement = settlementRepository.findByIdAndTenantId(statementId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5013, "Settlement statement not found"));

@@ -290,6 +290,12 @@ public class ReturnRequestService {
     @Transactional(readOnly = true)
     public Page<ReturnDto.Response> getTenantReturnRequests(final Pageable pageable) {
         UUID tenantId = TenantContext.getCurrentTenant();
+        // Sprint 234：沒有店鋪的呼叫者（租戶是系統租戶佔位值）回空頁。一般消費者的退貨申請蓋的正是這個租戶
+        // （取自訂單），BUYER 又持有 return:read，原本直接拿它查，任何買家都列得出所有消費者的退貨申請。
+        // admin 維持原行為（平台端檢視）。
+        if (!isAdmin() && !TenantContext.isStoreTenant(tenantId)) {
+            return Page.empty(pageable);
+        }
         return returnRequestRepository.findByTenantIdOrderByCreatedAtDesc(tenantId, pageable)
                 .map(this::toResponse);
     }
@@ -302,7 +308,9 @@ public class ReturnRequestService {
         UUID userId = TenantContext.getCurrentUser();
         UUID tenantId = TenantContext.getCurrentTenant();
         boolean ownedByCustomer = userId != null && userId.equals(request.getCustomerId());
-        boolean sameTenant = tenantId != null && tenantId.equals(request.getTenantId());
+        // Sprint 234：「同租戶」必須是真正的店鋪租戶；系統租戶是所有一般買家共用的佔位值，
+        // 不排除的話任兩個一般買家互為「同租戶」，可讀對方的退貨申請（比照 OrderService／BookingService 的作法）
+        boolean sameTenant = TenantContext.isStoreTenant(tenantId) && tenantId.equals(request.getTenantId());
         if (!isAdmin() && !ownedByCustomer && !sameTenant) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to access this return request");
         }
@@ -326,7 +334,7 @@ public class ReturnRequestService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5016, "Return request not found"));
         UUID tenantId = TenantContext.getCurrentTenant();
         // 擁有權檢查先於狀態檢查（承 DEF-036：避免向未授權者洩漏退貨單狀態）
-        if (!isAdmin() && !request.getTenantId().equals(tenantId)) {
+        if (!isAdmin() && (!TenantContext.isStoreTenant(tenantId) || !request.getTenantId().equals(tenantId))) {
             throw new BusinessException(ErrorCode.E_1007, "Return request does not belong to current tenant");
         }
         return request;

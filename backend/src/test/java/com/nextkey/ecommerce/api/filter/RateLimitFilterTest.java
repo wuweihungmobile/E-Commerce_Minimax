@@ -3,9 +3,13 @@ package com.nextkey.ecommerce.api.filter;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
 import java.util.UUID;
 
 import jakarta.servlet.FilterChain;
@@ -14,6 +18,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.QueryTimeoutException;
@@ -22,6 +27,7 @@ import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 /**
@@ -175,5 +181,73 @@ class RateLimitFilterTest {
 
         assertThat(chainCalled[0]).isTrue();
         assertThat(response.getStatus()).isEqualTo(200);
+    }
+
+    // ========== Sprint 234（DEF-328）：沒有店鋪的使用者不得合用一個限流桶 ==========
+    //
+    // 真實全棧 E2E 實測：系統租戶（所有一般買家、匿名請求、管理員共用的佔位租戶）的單一桶在兩三個並行 worker 下就被耗盡，
+    // 後端日誌出現 `Tenant 0000…0001 exceeded rate limit`，管理員後台等不相干的流程一起收到 429。
+    // 以下用 ArgumentCaptor 取出實際送進 Redis 的 key，斷言限流的「單位」。
+
+    private static final UUID SYSTEM_TENANT_ID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
+
+    /** 依序送出請求，回傳每一次實際送進 Redis script 的第一個 key（可在同一個測試內多次呼叫，每次只計本次的呼叫）。 */
+    @SuppressWarnings("unchecked")
+    private List<String> bucketKeysUsedFor(final MockHttpServletRequest... requests) throws Exception {
+        clearInvocations(redisTemplate);
+        when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any(), any(), any()))
+                .thenReturn("1:99:0");
+        RateLimitFilter filter = newFilter();
+        for (MockHttpServletRequest request : requests) {
+            filter.doFilter(request, new MockHttpServletResponse(), (req, res) -> { });
+        }
+        ArgumentCaptor<List<String>> keys = ArgumentCaptor.forClass(List.class);
+        verify(redisTemplate, times(requests.length))
+                .execute(any(RedisScript.class), keys.capture(), any(), any(), any(), any());
+        return keys.getAllValues().stream().map(list -> list.get(0)).toList();
+    }
+
+    private static MockHttpServletRequest requestFrom(final String remoteAddr) {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/v2/products");
+        request.setRemoteAddr(remoteAddr);
+        return request;
+    }
+
+    @Test
+    @DisplayName("Sprint 234：真正的店鋪租戶仍以租戶為限流單位（key 與使用者、來源 IP 無關）")
+    void storeTenant_usesTenantBucket() throws Exception {
+        UUID storeTenant = UUID.randomUUID();
+        TenantContext.setCurrentTenant(storeTenant);
+        TenantContext.setCurrentUser(UUID.randomUUID());
+
+        List<String> keys = bucketKeysUsedFor(requestFrom("10.0.0.1"));
+
+        assertThat(keys).containsExactly("ratelimit:tenant:" + storeTenant);
+    }
+
+    @Test
+    @DisplayName("Sprint 234：系統租戶下，已登入的使用者各自一個桶，不共用系統租戶那一個")
+    void systemTenant_authenticatedUsers_getTheirOwnBuckets() throws Exception {
+        UUID userA = UUID.randomUUID();
+        UUID userB = UUID.randomUUID();
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+        TenantContext.setCurrentUser(userA);
+        List<String> keysA = bucketKeysUsedFor(requestFrom("10.0.0.1"));
+        TenantContext.setCurrentUser(userB);
+        List<String> keysB = bucketKeysUsedFor(requestFrom("10.0.0.1"));
+
+        assertThat(keysA).containsExactly("ratelimit:user:" + userA);
+        assertThat(keysB).containsExactly("ratelimit:user:" + userB);
+        assertThat(keysA).doesNotContain("ratelimit:tenant:" + SYSTEM_TENANT_ID);
+    }
+
+    @Test
+    @DisplayName("Sprint 234：系統租戶下的匿名請求以來源 IP 為單位：不同 IP 各自一個桶、同一 IP 共用")
+    void systemTenant_anonymous_isBucketedBySourceIp() throws Exception {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+
+        List<String> keys = bucketKeysUsedFor(requestFrom("10.0.0.1"), requestFrom("10.0.0.2"), requestFrom("10.0.0.1"));
+
+        assertThat(keys).containsExactly("ratelimit:ip:10.0.0.1", "ratelimit:ip:10.0.0.2", "ratelimit:ip:10.0.0.1");
     }
 }

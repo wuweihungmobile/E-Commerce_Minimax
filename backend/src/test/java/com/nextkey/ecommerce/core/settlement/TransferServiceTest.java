@@ -354,4 +354,17 @@ class TransferServiceTest {
 
         verify(transferRepository).findByTenantIdOrderByCreatedAtDesc(TENANT_ID, pageable);
     }
+
+    @Test
+    @DisplayName("getTransfersForCurrentTenant: 沒有店鋪的呼叫者（系統租戶）→ 空頁，完全不查詢（Sprint 234）")
+    void getTransfersForCurrentTenant_systemTenant_returnsEmptyWithoutQuerying() {
+        transferService = newService();
+        TenantContext.setCurrentTenant(UUID.fromString(com.nextkey.ecommerce.shared.constants.AppConstants.SYSTEM_TENANT_ID));
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 10);
+
+        org.springframework.data.domain.Page<Transfer> page = transferService.getTransfersForCurrentTenant(pageable);
+
+        assertThat(page.getContent()).isEmpty();
+        verify(transferRepository, org.mockito.Mockito.never()).findByTenantIdOrderByCreatedAtDesc(any(), any());
+    }
 }

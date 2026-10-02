@@ -16,6 +16,7 @@ import com.nextkey.ecommerce.domain.repository.support.SupportMessageRepository;
 import com.nextkey.ecommerce.domain.repository.support.SupportTicketRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +50,7 @@ public class SupportMessageService {
     public MessageResponse postAsStaff(
             final UUID ticketId, final CreateMessageRequest request, final UUID senderId,
             final UUID callerTenantId, final boolean isSuperAdmin) {
+        requireStoreTenantUnlessSuperAdmin(callerTenantId, isSuperAdmin);
         SupportTicket ticket = isSuperAdmin
                 ? ticketRepository.findById(ticketId).orElseThrow(() -> new BusinessException(ErrorCode.E_8008))
                 : ticketRepository.findByIdAndTenantId(ticketId, callerTenantId)
@@ -66,6 +68,7 @@ public class SupportMessageService {
     @Transactional(readOnly = true)
     public List<MessageResponse> listMessagesAsStaff(
             final UUID ticketId, final UUID callerTenantId, final boolean isSuperAdmin) {
+        requireStoreTenantUnlessSuperAdmin(callerTenantId, isSuperAdmin);
         if (!isSuperAdmin) {
             ticketRepository.findByIdAndTenantId(ticketId, callerTenantId)
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_8008));
@@ -73,6 +76,18 @@ public class SupportMessageService {
             throw new BusinessException(ErrorCode.E_8008);
         }
         return listMessages(ticketId);
+    }
+
+    /**
+     * Sprint 234：店家／平台層的讀寫，呼叫者必須有真正的店鋪租戶（SUPER_ADMIN 除外）。沒有店鋪的使用者
+     * （租戶是系統租戶佔位值）與工單的租戶（取自一般消費者的訂單，同樣是系統租戶）「相同」，
+     * 原本等於任何買家都能讀別人的工單、並以 STAFF 身分在別人的工單發言（真實全棧實測重現過）。
+     * 回「找不到」而非「權限不足」，不洩漏工單是否存在，與 {@code findByIdAndTenantId} 找不到時一致。
+     */
+    private static void requireStoreTenantUnlessSuperAdmin(final UUID callerTenantId, final boolean isSuperAdmin) {
+        if (!isSuperAdmin && !TenantContext.isStoreTenant(callerTenantId)) {
+            throw new BusinessException(ErrorCode.E_8008);
+        }
     }
 
     private MessageResponse post(

@@ -28,6 +28,7 @@ import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.support.SupportTicketRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
 import com.nextkey.ecommerce.shared.util.PageableUtils;
 
 import lombok.RequiredArgsConstructor;
@@ -115,10 +116,17 @@ public class SupportTicketService {
 
     /**
      * 店家工單列表。非 SUPER_ADMIN 限自己租戶；SUPER_ADMIN 可指定 tenantId 查詢。
+     *
+     * <p>Sprint 234：沒有店鋪的呼叫者（租戶是系統租戶佔位值，見 {@link TenantContext#isStoreTenant}）回空頁。
+     * 一般消費者的訂單蓋的正是這個租戶、工單的租戶取自訂單，原本直接拿它查，任何買家（{@code BUYER} 持有
+     * {@code support_ticket:read}）都看得到所有消費者的客服工單。
      */
     @Transactional(readOnly = true)
     public TicketListResponse listTenantTickets(
-            final UUID tenantId, final int page, final int size) {
+            final UUID tenantId, final int page, final int size, final boolean isSuperAdmin) {
+        if (!isSuperAdmin && !TenantContext.isStoreTenant(tenantId)) {
+            return toListResponse(Page.empty(PageableUtils.of(page, size, 100)), page, size);
+        }
         Page<SupportTicket> tickets = ticketRepository.findByTenantIdOrderByCreatedAtDesc(
                 tenantId, PageableUtils.of(page, size, 100));
         return toListResponse(tickets, page, size);
@@ -185,6 +193,10 @@ public class SupportTicketService {
         if (isSuperAdmin) {
             return ticketRepository.findById(ticketId)
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_8008));
+        }
+        // Sprint 234：沒有店鋪的呼叫者一律當作找不到（不洩漏工單是否存在），見 listTenantTickets 的說明
+        if (!TenantContext.isStoreTenant(callerTenantId)) {
+            throw new BusinessException(ErrorCode.E_8008);
         }
         return ticketRepository.findByIdAndTenantId(ticketId, callerTenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8008));

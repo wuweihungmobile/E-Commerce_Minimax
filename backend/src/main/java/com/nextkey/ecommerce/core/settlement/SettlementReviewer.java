@@ -59,6 +59,10 @@ public class SettlementReviewer {
     @Transactional
     public SettlementStatementResponse submitForReview(UUID statementId) {
         UUID tenantId = TenantContext.getCurrentTenant();
+        // Sprint 234：沒有店鋪的呼叫者當作找不到（此端點只要求 order:read，BUYER 也持有）
+        if (!TenantContext.isStoreTenant(tenantId)) {
+            throw new BusinessException(ErrorCode.E_5013, "Settlement statement not found");
+        }
 
         SettlementStatement statement = settlementRepository.findByIdAndTenantId(statementId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5013, "Settlement statement not found"));

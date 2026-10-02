@@ -38,7 +38,7 @@ help: ## 顯示所有可用命令
 setup: ## 一次性設定本機環境（安裝 act + 安裝 hooks + 複製 .env）
 	@echo "$(YELLOW)🔧 設定本機環境...$(NC)"
 	@command -v act >/dev/null 2>&1 || (echo "📦 安裝 act..." && brew install act)
-	@if [ ! -f .env ]; then cp .env.example .env && echo "✅ 建立 .env"; fi
+	@if [ ! -f .env ]; then cp .env.example .env && sed -i.bak "s|^JWT_SECRET=.*|JWT_SECRET=$$(openssl rand -base64 48)|" .env && rm -f .env.bak && echo "✅ 建立 .env（已自動產生隨機 JWT_SECRET）"; fi
 	@./scripts/install-hooks.sh
 	@echo "$(GREEN)✅ 設定完成！$(NC)"
 

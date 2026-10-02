@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.infrastructure.security;
 
+import com.nextkey.ecommerce.api.config.SecurityConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -20,12 +21,16 @@ import static org.assertj.core.api.Assertions.*;
 @DisplayName("UT-M03-001 ~ UT-M03-005: 密碼加密邏輯")
 class PasswordEncoderTest {
 
-    // BCrypt 標準 cost factor = 10, 我們使用 Spring Security 預設值
-    private static final int EXPECTED_COST_FACTOR = 10;
+    // FRD NFR-SEC-002（P0）：bcrypt salt round ≥ 12；SRD 密碼儲存：cost factor = 12。
+    // Sprint 233（DEF-323）：本測試原本用自己 new 出來的 cost 10 編碼器、還把 10 寫成「標準」，完全沒碰正式的
+    // PasswordEncoder bean——所以正式環境用預設強度 10、不符規格的狀態，這裡永遠抓不到（無法失敗的測試）。
+    // 現在直接取 SecurityConfig 的正式 bean：它的強度一旦被改掉，下面的格式斷言就會失敗。
+    private static final int EXPECTED_COST_FACTOR = 12;
+    private static final String EXPECTED_PREFIX = "$2a$" + EXPECTED_COST_FACTOR + "$";
     private static final String TEST_PASSWORD = "SecurePass123";
     private static final String DIFFERENT_PASSWORD = "Pass456";
 
-    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(EXPECTED_COST_FACTOR);
+    private final PasswordEncoder passwordEncoder = new SecurityConfig(null, null, null, null).passwordEncoder();
 
     // ── UT-M03-001: 密碼不可逆 ─────────────────────────────────────────
 
@@ -41,8 +46,8 @@ class PasswordEncoderTest {
         // Assert
         assertThat(encodedPassword).isNotNull();
         assertThat(encodedPassword).isNotEqualTo(rawPassword);
-        // BCrypt 加密結果格式: $2a$10$...
-        assertThat(encodedPassword).startsWith("$2a$10$");
+        // BCrypt 加密結果格式: $2a$12$...
+        assertThat(encodedPassword).startsWith(EXPECTED_PREFIX);
 
         // 驗證無法從加密結果反推原始密碼
         // 嘗試 "解碼" - BCrypt 沒有 decode 方法，只能通過 matches 驗證
@@ -123,27 +128,25 @@ class PasswordEncoderTest {
     // ── UT-M03-005: Cost Factor 設定 ─────────────────────────────────
 
     @Test
-    @DisplayName("UT-M03-005: BCrypt密碼加密-cost factor為10")
+    @DisplayName("UT-M03-005: BCrypt密碼加密-正式 bean 的 cost factor 為 12（FRD NFR-SEC-002 P0）")
     void encode_verifyCostFactor() {
-        // Arrange
-        String rawPassword = TEST_PASSWORD;
-
         // Act
-        String encodedPassword = passwordEncoder.encode(rawPassword);
+        String encodedPassword = passwordEncoder.encode(TEST_PASSWORD);
 
         // Assert
-        // BCrypt 格式: $2a$[cost]$[22字符鹽][53字符hash]
-        // cost factor 10 = $2a$10$
-        assertThat(encodedPassword).startsWith("$2a$10$");
+        // BCrypt 格式: $2a$[cost]$[22字符鹽][53字符hash]；cost factor 12 = $2a$12$
+        assertThat(encodedPassword).startsWith(EXPECTED_PREFIX);
+        // 不測加密耗時：時間不是意圖，在慢的 CI 機器上也會讓測試不穩；成本直接編在雜湊字串裡，檢查格式就夠了。
+    }
 
-        // 驗證使用較高的 cost factor 時加密時間合理（200-400ms）
-        long startTime = System.currentTimeMillis();
-        passwordEncoder.encode(TEST_PASSWORD);
-        long duration = System.currentTimeMillis() - startTime;
+    @Test
+    @DisplayName("Sprint 233：升級成本後，既有 cost 10 的雜湊仍可驗證（不需遷移既有使用者）")
+    void matches_legacyCost10Hash_stillVerifiesWithProductionEncoder() {
+        String legacyHash = new BCryptPasswordEncoder(10).encode(TEST_PASSWORD);
+        assertThat(legacyHash).startsWith("$2a$10$");
 
-        // Cost factor 10 通常在 100-200ms 範圍內
-        // 我們放寬至 500ms 以內確保測試穩定
-        assertThat(duration).isLessThan(500);
+        assertThat(passwordEncoder.matches(TEST_PASSWORD, legacyHash)).isTrue();
+        assertThat(passwordEncoder.matches(DIFFERENT_PASSWORD, legacyHash)).isFalse();
     }
 
     @Test

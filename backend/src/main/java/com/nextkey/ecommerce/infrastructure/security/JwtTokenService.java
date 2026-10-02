@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.infrastructure.security;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.Locale;
 import java.util.UUID;
 
 import javax.crypto.SecretKey;
@@ -25,10 +26,16 @@ public class JwtTokenService {
      * {@code ${JWT_SECRET:your-256-bit-secret-key-change-in-production-min-32-chars}}——
      * 若部署環境忘記設定 {@code JWT_SECRET} 環境變數，應用程式先前會靜默採用這個寫在公開原始碼裡
      * 的固定字串簽署所有 access/refresh token，任何讀過原始碼的人都能偽造任意使用者（含
-     * SUPER_ADMIN）的合法簽章 JWT，完全繞過認證系統。此常數即該預設字串，供建構子比對拒絕。
+     * SUPER_ADMIN）的合法簽章 JWT，完全繞過認證系統。
+     *
+     * <p>DEF-320（Sprint 233）：Sprint 183 只用相等比較擋那一個字串，但 {@code docker-compose.yml}
+     * 與 {@code .env.example} 各自出貨了<b>不同</b>的佔位字串（{@code ...-key-please-change-in-production}、
+     * {@code ...-key-please-change-in-production-min-32-chars}），長度都 ≥ 32 bytes，會被接受——
+     * {@code docker compose up} 沒設 {@code JWT_SECRET} 就是預設路徑。改為比對佔位字串共有的標記
+     * {@value #PLACEHOLDER_MARKER}（不分大小寫），涵蓋三處出貨預設值與日後任何同型的變體；
+     * {@code JwtSecretShippedDefaultsTest} 會讀這三個檔案確認它們的預設值都被拒絕。
      */
-    private static final String INSECURE_DEFAULT_SECRET =
-            "your-256-bit-secret-key-change-in-production-min-32-chars";
+    static final String PLACEHOLDER_MARKER = "change-in-production";
 
     private final SecretKey secretKey;
     private final long accessTokenExpiration;
@@ -38,8 +45,8 @@ public class JwtTokenService {
             @Value("${jwt.secret}") String secret,
             @Value("${jwt.access-token-expiration}") long accessTokenExpiration,
             @Value("${jwt.refresh-token-expiration}") long refreshTokenExpiration) {
-        // DEF-251：fail-fast——寧可讓應用程式無法啟動，也不要靜默用已知的公開預設密鑰簽發 token。
-        if (INSECURE_DEFAULT_SECRET.equals(secret)) {
+        // DEF-251／DEF-320：fail-fast——寧可讓應用程式無法啟動，也不要靜默用已知的公開預設密鑰簽發 token。
+        if (secret != null && secret.toLowerCase(Locale.ROOT).contains(PLACEHOLDER_MARKER)) {
             throw new IllegalStateException(
                     "JWT_SECRET 未設定，正使用寫在原始碼中的預設密鑰——此密鑰已公開於版本控制歷史，"
                             + "絕不可用於任何環境。請設定環境變數 JWT_SECRET 為至少 32 bytes 的隨機值後再啟動。");

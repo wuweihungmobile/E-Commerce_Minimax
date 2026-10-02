@@ -62,6 +62,30 @@ class JwtTokenServiceTest {
                 .hasMessageContaining("JWT_SECRET");
     }
 
+    @Test
+    @DisplayName("🔴 DEF-320：docker-compose／.env.example 出貨的另外兩個佔位字串與大小寫變體，同樣拒絕建立")
+    void constructor_withOtherShippedPlaceholders_throwsIllegalStateException() {
+        // 長度都 ≥ 32 bytes：原本只比對 application.yml 的那一個字串，這些會被接受，token 就用公開字串簽發。
+        String[] placeholders = {
+                "your-256-bit-secret-key-please-change-in-production",
+                "your-256-bit-secret-key-please-change-in-production-min-32-chars",
+                "YOUR-256-BIT-SECRET-KEY-CHANGE-IN-PRODUCTION-MIN-32-CHARS"};
+        for (String placeholder : placeholders) {
+            assertThatThrownBy(() -> new JwtTokenService(placeholder, ACCESS_TOKEN_EXPIRATION, REFRESH_TOKEN_EXPIRATION))
+                    .as(placeholder)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("JWT_SECRET");
+        }
+    }
+
+    @Test
+    @DisplayName("DEF-320：真正的密鑰（不含佔位標記）照常可用，不被誤擋")
+    void constructor_withRealSecret_works() {
+        assertThatCode(() -> new JwtTokenService(
+                "a3f9c1e07b5d4a6c8e2f1b9d0c7a5e3f4b6d8a1c9e0f2b4d6a8c0e1f3b5d7a9c",
+                ACCESS_TOKEN_EXPIRATION, REFRESH_TOKEN_EXPIRATION)).doesNotThrowAnyException();
+    }
+
     // ── UT-M03-006: JWT Token產生-payload正確 ──────────────────────────
 
     @Test

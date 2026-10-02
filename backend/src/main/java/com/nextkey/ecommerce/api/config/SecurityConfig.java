@@ -180,8 +180,18 @@ public class SecurityConfig {
         return source;
     }
 
+    /**
+     * 密碼雜湊成本：FRD NFR-SEC-002（P0，bcrypt salt round ≥ 12）與 SRD 密碼儲存（cost factor = 12）。
+     *
+     * <p>DEF-323（Sprint 233）：這裡原本是 {@code new BCryptPasswordEncoder()}（Spring 預設強度 10），不符規格。
+     * 先前沒被發現，是因為 {@code PasswordEncoderTest} 用自己 {@code new} 出來的 cost 10 編碼器、還把 10 寫成
+     * 「標準」，完全沒碰這個 bean。既有 cost 10 的雜湊仍可驗證（成本編在雜湊字串裡），不需遷移；
+     * 新註冊與重設密碼產生的雜湊使用本強度。
+     */
+    public static final int BCRYPT_STRENGTH = 12;
+
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        return new BCryptPasswordEncoder(BCRYPT_STRENGTH);
     }
 }

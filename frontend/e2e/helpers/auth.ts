@@ -40,14 +40,31 @@ async function readUserId(page: Page): Promise<string> {
   });
 }
 
+/**
+ * 送出登入後等待「有結果」的上限。
+ * Sprint 233：密碼雜湊成本改為 12（FRD NFR-SEC-002），成功的登入在雙 worker 並行的負載下偶爾超過原本固定的 4 秒；
+ * 那時 token 還沒存好就繼續往下，造成間歇性的「應已登入並持有 accessToken」失敗（頁面快照停在「Signing in...」）。
+ */
+const LOGIN_RESULT_TIMEOUT_MS = 20_000;
+
 async function submitLogin(page: Page, email: string, password: string): Promise<void> {
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
   await page.click(LOGIN_SUBMIT);
-  // 成功會離開 /login（早返回）；帳號不存在則停在 /login，等到 timeout 由呼叫端判斷
-  await page
-    .waitForURL((url) => !url.pathname.includes('/login'), { timeout: 4000 })
-    .catch(() => {});
+  // 等到「有結果」才返回，而不是固定等一段時間：
+  //  - 成功：離開 /login（token 在導向前就已存入 localStorage）
+  //  - 失敗（例如帳號不存在）：登入頁顯示錯誤訊息；後端立即回應，所以註冊流程的第一次嘗試不會白等
+  // 兩者都沒出現（極端情況）才在上限後放行，由呼叫端依 URL 判斷。
+  const settled = (p: Promise<unknown>) => p.then(() => true, () => false);
+  await Promise.race([
+    settled(
+      page.waitForURL((url) => !url.pathname.includes('/login'), {
+        timeout: LOGIN_RESULT_TIMEOUT_MS,
+        waitUntil: 'commit',
+      })
+    ),
+    settled(page.getByTestId('login-error').waitFor({ state: 'visible', timeout: LOGIN_RESULT_TIMEOUT_MS })),
+  ]);
 }
 
 export async function registerAndLogin(

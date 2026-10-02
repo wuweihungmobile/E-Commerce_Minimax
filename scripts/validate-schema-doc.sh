@@ -50,7 +50,11 @@ docker run -d --rm --name "$PG_CONTAINER" \
   -p "${PG_PORT}:5432" "$PG_IMAGE" >/dev/null || { err "postgres 啟動失敗"; exit 2; }
 
 for i in $(seq 1 40); do
-  docker exec "$PG_CONTAINER" pg_isready -U koala -d nextkeytest >/dev/null 2>&1 && break
+  # 必須走 TCP（-h 127.0.0.1）：官方映像在 initdb 階段先起一個「只監聽 unix socket」的暫時伺服器
+  # （docker-entrypoint.sh 的 listen_addresses=''），預設（unix socket）的 pg_isready 會在那個短暫視窗誤判就緒，
+  # 緊接著套用的第一個 migration 撞上伺服器重啟，連鎖造成 V1 起幾乎全部「套用失敗」（假警報，非 schema 問題）。
+  # TCP 只有正式伺服器才監聽。
+  docker exec "$PG_CONTAINER" pg_isready -h 127.0.0.1 -U koala -d nextkeytest >/dev/null 2>&1 && break
   sleep 1
   [ "$i" -eq 40 ] && { err "postgres 40s 未就緒"; exit 2; }
 done

@@ -11,6 +11,9 @@ import { Account, authHeaders, seedStore } from './helpers/store';
  * PostgreSQL＋Redis＋兩家真實店鋪（真實開店流程）＋一位沒有店鋪的真實消費者走完整條路徑。
  *
  * 資料全由真實流程建立（與 at-seller-dashboard-real 同一套前提，見 helpers/store.ts）。
+ *
+ * Sprint 238 補上畫面：SCHK-01～04 走 API（確認後端規則），SCHK-05～06 用瀏覽器走真實的購物車頁與結帳頁——
+ * 購物車依店鋪分組、每家店鋪各自的「前往結帳」、結帳頁只處理該店鋪的項目並帶 storeId。
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
@@ -161,5 +164,65 @@ test.describe('AT-STORE-CHECKOUT-REAL: 同店結帳（真實後端）', () => {
     await page.evaluate(() => localStorage.clear());
     await loginOnly(page, ownerA.email, ownerA.password);
     expect((await listTenantOrders(page)).map((o) => o.id), '店鋪 A 看不到店鋪 B 的').not.toContain(orderB);
+  });
+
+  // ── Sprint 238：購物車與結帳「畫面」（上面四個案例走 API，這裡用瀏覽器走真實畫面）──────────────────
+
+  /** 手動填收件資料（這位消費者沒有地址簿，結帳頁會直接進手動輸入模式）。 */
+  async function submitProductCheckout(page: Page, recipient: string) {
+    await page.locator('#manualRecipient').fill(recipient);
+    await page.locator('#manualPhone').fill('0987654321');
+    await page.locator('#manualAddress').fill('台北市信義區信義路五段 7 號');
+    await page.getByRole('button', { name: '確認送出並付款' }).click();
+  }
+
+  test('E2E-SCHK-05: 購物車頁依店鋪分組——每家店鋪各自的商品、小計、運費與「前往結帳」按鈕', async ({ page }: { page: Page }) => {
+    await page.goto('/login');
+    await page.evaluate(() => localStorage.clear());
+    await loginOnly(page, customer.email, customer.password);
+    const headers = await authHeaders(page);
+    for (const listingId of [productA, productB]) {
+      const add = await page.request.post(`${API_BASE}/v2/cart/items`, { headers, data: { listingId, quantity: 1 } });
+      expect(add.status(), await add.text()).toBeLessThan(300);
+    }
+
+    await page.goto('/cart');
+    const sectionA = page.getByTestId(`cart-store-${tenantA}`);
+    const sectionB = page.getByTestId(`cart-store-${tenantB}`);
+    await expect(sectionA, '店鋪 A 的分組').toBeVisible({ timeout: 20000 });
+    await expect(sectionB, '店鋪 B 的分組').toBeVisible();
+    await expect(sectionA).toContainText('E2E 同店結帳店鋪A');
+    await expect(sectionA).toContainText('E2E 店鋪A商品');
+    await expect(sectionA).not.toContainText('E2E 店鋪B商品');
+    await expect(sectionB).toContainText('E2E 店鋪B商品');
+    await expect(page.getByTestId(`cart-store-checkout-${tenantA}`)).toBeVisible();
+    await expect(page.getByTestId(`cart-store-checkout-${tenantB}`)).toBeVisible();
+  });
+
+  test('E2E-SCHK-06: 從購物車頁分店鋪結帳——點店鋪 A 的「前往結帳」→ 結帳頁只有店鋪 A 的商品 → 下單 → 訂單歸店鋪 A；回購物車只剩店鋪 B', async ({ page }: { page: Page }) => {
+    // 每個案例都是全新的瀏覽器環境（沒有上一個案例的登入狀態），要重新登入
+    await page.goto('/login');
+    await page.evaluate(() => localStorage.clear());
+    await loginOnly(page, customer.email, customer.password);
+    await page.goto('/cart');
+    await page.getByTestId(`cart-store-checkout-${tenantA}`).click();
+    await expect(page).toHaveURL(new RegExp(`/checkout/product\\?storeId=${tenantA}`), { timeout: 20000 });
+    await expect(page.getByText('E2E 店鋪A商品')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('E2E 店鋪B商品'), '結帳頁不含另一家店鋪的商品').toHaveCount(0);
+
+    await submitProductCheckout(page, RECIPIENT_A);
+    await expect(page).toHaveURL(/\/orders\/[0-9a-f-]+/, { timeout: 30000 });
+    const orderIdA = page.url().split('/orders/')[1].split(/[?#]/)[0];
+
+    const detail = await page.request.get(`${API_BASE}/v2/orders/${orderIdA}`, { headers: await authHeaders(page) });
+    expect(detail.status(), await detail.text()).toBe(200);
+
+    await page.goto('/cart');
+    await expect(page.getByText('E2E 店鋪B商品')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('E2E 店鋪A商品'), '店鋪 A 的商品已結帳').toHaveCount(0);
+
+    await page.evaluate(() => localStorage.clear());
+    await loginOnly(page, ownerA.email, ownerA.password);
+    expect((await listTenantOrders(page)).map((o) => o.id), '店鋪 A 的店主看得到這筆訂單').toContain(orderIdA);
   });
 });

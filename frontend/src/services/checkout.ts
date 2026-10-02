@@ -22,6 +22,8 @@ export interface MixedCheckoutRequest {
   specialRequests?: string
   // 共用
   promoCode?: string
+  /** 要結哪一家店鋪（Sprint 237）：合併結帳的商品與房間必須同一家店鋪；購物車含多家店鋪時必填，否則後端回 E-5020 */
+  storeId?: string
 }
 
 // 對齊後端 CheckoutDto.MixedCheckoutResponse
@@ -43,6 +45,7 @@ interface ApiResponse<T> {
 // 促銷碼錯誤碼慣例（比照 bookingErrorMessage），另加庫存/日期衝突訊息（比照 product 結帳頁）。
 const CHECKOUT_ERROR_MESSAGES: Record<string, string> = {
   'E-5004': '購物車項目不足，請確認同時有商品與房型項目',
+  'E-5020': '購物車含多家店鋪的項目，請回購物車，從要結帳的店鋪區塊進入結帳',
   'E-3004': '部分商品庫存不足，請減少數量或稍後再試',
   'E-3002': '部分商品或房型已下架，請重新確認購物車',
   'E-4001': '所選日期已被預訂，請返回修改入住／退房日期',

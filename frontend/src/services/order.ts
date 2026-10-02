@@ -93,6 +93,8 @@ export interface TenantOrderQuery extends OrderQuery {
 
 export interface CreateOrderRequest {
   orderType: OrderType
+  /** 要結哪一家店鋪（Sprint 237）：購物車含多家店鋪的商品時必填，否則後端回 E-5020 */
+  storeId?: string
   addressId?: string
   shippingAddress?: string
   shippingRecipientName?: string

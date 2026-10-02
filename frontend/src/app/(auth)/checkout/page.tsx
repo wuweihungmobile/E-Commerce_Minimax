@@ -33,6 +33,7 @@ interface BookingItem {
   listingType: string
   startDate?: string
   endDate?: string
+  storeId?: string | null
 }
 
 interface CheckoutData {
@@ -123,7 +124,10 @@ export default function CheckoutPage() {
       }
 
       // For room bookings, create a booking for each ROOM item
-      const roomItems = cartData.items.filter(item => item.listingType === 'ROOM')
+      // Sprint 238（DEF-319 同店結帳）：購物車頁依店鋪分組，點某家店鋪的「前往結帳」會帶 ?storeId=…；
+      // 結帳頁只處理那家店鋪的項目（訂單只能包含同一家店鋪的商品，PRD US-008／PC-005）。沒帶 storeId（單一店鋪的舊連結）時取全部。
+      const sid = new URLSearchParams(window.location.search).get('storeId')
+      const roomItems = cartData.items.filter(item => item.listingType === 'ROOM' && (!sid || item.storeId === sid))
 
       if (roomItems.length === 0) {
         setError('沒有可預訂的房間')

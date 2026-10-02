@@ -115,8 +115,8 @@ Sprint 236 發現測試庫的 `listings.tenant_id`／`owner_id` 可為 NULL，�
 - **Schema 文件**：`make validate-schema-doc` 對乾淨 PostgreSQL（postgres:18-alpine）套用 **89 個** Flyway 遷移（含 `V89` 的 `DO` 區塊）通過，SRD／PRD 的 DDL 與實際 schema 一致（`V89` 是純資料遷移，不改 schema）。
 - **真實後端 E2E**：`make validate-e2e`（沿用 `mvn verify` 剛建的 JAR；前端 `src` 本輪沒有變動，沿用既有建置）**133 個測試：129 通過／4 略過／0 失敗（3.7 分鐘）**。新增的 `at-store-checkout-real.spec.ts`（SCHK-01～04）全綠；`at-seller-dashboard-real.spec.ts` 的 SDASH-07、08 移除 `test.fail()` 後**以正常斷言通過**（測試結果目錄裡沒有這兩個案例的失敗證物）。那 4 個略過是既有基準（Sprint 231～236 皆為 4 個）。
 - **前端**：`tsc --noEmit`、`eslint`（兩個 e2e 規格）皆通過；前端 `src` 本輪沒有變動。
-- **push 與雲端 CI**：（push 後於回填 commit 補上）
-- **耗時觀察（承 Sprint 233～236，未歸因）**：本機全量 `mvn verify` 本輪 16 分 30 秒（Sprint 236：16 分 22 秒；Sprint 235：15 分 10 秒）。雲端整合 job 近八次為 5m01s／6m02s／6m00s／4m15s／7m47s／7m46s／8m03s／8m05s，本輪 push 後的數字是第五個資料點。
+- **push 與雲端 CI**：已 push（2026-10-03，`135a3fb..1715cb8 main -> main`；pre-push 輕量守門通過，其中 schema-gate 以 `ddl-auto=validate` 啟動後端，**驗證了 `Listing` 影子欄位加 `nullable = false` 不會破壞 schema 驗證**——`DEF-332` 原本只是預期）。✅ 雲端 CI 全綠 run **37070697403**，三個 job 全部 success，共 8 分 58 秒：Backend Unit 2m47s／Frontend Lint & Build 1m45s／Backend Integration & Package **6m05s**。
+- **耗時觀察（承 Sprint 233～236，未歸因）**：本機全量 `mvn verify` 本輪 16 分 30 秒（Sprint 236：16 分 22 秒；Sprint 235：15 分 10 秒）。雲端整合 job 近九次為 5m01s／6m02s／6m00s／4m15s／7m47s／7m46s／8m03s／8m05s／**6m05s（本輪）**：Sprint 233～236 連續四次落在 7m46s～8m05s，本輪（測試反而更多）掉回 6m05s，**削弱**「bcrypt 12 拉長整合測試」的假說——更像 runner 之間的變異；仍未量測，不下結論。
 
 ## 6. 範圍外（延後）、已知限制與待決定
 

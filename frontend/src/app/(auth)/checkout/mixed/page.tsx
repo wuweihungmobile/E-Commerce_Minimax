@@ -26,6 +26,7 @@ interface CartItem {
   listingType: string
   startDate?: string
   endDate?: string
+  storeId?: string | null
 }
 
 const PHONE_PATTERN = /^09\d{8}$/
@@ -53,6 +54,7 @@ export default function MixedCheckoutPage() {
   const [loadingCart, setLoadingCart] = useState(true)
   const [productItems, setProductItems] = useState<CartItem[]>([])
   const [roomItem, setRoomItem] = useState<CartItem | null>(null)
+  const [storeId, setStoreId] = useState<string | null>(null)
   const [addresses, setAddresses] = useState<Address[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null)
   const [useManualAddress, setUseManualAddress] = useState(false)
@@ -81,7 +83,11 @@ export default function MixedCheckoutPage() {
           AddressService.list().catch(() => [] as Address[]),
         ])
         if (cancelled) return
-        const items = cartResponse.data.data.items || []
+        // Sprint 238（DEF-319 同店結帳）：購物車頁依店鋪分組，點某家店鋪的「前往結帳」會帶 ?storeId=…；
+  // 結帳頁只處理那家店鋪的項目（訂單只能包含同一家店鋪的商品，PRD US-008／PC-005）。沒帶 storeId（單一店鋪的舊連結）時取全部。
+        const sid = new URLSearchParams(window.location.search).get('storeId')
+        setStoreId(sid)
+        const items = (cartResponse.data.data.items || []).filter((i) => !sid || i.storeId === sid)
         setProductItems(items.filter((i) => i.listingType === 'PRODUCT'))
         const rooms = items.filter((i) => i.listingType === 'ROOM')
         setRoomItem(rooms[0] || null)
@@ -149,6 +155,7 @@ export default function MixedCheckoutPage() {
         guestEmail: guestEmail.trim() || undefined,
         specialRequests: specialRequests.trim() || undefined,
         promoCode: promoCode.trim() || undefined,
+        storeId: storeId || undefined,
       }
       const idempotencyKey = crypto.randomUUID()
       const result = await checkoutService.checkoutMixed(request, idempotencyKey)

@@ -23,12 +23,14 @@ interface CartItem {
   unitPrice: number
   subtotal: number
   listingType: string
+  storeId?: string | null
 }
 
 const PHONE_PATTERN = /^09\d{8}$/
 
 const ERROR_MESSAGES: Record<string, string> = {
   'E-5004': '購物車無商品項目，請先加入商品',
+  'E-5020': '購物車含多家店鋪的商品，請回購物車，從要結帳的店鋪區塊進入結帳',
   'E-3004': '部分商品庫存不足，請減少數量或稍後再試',
   'E-3002': '部分商品已下架，請重新確認購物車',
   'E-8007': '無權使用此收件地址',
@@ -52,6 +54,7 @@ export default function ProductCheckoutPage() {
   const router = useRouter()
   const [loadingCart, setLoadingCart] = useState(true)
   const [items, setItems] = useState<CartItem[]>([])
+  const [storeId, setStoreId] = useState<string | null>(null)
   const [addresses, setAddresses] = useState<Address[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null)
   const [useManualAddress, setUseManualAddress] = useState(false)
@@ -73,8 +76,12 @@ export default function ProductCheckoutPage() {
           AddressService.list().catch(() => [] as Address[]),
         ])
         if (cancelled) return
+        // Sprint 238（DEF-319 同店結帳）：購物車頁依店鋪分組，點某家店鋪的「前往結帳」會帶 ?storeId=…；
+  // 結帳頁只處理那家店鋪的項目（訂單只能包含同一家店鋪的商品，PRD US-008／PC-005）。沒帶 storeId（單一店鋪的舊連結）時取全部。
+        const sid = new URLSearchParams(window.location.search).get('storeId')
+        setStoreId(sid)
         const productItems = (cartResponse.data.data.items || []).filter(
-          (i) => i.listingType === 'PRODUCT'
+          (i) => i.listingType === 'PRODUCT' && (!sid || i.storeId === sid)
         )
         setItems(productItems)
         setAddresses(addressList)
@@ -124,11 +131,12 @@ export default function ProductCheckoutPage() {
         useManualAddress || addresses.length === 0
           ? {
               orderType: 'PRODUCT',
+              storeId: storeId || undefined,
               shippingRecipientName: manualRecipient.trim(),
               shippingPhone: manualPhone.trim(),
               shippingAddress: manualAddress.trim(),
             }
-          : { orderType: 'PRODUCT', addressId: selectedAddressId || undefined }
+          : { orderType: 'PRODUCT', storeId: storeId || undefined, addressId: selectedAddressId || undefined }
       )
 
       const paymentState = await OrderPaymentService.getPaymentState(order.id)

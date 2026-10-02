@@ -48,6 +48,12 @@ public class OrderDto {
 
         private String notes;
 
+        /**
+         * 選用（Sprint 237，DEF-319 同店結帳）：要結哪一家店鋪。購物車只有一家店鋪的商品時可省略；
+         * 含多家店鋪的商品時必填，否則 E-5020——訂單只能包含同一家店鋪的商品，其餘商品留在購物車分開結帳。
+         */
+        private UUID storeId;
+
         // For ROOM (booking)
         private UUID listingId; // Required for ROOM type orders
         private LocalDate checkInDate;

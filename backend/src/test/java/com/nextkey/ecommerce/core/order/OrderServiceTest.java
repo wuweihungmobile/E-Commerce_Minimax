@@ -158,8 +158,11 @@ class OrderServiceTest {
     }
 
     private Listing listingFixture(final Listing.ListingType type, final Listing.ListingStatus status) {
+        // Sprint 237（DEF-319）：訂單歸屬商品／房源所屬的店鋪，所以房源必須有租戶。本檔案的買家與店鋪是同一個租戶
+        // （購物車的擁有範圍＝店鋪），沒有店鋪的真實消費者情境見 OrderStoreCheckoutTest。
         return Listing.builder()
                 .id(LISTING_ID)
+                .tenantId(TENANT_ID)
                 .listingType(type)
                 .status(status)
                 .title("Test Listing")
@@ -182,6 +185,7 @@ class OrderServiceTest {
                 .unitPrice(unitPrice)
                 .subtotal(unitPrice.multiply(BigDecimal.valueOf(quantity)))
                 .listingType(listingType)
+                .storeId(TENANT_ID)
                 .build();
     }
 
@@ -448,6 +452,9 @@ class OrderServiceTest {
         TenantContext.setCurrentUser(USER_ID);
         TenantContext.setCurrentTenant(TENANT_ID);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userFixture()));
+        // Sprint 237：店鋪由購物車項目所屬的店鋪決定，所以要先有購物車，才輪得到「該店鋪不存在」
+        when(cartService.getCart(USER_ID, TENANT_ID)).thenReturn(cartOf(List.of(
+                cartItem(LISTING_ID, null, 1, BigDecimal.valueOf(100)))));
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> orderService.createOrderFromCart(productRequest()))

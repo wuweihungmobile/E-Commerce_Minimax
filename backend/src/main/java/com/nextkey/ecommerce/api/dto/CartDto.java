@@ -71,6 +71,10 @@ public class CartDto {
         private BigDecimal subtotal;
         private String listingType; // PRODUCT or ROOM
         private java.time.Instant addedAt;
+        // 商品／房源所屬的店鋪（Sprint 237，DEF-319 同店結帳）：訂單與訂房歸屬這家店鋪，結帳一次只能結同一家店的項目。
+        // 房源已不存在時為 null（該項目無法結帳）。
+        private UUID storeId;
+        private String storeName;
         // ROOM 類型房源的日期範圍
         private java.time.LocalDate startDate;
         private java.time.LocalDate endDate;
@@ -110,6 +114,34 @@ public class CartDto {
         private BigDecimal finalAmount;
         private String currency;
         private java.time.Instant updatedAt;
+
+        /**
+         * 依店鋪分組的結帳摘要（Sprint 237，DEF-319）：購物車可以放多家店鋪的項目，但結帳一次只能結一家店。
+         * 上面的 totalAmount／shippingFee／discountAmount／finalAmount／appliedPromoCode 是各店鋪合計
+         * （單一店鋪時與該店鋪摘要相同；多家店鋪時只是「全部都結」的資訊性合計，實際要分開結帳）。
+         */
+        private java.util.List<StoreCartSummary> stores;
+    }
+
+    // ========== Store Cart Summary ==========
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class StoreCartSummary {
+        private UUID storeId;
+        private String storeName;
+        private Integer itemCount;
+        /** 該店鋪項目小計（含 ROOM 與 PRODUCT）。 */
+        private BigDecimal totalAmount;
+        /** 預估運費：以該店鋪 PRODUCT 項目小計為基數，走該店鋪自己的運費模板。 */
+        private BigDecimal shippingFee;
+        /** 該店鋪已套用的促銷碼（促銷碼屬於店鋪，不能跨店使用）。 */
+        private String appliedPromoCode;
+        private BigDecimal discountAmount;
+        /** 應付金額 = totalAmount + shippingFee - discountAmount。 */
+        private BigDecimal finalAmount;
     }
 
     // ========== Add to Cart Response ==========
@@ -179,6 +211,9 @@ public class CartDto {
     public static class ApplyPromoRequest {
         @NotNull(message = "Promo code is required")
         private String promoCode;
+
+        /** 選填（Sprint 237）：要套用在哪家店鋪。購物車只有一家店鋪的項目時可省略；多家店鋪時必填。 */
+        private UUID storeId;
     }
 
     // ========== Apply Promo Response ==========
@@ -188,6 +223,8 @@ public class CartDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ApplyPromoResponse {
+        /** 套用在哪家店鋪（Sprint 237）。 */
+        private UUID storeId;
         private String appliedPromoCode;
 
         /** 預估運費（Sprint 101）：FREE_SHIPPING 券的折扣基數，前端需一併顯示才能對得上總額。 */

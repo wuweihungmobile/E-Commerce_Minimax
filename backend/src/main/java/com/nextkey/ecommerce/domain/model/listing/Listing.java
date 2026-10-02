@@ -59,7 +59,10 @@ public class Listing {
     @JoinColumn(name = "tenant_id", nullable = false)
     private Tenant tenant;
 
-    @Column(name = "tenant_id", insertable = false, updatable = false)
+    // Sprint 237（DEF-332）：nullable = false 只影響 Hibernate 產生的 DDL（測試庫）：這是 insertable = false 的唯讀影子欄位，
+    // 沒有它的話 tenant 關聯的 nullable = false 會被同欄位的影子欄位（預設可為 NULL）蓋掉，測試庫的 listings.tenant_id 變成可為 NULL
+    // （正式庫由 Flyway 建，是 NOT NULL），只設影子欄位的測試固件就會默默存成 NULL、直到有程式碼讀它才爆。
+    @Column(name = "tenant_id", insertable = false, updatable = false, nullable = false)
     private UUID tenantId;
 
     @Enumerated(EnumType.STRING)
@@ -84,7 +87,7 @@ public class Listing {
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
 
-    @Column(name = "owner_id", insertable = false, updatable = false)
+    @Column(name = "owner_id", insertable = false, updatable = false, nullable = false)
     private UUID ownerId;
 
     @Column(name = "base_price", nullable = false, precision = DECIMAL_PRECISION, scale = 2)

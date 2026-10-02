@@ -71,6 +71,12 @@ public class CheckoutDto {
         // ---- 共用 ----
         /** 選用：結帳時套用的促銷碼，同時分攤到 PRODUCT 與 ROOM 兩側。 */
         private String promoCode;
+
+        /**
+         * 選用（Sprint 237，DEF-319 同店結帳）：要結哪一家店鋪。合併結帳的商品與房間必須屬於同一家店鋪；
+         * 購物車含多家店鋪的項目時必填，否則 E-5020。
+         */
+        private UUID storeId;
     }
 
     // ========== Mixed Checkout Response ==========

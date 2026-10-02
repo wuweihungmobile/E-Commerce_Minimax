@@ -13,6 +13,7 @@ import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.CheckoutDto;
 import com.nextkey.ecommerce.api.dto.OrderDto;
 import com.nextkey.ecommerce.core.booking.BookingService;
+import com.nextkey.ecommerce.core.cart.CartStoreSelector;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
 import com.nextkey.ecommerce.core.order.OrderService;
@@ -68,24 +69,41 @@ public class CombinedCheckoutService {
     @Transactional
     public CheckoutDto.MixedCheckoutResponse checkoutMixedCart(final CheckoutDto.MixedCheckoutRequest request) {
         UUID userId = TenantContext.getCurrentUser();
-        UUID tenantId = TenantContext.getCurrentTenant();
+        // 購物車的擁有範圍（買家的租戶；沒有店鋪的消費者是系統租戶佔位值）。訂單與訂房歸屬的租戶不是它，而是店鋪，見下
+        UUID cartTenantId = TenantContext.getCurrentTenant();
 
         var user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1006));
-        var tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
 
-        CartDto.CartResponse cart = cartService.getCart(userId, tenantId);
-        List<CartDto.CartItemResponse> productItems = cart.getItems().stream()
+        CartDto.CartResponse cart = cartService.getCart(userId, cartTenantId);
+        List<CartDto.CartItemResponse> allProductItems = cart.getItems().stream()
                 .filter(i -> "PRODUCT".equals(i.getListingType()))
                 .collect(Collectors.toList());
-        List<CartDto.CartItemResponse> roomItems = cart.getItems().stream()
+        List<CartDto.CartItemResponse> allRoomItems = cart.getItems().stream()
                 .filter(i -> "ROOM".equals(i.getListingType()))
                 .collect(Collectors.toList());
-        if (productItems.isEmpty() || roomItems.isEmpty()) {
+        if (allProductItems.isEmpty() || allRoomItems.isEmpty()) {
             throw new BusinessException(ErrorCode.E_5004,
                     "Mixed checkout requires both PRODUCT and ROOM items in cart");
         }
+
+        // Sprint 237（DEF-319 同店結帳；PRD US-008／PC-005）：商品與房間必須屬於同一家店鋪才能合併結帳，
+        // 訂單、訂房、促銷碼、運費都以這家店鋪為準。購物車含多家店鋪時必須指定（storeId），否則 E-5020。
+        UUID storeId = CartStoreSelector.select(
+                cart.getItems().stream().map(CartDto.CartItemResponse::getStoreId).collect(Collectors.toList()),
+                request.getStoreId());
+        List<CartDto.CartItemResponse> productItems = allProductItems.stream()
+                .filter(i -> storeId.equals(i.getStoreId()))
+                .collect(Collectors.toList());
+        List<CartDto.CartItemResponse> roomItems = allRoomItems.stream()
+                .filter(i -> storeId.equals(i.getStoreId()))
+                .collect(Collectors.toList());
+        if (productItems.isEmpty() || roomItems.isEmpty()) {
+            throw new BusinessException(ErrorCode.E_5004,
+                    "Mixed checkout requires both PRODUCT and ROOM items of the same store in cart");
+        }
+        var store = tenantRepository.findById(storeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
         CartDto.CartItemResponse roomItem = roomItems.get(0);
 
         BookingDto.CreateRequest bookingRequest = BookingDto.CreateRequest.builder()
@@ -106,12 +124,12 @@ public class CombinedCheckoutService {
         // 促銷碼只解析一次，兩側共用同一張券——不使用 OrderService/BookingService 各自的解析路徑
         // （前者讀購物車 Redis 已套用的碼、後者讀 request 明確帶入的碼），合併結帳頁面只有一個
         // 看得見的促銷碼輸入框，行為對使用者透明。
-        PromoCode promo = promoService.resolveValidPromoForCheckout(request.getPromoCode(), tenantId, userId);
+        PromoCode promo = promoService.resolveValidPromoForCheckout(request.getPromoCode(), storeId, userId);
 
         BigDecimal productSubtotal = productItems.stream()
                 .map(CartDto.CartItemResponse::getSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal shippingFee = shippingTemplateService.calculateFeeForTenant(tenantId, productSubtotal);
+        BigDecimal shippingFee = shippingTemplateService.calculateFeeForTenant(storeId, productSubtotal);
         BigDecimal roomGrossAmount = bookingService.calculateTotalAmount(
                 roomListing.getId(), bookingRequest.getCheckInDate(), bookingRequest.getCheckOutDate());
 
@@ -132,22 +150,22 @@ public class CombinedCheckoutService {
                 .build();
 
         OrderDto.OrderResponse orderResponse = orderService.buildProductOrder(
-                tenant, user, orderRequest, productItems, promo, allocation.productDiscount(), shippingFee, userId);
+                store, user, orderRequest, productItems, promo, allocation.productDiscount(), shippingFee, userId);
 
         BookingDto.BookingResponse bookingResponse = bookingService.buildBookingCore(
-                roomListing, room, bookingRequest, userId, tenantId,
+                roomListing, room, bookingRequest, userId, storeId,
                 roomGrossAmount, promo, allocation.roomDiscount());
 
         // 兩側都成功建立後才佔用一次額度（使用者拍板：合併結帳用一張券算 1 次），寫入一筆同時
         // 關聯 order_id 與 booking_id 的用券紀錄（V77 CHECK 約束已放寬允許兩者皆非 null）。
-        commitCombinedPromoUsage(promo, orderResponse.getId(), bookingResponse.getId(), userId, tenantId);
+        commitCombinedPromoUsage(promo, orderResponse.getId(), bookingResponse.getId(), userId, cartTenantId, storeId);
 
         // 全部成功才清購物車已結清的項目（Redis 操作非 JPA 交易的一部分，必須放在最後才做，
         // 避免任何前面步驟失敗回滾時，購物車項目已被誤刪）。
         for (CartDto.CartItemResponse item : productItems) {
-            cartService.removeItem(userId, tenantId, item.getCartItemKey());
+            cartService.removeItem(userId, cartTenantId, item.getCartItemKey());
         }
-        cartService.removeItem(userId, tenantId, roomItem.getCartItemKey());
+        cartService.removeItem(userId, cartTenantId, roomItem.getCartItemKey());
 
         log.info("Mixed checkout completed: orderId={}, bookingId={}, userId={}, promoCode={}, "
                         + "productDiscount={}, roomDiscount={}",
@@ -170,7 +188,7 @@ public class CombinedCheckoutService {
      * {@code releaseBookingSide} 會依使用者拍板「兩側都取消才退還」的規則各自評估。
      */
     private void commitCombinedPromoUsage(final PromoCode promo, final UUID orderId, final UUID bookingId,
-            final UUID userId, final UUID tenantId) {
+            final UUID userId, final UUID cartTenantId, final UUID storeId) {
         if (promo == null) {
             return;
         }
@@ -188,6 +206,6 @@ public class CombinedCheckoutService {
                 .orderId(orderId)
                 .bookingId(bookingId)
                 .build());
-        cartService.removePromoCode(userId, tenantId);
+        cartService.removePromoCode(userId, cartTenantId, storeId);
     }
 }

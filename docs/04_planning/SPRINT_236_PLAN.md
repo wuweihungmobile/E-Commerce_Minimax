@@ -65,8 +65,8 @@ PRD 對「同店」有直接依據：US-008（§17.3.2）「單筆訂單可包�
 - **Schema 文件**：`make validate-schema-doc` 對乾淨 PostgreSQL（postgres:18-alpine）套用 **88 個** Flyway 遷移（含 `V88`）通過，SRD／PRD 的 DDL 與實際 schema 一致（`V88` 是純資料遷移，不改 schema）。
 - **真實後端 E2E**：`make validate-e2e`（沿用 `mvn verify` 剛建的 JAR；前端 `src` 本輪沒有變動，沿用既有建置）**129 個測試：125 通過／4 略過／0 失敗（3.4 分鐘）**。`at-seller-dashboard-real.spec.ts` 的 SDASH-03、04 移除 `test.fail()` 後**以正常斷言通過**（店主的訂房列表看得到消費者訂的這筆、店主開啟並取消→全額退款且取消方為商家；測試結果目錄裡這兩個案例沒有失敗證物），SDASH-07、08（訂單側）仍是「預期失敗」（`error-context.md` 仍在）。那 4 個略過是既有基準（Sprint 231～235 皆為 4 個）。
 - **前端**：`tsc --noEmit`、`eslint`（`at-seller-dashboard-real.spec.ts`）皆通過；前端 `src` 本輪沒有變動。
-- **push 與雲端 CI**：（push 後於回填 commit 補上）
-- **耗時觀察（承 Sprint 233～235，未歸因）**：本機全量 `mvn verify` 本輪 16 分 22 秒（Sprint 235：15 分 10 秒；Sprint 234：17 分 19 秒；Sprint 233：15 分 21 秒）。雲端整合 job 近七次為 5m01s／6m02s／6m00s／4m15s／7m47s／7m46s／8m03s（Sprint 235），本輪 push 後的數字是第四個資料點。
+- **push 與雲端 CI**：已 push（2026-10-03，`172f0fe..135a3fb main -> main`；pre-push 輕量守門通過）。✅ 雲端 CI 全綠 run **37057966589**，三個 job 全部 success，共 10 分 45 秒：Backend Unit 2m33s／Frontend Lint & Build 1m02s／Backend Integration & Package **8m05s**。
+- **耗時觀察（承 Sprint 233～235，未歸因）**：本機全量 `mvn verify` 本輪 16 分 22 秒（Sprint 235：15 分 10 秒；Sprint 234：17 分 19 秒；Sprint 233：15 分 21 秒）。雲端整合 job 近八次為 5m01s／6m02s／6m00s／4m15s／7m47s／7m46s／8m03s／**8m05s（本輪）**：Sprint 233 起連續四次落在 7m46s～8m05s，第四個資料點仍指向同一個方向；**仍未量測、不能算證實**。
 
 ## 6. 範圍外（延後）、已知限制與待決定
 

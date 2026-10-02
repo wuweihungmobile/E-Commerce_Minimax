@@ -105,8 +105,12 @@ class MockPaymentUnderStripeIntegrationTest {
                 .tenantId(tenant.getId())
                 .build());
 
+        // tenantId／ownerId 是 insertable=false 的唯讀影子欄位，寫入資料庫的是 tenant／owner 關聯；只設影子欄位會讓
+        // listings.tenant_id 存成 NULL（測試庫欄位可為 NULL，DEF-332）。訂單歸屬商品／房源所屬的店鋪（Sprint 237），要兩者都設。
         roomListingId = listingRepository.save(Listing.builder()
+                .tenant(tenant)
                 .tenantId(tenant.getId())
+                .owner(host)
                 .ownerId(host.getId())
                 .listingType(Listing.ListingType.ROOM)
                 .title("Stripe Guard ROOM")

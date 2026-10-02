@@ -868,14 +868,18 @@ public class IntegrationTestConfiguration {
                 });
 
         // Mock applyPromoCode - 返回錯誤（購物車為空）
-        when(mockService.applyPromoCode(any(UUID.class), any(UUID.class), anyString()))
+        when(mockService.applyPromoCode(any(UUID.class), any(UUID.class), any(), anyString()))
                 .thenThrow(new com.nextkey.ecommerce.shared.exception.CartEmptyException("Cannot apply promo to empty cart"));
 
         // Mock removePromoCode - 不拋異常
-        doNothing().when(mockService).removePromoCode(any(UUID.class), any(UUID.class));
+        doNothing().when(mockService).removePromoCode(any(UUID.class), any(UUID.class), any());
+
+        // Mock resolveStoreId（Sprint 237）：購物車要結哪一家店鋪；這個 mock 的購物車項目沒有店鋪資訊，回傳 null 即可
+        // （需要真實店鋪語意的測試用真實 Redis 或自己的 stub，不靠這個 mock）
+        when(mockService.resolveStoreId(any(UUID.class), any(UUID.class), any())).thenReturn(null);
 
         // Mock validatePromoCode
-        when(mockService.validatePromoCode(anyString(), any(UUID.class)))
+        when(mockService.validatePromoCode(anyString(), any()))
                 .thenReturn(CartDto.PromoValidationResult.builder()
                         .valid(false)
                         .invalidReason("INVALID")

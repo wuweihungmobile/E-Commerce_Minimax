@@ -134,8 +134,12 @@ class M16ErpE2ETest {
         testStoreOwnerUserId = storeOwner.getId();
 
         // 創建測試用的 Listing (當作商品)
+        // DEF-332：關聯（tenant／owner）才是寫入資料庫的欄位；影子欄位 insertable=false，測試庫的 listings 這兩欄是 NOT NULL，
+        // 只設影子欄位會在 INSERT 時失敗
         Listing testListing = Listing.builder()
+                .tenant(testTenant)
                 .tenantId(testTenantId)
+                .owner(storeOwner)
                 .ownerId(testStoreOwnerUserId)
                 .listingType(Listing.ListingType.PRODUCT)
                 .title("E2E M16 Test Product")
@@ -145,9 +149,6 @@ class M16ErpE2ETest {
                 .build();
         testListing = listingRepo.save(testListing);
         testListingId = testListing.getId();
-        // Listing.tenantId 為 insertable=false 影子欄位，JPA save 不寫 tenant_id → 顯式 JDBC 補寫
-        // （testTenantId 為既有 generated 租戶，存在於 tenants，FK 滿足；DEF-017 租戶檢查需 tenant_id 相符）。
-        jdbcTemplate.update("UPDATE listings SET tenant_id = ? WHERE id = ?", testTenantId, testListingId);
         listingRepo.flush();
 
         // 建立 ProductSku (SKU) - 必須先建立此记录才能建立 product_inventory

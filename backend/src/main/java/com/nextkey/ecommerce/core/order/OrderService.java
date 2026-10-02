@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.OrderDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.core.cart.CartStoreSelector;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
@@ -81,12 +82,6 @@ public class OrderService {
     private final AuditService auditService;
 
     /**
-     * 「沒有真正租戶」的預設佔位租戶 ID（見 {@code TenantContextFilter.resolveEffectiveTenantId}）。
-     * {@link #checkOrderTenantAuthorization} 的 same-tenant 分支需明確排除它，見該方法 Javadoc。
-     */
-    private static final UUID SYSTEM_TENANT_UUID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
-
-    /**
      * 建立訂單（從購物車或直接預訂）
      * ROOM 類型訂單可以直接傳入預訂資料，不需要購物車
      * PRODUCT 類型訂單需要購物車中有商品
@@ -95,7 +90,8 @@ public class OrderService {
     @Transactional
     public OrderDto.OrderResponse createOrderFromCart(OrderDto.CreateRequest request) {
         UUID userId = TenantContext.getCurrentUser();
-        UUID tenantId = TenantContext.getCurrentTenant();
+        // 購物車的擁有範圍（買家的租戶；沒有店鋪的消費者是系統租戶佔位值）。訂單歸屬的租戶不是它，而是商品所屬的店鋪，見下
+        UUID cartTenantId = TenantContext.getCurrentTenant();
 
         // 取得用戶
         var user = userRepository.findById(userId)
@@ -113,44 +109,53 @@ public class OrderService {
             return createRoomOrder(request, user);
         }
 
-        // PRODUCT 類型訂單：需要租戶和購物車
-        var tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
-
-        CartDto.CartResponse cart = cartService.getCart(userId, tenantId);
+        // PRODUCT 類型訂單：需要購物車
+        CartDto.CartResponse cart = cartService.getCart(userId, cartTenantId);
         if (cart.getItems().isEmpty()) {
             throw new BusinessException(ErrorCode.E_5004, "Cart is empty");
         }
 
         // Sprint 88：購物車為 ROOM/PRODUCT 共用，PRODUCT 訂單僅取用 PRODUCT 項目，
         // ROOM 項目留在購物車給訂房流程另外結帳（避免誤併入商品訂單或被整個清空）
-        List<CartDto.CartItemResponse> productItems = cart.getItems().stream()
+        List<CartDto.CartItemResponse> allProductItems = cart.getItems().stream()
                 .filter(i -> "PRODUCT".equals(i.getListingType()))
                 .collect(Collectors.toList());
-        if (productItems.isEmpty()) {
+        if (allProductItems.isEmpty()) {
             throw new BusinessException(ErrorCode.E_5004, "Cart has no product items");
         }
+
+        // Sprint 237（DEF-319 同店結帳；PRD US-008／PC-005：單筆訂單限同一商家）：訂單歸屬商品所屬的店鋪，不是下單者的租戶。
+        // 原本以下單者的租戶蓋章，沒有店鋪的消費者是系統租戶佔位值，店主讀不到也處理不了客人的訂單（Sprint 232 實測）。
+        // 購物車含多家店鋪的商品時必須指定要結哪一家（storeId），其餘留在購物車分開結帳；促銷碼與運費模板也屬於店鋪層。
+        UUID storeId = CartStoreSelector.select(
+                allProductItems.stream().map(CartDto.CartItemResponse::getStoreId).collect(Collectors.toList()),
+                request.getStoreId());
+        List<CartDto.CartItemResponse> productItems = allProductItems.stream()
+                .filter(i -> storeId.equals(i.getStoreId()))
+                .collect(Collectors.toList());
+        var store = tenantRepository.findById(storeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
 
         // Sprint 100（PRD §9.5.1）：在建立訂單之前重新驗證促銷碼並計算折扣。促銷碼於加入購物車時
         // 已驗過一次，但購物車存活於 Redis TTL 期間，期間可能過期/停用/售罄，故此處必須重驗，
         // 不可沿用加入購物車當下的結果。只取券碼、不採信購物車算好的折扣：後者是 fallback-tolerant
         // 的顯示用計算（券失效時靜默回退原價），不可作為收款依據。
         PromoCode promo = promoService.resolveValidPromoForCheckout(
-                cartService.getAppliedPromoCode(userId, tenantId), tenantId, userId);
+                cartService.getAppliedPromoCode(userId, cartTenantId, storeId), storeId, userId);
         BigDecimal itemsTotal = productItems.stream()
                 .map(CartDto.CartItemResponse::getSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal shippingFee = shippingTemplateService.calculateFeeForTenant(tenantId, itemsTotal);
+        BigDecimal shippingFee = shippingTemplateService.calculateFeeForTenant(storeId, itemsTotal);
         BigDecimal discount = promoService.computeCappedDiscount(promo, itemsTotal, shippingFee);
 
         OrderDto.OrderResponse response =
-                buildProductOrder(tenant, user, request, productItems, promo, discount, shippingFee, userId);
+                buildProductOrder(store, user, request, productItems, promo, discount, shippingFee, userId);
 
-        commitPromoUsage(promo, response.getId(), userId, tenantId);
+        commitPromoUsage(promo, response.getId(), userId, cartTenantId, storeId);
 
-        // 僅移除已處理的 PRODUCT 項目，保留購物車中其餘（如 ROOM）項目供另外結帳
+        // 僅移除已處理的 PRODUCT 項目，保留購物車中其餘（如 ROOM、其他店鋪的）項目供另外結帳
         for (CartDto.CartItemResponse cartItem : productItems) {
-            cartService.removeItem(userId, tenantId, cartItem.getCartItemKey());
+            cartService.removeItem(userId, cartTenantId, cartItem.getCartItemKey());
         }
 
         log.info("Order created: orderId={}, userId={}, totalAmount={}, shippingFee={}, promoCode={}, discount={}",
@@ -213,6 +218,12 @@ public class OrderService {
 
             if (!"ACTIVE".equals(listing.getStatus().name())) {
                 throw new BusinessException(ErrorCode.E_3002, "Listing not active: " + cartItem.getListingId());
+            }
+
+            // Sprint 237（DEF-319）縱深防禦：一筆訂單的商品必須都屬於訂單歸屬的店鋪。呼叫端（單一類型結帳、合併結帳）
+            // 已依店鋪篩選過項目，這裡再對照資料庫裡商品實際所屬的店鋪，任何呼叫路徑都不可能建出跨店鋪的訂單。
+            if (!tenant.getId().equals(listing.getTenantId())) {
+                throw new BusinessException(ErrorCode.E_5020);
             }
 
             // DEF-237 縱深防禦：即使 RedisCartService.addItem 已在寫入購物車前驗證 skuId 屬於
@@ -280,7 +291,7 @@ public class OrderService {
      * 呼叫端共用），呼叫端只需該筆訂單的 id。
      */
     private void commitPromoUsage(final PromoCode promo, final UUID orderId,
-            final UUID userId, final UUID tenantId) {
+            final UUID userId, final UUID cartTenantId, final UUID storeId) {
         if (promo == null) {
             return;
         }
@@ -301,7 +312,7 @@ public class OrderService {
                 .userId(userId)
                 .orderId(orderId)
                 .build());
-        cartService.removePromoCode(userId, tenantId);
+        cartService.removePromoCode(userId, cartTenantId, storeId);
     }
 
     /**
@@ -335,7 +346,6 @@ public class OrderService {
     private OrderDto.OrderResponse createRoomOrder(OrderDto.CreateRequest request,
                                                    com.nextkey.ecommerce.domain.model.user.User user) {
         UUID userId = user.getId();
-        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 驗證必填欄位
         validateRoomOrderRequest(request);
@@ -343,8 +353,8 @@ public class OrderService {
         // 取得 Room Listing 及其價格資訊
         Listing roomListing = getActiveRoomListing(request.getListingId());
 
-        // 嘗試取得租戶，若不存在則使用系統預設租戶
-        var tenant = resolveTenant(tenantId);
+        // Sprint 237（DEF-319）：訂單歸屬房源所屬的店鋪，不是下單者的租戶；若不存在則使用系統預設租戶
+        var tenant = resolveTenant(roomListing.getTenantId());
 
         // 計算入住晚數
         long nights = calculateNights(request.getCheckInDate(), request.getCheckOutDate());
@@ -543,10 +553,10 @@ public class OrderService {
      * <p>比照 {@link #getUserOrders} 的分頁/排序處理，額外支援選填的狀態篩選——
      * 有 status 時走 {@code findByTenantIdAndStatus}，否則走既有的
      * {@code findByTenantIdOrderByCreatedAtDesc}（兩者皆為既有 repository 方法，未新增查詢）。
-     * 沒有店鋪的呼叫者（一般買家）回空頁，不查詢、不拋錯：這類使用者的租戶不是 null，而是
-     * {@link #SYSTEM_TENANT_UUID} 佔位值（見其說明），而 {@code orders.tenant_id} 恰好也會蓋成這個值
-     * （建單取呼叫者的租戶脈絡），直接拿它查等於把所有一般買家的訂單（含收件人）交給任一登入者
-     * （Sprint 232 實測，原註解「tenantId 為 null 故自然為空頁」的前提不成立）。
+     * 沒有店鋪的呼叫者（一般買家）回空頁，不查詢、不拋錯：這類使用者的租戶不是 null，而是系統租戶佔位值
+     * （見 {@link TenantContext#isStoreTenant}），而修復前的訂單原本會蓋成這個值（建單取呼叫者的租戶脈絡；
+     * Sprint 237 起改蓋商品所屬的店鋪，但歷史資料與無法判定歸屬的訂單仍可能在系統租戶底下），
+     * 直接拿它查等於把這些訂單（含收件人）交給任一登入者（Sprint 232 實測，原註解「tenantId 為 null 故自然為空頁」的前提不成立）。
      */
     @Transactional(readOnly = true)
     public Page<OrderDto.OrderListResponse> getTenantOrders(int page, int size, String sortBy, String sortDir,
@@ -555,7 +565,7 @@ public class OrderService {
         Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
         PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
 
-        if (tenantId == null || tenantId.equals(SYSTEM_TENANT_UUID)) {
+        if (!TenantContext.isStoreTenant(tenantId)) {
             return Page.empty(pageRequest);
         }
 
@@ -708,8 +718,7 @@ public class OrderService {
             auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
         );
         boolean isOwner = userId != null && userId.equals(order.getUserId());
-        boolean isSameTenant = tenantId != null && tenantId.equals(order.getTenantId())
-                && !tenantId.equals(SYSTEM_TENANT_UUID);
+        boolean isSameTenant = TenantContext.isStoreTenant(tenantId) && tenantId.equals(order.getTenantId());
 
         if (!isAdmin && !isOwner && !isSameTenant) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to update this order's status");

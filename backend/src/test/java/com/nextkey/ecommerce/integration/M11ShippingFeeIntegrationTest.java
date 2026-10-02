@@ -132,6 +132,7 @@ class M11ShippingFeeIntegrationTest {
                 .unitPrice(itemPrice)
                 .subtotal(itemPrice)
                 .listingType("PRODUCT")
+                .storeId(TENANT_ID)
                 .build();
 
         CartDto.CartResponse cart = CartDto.CartResponse.builder()

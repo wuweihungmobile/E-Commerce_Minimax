@@ -12,11 +12,10 @@ import { Account, authHeaders, seedStore } from './helpers/store';
  *   1. 洩漏：沒有店鋪的買家呼叫 GET /v2/dashboard/bookings、GET /v2/orders/tenant，看得到別的買家的訂房／訂單
  *      （訂房人姓名、收件人姓名、金額、日期）。原因是這類使用者的租戶是系統租戶佔位值，而他們下的單也蓋成這個租戶。
  *      Sprint 232 已修（空頁）——E2E-SDASH-02／06 用正常斷言守住。
- *   2. 歸屬（DEF-319）：訂單／訂房蓋的是「下單者的租戶」，不是「賣家的租戶」，所以商家端列表看不到真實消費者的
- *      單、商家也無法取消／處理，週結算（依 orders.tenant_id 彙總）也不會納入。訂房側已於 Sprint 236 修復
- *      （E2E-SDASH-03／04 已是正常斷言）；訂單側尚未修復，E2E-SDASH-07／08 描述「修好之後應有的行為」，目前以
- *      test.fail() 標示「應該失敗」：修好後它們會「意外通過」而報錯，提醒移除標記（比 test.skip 好——
- *      每次都真的執行，不會悄悄爛掉）。
+ *   2. 歸屬（DEF-319）：訂單／訂房原本蓋的是「下單者的租戶」，不是「賣家的租戶」，所以商家端列表看不到真實消費者的
+ *      單、商家也無法取消／處理，週結算（依 orders.tenant_id 彙總）也不會納入。訂房側已於 Sprint 236 修復、訂單側已於
+ *      Sprint 237 修復（同店結帳）：E2E-SDASH-03／04／07／08 原本以 test.fail() 描述「修好之後應有的行為」，修好後
+ *      它們「意外通過」而報錯，提醒移除標記——現在全部是正常斷言。多家店鋪的購物車見 at-store-checkout-real.spec.ts。
  *
  * 資料全由真實流程建立（與 at-booking-payment-real 同一套前提）：店主註冊→驗證 Email→申請開店（HYBRID）→管理員核准→
  * 管理員開啟 BOOKING_ENABLED→店主重新登入→建立 ROOM 房源與 PRODUCT 商品；消費者另行註冊（不屬於任何店鋪）。
@@ -30,7 +29,6 @@ const PRODUCT_PRICE = 450;
 const GUEST_NAME = 'E2E 住客王小明';
 const OWNER_GUEST_NAME = 'E2E 店主自訂客';
 const RECIPIENT_NAME = 'E2E 收件人李小華';
-const DEF_319 = 'DEF-319（訂單側）：訂單蓋成下單者的租戶（一般消費者＝系統租戶），不是賣家的租戶；修復後移除 test.fail()';
 
 function isoDate(daysFromNow: number): string {
   const d = new Date();
@@ -179,7 +177,6 @@ test.describe('AT-SELLER-DASHBOARD-REAL: 商家端訂單／訂房管理（真實
   });
 
   test('E2E-SDASH-07: 店主的賣家訂單列表看得到消費者買的這筆（含收件人姓名）', async ({ page }: { page: Page }) => {
-    test.fail(true, DEF_319);
     await page.goto('/login');
     await page.evaluate(() => localStorage.clear());
     await loginOnly(page, owner.email, owner.password);
@@ -190,7 +187,6 @@ test.describe('AT-SELLER-DASHBOARD-REAL: 商家端訂單／訂房管理（真實
   });
 
   test('E2E-SDASH-08: 店主能讀取消費者買的訂單，並把它確認（PAID → CONFIRMED）', async ({ page }: { page: Page }) => {
-    test.fail(true, DEF_319);
     await page.goto('/login');
     await page.evaluate(() => localStorage.clear());
     await loginOnly(page, owner.email, owner.password);

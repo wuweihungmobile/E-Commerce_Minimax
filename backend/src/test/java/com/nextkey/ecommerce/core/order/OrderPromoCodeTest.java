@@ -99,7 +99,14 @@ class OrderPromoCodeTest {
     private OrderService orderService;
 
     private static final UUID USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    /**
+     * 店鋪（商品所屬的租戶）。Sprint 237（DEF-319）起訂單、促銷碼、運費都以店鋪為準，而不是下單者的租戶。
+     * 購物車的擁有範圍是買家的租戶：這裡用沒有店鋪的真實消費者的租戶（系統租戶佔位值），與店鋪是不同的值，
+     * 才分得出程式碼用了哪一個（原本兩者是同一個值，等於用固件繞過了這個情境）。
+     */
     private static final UUID TENANT_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
+    private static final UUID CART_TENANT_ID =
+            UUID.fromString(com.nextkey.ecommerce.shared.constants.AppConstants.SYSTEM_TENANT_ID);
     private static final UUID ORDER_ID = UUID.fromString("33333333-3333-3333-3333-333333333333");
     private static final UUID LISTING_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
     private static final UUID PROMO_ID = UUID.fromString("55555555-5555-5555-5555-555555555555");
@@ -143,7 +150,7 @@ class OrderPromoCodeTest {
      */
     private void givenCartWithPromo(final String appliedPromoCode) {
         TenantContext.setCurrentUser(USER_ID);
-        TenantContext.setCurrentTenant(TENANT_ID);
+        TenantContext.setCurrentTenant(CART_TENANT_ID);
 
         User user = User.builder().build();
         user.setId(USER_ID);
@@ -160,6 +167,7 @@ class OrderPromoCodeTest {
                 .unitPrice(BigDecimal.valueOf(100))
                 .subtotal(ITEMS_TOTAL)
                 .listingType("PRODUCT")
+                .storeId(TENANT_ID)
                 .build();
 
         CartDto.CartResponse cart = CartDto.CartResponse.builder()
@@ -169,18 +177,19 @@ class OrderPromoCodeTest {
                 .discountAmount(appliedPromoCode == null ? null : DISCOUNT)
                 .build();
 
-        when(cartService.getCart(USER_ID, TENANT_ID)).thenReturn(cart);
-        when(cartService.getAppliedPromoCode(USER_ID, TENANT_ID)).thenReturn(appliedPromoCode);
+        when(cartService.getCart(USER_ID, CART_TENANT_ID)).thenReturn(cart);
+        when(cartService.getAppliedPromoCode(USER_ID, CART_TENANT_ID, TENANT_ID)).thenReturn(appliedPromoCode);
 
         when(listingRepository.findById(LISTING_ID)).thenReturn(Optional.of(Listing.builder()
                 .id(LISTING_ID)
+                .tenantId(TENANT_ID)
                 .listingType(Listing.ListingType.PRODUCT)
                 .status(Listing.ListingStatus.ACTIVE)
                 .title("Test Listing")
                 .basePrice(BigDecimal.valueOf(100))
                 .build()));
 
-        when(shippingTemplateService.calculateFeeForTenant(any(), any())).thenReturn(SHIPPING_FEE);
+        when(shippingTemplateService.calculateFeeForTenant(eq(TENANT_ID), any())).thenReturn(SHIPPING_FEE);
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
             Order o = inv.getArgument(0);
             o.setId(ORDER_ID);
@@ -263,7 +272,7 @@ class OrderPromoCodeTest {
 
             orderService.createOrderFromCart(productRequest());
 
-            verify(cartService).removePromoCode(USER_ID, TENANT_ID);
+            verify(cartService).removePromoCode(USER_ID, CART_TENANT_ID, TENANT_ID);
         }
 
         @Test
@@ -297,7 +306,7 @@ class OrderPromoCodeTest {
             assertThat(response.getDiscountAmount()).isEqualByComparingTo(BigDecimal.ZERO);
             verify(promoService, never()).tryConsumeUsageQuota(any());
             verify(promoCodeUsageRepository, never()).save(any());
-            verify(cartService, never()).removePromoCode(any(), any());
+            verify(cartService, never()).removePromoCode(any(), any(), any());
         }
     }
 
@@ -519,7 +528,7 @@ class OrderPromoCodeTest {
 
             // 交易回滾由 @Transactional 負責，此處確認未寫入用券紀錄、未清掉購物車的券
             verify(promoCodeUsageRepository, never()).save(any());
-            verify(cartService, never()).removePromoCode(any(), any());
+            verify(cartService, never()).removePromoCode(any(), any(), any());
         }
 
         @Test

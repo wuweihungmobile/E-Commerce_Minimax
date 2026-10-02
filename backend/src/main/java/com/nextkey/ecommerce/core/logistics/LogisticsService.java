@@ -18,7 +18,6 @@ import com.nextkey.ecommerce.domain.model.logistics.Logistics;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.repository.LogisticsRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
-import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -273,12 +272,6 @@ public class LogisticsService {
     // ========== Helper Methods ==========
 
     /**
-     * 「沒有真正租戶」的預設佔位租戶 ID（見 {@code TenantContextFilter.resolveEffectiveTenantId}）。
-     * {@link #checkOrderTenant} 的租戶比對需明確排除它，見該方法 Javadoc。
-     */
-    private static final UUID SYSTEM_TENANT_UUID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
-
-    /**
      * 物流租戶擁有權檢查（DEF-019 建立時新增；DEF-036 擴及查詢/追蹤/狀態更新/取消等其餘方法）。
      * 賣家限本租戶訂單（order.tenantId == 當前租戶）、admin（ROLE_ADMIN/SUPER_ADMIN）放行，
      * 越權回 403/E_1007。杜絕任何具 order:read/order:update 權限者存取或竄改他租戶物流單（IDOR）。
@@ -299,8 +292,7 @@ public class LogisticsService {
             auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
             auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
         );
-        boolean isSameTenant = tenantId != null && tenantId.equals(order.getTenantId())
-                && !tenantId.equals(SYSTEM_TENANT_UUID);
+        boolean isSameTenant = TenantContext.isStoreTenant(tenantId) && tenantId.equals(order.getTenantId());
         if (!isAdmin && !isSameTenant) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to access logistics for this order");
         }

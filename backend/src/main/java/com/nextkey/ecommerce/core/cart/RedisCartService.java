@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,9 +25,11 @@ import com.nextkey.ecommerce.core.promo.PromoService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.product.ProductSku;
 import com.nextkey.ecommerce.domain.model.promo.PromoCode;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
 import com.nextkey.ecommerce.domain.repository.PromoCodeRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.CartEmptyException;
 import com.nextkey.ecommerce.shared.exception.CartItemNotFoundException;
@@ -53,6 +56,7 @@ public class RedisCartService {
     private final PricingService pricingService;
     private final FeatureToggleService featureToggleService;
     private final ShippingTemplateService shippingTemplateService;
+    private final TenantRepository tenantRepository;
 
     private static final String CART_KEY_PREFIX = AppConstants.REDIS_CART_PREFIX;
     private static final Duration CART_TTL = Duration.ofDays(30); // 購物車保留 30 天
@@ -255,6 +259,7 @@ public class RedisCartService {
         // 批量獲取 listing 資訊
         Map<UUID, Listing> listingMap = new HashMap<>();
         listingRepository.findAllById(listingIds).forEach(listing -> listingMap.put(listing.getId(), listing));
+        Map<UUID, String> storeNames = loadStoreNames(listingMap.values());
 
         // 轉換為回應物件
         List<CartDto.CartItemResponse> items = new ArrayList<>();
@@ -265,6 +270,10 @@ public class RedisCartService {
             CartItemData item = (CartItemData) entry.getValue();
             Listing listing = listingMap.get(item.getListingId());
             CartDto.CartItemResponse itemResponse = toCartItemResponse(itemKey, item, listing);
+            if (listing != null) {
+                itemResponse.setStoreId(listing.getTenantId());
+                itemResponse.setStoreName(storeNames.get(listing.getTenantId()));
+            }
             items.add(itemResponse);
             // 使用回應（可能已套動態定價折扣）之 subtotal，使總額與顯示一致（AI-2403）
             totalAmount = totalAmount.add(itemResponse.getSubtotal());
@@ -290,37 +299,72 @@ public class RedisCartService {
     }
 
     /**
-     * 套用優惠券至購物車
+     * 決定一個購物車操作要針對哪一家店鋪（Sprint 237，DEF-319 同店結帳）：明確指定就用指定的（必須有項目），
+     * 沒指定時購物車只有一家店鋪的項目就是那一家；多家店鋪拋 {@code E-5020}。規則見 {@link CartStoreSelector}。
      */
-    public CartDto.ApplyPromoResponse applyPromoCode(UUID userId, UUID tenantId, String promoCode) {
+    public UUID resolveStoreId(UUID userId, UUID tenantId, UUID requestedStoreId) {
+        return selectStore(getCart(userId, tenantId), requestedStoreId);
+    }
+
+    /**
+     * 驗證促銷碼（不套用）要在哪家店鋪驗證（Sprint 237）。與 {@link #resolveStoreId} 的差別：這只是「這張券在那家店鋪有效嗎」的查詢，
+     * 端點設計上永遠回 200、valid／invalid 寫在回應本文，所以——
+     * 明確指定店鋪就用指定的（不要求購物車有該店鋪的項目）；沒指定時用購物車唯一的店鋪；購物車沒有任何店鋪的項目時維持原本的行為，
+     * 以買家租戶驗證（沒有店鋪的消費者會得到 valid=false，而不是錯誤）；購物車有多家店鋪卻沒指定才拋 {@code E-5020}。
+     */
+    public UUID resolveStoreIdForValidation(UUID userId, UUID tenantId, UUID requestedStoreId) {
+        if (requestedStoreId != null) {
+            return requestedStoreId;
+        }
+        Set<UUID> stores = getCart(userId, tenantId).getItems().stream()
+                .map(CartDto.CartItemResponse::getStoreId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        return stores.isEmpty() ? tenantId : CartStoreSelector.select(stores, null);
+    }
+
+    /**
+     * 套用優惠券至購物車（Sprint 237：以店鋪為單位）。
+     *
+     * <p>促銷碼是店鋪層的設定（PRD §4.4：店主／賣家建立促銷活動要查 {@code PROMO_ENABLED}；PC-005：Phase 1 不支援跨商家優惠），
+     * 所以在「結帳的那家店鋪」驗證與計算折扣，並以（使用者, 店鋪）為鍵記住——兩家店鋪可以各自套用自己的券。
+     * 原本以買家的租戶驗證：沒有店鋪的消費者（系統租戶）永遠套用不到任何店鋪的券。
+     *
+     * @param storeId 要套用在哪家店鋪；{@code null}＝購物車只有一家店鋪時就是那一家（見 {@link CartStoreSelector}）
+     */
+    public CartDto.ApplyPromoResponse applyPromoCode(UUID userId, UUID tenantId, UUID storeId, String promoCode) {
         // 1. 驗證購物車不為空
         CartDto.CartResponse cart = getCart(userId, tenantId);
         if (cart.getItems() == null || cart.getItems().isEmpty()) {
             throw new CartEmptyException("Cannot apply promo to empty cart");
         }
+        UUID store = selectStore(cart, storeId);
+        List<CartDto.CartItemResponse> storeItems = itemsOfStore(cart, store);
+        BigDecimal storeTotal = sumSubtotals(storeItems);
 
-        // 2. 驗證優惠券
-        CartDto.PromoValidationResult validation = promoService.validatePromoCode(promoCode, tenantId);
+        // 2. 驗證優惠券（在該店鋪）
+        CartDto.PromoValidationResult validation = promoService.validatePromoCode(promoCode, store);
         if (!validation.isValid()) {
             throw new PromoCodeInvalidException(promoCode, validation.getInvalidReason());
         }
 
         // 3. 取得 PromoCode 實體並計算折扣
         PromoCode promo = promoCodeRepository.findByCodeIgnoreCaseAndTenantId(
-                promoCode.trim().toUpperCase(), tenantId
+                promoCode.trim().toUpperCase(), store
         ).orElseThrow(() -> new PromoCodeInvalidException(promoCode, "INVALID"));
 
-        BigDecimal shippingFee = previewShippingFee(cart, tenantId);
-        BigDecimal discount = promoService.computeDiscount(promo, cart.getTotalAmount(), shippingFee);
-        BigDecimal finalAmount = cart.getTotalAmount().add(shippingFee).subtract(discount);
+        BigDecimal shippingFee = previewShippingFee(storeItems, store);
+        BigDecimal discount = promoService.computeDiscount(promo, storeTotal, shippingFee);
+        BigDecimal finalAmount = storeTotal.add(shippingFee).subtract(discount);
 
         // 4. 更新 Redis 中的優惠券標記
-        String promoKey = getPromoKey(userId, tenantId);
+        String promoKey = getPromoKey(userId, tenantId, store);
         redisTemplate.opsForValue().set(promoKey, promoCode.toUpperCase(), CART_TTL);
 
-        log.info("Applied promo code: {} to cart: {}, discount: {}", promoCode, cart.getCartId(), discount);
+        log.info("Applied promo code: {} to cart: {} store: {}, discount: {}", promoCode, cart.getCartId(), store, discount);
 
         return CartDto.ApplyPromoResponse.builder()
+                .storeId(store)
                 .appliedPromoCode(promoCode.toUpperCase())
                 .shippingFee(shippingFee)
                 .discountAmount(discount)
@@ -331,23 +375,23 @@ public class RedisCartService {
     }
 
     /**
-     * 移除購物車優惠券
+     * 移除購物車優惠券（Sprint 237：該店鋪的券）
      */
-    public void removePromoCode(UUID userId, UUID tenantId) {
-        String promoKey = getPromoKey(userId, tenantId);
+    public void removePromoCode(UUID userId, UUID tenantId, UUID storeId) {
+        String promoKey = getPromoKey(userId, tenantId, storeId);
         redisTemplate.delete(promoKey);
-        log.info("Removed promo code from cart: userId={}", userId);
+        log.info("Removed promo code from cart: userId={}, storeId={}", userId, storeId);
     }
 
     /**
-     * 驗證優惠券（不套用）
+     * 驗證優惠券（不套用）。{@code storeId} 是促銷碼所屬的店鋪（Sprint 237：不再是買家的租戶）。
      */
-    public CartDto.PromoValidationResult validatePromoCode(String promoCode, UUID tenantId) {
-        return promoService.validatePromoCode(promoCode, tenantId);
+    public CartDto.PromoValidationResult validatePromoCode(String promoCode, UUID storeId) {
+        return promoService.validatePromoCode(promoCode, storeId);
     }
 
     /**
-     * 取得購物車目前已套用的促銷碼（Sprint 100）。
+     * 取得購物車目前在某家店鋪已套用的促銷碼（Sprint 100；Sprint 237 起以店鋪為單位）。
      *
      * <p>供結帳流程（{@code OrderService}）取得券碼後自行重新驗證用——刻意不回傳折扣金額：
      * {@link #getCartWithPromo} 的折扣是 fallback-tolerant 的顯示用計算（券失效時靜默回退原價），
@@ -355,76 +399,147 @@ public class RedisCartService {
      *
      * @return 已套用的促銷碼；未套用時為 {@code null}
      */
-    public String getAppliedPromoCode(UUID userId, UUID tenantId) {
-        Object savedPromoCode = redisTemplate.opsForValue().get(getPromoKey(userId, tenantId));
+    public String getAppliedPromoCode(UUID userId, UUID tenantId, UUID storeId) {
+        Object savedPromoCode = redisTemplate.opsForValue().get(getPromoKey(userId, tenantId, storeId));
         return savedPromoCode == null ? null : savedPromoCode.toString();
     }
 
     /**
-     * 取得購物車含優惠券資訊
+     * 取得購物車含優惠券資訊。
+     *
+     * <p>Sprint 237（DEF-319 同店結帳）：運費與促銷碼都以店鋪為單位，所以先依店鋪分組，每家店鋪各自算運費（該店鋪的運費模板）
+     * 與折扣（該店鋪已套用的券），放進 {@code stores}；頂層的 shippingFee／discountAmount／finalAmount 是各店鋪合計
+     * （單一店鋪時與該店鋪摘要相同），頂層 appliedPromoCode 只在恰好一家店鋪套了券時填入。
      */
     public CartDto.CartResponse getCartWithPromo(UUID userId, UUID tenantId) {
         CartDto.CartResponse cart = getCart(userId, tenantId);
 
-        // Sprint 101（AI-2435）：運費預覽與是否套券無關，一律計算並回填，
-        // 使購物車顯示的應付金額與結帳實收同構（此前購物車完全不顯示運費）
-        BigDecimal shippingFee = previewShippingFee(cart, tenantId);
-        cart.setShippingFee(shippingFee);
-        cart.setDiscountAmount(BigDecimal.ZERO);
-        cart.setFinalAmount(cart.getTotalAmount().add(shippingFee));
-
-        // 檢查是否有已套用的優惠券
-        String promoKey = getPromoKey(userId, tenantId);
-        Object savedPromoCode = redisTemplate.opsForValue().get(promoKey);
-
-        if (savedPromoCode != null) {
-            cart.setAppliedPromoCode((String) savedPromoCode);
-
-            // 重新計算折扣
-            try {
-                CartDto.PromoValidationResult validation = promoService.validatePromoCode(
-                        (String) savedPromoCode, tenantId);
-                if (validation.isValid()) {
-                    PromoCode promo = promoCodeRepository.findByCodeIgnoreCaseAndTenantId(
-                            (String) savedPromoCode, tenantId
-                    ).orElse(null);
-                    if (promo != null) {
-                        BigDecimal discount = promoService.computeDiscount(
-                                promo, cart.getTotalAmount(), shippingFee);
-                        cart.setDiscountAmount(discount);
-                        cart.setFinalAmount(cart.getTotalAmount().add(shippingFee).subtract(discount));
-                    }
-                }
-            } catch (RuntimeException e) {
-                // Promo discount fallback：折扣計算失敗不影響購物車讀取，cart 仍以原價回傳
-                log.warn("Failed to calculate promo discount for cart: {}", cart.getCartId(), e);
+        Map<UUID, List<CartDto.CartItemResponse>> itemsByStore = new LinkedHashMap<>();
+        for (CartDto.CartItemResponse item : cart.getItems()) {
+            if (item.getStoreId() != null) {
+                itemsByStore.computeIfAbsent(item.getStoreId(), k -> new ArrayList<>()).add(item);
             }
         }
 
+        List<CartDto.StoreCartSummary> stores = new ArrayList<>();
+        BigDecimal totalShipping = BigDecimal.ZERO;
+        BigDecimal totalDiscount = BigDecimal.ZERO;
+        List<String> appliedCodes = new ArrayList<>();
+        for (Map.Entry<UUID, List<CartDto.CartItemResponse>> entry : itemsByStore.entrySet()) {
+            CartDto.StoreCartSummary summary = summarizeStore(userId, tenantId, entry.getKey(), entry.getValue());
+            stores.add(summary);
+            totalShipping = totalShipping.add(summary.getShippingFee());
+            totalDiscount = totalDiscount.add(summary.getDiscountAmount());
+            if (summary.getAppliedPromoCode() != null) {
+                appliedCodes.add(summary.getAppliedPromoCode());
+            }
+        }
+
+        // Sprint 101（AI-2435）：運費預覽與是否套券無關，一律計算並回填，
+        // 使購物車顯示的應付金額與結帳實收同構（此前購物車完全不顯示運費）
+        cart.setStores(stores);
+        cart.setShippingFee(totalShipping);
+        cart.setDiscountAmount(totalDiscount);
+        cart.setFinalAmount(cart.getTotalAmount().add(totalShipping).subtract(totalDiscount));
+        cart.setAppliedPromoCode(appliedCodes.size() == 1 ? appliedCodes.get(0) : null);
         return cart;
     }
 
     // ========== Helper Methods ==========
 
+    /** 單一店鋪的結帳摘要：該店鋪的小計、運費（該店鋪的運費模板）、已套用的券與折扣。 */
+    private CartDto.StoreCartSummary summarizeStore(UUID userId, UUID tenantId, UUID storeId,
+            List<CartDto.CartItemResponse> storeItems) {
+        BigDecimal storeTotal = sumSubtotals(storeItems);
+        BigDecimal shippingFee = previewShippingFee(storeItems, storeId);
+        BigDecimal discount = BigDecimal.ZERO;
+
+        // 檢查該店鋪是否有已套用的優惠券
+        Object savedPromoCode = redisTemplate.opsForValue().get(getPromoKey(userId, tenantId, storeId));
+        String appliedPromoCode = null;
+        if (savedPromoCode != null) {
+            appliedPromoCode = (String) savedPromoCode;
+            // 重新計算折扣
+            try {
+                CartDto.PromoValidationResult validation = promoService.validatePromoCode(appliedPromoCode, storeId);
+                if (validation.isValid()) {
+                    PromoCode promo = promoCodeRepository.findByCodeIgnoreCaseAndTenantId(
+                            appliedPromoCode, storeId
+                    ).orElse(null);
+                    if (promo != null) {
+                        discount = promoService.computeDiscount(promo, storeTotal, shippingFee);
+                    }
+                }
+            } catch (RuntimeException e) {
+                // Promo discount fallback：折扣計算失敗不影響購物車讀取，仍以原價回傳
+                log.warn("Failed to calculate promo discount for store cart: userId={}, storeId={}", userId, storeId, e);
+            }
+        }
+
+        return CartDto.StoreCartSummary.builder()
+                .storeId(storeId)
+                .storeName(storeItems.get(0).getStoreName())
+                .itemCount(storeItems.stream().mapToInt(CartDto.CartItemResponse::getQuantity).sum())
+                .totalAmount(storeTotal)
+                .shippingFee(shippingFee)
+                .appliedPromoCode(appliedPromoCode)
+                .discountAmount(discount)
+                .finalAmount(storeTotal.add(shippingFee).subtract(discount))
+                .build();
+    }
+
+    private UUID selectStore(CartDto.CartResponse cart, UUID requestedStoreId) {
+        return CartStoreSelector.select(
+                cart.getItems().stream().map(CartDto.CartItemResponse::getStoreId).collect(Collectors.toList()),
+                requestedStoreId);
+    }
+
+    private List<CartDto.CartItemResponse> itemsOfStore(CartDto.CartResponse cart, UUID storeId) {
+        return cart.getItems().stream()
+                .filter(item -> storeId.equals(item.getStoreId()))
+                .collect(Collectors.toList());
+    }
+
+    private BigDecimal sumSubtotals(List<CartDto.CartItemResponse> items) {
+        return items.stream()
+                .map(CartDto.CartItemResponse::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** 查出這些房源所屬店鋪的名稱（購物車顯示用）；查不到的店鋪沒有名稱。 */
+    private Map<UUID, String> loadStoreNames(java.util.Collection<Listing> listings) {
+        Set<UUID> storeIds = listings.stream()
+                .map(Listing::getTenantId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, String> names = new HashMap<>();
+        if (!storeIds.isEmpty()) {
+            for (Tenant store : tenantRepository.findAllById(storeIds)) {
+                names.put(store.getId(), store.getName());
+            }
+        }
+        return names;
+    }
+
     /**
-     * 預估購物車運費（Sprint 101 / AI-2435）。
+     * 預估某家店鋪的運費（Sprint 101 / AI-2435；Sprint 237 起以店鋪為單位，走該店鋪自己的運費模板）。
      *
      * <p>基數刻意只取 PRODUCT 項目小計，與 {@code OrderService.createOrderFromCart} 一致
-     * （後者只結 PRODUCT 項目，ROOM 另行結帳）。純 ROOM 或空購物車直接回 0——否則 FIXED 型
+     * （後者只結 PRODUCT 項目，ROOM 另行結帳）。純 ROOM 或空項目直接回 0——否則 FIXED 型
      * 運費模板會對沒有實體出貨的訂房購物車顯示一筆固定運費。
      */
-    private BigDecimal previewShippingFee(CartDto.CartResponse cart, UUID tenantId) {
-        if (cart.getItems() == null || cart.getItems().isEmpty()) {
+    private BigDecimal previewShippingFee(List<CartDto.CartItemResponse> storeItems, UUID storeId) {
+        if (storeItems == null || storeItems.isEmpty()) {
             return BigDecimal.ZERO;
         }
-        BigDecimal productSubtotal = cart.getItems().stream()
+        BigDecimal productSubtotal = storeItems.stream()
                 .filter(item -> "PRODUCT".equals(item.getListingType()))
                 .map(CartDto.CartItemResponse::getSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (productSubtotal.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
         }
-        return shippingTemplateService.calculateFeeForTenant(tenantId, productSubtotal);
+        return shippingTemplateService.calculateFeeForTenant(storeId, productSubtotal);
     }
 
     private String getCartKey(UUID userId, UUID tenantId) {
@@ -438,8 +553,9 @@ public class RedisCartService {
         return listingId.toString();
     }
 
-    private String getPromoKey(UUID userId, UUID tenantId) {
-        return CART_KEY_PREFIX + "promo:" + userId.toString() + ":" + tenantId.toString();
+    /** 已套用促銷碼的鍵：（使用者, 買家租戶, 店鋪）——促銷碼屬於店鋪，不同店鋪各自一個。 */
+    private String getPromoKey(UUID userId, UUID tenantId, UUID storeId) {
+        return CART_KEY_PREFIX + "promo:" + userId.toString() + ":" + tenantId.toString() + ":" + storeId.toString();
     }
 
     private int getTotalItemsCount(String cartKey) {

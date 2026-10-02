@@ -72,6 +72,9 @@ class M16ErpIntegrationTest {
     @Autowired
     private TenantRepository tenantRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
     private static final String BASE_URL = "/v2/dashboard";
     @SuppressWarnings("unused")
     private static final String TEST_PASSWORD = "SecurePass123!";
@@ -164,9 +167,12 @@ class M16ErpIntegrationTest {
         testSellerUserId = seller.getId();
 
         // 創建測試用的 Listing (當作商品)
+        // DEF-332：關聯（tenant／owner）才是寫入資料庫的欄位；影子欄位 insertable=false，測試庫的 listings 這兩欄是 NOT NULL，只設影子欄位會在 INSERT 時失敗。租戶以原生 SQL 種（固定 ID），用參考（getReferenceById）當關聯。
         Listing testListing = Listing.builder()
+                .tenant(tenantRepo.getReferenceById(testTenantId))
                 .tenantId(testTenantId)
-                .ownerId(testStoreOwnerUserId)
+                .owner(seller)
+                .ownerId(seller.getId())
                 .listingType(Listing.ListingType.PRODUCT)
                 .title("Test Product for ERP")
                 .description("Test product description")
@@ -175,9 +181,6 @@ class M16ErpIntegrationTest {
                 .build();
         testListing = listingRepo.save(testListing);
         testListingId = testListing.getId();
-        // Listing.tenantId 為 insertable=false 影子欄位，JPA save 不寫 tenant_id → 顯式 JDBC 補寫
-        // （此時 FIXED_TENANT_ID 租戶已存在，FK 滿足；DEF-017 租戶檢查依賴 listing.getTenantId() 相符）。
-        jdbcTemplate.update("UPDATE listings SET tenant_id = ? WHERE id = ?", testTenantId, testListingId);
 
         // 初始化 testSkuId (在 @BeforeAll 中必須初始化，否則後續測試會使用 null)
         // 這是因為 @BeforeAll 只執行一次，而 @Test 方法執行順序依賴於 testSkuId
@@ -445,15 +448,16 @@ class M16ErpIntegrationTest {
     void listTenantListings_returnsActiveListingsOfCurrentTenantOnly() throws Exception {
         // 本租戶但 DRAFT 狀態：不應出現在選項中
         Listing draftListing = Listing.builder()
+                .tenant(tenantRepository.getReferenceById(testTenantId))
                 .tenantId(testTenantId)
-                .ownerId(testStoreOwnerUserId)
+                .owner(userRepository.getReferenceById(testSellerUserId))
+                .ownerId(testSellerUserId)
                 .listingType(Listing.ListingType.PRODUCT)
                 .title("Draft Listing Should Not Appear")
                 .basePrice(BigDecimal.valueOf(10))
                 .status(Listing.ListingStatus.DRAFT)
                 .build();
         draftListing = listingRepository.save(draftListing);
-        jdbcTemplate.update("UPDATE listings SET tenant_id = ? WHERE id = ?", testTenantId, draftListing.getId());
 
         // 他租戶的 ACTIVE listing：不應出現在選項中（租戶隔離）
         UUID otherTenantId = UUID.randomUUID();
@@ -464,15 +468,16 @@ class M16ErpIntegrationTest {
                 otherTenantId, "Other Tenant", "other-tenant-" + System.currentTimeMillis(), "ACTIVE",
                 "NOT_STARTED", false, false, "{}");
         Listing otherTenantListing = Listing.builder()
+                .tenant(tenantRepository.getReferenceById(otherTenantId))
                 .tenantId(otherTenantId)
-                .ownerId(testStoreOwnerUserId)
+                .owner(userRepository.getReferenceById(testSellerUserId))
+                .ownerId(testSellerUserId)
                 .listingType(Listing.ListingType.PRODUCT)
                 .title("Other Tenant Listing Should Not Appear")
                 .basePrice(BigDecimal.valueOf(20))
                 .status(Listing.ListingStatus.ACTIVE)
                 .build();
         otherTenantListing = listingRepository.save(otherTenantListing);
-        jdbcTemplate.update("UPDATE listings SET tenant_id = ? WHERE id = ?", otherTenantId, otherTenantListing.getId());
 
         mockMvc.perform(get(BASE_URL + "/purchase-orders/listing-options")
                         .with(csrf()))
@@ -1369,8 +1374,10 @@ class M16ErpIntegrationTest {
                 .status(Tenant.TenantStatus.ACTIVE)
                 .build());
         Listing otherListing = listingRepository.save(Listing.builder()
+                .tenant(otherTenant)
                 .tenantId(otherTenant.getId())
-                .ownerId(otherTenant.getId())
+                .owner(userRepository.getReferenceById(testSellerUserId))
+                .ownerId(testSellerUserId)
                 .listingType(Listing.ListingType.PRODUCT)
                 .title("Other Tenant Product")
                 .description("cross-tenant isolation test")
@@ -1378,8 +1385,6 @@ class M16ErpIntegrationTest {
                 .status(Listing.ListingStatus.ACTIVE)
                 .build());
         listingRepository.flush();
-        // 顯式補寫 tenant_id（insertable=false）→ 確實是「他租戶」而非 null（otherTenant 存在，FK 滿足）
-        jdbcTemplate.update("UPDATE listings SET tenant_id = ? WHERE id = ?", otherTenant.getId(), otherListing.getId());
 
         UUID otherSku = UUID.randomUUID();
         jdbcTemplate.update(

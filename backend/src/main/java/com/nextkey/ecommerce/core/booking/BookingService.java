@@ -48,9 +48,9 @@ import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
-import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
 import com.nextkey.ecommerce.shared.time.BusinessTime;
 import com.nextkey.ecommerce.shared.util.PageableUtils;
 import static com.nextkey.ecommerce.shared.tenant.TenantContext.getCurrentTenant;
@@ -95,14 +95,6 @@ public class BookingService {
     // Default check-in/out times
     private static final LocalTime DEFAULT_CHECK_IN_TIME = LocalTime.of(15, 0);
     private static final LocalTime DEFAULT_CHECK_OUT_TIME = LocalTime.of(11, 0);
-
-    /**
-     * 系統租戶（比照 {@code OrderService.SYSTEM_TENANT_UUID}／DEF-188 的教訓）：未歸屬任何實際租戶的
-     * 使用者（一般 BUYER、未審核的 SELLER）一律 fallback 到這個常數，任兩個這樣的使用者
-     * {@code TenantContext.getCurrentTenant()} 會是同一個值。{@link #checkBookingOwnership} 的
-     * same-tenant 分支必須明確排除它，否則形同任一買家可操作任一其他買家掛在系統租戶下的訂房。
-     */
-    private static final UUID SYSTEM_TENANT_UUID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
 
     /**
      * 檢查日期範圍可用性
@@ -614,10 +606,11 @@ public class BookingService {
      * PRD §9.16「GET /api/v2/dashboard/bookings」；比照 {@link #getUserBookings} 的分頁/排序與
      * 批次查詢房型標題處理，改用 {@code findByTenantIdOrderByCreatedAtDesc}（既有 repository 方法，
      * 原本沒有任何呼叫者）。沒有店鋪的呼叫者（一般買家）回空頁，不查詢、不拋錯（比照
-     * {@code OrderService.getTenantOrders}）：這類使用者的租戶不是 null，而是 {@link #SYSTEM_TENANT_UUID}
-     * 佔位值，而 {@code bookings.tenant_id} 恰好也會蓋成這個值（建立訂房取呼叫者的租戶脈絡），
-     * 直接拿它查等於把所有一般買家的訂房（含訂房人姓名）交給任一登入者（Sprint 232 實測；本方法原註解
-     * 「tenantId 為 null 故自然為空頁」的前提不成立，是從 {@code getTenantOrders} 抄來的同一個錯誤假設）。
+     * {@code OrderService.getTenantOrders}）：這類使用者的租戶不是 null，而是系統租戶佔位值
+     * （見 {@link TenantContext#isStoreTenant}），而修復前的訂房原本會蓋成這個值（建立訂房取呼叫者的租戶脈絡；
+     * Sprint 236 起改蓋房源所屬的店鋪），直接拿它查等於把所有一般買家的訂房（含訂房人姓名）交給任一登入者
+     * （Sprint 232 實測；本方法原註解「tenantId 為 null 故自然為空頁」的前提不成立，是從 {@code getTenantOrders}
+     * 抄來的同一個錯誤假設）。
      */
     @Transactional(readOnly = true)
     public Page<BookingDto.BookingListResponse> getTenantBookings(int page, int size, String sortBy, String sortDir) {
@@ -625,7 +618,7 @@ public class BookingService {
         Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
         PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
 
-        if (tenantId == null || tenantId.equals(SYSTEM_TENANT_UUID)) {
+        if (!TenantContext.isStoreTenant(tenantId)) {
             return Page.empty(pageRequest);
         }
 
@@ -977,7 +970,7 @@ public class BookingService {
      * <p>Sprint 231（DEF-306/DEF-316）新增 same-tenant 分支，比照
      * {@code OrderService.checkOrderTenantAuthorization}：商家（STORE_OWNER／HOST，持有 booking:cancel
      * 或 booking:read）需能存取/取消自己租戶房源的訂房，此前僅 admin 或買家本人放行，PRD §7.3
-     * 要求的商家端訂房管理（RX*）因此完全不可達。same-tenant 必須排除 {@link #SYSTEM_TENANT_UUID}，
+     * 要求的商家端訂房管理（RX*）因此完全不可達。same-tenant 必須排除系統租戶（{@link TenantContext#isStoreTenant}），
      * 否則任兩個未歸屬任何租戶的一般買家會落在同一個「租戶」下，形同放行跨買家存取。
      */
     private void checkBookingOwnership(final com.nextkey.ecommerce.domain.model.order.Booking booking) {
@@ -990,8 +983,7 @@ public class BookingService {
             auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
         );
         boolean isOwner = userId.equals(booking.getUserId());
-        boolean isSameTenant = tenantId != null && tenantId.equals(booking.getTenantId())
-                && !tenantId.equals(SYSTEM_TENANT_UUID);
+        boolean isSameTenant = TenantContext.isStoreTenant(tenantId) && tenantId.equals(booking.getTenantId());
         if (!isAdmin && !isOwner && !isSameTenant) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to access this booking");
         }

@@ -255,7 +255,7 @@ class OrderCancellationCompensationIntegrationTest {
         cartService.addItem(buyer.getId(), tenant.getId(), CartDto.AddItemRequest.builder()
                 .listingId(listingId).skuId(skuId).quantity(QTY).build());
         if (promoCode != null) {
-            cartService.applyPromoCode(buyer.getId(), tenant.getId(), promoCode);
+            cartService.applyPromoCode(buyer.getId(), tenant.getId(), null, promoCode);
         }
         OrderDto.CreateRequest request = new OrderDto.CreateRequest();
         request.setOrderType("PRODUCT");

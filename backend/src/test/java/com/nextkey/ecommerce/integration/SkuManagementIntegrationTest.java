@@ -108,7 +108,10 @@ class SkuManagementIntegrationTest {
                     UUID.randomUUID(), TENANT_ID, "ERP_ENABLED");
         }
 
-        if (userRepository.findById(USER_ID).isEmpty()) {
+        // User.id 是 @GeneratedValue：builder 的 .id(USER_ID) 會被忽略、存成隨機 id，所以不能用固定 ID 當 listings.owner_id 的 FK，
+        // 要用實際存下來的使用者實體（DEF-332 補關聯後 owner_id 是 NOT NULL，FK 必須真的存在）
+        com.nextkey.ecommerce.domain.model.user.User listingOwner = userRepository.findById(USER_ID).orElse(null);
+        if (listingOwner == null) {
             com.nextkey.ecommerce.domain.model.user.User owner =
                     com.nextkey.ecommerce.domain.model.user.User.builder()
                             .id(USER_ID)
@@ -119,12 +122,16 @@ class SkuManagementIntegrationTest {
                             .status("ACTIVE")
                             .tenantId(TENANT_ID)
                             .build();
-            userRepository.save(owner);
+            listingOwner = userRepository.save(owner);
         }
 
+        // DEF-332：關聯（tenant／owner）才是寫入資料庫的欄位；影子欄位 insertable=false，測試庫的 listings 這兩欄是 NOT NULL，
+        // 只設影子欄位會在 INSERT 時失敗。租戶與使用者以固定 ID 種好，用參考當關聯。
         Listing listing = Listing.builder()
+                .tenant(tenantRepository.getReferenceById(TENANT_ID))
                 .tenantId(TENANT_ID)
-                .ownerId(USER_ID)
+                .owner(listingOwner)
+                .ownerId(listingOwner.getId())
                 .listingType(Listing.ListingType.PRODUCT)
                 .title("Sprint 178 Test Product")
                 .description("SKU management regression test product")
@@ -134,8 +141,6 @@ class SkuManagementIntegrationTest {
                 .build();
         listing = listingRepo.save(listing);
         testListingId = listing.getId();
-        // Listing.tenantId 為 insertable=false 影子欄位（DEF-041），JPA save 不寫 tenant_id
-        jdbcTemplate.update("UPDATE listings SET tenant_id = ? WHERE id = ?", TENANT_ID, testListingId);
     }
 
     @AfterEach

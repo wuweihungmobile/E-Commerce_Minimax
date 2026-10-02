@@ -221,7 +221,7 @@ public class GlobalExceptionHandler {
                     E_8011, E_1012 -> HttpStatus.FORBIDDEN;
             case E_2003 -> HttpStatus.CONFLICT;
             case E_3004, E_4001, E_4002, E_4003, E_4004, E_4005, E_4007, E_4104, E_5002, E_5004, E_5007,
-                    E_5008, E_5009, E_5015, E_5017, E_5018, E_5019, E_6001, E_6002, E_6003, E_6006,
+                    E_5008, E_5009, E_5015, E_5017, E_5018, E_5019, E_5020, E_6001, E_6002, E_6003, E_6006,
                     E_7004, E_7502, E_2005, E_2007, E_2008, E_2009, E_1097, E_1011,
                     E_1088, E_1089, E_1095, E_9009 -> HttpStatus.BAD_REQUEST;
             // Sprint 153：E_1008 原本掛在 E_1000~E_1004 這組 UNAUTHORIZED（Sprint 78 stub 時代預留，

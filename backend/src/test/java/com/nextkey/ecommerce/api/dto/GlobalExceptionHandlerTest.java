@@ -78,7 +78,7 @@ class GlobalExceptionHandlerTest {
                 ErrorCode.E_2009, ErrorCode.E_3004, ErrorCode.E_4001, ErrorCode.E_4002, ErrorCode.E_4003,
                 ErrorCode.E_4004, ErrorCode.E_4005, ErrorCode.E_4007, ErrorCode.E_4104, ErrorCode.E_5002,
                 ErrorCode.E_5004, ErrorCode.E_5007, ErrorCode.E_5008, ErrorCode.E_5009, ErrorCode.E_5015,
-                ErrorCode.E_5017, ErrorCode.E_5018, ErrorCode.E_5019, ErrorCode.E_6001, ErrorCode.E_6002,
+                ErrorCode.E_5017, ErrorCode.E_5018, ErrorCode.E_5019, ErrorCode.E_5020, ErrorCode.E_6001, ErrorCode.E_6002,
                 ErrorCode.E_6003, ErrorCode.E_6006, ErrorCode.E_7004, ErrorCode.E_7502, ErrorCode.E_1097,
                 ErrorCode.E_1088, ErrorCode.E_1089, ErrorCode.E_1095, ErrorCode.E_9009,
                 ErrorCode.E_9000, ErrorCode.E_9001, ErrorCode.E_9002, ErrorCode.E_9003, ErrorCode.E_9004,

@@ -127,7 +127,8 @@ public class CartController {
     }
 
     /**
-     * 套用優惠券
+     * 套用優惠券。促銷碼屬於店鋪（Sprint 237）：{@code storeId} 指定套用在哪家店鋪；購物車只有一家店鋪的項目時可省略，
+     * 多家店鋪時必填（否則 E-5020）。
      */
     @PostMapping("/apply-promo")
     @PreAuthorize("hasAuthority('cart:update')")
@@ -137,34 +138,39 @@ public class CartController {
 
         UUID tenantId = getTenantId(principal);
         CartDto.ApplyPromoResponse result = cartService.applyPromoCode(
-                principal.getUserId(), tenantId, request.getPromoCode());
+                principal.getUserId(), tenantId, request.getStoreId(), request.getPromoCode());
         return ResponseEntity.ok(ApiResponse.success("Promo code applied", result));
     }
 
     /**
-     * 移除優惠券
+     * 移除優惠券（Sprint 237：某家店鋪的券；{@code storeId} 的省略規則同套用）。
      */
     @DeleteMapping("/promo")
     @PreAuthorize("hasAuthority('cart:update')")
     public ResponseEntity<ApiResponse<Void>> removePromo(
-            @AuthenticationPrincipal UserPrincipal principal) {
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) UUID storeId) {
 
         UUID tenantId = getTenantId(principal);
-        cartService.removePromoCode(principal.getUserId(), tenantId);
+        UUID store = cartService.resolveStoreId(principal.getUserId(), tenantId, storeId);
+        cartService.removePromoCode(principal.getUserId(), tenantId, store);
         return ResponseEntity.ok(ApiResponse.success("Promo code removed", null));
     }
 
     /**
-     * 驗證優惠券（不套用）
+     * 驗證優惠券（不套用）。促銷碼在店鋪驗證（Sprint 237）：{@code storeId} 的省略規則見
+     * {@link RedisCartService#resolveStoreIdForValidation}（端點永遠回 200，空購物車維持原本的行為）。
      */
     @GetMapping("/validate-promo")
     @PreAuthorize("hasAuthority('cart:read')")
     public ResponseEntity<ApiResponse<CartDto.PromoValidationResult>> validatePromo(
             @AuthenticationPrincipal UserPrincipal principal,
-            @RequestParam String code) {
+            @RequestParam String code,
+            @RequestParam(required = false) UUID storeId) {
 
         UUID tenantId = getTenantId(principal);
-        CartDto.PromoValidationResult result = cartService.validatePromoCode(code, tenantId);
+        UUID store = cartService.resolveStoreIdForValidation(principal.getUserId(), tenantId, storeId);
+        CartDto.PromoValidationResult result = cartService.validatePromoCode(code, store);
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 

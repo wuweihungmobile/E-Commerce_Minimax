@@ -112,6 +112,7 @@ A3 的後果：**已實測（`E2E-SDASH-08`）**店主讀取消費者買的訂�
 - **畫面目視（Sprint 231 前端的首次驗收）**：`SDASH-09` 的截圖逐張讀過——列表（房源名稱、訂房人姓名與住宿日期、金額、狀態徽章）、詳情、取消面板（含政策說明「商家取消一律全額退款」）、取消後的提示與「退款處理中」卡片、退款完成後重新載入顯示「已退款」，皆正確。
 - **版面觀察**：這些頁面沒有後台導覽列、內容貼齊視窗邊緣——查證後這是**既有的普遍現象**，不是 Sprint 231 獨有：後台 46 個頁面中 20 個沒有自己的置中容器（含 `/dashboard/returns`、客服工單、ERP 清單、FAQ…），且**沒有共用的 `dashboard/layout.tsx`**，使用者只能靠 `/dashboard` 首頁的快速連結與瀏覽器返回鍵（已登記 DEF-324，低優先級）。
 - **前端**：`tsc --noEmit`、`eslint`（新 spec）皆通過。
+- **push 與雲端 CI**：commit `2d5bd7a` 於 2026-10-02 push（`ff89824..2d5bd7a main -> main`）。pre-commit 通過（checkstyle／compile／核心測試／ESLint／TypeScript）；pre-push 輕量守門通過（後端單元、前端 Lint＆Build、schema 漂移）；**雲端 CI 全綠**（run 36953536720，三個 job 皆 success，共 6 分 42 秒）。全程未使用 `--no-verify`。
 - **`make validate-e2e`**（乾淨 PostgreSQL＋Flyway、`ddl-auto=validate`、打包 JAR＋`npm start`，沿用剛打包的產物）：**121 個測試：117 通過／4 略過（與 Sprint 231 基準相同的 4 個）／0 失敗，7.2 分鐘**（121＝Sprint 231 的 112＋本輪新增 9；4 個 `test.fail()` 案例依 Playwright 規則計入「通過」）；schema 對齊（後端以 `ddl-auto=validate` 對 Flyway 從零重建的資料庫啟動成功）。耗時比 Sprint 231 的 4.7 分鐘長，主因是新 spec 的真實開店流程與兩個角色走訪（序列執行約 1.2～1.7 分鐘）。
 
 ## 6. 範圍外（延後）與待使用者決定

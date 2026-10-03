@@ -147,6 +147,8 @@ public class AuthService {
 }
 ```
 
+> **⚠️ 修訂註記（Sprint 244，2026-10-03）**：以下為設計草稿。實際類別是 `infrastructure/security/JwtTokenService`（簽發與驗證都在那裡），效期由設定檔注入，不是寫死的常數；Refresh Token 的輪替與重放偵測見 [SRD_System_Architecture.md](./SRD_System_Architecture.md) §5.1。
+
 #### TokenService.java
 ```java
 @Service
@@ -155,7 +157,7 @@ public class TokenService {
     private final JwtTokenProvider jwtTokenProvider;
     
     // Token 有效期設定
-    private static final long ACCESS_TOKEN_VALIDITY = 30 * 60; // 30 分鐘
+    private static final long ACCESS_TOKEN_VALIDITY = 15 * 60; // 15 分鐘（Sprint 244 依實作改寫；實際值由 jwt.access-token-expiration 設定，預設 900000 ms）
     
     /**
      * 產生 Access Token
@@ -752,9 +754,8 @@ public class OrderCreationService {
                 order.assignIdempotencyKey(idempotencyKey);
             }
             
-            // 6. 狀態流轉：CREATED (= PAID for Phase 1)
+            // 6. 建立時為 CREATED；付款成功（Mock 或 Stripe 入帳）後才由付款服務轉為 PAID（Sprint 244 修訂：舊寫法的 Phase 1 建單即付款已不存在）
             order = orderRepository.save(order);
-            stateMachine.transition(order, OrderStatus.PAID, "system", OrderOperatorType.SYSTEM);
             
             // 7. 建立訂單明細
             createOrderItems(order, itemDataList);
@@ -809,6 +810,8 @@ public class OrderCreationService {
     }
 }
 ```
+
+> **⚠️ 修訂註記（Sprint 244）**：以下 `ALLOWED_TRANSITIONS` 為設計草稿，與實際規則不同（實際為 `PAID → CONFIRMED`、`CONFIRMED → SHIPPING`，`SHIPPING` 之後不可取消，`CANCELLED → REFUNDING → REFUNDED`）。實際規則是 `core/order/OrderStateMachine.java` 的靜態 `canTransition`，權威對照表見 [SRD_System_Architecture.md](./SRD_System_Architecture.md) §6.3.1。
 
 #### OrderStateMachine.java
 ```java
@@ -926,7 +929,7 @@ public class OrderStateMachine {
      │                    │ 建立訂單                │                      │
      │                    │───────────────────────────────────────────────>│
      │                    │                                              │
-     │                    │ 狀態流轉 CREATED→PAID   │                      │
+     │                    │ 付款成功 CREATED→PAID   │                      │
      │                    │───────────────────────────────────────────────>│
      │                    │                                              │
      │                    │ 建立訂單明細           │                      │
@@ -1271,9 +1274,10 @@ com.nextkey.ecommerce.api.controller/
 |------|------|------|----------|
 | v1.0 | 2026-04-09 | Marcus (SD-Architect) | 初始版本，包含 Phase 1 核心模組技術設計 |
 | v1.1 | 2026-09-26 | Claude Code（Sprint 203） | 文件一致性檢查（DEF-280）：§6 異常處理架構改寫為實際架構（原描述的例外階層與錯誤碼表從未存在於程式碼），錯誤碼移至 [API_Error_Codes.md](./API_Error_Codes.md)；新增 §5.4 價格精度與規則設定驗證（Sprint 192／193）。**未逐段核對**其餘章節（§1～§5.3）與程式碼的一致性，例如 §4.3 的 `X-Idempotency-Key` 標頭與實作的 `Idempotency-Key` 不同（見 DEF-285） |
+| v1.2 | 2026-10-03 | Claude Code（Sprint 244） | 文件對齊（3/3）：§1.2 Token 效期改為 15 分鐘（實際類別 `JwtTokenService`，效期由設定注入，見註記）；§4 M05 建單草稿移除「建單即 PAID」，`ALLOWED_TRANSITIONS` 草稿加註記（實際規則見 `OrderStateMachine`）；序列圖的付款標示改為「付款成功 CREATED→PAID」 |
 
 ---
 
 **文檔版本**: AISDLC v0.09
 **模板維護**: AISDLC Framework Team
-**最後更新**: 2026-09-26
+**最後更新**: 2026-10-03

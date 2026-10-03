@@ -17,7 +17,7 @@
 | **系統類型** | B2B2C 多租戶電子商務 + 民宿預訂系統 |
 | **文檔狀態** | Draft |
 | **System Architect** | Marcus (SD-Architect) |
-| **最後更新** | 2026-09-26 |
+| **最後更新** | 2026-10-03 |
 
 ---
 
@@ -322,19 +322,23 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
 
 ### 5.1 認證機制
 
-**JWT 雙令牌機制**:
-- Access Token: 30 分鐘有效
-- Refresh Token: 30 天有效，HttpOnly Cookie
+> **⚠️ 修訂註記（Sprint 244，2026-10-03）**：本節原寫「Access 30 分鐘、Refresh 30 天、HttpOnly Cookie、Payload 含 `roles` 陣列」，與實作不符，已依程式碼改寫（DEF-323 (b)）。
 
-**Token Payload**:
+**JWT 雙令牌機制**（`infrastructure/security/JwtTokenService`、`core/auth/AuthService`）:
+- Access Token: **15 分鐘**（設定 `jwt.access-token-expiration`，預設 `900000` ms）
+- Refresh Token: **預設 7 天**（設定 `jwt.refresh-token-expiration`，預設 `604800000` ms；`docker-compose.yml` 設為 30 天）。每次換發都會輪替；舊的 Refresh Token 再次使用會觸發重放偵測（Sprint 213／230）。登出會讓該 Token 失效；重設密碼會讓該會員的所有 Refresh Token 失效（§5.5）。
+- **沒有 Cookie**：後端不設定也不讀取任何 Cookie。登入與換發回應以 JSON 回傳 Token，`expiresIn` 單位是**毫秒**。前端存於 `localStorage`（鍵名 `accessToken`、`refreshToken`，見 `frontend/src/lib/axios.ts`）。
+- 因為 Token 存在 `localStorage`，XSS 是最主要的威脅，所以 §5.4 採用嚴格 nonce CSP。
+
+**Token Payload**（實際 claims；`sub` 為使用者 UUID，`role` 是單一字串，為簽發當時的**有效角色**，見 `AuthService.effectiveRole`、DEF-326）:
 ```json
 {
   "sub": "user-uuid",
   "email": "user@example.com",
-  "roles": ["BUYER", "SELLER"],
+  "role": "BUYER",
   "tenantId": "tenant-uuid",
   "iat": 1712640000,
-  "exp": 1712641800
+  "exp": 1712640900
 }
 ```
 
@@ -411,7 +415,8 @@ SuperAdmin
 | `AccountTokenService` | `infrastructure/security` | 簽發與消耗一次性 token，存於 **Redis**（無新資料表、無 Flyway 遷移） |
 | `AccountSecurityService` | `core/auth` | 忘記密碼／重設密碼／Email 驗證／開店申請前置條件的流程 |
 | `EmailSender` | `infrastructure/email` | 寄信介面；`canDeliver()` 表示是否真能寄出信 |
-| `LoggingEmailSender` | `infrastructure/email` | Phase 1 唯一實作：日誌型 Mock |
+| `LoggingEmailSender` | `infrastructure/email` | 日誌型；`SMTP_USERNAME` 未設定時使用（非 prod 記全文、prod 不記內容） |
+| `SmtpEmailSender` | `infrastructure/email` | Google Workspace SMTP（Sprint 209）；`SMTP_USERNAME` 有值時 `@Primary` 取代日誌型；尚未對真實伺服器實測 |
 
 **Token 設計（為什麼放 Redis）**：token 天生短命（重設 30 分鐘、驗證 24 小時）、要能原子地「取出並作廢」、過期就該消失——正是 TTL＋`GETDEL` 擅長的。Redis 被清空的代價只是使用者重新申請一次連結。
 
@@ -432,7 +437,10 @@ SuperAdmin
 - 非 `prod` profile：`LoggingEmailSender` 把信件全文（含連結）寫進日誌，`canDeliver() = true`。開發者與 E2E 從日誌取連結（E2E 見 `frontend/e2e/helpers/mailbox.ts`，日誌路徑由環境變數 `E2E_BACKEND_LOG` 提供）。
 - `prod` profile：**不記錄內容**（連結等同密碼重設憑證，任何能讀日誌的人都能接管帳號），`canDeliver() = false`，啟動時記 WARN。
 - **開店申請的 Email 驗證前置條件只在 `canDeliver() = true` 時生效**：沒有信可寄就無從驗證，強制檢查只會鎖死所有申請者。接上真實寄信服務（新增 `EmailSender` 實作並標 `@Primary`，`canDeliver()` 回 `true`）後自動生效。
-- **在接上真實寄信服務之前，這兩項功能不可宣告可在正式環境上線。**
+- **真實寄信（`SmtpEmailSender`，Sprint 209）已接線**：`@Primary`，只在 `spring.mail.username`（環境變數 `SMTP_USERNAME`）有值時建立（`@ConditionalOnExpression`，不用 `@ConditionalOnProperty`，見該類別註解）。寄件位址預設沿用 `SMTP_USERNAME`，可由 `SMTP_FROM_ADDRESS` 覆寫。啟用時 `canDeliver()` 為 `true`。
+- **目前的部署狀態**：`docker-compose.yml` 沒有傳遞 `SMTP_*`（DEF-322），所以 compose 部署的 `prod` 仍是 `canDeliver() = false`。**`SmtpEmailSender` 尚未對真實 Google Workspace SMTP 伺服器實測過**（Sprint 209 紀錄）。
+- **在完成實測並把 `SMTP_*` 設到正式環境之前，這兩項功能不可宣告可在正式環境上線。**
+- **啟用前必修**：`SmtpEmailSender` 目前是同步寄送（忘記密碼端點在請求內呼叫 `send`），啟用後回應時間會洩漏帳號是否存在（DEF-347）。S204 登記的「改為非同步寄送」條件已成立。
 
 **與既有機制的關係**：重設密碼成功會呼叫 `RefreshTokenService.blacklistAllRefreshTokens` 並解除 `LoginAttemptService` 的登入鎖定；四個端點都納入 `LoginRateLimitFilter`（每來源 IP、每路徑 30 次／分鐘）；三個公開端點在 `SecurityConfig` 為 `permitAll`。
 
@@ -533,38 +541,28 @@ SuperAdmin
 
 #### 6.3.1 訂單狀態流轉
 
+> **⚠️ 修訂註記（Sprint 244，2026-10-03）**：舊圖的 `CREATED(=PAID)`（Phase 1 Payment Mock 建單即付款）與 `DELIVERED → REFUNDING`（買家申請退款）與實際不符，已依 `core/order/OrderStateMachine.java` 的 `canTransition` 重繪。實作中建單後停在 `CREATED`，付款成功才轉為 `PAID`。
+
 ```
-    CREATED ──────┬──────────────────────┬──────────────┐
-        │         │                      │              │
-        │         │                      │              ▼
-        │         │                      │         CANCELLED
-        ▼         │                      │              │
-     PAID ◄───────┘                      │              │
-        │                                 │              │
-        ▼                                 │              │
-    SHIPPING ────────────────────────────┼──────────────┤
-        │                                 │              │
-        ▼                                 │              │
-    DELIVERED ────────────────────────────┼──────────────┤
-        │                                 │              │
-        ├──────────────┬──────────────────┘              │
-        ▼              ▼                                 │
-   COMPLETED      REFUNDING                              │
-        │              ▼                                 │
-        │          REFUNDED                              │
-        │                                                 │
-        ▼                                                 ▼
-   ┌─────────────────────────────────────────────────────────────┐
-   │                    狀態流轉說明                             │
-   ├─────────────────────────────────────────────────────────────┤
-   │ CREATED → PAID:     付款完成（Phase 1 MOCK 立即完成）      │
-   │ CREATED/PAID → CANCELLED: 買家或管理員取消                │
-   │ PAID/SHIPPING → DELIVERED: 物流確認送達                   │
-   │ DELIVERED → COMPLETED: 買家確認完成                       │
-   │ DELIVERED → REFUNDING: 買家申請退款                       │
-   │ REFUNDING → REFUNDED: 退款完成                            │
-   └─────────────────────────────────────────────────────────────┘
+CREATED ──付款成功──▶ PAID ──店家確認──▶ CONFIRMED ──出貨──▶ SHIPPING ──送達──▶ DELIVERED ──完成──▶ COMPLETED（終態）
+   │                   │                    │
+   └──────────── 取消（SHIPPING 之後不可取消）────────────┘
+                       ▼
+                   CANCELLED ──（已付款者）──▶ REFUNDING ──退款完成──▶ REFUNDED（終態）
 ```
+
+| 從 | 到 | 觸發 | 實作位置 |
+|----|----|------|----------|
+| `CREATED` | `PAID` | 付款成功：Mock `POST /v2/orders/{orderId}/pay`，或 Stripe 入帳 | `PaymentStateService` |
+| `CREATED`／`PAID`／`CONFIRMED` | `CANCELLED` | 買家或店家（含管理員）取消；未付款超過 24 小時自動取消 | `OrderService`、`OrderTimeoutService` |
+| `PAID` | `CONFIRMED` | 店家確認（`PATCH /v2/orders/{orderId}/status`） | `OrderStateMachine` |
+| `CONFIRMED` | `SHIPPING` | 店家出貨（Sprint 218 起出貨時才扣庫存） | `OrderStateMachine` |
+| `SHIPPING` | `DELIVERED` | 送達；出貨後不可取消 | `OrderStateMachine` |
+| `DELIVERED` | `COMPLETED` | 完成（終態） | `OrderStateMachine` |
+| `CANCELLED` | `REFUNDING` | 已付款的取消單進入退款（取消補償） | `OrderService` |
+| `REFUNDING` | `REFUNDED` | 退款完成（管理員退款或自動退款排程） | `RefundProcessingService`、`PaymentStateService` |
+
+`canPay` 只在 `CREATED` 成立；`canCancel` 為 `CREATED`／`PAID`／`CONFIRMED`。`COMPLETED` 與 `REFUNDED` 為終態。API 與權限見 [API_M05_Order.md](./api/API_M05_Order.md) §5。
 
 #### 6.3.2 Listing 狀態流轉
 
@@ -583,6 +581,18 @@ SuperAdmin
            ▼              ▼               ▼
        REJECTED      SUSPENDED        SUSPENDED
 ```
+
+#### 6.3.4 訂房狀態流轉（Sprint 244 補充）
+
+> **⚠️ 注意**：`CONFIRMED`、`CHECKED_IN`、`CHECKED_OUT`、`COMPLETED` 在列舉中有定義，但**目前沒有任何程式路徑寫入**（DEF-345）。實際可達的狀態只有 `CREATED`、`PAID`、`CANCELLED`。
+
+| 從 | 到 | 觸發 | 狀態 |
+|----|----|------|------|
+| `CREATED` | `PAID` | 付款成功：Mock `POST /v2/bookings/{bookingId}/pay`，或 Stripe 入帳 | 已實作 |
+| `CREATED`／`PAID`／`CONFIRMED` | `CANCELLED` | 買家或店家取消；未付款超過 `payment_due_at` 自動取消 | 已實作 |
+| `PAID` → `CONFIRMED` → `CHECKED_IN` → `CHECKED_OUT` → `COMPLETED` | — | 店家確認、入住、退房、完成 | **未實作**（DEF-345；PRD Phase 1 寫明 CONFIRMED 等效於 PAID） |
+
+取消與退款規則（PRD Q14：入住前 24 小時以上全額、不足 24 小時不退；商家、管理員與系統取消全額）見 [API_M06_Booking.md](./API_M06_Booking.md)。
 
 ### 6.4 索引設計
 
@@ -672,6 +682,7 @@ SuperAdmin
 | v1.1 | 2026-09-26 | Claude Code（Sprint 203） | 文件一致性檢查（DEF-280）：§4.2／§4.3 改為實際的扁平回應封包並指向新增的 [API_Error_Codes.md](./API_Error_Codes.md)；新增 §4.4 時間與時區慣例（DEF-269／271）；新增 §5.4 回應安全標頭、請求追蹤與 CORS（Sprint 191、197～202，DEF-265／278／279／280／281／282）。此前這些行為只存在於 Sprint 計畫與程式碼 |
 | v1.2 | 2026-09-26 | Claude Code（Sprint 204） | 新增 §5.5 一次性連結：忘記密碼與 Email 驗證（Redis token、`EmailSender`／`canDeliver()`、與開店申請前置條件的關係） |
 | v1.3 | 2026-09-27 | Claude Code（Sprint 206） | §5.4.1：Tomcat 連接器層的拒絕改回 JSON 封包＋`X-Request-ID`＋安全標頭（DEF-283） |
+| v1.4 | 2026-10-03 | Claude Code（Sprint 244） | 文件對齊（3/3）：§5.1 Token 效期（Access 15 分鐘、Refresh 預設 7 天）改為實作現況，並註明無 Cookie、前端存 `localStorage`、Payload 為實際 claims；§5.5 寄信通道補 `SmtpEmailSender`（Sprint 209）與其未實測、同步寄送的限制（DEF-347）；§6.3.1 訂單狀態圖依 `OrderStateMachine` 重繪（移除 `CREATED(=PAID)` 與 `DELIVERED→REFUNDING`）；新增 §6.3.4 訂房狀態（`CONFIRMED` 以後未實作，DEF-345） |
 
 ---
 

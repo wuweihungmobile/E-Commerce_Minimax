@@ -10,6 +10,8 @@
 > **回應封包與錯誤碼**: 一律以 [API_Error_Codes.md](./API_Error_Codes.md) 為準（扁平封包 `success`／`code`／`message`／`data`／`errors`，**沒有**巢狀的 `error`，也**沒有**數字型的 `code`）
 > **取代關係**: 本文件**取代** v1.0 全文
 
+> **⚠️ 修訂註記（Sprint 244，2026-10-03）**：本文件所有寫「`CONFIRMED` 可更新」或「由店家操作」的敘述與實作不符：目前**沒有任何程式路徑**會寫入 `CONFIRMED`、`CHECKED_IN`、`CHECKED_OUT`、`COMPLETED`，可達的狀態只有 `CREATED`、`PAID`、`CANCELLED`（DEF-345）。Sprint 243 把「`CONFIRMED` 可更新」當成實測行為，那只有直接寫資料庫的測試才能產生這個狀態，此處更正。
+>
 > **⚠️ 修訂註記（Sprint 243）**：v1.0 只描述 Sprint 4 的 6 個端點，與實作有七處落差，本版已更正：
 > 1. **端點由 6 個改為實際的 11 個**：漏了日曆（`GET /calendar`）、整組付款端點（Sprint 221）與商家端訂房列表（`GET /v2/dashboard/bookings`，Sprint 231）；
 > 2. **退款與取消方**（Sprint 225～227）：取消回應多了 `canceledBy`／`refundStatus`／`refundAmount`；已付款訂房的退款依 PRD Q14（買家入住前 ≥ 24 小時全額、不足 24 小時不退；商家或管理員代為取消一律全額）；
@@ -39,7 +41,7 @@
 1. **日曆以「晚」為單位**：區間 `[checkInDate, checkOutDate)`，**退房日不佔用**；晚數 = 退房日 − 入住日，**必須 ≥ 1**。日曆只存「有記錄的日期」（`AVAILABLE`／`BOOKED`／`BLOCKED`／`MAINTENANCE`），**沒有記錄的日期視為可訂**；超出房源「開放窗」的日期回 `NOT_OPEN`。
 2. **併發與衝突**：建立訂房時對每一晚取 Redis 日期鎖（NO WAIT，取不到立刻 `E-4001`）、再以資料庫列鎖（`FOR UPDATE NOWAIT`）確認並標記 `BOOKED`；鎖在 `finally` 釋放。
 3. **金額在建立當下算好**：`totalAmount = 房價（動態定價優先，否則 basePrice × 晚數） − 優惠券折扣`。付款期限 `paymentDueAt` = 建立時間 + 24 小時（`BOOKING_PAYMENT_TIMEOUT_HOURS`）；**歷史訂房（`null`）永不逾時**。
-4. **狀態**：`CREATED → PAID → CONFIRMED → CHECKED_IN → CHECKED_OUT → COMPLETED`，`CANCELLED` 為取消終態。**可取消**＝`CREATED`／`PAID`／`CONFIRMED`；**可更新**＝`CREATED`／`CONFIRMED`（實測：**已付款（`PAID`）的訂房不能更新**，回 `422 E-5010`）。
+4. **狀態**：`CREATED → PAID → CONFIRMED → CHECKED_IN → CHECKED_OUT → COMPLETED`（目前程式只會產生 `CREATED`、`PAID`、`CANCELLED`；其餘狀態沒有寫入路徑，見 DEF-345），`CANCELLED` 為取消終態。**可取消**＝`CREATED`／`PAID`／`CONFIRMED`；**可更新**＝`CREATED`／`CONFIRMED`（實測：**已付款（`PAID`）的訂房不能更新**，回 `422 E-5010`）。
 5. **取消的退款（PRD Q14，Sprint 227）**：只有已付款的訂房才有款項可退。買家**本人**取消：入住前 **≥ 24 小時全額退款**、**不足 24 小時不退**；商家／管理員**代為取消**、系統逾時取消一律全額退款。入住時刻是「入住日＋房型的入住時間（預設 15:00）」在營運時區（Asia/Taipei）的絕對時刻。取消回應的 `refundStatus: PENDING` 表示**等待排程自動退款**（取消請求本身不呼叫金流）。
 6. **店鋪暫停營業不能訂房、也不能付款**（`E-2010`）；**取消、退款、Stripe 入帳不擋**（Sprint 239／242）。付款狀態的 `storeOpen` 讓前端提前顯示「店鋪暫停營業」。
 
@@ -414,9 +416,9 @@ M06 常見錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](./A
 |------|------|
 | `sortBy`／`sortDir` 不改變順序 | repository 方法名寫死 `OrderByCreatedAtDesc`（`DEF-342`） |
 | `E-3001`／`E-6002` 的預設訊息誤導 | 日曆參數無效回「無效的刊登類型」、Stripe 未啟用回「付款已取消」（`DEF-341`） |
-| 已付款的訂房不能更新 | `PAID` 回 `E-5010`，而 `CONFIRMED` 可以——實測行為；要改已付款的訂房請取消後重訂 |
+| 已付款的訂房不能更新 | `PAID` 回 `E-5010`；`CONFIRMED` 也可以更新，但目前沒有程式路徑產生 `CONFIRMED`（DEF-345）；要改已付款的訂房請取消後重訂 |
 | 舊版 `POST /v2/payments` 的訂房分支 | HTTP 打不到（`orderId` 是 `@NotNull`，只帶 `bookingId` 在驗證層回 400；Sprint 221 `DEF-303` (1)）；訂房請用 §4.8～4.10 |
-| 訂房沒有逾時以外的自動取消 | 已付款但沒有人確認的訂房不會自動處理（`CONFIRMED` 由店家操作） |
+| 訂房沒有逾時以外的自動取消 | 已付款但沒有人確認的訂房不會自動處理；目前也沒有任何店家操作可把它改為 `CONFIRMED`（DEF-345） |
 | Stripe 路徑未對真實 Stripe 驗證 | 以 Mock／WireMock 驗證，從未對真實 Stripe 驗證（Sprint 221／227 紀錄） |
 
 ---

@@ -8,6 +8,8 @@
 > **AISDLC 版本**: v0.09
 >
 > **⚠️ 修訂註記（Sprint 203，2026-09-26，DEF-280）**：本文件引用的 `E-XXXX` 錯誤碼（約 95 處，如定價規則驗證的 `E-4001 VALIDATION_ERROR`）沿用 PRD 的舊錯誤碼表，與實作**不一致**。錯誤碼與 HTTP 狀態碼以 [API_Error_Codes.md](../02_architecture/API_Error_Codes.md) 為準；本文件內文保留原樣，未逐處改寫。
+>
+> **⚠️ 修訂註記（Sprint 244，2026-10-03，DEF-322）**：新增 **§6A M06 預訂系統**、**§6B M07 金流與結算**、**§6C M09 訊息通知中心** 三章，依程式碼現況撰寫，與 PRD 的差異逐章列在「與 PRD 的差異」。既有章節（§1～§6、§7～§8）**內文未改寫**：其中的 `CREATED(=PAID)`、Phase 1 Payment Mock、`/api/v2/dashboard/orders` 等敘述與實作不符，以 [SRD_System_Architecture.md](../02_architecture/SRD_System_Architecture.md) §6.3、[API_M05_Order.md](../02_architecture/api/API_M05_Order.md) 與 [API_M06_Booking.md](../02_architecture/API_M06_Booking.md) 為準。
 
 ---
 
@@ -2549,6 +2551,242 @@ WHERE sku_id = :skuId
 
 ---
 
+## 6A. M06 預訂系統 (Booking)
+
+> **📌 依實作現況撰寫（Sprint 244）**：本章描述程式碼現在做什麼，不是 PRD 的 Phase 1 規劃。PRD 與實作的差異列於 §6A.7。
+
+### 6A.1 模組概述
+
+民宿房源（`ROOM` 類型）的日期預訂，以「晚」為單位：入住日含、退房日不含，至少 1 晚。建立時鎖定每一晚的日期（Redis 日期鎖採 NO WAIT；再以資料庫列鎖 `FOR UPDATE NOWAIT` 確認並標記 `BOOKED`），計算金額，並設定付款期限（建立後 24 小時，`BOOKING_PAYMENT_TIMEOUT_HOURS`）。付款成功後訂房為 `PAID`。取消與退款依 PRD Q14 判定。訂房歸屬房源所屬的店鋪（Sprint 236，DEF-319）。
+
+API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.0，11 個端點）。
+
+### 6A.2 功能總覽（現況）
+
+| 功能 | 現況 | 說明 |
+|------|------|------|
+| 可用性與日曆查詢 | ✅ | `GET /v2/bookings/availability`、`GET /v2/bookings/calendar` |
+| 建立訂房（含付款期限） | ✅ | `POST /v2/bookings`；`Idempotency-Key` 選帶 |
+| 買家訂房列表與詳情 | ✅ | `GET /v2/bookings`、`GET /v2/bookings/{bookingId}` |
+| 修改日期與人數 | ✅（有限） | `PUT /v2/bookings/{bookingId}`；只有 `CREATED`／`CONFIRMED` 可改，`PAID` 回 `E-5010`。`CONFIRMED` 目前不可達（DEF-345） |
+| 取消與退款（PRD Q14） | ✅ | `POST /v2/bookings/{bookingId}/cancel`；規則見 §6A.5 |
+| 未付款逾時自動取消 | ✅ | `BookingTimeoutService` 排程，預設 24 小時（PRD US-014 相關） |
+| 已付款取消後的自動退款 | ✅ | `RefundProcessingService`，失敗指數退避（PRD US-005 相關） |
+| Mock 付款 | ✅ | `POST /v2/bookings/{bookingId}/pay`；只在 Stripe 功能開關關閉時可用 |
+| Stripe Checkout 付款 | ⚠️ | 發起與回跳已實作；**未對真實 Stripe 驗證** |
+| 店家列表（同店鋪） | ✅ | `GET /v2/dashboard/bookings`（Sprint 231） |
+| 店家取消（同店鋪） | ✅ | 同 `POST …/cancel`；取消方記為 `MERCHANT`，全額退款 |
+| 店家確認、入住、退房、完成 | ❌ | 沒有程式路徑（DEF-345） |
+| 訂房狀態日誌 `GET /api/v2/bookings/:id/state-log` | ❌ | 未實作（DEF-345） |
+| 預訂確認通知（PRD US-001） | ❌ | 未實作（DEF-318） |
+
+### 6A.3 主要用戶
+
+- **買家（Buyer）**：建立、付款、查詢與取消本人訂房（`booking:create`、`booking:read`、`booking:cancel`；沒有 `booking:update`）。
+- **店家（Host、Store Owner，同店鋪）**：查看、更新、取消本店鋪的訂房（權限見 API_M06 §4.6、§4.7）。
+- **管理員（Admin、Super Admin）**：全部權限，可代為取消與退款。
+
+### 6A.4 資料模型（摘要）
+
+| 表／實體 | 用途 | 重點 |
+|---------|------|------|
+| `bookings` | 訂房主檔 | `status`、`check_in_date`、`check_out_date`、`guest_count`、`total_amount`、`payment_due_at`、`cancelled_by`、`refund_status`、`refund_amount`；`tenant_id` 為房源所屬店鋪 |
+| `room_calendar` | 日曆格（每房每晚） | 狀態 `AVAILABLE`／`BOOKED`／`BLOCKED`／`MAINTENANCE` |
+| `payments` | 付款紀錄（M07） | 以 `booking_id` 關聯 |
+
+列舉：訂房狀態 `Booking.BookingStatus`（`CREATED`、`PAID`、`CONFIRMED`、`CHECKED_IN`、`CHECKED_OUT`、`COMPLETED`、`CANCELLED`）；取消方 `CancelledBy`（`CUSTOMER`、`MERCHANT`、`SYSTEM`）；退款進度 `RefundStatus`（`NONE`、`PENDING`、`COMPLETED`）。Redis 日期鎖的鍵前綴為 `lock:room:`，TTL 60 秒。完整 DDL 見 [SRD_Database_Schema.md](../02_architecture/SRD_Database_Schema.md)。
+
+### 6A.5 業務規則（現況）
+
+| 編號 | 規則 | 來源 |
+|------|------|------|
+| BR-M06-01 | 入住日必須早於退房日（至少 1 晚）；同日回 `E-4003`（Sprint 243 修正 DEF-340） | `BookingService` |
+| BR-M06-02 | 日期衝突回 `E-4001`；取消後日期鎖立即釋放（Sprint 243 修正 DEF-343） | `RoomCalendarService` |
+| BR-M06-03 | 人數不得超過房型上限（`E-4005`） | `BookingService` |
+| BR-M06-04 | 只有 `CREATED`／`PAID`／`CONFIRMED` 可取消；取消以條件式更新搶占，併發取消只會成功一次，輸的一方回 `E-4007` | `BookingService` |
+| BR-M06-05 | 只有 `CREATED`／`CONFIRMED` 可更新；`PAID` 回 `E-5010` | `BookingService` |
+| BR-M06-06 | 付款期限 `payment_due_at` = 建立時間 + 24 小時；`payment_due_at` 為 NULL 的歷史訂房永不逾時；已開始 Stripe 結帳者在 `stripe-session-hours` 內不取消 | `BookingTimeoutService` |
+| BR-M06-07 | 取消退款（PRD Q14）：買家本人取消且入住時刻前 ≥ 24 小時 → 全額；< 24 小時 → 不退；商家或管理員代為取消 → 全額；系統逾時取消 → 全額。入住時刻 = 入住日 + 房型入住時間（預設 15:00），以營運時區 Asia/Taipei 計算 | `BookingRefundPolicy` |
+| BR-M06-08 | 店鋪非 ACTIVE 時不能訂房、不能付款（`E-2010`）；取消、退款與 Stripe 入帳不擋 | `PaymentStoreGuard`（Sprint 239／242） |
+| BR-M06-09 | 訂房的 `tenant_id` 是房源所屬店鋪，不是買家的租戶（Sprint 236） | `BookingService` |
+| BR-M06-10 | 付款入帳以條件式更新搶占 `CREATED → PAID`，併發付款只會成功一次 | `PaymentStateService` |
+
+### 6A.6 API 規格概要
+
+規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.0）。路徑省略 `/api` 前綴（見 SRD §4.1）。
+
+| 方法 | 端點 | 用途 |
+|------|------|------|
+| GET | `/v2/bookings/availability` | 可用性檢查 |
+| GET | `/v2/bookings/calendar` | 房源日曆 |
+| POST | `/v2/bookings` | 建立訂房 |
+| GET | `/v2/bookings` | 買家訂房列表 |
+| GET | `/v2/bookings/{bookingId}` | 訂房詳情 |
+| PUT | `/v2/bookings/{bookingId}` | 更新日期與人數 |
+| POST | `/v2/bookings/{bookingId}/cancel` | 取消訂房 |
+| POST | `/v2/bookings/{bookingId}/pay` | Mock 付款 |
+| POST | `/v2/bookings/{bookingId}/pay/checkout` | 發起 Stripe Checkout |
+| GET | `/v2/bookings/{bookingId}/pay/checkout/return` | Stripe 回跳確認 |
+| GET | `/v2/dashboard/bookings` | 店鋪收到的訂房 |
+
+訂房的付款狀態查詢 `GET /v2/orders/bookings/{bookingId}/payment` 屬 M06，路由在訂單付款控制器，規格見 API_M05 §7.7。
+
+### 6A.7 與 PRD 的差異
+
+1. PRD §9.7 寫 Phase 1 的 M06「僅開放查詢與取消，不含 POST 建立」，已過時：建立、修改、付款與退款都已實作。
+2. PRD 的訂房狀態流程（`CREATED(=PAID) → CHECKED_IN → CHECKED_OUT → COMPLETED`，Phase 1 的 `CONFIRMED` 等效於 PAID）：實作的 `CONFIRMED`、`CHECKED_IN`、`CHECKED_OUT`、`COMPLETED` 沒有寫入路徑（DEF-345）。
+3. PRD §9.7 的 `GET /api/v2/bookings/:id/state-log`：未實作（DEF-345）。
+4. PRD US-001（預訂成功即時通知）：未實作（DEF-318）。
+
+---
+
+## 6B. M07 金流與結算 (Payment & Settlement)
+
+> **📌 依實作現況撰寫（Sprint 244）**：PRD 的 M07 是 Phase 2 的多金流與 Saga 設計；實作範圍與差異見 §6B.7。
+
+### 6B.1 模組概述
+
+付款（Mock 與 Stripe Checkout）、入帳、退款（管理員發起、部分退款，以及已付款取消後的自動退款排程）、Stripe Connect 分帳撥款（`Transfer`，失敗可重試）、每週結算單（商家提交、管理員審核、撥款，必要時沖正）。LINE Pay 只有閘道介面與接收端 stub。
+
+### 6B.2 功能總覽（現況）
+
+| 功能 | 現況 | 說明 |
+|------|------|------|
+| Mock 付款（訂單、訂房） | ✅ | `POST /v2/orders/{orderId}/pay`、`POST /v2/bookings/{bookingId}/pay`；只在 Stripe 功能開關關閉時可用（`E-6004`）。**開關預設關閉**（DEF-346） |
+| 模擬付款失敗 | ✅ | `POST /v2/orders/{orderId}/pay/fail`（取代 PRD 的 `X-Mock-Fail` 標頭） |
+| Stripe Checkout（訂單、訂房） | ⚠️ | 發起與回跳已實作；**未對真實 Stripe 驗證**（Sprint 207／226／227 紀錄） |
+| Stripe Webhook | ⚠️ | `POST /v2/payments/webhook/stripe`，含簽章驗證；**未對真實 Stripe 驗證** |
+| 退款（管理員） | ✅ | `POST /v2/orders/{orderId}/refund`，支援部分退款（Sprint 56）；買家與店家回 403（Sprint 243 實測） |
+| 自動退款排程 | ✅ | `RefundProcessingService`，處理 `REFUNDING` 訂單，預設每 60 秒掃描，失敗指數退避 |
+| Stripe Connect 帳戶與撥款 | ⚠️ | 帳戶狀態查詢與撥款重試已實作（`/v2/transfers`、`/v2/admin/transfers/{statementId}/retry`）；未實測 |
+| 每週結算單 | ✅ | `SettlementGenerator`，每週一 00:00（營運時區）生成 |
+| 結算單審核與沖正 | ✅ | 商家提交、管理員核准或駁回、沖正候選查詢、發起與確認 |
+| LINE Pay | ❌ stub | `LinePayPaymentGateway` 不呼叫 LINE Pay API；`POST /v2/payments/webhook/linepay` 只回 2xx（DEF-349） |
+| Saga 分散式交易 | ❌ | PRD 與 SRD 皆列為 Phase 2 |
+
+### 6B.3 主要用戶
+
+- **買家**：付款（訂單、訂房）、查看付款狀態。
+- **店家**：設定 Stripe Connect 帳戶（只限真實店鋪的店主，Sprint 235）、提交結算單。
+- **管理員**：退款、審核結算單、撥款重試、沖正。
+- **系統**：自動退款排程、每週結算排程。
+
+### 6B.4 資料模型（摘要）
+
+| 表／實體 | 用途 | 狀態列舉 |
+|---------|------|----------|
+| `payments` | 付款紀錄 | `PENDING`、`PROCESSING`、`SUCCESS`、`FAILED`、`REFUNDED`、`PARTIALLY_REFUNDED` |
+| `settlement_statements` | 結算單 | `PENDING`、`PENDING_REVIEW`、`APPROVED`、`REJECTED`、`PAID`、`FAILED`、`REVERSAL_PENDING`、`REVERSED` |
+| `Transfer`（領域模型） | 撥款 | — |
+| `CreditNote`（領域模型） | 沖正與調整 | — |
+
+付款方式列舉 `Payment.PaymentMethod`：`LINE_PAY`、`CREDIT_CARD`、`MOCK`、`STRIPE`。DDL 見 [SRD_Database_Schema.md](../02_architecture/SRD_Database_Schema.md)。PRD 寫的 `payment_splits`、`refund_requests`、`saga_events`、`compensation_log` 四張表**不存在**（遷移檔沒有建立）。
+
+### 6B.5 業務規則（現況）
+
+| 編號 | 規則 | 來源 |
+|------|------|------|
+| BR-M07-01 | 只有 `CREATED` 的訂單或訂房可付款，否則 `E-5011` | `PaymentStateService` |
+| BR-M07-02 | 付款入帳以條件式更新搶占 `CREATED → PAID`，併發付款只成功一次 | `PaymentStateService` |
+| BR-M07-03 | Mock 付款只在 `STRIPE_PAYMENT_ENABLED` 關閉時可用，開啟時回 `E-6004`。這是**資料庫的功能開關，不是環境變數**，預設關閉（DEF-346） | `PaymentStateService.requireMockPaymentAllowed` |
+| BR-M07-04 | 店鋪非 ACTIVE 時，Mock 付款、Stripe Checkout 發起與舊版 `POST /v2/payments` 都擋（`E-2010`）；Stripe Webhook 的入帳不擋，因為錢已收（DEF-308） | `PaymentStoreGuard`（Sprint 242） |
+| BR-M07-05 | 退款實際只有管理員能發起（端點要求 `order:update`，且須為訂單本人或管理員，買家與店家二者都不滿足，Sprint 243 實測） | `OrderPaymentController`、`PaymentStateService` |
+| BR-M07-06 | 部分退款不得超過剩餘可退額度；超過或超過兩位小數回 `E-6009` | `PaymentStateService` |
+| BR-M07-07 | Stripe 付款不能經 `POST /v2/payments/refund` 退款，因為那只會改本地狀態、錢沒有退回；必須走訂單退款端點（Sprint 226） | `PaymentService` |
+| BR-M07-08 | 舊版 `POST /v2/payments` 建立的是「直接成功」的 Mock 付款，付款方式由呼叫端自填，只在 Mock 模式可用，且需通過訂單擁有權檢查（DEF-019、DEF-299） | `PaymentService` |
+| BR-M07-09 | 每週一 00:00（營運時區）生成結算單 | `SettlementGenerator` |
+| BR-M07-10 | 結算單的流轉細節以 `core/settlement/` 的程式為準，目前沒有獨立的狀態圖（見 §6B.7） | `core/settlement/` |
+| BR-M07-11 | LINE Pay 閘道為模擬實作：`confirmPayment` 無條件回成功。舊版端點可在 Mock 模式把 `paymentMethod` 標為 `LINE_PAY`，這只是標籤（DEF-349），真實金流上線時不得依賴 | `LinePayPaymentGateway` |
+
+### 6B.6 API 規格概要
+
+| 範圍 | 端點 | 規格文件 |
+|------|------|----------|
+| 訂單付款 | `GET /v2/orders/{orderId}/payment`、`POST …/pay`、`POST …/pay/fail`、`POST …/pay/checkout`、`GET …/pay/checkout/return`、`POST …/refund` | [API_M05_Order.md](../02_architecture/api/API_M05_Order.md) §7 |
+| 訂房付款 | `POST /v2/bookings/{bookingId}/pay`、`…/pay/checkout`、`…/pay/checkout/return` | [API_M06_Booking.md](../02_architecture/API_M06_Booking.md) §4.8～4.10 |
+| 舊版付款 | `POST /v2/payments`、`POST /v2/payments/refund`、`GET /v2/payments/{paymentId}` | **無獨立規格** |
+| Webhook | `POST /v2/payments/webhook/stripe`；`POST /v2/payments/webhook/linepay`（stub） | **無獨立規格** |
+| 結算 | `/v2/settlements`、`/v2/settlements/{statementId}`、`…/submit`；`/v2/admin/settlements/pending`、`…/approve`、`…/reject`、`/v2/admin/settlements/generate`、`/v2/admin/settlements/reversal-candidates`、`…/reverse/initiate`、`…/reverse/confirm` | **API_M07 尚未建立**（API_Index 標註「連結待建立」） |
+| 撥款 | `/v2/transfers`、`/v2/admin/transfers/{statementId}/retry` | **API_M07 尚未建立** |
+
+### 6B.7 與 PRD 的差異
+
+1. PRD 的 LINE Pay（Phase 2-B）：實作為 stub（BR-M07-11）。
+2. PRD 的 `payment_splits`、`refund_requests`、`saga_events`、`compensation_log` 四張表不存在；分帳與退款以 `payments`、`settlement_statements` 與 Stripe 退款實作。
+3. PRD 的 Saga Pattern 分散式交易：未實作（Phase 2）。
+4. PRD 的 `X-Mock-Fail` 標頭：未實作，改以 `…/pay/fail` 端點取代。
+5. 結算單的狀態圖與撥款細節尚未文件化；M07 的 API 規格文件待建立（§6B.6）。
+6. 真實 Stripe 與 LINE Pay 皆未對真實服務驗證。
+
+---
+
+## 6C. M09 訊息通知中心 (Notification)
+
+> **📌 依實作現況撰寫（Sprint 244）**：PRD 的 M09 是 Phase 2 設計（MQ、多通道、模板化）。目前只有**站內通知**真正生效。
+
+### 6C.1 模組概述
+
+站內通知（`notifications`，通道 `IN_APP`）、通知偏好設定（`user_notification_preferences`）、通知範本（`notification_templates`）與通知歷史（`notification_history`）。通知先寫入 `notifications`（未送出），再放進 Redis List 佇列，由消費者更新同一列。買家的交易事件通知由 `BuyerNotificationService` 盡力而為地寫入（Sprint 229）。
+
+### 6C.2 功能總覽（現況）
+
+| 功能 | 現況 | 說明 |
+|------|------|------|
+| 站內通知列表、未讀數、標示已讀、刪除 | ✅ | `/v2/notifications` |
+| 通知偏好設定 | ✅（端點） | `/v2/notifications/preferences`；偏好是否影響送出，本章未逐項驗證 |
+| 通知範本管理 | ✅（端點） | `NotificationTemplateController`（`/v2`） |
+| 訂房取消、逾時取消的站內通知 | ✅ | `ORDER_CANCELLED`，Sprint 229 |
+| 訂單逾時取消的站內通知 | ✅ | `ORDER_CANCELLED` |
+| 退款完成的站內通知 | ✅ | `REFUND_COMPLETED`，Sprint 229（V86 加入類型約束） |
+| 訂單確認、已付款、出貨、送達、完成；訂房確認；付款成功與失敗；評價邀請 | ❌ | 類型已定義，沒有生產呼叫者（DEF-318） |
+| EMAIL、SMS、PUSH 通道實際寄送 | ❌ | 消費者不呼叫任何寄送服務，直接標為已送出（DEF-317） |
+| 通知 API 規格 | ❌ | 未收錄於 API_Index（DEF-286 範圍） |
+
+### 6C.3 主要用戶
+
+- **買家**：收件匣、未讀數、已讀與刪除、偏好設定。
+- **管理員**：範本管理；透過管理員 API 建立通知。
+- **系統**：交易事件（取消、退款）的站內通知。
+
+### 6C.4 資料模型（摘要）
+
+| 表 | 用途 |
+|----|------|
+| `notifications` | 通知主檔（類型、通道、收件人、是否已送出、是否已讀、重試次數等） |
+| `notification_templates` | 通知範本 |
+| `notification_history` | 通知歷史 |
+| `user_notification_preferences` | 使用者偏好設定 |
+
+列舉：類型 `Notification.NotificationType`（`ORDER_CONFIRMED`、`ORDER_PAID`、`ORDER_SHIPPED`、`ORDER_DELIVERED`、`ORDER_CANCELLED`、`REFUND_COMPLETED` 等）；通道 `Notification.NotificationChannel`（`IN_APP`、`EMAIL`、`SMS`、`PUSH`）。
+
+### 6C.5 業務規則（現況）
+
+| 編號 | 規則 | 來源 |
+|------|------|------|
+| BR-M09-01 | 通知是盡力而為：寫入失敗不影響交易。買家交易事件由 `BuyerNotificationService` 在交易提交後，以獨立交易（`REQUIRES_NEW`）寫入 | `BuyerNotificationService`（Sprint 229） |
+| BR-M09-02 | 通知先寫入 `notifications`（未送出），再進 Redis List；消費者以 `rightPop` 取出，更新同一列（DEF-305） | `NotificationService`、`NotificationConsumerService` |
+| BR-M09-03 | 消費失敗最多重試 3 次，每次間隔 30 秒 | `NotificationConsumerService` |
+| BR-M09-04 | 消費速度約每秒 1 則（DEF-307） | `NotificationConsumerService` |
+| BR-M09-05 | EMAIL、SMS、PUSH 通道標為已送出，但不會真的寄出（DEF-317）。在真實通道接上之前，不得把這些通道的通知當成已送達 | `NotificationConsumerService` |
+
+### 6C.6 API 規格概要
+
+規格文件尚未建立（DEF-286 範圍）。目前的端點基底路徑：
+
+| 基底路徑 | 用途 |
+|---------|------|
+| `/v2/notifications` | 站內通知（列表、未讀數、已讀、刪除） |
+| `/v2/notifications/preferences` | 偏好設定 |
+| `/v2`（`NotificationTemplateController`） | 通知範本 |
+
+### 6C.7 與 PRD 的差異
+
+1. PRD 的 Phase 2 設計（MQ：RabbitMQ 或 Redis Stream；多通道；模板化）：實作為 Redis List，多通道未實際寄送（BR-M09-05）。
+2. PRD US-001（預訂成功即時通知）與 US-014（支付失敗通知）：未實作（DEF-318）。
+3. PRD US-005（退款狀態即時通知）：站內通知已實作（Sprint 229）。
+
+---
+
 ## 7. M12 動態定價引擎 (Dynamic Pricing Engine)
 
 ### 7.1 模組概述
@@ -3884,6 +4122,7 @@ tenant_feature_toggles
 | v1.0 | 2026-04-09 | 初始版本 | Amanda (SA) |
 | v1.1 | 2026-04-22 | 1. 修正租戶狀態 PENDING_REVIEW → PENDING<br>2. 修正 US-M17-001 Story Points 5→3<br>3. 修正 US-M17-006 Story Points 3→1 | AI Review |
 | v1.2 | 2026-09-02 | **M17 開店/審核流程與實作同步（Sprint 110，依 PRD v1.0.1 ER-004）**：<br>1. §8.3 補上 `tenant_applications` 資料模型；`tenants.status` 由 `PENDING` 更正回實作的 `PENDING_REVIEW`（v1.1 當年只改了名稱，未察覺**改錯了實體**——申請狀態在 `tenant_applications` 而非 `tenants`）<br>2. BR-M17-001 改寫為兩表兩階段生命週期<br>3. BR-M17-002 觸發點改為「核准申請而建立 Tenant 時」<br>4. AC-M17-001-1／US-M17-007／US-M17-008 的端點、狀態與錯誤碼對齊實作（`/admin/tenant-applications/*`、E-2006/E-2007/E-2008/E-4092）<br>5. §8.6 API 概要同步 | AI Review |
+| v1.3 | 2026-10-03 | **文件對齊（Sprint 244）**：新增 §6A M06 預訂系統、§6B M07 金流與結算、§6C M09 訊息通知中心三章（依實作現況，附與 PRD 的差異）；頂部新增修訂註記；既有章節內文未改寫（見頂部註記） | Claude Code（Sprint 244） |
 
 ---
 

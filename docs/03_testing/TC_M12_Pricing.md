@@ -1,5 +1,7 @@
 # M12 動態定價測試案例 / Dynamic Pricing Test Cases
 
+> **現況聲明（Sprint 244，2026-10-03）**：本文件停在較早的版本，**不反映**之後的實作（價格精度與規則設定驗證等，見 SRD_Module_Technical_Design §5）；保留原樣未重寫。現行測試以程式碼為準（`backend/src/test/java/**`、`frontend/e2e/**`），完整說明見 [TC_Index.md](./TC_Index.md) 的現況聲明。
+
 > **模組**: M12 動態定價引擎
 > **版本**: v1.0
 > **建立日期**: 2026-04-10

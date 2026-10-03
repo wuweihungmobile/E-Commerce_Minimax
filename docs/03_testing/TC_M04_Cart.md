@@ -1,5 +1,7 @@
 # M04 購物車測試案例 / Cart Management Test Cases
 
+> **現況聲明（Sprint 244，2026-10-03）**：本文件停在 Sprint 4 的範圍，**不反映**之後的實作（多店鋪購物車、`storeId`、店鋪啟用狀態、優惠券與運費以店鋪為單位）；保留原樣未重寫。現行測試以程式碼為準（`backend/src/test/java/**`、`frontend/e2e/**`），完整說明見 [TC_Index.md](./TC_Index.md) 的現況聲明。
+
 > **模組**: M04 購物車
 > **版本**: v1.1
 > **建立日期**: 2026-04-28

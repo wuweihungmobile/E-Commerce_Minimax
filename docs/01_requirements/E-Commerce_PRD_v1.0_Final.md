@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0.2（文件修訂；規格基準仍為 v1.0）
+> **版本**: v1.0.3（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -13,6 +13,7 @@
 > - **v0.9 → v1.0：九項改善已套用（見 §21 勘誤記錄）**
 > - **v1.0 → v1.0.1（2026-09-02，Sprint 110）：M17 開店/審核流程規格與實作同步（§4.3、§7.4.1、§9.10.2，見 ER-004）**
 > - **v1.0.1 → v1.0.2（2026-09-02，Sprint 111）：§8.2 資料表欄位定義與實作同步（見 ER-005，DEF-062）**
+> - **v1.0.2 → v1.0.3（2026-10-03，Sprint 244）**：僅加修訂註記、內文未改（§3 狀態機、§9.6、§9.7、Mock 付款表、M05 排除範圍表）；與實作不符的敘述以 [SRD_System_Architecture.md](../02_architecture/SRD_System_Architecture.md) §6.3 與 [API_M05_Order.md](../02_architecture/api/API_M05_Order.md)、[API_M06_Booking.md](../02_architecture/API_M06_Booking.md) 為準（DEF-322）。
 
 ---
 
@@ -271,6 +272,7 @@ HTTP Request
 > * **預訂路徑（Phase 2+）**：`CREATED` -> `PAID` -> `CONFIRMED` -> `CHECKED_IN` -> `CHECKED_OUT` -> `COMPLETED`。
 > * **Phase 1 零售路徑（Payment Mock 等效）**：`CREATED(=PAID)` -> `SHIPPING` -> `DELIVERED` -> `COMPLETED`。Phase 1 支付環節為模擬流程，CREATED 狀態建立時即等同於已支付（Payment Mock），無需等待真實金流回調。**`payment.received` 事件在 Phase 1 不存在，`CONFIRMED` 狀態不在 Phase 1 零售路徑中。**
 > * **Phase 1 預訂路徑（Payment Mock 等效）**：`CREATED(=PAID)` -> `CHECKED_IN` -> `CHECKED_OUT` -> `COMPLETED`。Phase 1 `CONFIRMED` 狀態等效於 `CREATED(=PAID)`（Payment Mock 自動完成狀態推進，無獨立 CONFIRMED 步驟），`CHECKED_IN` 前置抵達後自動確認。
+> * **【Sprint 244 修訂註記】** 上列 Phase 1「Payment Mock 等效」與 `CREATED(=PAID)` 的敘述與實作不符：實作中訂單建立後為 `CREATED`，付款成功（Mock `POST /v2/orders/{orderId}/pay`，或 Stripe 入帳）才轉為 `PAID`。店家可把 `PAID` 轉為 `CONFIRMED`。訂房的 `CONFIRMED`、`CHECKED_IN`、`CHECKED_OUT`、`COMPLETED` 目前沒有程式路徑寫入（DEF-345）。權威狀態圖見 [SRD_System_Architecture.md](../02_architecture/SRD_System_Architecture.md) §6.3。
 > * **冪等性設計**：所有涉及資金或狀態變更的 API (如 Pay, Cancel)，Header 必須夾帶客戶端生成的 `Idempotency-Key`（**格式約束：UUID v4，36 字元長度**）。Gateway 層透過 Redis 快取攔截 24 小時內的重複請求，徹底防止因網路 Timeout 導致的「重複扣款」或「重複退房」。
 
 > **4. 服務降級與限流策略 (Rate Limiting & Downgrade)**
@@ -1905,6 +1907,8 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 
 > **注意**：Phase 1 訂單僅支援單一類型（`RETAIL` 或 `BOOKING`），禁止混合訂單。支付環節為 Payment Mock，不串接真實金流。
 
+> **⚠️ 修訂註記（Sprint 244，2026-10-03）**：§9.6 的 `GET /api/v2/orders/:id/state-log` 實作為 `GET /v2/orders/{orderId}/logs`（路徑不同，用途相同）。§9.7 的 `GET /api/v2/bookings/:id/state-log` **未實作**（DEF-345）。§9.7 開頭「Phase 1 僅開放查詢與取消、不含 POST 建立」已過時：建立、修改、付款與退款均已實作，見 [API_M06_Booking.md](../02_architecture/API_M06_Booking.md)。
+
 ### 9.7 M06 民宿預訂（v1.0 更新）
 
 > **重要說明**：Phase 1 的 M06 **僅開放查詢與取消**，不含 POST 建立預訂。建立預訂（`POST /api/v2/bookings`）屬 Phase 2 範圍。
@@ -2031,6 +2035,8 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | 模擬失敗 | 透過 `X-Mock-Fail: true` Header 模擬支付失敗（用於測試） |
 | Phase 1 退款 | 不支援，始終回傳 E-4013 |
 
+> **⚠️ 修訂註記（Sprint 244）**：本表與下段兩項已不符實作：(1) `X-Mock-Fail` 標頭**未實作**；模擬失敗改由 `POST /v2/orders/{orderId}/pay/fail` 觸發（見 [API_M05_Order.md](../02_architecture/api/API_M05_Order.md) §7）。(2) 退款**已實作**：Stripe 部分退款自 Sprint 56 起支援，已付款訂房的自動退款依 Sprint 225～227；管理員可呼叫 `POST /v2/orders/{orderId}/refund`，買家與店家不能自行退款（Sprint 243 實測）。下段「Phase 1 退款不支援、回 E-4013」不再適用。
+>
 > **Phase 1 退款行為**：Phase 1 退款功能不支援。當買家嘗試申請退款時，系統回傳錯誤碼 `E-4013`，訊息：「退款功能尚未開放，請聯繫客服」。
 
 ### 9.15 M15 CMS API（v0.9 新增）
@@ -2384,6 +2390,8 @@ Phase 1 聚焦「雙引擎」核心前後台雛形，優先確保兩套庫存邏
 | 3 | 取消功能 | 支援買家主動取消（符合狀態機約束）；自動釋放關聯資源（庫存扣減回滾、日期格釋放） |
 | 4 | 冪等性保障 | 所有狀態變更 API 支援 `Idempotency-Key` Header，Gateway 層 24h Redis 攔截重複請求 |
 | 5 | 狀態日誌 | 每筆訂單的狀態變更均寫入 `order_state_log`，支援未來審計需求 |
+
+> **⚠️ 修訂註記（Sprint 244）**：本節第 1 列「退款處理：Phase 1 不支援」與第 4 列「金流扣款：Payment Mock」已不符實作：退款已實作（見上方 Mock 表的註記）；付款為 Mock 或 Stripe Checkout（依 `STRIPE_PAYMENT_ENABLED` 功能開關），不是建單即付款。本表保留原樣作為歷史規格，不再作為實作依據。
 
 **[Specification] M05 最小子集 — 排除範圍（Phase 1 OUT）**
 

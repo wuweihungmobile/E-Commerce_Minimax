@@ -261,7 +261,9 @@ class RoomCalendarServiceTest {
         String result = roomCalendarService.lockDateRangeNoWait(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
 
         assertThat(result).isNull();
-        verify(redisLockService).forceReleaseLock("lock:" + dateLockKeyDay1);
+        // Sprint 243（DEF-343）：RedisLockService 的 forceReleaseLock 自己會加 "lock:" 前綴，所以要傳資源 ID。
+        // 原測試期望 "lock:" + 資源 ID，把「刪掉不存在的 lock:lock:…」這個缺陷固定成了預期行為
+        verify(redisLockService).forceReleaseLock(dateLockKeyDay1);
     }
 
     @Test
@@ -269,10 +271,11 @@ class RoomCalendarServiceTest {
     void unlockDateRange_releasesAllDateLocksAndUnifiedKey() {
         roomCalendarService.unlockDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, "someLockValue");
 
-        verify(redisLockService).forceReleaseLock("lock:room:" + ROOM_LISTING_ID + ":date:" + CHECK_IN);
-        verify(redisLockService).forceReleaseLock("lock:room:" + ROOM_LISTING_ID + ":date:" + CHECK_IN.plusDays(1));
+        // 傳資源 ID（不含 lock: 前綴），見上一個測試的說明（DEF-343）
+        verify(redisLockService).forceReleaseLock("room:" + ROOM_LISTING_ID + ":date:" + CHECK_IN);
+        verify(redisLockService).forceReleaseLock("room:" + ROOM_LISTING_ID + ":date:" + CHECK_IN.plusDays(1));
         verify(redisLockService).forceReleaseLock(
-                "lock:booking:lock:room:" + ROOM_LISTING_ID + ":dates:" + CHECK_IN + ":" + CHECK_OUT);
+                "booking:lock:room:" + ROOM_LISTING_ID + ":dates:" + CHECK_IN + ":" + CHECK_OUT);
     }
 
     // ========== blockDateRange / unblockDateRange ==========

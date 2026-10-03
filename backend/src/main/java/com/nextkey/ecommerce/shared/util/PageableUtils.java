@@ -1,7 +1,12 @@
 package com.nextkey.ecommerce.shared.util;
 
+import java.util.Set;
+
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+
+import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
 /**
  * 分頁參數安全建構工具（Sprint 165，DEF-216）。
@@ -23,6 +28,25 @@ public final class PageableUtils {
 
     public static PageRequest of(final int page, final int size, final int maxSize, final Sort sort) {
         return PageRequest.of(safePage(page), safeSize(size, maxSize), sort);
+    }
+
+    /**
+     * 由查詢參數建構排序（Sprint 243，DEF-339）。{@code sortBy} 只接受呼叫端列舉的屬性、{@code sortDir} 只接受
+     * {@code asc}／{@code desc}（不分大小寫），其餘一律 {@code E-9000}（400）。
+     *
+     * <p>原本是 {@code Sort.by(Sort.Direction.fromString(sortDir), sortBy)} 直接用使用者輸入：{@code sortDir} 不是 asc／desc 時
+     * {@code fromString} 丟未攔截的 {@code IllegalArgumentException}、{@code sortBy} 不是實體屬性時 Spring Data 在執行查詢時丟
+     * {@code PropertyReferenceException}，兩者都落入全域處理器的 catch-all，使用者的輸入錯誤變成 500 {@code E-9900}。
+     * 也不該讓呼叫者依任意欄位排序（例如含個資的欄位）。
+     */
+    public static Sort sortOf(final String sortBy, final String sortDir, final Set<String> allowedProperties) {
+        Sort.Direction direction = Sort.Direction.fromOptionalString(sortDir)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_9000, "Invalid sort direction: " + sortDir));
+        if (sortBy == null || !allowedProperties.contains(sortBy)) {
+            throw new BusinessException(ErrorCode.E_9000,
+                    "Invalid sort field: " + sortBy + " (allowed: " + allowedProperties + ")");
+        }
+        return Sort.by(direction, sortBy);
     }
 
     private static int safePage(final int page) {

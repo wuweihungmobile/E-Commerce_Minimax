@@ -22,8 +22,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 
 import com.nextkey.ecommerce.api.controller.AuthController;
+import com.nextkey.ecommerce.api.controller.BookingController;
+import com.nextkey.ecommerce.api.controller.BookingPaymentController;
 import com.nextkey.ecommerce.api.controller.CartController;
+import com.nextkey.ecommerce.api.controller.CheckoutController;
+import com.nextkey.ecommerce.api.controller.DashboardBookingController;
 import com.nextkey.ecommerce.api.controller.OAuthController;
+import com.nextkey.ecommerce.api.controller.OrderController;
+import com.nextkey.ecommerce.api.controller.OrderPaymentController;
 
 /**
  * Sprint 241：API 規格文件記載的路由，必須與 Controller 一致（路由漏記、記了不存在的路由都會失敗）。
@@ -55,6 +61,11 @@ class ApiRouteDocDriftTest {
     static {
         GUARDED.put("api/API_M03_Auth.md", List.of(AuthController.class, OAuthController.class));
         GUARDED.put("API_M04_Cart.md", List.of(CartController.class));
+        // Sprint 243：M05 訂單（含合併結帳與整組付款端點；訂房的付款狀態路由在 OrderPaymentController，所以由 M05 宣告）、M06 訂房
+        GUARDED.put("api/API_M05_Order.md",
+                List.of(OrderController.class, CheckoutController.class, OrderPaymentController.class));
+        GUARDED.put("API_M06_Booking.md",
+                List.of(BookingController.class, BookingPaymentController.class, DashboardBookingController.class));
     }
 
     /** 反引號包住的 `METHOD /path`：路徑到反引號、空白或 {@code ?} 為止。 */

@@ -113,12 +113,13 @@ public class RoomCalendarService {
                 // 獲取失敗，釋放已獲取的所有鎖並立即返回
                 log.warn("lockDateRangeNoWait: Failed to acquire lock for date: {}, releasing all acquired locks and returning null", date);
                 for (String acquiredKey : acquiredLocks) {
-                    redisLockService.forceReleaseLock(acquiredKey); // acquiredKey already includes "lock:" prefix via tryAcquireLockNoWait
+                    redisLockService.forceReleaseLock(acquiredKey);
                 }
                 return null; // 立即返回，不等待
             }
-            // Store the full key WITH lock: prefix (same as what forceReleaseLock expects)
-            acquiredLocks.add("lock:" + dateLockKey);
+            // Sprint 243（DEF-343）：存的是「資源 ID」（不含 lock: 前綴）——RedisLockService 的 tryAcquire*／forceReleaseLock
+            // 都會自己加前綴。原本存成 "lock:" + 資源 ID 再傳給 forceReleaseLock，刪掉的是 lock:lock:…，真正的鎖要等 60 秒 TTL 才消失
+            acquiredLocks.add(dateLockKey);
             log.debug("lockDateRangeNoWait: Acquired lock for date {}", date);
         }
 
@@ -148,7 +149,7 @@ public class RoomCalendarService {
                 log.warn("lockDateRangeWithWait: Failed to acquire lock for date: {}, releasing all acquired locks", date);
                 for (LocalDate acquiredDate : dates) {
                     if (acquiredDate.isBefore(date)) {
-                        String acquiredKey = "lock:room:" + roomListingId + ":date:" + acquiredDate;
+                        String acquiredKey = "room:" + roomListingId + ":date:" + acquiredDate;
                         redisLockService.forceReleaseLock(acquiredKey);
                     }
                 }
@@ -168,14 +169,17 @@ public class RoomCalendarService {
         List<LocalDate> dates = generateDateRange(checkIn, checkOut.minusDays(1));
 
         // 釋放所有日期的鎖
+        // Sprint 243（DEF-343）：傳資源 ID（不含 lock: 前綴）。原本傳 "lock:room:…"，forceReleaseLock 再加一次前綴，
+        // 刪掉的是不存在的 lock:lock:room:…，日期鎖從來沒被釋放：預訂後 60 秒內（TTL），同房源同日期無法再被訂
+        // （取消後重訂、改期到重疊的日期都回 E-4001「Date range is being modified by another user」）
         for (LocalDate date : dates) {
-            String dateLockKey = "lock:room:" + roomListingId + ":date:" + date;
+            String dateLockKey = "room:" + roomListingId + ":date:" + date;
             redisLockService.forceReleaseLock(dateLockKey);
             log.debug("Released lock for date: {}", date);
         }
 
-        // 釋放統一的 lock key（用於追蹤）
-        String unifiedKey = "lock:booking:lock:room:" + roomListingId + ":dates:" + checkIn + ":" + checkOut;
+        // 釋放統一的 lock key（用於追蹤；實際上沒有任何地方取得它，釋放是無害的空操作）
+        String unifiedKey = "booking:lock:room:" + roomListingId + ":dates:" + checkIn + ":" + checkOut;
         redisLockService.forceReleaseLock(unifiedKey);
     }
 

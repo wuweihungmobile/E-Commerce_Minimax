@@ -1,9 +1,9 @@
 # API Index / API 規格索引
 
 > **文檔狀態**: Active
-> **版本**: v1.2
+> **版本**: v1.3
 > **建立日期**: 2026-04-09
-> **最後更新**: 2026-10-03（Sprint 241）
+> **最後更新**: 2026-10-03（Sprint 243）
 > **作者**: Marcus (SD-Architect)
 > **🔴 Sprint 16 US-008**: 收錄 Sprint 15 + Sprint 16 新增 API 端點
 >
@@ -11,7 +11,7 @@
 >
 > **⚠️ 完整性未保證（Sprint 203 揭露）**: 本索引的多數模組最後更新於 2026-06-05，僅收錄 48 個端點；同日核對後端 controller 有約 305 個 `@*Mapping` 註解。**本索引不是完整端點清單**，見 DEF-286。
 >
-> **✅ 已完整且有守門的模組（Sprint 241）**: **M03 會員與權限**（[API_M03_Auth.md](./api/API_M03_Auth.md)，13 個端點）與 **M04 購物車**（[API_M04_Cart.md](./API_M04_Cart.md)，9 個端點）已依實作改寫，並納入 `ApiRouteDocDriftTest`：Controller 新增、刪除或改名路由而沒更新規格，測試會失敗。其他模組（M05 訂單、M06 訂房等）將依序納入；納入前仍以規格文件與程式碼互相對照為準。
+> **✅ 已完整且有守門的模組（Sprint 241／243）**: **M03 會員與權限**（[API_M03_Auth.md](./api/API_M03_Auth.md)，13 個端點）、**M04 購物車**（[API_M04_Cart.md](./API_M04_Cart.md)，9 個端點）、**M05 訂單履約**（[API_M05_Order.md](./api/API_M05_Order.md)，15 個端點，Sprint 243）與 **M06 預訂系統**（[API_M06_Booking.md](./API_M06_Booking.md)，11 個端點，Sprint 243）已依實作改寫，並納入 `ApiRouteDocDriftTest`：Controller 新增、刪除或改名路由而沒更新規格，測試會失敗。M05／M06 的回應形狀、狀態碼、錯誤碼與權限另有真實服務的契約測試（`OrderApiRealStackIntegrationTest`、`BookingApiRealStackIntegrationTest`）。其他模組將依序納入；納入前仍以規格文件與程式碼互相對照為準。
 
 ---
 
@@ -79,14 +79,43 @@
 
 ### 訂單履約 (M05)
 
-| API ID | 端點 | 方法 | 說明 | 角色 | Phase |
-|--------|------|------|------|------|-------|
-| API-M05-001 | `/api/v2/orders` | POST | 建立訂單 | Buyer+ | Phase 1 |
-| API-M05-002 | `/api/v2/orders` | GET | 買家訂單列表 | Buyer+ | Phase 1 |
-| API-M05-003 | `/api/v2/orders/:id` | GET | 訂單詳情 | Buyer+ | Phase 1 |
-| API-M05-004 | `/api/v2/orders/:id/cancel` | POST | 取消訂單 | Buyer+ | Phase 1 |
-| API-M05-005 | `/api/v2/dashboard/orders` | GET | 賣家訂單列表 | Seller+ | Phase 1 |
-| API-M05-006 | `/api/v2/dashboard/orders/:id/status` | PUT | 更新訂單狀態 | Seller+ | Phase 1 |
+規格：[API_M05_Order.md](./api/API_M05_Order.md)（v2.0，Sprint 243）。訂單由**購物車**結帳產生；一次結一家店鋪；店鋪暫停營業不能下單、也不能付款（`E-2010`）。
+
+| 端點 | 方法 | 說明 | 權限 |
+|------|------|------|------|
+| `/api/v2/orders` | POST | 從購物車建立訂單（可帶 `Idempotency-Key`） | `order:create` |
+| `/api/v2/orders` | GET | 買家訂單列表（分頁） | `order:read` |
+| `/api/v2/orders/{orderId}` | GET | 訂單詳情 | `order:read` |
+| `/api/v2/orders/tenant` | GET | 店鋪收到的訂單列表 | `order:read` |
+| `/api/v2/orders/{orderId}/status` | PATCH | 更新訂單狀態 | `order:update` |
+| `/api/v2/orders/{orderId}/cancel` | POST | 取消訂單（本人或管理員） | 已登入 |
+| `/api/v2/orders/{orderId}/logs` | GET | 訂單狀態日誌 | 已登入 |
+| `/api/v2/checkout/mixed` | POST | 合併結帳（訂單＋訂房） | `order:create` ＋ `booking:create` |
+| `/api/v2/orders/{orderId}/payment` | GET | 付款狀態 | `order:read` |
+| `/api/v2/orders/{orderId}/pay` | POST | Mock 付款成功 | `order:create` 或 `order:update` |
+| `/api/v2/orders/{orderId}/pay/fail` | POST | Mock 付款失敗 | `order:create` 或 `order:update` |
+| `/api/v2/orders/{orderId}/refund` | POST | 退款（實際上只有管理員） | `order:update` ＋ 本人或管理員 |
+| `/api/v2/orders/{orderId}/pay/checkout` | POST | 發起 Stripe Checkout | `order:create` 或 `order:update` |
+| `/api/v2/orders/{orderId}/pay/checkout/return` | GET | Stripe 回跳確認 | `order:read` |
+| `/api/v2/orders/bookings/{bookingId}/payment` | GET | 訂房付款狀態（屬 M06） | `booking:read` |
+
+### 預訂系統 (M06)
+
+規格：[API_M06_Booking.md](./API_M06_Booking.md)（v2.0，Sprint 243）。日曆以「晚」為單位；退款依 PRD Q14；店鋪暫停營業不能訂房、也不能付款（`E-2010`）。
+
+| 端點 | 方法 | 說明 | 權限 |
+|------|------|------|------|
+| `/api/v2/bookings/availability` | GET | 檢查日期區間可用性與總價 | `booking:read` |
+| `/api/v2/bookings/calendar` | GET | 房源日曆（有記錄的日期） | `booking:read` |
+| `/api/v2/bookings` | POST | 建立訂房（可帶 `Idempotency-Key`） | `booking:create` |
+| `/api/v2/bookings` | GET | 買家訂房列表（分頁） | `booking:read` |
+| `/api/v2/bookings/{bookingId}` | GET | 訂房詳情 | `booking:read` |
+| `/api/v2/bookings/{bookingId}` | PUT | 更新訂房 | `booking:update` |
+| `/api/v2/bookings/{bookingId}/cancel` | POST | 取消訂房（含退款決定） | `booking:cancel` |
+| `/api/v2/bookings/{bookingId}/pay` | POST | Mock 付款成功 | `booking:create` 或 `booking:update` |
+| `/api/v2/bookings/{bookingId}/pay/checkout` | POST | 發起 Stripe Checkout | `booking:create` 或 `booking:update` |
+| `/api/v2/bookings/{bookingId}/pay/checkout/return` | GET | Stripe 回跳確認 | `booking:read` |
+| `/api/v2/dashboard/bookings` | GET | 店鋪收到的訂房列表 | `booking:read` |
 
 ### 動態定價 (M12)
 
@@ -159,8 +188,14 @@
 ### M03 認證系統
 - [API_M03_Auth.md](./api/API_M03_Auth.md)
 
+### M04 購物車
+- [API_M04_Cart.md](./API_M04_Cart.md)
+
 ### M05 訂單履約
 - [API_M05_Order.md](./api/API_M05_Order.md)
+
+### M06 預訂系統
+- [API_M06_Booking.md](./API_M06_Booking.md)
 
 ### M12 動態定價
 - [API_M12_Dynamic_Pricing.md](./api/API_M12_Dynamic_Pricing.md)

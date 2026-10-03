@@ -93,6 +93,10 @@ public class BookingService {
     @Value("${app.booking-timeout.payment-hours:24}")
     private long paymentHours = 24;
 
+    /** 訂房列表允許的排序欄位（Sprint 243，DEF-339：其餘一律 E-9000，不再讓亂填的 sortBy 變成 500）。 */
+    private static final Set<String> SORTABLE_FIELDS =
+            Set.of("createdAt", "updatedAt", "checkInDate", "checkOutDate", "totalAmount", "status");
+
     // Default check-in/out times
     private static final LocalTime DEFAULT_CHECK_IN_TIME = LocalTime.of(15, 0);
     private static final LocalTime DEFAULT_CHECK_OUT_TIME = LocalTime.of(11, 0);
@@ -465,7 +469,9 @@ public class BookingService {
             throw new BusinessException(ErrorCode.E_4005, "Guest count exceeds capacity: max " + room.getMaxGuests());
         }
 
-        if (request.getCheckOutDate().isBefore(request.getCheckInDate())) {
+        // Sprint 243（DEF-340）：退房必須「晚於」入住。原本用 isBefore，入住＝退房（0 晚）會通過，
+        // 建出 nightsCount 0、totalAmount 0 的訂房；DTO 的 @FutureOrPresent／@Future 也擋不住兩者同為未來的同一天
+        if (!request.getCheckOutDate().isAfter(request.getCheckInDate())) {
             throw new BusinessException(ErrorCode.E_4003, "Check-out must be after check-in");
         }
 
@@ -585,7 +591,7 @@ public class BookingService {
     @Transactional(readOnly = true)
     public Page<BookingDto.BookingListResponse> getUserBookings(int page, int size, String sortBy, String sortDir) {
         UUID userId = getCurrentUser();
-        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
+        Sort sort = PageableUtils.sortOf(sortBy, sortDir, SORTABLE_FIELDS);
         PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
 
         Page<com.nextkey.ecommerce.domain.model.order.Booking> bookings =
@@ -619,7 +625,7 @@ public class BookingService {
     @Transactional(readOnly = true)
     public Page<BookingDto.BookingListResponse> getTenantBookings(int page, int size, String sortBy, String sortDir) {
         UUID tenantId = getCurrentTenant();
-        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
+        Sort sort = PageableUtils.sortOf(sortBy, sortDir, SORTABLE_FIELDS);
         PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
 
         if (!TenantContext.isStoreTenant(tenantId)) {
@@ -704,7 +710,7 @@ public class BookingService {
         // 檢查合併後的最終日期，涵蓋只改單一欄位的部分更新情境。未檢查前，無效區間會一路流到
         // RoomCalendarService.lockDateRange 的 LocalDate.datesUntil() 拋出未受攔截的
         // IllegalArgumentException（GlobalExceptionHandler 只有 catch-all，變成裸露 500）。
-        if (newCheckOut.isBefore(newCheckIn)) {
+        if (!newCheckOut.isAfter(newCheckIn)) {
             throw new BusinessException(ErrorCode.E_4003, "Check-out must be after check-in");
         }
 

@@ -260,6 +260,24 @@ class BookingServiceUpdateDateChangeTest {
     }
 
     @Test
+    @DisplayName("DEF-340：新日期 checkOut＝checkIn（只送 checkOutDate、等於既有入住日，0 晚）→ E_4003，且不觸碰日曆服務")
+    void updateBooking_mergedDateRangeZeroNights_throwsE4003WithoutTouchingCalendar() {
+        TenantContext.setCurrentUser(USER_ID);
+        when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(existingBooking()));
+        BookingDto.UpdateRequest request = BookingDto.UpdateRequest.builder()
+                .checkOutDate(OLD_CHECK_IN)
+                .build();
+
+        assertThatThrownBy(() -> bookingService.updateBooking(BOOKING_ID, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_4003);
+
+        verify(roomCalendarService, never()).releaseDateRange(any(), any(), any());
+        verify(roomCalendarService, never()).lockDateRange(any(), any(), any());
+    }
+
+    @Test
     @DisplayName("新日期 checkOut 早於 checkIn（僅改單一欄位、沿用既有 checkIn 亦適用）→ E_4003，且不觸碰日曆服務")
     void updateBooking_mergedDateRangeInvalid_throwsE4003WithoutTouchingCalendar() {
         TenantContext.setCurrentUser(USER_ID);

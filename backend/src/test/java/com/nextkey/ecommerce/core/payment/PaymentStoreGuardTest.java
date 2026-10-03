@@ -15,8 +15,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
-import com.nextkey.ecommerce.domain.model.order.Booking;
-import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
@@ -69,26 +67,6 @@ class PaymentStoreGuardTest {
         assertThatThrownBy(() -> guard.requireStoreOpen(STORE_ID))
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode()).isEqualTo(ErrorCode.E_2010));
         assertThat(guard.isStoreOpen(STORE_ID)).isFalse();
-    }
-
-    @Test
-    @DisplayName("storeIdOf：優先讀 tenant 關聯（真正對應資料庫欄位）；同一個持久化脈絡剛建立、tenantId 影子欄位還是 null 的訂單／訂房也取得到店鋪")
-    void storeIdOf_prefersTheAssociationOverTheShadowColumn() {
-        Tenant store = Tenant.builder().name("店").slug("s").build();
-        store.setId(STORE_ID);
-        UUID other = UUID.fromString("66666666-6666-6666-6666-666666666666");
-
-        Order justCreated = Order.builder().tenant(store).build();
-        assertThat(justCreated.getTenantId()).as("前提：影子欄位是 null").isNull();
-        assertThat(PaymentStoreGuard.storeIdOf(justCreated)).isEqualTo(STORE_ID);
-        assertThat(PaymentStoreGuard.storeIdOf(Booking.builder().tenant(store).build())).isEqualTo(STORE_ID);
-
-        assertThat(PaymentStoreGuard.storeIdOf(Order.builder().tenant(store).tenantId(other).build()))
-                .as("兩者都有時以關聯為準").isEqualTo(STORE_ID);
-        assertThat(PaymentStoreGuard.storeIdOf(Order.builder().tenantId(STORE_ID).build()))
-                .as("沒有關聯（只有從資料庫載入的影子欄位）時退回影子欄位").isEqualTo(STORE_ID);
-        assertThat(PaymentStoreGuard.storeIdOf(Booking.builder().tenantId(STORE_ID).build())).isEqualTo(STORE_ID);
-        assertThat(PaymentStoreGuard.storeIdOf(Order.builder().build())).isNull();
     }
 
     @Test

@@ -59,4 +59,41 @@ class PageableUtilsTest {
     void of_bothInvalid_neverThrows() {
         assertThatCode(() -> PageableUtils.of(-100, -100, 100)).doesNotThrowAnyException();
     }
+
+    // ===== sortOf（Sprint 243，DEF-339）=====
+
+    private static final java.util.Set<String> ALLOWED = java.util.Set.of("createdAt", "totalAmount");
+
+    @Test
+    @DisplayName("sortOf：允許的欄位與 asc／desc（不分大小寫）→ 依指定欄位與方向排序")
+    void sortOf_validInput_buildsTheSort() {
+        assertThat(PageableUtils.sortOf("createdAt", "DESC", ALLOWED))
+                .isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
+        assertThat(PageableUtils.sortOf("totalAmount", "asc", ALLOWED))
+                .isEqualTo(Sort.by(Sort.Direction.ASC, "totalAmount"));
+        assertThat(PageableUtils.sortOf("totalAmount", "Desc", ALLOWED))
+                .isEqualTo(Sort.by(Sort.Direction.DESC, "totalAmount"));
+    }
+
+    @Test
+    @DisplayName("sortOf：不在允許清單的欄位 → E-9000（不是 Spring Data 到查詢時才丟的 PropertyReferenceException → 500）")
+    void sortOf_unknownField_isRejectedWithE9000() {
+        for (String field : new String[] {"bogus", "password", "", " ", "createdAt,desc", "user.passwordHash", null}) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> PageableUtils.sortOf(field, "DESC", ALLOWED))
+                    .isInstanceOf(com.nextkey.ecommerce.shared.exception.BusinessException.class)
+                    .extracting(e -> ((com.nextkey.ecommerce.shared.exception.BusinessException) e).getErrorCode())
+                    .isEqualTo(com.nextkey.ecommerce.shared.exception.ErrorCode.E_9000);
+        }
+    }
+
+    @Test
+    @DisplayName("sortOf：方向不是 asc／desc → E-9000（不是 Direction.fromString 的 IllegalArgumentException → 500）")
+    void sortOf_badDirection_isRejectedWithE9000() {
+        for (String direction : new String[] {"SIDEWAYS", "", " ", "up", null}) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> PageableUtils.sortOf("createdAt", direction, ALLOWED))
+                    .isInstanceOf(com.nextkey.ecommerce.shared.exception.BusinessException.class)
+                    .extracting(e -> ((com.nextkey.ecommerce.shared.exception.BusinessException) e).getErrorCode())
+                    .isEqualTo(com.nextkey.ecommerce.shared.exception.ErrorCode.E_9000);
+        }
+    }
 }

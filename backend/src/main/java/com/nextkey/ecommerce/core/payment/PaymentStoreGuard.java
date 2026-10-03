@@ -5,8 +5,6 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 import com.nextkey.ecommerce.core.tenant.StoreCheckoutGuard;
-import com.nextkey.ecommerce.domain.model.order.Booking;
-import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 
@@ -31,21 +29,6 @@ import lombok.RequiredArgsConstructor;
 public class PaymentStoreGuard {
 
     private final TenantRepository tenantRepository;
-
-    /**
-     * 訂單所屬的店鋪 ID。優先讀真正對應資料庫欄位的 {@code tenant} 關聯，而不是唯讀的 {@code tenantId} 影子欄位
-     * （{@code insertable = false}）：影子欄位只在從資料庫載入時才有值，同一個持久化脈絡裡剛用 {@code .tenant(...)} 建立的
-     * 實體它是 {@code null}（見 erp-tenant-test-seeding-gotcha），守門若讀到 {@code null} 會把正常的店鋪當成不存在而擋下付款。
-     * 取關聯的 id 不會觸發載入（Hibernate 代理直接回傳 id）。
-     */
-    public static UUID storeIdOf(final Order order) {
-        return order.getTenant() != null ? order.getTenant().getId() : order.getTenantId();
-    }
-
-    /** 訂房所屬的店鋪 ID；理由同 {@link #storeIdOf(Order)}。 */
-    public static UUID storeIdOf(final Booking booking) {
-        return booking.getTenant() != null ? booking.getTenant().getId() : booking.getTenantId();
-    }
 
     /** 店鋪不營業時丟 {@code E-2010}；呼叫端要放在所有會寫入或呼叫金流的動作之前。 */
     public void requireStoreOpen(final UUID tenantId) {

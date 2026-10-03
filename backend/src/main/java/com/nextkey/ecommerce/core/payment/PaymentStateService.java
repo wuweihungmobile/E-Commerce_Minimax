@@ -150,7 +150,7 @@ public class PaymentStateService {
             throw new BusinessException(ErrorCode.E_6003, "Payment already processed");
         }
         // Sprint 242（使用者拍板）：店鋪已停權／終止就不能再付款給它；放在既有檢查之後（不改變錯誤先後）、任何寫入之前
-        paymentStoreGuard.requireStoreOpen(PaymentStoreGuard.storeIdOf(order));
+        paymentStoreGuard.requireStoreOpen(order.getTenantId());
 
         // 併發防護（DEF-125，claim-before-side-effects）：先原子搶占「目前狀態→PAID」這個轉換，
         // 只有搶到的一方才繼續建立 Payment 記錄。上面兩個檢查都是 check-then-act，
@@ -234,7 +234,7 @@ public class PaymentStateService {
         if (paymentRepository.existsByBookingIdAndStatus(bookingId, Payment.PaymentStatus.SUCCESS)) {
             throw new BusinessException(ErrorCode.E_6003, "Payment already processed");
         }
-        paymentStoreGuard.requireStoreOpen(PaymentStoreGuard.storeIdOf(booking));
+        paymentStoreGuard.requireStoreOpen(booking.getTenantId());
         if (bookingRepository.updateStatusIfCurrent(bookingId, Booking.BookingStatus.CREATED,
                 Booking.BookingStatus.PAID) == 0) {
             throw new BusinessException(ErrorCode.E_5011, "Booking cannot be paid in current status");
@@ -529,7 +529,7 @@ public class PaymentStateService {
             throw new BusinessException(ErrorCode.E_6003, "Payment already processed");
         }
         // Sprint 242：必須在呼叫 Stripe 建 session 之前——停權店鋪不該有新的 Checkout Session
-        paymentStoreGuard.requireStoreOpen(PaymentStoreGuard.storeIdOf(order));
+        paymentStoreGuard.requireStoreOpen(order.getTenantId());
 
         String idempotencyKey = "ORDER-CHECKOUT-" + orderId;
         PaymentGatewayRequestResponse.CheckoutSessionRequest req =
@@ -633,7 +633,7 @@ public class PaymentStateService {
         if (paymentRepository.existsByBookingIdAndStatus(bookingId, Payment.PaymentStatus.SUCCESS)) {
             throw new BusinessException(ErrorCode.E_6003, "Payment already processed");
         }
-        paymentStoreGuard.requireStoreOpen(PaymentStoreGuard.storeIdOf(booking));
+        paymentStoreGuard.requireStoreOpen(booking.getTenantId());
 
         String idempotencyKey = "BOOKING-CHECKOUT-" + bookingId;
         PaymentGatewayRequestResponse.CheckoutSessionResult result = paymentGatewayFactory.createCheckoutSession(
@@ -950,7 +950,7 @@ public class PaymentStateService {
                 .canCancel(OrderStateMachine.canCancel(orderStatus))
                 .canRefund(OrderStateMachine.canRefund(orderStatus))
                 .paymentProvider(paymentProvider())
-                .storeOpen(paymentStoreGuard.isStoreOpen(PaymentStoreGuard.storeIdOf(order)))
+                .storeOpen(paymentStoreGuard.isStoreOpen(order.getTenantId()))
                 .updatedAt(order.getUpdatedAt());
 
         if (payment != null) {
@@ -977,7 +977,7 @@ public class PaymentStateService {
                 .canCancel(bookingStatus.equals("CREATED") || bookingStatus.equals("PAID"))
                 .canRefund(bookingStatus.equals("PAID"))
                 .paymentProvider(paymentProvider())
-                .storeOpen(paymentStoreGuard.isStoreOpen(PaymentStoreGuard.storeIdOf(booking)))
+                .storeOpen(paymentStoreGuard.isStoreOpen(booking.getTenantId()))
                 .updatedAt(booking.getUpdatedAt());
 
         if (payment != null) {

@@ -61,7 +61,7 @@ Sprint 234 的限流單位與 V87／V88 的資料遷移，使用者沒有異議�
 
 第一輪全量 `mvn -o clean verify` 有 **4 個失敗**：`M07PaymentMockIntegrationTest`（`testProcessPayment`／`testMockPaySuccess`／`testMockRefund`／`testPaymentStateTransitions`）預期 200 實得 **422**。原因：我的守門讀 `order.getTenantId()`，而 `Order.tenantId` 是 `insertable = false, updatable = false` 的唯讀影子欄位——只有「從資料庫載入」才有值，**同一個持久化脈絡裡剛用 `.tenant(...)` 建立的實體它是 `null`**（記憶 `erp-tenant-test-seeding-gotcha` 早已記載這個陷阱，我寫守門時沒套用）。那個測試是 `@Transactional`，訂單在同一個交易裡建立後被付款端點讀到，`tenantId == null` 被守門當成「租戶不存在」而擋下。
 
-- **正式環境不會遇到**（付款是另一個 HTTP 請求，從資料庫載入），但守門不該依賴一個「只在某些時刻有值」的欄位，所以修的是**守門**不是測試固件：新增 `PaymentStoreGuard.storeIdOf(Order|Booking)`，優先讀 `tenant` 關聯（真正對應資料庫欄位；取關聯的 id 不觸發載入），沒有關聯才退回影子欄位；6 處呼叫（含 `storeOpen`）與舊版 `PaymentService` 2 處都改用它。
+- **正式環境不會遇到**（付款是另一個 HTTP 請求，從資料庫載入），但守門不該依賴一個「只在某些時刻有值」的欄位，所以修的是**守門**不是測試固件：新增 `PaymentStoreGuard.storeIdOf(Order|Booking)`，優先讀 `tenant` 關聯（真正對應資料庫欄位；取關聯的 id 不觸發載入），沒有關聯才退回影子欄位；6 處呼叫（含 `storeOpen`）與舊版 `PaymentService` 2 處都改用它。**（Sprint 243 把這個修法收斂到實體本身：`Order`／`OrderItem`／`Booking` 的 getter 在影子欄位沒有值時退回關聯的 id，見 [SPRINT_243_PLAN.md](SPRINT_243_PLAN.md) `DEF-338`；`storeIdOf` 因此成為重複機制而被移除，付款守門改回讀 `getTenantId()`，下方 MX1／MX2 兩個突變隨之由實體 getter 的突變 MD1～MD5 取代。）**
 - **為什麼我先前只跑付款相關的單元與整合測試沒發現**：`M07PaymentMockIntegrationTest` 是 `*IntegrationTest`，`mvn test` 排除、而我只對自己的測試類別跑了 `-Dtest=`。**改共用付款服務一定要跑全量 `verify`**——這與 Sprint 239 補五個測試固件是同型的教訓。
 - 新增單元測試（`storeIdOf` 的四種組合、服務層「只有關聯的訂單」接線）；2 個突變（`storeIdOf` 改回只讀影子欄位：訂單 6 個轉紅、訂房 1 個轉紅）全被抓到。
 
@@ -162,7 +162,7 @@ V90 遷移測試涵蓋：系統租戶底下 `SELLER`／`HOST`／開店後的 `ST
 - **前端**：`tsc --noEmit` 無錯、ESLint 只有既有的 `payment.ts` 匿名預設匯出警告（非本輪）、`next build` 成功（以還原後的程式碼重建）。
 - **真實後端 E2E**：`E2E_GATE_SKIP_BUILD=1 make validate-e2e`（JAR 是上面 verify 建好的最終版，前端手動重建）**142 個測試：138 通過／4 略過／0 失敗（4.1 分鐘）**，後端以 `ddl-auto=validate` 啟動確認 entity 與 Flyway schema 對齊；新增的 SSP-01／02／03 全綠。那 4 個略過是既有基準。（過程中跑了 6 次守門：第 1 次 2 失敗與第 2 次 1 失敗見 §1.5，第 3 次全綠，第 4～5 次是前端突變驗證，第 6 次是還原後的最終全綠。）
 - **突變驗證**：見 §4（付款守門 15＋`storeIdOf` 2＋V90 15＋前端 2＝**34 個有效突變全部被抓到**；另有 1 個語法錯誤的無效 V90 突變與 1 個建置失敗的無效前端突變，已誠實標示不算數）。
-- **push 與雲端 CI**：（待回填）
+- **push 與雲端 CI**：已 push（2026-10-03，`b6ab613..16a2a8d main -> main`；pre-push 輕量守門通過）。✅ 雲端 CI 全綠 run 37111901666，三個 job 全部 success，共 10 分 26 秒：Backend Unit 2m54s／Frontend Lint & Build 1m06s／Backend Integration & Package 7m25s。雲端整合 job 近十四次依序 5m01s／6m02s／6m00s／4m15s／7m47s／7m46s／8m03s／8m05s／6m05s／7m55s／8m05s／7m18s／6m15s／**7m25s**（Sprint 229～242；本輪新增 22 個整合測試，沒有新的歸因結論）。
 
 ## 6. 範圍外（延後）、已知限制與待決定
 

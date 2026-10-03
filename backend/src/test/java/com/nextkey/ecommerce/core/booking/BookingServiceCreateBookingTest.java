@@ -319,6 +319,30 @@ class BookingServiceCreateBookingTest {
     }
 
     @Test
+    @DisplayName("DEF-340：退房日＝入住日（0 晚）→ E_4003，不鎖日曆、不建立訂房（原本用 isBefore，同一天會通過、建出 0 晚 0 元的訂房）")
+    void createBooking_checkoutSameDayAsCheckin_throwsE4003WithoutBooking() {
+        TenantContext.setCurrentUser(USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(activeRoomListing()));
+        when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(room()));
+        BookingDto.CreateRequest sameDay = BookingDto.CreateRequest.builder()
+                .roomListingId(ROOM_LISTING_ID)
+                .checkInDate(CHECK_IN)
+                .checkOutDate(CHECK_IN)
+                .guestCount(2)
+                .guestName("Alice")
+                .build();
+
+        assertThatThrownBy(() -> bookingService.createBooking(sameDay, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_4003);
+
+        verify(roomCalendarService, never()).lockDateRange(any(), any(), any());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("區間含未開放日（超出開放窗）→ E_3002")
     void createBooking_beyondOpenWindow_throwsE3002() {
         TenantContext.setCurrentUser(USER_ID);

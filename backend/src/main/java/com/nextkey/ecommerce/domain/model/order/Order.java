@@ -157,4 +157,18 @@ public class Order {
     public enum OrderStatus {
         CREATED, PAID, CONFIRMED, SHIPPING, DELIVERED, COMPLETED, CANCELLED, REFUNDING, REFUNDED
     }
+
+    // ===== 影子欄位的讀取（Sprint 243，DEF-338）=====
+    // 下面的 tenantId／userId 是 insertable = false 的唯讀影子欄位：只有「從資料庫載入」時才有值，同一個持久化脈絡裡剛用
+    // .tenant／user(...) 建立的實體它是 null（Sprint 115 DEF-065 起已知的 JPA 陷阱：同交易內剛建立的實體，影子欄位是 null）。回應轉換直接讀它，
+    // 建立訂單／訂房／合併結帳的回應（與冪等重放存下的回應）就把 tenantId／userId 回成 null。這裡的 getter 在影子欄位沒有值時退回
+    // 關聯的 id，載入自資料庫的實體行為不變（影子欄位有值就用它）。
+
+    public UUID getTenantId() {
+        return tenantId != null ? tenantId : (tenant != null ? tenant.getId() : null);
+    }
+
+    public UUID getUserId() {
+        return userId != null ? userId : (user != null ? user.getId() : null);
+    }
 }

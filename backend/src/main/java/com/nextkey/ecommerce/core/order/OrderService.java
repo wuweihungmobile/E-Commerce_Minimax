@@ -82,6 +82,10 @@ public class OrderService {
     private final PromoCodeUsageRepository promoCodeUsageRepository;
     private final AuditService auditService;
 
+    /** 訂單列表允許的排序欄位（Sprint 243，DEF-339：其餘一律 E-9000，不再讓亂填的 sortBy 變成 500）。 */
+    private static final java.util.Set<String> SORTABLE_FIELDS =
+            java.util.Set.of("createdAt", "updatedAt", "totalAmount", "status");
+
     /**
      * 建立訂單（從購物車或直接預訂）
      * ROOM 類型訂單可以直接傳入預訂資料，不需要購物車
@@ -531,7 +535,7 @@ public class OrderService {
     @Transactional(readOnly = true)
     public Page<OrderDto.OrderListResponse> getUserOrders(int page, int size, String sortBy, String sortDir) {
         UUID userId = TenantContext.getCurrentUser();
-        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
+        Sort sort = PageableUtils.sortOf(sortBy, sortDir, SORTABLE_FIELDS);
         PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
 
         Page<Order> orders = orderRepository.findByUserIdOrderByCreatedAtDesc(userId, pageRequest);
@@ -568,7 +572,7 @@ public class OrderService {
     public Page<OrderDto.OrderListResponse> getTenantOrders(int page, int size, String sortBy, String sortDir,
             String status) {
         UUID tenantId = TenantContext.getCurrentTenant();
-        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
+        Sort sort = PageableUtils.sortOf(sortBy, sortDir, SORTABLE_FIELDS);
         PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
 
         if (!TenantContext.isStoreTenant(tenantId)) {

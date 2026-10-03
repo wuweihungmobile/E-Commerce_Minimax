@@ -123,6 +123,13 @@ class CartControllerE2ETest {
                     .then()
                     .statusCode(201);
 
+            // Sprint 240（DEF-326）：沒有店鋪的 SELLER 簽發為買家、不能建立商品，所以要先把賣家歸到店鋪租戶再登入
+            // （與真實流程一致：開店核准後重新登入，JWT 才帶店鋪租戶）。
+            userRepository.findByEmail(sellerEmail).ifPresent(user -> {
+                user.setTenantId(testTenantId);
+                userRepository.save(user);
+            });
+
             // 登入取得 SELLER token
             String sellerLoginResponse = given()
                     .contentType(MediaType.APPLICATION_JSON_VALUE)
@@ -170,11 +177,7 @@ class CartControllerE2ETest {
             JsonNode buyerLoginJson = objectMapper.readTree(buyerLoginResponse);
             buyerToken = buyerLoginJson.path("data").path("accessToken").asText();
 
-            // 更新 SELLER 和 BUYER 用戶的 tenantId
-            userRepository.findByEmail(sellerEmail).ifPresent(user -> {
-                user.setTenantId(testTenantId);
-                userRepository.save(user);
-            });
+            // 更新 BUYER 用戶的 tenantId（SELLER 已在登入前歸到店鋪租戶，見上）
             userRepository.findByEmail(buyerEmail).ifPresent(user -> {
                 user.setTenantId(testTenantId);
                 userRepository.save(user);

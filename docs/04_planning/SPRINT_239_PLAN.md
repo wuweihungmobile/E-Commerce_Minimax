@@ -67,7 +67,7 @@ Sprint 236～237 之前，訂單與訂房蓋成「下單者的租戶」。沒有
 - **前端**：產線建置通過（含 TypeScript 型別檢查）；`eslint` 對本輪改動的 6 個檔案 0 錯誤（1 個警告是 `cart/page.tsx` 既有的 `<img>`）。
 - **真實後端 E2E**：`E2E_GATE_SKIP_BUILD=1 make validate-e2e`（JAR 由上面的 verify 剛建好、前端先手動重建，見記憶 `e2e-gate-skip-build-reuses-stale-frontend`）**136 個測試：132 通過／4 略過／0 失敗（4.6 分鐘）**；後端以 `ddl-auto=validate` 啟動，確認 entity 與 Flyway schema 對齊；新增的 **SCHK-07** 全綠，Sprint 238 的 SCHK-05／06 與既有 mock 型購物車規格一併回歸通過。那 4 個略過是既有基準（Sprint 231～238 皆為 4 個）。本次守門沒有失敗，也沒有靠重試通過（Playwright 摘要沒有 flaky 項目）。
 - **突變驗證**：見 §4（5 個全部被抓到，每次還原後以 `cmp` 確認逐位元組一致）。
-- **push 與雲端 CI**：（push 後於回填 commit 補上）
+- **push 與雲端 CI**：已 push（2026-10-03，`9b6a81c..ff8f387 main -> main`；pre-push 輕量守門通過：後端單元兩輪各約 3 分、前端 Lint＆Build、schema 對齊）。✅ 雲端 CI 全綠 run 37088342512，三個 job 全部 success，共 10 分 47 秒：Backend Unit 2m36s／Frontend Lint & Build 1m05s／Backend Integration & Package 8m05s。雲端整合 job 近十一次依序 5m01s／6m02s／6m00s／4m15s／7m47s／7m46s／8m03s／8m05s／6m05s／7m55s／**8m05s**（Sprint 229～239），沒有新的歸因結論。
 
 ## 6. 範圍外（延後）、已知限制與待決定
 

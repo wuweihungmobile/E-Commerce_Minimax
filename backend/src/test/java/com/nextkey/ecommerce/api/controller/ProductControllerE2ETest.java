@@ -119,6 +119,13 @@ class ProductControllerE2ETest {
                     .then()
                     .statusCode(201);
 
+            // Sprint 240（DEF-326）：沒有店鋪的 SELLER 簽發為買家、不能管理商品，所以要先把使用者歸到店鋪租戶再登入
+            // （與真實流程一致：開店核准後重新登入，JWT 才帶店鋪租戶）。原本是登入之後才寫入租戶，token 帶的是系統租戶。
+            userRepository.findByEmail(userEmail).ifPresent(user -> {
+                user.setTenantId(testTenantId);
+                userRepository.save(user);
+            });
+
             // 登入取得 access token
             String loginResponse = given()
                     .contentType(MediaType.APPLICATION_JSON_VALUE)
@@ -135,12 +142,6 @@ class ProductControllerE2ETest {
 
             JsonNode loginJson = objectMapper.readTree(loginResponse);
             accessToken = loginJson.path("data").path("accessToken").asText();
-
-            // 更新用戶的 tenantId
-            userRepository.findByEmail(userEmail).ifPresent(user -> {
-                user.setTenantId(testTenantId);
-                userRepository.save(user);
-            });
         } catch (Exception e) {
             throw new RuntimeException("Failed to setup test user: " + e.getMessage(), e);
         }
@@ -149,8 +150,7 @@ class ProductControllerE2ETest {
     @AfterEach
     void tearDown() {
         // DEF-041 根因修復後 owner_id 會真正落地，刪除使用者前需先清理其擁有的 listings，
-        // 否則會違反 listings.owner_id 的外鍵約束。注意：JWT 的 tenantId claim 是登入當下核發，
-        // 與稍後才寫回 DB 的 testTenantId 不同一個值，因此以 ownerId（來自使用者本身）查詢，而非 tenantId。
+        // 否則會違反 listings.owner_id 的外鍵約束。以 ownerId（來自使用者本身）查詢。
         userRepository.findByEmail(userEmail).ifPresent(user -> {
             List<Listing> listings = listingRepository.findByOwnerId(user.getId());
             // Product.listingId 與 Listing.id 為同一個 PK（@MapsId），需先刪 products 再刪 listings，

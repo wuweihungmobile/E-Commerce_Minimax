@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,6 +17,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -30,6 +33,7 @@ import com.nextkey.ecommerce.api.dto.RegisterRequest;
 import com.nextkey.ecommerce.api.dto.RegisterResponse;
 import com.nextkey.ecommerce.api.dto.UserInfoResponse;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
@@ -37,6 +41,7 @@ import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 import com.nextkey.ecommerce.infrastructure.security.LoginAttemptService;
 import com.nextkey.ecommerce.infrastructure.security.RefreshTokenService;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
@@ -543,6 +548,146 @@ class AuthServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(ErrorCode.E_1006);
+        }
+    }
+
+    // ── 有效角色（DEF-326）────────────────────────────────────────────
+
+    /**
+     * Sprint 240（DEF-326）：沒有店鋪的 SELLER／HOST 以買家身分簽發。權限完全由 JWT 的 role 宣告決定，所以簽發是唯一的判斷點；
+     * 判斷依據是租戶、不是角色標籤，其他角色一律不變（尤其是本來就沒有店鋪租戶的 SUPER_ADMIN）。
+     */
+    @Nested
+    @DisplayName("有效角色（DEF-326：沒有店鋪的 SELLER／HOST 是買家）")
+    class EffectiveRole {
+
+        private final UUID systemTenantId = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
+
+        /** 對任何 id 都回對應的租戶，讓「查錯租戶」反映在斷言上，而不是 Mockito 的 stub 不符。 */
+        private void stubEveryTenantExists() {
+            when(tenantRepository.findById(any())).thenAnswer(inv ->
+                    Optional.of(Tenant.builder().id(inv.getArgument(0)).name("tenant").build()));
+        }
+
+        private User userWithRole(final User.UserRole role) {
+            User user = buildActiveUser();
+            user.setRole(role);
+            return user;
+        }
+
+        @ParameterizedTest
+        @EnumSource(value = User.UserRole.class, names = {"SELLER", "HOST"})
+        @DisplayName("沒有店鋪（租戶是系統租戶）的 SELLER／HOST 簽發為 BUYER：token 與回應都是，資料庫的角色不動")
+        void completeLogin_storeLessSellerOrHost_isIssuedAsBuyer(final User.UserRole role) {
+            User user = userWithRole(role);
+            stubEveryTenantExists();
+            stubGeneratedTokens();
+
+            AuthResponse response = authService.completeLogin(user);
+
+            verify(jwtTokenService).generateAccessToken(USER_ID, "buyer@example.com", "BUYER", systemTenantId.toString());
+            assertThat(response.getUser().getRole()).isEqualTo("BUYER");
+            assertThat(user.getRole()).as("users.role 不動，開店核准時才由 AdminService 改成 STORE_OWNER").isEqualTo(role);
+        }
+
+        @Test
+        @DisplayName("租戶解析不到（資料列不存在，JWT 租戶是 null）的 SELLER 也是買家")
+        void completeLogin_sellerWithoutAnyTenantRow_isIssuedAsBuyer() {
+            User user = userWithRole(User.UserRole.SELLER);
+            stubGeneratedTokens();
+
+            AuthResponse response = authService.completeLogin(user);
+
+            verify(jwtTokenService).generateAccessToken(USER_ID, "buyer@example.com", "BUYER", null);
+            assertThat(response.getUser().getRole()).isEqualTo("BUYER");
+        }
+
+        @ParameterizedTest
+        @EnumSource(value = User.UserRole.class, names = {"SELLER", "HOST"})
+        @DisplayName("有真實店鋪租戶（User.tenantId）的 SELLER／HOST 角色照舊——判斷依據是租戶，不是角色標籤")
+        void completeLogin_sellerOrHostWithAStore_keepsTheRole(final User.UserRole role) {
+            User user = userWithRole(role);
+            user.setTenantId(TENANT_ID);
+            stubEveryTenantExists();
+            stubGeneratedTokens();
+
+            AuthResponse response = authService.completeLogin(user);
+
+            verify(jwtTokenService).generateAccessToken(USER_ID, "buyer@example.com", role.name(), TENANT_ID.toString());
+            assertThat(response.getUser().getRole()).isEqualTo(role.name());
+        }
+
+        @Test
+        @DisplayName("店鋪成員（tenant_members 的有效成員，User.tenantId 為 null）身分的 SELLER 同樣照舊")
+        void completeLogin_sellerWithActiveMembership_keepsTheRole() {
+            User user = userWithRole(User.UserRole.SELLER);
+            when(tenantMemberRepository.findByUserIdAndStatus(USER_ID, TenantMember.MemberStatus.ACTIVE))
+                    .thenReturn(List.of(TenantMember.builder().tenantId(TENANT_ID).userId(USER_ID).build()));
+            stubEveryTenantExists();
+            stubGeneratedTokens();
+
+            authService.completeLogin(user);
+
+            verify(jwtTokenService).generateAccessToken(USER_ID, "buyer@example.com", "SELLER", TENANT_ID.toString());
+        }
+
+        @ParameterizedTest
+        @EnumSource(value = User.UserRole.class, names = {"SELLER", "HOST"}, mode = EnumSource.Mode.EXCLUDE)
+        @DisplayName("其他角色一律不變，即使沒有店鋪租戶（平台管理員本來就在系統租戶，不能被降級）")
+        void completeLogin_otherRoles_areNeverChanged(final User.UserRole role) {
+            User user = userWithRole(role);
+            stubEveryTenantExists();
+            stubGeneratedTokens();
+
+            authService.completeLogin(user);
+
+            verify(jwtTokenService).generateAccessToken(USER_ID, "buyer@example.com", role.name(), systemTenantId.toString());
+        }
+
+        @Test
+        @DisplayName("換發 token（refresh）走同一套：沒有店鋪的 SELLER 換發後仍是買家")
+        void refreshToken_storeLessSeller_isIssuedAsBuyer() {
+            User user = userWithRole(User.UserRole.SELLER);
+            RefreshTokenRequest request = RefreshTokenRequest.builder().refreshToken("valid-refresh").build();
+            when(jwtTokenService.validateToken("valid-refresh")).thenReturn(true);
+            when(jwtTokenService.isTokenExpired("valid-refresh")).thenReturn(false);
+            when(jwtTokenService.getUserId("valid-refresh")).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            when(refreshTokenService.isRefreshTokenValid(USER_ID, "valid-refresh")).thenReturn(true);
+            when(refreshTokenService.tryRotateRefreshToken(USER_ID, "valid-refresh")).thenReturn(true);
+            stubEveryTenantExists();
+            stubGeneratedTokens();
+
+            AuthResponse response = authService.refreshToken(request);
+
+            assertThat(response.getUser().getRole()).isEqualTo("BUYER");
+            verify(jwtTokenService).generateAccessToken(USER_ID, "buyer@example.com", "BUYER", systemTenantId.toString());
+        }
+
+        @Test
+        @DisplayName("GET /me 與簽發一致：沒有店鋪的 SELLER 回 BUYER")
+        void getCurrentUser_storeLessSeller_reportsBuyer() {
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userWithRole(User.UserRole.SELLER)));
+            stubEveryTenantExists();
+
+            UserInfoResponse response = authService.getCurrentUser(USER_ID);
+
+            assertThat(response.getUserType()).isEqualTo("BUYER");
+            assertThat(response.getTenants()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("GET /me 與簽發一致：有店鋪的 SELLER 回 SELLER（userType 與 tenants[].role 都是）")
+        void getCurrentUser_sellerWithAStore_reportsSeller() {
+            User user = userWithRole(User.UserRole.SELLER);
+            user.setTenantId(TENANT_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            stubEveryTenantExists();
+
+            UserInfoResponse response = authService.getCurrentUser(USER_ID);
+
+            assertThat(response.getUserType()).isEqualTo("SELLER");
+            assertThat(response.getTenants()).extracting(UserInfoResponse.TenantInfo::getRole).containsExactly("SELLER");
         }
     }
 }

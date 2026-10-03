@@ -31,6 +31,7 @@ import com.nextkey.ecommerce.infrastructure.security.RefreshTokenService;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -246,13 +247,39 @@ public class AuthService {
         return tenantRepository.findById(UUID.fromString(AppConstants.SYSTEM_TENANT_ID)).orElse(null);
     }
 
+    /**
+     * 使用者實際以什麼角色運作（Sprint 240，DEF-326）：沒有店鋪的 SELLER／HOST 是買家。
+     *
+     * <p>自助註冊可以直接得到 SELLER／HOST，沒有審核、不建租戶（開店核准後的角色是 STORE_OWNER，見 {@code AdminService}），
+     * 所以正式環境的 SELLER／HOST 幾乎都是「還沒開店的人」，租戶落在系統租戶佔位值。但這兩個角色持有商品、房源、定價、
+     * 運費模板、CMS、貼文的寫入權限，而各擁有權檢查是「資源的租戶 == 呼叫者的租戶」——於是所有這類使用者與平台自營資料
+     * 彼此互通（可改運費模板、改線上 CMS 頁面、往買家目錄上架商品……）。使用者拍板：未歸屬任何店鋪者不得寫入，與 PRD
+     * 「需先申請開店」一致。
+     *
+     * <p>權限完全由 JWT 的 role 宣告決定（{@code JwtAuthenticationFilter}），而 access token 只在
+     * {@link #generateAuthResponse} 一處簽發，所以在簽發時推導有效角色，就同時關掉所有店家層端點，不必逐一修擁有權檢查。
+     * 判斷依據是<b>租戶</b>而不是角色標籤：有真實店鋪租戶的 SELLER／HOST（舊資料、店鋪成員）照常運作。資料庫的
+     * {@code users.role} 不動，開店核准時才由 AdminService 改成 STORE_OWNER。已簽發的 access token 在有效期內
+     * （15 分鐘）不受影響，與其他租戶或角色的變更相同。
+     */
+    private static User.UserRole effectiveRole(final User user, final Tenant tenant) {
+        User.UserRole role = user.getRole();
+        boolean hasStore = TenantContext.isStoreTenant(tenant != null ? tenant.getId() : null);
+        return isSellerOrHost(role) && !hasStore ? User.UserRole.BUYER : role;
+    }
+
+    private static boolean isSellerOrHost(final User.UserRole role) {
+        return role == User.UserRole.SELLER || role == User.UserRole.HOST;
+    }
+
     private AuthResponse generateAuthResponse(final User user, final Tenant tenant) {
         String tenantId = tenant != null ? tenant.getId().toString() : null;
+        User.UserRole role = effectiveRole(user, tenant);
 
         String accessToken = jwtTokenService.generateAccessToken(
                 user.getId(),
                 user.getEmail(),
-                user.getRole().name(),
+                role.name(),
                 tenantId
         );
 
@@ -268,7 +295,7 @@ public class AuthService {
                         .id(user.getId())
                         .email(user.getEmail())
                         .fullName(user.getFullName())
-                        .role(user.getRole().name())
+                        .role(role.name())
                         .tenantId(tenantId)
                         .build())
                 .build();
@@ -303,6 +330,12 @@ public class AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1006, "User not found"));
 
+        // 與簽發 token 時同一套有效角色（Sprint 240，DEF-326）：回應的角色不能與實際權限不一致。
+        // 只有 SELLER／HOST 的有效角色取決於租戶，其他角色不必多查。
+        User.UserRole role = isSellerOrHost(user.getRole())
+                ? effectiveRole(user, resolveTenantForUser(user))
+                : user.getRole();
+
         // 獲取用戶的租戶資訊
         List<UserInfoResponse.TenantInfo> tenants = new ArrayList<>();
         if (user.getTenantId() != null) {
@@ -311,7 +344,7 @@ public class AuthService {
                 tenants.add(UserInfoResponse.TenantInfo.builder()
                         .tenantId(tenant.getId())
                         .tenantName(tenant.getName())
-                        .role(user.getRole().name())
+                        .role(role.name())
                         .build());
             }
         }
@@ -319,7 +352,7 @@ public class AuthService {
         return UserInfoResponse.builder()
                 .userId(user.getId())
                 .email(user.getEmail())
-                .userType(user.getRole().name())
+                .userType(role.name())
                 .status(user.getStatus())
                 .emailVerified(user.getEmailVerified())
                 .profile(UserInfoResponse.Profile.builder()

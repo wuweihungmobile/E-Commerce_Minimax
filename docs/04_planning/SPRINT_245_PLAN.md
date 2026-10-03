@@ -129,7 +129,7 @@ Sprint 244 收尾時，使用者拍板 DEF-345「依 PRD Phase 1」：付款成�
 - **店家後台沒有入住與退房按鈕**（DEF-350）：因此沒有 UI 層測試；API 層以真實全棧驗證。
 - **`GET /v2/bookings/{id}/state-log` 未實作**（DEF-350）。
 - **真實 Stripe 路徑**：本輪未觸及。
-- **雲端 CI**：push 後的結果回填於 §8。
+- **雲端 CI**：run `37141640995`（commit `8a0024f`）全綠，11 分 24 秒；見 §8。
 - **時間邊界**：入住日的判斷以 `BusinessTime` 固定為 2026-10-04（台北）驗證；午夜跨日的實際行為未以真實時鐘測試。
 
 ## 6. 範圍外（延後）與已知限制
@@ -145,8 +145,8 @@ Sprint 244 收尾時，使用者拍板 DEF-345「依 PRD Phase 1」：付款成�
 
 ## 8. 下一步／Action Items
 
-1. commit：實作與文件一個、計畫與追蹤表一個（先 commit，再跑守門，再 push）。
-2. `make validate-e2e` 的結果回填 §5.3。
-3. push，等雲端 CI 結果，回填本檔 §8、RELEASE_TRACKER 的狀態欄與統計、DEFERRED 的版本鏈。
-4. 使用者確認 DEF-351 的三項假設（§2.2）。
+1. ✅ commit：`16f2011`（實作、測試、規格文件）與 `8a0024f`（計畫書與追蹤表）。
+2. ✅ `make validate-e2e`：138 通過、4 略過、0 失敗（§5.3）。
+3. ✅ push：`1307c8d..8a0024f`，pre-push 輕量守門通過。雲端 CI run `37141640995` 全綠（11 分 24 秒；Backend Unit Tests、Backend Integration Tests & Package、Frontend Lint & Build 皆 success）。RELEASE_TRACKER 的狀態欄與統計已依此回填。
+4. ⏳ 使用者確認 DEF-351 的三項假設（§2.2）：未決，見 DEF-351。
 5. Sprint 246 候選（依 Sprint 244 §6.2）：DEF-347（SMTP 非同步寄送，啟用 SMTP 前必修）、DEF-346（上線 runbook 的 Stripe 開關步驟）。

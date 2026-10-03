@@ -136,7 +136,7 @@
 - **前端**：沒有改動（沿用 Sprint 242 還原後重建的版本）。
 - **真實後端 E2E**：`E2E_GATE_SKIP_BUILD=1 make validate-e2e`（JAR 是上面 verify 剛建好的版本）**142 個測試：138 通過／4 略過／0 失敗（4.0 分鐘）**，後端以 `ddl-auto=validate` 啟動確認 entity 與 Flyway schema 對齊。那 4 個略過是既有基準。
 - **突變驗證**：見 §4（程式碼 19＋文件 10，全部被抓到；`MS3` 第一輪存活、補契約斷言後抓到）。
-- **push 與雲端 CI**：（待回填）
+- **push 與雲端 CI**：已 push（2026-10-03，`16a2a8d..9fde2d0 main -> main`；pre-push 輕量守門通過）。✅ 雲端 CI 全綠 run 37118196263，三個 job 全部 success，共 10 分 51 秒：Backend Unit 2m28s／Frontend Lint & Build 1m04s／Backend Integration & Package 8m18s。雲端整合 job 近十五次依序 5m01s／6m02s／6m00s／4m15s／7m47s／7m46s／8m03s／8m05s／6m05s／7m55s／8m05s／7m18s／6m15s／7m25s／**8m18s**（Sprint 229～243；本輪新增 24 個整合測試，沒有新的歸因結論）。
 
 ## 6. 範圍外（延後）、已知限制與待決定
 

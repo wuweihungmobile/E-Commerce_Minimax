@@ -27,7 +27,7 @@
 | **模組編號** | M04 |
 | **模組名稱** | 購物車 / Cart |
 | **描述** | 買家把商品（PRODUCT）與房源（ROOM）放進購物車、檢視、改數量、移除、清空，並在購物車內套用／驗證店鋪的優惠券、預覽運費與應付金額 |
-| **使用角色** | 只有 **BUYER**（與 SUPER_ADMIN）持有 `cart:read`／`cart:update`／`cart:delete`；店主、店員、賣家、房東、一般管理員都沒有。沒有店鋪的 SELLER／HOST 自 Sprint 240 起以 BUYER 身分簽發（`DEF-326`），所以也能使用購物車 |
+| **使用角色** | 只有 **BUYER**（與 SUPER_ADMIN）持有 `cart:read`／`cart:update`／`cart:delete`；店主、店員、賣家、房東、一般管理員都沒有（這是 PRD §7.3 權限矩陣的設計：M04 購物車只有 Buyer 是 RWD）。沒有店鋪的 SELLER／HOST 自 Sprint 240 起以 BUYER 身分簽發（`DEF-326`），所以也能使用購物車 |
 | **儲存** | Redis（Hash，鍵 `cart:{userId}:{buyerTenantId}`；每次加入或修改項目都把 TTL 重設為 **30 天**） |
 | **多租戶隔離** | 購物車以（使用者, 買家租戶）為鍵。沒有店鋪的消費者的租戶是系統租戶佔位值，所以實際上是**每位使用者一個購物車**；每位買家只能操作自己的購物車 |
 | **API 前綴** | 後端的 context path 是 `/api`，所以下列路徑的完整網址是 `/api/v2/cart/...` |

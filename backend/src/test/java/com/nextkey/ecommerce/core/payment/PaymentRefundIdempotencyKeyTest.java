@@ -91,7 +91,7 @@ class PaymentRefundIdempotencyKeyTest {
 
         service = new PaymentStateService(paymentRepository, orderRepository, mock(BookingRepository.class),
                 featureToggleService, factory, mock(SettlementAdjustmentService.class),
-                mock(OrderStateLogRepository.class), mock(AuditService.class));
+                mock(OrderStateLogRepository.class), mock(AuditService.class), mock(PaymentStoreGuard.class));
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         TenantContext.setCurrentUser(USER_ID);
 

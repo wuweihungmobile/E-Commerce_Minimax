@@ -74,6 +74,7 @@ class PaymentStateServiceTest {
     @Mock private SettlementAdjustmentService settlementAdjustmentService;
     @Mock private OrderStateLogRepository orderStateLogRepository;
     @Mock private AuditService auditService;
+    @Mock private PaymentStoreGuard paymentStoreGuard;
 
     private PaymentStateService service;
 
@@ -86,7 +87,7 @@ class PaymentStateServiceTest {
     void setUp() {
         service = new PaymentStateService(paymentRepository, orderRepository, bookingRepository,
                 featureToggleService, paymentGatewayFactory, settlementAdjustmentService,
-                orderStateLogRepository, auditService);
+                orderStateLogRepository, auditService, paymentStoreGuard);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         TenantContext.setCurrentUser(USER_ID);
     }

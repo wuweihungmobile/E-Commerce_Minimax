@@ -286,8 +286,21 @@ export default function OrderDetailPage() {
               </Card>
             )}
 
+            {/* Sprint 242：店鋪暫停營業時不能付款（後端回 E-2010），改顯示說明；仍可取消訂單 */}
+            {payment?.canPay && payment.storeOpen === false && (
+              <Card className="border-amber-200" data-testid="order-store-closed">
+                <CardHeader>
+                  <CardTitle className="text-base">店鋪暫停營業</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm text-gray-700">
+                  <p>此店鋪目前暫停營業，暫時無法付款。</p>
+                  <p>您可以按上方的「取消訂單」取消這筆訂單；若店鋪恢復營業，這裡會再出現付款按鈕。</p>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Payment (Mock) */}
-            {payment?.canPay && (
+            {payment?.canPay && payment.storeOpen !== false && (
               <Card className="border-primary/30">
                 <CardHeader>
                   <CardTitle className="text-base">付款</CardTitle>

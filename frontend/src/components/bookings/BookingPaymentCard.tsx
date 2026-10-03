@@ -112,6 +112,21 @@ export default function BookingPaymentCard({
     )
   }
 
+  // Sprint 242：店鋪暫停營業時不能付款（後端回 E-2010）；仍可取消預訂
+  if (state.canPay && state.storeOpen === false) {
+    return (
+      <Card className="border-amber-200" data-testid="booking-store-closed">
+        <CardHeader>
+          <CardTitle className="text-base">店鋪暫停營業</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm text-gray-700">
+          <p>此店鋪目前暫停營業，暫時無法付款。</p>
+          <p>您可以取消這筆預訂；若店鋪恢復營業，這裡會再出現付款按鈕。</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
   if (state.canPay) {
     return (
       <Card className="border-primary/30" data-testid="booking-payment-card">

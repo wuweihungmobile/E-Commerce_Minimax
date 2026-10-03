@@ -22,6 +22,9 @@ export interface OrderPaymentState {
   paymentProvider?: string | null
   // 累計已退款金額（Sprint 56 起後端就有回傳；Sprint 226 起前端顯示）；未退款為 0
   refundedAmount?: number | null
+  // Sprint 242：所屬店鋪目前是否營業中。false（停權／終止）時不能付款（E-2010），只能取消；
+  // 舊版沒有此欄位的回應（undefined／null）視為營業中
+  storeOpen?: boolean | null
 }
 
 // 真實金流 Phase A（AI-2410）：Stripe Checkout Session 建立回應

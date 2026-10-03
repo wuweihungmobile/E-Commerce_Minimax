@@ -65,6 +65,7 @@ class PaymentStateServiceBookingTest {
     @Mock private SettlementAdjustmentService settlementAdjustmentService;
     @Mock private OrderStateLogRepository orderStateLogRepository;
     @Mock private AuditService auditService;
+    @Mock private PaymentStoreGuard paymentStoreGuard;
     @Mock private EntityManager entityManager;
 
     private PaymentStateService service;
@@ -80,7 +81,7 @@ class PaymentStateServiceBookingTest {
     void setUp() {
         service = new PaymentStateService(paymentRepository, orderRepository, bookingRepository,
                 featureToggleService, paymentGatewayFactory, settlementAdjustmentService,
-                orderStateLogRepository, auditService);
+                orderStateLogRepository, auditService, paymentStoreGuard);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         ReflectionTestUtils.setField(service, "entityManager", entityManager);
         TenantContext.setCurrentUser(USER_ID);

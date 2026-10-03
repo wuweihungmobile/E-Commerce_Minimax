@@ -38,6 +38,7 @@ public class PaymentService {
     private final OrderService orderService;
     private final AuditService auditService;
     private final PaymentStateService paymentStateService;
+    private final PaymentStoreGuard paymentStoreGuard;
 
     /**
      * 處理支付（Mock）
@@ -84,6 +85,8 @@ public class PaymentService {
         if (paymentRepository.existsByOrderIdAndStatus(request.getOrderId(), Payment.PaymentStatus.SUCCESS)) {
             throw new BusinessException(ErrorCode.E_6003, "Payment already processed");
         }
+        // Sprint 242（使用者拍板）：店鋪已停權／終止就不能再付款給它（與 PaymentStateService 的付款入口一致）
+        paymentStoreGuard.requireStoreOpen(PaymentStoreGuard.storeIdOf(order));
 
         // 建立支付記錄
         Payment payment = Payment.builder()
@@ -139,6 +142,7 @@ public class PaymentService {
         if (paymentRepository.existsByBookingIdAndStatus(request.getBookingId(), Payment.PaymentStatus.SUCCESS)) {
             throw new BusinessException(ErrorCode.E_6003, "Payment already processed");
         }
+        paymentStoreGuard.requireStoreOpen(PaymentStoreGuard.storeIdOf(booking));
 
         // 建立支付記錄
         Payment payment = Payment.builder()

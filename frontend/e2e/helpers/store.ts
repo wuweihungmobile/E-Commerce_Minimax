@@ -57,6 +57,35 @@ export async function setStoreStatus(page: Page, tenantId: string, status: 'SUSP
   expect(response.status(), await response.text()).toBe(200);
 }
 
+/**
+ * 以 API 登入管理員並回傳 access token——**不動瀏覽器的登入狀態**。登入端點有 IP 限流（每個來源 IP、每個路徑 30 次／分，
+ * 整個 E2E 套件共用同一個 IP），`setStoreStatus` 每呼叫一次就清掉登入並以管理員重新登入，呼叫端接著還要把原身分再登入一次，
+ * 多次停權／恢復的案例會一口氣消耗十幾次額度、拖累其他規格（Sprint 242 實測：我的規格約 22 次登入，連帶讓不相干的
+ * at-system-tenant-isolation-real 拿不到 token）。需要來回切換店鋪狀態的規格改用本函式取一次 token，搭配
+ * {@link setStoreStatusWithToken}。
+ */
+export async function adminAccessToken(page: Page): Promise<string> {
+  const login = await page.request.post(`${API_BASE}/v2/auth/login`, {
+    data: { email: 'admin@nextkey.local', password: PASSWORD },
+  });
+  expect(login.status(), await login.text()).toBe(200);
+  return (await login.json()).data.accessToken as string;
+}
+
+/** 與 {@link setStoreStatus} 相同的狀態變更，但用已取得的管理員 token：不清瀏覽器登入狀態、不多登入一次。 */
+export async function setStoreStatusWithToken(
+  page: Page,
+  adminToken: string,
+  tenantId: string,
+  status: 'SUSPENDED' | 'ACTIVE'
+): Promise<void> {
+  const response = await page.request.put(`${API_BASE}/v2/admin/tenants/${tenantId}/status`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+    data: { status },
+  });
+  expect(response.status(), await response.text()).toBe(200);
+}
+
 export async function seedStore(page: Page, options: SeedStoreOptions): Promise<SeededStore> {
   const owner = await registerAndLogin(page);
   await verifyEmailViaMailbox(page, owner.email);

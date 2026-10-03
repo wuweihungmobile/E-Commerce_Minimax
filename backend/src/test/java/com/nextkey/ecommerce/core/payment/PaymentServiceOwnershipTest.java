@@ -60,6 +60,9 @@ class PaymentServiceOwnershipTest {
     @Mock
     private PaymentStateService paymentStateService;
 
+    @Mock
+    private PaymentStoreGuard paymentStoreGuard;
+
     @InjectMocks
     private PaymentService paymentService;
 

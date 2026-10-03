@@ -438,7 +438,7 @@ SuperAdmin
 - `prod` profile：**不記錄內容**（連結等同密碼重設憑證，任何能讀日誌的人都能接管帳號），`canDeliver() = false`，啟動時記 WARN。
 - **開店申請的 Email 驗證前置條件只在 `canDeliver() = true` 時生效**：沒有信可寄就無從驗證，強制檢查只會鎖死所有申請者。接上真實寄信服務（新增 `EmailSender` 實作並標 `@Primary`，`canDeliver()` 回 `true`）後自動生效。
 - **真實寄信（`SmtpEmailSender`，Sprint 209）已接線**：`@Primary`，只在 `spring.mail.username`（環境變數 `SMTP_USERNAME`）有值時建立（`@ConditionalOnExpression`，不用 `@ConditionalOnProperty`，見該類別註解）。寄件位址預設沿用 `SMTP_USERNAME`，可由 `SMTP_FROM_ADDRESS` 覆寫。啟用時 `canDeliver()` 為 `true`。
-- **目前的部署狀態**：`docker-compose.yml` 沒有傳遞 `SMTP_*`（DEF-322），所以 compose 部署的 `prod` 仍是 `canDeliver() = false`。**`SmtpEmailSender` 尚未對真實 Google Workspace SMTP 伺服器實測過**（Sprint 209 紀錄）。
+- **目前的部署狀態**：`docker-compose.yml` 傳遞 `SMTP_*`（Sprint 244 收尾追加，DEF-322），但 `SMTP_USERNAME` 預設為空，所以預設的 `prod` 仍是 `canDeliver() = false`。**`SmtpEmailSender` 尚未對真實 Google Workspace SMTP 伺服器實測過**（Sprint 209 紀錄）。
 - **在完成實測並把 `SMTP_*` 設到正式環境之前，這兩項功能不可宣告可在正式環境上線。**
 - **啟用前必修**：`SmtpEmailSender` 目前是同步寄送（忘記密碼端點在請求內呼叫 `send`），啟用後回應時間會洩漏帳號是否存在（DEF-347）。S204 登記的「改為非同步寄送」條件已成立。
 

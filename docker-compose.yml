@@ -77,6 +77,16 @@ services:
       # 的簽章驗證 fail-fast 恆定觸發，導致容器完全開不起來
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_placeholder}
+      # 寄信（Sprint 244，使用者授權補傳）：SMTP_USERNAME 留空＝不啟用真實寄信（維持日誌型）；密碼只由 .env 注入，不寫進此檔
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_ADDRESS=${SMTP_FROM_ADDRESS:-}
+      # 前端網址、CORS 與排程（Sprint 244，使用者授權補傳；預設值與程式內的預設相同）
+      - APP_FRONTEND_BASE_URL=${APP_FRONTEND_BASE_URL:-http://localhost:3000}
+      - APP_CORS_ALLOWED_ORIGINS=${APP_CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8080}
+      - APP_SCHEDULING_ENABLED=${APP_SCHEDULING_ENABLED:-true}
     depends_on:
       postgres:
         condition: service_healthy

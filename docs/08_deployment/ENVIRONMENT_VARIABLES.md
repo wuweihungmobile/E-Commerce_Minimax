@@ -1,8 +1,8 @@
 # 環境變數說明 / Environment Variables
 
 > **文件類型**: 部署指南（環境變數）
-> **版本**: v1.0
-> **建立日期**: 2026-10-03（Sprint 244，文件對齊 3/3）
+> **版本**: v1.1
+> **建立日期**: 2026-10-03（Sprint 244，文件對齊 3/3；v1.1 為收尾追加）
 > **依據**: `backend/src/main/resources/application.yml`、後端 `@Value` 與條件式 bean、`docker-compose.yml`、`docker-compose.override.yml`、`.env.example`、`frontend/src`（`NEXT_PUBLIC_*`）、`scripts/validate-e2e.sh`、`Makefile`
 > **讀者**: 部署與維運人員、後端與前端開發者
 > **說明**: 本文件依程式碼核對，**不改變任何預設值**。與實作不符或尚待決定的項目見 §7 與 [DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md)（DEF-322、DEF-345～DEF-349）。
@@ -55,11 +55,11 @@
 
 | 變數 | 預設值 | 用途 | compose 傳遞 | 正式必填 |
 |------|--------|------|:------------:|:--------:|
-| `SMTP_USERNAME` | 空 | Google Workspace 帳號。**有值時啟用 `SmtpEmailSender`**（`@Primary`，取代日誌型） | ❌ | 要寄真實信時必填 |
-| `SMTP_PASSWORD` | 空 | 應用程式密碼（App Password），不是登入密碼 | ❌ | 要寄真實信時必填 |
-| `SMTP_HOST` | `smtp.gmail.com` | SMTP 主機 | ❌ | 視需要 |
-| `SMTP_PORT` | `587`（STARTTLS 必須） | SMTP 埠 | ❌ | 視需要 |
-| `SMTP_FROM_ADDRESS` | 空（沿用 `SMTP_USERNAME`） | 寄件位址。改成其他位址前，須先在 Google 帳戶設定為寄件別名並完成驗證 | ❌ | 視需要 |
+| `SMTP_USERNAME` | 空 | Google Workspace 帳號。**有值時啟用 `SmtpEmailSender`**（`@Primary`，取代日誌型） | ✅ | 要寄真實信時必填 |
+| `SMTP_PASSWORD` | 空 | 應用程式密碼（App Password），不是登入密碼；只由 `.env` 注入 | ✅ | 要寄真實信時必填 |
+| `SMTP_HOST` | `smtp.gmail.com` | SMTP 主機 | ✅ | 視需要 |
+| `SMTP_PORT` | `587`（STARTTLS 必須） | SMTP 埠 | ✅ | 視需要 |
+| `SMTP_FROM_ADDRESS` | 空（沿用 `SMTP_USERNAME`） | 寄件位址。改成其他位址前，須先在 Google 帳戶設定為寄件別名並完成驗證 | ✅ | 視需要 |
 
 **`SMTP_USERNAME` 為空時**（目前的預設）使用 `LoggingEmailSender`：非 `prod` 把信件全文寫入日誌；`prod` 只記錄「有一封信未寄出」，`canDeliver()` 為 `false`，因此**開店申請的 Email 驗證前置條件不生效**（SRD §5.5）。
 
@@ -69,14 +69,14 @@
 
 | 變數 | 預設值 | 用途 | compose 傳遞 | 正式必填 |
 |------|--------|------|:------------:|:--------:|
-| `APP_FRONTEND_BASE_URL` | `http://localhost:3000`（`@Value` 預設） | 重設密碼與 Email 驗證連結的網域；Stripe 回跳網址也用此設定 | ❌ | ✅（非 localhost 部署必填，見 SRD §5.5） |
-| `APP_CORS_ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:8080` | 允許的前端來源（逗號分隔）。不可用 `*`，因為 `allowCredentials=true` | ❌ | ✅ |
+| `APP_FRONTEND_BASE_URL` | `http://localhost:3000`（`@Value` 預設） | 重設密碼與 Email 驗證連結的網域；Stripe 回跳網址也用此設定 | ✅ | ✅（非 localhost 部署必填，見 SRD §5.5） |
+| `APP_CORS_ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:8080` | 允許的前端來源（逗號分隔）。不可用 `*`，因為 `allowCredentials=true` | ✅ | ✅ |
 
 ### 2.6 排程與逾時
 
 | 變數 | 預設值 | 用途 | compose 傳遞 | 正式必填 |
 |------|--------|------|:------------:|:--------:|
-| `APP_SCHEDULING_ENABLED` | `true` | 排程總開關（`app.scheduling.enabled`）。設為 `false` 會**同時停止**自動退款與逾時取消 | ❌（預設即 `true`） | 視需要；緊急時使用 |
+| `APP_SCHEDULING_ENABLED` | `true` | 排程總開關（`app.scheduling.enabled`）。設為 `false` 會**同時停止**自動退款與逾時取消 | ✅（預設 `true`） | 視需要；緊急時使用 |
 | `APP_SCHEDULING_POOL_SIZE` | `4` | 排程執行緒池大小 | ❌ | — |
 | `ORDER_UNPAID_TIMEOUT_HOURS` | `24` | 未付款訂單的逾時自動取消（小時） | ❌ | — |
 | `ORDER_TIMEOUT_CHECK_INTERVAL_MS`、`ORDER_TIMEOUT_INITIAL_DELAY_MS`、`ORDER_TIMEOUT_BATCH_SIZE` | `300000`、`60000`、`100` | 掃描間隔、啟動延遲、每批數量 | ❌ | — |
@@ -129,7 +129,7 @@
 | `STRIPE_SECRET_KEY`、`STRIPE_WEBHOOK_SECRET` | `sk_test_placeholder`、空 | 見 §2.7 |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8080/api/v2` | 見 §3 |
 
-`.env.example` 只列出 `DOCKER_PLATFORM`、`SPRING_PROFILES_ACTIVE`、`NEXT_PUBLIC_API_URL`、`JWT_SECRET`、`POSTGRES_*`、`REDIS_PASSWORD`，以及 CI 用的註解行。**沒有列出 SMTP、Stripe、儲存、OAuth、排程與逾時變數**（見 §7）。
+`.env.example` 列出 `DOCKER_PLATFORM`、`SPRING_PROFILES_ACTIVE`、`NEXT_PUBLIC_API_URL`、`JWT_SECRET`、`POSTGRES_*`、`REDIS_PASSWORD`、`SMTP_*`、`APP_FRONTEND_BASE_URL`、`APP_CORS_ALLOWED_ORIGINS`、`APP_SCHEDULING_ENABLED`，以及 CI 用的註解行。**沒有列出** Stripe、儲存、OAuth 與逾時變數（見 §7）。
 
 `docker-compose.override.yml` 是本機開發用：會設定 `STORAGE_*` 為 `minioadmin`，並定義 `minio` 服務（profile `storage`，見 DOCKER_POLICY.md）。
 
@@ -165,8 +165,8 @@
 
 | 落差 | 影響 | 狀態 |
 |------|------|------|
-| `docker-compose.yml` 未傳遞 `SMTP_*`、`APP_CORS_ALLOWED_ORIGINS`、`APP_FRONTEND_BASE_URL`、`APP_SCHEDULING_ENABLED`、`OAUTH_*`、`STORAGE_*` | compose 部署使用預設值。例如 `APP_FRONTEND_BASE_URL` 為 localhost，重設密碼連結會指向 localhost | 🟡 待使用者決定是否修改 compose（CLAUDE.md 規定 Docker 設定須使用者明確指示） |
-| `.env.example` 未列出上述變數 | 依 `.env.example` 設定的人不知道有這些設定 | 🟡 同上 |
+| `docker-compose.yml` 仍未傳遞 `OAUTH_*`、`STORAGE_*`（`SMTP_*`、`APP_FRONTEND_BASE_URL`、`APP_CORS_ALLOWED_ORIGINS`、`APP_SCHEDULING_ENABLED` 已於 Sprint 244 收尾時補傳，經使用者授權） | OAuth 與儲存設定在 compose 部署使用預設值（儲存為 `minioadmin`，見 DEF-348） | 🟡 OAuth 與儲存是否補傳待決定（需使用者明確指示） |
+| `.env.example` 未列出 Stripe、儲存、OAuth 與逾時變數 | 依 `.env.example` 設定的人不知道有這些設定 | 🟡 同上（SMTP 與 APP 網址、CORS、排程已補列） |
 | compose 內建的 `koala5`、`redis-dev-password` 為開發預設值 | 直接用於正式環境時，預設密碼可被猜到 | 🟡 見 §6 第 2 項 |
 | `JWT_REFRESH_TOKEN_EXPIRATION`：yml 7 天、compose 30 天 | 同一份程式在不同部署的 Refresh Token 效期不同 | 已記載（§2.2） |
 
@@ -191,6 +191,7 @@
 | 版本 | 日期 | 內容 | 作者 |
 |------|------|------|------|
 | v1.0 | 2026-10-03 | 首版（Sprint 244）：依 `application.yml`、`@Value`、`docker-compose.yml`、`.env.example` 與前端程式核對；新增 §5 功能開關與 §6 上線前檢查 | Claude Code（Sprint 244） |
+| v1.1 | 2026-10-03 | Sprint 244 收尾追加（使用者授權）：compose 補傳 `SMTP_*`、`APP_FRONTEND_BASE_URL`、`APP_CORS_ALLOWED_ORIGINS`、`APP_SCHEDULING_ENABLED`；`.env.example` 同步列出；§2、§4、§7 更新 | Claude Code（Sprint 244） |
 
 ---
 

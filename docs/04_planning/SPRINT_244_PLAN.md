@@ -69,14 +69,25 @@
 | PRD 內文要不要改寫（DEF-322 與 DEF-323 (b) 衝突） | 內文不動，只加修訂註記 | 使用者在 Sprint 232 拍板「比照 Sprint 203」，較新；Rule 7 |
 | FRD 新章節編號 | 採 6A／6B／6C，不重排既有章節 | 避免破壞既有的交叉參照（§7、§8 等） |
 | 訂房 `CONFIRMED` 之後的狀態 | 文件只寫實際可達的狀態；不在本輪實作 | 這是新功能與權限決策（誰能確認、入住由誰驅動），依 playbook 登記、不擅自做，見 DEF-345 |
-| compose 與 `.env.example` | 不改；文件揭露差異，見環境變數文件 §7 | CLAUDE.md：Docker 設定與環境變數值須使用者明確指示 |
+| compose 與 `.env.example` | 收尾時經使用者授權，補傳 `SMTP_*`、`APP_FRONTEND_BASE_URL`、`APP_CORS_ALLOWED_ORIGINS`、`APP_SCHEDULING_ENABLED`（§2.3）；`OAUTH_*`、`STORAGE_*` 未授權，維持現狀 | CLAUDE.md：Docker 設定與環境變數值須使用者明確指示 |
 | Stripe 開關的預設值 | 不改預設；寫入上線檢查（環境變數文件 §5、§6），登記 DEF-346 | 改預設會影響開發與 E2E 流程；上線程序需要使用者決定 |
 | SMTP 同步寄送 | 不在本輪修；登記 DEF-347 為啟用 SMTP 的前置條件 | 屬程式變更；目前 compose 不啟用 SMTP，風險潛伏 |
 | MinIO 預設憑證 | 不在本輪修；登記 DEF-348 | 需同步調整 compose 與開發流程 |
 
 ### 2.2 程式行為變更
 
-**無**。本輪只改文件（`docs/` 下 20 個檔案），沒有任何 `backend/`、`frontend/`、`docker-compose*.yml`、`.env.example` 的變更。
+**無程式行為變更**。主要變更為 `docs/`（21 個檔案，含本計畫書）；收尾追加 `docker-compose.yml` 與 `.env.example`，只新增 `${VAR:-預設}` 引用，預設值與程式內的預設相同，未設定時行為不變。沒有任何 `backend/`、`frontend/` 的變更。
+
+### 2.3 收尾時的使用者回覆與追加變更
+
+本輪收尾時，兩個需要使用者拍板的問題以互動選項提出（推薦選項為第一個），使用者的回覆如下：
+
+| 題目 | 使用者選擇 | 本輪處理 |
+|------|------------|----------|
+| `docker-compose.yml` 補傳環境變數（DEF-322） | 授權補傳（推薦）：非機密設定補傳，密碼只由 `.env` 注入，`.env.example` 同步 | 已補傳 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_FROM_ADDRESS`、`APP_FRONTEND_BASE_URL`、`APP_CORS_ALLOWED_ORIGINS`、`APP_SCHEDULING_ENABLED`；預設值與程式內預設相同；`OAUTH_*`、`STORAGE_*` 未授權，維持現狀 |
+| 訂房入住流程（DEF-345） | 依 PRD Phase 1（推薦）：付款成功即等同確認，不另設 `CONFIRMED`；店家標記入住與退房，完成由退房後自動處理 | 已登記為拍板決定，**排入 Sprint 245 實作**；本輪不實作（新增端點、權限與測試，需要獨立計畫） |
+
+其餘的決策（§2.1）由我依「最佳理想化」原則決定，未再詢問。
 
 ## 3. 實作內容（文件清單）
 
@@ -92,6 +103,7 @@
 | [ENVIRONMENT_VARIABLES.md](../08_deployment/ENVIRONMENT_VARIABLES.md) | v1.0（新） | 後端、前端、compose、功能開關、上線前檢查、已知落差、開發與 CI 變數 |
 | [DEFERRED_ITEMS_TRACKER.md](DEFERRED_ITEMS_TRACKER.md) | v3.33 | DEF-322 部分完成、DEF-323 結案；DEF-345～349 新增；歷史版本 v3.32 補記（版本鏈缺口） |
 | [RELEASE_TRACKER.md](RELEASE_TRACKER.md) | — | Sprint 244 列（⏳ 待 push）與統計區 |
+| `docker-compose.yml`、`.env.example` | — | 收尾追加：補傳 `SMTP_*`、APP 網址與 CORS、排程開關（§2.3） |
 | 本檔 | — | 計畫書 |
 
 ## 4. 守門與測試
@@ -108,7 +120,9 @@
 - **文件守門**：`mvn -o test -Dtest=ApiRouteDocDriftTest,ErrorCodeDocDriftTest`，退出碼 **0**，`Tests run: 3, Failures: 0, Errors: 0, Skipped: 0`，`BUILD SUCCESS`（`ApiRouteDocDriftTest` 2 個、`ErrorCodeDocDriftTest` 1 個）。
 - **連結檢查**：變更與新增的 21 個 `.md`（含本檔）共 679 個相對連結，剩 7 個無法解析，全部是 HEAD 即存在的既有問題（§1.6：FRD 的 6 條 API 連結、追蹤表的 1 條括號路徑）。本輪新增的連結全部解析，包括追蹤表與 RELEASE_TRACKER 指向本檔的連結。
 - **Secret 掃描模擬**：20 個 staged 檔案（不含本檔）新增行命中 **0** 筆，與 pre-commit 相同的 pattern 與排除規則；本檔另行掃描（見 commit 前的核對）。
-- **程式碼**：staged 的變更全部在 `docs/` 下，沒有 `backend/`、`frontend/`、compose 或 `.env.example` 的變更。
+- **程式碼**：沒有 `backend/`、`frontend/` 的變更；compose 與 `.env.example` 的變更見 §2.3。
+- **compose 語法**：`docker compose -f docker-compose.yml config` 退出碼 **0**；以 JSON 渲染後檢查 backend 的環境變數：`SMTP_USERNAME` 為空、`SMTP_PORT` 為 `587`、`APP_FRONTEND_BASE_URL` 為 `http://localhost:3000`、`APP_SCHEDULING_ENABLED` 為 `true`、`JWT_REFRESH_TOKEN_EXPIRATION` 維持 `2592000000`（與補傳前一致）。**未實際 `docker compose up` 啟動容器**（未驗證）。
+- **a6cd311 的雲端 CI**：run `37126315542`，`Local CI (act-compatible)` **success**，8 分 24 秒（2026-10-03 13:28:46 → 13:37:10 UTC）。
 - **未驗證的項目（明示）**：文件的 SQL 與 DDL 沒有重新核對（`SRD_Database_Schema.md` 未改，受 `make validate-schema-doc` 守門）；M07 與通知的端點清單只核對到基底路徑與主要端點，未逐一實測。
 
 ## 6. 範圍外（延後）、已知限制與待決定
@@ -125,16 +139,16 @@
 
 | 項目 | 內容 | 我的建議 | 對應 |
 |------|------|----------|------|
-| 訂房入住流程 | `CONFIRMED`、`CHECKED_IN`、`CHECKED_OUT`、`COMPLETED` 沒有寫入路徑；誰能確認、入住與退房由誰驅動 | 依 PRD Phase 1：付款即等同確認（不另設 `CONFIRMED` 步驟，或只保留列舉值）；店家標記入住與退房；完成由退房時間後自動處理。這需要決定店家權限與觸發端點 | DEF-345 |
+| ✅ 訂房入住流程（已拍板，§2.3） | 依 PRD Phase 1：付款成功即等同確認；店家標記入住與退房；完成由退房後自動。排入 Sprint 245 實作 | — | DEF-345 |
 | 上線時的 Stripe 開關 | 開關預設關閉，全新部署的 Mock 付款對所有買家開放 | 上線 runbook 明確開啟並驗證；另將正式環境的預設改為 fail-closed（未明確開啟時拒絕 Mock 付款）。需要使用者確認上線程序 | DEF-346、環境變數文件 §5、§6 |
-| compose 傳遞環境變數 | `docker-compose.yml` 未傳遞 `SMTP_*`、`APP_CORS_ALLOWED_ORIGINS`、`APP_FRONTEND_BASE_URL`、`APP_SCHEDULING_ENABLED`、`OAUTH_*`、`STORAGE_*` | 授權補傳上述變數（密碼值由 `.env` 注入，不寫進 compose），並同步 `.env.example`。依 CLAUDE.md，這需要使用者明確指示 | DEF-322 |
+| ✅ 已處理：compose 補傳環境變數 | 使用者授權補傳非機密設定（§2.3）；`OAUTH_*`、`STORAGE_*` 未授權 | — | DEF-322 |
 | SMTP 非同步寄送 | 啟用 SMTP 前必須修 | 由 AI 獨立實作（專用執行緒池，寄送與回應脫鉤）並寫測試；需要使用者指示時機 | DEF-347 |
 | MinIO 預設憑證 | `application.yml` 的 `minioadmin`／`minioadmin123` 在正式環境沒有覆寫 | 移除 yml 的預設值，缺少時啟動失敗（與 DEF-320 一致）；需要同步調整開發流程，所以需要使用者決定 | DEF-348 |
 | LINE Pay | stub 與舊版端點的標籤 | 接 LINE Pay 之前處理；本輪不動 | DEF-349 |
 
 ### 6.3 本輪未做（有意的範圍外）
 
-- 不改程式、不改 compose、不改 `.env.example`（§2.2、§6.2）。
+- 不改程式（§2.2）；訂房入住流程不在本輪實作（§2.3，排入 Sprint 245）。
 - 不建立 M07 與通知的 API 規格（需要另排 Sprint；端點清單已列於 FRD §6B.6、§6C.6）。
 - 不修 §1.6 的既有壞連結與 `application.yml` 過時註解（Rule 3）。
 
@@ -144,7 +158,9 @@
 
 ## 8. 下一步／Action Items
 
-1. **commit 與 push**：本輪是純文件 commit（`docs:` 前綴），push 於 Sprint 收尾進行；pre-push 會判斷沒有 `backend/`、`frontend/` 變更而輕量放行。
-2. **雲端 CI 回填**：push 後等上一個 run 跑完再推下一個 commit（`cancel-in-progress`，見 `push-frequency-batch` 記憶）；回填 RELEASE_TRACKER 的 Sprint 244 列與本檔 §5。
-3. **等使用者決定 §6.2 的項目**後，依賴順序排 Sprint 245：候選包括 DEF-347（非同步寄送，啟用 SMTP 的前置）、DEF-345（訂房入住流程，依決定的方案）、DEF-346（上線開關，依決定的程序）、M07 與通知的 API 規格文件。
-4. **既有排程（不變）**：店鋪成員管理前端（DEF-321 (a)）→ CMS 卡片連結（DEF-321 (c)）→ 通知事件（DEF-318）→ 店鋪前台 `/stores`（DEF-321 (b)）；M01／M02 API 文件對齊（含 DEF-344、DEF-342）。
+1. **commit 與 push**（已完成）：文件 commit `a6cd311` 已 push。收尾追加（compose、`.env.example`、本計畫書與追蹤表的回填）另成一個 commit，push 後其雲端 CI 結果於 Sprint 245 收尾回填。
+2. **雲端 CI 回填**（`a6cd311`）：已回填（§5、RELEASE_TRACKER）。
+3. **Sprint 245（已排定）**：DEF-345 訂房入住流程，依 PRD Phase 1（§2.3）。實作範圍：店家端的入住與退房端點與權限、`PAID → CHECKED_IN → CHECKED_OUT → COMPLETED` 的轉換規則與完成條件、M06 規格與 FRD §6A、SRD §6.3.4 的同步更新、單元與真實資料庫的整合測試、突變驗證。
+4. **Sprint 246 候選**：DEF-347（寄信改非同步；在任何人設定 `SMTP_USERNAME` 之前完成）、DEF-346（上線 runbook 的開關步驟與驗證）。
+5. **等使用者決定**：DEF-348（MinIO 預設憑證；移除 yml 預設值會影響開發流程）、OAuth 與儲存變數是否補傳 compose、DEF-349（LINE Pay，接 LINE Pay 前處理）。
+6. **既有排程（不變）**：店鋪成員管理前端（DEF-321 (a)）→ CMS 卡片連結（DEF-321 (c)）→ 通知事件（DEF-318）→ 店鋪前台 `/stores`（DEF-321 (b)）；M01／M02 API 文件對齊（含 DEF-344、DEF-342）。

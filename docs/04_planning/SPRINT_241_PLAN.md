@@ -120,7 +120,7 @@
 - **前端**：沒有改動（`frontend/src` 沒有比上次建置新的檔案），沿用 Sprint 239 的建置。
 - **真實後端 E2E**：`E2E_GATE_SKIP_BUILD=1 make validate-e2e`（JAR 是上面 verify 剛建好的版本）**139 個測試：135 通過／4 略過／0 失敗（3.9 分鐘）**；沒有 flaky、沒有 did not run；後端以 `ddl-auto=validate` 啟動確認 entity 與 Flyway schema 對齊。那 4 個略過是既有基準。**跑守門期間我沒有改任何檔案**（Sprint 240 修復前那次有 2 個既有規格失敗、原因未查明，見 [SPRINT_240_PLAN.md](SPRINT_240_PLAN.md) §5；這次與修復後那次都沒有再發生）。
 - **突變驗證**：見 §4（程式碼 4 個＋文件 5 個，全部被抓到）。
-- **push 與雲端 CI**：（push 後於回填 commit 補上）
+- **push 與雲端 CI**：已 push（2026-10-03，`1aef04f..60bde47 main -> main`；pre-push 輕量守門通過：後端單元兩輪各約 2.5～3 分、前端 Lint＆Build、schema 對齊）。約 1 分鐘後又推了純文件更正 `3c68cd1`（`60bde47..3c68cd1`，更正 §6.1 第 5 點）。**`60bde47` 的第一個雲端 run 37097013419 因此被 `cancel-in-progress` 取消（三個 job 全為 cancelled，不是失敗）**——我先前的記憶已記載「同一 ref 的下一次 push 會取消前一個 run」，卻沒套用；以後一個 run 為準（它包含同一份程式碼）。✅ 雲端 CI 全綠 run 37097115336（headSha `3c68cd1`），三個 job 全部 success，共 9 分 01 秒：Backend Unit 2m26s／Frontend Lint & Build 1m06s／Backend Integration & Package 6m15s。雲端整合 job 近十三次依序 5m01s／6m02s／6m00s／4m15s／7m47s／7m46s／8m03s／8m05s／6m05s／7m55s／8m05s／7m18s／**6m15s**（Sprint 229～241），沒有新的歸因結論。
 
 ## 6. 範圍外（延後）、已知限制與待決定
 

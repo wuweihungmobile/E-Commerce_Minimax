@@ -165,7 +165,7 @@
 
 | 落差 | 影響 | 狀態 |
 |------|------|------|
-| `docker-compose.yml` 仍未傳遞 `OAUTH_*`、`STORAGE_*`（`SMTP_*`、`APP_FRONTEND_BASE_URL`、`APP_CORS_ALLOWED_ORIGINS`、`APP_SCHEDULING_ENABLED` 已於 Sprint 244 收尾時補傳，經使用者授權） | OAuth 與儲存設定在 compose 部署使用預設值（儲存為 `minioadmin`，見 DEF-348） | 🟡 OAuth 與儲存是否補傳待決定（需使用者明確指示） |
+| `docker-compose.yml` 仍未傳遞 `OAUTH_*`、`STORAGE_*`（`SMTP_*`、`APP_FRONTEND_BASE_URL`、`APP_CORS_ALLOWED_ORIGINS`、`APP_SCHEDULING_ENABLED` 已於 Sprint 244 收尾時補傳，經使用者授權） | OAuth 與儲存設定在 compose 部署使用預設值（儲存為 `minioadmin`，見 DEF-348） | 🟡 使用者於收尾確認維持現狀；補傳需使用者明確指示 |
 | `.env.example` 未列出 Stripe、儲存、OAuth 與逾時變數 | 依 `.env.example` 設定的人不知道有這些設定 | 🟡 同上（SMTP 與 APP 網址、CORS、排程已補列） |
 | compose 內建的 `koala5`、`redis-dev-password` 為開發預設值 | 直接用於正式環境時，預設密碼可被猜到 | 🟡 見 §6 第 2 項 |
 | `JWT_REFRESH_TOKEN_EXPIRATION`：yml 7 天、compose 30 天 | 同一份程式在不同部署的 Refresh Token 效期不同 | 已記載（§2.2） |

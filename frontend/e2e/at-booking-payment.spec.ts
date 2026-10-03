@@ -78,7 +78,7 @@ const PAID_STATE = paymentState({
   paymentId: 'pay-1',
   paymentStatus: 'SUCCESS',
   transactionId: 'MOCK-ABC12345',
-  nextValidStates: 'CONFIRMED,CANCELLED',
+  nextValidStates: 'CHECKED_IN,CANCELLED',
   canPay: false,
   canRefund: true,
   paidAt: '2030-01-01T10:00:00Z',

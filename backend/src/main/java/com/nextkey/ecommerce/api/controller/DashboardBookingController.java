@@ -1,9 +1,13 @@
 package com.nextkey.ecommerce.api.controller;
 
+import java.util.UUID;
+
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -40,5 +44,27 @@ public class DashboardBookingController {
             @RequestParam(defaultValue = "DESC") String sortDir) {
         Page<BookingDto.BookingListResponse> bookings = bookingService.getTenantBookings(page, size, sortBy, sortDir);
         return ResponseEntity.ok(ApiResponse.success(bookings));
+    }
+
+    /**
+     * 店家標記入住（Sprint 245，DEF-345；PRD Phase 1：{@code PAID → CHECKED_IN}）。權限沿用 {@code booking:update}：
+     * PRD §7.3 的 M06 列是店主／Host 可執行（RX*）、店員只能讀（R*），生產權限表與此一致。
+     */
+    @PostMapping("/{bookingId}/check-in")
+    @PreAuthorize("hasAuthority('booking:update')")
+    public ResponseEntity<ApiResponse<BookingDto.BookingResponse>> checkIn(@PathVariable UUID bookingId) {
+        BookingDto.BookingResponse booking = bookingService.checkIn(bookingId);
+        return ResponseEntity.ok(ApiResponse.success("Booking checked in successfully", booking));
+    }
+
+    /**
+     * 店家標記退房（Sprint 245，DEF-345；{@code CHECKED_IN → CHECKED_OUT}，同一交易內自動完成為 {@code COMPLETED}）。
+     * 權限同 {@link #checkIn}。
+     */
+    @PostMapping("/{bookingId}/check-out")
+    @PreAuthorize("hasAuthority('booking:update')")
+    public ResponseEntity<ApiResponse<BookingDto.BookingResponse>> checkOut(@PathVariable UUID bookingId) {
+        BookingDto.BookingResponse booking = bookingService.checkOut(bookingId);
+        return ResponseEntity.ok(ApiResponse.success("Booking checked out successfully", booking));
     }
 }

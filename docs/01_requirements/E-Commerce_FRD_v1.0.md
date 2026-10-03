@@ -1,7 +1,7 @@
 # E-Commerce System — 功能需求文檔 (FRD) v1.0
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.2
+> **版本**: v1.4
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -10,6 +10,8 @@
 > **⚠️ 修訂註記（Sprint 203，2026-09-26，DEF-280）**：本文件引用的 `E-XXXX` 錯誤碼（約 95 處，如定價規則驗證的 `E-4001 VALIDATION_ERROR`）沿用 PRD 的舊錯誤碼表，與實作**不一致**。錯誤碼與 HTTP 狀態碼以 [API_Error_Codes.md](../02_architecture/API_Error_Codes.md) 為準；本文件內文保留原樣，未逐處改寫。
 >
 > **⚠️ 修訂註記（Sprint 244，2026-10-03，DEF-322）**：新增 **§6A M06 預訂系統**、**§6B M07 金流與結算**、**§6C M09 訊息通知中心** 三章，依程式碼現況撰寫，與 PRD 的差異逐章列在「與 PRD 的差異」。既有章節（§1～§6、§7～§8）**內文未改寫**：其中的 `CREATED(=PAID)`、Phase 1 Payment Mock、`/api/v2/dashboard/orders` 等敘述與實作不符，以 [SRD_System_Architecture.md](../02_architecture/SRD_System_Architecture.md) §6.3、[API_M05_Order.md](../02_architecture/api/API_M05_Order.md) 與 [API_M06_Booking.md](../02_architecture/API_M06_Booking.md) 為準。
+>
+> **⚠️ 修訂註記（Sprint 245，2026-10-04，DEF-345）**：§6A M06 的入住與退房已實作（`POST /v2/dashboard/bookings/{bookingId}/check-in`、`…/check-out`）。狀態依 PRD Phase 1 為 `PAID → CHECKED_IN → CHECKED_OUT → COMPLETED`，**不產生 `CONFIRMED`**。§6A 的功能總覽、業務規則、API 概要與差異已依此更新；其餘章節內文未改寫。
 
 ---
 
@@ -2559,7 +2561,7 @@ WHERE sku_id = :skuId
 
 民宿房源（`ROOM` 類型）的日期預訂，以「晚」為單位：入住日含、退房日不含，至少 1 晚。建立時鎖定每一晚的日期（Redis 日期鎖採 NO WAIT；再以資料庫列鎖 `FOR UPDATE NOWAIT` 確認並標記 `BOOKED`），計算金額，並設定付款期限（建立後 24 小時，`BOOKING_PAYMENT_TIMEOUT_HOURS`）。付款成功後訂房為 `PAID`。取消與退款依 PRD Q14 判定。訂房歸屬房源所屬的店鋪（Sprint 236，DEF-319）。
 
-API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.0，11 個端點）。
+API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1，13 個端點）。
 
 ### 6A.2 功能總覽（現況）
 
@@ -2568,7 +2570,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.0�
 | 可用性與日曆查詢 | ✅ | `GET /v2/bookings/availability`、`GET /v2/bookings/calendar` |
 | 建立訂房（含付款期限） | ✅ | `POST /v2/bookings`；`Idempotency-Key` 選帶 |
 | 買家訂房列表與詳情 | ✅ | `GET /v2/bookings`、`GET /v2/bookings/{bookingId}` |
-| 修改日期與人數 | ✅（有限） | `PUT /v2/bookings/{bookingId}`；只有 `CREATED`／`CONFIRMED` 可改，`PAID` 回 `E-5010`。`CONFIRMED` 目前不可達（DEF-345） |
+| 修改日期與人數 | ✅（有限） | `PUT /v2/bookings/{bookingId}`；只有 `CREATED` 可改；`PAID`、`CHECKED_IN` 回 `E-5010`。`CONFIRMED` 本系統不產生（DEF-345） |
 | 取消與退款（PRD Q14） | ✅ | `POST /v2/bookings/{bookingId}/cancel`；規則見 §6A.5 |
 | 未付款逾時自動取消 | ✅ | `BookingTimeoutService` 排程，預設 24 小時（PRD US-014 相關） |
 | 已付款取消後的自動退款 | ✅ | `RefundProcessingService`，失敗指數退避（PRD US-005 相關） |
@@ -2576,7 +2578,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.0�
 | Stripe Checkout 付款 | ⚠️ | 發起與回跳已實作；**未對真實 Stripe 驗證** |
 | 店家列表（同店鋪） | ✅ | `GET /v2/dashboard/bookings`（Sprint 231） |
 | 店家取消（同店鋪） | ✅ | 同 `POST …/cancel`；取消方記為 `MERCHANT`，全額退款 |
-| 店家確認、入住、退房、完成 | ❌ | 沒有程式路徑（DEF-345） |
+| 店家入住與退房（退房後自動完成） | ✅（API） | `POST /v2/dashboard/bookings/{bookingId}/check-in`、`…/check-out`（Sprint 245，DEF-345）；店家後台按鈕待排 |
 | 訂房狀態日誌 `GET /api/v2/bookings/:id/state-log` | ❌ | 未實作（DEF-345） |
 | 預訂確認通知（PRD US-001） | ❌ | 未實作（DEF-318） |
 
@@ -2603,17 +2605,19 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.0�
 | BR-M06-01 | 入住日必須早於退房日（至少 1 晚）；同日回 `E-4003`（Sprint 243 修正 DEF-340） | `BookingService` |
 | BR-M06-02 | 日期衝突回 `E-4001`；取消後日期鎖立即釋放（Sprint 243 修正 DEF-343） | `RoomCalendarService` |
 | BR-M06-03 | 人數不得超過房型上限（`E-4005`） | `BookingService` |
-| BR-M06-04 | 只有 `CREATED`／`PAID`／`CONFIRMED` 可取消；取消以條件式更新搶占，併發取消只會成功一次，輸的一方回 `E-4007` | `BookingService` |
-| BR-M06-05 | 只有 `CREATED`／`CONFIRMED` 可更新；`PAID` 回 `E-5010` | `BookingService` |
+| BR-M06-04 | 只有 `CREATED`／`PAID` 可取消（入住後不可取消）；取消以條件式更新搶占，併發取消只會成功一次，輸的一方回 `E-4007` | `BookingService` |
+| BR-M06-05 | 只有 `CREATED` 可更新；`PAID`、`CHECKED_IN` 回 `E-5010` | `BookingService` |
 | BR-M06-06 | 付款期限 `payment_due_at` = 建立時間 + 24 小時；`payment_due_at` 為 NULL 的歷史訂房永不逾時；已開始 Stripe 結帳者在 `stripe-session-hours` 內不取消 | `BookingTimeoutService` |
 | BR-M06-07 | 取消退款（PRD Q14）：買家本人取消且入住時刻前 ≥ 24 小時 → 全額；< 24 小時 → 不退；商家或管理員代為取消 → 全額；系統逾時取消 → 全額。入住時刻 = 入住日 + 房型入住時間（預設 15:00），以營運時區 Asia/Taipei 計算 | `BookingRefundPolicy` |
 | BR-M06-08 | 店鋪非 ACTIVE 時不能訂房、不能付款（`E-2010`）；取消、退款與 Stripe 入帳不擋 | `PaymentStoreGuard`（Sprint 239／242） |
 | BR-M06-09 | 訂房的 `tenant_id` 是房源所屬店鋪，不是買家的租戶（Sprint 236） | `BookingService` |
 | BR-M06-10 | 付款入帳以條件式更新搶占 `CREATED → PAID`，併發付款只會成功一次 | `PaymentStateService` |
+| BR-M06-11 | 入住：只能從 `PAID` 轉 `CHECKED_IN`；營運時區的今天必須 ≥ 入住日（入住日還沒到回 `E-5010`，本輪假設）；擁有權為管理員與同店鋪商家，買家本人不算（`E-1007`）；條件式更新搶占，併發入住只會成功一次 | `BookingService.checkIn`（Sprint 245） |
+| BR-M06-12 | 退房：只能從 `CHECKED_IN` 轉 `CHECKED_OUT`，同一交易內自動轉 `COMPLETED`；完成不觸發結算（結算模組不讀訂房）；日曆不釋放 | `BookingService.checkOut`（Sprint 245） |
 
 ### 6A.6 API 規格概要
 
-規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.0）。路徑省略 `/api` 前綴（見 SRD §4.1）。
+規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1）。路徑省略 `/api` 前綴（見 SRD §4.1）。
 
 | 方法 | 端點 | 用途 |
 |------|------|------|
@@ -2628,13 +2632,15 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.0�
 | POST | `/v2/bookings/{bookingId}/pay/checkout` | 發起 Stripe Checkout |
 | GET | `/v2/bookings/{bookingId}/pay/checkout/return` | Stripe 回跳確認 |
 | GET | `/v2/dashboard/bookings` | 店鋪收到的訂房 |
+| POST | `/v2/dashboard/bookings/{bookingId}/check-in` | 店家標記入住 |
+| POST | `/v2/dashboard/bookings/{bookingId}/check-out` | 店家標記退房（退房後自動完成） |
 
 訂房的付款狀態查詢 `GET /v2/orders/bookings/{bookingId}/payment` 屬 M06，路由在訂單付款控制器，規格見 API_M05 §7.7。
 
 ### 6A.7 與 PRD 的差異
 
 1. PRD §9.7 寫 Phase 1 的 M06「僅開放查詢與取消，不含 POST 建立」，已過時：建立、修改、付款與退款都已實作。
-2. PRD 的訂房狀態流程（`CREATED(=PAID) → CHECKED_IN → CHECKED_OUT → COMPLETED`，Phase 1 的 `CONFIRMED` 等效於 PAID）：實作的 `CONFIRMED`、`CHECKED_IN`、`CHECKED_OUT`、`COMPLETED` 沒有寫入路徑（DEF-345）。
+2. PRD 的訂房狀態流程（`CREATED(=PAID) → CHECKED_IN → CHECKED_OUT → COMPLETED`，Phase 1 的 `CONFIRMED` 等效於 PAID）：Sprint 245 依此實作入住與退房（DEF-345），不產生 `CONFIRMED`。PRD 的「`CHECKED_IN` 前置抵達後自動確認」未實作為自動流程，改由店家標記入住；入住日限制與退房後自動完成的時點是本輪假設（見 API_M06 §4.12～4.13）。
 3. PRD §9.7 的 `GET /api/v2/bookings/:id/state-log`：未實作（DEF-345）。
 4. PRD US-001（預訂成功即時通知）：未實作（DEF-318）。
 
@@ -4123,6 +4129,7 @@ tenant_feature_toggles
 | v1.1 | 2026-04-22 | 1. 修正租戶狀態 PENDING_REVIEW → PENDING<br>2. 修正 US-M17-001 Story Points 5→3<br>3. 修正 US-M17-006 Story Points 3→1 | AI Review |
 | v1.2 | 2026-09-02 | **M17 開店/審核流程與實作同步（Sprint 110，依 PRD v1.0.1 ER-004）**：<br>1. §8.3 補上 `tenant_applications` 資料模型；`tenants.status` 由 `PENDING` 更正回實作的 `PENDING_REVIEW`（v1.1 當年只改了名稱，未察覺**改錯了實體**——申請狀態在 `tenant_applications` 而非 `tenants`）<br>2. BR-M17-001 改寫為兩表兩階段生命週期<br>3. BR-M17-002 觸發點改為「核准申請而建立 Tenant 時」<br>4. AC-M17-001-1／US-M17-007／US-M17-008 的端點、狀態與錯誤碼對齊實作（`/admin/tenant-applications/*`、E-2006/E-2007/E-2008/E-4092）<br>5. §8.6 API 概要同步 | AI Review |
 | v1.3 | 2026-10-03 | **文件對齊（Sprint 244）**：新增 §6A M06 預訂系統、§6B M07 金流與結算、§6C M09 訊息通知中心三章（依實作現況，附與 PRD 的差異）；頂部新增修訂註記；既有章節內文未改寫（見頂部註記） | Claude Code（Sprint 244） |
+| v1.4 | 2026-10-04 | **Sprint 245（DEF-345）**：§6A M06 依實作更新入住與退房（`PAID → CHECKED_IN → CHECKED_OUT → COMPLETED`，不產生 `CONFIRMED`）：功能總覽、BR-M06-04／05、新增 BR-M06-11／12、API 概要、與 PRD 的差異第 2 點；頂部新增修訂註記；檔頭版本號同步為 v1.4（先前檔頭停在 v1.2）。既有章節內文未改寫 | Claude Code（Sprint 245） |
 
 ---
 

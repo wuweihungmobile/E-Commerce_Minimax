@@ -1,16 +1,18 @@
 # API 規格文件 - M06 預訂系統 / API Specification - M06 Booking System
 
 > **文件編號**: API-M06
-> **文件版本**: v2.0（Sprint 243 依實作改寫）
+> **文件版本**: v2.1（Sprint 245 新增入住與退房；v2.0 為 Sprint 243 依實作改寫）
 > **建立日期**: 2026-04-28（v1.0，Sprint 4）
-> **最後更新**: 2026-10-03
+> **最後更新**: 2026-10-04
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`BookingController`、`BookingPaymentController`、`DashboardBookingController`、`BookingService`、`RoomCalendarService`、`BookingRefundPolicy`、`PaymentStateService`、`BookingDto`、`GlobalExceptionHandler`；**每個回應形狀、狀態碼、錯誤碼與權限宣稱都用真實 PostgreSQL＋Redis（日曆鎖）＋完整 HTTP／JWT／權限鏈實測**（[BookingApiRealStackIntegrationTest](../../backend/src/test/java/com/nextkey/ecommerce/integration/BookingApiRealStackIntegrationTest.java)）
 > **回應封包與錯誤碼**: 一律以 [API_Error_Codes.md](./API_Error_Codes.md) 為準（扁平封包 `success`／`code`／`message`／`data`／`errors`，**沒有**巢狀的 `error`，也**沒有**數字型的 `code`）
 > **取代關係**: 本文件**取代** v1.0 全文
 
-> **⚠️ 修訂註記（Sprint 244，2026-10-03）**：本文件所有寫「`CONFIRMED` 可更新」或「由店家操作」的敘述與實作不符：目前**沒有任何程式路徑**會寫入 `CONFIRMED`、`CHECKED_IN`、`CHECKED_OUT`、`COMPLETED`，可達的狀態只有 `CREATED`、`PAID`、`CANCELLED`（DEF-345）。Sprint 243 把「`CONFIRMED` 可更新」當成實測行為，那只有直接寫資料庫的測試才能產生這個狀態，此處更正。
+> **⚠️ 修訂註記（Sprint 245，2026-10-04）**：入住與退房已實作（DEF-345，依 PRD Phase 1：付款即等同確認，不另設 `CONFIRMED`）。新增 §4.12 `POST /v2/dashboard/bookings/{bookingId}/check-in`（`PAID → CHECKED_IN`）與 §4.13 `POST …/check-out`（`CHECKED_IN → CHECKED_OUT`，同一交易內自動 `→ COMPLETED`）。`CONFIRMED` 仍不會產生；`PUT` 與取消對 `CONFIRMED` 的判斷是既有、不可達的程式碼，未刪除。`GET /v2/bookings/{id}/state-log`（PRD §9.7）與店家後台的入住按鈕仍未實作。
+>
+> **⚠️ 修訂註記（Sprint 244，2026-10-03；入住與退房已由 Sprint 245 實作，見上方）**：本文件所有寫「`CONFIRMED` 可更新」或「由店家操作」的敘述與實作不符：目前**沒有任何程式路徑**會寫入 `CONFIRMED`、`CHECKED_IN`、`CHECKED_OUT`、`COMPLETED`，可達的狀態只有 `CREATED`、`PAID`、`CANCELLED`（DEF-345）。Sprint 243 把「`CONFIRMED` 可更新」當成實測行為，那只有直接寫資料庫的測試才能產生這個狀態，此處更正。
 >
 > **⚠️ 修訂註記（Sprint 243）**：v1.0 只描述 Sprint 4 的 6 個端點，與實作有七處落差，本版已更正：
 > 1. **端點由 6 個改為實際的 11 個**：漏了日曆（`GET /calendar`）、整組付款端點（Sprint 221）與商家端訂房列表（`GET /v2/dashboard/bookings`，Sprint 231）；
@@ -31,7 +33,7 @@
 |------|------|
 | **模組編號** | M06 |
 | **模組名稱** | 預訂系統 / Booking |
-| **描述** | 買家檢查房源在日期區間是否可訂、查看日曆、建立訂房、付款、取消；店家（店主／房東）檢視自己店鋪的訂房、代為修改住客資料或取消 |
+| **描述** | 買家檢查房源在日期區間是否可訂、查看日曆、建立訂房、付款、取消；店家（店主／房東）檢視自己店鋪的訂房、代為修改住客資料或取消、標記入住與退房 |
 | **API 前綴** | 後端的 context path 是 `/api`，所以下列路徑的完整網址是 `/api/v2/bookings/...` |
 | **多租戶隔離** | 訂房的 `tenantId` 是**房源所屬的店鋪**。買家只能讀寫自己的訂房；店主／房東只能存取自己店鋪的訂房（系統租戶的呼叫者**不算**「同店鋪」）；管理員不受限 |
 | **範圍外** | 房東維護日曆（`/v2/dashboard/rooms/{id}/maintenance`）、訂房評價（`/v2/booking-reviews`）、房源管理（M02）、動態定價規則（M12）、合併結帳（[API_M05_Order.md](./api/API_M05_Order.md) §4.8） |
@@ -41,7 +43,7 @@
 1. **日曆以「晚」為單位**：區間 `[checkInDate, checkOutDate)`，**退房日不佔用**；晚數 = 退房日 − 入住日，**必須 ≥ 1**。日曆只存「有記錄的日期」（`AVAILABLE`／`BOOKED`／`BLOCKED`／`MAINTENANCE`），**沒有記錄的日期視為可訂**；超出房源「開放窗」的日期回 `NOT_OPEN`。
 2. **併發與衝突**：建立訂房時對每一晚取 Redis 日期鎖（NO WAIT，取不到立刻 `E-4001`）、再以資料庫列鎖（`FOR UPDATE NOWAIT`）確認並標記 `BOOKED`；鎖在 `finally` 釋放。
 3. **金額在建立當下算好**：`totalAmount = 房價（動態定價優先，否則 basePrice × 晚數） − 優惠券折扣`。付款期限 `paymentDueAt` = 建立時間 + 24 小時（`BOOKING_PAYMENT_TIMEOUT_HOURS`）；**歷史訂房（`null`）永不逾時**。
-4. **狀態**：`CREATED → PAID → CONFIRMED → CHECKED_IN → CHECKED_OUT → COMPLETED`（目前程式只會產生 `CREATED`、`PAID`、`CANCELLED`；其餘狀態沒有寫入路徑，見 DEF-345），`CANCELLED` 為取消終態。**可取消**＝`CREATED`／`PAID`／`CONFIRMED`；**可更新**＝`CREATED`／`CONFIRMED`（實測：**已付款（`PAID`）的訂房不能更新**，回 `422 E-5010`）。
+4. **狀態**：`CREATED → PAID → CHECKED_IN → CHECKED_OUT → COMPLETED`（付款即等同確認，PRD Phase 1；**不產生 `CONFIRMED`**，DEF-345），`CANCELLED` 為取消終態。**可取消**＝`CREATED`／`PAID`（入住後不可取消，回 `400 E-4007`）；**可更新**＝`CREATED`（實測：**已付款（`PAID`）與入住中的訂房不能更新**，回 `422 E-5010`）。`CHECKED_OUT` 只存在於同一次退房請求之內（自動完成），查得到的訂房不會停在這個狀態。
 5. **取消的退款（PRD Q14，Sprint 227）**：只有已付款的訂房才有款項可退。買家**本人**取消：入住前 **≥ 24 小時全額退款**、**不足 24 小時不退**；商家／管理員**代為取消**、系統逾時取消一律全額退款。入住時刻是「入住日＋房型的入住時間（預設 15:00）」在營運時區（Asia/Taipei）的絕對時刻。取消回應的 `refundStatus: PENDING` 表示**等待排程自動退款**（取消請求本身不呼叫金流）。
 6. **店鋪暫停營業不能訂房、也不能付款**（`E-2010`）；**取消、退款、Stripe 入帳不擋**（Sprint 239／242）。付款狀態的 `storeOpen` 讓前端提前顯示「店鋪暫停營業」。
 
@@ -56,6 +58,7 @@
 | US-M06-005 | 取消訂房（含退款通知） | `POST /v2/bookings/{bookingId}/cancel` | ✅ 已實作 |
 | US-M06-006 | 訂房付款 | `POST /v2/bookings/{bookingId}/pay*` | ✅ 已實作（Mock；Stripe 需 `STRIPE_PAYMENT_ENABLED`） |
 | US-M06-007 | 商家管理訂房 | `GET /v2/dashboard/bookings` ＋ 上列的讀取／更新／取消 | ✅ 已實作 |
+| US-M06-008 | 店家標記入住與退房 | `POST /v2/dashboard/bookings/{bookingId}/check-in`、`…/check-out` | ✅ 已實作（API；店家後台按鈕待排，見 §7） |
 
 ---
 
@@ -74,6 +77,8 @@
 | **POST** | `/v2/bookings/{bookingId}/pay/checkout` | 發起 Stripe Checkout | `booking:create` 或 `booking:update` | 200 |
 | **GET** | `/v2/bookings/{bookingId}/pay/checkout/return` | Stripe 回跳後確認付款 | `booking:read` | 200 |
 | **GET** | `/v2/dashboard/bookings` | 店鋪收到的訂房列表（分頁） | `booking:read` | 200 |
+| **POST** | `/v2/dashboard/bookings/{bookingId}/check-in` | 店家標記入住（`PAID → CHECKED_IN`，入住日當天起） | `booking:update` | 200 |
+| **POST** | `/v2/dashboard/bookings/{bookingId}/check-out` | 店家標記退房（`CHECKED_IN → CHECKED_OUT → COMPLETED`） | `booking:update` | 200 |
 
 訂房的**付款狀態**查詢走 `GET /v2/orders/bookings/{bookingId}/payment`（路由在訂單付款控制器，規格見 [API_M05_Order.md](./api/API_M05_Order.md) §7.7）。未帶 token 回 `401 E-1000`；已登入但沒有該權限、或不是資源的擁有者／同店鋪／管理員回 `403 E-1007`。
 
@@ -369,6 +374,29 @@
 
 **權限**：`booking:read`。回**呼叫者所屬店鋪**的訂房（參數與回應同 §4.4）。**沒有店鋪的呼叫者（一般買家）回空頁**（`200`、`totalElements` 0），不查詢、不報錯。商家取消訂房沿用 §4.7（沒有另外的店家層取消端點）。
 
+### 4.12 `POST /v2/dashboard/bookings/{bookingId}/check-in` — 店家標記入住
+
+**權限**：`booking:update`（店主、Host、管理員；店員只能讀，見 §5）。擁有權**不同於** §4.7：買家本人不算，只放行管理員與**同店鋪**的商家（其他店鋪回 `403 E-1007`）。
+
+**條件**：
+- 訂房必須是 `PAID`，否則回 `422 E-5010`（未付款的 `CREATED` 也是）。
+- 營運時區（Asia/Taipei）的今天必須 ≥ 入住日；入住日還沒到回 `422 E-5010`，訂房狀態不變。入住日已過仍可補記入住（本輪假設，PRD 未限制）。
+- 以條件式 UPDATE 搶占狀態；併發搶不到回 `422 E-5010`。
+
+**請求**：無本文。**回應**：`200`，`data` 為 `BookingResponse`（形狀同 §3.2），`status` 為 `CHECKED_IN`。**稽核**：`BOOKING_CHECKED_IN`（`PAID` → `CHECKED_IN`）。
+
+**實測**：入住後，買家取消回 `400 E-4007`、改訂房回 `422 E-5010`、再次入住回 `422 E-5010`。
+
+### 4.13 `POST /v2/dashboard/bookings/{bookingId}/check-out` — 店家標記退房
+
+**權限**：同 §4.12。
+
+**條件**：訂房必須是 `CHECKED_IN`，否則回 `422 E-5010`。不限日期（提早退房、入住日之後才退房都可以）。
+
+**行為**：`CHECKED_IN → CHECKED_OUT`，接著在**同一交易內**自動 `CHECKED_OUT → COMPLETED`（「完成由退房後自動處理」，店家不需再操作）。回應的 `status` 是 `COMPLETED`。稽核兩筆：`BOOKING_CHECKED_OUT` 與 `BOOKING_COMPLETED`（後者的原因為 `auto-completed after check-out`）。日曆不釋放（已住的晚數維持 `BOOKED`）；結算模組目前不讀訂房，完成不觸發結算（SRD §6.3.4）。
+
+**實測**：退房回 `200` 且 `status` 為 `COMPLETED`；再次退房回 `422 E-5010`；店員退房回 `403`。
+
 ---
 
 ## 5. 權限矩陣 / Permission Matrix
@@ -383,6 +411,7 @@
 | `POST …/cancel` | 本人 | 同店鋪 | 同店鋪 | ❌ | ✅ |
 | `POST …/pay`、`…/pay/checkout` | 本人 | ❌ | ❌ | ❌ | ✅ |
 | `GET /v2/dashboard/bookings` | 空頁 | ✅ | ✅ | ✅ | 呼叫者的租戶是真實店鋪才有資料 |
+| `POST …/check-in`、`…/check-out`（§4.12～4.13） | ❌ | 同店鋪 | 同店鋪 | ❌ | ✅ |
 
 ---
 
@@ -400,9 +429,9 @@ M06 常見錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](./A
 | `E-4003` | 400 | 無效的日期區間（退房不晚於入住） |
 | `E-4005` | 400 | 入住人數超過房源容納上限 |
 | `E-4006` | 404 | 找不到訂房 |
-| `E-4007` | 400 | 此訂房無法取消 |
+| `E-4007` | 400 | 此訂房無法取消（入住後也不行） |
 | `E-5007`／`E-5008`／`E-5009` | 400 | 優惠碼無效／過期／達使用上限 |
-| `E-5010` | 422 | 無效的訂房狀態（不可更新） |
+| `E-5010` | 422 | 無效的訂房狀態（不可更新；不可入住／退房；入住日還沒到；併發搶不到，§4.12～4.13） |
 | `E-5011` | 422 | 無效的付款狀態（不可付款） |
 | `E-6000`／`E-6002`／`E-6003`／`E-6004`／`E-6005`／`E-6007` | 404／400／400／422／422・409／503 | 付款：找不到紀錄、Stripe 未啟用、已付款、Stripe 啟用後 Mock 不可用、冪等衝突、金流服務商錯誤 |
 | `E-9000` | 400 | 驗證錯誤（請求本文驗證帶 `errors[]`；`sortBy`／`sortDir` 無效、參數格式錯誤〔如日期無法解析〕不帶） |
@@ -416,9 +445,12 @@ M06 常見錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](./A
 |------|------|
 | `sortBy`／`sortDir` 不改變順序 | repository 方法名寫死 `OrderByCreatedAtDesc`（`DEF-342`） |
 | `E-3001`／`E-6002` 的預設訊息誤導 | 日曆參數無效回「無效的刊登類型」、Stripe 未啟用回「付款已取消」（`DEF-341`） |
-| 已付款的訂房不能更新 | `PAID` 回 `E-5010`；`CONFIRMED` 也可以更新，但目前沒有程式路徑產生 `CONFIRMED`（DEF-345）；要改已付款的訂房請取消後重訂 |
+| 已付款或入住中的訂房不能更新 | `PAID`、`CHECKED_IN` 回 `E-5010`；`CONFIRMED` 也可以更新，但本系統不會產生該狀態（DEF-345）；要改已付款的訂房請取消後重訂 |
 | 舊版 `POST /v2/payments` 的訂房分支 | HTTP 打不到（`orderId` 是 `@NotNull`，只帶 `bookingId` 在驗證層回 400；Sprint 221 `DEF-303` (1)）；訂房請用 §4.8～4.10 |
-| 訂房沒有逾時以外的自動取消 | 已付款但沒有人確認的訂房不會自動處理；目前也沒有任何店家操作可把它改為 `CONFIRMED`（DEF-345） |
+| 沒有 no-show 規則 | 已付款但店家從未辦理入住的訂房不會自動處理（PRD 未定義 no-show；本輪範圍外） |
+| 入住日的限制是本輪假設 | 入住日還沒到不可入住；PRD 未明定，見 §4.12 |
+| 訂房狀態日誌未實作 | `GET /v2/bookings/{bookingId}/state-log`（PRD §9.7）未實作；轉換已寫入稽核紀錄（DEF-345 的一部分，本輪範圍外） |
+| 店家後台沒有入住與退房按鈕 | 本輪只提供 API（§4.12～4.13）；`/dashboard/bookings/[id]` 尚未加入住與退房操作（待排） |
 | Stripe 路徑未對真實 Stripe 驗證 | 以 Mock／WireMock 驗證，從未對真實 Stripe 驗證（Sprint 221／227 紀錄） |
 
 ---
@@ -429,6 +461,6 @@ M06 常見錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](./A
 |------|------|
 | PRD | §5 訂房（日曆、開放窗、動態定價）、§7.3 權限矩陣、§9.16 商家端訂房、§15.2.5／Q14 取消與退款、US-005 取消通知、US-008／PC-005 單一商家 |
 | 相關規格 | [API_M05_Order.md](./api/API_M05_Order.md)（訂單與付款狀態）、[API_M04_Cart.md](./API_M04_Cart.md)（購物車）、[API_Error_Codes.md](./API_Error_Codes.md) |
-| 實作 | `BookingController`、`BookingPaymentController`、`DashboardBookingController`（`api/controller`）；`BookingService`、`RoomCalendarService`、`BookingRefundPolicy`、`PaymentStateService`（`core`） |
-| 契約測試 | `BookingApiRealStackIntegrationTest`（真實 PostgreSQL＋Redis）、`RoomCalendarLockRealRedisIntegrationTest`（日期鎖）、`StoreSuspendedPaymentIntegrationTest`；路由漂移守門 `ApiRouteDocDriftTest` |
-| 缺陷 | `DEF-338`、`DEF-339`、`DEF-340`、`DEF-343`（Sprint 243 已修）、`DEF-341`、`DEF-342`（已登記）；Sprint 239／242（`E-2010`） |
+| 實作 | `BookingController`、`BookingPaymentController`、`DashboardBookingController`（`api/controller`）；`BookingService`（含 `checkIn`／`checkOut`，Sprint 245）、`RoomCalendarService`、`BookingRefundPolicy`、`PaymentStateService`（`core`） |
+| 契約測試 | `BookingApiRealStackIntegrationTest`（真實 PostgreSQL＋Redis，含入住與退房）、`BookingServiceCheckInOutTest`（規則單元測試）、`RoomCalendarLockRealRedisIntegrationTest`（日期鎖）、`StoreSuspendedPaymentIntegrationTest`；路由漂移守門 `ApiRouteDocDriftTest` |
+| 缺陷 | `DEF-338`、`DEF-339`、`DEF-340`、`DEF-343`（Sprint 243 已修）、`DEF-341`、`DEF-342`（已登記）；Sprint 239／242（`E-2010`）；`DEF-345`（Sprint 245 實作入住與退房；state-log 與店家後台按鈕待排） |

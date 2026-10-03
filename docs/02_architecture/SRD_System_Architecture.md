@@ -1,4 +1,4 @@
-# E-Commerce System — 系統需求文檔 (SRD) v1.3
+# E-Commerce System — 系統需求文檔 (SRD) v1.5
 
 > **文檔類型**: SRD (System Requirements Document)
 > **版本**: v1.3（v1.0 → v1.1：Sprint 203 文件一致性檢查；v1.1 → v1.2：Sprint 204 新增 §5.5；v1.2 → v1.3：Sprint 206 §5.4.1 連接器層錯誤，見 §9 修訂歷史）
@@ -582,15 +582,19 @@ CREATED ──付款成功──▶ PAID ──店家確認──▶ CONFIRMED �
        REJECTED      SUSPENDED        SUSPENDED
 ```
 
-#### 6.3.4 訂房狀態流轉（Sprint 244 補充）
+#### 6.3.4 訂房狀態流轉（Sprint 244 補充；Sprint 245 實作入住與退房）
 
-> **⚠️ 注意**：`CONFIRMED`、`CHECKED_IN`、`CHECKED_OUT`、`COMPLETED` 在列舉中有定義，但**目前沒有任何程式路徑寫入**（DEF-345）。實際可達的狀態只有 `CREATED`、`PAID`、`CANCELLED`。
+> **說明**：PRD Phase 1 的預訂路徑是「付款即等同確認」，**不另設 `CONFIRMED`**（使用者於 Sprint 244 拍板，DEF-345）。`CONFIRMED` 仍在列舉中，但本系統不會產生它；`PUT` 與取消對 `CONFIRMED` 的判斷是不可達的既有程式碼。
 
 | 從 | 到 | 觸發 | 狀態 |
 |----|----|------|------|
 | `CREATED` | `PAID` | 付款成功：Mock `POST /v2/bookings/{bookingId}/pay`，或 Stripe 入帳 | 已實作 |
-| `CREATED`／`PAID`／`CONFIRMED` | `CANCELLED` | 買家或店家取消；未付款超過 `payment_due_at` 自動取消 | 已實作 |
-| `PAID` → `CONFIRMED` → `CHECKED_IN` → `CHECKED_OUT` → `COMPLETED` | — | 店家確認、入住、退房、完成 | **未實作**（DEF-345；PRD Phase 1 寫明 CONFIRMED 等效於 PAID） |
+| `CREATED`／`PAID` | `CANCELLED` | 買家或店家取消；未付款超過 `payment_due_at` 自動取消。入住後不可取消（`E-4007`） | 已實作 |
+| `PAID` | `CHECKED_IN` | 店家標記入住（`POST /v2/dashboard/bookings/{bookingId}/check-in`）；營運時區的今天 ≥ 入住日 | 已實作（Sprint 245） |
+| `CHECKED_IN` | `CHECKED_OUT` | 店家標記退房（`POST /v2/dashboard/bookings/{bookingId}/check-out`） | 已實作（Sprint 245） |
+| `CHECKED_OUT` | `COMPLETED` | 退房後自動完成，與退房在同一交易內；不需店家再操作 | 已實作（Sprint 245） |
+
+完成不觸發結算：`core/settlement` 目前不讀取訂房（沒有任何 `Booking` 參照）。日曆在退房後不釋放，已住的晚數維持 `BOOKED`。
 
 取消與退款規則（PRD Q14：入住前 24 小時以上全額、不足 24 小時不退；商家、管理員與系統取消全額）見 [API_M06_Booking.md](./API_M06_Booking.md)。
 
@@ -683,6 +687,7 @@ CREATED ──付款成功──▶ PAID ──店家確認──▶ CONFIRMED �
 | v1.2 | 2026-09-26 | Claude Code（Sprint 204） | 新增 §5.5 一次性連結：忘記密碼與 Email 驗證（Redis token、`EmailSender`／`canDeliver()`、與開店申請前置條件的關係） |
 | v1.3 | 2026-09-27 | Claude Code（Sprint 206） | §5.4.1：Tomcat 連接器層的拒絕改回 JSON 封包＋`X-Request-ID`＋安全標頭（DEF-283） |
 | v1.4 | 2026-10-03 | Claude Code（Sprint 244） | 文件對齊（3/3）：§5.1 Token 效期（Access 15 分鐘、Refresh 預設 7 天）改為實作現況，並註明無 Cookie、前端存 `localStorage`、Payload 為實際 claims；§5.5 寄信通道補 `SmtpEmailSender`（Sprint 209）與其未實測、同步寄送的限制（DEF-347）；§6.3.1 訂單狀態圖依 `OrderStateMachine` 重繪（移除 `CREATED(=PAID)` 與 `DELIVERED→REFUNDING`）；新增 §6.3.4 訂房狀態（`CONFIRMED` 以後未實作，DEF-345） |
+| v1.5 | 2026-10-04 | Claude Code（Sprint 245） | §6.3.4 訂房狀態依實作更新：入住與退房已實作（`PAID → CHECKED_IN → CHECKED_OUT → COMPLETED`，退房後同一交易自動完成），仍不產生 `CONFIRMED`（DEF-345 拍板）；完成不觸發結算。標題版本號同步為 v1.5（先前標題停在 v1.3，與 v1.4 修訂紀錄不一致） |
 
 ---
 

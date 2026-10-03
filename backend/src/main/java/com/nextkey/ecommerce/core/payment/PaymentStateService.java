@@ -991,11 +991,11 @@ public class PaymentStateService {
         return builder.build();
     }
 
+    /** 預訂的下一步。Sprint 245（DEF-345）：付款即等同確認（PRD Phase 1），PAID 直接入住，不經 CONFIRMED。 */
     private List<String> getBookingNextValidStates(String currentStatus) {
         return switch (currentStatus) {
             case "CREATED" -> List.of("PAID", "CANCELLED");
-            case "PAID" -> List.of("CONFIRMED", "CANCELLED");
-            case "CONFIRMED" -> List.of("CHECKED_IN", "CANCELLED");
+            case "PAID" -> List.of("CHECKED_IN", "CANCELLED");
             case "CHECKED_IN" -> List.of("CHECKED_OUT");
             case "CHECKED_OUT" -> List.of("COMPLETED");
             default -> List.of();

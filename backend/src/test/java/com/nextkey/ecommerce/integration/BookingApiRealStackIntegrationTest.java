@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -31,10 +32,13 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
+import com.nextkey.ecommerce.shared.time.BusinessTime;
 
 /**
  * M06 訂房 API 對真實服務的契約（Sprint 243；真實 PostgreSQL＋真實 Redis（日曆鎖）＋完整 HTTP／JWT／權限鏈）。
@@ -351,9 +355,69 @@ class BookingApiRealStackIntegrationTest {
                 .andExpect(jsonPath("$.data.orderStatus").value("PAID"))
                 .andExpect(jsonPath("$.data.paymentStatus").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.canPay").value(false))
-                .andExpect(jsonPath("$.data.nextValidStates").value("CONFIRMED,CANCELLED"));
+                .andExpect(jsonPath("$.data.nextValidStates").value("CHECKED_IN,CANCELLED"));
         send(post("/v2/bookings/" + bookingId + "/pay"), fx.buyerToken)
                 .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("E-5011"));
+    }
+
+    // ── 入住與退房（Sprint 245，DEF-345）─────────────────────
+
+    @Test
+    @DisplayName("入住與退房 POST /v2/dashboard/bookings/{id}/check-in|check-out：未付款不可入住（422 E-5010）；付款後買家、其他買家、店員（只讀）、其他店鋪的店主一律 403；店主入住 200 → 買家不能取消（400 E-4007）、不能改（422 E-5010）、不能重複入住；退房 200 且同一次回應即 COMPLETED；稽核三筆；入住日還沒到的已付款訂房不能入住，狀態不變")
+    void checkInAndCheckOut_byStoreOwner() throws Exception {
+        String stayId = book(BusinessTime.today().toString(), BusinessTime.today().plusDays(2).toString(), 2, fx.buyerToken)
+                .at("/data/id").asText();
+        String checkIn = "/v2/dashboard/bookings/" + stayId + "/check-in";
+        String checkOut = "/v2/dashboard/bookings/" + stayId + "/check-out";
+
+        send(post(checkIn), fx.ownerToken)
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("E-5010"));
+
+        send(post("/v2/bookings/" + stayId + "/pay"), fx.buyerToken).andExpect(status().isOk());
+        send(post(checkIn), fx.buyerToken).andExpect(status().isForbidden());
+        send(post(checkIn), fx.otherToken).andExpect(status().isForbidden());
+        send(post(checkIn), storeStaffToken()).andExpect(status().isForbidden());
+        send(post(checkIn), otherStoreOwnerToken()).andExpect(status().isForbidden());
+
+        JsonNode checkedIn = json(post(checkIn), fx.ownerToken, 200);
+        Assertions.assertThat(checkedIn.at("/data/status").asText()).isEqualTo("CHECKED_IN");
+
+        get("/v2/bookings/" + stayId, fx.buyerToken).andExpect(jsonPath("$.data.status").value("CHECKED_IN"));
+        send(post("/v2/bookings/" + stayId + "/cancel"), fx.buyerToken)
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("E-4007"));
+        send(put("/v2/bookings/" + stayId).content(body(Map.of("guestName", "入住後改"))), fx.ownerToken)
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("E-5010"));
+        send(post(checkIn), fx.ownerToken)
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("E-5010"));
+
+        send(post(checkOut), storeStaffToken()).andExpect(status().isForbidden());
+        JsonNode completed = json(post(checkOut), fx.ownerToken, 200);
+        Assertions.assertThat(completed.at("/data/status").asText()).isEqualTo("COMPLETED");
+        get("/v2/bookings/" + stayId, fx.buyerToken).andExpect(jsonPath("$.data.status").value("COMPLETED"));
+        send(post(checkOut), fx.ownerToken)
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("E-5010"));
+        Assertions.assertThat(auditActions(stayId))
+                .containsExactlyInAnyOrder("BOOKING_CHECKED_IN", "BOOKING_CHECKED_OUT", "BOOKING_COMPLETED");
+
+        String upcoming = book(BusinessTime.today().plusDays(30).toString(), BusinessTime.today().plusDays(32).toString(),
+                2, fx.buyerToken).at("/data/id").asText();
+        send(post("/v2/bookings/" + upcoming + "/pay"), fx.buyerToken).andExpect(status().isOk());
+        send(post("/v2/dashboard/bookings/" + upcoming + "/check-in"), fx.ownerToken)
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("E-5010"));
+        get("/v2/bookings/" + upcoming, fx.buyerToken).andExpect(jsonPath("$.data.status").value("PAID"));
+    }
+
+    @Test
+    @DisplayName("管理員可代為入住與退房（Sprint 245，DEF-345）：管理員不屬於該店鋪，仍 200，與取消、更新的管理員放行一致")
+    void checkInAndCheckOut_byPlatformAdmin() throws Exception {
+        String stayId = book(BusinessTime.today().toString(), BusinessTime.today().plusDays(1).toString(), 1, fx.buyerToken)
+                .at("/data/id").asText();
+        send(post("/v2/bookings/" + stayId + "/pay"), fx.buyerToken).andExpect(status().isOk());
+
+        JsonNode checkedIn = json(post("/v2/dashboard/bookings/" + stayId + "/check-in"), fx.adminToken, 200);
+        Assertions.assertThat(checkedIn.at("/data/status").asText()).isEqualTo("CHECKED_IN");
+        JsonNode completed = json(post("/v2/dashboard/bookings/" + stayId + "/check-out"), fx.adminToken, 200);
+        Assertions.assertThat(completed.at("/data/status").asText()).isEqualTo("COMPLETED");
     }
 
     // ── 輔助 ─────────────────────────────────────────────────
@@ -401,5 +465,36 @@ class BookingApiRealStackIntegrationTest {
                 .as("回應：%s", result.andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
                 .isEqualTo(expectedStatus);
         return objectMapper.readTree(result.andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    /** 同一家店鋪的店員（STORE_STAFF）：M06 權限表上只有讀取，入住與退房應 403。 */
+    private String storeStaffToken() {
+        long stamp = System.nanoTime();
+        User staff = userRepository.save(User.builder().email("contract-staff-" + stamp + "@example.com")
+                .passwordHash("dummy").fullName("契約店員").role(User.UserRole.STORE_STAFF).status("ACTIVE")
+                .tenantId(fx.store.getId()).build());
+        return jwtTokenService.generateAccessToken(staff.getId(), staff.getEmail(), "STORE_STAFF",
+                fx.store.getId().toString());
+    }
+
+    /** 另一家店鋪的店主（沒有房源）：只用來證明跨店鋪不能入住與退房。 */
+    private String otherStoreOwnerToken() {
+        long stamp = System.nanoTime();
+        Tenant otherStore = tenantRepository.save(Tenant.builder().name("契約測試另一家店 " + stamp)
+                .slug("contract-other-" + stamp).contactEmail("contract-other-" + stamp + "@tenant.com")
+                .contactPhone("+886-123456789").status(Tenant.TenantStatus.ACTIVE).build());
+        User owner = userRepository.save(User.builder().email("contract-other-owner-" + stamp + "@example.com")
+                .passwordHash("dummy").fullName("另一家店主").role(User.UserRole.STORE_OWNER).status("ACTIVE")
+                .tenantId(otherStore.getId()).build());
+        return jwtTokenService.generateAccessToken(owner.getId(), owner.getEmail(), "STORE_OWNER",
+                otherStore.getId().toString());
+    }
+
+    /** 訂房的稽核動作（只看入住與退房相關者；建立、付款的稽核不在此列）。 */
+    private List<String> auditActions(final String bookingId) {
+        return jdbcTemplate.queryForList(
+                "SELECT action FROM audit_log WHERE entity_id = ? AND action IN "
+                        + "('BOOKING_CHECKED_IN', 'BOOKING_CHECKED_OUT', 'BOOKING_COMPLETED')",
+                String.class, UUID.fromString(bookingId));
     }
 }

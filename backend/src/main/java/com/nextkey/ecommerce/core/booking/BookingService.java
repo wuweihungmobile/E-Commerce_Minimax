@@ -966,6 +966,46 @@ public class BookingService {
         return true;
     }
 
+    /**
+     * 店家標記入住（Sprint 245，DEF-345；PRD Phase 1 預訂路徑 {@code CREATED(=PAID) → CHECKED_IN}，付款即等同確認、無獨立 CONFIRMED）。
+     *
+     * <ul>
+     *   <li>只能從 {@code PAID} 入住。營運時區的今天早於入住日不可入住；入住日當天或之後都可以（入住日已過仍可補記）。
+     *       PRD 未明定入住日的限制，這是本輪假設。</li>
+     *   <li>擁有權見 {@link #checkStoreBookingAccess}：管理員與同租戶的商家，買家本人不算。</li>
+     *   <li>以條件式 UPDATE 搶占（{@link #moveStatus}），併發的兩次入住只會有一次成功。</li>
+     * </ul>
+     */
+    @Transactional
+    public BookingDto.BookingResponse checkIn(final UUID bookingId) {
+        Booking booking = findBookingById(bookingId);
+        checkStoreBookingAccess(booking);
+        requireStatus(booking, Booking.BookingStatus.PAID, "checked in");
+        if (BusinessTime.today().isBefore(booking.getCheckInDate())) {
+            throw new BusinessException(ErrorCode.E_5010, "Booking cannot be checked in before its check-in date");
+        }
+        moveStatus(booking, Booking.BookingStatus.PAID, Booking.BookingStatus.CHECKED_IN, null);
+        log.info("Booking checked in: id={}", bookingId);
+        return buildBookingResponse(booking);
+    }
+
+    /**
+     * 店家標記退房（Sprint 245，DEF-345）。{@code CHECKED_IN → CHECKED_OUT}，接著在<b>同一交易內</b>自動轉為
+     * {@code COMPLETED}（「完成由退房後自動處理」，店家不需再操作）。兩段轉換各寫一筆稽核；回應的狀態是交易結束時的
+     * {@code COMPLETED}。結算模組目前不讀訂房（SRD §6.3.4），完成不會觸發任何結算。
+     */
+    @Transactional
+    public BookingDto.BookingResponse checkOut(final UUID bookingId) {
+        Booking booking = findBookingById(bookingId);
+        checkStoreBookingAccess(booking);
+        requireStatus(booking, Booking.BookingStatus.CHECKED_IN, "checked out");
+        moveStatus(booking, Booking.BookingStatus.CHECKED_IN, Booking.BookingStatus.CHECKED_OUT, null);
+        moveStatus(booking, Booking.BookingStatus.CHECKED_OUT, Booking.BookingStatus.COMPLETED,
+                "auto-completed after check-out");
+        log.info("Booking checked out and completed: id={}", bookingId);
+        return buildBookingResponse(booking);
+    }
+
     // ========== Helper Methods ==========
 
     private com.nextkey.ecommerce.domain.model.order.Booking findBookingById(UUID bookingId) {
@@ -986,16 +1026,54 @@ public class BookingService {
     private void checkBookingOwnership(final com.nextkey.ecommerce.domain.model.order.Booking booking) {
         UUID userId = getCurrentUser();
         UUID tenantId = getCurrentTenant();
-        org.springframework.security.core.Authentication auth =
-            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        boolean isAdmin = auth != null && (
-            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
-            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
-        );
+        boolean isAdmin = isPlatformAdmin();
         boolean isOwner = userId.equals(booking.getUserId());
         boolean isSameTenant = TenantContext.isStoreTenant(tenantId) && tenantId.equals(booking.getTenantId());
         if (!isAdmin && !isOwner && !isSameTenant) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to access this booking");
+        }
+    }
+
+    /**
+     * 店家端的訂房操作（入住、退房，Sprint 245）：只放行管理員與同租戶的商家。與 {@link #checkBookingOwnership} 不同，
+     * 買家本人不算——入住與退房是店家的動作，服務層不依賴控制器的 {@code booking:update} 註解來擋住買家。
+     */
+    private void checkStoreBookingAccess(final Booking booking) {
+        UUID tenantId = getCurrentTenant();
+        boolean isSameTenant = TenantContext.isStoreTenant(tenantId) && tenantId.equals(booking.getTenantId());
+        if (!isPlatformAdmin() && !isSameTenant) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to operate this booking");
+        }
+    }
+
+    /** 平台管理員（ROLE_ADMIN／ROLE_SUPER_ADMIN）。 */
+    private static boolean isPlatformAdmin() {
+        org.springframework.security.core.Authentication auth =
+            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && (
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+        );
+    }
+
+    /**
+     * 條件式 UPDATE 把訂房從 {@code from} 轉到 {@code to}（同 {@link #cancelBooking} 的搶占模式）。搶不到代表狀態已被
+     * 併發呼叫改掉，拒絕本次請求。成功後寫一筆稽核 {@code BOOKING_<to>}。
+     */
+    private void moveStatus(final Booking booking, final Booking.BookingStatus from, final Booking.BookingStatus to,
+            final String reason) {
+        if (bookingRepository.updateStatusIfCurrent(booking.getId(), from, to) == 0) {
+            throw new BusinessException(ErrorCode.E_5010, "Booking status changed concurrently");
+        }
+        booking.setStatus(to);
+        auditService.record("BOOKING_" + to.name(), "BOOKING", booking.getId(), booking.getTenantId(),
+                from.name(), to.name(), reason);
+    }
+
+    private void requireStatus(final Booking booking, final Booking.BookingStatus expected, final String action) {
+        if (booking.getStatus() != expected) {
+            throw new BusinessException(ErrorCode.E_5010,
+                    "Booking cannot be " + action + " in status " + booking.getStatus());
         }
     }
 

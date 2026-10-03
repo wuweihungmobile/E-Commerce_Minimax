@@ -261,7 +261,7 @@ class PaymentStateServiceTest {
         }
 
         @Test
-        @DisplayName("UT-PAY-STATE-009: PAID 狀態 -> canRefund=true，nextValidStates=CONFIRMED,CANCELLED")
+        @DisplayName("UT-PAY-STATE-009: PAID 狀態 -> canRefund=true，nextValidStates=CHECKED_IN,CANCELLED（Sprint 245，DEF-345：付款即確認，不經 CONFIRMED）")
         void paid_canRefund() {
             when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(bookingOf(Booking.BookingStatus.PAID)));
             when(paymentRepository.findEffectiveByBookingId(BOOKING_ID)).thenReturn(Optional.empty());
@@ -270,7 +270,7 @@ class PaymentStateServiceTest {
 
             assertThat(dto.getCanRefund()).isTrue();
             assertThat(dto.getCanCancel()).isTrue();
-            assertThat(dto.getNextValidStates()).isEqualTo("CONFIRMED,CANCELLED");
+            assertThat(dto.getNextValidStates()).isEqualTo("CHECKED_IN,CANCELLED");
         }
 
         @Test

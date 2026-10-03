@@ -272,7 +272,7 @@ HTTP Request
 > * **預訂路徑（Phase 2+）**：`CREATED` -> `PAID` -> `CONFIRMED` -> `CHECKED_IN` -> `CHECKED_OUT` -> `COMPLETED`。
 > * **Phase 1 零售路徑（Payment Mock 等效）**：`CREATED(=PAID)` -> `SHIPPING` -> `DELIVERED` -> `COMPLETED`。Phase 1 支付環節為模擬流程，CREATED 狀態建立時即等同於已支付（Payment Mock），無需等待真實金流回調。**`payment.received` 事件在 Phase 1 不存在，`CONFIRMED` 狀態不在 Phase 1 零售路徑中。**
 > * **Phase 1 預訂路徑（Payment Mock 等效）**：`CREATED(=PAID)` -> `CHECKED_IN` -> `CHECKED_OUT` -> `COMPLETED`。Phase 1 `CONFIRMED` 狀態等效於 `CREATED(=PAID)`（Payment Mock 自動完成狀態推進，無獨立 CONFIRMED 步驟），`CHECKED_IN` 前置抵達後自動確認。
-> * **【Sprint 244 修訂註記】** 上列 Phase 1「Payment Mock 等效」與 `CREATED(=PAID)` 的敘述與實作不符：實作中訂單建立後為 `CREATED`，付款成功（Mock `POST /v2/orders/{orderId}/pay`，或 Stripe 入帳）才轉為 `PAID`。店家可把 `PAID` 轉為 `CONFIRMED`。訂房的 `CONFIRMED`、`CHECKED_IN`、`CHECKED_OUT`、`COMPLETED` 目前沒有程式路徑寫入（DEF-345）。權威狀態圖見 [SRD_System_Architecture.md](../02_architecture/SRD_System_Architecture.md) §6.3。
+> * **【Sprint 244 修訂註記】** 上列 Phase 1「Payment Mock 等效」與 `CREATED(=PAID)` 的敘述與實作不符：實作中訂單建立後為 `CREATED`，付款成功（Mock `POST /v2/orders/{orderId}/pay`，或 Stripe 入帳）才轉為 `PAID`。店家可把 `PAID` 轉為 `CONFIRMED`。訂房的 `CHECKED_IN`、`CHECKED_OUT`、`COMPLETED` 已由 Sprint 245 實作（店家標記入住與退房，退房後自動完成；DEF-345），依 PRD Phase 1 不產生 `CONFIRMED`。權威狀態圖見 [SRD_System_Architecture.md](../02_architecture/SRD_System_Architecture.md) §6.3。
 > * **冪等性設計**：所有涉及資金或狀態變更的 API (如 Pay, Cancel)，Header 必須夾帶客戶端生成的 `Idempotency-Key`（**格式約束：UUID v4，36 字元長度**）。Gateway 層透過 Redis 快取攔截 24 小時內的重複請求，徹底防止因網路 Timeout 導致的「重複扣款」或「重複退房」。
 
 > **4. 服務降級與限流策略 (Rate Limiting & Downgrade)**
@@ -1907,7 +1907,7 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 
 > **注意**：Phase 1 訂單僅支援單一類型（`RETAIL` 或 `BOOKING`），禁止混合訂單。支付環節為 Payment Mock，不串接真實金流。
 
-> **⚠️ 修訂註記（Sprint 244，2026-10-03）**：§9.6 的 `GET /api/v2/orders/:id/state-log` 實作為 `GET /v2/orders/{orderId}/logs`（路徑不同，用途相同）。§9.7 的 `GET /api/v2/bookings/:id/state-log` **未實作**（DEF-345）。§9.7 開頭「Phase 1 僅開放查詢與取消、不含 POST 建立」已過時：建立、修改、付款與退款均已實作，見 [API_M06_Booking.md](../02_architecture/API_M06_Booking.md)。
+> **⚠️ 修訂註記（Sprint 244，2026-10-03）**：§9.6 的 `GET /api/v2/orders/:id/state-log` 實作為 `GET /v2/orders/{orderId}/logs`（路徑不同，用途相同）。§9.7 的 `GET /api/v2/bookings/:id/state-log` **未實作**（DEF-345；Sprint 245 只實作入住與退房，見 [API_M06_Booking.md](../02_architecture/API_M06_Booking.md) §4.12～4.13）。§9.7 開頭「Phase 1 僅開放查詢與取消、不含 POST 建立」已過時：建立、修改、付款與退款均已實作，見 [API_M06_Booking.md](../02_architecture/API_M06_Booking.md)。
 
 ### 9.7 M06 民宿預訂（v1.0 更新）
 

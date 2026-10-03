@@ -70,7 +70,7 @@ public class CartController {
 
     /**
      * 更新購物車項目數量
-     * 使用 cartItemKey (格式: listingId[:skuId[:startDate:endDate]])
+     * 使用 cartItemKey（格式: listingId[:skuId]；日期不是 key 的一部分）
      */
     @PutMapping("/items/{cartItemKey}")
     @PreAuthorize("hasAuthority('cart:update')")
@@ -87,7 +87,7 @@ public class CartController {
 
     /**
      * 移除購物車項目
-     * 使用 cartItemKey (格式: listingId[:skuId[:startDate:endDate]])
+     * 使用 cartItemKey（格式: listingId[:skuId]；日期不是 key 的一部分）
      */
     @DeleteMapping("/items/{cartItemKey}")
     @PreAuthorize("hasAuthority('cart:update')")

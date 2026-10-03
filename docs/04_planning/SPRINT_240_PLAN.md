@@ -89,7 +89,7 @@
 - **真實後端 E2E**：`E2E_GATE_SKIP_BUILD=1 make validate-e2e`（JAR 是上面 verify 剛建好的修復版）**139 個測試：135 通過／4 略過／0 失敗（4.4 分鐘）**，後端以 `ddl-auto=validate` 啟動確認 entity 與 Flyway 對齊；新增的 SLS-01／02／03 全綠；沒有 flaky、沒有 did not run。那 4 個略過是既有基準。
 - **修復前那次守門的 2 個既有規格失敗沒有再發生**：`at-account-data-rights` 的刪除帳戶與匯出（整輪第一、第二個案例）這次通過。**原因仍未查明**：失敗當時頁面快照顯示未登入，一個可能的機制是冷啟動時 `registerAndLogin` 的註冊等待上限（6 秒）不夠、helper 默默略過登入；而我剛好在守門啟動前後改完檔，IDE 的 Java 語言服務可能正在重編、搶走 CPU。**這只是假說，沒有證據**（守門的後端日誌是暫存檔，跑完即刪）。這次重跑時我沒有改任何檔案。若日後再出現，先留下後端日誌（`E2E_BACKEND_LOG`）再判斷。
 - **突變驗證**：見 §4（9 個全部被抓到，每次還原後以 `cmp` 確認逐位元組一致，結束時再以 `sha256` 核對）。
-- **push 與雲端 CI**：（push 後於回填 commit 補上）
+- **push 與雲端 CI**：已 push（2026-10-03，`ff8f387..1aef04f main -> main`；pre-push 輕量守門通過：後端單元兩輪各約 3 分、前端 Lint＆Build、schema 對齊）。✅ 雲端 CI 全綠 run 37093343559，三個 job 全部 success，共 9 分 53 秒：Backend Unit 2m31s／Frontend Lint & Build 1m03s／Backend Integration & Package 7m18s。雲端整合 job 近十二次依序 5m01s／6m02s／6m00s／4m15s／7m47s／7m46s／8m03s／8m05s／6m05s／7m55s／8m05s／**7m18s**（Sprint 229～240；本輪新增 15 個整合測試，仍比上一輪快，沒有新的歸因結論）。
 
 ## 6. 範圍外（延後）、已知限制與待決定
 

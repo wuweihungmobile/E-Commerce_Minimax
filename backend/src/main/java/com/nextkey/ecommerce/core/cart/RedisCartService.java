@@ -32,8 +32,10 @@ import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
 import com.nextkey.ecommerce.domain.repository.PromoCodeRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
+import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.CartEmptyException;
 import com.nextkey.ecommerce.shared.exception.CartItemNotFoundException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.exception.PromoCodeInvalidException;
 import com.nextkey.ecommerce.shared.time.BusinessTime;
 
@@ -68,9 +70,10 @@ public class RedisCartService {
     public CartDto.AddItemResponse addItem(UUID userId, UUID tenantId, CartDto.AddItemRequest request) {
         String cartKey = getCartKey(userId, tenantId);
 
-        // 檢查商品是否存在
+        // 檢查商品是否存在。使用者輸入錯誤一律丟 BusinessException（Sprint 241）：先前丟通用的 IllegalArgumentException，
+        // GlobalExceptionHandler 沒有專屬處理、落入 handleGenericException，回 500 E-9900 並在日誌留一筆 ERROR。
         Listing listing = listingRepository.findById(request.getListingId())
-                .orElseThrow(() -> new IllegalArgumentException("Listing not found: " + request.getListingId()));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Listing not found: " + request.getListingId()));
 
         BigDecimal unitPrice = listing.getBasePrice();
         String skuCode = null;
@@ -98,10 +101,10 @@ public class RedisCartService {
         // ROOM 類型房源需要日期驗證
         if (listing.getListingType() == Listing.ListingType.ROOM) {
             if (request.getStartDate() == null || request.getEndDate() == null) {
-                throw new IllegalArgumentException("Start date and end date are required for ROOM listing");
+                throw new BusinessException(ErrorCode.E_4003, "Start date and end date are required for ROOM listing");
             }
             if (!request.getEndDate().isAfter(request.getStartDate())) {
-                throw new IllegalArgumentException("End date must be after start date");
+                throw new BusinessException(ErrorCode.E_4004, "End date must be after start date");
             }
         }
 
@@ -180,7 +183,7 @@ public class RedisCartService {
      * 更新購物車項目數量 (使用 cartItemKey)
      */
     public CartDto.CartItemResponse updateItem(UUID userId, UUID tenantId, String cartItemKey, int quantity) {
-        // 嘗試解析 cartItemKey，格式可能是 listingId[:skuId[:startDate:endDate]]
+        // 嘗試解析 cartItemKey，格式是 listingId[:skuId]（日期不是 key 的一部分）
         try {
             String[] parts = cartItemKey.split(":");
             UUID listingId = UUID.fromString(parts[0]);

@@ -7,7 +7,9 @@ import com.nextkey.ecommerce.domain.model.product.ProductSku;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
 import com.nextkey.ecommerce.domain.repository.PromoCodeRepository;
+import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.CartItemNotFoundException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -278,8 +280,10 @@ class RedisCartServiceTest {
 
             // Act & Assert
             assertThatThrownBy(() -> redisCartService.addItem(TEST_USER_ID, TEST_TENANT_ID, request))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("Listing not found");
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("Listing not found")
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_3000);
         }
 
         @Test
@@ -293,8 +297,10 @@ class RedisCartServiceTest {
 
             // Act & Assert
             assertThatThrownBy(() -> redisCartService.addItem(TEST_USER_ID, TEST_TENANT_ID, request))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("Start date and end date are required");
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("Start date and end date are required")
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_4003);
         }
 
         @Test
@@ -310,8 +316,10 @@ class RedisCartServiceTest {
 
             // Act & Assert
             assertThatThrownBy(() -> redisCartService.addItem(TEST_USER_ID, TEST_TENANT_ID, request))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("End date must be after start date");
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("End date must be after start date")
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_4004);
         }
     }
 

@@ -1,15 +1,17 @@
 # API Index / API 規格索引
 
 > **文檔狀態**: Active
-> **版本**: v1.1
+> **版本**: v1.2
 > **建立日期**: 2026-04-09
-> **最後更新**: 2026-06-05
+> **最後更新**: 2026-10-03（Sprint 241）
 > **作者**: Marcus (SD-Architect)
 > **🔴 Sprint 16 US-008**: 收錄 Sprint 15 + Sprint 16 新增 API 端點
 >
 > **錯誤契約**: 所有 API 共用同一個回應封包與錯誤碼表，見 [API_Error_Codes.md](./API_Error_Codes.md)（Sprint 203）。
 >
-> **⚠️ 完整性未保證（Sprint 203 揭露）**: 本索引最後更新於 2026-06-05，僅收錄 48 個端點；同日核對後端 controller 有約 305 個 `@*Mapping` 註解。**本索引不是完整端點清單**，見 DEF-286。
+> **⚠️ 完整性未保證（Sprint 203 揭露）**: 本索引的多數模組最後更新於 2026-06-05，僅收錄 48 個端點；同日核對後端 controller 有約 305 個 `@*Mapping` 註解。**本索引不是完整端點清單**，見 DEF-286。
+>
+> **✅ 已完整且有守門的模組（Sprint 241）**: **M03 會員與權限**（[API_M03_Auth.md](./api/API_M03_Auth.md)，13 個端點）與 **M04 購物車**（[API_M04_Cart.md](./API_M04_Cart.md)，9 個端點）已依實作改寫，並納入 `ApiRouteDocDriftTest`：Controller 新增、刪除或改名路由而沒更新規格，測試會失敗。其他模組（M05 訂單、M06 訂房等）將依序納入；納入前仍以規格文件與程式碼互相對照為準。
 
 ---
 
@@ -21,13 +23,33 @@
 |--------|------|------|------|------|-------|
 | API-M03-001 | `/api/v2/auth/register` | POST | 會員註冊 | Guest | Phase 1 |
 | API-M03-002 | `/api/v2/auth/login` | POST | 會員登入 | Guest | Phase 1 |
-| API-M03-003 | `/api/v2/auth/refresh` | POST | 刷新 Access Token | Guest+ | Phase 1 |
+| API-M03-003 | `/api/v2/auth/refresh` | POST | 換發 Token（輪替；重放偵測） | Guest+ | Phase 1 |
 | API-M03-004 | `/api/v2/auth/logout` | POST | 會員登出 | Buyer+ | Phase 1 |
 | API-M03-005 | `/api/v2/auth/me` | GET | 取得當前用戶資訊 | Buyer+ | Phase 1 |
 | API-M03-006 | `/api/v2/auth/password/forgot` | POST | 申請密碼重設連結（Sprint 204） | Guest | Phase 1 |
 | API-M03-007 | `/api/v2/auth/password/reset` | POST | 以連結重設密碼（Sprint 204） | Guest | Phase 1 |
 | API-M03-008 | `/api/v2/auth/email/verify` | POST | 以連結完成 Email 驗證（Sprint 204） | Guest | Phase 1 |
 | API-M03-009 | `/api/v2/auth/email/verify/send` | POST | 重寄驗證信（Sprint 204） | Buyer+ | Phase 1 |
+| API-M03-010 | `/api/v2/auth/oauth/login` | POST | OAuth 登入／註冊（Sprint 241 補記） | Guest | Phase 1 |
+| API-M03-011 | `/api/v2/auth/oauth/link` | POST | 連結 OAuth 帳號（Sprint 241 補記） | Buyer+ | Phase 1 |
+| API-M03-012 | `/api/v2/auth/me/data-export` | GET | 會員資料匯出（Sprint 241 補記） | Buyer+ | Phase 1 |
+| API-M03-013 | `/api/v2/auth/me` | DELETE | 會員自助刪除帳戶（Sprint 241 補記） | Buyer | Phase 1 |
+
+### 購物車 (M04)
+
+規格：[API_M04_Cart.md](./API_M04_Cart.md)（v2.0，Sprint 241）。成功狀態碼一律 `200`；權限 `cart:read`／`cart:update`／`cart:delete`（只有 Buyer 持有）。
+
+| 端點 | 方法 | 說明 | 權限 |
+|------|------|------|------|
+| `/api/v2/cart` | GET | 取得購物車（依店鋪分組、運費、優惠券折扣） | `cart:read` |
+| `/api/v2/cart/count` | GET | 取得總件數 | `cart:read` |
+| `/api/v2/cart/items` | POST | 加入購物車 | `cart:update` |
+| `/api/v2/cart/items/{cartItemKey}` | PUT | 更新項目數量 | `cart:update` |
+| `/api/v2/cart/items/{cartItemKey}` | DELETE | 移除項目 | `cart:update` |
+| `/api/v2/cart` | DELETE | 清空購物車 | `cart:delete` |
+| `/api/v2/cart/apply-promo` | POST | 在某家店鋪套用優惠券 | `cart:update` |
+| `/api/v2/cart/promo` | DELETE | 移除某家店鋪的優惠券 | `cart:update` |
+| `/api/v2/cart/validate-promo` | GET | 驗證優惠券（不套用） | `cart:read` |
 
 ### 商品中心 (M01)
 

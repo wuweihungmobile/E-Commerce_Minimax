@@ -39,7 +39,7 @@
 |------|--------|------|------------|
 | DEF-345 | 🟡 | 訂房的 `CONFIRMED`、`CHECKED_IN`、`CHECKED_OUT`、`COMPLETED` 沒有任何寫入路徑；店家沒有確認或入住的端點；PRD `GET /api/v2/bookings/:id/state-log` 未實作 | 否（新功能與權限決策，見 §6.2） |
 | DEF-346 | 🟠 | `STRIPE_PAYMENT_ENABLED` 是租戶級功能開關，**沒有資料列即為關閉**。全新部署時所有買家都能以 Mock 付款把訂單改為已付款，不經過金流 | 否（上線程序決策，見 §6.2） |
-| DEF-347 | 🟡（潛伏） | `SmtpEmailSender` 同步寄送；忘記密碼與 Email 驗證在請求內呼叫 `send`，存在的帳號回應較慢，形成帳號列舉的時序側通道。目前 compose 不傳遞 `SMTP_*`，尚未出現 | 否（啟用 SMTP 前必修） |
+| DEF-347 | 🟡（潛伏） | `SmtpEmailSender` 同步寄送；忘記密碼與 Email 驗證在請求內呼叫 `send`，存在的帳號回應較慢，形成帳號列舉的時序側通道。compose 已於收尾補傳 `SMTP_*`，但 `SMTP_USERNAME` 預設為空，尚未出現 | 否（啟用 SMTP 前必修） |
 | DEF-348 | 🟡 | `application.yml` 的 MinIO 預設憑證 `minioadmin`／`minioadmin123`，正式 compose 未覆寫 | 否（需要同步調整 compose 與開發流程） |
 | DEF-349 | 🟢 | LINE Pay 閘道是 stub（不呼叫 LINE Pay API，`confirmPayment` 無條件成功）；舊版 `POST /v2/payments` 在 Mock 模式會把 `paymentMethod` 原樣寫入 `SUCCESS`。目前無法產生真實入帳，屬標籤問題 | 否（接 LINE Pay 前必修） |
 
@@ -123,6 +123,7 @@
 - **程式碼**：沒有 `backend/`、`frontend/` 的變更；compose 與 `.env.example` 的變更見 §2.3。
 - **compose 語法**：`docker compose -f docker-compose.yml config` 退出碼 **0**；以 JSON 渲染後檢查 backend 的環境變數：`SMTP_USERNAME` 為空、`SMTP_PORT` 為 `587`、`APP_FRONTEND_BASE_URL` 為 `http://localhost:3000`、`APP_SCHEDULING_ENABLED` 為 `true`、`JWT_REFRESH_TOKEN_EXPIRATION` 維持 `2592000000`（與補傳前一致）。**未實際 `docker compose up` 啟動容器**（未驗證）。
 - **a6cd311 的雲端 CI**：run `37126315542`，`Local CI (act-compatible)` **success**，8 分 24 秒（2026-10-03 13:28:46 → 13:37:10 UTC）。
+- **追加 commit `ee38bc4` 的雲端 CI**：run `37126964259`，`Local CI (act-compatible)` **success**，12 分 2 秒（2026-10-03 UTC，updatedAt 13:52:16）。
 - **未驗證的項目（明示）**：文件的 SQL 與 DDL 沒有重新核對（`SRD_Database_Schema.md` 未改，受 `make validate-schema-doc` 守門）；M07 與通知的端點清單只核對到基底路徑與主要端點，未逐一實測。
 
 ## 6. 範圍外（延後）、已知限制與待決定
@@ -158,7 +159,7 @@
 
 ## 8. 下一步／Action Items
 
-1. **commit 與 push**（已完成）：文件 commit `a6cd311` 已 push。收尾追加（compose、`.env.example`、本計畫書與追蹤表的回填）另成一個 commit，push 後其雲端 CI 結果於 Sprint 245 收尾回填。
+1. **commit 與 push**（已完成）：文件 commit `a6cd311` 與收尾追加 commit `ee38bc4`（compose、`.env.example`、追蹤表與文件回填）已 push；兩者的雲端 CI 都已全綠（§5）。
 2. **雲端 CI 回填**（`a6cd311`）：已回填（§5、RELEASE_TRACKER）。
 3. **Sprint 245（已排定）**：DEF-345 訂房入住流程，依 PRD Phase 1（§2.3）。實作範圍：店家端的入住與退房端點與權限、`PAID → CHECKED_IN → CHECKED_OUT → COMPLETED` 的轉換規則與完成條件、M06 規格與 FRD §6A、SRD §6.3.4 的同步更新、單元與真實資料庫的整合測試、突變驗證。
 4. **Sprint 246 候選**：DEF-347（寄信改非同步；在任何人設定 `SMTP_USERNAME` 之前完成）、DEF-346（上線 runbook 的開關步驟與驗證）。

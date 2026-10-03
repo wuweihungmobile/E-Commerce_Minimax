@@ -1,6 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 import { registerAndLogin, loginOnly } from './helpers/auth';
-import { Account, authHeaders, seedStore } from './helpers/store';
+import { Account, authHeaders, seedStore, setStoreStatus } from './helpers/store';
 
 /**
  * AT-STORE-CHECKOUT-REAL: 同店結帳（真實後端，完全不 mock）—— Sprint 237（DEF-319 訂單側）
@@ -224,5 +224,35 @@ test.describe('AT-STORE-CHECKOUT-REAL: 同店結帳（真實後端）', () => {
     await page.evaluate(() => localStorage.clear());
     await loginOnly(page, ownerA.email, ownerA.password);
     expect((await listTenantOrders(page)).map((o) => o.id), '店鋪 A 的店主看得到這筆訂單').toContain(orderIdA);
+  });
+
+  test('E2E-SCHK-07: 店鋪停權後——購物車標示「暫停營業」並停用該店鋪的結帳、API 結帳回 E-2010；營業中的店鋪照常結帳（Sprint 239）', async ({ page }: { page: Page }) => {
+    // 前面的案例已把兩家店鋪的商品都結掉了，這裡重新放進購物車；然後由管理員把店鋪 A 停權
+    await page.goto('/login');
+    await page.evaluate(() => localStorage.clear());
+    await loginOnly(page, customer.email, customer.password);
+    const headers = await authHeaders(page);
+    for (const listingId of [productA, productB]) {
+      const add = await page.request.post(`${API_BASE}/v2/cart/items`, { headers, data: { listingId, quantity: 1 } });
+      expect(add.status(), await add.text()).toBeLessThan(300);
+    }
+    await setStoreStatus(page, tenantA, 'SUSPENDED');
+
+    await page.evaluate(() => localStorage.clear());
+    await loginOnly(page, customer.email, customer.password);
+    await page.goto('/cart');
+    await expect(page.getByTestId(`cart-store-${tenantA}`)).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId(`cart-store-checkout-${tenantA}-closed`), '停權店鋪的說明').toBeVisible();
+    await expect(page.getByTestId(`cart-store-checkout-${tenantA}`), '停權店鋪不能前往結帳').toBeDisabled();
+    await expect(page.getByTestId(`cart-store-checkout-${tenantB}`), '營業中的店鋪照常').toBeEnabled();
+
+    const blocked = await placeOrder(page, RECIPIENT_A, tenantA);
+    expect(blocked.status(), await blocked.text()).toBe(422);
+    expect((await blocked.json()).code).toBe('E-2010');
+    const allowed = await placeOrder(page, RECIPIENT_B, tenantB);
+    expect(allowed.status(), await allowed.text()).toBe(201);
+
+    // 還原店鋪狀態，避免影響其他案例（整個守門共用同一個資料庫）
+    await setStoreStatus(page, tenantA, 'ACTIVE');
   });
 });

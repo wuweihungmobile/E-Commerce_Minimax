@@ -24,6 +24,7 @@ import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.core.promo.PromoService;
+import com.nextkey.ecommerce.core.tenant.StoreCheckoutGuard;
 import com.nextkey.ecommerce.domain.model.promo.PromoCode;
 import com.nextkey.ecommerce.domain.model.promo.PromoCodeUsage;
 import com.nextkey.ecommerce.domain.repository.PromoCodeUsageRepository;
@@ -183,6 +184,10 @@ public class OrderService {
             final OrderDto.CreateRequest request, final List<CartDto.CartItemResponse> productItems,
             final PromoCode promo, final BigDecimal discountAmount, final BigDecimal shippingFee,
             final UUID userId) {
+        // Sprint 239（使用者拍板）：只有 ACTIVE 的店鋪能被下單。放在最前面——店鋪暫停營業比商品、庫存等細節更根本；
+        // 單一類型結帳與合併結帳都走這個方法，所以兩條路徑一起被擋
+        StoreCheckoutGuard.requireOpen(tenant);
+
         // Sprint 87：若提供 addressId，改以地址簿內容覆蓋手動輸入的收件欄位
         // （下單當下複製一份 snapshot，日後編輯/刪除地址簿項目不影響已建立訂單）
         String shippingAddress = request.getShippingAddress();
@@ -355,6 +360,7 @@ public class OrderService {
 
         // Sprint 237（DEF-319）：訂單歸屬房源所屬的店鋪，不是下單者的租戶；若不存在則使用系統預設租戶
         var tenant = resolveTenant(roomListing.getTenantId());
+        StoreCheckoutGuard.requireOpen(tenant);
 
         // 計算入住晚數
         long nights = calculateNights(request.getCheckInDate(), request.getCheckOutDate());

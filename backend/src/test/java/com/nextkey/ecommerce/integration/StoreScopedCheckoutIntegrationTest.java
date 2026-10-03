@@ -63,6 +63,7 @@ class StoreScopedCheckoutIntegrationTest {
 
     @Autowired private OrderService orderService;
     @Autowired private CombinedCheckoutService combinedCheckoutService;
+    @Autowired private com.nextkey.ecommerce.core.booking.BookingService bookingService;
     @Autowired private RedisCartService cartService;
     @Autowired private TenantRepository tenantRepository;
     @Autowired private UserRepository userRepository;
@@ -356,5 +357,69 @@ class StoreScopedCheckoutIntegrationTest {
 
         assertThat(ordersOfConsumer()).isZero();
         assertThat(cartItemCount()).isEqualTo(3);
+    }
+
+    // ── Sprint 239：暫停營業的店鋪不能被下單（使用者拍板）──────────────────────────
+
+    private void suspend(final Tenant store) {
+        jdbcTemplate.update("UPDATE tenants SET status = 'SUSPENDED' WHERE id = ?", store.getId());
+    }
+
+    @Test
+    @DisplayName("店鋪停權後：購物車標示該店鋪暫停營業；結帳回 E-2010、沒有訂單、購物車原封不動；另一家營業中的店鋪照常結帳")
+    void suspendedStore_cannotBeOrdered_andTheCartSaysSo() {
+        addProduct(productA, 1);
+        addProduct(productB, 1);
+        suspend(storeA);
+
+        CartDto.CartResponse cart = cartService.getCartWithPromo(consumerId, SYSTEM_TENANT_ID);
+        assertThat(cart.getStores()).filteredOn(s -> s.getStoreId().equals(storeA.getId()))
+                .singleElement().satisfies(s -> assertThat(s.getStoreActive()).as("停權的店鋪").isFalse());
+        assertThat(cart.getStores()).filteredOn(s -> s.getStoreId().equals(storeB.getId()))
+                .singleElement().satisfies(s -> assertThat(s.getStoreActive()).as("營業中的店鋪").isTrue());
+
+        assertThatThrownBy(() -> orderService.createOrderFromCart(productRequest(storeA.getId())))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.E_2010));
+        assertThat(ordersOfConsumer()).isZero();
+        assertThat(cartItemCount()).isEqualTo(2);
+
+        UUID orderB = orderService.createOrderFromCart(productRequest(storeB.getId())).getId();
+        assertThat(orderTenant(orderB)).isEqualTo(storeB.getId());
+    }
+
+    @Test
+    @DisplayName("店鋪停權後：合併結帳與單獨訂房都回 E-2010，不留下任何訂單或訂房")
+    void suspendedStore_cannotBeBooked_norMixedCheckedOut() {
+        addProduct(productA, 1);
+        addRoom();
+        suspend(storeA);
+
+        assertThatThrownBy(() -> combinedCheckoutService.checkoutMixedCart(mixedRequest(storeA.getId())))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.E_2010));
+        assertThat(ordersOfConsumer()).isZero();
+
+        LocalDate checkIn = LocalDate.now().plusDays(60);
+        assertThatThrownBy(() -> bookingService.createBooking(
+                com.nextkey.ecommerce.api.dto.BookingDto.CreateRequest.builder().roomListingId(roomA)
+                        .checkInDate(checkIn).checkOutDate(checkIn.plusDays(1)).guestCount(1).guestName("測試住客").build(),
+                "idem-" + UUID.randomUUID()))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.E_2010));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM bookings WHERE user_id = ?", Integer.class, consumerId)).isZero();
+    }
+
+    @Test
+    @DisplayName("只擋「建立」：訂單成立後店鋪才停權，消費者仍能取消自己的訂單（停權店鋪的消費者要能取消與退款）")
+    void suspendedAfterOrdering_theConsumerCanStillCancel() {
+        addProduct(productA, 1);
+        UUID orderId = orderService.createOrderFromCart(productRequest(null)).getId();
+        suspend(storeA);
+
+        orderService.cancelOrder(orderId, "店鋪停權後消費者取消");
+
+        assertThat(jdbcTemplate.queryForObject("SELECT status FROM orders WHERE id = ?", String.class, orderId))
+                .isEqualTo("CANCELLED");
     }
 }

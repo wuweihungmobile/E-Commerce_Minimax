@@ -138,6 +138,7 @@ const BOOKING_ERROR_MESSAGES: Record<string, string> = {
   'E-4003': '日期範圍無效，請確認退房日晚於入住日',
   'E-4005': '入住人數超過房型容量，請減少人數',
   'E-3002': '此房型目前未開放預訂',
+  'E-2010': '此店鋪目前暫停營業，無法下單',
   'E-6005': '預訂處理中，請稍候再試',
   'E-9004': '請求格式錯誤，請重新嘗試',
   // 促銷碼相關（Sprint 124，DEF-047），對齊 BookingService.resolveValidPromoForCheckout

@@ -43,6 +43,20 @@ export async function authHeaders(page: Page): Promise<{ Authorization: string }
   return { Authorization: `Bearer ${await accessToken(page)}` };
 }
 
+/**
+ * 管理員變更店鋪狀態（PUT /v2/admin/tenants/{id}/status，只有 SUPER_ADMIN）。會清掉目前的登入並以管理員登入，
+ * 呼叫端之後要自己重新登入需要的身分。Sprint 239：停權的店鋪不能被下單（E-2010）。
+ */
+export async function setStoreStatus(page: Page, tenantId: string, status: 'SUSPENDED' | 'ACTIVE'): Promise<void> {
+  await page.evaluate(() => localStorage.clear());
+  await loginOnly(page, 'admin@nextkey.local', PASSWORD);
+  const response = await page.request.put(`${API_BASE}/v2/admin/tenants/${tenantId}/status`, {
+    headers: await authHeaders(page),
+    data: { status },
+  });
+  expect(response.status(), await response.text()).toBe(200);
+}
+
 export async function seedStore(page: Page, options: SeedStoreOptions): Promise<SeededStore> {
   const owner = await registerAndLogin(page);
   await verifyEmailViaMailbox(page, owner.email);

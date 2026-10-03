@@ -22,6 +22,7 @@ import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.core.promo.PromoService;
+import com.nextkey.ecommerce.core.tenant.StoreCheckoutGuard;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.product.ProductSku;
 import com.nextkey.ecommerce.domain.model.promo.PromoCode;
@@ -259,7 +260,7 @@ public class RedisCartService {
         // 批量獲取 listing 資訊
         Map<UUID, Listing> listingMap = new HashMap<>();
         listingRepository.findAllById(listingIds).forEach(listing -> listingMap.put(listing.getId(), listing));
-        Map<UUID, String> storeNames = loadStoreNames(listingMap.values());
+        Map<UUID, Tenant> stores = loadStores(listingMap.values());
 
         // 轉換為回應物件
         List<CartDto.CartItemResponse> items = new ArrayList<>();
@@ -271,8 +272,10 @@ public class RedisCartService {
             Listing listing = listingMap.get(item.getListingId());
             CartDto.CartItemResponse itemResponse = toCartItemResponse(itemKey, item, listing);
             if (listing != null) {
+                Tenant store = stores.get(listing.getTenantId());
                 itemResponse.setStoreId(listing.getTenantId());
-                itemResponse.setStoreName(storeNames.get(listing.getTenantId()));
+                itemResponse.setStoreName(store != null ? store.getName() : null);
+                itemResponse.setStoreActive(StoreCheckoutGuard.isOpen(store));
             }
             items.add(itemResponse);
             // 使用回應（可能已套動態定價折扣）之 subtotal，使總額與顯示一致（AI-2403）
@@ -479,6 +482,7 @@ public class RedisCartService {
         return CartDto.StoreCartSummary.builder()
                 .storeId(storeId)
                 .storeName(storeItems.get(0).getStoreName())
+                .storeActive(storeItems.get(0).getStoreActive())
                 .itemCount(storeItems.stream().mapToInt(CartDto.CartItemResponse::getQuantity).sum())
                 .totalAmount(storeTotal)
                 .shippingFee(shippingFee)
@@ -506,19 +510,19 @@ public class RedisCartService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    /** 查出這些房源所屬店鋪的名稱（購物車顯示用）；查不到的店鋪沒有名稱。 */
-    private Map<UUID, String> loadStoreNames(java.util.Collection<Listing> listings) {
+    /** 查出這些房源所屬的店鋪（購物車顯示名稱與是否營業用）；查不到的店鋪不在結果裡。 */
+    private Map<UUID, Tenant> loadStores(java.util.Collection<Listing> listings) {
         Set<UUID> storeIds = listings.stream()
                 .map(Listing::getTenantId)
                 .filter(java.util.Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<UUID, String> names = new HashMap<>();
+        Map<UUID, Tenant> stores = new HashMap<>();
         if (!storeIds.isEmpty()) {
             for (Tenant store : tenantRepository.findAllById(storeIds)) {
-                names.put(store.getId(), store.getName());
+                stores.put(store.getId(), store);
             }
         }
-        return names;
+        return stores;
     }
 
     /**

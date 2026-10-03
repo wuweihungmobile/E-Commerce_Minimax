@@ -152,7 +152,7 @@ class OrderServiceTest {
     }
 
     private Tenant tenantFixture() {
-        Tenant tenant = Tenant.builder().build();
+        Tenant tenant = Tenant.builder().status(Tenant.TenantStatus.ACTIVE).build();
         tenant.setId(TENANT_ID);
         return tenant;
     }
@@ -606,6 +606,25 @@ class OrderServiceTest {
     }
 
     @Test
+    @DisplayName("createOrderFromCart(ROOM)：房源所屬店鋪暫停營業（非 ACTIVE）→ E-2010（舊的 ROOM 訂單路徑也不例外，Sprint 239）")
+    void createOrderFromCart_room_suspendedStore_isRejected() {
+        TenantContext.setCurrentUser(USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userFixture()));
+        when(listingRepository.findById(LISTING_ID))
+                .thenReturn(Optional.of(listingFixture(Listing.ListingType.ROOM, Listing.ListingStatus.ACTIVE)));
+        Tenant suspended = tenantFixture();
+        suspended.setStatus(Tenant.TenantStatus.SUSPENDED);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(suspended));
+
+        assertThatThrownBy(() -> orderService.createOrderFromCart(
+                roomRequest(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 3))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_2010);
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
     @DisplayName("createOrderFromCart(ROOM)：租戶不存在 → 回退系統租戶（by id）")
     void createOrderFromCart_room_tenantFallbackToSystemTenantById() {
         // 注意：Order.tenantId 是 insertable=false/updatable=false 的影子欄位，僅由 Hibernate 讀取 DB 時回填，
@@ -618,7 +637,7 @@ class OrderServiceTest {
         when(listingRepository.findById(LISTING_ID))
                 .thenReturn(Optional.of(listingFixture(Listing.ListingType.ROOM, Listing.ListingStatus.ACTIVE)));
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
-        Tenant systemTenant = Tenant.builder().build();
+        Tenant systemTenant = Tenant.builder().status(Tenant.TenantStatus.ACTIVE).build();
         systemTenant.setId(systemTenantId);
         when(tenantRepository.findById(systemTenantId)).thenReturn(Optional.of(systemTenant));
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -643,7 +662,7 @@ class OrderServiceTest {
                 .thenReturn(Optional.of(listingFixture(Listing.ListingType.ROOM, Listing.ListingStatus.ACTIVE)));
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
         when(tenantRepository.findById(systemTenantId)).thenReturn(Optional.empty());
-        Tenant platformTenant = Tenant.builder().build();
+        Tenant platformTenant = Tenant.builder().status(Tenant.TenantStatus.ACTIVE).build();
         platformTenant.setId(platformTenantId);
         when(tenantRepository.findBySlug("platform")).thenReturn(Optional.of(platformTenant));
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));

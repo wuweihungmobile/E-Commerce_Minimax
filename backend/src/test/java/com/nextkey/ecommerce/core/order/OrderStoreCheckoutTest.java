@@ -126,7 +126,7 @@ class OrderStoreCheckoutTest {
     }
 
     private Tenant store(final UUID id) {
-        Tenant tenant = Tenant.builder().build();
+        Tenant tenant = Tenant.builder().status(Tenant.TenantStatus.ACTIVE).build();
         tenant.setId(id);
         return tenant;
     }
@@ -220,6 +220,25 @@ class OrderStoreCheckoutTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.E_5004));
         verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Sprint 239：店鋪暫停營業（非 ACTIVE）→ E-2010，不建立訂單、不動購物車；另一家營業中的店鋪照常")
+    void suspendedStore_cannotBeOrdered_butOtherStoresCan() {
+        Tenant suspended = store(STORE_A);
+        suspended.setStatus(Tenant.TenantStatus.SUSPENDED);
+        when(tenantRepository.findById(STORE_A)).thenReturn(Optional.of(suspended));
+        givenCart(item(LISTING_A, STORE_A), item(LISTING_B, STORE_B));
+
+        assertThatThrownBy(() -> orderService.createOrderFromCart(request(STORE_A)))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.E_2010));
+        verify(orderRepository, never()).save(any());
+        verify(cartService, never()).removeItem(any(), any(), any(String.class));
+
+        // 營業中的店鋪 B 不受影響
+        orderService.createOrderFromCart(request(STORE_B));
+        verify(orderRepository).save(any(Order.class));
     }
 
     @Test

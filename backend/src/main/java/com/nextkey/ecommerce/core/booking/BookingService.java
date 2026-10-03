@@ -32,6 +32,7 @@ import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.order.OrderStateMachine;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.core.promo.PromoService;
+import com.nextkey.ecommerce.core.tenant.StoreCheckoutGuard;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
@@ -517,6 +518,9 @@ public class BookingService {
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_1006));
             var tenant = tenantRepository.findById(tenantId)
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
+            // Sprint 239（使用者拍板）：只有 ACTIVE 的店鋪能被訂房；單獨訂房與合併結帳都走這個方法。
+            // 刻意放在既有檢查（日曆鎖、可用性、使用者、店鋪存在）之後，不改變這些既有錯誤的先後順序；鎖會在 finally 釋放
+            StoreCheckoutGuard.requireOpen(tenant);
 
             // 計算晚數
             long nightsCount = ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());

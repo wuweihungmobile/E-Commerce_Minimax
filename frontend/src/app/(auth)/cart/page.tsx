@@ -34,12 +34,16 @@ interface CartItem {
   // Sprint 237（DEF-319 同店結帳）：商品／房源所屬的店鋪；房源已不存在時為 null（該項目無法結帳）
   storeId?: string | null
   storeName?: string | null
+  // Sprint 239：店鋪是否營業中（非 ACTIVE 的店鋪不能下單，結帳會回 E-2010）
+  storeActive?: boolean | null
 }
 
 // Sprint 237：後端 CartDto.StoreCartSummary——每家店鋪各自的小計、運費（該店鋪的運費模板）、已套用的促銷碼與折扣
 interface StoreSummary {
   storeId: string
   storeName?: string | null
+  /** 店鋪是否營業中（Sprint 239）；false 時標示「暫停營業」並停用結帳。舊版回應沒有此欄位時視為營業中。 */
+  storeActive?: boolean | null
   itemCount: number
   totalAmount: number
   shippingFee: number
@@ -86,6 +90,8 @@ interface CartSummaryCardProps {
   appliedPromoCode?: string | null
   discountAmount: number
   testIdSuffix?: string
+  /** 店鋪暫停營業（Sprint 239）：顯示說明並停用「前往結帳」 */
+  storeClosed?: boolean
   promoInput: string
   promoLoading: boolean
   promoError?: string | null
@@ -170,7 +176,18 @@ function CartSummaryCard(props: CartSummaryCardProps) {
           {props.promoSuccess && <p className="text-sm text-green-600 mt-1">{props.promoSuccess}</p>}
         </div>
 
-        <Button className="w-full" size="lg" onClick={props.onCheckout} data-testid={checkoutTestId}>
+        {props.storeClosed && (
+          <p className="text-sm text-red-600" data-testid={`${checkoutTestId}-closed`}>
+            此店鋪目前暫停營業，無法下單。請移除這家店鋪的商品，或等店鋪恢復營業。
+          </p>
+        )}
+        <Button
+          className="w-full"
+          size="lg"
+          onClick={props.onCheckout}
+          disabled={props.storeClosed}
+          data-testid={checkoutTestId}
+        >
           前往結帳
         </Button>
       </CardContent>
@@ -620,6 +637,7 @@ export default function CartPage() {
                     appliedPromoCode={store.appliedPromoCode}
                     discountAmount={store.discountAmount}
                     testIdSuffix={store.storeId}
+                    storeClosed={store.storeActive === false}
                     promoInput={promoInputs[store.storeId] ?? ''}
                     promoLoading={promoLoadingKey === store.storeId}
                     promoError={promoErrors[store.storeId]}
@@ -664,6 +682,7 @@ export default function CartPage() {
               <CartSummaryCard
                 title="訂單摘要"
                 itemCount={cart.totalItems}
+                storeClosed={singleStore?.storeActive === false}
                 subtotal={cart.totalAmount}
                 shippingFee={cart.shippingFee ?? 0}
                 appliedPromoCode={cart.appliedPromoCode}

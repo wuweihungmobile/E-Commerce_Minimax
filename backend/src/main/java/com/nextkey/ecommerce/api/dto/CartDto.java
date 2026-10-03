@@ -75,6 +75,8 @@ public class CartDto {
         // 房源已不存在時為 null（該項目無法結帳）。
         private UUID storeId;
         private String storeName;
+        // 店鋪是否營業中（Sprint 239，使用者拍板）：非 ACTIVE 的店鋪（待審核／已駁回／停權／終止）不能下單，結帳會回 E-2010
+        private Boolean storeActive;
         // ROOM 類型房源的日期範圍
         private java.time.LocalDate startDate;
         private java.time.LocalDate endDate;
@@ -132,6 +134,8 @@ public class CartDto {
     public static class StoreCartSummary {
         private UUID storeId;
         private String storeName;
+        /** 店鋪是否營業中（Sprint 239）：false 時前端標示「暫停營業」並停用結帳，後端結帳也會擋下（E-2010）。 */
+        private Boolean storeActive;
         private Integer itemCount;
         /** 該店鋪項目小計（含 ROOM 與 PRODUCT）。 */
         private BigDecimal totalAmount;

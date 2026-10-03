@@ -53,7 +53,8 @@
 - **前端靜態檢查與建置**：`tsc --noEmit` 通過；`eslint` 0 錯誤（警告都是既有的，見 §4）；`npm run build` 產線建置通過。
 - **後端**：本輪沒有改動，沿用 Sprint 237 的完整 `mvn -o clean verify`（單元 2047／整合 720／0 失敗）與雲端 CI 全綠（run 37070697403）。
 - **真實後端 E2E**：`make validate-e2e`（沿用 Sprint 237 的 JAR；前端是本輪重新建置的）**135 個測試：131 通過／4 略過／0 失敗（3.9 分鐘）**；新增的 SCHK-05、06 全綠，既有 mock 型購物車規格一併回歸通過。**守門前兩次各失敗 1 個，原因都是我新寫的規格本身的錯，不是產品缺陷**：第一次是 SCHK-05 找不到按鈕——元件的 `data-testid` 我命名成 `cart-checkout-<storeId>`，規格卻找 `cart-store-checkout-<storeId>`（區塊分組本身是對的，之前的斷言都通過）；第二次是 SCHK-06 一開始就被導向登入頁——每個 Playwright 案例是全新的瀏覽器環境，沒有上一個案例的登入狀態，我漏了重新登入。兩個都是跑了才發現的，沒有靠推測。那 4 個略過是既有基準（Sprint 231～237 皆為 4 個）。
-- **push 與雲端 CI**：（push 後於回填 commit 補上）
+- **push 與雲端 CI**：已 push（2026-10-03，`1715cb8..9b6a81c main -> main`；pre-push 輕量守門通過）。✅ 雲端 CI 全綠 run **37074229378**，三個 job 全部 success，共 10 分 58 秒：Backend Unit 2m57s／Frontend Lint & Build 42s／Backend Integration & Package **7m55s**。
+- **耗時觀察（收尾）**：本輪**後端沒有改動**，整合 job 卻是 7m55s，而上一輪（Sprint 237，後端有大量新測試）是 6m05s。**同一份後端程式碼，兩次相差近 2 分鐘**——整合 job 耗時的差異主要是 runner 變異，不是 bcrypt（也不是測試數量）。雲端整合 job 近十次：5m01s／6m02s／6m00s／4m15s／7m47s／7m46s／8m03s／8m05s／6m05s／7m55s。**除非有人真的量測，否則不再追「bcrypt 12 拉長整合測試」這個假說。**
 
 ## 6. 範圍外（延後）、已知限制與待決定
 

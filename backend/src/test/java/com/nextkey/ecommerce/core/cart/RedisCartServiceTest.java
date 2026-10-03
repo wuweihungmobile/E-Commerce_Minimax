@@ -101,7 +101,8 @@ class RedisCartServiceTest {
             java.util.List<com.nextkey.ecommerce.domain.model.tenant.Tenant> stores = new java.util.ArrayList<>();
             for (Object id : (Iterable<?>) inv.getArgument(0)) {
                 stores.add(com.nextkey.ecommerce.domain.model.tenant.Tenant.builder()
-                        .id((UUID) id).name("店鋪-" + id).build());
+                        .id((UUID) id).name("店鋪-" + id)
+                        .status(com.nextkey.ecommerce.domain.model.tenant.Tenant.TenantStatus.ACTIVE).build());
             }
             return stores;
         });
@@ -630,6 +631,30 @@ class RedisCartServiceTest {
             assertThat(response.getItems()).hasSize(1);
             assertThat(response.getItems().get(0).getStoreId()).isEqualTo(STORE_ID);
             assertThat(response.getItems().get(0).getStoreName()).isEqualTo("店鋪-" + STORE_ID);
+        }
+
+        @Test
+        @DisplayName("Sprint 239：購物車帶出每家店鋪是否營業中——營業中 true、非 ACTIVE（例如停權）false，摘要與項目一致")
+        void storeActive_isReportedPerStore() {
+            givenTwoStoreCart();
+            // 店鋪 A 營業中、店鋪 B 停權（setUp 預設的 findAllById 不帶狀態，這裡覆寫）
+            // 用 doReturn 覆寫：when(...).thenReturn(...) 會先以 null 引數呼叫 setUp 裡既有的 thenAnswer，而它會對 null 拋 NPE
+            doReturn(java.util.List.of(
+                    com.nextkey.ecommerce.domain.model.tenant.Tenant.builder().id(STORE_ID).name("A")
+                            .status(com.nextkey.ecommerce.domain.model.tenant.Tenant.TenantStatus.ACTIVE).build(),
+                    com.nextkey.ecommerce.domain.model.tenant.Tenant.builder().id(OTHER_STORE_ID).name("B")
+                            .status(com.nextkey.ecommerce.domain.model.tenant.Tenant.TenantStatus.SUSPENDED).build()))
+                    .when(tenantRepository).findAllById(any());
+            when(shippingTemplateService.calculateFeeForTenant(any(), any())).thenReturn(BigDecimal.ZERO);
+
+            CartDto.CartResponse response = redisCartService.getCartWithPromo(TEST_USER_ID, TEST_TENANT_ID);
+
+            assertThat(response.getStores()).filteredOn(s -> s.getStoreId().equals(STORE_ID))
+                    .singleElement().satisfies(s -> assertThat(s.getStoreActive()).isTrue());
+            assertThat(response.getStores()).filteredOn(s -> s.getStoreId().equals(OTHER_STORE_ID))
+                    .singleElement().satisfies(s -> assertThat(s.getStoreActive()).isFalse());
+            assertThat(response.getItems()).filteredOn(i -> OTHER_STORE_ID.equals(i.getStoreId()))
+                    .singleElement().satisfies(i -> assertThat(i.getStoreActive()).isFalse());
         }
 
         @Test

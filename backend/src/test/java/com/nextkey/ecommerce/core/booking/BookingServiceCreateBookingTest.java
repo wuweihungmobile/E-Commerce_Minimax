@@ -168,7 +168,7 @@ class BookingServiceCreateBookingTest {
         stubHappyPathUpToLock();
         when(roomCalendarService.isDateRangeAvailable(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT)).thenReturn(true);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(User.builder().id(USER_ID).build()));
-        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TENANT_ID).build()));
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TENANT_ID).status(Tenant.TenantStatus.ACTIVE).build()));
         UUID savedBookingId = UUID.randomUUID();
         when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> {
             Booking b = inv.getArgument(0);
@@ -199,7 +199,7 @@ class BookingServiceCreateBookingTest {
         stubHappyPathUpToLock();
         when(roomCalendarService.isDateRangeAvailable(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT)).thenReturn(true);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(User.builder().id(USER_ID).build()));
-        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TENANT_ID).build()));
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TENANT_ID).status(Tenant.TenantStatus.ACTIVE).build()));
         when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> {
             Booking b = inv.getArgument(0);
             b.setId(UUID.randomUUID());
@@ -403,6 +403,25 @@ class BookingServiceCreateBookingTest {
         verify(roomCalendarService).unlockDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, "lockValue");
     }
 
+    @Test
+    @DisplayName("Sprint 239：房源所屬店鋪暫停營業（非 ACTIVE）→ E-2010，不建立訂房、日曆鎖會釋放")
+    void createBooking_suspendedStore_throwsE2010AndUnlocksInFinally() {
+        TenantContext.setCurrentUser(USER_ID);
+        TenantContext.setCurrentTenant(TENANT_ID);
+        stubHappyPathUpToLock();
+        when(roomCalendarService.isDateRangeAvailable(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT)).thenReturn(true);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(User.builder().id(USER_ID).build()));
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(
+                Tenant.builder().id(TENANT_ID).status(Tenant.TenantStatus.SUSPENDED).build()));
+
+        assertThatThrownBy(() -> bookingService.createBooking(createRequest(), "idem-key"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.E_2010));
+
+        verify(bookingRepository, never()).save(any(Booking.class));
+        verify(roomCalendarService).unlockDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, "lockValue");
+    }
+
     // ========== Sprint 236（DEF-319）：訂房歸屬房源所屬的店鋪，不是下單者的租戶 ==========
     //
     // 真實全棧實測（Sprint 232）：沒有店鋪的一般消費者，租戶脈絡是系統租戶佔位值（不是 null，全體共用）。
@@ -419,9 +438,9 @@ class BookingServiceCreateBookingTest {
         when(roomCalendarService.isDateRangeAvailable(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT)).thenReturn(true);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(User.builder().id(USER_ID).build()));
         // 兩個租戶都「找得到」，才分辨得出程式碼選了哪一個（只提供店鋪的話，選錯會因為找不到而拋例外，無法說明選的理由）
-        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TENANT_ID).build()));
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TENANT_ID).status(Tenant.TenantStatus.ACTIVE).build()));
         lenient().when(tenantRepository.findById(SYSTEM_TENANT_ID))
-                .thenReturn(Optional.of(Tenant.builder().id(SYSTEM_TENANT_ID).build()));
+                .thenReturn(Optional.of(Tenant.builder().id(SYSTEM_TENANT_ID).status(Tenant.TenantStatus.ACTIVE).build()));
         when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> {
             Booking b = inv.getArgument(0);
             b.setId(UUID.randomUUID());

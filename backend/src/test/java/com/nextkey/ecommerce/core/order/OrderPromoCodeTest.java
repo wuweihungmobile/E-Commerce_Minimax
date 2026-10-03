@@ -156,7 +156,7 @@ class OrderPromoCodeTest {
         user.setId(USER_ID);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
 
-        Tenant tenant = Tenant.builder().build();
+        Tenant tenant = Tenant.builder().status(Tenant.TenantStatus.ACTIVE).build();
         tenant.setId(TENANT_ID);
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
 

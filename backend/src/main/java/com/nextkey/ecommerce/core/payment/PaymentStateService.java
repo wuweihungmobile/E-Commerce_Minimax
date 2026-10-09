@@ -350,6 +350,82 @@ public class PaymentStateService {
                 reason, TenantContext.getCurrentUser());
     }
 
+    /**
+     * 管理員人工退款（Sprint 246，DEF-354；PRD §17.4.6 Q15「店家漏標的例外」）：no-show 自動取消
+     * （{@code cancelledBy=SYSTEM}、{@code refundStatus=NONE}）中，經核實為店家漏標入住造成的誤取消，
+     * 人工退款。<b>僅限管理員</b>（{@link #requireAdmin}）——刻意不採 {@link #checkOrderOwnership} 的
+     * 「本人或管理員」模式，店家不能自己核准退款給自己造成的誤取消，必須由管理員核實。
+     *
+     * <p>與排程版（{@link #refundBookingPaymentAsSystem}）的差異：起始狀態是 {@code NONE}（一般 no-show
+     * 不退款）而非 {@code PENDING}；退款金額預設為實付全額（{@link #resolveRefundAmount}，可指定部分金額）；
+     * 直接完成（{@code NONE → COMPLETED}），不經過 {@code PENDING} 中繼態——這是管理員的即時動作。
+     */
+    @Transactional
+    public OrderPaymentStateDto refundBookingPaymentManually(UUID bookingId, BigDecimal amount, String reason) {
+        requireAdmin("Only administrators can issue a manual booking refund");
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4006, "Booking not found"));
+        if (booking.getStatus() != Booking.BookingStatus.CANCELLED
+                || booking.getCancelledBy() != Booking.CancelledBy.SYSTEM
+                || booking.getRefundStatus() != Booking.RefundStatus.NONE) {
+            throw new BusinessException(ErrorCode.E_5012,
+                    "Booking is not an unrefunded system cancellation eligible for a manual refund");
+        }
+        Payment payment = paymentRepository.findEffectiveByBookingId(bookingId)
+                .filter(p -> p.getStatus() == Payment.PaymentStatus.SUCCESS
+                        || p.getStatus() == Payment.PaymentStatus.PARTIALLY_REFUNDED)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_6000, "Payment not found"));
+
+        BigDecimal refundAmount = resolveRefundAmount(payment, amount);
+        BigDecimal previousRefundedAmount = payment.getRefundedAmount();
+        BigDecimal newRefundedAmount = previousRefundedAmount.add(refundAmount);
+        Payment.PaymentStatus newPaymentStatus = newRefundedAmount.compareTo(payment.getAmount()) >= 0
+                ? Payment.PaymentStatus.REFUNDED : Payment.PaymentStatus.PARTIALLY_REFUNDED;
+
+        // 🔴 併發防護：同 refundBookingPaymentAsSystem——先 CAS 佔用額度，才呼叫 Stripe
+        if (paymentRepository.applyRefundIfUnchanged(payment.getId(), previousRefundedAmount, newRefundedAmount,
+                newPaymentStatus) == 0) {
+            throw new BusinessException(ErrorCode.E_6009,
+                    "Refund amount conflicts with a concurrent refund on the same payment, please retry");
+        }
+        if (payment.getPaymentMethod() == Payment.PaymentMethod.STRIPE) {
+            executeStripeRefund(bookingId, payment, previousRefundedAmount, refundAmount, reason);
+        }
+        payment.setRefundedAmount(newRefundedAmount);
+        payment.setStatus(newPaymentStatus);
+
+        if (bookingRepository.completeManualRefundIfNone(bookingId, Booking.BookingStatus.CANCELLED,
+                Booking.RefundStatus.NONE, Booking.RefundStatus.COMPLETED, refundAmount) == 0) {
+            throw new BusinessException(ErrorCode.E_6009,
+                    "Booking refund status changed concurrently, please retry");
+        }
+        booking.setRefundStatus(Booking.RefundStatus.COMPLETED);
+        booking.setRefundAmount(refundAmount);
+
+        log.info("Booking manually refunded by admin: bookingId={}, paymentId={}, amount={}, reason={}", bookingId,
+                payment.getId(), refundAmount, reason);
+        auditService.record("BOOKING_MANUAL_REFUND", "PAYMENT", payment.getId(), booking.getTenantId(),
+                "refundStatus=NONE", "refundStatus=COMPLETED,amount=" + refundAmount, reason,
+                TenantContext.getCurrentUser());
+        return toBookingPaymentStateDto(booking, payment);
+    }
+
+    /**
+     * 僅放行管理員（ROLE_ADMIN／ROLE_SUPER_ADMIN）。DEF-354 刻意不採 {@link #checkOrderOwnership} 的
+     * 「本人或管理員」模式：這裡沒有「本人」這個角色適用，必須由管理員核實後才能例外退款。
+     */
+    private void requireAdmin(String message) {
+        org.springframework.security.core.Authentication auth =
+            org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = auth != null && (
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+        );
+        if (!isAdmin) {
+            throw new BusinessException(ErrorCode.E_1007, message);
+        }
+    }
+
     /** 退款核心：呼叫端已載入訂單並完成授權（使用者）或狀態確認（系統）。 */
     private OrderPaymentStateDto refundOrderPaymentCore(Order order, BigDecimal amount, String reason) {
         UUID orderId = order.getId();

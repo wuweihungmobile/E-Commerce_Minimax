@@ -102,6 +102,14 @@ app:
     check-interval-ms: ${BOOKING_TIMEOUT_CHECK_INTERVAL_MS:300000}
     initial-delay-ms: ${BOOKING_TIMEOUT_INITIAL_DELAY_MS:60000}
     batch-size: ${BOOKING_TIMEOUT_BATCH_SIZE:100}
+  # no-show 自動取消（DEF-352；使用者 2026-10-09 確認時限維持入住時刻＋24 小時，PRD §17.4.6 Q15）：
+  # 上線開關預設關閉，待 DEF-350（店家入住按鈕）上線驗證、DEF-354（人工退款）已就位才可開啟。
+  booking-no-show:
+    enabled: ${BOOKING_NO_SHOW_AUTO_CANCEL_ENABLED:false}
+    grace-hours: ${BOOKING_NO_SHOW_GRACE_HOURS:24}
+    check-interval-ms: ${BOOKING_NO_SHOW_CHECK_INTERVAL_MS:300000}
+    initial-delay-ms: ${BOOKING_NO_SHOW_INITIAL_DELAY_MS:60000}
+    batch-size: ${BOOKING_NO_SHOW_BATCH_SIZE:500}
   # 自動退款（DEF-303 (5)／DEF-308；使用者 2026-10-01 回覆「請依照最佳化進行！」）：排程把 REFUNDING 訂單的款項退回原付款方式。
   # 失敗的訂單以指數退避重試（retry-base-minutes 起、上限 retry-max-minutes），不會卡住其他訂單。
   refund:

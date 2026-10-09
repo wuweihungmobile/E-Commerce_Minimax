@@ -91,6 +91,18 @@ public class BuyerNotificationService {
                         REASON_PAYMENT_TIMEOUT))));
     }
 
+    /**
+     * no-show 自動取消後通知買家（Sprint 246，DEF-352；PRD §17.4.6 Q15）。與 {@link #notifyBookingCancelled} 分開：
+     * 那邊的文案對「系統取消、已付款、不退」會寫成「退款狀態需由客服確認」，no-show 的真正情況是「依政策不退款」，
+     * 用那段文案會誤導買家以為能問出退款；若店家其實漏標入住，管理員核實後可人工退款（DEF-354），買家可自行聯絡客服。
+     */
+    public void notifyBookingNoShowCancelled(final UUID bookingId) {
+        deliver("BOOKING_NO_SHOW_CANCELLED", bookingId, () -> bookingRepository.findById(bookingId).map(booking ->
+                request(booking.getUserId(), NotificationDto.NotificationType.ORDER_CANCELLED, "訂房因未入住已取消",
+                        bookingNoShowContent(bookingName(booking), booking.getCheckInDate()),
+                        data("bookingId", booking.getId()))));
+    }
+
     /** 未付款訂單逾時被系統取消後通知買家（PRD US-014）。 */
     public void notifyOrderPaymentTimeout(final UUID orderId) {
         deliver("ORDER_PAYMENT_TIMEOUT", orderId, () -> orderRepository.findById(orderId).map(order -> request(
@@ -164,6 +176,12 @@ public class BuyerNotificationService {
 
     static String bookingTimeoutContent(final String bookingName, final LocalDate checkInDate) {
         return "您的" + bookingName + "（" + checkInDate + " 入住）超過付款期限，已自動取消並釋出日期。如仍想入住，可重新預訂。";
+    }
+
+    static String bookingNoShowContent(final String bookingName, final LocalDate checkInDate) {
+        return "您的" + bookingName + "（" + checkInDate
+                + " 入住）因入住時刻後 24 小時內未辦理入住，已視為未入住自動取消。依取消政策本次不退款；"
+                + "若您認為這是店家的疏漏，請聯絡客服協助核實。";
     }
 
     static String orderTimeoutContent(final UUID orderId, final BigDecimal totalAmount, final String currency) {

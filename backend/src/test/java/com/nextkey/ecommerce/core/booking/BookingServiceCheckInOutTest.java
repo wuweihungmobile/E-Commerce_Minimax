@@ -37,10 +37,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.domain.model.audit.AuditLog;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
+import com.nextkey.ecommerce.domain.repository.audit.AuditLogRepository;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -67,6 +69,7 @@ class BookingServiceCheckInOutTest {
     @Mock private ListingRepository listingRepository;
     @Mock private RoomRepository roomRepository;
     @Mock private AuditService auditService;
+    @Mock private AuditLogRepository auditLogRepository;
 
     @InjectMocks
     private BookingService bookingService;
@@ -272,5 +275,62 @@ class BookingServiceCheckInOutTest {
 
         assertRejectedWith(ErrorCode.E_1007, () -> bookingService.checkOut(bookingId));
         verify(bookingRepository, never()).updateStatusIfCurrent(any(), any(), any());
+    }
+
+    // ── 狀態日誌（Sprint 246，DEF-350） ─────────────────────────────────────
+
+    @Test
+    @DisplayName("同租戶商家可查狀態日誌：audit_log 依 createdAt 遞增映射為 StateLogResponse")
+    void sameTenantStore_canReadStateLogInOrder() {
+        givenBooking(booking(Booking.BookingStatus.CHECKED_OUT, TODAY));
+        Instant first = Instant.parse("2026-10-04T04:00:00Z");
+        Instant second = Instant.parse("2026-10-06T10:00:00Z");
+        AuditLog checkedIn = AuditLog.builder().id(UUID.randomUUID()).entityId(bookingId).action("BOOKING_CHECKED_IN")
+                .oldValue("PAID").newValue("CHECKED_IN").userId(store).createdAt(first).build();
+        AuditLog checkedOut = AuditLog.builder().id(UUID.randomUUID()).entityId(bookingId)
+                .action("BOOKING_CHECKED_OUT").oldValue("CHECKED_IN").newValue("CHECKED_OUT").userId(store)
+                .reason(null).createdAt(second).build();
+        when(auditLogRepository.findByEntityTypeAndEntityIdOrderByCreatedAtAsc("BOOKING", bookingId))
+                .thenReturn(List.of(checkedIn, checkedOut));
+        actAsStoreOf(store);
+
+        List<BookingDto.StateLogResponse> logs = bookingService.getBookingStateLog(bookingId);
+
+        assertThat(logs).hasSize(2);
+        assertThat(logs.get(0).getAction()).isEqualTo("BOOKING_CHECKED_IN");
+        assertThat(logs.get(0).getFromStatus()).isEqualTo("PAID");
+        assertThat(logs.get(0).getToStatus()).isEqualTo("CHECKED_IN");
+        assertThat(logs.get(0).getCreatedAt()).isEqualTo(first);
+        assertThat(logs.get(1).getAction()).isEqualTo("BOOKING_CHECKED_OUT");
+        assertThat(logs.get(1).getCreatedAt()).isEqualTo(second);
+    }
+
+    @Test
+    @DisplayName("管理員可查任何店鋪的狀態日誌")
+    void admin_canReadStateLogOfAnyStore() {
+        givenBooking(booking(Booking.BookingStatus.CHECKED_IN, TODAY));
+        when(auditLogRepository.findByEntityTypeAndEntityIdOrderByCreatedAtAsc("BOOKING", bookingId))
+                .thenReturn(List.of());
+        actAsAdmin();
+
+        assertThat(bookingService.getBookingStateLog(bookingId)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("買家本人不能查狀態日誌：這是店家層端點，與入住／退房同一套擁有權（E-1007）")
+    void buyerWhoOwnsTheBooking_cannotReadStateLog() {
+        givenBooking(booking(Booking.BookingStatus.CHECKED_IN, TODAY));
+        actAsBuyer();
+
+        assertRejectedWith(ErrorCode.E_1007, () -> bookingService.getBookingStateLog(bookingId));
+    }
+
+    @Test
+    @DisplayName("其他租戶的商家不能查狀態日誌（E-1007）")
+    void storeOfAnotherTenant_cannotReadStateLog() {
+        givenBooking(booking(Booking.BookingStatus.CHECKED_IN, TODAY));
+        actAsStoreOf(otherStore);
+
+        assertRejectedWith(ErrorCode.E_1007, () -> bookingService.getBookingStateLog(bookingId));
     }
 }

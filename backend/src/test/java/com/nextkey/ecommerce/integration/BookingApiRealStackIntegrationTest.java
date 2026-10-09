@@ -420,6 +420,75 @@ class BookingApiRealStackIntegrationTest {
         Assertions.assertThat(completed.at("/data/status").asText()).isEqualTo("COMPLETED");
     }
 
+    // ── 狀態日誌（Sprint 246，DEF-350）─────────────────────
+
+    @Test
+    @DisplayName("狀態日誌 GET /v2/dashboard/bookings/{id}/state-log：依發生時間遞增回入住與退房的轉換；買家本人與其他店鋪一律 403")
+    void stateLog_afterCheckInAndCheckOut() throws Exception {
+        String stayId = book(BusinessTime.today().toString(), BusinessTime.today().plusDays(1).toString(), 1, fx.buyerToken)
+                .at("/data/id").asText();
+        String stateLog = "/v2/dashboard/bookings/" + stayId + "/state-log";
+        send(post("/v2/bookings/" + stayId + "/pay"), fx.buyerToken).andExpect(status().isOk());
+
+        // 建立訂房當下已有一筆 BOOKING_CREATED 稽核（既有行為，非本輪新增）；入住前只有這一筆
+        JsonNode beforeCheckIn = json(MockMvcRequestBuilders.get(stateLog), fx.ownerToken, 200);
+        Assertions.assertThat(beforeCheckIn.at("/data")).hasSize(1);
+        Assertions.assertThat(beforeCheckIn.at("/data/0/action").asText()).isEqualTo("BOOKING_CREATED");
+
+        json(post("/v2/dashboard/bookings/" + stayId + "/check-in"), fx.ownerToken, 200);
+        json(post("/v2/dashboard/bookings/" + stayId + "/check-out"), fx.ownerToken, 200);
+
+        send(MockMvcRequestBuilders.get(stateLog), fx.buyerToken).andExpect(status().isForbidden());
+        send(MockMvcRequestBuilders.get(stateLog), otherStoreOwnerToken()).andExpect(status().isForbidden());
+
+        JsonNode logs = json(MockMvcRequestBuilders.get(stateLog), fx.ownerToken, 200);
+        Assertions.assertThat(logs.at("/data")).hasSize(4);
+        Assertions.assertThat(logs.at("/data/1/action").asText()).isEqualTo("BOOKING_CHECKED_IN");
+        Assertions.assertThat(logs.at("/data/2/action").asText()).isEqualTo("BOOKING_CHECKED_OUT");
+        Assertions.assertThat(logs.at("/data/3/action").asText()).isEqualTo("BOOKING_COMPLETED");
+        Assertions.assertThat(logs.at("/data/1/fromStatus").asText()).isEqualTo("PAID");
+        Assertions.assertThat(logs.at("/data/1/toStatus").asText()).isEqualTo("CHECKED_IN");
+    }
+
+    // ── 人工退款（Sprint 246，DEF-354）─────────────────────
+
+    @Test
+    @DisplayName("人工退款 POST /v2/bookings/{id}/refund：模擬店家漏標入住的 no-show 系統取消（DEF-352 尚未實作，本測試直接以 SQL 佈置該結果）；"
+            + "店主雖有 booking:update 權限仍 403；管理員可退，refundStatus NONE→COMPLETED、付款轉 REFUNDED；不可重複退（422 E-5012）")
+    void manualRefund_forSimulatedNoShowCancellation() throws Exception {
+        String stayId = book(BusinessTime.today().toString(), BusinessTime.today().plusDays(2).toString(), 2, fx.buyerToken)
+                .at("/data/id").asText();
+        send(post("/v2/bookings/" + stayId + "/pay"), fx.buyerToken).andExpect(status().isOk());
+        jdbcTemplate.update("UPDATE bookings SET status = 'CANCELLED', cancelled_by = 'SYSTEM', "
+                + "refund_status = 'NONE' WHERE id = ?", UUID.fromString(stayId));
+
+        send(post("/v2/bookings/" + stayId + "/refund"), fx.ownerToken).andExpect(status().isForbidden());
+        send(post("/v2/bookings/" + stayId + "/refund"), fx.buyerToken).andExpect(status().isForbidden());
+
+        JsonNode refunded = json(post("/v2/bookings/" + stayId + "/refund")
+                .param("reason", "Store missed check-in, verified"), fx.adminToken, 200);
+        Assertions.assertThat(refunded.at("/data/paymentStatus").asText()).isEqualTo("REFUNDED");
+
+        get("/v2/bookings/" + stayId, fx.buyerToken)
+                .andExpect(jsonPath("$.data.refundStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.refundAmount").value(2000.0));
+
+        send(post("/v2/bookings/" + stayId + "/refund"), fx.adminToken)
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("E-5012"));
+    }
+
+    @Test
+    @DisplayName("人工退款：買家自己取消（非 no-show 的 SYSTEM 取消）不適用本端點，即使管理員操作也拒絕（422 E-5012）")
+    void manualRefund_rejectsNonSystemCancellation() throws Exception {
+        String stayId = book(BusinessTime.today().toString(), BusinessTime.today().plusDays(1).toString(), 1,
+                fx.buyerToken).at("/data/id").asText();
+        send(post("/v2/bookings/" + stayId + "/pay"), fx.buyerToken).andExpect(status().isOk());
+        send(post("/v2/bookings/" + stayId + "/cancel"), fx.buyerToken).andExpect(status().isOk());
+
+        send(post("/v2/bookings/" + stayId + "/refund"), fx.adminToken)
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("E-5012"));
+    }
+
     // ── 輔助 ─────────────────────────────────────────────────
 
     private static String day(final int daysFromNow) {

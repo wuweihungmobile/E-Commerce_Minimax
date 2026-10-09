@@ -15,6 +15,12 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, UUID>, JpaSp
 
     Page<AuditLog> findByTenantIdOrderByCreatedAtDesc(UUID tenantId, Pageable pageable);
 
+    /**
+     * 單一實體的完整稽核時間線（Sprint 246，DEF-350；PRD §9.7 的訂房狀態日誌端點）。
+     * 依 createdAt 遞增，與 OrderStateLogRepository.findByOrderIdOrderBySequenceAsc 的呈現順序一致。
+     */
+    java.util.List<AuditLog> findByEntityTypeAndEntityIdOrderByCreatedAtAsc(String entityType, UUID entityId);
+
     // 平台管理者查詢稽核紀錄（Sprint 61 US-001，DEF-016 後續）：見 AdminService#getAuditLogs。
     // 改用 Specification 動態組合可選篩選條件（action/startDate/endDate），避免靜態 JPQL
     // 的「:param IS NULL OR ...」寫法在 PostgreSQL 下對純 null 參數觸發

@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.domain.repository;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -71,6 +72,31 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             @Param("success") Payment.PaymentStatus success, @Param("processing") Payment.PaymentStatus processing);
 
     /**
+     * no-show 候選（Sprint 246，DEF-352；PRD §17.4.6 Q15）：仍是 PAID、入住日已到或已過，依入住日由舊到新。
+     * 精確的「入住時刻＋寬限小時數是否已過」依房源的 {@code checkInTime} 而不同（本查詢不 join 房源，避免時區換算
+     * 寫在 SQL 裡），由呼叫端（{@code BookingNoShowService}）逐筆用 {@code BookingRefundPolicy.checkInInstant}
+     * 精算後決定是否取消；查詢只用來縮小候選範圍，真正把關的是取消時的條件式 UPDATE（{@link #cancelIfNoShow}）。
+     */
+    @Query("SELECT b.id FROM Booking b WHERE b.status = :paid AND b.checkInDate <= :today ORDER BY b.checkInDate ASC")
+    List<UUID> findPotentialNoShowBookingIds(@Param("paid") Booking.BookingStatus paid,
+            @Param("today") LocalDate today, Pageable pageable);
+
+    /**
+     * no-show 自動取消的原子更新（Sprint 246，DEF-352）：把「仍是 PAID」與狀態轉換寫在同一條 UPDATE，與店家的
+     * 入住（{@link #updateStatusIfCurrent}）搶同一個狀態，恰好一邊成功。回傳 1 表示本次取消成功，0 表示已不符條件
+     * （已入住、已被取消…，交由呼叫端視為冪等跳過）。{@code refundStatus} 不在此變更，維持建構時的預設
+     * {@code NONE}——no-show 不退款是使用者的明確決定（DEF-351），不經過自動退款排程。
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            UPDATE Booking b SET b.status = :cancelled, b.cancelledAt = :now, b.cancelledBy = :cancelledBy
+            WHERE b.id = :id AND b.status = :paid
+            """)
+    int cancelIfNoShow(@Param("id") UUID id, @Param("paid") Booking.BookingStatus paid,
+            @Param("cancelled") Booking.BookingStatus cancelled, @Param("cancelledBy") Booking.CancelledBy cancelledBy,
+            @Param("now") Instant now);
+
+    /**
      * 訂房目前在資料庫裡的狀態。以純量查詢取得而非載入實體：open-in-view 讓同一個請求共用 persistence context，
      * 先前載入的實體不會反映條件式 UPDATE 的結果（與 {@code OrderRepository.findStatusById} 同一理由）。
      */
@@ -109,6 +135,22 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             """)
     int requestRefundIfCancelled(@Param("id") UUID id, @Param("cancelled") Booking.BookingStatus cancelled,
             @Param("none") Booking.RefundStatus none, @Param("pending") Booking.RefundStatus pending,
+            @Param("amount") BigDecimal amount);
+
+    /**
+     * 管理員人工退款（Sprint 246，DEF-354；PRD §17.4.6 Q15「店家漏標的例外」）：已取消、原本依 no-show
+     * 規則不退款（{@code refundStatus = NONE}）的訂房，經管理員核實為店家漏標入住造成的誤取消後，
+     * 直接完成退款（{@code NONE → COMPLETED}），不經過 {@code PENDING} 中繼態——這是管理員即時人工動作，
+     * 不是排程處理。條件式 UPDATE 同時確認訂房仍是 CANCELLED 且尚未有退款安排；回傳 0 代表不符條件
+     * （已被另一次退款處理，或狀態已變），呼叫端須拒絕並要求重試。
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            UPDATE Booking b SET b.refundStatus = :completed, b.refundAmount = :amount
+            WHERE b.id = :id AND b.status = :cancelled AND b.refundStatus = :none
+            """)
+    int completeManualRefundIfNone(@Param("id") UUID id, @Param("cancelled") Booking.BookingStatus cancelled,
+            @Param("none") Booking.RefundStatus none, @Param("completed") Booking.RefundStatus completed,
             @Param("amount") BigDecimal amount);
 
     Page<Booking> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);

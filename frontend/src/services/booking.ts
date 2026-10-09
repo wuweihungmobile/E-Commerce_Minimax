@@ -151,6 +151,18 @@ export function bookingErrorMessage(code?: string | null): string {
   return (code && BOOKING_ERROR_MESSAGES[code]) || '預訂失敗，請稍後再試'
 }
 
+// 對齊後端 BookingDto.StateLogResponse（GET /v2/dashboard/bookings/{id}/state-log，PRD §9.7，Sprint 246 DEF-350）
+export interface BookingStateLogEntry {
+  id: string
+  bookingId: string
+  action: string
+  fromStatus: string | null
+  toStatus: string | null
+  changedBy: string | null
+  reason: string | null
+  createdAt: string
+}
+
 export interface BookingQuery {
   page?: number
   size?: number
@@ -277,6 +289,26 @@ class BookingService {
     const qs = params.toString()
     const response = await apiClient.get<ApiResponse<PaginatedResponse<BookingListItem>>>(
       API_ENDPOINTS.dashboardBookings.list + (qs ? '?' + qs : '')
+    )
+    return response.data.data
+  }
+
+  // 店家標記入住（POST /v2/dashboard/bookings/{id}/check-in，Sprint 245 後端／246 前端，DEF-345／DEF-350）
+  async checkIn(bookingId: string): Promise<Booking> {
+    const response = await apiClient.post<ApiResponse<Booking>>(API_ENDPOINTS.dashboardBookings.checkIn(bookingId))
+    return response.data.data
+  }
+
+  // 店家標記退房（同一交易內自動轉為 COMPLETED）
+  async checkOut(bookingId: string): Promise<Booking> {
+    const response = await apiClient.post<ApiResponse<Booking>>(API_ENDPOINTS.dashboardBookings.checkOut(bookingId))
+    return response.data.data
+  }
+
+  // 訂房狀態機日誌（PRD §9.7，Sprint 246 DEF-350）
+  async getStateLog(bookingId: string): Promise<BookingStateLogEntry[]> {
+    const response = await apiClient.get<ApiResponse<BookingStateLogEntry[]>>(
+      API_ENDPOINTS.dashboardBookings.stateLog(bookingId)
     )
     return response.data.data
   }

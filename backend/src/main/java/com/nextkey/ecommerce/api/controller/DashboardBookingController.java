@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.api.controller;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -66,5 +67,16 @@ public class DashboardBookingController {
     public ResponseEntity<ApiResponse<BookingDto.BookingResponse>> checkOut(@PathVariable UUID bookingId) {
         BookingDto.BookingResponse booking = bookingService.checkOut(bookingId);
         return ResponseEntity.ok(ApiResponse.success("Booking checked out successfully", booking));
+    }
+
+    /**
+     * 訂房狀態機日誌（Sprint 246，DEF-350；PRD §9.7）。權限同 {@link #getTenantBookings}（唯讀）。
+     */
+    @GetMapping("/{bookingId}/state-log")
+    @PreAuthorize("hasAuthority('booking:read')")
+    public ResponseEntity<ApiResponse<List<BookingDto.StateLogResponse>>> getStateLog(
+            @PathVariable UUID bookingId) {
+        List<BookingDto.StateLogResponse> logs = bookingService.getBookingStateLog(bookingId);
+        return ResponseEntity.ok(ApiResponse.success(logs));
     }
 }

@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.api.controller;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
@@ -72,5 +73,22 @@ public class BookingPaymentController {
         log.info("Stripe booking checkout return: bookingId={}, sessionId={}", bookingId, sessionId);
         OrderPaymentStateDto state = paymentStateService.confirmStripeBookingCheckout(bookingId, sessionId);
         return ResponseEntity.ok(ApiResponse.success(state));
+    }
+
+    /**
+     * 人工退款（Sprint 246，DEF-354；PRD §17.4.6 Q15「店家漏標的例外」）：no-show 自動取消中，經核實為
+     * 店家漏標入住造成的誤取消。{@code booking:update} 權限 HOST／STORE_OWNER／ADMIN 都有，但服務層
+     * {@code requireAdmin} 只放行管理員（比照 {@code order:update} ＋ BR-M07-05 的「實際上只有管理員」）。
+     * amount 未指定＝退實付全額。
+     */
+    @PostMapping("/refund")
+    @PreAuthorize("hasAuthority('booking:update')")
+    public ResponseEntity<ApiResponse<OrderPaymentStateDto>> manualRefund(
+            @PathVariable UUID bookingId,
+            @RequestParam(required = false) BigDecimal amount,
+            @RequestParam(required = false) String reason) {
+        log.info("Manual booking refund request: bookingId={}, amount={}, reason={}", bookingId, amount, reason);
+        OrderPaymentStateDto state = paymentStateService.refundBookingPaymentManually(bookingId, amount, reason);
+        return ResponseEntity.ok(ApiResponse.success("Booking refund processed", state));
     }
 }

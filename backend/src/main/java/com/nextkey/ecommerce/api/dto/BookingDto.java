@@ -186,6 +186,28 @@ public class BookingDto {
         private String guestName;
     }
 
+    // ========== State Log Response ==========
+
+    /**
+     * 訂房狀態機日誌（Sprint 246，DEF-350；PRD §9.7）。資料來源是共用的 {@code audit_log}
+     * （Sprint 245 的 moveStatus 寫入，entityType=BOOKING），不是訂單版獨立的 OrderStateLog 表，
+     * 因此沒有 sequence 欄位，以 createdAt 遞增排序。
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class StateLogResponse {
+        private UUID id;
+        private UUID bookingId;
+        private String action;
+        private String fromStatus;
+        private String toStatus;
+        private UUID changedBy;
+        private String reason;
+        private java.time.Instant createdAt;
+    }
+
     // ========== Calendar Response ==========
 
     @Data

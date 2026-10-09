@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import BookingService, {
   type Booking,
+  type BookingStateLogEntry,
   BOOKING_STATUS_LABELS,
   CANCELLATION_POLICY_SUMMARY,
   bookingStatusBadgeVariant,
@@ -35,6 +36,20 @@ function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
+function formatDateTime(dateStr: string) {
+  return new Date(dateStr).toLocaleString('zh-TW', {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  })
+}
+
+const STATE_LOG_ACTION_LABELS: Record<string, string> = {
+  BOOKING_CREATED: '建立訂房',
+  BOOKING_CHECKED_IN: '入住',
+  BOOKING_CHECKED_OUT: '退房',
+  BOOKING_COMPLETED: '完成',
+  BOOKING_CANCELLED: '取消',
+}
+
 export default function DashboardBookingDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -50,6 +65,12 @@ export default function DashboardBookingDetailPage() {
   const [cancelError, setCancelError] = useState<string | null>(null)
   const [cancelNotice, setCancelNotice] = useState<string | null>(null)
 
+  const [checkingIn, setCheckingIn] = useState(false)
+  const [checkingOut, setCheckingOut] = useState(false)
+  const [checkInOutError, setCheckInOutError] = useState<string | null>(null)
+
+  const [stateLog, setStateLog] = useState<BookingStateLogEntry[]>([])
+
   const fetchBooking = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -63,13 +84,49 @@ export default function DashboardBookingDetailPage() {
     }
   }, [bookingId])
 
+  const fetchStateLog = useCallback(async () => {
+    try {
+      const logs = await BookingService.getStateLog(bookingId)
+      setStateLog(logs)
+    } catch {
+      // 狀態日誌是輔助資訊，載入失敗不影響主要頁面功能，靜默忽略
+    }
+  }, [bookingId])
+
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
       router.push('/login')
       return
     }
     fetchBooking()
-  }, [router, fetchBooking])
+    fetchStateLog()
+  }, [router, fetchBooking, fetchStateLog])
+
+  async function handleCheckIn() {
+    setCheckingIn(true)
+    setCheckInOutError(null)
+    try {
+      await BookingService.checkIn(bookingId)
+      await Promise.all([fetchBooking(), fetchStateLog()])
+    } catch (err) {
+      setCheckInOutError(extractErrorMessage(err, '辦理入住失敗'))
+    } finally {
+      setCheckingIn(false)
+    }
+  }
+
+  async function handleCheckOut() {
+    setCheckingOut(true)
+    setCheckInOutError(null)
+    try {
+      await BookingService.checkOut(bookingId)
+      await Promise.all([fetchBooking(), fetchStateLog()])
+    } catch (err) {
+      setCheckInOutError(extractErrorMessage(err, '辦理退房失敗'))
+    } finally {
+      setCheckingOut(false)
+    }
+  }
 
   async function handleCancel() {
     setCancelling(true)
@@ -123,12 +180,30 @@ export default function DashboardBookingDetailPage() {
           </div>
           <p className="text-sm text-gray-500">建立於 {formatDate(booking.createdAt)}</p>
         </div>
-        {isBookingCancellable(booking.status) && !showCancel && (
-          <Button variant="outline" onClick={() => setShowCancel(true)}>
-            取消訂房
-          </Button>
-        )}
+        <div className="flex gap-2 shrink-0">
+          {booking.status === 'PAID' && (
+            <Button onClick={handleCheckIn} disabled={checkingIn}>
+              {checkingIn ? '入住處理中…' : '辦理入住'}
+            </Button>
+          )}
+          {booking.status === 'CHECKED_IN' && (
+            <Button onClick={handleCheckOut} disabled={checkingOut}>
+              {checkingOut ? '退房處理中…' : '辦理退房'}
+            </Button>
+          )}
+          {isBookingCancellable(booking.status) && !showCancel && (
+            <Button variant="outline" onClick={() => setShowCancel(true)}>
+              取消訂房
+            </Button>
+          )}
+        </div>
       </div>
+
+      {checkInOutError && (
+        <Alert variant="destructive">
+          <AlertDescription>{checkInOutError}</AlertDescription>
+        </Alert>
+      )}
 
       {showCancel && (
         <Card className="border-red-200">
@@ -235,6 +310,25 @@ export default function DashboardBookingDetailPage() {
             {booking.guestPhone && <p>電話：{booking.guestPhone}</p>}
             {booking.guestEmail && <p>Email：{booking.guestEmail}</p>}
             {booking.specialRequests && <p>特殊要求：{booking.specialRequests}</p>}
+          </CardContent>
+        </Card>
+      )}
+
+      {stateLog.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">狀態歷程</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-gray-700 space-y-2">
+            {stateLog.map((entry) => (
+              <div key={entry.id} className="flex justify-between border-b last:border-0 pb-2 last:pb-0">
+                <span>
+                  {STATE_LOG_ACTION_LABELS[entry.action] ?? entry.action}
+                  {entry.fromStatus && entry.toStatus ? `（${entry.fromStatus} → ${entry.toStatus}）` : ''}
+                </span>
+                <span className="text-gray-500">{formatDateTime(entry.createdAt)}</span>
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}

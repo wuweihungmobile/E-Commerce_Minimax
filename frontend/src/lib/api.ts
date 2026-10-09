@@ -139,6 +139,10 @@ export const API_ENDPOINTS = {
   // 後端 checkBookingOwnership 依租戶放行，非另開店家層專用取消路由）
   dashboardBookings: {
     list: '/v2/dashboard/bookings',
+    // 店家入住／退房（Sprint 245 後端、Sprint 246 前端按鈕，DEF-345／DEF-350）
+    checkIn: (id: string) => '/v2/dashboard/bookings/' + id + '/check-in',
+    checkOut: (id: string) => '/v2/dashboard/bookings/' + id + '/check-out',
+    stateLog: (id: string) => '/v2/dashboard/bookings/' + id + '/state-log',
   },
 
   // Tenants (M17)

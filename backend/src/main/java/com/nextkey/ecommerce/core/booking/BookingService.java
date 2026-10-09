@@ -33,6 +33,7 @@ import com.nextkey.ecommerce.core.order.OrderStateMachine;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.core.promo.PromoService;
 import com.nextkey.ecommerce.core.tenant.StoreCheckoutGuard;
+import com.nextkey.ecommerce.domain.model.audit.AuditLog;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
@@ -47,6 +48,7 @@ import com.nextkey.ecommerce.domain.repository.PromoCodeRepository;
 import com.nextkey.ecommerce.domain.repository.PromoCodeUsageRepository;
 import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
+import com.nextkey.ecommerce.domain.repository.audit.AuditLogRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
@@ -83,6 +85,7 @@ public class BookingService {
     private final PromoCodeRepository promoCodeRepository;
     private final PromoCodeUsageRepository promoCodeUsageRepository;
     private final AuditService auditService;
+    private final AuditLogRepository auditLogRepository;
     private final PaymentRepository paymentRepository;
     private final BuyerNotificationService buyerNotificationService;
 
@@ -967,6 +970,44 @@ public class BookingService {
     }
 
     /**
+     * no-show 自動取消的單筆判斷與取消（Sprint 246，DEF-352；PRD §17.4.6 Q15）：由 {@link BookingNoShowService}
+     * 排程逐筆呼叫。<b>必須放在這個類別（而不是排程類別自己）</b>——{@code @Transactional} 靠 Spring AOP 代理，
+     * 同一個 bean 內的 {@code this.xxx()} 自呼叫不會經過代理，寫在排程類別裡會讓這個方法的交易宣告形同沒寫
+     * （實測踩雷：{@code EntityManager} 不在交易裡，條件式 UPDATE 拋
+     * {@code TransactionRequiredException}）。與 {@link #cancelExpiredUnpaidBooking} 同一個理由，
+     * {@code BookingTimeoutService} 一開始就是這樣分層的。
+     *
+     * <p>候選是否「真的」已過寬限期限在這裡才精算（依房源的 {@code checkInTime}），候選查詢本身只用入住日粗篩。
+     * 不釋放日曆：到這裡入住日已過了至少 {@code graceHours}，過去的日期不會再被選訂，釋放與否沒有實際差別
+     * （與未付款逾時取消不同，那邊的入住日通常仍在未來，必須釋放才能讓別的買家訂）。
+     *
+     * @return {@code true} 表示本次取消了這筆訂房；{@code false} 表示還沒過寬限期限、已不是 {@code PAID}
+     *         （已入住、已被取消…），或併發搶不到，什麼都沒做
+     */
+    @Transactional
+    public boolean cancelBookingIfNoShowDue(final UUID bookingId, final Instant now, final long graceHours) {
+        Booking booking = bookingRepository.findById(bookingId).orElse(null);
+        if (booking == null || booking.getStatus() != Booking.BookingStatus.PAID) {
+            return false;
+        }
+        LocalTime checkInTime = roomRepository.findByListingId(booking.getRoomListingId())
+                .map(Room::getCheckInTime).orElse(DEFAULT_CHECK_IN_TIME);
+        Instant checkInAt = BookingRefundPolicy.checkInInstant(booking.getCheckInDate(), checkInTime);
+        if (now.isBefore(checkInAt.plus(Duration.ofHours(graceHours)))) {
+            return false;
+        }
+        if (bookingRepository.cancelIfNoShow(bookingId, Booking.BookingStatus.PAID, Booking.BookingStatus.CANCELLED,
+                Booking.CancelledBy.SYSTEM, now) == 0) {
+            return false;
+        }
+        auditService.record("BOOKING_CANCELLED", "BOOKING", bookingId, booking.getTenantId(),
+                Booking.BookingStatus.PAID.name(), Booking.BookingStatus.CANCELLED.name(),
+                "No-show: not checked in within " + graceHours + " hours of check-in time", null);
+        log.info("Booking cancelled for no-show: id={}, checkInAt={}", bookingId, checkInAt);
+        return true;
+    }
+
+    /**
      * 店家標記入住（Sprint 245，DEF-345；PRD Phase 1 預訂路徑 {@code CREATED(=PAID) → CHECKED_IN}，付款即等同確認、無獨立 CONFIRMED）。
      *
      * <ul>
@@ -1004,6 +1045,33 @@ public class BookingService {
                 "auto-completed after check-out");
         log.info("Booking checked out and completed: id={}", bookingId);
         return buildBookingResponse(booking);
+    }
+
+    /**
+     * 訂房狀態機日誌（Sprint 246，DEF-350；PRD §9.7，未實作註記見 DEF-345）。資料來源是
+     * {@code moveStatus} 寫入的 {@code audit_log}（entityType=BOOKING），依 createdAt 遞增。
+     * 擁有權比照 {@link #checkStoreBookingAccess}：僅管理員與同租戶商家可查，買家本人不算
+     * ——本端點放在店家層 {@code DashboardBookingController}，與入住／退房同一層級。
+     */
+    @Transactional(readOnly = true)
+    public List<BookingDto.StateLogResponse> getBookingStateLog(final UUID bookingId) {
+        Booking booking = findBookingById(bookingId);
+        checkStoreBookingAccess(booking);
+        List<AuditLog> logs = auditLogRepository.findByEntityTypeAndEntityIdOrderByCreatedAtAsc("BOOKING", bookingId);
+        return logs.stream().map(this::toStateLogResponse).collect(Collectors.toList());
+    }
+
+    private BookingDto.StateLogResponse toStateLogResponse(final AuditLog entry) {
+        return BookingDto.StateLogResponse.builder()
+                .id(entry.getId())
+                .bookingId(entry.getEntityId())
+                .action(entry.getAction())
+                .fromStatus(entry.getOldValue())
+                .toStatus(entry.getNewValue())
+                .changedBy(entry.getUserId())
+                .reason(entry.getReason())
+                .createdAt(entry.getCreatedAt())
+                .build();
     }
 
     // ========== Helper Methods ==========

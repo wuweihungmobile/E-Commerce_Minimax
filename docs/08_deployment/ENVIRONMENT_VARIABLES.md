@@ -83,6 +83,9 @@
 | `BOOKING_PAYMENT_TIMEOUT_HOURS` | `24` | 訂房付款期限（建立後的小時數） | ❌ | — |
 | `BOOKING_STRIPE_SESSION_HOURS` | `24` | Stripe Checkout 工作階段的有效時間；期間內開始結帳的訂房不會被逾時取消 | ❌ | — |
 | `BOOKING_TIMEOUT_CHECK_INTERVAL_MS`、`BOOKING_TIMEOUT_INITIAL_DELAY_MS`、`BOOKING_TIMEOUT_BATCH_SIZE` | `300000`、`60000`、`100` | 訂房逾時掃描（同上） | ❌ | — |
+| `BOOKING_NO_SHOW_AUTO_CANCEL_ENABLED` | **關閉**（`app.booking-no-show.enabled`，Sprint 246 DEF-352） | no-show 自動取消總開關：已付款、入住時刻＋`grace-hours`（預設 24）小時仍未入住的訂房自動取消、不退款（PRD §17.4.6 Q15）。獨立於 `APP_SCHEDULING_ENABLED` 之外，`matchIfMissing=false`——缺少此變數即關閉，不是像其他排程一樣預設開啟 | ✅（預設 `false`） | 開啟前見 §6 |
+| `BOOKING_NO_SHOW_GRACE_HOURS` | `24` | no-show 寬限小時數（PRD §17.4.6 Q15 使用者確認值） | ❌ | — |
+| `BOOKING_NO_SHOW_CHECK_INTERVAL_MS`、`BOOKING_NO_SHOW_INITIAL_DELAY_MS`、`BOOKING_NO_SHOW_BATCH_SIZE` | `300000`、`60000`、`500` | no-show 掃描間隔、啟動延遲、單輪候選上限（同上） | ❌ | — |
 | `APP_REFUND_CHECK_INTERVAL_MS`、`APP_REFUND_INITIAL_DELAY_MS`、`APP_REFUND_BATCH_SIZE` | `60000`、`45000`、`50` | 自動退款掃描 | ❌ | — |
 | `APP_REFUND_RETRY_BASE_MINUTES`、`APP_REFUND_RETRY_MAX_MINUTES` | `5`、`360` | 退款失敗的指數退避起點與上限（分鐘） | ❌ | — |
 
@@ -158,6 +161,7 @@
 | 7 | `APP_SCHEDULING_ENABLED` 為 `true`（預設值） | §2.6 |
 | 8 | 決定 Refresh Token 天數（yml 7 天、compose 30 天，兩者不同） | §2.2 |
 | 9 | 其他部署前置（非環境變數）：執行 `V90__Unpublish_Orphaned_System_Tenant_Content.sql` 前，先跑檔頭的三個預覽 `SELECT` 看筆數 | Sprint 242 計畫書 |
+| 10 | `BOOKING_NO_SHOW_AUTO_CANCEL_ENABLED` 維持 `false`，直到**人工於生產環境驗證店家能透過 `/dashboard/bookings/[id]` 正常入住**（DEF-350）；確認後才改為 `true`，且須已部署 DEF-354（人工退款入口） | §2.6、DEF-352 |
 
 ---
 
@@ -192,6 +196,7 @@
 |------|------|------|------|
 | v1.0 | 2026-10-03 | 首版（Sprint 244）：依 `application.yml`、`@Value`、`docker-compose.yml`、`.env.example` 與前端程式核對；新增 §5 功能開關與 §6 上線前檢查 | Claude Code（Sprint 244） |
 | v1.1 | 2026-10-03 | Sprint 244 收尾追加（使用者授權）：compose 補傳 `SMTP_*`、`APP_FRONTEND_BASE_URL`、`APP_CORS_ALLOWED_ORIGINS`、`APP_SCHEDULING_ENABLED`；`.env.example` 同步列出；§2、§4、§7 更新 | Claude Code（Sprint 244） |
+| v1.2 | 2026-10-09 | Sprint 246（DEF-352）：新增 `BOOKING_NO_SHOW_AUTO_CANCEL_ENABLED`（預設關閉）與相關排程設定（§2.6）；§6 新增上線前檢查第 10 項 | Claude Sonnet 5（Sprint 246） |
 
 ---
 

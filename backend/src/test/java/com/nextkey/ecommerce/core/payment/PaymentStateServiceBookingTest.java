@@ -27,6 +27,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.nextkey.ecommerce.api.dto.payment.CheckoutSessionResponse;
@@ -92,6 +95,17 @@ class PaymentStateServiceBookingTest {
     @AfterEach
     void tearDown() {
         TenantContext.clear();
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void actAsAdmin() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("admin", null,
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
+    }
+
+    private static void actAsStoreOwner() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("owner", null,
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_STORE_OWNER"))));
     }
 
     private Booking bookingOf(final UUID userId, final Booking.BookingStatus status) {
@@ -661,6 +675,161 @@ class PaymentStateServiceBookingTest {
             assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
             verify(paymentRepository).applyRefundIfUnchanged(eq(PAYMENT_ID), eq(new BigDecimal("2000.00")),
                     eq(new BigDecimal("3000.00")), eq(Payment.PaymentStatus.REFUNDED));
+        }
+    }
+
+    // ========== 人工退款（Sprint 246，DEF-354） ==========
+
+    @Nested
+    @DisplayName("refundBookingPaymentManually")
+    class RefundBookingPaymentManually {
+
+        private Booking noShowCancelledBooking(final Booking.RefundStatus refundStatus) {
+            Booking booking = bookingOf(USER_ID, Booking.BookingStatus.CANCELLED);
+            booking.setCancelledBy(Booking.CancelledBy.SYSTEM);
+            booking.setRefundStatus(refundStatus);
+            return booking;
+        }
+
+        private Payment paidPaymentOf(final Payment.PaymentMethod method) {
+            return Payment.builder().id(PAYMENT_ID).bookingId(BOOKING_ID).paymentMethod(method)
+                    .status(Payment.PaymentStatus.SUCCESS).amount(new BigDecimal("3000.00"))
+                    .refundedAmount(BigDecimal.ZERO).stripePaymentIntentId("pi_1").build();
+        }
+
+        private void given(final Booking booking, final Payment payment) {
+            when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
+            when(paymentRepository.findEffectiveByBookingId(BOOKING_ID)).thenReturn(Optional.of(payment));
+            when(paymentRepository.applyRefundIfUnchanged(any(), any(), any(), any())).thenReturn(1);
+            when(bookingRepository.completeManualRefundIfNone(any(), any(), any(), any(), any())).thenReturn(1);
+        }
+
+        @Test
+        @DisplayName("管理員對 no-show 自動取消（cancelledBy=SYSTEM、refundStatus=NONE）人工退款：全額、Mock 付款、直接 COMPLETED，不經過 PENDING")
+        void admin_manuallyRefundsANoShowCancellation() {
+            given(noShowCancelledBooking(Booking.RefundStatus.NONE), paidPaymentOf(Payment.PaymentMethod.MOCK));
+            actAsAdmin();
+
+            OrderPaymentStateDto state = service.refundBookingPaymentManually(BOOKING_ID, null,
+                    "Store missed check-in, verified");
+
+            verify(paymentRepository).applyRefundIfUnchanged(eq(PAYMENT_ID), eq(BigDecimal.ZERO),
+                    eq(new BigDecimal("3000.00")), eq(Payment.PaymentStatus.REFUNDED));
+            verify(bookingRepository).completeManualRefundIfNone(eq(BOOKING_ID), eq(Booking.BookingStatus.CANCELLED),
+                    eq(Booking.RefundStatus.NONE), eq(Booking.RefundStatus.COMPLETED), eq(new BigDecimal("3000.00")));
+            verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any(), any());
+            verify(auditService).record(eq("BOOKING_MANUAL_REFUND"), eq("PAYMENT"), eq(PAYMENT_ID), eq(TENANT_ID),
+                    eq("refundStatus=NONE"), any(), eq("Store missed check-in, verified"), any());
+            assertThat(state.getPaymentStatus()).isEqualTo("REFUNDED");
+        }
+
+        @Test
+        @DisplayName("Stripe 付款：人工退款一樣經 Stripe，即使 STRIPE_PAYMENT_ENABLED 已關閉")
+        void admin_manuallyRefundsThroughStripeEvenWhenToggleIsOff() {
+            given(noShowCancelledBooking(Booking.RefundStatus.NONE), paidPaymentOf(Payment.PaymentMethod.STRIPE));
+            actAsAdmin();
+            when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(false);
+            when(paymentGatewayFactory.processRefund(eq("STRIPE"), eq("pi_1"), eq(new BigDecimal("3000.00")), any(),
+                    eq("refund-pi_1-0.00-3000.00"))).thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
+                    .success(true).refundId("re_2").status("succeeded").build());
+
+            service.refundBookingPaymentManually(BOOKING_ID, null, "x");
+
+            verify(paymentGatewayFactory).processRefund(eq("STRIPE"), eq("pi_1"), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("指定部分金額：只退該金額，付款轉 PARTIALLY_REFUNDED")
+        void partialAmount_leavesPaymentPartiallyRefunded() {
+            given(noShowCancelledBooking(Booking.RefundStatus.NONE), paidPaymentOf(Payment.PaymentMethod.MOCK));
+            actAsAdmin();
+
+            service.refundBookingPaymentManually(BOOKING_ID, new BigDecimal("1000.00"), "x");
+
+            verify(paymentRepository).applyRefundIfUnchanged(eq(PAYMENT_ID), eq(BigDecimal.ZERO),
+                    eq(new BigDecimal("1000.00")), eq(Payment.PaymentStatus.PARTIALLY_REFUNDED));
+            verify(bookingRepository).completeManualRefundIfNone(any(), any(), any(), eq(Booking.RefundStatus.COMPLETED),
+                    eq(new BigDecimal("1000.00")));
+        }
+
+        @Test
+        @DisplayName("非管理員（店主／房東雖有 booking:update 權限）不能人工退款 → E-1007，不碰訂房或付款")
+        void nonAdmin_isRejectedBeforeTouchingAnything() {
+            actAsStoreOwner();
+
+            assertThatThrownBy(() -> service.refundBookingPaymentManually(BOOKING_ID, null, "x"))
+                    .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_1007));
+
+            verify(bookingRepository, never()).findById(any());
+            verify(paymentRepository, never()).findEffectiveByBookingId(any());
+        }
+
+        @Test
+        @DisplayName("取消方不是 SYSTEM（買家自己取消的）→ E-5012，即使 refundStatus 恰好是 NONE")
+        void notASystemCancellation_isRejected() {
+            Booking booking = noShowCancelledBooking(Booking.RefundStatus.NONE);
+            booking.setCancelledBy(Booking.CancelledBy.CUSTOMER);
+            given(booking, paidPaymentOf(Payment.PaymentMethod.MOCK));
+            actAsAdmin();
+
+            assertThatThrownBy(() -> service.refundBookingPaymentManually(BOOKING_ID, null, "x"))
+                    .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_5012));
+
+            verify(paymentRepository, never()).applyRefundIfUnchanged(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("已經有退款安排（PENDING 或 COMPLETED）→ E-5012，不重複退款")
+        void alreadyHasARefundArrangement_isRejected() {
+            given(noShowCancelledBooking(Booking.RefundStatus.PENDING), paidPaymentOf(Payment.PaymentMethod.MOCK));
+            actAsAdmin();
+            assertThatThrownBy(() -> service.refundBookingPaymentManually(BOOKING_ID, null, "x"))
+                    .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_5012));
+
+            given(noShowCancelledBooking(Booking.RefundStatus.COMPLETED), paidPaymentOf(Payment.PaymentMethod.MOCK));
+            assertThatThrownBy(() -> service.refundBookingPaymentManually(BOOKING_ID, null, "x"))
+                    .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_5012));
+
+            verify(paymentRepository, never()).applyRefundIfUnchanged(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("找不到訂房 → E-4006；找不到可退款的付款 → E-6000")
+        void notFound() {
+            actAsAdmin();
+            when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.empty());
+            assertThatThrownBy(() -> service.refundBookingPaymentManually(BOOKING_ID, null, "x"))
+                    .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_4006));
+
+            when(bookingRepository.findById(BOOKING_ID))
+                    .thenReturn(Optional.of(noShowCancelledBooking(Booking.RefundStatus.NONE)));
+            when(paymentRepository.findEffectiveByBookingId(BOOKING_ID)).thenReturn(Optional.empty());
+            assertThatThrownBy(() -> service.refundBookingPaymentManually(BOOKING_ID, null, "x"))
+                    .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_6000));
+        }
+
+        @Test
+        @DisplayName("額度 CAS 被搶先（影響 0 列）→ E-6009，不呼叫 Stripe")
+        void concurrentPaymentClaim_isRejected() {
+            given(noShowCancelledBooking(Booking.RefundStatus.NONE), paidPaymentOf(Payment.PaymentMethod.STRIPE));
+            actAsAdmin();
+            when(paymentRepository.applyRefundIfUnchanged(any(), any(), any(), any())).thenReturn(0);
+
+            assertThatThrownBy(() -> service.refundBookingPaymentManually(BOOKING_ID, null, "x"))
+                    .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_6009));
+
+            verify(paymentGatewayFactory, never()).processRefund(any(), any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("訂房退款狀態被併發搶先改掉（影響 0 列）→ E-6009；此時付款的 CAS 已經成功過一次")
+        void concurrentBookingUpdate_isRejected() {
+            given(noShowCancelledBooking(Booking.RefundStatus.NONE), paidPaymentOf(Payment.PaymentMethod.MOCK));
+            actAsAdmin();
+            when(bookingRepository.completeManualRefundIfNone(any(), any(), any(), any(), any())).thenReturn(0);
+
+            assertThatThrownBy(() -> service.refundBookingPaymentManually(BOOKING_ID, null, "x"))
+                    .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_6009));
         }
     }
 }

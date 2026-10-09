@@ -1599,7 +1599,8 @@ StoreStaff (店員)
 | period_start | DATE | 結算週期開始日期 |
 | period_end | DATE | 結算週期結束日期 |
 | total_orders | INTEGER | 結算週期內已完成訂單數 |
-| total_gmv | DECIMAL(14,2) | 結算週期內總 GMV |
+| total_bookings | INTEGER | 結算週期內已納入的訂房數（Sprint 247，DEF-353；與 total_orders 分開計數，兩者 GMV 彙總進同一張結算單） |
+| total_gmv | DECIMAL(14,2) | 結算週期內總 GMV（訂單與訂房合計） |
 | total_refunds | DECIMAL(14,2) | 結算週期內退款總金額 |
 | commission_amount | DECIMAL(14,2) | 平台抽成金額 |
 | net_settlement_amount | DECIMAL(14,2) | 商家應結算金額 |

@@ -153,6 +153,55 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             @Param("none") Booking.RefundStatus none, @Param("completed") Booking.RefundStatus completed,
             @Param("amount") BigDecimal amount);
 
+    /**
+     * 某租戶「尚未結算、且已處於可結算狀態」的訂房，限建立時間早於 {@code createdBefore}（Sprint 247，DEF-353；
+     * 比照 {@code OrderRepository.findUnsettledByTenantIdAndStatusInAndCreatedAtBefore}）。
+     *
+     * <p>可結算條件：{@code status = COMPLETED}（退房完成）；或 {@code status = CANCELLED} 且
+     * {@code refundStatus = NONE} 且存在一筆 {@code SUCCESS}／{@code PARTIALLY_REFUNDED} 付款——
+     * {@code refundStatus = NONE} 本身無法分辨「從未收款」（逾時／買家在 CREATED 取消）與「已收款、
+     * 依政策不退款」（Q14 入住前 24 小時內取消、no-show），必須額外確認存在成功付款，否則從未收款的
+     * 取消訂房會被誤計為商家收益。
+     */
+    @Query("""
+            SELECT b FROM Booking b WHERE b.tenant.id = :tenantId AND b.settledStatementId IS NULL
+              AND b.createdAt < :createdBefore
+              AND (b.status = :completed
+                   OR (b.status = :cancelled AND b.refundStatus = :none
+                       AND EXISTS (SELECT 1 FROM Payment p WHERE p.bookingId = b.id
+                                   AND p.status IN (:success, :partiallyRefunded))))
+            """)
+    List<Booking> findUnsettledEligibleByTenantIdAndCreatedAtBefore(
+            @Param("tenantId") UUID tenantId,
+            @Param("createdBefore") Instant createdBefore,
+            @Param("completed") Booking.BookingStatus completed,
+            @Param("cancelled") Booking.BookingStatus cancelled,
+            @Param("none") Booking.RefundStatus none,
+            @Param("success") Payment.PaymentStatus success,
+            @Param("partiallyRefunded") Payment.PaymentStatus partiallyRefunded);
+
+    /**
+     * 原子認領訂房（Sprint 247，DEF-353；比照 {@code OrderRepository.markSettled}）：只有
+     * {@code settled_statement_id IS NULL} 的訂房會被標記。回傳實際標記筆數，用法與併發防護理由同訂單版。
+     */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "UPDATE bookings SET settled_statement_id = :statementId"
+            + " WHERE id IN (:ids) AND settled_statement_id IS NULL", nativeQuery = true)
+    int markSettled(@Param("ids") List<UUID> ids, @Param("statementId") UUID statementId);
+
+    /**
+     * 釋放某結算單認領的所有訂房（Sprint 247，DEF-353；比照 {@code OrderRepository.releaseOrdersOfStatement}）：
+     * 結算單被駁回時呼叫，讓這些訂房在下一次結算重新被撈到。
+     */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "UPDATE bookings SET settled_statement_id = NULL WHERE settled_statement_id = :statementId",
+            nativeQuery = true)
+    int releaseBookingsOfStatement(@Param("statementId") UUID statementId);
+
+    /** 訂房被哪張結算單結算；尚未結算（或訂房不存在）回 empty。供退款調整定位結算單。 */
+    @Query("SELECT b.settledStatementId FROM Booking b WHERE b.id = :bookingId AND b.settledStatementId IS NOT NULL")
+    Optional<UUID> findSettledStatementId(@Param("bookingId") UUID bookingId);
+
     Page<Booking> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
 
     Page<Booking> findByTenantIdOrderByCreatedAtDesc(UUID tenantId, Pageable pageable);

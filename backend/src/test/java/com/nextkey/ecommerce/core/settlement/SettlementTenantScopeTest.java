@@ -21,6 +21,7 @@ import org.springframework.data.domain.Pageable;
 
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementListResponse;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
@@ -48,6 +49,7 @@ class SettlementTenantScopeTest {
     @Mock private SettlementStatementRepository settlementRepository;
     @Mock private TenantRepository tenantRepository;
     @Mock private OrderRepository orderRepository;
+    @Mock private BookingRepository bookingRepository;
     @Mock private PaymentRepository paymentRepository;
     @Mock private SettlementAdjustmentRepository adjustmentRepository;
     @Mock private SettlementMapper mapper;
@@ -66,9 +68,9 @@ class SettlementTenantScopeTest {
     @BeforeEach
     void setUp() {
         generator = new SettlementGenerator(settlementRepository, tenantRepository, orderRepository,
-                paymentRepository, adjustmentRepository, new SettlementCalculator(), mapper);
+                bookingRepository, paymentRepository, adjustmentRepository, new SettlementCalculator(), mapper);
         reviewer = new SettlementReviewer(settlementRepository, mapper, transferService, userRepository,
-                auditService, orderRepository, adjustmentRepository);
+                auditService, orderRepository, bookingRepository, adjustmentRepository);
     }
 
     @AfterEach

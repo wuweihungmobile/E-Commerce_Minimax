@@ -1033,7 +1033,11 @@ public class BookingService {
     /**
      * 店家標記退房（Sprint 245，DEF-345）。{@code CHECKED_IN → CHECKED_OUT}，接著在<b>同一交易內</b>自動轉為
      * {@code COMPLETED}（「完成由退房後自動處理」，店家不需再操作）。兩段轉換各寫一筆稽核；回應的狀態是交易結束時的
-     * {@code COMPLETED}。結算模組目前不讀訂房（SRD §6.3.4），完成不會觸發任何結算。
+     * {@code COMPLETED}。
+     *
+     * <p>Sprint 247（DEF-353）起，{@code COMPLETED} 的訂房會在下一次週結算（{@code SettlementGenerator}）
+     * 被納入商家收益（SRD §6.3.4／PRD §6.2.1）；完成本身不同步觸發結算，由排程以「尚未結算、已符合可結算
+     * 狀態」掃到。
      */
     @Transactional
     public BookingDto.BookingResponse checkOut(final UUID bookingId) {

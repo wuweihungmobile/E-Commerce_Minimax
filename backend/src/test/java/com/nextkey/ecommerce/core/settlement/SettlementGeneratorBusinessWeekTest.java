@@ -27,6 +27,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
@@ -49,6 +50,7 @@ class SettlementGeneratorBusinessWeekTest {
     @Mock private SettlementStatementRepository settlementRepository;
     @Mock private TenantRepository tenantRepository;
     @Mock private OrderRepository orderRepository;
+    @Mock private BookingRepository bookingRepository;
     @Mock private PaymentRepository paymentRepository;
     @Mock private SettlementAdjustmentRepository adjustmentRepository;
     @Mock private SettlementMapper mapper;
@@ -56,8 +58,8 @@ class SettlementGeneratorBusinessWeekTest {
     private static final UUID TENANT_ID = UUID.randomUUID();
 
     private SettlementGenerator newGenerator() {
-        return new SettlementGenerator(settlementRepository, tenantRepository, orderRepository, paymentRepository,
-                adjustmentRepository, new SettlementCalculator(), mapper);
+        return new SettlementGenerator(settlementRepository, tenantRepository, orderRepository, bookingRepository,
+                paymentRepository, adjustmentRepository, new SettlementCalculator(), mapper);
     }
 
     private Tenant tenant() {

@@ -22,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement.SettlementStatus;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
@@ -45,15 +46,19 @@ class SettlementAdjustmentServiceTest {
     @Mock
     private OrderRepository orderRepository;
 
+    @Mock
+    private BookingRepository bookingRepository;
+
     private SettlementAdjustmentService service;
 
     private static final UUID TENANT_ID = UUID.randomUUID();
     private static final UUID ORDER_ID = UUID.randomUUID();
+    private static final UUID BOOKING_ID = UUID.randomUUID();
     private static final UUID STATEMENT_ID = UUID.randomUUID();
 
     private SettlementAdjustmentService newService() {
         return new SettlementAdjustmentService(settlementStatementRepository, settlementAdjustmentRepository,
-                orderRepository);
+                orderRepository, bookingRepository);
     }
 
     private SettlementStatement statementOf(SettlementStatus status) {
@@ -71,6 +76,12 @@ class SettlementAdjustmentServiceTest {
     /** 這筆訂單已被 {@link #STATEMENT_ID} 這張結算單結算。 */
     private void orderSettledBy(final SettlementStatement statement) {
         when(orderRepository.findSettledStatementId(ORDER_ID)).thenReturn(Optional.of(STATEMENT_ID));
+        when(settlementStatementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+    }
+
+    /** 這筆訂房已被 {@link #STATEMENT_ID} 這張結算單結算（Sprint 247，DEF-353）。 */
+    private void bookingSettledBy(final SettlementStatement statement) {
+        when(bookingRepository.findSettledStatementId(BOOKING_ID)).thenReturn(Optional.of(STATEMENT_ID));
         when(settlementStatementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
     }
 
@@ -209,6 +220,143 @@ class SettlementAdjustmentServiceTest {
             orderSettledBy(statementOf(status));
 
             service.handleOrderRefund(TENANT_ID, ORDER_ID, new BigDecimal("10.00"));
+        }
+
+        verify(settlementStatementRepository, never()).save(any());
+        verify(settlementAdjustmentRepository, never()).save(any());
+    }
+
+    // ========== handleBookingRefund（Sprint 247，DEF-353；與上方 handleOrderRefund 對稱） ==========
+
+    @Test
+    @DisplayName("handleBookingRefund：訂房尚未被任何結算單結算時不做事")
+    void handleBookingRefund_bookingNotSettledYet_doesNothing() {
+        service = newService();
+        when(bookingRepository.findSettledStatementId(BOOKING_ID)).thenReturn(Optional.empty());
+
+        service.handleBookingRefund(TENANT_ID, BOOKING_ID, new BigDecimal("100"));
+
+        verify(settlementStatementRepository, never()).applyRefundDeduction(any(), any());
+        verify(settlementStatementRepository, never()).save(any());
+        verify(settlementAdjustmentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("handleBookingRefund：結算單屬於其他租戶時不做事（防禦性租戶隔離）")
+    void handleBookingRefund_statementOfOtherTenant_doesNothing() {
+        service = newService();
+        SettlementStatement otherTenantStatement = statementOf(SettlementStatus.PENDING);
+        otherTenantStatement.setTenantId(UUID.randomUUID());
+        bookingSettledBy(otherTenantStatement);
+
+        service.handleBookingRefund(TENANT_ID, BOOKING_ID, new BigDecimal("100"));
+
+        verify(settlementStatementRepository, never()).applyRefundDeduction(any(), any());
+        verify(settlementAdjustmentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("handleBookingRefund：refundAmount 為 0 或 null 不做事，也不查詢結算單")
+    void handleBookingRefund_zeroOrNullAmount_doesNothing() {
+        service = newService();
+
+        service.handleBookingRefund(TENANT_ID, BOOKING_ID, BigDecimal.ZERO);
+        service.handleBookingRefund(TENANT_ID, BOOKING_ID, null);
+
+        verify(bookingRepository, never()).findSettledStatementId(any());
+    }
+
+    @Test
+    @DisplayName("handleBookingRefund：PENDING 結算單直接 delta 扣除，不產生調整單")
+    void handleBookingRefund_pendingStatement_appliesDirectDeduction() {
+        service = newService();
+        SettlementStatement statement = statementOf(SettlementStatus.PENDING);
+        bookingSettledBy(statement);
+        when(settlementStatementRepository.applyRefundDeduction(eq(statement.getId()), any(BigDecimal.class)))
+                .thenReturn(1);
+
+        service.handleBookingRefund(TENANT_ID, BOOKING_ID, new BigDecimal("100.00"));
+
+        ArgumentCaptor<BigDecimal> amountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        verify(settlementStatementRepository).applyRefundDeduction(eq(statement.getId()), amountCaptor.capture());
+        assertThat(amountCaptor.getValue()).isEqualByComparingTo("100.00");
+        verify(settlementStatementRepository, never()).save(any(SettlementStatement.class));
+        verify(settlementAdjustmentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("handleBookingRefund：PENDING_REVIEW 結算單同樣直接 delta 扣除")
+    void handleBookingRefund_pendingReviewStatement_appliesDirectDeduction() {
+        service = newService();
+        SettlementStatement statement = statementOf(SettlementStatus.PENDING_REVIEW);
+        bookingSettledBy(statement);
+        when(settlementStatementRepository.applyRefundDeduction(eq(statement.getId()), any(BigDecimal.class)))
+                .thenReturn(1);
+
+        service.handleBookingRefund(TENANT_ID, BOOKING_ID, new BigDecimal("50.00"));
+
+        verify(settlementStatementRepository).applyRefundDeduction(eq(statement.getId()), any(BigDecimal.class));
+        verify(settlementStatementRepository, never()).save(any(SettlementStatement.class));
+        verify(settlementAdjustmentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("handleBookingRefund：APPROVED 結算單產生 adjustment_statement（bookingId 而非 orderId），不動原結算單數字")
+    void handleBookingRefund_approvedStatement_createsAdjustmentStatement() {
+        service = newService();
+        SettlementStatement statement = statementOf(SettlementStatus.APPROVED);
+        bookingSettledBy(statement);
+
+        service.handleBookingRefund(TENANT_ID, BOOKING_ID, new BigDecimal("200.00"));
+
+        ArgumentCaptor<SettlementAdjustment> captor = ArgumentCaptor.forClass(SettlementAdjustment.class);
+        verify(settlementAdjustmentRepository).save(captor.capture());
+        SettlementAdjustment adjustment = captor.getValue();
+        assertThat(adjustment.getTenantId()).isEqualTo(TENANT_ID);
+        assertThat(adjustment.getBookingId()).isEqualTo(BOOKING_ID);
+        assertThat(adjustment.getOrderId()).isNull();
+        assertThat(adjustment.getOriginalStatementId()).isEqualTo(STATEMENT_ID);
+        assertThat(adjustment.getAdjustmentType()).isEqualTo("REFUND_DEDUCTION");
+        assertThat(adjustment.getAmount()).isEqualByComparingTo("-200.00");
+        assertThat(adjustment.getStatus()).isEqualTo(SettlementAdjustment.AdjustmentStatus.PENDING);
+        verify(settlementStatementRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("handleBookingRefund：PAID 結算單產生 adjustment_statement")
+    void handleBookingRefund_paidStatement_createsAdjustmentStatement() {
+        service = newService();
+        bookingSettledBy(statementOf(SettlementStatus.PAID));
+
+        service.handleBookingRefund(TENANT_ID, BOOKING_ID, new BigDecimal("300.00"));
+
+        verify(settlementAdjustmentRepository).save(any(SettlementAdjustment.class));
+        verify(settlementStatementRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("handleBookingRefund：FAILED 結算單（可重試撥款）→ 產生 adjustment_statement，不可被當終態忽略")
+    void handleBookingRefund_failedStatement_createsAdjustmentStatement() {
+        service = newService();
+        bookingSettledBy(statementOf(SettlementStatus.FAILED));
+
+        service.handleBookingRefund(TENANT_ID, BOOKING_ID, new BigDecimal("10.00"));
+
+        ArgumentCaptor<SettlementAdjustment> captor = ArgumentCaptor.forClass(SettlementAdjustment.class);
+        verify(settlementAdjustmentRepository).save(captor.capture());
+        assertThat(captor.getValue().getOriginalStatementId()).isEqualTo(STATEMENT_ID);
+        assertThat(captor.getValue().getAmount()).isEqualByComparingTo("-10.00");
+    }
+
+    @Test
+    @DisplayName("handleBookingRefund：REJECTED／REVERSAL_PENDING／REVERSED 結算單不做事")
+    void handleBookingRefund_otherTerminalStatuses_doNothing() {
+        service = newService();
+        for (SettlementStatus status : new SettlementStatus[] {
+                SettlementStatus.REJECTED, SettlementStatus.REVERSAL_PENDING, SettlementStatus.REVERSED}) {
+            bookingSettledBy(statementOf(status));
+
+            service.handleBookingRefund(TENANT_ID, BOOKING_ID, new BigDecimal("10.00"));
         }
 
         verify(settlementStatementRepository, never()).save(any());

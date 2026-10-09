@@ -61,6 +61,11 @@ public class SettlementStatement {
     @Builder.Default
     private Integer totalOrders = 0;
 
+    /** 本期納入的訂房筆數（Sprint 247，DEF-353），與 {@link #totalOrders} 分開計數。 */
+    @Column(name = "total_bookings")
+    @Builder.Default
+    private Integer totalBookings = 0;
+
     @Column(name = "total_gmv", precision = 14, scale = 2)
     @Builder.Default
     private BigDecimal totalGmv = BigDecimal.ZERO;

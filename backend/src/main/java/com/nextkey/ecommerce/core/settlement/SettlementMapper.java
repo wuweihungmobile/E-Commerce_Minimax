@@ -28,6 +28,7 @@ public class SettlementMapper {
                 .periodStart(statement.getPeriodStart())
                 .periodEnd(statement.getPeriodEnd())
                 .totalOrders(statement.getTotalOrders())
+                .totalBookings(statement.getTotalBookings())
                 .totalGmv(statement.getTotalGmv())
                 .totalRefunds(statement.getTotalRefunds())
                 .commissionAmount(statement.getCommissionAmount())

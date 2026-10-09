@@ -146,6 +146,13 @@ public class Booking {
     @Column(name = "refund_amount", precision = DECIMAL_PRECISION, scale = 2)
     private BigDecimal refundAmount;
 
+    /**
+     * 訂房被哪一張結算單結算（Sprint 247，DEF-353；比照 {@code Order#settledStatementId}）。只有結算流程會寫這個欄位
+     * （原生 UPDATE），此處對它是唯讀映射，避免後續的實體更新把記憶體中的舊值寫回、蓋掉併發的結算標記。
+     */
+    @Column(name = "settled_statement_id", insertable = false, updatable = false)
+    private UUID settledStatementId;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "status_flags", columnDefinition = "jsonb")
     private Map<String, Object> statusFlags;

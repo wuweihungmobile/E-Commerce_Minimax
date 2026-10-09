@@ -61,6 +61,9 @@ class SettlementReviewerTest {
     private com.nextkey.ecommerce.domain.repository.OrderRepository orderRepository;
 
     @Mock
+    private com.nextkey.ecommerce.domain.repository.BookingRepository bookingRepository;
+
+    @Mock
     private com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository adjustmentRepository;
 
     private SettlementReviewer reviewer;
@@ -72,7 +75,7 @@ class SettlementReviewerTest {
 
     private SettlementReviewer newReviewer() {
         return new SettlementReviewer(settlementRepository, mapper, transferService, userRepository, auditService,
-                orderRepository, adjustmentRepository);
+                orderRepository, bookingRepository, adjustmentRepository);
     }
 
     @AfterEach

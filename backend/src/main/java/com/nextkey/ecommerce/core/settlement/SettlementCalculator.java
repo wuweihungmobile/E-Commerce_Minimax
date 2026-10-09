@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Component;
 
+import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
 
 import lombok.extern.slf4j.Slf4j;
@@ -133,5 +134,57 @@ public class SettlementCalculator {
         BigDecimal safeCommission = commission != null ? commission : BigDecimal.ZERO;
         BigDecimal safeRefunds = refunds != null ? refunds : BigDecimal.ZERO;
         return safeGmv.subtract(safeCommission).subtract(safeRefunds).setScale(SCALE, ROUNDING_MODE);
+    }
+
+    /**
+     * 可結算的訂房狀態（Sprint 247，DEF-353）：{@code COMPLETED}（退房完成），或 {@code CANCELLED}
+     * 且 {@code refundStatus = NONE}。與 {@code BookingRepository.findUnsettledEligibleByTenantIdAndCreatedAtBefore}
+     * 同一份規則的防線，但這裡**不**重複查詢層「存在成功付款」的條件（那是跨表 EXISTS，不屬於純函數職責）——
+     * 本方法只過濾掉查詢條件本不該放進來的狀態組合，不保證「從未收款」的 CANCELLED/NONE 訂房已被排除。
+     */
+    public List<Booking> filterSettleableBookings(List<Booking> bookings) {
+        if (bookings == null) {
+            return List.of();
+        }
+        return bookings.stream()
+                .filter(b -> b.getStatus() == Booking.BookingStatus.COMPLETED
+                        || (b.getStatus() == Booking.BookingStatus.CANCELLED
+                                && b.getRefundStatus() == Booking.RefundStatus.NONE))
+                .toList();
+    }
+
+    /**
+     * 計算訂房總 GMV（Sprint 247，DEF-353）。方法名不與 {@link #calculateTotalGmv(List)} 共用——
+     * {@code List<Order>}／{@code List<Booking>} 經泛型型別抹除後簽章相同，Java 不允許以此多載。
+     *
+     * <p>與訂單版不同之處：訂房沒有對應 {@code Order.OrderStatus.REFUNDED} 的終態可過濾——退款與否記在
+     * {@link Booking#getRefundStatus()}，已被 {@link #filterSettleableBookings}（或查詢層）排除退款中/
+     * 已退款的訂房，故此處不需再過濾一次。
+     */
+    public BigDecimal calculateTotalBookingGmv(List<Booking> settleableBookings) {
+        if (settleableBookings == null || settleableBookings.isEmpty()) {
+            return BigDecimal.ZERO.setScale(SCALE, ROUNDING_MODE);
+        }
+        return settleableBookings.stream()
+                .map(Booking::getTotalAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(SCALE, ROUNDING_MODE);
+    }
+
+    /**
+     * 計算訂房退款總額（Sprint 247，DEF-353）。方法名理由同 {@link #calculateTotalBookingGmv}（泛型型別抹除）。
+     * 語意同 {@link #calculateTotalRefunds(List, Map)}：可結算訂房的 {@code refundStatus} 恆為 {@code NONE}，
+     * 此欄位目前應恆為 0——保留與訂單對稱的計算路徑，供日後訂房出現部分退款情境（例如完成後的售後）時不需更動呼叫端。
+     */
+    public BigDecimal calculateTotalBookingRefunds(List<Booking> settleableBookings, Map<UUID, BigDecimal> refundedAmountByBookingId) {
+        if (settleableBookings == null || settleableBookings.isEmpty() || refundedAmountByBookingId == null) {
+            return BigDecimal.ZERO.setScale(SCALE, ROUNDING_MODE);
+        }
+        return settleableBookings.stream()
+                .map(b -> refundedAmountByBookingId.getOrDefault(b.getId(), BigDecimal.ZERO))
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(SCALE, ROUNDING_MODE);
     }
 }

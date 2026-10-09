@@ -23,6 +23,7 @@ import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement.SettlementStatus;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant.TenantStatus;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
@@ -59,6 +60,9 @@ class SettlementScheduledJobIntegrationTest {
     private OrderRepository orderRepository;
 
     @Mock
+    private BookingRepository bookingRepository;
+
+    @Mock
     private PaymentRepository paymentRepository;
 
     @Mock
@@ -91,7 +95,7 @@ class SettlementScheduledJobIntegrationTest {
 
         // 重新建立 generator 確保 mock 是 fresh
         settlementGenerator = new SettlementGenerator(
-                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
                 adjustmentRepository, calculator, mapper);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
@@ -116,6 +120,10 @@ class SettlementScheduledJobIntegrationTest {
         when(calculator.calculateTotalGmv(any())).thenReturn(new BigDecimal("30000.00"));
         when(calculator.calculateCommission(any(), any())).thenReturn(new BigDecimal("3000.00"));
         when(calculator.calculateTotalRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
+        // Sprint 247（DEF-353）：訂房彙總恆為 0（本測試只驗證訂單既有路徑），blend 後金額不受影響
+        when(calculator.filterSettleableBookings(any())).thenReturn(List.of());
+        when(calculator.calculateTotalBookingGmv(any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateTotalBookingRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any()))
                 .thenReturn(new BigDecimal("27000.00"));
 
@@ -152,7 +160,7 @@ class SettlementScheduledJobIntegrationTest {
         // Given: 1 個 tenant，已有 PENDING 結算單
         Tenant tenant = createActiveTenant("tenant-1");
         settlementGenerator = new SettlementGenerator(
-                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
                 adjustmentRepository, calculator, mapper);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
@@ -185,7 +193,7 @@ class SettlementScheduledJobIntegrationTest {
         // Given: 1 個 tenant 沒有訂單
         Tenant tenant = createActiveTenant("tenant-1");
         settlementGenerator = new SettlementGenerator(
-                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
                 adjustmentRepository, calculator, mapper);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
@@ -199,6 +207,9 @@ class SettlementScheduledJobIntegrationTest {
         when(calculator.calculateTotalGmv(any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateCommission(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateTotalRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.filterSettleableBookings(any())).thenReturn(List.of());
+        when(calculator.calculateTotalBookingGmv(any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateTotalBookingRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any())).thenReturn(BigDecimal.ZERO);
         when(settlementRepository.save(any(SettlementStatement.class)))
                 .thenAnswer(inv -> {
@@ -222,7 +233,7 @@ class SettlementScheduledJobIntegrationTest {
         // Given: 1 個 tenant，5 筆訂單
         Tenant tenant = createActiveTenant("tenant-1");
         settlementGenerator = new SettlementGenerator(
-                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
                 adjustmentRepository, calculator, mapper);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
@@ -237,6 +248,9 @@ class SettlementScheduledJobIntegrationTest {
         when(calculator.calculateTotalGmv(any())).thenReturn(new BigDecimal("50000.00"));
         when(calculator.calculateCommission(any(), any())).thenReturn(new BigDecimal("5000.00"));
         when(calculator.calculateTotalRefunds(any(), any())).thenReturn(new BigDecimal("2000.00"));
+        when(calculator.filterSettleableBookings(any())).thenReturn(List.of());
+        when(calculator.calculateTotalBookingGmv(any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateTotalBookingRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any()))
                 .thenReturn(new BigDecimal("43000.00"));
         when(settlementRepository.save(any(SettlementStatement.class)))
@@ -266,7 +280,7 @@ class SettlementScheduledJobIntegrationTest {
         Tenant tenant1 = createActiveTenant("tenant-1");
         Tenant tenant2 = createActiveTenant("tenant-2");
         settlementGenerator = new SettlementGenerator(
-                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
                 adjustmentRepository, calculator, mapper);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
@@ -288,6 +302,9 @@ class SettlementScheduledJobIntegrationTest {
         when(calculator.calculateTotalGmv(any())).thenReturn(new BigDecimal("10000.00"));
         when(calculator.calculateCommission(any(), any())).thenReturn(new BigDecimal("1000.00"));
         when(calculator.calculateTotalRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.filterSettleableBookings(any())).thenReturn(List.of());
+        when(calculator.calculateTotalBookingGmv(any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateTotalBookingRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any()))
                 .thenReturn(new BigDecimal("9000.00"));
         when(settlementRepository.save(any(SettlementStatement.class)))
@@ -316,7 +333,7 @@ class SettlementScheduledJobIntegrationTest {
                 .name("Test Tenant")
                 .build();
         settlementGenerator = new SettlementGenerator(
-                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
                 adjustmentRepository, calculator, mapper);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE)).thenReturn(List.of(tenant));
@@ -329,6 +346,9 @@ class SettlementScheduledJobIntegrationTest {
         when(calculator.calculateTotalGmv(any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateCommission(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateTotalRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.filterSettleableBookings(any())).thenReturn(List.of());
+        when(calculator.calculateTotalBookingGmv(any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateTotalBookingRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any())).thenReturn(BigDecimal.ZERO);
         when(settlementRepository.save(any(SettlementStatement.class)))
                 .thenAnswer(inv -> {
@@ -359,7 +379,7 @@ class SettlementScheduledJobIntegrationTest {
     void generateStatementForTenant_withPendingAdjustments_foldsIntoNetAmount() {
         Tenant tenant = createActiveTenant("tenant-1");
         settlementGenerator = new SettlementGenerator(
-                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
                 adjustmentRepository, calculator, mapper);
 
         UUID otherStatementId = UUID.randomUUID();
@@ -388,6 +408,9 @@ class SettlementScheduledJobIntegrationTest {
         when(calculator.calculateTotalGmv(any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateCommission(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateTotalRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.filterSettleableBookings(any())).thenReturn(List.of());
+        when(calculator.calculateTotalBookingGmv(any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateTotalBookingRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any())).thenReturn(new BigDecimal("1000.00"));
         when(adjustmentRepository.findByTenantIdAndStatus(tenant.getId(),
                 com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment.AdjustmentStatus.PENDING))
@@ -421,7 +444,7 @@ class SettlementScheduledJobIntegrationTest {
     void generateStatementForTenant_buildsRefundedAmountMapFromPayments() {
         Tenant tenant = createActiveTenant("tenant-1");
         settlementGenerator = new SettlementGenerator(
-                settlementRepository, tenantRepository, orderRepository, paymentRepository,
+                settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
                 adjustmentRepository, calculator, mapper);
 
         List<Order> orders = createCompletedOrders(2, "1000");
@@ -436,6 +459,9 @@ class SettlementScheduledJobIntegrationTest {
         when(calculator.calculateTotalGmv(any())).thenReturn(new BigDecimal("2000.00"));
         when(calculator.calculateCommission(any(), any())).thenReturn(new BigDecimal("200.00"));
         when(calculator.calculateTotalRefunds(any(), any())).thenReturn(new BigDecimal("300.00"));
+        when(calculator.filterSettleableBookings(any())).thenReturn(List.of());
+        when(calculator.calculateTotalBookingGmv(any())).thenReturn(BigDecimal.ZERO);
+        when(calculator.calculateTotalBookingRefunds(any(), any())).thenReturn(BigDecimal.ZERO);
         when(calculator.calculateNetSettlementAmount(any(), any(), any())).thenReturn(new BigDecimal("1500.00"));
         when(paymentRepository.findEffectiveByOrderId(refundedOrder.getId())).thenReturn(Optional.of(
                 com.nextkey.ecommerce.domain.model.payment.Payment.builder()

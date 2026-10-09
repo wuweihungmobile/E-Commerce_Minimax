@@ -17,12 +17,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementListResponse;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementResponse;
+import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.payment.Payment;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement.SettlementStatus;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
@@ -60,6 +62,7 @@ public class SettlementGenerator {
     private final SettlementStatementRepository settlementRepository;
     private final TenantRepository tenantRepository;
     private final OrderRepository orderRepository;
+    private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
     private final SettlementAdjustmentRepository adjustmentRepository;
     private final SettlementCalculator calculator;
@@ -128,13 +131,32 @@ public class SettlementGenerator {
         // 過濾出可結算訂單（查詢已限狀態，此處是與 calculator 同一份規則的防線）
         List<Order> completedOrders = calculator.filterSettleableOrders(unsettledOrders);
 
+        // Sprint 247（DEF-353，PRD §6.2.1）：訂房與訂單同一張結算單、同週期、同抽成一併結算。
+        // 可結算條件（COMPLETED，或 CANCELLED+refundStatus=NONE+存在成功付款）已在查詢層判斷，
+        // 此處的 filterSettleableBookings 只是與 calculator 同一份規則的防線（理由同訂單）。
+        List<Booking> unsettledBookings = bookingRepository.findUnsettledEligibleByTenantIdAndCreatedAtBefore(
+                tenantId,
+                BusinessTime.startOfDay(periodEnd.plusDays(1)),
+                Booking.BookingStatus.COMPLETED,
+                Booking.BookingStatus.CANCELLED,
+                Booking.RefundStatus.NONE,
+                Payment.PaymentStatus.SUCCESS,
+                Payment.PaymentStatus.PARTIALLY_REFUNDED);
+        List<Booking> completedBookings = calculator.filterSettleableBookings(unsettledBookings);
+
         // 計算結算金額（Sprint 80 AI-2416：抽成比例改用租戶自訂 commissionRate，取代先前硬編碼 10%）
-        BigDecimal totalGmv = calculator.calculateTotalGmv(completedOrders);
+        BigDecimal orderGmv = calculator.calculateTotalGmv(completedOrders);
+        BigDecimal bookingGmv = calculator.calculateTotalBookingGmv(completedBookings);
+        BigDecimal totalGmv = orderGmv.add(bookingGmv);
         BigDecimal commissionRate = BigDecimal.valueOf(tenant.getCommissionRate());
         BigDecimal commissionAmount = calculator.calculateCommission(totalGmv, commissionRate);
         // Sprint 86：真正扣除已結算訂單的部分退款金額（PRD §6.2.1）
         Map<UUID, BigDecimal> refundedAmountByOrderId = buildRefundedAmountMap(completedOrders);
-        BigDecimal totalRefunds = calculator.calculateTotalRefunds(completedOrders, refundedAmountByOrderId);
+        BigDecimal orderRefunds = calculator.calculateTotalRefunds(completedOrders, refundedAmountByOrderId);
+        // Sprint 247：訂房版退款（目前恆為 0，見 SettlementCalculator#calculateTotalBookingRefunds 的說明）
+        Map<UUID, BigDecimal> refundedAmountByBookingId = buildRefundedAmountMapForBookings(completedBookings);
+        BigDecimal bookingRefunds = calculator.calculateTotalBookingRefunds(completedBookings, refundedAmountByBookingId);
+        BigDecimal totalRefunds = orderRefunds.add(bookingRefunds);
         BigDecimal netAmount = calculator.calculateNetSettlementAmount(totalGmv, commissionAmount, totalRefunds);
 
         // Sprint 86：折入前期已產生、尚未套用的跨週期退款調整單（PRD §6.2.1）
@@ -154,6 +176,7 @@ public class SettlementGenerator {
                 .periodStart(periodStart)
                 .periodEnd(periodEnd)
                 .totalOrders(completedOrders.size())
+                .totalBookings(completedBookings.size())
                 .totalGmv(totalGmv)
                 .totalRefunds(totalRefunds)
                 .commissionAmount(commissionAmount)
@@ -174,6 +197,18 @@ public class SettlementGenerator {
             if (claimed != orderIds.size()) {
                 throw new IllegalStateException("Settlement claimed " + claimed + " of " + orderIds.size()
                         + " orders for tenant " + tenantId + " (concurrent settlement?), rolling back statement "
+                        + statement.getStatementNumber());
+            }
+        }
+
+        // Sprint 247（DEF-353）：訂房的原子認領，與訂單同一套「認領數不足就拋例外回滾整張結算單」防護
+        // ——兩個認領在同一交易內，任一邊回滾都會讓另一邊已標記的 settled_statement_id 一併復原。
+        if (!completedBookings.isEmpty()) {
+            List<UUID> bookingIds = completedBookings.stream().map(Booking::getId).toList();
+            int claimedBookings = bookingRepository.markSettled(bookingIds, statement.getId());
+            if (claimedBookings != bookingIds.size()) {
+                throw new IllegalStateException("Settlement claimed " + claimedBookings + " of " + bookingIds.size()
+                        + " bookings for tenant " + tenantId + " (concurrent settlement?), rolling back statement "
                         + statement.getStatementNumber());
             }
         }
@@ -207,6 +242,23 @@ public class SettlementGenerator {
                     .ifPresent(amount -> refundedAmountByOrderId.put(order.getId(), amount));
         }
         return refundedAmountByOrderId;
+    }
+
+    /**
+     * 依訂房 ID 查詢對應 {@code Payment.refundedAmount}，建立退款金額對照表（Sprint 247，DEF-353；
+     * 比照 {@link #buildRefundedAmountMap}）。可結算訂房目前恆為 {@code refundStatus=NONE}（無退款），
+     * 故此 map 現況應恆為空；保留與訂單對稱的路徑，理由見 {@code SettlementCalculator#calculateTotalBookingRefunds}。
+     */
+    private Map<UUID, BigDecimal> buildRefundedAmountMapForBookings(List<Booking> bookings) {
+        Map<UUID, BigDecimal> refundedAmountByBookingId = new HashMap<>();
+        for (Booking booking : bookings) {
+            paymentRepository.findEffectiveByBookingId(booking.getId())
+                    .map(Payment::getRefundedAmount)
+                    .filter(java.util.Objects::nonNull)
+                    .filter(amount -> amount.compareTo(BigDecimal.ZERO) > 0)
+                    .ifPresent(amount -> refundedAmountByBookingId.put(booking.getId(), amount));
+        }
+        return refundedAmountByBookingId;
     }
 
     /**

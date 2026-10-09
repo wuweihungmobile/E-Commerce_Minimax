@@ -1,4 +1,4 @@
-# E-Commerce System — 系統需求文檔 (SRD) v1.5
+# E-Commerce System — 系統需求文檔 (SRD) v1.6
 
 > **文檔類型**: SRD (System Requirements Document)
 > **版本**: v1.3（v1.0 → v1.1：Sprint 203 文件一致性檢查；v1.1 → v1.2：Sprint 204 新增 §5.5；v1.2 → v1.3：Sprint 206 §5.4.1 連接器層錯誤，見 §9 修訂歷史）
@@ -594,7 +594,16 @@ CREATED ──付款成功──▶ PAID ──店家確認──▶ CONFIRMED �
 | `CHECKED_IN` | `CHECKED_OUT` | 店家標記退房（`POST /v2/dashboard/bookings/{bookingId}/check-out`） | 已實作（Sprint 245） |
 | `CHECKED_OUT` | `COMPLETED` | 退房後自動完成，與退房在同一交易內；不需店家再操作 | 已實作（Sprint 245） |
 
-完成不觸發結算：`core/settlement` 目前不讀取訂房（沒有任何 `Booking` 參照）。日曆在退房後不釋放，已住的晚數維持 `BOOKED`。
+**訂房納入結算（Sprint 247，DEF-353；PRD §6.2.1）**：`SettlementGenerator` 每週一結算時與訂單彙總進同一張結算單
+（同週期、同抽成）。可結算條件：`status = COMPLETED`（退房完成），或 `status = CANCELLED` 且
+`refund_status = NONE` 且存在一筆 `SUCCESS`／`PARTIALLY_REFUNDED` 付款。後者是刻意的區分——
+`refund_status = NONE` 同時代表「從未收款」（逾時取消、買家在 `CREATED` 自行取消）與「已收款、依政策不退款」
+（Q14 入住前 24 小時內取消、no-show），只有存在成功付款才視為商家收益；從未收款的取消一律不納入。
+退款（Q14 全額退款、DEF-354 管理員人工退款）比照訂單走 `SettlementAdjustmentService.handleBookingRefund`
+的跨結算週期調整機制。完成或取消本身不同步觸發結算，由排程以「尚未結算、已符合可結算狀態」掃到
+（`bookings.settled_statement_id`，同 `orders.settled_statement_id` 的「恰好結算一次」設計）。
+
+日曆在退房後不釋放，已住的晚數維持 `BOOKED`。
 
 取消與退款規則（PRD Q14：入住前 24 小時以上全額、不足 24 小時不退；商家、管理員與系統取消全額）見 [API_M06_Booking.md](./API_M06_Booking.md)。
 
@@ -688,6 +697,7 @@ CREATED ──付款成功──▶ PAID ──店家確認──▶ CONFIRMED �
 | v1.3 | 2026-09-27 | Claude Code（Sprint 206） | §5.4.1：Tomcat 連接器層的拒絕改回 JSON 封包＋`X-Request-ID`＋安全標頭（DEF-283） |
 | v1.4 | 2026-10-03 | Claude Code（Sprint 244） | 文件對齊（3/3）：§5.1 Token 效期（Access 15 分鐘、Refresh 預設 7 天）改為實作現況，並註明無 Cookie、前端存 `localStorage`、Payload 為實際 claims；§5.5 寄信通道補 `SmtpEmailSender`（Sprint 209）與其未實測、同步寄送的限制（DEF-347）；§6.3.1 訂單狀態圖依 `OrderStateMachine` 重繪（移除 `CREATED(=PAID)` 與 `DELIVERED→REFUNDING`）；新增 §6.3.4 訂房狀態（`CONFIRMED` 以後未實作，DEF-345） |
 | v1.5 | 2026-10-04 | Claude Code（Sprint 245） | §6.3.4 訂房狀態依實作更新：入住與退房已實作（`PAID → CHECKED_IN → CHECKED_OUT → COMPLETED`，退房後同一交易自動完成），仍不產生 `CONFIRMED`（DEF-345 拍板）；完成不觸發結算。標題版本號同步為 v1.5（先前標題停在 v1.3，與 v1.4 修訂紀錄不一致） |
+| v1.6 | 2026-10-09 | Claude Code（Sprint 247） | §6.3.4 訂房納入結算（DEF-353，PRD §6.2.1）：`SettlementGenerator` 將訂房與訂單彙總進同一張結算單；可結算條件（COMPLETED，或 CANCELLED+refundStatus=NONE+存在成功付款）取代前版「完成不觸發結算」的敘述；退款比照訂單走跨結算週期調整機制 |
 
 ---
 

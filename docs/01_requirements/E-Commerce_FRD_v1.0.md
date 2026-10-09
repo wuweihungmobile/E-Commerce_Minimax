@@ -1,7 +1,7 @@
-# E-Commerce System — 功能需求文檔 (FRD) v1.0
+# E-Commerce System — 功能需求文檔 (FRD) v1.6
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.5
+> **版本**: v1.6
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -12,6 +12,8 @@
 > **⚠️ 修訂註記（Sprint 244，2026-10-03，DEF-322）**：新增 **§6A M06 預訂系統**、**§6B M07 金流與結算**、**§6C M09 訊息通知中心** 三章，依程式碼現況撰寫，與 PRD 的差異逐章列在「與 PRD 的差異」。既有章節（§1～§6、§7～§8）**內文未改寫**：其中的 `CREATED(=PAID)`、Phase 1 Payment Mock、`/api/v2/dashboard/orders` 等敘述與實作不符，以 [SRD_System_Architecture.md](../02_architecture/SRD_System_Architecture.md) §6.3、[API_M05_Order.md](../02_architecture/api/API_M05_Order.md) 與 [API_M06_Booking.md](../02_architecture/API_M06_Booking.md) 為準。
 >
 > **⚠️ 修訂註記（Sprint 245，2026-10-04，DEF-345）**：§6A M06 的入住與退房已實作（`POST /v2/dashboard/bookings/{bookingId}/check-in`、`…/check-out`）。狀態依 PRD Phase 1 為 `PAID → CHECKED_IN → CHECKED_OUT → COMPLETED`，**不產生 `CONFIRMED`**。§6A 的功能總覽、業務規則、API 概要與差異已依此更新；其餘章節內文未改寫。
+>
+> **⚠️ 修訂註記（Sprint 247，2026-10-09，DEF-353）**：§6B M07 的訂房納入結算已實作——`COMPLETED` 或 `CANCELLED`+`refundStatus=NONE`+存在成功付款的訂房，與訂單彙總進同一張週結算單；訂房退款比照訂單走跨結算週期調整。§6A／§6B 相關業務規則與差異已依此更新，並一併校正 Sprint 246 遺留的 DEF-352「未實作」舊敘述（DEF-352 已於 Sprint 246 完成）。其餘章節內文未改寫。
 
 ---
 
@@ -2608,12 +2610,12 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 | BR-M06-04 | 只有 `CREATED`／`PAID` 可取消（入住後不可取消）；取消以條件式更新搶占，併發取消只會成功一次，輸的一方回 `E-4007` | `BookingService` |
 | BR-M06-05 | 只有 `CREATED` 可更新；`PAID`、`CHECKED_IN` 回 `E-5010` | `BookingService` |
 | BR-M06-06 | 付款期限 `payment_due_at` = 建立時間 + 24 小時；`payment_due_at` 為 NULL 的歷史訂房永不逾時；已開始 Stripe 結帳者在 `stripe-session-hours` 內不取消 | `BookingTimeoutService` |
-| BR-M06-07 | 取消退款（PRD Q14）：買家本人取消且入住時刻前 ≥ 24 小時 → 全額；< 24 小時 → 不退；商家或管理員代為取消 → 全額；系統逾時取消 → 全額。入住時刻 = 入住日 + 房型入住時間（預設 15:00），以營運時區 Asia/Taipei 計算；**例外（DEF-352，未實作）**：已付款未入住、由系統取消（no-show）一律不退（PRD §17.4.6 Q15），實作時不得沿用「系統取消全額」的判定；店家漏標經核實者由管理員人工退款（DEF-354） | `BookingRefundPolicy` |
+| BR-M06-07 | 取消退款（PRD Q14）：買家本人取消且入住時刻前 ≥ 24 小時 → 全額；< 24 小時 → 不退；商家或管理員代為取消 → 全額；系統逾時取消（未付款逾期） → 全額。入住時刻 = 入住日 + 房型入住時間（預設 15:00），以營運時區 Asia/Taipei 計算；**例外（DEF-352，Sprint 246 已實作）**：已付款未入住、入住時刻後 24 小時仍未入住由系統自動取消（no-show）一律不退（PRD §17.4.6 Q15），不沿用「系統取消全額」的判定；排程由功能開關 `BOOKING_NO_SHOW_AUTO_CANCEL_ENABLED` 控制，**預設關閉**（待生產環境驗證店家入住按鈕可用後開啟）；店家漏標經核實者由管理員人工退款（DEF-354，`POST /v2/bookings/{bookingId}/refund`） | `BookingRefundPolicy`、`BookingNoShowService` |
 | BR-M06-08 | 店鋪非 ACTIVE 時不能訂房、不能付款（`E-2010`）；取消、退款與 Stripe 入帳不擋 | `PaymentStoreGuard`（Sprint 239／242） |
 | BR-M06-09 | 訂房的 `tenant_id` 是房源所屬店鋪，不是買家的租戶（Sprint 236） | `BookingService` |
 | BR-M06-10 | 付款入帳以條件式更新搶占 `CREATED → PAID`，併發付款只會成功一次 | `PaymentStateService` |
 | BR-M06-11 | 入住：只能從 `PAID` 轉 `CHECKED_IN`；營運時區的今天必須 ≥ 入住日（入住日還沒到回 `E-5010`，本輪假設）；擁有權為管理員與同店鋪商家，買家本人不算（`E-1007`）；條件式更新搶占，併發入住只會成功一次 | `BookingService.checkIn`（Sprint 245） |
-| BR-M06-12 | 退房：只能從 `CHECKED_IN` 轉 `CHECKED_OUT`，同一交易內自動轉 `COMPLETED`；完成不觸發結算（結算模組不讀訂房）；日曆不釋放 | `BookingService.checkOut`（Sprint 245） |
+| BR-M06-12 | 退房：只能從 `CHECKED_IN` 轉 `CHECKED_OUT`，同一交易內自動轉 `COMPLETED`；日曆不釋放。`COMPLETED` 的訂房會在下一次週結算被納入商家收益（DEF-353，見 BR-M07-12） | `BookingService.checkOut`（Sprint 245） |
 
 ### 6A.6 API 規格概要
 
@@ -2643,7 +2645,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 2. PRD 的訂房狀態流程（`CREATED(=PAID) → CHECKED_IN → CHECKED_OUT → COMPLETED`，Phase 1 的 `CONFIRMED` 等效於 PAID）：Sprint 245 依此實作入住與退房（DEF-345），不產生 `CONFIRMED`。PRD 的「`CHECKED_IN` 前置抵達後自動確認」未實作為自動流程，改由店家標記入住；入住日限制與退房後自動完成的時點是本輪假設（見 API_M06 §4.12～4.13）。
 3. PRD §9.7 的 `GET /api/v2/bookings/:id/state-log`：未實作（DEF-345）。
 4. PRD US-001（預訂成功即時通知）：未實作（DEF-318）。
-5. PRD §15.2.5 與 §17.4.6 Q15 的未入住取消（no-show）：未實作（DEF-352）。現況系統取消一律全額，與 Q15 衝突，DEF-352 上線前必須區分。
+5. PRD §15.2.5 與 §17.4.6 Q15 的未入住取消（no-show）：已實作（DEF-352，Sprint 246；見 BR-M06-07），排程預設關閉待生產驗證。
 
 ---
 
@@ -2666,7 +2668,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 | 退款（管理員） | ✅ | `POST /v2/orders/{orderId}/refund`，支援部分退款（Sprint 56）；買家與店家回 403（Sprint 243 實測） |
 | 自動退款排程 | ✅ | `RefundProcessingService`，處理 `REFUNDING` 訂單，預設每 60 秒掃描，失敗指數退避 |
 | Stripe Connect 帳戶與撥款 | ⚠️ | 帳戶狀態查詢與撥款重試已實作（`/v2/transfers`、`/v2/admin/transfers/{statementId}/retry`）；未實測 |
-| 每週結算單 | ✅ | `SettlementGenerator`，每週一 00:00（營運時區）生成 |
+| 每週結算單 | ✅ | `SettlementGenerator`，每週一 00:00（營運時區）生成；訂單與訂房彙總進同一張（DEF-353，Sprint 247） |
 | 結算單審核與沖正 | ✅ | 商家提交、管理員核准或駁回、沖正候選查詢、發起與確認 |
 | LINE Pay | ❌ stub | `LinePayPaymentGateway` 不呼叫 LINE Pay API；`POST /v2/payments/webhook/linepay` 只回 2xx（DEF-349） |
 | Saga 分散式交易 | ❌ | PRD 與 SRD 皆列為 Phase 2 |
@@ -2704,6 +2706,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 | BR-M07-09 | 每週一 00:00（營運時區）生成結算單 | `SettlementGenerator` |
 | BR-M07-10 | 結算單的流轉細節以 `core/settlement/` 的程式為準，目前沒有獨立的狀態圖（見 §6B.7） | `core/settlement/` |
 | BR-M07-11 | LINE Pay 閘道為模擬實作：`confirmPayment` 無條件回成功。舊版端點可在 Mock 模式把 `paymentMethod` 標為 `LINE_PAY`，這只是標籤（DEF-349），真實金流上線時不得依賴 | `LinePayPaymentGateway` |
+| BR-M07-12 | 訂房納入結算（DEF-353，Sprint 247；PRD §6.2.1）：可結算條件為 `status=COMPLETED`，或 `status=CANCELLED` 且 `refundStatus=NONE` 且存在一筆成功付款（區分「從未收款」與「已收款、依政策不退款」，`refundStatus=NONE` 本身無法區分兩者）；訂房退款（Q14 全額退款、DEF-354 人工退款）比照訂單走跨結算週期調整（`SettlementAdjustmentService.handleBookingRefund`）；開放訂房真實 Stripe 收款前必須完成（PRD §6.2.1 上線前提） | `SettlementGenerator`、`SettlementCalculator`、`SettlementAdjustmentService` |
 
 ### 6B.6 API 規格概要
 
@@ -2724,7 +2727,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 4. PRD 的 `X-Mock-Fail` 標頭：未實作，改以 `…/pay/fail` 端點取代。
 5. 結算單的狀態圖與撥款細節尚未文件化；M07 的 API 規格文件待建立（§6B.6）。
 6. 真實 Stripe 與 LINE Pay 皆未對真實服務驗證。
-7. PRD §6.2.1 的結算對象為訂單，M05 將 BOOKING 列為訂單類型；現況 `core/settlement` 不讀 `Booking`，訂房收益與退款不進結算（DEF-353）。
+7. PRD §6.2.1 的結算對象為訂單，M05 將 BOOKING 列為訂單類型：已實作（DEF-353，Sprint 247；見 BR-M07-12），訂房與訂單彙總進同一張結算單。
 
 ---
 
@@ -4133,6 +4136,7 @@ tenant_feature_toggles
 | v1.3 | 2026-10-03 | **文件對齊（Sprint 244）**：新增 §6A M06 預訂系統、§6B M07 金流與結算、§6C M09 訊息通知中心三章（依實作現況，附與 PRD 的差異）；頂部新增修訂註記；既有章節內文未改寫（見頂部註記） | Claude Code（Sprint 244） |
 | v1.4 | 2026-10-04 | **Sprint 245（DEF-345）**：§6A M06 依實作更新入住與退房（`PAID → CHECKED_IN → CHECKED_OUT → COMPLETED`，不產生 `CONFIRMED`）：功能總覽、BR-M06-04／05、新增 BR-M06-11／12、API 概要、與 PRD 的差異第 2 點；頂部新增修訂註記；檔頭版本號同步為 v1.4（先前檔頭停在 v1.2）。既有章節內文未改寫 | Claude Code（Sprint 245） |
 | v1.5 | 2026-10-04 | **收尾決策（DEF-350／352／353）**：BR-M06-07 註記未入住取消的例外（PRD Q15）；§6A.7 增列第 5 點（未入住取消未實作、與 Q15 衝突）；§6B.7 增列第 7 點（訂房不進結算）；檔頭版本號同步為 v1.5。既有章節內文未改寫 | Claude Code（Sprint 245 收尾決策） |
+| v1.6 | 2026-10-09 | **Sprint 247（DEF-353）訂房納入結算**：BR-M06-12、§6B.2「每週結算單」、§6B.7 第 7 點改為已實作；新增 BR-M07-12（可結算條件、跨結算週期退款調整）。**順手修正 Sprint 246 遺留的文件漂移**：BR-M06-07 與 §6A.7 第 5 點仍寫 DEF-352「未實作」，但 DEF-352 已於 Sprint 246 完成（程式碼存在、排程預設關閉待生產驗證），兩處改為反映實作現況。檔頭版本號同步為 v1.6（v1.5 的「已同步為 v1.5」記載與實際檔頭 v1.0 不符，本次一併校正） | Claude Code（Sprint 247） |
 
 ---
 

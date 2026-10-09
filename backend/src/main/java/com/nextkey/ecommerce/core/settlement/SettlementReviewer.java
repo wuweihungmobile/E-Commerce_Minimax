@@ -14,6 +14,7 @@ import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStateme
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementResponse;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement.SettlementStatus;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository;
@@ -51,6 +52,7 @@ public class SettlementReviewer {
     private final UserRepository userRepository;
     private final AuditService auditService;
     private final OrderRepository orderRepository;
+    private final BookingRepository bookingRepository;
     private final SettlementAdjustmentRepository adjustmentRepository;
 
     /**
@@ -145,9 +147,11 @@ public class SettlementReviewer {
         // 否則訂單永遠掛在一張死掉的結算單上（又是「永遠不被結算」），調整單（賣家該被扣的退款）也隨之消失。
         // 刻意不釋放 FAILED（retryFailedTransfer 可把它改回 APPROVED 重試撥款，釋放會雙重撥款）與 REVERSED（會計沖銷）。
         int releasedOrders = orderRepository.releaseOrdersOfStatement(statementId);
+        // Sprint 247（DEF-353）：訂房與訂單同一張結算單，駁回時必須一併釋放，否則訂房會永遠掛在這張死掉的結算單上
+        int releasedBookings = bookingRepository.releaseBookingsOfStatement(statementId);
         int releasedAdjustments = adjustmentRepository.releaseAppliedTo(statementId);
-        log.info("Released settlement claims on rejection: statementId={}, orders={}, adjustments={}",
-                statementId, releasedOrders, releasedAdjustments);
+        log.info("Released settlement claims on rejection: statementId={}, orders={}, bookings={}, adjustments={}",
+                statementId, releasedOrders, releasedBookings, releasedAdjustments);
 
         return mapper.toStatementResponse(statement);
     }

@@ -42,8 +42,13 @@ public class SettlementAdjustment {
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
 
-    @Column(name = "order_id", nullable = false)
+    /** 訂單 ID；與 {@link #bookingId} 互斥（比照 {@code Payment} 的 orderId/bookingId 慣例，無 DB CHECK，由應用層保證）。 */
+    @Column(name = "order_id")
     private UUID orderId;
+
+    /** 訂房 ID（Sprint 247，DEF-353）；與 {@link #orderId} 互斥。 */
+    @Column(name = "booking_id")
+    private UUID bookingId;
 
     @Column(name = "original_statement_id", nullable = false)
     private UUID originalStatementId;

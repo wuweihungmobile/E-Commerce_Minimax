@@ -58,6 +58,7 @@ public class SettlementService {
         private LocalDate periodStart;
         private LocalDate periodEnd;
         private Integer totalOrders;
+        private Integer totalBookings;
         private BigDecimal totalGmv;
         private BigDecimal totalRefunds;
         private BigDecimal commissionAmount;

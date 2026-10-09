@@ -26,6 +26,7 @@ import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStateme
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
@@ -49,6 +50,7 @@ class SettlementGeneratorManualTriggerTest {
     @Mock private SettlementStatementRepository settlementRepository;
     @Mock private TenantRepository tenantRepository;
     @Mock private OrderRepository orderRepository;
+    @Mock private BookingRepository bookingRepository;
     @Mock private PaymentRepository paymentRepository;
     @Mock private SettlementAdjustmentRepository adjustmentRepository;
     @Mock private SettlementMapper mapper;
@@ -61,7 +63,7 @@ class SettlementGeneratorManualTriggerTest {
     @BeforeEach
     void setUp() {
         generator = new SettlementGenerator(settlementRepository, tenantRepository, orderRepository,
-                paymentRepository, adjustmentRepository, new SettlementCalculator(), mapper);
+                bookingRepository, paymentRepository, adjustmentRepository, new SettlementCalculator(), mapper);
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(
                 Tenant.builder().id(TENANT_ID).status(Tenant.TenantStatus.ACTIVE).name("t").commissionRate(0.05).build()));
         when(adjustmentRepository.findByTenantIdAndStatus(any(), any())).thenReturn(List.of());

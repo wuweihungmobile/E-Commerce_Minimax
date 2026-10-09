@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
@@ -17,16 +18,17 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 跨結算週期退款處理（PRD §6.2.1，Sprint 86）
+ * 跨結算週期退款處理（PRD §6.2.1，Sprint 86；Sprint 247 DEF-353 擴及訂房）
  *
- * <p>由 {@code PaymentStateService.refundOrderPayment} 退款成功後呼叫。結算單以「訂單被哪張結算單結算」
- * （{@code orders.settled_statement_id}）定位；依該結算單目前狀態決定處理方式：
+ * <p>由 {@code PaymentStateService.refundOrderPayment}／{@code refundBookingPaymentAsSystem}／
+ * {@code refundBookingPaymentManually} 退款成功後呼叫。結算單以「訂單／訂房被哪張結算單結算」
+ * （{@code orders.settled_statement_id}／{@code bookings.settled_statement_id}）定位；依該結算單目前狀態決定處理方式：
  * <ul>
  *   <li>{@code PENDING}/{@code PENDING_REVIEW}（尚未核准撥款）：直接對該結算單做 delta 更新</li>
  *   <li>{@code APPROVED}/{@code PAID}/{@code FAILED}（已核准、已撥款，或撥款失敗待重試——款項將撥/已撥）：
  *       產生 {@code adjustment_statements}，於下一結算週期由 {@link SettlementGenerator} 一併折入</li>
- *   <li>{@code REJECTED}/{@code REVERSAL_PENDING}/{@code REVERSED}，或訂單尚未被任何結算單結算：不做事
- *       （被駁回結算單的訂單已釋放、之後重新結算時由 {@code Payment.refundedAmount} 帶入退款）</li>
+ *   <li>{@code REJECTED}/{@code REVERSAL_PENDING}/{@code REVERSED}，或訂單/訂房尚未被任何結算單結算：不做事
+ *       （被駁回結算單的訂單/訂房已釋放、之後重新結算時由 {@code Payment.refundedAmount} 帶入退款）</li>
  * </ul>
  */
 @Slf4j
@@ -37,6 +39,7 @@ public class SettlementAdjustmentService {
     private final SettlementStatementRepository settlementStatementRepository;
     private final SettlementAdjustmentRepository settlementAdjustmentRepository;
     private final OrderRepository orderRepository;
+    private final BookingRepository bookingRepository;
 
     @Transactional
     public void handleOrderRefund(final UUID tenantId, final UUID orderId, final BigDecimal refundAmount) {
@@ -100,5 +103,50 @@ public class SettlementAdjustmentService {
         settlementAdjustmentRepository.save(adjustment);
         log.info("Created adjustment statement for refund on {} settlement statement: statementId={}, orderId={}, "
                 + "refundAmount={}", statement.getStatus(), statement.getId(), orderId, refundAmount);
+    }
+
+    /**
+     * 訂房版跨結算週期退款處理（Sprint 247，DEF-353）。由 {@code PaymentStateService.refundBookingPaymentAsSystem}
+     * （Q14／no-show 排程退款）與 {@code refundBookingPaymentManually}（DEF-354 管理員人工退款）呼叫，
+     * 邏輯與 {@link #handleOrderRefund} 對稱——見該方法與類別註解的狀態分流理由。
+     */
+    @Transactional
+    public void handleBookingRefund(final UUID tenantId, final UUID bookingId, final BigDecimal refundAmount) {
+        if (refundAmount == null || refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        Optional<SettlementStatement> statementOpt = bookingRepository.findSettledStatementId(bookingId)
+                .flatMap(settlementStatementRepository::findById)
+                .filter(s -> tenantId.equals(s.getTenantId()));
+
+        if (statementOpt.isEmpty()) {
+            log.debug("Booking not settled yet, refund will be captured when it is settled: "
+                    + "tenantId={}, bookingId={}", tenantId, bookingId);
+            return;
+        }
+
+        SettlementStatement statement = statementOpt.get();
+        switch (statement.getStatus()) {
+            case PENDING, PENDING_REVIEW -> applyDirectDeduction(statement, refundAmount);
+            case APPROVED, PAID, FAILED -> createBookingAdjustmentStatement(tenantId, bookingId, statement, refundAmount);
+            default -> log.debug("Settlement statement in terminal status {} needs no refund adjustment: "
+                    + "statementId={}, bookingId={}", statement.getStatus(), statement.getId(), bookingId);
+        }
+    }
+
+    private void createBookingAdjustmentStatement(final UUID tenantId, final UUID bookingId,
+            final SettlementStatement statement, final BigDecimal refundAmount) {
+        SettlementAdjustment adjustment = SettlementAdjustment.builder()
+                .tenantId(tenantId)
+                .bookingId(bookingId)
+                .originalStatementId(statement.getId())
+                .adjustmentType("REFUND_DEDUCTION")
+                .amount(refundAmount.negate())
+                .status(SettlementAdjustment.AdjustmentStatus.PENDING)
+                .build();
+        settlementAdjustmentRepository.save(adjustment);
+        log.info("Created adjustment statement for refund on {} settlement statement: statementId={}, bookingId={}, "
+                + "refundAmount={}", statement.getStatus(), statement.getId(), bookingId, refundAmount);
     }
 }

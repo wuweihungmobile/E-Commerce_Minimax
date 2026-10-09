@@ -1,7 +1,7 @@
 # API 規格文件 - M06 預訂系統 / API Specification - M06 Booking System
 
 > **文件編號**: API-M06
-> **文件版本**: v2.2（Sprint 246 新增狀態日誌、店家後台按鈕與人工退款；v2.1 為 Sprint 245 新增入住與退房；v2.0 為 Sprint 243 依實作改寫）
+> **文件版本**: v2.3（Sprint 247 訂房納入結算；v2.2 為 Sprint 246 新增狀態日誌、店家後台按鈕與人工退款；v2.1 為 Sprint 245 新增入住與退房；v2.0 為 Sprint 243 依實作改寫）
 > **建立日期**: 2026-04-28（v1.0，Sprint 4）
 > **最後更新**: 2026-10-09
 > **負責人**: SD (Marcus)
@@ -10,6 +10,8 @@
 > **回應封包與錯誤碼**: 一律以 [API_Error_Codes.md](./API_Error_Codes.md) 為準（扁平封包 `success`／`code`／`message`／`data`／`errors`，**沒有**巢狀的 `error`，也**沒有**數字型的 `code`）
 > **取代關係**: 本文件**取代** v1.0 全文
 
+> **⚠️ 修訂註記（Sprint 247，2026-10-09，DEF-353）**：訂房納入結算（PRD §6.2.1）已實作：`COMPLETED`（退房完成）或 `CANCELLED`+`refundStatus=NONE`+存在成功付款（no-show 不退款、Q14 入住前 24 小時內取消）的訂房，會在下一次週結算與訂單彙總進同一張結算單；§4.13 退房與 §4.15 人工退款的說明已更新。從未收款的取消（逾時、買家在 CREATED 自行取消）不受影響，不納入結算。
+>
 > **⚠️ 修訂註記（Sprint 246，2026-10-09）**：DEF-350（店家入住／退房 UI 與狀態日誌）與 DEF-354（店家漏標入住的人工退款）已實作。新增 §4.14 `GET /v2/dashboard/bookings/{bookingId}/state-log`（PRD §9.7，查詢 §4.12～4.13 轉換留下的稽核時間線）；`/dashboard/bookings/[id]` 已加入住／退房按鈕與狀態歷程顯示。新增 §4.15 `POST /v2/bookings/{bookingId}/refund`（僅管理員；用於 no-show 自動取消中經核實為店家漏標入住的誤取消，見 DEF-352、PRD §17.4.6 Q15）。no-show 自動取消本身（DEF-352，`BookingNoShowService`）程式已完成，規則：入住時刻＋24 小時仍未入住 → 系統取消、不退款；上線開關 `app.booking-no-show.enabled` 預設關閉，待人工於生產環境驗證 DEF-350 後開啟（見 §7「已知限制」）。
 >
 > **⚠️ 修訂註記（Sprint 245，2026-10-04）**：入住與退房已實作（DEF-345，依 PRD Phase 1：付款即等同確認，不另設 `CONFIRMED`）。新增 §4.12 `POST /v2/dashboard/bookings/{bookingId}/check-in`（`PAID → CHECKED_IN`）與 §4.13 `POST …/check-out`（`CHECKED_IN → CHECKED_OUT`，同一交易內自動 `→ COMPLETED`）。`CONFIRMED` 仍不會產生；`PUT` 與取消對 `CONFIRMED` 的判斷是既有、不可達的程式碼，未刪除。`GET /v2/bookings/{id}/state-log`（PRD §9.7）與店家後台的入住按鈕仍未實作。
@@ -356,6 +358,8 @@
 
 **店鋪暫停營業時仍可取消**（Sprint 239／242）。
 
+**結算（Sprint 247，DEF-353）**：上表兩列 `refundStatus=NONE` 看起來相同，結算待遇不同——「買家本人取消已付款，不足 24 小時」已收款、不退款，視為商家收益納入結算；「未付款」與「逾時未付款自動取消」從未收款，不納入結算。區分依據是是否存在成功付款，不是 `refundStatus` 本身。
+
 ### 4.8 `POST /v2/bookings/{bookingId}/pay` — Mock 付款成功
 
 **權限**：`booking:create` 或 `booking:update`（Buyer 持有前者）；**本人或管理員**（店主不能代付）。訂房 `CREATED → PAID`，留一筆 `SUCCESS` 的 Mock 付款（金額＝訂房總額）。**只有未啟用 Stripe 時可用**。成功 `200`，`message` 是 `"Payment successful"`，`data` 是付款狀態（形狀見 [API_M05_Order.md](./api/API_M05_Order.md) §3.2 `OrderPaymentState`，`orderId`／`orderStatus` 欄位裝的是訂房 id 與狀態）。
@@ -399,7 +403,7 @@
 
 **條件**：訂房必須是 `CHECKED_IN`，否則回 `422 E-5010`。不限日期（提早退房、入住日之後才退房都可以）。
 
-**行為**：`CHECKED_IN → CHECKED_OUT`，接著在**同一交易內**自動 `CHECKED_OUT → COMPLETED`（「完成由退房後自動處理」，店家不需再操作）。回應的 `status` 是 `COMPLETED`。稽核兩筆：`BOOKING_CHECKED_OUT` 與 `BOOKING_COMPLETED`（後者的原因為 `auto-completed after check-out`）。日曆不釋放（已住的晚數維持 `BOOKED`）；結算模組目前不讀訂房，完成不觸發結算（SRD §6.3.4）。
+**行為**：`CHECKED_IN → CHECKED_OUT`，接著在**同一交易內**自動 `CHECKED_OUT → COMPLETED`（「完成由退房後自動處理」，店家不需再操作）。回應的 `status` 是 `COMPLETED`。稽核兩筆：`BOOKING_CHECKED_OUT` 與 `BOOKING_COMPLETED`（後者的原因為 `auto-completed after check-out`）。日曆不釋放（已住的晚數維持 `BOOKED`）；`COMPLETED` 的訂房會在下一次週結算被納入商家收益（Sprint 247，DEF-353，SRD §6.3.4）。
 
 **實測**：退房回 `200` 且 `status` 為 `COMPLETED`；再次退房回 `422 E-5010`；店員退房回 `403`。
 
@@ -441,7 +445,7 @@
 
 **請求參數**（query，皆選填）：`amount`（未指定＝退實付全額；超過可退餘額回 `400 E-6009`）、`reason`（寫入稽核）。
 
-**行為**：與付款層共用的退款核心一致（CAS 佔用退款額度、Stripe 付款會真的呼叫 Stripe）；成功後 `refundStatus` 直接 `NONE → COMPLETED`（管理員的即時動作，不經過 `PENDING` 中繼態）。稽核寫入 `BOOKING_MANUAL_REFUND`。
+**行為**：與付款層共用的退款核心一致（CAS 佔用退款額度、Stripe 付款會真的呼叫 Stripe）；成功後 `refundStatus` 直接 `NONE → COMPLETED`（管理員的即時動作，不經過 `PENDING` 中繼態）。稽核寫入 `BOOKING_MANUAL_REFUND`。**Sprint 247（DEF-353）起**：這類訂房很可能已被某次週結算認領為商家收益（no-show 的 `refundStatus=NONE` 正是結算的可結算條件之一），退款會比照訂單走跨結算週期調整（已結算→生成下期折入的調整單；未結算→不動，之後結算時自然反映 0 收益）。
 
 **回應**：`200`，`data` 形狀同 §4.8（`OrderPaymentState`，`orderId` 欄位裝的是訂房 id）。
 

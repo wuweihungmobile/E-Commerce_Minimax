@@ -302,7 +302,11 @@ public class PaymentStateService {
      * <p>與訂單版（{@link #refundOrderPaymentAsSystem}）同一個做法：先以 compare-and-swap 佔用付款的退款額度，再呼叫 Stripe
      * （付款方式為 STRIPE 一律經 Stripe；冪等鍵同為付款意圖＋退款前累計額＋本次金額），最後把訂房 {@code PENDING → COMPLETED}。
      * 失敗（Stripe 拒絕、找不到可退款的付款…）一律拋出並回滾整個交易，訂房維持 {@code PENDING}，由呼叫端決定何時重試。
-     * 訂房不參與結算（結算只算訂單），所以沒有結算調整。
+     *
+     * <p>Sprint 247（DEF-353）：訂房納入結算後，退款須比照訂單呼叫 {@code settlementAdjustmentService.handleBookingRefund}——
+     * 這類退款（Q14 全額退款）的訂房在取消當下 {@code refundStatus} 已是 {@code PENDING} 而非 {@code NONE}，依
+     * {@code BookingRepository.findUnsettledEligibleByTenantIdAndCreatedAtBefore} 的可結算條件，此前從未被任何結算單認領，
+     * 呼叫這裡實際上恆為 no-op（{@code findSettledStatementId} 找不到），但統一呼叫比「依時序推論何時可以跳過」更不容易出錯。
      */
     @Transactional
     public void refundBookingPaymentAsSystem(UUID bookingId, String reason) {
@@ -348,6 +352,14 @@ public class PaymentStateService {
         auditService.record("BOOKING_PAYMENT_REFUNDED", "PAYMENT", payment.getId(), booking.getTenantId(),
                 "refunded=" + previousRefundedAmount, "refunded=" + newRefundedAmount + ",status=" + newPaymentStatus,
                 reason, TenantContext.getCurrentUser());
+
+        // Sprint 247（DEF-353，PRD §6.2.1）：跨結算週期退款處理，失敗不應影響已完成的退款主流程（比照 refundOrderPaymentCore）
+        try {
+            settlementAdjustmentService.handleBookingRefund(booking.getTenantId(), bookingId, refundAmount);
+        } catch (RuntimeException e) {
+            log.error("Settlement adjustment failed after booking refund: bookingId={}, error={}", bookingId,
+                    e.getMessage(), e);
+        }
     }
 
     /**
@@ -407,6 +419,16 @@ public class PaymentStateService {
         auditService.record("BOOKING_MANUAL_REFUND", "PAYMENT", payment.getId(), booking.getTenantId(),
                 "refundStatus=NONE", "refundStatus=COMPLETED,amount=" + refundAmount, reason,
                 TenantContext.getCurrentUser());
+
+        // Sprint 247（DEF-353，PRD §6.2.1）：這類訂房（no-show，refundStatus 原為 NONE）很可能已被某次週結算
+        // 認領為商家收益（見 BookingRepository 的可結算條件），管理員人工退款後必須比照訂單退款做跨期調整，
+        // 否則已撥給商家的款項裡會含一筆事後被全額退還的訂房金額，形成真實的錯帳。失敗不應影響已完成的退款主流程。
+        try {
+            settlementAdjustmentService.handleBookingRefund(booking.getTenantId(), bookingId, refundAmount);
+        } catch (RuntimeException e) {
+            log.error("Settlement adjustment failed after manual booking refund: bookingId={}, error={}", bookingId,
+                    e.getMessage(), e);
+        }
         return toBookingPaymentStateDto(booking, payment);
     }
 

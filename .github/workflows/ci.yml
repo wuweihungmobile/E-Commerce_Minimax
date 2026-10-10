@@ -169,10 +169,6 @@ jobs:
 
     env:
       SPRING_PROFILES_ACTIVE: integration-test
-      # 明確釘死（即使雲端 CI 不會像本機 act 載入 .env 蓋掉它）：integration-test profile 的
-      # scheduling.enabled: false 是刻意設計（DEF-305：背景任務會碰到測試資料/mock 的 Redis），
-      # 不應依賴只有 profile YAML 單獨生效，見 act-compat.yml 對應位置的完整說明。
-      APP_SCHEDULING_ENABLED: "false"
       SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/nextkeytest
       SPRING_DATASOURCE_USERNAME: koala
       SPRING_DATASOURCE_PASSWORD: koala5

@@ -82,13 +82,27 @@ Sprint 248（店鋪成員管理 UI）完成後，使用者指示依先前計畫�
 
 `BookingCancellationRefundIntegrationTest.java` 的通知斷言另外用 `notification_type` 過濾查詢，不受影響，未修改。
 
-## 6. `make validate-release` 兩次失敗與根因排查（DEF-357，誠實記錄排查過程）
+## 6. `make validate-release` 多次失敗與根因排查（DEF-357，誠實記錄排查過程，含一次錯誤修法與雲端 CI 才暴露的副作用）
 
-第一次執行 `make validate-release`，`Backend Integration Tests & Package` job 失敗：`NotificationPipelineRedisIntegrationTest.singleNotification_updatesPrecreatedRowInsteadOfInsertingAnother` 斷言「訊息確實進了 Redis」expected 1 but was 0。依 CLAUDE.md「CI 修復強制規則」不盲目猜測，先確認：本機純 JVM 的 `mvn clean verify`（同一份程式碼，不經 act）剛跑過是 811／813 全數通過，顯示問題與程式邏輯無關、只在 act 容器環境重現。重跑第二次 `make validate-release` 確認是否可重現——**結果惡化**：同一個類別的 3 個案例中有 2 個失敗（另一個斷言 mock 零互動），排除單純偶發 flake 的可能性，繼續往下查：
+第一次執行 `make validate-release`，`Backend Integration Tests & Package` job 失敗：`NotificationPipelineRedisIntegrationTest.singleNotification_updatesPrecreatedRowInsteadOfInsertingAnother` 斷言「訊息確實進了 Redis」expected 1 but was 0。依 CLAUDE.md「CI 修復強制規則」不盲目猜測，先確認：本機純 JVM 的 `mvn clean verify`（同一份程式碼，不經 act）剛跑過是全數通過，顯示問題與程式邏輯無關、只在 act 容器環境重現。重跑第二次 `make validate-release` 確認是否可重現——**結果惡化**：同一個類別的 3 個案例中有 2 個失敗，排除單純偶發 flake 的可能性，繼續往下查。
 
-- 失敗當下的日誌印出 `[app-scheduler-3] ... Processing notification: messageId=...`，`app-scheduler-*` 是 `SchedulingConfig` 的專屬執行緒池前綴——代表有一個**排程消費者執行緒**在背景搶先清空了這個測試手動管理（不經 Spring、直連真實 Redis）的佇列。
-- 逐一排除：`application-integration-test.yml` 確認 `scheduling.enabled: false`；全專案 `@SpringBootTest` 整合測試逐一確認皆有 `@ActiveProfiles("integration-test")`；唯一一處明確啟用排程的 `SchedulingConfigTest` 用的是 `ApplicationContextRunner`（每個測試方法獨立開關 context，不會洩漏進 Spring 的 TestContext 快取）。
-- **真正根因**：repo 根目錄的 `.env`（gitignored，本機 `make up` 開發用）設 `APP_SCHEDULING_ENABLED=true`；`act` 預設會把這個檔案當環境變數注入容器，而 `.github/workflows/act-compat.yml`／`ci.yml` 的 backend job 從未在 `env:` 明確覆寫這個變數——環境變數優先權高於 profile YAML，靜默蓋過 `integration-test` profile 原本要關閉排程的設計。真實雲端 GitHub Actions 不會自動載入 `.env`，所以這個問題**只在本機 act 模擬環境出現**。
-- **修復**：在兩個 workflow 檔案的 4 個相關 job（`act-compat.yml` 的 `backend-unit`／`backend-integration`、`ci.yml` 的對應 job）明確新增 `APP_SCHEDULING_ENABLED: "false"`。修復後單獨跑 `act -j backend-integration`（含其依賴的 `backend-unit`）驗證：兩個 job 皆成功，`NotificationPipelineRedisIntegrationTest` 0 失敗，整合測試 813 個 0 失敗。
+### 6.1 第一次修法（事後證實是錯的）
 
-與本輪 DEF-318 的通知／付款程式碼變更**確認無關**：失敗的測試檔案、`SchedulingConfig`、`NotificationConsumerService` 皆自 Sprint 219 起未被改動（`git log` 查證）；只是本輪為驗證 DEF-318 的改動而完整跑了兩次 `make validate-release`，才第一次把這個早已存在的環境缺陷實際觸發出來。已登記並已修復為 DEF-357，詳見 `DEFERRED_ITEMS_TRACKER.md`。
+- 失敗當下的日誌印出 `[app-scheduler-3] ... Processing notification: messageId=...`，`app-scheduler-*` 是 `SchedulingConfig` 的專屬執行緒池前綴——推論有一個**排程消費者執行緒**在背景搶先清空了這個測試手動管理（不經 Spring、直連真實 Redis）的佇列。
+- 逐一排除其他假設：`application-integration-test.yml` 確認 `scheduling.enabled: false`；全專案 `@SpringBootTest` 整合測試逐一確認皆有 `@ActiveProfiles("integration-test")`；唯一一處明確啟用排程的 `SchedulingConfigTest` 用的是 `ApplicationContextRunner`（當時推論每個測試方法獨立開關 context，不會洩漏）。
+- 鎖定「根因」：repo 根目錄的 `.env`（gitignored，本機 `make up` 開發用）設 `APP_SCHEDULING_ENABLED=true`；`act` 預設會把這個檔案當環境變數注入容器，而 workflow 從未在 `env:` 明確覆寫——環境變數優先權高於 profile YAML，蓋過 `integration-test` profile 原本要關閉排程的設計。
+- **修法**：在 `act-compat.yml`／`ci.yml` 的 4 個相關 job 明確新增 `APP_SCHEDULING_ENABLED: "false"`。單獨跑 `act -j backend-integration` 驗證：兩個 job 皆成功、`NotificationPipelineRedisIntegrationTest` 0 失敗，**當下誤判為修復成功**。
+
+### 6.2 這個修法其實沒用，而且弄壞了另一個測試（雲端 CI 才暴露）
+
+把這個修法當成已完成後，又跑了一次完整 `make validate-release` 做最終確認——**同一個測試又失敗了一次**（這次 3 個案例全部失敗，比第一次更嚴重）。這證明 `.env` 覆寫根本不是（唯一）根因：本機 act 很可能從一開始就是 `.env` 的 `APP_SCHEDULING_ENABLED=true` 贏過 workflow 裡的 `"false"` 覆寫（act 對 `.env` 與 workflow `env:` 的優先權，與一般直覺相反），所以這個「修法」在本機從未真正生效過，之前的「單獨驗證通過」只是巧合或樣本不足。
+
+此時改採**第二個修法**：讓 `NotificationPipelineRedisIntegrationTest` 改連 Redis 的獨立邏輯資料庫 1（見 §6.3），單獨驗證＋完整 `make validate-release` 皆 0 失敗後 push。
+
+**push 後雲端 GitHub Actions 的 `Backend Unit Tests` job 立刻失敗**：`SchedulingConfigTest.enabledByDefault` 與 `scheduledTasksActuallyRunOnDedicatedPool` 兩個案例斷言失敗——這兩個案例專門驗證「完全沒有設定 `app.scheduling.enabled` 時，應依 `matchIfMissing = true` 預設為啟用」。雲端 GitHub Actions 沒有 `.env` 自動載入，我在 `ci.yml` 加的 `APP_SCHEDULING_ENABLED: "false"` 乾淨生效、蓋住整個 job 的每一個測試——包含這兩個**故意**不設定此屬性、依賴「環境乾淨」才能驗證預設值的案例。**第一個修法不只沒有解決原本的問題，還在雲端引入一個新的真實回歸**。已於 §6.3 撤銷。
+
+### 6.3 真正且足夠的修法
+
+改讓 `NotificationPipelineRedisIntegrationTest` 自己連 Redis 的**邏輯資料庫 1**（`RedisStandaloneConfiguration.setDatabase(1)`）：全專案沒有任何地方指定 `spring.data.redis.database`，一律預設 database 0；本類別手動直連真實 Redis、用與生產相同的固定 key，刻意繞過 `IntegrationTestConfiguration` 的 Redis mock，因此任何同時存活、也連到 database 0 的元件（不論是不是排程、現在或未來）都可能與它競態。改到獨立的 database 1 後，與 database 0 的任何活動完全不共用鍵空間，不需要變動任何生產程式碼、不影響其他測試。單獨驗證 3 個案例 0 失敗；完整 `make validate-release` 0 失敗。`act-compat.yml`／`ci.yml` 的 `APP_SCHEDULING_ENABLED` 覆寫已全數撤銷還原（不需要、且被證實有害）。
+
+與本輪 DEF-318 的通知／付款程式碼變更**確認無關**：失敗的測試檔案、`SchedulingConfig`、`NotificationConsumerService` 皆自 Sprint 219 起未被改動（`git log` 查證）；只是本輪為驗證 DEF-318 的改動而反覆跑了 `make validate-release`，才把這個早已存在的測試隔離缺口實際觸發出來。已登記並已修復為 DEF-357，詳見 `DEFERRED_ITEMS_TRACKER.md`；雲端 CI 結果回填於 `RELEASE_TRACKER.md`。

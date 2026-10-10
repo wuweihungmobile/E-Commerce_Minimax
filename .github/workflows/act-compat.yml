@@ -81,13 +81,6 @@ jobs:
 
     env:
       SPRING_PROFILES_ACTIVE: integration-test
-      # act 預設會載入 repo 根目錄的 .env（本機開發用，APP_SCHEDULING_ENABLED=true），環境變數的
-      # property 優先權高於 application-integration-test.yml 的 scheduling.enabled: false，
-      # 靜默蓋過該 profile 原本要關閉排程的設計（DEF-305 註解：「背景任務會碰到測試資料與 mock 的
-      # Redis，讓結果不可預期」）。曾導致殘留的 @Scheduled 通知消費者執行緒搶先清空
-      # NotificationPipelineRedisIntegrationTest 手動管理的佇列，造成間歇性失敗。明確釘死為 false，
-      # 不依賴 profile YAML 單獨生效。
-      APP_SCHEDULING_ENABLED: "false"
       SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/nextkeytest
       SPRING_DATASOURCE_USERNAME: koala
       SPRING_DATASOURCE_PASSWORD: koala5
@@ -201,13 +194,6 @@ jobs:
 
     env:
       SPRING_PROFILES_ACTIVE: integration-test
-      # act 預設會載入 repo 根目錄的 .env（本機開發用，APP_SCHEDULING_ENABLED=true），環境變數的
-      # property 優先權高於 application-integration-test.yml 的 scheduling.enabled: false，
-      # 靜默蓋過該 profile 原本要關閉排程的設計（DEF-305 註解：「背景任務會碰到測試資料與 mock 的
-      # Redis，讓結果不可預期」）。曾導致殘留的 @Scheduled 通知消費者執行緒搶先清空
-      # NotificationPipelineRedisIntegrationTest 手動管理的佇列，造成間歇性失敗。明確釘死為 false，
-      # 不依賴 profile YAML 單獨生效。
-      APP_SCHEDULING_ENABLED: "false"
       SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/nextkeytest
       SPRING_DATASOURCE_USERNAME: koala
       SPRING_DATASOURCE_PASSWORD: koala5

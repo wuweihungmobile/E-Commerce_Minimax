@@ -21,6 +21,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.core.logistics.provider.LogisticsProviderFactory;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.domain.model.logistics.Logistics;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -55,6 +56,9 @@ class LogisticsServiceTenantAccessTest {
 
     @Mock
     private ProductInventoryService productInventoryService;
+
+    @Mock
+    private BuyerNotificationService buyerNotificationService;
 
     @InjectMocks
     private LogisticsService logisticsService;

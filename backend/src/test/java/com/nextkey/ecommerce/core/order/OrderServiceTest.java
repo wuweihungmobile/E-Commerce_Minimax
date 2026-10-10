@@ -40,6 +40,7 @@ import com.nextkey.ecommerce.api.dto.OrderDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.core.promo.PromoService;
 import com.nextkey.ecommerce.core.user.AddressService;
@@ -110,6 +111,7 @@ class OrderServiceTest {
     @Mock private PromoService promoService;
     @Mock private PromoCodeUsageRepository promoCodeUsageRepository;
     @Mock private AuditService auditService;
+    @Mock private BuyerNotificationService buyerNotificationService;
 
     @InjectMocks
     private OrderService orderService;
@@ -1262,6 +1264,8 @@ class OrderServiceTest {
         verify(promoService).releaseOrderSide(usage);
         // 未付款：不進退款
         verify(orderRepository, never()).save(any(Order.class));
+        // Sprint 250（DEF-318）：未付款取消，通知買家且不誤導以為會退款
+        verify(buyerNotificationService).notifyOrderCancelled(ORDER_ID, false);
     }
 
     @Test
@@ -1279,6 +1283,8 @@ class OrderServiceTest {
         assertThat(response.getStatus()).isEqualTo("REFUNDING");
         verify(productInventoryService).releaseOnCancellation(order, Order.OrderStatus.PAID);
         assertRefundPendingLogged();
+        // Sprint 250（DEF-318）：已付款取消，通知買家退款已進入處理
+        verify(buyerNotificationService).notifyOrderCancelled(ORDER_ID, true);
     }
 
     @Test
@@ -1307,6 +1313,8 @@ class OrderServiceTest {
 
         verify(productInventoryService).deductOnShipment(order);
         verify(productInventoryService, never()).releaseOnCancellation(any(), any());
+        // Sprint 250（DEF-318）
+        verify(buyerNotificationService).notifyOrderShipped(ORDER_ID);
     }
 
     @Test
@@ -1320,6 +1328,37 @@ class OrderServiceTest {
         orderService.updateOrderStatus(ORDER_ID, "CONFIRMED", "accepted");
 
         verifyNoInteractions(productInventoryService);
+        // Sprint 250（DEF-318）
+        verify(buyerNotificationService).notifyOrderConfirmed(ORDER_ID);
+    }
+
+    @Test
+    @DisplayName("Sprint 250（DEF-318）：PATCH 標記送達（SHIPPING→DELIVERED）→ 通知買家 ORDER_DELIVERED")
+    void updateOrderStatus_toDelivered_notifiesBuyer() {
+        asSameTenantSeller();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(orderOf(USER_ID, Order.OrderStatus.SHIPPING)));
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.SHIPPING, Order.OrderStatus.DELIVERED))
+                .thenReturn(1);
+
+        OrderDto.OrderResponse response = orderService.updateOrderStatus(ORDER_ID, "DELIVERED", "arrived");
+
+        assertThat(response.getStatus()).isEqualTo("DELIVERED");
+        verify(buyerNotificationService).notifyOrderDelivered(ORDER_ID);
+    }
+
+    @Test
+    @DisplayName("Sprint 250（DEF-318）：PATCH 標記完成（DELIVERED→COMPLETED）→ 通知買家完成與邀請評價")
+    void updateOrderStatus_toCompleted_notifiesBuyerAndRequestsReview() {
+        asSameTenantSeller();
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(orderOf(USER_ID, Order.OrderStatus.DELIVERED)));
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.DELIVERED, Order.OrderStatus.COMPLETED))
+                .thenReturn(1);
+
+        OrderDto.OrderResponse response = orderService.updateOrderStatus(ORDER_ID, "COMPLETED", "done");
+
+        assertThat(response.getStatus()).isEqualTo("COMPLETED");
+        verify(buyerNotificationService).notifyOrderCompleted(ORDER_ID);
+        verify(buyerNotificationService).notifyOrderReviewRequest(ORDER_ID);
     }
 
     // ========== cancelExpiredUnpaidOrder：未付款逾時取消（Sprint 219，DEF-302） ==========
@@ -1385,6 +1424,8 @@ class OrderServiceTest {
         verify(orderStateLogRepository, times(1)).save(any(OrderStateLog.class));
         // Sprint 88（AI-2422）起取消會釋放預扣；Sprint 218 改由流水帳決定釋放多少，並告知取消前狀態
         verify(productInventoryService).releaseOnCancellation(order, Order.OrderStatus.CREATED);
+        // Sprint 250（DEF-318）：未付款取消，通知買家且不誤導以為會退款
+        verify(buyerNotificationService).notifyOrderCancelled(ORDER_ID, false);
     }
 
     @Test
@@ -1405,6 +1446,8 @@ class OrderServiceTest {
         assertRefundPendingLogged();
         // Sprint 218（DEF-303 (6)）：付款不再扣帳，出貨前取消已付款訂單同樣釋放預留（原本斷言「不釋放」＝缺陷本身）
         verify(productInventoryService).releaseOnCancellation(order, Order.OrderStatus.PAID);
+        // Sprint 250（DEF-318）：已付款取消，通知買家退款已進入處理
+        verify(buyerNotificationService).notifyOrderCancelled(ORDER_ID, true);
     }
 
     @Test
@@ -1424,6 +1467,8 @@ class OrderServiceTest {
         assertThat(response.getStatus()).isEqualTo("REFUNDING");
         assertRefundPendingLogged();
         verify(productInventoryService).releaseOnCancellation(order, Order.OrderStatus.CONFIRMED);
+        // Sprint 250（DEF-318）：已付款取消，通知買家退款已進入處理
+        verify(buyerNotificationService).notifyOrderCancelled(ORDER_ID, true);
     }
 
     /**
@@ -1465,6 +1510,8 @@ class OrderServiceTest {
         OrderDto.OrderResponse response = orderService.cancelOrder(ORDER_ID, "admin cancels");
 
         assertThat(response.getStatus()).isEqualTo("CANCELLED");
+        // Sprint 250（DEF-318）
+        verify(buyerNotificationService).notifyOrderCancelled(ORDER_ID, false);
     }
 
     @Test

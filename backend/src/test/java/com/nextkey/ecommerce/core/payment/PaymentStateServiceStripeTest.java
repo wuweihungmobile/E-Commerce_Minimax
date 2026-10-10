@@ -201,6 +201,9 @@ class PaymentStateServiceStripeTest {
                 eq(Payment.PaymentStatus.SUCCESS), eq("pi_1"), any());
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.PAID);
         assertThat(state.getOrderStatus()).isEqualTo("PAID");
+        // Sprint 250（DEF-318）：與 webhook 共用同一核心（markOrderPaidByStripe），通知買家
+        verify(buyerNotificationService).notifyOrderPaid(ORDER_ID);
+        verify(buyerNotificationService).notifyPaymentSuccess(ORDER_ID);
     }
 
     @Test
@@ -217,6 +220,8 @@ class PaymentStateServiceStripeTest {
         service.confirmStripeCheckout(ORDER_ID, "cs_test_1");
 
         verify(paymentGatewayFactory, never()).retrieveCheckoutSession(any(), any());
+        verify(buyerNotificationService, never()).notifyOrderPaid(any());
+        verify(buyerNotificationService, never()).notifyPaymentSuccess(any());
     }
 
     private Order paidOrder() {

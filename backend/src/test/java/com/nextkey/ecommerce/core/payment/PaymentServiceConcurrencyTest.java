@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.core.payment;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -117,6 +118,31 @@ class PaymentServiceConcurrencyTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.E_6003);
+    }
+
+    @Test
+    @DisplayName("processOrderPayment: 成功付款 → 訂單轉 PAID，通知買家 ORDER_PAID 與 PAYMENT_SUCCESS（Sprint 250，DEF-318）")
+    void processOrderPayment_success_notifiesBuyer() {
+        Order order = Order.builder().id(orderId).userId(buyer).status(Order.OrderStatus.CREATED)
+                .totalAmount(BigDecimal.valueOf(1000)).currency("TWD").build();
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+        when(paymentRepository.existsByOrderIdAndStatus(orderId, Payment.PaymentStatus.SUCCESS)).thenReturn(false);
+        when(paymentRepository.saveAndFlush(any(Payment.class))).thenAnswer(invocation -> {
+            Payment saved = invocation.getArgument(0);
+            saved.setId(UUID.randomUUID());
+            return saved;
+        });
+        TenantContext.setCurrentUser(buyer);
+
+        PaymentDto.PaymentRequest request = PaymentDto.PaymentRequest.builder()
+                .orderId(orderId).paymentMethod(PaymentDto.PaymentMethod.MOCK).build();
+
+        paymentService.processPayment(request);
+
+        // 訂單狀態轉換委派給 OrderService.updateOrderStatus（mock），通知呼叫在其之後、不依賴其回傳值
+        org.mockito.Mockito.verify(orderService).updateOrderStatus(eq(orderId), eq("PAID"), any(), eq(true));
+        org.mockito.Mockito.verify(buyerNotificationService).notifyOrderPaid(orderId);
+        org.mockito.Mockito.verify(buyerNotificationService).notifyPaymentSuccess(orderId);
     }
 
     @Test

@@ -162,7 +162,10 @@ class OrderTimeoutIntegrationTest {
 
         assertThat(orderStatus(orderId)).isEqualTo("PAID");
         assertThat(reservedQty()).isEqualTo(QTY);
-        assertThat(notificationsOfBuyer()).as("已付款的訂單沒有被取消，不能對買家說「逾期未付款已取消」").isEmpty();
+        // Sprint 250（DEF-318）：付款時已收到 ORDER_PAID／PAYMENT_SUCCESS；重點是沒有「逾期未付款已取消」通知
+        assertThat(notificationsOfBuyer()).extracting(n -> n.get("notification_type"))
+                .as("已付款的訂單沒有被取消，不能對買家說「逾期未付款已取消」")
+                .containsExactlyInAnyOrder("ORDER_PAID", "PAYMENT_SUCCESS");
     }
 
     @Test

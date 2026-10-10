@@ -9,10 +9,13 @@ import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.nextkey.ecommerce.api.dto.LogisticsDto;
 import com.nextkey.ecommerce.core.logistics.provider.LogisticsProvider;
 import com.nextkey.ecommerce.core.logistics.provider.LogisticsProviderFactory;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.domain.model.logistics.Logistics;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -40,6 +43,24 @@ public class LogisticsService {
     private final OrderRepository orderRepository;
     private final LogisticsProviderFactory logisticsProviderFactory;
     private final ProductInventoryService productInventoryService;
+    private final BuyerNotificationService buyerNotificationService;
+
+    /**
+     * 在目前交易提交之後才通知買家；沒有作用中的交易時立即執行
+     * （比照 {@code OrderService}／{@code BookingService}／{@code PaymentStateService} 既有的 {@code notifyAfterCommit} 模式）。
+     */
+    private void notifyAfterCommit(final Runnable notification) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            notification.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                notification.run();
+            }
+        });
+    }
 
     // Mock tracking event time constants
     private static final long IN_TRANSIT_HOURS_AGO = 12;
@@ -89,6 +110,8 @@ public class LogisticsService {
         // Sprint 218（DEF-303 (6)）：出貨才扣庫存（PRD §6.7.3「訂單出貨 → OUTBOUND」），與上面的狀態轉換同一交易。
         // 付款不再扣帳，出貨前的取消因此一律只是釋放預留。
         productInventoryService.deductOnShipment(order);
+        // Sprint 250（DEF-318）：建立物流單是出貨最主要的真實路徑（另一條是 OrderService.updateOrderStatus 直接 PATCH）
+        notifyAfterCommit(() -> buyerNotificationService.notifyOrderShipped(order.getId()));
 
         // 透過 Provider 策略取得追蹤號
         LogisticsProvider provider = logisticsProviderFactory.getProvider(request.getLogisticsProvider().name());
@@ -227,6 +250,8 @@ public class LogisticsService {
                         order.getId(), order.getStatus(), Order.OrderStatus.DELIVERED);
                 if (updated > 0) {
                     log.info("Order status updated to DELIVERED: orderId={}", order.getId());
+                    // Sprint 250（DEF-318）：另一條真實路徑是 OrderService.updateOrderStatus 直接 PATCH
+                    notifyAfterCommit(() -> buyerNotificationService.notifyOrderDelivered(order.getId()));
                 } else {
                     log.warn("Order status not synced to DELIVERED (concurrently changed): orderId={}, currentStatus={}",
                             order.getId(), order.getStatus());

@@ -1047,6 +1047,8 @@ public class BookingService {
         moveStatus(booking, Booking.BookingStatus.CHECKED_IN, Booking.BookingStatus.CHECKED_OUT, null);
         moveStatus(booking, Booking.BookingStatus.CHECKED_OUT, Booking.BookingStatus.COMPLETED,
                 "auto-completed after check-out");
+        // Sprint 250（DEF-318）：使用者已確認邀請評價於完成當下立即發送，訂單與訂房都適用
+        notifyAfterCommit(() -> buyerNotificationService.notifyBookingReviewRequest(bookingId));
         log.info("Booking checked out and completed: id={}", bookingId);
         return buildBookingResponse(booking);
     }

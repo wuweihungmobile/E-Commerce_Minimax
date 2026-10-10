@@ -366,6 +366,9 @@ class PaymentStateServiceTest {
             // DEF-257：付款成功須寫入稽核紀錄
             verify(auditService).record(eq("ORDER_PAYMENT_MOCK_SUCCESS"), eq("PAYMENT"), any(),
                     eq(order.getTenantId()), eq("CREATED"), eq("PAID"), isNull(), eq(USER_ID));
+            // Sprint 250（DEF-318）：通知買家 ORDER_PAID 與 PAYMENT_SUCCESS（兩者刻意同時觸發）
+            verify(buyerNotificationService).notifyOrderPaid(ORDER_ID);
+            verify(buyerNotificationService).notifyPaymentSuccess(ORDER_ID);
         }
 
         // Sprint 218（DEF-303 (6)）：原本這裡有「扣帳失敗不影響付款成功」的案例。付款已不再動庫存（出貨才扣，
@@ -386,6 +389,8 @@ class PaymentStateServiceTest {
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(ErrorCode.E_5011);
             verify(paymentRepository, never()).save(any(Payment.class));
+            verify(buyerNotificationService, never()).notifyOrderPaid(any());
+            verify(buyerNotificationService, never()).notifyPaymentSuccess(any());
         }
     }
 
@@ -847,6 +852,9 @@ class PaymentStateServiceTest {
             verify(orderStateLogRepository).save(logCaptor.capture());
             assertThat(logCaptor.getValue().getToStatus()).isEqualTo("PAID");
             assertThat(logCaptor.getValue().getChangedBy()).isNull();
+            // Sprint 250（DEF-318）：webhook 成功路徑通知買家 ORDER_PAID 與 PAYMENT_SUCCESS
+            verify(buyerNotificationService).notifyOrderPaid(ORDER_ID);
+            verify(buyerNotificationService).notifyPaymentSuccess(ORDER_ID);
         }
 
         @Test
@@ -862,6 +870,8 @@ class PaymentStateServiceTest {
 
             assertThat(result).isTrue();
             verify(orderRepository, never()).findById(any());
+            verify(buyerNotificationService, never()).notifyOrderPaid(any());
+            verify(buyerNotificationService, never()).notifyPaymentSuccess(any());
         }
 
         @Test
@@ -911,6 +921,9 @@ class PaymentStateServiceTest {
             verify(auditService).record(eq("STRIPE_PAYMENT_ORDER_NOT_PAYABLE"), eq("PAYMENT"), any(), any(),
                     eq("CANCELLED"), eq("SUCCESS"), org.mockito.ArgumentMatchers.contains("refundQueued=true"));
             verify(orderRepository, never()).save(any());
+            // 錢收了但訂單不成立：不是「付款成功」的正常情況，不通知 ORDER_PAID／PAYMENT_SUCCESS
+            verify(buyerNotificationService, never()).notifyOrderPaid(any());
+            verify(buyerNotificationService, never()).notifyPaymentSuccess(any());
         }
 
         @Test

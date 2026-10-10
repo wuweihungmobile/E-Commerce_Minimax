@@ -22,6 +22,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import com.nextkey.ecommerce.api.dto.LogisticsDto;
 import com.nextkey.ecommerce.core.logistics.provider.LogisticsProvider;
 import com.nextkey.ecommerce.core.logistics.provider.LogisticsProviderFactory;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.logistics.Logistics;
@@ -56,6 +57,7 @@ class LogisticsServiceTest {
     @Mock private OrderRepository orderRepository;
     @Mock private LogisticsProviderFactory logisticsProviderFactory;
     @Mock private ProductInventoryService productInventoryService;
+    @Mock private BuyerNotificationService buyerNotificationService;
 
     @InjectMocks
     private LogisticsService logisticsService;
@@ -172,6 +174,8 @@ class LogisticsServiceTest {
         logisticsService.createLogistics(shipmentRequest());
 
         org.mockito.Mockito.verify(productInventoryService).deductOnShipment(order);
+        // Sprint 250（DEF-318）
+        org.mockito.Mockito.verify(buyerNotificationService).notifyOrderShipped(ORDER_ID);
     }
 
     @Test
@@ -187,6 +191,50 @@ class LogisticsServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_5001);
         org.mockito.Mockito.verifyNoInteractions(productInventoryService);
+        org.mockito.Mockito.verifyNoInteractions(buyerNotificationService);
+    }
+
+    // ========== updateLogisticsStatus：標記送達同步訂單狀態（Sprint 250，DEF-318） ==========
+
+    @Test
+    @DisplayName("標記物流送達 → 同步訂單 DELIVERED 成功時通知買家")
+    void updateLogisticsStatus_delivered_notifiesBuyer() {
+        TenantContext.setCurrentTenant(TENANT_ID);
+        UUID logisticsId = UUID.randomUUID();
+        Logistics logistics = Logistics.builder().id(logisticsId).orderId(ORDER_ID)
+                .logisticsProvider(Logistics.LogisticsProvider.HCT)
+                .status(Logistics.LogisticsStatus.OUT_FOR_DELIVERY).build();
+        when(logisticsRepository.findById(logisticsId)).thenReturn(Optional.of(logistics));
+        when(logisticsRepository.save(org.mockito.ArgumentMatchers.any(Logistics.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(orderOfTenant(TENANT_ID)))
+                .thenReturn(Optional.of(orderOfTenant(TENANT_ID)));
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CONFIRMED, Order.OrderStatus.DELIVERED))
+                .thenReturn(1);
+
+        logisticsService.updateLogisticsStatus(logisticsId, Logistics.LogisticsStatus.DELIVERED);
+
+        org.mockito.Mockito.verify(buyerNotificationService).notifyOrderDelivered(ORDER_ID);
+    }
+
+    @Test
+    @DisplayName("標記物流送達，但訂單狀態已被併發推進（同步 CAS 落空）→ 不通知買家")
+    void updateLogisticsStatus_delivered_orderSyncLost_doesNotNotify() {
+        TenantContext.setCurrentTenant(TENANT_ID);
+        UUID logisticsId = UUID.randomUUID();
+        Logistics logistics = Logistics.builder().id(logisticsId).orderId(ORDER_ID)
+                .logisticsProvider(Logistics.LogisticsProvider.HCT)
+                .status(Logistics.LogisticsStatus.OUT_FOR_DELIVERY).build();
+        when(logisticsRepository.findById(logisticsId)).thenReturn(Optional.of(logistics));
+        when(logisticsRepository.save(org.mockito.ArgumentMatchers.any(Logistics.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(orderOfTenant(TENANT_ID)));
+        when(orderRepository.updateStatusIfCurrent(ORDER_ID, Order.OrderStatus.CONFIRMED, Order.OrderStatus.DELIVERED))
+                .thenReturn(0);
+
+        logisticsService.updateLogisticsStatus(logisticsId, Logistics.LogisticsStatus.DELIVERED);
+
+        org.mockito.Mockito.verifyNoInteractions(buyerNotificationService);
     }
 
     private LogisticsDto.CreateRequest shipmentRequest() {

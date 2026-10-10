@@ -157,6 +157,79 @@ public class BuyerNotificationService {
                         data("bookingId", booking.getId()))));
     }
 
+    /**
+     * 訂單付款成功後通知買家（Sprint 250，DEF-318；與 {@link #notifyBookingConfirmed} 對稱，PRD 無明文但範圍由使用者拍板）。
+     * 與 {@link #notifyPaymentSuccess} 在同一次付款成功時一起觸發——兩者讀碼後確認沒有各自對應到不同事件，
+     * 會造成買家收到兩則意思重複的通知；使用者已確認接受，不視為缺陷。
+     */
+    public void notifyOrderPaid(final UUID orderId) {
+        deliver("ORDER_PAID", orderId, () -> orderRepository.findById(orderId).map(order -> request(
+                order.getUserId(), NotificationDto.NotificationType.ORDER_PAID, "訂單已付款",
+                orderPaidContent(order.getId(), order.getTotalAmount(), order.getCurrency()),
+                data("orderId", order.getId()))));
+    }
+
+    /** 訂單付款成功的付款收據通知（Sprint 250）。見 {@link #notifyOrderPaid} 說明：兩者刻意同時觸發。 */
+    public void notifyPaymentSuccess(final UUID orderId) {
+        deliver("PAYMENT_SUCCESS", orderId, () -> orderRepository.findById(orderId).map(order -> request(
+                order.getUserId(), NotificationDto.NotificationType.PAYMENT_SUCCESS, "付款成功",
+                paymentSuccessContent(order.getId(), order.getTotalAmount(), order.getCurrency()),
+                data("orderId", order.getId()))));
+    }
+
+    /** 賣家確認訂單後通知買家（{@code PAID→CONFIRMED}；Sprint 250）。 */
+    public void notifyOrderConfirmed(final UUID orderId) {
+        deliver("ORDER_CONFIRMED", orderId, () -> orderRepository.findById(orderId).map(order -> request(
+                order.getUserId(), NotificationDto.NotificationType.ORDER_CONFIRMED, "訂單已確認",
+                orderConfirmedContent(order.getId()), data("orderId", order.getId()))));
+    }
+
+    /** 訂單出貨後通知買家（{@code CONFIRMED→SHIPPING}；Sprint 250）。 */
+    public void notifyOrderShipped(final UUID orderId) {
+        deliver("ORDER_SHIPPED", orderId, () -> orderRepository.findById(orderId).map(order -> request(
+                order.getUserId(), NotificationDto.NotificationType.ORDER_SHIPPED, "訂單已出貨",
+                orderShippedContent(order.getId()), data("orderId", order.getId()))));
+    }
+
+    /** 訂單送達後通知買家（{@code SHIPPING→DELIVERED}；Sprint 250）。 */
+    public void notifyOrderDelivered(final UUID orderId) {
+        deliver("ORDER_DELIVERED", orderId, () -> orderRepository.findById(orderId).map(order -> request(
+                order.getUserId(), NotificationDto.NotificationType.ORDER_DELIVERED, "訂單已送達",
+                orderDeliveredContent(order.getId()), data("orderId", order.getId()))));
+    }
+
+    /** 訂單完成後通知買家（{@code DELIVERED→COMPLETED}；Sprint 250）。 */
+    public void notifyOrderCompleted(final UUID orderId) {
+        deliver("ORDER_COMPLETED", orderId, () -> orderRepository.findById(orderId).map(order -> request(
+                order.getUserId(), NotificationDto.NotificationType.ORDER_COMPLETED, "訂單已完成",
+                orderCompletedContent(order.getId()), data("orderId", order.getId()))));
+    }
+
+    /**
+     * 買家／賣家主動取消訂單後通知買家（Sprint 250）。逾時未付款取消已有 {@link #notifyOrderPaymentTimeout}，
+     * 不重複掛載；{@code wasPaid} 由呼叫端傳入（取消前狀態是否為 PAID／CONFIRMED，決定是否會轉入退款流程）。
+     */
+    public void notifyOrderCancelled(final UUID orderId, final boolean wasPaid) {
+        deliver("ORDER_CANCELLED_EXPLICIT", orderId, () -> orderRepository.findById(orderId).map(order -> request(
+                order.getUserId(), NotificationDto.NotificationType.ORDER_CANCELLED, "訂單已取消",
+                orderCancelledContent(order.getId(), order.getTotalAmount(), order.getCurrency(), wasPaid),
+                data("orderId", order.getId()))));
+    }
+
+    /** 訂單完成後邀請買家評價（Sprint 250；使用者已確認於 COMPLETED 當下立即發送，不延遲）。 */
+    public void notifyOrderReviewRequest(final UUID orderId) {
+        deliver("ORDER_REVIEW_REQUEST", orderId, () -> orderRepository.findById(orderId).map(order -> request(
+                order.getUserId(), NotificationDto.NotificationType.REVIEW_REQUEST, "邀請評價",
+                orderReviewRequestContent(order.getId()), data("orderId", order.getId()))));
+    }
+
+    /** 訂房完成（退房）後邀請買家評價（Sprint 250；使用者已確認於 COMPLETED 當下立即發送，不延遲）。 */
+    public void notifyBookingReviewRequest(final UUID bookingId) {
+        deliver("BOOKING_REVIEW_REQUEST", bookingId, () -> bookingRepository.findById(bookingId).map(booking ->
+                request(booking.getUserId(), NotificationDto.NotificationType.REVIEW_REQUEST, "邀請評價",
+                        bookingReviewRequestContent(bookingName(booking)), data("bookingId", booking.getId()))));
+    }
+
     /** 在新交易裡讀取並送出；任何失敗都只記警告（見類別說明）。{@code build} 回傳空表示沒有東西要送。 */
     private void deliver(final String event, final UUID id,
             final Supplier<Optional<NotificationDto.SendRequest>> build) {
@@ -235,6 +308,47 @@ public class BuyerNotificationService {
 
     static String bookingPaymentFailedContent(final String bookingName, final LocalDate checkInDate) {
         return "您的" + bookingName + "（" + checkInDate + " 入住）付款失敗，請重新付款以完成預訂。";
+    }
+
+    static String orderPaidContent(final UUID orderId, final BigDecimal totalAmount, final String currency) {
+        return "您的訂單 #" + shortId(orderId) + "（" + formatMoney(totalAmount, currency) + "）已付款成功，商家將盡快為您準備出貨。";
+    }
+
+    static String paymentSuccessContent(final UUID orderId, final BigDecimal totalAmount, final String currency) {
+        return "已收到您訂單 #" + shortId(orderId) + " 的付款 " + formatMoney(totalAmount, currency) + "，感謝您的購買。";
+    }
+
+    static String orderConfirmedContent(final UUID orderId) {
+        return "您的訂單 #" + shortId(orderId) + " 已由商家確認，即將為您安排出貨。";
+    }
+
+    static String orderShippedContent(final UUID orderId) {
+        return "您的訂單 #" + shortId(orderId) + " 已出貨，請留意物流動態。";
+    }
+
+    static String orderDeliveredContent(final UUID orderId) {
+        return "您的訂單 #" + shortId(orderId) + " 已送達，請確認商品無誤。";
+    }
+
+    static String orderCompletedContent(final UUID orderId) {
+        return "您的訂單 #" + shortId(orderId) + " 已完成，感謝您的購買。";
+    }
+
+    static String orderCancelledContent(final UUID orderId, final BigDecimal totalAmount, final String currency,
+            final boolean wasPaid) {
+        final String first = "您的訂單 #" + shortId(orderId) + "（" + formatMoney(totalAmount, currency) + "）已取消。";
+        if (!wasPaid) {
+            return first + "\n此訂單尚未付款，不需退款。";
+        }
+        return first + "\n退款已進入處理，完成後會退回原付款方式並再通知您。";
+    }
+
+    static String orderReviewRequestContent(final UUID orderId) {
+        return "您的訂單 #" + shortId(orderId) + " 已完成，期待您留下使用心得與評價！";
+    }
+
+    static String bookingReviewRequestContent(final String bookingName) {
+        return "感謝您入住" + bookingName + "，期待您留下住宿心得與評價！";
     }
 
     /** 有金額時前後各留一個空格（中文接數字要有間隔），沒有金額就整段省略。 */

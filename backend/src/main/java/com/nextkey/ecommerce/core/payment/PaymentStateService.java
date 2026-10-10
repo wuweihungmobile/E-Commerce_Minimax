@@ -204,6 +204,7 @@ public class PaymentStateService {
         log.info("Mock payment success: orderId={}, paymentId={}", orderId, payment.getId());
         auditService.record("ORDER_PAYMENT_MOCK_SUCCESS", "PAYMENT", payment.getId(), order.getTenantId(),
                 previousStatus, Order.OrderStatus.PAID.name(), null, TenantContext.getCurrentUser());
+        notifyOrderPaidAndPaymentSuccess(orderId);
 
         return toOrderPaymentStateDto(order, payment);
     }
@@ -882,6 +883,7 @@ public class PaymentStateService {
             order.setStatus(Order.OrderStatus.PAID);
             recordOrderStateLog(order, Order.OrderStatus.CREATED.name(), Order.OrderStatus.PAID.name(),
                     null, "Stripe payment webhook success, session=" + sessionId);
+            notifyOrderPaidAndPaymentSuccess(order.getId());
             return;
         }
         queueRefundForUnpayableOrder(order, payment, sessionId);
@@ -971,6 +973,16 @@ public class PaymentStateService {
                 null, "FAILED", "paymentIntent=" + paymentIntentId);
         notifyPaymentFailed(payment);
         return true;
+    }
+
+    /**
+     * 訂單付款成功時的兩個站內通知（Sprint 250，DEF-318）：{@code ORDER_PAID} 與 {@code PAYMENT_SUCCESS}
+     * 讀碼後確認沒有各自對應到不同事件，使用者已確認接受同時觸發造成的重複通知（見
+     * {@link com.nextkey.ecommerce.core.notification.BuyerNotificationService#notifyOrderPaid}）。
+     */
+    private void notifyOrderPaidAndPaymentSuccess(final UUID orderId) {
+        notifyAfterCommit(() -> buyerNotificationService.notifyOrderPaid(orderId));
+        notifyAfterCommit(() -> buyerNotificationService.notifyPaymentSuccess(orderId));
     }
 
     /** PRD US-014「支付失敗…提供重試連結」：付款恰屬於訂單或訂房其中一種，分別通知。 */

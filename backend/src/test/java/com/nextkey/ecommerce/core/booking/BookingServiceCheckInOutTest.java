@@ -37,6 +37,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.domain.model.audit.AuditLog;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.repository.BookingRepository;
@@ -70,6 +71,7 @@ class BookingServiceCheckInOutTest {
     @Mock private RoomRepository roomRepository;
     @Mock private AuditService auditService;
     @Mock private AuditLogRepository auditLogRepository;
+    @Mock private BuyerNotificationService buyerNotificationService;
 
     @InjectMocks
     private BookingService bookingService;
@@ -242,6 +244,8 @@ class BookingServiceCheckInOutTest {
                 Booking.BookingStatus.CHECKED_OUT, Booking.BookingStatus.COMPLETED);
         order.verify(auditService).record("BOOKING_COMPLETED", "BOOKING", bookingId, store,
                 "CHECKED_OUT", "COMPLETED", "auto-completed after check-out");
+        // Sprint 250（DEF-318）：使用者已確認邀請評價於完成當下立即發送
+        verify(buyerNotificationService).notifyBookingReviewRequest(bookingId);
     }
 
     @ParameterizedTest

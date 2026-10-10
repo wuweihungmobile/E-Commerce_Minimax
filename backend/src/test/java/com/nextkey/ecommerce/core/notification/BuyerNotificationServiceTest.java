@@ -327,6 +327,155 @@ class BuyerNotificationServiceTest {
             assertThat(request.getContent()).contains("海景民宿", "2026-10-05 入住", "付款失敗", "重新付款");
             assertThat(request.getData()).containsEntry("bookingId", BOOKING_ID.toString());
         }
+
+        @Test
+        @DisplayName("訂單付款成功 → ORDER_PAID（Sprint 250；與 PAYMENT_SUCCESS 各自獨立送出，見下一案例）")
+        void orderPaid() {
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(Order.builder().id(ORDER_ID)
+                    .userId(BUYER).totalAmount(new BigDecimal("1280.00")).currency("TWD").build()));
+
+            service.notifyOrderPaid(ORDER_ID);
+
+            NotificationDto.SendRequest request = sent();
+            assertThat(request.getUserId()).isEqualTo(BUYER);
+            assertThat(request.getNotificationType()).isEqualTo(NotificationDto.NotificationType.ORDER_PAID);
+            assertThat(request.getTitle()).isEqualTo("訂單已付款");
+            assertThat(request.getContent()).contains("#feed5678", "NT$1,280", "已付款成功");
+            assertThat(request.getData()).containsEntry("orderId", ORDER_ID.toString());
+        }
+
+        @Test
+        @DisplayName("訂單付款成功 → PAYMENT_SUCCESS（使用者已確認接受與 ORDER_PAID 同時觸發造成的重複通知）")
+        void paymentSuccess() {
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(Order.builder().id(ORDER_ID)
+                    .userId(BUYER).totalAmount(new BigDecimal("1280.00")).currency("TWD").build()));
+
+            service.notifyPaymentSuccess(ORDER_ID);
+
+            NotificationDto.SendRequest request = sent();
+            assertThat(request.getNotificationType()).isEqualTo(NotificationDto.NotificationType.PAYMENT_SUCCESS);
+            assertThat(request.getTitle()).isEqualTo("付款成功");
+            assertThat(request.getContent()).contains("#feed5678", "NT$1,280");
+            assertThat(request.getData()).containsEntry("orderId", ORDER_ID.toString());
+        }
+
+        @Test
+        @DisplayName("賣家確認訂單 → ORDER_CONFIRMED（Sprint 250）")
+        void orderConfirmed() {
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(Order.builder().id(ORDER_ID)
+                    .userId(BUYER).build()));
+
+            service.notifyOrderConfirmed(ORDER_ID);
+
+            NotificationDto.SendRequest request = sent();
+            assertThat(request.getNotificationType()).isEqualTo(NotificationDto.NotificationType.ORDER_CONFIRMED);
+            assertThat(request.getTitle()).isEqualTo("訂單已確認");
+            assertThat(request.getContent()).contains("#feed5678", "已由商家確認");
+            assertThat(request.getData()).containsEntry("orderId", ORDER_ID.toString());
+        }
+
+        @Test
+        @DisplayName("訂單出貨 → ORDER_SHIPPED（Sprint 250）")
+        void orderShipped() {
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(Order.builder().id(ORDER_ID)
+                    .userId(BUYER).build()));
+
+            service.notifyOrderShipped(ORDER_ID);
+
+            NotificationDto.SendRequest request = sent();
+            assertThat(request.getNotificationType()).isEqualTo(NotificationDto.NotificationType.ORDER_SHIPPED);
+            assertThat(request.getTitle()).isEqualTo("訂單已出貨");
+            assertThat(request.getContent()).contains("#feed5678", "已出貨");
+            assertThat(request.getData()).containsEntry("orderId", ORDER_ID.toString());
+        }
+
+        @Test
+        @DisplayName("訂單送達 → ORDER_DELIVERED（Sprint 250）")
+        void orderDelivered() {
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(Order.builder().id(ORDER_ID)
+                    .userId(BUYER).build()));
+
+            service.notifyOrderDelivered(ORDER_ID);
+
+            NotificationDto.SendRequest request = sent();
+            assertThat(request.getNotificationType()).isEqualTo(NotificationDto.NotificationType.ORDER_DELIVERED);
+            assertThat(request.getTitle()).isEqualTo("訂單已送達");
+            assertThat(request.getContent()).contains("#feed5678", "已送達");
+            assertThat(request.getData()).containsEntry("orderId", ORDER_ID.toString());
+        }
+
+        @Test
+        @DisplayName("訂單完成 → ORDER_COMPLETED（Sprint 250）")
+        void orderCompleted() {
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(Order.builder().id(ORDER_ID)
+                    .userId(BUYER).build()));
+
+            service.notifyOrderCompleted(ORDER_ID);
+
+            NotificationDto.SendRequest request = sent();
+            assertThat(request.getNotificationType()).isEqualTo(NotificationDto.NotificationType.ORDER_COMPLETED);
+            assertThat(request.getTitle()).isEqualTo("訂單已完成");
+            assertThat(request.getContent()).contains("#feed5678", "已完成");
+            assertThat(request.getData()).containsEntry("orderId", ORDER_ID.toString());
+        }
+
+        @Test
+        @DisplayName("買家／賣家主動取消訂單（已付款）→ ORDER_CANCELLED，說明退款已進入處理（Sprint 250）")
+        void orderCancelledPaid() {
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(Order.builder().id(ORDER_ID)
+                    .userId(BUYER).totalAmount(new BigDecimal("1280.00")).currency("TWD").build()));
+
+            service.notifyOrderCancelled(ORDER_ID, true);
+
+            NotificationDto.SendRequest request = sent();
+            assertThat(request.getNotificationType()).isEqualTo(NotificationDto.NotificationType.ORDER_CANCELLED);
+            assertThat(request.getTitle()).isEqualTo("訂單已取消");
+            assertThat(request.getContent()).contains("#feed5678", "NT$1,280", "退款已進入處理");
+            assertThat(request.getData()).containsEntry("orderId", ORDER_ID.toString());
+        }
+
+        @Test
+        @DisplayName("買家／賣家主動取消訂單（未付款）→ 說明不需退款，不能誤導買家以為錢會退")
+        void orderCancelledUnpaid() {
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(Order.builder().id(ORDER_ID)
+                    .userId(BUYER).totalAmount(new BigDecimal("1280.00")).currency("TWD").build()));
+
+            service.notifyOrderCancelled(ORDER_ID, false);
+
+            NotificationDto.SendRequest request = sent();
+            assertThat(request.getContent()).contains("不需退款").doesNotContain("退款已進入處理");
+        }
+
+        @Test
+        @DisplayName("訂單完成 → REVIEW_REQUEST 邀請評價（Sprint 250，使用者已確認 COMPLETED 當下立即發）")
+        void orderReviewRequest() {
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(Order.builder().id(ORDER_ID)
+                    .userId(BUYER).build()));
+
+            service.notifyOrderReviewRequest(ORDER_ID);
+
+            NotificationDto.SendRequest request = sent();
+            assertThat(request.getNotificationType()).isEqualTo(NotificationDto.NotificationType.REVIEW_REQUEST);
+            assertThat(request.getTitle()).isEqualTo("邀請評價");
+            assertThat(request.getContent()).contains("#feed5678", "評價");
+            assertThat(request.getData()).containsEntry("orderId", ORDER_ID.toString());
+        }
+
+        @Test
+        @DisplayName("訂房退房完成 → REVIEW_REQUEST 邀請評價（Sprint 250）")
+        void bookingReviewRequest() {
+            givenListingTitle("海景民宿");
+            when(bookingRepository.findById(BOOKING_ID))
+                    .thenReturn(Optional.of(cancelledBooking(Booking.CancelledBy.CUSTOMER, null)));
+
+            service.notifyBookingReviewRequest(BOOKING_ID);
+
+            NotificationDto.SendRequest request = sent();
+            assertThat(request.getNotificationType()).isEqualTo(NotificationDto.NotificationType.REVIEW_REQUEST);
+            assertThat(request.getTitle()).isEqualTo("邀請評價");
+            assertThat(request.getContent()).contains("海景民宿", "評價");
+            assertThat(request.getData()).containsEntry("bookingId", BOOKING_ID.toString());
+        }
     }
 
     @Nested
@@ -361,6 +510,15 @@ class BuyerNotificationServiceTest {
                 service.notifyBookingConfirmed(BOOKING_ID);
                 service.notifyOrderPaymentFailed(ORDER_ID);
                 service.notifyBookingPaymentFailed(BOOKING_ID);
+                service.notifyOrderPaid(ORDER_ID);
+                service.notifyPaymentSuccess(ORDER_ID);
+                service.notifyOrderConfirmed(ORDER_ID);
+                service.notifyOrderShipped(ORDER_ID);
+                service.notifyOrderDelivered(ORDER_ID);
+                service.notifyOrderCompleted(ORDER_ID);
+                service.notifyOrderCancelled(ORDER_ID, true);
+                service.notifyOrderReviewRequest(ORDER_ID);
+                service.notifyBookingReviewRequest(BOOKING_ID);
             }).doesNotThrowAnyException();
             verify(notificationService, never()).sendNotification(any());
         }
@@ -384,6 +542,15 @@ class BuyerNotificationServiceTest {
                 service.notifyBookingConfirmed(BOOKING_ID);
                 service.notifyOrderPaymentFailed(ORDER_ID);
                 service.notifyBookingPaymentFailed(BOOKING_ID);
+                service.notifyOrderPaid(ORDER_ID);
+                service.notifyPaymentSuccess(ORDER_ID);
+                service.notifyOrderConfirmed(ORDER_ID);
+                service.notifyOrderShipped(ORDER_ID);
+                service.notifyOrderDelivered(ORDER_ID);
+                service.notifyOrderCompleted(ORDER_ID);
+                service.notifyOrderCancelled(ORDER_ID, true);
+                service.notifyOrderReviewRequest(ORDER_ID);
+                service.notifyBookingReviewRequest(BOOKING_ID);
             }).doesNotThrowAnyException();
         }
 

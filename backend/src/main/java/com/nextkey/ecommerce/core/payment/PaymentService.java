@@ -135,6 +135,9 @@ public class PaymentService {
                 payment.getId(), payment.getTransactionId());
         auditService.record("ORDER_PAYMENT_PROCESSED", "PAYMENT", payment.getId(), order.getTenantId(),
                 null, "amount=" + payment.getAmount(), null);
+        // Sprint 250（DEF-318）：見 BuyerNotificationService#notifyOrderPaid 說明，兩者刻意同時觸發
+        notifyAfterCommit(() -> buyerNotificationService.notifyOrderPaid(order.getId()));
+        notifyAfterCommit(() -> buyerNotificationService.notifyPaymentSuccess(order.getId()));
 
         return payment;
     }

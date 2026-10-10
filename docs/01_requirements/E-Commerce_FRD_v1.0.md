@@ -2749,7 +2749,9 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 | 訂房取消、逾時取消的站內通知 | ✅ | `ORDER_CANCELLED`，Sprint 229 |
 | 訂單逾時取消的站內通知 | ✅ | `ORDER_CANCELLED` |
 | 退款完成的站內通知 | ✅ | `REFUND_COMPLETED`，Sprint 229（V86 加入類型約束） |
-| 訂單確認、已付款、出貨、送達、完成；訂房確認；付款成功與失敗；評價邀請 | ❌ | 類型已定義，沒有生產呼叫者（DEF-318） |
+| 訂房付款成功的站內通知 | ✅ | `BOOKING_CONFIRMED`，Sprint 249 |
+| 訂單／訂房付款失敗（Stripe 金流阻斷）的站內通知 | ✅ | `PAYMENT_FAILED`，Sprint 249 |
+| 訂單確認、已付款、出貨、送達、完成、買家／賣家主動取消；付款成功；訂單與訂房評價邀請 | ✅ | `ORDER_CONFIRMED`／`ORDER_PAID`／`ORDER_SHIPPED`／`ORDER_DELIVERED`／`ORDER_COMPLETED`／`ORDER_CANCELLED`／`PAYMENT_SUCCESS`／`REVIEW_REQUEST`，Sprint 250（DEF-318） |
 | EMAIL、SMS、PUSH 通道實際寄送 | ❌ | 消費者不呼叫任何寄送服務，直接標為已送出（DEF-317） |
 | 通知 API 規格 | ❌ | 未收錄於 API_Index（DEF-286 範圍） |
 
@@ -2793,7 +2795,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 ### 6C.7 與 PRD 的差異
 
 1. PRD 的 Phase 2 設計（MQ：RabbitMQ 或 Redis Stream；多通道；模板化）：實作為 Redis List，多通道未實際寄送（BR-M09-05）。
-2. PRD US-001（預訂成功即時通知）與 US-014（支付失敗通知）：站內通知已實作（US-014 的逾時部分 Sprint 229；「金流阻斷」（Stripe `payment_intent.payment_failed`）部分 Sprint 249）。`ORDER_CONFIRMED`／`ORDER_PAID`／`ORDER_SHIPPED`／`ORDER_DELIVERED`／`ORDER_COMPLETED`／`ORDER_CANCELLED`（買家或賣家取消訂單）／`PAYMENT_SUCCESS`／`REVIEW_REQUEST` 等其餘通知類型仍未實作（DEF-318，等待產品決策）。
+2. PRD US-001（預訂成功即時通知）與 US-014（支付失敗通知）：站內通知已實作（US-014 的逾時部分 Sprint 229；「金流阻斷」（Stripe `payment_intent.payment_failed`）部分 Sprint 249）。`ORDER_CONFIRMED`／`ORDER_PAID`／`ORDER_SHIPPED`／`ORDER_DELIVERED`／`ORDER_COMPLETED`／`ORDER_CANCELLED`（買家或賣家主動取消訂單，逾時取消已於 Sprint 229）／`PAYMENT_SUCCESS`／`REVIEW_REQUEST`（訂單與訂房皆於完成當下觸發）已實作（DEF-318，Sprint 250；PRD 無明文驗收標準，範圍由使用者拍板）。`BOOKING_REMINDER`（US-011）PRD 明文列為 Phase 2，不在此範圍。
 3. PRD US-005（退款狀態即時通知）：站內通知已實作（Sprint 229）。
 
 ---

@@ -15,12 +15,15 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.OrderDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.cart.CartStoreSelector;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
 import com.nextkey.ecommerce.core.promo.PromoService;
@@ -81,6 +84,24 @@ public class OrderService {
     private final PromoService promoService;
     private final PromoCodeUsageRepository promoCodeUsageRepository;
     private final AuditService auditService;
+    private final BuyerNotificationService buyerNotificationService;
+
+    /**
+     * 在目前交易提交之後才通知買家；沒有作用中的交易（例如未經 Spring 交易的單元測試）時立即執行
+     * （比照 {@code BookingService}／{@code PaymentStateService} 既有的 {@code notifyAfterCommit} 模式）。
+     */
+    private void notifyAfterCommit(final Runnable notification) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            notification.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                notification.run();
+            }
+        });
+    }
 
     /** 訂單列表允許的排序欄位（Sprint 243，DEF-339：其餘一律 E-9000，不再讓亂填的 sortBy 變成 500）。 */
     private static final java.util.Set<String> SORTABLE_FIELDS =
@@ -682,9 +703,24 @@ public class OrderService {
         if (newStatus == Order.OrderStatus.SHIPPING) {
             // Sprint 218（DEF-303 (6)）：出貨才扣庫存（PRD §6.7.3），與建立物流單（LogisticsService）同一規則
             productInventoryService.deductOnShipment(order);
+            notifyAfterCommit(() -> buyerNotificationService.notifyOrderShipped(orderId));
+        } else if (newStatus == Order.OrderStatus.DELIVERED) {
+            // Sprint 250（DEF-318）：賣家以本端點直接指定 DELIVERED（跳過 LogisticsService 建立物流單的路徑）
+            notifyAfterCommit(() -> buyerNotificationService.notifyOrderDelivered(orderId));
+        } else if (newStatus == Order.OrderStatus.CONFIRMED) {
+            // Sprint 250（DEF-318）：CONFIRMED 全專案僅此一條寫入路徑
+            notifyAfterCommit(() -> buyerNotificationService.notifyOrderConfirmed(orderId));
+        } else if (newStatus == Order.OrderStatus.COMPLETED) {
+            // Sprint 250（DEF-318）：COMPLETED 全專案僅此一條寫入路徑；使用者已確認邀請評價於完成當下立即發送
+            notifyAfterCommit(() -> buyerNotificationService.notifyOrderCompleted(orderId));
+            notifyAfterCommit(() -> buyerNotificationService.notifyOrderReviewRequest(orderId));
         } else if (newStatus == Order.OrderStatus.CANCELLED) {
             // Sprint 218（DEF-301）：賣家以本端點取消，補償與 POST /cancel 相同（PRD TC-M05-015）
+            boolean wasPaidBeforeCancel = Order.OrderStatus.PAID.name().equals(currentStatus)
+                    || Order.OrderStatus.CONFIRMED.name().equals(currentStatus);
             order = compensateCancellation(order, Order.OrderStatus.valueOf(currentStatus), userId);
+            // Sprint 250（DEF-318）：逾時取消已有 notifyOrderPaymentTimeout，本端點是買家／賣家主動取消
+            notifyAfterCommit(() -> buyerNotificationService.notifyOrderCancelled(orderId, wasPaidBeforeCancel));
         }
         return toOrderResponse(order);
     }
@@ -782,6 +818,11 @@ public class OrderService {
                 currentStatus, Order.OrderStatus.CANCELLED.name(), reason, userId);
 
         order = compensateCancellation(order, previousStatus, userId);
+
+        // Sprint 250（DEF-318）：買家／管理員主動取消通知買家；逾時取消已有 notifyOrderPaymentTimeout，不重複
+        boolean wasPaidBeforeCancel = previousStatus == Order.OrderStatus.PAID
+                || previousStatus == Order.OrderStatus.CONFIRMED;
+        notifyAfterCommit(() -> buyerNotificationService.notifyOrderCancelled(orderId, wasPaidBeforeCancel));
 
         log.info("Order cancelled: orderId={}", orderId);
         return toOrderResponse(order);

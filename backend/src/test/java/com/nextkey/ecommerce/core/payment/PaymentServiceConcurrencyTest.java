@@ -19,6 +19,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 
 import com.nextkey.ecommerce.api.dto.PaymentDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.order.OrderService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -60,6 +61,9 @@ class PaymentServiceConcurrencyTest {
 
     @Mock
     private PaymentStoreGuard paymentStoreGuard;
+
+    @Mock
+    private BuyerNotificationService buyerNotificationService;
 
     @InjectMocks
     private PaymentService paymentService;
@@ -113,5 +117,29 @@ class PaymentServiceConcurrencyTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.E_6003);
+    }
+
+    @Test
+    @DisplayName("processBookingPayment: 成功付款 → 訂房轉 PAID，通知買家預訂已確認（PRD US-001）")
+    void processBookingPayment_success_notifiesBuyer() {
+        Booking booking = Booking.builder().userId(buyer).status(Booking.BookingStatus.CREATED)
+                .totalAmount(BigDecimal.valueOf(1000)).build();
+        booking.setId(bookingId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+        when(paymentRepository.existsByBookingIdAndStatus(bookingId, Payment.PaymentStatus.SUCCESS))
+                .thenReturn(false);
+        when(paymentRepository.saveAndFlush(any(Payment.class))).thenAnswer(invocation -> {
+            Payment saved = invocation.getArgument(0);
+            saved.setId(UUID.randomUUID());
+            return saved;
+        });
+        TenantContext.setCurrentUser(buyer);
+
+        PaymentDto.PaymentRequest request = PaymentDto.PaymentRequest.builder()
+                .bookingId(bookingId).paymentMethod(PaymentDto.PaymentMethod.MOCK).build();
+
+        paymentService.processPayment(request);
+
+        org.mockito.Mockito.verify(buyerNotificationService).notifyBookingConfirmed(bookingId);
     }
 }

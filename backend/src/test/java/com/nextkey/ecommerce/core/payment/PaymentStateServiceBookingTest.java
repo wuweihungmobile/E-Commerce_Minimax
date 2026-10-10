@@ -35,6 +35,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.nextkey.ecommerce.api.dto.payment.CheckoutSessionResponse;
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
@@ -70,6 +71,7 @@ class PaymentStateServiceBookingTest {
     @Mock private AuditService auditService;
     @Mock private PaymentStoreGuard paymentStoreGuard;
     @Mock private EntityManager entityManager;
+    @Mock private BuyerNotificationService buyerNotificationService;
 
     private PaymentStateService service;
 
@@ -84,7 +86,7 @@ class PaymentStateServiceBookingTest {
     void setUp() {
         service = new PaymentStateService(paymentRepository, orderRepository, bookingRepository,
                 featureToggleService, paymentGatewayFactory, settlementAdjustmentService,
-                orderStateLogRepository, auditService, paymentStoreGuard);
+                orderStateLogRepository, auditService, paymentStoreGuard, buyerNotificationService);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         ReflectionTestUtils.setField(service, "entityManager", entityManager);
         TenantContext.setCurrentUser(USER_ID);
@@ -157,6 +159,7 @@ class PaymentStateServiceBookingTest {
                     && "TWD".equals(p.getCurrency())));
             verify(auditService).record(eq("BOOKING_PAYMENT_MOCK_SUCCESS"), eq("PAYMENT"), eq(PAYMENT_ID), eq(TENANT_ID),
                     eq("CREATED"), eq("PAID"), any(), eq(USER_ID));
+            verify(buyerNotificationService).notifyBookingConfirmed(BOOKING_ID);
             assertThat(state.getOrderStatus()).isEqualTo("PAID");
             assertThat(state.getPaymentStatus()).isEqualTo("SUCCESS");
             assertThat(state.getCanPay()).isFalse();
@@ -173,6 +176,7 @@ class PaymentStateServiceBookingTest {
 
             verify(paymentRepository, never()).save(any(Payment.class));
             verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
+            verify(buyerNotificationService, never()).notifyBookingConfirmed(any());
         }
 
         @Test
@@ -455,6 +459,7 @@ class PaymentStateServiceBookingTest {
                     any(), eq("SUCCESS"), any());
             verify(auditService, never()).record(eq("STRIPE_PAYMENT_BOOKING_NOT_PAYABLE"), any(), any(), any(), any(), any(),
                     any());
+            verify(buyerNotificationService).notifyBookingConfirmed(BOOKING_ID);
         }
 
         @Test
@@ -469,6 +474,7 @@ class PaymentStateServiceBookingTest {
             assertThat(changed).as("付款本身確實被標成成功").isTrue();
             verify(auditService).record(eq("STRIPE_PAYMENT_BOOKING_NOT_PAYABLE"), eq("PAYMENT"), eq(PAYMENT_ID), eq(TENANT_ID),
                     eq("CANCELLED"), eq("SUCCESS"), any());
+            verify(buyerNotificationService, never()).notifyBookingConfirmed(any());
         }
 
         @Test
@@ -488,6 +494,7 @@ class PaymentStateServiceBookingTest {
             verify(auditService).record(eq("STRIPE_PAYMENT_BOOKING_NOT_PAYABLE"), eq("PAYMENT"), eq(PAYMENT_ID),
                     eq(TENANT_ID), eq("CANCELLED"), eq("SUCCESS"),
                     org.mockito.ArgumentMatchers.contains("refundQueued=true"));
+            verify(buyerNotificationService, never()).notifyBookingConfirmed(any());
         }
 
         @Test
@@ -506,6 +513,7 @@ class PaymentStateServiceBookingTest {
             verify(auditService).record(eq("STRIPE_PAYMENT_BOOKING_NOT_PAYABLE"), eq("PAYMENT"), eq(PAYMENT_ID),
                     eq(TENANT_ID), eq("PAID"), eq("SUCCESS"),
                     org.mockito.ArgumentMatchers.contains("refundQueued=false"));
+            verify(buyerNotificationService, never()).notifyBookingConfirmed(any());
         }
 
         @Test
@@ -519,6 +527,42 @@ class PaymentStateServiceBookingTest {
             assertThat(changed).isFalse();
             verify(bookingRepository, never()).updateStatusIfCurrent(any(), any(), any());
             verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any());
+            verify(buyerNotificationService, never()).notifyBookingConfirmed(any());
+        }
+    }
+
+    // ========== 付款失敗（Stripe 金流阻斷，PRD US-014）==========
+
+    @Nested
+    @DisplayName("markStripePaymentFailed：訂房付款")
+    class MarkStripePaymentFailedForBooking {
+
+        @Test
+        @DisplayName("訂房付款（PROCESSING）收到 Stripe 失敗事件 → 標 FAILED，通知買家並附重試連結（bookingId）")
+        void bookingPaymentFails_notifiesBuyer() {
+            Payment processing = Payment.builder().id(PAYMENT_ID).bookingId(BOOKING_ID)
+                    .status(Payment.PaymentStatus.PROCESSING).stripePaymentIntentId("pi_1").build();
+            when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(processing));
+
+            boolean changed = service.markStripePaymentFailed("pi_1");
+
+            assertThat(changed).isTrue();
+            assertThat(processing.getStatus()).isEqualTo(Payment.PaymentStatus.FAILED);
+            verify(buyerNotificationService).notifyBookingPaymentFailed(BOOKING_ID);
+            verify(buyerNotificationService, never()).notifyOrderPaymentFailed(any());
+        }
+
+        @Test
+        @DisplayName("已是終態（SUCCESS）→ 冪等不覆寫，也不通知")
+        void alreadyTerminal_doesNotNotify() {
+            Payment success = Payment.builder().id(PAYMENT_ID).bookingId(BOOKING_ID)
+                    .status(Payment.PaymentStatus.SUCCESS).stripePaymentIntentId("pi_1").build();
+            when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(success));
+
+            boolean changed = service.markStripePaymentFailed("pi_1");
+
+            assertThat(changed).isFalse();
+            verify(buyerNotificationService, never()).notifyBookingPaymentFailed(any());
         }
     }
 

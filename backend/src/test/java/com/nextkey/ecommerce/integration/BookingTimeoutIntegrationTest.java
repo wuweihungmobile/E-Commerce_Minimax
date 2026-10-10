@@ -189,7 +189,10 @@ class BookingTimeoutIntegrationTest {
 
         assertThat(bookingStatus(bookingId)).isEqualTo("PAID");
         assertThat(bookedNights(bookingId)).isEqualTo(2);
-        assertThat(notificationsOfBuyer()).as("已付款的訂房沒有被取消，不能對買家說「逾期未付款已取消」").isEmpty();
+        // Sprint 249（PRD US-001）：付款成功時已收到一則 BOOKING_CONFIRMED；重點是逾時排程不會再補一則取消通知
+        List<Map<String, Object>> notices = notificationsOfBuyer();
+        assertThat(notices).as("只有付款成功的確認通知，沒有「逾期未付款已取消」").hasSize(1);
+        assertThat(notices.get(0).get("notification_type")).isEqualTo("BOOKING_CONFIRMED");
     }
 
     @Test

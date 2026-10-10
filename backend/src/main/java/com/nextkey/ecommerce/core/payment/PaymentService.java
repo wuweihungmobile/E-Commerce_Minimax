@@ -6,9 +6,12 @@ import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.nextkey.ecommerce.api.dto.PaymentDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.order.OrderService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -39,6 +42,21 @@ public class PaymentService {
     private final AuditService auditService;
     private final PaymentStateService paymentStateService;
     private final PaymentStoreGuard paymentStoreGuard;
+    private final BuyerNotificationService buyerNotificationService;
+
+    /** 在目前交易提交之後才通知買家；沒有作用中的交易時立即執行（比照 {@code PaymentStateService} 既有模式）。 */
+    private void notifyAfterCommit(final Runnable notification) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            notification.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                notification.run();
+            }
+        });
+    }
 
     /**
      * 處理支付（Mock）
@@ -173,6 +191,7 @@ public class PaymentService {
                 payment.getId(), payment.getTransactionId());
         auditService.record("BOOKING_PAYMENT_PROCESSED", "PAYMENT", payment.getId(), booking.getTenantId(),
                 null, "amount=" + payment.getAmount(), null);
+        notifyAfterCommit(() -> buyerNotificationService.notifyBookingConfirmed(booking.getId()));
 
         return payment;
     }

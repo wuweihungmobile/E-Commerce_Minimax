@@ -32,6 +32,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
@@ -75,6 +76,7 @@ class PaymentStateServiceTest {
     @Mock private OrderStateLogRepository orderStateLogRepository;
     @Mock private AuditService auditService;
     @Mock private PaymentStoreGuard paymentStoreGuard;
+    @Mock private BuyerNotificationService buyerNotificationService;
 
     private PaymentStateService service;
 
@@ -87,7 +89,7 @@ class PaymentStateServiceTest {
     void setUp() {
         service = new PaymentStateService(paymentRepository, orderRepository, bookingRepository,
                 featureToggleService, paymentGatewayFactory, settlementAdjustmentService,
-                orderStateLogRepository, auditService, paymentStoreGuard);
+                orderStateLogRepository, auditService, paymentStoreGuard, buyerNotificationService);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         TenantContext.setCurrentUser(USER_ID);
     }
@@ -947,6 +949,8 @@ class PaymentStateServiceTest {
 
             assertThat(result).isFalse();
             verify(paymentRepository, never()).findByStripePaymentIntentId(any());
+            verify(buyerNotificationService, never()).notifyOrderPaymentFailed(any());
+            verify(buyerNotificationService, never()).notifyBookingPaymentFailed(any());
         }
 
         @Test
@@ -957,10 +961,11 @@ class PaymentStateServiceTest {
             boolean result = service.markStripePaymentFailed("pi_1");
 
             assertThat(result).isFalse();
+            verify(buyerNotificationService, never()).notifyOrderPaymentFailed(any());
         }
 
         @Test
-        @DisplayName("UT-PAY-STATE-046: 已是 SUCCESS（終態）-> 不覆寫為 FAILED，回傳 false")
+        @DisplayName("UT-PAY-STATE-046: 已是 SUCCESS（終態）-> 不覆寫為 FAILED，回傳 false，不通知")
         void alreadySuccess_notOverwritten() {
             Payment success = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.SUCCESS)
                     .stripePaymentIntentId("pi_1").build();
@@ -971,10 +976,11 @@ class PaymentStateServiceTest {
             assertThat(result).isFalse();
             assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.SUCCESS);
             verify(paymentRepository, never()).save(any());
+            verify(buyerNotificationService, never()).notifyOrderPaymentFailed(any());
         }
 
         @Test
-        @DisplayName("UT-PAY-STATE-047: 已是 FAILED（終態）-> 冪等回傳 false")
+        @DisplayName("UT-PAY-STATE-047: 已是 FAILED（終態）-> 冪等回傳 false，不重複通知")
         void alreadyFailed_idempotentFalse() {
             Payment failed = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.FAILED)
                     .stripePaymentIntentId("pi_1").build();
@@ -984,10 +990,11 @@ class PaymentStateServiceTest {
 
             assertThat(result).isFalse();
             verify(paymentRepository, never()).save(any());
+            verify(buyerNotificationService, never()).notifyOrderPaymentFailed(any());
         }
 
         @Test
-        @DisplayName("UT-PAY-STATE-048: PROCESSING -> FAILED（成功路徑）")
+        @DisplayName("UT-PAY-STATE-048: PROCESSING -> FAILED（成功路徑），通知買家訂單付款失敗並附重試連結（PRD US-014）")
         void processing_marksFailed() {
             Payment processing = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.PROCESSING)
                     .stripePaymentIntentId("pi_1").build();
@@ -998,6 +1005,22 @@ class PaymentStateServiceTest {
             assertThat(result).isTrue();
             assertThat(processing.getStatus()).isEqualTo(Payment.PaymentStatus.FAILED);
             verify(paymentRepository).save(processing);
+            verify(buyerNotificationService).notifyOrderPaymentFailed(ORDER_ID);
+            verify(buyerNotificationService, never()).notifyBookingPaymentFailed(any());
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-048b: 訂房付款（非訂單）PROCESSING -> FAILED -> 通知訂房買家，不是訂單買家")
+        void processing_bookingPayment_notifiesBookingBuyer() {
+            Payment processing = Payment.builder().bookingId(BOOKING_ID).status(Payment.PaymentStatus.PROCESSING)
+                    .stripePaymentIntentId("pi_1").build();
+            when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(processing));
+
+            boolean result = service.markStripePaymentFailed("pi_1");
+
+            assertThat(result).isTrue();
+            verify(buyerNotificationService).notifyBookingPaymentFailed(BOOKING_ID);
+            verify(buyerNotificationService, never()).notifyOrderPaymentFailed(any());
         }
     }
 }

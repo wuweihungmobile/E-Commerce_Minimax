@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.payment;
 import com.nextkey.ecommerce.api.dto.payment.CheckoutSessionResponse;
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -61,6 +62,7 @@ class PaymentStateServiceStripeTest {
     @Mock private OrderStateLogRepository orderStateLogRepository;
     @Mock private AuditService auditService;
     @Mock private PaymentStoreGuard paymentStoreGuard;
+    @Mock private BuyerNotificationService buyerNotificationService;
 
     private PaymentStateService service;
 
@@ -71,7 +73,7 @@ class PaymentStateServiceStripeTest {
     void setUp() {
         service = new PaymentStateService(paymentRepository, orderRepository, bookingRepository,
                 featureToggleService, paymentGatewayFactory, settlementAdjustmentService,
-                orderStateLogRepository, auditService, paymentStoreGuard);
+                orderStateLogRepository, auditService, paymentStoreGuard, buyerNotificationService);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         TenantContext.setCurrentUser(USER_ID);
         // 🔴 DEF-136：refundOrderPayment / markStripePaymentSucceeded 併發防護預設「佔用成功」，

@@ -30,6 +30,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
@@ -75,6 +76,7 @@ class PaymentStateServiceStoreGuardTest {
     @Mock private AuditService auditService;
     @Mock private PaymentStoreGuard paymentStoreGuard;
     @Mock private EntityManager entityManager;
+    @Mock private BuyerNotificationService buyerNotificationService;
 
     private PaymentStateService service;
 
@@ -82,7 +84,7 @@ class PaymentStateServiceStoreGuardTest {
     void setUp() {
         service = new PaymentStateService(paymentRepository, orderRepository, bookingRepository,
                 featureToggleService, paymentGatewayFactory, settlementAdjustmentService,
-                orderStateLogRepository, auditService, paymentStoreGuard);
+                orderStateLogRepository, auditService, paymentStoreGuard, buyerNotificationService);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:3000");
         ReflectionTestUtils.setField(service, "entityManager", entityManager);
         TenantContext.setCurrentUser(USER_ID);

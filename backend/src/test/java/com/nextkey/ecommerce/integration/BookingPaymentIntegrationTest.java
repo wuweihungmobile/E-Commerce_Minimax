@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -141,6 +142,12 @@ class BookingPaymentIntegrationTest {
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM payments WHERE booking_id = ? AND order_id IS NULL "
                 + "AND payment_method = 'MOCK' AND currency = 'TWD'", Integer.class, bookingId)).isEqualTo(1);
         assertThat(bookedCalendarNights(bookingId)).as("付款不可動日曆").isEqualTo(2);
+        // Sprint 249（PRD US-001）：付款成功即時通知買家預訂已確認，資料列真的在交易提交後寫入
+        List<Map<String, Object>> notices = notificationsOf(buyer.getId());
+        assertThat(notices).hasSize(1);
+        assertThat(notices.get(0).get("notification_type")).isEqualTo("BOOKING_CONFIRMED");
+        assertThat((String) notices.get(0).get("content")).contains("已確認");
+        assertThat((String) notices.get(0).get("data")).contains(bookingId.toString());
     }
 
     @Test
@@ -323,12 +330,50 @@ class BookingPaymentIntegrationTest {
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM payments WHERE booking_id = ? AND paid_at IS NOT NULL "
                 + "AND stripe_payment_intent_id IS NOT NULL", Integer.class, bookingId)).isEqualTo(1);
         int audits = auditCount("STRIPE_PAYMENT_SUCCEEDED_WEBHOOK", bookingPaymentId(bookingId));
+        // Sprint 249（PRD US-001）：Stripe webhook 付款成功一樣要通知買家預訂已確認
+        assertThat(notificationsOf(buyer.getId())).extracting(n -> n.get("notification_type"))
+                .containsExactly("BOOKING_CONFIRMED");
 
         paymentWebhookService.handleEvent(event);
 
         assertThat(bookingStatus(bookingId)).isEqualTo("PAID");
         assertThat(auditCount("STRIPE_PAYMENT_SUCCEEDED_WEBHOOK", bookingPaymentId(bookingId)))
                 .as("重送同一事件不可再寫一筆成功稽核").isEqualTo(audits);
+        assertThat(notificationsOf(buyer.getId())).as("重送同一事件不可再通知一次").hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Stripe webhook：payment_intent.payment_failed（訂房）→ 付款 FAILED、訂房維持 CREATED 可重試，"
+            + "通知買家付款失敗並附重試連結（PRD US-014）")
+    void stripeWebhook_bookingPaymentFailed_notifiesBuyerWithRetryLink() {
+        UUID bookingId = buyerBooksTwoNights();
+        String sessionId = startStripeCheckout(bookingId);
+        String paymentIntentId = "pi_" + UUID.randomUUID();
+        // Checkout session 建立時只留下 transactionId/stripeSessionId，付款意圖要等 Stripe 端回拋才補上；
+        // payment_intent.payment_failed 只帶 payment_intent id，所以要先讓付款紀錄真的存著這個 id 才查得到
+        jdbcTemplate.update("UPDATE payments SET stripe_payment_intent_id = ? WHERE transaction_id = ?",
+                paymentIntentId, sessionId);
+
+        paymentWebhookService.handleEvent(paymentFailedEvent("evt_" + UUID.randomUUID(), paymentIntentId));
+
+        assertThat(paymentStatuses(bookingId)).containsExactly("FAILED");
+        assertThat(bookingStatus(bookingId)).as("付款失敗不取消訂房，買家可重新付款").isEqualTo("CREATED");
+        List<Map<String, Object>> notices = notificationsOf(buyer.getId());
+        assertThat(notices).hasSize(1);
+        assertThat(notices.get(0).get("notification_type")).isEqualTo("PAYMENT_FAILED");
+        assertThat((String) notices.get(0).get("content")).contains("付款失敗", "重新付款");
+        assertThat((String) notices.get(0).get("data")).as("前端用 bookingId 顯示「查看訂房」連結").contains(bookingId.toString());
+    }
+
+    private static String paymentFailedEvent(final String eventId, final String paymentIntentId) {
+        return "{\"id\":\"" + eventId + "\",\"type\":\"payment_intent.payment_failed\",\"data\":{\"object\":{\"id\":\""
+                + paymentIntentId + "\"}}}";
+    }
+
+    /** 這個測試的買家收到的通知（每個測試都建新買家，不會混到共用資料庫裡別人的通知）。 */
+    private List<Map<String, Object>> notificationsOf(final UUID userId) {
+        return jdbcTemplate.queryForList("SELECT notification_type, title, content, data::text AS data "
+                + "FROM notifications WHERE user_id = ? ORDER BY created_at", userId);
     }
 
     @Test

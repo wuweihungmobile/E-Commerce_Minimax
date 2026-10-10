@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
@@ -21,6 +23,7 @@ import org.springframework.test.context.ActiveProfiles;
 import com.nextkey.ecommerce.api.dto.payment.CheckoutSessionResponse;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.payment.PaymentStateService;
+import com.nextkey.ecommerce.core.payment.PaymentWebhookService;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
@@ -47,6 +50,7 @@ import com.nextkey.ecommerce.shared.tenant.TenantContext;
 class OrderStripeCheckoutRetryIntegrationTest {
 
     @Autowired private PaymentStateService paymentStateService;
+    @Autowired private PaymentWebhookService paymentWebhookService;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private TenantRepository tenantRepository;
     @Autowired private UserRepository userRepository;
@@ -55,6 +59,7 @@ class OrderStripeCheckoutRetryIntegrationTest {
     @MockBean private PaymentGatewayFactory paymentGatewayFactory;
 
     private UUID orderId;
+    private UUID buyerId;
 
     @BeforeEach
     void setUp() {
@@ -67,6 +72,7 @@ class OrderStripeCheckoutRetryIntegrationTest {
                 .status(Tenant.TenantStatus.ACTIVE).build());
         User buyer = userRepository.save(User.builder().email("stripe-retry-buyer-" + stamp + "@example.com")
                 .passwordHash("dummy").fullName("Buyer").role(User.UserRole.BUYER).status("ACTIVE").build());
+        buyerId = buyer.getId();
         orderId = UUID.randomUUID();
         jdbcTemplate.update("INSERT INTO orders (id, tenant_id, user_id, order_type, status, total_amount, shipping_fee, "
                 + "discount_amount, currency, created_at, updated_at) VALUES (?, ?, ?, 'PRODUCT', 'CREATED', 500.00, "
@@ -93,5 +99,41 @@ class OrderStripeCheckoutRetryIntegrationTest {
         assertThat(second.getSessionUrl()).isEqualTo(first.getSessionUrl());
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM payments WHERE order_id = ?", Integer.class, orderId))
                 .as("重複寫入會撞唯一索引").isEqualTo(1);
+    }
+
+    // ── Sprint 249（PRD US-014「支付失敗…提供重試連結」）：Stripe 金流阻斷通知 ──────────
+
+    @Test
+    @DisplayName("Stripe webhook：payment_intent.payment_failed（訂單）→ 付款 FAILED、訂單維持 CREATED 可重試，"
+            + "通知買家付款失敗並附重試連結")
+    void stripeWebhook_orderPaymentFailed_notifiesBuyerWithRetryLink() {
+        CheckoutSessionResponse checkout = paymentStateService.initiateStripeCheckout(orderId);
+        String paymentIntentId = "pi_" + UUID.randomUUID();
+        // 同訂房側：mock 的 createCheckoutSession 沒有回 paymentIntentId（真實 Stripe 在建立 session 時也常常還沒有），
+        // 要先讓付款紀錄真的存著這個 id，payment_intent.payment_failed（只帶 payment_intent id）才查得到
+        jdbcTemplate.update("UPDATE payments SET stripe_payment_intent_id = ? WHERE transaction_id = ?",
+                paymentIntentId, checkout.getSessionId());
+
+        paymentWebhookService.handleEvent(paymentFailedEvent("evt_" + UUID.randomUUID(), paymentIntentId));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT status FROM payments WHERE order_id = ?", String.class, orderId))
+                .isEqualTo("FAILED");
+        assertThat(jdbcTemplate.queryForObject("SELECT status FROM orders WHERE id = ?", String.class, orderId))
+                .as("付款失敗不取消訂單，買家可重新付款").isEqualTo("CREATED");
+        List<Map<String, Object>> notices = notificationsOf(buyerId);
+        assertThat(notices).hasSize(1);
+        assertThat(notices.get(0).get("notification_type")).isEqualTo("PAYMENT_FAILED");
+        assertThat((String) notices.get(0).get("content")).contains("付款失敗", "重新付款");
+        assertThat((String) notices.get(0).get("data")).as("前端用 orderId 顯示「查看訂單」連結").contains(orderId.toString());
+    }
+
+    private static String paymentFailedEvent(final String eventId, final String paymentIntentId) {
+        return "{\"id\":\"" + eventId + "\",\"type\":\"payment_intent.payment_failed\",\"data\":{\"object\":{\"id\":\""
+                + paymentIntentId + "\"}}}";
+    }
+
+    private List<Map<String, Object>> notificationsOf(final UUID userId) {
+        return jdbcTemplate.queryForList("SELECT notification_type, title, content, data::text AS data "
+                + "FROM notifications WHERE user_id = ? ORDER BY created_at", userId);
     }
 }

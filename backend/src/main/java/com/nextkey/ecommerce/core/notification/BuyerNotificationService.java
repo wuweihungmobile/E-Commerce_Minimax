@@ -130,6 +130,33 @@ public class BuyerNotificationService {
                 data("bookingId", booking.getId(), "refundAmount", booking.getRefundAmount()))));
     }
 
+    /** 訂房付款成功後通知買家預訂已確認（PRD US-001「預訂成功後即時收到確認通知」）。 */
+    public void notifyBookingConfirmed(final UUID bookingId) {
+        deliver("BOOKING_CONFIRMED", bookingId, () -> bookingRepository.findById(bookingId).map(booking -> request(
+                booking.getUserId(), NotificationDto.NotificationType.BOOKING_CONFIRMED, "預訂已確認",
+                bookingConfirmedContent(bookingName(booking), booking.getCheckInDate()),
+                data("bookingId", booking.getId()))));
+    }
+
+    /**
+     * 訂單付款失敗（Stripe 金流阻斷）後通知買家並提供重試連結（PRD US-014「支付失敗…提供重試連結」）。
+     * 訂單仍是 {@code CREATED}，可重新付款；data 帶 orderId，前端據此顯示「查看訂單」連結。
+     */
+    public void notifyOrderPaymentFailed(final UUID orderId) {
+        deliver("ORDER_PAYMENT_FAILED", orderId, () -> orderRepository.findById(orderId).map(order -> request(
+                order.getUserId(), NotificationDto.NotificationType.PAYMENT_FAILED, "訂單付款失敗",
+                orderPaymentFailedContent(order.getId(), order.getTotalAmount(), order.getCurrency()),
+                data("orderId", order.getId()))));
+    }
+
+    /** 訂房付款失敗（Stripe 金流阻斷）後通知買家並提供重試連結（PRD US-014）。 */
+    public void notifyBookingPaymentFailed(final UUID bookingId) {
+        deliver("BOOKING_PAYMENT_FAILED", bookingId, () -> bookingRepository.findById(bookingId).map(booking ->
+                request(booking.getUserId(), NotificationDto.NotificationType.PAYMENT_FAILED, "訂房付款失敗",
+                        bookingPaymentFailedContent(bookingName(booking), booking.getCheckInDate()),
+                        data("bookingId", booking.getId()))));
+    }
+
     /** 在新交易裡讀取並送出；任何失敗都只記警告（見類別說明）。{@code build} 回傳空表示沒有東西要送。 */
     private void deliver(final String event, final UUID id,
             final Supplier<Optional<NotificationDto.SendRequest>> build) {
@@ -196,6 +223,18 @@ public class BuyerNotificationService {
     static String bookingRefundedContent(final String bookingName, final BigDecimal refundAmount) {
         return bookingName + "的款項" + amountPhrase(refundAmount, null)
                 + "已退回原付款方式，實際入帳時間依付款機構而定。";
+    }
+
+    static String bookingConfirmedContent(final String bookingName, final LocalDate checkInDate) {
+        return "您的" + bookingName + "（" + checkInDate + " 入住）已確認，期待您的入住！";
+    }
+
+    static String orderPaymentFailedContent(final UUID orderId, final BigDecimal totalAmount, final String currency) {
+        return "您的訂單 #" + shortId(orderId) + "（" + formatMoney(totalAmount, currency) + "）付款失敗，請重新付款以完成訂購。";
+    }
+
+    static String bookingPaymentFailedContent(final String bookingName, final LocalDate checkInDate) {
+        return "您的" + bookingName + "（" + checkInDate + " 入住）付款失敗，請重新付款以完成預訂。";
     }
 
     /** 有金額時前後各留一個空格（中文接數字要有間隔），沒有金額就整段省略。 */

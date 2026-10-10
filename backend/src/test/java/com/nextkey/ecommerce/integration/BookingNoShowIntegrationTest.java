@@ -110,10 +110,12 @@ class BookingNoShowIntegrationTest {
         assertThat(audit.get("new_value")).isEqualTo("CANCELLED");
         assertThat(audit.get("user_id")).as("系統取消沒有操作使用者").isNull();
 
+        // Sprint 249（PRD US-001）：付款成功時已收到一則 BOOKING_CONFIRMED（較早建立），no-show 取消通知是第二則
         List<Map<String, Object>> notices = notificationsOfBuyer();
-        assertThat(notices).as("取消後通知買家一次").hasSize(1);
-        assertThat(notices.get(0).get("title")).isEqualTo("訂房因未入住已取消");
-        assertThat((String) notices.get(0).get("content")).contains("24 小時內未辦理入住", "不退款");
+        assertThat(notices).as("付款確認 + 取消通知，共兩則").hasSize(2);
+        assertThat(notices.get(0).get("notification_type")).isEqualTo("BOOKING_CONFIRMED");
+        assertThat(notices.get(1).get("title")).isEqualTo("訂房因未入住已取消");
+        assertThat((String) notices.get(1).get("content")).contains("24 小時內未辦理入住", "不退款");
     }
 
     @Test
@@ -125,7 +127,10 @@ class BookingNoShowIntegrationTest {
         runJobAsScheduler();
 
         assertThat(bookingStatus(bookingId)).isEqualTo("PAID");
-        assertThat(notificationsOfBuyer()).isEmpty();
+        // 只有付款成功的確認通知，沒有 no-show 取消通知
+        List<Map<String, Object>> notices = notificationsOfBuyer();
+        assertThat(notices).hasSize(1);
+        assertThat(notices.get(0).get("notification_type")).isEqualTo("BOOKING_CONFIRMED");
     }
 
     @Test
@@ -153,7 +158,8 @@ class BookingNoShowIntegrationTest {
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM audit_log WHERE entity_id = ? AND action = 'BOOKING_CANCELLED'",
                 Integer.class, bookingId)).isEqualTo(1);
-        assertThat(notificationsOfBuyer()).hasSize(1);
+        // 付款確認（一次）+ 取消通知（重複執行不重複），共兩則
+        assertThat(notificationsOfBuyer()).hasSize(2);
     }
 
     // ── 固件與身分 ──────────────────────────────────────────

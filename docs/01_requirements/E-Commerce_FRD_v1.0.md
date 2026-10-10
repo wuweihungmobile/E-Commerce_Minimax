@@ -2582,7 +2582,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 | 店家取消（同店鋪） | ✅ | 同 `POST …/cancel`；取消方記為 `MERCHANT`，全額退款 |
 | 店家入住與退房（退房後自動完成） | ✅（API） | `POST /v2/dashboard/bookings/{bookingId}/check-in`、`…/check-out`（Sprint 245，DEF-345）；店家後台按鈕待排 |
 | 訂房狀態日誌 `GET /api/v2/bookings/:id/state-log` | ❌ | 未實作（DEF-345） |
-| 預訂確認通知（PRD US-001） | ❌ | 未實作（DEF-318） |
+| 預訂確認通知（PRD US-001） | ✅ | Sprint 249：付款成功（Mock／Stripe／舊版 `/v2/payments`）即時送出 `BOOKING_CONFIRMED` 站內通知 |
 
 ### 6A.3 主要用戶
 
@@ -2644,7 +2644,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 1. PRD §9.7 寫 Phase 1 的 M06「僅開放查詢與取消，不含 POST 建立」，已過時：建立、修改、付款與退款都已實作。
 2. PRD 的訂房狀態流程（`CREATED(=PAID) → CHECKED_IN → CHECKED_OUT → COMPLETED`，Phase 1 的 `CONFIRMED` 等效於 PAID）：Sprint 245 依此實作入住與退房（DEF-345），不產生 `CONFIRMED`。PRD 的「`CHECKED_IN` 前置抵達後自動確認」未實作為自動流程，改由店家標記入住；入住日限制與退房後自動完成的時點是本輪假設（見 API_M06 §4.12～4.13）。
 3. PRD §9.7 的 `GET /api/v2/bookings/:id/state-log`：未實作（DEF-345）。
-4. PRD US-001（預訂成功即時通知）：未實作（DEF-318）。
+4. PRD US-001（預訂成功即時通知）：已實作（DEF-318，Sprint 249）。
 5. PRD §15.2.5 與 §17.4.6 Q15 的未入住取消（no-show）：已實作（DEF-352，Sprint 246；見 BR-M06-07），排程預設關閉待生產驗證。
 
 ---
@@ -2793,7 +2793,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 ### 6C.7 與 PRD 的差異
 
 1. PRD 的 Phase 2 設計（MQ：RabbitMQ 或 Redis Stream；多通道；模板化）：實作為 Redis List，多通道未實際寄送（BR-M09-05）。
-2. PRD US-001（預訂成功即時通知）與 US-014（支付失敗通知）：未實作（DEF-318）。
+2. PRD US-001（預訂成功即時通知）與 US-014（支付失敗通知）：站內通知已實作（US-014 的逾時部分 Sprint 229；「金流阻斷」（Stripe `payment_intent.payment_failed`）部分 Sprint 249）。`ORDER_CONFIRMED`／`ORDER_PAID`／`ORDER_SHIPPED`／`ORDER_DELIVERED`／`ORDER_COMPLETED`／`ORDER_CANCELLED`（買家或賣家取消訂單）／`PAYMENT_SUCCESS`／`REVIEW_REQUEST` 等其餘通知類型仍未實作（DEF-318，等待產品決策）。
 3. PRD US-005（退款狀態即時通知）：站內通知已實作（Sprint 229）。
 
 ---

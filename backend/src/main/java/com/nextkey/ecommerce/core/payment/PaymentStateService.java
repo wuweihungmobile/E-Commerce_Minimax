@@ -13,11 +13,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.nextkey.ecommerce.api.dto.payment.CheckoutSessionResponse;
 import com.nextkey.ecommerce.api.dto.payment.OrderPaymentStateDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
+import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.order.OrderStateMachine;
 import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
@@ -57,6 +60,7 @@ public class PaymentStateService {
     private final OrderStateLogRepository orderStateLogRepository;
     private final AuditService auditService;
     private final PaymentStoreGuard paymentStoreGuard;
+    private final BuyerNotificationService buyerNotificationService;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
@@ -69,7 +73,7 @@ public class PaymentStateService {
             BookingRepository bookingRepository, FeatureToggleService featureToggleService,
             PaymentGatewayFactory paymentGatewayFactory, SettlementAdjustmentService settlementAdjustmentService,
             OrderStateLogRepository orderStateLogRepository, AuditService auditService,
-            PaymentStoreGuard paymentStoreGuard) {
+            PaymentStoreGuard paymentStoreGuard, BuyerNotificationService buyerNotificationService) {
         this.paymentRepository = paymentRepository;
         this.orderRepository = orderRepository;
         this.bookingRepository = bookingRepository;
@@ -78,7 +82,26 @@ public class PaymentStateService {
         this.settlementAdjustmentService = settlementAdjustmentService;
         this.orderStateLogRepository = orderStateLogRepository;
         this.auditService = auditService;
+        this.buyerNotificationService = buyerNotificationService;
         this.paymentStoreGuard = paymentStoreGuard;
+    }
+
+    /**
+     * 在目前交易提交之後才通知買家；沒有作用中的交易（例如未經 Spring 交易的單元測試）時立即執行
+     * （比照 {@code BookingService} 既有的 {@code notifyAfterCommit} 模式）。這裡的狀態轉換本身是用條件式
+     * UPDATE／{@code save} 做的，提交前通知等於替一個可能回滾的轉換先告知買家。
+     */
+    private void notifyAfterCommit(final Runnable notification) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            notification.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                notification.run();
+            }
+        });
     }
 
     /**
@@ -254,6 +277,7 @@ public class PaymentStateService {
         auditService.record("BOOKING_PAYMENT_MOCK_SUCCESS", "PAYMENT", payment.getId(), booking.getTenantId(),
                 Booking.BookingStatus.CREATED.name(), Booking.BookingStatus.PAID.name(), null,
                 TenantContext.getCurrentUser());
+        notifyAfterCommit(() -> buyerNotificationService.notifyBookingConfirmed(bookingId));
 
         return toBookingPaymentStateDto(booking, payment);
     }
@@ -917,6 +941,7 @@ public class PaymentStateService {
                             + ",refundQueued=" + queued);
         } else {
             booking.setStatus(Booking.BookingStatus.PAID);
+            notifyAfterCommit(() -> buyerNotificationService.notifyBookingConfirmed(booking.getId()));
         }
         return booking.getTenantId();
     }
@@ -944,7 +969,17 @@ public class PaymentStateService {
         log.info("Stripe payment marked FAILED: paymentIntent={}, orderId={}", paymentIntentId, payment.getOrderId());
         auditService.record("STRIPE_PAYMENT_FAILED_WEBHOOK", "PAYMENT", payment.getId(), tenantOfPayment(payment),
                 null, "FAILED", "paymentIntent=" + paymentIntentId);
+        notifyPaymentFailed(payment);
         return true;
+    }
+
+    /** PRD US-014「支付失敗…提供重試連結」：付款恰屬於訂單或訂房其中一種，分別通知。 */
+    private void notifyPaymentFailed(final Payment payment) {
+        if (payment.getOrderId() != null) {
+            notifyAfterCommit(() -> buyerNotificationService.notifyOrderPaymentFailed(payment.getOrderId()));
+        } else if (payment.getBookingId() != null) {
+            notifyAfterCommit(() -> buyerNotificationService.notifyBookingPaymentFailed(payment.getBookingId()));
+        }
     }
 
     /** 付款所屬訂單或訂房的租戶（供稽核紀錄使用）；兩者都沒有（或已不存在）時為 null。 */

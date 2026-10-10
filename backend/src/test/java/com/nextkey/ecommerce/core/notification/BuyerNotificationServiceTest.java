@@ -276,6 +276,57 @@ class BuyerNotificationServiceTest {
             assertThat(request.getContent()).contains("海景民宿", "NT$3,600", "已退回原付款方式");
             assertThat(request.getData()).containsEntry("bookingId", BOOKING_ID.toString());
         }
+
+        @Test
+        @DisplayName("訂房付款成功 → BOOKING_CONFIRMED 站內通知（PRD US-001），data 帶 bookingId")
+        void bookingConfirmed() {
+            givenListingTitle("海景民宿");
+            when(bookingRepository.findById(BOOKING_ID))
+                    .thenReturn(Optional.of(cancelledBooking(Booking.CancelledBy.CUSTOMER, null)));
+
+            service.notifyBookingConfirmed(BOOKING_ID);
+
+            NotificationDto.SendRequest request = sent();
+            assertThat(request.getUserId()).isEqualTo(BUYER);
+            assertThat(request.getNotificationType()).isEqualTo(NotificationDto.NotificationType.BOOKING_CONFIRMED);
+            assertThat(request.getChannel()).isEqualTo(NotificationDto.Channel.IN_APP);
+            assertThat(request.getTitle()).isEqualTo("預訂已確認");
+            assertThat(request.getContent()).contains("海景民宿", "2026-10-05 入住", "已確認");
+            assertThat(request.getData()).containsOnlyKeys("bookingId").containsEntry("bookingId", BOOKING_ID.toString());
+        }
+
+        @Test
+        @DisplayName("訂單付款失敗（Stripe 金流阻斷）→ PAYMENT_FAILED，data 帶 orderId（前端的「查看訂單」連結用它重試付款，PRD US-014）")
+        void orderPaymentFailed() {
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(Order.builder().id(ORDER_ID)
+                    .userId(BUYER).totalAmount(new BigDecimal("1280.00")).currency("TWD").build()));
+
+            service.notifyOrderPaymentFailed(ORDER_ID);
+
+            NotificationDto.SendRequest request = sent();
+            assertThat(request.getUserId()).isEqualTo(BUYER);
+            assertThat(request.getNotificationType()).isEqualTo(NotificationDto.NotificationType.PAYMENT_FAILED);
+            assertThat(request.getTitle()).isEqualTo("訂單付款失敗");
+            assertThat(request.getContent()).contains("#feed5678", "NT$1,280", "付款失敗", "重新付款");
+            assertThat(request.getData()).containsEntry("orderId", ORDER_ID.toString());
+        }
+
+        @Test
+        @DisplayName("訂房付款失敗（Stripe 金流阻斷）→ PAYMENT_FAILED，data 帶 bookingId（PRD US-014）")
+        void bookingPaymentFailed() {
+            givenListingTitle("海景民宿");
+            when(bookingRepository.findById(BOOKING_ID))
+                    .thenReturn(Optional.of(cancelledBooking(Booking.CancelledBy.CUSTOMER, null)));
+
+            service.notifyBookingPaymentFailed(BOOKING_ID);
+
+            NotificationDto.SendRequest request = sent();
+            assertThat(request.getUserId()).isEqualTo(BUYER);
+            assertThat(request.getNotificationType()).isEqualTo(NotificationDto.NotificationType.PAYMENT_FAILED);
+            assertThat(request.getTitle()).isEqualTo("訂房付款失敗");
+            assertThat(request.getContent()).contains("海景民宿", "2026-10-05 入住", "付款失敗", "重新付款");
+            assertThat(request.getData()).containsEntry("bookingId", BOOKING_ID.toString());
+        }
     }
 
     @Nested
@@ -307,6 +358,9 @@ class BuyerNotificationServiceTest {
                 service.notifyBookingRefunded(BOOKING_ID);
                 service.notifyOrderPaymentTimeout(ORDER_ID);
                 service.notifyOrderRefunded(ORDER_ID);
+                service.notifyBookingConfirmed(BOOKING_ID);
+                service.notifyOrderPaymentFailed(ORDER_ID);
+                service.notifyBookingPaymentFailed(BOOKING_ID);
             }).doesNotThrowAnyException();
             verify(notificationService, never()).sendNotification(any());
         }
@@ -327,6 +381,9 @@ class BuyerNotificationServiceTest {
                 service.notifyBookingRefunded(BOOKING_ID);
                 service.notifyOrderPaymentTimeout(ORDER_ID);
                 service.notifyOrderRefunded(ORDER_ID);
+                service.notifyBookingConfirmed(BOOKING_ID);
+                service.notifyOrderPaymentFailed(ORDER_ID);
+                service.notifyBookingPaymentFailed(BOOKING_ID);
             }).doesNotThrowAnyException();
         }
 

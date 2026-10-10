@@ -151,6 +151,16 @@ export const API_ENDPOINTS = {
     list: '/v2/tenants/my',  // 取得當前用戶的店鋪列表（Sprint 146：修正誤打成不存在的裸 /v2/tenants 路徑）
     detail: (id: string) => '/v2/tenants/' + id,
     update: (id: string) => '/v2/tenants/' + id,
+    members: {
+      list: (tenantId: string) => '/v2/tenants/' + tenantId + '/members',
+      lookup: (tenantId: string, email: string) =>
+        '/v2/tenants/' + tenantId + '/members/lookup?email=' + encodeURIComponent(email),
+      invite: (tenantId: string) => '/v2/tenants/' + tenantId + '/members/invite',
+      remove: (tenantId: string, userId: string) => '/v2/tenants/' + tenantId + '/members/' + userId,
+      myInvites: '/v2/tenants/invites/my',
+      acceptInvite: (tenantId: string) => '/v2/tenants/' + tenantId + '/members/invite/accept',
+      declineInvite: (tenantId: string) => '/v2/tenants/' + tenantId + '/members/invite/decline',
+    },
   },
 
   // Products (M01)

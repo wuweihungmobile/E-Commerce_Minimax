@@ -894,6 +894,42 @@ class TenantServiceTest {
         }
 
         @Test
+        @DisplayName("lookupMemberCandidateByEmail：成功以 email 解析出 userId")
+        void lookupMemberCandidateByEmail_success_returnsCandidate() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            when(userRepository.findByEmail("invitee@example.com")).thenReturn(Optional.of(buildInvitee()));
+
+            MemberCandidateResponse response =
+                    tenantService.lookupMemberCandidateByEmail(TEST_TENANT_ID, "invitee@example.com");
+
+            assertEquals(INVITEE_ID.toString(), response.getUserId());
+            assertEquals("invitee@example.com", response.getEmail());
+        }
+
+        @Test
+        @DisplayName("lookupMemberCandidateByEmail：非 StoreOwner 呼叫 → E_4031")
+        void lookupMemberCandidateByEmail_notOwner_throwsE4031() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(false);
+
+            assertThrows(BusinessException.class,
+                    () -> tenantService.lookupMemberCandidateByEmail(TEST_TENANT_ID, "invitee@example.com"));
+            verify(userRepository, never()).findByEmail(any());
+        }
+
+        @Test
+        @DisplayName("lookupMemberCandidateByEmail：email 查無使用者 → E_2001")
+        void lookupMemberCandidateByEmail_notFound_throwsE2001() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, OWNER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            when(userRepository.findByEmail("nobody@example.com")).thenReturn(Optional.empty());
+
+            assertThrows(BusinessException.class,
+                    () -> tenantService.lookupMemberCandidateByEmail(TEST_TENANT_ID, "nobody@example.com"));
+        }
+
+        @Test
         @DisplayName("acceptInvite：成功接受 → 狀態轉為 ACTIVE 並填入 joinedAt")
         void acceptInvite_success_activatesMembership() {
             TenantContext.setCurrentUser(INVITEE_ID);

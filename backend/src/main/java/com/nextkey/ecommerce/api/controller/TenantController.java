@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.AddMemberRequest;
@@ -24,6 +25,7 @@ import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.FeatureToggleRequest;
 import com.nextkey.ecommerce.api.dto.FeatureToggleResponse;
 import com.nextkey.ecommerce.api.dto.FeatureToggleUpdateResponse;
+import com.nextkey.ecommerce.api.dto.MemberCandidateResponse;
 import com.nextkey.ecommerce.api.dto.TenantApplicationRequest;
 import com.nextkey.ecommerce.api.dto.TenantApplicationResponse;
 import com.nextkey.ecommerce.api.dto.TenantDetailsResponse;
@@ -239,6 +241,23 @@ public class TenantController {
                 tenantService.inviteMember(id, request.getUserId(), request.getRole(), principal.getUserId());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Invitation sent successfully", response));
+    }
+
+    /**
+     * 以 email 查詢可邀請的使用者（DEF-321 (a)，Sprint 248）：邀請表單只知道對方 email，
+     * 解析出 userId 供 {@link #inviteMember} 送出。
+     * Role: StoreOwner
+     */
+    @GetMapping("/tenants/{id}/members/lookup")
+    @PreAuthorize("hasAuthority('SCOPE_store:read') or hasAuthority('ROLE_STORE_OWNER') or hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<ApiResponse<MemberCandidateResponse>> lookupMemberCandidate(
+            @PathVariable UUID id,
+            @RequestParam String email,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        log.info("[TenantController] lookupMemberCandidate called: tenantId={}, user={}", id, principal.getUserId());
+
+        MemberCandidateResponse response = tenantService.lookupMemberCandidateByEmail(id, email);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     /**

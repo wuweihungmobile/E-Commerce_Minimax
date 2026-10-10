@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.FeatureToggleResponse;
 import com.nextkey.ecommerce.api.dto.FeatureToggleUpdateResponse;
+import com.nextkey.ecommerce.api.dto.MemberCandidateResponse;
 import com.nextkey.ecommerce.api.dto.TenantApplicationRequest;
 import com.nextkey.ecommerce.api.dto.TenantApplicationResponse;
 import com.nextkey.ecommerce.api.dto.TenantDetailsResponse;
@@ -758,6 +759,33 @@ public class TenantService {
                 null, storeRole.name(), null, currentUserId);
 
         return toMemberResponse(member, user);
+    }
+
+    /**
+     * 以 email 查詢可邀請的使用者（DEF-321 (a)，Sprint 248）：邀請表單只知道對方 email，
+     * 但 {@link #inviteMember} 需要 userId（PRD §9.11 僅定義 userId 版本，未提供 email 查詢端點），
+     * 解析出 userId 供邀請表單送出。權限與 {@link #inviteMember} 相同（僅該店鋪 StoreOwner）。
+     */
+    @Transactional(readOnly = true)
+    public MemberCandidateResponse lookupMemberCandidateByEmail(final UUID tenantId, final String email) {
+        UUID currentUserId = TenantContext.getCurrentUser();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.E_1000);
+        }
+
+        if (!tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(tenantId, currentUserId, TenantMember.StoreRole.STORE_OWNER)) {
+            throw new BusinessException(ErrorCode.E_4031, "Not authorized to look up users for this store");
+        }
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2001, "User not found"));
+
+        return MemberCandidateResponse.builder()
+                .userId(user.getId().toString())
+                .displayName(user.getFullName())
+                .email(user.getEmail())
+                .avatarUrl(user.getAvatarUrl())
+                .build();
     }
 
     /**

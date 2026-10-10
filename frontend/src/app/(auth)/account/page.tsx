@@ -5,10 +5,16 @@ import { useRouter } from 'next/navigation'
 import AuthService from '@/services/auth'
 import { subscribeAuth, getAuthRoleSnapshot, getAuthServerSnapshot, notifyAuthChange } from '@/services/authStore'
 import { isOAuthProviderConfigured, startOAuthFlow, type OAuthProviderId } from '@/services/oauth'
+import { getApiErrorInfo } from '@/services/auth'
+import TenantMemberService, { type TenantInviteResponse, STORE_MEMBER_ROLE_LABELS } from '@/services/tenantMember'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+
+function mapInviteErrorMessage(code: string | undefined, fallback: string): string {
+  return code === 'E-2002' ? '此邀請已不存在，可能已被處理，請重新整理頁面' : fallback
+}
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -32,6 +38,46 @@ export default function AccountPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  // DEF-321 (a)（Sprint 248）：受邀當下對方可能還只是一般使用者，進不去 /dashboard/members
+  // （該頁僅限店主），故待確認邀請的接受／拒絕放在任何登入使用者都看得到的帳戶頁面
+  const [invites, setInvites] = useState<TenantInviteResponse[]>([])
+  const [inviteActionId, setInviteActionId] = useState<string | null>(null)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+
+  useEffect(() => {
+    TenantMemberService.listMyInvites()
+      .then(setInvites)
+      .catch(() => {
+        // 待確認邀請屬於次要資訊，載入失敗不中斷整頁（帳戶頁其餘功能仍可用）
+      })
+  }, [])
+
+  const handleAcceptInvite = async (invite: TenantInviteResponse) => {
+    setInviteActionId(invite.tenantId)
+    setInviteError(null)
+    try {
+      await TenantMemberService.acceptInvite(invite.tenantId)
+      setInvites((prev) => prev.filter((i) => i.tenantId !== invite.tenantId))
+    } catch (err) {
+      setInviteError(mapInviteErrorMessage(getApiErrorInfo(err).code, '接受邀請失敗，請稍後再試'))
+    } finally {
+      setInviteActionId(null)
+    }
+  }
+
+  const handleDeclineInvite = async (invite: TenantInviteResponse) => {
+    setInviteActionId(invite.tenantId)
+    setInviteError(null)
+    try {
+      await TenantMemberService.declineInvite(invite.tenantId)
+      setInvites((prev) => prev.filter((i) => i.tenantId !== invite.tenantId))
+    } catch (err) {
+      setInviteError(mapInviteErrorMessage(getApiErrorInfo(err).code, '拒絕邀請失敗，請稍後再試'))
+    } finally {
+      setInviteActionId(null)
+    }
+  }
 
   // callback 頁連結成功後導回本頁帶 ?linked=<provider>（見 oauth/callback/[provider]/page.tsx）
   const [linkedProvider, setLinkedProvider] = useState<string | null>(null)
@@ -89,6 +135,50 @@ export default function AccountPage() {
     <StorefrontShell>
       <div className="max-w-2xl space-y-6">
         <h1 className="text-2xl font-bold text-gray-900">帳戶設定</h1>
+
+        {invites.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">待確認的店鋪邀請</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {inviteError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{inviteError}</AlertDescription>
+                </Alert>
+              )}
+              {invites.map((invite) => (
+                <div
+                  key={invite.tenantId}
+                  className="flex items-center justify-between gap-4 flex-wrap border-b pb-4 last:border-b-0 last:pb-0"
+                >
+                  <p className="text-sm text-gray-700">
+                    <span className="font-medium">{invite.tenantName}</span> 邀請您加入成為{' '}
+                    {STORE_MEMBER_ROLE_LABELS[invite.role]}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      data-testid={`accept-invite-${invite.tenantId}`}
+                      size="sm"
+                      onClick={() => handleAcceptInvite(invite)}
+                      disabled={inviteActionId === invite.tenantId}
+                    >
+                      {inviteActionId === invite.tenantId ? '處理中...' : '接受'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeclineInvite(invite)}
+                      disabled={inviteActionId === invite.tenantId}
+                    >
+                      拒絕
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

@@ -588,6 +588,58 @@
 
 ---
 
+## 11. API-M17-008: 以 email 查詢可邀請的使用者（Sprint 248，DEF-321 (a)）
+
+- **端點**: `GET /api/v2/tenants/:id/members/lookup`
+- **描述**: 店鋪成員管理 UI（`/dashboard/members`）邀請表單只知道對方 email，PRD §9.11 的邀請端點
+  （`POST /tenants/:id/members/invite`）僅接受 userId，本端點解析 email → userId 供表單送出使用
+- **對應需求**: PRD §10.1.2 `/dashboard/members`、§9.11
+- **角色**: StoreOwner（僅該店鋪的 StoreOwner，與 API-M17-002 邀請端點相同權限）
+
+> ⚠️ **文件缺口**：M17 成員管理另外 7 個既有端點（列表／邀請／我的邀請／接受／拒絕／改角色／移除，
+> `TenantController`:214-320）自 Sprint 98 起即存在，但從未被收錄進本文件，非本次新增的缺口，暫不在此補齊。
+
+### 11.1 Request
+
+**Path Parameters**:
+
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| id | UUID | 是 | Tenant ID |
+
+**Query Parameters**:
+
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| email | string | 是 | 要查詢的使用者 email |
+
+**Request Body**: 無。
+
+### 11.2 Response
+
+**200 OK**:
+```json
+{
+  "code": 200,
+  "data": {
+    "userId": "user-uuid-001",
+    "displayName": "王小明",
+    "email": "wang@example.com",
+    "avatarUrl": null
+  },
+  "timestamp": "2026-10-10T12:00:00.000Z"
+}
+```
+
+### 11.3 錯誤情境
+
+| 條件 | 錯誤碼 | 說明 |
+|------|--------|------|
+| 呼叫者不是這間店鋪的 StoreOwner | E-4031 | 無權操作此店鋪 |
+| 查無此 email 對應的使用者 | E-2001 | 與 `inviteMember` 既有「找不到使用者」同碼（罐頭文字「租戶未啟用」與實際情境不符，前端已覆寫顯示文字） |
+
+---
+
 ## 📝 錯誤碼對照表
 
 | 錯誤碼 | HTTP 狀態 | 說明 | 處理建議 |
@@ -599,6 +651,7 @@
 | E-4092 | 409 | 店鋪申請已存在 | 查詢現有申請狀態 |
 | E-1001 | 401 | JWT 無效 | 重新登入 |
 | E-2003 | 403 | 租戶上下文不明 | 提供 X-Tenant-ID |
+| E-2001 | 403 | 找不到使用者（罐頭文字誤導，實際是「查無此帳號」） | 確認 email 是否正確 |
 
 ---
 

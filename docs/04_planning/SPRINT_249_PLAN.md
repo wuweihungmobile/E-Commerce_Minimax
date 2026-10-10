@@ -67,7 +67,8 @@ Sprint 248（店鋪成員管理 UI）完成後，使用者指示依先前計畫�
 | 單元 | `BuyerNotificationServiceTest`（22）、`PaymentStateServiceTest`＋`PaymentStateServiceBookingTest`＋其餘 3 個 `PaymentStateService*Test`（99）、`PaymentService*Test` 5 個檔案（26） | ✅ 全數通過，共 147 個相關測試 0 失敗 |
 | 編譯 | 每次新增方法後 `mvn -o clean compile`／`clean test-compile`，確認有 `Compiling N source files` 字樣 | ✅ 確認為真實編譯結果（曾遇到一次 `Nothing to compile` 的 IDE 預編幻影成功，改用 `clean` 重新確認） |
 | 整合（真實 PostgreSQL，直接針對本輪新增／修改的 4 個檔案跑一次完整輸出） | `BookingPaymentIntegrationTest`（17）、`OrderStripeCheckoutRetryIntegrationTest`（2）、`BookingTimeoutIntegrationTest`（10）、`BookingNoShowIntegrationTest`（4） | ✅ 33 個測試 0 失敗／0 錯誤；日誌確認 `type=PAYMENT_FAILED` 通知確實依 `orderId`／`bookingId` 正確分流寄出 |
-| 全量回歸 | `mvn -o clean verify`（改動生產邏輯，依規範跑全量） | ✅ BUILD SUCCESS：整合 811（0 回歸）；checkstyle（main+test）0 違規；PMD 通過 |
+| 全量回歸（本機純 JVM，不經 act） | `mvn -o clean verify`（改動生產邏輯，依規範跑全量） | ✅ BUILD SUCCESS：整合 813（0 回歸）；checkstyle（main+test）0 違規；PMD 通過 |
+| `make validate-release`（act，雲端等價） | 見 §6：前兩次因無關的環境缺陷（DEF-357）失敗，修復後單獨重跑 `backend-unit`＋`backend-integration` 兩個 job 皆成功 | ✅（詳見 §6） |
 | 前端 | 無任何檔案變更（見 §2.2），略過前端建置／測試 | N/A |
 
 ## 5. 既有整合測試因新增通知而需修正的斷言（誠實揭露，非新缺陷）
@@ -80,3 +81,14 @@ Sprint 248（店鋪成員管理 UI）完成後，使用者指示依先前計畫�
 4. `BookingNoShowIntegrationTest.runningTwice_cancelsAndNotifiesOnce`：原斷言「只通知一次」（`hasSize(1)`），改為「付款確認＋取消通知（重複執行不重複）共兩則」。
 
 `BookingCancellationRefundIntegrationTest.java` 的通知斷言另外用 `notification_type` 過濾查詢，不受影響，未修改。
+
+## 6. `make validate-release` 兩次失敗與根因排查（DEF-357，誠實記錄排查過程）
+
+第一次執行 `make validate-release`，`Backend Integration Tests & Package` job 失敗：`NotificationPipelineRedisIntegrationTest.singleNotification_updatesPrecreatedRowInsteadOfInsertingAnother` 斷言「訊息確實進了 Redis」expected 1 but was 0。依 CLAUDE.md「CI 修復強制規則」不盲目猜測，先確認：本機純 JVM 的 `mvn clean verify`（同一份程式碼，不經 act）剛跑過是 811／813 全數通過，顯示問題與程式邏輯無關、只在 act 容器環境重現。重跑第二次 `make validate-release` 確認是否可重現——**結果惡化**：同一個類別的 3 個案例中有 2 個失敗（另一個斷言 mock 零互動），排除單純偶發 flake 的可能性，繼續往下查：
+
+- 失敗當下的日誌印出 `[app-scheduler-3] ... Processing notification: messageId=...`，`app-scheduler-*` 是 `SchedulingConfig` 的專屬執行緒池前綴——代表有一個**排程消費者執行緒**在背景搶先清空了這個測試手動管理（不經 Spring、直連真實 Redis）的佇列。
+- 逐一排除：`application-integration-test.yml` 確認 `scheduling.enabled: false`；全專案 `@SpringBootTest` 整合測試逐一確認皆有 `@ActiveProfiles("integration-test")`；唯一一處明確啟用排程的 `SchedulingConfigTest` 用的是 `ApplicationContextRunner`（每個測試方法獨立開關 context，不會洩漏進 Spring 的 TestContext 快取）。
+- **真正根因**：repo 根目錄的 `.env`（gitignored，本機 `make up` 開發用）設 `APP_SCHEDULING_ENABLED=true`；`act` 預設會把這個檔案當環境變數注入容器，而 `.github/workflows/act-compat.yml`／`ci.yml` 的 backend job 從未在 `env:` 明確覆寫這個變數——環境變數優先權高於 profile YAML，靜默蓋過 `integration-test` profile 原本要關閉排程的設計。真實雲端 GitHub Actions 不會自動載入 `.env`，所以這個問題**只在本機 act 模擬環境出現**。
+- **修復**：在兩個 workflow 檔案的 4 個相關 job（`act-compat.yml` 的 `backend-unit`／`backend-integration`、`ci.yml` 的對應 job）明確新增 `APP_SCHEDULING_ENABLED: "false"`。修復後單獨跑 `act -j backend-integration`（含其依賴的 `backend-unit`）驗證：兩個 job 皆成功，`NotificationPipelineRedisIntegrationTest` 0 失敗，整合測試 813 個 0 失敗。
+
+與本輪 DEF-318 的通知／付款程式碼變更**確認無關**：失敗的測試檔案、`SchedulingConfig`、`NotificationConsumerService` 皆自 Sprint 219 起未被改動（`git log` 查證）；只是本輪為驗證 DEF-318 的改動而完整跑了兩次 `make validate-release`，才第一次把這個早已存在的環境缺陷實際觸發出來。已登記並已修復為 DEF-357，詳見 `DEFERRED_ITEMS_TRACKER.md`。

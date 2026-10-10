@@ -71,7 +71,12 @@ Sprint 249 完成 DEF-318 的 PRD 必要兩項（`BOOKING_CONFIRMED`／`PAYMENT_
 
 第一次 `mvn -o clean verify`（約 00:28 起跑，整合測試階段耗時甚長）出現單一失敗：`BookingApiRealStackIntegrationTest.calendar`，`$.data[0].date` 預期 `2026-11-10` 實際 `2026-11-11`。依 CLAUDE.md 規則先確認檔案與本輪變動**完全無關**（該測試檔案屬房源日曆／訂房查詢，本輪只動通知；`grep` 確認零重疊），且該測試的 `day(n)` 輔助方法以 `LocalDate.now().plusDays(n)` 算相對日期，是典型「跨日期邊界」症狀。單獨重跑 `BookingApiRealStackIntegrationTest`（16 個測試，含 `calendar`）：0 失敗。判定為單次執行耗時過長跨過午夜邊界的瞬斷，與本輪通知程式碼無關；重新完整跑一次 `mvn -o clean verify`：單元 2190／整合 813／0 失敗，checkstyle／PMD 皆通過，確認全綠後才繼續。
 
-## 7. 待辦
+## 7. `make validate-release` 與 push
 
-- `make validate-release`（act，雲端等價）尚未執行，push 前依規範補做。
+`make validate-release`：act CI＋schema 對齊＋E2E（141 通過／4 略過／0 失敗）全數通過，寫入 FULL 記錄；commit `172f203` 於記錄 0 分鐘內 push，pre-push 輕量守門沿用該記錄直接放行。
+
+雲端 CI run **38073415043**：三個 job 皆 `success`（Backend Unit Tests、Backend Integration Tests & Package、Frontend Lint & Build）。**排查記錄**：第一次 `gh run watch --exit-status` 在「Backend Integration Tests & Package」仍 `in_progress`（卡在 `Run Integration Tests` 步驟）時因一次網路瞬斷（`connection reset by peer`）提早以 exit code 0 退出，若照字面判讀會誤判為「已通過」；改用 `gh run view --json status,conclusion,jobs` 直接查詢才確認真正完成時間點與逐 job 結論，重新 `gh run watch` 一次後以同樣的 JSON 查詢交叉確認皆為 `success` 才採信。
+
+## 8. 待辦
+
 - DEF-317（EMAIL／SMS／PUSH 通道不會真的送出）與 `BOOKING_REMINDER`（PRD US-011，Phase 2）皆非本輪範圍，仍登記未做。

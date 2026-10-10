@@ -68,8 +68,9 @@ Sprint 248（店鋪成員管理 UI）完成後，使用者指示依先前計畫�
 | 編譯 | 每次新增方法後 `mvn -o clean compile`／`clean test-compile`，確認有 `Compiling N source files` 字樣 | ✅ 確認為真實編譯結果（曾遇到一次 `Nothing to compile` 的 IDE 預編幻影成功，改用 `clean` 重新確認） |
 | 整合（真實 PostgreSQL，直接針對本輪新增／修改的 4 個檔案跑一次完整輸出） | `BookingPaymentIntegrationTest`（17）、`OrderStripeCheckoutRetryIntegrationTest`（2）、`BookingTimeoutIntegrationTest`（10）、`BookingNoShowIntegrationTest`（4） | ✅ 33 個測試 0 失敗／0 錯誤；日誌確認 `type=PAYMENT_FAILED` 通知確實依 `orderId`／`bookingId` 正確分流寄出 |
 | 全量回歸（本機純 JVM，不經 act） | `mvn -o clean verify`（改動生產邏輯，依規範跑全量） | ✅ BUILD SUCCESS：整合 813（0 回歸）；checkstyle（main+test）0 違規；PMD 通過 |
-| `make validate-release`（act，雲端等價） | 見 §6：前兩次因無關的環境缺陷（DEF-357）失敗，修復後單獨重跑 `backend-unit`＋`backend-integration` 兩個 job 皆成功 | ✅（詳見 §6） |
+| `make validate-release`（act，雲端等價） | 見 §6：多次失敗、一次錯誤修法、最終修正，詳細排查過程 | ✅ 最終完整執行 act＋schema＋E2E 全綠 |
 | 前端 | 無任何檔案變更（見 §2.2），略過前端建置／測試 | N/A |
+| 雲端 CI（push 後） | run 38045658902（第一個修法 push 後）：`Backend Unit Tests` 失敗，`SchedulingConfigTest` 2 案例因全 job 覆寫而斷言失敗；run 38049041671（撤銷覆寫＋改用 database 隔離後）：三個 job 皆 success | ✅ 已確認全綠（commit `63a30b5`） |
 
 ## 5. 既有整合測試因新增通知而需修正的斷言（誠實揭露，非新缺陷）
 

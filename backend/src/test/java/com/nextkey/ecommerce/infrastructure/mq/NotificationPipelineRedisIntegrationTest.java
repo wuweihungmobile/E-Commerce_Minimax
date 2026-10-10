@@ -44,9 +44,23 @@ import com.nextkey.ecommerce.infrastructure.redis.RedisConfig;
  * LPUSH／BRPOP 與 JSON 序列化往返後，消費者更新的是「送出前預先建立的那一列」而不是再新增一列；廣播沒有預建列
  * 時仍新增；預建列尚未提交時消費者不重複新增、走重試。只 mock 資料庫。
  * 需求：執行前須先 {@code make test-db-up}（不啟動 Spring context：{@code IntegrationTestConfiguration} 會把 Redis 換成 mock）。
+ *
+ * <p><b>資料庫隔離（Sprint 249，DEF-357 的殘留問題）：</b>本類別手動直連真實 Redis、用與生產相同的固定
+ * key（{@code RedisStreamConfig.NOTIFICATION_STREAM}），刻意繞過 {@code IntegrationTestConfiguration}
+ * 對其他所有整合測試套用的 Redis mock，因此不受那層保護——任何其他同時存活、也連到同一台 Redis
+ * database 0（全專案沒有任何地方指定 {@code spring.data.redis.database}，一律預設 0）的元件，只要
+ * 推或彈同一個 key，就會與本類別的斷言競態。DEF-357 已修正最主要的洩漏源（.env 的
+ * {@code APP_SCHEDULING_ENABLED=true} 經 act 蓋過 profile 設定、讓殘留的排程消費者執行緒持續彈出這個
+ * key），但 `make validate-release` 的完整多 job 併行環境下仍偶發殘留競態（{@code validated 2026-10-10}：
+ * 修正後 4 次完整重跑仍有 1 次 3 個案例全部失敗）。改用 Redis 的邏輯資料庫（{@code SELECT}）徹底隔離：
+ * 本類別獨佔 database {@value #TEST_DATABASE}，與 database 0 的任何其他活動（不論現在或未來）完全不共用
+ * 鍵空間，不需要變動任何生產程式碼或其他測試。</p>
  */
 @DisplayName("IT-NOTIF-PIPELINE: 通知管線在真實 Redis 上端到端（單筆更新預建列、廣播新增、預建列未提交時重試）")
 class NotificationPipelineRedisIntegrationTest {
+
+    /** 本類別獨佔的 Redis 邏輯資料庫；全專案其餘部分一律用預設的 database 0，見類別說明。 */
+    private static final int TEST_DATABASE = 1;
 
     private static LettuceConnectionFactory connectionFactory;
     private static RedisTemplate<String, Object> redisTemplate;
@@ -63,6 +77,7 @@ class NotificationPipelineRedisIntegrationTest {
     @BeforeAll
     static void setUpRedis() {
         RedisStandaloneConfiguration redisConfig = new RedisStandaloneConfiguration("localhost", 6379);
+        redisConfig.setDatabase(TEST_DATABASE);
         redisConfig.setPassword(RedisPassword.of("redis-dev-password"));
         connectionFactory = new LettuceConnectionFactory(redisConfig);
         connectionFactory.afterPropertiesSet();

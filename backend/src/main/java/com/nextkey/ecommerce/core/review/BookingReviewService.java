@@ -6,6 +6,8 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,6 +50,12 @@ public class BookingReviewService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Booking not found"));
 
+        // DEF-331(a) 修復：原先完全沒檢查 bookingId 是否屬於呼叫者本人，
+        // 任何登入使用者都能冒用他人訂房建立評價
+        if (!booking.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.E_1007, "You can only review your own booking");
+        }
+
         // 檢查是否已評價
         if (bookingReviewRepository.findByBookingIdAndUserId(bookingId, userId).isPresent()) {
             throw new BusinessException(ErrorCode.E_1094, "You have already reviewed this booking");
@@ -78,14 +86,19 @@ public class BookingReviewService {
      */
     @Transactional
     public BookingReviewDto.BookingReviewResponse replyToBookingReview(UUID reviewId, String reply) {
-        UUID userId = TenantContext.getCurrentUser();
+        TenantContext.getCurrentUser(); // Validate user is authenticated
 
         BookingReview review = bookingReviewRepository.findById(reviewId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1092, "Booking review not found"));
 
-        // 檢查是否是房東
+        // DEF-331(c) 修復：原先比對的是「訂房的客人」（booking.getUserId()），導致真正的房東
+        // 永遠無法回覆評價。改為比對房源所屬租戶（比照 ReviewService.checkReviewManagementAuthorization
+        // 既有前例：same-tenant or admin）。
         Booking booking = review.getBooking();
-        if (!booking.getUserId().equals(userId)) {
+        UUID tenantId = TenantContext.getCurrentTenant();
+        UUID listingTenantId = booking.getRoomListing().getTenantId();
+        boolean isSameTenant = tenantId != null && tenantId.equals(listingTenantId);
+        if (!isCurrentUserAdmin() && !isSameTenant) {
             throw new BusinessException(ErrorCode.E_1007, "Only the host can reply");
         }
 
@@ -139,6 +152,18 @@ public class BookingReviewService {
     }
 
     // ========== Helper Methods ==========
+
+    /**
+     * 判斷目前使用者是否為系統管理員（ROLE_ADMIN 或 ROLE_SUPER_ADMIN）。
+     * 比照 ReviewService.isCurrentUserAdmin 既有前例（Sprint 73 DEF-028/029/030）。
+     */
+    private boolean isCurrentUserAdmin() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && (
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+        );
+    }
 
     private BookingReviewDto.BookingReviewResponse toBookingReviewResponse(BookingReview review) {
         return BookingReviewDto.BookingReviewResponse.builder()

@@ -29,7 +29,9 @@ import com.nextkey.ecommerce.core.media.MediaService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.review.Review;
 import com.nextkey.ecommerce.domain.model.user.User;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.ReviewRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
@@ -62,6 +64,12 @@ class ReviewServiceSearchTest {
 
     @Mock
     private MediaService mediaService;
+
+    @Mock
+    private OrderRepository orderRepository;
+
+    @Mock
+    private BookingRepository bookingRepository;
 
     @InjectMocks
     private ReviewService reviewService;

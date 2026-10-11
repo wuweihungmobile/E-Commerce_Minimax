@@ -92,7 +92,8 @@ public class ListingCardService {
                         .available(inStock)
                         .build())
                 .tenantName(listing.getTenant().getName())
-                .ctaUrl("/products/" + listing.getId())
+                // DEF-321(c)：真正的詳情頁是 /listings/{id}，/products/{id} 在前端不存在（死連結）
+                .ctaUrl("/listings/" + listing.getId())
                 .isActive(listing.getStatus() == Listing.ListingStatus.ACTIVE)
                 .statusReason(listing.getStatus() != Listing.ListingStatus.ACTIVE ? "listing_inactive" : null)
                 .build();
@@ -141,7 +142,8 @@ public class ListingCardService {
                         .available(available)
                         .build())
                 .tenantName(listing.getTenant().getName())
-                .ctaUrl("/rooms/" + listing.getId())
+                // DEF-321(c)：真正的詳情頁是 /listings/{id}，/rooms/{id} 在前端不存在（死連結）
+                .ctaUrl("/listings/" + listing.getId())
                 .isActive(listing.getStatus() == Listing.ListingStatus.ACTIVE)
                 .statusReason(statusReason)
                 .build();

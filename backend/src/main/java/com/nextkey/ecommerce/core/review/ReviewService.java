@@ -20,9 +20,13 @@ import com.nextkey.ecommerce.api.dto.ReviewDto;
 import com.nextkey.ecommerce.api.dto.ReviewSearchCriteria;
 import com.nextkey.ecommerce.core.media.MediaService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.order.Booking;
+import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.review.Review;
 import com.nextkey.ecommerce.domain.model.user.User;
+import com.nextkey.ecommerce.domain.repository.BookingRepository;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.ReviewRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
@@ -52,6 +56,8 @@ public class ReviewService {
     private final ListingRepository listingRepository;
     private final UserRepository userRepository;
     private final MediaService mediaService;
+    private final OrderRepository orderRepository;
+    private final BookingRepository bookingRepository;
 
     // Pagination default
     public static final int DEFAULT_PAGE_SIZE = 50;
@@ -70,6 +76,10 @@ public class ReviewService {
         // 檢查 Listing 是否存在
         Listing listing = listingRepository.findById(request.getListingId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Listing not found"));
+
+        // DEF-331(b) 修復：原先完全沒有驗證購買/預訂證明，orderId/bookingId 兩者皆可留空，
+        // 等同任何人都能對任何商品留評價；提供時也沒驗證歸屬本人與此 listing
+        verifyPurchase(userId, request.getListingId(), request.getOrderId(), request.getBookingId());
 
         // 檢查是否已評價
         if (request.getOrderId() != null) {
@@ -661,6 +671,41 @@ public class ReviewService {
     }
 
     // ========== Helper Methods ==========
+
+    /**
+     * 驗證評價確實附帶可歸屬本人、且對應此 listing 的購買/預訂證明（DEF-331b 修復）。
+     *
+     * <p>原先 orderId/bookingId 兩者皆可留空、提供時也不驗證歸屬，等同任何人都能對任何
+     * 商品/房源留評價。此處要求至少提供一者，且該筆訂單/訂房必須屬於呼叫者本人，並確實
+     * 關聯到本次評價的 listing。
+     */
+    private void verifyPurchase(UUID userId, UUID listingId, UUID orderId, UUID bookingId) {
+        if (orderId == null && bookingId == null) {
+            throw new BusinessException(ErrorCode.E_1007,
+                    "A review must reference a purchased order or booking");
+        }
+
+        if (orderId != null) {
+            Order order = orderRepository.findById(orderId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Order not found"));
+            boolean ownsOrder = order.getUserId().equals(userId);
+            boolean orderHasListing = order.getItems().stream()
+                    .anyMatch(item -> listingId.equals(item.getListingId()));
+            if (!ownsOrder || !orderHasListing) {
+                throw new BusinessException(ErrorCode.E_1007, "You can only review items you have purchased");
+            }
+        }
+
+        if (bookingId != null) {
+            Booking booking = bookingRepository.findById(bookingId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Booking not found"));
+            boolean ownsBooking = booking.getUserId().equals(userId);
+            boolean bookingMatchesListing = listingId.equals(booking.getRoomListingId());
+            if (!ownsBooking || !bookingMatchesListing) {
+                throw new BusinessException(ErrorCode.E_1007, "You can only review bookings you have made");
+            }
+        }
+    }
 
     /**
      * 🔴 Sprint 16 US-005: 驗證圖片數量（最多 9 張）

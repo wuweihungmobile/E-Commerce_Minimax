@@ -54,7 +54,13 @@
 
 `mvn -o clean verify`：單元測試 2197 個（0 失敗，較 Sprint 250 的 2190 增加 7 個，對應新增的 `ListingCardServiceTest`＋2、`BookingReviewServiceTest` 重寫後淨增＋5）；整合測試 825 個（0 失敗，較 813 增加 12 個，即新增的 `ReviewAuthorizationRealDbIntegrationTest`）；checkstyle（main＋test）0 違規；PMD 無違規；`BUILD SUCCESS`。
 
-## 6. 待辦（非本輪範圍，登記於 `DEFERRED_ITEMS_TRACKER.md`）
+## 7. `make validate-release` 與 push
+
+`make validate-release`：act CI（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build 三個 job）＋ schema 對齊（兩次檢查點）＋ E2E（141 passed／4 skipped）全數通過，寫入 FULL 記錄；commit `c8281c7b` 於記錄 0 分鐘內 push，pre-push 輕量守門沿用該記錄直接放行。
+
+雲端 CI run **38105453246**：以 `gh run view --json status,conclusion,jobs` 結構化查詢交叉確認（不單信 `gh run watch` 的 exit code），三個 job 皆 `success`：Backend Unit Tests（2m49s）、Backend Integration Tests & Package（7m57s）、Frontend Lint & Build（43s）。
+
+## 8. 待辦（非本輪範圍，登記於 `DEFERRED_ITEMS_TRACKER.md`）
 
 - DEF-317（通知 EMAIL／SMS／PUSH 真實送達）：需先決定寄送政策／使用者偏好／退訂方式，且啟用真實 SMTP 前須先修 DEF-347。
 - DEF-321(b)(d)(e)：店鋪前台 `/stores/[slug]` 路由未實作、嵌入卡片 MAINTENANCE/INACTIVE 規格未照做、PRD 路由表與實際頁面對照表缺失。`/privacy`／`/terms` 需使用者提供法務文字，AI 不能代寫。

@@ -312,6 +312,96 @@ class TenantServiceTest {
     }
 
     @Test
+    @Order(4)
+    @DisplayName("DEF-321(b)（Sprint 252）：updateTenant 設定未被佔用的新 slug → 成功寫入")
+    void updateTenant_setsUnusedSlug_succeeds() {
+        UUID tenantId = TEST_TENANT_ID;
+        TenantUpdateRequest request = TenantUpdateRequest.builder()
+                .slug("new-store-slug")
+                .build();
+
+        Tenant existingTenant = Tenant.builder()
+                .id(tenantId)
+                .name("Original Store")
+                .slug("original-store-slug")
+                .status(Tenant.TenantStatus.ACTIVE)
+                .build();
+
+        when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                eq(tenantId), eq(TEST_USER_ID), eq(TenantMember.StoreRole.STORE_OWNER)))
+                .thenReturn(true);
+        when(tenantRepository.findById(tenantId))
+                .thenReturn(Optional.of(existingTenant));
+        when(tenantRepository.existsBySlug("new-store-slug")).thenReturn(false);
+        when(tenantRepository.save(any(Tenant.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        tenantService.updateTenant(tenantId, request, TEST_USER_ID);
+
+        assertEquals("new-store-slug", existingTenant.getSlug());
+    }
+
+    @Test
+    @Order(4)
+    @DisplayName("DEF-321(b)（Sprint 252）：updateTenant 設定已被其他店鋪使用的 slug → 拋 E_2011，不寫入")
+    void updateTenant_setsSlugAlreadyTaken_throwsConflict() {
+        UUID tenantId = TEST_TENANT_ID;
+        TenantUpdateRequest request = TenantUpdateRequest.builder()
+                .slug("taken-slug")
+                .build();
+
+        Tenant existingTenant = Tenant.builder()
+                .id(tenantId)
+                .name("Original Store")
+                .slug("original-store-slug")
+                .status(Tenant.TenantStatus.ACTIVE)
+                .build();
+
+        when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                eq(tenantId), eq(TEST_USER_ID), eq(TenantMember.StoreRole.STORE_OWNER)))
+                .thenReturn(true);
+        when(tenantRepository.findById(tenantId))
+                .thenReturn(Optional.of(existingTenant));
+        when(tenantRepository.existsBySlug("taken-slug")).thenReturn(true);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> tenantService.updateTenant(tenantId, request, TEST_USER_ID));
+
+        assertEquals(ErrorCode.E_2011, ex.getErrorCode());
+        assertEquals("original-store-slug", existingTenant.getSlug());
+        verify(tenantRepository, never()).save(any(Tenant.class));
+    }
+
+    @Test
+    @Order(4)
+    @DisplayName("DEF-321(b)（Sprint 252）：updateTenant 送出與現值相同的 slug → 視為未變更，不查詢唯一性")
+    void updateTenant_slugUnchanged_doesNotCheckUniqueness() {
+        UUID tenantId = TEST_TENANT_ID;
+        TenantUpdateRequest request = TenantUpdateRequest.builder()
+                .slug("original-store-slug")
+                .build();
+
+        Tenant existingTenant = Tenant.builder()
+                .id(tenantId)
+                .name("Original Store")
+                .slug("original-store-slug")
+                .status(Tenant.TenantStatus.ACTIVE)
+                .build();
+
+        when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                eq(tenantId), eq(TEST_USER_ID), eq(TenantMember.StoreRole.STORE_OWNER)))
+                .thenReturn(true);
+        when(tenantRepository.findById(tenantId))
+                .thenReturn(Optional.of(existingTenant));
+        when(tenantRepository.save(any(Tenant.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        tenantService.updateTenant(tenantId, request, TEST_USER_ID);
+
+        verify(tenantRepository, never()).existsBySlug(any());
+    }
+
+    @Test
     @Order(5)
     @DisplayName("updateTenant: STORE_STAFF 角色不能更新店鋪")
     void updateTenant_staffRole_shouldThrowException() {

@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import RoomService, { CreateRoomRequest, UpdateRoomRequest, Room } from '@/services/room'
 import AuthService from '@/services/auth'
 
@@ -45,6 +46,7 @@ export default function RoomForm({ roomId }: RoomFormProps) {
     roomCount: undefined,
     openUntilDate: undefined,
     bookingWindowDays: undefined,
+    isFeatured: false,
   })
 
   useEffect(() => {
@@ -77,6 +79,7 @@ export default function RoomForm({ roomId }: RoomFormProps) {
         roomCount: room.roomCount || undefined,
         openUntilDate: room.openUntilDate || undefined,
         bookingWindowDays: room.bookingWindowDays || undefined,
+        isFeatured: room.isFeatured || false,
       })
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
@@ -184,7 +187,7 @@ export default function RoomForm({ roomId }: RoomFormProps) {
     }
   }
 
-  const handleChange = (field: keyof CreateRoomRequest, value: string | number | string[] | undefined) => {
+  const handleChange = (field: keyof CreateRoomRequest, value: string | number | string[] | boolean | undefined) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
     if (errors[field as keyof FormErrors]) {
       setErrors((prev) => ({ ...prev, [field]: undefined }))
@@ -432,6 +435,17 @@ export default function RoomForm({ roomId }: RoomFormProps) {
                 rows={4}
                 className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               />
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Switch
+                id="isFeatured"
+                checked={formData.isFeatured || false}
+                onCheckedChange={(checked) => handleChange('isFeatured', checked)}
+              />
+              <Label htmlFor="isFeatured" className="cursor-pointer">
+                精選房源（顯示於店鋪前台首頁）
+              </Label>
             </div>
 
             <div>

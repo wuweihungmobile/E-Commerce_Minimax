@@ -69,7 +69,7 @@ class GlobalExceptionHandlerTest {
         for (ErrorCode code : new ErrorCode[] {ErrorCode.E_2003, ErrorCode.E_4106, ErrorCode.E_1005,
                 ErrorCode.E_1008, ErrorCode.E_1010, ErrorCode.E_1086, ErrorCode.E_1093, ErrorCode.E_1094,
                 ErrorCode.E_3005, ErrorCode.E_4091, ErrorCode.E_4092, ErrorCode.E_5014, ErrorCode.E_7006,
-                ErrorCode.E_8010}) {
+                ErrorCode.E_8010, ErrorCode.E_2011}) {
             expected.put(code, HttpStatus.CONFLICT);
         }
 

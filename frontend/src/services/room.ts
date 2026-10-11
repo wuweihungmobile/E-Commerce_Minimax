@@ -22,6 +22,8 @@ export interface Room {
   // 開放窗（AI-2202e）：null = 無限制
   openUntilDate?: string | null
   bookingWindowDays?: number | null
+  // DEF-321(b)（Sprint 252）：店鋪前台首頁「精選房源」策展旗標
+  isFeatured: boolean
   createdAt: string
   updatedAt: string
 }
@@ -67,6 +69,7 @@ export interface CreateRoomRequest {
   openUntilDate?: string | null
   // 開放窗（AI-2202e）：開放未來 N 天（滾動）；未填 = 無限制。兩者取最早生效
   bookingWindowDays?: number | null
+  isFeatured?: boolean
 }
 
 export interface UpdateRoomRequest extends CreateRoomRequest {

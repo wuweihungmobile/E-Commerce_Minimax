@@ -231,7 +231,7 @@ public class GlobalExceptionHandler {
             // E_2003／E_1008／E_3005／E_4092 等「已存在」類不一致（唯一被 404 的例外）；grep 確認前端
             // 與任何已知呼叫端皆未依賴這個 404，改到這裡才與其他「已存在」錯誤一致。
             case E_4106, E_1010, E_1008, E_1005, E_1086, E_1093, E_1094, E_3005, E_4091, E_4092, E_5014,
-                    E_7006, E_8010 -> HttpStatus.CONFLICT;
+                    E_7006, E_8010, E_2011 -> HttpStatus.CONFLICT;
             case E_2010, E_3001, E_3002, E_3008, E_4008, E_5001, E_5006, E_6004, E_6005, E_7002, E_7010,
                     E_5010, E_5011, E_5012, E_6009, E_7005, E_7009, E_8001 -> HttpStatus.UNPROCESSABLE_ENTITY;
             case E_9000, E_9001, E_9002, E_9003, E_9004, E_9005, E_9006, E_9007, E_9008 -> HttpStatus.BAD_REQUEST;

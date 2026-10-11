@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0.4（文件修訂；規格基準仍為 v1.0）
+> **版本**: v1.0.5（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -15,6 +15,7 @@
 > - **v1.0.1 → v1.0.2（2026-09-02，Sprint 111）：§8.2 資料表欄位定義與實作同步（見 ER-005，DEF-062）**
 > - **v1.0.2 → v1.0.3（2026-10-03，Sprint 244）**：僅加修訂註記、內文未改（§3 狀態機、§9.6、§9.7、Mock 付款表、M05 排除範圍表）；與實作不符的敘述以 [SRD_System_Architecture.md](../02_architecture/SRD_System_Architecture.md) §6.3 與 [API_M05_Order.md](../02_architecture/api/API_M05_Order.md)、[API_M06_Booking.md](../02_architecture/API_M06_Booking.md) 為準（DEF-322）。
 > - **v1.0.3 → v1.0.4（2026-10-04，Sprint 245 收尾決策）**：新增未入住（no-show）規則（§15.2.5 BOOKING 路徑、§17.4.6 Q15、§18 RTM-DR-006）與訂房納入結算（§6.2.1，DEF-353）；既有規格內文未改寫。
+> - **v1.0.4 → v1.0.5（2026-10-11，Sprint 252，DEF-321(b)）**：§10 路由表 `/stores/[slug]` 四條路由、§11.3／§11.3.1 元件、§12.7 瀏覽流程**首次實作**；既有規格內文未改寫。實作時發現並修正 §12.5「Guest 未登入可瀏覽」與 `/v2/listings` 實際授權矛盾（新建獨立公開端點，未改動 `/v2/listings`）；§11.3.1 `<StoreHeroBanner/>` 的 `bannerImageUrl`/`ctaText` 本輪未新增對應欄位，暫以既有 `logoUrl`/`name`/`description` 呈現。
 
 ---
 

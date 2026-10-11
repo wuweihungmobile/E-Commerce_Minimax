@@ -1,8 +1,8 @@
 # API 規格 - M17 租戶/店鋪管理 / Tenant Management
 
 > **API ID**: API-M17 (API-501 ~ API-509)
-> **版本**: v1.0
-> **最後更新日期**: 2026-09-02（Sprint 110：審核端點由 `/admin/tenants/*` 更正為 `/admin/tenant-applications/*`）
+> **版本**: v1.1
+> **最後更新日期**: 2026-10-11（Sprint 252，DEF-321(b)：新增 API-M17-010/011 店鋪前台公開端點；API-M17-003/004 補上 `slug` 欄位）
 > **作者**: Marcus (SD-Architect)
 
 ---
@@ -23,6 +23,8 @@
 | API-M17-APP-003 | `/api/v2/admin/tenant-applications/:applicationId/reject` | POST | 駁回開店申請 | SUPER_ADMIN |
 | ~~API-M17-008~~ | `/api/v2/admin/tenants/:id/approve` | POST | ⚠️ 舊流程，生產不可達 | SUPER_ADMIN |
 | ~~API-M17-009~~ | `/api/v2/admin/tenants/:id/reject` | POST | ⚠️ 舊流程，生產不可達 | SUPER_ADMIN |
+| API-M17-010 | `/api/v2/public/stores/:slug` | GET | 店鋪前台公開資料（DEF-321(b)） | Guest（匿名） |
+| API-M17-011 | `/api/v2/public/stores/:slug/listings` | GET | 店鋪前台商品/房源列表（DEF-321(b)） | Guest（匿名） |
 
 > **⚠️ 開店審核走 `API-M17-APP-*`，不走 `API-M17-008/009`**（PRD §4.3 / §9.10.2、FRD BR-M17-001）
 >
@@ -190,6 +192,7 @@
   "data": {
     "tenantId": "tenant-uuid-001",
     "storeName": "我的數位商店",
+    "slug": "my-digital-store",
     "storeDescription": "專營 3C 產品與周邊配件",
     "businessType": "RETAIL_ONLY",
     "status": "ACTIVE",
@@ -240,6 +243,7 @@
 ```json
 {
   "storeName": "我的數位商店（更新版）",
+  "slug": "my-digital-store-v2",
   "storeDescription": "專營最新 3C 產品與周邊配件，提供快速出貨服務",
   "contactEmail": "new-contact@mystore.com",
   "contactPhone": "+886-988-888-888",
@@ -247,6 +251,10 @@
   "coverImageUrl": "https://example.com/covers/store1_new.jpg"
 }
 ```
+
+> **`slug`（DEF-321(b)，Sprint 252 新增）**：選填。開店審核通過時已自動由店名產生（`AdminService.generateTenantSlug`），
+> 此處可改。格式須符合 `^[a-z0-9]+(-[a-z0-9]+)*$`（小寫英數+短橫線），變更後若與其他店鋪衝突回 `E-2011`（409）。
+> 即為本文件 §12 店鋪前台公開端點的 `:slug` 路徑參數。
 
 ### 4.2 Response
 
@@ -598,6 +606,105 @@
 
 > ⚠️ **文件缺口**：M17 成員管理另外 7 個既有端點（列表／邀請／我的邀請／接受／拒絕／改角色／移除，
 > `TenantController`:214-320）自 Sprint 98 起即存在，但從未被收錄進本文件，非本次新增的缺口，暫不在此補齊。
+
+---
+
+## 12. API-M17-010 / API-M17-011: 店鋪前台公開端點（DEF-321(b)，Sprint 252）
+
+PRD §10 路由表 `/stores/[slug]`、`/stores/[slug]/products`、`/stores/[slug]/rooms`；§12.5／§12.7 要求
+Guest（未登入）可瀏覽店鋪前台。既有 `GET /v2/listings`、`/v2/listings/:id` 皆未放行匿名請求（落入
+`SecurityConfig` 的 `anyRequest().authenticated()`，回 401），本輪新建這兩個獨立公開端點，不更動
+`/v2/listings` 本身的授權範圍。掛在既有但先前無任何 Controller 使用的 `permitAll()` 規則
+`/v2/public/**` 下（Sprint 190 稽核時確認的死規則），`SecurityConfig` 不需新增規則。
+
+兩者皆**只回傳 `status=ACTIVE` 的店鋪**；`slug` 不存在或店鋪非 ACTIVE（停權/待審核/已終止）**回應相同的
+404**，不區分，避免成為列舉店鋪狀態的側通道（`StorefrontController.findActiveTenantBySlug`）。
+
+### 12.1 API-M17-010：店鋪前台公開資料
+
+- **端點**: `GET /api/v2/public/stores/:slug`
+- **描述**: 店鋪前台首頁所需的公開資料（店名、描述、Logo）
+- **對應需求**: PRD §10（路由表）、§12.7
+- **角色**: Guest（匿名，無需 `Authorization` 標頭）
+
+**Path Parameters**:
+
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| slug | string | 是 | 店鋪 URL slug |
+
+**200 OK**:
+```json
+{
+  "success": true,
+  "data": {
+    "tenantId": "tenant-uuid-001",
+    "slug": "my-digital-store",
+    "name": "我的數位商店",
+    "description": "專營 3C 產品與周邊配件",
+    "logoUrl": "https://example.com/logos/store1.jpg"
+  }
+}
+```
+
+**404 Not Found**（`E-2000`）：slug 不存在，或店鋪非 ACTIVE。
+
+### 12.2 API-M17-011：店鋪前台商品/房源列表
+
+- **端點**: `GET /api/v2/public/stores/:slug/listings`
+- **描述**: 該店鋪的公開上架商品/房源列表，供 `/stores/[slug]/products`、`/stores/[slug]/rooms`
+  及首頁「精選商品/房源」區塊使用
+- **對應需求**: PRD §10（路由表）、§11.3.1 `<StoreFeaturedListings/>`、§12.7
+- **角色**: Guest（匿名）
+
+**Path Parameters**:
+
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| slug | string | 是 | 店鋪 URL slug |
+
+**Query Parameters**:
+
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| type | string | 否 | `PRODUCT` 或 `ROOM`；不帶則不分類型 |
+| featured | boolean | 否 | `true` 時只回傳 `isFeatured=true` 的項目（精選商品/房源，見 DEF-321(b)）；預設 `false` |
+| page | int | 否 | 預設 0 |
+| size | int | 否 | 預設 20，上限 100 |
+
+**200 OK**（Spring Data `Page`，`content` 為既有公開 `ListingResponse` 形狀，見 API-M02）：
+```json
+{
+  "success": true,
+  "data": {
+    "content": [
+      {
+        "id": "listing-uuid-001",
+        "tenantId": "tenant-uuid-001",
+        "listingType": "PRODUCT",
+        "title": "無線藍牙耳機",
+        "coverImageUrl": "https://example.com/products/1.jpg",
+        "status": "ACTIVE",
+        "basePrice": 1990,
+        "currency": "TWD",
+        "tags": ["熱銷"],
+        "createdAt": "2026-04-01T10:00:00.000Z",
+        "updatedAt": "2026-04-01T10:00:00.000Z"
+      }
+    ],
+    "totalElements": 1,
+    "totalPages": 1,
+    "number": 0,
+    "size": 20
+  }
+}
+```
+
+**404 Not Found**（`E-2000`）：slug 不存在，或店鋪非 ACTIVE。
+
+> **貼文列表不另建端點**：`/stores/[slug]/blog` 前端取得 `slug` 對應的 `tenantId`（呼叫 API-M17-010）後，
+> 直接呼叫既有公開端點 `GET /v2/posts?tenantId=`（`PostController`，已 `permitAll`，本就支援任意 `tenantId`），
+> 不重複實作。
 
 ### 11.1 Request
 

@@ -97,6 +97,11 @@ public class Listing {
     @Builder.Default
     private String currency = "TWD";
 
+    // DEF-321(b)（Sprint 252）：店鋪前台首頁「精選商品/房源」策展旗標，由 StoreOwner 於 dashboard 設定
+    @Column(name = "is_featured", nullable = false)
+    @Builder.Default
+    private Boolean isFeatured = false;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private List<String> tags;

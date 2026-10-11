@@ -251,6 +251,7 @@ public class TenantService {
             return TenantDetailsResponse.builder()
                     .tenantId(tenant.getId().toString())
                     .storeName(tenant.getName())
+                    .slug(tenant.getSlug())
                     .businessType(tenant.getMetadata() != null && tenant.getMetadata().containsKey("businessType")
                             ? tenant.getMetadata().get("businessType").toString() : "RETAIL_ONLY")
                     .status(tenant.getStatus().name())
@@ -287,6 +288,7 @@ public class TenantService {
         return TenantDetailsResponse.builder()
                 .tenantId(tenant.getId().toString())
                 .storeName(tenant.getName())
+                .slug(tenant.getSlug())
                 .storeDescription(tenant.getDescription())
                 .businessType(tenant.getMetadata() != null && tenant.getMetadata().containsKey("businessType")
                         ? tenant.getMetadata().get("businessType").toString() : "RETAIL_ONLY")
@@ -343,6 +345,7 @@ public class TenantService {
         if (request.getStoreName() != null) {
             tenant.setName(request.getStoreName());
         }
+        applySlugUpdate(tenant, request.getSlug());
         if (request.getStoreDescription() != null) {
             tenant.setDescription(request.getStoreDescription());
         }
@@ -367,6 +370,20 @@ public class TenantService {
             metadata.put("businessType", request.getBusinessType());
             tenant.setMetadata(metadata);
         }
+    }
+
+    /**
+     * DEF-321(b)（Sprint 252）：獨立成方法以免推高 {@link #applyTenantUpdates} 的 NPathComplexity
+     * （checkstyle 上限 200，該方法本已有 7 個互相獨立的 if 分支）。
+     */
+    private void applySlugUpdate(final Tenant tenant, final String newSlug) {
+        if (newSlug == null || newSlug.equals(tenant.getSlug())) {
+            return;
+        }
+        if (tenantRepository.existsBySlug(newSlug)) {
+            throw new BusinessException(ErrorCode.E_2011);
+        }
+        tenant.setSlug(newSlug);
     }
 
     /**

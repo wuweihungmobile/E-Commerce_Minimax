@@ -168,6 +168,36 @@ class ProductServiceTest {
     }
 
     @Test
+    @DisplayName("DEF-321(b)（Sprint 252）：updateProduct 設定 isFeatured=true → Listing 寫入並反映於回應")
+    void updateProduct_setIsFeaturedTrue_persistsAndReturnsInResponse() {
+        Product product = buildProductForListing(LISTING_ID, TENANT);
+        when(productRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(product));
+        when(listingRepository.save(product.getListing())).thenReturn(product.getListing());
+        when(productRepository.save(product)).thenReturn(product);
+        ProductDto.UpdateRequest request = ProductDto.UpdateRequest.builder().isFeatured(true).build();
+
+        ProductDto.Response response = productService.updateProduct(LISTING_ID, request, false);
+
+        assertThat(response.getIsFeatured()).isTrue();
+        assertThat(product.getListing().getIsFeatured()).isTrue();
+    }
+
+    @Test
+    @DisplayName("DEF-321(b)（Sprint 252）：updateProduct 不帶 isFeatured（null）→ 維持原值，不被覆蓋為 false")
+    void updateProduct_isFeaturedOmitted_keepsExistingValue() {
+        Product product = buildProductForListing(LISTING_ID, TENANT);
+        product.getListing().setIsFeatured(true);
+        when(productRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(product));
+        when(listingRepository.save(product.getListing())).thenReturn(product.getListing());
+        when(productRepository.save(product)).thenReturn(product);
+        ProductDto.UpdateRequest request = ProductDto.UpdateRequest.builder().brand("NewBrand").build();
+
+        ProductDto.Response response = productService.updateProduct(LISTING_ID, request, false);
+
+        assertThat(response.getIsFeatured()).isTrue();
+    }
+
+    @Test
     @DisplayName("Sprint 161：updateProduct 非法 status 拋出 BusinessException（E_9000），而非未攔截的 IllegalArgumentException")
     void updateProduct_invalidStatus_throwsBusinessException() {
         Product product = buildProductForListing(LISTING_ID, TENANT);

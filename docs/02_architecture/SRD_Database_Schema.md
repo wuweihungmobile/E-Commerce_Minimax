@@ -360,6 +360,7 @@ CREATE TABLE listings (
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    is_featured BOOLEAN NOT NULL DEFAULT false,
 
     -- 約束
     CONSTRAINT listings_pkey PRIMARY KEY (id),

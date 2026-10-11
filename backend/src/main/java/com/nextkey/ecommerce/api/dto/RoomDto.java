@@ -79,6 +79,9 @@ public class RoomDto {
         // 開放窗（Sprint 47 AI-2202e）：開放未來 N 天（滾動）；null = 無限制
         @Min(value = 1, message = "Booking window days must be at least 1")
         private Integer bookingWindowDays;
+
+        // DEF-321(b)（Sprint 252）：店鋪前台首頁「精選房源」策展旗標
+        private Boolean isFeatured;
     }
 
     @Data
@@ -134,6 +137,9 @@ public class RoomDto {
         private Integer bookingWindowDays;
 
         private String status;
+
+        // DEF-321(b)（Sprint 252）：店鋪前台首頁「精選房源」策展旗標
+        private Boolean isFeatured;
     }
 
     // ========== Response ==========
@@ -163,6 +169,7 @@ public class RoomDto {
         // 開放窗（Sprint 47 AI-2202e）：null = 無限制
         private LocalDate openUntilDate;
         private Integer bookingWindowDays;
+        private Boolean isFeatured;
         private java.time.Instant createdAt;
         private java.time.Instant updatedAt;
     }
@@ -183,6 +190,7 @@ public class RoomDto {
         private String status;
         private Integer maxGuests;
         private Integer roomCount;
+        private Boolean isFeatured;
         private java.time.Instant createdAt;
     }
 }

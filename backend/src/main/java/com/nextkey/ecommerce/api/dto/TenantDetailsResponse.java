@@ -16,6 +16,8 @@ public class TenantDetailsResponse {
 
     private String tenantId;
     private String storeName;
+    // DEF-321(b)（Sprint 252）：店鋪前台 /stores/{slug}，供 dashboard 顯示/複製目前的 slug
+    private String slug;
     private String storeDescription;
     private String businessType;
     private String status;

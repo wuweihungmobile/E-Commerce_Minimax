@@ -170,6 +170,35 @@ class RoomServiceTest {
     }
 
     @Test
+    @DisplayName("DEF-321(b)（Sprint 252）：updateRoom 設定 isFeatured=true → Listing 寫入並反映於回應")
+    void updateRoom_setIsFeaturedTrue_persistsAndReturnsInResponse() {
+        Room room = roomWithOpenWindow();
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+        when(listingRepository.save(room.getListing())).thenReturn(room.getListing());
+        when(roomRepository.save(room)).thenReturn(room);
+        RoomDto.UpdateRequest request = RoomDto.UpdateRequest.builder().isFeatured(true).build();
+
+        RoomDto.Response response = roomService.updateRoom(LISTING_ID, request, false);
+
+        assertThat(response.getIsFeatured()).isTrue();
+        assertThat(room.getListing().getIsFeatured()).isTrue();
+    }
+
+    @Test
+    @DisplayName("DEF-321(b)（Sprint 252）：updateRoom 不帶 isFeatured（null）→ 維持原值，不被覆蓋為 false")
+    void updateRoom_isFeaturedOmitted_keepsExistingValue() {
+        Room room = roomWithOpenWindow();
+        room.getListing().setIsFeatured(true);
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+        when(roomRepository.save(room)).thenReturn(room);
+        RoomDto.UpdateRequest request = RoomDto.UpdateRequest.builder().location("Taichung").build();
+
+        RoomDto.Response response = roomService.updateRoom(LISTING_ID, request, false);
+
+        assertThat(response.getIsFeatured()).isTrue();
+    }
+
+    @Test
     @DisplayName("Sprint 161：updateRoom 非法 status 拋出 BusinessException（E_9000），而非未攔截的 IllegalArgumentException")
     void updateRoom_invalidStatus_throwsBusinessException() {
         Room room = roomWithOpenWindow();

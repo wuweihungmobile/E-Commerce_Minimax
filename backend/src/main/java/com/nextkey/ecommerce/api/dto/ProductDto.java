@@ -61,6 +61,9 @@ public class ProductDto {
 
         @Size(max = DIMENSIONS_MAX_LENGTH, message = "Dimensions must be less than 50 characters")
         private String dimensionsCm;
+
+        // DEF-321(b)（Sprint 252）：店鋪前台首頁「精選商品」策展旗標
+        private Boolean isFeatured;
     }
 
     @Data
@@ -98,6 +101,9 @@ public class ProductDto {
         private String dimensionsCm;
 
         private String status;
+
+        // DEF-321(b)（Sprint 252）：店鋪前台首頁「精選商品」策展旗標
+        private Boolean isFeatured;
     }
 
     // ========== Response ==========
@@ -120,6 +126,7 @@ public class ProductDto {
         private List<String> tags;
         private Integer weightGrams;
         private String dimensionsCm;
+        private Boolean isFeatured;
         private java.time.Instant createdAt;
         private java.time.Instant updatedAt;
     }
@@ -139,6 +146,7 @@ public class ProductDto {
         private String currency;
         private String coverImageUrl;
         private String status;
+        private Boolean isFeatured;
         private java.time.Instant createdAt;
     }
 }

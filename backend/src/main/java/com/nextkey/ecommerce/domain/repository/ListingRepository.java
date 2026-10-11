@@ -41,6 +41,14 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
     @Query("SELECT l FROM Listing l WHERE l.status = 'ACTIVE' AND l.tenant.id = :tenantId")
     Page<Listing> findActiveByTenantId(@Param("tenantId") UUID tenantId, Pageable pageable);
 
+    // DEF-321(b)（Sprint 252）：店鋪前台 /products、/rooms 子頁——指定租戶、指定類型的公開上架清單
+    Page<Listing> findByTenantIdAndListingTypeAndStatus(
+            UUID tenantId, Listing.ListingType listingType, Listing.ListingStatus status, Pageable pageable);
+
+    // DEF-321(b)（Sprint 252）：店鋪前台首頁「精選商品/房源」區塊
+    Page<Listing> findByTenantIdAndStatusAndIsFeaturedTrue(
+            UUID tenantId, Listing.ListingStatus status, Pageable pageable);
+
     @Query("SELECT l.id FROM Listing l WHERE l.tenant.id = :tenantId")
     List<UUID> findIdsByTenantId(@Param("tenantId") UUID tenantId);
 

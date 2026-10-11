@@ -1,7 +1,7 @@
-# E-Commerce System — 功能需求文檔 (FRD) v1.6
+# E-Commerce System — 功能需求文檔 (FRD) v1.7
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.6
+> **版本**: v1.7
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -14,6 +14,8 @@
 > **⚠️ 修訂註記（Sprint 245，2026-10-04，DEF-345）**：§6A M06 的入住與退房已實作（`POST /v2/dashboard/bookings/{bookingId}/check-in`、`…/check-out`）。狀態依 PRD Phase 1 為 `PAID → CHECKED_IN → CHECKED_OUT → COMPLETED`，**不產生 `CONFIRMED`**。§6A 的功能總覽、業務規則、API 概要與差異已依此更新；其餘章節內文未改寫。
 >
 > **⚠️ 修訂註記（Sprint 247，2026-10-09，DEF-353）**：§6B M07 的訂房納入結算已實作——`COMPLETED` 或 `CANCELLED`+`refundStatus=NONE`+存在成功付款的訂房，與訂單彙總進同一張週結算單；訂房退款比照訂單走跨結算週期調整。§6A／§6B 相關業務規則與差異已依此更新，並一併校正 Sprint 246 遺留的 DEF-352「未實作」舊敘述（DEF-352 已於 Sprint 246 完成）。其餘章節內文未改寫。
+>
+> **⚠️ 修訂註記（Sprint 252，2026-10-11，DEF-321(b)）**：新增 **US-M17-009 瀏覽店鋪前台**（PRD §10／§11.3／§12.7 的 4 條路由首次實作），§8.6 補上對應的兩個新公開端點。其餘章節內文未改寫。
 
 ---
 
@@ -4006,6 +4008,61 @@ tenant_feature_toggles
 
 ---
 
+#### US-M17-009: 瀏覽店鋪前台（DEF-321(b)，Sprint 252 新增）
+
+**Story 描述**:
+- **As a** Guest/Buyer
+- **I want to** 瀏覽店鋪前台（首頁、商品列表、房源列表、貼文列表）
+- **So that** 不需登入即可逛完一間店鋪的所有公開商品/房源/貼文，決定要不要購買
+
+**Story 狀態**: Done（Sprint 252）
+**優先級**: P1
+**Story Points**: 5
+
+**對應 PRD**: §10 路由表 `/stores/[slug]`、`/stores/[slug]/products`、`/stores/[slug]/rooms`、
+`/stores/[slug]/blog`；§11.3／§11.3.1 `<StoreLayout/>`／`<StoreHeroBanner/>`／`<StoreFeaturedListings/>`；§12.7
+
+---
+
+#### Acceptance Criteria
+
+**AC-M17-009-1**: 匿名訪客瀏覽店鋪首頁
+**Given** 店鋪狀態為 `ACTIVE`，且訪客**未登入**（無 `Authorization` 標頭）
+**When** 訪客造訪 `/stores/{slug}`
+**Then** 看到店名、描述、Logo，以及該店已標記「精選」的商品/房源
+
+> ⚠️ **既有缺口**：既有 `GET /v2/listings`、`/v2/listings/:id` 並未放行匿名請求（`SecurityConfig`
+> 未加入 `permitAll()`），與 PRD §12.5「Guest 未登入可瀏覽」矛盾。本輪新建獨立公開端點
+> `GET /v2/public/stores/:slug`、`GET /v2/public/stores/:slug/listings`（見 API-M17-010/011），
+> 不更動 `/v2/listings` 本身的授權範圍。
+
+**AC-M17-009-2**: 瀏覽商品/房源列表並切換分頁籤
+**Given** 訪客已在店鋪前台任一頁面
+**When** 點擊「商品」「房源」「貼文」分頁籤
+**Then** 導向對應的 `/stores/{slug}/products`、`/rooms`、`/blog`，顯示該店對應類型的 `ACTIVE` 上架項目（分頁）
+
+**AC-M17-009-3**: 點擊商品/房源卡片進入標準詳情頁
+**Given** 訪客在店鋪前台的商品/房源列表或精選區塊
+**When** 點擊任一卡片
+**Then** 導向標準商品/房源詳情頁 `/listings/{id}`（與一般賣場共用，非店鋪前台專屬頁面）
+
+**AC-M17-009-4**: slug 不存在或店鋪非 ACTIVE
+**Given** 請求的 slug 不存在，或對應店鋪狀態非 `ACTIVE`（停權/待審核/已終止）
+**When** 訪客造訪 `/stores/{slug}`（或其子頁）
+**Then** 顯示「找不到這間店鋪」，**兩種情況的前後端回應相同**（皆為 404），不可從回應差異判斷店鋪是否存在或其狀態
+
+**測試資料**:
+- 預期錯誤: `E-2000`（找不到租戶，HTTP 404）
+
+---
+
+**🔴 人機協作確認點** (US-M17-009)：
+- [x] 範圍已與使用者確認（`AskUserQuestion`：匿名瀏覽缺口處理方式、精選策展機制、slug 可編輯性、本輪交付範圍）
+- [x] 「精選商品/房源」為本輪新增的策展機制（`Listing.isFeatured`），PRD 僅描述其存在，未定義實作方式
+- [x] Hero Banner 範圍縮減：不新增專屬橫幅圖片欄位，詳見 [SPRINT_252_PLAN.md](../04_planning/SPRINT_252_PLAN.md) §2.1
+
+---
+
 ### 8.6 API 規格概要
 
 | API Endpoint | 方法 | 用途 | 角色 |
@@ -4019,6 +4076,8 @@ tenant_feature_toggles
 | `/api/v2/admin/tenant-applications/:applicationId/approve` | POST | Admin: 核准開店申請 | SUPER_ADMIN |
 | `/api/v2/admin/tenant-applications/:applicationId/reject` | POST | Admin: 駁回開店申請 | SUPER_ADMIN |
 | `/api/v2/admin/tenants/:id/features/:feature` | PUT | Admin: 更新單一 Feature Toggle | SUPER_ADMIN |
+| `/api/v2/public/stores/:slug` | GET | 店鋪前台公開資料（DEF-321(b)，匿名可呼叫） | Guest |
+| `/api/v2/public/stores/:slug/listings` | GET | 店鋪前台商品/房源列表（DEF-321(b)，匿名可呼叫） | Guest |
 
 > ⚠️ 審核對象是 `tenant_applications`，**不是** `tenants`。後端另存在 `/api/v2/admin/tenants/:id/approve`／`/reject`
 > 兩個舊端點（操作既有 `Tenant`、要求 `PENDING_REVIEW`），在生產環境永遠等不到資料，僅為相容保留，新功能不得使用。

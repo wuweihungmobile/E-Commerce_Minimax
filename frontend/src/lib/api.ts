@@ -163,6 +163,13 @@ export const API_ENDPOINTS = {
     },
   },
 
+  // Storefront（M17，DEF-321b，Sprint 252）：店鋪前台公開端點，掛在 /v2/public/** 下，
+  // 匿名訪客（無 JWT）可直接呼叫，刻意與需登入的 /v2/listings 分開。
+  storefront: {
+    profile: (slug: string) => '/v2/public/stores/' + slug,
+    listings: (slug: string) => '/v2/public/stores/' + slug + '/listings',
+  },
+
   // Products (M01)
   products: {
     list: '/v2/products',

@@ -15,6 +15,8 @@ export interface Product {
   tags: string[]
   weightGrams: number
   dimensionsCm: string
+  // DEF-321(b)（Sprint 252）：店鋪前台首頁「精選商品」策展旗標
+  isFeatured: boolean
   createdAt: string
   updatedAt: string
 }
@@ -51,6 +53,7 @@ export interface CreateProductRequest {
   tags?: string[]
   weightGrams?: number
   dimensionsCm?: string
+  isFeatured?: boolean
 }
 
 export interface UpdateProductRequest extends CreateProductRequest {

@@ -107,6 +107,7 @@ public class ProductService {
                 .basePrice(request.getBasePrice())
                 .currency("TWD")
                 .tags(request.getTags())
+                .isFeatured(Boolean.TRUE.equals(request.getIsFeatured()))
                 .build();
 
         listing = listingRepository.save(listing);
@@ -231,6 +232,9 @@ public class ProductService {
                 throw new BusinessException(ErrorCode.E_9000, "Invalid status: " + request.getStatus());
             }
         }
+        if (request.getIsFeatured() != null) {
+            listing.setIsFeatured(request.getIsFeatured());
+        }
     }
 
     private void updateProductFromRequest(Product product, ProductDto.UpdateRequest request) {
@@ -320,6 +324,7 @@ public class ProductService {
                 .tags(listing.getTags())
                 .weightGrams(product.getWeightGrams())
                 .dimensionsCm(product.getDimensionsCm())
+                .isFeatured(listing.getIsFeatured())
                 .createdAt(listing.getCreatedAt())
                 .updatedAt(listing.getUpdatedAt())
                 .build();
@@ -336,6 +341,7 @@ public class ProductService {
                 .currency(listing.getCurrency())
                 .coverImageUrl(listing.getCoverImageUrl())
                 .status(listing.getStatus().name())
+                .isFeatured(listing.getIsFeatured())
                 .createdAt(listing.getCreatedAt())
                 .build();
     }

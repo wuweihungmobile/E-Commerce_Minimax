@@ -26,6 +26,8 @@ type TenantStatus = 'PENDING_REVIEW' | 'ACTIVE' | 'REJECTED' | 'SUSPENDED' | 'TE
 interface Tenant {
   tenantId: string
   storeName: string
+  // DEF-321(b)（Sprint 252）：店鋪前台 /stores/{slug}，開店審核通過時自動產生，此處可修改
+  slug: string
   businessType: string
   contactEmail: string
   contactPhone: string | null
@@ -47,6 +49,7 @@ interface TenantEditFormProps {
 
 interface TenantEditFormData {
   storeName: string
+  slug: string
   businessType: string
   contactEmail: string
   contactPhone: string
@@ -55,6 +58,7 @@ interface TenantEditFormData {
 
 interface FormErrors {
   storeName?: string
+  slug?: string
   businessType?: string
   contactEmail?: string
   contactPhone?: string
@@ -69,6 +73,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
   const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState<TenantEditFormData>({
     storeName: '',
+    slug: '',
     businessType: '',
     contactEmail: '',
     contactPhone: '',
@@ -99,6 +104,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
       setTenant(tenantData)
       setFormData({
         storeName: tenantData.storeName,
+        slug: tenantData.slug,
         businessType: tenantData.businessType,
         contactEmail: tenantData.contactEmail,
         // Sprint 146：contactPhone 在申請時為選填，既有店鋪可能從未填寫過（後端回傳 null）。
@@ -137,6 +143,15 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
       newErrors.storeName = '店鋪名稱至少需要 2 個字元'
     } else if (formData.storeName.length > 100) {
       newErrors.storeName = '店鋪名稱不能超過 100 個字元'
+    }
+
+    // Slug validation（比照後端 TenantUpdateRequest：小寫英數+短橫線，2~100 字元）
+    if (!formData.slug.trim()) {
+      newErrors.slug = '請輸入店鋪網址代稱'
+    } else if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(formData.slug)) {
+      newErrors.slug = '只能使用小寫英文字母、數字與短橫線（例如：my-store）'
+    } else if (formData.slug.length < 2 || formData.slug.length > 100) {
+      newErrors.slug = '網址代稱長度需在 2～100 字元之間'
     }
 
     // Business type validation
@@ -206,6 +221,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
       // 後端 purchaseOrderApprovalThreshold 為 null = 不變更此設定，故留空時不送出此欄位
       const payload: Record<string, unknown> = {
         storeName: formData.storeName,
+        slug: formData.slug,
         businessType: formData.businessType,
         contactEmail: formData.contactEmail,
         contactPhone: formData.contactPhone,
@@ -224,6 +240,8 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
           setTimeout(() => {
             router.push('/dashboard/tenants')
           }, 2000)
+        } else if (axiosErr.response?.status === 409) {
+          setError('此店鋪網址代稱已被使用，請換一個')
         } else {
           setError(axiosErr.response?.data?.message || '更新失敗，請稍後再試')
         }
@@ -299,6 +317,28 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
             />
             {errors.storeName && (
               <p className="text-error text-xs">{errors.storeName}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="slug">
+              店鋪網址代稱 <span className="text-error">*</span>
+            </Label>
+            <Input
+              id="slug"
+              name="slug"
+              type="text"
+              placeholder="my-store"
+              value={formData.slug}
+              onChange={handleInputChange}
+              className={errors.slug ? 'border-error' : ''}
+              disabled={submitting}
+            />
+            <p className="text-xs text-muted-foreground">
+              店鋪前台網址：/stores/{formData.slug || '...'}（只能使用小寫英文字母、數字與短橫線）
+            </p>
+            {errors.slug && (
+              <p className="text-error text-xs">{errors.slug}</p>
             )}
           </div>
 

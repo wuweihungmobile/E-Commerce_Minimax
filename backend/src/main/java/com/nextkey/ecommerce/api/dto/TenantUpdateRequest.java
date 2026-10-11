@@ -27,6 +27,12 @@ public class TenantUpdateRequest {
     @Size(min = 2, max = STORE_NAME_MAX_LENGTH, message = "Store name must be between 2 and 100 characters")
     private String storeName;
 
+    // DEF-321(b)（Sprint 252）：店鋪前台 /stores/{slug}。StoreOwner 可自行修改既有（開店審核時自動產生）的 slug，
+    // 唯一性與格式（小寫英數+短橫線）由 TenantService.updateTenant 檢查。
+    @Size(min = 2, max = 100, message = "Slug must be between 2 and 100 characters")
+    @Pattern(regexp = "^[a-z0-9]+(-[a-z0-9]+)*$", message = "Slug must be lowercase letters, numbers, and hyphens only")
+    private String slug;
+
     @Size(max = STORE_DESCRIPTION_MAX_LENGTH, message = "Store description must not exceed 1000 characters")
     private String storeDescription;
 

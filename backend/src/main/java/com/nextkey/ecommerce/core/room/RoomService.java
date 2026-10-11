@@ -117,6 +117,7 @@ public class RoomService {
                 .basePrice(request.getBasePrice())
                 .currency("TWD")
                 .tags(request.getTags())
+                .isFeatured(Boolean.TRUE.equals(request.getIsFeatured()))
                 .build();
 
         listing = listingRepository.save(listing);
@@ -254,9 +255,23 @@ public class RoomService {
             }
             updated = true;
         }
+        updated = applyIsFeaturedUpdate(listing, request.getIsFeatured()) || updated;
         if (updated) {
             listingRepository.save(listing);
         }
+    }
+
+    /**
+     * DEF-321(b)（Sprint 252）：獨立成方法以免推高 {@link #updateListingFromRequest} 的
+     * NPathComplexity（checkstyle 上限 200；該方法 boolean updated 旗標貫穿多個獨立 if 分支，
+     * 每多一個分支路徑數就倍增）。
+     */
+    private boolean applyIsFeaturedUpdate(Listing listing, Boolean isFeatured) {
+        if (isFeatured == null) {
+            return false;
+        }
+        listing.setIsFeatured(isFeatured);
+        return true;
     }
 
     private void updateRoomFromRequest(Room room, RoomDto.UpdateRequest request) {
@@ -390,6 +405,7 @@ public class RoomService {
                 .roomCount(room.getRoomCount())
                 .openUntilDate(room.getOpenUntilDate())
                 .bookingWindowDays(room.getBookingWindowDays())
+                .isFeatured(listing.getIsFeatured())
                 .createdAt(listing.getCreatedAt())
                 .updatedAt(listing.getUpdatedAt())
                 .build();
@@ -407,6 +423,7 @@ public class RoomService {
                 .status(listing.getStatus().name())
                 .maxGuests(room.getMaxGuests())
                 .roomCount(room.getRoomCount())
+                .isFeatured(listing.getIsFeatured())
                 .createdAt(listing.getCreatedAt())
                 .build();
     }

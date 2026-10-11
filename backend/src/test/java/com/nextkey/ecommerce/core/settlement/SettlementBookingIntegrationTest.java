@@ -76,8 +76,8 @@ class SettlementBookingIntegrationTest {
     private UUID seedListing(final String stamp) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update("""
-                INSERT INTO listings (id, tenant_id, listing_type, title, status, owner_id, base_price, currency)
-                VALUES (?, ?, 'ROOM', ?, 'ACTIVE', ?, 1000.00, 'TWD')
+                INSERT INTO listings (id, tenant_id, listing_type, title, status, owner_id, base_price, currency, is_featured)
+                VALUES (?, ?, 'ROOM', ?, 'ACTIVE', ?, 1000.00, 'TWD', false)
                 """, id, tenantId, "Settle Booking Room " + stamp, buyerId);
         return id;
     }

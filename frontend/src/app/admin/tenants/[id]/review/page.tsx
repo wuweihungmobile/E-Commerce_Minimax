@@ -101,9 +101,14 @@ export default function AdminTenantReviewPage() {
           <h1 className="text-2xl font-bold">店鋪詳情</h1>
           <p className="text-muted-foreground">檢視既有店鋪資料</p>
         </div>
-        <Button variant="outline" onClick={() => router.push('/admin/tenants')}>
-          返回列表
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => router.push(`/admin/tenants/${tenantId}/features`)}>
+            功能開關
+          </Button>
+          <Button variant="outline" onClick={() => router.push('/admin/tenants')}>
+            返回列表
+          </Button>
+        </div>
       </div>
 
       {/* Tenant Detail Card */}

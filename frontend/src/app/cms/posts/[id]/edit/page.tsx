@@ -262,7 +262,9 @@ export default function EditPostPage() {
                       <div className="font-medium">{card.title}</div>
                       <div className="text-sm text-gray-500">{card.tenantName}</div>
                       <div className="text-sm font-medium text-blue-600">
-                        {card.currency} {card.currentPrice.toLocaleString()}
+                        {card.currentPrice !== null
+                          ? `${card.currency} ${card.currentPrice.toLocaleString()}`
+                          : '無定價'}
                       </div>
                     </div>
                   </div>

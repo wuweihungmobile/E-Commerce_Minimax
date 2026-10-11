@@ -8,7 +8,6 @@ import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
 import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.cms.post.PostCategory;
 import com.nextkey.ecommerce.domain.model.cms.post.PostEmbed;
-import com.nextkey.ecommerce.domain.model.listing.Listing;
 
 import jakarta.validation.constraints.Pattern;
 
@@ -168,32 +167,6 @@ public class M15Dto {
             private Boolean available;
         }
 
-        /**
-         * 從 Listing 建立卡片回應
-         */
-        public static ListingCardResponse fromListing(final Listing listing,
-                final java.math.BigDecimal currentPrice,
-                final Boolean inStock,
-                final Integer availableQty) {
-            return ListingCardResponse.builder()
-                    .listingId(listing.getId())
-                    .listingType(listing.getListingType().name())
-                    .title(listing.getTitle())
-                    .coverImageUrl(listing.getCoverImageUrl())
-                    .basePrice(listing.getBasePrice())
-                    .currentPrice(currentPrice)
-                    .currency("TWD")
-                    .availability(AvailabilityInfo.builder()
-                            .inStock(inStock)
-                            .availableQty(availableQty)
-                            .available(inStock)
-                            .build())
-                    .tenantName(listing.getTenant().getName())
-                    .ctaUrl("/" + listing.getListingType().name().toLowerCase() + "s/" + listing.getId())
-                    .isActive(listing.getStatus() == Listing.ListingStatus.ACTIVE)
-                    .statusReason(listing.getStatus() != Listing.ListingStatus.ACTIVE ? "listing_inactive" : null)
-                    .build();
-        }
     }
 
     // ========== Category DTOs ==========

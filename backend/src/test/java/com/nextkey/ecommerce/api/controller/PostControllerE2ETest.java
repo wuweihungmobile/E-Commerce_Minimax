@@ -593,13 +593,13 @@ class PostControllerE2ETest {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // IT-M15-006: 嵌入不存在的 listing_id → 404
+    // IT-M15-006: 嵌入不存在的 listing_id → DEF-321(d) 不阻斷寫入，僅跳過該嵌入
     // ═══════════════════════════════════════════════════════════════════════════
 
     @Test
     @Order(6)
-    @DisplayName("IT-M15-006: 嵌入不存在的 listing_id → HTTP 404")
-    void createPost_withNonExistentListing_shouldFail() throws Exception {
+    @DisplayName("IT-M15-006: 嵌入不存在的 listing_id → 貼文仍成功建立，該嵌入位置被跳過")
+    void createPost_withNonExistentListing_embedIsSkippedWithoutBlockingPost() throws Exception {
         String email = uniqueEmail();
         authToken = createStoreOwnerAndGetToken(email);
 
@@ -617,7 +617,10 @@ class PostControllerE2ETest {
                 .when()
                 .post(BASE_URL + "/dashboard/posts")
                 .then()
-                .statusCode(404);
+                .statusCode(200)
+                .body("success", is(true))
+                .body("data.title", equalTo("Non-Existent Listing Post"))
+                .body("data.embeds.size()", is(0));
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1030,12 +1033,12 @@ class PostControllerE2ETest {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // IT-M15-017: 嵌入 INACTIVE Listing 的卡片顯示「已下架」
+    // IT-M15-017: 嵌入 INACTIVE Listing 的卡片顯示「已下架」（DEF-321(d)，PRD §6.6.3 Cascade）
     // ═══════════════════════════════════════════════════════════════════════════
 
     @Test
     @Order(17)
-    @DisplayName("IT-M15-017: 嵌入 INACTIVE Listing 的卡片顯示「已下架」")
+    @DisplayName("IT-M15-017: 嵌入 INACTIVE Listing 的卡片顯示「已下架」並導向店鋪")
     void getListingCard_withInactiveListing_shouldReturnOfflineStatus() throws Exception {
         String email = uniqueEmail();
         authToken = createStoreOwnerAndGetToken(email);
@@ -1051,7 +1054,8 @@ class PostControllerE2ETest {
                 .statusCode(200)
                 .body("success", is(true))
                 .body("data.availability.inStock", is(false))
-                .body("data.statusReason", equalTo("listing_inactive"));
+                .body("data.statusReason", equalTo("listing_unavailable"))
+                .body("data.ctaUrl", equalTo("/stores/" + testTenant.getSlug()));
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1129,7 +1133,9 @@ class PostControllerE2ETest {
                 .body("success", is(true))
                 .body("data.listingType", equalTo("ROOM"))
                 .body("data.availability.available", is(false))
-                .body("data.statusReason", equalTo("under_maintenance"));
+                .body("data.statusReason", equalTo("under_maintenance"))
+                .body("data.ctaUrl", equalTo("/contact"))
+                .body("data.currentPrice", nullValue());
     }
 
     @AfterAll

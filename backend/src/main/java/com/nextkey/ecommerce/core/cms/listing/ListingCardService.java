@@ -93,9 +93,12 @@ public class ListingCardService {
                         .build())
                 .tenantName(listing.getTenant().getName())
                 // DEF-321(c)：真正的詳情頁是 /listings/{id}，/products/{id} 在前端不存在（死連結）
-                .ctaUrl("/listings/" + listing.getId())
+                // DEF-321(d)：下架/刪除時導向店鋪而非失效連結（PRD §6.6.3 Cascade 處理）
+                .ctaUrl(listing.getStatus() != Listing.ListingStatus.ACTIVE
+                        ? "/stores/" + listing.getTenant().getSlug()
+                        : "/listings/" + listing.getId())
                 .isActive(listing.getStatus() == Listing.ListingStatus.ACTIVE)
-                .statusReason(listing.getStatus() != Listing.ListingStatus.ACTIVE ? "listing_inactive" : null)
+                .statusReason(listing.getStatus() != Listing.ListingStatus.ACTIVE ? "listing_unavailable" : null)
                 .build();
 
         return response;
@@ -108,11 +111,12 @@ public class ListingCardService {
         // 查詢 Room 取得維護狀態
         Boolean available = true;
         String statusReason = null;
+        boolean underMaintenance = false;
 
         // 檢查 Listing 狀態
         if (listing.getStatus() != Listing.ListingStatus.ACTIVE) {
             available = false;
-            statusReason = "listing_inactive";
+            statusReason = "listing_unavailable";
         } else {
             // 檢查是否有 MAINTENANCE 日曆记录
             // 如果未來的日曆中有 MAINTENANCE 狀態的日期，房型處於維護中狀態
@@ -125,7 +129,20 @@ public class ListingCardService {
             if (hasMaintenance) {
                 available = false;
                 statusReason = "under_maintenance";
+                underMaintenance = true;
             }
+        }
+
+        // DEF-321(d)：PRD §6.6.3 規格——MAINTENANCE 無定價（currentPrice=null）、
+        // 導向客服而非預訂連結；INACTIVE/DELETED 導向店鋪（同商品卡邏輯）
+        BigDecimal currentPrice = underMaintenance ? null : listing.getBasePrice();
+        String ctaUrl;
+        if (underMaintenance) {
+            ctaUrl = "/contact";
+        } else if (listing.getStatus() != Listing.ListingStatus.ACTIVE) {
+            ctaUrl = "/stores/" + listing.getTenant().getSlug();
+        } else {
+            ctaUrl = "/listings/" + listing.getId();
         }
 
         M15Dto.ListingCardResponse response = M15Dto.ListingCardResponse.builder()
@@ -134,7 +151,7 @@ public class ListingCardService {
                 .title(listing.getTitle())
                 .coverImageUrl(listing.getCoverImageUrl())
                 .basePrice(listing.getBasePrice())
-                .currentPrice(listing.getBasePrice()) // Room 使用動態定價
+                .currentPrice(currentPrice) // Room 使用動態定價，MAINTENANCE 無定價
                 .currency("TWD")
                 .availability(M15Dto.ListingCardResponse.AvailabilityInfo.builder()
                         .inStock(available)
@@ -142,8 +159,7 @@ public class ListingCardService {
                         .available(available)
                         .build())
                 .tenantName(listing.getTenant().getName())
-                // DEF-321(c)：真正的詳情頁是 /listings/{id}，/rooms/{id} 在前端不存在（死連結）
-                .ctaUrl("/listings/" + listing.getId())
+                .ctaUrl(ctaUrl)
                 .isActive(listing.getStatus() == Listing.ListingStatus.ACTIVE)
                 .statusReason(statusReason)
                 .build();

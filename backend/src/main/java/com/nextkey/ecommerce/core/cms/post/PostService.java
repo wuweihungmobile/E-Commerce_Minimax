@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.core.cms.post;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -369,13 +370,21 @@ public class PostService {
                 throw new BusinessException(ErrorCode.E_4104);
             }
 
-            // 驗證 Listing 存在
-            Listing listing = listingRepository.findById(listingId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.E_4105));
-
-            // 驗證 Listing 狀態
+            // DEF-321(d)：PRD §6.6.3「PostEmbed Markdown 語法錯誤處理」——格式正確但
+            // listing_id 不存在或非 ACTIVE 時，只跳過該嵌入位置，不阻斷整篇 Post 寫入
+            // （比照上方格式錯誤分支的既有模式：記錄 warning 後 continue）。
+            // 該位置的「此商品已下架」提示由前端對 /listings/:id/card 的回應渲染，
+            // 見 frontend/src/app/blog/[slug]/page.tsx renderContentWithEmbeds。
+            Optional<Listing> listingOpt = listingRepository.findById(listingId);
+            if (listingOpt.isEmpty()) {
+                log.warn("Embed listing not found, skipping: {}", listingId);
+                continue;
+            }
+            Listing listing = listingOpt.get();
             if (listing.getStatus() != Listing.ListingStatus.ACTIVE) {
-                throw new BusinessException(ErrorCode.E_4105, "Listing is not active");
+                log.warn("Embed listing is not active, skipping: listingId={}, status={}",
+                        listingId, listing.getStatus());
+                continue;
             }
 
             // 建立嵌入

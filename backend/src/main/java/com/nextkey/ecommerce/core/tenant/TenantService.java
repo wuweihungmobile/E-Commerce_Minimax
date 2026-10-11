@@ -398,6 +398,22 @@ public class TenantService {
             throw new BusinessException(ErrorCode.E_4031, "Not authorized to view this store's features");
         }
 
+        return buildFeatureToggleResponse(tenantId);
+    }
+
+    /**
+     * DEF-321(e)：Admin 查詢任意租戶的功能目錄（供 {@code AdminController.getTenantFeatureToggles}）。
+     * 與 {@link #getFeatureToggles} 共用同一套目錄組裝邏輯，但**不做**上面的 tenant_member 歸屬檢查——
+     * 那項檢查是為「店主只能看自己店鋪」設計的自助語意，Admin 本來就該能看任意租戶，且呼叫端的
+     * {@code @PreAuthorize("hasRole('SUPER_ADMIN')")} 已在 HTTP 層把關，不需要在這裡重複、且錯誤地
+     * 要求 Admin 帳號本身也要是該租戶的 tenant_member（Admin 本來就不會是任何租戶的成員）。
+     */
+    @Transactional(readOnly = true)
+    public FeatureToggleResponse getFeatureTogglesForAdmin(final UUID tenantId) {
+        return buildFeatureToggleResponse(tenantId);
+    }
+
+    private FeatureToggleResponse buildFeatureToggleResponse(final UUID tenantId) {
         List<TenantFeatureToggle> toggles = tenantFeatureToggleRepository.findByTenantId(tenantId);
         Map<String, TenantFeatureToggle> toggleMap = new HashMap<>();
         for (TenantFeatureToggle toggle : toggles) {

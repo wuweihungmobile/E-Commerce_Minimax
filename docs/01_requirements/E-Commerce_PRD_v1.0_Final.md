@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0.5（文件修訂；規格基準仍為 v1.0）
+> **版本**: v1.0.6（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -16,6 +16,7 @@
 > - **v1.0.2 → v1.0.3（2026-10-03，Sprint 244）**：僅加修訂註記、內文未改（§3 狀態機、§9.6、§9.7、Mock 付款表、M05 排除範圍表）；與實作不符的敘述以 [SRD_System_Architecture.md](../02_architecture/SRD_System_Architecture.md) §6.3 與 [API_M05_Order.md](../02_architecture/api/API_M05_Order.md)、[API_M06_Booking.md](../02_architecture/API_M06_Booking.md) 為準（DEF-322）。
 > - **v1.0.3 → v1.0.4（2026-10-04，Sprint 245 收尾決策）**：新增未入住（no-show）規則（§15.2.5 BOOKING 路徑、§17.4.6 Q15、§18 RTM-DR-006）與訂房納入結算（§6.2.1，DEF-353）；既有規格內文未改寫。
 > - **v1.0.4 → v1.0.5（2026-10-11，Sprint 252，DEF-321(b)）**：§10 路由表 `/stores/[slug]` 四條路由、§11.3／§11.3.1 元件、§12.7 瀏覽流程**首次實作**；既有規格內文未改寫。實作時發現並修正 §12.5「Guest 未登入可瀏覽」與 `/v2/listings` 實際授權矛盾（新建獨立公開端點，未改動 `/v2/listings`）；§11.3.1 `<StoreHeroBanner/>` 的 `bannerImageUrl`/`ctaText` 本輪未新增對應欄位，暫以既有 `logoUrl`/`name`/`description` 呈現。
+> - **v1.0.5 → v1.0.6（2026-10-11，Sprint 253，DEF-321(d)(e)）**：§6.6.3 嵌入卡片 MAINTENANCE/Cascade 規格、§10 全部路由表（10.1.1/10.1.2/10.1.3）**依實際程式碼逐條校對**——改名/架構演進已更新路由欄並附註，真缺口保留原路由並登記 DEF-358(a)(b)(c)(d)；補建 `/dashboard/pricing/calendar`、`/admin/tenants/[id]/features` 兩個先前缺頁但後端/元件已存在的路由。
 
 ---
 
@@ -2124,70 +2125,75 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 
 ### 10.1 路由總覽（v0.9 完整版）
 
-#### 10.1.1 C 端前台路由（繼承 v0.8 §6 + v0.9 擴展）
+#### 10.1.1 C 端前台路由（繼承 v0.8 §6 + v0.9 擴展；**Sprint 253 依實際程式碼校對**）
+
+> 🔴 **Sprint 253 路由表校對說明**：本節已逐條核對 `frontend/src/app` 實際頁面。純改名/架構演進已直接更新路由欄並以附註說明；判定為真缺口（頁面與對應功能皆不存在，非 Phase 2 標註）者保留原 PRD 路由並附註登記的 DEF 編號，不在本輪新建頁面（需產品決策是否要做、範圍多大）。
 
 | 路由 | 對應模組 | 說明 | v0.9 |
 |------|---------|------|------|
-| `/` | — | 首頁（精選商品 + 熱門房型） | 不變 |
-| `/products` | M01 | 商品列表（搜尋/篩選/分頁） | 不變 |
-| `/products/[id]` | M01 | 商品詳情頁 | 不變 |
-| `/rooms` | M02 | 民宿列表（地區/日期/人數，Phase 2+ 加入 LBS 地圖） | 不變 |
-| `/rooms/[id]` | M02（**Phase 1**）/M12（**Phase 2-A**） | 房間詳情頁<br>**Phase 1**：M02 房源詳情頁，**靜態定價**——顯示 `listing.base_price`，不顯示動態計算後的每日價格<br>**Phase 2-A**：增加動態定價日曆模組（M12），顯示計算後的每日價格 | 不變 |
+| `/` | — | 首頁（精選商品 + 熱門房型）。實作於 `(storefront)` route group 根頁面，URL 不變 | 不變 |
+| ⚠️ `/products` | M01 | **缺口（DEF-358a，待產品決策）**：目前無跨店鋪商品列表頁，商品瀏覽僅能透過各店鋪 `/stores/{slug}/products`（Sprint 252）。是否需要跨店鋪聚合瀏覽頁待確認 | 待確認 |
+| `/listings/[id]` | M01/M02 | **改名**：商品與房源詳情頁統一為單一 `/listings/[id]`（Listing 抽象層，見 §5），取代原 `/products/[id]`／`/rooms/[id]` 兩條路由 | 改名 |
+| ⚠️ `/rooms` | M02 | **缺口（DEF-358a，待產品決策）**：同上，房源瀏覽僅能透過各店鋪 `/stores/{slug}/rooms` | 待確認 |
 | `/cart` | M04 | 購物車（Phase 2） | 不變 |
-| `/checkout` | M05/M07 | **結帳頁（Phase 1 為 Payment Mock 頁面）**——按鈕文案：「確認模擬支付」；Phase 1 直接觸發 `POST /api/orders` 並由 Payment Mock 將狀態推進至 `CREATED(=PAID)`，不串接真實金流。**Phase 2-B**：串接真實金流 API，按鈕文案改為「立即付款」。 | 不變 |
-| `/orders` | M05 | 我的訂單（零售） | 不變 |
+| `/checkout` | M05/M07 | **結帳頁（Phase 1 為 Payment Mock 頁面）**，另有 `/checkout/mixed`、`/checkout/product` 子路由（混合購物車／純商品結帳分流，實作演進，PRD 未載） | 不變＋擴充 |
+| `/orders` | M05 | 我的訂單（零售），另有 `/orders/[id]/payment/cancel`／`/payment/success` 子路由 | 不變＋擴充 |
 | `/orders/[id]` | M05/M11 | 訂單詳情（含物流追蹤） | 不變 |
-| `/bookings` | M06 | 我的預訂（民宿） | 不變 |
+| `/bookings` | M06 | 我的預訂（民宿），另有對應 `payment/cancel`／`payment/success` 子路由 | 不變＋擴充 |
 | `/bookings/[id]` | M06 | 預訂詳情 | 不變 |
-| `/auth/login` | M03 | 登入 | 不變 |
-| `/auth/register` | M03 | 註冊 | 不變 |
-| `/auth/profile` | M03 | 個人資料 | 不變 |
-| `/auth/kyc` | M03 | KYC 實名認證（Phase 2） | 不變 |
-| `/auth/oauth/:provider` | M03 | OAuth2 第三方登入（Phase 2，provider: google/line） | 不變 |
-| `/messages` | M10 | 即時通訊（Phase 2） | 不變 |
-| `/notifications` | M09 | 通知中心（Phase 2） | 不變 |
-| **`/blog`** | **M15** | **CMS 貼文列表** | ★ 新增 |
-| **`/blog/[slug]`** | **M15** | **貼文詳情（含嵌入購買卡片）** | ★ 新增 |
-| **`/blog/category/[id]`** | **M15** | **貼文分類篩選** | ★ 新增 |
-| **`/stores/[slug]`** | **M17** | **店鋪前台首頁** | ★ 新增 |
-| **`/stores/[slug]/products`** | **M17/M01** | **店鋪商品列表** | ★ 新增 |
-| **`/stores/[slug]/rooms`** | **M17/M02** | **店鋪房源列表** | ★ 新增 |
-| **`/stores/[slug]/blog`** | **M17/M15** | **店鋪貼文列表** | ★ 新增 |
+| `/login` | M03 | **改名**：登入頁不在 `/auth/` 前綴下 | 改名 |
+| `/register` | M03 | **改名**：註冊頁不在 `/auth/` 前綴下 | 改名 |
+| ⚠️ `/auth/profile` | M03 | **缺口（DEF-358b，待產品決策）**：全庫查無個人資料編輯（姓名/電話等）功能。`/account` 頁僅提供個資下載與刪除帳戶（GDPR 自助），非編輯個人資料 | 待確認 |
+| `/auth/kyc` | M03 | KYC 實名認證（Phase 2，尚未實作，符合既有 Phase 標註） | 不變 |
+| `/oauth/callback/[provider]` | M03 | **架構演進**：OAuth2 第三方登入改為按鈕觸發 `startOAuthFlow()` 重新導向，取代原規劃的 `/auth/oauth/:provider` 頁面；僅需回呼頁 | 改名 |
+| `/messages` | M10 | 即時通訊（Phase 2，尚未實作，符合既有 Phase 標註） | 不變 |
+| `/notifications` | M09 | 通知中心 | 不變 |
+| `/blog` | M15 | CMS 貼文列表 | 不變 |
+| `/blog/[slug]` | M15 | 貼文詳情（含嵌入購買卡片） | 不變 |
+| ⚠️ `/blog/category/[id]` | M15 | **缺口（DEF-358c，待產品決策）**：貼文分類篩選頁尚未實作 | 待確認 |
+| `/stores/[slug]` | M17 | 店鋪前台首頁（Sprint 252） | 不變 |
+| `/stores/[slug]/products` | M17/M01 | 店鋪商品列表（Sprint 252） | 不變 |
+| `/stores/[slug]/rooms` | M17/M02 | 店鋪房源列表（Sprint 252） | 不變 |
+| `/stores/[slug]/blog` | M17/M15 | 店鋪貼文列表（Sprint 252） | 不變 |
 
-#### 10.1.2 B 端店鋪後台路由（v0.9 新增）
+**本節未收錄於原 PRD、但實際已存在的 C 端路由**（Sprint 253 補列，非窮舉每條巢狀子路由）：`/account`（個資下載/刪除帳戶自助頁）、`/addresses`、`/cart`／`/checkout` 下的 `mixed`／`product` 分流、`/returns`、`/returns/[id]`、`/returns/new`、`/reviews/product/[listingId]`、`/support/tickets`、`/support/tickets/[id]`、`/forgot-password`、`/reset-password`、`/verify-email`、`/tenant/apply`（開店申請入口）。
+
+#### 10.1.2 B 端店鋪後台路由（v0.9 新增；**Sprint 253 依實際程式碼校對**）
 
 | 路由 | 對應模組 | 說明 |
 |------|---------|------|
 | `/dashboard` | M13/M17 | 店鋪總覽（營收/訂單/庫存摘要） |
-| `/dashboard/listings` | M01/M02 | 商品/房源管理 |
-| `/dashboard/listings/new` | M01/M02 | 新增 Listing |
-| `/dashboard/listings/[id]/edit` | M01/M02 | 編輯 Listing |
-| `/dashboard/orders` | M05 | 訂單管理 |
-| `/dashboard/bookings` | M06 | 預訂管理 |
-| `/dashboard/inventory` | M16 | 庫存台帳 |
-| `/dashboard/purchase-orders` | M16 | 採購單管理 |
-| `/dashboard/purchase-orders/new` | M16 | 新增採購單 |
-| `/dashboard/suppliers` | M16 | 供應商管理 |
-| `/dashboard/posts` | M15 | CMS 貼文管理 |
-| `/dashboard/posts/new` | M15 | 新增貼文 |
-| `/dashboard/posts/[id]/edit` | M15 | 編輯貼文 |
+| `/dashboard/products`、`/dashboard/products/new`、`/dashboard/products/[id]/edit` | M01 | **架構演進**：商品管理未採用 PRD 原規劃的統一 `/dashboard/listings`，而是依 `listingType` 分為 `products`／`rooms` 兩套獨立路由（後端 DTO/Service 兩邊皆分流，見 §9.3/§9.4） |
+| `/dashboard/rooms`、`/dashboard/rooms/new`、`/dashboard/rooms/[id]/edit` | M02 | 同上，房源管理路由 |
+| `/dashboard/orders`、`/dashboard/orders/[id]` | M05 | 訂單管理 |
+| `/dashboard/bookings`、`/dashboard/bookings/[id]` | M06 | 預訂管理 |
+| `/dashboard/erp/inventory`、`/dashboard/erp/inventory/[skuId]` | M16 | **改名**：ERP 模組整體多了 `/erp/` 路徑前綴 |
+| `/dashboard/erp/purchase-orders`（及 `new`／`[id]`／`[id]/edit`／`[id]/receive`） | M16 | 同上，採購單管理（含收貨流程，PRD 未列的子頁） |
+| `/dashboard/erp/suppliers`（及 `new`／`[id]`／`[id]/edit`） | M16 | 同上，供應商管理 |
+| `/dashboard/erp/stock-movements`（及 `new`） | M16 | 同上，庫存異動記錄（PRD 未列） |
+| `/dashboard/posts`、`/dashboard/posts/new`、`/dashboard/posts/[id]/edit` | M15 | CMS 貼文管理 |
+| `/dashboard/posts/categories` | M15 | 貼文分類管理（PRD 未列） |
 | `/dashboard/media` | M15 | 媒體庫 |
-| `/dashboard/pricing` | M12 | 動態定價規則 |
-| `/dashboard/pricing/calendar` | M12 | 定價日曆預覽 |
-| `/dashboard/members` | M17 | 店鋪成員管理 |
-| `/dashboard/settings` | M17 | 店鋪設定 |
+| `/dashboard/pricing/rules` | M12 | **改名**：動態定價規則，原 PRD 寫 `/dashboard/pricing`（無子路徑） |
+| `/dashboard/pricing/calendar` | M12 | 定價日曆預覽。**Sprint 253 補建獨立頁面**——背後元件 `PricingCalendarPreview` 與後端端點原已存在，先前只內嵌於 `/dashboard/pricing/rules` 篩選房源 ID 之後，沒有符合本表的獨立路由 |
+| `/dashboard/members` | M17 | 店鋪成員管理（Sprint 248） |
+| `/dashboard/tenants/[id]/edit` | M17 | **改名**：店鋪設定，原 PRD 寫 `/dashboard/settings`；實際是店主自助管理自己租戶的頁面（`/dashboard/tenants` 列表＋`/dashboard/tenants/[id]` 詳情＋`/dashboard/tenants/[id]/edit` 編輯，三者皆為店主自助視角，與 §10.1.3 `/admin/tenants/*` 的平台管理視角為**不同功能、刻意並存**，非重複） |
+| `/dashboard/tenants/[id]/features` | M17 | 店主自助查看/申請功能開關（需審核的功能送出後狀態為「待審核」，由平台管理台 `/admin/tenants/[id]/features` 審核，Sprint 253 補建） |
 | `/dashboard/revenue` | M13 | 營收報表 |
 
-#### 10.1.3 平台管理台路由（繼承 v0.8 + v0.9 擴展）
+**本節未收錄於原 PRD、但實際已存在的 B 端路由**（Sprint 253 補列，非窮舉每條巢狀子路由）：`/dashboard/chat`（店家客服即時通訊）、`/dashboard/faq`、`/dashboard/faq/categories`、`/dashboard/knowledge`（知識庫）、`/dashboard/notifications`、`/dashboard/returns`、`/dashboard/returns/[id]`、`/dashboard/shipping`、`/dashboard/support/tickets`、`/dashboard/support/tickets/[id]`。
+
+#### 10.1.3 平台管理台路由（繼承 v0.8 + v0.9 擴展；**Sprint 253 依實際程式碼校對**）
 
 | 路由 | 對應模組 | 說明 | v0.9 |
 |------|---------|------|------|
-| `/admin` | M14 | 平台總管理台 | 不變 |
-| `/seller/dashboard` | M13 | 賣家工作台（v0.8 遺留，Phase 2 遷移至 /dashboard） | 不變 |
-| `/host/dashboard` | M13 | 房東工作台（v0.8 遺留，Phase 2 遷移至 /dashboard） | 不變 |
-| **`/admin/tenants`** | **M17** | **租戶管理列表** | ★ 新增 |
-| **`/admin/tenants/[id]`** | **M17** | **租戶詳情 + Feature Toggle** | ★ 新增 |
-| **`/admin/tenants/[id]/features`** | **M17** | **Feature Toggle 設定** | ★ 新增 |
+| ⚠️ `/admin` | M14 | **缺口（DEF-358d，待產品決策）**：目前無獨立 `/admin` 根頁面，平台管理台各功能各自獨立路由（`/admin/tenants`、`/admin/audit-logs` 等），無總覽首頁 | 待確認 |
+| `/seller/dashboard`、`/host/dashboard` | M13 | **已依規劃完成遷移**：v0.8 遺留路由已不存在，功能併入 `/dashboard`，符合 PRD 原訂 Phase 2 遷移計畫，非缺口 | 已遷移 |
+| `/admin/tenants` | M17 | 租戶管理列表 | 不變 |
+| `/admin/tenants/[id]/review` | M17 | **改名**：租戶詳情頁（非僅審核中狀態，已處理 ACTIVE/SUSPENDED/TERMINATED/PENDING_REVIEW 四態顯示），取代原 PRD 寫的 `/admin/tenants/[id]`。**注意**：此頁刻意不提供核准/駁回操作（見頁面原始碼註解，DEF-060）——開店審核走 `tenant_applications` 另一套流程，不要「順手」把核准按鈕加回此頁 | 改名 |
+| `/admin/tenants/[id]/features` | M17 | Feature Toggle 設定。**Sprint 253 補建**：後端 `GET/PUT /v2/admin/tenants/{id}/features` 原已存在，前端頁面缺口，本輪補上並重用店主自助頁同一套功能目錄（`TenantService.FEATURE_DEFINITIONS`），取得人類可讀名稱/說明/分類/待審核狀態 | ★ 新增 |
+
+**本節未收錄於原 PRD、但實際已存在的平台管理台路由**（Sprint 253 補列）：`/admin/audit-logs`、`/admin/purchase-orders`（採購單審批）、`/admin/settlements/reversal`（結算沖正）、`/admin/support/tickets`、`/admin/support/tickets/[id]`。
 
 ---
 

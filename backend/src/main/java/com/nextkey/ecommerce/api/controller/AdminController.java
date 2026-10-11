@@ -24,8 +24,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.AdminDto;
 import com.nextkey.ecommerce.api.dto.ApiResponse;
+import com.nextkey.ecommerce.api.dto.FeatureToggleResponse;
 import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.core.admin.AdminService;
+import com.nextkey.ecommerce.core.tenant.TenantService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +43,7 @@ import lombok.extern.slf4j.Slf4j;
 public class AdminController {
 
     private final AdminService adminService;
+    private final TenantService tenantService;
 
     // ========== Tenant Management ==========
 
@@ -212,12 +215,16 @@ public class AdminController {
     /**
      * US-M17-008: 取得租戶的功能開關 (Admin)
      * 路徑: GET /v2/admin/tenants/{tenantId}/features
+     *
+     * DEF-321(e)：改重用 {@code TenantService.getFeatureToggles}（店主自助頁同一套邏輯），
+     * 取得完整目錄（含人類可讀名稱/說明/分類/是否需審核），而非僅回傳既有資料列
+     * （原 {@code adminService.getTenantFeatureToggles} 對從未申請過的功能會直接漏列，已移除）。
      */
     @GetMapping("/tenants/{tenantId}/features")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
-    public ResponseEntity<ApiResponse<AdminDto.TenantFeatureTogglesResponse>> getTenantFeatureToggles(
+    public ResponseEntity<ApiResponse<FeatureToggleResponse>> getTenantFeatureToggles(
             @PathVariable UUID tenantId) {
-        AdminDto.TenantFeatureTogglesResponse response = adminService.getTenantFeatureToggles(tenantId);
+        FeatureToggleResponse response = tenantService.getFeatureTogglesForAdmin(tenantId);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

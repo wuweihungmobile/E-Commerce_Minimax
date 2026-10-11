@@ -424,9 +424,10 @@ class PostServiceTest {
         }
 
         @Test
-        @DisplayName("createPost_embedListingNotFound_throwsE4105")
-        void createPost_embedListingNotFound_throwsE4105() {
-            // Arrange
+        @DisplayName("DEF-321(d): createPost_embedListingNotFound_skipsEmbedWithoutBlockingPost")
+        void createPost_embedListingNotFound_skipsEmbedWithoutBlockingPost() {
+            // Arrange — PRD §6.6.3「PostEmbed Markdown 語法錯誤處理」：
+            // listing_id 不存在時只跳過該嵌入位置，不阻斷整篇 Post 寫入
             Tenant tenant = buildTenant();
             User author = buildAuthor();
             UUID nonExistentListingId = UUID.randomUUID();
@@ -446,16 +447,52 @@ class PostServiceTest {
                 }
                 return p;
             });
-            // No need to mock deleteByPostId as it returns void
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(any(UUID.class))).thenReturn(List.of());
             when(listingRepository.findById(nonExistentListingId)).thenReturn(Optional.empty());
 
-            // Act & Assert
-            assertThatThrownBy(() -> postService.createPost(TEST_TENANT_ID, TEST_AUTHOR_ID, request))
-                    .isInstanceOf(BusinessException.class)
-                    .satisfies(ex -> {
-                        BusinessException bex = (BusinessException) ex;
-                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_4105);
-                    });
+            // Act
+            M15Dto.PostResponse response = postService.createPost(TEST_TENANT_ID, TEST_AUTHOR_ID, request);
+
+            // Assert — Post 仍成功建立，該嵌入位置被跳過（不建立 PostEmbed）
+            assertThat(response).isNotNull();
+            assertThat(response.getEmbeds()).isEmpty();
+            verify(postEmbedRepository, never()).save(any(PostEmbed.class));
+        }
+
+        @Test
+        @DisplayName("DEF-321(d): createPost_embedListingNotActive_skipsEmbedWithoutBlockingPost")
+        void createPost_embedListingNotActive_skipsEmbedWithoutBlockingPost() {
+            // Arrange — 同上規格：listing_id 存在但非 ACTIVE 時同樣只跳過，不阻斷寫入
+            Tenant tenant = buildTenant();
+            User author = buildAuthor();
+            Listing inactiveListing = buildActiveListing();
+            inactiveListing.setStatus(Listing.ListingStatus.INACTIVE);
+
+            M15Dto.CreatePostRequest request = M15Dto.CreatePostRequest.builder()
+                    .title("Test Post")
+                    .content("Check out {{embed:listing:" + TEST_LISTING_ID + "}}")
+                    .build();
+
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+            when(userRepository.findById(TEST_AUTHOR_ID)).thenReturn(Optional.of(author));
+            when(postRepository.existsBySlug(anyString())).thenReturn(false);
+            when(postRepository.save(any(Post.class))).thenAnswer(invocation -> {
+                Post p = invocation.getArgument(0);
+                if (p.getId() == null) {
+                    p.setId(TEST_POST_ID);
+                }
+                return p;
+            });
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(any(UUID.class))).thenReturn(List.of());
+            when(listingRepository.findById(TEST_LISTING_ID)).thenReturn(Optional.of(inactiveListing));
+
+            // Act
+            M15Dto.PostResponse response = postService.createPost(TEST_TENANT_ID, TEST_AUTHOR_ID, request);
+
+            // Assert
+            assertThat(response).isNotNull();
+            assertThat(response.getEmbeds()).isEmpty();
+            verify(postEmbedRepository, never()).save(any(PostEmbed.class));
         }
 
         // ── DEF-105（Sprint 154）：title/content 危險標記偵測 ───────────

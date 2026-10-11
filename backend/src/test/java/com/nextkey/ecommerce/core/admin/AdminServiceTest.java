@@ -183,23 +183,24 @@ class AdminServiceTest {
         }
 
         @Test
-        @DisplayName("updateTenantFeatureToggle_toggleNotFound_throwsException")
-        void updateTenantFeatureToggle_toggleNotFound_throwsException() {
-            // Arrange
+        @DisplayName("DEF-321(e): updateTenantFeatureToggle_toggleNotFound_createsNewToggle")
+        void updateTenantFeatureToggle_toggleNotFound_createsNewToggle() {
+            // Arrange — 租戶從未申請過此功能（無資料列）；Admin 主動開啟時應直接建立，不應 404
             Tenant tenant = buildTenant();
             when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
             when(featureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "UNKNOWN_FEATURE"))
                     .thenReturn(Optional.empty());
+            when(featureToggleRepository.save(any(TenantFeatureToggle.class))).thenAnswer(i -> i.getArgument(0));
 
-            // Act & Assert
-            assertThatThrownBy(() -> adminService.updateTenantFeatureToggle(
-                    TEST_TENANT_ID, "UNKNOWN_FEATURE", true))
-                    .isInstanceOf(BusinessException.class)
-                    .satisfies(ex -> {
-                        BusinessException bex = (BusinessException) ex;
-                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_2000);
-                        assertThat(bex.getMessage()).contains("Feature toggle not found");
-                    });
+            // Act
+            AdminDto.FeatureToggleResponse response = adminService.updateTenantFeatureToggle(
+                    TEST_TENANT_ID, "UNKNOWN_FEATURE", true);
+
+            // Assert
+            assertThat(response).isNotNull();
+            assertThat(response.getFeatureKey()).isEqualTo("UNKNOWN_FEATURE");
+            assertThat(response.getIsEnabled()).isTrue();
+            verify(featureToggleRepository).save(any(TenantFeatureToggle.class));
         }
 
         @Test
@@ -427,50 +428,6 @@ class AdminServiceTest {
 
             // Act & Assert
             assertThatThrownBy(() -> adminService.setFeatureToggle(request))
-                    .isInstanceOf(BusinessException.class)
-                    .satisfies(ex -> {
-                        BusinessException bex = (BusinessException) ex;
-                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_2000);
-                    });
-        }
-    }
-
-    // ── getTenantFeatureToggles Tests ──────────────────────────────────
-
-    @Nested
-    @DisplayName("getTenantFeatureToggles()")
-    class GetTenantFeatureToggles {
-
-        @Test
-        @DisplayName("getTenantFeatureToggles_returnsToggleList")
-        void getTenantFeatureToggles_returnsToggleList() {
-            // Arrange
-            Tenant tenant = buildTenant();
-            TenantFeatureToggle toggle1 = buildFeatureToggle(tenant, "RETAIL_ENABLED", true);
-            TenantFeatureToggle toggle2 = buildFeatureToggle(tenant, "BOOKING_ENABLED", false);
-
-            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
-            when(featureToggleRepository.findByTenantId(TEST_TENANT_ID))
-                    .thenReturn(java.util.List.of(toggle1, toggle2));
-
-            // Act
-            AdminDto.TenantFeatureTogglesResponse response = adminService.getTenantFeatureToggles(TEST_TENANT_ID);
-
-            // Assert
-            assertThat(response).isNotNull();
-            assertThat(response.getTenantId()).isEqualTo(TEST_TENANT_ID);
-            assertThat(response.getTenantName()).isEqualTo("Test Tenant");
-            assertThat(response.getToggles()).hasSize(2);
-        }
-
-        @Test
-        @DisplayName("getTenantFeatureToggles_tenantNotFound_throwsException")
-        void getTenantFeatureToggles_tenantNotFound_throwsException() {
-            // Arrange
-            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.empty());
-
-            // Act & Assert
-            assertThatThrownBy(() -> adminService.getTenantFeatureToggles(TEST_TENANT_ID))
                     .isInstanceOf(BusinessException.class)
                     .satisfies(ex -> {
                         BusinessException bex = (BusinessException) ex;

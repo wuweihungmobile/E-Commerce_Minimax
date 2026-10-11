@@ -95,7 +95,7 @@ export interface ListingCardResponse {
   title: string;
   coverImageUrl: string;
   basePrice: number;
-  currentPrice: number;
+  currentPrice: number | null; // DEF-321(d)：MAINTENANCE 狀態無定價
   currency: string;
   availability: {
     inStock: boolean;

@@ -29,6 +29,9 @@ export default function PricingRulesPage() {
               <span className="text-gray-900 font-medium">定價規則</span>
             </div>
             <div className="flex items-center gap-4">
+              <Link href="/dashboard/pricing/calendar" className="text-sm text-blue-600 hover:underline">
+                定價日曆預覽
+              </Link>
               <span className="text-sm text-gray-600">
                 {AuthService.getCurrentUser()?.email}
               </span>

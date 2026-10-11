@@ -230,7 +230,9 @@ export const API_ENDPOINTS = {
       detail: (id: string) => '/v2/admin/tenants/' + id,
       approve: (id: string) => '/v2/admin/tenants/' + id + '/approve',
       reject: (id: string) => '/v2/admin/tenants/' + id + '/reject',
-      features: (id: string) => '/v2/admin/tenants/' + id + '/feature-toggles',
+      // DEF-321(e)：原指向 /feature-toggles，但後端 GET mapping 實際路徑是 /features
+      // （/feature-toggles 只有 DELETE mapping）；此常數先前零呼叫點，從未被觸發過。
+      features: (id: string) => '/v2/admin/tenants/' + id + '/features',
       updateFeature: (tenantId: string, feature: string) => '/v2/admin/tenants/' + tenantId + '/features/' + feature,
     },
     // Purchase Order Approval (M16，Sprint 85 後端 / Sprint 89 前端)

@@ -642,27 +642,6 @@ public class AdminService {
     }
 
     /**
-     * 取得租戶的功能開關列表
-     */
-    @Transactional(readOnly = true)
-    public AdminDto.TenantFeatureTogglesResponse getTenantFeatureToggles(UUID tenantId) {
-        Tenant tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
-
-        List<TenantFeatureToggle> toggles = featureToggleRepository.findByTenantId(tenantId);
-
-        List<AdminDto.FeatureToggleResponse> toggleResponses = toggles.stream()
-                .map(t -> toFeatureToggleResponse(t, tenant))
-                .collect(Collectors.toList());
-
-        return AdminDto.TenantFeatureTogglesResponse.builder()
-                .tenantId(tenantId)
-                .tenantName(tenant.getName())
-                .toggles(toggleResponses)
-                .build();
-    }
-
-    /**
      * 刪除功能開關
      */
     @Transactional
@@ -682,9 +661,16 @@ public class AdminService {
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
 
+        // DEF-321(e)：租戶若從未申請過此功能（如 Admin 主動開啟一個租戶尚未申請的功能）不會有資料列，
+        // 改為建立新列而非 404——Admin 的直接設定本就不經過 requiresApproval 的待審邏輯
+        // （那是 TenantService.updateFeatureToggle 自助申請流程才有的限制）。
         TenantFeatureToggle toggle = featureToggleRepository
                 .findByTenantIdAndFeatureKey(tenantId, featureKey)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Feature toggle not found"));
+                .orElseGet(() -> TenantFeatureToggle.builder()
+                        .tenant(tenant)
+                        .featureKey(featureKey)
+                        .isEnabled(false)
+                        .build());
 
         toggle.setIsEnabled(enabled != null ? enabled : false);
 

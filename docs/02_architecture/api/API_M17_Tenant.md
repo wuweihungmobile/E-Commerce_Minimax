@@ -25,6 +25,8 @@
 | ~~API-M17-009~~ | `/api/v2/admin/tenants/:id/reject` | POST | ⚠️ 舊流程，生產不可達 | SUPER_ADMIN |
 | API-M17-010 | `/api/v2/public/stores/:slug` | GET | 店鋪前台公開資料（DEF-321(b)） | Guest（匿名） |
 | API-M17-011 | `/api/v2/public/stores/:slug/listings` | GET | 店鋪前台商品/房源列表（DEF-321(b)） | Guest（匿名） |
+| API-M17-012 | `/api/v2/admin/tenants/:id/features` | GET | Admin 取得指定店鋪完整功能目錄（DEF-321(e)，Sprint 253 前端補上唯一呼叫點） | SUPER_ADMIN |
+| API-M17-013 | `/api/v2/admin/tenants/:id/features/:feature` | PUT | Admin 直接設定指定店鋪的單一功能開關（核准待審核申請或主動開啟/關閉） | SUPER_ADMIN |
 
 > **⚠️ 開店審核走 `API-M17-APP-*`，不走 `API-M17-008/009`**（PRD §4.3 / §9.10.2、FRD BR-M17-001）
 >
@@ -744,6 +746,46 @@ Guest（未登入）可瀏覽店鋪前台。既有 `GET /v2/listings`、`/v2/lis
 |------|--------|------|
 | 呼叫者不是這間店鋪的 StoreOwner | E-4031 | 無權操作此店鋪 |
 | 查無此 email 對應的使用者 | E-2001 | 與 `inviteMember` 既有「找不到使用者」同碼（罐頭文字「租戶未啟用」與實際情境不符，前端已覆寫顯示文字） |
+
+---
+
+## 13. API-M17-012 / API-M17-013: Admin 功能開關管理（DEF-321(e)，Sprint 253）
+
+端點原已存在但前端零呼叫點。改為重用 API-M17-005 自助查詢同一套 `TenantService.FEATURE_DEFINITIONS`
+目錄+中繼資料邏輯（原 Admin 專用邏輯只回傳**已存在資料列**，對租戶從未申請過的功能會直接漏列，缺少
+人類可讀名稱），確保 Admin 看到與店主自助頁相同、完整的功能目錄。
+
+### 13.1 API-M17-012：取得指定店鋪完整功能目錄
+
+- **端點**: `GET /api/v2/admin/tenants/:id/features`
+- **描述**: 回應形狀與 API-M17-005 完全相同（`{features: [...], quotas: [...]}`），差異只是目標租戶
+  來自路徑參數，非呼叫者自己的租戶
+- **角色**: SUPER_ADMIN
+
+### 13.2 API-M17-013：Admin 直接設定單一功能開關
+
+- **端點**: `PUT /api/v2/admin/tenants/:id/features/:feature`
+- **描述**: Admin 的設定即為最終決定，直接套用 `isEnabled`，**不經過**自助申請流程的
+  `requiresApproval` 待審邏輯（Admin 本身就是審核者）；若該租戶從未建立過此功能的資料列
+  （例如主動開啟一個從未被申請過的功能），改為直接建立新列而非回 404
+- **角色**: SUPER_ADMIN
+
+**Request Body**:
+```json
+{ "enabled": true }
+```
+
+**200 OK**:
+```json
+{
+  "success": true,
+  "data": {
+    "featureKey": "BOOKING_ENABLED",
+    "isEnabled": true,
+    "enabledAt": "2026-10-11T12:00:00.000Z"
+  }
+}
+```
 
 ---
 

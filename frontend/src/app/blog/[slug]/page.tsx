@@ -99,6 +99,16 @@ export default function BlogPostPage() {
 
       if (cardData?.card) {
         const card = cardData.card;
+        // DEF-321(d)：依 statusReason 分流文案與 CTA（PRD §6.6.3）
+        const isUnavailable = card.statusReason === 'listing_unavailable';
+        const isUnderMaintenance = card.statusReason === 'under_maintenance';
+        const statusLabel = isUnavailable
+          ? '此商品已下架'
+          : isUnderMaintenance
+            ? '房源維護中'
+            : null;
+        const ctaLabel = isUnavailable ? '前往店鋪' : isUnderMaintenance ? '聯絡客服' : '查看詳情';
+
         parts.push(
           <div
             key={`embed-${listingId}`}
@@ -117,10 +127,16 @@ export default function BlogPostPage() {
                 <h3 className="font-semibold text-gray-900">{card.title}</h3>
                 <p className="text-sm text-gray-600">{card.tenantName}</p>
                 <div className="mt-2 flex items-center justify-between">
-                  <span className="text-lg font-bold text-blue-600">
-                    {card.currency} {card.currentPrice.toLocaleString()}
-                  </span>
-                  {card.availability.available ? (
+                  {card.currentPrice !== null ? (
+                    <span className="text-lg font-bold text-blue-600">
+                      {card.currency} {card.currentPrice.toLocaleString()}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-gray-400">無定價</span>
+                  )}
+                  {statusLabel ? (
+                    <span className="text-xs text-red-600">{statusLabel}</span>
+                  ) : card.availability.available ? (
                     <span className="text-xs text-green-600">可預訂</span>
                   ) : (
                     <span className="text-xs text-red-600">已額滿</span>
@@ -130,7 +146,7 @@ export default function BlogPostPage() {
                   href={card.ctaUrl}
                   className="mt-2 inline-block px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
                 >
-                  查看詳情
+                  {ctaLabel}
                 </a>
               </div>
             </div>
@@ -153,12 +169,14 @@ export default function BlogPostPage() {
           </div>
         );
       } else {
+        // DEF-321(d)：PRD §6.6.3——listing_id 不存在（已刪除或格式有誤）時顯示「此商品已下架」，
+        // 用語與「下架但列尚存在」（statusReason=listing_unavailable）一致
         parts.push(
           <div
             key={`embed-${match[1]}`}
             className="my-4 p-4 border border-red-200 rounded-lg bg-red-50 text-red-600 text-sm"
           >
-            無法載入商品卡: {match[1]}
+            此商品已下架
           </div>
         );
       }

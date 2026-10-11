@@ -4075,6 +4075,7 @@ tenant_feature_toggles
 | `/api/v2/admin/tenant-applications` | GET | Admin: 待審核開店申請列表 | SUPER_ADMIN |
 | `/api/v2/admin/tenant-applications/:applicationId/approve` | POST | Admin: 核准開店申請 | SUPER_ADMIN |
 | `/api/v2/admin/tenant-applications/:applicationId/reject` | POST | Admin: 駁回開店申請 | SUPER_ADMIN |
+| `/api/v2/admin/tenants/:id/features` | GET | Admin: 取得店鋪完整功能目錄（含人類可讀名稱/說明/分類/待審核狀態，Sprint 253 前端補上唯一呼叫點） | SUPER_ADMIN |
 | `/api/v2/admin/tenants/:id/features/:feature` | PUT | Admin: 更新單一 Feature Toggle | SUPER_ADMIN |
 | `/api/v2/public/stores/:slug` | GET | 店鋪前台公開資料（DEF-321(b)，匿名可呼叫） | Guest |
 | `/api/v2/public/stores/:slug/listings` | GET | 店鋪前台商品/房源列表（DEF-321(b)，匿名可呼叫） | Guest |

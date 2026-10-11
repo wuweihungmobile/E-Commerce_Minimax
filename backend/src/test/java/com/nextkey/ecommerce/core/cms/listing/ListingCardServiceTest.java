@@ -27,13 +27,16 @@ import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 
 /**
- * ListingCardService 單元測試（DEF-321c）。
+ * ListingCardService 單元測試（DEF-321c／DEF-321d）。
  *
- * <p>部落格嵌入卡片的 {@code ctaUrl} 先前指向 {@code /products/{id}}／{@code /rooms/{id}}，
+ * <p>DEF-321c：部落格嵌入卡片的 {@code ctaUrl} 先前指向 {@code /products/{id}}／{@code /rooms/{id}}，
  * 但前端實際的刊登詳情頁僅有 {@code /listings/[id]}，兩者皆為死連結。此測試鎖住修復後的行為。
+ *
+ * <p>DEF-321d：PRD §6.6.3 規格——Listing 非 ACTIVE 時導向店鋪（非失效連結）；
+ * ROOM 類型 MAINTENANCE 時導向客服且無定價。
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("ListingCardService 單元測試 (DEF-321c)")
+@DisplayName("ListingCardService 單元測試 (DEF-321c/d)")
 class ListingCardServiceTest {
 
     @Mock
@@ -49,14 +52,19 @@ class ListingCardServiceTest {
     private ListingCardService listingCardService;
 
     private Listing listingOf(final Listing.ListingType type) {
-        Tenant tenant = Tenant.builder().id(UUID.randomUUID()).name("Test Tenant").build();
+        return listingOf(type, Listing.ListingStatus.ACTIVE, "test-tenant");
+    }
+
+    private Listing listingOf(final Listing.ListingType type, final Listing.ListingStatus status,
+            final String tenantSlug) {
+        Tenant tenant = Tenant.builder().id(UUID.randomUUID()).name("Test Tenant").slug(tenantSlug).build();
         return Listing.builder()
                 .id(UUID.randomUUID())
                 .tenant(tenant)
                 .listingType(type)
                 .title("Test Listing")
                 .basePrice(new BigDecimal("100.00"))
-                .status(Listing.ListingStatus.ACTIVE)
+                .status(status)
                 .build();
     }
 
@@ -85,5 +93,49 @@ class ListingCardServiceTest {
         M15Dto.ListingCardResponse response = listingCardService.getListingCard(listing.getId());
 
         assertThat(response.getCtaUrl()).isEqualTo("/listings/" + listing.getId());
+    }
+
+    @Test
+    @DisplayName("getListingCard：PRODUCT 已下架（INACTIVE）時導向店鋪，不是失效的 /listings/{id}")
+    void getListingCard_inactiveProduct_ctaUrlPointsToStore() {
+        Listing listing = listingOf(Listing.ListingType.PRODUCT, Listing.ListingStatus.INACTIVE, "acme-shop");
+        when(listingRepository.findByIdWithTenant(listing.getId())).thenReturn(Optional.of(listing));
+        when(productInventoryRepository.existsByListingId(listing.getId())).thenReturn(false);
+
+        M15Dto.ListingCardResponse response = listingCardService.getListingCard(listing.getId());
+
+        assertThat(response.getCtaUrl()).isEqualTo("/stores/acme-shop");
+        assertThat(response.getStatusReason()).isEqualTo("listing_unavailable");
+        assertThat(response.getAvailability().getAvailable()).isFalse();
+    }
+
+    @Test
+    @DisplayName("getListingCard：ROOM 已下架（DELETED）時導向店鋪，不是失效的 /listings/{id}")
+    void getListingCard_deletedRoom_ctaUrlPointsToStore() {
+        Listing listing = listingOf(Listing.ListingType.ROOM, Listing.ListingStatus.DELETED, "acme-shop");
+        when(listingRepository.findByIdWithTenant(listing.getId())).thenReturn(Optional.of(listing));
+
+        M15Dto.ListingCardResponse response = listingCardService.getListingCard(listing.getId());
+
+        assertThat(response.getCtaUrl()).isEqualTo("/stores/acme-shop");
+        assertThat(response.getStatusReason()).isEqualTo("listing_unavailable");
+    }
+
+    @Test
+    @DisplayName("getListingCard：ROOM 維護中（MAINTENANCE）時導向客服、無定價，依 PRD §6.6.3")
+    void getListingCard_roomUnderMaintenance_ctaUrlIsContactAndPriceIsNull() {
+        Listing listing = listingOf(Listing.ListingType.ROOM);
+        when(listingRepository.findByIdWithTenant(listing.getId())).thenReturn(Optional.of(listing));
+        when(roomCalendarRepository.existsByListingIdAndCalendarDateBetweenAndStatus(
+                eq(listing.getId()), any(LocalDate.class), any(LocalDate.class),
+                eq(RoomCalendar.RoomCalendarStatus.MAINTENANCE)))
+                .thenReturn(true);
+
+        M15Dto.ListingCardResponse response = listingCardService.getListingCard(listing.getId());
+
+        assertThat(response.getCtaUrl()).isEqualTo("/contact");
+        assertThat(response.getCurrentPrice()).isNull();
+        assertThat(response.getStatusReason()).isEqualTo("under_maintenance");
+        assertThat(response.getAvailability().getAvailable()).isFalse();
     }
 }

@@ -619,6 +619,18 @@ class TenantServiceTest {
         }
 
         @Test
+        @DisplayName("DEF-321(e): getFeatureTogglesForAdmin 不要求呼叫者是該租戶成員（Admin 本來就不會是任何租戶的成員）")
+        void getFeatureTogglesForAdmin_doesNotRequireTenantMembership() {
+            // Admin 查任意租戶時，TenantContext 的目前使用者是 Admin 自己，不會是被查租戶的 tenant_member；
+            // getFeatureToggles（自助版）會因此誤擋 Admin，getFeatureTogglesForAdmin 必須完全不做這項檢查。
+            TenantContext.setCurrentUser(TEST_USER_ID);
+            when(tenantFeatureToggleRepository.findByTenantId(TEST_TENANT_ID)).thenReturn(List.of());
+
+            assertNotNull(tenantService.getFeatureTogglesForAdmin(TEST_TENANT_ID));
+            verify(tenantMemberRepository, never()).existsByTenantIdAndUserIdAndStatus(any(), any(), any());
+        }
+
+        @Test
         @DisplayName("getFeatureToggles：回傳前端實際讀取的 category/status/requiresAdminReview 三欄")
         void getFeatureToggles_providesFieldsFrontendActuallyReads() {
             // DEF-168：前端 features/page.tsx 讀 category（分組）、status + requiresAdminReview（徽章與

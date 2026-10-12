@@ -227,6 +227,8 @@ export const API_ENDPOINTS = {
 
   // Admin
   admin: {
+    // Sprint 258（DEF-358(d)）：平台統計，供 /admin 總覽首頁使用；端點既有、先前零前端呼叫點
+    stats: '/v2/admin/stats',
     tenants: {
       list: '/v2/admin/tenants',
       detail: (id: string) => '/v2/admin/tenants/' + id,

@@ -1002,4 +1002,47 @@ class AdminControllerE2ETest {
             cleanupPurchaseOrderTestData(po);
         }
     }
+
+    // ── Sprint 258（DEF-358(d)）：平台統計 GET /v2/admin/stats 的 Controller 層 E2E ──
+    // 此端點先前只有 Service 層單元測試（AdminServiceTest），本輪起被 /admin 總覽首頁
+    // 真正呼叫，補上 HTTP 層（含權限）驗證。
+
+    @Test
+    @Order(23)
+    @DisplayName("API-M14-STATS-01: GET /v2/admin/stats - SUPER_ADMIN 成功取得平台統計")
+    void getPlatformStats_asSuperAdmin_shouldSucceed() throws Exception {
+        String adminToken = createSuperAdminUserAndGetToken();
+
+        given()
+                .header("Authorization", "Bearer " + adminToken)
+                .when()
+                .get(BASE_URL + "/stats")
+                .then()
+                .statusCode(200)
+                .body("success", is(true))
+                .body("data.totalTenants", notNullValue())
+                .body("data.activeTenants", notNullValue())
+                .body("data.totalUsers", notNullValue())
+                .body("data.totalListings", notNullValue())
+                .body("data.totalOrders", notNullValue())
+                .body("data.pendingTenantReviews", notNullValue());
+
+        System.out.println("✅ API-M14-STATS-01 PASSED: SUPER_ADMIN 成功取得平台統計");
+    }
+
+    @Test
+    @Order(24)
+    @DisplayName("API-M14-STATS-02: GET /v2/admin/stats - BUYER 角色應返回 403")
+    void getPlatformStats_asBuyer_shouldReturn403() throws Exception {
+        String buyerToken = createBuyerUserAndGetToken();
+
+        given()
+                .header("Authorization", "Bearer " + buyerToken)
+                .when()
+                .get(BASE_URL + "/stats")
+                .then()
+                .statusCode(403);
+
+        System.out.println("✅ API-M14-STATS-02 PASSED: BUYER 角色取得平台統計正確返回 403");
+    }
 }

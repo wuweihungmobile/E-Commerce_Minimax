@@ -75,3 +75,9 @@ Sprint 255 收尾後使用者對 DEF-358（PRD §10 路由表核對發現的 4 �
 - schema 對齊：無漂移
 - E2E（host JAR＋npm build＋Playwright）：**158 passed（+4，與新增的 E2E-BLOGCAT-01~04 一致）／4 skipped／0 failed**（5.3 分）
 - 已寫入 FULL 驗證記錄，30 分內可直接 push
+
+## 6. Push 狀態與雲端 CI
+
+commit `27a5d129` 已推送至 `origin/main`（第一次推送遇到 GitHub 端暫時性錯誤「fatal error in commit_refs」被拒絕，非本地驗證問題；本地 pre-push 守門記錄的 tree hash 未過期，重新 `git push` 立即成功，未重跑驗證）。
+
+雲端 CI run [38253264437](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/38253264437) 以 `gh run view --json` 交叉核對（不僅憑 `gh run watch` 的完成訊號）：**`conclusion: success`**，3 個 job（Backend Unit Tests／Frontend Lint & Build／Backend Integration Tests & Package）全數 success。

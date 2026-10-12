@@ -48,3 +48,7 @@ PRD 規格：§10.1.3 `/admin`（M14）——「目前無獨立 `/admin` 根頁�
 前端：`npm run type-check`／`npx eslint`／`npm run build` 皆通過，`/admin` 確實出現在建置輸出路由清單（65 條，+1）。
 
 `make validate-release`：第一次跑在 Playwright E2E 層遇到與 Sprint 257 完全相同的既有 flaky 模式（`at-account-data-rights.spec.ts` 兩案例逾時，同一檔案、同一症狀，與本輪變更的檔案範圍無任何交集，確認是整套 170 個規格平行執行時的登入/註冊 IP 限流偶發碰撞，非回歸）。重跑第二次：**166 passed（+4，與新增的 AT-ADMIN-OVERVIEW-REAL 四案例一致）／4 skipped／0 failed**（5.3 分），act（backend checkstyle/compile/單元/整合測試＋打包）BUILD SUCCESS，schema 對齊無漂移。已寫入 FULL 驗證記錄。
+
+## 6. Push 狀態與雲端 CI
+
+commit `24bf65bb` 已推送至 `origin/main`。雲端 CI run [38290670347](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/38290670347)（以輪詢迴圈等到真正 `completed` 再查核，不單憑 `gh run watch` 訊號）：**`conclusion: success`**，3 個 job（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build）全數 success。

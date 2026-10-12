@@ -181,8 +181,17 @@ export async function unpublishPost(postId: string): Promise<PostResponse> {
 export async function getPublishedPosts(tenantId: string, params?: {
   page?: number;
   size?: number;
+  categoryId?: string;
 }): Promise<PostListResponse> {
   const response = await apiClient.get('/v2/posts', { params: { tenantId, ...params } });
+  return response.data.data;
+}
+
+/**
+ * 前台：取得分類列表（公開，僅回傳啟用中分類，DEF-358(c)）
+ */
+export async function getPublicCategories(tenantId: string): Promise<CategoryListResponse> {
+  const response = await apiClient.get('/v2/posts/categories', { params: { tenantId } });
   return response.data.data;
 }
 

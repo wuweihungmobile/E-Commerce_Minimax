@@ -220,10 +220,11 @@ public class PostController {
     @GetMapping("/posts")
     public ResponseEntity<ApiResponse<M15Dto.PostListResponse>> getPublishedPosts(
             @RequestParam UUID tenantId,
+            @RequestParam(required = false) UUID categoryId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
-        M15Dto.PostListResponse response = postService.getPublishedPosts(tenantId, page, size);
+        M15Dto.PostListResponse response = postService.getPublishedPosts(tenantId, categoryId, page, size);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -237,6 +238,19 @@ public class PostController {
             @RequestParam UUID tenantId) {
 
         M15Dto.PostResponse response = postService.getPublishedPostBySlug(slug, tenantId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
+     * 取得分類列表（公開，僅回傳啟用中分類）
+     * GET /api/v2/posts/categories
+     * PRD §9.15、DEF-358(c)（Sprint 256）
+     */
+    @GetMapping("/posts/categories")
+    public ResponseEntity<ApiResponse<M15Dto.CategoryListResponse>> getPublicCategories(
+            @RequestParam UUID tenantId) {
+
+        M15Dto.CategoryListResponse response = postCategoryService.getActiveCategories(tenantId);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

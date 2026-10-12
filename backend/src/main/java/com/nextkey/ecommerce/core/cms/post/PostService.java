@@ -284,12 +284,14 @@ public class PostService {
     // ========== Public APIs (前台) ==========
 
     /**
-     * 前台：取得已發布貼文列表
+     * 前台：取得已發布貼文列表，可選依分類篩選（DEF-358(c)，Sprint 256）
      */
     @Transactional(readOnly = true)
-    public M15Dto.PostListResponse getPublishedPosts(UUID tenantId, int page, int size) {
+    public M15Dto.PostListResponse getPublishedPosts(UUID tenantId, UUID categoryId, int page, int size) {
         PageRequest pageRequest = PageableUtils.of(page, size, 100, Sort.by(Sort.Direction.DESC, "publishedAt"));
-        Page<Post> postPage = postRepository.findPublishedByTenantId(tenantId, pageRequest);
+        Page<Post> postPage = categoryId != null
+                ? postRepository.findPublishedByTenantIdAndCategoryId(tenantId, categoryId, pageRequest)
+                : postRepository.findPublishedByTenantId(tenantId, pageRequest);
 
         List<M15Dto.PostResponse> posts = postPage.getContent().stream()
                 .map(p -> {

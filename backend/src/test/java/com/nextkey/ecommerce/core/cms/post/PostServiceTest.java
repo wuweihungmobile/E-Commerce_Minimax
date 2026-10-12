@@ -979,11 +979,43 @@ class PostServiceTest {
             when(postRepository.findPublishedByTenantId(eq(TEST_TENANT_ID), any(Pageable.class)))
                     .thenReturn(new PageImpl<>(List.of()));
 
-            postService.getPublishedPosts(TEST_TENANT_ID, 0, 999999999);
+            postService.getPublishedPosts(TEST_TENANT_ID, null, 0, 999999999);
 
             ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
             verify(postRepository).findPublishedByTenantId(eq(TEST_TENANT_ID), captor.capture());
             assertThat(captor.getValue().getPageSize()).isEqualTo(100);
+        }
+
+        @Test
+        @DisplayName("DEF-358(c)：categoryId 為 null 時走原本不篩選分類的查詢")
+        void getPublishedPosts_noCategoryId_usesUnfilteredQuery() {
+            when(postRepository.findPublishedByTenantId(eq(TEST_TENANT_ID), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of()));
+
+            postService.getPublishedPosts(TEST_TENANT_ID, null, 0, 20);
+
+            verify(postRepository).findPublishedByTenantId(eq(TEST_TENANT_ID), any(Pageable.class));
+            verify(postRepository, never())
+                    .findPublishedByTenantIdAndCategoryId(any(UUID.class), any(UUID.class), any(Pageable.class));
+        }
+
+        @Test
+        @DisplayName("DEF-358(c)：帶入 categoryId 時改走依分類篩選的查詢")
+        void getPublishedPosts_withCategoryId_usesCategoryFilteredQuery() {
+            Post post = buildPost(Post.PostStatus.PUBLISHED);
+            post.setCategory(buildCategory());
+            when(postRepository.findPublishedByTenantIdAndCategoryId(
+                    eq(TEST_TENANT_ID), eq(TEST_CATEGORY_ID), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(post)));
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(TEST_POST_ID))
+                    .thenReturn(new ArrayList<>());
+
+            M15Dto.PostListResponse response =
+                    postService.getPublishedPosts(TEST_TENANT_ID, TEST_CATEGORY_ID, 0, 20);
+
+            assertThat(response.getPosts()).hasSize(1);
+            assertThat(response.getPosts().get(0).getCategoryId()).isEqualTo(TEST_CATEGORY_ID);
+            verify(postRepository, never()).findPublishedByTenantId(any(UUID.class), any(Pageable.class));
         }
     }
 

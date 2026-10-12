@@ -132,6 +132,26 @@ public class PostCategoryService {
     }
 
     /**
+     * 前台：取得分類列表（公開，僅回傳啟用中分類，DEF-358(c)，Sprint 256）
+     *
+     * <p>與 {@link #getCategories} 的差異：Dashboard 管理視角需要看到停用中的分類才能重新啟用，
+     * 前台訪客不應看到店主已停用、刻意隱藏的分類。
+     */
+    @Transactional(readOnly = true)
+    public M15Dto.CategoryListResponse getActiveCategories(UUID tenantId) {
+        List<PostCategory> categories = postCategoryRepository.findByTenantIdAndIsActiveTrue(tenantId);
+
+        List<M15Dto.CategoryResponse> responses = categories.stream()
+                .map(M15Dto.CategoryResponse::from)
+                .toList();
+
+        return M15Dto.CategoryListResponse.builder()
+                .categories(responses)
+                .totalCount(responses.size())
+                .build();
+    }
+
+    /**
      * 取得分類詳情
      */
     @Transactional(readOnly = true)

@@ -34,7 +34,7 @@ import static org.hamcrest.Matchers.*;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
- * M15 CMS Post Controller E2E 測試 (IT-M15-001 ~ IT-M15-020)
+ * M15 CMS Post Controller E2E 測試 (IT-M15-001 ~ IT-M15-022)
  *
  * 測試範圍：
  * - US-M15-001: StoreOwner 建立 CMS 貼文
@@ -1136,6 +1136,94 @@ class PostControllerE2ETest {
                 .body("data.statusReason", equalTo("under_maintenance"))
                 .body("data.ctaUrl", equalTo("/contact"))
                 .body("data.currentPrice", nullValue());
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // IT-M15-021: 前台取得分類列表（公開，僅回傳啟用中分類）—— DEF-358(c)，Sprint 256
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    @Test
+    @Order(21)
+    @DisplayName("IT-M15-021: GET /api/v2/posts/categories - 前台取得分類列表（公開，僅回傳啟用中分類）")
+    void getPublicCategories_shouldReturnOnlyActiveOnes() throws Exception {
+        String email = uniqueEmail();
+        authToken = createStoreOwnerAndGetToken(email);
+
+        UUID activeCategoryId = createTestCategory(testTenantId, testTenant);
+
+        // isActive 目前全站沒有任何寫入路徑可以設為 false（見 PostCategoryService），
+        // 直接寫 repository 製造停用分類以驗證公開端點確實把它排除
+        PostCategory inactiveCategory = postCategoryRepository.save(PostCategory.builder()
+                .tenant(testTenant)
+                .name("Inactive Category " + System.currentTimeMillis())
+                .slug("inactive-cat-" + System.currentTimeMillis())
+                .isActive(false)
+                .build());
+
+        given()
+                .queryParam("tenantId", testTenantId.toString())
+                .when()
+                .get(BASE_URL + "/posts/categories")
+                .then()
+                .statusCode(200)
+                .body("success", is(true))
+                .body("data.categories.id", hasItem(activeCategoryId.toString()))
+                .body("data.categories.id", not(hasItem(inactiveCategory.getId().toString())));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // IT-M15-022: 前台依分類篩選已發布貼文列表 —— DEF-358(c)，Sprint 256
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    @Test
+    @Order(22)
+    @DisplayName("IT-M15-022: GET /api/v2/posts?categoryId= - 前台依分類篩選已發布貼文列表")
+    void getPublishedPosts_withCategoryId_shouldReturnOnlyThatCategory() throws Exception {
+        String email = uniqueEmail();
+        authToken = createStoreOwnerAndGetToken(email);
+
+        UUID categoryAId = createTestCategory(testTenantId, testTenant);
+        PostCategory categoryB = postCategoryRepository.save(PostCategory.builder()
+                .tenant(testTenant)
+                .name("Category B " + System.currentTimeMillis())
+                .slug("category-b-" + System.currentTimeMillis())
+                .isActive(true)
+                .build());
+
+        Post postInCategoryA = postRepository.save(Post.builder()
+                .tenant(testTenant)
+                .author(testUser)
+                .title("Post In Category A")
+                .content("content a")
+                .slug("post-in-category-a-" + System.currentTimeMillis())
+                .status(Post.PostStatus.PUBLISHED)
+                .category(postCategoryRepository.findById(categoryAId).orElseThrow())
+                .build());
+        Post postInCategoryB = postRepository.save(Post.builder()
+                .tenant(testTenant)
+                .author(testUser)
+                .title("Post In Category B")
+                .content("content b")
+                .slug("post-in-category-b-" + System.currentTimeMillis())
+                .status(Post.PostStatus.PUBLISHED)
+                .category(categoryB)
+                .build());
+
+        try {
+            given()
+                    .queryParam("tenantId", testTenantId.toString())
+                    .queryParam("categoryId", categoryAId.toString())
+                    .when()
+                    .get(BASE_URL + "/posts")
+                    .then()
+                    .statusCode(200)
+                    .body("success", is(true))
+                    .body("data.posts.title", hasItem("Post In Category A"))
+                    .body("data.posts.title", not(hasItem("Post In Category B")));
+        } finally {
+            cleanupPostData(postInCategoryA.getId());
+            cleanupPostData(postInCategoryB.getId());
+        }
     }
 
     @AfterAll

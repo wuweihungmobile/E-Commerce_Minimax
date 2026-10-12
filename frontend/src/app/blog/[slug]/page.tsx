@@ -264,11 +264,15 @@ export default function BlogPostPage() {
             </h1>
 
             {/* Category & Tags */}
-            {post.categoryName && (
+            {post.categoryName && post.categoryId && (
               <div className="mb-4">
-                <span className="inline-block px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded">
+                <Link
+                  href={`/blog/category/${post.categoryId}`}
+                  className="inline-block px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded hover:bg-blue-200"
+                  data-testid="blog-post-category-link"
+                >
                   {post.categoryName}
-                </span>
+                </Link>
               </div>
             )}
 

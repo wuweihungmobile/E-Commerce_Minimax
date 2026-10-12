@@ -46,6 +46,14 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
     Page<Post> findPublishedByTenantId(@Param("tenantId") UUID tenantId, Pageable pageable);
 
     /**
+     * 前台公開：查詢已發布且屬於指定分類的貼文列表（DEF-358(c)，Sprint 256）
+     */
+    @Query("SELECT p FROM Post p WHERE p.tenant.id = :tenantId AND p.category.id = :categoryId "
+            + "AND p.status = 'PUBLISHED' ORDER BY p.publishedAt DESC")
+    Page<Post> findPublishedByTenantIdAndCategoryId(
+            @Param("tenantId") UUID tenantId, @Param("categoryId") UUID categoryId, Pageable pageable);
+
+    /**
      * 依作者查詢
      */
     Page<Post> findByAuthorId(UUID authorId, Pageable pageable);

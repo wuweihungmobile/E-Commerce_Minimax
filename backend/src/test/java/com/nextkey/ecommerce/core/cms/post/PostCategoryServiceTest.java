@@ -487,6 +487,74 @@ class PostCategoryServiceTest {
         }
     }
 
+    // ── getActiveCategories() Tests（DEF-358(c)，Sprint 256）───────────
+
+    @Nested
+    @DisplayName("getActiveCategories()")
+    class GetActiveCategories {
+
+        @Test
+        @DisplayName("getActiveCategories_success_onlyQueriesActiveOnes")
+        void getActiveCategories_success_onlyQueriesActiveOnes() {
+            // Arrange
+            PostCategory category1 = PostCategory.builder()
+                    .id(UUID.randomUUID())
+                    .tenant(buildTenant())
+                    .name("Category 1")
+                    .slug("category-1")
+                    .isActive(true)
+                    .createdAt(Instant.now())
+                    .build();
+
+            when(postCategoryRepository.findByTenantIdAndIsActiveTrue(TEST_TENANT_ID))
+                    .thenReturn(List.of(category1));
+
+            // Act
+            M15Dto.CategoryListResponse response = postCategoryService.getActiveCategories(TEST_TENANT_ID);
+
+            // Assert：公開端點只能呼叫「僅啟用」的查詢方法，不能呼叫會連停用分類一起回傳的
+            // findByTenantIdOrderBySortOrderAsc（那是 Dashboard 管理視角專用，見 getCategories()）
+            assertThat(response).isNotNull();
+            assertThat(response.getCategories()).hasSize(1);
+            assertThat(response.getTotalCount()).isEqualTo(1);
+            verify(postCategoryRepository).findByTenantIdAndIsActiveTrue(TEST_TENANT_ID);
+            verify(postCategoryRepository, never()).findByTenantIdOrderBySortOrderAsc(any(UUID.class));
+        }
+
+        @Test
+        @DisplayName("getActiveCategories_emptyList_returnsEmpty")
+        void getActiveCategories_emptyList_returnsEmpty() {
+            // Arrange
+            when(postCategoryRepository.findByTenantIdAndIsActiveTrue(TEST_TENANT_ID))
+                    .thenReturn(List.of());
+
+            // Act
+            M15Dto.CategoryListResponse response = postCategoryService.getActiveCategories(TEST_TENANT_ID);
+
+            // Assert
+            assertThat(response).isNotNull();
+            assertThat(response.getCategories()).isEmpty();
+            assertThat(response.getTotalCount()).isEqualTo(0);
+        }
+
+        @Test
+        @DisplayName("getActiveCategories_tenantIsolation")
+        void getActiveCategories_tenantIsolation() {
+            // Arrange
+            UUID otherTenantId = UUID.randomUUID();
+            when(postCategoryRepository.findByTenantIdAndIsActiveTrue(otherTenantId))
+                    .thenReturn(List.of());
+
+            // Act
+            M15Dto.CategoryListResponse response = postCategoryService.getActiveCategories(otherTenantId);
+
+            // Assert
+            assertThat(response).isNotNull();
+            assertThat(response.getCategories()).isEmpty();
+            verify(postCategoryRepository).findByTenantIdAndIsActiveTrue(otherTenantId);
+        }
+    }
+
     // ── getCategory() Tests ────────────────────────────────────────────
 
     @Nested

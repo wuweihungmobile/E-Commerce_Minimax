@@ -15,6 +15,8 @@ export const API_ENDPOINTS = {
     // Sprint 153（Sprint 149 §7 範圍外項目）：PRD §1.5.1 會員資料權利，後端 Sprint 94 早已完成
     dataExport: '/v2/auth/me/data-export',
     deleteMe: '/v2/auth/me',
+    // Sprint 257（DEF-358(b)）：GET 取得完整個人資料（含 phone，login 快照沒有）／PUT 更新姓名電話
+    me: '/v2/auth/me',
     // Sprint 153（item 13）：既有 stub（Sprint 78 記錄）改為真正可用的 OAuth 登入/連結
     oauthLogin: '/v2/auth/oauth/login',
     oauthLink: '/v2/auth/oauth/link',

@@ -35,6 +35,7 @@
 | API-M03-011 | `/api/v2/auth/oauth/link` | POST | 連結 OAuth 帳號到目前會員 | Buyer+ |
 | API-M03-012 | `/api/v2/auth/me/data-export` | GET | 會員資料匯出（PRD §1.5.1） | Buyer+ |
 | API-M03-013 | `/api/v2/auth/me` | DELETE | 會員自助刪除帳戶（被遺忘權，PRD §1.5.1） | Buyer |
+| API-M03-014 | `/api/v2/auth/me` | PUT | 自助更新個人資料（姓名/電話，PRD §10.1.1 `/auth/profile`，DEF-358(b)） | Buyer+ |
 
 「Buyer+」＝已登入（任何有效 access token）；沒有帶 token 回 `401 E-1000`。後端的 context path 是 `/api`。
 
@@ -437,6 +438,41 @@ Request Body 同 §10；**200 OK**，`data` 為 `null`（`message` 是 `OAuth ac
 
 ---
 
+## 14. API-M03-014: 自助更新個人資料（Sprint 257，DEF-358(b)）
+
+- **端點**: `PUT /api/v2/auth/me`
+- **描述**: 更新已登入會員的姓名/電話（PRD §10.1.1 `/auth/profile`）。範圍僅限姓名/電話——Email 變更牽涉重新驗證流程、角色/租戶/狀態等欄位屬系統管理，皆不在此端點範圍內
+- **角色**: Buyer+（需 `Authorization: Bearer {access_token}`；與 `GET /me`／`DELETE /me` 一致，不額外要求細粒度資源權限——編輯「自己」的基本資料不受 `user:update` 權限矩陣限制，`STORE_STAFF`／`CFO` 亦可操作）
+
+### 14.1 Request
+
+兩欄位皆選填，**未帶的欄位代表不變更**（PATCH 語意，非整物件覆寫）：
+
+```json
+{
+  "fullName": "王小明",
+  "phone": "+886912345678"
+}
+```
+
+| 欄位 | 必填 | 限制 |
+|------|:----:|------|
+| `fullName` | 否 | 帶入時 1～255 字元（空字串視為非法，不可用於清空姓名） |
+| `phone` | 否 | 0～255 字元（帶入空字串可清空電話） |
+
+### 14.2 Response
+
+**200 OK**：回應格式與 [§5 `GET /api/v2/auth/me`](#5-api-m03-005-取得當前用戶資訊) 相同（`UserInfoResponse`），`data.profile` 反映更新後的最新值。
+
+| 狀態 | `code` | 說明 |
+|:----:|--------|------|
+| 400 | `E-9000` | 驗證失敗（如 `fullName` 為空字串） |
+| 404 | `E-1006` | 找不到使用者 |
+
+更新會寫入一筆稽核紀錄（`action=USER_PROFILE_UPDATED`）。併發防護沿用 `User` entity 既有的 `@DynamicUpdate`（`DEF-136`），僅送出實際被變更的欄位，不會覆寫併發寫入的其他欄位。
+
+---
+
 ## 📝 JWT Token 規格
 
 ### Access Token
@@ -505,6 +541,7 @@ Request Body 同 §10；**200 OK**，`data` 為 `null`（`message` 是 `OAuth ac
 | v1.0 | 2026-04-09 | 初版（API-M03-001～005） | SD (Marcus) |
 | v1.1 | 2026-09-26／27 | Sprint 203／204：加修訂註記；新增 §6～§9（密碼重設、Email 驗證，依實際行為撰寫） | Claude |
 | v2.0 | 2026-10-03 | Sprint 241 依實作改寫 §1～§5、新增 §10～§13（OAuth、資料匯出、帳戶刪除）、JWT 規格與常見錯誤碼；回應封包改為扁平封包；記載登入鎖定、Refresh Token 輪替與重放偵測、有效角色（`DEF-326`） | Claude（依使用者 Sprint 232 拍板「比照 Sprint 203」） |
+| v2.1 | 2026-10-12 | Sprint 257：新增 §14（`PUT /api/v2/auth/me` 自助更新個人資料，`DEF-358(b)`） | Claude |
 
 ---
 

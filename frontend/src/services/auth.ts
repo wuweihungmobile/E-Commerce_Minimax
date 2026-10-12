@@ -51,6 +51,28 @@ export interface UserDataExport {
   exportedAt: string
 }
 
+// 對齊後端 UserInfoResponse（GET/PUT /v2/auth/me，Sprint 257，DEF-358(b)）
+export interface UserInfoResponse {
+  userId: string
+  email: string
+  userType: string
+  status: string
+  emailVerified: boolean
+  profile: {
+    displayName: string | null
+    phone: string | null
+    avatarUrl: string | null
+  }
+  tenants: Array<{ tenantId: string; tenantName: string; role: string }>
+  createdAt: string
+}
+
+// 對齊後端 UpdateProfileRequest：兩欄位皆選填，undefined 代表不變更該欄位（PATCH 語意）
+export interface UpdateProfileRequest {
+  fullName?: string
+  phone?: string
+}
+
 export interface ApiResponse<T> {
   success: boolean
   code?: string
@@ -177,6 +199,19 @@ class AuthService {
     if (typeof window === 'undefined') return null
     const userStr = localStorage.getItem('user')
     return userStr ? JSON.parse(userStr) : null
+  }
+
+  // Sprint 257（DEF-358(b)）：向後端即時取得完整個人資料（含 phone）。
+  // 登入快照（getCurrentUser，讀 localStorage）沒有 phone，編輯表單預填前須呼叫這支
+  async fetchCurrentUser(): Promise<UserInfoResponse> {
+    const response = await apiClient.get<ApiResponse<UserInfoResponse>>(API_ENDPOINTS.auth.me)
+    return response.data.data
+  }
+
+  // Sprint 257（DEF-358(b)）：自助更新姓名/電話（PRD §10.1.1 /auth/profile）
+  async updateProfile(request: UpdateProfileRequest): Promise<UserInfoResponse> {
+    const response = await apiClient.put<ApiResponse<UserInfoResponse>>(API_ENDPOINTS.auth.me, request)
+    return response.data.data
   }
 
   // Check if user is authenticated

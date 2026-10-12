@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.RefreshTokenRequest;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
+import com.nextkey.ecommerce.api.dto.UpdateProfileRequest;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
@@ -623,6 +624,144 @@ class AuthControllerE2ETest {
         } finally {
             cleanupUser(email);
             tenantRepository.deleteById(victimTenant.getId());
+        }
+    }
+
+    // ── DEF-358(b)（Sprint 257）：PUT /v2/auth/me 自助更新個人資料 ─────────
+
+    @Test
+    @Order(16)
+    @DisplayName("DEF-358(b): PUT /v2/auth/me - 成功更新姓名與電話，回應反映最新值")
+    void updateCurrentUser_bothFields_returns200WithUpdatedValues() throws Exception {
+        String email = uniqueEmail();
+        try {
+            given()
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(RegisterRequest.builder()
+                            .email(email).password(TEST_PASSWORD).userType("BUYER")
+                            .fullName("原始姓名").build())
+                    .when()
+                    .post(BASE_URL + "/register")
+                    .then()
+                    .statusCode(201);
+
+            String loginResponse = given()
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(LoginRequest.builder().email(email).password(TEST_PASSWORD).build())
+                    .when()
+                    .post(BASE_URL + "/login")
+                    .then()
+                    .statusCode(200)
+                    .extract().asString();
+            String accessToken = objectMapper.readTree(loginResponse).path("data").path("accessToken").asText();
+
+            given()
+                    .header("Authorization", "Bearer " + accessToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(UpdateProfileRequest.builder().fullName("更新後姓名").phone("0912345678").build())
+                    .when()
+                    .put(BASE_URL + "/me")
+                    .then()
+                    .statusCode(200)
+                    .body("success", is(true))
+                    .body("data.profile.displayName", is("更新後姓名"))
+                    .body("data.profile.phone", is("0912345678"));
+
+            User updated = userRepository.findByEmail(email).orElseThrow();
+            org.assertj.core.api.Assertions.assertThat(updated.getFullName()).isEqualTo("更新後姓名");
+            org.assertj.core.api.Assertions.assertThat(updated.getPhone()).isEqualTo("0912345678");
+
+            System.out.println("✅ DEF-358(b) PASSED: PUT /v2/auth/me 成功更新姓名與電話");
+        } finally {
+            cleanupUser(email);
+        }
+    }
+
+    @Test
+    @Order(17)
+    @DisplayName("DEF-358(b): PUT /v2/auth/me - 只帶電話時姓名維持不變（PATCH 語意）")
+    void updateCurrentUser_onlyPhone_leavesFullNameUnchanged() throws Exception {
+        String email = uniqueEmail();
+        try {
+            given()
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(RegisterRequest.builder()
+                            .email(email).password(TEST_PASSWORD).userType("BUYER")
+                            .fullName("保持不變的姓名").build())
+                    .when()
+                    .post(BASE_URL + "/register")
+                    .then()
+                    .statusCode(201);
+
+            String loginResponse = given()
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(LoginRequest.builder().email(email).password(TEST_PASSWORD).build())
+                    .when()
+                    .post(BASE_URL + "/login")
+                    .then()
+                    .statusCode(200)
+                    .extract().asString();
+            String accessToken = objectMapper.readTree(loginResponse).path("data").path("accessToken").asText();
+
+            given()
+                    .header("Authorization", "Bearer " + accessToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(UpdateProfileRequest.builder().phone("0987654321").build())
+                    .when()
+                    .put(BASE_URL + "/me")
+                    .then()
+                    .statusCode(200)
+                    .body("data.profile.displayName", is("保持不變的姓名"))
+                    .body("data.profile.phone", is("0987654321"));
+
+            System.out.println("✅ DEF-358(b) PASSED: 只帶電話更新，姓名維持不變");
+        } finally {
+            cleanupUser(email);
+        }
+    }
+
+    @Test
+    @Order(18)
+    @DisplayName("DEF-358(b): PUT /v2/auth/me - 姓名帶空字串，回傳 400（E-9000），不得清空姓名")
+    void updateCurrentUser_blankFullName_returns400() throws Exception {
+        String email = uniqueEmail();
+        try {
+            given()
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(RegisterRequest.builder()
+                            .email(email).password(TEST_PASSWORD).userType("BUYER")
+                            .fullName("不應被清空的姓名").build())
+                    .when()
+                    .post(BASE_URL + "/register")
+                    .then()
+                    .statusCode(201);
+
+            String loginResponse = given()
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(LoginRequest.builder().email(email).password(TEST_PASSWORD).build())
+                    .when()
+                    .post(BASE_URL + "/login")
+                    .then()
+                    .statusCode(200)
+                    .extract().asString();
+            String accessToken = objectMapper.readTree(loginResponse).path("data").path("accessToken").asText();
+
+            given()
+                    .header("Authorization", "Bearer " + accessToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(UpdateProfileRequest.builder().fullName("").build())
+                    .when()
+                    .put(BASE_URL + "/me")
+                    .then()
+                    .statusCode(400)
+                    .body("success", is(false));
+
+            User unchanged = userRepository.findByEmail(email).orElseThrow();
+            org.assertj.core.api.Assertions.assertThat(unchanged.getFullName()).isEqualTo("不應被清空的姓名");
+
+            System.out.println("✅ DEF-358(b) PASSED: 空字串姓名被拒絕，原姓名未被清空");
+        } finally {
+            cleanupUser(email);
         }
     }
 }

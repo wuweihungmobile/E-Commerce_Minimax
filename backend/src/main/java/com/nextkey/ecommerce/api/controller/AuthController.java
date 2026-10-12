@@ -8,6 +8,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,6 +23,7 @@ import com.nextkey.ecommerce.api.dto.RefreshTokenRequest;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
 import com.nextkey.ecommerce.api.dto.RegisterResponse;
 import com.nextkey.ecommerce.api.dto.ResetPasswordRequest;
+import com.nextkey.ecommerce.api.dto.UpdateProfileRequest;
 import com.nextkey.ecommerce.api.dto.UserDataExportResponse;
 import com.nextkey.ecommerce.api.dto.UserInfoResponse;
 import com.nextkey.ecommerce.api.dto.VerifyEmailRequest;
@@ -129,6 +131,19 @@ public class AuthController {
         log.info("Get current user request for: {}", principal.getUserId());
         UserInfoResponse response = authService.getCurrentUser(principal.getUserId());
         return ResponseEntity.ok(ApiResponse.success("Success", response));
+    }
+
+    /**
+     * 會員自助更新個人資料（PRD §10.1.1 `/auth/profile`，DEF-358(b)，Sprint 257）
+     */
+    @PutMapping("/me")
+    public ResponseEntity<ApiResponse<UserInfoResponse>> updateCurrentUser(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody UpdateProfileRequest request) {
+        log.info("Update profile request for user: {}", principal.getUserId());
+        userPrivacyService.updateMyProfile(request);
+        UserInfoResponse response = authService.getCurrentUser(principal.getUserId());
+        return ResponseEntity.ok(ApiResponse.success("Profile updated", response));
     }
 
     /**

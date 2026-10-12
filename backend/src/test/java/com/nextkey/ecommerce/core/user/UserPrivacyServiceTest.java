@@ -24,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import com.nextkey.ecommerce.api.dto.UpdateProfileRequest;
 import com.nextkey.ecommerce.api.dto.UserDataExportResponse;
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.domain.model.user.User;
@@ -140,6 +141,65 @@ class UserPrivacyServiceTest {
         assertThat(response.getProfile().getRole()).isEqualTo("BUYER");
         assertThat(response.getKnownLimitations()).isNotEmpty();
         assertThat(response.getExportedAt()).isNotNull();
+    }
+
+    // ========== updateMyProfile（DEF-358(b)，Sprint 257）==========
+
+    @Test
+    @DisplayName("updateMyProfile：姓名與電話皆帶入時，兩者皆更新並記錄稽核")
+    void updateMyProfile_bothFieldsProvided_updatesBothAndRecordsAudit() {
+        User user = buyerOf(USER_ID);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        UpdateProfileRequest request = UpdateProfileRequest.builder()
+                .fullName("李小華").phone("0987654321").build();
+
+        userPrivacyService.updateMyProfile(request);
+
+        assertThat(user.getFullName()).isEqualTo("李小華");
+        assertThat(user.getPhone()).isEqualTo("0987654321");
+        verify(userRepository).save(user);
+        verify(auditService).record(eq("USER_PROFILE_UPDATED"), eq("USER"), eq(USER_ID), any(),
+                eq("fullName=王小明, phone=0912345678"), eq("fullName=李小華, phone=0987654321"),
+                any(), eq(USER_ID));
+    }
+
+    @Test
+    @DisplayName("updateMyProfile：僅帶入姓名時，電話維持不變（PATCH 語意）")
+    void updateMyProfile_onlyFullNameProvided_leavesPhoneUnchanged() {
+        User user = buyerOf(USER_ID);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        UpdateProfileRequest request = UpdateProfileRequest.builder().fullName("李小華").build();
+
+        userPrivacyService.updateMyProfile(request);
+
+        assertThat(user.getFullName()).isEqualTo("李小華");
+        assertThat(user.getPhone()).isEqualTo("0912345678");
+    }
+
+    @Test
+    @DisplayName("updateMyProfile：僅帶入電話時，姓名維持不變（PATCH 語意）")
+    void updateMyProfile_onlyPhoneProvided_leavesFullNameUnchanged() {
+        User user = buyerOf(USER_ID);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        UpdateProfileRequest request = UpdateProfileRequest.builder().phone("0987654321").build();
+
+        userPrivacyService.updateMyProfile(request);
+
+        assertThat(user.getFullName()).isEqualTo("王小明");
+        assertThat(user.getPhone()).isEqualTo("0987654321");
+    }
+
+    @Test
+    @DisplayName("updateMyProfile：找不到使用者時拋 E_1006")
+    void updateMyProfile_userNotFound_throwsE1006() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userPrivacyService.updateMyProfile(UpdateProfileRequest.builder().build()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1006);
+
+        verify(userRepository, never()).save(any());
     }
 
     // ========== deleteMyAccount ==========

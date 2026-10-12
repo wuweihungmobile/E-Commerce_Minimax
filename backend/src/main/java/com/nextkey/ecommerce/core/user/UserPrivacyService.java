@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.nextkey.ecommerce.api.dto.UpdateProfileRequest;
 import com.nextkey.ecommerce.api.dto.UserDataExportResponse;
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.domain.model.order.Booking;
@@ -140,6 +141,34 @@ public class UserPrivacyService {
                                 + "如需查看請透過既有訊息頁面"))
                 .exportedAt(Instant.now())
                 .build();
+    }
+
+    /**
+     * 會員自助更新個人資料（PRD §10.1.1 `/auth/profile`，DEF-358(b)，Sprint 257）。
+     *
+     * <p>欄位為 {@code null} 時不變更（PATCH 語意）；{@link User} 有 {@code @DynamicUpdate}
+     * （見該類別 Javadoc），只用 setter 改動要改的欄位即可自動吃到既有併發防護，不需額外加鎖。
+     */
+    @Transactional
+    public void updateMyProfile(final UpdateProfileRequest request) {
+        UUID userId = TenantContext.getCurrentUser();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_1006));
+
+        String oldValue = "fullName=" + user.getFullName() + ", phone=" + user.getPhone();
+
+        if (request.getFullName() != null) {
+            user.setFullName(request.getFullName());
+        }
+        if (request.getPhone() != null) {
+            user.setPhone(request.getPhone());
+        }
+        userRepository.save(user);
+
+        String newValue = "fullName=" + user.getFullName() + ", phone=" + user.getPhone();
+        log.info("Profile updated (self-service): {}", userId);
+        auditService.record("USER_PROFILE_UPDATED", "USER", userId, user.getTenantId(),
+                oldValue, newValue, "self-service profile update", userId);
     }
 
     @Transactional

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import AuthService from '@/services/auth'
 import { subscribeAuth, getAuthRoleSnapshot, getAuthServerSnapshot, notifyAuthChange } from '@/services/authStore'
 import { isOAuthProviderConfigured, startOAuthFlow, type OAuthProviderId } from '@/services/oauth'
@@ -179,6 +180,18 @@ export default function AccountPage() {
             </CardContent>
           </Card>
         )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">個人資料</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-gray-600">編輯您的姓名與電話。</p>
+            <Button asChild data-testid="account-edit-profile">
+              <Link href="/auth/profile">編輯個人資料</Link>
+            </Button>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

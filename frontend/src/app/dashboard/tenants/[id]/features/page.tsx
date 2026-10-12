@@ -149,11 +149,13 @@ export default function FeatureTogglePage() {
   }
 
   const getStatusBadge = (status: string, requiresAdminReview: boolean, enabled: boolean) => {
-    if (!enabled) {
-      return <Badge variant="secondary">已停用</Badge>
-    }
+    // 待審核必須先判斷：PENDING 時 isEnabled 本身就是 false（DEF-247 既有設計），
+    // 若先判斷 !enabled 會讓「待審核」被誤標成「已停用」，看起來已直接被駁回（DEF-359）。
     if (requiresAdminReview && status === 'PENDING') {
       return <Badge variant="warning">待審核</Badge>
+    }
+    if (!enabled) {
+      return <Badge variant="secondary">已停用</Badge>
     }
     if (status === 'ACTIVE') {
       return <Badge variant="success">已啟用</Badge>

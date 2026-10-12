@@ -16,6 +16,15 @@ interface PricingCalendarProps {
 
 const CALENDAR_PREVIEW_DAYS = 90
 
+// toISOString() 回傳 UTC 日期；用於「今天」這類本地日曆日概念時，在 UTC+8 時區每天
+// 00:00~07:59 會算成前一天，使後端 LocalDate.now()（系統/JVM 時區）比對誤判為過去日期（DEF-362）。
+function toLocalDateString(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export default function PricingCalendarPreview({ roomListingId }: PricingCalendarProps) {
   const router = useRouter()
   const [checkInDate, setCheckInDate] = useState('')
@@ -39,10 +48,9 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
   // 載入未來 90 天定價日曆（async；不在 effect 內同步 setState，遵循 React 19 嚴格 hooks，比照 MonthCalendar 既有模式）
   useEffect(() => {
     let cancelled = false
-    const formatDateParam = (date: Date) => date.toISOString().split('T')[0]
     const today = new Date()
-    const start = formatDateParam(today)
-    const end = formatDateParam(new Date(today.getTime() + (CALENDAR_PREVIEW_DAYS - 1) * 24 * 60 * 60 * 1000))
+    const start = toLocalDateString(today)
+    const end = toLocalDateString(new Date(today.getTime() + (CALENDAR_PREVIEW_DAYS - 1) * 24 * 60 * 60 * 1000))
 
     PricingService.getCalendarPreview(roomListingId, start, end)
       .then((days) => {
@@ -66,10 +74,9 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
 
-    const formatDate = (date: Date) => date.toISOString().split('T')[0]
     return {
-      checkIn: formatDate(tomorrow),
-      checkOut: formatDate(new Date(tomorrow.getTime() + 2 * 24 * 60 * 60 * 1000)),
+      checkIn: toLocalDateString(tomorrow),
+      checkOut: toLocalDateString(new Date(tomorrow.getTime() + 2 * 24 * 60 * 60 * 1000)),
     }
   }
 
@@ -198,8 +205,8 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
               type="date"
               value={checkInDate}
               onChange={(e) => setCheckInDate(e.target.value)}
-              min={new Date().toISOString().split('T')[0]}
-              max={new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+              min={toLocalDateString(new Date())}
+              max={toLocalDateString(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000))}
               className="mt-1"
             />
           </div>
@@ -210,7 +217,7 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
               value={checkOutDate}
               onChange={(e) => setCheckOutDate(e.target.value)}
               min={checkInDate}
-              max={new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+              max={toLocalDateString(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000))}
               className="mt-1"
             />
           </div>

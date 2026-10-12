@@ -58,3 +58,7 @@ PRD 規格：§10.1.1 `/auth/profile`（M03）——「全庫查無個人資料�
 **突變驗證**：暫時移除 `updateMyProfile` 的兩個 `if (xxx != null)` guard（變成無條件覆寫），重跑 `UserPrivacyServiceTest`：剛好 2 個驗證 PATCH 語意的案例轉紅（`updateMyProfile_onlyFullNameProvided_leavesPhoneUnchanged`／`updateMyProfile_onlyPhoneProvided_leavesFullNameUnchanged`），其餘 8 個不受影響；還原後重跑恢復 10/10 全綠。
 
 **`make validate-release` 偶發失敗一次（非本輪程式碼問題）**：第三次跑時 act／schema-gate 皆通過，僅 Playwright E2E 層 `at-account-data-rights.spec.ts`（既有檔案，本輪未修改）2 個案例逾時——錯誤快照顯示頁面呈現未登入狀態、`Authentication required`，符合既有已知模式（見專案記憶 `e2e-gate-flake-rate-limiters`：登入/註冊共用的 IP 限流器在整套 166 個規格平行執行時偶發超過額度，與本輪新增的程式碼無因果關係）。重跑第四次：**162 passed（+4，與新增的 AT-PROFILE-EDIT-REAL 四案例一致）／4 skipped／0 failed**（5.8 分），act（backend checkstyle/compile/單元/整合測試＋打包）BUILD SUCCESS，schema 對齊無漂移。已寫入 FULL 驗證記錄，30 分內可直接 push。
+
+## 6. Push 狀態與雲端 CI
+
+commit `c759ce70` 已推送至 `origin/main`。雲端 CI run [38274842398](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/38274842398)：`gh run watch --exit-status` 誤報 exit code 1（run 其實仍 `in_progress`，見專案記憶 `gh-run-watch-false-completion-signal` 新增的反方向變體），改用輪詢迴圈等到真正 `completed` 後以 `gh run view --json` 交叉核對：**`conclusion: success`**，3 個 job（Backend Unit Tests／Frontend Lint & Build／Backend Integration Tests & Package）全數 success。

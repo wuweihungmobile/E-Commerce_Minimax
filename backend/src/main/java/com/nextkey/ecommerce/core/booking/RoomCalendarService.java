@@ -41,9 +41,6 @@ public class RoomCalendarService {
 
     private static final String MAINTENANCE_FLAG = "under_maintenance";
 
-    @SuppressWarnings("unused")
-    private static final int CALENDAR_GENERATE_DAYS = 365; // 生成未來 365 天
-
     /**
      * 檢查日期範圍是否可用
      * 注意：此方法使用 FOR UPDATE 鎖定日期記錄
@@ -282,12 +279,16 @@ public class RoomCalendarService {
     // docs/06_quality/PRICING_MECHANISM_UNIFICATION.md。
 
     /**
-     * 封鎖日期（不可預訂）
+     * 封鎖日期（不可預訂）。
+     *
+     * <p>DEF-360（Sprint 255）：缺列（從未被訂過、無任何 room_calendar 記錄）的日期以
+     * {@link #fillMissingCalendarEntries} 先建立（預設 AVAILABLE）再納入下方迴圈轉為 BLOCKED，
+     * 不再對全新房源靜默空操作。
      */
     @Transactional
     public void blockDateRange(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
-        List<RoomCalendar> calendars = roomCalendarRepository
-                .findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
+        List<RoomCalendar> calendars = fillMissingCalendarEntries(roomListingId, checkIn, checkOut,
+                roomCalendarRepository.findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1)));
 
         for (RoomCalendar calendar : calendars) {
             calendar.setStatus(RoomCalendar.RoomCalendarStatus.BLOCKED);
@@ -319,20 +320,24 @@ public class RoomCalendarService {
      * 標記維護狀態（PRD §5.5.3）：AVAILABLE/BLOCKED/BOOKED → MAINTENANCE。
      * 若原狀態為 BOOKED，保留 booking_id 並在對應 Booking.statusFlags 標記 under_maintenance=true，
      * 供 Admin Dashboard MaintenanceWarnings 列表查詢（M09 通知系統上線前的替代方案，PRD §5.5.3）。
-     * 與 blockDateRange 相同慣例：僅處理已存在的 calendar 記錄，不建立缺漏日期的記錄。
      *
      * <p>DEF-256（Sprint 185）：先前完全沒有租戶擁有權檢查——任一持有 {@code room:update} 權限者
      * （任意租戶的 SELLER/HOST/STORE_OWNER/STORE_STAFF）皆可對他租戶的 {@code roomListingId}
      * 標記維護狀態，破壞其房源可訂性，且若該日期已被預訂，還會連帶把該筆 {@code Booking} 標記
      * {@code under_maintenance=true}。比照本專案既有的 {@code checkListingTenantOwnership} 慣例
      * （見 {@code PricingService}/{@code BookingService}）補上檢查。
+     *
+     * <p>DEF-360（Sprint 255）：缺列（從未被訂過、無任何 room_calendar 記錄）的日期以
+     * {@link #fillMissingCalendarEntries} 先建立（預設 AVAILABLE）再納入下方迴圈轉為 MAINTENANCE，
+     * 不再對全新房源靜默空操作（回 200 但完全沒有寫入）。
      */
     @Transactional
     public void markMaintenance(
             final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut,
             final boolean isSuperAdmin) {
         checkListingTenantOwnership(roomListingId, isSuperAdmin);
-        List<RoomCalendar> calendars = lockCalendarRange(roomListingId, checkIn, checkOut);
+        List<RoomCalendar> calendars = fillMissingCalendarEntries(roomListingId, checkIn, checkOut,
+                lockCalendarRange(roomListingId, checkIn, checkOut));
 
         for (RoomCalendar calendar : calendars) {
             if (calendar.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE) {
@@ -423,6 +428,50 @@ public class RoomCalendarService {
             throw new BusinessException(ErrorCode.E_4001,
                     "Date range " + checkIn + " to " + checkOut + " is currently being modified by another operation");
         }
+    }
+
+    /**
+     * 補齊日期範圍內缺漏的 room_calendar 列（UPSERT 語意，DEF-360，Sprint 255）。
+     *
+     * <p>{@code markMaintenance}/{@code blockDateRange} 原本（與 bookDateRange 不同）僅處理既有記錄，
+     * 對從未被訂過、無任何 room_calendar 記錄的房源會靜默空操作——回應 200 但完全沒有寫入，房源實際
+     * 仍可訂。{@code existing} 是呼叫端已用自己原有的方式（有鎖／無鎖）查到的既有記錄；本方法只負責
+     * 把範圍內缺列的日期以 {@link #createCalendarEntry} 補上（預設 AVAILABLE，供呼叫端接續的迴圈轉為
+     * 目標狀態），不改變呼叫端既有的鎖定行為。並發建立衝突（unique constraint）的處理方式與既有
+     * {@code bookDateRange} 一致：改讀取對方剛建立的列。
+     *
+     * <p>{@code unmarkMaintenance}/{@code unblockDateRange}/{@code releaseDateRange}
+     * 不適用此方法：這三者是「回復預設狀態」的操作，缺列本身就等同已經是預設的 AVAILABLE
+     * （{@link #isDateRangeAvailable} 既有語意：沒有記錄視為可訂），空操作產生的結果已經正確，
+     * 補列反而是沒有行為意義的額外寫入。
+     */
+    private List<RoomCalendar> fillMissingCalendarEntries(
+            final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut,
+            final List<RoomCalendar> existing) {
+        List<LocalDate> allDates = generateDateRange(checkIn, checkOut.minusDays(1));
+        if (existing.size() == allDates.size()) {
+            return existing;
+        }
+
+        Map<LocalDate, RoomCalendar> byDate = existing.stream()
+                .collect(Collectors.toMap(RoomCalendar::getCalendarDate, c -> c));
+        List<RoomCalendar> result = new ArrayList<>(allDates.size());
+        for (LocalDate date : allDates) {
+            RoomCalendar calendar = byDate.get(date);
+            if (calendar == null) {
+                try {
+                    calendar = roomCalendarRepository.saveAndFlush(createCalendarEntry(roomListingId, date));
+                } catch (DataIntegrityViolationException e) {
+                    log.warn("fillMissingCalendarEntries: Unique constraint violation for date {}, "
+                            + "another operation already created it", date);
+                    calendar = roomCalendarRepository.findByRoomListingIdAndCalendarDateWithLockNowait(roomListingId, date)
+                            .orElseThrow(() -> new BusinessException(ErrorCode.E_4001,
+                                    "Date " + date + " is currently being modified by another operation"));
+                }
+            }
+            result.add(calendar);
+        }
+        return result;
     }
 
     /**

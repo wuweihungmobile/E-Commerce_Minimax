@@ -70,13 +70,9 @@ test.describe('AT-EMBED-CARD-STATUS: 嵌入卡片狀態顯示（真實後端）'
   }: {
     page: Page;
   }) => {
-    // DEF-360（已知缺口，未修）：POST .../maintenance 對「從未被訂過、無 room_calendar 記錄」的
-    // 房源會靜默空操作（回 200 但完全沒寫入），本測試的房源正是這種剛建立、從未被訂的狀態，
-    // 會在下面 markMaintenance 這步就卡住——不是卡片渲染邏輯錯（那部分已由
-    // ListingCardServiceTest／PostControllerE2ETest 的單元/整合測試直接驗證過）。
-    // DEF-360 修好後，這個測試應該會「意外通過」而報錯，屆時移除這行 test.fail()。
-    test.fail(true, 'DEF-360: markMaintenance 對全新房源靜默空操作，見 DEFERRED_ITEMS_TRACKER.md');
-
+    // DEF-360（Sprint 255 已修復）：POST .../maintenance 原本對「從未被訂過、無 room_calendar 記錄」
+    // 的房源會靜默空操作；本測試的房源正是這種剛建立、從未被訂的狀態，直接驗證真實 API 端到端行為
+    // （而非像 PostControllerE2ETest 那樣直接寫 DB 繞過 markMaintenance 本身）。
     await loginOnly(page, owner.email, owner.password);
 
     const today = new Date();

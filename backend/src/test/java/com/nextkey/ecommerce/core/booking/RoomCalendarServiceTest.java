@@ -283,13 +283,32 @@ class RoomCalendarServiceTest {
     @Test
     @DisplayName("封鎖日期範圍 → 全部設為 BLOCKED")
     void blockDateRange_setsAllToBlocked() {
-        List<RoomCalendar> calendars = List.of(calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.AVAILABLE, null));
+        List<RoomCalendar> calendars = List.of(
+                calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.AVAILABLE, null),
+                calendarOf(CHECK_IN.plusDays(1), RoomCalendar.RoomCalendarStatus.AVAILABLE, null));
         when(roomCalendarRepository.findByListingIdAndCalendarDateBetween(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
                 .thenReturn(calendars);
 
         roomCalendarService.blockDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
 
-        verify(roomCalendarRepository).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.BLOCKED));
+        verify(roomCalendarRepository, times(2)).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.BLOCKED));
+    }
+
+    @Test
+    @DisplayName("DEF-360：全新房源（無任何既有 room_calendar 記錄）封鎖日期範圍 → 補建記錄後設為 BLOCKED，"
+            + "不再靜默空操作")
+    void blockDateRange_freshRoomNoCalendarRecords_createsEntriesAndSetsBlocked() {
+        when(roomCalendarRepository.findByListingIdAndCalendarDateBetween(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
+                .thenReturn(List.of());
+        Listing listing = Listing.builder().build();
+        listing.setId(ROOM_LISTING_ID);
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listing));
+        when(roomCalendarRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        roomCalendarService.blockDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
+
+        verify(roomCalendarRepository, times(2)).saveAndFlush(any());
+        verify(roomCalendarRepository, times(2)).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.BLOCKED));
     }
 
     @Test
@@ -311,20 +330,80 @@ class RoomCalendarServiceTest {
     @Test
     @DisplayName("標記維護：AVAILABLE → MAINTENANCE，無 booking 不觸發 Booking 更新")
     void markMaintenance_availableDates_setsMaintenanceWithoutTouchingBooking() {
-        List<RoomCalendar> calendars = List.of(calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.AVAILABLE, null));
+        List<RoomCalendar> calendars = List.of(
+                calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.AVAILABLE, null),
+                calendarOf(CHECK_IN.plusDays(1), RoomCalendar.RoomCalendarStatus.AVAILABLE, null));
         when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
                 ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(calendars);
 
         roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, true);
 
-        verify(roomCalendarRepository).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE));
+        verify(roomCalendarRepository, times(2)).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE));
         verify(bookingRepository, never()).findById(any());
+    }
+
+    @Test
+    @DisplayName("DEF-360：全新房源（無任何既有 room_calendar 記錄）標記維護 → 補建記錄後設為 MAINTENANCE，"
+            + "不再回 200 卻靜默空操作")
+    void markMaintenance_freshRoomNoCalendarRecords_createsEntriesAndSetsMaintenance() {
+        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
+                ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(List.of());
+        Listing listing = Listing.builder().build();
+        listing.setId(ROOM_LISTING_ID);
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listing));
+        when(roomCalendarRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, true);
+
+        // 注意：saveAndFlush 傳入的是與後續 save 同一個物件參照，verify 檢查的是呼叫結束當下的最終狀態
+        // （已被下面迴圈改成 MAINTENANCE），不是呼叫那一刻的 AVAILABLE，故這裡只驗證呼叫次數
+        verify(roomCalendarRepository, times(2)).saveAndFlush(any());
+        verify(roomCalendarRepository, times(2)).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE));
+        verify(bookingRepository, never()).findById(any());
+    }
+
+    @Test
+    @DisplayName("DEF-360：部分日期有既有記錄、部分缺漏 → 只補建缺漏的日期，既有記錄不受影響")
+    void markMaintenance_partialCalendarRecords_fillsOnlyMissingDates() {
+        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
+                ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
+                .thenReturn(List.of(calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.AVAILABLE, null)));
+        Listing listing = Listing.builder().build();
+        listing.setId(ROOM_LISTING_ID);
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listing));
+        when(roomCalendarRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, true);
+
+        // 只有缺漏的第二天（CHECK_IN+1）會被建立，第一天的既有記錄直接沿用
+        verify(roomCalendarRepository, times(1)).saveAndFlush(
+                argThat(c -> c.getCalendarDate().equals(CHECK_IN.plusDays(1))));
+        verify(roomCalendarRepository, times(2)).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE));
+    }
+
+    @Test
+    @DisplayName("DEF-360：建立缺漏記錄時發生 unique constraint 衝突（併發）→ 改讀取對方剛建立的記錄並繼續")
+    void markMaintenance_concurrentCreationConflict_recoversExistingEntry() {
+        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
+                ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(List.of());
+        Listing listing = Listing.builder().build();
+        listing.setId(ROOM_LISTING_ID);
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listing));
+        when(roomCalendarRepository.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("dup"));
+        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateWithLockNowait(eq(ROOM_LISTING_ID), any()))
+                .thenAnswer(inv -> Optional.of(calendarOf(inv.getArgument(1), RoomCalendar.RoomCalendarStatus.AVAILABLE, null)));
+
+        roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, true);
+
+        verify(roomCalendarRepository, times(2)).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE));
     }
 
     @Test
     @DisplayName("標記維護：已 BOOKED 日期 → 保留 bookingId、狀態改 MAINTENANCE，且 Booking.statusFlags 標記 under_maintenance=true")
     void markMaintenance_bookedDate_preservesBookingIdAndFlagsBooking() {
-        List<RoomCalendar> calendars = List.of(calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.BOOKED, BOOKING_ID));
+        List<RoomCalendar> calendars = List.of(
+                calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.BOOKED, BOOKING_ID),
+                calendarOf(CHECK_IN.plusDays(1), RoomCalendar.RoomCalendarStatus.AVAILABLE, null));
         when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
                 ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(calendars);
         Booking booking = Booking.builder().id(BOOKING_ID).build();
@@ -340,7 +419,9 @@ class RoomCalendarServiceTest {
     @Test
     @DisplayName("標記維護：已是 MAINTENANCE 的日期 → 略過（idempotent，不重複 save）")
     void markMaintenance_alreadyMaintenance_idempotentSkip() {
-        List<RoomCalendar> calendars = List.of(calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.MAINTENANCE, null));
+        List<RoomCalendar> calendars = List.of(
+                calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.MAINTENANCE, null),
+                calendarOf(CHECK_IN.plusDays(1), RoomCalendar.RoomCalendarStatus.MAINTENANCE, null));
         when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
                 ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(calendars);
 
@@ -455,14 +536,16 @@ class RoomCalendarServiceTest {
         Listing ownListing = Listing.builder().id(ROOM_LISTING_ID).tenantId(tenantId).build();
         when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(ownListing));
         com.nextkey.ecommerce.shared.tenant.TenantContext.setCurrentTenant(tenantId);
-        List<RoomCalendar> calendars = List.of(calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.AVAILABLE, null));
+        List<RoomCalendar> calendars = List.of(
+                calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.AVAILABLE, null),
+                calendarOf(CHECK_IN.plusDays(1), RoomCalendar.RoomCalendarStatus.AVAILABLE, null));
         when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
                 ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(calendars);
 
         try {
             roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, false);
 
-            verify(roomCalendarRepository).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE));
+            verify(roomCalendarRepository, times(2)).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE));
         } finally {
             com.nextkey.ecommerce.shared.tenant.TenantContext.clear();
         }

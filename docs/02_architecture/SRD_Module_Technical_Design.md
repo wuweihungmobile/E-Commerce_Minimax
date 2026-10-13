@@ -1,7 +1,7 @@
-# E-Commerce 系統 — 模組技術設計 v1.0
+# E-Commerce 系統 — 模組技術設計 v1.3
 
 > **文檔類型**: SRD - Module Technical Design
-> **版本**: v1.0
+> **版本**: v1.3（v1.0 → v1.1：Sprint 203 文件一致性檢查；v1.1 → v1.2：Sprint 244 文件對齊；v1.2 → v1.3：Sprint 262 新增 §6 M07 結算與撥款模組，見 §8 修訂歷史。檔頭版號先前長期停滯於 v1.0，與下方修訂歷史已推進到 v1.2 不符，本次一併校正）
 > **依據**: E-Commerce_SRD_System_Architecture.md, E-Commerce_FRD_v1.0.md
 > **建立日期**: 2026-04-09
 > **作者**: Marcus (SD-Architect)
@@ -1222,7 +1222,116 @@ public class RuleEngine {
 
 ---
 
-## 6. 異常處理架構 (Exception Handling)
+## 6. M07 結算與撥款模組 (Settlement & Transfer Module)
+
+> **Sprint 262 新增**：本模組先前完全沒有技術設計章節（與 §4 M05、§5 M12 等不同，不是「過期未同步」而是「從未存在」，見 [DEF-364](../04_planning/DEFERRED_ITEMS_TRACKER.md)）。以下內容依實際程式碼撰寫，端點細節見 [API_M07_Settlement.md](api/API_M07_Settlement.md)。
+
+### 6.1 架構概覽
+
+```
+com.nextkey.ecommerce/
+├── api/
+│   └── controller/
+│       └── settlement/
+│           ├── SettlementController.java     # 結算單列表/詳情/提交/審核/手動補產/沖正 API
+│           └── TransferController.java       # 撥款對帳查詢/重試 API
+├── core/
+│   └── settlement/
+│       ├── SettlementService.java            # 持有三個子服務引用＋共用回應 DTO（無獨立業務邏輯）
+│       ├── SettlementGenerator.java          # 結算單生成（週排程＋手動補產）、商家查詢
+│       ├── SettlementCalculator.java         # GMV／抽成純函數計算（無副作用）
+│       ├── SettlementReviewer.java           # 審核狀態機（提交／核准／駁回），核准後觸發 TransferService
+│       ├── SettlementReversalService.java    # 雙重授權逆轉（PAID→REVERSAL_PENDING→REVERSED）
+│       ├── SettlementAdjustmentService.java  # 跨結算週期退款調整（訂單與訂房退款共用）
+│       ├── SettlementMapper.java             # entity ↔ DTO 轉換
+│       └── TransferService.java              # Stripe Connect 撥款、失敗重試、webhook 處理
+└── domain/
+    ├── model/settlement/
+    │   ├── SettlementStatement.java          # 結算單主檔，狀態機見 §6.3
+    │   ├── Transfer.java                     # 撥款明細（settlementStatementId 唯一索引，一單一筆）
+    │   └── CreditNote.java                   # 逆轉產生的會計沖銷記錄
+    └── repository/settlement/
+        ├── SettlementStatementRepository.java
+        ├── TransferRepository.java
+        ├── CreditNoteRepository.java
+        └── SettlementAdjustmentRepository.java
+```
+
+### 6.2 核心類設計
+
+#### SettlementGenerator.java（結算單生成）
+
+```java
+@Component
+@RequiredArgsConstructor
+public class SettlementGenerator {
+
+    // 每週一 00:00（營運時區 Asia/Taipei）觸發；zone 參數避免 UTC 容器把時間切偏
+    @Scheduled(cron = "0 0 0 ? * MON", zone = BusinessTime.ZONE_ID)
+    public void generateWeeklyStatements() {
+        // 逐租戶呼叫 generateStatementForTenant，單一租戶失敗僅記錄，不中斷其他租戶
+    }
+
+    /**
+     * 手動補產（DEF-287，Sprint 208）：僅 settlement:generate（SUPER_ADMIN）可用。
+     * 與排程共用同一套冪等（同租戶+期間已有結算單直接回傳既有的）與
+     * 原子認領（UPDATE ... WHERE settled_statement_id IS NULL）防護。
+     */
+    public SettlementStatementResponse generateStatementManually(
+            UUID tenantId, LocalDate periodStart, LocalDate periodEnd) {
+        if (periodEnd.isBefore(periodStart)) {
+            throw new BusinessException(ErrorCode.E_9008, "periodEnd must not be before periodStart");
+        }
+        return mapper.toStatementResponse(generateStatementForTenant(tenantId, periodStart, periodEnd));
+    }
+}
+```
+
+#### TransferService.java（撥款，核准後自動觸發）
+
+```java
+@Service
+@RequiredArgsConstructor
+public class TransferService {
+
+    @Transactional
+    public Transfer createTransferForStatement(UUID statementId) {
+        // 1. 結算單必須是 APPROVED，否則 E_5014
+        // 2. 已有 transfer 記錄直接回傳（冪等，不重複撥款）
+        // 3. 以 idx_transfers_settlement_statement_id 唯一索引原子佔位（saveAndFlush），
+        //    搶輸的併發請求改回傳既有記錄，不會各自真的呼叫 Stripe 一次
+        // 4. STRIPE_TRANSFER_ENABLED 關閉，或賣家 Connect 帳戶未就緒
+        //    → SKIPPED_ONBOARDING_INCOMPLETE（非失敗，可之後補建）
+        // 5. 呼叫 Stripe Transfer.create 成功 → COMPLETED，結算單同步轉 PAID
+        // 6. 失敗（BusinessException）→ FAILED，結算單同步轉 FAILED（可由 §4.12 重試）
+    }
+}
+```
+
+### 6.3 結算單狀態機與撥款流程
+
+```
+   PENDING ──(商家提交)──► PENDING_REVIEW ──(Admin 核准)──► APPROVED ──(撥款成功)──► PAID
+                                 │                              │                     │
+                                 └─(Admin 駁回)─► REJECTED       └─(撥款失敗)─► FAILED  │
+                                   （釋放已認領的                  │（可重試回 APPROVED） │
+                                    訂單/訂房/調整單）                                   │
+                                                                          (SUPER_ADMIN/CFO 發起)
+                                                                                         ▼
+                                                                                REVERSAL_PENDING
+                                                                                         │
+                                                                     (另一角色確認，產生 CreditNote)
+                                                                                         ▼
+                                                                                    REVERSED
+```
+
+**核准→撥款的同步觸發與失敗隔離**：`SettlementReviewer.approveStatement` 完成狀態轉換與稽核紀錄寫入後，在同一次呼叫內以 `try { transferService.createTransferForStatement(...) } catch (RuntimeException e) { log.error(...) }` 呼叫撥款——**任何撥款例外都只記錄，不會回滾或影響已持久化的「核准」決策**，也不會讓 `PUT .../approve` 的 HTTP 回應失敗；撥款的實際結果需另外呼叫 `GET /v2/transfers` 或結算單詳情查詢。
+
+**逆轉與 Stripe webhook 的交錯**：`TransferService.handleTransferReversedWebhook` 處理 Stripe 主動送達的 `transfer.reversed` 事件，只有結算單仍是 `PAID`（webhook 延遲送達前的預期狀態）才會被改回 `FAILED`；若雙重授權逆轉流程已將其推進到 `REVERSAL_PENDING`／`REVERSED`，則不覆寫，只記錄 info log——避免 webhook 無條件覆寫掉已簽核或已完成的人工決策。
+
+---
+
+## 7. 異常處理架構 (Exception Handling)
 
 > **Sprint 203 改寫**：v1.0 此節描述的 `ECommerceException` 例外階層、`ErrorResponse.of("E4041", …)` 與一份自成一格的錯誤碼表，**從未存在於程式碼**（全庫只有下列一個基底例外與一個處理器）。已改寫為實際架構；錯誤碼與 HTTP 狀態碼以 [API_Error_Codes.md](./API_Error_Codes.md) 為準。
 
@@ -1268,16 +1377,17 @@ com.nextkey.ecommerce.api.controller/
 
 ---
 
-## 7. 修訂歷史
+## 8. 修訂歷史
 
 | 版本 | 日期 | 作者 | 變更說明 |
 |------|------|------|----------|
 | v1.0 | 2026-04-09 | Marcus (SD-Architect) | 初始版本，包含 Phase 1 核心模組技術設計 |
 | v1.1 | 2026-09-26 | Claude Code（Sprint 203） | 文件一致性檢查（DEF-280）：§6 異常處理架構改寫為實際架構（原描述的例外階層與錯誤碼表從未存在於程式碼），錯誤碼移至 [API_Error_Codes.md](./API_Error_Codes.md)；新增 §5.4 價格精度與規則設定驗證（Sprint 192／193）。**未逐段核對**其餘章節（§1～§5.3）與程式碼的一致性，例如 §4.3 的 `X-Idempotency-Key` 標頭與實作的 `Idempotency-Key` 不同（見 DEF-285） |
 | v1.2 | 2026-10-03 | Claude Code（Sprint 244） | 文件對齊（3/3）：§1.2 Token 效期改為 15 分鐘（實際類別 `JwtTokenService`，效期由設定注入，見註記）；§4 M05 建單草稿移除「建單即 PAID」，`ALLOWED_TRANSITIONS` 草稿加註記（實際規則見 `OrderStateMachine`）；序列圖的付款標示改為「付款成功 CREATED→PAID」 |
+| v1.3 | 2026-10-13 | Claude Code（Sprint 262） | 新增 §6 M07 結算與撥款模組（架構概覽、核心類設計、狀態機與撥款流程），此模組先前完全沒有技術設計章節（DEF-364）；原 §6／§7 依序改為 §7／§8；檔頭版本號同步校正（先前長期停滯於 v1.0） |
 
 ---
 
 **文檔版本**: AISDLC v0.09
 **模板維護**: AISDLC Framework Team
-**最後更新**: 2026-10-03
+**最後更新**: 2026-10-13

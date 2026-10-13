@@ -1,7 +1,7 @@
-# E-Commerce System — 功能需求文檔 (FRD) v1.8
+# E-Commerce System — 功能需求文檔 (FRD) v1.9
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.8
+> **版本**: v1.9
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -18,6 +18,8 @@
 > **⚠️ 修訂註記（Sprint 252，2026-10-11，DEF-321(b)）**：新增 **US-M17-009 瀏覽店鋪前台**（PRD §10／§11.3／§12.7 的 4 條路由首次實作），§8.6 補上對應的兩個新公開端點。其餘章節內文未改寫。
 >
 > **⚠️ 修訂註記（Sprint 261，2026-10-13，文件一致性檢查第四輪）**：修正 §6A.2／§6A.7 的 state-log 與店家後台按鈕過期敘述（實際已於 Sprint 246 完成，DEF-350）；修正 §8.6 失效連結；修正頂部「情境使用指引」Phase 1/2 表（過期近 9 個月，M06 完整／M07／M09 自 Sprint 244 起實為 Phase 1）；補登 v1.7 修訂紀錄遺漏列。新發現本文件完全沒有 **M17 店鋪成員管理**（Sprint 248，7+1 個端點）與**M03 個人資料編輯**（Sprint 257，`PUT /v2/auth/me`）兩條 User Story，登記為 DEF-371／DEF-372，本輪不補寫（寫作範圍屬下一輪決策）。既有章節其餘內文未改寫。詳見 [SPRINT_261_PLAN.md](../04_planning/SPRINT_261_PLAN.md)。
+>
+> **⚠️ 修訂註記（Sprint 262，2026-10-13，DEF-364）**：§6B.6／§6B.7 更新——M07 結算與撥款的 API 規格文件（[API_M07_Settlement.md](../02_architecture/api/API_M07_Settlement.md)）與 SRD 技術設計章節（§6）已建立，不再是「尚未建立」。其餘章節未改寫；M17 成員管理／M03 個人資料編輯兩條 User Story（DEF-370／371）仍未補寫。
 
 ---
 
@@ -2722,8 +2724,8 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 | 訂房付款 | `POST /v2/bookings/{bookingId}/pay`、`…/pay/checkout`、`…/pay/checkout/return` | [API_M06_Booking.md](../02_architecture/API_M06_Booking.md) §4.8～4.10 |
 | 舊版付款 | `POST /v2/payments`、`POST /v2/payments/refund`、`GET /v2/payments/{paymentId}` | **無獨立規格** |
 | Webhook | `POST /v2/payments/webhook/stripe`；`POST /v2/payments/webhook/linepay`（stub） | **無獨立規格** |
-| 結算 | `/v2/settlements`、`/v2/settlements/{statementId}`、`…/submit`；`/v2/admin/settlements/pending`、`…/approve`、`…/reject`、`/v2/admin/settlements/generate`、`/v2/admin/settlements/reversal-candidates`、`…/reverse/initiate`、`…/reverse/confirm` | **API_M07 尚未建立**（API_Index 標註「連結待建立」） |
-| 撥款 | `/v2/transfers`、`/v2/admin/transfers/{statementId}/retry` | **API_M07 尚未建立** |
+| 結算 | `/v2/settlements`、`/v2/settlements/{statementId}`、`…/submit`；`/v2/admin/settlements/pending`、`…/approve`、`…/reject`、`/v2/admin/settlements/generate`、`/v2/admin/settlements/reversal-candidates`、`…/reverse/initiate`、`…/reverse/confirm` | [API_M07_Settlement.md](../02_architecture/api/API_M07_Settlement.md) §4.1～4.10（Sprint 262 新建，DEF-364） |
+| 撥款 | `/v2/transfers`、`/v2/admin/transfers/{statementId}/retry` | [API_M07_Settlement.md](../02_architecture/api/API_M07_Settlement.md) §4.11～4.12（Sprint 262 新建） |
 
 ### 6B.7 與 PRD 的差異
 
@@ -2731,7 +2733,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 2. PRD 的 `payment_splits`、`refund_requests`、`saga_events`、`compensation_log` 四張表不存在；分帳與退款以 `payments`、`settlement_statements` 與 Stripe 退款實作。
 3. PRD 的 Saga Pattern 分散式交易：未實作（Phase 2）。
 4. PRD 的 `X-Mock-Fail` 標頭：未實作，改以 `…/pay/fail` 端點取代。
-5. 結算單的狀態圖與撥款細節尚未文件化；M07 的 API 規格文件待建立（§6B.6）。
+5. 結算單的狀態圖與撥款細節已文件化（Sprint 262）：狀態圖見 [SRD_Module_Technical_Design.md](../02_architecture/SRD_Module_Technical_Design.md) §6.3；M07 的 API 規格文件已建立（§6B.6）。
 6. 真實 Stripe 與 LINE Pay 皆未對真實服務驗證。
 7. PRD §6.2.1 的結算對象為訂單，M05 將 BOOKING 列為訂單類型：已實作（DEF-353，Sprint 247；見 BR-M07-12），訂房與訂單彙總進同一張結算單。
 
@@ -4205,6 +4207,7 @@ tenant_feature_toggles
 | v1.6 | 2026-10-09 | **Sprint 247（DEF-353）訂房納入結算**：BR-M06-12、§6B.2「每週結算單」、§6B.7 第 7 點改為已實作；新增 BR-M07-12（可結算條件、跨結算週期退款調整）。**順手修正 Sprint 246 遺留的文件漂移**：BR-M06-07 與 §6A.7 第 5 點仍寫 DEF-352「未實作」，但 DEF-352 已於 Sprint 246 完成（程式碼存在、排程預設關閉待生產驗證），兩處改為反映實作現況。檔頭版本號同步為 v1.6（v1.5 的「已同步為 v1.5」記載與實際檔頭 v1.0 不符，本次一併校正） | Claude Code（Sprint 247） |
 | v1.7 | 2026-10-11 | **Sprint 252（DEF-321(b)）**：新增 US-M17-009 瀏覽店鋪前台（PRD §10／§11.3／§12.7 四條路由首次實作）、§8.6 補上 `GET /v2/public/stores/:slug`、`GET /v2/public/stores/:slug/listings` 兩個新公開端點。檔頭版本號同步為 v1.7（此列為 2026-10-13 文件稽核時補登——檔頭版號已於 Sprint 252 當時改為 v1.7，但本修訂紀錄表漏加對應列） | Claude Code（2026-10-13 文件稽核補登） |
 | v1.8 | 2026-10-13 | **文件一致性檢查（第四輪，Sprint 261）**：修正§6A.2/§6A.7 的 state-log／店家後台按鈕過期敘述（已於 Sprint 246 實作，DEF-350）；修正§8.6 失效連結（`API_M17_Tenant_Management.md`→`API_M17_Tenant.md`）；修正「情境使用指引」Phase 1/2 表（M06完整／M07／M09 自 Sprint 244 起實為 Phase 1，原表未同步）。新登記 DEF-364～DEF-372（M07/M08/ReturnRequest/SupportTicket 無文件、M12 端點落差、M17 文件自身矛盾、FRD 缺 M17 成員管理與 M03 個人資料編輯兩條 User Story、ApiRouteDocDriftTest 覆蓋範圍缺口）。詳見 [SPRINT_261_PLAN.md](../04_planning/SPRINT_261_PLAN.md) | Claude Code（Sprint 261） |
+| v1.9 | 2026-10-13 | **M07 結算與撥款文件補齊（Sprint 262，DEF-364）**：§6B.6／§6B.7 更新，M07 的 API 規格（新建 `API_M07_Settlement.md`）與 SRD 技術設計章節（新建 §6）已完成，不再標示「尚未建立」。詳見 [SPRINT_262_PLAN.md](../04_planning/SPRINT_262_PLAN.md) | Claude Code（Sprint 262） |
 
 ---
 

@@ -1,9 +1,9 @@
 # API Index / API 規格索引
 
 > **文檔狀態**: Active
-> **版本**: v1.3
+> **版本**: v1.4
 > **建立日期**: 2026-04-09
-> **最後更新**: 2026-10-03（Sprint 243）
+> **最後更新**: 2026-10-13（Sprint 262：M07 連結改指向新建的 [API_M07_Settlement.md](./api/API_M07_Settlement.md)，見 DEF-364）
 > **作者**: Marcus (SD-Architect)
 > **🔴 Sprint 16 US-008**: 收錄 Sprint 15 + Sprint 16 新增 API 端點
 >
@@ -166,6 +166,8 @@
 
 ### 結算系統 (M07) - 🆕 Sprint 15-16 新增
 
+> **⚠️ 2026-10-13（Sprint 262）**：此表僅為 Sprint 15/16 時期的歷史草表，已知**不完整**（漏列手動補產、沖正、撥款對帳與重試共 6 個既有端點）。**完整且已核對程式碼的規格見 [API_M07_Settlement.md](./api/API_M07_Settlement.md)**，本表保留僅因 [TC_M07_Settlement.md](../03_testing/TC_M07_Settlement.md) 引用其編號，不再維護。
+
 | API ID | 端點 | 方法 | 說明 | 角色 | Sprint |
 |--------|------|------|------|------|--------|
 | **🆕 API-M07-S-001** | `/v2/settlements` | GET | 商家查詢結算單列表 | StoreOwner | Sprint 15 |
@@ -203,8 +205,8 @@
 ### M17 租戶管理
 - [API_M17_Tenant.md](./api/API_M17_Tenant.md)
 
-### M07 結算系統 (🆕 Sprint 15-16)
-- `API_M07_Settlement.md` *(Sprint 16 規劃新增，連結待建立)*
+### M07 結算與撥款 (🆕 Sprint 15-16；Sprint 262 完整建立)
+- [API_M07_Settlement.md](./api/API_M07_Settlement.md)（v1.0，Sprint 262 新建，DEF-364；取代下方 Sprint 15/16 舊表格）
 
 ### M08 評價系統 (🆕 Sprint 15-16)
 - `API_M08_Review.md` *(Sprint 16 規劃新增，連結待建立)*

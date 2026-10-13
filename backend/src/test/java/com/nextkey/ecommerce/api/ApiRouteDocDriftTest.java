@@ -30,6 +30,8 @@ import com.nextkey.ecommerce.api.controller.DashboardBookingController;
 import com.nextkey.ecommerce.api.controller.OAuthController;
 import com.nextkey.ecommerce.api.controller.OrderController;
 import com.nextkey.ecommerce.api.controller.OrderPaymentController;
+import com.nextkey.ecommerce.api.controller.settlement.SettlementController;
+import com.nextkey.ecommerce.api.controller.settlement.TransferController;
 
 /**
  * Sprint 241：API 規格文件記載的路由，必須與 Controller 一致（路由漏記、記了不存在的路由都會失敗）。
@@ -66,6 +68,9 @@ class ApiRouteDocDriftTest {
                 List.of(OrderController.class, CheckoutController.class, OrderPaymentController.class));
         GUARDED.put("API_M06_Booking.md",
                 List.of(BookingController.class, BookingPaymentController.class, DashboardBookingController.class));
+        // Sprint 262：M07 結算與撥款，文件先前完全不存在（DEF-364），新建後一併納入守門
+        GUARDED.put("api/API_M07_Settlement.md",
+                List.of(SettlementController.class, TransferController.class));
     }
 
     /** 反引號包住的 `METHOD /path`：路徑到反引號、空白或 {@code ?} 為止。 */

@@ -52,3 +52,11 @@ DEF-363：`RoomCalendarService.blockDateRange`/`unblockDateRange` 呼叫無鎖�
 - 整體：`🏁 Job succeeded`，`✅ 完整測試程序全數通過（act + schema + E2E）`，已寫入 FULL 驗證記錄
 
 **DEF-363 已修復並通過全量回歸。**
+
+## 6. Push 狀態與雲端 CI
+
+commit `5db4393c` 已推送至 `origin/main`（`316b4712..5db4393c`）。push 前的本機輕量守門（`validate-push`：backend-unit act + schema 漂移 + frontend，約 8-12 分）✅ 通過，schema 對齊無漂移。
+
+雲端 CI run [38352423342](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/38352423342)（`gh run watch` 等到真正 `completed` 後，另用 `gh run view --json` 交叉確認，不只信任 watch 的 exit code）：**`conclusion: success`**，3 個 job（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build）全數 success。
+
+**DEF-363 全數完成：已修復、已測試、已推送、雲端 CI 獨立驗證通過。**

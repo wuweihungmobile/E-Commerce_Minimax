@@ -286,8 +286,8 @@ class RoomCalendarServiceTest {
         List<RoomCalendar> calendars = List.of(
                 calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.AVAILABLE, null),
                 calendarOf(CHECK_IN.plusDays(1), RoomCalendar.RoomCalendarStatus.AVAILABLE, null));
-        when(roomCalendarRepository.findByListingIdAndCalendarDateBetween(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
-                .thenReturn(calendars);
+        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
+                ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(calendars);
 
         roomCalendarService.blockDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
 
@@ -298,8 +298,8 @@ class RoomCalendarServiceTest {
     @DisplayName("DEF-360：全新房源（無任何既有 room_calendar 記錄）封鎖日期範圍 → 補建記錄後設為 BLOCKED，"
             + "不再靜默空操作")
     void blockDateRange_freshRoomNoCalendarRecords_createsEntriesAndSetsBlocked() {
-        when(roomCalendarRepository.findByListingIdAndCalendarDateBetween(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
-                .thenReturn(List.of());
+        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
+                ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(List.of());
         Listing listing = Listing.builder().build();
         listing.setId(ROOM_LISTING_ID);
         when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listing));
@@ -312,17 +312,44 @@ class RoomCalendarServiceTest {
     }
 
     @Test
+    @DisplayName("DEF-363：blockDateRange 悲觀鎖搶占失敗 → E_4001（與 markMaintenance 共用同一個"
+            + "lockCalendarRange 私有方法，同一路徑）")
+    void blockDateRange_pessimisticLockFailure_throwsE4001() {
+        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
+                ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
+                .thenThrow(new PessimisticLockingFailureException("locked"));
+
+        assertThatThrownBy(() -> roomCalendarService.blockDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_4001);
+    }
+
+    @Test
     @DisplayName("取消封鎖：僅 BLOCKED 日期回復 AVAILABLE，其餘（如 BOOKED）不受影響")
     void unblockDateRange_onlyBlockedDatesRevert() {
         List<RoomCalendar> calendars = List.of(
                 calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.BLOCKED, null),
                 calendarOf(CHECK_IN.plusDays(1), RoomCalendar.RoomCalendarStatus.BOOKED, BOOKING_ID));
-        when(roomCalendarRepository.findByListingIdAndCalendarDateBetween(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
-                .thenReturn(calendars);
+        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
+                ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(calendars);
 
         roomCalendarService.unblockDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT);
 
         verify(roomCalendarRepository, times(1)).save(any());
+    }
+
+    @Test
+    @DisplayName("DEF-363：unblockDateRange 悲觀鎖搶占失敗 → E_4001")
+    void unblockDateRange_pessimisticLockFailure_throwsE4001() {
+        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
+                ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1)))
+                .thenThrow(new PessimisticLockingFailureException("locked"));
+
+        assertThatThrownBy(() -> roomCalendarService.unblockDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_4001);
     }
 
     // ========== markMaintenance / unmarkMaintenance（PRD §5.5.3，Sprint 96） ==========

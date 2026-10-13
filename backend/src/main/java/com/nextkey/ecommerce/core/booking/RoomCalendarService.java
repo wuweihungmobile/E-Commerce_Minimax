@@ -284,11 +284,15 @@ public class RoomCalendarService {
      * <p>DEF-360（Sprint 255）：缺列（從未被訂過、無任何 room_calendar 記錄）的日期以
      * {@link #fillMissingCalendarEntries} 先建立（預設 AVAILABLE）再納入下方迴圈轉為 BLOCKED，
      * 不再對全新房源靜默空操作。
+     *
+     * <p>DEF-363（Sprint 260）：原本呼叫無鎖查詢，與 {@code bookDateRange}（逐日 NOWAIT 鎖）或彼此
+     * 交錯呼叫時，可能靜默遺失對方剛寫入的 status/booking_id（同 DEF-134/135/136 修復前的結構）。
+     * 改用 {@link #lockCalendarRange}，與 markMaintenance/unmarkMaintenance/releaseDateRange 一致。
      */
     @Transactional
     public void blockDateRange(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
         List<RoomCalendar> calendars = fillMissingCalendarEntries(roomListingId, checkIn, checkOut,
-                roomCalendarRepository.findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1)));
+                lockCalendarRange(roomListingId, checkIn, checkOut));
 
         for (RoomCalendar calendar : calendars) {
             calendar.setStatus(RoomCalendar.RoomCalendarStatus.BLOCKED);
@@ -299,12 +303,14 @@ public class RoomCalendarService {
     }
 
     /**
-     * 取消封鎖日期
+     * 取消封鎖日期。
+     *
+     * <p>DEF-363（Sprint 260）：見 {@link #blockDateRange} 說明，同一併發遺失更新缺口，改用
+     * {@link #lockCalendarRange}。
      */
     @Transactional
     public void unblockDateRange(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
-        List<RoomCalendar> calendars = roomCalendarRepository
-                .findByListingIdAndCalendarDateBetween(roomListingId, checkIn, checkOut.minusDays(1));
+        List<RoomCalendar> calendars = lockCalendarRange(roomListingId, checkIn, checkOut);
 
         for (RoomCalendar calendar : calendars) {
             if (calendar.getStatus() == RoomCalendar.RoomCalendarStatus.BLOCKED) {
@@ -412,11 +418,11 @@ public class RoomCalendarService {
     }
 
     /**
-     * 併發防護（DEF-134/135/136）：以 {@code FOR UPDATE NOWAIT} 鎖住整段日期範圍的
-     * room_calendar 記錄，供 releaseDateRange/markMaintenance/unmarkMaintenance 共用，
-     * 序列化「讀狀態→條件式改欄位→save()」複合操作。若記錄已被併發的 bookDateRange 等交易
-     * 鎖定，比照本檔案既有的 NOWAIT 失敗處理方式，轉譯為 E_4001 而非讓
-     * {@code PessimisticLockingFailureException} 原樣拋出。
+     * 併發防護（DEF-134/135/136，Sprint 260 起 DEF-363 併入）：以 {@code FOR UPDATE NOWAIT}
+     * 鎖住整段日期範圍的 room_calendar 記錄，供 releaseDateRange/markMaintenance/unmarkMaintenance/
+     * blockDateRange/unblockDateRange 共用，序列化「讀狀態→條件式改欄位→save()」複合操作。若記錄
+     * 已被併發的 bookDateRange 等交易鎖定，比照本檔案既有的 NOWAIT 失敗處理方式，轉譯為 E_4001
+     * 而非讓 {@code PessimisticLockingFailureException} 原樣拋出。
      */
     private List<RoomCalendar> lockCalendarRange(final UUID roomListingId, final LocalDate checkIn, final LocalDate checkOut) {
         try {

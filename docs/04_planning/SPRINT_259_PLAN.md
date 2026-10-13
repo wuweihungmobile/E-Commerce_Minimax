@@ -62,4 +62,8 @@ PRD 規格：§10.1.1 `/products`、`/rooms`（M01/M02）——「目前無跨�
 
 重跑第二次：**170 passed（S258 基準 166，+5 新增 `at-public-listings-real.spec.ts`，-1 移除 `at-homepage.spec.ts` 的 E2E-HOME-06）／4 skipped／0 failed**（7.9 分），act BUILD SUCCESS，schema 對齊無漂移。已寫入 FULL 驗證記錄。
 
-**DEF-358 全數完成**：(c)(b)(d)(a) 四項皆已實作、測試、推送並雲端 CI 驗證（本項待下方 push 完成後更新）。
+**DEF-358 全數完成**：(c)(b)(d)(a) 四項皆已實作、測試、推送並雲端 CI 驗證。
+
+## 6. Push 狀態與雲端 CI
+
+commit `f8690d70` 已推送至 `origin/main`（第一次推送遇到背景指令輸出管線 SIGPIPE（exit 141）中斷，`git status` 核對本地領先遠端 1 個 commit、確認真的沒送出後重試，第二次成功，沿用同一筆剛寫入的守門驗證記錄未重跑）。雲端 CI run [38339563603](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/38339563603)（輪詢等到真正 `completed` 再查核）：**`conclusion: success`**，3 個 job 全數 success。

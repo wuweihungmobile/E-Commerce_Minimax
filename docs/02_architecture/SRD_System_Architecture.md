@@ -1,7 +1,7 @@
-# E-Commerce System — 系統需求文檔 (SRD) v1.6
+# E-Commerce System — 系統需求文檔 (SRD) v1.7
 
 > **文檔類型**: SRD (System Requirements Document)
-> **版本**: v1.3（v1.0 → v1.1：Sprint 203 文件一致性檢查；v1.1 → v1.2：Sprint 204 新增 §5.5；v1.2 → v1.3：Sprint 206 §5.4.1 連接器層錯誤，見 §9 修訂歷史）
+> **版本**: v1.7（v1.0 → v1.3：見下方歷史；v1.3 → v1.6：Sprint 244／245／247 文件對齊與訂房功能同步；v1.6 → v1.7：Sprint 261 文件一致性檢查，補 no-show 狀態列＋版本中繼資料校正；完整內容見 §9 修訂歷史）
 > **依據**: E-Commerce_PRD_v1.0_Final.md, E-Commerce_FRD_v1.0.md
 > **建立日期**: 2026-04-09
 > **作者**: Marcus (SD-Architect)
@@ -17,7 +17,7 @@
 | **系統類型** | B2B2C 多租戶電子商務 + 民宿預訂系統 |
 | **文檔狀態** | Draft |
 | **System Architect** | Marcus (SD-Architect) |
-| **最後更新** | 2026-10-03 |
+| **最後更新** | 2026-10-13 |
 
 ---
 
@@ -590,6 +590,7 @@ CREATED ──付款成功──▶ PAID ──店家確認──▶ CONFIRMED �
 |----|----|------|------|
 | `CREATED` | `PAID` | 付款成功：Mock `POST /v2/bookings/{bookingId}/pay`，或 Stripe 入帳 | 已實作 |
 | `CREATED`／`PAID` | `CANCELLED` | 買家或店家取消；未付款超過 `payment_due_at` 自動取消。入住後不可取消（`E-4007`） | 已實作 |
+| `PAID` | `CANCELLED`（no-show） | 已付款但入住時刻後 24 小時仍未入住，由 `BookingNoShowService` 排程以 `SYSTEM` 身分自動取消，不退款（PRD §17.4.6 Q15，DEF-352）；排程由 `BOOKING_NO_SHOW_AUTO_CANCEL_ENABLED` 控制，**預設關閉**待生產驗證 | 已實作（Sprint 246，預設關閉） |
 | `PAID` | `CHECKED_IN` | 店家標記入住（`POST /v2/dashboard/bookings/{bookingId}/check-in`）；營運時區的今天 ≥ 入住日 | 已實作（Sprint 245） |
 | `CHECKED_IN` | `CHECKED_OUT` | 店家標記退房（`POST /v2/dashboard/bookings/{bookingId}/check-out`） | 已實作（Sprint 245） |
 | `CHECKED_OUT` | `COMPLETED` | 退房後自動完成，與退房在同一交易內；不需店家再操作 | 已實作（Sprint 245） |
@@ -698,9 +699,10 @@ CREATED ──付款成功──▶ PAID ──店家確認──▶ CONFIRMED �
 | v1.4 | 2026-10-03 | Claude Code（Sprint 244） | 文件對齊（3/3）：§5.1 Token 效期（Access 15 分鐘、Refresh 預設 7 天）改為實作現況，並註明無 Cookie、前端存 `localStorage`、Payload 為實際 claims；§5.5 寄信通道補 `SmtpEmailSender`（Sprint 209）與其未實測、同步寄送的限制（DEF-347）；§6.3.1 訂單狀態圖依 `OrderStateMachine` 重繪（移除 `CREATED(=PAID)` 與 `DELIVERED→REFUNDING`）；新增 §6.3.4 訂房狀態（`CONFIRMED` 以後未實作，DEF-345） |
 | v1.5 | 2026-10-04 | Claude Code（Sprint 245） | §6.3.4 訂房狀態依實作更新：入住與退房已實作（`PAID → CHECKED_IN → CHECKED_OUT → COMPLETED`，退房後同一交易自動完成），仍不產生 `CONFIRMED`（DEF-345 拍板）；完成不觸發結算。標題版本號同步為 v1.5（先前標題停在 v1.3，與 v1.4 修訂紀錄不一致） |
 | v1.6 | 2026-10-09 | Claude Code（Sprint 247） | §6.3.4 訂房納入結算（DEF-353，PRD §6.2.1）：`SettlementGenerator` 將訂房與訂單彙總進同一張結算單；可結算條件（COMPLETED，或 CANCELLED+refundStatus=NONE+存在成功付款）取代前版「完成不觸發結算」的敘述；退款比照訂單走跨結算週期調整機制 |
+| v1.7 | 2026-10-13 | Claude Code（Sprint 261） | 文件一致性檢查（第四輪）：§6.3.4 補上 no-show 自動取消狀態轉換列（Sprint 246，DEF-352，原表遺漏）；修正本文件三處各自獨立漂移的版本號／日期中繼資料（檔頭「版本」欄、文檔元數據「最後更新」、檔尾「最後更新」皆各自停在不同的舊日期，與本表最新列不一致）。詳見 [SPRINT_261_PLAN.md](../04_planning/SPRINT_261_PLAN.md) |
 
 ---
 
 **文檔版本**: AISDLC v0.09
 **模板維護**: AISDLC Framework Team
-**最後更新**: 2026-09-26
+**最後更新**: 2026-10-13

@@ -1923,7 +1923,7 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 
 > **注意**：Phase 1 訂單僅支援單一類型（`RETAIL` 或 `BOOKING`），禁止混合訂單。支付環節為 Payment Mock，不串接真實金流。
 
-> **⚠️ 修訂註記（Sprint 244，2026-10-03）**：§9.6 的 `GET /api/v2/orders/:id/state-log` 實作為 `GET /v2/orders/{orderId}/logs`（路徑不同，用途相同）。§9.7 的 `GET /api/v2/bookings/:id/state-log` **未實作**（DEF-345；Sprint 245 只實作入住與退房，見 [API_M06_Booking.md](../02_architecture/API_M06_Booking.md) §4.12～4.13）。§9.7 開頭「Phase 1 僅開放查詢與取消、不含 POST 建立」已過時：建立、修改、付款與退款均已實作，見 [API_M06_Booking.md](../02_architecture/API_M06_Booking.md)。
+> **⚠️ 修訂註記（Sprint 244，2026-10-03；Sprint 246 補充，2026-10-09 文件稽核追記）**：§9.6 的 `GET /api/v2/orders/:id/state-log` 實作為 `GET /v2/orders/{orderId}/logs`（路徑不同，用途相同）。§9.7 的 `GET /api/v2/bookings/:id/state-log` **已實作**（Sprint 246，DEF-350），實際路徑為 `GET /v2/dashboard/bookings/{bookingId}/state-log`（店家後台視角，與本節寫的買家視角路徑不同、用途相同），見 [API_M06_Booking.md](../02_architecture/API_M06_Booking.md) §4.14。§9.7 開頭「Phase 1 僅開放查詢與取消、不含 POST 建立」已過時：建立、修改、付款與退款均已實作，見 [API_M06_Booking.md](../02_architecture/API_M06_Booking.md)。
 
 ### 9.7 M06 民宿預訂（v1.0 更新）
 
@@ -2132,9 +2132,9 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | 路由 | 對應模組 | 說明 | v0.9 |
 |------|---------|------|------|
 | `/` | — | 首頁（精選商品 + 熱門房型）。實作於 `(storefront)` route group 根頁面，URL 不變 | 不變 |
-| ⚠️ `/products` | M01 | **缺口（DEF-358a，待產品決策）**：目前無跨店鋪商品列表頁，商品瀏覽僅能透過各店鋪 `/stores/{slug}/products`（Sprint 252）。是否需要跨店鋪聚合瀏覽頁待確認 | 待確認 |
+| `/products` | M01 | **已補齊（DEF-358a，Sprint 259）**：跨店鋪商品聚合列表頁，後端為真正匿名可用的 `GET /v2/public/listings`（`PublicListingController`） | 已完成 |
 | `/listings/[id]` | M01/M02 | **改名**：商品與房源詳情頁統一為單一 `/listings/[id]`（Listing 抽象層，見 §5），取代原 `/products/[id]`／`/rooms/[id]` 兩條路由 | 改名 |
-| ⚠️ `/rooms` | M02 | **缺口（DEF-358a，待產品決策）**：同上，房源瀏覽僅能透過各店鋪 `/stores/{slug}/rooms` | 待確認 |
+| `/rooms` | M02 | **已補齊（DEF-358a，Sprint 259）**：同上，跨店鋪房源聚合列表頁 | 已完成 |
 | `/cart` | M04 | 購物車（Phase 2） | 不變 |
 | `/checkout` | M05/M07 | **結帳頁（Phase 1 為 Payment Mock 頁面）**，另有 `/checkout/mixed`、`/checkout/product` 子路由（混合購物車／純商品結帳分流，實作演進，PRD 未載） | 不變＋擴充 |
 | `/orders` | M05 | 我的訂單（零售），另有 `/orders/[id]/payment/cancel`／`/payment/success` 子路由 | 不變＋擴充 |
@@ -2143,14 +2143,14 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `/bookings/[id]` | M06 | 預訂詳情 | 不變 |
 | `/login` | M03 | **改名**：登入頁不在 `/auth/` 前綴下 | 改名 |
 | `/register` | M03 | **改名**：註冊頁不在 `/auth/` 前綴下 | 改名 |
-| ⚠️ `/auth/profile` | M03 | **缺口（DEF-358b，待產品決策）**：全庫查無個人資料編輯（姓名/電話等）功能。`/account` 頁僅提供個資下載與刪除帳戶（GDPR 自助），非編輯個人資料 | 待確認 |
+| `/auth/profile` | M03 | **已補齊（DEF-358b，Sprint 257）**：個人資料編輯表單（姓名/電話等，`PUT /v2/auth/me`）。`/account` 頁仍只負責個資下載與刪除帳戶（GDPR 自助），兩頁職責不同、刻意並存 | 已完成 |
 | `/auth/kyc` | M03 | KYC 實名認證（Phase 2，尚未實作，符合既有 Phase 標註） | 不變 |
 | `/oauth/callback/[provider]` | M03 | **架構演進**：OAuth2 第三方登入改為按鈕觸發 `startOAuthFlow()` 重新導向，取代原規劃的 `/auth/oauth/:provider` 頁面；僅需回呼頁 | 改名 |
 | `/messages` | M10 | 即時通訊（Phase 2，尚未實作，符合既有 Phase 標註） | 不變 |
 | `/notifications` | M09 | 通知中心 | 不變 |
 | `/blog` | M15 | CMS 貼文列表 | 不變 |
 | `/blog/[slug]` | M15 | 貼文詳情（含嵌入購買卡片） | 不變 |
-| ⚠️ `/blog/category/[id]` | M15 | **缺口（DEF-358c，待產品決策）**：貼文分類篩選頁尚未實作 | 待確認 |
+| `/blog/category/[id]` | M15 | **已補齊（DEF-358c，Sprint 256）**：貼文分類篩選頁 | 已完成 |
 | `/stores/[slug]` | M17 | 店鋪前台首頁（Sprint 252） | 不變 |
 | `/stores/[slug]/products` | M17/M01 | 店鋪商品列表（Sprint 252） | 不變 |
 | `/stores/[slug]/rooms` | M17/M02 | 店鋪房源列表（Sprint 252） | 不變 |
@@ -2187,7 +2187,7 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 
 | 路由 | 對應模組 | 說明 | v0.9 |
 |------|---------|------|------|
-| ⚠️ `/admin` | M14 | **缺口（DEF-358d，待產品決策）**：目前無獨立 `/admin` 根頁面，平台管理台各功能各自獨立路由（`/admin/tenants`、`/admin/audit-logs` 等），無總覽首頁 | 待確認 |
+| `/admin` | M14 | **已補齊（DEF-358d，Sprint 258）**：平台管理台總覽首頁，彙總各既有獨立路由（`/admin/tenants`、`/admin/audit-logs` 等）的入口 | 已完成 |
 | `/seller/dashboard`、`/host/dashboard` | M13 | **已依規劃完成遷移**：v0.8 遺留路由已不存在，功能併入 `/dashboard`，符合 PRD 原訂 Phase 2 遷移計畫，非缺口 | 已遷移 |
 | `/admin/tenants` | M17 | 租戶管理列表 | 不變 |
 | `/admin/tenants/[id]/review` | M17 | **改名**：租戶詳情頁（非僅審核中狀態，已處理 ACTIVE/SUSPENDED/TERMINATED/PENDING_REVIEW 四態顯示），取代原 PRD 寫的 `/admin/tenants/[id]`。**注意**：此頁刻意不提供核准/駁回操作（見頁面原始碼註解，DEF-060）——開店審核走 `tenant_applications` 另一套流程，不要「順手」把核准按鈕加回此頁 | 改名 |

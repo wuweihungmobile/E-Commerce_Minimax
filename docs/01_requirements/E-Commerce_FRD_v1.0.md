@@ -1,7 +1,7 @@
-# E-Commerce System — 功能需求文檔 (FRD) v1.7
+# E-Commerce System — 功能需求文檔 (FRD) v1.8
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.7
+> **版本**: v1.8
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -16,6 +16,8 @@
 > **⚠️ 修訂註記（Sprint 247，2026-10-09，DEF-353）**：§6B M07 的訂房納入結算已實作——`COMPLETED` 或 `CANCELLED`+`refundStatus=NONE`+存在成功付款的訂房，與訂單彙總進同一張週結算單；訂房退款比照訂單走跨結算週期調整。§6A／§6B 相關業務規則與差異已依此更新，並一併校正 Sprint 246 遺留的 DEF-352「未實作」舊敘述（DEF-352 已於 Sprint 246 完成）。其餘章節內文未改寫。
 >
 > **⚠️ 修訂註記（Sprint 252，2026-10-11，DEF-321(b)）**：新增 **US-M17-009 瀏覽店鋪前台**（PRD §10／§11.3／§12.7 的 4 條路由首次實作），§8.6 補上對應的兩個新公開端點。其餘章節內文未改寫。
+>
+> **⚠️ 修訂註記（Sprint 261，2026-10-13，文件一致性檢查第四輪）**：修正 §6A.2／§6A.7 的 state-log 與店家後台按鈕過期敘述（實際已於 Sprint 246 完成，DEF-350）；修正 §8.6 失效連結；修正頂部「情境使用指引」Phase 1/2 表（過期近 9 個月，M06 完整／M07／M09 自 Sprint 244 起實為 Phase 1）；補登 v1.7 修訂紀錄遺漏列。新發現本文件完全沒有 **M17 店鋪成員管理**（Sprint 248，7+1 個端點）與**M03 個人資料編輯**（Sprint 257，`PUT /v2/auth/me`）兩條 User Story，登記為 DEF-371／DEF-372，本輪不補寫（寫作範圍屬下一輪決策）。既有章節其餘內文未改寫。詳見 [SPRINT_261_PLAN.md](../04_planning/SPRINT_261_PLAN.md)。
 
 ---
 
@@ -38,8 +40,10 @@
 
 | 情境 | 涵蓋範圍 |
 |------|---------|
-| **Phase 1** | M01, M02, M03, M05, M06 (唯讀/取消), M12, M17 |
-| **Phase 2** | M04, M06 (完整), M07, M08, M09, M10, M11, M15, M16, M18 |
+| **Phase 1** | M01, M02, M03, M05, M06 (完整，Sprint 245 起), M07, M09, M12, M17 |
+| **Phase 2** | M04, M08, M10, M11, M15, M16, M18 |
+
+> **⚠️ 修訂註記（2026-10-13 文件稽核追記）**：M06(完整)／M07／M09 已於 Sprint 244～250 由 Phase 2 升級為 Phase 1（§6A／§6B／§6C 三章即為其內容），本表原未同步，已更正。M08（評價）雖有實作（含 Sprint 251 授權修復），但本 FRD 至今仍無 M08 專章，暫維持列於 Phase 2，不代表其優先級判斷，僅反映文件現況（見 [DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md) DEF-365）。
 
 ---
 
@@ -2582,8 +2586,8 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 | Stripe Checkout 付款 | ⚠️ | 發起與回跳已實作；**未對真實 Stripe 驗證** |
 | 店家列表（同店鋪） | ✅ | `GET /v2/dashboard/bookings`（Sprint 231） |
 | 店家取消（同店鋪） | ✅ | 同 `POST …/cancel`；取消方記為 `MERCHANT`，全額退款 |
-| 店家入住與退房（退房後自動完成） | ✅（API） | `POST /v2/dashboard/bookings/{bookingId}/check-in`、`…/check-out`（Sprint 245，DEF-345）；店家後台按鈕待排 |
-| 訂房狀態日誌 `GET /api/v2/bookings/:id/state-log` | ❌ | 未實作（DEF-345） |
+| 店家入住與退房（退房後自動完成） | ✅ | `POST /v2/dashboard/bookings/{bookingId}/check-in`、`…/check-out`（Sprint 245，DEF-345）；店家後台按鈕已於 Sprint 246（DEF-350）補上 |
+| 訂房狀態日誌 | ✅ | `GET /v2/dashboard/bookings/{bookingId}/state-log`（Sprint 246，DEF-350；PRD §9.7 寫的 `GET /api/v2/bookings/:id/state-log` 是買家視角路徑，實作為店家後台視角，路徑不同、用途相同） |
 | 預訂確認通知（PRD US-001） | ✅ | Sprint 249：付款成功（Mock／Stripe／舊版 `/v2/payments`）即時送出 `BOOKING_CONFIRMED` 站內通知 |
 
 ### 6A.3 主要用戶
@@ -2645,7 +2649,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 
 1. PRD §9.7 寫 Phase 1 的 M06「僅開放查詢與取消，不含 POST 建立」，已過時：建立、修改、付款與退款都已實作。
 2. PRD 的訂房狀態流程（`CREATED(=PAID) → CHECKED_IN → CHECKED_OUT → COMPLETED`，Phase 1 的 `CONFIRMED` 等效於 PAID）：Sprint 245 依此實作入住與退房（DEF-345），不產生 `CONFIRMED`。PRD 的「`CHECKED_IN` 前置抵達後自動確認」未實作為自動流程，改由店家標記入住；入住日限制與退房後自動完成的時點是本輪假設（見 API_M06 §4.12～4.13）。
-3. PRD §9.7 的 `GET /api/v2/bookings/:id/state-log`：未實作（DEF-345）。
+3. PRD §9.7 的 `GET /api/v2/bookings/:id/state-log`：已實作（Sprint 246，DEF-350），路徑為店家後台視角 `GET /v2/dashboard/bookings/{bookingId}/state-log`。
 4. PRD US-001（預訂成功即時通知）：已實作（DEF-318，Sprint 249）。
 5. PRD §15.2.5 與 §17.4.6 Q15 的未入住取消（no-show）：已實作（DEF-352，Sprint 246；見 BR-M06-07），排程預設關閉待生產驗證。
 
@@ -4083,7 +4087,7 @@ tenant_feature_toggles
 > ⚠️ 審核對象是 `tenant_applications`，**不是** `tenants`。後端另存在 `/api/v2/admin/tenants/:id/approve`／`/reject`
 > 兩個舊端點（操作既有 `Tenant`、要求 `PENDING_REVIEW`），在生產環境永遠等不到資料，僅為相容保留，新功能不得使用。
 
-**詳細 API 規格**: 見 [docs/02_architecture/API_M17_Tenant_Management.md](../02_architecture/API_M17_Tenant_Management.md)
+**詳細 API 規格**: 見 [docs/02_architecture/api/API_M17_Tenant.md](../02_architecture/api/API_M17_Tenant.md)（2026-10-13 文件稽核訂正：原連結檔名錯誤，從未存在過此檔案）
 
 ---
 
@@ -4199,6 +4203,8 @@ tenant_feature_toggles
 | v1.4 | 2026-10-04 | **Sprint 245（DEF-345）**：§6A M06 依實作更新入住與退房（`PAID → CHECKED_IN → CHECKED_OUT → COMPLETED`，不產生 `CONFIRMED`）：功能總覽、BR-M06-04／05、新增 BR-M06-11／12、API 概要、與 PRD 的差異第 2 點；頂部新增修訂註記；檔頭版本號同步為 v1.4（先前檔頭停在 v1.2）。既有章節內文未改寫 | Claude Code（Sprint 245） |
 | v1.5 | 2026-10-04 | **收尾決策（DEF-350／352／353）**：BR-M06-07 註記未入住取消的例外（PRD Q15）；§6A.7 增列第 5 點（未入住取消未實作、與 Q15 衝突）；§6B.7 增列第 7 點（訂房不進結算）；檔頭版本號同步為 v1.5。既有章節內文未改寫 | Claude Code（Sprint 245 收尾決策） |
 | v1.6 | 2026-10-09 | **Sprint 247（DEF-353）訂房納入結算**：BR-M06-12、§6B.2「每週結算單」、§6B.7 第 7 點改為已實作；新增 BR-M07-12（可結算條件、跨結算週期退款調整）。**順手修正 Sprint 246 遺留的文件漂移**：BR-M06-07 與 §6A.7 第 5 點仍寫 DEF-352「未實作」，但 DEF-352 已於 Sprint 246 完成（程式碼存在、排程預設關閉待生產驗證），兩處改為反映實作現況。檔頭版本號同步為 v1.6（v1.5 的「已同步為 v1.5」記載與實際檔頭 v1.0 不符，本次一併校正） | Claude Code（Sprint 247） |
+| v1.7 | 2026-10-11 | **Sprint 252（DEF-321(b)）**：新增 US-M17-009 瀏覽店鋪前台（PRD §10／§11.3／§12.7 四條路由首次實作）、§8.6 補上 `GET /v2/public/stores/:slug`、`GET /v2/public/stores/:slug/listings` 兩個新公開端點。檔頭版本號同步為 v1.7（此列為 2026-10-13 文件稽核時補登——檔頭版號已於 Sprint 252 當時改為 v1.7，但本修訂紀錄表漏加對應列） | Claude Code（2026-10-13 文件稽核補登） |
+| v1.8 | 2026-10-13 | **文件一致性檢查（第四輪，Sprint 261）**：修正§6A.2/§6A.7 的 state-log／店家後台按鈕過期敘述（已於 Sprint 246 實作，DEF-350）；修正§8.6 失效連結（`API_M17_Tenant_Management.md`→`API_M17_Tenant.md`）；修正「情境使用指引」Phase 1/2 表（M06完整／M07／M09 自 Sprint 244 起實為 Phase 1，原表未同步）。新登記 DEF-364～DEF-372（M07/M08/ReturnRequest/SupportTicket 無文件、M12 端點落差、M17 文件自身矛盾、FRD 缺 M17 成員管理與 M03 個人資料編輯兩條 User Story、ApiRouteDocDriftTest 覆蓋範圍缺口）。詳見 [SPRINT_261_PLAN.md](../04_planning/SPRINT_261_PLAN.md) | Claude Code（Sprint 261） |
 
 ---
 

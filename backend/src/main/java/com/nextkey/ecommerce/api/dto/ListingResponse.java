@@ -39,7 +39,19 @@ public class ListingResponse {
     private Instant createdAt;
     private Instant updatedAt;
 
+    /**
+     * 所屬店鋪名稱/slug（DEF-358(a)，Sprint 259，僅跨店鋪公開瀏覽場景會填入）。{@code null}
+     * 代表呼叫端未提供（既有呼叫點不變），刻意不透過 {@link Listing#getTenant()}（LAZY）取得——
+     * 由呼叫端批次查好 {@code Tenant} 後傳入，避免同本檔案開頭 Javadoc 說明的裸實體/N+1 風險。
+     */
+    private String tenantName;
+    private String tenantSlug;
+
     public static ListingResponse fromEntity(final Listing listing) {
+        return fromEntity(listing, null, null);
+    }
+
+    public static ListingResponse fromEntity(final Listing listing, final String tenantName, final String tenantSlug) {
         return ListingResponse.builder()
                 .id(listing.getId())
                 .tenantId(listing.getTenantId())
@@ -53,6 +65,8 @@ public class ListingResponse {
                 .tags(listing.getTags())
                 .createdAt(listing.getCreatedAt())
                 .updatedAt(listing.getUpdatedAt())
+                .tenantName(tenantName)
+                .tenantSlug(tenantSlug)
                 .build();
     }
 }

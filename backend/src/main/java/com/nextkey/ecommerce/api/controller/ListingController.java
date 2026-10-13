@@ -21,6 +21,7 @@ import com.nextkey.ecommerce.api.dto.ListingResponse;
 import com.nextkey.ecommerce.api.dto.PricingDto;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -84,10 +85,18 @@ public class ListingController {
         }
     }
 
+    /**
+     * 商品/房源詳情（DEF-358(a)，Sprint 259：移除登入要求，比照 PRD §12.7「Guest 可瀏覽所有商品與
+     * 房源，僅加入購物車/下單才需登入」）。只回傳「本身 ACTIVE 且所屬租戶也 ACTIVE」的項目——其餘情況
+     * （不存在／DRAFT／INACTIVE／DELETED／租戶停權終止）一律回同一個 {@code E_3000}，不區分，避免成為
+     * 列舉側通道（比照既有 {@code StorefrontController.findActiveTenantBySlug} 的慣例）。用
+     * {@code findByIdWithTenant} 一次 JOIN FETCH 取得 tenant，避免額外一次查詢。
+     */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('product:read') or hasAuthority('room:read')")
     public ResponseEntity<ApiResponse<ListingResponse>> getListing(@PathVariable UUID id) {
-        Listing listing = listingRepository.findById(id)
+        Listing listing = listingRepository.findByIdWithTenant(id)
+                .filter(l -> l.getStatus() == Listing.ListingStatus.ACTIVE)
+                .filter(l -> l.getTenant().getStatus() == Tenant.TenantStatus.ACTIVE)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_3000));
 
         return ResponseEntity.ok(ApiResponse.success(ListingResponse.fromEntity(listing)));

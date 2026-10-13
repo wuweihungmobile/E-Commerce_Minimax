@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { StorefrontShell } from "@/components/layout/StorefrontShell"
 import { SidebarNav } from "@/components/storefront/SidebarNav"
@@ -44,12 +43,15 @@ export interface HomeContentProps {
 
 // 首頁內容區（DEF-020：URL-driven 篩選）。篩選/排序/分頁改由 router.push 更新 URL query，
 // server page 依 searchParams 重新以 props 傳入 → 本元件 effect 依 props 重新取資料
-// （不再用 page-scoped state + nonce）。授權/錯誤三態分流沿用（401/403 引導、其他錯誤重試）。
+// （不再用 page-scoped state + nonce）。
+//
+// DEF-358(a)（Sprint 259）：改呼叫跨店鋪公開端點 getPublicListings（匿名可用，比照 PRD §12.7
+// 「Guest 可瀏覽所有商品與房源」），取代先前需登入的 getListings——先前 401/403 時顯示
+// 「登入後即可瀏覽精選商品」的 needsAuth 分支因此移除，不再是必要狀態。
 export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
   const router = useRouter()
   const [data, setData] = useState<Page<Listing> | null>(null)
   const [loading, setLoading] = useState(true)
-  const [needsAuth, setNeedsAuth] = useState(false)
   const [error, setError] = useState(false)
   const [reloadKey, setReloadKey] = useState(0) // 僅供「重試同一查詢」用（非篩選變更）
 
@@ -59,7 +61,7 @@ export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
     let cancelled = false
     const { sortBy, sortDir } = SORT_MAP[sortTab] ?? SORT_MAP.newest
     listingService
-      .getListings({
+      .getPublicListings({
         page,
         size: PAGE_SIZE,
         type: cat === "all" ? undefined : (cat as "product" | "room"),
@@ -70,23 +72,12 @@ export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
       .then((res) => {
         if (cancelled) return
         setData(res)
-        setNeedsAuth(false)
         setError(false)
         setLoading(false)
       })
-      .catch((err: unknown) => {
+      .catch(() => {
         if (cancelled) return
-        const status =
-          err && typeof err === "object" && "response" in err
-            ? (err as { response?: { status?: number } }).response?.status
-            : undefined
-        if (status === 401 || status === 403) {
-          setNeedsAuth(true)
-          setError(false)
-        } else {
-          setNeedsAuth(false)
-          setError(true)
-        }
+        setError(true)
         setData(null)
         setLoading(false)
       })
@@ -148,22 +139,6 @@ export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
               <Skeleton className="h-5 w-1/3" />
             </div>
           ))}
-        </div>
-      ) : needsAuth ? (
-        <div
-          data-testid="home-auth-empty"
-          className="flex flex-col items-center justify-center py-24 text-center gap-3"
-        >
-          <p className="text-lg text-rs-ink">登入後即可瀏覽精選商品</p>
-          <p className="text-sm text-rs-ink-muted">
-            意象若水 RUOSHUI｜生活減法，無負擔的購物體驗
-          </p>
-          <Link
-            href="/login"
-            className="mt-2 inline-flex items-center justify-center bg-rs-primary text-white rounded-md px-6 py-2.5 text-sm font-medium transition-colors hover:bg-rs-primary-hover"
-          >
-            前往登入
-          </Link>
         </div>
       ) : error ? (
         <div

@@ -126,6 +126,10 @@ public class SecurityConfig {
                 .requestMatchers("/v2/posts").permitAll()
                 .requestMatchers("/v2/posts/**").permitAll()
                 .requestMatchers("/v2/listings/*/card").permitAll()
+                // DEF-358(a)（Sprint 259，PRD §12.7）：商品/房源詳情頁對 Guest 開放，比照上一行的
+                // 「務必限定 HTTP method」教訓——只放行 GET，否則會誤放行同層級的未來寫入端點。
+                // 單一萬用字元不跨 `/`，不會誤放行 /v2/listings（清單）或 /v2/listings/*/price 等子路徑。
+                .requestMatchers(HttpMethod.GET, "/v2/listings/*").permitAll()
                 // CMS 頁面/橫幅公開瀏覽端點（Sprint 82 DEF-034 修復，訪客行銷內容，比照 /v2/posts 模式）
                 // 🔴 務必限定 HTTP method：/v2/cms/pages/* 若不限 GET 會誤放行 PUT /v2/cms/pages/{pageId}（Admin 更新）
                 .requestMatchers(HttpMethod.GET, "/v2/cms/pages/*").permitAll()

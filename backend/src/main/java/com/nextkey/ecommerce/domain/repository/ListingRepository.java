@@ -58,6 +58,28 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
     @Query("SELECT l FROM Listing l LEFT JOIN FETCH l.tenant WHERE l.id = :listingId")
     Optional<Listing> findByIdWithTenant(@Param("listingId") UUID listingId);
 
+    // DEF-358(a)（Sprint 259）：跨店鋪公開瀏覽（/products、/rooms）——只回傳 ACTIVE 且所屬租戶也
+    // ACTIVE 的項目（租戶停權/終止/待審核時其商品不應出現在全平台瀏覽），比照既有
+    // StorefrontController.findActiveTenantBySlug 的既有慣例。租戶狀態過濾需在 DB 層完成（而非
+    // 查完一頁再篩掉），否則分頁會因篩掉部分項目而少於 size、使用者看到的總頁數也會失準。
+    @Query("SELECT l FROM Listing l WHERE l.status = 'ACTIVE' AND l.tenant.status = 'ACTIVE'")
+    Page<Listing> findPubliclyVisible(Pageable pageable);
+
+    @Query("SELECT l FROM Listing l WHERE l.status = 'ACTIVE' AND l.tenant.status = 'ACTIVE' AND l.listingType = :type")
+    Page<Listing> findPubliclyVisibleByType(@Param("type") Listing.ListingType type, Pageable pageable);
+
+    @Query("SELECT l FROM Listing l WHERE l.status = 'ACTIVE' AND l.tenant.status = 'ACTIVE' AND " +
+           "(LOWER(l.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "LOWER(l.description) LIKE LOWER(CONCAT('%', :keyword, '%')))")
+    Page<Listing> searchPubliclyVisibleByKeyword(@Param("keyword") String keyword, Pageable pageable);
+
+    @Query("SELECT l FROM Listing l WHERE l.status = 'ACTIVE' AND l.tenant.status = 'ACTIVE' AND l.listingType = :type AND " +
+           "(LOWER(l.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "LOWER(l.description) LIKE LOWER(CONCAT('%', :keyword, '%')))")
+    Page<Listing> searchPubliclyVisibleByTypeAndKeyword(@Param("type") Listing.ListingType type,
+                                                         @Param("keyword") String keyword,
+                                                         Pageable pageable);
+
     long countByTenantIdAndStatus(UUID tenantId, Listing.ListingStatus status);
 
     // Sprint 147：MAX_PRODUCTS/MAX_ROOMS 數量配額強制執行需依 listingType 分別計數

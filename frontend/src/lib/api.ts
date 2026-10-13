@@ -172,6 +172,12 @@ export const API_ENDPOINTS = {
     listings: (slug: string) => '/v2/public/stores/' + slug + '/listings',
   },
 
+  // 跨店鋪公開商品/房源瀏覽（DEF-358(a)，Sprint 259）：/products、/rooms 與首頁共用，
+  // 同樣掛在 /v2/public/** 下、匿名可直接呼叫，與單店鋪 storefront 和需登入的 listings 分開。
+  publicListings: {
+    list: '/v2/public/listings',
+  },
+
   // Products (M01)
   products: {
     list: '/v2/products',

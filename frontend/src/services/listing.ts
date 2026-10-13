@@ -15,6 +15,9 @@ export interface Listing {
   tags?: string[]
   createdAt: string
   updatedAt: string
+  // DEF-358(a)（Sprint 259）：僅 getPublicListings 會填入，既有 getListings/getListingById 呼叫點不受影響
+  tenantName?: string
+  tenantSlug?: string
 }
 
 // ROOM 動態計價回應（GET /v2/listings/{id}/price?checkIn&checkOut）
@@ -74,6 +77,23 @@ class ListingService {
 
     const response = await apiClient.get<ApiResponse<Page<Listing>>>(
       API_ENDPOINTS.listings.list + "?" + params.toString()
+    )
+    return response.data.data
+  }
+
+  // 跨店鋪公開瀏覽（DEF-358(a)，Sprint 259）：/products、/rooms 與首頁用，匿名可呼叫，
+  // 每筆額外帶 tenantName/tenantSlug。與 getListings（需登入）是不同端點，刻意分開。
+  async getPublicListings(query: ListingQuery = {}): Promise<Page<Listing>> {
+    const params = new URLSearchParams()
+    if (query.page !== undefined) params.append("page", String(query.page))
+    if (query.size !== undefined) params.append("size", String(query.size))
+    if (query.type) params.append("type", query.type)
+    if (query.keyword) params.append("keyword", query.keyword)
+    if (query.sortBy) params.append("sortBy", query.sortBy)
+    if (query.sortDir) params.append("sortDir", query.sortDir)
+
+    const response = await apiClient.get<ApiResponse<Page<Listing>>>(
+      API_ENDPOINTS.publicListings.list + "?" + params.toString()
     )
     return response.data.data
   }

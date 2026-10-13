@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.integration;
 
 import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -38,6 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 測試範圍：
  * - IT-DEF093-01: GET /v2/listings/:id 回應不含 owner/passwordHash，且保留前端依賴欄位
  * - IT-DEF093-02: GET /v2/listings（分頁清單）回應不含 owner/passwordHash
+ * - DEF-358(a)（Sprint 259）：GET /v2/listings/:id 移除登入要求後的匿名存取/狀態過濾行為
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -67,8 +69,18 @@ class ListingControllerE2ETest {
                 .role(User.UserRole.STORE_OWNER)
                 .build();
 
+        // DEF-358(a)（Sprint 259）：getListing 改用 findByIdWithTenant 並檢查 tenant.status，
+        // 固定資料必須是 ACTIVE 租戶，否則本測試會意外變成驗證「租戶停權」的情境
+        Tenant tenant = Tenant.builder()
+                .id(TENANT_ID)
+                .name("Test Tenant")
+                .slug("test-tenant-def093")
+                .status(Tenant.TenantStatus.ACTIVE)
+                .build();
+
         Listing listing = Listing.builder()
                 .tenantId(TENANT_ID)
+                .tenant(tenant)
                 .listingType(Listing.ListingType.PRODUCT)
                 .title("測試商品")
                 .description("測試描述")
@@ -87,7 +99,7 @@ class ListingControllerE2ETest {
     @DisplayName("IT-DEF093-01: GET /v2/listings/:id 回應不含 owner/passwordHash，且保留前端依賴欄位")
     void getListing_doesNotLeakOwnerEntity() throws Exception {
         Listing listing = buildListingWithOwner();
-        when(listingRepository.findById(LISTING_ID)).thenReturn(Optional.of(listing));
+        when(listingRepository.findByIdWithTenant(LISTING_ID)).thenReturn(Optional.of(listing));
 
         mockMvc.perform(get("/v2/listings/" + LISTING_ID))
                 .andExpect(status().isOk())
@@ -103,6 +115,44 @@ class ListingControllerE2ETest {
                 .andExpect(jsonPath("$.data.basePrice").value(500.00))
                 .andExpect(jsonPath("$.data.currency").value("TWD"))
                 .andExpect(jsonPath("$.data.tags[0]").value("new"));
+    }
+
+    @Test
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    @DisplayName("DEF-358(a): GET /v2/listings/:id 匿名（無登入）存取 ACTIVE 項目成功，不再要求登入")
+    void getListing_anonymousAccess_activeListingSucceeds() throws Exception {
+        Listing listing = buildListingWithOwner();
+        when(listingRepository.findByIdWithTenant(LISTING_ID)).thenReturn(Optional.of(listing));
+
+        mockMvc.perform(get("/v2/listings/" + LISTING_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.title").value("測試商品"));
+    }
+
+    @Test
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    @DisplayName("DEF-358(a): GET /v2/listings/:id 項目非 ACTIVE（如 DRAFT）→ 404，不洩漏其存在")
+    void getListing_nonActiveListing_returns404() throws Exception {
+        Listing listing = buildListingWithOwner();
+        listing.setStatus(Listing.ListingStatus.DRAFT);
+        when(listingRepository.findByIdWithTenant(LISTING_ID)).thenReturn(Optional.of(listing));
+
+        mockMvc.perform(get("/v2/listings/" + LISTING_ID))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("E-3000"));
+    }
+
+    @Test
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    @DisplayName("DEF-358(a): GET /v2/listings/:id 項目 ACTIVE 但所屬租戶已停權 → 404")
+    void getListing_activeListingWithSuspendedTenant_returns404() throws Exception {
+        Listing listing = buildListingWithOwner();
+        listing.getTenant().setStatus(Tenant.TenantStatus.SUSPENDED);
+        when(listingRepository.findByIdWithTenant(LISTING_ID)).thenReturn(Optional.of(listing));
+
+        mockMvc.perform(get("/v2/listings/" + LISTING_ID))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("E-3000"));
     }
 
     @Test

@@ -220,9 +220,15 @@ public class RoomService {
     }
 
     private boolean isActivatingListing(final Listing.ListingStatus currentStatus, final String requestedStatus) {
-        return requestedStatus != null
-                && currentStatus != Listing.ListingStatus.ACTIVE
-                && Listing.ListingStatus.ACTIVE == Listing.ListingStatus.valueOf(requestedStatus.toUpperCase());
+        if (requestedStatus == null || currentStatus == Listing.ListingStatus.ACTIVE) {
+            return false;
+        }
+        try {
+            return Listing.ListingStatus.ACTIVE == Listing.ListingStatus.valueOf(requestedStatus.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            // 非法 status 字串不視為「正在啟用」，交由 updateListingFromRequest 的 try/catch 轉為 E_9000
+            return false;
+        }
     }
 
     private void updateListingFromRequest(Listing listing, RoomDto.UpdateRequest request) {

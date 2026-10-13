@@ -210,6 +210,20 @@ class ProductServiceTest {
     }
 
     @Test
+    @DisplayName("DEF-207（Sprint 261 複核修復）：updateProduct 非 ACTIVE 狀態 + 非法 status 字串"
+            + " → 拋 BusinessException(E_9000)，不被 isActivatingListing 內未攔截的 valueOf 搶先炸掉")
+    void updateProduct_nonActiveStatusWithInvalidNewStatus_throwsBusinessException() {
+        Product product = buildProductForListing(LISTING_ID, TENANT);
+        product.getListing().setStatus(Listing.ListingStatus.INACTIVE);
+        when(productRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(product));
+        ProductDto.UpdateRequest request = ProductDto.UpdateRequest.builder().status("NOT_A_REAL_STATUS").build();
+
+        assertThatThrownBy(() -> productService.updateProduct(LISTING_ID, request, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_9000);
+    }
+
+    @Test
     @DisplayName("UT-PRODUCT-005（DEF-041）: updateProduct 跨租戶（非 SUPER_ADMIN）→ 拋 E_1007，不寫入")
     void updateProduct_crossTenant_throwsForbidden() {
         Product product = buildProductForListing(LISTING_ID, OTHER_TENANT);

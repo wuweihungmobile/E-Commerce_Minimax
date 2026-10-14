@@ -1,9 +1,9 @@
 # API 規格文件 - M08 評價與社交互動 / API Specification - M08 Review & Social Interaction
 
 > **文件編號**: API-M08
-> **文件版本**: v1.0（Sprint 263，首次建立；Sprint 15/16 規劃時僅留 `API_Index.md` 內嵌的片段表格與一份已標記過期的 [TC_M08_Review.md](../../03_testing/TC_M08_Review.md)，從未真正建立獨立規格文件，DEF-365）
+> **文件版本**: v1.1（Sprint 264：DEF-373／374 已修復，見下方說明；Sprint 263 首次建立，v1.0；Sprint 15/16 規劃時僅留 `API_Index.md` 內嵌的片段表格與一份已標記過期的 [TC_M08_Review.md](../../03_testing/TC_M08_Review.md)，從未真正建立獨立規格文件，DEF-365）
 > **建立日期**: 2026-10-14
-> **最後更新**: 2026-10-14
+> **最後更新**: 2026-10-14（Sprint 264）
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`ReviewController`、`BookingReviewController`（`api/controller/`）、`ReviewService`、`ReviewReplyService`、`BookingReviewService`（`core/review/`）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[ReviewServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewServiceTest.java)、[ReviewReplyServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewReplyServiceTest.java)、[BookingReviewServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/BookingReviewServiceTest.java)、[ReviewAuthorizationRealDbIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewAuthorizationRealDbIntegrationTest.java)、[ReviewSearchRealDbIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewSearchRealDbIntegrationTest.java)、[M08ReviewIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewIntegrationTest.java)、[M08ReviewImageIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewImageIntegrationTest.java)、[M08ReviewHelpfulVotingIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewHelpfulVotingIntegrationTest.java)、[M08ReviewStatsIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewStatsIntegrationTest.java)
@@ -33,7 +33,7 @@
 2. **每筆訂單/訂房＋商品恰好評價一次**：防重複檢查是 `(orderId, listingId)` 或 `(bookingId, listingId)` 的組合，不是「每個使用者對每個商品僅一次」——同一買家若有兩筆不同訂單買了同一商品，可各評價一次。
 3. **商品/房源評價（`Review`）與訂房評價（`BookingReview`）功能不對稱**：前者有編輯、刪除、統計、搜尋、圖片管理（上限 9 張＋媒體驗證）；後者**僅能建立與查詢單筆**——`BookingReviewService` 雖有 `getBookingReviews`（列表）、`deleteBookingReview`（軟刪除）、`getAverageRatingByBookingId`／`countByBookingId`（統計）等方法，但**沒有任何 Controller 端點呼叫它們**，圖片也無數量上限或媒體存在性驗證。這是實作現況的真實落差，不是文件遺漏（見 §7）。
 4. **「有用」投票以原子 SQL 去重**：`ReviewRepository.registerHelpfulVote` 用單一 `UPDATE`（JSONB 合併＋從去重後的 key 數量重新計算 `helpfulCount`）取代先前的讀-改-寫實作，避免高併發下票數流失。
-5. **回覆每則評價僅一次，但授權邏輯三處不一致**：`ReviewReply` 有 DB 唯一索引（`uk_review_replies_review_id`）防止重複回覆（`E-1086`）；`BookingReview.hostReply` 是單一可覆寫欄位，重複呼叫不報錯、直接覆�016前一則。更重要的是**誰能回覆的判斷邏輯不一致**：`ReviewReplyService.createReply`（§4.8）要求呼叫者是 listing 的**確切 `ownerId`**；`ReviewService.checkReviewManagementAuthorization`（標記已/未處理，§4.11）與 `BookingReviewService.replyToBookingReview`（§4.17）則是**同租戶或管理員**。三者共用同一組 `@PreAuthorize` 權限字串，可能讓同租戶的 `STORE_STAFF` 或共同擁有人通過權限檢查卻仍被 `ReviewReplyService` 拒絕（登記為 DEF-373，未修復，見 §7）。
+5. **回覆每則評價僅一次，授權邏輯已統一**：`ReviewReply` 有 DB 唯一索引（`uk_review_replies_review_id`）防止重複回覆（`E-1086`）；`BookingReview.hostReply` 是單一可覆寫欄位，重複呼叫不報錯、直接覆寫前一則。**誰能回覆的判斷邏輯**：`ReviewReplyService.createReply`（§4.8）、`ReviewService.checkReviewManagementAuthorization`（標記已/未處理，§4.11）、`BookingReviewService.replyToBookingReview`（§4.17）三者原先不一致（§4.8 原僅認定確切 `ownerId`），已於 Sprint 264（DEF-373）統一為**同租戶或管理員**。
 6. **評分範圍僅 DTO 層驗證**：`rating` 的 1-5 範圍只靠 `@Min(1) @Max(5)` 驗證，資料庫欄位沒有對應的 `CHECK` 約束。
 7. **編輯與刪除皆無時間窗限制**：評價作者可在建立後任何時間編輯或刪除（軟刪除，`isVisible=false`），不像部分電商平台限制「訂單完成後 N 天內才能評價/修改」。
 
@@ -44,7 +44,7 @@
 | US-M08-001 | 買家對已完成訂單撰寫商品/房源評價（含評分、文字、至多 9 張圖片） | `POST /v2/reviews` | ✅ 已實作 |
 | US-M08-002 | 買家編輯／刪除自己的評價 | `PUT`／`DELETE /v2/reviews/{reviewId}` | ✅ 已實作 |
 | US-M08-003 | 查詢評價列表、詳情、統計、多維度搜尋 | `GET /v2/reviews/listing/{listingId}`、`.../stats`、`.../search`、`GET /v2/reviews/user/{userId}` | ✅ 已實作 |
-| US-M08-004 | 商家／房東回覆評價、查詢回覆 | `POST`／`GET /v2/reviews/{reviewId}/replies` | ✅ 已實作（授權邏輯不一致，DEF-373） |
+| US-M08-004 | 商家／房東回覆評價、查詢回覆 | `POST`／`GET /v2/reviews/{reviewId}/replies` | ✅ 已實作（授權邏輯已於 Sprint 264 統一，DEF-373） |
 | US-M08-005 | 商家查詢與標記評價處理狀態 | `GET /v2/reviews/managed`、`PUT /v2/reviews/{reviewId}/handle` | ✅ 已實作 |
 | US-M08-006 | 買家對評價投「有用」票 | `POST /v2/reviews/{reviewId}/helpful` | ✅ 已實作 |
 | US-M08-007 | 評價圖片管理（新增／刪除／排序） | `POST`／`DELETE /v2/reviews/{reviewId}/images`、`PUT .../images/order` | ✅ 已實作（僅商品/房源評價） |
@@ -160,14 +160,12 @@
 
 ### 4.3 `DELETE /v2/reviews/{reviewId}` — 刪除評價（軟刪除）
 
-**權限**：`order:read`，且限評價本人。設定 `isVisible=false`，不實際刪除資料列。
-
-> **⚠️ 管理員無法經此端點刪除他人評價**：原始碼註解寫「檢查是否是本人或是管理員」，但實作只檢查 `review.getUser().getId().equals(userId)`，**沒有任何管理員例外分支**——與註解意圖不符（登記為 DEF-374，未修復，見 §7）。
+**權限**：`order:read`，且限評價本人或管理員（`isCurrentUserAdmin()`，Sprint 264 DEF-374 修復：原實作缺少管理員例外分支，與程式碼註解意圖不符）。設定 `isVisible=false`，不實際刪除資料列。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | 評價不存在 | 404 | `E-1087` |
-| 非評價本人（含管理員，見上方說明） | 403 | `E-1007` |
+| 非評價本人且非管理員 | 403 | `E-1007` |
 
 ### 4.4 `GET /v2/reviews/listing/{listingId}` — 取得商品/房源評價列表
 
@@ -200,12 +198,12 @@
 
 ### 4.8 `POST /v2/reviews/{reviewId}/replies` — 商家/房東回覆評價
 
-**權限**：`room:update` 或 `product:update`，**且限評價所屬 listing 的確切 `ownerId`**（非「同租戶」，與 §4.11／§4.17 的授權邏輯不同，見 1.2.5／DEF-373）。每則評價僅限一次回覆（DB 唯一索引）。
+**權限**：`room:update` 或 `product:update`，**且限評價所屬 listing 的同租戶或管理員**（與 §4.11／§4.17 一致，Sprint 264 DEF-373 修復：原僅認定確切 `ownerId`，導致同租戶的其他共同擁有人被鎖死，見 1.2.5）。每則評價僅限一次回覆（DB 唯一索引）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | 評價不存在 | 404 | `E-1087` |
-| 呼叫者非 listing 的確切擁有者 | 403 | `E-1007` |
+| 非同租戶且非管理員 | 403 | `E-1007` |
 | 評價已有回覆 | 409 | `E-1086` |
 
 ### 4.9 `GET /v2/reviews/{reviewId}/replies` — 取得評價回覆列表
@@ -222,7 +220,7 @@
 
 ### 4.11 `PUT /v2/reviews/{reviewId}/handle` — 標記評價為已/未處理
 
-**權限**：`room:update` 或 `product:update`，**且限評價所屬 listing 的同租戶或管理員**（`checkReviewManagementAuthorization`，DEF-028 修復——與 §4.8 的「確切擁有者」不同）。查詢參數：`handled`（預設 `true`）。
+**權限**：`room:update` 或 `product:update`，**且限評價所屬 listing 的同租戶或管理員**（`checkReviewManagementAuthorization`，DEF-028 修復；與 §4.8／§4.17 現已採同一套邏輯，Sprint 264 DEF-373）。查詢參數：`handled`（預設 `true`）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
@@ -277,7 +275,7 @@
 
 ### 4.17 `POST /v2/booking-reviews/{reviewId}/reply` — 房東/店主回覆訂房評價
 
-**權限**：`room:update` 或 `booking:update`，**且限評價所屬訂房 listing 的同租戶或管理員**（與 §4.8 的「確切擁有者」不同，比照 §4.11，DEF-331(c) 修復）。`hostReply` 為單一欄位，**重複呼叫會直接覆寫前一則回覆，不報錯**（無類似 `E-1086` 的重複回覆防護）。
+**權限**：`room:update` 或 `booking:update`，**且限評價所屬訂房 listing 的同租戶或管理員**（比照 §4.11，DEF-331(c) 修復；§4.8 現已採同一套邏輯，Sprint 264 DEF-373）。`hostReply` 為單一欄位，**重複呼叫會直接覆寫前一則回覆，不報錯**（無類似 `E-1086` 的重複回覆防護）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
@@ -299,16 +297,17 @@
 | 端點 | 評價/訂房評價本人 | Listing 確切擁有者 | 同租戶管理角色 | ADMIN／SUPER_ADMIN |
 |------|:----:|:----:|:----:|:----:|
 | 建立（§4.1、§4.16） | ✅（Buyer） | ❌ | ❌ | ❌ |
-| 編輯／刪除／圖片管理（§4.2～4.3、4.13～4.15） | ✅ | ❌ | ❌ | ❌（§4.3 刪除：見 DEF-374） |
+| 刪除（§4.3） | ✅ | ❌ | ❌ | ✅（Sprint 264 DEF-374 修復） |
+| 編輯／圖片管理（§4.2、4.13～4.15） | ✅ | ❌ | ❌ | ❌ |
 | 查詢列表／詳情／統計／搜尋（§4.4、4.6～4.7、4.9、4.18） | ✅ | ✅ | ✅ | ✅（任意已登入） |
 | 查自己評價列表（§4.5） | ✅ | — | — | ✅（可查任何人） |
-| 回覆（§4.8） | ❌ | ✅（唯一通過） | ❌ | ❌（無管理員例外） |
+| 回覆（§4.8） | ❌ | ✅（同租戶即可，非限確切擁有者） | ✅ | ✅（跨租戶） |
 | 標記已/未處理（§4.11） | ❌ | ✅（同租戶） | ✅ | ✅（跨租戶） |
 | 依處理狀態查列表（§4.12） | ❌ | ✅（限自己租戶） | ✅ | ✅（跨租戶） |
 | 有用投票（§4.10） | ✅（任意已登入，非限本人） | ✅ | ✅ | ✅ |
 | 訂房評價回覆（§4.17） | ❌ | ✅（同租戶） | ✅ | ✅（跨租戶） |
 
-**§4.8 與 §4.11／§4.17 的「Listing 確切擁有者」欄位意義不同**：§4.8 必須是存於 `listing.ownerId` 的那一個使用者帳號；§4.11／§4.17 是「同租戶的任何有權限角色」，兩者在單一擁有者的店鋪下行為相同，但多人共同經營（`STORE_STAFF`／共同 `STORE_OWNER`）的店鋪下會出現本文件 1.2.5／DEF-373 描述的落差。
+**Sprint 264（DEF-373）更新**：§4.8、§4.11、§4.17 三個端點的授權邏輯原先不一致（§4.8 曾要求「存於 `listing.ownerId` 的確切使用者帳號」，§4.11／§4.17 是「同租戶的任何有權限角色」），已統一為後者。單一擁有者的店鋪不受影響，但多人共同經營（`STORE_STAFF`／共同 `STORE_OWNER`）的店鋪下，§4.8 現在也能正常操作，不再被鎖死。
 
 ---
 
@@ -339,8 +338,8 @@ M08 專屬錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](../
 |------|------|
 | 訂房評價功能明顯落後商品/房源評價 | `BookingReview` 無編輯、無刪除端點（`deleteBookingReview` 服務方法存在但零呼叫點）、無統計端點（`getAverageRatingByBookingId`／`countByBookingId` 存在但零呼叫點）、無搜尋、圖片無數量上限與媒體驗證 |
 | `GET /v2/booking-reviews/{reviewId}` 不過濾軟刪除 | 即使 `isVisible=false`（目前無端點可觸發），直接查詢仍會回傳；與 `Review` 系列端點一律過濾 `isVisible=true` 的慣例不一致 |
-| 刪除評價無管理員例外（DEF-373 的姊妹問題，另登記 **DEF-374**） | `deleteReview` 原始碼註解寫「檢查是否是本人或是管理員」，但實作沒有管理員分支，管理員無法經此端點刪除他人評價——若產品預期管理員應有此能力，屬功能缺失；若不需要，應更正註解 |
-| 回覆授權邏輯三處不一致（**DEF-373**，未修復） | §4.8 要求「listing 確切擁有者」；§4.11／§4.17 是「同租戶或管理員」。三者共用同一組 `@PreAuthorize` 權限字串，共同經營的店鋪（`STORE_STAFF`／共同 `STORE_OWNER`）可能在 §4.11／§4.17 可操作，卻在 §4.8 被拒絕 |
+| ~~刪除評價無管理員例外~~（**DEF-374**，✅ Sprint 264 已修復） | `deleteReview`／`deleteBookingReview` 原始碼註解寫「檢查是否是本人或是管理員」，但實作缺少管理員分支，與註解意圖不符；已補上 `isCurrentUserAdmin()` 例外，兩處皆修復（單元＋真實 DB 整合測試，含突變驗證） |
+| ~~回覆授權邏輯三處不一致~~（**DEF-373**，✅ Sprint 264 已修復） | §4.8 原要求「listing 確切擁有者」，§4.11／§4.17 是「同租戶或管理員」；已將 §4.8 統一為後者（使用者拍板：放寬以符合既有 DEF-331(c) 的同型前例，避免鎖死共同擁有人） |
 | `API-M08-NNN` 裸編號在既有文件彼此衝突（**DEF-375**，未修復） | `API_Index.md` 舊表格與 [TC_M08_Review.md](../../03_testing/TC_M08_Review.md) 都用 `API-M08-001～004` 等裸編號，但代表完全不同的端點（例如 `API-M08-001`：前者是回覆評價、後者是建立評價）。本文件改用不衝突的新編號（見文件頂部「編號說明」），但兩份舊文件彼此的衝突本身未被更正 |
 | `GET /v2/products/{productId}/reviews/stats`（`ProductController`）與 §4.6 功能重複 | 兩個端點呼叫同一個 `ReviewService.getRatingStats`，`productId` 被當作 `listingId` 使用，屬歷史遺留的重複介面，非本文件機械防漂移範圍（見文件頂部範圍說明） |
 | 評分範圍僅應用層驗證 | `rating` 1-5 只有 `@Min`／`@Max` DTO 驗證，資料庫欄位無 `CHECK` 約束，直接寫入資料庫（如未來的批量匯入）可能繞過此限制 |
@@ -362,4 +361,4 @@ M08 專屬錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](../
 
 ---
 
-**文件狀態**：v1.0（Sprint 263 新建，DEF-365）。
+**文件狀態**：v1.1（Sprint 264：DEF-373／374 已修復；Sprint 263 新建，DEF-365，v1.0）。

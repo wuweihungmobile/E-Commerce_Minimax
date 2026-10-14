@@ -3,6 +3,8 @@ package com.nextkey.ecommerce.core.review;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,7 +54,7 @@ public class ReviewReplyService {
      * @return 建立後的回覆資料
      * @throws BusinessException
      *         - E_1087: 評價不存在
-     *         - E_1007: 當前用戶不是該評價的 Listing 擁有者
+     *         - E_1007: 當前用戶無權回覆此評價（非同租戶且非管理員）
      *         - E_1086: 已存在回覆（重複回覆）
      */
     @Transactional
@@ -63,9 +65,15 @@ public class ReviewReplyService {
         Review review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
 
-        // 2. 權限檢查：只有 Listing 擁有者可以回覆
+        // 2. 權限檢查：同租戶（listing 所屬）或管理員皆可回覆（DEF-373 修復：原僅認定確切
+        // listing.ownerId 本人，導致同租戶的其他共同擁有人被鎖死；統一為 ReviewService.
+        // checkReviewManagementAuthorization／BookingReviewService.replyToBookingReview
+        // 既有的 same-tenant-or-admin 模式）
         Listing listing = review.getListing();
-        if (listing.getTenantId() == null || !listing.getOwnerId().equals(userId)) {
+        UUID tenantId = TenantContext.getCurrentTenant();
+        UUID listingTenantId = listing.getTenantId();
+        boolean isSameTenant = tenantId != null && tenantId.equals(listingTenantId);
+        if (!isCurrentUserAdmin() && !isSameTenant) {
             throw new BusinessException(ErrorCode.E_1007, "Only the listing owner can reply");
         }
 
@@ -116,6 +124,18 @@ public class ReviewReplyService {
     }
 
     // ========== Helper Methods ==========
+
+    /**
+     * 判斷目前使用者是否為系統管理員（ROLE_ADMIN 或 ROLE_SUPER_ADMIN）。
+     * 比照 ReviewService.isCurrentUserAdmin／BookingReviewService.isCurrentUserAdmin 既有前例。
+     */
+    private boolean isCurrentUserAdmin() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && (
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN")) ||
+            auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+        );
+    }
 
     private ReviewReplyDto.ReplyResponse toReplyResponse(ReviewReply reply) {
         return ReviewReplyDto.ReplyResponse.builder()

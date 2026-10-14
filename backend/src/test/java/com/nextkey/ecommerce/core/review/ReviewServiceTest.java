@@ -200,7 +200,7 @@ class ReviewServiceTest {
     }
 
     @Test
-    @DisplayName("deleteReview：非本人刪除拋出 E_1007")
+    @DisplayName("deleteReview：非本人且非管理員刪除拋出 E_1007")
     void deleteReview_notOwner_throwsE1007() {
         TenantContext.setCurrentUser(OTHER_USER_ID);
         Review review = reviewOf(REVIEWER_ID, listingOf(TENANT_A));
@@ -210,6 +210,21 @@ class ReviewServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_1007);
         verify(reviewRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("deleteReview：管理員可刪除他人評價（DEF-374 修復：原實作缺少管理員例外）")
+    void deleteReview_admin_succeeds() {
+        TenantContext.setCurrentUser(OTHER_USER_ID);
+        asAdmin();
+        Review review = reviewOf(REVIEWER_ID, listingOf(TENANT_A));
+        when(reviewRepository.findById(REVIEW_ID)).thenReturn(Optional.of(review));
+        when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        reviewService.deleteReview(REVIEW_ID);
+
+        assertThat(review.getIsVisible()).isFalse();
+        verify(reviewRepository).save(review);
     }
 
     // ========== markHelpful ==========

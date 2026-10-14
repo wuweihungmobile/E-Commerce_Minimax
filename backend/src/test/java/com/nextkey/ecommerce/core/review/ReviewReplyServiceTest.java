@@ -17,6 +17,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.nextkey.ecommerce.api.dto.ReviewReplyDto;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
@@ -59,6 +62,7 @@ class ReviewReplyServiceTest {
     private UUID ownerId;
     private UUID otherUserId;
     private UUID tenantId;
+    private UUID otherTenantId;
     private Review testReview;
     private Listing testListing;
     private ReviewReplyDto.CreateReplyRequest createRequest;
@@ -70,6 +74,7 @@ class ReviewReplyServiceTest {
         ownerId = UUID.randomUUID();
         otherUserId = UUID.randomUUID();
         tenantId = UUID.randomUUID();
+        otherTenantId = UUID.randomUUID();
 
         testListing = Listing.builder()
                 .id(listingId)
@@ -96,6 +101,13 @@ class ReviewReplyServiceTest {
     @AfterEach
     void cleanup() {
         TenantContext.clear();
+        SecurityContextHolder.clearContext();
+    }
+
+    private void asAdmin() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("admin", null,
+                        List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
     }
 
     // ========== createReply 測試 ==========
@@ -105,6 +117,7 @@ class ReviewReplyServiceTest {
     void createReply_Success() {
         // Given
         TenantContext.setCurrentUser(ownerId);
+        TenantContext.setCurrentTenant(tenantId);
         when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(testReview));
         when(reviewReplyRepository.existsByReviewId(reviewId)).thenReturn(false);
         when(reviewReplyRepository.save(any(ReviewReply.class))).thenAnswer(invocation -> {
@@ -134,6 +147,7 @@ class ReviewReplyServiceTest {
     void createReply_DuplicateReply_ThrowsE1086() {
         // Given
         TenantContext.setCurrentUser(ownerId);
+        TenantContext.setCurrentTenant(tenantId);
         when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(testReview));
         when(reviewReplyRepository.existsByReviewId(reviewId)).thenReturn(true);
 
@@ -159,10 +173,11 @@ class ReviewReplyServiceTest {
     }
 
     @Test
-    @DisplayName("AC-001.4: 非 Listing 擁有者回覆拋出 E_1007")
-    void createReply_NotOwner_ThrowsE1007() {
-        // Given
-        TenantContext.setCurrentUser(otherUserId); // 非擁有者
+    @DisplayName("AC-001.4: 不同租戶、非擁有者回覆拋出 E_1007")
+    void createReply_DifferentTenantNonOwner_ThrowsE1007() {
+        // Given：呼叫者與 listing 分屬不同租戶，且非確切擁有者
+        TenantContext.setCurrentUser(otherUserId);
+        TenantContext.setCurrentTenant(otherTenantId);
         when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(testReview));
 
         // When & Then
@@ -173,11 +188,63 @@ class ReviewReplyServiceTest {
     }
 
     @Test
+    @DisplayName("DEF-373 修復：同租戶的其他共同擁有人（非確切 ownerId）可回覆")
+    void createReply_SameTenantNonOwner_Succeeds() {
+        // Given：呼叫者與 listing 同租戶，但不是確切的 listing.ownerId
+        // （修復前：同租戶共同擁有人會被鎖死，比照 ReviewService.checkReviewManagementAuthorization
+        // ／BookingReviewService.replyToBookingReview 既有的 same-tenant-or-admin 模式統一）
+        TenantContext.setCurrentUser(otherUserId);
+        TenantContext.setCurrentTenant(tenantId);
+        when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(testReview));
+        when(reviewReplyRepository.existsByReviewId(reviewId)).thenReturn(false);
+        when(reviewReplyRepository.save(any(ReviewReply.class))).thenAnswer(invocation -> {
+            ReviewReply reply = invocation.getArgument(0);
+            reply.setId(UUID.randomUUID());
+            reply.setCreatedAt(Instant.now());
+            reply.setUpdatedAt(Instant.now());
+            return reply;
+        });
+
+        // When
+        ReviewReplyDto.ReplyResponse response = reviewReplyService.createReply(reviewId, createRequest);
+
+        // Then
+        assertNotNull(response);
+        assertEquals(otherUserId, response.getReplierId());
+        verify(reviewReplyRepository).save(any(ReviewReply.class));
+    }
+
+    @Test
+    @DisplayName("DEF-373 修復：平台管理員可跨租戶回覆")
+    void createReply_Admin_Succeeds() {
+        // Given：呼叫者是管理員，當下租戶與 listing 不同（甚至無租戶）
+        TenantContext.setCurrentUser(otherUserId);
+        asAdmin();
+        when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(testReview));
+        when(reviewReplyRepository.existsByReviewId(reviewId)).thenReturn(false);
+        when(reviewReplyRepository.save(any(ReviewReply.class))).thenAnswer(invocation -> {
+            ReviewReply reply = invocation.getArgument(0);
+            reply.setId(UUID.randomUUID());
+            reply.setCreatedAt(Instant.now());
+            reply.setUpdatedAt(Instant.now());
+            return reply;
+        });
+
+        // When
+        ReviewReplyDto.ReplyResponse response = reviewReplyService.createReply(reviewId, createRequest);
+
+        // Then
+        assertNotNull(response);
+        verify(reviewReplyRepository).save(any(ReviewReply.class));
+    }
+
+    @Test
     @DisplayName("AC-001.5: 空 content 會被 @NotBlank 攔截（Service 不處理，Controller 層）")
     void createReply_EmptyContent_AllowedAtServiceLayer() {
         // 註：@NotBlank 是 Bean Validation，在 Service 層不驗證
         // 這裡只測試 Service 接受空字串
         TenantContext.setCurrentUser(ownerId);
+        TenantContext.setCurrentTenant(tenantId);
         ReviewReplyDto.CreateReplyRequest emptyRequest = ReviewReplyDto.CreateReplyRequest.builder()
                 .content("")
                 .build();

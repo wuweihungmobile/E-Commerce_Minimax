@@ -22,6 +22,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import com.nextkey.ecommerce.api.dto.BookingReviewDto;
 import com.nextkey.ecommerce.api.dto.ReviewDto;
+import com.nextkey.ecommerce.api.dto.ReviewReplyDto;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.order.Booking;
 import com.nextkey.ecommerce.domain.model.order.Order;
@@ -38,23 +39,31 @@ import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 /**
- * 評價/預訂評價授權缺口在真實 PostgreSQL 的整合測試（Sprint 251，DEF-331a/b/c）。
+ * 評價/預訂評價授權缺口在真實 PostgreSQL 的整合測試（Sprint 251 DEF-331a/b/c；Sprint 264 補 DEF-373/374）。
  *
- * <p>三個缺口皆由讀碼確認：
+ * <p>Sprint 251 三個缺口皆由讀碼確認：
  * (a) {@code BookingReviewService.createBookingReview} 未驗證 bookingId 歸屬呼叫者本人；
  * (b) {@code ReviewService.createReview} 未驗證任何購買/預訂證明；
  * (c) {@code BookingReviewService.replyToBookingReview} 誤將訂房客人當作房東比對依據。
  *
- * <p>之所以用真實資料庫而非 Mockito：三個修復都讀取 Order/Booking/Listing 的 insertable=false
- * 影子欄位（tenantId/userId/listingId 等），這些欄位只有「從資料庫載入」時才正確回填
- * （DEF-065/DEF-332 既有教訓），純記憶體建構的假物件無法如實重現。
+ * <p>Sprint 264 新增兩項（撰寫 API_M08_Review.md 逐行讀碼核對授權時發現，見
+ * DEFERRED_ITEMS_TRACKER.md DEF-373/374）：
+ * (d) {@code ReviewReplyService.createReply} 原僅認定確切 listing.ownerId，統一為
+ *     same-tenant-or-admin（比照既有 (c) 的模式）；
+ * (e) {@code ReviewService.deleteReview}／{@code BookingReviewService.deleteBookingReview}
+ *     註解寫「本人或管理員」但實作缺少管理員例外分支，已補上。
+ *
+ * <p>之所以用真實資料庫而非 Mockito：這些修復都讀取 Order/Booking/Listing/BookingReview 的
+ * insertable=false 影子欄位（tenantId/userId/listingId 等），這些欄位只有「從資料庫載入」時才
+ * 正確回填（DEF-065/DEF-332 既有教訓），純記憶體建構的假物件無法如實重現。
  */
 @SpringBootTest
 @ActiveProfiles("integration-test")
-@DisplayName("IT-REVIEW-AUTH: 評價/預訂評價授權缺口已修復（DEF-331a/b/c）")
+@DisplayName("IT-REVIEW-AUTH: 評價/預訂評價授權缺口已修復（DEF-331a/b/c, DEF-373/374）")
 class ReviewAuthorizationRealDbIntegrationTest {
 
     @Autowired private ReviewService reviewService;
+    @Autowired private ReviewReplyService reviewReplyService;
     @Autowired private BookingReviewService bookingReviewService;
     @Autowired private TenantRepository tenantRepository;
     @Autowired private UserRepository userRepository;
@@ -311,5 +320,94 @@ class ReviewAuthorizationRealDbIntegrationTest {
                 bookingReviewService.replyToBookingReview(created.getReviewId(), "Admin reply");
 
         assertThat(reply.getHostReply()).isEqualTo("Admin reply");
+    }
+
+    // ========== DEF-373: ReviewReplyService.createReply 統一為 same-tenant-or-admin ==========
+
+    @Test
+    @DisplayName("createReply: 同租戶的其他共同擁有人（非確切 listing.ownerId）可回覆")
+    void createReply_sameTenantNonOwner_succeeds() {
+        Order order = seedOrder(buyer, productListingId);
+        TenantContext.setCurrentUser(buyer.getId());
+        ReviewDto.ReviewResponse review = reviewService.createReview(
+                reviewRequest(productListingId).orderId(order.getId()).build());
+
+        // 另一位同租戶的操作者，但不是這個 listing 記錄上的確切 ownerId
+        TenantContext.setCurrentUser(UUID.randomUUID());
+        TenantContext.setCurrentTenant(hostTenant.getId());
+        ReviewReplyDto.ReplyResponse reply = reviewReplyService.createReply(
+                review.getReviewId(),
+                ReviewReplyDto.CreateReplyRequest.builder().content("Thanks!").build());
+
+        assertThat(reply.getContent()).isEqualTo("Thanks!");
+    }
+
+    @Test
+    @DisplayName("createReply: 不同租戶回覆拋出 E_1007")
+    void createReply_differentTenant_throwsE1007() {
+        Order order = seedOrder(buyer, productListingId);
+        TenantContext.setCurrentUser(buyer.getId());
+        ReviewDto.ReviewResponse review = reviewService.createReview(
+                reviewRequest(productListingId).orderId(order.getId()).build());
+
+        TenantContext.setCurrentUser(UUID.randomUUID());
+        TenantContext.setCurrentTenant(otherTenant.getId());
+        assertThatThrownBy(() -> reviewReplyService.createReply(
+                review.getReviewId(),
+                ReviewReplyDto.CreateReplyRequest.builder().content("Thanks!").build()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("createReply: 平台管理員可跨租戶回覆")
+    void createReply_admin_succeeds() {
+        Order order = seedOrder(buyer, productListingId);
+        TenantContext.setCurrentUser(buyer.getId());
+        ReviewDto.ReviewResponse review = reviewService.createReview(
+                reviewRequest(productListingId).orderId(order.getId()).build());
+
+        TenantContext.setCurrentUser(UUID.randomUUID());
+        TenantContext.setCurrentTenant(otherTenant.getId());
+        asAdmin();
+        ReviewReplyDto.ReplyResponse reply = reviewReplyService.createReply(
+                review.getReviewId(),
+                ReviewReplyDto.CreateReplyRequest.builder().content("Admin reply").build());
+
+        assertThat(reply.getContent()).isEqualTo("Admin reply");
+    }
+
+    // ========== DEF-374: deleteReview／deleteBookingReview 管理員例外 ==========
+
+    @Test
+    @DisplayName("deleteReview: 管理員可軟刪除他人評價")
+    void deleteReview_admin_succeeds() {
+        Order order = seedOrder(buyer, productListingId);
+        TenantContext.setCurrentUser(buyer.getId());
+        ReviewDto.ReviewResponse review = reviewService.createReview(
+                reviewRequest(productListingId).orderId(order.getId()).build());
+
+        TenantContext.setCurrentUser(UUID.randomUUID());
+        asAdmin();
+        reviewService.deleteReview(review.getReviewId());
+
+        ReviewDto.ReviewListResponse remaining =
+                reviewService.getReviewsByListingId(productListingId, 0, 10, null);
+        assertThat(remaining.getReviews()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("deleteBookingReview: 管理員可軟刪除他人訂房評價")
+    void deleteBookingReview_admin_succeeds() {
+        Booking booking = seedBooking(buyer, roomListingId);
+        TenantContext.setCurrentUser(buyer.getId());
+        BookingReviewDto.BookingReviewResponse created = bookingReviewService.createBookingReview(
+                booking.getId(), 5, "Nice", "Great stay", null, false);
+
+        TenantContext.setCurrentUser(UUID.randomUUID());
+        asAdmin();
+        bookingReviewService.deleteBookingReview(created.getReviewId());
+
+        assertThat(bookingReviewService.getBookingReviews(booking.getId(), 0, 10).getContent()).isEmpty();
     }
 }

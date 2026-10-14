@@ -464,4 +464,66 @@ class BookingReviewServiceTest {
         assertEquals("Anonymous", response.getUserFullName());
         assertTrue(response.getIsAnonymous());
     }
+
+    // ========== deleteBookingReview 測試（DEF-374） ==========
+
+    @Test
+    @Order(16)
+    @DisplayName("deleteBookingReview: 本人可軟刪除自己的評價")
+    void deleteBookingReview_owner_success() {
+        // Given
+        TenantContext.setCurrentUser(GUEST_USER_ID);
+        BookingReview existingReview = createReview(GUEST_USER_ID, HOST_TENANT_ID, false);
+        when(bookingReviewRepository.findById(REVIEW_ID))
+                .thenReturn(Optional.of(existingReview));
+        when(bookingReviewRepository.save(any(BookingReview.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // When
+        bookingReviewService.deleteBookingReview(REVIEW_ID);
+
+        // Then
+        assertFalse(existingReview.getIsVisible());
+        verify(bookingReviewRepository, times(1)).save(existingReview);
+    }
+
+    @Test
+    @Order(17)
+    @DisplayName("deleteBookingReview: 非本人且非管理員刪除拋出 E_1007")
+    void deleteBookingReview_notOwnerNotAdmin_throwsE1007() {
+        // Given
+        TenantContext.setCurrentUser(OTHER_USER_ID);
+        BookingReview existingReview = createReview(GUEST_USER_ID, HOST_TENANT_ID, false);
+        when(bookingReviewRepository.findById(REVIEW_ID))
+                .thenReturn(Optional.of(existingReview));
+
+        // When & Then
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> bookingReviewService.deleteBookingReview(REVIEW_ID));
+
+        assertEquals(ErrorCode.E_1007, exception.getErrorCode());
+        assertTrue(existingReview.getIsVisible());
+        verify(bookingReviewRepository, never()).save(any());
+    }
+
+    @Test
+    @Order(18)
+    @DisplayName("deleteBookingReview: 管理員可刪除他人評價（DEF-374 修復：原實作缺少管理員例外）")
+    void deleteBookingReview_admin_succeeds() {
+        // Given
+        TenantContext.setCurrentUser(OTHER_USER_ID);
+        asAdmin();
+        BookingReview existingReview = createReview(GUEST_USER_ID, HOST_TENANT_ID, false);
+        when(bookingReviewRepository.findById(REVIEW_ID))
+                .thenReturn(Optional.of(existingReview));
+        when(bookingReviewRepository.save(any(BookingReview.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // When
+        bookingReviewService.deleteBookingReview(REVIEW_ID);
+
+        // Then
+        assertFalse(existingReview.getIsVisible());
+        verify(bookingReviewRepository, times(1)).save(existingReview);
+    }
 }

@@ -184,8 +184,9 @@ public class ReviewService {
         Review review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1087, "Review not found"));
 
-        // 檢查是否是本人或是管理員
-        if (!review.getUser().getId().equals(userId)) {
+        // 檢查是否是本人或是管理員（DEF-374 修復：原實作缺少管理員例外分支，與本行
+        // 註解意圖不符——管理員原本無法經此端點下架評價，全庫亦無其他路徑可供替代）
+        if (!isCurrentUserAdmin() && !review.getUser().getId().equals(userId)) {
             throw new BusinessException(ErrorCode.E_1007, "You can only delete your own review");
         }
 

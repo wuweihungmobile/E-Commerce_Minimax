@@ -140,8 +140,9 @@ public class BookingReviewService {
         BookingReview review = bookingReviewRepository.findById(reviewId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1092, "Booking review not found"));
 
-        // 檢查是否是本人或是管理員
-        if (!review.getUserId().equals(userId)) {
+        // 檢查是否是本人或是管理員（DEF-374 修復，比照 ReviewService.deleteReview 同型落差：
+        // 原實作缺少管理員例外分支，與本行註解意圖不符）
+        if (!isCurrentUserAdmin() && !review.getUserId().equals(userId)) {
             throw new BusinessException(ErrorCode.E_1007, "You can only delete your own review");
         }
 

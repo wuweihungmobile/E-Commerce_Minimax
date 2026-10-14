@@ -28,10 +28,14 @@ import com.nextkey.ecommerce.api.controller.BookingReviewController;
 import com.nextkey.ecommerce.api.controller.CartController;
 import com.nextkey.ecommerce.api.controller.CheckoutController;
 import com.nextkey.ecommerce.api.controller.DashboardBookingController;
+import com.nextkey.ecommerce.api.controller.DashboardPricingController;
 import com.nextkey.ecommerce.api.controller.OAuthController;
 import com.nextkey.ecommerce.api.controller.OrderController;
 import com.nextkey.ecommerce.api.controller.OrderPaymentController;
+import com.nextkey.ecommerce.api.controller.PricingController;
 import com.nextkey.ecommerce.api.controller.ReviewController;
+import com.nextkey.ecommerce.api.controller.StorefrontController;
+import com.nextkey.ecommerce.api.controller.TenantController;
 import com.nextkey.ecommerce.api.controller.returns.ReturnRequestController;
 import com.nextkey.ecommerce.api.controller.settlement.SettlementController;
 import com.nextkey.ecommerce.api.controller.settlement.TransferController;
@@ -82,6 +86,14 @@ class ApiRouteDocDriftTest {
         GUARDED.put("api/API_M05_Return.md", List.of(ReturnRequestController.class));
         // Sprint 265：M18 客服工單，文件先前完全不存在（DEF-367），新建後一併納入守門
         GUARDED.put("api/API_M18_Support.md", List.of(SupportTicketController.class));
+        // Sprint 266：M12 動態定價，v1.0 與實作落差過大全面改寫（DEF-368），改寫後一併納入守門
+        GUARDED.put("api/API_M12_Dynamic_Pricing.md",
+                List.of(PricingController.class, DashboardPricingController.class));
+        // Sprint 266：M17 租戶管理，v1.1 與實作落差過大全面改寫（DEF-369）。AdminController 混雜大量
+        // M17 以外端點（使用者/系統設定/稽核/採購單），無法整個類別納入守門，故僅登記 TenantController
+        // 與 StorefrontController；AdminController 的租戶端點暫無機械防漂移，見文件 §7 已知限制
+        GUARDED.put("api/API_M17_Tenant.md",
+                List.of(TenantController.class, StorefrontController.class));
     }
 
     /** 反引號包住的 `METHOD /path`：路徑到反引號、空白或 {@code ?} 為止。 */

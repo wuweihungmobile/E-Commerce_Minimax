@@ -1296,7 +1296,7 @@
 ---
 
 **文件版本**: v3.49
-**最後更新**: 2026-10-14（**Sprint 266 完成**：DEF-368／369／377 已解決——M12 動態定價、M17 租戶管理兩份文件全面改寫（Sprint 261 發現；使用者選擇「檢視 M12/M17 文件自身關點」後，複核發現落差遠大於原描述，使用者進一步拍板「全面改寫，比照 API_M05_Order.md 當年 Sprint 243 的做法」）。兩份文件 v1.0/v1.1 的回應封包（`code:200`／`timestamp`／`requestId` 固定出現）皆與實際 `ApiResponse`（`success:true`）不符，是同一批 2026-04-09 原始文件共有的落差。`API_M12_Dynamic_Pricing.md` 改寫為 v2.0（8 端點，含規則類型列舉、config 結構、覆蓋機制等多處內容性錯誤一併更正）；`API_M17_Tenant.md` 改寫為 v2.0（30 端點，含編號衝突解決、`TenantController` 7 個成員管理端點首次收錄即新登記並解決的 **DEF-377**、`AdminController` 6 個新端點）；`ApiRouteDocDriftTest.GUARDED` 納入 `PricingController`／`DashboardPricingController`／`TenantController`／`StorefrontController`（`AdminController` 因混雜大量 M17 以外端點無法整個類別納入）。詳見 [SPRINT_266_PLAN.md](SPRINT_266_PLAN.md)。**仍待使用者決定排程**：DEF-370／371（FRD 缺兩條 User Story）、DEF-375（M08 編號衝突）、DEF-376（測試排序脆弱性）共 3 項文件/測試穩定性缺口維持登記狀態）
+**最後更新**: 2026-10-14（**Sprint 266 完成**：DEF-368／369／377 已解決——M12 動態定價、M17 租戶管理兩份文件全面改寫（Sprint 261 發現；使用者選擇「檢視 M12/M17 文件自身關點」後，複核發現落差遠大於原描述，使用者進一步拍板「全面改寫，比照 API_M05_Order.md 當年 Sprint 243 的做法」）。兩份文件 v1.0/v1.1 的回應封包（`code:200`／`timestamp`／`requestId` 固定出現）皆與實際 `ApiResponse`（`success:true`）不符，是同一批 2026-04-09 原始文件共有的落差。`API_M12_Dynamic_Pricing.md` 改寫為 v2.0（8 端點，含規則類型列舉、config 結構、覆蓋機制等多處內容性錯誤一併更正）；`API_M17_Tenant.md` 改寫為 v2.0（30 端點，含編號衝突解決、`TenantController` 7 個成員管理端點首次收錄即新登記並解決的 **DEF-377**、`AdminController` 6 個新端點）；`ApiRouteDocDriftTest.GUARDED` 納入 `PricingController`／`DashboardPricingController`／`TenantController`／`StorefrontController`（`AdminController` 因混雜大量 M17 以外端點無法整個類別納入）。詳見 [SPRINT_266_PLAN.md](SPRINT_266_PLAN.md)。**仍待使用者決定排程**：DEF-370／371（FRD 缺兩條 User Story）、DEF-375（M08 編號衝突）、DEF-376（測試排序脆弱性）共 4 項文件/測試穩定性缺口維持登記狀態）
 
 ---
 

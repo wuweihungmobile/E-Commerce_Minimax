@@ -32,8 +32,10 @@ import com.nextkey.ecommerce.api.controller.OAuthController;
 import com.nextkey.ecommerce.api.controller.OrderController;
 import com.nextkey.ecommerce.api.controller.OrderPaymentController;
 import com.nextkey.ecommerce.api.controller.ReviewController;
+import com.nextkey.ecommerce.api.controller.returns.ReturnRequestController;
 import com.nextkey.ecommerce.api.controller.settlement.SettlementController;
 import com.nextkey.ecommerce.api.controller.settlement.TransferController;
+import com.nextkey.ecommerce.api.controller.support.SupportTicketController;
 
 /**
  * Sprint 241：API 規格文件記載的路由，必須與 Controller 一致（路由漏記、記了不存在的路由都會失敗）。
@@ -76,6 +78,10 @@ class ApiRouteDocDriftTest {
         // Sprint 263：M08 評價與社交互動，文件先前完全不存在（DEF-365），新建後一併納入守門
         GUARDED.put("api/API_M08_Review.md",
                 List.of(ReviewController.class, BookingReviewController.class));
+        // Sprint 265：M05 退貨申請，文件先前完全不存在（DEF-366），新建後一併納入守門
+        GUARDED.put("api/API_M05_Return.md", List.of(ReturnRequestController.class));
+        // Sprint 265：M18 客服工單，文件先前完全不存在（DEF-367），新建後一併納入守門
+        GUARDED.put("api/API_M18_Support.md", List.of(SupportTicketController.class));
     }
 
     /** 反引號包住的 `METHOD /path`：路徑到反引號、空白或 {@code ?} 為止。 */

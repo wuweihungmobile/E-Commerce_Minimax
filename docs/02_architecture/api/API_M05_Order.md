@@ -31,7 +31,7 @@
 | **使用角色** | 買家（Buyer）下單、付款、取消；店主（Store Owner）／賣家（Seller）看店鋪的訂單並更新狀態；管理員（Admin／Super Admin）取消、退款。權限矩陣見 §6 |
 | **API 前綴** | 後端的 context path 是 `/api`，所以下列路徑的完整網址是 `/api/v2/orders/...` |
 | **多租戶隔離** | 訂單的 `tenantId` 是**商品所屬的店鋪**（不是買家的租戶——沒有店鋪的消費者是系統租戶佔位值）。買家只能讀寫自己的訂單；店主／賣家只能讀寫自己店鋪的訂單（系統租戶的呼叫者**不算**「同店鋪」）；管理員不受限 |
-| **範圍外** | 舊版 `POST /v2/payments`（相容端點，M07）、Stripe／LINE Pay webhook（`/v2/payments/webhook/*`）、物流、退貨（M11）、結算（M13）、訂房（M06，見 [API_M06_Booking.md](../API_M06_Booking.md)） |
+| **範圍外** | 舊版 `POST /v2/payments`（相容端點，M07）、Stripe／LINE Pay webhook（`/v2/payments/webhook/*`）、物流追蹤（M11）、結算（M07）、訂房（M06，見 [API_M06_Booking.md](../API_M06_Booking.md)）、**退貨（Sprint 265 更正：原寫「M11」為誤記，退貨申請實際歸屬 M05，獨立見 [API_M05_Return.md](API_M05_Return.md)，DEF-366）** |
 
 ### 1.2 設計重點
 

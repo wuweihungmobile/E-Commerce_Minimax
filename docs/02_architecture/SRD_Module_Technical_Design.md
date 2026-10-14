@@ -1,7 +1,7 @@
-# E-Commerce 系統 — 模組技術設計 v1.4
+# E-Commerce 系統 — 模組技術設計 v1.5
 
 > **文檔類型**: SRD - Module Technical Design
-> **版本**: v1.4（v1.0 → v1.1：Sprint 203 文件一致性檢查；v1.1 → v1.2：Sprint 244 文件對齊；v1.2 → v1.3：Sprint 262 新增 §6 M07 結算與撥款模組；v1.3 → v1.4：Sprint 263 新增 §7 M08 評價與社交互動模組，並修正 §8（原 §7）異常處理架構內部子標題未隨改號的遺留漂移，見 §9 修訂歷史）
+> **版本**: v1.5（v1.0 → v1.1：Sprint 203 文件一致性檢查；v1.1 → v1.2：Sprint 244 文件對齊；v1.2 → v1.3：Sprint 262 新增 §6 M07 結算與撥款模組；v1.3 → v1.4：Sprint 263 新增 §7 M08 評價與社交互動模組，並修正 §8（原 §7）異常處理架構內部子標題未隨改號的遺留漂移；v1.4 → v1.5：Sprint 265 新增 §8 M05 退貨申請、§9 M18 客服工單模組，並補上 Sprint 264 遺留的 §7 M08 內容未同步問題，見 §11 修訂歷史）
 > **依據**: E-Commerce_SRD_System_Architecture.md, E-Commerce_FRD_v1.0.md
 > **建立日期**: 2026-04-09
 > **作者**: Marcus (SD-Architect)
@@ -1390,21 +1390,18 @@ public class ReviewService {
 }
 ```
 
-#### 回覆授權邏輯的兩種寫法（§7.3 詳述不一致之處，DEF-373）
+#### 回覆授權邏輯（Sprint 264 已統一，DEF-373）
 
 ```java
-// ReviewReplyService.createReply —— 要求「listing 的確切 ownerId」
-if (!listing.getOwnerId().equals(currentUserId)) {
-    throw new BusinessException(ErrorCode.E_1007);
-}
-
-// ReviewService.checkReviewManagementAuthorization（標記已/未處理）
-// 與 BookingReviewService.replyToBookingReview —— 要求「同租戶或管理員」
-boolean isSameTenant = listing.getTenant().getId().equals(currentTenantId);
+// ReviewReplyService.createReply／ReviewService.checkReviewManagementAuthorization（標記已/未處理）
+// ／BookingReviewService.replyToBookingReview —— 三者現統一要求「同租戶或管理員」
+boolean isSameTenant = listing.getTenantId().equals(currentTenantId);
 if (!isCurrentUserAdmin() && !isSameTenant) {
     throw new BusinessException(ErrorCode.E_1007);
 }
 ```
+
+> Sprint 264 前，`createReply` 原僅認定確切 `listing.ownerId`，導致同租戶的其他共同擁有人被鎖死；已統一為上述邏輯（見 [SPRINT_264_PLAN.md](../04_planning/SPRINT_264_PLAN.md)）。
 
 ### 7.3 已知不對稱與限制（生命週期單純，無須繪製狀態圖）
 
@@ -1413,24 +1410,112 @@ if (!isCurrentUserAdmin() && !isSameTenant) {
 | 項目 | 商品/房源評價（`Review`） | 訂房評價（`BookingReview`） |
 |------|:----:|:----:|
 | 編輯 | ✅ 無時間窗 | ❌ 無端點 |
-| 刪除 | ✅ 軟刪除，**但無管理員例外**（DEF-374） | ⚠️ `deleteBookingReview` 服務方法存在，**零 Controller 呼叫點** |
+| 刪除 | ✅ 軟刪除，✅ 管理員例外（Sprint 264，DEF-374） | ⚠️ `deleteBookingReview` 服務方法存在，**零 Controller 呼叫點**；✅ 管理員例外（Sprint 264，DEF-374） |
 | 列表查詢 | ✅ | ⚠️ `getBookingReviews` 服務方法存在，**零 Controller 呼叫點** |
 | 統計 | ✅（`@Cacheable`） | ⚠️ `getAverageRatingByBookingId`／`countByBookingId` 存在，**零呼叫點** |
 | 搜尋 | ✅（Sprint 18 多維度） | ❌ 無 |
 | 圖片 | ✅ 上限 9 張＋媒體驗證 | ⚠️ 無上限、無驗證 |
-| 回覆授權 | 確切 listing 擁有者 | 同租戶或管理員 |
+| 回覆授權 | 同租戶或管理員（Sprint 264 起與右欄一致，DEF-373） | 同租戶或管理員 |
 | 回覆重複防護 | ✅ DB 唯一索引（`E-1086`） | ❌ 單一欄位覆寫，無防護 |
 | 軟刪除過濾 | ✅ 查詢一律過濾 `isVisible=true` | ❌ `getBookingReviewById` 未過濾 |
 
-**為什麼列出這些不對稱而不逐一修復**：這些落差是本輪（Sprint 263）撰寫文件時逐行讀碼才系統性發現的，修復與否涉及「訂房評價的功能範圍是否該與商品/房源評價對齊」這個產品決策，非文件撰寫本身的範圍——已登記為 DEF-373／374（見 [DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md)），留待後續排程。
+**為什麼表中仍有未修復的不對稱**：這些落差是 Sprint 263 撰寫文件時逐行讀碼才系統性發現的。其中 DEF-373（回覆授權不一致）、DEF-374（刪除無管理員例外）兩項使用者判斷為直接碰觸已上線功能的授權邏輯、風險較高，已於 Sprint 264 修復（見 [SPRINT_264_PLAN.md](../04_planning/SPRINT_264_PLAN.md)）。其餘列（訂房評價缺編輯/統計/搜尋端點、圖片無上限、回覆重複防護、軟刪除過濾）屬「訂房評價的功能範圍是否該與商品/房源評價對齊」的產品決策，非文件撰寫本身的範圍，仍登記未修復（見 [DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md)），留待後續排程。
 
 ---
 
-## 8. 異常處理架構 (Exception Handling)
+## 8. M05 退貨申請模組 (Return Request Module)
+
+> **Sprint 265 新增**：本模組先前完全沒有技術設計章節（從未存在，見 [DEF-366](../04_planning/DEFERRED_ITEMS_TRACKER.md)）。以下內容依實際程式碼撰寫，端點細節見 [API_M05_Return.md](api/API_M05_Return.md)。
+
+### 8.1 架構概覽
+
+```
+com.nextkey.ecommerce/
+├── api/
+│   └── controller/returns/
+│       └── ReturnRequestController.java    # 買家層 /v2/returns、店家層 /v2/dashboard/returns
+├── core/
+│   └── returns/
+│       └── ReturnRequestService.java       # 建立/撤回/核准/拒絕/收貨，所有狀態轉換皆用條件式 UPDATE（CAS）
+└── domain/
+    └── model/returns/
+        ├── ReturnRequest.java               # 退貨單主檔，狀態機見 §8.2
+        └── ReturnRequestItem.java           # 退貨品項，sellableQty/unsellableQty 收貨時才填
+```
+
+### 8.2 狀態機
+
+```
+REQUESTED ──approve──→ APPROVED ──receive──→ RECEIVED（唯一會動庫存的一步）
+    │                      │
+    ├──reject──→ REJECTED  │
+    └──cancel──→ CANCELLED ←──cancel──┘
+```
+
+`REJECTED`／`RECEIVED`／`CANCELLED` 為終態；`REJECTED`／`CANCELLED` 不佔用可退額度，買家可對同一訂單品項重新申請。
+
+### 8.3 多租戶隔離與併發防護
+
+```java
+// ReturnRequestService.loadForTenant —— 先查擁有權、才查狀態（承 DEF-036 教訓）
+// 排除「系統租戶佔位值」避免把沒有店鋪的消費者誤判為同租戶（Sprint 234）
+if (!isAdmin() && (!TenantContext.isStoreTenant(tenantId) || !tenantId.equals(returnRequest.getTenantId()))) {
+    throw new BusinessException(ErrorCode.E_1007);
+}
+```
+
+核准／拒絕／收貨皆用條件式 UPDATE（`reviewIfStatus`／`updateStatusIfCurrent`）取代樂觀鎖版本號，受影響列數為 0 即判定併發搶輸（`E-5017`）；建立退貨單用訂單悲觀鎖序列化可退額度檢查（DEF-132）。詳見 [API_M05_Return.md](api/API_M05_Return.md) §1.2。
+
+---
+
+## 9. M18 客服工單模組 (Support Ticket Module)
+
+> **Sprint 265 新增**：本模組先前完全沒有技術設計章節（從未存在，見 [DEF-367](../04_planning/DEFERRED_ITEMS_TRACKER.md)）。以下內容依實際程式碼撰寫，端點細節見 [API_M18_Support.md](api/API_M18_Support.md)。
+
+### 9.1 架構概覽
+
+```
+com.nextkey.ecommerce/
+├── api/
+│   └── controller/support/
+│       └── SupportTicketController.java    # 買家/店家/平台三層路由
+├── core/
+│   └── support/
+│       ├── SupportTicketService.java        # 工單 CRUD、狀態轉換、指派
+│       └── SupportMessageService.java       # 留言串（買家/店家各自的 post 方法）
+└── domain/
+    └── model/support/
+        ├── SupportTicket.java               # @DynamicUpdate，避免併發更新互相覆寫（DEF-163）
+        └── SupportMessage.java
+```
+
+### 9.2 狀態機
+
+```
+OPEN ──→ IN_PROGRESS ──→ RESOLVED ──→ CLOSED（終態）
+ │                           │
+ └──────────→ CLOSED ←───────┘
+```
+
+### 9.3 刻意用 404 隱藏工單存在性
+
+```java
+// findForStaff / requireStoreTenantUnlessSuperAdmin —— 非本人/非同租戶一律回 E-8008（404）
+// 而非 E-8009（403），避免洩漏「工單是否存在」。E-8009 已定義但全庫無任何拋出點（死碼）。
+if (!isSuperAdmin && (!TenantContext.isStoreTenant(callerTenantId) || !callerTenantId.equals(ticket.getTenantId()))) {
+    throw new BusinessException(ErrorCode.E_8008);
+}
+```
+
+詳見 [API_M18_Support.md](api/API_M18_Support.md) §1.2。
+
+---
+
+## 10. 異常處理架構 (Exception Handling)
 
 > **Sprint 203 改寫**：v1.0 此節描述的 `ECommerceException` 例外階層、`ErrorResponse.of("E4041", …)` 與一份自成一格的錯誤碼表，**從未存在於程式碼**（全庫只有下列一個基底例外與一個處理器）。已改寫為實際架構；錯誤碼與 HTTP 狀態碼以 [API_Error_Codes.md](./API_Error_Codes.md) 為準。
 
-### 8.1 例外結構
+### 10.1 例外結構
 
 ```
 com.nextkey.ecommerce.shared.exception/
@@ -1449,7 +1534,7 @@ com.nextkey.ecommerce.api.controller/
 - 業務規則違反一律丟 `BusinessException(ErrorCode, …)`；**不新增**例外子類別來表達不同錯誤，差異由 `ErrorCode` 表達。
 - 給使用者看的訊息預設是 `ErrorCode` 的中文訊息，**不回顯**例外內的動態英文細節（AI-2418）；只有經 `BusinessException.withFormattedMessage` 建構、且訊息模板本就設計了佔位符（張數、索引）的例外，才把代入後的文字回給使用者。
 
-### 8.2 統一異常處理
+### 10.2 統一異常處理
 
 `GlobalExceptionHandler` 對應規則（完整表格見 [API_Error_Codes.md §2](./API_Error_Codes.md)）：
 
@@ -1466,13 +1551,13 @@ com.nextkey.ecommerce.api.controller/
 
 `mapErrorCodeToStatus` 是**窮舉的 `switch`、沒有 `default`**：新增 `ErrorCode` 卻沒決定 HTTP 狀態碼會直接編譯失敗，而不是靜默落入 500（Sprint 171，DEF-223）。
 
-### 8.3 錯誤碼對照表
+### 10.3 錯誤碼對照表
 
 已移至 [API_Error_Codes.md §4](./API_Error_Codes.md)（138 個錯誤碼，由 `ErrorCodeDocDriftTest` 與程式碼逐列比對）。v1.0 在此列出的 17 個錯誤碼中，**12 個與實作不符**（`E-1001`、`E-2001`、`E-3001`～`E-3003`、`E-4001` 在實作中意義不同；`E-2020`、`E-4021`～`E-4025` 在實作中不存在），只有 `E-1002`、`E-2003`、`E-4041`、`E-4091`、`E-4092` 大致相符；不可再引用該表。
 
 ---
 
-## 9. 修訂歷史
+## 11. 修訂歷史
 
 | 版本 | 日期 | 作者 | 變更說明 |
 |------|------|------|----------|
@@ -1481,6 +1566,7 @@ com.nextkey.ecommerce.api.controller/
 | v1.2 | 2026-10-03 | Claude Code（Sprint 244） | 文件對齊（3/3）：§1.2 Token 效期改為 15 分鐘（實際類別 `JwtTokenService`，效期由設定注入，見註記）；§4 M05 建單草稿移除「建單即 PAID」，`ALLOWED_TRANSITIONS` 草稿加註記（實際規則見 `OrderStateMachine`）；序列圖的付款標示改為「付款成功 CREATED→PAID」 |
 | v1.3 | 2026-10-13 | Claude Code（Sprint 262） | 新增 §6 M07 結算與撥款模組（架構概覽、核心類設計、狀態機與撥款流程），此模組先前完全沒有技術設計章節（DEF-364）；原 §6／§7 依序改為 §7／§8；檔頭版本號同步校正（先前長期停滯於 v1.0） |
 | v1.4 | 2026-10-14 | Claude Code（Sprint 263） | 新增 §7 M08 評價與社交互動模組（架構概覽、核心類設計、已知不對稱表），此模組先前完全沒有技術設計章節（DEF-365）；原 §7／§8 依序改為 §8／§9；**同時修正 Sprint 262 遺留的章節編號漂移**（原 §7 異常處理架構的內部子標題仍寫 ### 6.1～6.3，未隨外層標題改號，本次一併更正為 ### 8.1～8.3） |
+| v1.5 | 2026-10-14 | Claude Code（Sprint 265） | 新增 §8 M05 退貨申請模組、§9 M18 客服工單模組（皆先前完全沒有技術設計章節，DEF-366／367）；原 §8／§9 依序改為 §10／§11，§8 異常處理架構的內部子標題同步改為 ### 10.1～10.3。**同時修正 Sprint 264 遺留的文件缺口**：§7 M08 評價模組的回覆授權程式碼範例與不對稱表仍描述 DEF-373／374 修復前的舊邏輯，Sprint 264 修復時忘了同步這份文件，本次一併更正為已修復狀態 |
 
 ---
 

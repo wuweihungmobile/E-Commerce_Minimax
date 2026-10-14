@@ -1290,8 +1290,12 @@
 
 ---
 
-**文件版本**: v3.44
-**最後更新**: 2026-10-13（**document-consistency-check（Sprint 261，第四輪）**：三路並行唯讀 Agent 分別核對 API/SRD 技術文件、PRD/FRD 需求追蹤鏈、SRD技術章節/TC/Docker治理文件。修正 7 處已過期的文字敘述（PRD §9.7／§10 四項缺口標記、FRD §6A/§8.6/情境指引表、SRD §6.3.4 缺漏狀態列與三處各自漂移的版本中繼資料），新登記 DEF-364～DEF-372 共 9 筆新發現的文件缺口（M07/M08 完全無文件、ReturnRequest/SupportTicket 無文件、M12 端點落差、M17 文件自身矛盾、FRD 缺兩條 User Story、自動化守門覆蓋範圍缺口）。詳見 [SPRINT_261_PLAN.md](SPRINT_261_PLAN.md)）
+**文件版本**: v3.45
+**最後更新**: 2026-10-13（**Sprint 262 完成**：DEF-364 已解決——M07 結算模組補齊文件缺口（Sprint 261 發現，使用者以 `AskUserQuestion` 選擇優先處理金流風險最高的此項）。新建 [API_M07_Settlement.md](../02_architecture/api/API_M07_Settlement.md)（12 端點完整規格，含先前完全未記載的結算沖正、手動補產結算單、撥款重試等高風險金流端點）；`SRD_Module_Technical_Design.md` 新增 §6 M07 技術設計章節；`API_Index.md` 的 M07 連結改指向新文件；`ApiRouteDocDriftTest.GUARDED` 納入 `SettlementController`／`TransferController`，M07 從此有常態機械防漂移。全量驗證單元 2225／整合 848／0 失敗，本機完整 act CI 與雲端 CI 皆全綠（commit `c0fdb280`，run 38429457311）。詳見 [SPRINT_262_PLAN.md](SPRINT_262_PLAN.md)。**仍待使用者決定排程**：DEF-365（M08 評價）、DEF-366（ReturnRequestController）、DEF-367（SupportTicketController）、DEF-370／371（FRD 缺兩條 User Story）共 5 項文件缺口維持登記狀態）
+
+---
+
+**歷史版本 v3.44**: 2026-10-13（**document-consistency-check（Sprint 261，第四輪）**：三路並行唯讀 Agent 分別核對 API/SRD 技術文件、PRD/FRD 需求追蹤鏈、SRD技術章節/TC/Docker治理文件。修正 7 處已過期的文字敘述（PRD §9.7／§10 四項缺口標記、FRD §6A/§8.6/情境指引表、SRD §6.3.4 缺漏狀態列與三處各自漂移的版本中繼資料），新登記 DEF-364～DEF-372 共 9 筆新發現的文件缺口（M07/M08 完全無文件、ReturnRequest/SupportTicket 無文件、M12 端點落差、M17 文件自身矛盾、FRD 缺兩條 User Story、自動化守門覆蓋範圍缺口）。詳見 [SPRINT_261_PLAN.md](SPRINT_261_PLAN.md)）
 
 ---
 

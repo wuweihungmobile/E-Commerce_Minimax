@@ -1,9 +1,9 @@
 # API Index / API 規格索引
 
 > **文檔狀態**: Active
-> **版本**: v1.4
+> **版本**: v1.5
 > **建立日期**: 2026-04-09
-> **最後更新**: 2026-10-13（Sprint 262：M07 連結改指向新建的 [API_M07_Settlement.md](./api/API_M07_Settlement.md)，見 DEF-364）
+> **最後更新**: 2026-10-14（Sprint 263：M08 連結改指向新建的 [API_M08_Review.md](./api/API_M08_Review.md)，見 DEF-365；Sprint 262：M07 連結改指向新建的 [API_M07_Settlement.md](./api/API_M07_Settlement.md)，見 DEF-364）
 > **作者**: Marcus (SD-Architect)
 > **🔴 Sprint 16 US-008**: 收錄 Sprint 15 + Sprint 16 新增 API 端點
 >
@@ -11,7 +11,7 @@
 >
 > **⚠️ 完整性未保證（Sprint 203 揭露）**: 本索引的多數模組最後更新於 2026-06-05，僅收錄 48 個端點；同日核對後端 controller 有約 305 個 `@*Mapping` 註解。**本索引不是完整端點清單**，見 DEF-286。
 >
-> **✅ 已完整且有守門的模組（Sprint 241／243）**: **M03 會員與權限**（[API_M03_Auth.md](./api/API_M03_Auth.md)，13 個端點）、**M04 購物車**（[API_M04_Cart.md](./API_M04_Cart.md)，9 個端點）、**M05 訂單履約**（[API_M05_Order.md](./api/API_M05_Order.md)，15 個端點，Sprint 243）與 **M06 預訂系統**（[API_M06_Booking.md](./API_M06_Booking.md)，11 個端點，Sprint 243）已依實作改寫，並納入 `ApiRouteDocDriftTest`：Controller 新增、刪除或改名路由而沒更新規格，測試會失敗。M05／M06 的回應形狀、狀態碼、錯誤碼與權限另有真實服務的契約測試（`OrderApiRealStackIntegrationTest`、`BookingApiRealStackIntegrationTest`）。其他模組將依序納入；納入前仍以規格文件與程式碼互相對照為準。
+> **✅ 已完整且有守門的模組（Sprint 241／243／262／263）**: **M03 會員與權限**（[API_M03_Auth.md](./api/API_M03_Auth.md)，13 個端點）、**M04 購物車**（[API_M04_Cart.md](./API_M04_Cart.md)，9 個端點）、**M05 訂單履約**（[API_M05_Order.md](./api/API_M05_Order.md)，15 個端點，Sprint 243）、**M06 預訂系統**（[API_M06_Booking.md](./API_M06_Booking.md)，11 個端點，Sprint 243）、**M07 結算與撥款**（[API_M07_Settlement.md](./api/API_M07_Settlement.md)，12 個端點，Sprint 262）與 **M08 評價與社交互動**（[API_M08_Review.md](./api/API_M08_Review.md)，18 個端點，Sprint 263）已依實作改寫，並納入 `ApiRouteDocDriftTest`：Controller 新增、刪除或改名路由而沒更新規格，測試會失敗。M05／M06 的回應形狀、狀態碼、錯誤碼與權限另有真實服務的契約測試（`OrderApiRealStackIntegrationTest`、`BookingApiRealStackIntegrationTest`）。其他模組將依序納入；納入前仍以規格文件與程式碼互相對照為準。
 
 ---
 
@@ -153,6 +153,8 @@
 
 ### 評價系統 (M08) - 🆕 Sprint 15-16 新增
 
+> **⚠️ 2026-10-14（Sprint 263）**：此表僅為 Sprint 15/16 時期的歷史草表，已知**不完整**（漏列建立/編輯/刪除/依商品查詢/依使用者查詢/統計/搜尋/有用投票/訂房評價建立/訂房評價查詢共 10 個既有端點）。**完整且已核對程式碼的規格見 [API_M08_Review.md](./api/API_M08_Review.md)**，本表保留僅供歷史參考，不再維護。**本表的 `API-M08-NNN` 編號與 [TC_M08_Review.md](../03_testing/TC_M08_Review.md) 彼此衝突**（同一編號在兩份文件代表不同端點，詳見新文件 §7 已知限制、DEF-375），新文件已改用不衝突的 `API-M08-R-NNN`／`API-M08-BR-NNN` 編號。
+
 | API ID | 端點 | 方法 | 說明 | 角色 | Sprint |
 |--------|------|------|------|------|--------|
 | API-M08-001 | `/v2/reviews/{id}/replies` | POST | 商家回覆評價 | StoreOwner | Sprint 15 |
@@ -208,9 +210,8 @@
 ### M07 結算與撥款 (🆕 Sprint 15-16；Sprint 262 完整建立)
 - [API_M07_Settlement.md](./api/API_M07_Settlement.md)（v1.0，Sprint 262 新建，DEF-364；取代下方 Sprint 15/16 舊表格）
 
-### M08 評價系統 (🆕 Sprint 15-16)
-- `API_M08_Review.md` *(Sprint 16 規劃新增，連結待建立)*
-- 包含：評價回覆、標記、圖片管理 API
+### M08 評價與社交互動 (🆕 Sprint 15-16；Sprint 263 完整建立)
+- [API_M08_Review.md](./api/API_M08_Review.md)（v1.0，Sprint 263 新建，DEF-365；取代上方 Sprint 15/16 舊表格）
 
 ---
 

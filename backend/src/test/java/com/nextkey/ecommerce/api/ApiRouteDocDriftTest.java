@@ -24,12 +24,14 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import com.nextkey.ecommerce.api.controller.AuthController;
 import com.nextkey.ecommerce.api.controller.BookingController;
 import com.nextkey.ecommerce.api.controller.BookingPaymentController;
+import com.nextkey.ecommerce.api.controller.BookingReviewController;
 import com.nextkey.ecommerce.api.controller.CartController;
 import com.nextkey.ecommerce.api.controller.CheckoutController;
 import com.nextkey.ecommerce.api.controller.DashboardBookingController;
 import com.nextkey.ecommerce.api.controller.OAuthController;
 import com.nextkey.ecommerce.api.controller.OrderController;
 import com.nextkey.ecommerce.api.controller.OrderPaymentController;
+import com.nextkey.ecommerce.api.controller.ReviewController;
 import com.nextkey.ecommerce.api.controller.settlement.SettlementController;
 import com.nextkey.ecommerce.api.controller.settlement.TransferController;
 
@@ -71,6 +73,9 @@ class ApiRouteDocDriftTest {
         // Sprint 262：M07 結算與撥款，文件先前完全不存在（DEF-364），新建後一併納入守門
         GUARDED.put("api/API_M07_Settlement.md",
                 List.of(SettlementController.class, TransferController.class));
+        // Sprint 263：M08 評價與社交互動，文件先前完全不存在（DEF-365），新建後一併納入守門
+        GUARDED.put("api/API_M08_Review.md",
+                List.of(ReviewController.class, BookingReviewController.class));
     }
 
     /** 反引號包住的 `METHOD /path`：路徑到反引號、空白或 {@code ?} 為止。 */

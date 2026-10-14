@@ -1,7 +1,7 @@
-# E-Commerce System — 功能需求文檔 (FRD) v1.9
+# E-Commerce System — 功能需求文檔 (FRD) v1.10
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.9
+> **版本**: v1.10
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -42,10 +42,10 @@
 
 | 情境 | 涵蓋範圍 |
 |------|---------|
-| **Phase 1** | M01, M02, M03, M05, M06 (完整，Sprint 245 起), M07, M09, M12, M17 |
-| **Phase 2** | M04, M08, M10, M11, M15, M16, M18 |
+| **Phase 1** | M01, M02, M03, M05, M06 (完整，Sprint 245 起), M07, M08 (Sprint 263 起), M09, M12, M17 |
+| **Phase 2** | M04, M10, M11, M15, M16, M18 |
 
-> **⚠️ 修訂註記（2026-10-13 文件稽核追記）**：M06(完整)／M07／M09 已於 Sprint 244～250 由 Phase 2 升級為 Phase 1（§6A／§6B／§6C 三章即為其內容），本表原未同步，已更正。M08（評價）雖有實作（含 Sprint 251 授權修復），但本 FRD 至今仍無 M08 專章，暫維持列於 Phase 2，不代表其優先級判斷，僅反映文件現況（見 [DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md) DEF-365）。
+> **⚠️ 修訂註記（2026-10-13 文件稽核追記；2026-10-14 更新）**：M06(完整)／M07／M09 已於 Sprint 244～250 由 Phase 2 升級為 Phase 1（§6A／§6B／§6C 三章即為其內容），本表原未同步，已更正。M08（評價）已於 Sprint 263 補上 §6D 專章並同步升級為 Phase 1（DEF-365 結案）；PRD 仍將「評論權重演算法」與「檢舉機制」列為本模組的 P2／Could Have 範圍，但這兩項從未實作，詳見 §6D.7。
 
 ---
 
@@ -2808,6 +2808,72 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 
 ---
 
+## 6D. M08 評價與社交互動 (Review & Social Interaction)
+
+> **📌 依實作現況撰寫（Sprint 263）**：PRD 的 M08 列為 P2／Could Have（§13.5、§14.4），且含「評論權重演算法（過濾水軍）」「檢舉機制」兩項從未實作的範圍（見 §6D.7）。本模組先前完全沒有 FRD 專章（DEF-365，Sprint 261 發現；本章補齊）。
+
+### 6D.1 模組概述
+
+買家對已完成的訂單（商品/房源）撰寫星級評價（1-5 分、文字、至多 9 張圖片），或對已完成的訂房撰寫評價（無圖片數量限制，亦無上限驗證）；商家/房東可回覆（各一則）；任何登入者可查詢評價列表、詳情、統計、搜尋；買家可對評價投「有用」票；商家可依處理狀態管理自己租戶名下的評價。商品/房源評價（`Review`）功能完整，訂房評價（`BookingReview`）僅有建立與查詢，無編輯、刪除、統計、搜尋（見 6D.5／6D.7）。
+
+### 6D.2 功能總覽（現況）
+
+| 功能 | 現況 | 說明 |
+|------|------|------|
+| 商品/房源評價建立／編輯／刪除／查詢 | ✅ | 編輯、刪除皆無時間窗限制；刪除為軟刪除 |
+| 訂房評價建立與查詢 | ⚠️ 部分 | 僅能建立與依 ID 查詢單筆；**無編輯、無刪除、無列表、無統計端點**（service 方法存在但零 Controller 呼叫點） |
+| 評分統計（平均分、分布） | ⚠️ 不對稱 | 僅商品/房源評價有統計端點；訂房評價的統計 repository 方法存在但未被呼叫 |
+| 多維度評價搜尋 | ⚠️ 不對稱 | 僅商品/房源評價；訂房評價無搜尋 |
+| 商家／房東回覆 | ✅ | 三處授權邏輯不一致，見 BR-M08-07（DEF-373） |
+| 「有用」投票 | ⚠️ 不對稱 | 僅商品/房源評價；無取消投票端點 |
+| 評價圖片管理（新增/刪除/排序，上限 9 張＋媒體驗證） | ⚠️ 不對稱 | 僅商品/房源評價；訂房評價圖片無上限、無驗證 |
+| 評價管理（標記已/未處理、依租戶列表） | ✅ | 僅商品/房源評價 |
+| 評論權重演算法（過濾水軍） | ❌ | PRD 範圍，未實作任何權重或過濾邏輯 |
+| 檢舉機制 | ❌ | PRD 範圍，未實作任何檢舉/舉報端點 |
+
+### 6D.3 主要用戶
+
+- **買家**：對已完成訂單/訂房撰寫評價，編輯/刪除自己的商品/房源評價，對他人評價投「有用」票。
+- **賣家/房東**：回覆評價，標記評價為已/未處理，查詢自己租戶名下的評價管理列表。
+- **管理員**（`ADMIN`／`SUPER_ADMIN`）：跨租戶查詢評價管理列表、查詢任何使用者的評價列表。
+
+### 6D.4 資料模型（摘要）
+
+| 表 | 用途 | 備註 |
+|----|------|------|
+| `reviews` | 商品/房源評價 | `reviewType`：`PRODUCT`／`ROOM`；無 `tenant_id` |
+| `review_replies` | 商家回覆 | DB 唯一索引：每則評價僅一筆回覆 |
+| `booking_reviews` | 訂房評價（含房東回覆） | 房東回覆是單一可覆寫欄位，非獨立表 |
+
+### 6D.5 業務規則（現況）
+
+| 編號 | 規則 | 來源 |
+|------|------|------|
+| BR-M08-01 | 建立評價須提供 `orderId` 或 `bookingId`（至少一個），且須屬呼叫者本人並對應同一 `listingId`，否則 `E-1007`（DEF-331(b) 修復） | `ReviewService.verifyPurchase` |
+| BR-M08-02 | 防重複評價以「訂單/訂房＋商品」為單位，非「使用者＋商品」——同買家不同訂單購買同商品可各評價一次 | `ReviewService.createReview`（`E-1093`／`E-1094`） |
+| BR-M08-03 | 評分範圍 1-5 僅在應用層（DTO `@Min`／`@Max`）驗證，資料庫欄位無對應 `CHECK` 約束 | `ReviewDto`／`BookingReviewDto` |
+| BR-M08-04 | 評價編輯與刪除皆無時間窗限制，作者可隨時修改/刪除（軟刪除，`isVisible=false`） | `ReviewService.updateReview`／`deleteReview` |
+| BR-M08-05 | 商品/房源評價圖片上限 9 張且需通過媒體存在性驗證；訂房評價圖片無上限、無驗證——兩者規則不一致 | `ReviewService` vs `BookingReviewService` |
+| BR-M08-06 | 商家/房東回覆每則評價僅一次有效：`ReviewReply` 有 DB 唯一索引防重複（`E-1086`）；`BookingReview.hostReply` 為單一欄位，重複呼叫會直接覆寫、不報錯 | `ReviewReplyService`／`BookingReviewService` |
+| BR-M08-07 | 回覆授權邏輯三處不一致：回覆評價（`ReviewReplyService`）要求呼叫者是 listing 的**確切擁有者**；標記已/未處理（`ReviewService`）與回覆訂房評價（`BookingReviewService`）則是**同租戶或管理員**。三者共用同一組 `@PreAuthorize` 權限字串，可能讓同租戶的共同擁有人／`STORE_STAFF` 通過權限檢查卻仍被回覆評價拒絕（**DEF-373**，未修復） | `ReviewReplyService.createReply`、`ReviewService.checkReviewManagementAuthorization`、`BookingReviewService.replyToBookingReview` |
+| BR-M08-08 | 「有用」投票以單一原子 SQL 語句依使用者去重計票，取代先前讀-改-寫併發流失票數的實作 | `ReviewRepository.registerHelpfulVote` |
+| BR-M08-09 | 評價管理（標記已/未處理、依處理狀態列表）依租戶隔離：非管理員僅能查/改自己租戶名下 listing 的評價（經 listing 的 tenant 關聯，`Review` 實體本身無 `tenant_id`）；`ADMIN`／`SUPER_ADMIN`（`isCurrentUserAdmin()`）可跨租戶（DEF-028／029 修復） | `ReviewService.checkReviewManagementAuthorization`／`getReviewsByHandlingStatus` |
+| BR-M08-10 | 刪除評價僅檢查是否為評價本人；原始碼註解寫「檢查是否是本人或是管理員」，但實作沒有管理員例外分支——管理員無法經此端點刪除他人評價（**DEF-374**，未修復；若屬預期行為，註解應更正） | `ReviewService.deleteReview` |
+
+### 6D.6 API 規格概要
+
+完整規格見 [API_M08_Review.md](../02_architecture/api/API_M08_Review.md)（Sprint 263 新建，DEF-365）。該文件另揭露：`API_Index.md` 舊表格與 [TC_M08_Review.md](../03_testing/TC_M08_Review.md) 的 `API-M08-NNN` 裸編號彼此衝突（同一編號代表不同端點），新文件改用不衝突的 `API-M08-R-NNN`／`API-M08-BR-NNN` 編號（**DEF-375**，未修復，兩份舊文件本身的衝突未更正）。
+
+### 6D.7 與 PRD 的差異
+
+1. PRD「評論權重算法 (過濾水軍)」：未實作，程式碼中查無任何權重或過濾邏輯。
+2. PRD「檢舉機制」：未實作，無任何檢舉/舉報端點。
+3. PRD 將 M08 標為 P2／Could Have（§13.5、§14.4 列入 Phase 3），但實際已於 Sprint 15/16 完整實作上線——與 M06/M07/M09 同樣的「PRD 階段標籤早已過期」現象（本輪已同步更正情境使用指引表，見文件開頭）。
+4. PRD「非同步更新商品/房源綜合評分」：實作為同步 `@Cacheable` 查詢（`getRatingStats`），非訊息佇列式的非同步預先計算。
+5. 訂房評價（`BookingReview`）功能明顯落後商品/房源評價（`Review`）：無編輯/刪除端點、無統計端點、無搜尋、圖片規則無上限無驗證。PRD 並未明文要求兩種評價類型的功能範圍一致，此落差屬實作現況揭露，非 PRD 明文缺陷。
+
+---
+
 ## 7. M12 動態定價引擎 (Dynamic Pricing Engine)
 
 ### 7.1 模組概述
@@ -4208,6 +4274,7 @@ tenant_feature_toggles
 | v1.7 | 2026-10-11 | **Sprint 252（DEF-321(b)）**：新增 US-M17-009 瀏覽店鋪前台（PRD §10／§11.3／§12.7 四條路由首次實作）、§8.6 補上 `GET /v2/public/stores/:slug`、`GET /v2/public/stores/:slug/listings` 兩個新公開端點。檔頭版本號同步為 v1.7（此列為 2026-10-13 文件稽核時補登——檔頭版號已於 Sprint 252 當時改為 v1.7，但本修訂紀錄表漏加對應列） | Claude Code（2026-10-13 文件稽核補登） |
 | v1.8 | 2026-10-13 | **文件一致性檢查（第四輪，Sprint 261）**：修正§6A.2/§6A.7 的 state-log／店家後台按鈕過期敘述（已於 Sprint 246 實作，DEF-350）；修正§8.6 失效連結（`API_M17_Tenant_Management.md`→`API_M17_Tenant.md`）；修正「情境使用指引」Phase 1/2 表（M06完整／M07／M09 自 Sprint 244 起實為 Phase 1，原表未同步）。新登記 DEF-364～DEF-372（M07/M08/ReturnRequest/SupportTicket 無文件、M12 端點落差、M17 文件自身矛盾、FRD 缺 M17 成員管理與 M03 個人資料編輯兩條 User Story、ApiRouteDocDriftTest 覆蓋範圍缺口）。詳見 [SPRINT_261_PLAN.md](../04_planning/SPRINT_261_PLAN.md) | Claude Code（Sprint 261） |
 | v1.9 | 2026-10-13 | **M07 結算與撥款文件補齊（Sprint 262，DEF-364）**：§6B.6／§6B.7 更新，M07 的 API 規格（新建 `API_M07_Settlement.md`）與 SRD 技術設計章節（新建 §6）已完成，不再標示「尚未建立」。詳見 [SPRINT_262_PLAN.md](../04_planning/SPRINT_262_PLAN.md) | Claude Code（Sprint 262） |
+| v1.10 | 2026-10-14 | **M08 評價與社交互動文件補齊（Sprint 263，DEF-365）**：新增 §6D 專章（模組概述、功能總覽、主要用戶、資料模型、BR-M08-01～10、API 規格概要、與 PRD 的差異），本模組先前完全沒有 FRD 專章；「情境使用指引」Phase 1/2 表同步更正（M08 由 Phase 2 改列 Phase 1）。過程中發現並新登記 **DEF-373**（回覆評價授權邏輯三處不一致）、**DEF-374**（刪除評價缺少管理員例外，與程式碼註解意圖不符）、**DEF-375**（`API-M08-NNN` 裸編號在 `API_Index.md` 舊表格與 `TC_M08_Review.md` 彼此衝突），三項均登記未修復。詳見 [SPRINT_263_PLAN.md](../04_planning/SPRINT_263_PLAN.md) | Claude Code（Sprint 263） |
 
 ---
 

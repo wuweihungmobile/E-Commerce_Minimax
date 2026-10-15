@@ -1,14 +1,14 @@
 # API 規格文件 - M08 評價與社交互動 / API Specification - M08 Review & Social Interaction
 
 > **文件編號**: API-M08
-> **文件版本**: v1.1（Sprint 264：DEF-373／374 已修復，見下方說明；Sprint 263 首次建立，v1.0；Sprint 15/16 規劃時僅留 `API_Index.md` 內嵌的片段表格與一份已標記過期的 [TC_M08_Review.md](../../03_testing/TC_M08_Review.md)，從未真正建立獨立規格文件，DEF-365）
+> **文件版本**: v1.2（Sprint 268：DEF-375 已修復，見 §7；Sprint 264：DEF-373／374 已修復，見下方說明；Sprint 263 首次建立，v1.0；Sprint 15/16 規劃時僅留 `API_Index.md` 內嵌的片段表格與一份已標記過期的 [TC_M08_Review.md](../../03_testing/TC_M08_Review.md)，從未真正建立獨立規格文件，DEF-365）
 > **建立日期**: 2026-10-14
-> **最後更新**: 2026-10-14（Sprint 264）
+> **最後更新**: 2026-10-15（Sprint 268）
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`ReviewController`、`BookingReviewController`（`api/controller/`）、`ReviewService`、`ReviewReplyService`、`BookingReviewService`（`core/review/`）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[ReviewServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewServiceTest.java)、[ReviewReplyServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewReplyServiceTest.java)、[BookingReviewServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/BookingReviewServiceTest.java)、[ReviewAuthorizationRealDbIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewAuthorizationRealDbIntegrationTest.java)、[ReviewSearchRealDbIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewSearchRealDbIntegrationTest.java)、[M08ReviewIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewIntegrationTest.java)、[M08ReviewImageIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewImageIntegrationTest.java)、[M08ReviewHelpfulVotingIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewHelpfulVotingIntegrationTest.java)、[M08ReviewStatsIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewStatsIntegrationTest.java)
 > **回應封包與錯誤碼**: 一律以 [API_Error_Codes.md](../API_Error_Codes.md) 為準（扁平封包 `success`／`code`／`message`／`data`／`errors`）
-> **編號說明（重要）**: `API_Index.md` 舊表格與 [TC_M08_Review.md](../../03_testing/TC_M08_Review.md) 兩者都使用裸編號 `API-M08-NNN`，但**彼此代表不同端點**（例如 `API-M08-001` 在前者是「回覆評價」、在後者是「建立評價」，詳見 §7 已知限制）——本文件不沿用任一方，改用全新、不衝突的 `API-M08-R-NNN`（ReviewController）／`API-M08-BR-NNN`（BookingReviewController）編號
+> **編號說明（重要）**: `API_Index.md` 舊表格與 [TC_M08_Review.md](../../03_testing/TC_M08_Review.md) 原本都使用裸編號 `API-M08-NNN`，但**彼此代表不同端點**（例如 `API-M08-001` 在前者是「回覆評價」、在後者是「建立評價」）——本文件不沿用任一方，改用全新編號 `API-M08-R-NNN`（ReviewController）／`API-M08-BR-NNN`（BookingReviewController）。**✅ DEF-375 已於 Sprint 268（2026-10-15）解決**：`API_Index.md` 舊表格改用 `API-M08-IDX-NNN`、`TC_M08_Review.md` 改用 `API-M08-TC-NNN`，三套編號自此互不重疊，詳見 §7 已知限制
 
 > **⚠️ 本文件撰寫範圍說明**：`GET /v2/products/{productId}/reviews/stats`（`ProductController`）是評分統計功能在產品模組下的一個精簡包裝端點（直接呼叫 `ReviewService.getRatingStats`，功能與 §4.6 完全重複），**不屬於本文件機械防漂移範圍**（`ApiRouteDocDriftTest` 只登記 `ReviewController`／`BookingReviewController`，`ProductController` 的路由屬 M01 範疇），僅於 §7 已知限制提及。
 
@@ -340,7 +340,7 @@ M08 專屬錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](../
 | `GET /v2/booking-reviews/{reviewId}` 不過濾軟刪除 | 即使 `isVisible=false`（目前無端點可觸發），直接查詢仍會回傳；與 `Review` 系列端點一律過濾 `isVisible=true` 的慣例不一致 |
 | ~~刪除評價無管理員例外~~（**DEF-374**，✅ Sprint 264 已修復） | `deleteReview`／`deleteBookingReview` 原始碼註解寫「檢查是否是本人或是管理員」，但實作缺少管理員分支，與註解意圖不符；已補上 `isCurrentUserAdmin()` 例外，兩處皆修復（單元＋真實 DB 整合測試，含突變驗證） |
 | ~~回覆授權邏輯三處不一致~~（**DEF-373**，✅ Sprint 264 已修復） | §4.8 原要求「listing 確切擁有者」，§4.11／§4.17 是「同租戶或管理員」；已將 §4.8 統一為後者（使用者拍板：放寬以符合既有 DEF-331(c) 的同型前例，避免鎖死共同擁有人） |
-| `API-M08-NNN` 裸編號在既有文件彼此衝突（**DEF-375**，未修復） | `API_Index.md` 舊表格與 [TC_M08_Review.md](../../03_testing/TC_M08_Review.md) 都用 `API-M08-001～004` 等裸編號，但代表完全不同的端點（例如 `API-M08-001`：前者是回覆評價、後者是建立評價）。本文件改用不衝突的新編號（見文件頂部「編號說明」），但兩份舊文件彼此的衝突本身未被更正 |
+| ~~`API-M08-NNN` 裸編號在既有文件彼此衝突~~（**DEF-375**，✅ Sprint 268 已修復） | `API_Index.md` 舊表格與 [TC_M08_Review.md](../../03_testing/TC_M08_Review.md) 原都用 `API-M08-001～004` 等裸編號，但代表完全不同的端點（例如 `API-M08-001`：前者是回覆評價、後者是建立評價）。已分別改為 `API-M08-IDX-NNN`／`API-M08-TC-NNN`，與本文件的新編號三方不重疊 |
 | `GET /v2/products/{productId}/reviews/stats`（`ProductController`）與 §4.6 功能重複 | 兩個端點呼叫同一個 `ReviewService.getRatingStats`，`productId` 被當作 `listingId` 使用，屬歷史遺留的重複介面，非本文件機械防漂移範圍（見文件頂部範圍說明） |
 | 評分範圍僅應用層驗證 | `rating` 1-5 只有 `@Min`／`@Max` DTO 驗證，資料庫欄位無 `CHECK` 約束，直接寫入資料庫（如未來的批量匯入）可能繞過此限制 |
 | PRD 的評論權重演算法與檢舉機制未實作 | PRD §6.2 列為 M08 範圍的「評論權重算法 (過濾水軍)」「檢舉機制」，程式碼中查無任何對應邏輯或端點（見 §8 與 FRD §6D.7） |

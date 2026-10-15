@@ -108,32 +108,34 @@
 
 ## 3. API E2E 測試 (API E2E Tests)
 
+> **✅ 2026-10-15（Sprint 268，DEF-375 已解決）**：本節 `TC ID` 原本使用裸編號 `API-M08-NNN`，與 `API_Index.md` 舊表格的 `API-M08-NNN`（代表完全不同端點）彼此衝突。本節編號已加上 `-TC-` 中綴（標示「來自本測試文件」），`API_Index.md` 對應加上 `-IDX-` 中綴，與新文件 [API_M08_Review.md](../02_architecture/api/API_M08_Review.md) 的 `API-M08-R-NNN`／`API-M08-BR-NNN` 三套編號互不重疊。本文件仍維持 Sprint 244 現況聲明：內容本身不重寫、不反映之後的實作，僅編號格式變更。
+
 ### 3.1 評價 CRUD API
 
 | TC ID | 測試案例名稱 | 優先級 | 前置條件 | 測試步驟 | 預期結果 |
 |-------|-------------|--------|----------|----------|----------|
-| API-M08-001 | POST /v2/reviews | P0 | 買家登入 | 1. POST Body: {listingId, orderId, rating, content} | 200, ReviewResponse |
-| API-M08-002 | GET /v2/reviews/listing/{id} | P0 | 有評價 | 1. GET | 200, 評價列表 |
-| API-M08-003 | DELETE /v2/reviews/{id} | P0 | 評價本人 | 1. DELETE | 200, 軟刪除 |
-| API-M08-004 | GET /v2/reviews/listing/{id}/stats | P0 | 有評價 | 1. GET | 200, 統計資料 |
+| API-M08-TC-001 | POST /v2/reviews | P0 | 買家登入 | 1. POST Body: {listingId, orderId, rating, content} | 200, ReviewResponse |
+| API-M08-TC-002 | GET /v2/reviews/listing/{id} | P0 | 有評價 | 1. GET | 200, 評價列表 |
+| API-M08-TC-003 | DELETE /v2/reviews/{id} | P0 | 評價本人 | 1. DELETE | 200, 軟刪除 |
+| API-M08-TC-004 | GET /v2/reviews/listing/{id}/stats | P0 | 有評價 | 1. GET | 200, 統計資料 |
 
 ### 3.2 🆕 回覆 API（Sprint 15 + 16）
 
 | TC ID | 測試案例名稱 | 優先級 | 前置條件 | 測試步驟 | 預期結果 |
 |-------|-------------|--------|----------|----------|----------|
-| API-M08-101 | POST /v2/reviews/{id}/replies | P0 | StoreOwner 登入 | 1. POST Body: {content} | 200, ReplyResponse |
-| API-M08-102 | GET /v2/reviews/{id}/replies | P0 | 有回覆 | 1. GET | 200, ReplyListResponse |
-| API-M08-103 | POST /v2/reviews/{id}/replies - 重複 | P0 | 已有回覆 | 1. POST | 409, E_1086 |
-| API-M08-104 | POST /v2/reviews/{id}/replies - 非擁有者 | P0 | 買家登入 | 1. POST | 403, E_1007 |
+| API-M08-TC-101 | POST /v2/reviews/{id}/replies | P0 | StoreOwner 登入 | 1. POST Body: {content} | 200, ReplyResponse |
+| API-M08-TC-102 | GET /v2/reviews/{id}/replies | P0 | 有回覆 | 1. GET | 200, ReplyListResponse |
+| API-M08-TC-103 | POST /v2/reviews/{id}/replies - 重複 | P0 | 已有回覆 | 1. POST | 409, E_1086 |
+| API-M08-TC-104 | POST /v2/reviews/{id}/replies - 非擁有者 | P0 | 買家登入 | 1. POST | 403, E_1007 |
 
 ### 3.3 🆕 圖片管理 API（Sprint 16 US-005 + US-006）
 
 | TC ID | 測試案例名稱 | 優先級 | 前置條件 | 測試步驟 | 預期結果 |
 |-------|-------------|--------|----------|----------|----------|
-| API-M08-201 | POST /v2/reviews/{id}/images | P0 | 評價本人 | 1. POST Body: {imageUrl} | 200, 新圖加入 |
-| API-M08-202 | POST /v2/reviews/{id}/images - 超限 | P0 | 已有 9 張 | 1. POST | 400, E_1088 |
-| API-M08-203 | DELETE /v2/reviews/{id}/images/{idx} | P0 | 評價本人 | 1. DELETE | 200, 圖片移除 |
-| API-M08-204 | PUT /v2/reviews/{id}/images/order | P0 | 評價本人 | 1. PUT Body: {imageUrls} | 200, 順序更新 |
+| API-M08-TC-201 | POST /v2/reviews/{id}/images | P0 | 評價本人 | 1. POST Body: {imageUrl} | 200, 新圖加入 |
+| API-M08-TC-202 | POST /v2/reviews/{id}/images - 超限 | P0 | 已有 9 張 | 1. POST | 400, E_1088 |
+| API-M08-TC-203 | DELETE /v2/reviews/{id}/images/{idx} | P0 | 評價本人 | 1. DELETE | 200, 圖片移除 |
+| API-M08-TC-204 | PUT /v2/reviews/{id}/images/order | P0 | 評價本人 | 1. PUT Body: {imageUrls} | 200, 順序更新 |
 
 ---
 
@@ -172,8 +174,8 @@
 |---------|---------|--------|
 | 評價 CRUD 完整 | IT-M08-001 ~ 005 | P0 |
 | 重複評價防止 | UT-M08-003, UT-M08-004 | P0 |
-| 商家回覆權限 | UT-M08-103, API-M08-104 | P0 |
-| 重複回覆防止 | UT-M08-104, API-M08-103 | P0 |
+| 商家回覆權限 | UT-M08-103, API-M08-TC-104 | P0 |
+| 重複回覆防止 | UT-M08-104, API-M08-TC-103 | P0 |
 | 9 張上限 | UT-M08-202, IT-M08-102 | P0 |
 | 圖片有效性 | UT-M08-204, UT-M08-206 | P0 |
 | 圖片管理權限 | UT-M08-303, IT-M08-103 | P0 |

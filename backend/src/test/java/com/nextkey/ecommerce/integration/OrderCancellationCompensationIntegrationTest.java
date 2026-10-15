@@ -273,6 +273,10 @@ class OrderCancellationCompensationIntegrationTest {
     /**
      * 改版前（Sprint 88～217）付款成功時會呼叫 deductForOrder：total 與 reserved 同時扣掉、寫一筆 OUTBOUND。
      * 這裡照當年的 SQL 補上，模擬「付款在改版前、取消或出貨在改版後」的訂單。
+     *
+     * <p>DEF-376：{@code created_at} 不用 {@code NOW()}（與既有 RESERVE 紀錄的 {@code Instant.now()} 是不同時鐘來源，
+     * 全量測試負載較高時偶發打平，導致 {@code movementTypes()} 的 {@code ORDER BY created_at, movement_type} 次要鍵
+     * 把 OUTBOUND 排到 RESERVE 前面），改以子查詢取既有紀錄的最大時間戳位移 1 毫秒，確保嚴格晚於、不依賴任何時鐘精度。
      */
     private void simulateLegacyDeductionAtPayment(final UUID orderId) {
         UUID orderItemId = jdbcTemplate.queryForObject(
@@ -285,9 +289,10 @@ class OrderCancellationCompensationIntegrationTest {
                 INSERT INTO stock_movements (id, tenant_id, sku_id, movement_type, quantity, before_total_qty,
                         after_total_qty, balance_after, before_reserved_qty, after_reserved_qty, reference_type,
                         reference_id, order_item_id, notes, created_by, created_at)
-                VALUES (?, ?, ?, 'OUTBOUND', ?, ?, ?, ?, ?, 0, 'ORDER', ?, ?, 'Order outbound', ?, NOW())
+                VALUES (?, ?, ?, 'OUTBOUND', ?, ?, ?, ?, ?, 0, 'ORDER', ?, ?, 'Order outbound', ?,
+                        (SELECT MAX(created_at) + INTERVAL '1 millisecond' FROM stock_movements WHERE reference_id = ?))
                 """, UUID.randomUUID(), tenant.getId(), skuId, QTY, STOCK, STOCK - QTY, STOCK - QTY, QTY,
-                orderId, orderItemId, buyer.getId());
+                orderId, orderItemId, buyer.getId(), orderId);
     }
 
     private String givenPromo() {

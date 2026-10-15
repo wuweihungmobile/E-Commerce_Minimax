@@ -1,7 +1,7 @@
-# E-Commerce System — 功能需求文檔 (FRD) v1.11
+# E-Commerce System — 功能需求文檔 (FRD) v1.12
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.11
+> **版本**: v1.12
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -2909,11 +2909,11 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 | BR-M08-07 | 回覆授權邏輯三處不一致：回覆評價（`ReviewReplyService`）要求呼叫者是 listing 的**確切擁有者**；標記已/未處理（`ReviewService`）與回覆訂房評價（`BookingReviewService`）則是**同租戶或管理員**。三者共用同一組 `@PreAuthorize` 權限字串，可能讓同租戶的共同擁有人／`STORE_STAFF` 通過權限檢查卻仍被回覆評價拒絕（**DEF-373**，未修復） | `ReviewReplyService.createReply`、`ReviewService.checkReviewManagementAuthorization`、`BookingReviewService.replyToBookingReview` |
 | BR-M08-08 | 「有用」投票以單一原子 SQL 語句依使用者去重計票，取代先前讀-改-寫併發流失票數的實作 | `ReviewRepository.registerHelpfulVote` |
 | BR-M08-09 | 評價管理（標記已/未處理、依處理狀態列表）依租戶隔離：非管理員僅能查/改自己租戶名下 listing 的評價（經 listing 的 tenant 關聯，`Review` 實體本身無 `tenant_id`）；`ADMIN`／`SUPER_ADMIN`（`isCurrentUserAdmin()`）可跨租戶（DEF-028／029 修復） | `ReviewService.checkReviewManagementAuthorization`／`getReviewsByHandlingStatus` |
-| BR-M08-10 | 刪除評價僅檢查是否為評價本人；原始碼註解寫「檢查是否是本人或是管理員」，但實作沒有管理員例外分支——管理員無法經此端點刪除他人評價（**DEF-374**，未修復；若屬預期行為，註解應更正） | `ReviewService.deleteReview` |
+| BR-M08-10 | ~~刪除評價僅檢查是否為評價本人~~；原始碼註解寫「檢查是否是本人或是管理員」，原實作缺少管理員例外分支，已補上（**DEF-374**，✅ Sprint 264 已修復）——管理員現可經此端點刪除他人評價 | `ReviewService.deleteReview` |
 
 ### 6D.6 API 規格概要
 
-完整規格見 [API_M08_Review.md](../02_architecture/api/API_M08_Review.md)（Sprint 263 新建，DEF-365）。該文件另揭露：`API_Index.md` 舊表格與 [TC_M08_Review.md](../03_testing/TC_M08_Review.md) 的 `API-M08-NNN` 裸編號彼此衝突（同一編號代表不同端點），新文件改用不衝突的 `API-M08-R-NNN`／`API-M08-BR-NNN` 編號（**DEF-375**，未修復，兩份舊文件本身的衝突未更正）。
+完整規格見 [API_M08_Review.md](../02_architecture/api/API_M08_Review.md)（Sprint 263 新建，DEF-365）。該文件另揭露：`API_Index.md` 舊表格與 [TC_M08_Review.md](../03_testing/TC_M08_Review.md) 原本的 `API-M08-NNN` 裸編號彼此衝突（同一編號代表不同端點），新文件改用不衝突的 `API-M08-R-NNN`／`API-M08-BR-NNN` 編號；兩份舊文件彼此的衝突本身已分別改用 `API-M08-IDX-NNN`／`API-M08-TC-NNN` 校正（**DEF-375**，✅ Sprint 268 已修復）。
 
 ### 6D.7 與 PRD 的差異
 
@@ -4393,6 +4393,7 @@ tenant_feature_toggles
 | v1.9 | 2026-10-13 | **M07 結算與撥款文件補齊（Sprint 262，DEF-364）**：§6B.6／§6B.7 更新，M07 的 API 規格（新建 `API_M07_Settlement.md`）與 SRD 技術設計章節（新建 §6）已完成，不再標示「尚未建立」。詳見 [SPRINT_262_PLAN.md](../04_planning/SPRINT_262_PLAN.md) | Claude Code（Sprint 262） |
 | v1.11 | 2026-10-15 | **補齊 FRD 缺的兩條 User Story（Sprint 267，DEF-370／371）**：新增 §5 US-M03-008 個人資料編輯（Sprint 257 功能上線至今首次收錄）、§8 US-M17-010 店鋪成員管理（Sprint 98 起分批實作，Sprint 248 補齊 email 查詢，至今首次收錄），兩者皆為既有已上線功能的追溯補登；§5.7／§8.6 API 規格概要同步補上對應端點；同時修正 §5.7 既有失效連結（`API_M03_Auth.md` 連結漏了 `api/` 子目錄）。詳見 [SPRINT_267_PLAN.md](../04_planning/SPRINT_267_PLAN.md) | Claude Code（Sprint 267） |
 | v1.10 | 2026-10-14 | **M08 評價與社交互動文件補齊（Sprint 263，DEF-365）**：新增 §6D 專章（模組概述、功能總覽、主要用戶、資料模型、BR-M08-01～10、API 規格概要、與 PRD 的差異），本模組先前完全沒有 FRD 專章；「情境使用指引」Phase 1/2 表同步更正（M08 由 Phase 2 改列 Phase 1）。過程中發現並新登記 **DEF-373**（回覆評價授權邏輯三處不一致）、**DEF-374**（刪除評價缺少管理員例外，與程式碼註解意圖不符）、**DEF-375**（`API-M08-NNN` 裸編號在 `API_Index.md` 舊表格與 `TC_M08_Review.md` 彼此衝突），三項均登記未修復。詳見 [SPRINT_263_PLAN.md](../04_planning/SPRINT_263_PLAN.md) | Claude Code（Sprint 263） |
+| v1.12 | 2026-10-15 | **DEF-375 編號衝突校正＋順手修正 DEF-374 陳舊敘述（Sprint 268）**：BR-M08-10、§6D.6 原寫 DEF-374／DEF-375「未修復」，但 DEF-374 其實已於 Sprint 264 修復（SRD 當時已同步，本文件漏改）、DEF-375 本輪修復——兩處改為反映現況。`API_Index.md` 舊表格與 [TC_M08_Review.md](../03_testing/TC_M08_Review.md) 的裸編號 `API-M08-NNN` 分別加上 `-IDX-`／`-TC-` 中綴校正衝突。詳見 [SPRINT_268_PLAN.md](../04_planning/SPRINT_268_PLAN.md) | Claude Code（Sprint 268） |
 
 ---
 

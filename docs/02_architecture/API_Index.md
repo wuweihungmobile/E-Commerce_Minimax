@@ -153,18 +153,20 @@
 
 ### 評價系統 (M08) - 🆕 Sprint 15-16 新增
 
-> **⚠️ 2026-10-14（Sprint 263）**：此表僅為 Sprint 15/16 時期的歷史草表，已知**不完整**（漏列建立/編輯/刪除/依商品查詢/依使用者查詢/統計/搜尋/有用投票/訂房評價建立/訂房評價查詢共 10 個既有端點）。**完整且已核對程式碼的規格見 [API_M08_Review.md](./api/API_M08_Review.md)**，本表保留僅供歷史參考，不再維護。**本表的 `API-M08-NNN` 編號與 [TC_M08_Review.md](../03_testing/TC_M08_Review.md) 彼此衝突**（同一編號在兩份文件代表不同端點，詳見新文件 §7 已知限制、DEF-375），新文件已改用不衝突的 `API-M08-R-NNN`／`API-M08-BR-NNN` 編號。
+> **⚠️ 2026-10-14（Sprint 263）**：此表僅為 Sprint 15/16 時期的歷史草表，已知**不完整**（漏列建立/編輯/刪除/依商品查詢/依使用者查詢/統計/搜尋/有用投票/訂房評價建立/訂房評價查詢共 10 個既有端點）。**完整且已核對程式碼的規格見 [API_M08_Review.md](./api/API_M08_Review.md)**，本表保留僅供歷史參考，不再維護。
+>
+> **✅ 2026-10-15（Sprint 268，DEF-375 已解決）**：本表編號原與 [TC_M08_Review.md](../03_testing/TC_M08_Review.md) 彼此衝突（同一裸編號 `API-M08-NNN` 在兩份文件代表不同端點）。本表所有編號已加上 `-IDX-` 中綴（標示「來自本文件 API_Index.md」），`TC_M08_Review.md` 對應加上 `-TC-` 中綴，兩者與新文件的 `API-M08-R-NNN`／`API-M08-BR-NNN` 三套編號互不重疊。本表內部的 Sprint／US 來源標註維持不變，僅編號格式改變。
 
 | API ID | 端點 | 方法 | 說明 | 角色 | Sprint |
 |--------|------|------|------|------|--------|
-| API-M08-001 | `/v2/reviews/{id}/replies` | POST | 商家回覆評價 | StoreOwner | Sprint 15 |
-| API-M08-002 | `/v2/reviews/{id}/replies` | GET | 取得評價回覆列表 | 任意已登入 | Sprint 16 (US-001) |
-| API-M08-003 | `/v2/reviews/{id}/handle` | PUT | 標記評價為已/未處理 | StoreOwner | Sprint 15 |
-| API-M08-004 | `/v2/reviews/managed` | GET | 取得待處理評價列表 | StoreOwner | Sprint 15 |
-| **🆕 API-M08-005** | `/v2/reviews/{id}/images` | POST | 新增評價圖片（總數不超過 9 張） | 評價本人 | Sprint 16 (US-006) |
-| **🆕 API-M08-006** | `/v2/reviews/{id}/images/{imageIndex}` | DELETE | 刪除評價單張圖片 | 評價本人 | Sprint 16 (US-006) |
-| **🆕 API-M08-007** | `/v2/reviews/{id}/images/order` | PUT | 重新排序評價圖片 | 評價本人 | Sprint 16 (US-006) |
-| API-M08-101 | `/v2/booking-reviews/{id}/reply` | POST | 房東回覆預訂評價 | Host | Sprint 15 |
+| API-M08-IDX-001 | `/v2/reviews/{id}/replies` | POST | 商家回覆評價 | StoreOwner | Sprint 15 |
+| API-M08-IDX-002 | `/v2/reviews/{id}/replies` | GET | 取得評價回覆列表 | 任意已登入 | Sprint 16 (US-001) |
+| API-M08-IDX-003 | `/v2/reviews/{id}/handle` | PUT | 標記評價為已/未處理 | StoreOwner | Sprint 15 |
+| API-M08-IDX-004 | `/v2/reviews/managed` | GET | 取得待處理評價列表 | StoreOwner | Sprint 15 |
+| **🆕 API-M08-IDX-005** | `/v2/reviews/{id}/images` | POST | 新增評價圖片（總數不超過 9 張） | 評價本人 | Sprint 16 (US-006) |
+| **🆕 API-M08-IDX-006** | `/v2/reviews/{id}/images/{imageIndex}` | DELETE | 刪除評價單張圖片 | 評價本人 | Sprint 16 (US-006) |
+| **🆕 API-M08-IDX-007** | `/v2/reviews/{id}/images/order` | PUT | 重新排序評價圖片 | 評價本人 | Sprint 16 (US-006) |
+| API-M08-IDX-101 | `/v2/booking-reviews/{id}/reply` | POST | 房東回覆預訂評價 | Host | Sprint 15 |
 
 ### 結算系統 (M07) - 🆕 Sprint 15-16 新增
 

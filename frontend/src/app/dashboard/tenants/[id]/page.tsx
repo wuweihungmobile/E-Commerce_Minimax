@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import TenantDetail from '@/components/tenant/TenantDetail'
 import AuthService from '@/services/auth'
+import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
 
 interface TenantDetailPageProps {
   params: Promise<{
@@ -13,6 +14,7 @@ interface TenantDetailPageProps {
 
 export default function TenantDetailPage({ params }: TenantDetailPageProps) {
   const router = useRouter()
+  const userEmail = useCurrentUserEmail()
   const [tenantId, setTenantId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -68,7 +70,7 @@ export default function TenantDetailPage({ params }: TenantDetailPageProps) {
             </div>
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-600">
-                {AuthService.getCurrentUser()?.email}
+                {userEmail}
               </span>
               <button
                 onClick={async () => {

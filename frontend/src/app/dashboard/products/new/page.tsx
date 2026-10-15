@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import ProductForm from '@/components/product/ProductForm'
 import AuthService from '@/services/auth'
+import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
 
 export default function NewProductPage() {
   const router = useRouter()
+  const userEmail = useCurrentUserEmail()
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
@@ -34,7 +36,7 @@ export default function NewProductPage() {
             </div>
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-600">
-                {AuthService.getCurrentUser()?.email}
+                {userEmail}
               </span>
               <button
                 onClick={async () => {

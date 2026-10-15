@@ -14,6 +14,7 @@ import OrderService, {
   orderStatusBadgeVariant,
 } from '@/services/order'
 import AuthService from '@/services/auth'
+import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
 
 const PAGE_SIZE = 20
 
@@ -32,6 +33,7 @@ function formatPrice(amount: number, currency: string) {
 
 export default function DashboardOrdersPage() {
   const router = useRouter()
+  const userEmail = useCurrentUserEmail()
 
   const [orders, setOrders] = useState<OrderListItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -93,7 +95,7 @@ export default function DashboardOrdersPage() {
             </div>
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-600">
-                {AuthService.getCurrentUser()?.email}
+                {userEmail}
               </span>
               <button
                 onClick={async () => {

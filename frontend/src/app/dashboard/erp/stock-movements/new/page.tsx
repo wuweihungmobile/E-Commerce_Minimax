@@ -11,9 +11,11 @@ import StockMovementService, {
   StockMovementRequest,
 } from '@/services/erp/stockMovement'
 import AuthService from '@/services/auth'
+import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
 
 export default function NewStockMovementPage() {
   const router = useRouter()
+  const userEmail = useCurrentUserEmail()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -103,7 +105,7 @@ export default function NewStockMovementPage() {
             </div>
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-600">
-                {AuthService.getCurrentUser()?.email}
+                {userEmail}
               </span>
               <button
                 onClick={async () => {

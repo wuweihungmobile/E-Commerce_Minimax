@@ -35,17 +35,23 @@ test.describe('AT-DASHBOARD-PRICING-CALENDAR-REAL: 定價日曆預覽頁（真�
   });
 
   test('E2E-PRICING-CAL-01: 輸入房源 ID 後載入定價日曆，無錯誤訊息', async ({ page }: { page: Page }) => {
+    // DEF-361（已修復）：此頁與既有 /dashboard/pricing/rules 共用的導覽列曾直接在渲染中呼叫
+    // AuthService.getCurrentUser()?.email（讀 localStorage），SSR 輸出與客戶端 hydration 當下
+    // 不一致，觸發 React Hydration Error #418。修復後改用 useCurrentUserEmail()
+    // （useSyncExternalStore），此處正面斷言不再出現該錯誤，而非僅放寬逾時容忍它。
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(err.message));
+
     await loginOnly(page, owner.email, owner.password);
     await page.goto('/dashboard/pricing/calendar');
 
     await page.getByTestId('pricing-calendar-room-input').fill(roomId);
 
-    // DEF-361（已知缺口，未修）：此頁與既有 /dashboard/pricing/rules 共用的導覽列寫法
-    // 會觸發 React Hydration Error #418（SSR 輸出與客戶端初次渲染不一致，約 1-2 秒內自行恢復），
-    // 系統負載較高時可能超過預設 5000ms timeout。放寬至 15000ms 容忍這段既有、非本頁獨有的恢復時間。
     const preview = page.getByTestId('pricing-calendar-preview');
-    await expect(preview).toBeVisible({ timeout: 15_000 });
+    await expect(preview).toBeVisible();
     await expect(preview.getByText('定價日曆預覽')).toBeVisible();
+
+    expect(pageErrors).toEqual([]);
 
     // DEF-362（Sprint 254 已修復）：<PricingCalendarPreview/> 原用 toISOString()（UTC）當「今天」
     // 送給後端，當地時區 UTC+8 每天 00:00~07:59 會算成前一天，使後端 LocalDate.now() 誤判為過去

@@ -6,12 +6,14 @@ import Link from 'next/link'
 import { Input } from '@/components/ui/input'
 import PricingCalendarPreview from '@/components/pricing/PricingCalendarPreview'
 import AuthService from '@/services/auth'
+import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
 
 // DEF-321(e)：PRD §10.1.2 列為獨立路由 /dashboard/pricing/calendar，
 // 但原實作只把 <PricingCalendarPreview /> 嵌在 /dashboard/pricing/rules 篩選房源 ID 之後，
 // 沒有獨立頁面可用。本頁重用同一元件，提供對齊 PRD 路由表的獨立入口。
 export default function PricingCalendarPage() {
   const router = useRouter()
+  const userEmail = useCurrentUserEmail()
   const [roomListingId, setRoomListingId] = useState('')
 
   useEffect(() => {
@@ -39,7 +41,7 @@ export default function PricingCalendarPage() {
             </div>
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-600">
-                {AuthService.getCurrentUser()?.email}
+                {userEmail}
               </span>
               <button
                 onClick={async () => {

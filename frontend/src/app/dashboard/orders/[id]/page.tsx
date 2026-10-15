@@ -23,6 +23,7 @@ import LogisticsService, {
   LOGISTICS_PROVIDER_LABELS,
 } from '@/services/logistics'
 import AuthService from '@/services/auth'
+import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -54,6 +55,7 @@ function statusLabel(status: string) {
 export default function DashboardOrderDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const userEmail = useCurrentUserEmail()
   const orderId = params.id as string
 
   const [order, setOrder] = useState<Order | null>(null)
@@ -186,7 +188,7 @@ export default function DashboardOrderDetailPage() {
               <span className="text-gray-900 font-medium">#{order.id.slice(0, 8)}</span>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">{AuthService.getCurrentUser()?.email}</span>
+              <span className="text-sm text-gray-600">{userEmail}</span>
               <button
                 onClick={async () => {
                   await AuthService.logout()

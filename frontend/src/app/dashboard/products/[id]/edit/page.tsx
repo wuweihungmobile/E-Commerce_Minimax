@@ -7,9 +7,11 @@ import { useParams } from 'next/navigation'
 import ProductForm from '@/components/product/ProductForm'
 import SkuManager from '@/components/product/SkuManager'
 import AuthService from '@/services/auth'
+import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
 
 export default function EditProductPage() {
   const router = useRouter()
+  const userEmail = useCurrentUserEmail()
   const params = useParams()
 
   useEffect(() => {
@@ -37,7 +39,7 @@ export default function EditProductPage() {
             </div>
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-600">
-                {AuthService.getCurrentUser()?.email}
+                {userEmail}
               </span>
               <button
                 onClick={async () => {

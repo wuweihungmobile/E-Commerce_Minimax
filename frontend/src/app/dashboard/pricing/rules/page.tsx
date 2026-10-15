@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import PricingRuleList from '@/components/pricing/PricingRuleList'
 import AuthService from '@/services/auth'
+import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
 
 export default function PricingRulesPage() {
   const router = useRouter()
+  const userEmail = useCurrentUserEmail()
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
@@ -33,7 +35,7 @@ export default function PricingRulesPage() {
                 定價日曆預覽
               </Link>
               <span className="text-sm text-gray-600">
-                {AuthService.getCurrentUser()?.email}
+                {userEmail}
               </span>
               <button
                 onClick={async () => {

@@ -6,9 +6,11 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import RoomForm from '@/components/room/RoomForm'
 import AuthService from '@/services/auth'
+import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
 
 export default function EditRoomPage() {
   const router = useRouter()
+  const userEmail = useCurrentUserEmail()
   const params = useParams()
 
   useEffect(() => {
@@ -36,7 +38,7 @@ export default function EditRoomPage() {
             </div>
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-600">
-                {AuthService.getCurrentUser()?.email}
+                {userEmail}
               </span>
               <button
                 onClick={async () => {

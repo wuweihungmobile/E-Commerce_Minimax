@@ -28,7 +28,9 @@ import com.nextkey.ecommerce.api.controller.BookingReviewController;
 import com.nextkey.ecommerce.api.controller.CartController;
 import com.nextkey.ecommerce.api.controller.CheckoutController;
 import com.nextkey.ecommerce.api.controller.DashboardBookingController;
+import com.nextkey.ecommerce.api.controller.DashboardListingController;
 import com.nextkey.ecommerce.api.controller.DashboardPricingController;
+import com.nextkey.ecommerce.api.controller.ListingController;
 import com.nextkey.ecommerce.api.controller.NotificationController;
 import com.nextkey.ecommerce.api.controller.NotificationPreferenceController;
 import com.nextkey.ecommerce.api.controller.NotificationTemplateController;
@@ -36,7 +38,11 @@ import com.nextkey.ecommerce.api.controller.OAuthController;
 import com.nextkey.ecommerce.api.controller.OrderController;
 import com.nextkey.ecommerce.api.controller.OrderPaymentController;
 import com.nextkey.ecommerce.api.controller.PricingController;
+import com.nextkey.ecommerce.api.controller.ProductController;
+import com.nextkey.ecommerce.api.controller.PublicListingController;
 import com.nextkey.ecommerce.api.controller.ReviewController;
+import com.nextkey.ecommerce.api.controller.RoomCalendarController;
+import com.nextkey.ecommerce.api.controller.RoomController;
 import com.nextkey.ecommerce.api.controller.StorefrontController;
 import com.nextkey.ecommerce.api.controller.TenantController;
 import com.nextkey.ecommerce.api.controller.returns.ReturnRequestController;
@@ -101,6 +107,17 @@ class ApiRouteDocDriftTest {
         GUARDED.put("api/API_M09_Notification.md", List.of(
                 NotificationController.class, NotificationPreferenceController.class,
                 NotificationTemplateController.class));
+        // Sprint 273：M01 商品中心，v1.0 與實作落差過大全面改寫（DEF-286／DEF-372 範圍）。
+        // ListingController／PublicListingController 是 PRODUCT／ROOM 共用的跨類型瀏覽端點，
+        // 因只能整個類別歸屬一份文件，依編號順序登記在 M01（M02 文件會交叉引用）
+        GUARDED.put("api/API_M01_Product_Center.md", List.of(
+                ListingController.class, PublicListingController.class, ProductController.class));
+        // Sprint 273：M02 房源中心，v1.0 與實作落差過大全面改寫（DEF-286／DEF-372 範圍）
+        GUARDED.put("api/API_M02_Listing_Center.md",
+                List.of(RoomController.class, RoomCalendarController.class));
+        // Sprint 273：統一 Listing 建立端點（PRODUCT／ROOM 共用，DashboardListingController 僅此一條路由），
+        // 獨立成文件校正內容，一併納入守門（DEF-286／DEF-372 範圍）
+        GUARDED.put("api/API_Listing_Unified_Create.md", List.of(DashboardListingController.class));
     }
 
     /** 反引號包住的 `METHOD /path`：路徑到反引號、空白或 {@code ?} 為止。 */

@@ -1,7 +1,7 @@
-# E-Commerce System — 功能需求文檔 (FRD) v1.13
+# E-Commerce System — 功能需求文檔 (FRD) v1.14
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.13
+> **版本**: v1.14
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -22,6 +22,8 @@
 > **⚠️ 修訂註記（Sprint 262，2026-10-13，DEF-364）**：§6B.6／§6B.7 更新——M07 結算與撥款的 API 規格文件（[API_M07_Settlement.md](../02_architecture/api/API_M07_Settlement.md)）與 SRD 技術設計章節（§6）已建立，不再是「尚未建立」。其餘章節未改寫；M17 成員管理／M03 個人資料編輯兩條 User Story（DEF-370／371）仍未補寫。
 >
 > **⚠️ 修訂註記（Sprint 267，2026-10-15，DEF-370／371）**：新增 §5 **US-M03-008 個人資料編輯**、§8 **US-M17-010 店鋪成員管理** 兩條 User Story（皆為既有已上線功能的追溯補登，見上方 Sprint 261 註記登記時的 DEF 編號更正）；§5.7／§8.6 API 規格概要同步補上對應端點；§5.7 既有失效連結（漏 `api/` 子目錄）一併修正。其餘章節未改寫。詳見 [SPRINT_267_PLAN.md](../04_planning/SPRINT_267_PLAN.md)。
+>
+> **⚠️ 修訂註記（Sprint 273，2026-10-15，DEF-286／DEF-372／DEF-380）**：§3.7、§4.7 API 規格概要表全面改寫，連結改指向全面改寫的 [API_M01_Product_Center.md](../02_architecture/api/API_M01_Product_Center.md)／[API_M02_Listing_Center.md](../02_architecture/api/API_M02_Listing_Center.md)。§3／§4 三處新增修訂註記，標註 `DRAFT`→發布兩階段上架、建立時自動初始化日曆、`PUT .../calendar` 批次封鎖三段驗收標準敘述與實作不符（**Gherkin 本文未改寫**，是否重新設計或改寫驗收標準屬產品決策，新登記 DEF-380）。其餘章節未改寫。詳見 [SPRINT_273_PLAN.md](../04_planning/SPRINT_273_PLAN.md)。
 
 ---
 
@@ -483,6 +485,8 @@ Seller 可以快速上架商品，開始銷售。
 
 #### Acceptance Criteria
 
+> **⚠️ 修訂註記（Sprint 273，DEF-380，未修復）**：下方 AC-M01-002-1／AC-M01-002-2 描述的「先建立 `DRAFT` 商品、再呼叫發布端點轉 `ACTIVE`」兩階段流程，在目前實作中**不存在**——`ProductService.createProduct`／`createProductFromDashboard` 建立時一律直接寫入 `status = ACTIVE`，沒有任何路徑產生 `DRAFT` 列，後端也沒有 `PUT .../publish` 端點。是否要實作真正的草稿機制、或把本節改為「建立即上架」的現況，屬產品決策，暫不修改以下 Gherkin 內容，詳見 [API_M01_Product_Center.md](../02_architecture/api/API_M01_Product_Center.md) §7、[DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md) DEF-380。
+
 **AC-M01-002-1**: 基本上架流程
 **Given** Seller 已登入且 RETAIL_ENABLED = true
 **When** 提交商品上架請求（包含 title, description, base_price, category）
@@ -817,18 +821,21 @@ END IF
 
 ### 3.7 API 規格概要
 
+> **修訂記錄（Sprint 273）**：本表原列的 `GET /api/v2/listings/search`、`GET /api/v2/categories`、`PUT/DELETE /api/v2/dashboard/listings/:id`、`PUT .../publish` 皆不存在於實作，已依 [API_M01_Product_Center.md](../02_architecture/api/API_M01_Product_Center.md) 校正；下表「發布商品」端點已移除，原因見該文件 §7（DEF-380：建立商品一律直接 `ACTIVE`，沒有 `DRAFT`→發布的兩階段流程，§3.2 與上方 AC-M01-002-1／AC-M01-002-2 描述的流程目前不存在，詳見該處新增的修訂註記）。
+
 | API Endpoint | 方法 | 用途 | 角色 |
 |-------------|------|------|------|
-| `/api/v2/listings` | GET | 商品列表（分頁/篩選） | Guest+ |
-| `/api/v2/listings/:id` | GET | 商品詳情 | Guest+ |
-| `/api/v2/listings/search` | GET | 關鍵字搜尋 | Guest+ |
-| `/api/v2/categories` | GET | 分類列表 | Guest+ |
-| `/api/v2/dashboard/listings` | GET | 店鋪商品列表 | Seller+ |
-| `/api/v2/dashboard/listings` | POST | 建立商品 | Seller+ |
-| `/api/v2/dashboard/listings/:id` | PUT | 更新商品 | Seller+ |
-| `/api/v2/dashboard/listings/:id` | DELETE | 下架商品 | Seller+ |
+| `/api/v2/listings` | GET | 商品/房源混合列表（分頁/`type`/`keyword`） | Guest+ |
+| `/api/v2/listings/:id` | GET | 商品/房源詳情 | Guest+ |
+| `/api/v2/public/listings` | GET | 匿名跨店鋪瀏覽 | Guest |
+| `/api/v2/products` | GET | 商品列表（`category`/`brand`/`keyword` 篩選） | Seller+ |
+| `/api/v2/products/:listingId` | GET | 商品詳情 | Seller+ |
+| `/api/v2/products` | POST | 建立商品（直接 `ACTIVE`，無 `DRAFT` 階段） | Seller+ |
+| `/api/v2/products/:listingId` | PUT | 更新商品（含手動變更 status） | Seller+ |
+| `/api/v2/products/:listingId` | DELETE | 下架商品（軟刪除） | Seller+ |
+| `/api/v2/dashboard/listings` | POST | 統一建立入口（PRODUCT/ROOM 共用） | Seller+/Host+ |
 
-**詳細 API 規格**: 見 [docs/02_architecture/API_M01_Product_Center.md](../02_architecture/API_M01_Product_Center.md)
+**詳細 API 規格**: 見 [docs/02_architecture/api/API_M01_Product_Center.md](../02_architecture/api/API_M01_Product_Center.md)（完整 14 個端點，含 SKU 管理與評分統計）
 
 ---
 
@@ -1037,6 +1044,8 @@ Host 可以快速上架房源，開始接受預訂。
 
 #### Acceptance Criteria
 
+> **⚠️ 修訂註記（Sprint 273，DEF-380，未修復）**：以下 AC-M02-003-1／AC-M02-003-2／AC-M02-003-3 描述的「先建立 `DRAFT` 房源、呼叫發布端點轉 `ACTIVE`、建立時自動產生未來 90 天 room_calendar 記錄」流程，在目前實作中**不存在**——`RoomService.createRoom`／`createRoomFromDashboard` 建立時一律直接寫入 `status = ACTIVE`，且完全不建立任何 `room_calendar` 列（該表採「缺列視為可訂」的隱性語意，只在被訂房或房東主動標記時才寫入）。後端也沒有 `PUT .../status` 發布端點。是否實作真正的草稿機制與建立時日曆初始化、或把本節改為現況，屬產品決策，暫不修改以下 Gherkin 內容，詳見 [API_M02_Listing_Center.md](../02_architecture/api/API_M02_Listing_Center.md) §7、[DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md) DEF-380。
+
 **AC-M02-003-1**: 基本上架流程
 **Given** Host 已登入且 BOOKING_ENABLED = true
 **When** 提交房源上架請求（title, description, base_price, max_guests, location）
@@ -1137,6 +1146,8 @@ Host 可以快速上架房源，開始接受預訂。
 ```
 
 ---
+
+> **⚠️ 修訂註記（Sprint 273，未修復）**：以下 `PUT /api/v2/dashboard/listings/:id/calendar`（批次依日期＋`reason` 封鎖）端點不存在。日曆格的 `BLOCKED` 狀態對應的 Service 方法 `blockDateRange`／`unblockDateRange` 確實存在，但**全庫無任何 Controller 呼叫它們**（零生產呼叫點，見 [API_M02_Listing_Center.md](../02_architecture/api/API_M02_Listing_Center.md) §7）；唯一真正可由 API 觸發、效果類似的機制是同文件 §4.7～4.8 的 `POST/DELETE /v2/dashboard/rooms/{roomListingId}/maintenance`（區間 `startDate`／`endDate`，轉為 `MAINTENANCE` 而非 `BLOCKED`，且無逐日 `reason` 欄位）。
 
 **AC-M02-004-2**: 編輯日曆設定
 **Given** Host 擁有該房源的擁有權
@@ -1318,17 +1329,20 @@ END IF
 
 ### 4.7 API 規格概要
 
+> **修訂記錄（Sprint 273）**：本表原列的 `GET /api/v2/listings/:id/calendar`（日曆查詢實際屬 M06，是 `GET /api/v2/bookings/calendar`）、`GET /api/v2/dashboard/listings`（店鋪房源列表，無此端點）、`PUT /api/v2/dashboard/listings/:id/status`（不存在）皆已依 [API_M02_Listing_Center.md](../02_architecture/api/API_M02_Listing_Center.md) 校正；「建立房源」端點已改為實際的型別專屬入口，「發布房源」端點已移除，原因見該文件 §7（DEF-380，同 §4.3 修訂記錄）。
+
 | API Endpoint | 方法 | 用途 | 角色 |
 |-------------|------|------|------|
-| `/api/v2/listings?type=ROOM` | GET | 房源列表（分頁/篩選） | Guest+ |
-| `/api/v2/listings/:id` | GET | 房源詳情 | Guest+ |
-| `/api/v2/listings/:id/calendar` | GET | 日曆與價格查詢 | Guest+ |
-| `/api/v2/dashboard/listings` | GET | 店鋪房源列表 | Host+ |
-| `/api/v2/dashboard/listings` | POST | 建立房源 | Host+ |
-| `/api/v2/dashboard/listings/:id` | PUT | 更新房源 | Host+ |
-| `/api/v2/dashboard/listings/:id/status` | PUT | 更新房源狀態 | Host+ |
+| `/api/v2/listings?type=ROOM` | GET | 房源列表（分頁/篩選，屬 M01 共用端點） | Guest+ |
+| `/api/v2/listings/:id` | GET | 房源詳情（屬 M01 共用端點） | Guest+ |
+| `/api/v2/bookings/calendar` | GET | 日曆與空房查詢（屬 M06） | Guest+ |
+| `/api/v2/rooms` | GET | 店鋪房源列表（限自己租戶） | Host+ |
+| `/api/v2/rooms` | POST | 建立房源（直接 `ACTIVE`，無 `DRAFT` 階段） | Host+ |
+| `/api/v2/rooms/:listingId` | PUT | 更新房源（含手動變更 status） | Host+ |
+| `/api/v2/dashboard/rooms/:roomListingId/maintenance` | POST/DELETE | 標記/解除日曆維護窗口 | Host+ |
+| `/api/v2/dashboard/listings` | POST | 統一建立入口（PRODUCT/ROOM 共用） | Host+/Seller+ |
 
-**詳細 API 規格**: 見 [docs/02_architecture/API_M02_Listing_Center.md](../02_architecture/API_M02_Listing_Center.md)
+**詳細 API 規格**: 見 [docs/02_architecture/api/API_M02_Listing_Center.md](../02_architecture/api/API_M02_Listing_Center.md)（完整 8 個端點）
 
 ---
 
@@ -4396,6 +4410,7 @@ tenant_feature_toggles
 | v1.10 | 2026-10-14 | **M08 評價與社交互動文件補齊（Sprint 263，DEF-365）**：新增 §6D 專章（模組概述、功能總覽、主要用戶、資料模型、BR-M08-01～10、API 規格概要、與 PRD 的差異），本模組先前完全沒有 FRD 專章；「情境使用指引」Phase 1/2 表同步更正（M08 由 Phase 2 改列 Phase 1）。過程中發現並新登記 **DEF-373**（回覆評價授權邏輯三處不一致）、**DEF-374**（刪除評價缺少管理員例外，與程式碼註解意圖不符）、**DEF-375**（`API-M08-NNN` 裸編號在 `API_Index.md` 舊表格與 `TC_M08_Review.md` 彼此衝突），三項均登記未修復。詳見 [SPRINT_263_PLAN.md](../04_planning/SPRINT_263_PLAN.md) | Claude Code（Sprint 263） |
 | v1.12 | 2026-10-15 | **DEF-375 編號衝突校正＋順手修正 DEF-374 陳舊敘述（Sprint 268）**：BR-M08-10、§6D.6 原寫 DEF-374／DEF-375「未修復」，但 DEF-374 其實已於 Sprint 264 修復（SRD 當時已同步，本文件漏改）、DEF-375 本輪修復——兩處改為反映現況。`API_Index.md` 舊表格與 [TC_M08_Review.md](../03_testing/TC_M08_Review.md) 的裸編號 `API-M08-NNN` 分別加上 `-IDX-`／`-TC-` 中綴校正衝突。詳見 [SPRINT_268_PLAN.md](../04_planning/SPRINT_268_PLAN.md) | Claude Code（Sprint 268） |
 | v1.13 | 2026-10-15 | **M09 訊息通知中心 API 文件補齊（Sprint 272，DEF-286 範圍）**：§6C 橫幅、§6C.2（EMAIL/SMS/PUSH 現況、API 規格現況兩列）、§6C.5（BR-M09-05）、§6C.6 同步更新為 Sprint 271（DEF-317）之後的真實行為（EMAIL 真實送出、SMS/PUSH 明確回報未送達、API 規格已建立），取代先前「一律標為已送出」「規格尚未建立」的過時敘述；三處皆連結新建的 [API_M09_Notification.md](../02_architecture/api/API_M09_Notification.md)（17 端點）。過程中新登記 **DEF-378**（`NotificationTemplateService` 誤用 `E_6001` 付款錯誤碼表示範本代碼重複），登記未修復。詳見 [SPRINT_272_PLAN.md](../04_planning/SPRINT_272_PLAN.md) | Claude Code（Sprint 272） |
+| v1.14 | 2026-10-15 | **M01／M02 API 文件全面改寫＋FRD 端點表校正（Sprint 273，DEF-286／DEF-372 範圍）**：§3.7、§4.7 端點概要表依實際程式碼全面改寫（移除不存在的 `GET .../search`、`GET /categories`、`PUT .../publish`、`PUT .../status`；補上 `/v2/products`、`/v2/rooms`、SKU、維護窗口等實際端點），連結改指向全新改寫的 [API_M01_Product_Center.md](../02_architecture/api/API_M01_Product_Center.md)（14 端點）／[API_M02_Listing_Center.md](../02_architecture/api/API_M02_Listing_Center.md)（8 端點）。**新增修訂註記**（§3 AC-M01-002-1/2 前、§4 AC-M02-003-1/2/3 前、§4 AC-M02-004-2 前）標註三處驗收標準描述的「`DRAFT`→發布兩階段上架」「建立時自動初始化 90 天 room_calendar」「`PUT .../calendar` 批次封鎖」流程與實作不符，Gherkin 內容本身未改寫（是否重新設計草稿機制或改寫驗收標準屬產品決策）。過程中新登記 **DEF-379**（`ProductService.getProducts` 的 `category`／`brand` 篩選分支無租戶範圍）、**DEF-380**（`DRAFT`→發布與日曆初始化流程從未實作），兩項皆登記未修復。詳見 [SPRINT_273_PLAN.md](../04_planning/SPRINT_273_PLAN.md) | Claude Code（Sprint 273） |
 
 ---
 

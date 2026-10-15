@@ -1,9 +1,9 @@
 # API Index / API 規格索引
 
 > **文檔狀態**: Active
-> **版本**: v1.6
+> **版本**: v1.7
 > **建立日期**: 2026-04-09
-> **最後更新**: 2026-10-15（Sprint 272：新增 M09 訊息通知中心 [API_M09_Notification.md](./api/API_M09_Notification.md)（DEF-286 範圍，首次建立獨立規格，17 個端點）；Sprint 265：新增 M05 退貨申請 [API_M05_Return.md](./api/API_M05_Return.md)（DEF-366）與 M18 客服工單 [API_M18_Support.md](./api/API_M18_Support.md)（DEF-367），兩者皆首次建立獨立規格；Sprint 263：M08 連結改指向新建的 [API_M08_Review.md](./api/API_M08_Review.md)，見 DEF-365；Sprint 262：M07 連結改指向新建的 [API_M07_Settlement.md](./api/API_M07_Settlement.md)，見 DEF-364）
+> **最後更新**: 2026-10-15（Sprint 273：M01／M02 全面改寫為 [API_M01_Product_Center.md](./api/API_M01_Product_Center.md)（14 個端點）與 [API_M02_Listing_Center.md](./api/API_M02_Listing_Center.md)（8 個端點），並校正 [API_Listing_Unified_Create.md](./api/API_Listing_Unified_Create.md)（DEF-286／DEF-372 範圍）；Sprint 272：新增 M09 訊息通知中心 [API_M09_Notification.md](./api/API_M09_Notification.md)（DEF-286 範圍，首次建立獨立規格，17 個端點）；Sprint 265：新增 M05 退貨申請 [API_M05_Return.md](./api/API_M05_Return.md)（DEF-366）與 M18 客服工單 [API_M18_Support.md](./api/API_M18_Support.md)（DEF-367），兩者皆首次建立獨立規格；Sprint 263：M08 連結改指向新建的 [API_M08_Review.md](./api/API_M08_Review.md)，見 DEF-365；Sprint 262：M07 連結改指向新建的 [API_M07_Settlement.md](./api/API_M07_Settlement.md)，見 DEF-364）
 > **作者**: Marcus (SD-Architect)
 > **🔴 Sprint 16 US-008**: 收錄 Sprint 15 + Sprint 16 新增 API 端點
 >
@@ -11,7 +11,7 @@
 >
 > **⚠️ 完整性未保證（Sprint 203 揭露）**: 本索引的多數模組最後更新於 2026-06-05，僅收錄 48 個端點；同日核對後端 controller 有約 305 個 `@*Mapping` 註解。**本索引不是完整端點清單**，見 DEF-286。
 >
-> **✅ 已完整且有守門的模組（Sprint 241／243／262／263／265／272）**: **M03 會員與權限**（[API_M03_Auth.md](./api/API_M03_Auth.md)，13 個端點）、**M04 購物車**（[API_M04_Cart.md](./API_M04_Cart.md)，9 個端點）、**M05 訂單履約**（[API_M05_Order.md](./api/API_M05_Order.md)，15 個端點，Sprint 243）、**M05 退貨申請**（[API_M05_Return.md](./api/API_M05_Return.md)，8 個端點，Sprint 265）、**M06 預訂系統**（[API_M06_Booking.md](./API_M06_Booking.md)，11 個端點，Sprint 243）、**M07 結算與撥款**（[API_M07_Settlement.md](./api/API_M07_Settlement.md)，12 個端點，Sprint 262）、**M08 評價與社交互動**（[API_M08_Review.md](./api/API_M08_Review.md)，18 個端點，Sprint 263）、**M09 訊息通知中心**（[API_M09_Notification.md](./api/API_M09_Notification.md)，17 個端點，Sprint 272）與 **M18 客服工單**（[API_M18_Support.md](./api/API_M18_Support.md)，11 個端點，Sprint 265）已依實作改寫，並納入 `ApiRouteDocDriftTest`：Controller 新增、刪除或改名路由而沒更新規格，測試會失敗。M05／M06 的回應形狀、狀態碼、錯誤碼與權限另有真實服務的契約測試（`OrderApiRealStackIntegrationTest`、`BookingApiRealStackIntegrationTest`）。其他模組將依序納入；納入前仍以規格文件與程式碼互相對照為準。
+> **✅ 已完整且有守門的模組（Sprint 241／243／262／263／265／272／273）**: **M01 商品中心**（[API_M01_Product_Center.md](./api/API_M01_Product_Center.md)，14 個端點，Sprint 273）、**M02 房源中心**（[API_M02_Listing_Center.md](./api/API_M02_Listing_Center.md)，8 個端點，Sprint 273）、**M03 會員與權限**（[API_M03_Auth.md](./api/API_M03_Auth.md)，13 個端點）、**M04 購物車**（[API_M04_Cart.md](./API_M04_Cart.md)，9 個端點）、**M05 訂單履約**（[API_M05_Order.md](./api/API_M05_Order.md)，15 個端點，Sprint 243）、**M05 退貨申請**（[API_M05_Return.md](./api/API_M05_Return.md)，8 個端點，Sprint 265）、**M06 預訂系統**（[API_M06_Booking.md](./API_M06_Booking.md)，11 個端點，Sprint 243）、**M07 結算與撥款**（[API_M07_Settlement.md](./api/API_M07_Settlement.md)，12 個端點，Sprint 262）、**M08 評價與社交互動**（[API_M08_Review.md](./api/API_M08_Review.md)，18 個端點，Sprint 263）、**M09 訊息通知中心**（[API_M09_Notification.md](./api/API_M09_Notification.md)，17 個端點，Sprint 272）與 **M18 客服工單**（[API_M18_Support.md](./api/API_M18_Support.md)，11 個端點，Sprint 265）已依實作改寫，並納入 `ApiRouteDocDriftTest`：Controller 新增、刪除或改名路由而沒更新規格，測試會失敗。統一 Listing 建立端點（`POST /v2/dashboard/listings`，M01／M02 共用）獨立記載於 [API_Listing_Unified_Create.md](./api/API_Listing_Unified_Create.md)，同樣已納入守門。M05／M06 的回應形狀、狀態碼、錯誤碼與權限另有真實服務的契約測試（`OrderApiRealStackIntegrationTest`、`BookingApiRealStackIntegrationTest`）。其他模組將依序納入；納入前仍以規格文件與程式碼互相對照為準。
 
 ---
 
@@ -53,29 +53,38 @@
 
 ### 商品中心 (M01)
 
-| API ID | 端點 | 方法 | 說明 | 角色 | Phase |
-|--------|------|------|------|------|-------|
-| API-M01-001 | `/api/v2/listings` | GET | 商品/房源列表 | Guest+ | Phase 1 |
-| API-M01-002 | `/api/v2/listings/:id` | GET | 商品/房源詳情 | Guest+ | Phase 1 |
-| API-M01-003 | `/api/v2/listings/search` | GET | 關鍵字搜尋 | Guest+ | Phase 1 |
-| API-M01-004 | `/api/v2/categories` | GET | 分類列表 | Guest+ | Phase 1 |
-| API-M01-005 | `/api/v2/dashboard/listings` | GET | 店鋪商品列表 | Seller+ | Phase 1 |
-| API-M01-006 | `/api/v2/dashboard/listings` | POST | 建立商品 | Seller+ | Phase 1 |
-| API-M01-007 | `/api/v2/dashboard/listings/:id` | PUT | 更新商品 | Seller+ | Phase 1 |
-| API-M01-008 | `/api/v2/dashboard/listings/:id` | DELETE | 下架商品 | Seller+ | Phase 1 |
-| API-M01-009 | `/api/v2/dashboard/listings/:id/publish` | PUT | 發布商品 | Seller+ | Phase 1 |
+規格：[API_M01_Product_Center.md](./api/API_M01_Product_Center.md)（v2.0，Sprint 273）。`category` 選填自由字串，全庫無 `Category` 實體；建立一律直接 `ACTIVE`，無 `DRAFT`/發布兩階段。
+
+| 端點 | 方法 | 說明 | 權限 |
+|------|------|------|------|
+| `/api/v2/listings` | GET | 商品＋房源混合列表（分頁／`type`／`keyword`） | `product:read` 或 `room:read` |
+| `/api/v2/listings/{id}` | GET | 單一 Listing 詳情（公開） | 公開 |
+| `/api/v2/listings/{id}/price` | GET | 動態價格試算（規則屬 M12） | `product:read` 或 `room:read` |
+| `/api/v2/listings/{listingId}/effective-price` | GET | 有效單價試算（規則屬 M12） | `product:read` 或 `room:read` |
+| `/api/v2/public/listings` | GET | 匿名跨店鋪瀏覽 | 公開 |
+| `/api/v2/products` | GET | 商品列表（`category`／`brand` 篩選不受租戶限制，見文件 §7 DEF-379） | `product:read` |
+| `/api/v2/products/{listingId}` | GET | 商品詳情 | `product:read` |
+| `/api/v2/products` | POST | 建立商品（型別專屬入口） | `product:create` |
+| `/api/v2/products/{listingId}` | PUT | 更新商品 | `product:update` |
+| `/api/v2/products/{listingId}` | DELETE | 軟刪除商品 | `product:delete` |
+| `/api/v2/products/{productId}/reviews/stats` | GET | 評分統計（屬 M08） | 已登入 |
+| `/api/v2/products/{listingId}/skus` | POST／GET | 建立／列出 SKU | `product:update`／`product:read` |
+| `/api/v2/products/{listingId}/skus/{skuId}` | PUT | 更新 SKU | `product:update` |
+| `/api/v2/dashboard/listings` | POST | 統一建立入口（PRODUCT／ROOM 共用） | `product:create` 或 `room:create` |
 
 ### 房源中心 (M02)
 
-| API ID | 端點 | 方法 | 說明 | 角色 | Phase |
-|--------|------|------|------|------|-------|
-| API-M02-001 | `/api/v2/listings?type=ROOM` | GET | 房源列表 | Guest+ | Phase 1 |
-| API-M02-002 | `/api/v2/listings/:id` | GET | 房源詳情 | Guest+ | Phase 1 |
-| API-M02-003 | `/api/v2/listings/:id/calendar` | GET | 日曆與價格查詢 | Guest+ | Phase 1 |
-| API-M02-004 | `/api/v2/dashboard/listings` | GET | 店鋪房源列表 | Host+ | Phase 1 |
-| API-M02-005 | `/api/v2/dashboard/listings` | POST | 建立房源 | Host+ | Phase 1 |
-| API-M02-006 | `/api/v2/dashboard/listings/:id` | PUT | 更新房源 | Host+ | Phase 1 |
-| API-M02-007 | `/api/v2/dashboard/listings/:id/status` | PUT | 更新房源狀態 | Host+ | Phase 1 |
+規格：[API_M02_Listing_Center.md](./api/API_M02_Listing_Center.md)（v2.0，Sprint 273）。日曆／空房查詢屬 M06（`GET /v2/bookings/calendar`／`availability`），不在本模組；建立一律直接 `ACTIVE`、不初始化日曆。
+
+| 端點 | 方法 | 說明 | 權限 |
+|------|------|------|------|
+| `/api/v2/rooms` | GET | 店鋪房源列表（一律限呼叫者租戶 + ACTIVE） | `room:read` |
+| `/api/v2/rooms/{listingId}` | GET | 房源詳情 | `room:read` |
+| `/api/v2/rooms` | POST | 建立房源（型別專屬入口） | `room:create` |
+| `/api/v2/rooms/{listingId}` | PUT | 更新房源 | `room:update` |
+| `/api/v2/rooms/{listingId}` | DELETE | 軟刪除房源 | `room:delete` |
+| `/api/v2/rooms/{listingId}/open-window` | DELETE | 清除開放窗 | `room:update` |
+| `/api/v2/dashboard/rooms/{roomListingId}/maintenance` | POST／DELETE | 標記／解除日曆維護窗口 | `room:update` |
 
 ### 訂單履約 (M05)
 
@@ -190,6 +199,7 @@
 
 ### M02 房源中心
 - [API_M02_Listing_Center.md](./api/API_M02_Listing_Center.md)
+- 統一建立入口（M01／M02 共用）：[API_Listing_Unified_Create.md](./api/API_Listing_Unified_Create.md)
 
 ### M03 認證系統
 - [API_M03_Auth.md](./api/API_M03_Auth.md)

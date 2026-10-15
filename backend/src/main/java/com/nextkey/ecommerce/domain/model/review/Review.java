@@ -48,14 +48,16 @@ public class Review {
     @JoinColumn(name = "listing_id", nullable = false)
     private Listing listing;
 
-    @Column(name = "listing_id", insertable = false, updatable = false)
+    // DEF-332（比照 Sprint 237 Listing.tenantId 的既有說明）：避免影子欄位在測試庫被建成可為 NULL。
+    @Column(name = "listing_id", insertable = false, updatable = false, nullable = false)
     private UUID listingId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "user_id", insertable = false, updatable = false)
+    // DEF-332（比照 Sprint 237 Listing.tenantId 的既有說明）：避免影子欄位在測試庫被建成可為 NULL。
+    @Column(name = "user_id", insertable = false, updatable = false, nullable = false)
     private UUID userId;
 
     @Column(name = "order_id")

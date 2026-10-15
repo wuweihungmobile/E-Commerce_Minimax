@@ -45,7 +45,8 @@ public class Message {
     @JoinColumn(name = "conversation_id", nullable = false)
     private Conversation conversation;
 
-    @Column(name = "conversation_id", insertable = false, updatable = false)
+    // DEF-332（比照 Sprint 237 Listing.tenantId 的既有說明）：避免影子欄位在測試庫被建成可為 NULL。
+    @Column(name = "conversation_id", insertable = false, updatable = false, nullable = false)
     private UUID conversationId;
 
     @Column(name = "sender_id", nullable = false)

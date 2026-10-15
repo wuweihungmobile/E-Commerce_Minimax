@@ -43,7 +43,8 @@ public class ProductSku {
     @JoinColumn(name = "product_listing_id", nullable = false)
     private Listing listing;
 
-    @Column(name = "product_listing_id", insertable = false, updatable = false)
+    // DEF-332（比照 Sprint 237 Listing.tenantId 的既有說明）：避免影子欄位在測試庫被建成可為 NULL。
+    @Column(name = "product_listing_id", insertable = false, updatable = false, nullable = false)
     private UUID productListingId;
 
     @Column(name = "sku_code", unique = true, nullable = false)

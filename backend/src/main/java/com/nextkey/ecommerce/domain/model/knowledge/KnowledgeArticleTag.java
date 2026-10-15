@@ -39,7 +39,8 @@ public class KnowledgeArticleTag {
     @JoinColumn(name = "article_id", nullable = false)
     private KnowledgeArticle article;
 
-    @Column(name = "article_id", insertable = false, updatable = false)
+    // DEF-332（比照 Sprint 237 Listing.tenantId 的既有說明）：避免影子欄位在測試庫被建成可為 NULL。
+    @Column(name = "article_id", insertable = false, updatable = false, nullable = false)
     private UUID articleId;
 
     @Column(nullable = false, length = 50)

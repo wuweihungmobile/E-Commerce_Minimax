@@ -46,7 +46,8 @@ public class PromoCode {
     @JoinColumn(name = "tenant_id", nullable = false)
     private Tenant tenant;
 
-    @Column(name = "tenant_id", insertable = false, updatable = false)
+    // DEF-332（比照 Sprint 237 Listing.tenantId 的既有說明）：避免影子欄位在測試庫被建成可為 NULL。
+    @Column(name = "tenant_id", insertable = false, updatable = false, nullable = false)
     private UUID tenantId;
 
     @Column(name = "code", nullable = false, unique = true)

@@ -61,21 +61,24 @@ public class Booking {
     @JoinColumn(name = "tenant_id", nullable = false)
     private Tenant tenant;
 
-    @Column(name = "tenant_id", insertable = false, updatable = false)
+    // DEF-332（比照 Sprint 237 Listing.tenantId 的既有說明）：避免影子欄位在測試庫被建成可為 NULL。
+    @Column(name = "tenant_id", insertable = false, updatable = false, nullable = false)
     private UUID tenantId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "user_id", insertable = false, updatable = false)
+    // DEF-332（比照 Sprint 237 Listing.tenantId 的既有說明）：避免影子欄位在測試庫被建成可為 NULL。
+    @Column(name = "user_id", insertable = false, updatable = false, nullable = false)
     private UUID userId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "room_listing_id", nullable = false)
     private Listing roomListing;
 
-    @Column(name = "room_listing_id", insertable = false, updatable = false)
+    // DEF-332（比照 Sprint 237 Listing.tenantId 的既有說明）：避免影子欄位在測試庫被建成可為 NULL。
+    @Column(name = "room_listing_id", insertable = false, updatable = false, nullable = false)
     private UUID roomListingId;
 
     @Column(name = "check_in_date", nullable = false)

@@ -1,7 +1,7 @@
-# E-Commerce System — 功能需求文檔 (FRD) v1.12
+# E-Commerce System — 功能需求文檔 (FRD) v1.13
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.12
+> **版本**: v1.13
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -2792,7 +2792,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 
 ## 6C. M09 訊息通知中心 (Notification)
 
-> **📌 依實作現況撰寫（Sprint 244）**：PRD 的 M09 是 Phase 2 設計（MQ、多通道、模板化）。目前只有**站內通知**真正生效。
+> **📌 依實作現況撰寫（Sprint 244；Sprint 272 更新 EMAIL 通道與 API 規格現況）**：PRD 的 M09 是 Phase 2 設計（MQ、多通道、模板化）。**站內通知**真正生效；**EMAIL 通道自 Sprint 271（DEF-317）起真實送出**（透過既有 `EmailSender`／`canDeliver()` 閘門）；**SMS／PUSH 仍無閘道實作**，但自 Sprint 271 起會明確回報未送達，不再假裝已送出。完整 API 規格見 [API_M09_Notification.md](../02_architecture/api/API_M09_Notification.md)（Sprint 272 新建）。
 
 ### 6C.1 模組概述
 
@@ -2811,8 +2811,9 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 | 訂房付款成功的站內通知 | ✅ | `BOOKING_CONFIRMED`，Sprint 249 |
 | 訂單／訂房付款失敗（Stripe 金流阻斷）的站內通知 | ✅ | `PAYMENT_FAILED`，Sprint 249 |
 | 訂單確認、已付款、出貨、送達、完成、買家／賣家主動取消；付款成功；訂單與訂房評價邀請 | ✅ | `ORDER_CONFIRMED`／`ORDER_PAID`／`ORDER_SHIPPED`／`ORDER_DELIVERED`／`ORDER_COMPLETED`／`ORDER_CANCELLED`／`PAYMENT_SUCCESS`／`REVIEW_REQUEST`，Sprint 250（DEF-318） |
-| EMAIL、SMS、PUSH 通道實際寄送 | ❌ | 消費者不呼叫任何寄送服務，直接標為已送出（DEF-317） |
-| 通知 API 規格 | ❌ | 未收錄於 API_Index（DEF-286 範圍） |
+| EMAIL 通道實際寄送 | ✅（Sprint 271） | 透過既有 `EmailSender`／`canDeliver()`（Sprint 204）真實送出；`canDeliver()=false` 或送出失敗時明確標記未送達（DEF-317 已解決） |
+| SMS、PUSH 通道實際寄送 | ❌ | 仍無任何閘道實作；自 Sprint 271 起明確標記未送達並說明原因，不再假裝已送出（DEF-317 已解決的範圍之一） |
+| 通知 API 規格 | ✅（Sprint 272） | [API_M09_Notification.md](../02_architecture/api/API_M09_Notification.md)，17 個端點，已收錄於 API_Index 並納入 `ApiRouteDocDriftTest`（DEF-286 範圍內此模組已完成） |
 
 ### 6C.3 主要用戶
 
@@ -2839,15 +2840,15 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 | BR-M09-02 | 通知先寫入 `notifications`（未送出），再進 Redis List；消費者以 `rightPop` 取出，更新同一列（DEF-305） | `NotificationService`、`NotificationConsumerService` |
 | BR-M09-03 | 消費失敗最多重試 3 次，每次間隔 30 秒 | `NotificationConsumerService` |
 | BR-M09-04 | 消費速度約每秒 1 則（DEF-307） | `NotificationConsumerService` |
-| BR-M09-05 | EMAIL、SMS、PUSH 通道標為已送出，但不會真的寄出（DEF-317）。在真實通道接上之前，不得把這些通道的通知當成已送達 | `NotificationConsumerService` |
+| BR-M09-05 | **（Sprint 271 更新，DEF-317 已解決）** EMAIL 通道透過 `EmailSender` 真實送出（受 `canDeliver()` 閘門）；SMS、PUSH 通道無閘道實作，明確標記未送達並記錄原因，不再一律標為已送出 | `NotificationConsumerService` |
 
 ### 6C.6 API 規格概要
 
-規格文件尚未建立（DEF-286 範圍）。目前的端點基底路徑：
+**完整且已核對程式碼的規格見 [API_M09_Notification.md](../02_architecture/api/API_M09_Notification.md)**（Sprint 272 新建，17 個端點，DEF-286 範圍內此模組已完成）。目前的端點基底路徑：
 
 | 基底路徑 | 用途 |
 |---------|------|
-| `/v2/notifications` | 站內通知（列表、未讀數、已讀、刪除） |
+| `/v2/notifications` | 站內通知（列表、未讀數、已讀、刪除、歷史查詢） |
 | `/v2/notifications/preferences` | 偏好設定 |
 | `/v2`（`NotificationTemplateController`） | 通知範本 |
 
@@ -4394,6 +4395,7 @@ tenant_feature_toggles
 | v1.11 | 2026-10-15 | **補齊 FRD 缺的兩條 User Story（Sprint 267，DEF-370／371）**：新增 §5 US-M03-008 個人資料編輯（Sprint 257 功能上線至今首次收錄）、§8 US-M17-010 店鋪成員管理（Sprint 98 起分批實作，Sprint 248 補齊 email 查詢，至今首次收錄），兩者皆為既有已上線功能的追溯補登；§5.7／§8.6 API 規格概要同步補上對應端點；同時修正 §5.7 既有失效連結（`API_M03_Auth.md` 連結漏了 `api/` 子目錄）。詳見 [SPRINT_267_PLAN.md](../04_planning/SPRINT_267_PLAN.md) | Claude Code（Sprint 267） |
 | v1.10 | 2026-10-14 | **M08 評價與社交互動文件補齊（Sprint 263，DEF-365）**：新增 §6D 專章（模組概述、功能總覽、主要用戶、資料模型、BR-M08-01～10、API 規格概要、與 PRD 的差異），本模組先前完全沒有 FRD 專章；「情境使用指引」Phase 1/2 表同步更正（M08 由 Phase 2 改列 Phase 1）。過程中發現並新登記 **DEF-373**（回覆評價授權邏輯三處不一致）、**DEF-374**（刪除評價缺少管理員例外，與程式碼註解意圖不符）、**DEF-375**（`API-M08-NNN` 裸編號在 `API_Index.md` 舊表格與 `TC_M08_Review.md` 彼此衝突），三項均登記未修復。詳見 [SPRINT_263_PLAN.md](../04_planning/SPRINT_263_PLAN.md) | Claude Code（Sprint 263） |
 | v1.12 | 2026-10-15 | **DEF-375 編號衝突校正＋順手修正 DEF-374 陳舊敘述（Sprint 268）**：BR-M08-10、§6D.6 原寫 DEF-374／DEF-375「未修復」，但 DEF-374 其實已於 Sprint 264 修復（SRD 當時已同步，本文件漏改）、DEF-375 本輪修復——兩處改為反映現況。`API_Index.md` 舊表格與 [TC_M08_Review.md](../03_testing/TC_M08_Review.md) 的裸編號 `API-M08-NNN` 分別加上 `-IDX-`／`-TC-` 中綴校正衝突。詳見 [SPRINT_268_PLAN.md](../04_planning/SPRINT_268_PLAN.md) | Claude Code（Sprint 268） |
+| v1.13 | 2026-10-15 | **M09 訊息通知中心 API 文件補齊（Sprint 272，DEF-286 範圍）**：§6C 橫幅、§6C.2（EMAIL/SMS/PUSH 現況、API 規格現況兩列）、§6C.5（BR-M09-05）、§6C.6 同步更新為 Sprint 271（DEF-317）之後的真實行為（EMAIL 真實送出、SMS/PUSH 明確回報未送達、API 規格已建立），取代先前「一律標為已送出」「規格尚未建立」的過時敘述；三處皆連結新建的 [API_M09_Notification.md](../02_architecture/api/API_M09_Notification.md)（17 端點）。過程中新登記 **DEF-378**（`NotificationTemplateService` 誤用 `E_6001` 付款錯誤碼表示範本代碼重複），登記未修復。詳見 [SPRINT_272_PLAN.md](../04_planning/SPRINT_272_PLAN.md) | Claude Code（Sprint 272） |
 
 ---
 

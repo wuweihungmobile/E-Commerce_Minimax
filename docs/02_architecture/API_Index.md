@@ -3,7 +3,7 @@
 > **文檔狀態**: Active
 > **版本**: v1.6
 > **建立日期**: 2026-04-09
-> **最後更新**: 2026-10-14（Sprint 265：新增 M05 退貨申請 [API_M05_Return.md](./api/API_M05_Return.md)（DEF-366）與 M18 客服工單 [API_M18_Support.md](./api/API_M18_Support.md)（DEF-367），兩者皆首次建立獨立規格；Sprint 263：M08 連結改指向新建的 [API_M08_Review.md](./api/API_M08_Review.md)，見 DEF-365；Sprint 262：M07 連結改指向新建的 [API_M07_Settlement.md](./api/API_M07_Settlement.md)，見 DEF-364）
+> **最後更新**: 2026-10-15（Sprint 272：新增 M09 訊息通知中心 [API_M09_Notification.md](./api/API_M09_Notification.md)（DEF-286 範圍，首次建立獨立規格，17 個端點）；Sprint 265：新增 M05 退貨申請 [API_M05_Return.md](./api/API_M05_Return.md)（DEF-366）與 M18 客服工單 [API_M18_Support.md](./api/API_M18_Support.md)（DEF-367），兩者皆首次建立獨立規格；Sprint 263：M08 連結改指向新建的 [API_M08_Review.md](./api/API_M08_Review.md)，見 DEF-365；Sprint 262：M07 連結改指向新建的 [API_M07_Settlement.md](./api/API_M07_Settlement.md)，見 DEF-364）
 > **作者**: Marcus (SD-Architect)
 > **🔴 Sprint 16 US-008**: 收錄 Sprint 15 + Sprint 16 新增 API 端點
 >
@@ -11,7 +11,7 @@
 >
 > **⚠️ 完整性未保證（Sprint 203 揭露）**: 本索引的多數模組最後更新於 2026-06-05，僅收錄 48 個端點；同日核對後端 controller 有約 305 個 `@*Mapping` 註解。**本索引不是完整端點清單**，見 DEF-286。
 >
-> **✅ 已完整且有守門的模組（Sprint 241／243／262／263／265）**: **M03 會員與權限**（[API_M03_Auth.md](./api/API_M03_Auth.md)，13 個端點）、**M04 購物車**（[API_M04_Cart.md](./API_M04_Cart.md)，9 個端點）、**M05 訂單履約**（[API_M05_Order.md](./api/API_M05_Order.md)，15 個端點，Sprint 243）、**M05 退貨申請**（[API_M05_Return.md](./api/API_M05_Return.md)，8 個端點，Sprint 265）、**M06 預訂系統**（[API_M06_Booking.md](./API_M06_Booking.md)，11 個端點，Sprint 243）、**M07 結算與撥款**（[API_M07_Settlement.md](./api/API_M07_Settlement.md)，12 個端點，Sprint 262）、**M08 評價與社交互動**（[API_M08_Review.md](./api/API_M08_Review.md)，18 個端點，Sprint 263）與 **M18 客服工單**（[API_M18_Support.md](./api/API_M18_Support.md)，11 個端點，Sprint 265）已依實作改寫，並納入 `ApiRouteDocDriftTest`：Controller 新增、刪除或改名路由而沒更新規格，測試會失敗。M05／M06 的回應形狀、狀態碼、錯誤碼與權限另有真實服務的契約測試（`OrderApiRealStackIntegrationTest`、`BookingApiRealStackIntegrationTest`）。其他模組將依序納入；納入前仍以規格文件與程式碼互相對照為準。
+> **✅ 已完整且有守門的模組（Sprint 241／243／262／263／265／272）**: **M03 會員與權限**（[API_M03_Auth.md](./api/API_M03_Auth.md)，13 個端點）、**M04 購物車**（[API_M04_Cart.md](./API_M04_Cart.md)，9 個端點）、**M05 訂單履約**（[API_M05_Order.md](./api/API_M05_Order.md)，15 個端點，Sprint 243）、**M05 退貨申請**（[API_M05_Return.md](./api/API_M05_Return.md)，8 個端點，Sprint 265）、**M06 預訂系統**（[API_M06_Booking.md](./API_M06_Booking.md)，11 個端點，Sprint 243）、**M07 結算與撥款**（[API_M07_Settlement.md](./api/API_M07_Settlement.md)，12 個端點，Sprint 262）、**M08 評價與社交互動**（[API_M08_Review.md](./api/API_M08_Review.md)，18 個端點，Sprint 263）、**M09 訊息通知中心**（[API_M09_Notification.md](./api/API_M09_Notification.md)，17 個端點，Sprint 272）與 **M18 客服工單**（[API_M18_Support.md](./api/API_M18_Support.md)，11 個端點，Sprint 265）已依實作改寫，並納入 `ApiRouteDocDriftTest`：Controller 新增、刪除或改名路由而沒更新規格，測試會失敗。M05／M06 的回應形狀、狀態碼、錯誤碼與權限另有真實服務的契約測試（`OrderApiRealStackIntegrationTest`、`BookingApiRealStackIntegrationTest`）。其他模組將依序納入；納入前仍以規格文件與程式碼互相對照為準。
 
 ---
 
@@ -220,6 +220,9 @@
 
 ### M18 客服工單 (🆕 Sprint 265 完整建立)
 - [API_M18_Support.md](./api/API_M18_Support.md)（v1.0，Sprint 265 新建，DEF-367；Sprint 91 功能上線至今首次有獨立規格；僅涵蓋客服工單子功能，不含 M18 其他子功能）
+
+### M09 訊息通知中心 (🆕 Sprint 272 完整建立)
+- [API_M09_Notification.md](./api/API_M09_Notification.md)（v1.0，Sprint 272 新建，DEF-286 範圍；Sprint 20 功能上線至今首次有獨立規格，17 個端點，涵蓋站內通知／通知歷史／通知偏好／通知範本管理）
 
 ---
 

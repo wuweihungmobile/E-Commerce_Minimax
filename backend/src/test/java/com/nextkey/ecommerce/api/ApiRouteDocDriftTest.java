@@ -29,6 +29,9 @@ import com.nextkey.ecommerce.api.controller.CartController;
 import com.nextkey.ecommerce.api.controller.CheckoutController;
 import com.nextkey.ecommerce.api.controller.DashboardBookingController;
 import com.nextkey.ecommerce.api.controller.DashboardPricingController;
+import com.nextkey.ecommerce.api.controller.NotificationController;
+import com.nextkey.ecommerce.api.controller.NotificationPreferenceController;
+import com.nextkey.ecommerce.api.controller.NotificationTemplateController;
 import com.nextkey.ecommerce.api.controller.OAuthController;
 import com.nextkey.ecommerce.api.controller.OrderController;
 import com.nextkey.ecommerce.api.controller.OrderPaymentController;
@@ -94,6 +97,10 @@ class ApiRouteDocDriftTest {
         // 與 StorefrontController；AdminController 的租戶端點暫無機械防漂移，見文件 §7 已知限制
         GUARDED.put("api/API_M17_Tenant.md",
                 List.of(TenantController.class, StorefrontController.class));
+        // Sprint 272：M09 訊息通知中心，文件先前完全不存在（DEF-286 範圍），新建後一併納入守門
+        GUARDED.put("api/API_M09_Notification.md", List.of(
+                NotificationController.class, NotificationPreferenceController.class,
+                NotificationTemplateController.class));
     }
 
     /** 反引號包住的 `METHOD /path`：路徑到反引號、空白或 {@code ?} 為止。 */

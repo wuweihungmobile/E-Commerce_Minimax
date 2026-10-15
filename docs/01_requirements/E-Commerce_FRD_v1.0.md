@@ -1,7 +1,7 @@
-# E-Commerce System — 功能需求文檔 (FRD) v1.10
+# E-Commerce System — 功能需求文檔 (FRD) v1.11
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.10
+> **版本**: v1.11
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -17,9 +17,11 @@
 >
 > **⚠️ 修訂註記（Sprint 252，2026-10-11，DEF-321(b)）**：新增 **US-M17-009 瀏覽店鋪前台**（PRD §10／§11.3／§12.7 的 4 條路由首次實作），§8.6 補上對應的兩個新公開端點。其餘章節內文未改寫。
 >
-> **⚠️ 修訂註記（Sprint 261，2026-10-13，文件一致性檢查第四輪）**：修正 §6A.2／§6A.7 的 state-log 與店家後台按鈕過期敘述（實際已於 Sprint 246 完成，DEF-350）；修正 §8.6 失效連結；修正頂部「情境使用指引」Phase 1/2 表（過期近 9 個月，M06 完整／M07／M09 自 Sprint 244 起實為 Phase 1）；補登 v1.7 修訂紀錄遺漏列。新發現本文件完全沒有 **M17 店鋪成員管理**（Sprint 248，7+1 個端點）與**M03 個人資料編輯**（Sprint 257，`PUT /v2/auth/me`）兩條 User Story，登記為 DEF-371／DEF-372，本輪不補寫（寫作範圍屬下一輪決策）。既有章節其餘內文未改寫。詳見 [SPRINT_261_PLAN.md](../04_planning/SPRINT_261_PLAN.md)。
+> **⚠️ 修訂註記（Sprint 261，2026-10-13，文件一致性檢查第四輪）**：修正 §6A.2／§6A.7 的 state-log 與店家後台按鈕過期敘述（實際已於 Sprint 246 完成，DEF-350）；修正 §8.6 失效連結；修正頂部「情境使用指引」Phase 1/2 表（過期近 9 個月，M06 完整／M07／M09 自 Sprint 244 起實為 Phase 1）；補登 v1.7 修訂紀錄遺漏列。新發現本文件完全沒有 **M17 店鋪成員管理**（Sprint 248，7+1 個端點）與**M03 個人資料編輯**（Sprint 257，`PUT /v2/auth/me`）兩條 User Story，登記為 DEF-370／DEF-371（此處 2026-10-13 當時誤記為 DEF-371／DEF-372，2026-10-15 補登 User Story 時一併更正，見 v1.11 修訂紀錄），本輪不補寫（寫作範圍屬下一輪決策）。既有章節其餘內文未改寫。詳見 [SPRINT_261_PLAN.md](../04_planning/SPRINT_261_PLAN.md)。
 >
 > **⚠️ 修訂註記（Sprint 262，2026-10-13，DEF-364）**：§6B.6／§6B.7 更新——M07 結算與撥款的 API 規格文件（[API_M07_Settlement.md](../02_architecture/api/API_M07_Settlement.md)）與 SRD 技術設計章節（§6）已建立，不再是「尚未建立」。其餘章節未改寫；M17 成員管理／M03 個人資料編輯兩條 User Story（DEF-370／371）仍未補寫。
+>
+> **⚠️ 修訂註記（Sprint 267，2026-10-15，DEF-370／371）**：新增 §5 **US-M03-008 個人資料編輯**、§8 **US-M17-010 店鋪成員管理** 兩條 User Story（皆為既有已上線功能的追溯補登，見上方 Sprint 261 註記登記時的 DEF 編號更正）；§5.7／§8.6 API 規格概要同步補上對應端點；§5.7 既有失效連結（漏 `api/` 子目錄）一併修正。其餘章節未改寫。詳見 [SPRINT_267_PLAN.md](../04_planning/SPRINT_267_PLAN.md)。
 
 ---
 
@@ -1898,6 +1900,54 @@ tenant_members (多租戶關聯)
 
 ---
 
+#### US-M03-008: 個人資料編輯（Sprint 257 新增，DEF-358(b)；2026-10-15 文件稽核補登 User Story，DEF-371）
+
+**Story 描述**:
+- **As a** 已登入會員
+- **I want to** 更新自己的姓名與電話
+- **So that** 保持個人資料正確，不需聯繫客服或透過其他管道修改
+
+**Story 狀態**: Done（Sprint 257）
+**優先級**: P2
+**Story Points**: 1
+
+**對應 PRD**: §10.1.1 `/auth/profile`
+
+---
+
+#### Acceptance Criteria
+
+**AC-M03-008-1**: 更新姓名與電話
+**Given** 已登入會員呼叫 `PUT /api/v2/auth/me`，帶入 `fullName` 與／或 `phone`
+**When** 請求驗證通過
+**Then** 回應最新的個人資料（格式與 `GET /auth/me` 的 `UserInfoResponse` 相同），並寫入一筆稽核紀錄（`action=USER_PROFILE_UPDATED`）
+
+**AC-M03-008-2**: 部分更新語意（PATCH，非整物件覆寫）
+**Given** 呼叫者只帶入 `phone`，未帶 `fullName`
+**When** 請求處理
+**Then** `fullName` 維持原值不變，僅 `phone` 被更新；帶入空字串 `phone` 可清空電話
+
+**AC-M03-008-3**: 驗證失敗
+**Given** `fullName` 帶入空字串（視為非法，不可用於清空姓名）
+**When** 請求處理
+**Then** 回傳 `E-9000`（HTTP 400）
+
+**AC-M03-008-4**: 範圍限制
+**Given** 請求帶入 `email`、`role`、`tenantId` 等本端點範圍外的欄位
+**When** 請求處理
+**Then** 這些欄位被忽略（不更新）——Email 變更牽涉重新驗證流程（見 US-M03-007），角色/租戶/狀態屬系統管理，皆不在此端點範圍內
+
+**測試資料**:
+- 預期錯誤：`E-9000`（驗證失敗）、`E-1006`（找不到使用者）
+
+---
+
+**🔴 人機協作確認點** (US-M03-008):
+- [x] 本 User Story 為 2026-10-15 文件稽核時補登（DEF-371）：功能本身自 Sprint 257 起已上線並有測試覆蓋，僅 FRD 從未收錄對應 User Story
+- [x] 範圍僅限姓名/電話，已於 Sprint 257 當輪確認；不受 `user:update` 權限矩陣限制（編輯「自己」的基本資料），`STORE_STAFF`／`CFO` 亦可操作
+
+---
+
 ### 5.6 業務規則
 
 #### BR-M03-001: JWT Token 有效期
@@ -1958,12 +2008,13 @@ tenant_members (多租戶關聯)
 | `/api/v2/auth/refresh` | POST | 刷新 Access Token | Guest+ |
 | `/api/v2/auth/logout` | POST | 會員登出 | Buyer+ |
 | `/api/v2/auth/me` | GET | 取得當前用戶資訊 | Buyer+ |
+| `/api/v2/auth/me` | PUT | 自助更新個人資料（姓名/電話，Sprint 257，US-M03-008） | Buyer+ |
 | `/api/v2/auth/password/forgot` | POST | 申請密碼重設連結（Sprint 204） | Guest |
 | `/api/v2/auth/password/reset` | POST | 以連結重設密碼（Sprint 204） | Guest |
 | `/api/v2/auth/email/verify` | POST | 以連結完成 Email 驗證（Sprint 204） | Guest |
 | `/api/v2/auth/email/verify/send` | POST | 重寄驗證信（Sprint 204） | Buyer+ |
 
-**詳細 API 規格**: 見 [docs/02_architecture/API_M03_Auth.md](../02_architecture/API_M03_Auth.md)
+**詳細 API 規格**: 見 [docs/02_architecture/api/API_M03_Auth.md](../02_architecture/api/API_M03_Auth.md)（2026-10-15 文件稽核訂正：原連結漏了 `api/` 子目錄，連結從未真正指向過存在的檔案）
 
 ---
 
@@ -4135,6 +4186,64 @@ tenant_feature_toggles
 
 ---
 
+#### US-M17-010: 店鋪成員管理（Sprint 98 起分批實作；Sprint 248 補齊 email 查詢，DEF-321(a)；2026-10-15 文件稽核補登 User Story，DEF-370）
+
+**Story 描述**:
+- **As a** 店主（StoreOwner）
+- **I want to** 邀請、查詢、管理店鋪的員工成員（STORE_STAFF），被邀請人可接受或拒絕邀請
+- **So that** 能授權其他使用者協助管理店鋪，不需共用自己的帳號密碼
+
+**Story 狀態**: Done（Sprint 98 起；Sprint 248 補 email 查詢）
+**優先級**: P2
+**Story Points**: 5
+
+**對應 PRD**: §9.11 M17 租戶成員 API
+
+---
+
+#### Acceptance Criteria
+
+**AC-M17-010-1**: 查詢成員列表
+**Given** 呼叫者是該店鋪成員（StoreOwner／STORE_STAFF／Admin）
+**When** 呼叫 `GET /api/v2/tenants/:id/members`
+**Then** 回應該店鋪全部成員（含 `INVITED`／`ACTIVE`／`REMOVED` 狀態）
+
+**AC-M17-010-2**: 以 email 查詢可邀請的使用者（Sprint 248，DEF-321(a)）
+**Given** 店主只知道對方 email，不知道 `userId`
+**When** 呼叫 `GET /api/v2/tenants/:id/members/lookup?email=...`
+**Then** 回應該 email 對應的 `userId`／`displayName`／`avatarUrl`，供邀請表單使用；查無對應使用者回 `E-2001`
+
+**AC-M17-010-3**: 邀請成員（需雙方確認）
+**Given** 店主呼叫 `POST /api/v2/tenants/:id/members/invite`，帶入 `userId` 與 `role=STORE_STAFF`
+**When** 請求驗證通過
+**Then** 建立一筆 `INVITED` 狀態的成員記錄，**尚未正式生效**，需被邀請人另外接受（見 AC-M17-010-4）；只允許邀請 `STORE_STAFF` 角色，其他角色回 `E-1001`；該使用者已是成員或已有待確認邀請回 `E-4092`
+
+**AC-M17-010-4**: 被邀請人查詢/接受/拒絕邀請
+**Given** 使用者收到一筆或多筆 `INVITED` 邀請
+**When** 呼叫 `GET /api/v2/tenants/invites/my` 查詢自己收到的邀請，或對特定邀請呼叫 `.../invite/accept`（接受，轉為 `ACTIVE`）／`.../invite/decline`（拒絕，移除該筆記錄）
+**Then** 對應狀態正確轉換；查無邀請時 accept／decline 回 `E-2002`
+
+**AC-M17-010-5**: 更新成員角色
+**Given** 店主對某位現有成員呼叫 `PUT /api/v2/tenants/:id/members/:userId/role`
+**When** `role` 帶入 `STORE_STAFF`（唯一允許值）
+**Then** 該成員角色更新；若 `role` 不合法回 `E-1001`；若目標是店主本人則拒絕（`E-4031`，不可變更店主角色）
+
+**AC-M17-010-6**: 移除成員
+**Given** 店主對某位成員呼叫 `DELETE /api/v2/tenants/:id/members/:userId`
+**When** 目標不是呼叫者自己
+**Then** 該成員被移除；若目標是呼叫者自己則拒絕（`E-4031`，不可自我移除店鋪）
+
+**測試資料**:
+- 預期錯誤：`E-4031`（非該租戶成員／變更店主角色／移除自己）、`E-1001`（角色不合法）、`E-2001`（查無 email 對應使用者）、`E-2002`（查無邀請/成員）、`E-4092`（已是成員或已有待確認邀請）
+
+---
+
+**🔴 人機協作確認點** (US-M17-010)：
+- [x] 本 User Story 為 2026-10-15 文件稽核時補登（DEF-370）：功能本身自 Sprint 98 起已上線並有測試覆蓋（含 Sprint 248 補的 email 查詢），僅 FRD 從未收錄對應 User Story
+- [x] 邀請僅限 `STORE_STAFF` 角色，`STORE_OWNER`／`STORE_MANAGER` 等角色的指派機制不在此 Story 範圍內
+
+---
+
 ### 8.6 API 規格概要
 
 | API Endpoint | 方法 | 用途 | 角色 |
@@ -4143,6 +4252,14 @@ tenant_feature_toggles
 | `/api/v2/tenants/:id` | GET | 取得店鋪資訊 | Guest+ |
 | `/api/v2/tenants/:id` | PUT | 更新店鋪 Profile | StoreOwner |
 | `/api/v2/tenants/my` | GET | 取得我的店鋪列表 | StoreOwner |
+| `/api/v2/tenants/:id/members` | GET | 成員列表（US-M17-010） | StoreOwner／Admin |
+| `/api/v2/tenants/:id/members/invite` | POST | 邀請成員（US-M17-010） | StoreOwner |
+| `/api/v2/tenants/:id/members/lookup` | GET | 以 email 查詢可邀請的使用者（Sprint 248，DEF-321(a)） | StoreOwner |
+| `/api/v2/tenants/invites/my` | GET | 我的待確認邀請列表（US-M17-010） | 已登入 |
+| `/api/v2/tenants/:id/members/invite/accept` | POST | 接受邀請（US-M17-010） | 已登入 |
+| `/api/v2/tenants/:id/members/invite/decline` | POST | 拒絕邀請（US-M17-010） | 已登入 |
+| `/api/v2/tenants/:id/members/:userId/role` | PUT | 更新成員角色（US-M17-010） | StoreOwner |
+| `/api/v2/tenants/:id/members/:userId` | DELETE | 移除成員（US-M17-010） | StoreOwner |
 | `/api/v2/admin/tenants` | GET | Admin: 店鋪列表 | SUPER_ADMIN |
 | `/api/v2/admin/tenant-applications` | GET | Admin: 待審核開店申請列表 | SUPER_ADMIN |
 | `/api/v2/admin/tenant-applications/:applicationId/approve` | POST | Admin: 核准開店申請 | SUPER_ADMIN |
@@ -4274,6 +4391,7 @@ tenant_feature_toggles
 | v1.7 | 2026-10-11 | **Sprint 252（DEF-321(b)）**：新增 US-M17-009 瀏覽店鋪前台（PRD §10／§11.3／§12.7 四條路由首次實作）、§8.6 補上 `GET /v2/public/stores/:slug`、`GET /v2/public/stores/:slug/listings` 兩個新公開端點。檔頭版本號同步為 v1.7（此列為 2026-10-13 文件稽核時補登——檔頭版號已於 Sprint 252 當時改為 v1.7，但本修訂紀錄表漏加對應列） | Claude Code（2026-10-13 文件稽核補登） |
 | v1.8 | 2026-10-13 | **文件一致性檢查（第四輪，Sprint 261）**：修正§6A.2/§6A.7 的 state-log／店家後台按鈕過期敘述（已於 Sprint 246 實作，DEF-350）；修正§8.6 失效連結（`API_M17_Tenant_Management.md`→`API_M17_Tenant.md`）；修正「情境使用指引」Phase 1/2 表（M06完整／M07／M09 自 Sprint 244 起實為 Phase 1，原表未同步）。新登記 DEF-364～DEF-372（M07/M08/ReturnRequest/SupportTicket 無文件、M12 端點落差、M17 文件自身矛盾、FRD 缺 M17 成員管理與 M03 個人資料編輯兩條 User Story、ApiRouteDocDriftTest 覆蓋範圍缺口）。詳見 [SPRINT_261_PLAN.md](../04_planning/SPRINT_261_PLAN.md) | Claude Code（Sprint 261） |
 | v1.9 | 2026-10-13 | **M07 結算與撥款文件補齊（Sprint 262，DEF-364）**：§6B.6／§6B.7 更新，M07 的 API 規格（新建 `API_M07_Settlement.md`）與 SRD 技術設計章節（新建 §6）已完成，不再標示「尚未建立」。詳見 [SPRINT_262_PLAN.md](../04_planning/SPRINT_262_PLAN.md) | Claude Code（Sprint 262） |
+| v1.11 | 2026-10-15 | **補齊 FRD 缺的兩條 User Story（Sprint 267，DEF-370／371）**：新增 §5 US-M03-008 個人資料編輯（Sprint 257 功能上線至今首次收錄）、§8 US-M17-010 店鋪成員管理（Sprint 98 起分批實作，Sprint 248 補齊 email 查詢，至今首次收錄），兩者皆為既有已上線功能的追溯補登；§5.7／§8.6 API 規格概要同步補上對應端點；同時修正 §5.7 既有失效連結（`API_M03_Auth.md` 連結漏了 `api/` 子目錄）。詳見 [SPRINT_267_PLAN.md](../04_planning/SPRINT_267_PLAN.md) | Claude Code（Sprint 267） |
 | v1.10 | 2026-10-14 | **M08 評價與社交互動文件補齊（Sprint 263，DEF-365）**：新增 §6D 專章（模組概述、功能總覽、主要用戶、資料模型、BR-M08-01～10、API 規格概要、與 PRD 的差異），本模組先前完全沒有 FRD 專章；「情境使用指引」Phase 1/2 表同步更正（M08 由 Phase 2 改列 Phase 1）。過程中發現並新登記 **DEF-373**（回覆評價授權邏輯三處不一致）、**DEF-374**（刪除評價缺少管理員例外，與程式碼註解意圖不符）、**DEF-375**（`API-M08-NNN` 裸編號在 `API_Index.md` 舊表格與 `TC_M08_Review.md` 彼此衝突），三項均登記未修復。詳見 [SPRINT_263_PLAN.md](../04_planning/SPRINT_263_PLAN.md) | Claude Code（Sprint 263） |
 
 ---

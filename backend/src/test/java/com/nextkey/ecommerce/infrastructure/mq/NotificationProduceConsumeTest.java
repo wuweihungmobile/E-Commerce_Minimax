@@ -34,6 +34,7 @@ import com.nextkey.ecommerce.domain.model.notification.Notification;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.NotificationRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.infrastructure.email.EmailSender;
 
 /**
  * DEF-013：通知 MQ 端到端傳遞測試（觸發 → 佇列 → 消費 → 可觀測結果）。
@@ -62,6 +63,8 @@ class NotificationProduceConsumeTest {
     private NotificationRepository notificationRepository;
     @Mock
     private NotificationHistoryService notificationHistoryService;
+    @Mock
+    private EmailSender emailSender;
 
     /** 真實 ObjectMapper（含 JavaTimeModule），確保 Instant 等欄位真正走序列化往返。 */
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
@@ -86,7 +89,7 @@ class NotificationProduceConsumeTest {
 
         producer = new NotificationProducerService(redisTemplate, userRepository, objectMapper);
         consumer = new NotificationConsumerService(
-                redisTemplate, notificationRepository, objectMapper, notificationHistoryService);
+                redisTemplate, notificationRepository, objectMapper, notificationHistoryService, emailSender);
     }
 
     @Test

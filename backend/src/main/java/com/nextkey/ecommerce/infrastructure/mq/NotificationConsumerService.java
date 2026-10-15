@@ -14,6 +14,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.core.notification.NotificationHistoryService;
 import com.nextkey.ecommerce.domain.model.notification.Notification;
 import com.nextkey.ecommerce.domain.repository.NotificationRepository;
+import com.nextkey.ecommerce.infrastructure.email.EmailDeliveryException;
+import com.nextkey.ecommerce.infrastructure.email.EmailSender;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +34,7 @@ public class NotificationConsumerService {
     private final NotificationRepository notificationRepository;
     private final ObjectMapper objectMapper;
     private final NotificationHistoryService notificationHistoryService;
+    private final EmailSender emailSender;
 
     private static final int MAX_RETRY_COUNT = 3;
     private static final long RETRY_DELAY_SECONDS = 30;
@@ -124,8 +127,9 @@ public class NotificationConsumerService {
         }
     }
 
-    /** 廣播（沒有預建列）：新增一列已送出的通知。 */
+    /** 廣播（沒有預建列）：新增一列通知，依實際管道送出結果決定 isSent（DEF-317）。 */
     private Notification buildSentNotification(final NotificationMessage message) {
+        DispatchOutcome outcome = dispatch(message);
         return Notification.builder()
                 .userId(message.getUserId())
                 .notificationType(Notification.NotificationType.valueOf(message.getNotificationType()))
@@ -134,10 +138,10 @@ public class NotificationConsumerService {
                 .data(message.getData())
                 .channel(Notification.NotificationChannel.valueOf(message.getChannel()))
                 .recipient(message.getRecipient())
-                .isSent(true)
-                .sentAt(sentAtOf(message))
+                .isSent(outcome.sent())
+                .sentAt(outcome.sent() ? sentAtOf(message) : null)
                 .retryCount(message.getRetryCount())
-                .errorMessage(message.getErrorMessage())
+                .errorMessage(outcome.sent() ? message.getErrorMessage() : outcome.errorMessage())
                 .build();
     }
 
@@ -152,15 +156,51 @@ public class NotificationConsumerService {
         Notification notification = notificationRepository.findById(message.getNotificationId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Pre-created notification not visible yet: " + message.getNotificationId()));
-        notification.setIsSent(true);
-        notification.setSentAt(sentAtOf(message));
+        DispatchOutcome outcome = dispatch(message);
+        notification.setIsSent(outcome.sent());
+        notification.setSentAt(outcome.sent() ? sentAtOf(message) : null);
         notification.setRetryCount(message.getRetryCount());
-        notification.setErrorMessage(message.getErrorMessage());
+        notification.setErrorMessage(outcome.sent() ? message.getErrorMessage() : outcome.errorMessage());
         notificationRepository.save(notification);
     }
 
     private Instant sentAtOf(final NotificationMessage message) {
         return message.getCreatedAt() != null ? message.getCreatedAt() : Instant.now();
+    }
+
+    /**
+     * 依管道實際送出（DEF-317）：先前所有管道一律標記 isSent=true，但實際上只有把列寫進資料庫，
+     * 從未真正寄信/發簡訊/推播。IN_APP 的「送達」即是這筆資料庫列本身可見，故視為必定成功；
+     * EMAIL 透過既有 {@link EmailSender}（Sprint 204）真實送出；SMS／PUSH 尚無任何閘道實作，
+     * 明確回報未送達，不再假裝成功。
+     */
+    private DispatchOutcome dispatch(final NotificationMessage message) {
+        Notification.NotificationChannel channel = Notification.NotificationChannel.valueOf(message.getChannel());
+        return switch (channel) {
+            case IN_APP -> new DispatchOutcome(true, null);
+            case EMAIL -> dispatchEmail(message.getRecipient(), message.getTitle(), message.getContent());
+            case SMS -> new DispatchOutcome(false, "SMS 通道尚未實作（DEF-317）");
+            case PUSH -> new DispatchOutcome(false, "PUSH 通道尚未實作（DEF-317，且無裝置 token 欄位）");
+        };
+    }
+
+    private DispatchOutcome dispatchEmail(final String recipient, final String title, final String content) {
+        if (recipient == null || recipient.isBlank()) {
+            return new DispatchOutcome(false, "EMAIL 通道缺少收件地址");
+        }
+        if (!emailSender.canDeliver()) {
+            return new DispatchOutcome(false, "EMAIL 寄送能力未設定（canDeliver=false）");
+        }
+        try {
+            emailSender.send(recipient, title, content);
+            return new DispatchOutcome(true, null);
+        } catch (EmailDeliveryException e) {
+            log.warn("Email dispatch failed: recipient={}, error={}", recipient, e.getMessage());
+            return new DispatchOutcome(false, "EMAIL 寄送失敗：" + e.getMessage());
+        }
+    }
+
+    private record DispatchOutcome(boolean sent, String errorMessage) {
     }
 
     /**

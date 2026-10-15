@@ -34,6 +34,7 @@ import com.nextkey.ecommerce.domain.model.notification.Notification;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.NotificationRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.infrastructure.email.EmailSender;
 import com.nextkey.ecommerce.infrastructure.redis.RedisConfig;
 
 /**
@@ -100,8 +101,10 @@ class NotificationPipelineRedisIntegrationTest {
         notificationRepository = mock(NotificationRepository.class);
         when(notificationRepository.save(any(Notification.class))).thenAnswer(inv -> inv.getArgument(0));
         historyService = mock(NotificationHistoryService.class);
+        EmailSender emailSender = mock(EmailSender.class);
         producer = new NotificationProducerService(redisTemplate, userRepository, objectMapper);
-        consumer = new NotificationConsumerService(redisTemplate, notificationRepository, objectMapper, historyService);
+        consumer = new NotificationConsumerService(
+                redisTemplate, notificationRepository, objectMapper, historyService, emailSender);
     }
 
     @AfterEach

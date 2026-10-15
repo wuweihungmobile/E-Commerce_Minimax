@@ -12,6 +12,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.HashMap;
@@ -22,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -34,6 +36,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.core.notification.NotificationHistoryService;
 import com.nextkey.ecommerce.domain.model.notification.Notification;
 import com.nextkey.ecommerce.domain.repository.NotificationRepository;
+import com.nextkey.ecommerce.infrastructure.email.EmailDeliveryException;
+import com.nextkey.ecommerce.infrastructure.email.EmailSender;
 
 @DisplayName("NotificationConsumerService Tests (AI-502)")
 @ExtendWith(MockitoExtension.class)
@@ -49,6 +53,8 @@ class NotificationConsumerServiceTest {
     private NotificationHistoryService notificationHistoryService;
     @Mock
     private ListOperations<String, Object> listOperations;
+    @Mock
+    private EmailSender emailSender;
 
     @InjectMocks
     private NotificationConsumerService consumerService;
@@ -64,6 +70,18 @@ class NotificationConsumerServiceTest {
                 .title("訂單已確認")
                 .content("您的訂單已確認")
                 .channel("IN_APP")
+                .build();
+    }
+
+    private NotificationMessage buildMessage(final String channel, final String recipient) {
+        return NotificationMessage.builder()
+                .messageId(MESSAGE_ID)
+                .userId(USER_ID)
+                .notificationType("ORDER_CONFIRMED")
+                .title("訂單已確認")
+                .content("您的訂單已確認")
+                .channel(channel)
+                .recipient(recipient)
                 .build();
     }
 
@@ -244,5 +262,115 @@ class NotificationConsumerServiceTest {
 
         verify(notificationRepository, times(1)).save(any());
         verify(notificationRepository, never()).findById(any());
+    }
+
+    // ========== TC-C007~011（DEF-317：管道依實際送出結果決定 isSent，不再一律標記成功） ==========
+
+    @Test
+    @DisplayName("TC-C007: EMAIL 管道、canDeliver()=true → 真的呼叫 EmailSender.send()，isSent=true")
+    void consumeNotifications_emailChannel_deliverable_sendsAndMarksSent() throws JsonProcessingException {
+        String json = "{\"messageId\":\"" + MESSAGE_ID + "\"}";
+        stubRedisAndParser(json, buildMessage("EMAIL", "buyer@example.com"));
+        when(emailSender.canDeliver()).thenReturn(true);
+
+        consumerService.consumeNotifications();
+
+        verify(emailSender).send(eq("buyer@example.com"), eq("訂單已確認"), eq("您的訂單已確認"));
+        ArgumentCaptor<Notification> saved = ArgumentCaptor.forClass(Notification.class);
+        verify(notificationRepository).save(saved.capture());
+        assertThat(saved.getValue().getIsSent()).isTrue();
+        assertThat(saved.getValue().getSentAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("TC-C008: EMAIL 管道、canDeliver()=false → 不呼叫 send()，isSent=false 且記錄原因，不假裝成功")
+    void consumeNotifications_emailChannel_notDeliverable_doesNotSendAndMarksNotSent() throws JsonProcessingException {
+        String json = "{\"messageId\":\"" + MESSAGE_ID + "\"}";
+        stubRedisAndParser(json, buildMessage("EMAIL", "buyer@example.com"));
+        when(emailSender.canDeliver()).thenReturn(false);
+
+        consumerService.consumeNotifications();
+
+        verify(emailSender, never()).send(any(), any(), any());
+        ArgumentCaptor<Notification> saved = ArgumentCaptor.forClass(Notification.class);
+        verify(notificationRepository).save(saved.capture());
+        assertThat(saved.getValue().getIsSent()).isFalse();
+        assertThat(saved.getValue().getSentAt()).isNull();
+        assertThat(saved.getValue().getErrorMessage()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("TC-C009: EMAIL 管道、send() 拋 EmailDeliveryException → isSent=false，錯誤原因存入 errorMessage")
+    void consumeNotifications_emailChannel_sendThrows_marksNotSentWithError() throws JsonProcessingException {
+        String json = "{\"messageId\":\"" + MESSAGE_ID + "\"}";
+        stubRedisAndParser(json, buildMessage("EMAIL", "buyer@example.com"));
+        when(emailSender.canDeliver()).thenReturn(true);
+        doThrow(new EmailDeliveryException("SMTP timeout", null))
+                .when(emailSender).send(any(), any(), any());
+
+        consumerService.consumeNotifications();
+
+        ArgumentCaptor<Notification> saved = ArgumentCaptor.forClass(Notification.class);
+        verify(notificationRepository).save(saved.capture());
+        assertThat(saved.getValue().getIsSent()).isFalse();
+        assertThat(saved.getValue().getErrorMessage()).contains("SMTP timeout");
+    }
+
+    @Test
+    @DisplayName("TC-C010: SMS 管道尚無任何閘道實作 → isSent=false、明確標示未送達，不碰 EmailSender")
+    void consumeNotifications_smsChannel_notImplemented_marksNotSent() throws JsonProcessingException {
+        String json = "{\"messageId\":\"" + MESSAGE_ID + "\"}";
+        stubRedisAndParser(json, buildMessage("SMS", "0912345678"));
+
+        consumerService.consumeNotifications();
+
+        verifyNoInteractions(emailSender);
+        ArgumentCaptor<Notification> saved = ArgumentCaptor.forClass(Notification.class);
+        verify(notificationRepository).save(saved.capture());
+        assertThat(saved.getValue().getIsSent()).isFalse();
+        assertThat(saved.getValue().getErrorMessage()).contains("SMS");
+    }
+
+    @Test
+    @DisplayName("TC-C011: PUSH 管道尚無任何閘道實作 → isSent=false、明確標示未送達")
+    void consumeNotifications_pushChannel_notImplemented_marksNotSent() throws JsonProcessingException {
+        String json = "{\"messageId\":\"" + MESSAGE_ID + "\"}";
+        stubRedisAndParser(json, buildMessage("PUSH", null));
+
+        consumerService.consumeNotifications();
+
+        verifyNoInteractions(emailSender);
+        ArgumentCaptor<Notification> saved = ArgumentCaptor.forClass(Notification.class);
+        verify(notificationRepository).save(saved.capture());
+        assertThat(saved.getValue().getIsSent()).isFalse();
+        assertThat(saved.getValue().getErrorMessage()).contains("PUSH");
+    }
+
+    @Test
+    @DisplayName("TC-C012: 預建列＋EMAIL 管道，canDeliver()=false → 更新既有列為 isSent=false（非新增；非一律成功）")
+    void consumeNotifications_precreatedRowWithEmailChannel_notDeliverable_updatesRowAsNotSent()
+            throws JsonProcessingException {
+        UUID notificationId = UUID.randomUUID();
+        NotificationMessage message = buildMessage("EMAIL", "buyer@example.com");
+        message.setNotificationId(notificationId);
+        String json = "{\"messageId\":\"" + MESSAGE_ID + "\"}";
+        stubRedisAndParser(json, message);
+        when(emailSender.canDeliver()).thenReturn(false);
+        Notification precreated = Notification.builder()
+                .id(notificationId)
+                .userId(USER_ID)
+                .notificationType(Notification.NotificationType.ORDER_CONFIRMED)
+                .title("訂單已確認")
+                .channel(Notification.NotificationChannel.EMAIL)
+                .isSent(false)
+                .build();
+        when(notificationRepository.findById(notificationId)).thenReturn(java.util.Optional.of(precreated));
+
+        consumerService.consumeNotifications();
+
+        verify(emailSender, never()).send(any(), any(), any());
+        assertThat(precreated.getIsSent()).isFalse();
+        assertThat(precreated.getErrorMessage()).isNotBlank();
+        verify(notificationRepository, times(1)).save(precreated);
     }
 }

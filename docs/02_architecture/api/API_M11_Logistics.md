@@ -171,7 +171,7 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| `status` 無法解析成列舉 | 400 | `E-9000`（全域 `IllegalArgumentException`→`HttpMessageNotReadableException` 類全域 handler，非業務邏輯拋出） |
+| `status` 無法解析成列舉 | 500 | `E-9900`（**非乾淨驗證錯誤**：Controller 以 `@RequestParam String status` 收參數後手動 `LogisticsStatus.valueOf(status)`，未包 try-catch；`GlobalExceptionHandler` 刻意不設全域 `IllegalArgumentException` handler（Sprint 161 已拍板，理由是此例外也可能源自非使用者輸入的程式邏輯），落入 catch-all，見 §7 DEF-385） |
 | 物流單不存在 | 404 | `E-7000`（**誤用**，見 §7 DEF-381） |
 | 非擁有租戶且非 admin | 403 | `E-1007` |
 
@@ -271,6 +271,7 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 | `E-7502` | 400 | 已送達的物流無法取消 | §4.7 |
 | `E-7504` | 404 | 找不到運費範本 | §4.10／4.11／4.12 |
 | `E-9000` | 400 | 驗證錯誤 | 所有 `@Valid`／必填查詢參數缺失 |
+| `E-9900` | 500 | 內部伺服器錯誤 | §4.6 `status` 查詢參數無法解析成列舉時誤觸（見 §7 DEF-385），非真正的伺服器內部錯誤 |
 
 ---
 
@@ -278,6 +279,7 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 
 | 項目 | 說明 |
 |------|------|
+| **`updateLogisticsStatus` 的 `status` 解析未捕捉例外，變成 500（DEF-385，新登記，跨模組）** | §4.6 的 `status` 查詢參數以 `@RequestParam String` 收下後手動 `valueOf()`，無 try-catch；傳入無法解析的字串時拋出未攔截的 `IllegalArgumentException`，落入 `GlobalExceptionHandler` 的 catch-all 變 500／`E-9900`，而非乾淨的 400 驗證錯誤。同一缺陷模式也出現在 M16 ERP 模組（`ErpController.listPurchaseOrders`、`SupplierService.listSuppliers` 的 `status` 篩選），DEF-385 一併登記三個實例 |
 | **物流錯誤碼大量誤用（DEF-381，新登記）** | `ErrorCode` 已定義專屬的 `E_7500`（找不到物流記錄）與 `E_7501`（已存在進行中的物流記錄），但 `LogisticsService` 只有 `cancelLogistics` 一個方法在 DEF-011（歷史 Sprint）被修正為使用 `E_7500`；`getLogistics`／`trackLogistics`／`getTrackingDetail`／`updateLogisticsStatus` 四個方法仍沿用 ERP 模組借來的 `E_7000`（官方定義「找不到供應商」）；`createLogistics` 的「已有作用中物流單」衝突情境則誤用 `E_7001`（官方定義「找不到採購單」），本該用語意精確吻合的 `E_7501`（該碼因此是全庫唯一一個「定義了卻從未被拋出」的物流錯誤碼）。四個查詢方法與建立衝突情境皆無測試斷言實際錯誤碼，只有 `LogisticsServiceCancelTest` 對 `cancelLogistics` 的 `E_7500` 有測試覆蓋。HTTP 狀態碼恰好都是 404，不影響狀態碼層級的客戶端行為，但 `code`／`message` 欄位會誤導依錯誤碼分流處理或記錄 log 的呼叫端 |
 | 一張訂單至多一筆作用中物流單是應用層檢查，無資料庫唯一約束 | `logistics` 表的 `order_id` 無唯一索引兜底，§1.2 第 2 點的檢查與建立之間雖有狀態 CAS 防護（DEF-123），但理論上地基完全依賴應用層邏輯，非資料庫不變量 |
 | `logisticsData`（JSONB）是保留但未使用欄位 | 建立時初始化為空 Map，全庫無任何寫入實際內容的路徑，也不出現在任何回應 DTO |

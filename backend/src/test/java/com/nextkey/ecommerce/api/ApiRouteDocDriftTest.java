@@ -21,6 +21,7 @@ import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 
+import com.nextkey.ecommerce.api.controller.AnalyticsController;
 import com.nextkey.ecommerce.api.controller.AuthController;
 import com.nextkey.ecommerce.api.controller.BookingController;
 import com.nextkey.ecommerce.api.controller.BookingPaymentController;
@@ -31,6 +32,7 @@ import com.nextkey.ecommerce.api.controller.CheckoutController;
 import com.nextkey.ecommerce.api.controller.DashboardBookingController;
 import com.nextkey.ecommerce.api.controller.DashboardListingController;
 import com.nextkey.ecommerce.api.controller.DashboardPricingController;
+import com.nextkey.ecommerce.api.controller.ErpController;
 import com.nextkey.ecommerce.api.controller.ListingController;
 import com.nextkey.ecommerce.api.controller.LogisticsController;
 import com.nextkey.ecommerce.api.controller.NotificationController;
@@ -45,6 +47,7 @@ import com.nextkey.ecommerce.api.controller.PublicListingController;
 import com.nextkey.ecommerce.api.controller.ReviewController;
 import com.nextkey.ecommerce.api.controller.RoomCalendarController;
 import com.nextkey.ecommerce.api.controller.RoomController;
+import com.nextkey.ecommerce.api.controller.SellerDashboardController;
 import com.nextkey.ecommerce.api.controller.ShippingTemplateController;
 import com.nextkey.ecommerce.api.controller.StorefrontController;
 import com.nextkey.ecommerce.api.controller.TenantController;
@@ -126,6 +129,13 @@ class ApiRouteDocDriftTest {
         // Sprint 274：M11 物流追蹤，文件先前完全不存在（DEF-286 範圍），新建後一併納入守門
         GUARDED.put("api/API_M11_Logistics.md",
                 List.of(LogisticsController.class, ShippingTemplateController.class));
+        // Sprint 275：M13 商家工作台，文件先前完全不存在（DEF-286 範圍），新建後一併納入守門
+        GUARDED.put("api/API_M13_Seller_Dashboard.md",
+                List.of(SellerDashboardController.class, AnalyticsController.class));
+        // Sprint 276：M16 進銷存管理，文件先前完全不存在（DEF-286 範圍）。採購單審批 3 個端點實作在
+        // AdminController（混雜 M14/M17 端點），無法整個類別納入守門，故僅登記 ErpController；
+        // 採購單審批端點暫無機械防漂移，見文件 §7 已知限制
+        GUARDED.put("api/API_M16_ERP.md", List.of(ErpController.class));
     }
 
     /** 反引號包住的 `METHOD /path`：路徑到反引號、空白或 {@code ?} 為止。 */

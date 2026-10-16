@@ -29,18 +29,22 @@ import com.nextkey.ecommerce.api.controller.BookingReviewController;
 import com.nextkey.ecommerce.api.controller.CartController;
 import com.nextkey.ecommerce.api.controller.ChatController;
 import com.nextkey.ecommerce.api.controller.CheckoutController;
+import com.nextkey.ecommerce.api.controller.CmsController;
 import com.nextkey.ecommerce.api.controller.DashboardBookingController;
 import com.nextkey.ecommerce.api.controller.DashboardListingController;
 import com.nextkey.ecommerce.api.controller.DashboardPricingController;
 import com.nextkey.ecommerce.api.controller.ErpController;
 import com.nextkey.ecommerce.api.controller.ListingController;
 import com.nextkey.ecommerce.api.controller.LogisticsController;
+import com.nextkey.ecommerce.api.controller.MediaCategoryController;
+import com.nextkey.ecommerce.api.controller.MediaController;
 import com.nextkey.ecommerce.api.controller.NotificationController;
 import com.nextkey.ecommerce.api.controller.NotificationPreferenceController;
 import com.nextkey.ecommerce.api.controller.NotificationTemplateController;
 import com.nextkey.ecommerce.api.controller.OAuthController;
 import com.nextkey.ecommerce.api.controller.OrderController;
 import com.nextkey.ecommerce.api.controller.OrderPaymentController;
+import com.nextkey.ecommerce.api.controller.PostController;
 import com.nextkey.ecommerce.api.controller.PricingController;
 import com.nextkey.ecommerce.api.controller.ProductController;
 import com.nextkey.ecommerce.api.controller.PublicListingController;
@@ -136,6 +140,11 @@ class ApiRouteDocDriftTest {
         // AdminController（混雜 M14/M17 端點），無法整個類別納入守門，故僅登記 ErpController；
         // 採購單審批端點暫無機械防漂移，見文件 §7 已知限制
         GUARDED.put("api/API_M16_ERP.md", List.of(ErpController.class));
+        // Sprint 277：M15 內容管理系統，文件先前完全不存在（DEF-286 範圍）。四個獨立 Controller
+        // 全數登記（CmsController 頁面/橫幅、PostController 貼文/分類/部落格媒體/嵌入卡片、
+        // MediaController／MediaCategoryController 獨立媒體庫），見文件 §1.2 架構說明
+        GUARDED.put("api/API_M15_CMS.md", List.of(
+                CmsController.class, PostController.class, MediaController.class, MediaCategoryController.class));
     }
 
     /** 反引號包住的 `METHOD /path`：路徑到反引號、空白或 {@code ?} 為止。 */

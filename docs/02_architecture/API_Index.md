@@ -1,9 +1,9 @@
 # API Index / API 規格索引
 
 > **文檔狀態**: Active
-> **版本**: v2.0
+> **版本**: v2.1
 > **建立日期**: 2026-04-09
-> **最後更新**: 2026-10-16（Sprint 276：新增 M14 平台總管理台 [API_M14_Admin_Console.md](./api/API_M14_Admin_Console.md)（6 個端點，完全不受機械防漂移保護，見該文件 §7）與 M16 進銷存管理 [API_M16_ERP.md](./api/API_M16_ERP.md)（20 個端點，17 個受保護），皆首次建立獨立規格（DEF-286 範圍），並連帶登記 DEF-384／DEF-385；Sprint 275：新增 M13 商家工作台 [API_M13_Seller_Dashboard.md](./api/API_M13_Seller_Dashboard.md)（8 個端點），首次建立獨立規格（DEF-286 範圍）；Sprint 274：新增 M10 即時通訊 [API_M10_Chat.md](./api/API_M10_Chat.md)（6 個端點）與 M11 物流追蹤 [API_M11_Logistics.md](./api/API_M11_Logistics.md)（12 個端點），皆首次建立獨立規格（DEF-286 範圍）；Sprint 273：M01／M02 全面改寫為 [API_M01_Product_Center.md](./api/API_M01_Product_Center.md)（14 個端點）與 [API_M02_Listing_Center.md](./api/API_M02_Listing_Center.md)（8 個端點），並校正 [API_Listing_Unified_Create.md](./api/API_Listing_Unified_Create.md)（DEF-286／DEF-372 範圍）；Sprint 272：新增 M09 訊息通知中心 [API_M09_Notification.md](./api/API_M09_Notification.md)（DEF-286 範圍，首次建立獨立規格，17 個端點）；Sprint 265：新增 M05 退貨申請 [API_M05_Return.md](./api/API_M05_Return.md)（DEF-366）與 M18 客服工單 [API_M18_Support.md](./api/API_M18_Support.md)（DEF-367），兩者皆首次建立獨立規格；Sprint 263：M08 連結改指向新建的 [API_M08_Review.md](./api/API_M08_Review.md)，見 DEF-365；Sprint 262：M07 連結改指向新建的 [API_M07_Settlement.md](./api/API_M07_Settlement.md)，見 DEF-364）
+> **最後更新**: 2026-10-16（Sprint 277：新增 M15 內容管理系統 [API_M15_CMS.md](./api/API_M15_CMS.md)（48 個端點，橫跨 4 個 Controller，全數受保護），首次建立獨立規格（DEF-286 範圍），連帶登記 DEF-386／387／388——至此 PRD 列出的全部模組皆已有獨立 API 規格文件；Sprint 276：新增 M14 平台總管理台 [API_M14_Admin_Console.md](./api/API_M14_Admin_Console.md)（6 個端點，完全不受機械防漂移保護，見該文件 §7）與 M16 進銷存管理 [API_M16_ERP.md](./api/API_M16_ERP.md)（20 個端點，17 個受保護），皆首次建立獨立規格（DEF-286 範圍），並連帶登記 DEF-384／DEF-385；Sprint 275：新增 M13 商家工作台 [API_M13_Seller_Dashboard.md](./api/API_M13_Seller_Dashboard.md)（8 個端點），首次建立獨立規格（DEF-286 範圍）；Sprint 274：新增 M10 即時通訊 [API_M10_Chat.md](./api/API_M10_Chat.md)（6 個端點）與 M11 物流追蹤 [API_M11_Logistics.md](./api/API_M11_Logistics.md)（12 個端點），皆首次建立獨立規格（DEF-286 範圍）；Sprint 273：M01／M02 全面改寫為 [API_M01_Product_Center.md](./api/API_M01_Product_Center.md)（14 個端點）與 [API_M02_Listing_Center.md](./api/API_M02_Listing_Center.md)（8 個端點），並校正 [API_Listing_Unified_Create.md](./api/API_Listing_Unified_Create.md)（DEF-286／DEF-372 範圍）；Sprint 272：新增 M09 訊息通知中心 [API_M09_Notification.md](./api/API_M09_Notification.md)（DEF-286 範圍，首次建立獨立規格，17 個端點）；Sprint 265：新增 M05 退貨申請 [API_M05_Return.md](./api/API_M05_Return.md)（DEF-366）與 M18 客服工單 [API_M18_Support.md](./api/API_M18_Support.md)（DEF-367），兩者皆首次建立獨立規格；Sprint 263：M08 連結改指向新建的 [API_M08_Review.md](./api/API_M08_Review.md)，見 DEF-365；Sprint 262：M07 連結改指向新建的 [API_M07_Settlement.md](./api/API_M07_Settlement.md)，見 DEF-364）
 > **作者**: Marcus (SD-Architect)
 > **🔴 Sprint 16 US-008**: 收錄 Sprint 15 + Sprint 16 新增 API 端點
 >
@@ -11,7 +11,7 @@
 >
 > **⚠️ 完整性未保證（Sprint 203 揭露）**: 本索引的多數模組最後更新於 2026-06-05，僅收錄 48 個端點；同日核對後端 controller 有約 305 個 `@*Mapping` 註解。**本索引不是完整端點清單**，見 DEF-286。
 >
-> **✅ 已完整且有守門的模組（Sprint 241／243／262／263／265／272／273／274／275／276）**: **M01 商品中心**（[API_M01_Product_Center.md](./api/API_M01_Product_Center.md)，14 個端點，Sprint 273）、**M02 房源中心**（[API_M02_Listing_Center.md](./api/API_M02_Listing_Center.md)，8 個端點，Sprint 273）、**M03 會員與權限**（[API_M03_Auth.md](./api/API_M03_Auth.md)，13 個端點）、**M04 購物車**（[API_M04_Cart.md](./API_M04_Cart.md)，9 個端點）、**M05 訂單履約**（[API_M05_Order.md](./api/API_M05_Order.md)，15 個端點，Sprint 243）、**M05 退貨申請**（[API_M05_Return.md](./api/API_M05_Return.md)，8 個端點，Sprint 265）、**M06 預訂系統**（[API_M06_Booking.md](./API_M06_Booking.md)，11 個端點，Sprint 243）、**M07 結算與撥款**（[API_M07_Settlement.md](./api/API_M07_Settlement.md)，12 個端點，Sprint 262）、**M08 評價與社交互動**（[API_M08_Review.md](./api/API_M08_Review.md)，18 個端點，Sprint 263）、**M09 訊息通知中心**（[API_M09_Notification.md](./api/API_M09_Notification.md)，17 個端點，Sprint 272）、**M10 即時通訊**（[API_M10_Chat.md](./api/API_M10_Chat.md)，6 個端點，Sprint 274）、**M11 物流追蹤**（[API_M11_Logistics.md](./api/API_M11_Logistics.md)，12 個端點，Sprint 274）、**M13 商家工作台**（[API_M13_Seller_Dashboard.md](./api/API_M13_Seller_Dashboard.md)，8 個端點，Sprint 275）、**M16 進銷存管理**（[API_M16_ERP.md](./api/API_M16_ERP.md)，20 個端點，17 個受保護，Sprint 276）與 **M18 客服工單**（[API_M18_Support.md](./api/API_M18_Support.md)，11 個端點，Sprint 265）已依實作改寫，並納入 `ApiRouteDocDriftTest`：Controller 新增、刪除或改名路由而沒更新規格，測試會失敗。統一 Listing 建立端點（`POST /v2/dashboard/listings`，M01／M02 共用）獨立記載於 [API_Listing_Unified_Create.md](./api/API_Listing_Unified_Create.md)，同樣已納入守門。M05／M06 的回應形狀、狀態碼、錯誤碼與權限另有真實服務的契約測試（`OrderApiRealStackIntegrationTest`、`BookingApiRealStackIntegrationTest`）。其他模組將依序納入；納入前仍以規格文件與程式碼互相對照為準。
+> **✅ 已完整且有守門的模組（Sprint 241／243／262／263／265／272／273／274／275／276／277）**: **M01 商品中心**（[API_M01_Product_Center.md](./api/API_M01_Product_Center.md)，14 個端點，Sprint 273）、**M02 房源中心**（[API_M02_Listing_Center.md](./api/API_M02_Listing_Center.md)，8 個端點，Sprint 273）、**M03 會員與權限**（[API_M03_Auth.md](./api/API_M03_Auth.md)，13 個端點）、**M04 購物車**（[API_M04_Cart.md](./API_M04_Cart.md)，9 個端點）、**M05 訂單履約**（[API_M05_Order.md](./api/API_M05_Order.md)，15 個端點，Sprint 243）、**M05 退貨申請**（[API_M05_Return.md](./api/API_M05_Return.md)，8 個端點，Sprint 265）、**M06 預訂系統**（[API_M06_Booking.md](./API_M06_Booking.md)，11 個端點，Sprint 243）、**M07 結算與撥款**（[API_M07_Settlement.md](./api/API_M07_Settlement.md)，12 個端點，Sprint 262）、**M08 評價與社交互動**（[API_M08_Review.md](./api/API_M08_Review.md)，18 個端點，Sprint 263）、**M09 訊息通知中心**（[API_M09_Notification.md](./api/API_M09_Notification.md)，17 個端點，Sprint 272）、**M10 即時通訊**（[API_M10_Chat.md](./api/API_M10_Chat.md)，6 個端點，Sprint 274）、**M11 物流追蹤**（[API_M11_Logistics.md](./api/API_M11_Logistics.md)，12 個端點，Sprint 274）、**M13 商家工作台**（[API_M13_Seller_Dashboard.md](./api/API_M13_Seller_Dashboard.md)，8 個端點，Sprint 275）、**M15 內容管理系統**（[API_M15_CMS.md](./api/API_M15_CMS.md)，48 個端點，橫跨 4 個 Controller，Sprint 277）、**M16 進銷存管理**（[API_M16_ERP.md](./api/API_M16_ERP.md)，20 個端點，17 個受保護，Sprint 276）與 **M18 客服工單**（[API_M18_Support.md](./api/API_M18_Support.md)，11 個端點，Sprint 265）已依實作改寫，並納入 `ApiRouteDocDriftTest`：Controller 新增、刪除或改名路由而沒更新規格，測試會失敗。統一 Listing 建立端點（`POST /v2/dashboard/listings`，M01／M02 共用）獨立記載於 [API_Listing_Unified_Create.md](./api/API_Listing_Unified_Create.md)，同樣已納入守門。M05／M06 的回應形狀、狀態碼、錯誤碼與權限另有真實服務的契約測試（`OrderApiRealStackIntegrationTest`、`BookingApiRealStackIntegrationTest`）。其他模組將依序納入；納入前仍以規格文件與程式碼互相對照為準。
 >
 > **⚠️ M14 平台總管理台已有規格但完全不受機械防漂移保護**：[API_M14_Admin_Console.md](./api/API_M14_Admin_Console.md)（6 個端點，Sprint 276）的所有端點都實作在混雜 M16／M17 端點的 `AdminController`，無法整個類別納入 `ApiRouteDocDriftTest`，純靠人工對照維持同步，見該文件 §7。
 
@@ -218,6 +218,20 @@
 | `/api/v2/admin/purchase-orders/{poId}/approve` | POST | 核准採購單 | `hasRole(SUPER_ADMIN)` |
 | `/api/v2/admin/purchase-orders/{poId}/reject` | POST | 駁回採購單 | `hasRole(SUPER_ADMIN)` |
 
+### 內容管理系統 (M15)
+
+規格：[API_M15_CMS.md](./api/API_M15_CMS.md)（v1.0，Sprint 277，48 個端點）。⚠️ 實際是四個互相獨立的子系統（見文件 §1.2）：`CmsController` 頁面/橫幅、`PostController` 貼文/分類/部落格媒體/嵌入卡片、`MediaController`／`MediaCategoryController` 獨立媒體庫——其中兩套媒體庫互相獨立但寫入同一張表（DEF-387），`PostController` 另有自製租戶解析風險（DEF-386）。
+
+| 端點（節錄，完整列表見文件 §2） | 方法 | 說明 | 權限 |
+|------|------|------|------|
+| `/api/v2/cms/pages`／`/banners` | 全套 CRUD＋發布 | 平台頁面／橫幅（實際任何店鋪角色可管理自己租戶內容） | `cms:*` |
+| `/api/v2/dashboard/posts`／`/post-categories` | 全套 CRUD＋發布 | 店鋪部落格貼文與分類 | 角色字面字串 |
+| `/api/v2/posts`／`/posts/{slug}`／`/posts/categories` | GET | 公開部落格瀏覽 | 公開 |
+| `/api/v2/dashboard/media/*` | 全套 | 部落格專用媒體上傳 | 角色字面字串 |
+| `/api/v2/admin/posts/*` | GET／DELETE | 平台管理任意店鋪貼文 | `hasRole(SUPER_ADMIN)` |
+| `/api/v2/listings/{id}/card` | GET | 嵌入卡片資訊 | 公開 |
+| `/api/v2/media/*`／`/media/categories/*` | 全套 | 獨立通用媒體庫與分類 | `media:*` |
+
 ### 租戶管理 (M17)
 
 | API ID | 端點 | 方法 | 說明 | 角色 | Phase |
@@ -305,6 +319,9 @@
 
 ### M13 商家工作台 (🆕 Sprint 275 完整建立)
 - [API_M13_Seller_Dashboard.md](./api/API_M13_Seller_Dashboard.md)（v1.0，Sprint 275 新建，DEF-286 範圍；首次有獨立規格，8 個端點，含 Stripe Connect 收款帳戶開通子功能）
+
+### M15 內容管理系統 (🆕 Sprint 277 完整建立)
+- [API_M15_CMS.md](./api/API_M15_CMS.md)（v1.0，Sprint 277 新建，DEF-286 範圍；首次有獨立規格，48 個端點橫跨 4 個 Controller，新登記 DEF-386／387／388）
 
 ### M14 平台總管理台 (🆕 Sprint 276 完整建立；⚠️ 不受機械防漂移保護)
 - [API_M14_Admin_Console.md](./api/API_M14_Admin_Console.md)（v1.0，Sprint 276 新建，DEF-286 範圍；首次有獨立規格，6 個端點，新登記 DEF-384）

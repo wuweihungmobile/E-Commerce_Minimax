@@ -26,11 +26,13 @@ import com.nextkey.ecommerce.api.controller.BookingController;
 import com.nextkey.ecommerce.api.controller.BookingPaymentController;
 import com.nextkey.ecommerce.api.controller.BookingReviewController;
 import com.nextkey.ecommerce.api.controller.CartController;
+import com.nextkey.ecommerce.api.controller.ChatController;
 import com.nextkey.ecommerce.api.controller.CheckoutController;
 import com.nextkey.ecommerce.api.controller.DashboardBookingController;
 import com.nextkey.ecommerce.api.controller.DashboardListingController;
 import com.nextkey.ecommerce.api.controller.DashboardPricingController;
 import com.nextkey.ecommerce.api.controller.ListingController;
+import com.nextkey.ecommerce.api.controller.LogisticsController;
 import com.nextkey.ecommerce.api.controller.NotificationController;
 import com.nextkey.ecommerce.api.controller.NotificationPreferenceController;
 import com.nextkey.ecommerce.api.controller.NotificationTemplateController;
@@ -43,6 +45,7 @@ import com.nextkey.ecommerce.api.controller.PublicListingController;
 import com.nextkey.ecommerce.api.controller.ReviewController;
 import com.nextkey.ecommerce.api.controller.RoomCalendarController;
 import com.nextkey.ecommerce.api.controller.RoomController;
+import com.nextkey.ecommerce.api.controller.ShippingTemplateController;
 import com.nextkey.ecommerce.api.controller.StorefrontController;
 import com.nextkey.ecommerce.api.controller.TenantController;
 import com.nextkey.ecommerce.api.controller.returns.ReturnRequestController;
@@ -118,6 +121,11 @@ class ApiRouteDocDriftTest {
         // Sprint 273：統一 Listing 建立端點（PRODUCT／ROOM 共用，DashboardListingController 僅此一條路由），
         // 獨立成文件校正內容，一併納入守門（DEF-286／DEF-372 範圍）
         GUARDED.put("api/API_Listing_Unified_Create.md", List.of(DashboardListingController.class));
+        // Sprint 274：M10 即時通訊，文件先前完全不存在（DEF-286 範圍），新建後一併納入守門
+        GUARDED.put("api/API_M10_Chat.md", List.of(ChatController.class));
+        // Sprint 274：M11 物流追蹤，文件先前完全不存在（DEF-286 範圍），新建後一併納入守門
+        GUARDED.put("api/API_M11_Logistics.md",
+                List.of(LogisticsController.class, ShippingTemplateController.class));
     }
 
     /** 反引號包住的 `METHOD /path`：路徑到反引號、空白或 {@code ?} 為止。 */

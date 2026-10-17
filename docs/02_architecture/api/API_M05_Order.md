@@ -500,11 +500,11 @@ CREATED ──付款──▶ PAID ──店家確認──▶ CONFIRMED ──�
 
 ### 7.5 `POST /v2/orders/{orderId}/pay/checkout` — 發起 Stripe Checkout
 
-**權限**：同 §7.2。需要 `STRIPE_PAYMENT_ENABLED` 開啟（**未啟用回 `400 E-6002`**，預設訊息是「付款已取消」，實際原因是 Stripe 未啟用）。建立 `PROCESSING` 的付款紀錄與 Stripe Checkout Session，成功 `200`，`data` 是 `CheckoutSession`（前端導向 `sessionUrl`）。同一張訂單再次發起（買家在 Stripe 頁按返回再按一次）會拿回同一個 Session，不重複寫付款紀錄；查與寫之間的極小競態回可重試的 `422 E-6005`。
+**權限**：同 §7.2。需要 `STRIPE_PAYMENT_ENABLED` 開啟（**未啟用回 `403 E-2004`**，`checkFeatureEnabled`，`DEF-341` 已修復：原誤用 `400 E-6002`「付款已取消」）。建立 `PROCESSING` 的付款紀錄與 Stripe Checkout Session，成功 `200`，`data` 是 `CheckoutSession`（前端導向 `sessionUrl`）。同一張訂單再次發起（買家在 Stripe 頁按返回再按一次）會拿回同一個 Session，不重複寫付款紀錄；查與寫之間的極小競態回可重試的 `422 E-6005`。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| Stripe 未啟用 | 400 | `E-6002` |
+| Stripe 未啟用 | 403 | `E-2004`（`DEF-341` 已修復，原誤用 `E-6002`） |
 | 訂單不是 `CREATED` | 422 | `E-5011` |
 | 已有成功付款 | 400 | `E-6003` |
 | **店鋪暫停營業**（Stripe **完全不會被呼叫**） | 422 | `E-2010` |
@@ -541,7 +541,7 @@ M05 常見錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](../
 | `E-5020` | 400 | 訂單的商品必須屬於同一家店鋪，請指定 `storeId` |
 | `E-6000` | 404 | 找不到付款紀錄 |
 | `E-6001` | 400 | 付款（退款）失敗 |
-| `E-6002` | 400 | Stripe 未啟用（預設訊息「付款已取消」） |
+| `E-2004` | 403 | Stripe 未啟用（`checkFeatureEnabled`，`DEF-341` 已修復：原誤用 `E-6002`「付款已取消」） |
 | `E-6003` | 400 | 付款已處理完成 |
 | `E-6004` | 422 | Stripe 啟用後 Mock 付款不可用 |
 | `E-6005` | 422／409 | 冪等鍵已被使用／處理中 |
@@ -558,7 +558,6 @@ M05 常見錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](../
 | 項目 | 說明 |
 |------|------|
 | `sortBy`／`sortDir` 不改變順序 | repository 方法名寫死 `OrderByCreatedAtDesc`，列表永遠建立時間新到舊（`DEF-342`） |
-| `E-6002` 的訊息誤導 | Stripe 未啟用時回的是「付款已取消」（`DEF-341`） |
 | 退款端點只有管理員 | 店主沒有自己的退款入口（見 §6）；取消已付款訂單後由排程自動退款 |
 | Stripe 路徑未對真實 Stripe 驗證 | 發起、回跳、webhook、退款的行為以 Mock／WireMock 驗證，從未對真實 Stripe 驗證（Sprint 207／226 紀錄） |
 | 舊的 `orderType=ROOM` 訂單路徑 | 前端沒有呼叫點，與訂房（Booking）無關，新整合請用 [M06](../API_M06_Booking.md) |

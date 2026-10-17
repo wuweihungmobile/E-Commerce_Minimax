@@ -37,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,7 +46,7 @@ import static org.mockito.Mockito.when;
  * PaymentStateService 真實金流（Stripe Checkout）單元測試（Sprint 50 US-001 / AI-2410）。
  *
  * 驗證 Phase A：
- * - initiateStripeCheckout：toggle 開啟 → 建 PROCESSING 付款 + 回 session url；toggle 關閉 → E_6002
+ * - initiateStripeCheckout：toggle 開啟 → 建 PROCESSING 付款 + 回 session url；toggle 關閉 → E_2004（DEF-341，原誤用 E_6002）
  * - confirmStripeCheckout：paid → Payment SUCCESS + Order PAID；已 SUCCESS → 冪等（不重複 retrieve）
  */
 @ExtendWith(MockitoExtension.class)
@@ -163,14 +164,17 @@ class PaymentStateServiceStripeTest {
     }
 
     @Test
-    @DisplayName("UT-PAY-STRIPE-002: initiate toggle 關閉 → E_6002（不建 session）")
-    void initiate_toggleOff_throwsE6002() {
+    @DisplayName("UT-PAY-STRIPE-002: initiate toggle 關閉 → E_2004（DEF-341，原誤用 E_6002「付款已取消」），不建 session")
+    void initiate_toggleOff_throwsE2004() {
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(createdOrder()));
-        when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(false);
+        // DEF-341：改用 checkFeatureEnabled（void，拋例外）取代 isFeatureEnabled（boolean），
+        // 不能再靠 when(...).thenReturn(false) 間接製造「未啟用」情境，必須明確 stub 讓它拋出 E_2004。
+        doThrow(new BusinessException(ErrorCode.E_2004, "Feature 'STRIPE_PAYMENT_ENABLED' is disabled for this tenant"))
+                .when(featureToggleService).checkFeatureEnabled("STRIPE_PAYMENT_ENABLED");
 
         assertThatThrownBy(() -> service.initiateStripeCheckout(ORDER_ID))
                 .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_6002));
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_2004));
         verify(paymentGatewayFactory, never()).createCheckoutSession(any(), any());
     }
 

@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.api.controller;
 
 import java.time.LocalDate;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.format.annotation.DateTimeFormat;
@@ -38,6 +39,10 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class ListingController {
 
+    // DEF-344：sortBy 白名單。亂填（含不存在的 Listing 屬性名稱）先前直接交給 Sort.by()／JPA 解析，
+    // 落入全域例外處理器的 catch-all 變 500（E-9900）；比照 M05/M06（DEF-339）改用 PageableUtils.sortOf。
+    private static final Set<String> SORTABLE_FIELDS = Set.of("basePrice", "createdAt", "updatedAt");
+
     private final ListingRepository listingRepository;
     private final PricingService pricingService;
 
@@ -51,7 +56,7 @@ public class ListingController {
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "DESC") String sortDir) {
 
-        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
+        Sort sort = PageableUtils.sortOf(sortBy, sortDir, SORTABLE_FIELDS);
         PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
 
         Page<Listing> listings;

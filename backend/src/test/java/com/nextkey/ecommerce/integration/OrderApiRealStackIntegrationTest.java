@@ -262,7 +262,7 @@ class OrderApiRealStackIntegrationTest {
     // ── 付款 ─────────────────────────────────────────────────
 
     @Test
-    @DisplayName("付款狀態與 Mock 付款：形狀（canPay／canCancel／canRefund／paymentProvider／storeOpen）、付款成功、重複付款 422 E-5011、別人付款 403、付款失敗只記錄、Stripe 未啟用 400 E-6002")
+    @DisplayName("付款狀態與 Mock 付款：形狀（canPay／canCancel／canRefund／paymentProvider／storeOpen）、付款成功、重複付款 422 E-5011、別人付款 403、付款失敗只記錄、Stripe 未啟用 403 E-2004（DEF-341，原誤用 E-6002）")
     void payment() throws Exception {
         String orderId = createOrder(1);
         String base = "/v2/orders/" + orderId;
@@ -286,7 +286,7 @@ class OrderApiRealStackIntegrationTest {
                 .andExpect(jsonPath("$.data.orderStatus").value("CREATED"))
                 .andExpect(jsonPath("$.data.canPay").value(true));
         send(post(base + "/pay/checkout"), fx.buyerToken)
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("E-6002"));
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("E-2004"));
         send(post(base + "/pay"), fx.buyerToken)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.orderStatus").value("PAID"))

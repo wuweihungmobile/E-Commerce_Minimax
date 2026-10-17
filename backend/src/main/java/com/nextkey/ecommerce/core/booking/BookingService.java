@@ -273,13 +273,16 @@ public class BookingService {
         }
 
         if (endDate.isBefore(startDate)) {
-            throw new BusinessException(ErrorCode.E_3001, "endDate must not be before startDate");
+            // DEF-341：原誤用 E_3001（預設訊息「無效的刊登類型」，與日期區間無關），改用語意相符的 E_4003
+            // （「無效的日期區間」，與 §4.3 建立訂房的「退房不晚於入住」同一碼，400）。
+            throw new BusinessException(ErrorCode.E_4003, "endDate must not be before startDate");
         }
 
         // 含頭含尾的天數；上限防止過大區間查詢
         long rangeDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
         if (rangeDays > MAX_CALENDAR_RANGE_DAYS) {
-            throw new BusinessException(ErrorCode.E_3001,
+            // DEF-341：同上，改用 E_4003
+            throw new BusinessException(ErrorCode.E_4003,
                     "Date range too large (max " + MAX_CALENDAR_RANGE_DAYS + " days)");
         }
 

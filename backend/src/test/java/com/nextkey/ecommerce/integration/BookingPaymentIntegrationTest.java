@@ -92,7 +92,18 @@ class BookingPaymentIntegrationTest {
         lenient().when(featureToggleService.isFeatureEnabled(anyString())).thenReturn(true);
         lenient().when(featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")).thenReturn(false);
         lenient().when(featureToggleService.isFeatureEnabled(STRIPE_TOGGLE)).thenReturn(false);
-        lenient().doNothing().when(featureToggleService).checkFeatureEnabled(anyString());
+        // DEF-341：checkFeatureEnabled 動態代理到 isFeatureEnabled 對同一 key 的回傳值，而非獨立的
+        // doNothing() 常態放行——先前兩者各自 stub，initiateStripeBookingCheckout 改用 checkFeatureEnabled
+        // 後，原本的 doNothing() 讓它永遠不丟，與上面 isFeatureEnabled(STRIPE_TOGGLE)=false 互相矛盾
+        // （Sprint 279 實測踩到）。改用 doAnswer 後兩者永遠同步，不會再各自漂移。
+        lenient().doAnswer(invocation -> {
+            String featureKey = invocation.getArgument(0);
+            if (!featureToggleService.isFeatureEnabled(featureKey)) {
+                throw new BusinessException(ErrorCode.E_2004,
+                        "Feature '" + featureKey + "' is disabled for this tenant");
+            }
+            return null;
+        }).when(featureToggleService).checkFeatureEnabled(anyString());
         long stamp = System.nanoTime();
         tenant = tenantRepository.save(Tenant.builder().name("Booking Pay Tenant").slug("booking-pay-" + stamp)
                 .contactEmail("booking-pay-" + stamp + "@tenant.com").contactPhone("+886-123456789")
@@ -261,13 +272,13 @@ class BookingPaymentIntegrationTest {
     }
 
     @Test
-    @DisplayName("Stripe：未啟用時發起結帳被拒（E-6002）；別人的訂房被拒（E-1007）；不是待付款的訂房被拒（E-5011）")
+    @DisplayName("Stripe：未啟用時發起結帳被拒（E-2004，DEF-341，原誤用 E-6002）；別人的訂房被拒（E-1007）；不是待付款的訂房被拒（E-5011）")
     void stripeCheckout_guards() {
         UUID bookingId = buyerBooksTwoNights();
         stubCheckoutSession();
 
         assertThatThrownBy(() -> paymentStateService.initiateStripeBookingCheckout(bookingId))
-                .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.E_6002));
+                .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.E_2004));
 
         stripeEnabled(true);
         asUser(otherBuyer);

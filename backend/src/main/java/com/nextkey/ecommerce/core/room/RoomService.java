@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.core.room;
 
 import java.time.LocalTime;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -40,6 +41,11 @@ public class RoomService {
     private final UserRepository userRepository;
     private final FeatureToggleService featureToggleService;
 
+    // DEF-344：sortBy 白名單。亂填先前直接交給 Sort.by()／JPA 解析，落入全域例外處理器的 catch-all
+    // 變 500；比照 M05/M06（DEF-339）改用 PageableUtils.sortOf。Room 實體本身即有 createdAt／updatedAt，
+    // 不像 Product 需要映射到 listing.*；basePrice 在 Listing 上、Room 無對應欄位，不在白名單內。
+    private static final Set<String> SORTABLE_FIELDS = Set.of("createdAt", "updatedAt");
+
     // Default values
     private static final int DEFAULT_MAX_GUESTS = 2;
     private static final int DEFAULT_ROOM_COUNT = 1;
@@ -56,7 +62,7 @@ public class RoomService {
             String sortBy,
             String sortDir) {
 
-        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
+        Sort sort = PageableUtils.sortOf(sortBy, sortDir, SORTABLE_FIELDS);
         PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
 
         UUID tenantId = TenantContext.getCurrentTenant();

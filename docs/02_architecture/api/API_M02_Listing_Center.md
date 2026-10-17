@@ -127,7 +127,7 @@
 
 ### 4.1 `GET /v2/rooms` — 店鋪房源列表
 
-**權限**：`room:read`。查詢參數：`maxGuests`（選填，`>=` 篩選）、`location`（選填，模糊比對）、`keyword`（選填，比對 `title`／`description`）、`page`（預設 0）、`size`（預設 20，上限 100）、`sortBy`（預設 `createdAt`，**無白名單**）、`sortDir`（預設 `DESC`）。**所有篩選組合皆以 `Specification` 疊加在「呼叫者目前租戶 + ACTIVE」的基礎條件上**（與 M01 的 `ProductController` 不同，見 §1.1）。
+**權限**：`room:read`。查詢參數：`maxGuests`（選填，`>=` 篩選）、`location`（選填，模糊比對）、`keyword`（選填，比對 `title`／`description`）、`page`（預設 0）、`size`（預設 20，上限 100）、`sortBy`（預設 `createdAt`，白名單 `createdAt`／`updatedAt`，其餘回 `400 E-9000`；`DEF-344` 已修復，原本任意字串皆可、非法欄位名稱落入全域例外處理器的 catch-all 變 `500`；`basePrice` 不在白名單內，因為該欄位在 `Listing` 而非 `Room` 實體上，`Room` 查詢採 `Specification` 模式，屬性路徑解析對象是 `Room`）、`sortDir`（預設 `DESC`，非 `asc`／`desc` 同樣回 `400 E-9000`）。**所有篩選組合皆以 `Specification` 疊加在「呼叫者目前租戶 + ACTIVE」的基礎條件上**（與 M01 的 `ProductController` 不同，見 §1.1）。
 
 ### 4.2 `GET /v2/rooms/{listingId}` — 房源詳情
 
@@ -183,7 +183,7 @@
 | `E-2004` | 403 | `BOOKING_ENABLED` 未對該租戶啟用（§4.3） |
 | `E-2009` | 400 | 已達房源配額上限（§4.3、§4.4 轉為 `ACTIVE` 時） |
 | `E-1007` | 403 | 跨租戶操作他人房源（§4.4～4.8） |
-| `E-9000` | 400 | 列舉字串無法解析、或 Bean Validation 失敗 |
+| `E-9000` | 400 | 列舉字串無法解析、排序參數不合法（§4.1，`DEF-344`）、或 Bean Validation 失敗 |
 
 ---
 
@@ -193,7 +193,6 @@
 |------|------|
 | **`blockDateRange`／`unblockDateRange` 零生產呼叫點** | `RoomCalendarService.blockDateRange`／`unblockDateRange`（把日曆格設為／解除 `BLOCKED`）全庫搜尋沒有任何 Controller 呼叫它們，僅存在於 Service 層本身與測試（Sprint 260，DEF-363 修復悲觀鎖時意外發現）。`RoomCalendarStatus.BLOCKED` 列舉值因此在生產環境不可達；舊版 API 文件描述的「房東封鎖日期」功能目前只能透過 §4.7 的 `MAINTENANCE` 機制間接達成類似效果 |
 | **`DRAFT`→發布兩階段上架流程從未實作（與 M01 同一登記，DEF-380，未修復）** | 見 M01 §7。本模組額外的落差：FRD §4.2「技術實現概要」寫「建立 room_calendar 初始記錄（可用日期，未來 365 天）」，但 `createRoom`／`createRoomFromDashboard` 完全不建立任何 `room_calendar` 列（§1.2 第 5 點），該敘述同樣失真 |
-| `GET /v2/rooms` 的 `sortBy` 無白名單 | 與 M01 §7 同款落差，直接把使用者輸入交給 `Sort.by()`，未逐一驗證非法欄位名稱時的行為 |
 | 開放窗與日曆格狀態是兩套獨立機制 | 見 §1.2 第 6 點比較表，維護/封鎖不會影響開放窗設定，反之亦然；前端若只檢查其中一種會誤判房源可訂性 |
 | `room_calendar.price` 恆為 `NULL` | Sprint 45 移除的死欄位，手動日價調整唯一路徑是 M12 的 `PricingService`，見 §3.2 |
 
@@ -205,7 +204,7 @@
 |------|------|
 | PRD | §9.4（M02 房源中心）、§13.1（Phase 1 最小子集） |
 | FRD | §4「M02 房源中心」（§4.6 端點表已同步本文件；技術實現概要與驗收標準的 DRAFT/發布/日曆初始化敘述與實作不符，見本文件 §7 DEF-380 與 FRD 修訂記錄） |
-| 相關追蹤項目 | [DEF-286](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（API 文件完整性）、[DEF-372](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`ApiRouteDocDriftTest` 覆蓋範圍，本文件新納入）、[DEF-380](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（DRAFT/發布與日曆初始化流程未實作）、[DEF-363](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`blockDateRange`／`markMaintenance` 併發鎖修復，Sprint 260） |
+| 相關追蹤項目 | [DEF-286](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（API 文件完整性，Sprint 279 結案）、[DEF-372](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`ApiRouteDocDriftTest` 覆蓋範圍，本文件新納入）、[DEF-380](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（DRAFT/發布與日曆初始化流程未實作，待產品決策）、[DEF-363](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`blockDateRange`／`markMaintenance` 併發鎖修復，Sprint 260）、[DEF-344](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`GET /v2/rooms` 的 `sortBy` 白名單，Sprint 279 修復） |
 | 實作 | `RoomController`（`api/controller/`）；`RoomCalendarController`（`api/controller/`）；`RoomService`（`core/room/`）；`RoomCalendarService`（`core/booking/`） |
 | 測試 | `RoomControllerTest`／`RoomServiceTest`／`RoomCalendarServiceTest`（單元）；本文件撰寫過程以讀碼逐行核對，未新增端對端整合測試（純文件工作，見 SPRINT_273_PLAN.md） |
 

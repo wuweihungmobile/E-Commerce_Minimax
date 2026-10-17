@@ -153,7 +153,7 @@ v1.0 本文件與舊版 [API_Listing_Unified_Create.md](./API_Listing_Unified_Cr
 
 **權限**：`product:read` 或 `room:read`（`GUEST`／`BUYER` 等角色皆持有，等同已登入即可；未登入會被 Security 擋在更前層）。
 
-**查詢參數**：`page`（預設 0）、`size`（預設 20，上限 100）、`type`（選填，`PRODUCT`／`ROOM`，大小寫不拘；無法解析回 `422 E-3001`）、`keyword`（選填，比對 `title`／`description`）、`sortBy`（預設 `createdAt`，**未作白名單限制，任意 `Listing` 屬性字串皆可**）、`sortDir`（預設 `DESC`）。無 `keyword` 亦無 `type` 時回傳**全平台**所有 `ACTIVE` 的 Listing（不分租戶）。
+**查詢參數**：`page`（預設 0）、`size`（預設 20，上限 100）、`type`（選填，`PRODUCT`／`ROOM`，大小寫不拘；無法解析回 `422 E-3001`）、`keyword`（選填，比對 `title`／`description`）、`sortBy`（預設 `createdAt`，白名單 `createdAt`／`basePrice`／`updatedAt`，其餘回 `400 E-9000`；`DEF-344` 已修復，原本任意 `Listing` 屬性字串皆可、非法欄位名稱落入全域例外處理器的 catch-all 變 `500`）、`sortDir`（預設 `DESC`，同一白名單機制，非 `asc`／`desc` 亦回 `400 E-9000`）。無 `keyword` 亦無 `type` 時回傳**全平台**所有 `ACTIVE` 的 Listing（不分租戶）。
 
 **回應**：`Page<ListingResponse>`（見 §3.1；`tenantName`／`tenantSlug` 為 `null`，只有 §4.5 的匿名端點會填入）。
 
@@ -175,7 +175,7 @@ v1.0 本文件與舊版 [API_Listing_Unified_Create.md](./API_Listing_Unified_Cr
 
 ### 4.6 `GET /v2/products` — 商品列表
 
-**權限**：`product:read`。查詢參數：`category`／`brand`／`keyword`（皆選填）、`page`（預設 0）、`size`（預設 20，上限 100）、`sortBy`（預設 `createdAt`，接受 `basePrice`／`createdAt`／`updatedAt`，其餘原樣傳給 JPA 排序）、`sortDir`（預設 `DESC`）。
+**權限**：`product:read`。查詢參數：`category`／`brand`／`keyword`（皆選填）、`page`（預設 0）、`size`（預設 20，上限 100）、`sortBy`（預設 `createdAt`，白名單 `basePrice`／`createdAt`／`updatedAt`，其餘回 `400 E-9000`；`DEF-344` 已修復，原本其餘值原樣傳給 JPA 排序，非法欄位名稱會變 `500`）、`sortDir`（預設 `DESC`，非 `asc`／`desc` 同樣回 `400 E-9000`）。
 
 **篩選邏輯與範圍（逐一互斥，非疊加）**：
 
@@ -248,7 +248,7 @@ v1.0 本文件與舊版 [API_Listing_Unified_Create.md](./API_Listing_Unified_Cr
 | `E-2004` | 403 | `RETAIL_ENABLED` 未對該租戶啟用（§4.8） |
 | `E-2009` | 400 | 已達商品配額上限（§4.8、§4.9 轉為 `ACTIVE` 時） |
 | `E-1007` | 403 | 跨租戶操作他人商品（§4.9、§4.10） |
-| `E-9000` | 400 | 列舉字串無法解析、排序參數不合法（§4.5）、或 Bean Validation 失敗 |
+| `E-9000` | 400 | 列舉字串無法解析、排序參數不合法（§4.1／§4.5／§4.6，`DEF-344`）、或 Bean Validation 失敗 |
 
 ---
 
@@ -259,7 +259,6 @@ v1.0 本文件與舊版 [API_Listing_Unified_Create.md](./API_Listing_Unified_Cr
 | **`GET /v2/products` 的 `category`／`brand` 篩選分支無租戶範圍（本輪新發現，登記為 DEF-379，未修復）** | `ProductService.getProducts`：無篩選與有 `keyword` 的分支都以「呼叫者目前租戶 + ACTIVE」為範圍，但有 `category` 或 `brand`（無 `keyword`）的三個分支改用 `ProductRepository.findByCategory`／`findByBrand`／`findByCategoryAndBrand`，查詢條件只有 `status = ACTIVE`，**完全不比對 `tenantId`**。同一方法內部範圍不一致，持有 `product:read` 的使用者（含 `SELLER`）用 `category`／`brand` 篩選時會看到**其他租戶**的 `ACTIVE` 商品。本輪純文件撰寫過程中的附帶發現，不修復（修法是在 `ProductRepository` 對應 `@Query` 加上 `tenantId` 條件，但是否該讓這三個分支改為「全平台商品分類瀏覽」而非「我的商品」是產品範圍問題，留待決定） |
 | **`DRAFT`→發布兩階段上架流程從未實作（本輪新發現，登記為 DEF-380，未修復）** | FRD §3.2「技術實現概要」與 AC-M01-002-1／AC-M01-002-2 描述「先建立 `status=DRAFT` 的 Listing，再呼叫 `PUT /api/v2/dashboard/listings/:id/publish` 轉為 `ACTIVE`」，但 `ProductService.createProduct`／`createProductFromDashboard` 皆寫死建立時 `status=ACTIVE`，沒有任何路徑建立 `DRAFT` 列，後端也沒有任何「發布」端點（`PUT .../publish` 不存在）。`ListingStatus.DRAFT` 列舉值仍可透過 `PUT /v2/products/{listingId}`（`UpdateRequest.status`）事後手動設定，但那是「改」不是建立流程的一部分。是否要實作真正的草稿機制、或把 FRD／驗收標準改為「建立即上架」的現況，屬產品決策，本輪僅記錄不處理 |
 | 統一建立入口（`POST /v2/dashboard/listings`）與型別專屬入口（`POST /v2/products`）合約不同 | 見 §1.2 第 2 點、§3.4：`category` 必填與否不同、成功 HTTP 狀態碼不同（200 vs 201）、`CreateListingRequest.additionalFields` 欄位會通過驗證但 `ProductService.createProductFromDashboard` 完全不讀取它，純粹是請求體裡的死欄位 |
-| `GET /v2/listings` 的 `sortBy` 無白名單 | 與 §4.5 `GET /v2/public/listings`（有白名單，`DEF-339` 已修復的模式）不同，本端點仍直接把使用者輸入的 `sortBy` 字串交給 `Sort.by()`，非法屬性名稱時的行為未逐一驗證（可能 500 或 `PropertyReferenceException`），本輪未重現測試，僅記錄現況差異 |
 | `dimensionsCm` 是自由格式字串 | 非結構化的長/寬/高三欄位，前端需自行約定格式（例如 `"20x10x5"`），後端不解析也不驗證格式 |
 | SKU 無刪除端點 | `stock_movements.sku_id` 一旦有異動記錄即無法刪除（V1 schema FK 無 `ON DELETE CASCADE`），比照既有慣例改用 `status=INACTIVE` 停用 |
 
@@ -271,7 +270,7 @@ v1.0 本文件與舊版 [API_Listing_Unified_Create.md](./API_Listing_Unified_Cr
 |------|------|
 | PRD | §9.3（M01 商品中心）、§13.1（Phase 1 最小子集：M03+M01+M02+M05） |
 | FRD | §3「M01 商品中心」（§3.6 端點表已同步本文件；技術實現概要與驗收標準的 DRAFT/發布敘述與實作不符，見本文件 §7 DEF-380 與 FRD 修訂記錄） |
-| 相關追蹤項目 | [DEF-286](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（API 文件完整性，本文件為其範圍內一項）、[DEF-372](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`ApiRouteDocDriftTest` 覆蓋範圍，本文件新納入）、[DEF-379](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（本文件新發現，商品分類/品牌篩選租戶範圍缺口）、[DEF-380](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（本文件新發現，DRAFT/發布流程未實作） |
+| 相關追蹤項目 | [DEF-286](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（API 文件完整性，本文件為其範圍內一項，Sprint 279 結案）、[DEF-372](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`ApiRouteDocDriftTest` 覆蓋範圍，本文件新納入）、[DEF-379](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（本文件新發現，商品分類/品牌篩選租戶範圍缺口，待產品決策）、[DEF-380](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（本文件新發現，DRAFT/發布流程未實作，待產品決策）、[DEF-344](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`GET /v2/products`／`/v2/listings` 的 `sortBy` 白名單，Sprint 279 修復） |
 | 實作 | `ListingController`／`PublicListingController`／`ProductController`（`api/controller/`）；`ProductService`（`core/product/`）；`ProductSkuService`（`core/product/`） |
 | 測試 | `ProductControllerTest`／`ProductServiceTest`（單元）；本文件撰寫過程以讀碼逐行核對，未新增端對端整合測試（純文件工作，見 SPRINT_273_PLAN.md） |
 

@@ -154,6 +154,26 @@ class ProductServiceTest {
     }
 
     @Test
+    @DisplayName("DEF-344：getProducts 的 sortBy 不在白名單 → 拋 BusinessException(E_9000)，不查詢（先前原樣傳給 JPA 排序，落入 500）")
+    void getProducts_invalidSortBy_throwsE9000() {
+        assertThatThrownBy(() -> productService.getProducts(null, null, null, 0, 20, "passwordHash", "DESC"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_9000);
+        verify(productRepository, never()).findByListingTenantIdAndListingStatus(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("DEF-344：getProducts 的 sortDir 不是 asc/desc → 拋 BusinessException(E_9000)")
+    void getProducts_invalidSortDir_throwsE9000() {
+        assertThatThrownBy(() -> productService.getProducts(null, null, null, 0, 20, "createdAt", "sideways"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_9000);
+        verify(productRepository, never()).findByListingTenantIdAndListingStatus(any(), any(), any());
+    }
+
+    @Test
     @DisplayName("UT-PRODUCT-004（DEF-041）: updateProduct 同租戶 → 正常更新")
     void updateProduct_sameTenant_updatesSuccessfully() {
         Product product = buildProductForListing(LISTING_ID, TENANT);

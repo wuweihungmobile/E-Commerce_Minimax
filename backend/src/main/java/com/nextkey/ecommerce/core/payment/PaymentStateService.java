@@ -642,9 +642,10 @@ public class PaymentStateService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
         checkOrderOwnership(order);
 
-        if (!featureToggleService.isFeatureEnabled(STRIPE_PAYMENT_ENABLED)) {
-            throw new BusinessException(ErrorCode.E_6002, "Stripe payment not enabled");
-        }
+        // DEF-341：原誤用 E_6002（預設訊息「付款已取消」，與功能未啟用無關），改用既有的
+        // FeatureToggleService.checkFeatureEnabled（E_2004「此租戶未啟用該功能」，403），
+        // 與全庫其他 feature toggle 檢查（RETAIL_ENABLED／BOOKING_ENABLED 等）一致。
+        featureToggleService.checkFeatureEnabled(STRIPE_PAYMENT_ENABLED);
         if (!OrderStateMachine.canPay(order.getStatus().name())) {
             throw new BusinessException(ErrorCode.E_5011, "Order cannot be paid in current status");
         }
@@ -749,9 +750,8 @@ public class PaymentStateService {
     @Transactional
     public CheckoutSessionResponse initiateStripeBookingCheckout(UUID bookingId) {
         Booking booking = loadOwnedBooking(bookingId);
-        if (!featureToggleService.isFeatureEnabled(STRIPE_PAYMENT_ENABLED)) {
-            throw new BusinessException(ErrorCode.E_6002, "Stripe payment not enabled");
-        }
+        // DEF-341：同 initiateStripeCheckout，改用 checkFeatureEnabled（E_2004，403）
+        featureToggleService.checkFeatureEnabled(STRIPE_PAYMENT_ENABLED);
         requireBookingPayable(booking);
         if (paymentRepository.existsByBookingIdAndStatus(bookingId, Payment.PaymentStatus.SUCCESS)) {
             throw new BusinessException(ErrorCode.E_6003, "Payment already processed");

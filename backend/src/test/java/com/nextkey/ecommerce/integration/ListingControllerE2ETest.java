@@ -180,4 +180,22 @@ class ListingControllerE2ETest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("E-3001"));
     }
+
+    @Test
+    @DisplayName("DEF-344：GET /v2/listings?sortBy=無效值 回傳 400（E-9000），而非未攔截 PropertyReferenceException 造成的 500")
+    void getListings_invalidSortBy_returns400NotInternalServerError() throws Exception {
+        mockMvc.perform(get("/v2/listings").param("sortBy", "passwordHash"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("E-9000"));
+    }
+
+    @Test
+    @DisplayName("DEF-344：GET /v2/listings?sortDir=無效值 回傳 400（E-9000），而非未攔截 IllegalArgumentException 造成的 500")
+    void getListings_invalidSortDir_returns400NotInternalServerError() throws Exception {
+        mockMvc.perform(get("/v2/listings").param("sortDir", "sideways"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("E-9000"));
+    }
 }

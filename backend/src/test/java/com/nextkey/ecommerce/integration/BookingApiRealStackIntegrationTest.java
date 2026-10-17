@@ -109,7 +109,7 @@ class BookingApiRealStackIntegrationTest {
     }
 
     @Test
-    @DisplayName("日曆 GET /calendar：只回「已有記錄」的日期（訂走的是 BOOKED＋bookingId）；區間過大（>92 天）或結束早於開始 → 422 E-3001（沿用的錯誤碼，預設訊息是「無效的刊登類型」，DEF-341）")
+    @DisplayName("日曆 GET /calendar：只回「已有記錄」的日期（訂走的是 BOOKED＋bookingId）；區間過大（>92 天）或結束早於開始 → 400 E-4003（DEF-341，原誤用 422 E-3001「無效的刊登類型」）")
     void calendar() throws Exception {
         String ci = day(30);
         String co = day(32);
@@ -125,9 +125,9 @@ class BookingApiRealStackIntegrationTest {
                 .andExpect(jsonPath("$.data[0].price").value(1000.0));
 
         get("/v2/bookings/calendar?roomListingId=" + fx.roomId + "&startDate=" + ci + "&endDate=" + day(200), fx.buyerToken)
-                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("E-3001"));
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("E-4003"));
         get("/v2/bookings/calendar?roomListingId=" + fx.roomId + "&startDate=" + co + "&endDate=" + ci, fx.buyerToken)
-                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("E-3001"));
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("E-4003"));
     }
 
     // ── 建立 ─────────────────────────────────────────────────
@@ -335,7 +335,7 @@ class BookingApiRealStackIntegrationTest {
     // ── 付款 ─────────────────────────────────────────────────
 
     @Test
-    @DisplayName("訂房付款：狀態（走 GET /v2/orders/bookings/{id}/payment）形狀；Mock 付款成功；重複付款 422 E-5011；Stripe 未啟用 400 E-6002；別人付款 403")
+    @DisplayName("訂房付款：狀態（走 GET /v2/orders/bookings/{id}/payment）形狀；Mock 付款成功；重複付款 422 E-5011；Stripe 未啟用 403 E-2004（DEF-341，原誤用 E-6002）；別人付款 403")
     void payment() throws Exception {
         String bookingId = book(day(30), day(32), 2, fx.buyerToken).at("/data/id").asText();
 
@@ -349,7 +349,7 @@ class BookingApiRealStackIntegrationTest {
                 .andExpect(jsonPath("$.data.storeOpen").value(true));
         send(post("/v2/bookings/" + bookingId + "/pay"), fx.otherToken).andExpect(status().isForbidden());
         send(post("/v2/bookings/" + bookingId + "/pay/checkout"), fx.buyerToken)
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("E-6002"));
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("E-2004"));
         send(post("/v2/bookings/" + bookingId + "/pay"), fx.buyerToken)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.orderStatus").value("PAID"))

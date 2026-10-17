@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.core.product;
 
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -32,6 +33,10 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class ProductService {
 
+    // DEF-344：sortBy 白名單（公開給 mapSortField 映射前驗證用）。亂填先前直接原樣傳給 JPA 排序，
+    // 落入全域例外處理器的 catch-all 變 500；比照 M05/M06（DEF-339）改用 PageableUtils.sortOf。
+    private static final Set<String> SORTABLE_FIELDS = Set.of("basePrice", "createdAt", "updatedAt");
+
     private final ProductRepository productRepository;
     private final ListingRepository listingRepository;
     private final TenantRepository tenantRepository;
@@ -48,9 +53,10 @@ public class ProductService {
             String sortBy,
             String sortDir) {
 
-        // Map sortBy to proper field path for Product-Listing relationship
+        // DEF-344：先驗證（白名單＋方向），再映射成 Product-Listing 關聯的實際欄位路徑。
+        Sort validatedSort = PageableUtils.sortOf(sortBy, sortDir, SORTABLE_FIELDS);
         String sortField = mapSortField(sortBy);
-        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortField);
+        Sort sort = Sort.by(validatedSort.getOrderFor(sortBy).getDirection(), sortField);
         PageRequest pageRequest = PageableUtils.of(page, size, 100, sort);
 
         UUID tenantId = TenantContext.getCurrentTenant();

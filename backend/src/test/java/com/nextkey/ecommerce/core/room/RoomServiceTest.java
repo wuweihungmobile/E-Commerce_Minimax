@@ -21,6 +21,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDate;
 import java.util.Optional;
@@ -109,6 +111,26 @@ class RoomServiceTest {
         assertThat(room.getBookingWindowDays()).isNull();
         assertThat(response.getOpenUntilDate()).isNull();
         assertThat(response.getBookingWindowDays()).isNull();
+    }
+
+    @Test
+    @DisplayName("DEF-344：getRooms 的 sortBy 不在白名單 → 拋 BusinessException(E_9000)，不查詢（先前原樣傳給 JPA 排序，落入 500）")
+    void getRooms_invalidSortBy_throwsE9000() {
+        assertThatThrownBy(() -> roomService.getRooms(null, null, null, 0, 20, "basePrice", "DESC"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_9000);
+        verify(roomRepository, never()).findAll(any(Specification.class), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("DEF-344：getRooms 的 sortDir 不是 asc/desc → 拋 BusinessException(E_9000)")
+    void getRooms_invalidSortDir_throwsE9000() {
+        assertThatThrownBy(() -> roomService.getRooms(null, null, null, 0, 20, "createdAt", "sideways"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_9000);
+        verify(roomRepository, never()).findAll(any(Specification.class), any(Pageable.class));
     }
 
     @Test

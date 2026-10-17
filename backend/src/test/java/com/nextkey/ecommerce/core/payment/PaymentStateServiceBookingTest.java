@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -127,6 +128,14 @@ class PaymentStateServiceBookingTest {
 
     private void stripeEnabled() {
         when(featureToggleService.isFeatureEnabled("STRIPE_PAYMENT_ENABLED")).thenReturn(true);
+    }
+
+    // DEF-341：initiateStripeCheckout／initiateStripeBookingCheckout 改用 checkFeatureEnabled（void，
+    // 未啟用時拋例外）取代 isFeatureEnabled（boolean），不再能靠「未 stub 的 boolean 預設 false」
+    // 間接製造「未啟用」情境，必須明確 stub 讓它拋出 E_2004。
+    private void stripeDisabled() {
+        doThrow(new BusinessException(ErrorCode.E_2004, "Feature 'STRIPE_PAYMENT_ENABLED' is disabled for this tenant"))
+                .when(featureToggleService).checkFeatureEnabled("STRIPE_PAYMENT_ENABLED");
     }
 
     private static PaymentGatewayRequestResponse.CheckoutSessionResult session(final String sessionId) {
@@ -290,12 +299,13 @@ class PaymentStateServiceBookingTest {
         }
 
         @Test
-        @DisplayName("未啟用 Stripe → E-6002，不呼叫 Stripe")
+        @DisplayName("未啟用 Stripe → E-2004（DEF-341，原誤用 E-6002），不呼叫 Stripe")
         void toggleOff_isRejected() {
             bookingExists(Booking.BookingStatus.CREATED);
+            stripeDisabled();
 
             assertThatThrownBy(() -> service.initiateStripeBookingCheckout(BOOKING_ID))
-                    .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_6002));
+                    .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_2004));
 
             verify(paymentGatewayFactory, never()).createCheckoutSession(any(), any());
         }

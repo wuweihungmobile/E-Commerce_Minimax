@@ -176,7 +176,12 @@ public class RolePermissionMapping {
                 Permission.CMS_UPDATE
         ));
 
-        // ========== ADMIN - 管理員，租戶內管理 ==========
+        // ========== ADMIN - 管理員，一般業務（商品/房源/訂單/訂房）為租戶內管理；
+        // 特定平台客服職能（客服工單/退貨/通知模板/FAQ/知識庫/媒體庫/CMS，見下方各權限
+        // 旁註的 Sprint/DEF 編號）則是跨租戶的平台端權限，為歷史上多個 Sprint 正式拍板的
+        // 既有設計（DEF-331(e) 於 Sprint 281 確認維持現狀）。唯一例外：ADMIN 不可透過
+        // X-Tenant-ID header 任意切換 TenantContext（DEF-038，TenantContextFilter），
+        // 這是不同機制層級——header 偽造切換 context 與此處逐項放行的擁有權檢查無關 ==========
         ROLE_PERMISSIONS.put(User.UserRole.ADMIN, EnumSet.of(
                 Permission.PRODUCT_READ,
                 Permission.PRODUCT_CREATE,

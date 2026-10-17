@@ -501,7 +501,9 @@ public class TenantService {
         }
 
         // Verify user is owner of this tenant
-        if (!tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(tenantId, userId, TenantMember.MemberStatus.ACTIVE)) {
+        // DEF-331(f)：原僅驗證「是有效成員」，與本行註解的「驗證是店主」不符；比照既有前例
+        // （applyTenantUpdate 等）改用 existsByTenantIdAndUserIdAndStoreRole 真正驗證店主角色。
+        if (!tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(tenantId, userId, TenantMember.StoreRole.STORE_OWNER)) {
             throw new BusinessException(ErrorCode.E_4031, "Not authorized to update this store's features");
         }
 

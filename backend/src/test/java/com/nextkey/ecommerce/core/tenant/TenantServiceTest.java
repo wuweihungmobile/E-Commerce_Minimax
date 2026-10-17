@@ -775,7 +775,7 @@ class TenantServiceTest {
         @Test
         @DisplayName("updateFeatureToggle：成功切換並記錄稽核")
         void updateFeatureToggle_success_recordsAudit() {
-            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(TEST_TENANT_ID, TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(true);
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(TEST_TENANT_ID, TEST_USER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
             when(tenantFeatureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "RETAIL_ENABLED"))
                     .thenReturn(Optional.empty());
             when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TEST_TENANT_ID).build()));
@@ -792,7 +792,7 @@ class TenantServiceTest {
         @DisplayName("🔴 DEF-247：需審核功能（DYNAMIC_PRICING_ENABLED）店主自助申請啟用"
                 + " → isEnabled 實際仍寫入 false（真正待審核，非直接生效）")
         void updateFeatureToggle_requiresApprovalFeature_newRequest_staysDisabled() {
-            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(TEST_TENANT_ID, TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(true);
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(TEST_TENANT_ID, TEST_USER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
             when(tenantFeatureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "DYNAMIC_PRICING_ENABLED"))
                     .thenReturn(Optional.empty());
             when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TEST_TENANT_ID).build()));
@@ -814,7 +814,7 @@ class TenantServiceTest {
         @DisplayName("updateFeatureToggle：需審核功能已啟用中，重複確認 enabled=true → 維持已啟用"
                 + "（不因本次修法而誤將既有已啟用功能打回未啟用）")
         void updateFeatureToggle_requiresApprovalFeature_alreadyEnabled_staysEnabled() {
-            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(TEST_TENANT_ID, TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(true);
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(TEST_TENANT_ID, TEST_USER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
             TenantFeatureToggle existing = TenantFeatureToggle.builder()
                     .tenant(Tenant.builder().id(TEST_TENANT_ID).build())
                     .featureKey("DYNAMIC_PRICING_ENABLED")
@@ -837,7 +837,7 @@ class TenantServiceTest {
             // DEF-167：MAX_PRODUCTS/MAX_ROOMS/MAX_POSTS/COMMISSION_RATE 的值存在 config JSONB 而非
             // isEnabled。若允許經布林開關 API 切換，同一個 featureKey 會同時具有數值與布林兩種語意，
             // 之後任何依 config 讀配額的程式都可能讀到一筆只有 isEnabled、沒有 config 的紀錄。
-            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(TEST_TENANT_ID, TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(true);
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(TEST_TENANT_ID, TEST_USER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
 
             BusinessException ex = assertThrows(BusinessException.class,
                     () -> tenantService.updateFeatureToggle(TEST_TENANT_ID, "MAX_PRODUCTS", true));
@@ -854,9 +854,11 @@ class TenantServiceTest {
         }
 
         @Test
-        @DisplayName("updateFeatureToggle：非店鋪成員呼叫 → 拒絕且不記錄稽核")
-        void updateFeatureToggle_notMember_rejectedWithoutAudit() {
-            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(TEST_TENANT_ID, TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(false);
+        @DisplayName("🔴 DEF-331(f)：非店主呼叫（含完全非成員、或有效成員但角色非 STORE_OWNER 如"
+                + " STORE_STAFF）→ 拒絕且不記錄稽核（修復前僅驗證「是有效成員」，與方法註解"
+                + "「驗證是店主」不符，店員也能通過）")
+        void updateFeatureToggle_notOwner_rejectedWithoutAudit() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(TEST_TENANT_ID, TEST_USER_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(false);
 
             assertThrows(BusinessException.class,
                     () -> tenantService.updateFeatureToggle(TEST_TENANT_ID, "RETAIL_ENABLED", false));

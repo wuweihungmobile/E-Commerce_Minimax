@@ -150,8 +150,11 @@ public class TenantContextFilter extends OncePerRequestFilter {
 
     private UUID resolveEffectiveTenantId(final UUID userId, final String userTenantId, final String requestedTenantId, final String role) {
         // DEF-038：只有 SUPER_ADMIN 是平台級角色，才允許用 header 指定任意租戶。
-        // ADMIN 依 RolePermissionMapping 定義為「租戶內管理」角色，不可用 header 越權存取他人租戶，
-        // 一律強制使用自己的 userTenantId（與一般使用者相同邏輯，見下方）。
+        // ADMIN 不可用 header 越權切換 TenantContext，一律強制使用自己的 userTenantId
+        // （與一般使用者相同邏輯，見下方）。注意這與 RolePermissionMapping 裡 ADMIN 在
+        // 特定平台客服職能（退貨/工單等，見該檔案 ADMIN 區塊註解）的跨租戶擁有權放行是
+        // 不同機制層級：此處限制的是「TenantContext 解析」，不影響 Service 層個別方法
+        // 自行判斷的 isAdmin 擁有權檢查（DEF-331(e) 已確認兩者並不矛盾）。
         if ("SUPER_ADMIN".equals(role)) {
             if (StringUtils.hasText(requestedTenantId)) {
                 return UUID.fromString(requestedTenantId);

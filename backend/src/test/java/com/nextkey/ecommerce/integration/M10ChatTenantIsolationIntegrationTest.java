@@ -102,7 +102,7 @@ class M10ChatTenantIsolationIntegrationTest {
     // ── IT-CHAT-TEN-001: 他租戶非參與者無法讀取對話訊息 ──────────────────
 
     @Test
-    @DisplayName("IT-CHAT-TEN-001: 參與者可讀訊息（200）；他租戶非參與者不可讀（400, E-9005）")
+    @DisplayName("IT-CHAT-TEN-001: 參與者可讀訊息（200）；他租戶非參與者不可讀（404, E-8100，Sprint 278／DEF-382 修復前為 400/E-9005）")
     void crossTenantNonParticipant_cannotReadMessages() throws Exception {
         String conversationId = createConversation(initiatorAToken, recipientAId, "你好，這是租戶 A 的私密對話");
 
@@ -115,13 +115,14 @@ class M10ChatTenantIsolationIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.messages.length()").value(1));
 
-        // 他租戶非參與者（outsiderB）不可讀 → 400（E-9005「Conversation not found」，participant-scoping 攔下）
+        // 他租戶非參與者（outsiderB）不可讀 → 404（E-8100「找不到對話」，participant-scoping 攔下；
+        // Sprint 278／DEF-382 修復前誤用 E-9005「缺少必填欄位」對應 400，語意不符且非本測試重點）
         mockMvc.perform(get(CONVERSATIONS_URL + "/" + conversationId + "/messages")
                         .header("Authorization", "Bearer " + outsiderBToken)
                         .param("page", "0")
                         .param("size", "50"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("E-9005"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("E-8100"));
     }
 
     // ── IT-CHAT-TEN-002: 他租戶非參與者的對話列表不含他人對話 ─────────────

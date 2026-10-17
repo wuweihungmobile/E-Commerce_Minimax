@@ -23,15 +23,16 @@
 | **模組名稱** | 內容管理系統 / CMS |
 | **描述** | 平台靜態頁面與橫幅（`CmsController`）、店鋪部落格貼文與分類（`PostController` 前半）、部落格專用媒體上傳（`PostController` 後半）、商品/房源嵌入卡片（`PostController` 一端點）、獨立通用媒體庫與分類（`MediaController`／`MediaCategoryController`） |
 | **API 前綴** | `/api/v2/cms/...`（`CmsController`）、`/api/v2/dashboard/posts|post-categories|media/...`／`/api/v2/posts/...`／`/api/v2/admin/posts/...`／`/api/v2/listings/{id}/card`（`PostController`，前綴不統一，見 §1.2）、`/api/v2/media/...`（`MediaController`／`MediaCategoryController`） |
-| **多租戶隔離** | `CmsController`／`MediaController`／`MediaCategoryController` 三者皆正確使用 `TenantContext.getCurrentTenant()`；`PostController` **自行重新實作**一套反射式租戶解析，不直接呼叫 `TenantContext.getCurrentTenant()`，見 §1.2 第 1 點與 §7 DEF-386 |
+| **多租戶隔離** | `CmsController`／`MediaController`／`MediaCategoryController`／`PostController` 四者皆直接使用 `TenantContext.getCurrentTenant()`（`PostController` 原自行重新實作一套反射式租戶解析，已於 Sprint 280／DEF-386 移除，見 §7） |
 
 ### 1.2 設計重點（本模組最重要的部分，請務必先讀）
 
-1. **`PostController` 的租戶解析是本模組最大的架構風險（DEF-386）**：`getTenantIdFromUser` 不直接呼叫 `TenantContext.getCurrentTenant()`（其餘三個 Controller 與同模組的 `CmsService`／`core.media.MediaService` 都這樣做），而是：先試 `TenantContext.getCurrentUser()` 反查 `TenantMemberRepository`／`UserRepository`；若使用者沒有任何 `ACTIVE` 租戶成員資格且 `User.tenantId` 為 `null`，再用 Java 反射嘗試從 `UserDetails` 物件挖出 `UserPrincipal`；**若以上全部失敗，最終 fallback 是寫死的 mock 租戶 UUID `00000000-0000-0000-0000-000000000001`**（並只記一行 `log.warn`）。只要有任何一位持 `SELLER`/`HOST` 角色但尚未被核准開店的使用者（PRD 既有的「店鋪-less 角色」情境，M13/M14 已有多個歷史 DEF 處理過同類問題）呼叫本 Controller 任何一個 Dashboard 端點，其貼文/分類/媒體就會被寫入這個共用的假租戶 ID——任何其他同樣觸發 fallback 的使用者會看到彼此的草稿內容。
+1. **`PostController` 的租戶解析已統一（DEF-386，Sprint 280 修復）**：原先 `getTenantIdFromUser` 不直接呼叫 `TenantContext.getCurrentTenant()`，而是反查 `TenantMemberRepository`／`UserRepository`、失敗則反射挖 `UserDetails`、最終 fallback 寫死的 mock 租戶 UUID；現已全部移除，12 個端點方法改為直接呼叫 `TenantContext.getCurrentTenant()`／`getCurrentUser()`，與其餘三個 Controller 一致。
 2. **本模組有兩套完全獨立、互不相通的媒體庫**：
    - **`core.cms.media.MediaService`**（`domain.model.cms.media.MediaAsset` 實體）：供 `PostController` 的 `/v2/dashboard/media/*` 使用，租戶來自 §1.2 第 1 點的風險解析；前端對應 `frontend/src/services/cms.ts`，頁面在 `/cms`、`/cms/media`。
    - **`core.media.MediaService`**（同樣讀寫 `domain.model.cms.media.MediaAsset` 實體——**底層資料表其實是同一張**，但 Service／Controller／DTO 完全分開實作）：供 `MediaController`／`MediaCategoryController` 的 `/v2/media/*` 使用，租戶正確經 `TenantContext.getCurrentTenant()`；前端對應 `frontend/src/services/media.ts`，頁面在 `/dashboard/media`。
-   - 兩套 API 的 DTO 形狀、驗證規則、錯誤碼完全不同（見 §6），但操作的是**同一張 `media_assets` 表**——經由 `/cms/media` 上傳的檔案與經由 `/dashboard/media` 上傳的檔案理論上會互相出現在對方的查詢結果中（只要 `tenantId` 相同），但兩個前端頁面呈現的 UI／篩選條件完全獨立，使用者不會意識到這是同一個資料來源。詳見 §7 DEF-387。
+   - 兩套 API 的 DTO 形狀、驗證規則、錯誤碼完全不同（見 §6），但操作的是**同一張 `media_assets` 表**——經由 `/cms/media` 上傳的檔案與經由 `/dashboard/media` 上傳的檔案理論上會互相出現在對方的查詢結果中（只要 `tenantId` 相同），但兩個前端頁面呈現的 UI／篩選條件完全獨立，使用者不會意識到這是同一個資料來源。
+   - **定位差異（Sprint 280，DEF-387 拍板維持現狀）**：`/cms/media` 是**部落格貼文專用**的媒體上傳，定位上從屬於 `PostController` 的貼文編輯流程（插入貼文內文的圖片）；`/dashboard/media` 是**獨立的通用媒體庫**，供商品/房源等其他內容情境重複使用素材，不綁定任何特定業務流程。兩者雖共用底層資料表，但服務的使用情境不同，**暫不合併**——除非未來觀察到使用者對兩個「媒體庫」頁面內容不一致感到困惑，否則合併是不小的重構成本（需統一 DTO／驗證規則／錯誤碼並改動兩個前端頁面），優先序低於其他已確認的缺陷。詳見 §7 DEF-387。
 3. **`PostController` 另外還內嵌一套獨立的「部落格媒體」上傳**（`/v2/dashboard/media/*`，委派給上面第 2 點的 `core.cms.media.MediaService`），與 `MediaController` 的 `/v2/media/*` 是**第三條**上傳路徑的錯覺——實際上第 2 點已說明兩者寫入同一張表，這裡只是重複強調：目前已有 3 個 Controller（`PostController`、`MediaController`，以及下方會提到的 `ErpController`／`AdminController` 都不涉及媒體，純屬 M15 範圍內 2 個 Controller）可以上傳到同一張 `media_assets` 表。
 4. **CMS 頁面／橫幅（`CmsController`）Javadoc 標「(Admin)」但實際權限比字面寬**：`@PreAuthorize("hasRole('SUPER_ADMIN') or hasAuthority('cms:create')")` 這類寫法，而 `cms:create`／`cms:update`／`cms:read` 持有者包含 `SELLER`／`HOST`／`STORE_OWNER`／`STORE_STAFF`（見 `RolePermissionMapping`），`cms:publish` 則只有 `STORE_OWNER`／`ADMIN`。**實際語意是「任何店鋪角色管理自己租戶的頁面/橫幅，`SUPER_ADMIN` 亦可」**，不是字面註解暗示的「僅限平台管理員」；`CmsService` 內部一律用 `TenantContext.getCurrentTenant()` 隔離，不是全平台共用內容。
 5. **錯誤碼精確性曾是本模組的系統性弱點，已於 Sprint 278（DEF-388）修復**：原至少 4 類錯誤碼被跨領域誤用，包括已存在專屬碼卻未採用的情況（`E-3006`／`E-4103` 原已定義但 `core.media.MediaService` 從未使用，現已改用），詳見 §6／§7。
@@ -214,7 +215,7 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 - **端點**: `POST /v2/dashboard/posts/{postId}/publish`
 - **端點**: `DELETE /v2/dashboard/posts/{postId}/publish`
 
-**權限**：`hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')`；呼叫前一律先經 §1.2 第 1 點的租戶解析（**風險見 DEF-386**），再檢查 `CMS_ENABLED` 功能開關。
+**權限**：`hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')`；呼叫前一律先經 §1.2 第 1 點的租戶解析（`TenantContext.getCurrentTenant()`，DEF-386 已修復），再檢查 `CMS_ENABLED` 功能開關。
 
 **請求（建立/更新）**：`title`（必填，Service 層檢查）、`content`（選填，含嵌入語法解析）、`categoryId`（選填，須屬本租戶）、`tags[]`、`featuredImageUrl`（黑名單 protocol 驗證）、`autoPublish`（僅建立時，布林）。
 
@@ -340,9 +341,9 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 
 | 端點群組 | SELLER／HOST（無店鋪） | STORE_OWNER | STORE_STAFF | SUPER_ADMIN |
 |------|:----:|:----:|:----:|:----:|
-| CMS 頁面/橫幅管理（§4.1～4.3／4.6～4.8，寫入） | ✅（落入 §1.2 第 1 點的 CmsController 正確租戶解析，不受 DEF-386 影響） | ✅ | ✅（無 `cms:publish`） | ✅ |
+| CMS 頁面/橫幅管理（§4.1～4.3／4.6～4.8，寫入） | ✅（落入 §1.2 第 1 點的 CmsController 租戶解析） | ✅ | ✅（無 `cms:publish`） | ✅ |
 | 頁面/橫幅列表（§4.4／4.9） | ✅ | ✅ | ✅ | ✅ |
-| 貼文/分類/部落格媒體（§4.12～4.30） | ⚠️（角色允許，但若無 `ACTIVE` 租戶成員資格會落入 DEF-386 的假租戶 fallback） | ✅ | ✅ | ❌（角色不符，`SUPER_ADMIN` 不在 `hasAnyRole` 清單內） |
+| 貼文/分類/部落格媒體（§4.12～4.30） | ✅（統一經 `TenantContext.getCurrentTenant()`，DEF-386 已修復，不再有假租戶 fallback） | ✅ | ✅ | ❌（角色不符，`SUPER_ADMIN` 不在 `hasAnyRole` 清單內） |
 | 平台管理貼文（§4.31～4.33） | ❌ | ❌ | ❌ | ✅（跨租戶） |
 | 獨立媒體庫/分類查詢（§4.35／4.36／4.39／4.42～4.45） | ❌（無 `media:read`） | ✅ | ✅ | ❌（`media:*` 與角色無關，`ADMIN`／`SUPER_ADMIN` 本身無此權限，`SUPER_ADMIN` 持有 `Permission.values()` 全集例外，見 `RolePermissionMapping.SUPER_ADMIN`） |
 | 獨立媒體庫/分類寫入（§4.37／4.38／4.40／4.41／4.46～4.48） | ❌ | ✅ | ❌（僅 `media:read`） | ✅（透過全權限集合） |
@@ -386,8 +387,8 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 
 | 項目 | 說明 |
 |------|------|
-| **`PostController` 反射式租戶解析含硬編碼假租戶 fallback（DEF-386，新登記）** | 見 §1.2 第 1 點。與同模組 `CmsController`／`MediaController`／`MediaCategoryController`（皆正確用 `TenantContext.getCurrentTenant()`）形成鮮明對比——不是架構必須如此，是 `PostController` 自行繞過了已存在且運作正常的標準機制。正常 JWT 已登入流程下 `TenantContext.getCurrentUser()` 應已由 `JwtAuthenticationFilter` 設置，此 fallback 預期不可達，但觸發條件（有效角色但無 `ACTIVE` 租戶成員資格）在本專案歷史上已多次真實發生（M13/M14 的 DEF-326/327 即同類情境的其他模組版本），無法排除未來某個呼叫路徑意外觸發 |
-| **兩套互相獨立的媒體庫並存（DEF-387，新登記）** | 見 §1.2 第 2、3 點。`/cms/media`（店主用）與 `/dashboard/media`（也是店主用，不同前端頁面）實際寫入同一張 `media_assets` 表卻各自有獨立的 DTO／驗證規則／錯誤碼，使用者在兩個 UI 之間切換時無法理解「怎麼我上傳的圖片沒出現在另一個媒體庫頁面」（實際上可能有出現，只是篩選/排序/呈現方式不同，需實際操作畫面才能確認使用者體感差異，本文件僅核對後端程式碼） |
+| ~~`PostController` 反射式租戶解析含硬編碼假租戶 fallback~~（**DEF-386，Sprint 280 已修復**） | 見 §1.2 第 1 點。已移除整段反射邏輯（含同款問題的 `getUserIdFromUser`）與硬編碼 fallback，改為直接呼叫 `TenantContext.getCurrentTenant()`／`getCurrentUser()`，與同模組其餘三個 Controller 一致 |
+| **兩套互相獨立的媒體庫並存（DEF-387，Sprint 280 拍板維持現狀）** | 見 §1.2 第 2、3 點。`/cms/media`（部落格貼文專用）與 `/dashboard/media`（通用媒體庫，供其他內容情境重複使用素材）實際寫入同一張 `media_assets` 表卻各自有獨立的 DTO／驗證規則／錯誤碼。**決策**：兩者定位不同（前者從屬貼文編輯流程、後者是獨立通用素材庫），暫不合併；若未來觀察到使用者對兩個「媒體庫」頁面內容不一致感到困惑，再評估合併成本 |
 | **大量錯誤碼跨領域誤用（DEF-388，已於 Sprint 278 修復）** | 本模組是目前已完成的 11 個模組中錯誤碼精確性問題最密集的一個：原 `E-4000`（房源專用）、`E-3001`（刊登類型專用）、`E-1002`（憑證過期專用）、`E-9005`（缺少欄位專用）、`E-4102`（找不到分類）、`E-8004`（找不到頁面）皆被借用到語意不符的情境。已新增 7 個專屬碼 `E-8013`～`E-8019`，並改採既有但先前未使用的 `E-3006`／`E-4103`；過程中額外發現並連帶修復 2 處原描述未列出的同類誤用（頁面/分類 slug 重複）。`CmsServiceTest`／`PostServiceTest`／`PostCategoryServiceTest`／`MediaServiceTest` 已同步更新/新增測試斷言具體錯誤碼 |
 | `PostCategory.name`／`MediaCategory` 建立請求無 `@NotBlank` 驗證 | 可建立空白名稱的分類，無資料品質防護（非安全問題，純資料完整性缺口） |
 | CMS 頁面/橫幅、貼文、獨立媒體庫三套授權風格並存 | `cms:*`／角色字面字串／`media:*`，同一模組內三種不同慣例，見 §5 備註 |

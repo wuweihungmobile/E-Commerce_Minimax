@@ -192,7 +192,7 @@
 | 項目 | 說明 |
 |------|------|
 | **`blockDateRange`／`unblockDateRange` 零生產呼叫點** | `RoomCalendarService.blockDateRange`／`unblockDateRange`（把日曆格設為／解除 `BLOCKED`）全庫搜尋沒有任何 Controller 呼叫它們，僅存在於 Service 層本身與測試（Sprint 260，DEF-363 修復悲觀鎖時意外發現）。`RoomCalendarStatus.BLOCKED` 列舉值因此在生產環境不可達；舊版 API 文件描述的「房東封鎖日期」功能目前只能透過 §4.7 的 `MAINTENANCE` 機制間接達成類似效果 |
-| **`DRAFT`→發布兩階段上架流程從未實作（與 M01 同一登記，DEF-380，未修復）** | 見 M01 §7。本模組額外的落差：FRD §4.2「技術實現概要」寫「建立 room_calendar 初始記錄（可用日期，未來 365 天）」，但 `createRoom`／`createRoomFromDashboard` 完全不建立任何 `room_calendar` 列（§1.2 第 5 點），該敘述同樣失真 |
+| **`DRAFT`→發布兩階段上架流程從未實作（與 M01 同一登記，DEF-380，Sprint 280 結案）** | 見 M01 §7。本模組額外落差：`createRoom`／`createRoomFromDashboard` 完全不建立任何 `room_calendar` 列（§1.2 第 5 點）。經使用者拍板：**不實作**草稿機制與建立時日曆初始化，FRD §4 已改寫為反映「建立即上架、缺列視為可訂」現況（AC-M02-003-1/2/3，v1.15） |
 | 開放窗與日曆格狀態是兩套獨立機制 | 見 §1.2 第 6 點比較表，維護/封鎖不會影響開放窗設定，反之亦然；前端若只檢查其中一種會誤判房源可訂性 |
 | `room_calendar.price` 恆為 `NULL` | Sprint 45 移除的死欄位，手動日價調整唯一路徑是 M12 的 `PricingService`，見 §3.2 |
 
@@ -203,8 +203,8 @@
 | 來源 | 內容 |
 |------|------|
 | PRD | §9.4（M02 房源中心）、§13.1（Phase 1 最小子集） |
-| FRD | §4「M02 房源中心」（§4.6 端點表已同步本文件；技術實現概要與驗收標準的 DRAFT/發布/日曆初始化敘述與實作不符，見本文件 §7 DEF-380 與 FRD 修訂記錄） |
-| 相關追蹤項目 | [DEF-286](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（API 文件完整性，Sprint 279 結案）、[DEF-372](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`ApiRouteDocDriftTest` 覆蓋範圍，本文件新納入）、[DEF-380](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（DRAFT/發布與日曆初始化流程未實作，待產品決策）、[DEF-363](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`blockDateRange`／`markMaintenance` 併發鎖修復，Sprint 260）、[DEF-344](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`GET /v2/rooms` 的 `sortBy` 白名單，Sprint 279 修復） |
+| FRD | §4「M02 房源中心」（§4.6 端點表已同步本文件；技術實現概要與驗收標準已於 v1.15（Sprint 280）改寫為反映「建立即上架、缺列視為可訂」現況，見本文件 §7 DEF-380） |
+| 相關追蹤項目 | [DEF-286](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（API 文件完整性，Sprint 279 結案）、[DEF-372](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`ApiRouteDocDriftTest` 覆蓋範圍，本文件新納入）、[DEF-380](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（DRAFT/發布與日曆初始化流程未實作，Sprint 280 結案：FRD 已改寫反映現況）、[DEF-363](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`blockDateRange`／`markMaintenance` 併發鎖修復，Sprint 260）、[DEF-344](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`GET /v2/rooms` 的 `sortBy` 白名單，Sprint 279 修復） |
 | 實作 | `RoomController`（`api/controller/`）；`RoomCalendarController`（`api/controller/`）；`RoomService`（`core/room/`）；`RoomCalendarService`（`core/booking/`） |
 | 測試 | `RoomControllerTest`／`RoomServiceTest`／`RoomCalendarServiceTest`（單元）；本文件撰寫過程以讀碼逐行核對，未新增端對端整合測試（純文件工作，見 SPRINT_273_PLAN.md） |
 

@@ -164,6 +164,12 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
             @Param("tenantId") UUID tenantId,
             @Param("statuses") List<Order.OrderStatus> statuses);
 
+    // DEF-384（Sprint 280）：平台層級 GMV，供 AdminService.getPlatformStats 取代先前
+    // 「訂單數 × 固定常數 1500」的假資料，改為跨租戶加總真實 totalAmount（不比對 tenantId，
+    // 與 AnalyticsService.getRevenueStats 的單租戶營收計算互為對照）。
+    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.status IN :statuses")
+    BigDecimal sumTotalAmountByStatusIn(@Param("statuses") List<Order.OrderStatus> statuses);
+
     boolean existsByUserIdAndStatusNotIn(UUID userId, List<Order.OrderStatus> statuses);
 
     /**

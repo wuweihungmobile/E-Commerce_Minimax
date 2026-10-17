@@ -67,11 +67,12 @@ public class ProductService {
             // 完全相同的方法，keyword 從未被實際使用，等同搜尋永遠失效、直接回傳全部上架商品）
             products = productRepository.searchByTenantIdAndKeyword(tenantId, keyword.trim(), pageRequest);
         } else if (category != null && brand != null && !brand.isBlank()) {
-            products = productRepository.findByCategoryAndBrand(category, brand, pageRequest);
+            products = productRepository.findByTenantIdAndListingStatusAndCategoryAndBrand(
+                    tenantId, category, brand, pageRequest);
         } else if (category != null && !category.isBlank()) {
-            products = productRepository.findByCategory(category, pageRequest);
+            products = productRepository.findByTenantIdAndListingStatusAndCategory(tenantId, category, pageRequest);
         } else if (brand != null && !brand.isBlank()) {
-            products = productRepository.findByBrand(brand, pageRequest);
+            products = productRepository.findByTenantIdAndListingStatusAndBrand(tenantId, brand, pageRequest);
         } else {
             products = productRepository.findByListingTenantIdAndListingStatus(
                     tenantId, Listing.ListingStatus.ACTIVE, pageRequest);

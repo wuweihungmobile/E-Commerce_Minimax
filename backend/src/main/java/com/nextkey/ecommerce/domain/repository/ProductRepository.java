@@ -30,14 +30,27 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             @Param("keyword") String keyword,
             Pageable pageable);
 
-    @Query("SELECT p FROM Product p WHERE p.category = :category AND p.listing.status = 'ACTIVE'")
-    Page<Product> findByCategory(@Param("category") String category, Pageable pageable);
+    // DEF-379（Sprint 280）：先前無 tenantId 條件，持有 product:read 的使用者用 category／brand
+    // 篩選時會看到其他租戶的 ACTIVE 商品。比照 searchByTenantIdAndKeyword 與
+    // RoomService.getRooms 的既有慣例，一律先比對呼叫者租戶。
+    @Query("SELECT p FROM Product p WHERE p.listing.tenant.id = :tenantId AND p.listing.status = 'ACTIVE' "
+            + "AND p.category = :category")
+    Page<Product> findByTenantIdAndListingStatusAndCategory(
+            @Param("tenantId") UUID tenantId,
+            @Param("category") String category,
+            Pageable pageable);
 
-    @Query("SELECT p FROM Product p WHERE p.brand = :brand AND p.listing.status = 'ACTIVE'")
-    Page<Product> findByBrand(@Param("brand") String brand, Pageable pageable);
+    @Query("SELECT p FROM Product p WHERE p.listing.tenant.id = :tenantId AND p.listing.status = 'ACTIVE' "
+            + "AND p.brand = :brand")
+    Page<Product> findByTenantIdAndListingStatusAndBrand(
+            @Param("tenantId") UUID tenantId,
+            @Param("brand") String brand,
+            Pageable pageable);
 
-    @Query("SELECT p FROM Product p WHERE p.category = :category AND p.brand = :brand AND p.listing.status = 'ACTIVE'")
-    Page<Product> findByCategoryAndBrand(
+    @Query("SELECT p FROM Product p WHERE p.listing.tenant.id = :tenantId AND p.listing.status = 'ACTIVE' "
+            + "AND p.category = :category AND p.brand = :brand")
+    Page<Product> findByTenantIdAndListingStatusAndCategoryAndBrand(
+            @Param("tenantId") UUID tenantId,
             @Param("category") String category,
             @Param("brand") String brand,
             Pageable pageable);

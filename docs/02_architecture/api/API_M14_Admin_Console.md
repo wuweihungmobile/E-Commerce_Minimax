@@ -29,7 +29,7 @@
 
 1. **`AdminController` 無法被 `ApiRouteDocDriftTest` 機械防漂移保護**：該類別混雜 M14／M16／M17 三個模組的端點，守門機制要求「一個 Controller 的全部路由只能歸屬一份文件」，三份文件各自只收錄自己範圍的端點，整個類別因此不納入任何 `GUARDED` 登記（比照 `API_M17_Tenant.md` §7 既有的處理方式）。本文件 §4 的端點規格刻意不使用會被機械掃描到的宣告格式，詳見 §7。
 2. **使用者狀態是自由字串，無列舉驗證**：`PUT /users/{userId}/status` 的 `status` 查詢參數直接寫入 `User.status`（純 `String` 欄位，非 `@Enumerated`），**不驗證合法值**。全庫唯一讀取此欄位的邏輯是 `AuthService` 登入檢查 `"ACTIVE".equals(user.getStatus())`——所以任何非 `"ACTIVE"` 的字串（包括打錯字）效果上都等同封鎖登入，無法透過這個欄位區分「停權」「停用」「打錯字」等不同語意。
-3. **平台統計摻雜真實資料與假資料**：`totalTenants`／`activeTenants`／`totalUsers`／`totalListings`／`totalOrders`／`pendingTenantReviews` 皆查詢真實資料庫；但 `totalPlatformGMV` 是 **`訂單總數 × 固定單價 1500`** 的假數字，與任何訂單的實際 `totalAmount` 無關，見 §7 DEF-384。
+3. **平台統計皆為真實資料**：`totalTenants`／`activeTenants`／`totalUsers`／`totalListings`／`totalOrders`／`pendingTenantReviews`／`totalPlatformGMV` 皆查詢真實資料庫；`totalPlatformGMV` 原為 `訂單總數 × 固定單價 1500` 的假數字，已於 Sprint 280（DEF-384）改為真實加總 `totalAmount`，見 §7。
 4. **系統設定端點完全是靜態硬編碼**：`GET /system-config` 回傳的 4 個鍵值與 `platformName`／`version`／`environment` 皆是程式碼裡的字面常數，不讀取任何資料庫或設定檔——`environment` 永遠回傳字面字串 `"production"`，與實際執行環境（開發/測試/生產）無關。
 5. **維護警示是 M09 通知系統上線前的人工替代方案**：`GET /maintenance-warnings` 查詢 `room_calendar` 中 `status=MAINTENANCE` 且關聯 `bookingId` 非空的記錄，反查對應訂房的入住日期與房客 Email，供 Admin 人工聯繫；入住日為今日或明日視為「緊急」（`urgent=true`）。M09 訊息通知中心已於 Sprint 272 建立完整規格（見 [API_M09_Notification.md](./api/API_M09_Notification.md)），但本端點並未被取代或整合，兩者目前並存。
 
@@ -53,7 +53,7 @@ FRD 完全無 M14 章節（見文件頂部狀態說明）。
 |------|------|------|------|------|
 | API-M14-001 | GET | `/v2/admin/users` | 平台使用者列表（可依租戶/角色/狀態/關鍵字篩選＋真分頁） | `hasRole('SUPER_ADMIN')` |
 | API-M14-002 | PUT | `/v2/admin/users/{userId}/status` | 更新使用者狀態（自由字串，見 §1.2 第 2 點） | `hasRole('SUPER_ADMIN')` |
-| API-M14-003 | GET | `/v2/admin/stats` | 平台統計（含假 GMV，見 §7 DEF-384） | `hasRole('SUPER_ADMIN')` |
+| API-M14-003 | GET | `/v2/admin/stats` | 平台統計（GMV 為真實加總，Sprint 280 修復，見 §7 DEF-384） | `hasRole('SUPER_ADMIN')` |
 | API-M14-004 | GET | `/v2/admin/system-config` | 系統設定（硬編碼，見 §7） | `hasRole('SUPER_ADMIN')` |
 | API-M14-005 | GET | `/v2/admin/audit-logs` | 稽核日誌（可依操作類型/時間區間篩選＋分頁） | `hasRole('SUPER_ADMIN')` |
 | API-M14-006 | GET | `/v2/admin/maintenance-warnings` | 維護警示列表 | `hasRole('SUPER_ADMIN')` |
@@ -80,7 +80,7 @@ FRD 完全無 M14 章節（見文件頂部狀態說明）。
 |------|------|------|
 | `totalTenants` / `activeTenants` | Integer | 真實查詢（`Tenant` 全表計數／狀態篩選） |
 | `totalUsers` / `totalListings` / `totalOrders` | Integer | 真實查詢（對應表格全表計數，不限狀態） |
-| `totalPlatformGMV` | BigDecimal | **假資料**：`totalOrders × 1500`，見 §7 DEF-384 |
+| `totalPlatformGMV` | BigDecimal | 真實加總：跨租戶 `SUM(orders.total_amount)`，限已付款未取消/退款狀態（`PAID`/`CONFIRMED`/`SHIPPING`/`DELIVERED`/`COMPLETED`）。Sprint 280 修復（DEF-384），見 §7 |
 | `pendingTenantReviews` | Integer | 真實查詢（`tenant_applications.status = PENDING` 計數，歷史 DEF-059 已修正計數來源） |
 
 ### 3.3 `AdminDto.SystemConfigResponse`（§4.4）
@@ -136,7 +136,7 @@ FRD 完全無 M14 章節（見文件頂部狀態說明）。
 
 **端點（不受機械防漂移保護，見 §7）**：GET /v2/admin/stats
 
-**權限**：`hasRole('SUPER_ADMIN')`。無查詢參數。回應見 §3.2，**`totalPlatformGMV` 為假資料**（§7 DEF-384）。
+**權限**：`hasRole('SUPER_ADMIN')`。無查詢參數。回應見 §3.2，`totalPlatformGMV` 為真實加總（Sprint 280 修復，§7 DEF-384）。
 
 ### 4.4 系統設定
 
@@ -182,7 +182,7 @@ FRD 完全無 M14 章節（見文件頂部狀態說明）。
 | 項目 | 說明 |
 |------|------|
 | `ApiRouteDocDriftTest` 無法覆蓋本文件 | `AdminController` 混雜 M14／M16／M17 三模組端點，無法整個類別納入守門（會強制要求單一文件記載另外兩模組不相關的端點）。本文件 §4 因此完全沒有機械防漂移，`Controller` 新增/刪除/改名路由不會被任何測試攔截，純靠人工對照維持同步 |
-| **`totalPlatformGMV` 是假資料（DEF-384，新登記）** | `AdminService.getPlatformStats` 以 `訂單總數 × 常數 1500` 計算，與任何訂單的實際 `totalAmount` 無關；`AnalyticsService`（M13）已有「依訂單狀態加總 `totalAmount`」的真實邏輯可參考，但 `getPlatformStats` 從未採用，疑似早期開發階段遺留的 Mock 實作 |
+| ~~`totalPlatformGMV` 是假資料~~（**DEF-384，Sprint 280 已修復**） | `AdminService.getPlatformStats` 原以 `訂單總數 × 常數 1500` 計算，已改用 `OrderRepository.sumTotalAmountByStatusIn` 跨租戶真實加總 `totalAmount`，比照 `AnalyticsService.getRevenueStats`（M13）既有的狀態集合慣例 |
 | 使用者狀態欄位無列舉驗證 | `PUT /users/{userId}/status` 接受任意字串寫入 `User.status`；全庫唯一消費端（`AuthService` 登入檢查）只區分「等於 `ACTIVE`」與「其他」，故不同的非 `ACTIVE` 字面值效果相同，但無法用此欄位記錄/區分停權原因 |
 | `GET /system-config` 完全硬編碼 | 無任何資料庫或設定檔來源，`environment` 欄位值永遠是字面字串 `"production"`，與實際執行環境無關；若有呼叫端依此欄位做環境判斷邏輯會得到錯誤結果 |
 | 維護警示與 M09 通知系統並存未整合 | Sprint 272 已建立完整的 M09 訊息通知規格，但 `getMaintenanceWarnings` 仍是獨立的人工查詢工具，兩者沒有互相取代或串接 |

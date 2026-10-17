@@ -530,4 +530,135 @@ class ProductControllerE2ETest {
             userRepository.findByEmail(buyerEmail).ifPresent(user -> userRepository.delete(user));
         }
     }
+
+    // ── DEF-379: category／brand 篩選租戶範圍迴歸測試 ──────────────
+
+    @Test
+    @Order(11)
+    @DisplayName("DEF-379: GET /v2/products 以 category／brand／兩者篩選皆不可回傳其他租戶的 ACTIVE 商品")
+    void getProducts_filterByCategoryOrBrand_excludesOtherTenantProducts() throws Exception {
+        String sharedCategory = "DEF379-Category-" + System.currentTimeMillis();
+        String sharedBrand = "DEF379-Brand-" + System.currentTimeMillis();
+
+        // 自己租戶：建立一筆同 category+brand 的商品
+        given()
+                .header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(ProductDto.CreateRequest.builder()
+                        .title("DEF379 Own Tenant Product")
+                        .description("desc")
+                        .category(sharedCategory)
+                        .brand(sharedBrand)
+                        .basePrice(new BigDecimal("100.00"))
+                        .build())
+                .when()
+                .post(BASE_URL)
+                .then()
+                .statusCode(201);
+
+        // 另一租戶：走完整真實流程（註冊＋登入＋建立商品），避免直接組 Listing/Product 實體圖
+        // 在無周圍交易的測試方法中跨多個 repository.save() 呼叫時，Product 的 @MapsId 關聯對
+        // 已經 detach 的 Listing 丟「detached entity passed to persist」。
+        String otherEmail = "product-test-other-tenant-" + System.currentTimeMillis() + "@example.com";
+        try {
+            com.nextkey.ecommerce.domain.model.tenant.Tenant otherTenant = tenantRepository.save(
+                    com.nextkey.ecommerce.domain.model.tenant.Tenant.builder()
+                            .name("DEF-379 Other Tenant")
+                            .slug("def-379-other-tenant-" + System.currentTimeMillis())
+                            .contactEmail("def379-other@tenant.com")
+                            .contactPhone("+886-000000000")
+                            .status(com.nextkey.ecommerce.domain.model.tenant.Tenant.TenantStatus.ACTIVE)
+                            .build());
+
+            given()
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(RegisterRequest.builder()
+                            .email(otherEmail)
+                            .password(TEST_PASSWORD)
+                            .userType("SELLER")
+                            .build())
+                    .when()
+                    .post(AUTH_URL + "/register")
+                    .then()
+                    .statusCode(201);
+
+            userRepository.findByEmail(otherEmail).ifPresent(user -> {
+                user.setTenantId(otherTenant.getId());
+                userRepository.save(user);
+            });
+
+            String otherLoginResponse = given()
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(LoginRequest.builder().email(otherEmail).password(TEST_PASSWORD).build())
+                    .when()
+                    .post(AUTH_URL + "/login")
+                    .then()
+                    .statusCode(200)
+                    .extract()
+                    .asString();
+            String otherAccessToken =
+                    objectMapper.readTree(otherLoginResponse).path("data").path("accessToken").asText();
+
+            given()
+                    .header("Authorization", "Bearer " + otherAccessToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(ProductDto.CreateRequest.builder()
+                            .title("DEF379 Other Tenant Product")
+                            .description("desc")
+                            .category(sharedCategory)
+                            .brand(sharedBrand)
+                            .basePrice(new BigDecimal("999.00"))
+                            .build())
+                    .when()
+                    .post(BASE_URL)
+                    .then()
+                    .statusCode(201);
+
+            // category 篩選：只能看到自己租戶的商品
+            given()
+                    .header("Authorization", "Bearer " + accessToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .param("category", sharedCategory)
+                    .when()
+                    .get(BASE_URL)
+                    .then()
+                    .statusCode(200)
+                    .body("data.totalElements", equalTo(1))
+                    .body("data.content.title", everyItem(not(is("DEF379 Other Tenant Product"))));
+
+            // brand 篩選：只能看到自己租戶的商品
+            given()
+                    .header("Authorization", "Bearer " + accessToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .param("brand", sharedBrand)
+                    .when()
+                    .get(BASE_URL)
+                    .then()
+                    .statusCode(200)
+                    .body("data.totalElements", equalTo(1))
+                    .body("data.content.title", everyItem(not(is("DEF379 Other Tenant Product"))));
+
+            // category+brand 篩選：只能看到自己租戶的商品
+            given()
+                    .header("Authorization", "Bearer " + accessToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .param("category", sharedCategory)
+                    .param("brand", sharedBrand)
+                    .when()
+                    .get(BASE_URL)
+                    .then()
+                    .statusCode(200)
+                    .body("data.totalElements", equalTo(1))
+                    .body("data.content.title", everyItem(not(is("DEF379 Other Tenant Product"))));
+
+            System.out.println("✅ DEF-379 PASSED: category／brand 篩選不會洩漏其他租戶商品");
+        } finally {
+            userRepository.findByEmail(otherEmail).ifPresent(user -> {
+                List<Listing> otherListings = listingRepository.findByOwnerId(user.getId());
+                productRepository.deleteAllById(otherListings.stream().map(Listing::getId).toList());
+                listingRepository.deleteAll(otherListings);
+                userRepository.delete(user);
+            });
+        }
+    }
 }

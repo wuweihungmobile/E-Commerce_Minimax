@@ -256,8 +256,8 @@ v1.0 本文件與舊版 [API_Listing_Unified_Create.md](./API_Listing_Unified_Cr
 
 | 項目 | 說明 |
 |------|------|
-| **`GET /v2/products` 的 `category`／`brand` 篩選分支無租戶範圍（本輪新發現，登記為 DEF-379，未修復）** | `ProductService.getProducts`：無篩選與有 `keyword` 的分支都以「呼叫者目前租戶 + ACTIVE」為範圍，但有 `category` 或 `brand`（無 `keyword`）的三個分支改用 `ProductRepository.findByCategory`／`findByBrand`／`findByCategoryAndBrand`，查詢條件只有 `status = ACTIVE`，**完全不比對 `tenantId`**。同一方法內部範圍不一致，持有 `product:read` 的使用者（含 `SELLER`）用 `category`／`brand` 篩選時會看到**其他租戶**的 `ACTIVE` 商品。本輪純文件撰寫過程中的附帶發現，不修復（修法是在 `ProductRepository` 對應 `@Query` 加上 `tenantId` 條件，但是否該讓這三個分支改為「全平台商品分類瀏覽」而非「我的商品」是產品範圍問題，留待決定） |
-| **`DRAFT`→發布兩階段上架流程從未實作（本輪新發現，登記為 DEF-380，未修復）** | FRD §3.2「技術實現概要」與 AC-M01-002-1／AC-M01-002-2 描述「先建立 `status=DRAFT` 的 Listing，再呼叫 `PUT /api/v2/dashboard/listings/:id/publish` 轉為 `ACTIVE`」，但 `ProductService.createProduct`／`createProductFromDashboard` 皆寫死建立時 `status=ACTIVE`，沒有任何路徑建立 `DRAFT` 列，後端也沒有任何「發布」端點（`PUT .../publish` 不存在）。`ListingStatus.DRAFT` 列舉值仍可透過 `PUT /v2/products/{listingId}`（`UpdateRequest.status`）事後手動設定，但那是「改」不是建立流程的一部分。是否要實作真正的草稿機制、或把 FRD／驗收標準改為「建立即上架」的現況，屬產品決策，本輪僅記錄不處理 |
+| ~~`GET /v2/products` 的 `category`／`brand` 篩選分支無租戶範圍~~（**DEF-379，Sprint 280 已修復**） | `ProductService.getProducts` 三個 category／brand 分支已改用租戶範圍查詢（`ProductRepository.findByTenantIdAndListingStatusAndCategory`／`...AndBrand`／`...AndCategoryAndBrand`），與同方法其餘分支一致。`/v2/products` 本身是需要 `product:read` 的已登入端點，全平台瀏覽由獨立的 `GET /v2/public/listings` 提供，兩者不衝突 |
+| **`DRAFT`→發布兩階段上架流程從未實作（DEF-380，Sprint 280 結案）** | `ProductService.createProduct`／`createProductFromDashboard` 皆寫死建立時 `status=ACTIVE`，沒有任何路徑建立 `DRAFT` 列，後端也沒有任何「發布」端點（`PUT .../publish` 不存在）。經使用者拍板：**不實作**兩階段草稿機制，FRD §3 已改寫為反映「建立即上架」現況（AC-M01-002-1／AC-M01-002-2，v1.15）。`ListingStatus.DRAFT` 列舉值仍可透過 `PUT /v2/products/{listingId}`（`UpdateRequest.status`）事後手動設定，屬編輯功能 |
 | 統一建立入口（`POST /v2/dashboard/listings`）與型別專屬入口（`POST /v2/products`）合約不同 | 見 §1.2 第 2 點、§3.4：`category` 必填與否不同、成功 HTTP 狀態碼不同（200 vs 201）、`CreateListingRequest.additionalFields` 欄位會通過驗證但 `ProductService.createProductFromDashboard` 完全不讀取它，純粹是請求體裡的死欄位 |
 | `dimensionsCm` 是自由格式字串 | 非結構化的長/寬/高三欄位，前端需自行約定格式（例如 `"20x10x5"`），後端不解析也不驗證格式 |
 | SKU 無刪除端點 | `stock_movements.sku_id` 一旦有異動記錄即無法刪除（V1 schema FK 無 `ON DELETE CASCADE`），比照既有慣例改用 `status=INACTIVE` 停用 |
@@ -269,8 +269,8 @@ v1.0 本文件與舊版 [API_Listing_Unified_Create.md](./API_Listing_Unified_Cr
 | 來源 | 內容 |
 |------|------|
 | PRD | §9.3（M01 商品中心）、§13.1（Phase 1 最小子集：M03+M01+M02+M05） |
-| FRD | §3「M01 商品中心」（§3.6 端點表已同步本文件；技術實現概要與驗收標準的 DRAFT/發布敘述與實作不符，見本文件 §7 DEF-380 與 FRD 修訂記錄） |
-| 相關追蹤項目 | [DEF-286](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（API 文件完整性，本文件為其範圍內一項，Sprint 279 結案）、[DEF-372](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`ApiRouteDocDriftTest` 覆蓋範圍，本文件新納入）、[DEF-379](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（本文件新發現，商品分類/品牌篩選租戶範圍缺口，待產品決策）、[DEF-380](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（本文件新發現，DRAFT/發布流程未實作，待產品決策）、[DEF-344](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`GET /v2/products`／`/v2/listings` 的 `sortBy` 白名單，Sprint 279 修復） |
+| FRD | §3「M01 商品中心」（§3.6 端點表已同步本文件；技術實現概要與驗收標準已於 v1.15（Sprint 280）改寫為反映「建立即上架」現況，見本文件 §7 DEF-380） |
+| 相關追蹤項目 | [DEF-286](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（API 文件完整性，本文件為其範圍內一項，Sprint 279 結案）、[DEF-372](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`ApiRouteDocDriftTest` 覆蓋範圍，本文件新納入）、[DEF-379](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（商品分類/品牌篩選租戶範圍缺口，Sprint 280 結案）、[DEF-380](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（DRAFT/發布流程未實作，Sprint 280 結案：FRD 已改寫反映現況）、[DEF-344](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`GET /v2/products`／`/v2/listings` 的 `sortBy` 白名單，Sprint 279 修復） |
 | 實作 | `ListingController`／`PublicListingController`／`ProductController`（`api/controller/`）；`ProductService`（`core/product/`）；`ProductSkuService`（`core/product/`） |
 | 測試 | `ProductControllerTest`／`ProductServiceTest`（單元）；本文件撰寫過程以讀碼逐行核對，未新增端對端整合測試（純文件工作，見 SPRINT_273_PLAN.md） |
 

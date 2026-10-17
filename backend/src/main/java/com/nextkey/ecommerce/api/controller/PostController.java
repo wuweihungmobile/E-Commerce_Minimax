@@ -10,8 +10,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,7 +23,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.M15Dto;
-import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.core.cms.listing.ListingCardService;
 import com.nextkey.ecommerce.core.cms.media.MediaService;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -34,10 +31,7 @@ import com.nextkey.ecommerce.core.cms.post.PostService;
 import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
 import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
-import com.nextkey.ecommerce.domain.model.tenant.TenantMember;
 import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
-import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
-import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -63,8 +57,6 @@ public class PostController {
     @Qualifier("cmsMediaService")
     private final MediaService mediaService;
     private final TenantFeatureToggleRepository featureToggleRepository;
-    private final TenantMemberRepository tenantMemberRepository;
-    private final UserRepository userRepository;
 
     // ========== Post CRUD ==========
 
@@ -75,11 +67,10 @@ public class PostController {
     @PostMapping("/dashboard/posts")
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<ApiResponse<M15Dto.PostResponse>> createPost(
-            @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody M15Dto.CreatePostRequest request) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
-        UUID authorId = getUserIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
+        UUID authorId = TenantContext.getCurrentUser();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -96,10 +87,9 @@ public class PostController {
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<ApiResponse<M15Dto.PostResponse>> updatePost(
             @PathVariable UUID postId,
-            @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody M15Dto.UpdatePostRequest request) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -115,12 +105,11 @@ public class PostController {
     @GetMapping("/dashboard/posts")
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<ApiResponse<M15Dto.PostListResponse>> getPosts(
-            @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String status) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -142,10 +131,9 @@ public class PostController {
     @GetMapping("/dashboard/posts/{postId}")
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<ApiResponse<M15Dto.PostResponse>> getPost(
-            @PathVariable UUID postId,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @PathVariable UUID postId) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -161,10 +149,9 @@ public class PostController {
     @DeleteMapping("/dashboard/posts/{postId}")
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<ApiResponse<Void>> deletePost(
-            @PathVariable UUID postId,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @PathVariable UUID postId) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -180,10 +167,9 @@ public class PostController {
     @PostMapping("/dashboard/posts/{postId}/publish")
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<ApiResponse<M15Dto.PostResponse>> publishPost(
-            @PathVariable UUID postId,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @PathVariable UUID postId) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -199,10 +185,9 @@ public class PostController {
     @DeleteMapping("/dashboard/posts/{postId}/publish")
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<ApiResponse<M15Dto.PostResponse>> unpublishPost(
-            @PathVariable UUID postId,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @PathVariable UUID postId) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -276,10 +261,9 @@ public class PostController {
      */
     @GetMapping("/dashboard/post-categories")
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
-    public ResponseEntity<ApiResponse<M15Dto.CategoryListResponse>> getCategories(
-            @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<ApiResponse<M15Dto.CategoryListResponse>> getCategories() {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -295,10 +279,9 @@ public class PostController {
     @PostMapping("/dashboard/post-categories")
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<ApiResponse<M15Dto.CategoryResponse>> createCategory(
-            @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody M15Dto.CreateCategoryRequest request) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -315,10 +298,9 @@ public class PostController {
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<ApiResponse<M15Dto.CategoryResponse>> updateCategory(
             @PathVariable UUID categoryId,
-            @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody M15Dto.UpdateCategoryRequest request) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -334,10 +316,9 @@ public class PostController {
     @DeleteMapping("/dashboard/post-categories/{categoryId}")
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<ApiResponse<Void>> deleteCategory(
-            @PathVariable UUID categoryId,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @PathVariable UUID categoryId) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -355,12 +336,11 @@ public class PostController {
     @GetMapping("/dashboard/media")
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<ApiResponse<M15Dto.MediaListResponse>> getMediaList(
-            @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String fileType) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -382,15 +362,14 @@ public class PostController {
     @PostMapping("/dashboard/media/upload-by-path")
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<ApiResponse<M15Dto.MediaUploadResponse>> uploadMediaByPath(
-            @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam String fileName,
             @RequestParam String originalName,
             @RequestParam Long fileSize,
             @RequestParam String mimeType,
             @RequestParam String filePath) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
-        UUID uploaderId = getUserIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
+        UUID uploaderId = TenantContext.getCurrentUser();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -407,11 +386,10 @@ public class PostController {
     @PostMapping(value = "/dashboard/media/upload-multipart", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<ApiResponse<M15Dto.MediaUploadResponse>> uploadMediaMultipart(
-            @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam("file") MultipartFile file) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
-        UUID uploaderId = getUserIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
+        UUID uploaderId = TenantContext.getCurrentUser();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -431,10 +409,9 @@ public class PostController {
     @GetMapping("/dashboard/media/{mediaId}/file")
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<InputStreamResource> getMediaFile(
-            @PathVariable UUID mediaId,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @PathVariable UUID mediaId) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -456,10 +433,9 @@ public class PostController {
     @DeleteMapping("/dashboard/media/{mediaId}")
     @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
     public ResponseEntity<ApiResponse<Void>> deleteMedia(
-            @PathVariable UUID mediaId,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @PathVariable UUID mediaId) {
 
-        UUID tenantId = getTenantIdFromUser(userDetails);
+        UUID tenantId = TenantContext.getCurrentTenant();
 
         // 檢查 CMS_ENABLED feature toggle
         checkFeatureToggle(tenantId, "CMS_ENABLED");
@@ -516,144 +492,6 @@ public class PostController {
     }
 
     // ========== Helper Methods ==========
-
-    /**
-     * 從 UserDetails 取得 Tenant ID
-     * 從 UserPrincipal 取得 userId，再從資料庫查詢該用戶所屬的 Tenant
-     */
-    private UUID getTenantIdFromUser(UserDetails userDetails) {
-        // 首先嘗試從 TenantContext 取得（因為它是在 JwtAuthenticationFilter 中設置的）
-        UUID tenantId = getTenantIdFromTenantContext();
-        if (tenantId != null) {
-            return tenantId;
-        }
-
-        // 如果 userDetails 可用，嘗試從中取得
-        if (userDetails != null) {
-            // 嘗試從 UserPrincipal 取得
-            TenantIdInfo tenantIdInfo = extractTenantIdInfoFromUserDetails(userDetails);
-            if (tenantIdInfo != null) {
-                if (tenantIdInfo.tenantIdStr != null && !tenantIdInfo.tenantIdStr.isEmpty()) {
-                    UUID directTenantId = tryParseTenantId(tenantIdInfo.tenantIdStr);
-                    if (directTenantId != null) {
-                        return directTenantId;
-                    }
-                }
-                if (tenantIdInfo.userId != null) {
-                    UUID dbTenantId = getTenantIdFromUserId(tenantIdInfo.userId);
-                    if (dbTenantId != null) {
-                        return dbTenantId;
-                    }
-                }
-            }
-        }
-
-        log.warn("Cannot find tenantId, using mock value");
-        return UUID.fromString("00000000-0000-0000-0000-000000000001");
-    }
-
-    private UUID getTenantIdFromTenantContext() {
-        UUID contextUserId = TenantContext.getCurrentUser();
-        if (contextUserId != null) {
-            log.debug("Got userId from TenantContext: {}", contextUserId);
-            var members = tenantMemberRepository.findByUserIdAndStatus(contextUserId, TenantMember.MemberStatus.ACTIVE);
-            if (!members.isEmpty()) {
-                return members.get(0).getTenantId();
-            }
-            var userOpt = userRepository.findById(contextUserId);
-            if (userOpt.isPresent() && userOpt.get().getTenantId() != null) {
-                return userOpt.get().getTenantId();
-            }
-        }
-        return null;
-    }
-
-    private record TenantIdInfo(UUID userId, String tenantIdStr) {}
-
-    private TenantIdInfo extractTenantIdInfoFromUserDetails(UserDetails userDetails) {
-        try {
-            var getPrincipalMethod = userDetails.getClass().getMethod("getPrincipal");
-            Object principal = getPrincipalMethod.invoke(userDetails);
-            if (principal instanceof UserPrincipal up) {
-                return new TenantIdInfo(up.getUserId(), up.getTenantId());
-            }
-        } catch (NoSuchMethodException | SecurityException | IllegalAccessException | java.lang.reflect.InvocationTargetException e) {
-            log.debug("Cannot get principal: {}", e.getMessage());
-        }
-        return null;
-    }
-
-    private UUID tryParseTenantId(String tenantIdStr) {
-        try {
-            return UUID.fromString(tenantIdStr);
-        } catch (IllegalArgumentException e) {
-            log.warn("Invalid tenantId format: {}", tenantIdStr);
-            return null;
-        }
-    }
-
-    private UUID getTenantIdFromUserId(UUID userId) {
-        var members = tenantMemberRepository.findByUserIdAndStatus(userId, TenantMember.MemberStatus.ACTIVE);
-        if (!members.isEmpty()) {
-            return members.get(0).getTenantId();
-        }
-        var userOpt = userRepository.findById(userId);
-        if (userOpt.isPresent() && userOpt.get().getTenantId() != null) {
-            return userOpt.get().getTenantId();
-        }
-        return null;
-    }
-
-    /**
-     * 從 UserDetails 取得 User ID
-     */
-    private UUID getUserIdFromUser(UserDetails userDetails) {
-        // 首先嘗試從 TenantContext 取得（因為它是在 JwtAuthenticationFilter 中設置的）
-        UUID contextUserId = TenantContext.getCurrentUser();
-        if (contextUserId != null) {
-            log.debug("Got userId from TenantContext: {}", contextUserId);
-            return contextUserId;
-        }
-
-        if (userDetails == null) {
-            log.warn("userDetails is null, cannot get userId");
-            return UUID.fromString("00000000-0000-0000-0000-000000000002");
-        }
-
-        UUID userId = null;
-
-        // 嘗試從 UserPrincipal 取得
-        try {
-            var getPrincipalMethod = userDetails.getClass().getMethod("getPrincipal");
-            Object principal = getPrincipalMethod.invoke(userDetails);
-            if (principal instanceof UserPrincipal up) {
-                userId = up.getUserId();
-                log.debug("Got userId from UserPrincipal: {}", userId);
-            }
-        } catch (NoSuchMethodException | SecurityException | IllegalAccessException | java.lang.reflect.InvocationTargetException e) {
-            log.debug("Cannot get principal: {}", e.getMessage());
-        }
-
-        // Fallback: 直接嘗試反射取得 getUserId
-        if (userId == null) {
-            try {
-                var method = userDetails.getClass().getMethod("getUserId");
-                Object result = method.invoke(userDetails);
-                if (result instanceof UUID) {
-                    userId = (UUID) result;
-                    log.debug("Got userId from getUserId(): {}", userId);
-                }
-            } catch (NoSuchMethodException | SecurityException | IllegalAccessException | java.lang.reflect.InvocationTargetException e) {
-                log.debug("Cannot get userId: {}", e.getMessage());
-            }
-        }
-
-        if (userId == null) {
-            log.warn("Cannot find userId, using mock value");
-            userId = UUID.fromString("00000000-0000-0000-0000-000000000002");
-        }
-        return userId;
-    }
 
     /**
      * 檢查 Feature Toggle

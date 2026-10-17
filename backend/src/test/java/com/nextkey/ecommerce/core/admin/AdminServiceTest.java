@@ -585,6 +585,9 @@ class AdminServiceTest {
             when(userRepository.count()).thenReturn(50L);
             when(listingRepository.count()).thenReturn(100L);
             when(orderRepository.count()).thenReturn(200L);
+            // DEF-384：GMV 改為真實加總，與 totalOrders 無算式關係——用不同於 200*任何整數倍的值，
+            // 確保若有人把邏輯改回「訂單數 × 常數」這個斷言會失敗
+            when(orderRepository.sumTotalAmountByStatusIn(any())).thenReturn(java.math.BigDecimal.valueOf(458000));
 
             // Act
             AdminDto.PlatformStatsResponse response = adminService.getPlatformStats();
@@ -595,8 +598,8 @@ class AdminServiceTest {
             assertThat(response.getTotalUsers()).isEqualTo(50);
             assertThat(response.getTotalListings()).isEqualTo(100);
             assertThat(response.getTotalOrders()).isEqualTo(200);
-            // GMV = orders * 1500
-            assertThat(response.getTotalPlatformGMV()).isEqualTo(java.math.BigDecimal.valueOf(300000));
+            // DEF-384：GMV 來自 orderRepository.sumTotalAmountByStatusIn 的真實加總，不再是假資料
+            assertThat(response.getTotalPlatformGMV()).isEqualTo(java.math.BigDecimal.valueOf(458000));
         }
 
         @Test

@@ -25,6 +25,7 @@ import com.nextkey.ecommerce.api.dto.AdminDto;
 import com.nextkey.ecommerce.domain.model.audit.AuditLog;
 import com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
+import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.tenant.TenantApplication;
@@ -93,8 +94,11 @@ public class AdminService {
         }
     }
 
-    // Mock values
-    private static final BigDecimal MOCK_AVERAGE_ORDER_VALUE = BigDecimal.valueOf(1500);
+    // DEF-384（Sprint 280）：GMV 計入的訂單狀態，比照 AnalyticsService.getRevenueStats 既有慣例
+    // （已付款、尚未取消/退款的狀態皆計入）。
+    private static final List<Order.OrderStatus> GMV_COUNTED_STATUSES = List.of(
+            Order.OrderStatus.PAID, Order.OrderStatus.CONFIRMED, Order.OrderStatus.SHIPPING,
+            Order.OrderStatus.DELIVERED, Order.OrderStatus.COMPLETED);
 
     private static final long STATS_ORDER_WINDOW_DAYS = 30L;
 
@@ -703,8 +707,7 @@ public class AdminService {
         int totalListings = (int) listingRepository.count();
         int totalOrders = (int) orderRepository.count();
 
-        // Mock GMV
-        BigDecimal totalGMV = BigDecimal.valueOf(totalOrders).multiply(MOCK_AVERAGE_ORDER_VALUE);
+        BigDecimal totalGMV = orderRepository.sumTotalAmountByStatusIn(GMV_COUNTED_STATUSES);
 
         // 待審核店鋪數＝待審核的「開店申請」（tenant_applications.status=PENDING）。
         // 不可改回以 tenants.status=PENDING_REVIEW 計數：Sprint 97 起開店申請一律先寫入

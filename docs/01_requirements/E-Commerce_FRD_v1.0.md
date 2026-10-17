@@ -1,7 +1,7 @@
-# E-Commerce System — 功能需求文檔 (FRD) v1.14
+# E-Commerce System — 功能需求文檔 (FRD) v1.15
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.14
+> **版本**: v1.15
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -476,7 +476,7 @@ Seller 可以快速上架商品，開始銷售。
 
 **技術實現概要**:
 1. 驗證 Seller 角色與 RETAIL_ENABLED Feature Toggle
-2. 建立 Listing (status = 'DRAFT')
+2. 建立 Listing (status = 'ACTIVE')，無草稿階段（Sprint 280，DEF-380 結案）
 3. 建立 Product 特化資料
 4. 建立 Product SKU（如有規格）
 5. 設定初始庫存（透過 ERP 採購單或直接設定）
@@ -485,12 +485,12 @@ Seller 可以快速上架商品，開始銷售。
 
 #### Acceptance Criteria
 
-> **⚠️ 修訂註記（Sprint 273，DEF-380，未修復）**：下方 AC-M01-002-1／AC-M01-002-2 描述的「先建立 `DRAFT` 商品、再呼叫發布端點轉 `ACTIVE`」兩階段流程，在目前實作中**不存在**——`ProductService.createProduct`／`createProductFromDashboard` 建立時一律直接寫入 `status = ACTIVE`，沒有任何路徑產生 `DRAFT` 列，後端也沒有 `PUT .../publish` 端點。是否要實作真正的草稿機制、或把本節改為「建立即上架」的現況，屬產品決策，暫不修改以下 Gherkin 內容，詳見 [API_M01_Product_Center.md](../02_architecture/api/API_M01_Product_Center.md) §7、[DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md) DEF-380。
+> **✅ 決策結果（Sprint 280，DEF-380 結案）**：經使用者確認，本系統**不實作**兩階段上架（`DRAFT`→發布）；商品建立即直接上架（`status = 'ACTIVE'`），與系統穩定運行超過 280 個 Sprint 的現況一致，不回頭補建從未有人需要的草稿機制。以下 AC 已改寫為反映實際行為；原描述的 `PUT .../publish` 發布端點**確認不存在亦不會新增**。詳見 [DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md) DEF-380。
 
 **AC-M01-002-1**: 基本上架流程
 **Given** Seller 已登入且 RETAIL_ENABLED = true
 **When** 提交商品上架請求（包含 title, description, base_price, category）
-**Then** 建立 Listing (status = 'DRAFT') 並回傳商品 ID
+**Then** 建立 Listing (status = 'ACTIVE') 並回傳商品 ID，商品立即可在前台被搜尋到（無草稿／發布兩階段流程）
 
 **測試資料**:
 ```json
@@ -505,14 +505,7 @@ Seller 可以快速上架商品，開始銷售。
 
 ---
 
-**AC-M01-002-2**: 發布商品
-**Given** Seller 擁有 DRAFT 狀態的商品
-**When** 請求發布商品 (PUT /api/v2/dashboard/listings/:id/publish)
-**Then** 將 Listing status 改為 'ACTIVE'，商品可在前台搜尋到
-
-**測試資料**:
-- 輸入: `listing_id: "uuid"`, `action: "publish"`
-- 預期輸出: `{ id: "uuid", status: "ACTIVE" }`
+**AC-M01-002-2**（**Sprint 280 移除**）：原「發布商品」流程不存在——商品建立即上架，無獨立發布步驟。既有商品仍可透過 `PUT /v2/products/:listingId` 的 `status` 欄位事後手動切換狀態，屬商品編輯（US-M01-004）範圍，非獨立發布動作。
 
 ---
 
@@ -1036,20 +1029,20 @@ Host 可以快速上架房源，開始接受預訂。
 
 **技術實現概要**:
 1. 驗證 Host 角色與 BOOKING_ENABLED Feature Toggle
-2. 建立 Listing (status = 'DRAFT', type = 'ROOM')
-3. 建立 room_calendar 初始記錄（可用日期）
+2. 建立 Listing (status = 'ACTIVE', type = 'ROOM')，無草稿階段（Sprint 280，DEF-380 結案）
+3. 不建立 room_calendar 記錄（缺列視為可訂的隱性語意，見下方 AC-M02-003-3）
 4. 設定初始庫存（房間數量）
 
 ---
 
 #### Acceptance Criteria
 
-> **⚠️ 修訂註記（Sprint 273，DEF-380，未修復）**：以下 AC-M02-003-1／AC-M02-003-2／AC-M02-003-3 描述的「先建立 `DRAFT` 房源、呼叫發布端點轉 `ACTIVE`、建立時自動產生未來 90 天 room_calendar 記錄」流程，在目前實作中**不存在**——`RoomService.createRoom`／`createRoomFromDashboard` 建立時一律直接寫入 `status = ACTIVE`，且完全不建立任何 `room_calendar` 列（該表採「缺列視為可訂」的隱性語意，只在被訂房或房東主動標記時才寫入）。後端也沒有 `PUT .../status` 發布端點。是否實作真正的草稿機制與建立時日曆初始化、或把本節改為現況，屬產品決策，暫不修改以下 Gherkin 內容，詳見 [API_M02_Listing_Center.md](../02_architecture/api/API_M02_Listing_Center.md) §7、[DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md) DEF-380。
+> **✅ 決策結果（Sprint 280，DEF-380 結案）**：經使用者確認，本系統**不實作**兩階段上架與建立時日曆初始化；房源建立即直接上架（`status = 'ACTIVE'`），`room_calendar` 採「缺列視為可訂」隱性語意，只在被訂房或房東主動標記維護時才寫入記錄。以下 AC-M02-003-1／AC-M02-003-2／AC-M02-003-3 已改寫為反映實際行為。詳見 [DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md) DEF-380。
 
 **AC-M02-003-1**: 基本上架流程
 **Given** Host 已登入且 BOOKING_ENABLED = true
 **When** 提交房源上架請求（title, description, base_price, max_guests, location）
-**Then** 建立 Listing (status = 'DRAFT', type = 'ROOM') 並回傳房源 ID
+**Then** 建立 Listing (status = 'ACTIVE', type = 'ROOM') 並回傳房源 ID，房源立即可在前台被搜尋到（無草稿／發布兩階段流程）
 
 **測試資料**:
 ```json
@@ -1065,21 +1058,14 @@ Host 可以快速上架房源，開始接受預訂。
 
 ---
 
-**AC-M02-003-2**: 發布房源
-**Given** Host 擁有 DRAFT 狀態的房源
-**When** 請求發布房源 (PUT /api/v2/dashboard/listings/:id/status)
-**Then** 將 Listing status 改為 'ACTIVE'，房源可在前台被搜尋到
-
-**測試資料**:
-- 輸入: `listing_id: "uuid"`, `action: "publish"`
-- 預期輸出: `{ id: "uuid", status: "ACTIVE" }`
+**AC-M02-003-2**（**Sprint 280 移除**）：原「發布房源」流程不存在——房源建立即上架，無獨立發布步驟。既有房源仍可透過 `PUT /v2/rooms/:listingId` 的 `status` 欄位事後手動切換狀態，屬房源編輯（AC-M02-004-1）範圍，非獨立發布動作。
 
 ---
 
-**AC-M02-003-3**: 初始日曆建立
+**AC-M02-003-3**: 初始日曆狀態
 **Given** Host 建立新房源
 **When** 系統建立房源記錄後
-**Then** 自動建立未來 90 天的 room_calendar 記錄（預設都為 AVAILABLE）
+**Then** **不**建立任何 `room_calendar` 記錄；該房源未來所有日期視為可訂（`room_calendar` 採「缺列＝可訂」隱性語意，僅在被訂房或房東主動標記維護時才會寫入對應日期的記錄）
 
 ---
 
@@ -1147,20 +1133,18 @@ Host 可以快速上架房源，開始接受預訂。
 
 ---
 
-> **⚠️ 修訂註記（Sprint 273，未修復）**：以下 `PUT /api/v2/dashboard/listings/:id/calendar`（批次依日期＋`reason` 封鎖）端點不存在。日曆格的 `BLOCKED` 狀態對應的 Service 方法 `blockDateRange`／`unblockDateRange` 確實存在，但**全庫無任何 Controller 呼叫它們**（零生產呼叫點，見 [API_M02_Listing_Center.md](../02_architecture/api/API_M02_Listing_Center.md) §7）；唯一真正可由 API 觸發、效果類似的機制是同文件 §4.7～4.8 的 `POST/DELETE /v2/dashboard/rooms/{roomListingId}/maintenance`（區間 `startDate`／`endDate`，轉為 `MAINTENANCE` 而非 `BLOCKED`，且無逐日 `reason` 欄位）。
+> **✅ 決策結果（Sprint 280，DEF-380 結案）**：經使用者確認，本系統不實作逐日批次封鎖（`BLOCKED`＋`reason`）；下方 AC 已改寫為反映實際存在的維護窗口機制（區間式 `MAINTENANCE`）。`RoomCalendarService.blockDateRange`／`unblockDateRange` 與逐日 `BLOCKED` 狀態仍保留在程式碼中，但目前沒有任何 Controller 呼叫它們，不是使用者可觸發的功能，不在本 AC 範圍。
 
-**AC-M02-004-2**: 編輯日曆設定
+**AC-M02-004-2**: 編輯日曆設定（維護窗口）
 **Given** Host 擁有該房源的擁有權
-**When** 請求封鎖特定日期 (PUT /api/v2/dashboard/listings/:id/calendar)
-**Then** 更新 room_calendar 記錄
+**When** 請求將某區間日期標記為維護中 (`POST /v2/dashboard/rooms/{roomListingId}/maintenance`，body 帶 `startDate`、`endDate`)
+**Then** 該區間內的 room_calendar 記錄狀態改為 `MAINTENANCE`；解除維護時改呼叫 `DELETE` 同路徑（query string 帶相同 `startDate`／`endDate`）還原為可訂
 
 **測試資料**:
 ```json
 {
-  "updates": [
-    { "date": "2026-05-01", "status": "BLOCKED", "reason": "房間清潔中" },
-    { "date": "2026-05-02", "status": "BLOCKED", "reason": "房間清潔中" }
-  ]
+  "startDate": "2026-05-01",
+  "endDate": "2026-05-02"
 }
 ```
 
@@ -4411,6 +4395,7 @@ tenant_feature_toggles
 | v1.12 | 2026-10-15 | **DEF-375 編號衝突校正＋順手修正 DEF-374 陳舊敘述（Sprint 268）**：BR-M08-10、§6D.6 原寫 DEF-374／DEF-375「未修復」，但 DEF-374 其實已於 Sprint 264 修復（SRD 當時已同步，本文件漏改）、DEF-375 本輪修復——兩處改為反映現況。`API_Index.md` 舊表格與 [TC_M08_Review.md](../03_testing/TC_M08_Review.md) 的裸編號 `API-M08-NNN` 分別加上 `-IDX-`／`-TC-` 中綴校正衝突。詳見 [SPRINT_268_PLAN.md](../04_planning/SPRINT_268_PLAN.md) | Claude Code（Sprint 268） |
 | v1.13 | 2026-10-15 | **M09 訊息通知中心 API 文件補齊（Sprint 272，DEF-286 範圍）**：§6C 橫幅、§6C.2（EMAIL/SMS/PUSH 現況、API 規格現況兩列）、§6C.5（BR-M09-05）、§6C.6 同步更新為 Sprint 271（DEF-317）之後的真實行為（EMAIL 真實送出、SMS/PUSH 明確回報未送達、API 規格已建立），取代先前「一律標為已送出」「規格尚未建立」的過時敘述；三處皆連結新建的 [API_M09_Notification.md](../02_architecture/api/API_M09_Notification.md)（17 端點）。過程中新登記 **DEF-378**（`NotificationTemplateService` 誤用 `E_6001` 付款錯誤碼表示範本代碼重複），登記未修復。詳見 [SPRINT_272_PLAN.md](../04_planning/SPRINT_272_PLAN.md) | Claude Code（Sprint 272） |
 | v1.14 | 2026-10-15 | **M01／M02 API 文件全面改寫＋FRD 端點表校正（Sprint 273，DEF-286／DEF-372 範圍）**：§3.7、§4.7 端點概要表依實際程式碼全面改寫（移除不存在的 `GET .../search`、`GET /categories`、`PUT .../publish`、`PUT .../status`；補上 `/v2/products`、`/v2/rooms`、SKU、維護窗口等實際端點），連結改指向全新改寫的 [API_M01_Product_Center.md](../02_architecture/api/API_M01_Product_Center.md)（14 端點）／[API_M02_Listing_Center.md](../02_architecture/api/API_M02_Listing_Center.md)（8 端點）。**新增修訂註記**（§3 AC-M01-002-1/2 前、§4 AC-M02-003-1/2/3 前、§4 AC-M02-004-2 前）標註三處驗收標準描述的「`DRAFT`→發布兩階段上架」「建立時自動初始化 90 天 room_calendar」「`PUT .../calendar` 批次封鎖」流程與實作不符，Gherkin 內容本身未改寫（是否重新設計草稿機制或改寫驗收標準屬產品決策）。過程中新登記 **DEF-379**（`ProductService.getProducts` 的 `category`／`brand` 篩選分支無租戶範圍）、**DEF-380**（`DRAFT`→發布與日曆初始化流程從未實作），兩項皆登記未修復。詳見 [SPRINT_273_PLAN.md](../04_planning/SPRINT_273_PLAN.md) | Claude Code（Sprint 273） |
+| v1.15 | 2026-10-17 | **DEF-380 結案：改寫 Gherkin 反映現況（Sprint 280）**：使用者拍板「不實作兩階段上架，FRD 改為反映建立即上架現況」。§3／§4 三處 Gherkin 本文正式改寫：AC-M01-002-1／AC-M02-003-1 的 `Then` 從 `status='DRAFT'` 改為 `status='ACTIVE'`；AC-M01-002-2／AC-M02-003-2「發布商品／房源」兩個 AC 標記移除（流程不存在，既有項目改用一般編輯端點手動切換狀態）；AC-M02-003-3「初始日曆建立」改寫為反映「缺列視為可訂」的真實隱性語意；AC-M02-004-2「編輯日曆設定」改寫為反映實際存在的區間式維護窗口端點（`POST/DELETE .../maintenance`），取代原描述但不存在的逐日批次封鎖＋`reason`。同步修正 §3／§4「技術實現概要」清單內兩處同款 `status='DRAFT'` 殘留敘述。詳見 [DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md) DEF-380 | Claude Sonnet 5（Sprint 280） |
 
 ---
 

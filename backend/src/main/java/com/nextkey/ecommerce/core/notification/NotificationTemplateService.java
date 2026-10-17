@@ -91,8 +91,9 @@ public class NotificationTemplateService {
     public NotificationTemplateDto.Response createTemplate(UUID tenantId, UUID userId,
             NotificationTemplateDto.CreateRequest request) {
 
+        // DEF-378：改用 E_8012（原誤用 E_6001「付款失敗」，付款模組專用碼，與範本代碼衝突毫無語意關聯）。
         if (templateRepository.existsByTemplateCodeAndTenantId(request.getTemplateCode(), tenantId)) {
-            throw new BusinessException(ErrorCode.E_6001, "Template code already exists");
+            throw new BusinessException(ErrorCode.E_8012, "Template code already exists");
         }
 
         List<String> variables = extractVariables(request.getContentTemplate());
@@ -138,8 +139,9 @@ public class NotificationTemplateService {
         }
 
         if (request.getTemplateCode() != null && !request.getTemplateCode().equals(template.getTemplateCode())) {
+            // DEF-378：改用 E_8012（原誤用 E_6001「付款失敗」，付款模組專用碼）。
             if (templateRepository.existsByTemplateCodeAndTenantId(request.getTemplateCode(), tenantId)) {
-                throw new BusinessException(ErrorCode.E_6001, "Template code already exists");
+                throw new BusinessException(ErrorCode.E_8012, "Template code already exists");
             }
             template.setTemplateCode(request.getTemplateCode());
         }

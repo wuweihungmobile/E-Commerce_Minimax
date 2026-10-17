@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.core.notification;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -165,7 +166,7 @@ class NotificationTemplateServiceTest {
     // ========== createTemplate ==========
 
     @Test
-    @DisplayName("TC-T006: createTemplate — 模板代碼重複時拋出 BusinessException(E_6001)")
+    @DisplayName("TC-T006/DEF-378: createTemplate — 模板代碼重複時拋出 BusinessException(E_8012)，不是誤用付款錯誤碼 E_6001")
     void createTemplate_duplicateCode_throwsBusinessException() {
         when(templateRepository.existsByTemplateCodeAndTenantId("ORDER_CONFIRMED_EMAIL", TENANT_ID))
                 .thenReturn(true);
@@ -178,7 +179,9 @@ class NotificationTemplateServiceTest {
                 .contentTemplate("Hello {{user_name}}")
                 .build();
 
-        assertThrows(BusinessException.class, () -> templateService.createTemplate(TENANT_ID, USER_ID, request));
+        assertThatThrownBy(() -> templateService.createTemplate(TENANT_ID, USER_ID, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_8012);
         verify(templateRepository, never()).save(any());
     }
 
@@ -307,7 +310,7 @@ class NotificationTemplateServiceTest {
     }
 
     @Test
-    @DisplayName("TC-T014: updateTemplate — 模板代碼變更為他人已使用的代碼時拋出 BusinessException(E_6001)")
+    @DisplayName("TC-T014/DEF-378: updateTemplate — 模板代碼變更為他人已使用的代碼時拋出 BusinessException(E_8012)，不是誤用付款錯誤碼 E_6001")
     void updateTemplate_duplicateNewCode_throwsBusinessException() {
         NotificationTemplate existing = buildTemplate(TENANT_ID);
         when(templateRepository.findById(TEMPLATE_ID)).thenReturn(Optional.of(existing));
@@ -317,8 +320,9 @@ class NotificationTemplateServiceTest {
                 .templateCode("ALREADY_TAKEN")
                 .build();
 
-        assertThrows(BusinessException.class,
-                () -> templateService.updateTemplate(TENANT_ID, USER_ID, TEMPLATE_ID, request));
+        assertThatThrownBy(() -> templateService.updateTemplate(TENANT_ID, USER_ID, TEMPLATE_ID, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_8012);
         verify(templateRepository, never()).save(any());
     }
 

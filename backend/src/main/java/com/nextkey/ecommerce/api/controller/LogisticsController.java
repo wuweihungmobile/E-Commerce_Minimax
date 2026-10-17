@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.LogisticsDto;
 import com.nextkey.ecommerce.core.logistics.LogisticsService;
+import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -109,7 +111,14 @@ public class LogisticsController {
     public ResponseEntity<ApiResponse<LogisticsDto.LogisticsResponse>> updateLogisticsStatus(
             @PathVariable UUID logisticsId,
             @RequestParam String status) {
-        var logisticsStatus = com.nextkey.ecommerce.domain.model.logistics.Logistics.LogisticsStatus.valueOf(status);
+        // DEF-385：原無 try-catch，無效的 status 字串會讓 IllegalArgumentException 落入
+        // catch-all 變 500，而非乾淨的 400 驗證錯誤。
+        com.nextkey.ecommerce.domain.model.logistics.Logistics.LogisticsStatus logisticsStatus;
+        try {
+            logisticsStatus = com.nextkey.ecommerce.domain.model.logistics.Logistics.LogisticsStatus.valueOf(status);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.E_7505, "Invalid logistics status: " + status);
+        }
         LogisticsDto.LogisticsResponse response = logisticsService.updateLogisticsStatus(logisticsId, logisticsStatus);
         return ResponseEntity.ok(ApiResponse.success("Logistics status updated", response));
     }

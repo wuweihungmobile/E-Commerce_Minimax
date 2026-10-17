@@ -52,8 +52,8 @@ class GlobalExceptionHandlerTest {
                 ErrorCode.E_5005, ErrorCode.E_5013, ErrorCode.E_5016, ErrorCode.E_6000, ErrorCode.E_7000,
                 ErrorCode.E_7001, ErrorCode.E_7003, ErrorCode.E_7007, ErrorCode.E_7500, ErrorCode.E_7501,
                 ErrorCode.E_7503, ErrorCode.E_7504, ErrorCode.E_8000, ErrorCode.E_8002, ErrorCode.E_8003,
-                ErrorCode.E_8004, ErrorCode.E_8005, ErrorCode.E_8006, ErrorCode.E_8008, ErrorCode.E_1087,
-                ErrorCode.E_1090, ErrorCode.E_1092}) {
+                ErrorCode.E_8004, ErrorCode.E_8005, ErrorCode.E_8006, ErrorCode.E_8008, ErrorCode.E_8016,
+                ErrorCode.E_8100, ErrorCode.E_1087, ErrorCode.E_1090, ErrorCode.E_1092}) {
             expected.put(code, HttpStatus.NOT_FOUND);
         }
 
@@ -69,7 +69,8 @@ class GlobalExceptionHandlerTest {
         for (ErrorCode code : new ErrorCode[] {ErrorCode.E_2003, ErrorCode.E_4106, ErrorCode.E_1005,
                 ErrorCode.E_1008, ErrorCode.E_1010, ErrorCode.E_1086, ErrorCode.E_1093, ErrorCode.E_1094,
                 ErrorCode.E_3005, ErrorCode.E_4091, ErrorCode.E_4092, ErrorCode.E_5014, ErrorCode.E_7006,
-                ErrorCode.E_8010, ErrorCode.E_2011}) {
+                ErrorCode.E_8010, ErrorCode.E_2011, ErrorCode.E_8012, ErrorCode.E_8013, ErrorCode.E_8014,
+                ErrorCode.E_8015, ErrorCode.E_8017, ErrorCode.E_8018, ErrorCode.E_8019}) {
             expected.put(code, HttpStatus.CONFLICT);
         }
 
@@ -90,7 +91,7 @@ class GlobalExceptionHandlerTest {
         for (ErrorCode code : new ErrorCode[] {ErrorCode.E_2010, ErrorCode.E_3001, ErrorCode.E_3002, ErrorCode.E_3008,
                 ErrorCode.E_4008, ErrorCode.E_5001, ErrorCode.E_5006, ErrorCode.E_6004, ErrorCode.E_6005,
                 ErrorCode.E_7002, ErrorCode.E_7010, ErrorCode.E_5010, ErrorCode.E_5011, ErrorCode.E_5012,
-                ErrorCode.E_6009, ErrorCode.E_7005, ErrorCode.E_7009, ErrorCode.E_8001}) {
+                ErrorCode.E_6009, ErrorCode.E_7005, ErrorCode.E_7009, ErrorCode.E_8001, ErrorCode.E_7505}) {
             expected.put(code, HttpStatus.UNPROCESSABLE_ENTITY);
         }
 

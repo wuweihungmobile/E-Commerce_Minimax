@@ -134,7 +134,7 @@ FRD 完全無 M10 章節（見文件頂部狀態說明）。
 
 **權限**：`isAuthenticated()`。查詢參數 `page`（預設 0）、`size`（預設 20，上限 50）。只回傳呼叫者為 `initiatorId` 或 `recipientId` 的作用中對話，依 `lastMessageAt` 降序。
 
-**回應**：`ConversationListResponse`（200），`unreadCount` 彙總欄位**只計入呼叫者身為 `recipientId` 且 `recipientUnreadCount > 0` 的對話**，見 §7 DEF-383。每筆 `conversations[].unreadCount` 永遠是 `null`（見 §7 DEF-383）。
+**回應**：`ConversationListResponse`（200），`unreadCount` 彙總欄位對稱計入呼叫者身為 `initiatorId` 或 `recipientId` 兩種角色各自未讀的對話（Sprint 278／DEF-383 修復前只計入 `recipientId` 角色）。每筆 `conversations[].unreadCount` 依瀏覽者在該對話中的角色回傳對應的未讀計數（修復前永遠是 `null`，見 §7 DEF-383）。
 
 ### 4.3 `DELETE /v2/chat/conversations/{conversationId}` — 刪除對話
 
@@ -142,7 +142,7 @@ FRD 完全無 M10 章節（見文件頂部狀態說明）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 對話不存在或非本人 | 400 | `E-9005`（語意應為「找不到」，見 §7 DEF-382） |
+| 對話不存在或非本人 | 404 | `E-8100`（Sprint 278／DEF-382 修復前誤用 `E-9005`，見 §7） |
 
 ### 4.4 `POST /v2/chat/messages` — 發送訊息
 
@@ -162,7 +162,7 @@ FRD 完全無 M10 章節（見文件頂部狀態說明）。
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | `conversationId`／`content` 缺失 | 400 | `E-9000` |
-| 對話不存在或非本人 | 400 | `E-9005`（見 §7 DEF-382） |
+| 對話不存在或非本人 | 404 | `E-8100`（Sprint 278／DEF-382 修復前誤用 `E-9005`，見 §7） |
 
 ### 4.5 `GET /v2/chat/conversations/{conversationId}/messages` — 取得訊息歷史
 
@@ -170,7 +170,7 @@ FRD 完全無 M10 章節（見文件頂部狀態說明）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 對話不存在或非本人 | 400 | `E-9005`（見 §7 DEF-382） |
+| 對話不存在或非本人 | 404 | `E-8100`（Sprint 278／DEF-382 修復前誤用 `E-9005`，見 §7） |
 
 ### 4.6 `PUT /v2/chat/conversations/{conversationId}/read` — 標記已讀
 
@@ -178,7 +178,7 @@ FRD 完全無 M10 章節（見文件頂部狀態說明）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 對話不存在或非本人 | 400 | `E-9005`（見 §7 DEF-382） |
+| 對話不存在或非本人 | 404 | `E-8100`（Sprint 278／DEF-382 修復前誤用 `E-9005`，見 §7） |
 
 ---
 
@@ -193,9 +193,9 @@ FRD 完全無 M10 章節（見文件頂部狀態說明）。
 | 錯誤碼 | HTTP | 發生在 |
 |--------|:----:|--------|
 | `E-9000` | 400 | 請求欄位缺失（`@Valid` 驗證失敗，`recipientId`／`conversationId`／`content`） |
-| `E-9005` | 400 | **誤用**：代表「對話不存在或非本人」，但 `E-9005` 官方定義是「缺少必填欄位」，與實際情境無關，見 §7 DEF-382 |
+| `E-8100` | 404 | 對話不存在或非本人（Sprint 278／DEF-382 新增 M10 專屬碼，修復前誤用 `E-9005`，見 §7） |
 
-本模組沒有任何專屬錯誤碼區段（不像 M05 的 E-5xxx、M18 的 E-8xxx），`E-9005` 是從通用驗證碼區借用。
+本模組原無任何專屬錯誤碼區段（不像 M05 的 E-5xxx、M18 的 E-8xxx），Sprint 278（DEF-382）新增 `E-8100`（Chat & Messaging，E-8100s）。
 
 ---
 
@@ -203,8 +203,8 @@ FRD 完全無 M10 章節（見文件頂部狀態說明）。
 
 | 項目 | 說明 |
 |------|------|
-| `E-9005` 誤用（**DEF-382，新登記**） | `sendMessage`／`getMessages`／`markAsRead`／`deleteConversation` 四處對話不存在時，一律拋 `ErrorCode.E_9005`（官方定義「缺少必填欄位」，400），但實際情境是「資源不存在或非本人」，語意與官方定義不符，且模組從未分配專屬錯誤碼區段；呼叫端若依錯誤碼分流處理，會被導向錯誤的欄位驗證失敗分支 |
-| 未讀計數雙重缺口（**DEF-383，新登記**） | (1) `ConversationResponse.unreadCount` 的建構註解寫「Will be filled by caller」，但 `createConversation`／`getUserConversations` 皆未填值，永遠回傳 `null`；(2) `ConversationListResponse.unreadCount`（彙總未讀對話數）的查詢只比對 `recipientId = 呼叫者`，忽略呼叫者身為對話發起人卻收到對方回覆未讀的情境，使該數字對「我發起、對方回覆」的對話永遠少算。**目前無任何前端頁面讀取這兩個欄位**——`ConversationList.tsx` 改用 STOMP 即時事件自建用戶端 `unreadMap`（重新整理頁面會重置為 0，直到下一則即時訊息抵達），不受這兩個後端欄位缺陷影響，故不是使用者可見的畫面錯誤，但任何未來想直接信任這兩個後端欄位的呼叫端（例如外部 App）會拿到不正確的數字 |
+| `E-9005` 誤用（**DEF-382，已於 Sprint 278 修復**） | `sendMessage`／`getMessages`／`markAsRead`／`deleteConversation` 四處對話不存在時，原一律拋 `ErrorCode.E_9005`（官方定義「缺少必填欄位」），語意不符。已新增 M10 專屬碼 `E-8100`（找不到對話，404）取代 |
+| 未讀計數雙重缺口（**DEF-383，已於 Sprint 278 修復**） | (1) `ConversationResponse.unreadCount` 原恆為 `null`，已改為 `ChatService.toConversationResponse` 依瀏覽者在對話中的角色（initiator／recipient）回傳對應的未讀計數欄位；(2) `ConversationListResponse.unreadCount` 的 `countUnreadConversations` 查詢原只比對 `recipientId`，已改為對稱比對 initiator／recipient 兩種角色。修復前**無任何前端頁面讀取這兩個欄位**——`ConversationList.tsx` 改用 STOMP 即時事件自建用戶端 `unreadMap`，故修復前不是使用者可見的畫面錯誤 |
 | `ChatDto.TypingIndicator`／`WebSocketMessage` 是死 DTO | 定義存在，但全庫無任何程式碼路徑建構或傳送這兩個類型——「正在輸入」與通用 WebSocket 事件封包是 Phase 2 規劃殘留，從未真正實作 |
 | `Message.isDeleted` 永遠是 `false` | 欄位與查詢條件（`findByConversationIdAndIsDeletedFalse...`）都存在，但沒有任何寫入路徑會設為 `true`；沒有「刪除單則訊息」功能 |
 | `tenantId` 推導值不可見 | `resolveTenantId` 寫入 DB 但不出現在任何回應 DTO，也不被任何查詢用作過濾條件；純粹是歷史資料欄位（V9/V56 回填規則），非目前存取控制的一部分 |

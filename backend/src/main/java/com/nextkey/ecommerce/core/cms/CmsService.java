@@ -52,8 +52,9 @@ public class CmsService {
         UUID userId = TenantContext.getCurrentUser();
 
         // 檢查 slug 是否已存在
+        // DEF-388：改用 E_8013（原誤用 E_9005「缺少必填欄位」，與 slug 重複衝突語意無關）。
         if (contentPageRepository.findBySlug(request.getSlug()).isPresent()) {
-            throw new BusinessException(ErrorCode.E_9005, "Slug already exists");
+            throw new BusinessException(ErrorCode.E_8013, "Slug already exists");
         }
 
         ContentPage page = ContentPage.builder()
@@ -75,11 +76,11 @@ public class CmsService {
         // 併發防護（DEF-149）：上面的 findBySlug 檢查與這裡的 save() 之間是 TOCTOU，
         // 兩個併發請求都可能通過檢查各自 INSERT；DB 端已有 cms_pages_slug_key
         // （V49 migration，全域 UNIQUE(slug)）兜底，這裡改用 saveAndFlush 捕捉違反約束
-        // 並轉譯為既有的 E_9005，避免第二個請求收到原始的 500。
+        // 並轉譯為 E_8013（DEF-388 前為 E_9005），避免第二個請求收到原始的 500。
         try {
             page = contentPageRepository.saveAndFlush(page);
         } catch (DataIntegrityViolationException e) {
-            throw new BusinessException(ErrorCode.E_9005, "Slug already exists");
+            throw new BusinessException(ErrorCode.E_8013, "Slug already exists");
         }
 
         log.info("Content page created: id={}, slug={}", page.getId(), page.getSlug());
@@ -180,15 +181,18 @@ public class CmsService {
      */
     @Transactional(readOnly = true)
     public CmsDto.PageResponse getPageBySlug(String slug, UUID tenantId) {
+        // DEF-388：改用 E_9005（原誤用 E_1002「憑證已過期」，與缺少查詢參數語意無關）。
         if (tenantId == null) {
-            throw new BusinessException(ErrorCode.E_1002, "tenantId is required");
+            throw new BusinessException(ErrorCode.E_9005, "tenantId is required");
         }
 
         ContentPage page = contentPageRepository.findByTenantIdAndSlug(tenantId, slug)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8004, "Page not found"));
 
+        // DEF-388：改用 E_8016（原與上面的「找不到」共用 E_8004，呼叫端無法區分兩種情境；
+        // 比照 Post 模組既有的 E_4100／E_4101 兩碼分離模式）。
         if (page.getStatus() != ContentPage.ContentStatus.PUBLISHED) {
-            throw new BusinessException(ErrorCode.E_8004, "Page not published");
+            throw new BusinessException(ErrorCode.E_8016, "Page not published");
         }
 
         return toPageResponse(page);
@@ -389,8 +393,9 @@ public class CmsService {
      */
     @Transactional(readOnly = true)
     public CmsDto.BannerListResponse getActiveBanners(CmsDto.BannerPosition position, UUID tenantId) {
+        // DEF-388：改用 E_9005（原誤用 E_1002「憑證已過期」）。
         if (tenantId == null) {
-            throw new BusinessException(ErrorCode.E_1002, "tenantId is required");
+            throw new BusinessException(ErrorCode.E_9005, "tenantId is required");
         }
 
         LocalDate today = LocalDate.now();
@@ -418,8 +423,9 @@ public class CmsService {
      */
     @Transactional
     public void recordBannerClick(final UUID bannerId, final UUID tenantId) {
+        // DEF-388：改用 E_9005（原誤用 E_1002「憑證已過期」）。
         if (tenantId == null) {
-            throw new BusinessException(ErrorCode.E_1002, "tenantId is required");
+            throw new BusinessException(ErrorCode.E_9005, "tenantId is required");
         }
         bannerRepository.incrementClickCountForTenant(bannerId, tenantId);
         log.debug("Banner click recorded: id={}, tenantId={}", bannerId, tenantId);

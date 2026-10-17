@@ -134,7 +134,7 @@ FRD 完全無 M16 章節（見文件頂部狀態說明）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| `status` 無法解析成列舉 | 500 | `E-9900`（**非乾淨驗證錯誤**，見 §7 DEF-385——同一方法的 `updateSupplier` 已正確用 try-catch 轉譯為 `E-7010`，`listSuppliers` 未同步修復） |
+| `status` 無法解析成列舉 | 422 | `E-7010`（Sprint 278／DEF-385 修復：補上 try-catch，與 §4.5 `updateSupplier` 一致，修復前落入 catch-all 變 500／`E-9900`，見 §7） |
 
 ### 4.3 `GET /v2/dashboard/suppliers/{id}` — 供應商詳情
 
@@ -150,26 +150,26 @@ FRD 完全無 M16 章節（見文件頂部狀態說明）。
 
 ### 4.5 `PUT /v2/dashboard/suppliers/{id}` — 更新供應商
 
-**權限**：`hasAuthority('STORE_OWNER')`，限本租戶。局部更新語意，`status` 欄位有效值解析失敗會正確回 400（與 §4.2 的篩選參數不同，見 §7 DEF-385 對照）。
+**權限**：`hasAuthority('STORE_OWNER')`，限本租戶。局部更新語意，`status` 欄位有效值解析失敗一律正確回 422（Sprint 278 起 §4.2 的篩選參數已與此處一致；本列 HTTP 狀態碼原文件誤標 400，查核時一併更正為程式碼實際的 422）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | 供應商不存在或非本租戶 | 404 | `E-7000` |
-| `status` 無法解析成列舉 | 400 | `E-7010` |
+| `status` 無法解析成列舉 | 422 | `E-7010` |
 
 ### 4.6 `GET /v2/dashboard/purchase-orders` — 採購單列表
 
-**權限**：同 §4.1。查詢參數 `status`（選填）、`page`（預設 0）、`size`（預設 20，上限 100）。**`status` 解析發生在 Controller 層**（非 Service），同樣無 try-catch。
+**權限**：同 §4.1。查詢參數 `status`（選填）、`page`（預設 0）、`size`（預設 20，上限 100）。**`status` 解析發生在 Controller 層**（非 Service），Sprint 278 起已補上 try-catch。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| `status` 無法解析成 `POStatus` | 500 | `E-9900`（**非乾淨驗證錯誤**，見 §7 DEF-385） |
+| `status` 無法解析成 `POStatus` | 422 | `E-7002`（Sprint 278／DEF-385 修復前落入 catch-all 變 500／`E-9900`，見 §7） |
 
 ### 4.7 `POST /v2/dashboard/purchase-orders` — 建立採購單
 
 **權限**：`hasAuthority('STORE_OWNER')`。需 `ERP_ENABLED` 功能開關啟用。
 
-**請求**：`supplierId`（必填）、`expectedDeliveryDate`／`notes`（選填）、`items[]`（**無 `@NotNull`／`@NotEmpty` 驗證**，見 §7——`listingId`／`quantity`／`unitCost` 逐品項必填，`skuId` 選填）。
+**請求**：`supplierId`（必填）、`expectedDeliveryDate`／`notes`（選填）、`items[]`（`@NotEmpty`＋`@Valid`，自 Sprint 10 M16 最初建立時即有，見 §7 DEF-385 查證說明——`listingId`／`quantity`／`unitCost` 逐品項必填，`skuId` 選填）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
@@ -177,7 +177,7 @@ FRD 完全無 M16 章節（見文件頂部狀態說明）。
 | 供應商不存在或非本租戶 | 404 | `E-7008` |
 | 品項的 `listingId` 不屬於本租戶 | 403 | `E-1007` |
 | 品項的 `skuId` 不屬於該 `listingId` | 404 | `E-3003`（刻意與「SKU 真的不存在」同碼，避免洩漏他租戶 SKU 存在性） |
-| `items` 為 `null` | 500 | `E-9900`（**`NullPointerException`**，見 §7 DEF-385——`items` 為空陣列 `[]` 則不會出錯，但會建立總額 0、零品項的空採購單） |
+| `items` 缺失或為空陣列 | 400 | `E-9000`（`@NotEmpty` 驗證失敗，由 `@Valid` 攔截，見 §7） |
 
 ### 4.8 `GET /v2/dashboard/purchase-orders/{id}` — 採購單詳情
 
@@ -246,7 +246,7 @@ FRD 完全無 M16 章節（見文件頂部狀態說明）。
 
 ### 4.16 `POST /v2/dashboard/stock-movements` — 手動庫存異動
 
-**權限**：`hasAuthority('STORE_OWNER')`。需先驗證 SKU 存在且屬於本租戶（經 Listing 反查）。`movementType` 僅接受 §1.2 第 5 點列出的五種手動類型；此處的列舉解析**已正確**用 try-catch（與 §4.2／4.6 的篩選參數形成對照，見 §7 DEF-385）。
+**權限**：`hasAuthority('STORE_OWNER')`。需先驗證 SKU 存在且屬於本租戶（經 Listing 反查）。`movementType` 僅接受 §1.2 第 5 點列出的五種手動類型；此處的列舉解析**已正確**用 try-catch（Sprint 278 起 §4.2／4.6 的篩選參數也已補上，不再是唯一正確的一處，見 §7 DEF-385）。
 
 **請求**：`skuId`（必填）、`movementType`（必填字串）、`quantity`（必填，正整數）、`referenceNumber`／`notes`（選填）。
 
@@ -316,16 +316,15 @@ FRD 完全無 M16 章節（見文件頂部狀態說明）。
 | `E-2004` | 403 | 此租戶未啟用該功能 | `ERP_ENABLED` 功能開關未啟用 |
 | `E-3003` | 404 | SKU 不存在 | §4.7／4.11／4.14／4.16 |
 | `E-7000` | 404 | 找不到供應商 | §4.3（本模組唯一正確使用此碼之處） |
-| `E-7001` | 404 | 找不到採購單 | §4.8～4.12／4.18～4.20（本模組正確使用；對照 M11 誤用同碼，見 [API_M11_Logistics.md](./api/API_M11_Logistics.md) §7 DEF-381） |
+| `E-7001` | 404 | 找不到採購單 | §4.8～4.12／4.18～4.20（本模組正確使用；M11 曾誤用同碼，已於 Sprint 278／DEF-381 修復，見 [API_M11_Logistics.md](./api/API_M11_Logistics.md) §7） |
 | `E-7002` | 422 | 無效的採購單狀態 | §4.9～4.12／4.19～4.20 |
 | `E-7004` | 400 | 庫存不足 | §4.16（`ADJUST_MINUS`／`TRANSFER_OUT`／`SCRAP`） |
 | `E-7005` | 400 | 無效的庫存調整 | §4.16（`movementType` 非法或被禁止的手動類型） |
 | `E-7007` | 404 | 找不到採購單項目 | §4.11 |
 | `E-7008` | 404 | 供應商已停用 | §4.7（訊息寫「not found or inactive」，實際是 `existsByIdAndTenantId` 的存在性檢查，與「已停用」無關，見 §7） |
 | `E-7009` | 400 | 無效的收貨數量 | §4.11 |
-| `E-7010` | 400 | 無效的供應商狀態 | §4.5（正確使用）；§4.2 本該用此碼卻直接 500，見 §7 DEF-385 |
-| `E-9000` | 400 | 驗證錯誤 | `@Valid` 請求體驗證失敗 |
-| `E-9900` | 500 | 內部伺服器錯誤 | §4.2／4.6／4.7 三處輸入驗證缺口誤觸，見 §7 DEF-385 |
+| `E-7010` | 422 | 無效的供應商狀態 | §4.2／4.5，全端點一致（Sprint 278／DEF-385 修復前 §4.2 直接 500；本列 HTTP 狀態碼原文件誤標 400，一併更正為 422，見 §7） |
+| `E-9000` | 400 | 驗證錯誤 | `@Valid` 請求體驗證失敗，含 §4.7 `items` 缺失或為空陣列 |
 
 ---
 
@@ -334,7 +333,7 @@ FRD 完全無 M16 章節（見文件頂部狀態說明）。
 | 項目 | 說明 |
 |------|------|
 | `ApiRouteDocDriftTest` 僅保護 §4.1~4.17 | `AdminController`（§4.18~4.20）混雜 M14／M17 端點，無法整個類別納入守門，理由與 [API_M14_Admin_Console.md](./API_M14_Admin_Console.md) §7、[API_M17_Tenant.md](./API_M17_Tenant.md) §7 相同 |
-| **多處輸入驗證缺口，特定輸入觸發 500 而非乾淨的 4xx（DEF-385，新登記，跨模組）** | 三個實例：(1) §4.2 `listSuppliers` 的 `status` 篩選、(2) §4.6 `listPurchaseOrders` 的 `status` 篩選，皆以 `Enum.valueOf()` 手動解析查詢參數卻未包 try-catch，無法解析時拋出的 `IllegalArgumentException` 落入 `GlobalExceptionHandler` 的 catch-all（`GlobalExceptionHandler` 刻意不設全域 `IllegalArgumentException` handler，Sprint 161 已拍板，理由是此例外也可能源自非使用者輸入的程式邏輯，全域攔截有掩蓋真正錯誤的風險）；(3) §4.7 `createPurchaseOrder` 的 `items` 欄位無 `@NotNull`／`@NotEmpty`，傳入 `null` 時在 for-each 迴圈觸發 `NullPointerException`，同樣落入 catch-all。三者皆為 500／`E-9900`。對照：同一類別內 §4.5 `updateSupplier`、§4.16 `createManualMovement` 的列舉解析都正確包了 try-catch，顯示這是「部分端點修過、部分端點沒跟上」的不一致，不是刻意設計。另一相關實例（`LogisticsController.updateLogisticsStatus`，M11 模組）已記錄於 [API_M11_Logistics.md](./api/API_M11_Logistics.md) §7，三個實例合併登記同一個 DEF |
+| **多處輸入驗證缺口，特定輸入觸發 500（DEF-385，已於 Sprint 278 修復；另一實例見 M11 模組）** | 原兩個實例：(1) §4.2 `listSuppliers`、(2) §4.6 `listPurchaseOrders` 的 `status` 篩選皆以 `Enum.valueOf()` 手動解析卻未包 try-catch，已補上並轉譯為對應的 `E-7010`／`E-7002`（422）。**查證後更正**：原登記的第三個實例「§4.7 `createPurchaseOrder` 的 `items` 缺 `@NotNull`／`@NotEmpty`」經 `git log -L` 確認描述有誤——`items` 自 Sprint 10（M16 最初建立）起即有 `@NotEmpty`＋`@Valid`，從未真的會 NPE 成 500，本欄原判斷錯誤。第四個實例（`LogisticsController.updateLogisticsStatus`，M11 模組）已於 [API_M11_Logistics.md](./api/API_M11_Logistics.md) §7 一併修復 |
 | `E-7008` 的訊息與官方定義不符 | 官方定義「供應商已停用」，但 `validateSupplier` 實際檢查的是 `existsByIdAndTenantId`（純存在性＋租戶歸屬），不检查 `status`——停用（`INACTIVE`）的供應商仍可用於建立採購單，訊息文字「not found or inactive」暗示會檢查停用狀態，但程式碼並未如此 |
 | `PurchaseOrder.POStatus.ORDER`／`SHIPPED` 是未使用的保留列舉值 | 全庫無任何程式碼路徑會設定這兩個狀態，`canSubmit`／`canReceive`／`canCancel` 三個狀態機方法都不提及 |
 | 採購單號非原子產生 | `PO-{日期}-{6 位隨機數}` 僅靠隨機數范围（900000 種組合）降低碰撞機率，無資料庫層級的重試保證；真實碰撞機率極低但非結構性保證（另見 [[po-number-random-collision-def297]] 類似的既有教訓，本模組未採用同類保護） |
@@ -349,7 +348,7 @@ FRD 完全無 M16 章節（見文件頂部狀態說明）。
 |------|------|
 | PRD | §6.7（進銷存流程）／§6.7.2（審批金額上限）／§9.15（ERP API） |
 | FRD | 無章節（見文件頂部狀態說明） |
-| 相關文件 | [API_M14_Admin_Console.md](./API_M14_Admin_Console.md)（`AdminController` 的 M14 範圍端點）、[API_M17_Tenant.md](./API_M17_Tenant.md)（`AdminController` 的 M17 範圍端點）、[API_M11_Logistics.md](./api/API_M11_Logistics.md)（DEF-385 其他實例） |
+| 相關文件 | [API_M14_Admin_Console.md](./API_M14_Admin_Console.md)（`AdminController` 的 M14 範圍端點）、[API_M17_Tenant.md](./API_M17_Tenant.md)（`AdminController` 的 M17 範圍端點）、[API_M11_Logistics.md](./api/API_M11_Logistics.md)（DEF-385 另一實例，同於 Sprint 278 修復） |
 | 實作 | `ErpController`（`api/controller/`）；`AdminController`（`api/controller/`，僅 §4.18~4.20）；`SupplierService`／`PurchaseOrderService`／`InventoryService`／`StockMovementService`（`core/erp/`） |
 | 契約測試 | [SupplierServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/erp/SupplierServiceTest.java)、[PurchaseOrderServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/erp/PurchaseOrderServiceTest.java)、[InventoryServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/erp/InventoryServiceTest.java)、[StockMovementServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/erp/StockMovementServiceTest.java)、[M16ErpE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/M16ErpE2ETest.java)、[M16ErpIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M16ErpIntegrationTest.java)、[M16ErpInventoryConcurrencyIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M16ErpInventoryConcurrencyIntegrationTest.java)、[M16ErpInventoryLedgerIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M16ErpInventoryLedgerIntegrationTest.java)、[M16ErpStockMovementDisplayIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M16ErpStockMovementDisplayIntegrationTest.java) |
 

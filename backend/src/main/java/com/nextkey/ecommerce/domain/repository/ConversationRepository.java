@@ -31,7 +31,12 @@ public interface ConversationRepository extends JpaRepository<Conversation, UUID
     @Query("SELECT c FROM Conversation c WHERE c.id = :conversationId AND (c.initiatorId = :userId OR c.recipientId = :userId)")
     Optional<Conversation> findByIdAndUserId(@Param("conversationId") UUID conversationId, @Param("userId") UUID userId);
 
-    @Query("SELECT COUNT(c) FROM Conversation c WHERE c.recipientId = :userId AND c.isActive = true AND c.recipientUnreadCount > 0")
+    // DEF-383：原僅比對 recipientId，忽略瀏覽者身為 initiator 卻收到對方回覆未讀的情境，
+    // 對「我發起、對方回覆」的對話永遠少算；現比照 findByUserIdOrderByLastMessageAtDesc
+    // 對稱比對兩種角色各自的未讀計數欄位。
+    @Query("SELECT COUNT(c) FROM Conversation c WHERE c.isActive = true AND (" +
+            "(c.recipientId = :userId AND c.recipientUnreadCount > 0) OR " +
+            "(c.initiatorId = :userId AND c.initiatorUnreadCount > 0))")
     int countUnreadConversations(@Param("userId") UUID userId);
 
     /**

@@ -140,8 +140,8 @@ class CmsServiceTest {
     }
 
     @Test
-    @DisplayName("createPage：slug 已存在拋出 E_9005")
-    void createPage_duplicateSlug_throwsE9005() {
+    @DisplayName("DEF-388: createPage：slug 已存在拋出 E_8013（原誤用 E_9005「缺少必填欄位」）")
+    void createPage_duplicateSlug_throwsE8013() {
         TenantContext.setCurrentTenant(TENANT_A);
         when(contentPageRepository.findBySlug("about-us")).thenReturn(Optional.of(pageOf(TENANT_A, ContentPage.ContentStatus.DRAFT)));
 
@@ -150,13 +150,13 @@ class CmsServiceTest {
 
         assertThatThrownBy(() -> cmsService.createPage(request))
                 .isInstanceOf(BusinessException.class)
-                .extracting("errorCode").isEqualTo(ErrorCode.E_9005);
+                .extracting("errorCode").isEqualTo(ErrorCode.E_8013);
         verify(contentPageRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("createPage：併發 TOCTOU 撞上 DB 唯一約束（DEF-149）→ 轉譯為 E_9005，而非原始 500")
-    void createPage_concurrentDuplicateSlug_translatesToE9005() {
+    @DisplayName("DEF-388: createPage：併發 TOCTOU 撞上 DB 唯一約束（DEF-149）→ 轉譯為 E_8013，而非原始 500")
+    void createPage_concurrentDuplicateSlug_translatesToE8013() {
         TenantContext.setCurrentTenant(TENANT_A);
         TenantContext.setCurrentUser(USER_ID);
         when(contentPageRepository.findBySlug("race-slug")).thenReturn(Optional.empty());
@@ -168,7 +168,7 @@ class CmsServiceTest {
 
         assertThatThrownBy(() -> cmsService.createPage(request))
                 .isInstanceOf(BusinessException.class)
-                .extracting("errorCode").isEqualTo(ErrorCode.E_9005);
+                .extracting("errorCode").isEqualTo(ErrorCode.E_8013);
     }
 
     // ========== updatePage ==========
@@ -310,22 +310,22 @@ class CmsServiceTest {
     }
 
     @Test
-    @DisplayName("getPageBySlug：未發布頁面拋出 E_8004")
-    void getPageBySlug_draft_throwsE8004() {
+    @DisplayName("DEF-388: getPageBySlug：未發布頁面拋出 E_8016（原與「找不到」共用 E_8004，呼叫端無法區分）")
+    void getPageBySlug_draft_throwsE8016() {
         ContentPage page = pageOf(TENANT_A, ContentPage.ContentStatus.DRAFT);
         when(contentPageRepository.findByTenantIdAndSlug(TENANT_A, "about-us")).thenReturn(Optional.of(page));
 
         assertThatThrownBy(() -> cmsService.getPageBySlug("about-us", TENANT_A))
                 .isInstanceOf(BusinessException.class)
-                .extracting("errorCode").isEqualTo(ErrorCode.E_8004);
+                .extracting("errorCode").isEqualTo(ErrorCode.E_8016);
     }
 
     @Test
-    @DisplayName("🔴 getPageBySlug：缺少 tenantId 拋出 E_1002")
-    void getPageBySlug_missingTenantId_throwsE1002() {
+    @DisplayName("🔴 DEF-388: getPageBySlug：缺少 tenantId 拋出 E_9005（原誤用 E_1002「憑證已過期」）")
+    void getPageBySlug_missingTenantId_throwsE9005() {
         assertThatThrownBy(() -> cmsService.getPageBySlug("about-us", null))
                 .isInstanceOf(BusinessException.class)
-                .extracting("errorCode").isEqualTo(ErrorCode.E_1002);
+                .extracting("errorCode").isEqualTo(ErrorCode.E_9005);
         verify(contentPageRepository, never()).findByTenantIdAndSlug(any(), any());
     }
 
@@ -570,11 +570,11 @@ class CmsServiceTest {
     }
 
     @Test
-    @DisplayName("🔴 getActiveBanners：缺少 tenantId 拋出 E_1002")
-    void getActiveBanners_missingTenantId_throwsE1002() {
+    @DisplayName("🔴 DEF-388: getActiveBanners：缺少 tenantId 拋出 E_9005（原誤用 E_1002「憑證已過期」）")
+    void getActiveBanners_missingTenantId_throwsE9005() {
         assertThatThrownBy(() -> cmsService.getActiveBanners(null, null))
                 .isInstanceOf(BusinessException.class)
-                .extracting("errorCode").isEqualTo(ErrorCode.E_1002);
+                .extracting("errorCode").isEqualTo(ErrorCode.E_9005);
         verify(bannerRepository, never()).findAllActiveByTenantId(any(), any());
     }
 
@@ -600,11 +600,11 @@ class CmsServiceTest {
     }
 
     @Test
-    @DisplayName("🔴 recordBannerClick：缺少 tenantId 拋出 E_1002")
-    void recordBannerClick_missingTenantId_throwsE1002() {
+    @DisplayName("🔴 DEF-388: recordBannerClick：缺少 tenantId 拋出 E_9005（原誤用 E_1002「憑證已過期」）")
+    void recordBannerClick_missingTenantId_throwsE9005() {
         assertThatThrownBy(() -> cmsService.recordBannerClick(BANNER_ID, null))
                 .isInstanceOf(BusinessException.class)
-                .extracting("errorCode").isEqualTo(ErrorCode.E_1002);
+                .extracting("errorCode").isEqualTo(ErrorCode.E_9005);
         verify(bannerRepository, never()).incrementClickCountForTenant(any(), any());
     }
 }

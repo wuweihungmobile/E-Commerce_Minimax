@@ -194,6 +194,69 @@ class LogisticsServiceTest {
         org.mockito.Mockito.verifyNoInteractions(buyerNotificationService);
     }
 
+    @Test
+    @DisplayName("DEF-381：訂單已有進行中物流單 → E_7501（原誤用 ERP 採購單的 E_7001）")
+    void createLogistics_activeLogisticsAlreadyExists_throwsE7501() {
+        TenantContext.setCurrentTenant(TENANT_ID);
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(orderOfTenant(TENANT_ID)));
+        Logistics inProgress = Logistics.builder().id(UUID.randomUUID()).orderId(ORDER_ID)
+                .logisticsProvider(Logistics.LogisticsProvider.HCT)
+                .status(Logistics.LogisticsStatus.PENDING).build();
+        when(logisticsRepository.findByOrderId(ORDER_ID)).thenReturn(List.of(inProgress));
+
+        assertThatThrownBy(() -> logisticsService.createLogistics(shipmentRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_7501);
+        org.mockito.Mockito.verifyNoInteractions(productInventoryService);
+    }
+
+    // ========== getLogistics／trackLogistics／getTrackingDetail／updateLogisticsStatus：
+    //            物流單不存在 → E_7500（DEF-381，原四處皆誤用 ERP 供應商的 E_7000） ==========
+
+    @Test
+    @DisplayName("DEF-381：getLogistics 物流單不存在 → E_7500")
+    void getLogistics_notFound_throwsE7500() {
+        UUID logisticsId = UUID.randomUUID();
+        when(logisticsRepository.findById(logisticsId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> logisticsService.getLogistics(logisticsId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_7500);
+    }
+
+    @Test
+    @DisplayName("DEF-381：trackLogistics 物流單不存在 → E_7500")
+    void trackLogistics_notFound_throwsE7500() {
+        UUID logisticsId = UUID.randomUUID();
+        when(logisticsRepository.findById(logisticsId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> logisticsService.trackLogistics(logisticsId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_7500);
+    }
+
+    @Test
+    @DisplayName("DEF-381：getTrackingDetail 物流單不存在 → E_7500")
+    void getTrackingDetail_notFound_throwsE7500() {
+        UUID logisticsId = UUID.randomUUID();
+        when(logisticsRepository.findById(logisticsId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> logisticsService.getTrackingDetail(logisticsId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_7500);
+    }
+
+    @Test
+    @DisplayName("DEF-381：updateLogisticsStatus 物流單不存在 → E_7500")
+    void updateLogisticsStatus_notFound_throwsE7500() {
+        UUID logisticsId = UUID.randomUUID();
+        when(logisticsRepository.findById(logisticsId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> logisticsService.updateLogisticsStatus(logisticsId, Logistics.LogisticsStatus.DELIVERED))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_7500);
+    }
+
     // ========== updateLogisticsStatus：標記送達同步訂單狀態（Sprint 250，DEF-318） ==========
 
     @Test

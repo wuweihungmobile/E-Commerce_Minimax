@@ -28,7 +28,7 @@
 ### 1.2 設計重點
 
 1. **建立物流單即出貨**：`POST /v2/logistics` 要求訂單狀態為 `CONFIRMED`，以原子 CAS（`updateStatusIfCurrent`）搶占轉為 `SHIPPING`，同一交易內扣庫存（`ProductInventoryService.deductOnShipment`，Sprint 218 DEF-303）、提交後通知買家已出貨（`notifyOrderShipped`）。搶輸（訂單已被併發推走）回 `E-5001`。
-2. **一張訂單至多一筆「作用中」物流單**：建立前查詢 `findByOrderId`，若存在狀態非 `DELIVERED`/`RETURNED` 的物流單則拒絕（詳見 §7 DEF-381，實際拋出的錯誤碼有誤）。
+2. **一張訂單至多一筆「作用中」物流單**：建立前查詢 `findByOrderId`，若存在狀態非 `DELIVERED`/`RETURNED` 的物流單則拒絕（詳見 §7 DEF-381，拋出的錯誤碼已於 Sprint 278 修正）。
 3. **租戶擁有權檢查一律先於狀態檢查**（DEF-019/036 既有修法，IDOR 正確順序）：`SUPER_ADMIN`／`ADMIN` 不受限；其餘呼叫者須 `TenantContext.isStoreTenant(tenantId) && tenantId.equals(order.getTenantId())`，否則 403 `E-1007`。`getLogistics`／`getLogisticsByOrderId`／`trackLogistics`／`getTrackingDetail`／`updateLogisticsStatus`／`cancelLogistics` 六個讀寫端點皆比對擁有權。
 4. **運費試算刻意不做租戶過濾（DEF-037，Sprint 107 已拍板結案）**：`calculateFee` 只憑 `templateId` 即可試算，支援買家跨店比價；回應只含計算參數，無 PII、無寫入路徑，**請勿「順手」加上租戶過濾**（已三度被掃描誤判為缺漏並結案）。
 5. **狀態機**（`LogisticsStatus`）：`PENDING → PICKED_UP → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED`，`FAILED`／`RETURNED` 為另外兩個終態。`updateLogisticsStatus` 不驗證轉換合法性（可任意指定任何 `LogisticsStatus`，包括倒退），僅在轉為 `DELIVERED` 時記錄 `deliveryTime`、轉為 `PICKED_UP` 時記錄 `pickupTime`，並嘗試同步訂單狀態為 `DELIVERED`（原子 CAS，搶輸只記 warning log，不拋例外）。
@@ -127,7 +127,7 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 | 訂單不存在 | 404 | `E-5000` |
 | 呼叫者非訂單所屬租戶且非 admin | 403 | `E-1007` |
 | 訂單狀態非 `CONFIRMED`（含已被併發搶走） | 422 | `E-5001` |
-| 該訂單已有作用中物流單（非 `DELIVERED`/`RETURNED`） | 404 | `E-7001`（**誤用**，官方定義「找不到採購單」，見 §7 DEF-381） |
+| 該訂單已有作用中物流單（非 `DELIVERED`/`RETURNED`） | 404 | `E-7501`（Sprint 278／DEF-381 修復前誤用採購單的 `E-7001`；`E-7501` 本身維持既有的 404 對應，語意上更像衝突但非本輪調整範圍，見 §7） |
 
 ### 4.2 `GET /v2/logistics/{logisticsId}` — 物流單詳情
 
@@ -135,7 +135,7 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 物流單不存在 | 404 | `E-7000`（**誤用**，官方定義「找不到供應商」，應為 `E-7500`，見 §7 DEF-381） |
+| 物流單不存在 | 404 | `E-7500`（Sprint 278／DEF-381 修復前誤用供應商的 `E-7000`，見 §7） |
 | 非擁有租戶且非 admin | 403 | `E-1007` |
 
 ### 4.3 `GET /v2/logistics/order/{orderId}` — 依訂單查物流列表
@@ -153,7 +153,7 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 物流單不存在 | 404 | `E-7000`（**誤用**，見 §7 DEF-381） |
+| 物流單不存在 | 404 | `E-7500`（Sprint 278／DEF-381 修復前誤用 `E-7000`，見 §7） |
 | 非擁有租戶且非 admin | 403 | `E-1007` |
 
 ### 4.5 `GET /v2/logistics/{logisticsId}/tracking-detail` — 追蹤歷史事件
@@ -162,7 +162,7 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 物流單不存在 | 404 | `E-7000`（**誤用**，見 §7 DEF-381） |
+| 物流單不存在 | 404 | `E-7500`（Sprint 278／DEF-381 修復前誤用 `E-7000`，見 §7） |
 | 非擁有租戶且非 admin | 403 | `E-1007` |
 
 ### 4.6 `PUT /v2/logistics/{logisticsId}/status` — 更新物流狀態（Mock）
@@ -171,8 +171,8 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| `status` 無法解析成列舉 | 500 | `E-9900`（**非乾淨驗證錯誤**：Controller 以 `@RequestParam String status` 收參數後手動 `LogisticsStatus.valueOf(status)`，未包 try-catch；`GlobalExceptionHandler` 刻意不設全域 `IllegalArgumentException` handler（Sprint 161 已拍板，理由是此例外也可能源自非使用者輸入的程式邏輯），落入 catch-all，見 §7 DEF-385） |
-| 物流單不存在 | 404 | `E-7000`（**誤用**，見 §7 DEF-381） |
+| `status` 無法解析成列舉 | 422 | `E-7505`（Sprint 278／DEF-385 修復：Controller 新增 try-catch 將 `LogisticsStatus.valueOf(status)` 的 `IllegalArgumentException` 轉譯為此專屬碼，修復前落入 catch-all 變 500／`E-9900`，見 §7） |
+| 物流單不存在 | 404 | `E-7500`（Sprint 278／DEF-381 修復前誤用 `E-7000`，見 §7） |
 | 非擁有租戶且非 admin | 403 | `E-1007` |
 
 ### 4.7 `POST /v2/logistics/cancel` — 取消物流
@@ -186,7 +186,7 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | `logisticsId` 缺失 | 400 | `E-9000` |
-| 物流單不存在 | 404 | `E-7500`（本端點已於 DEF-011 修正為正確的物流專屬碼，與 §4.2/4.4/4.5/4.6 不一致，見 §7 DEF-381） |
+| 物流單不存在 | 404 | `E-7500`（本端點自 DEF-011 起即用此正確碼；Sprint 278／DEF-381 已讓 §4.2/4.4/4.5/4.6 同步改用，全端點一致） |
 | 非擁有租戶且非 admin | 403 | `E-1007` |
 | 已是 `DELIVERED`（含被併發推進為 `DELIVERED`） | 400 | `E-7502` |
 
@@ -264,14 +264,12 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 | `E-2000` | 404 | 找不到租戶 | 建立運費模板時租戶不存在 |
 | `E-5000` | 404 | 找不到訂單 | §4.1／§4.3 |
 | `E-5001` | 422 | 無效的訂單狀態 | §4.1 訂單非 `CONFIRMED` |
-| `E-7000` | 404 | **找不到供應商**（ERP 專屬） | §4.2／4.4／4.5／4.6 誤用為「物流單不存在」，見 §7 DEF-381 |
-| `E-7001` | 404 | **找不到採購單**（ERP 專屬） | §4.1 誤用為「已有作用中物流單」，見 §7 DEF-381 |
-| `E-7500` | 404 | 找不到物流記錄 | §4.7（唯一正確使用此碼的端點） |
-| `E-7501` | 404 | 已存在進行中的物流記錄 | **定義存在但全庫零拋出點**，§4.1 本該用此碼，見 §7 DEF-381 |
+| `E-7500` | 404 | 找不到物流記錄 | §4.2／4.4／4.5／4.6／4.7，全端點一致（Sprint 278／DEF-381 修復前 §4.2/4.4/4.5/4.6 誤用供應商的 `E-7000`，只有 §4.7 自 DEF-011 起正確） |
+| `E-7501` | 404 | 已存在進行中的物流記錄 | §4.1（Sprint 278／DEF-381 修復前誤用採購單的 `E-7001`） |
 | `E-7502` | 400 | 已送達的物流無法取消 | §4.7 |
 | `E-7504` | 404 | 找不到運費範本 | §4.10／4.11／4.12 |
+| `E-7505` | 422 | 無效的物流狀態 | §4.6（Sprint 278／DEF-385 新增，修復前 `status` 解析失敗落入 catch-all 變 500／`E-9900`） |
 | `E-9000` | 400 | 驗證錯誤 | 所有 `@Valid`／必填查詢參數缺失 |
-| `E-9900` | 500 | 內部伺服器錯誤 | §4.6 `status` 查詢參數無法解析成列舉時誤觸（見 §7 DEF-385），非真正的伺服器內部錯誤 |
 
 ---
 
@@ -279,8 +277,8 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 
 | 項目 | 說明 |
 |------|------|
-| **`updateLogisticsStatus` 的 `status` 解析未捕捉例外，變成 500（DEF-385，新登記，跨模組）** | §4.6 的 `status` 查詢參數以 `@RequestParam String` 收下後手動 `valueOf()`，無 try-catch；傳入無法解析的字串時拋出未攔截的 `IllegalArgumentException`，落入 `GlobalExceptionHandler` 的 catch-all 變 500／`E-9900`，而非乾淨的 400 驗證錯誤。同一缺陷模式也出現在 M16 ERP 模組（`ErpController.listPurchaseOrders`、`SupplierService.listSuppliers` 的 `status` 篩選），DEF-385 一併登記三個實例 |
-| **物流錯誤碼大量誤用（DEF-381，新登記）** | `ErrorCode` 已定義專屬的 `E_7500`（找不到物流記錄）與 `E_7501`（已存在進行中的物流記錄），但 `LogisticsService` 只有 `cancelLogistics` 一個方法在 DEF-011（歷史 Sprint）被修正為使用 `E_7500`；`getLogistics`／`trackLogistics`／`getTrackingDetail`／`updateLogisticsStatus` 四個方法仍沿用 ERP 模組借來的 `E_7000`（官方定義「找不到供應商」）；`createLogistics` 的「已有作用中物流單」衝突情境則誤用 `E_7001`（官方定義「找不到採購單」），本該用語意精確吻合的 `E_7501`（該碼因此是全庫唯一一個「定義了卻從未被拋出」的物流錯誤碼）。四個查詢方法與建立衝突情境皆無測試斷言實際錯誤碼，只有 `LogisticsServiceCancelTest` 對 `cancelLogistics` 的 `E_7500` 有測試覆蓋。HTTP 狀態碼恰好都是 404，不影響狀態碼層級的客戶端行為，但 `code`／`message` 欄位會誤導依錯誤碼分流處理或記錄 log 的呼叫端 |
+| **`updateLogisticsStatus` 的 `status` 解析未捕捉例外（DEF-385，已於 Sprint 278 修復）** | §4.6 原以 `@RequestParam String` 收參數後手動 `valueOf()`，無 try-catch，無效字串會落入 catch-all 變 500／`E-9900`。已補上 try-catch，轉譯為新增的專屬碼 `E-7505`（422）。同一缺陷模式的另兩個實例（M16 ERP 的 `ErpController.listPurchaseOrders`、`SupplierService.listSuppliers`）亦已一併修復，見 [API_M16_ERP.md](./API_M16_ERP.md) |
+| **物流錯誤碼大量誤用（DEF-381，已於 Sprint 278 修復）** | `LogisticsService` 原只有 `cancelLogistics`（DEF-011）使用正確的 `E_7500`；`getLogistics`／`trackLogistics`／`getTrackingDetail`／`updateLogisticsStatus` 四個方法原沿用 ERP 模組的 `E_7000`；`createLogistics` 的衝突情境原誤用 `E_7001`。現已全數改為 `E_7500`／`E_7501`，`LogisticsServiceTest` 新增 5 個單元測試斷言實際錯誤碼 |
 | 一張訂單至多一筆作用中物流單是應用層檢查，無資料庫唯一約束 | `logistics` 表的 `order_id` 無唯一索引兜底，§1.2 第 2 點的檢查與建立之間雖有狀態 CAS 防護（DEF-123），但理論上地基完全依賴應用層邏輯，非資料庫不變量 |
 | `logisticsData`（JSONB）是保留但未使用欄位 | 建立時初始化為空 Map，全庫無任何寫入實際內容的路徑，也不出現在任何回應 DTO |
 | 試算運費端點的角色矩陣與「買家跨店比價」設計意圖不一致 | §1.2 第 4 點／DEF-037 的歷史結論是這個端點該支援買家跨店比價，但 `BUYER` 角色從未被授予 `product:read`（§5），目前只有 `SELLER`／`STORE_OWNER`／`STORE_STAFF`／`ADMIN`／`SUPER_ADMIN` 能呼叫——即設計意圖與 RBAC 實際設定不吻合，但因為非本文件新增范围且牽涉角色權限分配的產品決策，僅記錄不在本輪變更 |

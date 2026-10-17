@@ -319,8 +319,9 @@ public class PostService {
      */
     @Transactional
     public M15Dto.PostResponse getPublishedPostBySlug(String slug, UUID tenantId) {
+        // DEF-388：改用 E_9005（原誤用 E_1002「憑證已過期」，與缺少查詢參數語意無關）。
         if (tenantId == null) {
-            throw new BusinessException(ErrorCode.E_1002, "tenantId is required");
+            throw new BusinessException(ErrorCode.E_9005, "tenantId is required");
         }
         Post post = postRepository.findByTenantIdAndSlug(tenantId, slug)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4100));

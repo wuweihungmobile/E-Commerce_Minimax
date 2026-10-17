@@ -75,7 +75,14 @@ public class SupplierService {
 
         List<Supplier> suppliers;
         if (status != null && !status.isEmpty()) {
-            Supplier.SupplierStatus supplierStatus = Supplier.SupplierStatus.valueOf(status.toUpperCase());
+            // DEF-385：原無 try-catch，無效的 status 字串會讓 IllegalArgumentException 落入
+            // catch-all 變 500；比照 updateSupplier 既有的正確寫法改用同一個 E_7010。
+            Supplier.SupplierStatus supplierStatus;
+            try {
+                supplierStatus = Supplier.SupplierStatus.valueOf(status.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new BusinessException(ErrorCode.E_7010, "Invalid supplier status: " + status);
+            }
             suppliers = supplierRepository.findByTenantIdAndStatus(tenantId, supplierStatus);
         } else {
             suppliers = supplierRepository.findByTenantId(tenantId);

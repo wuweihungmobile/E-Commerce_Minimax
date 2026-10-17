@@ -276,7 +276,7 @@
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 同租戶下 `templateCode` 已存在 | 400 | `E-6001`（**錯誤碼語意與此情境不符，見 §7**） |
+| 同租戶下 `templateCode` 已存在 | 409 | `E-8012`（Sprint 278／DEF-378 修復前為誤用付款模組的 `E-6001`，見 §7） |
 
 ### 4.15 `PUT /v2/dashboard/notification-templates/{id}` — 更新範本
 
@@ -286,7 +286,7 @@
 |------|:----:|--------|
 | 範本不存在 | 404 | `E-8003` |
 | 非同租戶 | 403 | `E-1007` |
-| 改名後與既有 `templateCode` 衝突 | 400 | `E-6001`（同 §4.14） |
+| 改名後與既有 `templateCode` 衝突 | 409 | `E-8012`（同 §4.14） |
 
 ### 4.16 `DELETE /v2/dashboard/notification-templates/{id}` — 刪除範本
 
@@ -332,7 +332,7 @@
 | `E-8002` | 404 | 找不到通知或通知歷史（§4.5、§4.8；兩種資源共用同一個碼，訊息文字固定寫「找不到通知」，見 §7） |
 | `E-1007` | 403 | 存取他人的通知/歷史/範本（§4.5、§4.8、§4.13、§4.15、§4.16） |
 | `E-8003` | 404 | 找不到通知範本（§4.13、§4.15、§4.16、§4.17） |
-| `E-6001` | 400 | 範本代碼重複（§4.14、§4.15）——**借用付款模組的錯誤碼，訊息文字為「付款失敗」，與情境完全無關，見 §7** |
+| `E-8012` | 409 | 範本代碼重複（§4.14、§4.15；Sprint 278／DEF-378 修復前誤用付款模組的 `E-6001`，見 §7） |
 | `E-8011` | 403 | 範本已停用（§4.17） |
 | `E-9000` | 400 | 列舉字串無法解析、或 Bean Validation 失敗（所有 `@Valid` 請求共用） |
 
@@ -342,7 +342,7 @@
 
 | 項目 | 說明 |
 |------|------|
-| **`E-6001` 錯誤碼誤用（本輪新發現，登記為 DEF-378，未修復）** | `NotificationTemplateService.createTemplate`／`updateTemplate` 對「範本代碼重複」拋 `BusinessException(ErrorCode.E_6001, ...)`；`E_6001` 的官方定義是「付款失敗」（`ErrorCode.java`），與範本代碼衝突毫無語意關聯。呼叫端收到的 `message` 欄位會顯示「付款失敗」而非真正發生的事，對串接方造成誤導。HTTP 狀態碼本身（400）尚屬合理，純粹是錯誤碼/訊息文字借錯模組。不影響功能正確性（仍正確阻擋重複代碼），故本輪僅記錄不修復（涉及是否新增專屬錯誤碼或借用既有 `E-2003`／`E-2011` 等「衝突」類碼，非單純文件工作範圍） |
+| **`E-6001` 錯誤碼誤用（登記為 DEF-378，已於 Sprint 278 修復）** | `NotificationTemplateService.createTemplate`／`updateTemplate` 對「範本代碼重複」原拋 `BusinessException(ErrorCode.E_6001, ...)`；`E_6001` 的官方定義是「付款失敗」，與範本代碼衝突毫無語意關聯。已新增專屬碼 `E-8012`（範本代碼重複，409）取代，`NotificationTemplateServiceTest` 補強為斷言具體錯誤碼 |
 | 範本讀取端點權限不一致 | §4.12／4.13（列表/詳情）僅要求登入、不檢查 `notification_template:read`；§4.17（渲染）才真正檢查該權限字串。等同任何登入使用者皆可列出/查看其租戶範圍內（或 `tenantId=null` 全域）的範本內容，但無法渲染預覽。風險類似 DEF-330(a)（讀取範圍過寬但尚無前端畫面或已知攻擊路徑利用），未驗證前端是否有非管理角色的畫面會呼叫這兩個端點 |
 | `isSent` 欄位的歷史資料不可信 | Sprint 271（DEF-317）之前，所有通道的 `isSent` 一律寫 `true`，即使 EMAIL／SMS／PUSH 從未真正送達。Sprint 271 之後新建立的通知才反映真實結果，資料庫裡 Sprint 271 之前的既有列不會被回溯更正 |
 | `NotificationHistory.tenantId` 寫入路徑固定為 `null` | 欄位存在且可儲存租戶 ID，但 `NotificationConsumerService` 呼叫 `createHistory` 時第二參數固定傳 `null`，目前沒有任何路徑會寫入非空值 |
@@ -360,7 +360,7 @@
 |------|------|
 | PRD | US-001（預訂成功即時通知）、US-005（退款狀態即時通知）、US-014（支付失敗通知提醒）；M09 原始設計為 Phase 2（RabbitMQ、多通道、模板化） |
 | FRD | §6C「M09 訊息通知中心」（現況與 PRD 落差的權威敘述） |
-| 相關追蹤項目 | [DEF-286](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（API 文件完整性，本文件為其範圍內一項）、[DEF-317](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（Sprint 271，通知管道誠實化）、[DEF-305](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（預建列與消費者更新時序）、[DEF-238](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（收件人收斂為使用者註冊資料）、[DEF-378](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（本文件新發現，`E-6001` 誤用） |
+| 相關追蹤項目 | [DEF-286](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（API 文件完整性，本文件為其範圍內一項）、[DEF-317](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（Sprint 271，通知管道誠實化）、[DEF-305](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（預建列與消費者更新時序）、[DEF-238](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（收件人收斂為使用者註冊資料）、[DEF-378](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（本文件新發現，`E-6001` 誤用，已於 Sprint 278 修復為 `E-8012`） |
 | 實作 | `NotificationController`／`NotificationPreferenceController`／`NotificationTemplateController`（`api/controller/`）；`NotificationService`／`NotificationHistoryService`／`NotificationPreferenceService`／`NotificationTemplateService`（`core/notification/`）；`NotificationProducerService`／`NotificationConsumerService`（`infrastructure/mq/`）；`BuyerNotificationService`（`core/notification/`，無對外端點，見 §1.2 第 7 點） |
 | 契約測試 | 見文件頂部「依據」一行所列測試 |
 

@@ -185,7 +185,7 @@ class PostCategoryServiceTest {
         }
 
         @Test
-        @DisplayName("createCategory_duplicateSlug_throwsException")
+        @DisplayName("DEF-388: createCategory_duplicateSlug_throwsE8014（原誤用 E_4102「找不到分類」）")
         void createCategory_duplicateSlug_throwsException() {
             // Arrange
             Tenant tenant = buildTenant();
@@ -201,7 +201,7 @@ class PostCategoryServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .satisfies(ex -> {
                         BusinessException bex = (BusinessException) ex;
-                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_4102);
+                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_8014);
                         assertThat(bex.getMessage()).contains("Category slug already exists");
                     });
         }
@@ -365,12 +365,12 @@ class PostCategoryServiceTest {
             when(postRepository.findByTenantIdAndCategoryId(eq(TEST_TENANT_ID), eq(TEST_CATEGORY_ID), any()))
                     .thenReturn(associatedPostsPage);
 
-            // Act & Assert
+            // Act & Assert（DEF-388：原誤用 E_4102「找不到分類」，改用 E_8015）
             assertThatThrownBy(() -> postCategoryService.deleteCategory(TEST_CATEGORY_ID, TEST_TENANT_ID))
                     .isInstanceOf(BusinessException.class)
                     .satisfies(ex -> {
                         BusinessException bex = (BusinessException) ex;
-                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_4102);
+                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_8015);
                         assertThat(bex.getMessage()).contains("Cannot delete category with associated posts");
                     });
         }

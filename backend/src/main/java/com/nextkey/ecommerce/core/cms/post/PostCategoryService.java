@@ -45,9 +45,10 @@ public class PostCategoryService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
 
         // 驗證 slug 唯一性
+        // DEF-388：改用 E_8014（原誤用 E_4102「找不到分類」，與 slug 重複衝突語意無關）。
         String slug = generateSlug(request.getName());
         if (postCategoryRepository.existsByTenantIdAndSlug(tenantId, slug)) {
-            throw new BusinessException(ErrorCode.E_4102, "Category slug already exists");
+            throw new BusinessException(ErrorCode.E_8014, "Category slug already exists");
         }
 
         PostCategory category = PostCategory.builder()
@@ -107,8 +108,9 @@ public class PostCategoryService {
         Page<Post> posts = postRepository.findByTenantIdAndCategoryId(
                 tenantId, categoryId, PageRequest.of(0, 1));
 
+        // DEF-388：改用 E_8015（原誤用 E_4102「找不到分類」，與「刪除受阻」語意無關）。
         if (posts.getTotalElements() > 0) {
-            throw new BusinessException(ErrorCode.E_4102, "Cannot delete category with associated posts");
+            throw new BusinessException(ErrorCode.E_8015, "Cannot delete category with associated posts");
         }
 
         postCategoryRepository.delete(category);

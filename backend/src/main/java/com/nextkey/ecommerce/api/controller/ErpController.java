@@ -43,6 +43,8 @@ import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.product.ProductSku;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.ProductSkuRepository;
+import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 import com.nextkey.ecommerce.shared.util.PageableUtils;
 
@@ -161,9 +163,17 @@ public class ErpController {
 
         log.debug("Listing purchase orders: tenantId={}, status={}, page={}", tenantId, status, page);
 
-        Page<PurchaseOrderDto> orders = purchaseOrderService.listPurchaseOrders(
-                status != null ? com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder.POStatus.valueOf(status) : null,
-                pageable);
+        // DEF-385：原無 try-catch，無效的 status 字串會讓 IllegalArgumentException 落入
+        // catch-all 變 500；沿用既有的 E_7002（無效的採購單狀態）。
+        com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder.POStatus poStatus = null;
+        if (status != null) {
+            try {
+                poStatus = com.nextkey.ecommerce.domain.model.inventory.PurchaseOrder.POStatus.valueOf(status);
+            } catch (IllegalArgumentException e) {
+                throw new BusinessException(ErrorCode.E_7002, "Invalid purchase order status: " + status);
+            }
+        }
+        Page<PurchaseOrderDto> orders = purchaseOrderService.listPurchaseOrders(poStatus, pageable);
 
         return ResponseEntity.ok(ApiResponse.success(orders));
     }

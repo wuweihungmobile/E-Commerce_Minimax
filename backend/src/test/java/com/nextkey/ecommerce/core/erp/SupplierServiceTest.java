@@ -155,6 +155,14 @@ class SupplierServiceTest {
         assertThat(result.get(0).getStatus()).isEqualTo("ACTIVE");
     }
 
+    @Test
+    @DisplayName("DEF-385：listSuppliers 帶無效 status 字串 → BusinessException(E_7010)，不是未經處理的 IllegalArgumentException")
+    void listSuppliers_invalidStatus_throwsBusinessExceptionE7010() {
+        assertThatThrownBy(() -> supplierService.listSuppliers("NOT_A_REAL_STATUS"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_7010);
+    }
+
     // ── searchSuppliers ──────────────────────────────────────────
 
     @Test

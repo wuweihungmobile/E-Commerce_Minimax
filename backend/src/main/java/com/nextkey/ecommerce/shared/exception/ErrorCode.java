@@ -130,6 +130,9 @@ public enum ErrorCode {
     E_7502("E-7502", "已送達的物流無法取消"),
     E_7503("E-7503", "找不到物流供應商"),
     E_7504("E-7504", "找不到運費範本"),
+    // DEF-385：新增，LogisticsController.updateLogisticsStatus 的 status 參數解析失敗
+    // 原無專屬碼，IllegalArgumentException 落入 catch-all 變 500。
+    E_7505("E-7505", "無效的物流狀態"),
 
     // Pricing (E-8000s)
     E_8000("E-8000", "找不到定價規則"),
@@ -148,6 +151,31 @@ public enum ErrorCode {
     E_8010("E-8010", "無效的工單狀態轉換"),
     // 🔴 Sprint 172: DEF-224，取代通知範本誤用 E_8001（定價規則錯誤碼）
     E_8011("E-8011", "此範本已停用"),
+    // DEF-378：新增，取代通知範本代碼重複誤用 E_6001（官方定義「付款失敗」，付款模組專用碼）。
+    E_8012("E-8012", "範本代碼重複"),
+
+    // CMS Pages/Banners/Categories (E-8013~8019) —— DEF-388：M15 CMS 模組錯誤碼跨領域誤用密集，
+    // 逐一拆成專屬碼。E_8013/E_8014 為查證過程中額外發現、原 DEF-388 六項未列出的同類誤用。
+    // 原 CmsService.createPage 誤用 E_9005（缺少必填欄位）代表頁面 slug 重複。
+    E_8013("E-8013", "頁面網址代稱重複"),
+    // 原 PostCategoryService.createCategory 誤用 E_4102（找不到分類）代表分類 slug 重複。
+    E_8014("E-8014", "分類網址代稱重複"),
+    // 原 PostCategoryService.deleteCategory 誤用 E_4102（找不到分類）代表「刪除有貼文關聯的分類」。
+    E_8015("E-8015", "分類仍有關聯貼文，無法刪除"),
+    // 原 CmsService.getPageBySlug 誤用 E_8004（找不到 CMS 頁面）代表「頁面尚未發布」，與「頁面不存在」
+    // 共用同一碼；比照 Post 模組既有的 E_4100（找不到）／E_4101（尚未發布）兩碼分離模式。
+    E_8016("E-8016", "頁面尚未發布"),
+    // 原 core.media.MediaService.createCategory/updateCategory 誤用 E_3001（無效的刊登類型）代表
+    // 媒體分類名稱重複。
+    E_8017("E-8017", "媒體分類名稱重複"),
+    // 原 core.media.MediaService.deleteCategory 誤用 E_3001 代表「刪除有子分類的媒體分類」。
+    E_8018("E-8018", "媒體分類仍有子分類，無法刪除"),
+    // 原 core.media.MediaService.deleteCategory 誤用 E_3001 代表「刪除有關聯媒體資產的媒體分類」。
+    E_8019("E-8019", "媒體分類仍有關聯媒體，無法刪除"),
+
+    // Chat & Messaging (E-8100s) —— DEF-382：M10 原無專屬錯誤碼區段，sendMessage／getMessages／
+    // markAsRead／deleteConversation 四處皆誤用通用驗證碼 E_9005（缺少必填欄位）代表「對話不存在或非本人」。
+    E_8100("E-8100", "找不到對話"),
 
     // Review (E-1080s dedicated to Review module)
     // 🔴 Sprint 16 US-001: 評價重複回覆

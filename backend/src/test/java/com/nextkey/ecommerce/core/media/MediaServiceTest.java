@@ -34,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
@@ -152,8 +153,8 @@ class MediaServiceTest {
     }
 
     @Test
-    @DisplayName("uploadAssetMultipart：分類不存在拋出 E_4000")
-    void uploadAssetMultipart_categoryNotFound_throwsE4000() {
+    @DisplayName("DEF-388: uploadAssetMultipart：分類不存在拋出 E_3006（原誤用 E_4000「找不到房源」，與媒體/房源模組無關）")
+    void uploadAssetMultipart_categoryNotFound_throwsE3006() {
         MockMultipartFile file = new MockMultipartFile("file", "banner.png", "image/png", "content".getBytes());
 
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
@@ -162,7 +163,7 @@ class MediaServiceTest {
 
         assertThatThrownBy(() -> mediaService.uploadAssetMultipart(file, CATEGORY_ID, null, null, null))
                 .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_4000));
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_3006));
     }
 
     @Test
@@ -210,18 +211,18 @@ class MediaServiceTest {
     }
 
     @Test
-    @DisplayName("downloadAsset：資產不存在或不屬於本租戶時拋出 E_4000")
-    void downloadAsset_notFound_throwsE4000() {
+    @DisplayName("DEF-388: downloadAsset：資產不存在或不屬於本租戶時拋出 E_4103（原誤用 E_4000「找不到房源」）")
+    void downloadAsset_notFound_throwsE4103() {
         when(mediaAssetRepository.findActiveByIdAndTenantId(ASSET_ID, TENANT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> mediaService.downloadAsset(ASSET_ID))
                 .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_4000));
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_4103));
     }
 
     @Test
-    @DisplayName("downloadAsset：filePath 未落在本租戶前綴下時拒絕讀取（DEF-101 IDOR 防護），且從不呼叫 StorageService.getObject")
-    void downloadAsset_filePathNotOwnedByTenant_throwsE4000AndNeverReadsObject() {
+    @DisplayName("DEF-388: downloadAsset：filePath 未落在本租戶前綴下時拒絕讀取（DEF-101 IDOR 防護），且從不呼叫 StorageService.getObject")
+    void downloadAsset_filePathNotOwnedByTenant_throwsE4103AndNeverReadsObject() {
         MediaAsset asset = MediaAsset.builder()
                 .id(ASSET_ID)
                 .tenant(buildTenant())
@@ -237,7 +238,7 @@ class MediaServiceTest {
 
         assertThatThrownBy(() -> mediaService.downloadAsset(ASSET_ID))
                 .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_4000));
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_4103));
 
         org.mockito.Mockito.verify(storageService, org.mockito.Mockito.never()).getObject(anyString());
     }
@@ -366,8 +367,8 @@ class MediaServiceTest {
     // ── createCategory（Sprint 143，DEF-160） ────────────────────
 
     @Test
-    @DisplayName("createCategory：根層級併發 TOCTOU 撞上 DB 唯一約束 → 轉譯為 E_3001，而非原始 500")
-    void createCategory_concurrentDuplicateRootName_translatesToE3001() {
+    @DisplayName("DEF-388: createCategory：根層級併發 TOCTOU 撞上 DB 唯一約束 → 轉譯為 E_8017（原誤用 E_3001「無效的刊登類型」），而非原始 500")
+    void createCategory_concurrentDuplicateRootName_translatesToE8017() {
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
         when(mediaCategoryRepository.existsByTenantIdAndNameAndParentIsNull(TENANT_ID, "Banners")).thenReturn(false);
         when(mediaCategoryRepository.saveAndFlush(any(MediaCategory.class)))
@@ -380,12 +381,12 @@ class MediaServiceTest {
 
         assertThatThrownBy(() -> mediaService.createCategory(request))
                 .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_3001));
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_8017));
     }
 
     @Test
-    @DisplayName("createCategory：子層級併發 TOCTOU 撞上 DB 唯一約束 → 轉譯為 E_3001")
-    void createCategory_concurrentDuplicateChildName_translatesToE3001() {
+    @DisplayName("DEF-388: createCategory：子層級併發 TOCTOU 撞上 DB 唯一約束 → 轉譯為 E_8017")
+    void createCategory_concurrentDuplicateChildName_translatesToE8017() {
         MediaCategory parent = buildCategory();
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
         when(mediaCategoryRepository.existsByTenantIdAndNameAndParentId(TENANT_ID, "Sub", CATEGORY_ID)).thenReturn(false);
@@ -400,6 +401,56 @@ class MediaServiceTest {
 
         assertThatThrownBy(() -> mediaService.createCategory(request))
                 .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_3001));
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_8017));
+    }
+
+    @Test
+    @DisplayName("DEF-388: createCategory：根層級名稱重複（非併發路徑）拋出 E_8017")
+    void createCategory_duplicateRootName_throwsE8017() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+        when(mediaCategoryRepository.existsByTenantIdAndNameAndParentIsNull(TENANT_ID, "Banners")).thenReturn(true);
+
+        com.nextkey.ecommerce.api.dto.media.CreateMediaCategoryRequest request =
+                com.nextkey.ecommerce.api.dto.media.CreateMediaCategoryRequest.builder()
+                        .name("Banners")
+                        .build();
+
+        assertThatThrownBy(() -> mediaService.createCategory(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_8017));
+        org.mockito.Mockito.verify(mediaCategoryRepository, org.mockito.Mockito.never()).saveAndFlush(any());
+    }
+
+    // ── deleteCategory ────────────────────────────────────────
+
+    @Test
+    @DisplayName("DEF-388: deleteCategory：有子分類時拒絕刪除，拋出 E_8018（原誤用 E_3001「無效的刊登類型」）")
+    void deleteCategory_hasChildren_throwsE8018() {
+        MediaCategory category = buildCategory();
+        when(mediaCategoryRepository.findByIdAndTenantId(CATEGORY_ID, TENANT_ID)).thenReturn(Optional.of(category));
+        when(mediaCategoryRepository.findByTenantIdAndParentIdOrderBySortOrderAsc(TENANT_ID, CATEGORY_ID))
+                .thenReturn(List.of(buildCategory()));
+
+        assertThatThrownBy(() -> mediaService.deleteCategory(CATEGORY_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_8018));
+        org.mockito.Mockito.verify(mediaCategoryRepository, org.mockito.Mockito.never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("DEF-388: deleteCategory：仍有關聯媒體資產時拒絕刪除，拋出 E_8019（原誤用 E_3001）")
+    void deleteCategory_hasMediaAssets_throwsE8019() {
+        MediaCategory category = buildCategory();
+        MediaAsset asset = MediaAsset.builder().id(ASSET_ID).tenant(buildTenant()).build();
+        when(mediaCategoryRepository.findByIdAndTenantId(CATEGORY_ID, TENANT_ID)).thenReturn(Optional.of(category));
+        when(mediaCategoryRepository.findByTenantIdAndParentIdOrderBySortOrderAsc(TENANT_ID, CATEGORY_ID))
+                .thenReturn(List.of());
+        when(mediaAssetRepository.findByTenantIdAndCategoryIdAndIsDeletedFalse(eq(TENANT_ID), eq(CATEGORY_ID), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(asset)));
+
+        assertThatThrownBy(() -> mediaService.deleteCategory(CATEGORY_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_8019));
+        org.mockito.Mockito.verify(mediaCategoryRepository, org.mockito.Mockito.never()).delete(any());
     }
 }

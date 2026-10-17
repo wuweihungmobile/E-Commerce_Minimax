@@ -76,7 +76,7 @@ public class MediaService {
     public MediaCategoryDto getCategory(UUID categoryId) {
         UUID tenantId = getCurrentTenant();
         MediaCategory category = mediaCategoryRepository.findByIdAndTenantId(categoryId, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_3006, "Category not found"));
         return toMediaCategoryDto(category);
     }
 
@@ -87,23 +87,24 @@ public class MediaService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000, "Tenant not found"));
 
         // 驗證分類名稱唯一性
+        // DEF-388：改用 E_8017（原誤用 E_3001「無效的刊登類型」，與媒體分類名稱重複語意無關）。
         if (request.getParentId() == null) {
             if (mediaCategoryRepository.existsByTenantIdAndNameAndParentIsNull(tenantId, request.getName())) {
-                throw new BusinessException(ErrorCode.E_3001, "Category name already exists at root level");
+                throw new BusinessException(ErrorCode.E_8017, "Category name already exists at root level");
             }
         } else {
             if (mediaCategoryRepository.existsByTenantIdAndNameAndParentId(tenantId, request.getName(), request.getParentId())) {
-                throw new BusinessException(ErrorCode.E_3001, "Category name already exists under this parent");
+                throw new BusinessException(ErrorCode.E_8017, "Category name already exists under this parent");
             }
             // 驗證父分類存在
             mediaCategoryRepository.findByIdAndTenantId(request.getParentId(), tenantId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Parent category not found"));
+                    .orElseThrow(() -> new BusinessException(ErrorCode.E_3006, "Parent category not found"));
         }
 
         MediaCategory parent = null;
         if (request.getParentId() != null) {
             parent = mediaCategoryRepository.findByIdAndTenantId(request.getParentId(), tenantId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Parent category not found"));
+                    .orElseThrow(() -> new BusinessException(ErrorCode.E_3006, "Parent category not found"));
         }
 
         MediaCategory category = MediaCategory.builder()
@@ -117,11 +118,11 @@ public class MediaService {
         // 併發防護（DEF-160）：上面的 existsByTenantIdAndNameAndParentIsNull/
         // existsByTenantIdAndNameAndParentId 檢查與這裡的 save() 之間是 TOCTOU，兩個併發
         // 請求都可能通過檢查各自建立同名分類。V82 已對應兩種情況分別建立部分唯一索引，
-        // 這裡改用 saveAndFlush 捕捉違反約束，轉譯為與上面檢查一致的 E_3001。
+        // 這裡改用 saveAndFlush 捕捉違反約束，轉譯為與上面檢查一致的 E_8017（DEF-388 前為 E_3001）。
         try {
             category = mediaCategoryRepository.saveAndFlush(category);
         } catch (DataIntegrityViolationException e) {
-            throw new BusinessException(ErrorCode.E_3001, request.getParentId() == null
+            throw new BusinessException(ErrorCode.E_8017, request.getParentId() == null
                     ? "Category name already exists at root level"
                     : "Category name already exists under this parent");
         }
@@ -134,7 +135,7 @@ public class MediaService {
     public MediaCategoryDto updateCategory(UUID categoryId, UpdateMediaCategoryRequest request) {
         UUID tenantId = getCurrentTenant();
         MediaCategory category = mediaCategoryRepository.findByIdAndTenantId(categoryId, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_3006, "Category not found"));
 
         if (request.getName() != null) {
             // 驗證名稱唯一性
@@ -148,8 +149,9 @@ public class MediaService {
             } else {
                 duplicate = mediaCategoryRepository.existsByTenantIdAndNameAndParentIsNull(tenantId, request.getName());
             }
+            // DEF-388：改用 E_8017（原誤用 E_3001「無效的刊登類型」）。
             if (duplicate && !category.getName().equals(request.getName())) {
-                throw new BusinessException(ErrorCode.E_3001, "Category name already exists");
+                throw new BusinessException(ErrorCode.E_8017, "Category name already exists");
             }
             category.setName(request.getName());
         }
@@ -172,19 +174,21 @@ public class MediaService {
     public void deleteCategory(UUID categoryId) {
         UUID tenantId = getCurrentTenant();
         MediaCategory category = mediaCategoryRepository.findByIdAndTenantId(categoryId, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_3006, "Category not found"));
 
         // 檢查是否有子分類
         List<MediaCategory> children = mediaCategoryRepository.findByTenantIdAndParentIdOrderBySortOrderAsc(tenantId, categoryId);
+        // DEF-388：改用 E_8018（原誤用 E_3001「無效的刊登類型」，與「刪除受阻」語意無關）。
         if (!children.isEmpty()) {
-            throw new BusinessException(ErrorCode.E_3001, "Cannot delete category with children");
+            throw new BusinessException(ErrorCode.E_8018, "Cannot delete category with children");
         }
 
         // 檢查是否有媒體資產使用此分類
         Page<MediaAsset> assets = mediaAssetRepository.findByTenantIdAndCategoryIdAndIsDeletedFalse(
                 tenantId, categoryId, PageRequest.of(0, 1));
+        // DEF-388：改用 E_8019（原誤用 E_3001）。
         if (assets.hasContent()) {
-            throw new BusinessException(ErrorCode.E_3001, "Cannot delete category with media assets");
+            throw new BusinessException(ErrorCode.E_8019, "Cannot delete category with media assets");
         }
 
         mediaCategoryRepository.delete(category);
@@ -216,7 +220,7 @@ public class MediaService {
     public MediaAssetDto getAsset(UUID assetId) {
         UUID tenantId = getCurrentTenant();
         MediaAsset asset = mediaAssetRepository.findActiveByIdAndTenantId(assetId, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Media asset not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4103, "Media asset not found"));
         return toMediaAssetDto(asset);
     }
 
@@ -229,7 +233,7 @@ public class MediaService {
         MediaCategory category = null;
         if (request.getCategoryId() != null) {
             category = mediaCategoryRepository.findByIdAndTenantId(request.getCategoryId(), tenantId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
+                    .orElseThrow(() -> new BusinessException(ErrorCode.E_3006, "Category not found"));
         }
 
         // DEF-254（Sprint 184）：先前用不拋錯的私有 inferFileType 推斷 fileType，任意字串（如
@@ -290,7 +294,7 @@ public class MediaService {
         MediaCategory category = null;
         if (categoryId != null) {
             category = mediaCategoryRepository.findByIdAndTenantId(categoryId, tenantId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
+                    .orElseThrow(() -> new BusinessException(ErrorCode.E_3006, "Category not found"));
         }
 
         String originalName = file.getOriginalFilename();
@@ -340,10 +344,10 @@ public class MediaService {
     public AssetFile downloadAsset(UUID assetId) {
         UUID tenantId = getCurrentTenant();
         MediaAsset asset = mediaAssetRepository.findActiveByIdAndTenantId(assetId, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Media asset not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4103, "Media asset not found"));
         // filePath 本身是否真的屬於本租戶（而非僅資料列的 tenantId 相符）需獨立檢查，防止跨租戶 IDOR（DEF-101）
         if (!storageService.belongsToTenant(asset.getFilePath(), tenantId)) {
-            throw new BusinessException(ErrorCode.E_4000, "Media asset not found");
+            throw new BusinessException(ErrorCode.E_4103, "Media asset not found");
         }
         InputStream inputStream = storageService.getObject(asset.getFilePath());
         return new AssetFile(inputStream, asset.getMimeType(), asset.getOriginalName());
@@ -359,11 +363,11 @@ public class MediaService {
     public MediaAssetDto updateAsset(UUID assetId, UpdateMediaRequest request) {
         UUID tenantId = getCurrentTenant();
         MediaAsset asset = mediaAssetRepository.findActiveByIdAndTenantId(assetId, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Media asset not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4103, "Media asset not found"));
 
         if (request.getCategoryId() != null) {
             MediaCategory category = mediaCategoryRepository.findByIdAndTenantId(request.getCategoryId(), tenantId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Category not found"));
+                    .orElseThrow(() -> new BusinessException(ErrorCode.E_3006, "Category not found"));
             asset.setCategory(category);
         }
 
@@ -389,7 +393,7 @@ public class MediaService {
     public void deleteAsset(UUID assetId) {
         UUID tenantId = getCurrentTenant();
         MediaAsset asset = mediaAssetRepository.findActiveByIdAndTenantId(assetId, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Media asset not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4103, "Media asset not found"));
 
         // 軟刪除
         asset.setIsDeleted(true);
@@ -401,7 +405,7 @@ public class MediaService {
     public void incrementUsageCount(UUID assetId) {
         UUID tenantId = getCurrentTenant();
         MediaAsset asset = mediaAssetRepository.findActiveByIdAndTenantId(assetId, tenantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Media asset not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4103, "Media asset not found"));
         asset.incrementUsageCount();
         mediaAssetRepository.save(asset);
     }

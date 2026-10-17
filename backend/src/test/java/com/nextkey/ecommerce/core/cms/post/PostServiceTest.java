@@ -1073,5 +1073,15 @@ class PostServiceTest {
                     .isEqualTo(ErrorCode.E_4101);
             verify(postRepository, never()).incrementViewCount(any(UUID.class));
         }
+
+        @Test
+        @DisplayName("DEF-388: getPublishedPostBySlug_missingTenantId_throwsE9005（原誤用 E_1002「憑證已過期」）")
+        void getPublishedPostBySlug_missingTenantId_throwsE9005() {
+            assertThatThrownBy(() -> postService.getPublishedPostBySlug("test-post", null))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_9005);
+            verify(postRepository, never()).findByTenantIdAndSlug(any(), any());
+        }
     }
 }

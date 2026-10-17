@@ -88,7 +88,7 @@ public class ChatService {
                 .orElse(null);
 
         if (existing != null) {
-            return toConversationResponse(existing);
+            return toConversationResponse(existing, userId);
         }
 
         Conversation conversation = Conversation.builder()
@@ -116,7 +116,7 @@ public class ChatService {
             Conversation raceWinner = conversationRepository
                     .findByInitiatorIdAndRecipientIdAndIsActiveTrue(userId, request.getRecipientId())
                     .orElseThrow(() -> e);
-            return toConversationResponse(raceWinner);
+            return toConversationResponse(raceWinner, userId);
         }
 
         // 發送初始消息
@@ -140,7 +140,7 @@ public class ChatService {
         log.info("Conversation created: id={}, initiator={}, recipient={}",
                 conversation.getId(), userId, request.getRecipientId());
 
-        return toConversationResponse(conversation);
+        return toConversationResponse(conversation, userId);
     }
 
     /**
@@ -149,7 +149,8 @@ public class ChatService {
     @Transactional
     public ChatDto.MessageResponse sendMessage(UUID userId, ChatDto.SendMessageRequest request) {
         Conversation conversation = conversationRepository.findByIdAndUserId(request.getConversationId(), userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_9005, "Conversation not found"));
+                // DEF-382：改用 M10 專屬的 E_8100（原誤用通用驗證碼 E_9005「缺少必填欄位」）。
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8100, "Conversation not found"));
 
         Message message = Message.builder()
                 .conversation(conversation)
@@ -202,7 +203,7 @@ public class ChatService {
         int unreadCount = conversationRepository.countUnreadConversations(userId);
 
         List<ChatDto.ConversationResponse> responses = conversations.getContent().stream()
-                .map(this::toConversationResponse)
+                .map(c -> toConversationResponse(c, userId))
                 .collect(Collectors.toList());
 
         return ChatDto.ConversationListResponse.builder()
@@ -222,7 +223,8 @@ public class ChatService {
     public ChatDto.MessageListResponse getMessages(UUID userId, UUID conversationId, int page, int size) {
         // 驗證權限
         conversationRepository.findByIdAndUserId(conversationId, userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_9005, "Conversation not found"));
+                // DEF-382：改用 M10 專屬的 E_8100（原誤用通用驗證碼 E_9005「缺少必填欄位」）。
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8100, "Conversation not found"));
 
         PageRequest pageRequest = PageableUtils.of(page, size, DEFAULT_PAGE_SIZE);
 
@@ -248,7 +250,8 @@ public class ChatService {
     @Transactional
     public void markAsRead(final UUID userId, final UUID conversationId) {
         Conversation conversation = conversationRepository.findByIdAndUserId(conversationId, userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_9005, "Conversation not found"));
+                // DEF-382：改用 M10 專屬的 E_8100（原誤用通用驗證碼 E_9005「缺少必填欄位」）。
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8100, "Conversation not found"));
 
         int updated = messageRepository.markAsRead(conversationId, userId, Instant.now());
 
@@ -269,7 +272,8 @@ public class ChatService {
     @Transactional
     public void deleteConversation(final UUID userId, final UUID conversationId) {
         Conversation conversation = conversationRepository.findByIdAndUserId(conversationId, userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_9005, "Conversation not found"));
+                // DEF-382：改用 M10 專屬的 E_8100（原誤用通用驗證碼 E_9005「缺少必填欄位」）。
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_8100, "Conversation not found"));
 
         conversation.setIsActive(false);
         conversationRepository.save(conversation);
@@ -279,7 +283,7 @@ public class ChatService {
 
     // ========== Helper Methods ==========
 
-    private ChatDto.ConversationResponse toConversationResponse(Conversation conversation) {
+    private ChatDto.ConversationResponse toConversationResponse(Conversation conversation, UUID viewingUserId) {
         Message lastMessage = null;
         if (conversation.getLastMessageId() != null) {
             lastMessage = messageRepository.findTopByConversationIdOrderByCreatedAtDesc(conversation.getId()).orElse(null);
@@ -287,6 +291,12 @@ public class ChatService {
 
         User initiator = userRepository.findById(conversation.getInitiatorId()).orElse(null);
         User recipient = userRepository.findById(conversation.getRecipientId()).orElse(null);
+
+        // DEF-383：依瀏覽者在此對話中的角色（initiator／recipient）回傳對應的未讀計數，
+        // 原本一律回 null（註解寫「由呼叫端填入」但從無呼叫端真正填值）。
+        Integer unreadCount = conversation.getInitiatorId().equals(viewingUserId)
+                ? conversation.getInitiatorUnreadCount()
+                : conversation.getRecipientUnreadCount();
 
         return ChatDto.ConversationResponse.builder()
                 .conversationId(conversation.getId())
@@ -298,7 +308,7 @@ public class ChatService {
                 .recipientId(conversation.getRecipientId())
                 .recipientName(recipient != null ? recipient.getFullName() : null)
                 .lastMessage(lastMessage != null ? toMessageResponse(lastMessage) : null)
-                .unreadCount(null) // Will be filled by caller
+                .unreadCount(unreadCount)
                 .isActive(conversation.getIsActive())
                 .lastMessageAt(conversation.getLastMessageAt())
                 .createdAt(conversation.getCreatedAt())

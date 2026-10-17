@@ -94,7 +94,8 @@ public class LogisticsService {
                 .anyMatch(l -> l.getStatus() != Logistics.LogisticsStatus.DELIVERED
                         && l.getStatus() != Logistics.LogisticsStatus.RETURNED);
         if (hasActiveLogistics) {
-            throw new BusinessException(ErrorCode.E_7001, "Active logistics already exists for this order");
+            // DEF-381：改用物流專用錯誤碼（原誤用 ERP 採購單的 E_7001）。
+            throw new BusinessException(ErrorCode.E_7501, "Active logistics already exists for this order");
         }
 
         // 併發防護（DEF-123，claim-before-external-call）：上面「訂單狀態 + 無現存物流單」
@@ -143,8 +144,9 @@ public class LogisticsService {
      */
     @Transactional(readOnly = true)
     public LogisticsDto.LogisticsResponse getLogistics(UUID logisticsId) {
+        // DEF-381：改用物流專用錯誤碼（原誤用 ERP 供應商的 E_7000）。
         Logistics logistics = logisticsRepository.findById(logisticsId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_7000, "Logistics not found"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_7500, "Logistics not found"));
         // DEF-036：物流查詢租戶擁有權檢查——比照 createLogistics 的 checkOrderTenant，
         // 杜絕任一持有 order:read 的租戶對他租戶物流單的跨租戶讀取（IDOR）。
         checkLogisticsTenant(logistics);
@@ -170,8 +172,9 @@ public class LogisticsService {
      */
     @Transactional(readOnly = true)
     public LogisticsDto.StatusResponse trackLogistics(UUID logisticsId) {
+        // DEF-381：改用物流專用錯誤碼（原誤用 ERP 供應商的 E_7000）。
         Logistics logistics = logisticsRepository.findById(logisticsId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_7000));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_7500));
         // DEF-036：追蹤查詢租戶擁有權檢查，理由同上。
         checkLogisticsTenant(logistics);
 
@@ -197,8 +200,9 @@ public class LogisticsService {
      */
     @Transactional(readOnly = true)
     public LogisticsDto.TrackingDetail getTrackingDetail(UUID logisticsId) {
+        // DEF-381：改用物流專用錯誤碼（原誤用 ERP 供應商的 E_7000）。
         Logistics logistics = logisticsRepository.findById(logisticsId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_7000));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_7500));
         // DEF-036：追蹤歷史查詢租戶擁有權檢查，理由同上。
         checkLogisticsTenant(logistics);
 
@@ -225,8 +229,9 @@ public class LogisticsService {
      */
     @Transactional
     public LogisticsDto.LogisticsResponse updateLogisticsStatus(UUID logisticsId, Logistics.LogisticsStatus newStatus) {
+        // DEF-381：改用物流專用錯誤碼（原誤用 ERP 供應商的 E_7000）。
         Logistics logistics = logisticsRepository.findById(logisticsId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.E_7000));
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_7500));
         // DEF-036：狀態更新為寫入操作，租戶擁有權檢查更為關鍵（可竄改他租戶訂單的物流/送達狀態）。
         checkLogisticsTenant(logistics);
 

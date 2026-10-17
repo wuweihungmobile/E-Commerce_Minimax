@@ -124,4 +124,35 @@ class M10ChatUnreadCountConcurrencyIntegrationTest {
                 .isEqualTo(THREADS);
         assertThat(reloaded.getInitiatorUnreadCount()).isZero();
     }
+
+    // ========== DEF-383：countUnreadConversations 原僅比對 recipientId，
+    //            忽略瀏覽者身為 initiator 卻收到對方回覆未讀的情境（真實 DB 驗證 JPQL 條件） ==========
+
+    @Test
+    @DisplayName("DEF-383: initiator 角色有未讀的對話，countUnreadConversations 也要算進去（非僅 recipient 角色）")
+    void countUnreadConversations_countsBothInitiatorAndRecipientRoleUnread() {
+        long stamp = System.nanoTime();
+        UUID otherUserId = userRepository.save(User.builder()
+                .email("chat-count-other-" + stamp + "@test.com")
+                .build()).getId();
+
+        // conversationId（setUp 建立）：initiatorId 發訊息後對方未讀，不影響 initiator 自己的未讀計數。
+        // 另建一筆 initiator 本人收到對方回覆、initiatorUnreadCount > 0 的對話，應被計入。
+        Conversation repliedToInitiator = Conversation.builder()
+                .tenantId(SYSTEM_TENANT_ID)
+                .conversationType(Conversation.ConversationType.DIRECT)
+                .initiatorId(initiatorId)
+                .recipientId(otherUserId)
+                .initiatorUnreadCount(1)
+                .recipientUnreadCount(0)
+                .isActive(true)
+                .build();
+        conversationRepository.save(repliedToInitiator);
+
+        int unreadConversationCount = conversationRepository.countUnreadConversations(initiatorId);
+
+        assertThat(unreadConversationCount)
+                .as("修復前的 JPQL 只比對 recipientId，initiator 角色收到回覆的未讀對話會被漏算")
+                .isEqualTo(1);
+    }
 }

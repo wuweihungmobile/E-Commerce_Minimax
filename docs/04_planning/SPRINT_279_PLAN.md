@@ -58,7 +58,8 @@ Sprint 278 的總結本身沒有列出具體的「下一個可做項目」（不
 - 目標測試類別（`BookingServiceGetCalendarValidationTest`／`PaymentStateServiceStripeTest`／`PaymentStateServiceBookingTest`／`ProductServiceTest`／`RoomServiceTest`）：**112 個測試全過**。
 - 受影響的真實全棧整合測試（`BookingPaymentIntegrationTest`／`OrderApiRealStackIntegrationTest`／`BookingApiRealStackIntegrationTest`／`ListingControllerE2ETest`）：第一輪 **2 個失敗**（見第 3 節），修復後第二輪 **52 個全過**。
 - 排查用的 5 個額外整合測試檔案：**56 個全過**，確認未受影響。
-- 全量 `mvn -o clean verify`：見下方回填（本文件撰寫時仍在背景執行，結果將於收尾 commit 前回填至本節）。
+- 全量 `mvn -o clean verify`：**單元 2273/2273、整合 856/856，0 失敗、0 錯誤**。第一輪背景執行在全部測試通過後被 checkstyle-test 攔下（`BookingPaymentIntegrationTest.java` 多了一個未使用的 `import static org.mockito.Mockito.doAnswer`——改用 `lenient().doAnswer(...)` 鏈式呼叫而非靜態呼叫，該 import 從未被直接引用）；移除該 import 後以 `mvn -o clean test-compile checkstyle:check@checkstyle-main checkstyle:check@checkstyle-test` 確認「Compiling 386+300 source files」＋0 violations，未重跑全部 3129 個測試（1 行 import 刪除不影響任何測試行為，且已由第一輪驗證過全數通過）。
+- `git commit`（`672ab160`）前 pre-commit 快速檢查通過；`git push`（`672ab160`）前 pre-push 輕量守門（act Backend Unit＋schema 漂移＋frontend）通過；雲端 CI run [39002809190](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39002809190) 三個 job 皆 success，以 `gh run view --json status,conclusion,jobs` 結構化查詢交叉確認（不只信任 `gh run watch` 文字輸出或背景任務通知的 exit code）。
 
 ## 6. 範圍外與待使用者決定
 

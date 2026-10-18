@@ -136,6 +136,9 @@ public class ReviewService {
      * 更新評價
      */
     @Transactional
+    // DEF-390 修復：rating 可被更新，原本漏了 evict，平均分/分布會沿用舊快取；
+    // 鍵無法用 SpEL 指到此方法才查出的 listingId，改清整個 cache region（低流量，可接受）。
+    @CacheEvict(value = "ratingStats", allEntries = true)
     public ReviewDto.ReviewResponse updateReview(UUID reviewId, ReviewDto.UpdateRequest request) {
         UUID userId = TenantContext.getCurrentUser();
 
@@ -178,6 +181,8 @@ public class ReviewService {
      * 刪除評價（軟刪除）
      */
     @Transactional
+    // DEF-390 修復：軟刪除會改變則數與平均分，原本漏了 evict，理由同 updateReview。
+    @CacheEvict(value = "ratingStats", allEntries = true)
     public void deleteReview(final UUID reviewId) {
         UUID userId = TenantContext.getCurrentUser();
 
@@ -685,26 +690,43 @@ public class ReviewService {
             throw new BusinessException(ErrorCode.E_1007,
                     "A review must reference a purchased order or booking");
         }
-
         if (orderId != null) {
-            Order order = orderRepository.findById(orderId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Order not found"));
-            boolean ownsOrder = order.getUserId().equals(userId);
-            boolean orderHasListing = order.getItems().stream()
-                    .anyMatch(item -> listingId.equals(item.getListingId()));
-            if (!ownsOrder || !orderHasListing) {
-                throw new BusinessException(ErrorCode.E_1007, "You can only review items you have purchased");
-            }
+            verifyOrderPurchase(userId, listingId, orderId);
         }
-
         if (bookingId != null) {
-            Booking booking = bookingRepository.findById(bookingId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Booking not found"));
-            boolean ownsBooking = booking.getUserId().equals(userId);
-            boolean bookingMatchesListing = listingId.equals(booking.getRoomListingId());
-            if (!ownsBooking || !bookingMatchesListing) {
-                throw new BusinessException(ErrorCode.E_1007, "You can only review bookings you have made");
-            }
+            verifyBookingPurchase(userId, listingId, bookingId);
+        }
+    }
+
+    // DEF-391 修復：原本只驗證歸屬，未驗證訂單狀態，剛建立（甚至未付款）的訂單也能被評價；
+    // 補齊到與前端 canReview（orders/[id]/page.tsx）一致的門檻：僅送達／完成可評價。
+    // 自 verifyPurchase 抽出為獨立方法，避免 NPath Complexity 超過 Checkstyle 上限（200）。
+    private void verifyOrderPurchase(final UUID userId, final UUID listingId, final UUID orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Order not found"));
+        boolean ownsOrder = order.getUserId().equals(userId);
+        boolean orderHasListing = order.getItems().stream()
+                .anyMatch(item -> listingId.equals(item.getListingId()));
+        if (!ownsOrder || !orderHasListing) {
+            throw new BusinessException(ErrorCode.E_1007, "You can only review items you have purchased");
+        }
+        if (order.getStatus() != Order.OrderStatus.DELIVERED && order.getStatus() != Order.OrderStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.E_1098);
+        }
+    }
+
+    // DEF-391 修復：比照上方訂單分支，與前端 canReview（bookings/[id]/page.tsx）一致：僅退房／完成可評價。
+    private void verifyBookingPurchase(final UUID userId, final UUID listingId, final UUID bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_3000, "Booking not found"));
+        boolean ownsBooking = booking.getUserId().equals(userId);
+        boolean bookingMatchesListing = listingId.equals(booking.getRoomListingId());
+        if (!ownsBooking || !bookingMatchesListing) {
+            throw new BusinessException(ErrorCode.E_1007, "You can only review bookings you have made");
+        }
+        if (booking.getStatus() != Booking.BookingStatus.CHECKED_OUT
+                && booking.getStatus() != Booking.BookingStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.E_1099);
         }
     }
 

@@ -224,8 +224,10 @@ test.describe('AT-BOOKING-PAYMENT-REAL: 訂房付款（真實後端）', () => {
 
     const again = await page.request.post(`${API_BASE}/v2/bookings/${bookingId}/pay`, { headers });
     expect(again.status(), '重複付款應被拒絕（422 E-5011），不可是 5xx').toBe(422);
+    // DEF-341（Sprint 279）把「Stripe 未啟用」的檢查改為 FeatureToggleService.checkFeatureEnabled（E-2004，403），
+    // 與其他 feature toggle 檢查一致；此斷言原寫 400 E-6002 是 DEF-341 之前的舊行為，此輪真的跑過一次完整 E2E 才發現落差。
     const stripe = await page.request.post(`${API_BASE}/v2/bookings/${bookingId}/pay/checkout`, { headers });
-    expect(stripe.status(), 'Stripe 未啟用時發起結帳應被拒絕（400 E-6002），不可是 5xx').toBe(400);
+    expect(stripe.status(), 'Stripe 未啟用時發起結帳應被拒絕（403 E-2004），不可是 5xx').toBe(403);
   });
 
   test('E2E-BPAYR-03: 房間加入購物車 → 結帳 → 預訂成功畫面帶付款卡片 → 付款', async ({ page }: { page: Page }) => {

@@ -218,7 +218,7 @@ public class GlobalExceptionHandler {
                     E_8000, E_8002, E_8003, E_8004, E_8005, E_8006, E_8008, E_8016, E_8100,
                     E_1087, E_1090, E_1092 -> HttpStatus.NOT_FOUND;
             case E_1007, E_2001, E_2002, E_2004, E_4031, E_7008, E_8007, E_8009, E_1009, E_1091,
-                    E_8011, E_1012 -> HttpStatus.FORBIDDEN;
+                    E_8011, E_1012, E_1098, E_1099 -> HttpStatus.FORBIDDEN;
             case E_2003 -> HttpStatus.CONFLICT;
             case E_3004, E_4001, E_4002, E_4003, E_4004, E_4005, E_4007, E_4104, E_5002, E_5004, E_5007,
                     E_5008, E_5009, E_5015, E_5017, E_5018, E_5019, E_5020, E_6001, E_6002, E_6003, E_6006,

@@ -130,10 +130,14 @@ class ReviewAuthorizationRealDbIntegrationTest {
     }
 
     private Order seedOrder(final User owner, final UUID listingId) {
+        return seedOrder(owner, listingId, Order.OrderStatus.COMPLETED);
+    }
+
+    private Order seedOrder(final User owner, final UUID listingId, final Order.OrderStatus status) {
         Listing listing = listingRepository.findById(listingId).orElseThrow();
         Order order = Order.builder()
                 .tenant(hostTenant).user(owner).orderType(Listing.ListingType.PRODUCT)
-                .status(Order.OrderStatus.COMPLETED).totalAmount(new BigDecimal("100.00")).currency("TWD")
+                .status(status).totalAmount(new BigDecimal("100.00")).currency("TWD")
                 .items(new ArrayList<>()).build();
         order.addItem(OrderItem.builder().listing(listing).quantity(1)
                 .unitPrice(new BigDecimal("100.00")).subtotal(new BigDecimal("100.00")).build());
@@ -141,11 +145,15 @@ class ReviewAuthorizationRealDbIntegrationTest {
     }
 
     private Booking seedBooking(final User guest, final UUID listingId) {
+        return seedBooking(guest, listingId, Booking.BookingStatus.COMPLETED);
+    }
+
+    private Booking seedBooking(final User guest, final UUID listingId, final Booking.BookingStatus status) {
         Listing listing = listingRepository.findById(listingId).orElseThrow();
         return bookingRepository.saveAndFlush(Booking.builder()
                 .tenant(hostTenant).user(guest).roomListing(listing)
                 .checkInDate(LocalDate.now().plusDays(10)).checkOutDate(LocalDate.now().plusDays(12))
-                .guestCount(2).status(Booking.BookingStatus.COMPLETED).totalAmount(new BigDecimal("3000.00"))
+                .guestCount(2).status(status).totalAmount(new BigDecimal("3000.00"))
                 .build());
     }
 
@@ -229,6 +237,70 @@ class ReviewAuthorizationRealDbIntegrationTest {
         assertThatThrownBy(() -> reviewService.createReview(reviewRequest(productListingId).build()))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_1007);
+    }
+
+    // ========== DEF-391: createReview 需訂單/訂房已達可評價狀態（Sprint 285，真實跨角色實測發現） ==========
+    // 修復前 verifyPurchase 只驗證歸屬、完全不檢查狀態，訂單剛建立（CREATED，尚未付款）就能被評價，
+    // 且與前端 orders/[id]/page.tsx 的 canReview（僅 DELIVERED／COMPLETED 顯示按鈕）不一致。
+
+    @Test
+    @DisplayName("createReview: 訂單仍為 CREATED（尚未付款）留評價拋出 E_1098（DEF-391）")
+    void createReview_orderCreatedNotPaid_throwsE1098() {
+        Order order = seedOrder(buyer, productListingId, Order.OrderStatus.CREATED);
+        TenantContext.setCurrentUser(buyer.getId());
+
+        assertThatThrownBy(() -> reviewService.createReview(
+                reviewRequest(productListingId).orderId(order.getId()).build()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1098);
+    }
+
+    @Test
+    @DisplayName("createReview: 訂單為 SHIPPING（已出貨未送達）留評價拋出 E_1098（DEF-391）")
+    void createReview_orderShipping_throwsE1098() {
+        Order order = seedOrder(buyer, productListingId, Order.OrderStatus.SHIPPING);
+        TenantContext.setCurrentUser(buyer.getId());
+
+        assertThatThrownBy(() -> reviewService.createReview(
+                reviewRequest(productListingId).orderId(order.getId()).build()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1098);
+    }
+
+    @Test
+    @DisplayName("createReview: 訂單為 DELIVERED（未到 COMPLETED）仍可留評價，與前端 canReview 一致")
+    void createReview_orderDelivered_succeeds() {
+        Order order = seedOrder(buyer, productListingId, Order.OrderStatus.DELIVERED);
+        TenantContext.setCurrentUser(buyer.getId());
+
+        ReviewDto.ReviewResponse response = reviewService.createReview(
+                reviewRequest(productListingId).orderId(order.getId()).build());
+
+        assertThat(response.getReviewId()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("createReview: 訂房仍為 CONFIRMED（尚未入住）留評價拋出 E_1099（DEF-391）")
+    void createReview_bookingConfirmedNotCheckedOut_throwsE1099() {
+        Booking booking = seedBooking(buyer, roomListingId, Booking.BookingStatus.CONFIRMED);
+        TenantContext.setCurrentUser(buyer.getId());
+
+        assertThatThrownBy(() -> reviewService.createReview(
+                reviewRequest(roomListingId).bookingId(booking.getId()).build()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.E_1099);
+    }
+
+    @Test
+    @DisplayName("createReview: 訂房為 CHECKED_OUT（未到 COMPLETED）仍可留評價，與前端 canReview 一致")
+    void createReview_bookingCheckedOut_succeeds() {
+        Booking booking = seedBooking(buyer, roomListingId, Booking.BookingStatus.CHECKED_OUT);
+        TenantContext.setCurrentUser(buyer.getId());
+
+        ReviewDto.ReviewResponse response = reviewService.createReview(
+                reviewRequest(roomListingId).bookingId(booking.getId()).build());
+
+        assertThat(response.getReviewId()).isNotNull();
     }
 
     // ========== DEF-331(a): BookingReviewService.createBookingReview 擁有權 ==========

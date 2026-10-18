@@ -143,6 +143,8 @@
 |------|:----:|--------|
 | `listingId` 對應的商品/房源不存在 | 404 | `E-3000` |
 | `orderId`／`bookingId` 不存在、不屬於本人，或與 `listingId` 不符 | 403 | `E-1007` |
+| `orderId` 對應訂單尚未達 `DELIVERED`／`COMPLETED`（Sprint 285，DEF-391：補齊與前端 `canReview` 一致的門檻，修復前完全不檢查狀態） | 403 | `E-1098` |
+| `bookingId` 對應訂房尚未達 `CHECKED_OUT`／`COMPLETED`（同上，DEF-391） | 403 | `E-1099` |
 | 同 `orderId`＋`listingId` 已評價過 | 409 | `E-1093`（訊息固定寫「您已評價過此商品」，即使 `reviewType=ROOM` 亦同，訊息未區分） |
 | 同 `bookingId`＋`listingId` 已評價過 | 409 | `E-1094` |
 | 圖片超過 9 張 | 400 | `E-1088` |
@@ -327,6 +329,8 @@ M08 專屬錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](../
 | `E-1093` | 409 | 已評價過此商品（同 `orderId`＋`listingId`；訊息固定，`ROOM` 類型亦同） |
 | `E-1094` | 409 | 已評價過此訂房（§4.1 的 `bookingId` 路徑或 §4.16） |
 | `E-1095` | 400 | 搜尋評分範圍無效（§4.7） |
+| `E-1098` | 403 | 訂單尚未送達/完成，暫不可評價（§4.1，Sprint 285 DEF-391） |
+| `E-1099` | 403 | 訂房尚未退房/完成，暫不可評價（§4.1，Sprint 285 DEF-391） |
 
 另使用以下跨模組共用錯誤碼：`E-1006`（找不到使用者）、`E-1007`（權限/擁有權不足）、`E-3000`（找不到商品/房源）。
 
@@ -345,6 +349,7 @@ M08 專屬錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](../
 | 評分範圍僅應用層驗證 | `rating` 1-5 只有 `@Min`／`@Max` DTO 驗證，資料庫欄位無 `CHECK` 約束，直接寫入資料庫（如未來的批量匯入）可能繞過此限制 |
 | PRD 的評論權重演算法與檢舉機制未實作 | PRD §6.2 列為 M08 範圍的「評論權重算法 (過濾水軍)」「檢舉機制」，程式碼中查無任何對應邏輯或端點（見 §8 與 FRD §6D.7） |
 | 本文件撰寫前自動化守門未覆蓋此模組 | `ApiRouteDocDriftTest` 的 `GUARDED` 清單先前只含 M03～M07，本文件完成後新增 `ReviewController`／`BookingReviewController`（DEF-372 範圍內的一環） |
+| **DEF-392（未修復）**：賣家回覆評價「有後端、零前端」 | §4.8（`POST /{reviewId}/replies`）後端運作正常，但 `frontend/src/components/reviews/ReviewList.tsx` 不渲染任何 reply 欄位，`dashboard/` 底下無任何評價管理頁面；回覆建立成功後不會出現在任何真實畫面（買家、賣家皆看不到）。範疇大於 §7 上方已修復的 DEF-373（那是「功能可被用到、授權邏輯不一致」，本項是「功能目前沒有任何人能透過產品介面用到」）。是否排入排程待使用者決定，見 [SPRINT_285_PLAN.md](../../04_planning/SPRINT_285_PLAN.md) §3.3 |
 
 ---
 
@@ -356,9 +361,9 @@ M08 專屬錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](../
 | FRD | §6D 評價與社交互動（BR-M08-01～10） |
 | 相關規格 | [API_Error_Codes.md](../API_Error_Codes.md) |
 | 實作 | `ReviewController`、`BookingReviewController`（`api/controller/`）；`ReviewService`、`ReviewReplyService`、`BookingReviewService`（`core/review/`）；`Review`、`ReviewReply`、`BookingReview`（`domain/model/review/`） |
-| 契約測試 | [ReviewServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewServiceTest.java)、[ReviewServiceSearchTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewServiceSearchTest.java)、[ReviewReplyServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewReplyServiceTest.java)、[BookingReviewServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/BookingReviewServiceTest.java)、[ReviewAuthorizationRealDbIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewAuthorizationRealDbIntegrationTest.java)、[ReviewSearchRealDbIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewSearchRealDbIntegrationTest.java)、[ReviewServiceCacheIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewServiceCacheIntegrationTest.java)、[M08ReviewIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewIntegrationTest.java)、[M08ReviewImageIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewImageIntegrationTest.java)、[M08ReviewHelpfulVotingIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewHelpfulVotingIntegrationTest.java)、[M08ReviewStatsIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewStatsIntegrationTest.java) |
+| 契約測試 | [ReviewServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewServiceTest.java)、[ReviewServiceSearchTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewServiceSearchTest.java)、[ReviewReplyServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewReplyServiceTest.java)、[BookingReviewServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/BookingReviewServiceTest.java)、[ReviewAuthorizationRealDbIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewAuthorizationRealDbIntegrationTest.java)、[ReviewSearchRealDbIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewSearchRealDbIntegrationTest.java)、[ReviewServiceCacheIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewServiceCacheIntegrationTest.java)、[ReviewRatingStatsRealRedisIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/review/ReviewRatingStatsRealRedisIntegrationTest.java)、[M08ReviewIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewIntegrationTest.java)、[M08ReviewImageIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewImageIntegrationTest.java)、[M08ReviewHelpfulVotingIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewHelpfulVotingIntegrationTest.java)、[M08ReviewStatsIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M08ReviewStatsIntegrationTest.java) |
 | 歷史文件（已知與本文件編號衝突，見 §7） | [TC_M08_Review.md](../../03_testing/TC_M08_Review.md)（Sprint 244 起已標記過期，保留原樣） |
 
 ---
 
-**文件狀態**：v1.1（Sprint 264：DEF-373／374 已修復；Sprint 263 新建，DEF-365，v1.0）。
+**文件狀態**：v1.2（Sprint 285：真實跨角色實測發現並修復 DEF-390／391，新登記未修復的 DEF-392；Sprint 264：DEF-373／374 已修復；Sprint 263 新建，DEF-365，v1.0）。

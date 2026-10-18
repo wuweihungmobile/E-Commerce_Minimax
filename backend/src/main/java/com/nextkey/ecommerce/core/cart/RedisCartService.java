@@ -197,6 +197,10 @@ public class RedisCartService {
 
     /**
      * 移除購物車項目
+     *
+     * <p>DEF-389：與 {@link #clearCart} 同根因——移除後若該項目所屬的店鋪已無任何剩餘項目，
+     * 一併清除該店鋪已套用的促銷碼標記（見 {@link #getPromoKey}），否則重新加入
+     * 同一家店鋪的商品後，舊折扣會「復活」。
      */
     public void removeItem(UUID userId, UUID tenantId, UUID listingId, UUID skuId) {
         String cartKey = getCartKey(userId, tenantId);
@@ -210,6 +214,13 @@ public class RedisCartService {
 
         redisTemplate.opsForHash().delete(cartKey, itemKey);
         log.info("Removed item from cart: userId={}, listingId={}", userId, listingId);
+
+        listingRepository.findById(listingId).ifPresent(listing -> {
+            UUID storeId = listing.getTenantId();
+            if (storeId != null && !resolveStoreIdsInCart(cartKey).contains(storeId)) {
+                redisTemplate.delete(getPromoKey(userId, tenantId, storeId));
+            }
+        });
     }
 
     /**
@@ -519,7 +530,10 @@ public class RedisCartService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    /** 清空購物車前，先找出目前有項目的店鋪，才能一併清除這些店鋪已套用的促銷碼標記（DEF-336）。 */
+    /**
+     * 找出購物車目前有項目的店鋪集合，供 {@link #clearCart}（DEF-336）與 {@link #removeItem}（DEF-389）
+     * 判斷某店鋪是否已無剩餘項目，才能一併清除該店鋪已套用的促銷碼標記。
+     */
     private Set<UUID> resolveStoreIdsInCart(String cartKey) {
         Map<Object, Object> entries = redisTemplate.opsForHash().entries(cartKey);
         if (entries.isEmpty()) {

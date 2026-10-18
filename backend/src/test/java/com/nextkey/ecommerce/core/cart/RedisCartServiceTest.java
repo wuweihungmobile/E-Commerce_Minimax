@@ -843,6 +843,86 @@ class RedisCartServiceTest {
 
             verify(redisTemplate, times(1)).delete(anyString());
         }
+
+        @Test
+        @DisplayName("DEF-389：移除該店鋪在購物車裡的最後一個項目後，該店鋪已套用的促銷碼要連動清除")
+        void removeItem_lastItemOfStore_removesThatStoresAppliedPromo() {
+            Map<Object, Object> entriesBeforeRemove = new HashMap<>();
+            entriesBeforeRemove.put(LISTING_A.toString(), productItem(LISTING_A, 1, 1000));
+            when(hashOperations.entries(anyString()))
+                    .thenReturn(entriesBeforeRemove, new HashMap<>());
+            when(listingRepository.findAllById(anySet()))
+                    .thenReturn(java.util.List.of(storeListing(LISTING_A, STORE_ID)));
+            when(hashOperations.get(anyString(), eq(LISTING_A.toString())))
+                    .thenReturn(productItem(LISTING_A, 1, 1000));
+            when(listingRepository.findById(LISTING_A)).thenReturn(Optional.of(storeListing(LISTING_A, STORE_ID)));
+            when(shippingTemplateService.calculateFeeForTenant(eq(STORE_ID), any())).thenReturn(BigDecimal.ZERO);
+            givenValidPromoInStore(STORE_ID, "SAVE100");
+            redisCartService.applyPromoCode(TEST_USER_ID, TEST_TENANT_ID, STORE_ID, "SAVE100");
+            assertThat(redisCartService.getAppliedPromoCode(TEST_USER_ID, TEST_TENANT_ID, STORE_ID)).isEqualTo("SAVE100");
+
+            redisCartService.removeItem(TEST_USER_ID, TEST_TENANT_ID, LISTING_A, null);
+
+            assertThat(redisCartService.getAppliedPromoCode(TEST_USER_ID, TEST_TENANT_ID, STORE_ID))
+                    .as("DEF-389：該店鋪已無任何剩餘項目，促銷碼標記不應殘留").isNull();
+        }
+
+        @Test
+        @DisplayName("DEF-389：店鋪還有其他項目時，移除其中一項不應清除該店鋪已套用的促銷碼")
+        void removeItem_storeStillHasOtherItems_keepsAppliedPromo() {
+            UUID listingA2 = UUID.fromString("550e8400-e29b-41d4-a716-4466554400b3");
+            Map<Object, Object> entriesBeforeRemove = new HashMap<>();
+            entriesBeforeRemove.put(LISTING_A.toString(), productItem(LISTING_A, 1, 1000));
+            entriesBeforeRemove.put(listingA2.toString(), productItem(listingA2, 1, 1000));
+            Map<Object, Object> entriesAfterRemove = new HashMap<>();
+            entriesAfterRemove.put(listingA2.toString(), productItem(listingA2, 1, 1000));
+            when(hashOperations.entries(anyString()))
+                    .thenReturn(entriesBeforeRemove, entriesAfterRemove);
+            when(listingRepository.findAllById(anySet())).thenReturn(
+                    java.util.List.of(storeListing(LISTING_A, STORE_ID), storeListing(listingA2, STORE_ID)),
+                    java.util.List.of(storeListing(listingA2, STORE_ID)));
+            when(hashOperations.get(anyString(), eq(LISTING_A.toString())))
+                    .thenReturn(productItem(LISTING_A, 1, 1000));
+            when(listingRepository.findById(LISTING_A)).thenReturn(Optional.of(storeListing(LISTING_A, STORE_ID)));
+            when(shippingTemplateService.calculateFeeForTenant(eq(STORE_ID), any())).thenReturn(BigDecimal.ZERO);
+            givenValidPromoInStore(STORE_ID, "SAVE100");
+            redisCartService.applyPromoCode(TEST_USER_ID, TEST_TENANT_ID, STORE_ID, "SAVE100");
+
+            redisCartService.removeItem(TEST_USER_ID, TEST_TENANT_ID, LISTING_A, null);
+
+            assertThat(redisCartService.getAppliedPromoCode(TEST_USER_ID, TEST_TENANT_ID, STORE_ID))
+                    .as("DEF-389：店鋪仍有剩餘項目，促銷碼標記應保留").isEqualTo("SAVE100");
+        }
+
+        @Test
+        @DisplayName("DEF-389：購物車橫跨兩家店鋪時，移除一家店鋪的最後項目只清該店鋪的促銷碼，不影響另一家")
+        void removeItem_withTwoStores_onlyRemovesThatStoresPromo_leavesOtherStoreUntouched() {
+            Map<Object, Object> entriesBeforeRemove = new HashMap<>();
+            entriesBeforeRemove.put(LISTING_A.toString(), productItem(LISTING_A, 1, 1000));
+            entriesBeforeRemove.put(LISTING_B.toString(), productItem(LISTING_B, 2, 500));
+            Map<Object, Object> entriesAfterRemove = new HashMap<>();
+            entriesAfterRemove.put(LISTING_B.toString(), productItem(LISTING_B, 2, 500));
+            when(hashOperations.entries(anyString()))
+                    .thenReturn(entriesBeforeRemove, entriesAfterRemove);
+            when(listingRepository.findAllById(anySet())).thenReturn(
+                    java.util.List.of(storeListing(LISTING_A, STORE_ID), storeListing(LISTING_B, OTHER_STORE_ID)),
+                    java.util.List.of(storeListing(LISTING_B, OTHER_STORE_ID)));
+            when(hashOperations.get(anyString(), eq(LISTING_A.toString())))
+                    .thenReturn(productItem(LISTING_A, 1, 1000));
+            when(listingRepository.findById(LISTING_A)).thenReturn(Optional.of(storeListing(LISTING_A, STORE_ID)));
+            when(shippingTemplateService.calculateFeeForTenant(any(), any())).thenReturn(BigDecimal.ZERO);
+            givenValidPromoInStore(STORE_ID, "SAVE100");
+            givenValidPromoInStore(OTHER_STORE_ID, "FREESHIP");
+            redisCartService.applyPromoCode(TEST_USER_ID, TEST_TENANT_ID, STORE_ID, "SAVE100");
+            redisCartService.applyPromoCode(TEST_USER_ID, TEST_TENANT_ID, OTHER_STORE_ID, "FREESHIP");
+
+            redisCartService.removeItem(TEST_USER_ID, TEST_TENANT_ID, LISTING_A, null);
+
+            assertThat(redisCartService.getAppliedPromoCode(TEST_USER_ID, TEST_TENANT_ID, STORE_ID))
+                    .as("DEF-389：已無項目的店鋪，促銷碼要清除").isNull();
+            assertThat(redisCartService.getAppliedPromoCode(TEST_USER_ID, TEST_TENANT_ID, OTHER_STORE_ID))
+                    .as("另一家店鋪仍有項目，促銷碼不受影響").isEqualTo("FREESHIP");
+        }
     }
 
     // ── getCartItemCount Tests ─────────────────────────────────────────

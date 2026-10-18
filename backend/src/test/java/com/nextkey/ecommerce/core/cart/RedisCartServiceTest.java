@@ -585,6 +585,10 @@ class RedisCartServiceTest {
                 return null;
             }).when(valueOperations).set(anyString(), any(), any(java.time.Duration.class));
             lenient().when(valueOperations.get(anyString())).thenAnswer(inv -> valueStore.get((String) inv.getArgument(0)));
+            // DEF-336 測試用：clearCart/removePromoCode 都透過 redisTemplate.delete(String) 而非 valueOperations，
+            // 讓它也連動移除 valueStore，才能用 getAppliedPromoCode() 驗證標記真的消失，而不只是檢查呼叫次數。
+            lenient().doAnswer(inv -> valueStore.remove((String) inv.getArgument(0)) != null)
+                    .when(redisTemplate).delete(anyString());
         }
 
         /** 購物車：店鋪 A 的商品 1 件 1000、店鋪 B 的商品 2 件各 500（小計 1000）。 */
@@ -797,6 +801,47 @@ class RedisCartServiceTest {
             ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
             verify(redisTemplate).delete(key.capture());
             assertThat(key.getValue()).contains(STORE_ID.toString()).doesNotContain(OTHER_STORE_ID.toString());
+        }
+
+        @Test
+        @DisplayName("DEF-336：清空購物車後，該店鋪原本已套用的促銷碼不能在重新加入商品後復活")
+        void clearCart_removesAppliedPromo_soItDoesNotReviveAfterReaddingItems() {
+            givenSingleStoreCart();
+            when(shippingTemplateService.calculateFeeForTenant(eq(STORE_ID), any())).thenReturn(BigDecimal.ZERO);
+            givenValidPromoInStore(STORE_ID, "SAVE100");
+            redisCartService.applyPromoCode(TEST_USER_ID, TEST_TENANT_ID, STORE_ID, "SAVE100");
+            assertThat(redisCartService.getAppliedPromoCode(TEST_USER_ID, TEST_TENANT_ID, STORE_ID)).isEqualTo("SAVE100");
+
+            redisCartService.clearCart(TEST_USER_ID, TEST_TENANT_ID);
+
+            assertThat(redisCartService.getAppliedPromoCode(TEST_USER_ID, TEST_TENANT_ID, STORE_ID))
+                    .as("DEF-336：clearCart 後不應殘留促銷碼標記").isNull();
+        }
+
+        @Test
+        @DisplayName("DEF-336：購物車橫跨兩家店鋪且都套用促銷碼時，清空要兩家都清除")
+        void clearCart_withTwoStores_removesBothStoresAppliedPromo() {
+            givenTwoStoreCart();
+            when(shippingTemplateService.calculateFeeForTenant(any(), any())).thenReturn(BigDecimal.ZERO);
+            givenValidPromoInStore(STORE_ID, "SAVE100");
+            givenValidPromoInStore(OTHER_STORE_ID, "FREESHIP");
+            redisCartService.applyPromoCode(TEST_USER_ID, TEST_TENANT_ID, STORE_ID, "SAVE100");
+            redisCartService.applyPromoCode(TEST_USER_ID, TEST_TENANT_ID, OTHER_STORE_ID, "FREESHIP");
+
+            redisCartService.clearCart(TEST_USER_ID, TEST_TENANT_ID);
+
+            assertThat(redisCartService.getAppliedPromoCode(TEST_USER_ID, TEST_TENANT_ID, STORE_ID)).isNull();
+            assertThat(redisCartService.getAppliedPromoCode(TEST_USER_ID, TEST_TENANT_ID, OTHER_STORE_ID)).isNull();
+        }
+
+        @Test
+        @DisplayName("DEF-336：空購物車清空時只刪購物車本身，沒有店鋪可找，不會多刪東西")
+        void clearCart_emptyCart_onlyDeletesCartKeyItself() {
+            when(hashOperations.entries(anyString())).thenReturn(new HashMap<>());
+
+            redisCartService.clearCart(TEST_USER_ID, TEST_TENANT_ID);
+
+            verify(redisTemplate, times(1)).delete(anyString());
         }
     }
 

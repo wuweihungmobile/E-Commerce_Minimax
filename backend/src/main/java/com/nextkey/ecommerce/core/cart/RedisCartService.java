@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -228,10 +229,15 @@ public class RedisCartService {
 
     /**
      * 清除用戶購物車
+     *
+     * <p>DEF-336：購物車可能橫跨多家店鋪，各自有獨立的促銷碼標記（見 {@link #getPromoKey}）；
+     * 清空購物車時一併刪除這些標記，否則重新加入同一家店鋪的商品後，舊折扣會「復活」。
      */
     public void clearCart(UUID userId, UUID tenantId) {
         String cartKey = getCartKey(userId, tenantId);
+        Set<UUID> storeIds = resolveStoreIdsInCart(cartKey);
         redisTemplate.delete(cartKey);
+        storeIds.forEach(storeId -> redisTemplate.delete(getPromoKey(userId, tenantId, storeId)));
         log.info("Cleared cart: userId={}", userId);
     }
 
@@ -511,6 +517,21 @@ public class RedisCartService {
         return items.stream()
                 .map(CartDto.CartItemResponse::getSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** 清空購物車前，先找出目前有項目的店鋪，才能一併清除這些店鋪已套用的促銷碼標記（DEF-336）。 */
+    private Set<UUID> resolveStoreIdsInCart(String cartKey) {
+        Map<Object, Object> entries = redisTemplate.opsForHash().entries(cartKey);
+        if (entries.isEmpty()) {
+            return Collections.emptySet();
+        }
+        Set<UUID> listingIds = entries.values().stream()
+                .map(item -> (CartItemData) item)
+                .map(CartItemData::getListingId)
+                .collect(Collectors.toSet());
+        Set<UUID> storeIds = new HashSet<>();
+        listingRepository.findAllById(listingIds).forEach(listing -> storeIds.add(listing.getTenantId()));
+        return storeIds;
     }
 
     /** 查出這些房源所屬的店鋪（購物車顯示名稱與是否營業用）；查不到的店鋪不在結果裡。 */

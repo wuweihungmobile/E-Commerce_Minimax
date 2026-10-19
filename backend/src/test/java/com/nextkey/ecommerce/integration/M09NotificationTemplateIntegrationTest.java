@@ -184,6 +184,41 @@ class M09NotificationTemplateIntegrationTest {
         return objectMapper.readTree(response).path("data").path("accessToken").asText();
     }
 
+    /**
+     * Sprint 286（DEF-330a）：註冊後維持預設 BUYER 角色（不像 {@link #createTestUserAndGetToken}
+     * 那樣提升為 STORE_OWNER），用來驗證 BUYER 是否能越權呼叫店主專屬的通知模板端點。
+     */
+    private String createBuyerTokenAndGetToken(String email) throws Exception {
+        String registerJson = String.format("""
+            {
+                "email": "%s",
+                "password": "%s",
+                "fullName": "Notification Buyer User"
+            }
+            """, email, TEST_PASSWORD);
+
+        mockMvc.perform(post("/v2/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registerJson))
+                .andExpect(status().isCreated());
+
+        String loginJson = String.format("""
+            {
+                "email": "%s",
+                "password": "%s"
+            }
+            """, email, TEST_PASSWORD);
+
+        var loginResult = mockMvc.perform(post("/v2/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String response = loginResult.getResponse().getContentAsString();
+        return objectMapper.readTree(response).path("data").path("accessToken").asText();
+    }
+
     @Test
     @Order(1)
     @DisplayName("IT-M09-001: 取得模板列表（分頁）")
@@ -437,5 +472,50 @@ class M09NotificationTemplateIntegrationTest {
                 // 歸類為 403 FORBIDDEN。
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("E-8011"));
+    }
+
+    @Test
+    @Order(13)
+    @DisplayName("IT-M09-013: Sprint 286（DEF-330a）BUYER 無法取得通知模板列表（原為 isAuthenticated() 任何登入者皆可呼叫）")
+    void testGetTemplates_buyerForbidden() throws Exception {
+        String buyerToken = createBuyerTokenAndGetToken(
+                "notification-buyer-list-" + System.currentTimeMillis() + "@example.com");
+
+        mockMvc.perform(get(TEMPLATES_URL)
+                        .header("Authorization", "Bearer " + buyerToken)
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @Order(14)
+    @DisplayName("IT-M09-014: Sprint 286（DEF-330a）BUYER 無法取得通知模板詳情，即使模板是 tenantId=null 的全域範本"
+            + "（NotificationTemplateService.getTemplate 的租戶比對對 null tenantId 會放行，必須靠權限註解擋）")
+    void testGetTemplateDetail_buyerForbidden() throws Exception {
+        // 刻意用 tenantId=null（全域範本）而非 testTemplate（屬 testTenantId）：後者無論如何都會被
+        // getTemplate 既有的「template.getTenantId() != null && !equals(tenantId)」擋下（跨租戶比對
+        // 不相等），就算把本次修復的 @PreAuthorize 還原成 isAuthenticated() 也會通過，驗證不到這個修復；
+        // 全域範本的 tenantId 為 null，該比對整個短路放行，唯一擋買家的就是本次新加的權限註解。
+        NotificationTemplate globalTemplate = NotificationTemplate.builder()
+                .tenantId(null)
+                .templateCode("GLOBAL_" + System.currentTimeMillis())
+                .notificationType(NotificationTemplate.NotificationType.ORDER_CONFIRMED)
+                .channel(NotificationTemplate.NotificationChannel.IN_APP)
+                .name("Global Template")
+                .subject("Global Subject")
+                .contentTemplate("Global content")
+                .isActive(true)
+                .priority(0)
+                .createdBy(testUserId)
+                .build();
+        globalTemplate = notificationTemplateRepository.save(globalTemplate);
+
+        String buyerToken = createBuyerTokenAndGetToken(
+                "notification-buyer-detail-" + System.currentTimeMillis() + "@example.com");
+
+        mockMvc.perform(get(TEMPLATES_URL + "/" + globalTemplate.getId())
+                        .header("Authorization", "Bearer " + buyerToken))
+                .andExpect(status().isForbidden());
     }
 }

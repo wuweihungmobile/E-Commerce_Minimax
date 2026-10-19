@@ -31,7 +31,7 @@ public class NotificationTemplateController {
      * 取得模板列表
      */
     @GetMapping("/notification-templates")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAuthority('notification_template:read')")
     public ResponseEntity<ApiResponse<NotificationTemplateDto.ListResponse>> getTemplates(
             @RequestParam(required = false) String notificationType,
             @RequestParam(required = false) String channel,
@@ -57,7 +57,7 @@ public class NotificationTemplateController {
      * 取得模板詳情
      */
     @GetMapping("/notification-templates/{id}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAuthority('notification_template:read')")
     public ResponseEntity<ApiResponse<NotificationTemplateDto.Response>> getTemplate(
             @PathVariable UUID id) {
         UUID tenantId = TenantContext.getCurrentTenant();

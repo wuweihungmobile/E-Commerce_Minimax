@@ -77,14 +77,66 @@ async function submitLogin(page: Page, email: string, password: string): Promise
       settled(page.getByTestId('login-error').waitFor({ state: 'visible', timeout: LOGIN_RESULT_TIMEOUT_MS })),
     ]);
 
-    // 只有「被限流」才重試；帳號不存在、密碼錯誤等其他失敗維持原行為（交給呼叫端判斷）
+    // 只有「被限流」才重試；帳號不存在、密碼錯誤等其他失敗維持原行為——回到仍在登入頁的狀態，
+    // 交給呼叫端依 onLoginPage(page) 判斷（registerAndLogin 的「先試登入、失敗就改註冊」正是靠這個）。
     const rateLimited =
       onLoginPage(page) &&
       (await page
         .getByTestId('login-error')
         .innerText({ timeout: 1_000 })
         .then((text) => text.includes(RATE_LIMIT_ERROR_TEXT), () => false));
-    if (!rateLimited || attempt >= RATE_LIMIT_MAX_RETRIES) return;
+    if (!rateLimited) return;
+    if (attempt >= RATE_LIMIT_MAX_RETRIES) {
+      // Sprint 286：被限流且重試次數已用盡——這對任何呼叫端都不是「可接受的分支」（不像「帳號
+      // 不存在」可能是刻意要測的情境），一律視為基礎設施問題大聲失敗，而非悄悄讓呼叫端在毫無
+      // token 的狀態下繼續往下執行，直到不相關的下游症狀（元素找不到／401）才被迫倒查回這裡。
+      throw new Error(
+        `submitLogin: 持續被速率限制擋下，已重試 ${RATE_LIMIT_MAX_RETRIES} 次仍失敗（email=${email}）`
+      );
+    }
+    await page.waitForTimeout(RATE_LIMIT_RETRY_WAIT_MS);
+  }
+}
+
+/**
+ * 送出註冊表單並等待導回登入頁；遇到 Sprint 183（DEF-250）的註冊端點 IP 限流（與登入端點
+ * 共用同一套 Lua token bucket 機制，但以路徑+IP 獨立計量）時重試，比照 {@link submitLogin}。
+ *
+ * Sprint 286：這裡先前完全沒有重試機制——被限流時 `page.waitForURL('**\/login**')` 逾時，
+ * 由呼叫端的 `.catch(() => {})` 吞掉並靜默留在 `/register`，導致 {@link registerAndLogin}
+ * 誤判「仍在 /login」為 false 而整個跳過 {@link submitLogin}，最終回傳一個從未真正登入過的
+ * 「假成功」。這是全量 `make validate-release` 跑 174 個 spec 時，`at-account-data-rights.spec.ts`
+ * 兩個測試必然失敗（登出畫面＋「Authentication required」）的根因：註冊頁沒有 `data-testid`
+ * 標記錯誤訊息，改以文字比對偵測限流。
+ */
+async function submitRegister(
+  page: Page,
+  fullName: string,
+  email: string,
+  password: string
+): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    await page.goto('/register');
+    await page.waitForLoadState('domcontentloaded');
+    await page.fill('input[name="fullName"]', fullName);
+    await page.fill('input[name="email"]', email);
+    await page.fill('input[name="password"]', password);
+    await page.fill('input[name="confirmPassword"]', password);
+    await page.click(LOGIN_SUBMIT);
+    // 註冊成功通常導回 /login?registered=true
+    await page.waitForURL('**/login**', { timeout: 6_000 }).catch(() => {});
+
+    if (onLoginPage(page)) return; // 成功導回登入頁
+
+    const rateLimited = await page
+      .getByText(RATE_LIMIT_ERROR_TEXT)
+      .isVisible()
+      .catch(() => false);
+    if (!rateLimited || attempt >= RATE_LIMIT_MAX_RETRIES) {
+      throw new Error(
+        `submitRegister: 註冊失敗，仍停在 ${page.url()}（email=${email}, attempt=${attempt}, rateLimited=${rateLimited}）`
+      );
+    }
     await page.waitForTimeout(RATE_LIMIT_RETRY_WAIT_MS);
   }
 }
@@ -107,21 +159,12 @@ export async function registerAndLogin(
   }
 
   // 仍在登入頁 → 帳號不存在 → 自動註冊後再登入
+  // 直接前往 /register（不點連結）：S37 共用 StorefrontHeader 於 /login 也有一個「註冊」
+  // 連結（<a href="/register">註冊</a>），與登入表單的註冊連結文字碰撞，.first() 恆選到
+  // header 連結，而其於失敗登入後 re-render 時不穩定 → click 間歇逾時（at-buyer-pages flaky
+  // 根因）。與 helper 頂端記載的 S37「submit 與 Header 搜尋鈕碰撞」同類，改直接 goto 消除歧義。
   if (onLoginPage(page)) {
-    // 直接前往 /register（不點連結）：S37 共用 StorefrontHeader 於 /login 也有一個「註冊」
-    // 連結（<a href="/register">註冊</a>），與登入表單的註冊連結文字碰撞，.first() 恆選到
-    // header 連結，而其於失敗登入後 re-render 時不穩定 → click 間歇逾時（at-buyer-pages flaky
-    // 根因）。與 helper 頂端記載的 S37「submit 與 Header 搜尋鈕碰撞」同類，改直接 goto 消除歧義。
-    await page.goto('/register');
-    await page.waitForLoadState('domcontentloaded');
-
-    await page.fill('input[name="fullName"]', 'E2E Test User');
-    await page.fill('input[name="email"]', email);
-    await page.fill('input[name="password"]', password);
-    await page.fill('input[name="confirmPassword"]', password);
-    await page.click(LOGIN_SUBMIT);
-    // 註冊成功通常導回 /login?registered=true
-    await page.waitForURL('**/login**', { timeout: 6000 }).catch(() => {});
+    await submitRegister(page, 'E2E Test User', email, password);
 
     if (onLoginPage(page)) {
       await submitLogin(page, email, password);
@@ -129,6 +172,11 @@ export async function registerAndLogin(
   }
 
   const userId = await readUserId(page);
+  if (!userId) {
+    // Sprint 286：最後一道防呆——即使前面每一步都「沒拋例外」，也要確認真的登入成功了，
+    // 不讓呼叫端在毫無 token 的瀏覽器狀態下繼續執行，等下游症狀出現才被迫倒查回這裡。
+    throw new Error(`registerAndLogin: 流程走完但讀不到 userId，尚未真正登入（email=${email}）`);
+  }
   return { email, password, userId };
 }
 

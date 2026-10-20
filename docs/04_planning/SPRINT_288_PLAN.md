@@ -134,6 +134,7 @@ response.getWriter().write(...);
 - **後端 `mvn -o clean verify`**（2026-10-20；驗證開始後後端程式碼未再變動，期間只動 `docs/` 與暫存檔）：`BUILD SUCCESS`，耗時 18:13；單元測試 **2293**（0 failed／0 errors／0 skipped；較 Sprint 287 基準 2290 增加 3＝三個新測試），整合測試 **873**（0／0／0，與基準相同），Checkstyle main／test 皆 0 違規，PMD `check` 通過。生命週期從 `clean` 起跑，javac 從零重編，不依賴 IDE 預編譯的 class（§2.3 的單元測試是 IDE 先編的，這一次才是 Maven 自己的編譯）。
 - **前端**：本輪沒有改動任何前端原始碼，故未另跑 `tsc`／`eslint`／`npm audit`；`make validate-e2e` 內含的 `npm ci && npm run build`（Next.js 16.4.2）成功。
 - **`make validate-e2e`**（2026-10-20；重新 `mvn package` ＋ `npm ci && npm run build`，不是重用既有產物）：**175 passed／4 skipped／0 failed**（6.2 分，與 Sprint 287 基準相同的 179 個案例）；backend 以 `ddl-auto=validate` 對 Flyway 乾淨 DB 啟動成功（schema 無漂移）。**如實揭露**：只跑了一次完整守門，一次就綠。Sprint 287 的守門曾連敗三次，這次沒有失敗**不代表**限流造成的間歇失敗已消失——限流重試現在對真實 429 有效（§2.6），但本輪沒有量化「套件對登入密度的容忍度改善多少」，也沒有重複執行來估計剩餘的間歇失敗機率。本輪沒有新增任何 E2E 規格（探針是一次性的）。
+- **push 與雲端 CI**（2026-10-21，補記）：`4da22d39` 推上 `main`（`a5abf913..4da22d39`）；pre-push 輕量守門（act Backend Unit ＋ Frontend Lint & Build ＋ schema 漂移守門）全過；雲端 CI run 39457350591 三個 job 皆 success（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build），以 `gh run view --json status,conclusion,jobs,headSha` 結構化查詢交叉確認 `headSha` 與本機 commit 一致。
 
 ## 4. 文件更新
 

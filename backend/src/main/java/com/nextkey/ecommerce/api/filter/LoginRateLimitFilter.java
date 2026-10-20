@@ -1,6 +1,7 @@
 package com.nextkey.ecommerce.api.filter;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Set;
 
@@ -173,6 +174,8 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
             response.setHeader("Retry-After", String.valueOf(retryAfterSeconds));
             response.setStatus(HTTP_TOO_MANY_REQUESTS);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            // DEF-396：須在 getWriter() 之前宣告編碼；容器預設 ISO-8859-1，否則中文訊息會被不可逆地寫成 '?'
+            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
             response.getWriter().write(objectMapper.writeValueAsString(
                     ApiResponse.error(ErrorCode.E_9904.getCode(), ErrorCode.E_9904.getMessage())));
             log.warn("[LoginRateLimitFilter] IP {} exceeded rate limit on {}, retry after {}s",

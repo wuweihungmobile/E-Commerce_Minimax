@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
@@ -126,6 +127,28 @@ class RateLimitFilterTest {
         assertThat(response.getStatus()).isEqualTo(429);
         assertThat(response.getHeader("Retry-After")).isEqualTo("1");
         assertThat(response.getContentAsString()).contains("E-9904");
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-396：429 回應必須以 UTF-8 宣告並寫出，中文訊息不可被寫成問號"
+            + "（Servlet 容器預設 ISO-8859-1，沒宣告編碼就 getWriter() 會把非 Latin-1 字元不可逆地替換成 ?）")
+    void deniedRequest_writesChineseMessageAsUtf8() throws Exception {
+        RateLimitFilter filter = newFilter();
+        TenantContext.setCurrentTenant(UUID.randomUUID());
+        when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any(), any(), any()))
+                .thenReturn("0:0:600");
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/v2/orders");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, (req, res) -> { });
+
+        assertThat(response.getContentType())
+                .as("回應必須宣告 UTF-8，用戶端才會用同一套編碼解碼")
+                .containsIgnoringCase("charset=UTF-8");
+        // 刻意不用 getContentAsString()：它依回應自己宣告的編碼解碼，「寫入與解碼用同一個錯誤編碼」的缺陷也會通過
+        assertThat(new String(response.getContentAsByteArray(), StandardCharsets.UTF_8))
+                .contains("已超過速率限制");
     }
 
     @Test

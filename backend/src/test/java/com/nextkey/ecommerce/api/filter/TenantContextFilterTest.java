@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.api.filter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import jakarta.servlet.FilterChain;
@@ -266,5 +267,25 @@ class TenantContextFilterTest {
                 .isFalse();
         assertThat(response.getStatus()).isEqualTo(400);
         assertThat(response.getContentAsString()).contains("E-9000");
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-396：非法 X-Tenant-ID 的 400 回應必須以 UTF-8 宣告並寫出，中文訊息不可被寫成問號"
+            + "（Servlet 容器預設 ISO-8859-1，沒宣告編碼就 getWriter() 會把非 Latin-1 字元不可逆地替換成 ?）")
+    void superAdminInvalidTenantHeaderFormat_writesChineseMessageAsUtf8() throws Exception {
+        authenticateAs(UUID.randomUUID(), null, "SUPER_ADMIN");
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/v2/orders");
+        request.addHeader(TENANT_HEADER, "not-a-real-uuid");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, noopChain);
+
+        assertThat(response.getContentType())
+                .as("回應必須宣告 UTF-8，用戶端才會用同一套編碼解碼")
+                .containsIgnoringCase("charset=UTF-8");
+        // 刻意不用 getContentAsString()：它依回應自己宣告的編碼解碼，「寫入與解碼用同一個錯誤編碼」的缺陷也會通過
+        assertThat(new String(response.getContentAsByteArray(), StandardCharsets.UTF_8))
+                .contains("X-Tenant-ID 格式錯誤");
     }
 }

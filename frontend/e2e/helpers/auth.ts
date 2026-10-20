@@ -48,21 +48,55 @@ async function readUserId(page: Page): Promise<string> {
 const LOGIN_RESULT_TIMEOUT_MS = 20_000;
 
 /**
- * 登入端點有 IP 限流（`LoginRateLimitFilter`：每個來源 IP、每個路徑 30 次／分，Sprint 168），錯誤文字是「已超過速率限制」
- * （E-9904）。E2E 套件所有請求都來自同一個 IP，跑得越快、登入越密集，越容易撞到——Sprint 234 實測：套件 3.6 分鐘跑完時
+ * 登入端點有 IP 限流（`LoginRateLimitFilter`：每個來源 IP、每個路徑 30 次／分，Sprint 168），被擋下時回 HTTP 429
+ * （錯誤碼 E-9904）。E2E 套件所有請求都來自同一個 IP，跑得越快、登入越密集，越容易撞到——Sprint 234 實測：套件 3.6 分鐘跑完時
  * 約每分鐘 38 次登入，超過每分鐘 30 次的補充速率，數個案例的登入被擋、拿不到 token。
- * 被限流時登入頁會顯示該錯誤；token bucket 每 2 秒補一個，所以等一下重試即可，不需要放寬正式環境的限流。
+ * token bucket 每 2 秒補一個，所以等一下重試即可，不需要放寬正式環境的限流。
+ *
+ * Sprint 289：偵測限流改看 HTTP 狀態碼 429，不再比對畫面上的訊息文字。文字比對曾經失靈：限流訊息被編碼成整串
+ * `???????`（DEF-396），比對不到「速率限制」，重試從 Sprint 234 起悄悄對真實 429 不生效，到 Sprint 288 才被量到；
+ * 狀態碼不受訊息改寫或編碼損毀影響。
  */
-const RATE_LIMIT_ERROR_TEXT = '速率限制';
+const LOGIN_API_PATH = '/v2/auth/login'; // 對齊 frontend/src/lib/api.ts 的 API_ENDPOINTS.login
+const REGISTER_API_PATH = '/v2/auth/register'; // 同上，API_ENDPOINTS.register
+const HTTP_TOO_MANY_REQUESTS = 429;
 const RATE_LIMIT_RETRY_WAIT_MS = 2_500;
 const RATE_LIMIT_MAX_RETRIES = 8;
+/** 註冊送出後等「導回登入頁」的上限，也是等註冊回應狀態碼的上限。 */
+const REGISTER_RESULT_TIMEOUT_MS = 6_000;
+
+/**
+ * 掛上「某認證端點的 POST 回應」監聽，回傳該回應的 HTTP 狀態碼；逾時或頁面關閉得到 undefined，
+ * 這個 Promise 永遠不會 reject。**必須在點擊之前呼叫**——順序反過來，快速的回應可能先到而漏接。
+ * 限定 POST 是明確指向「送出表單的那一個請求」。Sprint 289 實測 Chromium 下 Playwright 對這個網址只看得到 POST
+ * （跨來源的 OPTIONS 預檢不會出現在 request／response 事件），所以這個限定目前是防禦性的。
+ */
+function watchAuthPostStatus(
+  page: Page,
+  apiPath: string,
+  timeoutMs: number
+): Promise<number | undefined> {
+  return page
+    .waitForResponse(
+      (res) => res.request().method() === 'POST' && res.url().includes(apiPath),
+      { timeout: timeoutMs }
+    )
+    .then(
+      (res) => res.status(),
+      () => undefined
+    );
+}
 
 async function submitLogin(page: Page, email: string, password: string): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     await page.fill('input[name="email"]', email);
     await page.fill('input[name="password"]', password);
+    const loginStatus = watchAuthPostStatus(page, LOGIN_API_PATH, LOGIN_RESULT_TIMEOUT_MS);
     await page.click(LOGIN_SUBMIT);
-    // 等到「有結果」才返回，而不是固定等一段時間：
+    // 先等這一次送出的回應：分辨限流只看它的狀態碼；也確保下面等到的畫面結果屬於這一次送出，
+    // 而不是上一輪失敗遺留在畫面上的錯誤區塊。
+    const status = await loginStatus;
+    // 再等到「有結果」才返回，而不是固定等一段時間：
     //  - 成功：離開 /login（token 在導向前就已存入 localStorage）
     //  - 失敗（例如帳號不存在）：登入頁顯示錯誤訊息；後端立即回應，所以註冊流程的第一次嘗試不會白等
     // 兩者都沒出現（極端情況）才在上限後放行，由呼叫端依 URL 判斷。
@@ -79,12 +113,7 @@ async function submitLogin(page: Page, email: string, password: string): Promise
 
     // 只有「被限流」才重試；帳號不存在、密碼錯誤等其他失敗維持原行為——回到仍在登入頁的狀態，
     // 交給呼叫端依 onLoginPage(page) 判斷（registerAndLogin 的「先試登入、失敗就改註冊」正是靠這個）。
-    const rateLimited =
-      onLoginPage(page) &&
-      (await page
-        .getByTestId('login-error')
-        .innerText({ timeout: 1_000 })
-        .then((text) => text.includes(RATE_LIMIT_ERROR_TEXT), () => false));
+    const rateLimited = status === HTTP_TOO_MANY_REQUESTS;
     if (!rateLimited) return;
     if (attempt >= RATE_LIMIT_MAX_RETRIES) {
       // Sprint 286：被限流且重試次數已用盡——這對任何呼叫端都不是「可接受的分支」（不像「帳號
@@ -107,7 +136,7 @@ async function submitLogin(page: Page, email: string, password: string): Promise
  * 誤判「仍在 /login」為 false 而整個跳過 {@link submitLogin}，最終回傳一個從未真正登入過的
  * 「假成功」。這是全量 `make validate-release` 跑 174 個 spec 時，`at-account-data-rights.spec.ts`
  * 兩個測試必然失敗（登出畫面＋「Authentication required」）的根因：註冊頁沒有 `data-testid`
- * 標記錯誤訊息，改以文字比對偵測限流。
+ * 標記錯誤訊息，當時改以文字比對偵測限流。Sprint 289 起改看註冊回應的 HTTP 狀態碼（見上方常數區塊的說明）。
  */
 async function submitRegister(
   page: Page,
@@ -122,19 +151,18 @@ async function submitRegister(
     await page.fill('input[name="email"]', email);
     await page.fill('input[name="password"]', password);
     await page.fill('input[name="confirmPassword"]', password);
+    const registerStatus = watchAuthPostStatus(page, REGISTER_API_PATH, REGISTER_RESULT_TIMEOUT_MS);
     await page.click(LOGIN_SUBMIT);
     // 註冊成功通常導回 /login?registered=true
-    await page.waitForURL('**/login**', { timeout: 6_000 }).catch(() => {});
+    await page.waitForURL('**/login**', { timeout: REGISTER_RESULT_TIMEOUT_MS }).catch(() => {});
 
     if (onLoginPage(page)) return; // 成功導回登入頁
 
-    const rateLimited = await page
-      .getByText(RATE_LIMIT_ERROR_TEXT)
-      .isVisible()
-      .catch(() => false);
+    const status = await registerStatus;
+    const rateLimited = status === HTTP_TOO_MANY_REQUESTS;
     if (!rateLimited || attempt >= RATE_LIMIT_MAX_RETRIES) {
       throw new Error(
-        `submitRegister: 註冊失敗，仍停在 ${page.url()}（email=${email}, attempt=${attempt}, rateLimited=${rateLimited}）`
+        `submitRegister: 註冊失敗，仍停在 ${page.url()}（email=${email}, attempt=${attempt}, status=${status}, rateLimited=${rateLimited}）`
       );
     }
     await page.waitForTimeout(RATE_LIMIT_RETRY_WAIT_MS);

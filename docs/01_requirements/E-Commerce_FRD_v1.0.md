@@ -1,7 +1,7 @@
-# E-Commerce System — 功能需求文檔 (FRD) v1.15
+# E-Commerce System — 功能需求文檔 (FRD) v1.16
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.15
+> **版本**: v1.16
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -2874,7 +2874,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 | 訂房評價建立與查詢 | ⚠️ 部分 | 僅能建立與依 ID 查詢單筆；**無編輯、無刪除、無列表、無統計端點**（service 方法存在但零 Controller 呼叫點） |
 | 評分統計（平均分、分布） | ⚠️ 不對稱 | 僅商品/房源評價有統計端點；訂房評價的統計 repository 方法存在但未被呼叫 |
 | 多維度評價搜尋 | ⚠️ 不對稱 | 僅商品/房源評價；訂房評價無搜尋 |
-| 商家／房東回覆 | ✅ | 三處授權邏輯不一致，見 BR-M08-07（DEF-373） |
+| 商家／房東回覆 | ✅ | 回覆與評價管理的授權三處皆為「同租戶或管理員」，見 BR-M08-07（DEF-373，Sprint 264 已修復） |
 | 「有用」投票 | ⚠️ 不對稱 | 僅商品/房源評價；無取消投票端點 |
 | 評價圖片管理（新增/刪除/排序，上限 9 張＋媒體驗證） | ⚠️ 不對稱 | 僅商品/房源評價；訂房評價圖片無上限、無驗證 |
 | 評價管理（標記已/未處理、依租戶列表） | ✅ | 僅商品/房源評價 |
@@ -2905,7 +2905,7 @@ API 規格：[API_M06_Booking.md](../02_architecture/API_M06_Booking.md)（v2.1�
 | BR-M08-04 | 評價編輯與刪除皆無時間窗限制，作者可隨時修改/刪除（軟刪除，`isVisible=false`） | `ReviewService.updateReview`／`deleteReview` |
 | BR-M08-05 | 商品/房源評價圖片上限 9 張且需通過媒體存在性驗證；訂房評價圖片無上限、無驗證——兩者規則不一致 | `ReviewService` vs `BookingReviewService` |
 | BR-M08-06 | 商家/房東回覆每則評價僅一次有效：`ReviewReply` 有 DB 唯一索引防重複（`E-1086`）；`BookingReview.hostReply` 為單一欄位，重複呼叫會直接覆寫、不報錯 | `ReviewReplyService`／`BookingReviewService` |
-| BR-M08-07 | 回覆授權邏輯三處不一致：回覆評價（`ReviewReplyService`）要求呼叫者是 listing 的**確切擁有者**；標記已/未處理（`ReviewService`）與回覆訂房評價（`BookingReviewService`）則是**同租戶或管理員**。三者共用同一組 `@PreAuthorize` 權限字串，可能讓同租戶的共同擁有人／`STORE_STAFF` 通過權限檢查卻仍被回覆評價拒絕（**DEF-373**，未修復） | `ReviewReplyService.createReply`、`ReviewService.checkReviewManagementAuthorization`、`BookingReviewService.replyToBookingReview` |
+| BR-M08-07 | 回覆評價（`ReviewReplyService.createReply`）、標記已/未處理（`ReviewService.checkReviewManagementAuthorization`）、回覆訂房評價（`BookingReviewService.replyToBookingReview`）三處的授權統一為「同租戶或管理員」：呼叫者所屬租戶等於評價所屬 listing 的租戶，或為 `ADMIN`／`SUPER_ADMIN`，否則 `E-1007`。三處的 `@PreAuthorize` 權限字串並不完全相同——回覆評價與標記已/未處理為 `room:update` 或 `product:update`，回覆訂房評價為 `room:update` 或 `booking:update`；`STORE_STAFF` 沒有這三個 update 權限，在這一層就被擋下。Sprint 264 之前，`createReply` 只認定確切的 `listing.ownerId`，會把同租戶的其他共同擁有人（另一位店主或房東帳號）鎖在外面；使用者拍板統一放寬（**DEF-373**，✅ Sprint 264 已修復） | `ReviewReplyService.createReply`、`ReviewService.checkReviewManagementAuthorization`、`BookingReviewService.replyToBookingReview` |
 | BR-M08-08 | 「有用」投票以單一原子 SQL 語句依使用者去重計票，取代先前讀-改-寫併發流失票數的實作 | `ReviewRepository.registerHelpfulVote` |
 | BR-M08-09 | 評價管理（標記已/未處理、依處理狀態列表）依租戶隔離：非管理員僅能查/改自己租戶名下 listing 的評價（經 listing 的 tenant 關聯，`Review` 實體本身無 `tenant_id`）；`ADMIN`／`SUPER_ADMIN`（`isCurrentUserAdmin()`）可跨租戶（DEF-028／029 修復） | `ReviewService.checkReviewManagementAuthorization`／`getReviewsByHandlingStatus` |
 | BR-M08-10 | ~~刪除評價僅檢查是否為評價本人~~；原始碼註解寫「檢查是否是本人或是管理員」，原實作缺少管理員例外分支，已補上（**DEF-374**，✅ Sprint 264 已修復）——管理員現可經此端點刪除他人評價 | `ReviewService.deleteReview` |
@@ -4396,6 +4396,7 @@ tenant_feature_toggles
 | v1.13 | 2026-10-15 | **M09 訊息通知中心 API 文件補齊（Sprint 272，DEF-286 範圍）**：§6C 橫幅、§6C.2（EMAIL/SMS/PUSH 現況、API 規格現況兩列）、§6C.5（BR-M09-05）、§6C.6 同步更新為 Sprint 271（DEF-317）之後的真實行為（EMAIL 真實送出、SMS/PUSH 明確回報未送達、API 規格已建立），取代先前「一律標為已送出」「規格尚未建立」的過時敘述；三處皆連結新建的 [API_M09_Notification.md](../02_architecture/api/API_M09_Notification.md)（17 端點）。過程中新登記 **DEF-378**（`NotificationTemplateService` 誤用 `E_6001` 付款錯誤碼表示範本代碼重複），登記未修復。詳見 [SPRINT_272_PLAN.md](../04_planning/SPRINT_272_PLAN.md) | Claude Code（Sprint 272） |
 | v1.14 | 2026-10-15 | **M01／M02 API 文件全面改寫＋FRD 端點表校正（Sprint 273，DEF-286／DEF-372 範圍）**：§3.7、§4.7 端點概要表依實際程式碼全面改寫（移除不存在的 `GET .../search`、`GET /categories`、`PUT .../publish`、`PUT .../status`；補上 `/v2/products`、`/v2/rooms`、SKU、維護窗口等實際端點），連結改指向全新改寫的 [API_M01_Product_Center.md](../02_architecture/api/API_M01_Product_Center.md)（14 端點）／[API_M02_Listing_Center.md](../02_architecture/api/API_M02_Listing_Center.md)（8 端點）。**新增修訂註記**（§3 AC-M01-002-1/2 前、§4 AC-M02-003-1/2/3 前、§4 AC-M02-004-2 前）標註三處驗收標準描述的「`DRAFT`→發布兩階段上架」「建立時自動初始化 90 天 room_calendar」「`PUT .../calendar` 批次封鎖」流程與實作不符，Gherkin 內容本身未改寫（是否重新設計草稿機制或改寫驗收標準屬產品決策）。過程中新登記 **DEF-379**（`ProductService.getProducts` 的 `category`／`brand` 篩選分支無租戶範圍）、**DEF-380**（`DRAFT`→發布與日曆初始化流程從未實作），兩項皆登記未修復。詳見 [SPRINT_273_PLAN.md](../04_planning/SPRINT_273_PLAN.md) | Claude Code（Sprint 273） |
 | v1.15 | 2026-10-17 | **DEF-380 結案：改寫 Gherkin 反映現況（Sprint 280）**：使用者拍板「不實作兩階段上架，FRD 改為反映建立即上架現況」。§3／§4 三處 Gherkin 本文正式改寫：AC-M01-002-1／AC-M02-003-1 的 `Then` 從 `status='DRAFT'` 改為 `status='ACTIVE'`；AC-M01-002-2／AC-M02-003-2「發布商品／房源」兩個 AC 標記移除（流程不存在，既有項目改用一般編輯端點手動切換狀態）；AC-M02-003-3「初始日曆建立」改寫為反映「缺列視為可訂」的真實隱性語意；AC-M02-004-2「編輯日曆設定」改寫為反映實際存在的區間式維護窗口端點（`POST/DELETE .../maintenance`），取代原描述但不存在的逐日批次封鎖＋`reason`。同步修正 §3／§4「技術實現概要」清單內兩處同款 `status='DRAFT'` 殘留敘述。詳見 [DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md) DEF-380 | Claude Sonnet 5（Sprint 280） |
+| v1.16 | 2026-10-21 | **BR-M08-07 與 §6D.2 校正：移除 DEF-373「未修復」的過期敘述（Sprint 289）**：BR-M08-07 與 §6D.2「商家／房東回覆」列仍寫回覆授權三處不一致、`DEF-373` 未修復，但 `ReviewReplyService.createReply` 早在 Sprint 264 依使用者拍板統一為「同租戶或管理員」（單元測試 `ReviewReplyServiceTest.createReply_SameTenantNonOwner_Succeeds` 與真實 DB 整合測試 `ReviewAuthorizationRealDbIntegrationTest` 佐證；`API_M08_Review.md` 與 `SRD_Module_Technical_Design.md` 當時已同步）。Sprint 268（v1.12）校正 BR-M08-10、§6D.6 時漏了這兩處。兩處改為反映現況，並更正原文一處不精確的描述：原寫「三者共用同一組 `@PreAuthorize` 權限字串」，讀碼確認回覆訂房評價用的是 `room:update`／`booking:update`，與另兩處的 `room:update`／`product:update` 不同；`STORE_STAFF` 沒有這三個 update 權限，是在權限註解這一層就被擋下，不是「通過後才被拒絕」。此矛盾由 Sprint 287 實作 DEF-392 時發現並記錄，本輪核對後校正。詳見 [SPRINT_289_PLAN.md](../04_planning/SPRINT_289_PLAN.md) | Claude Code（Sprint 289） |
 
 ---
 

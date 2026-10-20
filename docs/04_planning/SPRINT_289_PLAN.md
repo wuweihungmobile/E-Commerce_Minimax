@@ -89,7 +89,7 @@ Sprint 288 當時沒採用「看 HTTP 狀態碼」，理由記在 [[rate-limit-r
 | PROBE-3 | ✅ 通過（helper 看到 `[429,200]`，5.6 秒）——真實 429 的訊息已可讀，文字比對本來就認得 |
 | PROBE-4 | ✅ 通過（`[429,201]`，12.6 秒） |
 
-### 2.3 修改（`frontend/e2e/helpers/auth.ts`，+45／−18）
+### 2.3 修改（`frontend/e2e/helpers/auth.ts`，+46／−18）
 
 - 新增 `watchAuthPostStatus(page, apiPath, timeoutMs)`：回傳該認證端點 POST 回應的 HTTP 狀態碼，逾時或頁面關閉回 `undefined`，永不 reject；**必須在點擊之前呼叫**。
 - `submitLogin`：點擊前掛監聽；點擊後**先 `await` 這一次送出的回應**，再照原樣等「離開 `/login` 或錯誤區塊出現」；`rateLimited = (狀態碼 === 429)`。
@@ -140,6 +140,8 @@ Sprint 288 當時沒採用「看 HTTP 狀態碼」，理由記在 [[rate-limit-r
 - 守門只跑一次就全綠，**不能當成間歇失敗已消失的證據**（Sprint 287 曾連敗三次）。
 - 守門日誌不記錄限流次數，且後端日誌在腳本結束時被刪除，所以**無法得知這次守門有沒有走到 helper 的重試路徑**；重試路徑的證據只來自 §2 的探針，不是守門。
 - 守門通知的退出碼我沒有直接採信，另外讀了日誌內容核對（`175 passed (6.7m)`、`4 skipped`、0 筆失敗標記、腳本的通過訊息）。
+
+- **push 與雲端 CI**（2026-10-21，補記）：`0f62feed` 推上 `main`；pre-push 輕量守門（act Backend Unit＋Frontend Lint & Build＋schema 漂移守門）全過；雲端 CI 全綠 run [39468533224](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39468533224)，三個 job 皆 success：Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build，以 `gh run view --json status,conclusion,jobs,headSha` 結構化查詢交叉確認 headSha 與本機 commit 一致。
 
 ## 4. 文件更新
 

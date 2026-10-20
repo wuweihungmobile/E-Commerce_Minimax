@@ -53,9 +53,10 @@ public class ShippingTemplateController {
 
     /**
      * 取得租戶的所有運費模板
+     * Sprint 287（DEF-330a）：改用專屬權限（原借用 product:read，BUYER/GUEST 亦持有）
      */
     @GetMapping
-    @PreAuthorize("hasAuthority('product:read')")
+    @PreAuthorize("hasAuthority('shipping_template:read')")
     public ResponseEntity<ApiResponse<List<ShippingTemplateDto.TemplateResponse>>> getTemplates() {
         UUID tenantId = TenantContext.getCurrentTenant();
         List<ShippingTemplateDto.TemplateResponse> response = shippingTemplateService.getTemplates(tenantId);

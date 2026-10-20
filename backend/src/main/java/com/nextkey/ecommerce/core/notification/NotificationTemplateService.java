@@ -73,11 +73,11 @@ public class NotificationTemplateService {
      * 取得模板詳情
      */
     @Transactional(readOnly = true)
-    public NotificationTemplateDto.Response getTemplate(UUID tenantId, UUID templateId) {
+    public NotificationTemplateDto.Response getTemplate(UUID tenantId, UUID templateId, boolean isAdmin) {
         NotificationTemplate template = templateRepository.findById(templateId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8003, "Template not found"));
 
-        if (template.getTenantId() != null && !template.getTenantId().equals(tenantId)) {
+        if (!isAdmin && template.getTenantId() != null && !template.getTenantId().equals(tenantId)) {
             throw new BusinessException(ErrorCode.E_1007, "Access denied");
         }
 
@@ -129,18 +129,20 @@ public class NotificationTemplateService {
      */
     @Transactional
     public NotificationTemplateDto.Response updateTemplate(UUID tenantId, UUID userId,
-            UUID templateId, NotificationTemplateDto.UpdateRequest request) {
+            UUID templateId, NotificationTemplateDto.UpdateRequest request, boolean isAdmin) {
 
         NotificationTemplate template = templateRepository.findById(templateId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8003, "Template not found"));
 
-        if (template.getTenantId() != null && !template.getTenantId().equals(tenantId)) {
+        if (!isAdmin && template.getTenantId() != null && !template.getTenantId().equals(tenantId)) {
             throw new BusinessException(ErrorCode.E_1007, "Access denied");
         }
+        // 管理員代管時，唯一碼衝突檢查比對模板實際所屬的租戶，而非管理員自己的（系統）租戶
+        UUID effectiveTenantId = isAdmin ? template.getTenantId() : tenantId;
 
         if (request.getTemplateCode() != null && !request.getTemplateCode().equals(template.getTemplateCode())) {
             // DEF-378：改用 E_8012（原誤用 E_6001「付款失敗」，付款模組專用碼）。
-            if (templateRepository.existsByTemplateCodeAndTenantId(request.getTemplateCode(), tenantId)) {
+            if (templateRepository.existsByTemplateCodeAndTenantId(request.getTemplateCode(), effectiveTenantId)) {
                 throw new BusinessException(ErrorCode.E_8012, "Template code already exists");
             }
             template.setTemplateCode(request.getTemplateCode());
@@ -184,11 +186,11 @@ public class NotificationTemplateService {
      * 刪除模板 (軟刪除)
      */
     @Transactional
-    public void deleteTemplate(UUID tenantId, UUID templateId) {
+    public void deleteTemplate(UUID tenantId, UUID templateId, boolean isAdmin) {
         NotificationTemplate template = templateRepository.findById(templateId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8003, "Template not found"));
 
-        if (template.getTenantId() != null && !template.getTenantId().equals(tenantId)) {
+        if (!isAdmin && template.getTenantId() != null && !template.getTenantId().equals(tenantId)) {
             throw new BusinessException(ErrorCode.E_1007, "Access denied");
         }
 

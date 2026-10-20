@@ -32,6 +32,19 @@ export interface Review {
   images: string[] | null
   helpfulCount: number
   isAnonymous: boolean
+  // Sprint 287（DEF-392）：後端 ReviewDto.ReviewResponse 既有欄位，原前端介面缺漏
+  isHandled: boolean
+  handledAt: string | null
+  handledBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ReviewReply {
+  replyId: string
+  reviewId: string
+  replierId: string
+  content: string
   createdAt: string
   updatedAt: string
 }
@@ -107,6 +120,41 @@ class ReviewService {
 
   async createBookingReview(request: CreateBookingReviewRequest): Promise<void> {
     await apiClient.post(API_ENDPOINTS.bookingReviews.create, request)
+  }
+
+  // ========== 賣家回覆與評價管理（Sprint 287，DEF-392） ==========
+
+  async getReplies(reviewId: string): Promise<ReviewReply[]> {
+    const response = await apiClient.get<ApiResponse<{ replies: ReviewReply[]; totalCount: number }>>(
+      API_ENDPOINTS.reviews.replies(reviewId)
+    )
+    return response.data.data.replies
+  }
+
+  async createReply(reviewId: string, content: string): Promise<ReviewReply> {
+    const response = await apiClient.post<ApiResponse<ReviewReply>>(
+      API_ENDPOINTS.reviews.replies(reviewId),
+      { content }
+    )
+    return response.data.data
+  }
+
+  async setHandled(reviewId: string, handled: boolean): Promise<Review> {
+    const response = await apiClient.put<ApiResponse<Review>>(
+      API_ENDPOINTS.reviews.handle(reviewId) + '?handled=' + handled
+    )
+    return response.data.data
+  }
+
+  async getManagedReviews(isHandled: boolean, page = 0, size = 20): Promise<ReviewListResult> {
+    const params = new URLSearchParams()
+    params.append('isHandled', String(isHandled))
+    params.append('page', String(page))
+    params.append('size', String(size))
+    const response = await apiClient.get<ApiResponse<ReviewListResult>>(
+      API_ENDPOINTS.reviews.managed + '?' + params.toString()
+    )
+    return response.data.data
   }
 }
 

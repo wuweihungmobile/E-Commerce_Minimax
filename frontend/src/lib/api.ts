@@ -115,6 +115,10 @@ export const API_ENDPOINTS = {
     listingReviews: (listingId: string) => '/v2/reviews/listing/' + listingId,
     listingStats: (listingId: string) => '/v2/reviews/listing/' + listingId + '/stats',
     userReviews: (userId: string) => '/v2/reviews/user/' + userId,
+    // 賣家回覆評價（Sprint 287，DEF-392：後端既有，前端原本零串接）
+    replies: (reviewId: string) => '/v2/reviews/' + reviewId + '/replies',
+    handle: (reviewId: string) => '/v2/reviews/' + reviewId + '/handle',
+    managed: '/v2/reviews/managed',
   },
   bookingReviews: {
     create: '/v2/booking-reviews',

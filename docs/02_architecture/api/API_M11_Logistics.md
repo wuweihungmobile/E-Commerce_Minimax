@@ -1,9 +1,9 @@
 # API 規格文件 - M11 物流追蹤 / API Specification - M11 Logistics
 
 > **文件編號**: API-M11
-> **文件版本**: v1.0（Sprint 274，首次建立；首次有獨立規格文件，DEF-286 範圍）
+> **文件版本**: v1.1（Sprint 287，DEF-330a：運費模板列表改用專屬權限 `shipping_template:read`；同時更正 v1.0 對 `BUYER`/`GUEST` 的 `product:read` 誤述，見 §5／§7）
 > **建立日期**: 2026-10-16
-> **最後更新**: 2026-10-16
+> **最後更新**: 2026-10-19
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`LogisticsController`／`ShippingTemplateController`（`api/controller/`）、`LogisticsService`／`ShippingTemplateService`（`core/logistics/`）、`Logistics`／`ShippingTemplate`（`domain/model/logistics/`）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[LogisticsServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceTest.java)、[LogisticsServiceCancelTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceCancelTest.java)、[LogisticsServiceOwnershipTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceOwnershipTest.java)、[LogisticsServiceTenantAccessTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceTenantAccessTest.java)、[ShippingTemplateServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/ShippingTemplateServiceTest.java)、[ShippingTemplateControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/ShippingTemplateControllerE2ETest.java)、[M11LogisticsOrderIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M11LogisticsOrderIntegrationTest.java)
@@ -61,7 +61,7 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 | API-M11-006 | PUT | `/v2/logistics/{logisticsId}/status` | 更新物流狀態（Mock） | `order:update` |
 | API-M11-007 | POST | `/v2/logistics/cancel` | 取消物流 | `order:update` |
 | API-M11-008 | POST | `/v2/shipping-templates` | 建立運費模板 | `product:create` |
-| API-M11-009 | GET | `/v2/shipping-templates` | 取得本租戶所有運費模板 | `product:read` |
+| API-M11-009 | GET | `/v2/shipping-templates` | 取得本租戶所有運費模板 | `shipping_template:read`（Sprint 287 起，見 §4.9） |
 | API-M11-010 | PUT | `/v2/shipping-templates/{id}` | 更新運費模板 | `product:update` |
 | API-M11-011 | DELETE | `/v2/shipping-templates/{id}` | 刪除運費模板 | `product:delete` |
 | API-M11-012 | GET | `/v2/shipping-templates/{id}/calculate-fee` | 試算運費 | `product:read` |
@@ -211,7 +211,7 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 
 ### 4.9 `GET /v2/shipping-templates` — 取得本租戶所有運費模板
 
-**權限**：`product:read`。回應 `List<TemplateResponse>`（可能為空陣列），僅本租戶。
+**權限**：`shipping_template:read`（Sprint 287，DEF-330a：原借用 `product:read`——`BUYER`／`GUEST` 亦持有，見 §5 更正說明——與同端點 create/update/delete 已使用的 `product:create/update/delete` 範圍不一致，改用專屬權限收斂可見範圍）。回應 `List<TemplateResponse>`（可能為空陣列），僅本租戶（呼叫者自己的 `TenantContext`，無跨租戶旁路，即使 `ADMIN`／`SUPER_ADMIN` 亦然）。
 
 ### 4.10 `PUT /v2/shipping-templates/{id}` — 更新運費模板
 
@@ -249,10 +249,11 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 | 建立物流單（§4.1） | ❌ | ✅（限本租戶訂單） | ❌ | ✅（限本租戶訂單） | ❌（僅 `order:read`） | ✅（跨租戶） |
 | 物流查詢/追蹤（§4.2～4.5） | ❌ | ✅（限本租戶） | ❌ | ✅（限本租戶） | ✅（限本租戶） | ✅（跨租戶） |
 | 更新狀態/取消（§4.6～4.7） | ❌ | ✅（限本租戶） | ❌ | ✅（限本租戶） | ❌（僅 `order:read`） | ✅（跨租戶） |
-| 運費模板 CRUD（§4.8～4.11） | ❌ | ✅（限本租戶，`product:*`） | ❌ | ✅（限本租戶） | 僅 `GET`（`product:read`） | ✅（跨租戶） |
-| 試算運費（§4.12） | ❌（無 `product:read`） | ✅（不限租戶） | ❌ | ✅（不限租戶） | ✅（不限租戶） | ✅（不限租戶） |
+| 運費模板 建立／更新／刪除（§4.8、4.10～4.11） | ❌ | ✅（限本租戶，`product:*`） | ❌ | ✅（限本租戶） | ❌（僅 `product:read`） | ✅（僅限自己的租戶，無跨租戶旁路；多數管理員無店鋪，實務上操作的是系統租戶名下模板） |
+| 運費模板 列表（§4.9） | ❌（Sprint 287 起；見下方更正說明） | ✅（限本租戶，`shipping_template:read`） | ❌ | ✅（限本租戶） | ✅（限本租戶，唯讀） | ✅（僅限自己的租戶，無跨租戶旁路，同上） |
+| 試算運費（§4.12） | ✅（不限租戶；見下方更正說明） | ✅（不限租戶） | ❌ | ✅（不限租戶） | ✅（不限租戶） | ✅（不限租戶） |
 
-`BUYER`／`HOST`／`GUEST` 無 `order:*`／`product:*` 相關權限，本模組全部端點皆不可呼叫（含試算運費——`BUYER` 角色沒有 `product:read`，§1.2 第 4 點所稱「買家跨店比價」目前無對應角色權限可達成，見 §7 已知限制）。
+`HOST` 無 `order:*`／`product:*`／`shipping_template:*` 相關權限，本模組全部端點皆不可呼叫。**更正（Sprint 287 複核）**：原文件誤稱「`BUYER`／`HOST`／`GUEST` 無 `product:*` 相關權限」——`RolePermissionMapping.java:33`／`:27` 顯示 `BUYER`／`GUEST` 皆持有 `PRODUCT_READ`（僅 `HOST` 真的沒有）。故試算運費（§4.12）對 `BUYER`／`GUEST` 從一開始即可呼叫，§1.2 第 4 點「買家跨店比價」設計意圖確實達成，§7 原「已知限制」一項已更正、不再視為待辦。運費模板**列表**（§4.9）原同樣借用 `product:read`，`BUYER`／`GUEST` 原亦可呼叫；Sprint 287（DEF-330a）改用專屬的 `shipping_template:read` 後收緊，`BUYER`／`GUEST` 不再持有，現在才真的不可呼叫列表端點。
 
 ---
 
@@ -281,7 +282,7 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 | **物流錯誤碼大量誤用（DEF-381，已於 Sprint 278 修復）** | `LogisticsService` 原只有 `cancelLogistics`（DEF-011）使用正確的 `E_7500`；`getLogistics`／`trackLogistics`／`getTrackingDetail`／`updateLogisticsStatus` 四個方法原沿用 ERP 模組的 `E_7000`；`createLogistics` 的衝突情境原誤用 `E_7001`。現已全數改為 `E_7500`／`E_7501`，`LogisticsServiceTest` 新增 5 個單元測試斷言實際錯誤碼 |
 | 一張訂單至多一筆作用中物流單是應用層檢查，無資料庫唯一約束 | `logistics` 表的 `order_id` 無唯一索引兜底，§1.2 第 2 點的檢查與建立之間雖有狀態 CAS 防護（DEF-123），但理論上地基完全依賴應用層邏輯，非資料庫不變量 |
 | `logisticsData`（JSONB）是保留但未使用欄位 | 建立時初始化為空 Map，全庫無任何寫入實際內容的路徑，也不出現在任何回應 DTO |
-| 試算運費端點的角色矩陣與「買家跨店比價」設計意圖不一致 | §1.2 第 4 點／DEF-037 的歷史結論是這個端點該支援買家跨店比價，但 `BUYER` 角色從未被授予 `product:read`（§5），目前只有 `SELLER`／`STORE_OWNER`／`STORE_STAFF`／`ADMIN`／`SUPER_ADMIN` 能呼叫——即設計意圖與 RBAC 實際設定不吻合，但因為非本文件新增范围且牽涉角色權限分配的產品決策，僅記錄不在本輪變更 |
+| ~~試算運費端點的角色矩陣與「買家跨店比價」設計意圖不一致~~（**Sprint 287 複核更正：此限制從未成立**） | 本文件 v1.0（Sprint 274）原誤稱「`BUYER` 角色從未被授予 `product:read`」，據此推論試算運費的買家跨店比價設計意圖未達成。實際讀碼（`RolePermissionMapping.java:33`）確認 `BUYER` 確實持有 `PRODUCT_READ`，試算運費端點從一開始即可被 `BUYER`／`GUEST` 正常呼叫，設計意圖本就已達成，不存在此限制。保留此項作為文件曾經失準的記錄，不再視為待辦事項 |
 | `updateLogisticsStatus` 不驗證狀態轉換合法性 | 可將任何物流單任意指定為任何 `LogisticsStatus`（包含邏輯倒退，如 `DELIVERED` 改回 `PENDING`），純 Mock 端點用於測試推進，非生產物流商回呼對接 |
 | `calculateFeeForTenant`（非 REST，內部呼叫） | 固定取租戶「第一筆」模板，若店家建立多筆模板，使用哪一筆不可預期（`findByTenantId` 無排序保證） |
 | `ApiRouteDocDriftTest` 先前未覆蓋 | 本文件完成後新增 `LogisticsController`／`ShippingTemplateController` 至 `GUARDED` 清單，從此有常態機械防漂移 |

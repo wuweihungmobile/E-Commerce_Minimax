@@ -132,7 +132,7 @@ class NotificationTemplateServiceTest {
     void getTemplate_ownTenant_returnsTemplate() {
         when(templateRepository.findById(TEMPLATE_ID)).thenReturn(Optional.of(buildTemplate(TENANT_ID)));
 
-        NotificationTemplateDto.Response response = templateService.getTemplate(TENANT_ID, TEMPLATE_ID);
+        NotificationTemplateDto.Response response = templateService.getTemplate(TENANT_ID, TEMPLATE_ID, false);
 
         assertEquals(TEMPLATE_ID, response.getId());
     }
@@ -142,7 +142,7 @@ class NotificationTemplateServiceTest {
     void getTemplate_otherTenant_throwsBusinessException() {
         when(templateRepository.findById(TEMPLATE_ID)).thenReturn(Optional.of(buildTemplate(OTHER_TENANT_ID)));
 
-        assertThrows(BusinessException.class, () -> templateService.getTemplate(TENANT_ID, TEMPLATE_ID));
+        assertThrows(BusinessException.class, () -> templateService.getTemplate(TENANT_ID, TEMPLATE_ID, false));
     }
 
     @Test
@@ -150,7 +150,7 @@ class NotificationTemplateServiceTest {
     void getTemplate_notFound_throwsBusinessException() {
         when(templateRepository.findById(TEMPLATE_ID)).thenReturn(Optional.empty());
 
-        assertThrows(BusinessException.class, () -> templateService.getTemplate(TENANT_ID, TEMPLATE_ID));
+        assertThrows(BusinessException.class, () -> templateService.getTemplate(TENANT_ID, TEMPLATE_ID, false));
     }
 
     @Test
@@ -158,9 +158,19 @@ class NotificationTemplateServiceTest {
     void getTemplate_globalTemplate_accessibleByAnyTenant() {
         when(templateRepository.findById(TEMPLATE_ID)).thenReturn(Optional.of(buildTemplate(null)));
 
-        NotificationTemplateDto.Response response = templateService.getTemplate(TENANT_ID, TEMPLATE_ID);
+        NotificationTemplateDto.Response response = templateService.getTemplate(TENANT_ID, TEMPLATE_ID, false);
 
         assertNotNull(response);
+    }
+
+    @Test
+    @DisplayName("TC-T005b/DEF-394: getTemplate — isAdmin=true 時跨租戶讀取不再被擁有權檢查擋下")
+    void getTemplate_isAdminTrue_bypassesOwnershipCheck() {
+        when(templateRepository.findById(TEMPLATE_ID)).thenReturn(Optional.of(buildTemplate(OTHER_TENANT_ID)));
+
+        NotificationTemplateDto.Response response = templateService.getTemplate(TENANT_ID, TEMPLATE_ID, true);
+
+        assertEquals(TEMPLATE_ID, response.getId());
     }
 
     // ========== createTemplate ==========
@@ -257,7 +267,7 @@ class NotificationTemplateServiceTest {
                 .name("竄改名稱").build();
 
         assertThrows(BusinessException.class,
-                () -> templateService.updateTemplate(TENANT_ID, USER_ID, TEMPLATE_ID, request));
+                () -> templateService.updateTemplate(TENANT_ID, USER_ID, TEMPLATE_ID, request, false));
         verify(templateRepository, never()).save(any());
     }
 
@@ -270,7 +280,7 @@ class NotificationTemplateServiceTest {
                 .name("新名稱").build();
 
         assertThrows(BusinessException.class,
-                () -> templateService.updateTemplate(TENANT_ID, USER_ID, TEMPLATE_ID, request));
+                () -> templateService.updateTemplate(TENANT_ID, USER_ID, TEMPLATE_ID, request, false));
     }
 
     @Test
@@ -285,7 +295,7 @@ class NotificationTemplateServiceTest {
                 .build();
 
         NotificationTemplateDto.Response response =
-                templateService.updateTemplate(TENANT_ID, USER_ID, TEMPLATE_ID, request);
+                templateService.updateTemplate(TENANT_ID, USER_ID, TEMPLATE_ID, request, false);
 
         assertEquals("更新後名稱", response.getName());
         assertEquals("您的訂單已確認", response.getSubject(), "未提供的 subject 應維持原值");
@@ -304,7 +314,7 @@ class NotificationTemplateServiceTest {
                 .build();
 
         NotificationTemplateDto.Response response =
-                templateService.updateTemplate(TENANT_ID, USER_ID, TEMPLATE_ID, request);
+                templateService.updateTemplate(TENANT_ID, USER_ID, TEMPLATE_ID, request, false);
 
         assertEquals(List.of("new_var"), response.getVariables());
     }
@@ -320,10 +330,32 @@ class NotificationTemplateServiceTest {
                 .templateCode("ALREADY_TAKEN")
                 .build();
 
-        assertThatThrownBy(() -> templateService.updateTemplate(TENANT_ID, USER_ID, TEMPLATE_ID, request))
+        assertThatThrownBy(() -> templateService.updateTemplate(TENANT_ID, USER_ID, TEMPLATE_ID, request, false))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.E_8012);
         verify(templateRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("TC-T014b/DEF-394: updateTemplate — isAdmin=true 時跨租戶更新不再被擁有權檢查擋下，"
+            + "且代碼重複檢查比對模板實際所屬租戶（非管理員自己的租戶）")
+    void updateTemplate_isAdminTrue_bypassesOwnershipCheck() {
+        NotificationTemplate existing = buildTemplate(OTHER_TENANT_ID);
+        when(templateRepository.findById(TEMPLATE_ID)).thenReturn(Optional.of(existing));
+        when(templateRepository.existsByTemplateCodeAndTenantId("NEW_CODE", OTHER_TENANT_ID)).thenReturn(false);
+        when(templateRepository.save(any(NotificationTemplate.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        NotificationTemplateDto.UpdateRequest request = NotificationTemplateDto.UpdateRequest.builder()
+                .templateCode("NEW_CODE")
+                .name("管理員代管更新")
+                .build();
+
+        NotificationTemplateDto.Response response =
+                templateService.updateTemplate(TENANT_ID, USER_ID, TEMPLATE_ID, request, true);
+
+        assertEquals("管理員代管更新", response.getName());
+        verify(templateRepository).existsByTemplateCodeAndTenantId("NEW_CODE", OTHER_TENANT_ID);
+        verify(templateRepository, never()).existsByTemplateCodeAndTenantId("NEW_CODE", TENANT_ID);
     }
 
     // ========== deleteTemplate ==========
@@ -335,7 +367,7 @@ class NotificationTemplateServiceTest {
         when(templateRepository.findById(TEMPLATE_ID)).thenReturn(Optional.of(existing));
         when(templateRepository.save(any(NotificationTemplate.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        templateService.deleteTemplate(TENANT_ID, TEMPLATE_ID);
+        templateService.deleteTemplate(TENANT_ID, TEMPLATE_ID, false);
 
         assertNotNull(existing.getDeletedAt());
         assertFalse(existing.getIsActive());
@@ -347,7 +379,7 @@ class NotificationTemplateServiceTest {
     void deleteTemplate_otherTenant_throwsBusinessException() {
         when(templateRepository.findById(TEMPLATE_ID)).thenReturn(Optional.of(buildTemplate(OTHER_TENANT_ID)));
 
-        assertThrows(BusinessException.class, () -> templateService.deleteTemplate(TENANT_ID, TEMPLATE_ID));
+        assertThrows(BusinessException.class, () -> templateService.deleteTemplate(TENANT_ID, TEMPLATE_ID, false));
         verify(templateRepository, never()).save(any());
     }
 
@@ -356,7 +388,20 @@ class NotificationTemplateServiceTest {
     void deleteTemplate_notFound_throwsBusinessException() {
         when(templateRepository.findById(TEMPLATE_ID)).thenReturn(Optional.empty());
 
-        assertThrows(BusinessException.class, () -> templateService.deleteTemplate(TENANT_ID, TEMPLATE_ID));
+        assertThrows(BusinessException.class, () -> templateService.deleteTemplate(TENANT_ID, TEMPLATE_ID, false));
+    }
+
+    @Test
+    @DisplayName("TC-T017b/DEF-394: deleteTemplate — isAdmin=true 時跨租戶刪除不再被擁有權檢查擋下")
+    void deleteTemplate_isAdminTrue_bypassesOwnershipCheck() {
+        NotificationTemplate existing = buildTemplate(OTHER_TENANT_ID);
+        when(templateRepository.findById(TEMPLATE_ID)).thenReturn(Optional.of(existing));
+        when(templateRepository.save(any(NotificationTemplate.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        templateService.deleteTemplate(TENANT_ID, TEMPLATE_ID, true);
+
+        assertNotNull(existing.getDeletedAt());
+        assertFalse(existing.getIsActive());
     }
 
     // ========== renderTemplate ==========

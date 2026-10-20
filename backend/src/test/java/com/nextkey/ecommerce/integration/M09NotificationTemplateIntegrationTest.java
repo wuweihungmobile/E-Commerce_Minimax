@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
@@ -167,6 +168,45 @@ class M09NotificationTemplateIntegrationTest {
         userRepository.save(registered);
 
         // 登入獲取 token
+        String loginJson = String.format("""
+            {
+                "email": "%s",
+                "password": "%s"
+            }
+            """, email, TEST_PASSWORD);
+
+        var loginResult = mockMvc.perform(post("/v2/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String response = loginResult.getResponse().getContentAsString();
+        return objectMapper.readTree(response).path("data").path("accessToken").asText();
+    }
+
+    /**
+     * Sprint 287（DEF-394）：註冊後提升為 ADMIN（不綁定任何租戶，比照真實管理員通常無店鋪的現況），
+     * 用來驗證 ADMIN 是否能真正跨租戶管理任意店鋪的通知模板。
+     */
+    private String createAdminTokenAndGetToken(String email) throws Exception {
+        String registerJson = String.format("""
+            {
+                "email": "%s",
+                "password": "%s",
+                "fullName": "Notification Admin User"
+            }
+            """, email, TEST_PASSWORD);
+
+        mockMvc.perform(post("/v2/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registerJson))
+                .andExpect(status().isCreated());
+
+        User registered = userRepository.findByEmail(email).orElseThrow();
+        registered.setRole(User.UserRole.ADMIN);
+        userRepository.save(registered);
+
         String loginJson = String.format("""
             {
                 "email": "%s",
@@ -517,5 +557,148 @@ class M09NotificationTemplateIntegrationTest {
         mockMvc.perform(get(TEMPLATES_URL + "/" + globalTemplate.getId())
                         .header("Authorization", "Bearer " + buyerToken))
                 .andExpect(status().isForbidden());
+    }
+
+    private UUID createOtherTenant() {
+        Tenant otherTenant = Tenant.builder()
+                .name("Other Tenant for DEF-394 " + System.currentTimeMillis())
+                .slug("other-tenant-def394-" + System.currentTimeMillis())
+                .status(TenantStatus.ACTIVE)
+                .build();
+        return tenantRepository.save(otherTenant).getId();
+    }
+
+    private NotificationTemplate createTemplateForTenant(UUID tenantId, String codeSuffix) {
+        NotificationTemplate template = NotificationTemplate.builder()
+                .tenantId(tenantId)
+                .templateCode("DEF394_" + codeSuffix + "_" + System.currentTimeMillis())
+                .notificationType(NotificationTemplate.NotificationType.ORDER_CONFIRMED)
+                .channel(NotificationTemplate.NotificationChannel.IN_APP)
+                .name("DEF-394 跨租戶測試模板 " + codeSuffix)
+                .contentTemplate("DEF-394 content")
+                .isActive(true)
+                .priority(0)
+                .createdBy(testUserId)
+                .build();
+        return notificationTemplateRepository.save(template);
+    }
+
+    @Test
+    @Order(15)
+    @DisplayName("IT-M09-015: Sprint 287（DEF-394）ADMIN 能讀取另一租戶的模板詳情（跨租戶旁路真正生效）")
+    void testGetTemplateDetail_adminCrossTenant() throws Exception {
+        UUID otherTenantId = createOtherTenant();
+        NotificationTemplate otherTemplate = createTemplateForTenant(otherTenantId, "GET");
+        String adminToken = createAdminTokenAndGetToken(
+                "notification-admin-get-" + System.currentTimeMillis() + "@example.com");
+
+        mockMvc.perform(get(TEMPLATES_URL + "/" + otherTemplate.getId())
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(otherTemplate.getId().toString()));
+    }
+
+    @Test
+    @Order(16)
+    @DisplayName("IT-M09-016: Sprint 287（DEF-394）ADMIN 能更新另一租戶的模板（跨租戶旁路真正生效）")
+    void testUpdateTemplate_adminCrossTenant() throws Exception {
+        UUID otherTenantId = createOtherTenant();
+        NotificationTemplate otherTemplate = createTemplateForTenant(otherTenantId, "PUT");
+        String adminToken = createAdminTokenAndGetToken(
+                "notification-admin-put-" + System.currentTimeMillis() + "@example.com");
+
+        String requestJson = """
+            { "name": "管理員代管更新後的名稱" }
+            """;
+
+        mockMvc.perform(put(DASHBOARD_TEMPLATES_URL + "/" + otherTemplate.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("管理員代管更新後的名稱"));
+    }
+
+    @Test
+    @Order(17)
+    @DisplayName("IT-M09-017: Sprint 287（DEF-394）ADMIN 能刪除另一租戶的模板（跨租戶旁路真正生效）")
+    void testDeleteTemplate_adminCrossTenant() throws Exception {
+        UUID otherTenantId = createOtherTenant();
+        NotificationTemplate otherTemplate = createTemplateForTenant(otherTenantId, "DELETE");
+        String adminToken = createAdminTokenAndGetToken(
+                "notification-admin-delete-" + System.currentTimeMillis() + "@example.com");
+
+        mockMvc.perform(delete(DASHBOARD_TEMPLATES_URL + "/" + otherTemplate.getId())
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @Order(18)
+    @DisplayName("IT-M09-018: Sprint 287（DEF-394）ADMIN 帶 targetTenantId 查詢列表，看得到該租戶的模板")
+    void testGetTemplates_adminTargetTenantId() throws Exception {
+        UUID otherTenantId = createOtherTenant();
+        NotificationTemplate otherTemplate = createTemplateForTenant(otherTenantId, "LIST");
+        String adminToken = createAdminTokenAndGetToken(
+                "notification-admin-list-" + System.currentTimeMillis() + "@example.com");
+
+        mockMvc.perform(get(TEMPLATES_URL)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("targetTenantId", otherTenantId.toString())
+                        .param("page", "0")
+                        .param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.templates[*].id", hasItem(otherTemplate.getId().toString())));
+    }
+
+    @Test
+    @Order(19)
+    @DisplayName("IT-M09-019: Sprint 287（DEF-394）ADMIN 帶 targetTenantId 建立模板，歸屬該租戶而非管理員自己")
+    void testCreateTemplate_adminTargetTenantId() throws Exception {
+        UUID otherTenantId = createOtherTenant();
+        String adminToken = createAdminTokenAndGetToken(
+                "notification-admin-create-" + System.currentTimeMillis() + "@example.com");
+        String templateCode = "DEF394_CREATE_" + System.currentTimeMillis();
+
+        String requestJson = String.format("""
+            {
+                "templateCode": "%s",
+                "notificationType": "ORDER_PAID",
+                "channel": "EMAIL",
+                "name": "管理員代管建立",
+                "contentTemplate": "Hello {{user_name}}",
+                "targetTenantId": "%s"
+            }
+            """, templateCode, otherTenantId);
+
+        var result = mockMvc.perform(post(DASHBOARD_TEMPLATES_URL)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.templateCode").value(templateCode))
+                .andReturn();
+
+        UUID createdId = UUID.fromString(
+                objectMapper.readTree(result.getResponse().getContentAsString()).path("data").path("id").asText());
+        NotificationTemplate created = notificationTemplateRepository.findById(createdId).orElseThrow();
+        assertThat(created.getTenantId()).isEqualTo(otherTenantId);
+    }
+
+    @Test
+    @Order(20)
+    @DisplayName("IT-M09-020: Sprint 287（DEF-394）非 ADMIN 帶 targetTenantId 查詢列表，應被忽略、仍只看自己租戶")
+    void testGetTemplates_nonAdminTargetTenantIdIgnored() throws Exception {
+        UUID otherTenantId = createOtherTenant();
+        NotificationTemplate otherTemplate = createTemplateForTenant(otherTenantId, "IGNORED");
+
+        mockMvc.perform(get(TEMPLATES_URL)
+                        .header("Authorization", "Bearer " + authToken)
+                        .header("X-Tenant-ID", testTenantId.toString())
+                        .param("targetTenantId", otherTenantId.toString())
+                        .param("page", "0")
+                        .param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.templates[*].id", not(hasItem(otherTemplate.getId().toString()))));
     }
 }

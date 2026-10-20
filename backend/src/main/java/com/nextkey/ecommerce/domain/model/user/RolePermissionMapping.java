@@ -59,6 +59,9 @@ public class RolePermissionMapping {
                 Permission.ORDER_UPDATE,
                 Permission.USER_READ,
                 Permission.USER_UPDATE,
+                // Sprint 287（DEF-330a）：運費模板列表原借用 product:read 即可用，改用專屬權限後
+                // 一併授予，避免此（舊）角色失去既有能力
+                Permission.SHIPPING_TEMPLATE_READ,
                 // cms:read/create/update 比照 PostController 既有的日常 CRUD 開放範圍
                 // （STORE_OWNER/STORE_STAFF/SELLER/HOST 皆可），僅 cms:publish 限制較高層級
                 // （Sprint 129 拍板，Sprint 130 實作，DEF-092）
@@ -122,6 +125,9 @@ public class RolePermissionMapping {
                 Permission.NOTIFICATION_TEMPLATE_CREATE,
                 Permission.NOTIFICATION_TEMPLATE_UPDATE,
                 Permission.NOTIFICATION_TEMPLATE_DELETE,
+                // 運費模板列表為租戶範圍資料，店主管理自己租戶的模板（Sprint 287，DEF-330a；
+                // create/update/delete 沿用既有 product:create/update/delete，不受本次異動影響）
+                Permission.SHIPPING_TEMPLATE_READ,
                 // dashboard/faq/knowledge/media 為租戶範圍的店家後台內容管理模組（Sprint 129，DEF-075）
                 Permission.DASHBOARD_READ,
                 Permission.FAQ_READ,
@@ -163,6 +169,9 @@ public class RolePermissionMapping {
                 // 僅 READ：員工可檢視/預覽模板，但增刪改屬設定變更，保留給店主。
                 // 依本檔既有慣例——員工在設定類模組唯讀，寫入權只開放日常操作模組（工單/退貨）
                 Permission.NOTIFICATION_TEMPLATE_READ,
+                // 運費模板列表原借用 product:read 即可查看，改用專屬權限後一併授予，
+                // 維持員工既有的唯讀能力不變（Sprint 287，DEF-330a）
+                Permission.SHIPPING_TEMPLATE_READ,
                 // dashboard/faq/knowledge/media 同樣屬設定類內容管理模組，員工唯讀（Sprint 129，DEF-075）
                 Permission.DASHBOARD_READ,
                 Permission.FAQ_READ,
@@ -221,6 +230,7 @@ public class RolePermissionMapping {
                 Permission.NOTIFICATION_TEMPLATE_CREATE,
                 Permission.NOTIFICATION_TEMPLATE_UPDATE,
                 Permission.NOTIFICATION_TEMPLATE_DELETE,
+                Permission.SHIPPING_TEMPLATE_READ,        // 平台端檢視運費模板列表（Sprint 287，DEF-330a）
                 // 平台端管理 dashboard/faq/knowledge/media，跨租戶（Sprint 129，DEF-075）
                 Permission.DASHBOARD_READ,
                 Permission.FAQ_READ,

@@ -86,6 +86,12 @@ public enum Permission {
     NOTIFICATION_TEMPLATE_UPDATE("notification_template:update", "更新通知模板"),
     NOTIFICATION_TEMPLATE_DELETE("notification_template:delete", "刪除通知模板"),
 
+    // Sprint 287（DEF-330a）：運費模板列表端點原借用 product:read（BUYER/GUEST 亦持有），
+    // 與同控制器 create/update/delete 已使用的 product:create/update/delete 範圍不一致。
+    // 僅新增 read 權限收斂 list 端點可見範圍；calculateFee 端點刻意維持 product:read 不變
+    // （DEF-037，使用者已拍板：買家跨店比價試算運費，不受此權限異動影響）。
+    SHIPPING_TEMPLATE_READ("shipping_template:read", "檢視運費模板列表"),
+
     // Sprint 129（DEF-075）：dashboard/faq/knowledge/media 四個模組的權限碼從未進入本枚舉，
     // 端點對所有角色（含 SUPER_ADMIN，因為它是 EnumSet.allOf）必定 403（Sprint 128 掃描發現）。
     DASHBOARD_READ("dashboard:read", "檢視儀表板"),

@@ -6,10 +6,12 @@ import jakarta.validation.Valid;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.notification.NotificationTemplateDto;
+import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.core.notification.NotificationTemplateService;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
@@ -27,19 +29,30 @@ public class NotificationTemplateController {
 
     private final NotificationTemplateService templateService;
 
+    // Sprint 287（DEF-394）：RolePermissionMapping 明文將 notification_template:* 歸類為
+    // ADMIN 的跨租戶平台端權限，但 Service 原先完全沒有實作旁路，等同功能不可用。此處比照
+    // ReturnRequestService.isAdmin() 的既有模式（ADMIN／SUPER_ADMIN 皆放行，非 PricingService
+    // 的 SUPER_ADMIN-only 模式），讓 ADMIN 真正能代管任意店鋪的通知模板。
+    private boolean isAdmin(UserPrincipal principal) {
+        return "ADMIN".equals(principal.getRole()) || "SUPER_ADMIN".equals(principal.getRole());
+    }
+
     /**
      * 取得模板列表
      */
     @GetMapping("/notification-templates")
     @PreAuthorize("hasAuthority('notification_template:read')")
     public ResponseEntity<ApiResponse<NotificationTemplateDto.ListResponse>> getTemplates(
+            @AuthenticationPrincipal UserPrincipal principal,
             @RequestParam(required = false) String notificationType,
             @RequestParam(required = false) String channel,
             @RequestParam(required = false) Boolean isActive,
+            @RequestParam(required = false) UUID targetTenantId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
-        UUID tenantId = TenantContext.getCurrentTenant();
+        UUID tenantId = (isAdmin(principal) && targetTenantId != null)
+                ? targetTenantId : TenantContext.getCurrentTenant();
 
         NotificationTemplateDto.SearchRequest request = NotificationTemplateDto.SearchRequest.builder()
                 .notificationType(notificationType)
@@ -59,9 +72,10 @@ public class NotificationTemplateController {
     @GetMapping("/notification-templates/{id}")
     @PreAuthorize("hasAuthority('notification_template:read')")
     public ResponseEntity<ApiResponse<NotificationTemplateDto.Response>> getTemplate(
+            @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable UUID id) {
         UUID tenantId = TenantContext.getCurrentTenant();
-        NotificationTemplateDto.Response response = templateService.getTemplate(tenantId, id);
+        NotificationTemplateDto.Response response = templateService.getTemplate(tenantId, id, isAdmin(principal));
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -71,8 +85,10 @@ public class NotificationTemplateController {
     @PostMapping("/dashboard/notification-templates")
     @PreAuthorize("hasAuthority('notification_template:create')")
     public ResponseEntity<ApiResponse<NotificationTemplateDto.Response>> createTemplate(
+            @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody NotificationTemplateDto.CreateRequest request) {
-        UUID tenantId = TenantContext.getCurrentTenant();
+        UUID tenantId = (isAdmin(principal) && request.getTargetTenantId() != null)
+                ? request.getTargetTenantId() : TenantContext.getCurrentTenant();
         UUID userId = TenantContext.getCurrentUser();
 
         log.info("Create notification template: templateCode={}, tenantId={}",
@@ -88,6 +104,7 @@ public class NotificationTemplateController {
     @PutMapping("/dashboard/notification-templates/{id}")
     @PreAuthorize("hasAuthority('notification_template:update')")
     public ResponseEntity<ApiResponse<NotificationTemplateDto.Response>> updateTemplate(
+            @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable UUID id,
             @Valid @RequestBody NotificationTemplateDto.UpdateRequest request) {
         UUID tenantId = TenantContext.getCurrentTenant();
@@ -95,7 +112,8 @@ public class NotificationTemplateController {
 
         log.info("Update notification template: id={}, tenantId={}", id, tenantId);
 
-        NotificationTemplateDto.Response response = templateService.updateTemplate(tenantId, userId, id, request);
+        NotificationTemplateDto.Response response =
+                templateService.updateTemplate(tenantId, userId, id, request, isAdmin(principal));
         return ResponseEntity.ok(ApiResponse.success("Template updated", response));
     }
 
@@ -104,12 +122,14 @@ public class NotificationTemplateController {
      */
     @DeleteMapping("/dashboard/notification-templates/{id}")
     @PreAuthorize("hasAuthority('notification_template:delete')")
-    public ResponseEntity<ApiResponse<Void>> deleteTemplate(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<Void>> deleteTemplate(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID id) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
         log.info("Delete notification template: id={}, tenantId={}", id, tenantId);
 
-        templateService.deleteTemplate(tenantId, id);
+        templateService.deleteTemplate(tenantId, id, isAdmin(principal));
         return ResponseEntity.ok(ApiResponse.success("Template deleted", null));
     }
 

@@ -48,6 +48,10 @@ public class NotificationTemplateDto {
         private Boolean isActive;
 
         private Integer priority;
+
+        // Sprint 287（DEF-394）：ADMIN/SUPER_ADMIN 代表某店鋪建立模板時指定目標租戶；
+        // 非管理員或未帶值時忽略，一律沿用呼叫者自己的租戶（見 NotificationTemplateController）
+        private UUID targetTenantId;
     }
 
     // ========== Update Request ==========

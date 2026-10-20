@@ -21,6 +21,8 @@ export default function ReviewList({ listingId, reloadKey = 0 }: ReviewListProps
   const [stats, setStats] = useState<RatingStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // 賣家回覆（Sprint 287，DEF-392）：每則評價至多一筆，key 為 reviewId
+  const [replies, setReplies] = useState<Record<string, string>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -35,6 +37,17 @@ export default function ReviewList({ listingId, reloadKey = 0 }: ReviewListProps
         if (cancelled) return
         setReviews(list.reviews)
         setStats(ratingStats)
+
+        const replyEntries = await Promise.all(
+          list.reviews.map(async (review) => {
+            const reviewReplies = await ReviewService.getReplies(review.reviewId).catch(() => [])
+            return [review.reviewId, reviewReplies[0]?.content ?? null] as const
+          })
+        )
+        if (cancelled) return
+        setReplies(
+          Object.fromEntries(replyEntries.filter(([, content]) => content != null)) as Record<string, string>
+        )
       } catch {
         if (cancelled) return
         setError('無法載入評價')
@@ -99,6 +112,12 @@ export default function ReviewList({ listingId, reloadKey = 0 }: ReviewListProps
             <p className="text-sm text-gray-700 whitespace-pre-line">{review.content}</p>
             {review.helpfulCount > 0 && (
               <p className="text-xs text-gray-400 mt-1">{review.helpfulCount} 人覺得有幫助</p>
+            )}
+            {replies[review.reviewId] && (
+              <div className="mt-3 rounded-md bg-gray-50 border border-gray-200 px-3 py-2">
+                <p className="text-xs font-medium text-gray-500 mb-1">店家回覆</p>
+                <p className="text-sm text-gray-700 whitespace-pre-line">{replies[review.reviewId]}</p>
+              </div>
             )}
           </CardContent>
         </Card>

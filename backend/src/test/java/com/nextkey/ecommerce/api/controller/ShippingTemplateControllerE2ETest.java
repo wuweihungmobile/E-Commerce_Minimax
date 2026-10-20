@@ -211,4 +211,45 @@ class ShippingTemplateControllerE2ETest {
 
         System.out.println("✅ TC-ST-E03 PASSED: BUYER 存取運費模板 API 正確返回 403");
     }
+
+    /**
+     * TC-ST-E04: Sprint 287（DEF-330a）BUYER 存取 GET /v2/shipping-templates（列表）→ 403
+     * 原借用 product:read（BUYER 亦持有），改用專屬的 shipping_template:read 後應擋下。
+     */
+    @Test
+    @Order(4)
+    @DisplayName("TC-ST-E04: GET /v2/shipping-templates — BUYER 角色應返回 403（Sprint 287，DEF-330a）")
+    void getTemplates_asBuyer_shouldReturn403() {
+        String buyerToken = createBuyerToken();
+
+        given()
+                .header("Authorization", "Bearer " + buyerToken)
+                .when()
+                .get(BASE_URL)
+                .then()
+                .statusCode(403);
+
+        System.out.println("✅ TC-ST-E04 PASSED: BUYER 存取運費模板列表 API 正確返回 403");
+    }
+
+    /**
+     * TC-ST-E05: Sprint 287（DEF-330a）SELLER 存取 GET /v2/shipping-templates（列表）→ 200
+     * 迴歸驗證：新增專屬權限後，原本就能管理運費模板的角色不受影響。
+     */
+    @Test
+    @Order(5)
+    @DisplayName("TC-ST-E05: GET /v2/shipping-templates — SELLER 角色應返回 200（Sprint 287，DEF-330a 迴歸驗證）")
+    void getTemplates_asSeller_shouldReturn200() {
+        String sellerToken = createSellerToken();
+
+        given()
+                .header("Authorization", "Bearer " + sellerToken)
+                .when()
+                .get(BASE_URL)
+                .then()
+                .statusCode(200)
+                .body("success", is(true));
+
+        System.out.println("✅ TC-ST-E05 PASSED: SELLER 存取運費模板列表 API 仍正確返回 200");
+    }
 }

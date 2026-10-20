@@ -102,9 +102,13 @@
 
 - `DEFERRED_ITEMS_TRACKER.md`：`DEF-330`／`DEF-392`／`DEF-394` 條目補上 Sprint 287 修復說明；補登 Sprint 286 原先缺漏的頁首版本號／摘要更新（Sprint 286 進行時只更新了個別 DEF 條目，未同步頁首，屬文件漂移，本輪一併補登）。
 - `API_M11_Logistics.md`：v1.0 → v1.1，更正 `BUYER`／`GUEST` 的 `product:read` 既有事實錯誤。
+- `API_M09_Notification.md`：v1.0 → v1.1（收尾時的文件一致性檢查發現，已於 push 後補登）。補登兩件事：Sprint 286（`DEF-330a`）範本列表／詳情已改為 `notification_template:read`，但文件仍寫 `isAuthenticated()`（與程式碼不符的既有漂移，§2／§4.12／§4.13／§5／§7 一併更正）；Sprint 287（`DEF-394`）的 ADMIN／SUPER_ADMIN 跨租戶管理（`targetTenantId`、擁有權旁路、更新時唯一碼檢查比對範本實際所屬租戶）。以程式碼為準逐條核對（`RolePermissionMapping` 的 `NOTIFICATION_TEMPLATE_READ` 持有者＝STORE_OWNER／STORE_STAFF／ADMIN／SUPER_ADMIN）；`ApiRouteDocDriftTest` 重跑通過（2 tests、0 failures）。
+- `DEFERRED_ITEMS_TRACKER.md`（補充）：新增 `DEF-396`，並在 `DEF-395` 補述其修法同樣受影響。
 
 ## 5. 已知限制／留給未來 Sprint
 
 - `DEF-373`（回覆評價擁有權檢查三處不一致）與本輪發現的 FRD／程式碼敘述矛盾，未在本輪核對與校正。
 - `DEF-394` 僅補後端能力，前端管理介面留給未來 Sprint 視實際需求決定是否要做。
+- `DEF-394` 的 `targetTenantId` **不驗證目標租戶是否存在**（讀碼確認：`notification_templates.tenant_id` 可為 `NULL` 且沒有外鍵，`createTemplate` 也沒有檢查；未實測）。ADMIN／SUPER_ADMIN 帶不存在的租戶 ID 會建出不屬於任何店鋪的範本。只有管理員角色能觸發，風險低，已寫入 `API_M09_Notification.md` §7，未登記為獨立缺陷。
+- `DEF-396`（限流與租戶標頭檢查回應的中文訊息被編碼成 `?`）未修復，建議下一輪處理；修好前，E2E 套件對登入密度的容忍度沒有改善（§3 最後一點）。
 - 150+ 個既有 `getCurrentTenant()` 呼叫處的語意稽核（`DEF-330(c)` 的 drift 鎖定機制之外）仍留給未來 Sprint 按需抽查。

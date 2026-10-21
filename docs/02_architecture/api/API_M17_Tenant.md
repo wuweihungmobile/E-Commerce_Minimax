@@ -1,9 +1,9 @@
 # API 規格文件 - M17 租戶/店鋪管理 / API Specification - M17 Tenant Management
 
 > **文件編號**: API-M17
-> **文件版本**: v2.0（Sprint 266 依實作改寫）
+> **文件版本**: v2.1（Sprint 292 校正 §4.6 錯誤列；v2.0 為 Sprint 266 依實作改寫）
 > **建立日期**: 2026-04-09（v1.0）
-> **最後更新**: 2026-10-14
+> **最後更新**: 2026-10-22
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`TenantController`、`AdminController`、`StorefrontController`（`api/controller/`）、`TenantService`、`AdminService`（`core/tenant/`、`core/admin/`）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[TenantServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/tenant/TenantServiceTest.java)、[AdminServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/admin/AdminServiceTest.java)、[AdminControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/AdminControllerE2ETest.java)、[TenantControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantControllerE2ETest.java)、[TenantMemberLookupIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantMemberLookupIntegrationTest.java)、[TenantMemberInviteE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantMemberInviteE2ETest.java)
@@ -17,6 +17,7 @@
 > 4. **`TenantController` 的 7 個成員管理端點首次收錄（DEF-377，新登記並於本輪一併解決）**：列表／邀請／我的待確認邀請／接受／拒絕／改角色／移除（`TenantController.java`:216-339）自 Sprint 98 起即存在、功能完整且有測試覆蓋，但 v1.0 起從未被任何版本的本文件描述，Sprint 248 新增 member-lookup 時雖已發現此缺口但刻意不補；
 > 5. **新增 6 個 `AdminController` 端點（DEF-369）**：`GET .../{tenantId}`、`POST .../review`、`PUT .../{tenantId}/status`、`POST /admin/feature-toggles`、`DELETE .../feature-toggles/{featureKey}`、`GET .../{tenantId}/stats`；
 > 6. **多處既有端點的回應欄位補齊**：`TenantDetailsResponse` 實際含 `contactPhone`／`purchaseOrderApprovalThreshold`／`updatedAt`；`FeatureToggleResponse` 實際含 `quotas`（數量配額）及每個 `features[]` 項目的 `category`／`status`／`requiresAdminReview`；`TenantUpdateRequest` 還可帶 `businessType`／`status`／`purchaseOrderApprovalThreshold`，且 `coverImageUrl` 是**完全死欄位**（DEF-193）；駁回申請的 `reason` 空白實際回 `E-9000`（Bean Validation），非 v1.1 寫的 `E-4001`
+> 7. **§4.6 的 403 條件校正（Sprint 292，文件一致性檢查第五輪）**：Sprint 281（DEF-331(f)）把 `TenantService.updateFeatureToggle` 的檢查從「是該租戶有效成員」改為「是該租戶的店主（`STORE_OWNER`）」，但該次 commit 沒有同步本文件，§4.6 的失敗列仍寫「非該租戶成員」，讀起來像是 `STORE_STAFF` 也能通過。已改為如實描述；單元測試 `TenantServiceTest.updateFeatureToggle_notOwner_rejectedWithoutAudit` 佐證。本文件其他章節的同款「非該租戶成員」列本輪**未逐一核對**對應的 service 檢查是店主還是成員
 
 ---
 
@@ -187,7 +188,7 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | 租戶上下文不明 | 403 | `E-2003` |
-| 非該租戶成員 | 403 | `E-4031` |
+| 呼叫者不是該租戶的店主（`STORE_OWNER`）——一般成員如 `STORE_STAFF` 同為 403（Sprint 281，DEF-331(f) 起；此前只驗證是有效成員） | 403 | `E-4031` |
 | `feature` 不是已知鍵或是數量配額非開關 | 500 | `E-9000` |
 
 ### 4.7 `GET /v2/tenants/{id}/members` — 成員列表

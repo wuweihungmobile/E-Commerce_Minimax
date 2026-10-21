@@ -16,7 +16,7 @@
 
 | 層級 | 技術 | 備註 |
 |------|------|------|
-| 前端 | Next.js 15 (App Router) + TypeScript + Tailwind CSS | SSR + SSG |
+| 前端 | Next.js 16 (App Router) + TypeScript + Tailwind CSS | SSR + SSG |
 | 後端 | Spring Boot 3.2 (Java 21) + Clean Architecture + DDD | 多租戶感知 |
 | 資料庫 | PostgreSQL 18 | Shared Schema + Tenant ID 隔離 |
 | 快取 | Redis 7 | 購物車 / 分佈式鎖 / 限流 / 定價快取 |

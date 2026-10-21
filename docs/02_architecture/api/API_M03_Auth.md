@@ -45,7 +45,7 @@
 
 - **端點**: `POST /api/v2/auth/register`
 - **描述**: 新用戶註冊成為會員。**註冊永遠不建立任何租戶關聯**（`DEF-244`）：店主只能經開店申請審核取得、店員只能經店主邀請加入
-- **對應需求**: [US-M03-001](../../01_requirements/E-Commerce_FRD_v1.0.md#us-m03-001)
+- **對應需求**: [US-M03-001](../../01_requirements/E-Commerce_FRD_v1.0.md#us-m03-001-會員註冊)
 - **角色**: Guest
 
 ### 1.1 Request
@@ -104,7 +104,7 @@
 
 - **端點**: `POST /api/v2/auth/login`
 - **描述**: 會員登入，回傳 Access Token、Refresh Token 與使用者資訊
-- **對應需求**: [US-M03-002](../../01_requirements/E-Commerce_FRD_v1.0.md#us-m03-002)
+- **對應需求**: [US-M03-002](../../01_requirements/E-Commerce_FRD_v1.0.md#us-m03-002-會員登入)
 - **角色**: Guest
 
 ### 2.1 Request
@@ -175,7 +175,7 @@
 
 - **端點**: `POST /api/v2/auth/refresh`
 - **描述**: 使用 Refresh Token 取得一組**新的** Access Token 與 Refresh Token；舊的 Refresh Token 立即失效（輪替，`DEF-219`）
-- **對應需求**: [BR-M03-001](../../01_requirements/E-Commerce_FRD_v1.0.md#br-m03-001)
+- **對應需求**: [BR-M03-001](../../01_requirements/E-Commerce_FRD_v1.0.md#us-m03-003-jwt-刷新)
 - **角色**: Guest+（不需要 access token，只需要有效的 refresh token）
 
 ### 3.1 Request
@@ -203,7 +203,7 @@
 
 - **端點**: `POST /api/v2/auth/logout`
 - **描述**: 撤銷 Refresh Token
-- **對應需求**: [BR-M03-001](../../01_requirements/E-Commerce_FRD_v1.0.md#br-m03-001)
+- **對應需求**: [BR-M03-001](../../01_requirements/E-Commerce_FRD_v1.0.md#us-m03-004-會員登出)
 - **角色**: Buyer+（需 `Authorization: Bearer {access_token}`）
 
 ### 4.1 Request
@@ -238,7 +238,7 @@ Request Body **選填**：
 
 - **端點**: `GET /api/v2/auth/me`
 - **描述**: 取得已登入會員的個人資訊
-- **對應需求**: [US-M03-002](../../01_requirements/E-Commerce_FRD_v1.0.md#us-m03-002)
+- **對應需求**: [US-M03-002](../../01_requirements/E-Commerce_FRD_v1.0.md#us-m03-002-會員登入)
 - **角色**: Buyer+（需 `Authorization: Bearer {access_token}`）
 
 ### 5.1 Response

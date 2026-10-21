@@ -1,7 +1,7 @@
 # E-Commerce System — 功能需求文檔 (FRD) v1.16
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.16
+> **版本**: v1.17
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -36,7 +36,7 @@
 | **文檔狀態** | Draft |
 | **System Analyst** | Amanda (SA-Analyst) |
 | **Business Analyst** | Beatrice (BA-Business-Analyst) |
-| **最後更新** | 2026-04-09 |
+| **最後更新** | 2026-10-22（逐版內容見檔尾版本紀錄，目前 v1.17） |
 
 ---
 
@@ -115,7 +115,7 @@
 
 | 層級 | 技術 | 備註 |
 |------|------|------|
-| 前端 | Next.js 15 (App Router) + TypeScript + Tailwind CSS | SSR + SSG |
+| 前端 | Next.js 16 (App Router) + TypeScript + Tailwind CSS | SSR + SSG |
 | 後端 | Spring Boot 3.2 (Java 21) + Clean Architecture + DDD | 多租戶感知 |
 | 資料庫 | PostgreSQL 18 | Shared Schema + Tenant ID 隔離 |
 | 快取 | Redis 7 | 購物車 / 分佈式鎖 / 限流 / 定價快取 |
@@ -2608,7 +2608,7 @@ WHERE sku_id = :skuId
 | `/api/v2/dashboard/orders` | GET | 賣家訂單列表 | Seller+ |
 | `/api/v2/dashboard/orders/:id/status` | PUT | 更新訂單狀態 | Seller+ |
 
-**詳細 API 規格**: 見 [docs/02_architecture/API_M05_Order.md](../02_architecture/API_M05_Order.md)
+**詳細 API 規格**: 見 [docs/02_architecture/api/API_M05_Order.md](../02_architecture/api/API_M05_Order.md)
 
 ---
 
@@ -3467,7 +3467,7 @@ pricing_rules
 | `/api/v2/dashboard/pricing-rules/:id` | DELETE | 刪除定價規則 | Host+ |
 | `/api/v2/dashboard/listings/:id/pricing-preview` | GET | 預覽未來 90 天定價日曆 | Host+ |
 
-**詳細 API 規格**: 見 [docs/02_architecture/API_M12_Dynamic_Pricing.md](../02_architecture/API_M12_Dynamic_Pricing.md)
+**詳細 API 規格**: 見 [docs/02_architecture/api/API_M12_Dynamic_Pricing.md](../02_architecture/api/API_M12_Dynamic_Pricing.md)
 
 ---
 
@@ -4397,6 +4397,7 @@ tenant_feature_toggles
 | v1.14 | 2026-10-15 | **M01／M02 API 文件全面改寫＋FRD 端點表校正（Sprint 273，DEF-286／DEF-372 範圍）**：§3.7、§4.7 端點概要表依實際程式碼全面改寫（移除不存在的 `GET .../search`、`GET /categories`、`PUT .../publish`、`PUT .../status`；補上 `/v2/products`、`/v2/rooms`、SKU、維護窗口等實際端點），連結改指向全新改寫的 [API_M01_Product_Center.md](../02_architecture/api/API_M01_Product_Center.md)（14 端點）／[API_M02_Listing_Center.md](../02_architecture/api/API_M02_Listing_Center.md)（8 端點）。**新增修訂註記**（§3 AC-M01-002-1/2 前、§4 AC-M02-003-1/2/3 前、§4 AC-M02-004-2 前）標註三處驗收標準描述的「`DRAFT`→發布兩階段上架」「建立時自動初始化 90 天 room_calendar」「`PUT .../calendar` 批次封鎖」流程與實作不符，Gherkin 內容本身未改寫（是否重新設計草稿機制或改寫驗收標準屬產品決策）。過程中新登記 **DEF-379**（`ProductService.getProducts` 的 `category`／`brand` 篩選分支無租戶範圍）、**DEF-380**（`DRAFT`→發布與日曆初始化流程從未實作），兩項皆登記未修復。詳見 [SPRINT_273_PLAN.md](../04_planning/SPRINT_273_PLAN.md) | Claude Code（Sprint 273） |
 | v1.15 | 2026-10-17 | **DEF-380 結案：改寫 Gherkin 反映現況（Sprint 280）**：使用者拍板「不實作兩階段上架，FRD 改為反映建立即上架現況」。§3／§4 三處 Gherkin 本文正式改寫：AC-M01-002-1／AC-M02-003-1 的 `Then` 從 `status='DRAFT'` 改為 `status='ACTIVE'`；AC-M01-002-2／AC-M02-003-2「發布商品／房源」兩個 AC 標記移除（流程不存在，既有項目改用一般編輯端點手動切換狀態）；AC-M02-003-3「初始日曆建立」改寫為反映「缺列視為可訂」的真實隱性語意；AC-M02-004-2「編輯日曆設定」改寫為反映實際存在的區間式維護窗口端點（`POST/DELETE .../maintenance`），取代原描述但不存在的逐日批次封鎖＋`reason`。同步修正 §3／§4「技術實現概要」清單內兩處同款 `status='DRAFT'` 殘留敘述。詳見 [DEFERRED_ITEMS_TRACKER.md](../04_planning/DEFERRED_ITEMS_TRACKER.md) DEF-380 | Claude Sonnet 5（Sprint 280） |
 | v1.16 | 2026-10-21 | **BR-M08-07 與 §6D.2 校正：移除 DEF-373「未修復」的過期敘述（Sprint 289）**：BR-M08-07 與 §6D.2「商家／房東回覆」列仍寫回覆授權三處不一致、`DEF-373` 未修復，但 `ReviewReplyService.createReply` 早在 Sprint 264 依使用者拍板統一為「同租戶或管理員」（單元測試 `ReviewReplyServiceTest.createReply_SameTenantNonOwner_Succeeds` 與真實 DB 整合測試 `ReviewAuthorizationRealDbIntegrationTest` 佐證；`API_M08_Review.md` 與 `SRD_Module_Technical_Design.md` 當時已同步）。Sprint 268（v1.12）校正 BR-M08-10、§6D.6 時漏了這兩處。兩處改為反映現況，並更正原文一處不精確的描述：原寫「三者共用同一組 `@PreAuthorize` 權限字串」，讀碼確認回覆訂房評價用的是 `room:update`／`booking:update`，與另兩處的 `room:update`／`product:update` 不同；`STORE_STAFF` 沒有這三個 update 權限，是在權限註解這一層就被擋下，不是「通過後才被拒絕」。此矛盾由 Sprint 287 實作 DEF-392 時發現並記錄，本輪核對後校正。詳見 [SPRINT_289_PLAN.md](../04_planning/SPRINT_289_PLAN.md) | Claude Code（Sprint 289） |
+| v1.17 | 2026-10-22 | **文件一致性檢查第五輪的校正（Sprint 292）**：①檔頭「文檔元數據」的「最後更新」自建立以來從未維護（停在 2026-04-09），改為本次日期並註明版本紀錄在本節（Sprint 289 登記的長期漂移）；②§1.3 技術棧表 `Next.js 15` 校正為 `Next.js 16`（`frontend/package.json` 自 2026-05-10 起即為 16.x）；③M05、M12 兩章的「詳細 API 規格」連結少了 `api/` 子目錄而失效，已更正。既有需求內文未改寫。詳見 [SPRINT_292_PLAN.md](../04_planning/SPRINT_292_PLAN.md) | Claude Code（Sprint 292） |
 
 ---
 

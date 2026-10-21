@@ -1,7 +1,7 @@
-# E-Commerce System — 系統需求文檔 (SRD) v1.7
+# E-Commerce System — 系統需求文檔 (SRD) v1.8
 
 > **文檔類型**: SRD (System Requirements Document)
-> **版本**: v1.7（v1.0 → v1.3：見下方歷史；v1.3 → v1.6：Sprint 244／245／247 文件對齊與訂房功能同步；v1.6 → v1.7：Sprint 261 文件一致性檢查，補 no-show 狀態列＋版本中繼資料校正；完整內容見 §9 修訂歷史）
+> **版本**: v1.8（v1.0 → v1.3：見下方歷史；v1.3 → v1.6：Sprint 244／245／247 文件對齊與訂房功能同步；v1.6 → v1.7：Sprint 261 文件一致性檢查，補 no-show 狀態列＋版本中繼資料校正；v1.7 → v1.8：Sprint 292 文件一致性檢查，技術棧版本與資料表索引錨點校正；完整內容見 §9 修訂歷史）
 > **依據**: E-Commerce_PRD_v1.0_Final.md, E-Commerce_FRD_v1.0.md
 > **建立日期**: 2026-04-09
 > **作者**: Marcus (SD-Architect)
@@ -17,7 +17,7 @@
 | **系統類型** | B2B2C 多租戶電子商務 + 民宿預訂系統 |
 | **文檔狀態** | Draft |
 | **System Architect** | Marcus (SD-Architect) |
-| **最後更新** | 2026-10-13 |
+| **最後更新** | 2026-10-22 |
 
 ---
 
@@ -43,8 +43,8 @@
 │                         B2B2C Platform                              │
 │                                                                      │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │                    Frontend (Next.js 15)                    │   │
-│  │   React 18 + TypeScript + Tailwind CSS + Zustand            │   │
+│  │                    Frontend (Next.js 16)                    │   │
+│  │   React 19 + TypeScript + Tailwind CSS + Zustand            │   │
 │  │   Shadcn UI + Radix UI ( Accessible UI Components )           │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                   │                                  │
@@ -136,8 +136,8 @@ com.nextkey.ecommerce/
 
 | 層級 | 技術 | 版本 | 備註 |
 |------|------|------|------|
-| **前端框架** | Next.js 15 | 15.x | App Router + SSR + SSG |
-| **前端 UI 框架** | React | 18.x | 元件化開發 |
+| **前端框架** | Next.js 16 | 16.x | App Router + SSR + SSG |
+| **前端 UI 框架** | React | 19.x | 元件化開發 |
 | **前端 UI 組件庫** | Shadcn UI + Radix UI | 最新 | Accessible + 無頭組件 |
 | **前端語言** | TypeScript | 5.x | 強型別 |
 | **前端樣式** | Tailwind CSS | 3.x | Utility-First |
@@ -624,22 +624,22 @@ CREATED ──付款成功──▶ PAID ──店家確認──▶ CONFIRMED �
 
 | 表格名 | 說明 | 詳細定義 |
 |--------|------|----------|
-| `tenants` | 租戶/店鋪主檔 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#21-tenants---租戶店鋪主檔) |
-| `tenant_members` | 租戶成員關聯 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#22-tenant_members---租戶成員關聯) |
-| `tenant_feature_toggles` | 功能開關 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#23-tenant_feature_toggles---功能開關) |
-| `users` | 使用者主檔 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#24-users---使用者主檔) |
-| `user_profiles` | 使用者擴展檔 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#25-user_profiles---使用者擴展檔) |
-| `refresh_tokens` | Refresh Token 儲存 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#26-refresh_tokens---refresh-token-儲存) |
-| `listings` | 統一商品/房源 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#27-listings---統一商品房源主檔) |
-| `products` | 商品特化資料 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#28-products---商品特化資料) |
-| `product_inventory` | 庫存管理 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#29-product_inventory---庫存管理) |
-| `rooms` | 房源特化資料 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#210-rooms---房源特化資料) |
-| `room_calendar` | 日曆可用性 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#211-room_calendar---日曆可用性) |
-| `orders` | 訂單主檔 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#212-orders---訂單主檔) |
-| `order_items` | 訂單明細 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#213-order_items---訂單明細) |
-| `order_state_log` | 狀態異動日誌 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#214-order_state_log---狀態異動日誌) |
-| `pricing_rules` | 動態定價規則 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#215-pricing_rules---動態定價規則) |
-| `pricing_overrides` | 手動價格覆蓋 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#216-pricing_overrides---手動價格覆蓋) |
+| `tenants` | 租戶/店鋪主檔 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#211-tenants---租戶店鋪主檔) |
+| `tenant_members` | 租戶成員關聯 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#212-tenant_members---租戶成員關聯) |
+| `tenant_feature_toggles` | 功能開關 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#213-tenant_feature_toggles---功能開關) |
+| `users` | 使用者主檔 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#221-users---使用者主檔) |
+| `user_profiles` | 使用者擴展檔 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#222-user_profiles---使用者擴展檔) |
+| `refresh_tokens` | Refresh Token 儲存 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#223-refresh_tokens---refresh-token-儲存) |
+| `listings` | 統一商品/房源 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#231-listings---統一商品房源主檔) |
+| `products` | 商品特化資料 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#232-products---商品特化資料) |
+| `product_inventory` | 庫存管理 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#233-product_inventory---庫存管理) |
+| `rooms` | 房源特化資料 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#234-rooms---房源特化資料) |
+| `room_calendar` | 日曆可用性 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#235-room_calendar---日曆可用性) |
+| `orders` | 訂單主檔 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#241-orders---訂單主檔) |
+| `order_items` | 訂單明細 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#242-order_items---訂單明細) |
+| `order_state_log` | 狀態異動日誌 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#243-order_state_log---狀態異動日誌) |
+| `pricing_rules` | 動態定價規則 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#251-pricing_rules---動態定價規則) |
+| `pricing_overrides` | 手動價格覆蓋 | [SRD_Database_Schema.md](./SRD_Database_Schema.md#252-pricing_overrides---手動價格覆蓋) |
 
 ---
 
@@ -700,9 +700,10 @@ CREATED ──付款成功──▶ PAID ──店家確認──▶ CONFIRMED �
 | v1.5 | 2026-10-04 | Claude Code（Sprint 245） | §6.3.4 訂房狀態依實作更新：入住與退房已實作（`PAID → CHECKED_IN → CHECKED_OUT → COMPLETED`，退房後同一交易自動完成），仍不產生 `CONFIRMED`（DEF-345 拍板）；完成不觸發結算。標題版本號同步為 v1.5（先前標題停在 v1.3，與 v1.4 修訂紀錄不一致） |
 | v1.6 | 2026-10-09 | Claude Code（Sprint 247） | §6.3.4 訂房納入結算（DEF-353，PRD §6.2.1）：`SettlementGenerator` 將訂房與訂單彙總進同一張結算單；可結算條件（COMPLETED，或 CANCELLED+refundStatus=NONE+存在成功付款）取代前版「完成不觸發結算」的敘述；退款比照訂單走跨結算週期調整機制 |
 | v1.7 | 2026-10-13 | Claude Code（Sprint 261） | 文件一致性檢查（第四輪）：§6.3.4 補上 no-show 自動取消狀態轉換列（Sprint 246，DEF-352，原表遺漏）；修正本文件三處各自獨立漂移的版本號／日期中繼資料（檔頭「版本」欄、文檔元數據「最後更新」、檔尾「最後更新」皆各自停在不同的舊日期，與本表最新列不一致）。詳見 [SPRINT_261_PLAN.md](../04_planning/SPRINT_261_PLAN.md) |
+| v1.8 | 2026-10-22 | Claude Code（Sprint 292） | 文件一致性檢查（第五輪）：①§1.1 系統架構圖與 §1.3 技術選型表的 `Next.js 15`／`React 18` 校正為 `Next.js 16`／`React 19`（`frontend/package.json` 自 2026-05-10 起即為 Next 16.x，現為 16.4.2／React 19.2.4）；②§6.5「詳細資料表清單」16 個指向 [SRD_Database_Schema.md](./SRD_Database_Schema.md) 的錨點全部失效（該文件的資料表標題已改為 `2.1.1 \`tenants\` - …` 的分組編號格式，本表仍用舊的 `#21-tenants---…` 流水編號），逐一改為現行標題的錨點。詳見 [SPRINT_292_PLAN.md](../04_planning/SPRINT_292_PLAN.md) |
 
 ---
 
 **文檔版本**: AISDLC v0.09
 **模板維護**: AISDLC Framework Team
-**最後更新**: 2026-10-13
+**最後更新**: 2026-10-22

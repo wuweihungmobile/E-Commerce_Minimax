@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0.6（文件修訂；規格基準仍為 v1.0）
+> **版本**: v1.0.7（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -17,6 +17,7 @@
 > - **v1.0.3 → v1.0.4（2026-10-04，Sprint 245 收尾決策）**：新增未入住（no-show）規則（§15.2.5 BOOKING 路徑、§17.4.6 Q15、§18 RTM-DR-006）與訂房納入結算（§6.2.1，DEF-353）；既有規格內文未改寫。
 > - **v1.0.4 → v1.0.5（2026-10-11，Sprint 252，DEF-321(b)）**：§10 路由表 `/stores/[slug]` 四條路由、§11.3／§11.3.1 元件、§12.7 瀏覽流程**首次實作**；既有規格內文未改寫。實作時發現並修正 §12.5「Guest 未登入可瀏覽」與 `/v2/listings` 實際授權矛盾（新建獨立公開端點，未改動 `/v2/listings`）；§11.3.1 `<StoreHeroBanner/>` 的 `bannerImageUrl`/`ctaText` 本輪未新增對應欄位，暫以既有 `logoUrl`/`name`/`description` 呈現。
 > - **v1.0.5 → v1.0.6（2026-10-11，Sprint 253，DEF-321(d)(e)）**：§6.6.3 嵌入卡片 MAINTENANCE/Cascade 規格、§10 全部路由表（10.1.1/10.1.2/10.1.3）**依實際程式碼逐條校對**——改名/架構演進已更新路由欄並附註，真缺口保留原路由並登記 DEF-358(a)(b)(c)(d)；補建 `/dashboard/pricing/calendar`、`/admin/tenants/[id]/features` 兩個先前缺頁但後端/元件已存在的路由。
+> - **v1.0.6 → v1.0.7（2026-10-22，Sprint 292，文件一致性檢查第五輪）**：①移除 §6.6（M15 CMS）末尾一個沒有對應開頭的 ``` 孤兒圍欄——它讓其後所有程式碼區塊的開／關角色對調，§6.7 起至 §7 的標題與 RBAC 矩陣在 CommonMark 渲染器（GitHub、VS Code 預覽）中被吞進程式碼區塊（以 markdown-it 14.1.0 實測：修正前 10 個標題被吞、修正後 0 個）；②§1.2 技術棧表 `Next.js 15` 校正為 `Next.js 16`（`frontend/package.json` 自 2026-05-10 起即為 16.x，現為 16.4.2）；③§10.1.2 補列 S253 校對後才出現或漏列的 `/dashboard/reviews`（Sprint 287，DEF-392）、`/dashboard/erp`、`/cms` 系列四頁。既有規格內文未改寫。
 
 ---
 
@@ -65,7 +66,7 @@
 
 | 層級 | 技術 | 備註 |
 |------|------|------|
-| 前端 | Next.js 15 (App Router) + TypeScript + Tailwind CSS | SSR + SSG |
+| 前端 | Next.js 16 (App Router) + TypeScript + Tailwind CSS | SSR + SSG |
 | 後端 | Spring Boot 3.2 (Java 21) + Clean Architecture + DDD | 多租戶感知 |
 | 資料庫 | PostgreSQL 18 | Shared Schema + Tenant ID 隔離 |
 | 快取 | Redis 7 | 購物車 / 分佈式鎖 / 限流 / 定價快取 |
@@ -952,7 +953,6 @@ v0.9 在 v0.8 的 M01–M14 基礎上新增 M15–M17 三個模組，並將 M12 
 - 若 `listing_id` 對應的 Listing 不存在或非 ACTIVE 狀態，回傳 `404 E-1001`。
 
 > **前端編輯器 UX 建議（非 PRD 規格約束）**：前端 Markdown 編輯器可在用戶輸入時即時解析語法，遇重複 ID 時顯示 UI 警告提示，以提升編輯體驗。此為元件層級的 UX 優化建議，不寫入後端 API 規格約束。
-```
 
 ### 6.7 M16 進銷存管理 (ERP) — v0.9 新增模組
 
@@ -2180,8 +2180,9 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `/dashboard/tenants/[id]/edit` | M17 | **改名**：店鋪設定，原 PRD 寫 `/dashboard/settings`；實際是店主自助管理自己租戶的頁面（`/dashboard/tenants` 列表＋`/dashboard/tenants/[id]` 詳情＋`/dashboard/tenants/[id]/edit` 編輯，三者皆為店主自助視角，與 §10.1.3 `/admin/tenants/*` 的平台管理視角為**不同功能、刻意並存**，非重複） |
 | `/dashboard/tenants/[id]/features` | M17 | 店主自助查看/申請功能開關（需審核的功能送出後狀態為「待審核」，由平台管理台 `/admin/tenants/[id]/features` 審核，Sprint 253 補建） |
 | `/dashboard/revenue` | M13 | 營收報表 |
+| `/dashboard/reviews` | M08 | 賣家評價管理與回覆（**Sprint 287 新增，DEF-392**；呼叫 `GET /v2/reviews/managed`，預設列待處理項目，可回覆評價。此前為「有後端、零前端」缺口。Sprint 292 補列） |
 
-**本節未收錄於原 PRD、但實際已存在的 B 端路由**（Sprint 253 補列，非窮舉每條巢狀子路由）：`/dashboard/chat`（店家客服即時通訊）、`/dashboard/faq`、`/dashboard/faq/categories`、`/dashboard/knowledge`（知識庫）、`/dashboard/notifications`、`/dashboard/returns`、`/dashboard/returns/[id]`、`/dashboard/shipping`、`/dashboard/support/tickets`、`/dashboard/support/tickets/[id]`。
+**本節未收錄於原 PRD、但實際已存在的 B 端路由**（Sprint 253 補列，非窮舉每條巢狀子路由；Sprint 292 追補 `/dashboard/erp` 與 `/cms` 系列）：`/dashboard/chat`（店家客服即時通訊）、`/dashboard/faq`、`/dashboard/faq/categories`、`/dashboard/knowledge`（知識庫）、`/dashboard/notifications`、`/dashboard/returns`、`/dashboard/returns/[id]`、`/dashboard/shipping`、`/dashboard/support/tickets`、`/dashboard/support/tickets/[id]`、`/dashboard/erp`（ERP 進銷存系統總覽頁，各 `/dashboard/erp/*` 子頁的入口）、`/cms`（CMS 貼文管理）、`/cms/posts/new`、`/cms/posts/[id]/edit`、`/cms/media`（媒體庫）——`/cms` 系列是早期 M15 CMS 後台，與 `/dashboard/posts`（兩者皆用前端 `services/cms`）、`/dashboard/media`（用另一套 `services/media`，即 DEF-387 已決策維持現狀的兩套媒體庫實作）並存；以 grep 查證，專案內其他頁面沒有連結到 `/cms/*`，只能直接輸入網址進入。
 
 #### 10.1.3 平台管理台路由（繼承 v0.8 + v0.9 擴展；**Sprint 253 依實際程式碼校對**）
 

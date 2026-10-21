@@ -31,7 +31,7 @@
 2. **使用者狀態是自由字串，無列舉驗證**：`PUT /users/{userId}/status` 的 `status` 查詢參數直接寫入 `User.status`（純 `String` 欄位，非 `@Enumerated`），**不驗證合法值**。全庫唯一讀取此欄位的邏輯是 `AuthService` 登入檢查 `"ACTIVE".equals(user.getStatus())`——所以任何非 `"ACTIVE"` 的字串（包括打錯字）效果上都等同封鎖登入，無法透過這個欄位區分「停權」「停用」「打錯字」等不同語意。
 3. **平台統計皆為真實資料**：`totalTenants`／`activeTenants`／`totalUsers`／`totalListings`／`totalOrders`／`pendingTenantReviews`／`totalPlatformGMV` 皆查詢真實資料庫；`totalPlatformGMV` 原為 `訂單總數 × 固定單價 1500` 的假數字，已於 Sprint 280（DEF-384）改為真實加總 `totalAmount`，見 §7。
 4. **系統設定端點完全是靜態硬編碼**：`GET /system-config` 回傳的 4 個鍵值與 `platformName`／`version`／`environment` 皆是程式碼裡的字面常數，不讀取任何資料庫或設定檔——`environment` 永遠回傳字面字串 `"production"`，與實際執行環境（開發/測試/生產）無關。
-5. **維護警示是 M09 通知系統上線前的人工替代方案**：`GET /maintenance-warnings` 查詢 `room_calendar` 中 `status=MAINTENANCE` 且關聯 `bookingId` 非空的記錄，反查對應訂房的入住日期與房客 Email，供 Admin 人工聯繫；入住日為今日或明日視為「緊急」（`urgent=true`）。M09 訊息通知中心已於 Sprint 272 建立完整規格（見 [API_M09_Notification.md](./api/API_M09_Notification.md)），但本端點並未被取代或整合，兩者目前並存。
+5. **維護警示是 M09 通知系統上線前的人工替代方案**：`GET /maintenance-warnings` 查詢 `room_calendar` 中 `status=MAINTENANCE` 且關聯 `bookingId` 非空的記錄，反查對應訂房的入住日期與房客 Email，供 Admin 人工聯繫；入住日為今日或明日視為「緊急」（`urgent=true`）。M09 訊息通知中心已於 Sprint 272 建立完整規格（見 [API_M09_Notification.md](./API_M09_Notification.md)），但本端點並未被取代或整合，兩者目前並存。
 
 ### 1.3 User Stories
 

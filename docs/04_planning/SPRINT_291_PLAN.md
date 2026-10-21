@@ -102,6 +102,7 @@ M3／M4 與 M5a／M5b 都只擊殺各自對應的那一個案例，證明兩個�
 | Checkstyle（`checkstyle-main`、`checkstyle-test`）＋ PMD 7.0.0 | 兩個 execution 皆 0 違規；PMD `BUILD SUCCESS`。單獨先跑是因為 `checkstyle-test`／PMD 綁在 `verify` 末段，不先跑的話違規要等全量跑完才看得到 |
 | 全量 `mvn -o clean verify`（真實 PostgreSQL／Redis） | **BUILD SUCCESS（26:35）**：主程式 386／測試 302 檔真的重編；單元（surefire）**2295** 個、整合／E2E（failsafe）**878** 個，皆 0 失敗／0 錯誤／0 跳過；日誌沒有重試或不穩定訊號、`[ERROR]` 行 0。`ApiRouteDocDriftTest` 2／2（文件路由漂移守門，本輪改了 `API_M09_Notification.md`）、`NotificationTemplateServiceTest` 27／27、`M09NotificationTemplateIntegrationTest` 25／25；Checkstyle 主程式／測試各 0 違規、PMD 與 `failsafe:verify` 皆通過 |
 | `make validate-e2e` | 沒跑：`frontend/src` 全文搜尋 `targetTenantId` 為 0 筆，前端沒有任何地方送這個參數，新行為在前端不可達 |
+| push／雲端 CI | `93ae0151` 已 push（2026-10-22）。pre-push 輕量守門（backend-unit＋schema 漂移＋frontend）全過；其中 schema 守門在乾淨 PostgreSQL 以 `ddl-auto=validate`＋Flyway 啟動 JAR，輸出「entity 與 Flyway schema 對齊，無漂移」。雲端 run [39634878830](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39634878830) 三個 job（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build）皆 success，以 `gh run view --json` 交叉確認 `headSha` 與本機 HEAD 一致（`gh run watch` 回報結束後仍另外查詢；約 13 分鐘） |
 
 ## 5. 更正：前端 ESLint warning 是 99 筆，不是 10 筆
 

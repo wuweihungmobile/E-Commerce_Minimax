@@ -701,4 +701,131 @@ class M09NotificationTemplateIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.templates[*].id", not(hasItem(otherTemplate.getId().toString()))));
     }
+
+    @Test
+    @Order(21)
+    @DisplayName("IT-M09-021: Sprint 291（DEF-394 收尾）ADMIN 帶不存在的 targetTenantId 查詢列表，回 404 E-2000，"
+            + "而不是靜默回空清單（否則打錯 UUID 會被誤以為「該店鋪沒有任何範本」）")
+    void testGetTemplates_adminTargetTenantIdNotFound() throws Exception {
+        String adminToken = createAdminTokenAndGetToken(
+                "notification-admin-list-404-" + System.currentTimeMillis() + "@example.com");
+
+        mockMvc.perform(get(TEMPLATES_URL)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("targetTenantId", UUID.randomUUID().toString())
+                        .param("page", "0")
+                        .param("size", "20"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("E-2000"));
+    }
+
+    @Test
+    @Order(22)
+    @DisplayName("IT-M09-022: Sprint 291（DEF-394 收尾）ADMIN 帶不存在的 targetTenantId 建立模板，回 404 E-2000，"
+            + "且不會寫入任何歸屬該租戶的孤兒範本（notification_templates.tenant_id 沒有外鍵，資料庫不會擋）")
+    void testCreateTemplate_adminTargetTenantIdNotFound() throws Exception {
+        UUID missingTenantId = UUID.randomUUID();
+        String adminToken = createAdminTokenAndGetToken(
+                "notification-admin-create-404-" + System.currentTimeMillis() + "@example.com");
+        String templateCode = "DEF394_ORPHAN_" + System.currentTimeMillis();
+
+        String requestJson = String.format("""
+            {
+                "templateCode": "%s",
+                "notificationType": "ORDER_PAID",
+                "channel": "EMAIL",
+                "name": "不該被建立的孤兒範本",
+                "contentTemplate": "Hello {{user_name}}",
+                "targetTenantId": "%s"
+            }
+            """, templateCode, missingTenantId);
+
+        mockMvc.perform(post(DASHBOARD_TEMPLATES_URL)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("E-2000"));
+
+        assertThat(notificationTemplateRepository.existsByTemplateCodeAndTenantId(templateCode, missingTenantId))
+                .as("目標租戶不存在時，不可留下歸屬該租戶 ID 的範本").isFalse();
+    }
+
+    @Test
+    @Order(23)
+    @DisplayName("IT-M09-023: Sprint 291（DEF-394 收尾）非 ADMIN 帶不存在的 targetTenantId 查詢列表，仍被忽略（200），"
+            + "存在性檢查只針對真正會用到該參數的 ADMIN／SUPER_ADMIN，否則一般使用者能靠 404／200 探測任意租戶 ID 是否存在")
+    void testGetTemplates_nonAdminNonexistentTargetTenantIdIgnored() throws Exception {
+        mockMvc.perform(get(TEMPLATES_URL)
+                        .header("Authorization", "Bearer " + authToken)
+                        .header("X-Tenant-ID", testTenantId.toString())
+                        .param("targetTenantId", UUID.randomUUID().toString())
+                        .param("page", "0")
+                        .param("size", "20"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @Order(24)
+    @DisplayName("IT-M09-024: Sprint 291（DEF-394 收尾）非 ADMIN 在建立請求帶不存在的 targetTenantId，仍被忽略，"
+            + "模板歸屬呼叫者自己的租戶（建立路徑與列表路徑各自把關，不能只測其中一條）")
+    void testCreateTemplate_nonAdminNonexistentTargetTenantIdIgnored() throws Exception {
+        UUID missingTenantId = UUID.randomUUID();
+        String templateCode = "DEF394_IGNORED_" + System.currentTimeMillis();
+
+        String requestJson = String.format("""
+            {
+                "templateCode": "%s",
+                "notificationType": "ORDER_PAID",
+                "channel": "EMAIL",
+                "name": "非管理員的目標租戶應被忽略",
+                "contentTemplate": "Hello {{user_name}}",
+                "targetTenantId": "%s"
+            }
+            """, templateCode, missingTenantId);
+
+        var result = mockMvc.perform(post(DASHBOARD_TEMPLATES_URL)
+                        .header("Authorization", "Bearer " + authToken)
+                        .header("X-Tenant-ID", testTenantId.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        UUID createdId = UUID.fromString(
+                objectMapper.readTree(result.getResponse().getContentAsString()).path("data").path("id").asText());
+        NotificationTemplate created = notificationTemplateRepository.findById(createdId).orElseThrow();
+        assertThat(created.getTenantId()).isEqualTo(testTenantId);
+    }
+
+    private UUID createTenantWithStatus(TenantStatus tenantStatus) {
+        Tenant tenant = Tenant.builder()
+                .name("DEF-394 " + tenantStatus + " Tenant " + System.currentTimeMillis())
+                .slug("def394-" + tenantStatus.name().toLowerCase() + "-" + System.currentTimeMillis())
+                .status(tenantStatus)
+                .build();
+        return tenantRepository.save(tenant).getId();
+    }
+
+    @Test
+    @Order(25)
+    @DisplayName("IT-M09-025: Sprint 291（DEF-394 收尾）ADMIN 對停權／終止的店鋪仍能以 targetTenantId 查詢範本，"
+            + "存在性檢查只看租戶在不在、不看狀態（管理員本來就要能處理這類店鋪的範本）")
+    void testGetTemplates_adminTargetTenantIdAnyStatus() throws Exception {
+        String adminToken = createAdminTokenAndGetToken(
+                "notification-admin-any-status-" + System.currentTimeMillis() + "@example.com");
+
+        for (TenantStatus tenantStatus : List.of(TenantStatus.SUSPENDED, TenantStatus.TERMINATED)) {
+            UUID tenantId = createTenantWithStatus(tenantStatus);
+            NotificationTemplate template = createTemplateForTenant(tenantId, "STATUS_" + tenantStatus);
+
+            mockMvc.perform(get(TEMPLATES_URL)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .param("targetTenantId", tenantId.toString())
+                            .param("page", "0")
+                            .param("size", "20"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.templates[*].id", hasItem(template.getId().toString())));
+        }
+    }
 }

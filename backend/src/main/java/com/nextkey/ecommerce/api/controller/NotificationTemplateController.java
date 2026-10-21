@@ -52,7 +52,8 @@ public class NotificationTemplateController {
             @RequestParam(defaultValue = "20") int size) {
 
         UUID tenantId = (isAdmin(principal) && targetTenantId != null)
-                ? targetTenantId : TenantContext.getCurrentTenant();
+                ? templateService.requireExistingTenant(targetTenantId)
+                : TenantContext.getCurrentTenant();
 
         NotificationTemplateDto.SearchRequest request = NotificationTemplateDto.SearchRequest.builder()
                 .notificationType(notificationType)
@@ -88,7 +89,8 @@ public class NotificationTemplateController {
             @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody NotificationTemplateDto.CreateRequest request) {
         UUID tenantId = (isAdmin(principal) && request.getTargetTenantId() != null)
-                ? request.getTargetTenantId() : TenantContext.getCurrentTenant();
+                ? templateService.requireExistingTenant(request.getTargetTenantId())
+                : TenantContext.getCurrentTenant();
         UUID userId = TenantContext.getCurrentUser();
 
         log.info("Create notification template: templateCode={}, tenantId={}",

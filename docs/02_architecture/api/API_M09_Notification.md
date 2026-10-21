@@ -1,9 +1,9 @@
 # API 規格文件 - M09 訊息通知中心 / API Specification - M09 Notification Center
 
 > **文件編號**: API-M09-NOTIF
-> **文件版本**: v1.1（Sprint 287：補登 Sprint 286／DEF-330(a) 已改的範本列表與詳情權限，以及 Sprint 287／DEF-394 的 ADMIN 跨租戶管理範本；v1.0 為 Sprint 272 首次建立，Sprint 20 功能上線至今 `docs/02_architecture/` 下從未有獨立規格文件，DEF-286 範圍）
+> **文件版本**: v1.2（Sprint 291：ADMIN／SUPER_ADMIN 以 `targetTenantId` 指定的店鋪不存在時，範本列表與建立改回 404 `E-2000`，不再靜默回空清單或建出孤兒範本，DEF-394 收尾；v1.1 為 Sprint 287：補登 Sprint 286／DEF-330(a) 已改的範本列表與詳情權限，以及 Sprint 287／DEF-394 的 ADMIN 跨租戶管理範本；v1.0 為 Sprint 272 首次建立，Sprint 20 功能上線至今 `docs/02_architecture/` 下從未有獨立規格文件，DEF-286 範圍）
 > **建立日期**: 2026-10-15
-> **最後更新**: 2026-10-20
+> **最後更新**: 2026-10-22
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`NotificationController`／`NotificationPreferenceController`／`NotificationTemplateController`（`api/controller/`）、`NotificationService`／`NotificationHistoryService`／`NotificationPreferenceService`／`NotificationTemplateService`（`core/notification/`）、`NotificationProducerService`／`NotificationConsumerService`（`infrastructure/mq/`）、`Notification`／`NotificationHistory`／`NotificationTemplate`／`UserNotificationPreference`（`domain/model/notification/`）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有測試佐證：[NotificationServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/notification/NotificationServiceTest.java)、[NotificationHistoryServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/notification/NotificationHistoryServiceTest.java)、[NotificationPreferenceServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/notification/NotificationPreferenceServiceTest.java)、[NotificationTemplateServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/notification/NotificationTemplateServiceTest.java)、[NotificationConsumerServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/infrastructure/mq/NotificationConsumerServiceTest.java)、[M09NotificationHistoryIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M09NotificationHistoryIntegrationTest.java)（HTTP 層，真實 JWT）、[M09NotificationTemplateIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M09NotificationTemplateIntegrationTest.java)（HTTP 層，真實 JWT）
@@ -73,7 +73,7 @@
 | API-M09-NOTIF-016 | DELETE | `/v2/dashboard/notification-templates/{id}` | 刪除範本（軟刪除；ADMIN／SUPER_ADMIN 可跨租戶） | `notification_template:delete` |
 | API-M09-NOTIF-017 | POST | `/v2/notification-templates/render` | 渲染範本預覽 | `notification_template:read` |
 
-共 17 個端點。範本的三個讀取端點（012／013／017）現在一致要求 `notification_template:read`（012／013 原為 `isAuthenticated()`，任何登入者皆可列出／查看範本，已於 Sprint 286／DEF-330(a) 修復；017 一直都檢查此權限）。**ADMIN／SUPER_ADMIN 可跨租戶管理範本（Sprint 287／DEF-394）**：012 與 014 以可選的 `targetTenantId` 指定店鋪，013／015／016 略過「範本須屬於呼叫者租戶」的擁有權檢查；STORE_OWNER／STORE_STAFF 仍限自己的租戶。017（渲染預覽）不在此範圍。詳見 §4.12～4.16 與 §7。
+共 17 個端點。範本的三個讀取端點（012／013／017）現在一致要求 `notification_template:read`（012／013 原為 `isAuthenticated()`，任何登入者皆可列出／查看範本，已於 Sprint 286／DEF-330(a) 修復；017 一直都檢查此權限）。**ADMIN／SUPER_ADMIN 可跨租戶管理範本（Sprint 287／DEF-394）**：012 與 014 以可選的 `targetTenantId` 指定店鋪（該店鋪不存在回 404 `E-2000`，Sprint 291），013／015／016 略過「範本須屬於呼叫者租戶」的擁有權檢查；STORE_OWNER／STORE_STAFF 仍限自己的租戶。017（渲染預覽）不在此範圍。詳見 §4.12～4.16 與 §7。
 
 **⚠️ 路徑變數命名提醒**：`{id}` 對應 Controller 參數 `@PathVariable UUID id`；`{notificationId}`／`{historyId}` 對應相同名稱的 `@PathVariable`，與路徑模板文字一致。
 
@@ -246,7 +246,7 @@
 
 ### 4.12 `GET /v2/notification-templates` — 範本列表
 
-**權限**：`notification_template:read`（STORE_OWNER／STORE_STAFF／ADMIN／SUPER_ADMIN；Sprint 286／DEF-330(a) 之前為 `isAuthenticated()`，任何登入者皆可呼叫）。查詢參數：`notificationType`、`channel`、`isActive`（皆選填，用於篩選）、`page`（預設 0）、`size`（預設 20，內部上限 100）、`targetTenantId`（UUID，選填，Sprint 287／DEF-394）。查詢範圍的租戶為：**呼叫者是 ADMIN／SUPER_ADMIN 且有帶 `targetTenantId`** 時為該租戶，否則為呼叫者的 `TenantContext.getCurrentTenant()`（`NotificationTemplateRepository.searchTemplates`，實際租戶篩選邏輯在 Repository 查詢條件內，非本文件覆蓋範圍的 SQL 細節）。**非管理員帶 `targetTenantId` 會被忽略**（一律查自己的租戶），不是錯誤，也不會回 403。
+**權限**：`notification_template:read`（STORE_OWNER／STORE_STAFF／ADMIN／SUPER_ADMIN；Sprint 286／DEF-330(a) 之前為 `isAuthenticated()`，任何登入者皆可呼叫）。查詢參數：`notificationType`、`channel`、`isActive`（皆選填，用於篩選）、`page`（預設 0）、`size`（預設 20，內部上限 100）、`targetTenantId`（UUID，選填，Sprint 287／DEF-394）。查詢範圍的租戶為：**呼叫者是 ADMIN／SUPER_ADMIN 且有帶 `targetTenantId`** 時為該租戶，否則為呼叫者的 `TenantContext.getCurrentTenant()`（`NotificationTemplateRepository.searchTemplates`，實際租戶篩選邏輯在 Repository 查詢條件內，非本文件覆蓋範圍的 SQL 細節）。**非管理員帶 `targetTenantId` 會被忽略**（一律查自己的租戶），不是錯誤，也不會回 403，**也不檢查該 ID 是否存在**（否則一般使用者能靠 404／200 探測任意租戶 ID 是否存在）。**管理員帶的 `targetTenantId` 找不到對應租戶時回 404 `E-2000`**（Sprint 291；先前靜默回 200 空清單，打錯 UUID 會被誤認為「該店鋪沒有任何範本」）。只確認租戶存在、不看租戶狀態。
 
 ### 4.13 `GET /v2/notification-templates/{id}` — 範本詳情
 
@@ -273,10 +273,11 @@
 | `variables` | `List<String>` | 選填 | 未提供則自動從 `contentTemplate` 擷取 |
 | `isActive` | Boolean | 選填 | 預設 `true` |
 | `priority` | Integer | 選填 | 預設 `0` |
-| `targetTenantId` | UUID | 選填 | Sprint 287／DEF-394。**僅 ADMIN／SUPER_ADMIN 有效**：代表指定店鋪建立範本，資料列的 `tenantId` 與 `templateCode` 唯一性檢查都以此租戶為準；其他角色帶值會被忽略，沿用呼叫者自己的租戶。**不驗證該租戶是否存在**（見 §7） |
+| `targetTenantId` | UUID | 選填 | Sprint 287／DEF-394。**僅 ADMIN／SUPER_ADMIN 有效**：代表指定店鋪建立範本，資料列的 `tenantId` 與 `templateCode` 唯一性檢查都以此租戶為準；其他角色帶值會被忽略（不檢查是否存在），沿用呼叫者自己的租戶。**該租戶不存在時回 404 `E-2000`、不會寫入任何資料列**（Sprint 291；`notification_templates.tenant_id` 沒有外鍵，檢查在應用層，見 §7）；只確認租戶存在、不看租戶狀態 |
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
+| 管理員（ADMIN／SUPER_ADMIN）帶的 `targetTenantId` 找不到對應租戶（Sprint 291） | 404 | `E-2000` |
 | 同租戶下 `templateCode` 已存在（ADMIN 代建時指「目標租戶」下） | 409 | `E-8012`（Sprint 278／DEF-378 修復前為誤用付款模組的 `E-6001`，見 §7） |
 
 ### 4.15 `PUT /v2/dashboard/notification-templates/{id}` — 更新範本
@@ -323,7 +324,7 @@
 | 範本建立/更新/刪除（§4.14～4.16） | ❌ | ❌ | ✅ | ✅ |
 | 範本渲染預覽（§4.17） | ❌ | ✅ | ✅ | ✅ |
 
-**租戶範圍**：ADMIN／SUPER_ADMIN 在範本的列表、詳情、建立、更新、刪除可跨租戶（`targetTenantId` 與擁有權旁路，Sprint 287／DEF-394）；STORE_OWNER／STORE_STAFF 限自己的租戶；渲染預覽（§4.17）一律依呼叫者自己的租戶查找。
+**租戶範圍**：ADMIN／SUPER_ADMIN 在範本的列表、詳情、建立、更新、刪除可跨租戶（`targetTenantId` 與擁有權旁路，Sprint 287／DEF-394；列表與建立帶 `targetTenantId` 時目標租戶須存在，否則 404 `E-2000`，Sprint 291）；STORE_OWNER／STORE_STAFF 限自己的租戶；渲染預覽（§4.17）一律依呼叫者自己的租戶查找。
 
 ---
 
@@ -348,7 +349,7 @@
 | **`E-6001` 錯誤碼誤用（登記為 DEF-378，已於 Sprint 278 修復）** | `NotificationTemplateService.createTemplate`／`updateTemplate` 對「範本代碼重複」原拋 `BusinessException(ErrorCode.E_6001, ...)`；`E_6001` 的官方定義是「付款失敗」，與範本代碼衝突毫無語意關聯。已新增專屬碼 `E-8012`（範本代碼重複，409）取代，`NotificationTemplateServiceTest` 補強為斷言具體錯誤碼 |
 | ~~範本讀取端點權限不一致~~（已於 Sprint 286／DEF-330(a) 修復） | §4.12／4.13（列表/詳情）原僅要求登入、不檢查 `notification_template:read`，現已改為該權限，與 §4.17 一致；一般買家不再能列出或查看範本 |
 | ADMIN 跨租戶管理範本僅有後端能力（Sprint 287／DEF-394） | 目前沒有任何前端畫面讓 ADMIN 選定店鋪後管理其通知範本，`targetTenantId` 只能由 API 直接呼叫。§4.17（渲染預覽）未納入跨租戶範圍，仍只依呼叫者自己的租戶查找範本 |
-| `targetTenantId` 不驗證租戶是否存在（Sprint 287，讀碼確認、未實測） | `notification_templates.tenant_id` 是可為 `NULL` 的 UUID，只有索引、沒有外鍵（見 V28 migration），`createTemplate` 也沒有檢查目標租戶是否存在；ADMIN／SUPER_ADMIN 帶一個不存在的 `targetTenantId` 會建出一筆不屬於任何店鋪的範本。只有管理員角色能觸發，風險低，未登記為獨立缺陷 |
+| ~~`targetTenantId` 不驗證租戶是否存在~~（已於 Sprint 291 修復，DEF-394 收尾） | Sprint 287 留下的限制，原記為「讀碼確認、未實測」。Sprint 291 先以整合測試對真實 PostgreSQL 實測：修復前 ADMIN 帶不存在的 `targetTenantId`，列表與建立都回 200（建立回 200 代表 `save` 已執行，即不屬於任何店鋪的範本真的被寫入；`notification_templates.tenant_id` 可為 `NULL`、只有索引沒有外鍵，見 V28 migration，全部 migration 只有它提到這張表）。現在 `NotificationTemplateService.requireExistingTenant`（`tenantRepository.existsById`）在列表與建立兩條路徑採用 `targetTenantId` 前先檢查，不存在回 404 `E-2000`；只對真的會採用該參數的 ADMIN／SUPER_ADMIN 檢查（非管理員仍忽略、不檢查），只看租戶在不在、不看狀態（停權／終止的店鋪仍可管理）。**資料庫層仍沒有外鍵**，檢查只在應用層；日後若新增繞過這兩個端點的寫入路徑，仍可能產生孤兒範本 |
 | `isSent` 欄位的歷史資料不可信 | Sprint 271（DEF-317）之前，所有通道的 `isSent` 一律寫 `true`，即使 EMAIL／SMS／PUSH 從未真正送達。Sprint 271 之後新建立的通知才反映真實結果，資料庫裡 Sprint 271 之前的既有列不會被回溯更正 |
 | `NotificationHistory.tenantId` 寫入路徑固定為 `null` | 欄位存在且可儲存租戶 ID，但 `NotificationConsumerService` 呼叫 `createHistory` 時第二參數固定傳 `null`，目前沒有任何路徑會寫入非空值 |
 | `BOOKING_REMINDER`／`NEW_MESSAGE`／`SYSTEM_ANNOUNCEMENT` 從未被觸發 | 三個列舉值存在、資料庫可儲存，但全庫無任何程式碼路徑會以這些類型建立通知（§3.5） |
@@ -371,4 +372,4 @@
 
 ---
 
-**文件狀態**：v1.1（Sprint 287：補登 DEF-330(a) 與 DEF-394 的範本權限／跨租戶行為；v1.0 為 Sprint 272 新建，DEF-286 範圍內首次補齊 M09）。
+**文件狀態**：v1.2（Sprint 291：`targetTenantId` 指定的店鋪不存在時回 404 `E-2000`，DEF-394 收尾；v1.1 為 Sprint 287：補登 DEF-330(a) 與 DEF-394 的範本權限／跨租戶行為；v1.0 為 Sprint 272 新建，DEF-286 範圍內首次補齊 M09）。

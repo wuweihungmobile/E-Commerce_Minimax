@@ -18,6 +18,7 @@ import com.nextkey.ecommerce.domain.model.notification.NotificationTemplate;
 import com.nextkey.ecommerce.domain.model.notification.NotificationTemplate.NotificationChannel;
 import com.nextkey.ecommerce.domain.model.notification.NotificationTemplate.NotificationType;
 import com.nextkey.ecommerce.domain.repository.NotificationTemplateRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.util.PageableUtils;
@@ -31,8 +32,26 @@ import lombok.extern.slf4j.Slf4j;
 public class NotificationTemplateService {
 
     private final NotificationTemplateRepository templateRepository;
+    private final TenantRepository tenantRepository;
 
     private static final Pattern VARIABLE_PATTERN = Pattern.compile("\\{\\{(\\w+)\\}\\}");
+
+    /**
+     * 確認 ADMIN／SUPER_ADMIN 以 targetTenantId 指定的店鋪真的存在（Sprint 291，DEF-394 收尾）。
+     * notification_templates.tenant_id 沒有外鍵（V28），資料庫不會擋：不檢查的話，打錯的 UUID 在建立時會
+     * 留下不屬於任何店鋪的孤兒範本、在列表時靜默回空清單。只確認存在、不看租戶狀態——管理員本來就要
+     * 能處理待審核／停權／終止店鋪的範本。呼叫端只能在「確定會採用 targetTenantId」時（即呼叫者是管理員）
+     * 才呼叫；非管理員的 targetTenantId 一律忽略，否則一般使用者能靠 404／200 探測任意租戶 ID 是否存在。
+     *
+     * @return 傳入的 targetTenantId，方便呼叫端直接當作解析結果
+     */
+    @Transactional(readOnly = true)
+    public UUID requireExistingTenant(UUID targetTenantId) {
+        if (!tenantRepository.existsById(targetTenantId)) {
+            throw new BusinessException(ErrorCode.E_2000, "Tenant not found");
+        }
+        return targetTenantId;
+    }
 
     /**
      * 取得模板列表

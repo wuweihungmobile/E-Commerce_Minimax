@@ -29,6 +29,7 @@ import org.springframework.data.domain.PageImpl;
 import com.nextkey.ecommerce.api.dto.notification.NotificationTemplateDto;
 import com.nextkey.ecommerce.domain.model.notification.NotificationTemplate;
 import com.nextkey.ecommerce.domain.repository.NotificationTemplateRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
@@ -49,6 +50,9 @@ class NotificationTemplateServiceTest {
 
     @Mock
     private NotificationTemplateRepository templateRepository;
+
+    @Mock
+    private TenantRepository tenantRepository;
 
     @InjectMocks
     private NotificationTemplateService templateService;
@@ -72,6 +76,29 @@ class NotificationTemplateServiceTest {
                 .isActive(true)
                 .priority(0)
                 .build();
+    }
+
+    // ========== requireExistingTenant ==========
+
+    @Test
+    @DisplayName("TC-T021/DEF-394: requireExistingTenant — 目標租戶存在時原樣回傳該 ID，供呼叫端當作解析結果")
+    void requireExistingTenant_exists_returnsSameId() {
+        when(tenantRepository.existsById(OTHER_TENANT_ID)).thenReturn(true);
+
+        assertEquals(OTHER_TENANT_ID, templateService.requireExistingTenant(OTHER_TENANT_ID));
+    }
+
+    @Test
+    @DisplayName("TC-T022/DEF-394: requireExistingTenant — 目標租戶不存在時拋出 BusinessException(E_2000)，"
+            + "notification_templates.tenant_id 沒有外鍵，不在這裡擋就會留下孤兒範本")
+    void requireExistingTenant_missing_throwsTenantNotFound() {
+        when(tenantRepository.existsById(OTHER_TENANT_ID)).thenReturn(false);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> templateService.requireExistingTenant(OTHER_TENANT_ID));
+
+        assertEquals(ErrorCode.E_2000, ex.getErrorCode());
+        verify(tenantRepository).existsById(OTHER_TENANT_ID);
     }
 
     // ========== getTemplates ==========

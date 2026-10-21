@@ -1,7 +1,7 @@
 # API 規格文件 - M17 租戶/店鋪管理 / API Specification - M17 Tenant Management
 
 > **文件編號**: API-M17
-> **文件版本**: v2.1（Sprint 292 校正 §4.6 錯誤列；v2.0 為 Sprint 266 依實作改寫）
+> **文件版本**: v2.2（Sprint 294 校正 §4.4／§4.8／§4.9／§4.13／§4.14 與 `E-4031` 總表；v2.1 為 Sprint 292 校正 §4.6；v2.0 為 Sprint 266 依實作改寫）
 > **建立日期**: 2026-04-09（v1.0）
 > **最後更新**: 2026-10-22
 > **負責人**: SD (Marcus)
@@ -17,7 +17,8 @@
 > 4. **`TenantController` 的 7 個成員管理端點首次收錄（DEF-377，新登記並於本輪一併解決）**：列表／邀請／我的待確認邀請／接受／拒絕／改角色／移除（`TenantController.java`:216-339）自 Sprint 98 起即存在、功能完整且有測試覆蓋，但 v1.0 起從未被任何版本的本文件描述，Sprint 248 新增 member-lookup 時雖已發現此缺口但刻意不補；
 > 5. **新增 6 個 `AdminController` 端點（DEF-369）**：`GET .../{tenantId}`、`POST .../review`、`PUT .../{tenantId}/status`、`POST /admin/feature-toggles`、`DELETE .../feature-toggles/{featureKey}`、`GET .../{tenantId}/stats`；
 > 6. **多處既有端點的回應欄位補齊**：`TenantDetailsResponse` 實際含 `contactPhone`／`purchaseOrderApprovalThreshold`／`updatedAt`；`FeatureToggleResponse` 實際含 `quotas`（數量配額）及每個 `features[]` 項目的 `category`／`status`／`requiresAdminReview`；`TenantUpdateRequest` 還可帶 `businessType`／`status`／`purchaseOrderApprovalThreshold`，且 `coverImageUrl` 是**完全死欄位**（DEF-193）；駁回申請的 `reason` 空白實際回 `E-9000`（Bean Validation），非 v1.1 寫的 `E-4001`
-> 7. **§4.6 的 403 條件校正（Sprint 292，文件一致性檢查第五輪）**：Sprint 281（DEF-331(f)）把 `TenantService.updateFeatureToggle` 的檢查從「是該租戶有效成員」改為「是該租戶的店主（`STORE_OWNER`）」，但該次 commit 沒有同步本文件，§4.6 的失敗列仍寫「非該租戶成員」，讀起來像是 `STORE_STAFF` 也能通過。已改為如實描述；單元測試 `TenantServiceTest.updateFeatureToggle_notOwner_rejectedWithoutAudit` 佐證。本文件其他章節的同款「非該租戶成員」列本輪**未逐一核對**對應的 service 檢查是店主還是成員
+> 7. **§4.6 的 403 條件校正（Sprint 292，文件一致性檢查第五輪）**：Sprint 281（DEF-331(f)）把 `TenantService.updateFeatureToggle` 的檢查從「是該租戶有效成員」改為「是該租戶的店主（`STORE_OWNER`）」，但該次 commit 沒有同步本文件，§4.6 的失敗列仍寫「非該租戶成員」，讀起來像是 `STORE_STAFF` 也能通過。已改為如實描述；單元測試 `TenantServiceTest.updateFeatureToggle_notOwner_rejectedWithoutAudit` 佐證。本文件其他章節的同款「非該租戶成員」列本輪**未逐一核對**對應的 service 檢查是店主還是成員（Sprint 294 已逐一核對，見註記 8）
+> 8. **§4.4／§4.8／§4.9／§4.13／§4.14 的權限行與 403 列、`E-4031` 總表校正（Sprint 294，補完註記 7 當時未核對的部分）**：逐一對照 `TenantService`——`updateTenant`、`inviteMember`、`lookupMemberCandidateByEmail`、`updateMemberRole`、`removeMember`（加上註記 7 的 `updateFeatureToggle`）六個寫入類方法的檢查都是 `existsByTenantIdAndUserIdAndStoreRole(…, STORE_OWNER)`，不是該租戶店主就拋 `E-4031`；只有 `getFeatureToggles`（§4.5）與 `getTenantMembers`（§4.7）是「有效成員（`ACTIVE`）」檢查。先前這五節寫「且限該租戶成員」「非該租戶成員」，讀起來像是僅為成員（如 `STORE_STAFF`）即可通過。§4.5、§4.7 本來就是成員檢查，文件正確，未動。**未驗證**：這些端點的 `@PreAuthorize` 先擋掉了哪些全域角色，以及 `ROLE_ADMIN` 通過註解後在 service 層的實際結果（service 只認該租戶的店主）——本註記只校正「service 層檢查的是店主不是成員」這一點
 
 ---
 
@@ -155,7 +156,7 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 ### 4.4 `PUT /v2/tenants/{id}` — 更新店鋪資訊
 
-**權限**：`SCOPE_store:write`／`ROLE_STORE_OWNER`／`ROLE_ADMIN`，且限該租戶成員。
+**權限**：`SCOPE_store:write`／`ROLE_STORE_OWNER`／`ROLE_ADMIN`，且呼叫者須為該租戶的店主（`STORE_OWNER`）——僅是成員（如 `STORE_STAFF`）不夠。
 
 **請求**（部分更新）：`storeName`(選填,2-100字)、`slug`(選填，格式同 §3.1，衝突回 `E-2011`)、`storeDescription`(選填,≤1000字)、`contactEmail`(選填)、`contactPhone`(選填,≤20字)、`logoUrl`(選填,≤500字，協定限制同 §4.1)、`coverImageUrl`(選填——**死欄位，送出必被丟棄**)、`businessType`(選填)、`status`(選填，**不建議使用**，狀態轉換應走 §4.25 以套用正確的狀態機驗證)、`purchaseOrderApprovalThreshold`(選填，≥0)
 
@@ -163,7 +164,7 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 非該租戶成員 | 403 | `E-4031` |
+| 呼叫者不是該租戶的店主（`STORE_OWNER`；僅是一般成員亦為 403） | 403 | `E-4031` |
 | `slug` 與其他租戶衝突 | 409 | `E-2011` |
 
 ### 4.5 `GET /v2/dashboard/tenants/features` — 取得功能開關狀態
@@ -203,7 +204,7 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 ### 4.8 `POST /v2/tenants/{id}/members/invite` — 邀請成員
 
-**權限**：`SCOPE_store:write`／`ROLE_STORE_OWNER`／`ROLE_ADMIN`，且限該租戶成員。僅建立 `INVITED` 狀態記錄，需被邀請人另呼叫 §4.11 確認（見 §1.2 第 5 點）。**只允許邀請 `STORE_STAFF` 角色**。
+**權限**：`SCOPE_store:write`／`ROLE_STORE_OWNER`／`ROLE_ADMIN`，且呼叫者須為該租戶的店主（`STORE_OWNER`）——僅是成員（如 `STORE_STAFF`）不夠。僅建立 `INVITED` 狀態記錄，需被邀請人另呼叫 §4.11 確認（見 §1.2 第 5 點）。**只允許邀請 `STORE_STAFF` 角色**。
 
 **請求**：`userId`(必填)、`role`(必填，僅接受 `STORE_STAFF`)
 
@@ -211,13 +212,13 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 非該租戶成員 | 403 | `E-4031` |
+| 呼叫者不是該租戶的店主（`STORE_OWNER`；僅是一般成員亦為 403） | 403 | `E-4031` |
 | `role` 非 `STORE_STAFF` | 400 | `E-1001` |
 | 該使用者已是成員或已有待確認邀請 | 409 | `E-4092` |
 
 ### 4.9 `GET /v2/tenants/{id}/members/lookup` — 以 email 查詢可邀請的使用者
 
-**權限**：`SCOPE_store:read`／`ROLE_STORE_OWNER`／`ROLE_ADMIN`，且限該租戶成員。邀請表單（§4.8）只知道對方 email，PRD §9.11 的邀請端點僅接受 `userId`，本端點解析 email → `userId`。
+**權限**：`SCOPE_store:read`／`ROLE_STORE_OWNER`／`ROLE_ADMIN`，且呼叫者須為該租戶的店主（`STORE_OWNER`）——僅是成員（如 `STORE_STAFF`）不夠。邀請表單（§4.8）只知道對方 email，PRD §9.11 的邀請端點僅接受 `userId`，本端點解析 email → `userId`。
 
 **請求**：query 參數 `email`(必填)
 
@@ -225,7 +226,7 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 非該租戶成員 | 403 | `E-4031` |
+| 呼叫者不是該租戶的店主（`STORE_OWNER`；僅是一般成員亦為 403） | 403 | `E-4031` |
 | 查無此 email 對應的使用者 | 403 | `E-2001`（罐頭訊息「租戶未啟用」與實際情境不符，前端已覆寫顯示文字） |
 
 ### 4.10 `GET /v2/tenants/invites/my` — 我的待確認邀請列表
@@ -252,7 +253,7 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 ### 4.13 `PUT /v2/tenants/{id}/members/{userId}/role` — 更新成員角色
 
-**權限**：`SCOPE_store:write`／`ROLE_STORE_OWNER`／`ROLE_ADMIN`，且限該租戶成員。**只能改為 `STORE_STAFF`**（與邀請同限制）；**不能變更店主（`STORE_OWNER`）的角色**。
+**權限**：`SCOPE_store:write`／`ROLE_STORE_OWNER`／`ROLE_ADMIN`，且呼叫者須為該租戶的店主（`STORE_OWNER`）——僅是成員（如 `STORE_STAFF`）不夠。**只能改為 `STORE_STAFF`**（與邀請同限制）；**不能變更店主（`STORE_OWNER`）的角色**。
 
 **請求**：`{"role": "STORE_STAFF"}`
 
@@ -260,7 +261,7 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 非該租戶成員 | 403 | `E-4031` |
+| 呼叫者不是該租戶的店主（`STORE_OWNER`；僅是一般成員亦為 403） | 403 | `E-4031` |
 | `role` 缺失 | 400 | `E-1001` |
 | `role` 非 `STORE_STAFF` | 400 | `E-1001` |
 | 目標為店主 | 403 | `E-4031` |
@@ -268,11 +269,11 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 ### 4.14 `DELETE /v2/tenants/{id}/members/{userId}` — 移除成員
 
-**權限**：`SCOPE_store:write`／`ROLE_STORE_OWNER`／`ROLE_ADMIN`，且限該租戶成員。**不能移除自己**。無回應內容（成功訊息於 `message` 欄位）。
+**權限**：`SCOPE_store:write`／`ROLE_STORE_OWNER`／`ROLE_ADMIN`，且呼叫者須為該租戶的店主（`STORE_OWNER`）——僅是成員（如 `STORE_STAFF`）不夠。**不能移除自己**。無回應內容（成功訊息於 `message` 欄位）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 非該租戶成員 | 403 | `E-4031` |
+| 呼叫者不是該租戶的店主（`STORE_OWNER`；僅是一般成員亦為 403） | 403 | `E-4031` |
 | 移除對象是自己 | 403 | `E-4031` |
 
 ### 4.15 `GET /v2/public/stores/{slug}` — 店鋪前台公開資料
@@ -457,7 +458,7 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 | `E-2007` | 403 | 申請狀態非 PENDING（含併發搶輸） |
 | `E-2008` | 403 | 申請無關聯帳號（匿名申請），無法授予角色 |
 | `E-2011` | 409 | `slug` 與其他租戶衝突 |
-| `E-4031` | 403 | 非該租戶成員，或嘗試變更店主角色/移除自己 |
+| `E-4031` | 403 | 讀取類端點（§4.5、§4.7）：非該租戶成員；寫入類端點（§4.4、§4.6、§4.8、§4.9、§4.13、§4.14）：非該租戶店主（Sprint 294 逐一對照 `TenantService` 後校正）；另含嘗試變更店主角色／移除自己 |
 | `E-4092` | 409 | 已有 PENDING 開店申請，或使用者已是成員/已有待確認邀請 |
 | `E-9000` | 500／400 | 未預期的狀態值/不合法請求（含 Bean Validation 標準回應） |
 

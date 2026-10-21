@@ -876,6 +876,7 @@ class TenantServiceTest {
 
         private static final UUID OWNER_ID = UUID.fromString("550e8400-e29b-41d4-a716-446655440020");
         private static final UUID INVITEE_ID = UUID.fromString("550e8400-e29b-41d4-a716-446655440021");
+        private static final UUID STAFF_ID = UUID.fromString("550e8400-e29b-41d4-a716-446655440022");
 
         @BeforeEach
         void setUp() {
@@ -1198,6 +1199,26 @@ class TenantServiceTest {
         }
 
         @Test
+        @DisplayName("Sprint 294：removeMember 呼叫者是有效（ACTIVE）成員但不是店主（STORE_STAFF）→ E_4031，不讀取也不改動任何成員資料")
+        void removeMember_activeStaffNotOwner_throwsE4031() {
+            // 呼叫者「是有效成員」這個條件刻意成立：Sprint 281（DEF-331(f)）修掉的就是把店主檢查寫成成員檢查，
+            // 若守門退化成只看成員，STORE_STAFF 會通過並繼續往下讀取目標成員，此測試必須失敗。
+            TenantContext.setCurrentUser(STAFF_ID);
+            lenient().when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(
+                    TEST_TENANT_ID, STAFF_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(true);
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, STAFF_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(false);
+
+            BusinessException ex = assertThrows(BusinessException.class,
+                    () -> tenantService.removeMember(TEST_TENANT_ID, INVITEE_ID));
+
+            assertEquals(ErrorCode.E_4031, ex.getErrorCode());
+            verify(tenantMemberRepository, never()).findByTenantIdAndUserId(any(), any());
+            verify(tenantMemberRepository, never()).save(any());
+            verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
+        }
+
+        @Test
         @DisplayName("Sprint 235：getTenantMembers 呼叫者不是有效（ACTIVE）成員（受邀未接受、已移除）→ E_4031，看不到名單")
         void getTenantMembers_nonActiveMember_rejected() {
             when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(
@@ -1323,6 +1344,25 @@ class TenantServiceTest {
 
             assertThrows(BusinessException.class,
                     () -> tenantService.updateMemberRole(TEST_TENANT_ID, INVITEE_ID, "STORE_STAFF"));
+            verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Sprint 294：updateMemberRole 呼叫者是有效（ACTIVE）成員但不是店主（STORE_STAFF）→ E_4031，不讀取也不改動任何成員資料")
+        void updateMemberRole_activeStaffNotOwner_throwsE4031() {
+            // 同 removeMember_activeStaffNotOwner_throwsE4031：讓「是有效成員」成立，擋住守門退化成成員檢查的回歸。
+            TenantContext.setCurrentUser(STAFF_ID);
+            lenient().when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(
+                    TEST_TENANT_ID, STAFF_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(true);
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(
+                    TEST_TENANT_ID, STAFF_ID, TenantMember.StoreRole.STORE_OWNER)).thenReturn(false);
+
+            BusinessException ex = assertThrows(BusinessException.class,
+                    () -> tenantService.updateMemberRole(TEST_TENANT_ID, INVITEE_ID, "STORE_STAFF"));
+
+            assertEquals(ErrorCode.E_4031, ex.getErrorCode());
+            verify(tenantMemberRepository, never()).findByTenantIdAndUserId(any(), any());
+            verify(tenantMemberRepository, never()).save(any());
             verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any(), any());
         }
 

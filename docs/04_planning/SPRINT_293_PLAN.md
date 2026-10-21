@@ -69,7 +69,7 @@
 
 ## 8. 雲端 CI 與狀態
 
-push 後回填。
+commit `0433ef8a` 已 push（2026-10-22）。pre-push 輕量守門通過（本機 act 的 frontend ESLint／type-check／build 皆 success，schema 漂移守門 backend 啟動成功）。雲端 CI run [39649875291](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39649875291)：`completed／success`，三個 job（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build）皆 success，以 `gh run view --json status,conclusion,jobs,headSha` 結構化查詢交叉確認 `headSha` 與本機 commit 一致（背景 `gh run watch` 回報結束後仍另行確認）。
 
 ## 9. 需要使用者決定（沿用 Sprint 292 §8，無新增）
 

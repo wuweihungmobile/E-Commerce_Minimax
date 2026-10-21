@@ -83,8 +83,9 @@ M2／M4 的「只有新測試」是這輪最有說服力的證據：它證明在
 
 | 項目 | 結果 |
 |---|---|
-| pre-commit（Checkstyle＋Maven 編譯＋核心測試） | commit 後回填 |
-| 雲端 CI | push 後回填 |
+| pre-commit（Checkstyle＋Maven 編譯＋核心層快速測試＋secret 掃描） | 一次通過（commit `ba2a07e3`；因含 backend 檔案，輸出達數 MB 被工具存檔，以結尾的「快速檢查通過」與 `git log` 確認 HEAD 前進、工作樹乾淨） |
+| pre-push 輕量守門 | 通過（本機 act 的 Backend Unit Tests；schema 漂移守門 backend 啟動成功） |
+| 雲端 CI | run [39654944542](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39654944542)：`completed／success`，三個 job（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build）皆 success，以 `gh run view --json` 交叉確認 `headSha` 與本機 commit 一致 |
 
 ## 6. 限制（誠實揭露）
 

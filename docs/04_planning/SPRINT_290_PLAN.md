@@ -97,6 +97,7 @@ F 類 3 筆移除前先確認欄位真的有被讀取：`M16ErpIntegrationTest.t
 | IDE 診斷（最終） | 整個工作區**每一筆 `diagnostics` 皆為空**（Error／Warning／Information 皆 0）：241 → 102 → **0** |
 | 正向對照（§3.4） | 探針檔：未使用欄位與無效 unchecked 轉型**有**警告，`String::trim` 與已抑制欄位**沒有**；探針與其 `.class` 已刪，未入版控 |
 | `git diff --stat -- backend/src/main` | 空（零變動） |
+| push／雲端 CI | `0d9ff326` 已 push（pre-push 輕量守門：act Backend Unit 2m30s／Frontend Lint & Build／schema 漂移守門全過）；雲端 run [39523474421](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39523474421) 三個 job 皆 success（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build），以 `gh run view --json` 交叉確認 `headSha` 與本機一致（約 13 分鐘） |
 
 **歸零同時證明新加的抑制都是必要的**：IDE 的「多餘抑制」檢查是開著的（它抓到了 G 類那一筆），如果新加的 40 個註解有任何一個沒有實際抑制到問題，歸零之後會出現新的 `Unnecessary @SuppressWarnings`。
 
@@ -130,4 +131,5 @@ F 類 3 筆移除前先確認欄位真的有被讀取：`M16ErpIntegrationTest.t
 - 設定在 `.vscode/settings.json`，受版控，兩位開發者都會套用；已開啟的 VS Code 視窗，Java 語言服務需要重建一次才生效（本次實測在幾分鐘內完成）。
 - 本輪沒有跑全量 `mvn verify`：只動註解與 IDE 設定、`src/main` 零變動，依 [[sprint-full-regression-policy]] 跑受影響的測試即可；push 時雲端 CI 會跑完整的 Backend Integration Tests。
 - `getDiagnostics` 只反映 VS Code 當下的分析結果；其他人的 IDE 若用不同的 Java 擴充版本或設定，看到的清單可能不同。
+- 雲端 CI 的 `Frontend Lint & Build` 步驟另外印出 **10 筆既有的 ESLint warning**（5 個前端檔：`at-storefront-real.spec.ts`、`cart/page.tsx`、`checkout/page.tsx`、`admin/tenants/[id]/review/page.tsx`、`blog/[slug]/page.tsx`；未使用變數、`<img>`、Hook 依賴）。它們不影響通過、不在這次的 241 筆內（那是 Java 診斷），本輪 0 個前端檔案被動到，所以沒處理；若你想連前端 Problems 一併清，可另列一輪。
 - `DEF-397` 仍待使用者裁決（建議選修訂 PRD 措辭，見 Sprint 289 計畫書 §5）。

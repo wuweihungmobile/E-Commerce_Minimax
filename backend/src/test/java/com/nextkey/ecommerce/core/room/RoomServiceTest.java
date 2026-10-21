@@ -115,6 +115,7 @@ class RoomServiceTest {
 
     @Test
     @DisplayName("DEF-344：getRooms 的 sortBy 不在白名單 → 拋 BusinessException(E_9000)，不查詢（先前原樣傳給 JPA 排序，落入 500）")
+    @SuppressWarnings("unchecked")
     void getRooms_invalidSortBy_throwsE9000() {
         assertThatThrownBy(() -> roomService.getRooms(null, null, null, 0, 20, "basePrice", "DESC"))
                 .isInstanceOf(BusinessException.class)
@@ -125,6 +126,7 @@ class RoomServiceTest {
 
     @Test
     @DisplayName("DEF-344：getRooms 的 sortDir 不是 asc/desc → 拋 BusinessException(E_9000)")
+    @SuppressWarnings("unchecked")
     void getRooms_invalidSortDir_throwsE9000() {
         assertThatThrownBy(() -> roomService.getRooms(null, null, null, 0, 20, "createdAt", "sideways"))
                 .isInstanceOf(BusinessException.class)

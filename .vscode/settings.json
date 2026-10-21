@@ -1,6 +1,9 @@
 {
     "java.configuration.updateBuildConfiguration": "automatic",
-    "java.compile.nullAnalysis.mode": "automatic",
+    // 專案程式碼沒有任何 null 註解；classpath 上有 Spring/JSR-305 的 @Nonnull，"automatic" 會因此啟用
+    // Eclipse null 分析，對每個 `Type::method` 方法參考誤報「needs unchecked conversion to conform to
+    // '@Nonnull'」（Sprint 290 實測 135 筆，全為誤報）。javac／Maven 不做這項分析，與建置結果無關。
+    "java.compile.nullAnalysis.mode": "disabled",
     // Checkstyle 整合設定
     "checkstyle.enable": true,
     "checkstyle.configPath": "backend/src/checkstyle/checkstyle.xml",

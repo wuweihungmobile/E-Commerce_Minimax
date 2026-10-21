@@ -112,6 +112,7 @@ class LoginRateLimitFilterTest {
 
     @Test
     @DisplayName("🔴 DEF-250：POST /v2/auth/register 配額耗盡時同樣回傳 429（先前完全不受限流）")
+    @SuppressWarnings("unchecked")
     void registerPath_deniedRequest_returns429() throws Exception {
         LoginRateLimitFilter filter = newFilter();
         when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any(), any(), any()))
@@ -131,6 +132,7 @@ class LoginRateLimitFilterTest {
 
     @Test
     @DisplayName("登入與註冊路徑使用不同 Redis key（配額互相獨立，登入 burst 不會誤耗盡註冊配額）")
+    @SuppressWarnings("unchecked")
     void loginAndRegister_useIndependentRateLimitKeys() throws Exception {
         LoginRateLimitFilter filter = newFilter();
         when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any(), any(), any()))
@@ -155,6 +157,7 @@ class LoginRateLimitFilterTest {
 
     @Test
     @DisplayName("Token 尚有餘額時放行，不回傳 429")
+    @SuppressWarnings("unchecked")
     void allowedRequest_continuesChain() throws Exception {
         LoginRateLimitFilter filter = newFilter();
         when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any(), any(), any()))
@@ -174,6 +177,7 @@ class LoginRateLimitFilterTest {
 
     @Test
     @DisplayName("Token 已耗盡時回傳 429，含 Retry-After header 與 E_9904 錯誤內容，且不繼續呼叫 chain")
+    @SuppressWarnings("unchecked")
     void deniedRequest_returns429WithRetryAfterAndStopsChain() throws Exception {
         LoginRateLimitFilter filter = newFilter();
         when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any(), any(), any()))
@@ -196,6 +200,7 @@ class LoginRateLimitFilterTest {
     @Test
     @DisplayName("🔴 DEF-396：429 回應必須以 UTF-8 宣告並寫出，中文訊息不可被寫成問號"
             + "（Servlet 容器預設 ISO-8859-1，沒宣告編碼就 getWriter() 會把非 Latin-1 字元不可逆地替換成 ?）")
+    @SuppressWarnings("unchecked")
     void deniedRequest_writesChineseMessageAsUtf8() throws Exception {
         LoginRateLimitFilter filter = newFilter();
         when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any(), any(), any()))
@@ -217,6 +222,7 @@ class LoginRateLimitFilterTest {
 
     @Test
     @DisplayName("Redis 故障（DataAccessException）時 fail-open，放行請求且不拋例外")
+    @SuppressWarnings("unchecked")
     void redisFailure_failsOpenAndContinuesChain() throws Exception {
         LoginRateLimitFilter filter = newFilter();
         when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any(), any(), any()))
@@ -236,6 +242,7 @@ class LoginRateLimitFilterTest {
 
     @Test
     @DisplayName("Redis script 回傳 null 時 fail-open，不拋 NPE")
+    @SuppressWarnings("unchecked")
     void redisScriptReturnsNull_failsOpenAndContinuesChain() throws Exception {
         LoginRateLimitFilter filter = newFilter();
         when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any(), any(), any()))

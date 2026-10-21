@@ -66,9 +66,11 @@ class SkuManagementIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @SuppressWarnings("unused")
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @SuppressWarnings("unused")
     @Autowired
     private ListingRepository listingRepository;
 

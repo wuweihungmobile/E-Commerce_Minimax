@@ -223,7 +223,6 @@ class M18MediaIntegrationTest {
             // 以既有 stub 執行一次「探測呼叫」（此時 any() 對應的實際引數皆為 null），故須防禦 null
             if (file == null) return null;
             UUID categoryId = inv.getArgument(1);
-            @SuppressWarnings("unchecked")
             List<String> tags = inv.getArgument(2);
             return com.nextkey.ecommerce.api.dto.media.MediaAssetDto.builder()
                     .id(UUID.randomUUID())

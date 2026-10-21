@@ -81,6 +81,7 @@ import com.nextkey.ecommerce.shared.time.BusinessTime;
 class BookingCancellationRefundIntegrationTest {
 
     private static final String STRIPE_TOGGLE = "STRIPE_PAYMENT_ENABLED";
+    @SuppressWarnings("unused")
     private static final BigDecimal TWO_NIGHTS = new BigDecimal("3000.00");
 
     @Autowired private BookingService bookingService;

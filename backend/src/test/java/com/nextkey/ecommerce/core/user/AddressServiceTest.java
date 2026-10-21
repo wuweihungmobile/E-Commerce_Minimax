@@ -194,6 +194,7 @@ class AddressServiceTest {
         assertThat(response.isDefault()).isTrue();
         assertThat(previousDefault.isDefault()).isFalse();
 
+        @SuppressWarnings("unchecked")
         ArgumentCaptor<List<Address>> savedAllCaptor = ArgumentCaptor.forClass(List.class);
         verify(addressRepository).saveAll(savedAllCaptor.capture());
         assertThat(savedAllCaptor.getValue()).contains(previousDefault);

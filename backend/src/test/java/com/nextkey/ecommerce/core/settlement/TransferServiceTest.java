@@ -208,6 +208,7 @@ class TransferServiceTest {
 
     @Test
     @DisplayName("🔴 createTransferForStatement: 併發搶佔（saveAndFlush 唯一索引衝突）應回既有記錄，絕不呼叫 Stripe")
+    @SuppressWarnings("unchecked")
     void createTransferForStatement_concurrentClaim_returnsExistingWithoutCallingStripe() {
         transferService = newService();
         when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(approvedStatement()));
@@ -246,6 +247,7 @@ class TransferServiceTest {
 
     @Test
     @DisplayName("retryFailedTransfer: SUPER_ADMIN 可跨租戶重試（略過租戶檢查）")
+    @SuppressWarnings("unchecked")
     void retryFailedTransfer_superAdmin_bypassesTenantCheck() {
         transferService = newService();
         SettlementStatement statement = approvedStatement();

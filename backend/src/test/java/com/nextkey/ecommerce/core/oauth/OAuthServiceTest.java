@@ -89,11 +89,13 @@ class OAuthServiceTest {
         ReflectionTestUtils.setField(oAuthService, "allowedRedirectOriginsRaw", "");
     }
 
+    @SuppressWarnings("unchecked")
     private void mockExchange(final String url, final HttpMethod method, final Map<String, Object> body) {
         when(restTemplate.exchange(eq(url), eq(method), any(HttpEntity.class), any(ParameterizedTypeReference.class)))
                 .thenReturn(new ResponseEntity<>(body, HttpStatus.OK));
     }
 
+    @SuppressWarnings("unchecked")
     private void mockExchangeFailure(final String url, final HttpMethod method) {
         when(restTemplate.exchange(eq(url), eq(method), any(HttpEntity.class), any(ParameterizedTypeReference.class)))
                 .thenThrow(new RestClientException("connection refused"));
@@ -300,6 +302,7 @@ class OAuthServiceTest {
 
     @Test
     @DisplayName("handleOAuthLogin：GITHUB /user 已回傳公開 email → 不呼叫 /user/emails")
+    @SuppressWarnings("unchecked")
     void handleOAuthLogin_githubPublicEmail_doesNotFetchEmailsEndpoint() {
         OAuthDto.AuthRequest request = OAuthDto.AuthRequest.builder()
                 .provider(OAuthProvider.GITHUB).code("auth-code").redirectUri(GITHUB_REDIRECT_URI).build();
@@ -328,6 +331,7 @@ class OAuthServiceTest {
 
     @Test
     @DisplayName("handleOAuthLogin：GITHUB /user 的 email 為 null → 查 /user/emails 取 primary+verified 信箱")
+    @SuppressWarnings("unchecked")
     void handleOAuthLogin_githubNullEmail_fetchesPrimaryVerifiedEmail() {
         OAuthDto.AuthRequest request = OAuthDto.AuthRequest.builder()
                 .provider(OAuthProvider.GITHUB).code("auth-code").redirectUri(GITHUB_REDIRECT_URI).build();
@@ -366,6 +370,7 @@ class OAuthServiceTest {
 
     @Test
     @DisplayName("handleOAuthLogin：GITHUB 無 email 也查不到 primary+verified 信箱 → E_9903")
+    @SuppressWarnings("unchecked")
     void handleOAuthLogin_githubNoVerifiedEmail_throwsE9903() {
         OAuthDto.AuthRequest request = OAuthDto.AuthRequest.builder()
                 .provider(OAuthProvider.GITHUB).code("auth-code").redirectUri(GITHUB_REDIRECT_URI).build();

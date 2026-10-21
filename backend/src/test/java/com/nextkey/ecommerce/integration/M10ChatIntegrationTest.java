@@ -72,6 +72,7 @@ class M10ChatIntegrationTest {
 
     private UUID testTenantId;
     private String initiatorToken;
+    @SuppressWarnings("unused")
     private UUID initiatorId;
     private UUID recipientId;
 

@@ -429,6 +429,7 @@ class SettlementScheduledJobIntegrationTest {
         assertEquals(new BigDecimal("850.00"), result.getNetSettlementAmount());
         assertEquals(new BigDecimal("-150.00"), result.getAdjustmentAmount());
 
+        @SuppressWarnings("unchecked")
         ArgumentCaptor<List<com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment>> savedCaptor =
                 ArgumentCaptor.forClass(List.class);
         verify(adjustmentRepository).saveAll(savedCaptor.capture());

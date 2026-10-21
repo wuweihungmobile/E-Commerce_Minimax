@@ -159,6 +159,7 @@ class NotificationConsumerServiceTest {
         // Arrange：用一個真正會保存 key/value 的假 Redis String store 取代單純的 mock 驗證，
         // 才能觀察到「後寫入的 key 覆蓋先前的 key」這種真實的資料遺失行為。
         Map<String, Object> fakeRedisStringStore = new HashMap<>();
+        @SuppressWarnings("unchecked")
         ValueOperations<String, Object> valueOperations = org.mockito.Mockito.mock(ValueOperations.class);
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().doAnswer(invocation -> {
@@ -238,6 +239,7 @@ class NotificationConsumerServiceTest {
         NotificationMessage message = buildMessageWithNotificationId(notificationId);
         stubRedisAndParser(json, message);
         when(notificationRepository.findById(notificationId)).thenReturn(java.util.Optional.empty());
+        @SuppressWarnings("unchecked")
         ValueOperations<String, Object> valueOperations = org.mockito.Mockito.mock(ValueOperations.class);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(objectMapper.writeValueAsString(message)).thenReturn("SERIALIZED");

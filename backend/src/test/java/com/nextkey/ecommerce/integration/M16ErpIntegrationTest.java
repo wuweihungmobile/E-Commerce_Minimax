@@ -85,7 +85,6 @@ class M16ErpIntegrationTest {
 
     private static UUID testTenantId = FIXED_TENANT_ID; // 使用固定 ID 與 @WithErpSecurity 一致
     private static UUID testStoreOwnerUserId = FIXED_STORE_OWNER_USER_ID;
-    @SuppressWarnings("unused")
     private static UUID testSellerUserId;
     @SuppressWarnings("unused")
     private static UUID testSupplierId;

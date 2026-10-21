@@ -151,6 +151,7 @@ class ChatServiceTenantResolutionTest {
 
     @Test
     @DisplayName("DEF-118：併發搶占失敗（另一請求已建立同一對 active 對話）→ 回傳搶贏的既有對話，而非拋出原始例外")
+    @SuppressWarnings("unchecked")
     void createConversation_concurrentClaimLost_returnsRaceWinner() {
         Conversation raceWinner = Conversation.builder()
                 .id(UUID.randomUUID()).initiatorId(USER_ID).recipientId(RECIPIENT_ID)

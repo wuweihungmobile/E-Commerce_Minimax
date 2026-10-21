@@ -206,6 +206,7 @@ class AnalyticsServiceTest {
 
     @Test
     @DisplayName("getDashboardStats：營收排除取消單，成長率 =(今-昨)/昨×100")
+    @SuppressWarnings("unchecked")
     void getDashboardStats_computesGrowth_excludesCancelled() {
         // 先建 mock 清單（避免在 stubbing 進行中又對 entity 開 when → UnfinishedStubbing）
         List<Order> todayOrders = List.of(
@@ -237,6 +238,7 @@ class AnalyticsServiceTest {
 
     @Test
     @DisplayName("getDashboardStats（邊界）：昨日營收為 0 → 成長率保持 0（不除以零）")
+    @SuppressWarnings("unchecked")
     void getDashboardStats_zeroYesterday_growthStaysZero() {
         List<Order> todayOrders = List.of(order(Order.OrderStatus.PAID, "120", LocalDate.now())); // 今日：120
         when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any()))

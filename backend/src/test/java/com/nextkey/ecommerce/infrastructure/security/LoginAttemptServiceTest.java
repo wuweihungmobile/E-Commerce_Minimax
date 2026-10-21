@@ -43,6 +43,7 @@ class LoginAttemptServiceTest {
         loginAttemptService = new LoginAttemptService(redisTemplate);
     }
 
+    @SuppressWarnings("unchecked")
     private void stubCountReturns(final Long count) {
         when(redisTemplate.execute(any(RedisScript.class), eq(List.of(KEY)), eq(WINDOW_SECONDS)))
                 .thenReturn(count);
@@ -82,6 +83,7 @@ class LoginAttemptServiceTest {
 
     @Test
     @DisplayName("countAttemptAndCheckLocked：以 email 為 key、15 分鐘（900 秒）為 TTL 參數執行 script")
+    @SuppressWarnings("unchecked")
     void countAttempt_usesEmailKeyAndFifteenMinuteWindow() {
         stubCountReturns(1L);
 

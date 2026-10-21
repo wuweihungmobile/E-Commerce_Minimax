@@ -88,6 +88,7 @@ class RateLimitFilterTest {
 
     @Test
     @DisplayName("Token 尚有餘額時放行，並設定 X-RateLimit-* headers")
+    @SuppressWarnings("unchecked")
     void allowedRequest_setsRateLimitHeadersAndContinuesChain() throws Exception {
         RateLimitFilter filter = newFilter();
         TenantContext.setCurrentTenant(UUID.randomUUID());
@@ -110,6 +111,7 @@ class RateLimitFilterTest {
 
     @Test
     @DisplayName("Token 已耗盡時回傳 429，含 Retry-After header 與 E_9904 錯誤內容，且不繼續呼叫 chain")
+    @SuppressWarnings("unchecked")
     void deniedRequest_returns429WithRetryAfterAndStopsChain() throws Exception {
         RateLimitFilter filter = newFilter();
         TenantContext.setCurrentTenant(UUID.randomUUID());
@@ -132,6 +134,7 @@ class RateLimitFilterTest {
     @Test
     @DisplayName("🔴 DEF-396：429 回應必須以 UTF-8 宣告並寫出，中文訊息不可被寫成問號"
             + "（Servlet 容器預設 ISO-8859-1，沒宣告編碼就 getWriter() 會把非 Latin-1 字元不可逆地替換成 ?）")
+    @SuppressWarnings("unchecked")
     void deniedRequest_writesChineseMessageAsUtf8() throws Exception {
         RateLimitFilter filter = newFilter();
         TenantContext.setCurrentTenant(UUID.randomUUID());
@@ -153,6 +156,7 @@ class RateLimitFilterTest {
 
     @Test
     @DisplayName("Redis 故障（DataAccessException）時 fail-open，放行請求且不拋例外")
+    @SuppressWarnings("unchecked")
     void redisFailure_failsOpenAndContinuesChain() throws Exception {
         RateLimitFilter filter = newFilter();
         TenantContext.setCurrentTenant(UUID.randomUUID());
@@ -172,6 +176,7 @@ class RateLimitFilterTest {
 
     @Test
     @DisplayName("Redis script 回傳 null（如測試環境將 RedisConnectionFactory 整個 mock 掉）時 fail-open，不拋 NPE")
+    @SuppressWarnings("unchecked")
     void redisScriptReturnsNull_failsOpenAndContinuesChain() throws Exception {
         RateLimitFilter filter = newFilter();
         TenantContext.setCurrentTenant(UUID.randomUUID());

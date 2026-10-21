@@ -74,6 +74,7 @@ class BuyerOrderJourneyE2ETest {
 
     private String accessToken;
     private String userEmail;
+    @SuppressWarnings("unused")
     private static UUID sharedOrderId;
 
     @BeforeAll

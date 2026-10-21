@@ -846,6 +846,7 @@ class RedisCartServiceTest {
 
         @Test
         @DisplayName("DEF-389：移除該店鋪在購物車裡的最後一個項目後，該店鋪已套用的促銷碼要連動清除")
+        @SuppressWarnings("unchecked")
         void removeItem_lastItemOfStore_removesThatStoresAppliedPromo() {
             Map<Object, Object> entriesBeforeRemove = new HashMap<>();
             entriesBeforeRemove.put(LISTING_A.toString(), productItem(LISTING_A, 1, 1000));
@@ -869,6 +870,7 @@ class RedisCartServiceTest {
 
         @Test
         @DisplayName("DEF-389：店鋪還有其他項目時，移除其中一項不應清除該店鋪已套用的促銷碼")
+        @SuppressWarnings("unchecked")
         void removeItem_storeStillHasOtherItems_keepsAppliedPromo() {
             UUID listingA2 = UUID.fromString("550e8400-e29b-41d4-a716-4466554400b3");
             Map<Object, Object> entriesBeforeRemove = new HashMap<>();
@@ -896,6 +898,7 @@ class RedisCartServiceTest {
 
         @Test
         @DisplayName("DEF-389：購物車橫跨兩家店鋪時，移除一家店鋪的最後項目只清該店鋪的促銷碼，不影響另一家")
+        @SuppressWarnings("unchecked")
         void removeItem_withTwoStores_onlyRemovesThatStoresPromo_leavesOtherStoreUntouched() {
             Map<Object, Object> entriesBeforeRemove = new HashMap<>();
             entriesBeforeRemove.put(LISTING_A.toString(), productItem(LISTING_A, 1, 1000));

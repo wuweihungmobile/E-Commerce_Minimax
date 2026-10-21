@@ -87,7 +87,6 @@ class BookingControllerE2ETest {
     @Autowired
     private BookingRepository bookingRepository;
 
-    @SuppressWarnings("unused")
     @Autowired
     private TenantRepository tenantRepository;
 
@@ -116,7 +115,6 @@ class BookingControllerE2ETest {
     @Autowired
     private EntityManager entityManager;
 
-    @SuppressWarnings("unused")
     @Autowired
     private JdbcTemplate jdbcTemplate;
 

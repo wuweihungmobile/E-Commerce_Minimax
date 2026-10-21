@@ -53,6 +53,7 @@ class BookingTimeoutServiceTest {
         ReflectionTestUtils.setField(service, "batchSize", 2);
     }
 
+    @SafeVarargs
     private void givenBatches(final List<UUID>... batches) {
         var stub = when(bookingRepository.findExpiredUnpaidBookingIds(eq(Booking.BookingStatus.CREATED),
                 any(Instant.class), any(Instant.class), eq(Payment.PaymentStatus.SUCCESS),

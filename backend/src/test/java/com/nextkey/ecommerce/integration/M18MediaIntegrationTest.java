@@ -575,7 +575,10 @@ class M18MediaIntegrationTest {
                         .header("Authorization", "Bearer " + authToken)
                         .header("X-Tenant-ID", testTenantId.toString()))
                 .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.IMAGE_JPEG))
+                // DEF-397（Sprint 296）：server.servlet.encoding.force-response=true 之後，所有回應（含圖片）的
+                // Content-Type 都會被追加 ;charset=UTF-8（實測：expected:<image/jpeg> but was:<image/jpeg;charset=UTF-8>）。
+                // 這個案例要守的是「串流回的是 JPEG 位元組」，charset 參數與意圖無關，所以用「相容」而不是精確相等。
+                .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_JPEG))
                 .andExpect(content().bytes("mock-file-content".getBytes()));
     }
 }

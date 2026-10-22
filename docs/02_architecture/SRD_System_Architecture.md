@@ -1,7 +1,7 @@
-# E-Commerce System — 系統需求文檔 (SRD) v1.8
+# E-Commerce System — 系統需求文檔 (SRD) v1.9
 
 > **文檔類型**: SRD (System Requirements Document)
-> **版本**: v1.8（v1.0 → v1.3：見下方歷史；v1.3 → v1.6：Sprint 244／245／247 文件對齊與訂房功能同步；v1.6 → v1.7：Sprint 261 文件一致性檢查，補 no-show 狀態列＋版本中繼資料校正；v1.7 → v1.8：Sprint 292 文件一致性檢查，技術棧版本與資料表索引錨點校正；完整內容見 §9 修訂歷史）
+> **版本**: v1.9（Sprint 296 新增 §5.4.5 回應 Content-Type 編碼；v1.8 為 Sprint 292 文件一致性檢查；v1.0 → v1.3：見下方歷史；v1.3 → v1.6：Sprint 244／245／247 文件對齊與訂房功能同步；v1.6 → v1.7：Sprint 261 文件一致性檢查，補 no-show 狀態列＋版本中繼資料校正；v1.7 → v1.8：Sprint 292 文件一致性檢查，技術棧版本與資料表索引錨點校正；完整內容見 §9 修訂歷史）
 > **依據**: E-Commerce_PRD_v1.0_Final.md, E-Commerce_FRD_v1.0.md
 > **建立日期**: 2026-04-09
 > **作者**: Marcus (SD-Architect)
@@ -406,6 +406,28 @@ SuperAdmin
 
 前端來源由 `app.cors.allowed-origins` 設定，執行環境以 **`APP_CORS_ALLOWED_ORIGINS`**（逗號分隔）覆寫，預設 `http://localhost:3000,http://localhost:8080`。因 `allowCredentials=true`，**不可使用 `*`**（Spring 會拒絕這個組合，由 `SecurityConfigCorsOriginsTest` 釘住）。非 localhost 部署（前端以 `NEXT_PUBLIC_API_URL` 指向正式後端網域並由瀏覽器跨源直連）必須設定此變數，否則所有 API 呼叫被 CORS 封鎖（DEF-265）。允許方法：`GET／POST／PUT／PATCH／DELETE／OPTIONS`；允許請求標頭：`Authorization`、`Content-Type`、`X-Tenant-ID`、`Idempotency-Key`；暴露回應標頭：`Authorization`、`X-RateLimit-*`、`Retry-After`、`X-Request-ID`。
 
+#### 5.4.5 回應 `Content-Type` 的編碼（Sprint 296，DEF-397）
+
+PRD §16.4.1 規定所有 Error Response 的 `Content-Type` 固定為 `application/json; charset=utf-8`。後端以 `application.yml` 的 `server.servlet.encoding.force-response: true` **全域強制回應編碼為 UTF-8**（Spring Boot 預設只強制「請求」編碼；使用者在 Sprint 294 收尾時選擇這個做法，而不是修訂 PRD 措辭）。
+
+在真實 Tomcat 上以同一個 JAR、只差環境變數開關實測（`curl -D`）：
+
+| 回應來源 | 開關前 | 開關後 |
+|---|---|---|
+| 200 正常 JSON（MVC） | `application/json` | `application/json;charset=UTF-8` |
+| 200 `actuator/health`（vendor 型別） | `application/vnd.spring-boot.actuator.v3+json` | 同上加 `;charset=UTF-8` |
+| 401 未登入（`SecurityConfig.authenticationEntryPoint`） | `application/json;charset=ISO-8859-1`（**宣告的編碼是錯的**） | `application/json;charset=UTF-8` |
+| 404／400 驗證失敗／403（MVC） | `application/json` | `application/json;charset=UTF-8` |
+| 400 防火牆拒絕（`ApiErrorController`） | `application/json` | `application/json;charset=UTF-8` |
+| 400 連接器層拒絕（`ApiErrorReportValve`） | `application/json;charset=utf-8` | 不變（小寫 `utf-8`） |
+| 400／429（`TenantContextFilter`、`LoginRateLimitFilter`、`RateLimitFilter`，DEF-396 修復後） | `application/json;charset=UTF-8` | 不變 |
+
+- **副作用（刻意接受）**：**所有**回應的 `Content-Type` 都會被追加 `;charset=UTF-8`，包含非 JSON 的型別。actuator 的 vendor 型別在真實 Tomcat 上實測確認；`image/jpeg` 的檔案下載在 MockMvc 實測確認（`expected:<image/jpeg> but was:<image/jpeg;charset=UTF-8>`）。**真實 Tomcat 上的二進位檔案下載沒有量到**（需要 MinIO 與上傳資料）。瀏覽器對圖片與二進位內容會忽略 charset 參數；前端程式碼沒有依賴 `Content-Type` 字串（`grep` 查證）。
+- **比對 charset 要不分大小寫**：連接器層寫小寫 `utf-8`，其餘為 `UTF-8`，兩者等價。
+- **測試斷言**：精確比對 `MediaType` 的（MockMvc 的 `contentType(MediaType)`）會因多出 charset 參數而失敗，若意圖是「媒體型別」要改用 `contentTypeCompatibleWith`（`M18MediaIntegrationTest.testGetFile` 即因此修改）。
+- **保留的明確宣告**：`ApiErrorReportValve`（Sprint 206）與三個自己寫回應的 filter（Sprint 288，DEF-396）各自宣告 UTF-8 的程式碼**不移除**——單元測試靠它們（`MockHttpServletResponse` 沒有容器的編碼 filter），設定被移除時也是第二道防線。
+- **守門**：`ErrorResponseContentTypeIntegrationTest`（`IT-CT-001`～`005`，`RANDOM_PORT` 真實 Tomcat）：401、MVC 400、防火牆 400、連接器層 400、200 JSON 都必須宣告 UTF-8。
+
 ### 5.5 一次性連結：忘記密碼與 Email 驗證（Sprint 204，DEF-252／253）
 
 需求見 PRD §7.4.2、FRD US-M03-006／007／BR-M03-003；端點見 [API_M03_Auth.md](./api/API_M03_Auth.md) §6～§9。
@@ -701,6 +723,7 @@ CREATED ──付款成功──▶ PAID ──店家確認──▶ CONFIRMED �
 | v1.6 | 2026-10-09 | Claude Code（Sprint 247） | §6.3.4 訂房納入結算（DEF-353，PRD §6.2.1）：`SettlementGenerator` 將訂房與訂單彙總進同一張結算單；可結算條件（COMPLETED，或 CANCELLED+refundStatus=NONE+存在成功付款）取代前版「完成不觸發結算」的敘述；退款比照訂單走跨結算週期調整機制 |
 | v1.7 | 2026-10-13 | Claude Code（Sprint 261） | 文件一致性檢查（第四輪）：§6.3.4 補上 no-show 自動取消狀態轉換列（Sprint 246，DEF-352，原表遺漏）；修正本文件三處各自獨立漂移的版本號／日期中繼資料（檔頭「版本」欄、文檔元數據「最後更新」、檔尾「最後更新」皆各自停在不同的舊日期，與本表最新列不一致）。詳見 [SPRINT_261_PLAN.md](../04_planning/SPRINT_261_PLAN.md) |
 | v1.8 | 2026-10-22 | Claude Code（Sprint 292） | 文件一致性檢查（第五輪）：①§1.1 系統架構圖與 §1.3 技術選型表的 `Next.js 15`／`React 18` 校正為 `Next.js 16`／`React 19`（`frontend/package.json` 自 2026-05-10 起即為 Next 16.x，現為 16.4.2／React 19.2.4）；②§6.5「詳細資料表清單」16 個指向 [SRD_Database_Schema.md](./SRD_Database_Schema.md) 的錨點全部失效（該文件的資料表標題已改為 `2.1.1 \`tenants\` - …` 的分組編號格式，本表仍用舊的 `#21-tenants---…` 流水編號），逐一改為現行標題的錨點。詳見 [SPRINT_292_PLAN.md](../04_planning/SPRINT_292_PLAN.md) |
+| v1.9 | 2026-10-22 | Claude Code（Sprint 296） | 新增 §5.4.5「回應 `Content-Type` 的編碼」（DEF-397）：`server.servlet.encoding.force-response: true` 全域強制回應編碼 UTF-8，使 PRD §16.4.1 的 `Content-Type` 字面規定成立；記錄真實 Tomcat 開關前後實測、全域副作用（非 JSON 型別也被追加 charset）與測試斷言的注意事項。詳見 [SPRINT_296_PLAN.md](../04_planning/SPRINT_296_PLAN.md) |
 
 ---
 

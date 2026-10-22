@@ -2,6 +2,14 @@ server:
   port: 8080
   servlet:
     context-path: /api
+    encoding:
+      # DEF-397（Sprint 296，使用者決定）：PRD §16.4.1 規定所有 Error Response 的 Content-Type 固定為
+      # application/json; charset=utf-8。Spring Boot 預設只強制「請求」編碼，回應編碼交給各處自己宣告，結果大多數
+      # JSON 回應不帶 charset，SecurityConfig 的 401 還宣告成 ISO-8859-1（宣告的編碼是錯的，只因訊息是 ASCII 才沒損毀）。
+      # 強制回應編碼會讓「所有」回應（含非 JSON：actuator 的 vendor 型別、檔案下載）的 Content-Type 都被追加
+      # ;charset=UTF-8，這是刻意接受的副作用；瀏覽器對圖片與二進位內容會忽略 charset 參數。
+      # 讀取回應 Content-Type 的測試斷言若是精確比對 MediaType，要改成 contentTypeCompatibleWith（見 M18MediaIntegrationTest）。
+      force-response: true
 
 spring:
   application:

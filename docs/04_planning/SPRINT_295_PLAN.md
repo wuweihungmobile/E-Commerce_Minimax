@@ -105,8 +105,9 @@
 
 | 項目 | 結果 |
 |---|---|
-| pre-commit | commit 後回填 |
-| 雲端 CI | push 後回填 |
+| pre-commit（Checkstyle＋Maven 編譯＋核心層快速測試＋secret 掃描） | 一次通過（commit `b119a2d4`；因含 backend 檔案輸出達數 MB，以結尾的「快速檢查通過」與 `git log` 確認 HEAD 前進） |
+| pre-push 輕量守門 | 通過（本機 act 的 Backend Unit Tests——其中已包含新的 `docs` 套件，所以新守門在本機 push 時實際跑過；schema 漂移守門 backend 啟動成功） |
+| 雲端 CI | run [39726549258](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39726549258)：`completed／success`，三個 job（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build）皆 success，以 `gh run view --json` 確認 `headSha` 與本機 commit 一致 |
 
 ## 7. 後續
 

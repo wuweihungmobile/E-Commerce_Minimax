@@ -160,7 +160,7 @@ export default function NewReturnPage() {
             <div key={item.id} className="flex items-center gap-4 border-b last:border-b-0 pb-4 last:pb-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={item.coverImageUrl || '/placeholder.png'}
+                src={item.coverImageUrl || '/placeholder.svg'}
                 alt={item.listingTitle}
                 className="h-14 w-14 rounded object-cover bg-gray-100 shrink-0"
               />

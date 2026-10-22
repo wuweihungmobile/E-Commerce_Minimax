@@ -328,6 +328,32 @@ class M05ReturnRequestIntegrationTest {
                 .isEqualTo("REQUESTED");
     }
 
+    @Test
+    @DisplayName("IT-M05-RETURN-013: 無 SKU 的品項（商店未啟用庫存追蹤）也能申請、核准、收貨，且不動任何庫存"
+            + "（DEF-404：return_request_items.sku_id 原為 NOT NULL，服務層卻刻意允許 null → 建立退貨單 500）")
+    void returnRequest_forOrderItemWithoutSku_completesWithoutTouchingInventory() {
+        seedOrder("DELIVERED", null);
+
+        ReturnDto.Response created = returnRequestService.createReturnRequest(createRequest(2));
+        assertThat(created.getStatus()).isEqualTo("REQUESTED");
+        assertThat(created.getItems().get(0).getSkuId()).isNull();
+
+        returnRequestService.approveReturn(created.getId());
+        UUID itemId = returnRequestService.getReturnRequest(created.getId()).getItems().get(0).getId();
+        ReturnDto.Response received = returnRequestService.receiveReturn(created.getId(),
+                ReturnDto.ReceiveRequest.builder()
+                        .items(List.of(ReturnDto.ReceiveItem.builder()
+                                .itemId(itemId).sellableQty(1).unsellableQty(1).build()))
+                        .build());
+
+        assertThat(received.getStatus()).isEqualTo("RECEIVED");
+        // 沒有 SKU＝沒有庫存可回補：這張訂單不得產生任何庫存異動，setUp 種的另一個 SKU 的庫存也不得變動
+        Integer orderMovements = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM stock_movements WHERE reference_id = ?", Integer.class, orderId);
+        assertThat(orderMovements).isZero();
+        assertThat(totalQty()).isEqualTo(INITIAL_STOCK);
+    }
+
     // ── 固件 ──────────────────────────────────────────────────
 
     private ReturnDto.CreateRequest createRequest(final int quantity) {
@@ -399,8 +425,13 @@ class M05ReturnRequestIntegrationTest {
         return id;
     }
 
-    /** 種一張指定狀態的訂單（含一個品項）；重複呼叫會換成新的一張。 */
+    /** 種一張指定狀態的訂單（含一個品項，掛 setUp 種的 SKU）；重複呼叫會換成新的一張。 */
     private void seedOrder(final String status) {
+        seedOrder(status, skuId);
+    }
+
+    /** 同上，但品項的 SKU 可指定；傳 null＝未啟用庫存追蹤的商品（訂單品項沒有 SKU）。 */
+    private void seedOrder(final String status, final UUID itemSkuId) {
         orderId = UUID.randomUUID();
         jdbcTemplate.update("""
                 INSERT INTO orders (id, tenant_id, user_id, order_type, status, total_amount,
@@ -412,6 +443,6 @@ class M05ReturnRequestIntegrationTest {
                 INSERT INTO order_items (id, order_id, listing_id, sku_id, quantity, unit_price, subtotal,
                                          created_at)
                 VALUES (?, ?, ?, ?, ?, 100.00, 500.00, NOW())
-                """, orderItemId, orderId, listingId, skuId, ORDER_QTY);
+                """, orderItemId, orderId, listingId, itemSkuId, ORDER_QTY);
     }
 }

@@ -1,9 +1,9 @@
 # API 規格文件 - M05 退貨申請 / API Specification - M05 Return Request
 
 > **文件編號**: API-M05-RET
-> **文件版本**: v1.0（Sprint 265，首次建立；Sprint 118 功能上線至今從未有獨立規格文件，DEF-366）
+> **文件版本**: v1.1（Sprint 300：`skuId` 可為空，DEF-404；v1.0 為 Sprint 265 首次建立，Sprint 118 功能上線至今從未有獨立規格文件，DEF-366）
 > **建立日期**: 2026-10-14
-> **最後更新**: 2026-10-14
+> **最後更新**: 2026-10-23
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`ReturnRequestController`（`api/controller/returns/`）、`ReturnRequestService`（`core/returns/`）、`ReturnRequest`／`ReturnRequestItem`（`domain/model/returns/`）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[ReturnRequestServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/returns/ReturnRequestServiceTest.java)、[M05ReturnRequestIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M05ReturnRequestIntegrationTest.java)
@@ -94,7 +94,7 @@ FRD 無對應章節（§6.2 僅一行功能總覽，無 US/AC），上表為本�
 | `id` | UUID | PK |
 | `returnRequest` | `@ManyToOne` | 指回父實體，`return_request_id` not null |
 | `orderItemId` | UUID | 對應原訂單品項，not null |
-| `skuId` | UUID | Entity 宣告 `nullable = false`，但 Service 建立時若原訂單品項的 SKU 已被刪除會代入 `null`（見 §7 已知限制） |
+| `skuId` | UUID | **可為 `null`**（Sprint 300，V93，DEF-404）：沒建 SKU（未啟用庫存追蹤）的商品，其訂單品項沒有 SKU，退貨品項的 `sku_id` 就是空的；收貨時不回補庫存。V93 之前欄位是 `NOT NULL`，這種退貨申請會回 500 |
 | `requestedQty` | Integer | 申請退貨數量，not null |
 | `sellableQty` / `unsellableQty` | Integer | 收貨確認後才填值，之前為 `null`；`receivedQty()` 衍生方法 = 兩者相加（null 視為 0） |
 | `createdAt` | Instant | |
@@ -239,7 +239,7 @@ REQUESTED ──approve──→ APPROVED ──receive──→ RECEIVED（🔴
 | 項目 | 說明 |
 |------|------|
 | 回應缺少審核/收貨的操作者與更新時間 | `ReturnDto.Response` 未映射 Entity 既有的 `reviewedBy`／`receivedBy`／`updatedAt` 三個欄位（見 §3.1） |
-| `ReturnRequestItem.skuId` 的 `nullable=false` 與實際可能寫入 `null` 的落差 | Entity 宣告為 not null，但 `ReturnRequestService` 建立退貨單時若原訂單品項的 SKU 已被刪除，會代入 `null`——理論上應在資料庫 NOT NULL 約束觸發失敗，但目前無測試驗證此邊界情境，建議後續確認 SKU 被刪除後申請退貨的真實行為 |
+| 沒有 SKU 的品項，回應的 `skuId`／`skuCode`／`specName`／`productName` 皆為 `null` | 品名、規格、SKU 編號都是從 SKU join 而來（`toResponse`），沒有 SKU 就沒有這些值；店主審核台以 `品項 #<orderItemId 前 8 碼>` 後備顯示，不是商品名（Sprint 300 未改）。買家端不受影響（品名取自訂單品項）。**歷史**：本列原記載「`nullable=false` 與可能寫入 `null` 的落差，無測試驗證，建議後續確認」——Sprint 300 以真實全棧驗證：沒建 SKU 的商品申請退貨會回 500（DEF-404，已以 V93 修復）；原文把原因歸於「SKU 被刪除」，實際上沒建 SKU 才是常態情境 |
 | PRD／FRD 對退貨完全沒有 API 規格或 AC | 本文件的端點清單、狀態機、數量校驗規則全部是從程式碼實際行為逆向整理，業務規則（如「只有 DELIVERED/COMPLETED 可退」）是實作當時的假設，未見任何需求文件明文佐證 |
 | 模組歸屬文件間不一致（已部分更正） | 見文件頂部「模組歸屬說明」；[API_M05_Order.md](API_M05_Order.md) 原「範圍外：退貨（M11）」已於本輪更正為指向本文件 |
 | `ApiRouteDocDriftTest` 先前未覆蓋 | 本文件完成後新增 `ReturnRequestController` 至 `GUARDED` 清單，從此有常態機械防漂移 |

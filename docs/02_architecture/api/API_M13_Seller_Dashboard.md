@@ -1,9 +1,9 @@
 # API 規格文件 - M13 商家工作台 / API Specification - M13 Seller Dashboard
 
 > **文件編號**: API-M13
-> **文件版本**: v1.0（Sprint 275，首次建立；首次有獨立規格文件，DEF-286 範圍）
+> **文件版本**: v1.1（Sprint 300：§7「營收三種口徑」補上實測與 DEF-407，僅文件；v1.0 為 Sprint 275 首次建立，首次有獨立規格文件，DEF-286 範圍）
 > **建立日期**: 2026-10-16
-> **最後更新**: 2026-10-16
+> **最後更新**: 2026-10-23
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`SellerDashboardController`／`AnalyticsController`（`api/controller/`）、`SellerDashboardService`（`core/seller/`）、`AnalyticsService`（`core/analytics/`）、`TenantStripeConnectService`（`core/tenant/`）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[SellerDashboardServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/seller/SellerDashboardServiceTest.java)、[SellerDashboardServiceCacheTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/seller/SellerDashboardServiceCacheTest.java)、[AnalyticsServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/analytics/AnalyticsServiceTest.java)、[AnalyticsRealDbIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/analytics/AnalyticsRealDbIntegrationTest.java)、[TenantStripeConnectServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/tenant/TenantStripeConnectServiceTest.java)、[M13SellerDashboardIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M13SellerDashboardIntegrationTest.java)、[M13SellerStripeConnectIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M13SellerStripeConnectIntegrationTest.java)
@@ -202,7 +202,7 @@ FRD 完全無 M13 章節（見文件頂部狀態說明）。
 
 | 項目 | 說明 |
 |------|------|
-| 兩個「儀表板」端點統計口徑互不一致 | `DashboardResponse.revenue30d` 只計 `COMPLETED` 訂單；`DashboardStats.monthRevenue`／`yearRevenue` 排除 `CANCELLED`／`REFUNDED` 但納入 `CREATED`／`PAID` 等未完成狀態；`RevenueStats.totalRevenue` 又是第三種口徑（`PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED` 五狀態）。三者都是「營收」但定義不同，店主若同時參考 `/seller/dashboard` 與 `/dashboard/stats`／`/dashboard/revenue` 的數字會互相矛盾，且無任何文件曾說明差異，純粹是三個端點各自獨立實作造成 |
+| 兩個「儀表板」端點統計口徑互不一致 | `DashboardResponse.revenue30d` 只計 `COMPLETED` 訂單；`DashboardStats.monthRevenue`／`yearRevenue` 排除 `CANCELLED`／`REFUNDED` 但納入 `CREATED`／`PAID` 等未完成狀態；`RevenueStats.totalRevenue` 又是第三種口徑（`PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED` 五狀態）。三者都是「營收」但定義不同，店主若同時參考 `/seller/dashboard` 與 `/dashboard/stats`／`/dashboard/revenue` 的數字會互相矛盾，且無任何文件曾說明差異，純粹是三個端點各自獨立實作造成。**Sprint 300 以真實資料實測並登記為 `DEF-407`（待使用者裁決哪個才是「營收」）**：一間店鋪有已送達訂單 2100、已付款訂單 500、未付款訂單 500，`/dashboard/stats` 回 `todayRevenue: 3100`、`/dashboard/revenue` 回 `totalRevenue: 2600`，差的正是那張未付款訂單；`averageOrderValue`（2600÷3＝866.67）的分母含未付款與已取消訂單。三種口徑都只查 `Order`，不含訂房 |
 | `DashboardStats.pendingOrders` 與 `DashboardResponse.pendingOrderCount` 口徑不同 | 前者僅計 `CREATED`；後者計 `CREATED`＋`PAID`＋`CONFIRMED` 三狀態 |
 | `DashboardStats.activeListings`／`totalProducts` 恆為同一數值 | 服務層用同一個 `activeProducts` 變數賦值給兩個欄位，`totalProducts` 這個名稱暗示「商品總數」，實際回傳的是「**ACTIVE** 商品數」 |
 | `totalRooms` 與 `activeListings` 的「是否限 ACTIVE」不一致 | 同一回應物件內，房源計數不篩狀態、商品計數篩 `ACTIVE`，欄位命名未反映此差異 |

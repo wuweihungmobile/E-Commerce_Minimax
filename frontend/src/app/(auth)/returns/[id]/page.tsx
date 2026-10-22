@@ -144,7 +144,7 @@ export default function ReturnDetailPage() {
                 {orderItem && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={orderItem.coverImageUrl || '/placeholder.png'}
+                    src={orderItem.coverImageUrl || '/placeholder.svg'}
                     alt={orderItem.listingTitle}
                     className="h-14 w-14 rounded object-cover bg-gray-100 shrink-0"
                   />

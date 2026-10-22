@@ -1,9 +1,9 @@
 # API 規格文件 - M11 物流追蹤 / API Specification - M11 Logistics
 
 > **文件編號**: API-M11
-> **文件版本**: v1.1（Sprint 287，DEF-330a：運費模板列表改用專屬權限 `shipping_template:read`；同時更正 v1.0 對 `BUYER`/`GUEST` 的 `product:read` 誤述，見 §5／§7）
+> **文件版本**: v1.2（Sprint 300：§7 新增「買家看不到自己訂單的物流」，DEF-408，僅文件；v1.1＝Sprint 287，DEF-330a：運費模板列表改用專屬權限 `shipping_template:read`；同時更正 v1.0 對 `BUYER`/`GUEST` 的 `product:read` 誤述，見 §5／§7）
 > **建立日期**: 2026-10-16
-> **最後更新**: 2026-10-19
+> **最後更新**: 2026-10-23
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`LogisticsController`／`ShippingTemplateController`（`api/controller/`）、`LogisticsService`／`ShippingTemplateService`（`core/logistics/`）、`Logistics`／`ShippingTemplate`（`domain/model/logistics/`）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[LogisticsServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceTest.java)、[LogisticsServiceCancelTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceCancelTest.java)、[LogisticsServiceOwnershipTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceOwnershipTest.java)、[LogisticsServiceTenantAccessTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceTenantAccessTest.java)、[ShippingTemplateServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/ShippingTemplateServiceTest.java)、[ShippingTemplateControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/ShippingTemplateControllerE2ETest.java)、[M11LogisticsOrderIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M11LogisticsOrderIntegrationTest.java)
@@ -278,6 +278,7 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 
 | 項目 | 說明 |
 |------|------|
+| **買家看不到自己訂單的物流（DEF-408，Sprint 300 登記，待使用者裁決）** | PRD §10.1.1 路由表寫 `/orders/[id]`＝「訂單詳情（含物流追蹤）」，但四個讀取端點（依訂單取得物流列表、取得物流資訊、追蹤、詳細追蹤歷史）都以 `checkOrderTenant` 守門，只放行該訂單的店鋪租戶與 admin；買家對自己訂單的 `GET /v2/logistics/order/{orderId}` 實測一律 403（Sprint 300，已送達、已付款、未付款三種訂單皆然）。前端以 `.catch(() => [])` 吞掉，「物流追蹤」卡片顯示「尚未出貨」，連已送達的訂單也是這句。開放買家讀取是授權規則變更，所以只登記並附建議（僅開放讀取類端點給該訂單的買家本人，寫入端點維持店家／admin；另一位買家仍須 403），沒有改程式 |
 | **`updateLogisticsStatus` 的 `status` 解析未捕捉例外（DEF-385，已於 Sprint 278 修復）** | §4.6 原以 `@RequestParam String` 收參數後手動 `valueOf()`，無 try-catch，無效字串會落入 catch-all 變 500／`E-9900`。已補上 try-catch，轉譯為新增的專屬碼 `E-7505`（422）。同一缺陷模式的另兩個實例（M16 ERP 的 `ErpController.listPurchaseOrders`、`SupplierService.listSuppliers`）亦已一併修復，見 [API_M16_ERP.md](./API_M16_ERP.md) |
 | **物流錯誤碼大量誤用（DEF-381，已於 Sprint 278 修復）** | `LogisticsService` 原只有 `cancelLogistics`（DEF-011）使用正確的 `E_7500`；`getLogistics`／`trackLogistics`／`getTrackingDetail`／`updateLogisticsStatus` 四個方法原沿用 ERP 模組的 `E_7000`；`createLogistics` 的衝突情境原誤用 `E_7001`。現已全數改為 `E_7500`／`E_7501`，`LogisticsServiceTest` 新增 5 個單元測試斷言實際錯誤碼 |
 | 一張訂單至多一筆作用中物流單是應用層檢查，無資料庫唯一約束 | `logistics` 表的 `order_id` 無唯一索引兜底，§1.2 第 2 點的檢查與建立之間雖有狀態 CAS 防護（DEF-123），但理論上地基完全依賴應用層邏輯，非資料庫不變量 |

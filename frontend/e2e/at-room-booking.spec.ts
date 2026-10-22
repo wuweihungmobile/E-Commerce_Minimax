@@ -8,6 +8,7 @@ import { test, expect, Page, Route } from '@playwright/test';
  * - E2E-ROOM-02: checkout 填訪客資料 → 建立 booking 成功 → 預訂成功畫面
  * - E2E-ROOM-03: checkout 日期衝突（409 / E-4001）→ 「所選日期已被預訂」優雅提示
  * - E2E-ROOM-05: 整月日曆載入 → 已訂日禁選 → 點選可訂區間 → 可用性 + 加購（Sprint 41 US-004 AI-2202b）
+ * - E2E-ROOM-13／14: 入住日期驗證以台灣日曆日判斷「今日」，固定時鐘重現 UTC 與台灣差一天的時段（Sprint 300，DEF-405）
  *
  * checkout 頁無登入守門（表單 + 送出走 mock），故不需真實登入。
  * 例外（Sprint 299，DEF-402）：E2E-ROOM-05／07／09／10 斷言「日曆格內容」，而日曆端點需登入、訪客不會呼叫它，
@@ -586,5 +587,54 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
     await expect(unavailable).toBeVisible({ timeout: 10000 });
     await expect(unavailable).toContainText('所選日期尚未開放預訂');
     await expect(page.getByTestId('listing-add-cart')).toBeDisabled();
+  });
+});
+
+// 「今日」要用本地（台灣）日曆日判斷，不能用 toISOString() 的 UTC 日期（DEF-405，同 DEF-362 的根因）。
+// 台灣 2030-03-11 01:30＝UTC 2030-03-10 17:30：兩地日期差一天，是這個缺陷唯一會現形的時段；
+// 一般白天（或 CI 的 UTC 時區）測不出來，所以固定瀏覽器時間並指定時區，不靠真實時鐘。
+test.describe('AT-ROOM-BOOKING: 入住日期驗證以台灣日曆日判斷「今日」（DEF-405）', () => {
+  test.use({ timezoneId: 'Asia/Taipei' });
+
+  async function openRoomAtTaipeiEarlyMorning(page: Page): Promise<{ availabilityRequests: () => number }> {
+    await page.clock.setFixedTime(new Date('2030-03-10T17:30:00Z'));
+    let availabilityRequests = 0;
+    await page.route(`**/v2/listings/${ROOM_ID}`, async (route) => {
+      await fulfillJson(route, 200, { success: true, data: roomListing() });
+    });
+    await page.route('**/v2/bookings/availability**', async (route) => {
+      availabilityRequests += 1;
+      await fulfillJson(route, 200, { success: true, data: availabilityResponse(true) });
+    });
+    await page.route('**/v2/bookings/calendar**', async (route) => {
+      await fulfillJson(route, 200, { success: true, data: [] });
+    });
+    await page.goto(`/listings/${ROOM_ID}`);
+    await expect(page.getByTestId('listing-detail')).toBeVisible({ timeout: 15000 });
+    return { availabilityRequests: () => availabilityRequests };
+  }
+
+  test('E2E-ROOM-13: 台灣凌晨 01:30 選「昨天」入住 → 顯示「入住日期不可早於今日」，不發出可用性查詢', async ({ page }: { page: Page }) => {
+    const room = await openRoomAtTaipeiEarlyMorning(page);
+
+    await page.getByTestId('listing-checkin').fill('2030-03-10'); // 台灣的昨天（UTC 的今天）
+    await page.getByTestId('listing-checkout').fill('2030-03-12');
+    await page.getByRole('button', { name: '查詢可用性' }).click();
+
+    // 修復前：「今日」被算成 UTC 的 2030-03-10，入住日不早於它，驗證放行並送出了查詢
+    await expect(page.getByText('入住日期不可早於今日')).toBeVisible({ timeout: 10000 });
+    expect(room.availabilityRequests(), '驗證不通過就不該查詢可用性').toBe(0);
+  });
+
+  test('E2E-ROOM-14: 對照：同一時刻選台灣「今天」入住 → 通過驗證並查詢可用性（沒有矯枉過正）', async ({ page }: { page: Page }) => {
+    const room = await openRoomAtTaipeiEarlyMorning(page);
+
+    await page.getByTestId('listing-checkin').fill('2030-03-11'); // 台灣的今天
+    await page.getByTestId('listing-checkout').fill('2030-03-13');
+    await page.getByRole('button', { name: '查詢可用性' }).click();
+
+    await expect(page.getByTestId('listing-availability')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('入住日期不可早於今日')).toHaveCount(0);
+    expect(room.availabilityRequests()).toBe(1);
   });
 });

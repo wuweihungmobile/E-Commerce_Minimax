@@ -10,6 +10,7 @@ import listingService, { type Listing } from "@/services/listing"
 import { notifyCartChanged } from "@/services/cartEvents"
 import bookingService, { type AvailabilityResponse } from "@/services/booking"
 import { MonthCalendar } from "@/components/storefront/MonthCalendar"
+import { toLocalDateString } from "@/lib/date"
 
 type LoadState = "loading" | "ok" | "auth" | "notfound" | "error"
 
@@ -87,7 +88,7 @@ export function ListingDetail({ id }: { id: string }) {
 
   // ROOM 日期驗證：入住不早於今日、退房晚於入住
   const dateError = (): string | null => {
-    const today = new Date().toISOString().slice(0, 10)
+    const today = toLocalDateString(new Date())
     if (!checkIn || !checkOut) return "請選擇入住與退房日期"
     if (checkIn < today) return "入住日期不可早於今日"
     if (checkOut <= checkIn) return "退房日期需晚於入住日期"

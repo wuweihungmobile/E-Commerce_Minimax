@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import AnalyticsService, { RevenueStats } from '@/services/analytics'
+import { toLocalDateString } from '@/lib/date'
 
 type Granularity = 'DAY' | 'WEEK' | 'MONTH'
 
@@ -11,10 +12,6 @@ function formatCurrency(value: number): string {
     currency: 'TWD',
     maximumFractionDigits: 0,
   }).format(value ?? 0)
-}
-
-function toDateInputValue(date: Date): string {
-  return date.toISOString().slice(0, 10)
 }
 
 function StatCard({ label, value }: { label: string; value: string }) {
@@ -31,8 +28,8 @@ export default function RevenueReportPage() {
   const thirtyDaysAgo = new Date(today)
   thirtyDaysAgo.setDate(today.getDate() - 30)
 
-  const [startDate, setStartDate] = useState(toDateInputValue(thirtyDaysAgo))
-  const [endDate, setEndDate] = useState(toDateInputValue(today))
+  const [startDate, setStartDate] = useState(toLocalDateString(thirtyDaysAgo))
+  const [endDate, setEndDate] = useState(toLocalDateString(today))
   const [granularity, setGranularity] = useState<Granularity>('DAY')
   const [revenue, setRevenue] = useState<RevenueStats | null>(null)
   const [loading, setLoading] = useState(true)

@@ -45,7 +45,8 @@ public class ReturnRequestItem {
     @Column(name = "order_item_id", nullable = false)
     private UUID orderItemId;
 
-    @Column(name = "sku_id", nullable = false)
+    /** 沒建 SKU（未啟用庫存追蹤）的商品，其訂單品項沒有 SKU，此欄位為 null；收貨時不回補庫存（DEF-404）。 */
+    @Column(name = "sku_id")
     private UUID skuId;
 
     @Column(name = "requested_qty", nullable = false)

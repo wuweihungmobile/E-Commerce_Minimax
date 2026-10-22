@@ -1,9 +1,9 @@
 # API 規格文件 - M12 動態定價引擎 / API Specification - M12 Dynamic Pricing Engine
 
 > **文件編號**: API-M12
-> **文件版本**: v2.0（Sprint 266 依實作改寫）
+> **文件版本**: v2.1（Sprint 300：更正 §4.8 誤記的「無租戶擁有權檢查」、§7 補 DEF-411；v2.0 為 Sprint 266 依實作改寫）
 > **建立日期**: 2026-04-09（v1.0）
-> **最後更新**: 2026-10-14
+> **最後更新**: 2026-10-23
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`PricingController`、`DashboardPricingController`（`api/controller/`）、`PricingService`（`core/pricing/`）、`PricingRule`（`domain/model/room/`）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[PricingServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/pricing/PricingServiceTest.java)、[M12PricingIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M12PricingIntegrationTest.java)、[M12PricingProductIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M12PricingProductIntegrationTest.java)
@@ -200,7 +200,7 @@ FRD 對應 US-M12 編號目前僅概略描述，未逐端點列 AC；上表依�
 
 ### 4.8 `POST /v2/dashboard/pricing/calendar/price` — 設定單日手動覆蓋價格
 
-**權限**：`room:update`。**無租戶擁有權檢查**（與 §4.1/4.2/4.4/4.5/4.7 不同，見 §7 已知限制）。不檢查 50 條上限或時間重疊，直接新建一筆當日 `MANUAL_OVERRIDE` 規則（可能與既有覆蓋規則重疊，由 priority/建立時間排序取最新一筆生效，見 §1.2 第 4 點）。
+**權限**：`room:update`，且驗證房源所屬租戶與呼叫者一致（`PricingService.setCalendarPrice` 第一步 `checkRuleTenantOwnership`，DEF-242；`SUPER_ADMIN` 不受限；單元測試 `PricingServiceTest.setCalendarPrice_roomBelongsToDifferentTenant_throwsE1007`）。**（v2.1 更正：v2.0 誤記為「無租戶擁有權檢查」，Sprint 300 讀碼更正，見 §7。）** 不檢查 50 條上限或時間重疊，直接新建一筆當日 `MANUAL_OVERRIDE` 規則（可能與既有覆蓋規則重疊，由 priority/建立時間排序取最新一筆生效，見 §1.2 第 4 點）。
 
 **請求**（`SetCalendarPriceRequest`）：`roomListingId`(必填)、`date`(必填)、`price`(必填，須 >0)、`reason`(選填)
 
@@ -214,11 +214,11 @@ FRD 對應 US-M12 編號目前僅概略描述，未逐端點列 AC；上表依�
 |------|:----:|:----:|:----:|
 | 建立規則（§4.1） | ✅ | ❌ | ✅（跨租戶） |
 | 更新/刪除規則（§4.2、4.4） | ✅（限規則所屬租戶） | ❌ | ✅（跨租戶） |
-| 列表（§4.3） | ✅（帶 id 查詢時） | ✅（不帶 id 查詢時，回自己租戶） | ✅（跨租戶） |
+| 列表（§4.3） | ✅（帶 id 查詢時） | ✅（不帶 id 查詢時，回自己租戶；沒有店鋪的使用者其「自己租戶」是系統租戶佔位值，見 §7 DEF-411） | ✅（跨租戶） |
 | 日期範圍覆蓋（§4.5） | ✅（限規則所屬租戶） | ❌ | ✅（跨租戶） |
 | 計算價格（§4.6） | — | ✅（無租戶限制） | ✅ |
 | 定價日曆（§4.7） | ✅ | ❌ | ✅（跨租戶） |
-| 單日覆蓋（§4.8） | — | ✅（無租戶限制，見 §7） | ✅ |
+| 單日覆蓋（§4.8） | ✅ | ❌ | ✅（跨租戶） |
 
 ---
 
@@ -243,7 +243,8 @@ FRD 對應 US-M12 編號目前僅概略描述，未逐端點列 AC；上表依�
 | 項目 | 說明 |
 |------|------|
 | `calendar/price` 回應缺少 `ruleId` | 透過此端點建立的覆蓋規則無法從回應直接取得 `ruleId`，取消時需呼叫 `GET /rules` 自行比對 `roomListingId`＋日期找出目標規則再呼叫 `DELETE /rules/{ruleId}`（見 §1.2 第 5 點）。若未來要補一個「依日期取消」的專用端點，屬產品/工程決策，非本文件撰寫範圍 |
-| `calculate`／`calendar/price` 無租戶擁有權檢查 | §4.6（計算價格）刻意無租戶限制（供買家端試算），但 §4.8（設定單日覆蓋）同樣無檢查，與同是「寫入」操作的 §4.1/4.2/4.4/4.5 皆有檢查的慣例不一致——任一持有 `room:update` 權限的使用者可對任意 `roomListingId` 建立覆蓋規則，不限自己租戶的房源。是否為真正的跨租戶寫入漏洞（而非刻意設計），需讀碼比對 `checkListingTenantOwnership` 為何未套用至此端點，建議另案登記調查 |
+| `calculate` 刻意無租戶擁有權檢查（供買家端試算）；**`calendar/price` 有擁有權檢查（v2.0 誤記為「無」，Sprint 300 更正）** | §4.6 計算價格刻意不限租戶，供買家詳情頁即時試算。§4.8 設定單日覆蓋先前被記載為「同樣無檢查、可能是跨租戶寫入漏洞，建議另案登記調查」——Sprint 300 讀碼確認 `PricingService.setCalendarPrice` 第一步就是 `checkRuleTenantOwnership(room.getListing().getTenantId(), isSuperAdmin)`（DEF-242），並有單元測試 `PricingServiceTest.setCalendarPrice_roomBelongsToDifferentTenant_throwsE1007`；所以 v2.0 的記載（含 §4.8 權限說明與權限矩陣）是錯的，已更正。**只讀碼與單元測試，沒有實測 HTTP 層** |
+| **擁有權檢查沒有排除系統租戶佔位值（DEF-411，Sprint 300 登記，讀碼推論、未實測）** | `getRules` 的無參數分支，以及 `checkListingTenantOwnership`／`checkRuleTenantOwnership`（與日曆預覽走的 `BookingService.checkListingTenantOwnership`），都是用 `getCurrentTenant()` 做相等比對；沒有店鋪的使用者（BUYER 持有 `room:read`／`product:read`）的租戶是系統租戶佔位值，所以對「租戶也是系統租戶」的規則與房源，這些唯讀端點對他們放行。影響限於系統租戶名下的資源；寫入端點需要 `room:create`／`update`，BUYER 沒有。建議修法與先實測的做法見 `DEFERRED_ITEMS_TRACKER.md` 的 `DEF-411` |
 | `E-4001` 的 HTTP 狀態碼不一致 | `GlobalExceptionHandler` 把 `E-4001` 歸為 422 群組，但 §4.7 的 `getCalendarPreview` 對「`startDate` 早於今天」改為程式內直接走同一個 `BusinessException(E_4001,...)`——驗證後兩處實際觀察到的 HTTP 狀態碼是否真的不同，或 `GlobalExceptionHandler` 的判斷優先於拋出點，未實測確認，僅讀碼時發現命名怪異（E-4001 的預設訊息是「房源日曆衝突」，用在「不支援過去日期」的語意不完全貼切），記錄供後續參考 |
 | `createRule` 的 `roomListingId`／`listingId` 未強制至少一個必填 | DTO 沒有 `@AssertTrue` 等跨欄位驗證，兩者皆為 null 時可以建立一筆「不綁定任何房源/商品」的規則，實務上是否有意義未明 |
 | `getRules` 的 `activeOnly=false`（預設）分支效能疑慮 | 帶 `roomListingId` 查詢且未指定 `activeOnly=true` 時，走 `findAll()` 全表掃描後在記憶體過濾，不是資料庫層查詢條件，規則表增長後可能有效能隱憂 |

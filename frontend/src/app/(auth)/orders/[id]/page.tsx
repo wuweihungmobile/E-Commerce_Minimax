@@ -389,7 +389,7 @@ export default function OrderDetailPage() {
                     <div className="flex items-center gap-4">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={item.coverImageUrl || '/placeholder.png'}
+                        src={item.coverImageUrl || '/placeholder.svg'}
                         alt={item.listingTitle}
                         className="h-16 w-16 rounded object-cover bg-gray-100 shrink-0"
                       />

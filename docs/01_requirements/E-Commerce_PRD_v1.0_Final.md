@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0.8（文件修訂；規格基準仍為 v1.0）
+> **版本**: v1.0.9（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -19,6 +19,7 @@
 > - **v1.0.5 → v1.0.6（2026-10-11，Sprint 253，DEF-321(d)(e)）**：§6.6.3 嵌入卡片 MAINTENANCE/Cascade 規格、§10 全部路由表（10.1.1/10.1.2/10.1.3）**依實際程式碼逐條校對**——改名/架構演進已更新路由欄並附註，真缺口保留原路由並登記 DEF-358(a)(b)(c)(d)；補建 `/dashboard/pricing/calendar`、`/admin/tenants/[id]/features` 兩個先前缺頁但後端/元件已存在的路由。
 > - **v1.0.6 → v1.0.7（2026-10-22，Sprint 292，文件一致性檢查第五輪）**：①移除 §6.6（M15 CMS）末尾一個沒有對應開頭的 ``` 孤兒圍欄——它讓其後所有程式碼區塊的開／關角色對調，§6.7 起至 §7 的標題與 RBAC 矩陣在 CommonMark 渲染器（GitHub、VS Code 預覽）中被吞進程式碼區塊（以 markdown-it 14.1.0 實測：修正前 10 個標題被吞、修正後 0 個）；②§1.2 技術棧表 `Next.js 15` 校正為 `Next.js 16`（`frontend/package.json` 自 2026-05-10 起即為 16.x，現為 16.4.2）；③§10.1.2 補列 S253 校對後才出現或漏列的 `/dashboard/reviews`（Sprint 287，DEF-392）、`/dashboard/erp`、`/cms` 系列四頁。既有規格內文未改寫。
 > - **v1.0.7 → v1.0.8（2026-10-22，Sprint 299，DEF-402）**：使用者裁決「房源日曆與可訂性查詢維持需登入」（實作的 `GET /api/v2/bookings/calendar`、`GET /api/v2/bookings/availability` 需要 `booking:read`，匿名回 401）。①§18 RTM-US-G1 的驗收條件由「Guest 可完整瀏覽所有商品列表、房源日曆、定價」改為「Guest 可完整瀏覽商品列表與房源資訊／底價；房源日曆（每日空房狀態與動態定價）與可訂性查詢需登入後使用，訪客在日曆區看到『登入後可查看即時空房』」；②§9.13 的 `GET /api/v2/rooms/:id/pricing-calendar`（C 端定價日曆）角色由 `Guest+` 改為 `Buyer+`（該端點後端**未實作**，日曆實際由 `/api/v2/bookings/calendar` 提供）。其餘規格內文未改寫。
+> - **v1.0.8 → v1.0.9（2026-10-23，Sprint 300，DEF-404）**：§8.2.13 `return_request_items.sku_id` 補註「可為空」——沒建 SKU（未啟用庫存追蹤）的商品，其訂單品項沒有 SKU，退貨品項的 `sku_id` 就是空的，收貨時不回補庫存（V93 將欄位由 NOT NULL 改為可空；修復前這種退貨申請回 500）。其餘規格內文未改寫。
 
 ---
 
@@ -1730,7 +1731,7 @@ StoreStaff (店員)
 | id | UUID | PK |
 | return_request_id | UUID | FK → return_requests.id（ON DELETE CASCADE） |
 | order_item_id | UUID | FK → order_items.id |
-| sku_id | UUID | FK → product_skus.id |
+| sku_id | UUID | FK → product_skus.id；nullable（訂單品項沒有 SKU＝未啟用庫存追蹤時為空，收貨不回補庫存；V93，DEF-404） |
 | requested_qty | INTEGER | 買家申請退回的數量（> 0）；累計不得超過該訂單品項的數量 |
 | sellable_qty | INTEGER | 收貨確認時填：可再售的數量，回補庫存（寫 `RETURN` 異動）；nullable（尚未收貨） |
 | unsellable_qty | INTEGER | 收貨確認時填：損壞／缺件的數量，**不回補**；nullable |

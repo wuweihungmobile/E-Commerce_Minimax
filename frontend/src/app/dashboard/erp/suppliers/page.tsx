@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -18,15 +18,7 @@ export default function SuppliersPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
 
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push('/login')
-      return
-    }
-    fetchSuppliers()
-  }, [router, statusFilter])
-
-  const fetchSuppliers = async () => {
+  const fetchSuppliers = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -42,7 +34,15 @@ export default function SuppliersPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [statusFilter])
+
+  useEffect(() => {
+    if (!AuthService.isAuthenticated()) {
+      router.push('/login')
+      return
+    }
+    fetchSuppliers()
+  }, [router, fetchSuppliers])
 
   const filteredSuppliers = suppliers.filter(s =>
     s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
@@ -36,16 +35,7 @@ interface BookingItem {
   storeId?: string | null
 }
 
-interface CheckoutData {
-  items: BookingItem[]
-  totalAmount: number
-  appliedPromoCode?: string
-  discountAmount?: number
-  finalAmount?: number
-}
-
 export default function CheckoutPage() {
-  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [bookingTotal, setBookingTotal] = useState<number>(0)
@@ -73,12 +63,6 @@ export default function CheckoutPage() {
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD' }).format(price)
-  }
-
-  const formatDate = (dateStr: string | undefined) => {
-    if (!dateStr) return ''
-    const date = new Date(dateStr)
-    return date.toLocaleDateString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric' })
   }
 
   const validateForm = (): boolean => {

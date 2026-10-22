@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   getMediaAssets,
   deleteMediaAsset,
@@ -38,20 +38,7 @@ export default function MediaPage() {
     loadCategories();
   }, []);
 
-  useEffect(() => {
-    loadMedia();
-  }, [page, categoryFilter, mimeTypeFilter, keyword]);
-
-  async function loadCategories() {
-    try {
-      const data = await getMediaCategories();
-      setCategories(data);
-    } catch (error) {
-      console.error('Failed to load categories:', error);
-    }
-  }
-
-  async function loadMedia() {
+  const loadMedia = useCallback(async () => {
     setLoading(true);
     try {
       const params: {
@@ -77,6 +64,19 @@ export default function MediaPage() {
       alert('載入媒體失敗，請稍後再試');
     } finally {
       setLoading(false);
+    }
+  }, [page, categoryFilter, mimeTypeFilter, keyword]);
+
+  useEffect(() => {
+    loadMedia();
+  }, [loadMedia]);
+
+  async function loadCategories() {
+    try {
+      const data = await getMediaCategories();
+      setCategories(data);
+    } catch (error) {
+      console.error('Failed to load categories:', error);
     }
   }
 

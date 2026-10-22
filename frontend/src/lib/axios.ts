@@ -84,6 +84,7 @@ apiClient.interceptors.response.use(
         localStorage.removeItem('user')
 
         if (typeof window !== 'undefined') {
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- axios 攔截器不在 React 元件內，無法使用 useRouter／redirect()；刷新失敗時以整頁導向登入頁（同時丟棄記憶體中的前端狀態）
           window.location.href = '/login'
         }
 

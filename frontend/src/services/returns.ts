@@ -164,4 +164,5 @@ class ReturnService {
   }
 }
 
-export default new ReturnService()
+const returnService = new ReturnService()
+export default returnService

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   getKnowledgeArticles,
   deleteKnowledgeArticle,
@@ -25,20 +25,7 @@ export default function KnowledgePage() {
     loadCategories();
   }, []);
 
-  useEffect(() => {
-    loadArticles();
-  }, [page, categoryFilter, keyword]);
-
-  async function loadCategories() {
-    try {
-      const data = await getKnowledgeCategories();
-      setCategories(data);
-    } catch (error) {
-      console.error('Failed to load categories:', error);
-    }
-  }
-
-  async function loadArticles() {
+  const loadArticles = useCallback(async () => {
     setLoading(true);
     try {
       const params: {
@@ -62,6 +49,19 @@ export default function KnowledgePage() {
       alert('載入知識庫文章失敗，請稍後再試');
     } finally {
       setLoading(false);
+    }
+  }, [page, categoryFilter, keyword]);
+
+  useEffect(() => {
+    loadArticles();
+  }, [loadArticles]);
+
+  async function loadCategories() {
+    try {
+      const data = await getKnowledgeCategories();
+      setCategories(data);
+    } catch (error) {
+      console.error('Failed to load categories:', error);
     }
   }
 

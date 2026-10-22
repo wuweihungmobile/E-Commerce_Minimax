@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import RoomService, { RoomListItem, RoomFilters } from '@/services/room'
 import AuthService from '@/services/auth'
 
@@ -29,6 +28,9 @@ export default function RoomList() {
       return
     }
     fetchRooms()
+    // searchQuery 是搜尋框的受控狀態（每敲一個字就改變），只在使用者按 Enter／搜尋鈕（handleSearch）時才套用；
+    // fetchRooms 又是每次 render 都會重建的函式。把任一個列為依賴，都會變成每個按鍵（或每次 render）重新抓取資料。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, location, page])
 
   const fetchRooms = async () => {
@@ -179,6 +181,7 @@ export default function RoomList() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {room.coverImageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
                     <img
                       src={room.coverImageUrl}
                       alt={room.title}

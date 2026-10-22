@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { getPublishedPosts, PostResponse } from '@/services/cms';
 
@@ -10,7 +10,7 @@ export default function BlogPage() {
   const [tenantId, setTenantId] = useState<string>('');
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
+  const [, setTotalCount] = useState(0);
 
   useEffect(() => {
     // Get tenantId from localStorage
@@ -20,13 +20,7 @@ export default function BlogPage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (tenantId) {
-      loadPosts();
-    }
-  }, [tenantId, page]);
-
-  async function loadPosts() {
+  const loadPosts = useCallback(async () => {
     if (!tenantId) return;
 
     setLoading(true);
@@ -40,25 +34,13 @@ export default function BlogPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [tenantId, page]);
 
-  const getStatusBadge = (status: string) => {
-    const styles = {
-      DRAFT: 'bg-gray-100 text-gray-800',
-      PUBLISHED: 'bg-green-100 text-green-800',
-      ARCHIVED: 'bg-yellow-100 text-yellow-800',
-    };
-    const labels = {
-      DRAFT: '草稿',
-      PUBLISHED: '已發布',
-      ARCHIVED: '已歸檔',
-    };
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs ${styles[status as keyof typeof styles]}`}>
-        {labels[status as keyof typeof labels] || status}
-      </span>
-    );
-  };
+  useEffect(() => {
+    if (tenantId) {
+      loadPosts();
+    }
+  }, [tenantId, loadPosts]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -95,6 +77,7 @@ export default function BlogPage() {
                 >
                   {post.featuredImageUrl && (
                     <div className="aspect-video bg-gray-100">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns */}
                       <img
                         src={post.featuredImageUrl}
                         alt={post.title}

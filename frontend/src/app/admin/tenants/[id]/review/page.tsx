@@ -1,13 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import apiClient from '@/lib/axios'
-import AuthService from '@/services/auth'
 
 // Tenant interface - matches actual API response
 interface Tenant {
@@ -36,7 +35,7 @@ export default function AdminTenantReviewPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchTenantDetail = async () => {
+  const fetchTenantDetail = useCallback(async () => {
     setLoading(true)
     setError(null)
 
@@ -55,11 +54,11 @@ export default function AdminTenantReviewPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [tenantId])
 
   useEffect(() => {
     fetchTenantDetail()
-  }, [tenantId])
+  }, [fetchTenantDetail])
 
   const getStatusBadge = (status: Tenant['status']) => {
     const statusConfig: Record<Tenant['status'], { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline'; label: string }> = {

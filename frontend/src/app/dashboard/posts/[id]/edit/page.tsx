@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { getPost, updatePost, getCategories, deletePost, publishPost, unpublishPost, PostResponse, CategoryResponse } from '@/services/cms';
 
@@ -17,12 +17,7 @@ export default function EditPostPage({ params }: { params: Promise<{ id: string 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    loadPost();
-    loadCategories();
-  }, [id]);
-
-  async function loadPost() {
+  const loadPost = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getPost(id);
@@ -38,7 +33,12 @@ export default function EditPostPage({ params }: { params: Promise<{ id: string 
     } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
+
+  useEffect(() => {
+    loadPost();
+    loadCategories();
+  }, [loadPost]);
 
   async function loadCategories() {
     try {

@@ -122,4 +122,5 @@ class StockMovementService {
   }
 }
 
-export default new StockMovementService()
+const stockMovementService = new StockMovementService()
+export default stockMovementService

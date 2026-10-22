@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { getPublishedPosts, getPublicCategories, PostResponse, CategoryResponse } from '@/services/cms';
@@ -27,19 +27,7 @@ export default function BlogCategoryPage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (tenantId && categoryId) {
-      loadCategory();
-    }
-  }, [tenantId, categoryId]);
-
-  useEffect(() => {
-    if (tenantId && categoryId && !categoryNotFound) {
-      loadPosts();
-    }
-  }, [tenantId, categoryId, page, categoryNotFound]);
-
-  async function loadCategory() {
+  const loadCategory = useCallback(async () => {
     try {
       // 公開端點只回傳啟用中分類；找不到就視為「此分類不存在」（含店主已停用的情況）
       const data = await getPublicCategories(tenantId);
@@ -53,9 +41,15 @@ export default function BlogCategoryPage() {
       console.error('Failed to load category:', error);
       setCategoryNotFound(true);
     }
-  }
+  }, [tenantId, categoryId]);
 
-  async function loadPosts() {
+  useEffect(() => {
+    if (tenantId && categoryId) {
+      loadCategory();
+    }
+  }, [tenantId, categoryId, loadCategory]);
+
+  const loadPosts = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getPublishedPosts(tenantId, { page, size: PAGE_SIZE, categoryId });
@@ -66,7 +60,13 @@ export default function BlogCategoryPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [tenantId, categoryId, page]);
+
+  useEffect(() => {
+    if (tenantId && categoryId && !categoryNotFound) {
+      loadPosts();
+    }
+  }, [tenantId, categoryId, categoryNotFound, loadPosts]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -120,6 +120,7 @@ export default function BlogCategoryPage() {
                 >
                   {post.featuredImageUrl && (
                     <div className="aspect-video bg-gray-100">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns */}
                       <img
                         src={post.featuredImageUrl}
                         alt={post.title}

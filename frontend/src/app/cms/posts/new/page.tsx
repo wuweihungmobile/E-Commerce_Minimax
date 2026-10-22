@@ -180,6 +180,7 @@ export default function NewPostPage() {
             placeholder="https://..."
           />
           {formData.featuredImageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
             <img
               src={formData.featuredImageUrl}
               alt="預覽"

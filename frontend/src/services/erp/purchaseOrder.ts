@@ -181,4 +181,5 @@ class PurchaseOrderService {
   }
 }
 
-export default new PurchaseOrderService()
+const purchaseOrderService = new PurchaseOrderService()
+export default purchaseOrderService

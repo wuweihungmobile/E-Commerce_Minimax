@@ -17,20 +17,18 @@ test.describe('AT-STOREFRONT-REAL: 店鋪前台匿名瀏覽（真實後端）', 
 
   let slug: string;
   let productId: string;
-  let roomId: string;
 
   test.beforeAll(async ({ browser }) => {
     test.setTimeout(120_000);
     const page = await browser.newPage({ baseURL: WEB_BASE });
     try {
-      const { tenantId, productId: pid, roomId: rid } = await seedStore(page, {
+      const { tenantId, productId: pid } = await seedStore(page, {
         businessType: 'HYBRID',
         storeLabel: 'E2E 店鋪前台店',
         product: { name: '店鋪前台測試商品', price: 888 },
         room: { name: '店鋪前台測試房型', price: 2888 },
       });
       productId = pid!;
-      roomId = rid!;
 
       // 以本輪公開端點（匿名可呼叫）取得 slug，同時間接驗證端點本身可用
       const profile = await page.request.get(`${API_BASE}/v2/tenants/${tenantId}`);

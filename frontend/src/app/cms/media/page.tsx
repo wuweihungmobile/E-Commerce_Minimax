@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
   getMediaList,
@@ -21,7 +21,7 @@ export default function MediaLibraryPage() {
   const [totalCount, setTotalCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadMedia = async () => {
+  const loadMedia = useCallback(async () => {
     setLoading(true);
     try {
       const params: { page?: number; size?: number; fileType?: string } = {
@@ -39,11 +39,11 @@ export default function MediaLibraryPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter, page]);
 
   useEffect(() => {
     loadMedia();
-  }, [filter, page]);
+  }, [loadMedia]);
 
   async function handleUpload(file: File) {
     // Validate file type

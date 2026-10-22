@@ -62,6 +62,7 @@ export function startOAuthFlow(provider: OAuthProviderId, intent: OAuthIntent): 
     scope: config.scope,
     state,
   })
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- 導向第三方 OAuth 授權頁（authorizeUrl 是 Google／GitHub 的絕對網址），必須整頁跳轉；規則無法判斷模板字串是外部網址
   window.location.href = `${config.authorizeUrl}?${params.toString()}`
 }
 
@@ -99,4 +100,5 @@ class OAuthApiService {
   }
 }
 
-export default new OAuthApiService()
+const oauthApiService = new OAuthApiService()
+export default oauthApiService

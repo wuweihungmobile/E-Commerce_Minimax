@@ -1,15 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import SupplierService, {
-  SupplierDto,
   SupplierCreateRequest,
-  SupplierUpdateRequest,
 } from '@/services/erp/supplier'
 import AuthService from '@/services/auth'
 
@@ -32,18 +30,7 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
     address: '',
   })
 
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push('/login')
-      return
-    }
-
-    if (supplierId) {
-      fetchSupplier()
-    }
-  }, [router, supplierId])
-
-  const fetchSupplier = async () => {
+  const fetchSupplier = useCallback(async () => {
     if (!supplierId) return
     setInitialLoading(true)
     try {
@@ -65,7 +52,18 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
     } finally {
       setInitialLoading(false)
     }
-  }
+  }, [supplierId])
+
+  useEffect(() => {
+    if (!AuthService.isAuthenticated()) {
+      router.push('/login')
+      return
+    }
+
+    if (supplierId) {
+      fetchSupplier()
+    }
+  }, [router, supplierId, fetchSupplier])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target

@@ -29,6 +29,9 @@ export default function ProductList() {
       return
     }
     fetchProducts()
+    // searchQuery 是搜尋框的受控狀態（每敲一個字就改變），只在使用者按 Enter／搜尋鈕（handleSearch）時才套用；
+    // fetchProducts 又是每次 render 都會重建的函式。把任一個列為依賴，都會變成每個按鍵（或每次 render）重新抓取資料。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, category, page])
 
   const fetchProducts = async () => {
@@ -187,6 +190,7 @@ export default function ProductList() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {product.coverImageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
                     <img
                       src={product.coverImageUrl}
                       alt={product.title}

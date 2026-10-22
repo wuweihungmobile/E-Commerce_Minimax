@@ -112,4 +112,5 @@ class NotificationInboxService {
   }
 }
 
-export default new NotificationInboxService()
+const notificationInboxService = new NotificationInboxService()
+export default notificationInboxService

@@ -1,15 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import RoomService, { CreateRoomRequest, UpdateRoomRequest, Room } from '@/services/room'
+import RoomService, { CreateRoomRequest, UpdateRoomRequest } from '@/services/room'
 import AuthService from '@/services/auth'
 
 interface FormErrors {
@@ -49,17 +48,7 @@ export default function RoomForm({ roomId }: RoomFormProps) {
     isFeatured: false,
   })
 
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push('/login')
-      return
-    }
-    if (roomId) {
-      fetchRoom()
-    }
-  }, [router, roomId])
-
-  const fetchRoom = async () => {
+  const fetchRoom = useCallback(async () => {
     setFetchLoading(true)
     try {
       const room = await RoomService.getRoom(roomId!)
@@ -91,7 +80,17 @@ export default function RoomForm({ roomId }: RoomFormProps) {
     } finally {
       setFetchLoading(false)
     }
-  }
+  }, [roomId])
+
+  useEffect(() => {
+    if (!AuthService.isAuthenticated()) {
+      router.push('/login')
+      return
+    }
+    if (roomId) {
+      fetchRoom()
+    }
+  }, [router, roomId, fetchRoom])
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {}
@@ -394,6 +393,7 @@ export default function RoomForm({ roomId }: RoomFormProps) {
                 placeholder="https://example.com/image.jpg"
               />
               {formData.coverImageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
                 <img
                   src={formData.coverImageUrl}
                   alt="預覽"

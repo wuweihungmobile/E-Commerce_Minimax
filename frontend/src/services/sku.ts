@@ -65,4 +65,5 @@ class SkuService {
   }
 }
 
-export default new SkuService()
+const skuService = new SkuService()
+export default skuService

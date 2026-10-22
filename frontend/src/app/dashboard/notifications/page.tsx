@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   getTemplates,
   createTemplate,
@@ -62,11 +62,7 @@ export default function NotificationsPage() {
   const [form, setForm] = useState<TemplateFormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    loadTemplates();
-  }, [page, typeFilter, channelFilter, activeFilter]);
-
-  async function loadTemplates() {
+  const loadTemplates = useCallback(async () => {
     setLoading(true);
     try {
       const params: SearchTemplateRequest = {
@@ -87,7 +83,11 @@ export default function NotificationsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [page, typeFilter, channelFilter, activeFilter]);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
 
   function startCreate() {
     setForm(EMPTY_FORM);

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,6 @@ import {
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
-import AuthService from '@/services/auth'
 
 // Tenant status enum（Sprint 146：對齊後端 Tenant.TenantStatus 實際值域，先前的 PENDING/APPROVED 從未存在）
 type TenantStatus = 'PENDING_REVIEW' | 'ACTIVE' | 'REJECTED' | 'SUSPENDED' | 'TERMINATED'
@@ -88,11 +87,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
     { value: 'HYBRID', label: '複合式（零售＋訂房）' },
   ]
 
-  useEffect(() => {
-    fetchTenantDetail()
-  }, [tenantId])
-
-  const fetchTenantDetail = async () => {
+  const fetchTenantDetail = useCallback(async () => {
     setLoading(true)
     setError(null)
 
@@ -131,7 +126,11 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [tenantId])
+
+  useEffect(() => {
+    fetchTenantDetail()
+  }, [fetchTenantDetail])
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {}

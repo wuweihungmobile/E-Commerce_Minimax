@@ -107,4 +107,5 @@ class LogisticsService {
   }
 }
 
-export default new LogisticsService()
+const logisticsService = new LogisticsService()
+export default logisticsService

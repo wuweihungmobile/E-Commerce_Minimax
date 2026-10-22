@@ -1,15 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  PurchaseOrderDto,
   PurchaseOrderCreateRequest,
-  PurchaseOrderUpdateRequest,
   PurchaseOrderReceiveRequest,
   ListingOption,
   POStatus,
@@ -58,40 +56,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
   const [orderStatus, setOrderStatus] = useState<POStatus | null>(null)
   const [rejectionReason, setRejectionReason] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push('/login')
-      return
-    }
-
-    if (mode === 'create') {
-      fetchSuppliers()
-      fetchListingOptions()
-    } else if (orderId) {
-      fetchOrder()
-    }
-  }, [router, orderId, mode])
-
-  const fetchSuppliers = async () => {
-    try {
-      const data = await SupplierService.listSuppliers('ACTIVE')
-      setSuppliers(data)
-    } catch (err) {
-      console.error('Failed to fetch suppliers:', err)
-    }
-  }
-
-  // DEF-076：前端原本沒有任何選擇 listing 的來源，建單品項的 listingId 永遠無法送出
-  const fetchListingOptions = async () => {
-    try {
-      const data = await PurchaseOrderService.listListingOptions()
-      setListingOptions(data)
-    } catch (err) {
-      console.error('Failed to fetch listing options:', err)
-    }
-  }
-
-  const fetchOrder = async () => {
+  const fetchOrder = useCallback(async () => {
     if (!orderId) return
     setInitialLoading(true)
     try {
@@ -139,6 +104,39 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       }
     } finally {
       setInitialLoading(false)
+    }
+  }, [orderId, mode])
+
+  useEffect(() => {
+    if (!AuthService.isAuthenticated()) {
+      router.push('/login')
+      return
+    }
+
+    if (mode === 'create') {
+      fetchSuppliers()
+      fetchListingOptions()
+    } else if (orderId) {
+      fetchOrder()
+    }
+  }, [router, orderId, mode, fetchOrder])
+
+  const fetchSuppliers = async () => {
+    try {
+      const data = await SupplierService.listSuppliers('ACTIVE')
+      setSuppliers(data)
+    } catch (err) {
+      console.error('Failed to fetch suppliers:', err)
+    }
+  }
+
+  // DEF-076：前端原本沒有任何選擇 listing 的來源，建單品項的 listingId 永遠無法送出
+  const fetchListingOptions = async () => {
+    try {
+      const data = await PurchaseOrderService.listListingOptions()
+      setListingOptions(data)
+    } catch (err) {
+      console.error('Failed to fetch listing options:', err)
     }
   }
 

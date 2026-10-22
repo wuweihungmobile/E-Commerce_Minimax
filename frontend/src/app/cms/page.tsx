@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { getPosts, publishPost, unpublishPost, deletePost, PostResponse } from '@/services/cms';
 
@@ -12,7 +12,7 @@ export default function CmsPostListPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
 
-  const loadPosts = async () => {
+  const loadPosts = useCallback(async () => {
     setLoading(true);
     try {
       const params: { page?: number; size?: number; status?: string } = {
@@ -30,11 +30,11 @@ export default function CmsPostListPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter, page]);
 
   useEffect(() => {
     loadPosts();
-  }, [filter, page]);
+  }, [loadPosts]);
 
   async function handlePublish(postId: string) {
     try {

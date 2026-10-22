@@ -148,4 +148,5 @@ class SupportService {
   }
 }
 
-export default new SupportService()
+const supportService = new SupportService()
+export default supportService

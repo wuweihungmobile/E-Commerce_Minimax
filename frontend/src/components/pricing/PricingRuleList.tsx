@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -52,15 +51,7 @@ export default function PricingRuleList() {
   const [showForm, setShowForm] = useState(false)
   const [editingRule, setEditingRule] = useState<PricingRule | null>(null)
 
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push('/login')
-      return
-    }
-    fetchRules()
-  }, [router, filterRoom, activeOnly])
-
-  const fetchRules = async () => {
+  const fetchRules = useCallback(async () => {
     setLoading(true)
     setError(null)
 
@@ -77,7 +68,15 @@ export default function PricingRuleList() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filterRoom, activeOnly])
+
+  useEffect(() => {
+    if (!AuthService.isAuthenticated()) {
+      router.push('/login')
+      return
+    }
+    fetchRules()
+  }, [router, fetchRules])
 
   const handleDelete = async (id: string) => {
     if (!confirm('確定要刪除這個定價規則嗎？')) return

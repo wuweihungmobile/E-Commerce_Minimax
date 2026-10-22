@@ -71,4 +71,5 @@ class ShippingTemplateService {
   }
 }
 
-export default new ShippingTemplateService()
+const shippingTemplateService = new ShippingTemplateService()
+export default shippingTemplateService

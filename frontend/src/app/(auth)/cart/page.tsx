@@ -443,6 +443,7 @@ export default function CartPage() {
           {/* Product Image */}
           <div className="w-24 h-24 bg-gray-200 rounded-md flex-shrink-0 overflow-hidden">
             {item.coverImageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
               <img
                 src={item.coverImageUrl}
                 alt={item.listingName}

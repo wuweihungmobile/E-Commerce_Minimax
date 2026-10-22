@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -39,7 +38,6 @@ interface TenantDetailProps {
 }
 
 export default function TenantDetail({ tenantId }: TenantDetailProps) {
-  const router = useRouter()
   const [tenant, setTenant] = useState<Tenant | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -52,13 +50,7 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
     }
   }, [])
 
-  useEffect(() => {
-    if (tenantId) {
-      fetchTenantDetail()
-    }
-  }, [tenantId])
-
-  const fetchTenantDetail = async () => {
+  const fetchTenantDetail = useCallback(async () => {
     setLoading(true)
     setError(null)
 
@@ -81,7 +73,13 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [tenantId])
+
+  useEffect(() => {
+    if (tenantId) {
+      fetchTenantDetail()
+    }
+  }, [tenantId, fetchTenantDetail])
 
   const getStatusBadge = (status: TenantStatus) => {
     // Sprint 146：對齊後端 Tenant.TenantStatus 實際值域（PENDING_REVIEW/ACTIVE/REJECTED/SUSPENDED/TERMINATED）

@@ -90,4 +90,5 @@ class OrderPaymentService {
   }
 }
 
-export default new OrderPaymentService()
+const orderPaymentService = new OrderPaymentService()
+export default orderPaymentService

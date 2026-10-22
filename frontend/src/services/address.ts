@@ -58,4 +58,5 @@ class AddressService {
   }
 }
 
-export default new AddressService()
+const addressService = new AddressService()
+export default addressService

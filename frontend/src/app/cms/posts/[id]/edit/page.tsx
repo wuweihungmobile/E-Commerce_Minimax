@@ -34,6 +34,10 @@ export default function EditPostPage() {
   useEffect(() => {
     loadPost();
     loadCategories();
+    // loadPost 內的 parseEmbedCards 會讀取 embedCards（用來避免重複載入同一張嵌入卡片），而 loadPost 又會用
+    // 伺服器內容覆蓋 formData。若把它們列為依賴，每載完一張卡片 embedCards 改變，這個 effect 就會重新執行、
+    // 重新抓貼文並蓋掉使用者正在編輯的內容；它只應在 postId 改變時執行。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId]);
 
   async function loadPost() {
@@ -96,7 +100,7 @@ export default function EditPostPage() {
 
     setLoading(true);
     try {
-      const updatedPost = await updatePost(postId, formData);
+      await updatePost(postId, formData);
 
       if (autoPublish && post?.status === 'DRAFT') {
         await publishPost(postId);
@@ -252,6 +256,7 @@ export default function EditPostPage() {
                 <div key={listingId} className="border rounded p-3 bg-white">
                   <div className="flex gap-3">
                     {card.coverImageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
                       <img
                         src={card.coverImageUrl}
                         alt={card.title}
@@ -342,6 +347,7 @@ export default function EditPostPage() {
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {formData.featuredImageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
             <img
               src={formData.featuredImageUrl}
               alt="預覽"

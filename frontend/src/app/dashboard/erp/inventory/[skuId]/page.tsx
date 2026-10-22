@@ -5,11 +5,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import InventoryService, {
   InventoryDetailDto,
-  StockMovementSummary,
 } from '@/services/erp/inventory'
 import AuthService from '@/services/auth'
 

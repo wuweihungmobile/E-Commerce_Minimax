@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import StockMovementService, {
   INBOUND_MOVEMENT_TYPES,
@@ -21,15 +21,7 @@ export default function StockMovementsPage() {
   const [totalPages, setTotalPages] = useState(0)
   const [totalElements, setTotalElements] = useState(0)
 
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push('/login')
-      return
-    }
-    fetchMovements()
-  }, [router, page])
-
-  const fetchMovements = async () => {
+  const fetchMovements = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -47,7 +39,15 @@ export default function StockMovementsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page])
+
+  useEffect(() => {
+    if (!AuthService.isAuthenticated()) {
+      router.push('/login')
+      return
+    }
+    fetchMovements()
+  }, [router, fetchMovements])
 
   // 涵蓋 PRD §6.7.4 全部型別：列表除了手動異動，也會顯示採購收貨與訂單流程產生的流水帳，
   // 少一型就會 fallback 成裸英文代碼（DEF-063 之前 INBOUND 以外的系統型別都是這樣顯示的）。

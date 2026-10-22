@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { getPublishedPostBySlug, PostResponse, getListingCard, ListingCardResponse } from '@/services/cms';
@@ -28,13 +28,7 @@ export default function BlogPostPage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (slug && tenantId) {
-      loadPost();
-    }
-  }, [slug, tenantId]);
-
-  async function loadPost() {
+  const loadPost = useCallback(async () => {
     if (!tenantId) return;
 
     setLoading(true);
@@ -49,7 +43,13 @@ export default function BlogPostPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [slug, tenantId]);
+
+  useEffect(() => {
+    if (slug && tenantId) {
+      loadPost();
+    }
+  }, [slug, tenantId, loadPost]);
 
   async function parseEmbeds(content: string) {
     const embedPattern = /{{embed:listing:([a-f0-9-]+)}}/gi;
@@ -116,6 +116,7 @@ export default function BlogPostPage() {
           >
             <div className="flex gap-4">
               {card.coverImageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
                 <img
                   src={card.coverImageUrl}
                   alt={card.title}
@@ -233,6 +234,7 @@ export default function BlogPostPage() {
           {/* Featured Image */}
           {post.featuredImageUrl && (
             <div className="aspect-video bg-gray-100 rounded-t-lg overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns */}
               <img
                 src={post.featuredImageUrl}
                 alt={post.title}

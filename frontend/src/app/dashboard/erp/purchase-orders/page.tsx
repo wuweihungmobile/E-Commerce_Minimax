@@ -1,12 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
 import PurchaseOrderService, {
   PurchaseOrderDto,
   POStatus,
@@ -23,15 +22,7 @@ export default function PurchaseOrdersPage() {
   const [totalPages, setTotalPages] = useState(0)
   const [totalElements, setTotalElements] = useState(0)
 
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push('/login')
-      return
-    }
-    fetchOrders()
-  }, [router, statusFilter, page])
-
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -50,7 +41,15 @@ export default function PurchaseOrdersPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [statusFilter, page])
+
+  useEffect(() => {
+    if (!AuthService.isAuthenticated()) {
+      router.push('/login')
+      return
+    }
+    fetchOrders()
+  }, [router, fetchOrders])
 
   const getStatusBadge = (status: POStatus) => {
     const config: Record<POStatus, { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline' | 'warning'; label: string }> = {

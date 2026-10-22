@@ -76,4 +76,5 @@ class SupplierService {
   }
 }
 
-export default new SupplierService()
+const supplierService = new SupplierService()
+export default supplierService

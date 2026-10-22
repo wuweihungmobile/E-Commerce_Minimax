@@ -42,5 +42,6 @@ export function AuthenticatedImage({ id, fetchBlob, alt, className, fallback }: 
 
   if (failed) return <>{fallback ?? null}</>;
   if (!src) return null;
+  // eslint-disable-next-line @next/next/no-img-element -- src 是帶授權標頭取得後建立的 blob: 物件網址，尺寸由 className 決定；改用 next/image 需要 width／height 或 fill 與定位父層
   return <img src={src} alt={alt} className={className} />;
 }

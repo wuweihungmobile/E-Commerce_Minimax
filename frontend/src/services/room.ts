@@ -148,4 +148,5 @@ class RoomService {
   }
 }
 
-export default new RoomService()
+const roomService = new RoomService()
+export default roomService

@@ -64,7 +64,7 @@
 | Checkstyle／PMD | 主程式與測試皆 0 違規；PMD（7.0.0）通過 |
 | `make validate-e2e` 第一次 | 179 個案例：174 通過、4 跳過、**1 失敗**（見下） |
 | `make validate-e2e` 重跑（`E2E_GATE_SKIP_BUILD=1`，同一份建置、乾淨 DB） | **175 通過、4 跳過、0 失敗（7.1 分鐘）**，閘門顯示「本地 E2E 守門通過」 |
-| 雲端 CI | push 後回填 |
+| 雲端 CI | run [39734893391](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39734893391)：`completed／success`，三個 job（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build）皆 success，以 `gh run view --json` 確認 `headSha` 與本機 commit `d2de7ffc` 一致 |
 
 **E2E 第一次的 1 個失敗**：`at-buyer-pages.spec.ts:27 › E2E-BUYER-01: 我的訂單列表空狀態`（第 39／179 個，屬第一波並行）。錯誤是 `submitRegister: 註冊失敗，仍停在 http://localhost:3000/register（attempt=0, status=undefined, rateLimited=false）`；頁面快照顯示註冊表單欄位都已填好、仍在 `/register`。`status=undefined` 表示 helper 在 6 秒（`REGISTER_RESULT_TIMEOUT_MS`）內**沒有觀察到任何註冊 POST 的回應**。
 

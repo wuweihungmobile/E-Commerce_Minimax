@@ -83,4 +83,5 @@ class SettlementService {
   }
 }
 
-export default new SettlementService()
+const settlementService = new SettlementService()
+export default settlementService

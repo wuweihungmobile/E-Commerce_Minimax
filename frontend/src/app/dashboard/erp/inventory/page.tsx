@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -22,15 +22,7 @@ export default function InventoryPage() {
   const [totalElements, setTotalElements] = useState(0)
   const [activeTab, setActiveTab] = useState<'ledger' | 'alerts'>('ledger')
 
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push('/login')
-      return
-    }
-    fetchData()
-  }, [router, page])
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -52,7 +44,15 @@ export default function InventoryPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page])
+
+  useEffect(() => {
+    if (!AuthService.isAuthenticated()) {
+      router.push('/login')
+      return
+    }
+    fetchData()
+  }, [router, fetchData])
 
   // Sprint 116（DEF-066）：門檻改用後端實際提供的 lowStockThreshold（product_inventory 只有這一個）。
   // 這個函式原本就存在，但「狀態」欄過去是寫死的 <Badge>正常</Badge>，從來沒有呼叫過它

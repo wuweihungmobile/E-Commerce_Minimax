@@ -183,4 +183,5 @@ class PricingService {
   }
 }
 
-export default new PricingService()
+const pricingService = new PricingService()
+export default pricingService

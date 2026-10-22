@@ -111,4 +111,5 @@ class TenantMemberService {
   }
 }
 
-export default new TenantMemberService()
+const tenantMemberService = new TenantMemberService()
+export default tenantMemberService

@@ -135,7 +135,7 @@
 | `npm run build`（含 TypeScript 檢查） | 退出碼 0，68／68 頁 |
 | `make validate-e2e`（完整：重建 JAR 與前端、乾淨 DB、全部 Playwright 規格） | **181 案例：177 通過、4 跳過、0 失敗、0 不穩定**；閘門顯示「本地 E2E 守門通過（schema 對齊 ✅ + e2e 全綠 ✅）」；新增的 `E2E-PRODLIST-01`／`02` 是第 146、147 個，皆通過；跳過數與 Sprint 297 相同（4，沒有逐一核對是否為同樣的 4 個）。**耗時 11.7 分鐘，是 Sprint 297 同一閘門（5.6 分鐘）的兩倍多，原因沒有查** |
 | 文件守門（改完 API_M17 與追蹤文件後跑） | `ApiRouteDocDriftTest` 2／2、`DocMarkdownFenceTest` 9／9、`TechStackDocDriftTest` 2／2，BUILD SUCCESS |
-| pre-push 守門與雲端 CI | 本文件隨主 commit 提交，**尚未 push**；push 後的結果於回填 commit 補上 |
+| pre-push 守門與雲端 CI | 見 §11：pre-push 輕量守門通過；雲端 run 39783070236 三個 job 皆 success（`headSha` 一致）；新整合測試在雲端 2／2 |
 
 ## 8. 過程中的失誤與修正
 
@@ -154,7 +154,7 @@
 1. §3.3 的所有範圍限制：載入時證據、不含互動、其餘 Sprint 297 改動只被間接執行、列表沒有資料列的頁面只驗了空狀態。
 2. 全路由掃描有 14 個路由樣式沒走到（§5）；掃描判定的是「崩潰」，不是「正確」。
 3. 差異探針的「0 差異」是 Sprint 297 之前 vs HEAD 的**第二次**執行；第一次執行有 1 條路由差異，已用同版本對照證明是雜訊。
-4. 本機 act／雲端 CI 尚未對這個 commit 跑（見 §7 與 §11）。
+4. 雲端單元測試步驟用 `mvn test -q`，日誌不列各類別結果：`RedisCacheConfigTest`（`TC-CACHE-G001`）在雲端只能由 job success **推論**已通過，雲端日誌裡完全找不到這個類別；直接證據是本機的獨立執行（9／9）與 pre-commit 的核心層快速測試。
 5. 真實 Stripe、真實外部 SMTP 等外部服務與這輪的驗證無關，仍未對真實環境驗證。
 
 ## 10. 我替使用者做的決定（可一句話推翻）
@@ -171,7 +171,11 @@
 
 ## 11. 雲端 CI 與狀態
 
-本文件隨主 commit 提交，提交當下**尚未 push**。本輪結尾 push（pre-push 守門與雲端 CI 的結果、回填 commit 的雜湊）於回填 commit 補上；回填前這一節不代表任何已發生的 CI 結果。
+- commit `f1511436`，於 2026-10-22 push（`e75a82ed..f1511436 main -> main`）。以推送日誌，以及 `git fetch` 後本機 HEAD 與 `origin/main` 同為 `f1511436`、ahead／behind 為 0／0 核實；沒有採信背景任務通知的退出碼。
+- pre-commit：Checkstyle、Maven compile、核心層快速測試（需要 test DB，commit 前以同一個指令序列確認 `nk-test` 兩個容器存在）、前端 `eslint --fix`、`tsc --noEmit`、secret 掃描全部一次通過。
+- pre-push 輕量守門通過：本機 act 的 Backend Unit Tests、Frontend Lint & Build（ESLint、Type Check、Build 各步驟）皆 `Job succeeded`，schema 漂移守門通過。
+- 雲端 CI run [39783070236](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39783070236)：`completed／success`，三個 job（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build）皆 success。`gh run watch` 結束後另以 `gh run view --json status,conclusion,jobs,headSha` 交叉確認，`headSha` 與本機 commit 一致。下載完整雲端日誌（214209 行）確認：新的 `SellerDashboardRealRedisIntegrationTest` 在整合測試 job 中 `Tests run: 2, Failures: 0, Errors: 0, Skipped: 0`；前端 ESLint 步驟沒有 `problems (` 彙總行。
+- 雲端單元測試步驟的限制見 §9 第 4 點。
 
 ## 12. 文件與程式異動清單
 

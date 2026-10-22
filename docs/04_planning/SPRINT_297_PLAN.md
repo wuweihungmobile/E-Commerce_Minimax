@@ -83,7 +83,7 @@
 | `make validate-e2e`（完整：重建 JAR 與前端、乾淨 DB、Playwright） | **179 個案例：175 通過、4 跳過、0 失敗（5.6 分鐘）**，閘門顯示「本地 E2E 守門通過」；4 個跳過與前面幾個 Sprint 相同（既有 skip） |
 | 改動規模 | 55 個前端檔，`+321／−324`；純修改，無新增或刪除檔案；23 個 `useCallback` 包裝；18 個新增 `eslint-disable`（13 `<img>`＋2 整頁導向＋3 hooks） |
 | 後端 | 零變更，沒有重跑後端測試 |
-| 雲端 CI | push 後回填 |
+| 雲端 CI | run [39740600763](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39740600763)：`completed／success`，三個 job（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build）皆 success，以 `gh run view --json` 確認 `headSha` 與本機 commit `b586d751` 一致；雲端 ESLint 步驟除 `> eslint` 標頭外沒有任何輸出（修復前同一步驟的彙總行為 `✖ 99 problems (0 errors, 99 warnings)`） |
 
 ## 5. 過程中的失誤與修正（都在 commit 之前被驗收步驟抓到）
 
@@ -113,7 +113,10 @@
 
 ## 8. 雲端 CI 與狀態
 
-push 後回填。
+- commit `b586d751`，於 2026-10-22 push（`d2de7ffc..b586d751 main -> main`）。以推送日誌的 `push-exit=0`，以及 `git fetch` 後本機 HEAD 與 `origin/main` 同為 `b586d751`、`ahead=0 behind=0` 核實；沒有採信背景任務通知的退出碼——該通知只反映我接在 `git push` 後面的 `echo`。
+- pre-commit：前端檢查（`eslint --fix`、`tsc --noEmit`、secret 掃描）一次通過；backend 的 pre-commit 因為沒有 staged 的 `backend/` 檔案而不執行（`scripts/hooks/pre-commit` 第 36 行的條件，且 commit 輸出只有 frontend 段），所以這次 commit 不需要 test DB。
+- pre-push 輕量守門通過：本機 act 的 Backend Unit Tests、Frontend Lint & Build 皆 `Job succeeded`（ESLint、Type Check、Build 步驟都成功，日誌沒有 `problems (` 彙總行），schema 漂移守門通過。
+- 雲端 CI run [39740600763](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39740600763)：三個 job 皆 success，`headSha` 與本機一致。`gh run watch` 結束後另以 `gh run view --json status,conclusion,jobs,headSha` 交叉確認，並下載完整雲端日誌（213262 行）確認 ESLint 步驟沒有 `problems (` 彙總行。
 
 ## 9. 文件與程式異動清單
 

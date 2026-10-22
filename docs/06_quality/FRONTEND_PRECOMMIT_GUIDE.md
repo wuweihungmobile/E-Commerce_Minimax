@@ -21,7 +21,7 @@
 
 | 階段 | 檢查項目 | 執行命令 | 失敗處置 |
 |------|----------|----------|----------|
-| **1/3** | ESLint 自動修復 | `npx eslint --fix` | 修復 ESLint 錯誤後重試 |
+| **1/3** | ESLint 自動修復（**warning 也擋**，Sprint 299 起，DEF-400） | `npx eslint --fix --max-warnings 0` | 修復 ESLint 錯誤與 warning 後重試（與 CI／`make` 共用的 `npm run lint` 一致，同樣帶 `--max-warnings 0`） |
 | **2/3** | **TypeScript type-check** ⭐ | `npx tsc --noEmit` | 修復型別錯誤後重試 |
 | **3/3** | Next.js Build (已停用) | `npm run build` | 改在 pre-push 階段執行 |
 

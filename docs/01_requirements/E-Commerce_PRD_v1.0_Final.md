@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0.7（文件修訂；規格基準仍為 v1.0）
+> **版本**: v1.0.8（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -18,6 +18,7 @@
 > - **v1.0.4 → v1.0.5（2026-10-11，Sprint 252，DEF-321(b)）**：§10 路由表 `/stores/[slug]` 四條路由、§11.3／§11.3.1 元件、§12.7 瀏覽流程**首次實作**；既有規格內文未改寫。實作時發現並修正 §12.5「Guest 未登入可瀏覽」與 `/v2/listings` 實際授權矛盾（新建獨立公開端點，未改動 `/v2/listings`）；§11.3.1 `<StoreHeroBanner/>` 的 `bannerImageUrl`/`ctaText` 本輪未新增對應欄位，暫以既有 `logoUrl`/`name`/`description` 呈現。
 > - **v1.0.5 → v1.0.6（2026-10-11，Sprint 253，DEF-321(d)(e)）**：§6.6.3 嵌入卡片 MAINTENANCE/Cascade 規格、§10 全部路由表（10.1.1/10.1.2/10.1.3）**依實際程式碼逐條校對**——改名/架構演進已更新路由欄並附註，真缺口保留原路由並登記 DEF-358(a)(b)(c)(d)；補建 `/dashboard/pricing/calendar`、`/admin/tenants/[id]/features` 兩個先前缺頁但後端/元件已存在的路由。
 > - **v1.0.6 → v1.0.7（2026-10-22，Sprint 292，文件一致性檢查第五輪）**：①移除 §6.6（M15 CMS）末尾一個沒有對應開頭的 ``` 孤兒圍欄——它讓其後所有程式碼區塊的開／關角色對調，§6.7 起至 §7 的標題與 RBAC 矩陣在 CommonMark 渲染器（GitHub、VS Code 預覽）中被吞進程式碼區塊（以 markdown-it 14.1.0 實測：修正前 10 個標題被吞、修正後 0 個）；②§1.2 技術棧表 `Next.js 15` 校正為 `Next.js 16`（`frontend/package.json` 自 2026-05-10 起即為 16.x，現為 16.4.2）；③§10.1.2 補列 S253 校對後才出現或漏列的 `/dashboard/reviews`（Sprint 287，DEF-392）、`/dashboard/erp`、`/cms` 系列四頁。既有規格內文未改寫。
+> - **v1.0.7 → v1.0.8（2026-10-22，Sprint 299，DEF-402）**：使用者裁決「房源日曆與可訂性查詢維持需登入」（實作的 `GET /api/v2/bookings/calendar`、`GET /api/v2/bookings/availability` 需要 `booking:read`，匿名回 401）。①§18 RTM-US-G1 的驗收條件由「Guest 可完整瀏覽所有商品列表、房源日曆、定價」改為「Guest 可完整瀏覽商品列表與房源資訊／底價；房源日曆（每日空房狀態與動態定價）與可訂性查詢需登入後使用，訪客在日曆區看到『登入後可查看即時空房』」；②§9.13 的 `GET /api/v2/rooms/:id/pricing-calendar`（C 端定價日曆）角色由 `Guest+` 改為 `Buyer+`（該端點後端**未實作**，日曆實際由 `/api/v2/bookings/calendar` 提供）。其餘規格內文未改寫。
 
 ---
 
@@ -2030,7 +2031,7 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 
 | 方法 | 端點 | 說明 | 角色 |
 |------|------|------|------|
-| `GET` | `/api/v2/rooms/:id/pricing-calendar` | 查詢房間未來 N 天定價日曆 (C 端) | Guest+ |
+| `GET` | `/api/v2/rooms/:id/pricing-calendar` | 查詢房間未來 N 天定價日曆 (C 端)（Sprint 299，DEF-402：角色由 Guest+ 改為 Buyer+；此端點後端未實作，日曆實際由 `/api/v2/bookings/calendar` 提供，需登入） | Buyer+ |
 | `GET` | `/api/v2/dashboard/pricing-rules` | 查詢我的定價規則 | Host/StoreOwner |
 | `POST` | `/api/v2/dashboard/pricing-rules` | 建立定價規則 | Host/StoreOwner |
 
@@ -3701,7 +3702,7 @@ TooManyRequests:
 
 | RTM-ID | US 編號 | User Story | Accep. Criteria | 對應 API | Test Cases | Priority |
 |--------|---------|------------|------------------|----------|-------------|----------|
-| RTM-US-G1 | US-G1 | 作為 Guest，**我希望**在未登入的情況下瀏覽商品與房源，以便在決定是否註冊前先評估平台內容品質 | Guest 可完整瀏覽所有商品列表、房源日曆、定價；所有加入購物車/建立訂單/即時通訊的按鈕點擊後引導至登入/註冊頁 | N/A（功能約束） | TC-G1-001、TC-G1-002（v0.9_R02_Loop_01 新增） | MUST |
+| RTM-US-G1 | US-G1 | 作為 Guest，**我希望**在未登入的情況下瀏覽商品與房源，以便在決定是否註冊前先評估平台內容品質 | Guest 可完整瀏覽所有商品列表與房源資訊／底價；**房源日曆（每日空房狀態與動態定價）與可訂性查詢需登入後使用**，訪客在日曆區看到「登入後可查看即時空房」（Sprint 299，DEF-402：原寫「房源日曆、定價」可瀏覽，與實作的 `booking:read` 不符，經使用者裁決維持需登入）；所有加入購物車/建立訂單/即時通訊的按鈕點擊後引導至登入/註冊頁 | N/A（功能約束） | TC-G1-001、TC-G1-002（v0.9_R02_Loop_01 新增） | MUST |
 | RTM-US-G2 | US-G2 | 作為 Guest，**我希望**用 Email + 密碼 3 步驟完成註冊，以便快速從 Guest 轉為 Buyer 開始購物 | 註冊流程從進站到完成註冊 ≤ 2 分鐘；驗證 Email 即時發送；註冊完成後自動登入並回到原頁面 | POST /api/auth/register | TC-G2-001（v0.9_R02_Loop_01 新增） | MUST |
 
 **[Test Cases] Guest User Story（v0.9_R02_Loop_01 新增）**

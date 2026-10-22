@@ -1,7 +1,7 @@
 # E-Commerce System — 功能需求文檔 (FRD) v1.16
 
 > **文檔類型**: FRD (Functional Requirements Document)
-> **版本**: v1.17
+> **版本**: v1.18
 > **依據**: E-Commerce_PRD_v1.0_Final.md
 > **建立日期**: 2026-04-09
 > **作者**: Amanda (SA-Analyst) + Beatrice (BA-Business-Analyst)
@@ -1314,12 +1314,14 @@ END IF
 ### 4.7 API 規格概要
 
 > **修訂記錄（Sprint 273）**：本表原列的 `GET /api/v2/listings/:id/calendar`（日曆查詢實際屬 M06，是 `GET /api/v2/bookings/calendar`）、`GET /api/v2/dashboard/listings`（店鋪房源列表，無此端點）、`PUT /api/v2/dashboard/listings/:id/status`（不存在）皆已依 [API_M02_Listing_Center.md](../02_architecture/api/API_M02_Listing_Center.md) 校正；「建立房源」端點已改為實際的型別專屬入口，「發布房源」端點已移除，原因見該文件 §7（DEF-380，同 §4.3 修訂記錄）。
+>
+> **修訂記錄（Sprint 299，DEF-402）**：`GET /api/v2/bookings/calendar`（與可訂性查詢 `GET /api/v2/bookings/availability`）的角色由 `Guest+` 改為 `Buyer+`——實作需要 `booking:read`，匿名呼叫回 401；使用者裁決維持需登入，PRD RTM-US-G1 同步修訂（PRD v1.0.8）。前端房源頁對訪客改顯示「登入後可查看即時空房」，不再發出必然 401 的請求。
 
 | API Endpoint | 方法 | 用途 | 角色 |
 |-------------|------|------|------|
 | `/api/v2/listings?type=ROOM` | GET | 房源列表（分頁/篩選，屬 M01 共用端點） | Guest+ |
 | `/api/v2/listings/:id` | GET | 房源詳情（屬 M01 共用端點） | Guest+ |
-| `/api/v2/bookings/calendar` | GET | 日曆與空房查詢（屬 M06） | Guest+ |
+| `/api/v2/bookings/calendar` | GET | 日曆與空房查詢（屬 M06；需登入） | Buyer+ |
 | `/api/v2/rooms` | GET | 店鋪房源列表（限自己租戶） | Host+ |
 | `/api/v2/rooms` | POST | 建立房源（直接 `ACTIVE`，無 `DRAFT` 階段） | Host+ |
 | `/api/v2/rooms/:listingId` | PUT | 更新房源（含手動變更 status） | Host+ |

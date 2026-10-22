@@ -1,7 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 import bookingService, { type CalendarDay, type RoomCalendarStatus } from "@/services/booking"
+import {
+  subscribeAuth,
+  getAuthenticatedSnapshot,
+  getAuthenticatedServerSnapshot,
+} from "@/services/authStore"
 
 // 整月日曆（Sprint 41 US-004 / AI-2202b）：顯示房源某月每日可訂狀況，
 // 並支援點選挑選入住／退房區間，與 ListingDetail 的 checkIn/checkOut 同步。
@@ -58,6 +63,10 @@ export function MonthCalendar({
     const base = checkIn ? new Date(checkIn + "T00:00:00") : now
     return { year: base.getFullYear(), month: base.getMonth() }
   })
+  // 日曆端點需登入（booking:read），訪客呼叫只會得到 401（DEF-402）：訪客不發請求，改顯示登入提示。
+  // 登入狀態比照共用 Header 走 authStore 外部 store：SSR／hydration 一律當訪客、client 端切換為實際登入態，
+  // 登入／登出時由 notifyAuthChange 即時通知；避免 effect 內同步 setState（React 19 嚴格 hooks）。
+  const guest = !useSyncExternalStore(subscribeAuth, getAuthenticatedSnapshot, getAuthenticatedServerSnapshot)
   const [statusByDate, setStatusByDate] = useState<Record<string, RoomCalendarStatus>>({})
   const [priceByDate, setPriceByDate] = useState<Record<string, number>>({})
   // 每日折扣前原價（AI-2405b）：有折扣之日才有值，用於顯示刪除線原價
@@ -67,6 +76,7 @@ export function MonthCalendar({
 
   // 載入可視月份的日曆（async；不在 effect 內同步 setState — 遵循 React 19 嚴格 hooks）
   useEffect(() => {
+    if (guest) return
     let cancelled = false
     const start = iso(view.year, view.month, 1)
     const end = iso(view.year, view.month, daysInMonth(view.year, view.month))
@@ -96,7 +106,7 @@ export function MonthCalendar({
     return () => {
       cancelled = true
     }
-  }, [roomListingId, view.year, view.month])
+  }, [roomListingId, view.year, view.month, guest])
 
   const isUnavailable = (dateStr: string): boolean => {
     if (dateStr < todayIso) return true
@@ -182,6 +192,11 @@ export function MonthCalendar({
         </button>
       </div>
 
+      {guest && (
+        <p data-testid="calendar-login-hint" className="text-sm text-rs-ink-muted">
+          登入後可查看即時空房與每日價格，仍可手動輸入日期
+        </p>
+      )}
       {error && <p className="text-sm text-rs-error">{error}</p>}
 
       <div className="grid grid-cols-7 gap-1 text-center text-xs text-rs-ink-muted">
@@ -190,7 +205,7 @@ export function MonthCalendar({
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-1" aria-busy={loading}>
+      <div className="grid grid-cols-7 gap-1" aria-busy={!guest && loading}>
         {cells.map((day, idx) => {
           if (day === null) return <div key={"empty-" + idx} />
           const dateStr = iso(view.year, view.month, day)

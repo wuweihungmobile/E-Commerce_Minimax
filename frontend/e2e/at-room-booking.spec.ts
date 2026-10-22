@@ -10,6 +10,8 @@ import { test, expect, Page, Route } from '@playwright/test';
  * - E2E-ROOM-05: 整月日曆載入 → 已訂日禁選 → 點選可訂區間 → 可用性 + 加購（Sprint 41 US-004 AI-2202b）
  *
  * checkout 頁無登入守門（表單 + 送出走 mock），故不需真實登入。
+ * 例外（Sprint 299，DEF-402）：E2E-ROOM-05／07／09／10 斷言「日曆格內容」，而日曆端點需登入、訪客不會呼叫它，
+ * 所以這四個案例以已登入買家的身分跑（asLoggedInBuyer）；訪客看到什麼見 at-guest-room-calendar-real.spec.ts。
  * 遠期日期（2030）確保通過「入住不早於今日 / 退房晚於入住」前端驗證。
  */
 
@@ -17,6 +19,13 @@ const ROOM_ID = '44444444-4444-4444-4444-444444444444';
 
 async function fulfillJson(route: Route, status: number, body: object) {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+}
+
+// 日曆端點需登入（booking:read，DEF-402）：訪客不會呼叫它，也看不到日曆資料。斷言「日曆格內容」的案例因此要以
+// 已登入買家的身分跑。只放 accessToken：共用頁首只有在同時有 user 資料時才會去取購物車數量，所以不會多發
+// 沒被 mock 的請求、也不會被 401 踢回登入頁。
+async function asLoggedInBuyer(page: Page) {
+  await page.addInitScript(() => localStorage.setItem('accessToken', 'e2e-mock-access-token'));
 }
 
 function roomListing() {
@@ -277,6 +286,7 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
   });
 
   test('E2E-ROOM-05: 整月日曆載入 → 已訂日禁選 → 點選可訂區間 → 可用性 + 加購', async ({ page }: { page: Page }) => {
+    await asLoggedInBuyer(page);
     // 用「下個月」確保所有日期為未來（避開過去日禁選）
     const now = new Date();
     const ny = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
@@ -396,6 +406,7 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
   });
 
   test('E2E-ROOM-07: 整月日曆每日折扣 → 格子顯示折扣後價 + 原價刪除線（Sprint 44 US-002 AI-2405b）', async ({ page }: { page: Page }) => {
+    await asLoggedInBuyer(page);
     // 用「下個月」確保為未來日
     const now = new Date();
     const ny = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
@@ -478,6 +489,7 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
   });
 
   test('E2E-ROOM-09: 整月日曆每日漲價 → 格子顯示漲價後價 + 原價不刪除線（Sprint 46 AI-2406b）', async ({ page }: { page: Page }) => {
+    await asLoggedInBuyer(page);
     const now = new Date();
     const ny = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
     const nm = now.getMonth() === 11 ? 0 : now.getMonth() + 1;
@@ -511,6 +523,7 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
   });
 
   test('E2E-ROOM-10: 日曆未開放日 NOT_OPEN → 禁選 + 灰底不刪除線（Sprint 47 AI-2202e）', async ({ page }: { page: Page }) => {
+    await asLoggedInBuyer(page);
     const now = new Date();
     const ny = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
     const nm = now.getMonth() === 11 ? 0 : now.getMonth() + 1;

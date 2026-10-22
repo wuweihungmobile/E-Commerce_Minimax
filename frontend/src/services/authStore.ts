@@ -36,6 +36,18 @@ export function getAuthServerSnapshot(): null {
   return null
 }
 
+// client 快照：是否持有 accessToken（primitive boolean）。
+// DEF-402：只需要知道「有沒有登入」的元件用（例如房源日曆 MonthCalendar：日曆端點需登入，訪客呼叫只會得到 401），
+// 不需要 email 或角色。與 getAuthEmailSnapshot 的差別：不要求 localStorage 裡同時有 user 資料。
+export function getAuthenticatedSnapshot(): boolean {
+  return AuthService.isAuthenticated()
+}
+
+// server / hydration 快照（boolean 版）：SSR 無 localStorage，一律視為未登入，確保 hydration 無 mismatch
+export function getAuthenticatedServerSnapshot(): boolean {
+  return false
+}
+
 // 登入/登出後呼叫，通知同頁訂閱者（Header）即時更新
 export function notifyAuthChange(): void {
   if (typeof window !== "undefined") {

@@ -30,13 +30,14 @@ echo ""
 echo "📝 [1/3] Running ESLint --fix on staged files..."
 ESLINT_FILES=$(echo "$STAGED_FILES" | sed 's|^frontend/||' | grep -E '\.(ts|tsx|js|jsx)$' || true)
 if [ -n "$ESLINT_FILES" ]; then
-  echo "$ESLINT_FILES" | xargs npx --no-install eslint --fix
+  # --max-warnings 0：與 npm run lint（CI／Makefile 共用）一致，warning 也擋（DEF-400）
+  echo "$ESLINT_FILES" | xargs npx --no-install eslint --fix --max-warnings 0
   ESLINT_EXIT=$?
 
   if [ $ESLINT_EXIT -ne 0 ]; then
     echo ""
     echo "❌ ESLint failed (exit code: $ESLINT_EXIT)"
-    echo "   Please fix ESLint errors before committing."
+    echo "   Please fix ESLint errors and warnings before committing."
     echo "   Skip with: git commit --no-verify"
     exit $ESLINT_EXIT
   fi

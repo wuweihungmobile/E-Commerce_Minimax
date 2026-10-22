@@ -107,7 +107,10 @@ export function ListingDetail({ id }: { id: string }) {
     bookingService
       .checkAvailability(id, checkIn, checkOut)
       .then((a) => setAvailability(a))
-      .catch(() => setAvailError("查詢可用性失敗，請稍後再試"))
+      // 可訂性查詢需登入（booking:read，DEF-402）：訪客得到 401 是「要先登入」，不是「失敗」
+      .catch((err) =>
+        setAvailError(statusOf(err) === 401 ? "請先登入以查詢可用性" : "查詢可用性失敗，請稍後再試")
+      )
       .finally(() => setChecking(false))
   }
 

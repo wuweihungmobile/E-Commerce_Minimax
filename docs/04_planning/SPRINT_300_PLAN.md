@@ -148,7 +148,7 @@
 | `make validate-schema-doc` | 通過（SRD 無 `return_request_items`，V93 不造成漂移） |
 | 全量後端 `mvn -o clean verify`（單元＋整合；Checkstyle 另由 pre-commit 跑） | `BUILD SUCCESS`（18 分 31 秒）；**單元 2309、整合 886**，皆 0 失敗／0 錯誤／0 跳過，日誌中 `<<< FAILURE`／`<<< ERROR` 標記 0 個；`ReturnRequestServiceTest` 13／13、`M05ReturnRequestIntegrationTest` 14／14（含新增的 `IT-M05-RETURN-013`）。從日誌核對，沒有只信背景任務的退出碼 |
 | `make validate-e2e`（完整：重建 JAR 與前端、乾淨 DB、全部 Playwright 規格） | **第一次執行即全綠：195 案例，191 通過／4 跳過／0 失敗／0 不穩定（6.3 分鐘）**，閘門顯示「本地 E2E 守門通過（schema 對齊 ✅ + e2e 全綠 ✅）」；backend 啟動檢查「entity 與 Flyway schema 對齊，無漂移」（含 V93 與改過的實體）。案例數由 Sprint 299 的 188 增為 195＝新增的 7 個，都在整套裡執行並通過（`E2E-REVENUE-01`、`E2E-RETURN-01`～`04`、`E2E-ROOM-13`／`14`）；4 個跳過與 Sprint 299 相同 |
-| pre-commit、pre-push、雲端 CI | 見 §11（隨主 commit 提交本文件時，這些結果還沒有發生，push 並確認雲端 CI 後以純文件 commit 回填） |
+| pre-commit、pre-push、雲端 CI | 皆通過，詳見 §11：雲端 run 39828790750 三個 job 皆 success（`headSha` 一致）；雲端日誌確認 `M05ReturnRequestIntegrationTest` 14／14、整合測試 886／0 失敗 |
 
 ## 8. 過程中的失誤與修正
 
@@ -184,7 +184,13 @@
 
 ## 11. 雲端 CI 與狀態
 
-本節在主 commit 時還沒有結果。push 並確認雲端 CI 之後，以純文件 commit 回填：commit hash、pre-commit 與 pre-push 的實際結果、雲端 run 與 `gh run view --json` 的 `headSha` 核對。
+- commit `7357ce34`，於 2026-10-23 push（`48775385..7357ce34 main -> main`）。以推送日誌，以及 `git fetch` 後本機 HEAD 與 `origin/main` 同為 `7357ce34`、ahead／behind 為 0／0 核實；沒有採信背景任務通知的退出碼。
+- pre-commit 一次通過：Checkstyle、Maven compile、核心層快速測試（`Maven quick test passed (core layer)`）、ESLint、`tsc --noEmit`、secret 掃描，以及 V93／PRD 觸發的 schema 文件守門（`SRD_Database_Schema.md` 的 DDL、PRD §8.2 的欄位清單與 Flyway 實際 schema 一致）。commit 前測試 DB 已換成全新容器。
+- pre-push 輕量守門通過：本機 act 的 Backend Unit Tests（Run Unit Tests 2 分 50 秒）與 Frontend Lint & Build（ESLint、Type Check、Build）皆 `Job succeeded`，schema 漂移守門「backend 啟動成功 → entity 與 Flyway schema 對齊，無漂移」。push 之後 `docker ps -a` 為空（pre-push 清掉了 `nk-test-*`）。
+- 雲端 CI run [39828790750](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39828790750)：`completed／success`，三個 job（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build）皆 success，約 18 分鐘（18:08:46Z～18:26:41Z）。`gh run watch` 結束後另以 `gh run view --json status,conclusion,jobs,headSha` 交叉確認，`headSha` 與本機 commit 一致。
+- 下載整合測試 job 的雲端日誌（195,210 行）確認：`M05ReturnRequestIntegrationTest` **14／14**（含新增的 `IT-M05-RETURN-013`，在雲端全新的 Postgres 上）、整合測試總計 **886／0 失敗／0 錯誤／0 跳過**（與本機相同）、`BUILD SUCCESS`。第一次用 `gh api` 抓日誌時，因回應含終端機跳脫序列被拒絕，只拿到一行錯誤訊息；加 `--allow-escape-sequences` 後重抓才得到完整日誌（先檢查檔案大小才沒有把它當成「沒有命中」）。
+- 雲端三個 job 不含 Playwright E2E；E2E 以本機 `make validate-e2e` 為準（§7）。
+- 之後的純文件回填 commit 不在本文件記錄自己的 hash 與雲端結果（commit 無法包含自己的 hash）。
 
 ## 12. 文件與程式異動清單
 

@@ -11,6 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import ProductService, { ProductListItem, ProductFilters } from '@/services/product'
 import AuthService from '@/services/auth'
 
+// Radix 的 Select.Item 不接受空字串 value（render 時直接 throw，整頁崩潰）；「所有類別」用哨兵值代表，
+// category 狀態與送出的篩選參數仍以空字串代表不篩選。
+const ALL_CATEGORIES = 'ALL'
+
 export default function ProductList() {
   const router = useRouter()
   const [products, setProducts] = useState<ProductListItem[]>([])
@@ -133,12 +137,15 @@ export default function ProductList() {
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             className="max-w-xs"
           />
-          <Select value={category} onValueChange={setCategory}>
+          <Select
+            value={category || ALL_CATEGORIES}
+            onValueChange={(value) => setCategory(value === ALL_CATEGORIES ? '' : value)}
+          >
             <SelectTrigger className="w-40">
               <SelectValue placeholder="所有類別" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">所有類別</SelectItem>
+              <SelectItem value={ALL_CATEGORIES}>所有類別</SelectItem>
               <SelectItem value="ELECTRONICS">電子產品</SelectItem>
               <SelectItem value="FASHION">時尚服飾</SelectItem>
               <SelectItem value="HOME">居家生活</SelectItem>

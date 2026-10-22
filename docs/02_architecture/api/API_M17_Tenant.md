@@ -1,7 +1,7 @@
 # API 規格文件 - M17 租戶/店鋪管理 / API Specification - M17 Tenant Management
 
 > **文件編號**: API-M17
-> **文件版本**: v2.2（Sprint 294 校正 §4.4／§4.8／§4.9／§4.13／§4.14 與 `E-4031` 總表；v2.1 為 Sprint 292 校正 §4.6；v2.0 為 Sprint 266 依實作改寫）
+> **文件版本**: v2.3（Sprint 298 補上全域角色對店主自助端點的真實後端實測矩陣，見註記 9 與 §2.1；v2.2 為 Sprint 294 校正 §4.4／§4.8／§4.9／§4.13／§4.14 與 `E-4031` 總表；v2.1 為 Sprint 292 校正 §4.6；v2.0 為 Sprint 266 依實作改寫）
 > **建立日期**: 2026-04-09（v1.0）
 > **最後更新**: 2026-10-22
 > **負責人**: SD (Marcus)
@@ -18,7 +18,8 @@
 > 5. **新增 6 個 `AdminController` 端點（DEF-369）**：`GET .../{tenantId}`、`POST .../review`、`PUT .../{tenantId}/status`、`POST /admin/feature-toggles`、`DELETE .../feature-toggles/{featureKey}`、`GET .../{tenantId}/stats`；
 > 6. **多處既有端點的回應欄位補齊**：`TenantDetailsResponse` 實際含 `contactPhone`／`purchaseOrderApprovalThreshold`／`updatedAt`；`FeatureToggleResponse` 實際含 `quotas`（數量配額）及每個 `features[]` 項目的 `category`／`status`／`requiresAdminReview`；`TenantUpdateRequest` 還可帶 `businessType`／`status`／`purchaseOrderApprovalThreshold`，且 `coverImageUrl` 是**完全死欄位**（DEF-193）；駁回申請的 `reason` 空白實際回 `E-9000`（Bean Validation），非 v1.1 寫的 `E-4001`
 > 7. **§4.6 的 403 條件校正（Sprint 292，文件一致性檢查第五輪）**：Sprint 281（DEF-331(f)）把 `TenantService.updateFeatureToggle` 的檢查從「是該租戶有效成員」改為「是該租戶的店主（`STORE_OWNER`）」，但該次 commit 沒有同步本文件，§4.6 的失敗列仍寫「非該租戶成員」，讀起來像是 `STORE_STAFF` 也能通過。已改為如實描述；單元測試 `TenantServiceTest.updateFeatureToggle_notOwner_rejectedWithoutAudit` 佐證。本文件其他章節的同款「非該租戶成員」列本輪**未逐一核對**對應的 service 檢查是店主還是成員（Sprint 294 已逐一核對，見註記 8）
-> 8. **§4.4／§4.8／§4.9／§4.13／§4.14 的權限行與 403 列、`E-4031` 總表校正（Sprint 294，補完註記 7 當時未核對的部分）**：逐一對照 `TenantService`——`updateTenant`、`inviteMember`、`lookupMemberCandidateByEmail`、`updateMemberRole`、`removeMember`（加上註記 7 的 `updateFeatureToggle`）六個寫入類方法的檢查都是 `existsByTenantIdAndUserIdAndStoreRole(…, STORE_OWNER)`，不是該租戶店主就拋 `E-4031`；只有 `getFeatureToggles`（§4.5）與 `getTenantMembers`（§4.7）是「有效成員（`ACTIVE`）」檢查。先前這五節寫「且限該租戶成員」「非該租戶成員」，讀起來像是僅為成員（如 `STORE_STAFF`）即可通過。§4.5、§4.7 本來就是成員檢查，文件正確，未動。**未驗證**：這些端點的 `@PreAuthorize` 先擋掉了哪些全域角色，以及 `ROLE_ADMIN` 通過註解後在 service 層的實際結果（service 只認該租戶的店主）——本註記只校正「service 層檢查的是店主不是成員」這一點
+> 8. **§4.4／§4.8／§4.9／§4.13／§4.14 的權限行與 403 列、`E-4031` 總表校正（Sprint 294，補完註記 7 當時未核對的部分）**：逐一對照 `TenantService`——`updateTenant`、`inviteMember`、`lookupMemberCandidateByEmail`、`updateMemberRole`、`removeMember`（加上註記 7 的 `updateFeatureToggle`）六個寫入類方法的檢查都是 `existsByTenantIdAndUserIdAndStoreRole(…, STORE_OWNER)`，不是該租戶店主就拋 `E-4031`；只有 `getFeatureToggles`（§4.5）與 `getTenantMembers`（§4.7）是「有效成員（`ACTIVE`）」檢查。先前這五節寫「且限該租戶成員」「非該租戶成員」，讀起來像是僅為成員（如 `STORE_STAFF`）即可通過。§4.5、§4.7 本來就是成員檢查，文件正確，未動。**當時未驗證**：這些端點的 `@PreAuthorize` 先擋掉了哪些全域角色，以及 `ROLE_ADMIN` 通過註解後在 service 層的實際結果（service 只認該租戶的店主）——本註記只校正「service 層檢查的是店主不是成員」這一點；**Sprint 298 已對真實後端實測，見註記 9**
+> 9. **全域角色對店主自助端點的實測矩陣（Sprint 298，補完註記 8 當時未驗證的部分）**：對真實後端（打包 JAR＋PostgreSQL＋Redis，`ddl-auto=validate`）以匿名、`BUYER`、`ADMIN`、`SUPER_ADMIN`、該租戶店主五種身分呼叫 `TenantController` 的 9 個自助端點，完整表格見 §2.1。要點：(1) **§2 總覽表的「權限」欄是 `@PreAuthorize` 的原文，不是實際可通過者**；(2) `SCOPE_store:read`／`SCOPE_store:write` 是死權限（`Permission` 枚舉沒有任何 `store:*`、簽發 JWT 不寫 `scope`／`scp` claim，讀碼確認）；(3) `ROLE_ADMIN` 通過註解，但除了 `GET /v2/tenants/my`（回自己的成員資格，空清單）之外一律被 service 層擋下（`E-4031`）；(4) `SUPER_ADMIN` 連註解都過不了（`E-1007`）——沒有角色階層，`ROLE_SUPER_ADMIN` 不等於註解清單內的 `ROLE_ADMIN`；(5) 匿名在 §4.2、§4.4 得到 403 `E-1007` 而不是 401，原因見 §2.1
 
 ---
 
@@ -32,7 +33,7 @@
 | **模組名稱** | 租戶/店鋪管理 / Tenant Management |
 | **描述** | 使用者申請開店、平台審核；店主管理店鋪資訊、功能開關、成員邀請；平台管理員管理所有租戶、功能開關、停權/終止；店鋪前台公開資料 |
 | **API 前綴** | 後端的 context path 是 `/api`，所以下列路徑的完整網址是 `/api/v2/tenants/...`、`/api/v2/dashboard/tenants/...`、`/api/v2/admin/...`、`/api/v2/public/stores/...` |
-| **多租戶隔離** | 店主自助端點（§4.1~4.14）皆驗證呼叫者是否為該租戶成員（`E-4031`）；平台管理端點（§4.17~4.30）一律 `hasRole('SUPER_ADMIN')`，Service 層不再額外篩租戶；店鋪前台（§4.15~4.16）完全匿名、只回傳 `status=ACTIVE` 的租戶 |
+| **多租戶隔離** | 店主自助端點的租戶檢查（`E-4031`）：寫入類（§4.4、§4.6、§4.8、§4.9、§4.13、§4.14）驗證呼叫者是該租戶的店主（`STORE_OWNER`），讀取類（§4.5、§4.7）驗證是該租戶的有效成員（Sprint 294 對照 `TenantService` 校正，見註記 8），各全域角色的實測結果見 §2.1；平台管理端點（§4.17~4.30）一律 `hasRole('SUPER_ADMIN')`，Service 層不再額外篩租戶；店鋪前台（§4.15~4.16）完全匿名、只回傳 `status=ACTIVE` 的租戶 |
 | **範圍外** | 無（本輪已補齊先前所有已知文件缺口） |
 
 ### 1.2 設計重點
@@ -96,6 +97,31 @@
 | API-M17-030 | GET | `/v2/admin/tenants/{tenantId}/stats` | Admin 查詢租戶統計 | `hasRole('SUPER_ADMIN')` |
 
 **編號不沿用 v1.1**：依 `TenantController`／`StorefrontController`／`AdminController` 的宣告順序全面重新編號，不與 v1.1 任何編號對應。
+
+### 2.1 全域角色對店主自助端點的實測矩陣（Sprint 298）
+
+**上面總覽表的「權限」欄是 `@PreAuthorize` 的原文，不是實際可通過者。** 下表是對真實後端（打包 JAR＋PostgreSQL＋Redis，`ddl-auto=validate`）實際呼叫的結果。身分：匿名；`BUYER`（新註冊使用者）；`ADMIN`（新註冊使用者，把 `users.role` 改成 `ADMIN` 後登入）；`SUPER_ADMIN`（Flyway 種入的 `admin@nextkey.local`）；店主（該租戶的 `STORE_OWNER`）。格子內是 HTTP 狀態與錯誤碼：`E-1007` 是方法層 `@PreAuthorize` 擋下（權限不足），`E-4031` 是 service 層的租戶檢查（不是該租戶的店主／成員），`E-1000` 是 URL 層要求登入。
+
+| 端點 | 匿名 | `BUYER` | `ADMIN` | `SUPER_ADMIN` | 店主 |
+|------|------|---------|---------|---------------|------|
+| §4.2 `GET /v2/tenants/my` | 403 `E-1007` | 403 `E-1007` | **200**（空清單） | 403 `E-1007` | 200 |
+| §4.4 `PUT /v2/tenants/{id}` | 403 `E-1007` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 200 |
+| §4.5 `GET /v2/dashboard/tenants/features` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 200 |
+| §4.6 `PUT /v2/dashboard/tenants/features/{feature}` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 200 |
+| §4.7 `GET /v2/tenants/{id}/members` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 200 |
+| §4.8 `POST /v2/tenants/{id}/members/invite` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 201 |
+| §4.9 `GET /v2/tenants/{id}/members/lookup` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 200 |
+| §4.13 `PUT /v2/tenants/{id}/members/{userId}/role` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 200 |
+| §4.14 `DELETE /v2/tenants/{id}/members/{userId}` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 200 |
+
+**怎麼讀這張表**：
+
+- **匿名在 §4.2、§4.4 得到 403 而不是 401**：`SecurityConfig` 的 `.requestMatchers("/v2/tenants/{id}").permitAll()`（為了 §4.3 公開）不限 HTTP 方法，而且 `{id}` 也符合 `/v2/tenants/my`，所以這兩個請求在 URL 層被放行，由方法層註解擋下回 403 `E-1007`；其他路徑（`/dashboard/...`、`/tenants/{id}/members...`）不符合該樣式，落到 `anyRequest().authenticated()` 回 401 `E-1000`。依賴「401 才導向登入」的用戶端，在這兩個端點上不會被觸發。
+- **`ROLE_ADMIN` 的實際效果**：通過註解，但 service 層只認該租戶的店主（寫入）或有效成員（讀取），所以不是該店鋪成員的 `ADMIN` 一律 `E-4031`。唯一的 200 是 `GET /v2/tenants/my`，它只回呼叫者自己的成員資格（這個測試用的 `ADMIN` 沒有任何成員資格，所以是空清單，沒有洩漏別人的店鋪）。平台管理員要管理店鋪走 §4.17～4.30。
+- **`SUPER_ADMIN` 過不了註解**：全庫沒有 `RoleHierarchy`，`ROLE_SUPER_ADMIN` 不等於註解清單內的 `ROLE_ADMIN`；`SUPER_ADMIN` 雖然擁有 `Permission` 全集，這些註解看的是角色 authority，不看權限碼。
+- **`SCOPE_store:read`／`SCOPE_store:write` 無法量測**，因為沒有任何角色或 token 會帶這兩個 authority（`Permission` 枚舉沒有 `store:*`、簽發 JWT 不寫 `scope`／`scp` claim；讀碼確認，沒有實際嘗試偽造 token）。
+- **沒有副作用**：非店主角色的每一次呼叫都被擋下，沒有任何一次意外成功；店主的 `invite`（201）→ `role`（200）→ `remove`（200）依序操作同一位被邀請的買家，屬於預期的狀態變化。
+- **範圍**：只量測了「該租戶的店主」與「不是成員的 `ADMIN`」。「另一間店鋪的店主」「同店 `STORE_STAFF`」兩種身分沒有在這次矩陣中量測；service 層「呼叫者不是該租戶的店主」這個分支另有 `TenantServiceTest` 的單元測試（Sprint 281、294）。
 
 ---
 

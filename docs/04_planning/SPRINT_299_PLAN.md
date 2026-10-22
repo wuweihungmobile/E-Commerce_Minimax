@@ -99,7 +99,7 @@
 | 新規格（`at-legal-pages`＋`at-guest-room-calendar-real`） | 7／7 綠；修復前與突變的紅燈見 §3、§4 |
 | 文件守門：`ApiRouteDocDriftTest` 2／2、`DocMarkdownFenceTest` 9／9、`TechStackDocDriftTest` 2／2；`./scripts/validate-schema-doc.sh`（PRD 有改，pre-commit 會觸發它） | 全過 |
 | `make validate-e2e`（完整：重建 JAR 與前端、乾淨 DB、全部 Playwright 規格） | **第二次完整執行：188 案例，184 通過、4 跳過、0 失敗、0 不穩定（6.1 分鐘）**，閘門顯示「本地 E2E 守門通過（schema 對齊 ✅ + e2e 全綠 ✅）」；新增的 `E2E-GUESTCAL-01`～`03`（第 56／58／59 個）與 `E2E-LEGAL-01`／`02`（兩個路徑，第 66～69 個）都在其中且通過；整套最前面 6 個案例這次全過。**第一次執行有 8 個失敗**（176 通過、4 跳過、10.1 分鐘），見 §6 第 3、5 點：4 個是 DEF-402 的直接後果（已修），4 個是整套最前面 6 個案例中的註冊逾時（**重跑未重現，成因未查明**） |
-| pre-push 守門與雲端 CI | 見 §9；本文件隨主 commit 提交，**尚未 push**，push 後的結果於回填 commit 補上 |
+| pre-push 守門與雲端 CI | 見 §9：pre-push 輕量守門通過；雲端 run 39806469533 三個 job 皆 success（`headSha` 一致），雲端 ESLint 步驟第一次執行 `eslint --max-warnings 0` 且沒有 problems |
 
 ## 6. 過程中的失誤與修正
 
@@ -133,7 +133,11 @@
 
 ## 9. 雲端 CI 與狀態
 
-本文件隨主 commit 提交，提交當下**尚未 push**。本輪結尾 push（pre-push 守門與雲端 CI 的結果、回填 commit 的雜湊）於回填 commit 補上；回填前這一節不代表任何已發生的 CI 結果。雲端 CI 的 `Frontend Lint & Build` job 會是 `--max-warnings 0` 這個新旗標第一次在雲端執行。
+- commit `a57cd1a2`，於 2026-10-22 push（`100cc5ab..a57cd1a2 main -> main`）。以推送日誌，以及 `git fetch` 後本機 HEAD 與 `origin/main` 同為 `a57cd1a2`、ahead／behind 為 0／0 核實；沒有採信背景任務通知的退出碼。
+- pre-commit：ESLint（**帶新的 `--max-warnings 0`**）、`tsc --noEmit`、PRD 觸發的 schema 文件守門、secret 掃描全部一次通過；staged 不含 `backend/`，所以不需要 test DB。
+- pre-push 輕量守門通過：本機 act 的 Backend Unit Tests、Frontend Lint & Build（ESLint、Type Check、Build 各步驟）皆 `Job succeeded`，schema 漂移守門通過。
+- 雲端 CI run [39806469533](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39806469533)：`completed／success`，三個 job（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build）皆 success。`gh run watch` 結束後另以 `gh run view --json status,conclusion,jobs,headSha` 交叉確認，`headSha` 與本機 commit 一致。下載完整雲端日誌（214425 行）確認：`Frontend Lint & Build` 的 ESLint 步驟執行的是 `eslint --max-warnings 0`（**這個新旗標第一次在雲端執行**），沒有 `problems (` 彙總行。
+- 雲端三個 job 不含 Playwright E2E；E2E 以本機 `make validate-e2e` 為準（§5）。
 
 ## 10. 文件與程式異動清單
 

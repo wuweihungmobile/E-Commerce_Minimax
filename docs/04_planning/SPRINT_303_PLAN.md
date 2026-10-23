@@ -164,7 +164,7 @@ J2／J4 第一次因 `stack.sh down` 只送 SIGTERM 就返回、下一步 `up` �
 
 1. **修復前的 `DEF-414` 狀態不是用真正的修復前 JAR 對 Flyway 資料庫跑的**，而是 J2／J3／J4 突變的等價重現（§4、§6）。
 2. **`DEF-411` 只收緊讀取路徑**；寫入端點對沒有店鋪的 `ADMIN` 的語意沒動（`DEF-415`）。
-3. **`V5` 的測試資料（`nextkey-test-tenant`、其房源與兩列定價規則）仍在每個 Flyway 建出的資料庫裡，包含正式環境**——是否有意、要不要用新遷移清掉，我沒有決定。`DEF-416` 只是讓程式碼不再被它絆倒。
+3. **`V5` 的測試資料（`nextkey-test-tenant`、其房源與兩列定價規則）仍在每個 Flyway 建出的資料庫裡，包含正式環境**——如何處理已登記為 `DEF-418`（使用者決定現在就規劃清除，§13）。`DEF-416` 只是讓程式碼不再被它絆倒。
 4. `DEF-410` 保留的 5 個案例用沒有店鋪的新帳號、斷言偏弱，本輪沒動。
 5. 前端突變只涵蓋我改寫的 6 個案例各一個代表性突變，不是窮舉。
 6. **讀碼時看到、尚未實測的疑點已登記為 `DEF-417`**：商品定價規則（只帶 `listingId`）的『50 條上限』與『同類型時間重疊』檢查，查詢用 `findByRoomListingIdAndIsActiveTrue(null)`，若 Spring Data 把 null 轉成 `IS NULL`，查的就是全平台所有租戶的無房源規則；帶 `confirmOverride=true` 時甚至會軟刪除其他租戶的規則。這是推論（連『Spring Data 對 null 參數產生 `IS NULL`』這一點也沒實測），本輪不修。
@@ -211,3 +211,18 @@ J2／J4 第一次因 `stack.sh down` 只送 SIGTERM 就返回、下一步 `up` �
 | `docs/04_planning/DEFERRED_ITEMS_TRACKER.md` | `DEF-410`／`411` 結案；新增 `DEF-414`／`415`／`416` |
 | `docs/04_planning/RELEASE_TRACKER.md` | Sprint 303 row |
 | `docs/04_planning/SPRINT_303_PLAN.md` | 新增（本文件） |
+
+## 13. 收尾：使用者的回答與規劃中發現的 DEF-418
+
+收尾用 `AskUserQuestion` 問了兩題（都是使用者的決定，我沒有替他定）。**使用者本人的回答**（真實的互動輸入，可在對話紀錄查到）：
+
+| 題目 | 使用者的回答 | 與我的建議 |
+|---|---|---|
+| `DEF-415`：沒有店鋪的 `ADMIN` 能否管理平台自營的商品／房源／定價規則 | **比照 Sprint 234 全部擋下** | **不同**——我建議維持現狀；以使用者的決定為準，下一輪一次改齊五個服務 |
+| V5 測試資料（每個 Flyway 資料庫都有的 `nextkey-test-tenant` 等） | **現在就規劃清除** | 我建議登記為上線前必辦；使用者要更積極，所以本輪做了規劃（下） |
+
+**規劃時的唯讀盤點發現了比「測試資料」更要緊的事（`DEF-418`，🔴）**：`V1`／`V5`／`V7`／`V15`／`V16` 五支遷移都把帶 bcrypt 密碼的帳號放進每個 Flyway 資料庫，包含 `admin@nextkey.local`（SUPER_ADMIN，`V7` 以 `ON CONFLICT DO UPDATE` 把密碼蓋成 SQL 註解記載的 `Test123!`；E2E gate 每次都以這組帳密在 Flyway 建出的資料庫登入成功，所以這一點是實測過的）。`application.yml` 的 Flyway 沒有環境過濾，所以正式環境也一樣。追蹤表原本沒有任何對應條目。引用掃描：測試與腳本只依賴 `admin@nextkey.local`（6 個 `frontend/e2e` 檔案），其他測試帳號與測試店鋪都是 0 個引用。
+
+規劃（做法 A／B 的取捨、必須同步的 schema 文件守門與 E2E gate 依賴、驗收方式）寫在 `DEFERRED_ITEMS_TRACKER.md` 的 `DEF-418` 列。**落地前我還需要使用者回答兩件事**：是否已有任何正式或預備環境用這些遷移建過資料庫（有的話 SUPER_ADMIN 密碼要立刻換掉）；採做法 A（前進式遷移刪除）還是做法 B（測試資料遷移搬到只在測試環境載入的 location）。
+
+本輪沒有動任何遷移或密碼：使用者說的是「規劃」，而且改遷移會影響 E2E gate 與 schema 文件守門，需要自成一個 Sprint 驗證。

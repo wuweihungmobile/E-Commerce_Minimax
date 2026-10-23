@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation'
 import PurchaseOrderForm from '@/components/erp/PurchaseOrderForm'
 import AuthService from '@/services/auth'
 import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
+import { loginHref } from '@/lib/auth-redirect'
 
 export default function ReceivePurchaseOrderPage() {
   const router = useRouter()
@@ -15,7 +16,7 @@ export default function ReceivePurchaseOrderPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
   }, [router])

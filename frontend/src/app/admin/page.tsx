@@ -6,6 +6,7 @@ import Link from 'next/link'
 import AuthService from '@/services/auth'
 import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
+import { loginHref } from '@/lib/auth-redirect'
 
 // PRD §10.1.3 `/admin`（DEF-358(d)，Sprint 258）：平台管理台統一入口首頁。
 // 各功能頁（/admin/tenants 等）皆無前端角色守門，純依賴後端 403；本頁沿用同一慣例，
@@ -65,7 +66,7 @@ export default function AdminOverviewPage() {
   useEffect(() => {
     const currentUser = AuthService.getCurrentUser()
     if (!currentUser) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     let cancelled = false

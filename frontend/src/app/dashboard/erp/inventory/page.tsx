@@ -10,6 +10,7 @@ import InventoryService, {
   LowStockAlertDto,
 } from '@/services/erp/inventory'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 export default function InventoryPage() {
   const router = useRouter()
@@ -48,7 +49,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     fetchData()

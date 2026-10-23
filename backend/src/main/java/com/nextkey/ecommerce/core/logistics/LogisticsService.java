@@ -149,7 +149,8 @@ public class LogisticsService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_7500, "Logistics not found"));
         // DEF-036：物流查詢租戶擁有權檢查——比照 createLogistics 的 checkOrderTenant，
         // 杜絕任一持有 order:read 的租戶對他租戶物流單的跨租戶讀取（IDOR）。
-        checkLogisticsTenant(logistics);
+        // DEF-408：讀取另放行「該訂單的買家本人」，見 checkOrderReadAccess。
+        checkLogisticsReadAccess(logistics);
         return toLogisticsResponse(logistics);
     }
 
@@ -160,8 +161,8 @@ public class LogisticsService {
     public List<LogisticsDto.LogisticsResponse> getLogisticsByOrderId(UUID orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
-        // DEF-036：依訂單查物流列表亦須租戶擁有權檢查，理由同上。
-        checkOrderTenant(order);
+        // DEF-036：依訂單查物流列表亦須租戶擁有權檢查，理由同上。DEF-408：讀取另放行該訂單的買家本人。
+        checkOrderReadAccess(order);
         return logisticsRepository.findByOrderId(orderId).stream()
                 .map(this::toLogisticsResponse)
                 .collect(Collectors.toList());
@@ -175,8 +176,8 @@ public class LogisticsService {
         // DEF-381：改用物流專用錯誤碼（原誤用 ERP 供應商的 E_7000）。
         Logistics logistics = logisticsRepository.findById(logisticsId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_7500));
-        // DEF-036：追蹤查詢租戶擁有權檢查，理由同上。
-        checkLogisticsTenant(logistics);
+        // DEF-036：追蹤查詢租戶擁有權檢查，理由同上。DEF-408：讀取另放行該訂單的買家本人。
+        checkLogisticsReadAccess(logistics);
 
         // Mock 追蹤資訊
         String statusMessage = getStatusMessage(logistics.getStatus());
@@ -203,8 +204,8 @@ public class LogisticsService {
         // DEF-381：改用物流專用錯誤碼（原誤用 ERP 供應商的 E_7000）。
         Logistics logistics = logisticsRepository.findById(logisticsId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_7500));
-        // DEF-036：追蹤歷史查詢租戶擁有權檢查，理由同上。
-        checkLogisticsTenant(logistics);
+        // DEF-036：追蹤歷史查詢租戶擁有權檢查，理由同上。DEF-408：讀取另放行該訂單的買家本人。
+        checkLogisticsReadAccess(logistics);
 
         // Mock 追蹤事件
         List<LogisticsDto.TrackingEvent> events = generateMockEvents(logistics);
@@ -336,6 +337,29 @@ public class LogisticsService {
         Order order = orderRepository.findById(logistics.getOrderId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
         checkOrderTenant(order);
+    }
+
+    /**
+     * 物流「讀取」的擁有權檢查（DEF-408，Sprint 301，使用者拍板）：除了 {@link #checkOrderTenant} 放行的「該訂單的店鋪租戶」與
+     * admin，也放行「該訂單的買家本人」——PRD §10.1.1 路由表寫 {@code /orders/[id]}＝「訂單詳情（含物流追蹤）」。
+     *
+     * <p>只用在四個讀取方法；寫入（建立／更新狀態／取消）仍只走 {@link #checkOrderTenant}。買家以<b>使用者 id</b>比對而不是租戶：
+     * 沒有店鋪的買家的租戶是系統租戶佔位值（DEF-190），比對租戶會讓任兩個買家互通。目前使用者或訂單的買家欄位為 null 時
+     * 不放行（兩邊都是 null 不算相等）。
+     */
+    private void checkOrderReadAccess(final Order order) {
+        UUID currentUser = TenantContext.getCurrentUser();
+        if (currentUser != null && currentUser.equals(order.getUserId())) {
+            return;
+        }
+        checkOrderTenant(order);
+    }
+
+    /** 依物流單反查所屬訂單並執行讀取擁有權檢查（DEF-408）；寫入方法仍用 {@link #checkLogisticsTenant}。 */
+    private void checkLogisticsReadAccess(final Logistics logistics) {
+        Order order = orderRepository.findById(logistics.getOrderId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_5000, "Order not found"));
+        checkOrderReadAccess(order);
     }
 
     private String getStatusMessage(final Logistics.LogisticsStatus status) {

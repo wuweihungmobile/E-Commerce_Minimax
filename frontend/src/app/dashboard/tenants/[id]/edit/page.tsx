@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import TenantEditForm from '@/components/tenant/TenantEditForm'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 interface TenantEditPageProps {
   params: Promise<{
@@ -18,7 +19,7 @@ export default function TenantEditPage({ params }: TenantEditPageProps) {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
 

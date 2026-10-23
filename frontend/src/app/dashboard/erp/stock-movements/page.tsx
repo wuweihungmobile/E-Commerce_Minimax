@@ -11,6 +11,7 @@ import StockMovementService, {
   StockMovementType,
 } from '@/services/erp/stockMovement'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 export default function StockMovementsPage() {
   const router = useRouter()
@@ -43,7 +44,7 @@ export default function StockMovementsPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     fetchMovements()

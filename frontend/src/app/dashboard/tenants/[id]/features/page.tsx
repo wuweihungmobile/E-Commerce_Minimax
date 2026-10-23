@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { loginHref } from '@/lib/auth-redirect'
 
 // 欄位名必須與後端 FeatureToggleResponse.FeatureInfo 完全一致（DEF-168）。
 // 本介面原本用 feature/displayName/enabled，與後端的 featureKey/featureName/isEnabled 全數對不上，
@@ -57,7 +58,7 @@ export default function FeatureTogglePage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
 

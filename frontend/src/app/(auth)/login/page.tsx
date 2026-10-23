@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import AuthService from '@/services/auth'
 import { isOAuthProviderConfigured, startOAuthFlow, type OAuthProviderId } from '@/services/oauth'
+import { landingPathForRole, safeRedirectTarget } from '@/lib/auth-redirect'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -28,7 +29,12 @@ export default function LoginPage() {
     try {
       const response = await AuthService.login({ email, password })
       AuthService.storeAuthData(response)
-      router.push('/dashboard')
+      // DEF-409：?redirect=（同源站內路徑）優先，否則依角色分流，不再一律進 /dashboard。
+      // 在送出事件裡讀 window.location，不用 useSearchParams（它在預先渲染的路由需要 Suspense）。
+      const redirect = new URLSearchParams(window.location.search).get('redirect')
+      router.push(
+        safeRedirectTarget(redirect, window.location.origin) ?? landingPathForRole(response.user.role)
+      )
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { message?: string } } }

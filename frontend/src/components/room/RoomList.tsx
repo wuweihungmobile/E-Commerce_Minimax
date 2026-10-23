@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import RoomService, { RoomListItem, RoomFilters } from '@/services/room'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 export default function RoomList() {
   const router = useRouter()
@@ -24,7 +25,7 @@ export default function RoomList() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     fetchRooms()

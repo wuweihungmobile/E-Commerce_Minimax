@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0.9（文件修訂；規格基準仍為 v1.0）
+> **版本**: v1.0.10（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -20,6 +20,7 @@
 > - **v1.0.6 → v1.0.7（2026-10-22，Sprint 292，文件一致性檢查第五輪）**：①移除 §6.6（M15 CMS）末尾一個沒有對應開頭的 ``` 孤兒圍欄——它讓其後所有程式碼區塊的開／關角色對調，§6.7 起至 §7 的標題與 RBAC 矩陣在 CommonMark 渲染器（GitHub、VS Code 預覽）中被吞進程式碼區塊（以 markdown-it 14.1.0 實測：修正前 10 個標題被吞、修正後 0 個）；②§1.2 技術棧表 `Next.js 15` 校正為 `Next.js 16`（`frontend/package.json` 自 2026-05-10 起即為 16.x，現為 16.4.2）；③§10.1.2 補列 S253 校對後才出現或漏列的 `/dashboard/reviews`（Sprint 287，DEF-392）、`/dashboard/erp`、`/cms` 系列四頁。既有規格內文未改寫。
 > - **v1.0.7 → v1.0.8（2026-10-22，Sprint 299，DEF-402）**：使用者裁決「房源日曆與可訂性查詢維持需登入」（實作的 `GET /api/v2/bookings/calendar`、`GET /api/v2/bookings/availability` 需要 `booking:read`，匿名回 401）。①§18 RTM-US-G1 的驗收條件由「Guest 可完整瀏覽所有商品列表、房源日曆、定價」改為「Guest 可完整瀏覽商品列表與房源資訊／底價；房源日曆（每日空房狀態與動態定價）與可訂性查詢需登入後使用，訪客在日曆區看到『登入後可查看即時空房』」；②§9.13 的 `GET /api/v2/rooms/:id/pricing-calendar`（C 端定價日曆）角色由 `Guest+` 改為 `Buyer+`（該端點後端**未實作**，日曆實際由 `/api/v2/bookings/calendar` 提供）。其餘規格內文未改寫。
 > - **v1.0.8 → v1.0.9（2026-10-23，Sprint 300，DEF-404）**：§8.2.13 `return_request_items.sku_id` 補註「可為空」——沒建 SKU（未啟用庫存追蹤）的商品，其訂單品項沒有 SKU，退貨品項的 `sku_id` 就是空的，收貨時不回補庫存（V93 將欄位由 NOT NULL 改為可空；修復前這種退貨申請回 500）。其餘規格內文未改寫。
+> - **v1.0.9 → v1.0.10（2026-10-23，Sprint 301，DEF-407／408／409）**：使用者在 Sprint 300 收尾的 `AskUserQuestion` 中本人選擇建議選項（真實的互動輸入，不是我的推論）。①§9.16 新增「營收口徑」：店鋪後台的營收＝已付款、未取消、未退款的訂單（`PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED`），平均客單價的分母為同一組訂單的筆數；②§10.1.1 `/orders/[id]`：買家本人可讀取自己訂單的物流（四個讀取端點放行該訂單的買家，寫入仍限店家／管理員）；③§10.1.1 `/login`：登入後依角色分流（`BUYER`→`/`、店家類→`/dashboard`、管理員→`/admin`），並支援同源站內路徑的 `?redirect=` 回到原頁（不接受外部網址，防開放轉址）。其餘規格內文未改寫。
 
 ---
 
@@ -2111,6 +2112,8 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `GET` | `/api/v2/dashboard/bookings` | 店鋪預訂列表 | StoreOwner/StoreStaff |
 | `GET` | `/api/v2/dashboard/revenue` | 營收報表 | StoreOwner |
 
+> **營收口徑（Sprint 301，DEF-407，使用者拍板）**：店鋪後台所有「營收」數字（總覽的今日／本月／本年、營收報表的總營收與每日趨勢）＝**已付款、未取消、未退款**的訂單（狀態 `PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED`）的訂單金額；平均客單價＝營收 ÷ 這一組訂單的筆數。未付款（`CREATED`）、已取消、等待退款或已退款的訂單不計入。`GET /api/v2/seller/dashboard` 的 `revenue30d` 是另一個數字「已實現營收」（僅 `COMPLETED`），不與上述營收互相比較。儀表板營收目前不含訂房（本 PRD 未規定，另案）。報表 `netRevenue`（淨營收）扣除退款的算法另有缺陷（DEF-412，待裁決），見 [API_M13](../02_architecture/api/API_M13_Seller_Dashboard.md) §7。
+
 ### 9.17 全域 API 規範（繼承 v0.8 §7.9 + v0.9 擴展 + Loop 1 修正）
 
 | 規則 | 說明 |
@@ -2140,10 +2143,10 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `/cart` | M04 | 購物車（Phase 2） | 不變 |
 | `/checkout` | M05/M07 | **結帳頁（Phase 1 為 Payment Mock 頁面）**，另有 `/checkout/mixed`、`/checkout/product` 子路由（混合購物車／純商品結帳分流，實作演進，PRD 未載） | 不變＋擴充 |
 | `/orders` | M05 | 我的訂單（零售），另有 `/orders/[id]/payment/cancel`／`/payment/success` 子路由 | 不變＋擴充 |
-| `/orders/[id]` | M05/M11 | 訂單詳情（含物流追蹤） | 不變 |
+| `/orders/[id]` | M05/M11 | 訂單詳情（含物流追蹤）。**買家本人可讀取自己訂單的物流（Sprint 301，DEF-408，使用者拍板）**：物流的四個讀取端點放行該訂單的買家，寫入端點仍限店家／管理員，另一位買家讀別人訂單的物流仍是 403 | 不變 |
 | `/bookings` | M06 | 我的預訂（民宿），另有對應 `payment/cancel`／`payment/success` 子路由 | 不變＋擴充 |
 | `/bookings/[id]` | M06 | 預訂詳情 | 不變 |
-| `/login` | M03 | **改名**：登入頁不在 `/auth/` 前綴下 | 改名 |
+| `/login` | M03 | **改名**：登入頁不在 `/auth/` 前綴下。**登入後的去向（Sprint 301，DEF-409，使用者拍板）**：依角色分流——`BUYER` → `/`（商店首頁）、`STORE_OWNER`／`STORE_STAFF`／`SELLER`／`HOST` → `/dashboard`、`ADMIN`／`SUPER_ADMIN` → `/admin`；網址帶 `?redirect=` 時優先回到該頁，但只接受以 `/` 開頭的同源站內路徑（外部網址、`//host`、`/\host`、`javascript:`，以及登入／註冊／密碼／驗證／OAuth 流程頁面一律忽略，改用角色預設落地頁，防開放轉址）。OAuth 登入不經過本頁，只做角色分流、不支援 `?redirect=`；登出不帶 `?redirect=` | 改名＋擴充 |
 | `/register` | M03 | **改名**：註冊頁不在 `/auth/` 前綴下 | 改名 |
 | `/auth/profile` | M03 | **已補齊（DEF-358b，Sprint 257）**：個人資料編輯表單（姓名/電話等，`PUT /v2/auth/me`）。`/account` 頁仍只負責個資下載與刪除帳戶（GDPR 自助），兩頁職責不同、刻意並存 | 已完成 |
 | `/auth/kyc` | M03 | KYC 實名認證（Phase 2，尚未實作，符合既有 Phase 標註） | 不變 |

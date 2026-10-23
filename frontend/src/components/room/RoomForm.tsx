@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import RoomService, { CreateRoomRequest, UpdateRoomRequest } from '@/services/room'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 interface FormErrors {
   title?: string
@@ -84,7 +85,7 @@ export default function RoomForm({ roomId }: RoomFormProps) {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     if (roomId) {

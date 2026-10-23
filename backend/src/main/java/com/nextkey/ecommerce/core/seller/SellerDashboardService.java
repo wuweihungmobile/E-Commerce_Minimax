@@ -43,6 +43,7 @@ public class SellerDashboardService {
         long orderCount7d = orderRepository.countByTenantIdAndCreatedAtAfter(tenantId, since7d);
         long orderCount30d = orderRepository.countByTenantIdAndCreatedAtAfter(tenantId, since30d);
 
+        // 已實現營收（只加 COMPLETED），不是 AnalyticsService 的「營收」——見 SellerDashboardDto.DashboardResponse#revenue30d（DEF-407）。
         BigDecimal revenue30d = orderRepository.sumTotalAmountByTenantIdAndStatusAndCreatedAtAfter(
                 tenantId, Order.OrderStatus.COMPLETED, since30d);
 

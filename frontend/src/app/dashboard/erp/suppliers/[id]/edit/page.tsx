@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation'
 import SupplierForm from '@/components/erp/SupplierForm'
 import AuthService from '@/services/auth'
 import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
+import { loginHref } from '@/lib/auth-redirect'
 
 export default function EditSupplierPage() {
   const router = useRouter()
@@ -15,7 +16,7 @@ export default function EditSupplierPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
   }, [router])

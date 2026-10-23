@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { loginHref } from '@/lib/auth-redirect'
 
 interface CartItem {
   cartItemKey: string
@@ -209,7 +210,7 @@ export default function CartPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     fetchCart()

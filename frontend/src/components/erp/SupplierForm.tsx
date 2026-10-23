@@ -10,6 +10,7 @@ import SupplierService, {
   SupplierCreateRequest,
 } from '@/services/erp/supplier'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 interface SupplierFormProps {
   supplierId?: string
@@ -56,7 +57,7 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
 

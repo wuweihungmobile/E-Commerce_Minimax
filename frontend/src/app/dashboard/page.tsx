@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import AuthService from '@/services/auth'
 import AnalyticsService, { DashboardStats, OrderStats, RevenueStats } from '@/services/analytics'
+import { loginHref } from '@/lib/auth-redirect'
 
 const QUICK_LINKS = [
   { href: '/dashboard/products', label: '商品管理' },
@@ -50,7 +51,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const currentUser = AuthService.getCurrentUser()
     if (!currentUser) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     let cancelled = false

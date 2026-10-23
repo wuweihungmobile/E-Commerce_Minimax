@@ -6,6 +6,7 @@ import Link from 'next/link'
 import ProductList from '@/components/product/ProductList'
 import AuthService from '@/services/auth'
 import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
+import { loginHref } from '@/lib/auth-redirect'
 
 export default function ProductsPage() {
   const router = useRouter()
@@ -13,7 +14,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
   }, [router])

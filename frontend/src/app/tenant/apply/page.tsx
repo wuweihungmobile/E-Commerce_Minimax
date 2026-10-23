@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import TenantApplyForm from '@/components/tenant/TenantApplyForm'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 export default function TenantApplyPage() {
   const router = useRouter()
@@ -11,7 +12,7 @@ export default function TenantApplyPage() {
   useEffect(() => {
     // 檢查用戶是否已登入
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
   }, [router])

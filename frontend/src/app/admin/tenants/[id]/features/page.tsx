@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { loginHref } from '@/lib/auth-redirect'
 
 // DEF-321(e)：PRD §10.1.3 列為 /admin/tenants/[id]/features，先前後端端點
 // （GET/PUT /v2/admin/tenants/{id}/features）已存在但零前端呼叫點，本頁補上。
@@ -55,7 +56,7 @@ export default function AdminTenantFeaturesPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
   }, [router])

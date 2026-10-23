@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import PricingCalendarPreview from '@/components/pricing/PricingCalendarPreview'
 import AuthService from '@/services/auth'
 import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
+import { loginHref } from '@/lib/auth-redirect'
 
 // DEF-321(e)：PRD §10.1.2 列為獨立路由 /dashboard/pricing/calendar，
 // 但原實作只把 <PricingCalendarPreview /> 嵌在 /dashboard/pricing/rules 篩選房源 ID 之後，
@@ -18,7 +19,7 @@ export default function PricingCalendarPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
   }, [router])

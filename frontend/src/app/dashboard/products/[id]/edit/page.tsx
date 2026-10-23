@@ -8,6 +8,7 @@ import ProductForm from '@/components/product/ProductForm'
 import SkuManager from '@/components/product/SkuManager'
 import AuthService from '@/services/auth'
 import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
+import { loginHref } from '@/lib/auth-redirect'
 
 export default function EditProductPage() {
   const router = useRouter()
@@ -16,7 +17,7 @@ export default function EditProductPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
   }, [router])

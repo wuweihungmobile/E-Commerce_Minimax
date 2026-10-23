@@ -11,6 +11,7 @@ import InventoryService, {
   InventoryDetailDto,
 } from '@/services/erp/inventory'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 export default function InventoryDetailPage() {
   const router = useRouter()
@@ -21,7 +22,7 @@ export default function InventoryDetailPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
 

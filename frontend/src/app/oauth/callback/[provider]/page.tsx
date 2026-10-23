@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import AuthService from '@/services/auth'
 import { notifyAuthChange } from '@/services/authStore'
+import { landingPathForRole } from '@/lib/auth-redirect'
 import OAuthApiService, {
   type OAuthProviderId,
   consumeOAuthState,
@@ -68,7 +69,8 @@ export default function OAuthCallbackPage() {
           const authResponse = await OAuthApiService.login(provider, code, redirectUri)
           AuthService.storeAuthData(authResponse)
           notifyAuthChange()
-          router.push('/')
+          // DEF-409：與密碼登入同一套角色分流（OAuth 不經過本站登入頁，不支援 ?redirect=）
+          router.push(landingPathForRole(authResponse.user.role))
         } else {
           await OAuthApiService.link(provider, code, redirectUri)
           router.push('/account?linked=' + provider)

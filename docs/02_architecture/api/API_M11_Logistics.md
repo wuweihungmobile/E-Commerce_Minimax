@@ -1,7 +1,7 @@
 # API 規格文件 - M11 物流追蹤 / API Specification - M11 Logistics
 
 > **文件編號**: API-M11
-> **文件版本**: v1.2（Sprint 300：§7 新增「買家看不到自己訂單的物流」，DEF-408，僅文件；v1.1＝Sprint 287，DEF-330a：運費模板列表改用專屬權限 `shipping_template:read`；同時更正 v1.0 對 `BUYER`/`GUEST` 的 `product:read` 誤述，見 §5／§7）
+> **文件版本**: v1.3（Sprint 301：DEF-408 已修復——四個讀取端點另放行「該訂單的買家本人」，§1.1／§1.2／§4.2～4.5／§5／§7／§8 同步；v1.2＝Sprint 300，§7 新增「買家看不到自己訂單的物流」，僅文件；v1.1＝Sprint 287，DEF-330a：運費模板列表改用專屬權限 `shipping_template:read`；同時更正 v1.0 對 `BUYER`/`GUEST` 的 `product:read` 誤述，見 §5／§7）
 > **建立日期**: 2026-10-16
 > **最後更新**: 2026-10-23
 > **負責人**: SD (Marcus)
@@ -22,14 +22,14 @@
 | **模組名稱** | 物流追蹤 / Logistics |
 | **描述** | 訂單出貨後建立物流單（Mock Provider，無真實黑貓/新竹串接）、查詢與追蹤配送狀態、取消；另含商家運費模板 CRUD 與試算 |
 | **API 前綴** | `/api/v2/logistics/...`、`/api/v2/shipping-templates/...` |
-| **多租戶隔離** | 物流單無 `tenantId` 欄位，存取控制靠**反查訂單的 `tenantId`**（`checkOrderTenant`／`checkLogisticsTenant`）；運費模板有 `tenantId`，CRUD 三個方法皆以此隔離，唯獨**試算端點刻意不隔離**（§1.2 第 4 點） |
+| **多租戶隔離** | 物流單無 `tenantId` 欄位，存取控制靠**反查訂單**：寫入端點只認該訂單的店鋪租戶與 admin（`checkOrderTenant`／`checkLogisticsTenant`），四個讀取端點另放行**該訂單的買家本人**（`checkOrderReadAccess`／`checkLogisticsReadAccess`，Sprint 301，DEF-408）；運費模板有 `tenantId`，CRUD 三個方法皆以此隔離，唯獨**試算端點刻意不隔離**（§1.2 第 4 點） |
 | **Mock 說明** | 兩個 Controller 的 Javadoc 皆明寫「Mock Implementation」：物流商 API（追蹤事件、簽收地點）與運費模板計算皆為假資料／規則運算，無對接黑貓/新竹/來源物流商真實 API |
 
 ### 1.2 設計重點
 
 1. **建立物流單即出貨**：`POST /v2/logistics` 要求訂單狀態為 `CONFIRMED`，以原子 CAS（`updateStatusIfCurrent`）搶占轉為 `SHIPPING`，同一交易內扣庫存（`ProductInventoryService.deductOnShipment`，Sprint 218 DEF-303）、提交後通知買家已出貨（`notifyOrderShipped`）。搶輸（訂單已被併發推走）回 `E-5001`。
 2. **一張訂單至多一筆「作用中」物流單**：建立前查詢 `findByOrderId`，若存在狀態非 `DELIVERED`/`RETURNED` 的物流單則拒絕（詳見 §7 DEF-381，拋出的錯誤碼已於 Sprint 278 修正）。
-3. **租戶擁有權檢查一律先於狀態檢查**（DEF-019/036 既有修法，IDOR 正確順序）：`SUPER_ADMIN`／`ADMIN` 不受限；其餘呼叫者須 `TenantContext.isStoreTenant(tenantId) && tenantId.equals(order.getTenantId())`，否則 403 `E-1007`。`getLogistics`／`getLogisticsByOrderId`／`trackLogistics`／`getTrackingDetail`／`updateLogisticsStatus`／`cancelLogistics` 六個讀寫端點皆比對擁有權。
+3. **擁有權檢查一律先於狀態檢查**（DEF-019/036 既有修法，IDOR 正確順序）：`SUPER_ADMIN`／`ADMIN` 不受限；其餘呼叫者須 `TenantContext.isStoreTenant(tenantId) && tenantId.equals(order.getTenantId())`，否則 403 `E-1007`。`getLogistics`／`getLogisticsByOrderId`／`trackLogistics`／`getTrackingDetail`／`updateLogisticsStatus`／`cancelLogistics` 六個端點皆比對擁有權。**讀取端點（前四個）另放行該訂單的買家本人（Sprint 301，DEF-408，使用者拍板）**：以**使用者 id** 比對訂單的 `userId`（`checkOrderReadAccess`），而不是比對租戶——沒有店鋪的買家的租戶是系統租戶佔位值（DEF-190），比對租戶會讓任兩個買家互通；目前使用者或訂單的 `userId` 為 `null` 時不放行（兩邊都是 `null` 不算相等）。**寫入端點（建立／更新狀態／取消）不放寬**，買家本人對它們仍是 403。
 4. **運費試算刻意不做租戶過濾（DEF-037，Sprint 107 已拍板結案）**：`calculateFee` 只憑 `templateId` 即可試算，支援買家跨店比價；回應只含計算參數，無 PII、無寫入路徑，**請勿「順手」加上租戶過濾**（已三度被掃描誤判為缺漏並結案）。
 5. **狀態機**（`LogisticsStatus`）：`PENDING → PICKED_UP → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED`，`FAILED`／`RETURNED` 為另外兩個終態。`updateLogisticsStatus` 不驗證轉換合法性（可任意指定任何 `LogisticsStatus`，包括倒退），僅在轉為 `DELIVERED` 時記錄 `deliveryTime`、轉為 `PICKED_UP` 時記錄 `pickupTime`，並嘗試同步訂單狀態為 `DELIVERED`（原子 CAS，搶輸只記 warning log，不拋例外）。
 6. **取消規則**：`DELIVERED` 的物流單無法取消（`E-7502`）；原子 CAS（`cancelIfNotStatus`）防止與併發的「標記已送達」競態（DEF-158）；取消會把狀態改為 `RETURNED`（**沒有獨立的 `CANCELLED` 狀態**，取消與「退貨」共用同一個終態值）。
@@ -131,39 +131,39 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 
 ### 4.2 `GET /v2/logistics/{logisticsId}` — 物流單詳情
 
-**權限**：`order:read`，且限訂單所屬租戶或 admin（反查訂單執行 `checkOrderTenant`）。
+**權限**：`order:read`，且限訂單所屬租戶、admin，或**該訂單的買家本人**（反查訂單執行 `checkOrderReadAccess`；Sprint 301，DEF-408）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | 物流單不存在 | 404 | `E-7500`（Sprint 278／DEF-381 修復前誤用供應商的 `E-7000`，見 §7） |
-| 非擁有租戶且非 admin | 403 | `E-1007` |
+| 非擁有租戶、非 admin，也不是該訂單的買家本人（含另一位買家） | 403 | `E-1007` |
 
 ### 4.3 `GET /v2/logistics/order/{orderId}` — 依訂單查物流列表
 
-**權限**：`order:read`，且限訂單所屬租戶或 admin。回應 `List<LogisticsResponse>`（可能為空陣列，一張訂單理論上只會有一筆，見 §7 已知限制）。
+**權限**：`order:read`，且限訂單所屬租戶、admin，或**該訂單的買家本人**（Sprint 301，DEF-408）。回應 `List<LogisticsResponse>`（可能為空陣列，一張訂單理論上只會有一筆，見 §7 已知限制）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | 訂單不存在 | 404 | `E-5000` |
-| 非擁有租戶且非 admin | 403 | `E-1007` |
+| 非擁有租戶、非 admin，也不是該訂單的買家本人（含另一位買家） | 403 | `E-1007` |
 
 ### 4.4 `GET /v2/logistics/{logisticsId}/track` — 追蹤目前狀態
 
-**權限**：`order:read`，且限訂單所屬租戶或 admin。回應 `StatusResponse`（含 Mock 的 `statusMessage`／`location`，依 provider 固定回「黑貓物流中心-台北」或「新竹物流中心-新竹」）。
+**權限**：`order:read`，且限訂單所屬租戶、admin，或**該訂單的買家本人**（Sprint 301，DEF-408）。回應 `StatusResponse`（含 Mock 的 `statusMessage`／`location`，依 provider 固定回「黑貓物流中心-台北」或「新竹物流中心-新竹」）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | 物流單不存在 | 404 | `E-7500`（Sprint 278／DEF-381 修復前誤用 `E-7000`，見 §7） |
-| 非擁有租戶且非 admin | 403 | `E-1007` |
+| 非擁有租戶、非 admin，也不是該訂單的買家本人（含另一位買家） | 403 | `E-1007` |
 
 ### 4.5 `GET /v2/logistics/{logisticsId}/tracking-detail` — 追蹤歷史事件
 
-**權限**：`order:read`，且限訂單所屬租戶或 admin。回應 `TrackingDetail`（Mock 事件列表，依目前狀態回推 1~4 筆固定時間差的事件，無真實歷史紀錄表）。
+**權限**：`order:read`，且限訂單所屬租戶、admin，或**該訂單的買家本人**（Sprint 301，DEF-408）。回應 `TrackingDetail`（Mock 事件列表，依目前狀態回推 1~4 筆固定時間差的事件，無真實歷史紀錄表）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | 物流單不存在 | 404 | `E-7500`（Sprint 278／DEF-381 修復前誤用 `E-7000`，見 §7） |
-| 非擁有租戶且非 admin | 403 | `E-1007` |
+| 非擁有租戶、非 admin，也不是該訂單的買家本人（含另一位買家） | 403 | `E-1007` |
 
 ### 4.6 `PUT /v2/logistics/{logisticsId}/status` — 更新物流狀態（Mock）
 
@@ -247,11 +247,13 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 | 端點 | BUYER | SELLER | HOST | STORE_OWNER | STORE_STAFF | ADMIN／SUPER_ADMIN |
 |------|:----:|:----:|:----:|:----:|:----:|:----:|
 | 建立物流單（§4.1） | ❌ | ✅（限本租戶訂單） | ❌ | ✅（限本租戶訂單） | ❌（僅 `order:read`） | ✅（跨租戶） |
-| 物流查詢/追蹤（§4.2～4.5） | ❌ | ✅（限本租戶） | ❌ | ✅（限本租戶） | ✅（限本租戶） | ✅（跨租戶） |
+| 物流查詢/追蹤（§4.2～4.5） | ✅（僅**自己的訂單**；另一位買家的訂單 ❌；Sprint 301／DEF-408） | ✅（限本租戶） | ❌ | ✅（限本租戶） | ✅（限本租戶） | ✅（跨租戶） |
 | 更新狀態/取消（§4.6～4.7） | ❌ | ✅（限本租戶） | ❌ | ✅（限本租戶） | ❌（僅 `order:read`） | ✅（跨租戶） |
 | 運費模板 建立／更新／刪除（§4.8、4.10～4.11） | ❌ | ✅（限本租戶，`product:*`） | ❌ | ✅（限本租戶） | ❌（僅 `product:read`） | ✅（僅限自己的租戶，無跨租戶旁路；多數管理員無店鋪，實務上操作的是系統租戶名下模板） |
 | 運費模板 列表（§4.9） | ❌（Sprint 287 起；見下方更正說明） | ✅（限本租戶，`shipping_template:read`） | ❌ | ✅（限本租戶） | ✅（限本租戶，唯讀） | ✅（僅限自己的租戶，無跨租戶旁路，同上） |
 | 試算運費（§4.12） | ✅（不限租戶；見下方更正說明） | ✅（不限租戶） | ❌ | ✅（不限租戶） | ✅（不限租戶） | ✅（不限租戶） |
+
+**Sprint 301（DEF-408）買家讀取說明**：「物流查詢/追蹤」列的 BUYER 欄 ✅ 指的是「該訂單的買家本人」（訂單的 `userId` ＝ 目前使用者），不是租戶比對；依程式邏輯這條規則看的是使用者而不是角色，所以向別間店購物的店主也適用，另一位買家的訂單仍是 403。「更新狀態/取消」與「建立物流單」兩列沒有任何放寬。
 
 `HOST` 無 `order:*`／`product:*`／`shipping_template:*` 相關權限，本模組全部端點皆不可呼叫。**更正（Sprint 287 複核）**：原文件誤稱「`BUYER`／`HOST`／`GUEST` 無 `product:*` 相關權限」——`RolePermissionMapping.java:33`／`:27` 顯示 `BUYER`／`GUEST` 皆持有 `PRODUCT_READ`（僅 `HOST` 真的沒有）。故試算運費（§4.12）對 `BUYER`／`GUEST` 從一開始即可呼叫，§1.2 第 4 點「買家跨店比價」設計意圖確實達成，§7 原「已知限制」一項已更正、不再視為待辦。運費模板**列表**（§4.9）原同樣借用 `product:read`，`BUYER`／`GUEST` 原亦可呼叫；Sprint 287（DEF-330a）改用專屬的 `shipping_template:read` 後收緊，`BUYER`／`GUEST` 不再持有，現在才真的不可呼叫列表端點。
 
@@ -278,7 +280,7 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 
 | 項目 | 說明 |
 |------|------|
-| **買家看不到自己訂單的物流（DEF-408，Sprint 300 登記，待使用者裁決）** | PRD §10.1.1 路由表寫 `/orders/[id]`＝「訂單詳情（含物流追蹤）」，但四個讀取端點（依訂單取得物流列表、取得物流資訊、追蹤、詳細追蹤歷史）都以 `checkOrderTenant` 守門，只放行該訂單的店鋪租戶與 admin；買家對自己訂單的 `GET /v2/logistics/order/{orderId}` 實測一律 403（Sprint 300，已送達、已付款、未付款三種訂單皆然）。前端以 `.catch(() => [])` 吞掉，「物流追蹤」卡片顯示「尚未出貨」，連已送達的訂單也是這句。開放買家讀取是授權規則變更，所以只登記並附建議（僅開放讀取類端點給該訂單的買家本人，寫入端點維持店家／admin；另一位買家仍須 403），沒有改程式 |
+| **買家看不到自己訂單的物流（DEF-408，Sprint 300 登記、Sprint 301 已修復）** | PRD §10.1.1 路由表寫 `/orders/[id]`＝「訂單詳情（含物流追蹤）」，但四個讀取端點原本都以 `checkOrderTenant` 守門，只放行該訂單的店鋪租戶與 admin；買家對自己訂單的 `GET /v2/logistics/order/{orderId}` 實測一律 403（Sprint 300，已送達、已付款、未付款三種訂單皆然），前端以 `.catch(() => [])` 吞掉，「物流追蹤」卡片連已送達的訂單都寫「尚未出貨」。**Sprint 301 依使用者的決定**（`AskUserQuestion` 中本人選「只開放讀取給買家本人」）：四個讀取端點另放行該訂單的買家本人（§1.2 第 3 點），寫入端點不放寬，另一位買家仍是 403。**驗證**：`LogisticsServiceTenantAccessTest` 新增 9 個單元測試（8→17）；真實全棧 E2E `at-logistics-buyer-real.spec.ts` 4 個案例，物流單由真實出貨路徑建立（店主確認訂單後 `POST /v2/logistics`），見 §8。**仍待注意**：前端 `(auth)/orders/[id]/page.tsx` 仍以 `.catch(() => [])` 吞掉讀取物流的失敗（本輪沒改），日後若又出現 403 或其他錯誤，畫面仍只會顯示「尚未出貨」而不是錯誤訊息 |
 | **`updateLogisticsStatus` 的 `status` 解析未捕捉例外（DEF-385，已於 Sprint 278 修復）** | §4.6 原以 `@RequestParam String` 收參數後手動 `valueOf()`，無 try-catch，無效字串會落入 catch-all 變 500／`E-9900`。已補上 try-catch，轉譯為新增的專屬碼 `E-7505`（422）。同一缺陷模式的另兩個實例（M16 ERP 的 `ErpController.listPurchaseOrders`、`SupplierService.listSuppliers`）亦已一併修復，見 [API_M16_ERP.md](./API_M16_ERP.md) |
 | **物流錯誤碼大量誤用（DEF-381，已於 Sprint 278 修復）** | `LogisticsService` 原只有 `cancelLogistics`（DEF-011）使用正確的 `E_7500`；`getLogistics`／`trackLogistics`／`getTrackingDetail`／`updateLogisticsStatus` 四個方法原沿用 ERP 模組的 `E_7000`；`createLogistics` 的衝突情境原誤用 `E_7001`。現已全數改為 `E_7500`／`E_7501`，`LogisticsServiceTest` 新增 5 個單元測試斷言實際錯誤碼 |
 | 一張訂單至多一筆作用中物流單是應用層檢查，無資料庫唯一約束 | `logistics` 表的 `order_id` 無唯一索引兜底，§1.2 第 2 點的檢查與建立之間雖有狀態 CAS 防護（DEF-123），但理論上地基完全依賴應用層邏輯，非資料庫不變量 |
@@ -298,7 +300,7 @@ FRD 完全無 M11 章節（見文件頂部狀態說明）。
 | FRD | 無章節（見文件頂部狀態說明） |
 | 相關規格 | `docs/01_requirements/M11_Cancellation_Rules_Validation.md`（物流取消業務規則確認報告） |
 | 實作 | `LogisticsController`、`ShippingTemplateController`（`api/controller/`）；`LogisticsService`、`ShippingTemplateService`（`core/logistics/`）；`Logistics`、`ShippingTemplate`（`domain/model/logistics/`） |
-| 契約測試 | [LogisticsServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceTest.java)、[LogisticsServiceCancelTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceCancelTest.java)、[LogisticsServiceOwnershipTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceOwnershipTest.java)、[LogisticsServiceTenantAccessTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceTenantAccessTest.java)、[ShippingTemplateServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/ShippingTemplateServiceTest.java)、[ShippingTemplateControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/ShippingTemplateControllerE2ETest.java)、[M11LogisticsOrderIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M11LogisticsOrderIntegrationTest.java) |
+| 契約測試 | [LogisticsServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceTest.java)、[LogisticsServiceCancelTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceCancelTest.java)、[LogisticsServiceOwnershipTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceOwnershipTest.java)、[LogisticsServiceTenantAccessTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/LogisticsServiceTenantAccessTest.java)、[ShippingTemplateServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/logistics/ShippingTemplateServiceTest.java)、[ShippingTemplateControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/ShippingTemplateControllerE2ETest.java)、[M11LogisticsOrderIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M11LogisticsOrderIntegrationTest.java)、[at-logistics-buyer-real.spec.ts](../../../frontend/e2e/at-logistics-buyer-real.spec.ts)（真實全棧 E2E，Sprint 301，DEF-408） |
 
 ---
 

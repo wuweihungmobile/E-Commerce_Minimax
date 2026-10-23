@@ -9,6 +9,7 @@ import PricingService, { CalculatePriceRequest, CalculatePriceResponse, PriceBre
 import AuthService from '@/services/auth'
 import type { CalendarDay } from '@/services/booking'
 import { toLocalDateString } from '@/lib/date'
+import { loginHref } from '@/lib/auth-redirect'
 
 interface PricingCalendarProps {
   roomListingId: string
@@ -32,7 +33,7 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
     }
   }, [router])
 

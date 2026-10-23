@@ -11,6 +11,7 @@ import PurchaseOrderService, {
   POStatus,
 } from '@/services/erp/purchaseOrder'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 export default function PurchaseOrdersPage() {
   const router = useRouter()
@@ -45,7 +46,7 @@ export default function PurchaseOrdersPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     fetchOrders()

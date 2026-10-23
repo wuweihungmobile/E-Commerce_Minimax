@@ -100,6 +100,29 @@ class AnalyticsRealDbIntegrationTest {
     }
 
     @Test
+    @DisplayName("🔴 DEF-407：未付款（CREATED）、等待退款（REFUNDING）、已退款（REFUNDED）不計營收——"
+            + "首頁今日／本月／本年、每日趨勢、營收報表三處口徑一致，平均客單價以入帳訂單數平均")
+    void revenue_excludesUnpaidAndRefunded_consistentAcrossStatsTrendAndReport() {
+        seedOrder("CREATED", "50.00", "2027-01-15T09:00:00+08:00");     // 今天，未付款
+        seedOrder("REFUNDING", "70.00", "2027-01-15T09:30:00+08:00");   // 今天，已取消、等待退款
+        seedOrder("REFUNDED", "80.00", "2027-01-15T09:45:00+08:00");    // 今天，已退款
+
+        AnalyticsDto.DashboardStats stats = analyticsService.getDashboardStats();
+        assertThat(stats.getTodayRevenue()).as("今天入帳：COMPLETED 100 + PAID 200").isEqualByComparingTo("300.00");
+        assertThat(stats.getMonthRevenue()).as("1/1 ~ 今天：昨天 COMPLETED 400 + 今天 300").isEqualByComparingTo("700.00");
+        assertThat(stats.getYearRevenue()).isEqualByComparingTo("700.00");
+
+        AnalyticsDto.RevenueStats report = analyticsService.getRevenueStats(AnalyticsDto.AnalyticsRequest.builder()
+                .startDate(LocalDate.of(2027, 1, 14)).endDate(LocalDate.of(2027, 1, 15)).granularity("DAY").build());
+        assertThat(report.getTotalRevenue()).isEqualByComparingTo("700.00");
+        assertThat(report.getDailyRevenue().getData().get(0).getRevenue()).as("1/14").isEqualByComparingTo("400.00");
+        assertThat(report.getDailyRevenue().getData().get(1).getRevenue())
+                .as("1/15 的趨勢不含 CREATED／REFUNDING／REFUNDED（原本是 420）").isEqualByComparingTo("300.00");
+        assertThat(report.getAverageOrderValue()).as("700 ÷ 3 張入帳訂單").isEqualByComparingTo("233.33");
+        assertThat(report.getTotalOrders()).as("區間內全部訂單：1/14 一張、1/15 六張").isEqualTo(7);
+    }
+
+    @Test
     @DisplayName("getRevenueStats（1/14~1/15，按日）：不拋例外，營收與分桶以營運日切界")
     void revenueStats_bucketsByBusinessDay() {
         AnalyticsDto.RevenueStats stats = analyticsService.getRevenueStats(AnalyticsDto.AnalyticsRequest.builder()

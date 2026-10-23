@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import PricingService, { PricingRule, PricingRuleType } from '@/services/pricing'
 import AuthService from '@/services/auth'
 import PricingCalendarPreview from '@/components/pricing/PricingCalendarPreview'
+import { loginHref } from '@/lib/auth-redirect'
 
 /**
  * 各規則型別的 config 參數欄位（AI-2404）。key 對齊後端 jsonb config。
@@ -72,7 +73,7 @@ export default function PricingRuleList() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     fetchRules()

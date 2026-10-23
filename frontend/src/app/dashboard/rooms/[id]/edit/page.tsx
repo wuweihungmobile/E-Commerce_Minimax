@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation'
 import RoomForm from '@/components/room/RoomForm'
 import AuthService from '@/services/auth'
 import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
+import { loginHref } from '@/lib/auth-redirect'
 
 export default function EditRoomPage() {
   const router = useRouter()
@@ -15,7 +16,7 @@ export default function EditRoomPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
   }, [router])

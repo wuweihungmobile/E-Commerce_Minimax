@@ -15,6 +15,7 @@ import OrderService, {
 } from '@/services/order'
 import AuthService from '@/services/auth'
 import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
+import { loginHref } from '@/lib/auth-redirect'
 
 const PAGE_SIZE = 20
 
@@ -75,7 +76,7 @@ export default function DashboardOrdersPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     fetchOrders(currentPage, status)

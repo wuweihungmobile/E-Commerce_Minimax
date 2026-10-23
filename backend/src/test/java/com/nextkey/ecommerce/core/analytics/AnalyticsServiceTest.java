@@ -94,7 +94,7 @@ class AnalyticsServiceTest {
     // ---- getRevenueStats ----
 
     @Test
-    @DisplayName("getRevenueStats：營收僅計可入帳狀態，AOV 以全部訂單數平均、淨額扣退款")
+    @DisplayName("getRevenueStats：營收僅計入帳狀態（已付款、未取消、未退款），AOV 以入帳訂單數平均（DEF-407）、淨額扣退款")
     void getRevenueStats_filtersByStatus_computesAovAndNet() {
         LocalDate start = LocalDate.of(2026, 1, 10);
         LocalDate end = LocalDate.of(2026, 1, 12);
@@ -116,13 +116,42 @@ class AnalyticsServiceTest {
         AnalyticsDto.RevenueStats stats = analyticsService.getRevenueStats(req);
 
         assertThat(stats.getTotalRevenue()).isEqualByComparingTo("300"); // 100 + 200
-        assertThat(stats.getTotalOrders()).isEqualTo(4);                  // 全部訂單數
-        assertThat(stats.getAverageOrderValue()).isEqualByComparingTo("75"); // 300 / 4
+        assertThat(stats.getTotalOrders()).isEqualTo(4);                  // 區間內全部訂單數（含未付款、已取消）
+        // DEF-407：分母是「入帳的訂單數」（PAID、CONFIRMED 共 2 張），不含未付款與已取消；原本是 300 / 4 ＝ 75
+        assertThat(stats.getAverageOrderValue()).isEqualByComparingTo("150"); // 300 / 2
         assertThat(stats.getTotalRefunds()).isEqualByComparingTo("50");
         assertThat(stats.getNetRevenue()).isEqualByComparingTo("250");   // 300 - 50
         assertThat(stats.getCurrency()).isEqualTo("TWD");
         // 每日分桶：1/10、1/11、1/12 共 3 天；訂單全落在 1/11
         assertThat(stats.getDailyRevenue().getData()).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-407 getRevenueStats：未付款（CREATED）、等待退款（REFUNDING）、已退款（REFUNDED）、已取消都不計營收；"
+            + "每日趨勢的營收加總＝總營收，平均客單價以入帳訂單數平均")
+    void getRevenueStats_unpaidAndRefundedNeverCountAsRevenue_trendAgreesWithTotal() {
+        LocalDate day = LocalDate.of(2026, 1, 11);
+        List<Order> orders = List.of(
+                order(Order.OrderStatus.PAID, "100", day),
+                order(Order.OrderStatus.COMPLETED, "200", day),
+                order(Order.OrderStatus.CREATED, "50", day),       // 未付款
+                order(Order.OrderStatus.REFUNDING, "70", day),     // 已取消、等待退款
+                order(Order.OrderStatus.REFUNDED, "80", day),      // 已退款
+                order(Order.OrderStatus.CANCELLED, "999", day));   // 已取消
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(orders);
+        when(paymentRepository.findByOrderIdInAndStatus(anyList(), any())).thenReturn(List.of());
+
+        AnalyticsDto.RevenueStats stats = analyticsService.getRevenueStats(AnalyticsDto.AnalyticsRequest.builder()
+                .startDate(day).endDate(day).build());
+
+        assertThat(stats.getTotalRevenue()).isEqualByComparingTo("300"); // 100 + 200
+        BigDecimal trendSum = stats.getDailyRevenue().getData().stream()
+                .map(AnalyticsDto.DailyRevenue::getRevenue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // 趨勢原本只排除 CANCELLED／REFUNDED，會把 CREATED 50 與 REFUNDING 70 算進去（420），與總營收（300）對不上
+        assertThat(trendSum).as("每日趨勢的營收加總必須等於總營收").isEqualByComparingTo("300");
+        assertThat(stats.getAverageOrderValue()).as("300 ÷ 2 張入帳訂單").isEqualByComparingTo("150");
+        assertThat(stats.getTotalOrders()).as("區間內全部訂單").isEqualTo(6);
     }
 
     @Test
@@ -234,6 +263,36 @@ class AnalyticsServiceTest {
         assertThat(stats.getPendingOrders()).isEqualTo(2);
         assertThat(stats.getActiveListings()).isEqualTo(7);
         assertThat(stats.getTotalRooms()).isEqualTo(4);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-407 getDashboardStats：今日／昨日／本月／本年營收只計入帳狀態，未付款與等待退款、已退款、已取消都不計")
+    void getDashboardStats_revenueCountsOnlyPaidStatuses() {
+        LocalDate today = LocalDate.now();
+        List<Order> mixed = List.of(
+                order(Order.OrderStatus.PAID, "100", today),
+                order(Order.OrderStatus.CONFIRMED, "10", today),
+                order(Order.OrderStatus.SHIPPING, "20", today),
+                order(Order.OrderStatus.DELIVERED, "30", today),
+                order(Order.OrderStatus.COMPLETED, "40", today),
+                order(Order.OrderStatus.CREATED, "500", today),     // 未付款
+                order(Order.OrderStatus.REFUNDING, "600", today),   // 已取消、等待退款
+                order(Order.OrderStatus.REFUNDED, "700", today),    // 已退款
+                order(Order.OrderStatus.CANCELLED, "800", today));  // 已取消
+        // 4 次呼叫（今日／昨日／本月／本年）都回同一批訂單：四個期間的口徑必須一致
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(mixed);
+        when(orderRepository.countByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(9, 0, 9);
+        when(orderRepository.countByTenantIdAndStatus(any(), any())).thenReturn(1);
+        when(productRepository.countByListingTenantIdAndListingStatus(any(), any())).thenReturn(0);
+        when(roomRepository.countByListingTenantId(any())).thenReturn(0);
+
+        AnalyticsDto.DashboardStats stats = analyticsService.getDashboardStats();
+
+        // 100 + 10 + 20 + 30 + 40；原本只排除 CANCELLED／REFUNDED，會把 CREATED 500 與 REFUNDING 600 算進去（1300）
+        assertThat(stats.getTodayRevenue()).isEqualByComparingTo("200");
+        assertThat(stats.getYesterdayRevenue()).isEqualByComparingTo("200");
+        assertThat(stats.getMonthRevenue()).isEqualByComparingTo("200");
+        assertThat(stats.getYearRevenue()).isEqualByComparingTo("200");
     }
 
     @Test

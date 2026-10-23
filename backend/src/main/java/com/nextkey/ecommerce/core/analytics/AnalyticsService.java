@@ -6,8 +6,10 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -50,6 +52,29 @@ public class AnalyticsService {
     private final RoomRepository roomRepository;
 
     private static final int DEFAULT_PAGE_SIZE = 30;
+
+    /**
+     * 計入「營收」的訂單狀態（DEF-407，Sprint 301，使用者拍板）：已付款、未取消、未退款。
+     *
+     * <p>先前同一個服務內有三種互相矛盾的口徑：報表總營收只加這五個狀態，但每日趨勢與首頁的今日／本月／本年只排除
+     * CANCELLED／REFUNDED，所以<b>未付款的 CREATED 與等待退款的 REFUNDING 被算成營收</b>，首頁與報表的數字對不上。
+     * 現在所有營收加總都走 {@link #sumRevenue}，不可能再各自分歧。訂房（Booking）不在其中（PRD 對儀表板營收是否含訂房沒有明文，另案）。
+     */
+    private static final Set<Order.OrderStatus> REVENUE_STATUSES = EnumSet.of(
+            Order.OrderStatus.PAID, Order.OrderStatus.CONFIRMED, Order.OrderStatus.SHIPPING,
+            Order.OrderStatus.DELIVERED, Order.OrderStatus.COMPLETED);
+
+    private static boolean countsAsRevenue(final Order order) {
+        return REVENUE_STATUSES.contains(order.getStatus());
+    }
+
+    /** 唯一的營收加總：只加計入營收的訂單（{@link #REVENUE_STATUSES}）的 totalAmount。 */
+    private static BigDecimal sumRevenue(final List<Order> orders) {
+        return orders.stream()
+                .filter(AnalyticsService::countsAsRevenue)
+                .map(Order::getTotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
 
     /**
      * 取得儀表板統計
@@ -126,14 +151,7 @@ public class AnalyticsService {
         List<Order> orders = orderRepository.findByTenantIdAndCreatedAtInRange(
                 tenantId, BusinessTime.startOfDay(startDate), BusinessTime.startOfDay(endDate.plusDays(1)));
 
-        BigDecimal totalRevenue = orders.stream()
-                .filter(o -> o.getStatus() == Order.OrderStatus.PAID ||
-                        o.getStatus() == Order.OrderStatus.CONFIRMED ||
-                        o.getStatus() == Order.OrderStatus.SHIPPING ||
-                        o.getStatus() == Order.OrderStatus.DELIVERED ||
-                        o.getStatus() == Order.OrderStatus.COMPLETED)
-                .map(Order::getTotalAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalRevenue = sumRevenue(orders);
 
         List<Payment> payments = paymentRepository.findByOrderIdInAndStatus(
                 orders.stream().map(Order::getId).collect(Collectors.toList()),
@@ -143,8 +161,11 @@ public class AnalyticsService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         int totalOrders = orders.size();
-        BigDecimal averageOrderValue = totalOrders > 0
-                ? totalRevenue.divide(BigDecimal.valueOf(totalOrders), 2, RoundingMode.HALF_UP)
+        // DEF-407：平均客單價的分母是「入帳的訂單數」，與營收同一組訂單（原本是區間內全部訂單，含未付款與已取消）。
+        // totalOrders 維持「區間內全部訂單數」。
+        long revenueOrderCount = orders.stream().filter(AnalyticsService::countsAsRevenue).count();
+        BigDecimal averageOrderValue = revenueOrderCount > 0
+                ? totalRevenue.divide(BigDecimal.valueOf(revenueOrderCount), 2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
         // 依 granularity 分桶聚合營收（DAY/WEEK/MONTH，Sprint 65 修正：先前 granularity 參數為死碼，恆按日分組）
@@ -286,11 +307,7 @@ public class AnalyticsService {
                     })
                     .collect(Collectors.toList());
 
-            BigDecimal bucketRevenue = bucketOrders.stream()
-                    .filter(o -> o.getStatus() != Order.OrderStatus.CANCELLED &&
-                            o.getStatus() != Order.OrderStatus.REFUNDED)
-                    .map(Order::getTotalAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal bucketRevenue = sumRevenue(bucketOrders);
 
             buckets.add(AnalyticsDto.DailyRevenue.builder()
                     .date(bucketStart)
@@ -325,21 +342,13 @@ public class AnalyticsService {
         List<Order> orders = orderRepository.findByTenantIdAndCreatedAtInRange(
                 tenantId, BusinessTime.startOfDay(date), BusinessTime.startOfDay(date.plusDays(1)));
 
-        return orders.stream()
-                .filter(o -> o.getStatus() != Order.OrderStatus.CANCELLED &&
-                        o.getStatus() != Order.OrderStatus.REFUNDED)
-                .map(Order::getTotalAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return sumRevenue(orders);
     }
 
     private BigDecimal calculateRevenueForDateRange(UUID tenantId, LocalDate startDate, LocalDate endDate) {
         List<Order> orders = orderRepository.findByTenantIdAndCreatedAtInRange(
                 tenantId, BusinessTime.startOfDay(startDate), BusinessTime.startOfDay(endDate.plusDays(1)));
 
-        return orders.stream()
-                .filter(o -> o.getStatus() != Order.OrderStatus.CANCELLED &&
-                        o.getStatus() != Order.OrderStatus.REFUNDED)
-                .map(Order::getTotalAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return sumRevenue(orders);
     }
 }

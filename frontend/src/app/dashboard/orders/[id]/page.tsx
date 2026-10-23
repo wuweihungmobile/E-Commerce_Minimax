@@ -24,6 +24,7 @@ import LogisticsService, {
 } from '@/services/logistics'
 import AuthService from '@/services/auth'
 import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
+import { loginHref } from '@/lib/auth-redirect'
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -99,7 +100,7 @@ export default function DashboardOrderDetailPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     load()

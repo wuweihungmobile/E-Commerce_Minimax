@@ -1,7 +1,7 @@
 # API 規格文件 - M13 商家工作台 / API Specification - M13 Seller Dashboard
 
 > **文件編號**: API-M13
-> **文件版本**: v1.1（Sprint 300：§7「營收三種口徑」補上實測與 DEF-407，僅文件；v1.0 為 Sprint 275 首次建立，首次有獨立規格文件，DEF-286 範圍）
+> **文件版本**: v1.2（Sprint 301：DEF-407 已修復——「營收」口徑統一為已付款、未取消、未退款的五個狀態，§1.2／§3.1～3.3／§7 同步；並登記 DEF-412：`netRevenue` 與退款的算法有兩處錯；v1.1＝Sprint 300，§7「營收三種口徑」補上實測與 DEF-407，僅文件；v1.0 為 Sprint 275 首次建立，首次有獨立規格文件，DEF-286 範圍）
 > **建立日期**: 2026-10-16
 > **最後更新**: 2026-10-23
 > **負責人**: SD (Marcus)
@@ -26,7 +26,7 @@
 
 ### 1.2 設計重點
 
-1. **兩個儀表板端點回傳不同形狀、不同統計口徑**：`GET /v2/seller/dashboard`（`SellerDashboardController`）回應 `DashboardResponse`（7/30 日訂單數、30 日營收、活躍刊登數、待處理訂單數、最後下單時間，有 `@Cacheable`）；`GET /v2/dashboard/stats`（`AnalyticsController`）回應 `DashboardStats`（今日/昨日/本月/本年營收、營收成長率、今日/昨日/本月訂單數、待處理訂單、活躍刊登與房源數），兩者營收統計口徑不同（見 §7 已知限制）。
+1. **兩個儀表板端點回傳不同形狀**：`GET /v2/seller/dashboard`（`SellerDashboardController`）回應 `DashboardResponse`（7/30 日訂單數、30 日已實現營收、活躍刊登數、待處理訂單數、最後下單時間，有 `@Cacheable`）；`GET /v2/dashboard/stats`（`AnalyticsController`）回應 `DashboardStats`（今日/昨日/本月/本年營收、營收成長率、今日/昨日/本月訂單數、待處理訂單、活躍刊登與房源數）。**「營收」的口徑自 Sprint 301 起統一**（DEF-407，使用者拍板）：`AnalyticsController` 底下所有營收數字都走同一個加總函式 `AnalyticsService.sumRevenue`（已付款、未取消、未退款的五個狀態）；`DashboardResponse.revenue30d` 是**刻意保留、名稱不同的另一個數字**「已實現營收」（僅 `COMPLETED`），不可與前者互相比較（見 §3.1、§7）。
 2. **`SellerDashboardController.getDashboard` 的角色守門（DEF-326 已修復）**：核准開店後角色是 `STORE_OWNER`，自助註冊的 `SELLER`/`HOST` 角色若未建立店鋪則呼叫者租戶會落在系統租戶——Controller 另外明確擋下系統租戶呼叫（`TenantContext.isStoreTenant`），否則會讀到「全平台一般消費者訂單」當作自己的儀表板數字。
 3. **`AnalyticsController` 用通用 `dashboard:read` 權限**（`STORE_OWNER`／`STORE_STAFF`／`ADMIN`），不像 `SellerDashboardController` 額外做租戶型別檢查——`ADMIN`／`SUPER_ADMIN` 呼叫時以自己的 `TenantContext` 當前租戶查詢（對平台管理者而言通常是系統租戶，不是「全平台彙總」）。
 4. **Stripe Connect 權限比 Controller 宣告的更嚴格（DEF-327 已修復）**：Controller 層 `@PreAuthorize("hasRole('STORE_OWNER')")`，但 `TenantStripeConnectService.requireStoreOwner` 在 Service 層再次檢查「呼叫者必須是**資料庫裡**這間店鋪的 `TenantMember.StoreRole.STORE_OWNER`」且「租戶必須是真正的店鋪租戶」，雙重防禦，避免未來新增呼叫路徑繞過 Controller 層檢查。
@@ -70,7 +70,7 @@ FRD 完全無 M13 章節（見文件頂部狀態說明）。
 | 欄位 | 類型 | 說明 |
 |------|------|------|
 | `orderCount7d` / `orderCount30d` | long | 近 7／30 日建立的訂單數（依 `createdAt`，非下單時區調整） |
-| `revenue30d` | BigDecimal | 近 30 日**僅 `COMPLETED`** 狀態訂單金額加總（見 §7 已知限制：與 `AnalyticsDto` 口徑不同） |
+| `revenue30d` | BigDecimal | **已實現營收**：近 30 日**僅 `COMPLETED`** 狀態訂單金額加總。與 `AnalyticsDto` 的「營收」（已付款、未取消、未退款的五個狀態）是**刻意並存的不同數字**，不可互相比較（DEF-407，Sprint 301）；欄位名維持 `revenue30d` 以免破壞既有契約，「已實現營收」這個名稱只標在 DTO Javadoc 與本文件，前端目前沒有任何地方使用此欄位，所以沒有 UI 標籤可改 |
 | `activeListingCount` | long | 本租戶 `ACTIVE` 狀態 Listing 數（商品+房源合計） |
 | `pendingOrderCount` | long | `CREATED`／`PAID`／`CONFIRMED` 三狀態訂單數合計 |
 | `lastOrderAt` | Instant | 最近一筆訂單建立時間，無訂單則 `null` |
@@ -81,7 +81,7 @@ FRD 完全無 M13 章節（見文件頂部狀態說明）。
 
 | 欄位 | 類型 | 說明 |
 |------|------|------|
-| `todayRevenue`／`yesterdayRevenue`／`monthRevenue`／`yearRevenue` | BigDecimal | 排除 `CANCELLED`／`REFUNDED` 狀態的訂單金額加總（含 `CREATED`／`PAID` 等未完成狀態，口徑比 `revenue30d` 寬） |
+| `todayRevenue`／`yesterdayRevenue`／`monthRevenue`／`yearRevenue` | BigDecimal | 只加 `PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED` 五個狀態的訂單金額（與 `RevenueStats.totalRevenue` 同一口徑，Sprint 301，DEF-407；先前只排除 `CANCELLED`／`REFUNDED`，所以未付款的 `CREATED` 與等待退款的 `REFUNDING` 也被算進去） |
 | `revenueGrowthPercent` | BigDecimal | `(今日-昨日)/昨日 * 100`；昨日為 0 時固定回 `0`（非除以零錯誤，而是提前判斷短路） |
 | `todayOrders`／`yesterdayOrders`／`monthOrders` | Integer | 依 `createdAt` 區間計數，不排除任何狀態 |
 | `pendingOrders` | Integer | 僅 `CREATED` 狀態（與 `DashboardResponse.pendingOrderCount` 口徑不同，見 §7） |
@@ -92,10 +92,11 @@ FRD 完全無 M13 章節（見文件頂部狀態說明）。
 
 | 欄位 | 類型 | 說明 |
 |------|------|------|
-| `totalRevenue` | BigDecimal | 區間內 `PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED` 五狀態加總 |
-| `totalRefunds` | BigDecimal | 區間內訂單關聯付款為 `REFUNDED` 狀態者加總 |
-| `netRevenue` | BigDecimal | `totalRevenue - totalRefunds` |
-| `averageOrderValue` | BigDecimal | `totalRevenue / totalOrders`（四捨五入 2 位），`totalOrders=0` 時回 `0`（非除以零錯誤） |
+| `totalRevenue` | BigDecimal | 區間內 `PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED` 五狀態加總。全模組唯一的營收加總是 `AnalyticsService.sumRevenue`——Sprint 301 起首頁今日／昨日／本月／本年與每日趨勢也走它，不會再各自分歧（DEF-407） |
+| `totalOrders` | Integer | 區間內**全部**訂單數（含未付款、已取消），**不是**入帳訂單數 |
+| `totalRefunds` | BigDecimal | 區間內訂單關聯付款為 `REFUNDED`（全額退款）狀態者的金額加總；`PARTIALLY_REFUNDED`（部分退款）不計入——見下一列 |
+| `netRevenue` | BigDecimal | `totalRevenue - totalRefunds`。**⚠️ 已知算法缺陷（DEF-412，Sprint 301 實測登記，待使用者裁決，見 §7）**：全額退款的訂單已被排除在 `totalRevenue` 之外，它的付款金額卻又被 `totalRefunds` 再扣一次（實測單一 500 元銷售全額退款後 `netRevenue = -500`）；部分退款完全沒被扣（實測退 200 後 `netRevenue` 仍是 450） |
+| `averageOrderValue` | BigDecimal | `totalRevenue / 入帳訂單數`（四捨五入 2 位）；入帳訂單數＝與 `totalRevenue` 同一組五個狀態的訂單筆數，為 0 時回 `0`（非除以零錯誤）。Sprint 301 起（DEF-407）；先前分母是區間內全部訂單（含未付款與已取消），與只加已付款類的分子口徑不同 |
 | `dailyRevenue` | `RevenueByDay` | 依 `granularity` 分桶（見 §4.5） |
 | `categoryRevenue` | `RevenueByCategory` | **`data` 永遠是空陣列**——欄位與巢狀型別都定義了，服務層從未實作依分類聚合，見 §7 已知限制 |
 
@@ -202,7 +203,8 @@ FRD 完全無 M13 章節（見文件頂部狀態說明）。
 
 | 項目 | 說明 |
 |------|------|
-| 兩個「儀表板」端點統計口徑互不一致 | `DashboardResponse.revenue30d` 只計 `COMPLETED` 訂單；`DashboardStats.monthRevenue`／`yearRevenue` 排除 `CANCELLED`／`REFUNDED` 但納入 `CREATED`／`PAID` 等未完成狀態；`RevenueStats.totalRevenue` 又是第三種口徑（`PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED` 五狀態）。三者都是「營收」但定義不同，店主若同時參考 `/seller/dashboard` 與 `/dashboard/stats`／`/dashboard/revenue` 的數字會互相矛盾，且無任何文件曾說明差異，純粹是三個端點各自獨立實作造成。**Sprint 300 以真實資料實測並登記為 `DEF-407`（待使用者裁決哪個才是「營收」）**：一間店鋪有已送達訂單 2100、已付款訂單 500、未付款訂單 500，`/dashboard/stats` 回 `todayRevenue: 3100`、`/dashboard/revenue` 回 `totalRevenue: 2600`，差的正是那張未付款訂單；`averageOrderValue`（2600÷3＝866.67）的分母含未付款與已取消訂單。三種口徑都只查 `Order`，不含訂房 |
+| ~~兩個「儀表板」端點統計口徑互不一致~~（**DEF-407，Sprint 300 登記、Sprint 301 已修復**） | 原狀：`DashboardResponse.revenue30d` 只計 `COMPLETED`；`DashboardStats` 的今日／本月／本年營收與每日趨勢只排除 `CANCELLED`／`REFUNDED`，所以未付款的 `CREATED` 與等待退款的 `REFUNDING` 也被算進去；`RevenueStats.totalRevenue` 又是第三種（五個已付款類狀態）；`averageOrderValue` 的分母還是區間內全部訂單。Sprint 300 實測：已送達 2100＋已付款 500＋未付款 500，`/dashboard/stats` 回 `todayRevenue: 3100`、`/dashboard/revenue` 回 `totalRevenue: 2600`，差的正是未付款那張。**Sprint 301 依使用者的決定**（`AskUserQuestion` 中本人選「已付款且未取消」）：「營收」＝`PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED` 五個狀態的 `totalAmount`，全模組只剩一個加總函式 `AnalyticsService.sumRevenue`（首頁今日／昨日／本月／本年、每日趨勢、報表總營收都走它）；平均客單價的分母改為同一組訂單的筆數（`totalOrders` 仍是區間內全部訂單數）；`revenue30d`（僅 `COMPLETED`）保留為「已實現營收」，名稱只標在 DTO Javadoc 與本文件（前端沒有使用此欄位）。**驗證**：`AnalyticsServiceTest` 新增 2 個並更新平均客單價案例的預期值（12→14）、`AnalyticsRealDbIntegrationTest` 新增 1 個真實 PostgreSQL 案例（2→3）、真實全棧 E2E `at-dashboard-revenue.spec.ts` 的 `E2E-REVENUE-02`／`03`（已付款 500＋未付款 500：首頁今日營收 $500、報表平均客單價 $500、訂單總數仍是 2 筆）。**不含訂房**：舊口徑與現在的統一口徑都只查 `Order`，PRD 對儀表板營收是否含訂房沒有明文，另案 |
+| **`netRevenue` 與退款的算法有兩處錯（DEF-412，Sprint 301 實測登記，待使用者裁決）** | `netRevenue = totalRevenue - totalRefunds`，但 `totalRevenue` 只加五個已付款類狀態，全額退款的訂單（狀態 `REFUNDED`）本來就不在裡面，而 `totalRefunds` 加總的是區間內付款為 `REFUNDED` 者的金額——**同一筆全額退款被扣兩次**；另一頭，部分退款時付款是 `PARTIALLY_REFUNDED`、訂單狀態不變（`PaymentStateService` 的退款處理：達全額才把付款與訂單都轉 `REFUNDED`，否則付款轉 `PARTIALLY_REFUNDED`、訂單狀態不變），`totalRefunds` 只查 `REFUNDED`，所以**部分退款完全不被扣**。**實測（Sprint 301，真實端點＋真實登入；退款後的終態由 SQL 依應用程式的寫法寫入，不是走完真實退款流程，測完已還原）**：單一 500 元銷售全額退款 → `totalRevenue: 0`、`totalRefunds: 500`、`netRevenue: -500`（應為 0）；450 元訂單部分退款 200 → `totalRefunds: 0`、`netRevenue: 450`（應為 250）。「退款要怎麼算進營收」是產品決策，所以只登記不修 |
 | `DashboardStats.pendingOrders` 與 `DashboardResponse.pendingOrderCount` 口徑不同 | 前者僅計 `CREATED`；後者計 `CREATED`＋`PAID`＋`CONFIRMED` 三狀態 |
 | `DashboardStats.activeListings`／`totalProducts` 恆為同一數值 | 服務層用同一個 `activeProducts` 變數賦值給兩個欄位，`totalProducts` 這個名稱暗示「商品總數」，實際回傳的是「**ACTIVE** 商品數」 |
 | `totalRooms` 與 `activeListings` 的「是否限 ACTIVE」不一致 | 同一回應物件內，房源計數不篩狀態、商品計數篩 `ACTIVE`，欄位命名未反映此差異 |
@@ -221,7 +223,7 @@ FRD 完全無 M13 章節（見文件頂部狀態說明）。
 | PRD | §4（Operations，M13 商家工作台）／§9.9 |
 | FRD | 無章節（見文件頂部狀態說明） |
 | 實作 | `SellerDashboardController`、`AnalyticsController`（`api/controller/`）；`SellerDashboardService`（`core/seller/`）；`AnalyticsService`（`core/analytics/`）；`TenantStripeConnectService`（`core/tenant/`） |
-| 契約測試 | [SellerDashboardServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/seller/SellerDashboardServiceTest.java)、[SellerDashboardServiceCacheTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/seller/SellerDashboardServiceCacheTest.java)、[AnalyticsServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/analytics/AnalyticsServiceTest.java)、[AnalyticsRealDbIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/analytics/AnalyticsRealDbIntegrationTest.java)、[TenantStripeConnectServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/tenant/TenantStripeConnectServiceTest.java)、[M13SellerDashboardIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M13SellerDashboardIntegrationTest.java)、[M13SellerStripeConnectIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M13SellerStripeConnectIntegrationTest.java) |
+| 契約測試 | [SellerDashboardServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/seller/SellerDashboardServiceTest.java)、[SellerDashboardServiceCacheTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/seller/SellerDashboardServiceCacheTest.java)、[AnalyticsServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/analytics/AnalyticsServiceTest.java)、[AnalyticsRealDbIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/analytics/AnalyticsRealDbIntegrationTest.java)、[TenantStripeConnectServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/tenant/TenantStripeConnectServiceTest.java)、[M13SellerDashboardIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M13SellerDashboardIntegrationTest.java)、[M13SellerStripeConnectIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M13SellerStripeConnectIntegrationTest.java)、[at-dashboard-revenue.spec.ts](../../../frontend/e2e/at-dashboard-revenue.spec.ts)（真實全棧 E2E，Sprint 301，DEF-407） |
 
 ---
 

@@ -12,6 +12,7 @@ import ReviewService, { type Review, type ReviewReply } from '@/services/review'
 import ReviewStars from '@/components/reviews/ReviewStars'
 import AuthService from '@/services/auth'
 import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
+import { loginHref } from '@/lib/auth-redirect'
 
 const PAGE_SIZE = 20
 
@@ -72,7 +73,7 @@ export default function DashboardReviewsPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     fetchReviews(currentPage, isHandled)

@@ -15,6 +15,7 @@ import {
 import SupplierService, { SupplierDto } from '@/services/erp/supplier'
 import PurchaseOrderService from '@/services/erp/purchaseOrder'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 interface PurchaseOrderFormProps {
   orderId?: string
@@ -109,7 +110,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
 

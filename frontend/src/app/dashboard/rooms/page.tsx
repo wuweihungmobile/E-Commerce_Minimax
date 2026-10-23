@@ -6,6 +6,7 @@ import Link from 'next/link'
 import RoomList from '@/components/room/RoomList'
 import AuthService from '@/services/auth'
 import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
+import { loginHref } from '@/lib/auth-redirect'
 
 export default function RoomsPage() {
   const router = useRouter()
@@ -13,7 +14,7 @@ export default function RoomsPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
   }, [router])

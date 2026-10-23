@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import TenantDetail from '@/components/tenant/TenantDetail'
 import AuthService from '@/services/auth'
 import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
+import { loginHref } from '@/lib/auth-redirect'
 
 interface TenantDetailPageProps {
   params: Promise<{
@@ -19,7 +20,7 @@ export default function TenantDetailPage({ params }: TenantDetailPageProps) {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
 

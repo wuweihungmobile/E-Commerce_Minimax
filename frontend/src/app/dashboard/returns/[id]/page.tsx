@@ -13,6 +13,7 @@ import ReturnService, {
   returnStatusBadgeVariant,
 } from '@/services/returns'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -64,7 +65,7 @@ export default function DashboardReturnDetailPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     fetchReturn()

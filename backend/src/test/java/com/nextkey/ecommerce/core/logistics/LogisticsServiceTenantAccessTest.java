@@ -1,5 +1,6 @@
 package com.nextkey.ecommerce.core.logistics;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -20,6 +21,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import com.nextkey.ecommerce.api.dto.LogisticsDto;
 import com.nextkey.ecommerce.core.logistics.provider.LogisticsProviderFactory;
 import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.product.ProductInventoryService;
@@ -27,6 +29,7 @@ import com.nextkey.ecommerce.domain.model.logistics.Logistics;
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.repository.LogisticsRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -199,5 +202,151 @@ class LogisticsServiceTenantAccessTest {
 
         assertThatCode(() -> logisticsService.updateLogisticsStatus(logisticsId, Logistics.LogisticsStatus.PICKED_UP))
                 .doesNotThrowAnyException();
+    }
+
+    // ========== DEF-408：買家本人可「讀」自己訂單的物流（Sprint 301，使用者拍板）==========
+    //
+    // PRD §10.1.1 路由表寫 /orders/[id]＝「訂單詳情（含物流追蹤）」，但四個讀取方法原本只認「該訂單的店鋪租戶」與 admin；
+    // 沒有店鋪的買家的租戶是系統租戶佔位值（DEF-190），所以買家對自己訂單的物流永遠 E_1007。放行的依據是使用者 id
+    // （訂單的買家本人），不是租戶——比對租戶會讓任兩個沒有店鋪的買家互通，正是 DEF-190 要防的跨使用者 IDOR。
+    // 寫入（建立／更新狀態／取消）不變，仍只限店鋪租戶與 admin。
+
+    private final UUID buyerId = UUID.randomUUID();
+    private final UUID otherBuyerId = UUID.randomUUID();
+
+    /** 訂單歸店鋪 {@code tenantA}、買家是 {@code buyer}（真實情境：消費者向店家下單，訂單蓋店鋪租戶，S237）。 */
+    private Order orderBoughtBy(final UUID buyer) {
+        return Order.builder().id(orderId).tenantId(tenantA).userId(buyer).status(Order.OrderStatus.SHIPPING).build();
+    }
+
+    /** 呼叫者是沒有店鋪的買家：租戶是系統租戶佔位值，只有使用者 id 能區分「誰的單」。 */
+    private void callAsStorelessBuyer(final UUID userId) {
+        TenantContext.setCurrentTenant(UUID.fromString(AppConstants.SYSTEM_TENANT_ID));
+        TenantContext.setCurrentUser(userId);
+    }
+
+    @Test
+    @DisplayName("DEF-408 getLogisticsByOrderId：訂單的買家本人 → 放行（沒有店鋪的買家）")
+    void getLogisticsByOrderId_orderOwnerBuyer_succeeds() {
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(orderBoughtBy(buyerId)));
+        when(logisticsRepository.findByOrderId(orderId)).thenReturn(List.of(logisticsOfOrder()));
+        callAsStorelessBuyer(buyerId);
+
+        assertThat(logisticsService.getLogisticsByOrderId(orderId)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-408 getLogisticsByOrderId：另一位買家（同在系統租戶）讀別人訂單的物流 → 仍 E_1007（DEF-190 跨使用者 IDOR 守門）")
+    void getLogisticsByOrderId_otherBuyer_throwsE1007() {
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(orderBoughtBy(buyerId)));
+        callAsStorelessBuyer(otherBuyerId);
+
+        assertThatThrownBy(() -> logisticsService.getLogisticsByOrderId(orderId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("DEF-408 getLogisticsByOrderId：目前使用者與訂單的買家欄位都是 null → 不得因為 null 相等而放行")
+    void getLogisticsByOrderId_bothUserIdsNull_throwsE1007() {
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(orderBoughtBy(null)));
+        TenantContext.setCurrentTenant(UUID.fromString(AppConstants.SYSTEM_TENANT_ID));
+
+        assertThatThrownBy(() -> logisticsService.getLogisticsByOrderId(orderId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("DEF-408 getLogistics：訂單的買家本人 → 放行；另一位買家 → E_1007")
+    void getLogistics_buyerOwnerAllowed_otherBuyerDenied() {
+        when(logisticsRepository.findById(logisticsId)).thenReturn(Optional.of(logisticsOfOrder()));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(orderBoughtBy(buyerId)));
+
+        callAsStorelessBuyer(buyerId);
+        assertThatCode(() -> logisticsService.getLogistics(logisticsId)).doesNotThrowAnyException();
+
+        callAsStorelessBuyer(otherBuyerId);
+        assertThatThrownBy(() -> logisticsService.getLogistics(logisticsId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("DEF-408 trackLogistics：訂單的買家本人 → 放行；另一位買家 → E_1007")
+    void trackLogistics_buyerOwnerAllowed_otherBuyerDenied() {
+        when(logisticsRepository.findById(logisticsId)).thenReturn(Optional.of(logisticsOfOrder()));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(orderBoughtBy(buyerId)));
+
+        callAsStorelessBuyer(buyerId);
+        assertThatCode(() -> logisticsService.trackLogistics(logisticsId)).doesNotThrowAnyException();
+
+        callAsStorelessBuyer(otherBuyerId);
+        assertThatThrownBy(() -> logisticsService.trackLogistics(logisticsId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("DEF-408 getTrackingDetail：訂單的買家本人 → 放行；另一位買家 → E_1007")
+    void getTrackingDetail_buyerOwnerAllowed_otherBuyerDenied() {
+        when(logisticsRepository.findById(logisticsId)).thenReturn(Optional.of(logisticsOfOrder()));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(orderBoughtBy(buyerId)));
+
+        callAsStorelessBuyer(buyerId);
+        assertThatCode(() -> logisticsService.getTrackingDetail(logisticsId)).doesNotThrowAnyException();
+
+        callAsStorelessBuyer(otherBuyerId);
+        assertThatThrownBy(() -> logisticsService.getTrackingDetail(logisticsId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-408 讀取放寬不得外溢到寫入：訂單的買家本人建立物流單 → E_1007")
+    void createLogistics_orderOwnerBuyer_throwsE1007() {
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(orderBoughtBy(buyerId)));
+        callAsStorelessBuyer(buyerId);
+        LogisticsDto.CreateRequest request = LogisticsDto.CreateRequest.builder()
+                .orderId(orderId)
+                .logisticsProvider(LogisticsDto.LogisticsProvider.HCT)
+                .receiverName("買家").receiverPhone("0912345678").shippingAddress("台北市")
+                .build();
+
+        assertThatThrownBy(() -> logisticsService.createLogistics(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-408 讀取放寬不得外溢到寫入：訂單的買家本人更新物流狀態 → E_1007")
+    void updateLogisticsStatus_orderOwnerBuyer_throwsE1007() {
+        when(logisticsRepository.findById(logisticsId)).thenReturn(Optional.of(logisticsOfOrder()));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(orderBoughtBy(buyerId)));
+        callAsStorelessBuyer(buyerId);
+
+        assertThatThrownBy(() -> logisticsService.updateLogisticsStatus(logisticsId, Logistics.LogisticsStatus.DELIVERED))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-408 讀取放寬不得外溢到寫入：訂單的買家本人取消物流單 → E_1007")
+    void cancelLogistics_orderOwnerBuyer_throwsE1007() {
+        when(logisticsRepository.findById(logisticsId)).thenReturn(Optional.of(logisticsOfOrder()));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(orderBoughtBy(buyerId)));
+        callAsStorelessBuyer(buyerId);
+
+        assertThatThrownBy(() -> logisticsService.cancelLogistics(logisticsId, "買家不想要了"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_1007);
     }
 }

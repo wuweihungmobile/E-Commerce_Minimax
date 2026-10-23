@@ -18,6 +18,7 @@ import TenantMemberService, {
   STORE_MEMBER_STATUS_LABELS,
   storeMemberStatusBadgeVariant,
 } from '@/services/tenantMember'
+import { loginHref } from '@/lib/auth-redirect'
 
 // 邀請／移除共用的錯誤碼對應（DEF-321 (a)，Sprint 248）：後端 BusinessException.getUserMessage()
 // 回傳的是 ErrorCode 的罐頭文字，不是拋出時的 details（例如 E-2001 罐頭文字是「租戶未啟用」），
@@ -81,7 +82,7 @@ export default function DashboardMembersPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
 

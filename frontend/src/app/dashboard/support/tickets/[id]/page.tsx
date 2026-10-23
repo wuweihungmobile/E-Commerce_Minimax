@@ -8,6 +8,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Badge } from '@/components/ui/badge'
 import SupportService, { SupportTicket, TicketStatus } from '@/services/support'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 const STATUS_LABEL: Record<TicketStatus, string> = {
   OPEN: '開立',
@@ -54,7 +55,7 @@ export default function DashboardSupportTicketDetailPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     fetchTicket()

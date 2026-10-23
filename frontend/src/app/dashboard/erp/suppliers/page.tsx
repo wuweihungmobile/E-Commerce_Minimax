@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import SupplierService, { SupplierDto } from '@/services/erp/supplier'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 export default function SuppliersPage() {
   const router = useRouter()
@@ -38,7 +39,7 @@ export default function SuppliersPage() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     fetchSuppliers()

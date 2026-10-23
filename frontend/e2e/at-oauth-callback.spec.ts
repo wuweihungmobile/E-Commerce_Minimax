@@ -32,3 +32,50 @@ test.describe('AT-OAUTH-CALLBACK: OAuth callback 頁錯誤處理', () => {
     await expect(page.getByText('不支援的登入服務')).toBeVisible();
   });
 });
+
+/**
+ * 登入成功後的落地頁（Sprint 301，DEF-409）：OAuth 登入不經過本站登入頁，與密碼登入一樣依角色分流
+ * （BUYER→/、店家類→/dashboard、管理員→/admin）。provider 授權頁雖然走不完，但「成功之後去哪」不依賴 provider：
+ * 預先在 sessionStorage 種好 state，並以 page.route 假造後端的 OAuth 登入回應即可驅動。
+ * 假 token 之後打任何 API 都會 401 並被踢回登入頁，所以不斷言「最後」停在哪，只看離開 callback 頁後的第一個網址。
+ */
+test.describe('AT-OAUTH-CALLBACK: 登入成功後依角色落地（DEF-409）', () => {
+  const landings: Array<[string, string]> = [
+    ['BUYER', '/'],
+    ['STORE_OWNER', '/dashboard'],
+    ['ADMIN', '/admin'],
+  ];
+  for (const [role, landing] of landings) {
+    test(`E2E-OAUTH-LANDING: 角色 ${role} 以 OAuth 登入成功 → 離開 callback 頁後的第一個網址是 ${landing}`, async ({ page }) => {
+      await page.addInitScript(() => {
+        sessionStorage.setItem('oauth_state', 'e2e-state');
+        sessionStorage.setItem('oauth_intent', 'login');
+      });
+      await page.route('**/v2/auth/oauth/login', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            data: {
+              accessToken: 'fake-access-token',
+              refreshToken: 'fake-refresh-token',
+              user: { id: '00000000-0000-0000-0000-000000000001', email: 'oauth-e2e@example.com', fullName: 'OAuth 測試', role },
+            },
+          }),
+        }),
+      );
+      const visited: string[] = [];
+      page.on('framenavigated', (frame) => {
+        if (frame === page.mainFrame()) visited.push(new URL(frame.url()).pathname);
+      });
+
+      await page.goto('/oauth/callback/google?code=e2e-code&state=e2e-state');
+
+      // 修復前：一律 /dashboard（買家與管理員都走錯）
+      await expect
+        .poll(() => visited.find((p) => !p.startsWith('/oauth/callback')), { timeout: 20000 })
+        .toBe(landing);
+    });
+  }
+});

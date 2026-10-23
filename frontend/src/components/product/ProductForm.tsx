@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import ProductService, { CreateProductRequest, UpdateProductRequest } from '@/services/product'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 interface FormErrors {
   title?: string
@@ -73,7 +74,7 @@ export default function ProductForm({ productId }: ProductFormProps) {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     if (productId) {

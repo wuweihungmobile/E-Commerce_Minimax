@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import ProductService, { ProductListItem, ProductFilters } from '@/services/product'
 import AuthService from '@/services/auth'
+import { loginHref } from '@/lib/auth-redirect'
 
 // Radix 的 Select.Item 不接受空字串 value（render 時直接 throw，整頁崩潰）；「所有類別」用哨兵值代表，
 // category 狀態與送出的篩選參數仍以空字串代表不篩選。
@@ -29,7 +30,7 @@ export default function ProductList() {
 
   useEffect(() => {
     if (!AuthService.isAuthenticated()) {
-      router.push('/login')
+      router.push(loginHref())
       return
     }
     fetchProducts()

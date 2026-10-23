@@ -25,6 +25,12 @@
 | **2/3** | **TypeScript type-check** ⭐ | `npx tsc --noEmit` | 修復型別錯誤後重試 |
 | **3/3** | Next.js Build (已停用) | `npm run build` | 改在 pre-push 階段執行 |
 
+### 內建的專案規則：禁止 `<SelectItem value="">`（Sprint 301，DEF-401）
+
+`eslint.config.mjs` 內有一條 **error 級**的 `no-restricted-syntax`：`<SelectItem>` 的 `value` 不可以是空字串（`value=""`、`value={''}`，以及空的樣板字串三種寫法）。Radix 的 `Select.Item` 在 render 時對空字串直接 throw，整頁崩潰——店主的商品管理列表頁曾因此每次載入都崩潰（Sprint 298 修復）。要「全部／不篩選」選項請改用哨兵值（例如 `value="ALL"`），在狀態裡再轉回空字串。
+
+這是使用者在 Sprint 300 收尾決定新增的規則（Sprint 301 落地）；因為是 error，不是 warning，commit 時 ESLint 階段會直接擋下。已用刻意寫錯的三種寫法確認各報一個 error、合法寫法（`"ALL"`、`{'x'}`、變數）不誤報，目前整個前端沒有任何違規。
+
 ### 為什麼 type-check 很重要？
 
 - ✅ **早期發現型別錯誤**：在 commit 前攔截，避免 CI 失敗

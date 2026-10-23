@@ -147,7 +147,7 @@
 | `make validate-schema-doc` | 通過：套用 94 個 Flyway 遷移（含 V94，同時證實純 SQL 在 `psql` 路徑可跑）後，SRD 的 DDL 與 PRD §8.2 欄位清單均與實際 schema 一致 |
 | 全量後端 `mvn -o clean verify`（`make test-db-up` 重建的全新測試 DB 容器） | `BUILD SUCCESS`（20 分 49 秒）；Checkstyle main／test 皆 0 違規；**單元 2361、整合 924**，皆 0 失敗／0 錯誤／0 跳過，日誌中 `<<< FAILURE`／`<<< ERROR` 標記 0 個。與 Sprint 304（2361／915）相比單元不變、整合 +9，正好等於本輪新增的測試數（`TestSeedRemovalMigrationIntegrationTest` 9 案例，全量中 9／9，39.8 秒）。**這次全量之後我又改了**：V94 標頭註解與手動腳本註解（改完後對最終 V94 重跑整合測試 9／9 與 `validate-schema-doc`，並用它建的 JAR 跑 gate）；gate 之後只改了 E2E 規格與 `PricingServiceTest` 的註解與文件（不改行為，pre-commit 會再編譯並跑核心層測試） |
 | `make validate-e2e`（含新的 3.5 步） | **預設並行度（2 個 worker）第 1 次失敗**：278 案例 268 通過／**2 失敗**／4 跳過／4 未執行（7.0 分鐘）；2 個失敗是 `at-store-less-seller-real` 的 `E2E-SLS-01` 與 `at-store-suspended-payment-real` 的 `E2E-SSP-01`，錯誤一律是**登入 API 回 429 `E-9904`**（`loginViaApi`、`adminAccessToken`），時間 20:55:20Z、20:56:04Z——與 Sprint 304 登記的 `DEF-420` **同兩支規格、同一個症狀**，而 Sprint 304 的那兩次失敗發生在 V94 尚不存在的 commit。3.5 步通過（乾淨 DB 沒有測試資料、`Test123!` 登入回 401、seed 成功），依賴 admin 的規格都過了。**這次沒有保留第一次 run 的後端日誌**（gate 結束時腳本會刪），所以沒有量到限流警告筆數。**第 2 次用衍生腳本 `workers=1`（雲端 CI 的並行度）、`E2E_GATE_SKIP_BUILD=1` 重用第 1 次剛建好的同一份 JAR 與前端（建置後沒有任何原始碼更新，用 `find -newer` 核對過）：278 案例，274 通過／4 跳過／0 失敗（8.9 分鐘），閘門顯示『本地 E2E 守門通過（schema 對齊 ✅ + e2e 全綠 ✅）』，0 筆 429，3.5 步再次通過。** 衍生腳本是把 `scripts/validate-e2e.sh` 複製到暫存目錄、只改兩行（`REPO_ROOT` 寫死、`playwright test` 加 `--workers`，用 `diff` 核對）。預設並行度的標準指令在最近 4 次裡失敗 3 次（Sprint 303 通過 1 次、Sprint 304 失敗 2 次、本輪失敗 1 次），已在 `DEF-420` 補上這個資料點 |
-| pre-commit、pre-push、雲端 CI | 本輪 commit 時尚未 push；結果與 commit hash 由下一個純文件的回填 commit 補上（commit 無法包含自己的 hash） |
+| pre-commit、pre-push、雲端 CI | 皆通過（pre-commit 第一次被 secret 掃描擋下、修正後第二次通過，見 §7 第 16 點），細節與證據見 §10（commit 當下尚未 push，由回填 commit 補上，因為 commit 無法包含自己的 hash） |
 
 ## 7. 過程中的失誤與修正
 
@@ -197,7 +197,14 @@
 
 ## 10. 雲端 CI 與狀態
 
-本輪 commit 時尚未 push。pre-commit、pre-push 與雲端 CI 的結果，以及 commit hash，由下一個純文件的回填 commit 補上（commit 無法包含自己的 hash）。
+commit `e21a06bb` 已 push（`a9f74554..e21a06bb  main -> main`；同一次 push 也帶出 Sprint 304 的回填 commit `1a1c5b33`）；`git fetch` 後本機 `HEAD` 與 `origin/main` 同為 `e21a06bbeef6af70d8078217192455b03771c0d2`，ahead／behind 為 0／0。
+
+- **pre-commit**：第一次被 secret 掃描擋下（§7 第 16 點，沒有繞過 hook）；修正後第二次一次通過——Checkstyle、Maven compile、核心層快速測試、ESLint、TypeScript 型別檢查、SRD 資料庫文件漂移守門（套用 94 個遷移）、secret 掃描（commit 前測試 DB 容器在）。
+- **pre-push 輕量守門**通過：本機 act 的 Backend Unit Tests（日誌印出兩輪，皆 `Job succeeded`）、Frontend Lint & Build `Job succeeded`；schema 漂移守門「backend 啟動成功 → entity 與 Flyway schema 對齊，無漂移」；push 之後 `docker ps -a` 為空。
+- **雲端 CI** run [40028903312](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/40028903312)：`completed／success`，三個 job 皆 success，約 13 分 23 秒（21:44:05Z～21:57:28Z）；`gh run view --json status,conclusion,jobs,headSha` 的 `headSha` 與本機 commit 一致。
+  - 下載了「Backend Integration Tests & Package」job 的**完整**雲端日誌（52.9 MB、202,985 行；等下載結束、確認 stderr 為空且檔尾是 job 收尾才統計）：該 job 執行 `mvn verify -DskipUnitTests=true -Dspring.profiles.active=integration-test`，failsafe 彙總 **`Tests run: 924, Failures: 0, Errors: 0, Skipped: 0`**（與本機整合測試 924 一致；126 個類別行的案例總和也是 924），`BUILD SUCCESS`，`<<< FAILURE`／`<<< ERROR` 標記 0 個；**`TestSeedRemovalMigrationIntegrationTest` 9／9**（雲端 GitHub service 的全新 Postgres 上，9.7 秒）、`PlatformSelfRunWriteIsolationE2ETest` 18／18、`PricingRulePersistenceE2ETest` 3／3、`PricingSystemTenantIsolationE2ETest` 6／6。
+  - 「Backend Unit Tests」job 的雲端日誌我**沒有**下載，只確認該 job 結論為 success；單元測試 2361 以本機全量為準。
+  - 雲端三個 job 不含 Playwright E2E，E2E 以本機 `make validate-e2e` 為準（見 §6：預設並行度失敗 2〔`DEF-420`〕、`workers=1` 全過）；雲端 e2e job 只能手動觸發，本輪新增的步驟沒有實跑。
 
 ## 11. 文件與程式異動清單
 

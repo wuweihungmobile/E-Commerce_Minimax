@@ -112,7 +112,7 @@
 | 突變 | 38／38 擊殺（§5） |
 | 全量後端 `mvn -o clean verify`（全新測試 DB） | `BUILD SUCCESS`（18 分 06 秒）；Checkstyle main／test 皆 0 違規；**單元 2361、整合 915**，皆 0 失敗／0 錯誤／0 跳過，日誌中 `<<< FAILURE`／`<<< ERROR` 標記 0 個。與 Sprint 303（2333／897）相比單元 +28（`PricingServiceTest` +9、`RoomServiceTest` +7、`ProductServiceTest` +6、`ProductSkuServiceTest` +3、`RoomCalendarServiceTest` +3）、整合 +18（`PlatformSelfRunWriteIsolationE2ETest`），正好等於本輪新增的測試數；`ApiRouteDocDriftTest` 2／2、`TenantContextCallSiteDriftTest` 2／2。**第一次全量即通過**：動手前我先 `grep` 了四個建立方法在 main 與 test 的所有呼叫者（找到 `RoomServiceTest`、`ProductServiceTest`、`DashboardListingControllerAuthorizationIntegrationTest`）並核對 `getCurrentTenant()` 呼叫處基線；Sprint 303 前兩次全量失敗的那兩種原因（漏掉全域守門與 mock 測試）本輪沒有重現 |
 | `make validate-e2e`（完整：重建 JAR 與前端、乾淨 DB、全部 Playwright 規格） | **預設並行度（2 個 worker）連跑兩次都失敗**：第一次 278 案例 270 通過／4 跳過／**2 失敗**／2 未執行（7.0 分鐘），第二次 269 通過／4 跳過／**2 失敗**／3 未執行（7.0 分鐘）；兩次失敗的都是 `at-store-less-seller-real`（第一次 `E2E-SLS-03`、第二次 `E2E-SLS-02`）與 `at-store-suspended-payment-real` 的 `E2E-SSP-01`，錯誤一律是**登入 API 回 429 `E-9904`**（`loginViaApi`、`adminAccessToken`，兩個 API 層登入輔助函式對 429 沒有重試）。第二次我保留了後端日誌：**21 筆 `LoginRateLimitFilter` 的 `exceeded rate limit on /v2/auth/login`，全部落在最後約 50 秒（台灣時間 02:39:02～02:39:51），與兩個失敗的時間戳（UTC 18:39:03、18:39:38）吻合**，第一筆出現在整套 7.0 分鐘的最後約一分鐘內（推論：尾端幾支登入最密的規格擠在一起，把每來源 IP 每路徑 30 次／分的桶用完）。後端日誌裡我新加的守門例外在整個守門過程 **0 次被觸發**（E2E 規格都用真實店主）；唯一一筆 `Not authorized to access pricing for this listing` 來自 `at-pricing-rules-real` 的『買家以別店房源 id 查詢得 403』（預期，該案例通過）。**第三次 `workers=1`（雲端 CI 的並行度；用我複製的腳本，見 §7 第 6 點，重用同一份 JAR 與前端）：278 案例，274 通過／4 跳過／0 失敗（9.2 分鐘），閘門顯示『本地 E2E 守門通過（schema 對齊 ✅ + e2e 全綠 ✅）』，後端日誌 0 筆登入限流警告。** 這是既有脆弱點，已登記 `DEF-420`；Sprint 303 的整套 11.0 分鐘（當時機器負載偏高）所以沒撞到 |
-| pre-commit、pre-push、雲端 CI | 本輪 commit 時尚未 push；結果由下一個回填 commit 補上（commit 無法包含自己的 hash） |
+| pre-commit、pre-push、雲端 CI | 皆通過，細節與證據見 §10（commit 當下尚未 push，由回填 commit 補上，因為 commit 無法包含自己的 hash） |
 
 ## 7. 過程中的失誤與修正
 
@@ -146,7 +146,14 @@
 
 ## 10. 雲端 CI 與狀態
 
-本輪 commit 時尚未 push。pre-commit、pre-push 與雲端 CI 的結果，以及 commit hash，由下一個純文件的回填 commit 補上（commit 無法包含自己的 hash）。
+commit `a9f74554` 已 push（`2091519c..a9f74554  main -> main`）；`git fetch` 後本機 `HEAD` 與 `origin/main` 同為 `a9f745541450a5f24c08c6b142ded4d16f36b976`，ahead／behind 為 0／0。
+
+- **pre-commit** 一次通過：Checkstyle、Maven compile、核心層快速測試、secret 掃描。
+- **pre-push 輕量守門**通過：本機 act 的 Backend Unit Tests（日誌印出兩輪，皆 `Job succeeded`）、Frontend Lint & Build `Job succeeded`；schema 漂移守門「backend 啟動成功 → entity 與 Flyway schema 對齊，無漂移」。
+- **雲端 CI** run [40009945926](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/40009945926)：`completed／success`，三個 job 皆 success，約 11 分鐘（19:15:19Z～19:26:18Z）；`gh run view --json status,conclusion,jobs,headSha` 的 `headSha` 與本機 commit 一致。
+  - 我下載了「Backend Integration Tests & Package」job 的**完整**雲端日誌（202,250 行）核對：該 job 執行 `mvn verify -DskipUnitTests=true -Dspring.profiles.active=integration-test`，failsafe 彙總 **`Tests run: 915, Failures: 0, Errors: 0, Skipped: 0`**（與本機整合測試 915 一致），`BUILD SUCCESS`，`<<< FAILURE`／`<<< ERROR` 標記 0 個；`PlatformSelfRunWriteIsolationE2ETest` 18／18、`PricingRulePersistenceE2ETest` 3／3、`PricingSystemTenantIsolationE2ETest` 6／6、`DashboardListingControllerAuthorizationIntegrationTest` 4／4（雲端全新 Postgres）。
+  - 「Backend Unit Tests」job 的雲端日誌我**沒有**下載，只確認該 job 結論為 success；單元測試 2361 以本機全量為準。
+  - 雲端三個 job 不含 Playwright E2E，E2E 以本機 `make validate-e2e` 為準（見 §6，含 `DEF-420` 的並行度問題）。
 
 ## 11. 文件與程式異動清單
 

@@ -147,6 +147,31 @@ while :; do
   sleep 3
 done
 
+# --- 3.5 DEF-418（Sprint 305）：遷移不得留下測試資料與已知密碼的帳號；再設定 E2E 專用的 admin ----------
+#   V94 之後，Flyway 建出的乾淨 DB 只剩 admin@nextkey.local（密碼已鎖）與系統租戶。這裡先驗證這一點（含「用 Test123! 登入必須被拒絕」），
+#   才執行 scripts/sql/seed-e2e-admin.sql 把 admin 設成已知密碼——已知密碼只存在於 E2E，不會出現在遷移與正式環境。
+psql_gate() { docker exec -i "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -tA -U "$PG_USER" -d "$PG_DB" "$@"; }
+log "驗證 Flyway 建出的乾淨 DB 沒有測試帳號與測試租戶（V94）..."
+OTHER_USERS="$(psql_gate -c "SELECT count(*) FROM users WHERE email <> 'admin@nextkey.local'")" \
+  || { err "查詢 users 失敗"; exit 2; }
+OTHER_TENANTS="$(psql_gate -c "SELECT count(*) FROM tenants WHERE id <> '00000000-0000-0000-0000-000000000001'")" \
+  || { err "查詢 tenants 失敗"; exit 2; }
+if [ "$OTHER_USERS" != "0" ] || [ "$OTHER_TENANTS" != "0" ]; then
+  err "遷移後仍有測試帳號 ${OTHER_USERS} 個、測試租戶 ${OTHER_TENANTS} 個（預期都是 0；見 V94__Remove_Test_Seed_Data_And_Lock_Known_Accounts.sql）"
+  exit 1
+fi
+# E2E 專用、公開在 repo 的測試用值（與 scripts/sql/seed-e2e-admin.sql 的雜湊對應，frontend/e2e 全都在用），不是機密
+E2E_ADMIN_PW='Test123!'
+KNOWN_PASSWORD_LOGIN="$(curl -s -o /dev/null -w '%{http_code}' -X POST "${API_URL}/v2/auth/login" \
+  -H 'Content-Type: application/json' -d "{\"email\":\"admin@nextkey.local\",\"password\":\"${E2E_ADMIN_PW}\"}")"
+if [ "$KNOWN_PASSWORD_LOGIN" != "401" ]; then
+  err "admin@nextkey.local 在遷移後仍可能以已知密碼登入（HTTP ${KNOWN_PASSWORD_LOGIN}，預期 401）"
+  exit 1
+fi
+ok "遷移後沒有測試資料，admin@nextkey.local 無法以已知密碼登入"
+log "設定 E2E 專用的 admin 密碼（scripts/sql/seed-e2e-admin.sql）..."
+psql_gate < scripts/sql/seed-e2e-admin.sql >/dev/null || { err "設定 E2E admin 密碼失敗"; exit 2; }
+
 # --- 4. 建置 + 啟動 frontend（host，與雲端 e2e job 一致）-----------------------
 if [ "${E2E_GATE_SKIP_BUILD:-0}" != "1" ]; then
   log "建置 frontend（npm ci + build，NEXT_PUBLIC_API_URL=$API_URL）..."

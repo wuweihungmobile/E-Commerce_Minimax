@@ -4,6 +4,9 @@
 #
 # 使用方式: ./run_api_tests.sh
 # 前置條件: Backend 運行於 http://localhost:8080
+#
+# ⚠️ Sprint 305（DEF-418）：V94 遷移已刪除 V16 種下的測試店鋪（TENANT_ID）與兩間房源（LISTING_ID、ROOM_LISTING_ID），
+#    本腳本中依賴它們的案例在 Flyway 資料庫上會失敗；需要自行先建立這些資料。詳見 docs/04_planning/SPRINT_305_PLAN.md §8。
 
 set -e
 

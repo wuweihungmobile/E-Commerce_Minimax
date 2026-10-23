@@ -131,12 +131,17 @@ E-Commerce/
         └── types/             # TypeScript Interfaces
 ```
 
-## 🔑 預設帳號
+## 🔑 帳號
 
-Phase 1 使用 Payment Mock，無需真實金流：
+Phase 1 使用 Payment Mock，無需真實金流。
 
-- **Admin**: admin@nextkey.local / admin123 (更換於生產環境！)
-- **測試用戶**: user@test.com / test123
+自 Sprint 305（DEF-418）的 `V94` 遷移起，資料庫遷移**不再留下任何已知密碼的帳號或測試資料**：
+
+- **Admin（`admin@nextkey.local`，SUPER_ADMIN）**：遷移之後它的密碼是鎖住的，無法登入。
+  - 本機開發／E2E：執行 `make dev-admin-password`，把它設成 `Test123!`（`make validate-e2e` 會自動執行同一支 SQL）。**只限本機，絕不可對正式環境執行。**
+  - 正式環境第一次設定：見 [docs/08_deployment/FIRST_ADMIN_SETUP.md](docs/08_deployment/FIRST_ADMIN_SETUP.md)。
+- ⚠️ 本機 docker 開發堆疊的 `docker-compose.override.yml` 把 Flyway 關閉（`SPRING_FLYWAY_ENABLED=false`），既有的 dev 資料庫不會自動套用 `V94`，帳號維持原狀（相關的初始化順序問題見 DEF-356）；`make dev-admin-password` 是冪等的 upsert，隨時可以執行。
+- 其他帳號請用註冊流程或 API 建立（舊版文件寫的 `user@test.com`／`test123` 並不存在於任何遷移；`admin123` 也不是 admin 的真實密碼）。
 
 ## 📦 Phase 1 開發模組
 

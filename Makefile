@@ -303,6 +303,10 @@ shell-postgres: ## 進入 postgres 容器 shell
 shell-redis: ## 進入 redis 容器 shell
 	docker compose exec redis sh
 
+dev-admin-password: ## 把本機 dev 資料庫的 admin@nextkey.local 設成已知密碼 Test123!（DEF-418：V94 起遷移不再留下已知密碼；只限本機 dev，絕不可對正式環境執行）
+	@docker exec -i ecommerce-postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' < scripts/sql/seed-e2e-admin.sql
+	@echo "$(GREEN)✅ admin@nextkey.local 已設為 Test123!（僅限本機開發；正式環境見 docs/08_deployment/FIRST_ADMIN_SETUP.md）$(NC)"
+
 # =============================================
 # 預設目標
 # =============================================

@@ -184,7 +184,13 @@ J2／J4 第一次因 `stack.sh down` 只送 SIGTERM 就返回、下一步 `up` �
 
 ## 11. 雲端 CI 與狀態
 
-狀態：本文件隨主 commit 一起提交時**尚未 push**。commit hash、pre-commit／pre-push 結果與雲端 CI 結果，於 push 後以純文件 commit 回填（本文件與 `RELEASE_TRACKER.md` 的 Sprint 303 row；回填 commit 無法記錄自己的 hash）。
+- commit `46344b86`，於 2026-10-23 push（`f05e9273..46344b86 main -> main`）。以推送日誌，以及 `git fetch` 後本機 HEAD 與 `origin/main` 同為 `46344b86`、ahead／behind 為 0／0 核實；沒有採信背景任務通知的退出碼。
+- pre-commit 一次通過：Checkstyle、Maven compile、核心層快速測試（`Maven quick test passed (core layer)`）、ESLint、`tsc --noEmit`、secret 掃描。commit 前用單一指令序列先確認 `nk-test` 容器在（`docker ps | grep -c nk-test` 印出 2）再 `git add`／`git commit`，這次沒有再踩『commit 前忘了 test-db』。
+- pre-push 輕量守門通過：本機 act 跑了**兩輪** Backend Unit Tests（皆 `Job succeeded`；與前幾個 Sprint 相同，act 被啟動兩次，我沒有查為什麼是兩輪）、Frontend Lint & Build（`Job succeeded`），schema 漂移守門「backend 啟動成功 → entity 與 Flyway schema 對齊，無漂移」。push 之後 `docker ps -a` 為空。
+- 雲端 CI run [39973315598](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39973315598)：`completed／success`，三個 job（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build）皆 success，約 12 分 48 秒（14:52:10Z～15:04:58Z）。用 `gh run view --json status,conclusion,jobs,headSha` 輪詢到 `completed` 後讀結果（沒有用 `gh run watch`），`headSha` 與本機 commit 一致。
+- 下載整合測試 job 的雲端日誌（約 52 MB，加 `--allow-escape-sequences` 並先看檔案大小、去除跳脫碼後才統計）確認：整合測試總計 **897／0 失敗／0 錯誤／0 跳過**（與本機相同）、`PricingSystemTenantIsolationE2ETest` **6／6**、`PricingRulePersistenceE2ETest` **3／3**（在雲端全新的 Postgres 上）、`BUILD SUCCESS`。
+- 雲端三個 job 不含 Playwright E2E；E2E 以本機 `make validate-e2e` 為準（§7）。
+- 之後的純文件回填 commit 不在本文件記錄自己的 hash 與雲端結果（commit 無法包含自己的 hash）。
 
 ## 12. 文件與程式異動清單
 

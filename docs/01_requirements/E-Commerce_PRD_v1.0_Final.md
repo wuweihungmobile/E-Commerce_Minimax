@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0.10（文件修訂；規格基準仍為 v1.0）
+> **版本**: v1.0.11（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -21,6 +21,7 @@
 > - **v1.0.7 → v1.0.8（2026-10-22，Sprint 299，DEF-402）**：使用者裁決「房源日曆與可訂性查詢維持需登入」（實作的 `GET /api/v2/bookings/calendar`、`GET /api/v2/bookings/availability` 需要 `booking:read`，匿名回 401）。①§18 RTM-US-G1 的驗收條件由「Guest 可完整瀏覽所有商品列表、房源日曆、定價」改為「Guest 可完整瀏覽商品列表與房源資訊／底價；房源日曆（每日空房狀態與動態定價）與可訂性查詢需登入後使用，訪客在日曆區看到『登入後可查看即時空房』」；②§9.13 的 `GET /api/v2/rooms/:id/pricing-calendar`（C 端定價日曆）角色由 `Guest+` 改為 `Buyer+`（該端點後端**未實作**，日曆實際由 `/api/v2/bookings/calendar` 提供）。其餘規格內文未改寫。
 > - **v1.0.8 → v1.0.9（2026-10-23，Sprint 300，DEF-404）**：§8.2.13 `return_request_items.sku_id` 補註「可為空」——沒建 SKU（未啟用庫存追蹤）的商品，其訂單品項沒有 SKU，退貨品項的 `sku_id` 就是空的，收貨時不回補庫存（V93 將欄位由 NOT NULL 改為可空；修復前這種退貨申請回 500）。其餘規格內文未改寫。
 > - **v1.0.9 → v1.0.10（2026-10-23，Sprint 301，DEF-407／408／409）**：使用者在 Sprint 300 收尾的 `AskUserQuestion` 中本人選擇建議選項（真實的互動輸入，不是我的推論）。①§9.16 新增「營收口徑」：店鋪後台的營收＝已付款、未取消、未退款的訂單（`PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED`），平均客單價的分母為同一組訂單的筆數；②§10.1.1 `/orders/[id]`：買家本人可讀取自己訂單的物流（四個讀取端點放行該訂單的買家，寫入仍限店家／管理員）；③§10.1.1 `/login`：登入後依角色分流（`BUYER`→`/`、店家類→`/dashboard`、管理員→`/admin`），並支援同源站內路徑的 `?redirect=` 回到原頁（不接受外部網址，防開放轉址）。其餘規格內文未改寫。
+> - **v1.0.10 → v1.0.11（2026-10-23，Sprint 302，DEF-412／413）**：使用者在 Sprint 301 收尾的 `AskUserQuestion` 中本人選擇建議選項（真實的互動輸入，不是我的推論）。①§9.16 營收口徑補上退款：退款總額＝全額退款＋部分退款，淨營收＝計入營收的訂單金額 − 這些訂單上的退款（全額退款的訂單已不在營收裡，不再扣第二次）；②§10.1.1 新增 C 端登入守門說明：買家頁面（`(auth)` 路由群組）除認證流程頁面外都需要登入，沒登入導去 `/login?redirect=<原頁>`，`/checkout` 也需登入。其餘規格內文未改寫。
 
 ---
 
@@ -2112,7 +2113,7 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `GET` | `/api/v2/dashboard/bookings` | 店鋪預訂列表 | StoreOwner/StoreStaff |
 | `GET` | `/api/v2/dashboard/revenue` | 營收報表 | StoreOwner |
 
-> **營收口徑（Sprint 301，DEF-407，使用者拍板）**：店鋪後台所有「營收」數字（總覽的今日／本月／本年、營收報表的總營收與每日趨勢）＝**已付款、未取消、未退款**的訂單（狀態 `PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED`）的訂單金額；平均客單價＝營收 ÷ 這一組訂單的筆數。未付款（`CREATED`）、已取消、等待退款或已退款的訂單不計入。`GET /api/v2/seller/dashboard` 的 `revenue30d` 是另一個數字「已實現營收」（僅 `COMPLETED`），不與上述營收互相比較。儀表板營收目前不含訂房（本 PRD 未規定，另案）。報表 `netRevenue`（淨營收）扣除退款的算法另有缺陷（DEF-412，待裁決），見 [API_M13](../02_architecture/api/API_M13_Seller_Dashboard.md) §7。
+> **營收口徑（Sprint 301，DEF-407，使用者拍板）**：店鋪後台所有「營收」數字（總覽的今日／本月／本年、營收報表的總營收與每日趨勢）＝**已付款、未取消、未退款**的訂單（狀態 `PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED`）的訂單金額；平均客單價＝營收 ÷ 這一組訂單的筆數。未付款（`CREATED`）、已取消、等待退款或已退款的訂單不計入。`GET /api/v2/seller/dashboard` 的 `revenue30d` 是另一個數字「已實現營收」（僅 `COMPLETED`），不與上述營收互相比較。儀表板營收目前不含訂房（本 PRD 未規定，另案）。**退款（Sprint 302，DEF-412，使用者拍板）**：報表的退款總額（`totalRefunds`）＝全額退款＋部分退款；淨營收（`netRevenue`）＝計入營收的訂單金額 − 這些訂單上的退款——全額退款的訂單已不在營收裡，不再扣第二次，部分退款的訂單仍計入營收，所以它的退款要扣。算法見 [API_M13](../02_architecture/api/API_M13_Seller_Dashboard.md) §3.3。
 
 ### 9.17 全域 API 規範（繼承 v0.8 §7.9 + v0.9 擴展 + Loop 1 修正）
 
@@ -2141,7 +2142,7 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `/listings/[id]` | M01/M02 | **改名**：商品與房源詳情頁統一為單一 `/listings/[id]`（Listing 抽象層，見 §5），取代原 `/products/[id]`／`/rooms/[id]` 兩條路由 | 改名 |
 | `/rooms` | M02 | **已補齊（DEF-358a，Sprint 259）**：同上，跨店鋪房源聚合列表頁 | 已完成 |
 | `/cart` | M04 | 購物車（Phase 2） | 不變 |
-| `/checkout` | M05/M07 | **結帳頁（Phase 1 為 Payment Mock 頁面）**，另有 `/checkout/mixed`、`/checkout/product` 子路由（混合購物車／純商品結帳分流，實作演進，PRD 未載） | 不變＋擴充 |
+| `/checkout` | M05/M07 | **結帳頁（Phase 1 為 Payment Mock 頁面；需登入，DEF-413，Sprint 302，使用者拍板）**，另有 `/checkout/mixed`、`/checkout/product` 子路由（混合購物車／純商品結帳分流，實作演進，PRD 未載） | 不變＋擴充 |
 | `/orders` | M05 | 我的訂單（零售），另有 `/orders/[id]/payment/cancel`／`/payment/success` 子路由 | 不變＋擴充 |
 | `/orders/[id]` | M05/M11 | 訂單詳情（含物流追蹤）。**買家本人可讀取自己訂單的物流（Sprint 301，DEF-408，使用者拍板）**：物流的四個讀取端點放行該訂單的買家，寫入端點仍限店家／管理員，另一位買家讀別人訂單的物流仍是 403 | 不變 |
 | `/bookings` | M06 | 我的預訂（民宿），另有對應 `payment/cancel`／`payment/success` 子路由 | 不變＋擴充 |
@@ -2162,6 +2163,8 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `/stores/[slug]/blog` | M17/M15 | 店鋪貼文列表（Sprint 252） | 不變 |
 
 **本節未收錄於原 PRD、但實際已存在的 C 端路由**（Sprint 253 補列，非窮舉每條巢狀子路由）：`/account`（個資下載/刪除帳戶自助頁）、`/addresses`、`/cart`／`/checkout` 下的 `mixed`／`product` 分流、`/returns`、`/returns/[id]`、`/returns/new`、`/reviews/product/[listingId]`、`/support/tickets`、`/support/tickets/[id]`、`/forgot-password`、`/reset-password`、`/verify-email`、`/tenant/apply`（開店申請入口）。
+
+**C 端登入守門（Sprint 302，DEF-413，使用者拍板）**：前端 `(auth)` 路由群組的共用版面層有登入守門——除了 `/login`、`/register`、`/forgot-password`、`/reset-password`、`/verify-email` 這五個認證流程頁面之外，群組內的買家頁面（`/cart`、`/checkout`（含 `mixed`／`product`）、`/orders`、`/bookings`（含詳情與付款結果頁）、`/notifications`、`/account`、`/addresses`、`/returns`（含 `new`／詳情）、`/support/tickets`（含詳情）、`/auth/profile`、`/reviews/product/[listingId]`）都需要登入；沒有 token 會被整頁導去 `/login?redirect=<原頁>`（只接受同源站內路徑，見上表 `/login` 列），登入後回原頁，沒登入的人不會看到頁面內容或「無法載入…」。守門只在進入頁面與換頁時檢查，**不**對登出做反應（登出仍導向不帶參數的 `/login`）。商品／房源／店鋪／部落格等公開瀏覽頁（不在 `(auth)` 群組）與 `/oauth/callback/[provider]` 不受影響。
 
 #### 10.1.2 B 端店鋪後台路由（v0.9 新增；**Sprint 253 依實際程式碼校對**）
 

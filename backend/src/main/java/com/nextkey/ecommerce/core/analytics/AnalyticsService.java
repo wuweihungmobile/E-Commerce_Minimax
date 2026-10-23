@@ -68,6 +68,17 @@ public class AnalyticsService {
         return REVENUE_STATUSES.contains(order.getStatus());
     }
 
+    /**
+     * 一筆付款實際退掉的金額（DEF-412）：全額退款（REFUNDED）以付款金額計——Stripe webhook 路徑
+     * （{@code PaymentRepository#markRefundedIfNotAlready}）只改 status、不寫 refundedAmount，直接加總 refundedAmount
+     * 會把它算成 0；部分退款（PARTIALLY_REFUNDED）以累計已退款金額計。
+     */
+    private static BigDecimal refundedMoney(final Payment payment) {
+        BigDecimal money = payment.getStatus() == Payment.PaymentStatus.REFUNDED
+                ? payment.getAmount() : payment.getRefundedAmount();
+        return money != null ? money : BigDecimal.ZERO;
+    }
+
     /** 唯一的營收加總：只加計入營收的訂單（{@link #REVENUE_STATUSES}）的 totalAmount。 */
     private static BigDecimal sumRevenue(final List<Order> orders) {
         return orders.stream()
@@ -153,11 +164,23 @@ public class AnalyticsService {
 
         BigDecimal totalRevenue = sumRevenue(orders);
 
-        List<Payment> payments = paymentRepository.findByOrderIdInAndStatus(
-                orders.stream().map(Order::getId).collect(Collectors.toList()),
-                Payment.PaymentStatus.REFUNDED);
-        BigDecimal totalRefunds = payments.stream()
-                .map(Payment::getAmount)
+        // DEF-412：退款要涵蓋全額（付款 REFUNDED）與部分（付款 PARTIALLY_REFUNDED、訂單狀態不變）兩種；
+        // 原本只查 REFUNDED，部分退款完全不被計入。
+        List<UUID> orderIds = orders.stream().map(Order::getId).collect(Collectors.toList());
+        List<Payment> refundedPayments = new ArrayList<>(
+                paymentRepository.findByOrderIdInAndStatus(orderIds, Payment.PaymentStatus.REFUNDED));
+        refundedPayments.addAll(
+                paymentRepository.findByOrderIdInAndStatus(orderIds, Payment.PaymentStatus.PARTIALLY_REFUNDED));
+        BigDecimal totalRefunds = refundedPayments.stream()
+                .map(AnalyticsService::refundedMoney)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // 淨營收只扣「仍計入營收的訂單」上的退款：全額退款的訂單（狀態 REFUNDED）本來就不在 totalRevenue 裡，
+        // 再扣它的退款就是同一筆錢扣兩次（原本單一銷售全額退款會得到負的淨營收）。
+        Set<UUID> revenueOrderIds = orders.stream().filter(AnalyticsService::countsAsRevenue)
+                .map(Order::getId).collect(Collectors.toSet());
+        BigDecimal refundsOnRevenueOrders = refundedPayments.stream()
+                .filter(p -> revenueOrderIds.contains(p.getOrderId()))
+                .map(AnalyticsService::refundedMoney)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         int totalOrders = orders.size();
@@ -176,7 +199,7 @@ public class AnalyticsService {
                 .totalOrders(totalOrders)
                 .averageOrderValue(averageOrderValue)
                 .totalRefunds(totalRefunds)
-                .netRevenue(totalRevenue.subtract(totalRefunds))
+                .netRevenue(totalRevenue.subtract(refundsOnRevenueOrders))
                 .currency("TWD")
                 .dailyRevenue(AnalyticsDto.RevenueByDay.builder()
                         .startDate(startDate)

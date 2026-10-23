@@ -1,7 +1,7 @@
 # API 規格文件 - M13 商家工作台 / API Specification - M13 Seller Dashboard
 
 > **文件編號**: API-M13
-> **文件版本**: v1.2（Sprint 301：DEF-407 已修復——「營收」口徑統一為已付款、未取消、未退款的五個狀態，§1.2／§3.1～3.3／§7 同步；並登記 DEF-412：`netRevenue` 與退款的算法有兩處錯；v1.1＝Sprint 300，§7「營收三種口徑」補上實測與 DEF-407，僅文件；v1.0 為 Sprint 275 首次建立，首次有獨立規格文件，DEF-286 範圍）
+> **文件版本**: v1.3（Sprint 302：DEF-412 已修復——`totalRefunds` 涵蓋全額＋部分退款、`netRevenue` 只扣仍計入營收的訂單上的退款，§3.3／§7 同步；v1.2＝Sprint 301：DEF-407 已修復——「營收」口徑統一為已付款、未取消、未退款的五個狀態，§1.2／§3.1～3.3／§7 同步；並登記 DEF-412：`netRevenue` 與退款的算法有兩處錯；v1.1＝Sprint 300，§7「營收三種口徑」補上實測與 DEF-407，僅文件；v1.0 為 Sprint 275 首次建立，首次有獨立規格文件，DEF-286 範圍）
 > **建立日期**: 2026-10-16
 > **最後更新**: 2026-10-23
 > **負責人**: SD (Marcus)
@@ -94,8 +94,8 @@ FRD 完全無 M13 章節（見文件頂部狀態說明）。
 |------|------|------|
 | `totalRevenue` | BigDecimal | 區間內 `PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED` 五狀態加總。全模組唯一的營收加總是 `AnalyticsService.sumRevenue`——Sprint 301 起首頁今日／昨日／本月／本年與每日趨勢也走它，不會再各自分歧（DEF-407） |
 | `totalOrders` | Integer | 區間內**全部**訂單數（含未付款、已取消），**不是**入帳訂單數 |
-| `totalRefunds` | BigDecimal | 區間內訂單關聯付款為 `REFUNDED`（全額退款）狀態者的金額加總；`PARTIALLY_REFUNDED`（部分退款）不計入——見下一列 |
-| `netRevenue` | BigDecimal | `totalRevenue - totalRefunds`。**⚠️ 已知算法缺陷（DEF-412，Sprint 301 實測登記，待使用者裁決，見 §7）**：全額退款的訂單已被排除在 `totalRevenue` 之外，它的付款金額卻又被 `totalRefunds` 再扣一次（實測單一 500 元銷售全額退款後 `netRevenue = -500`）；部分退款完全沒被扣（實測退 200 後 `netRevenue` 仍是 450） |
+| `totalRefunds` | BigDecimal | 區間內所有退款的金額加總（DEF-412，Sprint 302，使用者拍板）：付款為 `REFUNDED`（全額退款）者以**付款金額**計——Stripe webhook 路徑（`markRefundedIfNotAlready`）只改狀態、不寫 `refundedAmount`，直接加總 `refundedAmount` 會把它算成 0；付款為 `PARTIALLY_REFUNDED`（部分退款）者以累計已退款金額 `refundedAmount` 計（為 `null` 時當 0）。先前只查 `REFUNDED`，部分退款完全不被計入 |
+| `netRevenue` | BigDecimal | `totalRevenue` − **仍計入營收的訂單**上的退款（DEF-412，Sprint 302，使用者拍板）。全額退款的訂單（狀態 `REFUNDED`）本來就不在 `totalRevenue` 裡，它的退款只出現在 `totalRefunds`、不再從淨營收扣第二次（先前單一 500 元銷售全額退款會得到 `-500`）；部分退款時訂單狀態不變、仍計入營收，所以它的退款要從淨營收扣（450 元訂單退 200 → 淨 250）。付款已 `REFUNDED` 但訂單因 `canRefund` 不允許而仍在營收狀態（webhook 路徑只在 `OrderStateMachine.canRefund` 時才把訂單轉 `REFUNDED`）時，同樣會被扣 |
 | `averageOrderValue` | BigDecimal | `totalRevenue / 入帳訂單數`（四捨五入 2 位）；入帳訂單數＝與 `totalRevenue` 同一組五個狀態的訂單筆數，為 0 時回 `0`（非除以零錯誤）。Sprint 301 起（DEF-407）；先前分母是區間內全部訂單（含未付款與已取消），與只加已付款類的分子口徑不同 |
 | `dailyRevenue` | `RevenueByDay` | 依 `granularity` 分桶（見 §4.5） |
 | `categoryRevenue` | `RevenueByCategory` | **`data` 永遠是空陣列**——欄位與巢狀型別都定義了，服務層從未實作依分類聚合，見 §7 已知限制 |
@@ -204,7 +204,7 @@ FRD 完全無 M13 章節（見文件頂部狀態說明）。
 | 項目 | 說明 |
 |------|------|
 | ~~兩個「儀表板」端點統計口徑互不一致~~（**DEF-407，Sprint 300 登記、Sprint 301 已修復**） | 原狀：`DashboardResponse.revenue30d` 只計 `COMPLETED`；`DashboardStats` 的今日／本月／本年營收與每日趨勢只排除 `CANCELLED`／`REFUNDED`，所以未付款的 `CREATED` 與等待退款的 `REFUNDING` 也被算進去；`RevenueStats.totalRevenue` 又是第三種（五個已付款類狀態）；`averageOrderValue` 的分母還是區間內全部訂單。Sprint 300 實測：已送達 2100＋已付款 500＋未付款 500，`/dashboard/stats` 回 `todayRevenue: 3100`、`/dashboard/revenue` 回 `totalRevenue: 2600`，差的正是未付款那張。**Sprint 301 依使用者的決定**（`AskUserQuestion` 中本人選「已付款且未取消」）：「營收」＝`PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED` 五個狀態的 `totalAmount`，全模組只剩一個加總函式 `AnalyticsService.sumRevenue`（首頁今日／昨日／本月／本年、每日趨勢、報表總營收都走它）；平均客單價的分母改為同一組訂單的筆數（`totalOrders` 仍是區間內全部訂單數）；`revenue30d`（僅 `COMPLETED`）保留為「已實現營收」，名稱只標在 DTO Javadoc 與本文件（前端沒有使用此欄位）。**驗證**：`AnalyticsServiceTest` 新增 2 個並更新平均客單價案例的預期值（12→14）、`AnalyticsRealDbIntegrationTest` 新增 1 個真實 PostgreSQL 案例（2→3）、真實全棧 E2E `at-dashboard-revenue.spec.ts` 的 `E2E-REVENUE-02`／`03`（已付款 500＋未付款 500：首頁今日營收 $500、報表平均客單價 $500、訂單總數仍是 2 筆）。**不含訂房**：舊口徑與現在的統一口徑都只查 `Order`，PRD 對儀表板營收是否含訂房沒有明文，另案 |
-| **`netRevenue` 與退款的算法有兩處錯（DEF-412，Sprint 301 實測登記，待使用者裁決）** | `netRevenue = totalRevenue - totalRefunds`，但 `totalRevenue` 只加五個已付款類狀態，全額退款的訂單（狀態 `REFUNDED`）本來就不在裡面，而 `totalRefunds` 加總的是區間內付款為 `REFUNDED` 者的金額——**同一筆全額退款被扣兩次**；另一頭，部分退款時付款是 `PARTIALLY_REFUNDED`、訂單狀態不變（`PaymentStateService` 的退款處理：達全額才把付款與訂單都轉 `REFUNDED`，否則付款轉 `PARTIALLY_REFUNDED`、訂單狀態不變），`totalRefunds` 只查 `REFUNDED`，所以**部分退款完全不被扣**。**實測（Sprint 301，真實端點＋真實登入；退款後的終態由 SQL 依應用程式的寫法寫入，不是走完真實退款流程，測完已還原）**：單一 500 元銷售全額退款 → `totalRevenue: 0`、`totalRefunds: 500`、`netRevenue: -500`（應為 0）；450 元訂單部分退款 200 → `totalRefunds: 0`、`netRevenue: 450`（應為 250）。「退款要怎麼算進營收」是產品決策，所以只登記不修 |
+| ~~`netRevenue` 與退款的算法有兩處錯~~（**DEF-412，Sprint 301 實測登記、Sprint 302 已修復**） | 原狀：`netRevenue = totalRevenue - totalRefunds`，但全額退款的訂單已不在 `totalRevenue` 裡，付款金額卻又被 `totalRefunds` 再扣一次（**同一筆全額退款扣兩次**）；部分退款時付款是 `PARTIALLY_REFUNDED`、訂單狀態不變，`totalRefunds` 只查 `REFUNDED`，所以**部分退款完全不被扣**。Sprint 301 實測（真實端點＋真實登入；退款後的終態由 SQL 依應用程式的寫法寫入，不是走完真實退款流程，測完已還原）：單一 500 元銷售全額退款 → `totalRevenue: 0`、`totalRefunds: 500`、`netRevenue: -500`（應為 0）；450 元訂單部分退款 200 → `totalRefunds: 0`、`netRevenue: 450`（應為 250）。**Sprint 302 依使用者的決定**（`AskUserQuestion` 中本人選「依建議」）：`totalRefunds`＝全額＋部分退款加總；`netRevenue`＝`totalRevenue` − 仍計入營收的訂單上的退款（§3.3）。**實作細節（我替使用者做的決定）**：全額退款的付款以 `amount` 計而不是 `refundedAmount`，因為 Stripe webhook 路徑只改狀態、不寫 `refundedAmount`，照字面加總 `refundedAmount` 會漏算。**驗證**：`AnalyticsServiceTest` 新增 4 個並更新一個既有案例（14→18）、`AnalyticsRealDbIntegrationTest` 新增 1 個真實 PostgreSQL 案例（3→4，全額＋部分＋webhook 三種退款混在同一個區間）；實作前 3 個單元案例轉紅（淨營收預期 500 實得 0；退款總額預期 200／50 實得 0）；5 個突變全數由預期的測試擊殺。**限制**：沒有走完真實的退款流程驗證（Stripe 與 mock 付款的退款管線都沒走），退款終態以 SQL／測試資料列模擬 |
 | `DashboardStats.pendingOrders` 與 `DashboardResponse.pendingOrderCount` 口徑不同 | 前者僅計 `CREATED`；後者計 `CREATED`＋`PAID`＋`CONFIRMED` 三狀態 |
 | `DashboardStats.activeListings`／`totalProducts` 恆為同一數值 | 服務層用同一個 `activeProducts` 變數賦值給兩個欄位，`totalProducts` 這個名稱暗示「商品總數」，實際回傳的是「**ACTIVE** 商品數」 |
 | `totalRooms` 與 `activeListings` 的「是否限 ACTIVE」不一致 | 同一回應物件內，房源計數不篩狀態、商品計數篩 `ACTIVE`，欄位命名未反映此差異 |

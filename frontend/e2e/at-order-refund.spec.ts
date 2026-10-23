@@ -1,4 +1,5 @@
 import { test, expect, Page, Route } from '@playwright/test';
+import { asMockLoggedInBuyer } from './helpers/mockLogin';
 
 /**
  * AT-ORDER-REFUND: 訂單詳情的退款資訊（Sprint 226，DEF-303 (5)）
@@ -8,7 +9,7 @@ import { test, expect, Page, Route } from '@playwright/test';
  * - E2E-OREF-02: 已退款（REFUNDED）→ 顯示「款項已退回」與已退款金額
  * - E2E-OREF-03: 其他狀態（已付款）→ 不顯示退款資訊
  *
- * 全程 mock API，(auth) 頁沒有登入守門。
+ * 全程 mock API。(auth) 頁有登入守門（DEF-413，Sprint 302），以假登入通過（asMockLoggedInBuyer：只種 accessToken）。
  */
 
 const ORDER_ID = 'ord-refund-1';
@@ -75,6 +76,10 @@ async function mockOrder(page: Page, status: string, payment: ReturnType<typeof 
 }
 
 test.describe('AT-ORDER-REFUND: 訂單退款資訊（S226）', () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    await asMockLoggedInBuyer(page);
+  });
+
   test('E2E-OREF-01: 退款處理中（REFUNDING）→ 顯示處理中說明，不顯示已退款金額', async ({ page }: { page: Page }) => {
     await mockOrder(page, 'REFUNDING', paymentState('REFUNDING', 'SUCCESS', 0));
 

@@ -10,9 +10,10 @@ import { test, expect, Page, Route } from '@playwright/test';
  * - E2E-ROOM-05: 整月日曆載入 → 已訂日禁選 → 點選可訂區間 → 可用性 + 加購（Sprint 41 US-004 AI-2202b）
  * - E2E-ROOM-13／14: 入住日期驗證以台灣日曆日判斷「今日」，固定時鐘重現 UTC 與台灣差一天的時段（Sprint 300，DEF-405）
  *
- * checkout 頁無登入守門（表單 + 送出走 mock），故不需真實登入。
- * 例外（Sprint 299，DEF-402）：E2E-ROOM-05／07／09／10 斷言「日曆格內容」，而日曆端點需登入、訪客不會呼叫它，
- * 所以這四個案例以已登入買家的身分跑（asLoggedInBuyer）；訪客看到什麼見 at-guest-room-calendar-real.spec.ts。
+ * checkout 頁在買家頁面共用版面層的登入守門之後（DEF-413，Sprint 302）需要登入：E2E-ROOM-02／03／12 以假登入
+ * （asLoggedInBuyer，只種 accessToken）開 checkout；表單 + 送出走 mock，仍不需真實登入。
+ * 另外（Sprint 299，DEF-402）：E2E-ROOM-05／07／09／10 斷言「日曆格內容」，而日曆端點需登入、訪客不會呼叫它，
+ * 所以這四個案例也以已登入買家的身分跑（asLoggedInBuyer）；訪客看到什麼見 at-guest-room-calendar-real.spec.ts。
  * 遠期日期（2030）確保通過「入住不早於今日 / 退房晚於入住」前端驗證。
  */
 
@@ -176,6 +177,7 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
   });
 
   test('E2E-ROOM-02: checkout 建立 booking 成功', async ({ page }: { page: Page }) => {
+    await asLoggedInBuyer(page);
     await page.route('**/v2/cart', async (route) => {
       if (route.request().method() === 'DELETE') {
         await fulfillJson(route, 200, { success: true, data: null });
@@ -206,6 +208,7 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
   });
 
   test('E2E-ROOM-03: checkout 日期衝突（409 E-4001）→ 優雅提示', async ({ page }: { page: Page }) => {
+    await asLoggedInBuyer(page);
     await page.route('**/v2/cart', async (route) => {
       if (route.request().method() === 'DELETE') {
         await fulfillJson(route, 200, { success: true, data: null });
@@ -231,6 +234,7 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
   });
 
   test('E2E-ROOM-12: 混合購物車訂房 → 只移除已訂的 ROOM 項目，不整車清空（DEF-043）', async ({ page }: { page: Page }) => {
+    await asLoggedInBuyer(page);
     // 為什麼這個測試重要：checkout 只會訂 roomItems[0]，卻曾對整個購物車下 DELETE /v2/cart，
     // 導致「尚未結帳的 PRODUCT 項目」與「第二個 ROOM 項目」被靜默刪除（DEF-043）。
     // 斷言的是機制而非畫面：必須打單項移除端點、且絕不打整車清空端點。

@@ -62,8 +62,18 @@ const REGISTER_API_PATH = '/v2/auth/register'; // 同上，API_ENDPOINTS.registe
 const HTTP_TOO_MANY_REQUESTS = 429;
 const RATE_LIMIT_RETRY_WAIT_MS = 2_500;
 const RATE_LIMIT_MAX_RETRIES = 8;
-/** 註冊送出後等「導回登入頁」的上限，也是等註冊回應狀態碼的上限。 */
-const REGISTER_RESULT_TIMEOUT_MS = 6_000;
+/**
+ * 註冊送出後等「導回登入頁」的上限，也是等註冊回應狀態碼的上限。
+ *
+ * Sprint 302（使用者拍板）：6 秒 → 20 秒。gate 整套最前面兩個同時註冊的案例，曾在機器負載很高時（4 核心、負載平均 40 以上）
+ * 等不到回應就被判失敗（Sprint 299、Sprint 301 各出現一次；失敗當下的頁面快照顯示送出鈕仍是「Creating account...」，
+ * 請求還在途中）。機器健康時註冊只要不到 2 秒（Sprint 301 gate 的後端日誌：最前面兩個同時註冊 1.7 秒、之後 0.6～0.8 秒），
+ * 所以調高上限在正常情況沒有額外成本。這是「不再被偶發的拖慢判死」，不是診斷成因。
+ *
+ * 副作用：被限流（HTTP 429）時，頁面不會導回登入頁，下面的 waitForURL 會等滿這個上限才去看狀態碼，
+ * 所以每一輪限流重試最多多等 20 秒（原本 6 秒）。Sprint 301 健康那次 gate 的後端日誌沒有任何限流拒絕的紀錄。
+ */
+const REGISTER_RESULT_TIMEOUT_MS = 20_000;
 
 /**
  * 掛上「某認證端點的 POST 回應」監聽，回傳該回應的 HTTP 狀態碼；逾時或頁面關閉得到 undefined，

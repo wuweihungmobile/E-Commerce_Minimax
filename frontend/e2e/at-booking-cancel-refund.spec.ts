@@ -1,4 +1,5 @@
 import { test, expect, Page, Route } from '@playwright/test';
+import { asMockLoggedInBuyer } from './helpers/mockLogin';
 
 /**
  * AT-BOOKING-CANCEL-REFUND: 訂房取消與退款（Sprint 227，DEF-312；PRD §15.2.5／Q14）
@@ -10,7 +11,7 @@ import { test, expect, Page, Route } from '@playwright/test';
  * - E2E-CREF-04: 退款完成（COMPLETED）→ 詳情顯示「已退款」與金額
  * - E2E-CREF-05: 確認預訂前的結帳頁顯示取消政策摘要（PRD US-012）
  *
- * 全程 mock API，(auth) 頁沒有登入守門。
+ * 全程 mock API。(auth) 頁有登入守門（DEF-413，Sprint 302），以假登入通過（asMockLoggedInBuyer：只種 accessToken）。
  */
 
 const ROOM_ID = '44444444-4444-4444-4444-444444444444';
@@ -119,6 +120,10 @@ async function cancelViaUi(page: Page) {
 }
 
 test.describe('AT-BOOKING-CANCEL-REFUND: 訂房取消與退款（S227）', () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    await asMockLoggedInBuyer(page);
+  });
+
   test('E2E-CREF-01: 已付款、離入住還有好幾天 → 顯示取消政策；取消後「將退款」，詳情顯示退款處理中', async ({ page }: { page: Page }) => {
     const cancelCalls = await mockBooking(
       page,

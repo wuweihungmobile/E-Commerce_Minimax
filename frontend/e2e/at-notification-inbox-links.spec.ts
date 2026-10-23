@@ -1,4 +1,5 @@
 import { test, expect, Page, Route } from '@playwright/test';
+import { asMockLoggedInBuyer } from './helpers/mockLogin';
 
 /**
  * AT-NOTIFICATION-INBOX-LINKS: 通知收件匣的標籤與連結（Sprint 229，PRD US-005／US-014）
@@ -11,7 +12,7 @@ import { test, expect, Page, Route } from '@playwright/test';
  * - E2E-NINBOX-02: 退款完成（REFUND_COMPLETED）→ 顯示中文標籤「退款完成」，不是原始字串
  * - E2E-NINBOX-03: 訂單通知只有「查看訂單」，沒有訂房或重新預訂連結；沒有 data 的通知不顯示任何連結
  *
- * 全程 mock API，(auth) 頁沒有登入守門。
+ * 全程 mock API。(auth) 頁有登入守門（DEF-413，Sprint 302），以假登入通過（asMockLoggedInBuyer：只種 accessToken）。
  */
 
 const BOOKING_ID = 'bk-timeout-1';
@@ -60,6 +61,10 @@ async function openInbox(page: Page) {
 }
 
 test.describe('AT-NOTIFICATION-INBOX-LINKS: 通知收件匣的標籤與連結（S229）', () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    await asMockLoggedInBuyer(page);
+  });
+
   test('E2E-NINBOX-01: 訂房逾時通知 → 「查看訂房」與「重新預訂」連到訂房與房源頁', async ({ page }: { page: Page }) => {
     await mockInbox(page, [
       notice('n1', 'ORDER_CANCELLED', '訂房因逾期未付款已取消', '您的訂房「若水海景房」（2030-01-05 入住）超過付款期限，已自動取消並釋出日期。如仍想入住，可重新預訂。', {

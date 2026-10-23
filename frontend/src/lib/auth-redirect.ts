@@ -5,7 +5,8 @@ const LOGIN_PATH = '/login'
 // 登入、註冊、密碼與驗證流程、OAuth 回呼都不能當作「登入後回去的頁面」（會繞圈）
 const AUTH_FLOW_PATHS = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/oauth']
 
-function isAuthFlowPath(pathname: string): boolean {
+/** 是不是登入、註冊、密碼與驗證流程、OAuth 回呼這類頁面：不需要登入，也不能當作「登入後回去的頁面」。 */
+export function isAuthFlowPath(pathname: string): boolean {
   return AUTH_FLOW_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
 }
 

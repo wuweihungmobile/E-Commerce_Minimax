@@ -1,4 +1,5 @@
 import { test, expect, Page, Route } from '@playwright/test';
+import { asMockLoggedInBuyer } from './helpers/mockLogin';
 
 /**
  * AT-BOOKING-PAYMENT: 訂房付款 E2E（Sprint 222，DEF-303 (1)）
@@ -15,7 +16,7 @@ import { test, expect, Page, Route } from '@playwright/test';
  * - E2E-BPAY-10: 合併結帳（Mock）→ 訂單與訂房兩邊都付款
  * - E2E-BPAY-11: 待付款訂房顯示付款期限；歷史訂房（沒有期限）不顯示（Sprint 225，DEF-311）
  *
- * 全程 mock API，(auth) 頁沒有登入守門。
+ * 全程 mock API。(auth) 頁有登入守門（DEF-413，Sprint 302），以假登入通過（asMockLoggedInBuyer：只種 accessToken）。
  */
 
 const ROOM_ID = '44444444-4444-4444-4444-444444444444';
@@ -109,6 +110,10 @@ function cartWithRoom(extra: object[] = []) {
 }
 
 test.describe('AT-BOOKING-PAYMENT: 訂房付款（S222）', () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    await asMockLoggedInBuyer(page);
+  });
+
   test('E2E-BPAY-01: 訂房詳情 Mock 付款 → 付款成功、狀態標籤與付款區塊更新', async ({ page }: { page: Page }) => {
     let paid = false;
     let payCalls = 0;

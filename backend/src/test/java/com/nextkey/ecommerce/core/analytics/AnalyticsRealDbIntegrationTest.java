@@ -78,13 +78,24 @@ class AnalyticsRealDbIntegrationTest {
         TenantContext.setCurrentTenant(tenantId);
     }
 
-    private void seedOrder(final String status, final String amount, final String createdAt) {
+    private UUID seedOrder(final String status, final String amount, final String createdAt) {
+        UUID id = UUID.randomUUID();
         jdbcTemplate.update("""
                 INSERT INTO orders (id, tenant_id, user_id, order_type, status, total_amount,
                                     shipping_fee, discount_amount, currency, created_at, updated_at)
                 VALUES (?, ?, ?, 'PRODUCT', ?, ?, 0.00, 0.00, 'TWD', ?, ?)
-                """, UUID.randomUUID(), tenantId, buyerId, status, new BigDecimal(amount),
+                """, id, tenantId, buyerId, status, new BigDecimal(amount),
                 OffsetDateTime.parse(createdAt), OffsetDateTime.parse(createdAt));
+        return id;
+    }
+
+    /** 掛在某張訂單上的付款；只填 NOT NULL 欄位（payment_method、amount、status）與退款相關欄位。 */
+    private void seedPayment(final UUID orderId, final String status, final String amount, final String refundedAmount) {
+        jdbcTemplate.update("""
+                INSERT INTO payments (id, order_id, payment_method, amount, currency, status, refunded_amount,
+                                      created_at, updated_at)
+                VALUES (?, ?, 'MOCK', ?, 'TWD', ?, ?, now(), now())
+                """, UUID.randomUUID(), orderId, new BigDecimal(amount), status, new BigDecimal(refundedAmount));
     }
 
     @Test
@@ -120,6 +131,30 @@ class AnalyticsRealDbIntegrationTest {
                 .as("1/15 的趨勢不含 CREATED／REFUNDING／REFUNDED（原本是 420）").isEqualByComparingTo("300.00");
         assertThat(report.getAverageOrderValue()).as("700 ÷ 3 張入帳訂單").isEqualByComparingTo("233.33");
         assertThat(report.getTotalOrders()).as("區間內全部訂單：1/14 一張、1/15 六張").isEqualTo(7);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-412：全額退款（訂單與付款都 REFUNDED）不被淨營收扣兩次；部分退款（PARTIALLY_REFUNDED）計入退款總額並從淨營收扣除；"
+            + "webhook 路徑（付款 REFUNDED 但 refunded_amount 仍是 0）以付款金額計")
+    void revenue_refunds_fullNotDoubleCounted_partialDeducted() {
+        // 全額退款的金額（600）刻意不等於仍計入營收的訂單上的退款合計（200＋300）：否則「扣仍計入營收的訂單上的退款」
+        // 與「扣不在營收裡的訂單的退款」會算出同一個淨營收，這個案例就分不出兩者（突變驗證時 M5 因此在整合層倖存）。
+        UUID fullyRefunded = seedOrder("REFUNDED", "600.00", "2027-01-15T10:00:00+08:00");     // 全額退款，已不在營收
+        seedPayment(fullyRefunded, "REFUNDED", "600.00", "600.00");
+        UUID partlyRefunded = seedOrder("DELIVERED", "450.00", "2027-01-15T11:00:00+08:00");   // 部分退款，訂單狀態不變
+        seedPayment(partlyRefunded, "PARTIALLY_REFUNDED", "450.00", "200.00");
+        UUID viaWebhook = seedOrder("COMPLETED", "300.00", "2027-01-15T12:00:00+08:00");       // webhook：付款 REFUNDED、訂單沒轉
+        seedPayment(viaWebhook, "REFUNDED", "300.00", "0.00");
+
+        AnalyticsDto.RevenueStats report = analyticsService.getRevenueStats(AnalyticsDto.AnalyticsRequest.builder()
+                .startDate(LocalDate.of(2027, 1, 14)).endDate(LocalDate.of(2027, 1, 15)).granularity("DAY").build());
+
+        // 計入營收：@BeforeEach 的 400（昨天）＋100＋200，加本案例的 DELIVERED 450、COMPLETED 300；REFUNDED 的 600 不計
+        assertThat(report.getTotalRevenue()).isEqualByComparingTo("1450.00");
+        assertThat(report.getTotalRefunds()).as("全額 600 ＋ 部分 200 ＋ webhook 全額 300").isEqualByComparingTo("1100.00");
+        // 修復前：只查 REFUNDED → 退款 900（漏了部分退款），淨營收 1450 - 900 = 550（又把已排除訂單的 600 再扣一次）
+        assertThat(report.getNetRevenue()).as("1450 - 仍計入營收的訂單上的退款（部分 200 ＋ webhook 300）")
+                .isEqualByComparingTo("950.00");
     }
 
     @Test

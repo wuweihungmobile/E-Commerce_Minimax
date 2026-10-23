@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.analytics;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -84,6 +85,24 @@ class AnalyticsServiceTest {
         return o;
     }
 
+    /** 掛在某張訂單上的付款（只 stub 淨營收計算會讀的欄位）。 */
+    private Payment payment(UUID orderId, Payment.PaymentStatus status, String amount, String refundedAmount) {
+        Payment p = org.mockito.Mockito.mock(Payment.class);
+        lenient().when(p.getOrderId()).thenReturn(orderId);
+        lenient().when(p.getStatus()).thenReturn(status);
+        lenient().when(p.getAmount()).thenReturn(new BigDecimal(amount));
+        lenient().when(p.getRefundedAmount()).thenReturn(refundedAmount == null ? null : new BigDecimal(refundedAmount));
+        return p;
+    }
+
+    /** 兩種退款狀態各自的查詢結果（lenient：只查其中一種的實作不會因為嚴格模式的『未使用 stub』而紅燈）。 */
+    private void stubRefundedPayments(List<Payment> refunded, List<Payment> partiallyRefunded) {
+        lenient().when(paymentRepository.findByOrderIdInAndStatus(anyList(), eq(Payment.PaymentStatus.REFUNDED)))
+                .thenReturn(refunded);
+        lenient().when(paymentRepository.findByOrderIdInAndStatus(anyList(), eq(Payment.PaymentStatus.PARTIALLY_REFUNDED)))
+                .thenReturn(partiallyRefunded);
+    }
+
     private Listing listing(Listing.ListingType type, Listing.ListingStatus status) {
         Listing l = org.mockito.Mockito.mock(Listing.class);
         lenient().when(l.getListingType()).thenReturn(type);
@@ -106,9 +125,11 @@ class AnalyticsServiceTest {
                 order(Order.OrderStatus.CANCELLED, "999", mid));     // 不入營收
         when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(orders);
 
-        Payment refund = org.mockito.Mockito.mock(Payment.class);
-        when(refund.getAmount()).thenReturn(new BigDecimal("50"));
-        when(paymentRepository.findByOrderIdInAndStatus(anyList(), any())).thenReturn(List.of(refund));
+        // 淨額扣的是「計入營收的訂單」上的退款（DEF-412）：CONFIRMED 那張（200）部分退款 50（付款 PARTIALLY_REFUNDED）。
+        // 原本用 any() 讓任何狀態的查詢都回同一個只 stub 了 getAmount() 的 mock，既沒指定它屬於哪張訂單，也會在新實作
+        // （分別查 REFUNDED 與 PARTIALLY_REFUNDED）下被算兩次。
+        stubRefundedPayments(List.of(),
+                List.of(payment(orders.get(1).getId(), Payment.PaymentStatus.PARTIALLY_REFUNDED, "200", "50")));
 
         AnalyticsDto.AnalyticsRequest req = AnalyticsDto.AnalyticsRequest.builder()
                 .startDate(start).endDate(end).build();
@@ -152,6 +173,78 @@ class AnalyticsServiceTest {
         assertThat(trendSum).as("每日趨勢的營收加總必須等於總營收").isEqualByComparingTo("300");
         assertThat(stats.getAverageOrderValue()).as("300 ÷ 2 張入帳訂單").isEqualByComparingTo("150");
         assertThat(stats.getTotalOrders()).as("區間內全部訂單").isEqualTo(6);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-412 getRevenueStats：全額退款的訂單已不在營收裡，其退款不得在淨營收再扣一次（原本單一銷售全額退款會得到負數）")
+    void getRevenueStats_fullRefund_isNotSubtractedTwiceFromNet() {
+        LocalDate day = LocalDate.of(2026, 1, 11);
+        Order kept = order(Order.OrderStatus.PAID, "500", day);
+        Order refunded = order(Order.OrderStatus.REFUNDED, "500", day);   // 全額退款：訂單與付款都轉 REFUNDED
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(List.of(kept, refunded));
+        stubRefundedPayments(
+                List.of(payment(refunded.getId(), Payment.PaymentStatus.REFUNDED, "500", "500")), List.of());
+
+        AnalyticsDto.RevenueStats stats = analyticsService.getRevenueStats(AnalyticsDto.AnalyticsRequest.builder()
+                .startDate(day).endDate(day).build());
+
+        assertThat(stats.getTotalRevenue()).as("REFUNDED 訂單不計營收").isEqualByComparingTo("500");
+        assertThat(stats.getTotalRefunds()).as("退款總額仍要顯示這筆全額退款").isEqualByComparingTo("500");
+        // 修復前：500 - 500 = 0（同一筆全額退款在營收端已排除、又在退款端再扣一次）
+        assertThat(stats.getNetRevenue()).as("淨營收不該再扣已排除訂單的退款").isEqualByComparingTo("500");
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-412 getRevenueStats：部分退款（付款 PARTIALLY_REFUNDED、訂單狀態不變）要計入退款總額，並從淨營收扣除")
+    void getRevenueStats_partialRefund_isCountedAndDeductedFromNet() {
+        LocalDate day = LocalDate.of(2026, 1, 11);
+        Order delivered = order(Order.OrderStatus.DELIVERED, "450", day);   // 部分退款後訂單狀態不變
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(List.of(delivered));
+        stubRefundedPayments(
+                List.of(), List.of(payment(delivered.getId(), Payment.PaymentStatus.PARTIALLY_REFUNDED, "450", "200")));
+
+        AnalyticsDto.RevenueStats stats = analyticsService.getRevenueStats(AnalyticsDto.AnalyticsRequest.builder()
+                .startDate(day).endDate(day).build());
+
+        assertThat(stats.getTotalRevenue()).isEqualByComparingTo("450");
+        // 修復前只查 REFUNDED：部分退款完全不被計入，退款總額 0、淨營收仍是 450
+        assertThat(stats.getTotalRefunds()).as("部分退款要計入").isEqualByComparingTo("200");
+        assertThat(stats.getNetRevenue()).as("450 - 200").isEqualByComparingTo("250");
+    }
+
+    @Test
+    @DisplayName("getRevenueStats：付款已是 REFUNDED 但 refundedAmount 沒被寫入（Stripe webhook 路徑只改狀態）→ 以付款金額計；"
+            + "訂單若仍在營收狀態，要從淨營收扣除")
+    void getRevenueStats_refundedPaymentWithoutRefundedAmount_usesPaymentAmount() {
+        LocalDate day = LocalDate.of(2026, 1, 11);
+        // webhook 路徑只在 OrderStateMachine.canRefund 時才把訂單轉成 REFUNDED，否則訂單維持原狀態
+        Order completed = order(Order.OrderStatus.COMPLETED, "300", day);
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(List.of(completed));
+        stubRefundedPayments(
+                List.of(payment(completed.getId(), Payment.PaymentStatus.REFUNDED, "300", "0")), List.of());
+
+        AnalyticsDto.RevenueStats stats = analyticsService.getRevenueStats(AnalyticsDto.AnalyticsRequest.builder()
+                .startDate(day).endDate(day).build());
+
+        assertThat(stats.getTotalRefunds()).as("markRefundedIfNotAlready 只改 status，refundedAmount 仍是 0，不能因此算成 0")
+                .isEqualByComparingTo("300");
+        assertThat(stats.getNetRevenue()).as("訂單仍計入營收 300，退款 300").isEqualByComparingTo("0");
+    }
+
+    @Test
+    @DisplayName("getRevenueStats（邊界）：部分退款付款的 refundedAmount 為 null（欄位可為空）→ 當 0，不拋例外")
+    void getRevenueStats_nullRefundedAmount_isTreatedAsZero() {
+        LocalDate day = LocalDate.of(2026, 1, 11);
+        Order delivered = order(Order.OrderStatus.DELIVERED, "100", day);
+        when(orderRepository.findByTenantIdAndCreatedAtInRange(any(), any(), any())).thenReturn(List.of(delivered));
+        stubRefundedPayments(
+                List.of(), List.of(payment(delivered.getId(), Payment.PaymentStatus.PARTIALLY_REFUNDED, "100", null)));
+
+        AnalyticsDto.RevenueStats stats = analyticsService.getRevenueStats(AnalyticsDto.AnalyticsRequest.builder()
+                .startDate(day).endDate(day).build());
+
+        assertThat(stats.getTotalRefunds()).isEqualByComparingTo("0");
+        assertThat(stats.getNetRevenue()).isEqualByComparingTo("100");
     }
 
     @Test

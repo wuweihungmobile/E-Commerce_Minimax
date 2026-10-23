@@ -349,7 +349,8 @@ public class BookingService {
             return;
         }
         UUID callerTenantId = getCurrentTenant();
-        if (!listing.getTenantId().equals(callerTenantId)) {
+        // DEF-411：呼叫者必須有真正的店鋪；沒有店鋪者的租戶是系統租戶佔位值，全體共用，單看相等會讓任一買家都是同租戶
+        if (!TenantContext.isStoreTenant(callerTenantId) || !callerTenantId.equals(listing.getTenantId())) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to view this listing's pricing calendar");
         }
     }

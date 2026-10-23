@@ -5,9 +5,11 @@ import com.nextkey.ecommerce.api.dto.PricingDto;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.PricingRule;
 import com.nextkey.ecommerce.domain.model.room.Room;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.PricingRuleRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -76,11 +78,24 @@ class M12PricingIntegrationTest {
     private ListingRepository listingRepository;
 
     @MockBean
+    private TenantRepository tenantRepository;
+
+    @MockBean
     private com.nextkey.ecommerce.core.feature.FeatureToggleService featureToggleService;
 
     private static final String BASE_URL = "/v2/dashboard/pricing";
     private static final String TEST_TENANT_ID = "550e8400-e29b-41d4-a716-446655440001";
     private static final UUID ROOM_LISTING_ID = UUID.fromString("660e8400-e29b-41d4-a716-446655440002");
+
+    /**
+     * DEF-414：createRule 需要 Tenant 實體（INSERT 依據的是 .tenant(...) 關聯物件，不是影子欄位 tenantId）。
+     * 本檔把 Repository 全換成 mock，所以要明確 stub；這也是這類測試一直沒看到 DEF-414 的原因——INSERT 從未真的執行。
+     */
+    private void stubTenant() {
+        Tenant tenant = Tenant.builder().build();
+        tenant.setId(UUID.fromString(TEST_TENANT_ID));
+        when(tenantRepository.findById(UUID.fromString(TEST_TENANT_ID))).thenReturn(Optional.of(tenant));
+    }
 
     // 測試資料工廠方法
     private PricingDto.CreateRuleRequest buildValidCreateRuleRequest() {
@@ -138,6 +153,7 @@ class M12PricingIntegrationTest {
     @Test
     @DisplayName("IT-M12-001: 建立規則-成功")
     void createRule_success_returns201() throws Exception {
+        stubTenant();
         PricingDto.CreateRuleRequest request = buildValidCreateRuleRequest();
 
         UUID savedRuleId = UUID.randomUUID();
@@ -414,6 +430,7 @@ class M12PricingIntegrationTest {
     @Test
     @DisplayName("IT-M12-011: 建立規則-確認覆蓋後成功建立，舊規則軟刪除")
     void createRule_confirmOverride_returns201AndSoftDeletesOld() throws Exception {
+        stubTenant();
         PricingRule existing = buildMockPricingRule(UUID.randomUUID(),
                 PricingDto.PricingRuleType.WEEKDAY_WEEKEND, "Existing Weekend Rule");
 

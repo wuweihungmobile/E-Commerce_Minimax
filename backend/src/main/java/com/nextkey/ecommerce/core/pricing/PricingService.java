@@ -23,10 +23,12 @@ import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.PricingRule;
 import com.nextkey.ecommerce.domain.model.room.Room;
 import com.nextkey.ecommerce.domain.model.room.RoomCalendar;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.PricingRuleRepository;
 import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -48,6 +50,7 @@ public class PricingService {
     private final PricingRuleRepository pricingRuleRepository;
     private final RoomRepository roomRepository;
     private final ListingRepository listingRepository;
+    private final TenantRepository tenantRepository;
     private final RoomCalendarRepository roomCalendarRepository;
     private final FeatureToggleService featureToggleService;
     private final AuditService auditService;
@@ -97,7 +100,12 @@ public class PricingService {
         validateRuleRequest(request);
         enforceRuleLimitAndConflict(request);
 
+        // DEF-414：tenantId 是 insertable=false 的唯讀影子欄位，INSERT 依據的是 .tenant(...) 關聯物件；
+        // 只設影子欄位會把 NULL 寫進 pricing_rules.tenant_id（NOT NULL）→ 500。必須先查出 Tenant 實體。
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
         PricingRule rule = PricingRule.builder()
+                .tenant(tenant)
                 .tenantId(tenantId)
                 .roomListingId(request.getRoomListingId())
                 .listingId(request.getListingId())
@@ -182,17 +190,20 @@ public class PricingService {
         List<PricingRule> rules;
 
         if (roomListingId != null) {
-            checkListingTenantOwnership(roomListingId, isSuperAdmin);
+            checkListingReadAccess(roomListingId, isSuperAdmin);
+            // DEF-416：原本 activeOnly=false 時 findAll() 全表掃描再於記憶體過濾，任何一列（含其他租戶、V5 種子資料）
+            // 的 rule_type 不在列舉內，整個請求就 500；改為資料庫層的衍生查詢，只載入這間房源的規則。
             rules = activeOnly != null && activeOnly
                     ? pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(roomListingId)
-                    : pricingRuleRepository.findAll().stream()
-                        .filter(r -> Objects.equals(r.getRoomListingId(), roomListingId))
-                        .collect(Collectors.toList());
+                    : pricingRuleRepository.findByRoomListingId(roomListingId);
         } else if (listingId != null) {
-            checkListingTenantOwnership(listingId, isSuperAdmin);
+            checkListingReadAccess(listingId, isSuperAdmin);
             rules = activeOnly != null && activeOnly
                     ? pricingRuleRepository.findByListingIdAndIsActiveTrue(listingId)
                     : pricingRuleRepository.findByListingId(listingId);
+        } else if (!isSuperAdmin && !TenantContext.isStoreTenant(tenantId)) {
+            // DEF-411：沒有店鋪者的租戶是系統租戶佔位值（全體共用），拿它查會把系統租戶名下的規則列給任一買家
+            rules = List.of();
         } else {
             rules = activeOnly != null && activeOnly
                     ? pricingRuleRepository.findByTenantIdAndIsActiveTrue(tenantId)
@@ -339,7 +350,9 @@ public class PricingService {
         checkRuleTenantOwnership(room.getListing().getTenantId(), isSuperAdmin);
 
         // 創建手動覆蓋規則
+        // DEF-414：同 createRule，INSERT 依據的是 .tenant(...) 關聯物件
         PricingRule overrideRule = PricingRule.builder()
+                .tenant(room.getListing().getTenant())
                 .tenantId(room.getListing().getTenantId())
                 .roomListingId(request.getRoomListingId())
                 .ruleType(PricingRule.PricingRuleType.MANUAL_OVERRIDE)
@@ -395,7 +408,9 @@ public class PricingService {
         }
 
         // 創建覆蓋規則
+        // DEF-414：同 createRule，INSERT 依據的是 .tenant(...) 關聯物件
         PricingRule overrideRule = PricingRule.builder()
+                .tenant(existingRule.getTenant())
                 .tenantId(tenantId)
                 .roomListingId(roomListingId)
                 .ruleType(PricingRule.PricingRuleType.MANUAL_OVERRIDE)
@@ -461,6 +476,21 @@ public class PricingService {
         if (!listing.getTenantId().equals(TenantContext.getCurrentTenant())) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to manage pricing for this listing");
         }
+    }
+
+    /**
+     * 定價規則的讀取端點專用擁有權檢查（DEF-411）。
+     *
+     * <p>讀取端點只要求 {@code room:read}／{@code product:read}，BUYER 兩個都持有；而沒有店鋪者的租戶是系統租戶佔位值
+     * （{@link TenantContext#isStoreTenant}），全體共用，單看「租戶相等」會讓任一買家對系統租戶名下的房源都是同租戶。
+     * 所以先要求呼叫者有真正的店鋪（先判斷、再查詢），再沿用既有的租戶相等檢查。寫入端點（{@link #checkListingTenantOwnership}
+     * 的其他呼叫者）需要 BUYER 沒有的 {@code room:create}／{@code update}，這裡刻意不動它們的語意。
+     */
+    private void checkListingReadAccess(final UUID targetListingId, final boolean isSuperAdmin) {
+        if (!isSuperAdmin && !TenantContext.isStoreTenant(TenantContext.getCurrentTenant())) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to view pricing for this listing");
+        }
+        checkListingTenantOwnership(targetListingId, isSuperAdmin);
     }
 
     private void validateRuleRequest(PricingDto.CreateRuleRequest request) {

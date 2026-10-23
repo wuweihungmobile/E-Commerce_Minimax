@@ -37,6 +37,8 @@ public interface PricingRuleRepository extends JpaRepository<PricingRule, UUID> 
 
     List<PricingRule> findByTenantId(UUID tenantId);
 
+    List<PricingRule> findByRoomListingId(UUID roomListingId);
+
     List<PricingRule> findByListingId(UUID listingId);
 
     List<PricingRule> findByListingIdAndIsActiveTrue(UUID listingId);

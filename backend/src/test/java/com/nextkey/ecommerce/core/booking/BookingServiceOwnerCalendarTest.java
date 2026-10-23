@@ -7,6 +7,7 @@ import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.Room;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -27,6 +28,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -118,6 +121,37 @@ class BookingServiceOwnerCalendarTest {
         List<BookingDto.CalendarResponse> result = bookingService.getCalendarForOwner(ROOM_LISTING_ID, start, end, true);
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-411：沒有店鋪的呼叫者（系統租戶佔位值）預覽租戶也是系統租戶的房源 → E_1007，不讀日曆")
+    void getCalendarForOwner_storelessCallerOnSystemTenantListing_denied() {
+        UUID systemTenantId = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(roomListing(systemTenantId)));
+        TenantContext.setCurrentTenant(systemTenantId);
+
+        LocalDate start = LocalDate.now();
+        LocalDate end = start.plusDays(5);
+
+        assertThatThrownBy(() -> bookingService.getCalendarForOwner(ROOM_LISTING_ID, start, end, false))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_1007));
+        verify(roomCalendarService, never()).getCalendarRange(ROOM_LISTING_ID, start, end);
+    }
+
+    @Test
+    @DisplayName("DEF-411：平台管理員（SUPER_ADMIN，租戶同為系統租戶）仍可預覽系統租戶的房源")
+    void getCalendarForOwner_superAdminOnSystemTenantListing_succeeds() {
+        UUID systemTenantId = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
+        when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(roomListing(systemTenantId)));
+        TenantContext.setCurrentTenant(systemTenantId);
+
+        LocalDate start = LocalDate.now();
+        LocalDate end = start.plusDays(5);
+        when(roomCalendarService.getCalendarRange(ROOM_LISTING_ID, start, end)).thenReturn(Collections.emptyList());
+        when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(Room.builder().build()));
+
+        assertThat(bookingService.getCalendarForOwner(ROOM_LISTING_ID, start, end, true)).isEmpty();
     }
 
     @Test

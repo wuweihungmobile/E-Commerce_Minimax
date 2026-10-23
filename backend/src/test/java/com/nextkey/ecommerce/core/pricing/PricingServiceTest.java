@@ -6,9 +6,12 @@ import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.PricingRule;
 import com.nextkey.ecommerce.domain.model.room.Room;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.PricingRuleRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
+import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -20,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -68,6 +72,9 @@ class PricingServiceTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private TenantRepository tenantRepository;
+
     @InjectMocks
     private PricingService pricingService;
 
@@ -82,6 +89,14 @@ class PricingServiceTest {
     @BeforeEach
     void setUpTenantContext() {
         TenantContext.setCurrentTenant(TENANT_ID);
+        // DEF-414：createRule 需要 Tenant 實體（INSERT 依據的是 .tenant(...) 關聯物件）；不是每個案例都會建立規則
+        lenient().when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenantOf(TENANT_ID)));
+    }
+
+    private static Tenant tenantOf(final UUID id) {
+        Tenant tenant = Tenant.builder().build();
+        tenant.setId(id);
+        return tenant;
     }
 
     @Nested
@@ -1520,6 +1535,140 @@ class PricingServiceTest {
     }
 
     // ========== Helper Methods ==========
+
+    /**
+     * DEF-411（Sprint 303）：沒有店鋪的呼叫者（租戶是系統租戶佔位值）。
+     *
+     * <p>守門測試刻意用 {@code lenient()} 加 {@code verify(never())}：只斷言「回空」或「拋例外」會被 Mockito
+     * 對 Repository 的預設回傳（空 List）掩蓋，守門被拿掉測試照樣綠。
+     */
+    @Nested
+    @DisplayName("DEF-411: 沒有店鋪的呼叫者（系統租戶佔位值）")
+    class StorelessCallerTests {
+
+        private final UUID systemTenantId = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
+
+        @BeforeEach
+        void callerIsTenantless() {
+            TenantContext.setCurrentTenant(systemTenantId);
+        }
+
+        private Listing listingOf(final UUID tenantId) {
+            Listing listing = Listing.builder().tenantId(tenantId).build();
+            listing.setId(ROOM_LISTING_ID);
+            return listing;
+        }
+
+        @Test
+        @DisplayName("getRules 無參數：沒有店鋪的非管理員 → 空，且完全不查資料庫（含 activeOnly）")
+        void getRules_noArgs_storelessNonAdmin_returnsEmptyWithoutQuerying() {
+            lenient().when(pricingRuleRepository.findByTenantId(systemTenantId))
+                    .thenReturn(List.of(buildLongStayRule()));
+            lenient().when(pricingRuleRepository.findByTenantIdAndIsActiveTrue(systemTenantId))
+                    .thenReturn(List.of(buildLongStayRule()));
+
+            assertThat(pricingService.getRules(null, null, false, false)).isEmpty();
+            assertThat(pricingService.getRules(null, null, true, false)).isEmpty();
+
+            verify(pricingRuleRepository, never()).findByTenantId(any());
+            verify(pricingRuleRepository, never()).findByTenantIdAndIsActiveTrue(any());
+        }
+
+        @Test
+        @DisplayName("getRules 無參數：平台管理員（SUPER_ADMIN）的租戶也是系統租戶，仍列得出系統租戶的規則")
+        void getRules_noArgs_superAdmin_listsSystemTenantRules() {
+            when(pricingRuleRepository.findByTenantId(systemTenantId)).thenReturn(List.of(buildLongStayRule()));
+
+            assertThat(pricingService.getRules(null, null, false, true)).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("getRules 無參數：有真正店鋪的呼叫者照常列出自己店鋪的規則")
+        void getRules_noArgs_storeOwner_listsOwnTenantRules() {
+            TenantContext.setCurrentTenant(TENANT_ID);
+            when(pricingRuleRepository.findByTenantId(TENANT_ID)).thenReturn(List.of(buildLongStayRule()));
+
+            assertThat(pricingService.getRules(null, null, false, false)).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("getRules 帶房源 id（roomListingId／listingId）：沒有店鋪的呼叫者 → E_1007，先判斷、不查房源也不查規則")
+        void getRules_withListingId_storeless_throwsE1007BeforeAnyQuery() {
+            // 房源的租戶也是系統租戶——修復前租戶相等檢查會放行；lenient 讓「守門被拿掉」時紅燈來自斷言而不是未使用的 stub
+            lenient().when(listingRepository.findById(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(listingOf(systemTenantId)));
+
+            assertThatThrownBy(() -> pricingService.getRules(ROOM_LISTING_ID, null, true, false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+            assertThatThrownBy(() -> pricingService.getRules(null, ROOM_LISTING_ID, true, false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(listingRepository, never()).findById(any());
+            verify(pricingRuleRepository, never()).findByRoomListingIdAndIsActiveTrue(any());
+            verify(pricingRuleRepository, never()).findByListingIdAndIsActiveTrue(any());
+        }
+
+        @Test
+        @DisplayName("getRules 帶房源 id：平台管理員（SUPER_ADMIN，租戶同為系統租戶）仍可查系統租戶房源的規則")
+        void getRules_withListingId_superAdmin_stillAllowed() {
+            when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID))
+                    .thenReturn(List.of(buildLongStayRule()));
+
+            assertThat(pricingService.getRules(ROOM_LISTING_ID, null, true, true)).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("DEF-414: createRule 存檔的規則帶 Tenant 關聯物件（INSERT 依據它，不是影子欄位 tenantId）")
+        void createRule_savesRuleWithTenantRelation() {
+            TenantContext.setCurrentTenant(TENANT_ID);
+            when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID)).thenReturn(List.of());
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            pricingService.createRule(PricingDto.CreateRuleRequest.builder()
+                    .roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingDto.PricingRuleType.SEASONAL)
+                    .ruleName("Store rule")
+                    .config(Map.of("multiplier", 1.2))
+                    .validFrom(LocalDate.of(2026, 1, 1))
+                    .validTo(LocalDate.of(2026, 12, 31))
+                    .build(), true);
+
+            ArgumentCaptor<PricingRule> saved = ArgumentCaptor.forClass(PricingRule.class);
+            verify(pricingRuleRepository).save(saved.capture());
+            assertThat(saved.getValue().getTenant())
+                    .as("tenant 關聯物件才會被寫進 pricing_rules.tenant_id")
+                    .isNotNull()
+                    .extracting(Tenant::getId).isEqualTo(TENANT_ID);
+        }
+    }
+
+    /**
+     * DEF-416（Sprint 303）：帶 roomListingId 且 activeOnly=false 時原本走 {@code findAll()} 全表掃描。
+     *
+     * <p>Hibernate 產生的測試庫對 rule_type 有 CHECK 約束，放不進列舉以外的值，所以真實 PostgreSQL 的整合測試重現不出
+     * 「某一列壞資料讓整個請求 500」；Flyway 建出的資料庫沒有這個約束（V5 種子資料就有 {@code WEEKEND_SURCHARGE}）。
+     * 因此這裡用 {@code verify(never()).findAll()} 守住「不得全表掃描」這個意圖，並由真實全棧的 E2E 在 Flyway 資料庫上驗證。
+     */
+    @Nested
+    @DisplayName("DEF-416: 規則列表帶房源 id 時不得全表掃描")
+    class RuleListingQueryTests {
+
+        @Test
+        @DisplayName("getRules 帶 roomListingId 且 activeOnly=false：用 findByRoomListingId，絕不呼叫 findAll()")
+        void getRules_roomListingAllRules_usesDerivedQueryNeverFindAll() {
+            Listing listing = Listing.builder().tenantId(TENANT_ID).build();
+            listing.setId(ROOM_LISTING_ID);
+            when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listing));
+            lenient().when(pricingRuleRepository.findAll()).thenReturn(List.of());
+            when(pricingRuleRepository.findByRoomListingId(ROOM_LISTING_ID)).thenReturn(List.of(buildLongStayRule()));
+
+            assertThat(pricingService.getRules(ROOM_LISTING_ID, null, false, false)).hasSize(1);
+
+            verify(pricingRuleRepository, never()).findAll();
+        }
+    }
 
     private Room buildMockRoom() {
         Listing listing = Listing.builder()

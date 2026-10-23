@@ -88,7 +88,7 @@
 | 前端守門 | 基準 12 紅 5 綠 → 最終建置 17／17；mock 規格 36／36；相關既有規格 16／16；前端突變 5 組全數擊殺 |
 | 全量後端 `mvn -o clean verify`（全新測試 DB；含 Checkstyle、單元、整合） | `BUILD SUCCESS`（17 分）；Checkstyle main／test 皆 0 違規；**單元 2324、整合 888**，皆 0 失敗／0 錯誤／0 跳過，日誌中 `<<< FAILURE`／`<<< ERROR` 標記 0 個。與 Sprint 301（2320／887）相比單元 +4（`AnalyticsServiceTest`）、整合 +1（`AnalyticsRealDbIntegrationTest`），正好等於本輪新增的測試數；`ApiRouteDocDriftTest` 2／2、`AnalyticsServiceTest` 18／18、`AnalyticsRealDbIntegrationTest` 4／4 都有實際跑到。從日誌核對，沒有只信背景任務的退出碼 |
 | `make validate-e2e`（完整：重建 JAR 與前端、乾淨 DB、全部 Playwright 規格） | **第一次執行即全綠：276 案例，272 通過／4 跳過／0 失敗（7.3 分鐘）**，閘門顯示「本地 E2E 守門通過（schema 對齊 ✅ + e2e 全綠 ✅）」。案例數由 Sprint 301 的 259 增為 276＝新增的 17 個（`at-buyer-auth-wall`），都在整套裡執行並通過。被守門波及的 5 支 mock 規格（`at-order-refund` 3、`at-notification-inbox-links` 3、`at-booking-cancel-refund` 5、`at-booking-payment` 11、`at-room-booking` 14 個案例）與 `at-login-landing-real` 5 個也都在整套裡通過——**我的影響範圍掃描沒抓到的規格沒有出現失敗**（掃描只涵蓋字面路徑的 `page.goto`，所以這點是由完整 gate 證明的，不是由掃描證明）。4 個跳過與 Sprint 301 的跳過數相同（Playwright 摘要只列數量，沒有逐一核對是哪 4 個） |
-| pre-commit、pre-push、雲端 CI | 主 commit 時尚未 push，見 §9；push 與雲端 CI 的結果於純文件回填 commit 補上 |
+| pre-commit、pre-push、雲端 CI | 皆通過，詳見 §9：雲端 run 39927617437 三個 job 皆 success（`headSha` 一致）；雲端日誌確認整合測試 888／0 失敗、`AnalyticsRealDbIntegrationTest` 4／4 |
 
 ## 6. 過程中的失誤與修正
 
@@ -123,7 +123,13 @@
 
 ## 9. 雲端 CI 與狀態
 
-本節在主 commit 時**尚未 push**，所以還沒有 commit hash、pre-commit／pre-push 結果與雲端 CI 的 run 編號可寫；這些於 push 與雲端 CI 完成後，以純文件回填 commit 補上（與 Sprint 300、301 相同的做法；commit 無法包含自己的 hash）。
+- commit `759a9ebe`，於 2026-10-23 push（`fdd16bbd..759a9ebe main -> main`）。以推送日誌，以及 `git fetch` 後本機 HEAD 與 `origin/main` 同為 `759a9ebe`、ahead／behind 為 0／0 核實；沒有採信背景任務通知的退出碼。
+- pre-commit 一次通過：Checkstyle、Maven compile、核心層快速測試（`Maven quick test passed (core layer)`）、ESLint、`tsc --noEmit`、secret 掃描，以及 PRD 觸發的 schema 文件守門（93 個 Flyway 遷移的實際 schema 與 SRD／PRD 一致）。commit 前測試 DB 已換成全新容器。
+- pre-push 輕量守門通過：本機 act 跑了**兩輪** Backend Unit Tests（Run Unit Tests 3 分 3 秒與 2 分 52 秒，皆 `Job succeeded`；與 Sprint 301 相同，act 被啟動兩次，我沒有查為什麼是兩輪）、Frontend Lint & Build（Type Check 28 秒、Build Frontend 57 秒，`Job succeeded`），schema 漂移守門「backend 啟動成功 → entity 與 Flyway schema 對齊，無漂移」。push 之後 `docker ps -a` 為空。
+- 雲端 CI run [39927617437](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/39927617437)：`completed／success`，三個 job（Backend Unit Tests／Backend Integration Tests & Package／Frontend Lint & Build）皆 success，約 13 分 12 秒（08:51:19Z～09:04:31Z）。`gh run watch` 結束後另以 `gh run view --json status,conclusion,jobs,headSha` 交叉確認，`headSha` 與本機 commit 一致。
+- 下載整合測試 job 的雲端日誌（196,189 行、約 51 MB）確認：整合測試總計 **888／0 失敗／0 錯誤／0 跳過**（與本機相同）、`AnalyticsRealDbIntegrationTest` **4／4**（含新增案例，在雲端全新的 Postgres 上）、`BUILD SUCCESS`。這次一開始就把下載放背景並加 `--allow-escape-sequences`，去除跳脫碼後才統計，沒有重蹈 Sprint 301「第一次正規式沒命中」的覆轍。
+- 雲端三個 job 不含 Playwright E2E；E2E 以本機 `make validate-e2e` 為準（§5）。
+- 之後的純文件回填 commit 不在本文件記錄自己的 hash 與雲端結果（commit 無法包含自己的 hash）。
 
 ## 10. 文件與程式異動清單
 

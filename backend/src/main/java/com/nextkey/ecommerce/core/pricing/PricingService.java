@@ -190,14 +190,14 @@ public class PricingService {
         List<PricingRule> rules;
 
         if (roomListingId != null) {
-            checkListingReadAccess(roomListingId, isSuperAdmin);
+            checkListingTenantOwnership(roomListingId, isSuperAdmin);
             // DEF-416：原本 activeOnly=false 時 findAll() 全表掃描再於記憶體過濾，任何一列（含其他租戶、V5 種子資料）
             // 的 rule_type 不在列舉內，整個請求就 500；改為資料庫層的衍生查詢，只載入這間房源的規則。
             rules = activeOnly != null && activeOnly
                     ? pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(roomListingId)
                     : pricingRuleRepository.findByRoomListingId(roomListingId);
         } else if (listingId != null) {
-            checkListingReadAccess(listingId, isSuperAdmin);
+            checkListingTenantOwnership(listingId, isSuperAdmin);
             rules = activeOnly != null && activeOnly
                     ? pricingRuleRepository.findByListingIdAndIsActiveTrue(listingId)
                     : pricingRuleRepository.findByListingId(listingId);
@@ -452,45 +452,45 @@ public class PricingService {
      * 定價規則租戶擁有權檢查（DEF-242），比照本專案既有的
      * {@code checkListingTenantOwnership}/{@code checkOrderTenantAuthorization} 慣例。
      * 用於已知規則 {@code tenantId}（更新/刪除/覆蓋既有規則）的情境。
+     *
+     * <p>DEF-415（Sprint 304）：呼叫者必須有真正的店鋪（{@link TenantContext#isStoreTenant}）。沒有店鋪者——含沒有店鋪的
+     * ADMIN（租戶內角色）——的租戶是系統租戶佔位值、全體共用，平台自營規則也蓋成同一個值，單看「租戶相等」會把他們當成
+     * 平台自營規則的擁有者；這類規則只有 SUPER_ADMIN（上方直接放行）能管。
      */
     private void checkRuleTenantOwnership(final UUID resourceTenantId, final boolean isSuperAdmin) {
         if (isSuperAdmin) {
             return;
         }
-        if (!Objects.equals(TenantContext.getCurrentTenant(), resourceTenantId)) {
+        UUID callerTenantId = TenantContext.getCurrentTenant();
+        if (!TenantContext.isStoreTenant(callerTenantId) || !Objects.equals(callerTenantId, resourceTenantId)) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to manage this pricing rule");
         }
     }
 
     /**
-     * 定價規則租戶擁有權檢查（DEF-242）。用於建立新規則時，依請求帶入的 listing 反查其租戶。
-     * {@code targetListingId} 為 null 時（理論上不應發生，DTO 未強制其中一者必填）略過檢查，
-     * 交由下游邏輯處理，不在此新增額外的必填限制。
+     * 定價規則租戶擁有權檢查（DEF-242）。建立新規則時依請求帶入的 listing 反查其租戶，讀取端點（DEF-411）也共用這一道。
+     *
+     * <p>呼叫者必須有真正的店鋪，先判斷、再查詢（DEF-411 讀取端點、DEF-415 寫入端點同一個理由，見
+     * {@link #checkRuleTenantOwnership}）。這個判斷放在 {@code targetListingId} 為 null 的略過<b>之前</b>：不綁任何房源的規則
+     * 一樣蓋成呼叫者的租戶，沒有店鋪者建出來的就是系統租戶的規則。{@code targetListingId} 為 null 時（DTO 未強制其中一者
+     * 必填）略過其後的房源擁有權比對，交由下游邏輯處理，不在此新增額外的必填限制。
      */
     private void checkListingTenantOwnership(final UUID targetListingId, final boolean isSuperAdmin) {
-        if (isSuperAdmin || targetListingId == null) {
+        if (isSuperAdmin) {
+            return;
+        }
+        UUID callerTenantId = TenantContext.getCurrentTenant();
+        if (!TenantContext.isStoreTenant(callerTenantId)) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to access pricing for this listing");
+        }
+        if (targetListingId == null) {
             return;
         }
         Listing listing = listingRepository.findById(targetListingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Listing not found"));
-        if (!listing.getTenantId().equals(TenantContext.getCurrentTenant())) {
-            throw new BusinessException(ErrorCode.E_1007, "Not authorized to manage pricing for this listing");
+        if (!listing.getTenantId().equals(callerTenantId)) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to access pricing for this listing");
         }
-    }
-
-    /**
-     * 定價規則的讀取端點專用擁有權檢查（DEF-411）。
-     *
-     * <p>讀取端點只要求 {@code room:read}／{@code product:read}，BUYER 兩個都持有；而沒有店鋪者的租戶是系統租戶佔位值
-     * （{@link TenantContext#isStoreTenant}），全體共用，單看「租戶相等」會讓任一買家對系統租戶名下的房源都是同租戶。
-     * 所以先要求呼叫者有真正的店鋪（先判斷、再查詢），再沿用既有的租戶相等檢查。寫入端點（{@link #checkListingTenantOwnership}
-     * 的其他呼叫者）需要 BUYER 沒有的 {@code room:create}／{@code update}，這裡刻意不動它們的語意。
-     */
-    private void checkListingReadAccess(final UUID targetListingId, final boolean isSuperAdmin) {
-        if (!isSuperAdmin && !TenantContext.isStoreTenant(TenantContext.getCurrentTenant())) {
-            throw new BusinessException(ErrorCode.E_1007, "Not authorized to view pricing for this listing");
-        }
-        checkListingTenantOwnership(targetListingId, isSuperAdmin);
     }
 
     private void validateRuleRequest(PricingDto.CreateRuleRequest request) {

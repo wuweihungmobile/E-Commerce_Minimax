@@ -22,6 +22,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -99,7 +100,7 @@ class DashboardListingControllerAuthorizationIntegrationTest {
     @DisplayName("IT-DEF263-03: 僅有 product:create 的使用者建立 PRODUCT listing → 200（合法路徑不可回歸）")
     @WithErpSecurity(tenantId = TEST_TENANT_ID, role = "SELLER", authorities = {"product:create"})
     void createListing_sellerWithProductCreate_productType_returns200() throws Exception {
-        when(productService.createProductFromDashboard(any(CreateListingRequest.class)))
+        when(productService.createProductFromDashboard(any(CreateListingRequest.class), anyBoolean()))
                 .thenReturn(ProductDto.Response.builder().listingId(UUID.randomUUID()).build());
 
         mockMvc.perform(post(BASE_URL)
@@ -113,7 +114,7 @@ class DashboardListingControllerAuthorizationIntegrationTest {
     @DisplayName("IT-DEF263-04: 僅有 room:create 的使用者建立 ROOM listing → 200（合法路徑不可回歸）")
     @WithErpSecurity(tenantId = TEST_TENANT_ID, role = "HOST", authorities = {"room:create"})
     void createListing_hostWithRoomCreate_roomType_returns200() throws Exception {
-        when(roomService.createRoomFromDashboard(any(CreateListingRequest.class)))
+        when(roomService.createRoomFromDashboard(any(CreateListingRequest.class), anyBoolean()))
                 .thenReturn(RoomDto.Response.builder().listingId(UUID.randomUUID()).build());
 
         mockMvc.perform(post(BASE_URL)

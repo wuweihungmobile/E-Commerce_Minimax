@@ -2,9 +2,9 @@
 
 > **API 編號**: API-DEF-001（歷史編號，沿用自 Sprint 6；[TC_M02_Room.md](../../03_testing/TC_M02_Room.md) 等歷史文件仍引用此編號，不更改）
 > **模組**: DEF-001（環境建設）／DEF-286 範圍（本次校正）
-> **版本**: v2.0（Sprint 273 依實作校正；v1.0 全文為杜撰內容，與實作不符）
+> **版本**: v2.1（Sprint 304：DEF-415——呼叫者須有真正的店鋪；v2.0 為 Sprint 273 依實作校正，v1.0 全文為杜撰內容，與實作不符）
 > **建立日期**: 2026-04-30
-> **最後更新**: 2026-10-15
+> **最後更新**: 2026-10-24
 > **基於**: Sprint 6 Plan Section 5.1 T-DEF-001-01；依據 `DashboardListingController`／`CreateListingRequest`／`ProductService.createProductFromDashboard`／`RoomService.createRoomFromDashboard` 實際行為校正
 
 > **⚠️ 修訂註記（Sprint 273）**：v1.0 幾乎每個欄位都是杜撰，已更正：
@@ -126,6 +126,7 @@
 | 錯誤碼 | HTTP Status | 說明 |
 |--------|:-----------:|------|
 | `E-9000` | 400 | Bean Validation 失敗（必填欄位缺失、格式不符、`listingType` 不是 `PRODUCT`／`ROOM`） |
+| `E-1007` | 403 | 權限不足：缺少該 `listingType` 對應的 `product:create`／`room:create`（§5.1），或呼叫者沒有店鋪（`SUPER_ADMIN` 除外，Sprint 304／DEF-415；在 Feature Toggle 與配額檢查之前就擋下） |
 | `E-2004` | 403 | Feature Toggle 未啟用（`RETAIL_ENABLED`／`BOOKING_ENABLED`，依 `listingType`） |
 | `E-2009` | 400 | 已達商品／房源配額上限（分別 100／20，見 §5.2） |
 | `E-3001` | 422 | `listingType` 既非 `PRODUCT` 亦非 `ROOM`——**理論上的分支，實際不可達**：`@Pattern(regexp="^(PRODUCT|ROOM)$")` 已在 Bean Validation 階段擋下任何其他字面值，此 Controller 內的 `else` 分支無法被觸發 |
@@ -147,6 +148,10 @@
 | `ROOM` | `BOOKING_ENABLED` | `403 E-2004` | `AppConstants.QUOTA_MAX_ROOMS`（20，租戶 `ACTIVE` 房源數） | `400 E-2009` |
 
 兩項檢查都在 Service 層（`ProductService.createProductFromDashboard`／`RoomService.createRoomFromDashboard`），不在 Controller 層（PRD §4.4 分層規範，Sprint 148，DEF-184）。
+
+### 5.3 呼叫者必須有真正的店鋪（Sprint 304，DEF-415）
+
+建立出來的 listing 蓋的是呼叫者的租戶。沒有加入任何店鋪的使用者（含沒有店鋪的 `ADMIN`，租戶內角色，持有 `product:create`／`room:create`）的租戶是系統租戶佔位值，建出來的就是平台自營資料。使用者於 Sprint 303 收尾裁決「比照 Sprint 234 全部擋下」：兩個 Service 方法一開始（**在 Feature Toggle 與配額檢查之前**，先判斷再查詢）就要求呼叫者有真正的店鋪，否則 `403 E-1007`；`SUPER_ADMIN` 例外（其租戶同為系統租戶，建立的 listing 是平台自營）。Controller 以 `principal.getRole()` 是否為 `SUPER_ADMIN` 算出 `isSuperAdmin` 傳入 Service。測試：`PlatformSelfRunWriteIsolationE2ETest.storelessAdminCannotCreateListingViaDashboard`（真實 PostgreSQL；修復前實測回 200）、`RoomServiceTest`／`ProductServiceTest` 的 `…storelessCaller_throwsForbiddenBeforeAnyLookup`。
 
 ### 5.3 與型別專屬入口（`POST /v2/products`／`POST /v2/rooms`）的合約差異
 
@@ -192,7 +197,8 @@
 |------|----------|
 | SELLER／STORE_OWNER | 建立商品 |
 | HOST／STORE_OWNER | 建立房源 |
-| SUPER_ADMIN | 持有 `EnumSet.allOf(Permission.class)`，兩種皆可建立；但仍受 §5.2 的 Feature Toggle／配額限制（配額检查未對 `SUPER_ADMIN` 特殊放寬） |
+| ADMIN | 持有 `product:create`／`room:create`，但必須有真正的店鋪（§5.3）：有店鋪的 `ADMIN` 建立在自己的店鋪；沒有店鋪的 `ADMIN` 回 `403 E-1007` |
+| SUPER_ADMIN | 持有 `EnumSet.allOf(Permission.class)`，兩種皆可建立（蓋成系統租戶＝平台自營，§5.3）；但仍受 §5.2 的 Feature Toggle／配額限制（配額检查未對 `SUPER_ADMIN` 特殊放寬） |
 
 ---
 
@@ -206,4 +212,4 @@
 
 ---
 
-**文件狀態**：v2.0（Sprint 273 校正，DEF-286 範圍）。
+**文件狀態**：v2.1（Sprint 304：DEF-415；v2.0 為 Sprint 273 校正，DEF-286 範圍）。

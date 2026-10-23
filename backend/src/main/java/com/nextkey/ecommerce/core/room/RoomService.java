@@ -97,11 +97,12 @@ public class RoomService {
     }
 
     @Transactional
-    public RoomDto.Response createRoom(RoomDto.CreateRequest request) {
+    public RoomDto.Response createRoom(RoomDto.CreateRequest request, final boolean isSuperAdmin) {
+        UUID tenantId = TenantContext.getCurrentTenant();
+        checkCanCreateListing(tenantId, isSuperAdmin);
         // 檢查 BOOKING_ENABLED feature toggle - T-DEF-001-02
         featureToggleService.checkFeatureEnabled("BOOKING_ENABLED");
 
-        UUID tenantId = TenantContext.getCurrentTenant();
         // Sprint 147：MAX_ROOMS 數量配額強制執行（PRD §4.4）
         featureToggleService.checkQuotaNotExceeded(AppConstants.QUOTA_MAX_ROOMS,
                 listingRepository.countByTenantIdAndListingTypeAndStatus(
@@ -154,8 +155,10 @@ public class RoomService {
      * T-DEF-001-01
      */
     @Transactional
-    public RoomDto.Response createRoomFromDashboard(com.nextkey.ecommerce.api.dto.CreateListingRequest request) {
+    public RoomDto.Response createRoomFromDashboard(
+            com.nextkey.ecommerce.api.dto.CreateListingRequest request, final boolean isSuperAdmin) {
         UUID tenantId = TenantContext.getCurrentTenant();
+        checkCanCreateListing(tenantId, isSuperAdmin);
         // Sprint 148（DEF-184）：BOOKING_ENABLED 檢查從 DashboardListingController 搬進 Service 層，
         // 遵循 PRD §4.4「Feature Toggle 驗證...不得在 Controller 層執行」的分層規範
         featureToggleService.checkFeatureEnabled("BOOKING_ENABLED");
@@ -385,13 +388,24 @@ public class RoomService {
 
     // DEF-041（Sprint 84）：比照 BookingService.checkListingTenantOwnership 既有模式，
     // 非 SUPER_ADMIN 限自己租戶，SUPER_ADMIN 可跨租戶操作。
+    // DEF-415（Sprint 304）：「自己租戶」必須是真正的店鋪（TenantContext.isStoreTenant）。沒有店鋪者——含沒有店鋪的
+    // ADMIN（租戶內角色）——的租戶是系統租戶佔位值、全體共用，平台自營房源也蓋成同一個值，單看相等會把他們當成
+    // 擁有者；這類房源只有 SUPER_ADMIN 能管。
     private void checkListingTenantOwnership(final Listing listing, final boolean isSuperAdmin) {
         if (isSuperAdmin) {
             return;
         }
         UUID callerTenantId = TenantContext.getCurrentTenant();
-        if (!listing.getTenantId().equals(callerTenantId)) {
+        if (!TenantContext.isStoreTenant(callerTenantId) || !listing.getTenantId().equals(callerTenantId)) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to manage this room listing");
+        }
+    }
+
+    // DEF-415（Sprint 304）：建立端的同一道守門。沒有店鋪者建出來的房源會蓋成系統租戶（平台自營資料），
+    // 只有 SUPER_ADMIN 能建立；放在功能開關與配額檢查（都要查資料庫）之前，先判斷再查詢。
+    private void checkCanCreateListing(final UUID callerTenantId, final boolean isSuperAdmin) {
+        if (!isSuperAdmin && !TenantContext.isStoreTenant(callerTenantId)) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to create room listings");
         }
     }
 

@@ -577,4 +577,74 @@ class RoomCalendarServiceTest {
             com.nextkey.ecommerce.shared.tenant.TenantContext.clear();
         }
     }
+
+    // ========== DEF-415（Sprint 304）：沒有店鋪的呼叫者不得管理系統租戶（平台自營）房源的日曆 ==========
+    //
+    // 沒有店鋪者（含沒有店鋪的 ADMIN）的租戶是系統租戶佔位值，平台自營房源也蓋成同一個值；舊檢查只比「租戶相等」，
+    // 所以下列案例的呼叫者與房源「同租戶」。房源以 lenient() 備妥——守門被拿掉時舊的相等檢查會放行、操作會繼續執行，
+    // 測試才會紅（而不是被 Mockito 對 Optional 的預設值 empty 掩蓋成別的例外）。
+
+    private static final UUID SYSTEM_TENANT =
+            UUID.fromString(com.nextkey.ecommerce.shared.constants.AppConstants.SYSTEM_TENANT_ID);
+
+    @Test
+    @DisplayName("DEF-415：markMaintenance 沒有店鋪的呼叫者對系統租戶房源 → E_1007，且在查詢房源之前就擋下（先判斷再查詢）")
+    void markMaintenance_storelessCallerOnSystemTenantListing_throwsE1007BeforeAnyLookup() {
+        org.mockito.Mockito.lenient().when(listingRepository.findById(ROOM_LISTING_ID))
+                .thenReturn(Optional.of(Listing.builder().id(ROOM_LISTING_ID).tenantId(SYSTEM_TENANT).build()));
+        com.nextkey.ecommerce.shared.tenant.TenantContext.setCurrentTenant(SYSTEM_TENANT);
+
+        try {
+            assertThatThrownBy(() -> roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, false))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.E_1007);
+            verify(listingRepository, never()).findById(any());
+            verify(roomCalendarRepository, never())
+                    .findByRoomListingIdAndCalendarDateBetweenWithLockNowait(any(), any(), any());
+            verify(roomCalendarRepository, never()).save(any());
+        } finally {
+            com.nextkey.ecommerce.shared.tenant.TenantContext.clear();
+        }
+    }
+
+    @Test
+    @DisplayName("DEF-415：unmarkMaintenance 沒有店鋪的呼叫者對系統租戶房源 → E_1007，維護中的日期不被動到")
+    void unmarkMaintenance_storelessCallerOnSystemTenantListing_throwsE1007AndKeepsMaintenance() {
+        org.mockito.Mockito.lenient().when(listingRepository.findById(ROOM_LISTING_ID))
+                .thenReturn(Optional.of(Listing.builder().id(ROOM_LISTING_ID).tenantId(SYSTEM_TENANT).build()));
+        com.nextkey.ecommerce.shared.tenant.TenantContext.setCurrentTenant(SYSTEM_TENANT);
+
+        try {
+            assertThatThrownBy(() ->
+                    roomCalendarService.unmarkMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, false))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.E_1007);
+            verify(roomCalendarRepository, never())
+                    .findByRoomListingIdAndCalendarDateBetweenWithLockNowait(any(), any(), any());
+            verify(roomCalendarRepository, never()).save(any());
+        } finally {
+            com.nextkey.ecommerce.shared.tenant.TenantContext.clear();
+        }
+    }
+
+    @Test
+    @DisplayName("DEF-415：SUPER_ADMIN（租戶同為系統租戶）仍可對系統租戶房源標記維護——守門不得連平台管理員一起擋")
+    void markMaintenance_superAdminInSystemTenant_stillAllowed() {
+        com.nextkey.ecommerce.shared.tenant.TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        List<RoomCalendar> calendars = List.of(
+                calendarOf(CHECK_IN, RoomCalendar.RoomCalendarStatus.AVAILABLE, null),
+                calendarOf(CHECK_IN.plusDays(1), RoomCalendar.RoomCalendarStatus.AVAILABLE, null));
+        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
+                ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(calendars);
+
+        try {
+            roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, true);
+
+            verify(roomCalendarRepository, times(2)).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE));
+        } finally {
+            com.nextkey.ecommerce.shared.tenant.TenantContext.clear();
+        }
+    }
 }

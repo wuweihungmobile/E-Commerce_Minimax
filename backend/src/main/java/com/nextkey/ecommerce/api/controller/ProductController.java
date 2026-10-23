@@ -73,8 +73,10 @@ public class ProductController {
     @PostMapping
     @PreAuthorize("hasAuthority('product:create')")
     public ResponseEntity<ApiResponse<ProductDto.Response>> createProduct(
+            @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody ProductDto.CreateRequest request) {
-        ProductDto.Response product = productService.createProduct(request);
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
+        ProductDto.Response product = productService.createProduct(request, isSuperAdmin);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Product created successfully", product));
     }

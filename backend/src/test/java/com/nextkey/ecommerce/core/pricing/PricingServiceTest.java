@@ -1645,6 +1645,187 @@ class PricingServiceTest {
     }
 
     /**
+     * DEF-415（Sprint 304）：沒有店鋪的呼叫者（含沒有店鋪的 ADMIN，租戶內角色）不得管理系統租戶（平台自營）的定價規則。
+     *
+     * <p>呼叫者的租戶與資源的租戶都是系統租戶佔位值——舊的擁有權檢查只比「租戶相等」，會放行。這裡的資源一律備成系統租戶名下，
+     * 並以 {@code lenient()} 備妥 Repository：守門被拿掉時，舊的相等檢查放行、操作繼續執行，測試才會紅（而不是被 Mockito
+     * 的預設回傳掩蓋成別的例外）。每個案例都同時斷言「不寫入」。
+     */
+    @Nested
+    @DisplayName("DEF-415: 沒有店鋪的呼叫者管不到系統租戶（平台自營）的定價規則")
+    class StorelessCallerWriteTests {
+
+        private final UUID systemTenantId = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
+
+        @BeforeEach
+        void callerIsTenantless() {
+            TenantContext.setCurrentTenant(systemTenantId);
+            lenient().when(tenantRepository.findById(systemTenantId)).thenReturn(Optional.of(tenantOf(systemTenantId)));
+        }
+
+        private PricingRule systemRule(final UUID ruleId) {
+            return PricingRule.builder()
+                    .id(ruleId).tenantId(systemTenantId).roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.MANUAL_OVERRIDE).isActive(true)
+                    .priority(5).ruleName("平台自營規則")
+                    .config(Map.of("price", 100.0))
+                    .validFrom(LocalDate.of(2026, 1, 1)).validTo(LocalDate.of(2026, 12, 31)).build();
+        }
+
+        private PricingDto.CreateRuleRequest createRequest(final UUID roomListingId) {
+            return PricingDto.CreateRuleRequest.builder()
+                    .roomListingId(roomListingId)
+                    .ruleType(PricingDto.PricingRuleType.SEASONAL)
+                    .ruleName("Platform rule")
+                    .config(Map.of("multiplier", 1.2))
+                    .validFrom(LocalDate.of(2026, 1, 1))
+                    .validTo(LocalDate.of(2026, 12, 31))
+                    .build();
+        }
+
+        @Test
+        @DisplayName("createRule 綁系統租戶房源：沒有店鋪的呼叫者 → E_1007，先判斷、不查房源也不寫入")
+        void createRule_storelessCaller_systemTenantListing_throwsE1007BeforeAnyQuery() {
+            Listing systemListing = Listing.builder().tenantId(systemTenantId).build();
+            systemListing.setId(ROOM_LISTING_ID);
+            lenient().when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(systemListing));
+            lenient().when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID))
+                    .thenReturn(List.of());
+            lenient().when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            assertThatThrownBy(() -> pricingService.createRule(createRequest(ROOM_LISTING_ID), false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(listingRepository, never()).findById(any());
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("createRule 不綁任何房源：沒有店鋪的呼叫者 → E_1007（不綁房源的規則會蓋成系統租戶，守門不得因沒有房源 id 而略過）")
+        void createRule_storelessCaller_noListing_throwsE1007() {
+            lenient().when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(null)).thenReturn(List.of());
+            lenient().when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            assertThatThrownBy(() -> pricingService.createRule(createRequest(null), false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("createRule 不綁任何房源：平台管理員（SUPER_ADMIN）仍可建立，且蓋成系統租戶")
+        void createRule_superAdmin_noListing_stillAllowedAndStampedWithSystemTenant() {
+            when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(null)).thenReturn(List.of());
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            pricingService.createRule(createRequest(null), true);
+
+            ArgumentCaptor<PricingRule> saved = ArgumentCaptor.forClass(PricingRule.class);
+            verify(pricingRuleRepository).save(saved.capture());
+            assertThat(saved.getValue().getTenantId()).isEqualTo(systemTenantId);
+        }
+
+        @Test
+        @DisplayName("updateRule：沒有店鋪的呼叫者更新系統租戶的規則 → E_1007，不寫入")
+        void updateRule_storelessCaller_systemTenantRule_throwsE1007() {
+            UUID ruleId = UUID.randomUUID();
+            lenient().when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(systemRule(ruleId)));
+            lenient().when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            assertThatThrownBy(() -> pricingService.updateRule(ruleId,
+                    PricingDto.UpdateRuleRequest.builder().priority(99).build(), false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("updateRule：平台管理員（SUPER_ADMIN）仍可更新系統租戶的規則")
+        void updateRule_superAdmin_systemTenantRule_stillAllowed() {
+            UUID ruleId = UUID.randomUUID();
+            when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(systemRule(ruleId)));
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            PricingDto.RuleResponse response = pricingService.updateRule(ruleId,
+                    PricingDto.UpdateRuleRequest.builder().priority(99).build(), true);
+
+            assertThat(response.getPriority()).isEqualTo(99);
+        }
+
+        @Test
+        @DisplayName("deleteRule：沒有店鋪的呼叫者停用系統租戶的規則 → E_1007，不寫入")
+        void deleteRule_storelessCaller_systemTenantRule_throwsE1007() {
+            UUID ruleId = UUID.randomUUID();
+            PricingRule rule = systemRule(ruleId);
+            lenient().when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(rule));
+            lenient().when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            assertThatThrownBy(() -> pricingService.deleteRule(ruleId, false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(pricingRuleRepository, never()).save(any());
+            assertThat(rule.getIsActive()).as("被擋之後規則仍是啟用中").isTrue();
+        }
+
+        @Test
+        @DisplayName("overridePrice：沒有店鋪的呼叫者覆蓋系統租戶規則的價格 → E_1007，不寫入")
+        void overridePrice_storelessCaller_systemTenantRule_throwsE1007() {
+            UUID ruleId = UUID.randomUUID();
+            lenient().when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(systemRule(ruleId)));
+            lenient().when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            assertThatThrownBy(() -> pricingService.overridePrice(ruleId, LocalDate.of(2026, 6, 1),
+                    LocalDate.of(2026, 6, 5), BigDecimal.valueOf(0.01), "malicious", false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("setCalendarPrice：沒有店鋪的呼叫者改系統租戶房源的單日價格 → E_1007，不寫入")
+        void setCalendarPrice_storelessCaller_systemTenantRoom_throwsE1007() {
+            Listing listing = Listing.builder().tenantId(systemTenantId).build();
+            listing.setId(ROOM_LISTING_ID);
+            lenient().when(roomRepository.findByListingId(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(Room.builder().listing(listing).build()));
+            lenient().when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            PricingDto.SetCalendarPriceRequest request = PricingDto.SetCalendarPriceRequest.builder()
+                    .roomListingId(ROOM_LISTING_ID)
+                    .date(LocalDate.of(2026, 6, 1))
+                    .price(BigDecimal.valueOf(0.01))
+                    .build();
+
+            assertThatThrownBy(() -> pricingService.setCalendarPrice(request, false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("有真正店鋪的呼叫者管理自己店鋪的規則照常（守門看的是有沒有店鋪，不是一律擋）")
+        void updateRule_storeOwner_ownTenantRule_stillAllowed() {
+            TenantContext.setCurrentTenant(TENANT_ID);
+            UUID ruleId = UUID.randomUUID();
+            PricingRule own = systemRule(ruleId);
+            own.setTenantId(TENANT_ID);
+            when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(own));
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            PricingDto.RuleResponse response = pricingService.updateRule(ruleId,
+                    PricingDto.UpdateRuleRequest.builder().priority(42).build(), false);
+
+            assertThat(response.getPriority()).isEqualTo(42);
+        }
+    }
+
+    /**
      * DEF-416（Sprint 303）：帶 roomListingId 且 activeOnly=false 時原本走 {@code findAll()} 全表掃描。
      *
      * <p>Hibernate 產生的測試庫對 rule_type 有 CHECK 約束，放不進列舉以外的值，所以真實 PostgreSQL 的整合測試重現不出

@@ -1,9 +1,9 @@
 # API 規格文件 - M12 動態定價引擎 / API Specification - M12 Dynamic Pricing Engine
 
 > **文件編號**: API-M12
-> **文件版本**: v2.2（Sprint 303：DEF-411 已修復〔讀取端點排除系統租戶佔位值〕、DEF-414 已修復〔三個寫入端點原本一律 500〕、DEF-416 已修復〔帶房源 id 的全部規則列表 findAll() 全表掃描致 500〕、§7 補 DEF-415；v2.1 為 Sprint 300 更正 §4.8 誤記的「無租戶擁有權檢查」；v2.0 為 Sprint 266 依實作改寫）
+> **文件版本**: v2.3（Sprint 304：DEF-415 已修復〔建立／更新／刪除／覆蓋／日曆改價先要求呼叫者有真正的店鋪，連不綁房源的規則也一樣〕；v2.2 為 Sprint 303：DEF-411 已修復〔讀取端點排除系統租戶佔位值〕、DEF-414 已修復〔三個寫入端點原本一律 500〕、DEF-416 已修復〔帶房源 id 的全部規則列表 findAll() 全表掃描致 500〕；v2.1 為 Sprint 300 更正 §4.8 誤記的「無租戶擁有權檢查」；v2.0 為 Sprint 266 依實作改寫）
 > **建立日期**: 2026-04-09（v1.0）
-> **最後更新**: 2026-10-23
+> **最後更新**: 2026-10-24
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`PricingController`、`DashboardPricingController`（`api/controller/`）、`PricingService`（`core/pricing/`）、`PricingRule`（`domain/model/room/`）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[PricingServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/pricing/PricingServiceTest.java)、[M12PricingIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M12PricingIntegrationTest.java)、[M12PricingProductIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M12PricingProductIntegrationTest.java)
@@ -31,7 +31,7 @@
 | **描述** | 房東/賣家為房源/商品設定定價規則（平假日、季節、早鳥、長住、最後一刻、手動覆蓋），依規則即時計算價格；房東可預覽未來定價日曆、對單日設定手動價格 |
 | **API 前綴** | 後端的 context path 是 `/api`，所以下列路徑的完整網址是 `/api/v2/dashboard/pricing/...` |
 | **功能開關** | 僅 `POST /rules`（建立規則）會檢查 `DYNAMIC_PRICING_ENABLED` feature toggle（未啟用回 `E-2004`）；`updateRule`／`getRules`／`deleteRule`／`calculate`／`calendar`／`calendar/price`／`override` **皆不檢查此開關**——關閉開關不影響已建立規則的查詢/修改/刪除/計價，只擋新建規則這一個入口 |
-| **多租戶隔離** | `PricingRule.tenantId` 取自建立者當下租戶。除 `getRules`（Sprint 185／DEF-255 補上）外，建立/更新/刪除/覆蓋皆驗證房源所屬租戶或規則所屬租戶與呼叫者一致（`checkListingTenantOwnership`／`checkRuleTenantOwnership`，Sprint 不詳／DEF-242），`SUPER_ADMIN` 不受限。讀取路徑（`getRules`、定價日曆預覽）另外要求呼叫者有真正的店鋪（`TenantContext.isStoreTenant`，Sprint 303／DEF-411）；寫入端點的擁有權語意未改（見 §7 DEF-415） |
+| **多租戶隔離** | `PricingRule.tenantId` 取自建立者當下租戶。除 `getRules`（Sprint 185／DEF-255 補上）外，建立/更新/刪除/覆蓋皆驗證房源所屬租戶或規則所屬租戶與呼叫者一致（`checkListingTenantOwnership`／`checkRuleTenantOwnership`，Sprint 不詳／DEF-242），`SUPER_ADMIN` 不受限。讀取路徑（`getRules`、定價日曆預覽）另外要求呼叫者有真正的店鋪（`TenantContext.isStoreTenant`，Sprint 303／DEF-411）；寫入端點（建立／更新／刪除／覆蓋／日曆改價）同樣要求呼叫者有真正的店鋪，連不綁房源的規則也一樣（Sprint 304／DEF-415；Sprint 303 為讀取端專用的 `checkListingReadAccess` 已併入 `checkListingTenantOwnership`） |
 | **範圍外** | `GET /v2/listings/{id}/price`（M01，見文件頂部範圍說明）；訂單/購物車結帳時的最終生效價格計算（`EffectivePriceResponse`／`getEffectivePrice`，屬 M04/M05 範疇） |
 
 ### 1.2 設計重點
@@ -104,7 +104,7 @@ FRD 對應 US-M12 編號目前僅概略描述，未逐端點列 AC；上表依�
 
 ### 4.1 `POST /v2/dashboard/pricing/rules` — 建立定價規則
 
-**權限**：`room:create` 或 `product:create`，且限 `roomListingId`／`listingId` 所屬租戶（`SUPER_ADMIN` 不受限）。另檢查 `DYNAMIC_PRICING_ENABLED` feature toggle。
+**權限**：`room:create` 或 `product:create`，且限 `roomListingId`／`listingId` 所屬租戶（`SUPER_ADMIN` 不受限），呼叫者必須有真正的店鋪（沒有店鋪的呼叫者——含沒有店鋪的 `ADMIN`——一律 `E-1007`，Sprint 304／DEF-415）：連不綁任何房源的規則也一樣，因為它會蓋成呼叫者的租戶，沒有店鋪者建出來的就是系統租戶（平台自營）的規則；這個判斷在查詢房源之前。另檢查 `DYNAMIC_PRICING_ENABLED` feature toggle。
 
 **請求**（`CreateRuleRequest`）：
 
@@ -125,7 +125,7 @@ FRD 對應 US-M12 編號目前僅概略描述，未逐端點列 AC；上表依�
 |------|:----:|--------|
 | 功能開關未啟用 | 403 | `E-2004` |
 | 房源/商品不存在 | 404 | `E-4000` |
-| 非房源/商品所屬租戶 | 403 | `E-1007` |
+| 非房源/商品所屬租戶，或呼叫者沒有店鋪（含不綁房源的規則，DEF-415） | 403 | `E-1007` |
 | `validTo` 早於 `validFrom` | 422 | `E-4003` |
 | `config` 鍵值超出範圍 | 422 | `E-8001` |
 | 已達 50 條上限 | 422 | `E-4001` |
@@ -133,12 +133,12 @@ FRD 對應 US-M12 編號目前僅概略描述，未逐端點列 AC；上表依�
 
 ### 4.2 `PUT /v2/dashboard/pricing/rules/{ruleId}` — 更新定價規則
 
-**權限**：`room:update` 或 `product:update`，且限規則所屬租戶。**不檢查功能開關**（見 §1.2 開頭）。僅提供的欄位會被更新（部分更新語意）。
+**權限**：`room:update` 或 `product:update`，且限規則所屬租戶，呼叫者必須有真正的店鋪（沒有店鋪的呼叫者——含沒有店鋪的 `ADMIN`——一律 `E-1007`，Sprint 304／DEF-415）。**不檢查功能開關**（見 §1.2 開頭）。僅提供的欄位會被更新（部分更新語意）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | 規則不存在 | 404 | `E-8000` |
-| 非規則所屬租戶 | 403 | `E-1007` |
+| 非規則所屬租戶，或呼叫者沒有店鋪（DEF-415） | 403 | `E-1007` |
 | 更新後 `validTo` 早於 `validFrom` | 422 | `E-4003` |
 | `config` 鍵值超出範圍 | 422 | `E-8001` |
 
@@ -152,16 +152,16 @@ FRD 對應 US-M12 編號目前僅概略描述，未逐端點列 AC；上表依�
 
 ### 4.4 `DELETE /v2/dashboard/pricing/rules/{ruleId}` — 刪除（軟刪除）定價規則
 
-**權限**：`room:delete` 或 `product:delete`，且限規則所屬租戶。設定 `isActive=false`，不實際刪除資料列。**這是取消任何「手動覆蓋」規則的唯一方式**（見 §1.2 第 5 點、§7）。
+**權限**：`room:delete` 或 `product:delete`，且限規則所屬租戶，呼叫者必須有真正的店鋪（沒有店鋪的呼叫者——含沒有店鋪的 `ADMIN`——一律 `E-1007`，Sprint 304／DEF-415）。設定 `isActive=false`，不實際刪除資料列。**這是取消任何「手動覆蓋」規則的唯一方式**（見 §1.2 第 5 點、§7）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | 規則不存在 | 404 | `E-8000` |
-| 非規則所屬租戶 | 403 | `E-1007` |
+| 非規則所屬租戶，或呼叫者沒有店鋪（DEF-415） | 403 | `E-1007` |
 
 ### 4.5 `POST /v2/dashboard/pricing/rules/{ruleId}/override` — 以日期範圍手動覆蓋價格
 
-**權限**：`room:update`，且限規則所屬租戶。`ruleId` 是**既有規則的 ID**（覆蓋的目標關聯，非新建規則的依據）。
+**權限**：`room:update`，且限規則所屬租戶，呼叫者必須有真正的店鋪（沒有店鋪的呼叫者——含沒有店鋪的 `ADMIN`——一律 `E-1007`，Sprint 304／DEF-415）。`ruleId` 是**既有規則的 ID**（覆蓋的目標關聯，非新建規則的依據）。
 
 **請求**（`RuleOverrideRequest`）：`startDate`(必填)、`endDate`(必填，不可早於 `startDate`)、`overridePrice`(必填，須 >0)、`reason`(選填)
 
@@ -171,7 +171,7 @@ FRD 對應 US-M12 編號目前僅概略描述，未逐端點列 AC；上表依�
 |------|:----:|--------|
 | `endDate` 早於 `startDate` | 422 | `E-4003` |
 | 規則不存在 | 404 | `E-8000` |
-| 非規則所屬租戶 | 403 | `E-1007` |
+| 非規則所屬租戶，或呼叫者沒有店鋪（DEF-415） | 403 | `E-1007` |
 | 範圍內任一天已被預訂（`RoomCalendar.status=BOOKED`） | 422 | `E-4002` |
 
 ### 4.6 `POST /v2/dashboard/pricing/calculate` — 計算價格
@@ -200,7 +200,7 @@ FRD 對應 US-M12 編號目前僅概略描述，未逐端點列 AC；上表依�
 
 ### 4.8 `POST /v2/dashboard/pricing/calendar/price` — 設定單日手動覆蓋價格
 
-**權限**：`room:update`，且驗證房源所屬租戶與呼叫者一致（`PricingService.setCalendarPrice` 第一步 `checkRuleTenantOwnership`，DEF-242；`SUPER_ADMIN` 不受限；單元測試 `PricingServiceTest.setCalendarPrice_roomBelongsToDifferentTenant_throwsE1007`）。**（v2.1 更正：v2.0 誤記為「無租戶擁有權檢查」，Sprint 300 讀碼更正，見 §7。）** 不檢查 50 條上限或時間重疊，直接新建一筆當日 `MANUAL_OVERRIDE` 規則（可能與既有覆蓋規則重疊，由 priority/建立時間排序取最新一筆生效，見 §1.2 第 4 點）。
+**權限**：`room:update`，且驗證房源所屬租戶與呼叫者一致（`PricingService.setCalendarPrice` 第一步 `checkRuleTenantOwnership`，DEF-242；`SUPER_ADMIN` 不受限；呼叫者須有真正的店鋪，沒有店鋪的 `ADMIN` 一律 `E-1007`（DEF-415）；單元測試 `PricingServiceTest.setCalendarPrice_roomBelongsToDifferentTenant_throwsE1007`）。**（v2.1 更正：v2.0 誤記為「無租戶擁有權檢查」，Sprint 300 讀碼更正，見 §7。）** 不檢查 50 條上限或時間重疊，直接新建一筆當日 `MANUAL_OVERRIDE` 規則（可能與既有覆蓋規則重疊，由 priority/建立時間排序取最新一筆生效，見 §1.2 第 4 點）。
 
 **請求**（`SetCalendarPriceRequest`）：`roomListingId`(必填)、`date`(必填)、`price`(必填，須 >0)、`reason`(選填)
 
@@ -219,6 +219,8 @@ FRD 對應 US-M12 編號目前僅概略描述，未逐端點列 AC；上表依�
 | 計算價格（§4.6） | — | ✅（無租戶限制） | ✅ |
 | 定價日曆（§4.7） | ✅ | ❌ | ✅（跨租戶） |
 | 單日覆蓋（§4.8） | ✅ | ❌ | ✅（跨租戶） |
+
+上表「房源/商品所屬租戶」欄指**有真正店鋪**的呼叫者。沒有店鋪的呼叫者——包含沒有店鋪的 `ADMIN`（租戶內角色，持有 `room:*`／`product:*` 寫入權限，但租戶是系統租戶佔位值）——對所有寫入端點（§4.1、4.2、4.4、4.5、4.8）一律 `E-1007`；有店鋪的 `ADMIN` 管自己店鋪的規則照常（Sprint 304／DEF-415，使用者於 Sprint 303 收尾裁決「比照 Sprint 234 全部擋下」）。
 
 ---
 
@@ -246,7 +248,7 @@ FRD 對應 US-M12 編號目前僅概略描述，未逐端點列 AC；上表依�
 | `calculate` 刻意無租戶擁有權檢查（供買家端試算）；**`calendar/price` 有擁有權檢查（v2.0 誤記為「無」，Sprint 300 更正）** | §4.6 計算價格刻意不限租戶，供買家詳情頁即時試算。§4.8 設定單日覆蓋先前被記載為「同樣無檢查、可能是跨租戶寫入漏洞，建議另案登記調查」——Sprint 300 讀碼確認 `PricingService.setCalendarPrice` 第一步就是 `checkRuleTenantOwnership(room.getListing().getTenantId(), isSuperAdmin)`（DEF-242），並有單元測試 `PricingServiceTest.setCalendarPrice_roomBelongsToDifferentTenant_throwsE1007`；所以 v2.0 的記載（含 §4.8 權限說明與權限矩陣）是錯的，已更正。**只讀碼與單元測試，沒有實測 HTTP 層** |
 | **擁有權檢查沒有排除系統租戶佔位值（DEF-411）——Sprint 303 已修復（讀取端點）** | Sprint 300 登記時是讀碼推論；Sprint 303 先用真實 PostgreSQL＋完整 HTTP／JWT 鏈實測：管理員（`SUPER_ADMIN`，沒有店鋪歸屬）登入簽發的租戶是系統租戶、他建立的規則蓋成系統租戶；修復前，沒有店鋪的買家與沒有店鋪的 `ADMIN` 對 `GET /rules` 列得出該規則、帶系統租戶房源 id 查詢回 200（應 403）、預覽系統租戶房源日曆回 200（應 403）。修法：`getRules` 無參數分支對「沒有店鋪的非管理員」回空；帶 id 的分支與日曆預覽先要求呼叫者有真正的店鋪，再沿用租戶相等檢查。`/calculate` 刻意不限租戶（買家端的 `GET /v2/listings/{id}/price` 同樣只要求 `room:read`／`product:read`，呼叫的是同一個 `calculatePrice`）不受影響。測試：`PricingSystemTenantIsolationE2ETest`（真實 PostgreSQL，6 個案例）、`PricingServiceTest.StorelessCallerTests`、`BookingServiceOwnerCalendarTest`；13 個突變全數擊殺 |
 | **三個寫入端點原本一律 500（DEF-414，Sprint 303 發現並修復）** | `POST /rules`、`POST /calendar/price`、`POST /rules/{ruleId}/override` 建立 `PricingRule` 時只設了影子欄位 `tenantId`（`insertable = false`），INSERT 依據的是 `tenant` 關聯物件，`pricing_rules.tenant_id`（NOT NULL）收到 NULL → `DataIntegrityViolationException` → HTTP 500。既有測試全部把 Repository 換成 mock（`M12PricingIntegrationTest`、`PricingServiceTest`），INSERT 從未真的執行過，所以一直沒被看到；Sprint 303 寫 `DEF-411` 的真實 DB 測試時，固件存檔先撞到同一個約束才發現。修法：三處改設 `.tenant(...)`（`createRule` 先以 `TenantRepository` 查出 `Tenant`）。測試：`PricingRulePersistenceE2ETest`（真實 PostgreSQL，3 個案例，店主視角）。**在測試庫（Hibernate 產生的 schema）與 Flyway 建出的資料庫都重現**：後者是把修復拿掉的等價突變（三個端點皆回 500），不是真正的修復前 JAR |
-| **寫入端點的擁有權檢查仍用「租戶相等」，沒有店鋪的 `ADMIN` 對系統租戶的資源等於同租戶（DEF-415，使用者已決定全部擋下、下一輪落地）** | `updateRule`／`deleteRule`／`overridePrice`／`setCalendarPrice`（本模組的 `checkRuleTenantOwnership`、`checkListingTenantOwnership`）與 `RoomService`／`ProductService`／`ProductSkuService`／`RoomCalendarService` 的同名檢查皆如此。BUYER 沒有寫入權限不受影響；沒有店鋪的 SELLER／HOST 在簽發 token 時已降為 BUYER（Sprint 240）；剩下沒有店鋪的 `ADMIN`（租戶內角色）仍可管理系統租戶名下的資源。是否要比照 Sprint 234 擋下是權限模型決策；Sprint 303 刻意不動，收尾詢問後**使用者本人決定『比照 Sprint 234 全部擋下』**，下一輪一次改齊這五處 |
+| **寫入端點的擁有權檢查原本只比「租戶相等」，沒有店鋪的 `ADMIN` 對系統租戶的資源等於同租戶（DEF-415）——Sprint 304 已修復（使用者決定比照 Sprint 234 全部擋下）** | `updateRule`／`deleteRule`／`overridePrice`／`setCalendarPrice`（`checkRuleTenantOwnership`）、`createRule`（`checkListingTenantOwnership`）與 `RoomService`／`ProductService`／`ProductSkuService`／`RoomCalendarService` 的同名檢查，原本都只比「資源的租戶 == 呼叫者的租戶」。BUYER 沒有寫入權限不受影響；沒有店鋪的 SELLER／HOST 在簽發 token 時已降為 BUYER（Sprint 240）；剩下沒有店鋪的 `ADMIN`（租戶內角色，持有 `room:*`／`product:*` 寫入權限）的租戶也是系統租戶佔位值，所以對平台自營資料等於擁有者。**實測（真實 PostgreSQL＋完整 HTTP／JWT 鏈，`PlatformSelfRunWriteIsolationE2ETest`）：修復前 18 個案例全紅**——沒有店鋪的 `ADMIN` 對這五個服務的寫入操作都回 200／201（包含建立不綁房源的規則）。修法：兩個擁有權檢查先要求呼叫者有真正的店鋪（`TenantContext.isStoreTenant`），`SUPER_ADMIN` 照常；`checkListingTenantOwnership` 把這個判斷放在「`targetListingId` 為 null 就略過」**之前**，不綁房源的規則也擋；Sprint 303 讀取端專用的 `checkListingReadAccess` 併入同一個方法。回應訊息一律是錯誤碼的預設訊息「權限不足」（`BusinessException` 的細節依 AI-2418 不外洩），所以測試以「有店鋪的 `ADMIN` 對自己店鋪的同一個操作成功」證明擋下的是擁有權檢查、不是權限註解。測試：`PlatformSelfRunWriteIsolationE2ETest`（18 個案例）、`PricingServiceTest.StorelessCallerWriteTests`（9 個）。 |
 | `E-4001` 的 HTTP 狀態碼不一致 | `GlobalExceptionHandler` 把 `E-4001` 歸為 422 群組，但 §4.7 的 `getCalendarPreview` 對「`startDate` 早於今天」改為程式內直接走同一個 `BusinessException(E_4001,...)`——驗證後兩處實際觀察到的 HTTP 狀態碼是否真的不同，或 `GlobalExceptionHandler` 的判斷優先於拋出點，未實測確認，僅讀碼時發現命名怪異（E-4001 的預設訊息是「房源日曆衝突」，用在「不支援過去日期」的語意不完全貼切），記錄供後續參考 |
 | `createRule` 的 `roomListingId`／`listingId` 未強制至少一個必填 | DTO 沒有 `@AssertTrue` 等跨欄位驗證，兩者皆為 null 時可以建立一筆「不綁定任何房源/商品」的規則，實務上是否有意義未明 |
 | **`getRules` 的 `activeOnly=false`（預設）分支走 `findAll()` 全表掃描（DEF-416）——Sprint 303 已修復，不只是效能問題** | 帶 `roomListingId` 查詢且未指定 `activeOnly=true` 時，原本 `findAll()` 把**全表所有租戶**的規則載入記憶體再過濾；Flyway 建出的資料庫永遠帶著 `V5__Test_Data_Init.sql` 的一列 `rule_type = 'WEEKEND_SURCHARGE'`（不在 Java 列舉 `PricingRuleType` 內，也沒有後續遷移刪除），只要載入到它，整個請求就 `IllegalArgumentException` → HTTP 500，任何店主以房源篩選查「全部規則」都會失敗。Hibernate 產生的測試庫對 `rule_type` 有 CHECK 約束放不進這種值，所以後端的真實 PostgreSQL 整合測試重現不出來；Sprint 303 在 Flyway 全棧上跑 DEF-414 的驗證時才第一次看到（後端日誌的堆疊指向 `PricingService.getRules` 的 `findAll()`）。修法：新增衍生查詢 `PricingRuleRepository.findByRoomListingId`，只載入這間房源的規則。測試：`PricingServiceTest.RuleListingQueryTests`（`verify(never()).findAll()`）、真實全棧 `frontend/e2e/at-pricing-rules-real.spec.ts`（在 Flyway 資料庫上） |
@@ -261,8 +263,8 @@ FRD 對應 US-M12 編號目前僅概略描述，未逐端點列 AC；上表依�
 | PRD | §5.5.1（定價規則上限與衝突規則） |
 | 相關規格 | [API_Error_Codes.md](../API_Error_Codes.md)、[API_M01_Product_Center.md](API_M01_Product_Center.md)（`GET /listings/{id}/price` 的呼叫入口） |
 | 實作 | `PricingController`、`DashboardPricingController`（`api/controller/`）；`PricingService`（`core/pricing/`）；`PricingRule`（`domain/model/room/`） |
-| 契約測試 | [PricingServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/pricing/PricingServiceTest.java)、[M12PricingIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M12PricingIntegrationTest.java)、[M12PricingProductIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M12PricingProductIntegrationTest.java)、真實 PostgreSQL：[PricingSystemTenantIsolationE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/PricingSystemTenantIsolationE2ETest.java)（DEF-411）、[PricingRulePersistenceE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/PricingRulePersistenceE2ETest.java)（DEF-414）；真實全棧（Flyway 資料庫）：[at-pricing-rules-real.spec.ts](../../../frontend/e2e/at-pricing-rules-real.spec.ts)（DEF-414／416／411） |
+| 契約測試 | [PricingServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/pricing/PricingServiceTest.java)、[M12PricingIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M12PricingIntegrationTest.java)、[M12PricingProductIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M12PricingProductIntegrationTest.java)、真實 PostgreSQL：[PricingSystemTenantIsolationE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/PricingSystemTenantIsolationE2ETest.java)（DEF-411）、[PricingRulePersistenceE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/PricingRulePersistenceE2ETest.java)（DEF-414）；真實全棧（Flyway 資料庫）：[at-pricing-rules-real.spec.ts](../../../frontend/e2e/at-pricing-rules-real.spec.ts)（DEF-414／416／411）；真實 PostgreSQL：[PlatformSelfRunWriteIsolationE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/PlatformSelfRunWriteIsolationE2ETest.java)（DEF-415，涵蓋房源、商品、SKU、定價、日曆五個服務的寫入） |
 
 ---
 
-**文件狀態**：v2.2（Sprint 303：DEF-411／DEF-414／DEF-416 修復、§7 補 DEF-415；v2.0 為 Sprint 266 依實作全面改寫，DEF-368，取代 v1.0 全文）。
+**文件狀態**：v2.3（Sprint 304：DEF-415 修復、§7 DEF-415 改為已修復；v2.2 為 Sprint 303：DEF-411／DEF-414／DEF-416 修復；v2.0 為 Sprint 266 依實作全面改寫，DEF-368，取代 v1.0 全文）。

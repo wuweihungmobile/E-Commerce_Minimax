@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.CreateListingRequest;
+import com.nextkey.ecommerce.api.filter.UserPrincipal;
 import com.nextkey.ecommerce.core.product.ProductService;
 import com.nextkey.ecommerce.core.room.RoomService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
@@ -30,6 +32,8 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class DashboardListingController {
 
+    private static final String SUPER_ADMIN_ROLE = "SUPER_ADMIN";
+
     private final ProductService productService;
     private final RoomService roomService;
 
@@ -43,11 +47,13 @@ public class DashboardListingController {
     @PostMapping
     @PreAuthorize("hasAuthority('product:create') or hasAuthority('room:create')")
     public ResponseEntity<ApiResponse<Object>> createListing(
+            @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody CreateListingRequest request) {
 
         log.info("Create listing request: listingType={}, title={}",
                 request.getListingType(), request.getName());
 
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
         Object response;
 
         // DEF-263（Sprint 189）：類別級 @PreAuthorize 是 OR 條件（方便共用單一端點），但下方會依
@@ -59,11 +65,11 @@ public class DashboardListingController {
             requireAuthority("product:create");
             // Sprint 148（DEF-184）：RETAIL_ENABLED 檢查已搬進 ProductService.createProductFromDashboard
             // （PRD §4.4 規定 Feature Toggle 驗證不得在 Controller 層執行）
-            response = productService.createProductFromDashboard(request);
+            response = productService.createProductFromDashboard(request, isSuperAdmin);
         } else if ("ROOM".equalsIgnoreCase(request.getListingType())) {
             requireAuthority("room:create");
             // Sprint 148（DEF-184）：BOOKING_ENABLED 檢查已搬進 RoomService.createRoomFromDashboard
-            response = roomService.createRoomFromDashboard(request);
+            response = roomService.createRoomFromDashboard(request, isSuperAdmin);
         } else {
             throw new BusinessException(ErrorCode.E_3001, "Invalid listing type: " + request.getListingType());
         }

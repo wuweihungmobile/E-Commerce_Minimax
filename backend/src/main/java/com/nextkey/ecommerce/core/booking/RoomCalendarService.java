@@ -405,14 +405,22 @@ public class RoomCalendarService {
     /**
      * 房源租戶擁有權檢查（DEF-256），比照本專案既有的 {@code checkListingTenantOwnership} 慣例
      * （見 {@code PricingService}）。
+     *
+     * <p>DEF-415（Sprint 304）：呼叫者必須有真正的店鋪，先判斷、再查詢（理由同
+     * {@code PricingService.checkRuleTenantOwnership}）：沒有店鋪者——含沒有店鋪的 ADMIN——的租戶是系統租戶佔位值，
+     * 平台自營房源的日曆只有 SUPER_ADMIN 能管。
      */
     private void checkListingTenantOwnership(final UUID targetListingId, final boolean isSuperAdmin) {
         if (isSuperAdmin) {
             return;
         }
+        UUID callerTenantId = TenantContext.getCurrentTenant();
+        if (!TenantContext.isStoreTenant(callerTenantId)) {
+            throw new BusinessException(ErrorCode.E_1007, "Not authorized to manage this room's maintenance status");
+        }
         Listing listing = listingRepository.findById(targetListingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Listing not found"));
-        if (!listing.getTenantId().equals(TenantContext.getCurrentTenant())) {
+        if (!listing.getTenantId().equals(callerTenantId)) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to manage this room's maintenance status");
         }
     }

@@ -145,13 +145,15 @@ public class ProductSkuService {
         return listing;
     }
 
-    // 比照 ProductService.checkListingTenantOwnership（DEF-041 既有模式）
+    // 比照 ProductService.checkListingTenantOwnership（DEF-041 既有模式）；
+    // DEF-415（Sprint 304）同樣要求呼叫者有真正的店鋪，理由見該方法的註解：沒有店鋪者（含沒有店鋪的 ADMIN）的租戶是
+    // 系統租戶佔位值，平台自營商品的 SKU 只有 SUPER_ADMIN 能管。
     private void checkListingTenantOwnership(final Listing listing, final boolean isSuperAdmin) {
         if (isSuperAdmin) {
             return;
         }
         UUID callerTenantId = TenantContext.getCurrentTenant();
-        if (!listing.getTenantId().equals(callerTenantId)) {
+        if (!TenantContext.isStoreTenant(callerTenantId) || !listing.getTenantId().equals(callerTenantId)) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to manage this product's SKUs");
         }
     }

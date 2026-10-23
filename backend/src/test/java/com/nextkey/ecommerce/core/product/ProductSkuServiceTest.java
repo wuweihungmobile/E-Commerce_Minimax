@@ -345,4 +345,62 @@ class ProductSkuServiceTest {
 
         assertThat(response.getStatus()).isEqualTo("INACTIVE");
     }
+
+    // ───────── Sprint 304（DEF-415）：沒有店鋪的呼叫者不得管理系統租戶（平台自營）商品的 SKU ─────────
+    //
+    // 沒有店鋪者（含沒有店鋪的 ADMIN）的租戶是系統租戶佔位值，平台自營商品也蓋成同一個值；
+    // 舊檢查只比「租戶相等」，所以下列案例的呼叫者與商品「同租戶」——守門要擋的正是這種看起來合法的相等。
+
+    private static final UUID SYSTEM_TENANT = UUID.fromString(com.nextkey.ecommerce.shared.constants.AppConstants.SYSTEM_TENANT_ID);
+
+    @Test
+    @DisplayName("DEF-415: 建立 SKU 沒有店鋪的呼叫者（租戶是系統租戶）對系統租戶商品新增 → E-1007，且不寫入")
+    void createSku_storelessCallerOnSystemTenantProduct_throwsForbiddenAndDoesNotSave() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        when(listingRepository.findById(LISTING_ID)).thenReturn(Optional.of(buildProductListing(SYSTEM_TENANT)));
+        SkuDto.CreateRequest request = SkuDto.CreateRequest.builder().skuCode("SKU-001").build();
+
+        assertThatThrownBy(() -> productSkuService.createSku(LISTING_ID, request, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_1007);
+        verify(productSkuRepository, never()).saveAndFlush(any());
+        verify(productInventoryRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("DEF-415: 更新 SKU 沒有店鋪的呼叫者對系統租戶商品的 SKU 更新 → E-1007，且不寫入")
+    void updateSku_storelessCallerOnSystemTenantProduct_throwsForbiddenAndDoesNotSave() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        when(listingRepository.findById(LISTING_ID)).thenReturn(Optional.of(buildProductListing(SYSTEM_TENANT)));
+        UUID skuId = UUID.randomUUID();
+        SkuDto.UpdateRequest request = SkuDto.UpdateRequest.builder().specName("hijacked").build();
+
+        assertThatThrownBy(() -> productSkuService.updateSku(LISTING_ID, skuId, request, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_1007);
+        verify(productSkuRepository, never()).save(any());
+        verify(productSkuRepository, never()).findById(any());
+    }
+
+    @Test
+    @DisplayName("DEF-415: SUPER_ADMIN（租戶同為系統租戶）仍可管理系統租戶商品的 SKU——守門不得連平台管理員一起擋")
+    void createSku_superAdminOnSystemTenantProduct_stillAllowed() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        when(listingRepository.findById(LISTING_ID)).thenReturn(Optional.of(buildProductListing(SYSTEM_TENANT)));
+        when(productSkuRepository.existsBySkuCode("SKU-001")).thenReturn(false);
+        when(productSkuRepository.saveAndFlush(any(ProductSku.class))).thenAnswer(invocation -> {
+            ProductSku sku = invocation.getArgument(0);
+            sku.setId(UUID.randomUUID());
+            return sku;
+        });
+        when(productInventoryRepository.save(any(ProductInventory.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        SkuDto.CreateRequest request = SkuDto.CreateRequest.builder().skuCode("SKU-001").build();
+
+        SkuDto.Response response = productSkuService.createSku(LISTING_ID, request, true);
+
+        assertThat(response.getSkuCode()).isEqualTo("SKU-001");
+    }
 }

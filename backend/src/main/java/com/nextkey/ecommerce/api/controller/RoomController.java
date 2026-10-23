@@ -66,8 +66,10 @@ public class RoomController {
     @PostMapping
     @PreAuthorize("hasAuthority('room:create')")
     public ResponseEntity<ApiResponse<RoomDto.Response>> createRoom(
+            @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody RoomDto.CreateRequest request) {
-        RoomDto.Response room = roomService.createRoom(request);
+        boolean isSuperAdmin = SUPER_ADMIN_ROLE.equals(principal.getRole());
+        RoomDto.Response room = roomService.createRoom(request, isSuperAdmin);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Room created successfully", room));
     }

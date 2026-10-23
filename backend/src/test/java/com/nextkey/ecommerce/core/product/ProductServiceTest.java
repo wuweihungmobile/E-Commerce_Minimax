@@ -22,6 +22,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -319,7 +320,7 @@ class ProductServiceTest {
         ProductDto.CreateRequest request = ProductDto.CreateRequest.builder()
                 .title("超額商品").basePrice(BigDecimal.valueOf(100)).build();
 
-        assertThatThrownBy(() -> productService.createProduct(request))
+        assertThatThrownBy(() -> productService.createProduct(request, false))
                 .isInstanceOf(BusinessException.class);
         verify(listingRepository, never()).save(any());
         verify(tenantRepository, never()).findById(any());
@@ -341,7 +342,7 @@ class ProductServiceTest {
         ProductDto.CreateRequest request = ProductDto.CreateRequest.builder()
                 .title("新商品").basePrice(BigDecimal.valueOf(100)).build();
 
-        ProductDto.Response response = productService.createProduct(request);
+        ProductDto.Response response = productService.createProduct(request, false);
 
         assertThat(response.getTitle()).isEqualTo("新商品");
         verify(featureToggleService).checkQuotaNotExceeded(AppConstants.QUOTA_MAX_PRODUCTS, 3L);
@@ -394,7 +395,7 @@ class ProductServiceTest {
                 com.nextkey.ecommerce.api.dto.CreateListingRequest.builder()
                         .listingType("PRODUCT").name("停用開關商品").price(BigDecimal.valueOf(100)).build();
 
-        assertThatThrownBy(() -> productService.createProductFromDashboard(request))
+        assertThatThrownBy(() -> productService.createProductFromDashboard(request, false))
                 .isInstanceOf(BusinessException.class);
         verify(listingRepository, never()).save(any());
         verify(listingRepository, never()).countByTenantIdAndListingTypeAndStatus(any(), any(), any());
@@ -417,9 +418,120 @@ class ProductServiceTest {
                 com.nextkey.ecommerce.api.dto.CreateListingRequest.builder()
                         .listingType("PRODUCT").name("Dashboard新商品").price(BigDecimal.valueOf(100)).build();
 
-        ProductDto.Response response = productService.createProductFromDashboard(request);
+        ProductDto.Response response = productService.createProductFromDashboard(request, false);
 
         assertThat(response.getTitle()).isEqualTo("Dashboard新商品");
         verify(featureToggleService).checkFeatureEnabled("RETAIL_ENABLED");
+    }
+
+    // ========== Sprint 304（DEF-415）：沒有店鋪的呼叫者不得管理系統租戶（平台自營）的商品 ==========
+    //
+    // 沒有店鋪者（含沒有店鋪的 ADMIN）的租戶是系統租戶佔位值，平台自營商品也蓋成同一個值；
+    // 舊檢查只比「租戶相等」，所以下列案例的呼叫者與商品「同租戶」——守門要擋的正是這種看起來合法的相等。
+
+    private static final UUID SYSTEM_TENANT = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
+
+    @Test
+    @DisplayName("DEF-415: updateProduct 沒有店鋪的呼叫者（租戶是系統租戶）改系統租戶商品 → E_1007，且不寫入")
+    void updateProduct_storelessCallerOnSystemTenantProduct_throwsForbiddenAndDoesNotSave() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        Product product = buildProductForListing(LISTING_ID, SYSTEM_TENANT);
+        when(productRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(product));
+        ProductDto.UpdateRequest request = ProductDto.UpdateRequest.builder().title("hijacked").build();
+
+        assertThatThrownBy(() -> productService.updateProduct(LISTING_ID, request, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_1007);
+        verify(listingRepository, never()).save(any());
+        verify(productRepository, never()).save(any());
+        assertThat(product.getListing().getTitle()).as("被擋之後標題不得被改").isEqualTo("Test Product");
+    }
+
+    @Test
+    @DisplayName("DEF-415: deleteProduct 沒有店鋪的呼叫者刪系統租戶商品 → E_1007，狀態不變")
+    void deleteProduct_storelessCallerOnSystemTenantProduct_throwsForbiddenAndKeepsStatus() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        Product product = buildProductForListing(LISTING_ID, SYSTEM_TENANT);
+        when(productRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(product));
+
+        assertThatThrownBy(() -> productService.deleteProduct(LISTING_ID, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_1007);
+        verify(listingRepository, never()).save(any());
+        assertThat(product.getListing().getStatus()).isEqualTo(Listing.ListingStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("DEF-415: SUPER_ADMIN（租戶同為系統租戶）仍可管理系統租戶商品——守門不得連平台管理員一起擋")
+    void updateProduct_superAdminOnSystemTenantProduct_stillAllowed() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        Product product = buildProductForListing(LISTING_ID, SYSTEM_TENANT);
+        when(productRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(product));
+        when(listingRepository.save(product.getListing())).thenReturn(product.getListing());
+        when(productRepository.save(product)).thenReturn(product);
+        ProductDto.UpdateRequest request = ProductDto.UpdateRequest.builder().brand("NewBrand").build();
+
+        ProductDto.Response response = productService.updateProduct(LISTING_ID, request, true);
+
+        assertThat(response.getBrand()).isEqualTo("NewBrand");
+    }
+
+    @Test
+    @DisplayName("DEF-415: createProduct 沒有店鋪的呼叫者 → E_1007，且在功能開關、配額、租戶查詢之前就擋下（先判斷再查詢）")
+    void createProduct_storelessCaller_throwsForbiddenBeforeAnyLookup() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        ProductDto.CreateRequest request = ProductDto.CreateRequest.builder()
+                .title("平台自營商品").basePrice(BigDecimal.valueOf(100)).build();
+
+        assertThatThrownBy(() -> productService.createProduct(request, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_1007);
+        verify(featureToggleService, never()).checkFeatureEnabled(any());
+        verify(featureToggleService, never()).checkQuotaNotExceeded(anyInt(), anyLong());
+        verify(tenantRepository, never()).findById(any());
+        verify(listingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("DEF-415: createProductFromDashboard 沒有店鋪的呼叫者 → E_1007，且在功能開關、配額、租戶查詢之前就擋下")
+    void createProductFromDashboard_storelessCaller_throwsForbiddenBeforeAnyLookup() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        com.nextkey.ecommerce.api.dto.CreateListingRequest request =
+                com.nextkey.ecommerce.api.dto.CreateListingRequest.builder()
+                        .listingType("PRODUCT").name("平台自營商品").price(BigDecimal.valueOf(100)).build();
+
+        assertThatThrownBy(() -> productService.createProductFromDashboard(request, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_1007);
+        verify(featureToggleService, never()).checkFeatureEnabled(any());
+        verify(featureToggleService, never()).checkQuotaNotExceeded(anyInt(), anyLong());
+        verify(tenantRepository, never()).findById(any());
+        verify(listingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("DEF-415: SUPER_ADMIN 仍可建立商品，且蓋成系統租戶（平台自營）")
+    void createProduct_superAdminInSystemTenant_createsSystemTenantListing() {
+        UUID userId = UUID.randomUUID();
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        TenantContext.setCurrentUser(userId);
+        when(listingRepository.countByTenantIdAndListingTypeAndStatus(
+                SYSTEM_TENANT, Listing.ListingType.PRODUCT, Listing.ListingStatus.ACTIVE)).thenReturn(0L);
+        when(tenantRepository.findById(SYSTEM_TENANT))
+                .thenReturn(Optional.of(Tenant.builder().id(SYSTEM_TENANT).build()));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(User.builder().id(userId).build()));
+        when(listingRepository.save(any(Listing.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        productService.createProduct(ProductDto.CreateRequest.builder()
+                .title("平台自營商品").basePrice(BigDecimal.valueOf(100)).build(), true);
+
+        ArgumentCaptor<Listing> saved = ArgumentCaptor.forClass(Listing.class);
+        verify(listingRepository).save(saved.capture());
+        assertThat(saved.getValue().getTenantId()).isEqualTo(SYSTEM_TENANT);
     }
 }

@@ -1,8 +1,8 @@
 # API 規格文件 - M02 房源中心 / API Specification - M02 Listing Center
 
-> **文件版本**: v2.0（Sprint 273 依實作全面改寫，DEF-286 範圍）
+> **文件版本**: v2.1（Sprint 304：DEF-415——房源與日曆維護的寫入端點要求呼叫者有真正的店鋪；v2.0 為 Sprint 273 依實作全面改寫，DEF-286 範圍）
 > **建立日期**: 2026-04-09（v1.0）
-> **最後更新**: 2026-10-15
+> **最後更新**: 2026-10-24
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`RoomController`／`RoomCalendarController`（`api/controller/`）、`RoomService`／`RoomCalendarService`（`core/room/`、`core/booking/`）、`RoomDto`／`BookingDto.MaintenanceRequest`（`api/dto/`）、`Room`／`RoomCalendar`（`domain/model/`）
@@ -45,7 +45,7 @@
    | 日曆格狀態 `MAINTENANCE` | 本模組 §4（`POST`／`DELETE /v2/dashboard/rooms/{roomListingId}/maintenance`） | 逐日 `room_calendar.status`，若該日已被預訂會連帶在對應 `Booking.statusFlags` 標記 `under_maintenance=true` | 唯一真正可由 API 觸發的日曆格封鎖機制 |
    | 開放窗 `openUntilDate`／`bookingWindowDays` | `RoomController` 的 `create`／`update`／`DELETE .../open-window` | `rooms` 表欄位，限制「多遠的未來」可被訂，與日曆格狀態無關 | 正常運作中（Sprint 47） |
 
-7. **日曆維護的租戶擁有權檢查（DEF-256，Sprint 185）**：`markMaintenance`／`unmarkMaintenance` 會檢查 `roomListingId` 所屬租戶是否為呼叫者租戶（非 `SUPER_ADMIN` 時），避免任一持有 `room:update` 的使用者封鎖他人房源。
+7. **日曆維護的租戶擁有權檢查（DEF-256，Sprint 185）**：`markMaintenance`／`unmarkMaintenance` 會檢查 `roomListingId` 所屬租戶是否為呼叫者租戶（非 `SUPER_ADMIN` 時），避免任一持有 `room:update` 的使用者封鎖他人房源。Sprint 304（DEF-415）起，呼叫者還必須有真正的店鋪，且先判斷、再查詢房源：沒有店鋪的呼叫者（含沒有店鋪的 `ADMIN`）一律 `E-1007`，平台自營房源的日曆只有 `SUPER_ADMIN` 能管。
 8. **缺列補齊（DEF-360，Sprint 255）**：`markMaintenance`／`blockDateRange` 對「從未被訂過、完全無 `room_calendar` 記錄」的房源，會先以 `fillMissingCalendarEntries` 補建預設 `AVAILABLE` 的列再轉為目標狀態，避免回 200 但實際靜默空操作。`unmarkMaintenance`／`unblockDateRange`／`releaseDateRange`（回復預設狀態）不適用此邏輯，缺列本身就等同已是 `AVAILABLE`。
 
 ### 1.3 User Stories
@@ -135,11 +135,11 @@
 
 ### 4.3 `POST /v2/rooms` — 建立房源
 
-**權限**：`room:create`。`BOOKING_ENABLED` 未啟用回 `403 E-2004`；租戶 `ACTIVE` 房源數已達 `AppConstants.QUOTA_MAX_ROOMS`（**20**）回 `400 E-2009`。請求：`title`（必填，≤200）、`location`（必填，≤200）、`basePrice`（必填，>0）、其餘見 §3.1（皆選填，套用預設值）。成功 **201**，`status` 直接為 `ACTIVE`，**不建立任何 `room_calendar` 列**（見 §1.2 第 5 點）。
+**權限**：`room:create`，且呼叫者必須有真正的店鋪（`SUPER_ADMIN` 例外，其建立的房源蓋成系統租戶＝平台自營）：沒有店鋪的呼叫者——含沒有店鋪的 `ADMIN`（租戶內角色）——回 `403 E-1007`，且在功能開關與配額檢查之前就擋下（Sprint 304／DEF-415）。`BOOKING_ENABLED` 未啟用回 `403 E-2004`；租戶 `ACTIVE` 房源數已達 `AppConstants.QUOTA_MAX_ROOMS`（**20**）回 `400 E-2009`。請求：`title`（必填，≤200）、`location`（必填，≤200）、`basePrice`（必填，>0）、其餘見 §3.1（皆選填，套用預設值）。成功 **201**，`status` 直接為 `ACTIVE`，**不建立任何 `room_calendar` 列**（見 §1.2 第 5 點）。
 
 ### 4.4 `PUT /v2/rooms/{listingId}` — 更新房源
 
-**權限**：`room:update`，且限同租戶（非 `SUPER_ADMIN` 時 `listing.tenantId` 須等於呼叫者租戶，否則 `403 E-1007`）。所有欄位選填、只更新有帶的欄位；`openUntilDate`／`bookingWindowDays` 沿用「非 `null` 才更新」慣例，**無法用此端點清除**（清除要用 §4.6）。`status` 可任意改成 `DRAFT`／`ACTIVE`／`INACTIVE`／`DELETED`。由非 `ACTIVE` 轉入 `ACTIVE` 時才檢查配額。
+**權限**：`room:update`，且限同租戶（非 `SUPER_ADMIN` 時 `listing.tenantId` 須等於呼叫者租戶，否則 `403 E-1007`；呼叫者還必須有真正的店鋪——沒有店鋪的呼叫者，含沒有店鋪的 `ADMIN`，租戶是系統租戶佔位值，單看相等會被當成平台自營房源的擁有者，所以一律 `403 E-1007`，Sprint 304／DEF-415）。所有欄位選填、只更新有帶的欄位；`openUntilDate`／`bookingWindowDays` 沿用「非 `null` 才更新」慣例，**無法用此端點清除**（清除要用 §4.6）。`status` 可任意改成 `DRAFT`／`ACTIVE`／`INACTIVE`／`DELETED`。由非 `ACTIVE` 轉入 `ACTIVE` 時才檢查配額。
 
 ### 4.5 `DELETE /v2/rooms/{listingId}` — 軟刪除房源
 
@@ -151,7 +151,7 @@
 
 ### 4.7 `POST /v2/dashboard/rooms/{roomListingId}/maintenance` — 標記維護狀態
 
-**權限**：`room:update`，且限房源所屬租戶（檢查方式同 §4.4，`403` 時訊息為「Not authorized to manage this room's maintenance status」）。請求：`startDate`／`endDate`（皆必填，`endDate` 早於 `startDate` 回 `400 E-4003`）。把區間內每日 `room_calendar.status` 設為 `MAINTENANCE`；若某日原為 `BOOKED`，保留 `bookingId` 並在對應 `Booking.statusFlags` 標記 `under_maintenance=true`（供 Admin Dashboard 查詢，M09 通知系統上線前的替代方案）。區間內缺列的日期會先補建 `AVAILABLE` 再轉為 `MAINTENANCE`（DEF-360）。已是 `MAINTENANCE` 的日期跳過（idempotent）。
+**權限**：`room:update`，且限房源所屬租戶（檢查方式同 §4.4，包含呼叫者須有真正的店鋪、且先判斷再查詢房源；`403 E-1007` 的回應訊息是錯誤碼的預設訊息「權限不足」，`Not authorized to manage this room's maintenance status` 只出現在伺服器端的例外與日誌，不外洩給使用者，AI-2418）。請求：`startDate`／`endDate`（皆必填，`endDate` 早於 `startDate` 回 `400 E-4003`）。把區間內每日 `room_calendar.status` 設為 `MAINTENANCE`；若某日原為 `BOOKED`，保留 `bookingId` 並在對應 `Booking.statusFlags` 標記 `under_maintenance=true`（供 Admin Dashboard 查詢，M09 通知系統上線前的替代方案）。區間內缺列的日期會先補建 `AVAILABLE` 再轉為 `MAINTENANCE`（DEF-360）。已是 `MAINTENANCE` 的日期跳過（idempotent）。
 
 ### 4.8 `DELETE /v2/dashboard/rooms/{roomListingId}/maintenance` — 解除維護狀態
 
@@ -164,9 +164,11 @@
 | 端點 | Guest／Buyer | STORE_STAFF | HOST | SELLER | STORE_OWNER | ADMIN | SUPER_ADMIN |
 |------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
 | 房源列表/詳情（§4.1～4.2） | ❌（無 `room:read`） | ✅ | ✅ | ❌（無 `room:read`） | ✅ | ✅ | ✅ |
-| 建立/更新/刪除房源（§4.3～4.5） | ❌ | ❌ | ✅（僅自己租戶） | ❌ | ✅（僅自己租戶） | ✅（僅自己租戶） | ✅（跨租戶） |
-| 清除開放窗（§4.6） | ❌ | ❌ | ✅（僅自己租戶） | ❌ | ✅（僅自己租戶） | ✅（僅自己租戶） | ✅（跨租戶） |
-| 維護狀態標記/解除（§4.7～4.8） | ❌ | ❌ | ✅（僅自己租戶） | ❌ | ✅（僅自己租戶） | ✅（僅自己租戶） | ✅（跨租戶） |
+| 建立/更新/刪除房源（§4.3～4.5） | ❌ | ❌ | ✅（僅自己租戶） | ❌ | ✅（僅自己租戶） | ✅（僅自己店鋪；沒有店鋪的 ADMIN ❌） | ✅（跨租戶） |
+| 清除開放窗（§4.6） | ❌ | ❌ | ✅（僅自己租戶） | ❌ | ✅（僅自己租戶） | ✅（僅自己店鋪；沒有店鋪的 ADMIN ❌） | ✅（跨租戶） |
+| 維護狀態標記/解除（§4.7～4.8） | ❌ | ❌ | ✅（僅自己租戶） | ❌ | ✅（僅自己租戶） | ✅（僅自己店鋪；沒有店鋪的 ADMIN ❌） | ✅（跨租戶） |
+
+「沒有店鋪的 `ADMIN`」指租戶是系統租戶佔位值的 `ADMIN`（租戶內角色，仍持有 `room:*` 寫入權限）：Sprint 304（DEF-415）起，平台自營房源（租戶是系統租戶）的寫入與日曆維護只有 `SUPER_ADMIN` 能做，沒有店鋪的 `ADMIN` 一律 `403 E-1007`；有店鋪的 `ADMIN` 管自己店鋪的房源照常。
 
 `SELLER`／`STORE_STAFF` 不持有 `room:create/update/delete`；`GUEST`／`BUYER` 不持有 `room:read`（與 M01 的 `product:read` 不同，`GUEST`／`BUYER` 確實持有 `room:read`，詳見下方更正）。
 
@@ -182,7 +184,7 @@
 | `E-4003` | 400 | 維護區間日期範圍無效（`endDate` 早於 `startDate`，§4.7） |
 | `E-2004` | 403 | `BOOKING_ENABLED` 未對該租戶啟用（§4.3） |
 | `E-2009` | 400 | 已達房源配額上限（§4.3、§4.4 轉為 `ACTIVE` 時） |
-| `E-1007` | 403 | 跨租戶操作他人房源（§4.4～4.8） |
+| `E-1007` | 403 | 跨租戶操作他人房源，或呼叫者沒有店鋪（§4.3～4.8，Sprint 304／DEF-415） |
 | `E-9000` | 400 | 列舉字串無法解析、排序參數不合法（§4.1，`DEF-344`）、或 Bean Validation 失敗 |
 
 ---
@@ -195,6 +197,7 @@
 | **`DRAFT`→發布兩階段上架流程從未實作（與 M01 同一登記，DEF-380，Sprint 280 結案）** | 見 M01 §7。本模組額外落差：`createRoom`／`createRoomFromDashboard` 完全不建立任何 `room_calendar` 列（§1.2 第 5 點）。經使用者拍板：**不實作**草稿機制與建立時日曆初始化，FRD §4 已改寫為反映「建立即上架、缺列視為可訂」現況（AC-M02-003-1/2/3，v1.15） |
 | 開放窗與日曆格狀態是兩套獨立機制 | 見 §1.2 第 6 點比較表，維護/封鎖不會影響開放窗設定，反之亦然；前端若只檢查其中一種會誤判房源可訂性 |
 | `room_calendar.price` 恆為 `NULL` | Sprint 45 移除的死欄位，手動日價調整唯一路徑是 M12 的 `PricingService`，見 §3.2 |
+| **沒有店鋪的 `ADMIN` 原本管得到平台自營房源（DEF-415，Sprint 304 已修復）** | 沒有加入任何店鋪的使用者（含沒有店鋪的 `ADMIN`，持有 `room:*` 寫入權限）的租戶是系統租戶佔位值，平台自營房源也蓋成同一個值；`RoomService`／`RoomCalendarService` 的擁有權檢查原本只比「租戶相等」，所以沒有店鋪的 `ADMIN` 能更新、刪除、清除開放窗、標記與解除維護，也能建立新的平台自營房源。Sprint 304 以真實 PostgreSQL＋完整 HTTP／JWT 鏈實測：修復前同一批請求（涵蓋房源、商品、SKU、定價、日曆五個服務共 18 個案例）全部回 200／201。使用者於 Sprint 303 收尾裁決「比照 Sprint 234 全部擋下」：現在先要求呼叫者有真正的店鋪（`TenantContext.isStoreTenant`），平台自營房源只有 `SUPER_ADMIN` 能管。讀取端點（`GET /v2/rooms` 等）本輪未動。測試：`PlatformSelfRunWriteIsolationE2ETest`、`RoomServiceTest`、`RoomCalendarServiceTest` |
 
 ---
 
@@ -204,10 +207,10 @@
 |------|------|
 | PRD | §9.4（M02 房源中心）、§13.1（Phase 1 最小子集） |
 | FRD | §4「M02 房源中心」（§4.6 端點表已同步本文件；技術實現概要與驗收標準已於 v1.15（Sprint 280）改寫為反映「建立即上架、缺列視為可訂」現況，見本文件 §7 DEF-380） |
-| 相關追蹤項目 | [DEF-286](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（API 文件完整性，Sprint 279 結案）、[DEF-372](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`ApiRouteDocDriftTest` 覆蓋範圍，本文件新納入）、[DEF-380](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（DRAFT/發布與日曆初始化流程未實作，Sprint 280 結案：FRD 已改寫反映現況）、[DEF-363](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`blockDateRange`／`markMaintenance` 併發鎖修復，Sprint 260）、[DEF-344](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`GET /v2/rooms` 的 `sortBy` 白名單，Sprint 279 修復） |
+| 相關追蹤項目 | [DEF-286](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（API 文件完整性，Sprint 279 結案）、[DEF-372](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`ApiRouteDocDriftTest` 覆蓋範圍，本文件新納入）、[DEF-380](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（DRAFT/發布與日曆初始化流程未實作，Sprint 280 結案：FRD 已改寫反映現況）、[DEF-363](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`blockDateRange`／`markMaintenance` 併發鎖修復，Sprint 260）、[DEF-344](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（`GET /v2/rooms` 的 `sortBy` 白名單，Sprint 279 修復）、[DEF-415](../../04_planning/DEFERRED_ITEMS_TRACKER.md)（沒有店鋪的 `ADMIN` 不得管理平台自營資料，Sprint 304 修復） |
 | 實作 | `RoomController`（`api/controller/`）；`RoomCalendarController`（`api/controller/`）；`RoomService`（`core/room/`）；`RoomCalendarService`（`core/booking/`） |
-| 測試 | `RoomControllerTest`／`RoomServiceTest`／`RoomCalendarServiceTest`（單元）；本文件撰寫過程以讀碼逐行核對，未新增端對端整合測試（純文件工作，見 SPRINT_273_PLAN.md） |
+| 測試 | `RoomControllerTest`／`RoomServiceTest`／`RoomCalendarServiceTest`（單元）；真實 PostgreSQL：`PlatformSelfRunWriteIsolationE2ETest`（DEF-415，Sprint 304）；本文件撰寫過程以讀碼逐行核對，未新增端對端整合測試（純文件工作，見 SPRINT_273_PLAN.md） |
 
 ---
 
-**文件狀態**：v2.0（Sprint 273 全面改寫，DEF-286 範圍內補齊 M02）。
+**文件狀態**：v2.1（Sprint 304：DEF-415；v2.0 為 Sprint 273 全面改寫，DEF-286 範圍內補齊 M02）。

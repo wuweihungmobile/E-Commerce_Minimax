@@ -1,8 +1,8 @@
 # API 規格文件 - M01 商品中心 / API Specification - M01 Product Center
 
-> **文件版本**: v2.0（Sprint 273 依實作全面改寫，DEF-286 範圍）
+> **文件版本**: v2.1（Sprint 304：DEF-415——商品與 SKU 的寫入端點要求呼叫者有真正的店鋪；v2.0 為 Sprint 273 依實作全面改寫，DEF-286 範圍）
 > **建立日期**: 2026-04-09（v1.0）
-> **最後更新**: 2026-10-15
+> **最後更新**: 2026-10-24
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`ListingController`／`PublicListingController`／`ProductController`（`api/controller/`）、`ProductService`（`core/product/`）、`PricingService`（動態價格計算，屬 M12）、`ReviewService`（評分統計，屬 M08）、`ProductSkuService`（`core/product/`）、`CreateListingRequest`／`ProductDto`／`SkuDto`／`ListingResponse`／`ReviewDto`／`PricingDto`（`api/dto/`）、`Listing`／`Product`（`domain/model/`）
@@ -195,11 +195,11 @@ v1.0 本文件與舊版 [API_Listing_Unified_Create.md](./API_Listing_Unified_Cr
 
 ### 4.8 `POST /v2/products` — 建立商品
 
-**權限**：`product:create`。`RETAIL_ENABLED` 未啟用回 `403 E-2004`；租戶 `ACTIVE` 商品數已達 100 回 `400 E-2009`。請求見 §3.4（`category` 必填）。成功 **201**，`status` 直接為 `ACTIVE`（無 `DRAFT` 階段，見 §1.2 第 3 點）。
+**權限**：`product:create`，且呼叫者必須有真正的店鋪（`SUPER_ADMIN` 例外，其建立的商品蓋成系統租戶＝平台自營）：沒有店鋪的呼叫者——含沒有店鋪的 `ADMIN`（租戶內角色）——回 `403 E-1007`，且在功能開關與配額檢查之前就擋下（Sprint 304／DEF-415）。`RETAIL_ENABLED` 未啟用回 `403 E-2004`；租戶 `ACTIVE` 商品數已達 100 回 `400 E-2009`。請求見 §3.4（`category` 必填）。成功 **201**，`status` 直接為 `ACTIVE`（無 `DRAFT` 階段，見 §1.2 第 3 點）。
 
 ### 4.9 `PUT /v2/products/{listingId}` — 更新商品
 
-**權限**：`product:update`，且限同租戶（非 `SUPER_ADMIN` 時 `listing.tenantId` 須等於呼叫者租戶，否則 `403 E-1007`）。所有欄位皆選填、只更新有帶的欄位（`null` 視為不變）；`status` 可任意改成 `DRAFT`／`ACTIVE`／`INACTIVE`／`DELETED`（字串無法解析成列舉回 `400 E-9000`）。僅當「由非 `ACTIVE` 轉入 `ACTIVE`」時才檢查配額（`E-2009`），避免既有 `ACTIVE` 商品因改其他欄位被誤擋。
+**權限**：`product:update`，且限同租戶（非 `SUPER_ADMIN` 時 `listing.tenantId` 須等於呼叫者租戶，否則 `403 E-1007`；呼叫者還必須有真正的店鋪——沒有店鋪的呼叫者，含沒有店鋪的 `ADMIN`，租戶是系統租戶佔位值，單看相等會被當成平台自營商品的擁有者，所以一律 `403 E-1007`，Sprint 304／DEF-415）。所有欄位皆選填、只更新有帶的欄位（`null` 視為不變）；`status` 可任意改成 `DRAFT`／`ACTIVE`／`INACTIVE`／`DELETED`（字串無法解析成列舉回 `400 E-9000`）。僅當「由非 `ACTIVE` 轉入 `ACTIVE`」時才檢查配額（`E-2009`），避免既有 `ACTIVE` 商品因改其他欄位被誤擋。
 
 ### 4.10 `DELETE /v2/products/{listingId}` — 軟刪除商品
 
@@ -211,7 +211,7 @@ v1.0 本文件與舊版 [API_Listing_Unified_Create.md](./API_Listing_Unified_Cr
 
 ### 4.12 `POST /v2/products/{listingId}/skus` — 建立 SKU
 
-**權限**：`product:update`（與商品更新共用同一權限字串，非獨立的 `sku:*`）。請求：`skuCode`（必填，≤50）、`specName`（選填，≤100）、`priceOverride`（選填，>0）。`skuCode` 在同一 `listingId` 下需唯一，重複回對應的驗證/衝突錯誤。成功 **201**。
+**權限**：`product:update`（與商品更新共用同一權限字串，非獨立的 `sku:*`），且限商品所屬租戶、呼叫者須有真正的店鋪（同 §4.9，Sprint 304／DEF-415）。請求：`skuCode`（必填，≤50）、`specName`（選填，≤100）、`priceOverride`（選填，>0）。`skuCode` 在同一 `listingId` 下需唯一，重複回對應的驗證/衝突錯誤。成功 **201**。
 
 ### 4.13 `GET /v2/products/{listingId}/skus` — SKU 列表
 
@@ -219,7 +219,7 @@ v1.0 本文件與舊版 [API_Listing_Unified_Create.md](./API_Listing_Unified_Cr
 
 ### 4.14 `PUT /v2/products/{listingId}/skus/{skuId}` — 更新 SKU
 
-**權限**：`product:update`。可更新 `specName`／`priceOverride`／`status`（`ACTIVE`／`INACTIVE`）。無刪除端點，停用用 `status=INACTIVE`。
+**權限**：`product:update`，租戶檢查同 §4.12。可更新 `specName`／`priceOverride`／`status`（`ACTIVE`／`INACTIVE`）。無刪除端點，停用用 `status=INACTIVE`。
 
 ---
 
@@ -230,12 +230,14 @@ v1.0 本文件與舊版 [API_Listing_Unified_Create.md](./API_Listing_Unified_Cr
 | 瀏覽（§4.1～4.2、4.5） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 動態價格（§4.3～4.4） | ✅（持有 `product:read`/`room:read` 即可） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 商品列表/詳情（§4.6～4.7） | ✅ | ✅ | ✅ | ❌（無 `product:read`） | ✅ | ✅ | ✅ |
-| 建立/更新/刪除商品（§4.8～4.10） | ❌ | ❌ | ✅（僅自己租戶） | ❌ | ✅（僅自己租戶） | ✅（僅自己租戶） | ✅（跨租戶） |
+| 建立/更新/刪除商品（§4.8～4.10） | ❌ | ❌ | ✅（僅自己租戶） | ❌ | ✅（僅自己租戶） | ✅（僅自己店鋪；沒有店鋪的 ADMIN ❌） | ✅（跨租戶） |
 | 評分統計（§4.11） | ✅（限已登入） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| SKU 建立/更新（§4.12、4.14） | ❌ | ❌ | ✅（僅自己租戶） | ❌ | ✅（僅自己租戶） | ✅（僅自己租戶） | ✅（跨租戶） |
+| SKU 建立/更新（§4.12、4.14） | ❌ | ❌ | ✅（僅自己租戶） | ❌ | ✅（僅自己租戶） | ✅（僅自己店鋪；沒有店鋪的 ADMIN ❌） | ✅（跨租戶） |
 | SKU 列表（§4.13） | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ | ✅ |
 
 `HOST` 不持有 `product:*`；`SELLER` 不持有 `room:*`（見 [API_M02_Listing_Center.md](./API_M02_Listing_Center.md) §5）。`STORE_STAFF` 僅持有 `PRODUCT_READ`，無任何商品寫入權限。
+
+「沒有店鋪的 `ADMIN`」指租戶是系統租戶佔位值的 `ADMIN`（租戶內角色，仍持有 `product:*` 寫入權限）：Sprint 304（DEF-415）起，平台自營商品（租戶是系統租戶）與其 SKU 的寫入只有 `SUPER_ADMIN` 能做，沒有店鋪的 `ADMIN` 一律 `403 E-1007`；有店鋪的 `ADMIN` 管自己店鋪的商品照常。
 
 ---
 
@@ -247,7 +249,7 @@ v1.0 本文件與舊版 [API_Listing_Unified_Create.md](./API_Listing_Unified_Cr
 | `E-3001` | 422 | 無效的 `type` 篩選值（§4.1） |
 | `E-2004` | 403 | `RETAIL_ENABLED` 未對該租戶啟用（§4.8） |
 | `E-2009` | 400 | 已達商品配額上限（§4.8、§4.9 轉為 `ACTIVE` 時） |
-| `E-1007` | 403 | 跨租戶操作他人商品（§4.9、§4.10） |
+| `E-1007` | 403 | 跨租戶操作他人商品，或呼叫者沒有店鋪（§4.8～4.10、4.12、4.14，Sprint 304／DEF-415） |
 | `E-9000` | 400 | 列舉字串無法解析、排序參數不合法（§4.1／§4.5／§4.6，`DEF-344`）、或 Bean Validation 失敗 |
 
 ---
@@ -260,6 +262,7 @@ v1.0 本文件與舊版 [API_Listing_Unified_Create.md](./API_Listing_Unified_Cr
 | **`DRAFT`→發布兩階段上架流程從未實作（DEF-380，Sprint 280 結案）** | `ProductService.createProduct`／`createProductFromDashboard` 皆寫死建立時 `status=ACTIVE`，沒有任何路徑建立 `DRAFT` 列，後端也沒有任何「發布」端點（`PUT .../publish` 不存在）。經使用者拍板：**不實作**兩階段草稿機制，FRD §3 已改寫為反映「建立即上架」現況（AC-M01-002-1／AC-M01-002-2，v1.15）。`ListingStatus.DRAFT` 列舉值仍可透過 `PUT /v2/products/{listingId}`（`UpdateRequest.status`）事後手動設定，屬編輯功能 |
 | 統一建立入口（`POST /v2/dashboard/listings`）與型別專屬入口（`POST /v2/products`）合約不同 | 見 §1.2 第 2 點、§3.4：`category` 必填與否不同、成功 HTTP 狀態碼不同（200 vs 201）、`CreateListingRequest.additionalFields` 欄位會通過驗證但 `ProductService.createProductFromDashboard` 完全不讀取它，純粹是請求體裡的死欄位 |
 | `dimensionsCm` 是自由格式字串 | 非結構化的長/寬/高三欄位，前端需自行約定格式（例如 `"20x10x5"`），後端不解析也不驗證格式 |
+| **沒有店鋪的 `ADMIN` 原本管得到平台自營商品（DEF-415，Sprint 304 已修復）** | 沒有加入任何店鋪的使用者（含沒有店鋪的 `ADMIN`，持有 `product:*` 寫入權限）的租戶是系統租戶佔位值，平台自營商品（`SUPER_ADMIN` 建立的商品）也蓋成同一個值；`ProductService`／`ProductSkuService` 的擁有權檢查原本只比「租戶相等」，所以沒有店鋪的 `ADMIN` 能更新、刪除平台自營商品與其 SKU，也能建立新的平台自營商品。Sprint 304 以真實 PostgreSQL＋完整 HTTP／JWT 鏈實測：修復前同一批請求（涵蓋房源、商品、SKU、定價、日曆五個服務共 18 個案例）全部回 200／201。使用者於 Sprint 303 收尾裁決「比照 Sprint 234 全部擋下」：這些端點現在先要求呼叫者有真正的店鋪（`TenantContext.isStoreTenant`），平台自營商品只有 `SUPER_ADMIN` 能管。回應訊息一律是錯誤碼的預設訊息「權限不足」（`BusinessException` 的細節依 AI-2418 不外洩），所以無法由訊息分辨是權限註解還是擁有權檢查擋下的。讀取端點（`GET /v2/products` 等）本輪未動。測試：`PlatformSelfRunWriteIsolationE2ETest`、`ProductServiceTest`、`ProductSkuServiceTest` |
 | SKU 無刪除端點 | `stock_movements.sku_id` 一旦有異動記錄即無法刪除（V1 schema FK 無 `ON DELETE CASCADE`），比照既有慣例改用 `status=INACTIVE` 停用 |
 
 ---

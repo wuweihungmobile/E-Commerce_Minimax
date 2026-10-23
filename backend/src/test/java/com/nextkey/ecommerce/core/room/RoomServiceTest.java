@@ -18,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -326,7 +327,7 @@ class RoomServiceTest {
 
         RoomDto.CreateRequest request = RoomDto.CreateRequest.builder().title("超額房源").build();
 
-        assertThatThrownBy(() -> roomService.createRoom(request))
+        assertThatThrownBy(() -> roomService.createRoom(request, false))
                 .isInstanceOf(BusinessException.class);
         verify(listingRepository, never()).save(any());
         verify(tenantRepository, never()).findById(any());
@@ -347,7 +348,7 @@ class RoomServiceTest {
 
         RoomDto.CreateRequest request = RoomDto.CreateRequest.builder().title("新房源").build();
 
-        RoomDto.Response response = roomService.createRoom(request);
+        RoomDto.Response response = roomService.createRoom(request, false);
 
         assertThat(response.getTitle()).isEqualTo("新房源");
         verify(featureToggleService).checkQuotaNotExceeded(AppConstants.QUOTA_MAX_ROOMS, 2L);
@@ -399,7 +400,7 @@ class RoomServiceTest {
                 com.nextkey.ecommerce.api.dto.CreateListingRequest.builder()
                         .listingType("ROOM").name("停用開關房源").price(java.math.BigDecimal.valueOf(100)).build();
 
-        assertThatThrownBy(() -> roomService.createRoomFromDashboard(request))
+        assertThatThrownBy(() -> roomService.createRoomFromDashboard(request, false))
                 .isInstanceOf(BusinessException.class);
         verify(listingRepository, never()).save(any());
         verify(listingRepository, never()).countByTenantIdAndListingTypeAndStatus(any(), any(), any());
@@ -422,9 +423,138 @@ class RoomServiceTest {
                 com.nextkey.ecommerce.api.dto.CreateListingRequest.builder()
                         .listingType("ROOM").name("Dashboard新房源").price(java.math.BigDecimal.valueOf(100)).build();
 
-        RoomDto.Response response = roomService.createRoomFromDashboard(request);
+        RoomDto.Response response = roomService.createRoomFromDashboard(request, false);
 
         assertThat(response.getTitle()).isEqualTo("Dashboard新房源");
         verify(featureToggleService).checkFeatureEnabled("BOOKING_ENABLED");
+    }
+
+    // ───────── Sprint 304（DEF-415）：沒有店鋪的呼叫者不得管理系統租戶（平台自營）的房源 ─────────
+    //
+    // 沒有店鋪者（含沒有店鋪的 ADMIN）的租戶是系統租戶佔位值，平台自營房源也蓋成同一個值；
+    // 舊檢查只比「租戶相等」，所以下列案例的呼叫者與房源「同租戶」——守門要擋的正是這種看起來合法的相等。
+
+    private static final UUID SYSTEM_TENANT = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
+
+    private Room systemTenantRoom() {
+        Room room = roomWithOpenWindow();
+        room.getListing().setTenantId(SYSTEM_TENANT);
+        return room;
+    }
+
+    @Test
+    @DisplayName("DEF-415: updateRoom 沒有店鋪的呼叫者（租戶是系統租戶）改系統租戶房源 → E_1007，且不寫入")
+    void updateRoom_storelessCallerOnSystemTenantRoom_throwsForbiddenAndDoesNotSave() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        Room room = systemTenantRoom();
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+        RoomDto.UpdateRequest request = RoomDto.UpdateRequest.builder().title("hijacked").build();
+
+        assertThatThrownBy(() -> roomService.updateRoom(LISTING_ID, request, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_1007);
+        verify(roomRepository, never()).save(any());
+        assertThat(room.getListing().getTitle()).as("被擋之後標題不得被改").isEqualTo("Test Room");
+    }
+
+    @Test
+    @DisplayName("DEF-415: clearOpenWindow 沒有店鋪的呼叫者清系統租戶房源的開放窗 → E_1007，開放窗不變")
+    void clearOpenWindow_storelessCallerOnSystemTenantRoom_throwsForbiddenAndKeepsWindow() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        Room room = systemTenantRoom();
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+
+        assertThatThrownBy(() -> roomService.clearOpenWindow(LISTING_ID, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_1007);
+        verify(roomRepository, never()).save(any());
+        assertThat(room.getOpenUntilDate()).isNotNull();
+        assertThat(room.getBookingWindowDays()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("DEF-415: deleteRoom 沒有店鋪的呼叫者刪系統租戶房源 → E_1007，狀態不變")
+    void deleteRoom_storelessCallerOnSystemTenantRoom_throwsForbiddenAndKeepsStatus() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        Room room = systemTenantRoom();
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+
+        assertThatThrownBy(() -> roomService.deleteRoom(LISTING_ID, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_1007);
+        verify(listingRepository, never()).save(any());
+        assertThat(room.getListing().getStatus()).isEqualTo(Listing.ListingStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("DEF-415: SUPER_ADMIN（租戶同為系統租戶）仍可管理系統租戶房源——守門不得連平台管理員一起擋")
+    void updateRoom_superAdminOnSystemTenantRoom_stillAllowed() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        Room room = systemTenantRoom();
+        when(roomRepository.findByListingId(LISTING_ID)).thenReturn(Optional.of(room));
+        when(roomRepository.save(room)).thenReturn(room);
+        RoomDto.UpdateRequest request = RoomDto.UpdateRequest.builder().location("Taichung").build();
+
+        RoomDto.Response response = roomService.updateRoom(LISTING_ID, request, true);
+
+        assertThat(response.getLocation()).isEqualTo("Taichung");
+    }
+
+    @Test
+    @DisplayName("DEF-415: createRoom 沒有店鋪的呼叫者 → E_1007，且在功能開關、配額、租戶查詢之前就擋下（先判斷再查詢）")
+    void createRoom_storelessCaller_throwsForbiddenBeforeAnyLookup() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        RoomDto.CreateRequest request = RoomDto.CreateRequest.builder().title("平台自營房源").build();
+
+        assertThatThrownBy(() -> roomService.createRoom(request, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_1007);
+        verify(featureToggleService, never()).checkFeatureEnabled(any());
+        verify(featureToggleService, never()).checkQuotaNotExceeded(anyInt(), anyLong());
+        verify(tenantRepository, never()).findById(any());
+        verify(listingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("DEF-415: createRoomFromDashboard 沒有店鋪的呼叫者 → E_1007，且在功能開關、配額、租戶查詢之前就擋下")
+    void createRoomFromDashboard_storelessCaller_throwsForbiddenBeforeAnyLookup() {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        com.nextkey.ecommerce.api.dto.CreateListingRequest request =
+                com.nextkey.ecommerce.api.dto.CreateListingRequest.builder()
+                        .listingType("ROOM").name("平台自營房源").price(java.math.BigDecimal.valueOf(100)).build();
+
+        assertThatThrownBy(() -> roomService.createRoomFromDashboard(request, false))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.E_1007);
+        verify(featureToggleService, never()).checkFeatureEnabled(any());
+        verify(featureToggleService, never()).checkQuotaNotExceeded(anyInt(), anyLong());
+        verify(tenantRepository, never()).findById(any());
+        verify(listingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("DEF-415: SUPER_ADMIN 仍可建立房源，且蓋成系統租戶（平台自營）")
+    void createRoom_superAdminInSystemTenant_createsSystemTenantListing() {
+        UUID userId = UUID.randomUUID();
+        TenantContext.setCurrentTenant(SYSTEM_TENANT);
+        TenantContext.setCurrentUser(userId);
+        when(listingRepository.countByTenantIdAndListingTypeAndStatus(
+                SYSTEM_TENANT, Listing.ListingType.ROOM, Listing.ListingStatus.ACTIVE)).thenReturn(0L);
+        when(tenantRepository.findById(SYSTEM_TENANT))
+                .thenReturn(Optional.of(Tenant.builder().id(SYSTEM_TENANT).build()));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(User.builder().id(userId).build()));
+        when(listingRepository.save(any(Listing.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(roomRepository.save(any(Room.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        roomService.createRoom(RoomDto.CreateRequest.builder().title("平台自營房源").build(), true);
+
+        ArgumentCaptor<Listing> saved = ArgumentCaptor.forClass(Listing.class);
+        verify(listingRepository).save(saved.capture());
+        assertThat(saved.getValue().getTenantId()).isEqualTo(SYSTEM_TENANT);
     }
 }

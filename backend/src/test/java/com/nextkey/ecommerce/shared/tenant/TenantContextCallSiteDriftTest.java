@@ -99,11 +99,12 @@ class TenantContextCallSiteDriftTest {
         BASELINE.put("com/nextkey/ecommerce/core/product/ProductSkuService.java", 1);
         // DEF-255/DEF-242（Sprint 185）已對帶 roomListingId/listingId 的分支補上 ownership 檢查；
         // Sprint 303（DEF-411）：先前註解寫「系統租戶目前無資料、查到空清單」——不成立，平台管理員（租戶即系統租戶）
-        // 建立的規則就蓋成系統租戶。現在 getRules 無參數分支對沒有店鋪的非管理員回空，帶 id 的分支改走
-        // checkListingReadAccess（新增的第 5 處呼叫，本身就是 isStoreTenant 守門）。
-        // 其餘 4 處（createRule 的蓋章、getRules 無參數分支、兩個寫入端 ownership helper）的語意未動，寫入端的
-        // 「沒有店鋪的 ADMIN」議題見 DEF-415。
-        BASELINE.put("com/nextkey/ecommerce/core/pricing/PricingService.java", 5);
+        // 建立的規則就蓋成系統租戶。現在 getRules 無參數分支對沒有店鋪的非管理員回空，帶 id 的分支原本改走
+        // checkListingReadAccess（當時新增的第 5 處呼叫，本身就是 isStoreTenant 守門）。
+        // Sprint 304（DEF-415）：兩個寫入端 ownership helper（規則、房源）也改成先要求呼叫者有真正的店鋪，
+        // 讀取端的 checkListingReadAccess 因此與房源 helper 合併而移除，所以 5→4：createRule 的蓋章、getRules 無參數分支，
+        // 加上兩個 ownership helper（各一處，都先過 isStoreTenant 才比對）。
+        BASELINE.put("com/nextkey/ecommerce/core/pricing/PricingService.java", 4);
 
         BASELINE.put("com/nextkey/ecommerce/core/feature/FeatureToggleService.java", 2);
         BASELINE.put("com/nextkey/ecommerce/core/idempotency/IdempotencyService.java", 1);

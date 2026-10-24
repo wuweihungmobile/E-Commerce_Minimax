@@ -171,7 +171,7 @@
 | 全量後端 `mvn -o clean verify`（`make test-db-down`＋`up` 重建的全新測試 DB） | `BUILD SUCCESS`（19 分 28 秒）；Checkstyle main／test 皆 0 違規；**單元 2361、整合 933**，皆 0 失敗／0 錯誤／0 跳過，日誌中 `<<< FAILURE`／`<<< ERROR` 標記 0 個。與 Sprint 305（2361／924）相比單元不變、整合 +9，正好等於本輪新增的測試數（Flyway 整合測試 4 ＋ `PostControllerE2ETest` 新增 5）；兩者在全量中分別是 4／4（12.3 秒）與 29／29（33.5 秒） |
 | `make validate-schema-doc` | 通過：套用 94 個 Flyway 遷移後，SRD 的 DDL 與 PRD §8.2 欄位清單均與實際 schema 一致（含 §2.6 涵蓋率守門） |
 | 標準指令 `make validate-e2e`（完整建置：JAR＋`npm ci`＋`next build`，預設並行度 2 個 worker） | **282 案例，278 通過／4 跳過／0 失敗**（6.7 分鐘），閘門『本地 E2E 守門通過（schema 對齊 ✅ + e2e 全綠 ✅）』；守門新增的一行印出『後端記錄到認證端點被限流 0 次』；後端日誌登入請求 199、註冊 91。連同 §6.1 的另外 3 次改動後守門（第 2、3、4 列），改動後共 4 次、全數 0 失敗 |
-| pre-commit、pre-push、雲端 CI | 本輪 commit 當下尚未 push；結果與證據由回填 commit 補上於 §10（commit 無法包含自己的 hash） |
+| pre-commit、pre-push、雲端 CI | 皆通過：pre-commit 一次通過、pre-push 輕量守門通過、雲端 run 40062709075 全綠（整合測試 933／0 失敗，下載完整日誌確認），細節與證據見 §10 |
 
 ### 6.1 `DEF-420` 的守門對照（同一台機器，同一份 JAR 與前端建置，`E2E_GATE_SKIP_BUILD=1`）
 
@@ -234,7 +234,15 @@
 
 ## 10. 雲端 CI 與狀態
 
-本輪 commit 當下尚未 push（依慣例，push 與雲端 CI 結果由下一個回填 commit 補上，因為 commit 無法包含自己的 hash）。
+commit `01edcea1` 已 push（`e21a06bb..01edcea1  main -> main`；同一次 push 也帶出 Sprint 305 的回填 commit `bb206f7f`）；`git fetch` 後本機 `HEAD` 與 `origin/main` 同為 `01edcea122cf6740aaed20b1f4ac41d704385498`，ahead／behind 為 0／0。
+
+- **pre-commit**：一次通過——Checkstyle、Maven compile、核心層快速測試、ESLint、TypeScript 型別檢查、secret 掃描（commit 前以同一個指令序列 `docker ps | grep -c nk-test && git commit` 確認測試 DB 容器在；沒有繞過 hook）。本輪沒有動到遷移或 SRD／PRD，所以 schema 文件漂移檢查沒有被觸發。
+- **pre-push 輕量守門**通過：本機 act 的 Backend Unit Tests（日誌印出兩輪，皆 `Job succeeded`）、Frontend Lint & Build `Job succeeded`；schema 漂移守門「backend 啟動成功 → entity 與 Flyway schema 對齊，無漂移」；日誌中失敗標記 0 個；push 之後 `docker ps -a` 為空。
+- **雲端 CI** run [40062709075](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/40062709075)：`completed／success`，三個 job 皆 success，約 12 分 33 秒（04:31:57Z～04:44:30Z）；`gh run view --json` 的 `headSha` 為 `01edcea1`。
+  - 下載了「Backend Integration Tests & Package」job 的**完整**雲端日誌（53,601,280 位元組、205,742 行；下載結束、stderr 為空、檔尾是 job 收尾才統計。第一次下載失敗是因為 `gh api` 拒絕輸出含終端跳脫序列的內容，加 `--allow-escape-sequences` 後重下）：failsafe 彙總 **`Tests run: 933, Failures: 0, Errors: 0, Skipped: 0`**（與本機整合測試 933 一致），`BUILD SUCCESS`，`<<< FAILURE`／`<<< ERROR` 標記 0 個；**`PricingRulesCorruptRowFlywayIntegrationTest` 4／4**（雲端 GitHub service 的全新 Postgres 上建立 `s306_pricing_corrupt_row` 並由 Flyway 實跑）、**`PostControllerE2ETest` 29／29**、`TestSeedRemovalMigrationIntegrationTest` 9／9。
+  - 「Backend Unit Tests」job 的雲端日誌我**沒有**下載，只確認該 job 結論為 success；單元測試 2361 以本機全量為準。
+  - 雲端三個 job 不含 Playwright E2E，E2E 以本機 `make validate-e2e` 為準（見 §6：標準指令完整建置 278 通過／4 跳過／0 失敗）；雲端 e2e job 只能手動觸發，沒有實跑。
+- **Docker 清理**（所有 commit、push、本機守門都結束之後）：容器 0；19 個匿名卷逐一刪除（0 失敗），卷 1.664GB → 928MB；5 個具名卷（`act-toolcache`、`e-commerce_minimax_maven_cache`、`_minio_data`、`_postgres_data`、`_redis_data`）全部保留；映像只留 3 個核准的基底映像（`postgres:18-alpine`、`redis:7-alpine`、`catthehacker/ubuntu:act-latest`），懸空映像 0B。探針用的 `probe306-backend` 映像與 `probe306_*` 卷、網路都已在驗證結束時移除。**建置快取還有 1.68GB**（17 筆，是我建置開發版後端映像留下的，不在「卷與映像」的清理範圍內，沒有刪；要清可執行 `docker builder prune -af`）。
 
 ## 11. 文件與程式異動清單
 

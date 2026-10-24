@@ -1226,6 +1226,145 @@ class PostControllerE2ETest {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // IT-M15-023 ~ 027: 找不到、下架與空白標題的 HTTP 回應 —— Sprint 306：刪除手動腳本 M15_API_Automation_Test.sh 之前，
+    // 補上它的 TC-M15-002（空白標題）／007／011／015／016／024（本類別與服務層單元測試找不到對應的 HTTP 層斷言：
+    // 路由是否存在、錯誤碼對應到哪個狀態碼）。TC-M15-018（不支援的檔案類型）沒有放在這裡：IntegrationTestConfiguration
+    // 把 MediaService 換成回傳罐頭資料的 mock，在本類別打 upload-by-path 看不到真實驗證（Sprint 306 實測：未突變的程式碼
+    // 對 text/plain 也回 200）；該驗證由 MediaUploadServiceTest.uploadMedia_pathBased_unsupportedType_throwsException 守住。
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    @Test
+    @Order(23)
+    @DisplayName("IT-M15-023: GET /api/v2/dashboard/posts/:id - 不存在的貼文 → 404 E-4100")
+    void getDashboardPost_unknownId_shouldReturn404() throws Exception {
+        authToken = createStoreOwnerAndGetToken(uniqueEmail());
+
+        given()
+                .header("Authorization", "Bearer " + authToken)
+                .when()
+                .get(BASE_URL + "/dashboard/posts/" + UUID.randomUUID())
+                .then()
+                .statusCode(404)
+                .body("success", is(false))
+                .body("code", equalTo("E-4100"));
+    }
+
+    @Test
+    @Order(24)
+    @DisplayName("IT-M15-024: GET /api/v2/posts/:slug - 不存在的 slug → 404 E-4100；草稿的 slug → 404 E-4101（前台看不到未發布的貼文）")
+    void getPublishedPostBySlug_unknownOrDraftSlug_shouldReturn404() throws Exception {
+        authToken = createStoreOwnerAndGetToken(uniqueEmail());
+        String draftSlug = "draft-hidden-" + System.currentTimeMillis();
+        UUID draftId = postRepository.save(Post.builder()
+                .tenant(testTenant)
+                .author(testUser)
+                .title("Draft Hidden From Public")
+                .content("Not published yet")
+                .slug(draftSlug)
+                .status(Post.PostStatus.DRAFT)
+                .build()).getId();
+
+        try {
+            given()
+                    .queryParam("tenantId", testTenantId.toString())
+                    .when()
+                    .get(BASE_URL + "/posts/nonexistent-slug-" + System.currentTimeMillis())
+                    .then()
+                    .statusCode(404)
+                    .body("code", equalTo("E-4100"));
+
+            given()
+                    .queryParam("tenantId", testTenantId.toString())
+                    .when()
+                    .get(BASE_URL + "/posts/" + draftSlug)
+                    .then()
+                    .statusCode(404)
+                    .body("code", equalTo("E-4101"));
+        } finally {
+            cleanupPostData(draftId);
+        }
+    }
+
+    @Test
+    @Order(25)
+    @DisplayName("IT-M15-025: GET /api/v2/listings/:id/card - 不存在的刊登項目 → 404 E-3000")
+    void getListingCard_unknownListing_shouldReturn404() throws Exception {
+        authToken = createStoreOwnerAndGetToken(uniqueEmail());
+
+        given()
+                .header("Authorization", "Bearer " + authToken)
+                .when()
+                .get(BASE_URL + "/listings/" + UUID.randomUUID() + "/card")
+                .then()
+                .statusCode(404)
+                .body("success", is(false))
+                .body("code", equalTo("E-3000"));
+    }
+
+    @Test
+    @Order(26)
+    @DisplayName("IT-M15-026: DELETE /api/v2/dashboard/posts/:id/publish - 下架已發布貼文 → 200 並回到草稿，前台以 slug 取得變成 404 E-4101")
+    void unpublishPost_shouldReturnToDraftAndHideFromPublic() throws Exception {
+        authToken = createStoreOwnerAndGetToken(uniqueEmail());
+        String slug = "unpublish-" + System.currentTimeMillis();
+        UUID postId = postRepository.save(Post.builder()
+                .tenant(testTenant)
+                .author(testUser)
+                .title("Published Post To Unpublish")
+                .content("Visible until unpublished")
+                .slug(slug)
+                .status(Post.PostStatus.PUBLISHED)
+                .build()).getId();
+
+        try {
+            given()
+                    .queryParam("tenantId", testTenantId.toString())
+                    .when()
+                    .get(BASE_URL + "/posts/" + slug)
+                    .then()
+                    .statusCode(200);
+
+            given()
+                    .header("Authorization", "Bearer " + authToken)
+                    .when()
+                    .delete(BASE_URL + "/dashboard/posts/" + postId + "/publish")
+                    .then()
+                    .statusCode(200)
+                    .body("success", is(true))
+                    .body("data.status", equalTo("DRAFT"));
+
+            given()
+                    .queryParam("tenantId", testTenantId.toString())
+                    .when()
+                    .get(BASE_URL + "/posts/" + slug)
+                    .then()
+                    .statusCode(404)
+                    .body("code", equalTo("E-4101"));
+        } finally {
+            cleanupPostData(postId);
+        }
+    }
+
+    @Test
+    @Order(27)
+    @DisplayName("IT-M15-027: POST /api/v2/dashboard/posts - 空字串與只有空白的 title → 400 E-9005（IT-M15-002 只涵蓋缺少 title）")
+    void createPost_blankTitle_shouldReturn400() throws Exception {
+        authToken = createStoreOwnerAndGetToken(uniqueEmail());
+
+        for (String blankTitle : new String[] {"", "   "}) {
+            given()
+                    .header("Authorization", "Bearer " + authToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(Map.of("title", blankTitle, "content", "Some content"))
+                    .when()
+                    .post(BASE_URL + "/dashboard/posts")
+                    .then()
+                    .statusCode(400)
+                    .body("code", equalTo("E-9005"));
+        }
+    }
+
     @AfterAll
     void tearDown() {
         cleanupAllTestData();

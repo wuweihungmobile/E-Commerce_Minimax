@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import { APIRequestContext, APIResponse, Page } from '@playwright/test';
 
 /**
  * 共用測試帳號 helper（Sprint 39 US-004 / AI-2101）
@@ -216,6 +216,41 @@ export async function registerAndLogin(
     throw new Error(`registerAndLogin: 流程走完但讀不到 userId，尚未真正登入（email=${email}）`);
   }
   return { email, password, userId };
+}
+
+/**
+ * `Retry-After`（登入限流器以整數秒填入，值是補足一個 token 所需時間向上取整，正常 1～2 秒）轉成等待毫秒數；
+ * 缺漏或無法解析時改用預設等待。不另設上限：標頭值異常大時，測試本身的逾時會先結束等待。
+ */
+function retryAfterMs(response: APIResponse): number {
+  const seconds = Number.parseInt(response.headers()['retry-after'] ?? '', 10);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1_000 : RATE_LIMIT_RETRY_WAIT_MS;
+}
+
+/**
+ * 以 API 對有 IP 限流的認證端點（登入、註冊）送出 POST；被擋下（HTTP 429）時依回應的 `Retry-After` 等待後重試，
+ * 其他狀態碼（含 401、409 這類呼叫端可能刻意要測的失敗）原樣回傳，不重試。
+ *
+ * Sprint 306（DEF-420）：規格直接以 `request.post` 打登入／註冊 API 時沒有任何重試（UI 層的 {@link submitLogin}、
+ * {@link submitRegister} 有），套件跑得快、尾端規格密集登入時，429 會變成 `expect(status).toBe(200)` 的硬失敗——Sprint 304、305
+ * 在預設並行度下每次都因此失敗。重試次數用盡仍被擋下就丟錯，不讓呼叫端在毫無 token 的狀態下往下走。
+ * 直接呼叫這兩個端點的規格一律走這個函式。
+ */
+export async function postAuthApi(
+  request: APIRequestContext,
+  url: string,
+  data: Record<string, unknown>
+): Promise<APIResponse> {
+  for (let attempt = 0; ; attempt++) {
+    const response = await request.post(url, { data });
+    if (response.status() !== HTTP_TOO_MANY_REQUESTS) return response;
+    if (attempt >= RATE_LIMIT_MAX_RETRIES) {
+      throw new Error(`postAuthApi: 持續被速率限制擋下，已重試 ${RATE_LIMIT_MAX_RETRIES} 次仍失敗（POST ${url}）`);
+    }
+    const waitMs = retryAfterMs(response);
+    console.warn(`postAuthApi: POST ${url} 被速率限制擋下（HTTP 429），${waitMs} 毫秒後第 ${attempt + 1} 次重試`);
+    await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+  }
 }
 
 /**

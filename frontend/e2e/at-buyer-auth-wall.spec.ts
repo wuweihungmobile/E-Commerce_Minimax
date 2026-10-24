@@ -1,4 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
+import { postAuthApi } from './helpers/auth';
 import { Account } from './helpers/store';
 
 /**
@@ -90,8 +91,10 @@ test.describe('AT-BUYER-AUTH-WALL: 真實登入後回到原頁，整頁重新載
 
   test.beforeAll(async ({ request }) => {
     const email = `e2e-wall-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}@example.com`;
-    const register = await request.post(`${API_BASE}/v2/auth/register`, {
-      data: { email, password: PASSWORD, fullName: 'E2E 登入守門買家' },
+    const register = await postAuthApi(request, `${API_BASE}/v2/auth/register`, {
+      email,
+      password: PASSWORD,
+      fullName: 'E2E 登入守門買家',
     });
     expect(register.status(), await register.text()).toBeLessThan(300);
     buyer = { email, password: PASSWORD };

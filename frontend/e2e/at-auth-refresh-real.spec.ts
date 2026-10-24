@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { postAuthApi } from './helpers/auth';
 
 /**
  * AT-AUTH-REFRESH-REAL: Refresh Token 輪替（真實後端，打包 JAR）—— Sprint 230（DEF-315）
@@ -17,12 +18,15 @@ const PASSWORD = 'Test123!';
 test.describe('AT-AUTH-REFRESH-REAL: Refresh Token 輪替（真實後端）', () => {
   test('E2E-RTR-01: 登入後立刻換發 → 新 token 與舊 token 不同；以舊 token 重放 → 401 E-1003，且新 token 也被撤銷', async ({ request }) => {
     const email = `e2e-rtr-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
-    const register = await request.post(`${API_BASE}/v2/auth/register`, {
-      data: { email, password: PASSWORD, fullName: 'E2E 換發', userType: 'BUYER' },
+    const register = await postAuthApi(request, `${API_BASE}/v2/auth/register`, {
+      email,
+      password: PASSWORD,
+      fullName: 'E2E 換發',
+      userType: 'BUYER',
     });
     expect(register.status(), await register.text()).toBeLessThan(300);
 
-    const login = await request.post(`${API_BASE}/v2/auth/login`, { data: { email, password: PASSWORD } });
+    const login = await postAuthApi(request, `${API_BASE}/v2/auth/login`, { email, password: PASSWORD });
     expect(login.status(), await login.text()).toBe(200);
     const first = (await login.json()).data.refreshToken as string;
 

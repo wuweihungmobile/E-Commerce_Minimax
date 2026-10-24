@@ -40,8 +40,11 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/nextkeytest
       - SPRING_DATASOURCE_USERNAME=koala
       - SPRING_DATASOURCE_PASSWORD=koala5
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
-      - SPRING_FLYWAY_ENABLED=false
+      # Sprint 306（DEF-356；使用者以互動選項拍板）：開發環境與守門、正式環境同一條建表路徑——schema 只由 Flyway 建立，
+      # Hibernate 只檢查（validate）。原本是 ddl-auto=update + Flyway 關閉：schema 由實體產生、沒有套用任何遷移（包含 V94）。
+      # 既有的開發資料庫（用舊設定建的）沒有 Flyway 歷史表，啟動會在 V1 失敗（relation "tenants" already exists）：執行一次 make down-clean 重建即可。
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=validate
+      - SPRING_FLYWAY_ENABLED=true
       - SPRING_DATA_REDIS_HOST=redis
       - SPRING_DATA_REDIS_PORT=6379
       - SPRING_DATA_REDIS_PASSWORD=redis-dev-password

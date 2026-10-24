@@ -1,4 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
+import { postAuthApi } from './helpers/auth';
 import { Account, seedStore } from './helpers/store';
 
 /**
@@ -45,8 +46,10 @@ test.describe('AT-LOGIN-LANDING-REAL: 登入落地頁（真實登入表單）', 
       ({ owner } = await seedStore(page, { businessType: 'RETAIL_ONLY', storeLabel: 'E2E 登入導向店' }));
       // 一般買家（沒有店鋪）改以 API 註冊：少一次表單登入，登入端點有 IP 限流
       const email = `e2e-landing-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}@example.com`;
-      const register = await page.request.post(`${API_BASE}/v2/auth/register`, {
-        data: { email, password: PASSWORD, fullName: 'E2E 登入導向買家' },
+      const register = await postAuthApi(page.request, `${API_BASE}/v2/auth/register`, {
+        email,
+        password: PASSWORD,
+        fullName: 'E2E 登入導向買家',
       });
       expect(register.status(), await register.text()).toBeLessThan(300);
       buyer = { email, password: PASSWORD };

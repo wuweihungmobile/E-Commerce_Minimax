@@ -14,9 +14,10 @@ import { Account, adminAccessToken, authHeaders, seedStore } from './helpers/sto
  *   原本帶著 V5 測試資料的一列 `rule_type = 'WEEKEND_SURCHARGE'`（不在 Java 列舉內），整個請求就 500。Hibernate 產生的測試庫對
  *   `rule_type` 有 CHECK 約束，放不進這種值，所以只有這一層（Flyway 資料庫）能重現。
  *   ⚠️ Sprint 305（DEF-418）的 V94 已把 V5 的測試租戶連同它的定價規則刪除，新建的 Flyway 資料庫不再帶有那一列，所以這一層
- *   **已不再能抓到「退回 findAll()」的回歸**（Sprint 303 的 JAR 層突變 J1 當時只有它擊殺）；目前已知的回歸護欄是後端單元測試
- *   `PricingServiceTest.RuleListingQueryTests` 的 `verify(never()).findAll()`。要恢復全棧護欄，得自己種一列不在列舉內的
- *   `rule_type`（Flyway 資料庫沒有 CHECK 約束），見 DEF-421。
+ *   **已不再能抓到「退回 findAll()」的回歸**（Sprint 303 的 JAR 層突變 J1 當時只有它擊殺）。Sprint 306（DEF-421）把這道護欄
+ *   改放在後端：`PricingRulesCorruptRowFlywayIntegrationTest` 在 Flyway 實跑的資料庫裡自己種一列不在列舉內的 `rule_type`
+ *   （Flyway 資料庫沒有 CHECK 約束），走真實 HTTP 驗證三種列表查詢都不被拖垮；另有單元測試
+ *   `PricingServiceTest.RuleListingQueryTests` 的 `verify(never()).findAll()`。本規格不再負責這個回歸。
  * - DEF-411：沒有店鋪的買家（租戶是系統租戶佔位值）不得列出系統租戶名下的規則。完整的矩陣在後端 `PricingSystemTenantIsolationE2ETest`，
  *   這裡做冒煙。Flyway 資料庫的系統租戶底下原本沒有任何規則，『買家得空陣列』會是空洞的斷言（Sprint 303 的 JAR 層突變證實：
  *   把守門拿掉，這個案例照樣綠），所以由平台管理員先建立一條系統租戶名下的『平台自營規則』（不綁房源，`createRule` 本來就允許）。
@@ -120,7 +121,7 @@ test.describe('AT-PRICING-RULES-REAL: 定價規則寫入與列表（真實後端
     expect(override.status(), await override.text()).toBe(200);
 
     // 不帶 activeOnly：走「全部規則」分支（驗證這條分支回傳正確、且只含這間店鋪的規則）。V94（Sprint 305）之後 Flyway 資料庫
-    // 已沒有 V5 的 WEEKEND_SURCHARGE 壞資料列，所以這裡不再能抓到「全表掃描」的回歸（見檔頭 DEF-416 說明與 DEF-421）
+    // 已沒有 V5 的 WEEKEND_SURCHARGE 壞資料列，「全表掃描」的回歸改由後端 PricingRulesCorruptRowFlywayIntegrationTest 守住（DEF-421）
     const list = await page.request.get(`${API_BASE}/v2/dashboard/pricing/rules?roomListingId=${roomId}`, { headers });
     expect(list.status(), await list.text()).toBe(200);
     const rules = (await list.json()).data as Array<{ ruleName: string; tenantId: string; roomListingId: string }>;

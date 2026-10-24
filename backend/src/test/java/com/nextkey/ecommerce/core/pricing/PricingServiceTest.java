@@ -1830,8 +1830,11 @@ class PricingServiceTest {
      *
      * <p>Hibernate 產生的測試庫對 rule_type 有 CHECK 約束，放不進列舉以外的值，所以真實 PostgreSQL 的整合測試重現不出
      * 「某一列壞資料讓整個請求 500」；Flyway 建出的資料庫沒有這個約束（V5 種子資料原本就有 {@code WEEKEND_SURCHARGE}，
-     * Sprint 305 的 V94 已把它刪除）。因此這裡用 {@code verify(never()).findAll()} 守住「不得全表掃描」這個意圖——
-     * 目前它是這個回歸已知唯一的護欄（全棧 E2E 在新建的 Flyway 資料庫上已沒有壞資料列可觸發，見 DEF-421）。
+     * Sprint 305 的 V94 已把它刪除）。因此這裡用 {@code verify(never()).findAll()} 守住「不得全表掃描」這個意圖。
+     *
+     * <p>Sprint 306（DEF-421）：另一道護欄是 {@code PricingRulesCorruptRowFlywayIntegrationTest}——在 Flyway 實跑的資料庫裡
+     * 自己種一列列舉外的 rule_type，走真實 HTTP 驗證房源、商品、店鋪三種列表查詢都不被拖垮（全棧 E2E 在新建的 Flyway 資料庫上
+     * 已沒有壞資料列可觸發）。兩者互補：本類別便宜、快；那一支用真實資料庫證明「壞資料列真的會咬人」。
      */
     @Nested
     @DisplayName("DEF-416: 規則列表帶房源 id 時不得全表掃描")

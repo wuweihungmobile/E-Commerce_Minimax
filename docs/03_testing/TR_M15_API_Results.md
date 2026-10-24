@@ -1,5 +1,7 @@
 # M15 CMS Backend API 自動化測試報告 / M15 CMS Backend API Automation Test Report
 
+> ⚠️ **Sprint 306 註記**：產出本報告的手動腳本 `backend/src/test/java/com/nextkey/ecommerce/api/M15_API_Automation_Test.sh` 已刪除——它的第一步（以 `STORE_OWNER` 自助註冊）自 Sprint 182（2026-09-22）收窄註冊白名單後就被後端拒絕，無法再執行；它的 24 個案例由 `PostControllerE2ETest`、`PostServiceTest`、`M18MediaIntegrationTest`、`ListingCardServiceTest` 等自動化測試承接（逐案例對照見 [SPRINT_306_PLAN.md](../04_planning/SPRINT_306_PLAN.md)）。本報告保留為 2026-05-05 的歷史紀錄。
+
 ## 文件資訊
 - **AT-ID**: AT-M15-API
 - **版本**: 1.2

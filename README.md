@@ -140,7 +140,7 @@ Phase 1 使用 Payment Mock，無需真實金流。
 - **Admin（`admin@nextkey.local`，SUPER_ADMIN）**：遷移之後它的密碼是鎖住的，無法登入。
   - 本機開發／E2E：執行 `make dev-admin-password`，把它設成 `Test123!`（`make validate-e2e` 會自動執行同一支 SQL）。**只限本機，絕不可對正式環境執行。**
   - 正式環境第一次設定：見 [docs/08_deployment/FIRST_ADMIN_SETUP.md](docs/08_deployment/FIRST_ADMIN_SETUP.md)。
-- ⚠️ 本機 docker 開發堆疊的 `docker-compose.override.yml` 把 Flyway 關閉（`SPRING_FLYWAY_ENABLED=false`），既有的 dev 資料庫不會自動套用 `V94`，帳號維持原狀（相關的初始化順序問題見 DEF-356）；`make dev-admin-password` 是冪等的 upsert，隨時可以執行。
+- 本機 docker 開發堆疊（`make up`）從 Sprint 306（DEF-356）起，與守門、正式環境用同一條建表路徑：資料庫容器不再執行任何建表檔案，schema 只由後端啟動時的 Flyway 建立（`ddl-auto=validate`），所以 `V94` 會套用到開發資料庫。⚠️ **用舊設定建立的開發資料庫沒有 Flyway 歷史表，後端會啟動失敗**（實測：`Migration V1__Initial_Schema.sql failed … relation "tenants" already exists`，約 18 秒後程序結束）：先執行一次 `make down-clean`（會刪除開發資料庫的 volume）再 `make up`。 `make dev-admin-password` 是冪等的 upsert，隨時可以執行。
 - 其他帳號請用註冊流程或 API 建立（舊版文件寫的 `user@test.com`／`test123` 並不存在於任何遷移；`admin123` 也不是 admin 的真實密碼）。
 
 ## 📦 Phase 1 開發模組

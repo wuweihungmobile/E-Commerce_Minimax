@@ -57,22 +57,27 @@
 | `/app/node_modules` | `/app/node_modules` | 匿名 volume 保護 node_modules | ❌ 暫存 | dev only |
 | `/app/.next` | `/app/.next` | 匿名 volume 保護 .next 快取 | ❌ 暫存 | dev only |
 
-### ⚠️ 已知風險：initdb.d 掛載
+### ✅ 已處理：initdb.d 掛載（Sprint 306，DEF-356）
 
-**位置**：`docker-compose.yml` postgres service
+**位置（已移除）**：`docker-compose.yml` postgres service 原本有
 ```yaml
 - ./backend/src/main/resources/db/migration:/docker-entrypoint-initdb.d:ro
 ```
 
-**風險說明**：
-- PostgreSQL 容器在 data volume 為空時（首次啟動），會自動執行 `initdb.d/` 中所有 `.sql` 檔案
-- 同時，Spring Boot 啟動時 Flyway 也會執行相同的 migration SQL
-- **潛在衝突**：若 SQL 未包含 `IF NOT EXISTS` 保護，可能造成 table 已存在但 Flyway schema_history 不存在的衝突
+**問題（2026-10-24 以一次性容器實測）**：
+- 官方映像在資料目錄為空時，把 `initdb.d/` 內的 `.sql` 依字母序以純 SQL 執行，遇到第一個錯誤就中止。遷移檔名沒有補零，`V10__…` 排在 `V1__…` 前面，第一支就因 `tenants` 不存在而失敗、容器退出。
+- `restart: unless-stopped` 把容器重啟後，因資料目錄已初始化而略過初始化，資料庫是空的（0 張表）。
+- 開發堆疊的後端原本又關閉 Flyway、以 `ddl-auto=update` 由實體建表，所以遷移（包含清除已知密碼帳號的 V94）從未套用到 `make up` 的資料庫。
+- 本節先前「與 `baseline-on-migrate` 可安全共存」的結論，只在「initdb 其實什麼都沒建」的意義上成立。
 
-**建議**：
-- 若 Flyway 已設定 `spring.flyway.baseline-on-migrate=true`，則可安全共存
-- 若未設定，建議移除此 initdb.d 掛載，讓 Flyway 全權管理 schema
-- **🔴 AI 禁止自行移除或保留此掛載，需人工確認後決策**
+**決定（2026-10-24，使用者以互動選項拍板：「改成只用 Flyway」）**：
+- 移除該掛載：schema 只由後端啟動時的 Flyway 建立，與 `make validate-e2e`、`make validate-schema`、雲端 CI 同一條路。
+- `docker-compose.override.yml` 的開發後端改為 `SPRING_FLYWAY_ENABLED=true`、`SPRING_JPA_HIBERNATE_DDL_AUTO=validate`（實體與遷移不一致時開發環境一啟動就會失敗）。
+- 既有的開發資料庫（用舊設定建的）沒有 Flyway 歷史表，需執行一次 `make down-clean` 重建。
+- 開發資料庫現在是遷移跑完的狀態（admin 帳號密碼被鎖、沒有測試帳號）；要已知密碼的 admin 請執行 `make dev-admin-password`。
+- 不採用「遷移檔名補零」：要改 94 支檔，而且純 SQL 執行仍不會留下 Flyway 歷史表。
+
+**🔴 不得再把遷移目錄掛進 `/docker-entrypoint-initdb.d`。**
 
 ---
 

@@ -129,13 +129,11 @@ services:
       # 🔴 PostgreSQL 18+ 要求：mount 必須在 /var/lib/postgresql（而非 /var/lib/postgresql/data）
       # 容器內部會自動在子目錄管理版本
       - postgres_data:/var/lib/postgresql
-      # ✅ initdb.d 掛載已確認安全（2026-06-24 驗證）：
-      # initdb.d 只在 data volume 完全為空（首次初始化）時執行這些 SQL 檔案
-      # Spring Boot 也會執行 Flyway migration，但已設定 baseline-on-migrate: true
-      # （位置：backend/src/main/resources/application.yml）
-      # 兩者可安全共存，不會衝突
-      # 🔴 AI 不得移除此掛載
-      - ./backend/src/main/resources/db/migration:/docker-entrypoint-initdb.d:ro
+      # Sprint 306（DEF-356；2026-10-24 使用者以互動選項拍板「改成只用 Flyway」）：此處原本把遷移目錄
+      # 掛到 /docker-entrypoint-initdb.d，讓官方映像在資料目錄為空時把 V*.sql 當純 SQL 執行。實測它按字母序
+      # 執行（V10 排在 V1 前面），第一支就因 tenants 不存在而失敗，容器重啟後資料庫是空的，也不會留下 Flyway 的
+      # 歷史表。schema 一律只由後端啟動時的 Flyway 建立（與 make validate-e2e／validate-schema／雲端 CI 同一條路）。
+      # 🔴 不要再把遷移目錄掛進 initdb.d；見 docs/08_deployment/DOCKER_POLICY.md。
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-koala} -d ${POSTGRES_DB:-nextkeytest}"]
       interval: 10s

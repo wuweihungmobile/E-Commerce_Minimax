@@ -1,5 +1,5 @@
 import { expect, Page } from '@playwright/test';
-import { registerAndLogin, loginOnly } from './auth';
+import { registerAndLogin, loginOnly, postAuthApi } from './auth';
 import { verifyEmailViaMailbox } from './mailbox';
 
 /**
@@ -63,13 +63,27 @@ export async function setStoreStatus(page: Page, tenantId: string, status: 'SUSP
  * 多次停權／恢復的案例會一口氣消耗十幾次額度、拖累其他規格（Sprint 242 實測：我的規格約 22 次登入，連帶讓不相干的
  * at-system-tenant-isolation-real 拿不到 token）。需要來回切換店鋪狀態的規格改用本函式取一次 token，搭配
  * {@link setStoreStatusWithToken}。
+ *
+ * Sprint 306（DEF-420）：token 在每個 worker 內快取 {@link ADMIN_TOKEN_MAX_AGE_MS}。Playwright 每個 worker 是獨立行程、各自載入
+ * 這個模組，所以快取是每個 worker 一份。{@link seedStore} 全套件呼叫 26 次、每次都要管理員核准開店申請，原本每次都走 UI 登入。
+ * 重用是安全的：access token 是無狀態 JWT、有效 15 分鐘（`application.yml` 的 `jwt.access-token-expiration` ＝ 900000 毫秒），
+ * 登出與換發偵測只撤銷 refresh token（`RefreshTokenService`），不會讓已簽發的 access token 失效；管理員的角色與權限在整個套件期間不變。
  */
+const ADMIN_TOKEN_MAX_AGE_MS = 10 * 60_000;
+let cachedAdminToken: { token: string; obtainedAt: number } | undefined;
+
 export async function adminAccessToken(page: Page): Promise<string> {
-  const login = await page.request.post(`${API_BASE}/v2/auth/login`, {
-    data: { email: 'admin@nextkey.local', password: PASSWORD },
+  if (cachedAdminToken && Date.now() - cachedAdminToken.obtainedAt < ADMIN_TOKEN_MAX_AGE_MS) {
+    return cachedAdminToken.token;
+  }
+  const login = await postAuthApi(page.request, `${API_BASE}/v2/auth/login`, {
+    email: 'admin@nextkey.local',
+    password: PASSWORD,
   });
   expect(login.status(), await login.text()).toBe(200);
-  return (await login.json()).data.accessToken as string;
+  const token = (await login.json()).data.accessToken as string;
+  cachedAdminToken = { token, obtainedAt: Date.now() };
+  return token;
 }
 
 /** 與 {@link setStoreStatus} 相同的狀態變更，但用已取得的管理員 token：不清瀏覽器登入狀態、不多登入一次。 */
@@ -103,9 +117,8 @@ export async function seedStore(page: Page, options: SeedStoreOptions): Promise<
   });
   expect(apply.status(), await apply.text()).toBe(201);
 
-  await page.evaluate(() => localStorage.clear());
-  await loginOnly(page, 'admin@nextkey.local', PASSWORD);
-  const adminHeaders = await authHeaders(page);
+  // 管理員只需要 token（核准申請、開啟功能），不需要瀏覽器以管理員身分登入：用快取的 API token，省下每次一次 UI 登入
+  const adminHeaders = { Authorization: `Bearer ${await adminAccessToken(page)}` };
   const pending = await page.request.get(`${API_BASE}/v2/admin/tenant-applications`, { headers: adminHeaders });
   expect(pending.status(), await pending.text()).toBe(200);
   const applications = (await pending.json()).data.applications as Array<{ applicationId: string; storeName: string }>;

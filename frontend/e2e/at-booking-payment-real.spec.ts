@@ -2,6 +2,7 @@ import { test, expect, Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { registerAndLogin, loginOnly } from './helpers/auth';
 import { verifyEmailViaMailbox } from './helpers/mailbox';
+import { adminAccessToken } from './helpers/store';
 
 /**
  * AT-BOOKING-PAYMENT-REAL: 訂房付款（真實後端，完全不 mock）—— Sprint 223（DEF-313）
@@ -20,7 +21,6 @@ import { verifyEmailViaMailbox } from './helpers/mailbox';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 const WEB_BASE = 'http://localhost:3000';
-const PASSWORD = 'Test123!';
 const NIGHT_PRICE = 3200;
 const PRODUCT_PRICE = 450;
 
@@ -75,9 +75,8 @@ async function seedStore(page: Page): Promise<{ roomId: string; productId: strin
   });
   expect(apply.status(), await apply.text()).toBe(201);
 
-  await page.evaluate(() => localStorage.clear());
-  await loginOnly(page, 'admin@nextkey.local', PASSWORD);
-  const adminHeaders = { Authorization: `Bearer ${await accessToken(page)}` };
+  // 管理員只需要 token：用 helpers/store.ts 快取的 API token，省下一次 UI 登入（登入端點有 IP 限流，DEF-420）
+  const adminHeaders = { Authorization: `Bearer ${await adminAccessToken(page)}` };
   const pending = await page.request.get(`${API_BASE}/v2/admin/tenant-applications`, { headers: adminHeaders });
   expect(pending.status(), await pending.text()).toBe(200);
   const applications = (await pending.json()).data.applications as Array<{ applicationId: string; storeName: string }>;

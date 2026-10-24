@@ -1,4 +1,5 @@
 import { test, expect, APIRequestContext, APIResponse } from '@playwright/test';
+import { postAuthApi } from './helpers/auth';
 import { Account, seedStore } from './helpers/store';
 
 /**
@@ -26,13 +27,13 @@ type Session = { token: string; role: string };
 
 async function registerAndLoginViaApi(request: APIRequestContext, userType: 'SELLER' | 'HOST'): Promise<Session> {
   const email = `e2e-s240-${userType.toLowerCase()}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
-  const register = await request.post(`${API_BASE}/v2/auth/register`, { data: { email, password: PASSWORD, userType } });
+  const register = await postAuthApi(request, `${API_BASE}/v2/auth/register`, { email, password: PASSWORD, userType });
   expect(register.status(), await register.text()).toBe(201);
   return loginViaApi(request, email, PASSWORD);
 }
 
 async function loginViaApi(request: APIRequestContext, email: string, password: string): Promise<Session> {
-  const login = await request.post(`${API_BASE}/v2/auth/login`, { data: { email, password } });
+  const login = await postAuthApi(request, `${API_BASE}/v2/auth/login`, { email, password });
   expect(login.status(), await login.text()).toBe(200);
   const data = (await login.json()).data;
   return { token: data.accessToken as string, role: data.user.role as string };

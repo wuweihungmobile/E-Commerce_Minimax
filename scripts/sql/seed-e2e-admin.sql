@@ -8,7 +8,7 @@
 --      - make dev-admin-password        （本機 dev 資料庫）
 --    正式環境第一次設定 admin：見 docs/08_deployment/FIRST_ADMIN_SETUP.md。
 --
--- 冪等：admin 不存在就建立（dev 資料庫以 docker-entrypoint-initdb.d 初始化時 V7 的 admin 可能沒被建立，見 DEF-356），
+-- 冪等：admin 不存在就建立（保險；Flyway 建出的資料庫一定有那一列，V94 只鎖密碼不刪除），
 -- 存在就只重設密碼與必要欄位。雜湊與 V7 原本寫入的相同（Spring BCryptPasswordEncoder 對 Test123! 的結果）。
 
 INSERT INTO users (id, email, password_hash, full_name, role, status, email_verified)

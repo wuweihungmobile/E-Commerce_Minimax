@@ -201,6 +201,15 @@ set +e
 ( cd frontend && E2E_BACKEND_LOG="$BACKEND_LOG" npx playwright test )
 E2E_EXIT=$?
 set -e
+# Sprint 306（DEF-420）：後端日誌在腳本結束時會被刪除（cleanup），而認證端點的 IP 限流有沒有被碰到、重試有沒有走到，只有這份日誌看得出來。
+# 先統計限流次數並印出；E2E 失敗時另存一份日誌（frontend/test-results/ 已被 git 忽略），不必等到第一次失敗才想到要搶救。
+RATE_LIMITED="$(grep -c 'exceeded rate limit on /v2/auth/' "$BACKEND_LOG" 2>/dev/null || true)"
+log "後端記錄到認證端點被限流 ${RATE_LIMITED:-0} 次（E2E 輔助函式遇到 HTTP 429 會依 Retry-After 重試；全綠時代表都已自癒）"
+if [ "$E2E_EXIT" -ne 0 ]; then
+  mkdir -p frontend/test-results
+  cp "$BACKEND_LOG" frontend/test-results/e2e-gate-backend.log 2>/dev/null \
+    && log "E2E 失敗：後端日誌已另存 frontend/test-results/e2e-gate-backend.log（腳本結束時原檔會被刪除）"
+fi
 if [ "$E2E_EXIT" -eq 0 ]; then
   ok "本地 E2E 守門通過（schema 對齊 ✅ + e2e 全綠 ✅）"
   exit 0

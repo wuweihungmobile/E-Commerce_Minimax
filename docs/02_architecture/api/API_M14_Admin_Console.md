@@ -1,9 +1,9 @@
 # API 規格文件 - M14 平台總管理台 / API Specification - M14 Platform Admin Console
 
 > **文件編號**: API-M14
-> **文件版本**: v1.0（Sprint 276，首次建立；首次有獨立規格文件，DEF-286 範圍）
+> **文件版本**: v1.1（Sprint 307：DEF-422(a)——`activeTenants` 改為資料庫端計數，§3.2、§7 同步）；v1.0（Sprint 276，首次建立；首次有獨立規格文件，DEF-286 範圍）
 > **建立日期**: 2026-10-16
-> **最後更新**: 2026-10-16
+> **最後更新**: 2026-10-27
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`AdminController`（`api/controller/`）、`AdminService`（`core/admin/`）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[AdminServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/admin/AdminServiceTest.java)、[AdminServiceIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/AdminServiceIntegrationTest.java)、[AdminControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/AdminControllerE2ETest.java)
@@ -78,7 +78,7 @@ FRD 完全無 M14 章節（見文件頂部狀態說明）。
 
 | 欄位 | 類型 | 說明 |
 |------|------|------|
-| `totalTenants` / `activeTenants` | Integer | 真實查詢（`Tenant` 全表計數／狀態篩選） |
+| `totalTenants` / `activeTenants` | Integer | 真實查詢（`Tenant` 全表計數／`TenantRepository.countByStatus(ACTIVE)` 資料庫端計數；Sprint 307／DEF-422 起不再 `findAll()` 載入全部租戶，見 §7） |
 | `totalUsers` / `totalListings` / `totalOrders` | Integer | 真實查詢（對應表格全表計數，不限狀態） |
 | `totalPlatformGMV` | BigDecimal | 真實加總：跨租戶 `SUM(orders.total_amount)`，限已付款未取消/退款狀態（`PAID`/`CONFIRMED`/`SHIPPING`/`DELIVERED`/`COMPLETED`）。Sprint 280 修復（DEF-384），見 §7 |
 | `pendingTenantReviews` | Integer | 真實查詢（`tenant_applications.status = PENDING` 計數，歷史 DEF-059 已修正計數來源） |
@@ -183,6 +183,7 @@ FRD 完全無 M14 章節（見文件頂部狀態說明）。
 |------|------|
 | `ApiRouteDocDriftTest` 無法覆蓋本文件 | `AdminController` 混雜 M14／M16／M17 三模組端點，無法整個類別納入守門（會強制要求單一文件記載另外兩模組不相關的端點）。本文件 §4 因此完全沒有機械防漂移，`Controller` 新增/刪除/改名路由不會被任何測試攔截，純靠人工對照維持同步 |
 | ~~`totalPlatformGMV` 是假資料~~（**DEF-384，Sprint 280 已修復**） | `AdminService.getPlatformStats` 原以 `訂單總數 × 常數 1500` 計算，已改用 `OrderRepository.sumTotalAmountByStatusIn` 跨租戶真實加總 `totalAmount`，比照 `AnalyticsService.getRevenueStats`（M13）既有的狀態集合慣例 |
+| **`activeTenants` 原本 `findAll()` 載入全部租戶，一列壞狀態就讓整個平台統計變 500（DEF-422(a)）——Sprint 307 已修復** | `getPlatformStats` 原用 `tenantRepository.findAll().stream().filter(ACTIVE).count()`。Flyway 建的 `tenants.status` 只是 `VARCHAR(20)`、沒有 CHECK 約束（V1），只要有一列值不在 `TenantStatus` 內，載入時就丟 `No enum constant`，`GET /v2/admin/stats`（管理後台首頁 `/admin` 的資料來源）整個回 500。**實測（Flyway 實跑 94 支遷移的獨立資料庫、自己種一列 `LEGACY_STATUS`，`PlatformStatsCorruptRowFlywayIntegrationTest`）：修復前回 500，後端日誌根因 `No enum constant …TenantStatus.LEGACY_STATUS`**；Hibernate 產生的一般整合測試資料庫對列舉欄位有 CHECK，放不進這種值，所以既有測試重現不出來。修法：新增 `TenantRepository.countByStatus`，`activeTenants` 由資料庫端計數。測試：`PlatformStatsCorruptRowFlywayIntegrationTest`（2 個案例，第一個是『固件會咬人』的前置斷言）、`AdminServiceTest.GetPlatformStats`（補上先前完全沒有的 `activeTenants` 斷言與 `verify(never()).findAll()`）；5 個突變全數擊殺（含『壞資料列消失且退回 `findAll()`』只有前置斷言會紅）。**同一個 DEF 的 (b) 廣播的兩處 `findAll()` 沒有修，理由見追蹤表 `DEF-422`** |
 | 使用者狀態欄位無列舉驗證 | `PUT /users/{userId}/status` 接受任意字串寫入 `User.status`；全庫唯一消費端（`AuthService` 登入檢查）只區分「等於 `ACTIVE`」與「其他」，故不同的非 `ACTIVE` 字面值效果相同，但無法用此欄位記錄/區分停權原因 |
 | `GET /system-config` 完全硬編碼 | 無任何資料庫或設定檔來源，`environment` 欄位值永遠是字面字串 `"production"`，與實際執行環境無關；若有呼叫端依此欄位做環境判斷邏輯會得到錯誤結果 |
 | 維護警示與 M09 通知系統並存未整合 | Sprint 272 已建立完整的 M09 訊息通知規格，但 `getMaintenanceWarnings` 仍是獨立的人工查詢工具，兩者沒有互相取代或串接 |
@@ -198,8 +199,8 @@ FRD 完全無 M14 章節（見文件頂部狀態說明）。
 | FRD | 無章節（見文件頂部狀態說明） |
 | 相關文件 | [API_M17_Tenant.md](./API_M17_Tenant.md)（`AdminController` 的 M17 範圍端點）、[API_M16_ERP.md](./API_M16_ERP.md)（採購單審批端點） |
 | 實作 | `AdminController`（`api/controller/`，本文件範圍為 §2 列出的 6 個端點）；`AdminService`（`core/admin/`） |
-| 契約測試 | [AdminServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/admin/AdminServiceTest.java)、[AdminServiceIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/AdminServiceIntegrationTest.java)、[AdminControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/AdminControllerE2ETest.java) |
+| 契約測試 | [AdminServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/admin/AdminServiceTest.java)、[AdminServiceIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/AdminServiceIntegrationTest.java)、[AdminControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/AdminControllerE2ETest.java)、Flyway 資料庫：[PlatformStatsCorruptRowFlywayIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/PlatformStatsCorruptRowFlywayIntegrationTest.java)（DEF-422） |
 
 ---
 
-**文件狀態**：v1.0（Sprint 276 新建，DEF-286 範圍）。
+**文件狀態**：v1.1（Sprint 307：DEF-422(a)，`activeTenants` 改為資料庫端計數）；v1.0（Sprint 276 新建，DEF-286 範圍）。

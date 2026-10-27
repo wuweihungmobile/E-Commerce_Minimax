@@ -700,9 +700,9 @@ public class AdminService {
     @Transactional(readOnly = true)
     public AdminDto.PlatformStatsResponse getPlatformStats() {
         int totalTenants = (int) tenantRepository.count();
-        int activeTenants = (int) tenantRepository.findAll().stream()
-                .filter(t -> t.getStatus() == Tenant.TenantStatus.ACTIVE)
-                .count();
+        // DEF-422：原本 findAll().stream().filter(ACTIVE).count() 把全部租戶載入記憶體，而且只要有一列 tenants.status 不在
+        // 列舉內（Flyway 建的欄位沒有 CHECK 約束）載入時就丟 No enum constant，整個平台統計變成 500。改用資料庫端計數。
+        int activeTenants = (int) tenantRepository.countByStatus(Tenant.TenantStatus.ACTIVE);
         int totalUsers = (int) userRepository.count();
         int totalListings = (int) listingRepository.count();
         int totalOrders = (int) orderRepository.count();

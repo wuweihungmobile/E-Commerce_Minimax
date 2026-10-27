@@ -858,6 +858,194 @@ class PricingServiceTest {
     }
 
     @Nested
+    @DisplayName("DEF-417／DEF-423: 規則建立的檢核範圍，以及引用的房源與商品都要是自己的")
+    class RuleCreationScopeTests {
+
+        private final UUID productId = UUID.fromString("770e8400-e29b-41d4-a716-446655440003");
+        private final UUID otherStoreProductId = UUID.fromString("770e8400-e29b-41d4-a716-446655440004");
+        private final UUID otherTenantId = UUID.randomUUID();
+
+        private Listing listingOf(final UUID listingId, final UUID tenantId) {
+            Listing listing = Listing.builder().tenantId(tenantId).build();
+            listing.setId(listingId);
+            return listing;
+        }
+
+        private PricingDto.CreateRuleRequest requestFor(final UUID roomListingId, final UUID listingId) {
+            return PricingDto.CreateRuleRequest.builder()
+                    .roomListingId(roomListingId)
+                    .listingId(listingId)
+                    .ruleType(PricingDto.PricingRuleType.SEASONAL)
+                    .ruleName("New Seasonal Rule")
+                    .config(Map.of("multiplier", 1.2))
+                    .validFrom(LocalDate.of(2026, 6, 1))
+                    .validTo(LocalDate.of(2026, 8, 31))
+                    .build();
+        }
+
+        private PricingRule activeSeasonal(final UUID roomListingId, final UUID listingId,
+                final LocalDate validFrom, final LocalDate validTo) {
+            return PricingRule.builder()
+                    .id(UUID.randomUUID())
+                    .roomListingId(roomListingId)
+                    .listingId(listingId)
+                    .ruleType(PricingRule.PricingRuleType.SEASONAL)
+                    .isActive(true)
+                    .validFrom(validFrom)
+                    .validTo(validTo)
+                    .build();
+        }
+
+        @Test
+        @DisplayName("商品規則（只帶 listingId）：只和這個商品的啟用中規則比較，不再查「沒有房源」的規則池")
+        void createRule_productRule_comparesOnlyWithThatProductsRules() {
+            when(listingRepository.findById(productId)).thenReturn(Optional.of(listingOf(productId, TENANT_ID)));
+            PricingRule overlapping = activeSeasonal(null, productId, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+            when(pricingRuleRepository.findByListingIdAndIsActiveTrue(productId)).thenReturn(List.of(overlapping));
+
+            assertThatThrownBy(() -> pricingService.createRule(requestFor(null, productId), false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_4001);
+
+            // 原缺陷：roomListingId 是 null，衍生查詢變成 room_listing_id IS NULL，範圍成了全平台
+            verify(pricingRuleRepository, never()).findByRoomListingIdAndIsActiveTrue(any());
+            verify(pricingRuleRepository, never()).findActiveUnboundRulesByTenantId(any());
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("商品規則：50 條上限以這個商品的規則數計算")
+        void createRule_productRule_limitIsCountedForThatProduct() {
+            when(listingRepository.findById(productId)).thenReturn(Optional.of(listingOf(productId, TENANT_ID)));
+            List<PricingRule> fifty = new ArrayList<>();
+            for (int i = 0; i < 50; i++) {
+                fifty.add(activeSeasonal(null, productId, LocalDate.of(2020, 1, 1), LocalDate.of(2020, 1, 2)));
+            }
+            when(pricingRuleRepository.findByListingIdAndIsActiveTrue(productId)).thenReturn(fifty);
+
+            assertThatThrownBy(() -> pricingService.createRule(requestFor(null, productId), false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_4001);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("商品規則：確認覆蓋只軟刪除這個商品的重疊規則，不重疊的保留")
+        void createRule_productRule_overrideOnlyDeactivatesThatProductsOverlappingRules() {
+            when(listingRepository.findById(productId)).thenReturn(Optional.of(listingOf(productId, TENANT_ID)));
+            PricingRule overlapping = activeSeasonal(null, productId, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+            PricingRule separate = activeSeasonal(null, productId, LocalDate.of(2027, 1, 1), LocalDate.of(2027, 12, 31));
+            when(pricingRuleRepository.findByListingIdAndIsActiveTrue(productId))
+                    .thenReturn(List.of(overlapping, separate));
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            PricingDto.CreateRuleRequest request = PricingDto.CreateRuleRequest.builder()
+                    .listingId(productId)
+                    .ruleType(PricingDto.PricingRuleType.SEASONAL)
+                    .ruleName("New Seasonal Rule")
+                    .config(Map.of("multiplier", 1.2))
+                    .validFrom(LocalDate.of(2026, 6, 1))
+                    .validTo(LocalDate.of(2026, 8, 31))
+                    .confirmOverride(true)
+                    .build();
+
+            pricingService.createRule(request, false);
+
+            assertThat(overlapping.getIsActive()).isFalse();
+            assertThat(separate.getIsActive()).isTrue();
+        }
+
+        @Test
+        @DisplayName("不綁房源也不綁商品的規則：只和呼叫者自己租戶的同類規則比較")
+        void createRule_unboundRule_comparesOnlyWithCallerTenantsUnboundRules() {
+            PricingRule overlapping = activeSeasonal(null, null, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+            when(pricingRuleRepository.findActiveUnboundRulesByTenantId(TENANT_ID)).thenReturn(List.of(overlapping));
+
+            assertThatThrownBy(() -> pricingService.createRule(requestFor(null, null), false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_4001);
+
+            verify(pricingRuleRepository).findActiveUnboundRulesByTenantId(TENANT_ID);
+            verify(pricingRuleRepository, never()).findByRoomListingIdAndIsActiveTrue(any());
+            verify(pricingRuleRepository, never()).findByListingIdAndIsActiveTrue(any());
+        }
+
+        @Test
+        @DisplayName("房源規則（帶 roomListingId）：維持以這間房源為範圍")
+        void createRule_roomRule_comparesOnlyWithThatRoomsRules() {
+            when(listingRepository.findById(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(listingOf(ROOM_LISTING_ID, TENANT_ID)));
+            PricingRule overlapping = activeSeasonal(ROOM_LISTING_ID, null, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+            when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID))
+                    .thenReturn(List.of(overlapping));
+
+            assertThatThrownBy(() -> pricingService.createRule(requestFor(ROOM_LISTING_ID, null), false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_4001);
+
+            verify(pricingRuleRepository, never()).findByListingIdAndIsActiveTrue(any());
+            verify(pricingRuleRepository, never()).findActiveUnboundRulesByTenantId(any());
+        }
+
+        @Test
+        @DisplayName("DEF-423: 帶自己的房源 id、夾帶別家店的商品 id → E_1007，不寫入（原本只驗證 roomListingId）")
+        void createRule_ownRoomWithOtherStoresProduct_throwsE1007() {
+            when(listingRepository.findById(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(listingOf(ROOM_LISTING_ID, TENANT_ID)));
+            when(listingRepository.findById(otherStoreProductId))
+                    .thenReturn(Optional.of(listingOf(otherStoreProductId, otherTenantId)));
+
+            assertThatThrownBy(() -> pricingService.createRule(requestFor(ROOM_LISTING_ID, otherStoreProductId), false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("DEF-423: 帶別家店的房源 id、夾帶自己的商品 id → E_1007，不寫入")
+        void createRule_otherStoresRoomWithOwnProduct_throwsE1007() {
+            when(listingRepository.findById(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(listingOf(ROOM_LISTING_ID, otherTenantId)));
+
+            assertThatThrownBy(() -> pricingService.createRule(requestFor(ROOM_LISTING_ID, productId), false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("DEF-242 對照：只帶別家店的商品 id → E_1007，不寫入")
+        void createRule_productOfAnotherStore_throwsE1007() {
+            when(listingRepository.findById(otherStoreProductId))
+                    .thenReturn(Optional.of(listingOf(otherStoreProductId, otherTenantId)));
+
+            assertThatThrownBy(() -> pricingService.createRule(requestFor(null, otherStoreProductId), false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.E_1007);
+
+            verify(pricingRuleRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("對照：同時帶自己的房源 id 與自己的商品 id → 可建立（檢查的是擁有權，不是禁止兩個 id 並存）")
+        void createRule_ownRoomAndOwnProduct_isAccepted() {
+            when(listingRepository.findById(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(listingOf(ROOM_LISTING_ID, TENANT_ID)));
+            when(listingRepository.findById(productId)).thenReturn(Optional.of(listingOf(productId, TENANT_ID)));
+            when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID)).thenReturn(List.of());
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            PricingDto.RuleResponse response = pricingService.createRule(requestFor(ROOM_LISTING_ID, productId), false);
+
+            assertThat(response.getRoomListingId()).isEqualTo(ROOM_LISTING_ID);
+            assertThat(response.getListingId()).isEqualTo(productId);
+        }
+    }
+
+    @Nested
     @DisplayName("UT-M12-024 ~ UT-M12-025: 定價規則更新的日期範圍驗證（DEF-225）")
     class RuleUpdateValidationTests {
 
@@ -1704,7 +1892,7 @@ class PricingServiceTest {
         @Test
         @DisplayName("createRule 不綁任何房源：沒有店鋪的呼叫者 → E_1007（不綁房源的規則會蓋成系統租戶，守門不得因沒有房源 id 而略過）")
         void createRule_storelessCaller_noListing_throwsE1007() {
-            lenient().when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(null)).thenReturn(List.of());
+            lenient().when(pricingRuleRepository.findActiveUnboundRulesByTenantId(systemTenantId)).thenReturn(List.of());
             lenient().when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
 
             assertThatThrownBy(() -> pricingService.createRule(createRequest(null), false))
@@ -1717,7 +1905,8 @@ class PricingServiceTest {
         @Test
         @DisplayName("createRule 不綁任何房源：平台管理員（SUPER_ADMIN）仍可建立，且蓋成系統租戶")
         void createRule_superAdmin_noListing_stillAllowedAndStampedWithSystemTenant() {
-            when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(null)).thenReturn(List.of());
+            // DEF-417：不綁房源也不綁商品的規則只和呼叫者租戶（此處是系統租戶）自己的同類規則比較
+            when(pricingRuleRepository.findActiveUnboundRulesByTenantId(systemTenantId)).thenReturn(List.of());
             when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
 
             pricingService.createRule(createRequest(null), true);

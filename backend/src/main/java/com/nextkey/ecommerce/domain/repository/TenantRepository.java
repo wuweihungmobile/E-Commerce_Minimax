@@ -22,6 +22,8 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID>, JpaSpecif
 
     List<Tenant> findByStatus(Tenant.TenantStatus status);
 
+    long countByStatus(Tenant.TenantStatus status);
+
     Optional<Tenant> findByStripeConnectAccountId(String stripeConnectAccountId);
 
     boolean existsBySlug(String slug);

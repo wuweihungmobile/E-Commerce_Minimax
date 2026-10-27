@@ -79,7 +79,10 @@ public class PricingService {
     private static final List<String> RANGE_CHECKED_CONFIG_KEYS = List.of(
             "discountPercent", "multiplier", "weekendMultiplier", "price", "minNights", "minDaysAhead");
 
-    /** PRD §5.5.1：每個 room_listing_id 最多 50 條 is_active=true 的定價規則。 */
+    /**
+     * PRD §5.5.1：每個 room_listing_id 最多 50 條 is_active=true 的定價規則。商品規則（只帶 listing_id）以每個商品為單位
+     * 套用同一個上限（DEF-417；PRD 只定義了房源）。
+     */
     private static final int MAX_ACTIVE_RULES_PER_ROOM = 50;
 
     /**
@@ -94,11 +97,13 @@ public class PricingService {
         // DEF-242：先前完全未驗證 roomListingId/listingId 是否屬於呼叫者租戶，任一賣家可對他租戶的
         // 商品/房源植入定價規則（如 MANUAL_OVERRIDE 改成 0.01 元），該規則會在買家結帳時被
         // getEffectivePrice/calculatePrice 當作權威售價套用，等同間接的金額竄改。
-        checkListingTenantOwnership(request.getRoomListingId() != null
-                ? request.getRoomListingId() : request.getListingId(), isSuperAdmin);
+        // DEF-423：DEF-242 的修法只驗證「roomListingId ?: listingId」其中一個，兩個 id 同時帶入時 listingId 完全沒被
+        // 驗證——帶自己的房源 id、夾帶別家店的商品 id 就能繞過。每個帶入的 id 都要驗證（單一 id 的行為不變）。
+        checkListingTenantOwnership(request.getRoomListingId(), isSuperAdmin);
+        checkListingTenantOwnership(request.getListingId(), isSuperAdmin);
 
         validateRuleRequest(request);
-        enforceRuleLimitAndConflict(request);
+        enforceRuleLimitAndConflict(request, tenantId);
 
         // DEF-414：tenantId 是 insertable=false 的唯讀影子欄位，INSERT 依據的是 .tenant(...) 關聯物件；
         // 只設影子欄位會把 NULL 寫進 pricing_rules.tenant_id（NOT NULL）→ 500。必須先查出 Tenant 實體。
@@ -565,9 +570,8 @@ public class PricingService {
      * 房東確認覆蓋（confirmOverride=true）時，僅軟刪除與新規則時間範圍重疊的同類型舊規則，
      * 不重疊的同類型規則（不同期間各自有效）予以保留。
      */
-    private void enforceRuleLimitAndConflict(PricingDto.CreateRuleRequest request) {
-        List<PricingRule> activeRules = pricingRuleRepository
-                .findByRoomListingIdAndIsActiveTrue(request.getRoomListingId());
+    private void enforceRuleLimitAndConflict(PricingDto.CreateRuleRequest request, UUID tenantId) {
+        List<PricingRule> activeRules = findActiveRulesInScope(request, tenantId);
 
         if (activeRules.size() >= MAX_ACTIVE_RULES_PER_ROOM) {
             throw new BusinessException(ErrorCode.E_4001,
@@ -595,6 +599,25 @@ public class PricingService {
             pricingRuleRepository.save(old);
             log.info("Overridden pricing rule soft-deleted: ruleId={}, type={}", old.getId(), old.getRuleType());
         }
+    }
+
+    /**
+     * 上限與重疊檢核的比較範圍（DEF-417）：以規則掛載的目標為單位——帶 roomListingId 就是那間房源，否則帶 listingId
+     * 就是那個商品；兩者都沒帶的規則只在呼叫者自己的租戶內比較。
+     *
+     * <p>原本一律用 {@code findByRoomListingIdAndIsActiveTrue(request.getRoomListingId())}：商品規則的 roomListingId 是
+     * null，Spring Data JPA 的衍生查詢對 null 參數會產生 {@code room_listing_id IS NULL}，範圍就變成全平台所有租戶的
+     * 無房源規則——上限變成全平台合計 50 條、別店別的商品的同類型規則算「重疊」，帶覆蓋確認時還會被軟刪除（真實 PostgreSQL
+     * 實測，見 PricingRuleScopeIsolationE2ETest）。
+     */
+    private List<PricingRule> findActiveRulesInScope(PricingDto.CreateRuleRequest request, UUID tenantId) {
+        if (request.getRoomListingId() != null) {
+            return pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(request.getRoomListingId());
+        }
+        if (request.getListingId() != null) {
+            return pricingRuleRepository.findByListingIdAndIsActiveTrue(request.getListingId());
+        }
+        return pricingRuleRepository.findActiveUnboundRulesByTenantId(tenantId);
     }
 
     private boolean isRuleApplicable(PricingRule rule, LocalDate date, LocalDate checkIn, int nights, LocalDate bookingDate) {

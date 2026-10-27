@@ -581,7 +581,8 @@ class AdminServiceTest {
         void getPlatformStats_returnsStats() {
             // Arrange
             when(tenantRepository.count()).thenReturn(10L);
-            when(tenantRepository.findAll()).thenReturn(java.util.List.of(buildTenant()));
+            // DEF-422：活躍店鋪數由資料庫端計數；刻意與總數不同（7 ≠ 10），把「活躍數」誤算成總數會被抓到
+            when(tenantRepository.countByStatus(Tenant.TenantStatus.ACTIVE)).thenReturn(7L);
             when(userRepository.count()).thenReturn(50L);
             when(listingRepository.count()).thenReturn(100L);
             when(orderRepository.count()).thenReturn(200L);
@@ -595,6 +596,9 @@ class AdminServiceTest {
             // Assert
             assertThat(response).isNotNull();
             assertThat(response.getTotalTenants()).isEqualTo(10);
+            assertThat(response.getActiveTenants()).isEqualTo(7);
+            // DEF-422：不得退回「載入全部租戶再於記憶體過濾」——任何一列 status 壞掉就會讓整個統計 500
+            verify(tenantRepository, never()).findAll();
             assertThat(response.getTotalUsers()).isEqualTo(50);
             assertThat(response.getTotalListings()).isEqualTo(100);
             assertThat(response.getTotalOrders()).isEqualTo(200);
@@ -614,7 +618,10 @@ class AdminServiceTest {
                     .status(Tenant.TenantStatus.PENDING_REVIEW)
                     .build();
             when(tenantRepository.count()).thenReturn(2L);
-            when(tenantRepository.findAll()).thenReturn(java.util.List.of(buildTenant(), pendingTenant));
+            when(tenantRepository.countByStatus(Tenant.TenantStatus.ACTIVE)).thenReturn(1L);
+            // DEF-422 之後 getPlatformStats 不再呼叫 findAll()；保留這筆 stub（lenient）只為了讓「租戶」那一側確實有一筆
+            // PENDING_REVIEW 誘餌——待審核數若被錯誤地改回由租戶資料推得，就會拿到 1 而不是 3
+            lenient().when(tenantRepository.findAll()).thenReturn(java.util.List.of(buildTenant(), pendingTenant));
             when(tenantApplicationRepository.countByStatus(TenantApplication.ApplicationStatus.PENDING))
                     .thenReturn(3L);
 

@@ -42,4 +42,13 @@ public interface PricingRuleRepository extends JpaRepository<PricingRule, UUID> 
     List<PricingRule> findByListingId(UUID listingId);
 
     List<PricingRule> findByListingIdAndIsActiveTrue(UUID listingId);
+
+    /**
+     * 不綁房源也不綁商品、啟用中的規則，限定在一個租戶內（DEF-417）。{@code IS NULL} 寫在查詢裡是刻意的：
+     * 衍生查詢（例如 {@code findByRoomListingIdAndIsActiveTrue(null)}）對 null 參數會悄悄變成
+     * {@code IS NULL}，範圍就變成全平台所有租戶。
+     */
+    @Query("SELECT p FROM PricingRule p WHERE p.tenantId = :tenantId " +
+            "AND p.roomListingId IS NULL AND p.listingId IS NULL AND p.isActive = true")
+    List<PricingRule> findActiveUnboundRulesByTenantId(@Param("tenantId") UUID tenantId);
 }

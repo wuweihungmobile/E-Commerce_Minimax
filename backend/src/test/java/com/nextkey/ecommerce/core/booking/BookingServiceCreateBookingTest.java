@@ -30,7 +30,6 @@ import org.mockito.quality.Strictness;
 
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
-import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.core.promo.PromoService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
@@ -87,9 +86,6 @@ class BookingServiceCreateBookingTest {
     private PricingService pricingService;
 
     @Mock
-    private FeatureToggleService featureToggleService;
-
-    @Mock
     private PromoService promoService;
 
     @Mock
@@ -109,6 +105,9 @@ class BookingServiceCreateBookingTest {
     @BeforeEach
     void setUpPromoDefaults() {
         when(promoService.computeCappedDiscount(any(), any(), any())).thenReturn(BigDecimal.ZERO);
+        // DEF-424（Sprint 309）：BookingService 不再自己判斷動態定價開關，一律向引擎查詢（createBooking 在取鎖之前就先算總價）。
+        // 這個類別測的不是定價，引擎預設回「沒有規則生效」（與店鋪開關關閉時的實際結果相同）。
+        when(pricingService.calculatePrice(any())).thenReturn(BookingPricingFixtures.noAdjustment());
     }
 
     private static final UUID ROOM_LISTING_ID = UUID.randomUUID();
@@ -155,7 +154,6 @@ class BookingServiceCreateBookingTest {
         when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(activeRoomListing()));
         when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(room()));
         when(roomCalendarService.lockDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT)).thenReturn("lockValue");
-        when(featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")).thenReturn(false);
     }
 
     // ========== 正常路徑 ==========

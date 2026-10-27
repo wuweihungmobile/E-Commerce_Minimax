@@ -27,7 +27,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.api.dto.PricingDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
-import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
 import com.nextkey.ecommerce.core.order.OrderStateMachine;
 import com.nextkey.ecommerce.core.pricing.PricingService;
@@ -80,7 +79,6 @@ public class BookingService {
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
     private final PricingService pricingService;
-    private final FeatureToggleService featureToggleService;
     private final PromoService promoService;
     private final PromoCodeRepository promoCodeRepository;
     private final PromoCodeUsageRepository promoCodeUsageRepository;
@@ -382,15 +380,15 @@ public class BookingService {
     }
 
     /**
-     * 整月日曆每日折扣 map（AI-2405b）：DYNAMIC_PRICING_ENABLED 開啟時，以 PricingService.calculatePrice
-     * 取區間逐日 breakdown（date → PriceBreakdown）。calculatePrice 的 checkOut 為 exclusive，
-     * 故傳 endDate.plusDays(1) 以涵蓋 endDate 當日。關閉/計算失敗回空 map（呼叫端不套折扣）。
+     * 整月日曆每日折扣 map（AI-2405b）：以 PricingService.calculatePrice 取區間逐日 breakdown（date → PriceBreakdown）。
+     * calculatePrice 的 checkOut 為 exclusive，故傳 endDate.plusDays(1) 以涵蓋 endDate 當日。計算失敗回空 map（呼叫端不套折扣）。
+     *
+     * <p>DEF-424（Sprint 309，使用者裁決）：動態定價開關由 {@link PricingService#calculatePrice} 以<b>房源所屬店鋪</b>把關，
+     * 關閉時逐日價格就是基準價（呼叫端比較調整前後相同，不顯示調整）。原本這裡查呼叫者租戶的開關，訂房者都是系統租戶，
+     * 其開關在種子是開啟，店鋪自己的開關形同虛設。
      */
     private Map<LocalDate, PricingDto.PriceBreakdown> dailyDiscountMap(
             final UUID roomListingId, final LocalDate startDate, final LocalDate endDate) {
-        if (!featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")) {
-            return Collections.emptyMap();
-        }
         try {
             PricingDto.CalculatePriceResponse resp = pricingService.calculatePrice(
                     PricingDto.CalculatePriceRequest.builder()
@@ -1240,9 +1238,12 @@ public class BookingService {
     }
 
     /**
-     * 動態定價試算（AI-2402 / AI-2406b）：DYNAMIC_PRICING_ENABLED 開啟且該區間有規則生效
+     * 動態定價試算（AI-2402 / AI-2406b）：該區間有規則生效
      * （adjustedTotal ≠ baseTotal，含折扣「或漲價」）時，回傳 PricingService 調整後試算；
      * 否則回 null（呼叫端 fallback 既有 calendar/basePrice 計價，向後相容）。
+     *
+     * DEF-424（Sprint 309，使用者裁決）：動態定價開關由 PricingService 以房源所屬店鋪把關，關閉時它回基準價
+     * （adjustedTotal == baseTotal，這裡回 null）；呼叫端不再自己查開關（原本查呼叫者租戶的，見 dailyDiscountMap）。
      *
      * AI-2406b（選項 B）：定價機制真正統一——漲價型規則（週末/旺季加成、MANUAL_OVERRIDE 調高）
      * 自此一併計入訂房總價與可用性顯示，使顯示與收費完全一致（原僅套折扣）。
@@ -1251,9 +1252,6 @@ public class BookingService {
      */
     private PricingDto.CalculatePriceResponse tryDynamicPricing(final UUID roomListingId,
             final LocalDate checkIn, final LocalDate checkOut) {
-        if (!featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")) {
-            return null;
-        }
         try {
             PricingDto.CalculatePriceResponse resp = pricingService.calculatePrice(
                     PricingDto.CalculatePriceRequest.builder()

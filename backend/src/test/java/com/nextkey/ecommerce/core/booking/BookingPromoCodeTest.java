@@ -30,7 +30,6 @@ import org.mockito.quality.Strictness;
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.notification.BuyerNotificationService;
-import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.core.promo.PromoService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
@@ -76,7 +75,6 @@ class BookingPromoCodeTest {
     @Mock private TenantRepository tenantRepository;
     @Mock private UserRepository userRepository;
     @Mock private PricingService pricingService;
-    @Mock private FeatureToggleService featureToggleService;
     @Mock private PromoService promoService;
     @Mock private PromoCodeRepository promoCodeRepository;
     @Mock private PromoCodeUsageRepository promoCodeUsageRepository;
@@ -158,7 +156,8 @@ class BookingPromoCodeTest {
         when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(activeRoomListing()));
         when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(room()));
         when(roomCalendarService.lockDateRange(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT)).thenReturn("lockValue");
-        when(featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")).thenReturn(false);
+        // DEF-424：BookingService 不再自己判斷動態定價開關，一律向引擎查詢；這裡測的不是定價，引擎回「沒有規則生效」
+        when(pricingService.calculatePrice(any())).thenReturn(BookingPricingFixtures.noAdjustment());
         when(roomCalendarService.isDateRangeAvailable(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT)).thenReturn(true);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(User.builder().id(USER_ID).build()));
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TENANT_ID).status(Tenant.TenantStatus.ACTIVE).build()));
@@ -448,7 +447,7 @@ class BookingPromoCodeTest {
             when(roomCalendarService.lockDateRange(ROOM_LISTING_ID, newCheckIn, newCheckOut)).thenReturn("lockValue");
             when(roomCalendarService.isDateRangeAvailable(ROOM_LISTING_ID, newCheckIn, newCheckOut)).thenReturn(true);
             when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(activeRoomListing()));
-            when(featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")).thenReturn(false);
+            when(pricingService.calculatePrice(any())).thenReturn(BookingPricingFixtures.noAdjustment());
             PromoCode promo = promoFixture();
             when(promoCodeRepository.findByCodeIgnoreCaseAndTenantId(PROMO_CODE, TENANT_ID))
                     .thenReturn(Optional.of(promo));

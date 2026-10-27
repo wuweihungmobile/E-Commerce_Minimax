@@ -2,7 +2,6 @@ package com.nextkey.ecommerce.core.cart;
 
 import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.PricingDto;
-import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
@@ -26,7 +25,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -34,9 +33,12 @@ import static org.mockito.Mockito.when;
  * RedisCartService 動態定價（PRODUCT）單元測試（Sprint 44 US-001 / AI-2403）
  *
  * 驗證 getCart 折扣三路徑（AC-001-5）：
- * - toggle 開啟且有折扣 → 項目 unitPrice/subtotal 為折扣後 + 回原價/折扣額/規則名，總額折扣後
- * - toggle 關閉 → 維持既有 basePrice、不呼叫 PricingService（不退步）
- * - toggle 開啟但無折扣 → 不套用
+ * - 引擎回折扣／漲價 → 項目 unitPrice/subtotal 為調整後 + 回原價/折扣額/規則名，總額為調整後
+ * - 引擎回基準價（無規則，或商品所屬店鋪的動態定價開關關閉）→ 維持既有 basePrice、不顯示調整
+ *
+ * <p>DEF-424（Sprint 309，使用者裁決）：動態定價開關由 {@code PricingService} 以<b>商品所屬店鋪</b>把關；購物車自己不再查任何開關
+ * （原本查呼叫者租戶的開關，購物車使用者都是系統租戶，其開關在種子是開啟，店鋪的開關形同虛設）。開關本身的案例在
+ * {@code PricingServiceTest.StoreToggleGatesApplicationTests}，端到端（真實 Redis）在 {@code at-pricing-cart-checkout-real.spec.ts}。
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -50,7 +52,6 @@ class RedisCartServiceDynamicPricingTest {
     @Mock private com.nextkey.ecommerce.core.promo.PromoService promoService;
     @Mock private com.nextkey.ecommerce.domain.repository.PromoCodeRepository promoCodeRepository;
     @Mock private PricingService pricingService;
-    @Mock private FeatureToggleService featureToggleService;
 
     @InjectMocks private RedisCartService cartService;
 
@@ -102,7 +103,6 @@ class RedisCartServiceDynamicPricingTest {
         com.nextkey.ecommerce.shared.time.BusinessTime.useClockForTesting(java.time.Clock.fixed(
                 Instant.parse("2027-01-31T16:30:00Z"), java.time.ZoneOffset.UTC));
         stubCartWithProduct();
-        when(featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")).thenReturn(true);
         // 只有以「台灣的今天 2027-02-01」查詢才回傳促銷價；其他日期一律無規則（mock 預設回 null）
         when(pricingService.getEffectivePrice(LISTING_ID, java.time.LocalDate.of(2027, 2, 1), 1))
                 .thenReturn(effective(BigDecimal.valueOf(425), "商品促銷 2/1 起"));
@@ -115,10 +115,9 @@ class RedisCartServiceDynamicPricingTest {
     }
 
     @Test
-    @DisplayName("UT-CART-DP-001: toggle 開啟且有折扣 → unitPrice/subtotal 折扣後 + 原價/折扣額/規則名")
+    @DisplayName("UT-CART-DP-001: 引擎回折扣 → unitPrice/subtotal 折扣後 + 原價/折扣額/規則名")
     void getCart_withProductDiscount_returnsDiscounted() {
         stubCartWithProduct();
-        when(featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")).thenReturn(true);
         when(pricingService.getEffectivePrice(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenReturn(effective(BigDecimal.valueOf(425), "商品早鳥 15% off")); // 500 → 425
 
@@ -136,10 +135,9 @@ class RedisCartServiceDynamicPricingTest {
     }
 
     @Test
-    @DisplayName("UT-CART-DP-004: toggle 開啟且漲價（AI-2406c）→ unitPrice/subtotal 漲價後 + 有號差額(負)/MARKUP")
+    @DisplayName("UT-CART-DP-004: 引擎回漲價（AI-2406c）→ unitPrice/subtotal 漲價後 + 有號差額(負)/MARKUP")
     void getCart_withProductMarkup_returnsMarkedUp() {
         stubCartWithProduct();
-        when(featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")).thenReturn(true);
         // 旺季加成：500 → 650（漲價；閘門放寬後計入）
         when(pricingService.getEffectivePrice(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenReturn(effective(BigDecimal.valueOf(650), "商品旺季加成 30%"));
@@ -158,10 +156,12 @@ class RedisCartServiceDynamicPricingTest {
     }
 
     @Test
-    @DisplayName("UT-CART-DP-002: toggle 關閉 → 維持 basePrice、不呼叫 PricingService（不退步）")
-    void getCart_toggleDisabled_usesBasePrice() {
+    @DisplayName("UT-CART-DP-002: 店鋪開關關閉時引擎回基準價 → 維持 basePrice、不顯示調整；購物車一律向引擎查詢，自己不判斷開關（DEF-424）")
+    void getCart_engineReturnsBasePrice_usesBasePriceAndAlwaysAsksTheEngine() {
         stubCartWithProduct();
-        when(featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")).thenReturn(false);
+        // 店鋪的動態定價開關關閉時，PricingService.getEffectivePrice 的行為：沒有規則生效，有效售價 == 基準價
+        when(pricingService.getEffectivePrice(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(effective(BigDecimal.valueOf(500), null));
 
         CartDto.CartResponse cart = cartService.getCart(USER_ID, TENANT_ID);
 
@@ -170,15 +170,16 @@ class RedisCartServiceDynamicPricingTest {
         assertThat(it.getSubtotal()).isEqualByComparingTo(BigDecimal.valueOf(1000));
         assertThat(it.getOriginalUnitPrice()).isNull();
         assertThat(it.getDiscountAmount()).isNull();
+        assertThat(it.getAppliedRuleName()).isNull();
         assertThat(cart.getTotalAmount()).isEqualByComparingTo(BigDecimal.valueOf(1000));
-        verify(pricingService, never()).getEffectivePrice(any(), any(), org.mockito.ArgumentMatchers.anyInt());
+        // 原本這裡斷言「開關關閉時不呼叫 PricingService」（購物車自己查呼叫者租戶的開關）；現在由引擎以商品所屬店鋪把關
+        verify(pricingService).getEffectivePrice(eq(LISTING_ID), any(), eq(1));
     }
 
     @Test
-    @DisplayName("UT-CART-DP-003: toggle 開啟但無折扣（effectivePrice == 現價）→ 不套用")
+    @DisplayName("UT-CART-DP-003: 引擎回的有效售價 == 現價（無規則生效）→ 不套用")
     void getCart_noDiscount_usesBasePrice() {
         stubCartWithProduct();
-        when(featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")).thenReturn(true);
         when(pricingService.getEffectivePrice(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenReturn(effective(BigDecimal.valueOf(500), null)); // 無折扣
 

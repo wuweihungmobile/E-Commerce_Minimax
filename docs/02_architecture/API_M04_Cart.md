@@ -1,8 +1,8 @@
 # API 規格文件 - M04 購物車模組 / API Specification - M04 Cart Module
 
-> **文件版本**: v2.3（Sprint 308：補記動態定價開關是以呼叫者的租戶查詢、購物車價格就是訂單收款價格，登記 DEF-424）；v2.2（Sprint 283 修復 DEF-389）
+> **文件版本**: v2.4（Sprint 309：DEF-424 修復——動態定價開關改看商品所屬店鋪，購物車不再自己查開關）；v2.3（Sprint 308：補記動態定價開關是以呼叫者的租戶查詢、購物車價格就是訂單收款價格，登記 DEF-424）；v2.2（Sprint 283 修復 DEF-389）
 > **建立日期**: 2026-04-28（v1.0，Sprint 4）
-> **最後更新**: 2026-10-27
+> **最後更新**: 2026-10-28
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`CartController`、`RedisCartService`、`CartStoreSelector`、`CartDto`、`GlobalExceptionHandler`
@@ -187,7 +187,7 @@
 
 | 欄位 | 說明 |
 |------|------|
-| `unitPrice`／`subtotal` | 單價與小計。PRODUCT 在 `DYNAMIC_PRICING_ENABLED` 開啟且規則調整後單價 ≠ 現價時，以**調整後**單價重算（讀取時算，不存進 Redis）；計算失敗降級為原價。**兩點容易誤解（Sprint 308 實測）**：①這個開關是以**呼叫者的租戶**查的（`FeatureToggleService.isFeatureEnabled` 讀 `TenantContext`），不是商品所屬店鋪的；購物車端點只有 `BUYER`（與全權限的 `SUPER_ADMIN`）持有權限，他們的租戶都是系統租戶佔位值，其開關在 Flyway 種子（V1、V6）為開啟。所以管理員關閉某家店鋪的開關後，它既有的規則仍會套用在消費者的購物車（店鋪層的開關只擋新建規則，見 [API_M12](./api/API_M12_Dynamic_Pricing.md) §1.2；是否改成看商品所屬店鋪的開關待使用者裁決，`DEF-424`）。②這裡算出的 `unitPrice`／`subtotal` 就是**收款依據**：`OrderService.buildProductOrder` 直接取它們寫進訂單明細與訂單總額，沒有再算一次（真實 Redis 實測：規則價 800、原價 1000 的商品，購物車與訂單明細單價、訂單總額都是 800，`frontend/e2e/at-pricing-cart-checkout-real.spec.ts`） |
+| `unitPrice`／`subtotal` | 單價與小計。PRODUCT 在規則調整後單價 ≠ 現價時，以**調整後**單價重算（讀取時算，不存進 Redis）；計算失敗降級為原價。**兩點容易誤解**：①動態定價開關是**商品所屬店鋪**的 `DYNAMIC_PRICING_ENABLED`（Sprint 309／`DEF-424`，使用者裁決「關閉後立即失效」）：由 `PricingService.getEffectivePrice` 把關，購物車自己不查任何開關。管理員關閉某家店鋪的開關後，它既有的規則立刻不再套用在消費者的購物車（單價回基準價、沒有 `originalUnitPrice`／`appliedRuleName`），重新開啟立即恢復，各店鋪互不影響（見 [API_M12](./api/API_M12_Dynamic_Pricing.md) §1.2）。原本購物車查的是**呼叫者租戶**的開關：購物車端點只有 `BUYER` 持有權限，他們的租戶都是系統租戶佔位值，其開關在 Flyway 種子（V1、V6）為開啟，店鋪自己的開關形同虛設。②這裡算出的 `unitPrice`／`subtotal` 就是**收款依據**：`OrderService.buildProductOrder` 直接取它們寫進訂單明細與訂單總額，沒有再算一次（真實 Redis 實測：規則價 800、原價 1000 的商品，購物車與訂單明細單價、訂單總額都是 800；店鋪開關關閉時都是 1000；`frontend/e2e/at-pricing-cart-checkout-real.spec.ts`） |
 | `originalUnitPrice`／`discountAmount`／`appliedRuleName`／`priceAdjustmentType` | 動態定價調整資訊；無調整時全為 `null`。`discountAmount` 是此項目的有號差額（正＝折扣、負＝加價），`priceAdjustmentType` 為 `DISCOUNT`／`MARKUP`／`NONE` |
 | `storeId`／`storeName` | 商品／房源**所屬的店鋪**（`listings.tenant_id`）。刊登項目已不存在時為 `null`、名稱為 `Unknown`，該項目**無法結帳**，只能移除 |
 | `storeActive` | 該店鋪是否營業中（`ACTIVE`）。`false`（待審核／已駁回／停權／終止）時前端應標示「暫停營業」並停用該店鋪的結帳；後端結帳也會擋下（`E-2010`）。**加入購物車不擋** |
@@ -396,3 +396,4 @@ SPRINT_241_PLAN.md ── 本版改寫、DEF-335（錯誤輸入回 500）
 | v2.1 | 2026-10-18 | Sprint 282 修復 `DEF-336`：§4.6 更新為已修復，並登記新發現的同根因缺口 `DEF-389`（逐一移除單一店鋪所有項目不會清除該店鋪促銷碼標記） | Claude |
 | v2.2 | 2026-10-18 | Sprint 283 修復 `DEF-389`：§4.5 更新為已修復（`removeItem` 移除後檢查該店鋪是否已無剩餘項目，若是則一併清除促銷碼標記） | Claude |
 | v2.3 | 2026-10-27 | Sprint 308：`CartItemResponse` 的 `unitPrice`／`subtotal` 補記兩點（動態定價開關以呼叫者租戶查詢、購物車價格就是訂單收款依據），登記 `DEF-424`；只改文件，沒有改程式 | Claude |
+| v2.4 | 2026-10-28 | Sprint 309 修復 `DEF-424`：`CartItemResponse` 的 `unitPrice`／`subtotal` 改記為『動態定價開關是商品所屬店鋪的，由 `PricingService` 把關，購物車自己不查』；`RedisCartService` 移除 `FeatureToggleService` 依賴 | Claude |

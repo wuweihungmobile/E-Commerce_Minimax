@@ -91,6 +91,10 @@ class PricingServiceTest {
         TenantContext.setCurrentTenant(TENANT_ID);
         // DEF-414：createRule 需要 Tenant 實體（INSERT 依據的是 .tenant(...) 關聯物件）；不是每個案例都會建立規則
         lenient().when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenantOf(TENANT_ID)));
+        // DEF-424：規則只在房源／商品所屬店鋪的動態定價開關開啟時套用。預設每個租戶都開啟，讓既有的價格計算案例專注在規則數學；
+        // 要驗證開關本身的案例（StoreToggleGatesApplicationTests）會以指定租戶的 stub 覆蓋這個預設。
+        lenient().when(featureToggleService.isFeatureEnabledForTenant(any(), eq("DYNAMIC_PRICING_ENABLED")))
+                .thenReturn(true);
     }
 
     private static Tenant tenantOf(final UUID id) {
@@ -2041,6 +2045,198 @@ class PricingServiceTest {
             assertThat(pricingService.getRules(ROOM_LISTING_ID, null, false, false)).hasSize(1);
 
             verify(pricingRuleRepository, never()).findAll();
+        }
+    }
+
+    /**
+     * DEF-424（Sprint 309，使用者以互動選項裁決）：規則只在「房源／商品所屬店鋪」的動態定價開關開啟時套用。
+     *
+     * <p>原本購物車與訂房計價查的是<b>呼叫者租戶</b>的開關（購物車使用者都是系統租戶，開關在種子是開啟），所以店鋪的開關只管建立規則；
+     * 管理員關閉某店鋪的開關後，它既有的規則仍套用在消費者身上。現在由定價引擎的兩個讀取方法（{@code calculatePrice}、
+     * {@code getEffectivePrice}）統一把關，購物車、訂房、價格試算端點自動一致。
+     *
+     * <p>店鋪 id 與呼叫者租戶（{@code TENANT_ID}）刻意不同，才分得出程式碼查了哪一個租戶的開關；
+     * 外層 {@code setUpTenantContext} 預設每個租戶都開啟，這裡以指定租戶的 stub 覆蓋。
+     */
+    @Nested
+    @DisplayName("DEF-424: 規則只在房源／商品所屬店鋪的動態定價開關開啟時套用")
+    class StoreToggleGatesApplicationTests {
+
+        private static final String TOGGLE = "DYNAMIC_PRICING_ENABLED";
+        private static final UUID STORE_ID = UUID.fromString("880e8400-e29b-41d4-a716-446655440009");
+        private static final UUID PRODUCT_ID = UUID.fromString("990e8400-e29b-41d4-a716-446655440004");
+
+        private final LocalDate checkIn = LocalDate.of(2026, 4, 6);
+        private final LocalDate checkOut = LocalDate.of(2026, 4, 8); // 2 晚
+        private final LocalDate productDate = LocalDate.of(2027, 8, 3);
+
+        private Room storeRoom() {
+            Listing listing = Listing.builder().basePrice(BASE_PRICE).currency("TWD").tenantId(STORE_ID).build();
+            listing.setId(ROOM_LISTING_ID);
+            return Room.builder().listing(listing).build();
+        }
+
+        private PricingRule roomOverride() {
+            return PricingRule.builder()
+                    .id(UUID.randomUUID()).tenantId(STORE_ID).roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.MANUAL_OVERRIDE)
+                    .ruleName("Manual Override 1500").priority(10)
+                    .config(Map.of("price", 1500.0))
+                    .validFrom(checkIn.minusDays(30)).validTo(checkIn.plusDays(30)).isActive(true).build();
+        }
+
+        private PricingDto.CalculatePriceRequest roomRequest() {
+            return PricingDto.CalculatePriceRequest.builder()
+                    .roomListingId(ROOM_LISTING_ID).checkInDate(checkIn).checkOutDate(checkOut).build();
+        }
+
+        private Listing storeProduct() {
+            Listing listing = Listing.builder().listingType(Listing.ListingType.PRODUCT)
+                    .basePrice(BASE_PRICE).currency("TWD").tenantId(STORE_ID).build();
+            listing.setId(PRODUCT_ID);
+            return listing;
+        }
+
+        private PricingRule productOverride() {
+            return PricingRule.builder()
+                    .id(UUID.randomUUID()).tenantId(STORE_ID).listingId(PRODUCT_ID)
+                    .ruleType(PricingRule.PricingRuleType.MANUAL_OVERRIDE).ruleName("Product Override 800").priority(10)
+                    .config(Map.of("price", 800.0))
+                    .validFrom(LocalDate.of(2027, 1, 1)).validTo(LocalDate.of(2027, 12, 31)).isActive(true).build();
+        }
+
+        @Test
+        @DisplayName("房源：店鋪開關關閉 → 規則一律不套用，回基準價，連規則都不查")
+        void room_storeToggleOff_rulesDoNotApply() {
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(storeRoom()));
+            when(featureToggleService.isFeatureEnabledForTenant(STORE_ID, TOGGLE)).thenReturn(false);
+
+            PricingDto.CalculatePriceResponse response = pricingService.calculatePrice(roomRequest());
+
+            assertThat(response.getBaseTotal()).isEqualByComparingTo("2000");
+            assertThat(response.getAdjustedTotal()).as("開關關閉，即使有生效中的規則也不調整").isEqualByComparingTo("2000");
+            assertThat(response.getDiscount()).isEqualByComparingTo(BigDecimal.ZERO);
+            assertThat(response.getBreakdown()).hasSize(2).allSatisfy(day -> {
+                assertThat(day.getAppliedRuleName()).isNull();
+                assertThat(day.getAdjustedPrice()).isEqualByComparingTo(BASE_PRICE);
+            });
+            verify(pricingRuleRepository, never()).findActiveRulesForDateRange(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("房源（對照）：店鋪開關開啟 → 同一條規則照常套用")
+        void room_storeToggleOn_rulesApply() {
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(storeRoom()));
+            when(featureToggleService.isFeatureEnabledForTenant(STORE_ID, TOGGLE)).thenReturn(true);
+            when(pricingRuleRepository.findActiveRulesForDateRange(any(), any(), any()))
+                    .thenReturn(List.of(roomOverride()));
+
+            PricingDto.CalculatePriceResponse response = pricingService.calculatePrice(roomRequest());
+
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo("3000"); // 1500 × 2 晚
+            assertThat(response.getBreakdown()).allSatisfy(day ->
+                    assertThat(day.getAppliedRuleName()).isEqualTo("Manual Override 1500"));
+        }
+
+        @Test
+        @DisplayName("房源：看的是房源所屬店鋪的開關，不是呼叫者租戶的——呼叫者開啟、店鋪關閉 → 不套用")
+        void room_callerToggleOnButStoreToggleOff_rulesDoNotApply() {
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(storeRoom()));
+            // 誘餌：萬一關卡錯誤放行，這條生效中的規則會讓總額變成 3000——「總額仍是 2000」才真的證明規則沒被套用
+            // （沒有這條，放行時 repository 回空清單，結果一樣是基準價，斷言就空洞了；Sprint 309 突變 Q3 發現）
+            lenient().when(pricingRuleRepository.findActiveRulesForDateRange(any(), any(), any()))
+                    .thenReturn(List.of(roomOverride()));
+            // 誘餌：呼叫者租戶的開關是開啟的，正確的實作永遠不會讀它（所以用 lenient，下面另以 verify 證明沒讀過）
+            lenient().when(featureToggleService.isFeatureEnabledForTenant(TENANT_ID, TOGGLE)).thenReturn(true);
+            when(featureToggleService.isFeatureEnabledForTenant(STORE_ID, TOGGLE)).thenReturn(false);
+
+            PricingDto.CalculatePriceResponse response = pricingService.calculatePrice(roomRequest());
+
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo("2000");
+            verify(featureToggleService, never()).isFeatureEnabled(anyString());
+            verify(featureToggleService, never()).isFeatureEnabledForTenant(eq(TENANT_ID), anyString());
+        }
+
+        @Test
+        @DisplayName("房源：呼叫者租戶的開關關閉、店鋪開啟 → 照常套用（不受呼叫者租戶影響）")
+        void room_callerToggleOffButStoreToggleOn_rulesApply() {
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(storeRoom()));
+            // 誘餌：呼叫者租戶的開關是關閉的，正確的實作永遠不會讀它（所以用 lenient，下面另以 verify 證明沒讀過）
+            lenient().when(featureToggleService.isFeatureEnabledForTenant(TENANT_ID, TOGGLE)).thenReturn(false);
+            when(featureToggleService.isFeatureEnabledForTenant(STORE_ID, TOGGLE)).thenReturn(true);
+            when(pricingRuleRepository.findActiveRulesForDateRange(any(), any(), any()))
+                    .thenReturn(List.of(roomOverride()));
+
+            PricingDto.CalculatePriceResponse response = pricingService.calculatePrice(roomRequest());
+
+            assertThat(response.getAdjustedTotal()).isEqualByComparingTo("3000");
+            verify(featureToggleService, never()).isFeatureEnabled(anyString());
+            verify(featureToggleService, never()).isFeatureEnabledForTenant(eq(TENANT_ID), anyString());
+        }
+
+        @Test
+        @DisplayName("商品：店鋪開關關閉 → 有效售價是基準價，連規則都不查")
+        void product_storeToggleOff_rulesDoNotApply() {
+            when(listingRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(storeProduct()));
+            when(featureToggleService.isFeatureEnabledForTenant(STORE_ID, TOGGLE)).thenReturn(false);
+
+            PricingDto.EffectivePriceResponse response = pricingService.getEffectivePrice(PRODUCT_ID, productDate, 1);
+
+            assertThat(response.getBasePrice()).isEqualByComparingTo(BASE_PRICE);
+            assertThat(response.getEffectivePrice()).as("開關關閉，規則不套用").isEqualByComparingTo(BASE_PRICE);
+            assertThat(response.getAppliedRuleId()).isNull();
+            assertThat(response.getAppliedRuleName()).isNull();
+            verify(pricingRuleRepository, never()).findByListingIdAndIsActiveTrue(any());
+        }
+
+        @Test
+        @DisplayName("商品（對照）：店鋪開關開啟 → 規則照常套用")
+        void product_storeToggleOn_rulesApply() {
+            when(listingRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(storeProduct()));
+            when(featureToggleService.isFeatureEnabledForTenant(STORE_ID, TOGGLE)).thenReturn(true);
+            when(pricingRuleRepository.findByListingIdAndIsActiveTrue(PRODUCT_ID))
+                    .thenReturn(List.of(productOverride()));
+
+            PricingDto.EffectivePriceResponse response = pricingService.getEffectivePrice(PRODUCT_ID, productDate, 1);
+
+            assertThat(response.getEffectivePrice()).isEqualByComparingTo("800");
+            assertThat(response.getAppliedRuleName()).isEqualTo("Product Override 800");
+        }
+
+        @Test
+        @DisplayName("商品：看的是商品所屬店鋪的開關，不是呼叫者租戶的——呼叫者開啟、店鋪關閉 → 不套用")
+        void product_callerToggleOnButStoreToggleOff_rulesDoNotApply() {
+            when(listingRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(storeProduct()));
+            // 誘餌：萬一關卡錯誤放行，這條生效中的規則會讓有效售價變成 800——「仍是基準價」才真的證明規則沒被套用
+            // （理由同房間案例；Sprint 309 突變 Q3 發現）
+            lenient().when(pricingRuleRepository.findByListingIdAndIsActiveTrue(PRODUCT_ID))
+                    .thenReturn(List.of(productOverride()));
+            // 誘餌：呼叫者租戶的開關是開啟的，正確的實作永遠不會讀它（所以用 lenient，下面另以 verify 證明沒讀過）
+            lenient().when(featureToggleService.isFeatureEnabledForTenant(TENANT_ID, TOGGLE)).thenReturn(true);
+            when(featureToggleService.isFeatureEnabledForTenant(STORE_ID, TOGGLE)).thenReturn(false);
+
+            PricingDto.EffectivePriceResponse response = pricingService.getEffectivePrice(PRODUCT_ID, productDate, 1);
+
+            assertThat(response.getEffectivePrice()).isEqualByComparingTo(BASE_PRICE);
+            verify(featureToggleService, never()).isFeatureEnabled(anyString());
+            verify(featureToggleService, never()).isFeatureEnabledForTenant(eq(TENANT_ID), anyString());
+        }
+
+        @Test
+        @DisplayName("商品：呼叫者租戶的開關關閉、店鋪開啟 → 照常套用（不受呼叫者租戶影響）")
+        void product_callerToggleOffButStoreToggleOn_rulesApply() {
+            when(listingRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(storeProduct()));
+            // 誘餌：呼叫者租戶的開關是關閉的，正確的實作永遠不會讀它（所以用 lenient，下面另以 verify 證明沒讀過）
+            lenient().when(featureToggleService.isFeatureEnabledForTenant(TENANT_ID, TOGGLE)).thenReturn(false);
+            when(featureToggleService.isFeatureEnabledForTenant(STORE_ID, TOGGLE)).thenReturn(true);
+            when(pricingRuleRepository.findByListingIdAndIsActiveTrue(PRODUCT_ID))
+                    .thenReturn(List.of(productOverride()));
+
+            PricingDto.EffectivePriceResponse response = pricingService.getEffectivePrice(PRODUCT_ID, productDate, 1);
+
+            assertThat(response.getEffectivePrice()).isEqualByComparingTo("800");
+            verify(featureToggleService, never()).isFeatureEnabled(anyString());
+            verify(featureToggleService, never()).isFeatureEnabledForTenant(eq(TENANT_ID), anyString());
         }
     }
 

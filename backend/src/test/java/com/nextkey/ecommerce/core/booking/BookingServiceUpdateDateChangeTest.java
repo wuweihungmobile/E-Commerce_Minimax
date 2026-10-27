@@ -25,7 +25,6 @@ import org.mockito.quality.Strictness;
 
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
-import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.core.promo.PromoService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
@@ -77,9 +76,6 @@ class BookingServiceUpdateDateChangeTest {
 
     @Mock
     private PricingService pricingService;
-
-    @Mock
-    private FeatureToggleService featureToggleService;
 
     @Mock
     private PromoService promoService;
@@ -166,7 +162,8 @@ class BookingServiceUpdateDateChangeTest {
         when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
         when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(roomListing()));
         when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(Room.builder().maxGuests(4).build()));
-        when(featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")).thenReturn(false);
+        // DEF-424：BookingService 不再自己判斷動態定價開關，一律向引擎查詢；這裡測的不是定價，引擎回「沒有規則生效」
+        when(pricingService.calculatePrice(any())).thenReturn(BookingPricingFixtures.noAdjustment());
 
         LocalDate newCheckIn = OLD_CHECK_IN.plusDays(5);
         LocalDate newCheckOut = OLD_CHECK_OUT.plusDays(5); // 仍是 2 晚

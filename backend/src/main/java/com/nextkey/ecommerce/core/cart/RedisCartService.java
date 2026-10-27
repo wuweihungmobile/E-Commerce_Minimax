@@ -19,7 +19,6 @@ import org.springframework.stereotype.Service;
 
 import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.api.dto.PricingDto;
-import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.logistics.ShippingTemplateService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.core.promo.PromoService;
@@ -58,7 +57,6 @@ public class RedisCartService {
     private final PromoService promoService;
     private final PromoCodeRepository promoCodeRepository;
     private final PricingService pricingService;
-    private final FeatureToggleService featureToggleService;
     private final ShippingTemplateService shippingTemplateService;
     private final TenantRepository tenantRepository;
 
@@ -619,8 +617,8 @@ public class RedisCartService {
         String appliedRuleName = null;
         String priceAdjustmentType = null;
 
-        // 動態定價（PRODUCT）：DYNAMIC_PRICING_ENABLED 開啟且規則調整後單價 ≠ 現價時，
-        // 以調整後單價重算 unitPrice/subtotal（讀取時算，Redis 只存 basePrice 避免 stale，AI-2403）。
+        // 動態定價（PRODUCT）：商品所屬店鋪的 DYNAMIC_PRICING_ENABLED 開啟（由 PricingService 把關，DEF-424）且規則調整後
+        // 單價 ≠ 現價時，以調整後單價重算 unitPrice/subtotal（讀取時算，Redis 只存 basePrice 避免 stale，AI-2403）。
         // AI-2406c：放寬含漲價（effectivePrice > 現價亦計入）；discountAmount 為有號差額
         // （正=折扣、負=加價），priceAdjustmentType 明示方向。ROOM 不走此路徑（其計價於 booking，S43/S46）。
         PricingDto.EffectivePriceResponse adjustment = tryProductAdjustment(item, listing);
@@ -657,15 +655,17 @@ public class RedisCartService {
     }
 
     /**
-     * PRODUCT 動態定價調整試算（AI-2403 折扣；AI-2406c 放寬含漲價）：toggle 開啟、為 PRODUCT、
+     * PRODUCT 動態定價調整試算（AI-2403 折扣；AI-2406c 放寬含漲價）：為 PRODUCT、
      * 且規則調整後單價 ≠ 現存單價時回結果（含折扣 effectivePrice&lt;現價 或漲價 &gt;現價），
      * 否則回 null（呼叫端 fallback 原價，向後相容）。計算失敗降級為不套用，避免阻斷購物車。
      * 以「今日」為規則有效期基準（PRODUCT 無入住日概念）。
+     *
+     * <p>DEF-424（Sprint 309，使用者裁決）：動態定價開關由 {@link PricingService#getEffectivePrice} 以<b>商品所屬店鋪</b>
+     * 的開關把關，關閉時它回基準價，這裡的 {@code hasAdjustment} 就是 false、回 null。原本這裡查的是呼叫者租戶的開關——購物車使用者都是系統租戶
+     * 佔位值，其開關在種子是開啟，於是店鋪自己的開關關閉後既有規則仍套用在消費者的購物車。
      */
     private PricingDto.EffectivePriceResponse tryProductAdjustment(CartItemData item, Listing listing) {
-        if (listing == null
-                || !"PRODUCT".equals(item.getListingType())
-                || !featureToggleService.isFeatureEnabled("DYNAMIC_PRICING_ENABLED")) {
+        if (listing == null || !"PRODUCT".equals(item.getListingType())) {
             return null;
         }
         try {

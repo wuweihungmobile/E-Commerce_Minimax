@@ -1,8 +1,8 @@
 # API 規格文件 - M01 商品中心 / API Specification - M01 Product Center
 
-> **文件版本**: v2.1（Sprint 304：DEF-415——商品與 SKU 的寫入端點要求呼叫者有真正的店鋪；v2.0 為 Sprint 273 依實作全面改寫，DEF-286 範圍）
+> **文件版本**: v2.2（Sprint 309：DEF-424——§4.3、§4.4 補記動態定價開關以房源／商品所屬店鋪把關）；v2.1（Sprint 304：DEF-415——商品與 SKU 的寫入端點要求呼叫者有真正的店鋪；v2.0 為 Sprint 273 依實作全面改寫，DEF-286 範圍）
 > **建立日期**: 2026-04-09（v1.0）
-> **最後更新**: 2026-10-24
+> **最後更新**: 2026-10-28
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`ListingController`／`PublicListingController`／`ProductController`（`api/controller/`）、`ProductService`（`core/product/`）、`PricingService`（動態價格計算，屬 M12）、`ReviewService`（評分統計，屬 M08）、`ProductSkuService`（`core/product/`）、`CreateListingRequest`／`ProductDto`／`SkuDto`／`ListingResponse`／`ReviewDto`／`PricingDto`（`api/dto/`）、`Listing`／`Product`（`domain/model/`）
@@ -164,6 +164,8 @@ v1.0 本文件與舊版 [API_Listing_Unified_Create.md](./API_Listing_Unified_Cr
 ### 4.3 `GET /v2/listings/{id}/price` — 動態價格試算
 
 **權限**：`product:read` 或 `room:read`。查詢參數 `checkIn`／`checkOut`（ISO 日期，必填）。回應 `PricingDto.CalculatePriceResponse`：`roomListingId`、`checkInDate`、`checkOutDate`、`nights`、`baseTotal`、`adjustedTotal`、`discount`、`currency`、`breakdown`（逐日 `PriceBreakdown`：`date`／`basePrice`／`adjustedPrice`／`appliedRuleName`／`adjustmentType`／`adjustmentValue`）。語意上僅對 `ROOM` 類型有意義（按日計價），對 `PRODUCT` 呼叫不會報錯但計算結果無業務意義；計價規則見 [API_M12_Dynamic_Pricing.md](./API_M12_Dynamic_Pricing.md)。
+
+**動態定價開關（Sprint 309／`DEF-424`）**：本節與 §4.4 都經過 `PricingService`，以**房源／商品所屬店鋪**的 `DYNAMIC_PRICING_ENABLED` 把關——店鋪的開關關閉（含管理員撤銷）時規則一律不套用，回基準價（本節：`adjustedTotal == baseTotal`、`discount = 0`、`breakdown` 沒有規則名；§4.4：`effectivePrice == basePrice`、沒有 `appliedRule*`），與呼叫者是誰、呼叫者租戶的開關無關；重新開啟立即恢復。詳見 [API_M12_Dynamic_Pricing.md](./API_M12_Dynamic_Pricing.md) §1.2。
 
 ### 4.4 `GET /v2/listings/{listingId}/effective-price` — 有效單價試算
 

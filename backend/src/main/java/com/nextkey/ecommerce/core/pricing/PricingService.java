@@ -238,6 +238,20 @@ public class PricingService {
     }
 
     /**
+     * 這個房源／商品所屬的店鋪有沒有開啟動態定價（DEF-424，Sprint 309 使用者裁決）。
+     *
+     * <p>看的是<b>房源／商品所屬店鋪</b>的開關（{@code listing.getTenantId()}），不是呼叫者租戶的：購物車使用者都是系統租戶佔位值，
+     * 它的開關在種子是開啟，原本呼叫端查它，於是店鋪自己的開關只管「建立規則」，管理員關閉後既有規則仍套用在消費者身上。
+     * 平台自營的房源／商品屬於系統租戶，仍由系統租戶的開關決定。
+     *
+     * <p>連帶：日曆手動改價（{@code calendar/price}、{@code override}）建出的 {@code MANUAL_OVERRIDE} 規則也是規則，
+     * 開關關閉時同樣不生效（見追蹤表 DEF-426）。
+     */
+    private boolean isDynamicPricingEnabledFor(final Listing listing) {
+        return featureToggleService.isFeatureEnabledForTenant(listing.getTenantId(), "DYNAMIC_PRICING_ENABLED");
+    }
+
+    /**
      * 取得計價用的 listing 並優雅降級（AI-2406b）：room 記錄缺失時 fallback 以 listing 取基準價
      * （有 listing 即可計價，不因無 room 記錄即 404）；listing 或 basePrice 缺失才視為無法計價，
      * 回明確 4xx（E_4000）而非 NPE→500。呼叫端（BookingService.tryDynamicPricing / dailyDiscountMap）
@@ -275,9 +289,13 @@ public class PricingService {
         // 未提供時以營運時區（UTC+8）的今日計（DEF-269：不可用 JVM 預設時區，正式環境為 UTC 會少算一天）。
         LocalDate bookingDate = request.getBookingDate() != null ? request.getBookingDate() : BusinessTime.today();
 
-        // 取得所有適用的規則
-        List<PricingRule> rules = new ArrayList<>(pricingRuleRepository.findActiveRulesForDateRange(
-                request.getRoomListingId(), checkIn, checkOut.minusDays(1)));
+        // 取得所有適用的規則。DEF-424（Sprint 309，使用者裁決）：規則只在房源所屬店鋪的動態定價開關開啟時套用；
+        // 開關關閉（含管理員撤銷）時連規則都不查，逐日價格就是基準價。訂房計價、整月日曆與價格試算端點都經過這裡，
+        // 所以在引擎一處把關、處處一致，不必每個呼叫端各查一次（先前呼叫端查的是呼叫者租戶的開關）。
+        List<PricingRule> rules = isDynamicPricingEnabledFor(listing)
+                ? new ArrayList<>(pricingRuleRepository.findActiveRulesForDateRange(
+                        request.getRoomListingId(), checkIn, checkOut.minusDays(1)))
+                : new ArrayList<>();
         // DEF-268：資料庫裡既存的壞規則（建立驗證上線前寫入）一律略過，照原價/次一優先級規則計價
         rules.removeIf(rule -> !isRuleConfigUsable(rule));
 
@@ -812,13 +830,18 @@ public class PricingService {
 
         BigDecimal basePrice = listing.getBasePrice();
 
-        List<PricingRule> activeRules = pricingRuleRepository.findByListingIdAndIsActiveTrue(listingId)
-                .stream()
-                .filter(r -> !checkDate.isBefore(r.getValidFrom()) && !checkDate.isAfter(r.getValidTo()))
-                .filter(this::isRuleConfigUsable) // DEF-268：略過既存的壞規則
-                .sorted(Comparator.comparingInt(PricingRule::getPriority).reversed()
-                        .thenComparing(PricingRule::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
-                .collect(Collectors.toList());
+        // DEF-424（Sprint 309，使用者裁決）：商品所屬店鋪的動態定價開關關閉時規則一律不套用（有效售價就是基準價），
+        // 見 calculatePrice 的同一道把關；購物車與 effective-price 端點都經過這裡。
+        List<PricingRule> activeRules = !isDynamicPricingEnabledFor(listing)
+                ? List.of()
+                : pricingRuleRepository.findByListingIdAndIsActiveTrue(listingId)
+                        .stream()
+                        .filter(r -> !checkDate.isBefore(r.getValidFrom()) && !checkDate.isAfter(r.getValidTo()))
+                        .filter(this::isRuleConfigUsable) // DEF-268：略過既存的壞規則
+                        .sorted(Comparator.comparingInt(PricingRule::getPriority).reversed()
+                                .thenComparing(PricingRule::getCreatedAt,
+                                        Comparator.nullsLast(Comparator.reverseOrder())))
+                        .collect(Collectors.toList());
 
         if (activeRules.isEmpty()) {
             return PricingDto.EffectivePriceResponse.builder()

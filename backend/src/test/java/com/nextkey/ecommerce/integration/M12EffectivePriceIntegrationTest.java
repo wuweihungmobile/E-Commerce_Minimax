@@ -5,6 +5,7 @@ import com.nextkey.ecommerce.domain.model.room.PricingRule;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.PricingRuleRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +25,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -35,6 +39,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - IT-EP-001: 有定價規則時，effectivePrice 反映折扣（< basePrice）
  * - IT-EP-002: 無定價規則時，effectivePrice = basePrice，appliedRuleType = null
  * - IT-EP-003: 不存在的 listingId → 404
+ * - IT-EP-004: MANUAL_OVERRIDE 漲價（AI-2406c）
+ * - IT-EP-005: 商品所屬店鋪的動態定價開關關閉 → 規則不套用（DEF-424，Sprint 309）
+ *
+ * <p>DEF-424（Sprint 309，使用者裁決「關閉後立即失效」）：規則只在<b>商品所屬店鋪</b>的動態定價開關開啟時套用。這個類別先前沒有
+ * 替商品所屬的店鋪開啟開關（{@code FeatureToggleService} 是 {@code @MockBean}，預設回 {@code false}），因為舊的
+ * {@code effective-price} 端點根本不查開關——開關狀態一直無關緊要，測試因此一直是綠的。現在 {@link #storeHasDynamicPricingEnabled}
+ * 明說前提：這家店鋪的動態定價是開啟的；關閉的情形由 IT-EP-005 與 {@code StoreToggleGatesApplicationE2ETest}（真實 PostgreSQL）覆蓋。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -64,6 +75,13 @@ class M12EffectivePriceIntegrationTest {
     private static final String TEST_TENANT_ID = "550e8400-e29b-41d4-a716-446655440001";
     private static final String BASE_URL = "/v2/listings/" + LISTING_ID + "/effective-price";
     private static final BigDecimal BASE_PRICE = BigDecimal.valueOf(500.00);
+
+    /** 前提：商品所屬店鋪的動態定價開關是開啟的（DEF-424）。IT-EP-005 會在案例內覆蓋成關閉。 */
+    @BeforeEach
+    void storeHasDynamicPricingEnabled() {
+        when(featureToggleService.isFeatureEnabledForTenant(UUID.fromString(TEST_TENANT_ID), "DYNAMIC_PRICING_ENABLED"))
+                .thenReturn(true);
+    }
 
     private Listing buildMockListing() {
         Listing listing = Listing.builder()
@@ -181,5 +199,30 @@ class M12EffectivePriceIntegrationTest {
                 .andExpect(jsonPath("$.data.basePrice").value(500.00))
                 .andExpect(jsonPath("$.data.effectivePrice").value(650.00))
                 .andExpect(jsonPath("$.data.appliedRuleType").value("MANUAL_OVERRIDE"));
+    }
+
+    // ── IT-EP-005: 商品所屬店鋪的動態定價開關關閉 → 規則不套用（DEF-424，Sprint 309）──
+
+    @Test
+    @DisplayName("IT-EP-005: 商品所屬店鋪的動態定價開關關閉時，即使有生效中的規則，effectivePrice 仍是 basePrice（DEF-424）")
+    void getEffectivePrice_storeToggleDisabled_returnsBasePrice() throws Exception {
+        UUID ruleId = UUID.randomUUID();
+        when(featureToggleService.isFeatureEnabledForTenant(UUID.fromString(TEST_TENANT_ID), "DYNAMIC_PRICING_ENABLED"))
+                .thenReturn(false);
+        when(listingRepository.findById(LISTING_ID)).thenReturn(Optional.of(buildMockListing()));
+        // 誘餌：萬一關卡錯誤放行，這條規則會讓有效售價變成 450——「仍是 500」才真的證明規則沒被套用
+        when(pricingRuleRepository.findByListingIdAndIsActiveTrue(LISTING_ID))
+                .thenReturn(List.of(buildActiveRule(ruleId, 10)));
+
+        mockMvc.perform(get(BASE_URL)
+                        .param("checkDate", LocalDate.now().toString())
+                        .param("stayDays", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.basePrice").value(500.00))
+                .andExpect(jsonPath("$.data.effectivePrice").value(500.00))
+                .andExpect(jsonPath("$.data.appliedRuleType").doesNotExist())
+                .andExpect(jsonPath("$.data.appliedRuleId").doesNotExist());
+        verify(pricingRuleRepository, never()).findByListingIdAndIsActiveTrue(any());
     }
 }

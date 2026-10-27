@@ -1,9 +1,9 @@
 # API 規格文件 - M06 預訂系統 / API Specification - M06 Booking System
 
 > **文件編號**: API-M06
-> **文件版本**: v2.3（Sprint 247 訂房納入結算；v2.2 為 Sprint 246 新增狀態日誌、店家後台按鈕與人工退款；v2.1 為 Sprint 245 新增入住與退房；v2.0 為 Sprint 243 依實作改寫）
+> **文件版本**: v2.4（Sprint 309：DEF-424——可用性報價補記動態定價開關以房源所屬店鋪把關）；v2.3（Sprint 247 訂房納入結算；v2.2 為 Sprint 246 新增狀態日誌、店家後台按鈕與人工退款；v2.1 為 Sprint 245 新增入住與退房；v2.0 為 Sprint 243 依實作改寫）
 > **建立日期**: 2026-04-28（v1.0，Sprint 4）
-> **最後更新**: 2026-10-09
+> **最後更新**: 2026-10-28
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`BookingController`、`BookingPaymentController`、`DashboardBookingController`、`BookingService`、`BookingNoShowService`、`RoomCalendarService`、`BookingRefundPolicy`、`PaymentStateService`、`BookingDto`、`GlobalExceptionHandler`；**每個回應形狀、狀態碼、錯誤碼與權限宣稱都用真實 PostgreSQL＋Redis（日曆鎖）＋完整 HTTP／JWT／權限鏈實測**（[BookingApiRealStackIntegrationTest](../../backend/src/test/java/com/nextkey/ecommerce/integration/BookingApiRealStackIntegrationTest.java)）
@@ -226,7 +226,7 @@
 | `available` | 區間內每一晚都可訂，且都在開放窗內 |
 | `unavailableReason` | 不可訂的原因碼：`INVALID_DATE_RANGE`（退房不晚於入住，**仍是 `200`，不是錯誤**）、`NOT_OPEN_FOR_BOOKING`（含未開放日，優先回報）、`BOOKED`、`BLOCKED`、`MAINTENANCE`；可訂為 `null` |
 | `totalPrice` | 總價（動態定價規則生效時是調整後總價）；不可訂且是日期無效時為 `null` |
-| `originalTotalPrice`／`discountAmount`／`appliedRuleName`／`priceAdjustmentType` | 動態定價規則生效時填入：調整前總價、有號差額（正＝折扣、負＝加價）、規則名、方向（`DISCOUNT`／`MARKUP`／`NONE`）；沒有規則時為 `null` |
+| `originalTotalPrice`／`discountAmount`／`appliedRuleName`／`priceAdjustmentType` | 動態定價規則生效時填入：調整前總價、有號差額（正＝折扣、負＝加價）、規則名、方向（`DISCOUNT`／`MARKUP`／`NONE`）；沒有規則時為 `null`。**房源所屬店鋪的動態定價開關關閉時規則一律不生效**（Sprint 309／`DEF-424`，由 `PricingService` 以房源所屬店鋪把關，與呼叫者是誰無關；訂房建單的總價、整月日曆 `GET /v2/bookings/calendar` 的每日價同理），這四欄為 `null`、`totalPrice` 就是原價 |
 | `calendarDetails` | 可訂時是區間內「已有記錄」的日曆項目（沒有記錄的日期不在內，所以全新的房源是 `[]`）；不可訂為 `null` |
 
 #### CalendarEntry — `GET /v2/bookings/calendar` 的 `data[]`

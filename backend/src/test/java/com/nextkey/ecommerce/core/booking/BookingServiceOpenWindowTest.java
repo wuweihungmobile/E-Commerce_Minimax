@@ -2,12 +2,12 @@ package com.nextkey.ecommerce.core.booking;
 
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.core.audit.AuditService;
-import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.core.pricing.PricingService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.room.Room;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.shared.time.BusinessTime;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +24,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 /**
@@ -47,10 +48,18 @@ class BookingServiceOpenWindowTest {
     @Mock private com.nextkey.ecommerce.domain.repository.TenantRepository tenantRepository;
     @Mock private com.nextkey.ecommerce.domain.repository.UserRepository userRepository;
     @Mock private PricingService pricingService;
-    @Mock private FeatureToggleService featureToggleService;
     @Mock private AuditService auditService;
 
     @InjectMocks private BookingService bookingService;
+
+    /**
+     * DEF-424（Sprint 309）：BookingService 不再自己判斷動態定價開關，一律向引擎查詢。這個類別測的是開放窗、不是定價，
+     * 引擎預設回「沒有規則生效」（與店鋪開關關閉時的實際結果相同）。部分案例不會走到計價，所以用 lenient。
+     */
+    @BeforeEach
+    void stubPricingEngine() {
+        lenient().when(pricingService.calculatePrice(any())).thenReturn(BookingPricingFixtures.noAdjustment());
+    }
 
     private static final UUID ROOM_LISTING_ID = UUID.fromString("660e8400-e29b-41d4-a716-446655440002");
     private static final BigDecimal BASE_PRICE = BigDecimal.valueOf(1000);

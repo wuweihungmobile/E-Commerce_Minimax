@@ -14,16 +14,17 @@ import { Account, adminAccessToken, seedStore } from './helpers/store';
  * - E2E-PCART-02 是 E2E-PCART-01 的對照組：店主為「自己的」商品建立規則，消費者的購物車與訂單必須是規則價。沒有它，
  *   E2E-PCART-01 的「原價」會是空洞的斷言——規則根本不生效時看到的也是原價。
  *
- * E2E-PCART-03 是「現況記錄」，不是規格（DEF-424，待使用者裁決）：
- * - 店鋪層的 `DYNAMIC_PRICING_ENABLED` 只管「能不能建立規則」（`PricingService.createRule` 的第一行）。規則套用到購物車時，
- *   開關是以**呼叫者的租戶**查（`FeatureToggleService.isFeatureEnabled` 讀 `TenantContext`），而購物車端點只有 BUYER
- *   （與全權限的 SUPER_ADMIN）持有權限（`RolePermissionMapping`；訂房端點的權限沒有逐一查），他們的租戶都是系統租戶佔位值——
- *   它的開關在 Flyway 種子（V1、V6）是 TRUE。於是系統租戶的開關實質上是全平台的「套用」總開關，管理員關掉某家店的開關，
- *   它既有的規則照樣套用到消費者。
- * - 這**不違反規格**：PRD 權限矩陣寫的是「Service 層在建規則前查詢」，API_M12 §1.2 也把「只擋新建規則」寫成現況；規格沒有定義
- *   「撤銷後既有規則是否繼續套用」。這是「該如何」的語意問題（建議改為看商品所屬店鋪的開關，但平台自營規則與 SUPER_ADMIN
- *   替店鋪設的規則要怎麼算需要裁決），所以本案例只記錄現況，不預設答案：裁決後若修復，請把斷言改成原價；若維持現狀，
- *   請把標題的「待裁決」拿掉。
+ * E2E-PCART-03／04 守住 DEF-424（Sprint 309，使用者以互動選項裁決「關閉後立即失效」）：
+ * - 原本店鋪層的 `DYNAMIC_PRICING_ENABLED` 只管「能不能建立規則」；規則套用到購物車時，開關是以**呼叫者的租戶**查
+ *   （`FeatureToggleService.isFeatureEnabled` 讀 `TenantContext`），而購物車端點只有 BUYER 持有權限，他們的租戶都是系統租戶
+ *   佔位值——它的開關在 Flyway 種子（V1、V6）是 TRUE。於是管理員關掉某家店的開關，它既有的規則照樣套用到消費者
+ *   （Sprint 308 的 E2E-PCART-03 當時是「現況記錄」，斷言的就是這個行為）。
+ * - 這**不違反當時的規格**（PRD 只寫「Service 層在建規則前查詢」），是規格沒定義的產品語意，所以 Sprint 308 只記錄、不擅自改；
+ *   Sprint 309 依使用者裁決，由定價引擎（`PricingService.calculatePrice`／`getEffectivePrice`）統一以**房源／商品所屬店鋪**的
+ *   開關把關：關閉時規則一律不套用（購物車、訂房、價格試算端點自動一致），重新開啟立即恢復，且各店鋪互不影響。
+ *   03 因此從「規則照樣套用」翻成「回原價」；04 驗證重新開啟後同一條規則恢復。
+ * - 同一個語意在 Hibernate 測試庫與 Flyway 資料庫的前提不同（系統租戶的開關：測試庫關閉、Flyway 種子開啟），後端的 Java E2E
+ *   （`StoreToggleGatesApplicationE2ETest`）因此不依賴它；本規格跑在 Flyway 資料庫，是最接近正式環境的一道。
  *
  * 資料全由真實流程建立（見 helpers/store.ts）；店鋪與消費者都用 API 登入，不碰瀏覽器登入狀態、少用登入限流額度。
  * 店鋪 A（HYBRID，有房源與商品）是「想夾帶別店商品 id 的賣家」；店鋪 B（只賣商品）是被夾帶的對象。
@@ -37,6 +38,8 @@ const BASE_PRICE = 1000;
 const OWN_RULE_PRICE = 800;
 const SMUGGLED_PRICE = 1;
 const OWN_RULE_NAME = 'E2E 店鋪B自己的規則';
+const A_RULE_PRICE = 900;
+const A_RULE_NAME = 'E2E 店鋪A自己的規則';
 
 type AuthHeaders = { Authorization: string };
 type CartItem = {
@@ -124,6 +127,7 @@ test.describe('AT-PRICING-CART-REAL: 動態定價 規則→購物車→訂單（
   let ownerA: Account;
   let ownerB: Account;
   let roomA: string;
+  let productA: string;
   let tenantB: string;
   let productB: string;
 
@@ -144,6 +148,7 @@ test.describe('AT-PRICING-CART-REAL: 動態定價 規則→購物車→訂單（
       });
       ownerA = seededA.owner;
       roomA = seededA.roomId as string;
+      productA = seededA.productId as string;
       ownerB = seededB.owner;
       tenantB = seededB.tenantId;
       productB = seededB.productId as string;
@@ -215,7 +220,16 @@ test.describe('AT-PRICING-CART-REAL: 動態定價 規則→購物車→訂單（
     expect(order.totalAmount, '消費者實際被收的金額是規則價').toBe(OWN_RULE_PRICE);
   });
 
-  test('E2E-PCART-03: 【現況記錄・DEF-424 待裁決】管理員關閉店鋪 B 的動態定價 → 新規則被擋（E-2004），但既有的規則仍套用在消費者的購物車', async ({ request }) => {
+  test('E2E-PCART-03: 管理員關閉店鋪 B 的動態定價 → 新規則被擋（E-2004），既有規則立即對消費者失效（購物車與訂單回原價）；開關仍開的店鋪 A 不受影響（DEF-424）', async ({ request }) => {
+    // 店鋪 A 的開關仍開啟：先替它自己的商品建一條規則，之後用來證明「各店鋪的開關互不影響」
+    const createA = await postRule(request, await loginViaApi(request, ownerA), {
+      listingId: productA,
+      ruleName: A_RULE_NAME,
+      config: { price: A_RULE_PRICE },
+    });
+    expect(createA.status(), await createA.text()).toBe(201);
+
+    // 管理員撤銷店鋪 B 的動態定價（B 在 E2E-PCART-02 建立的規則還在，沒有被刪除或停用）
     await setDynamicPricing(request, adminToken, tenantB, false);
 
     const blocked = await postRule(request, await loginViaApi(request, ownerB), {
@@ -229,12 +243,41 @@ test.describe('AT-PRICING-CART-REAL: 動態定價 規則→購物車→訂單（
 
     const consumer = await newConsumer(request);
     await addToCart(request, consumer, productB);
+    await addToCart(request, consumer, productA);
+    const cart = await getCart(request, consumer);
+    expect(cart.items, '購物車有兩家店鋪的商品').toHaveLength(2);
+    const itemB = cart.items.find((i) => i.listingId === productB);
+    const itemA = cart.items.find((i) => i.listingId === productA);
+    expect(itemB, '店鋪 B 的商品在購物車內').toBeTruthy();
+    expect(itemA, '店鋪 A 的商品在購物車內').toBeTruthy();
+    expect(itemB!.unitPrice, '店鋪 B 的開關已關閉：既有規則立即失效，購物車回原價（Sprint 308 的現況記錄在此翻轉）').toBe(BASE_PRICE);
+    expect(itemB!.appliedRuleName ?? null, '沒有任何規則套用在店鋪 B 的商品上').toBeNull();
+    expect(itemB!.originalUnitPrice ?? null).toBeNull();
+    expect(itemA!.unitPrice, '店鋪 A 的開關仍開啟：它的規則照常套用，不受店鋪 B 的開關影響').toBe(A_RULE_PRICE);
+    expect(itemA!.appliedRuleName).toBe(A_RULE_NAME);
+
+    // 真正重要的是消費者實際被收多少：訂單明細與總額跟著購物車回原價
+    const order = await placeOrder(request, consumer, tenantB);
+    expect(order.items).toHaveLength(1);
+    expect(order.items[0].unitPrice, '訂單明細單價是原價').toBe(BASE_PRICE);
+    expect(order.totalAmount, '消費者實際被收的金額是原價，不是已被撤銷的規則價').toBe(BASE_PRICE);
+  });
+
+  test('E2E-PCART-04: 管理員重新開啟店鋪 B 的動態定價 → 同一條規則立刻恢復套用（沒有被刪除或停用），訂單金額跟著回到規則價（DEF-424）', async ({ request }) => {
+    await setDynamicPricing(request, adminToken, tenantB, true);
+
+    const consumer = await newConsumer(request);
+    await addToCart(request, consumer, productB);
     const cart = await getCart(request, consumer);
     expect(cart.items).toHaveLength(1);
-    expect(
-      cart.items[0].unitPrice,
-      'DEF-424 現況：店鋪的開關關閉後，既有規則仍套用（套用看的是系統租戶的開關）。若裁決改為「看商品所屬店鋪的開關」，這裡應改成斷言原價'
-    ).toBe(OWN_RULE_PRICE);
-    expect(cart.items[0].appliedRuleName).toBe(OWN_RULE_NAME);
+    expect(cart.items[0]).toMatchObject({
+      unitPrice: OWN_RULE_PRICE,
+      originalUnitPrice: BASE_PRICE,
+      appliedRuleName: OWN_RULE_NAME,
+    });
+
+    const order = await placeOrder(request, consumer, tenantB);
+    expect(order.items[0].unitPrice).toBe(OWN_RULE_PRICE);
+    expect(order.totalAmount, '重新開啟後，消費者被收的金額回到規則價').toBe(OWN_RULE_PRICE);
   });
 });

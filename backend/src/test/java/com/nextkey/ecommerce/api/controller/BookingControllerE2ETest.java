@@ -39,6 +39,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -130,6 +131,8 @@ class BookingControllerE2ETest {
     private String buyerToken;
     private String buyerEmail;
     private UUID createdBookingId;
+    /** 測試中「射後不理」啟動的背景請求；tearDown 清理前一定要等它結束（見 IT-M06-103）。 */
+    private CompletableFuture<Void> inFlightRequest;
 
     @BeforeAll
     static void setUpTestData(@Autowired TenantRepository tenantRepo,
@@ -257,6 +260,11 @@ class BookingControllerE2ETest {
 
     @AfterEach
     void tearDown() {
+        // 先等背景請求結束：它若在下面清理到一半才提交預訂，刪除使用者／房源時會撞到 FK（IT-M06-103）
+        if (inFlightRequest != null) {
+            inFlightRequest.exceptionally(e -> null).orTimeout(30, TimeUnit.SECONDS).join();
+            inFlightRequest = null;
+        }
         // 清理買家用戶的預訂和用戶（遵循 FK 約束順序）
         userRepository.findByEmail(buyerEmail).ifPresent(user -> {
             // 1. 先刪除該用戶關聯的 tenant_members
@@ -847,8 +855,8 @@ class BookingControllerE2ETest {
         LocalDate checkIn = LocalDate.now().plusDays(90);
         LocalDate checkOut = LocalDate.now().plusDays(92);
 
-        // 第一次請求啟動（不等待結果）
-        CompletableFuture.runAsync(() -> {
+        // 第一次請求啟動（本測試不等待結果；結束由 tearDown 統一等待）
+        inFlightRequest = CompletableFuture.runAsync(() -> {
             given()
                     .header("Authorization", "Bearer " + buyerToken)
                     .header("Idempotency-Key", idempotencyKey)

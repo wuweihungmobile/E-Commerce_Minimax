@@ -73,6 +73,8 @@ Sprint 150 §4 已查明的缺口（本輪逐一處理）：
 
 **第四輪 `mvn -o verify` 額外查到的既有 flaky 測試（與本輪無關）**：`BookingControllerE2ETest` 在完整 `mvn verify` 套件執行時出現 2 個 teardown 階段的 `DataIntegrityViolationException`（刪除 `users`/`listings` 時被 `bookings` 的外鍵擋下），與 `createBooking_idempotencyKeyStillProcessing_returns409` 有關。查證：本輪完全未觸碰 `Booking`/`BookingController`/`BookingService` 任何程式碼；單獨執行 `mvn -o test -Dtest=BookingControllerE2ETest` → **21 passed / 0 failed**，證實是既有的測試間狀態殘留型 flaky（比照 [[at-m10-chat-stomp-e2e-flaky]] 已有的判準：與變更無關的測試遇此僅需重跑非回歸），如實記錄但不在本輪範圍內修復。
 
+> **更正（Sprint 309）**：上面『測試間狀態殘留型 flaky』的歸因應該更正。同樣的症狀（刪除 `users`／`listings` 時被 `bookings` 外鍵擋下、與該測試有關）在 Sprint 309 追到根因：`createBooking_idempotencyKeyStillProcessing_returns409`（IT-M06-103）用 `CompletableFuture.runAsync` 送出背景請求後沒有等它結束，第二個請求拿到 `409` 之後，背景請求才提交預訂，正好落在 `tearDown` 清理的窗口裡。Sprint 151 當時沒有重現，所以『同一個根因』是依症狀吻合的推論；已於 Sprint 309 修復，見 [SPRINT_309_PLAN.md](SPRINT_309_PLAN.md) §9.2。
+
 ### 2.2 新增 `GET /v2/orders/tenant`：賣家訂單列表
 
 比照 `ReturnRequestController` 的「買家層 `/v2/returns` vs 店家層 `/v2/dashboard/returns`」分層路由慣例，本應命名為 `/v2/dashboard/orders`，但該路徑已被 `AnalyticsController.getOrderStats`（訂單統計彙總）佔用，故改於既有 `OrderController`（base path `/v2/orders`）底下新增 `/tenant` 子路徑。與 `/{orderId}` 同層並存不會衝突（Spring 對靜態路徑段的比對優先於路徑變數，`MediaCategoryController` 的 `/root` 與 `/{categoryId}` 已是同一寫法的既有前例）。

@@ -173,4 +173,6 @@ failsafe 報告（129 個類別、948 案例）：類別時間加總 21.5 分，
 
 見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 308 列。本輪新增的 commit 尚未 push；本機另有 Sprint 307 的純文件回填 commit `835d71e0` 同樣未 push。
 
+> **後續（Sprint 309）**：上面是 Sprint 308 當時的狀態。這些 commit 已隨 Sprint 309 的 push（`79302fcf..d26e8a00`）一併帶出，雲端 CI 結果（先紅後綠）見 [SPRINT_309_PLAN.md](SPRINT_309_PLAN.md) §9。
+
 本輪的 commit 範圍：新增 `frontend/e2e/at-pricing-cart-checkout-real.spec.ts`；修改 `API_M04_Cart.md`（v2.3）、`API_M12_Dynamic_Pricing.md`（v2.6）、`DEFERRED_ITEMS_TRACKER.md`（`DEF-423` 更新、新增 `DEF-424`／`DEF-425`）、`RELEASE_TRACKER.md`（v4.38）；新增本計畫書。`backend/src` 沒有任何差異。

@@ -106,6 +106,8 @@
 4. PRD 沒有改：PRD 權限矩陣寫「Service 層在建規則前查詢」，與新行為不衝突，只是沒涵蓋「套用」；要不要補寫由你決定。
 5. `DEF-426`（日曆手動改價）、`DEF-425`、`DEF-419` 未動。
 6. 雲端 e2e job 仍未實跑。
+7. **雲端這次綠燈沒有觸發競態**：修復後的雲端 run 裡 IT-M06-103 走 `200` 分支，所以雲端綠燈只證明沒有回歸；修復的證據是本機注入延遲的前後對照（§9.2）。之後若同一個偶發失敗再出現，先看那一次 IT-M06-103 走哪個分支。
+8. **IT-M06-103 自己的斷言偏弱**（`409` 與 `200` 都算過、其他狀態碼只印警告不失敗）：本輪只修清理競態、沒有改測試意圖，登記為 `DEF-427`。
 
 ## 8. 我替使用者做的決定（可一句話推翻）
 
@@ -117,9 +119,43 @@
 | 4 | 移除 `RedisCartService`、`BookingService` 的 `FeatureToggleService` 孤兒欄位 | 搬進引擎後沒有用途（Rule 3：清理自己造成的孤兒） | — |
 | 5 | 單元測試用 `BookingPricingFixtures.noAdjustment()` 當引擎預設回應 | 正式環境的引擎永遠不回 `null`，固件讓 mock 貼近真實 | — |
 | 6 | 依「每個 Sprint 收尾 push 一次」push（連同 Sprint 307 的回填 commit 與 Sprint 308 的 commit 一起帶出） | 這是定價行為的功能變更；Sprint 308 因為只有測試與文件所以留在本機，這次有功能變更 | 告訴我之後這類 commit 也先等你說 |
+| 7 | 雲端紅燈的修復 commit（`035a14e6`，只改測試檔）直接 push，沒有另外問你 | 這是同一個 Sprint 收尾「push→等雲端 CI」流程的修復步驟：main 上雲端 CI 是紅的；只動測試檔；pre-push 本機守門通過 | 告訴我之後 CI 修復也先等你說 |
+| 8 | 不改 IT-M06-103 的斷言，只修清理競態；弱點登記 `DEF-427` | Rule 3：只碰必須修改的；改測試意圖是另一件事 | 告訴我現在就改 |
+| 9 | 在 `SPRINT_151_PLAN.md` 加一行更正註記（原文不動） | 那裡把這個失敗記成『狀態殘留型 flaky、僅需重跑』，會誘導之後再次略過 | 告訴我拿掉 |
 
 ## 9. 狀態
 
-見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 309 列。寫這份計畫書時 commit 尚未 push；commit 完成後立即 push（同一次 push 也會帶出 Sprint 307 的純文件回填 commit `835d71e0` 與 Sprint 308 的 commit `8feddb60`），push 與雲端 CI 結果於 push 後另以回填 commit 補上。
+見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 309 列。
 
-本輪的 commit 範圍：生產程式 `PricingService`、`RedisCartService`、`BookingService`（引擎關卡、移除孤兒欄位）；測試 `PricingServiceTest`、`StoreToggleGatesApplicationE2ETest`（新增）、`M12EffectivePriceIntegrationTest`、訂房與購物車單元測試、`BookingPricingFixtures`（新增）、Playwright `at-pricing-cart-checkout-real.spec.ts`；文件 `API_M01`、`API_M04`、`API_M06`、`API_M12`、`DEFERRED_ITEMS_TRACKER.md`、`RELEASE_TRACKER.md`、`SPRINT_308_PLAN.md`（補一行後續指引）與本計畫書。沒有改遷移、PRD、前端應用程式碼。
+### 9.1 push 與雲端 CI（先紅後綠）
+
+功能 commit `d26e8a00` 已 push（`79302fcf..d26e8a00  main -> main`；同一次 push 也帶出 Sprint 307 的純文件回填 commit `835d71e0` 與 Sprint 308 的 commit `8feddb60`），pre-push 的本機守門通過。
+
+- **第一次雲端 CI 是紅的**：run [40556219811](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/40556219811)，`headSha` 為 `d26e8a00`。Backend Unit Tests 與 Frontend Lint & Build 成功；Backend Integration Tests & Package 失敗——整合階段 `Tests run: 955, Failures: 0, Errors: 2`，兩個錯誤都在 `BookingControllerE2ETest`（該類別 `Tests run: 26, Errors: 2`）：`tearDown`（原檔第 269 行，刪除使用者）與 `@AfterAll cleanup`（第 294 行，刪除房源），都被 `bookings` 的外鍵擋下。依 CLAUDE.md 規則，我先下載雲端日誌確認真正的錯誤再分析，沒有盲修。
+- **修復 commit `035a14e6`**（只改 `BookingControllerE2ETest.java`，+10／−2；原因與做法見 9.2）push 後，run [40564732879](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/40564732879) `completed／success`，三個 job 皆 success（Backend Unit Tests、Backend Integration Tests & Package、Frontend Lint & Build），約 17 分 13 秒（18:57:27Z～19:14:40Z）；以 `gh run view --json status,conclusion,jobs,headSha` 交叉確認 `headSha` 為 `035a14e66d09fb624612173b8e194176c3f5459b`，並下載整合 job 的完整雲端日誌確認 `Tests run: 954, Failures: 0, Errors: 0, Skipped: 0`、`BookingControllerE2ETest` 25／0／0。`git fetch` 後本機 `HEAD` 與 `origin/main` 同為該 commit，ahead／behind 為 0／0（之後新增的純文件回填 commit 留在本機）。
+- **這次綠燈的證據強度**：綠的那次 run 裡 IT-M06-103 走的是 `200` 分支（第一個請求先完成），競態**沒有被觸發**；紅的那次走 `409` 分支。所以雲端這次綠燈只證明沒有回歸、套件全綠，**不證明競態已消失**——證據是 9.2 的本機注入前後對照。
+
+### 9.2 雲端紅燈：既有的測試競態（第三次出現，第一次找到根因）
+
+**歷史**：Sprint 151 第四輪本機完整 `mvn verify` 出現同樣的 2 個 teardown 外鍵錯誤，[SPRINT_151_PLAN.md](SPRINT_151_PLAN.md) 記為『測試間狀態殘留型 flaky、僅需重跑』；Sprint 275/276 的回填 commit `bdd06882` 的雲端 CI 也曾因同一個測試失敗並重跑轉綠（[RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 277 列；當時只記了測試名稱、沒有留下錯誤內容，所以是否為同樣的外鍵錯誤沒有證據）。兩次都被當成與變更無關而略過；這次是第三次，所以追根因。**Sprint 151 的『狀態殘留』歸因應更正**（症狀與本次根因吻合，但當時沒有重現，所以『同一個根因』是推論），已在該計畫書加更正註記。
+
+**根因**（讀雲端日誌＋本機重現）：IT-M06-103 用 `CompletableFuture.runAsync` 送出第一個請求後不等它結束（整個類別裡唯一沒有 `join` 的背景請求）。第二個請求到達時第一個還在處理，回 `409`（測試預期的分支之一）；但第一個請求隨後才提交預訂。若這筆預訂落在 `tearDown`「列出該使用者預訂」之後、「刪除使用者」之前，刪使用者就撞外鍵；遺留的預訂又讓 `@AfterAll` 刪房源撞外鍵。機器夠快、第一個請求先完成時走 `200`（回快取）分支，就不會出事——所以是時序相關的偶發失敗。與本輪定價變更無關（根因在測試程式碼，而且在本輪之前就出現過）。
+
+**重現**（暫時改程式、跑完用 SHA-256 比對還原）：
+
+| 條件 | 結果 |
+|---|---|
+| 只把 `BookingService.createBooking` 放慢 500 毫秒 | 25／0／0，IT-M06-103 走 `409`——**沒有重現** |
+| 服務端放慢 200 毫秒，並把 `tearDown`「列出預訂」與「刪除使用者」之間放大 300 毫秒的窄窗 | `Tests run: 26, Errors: 2`，IT-M06-103 走 `409`；錯誤點與外鍵約束名（`users`：`fkeyog2oic85xg7hsu2je2lx3s6`；`listings`：`fk6sm0gu2yl1gdbd0b1a0fkwqcl`）與雲端日誌完全相同（行號差 1 是注入多了一行） |
+| 同上注入，套用修復 | `Tests run: 25, Failures: 0, Errors: 0`，IT-M06-103 仍走 `409`（競態確實被觸發、而且被擋下） |
+| 不注入，套用修復 | 25／0／0，IT-M06-103 走 `200` |
+
+第一列沒有重現，所以光放慢服務端不夠、要把窄窗撐開；這也代表注入的 300 毫秒是**放大器**，不是雲端實際的時序——雲端的窄窗是自然撐開的。每種條件只各跑一次。
+
+**修法**：把背景請求登記在欄位 `inFlightRequest`，`tearDown` 在清理之前先等它結束；吞掉背景請求自己的例外（維持原本『不關心結果』的語意），並設 30 秒上限，避免背景請求卡住時整個套件無聲掛住。沒有改生產程式碼，沒有改任何斷言。測試檔 Checkstyle 0 違規、PMD 通過、pre-commit 通過。
+
+**沒做**：IT-M06-103 自己的斷言偏弱（`409` 與 `200` 都算過、其他狀態碼只印警告不失敗），本輪只修清理競態、不改測試意圖，登記為 `DEF-427`。
+
+### 9.3 commit 範圍
+
+本輪的 commit 範圍：生產程式 `PricingService`、`RedisCartService`、`BookingService`（引擎關卡、移除孤兒欄位）；測試 `PricingServiceTest`、`StoreToggleGatesApplicationE2ETest`（新增）、`M12EffectivePriceIntegrationTest`、訂房與購物車單元測試、`BookingPricingFixtures`（新增）、Playwright `at-pricing-cart-checkout-real.spec.ts`；文件 `API_M01`、`API_M04`、`API_M06`、`API_M12`、`DEFERRED_ITEMS_TRACKER.md`、`RELEASE_TRACKER.md`、`SPRINT_308_PLAN.md`（補一行後續指引）與本計畫書。沒有改遷移、PRD、前端應用程式碼。 之後的兩個 commit：修復 commit `035a14e6`（只改 `BookingControllerE2ETest.java`）；以及純文件的回填 commit（`RELEASE_TRACKER.md` v4.40、`DEFERRED_ITEMS_TRACKER.md` 新增 `DEF-427`、`SPRINT_151_PLAN.md` 更正註記、`SPRINT_308_PLAN.md` §10 後續、本計畫書；依慣例留在本機，隨下次有功能變更的 push 出去）。

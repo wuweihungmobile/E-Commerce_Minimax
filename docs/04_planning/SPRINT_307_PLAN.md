@@ -180,10 +180,15 @@
 
 ## 10. 雲端 CI 與狀態
 
-本節寫的是**功能 commit 當下**的狀態。push、雲端 CI 結果與 Docker 清理在 push 之後才會發生，由下一個回填 commit 補上（比照 Sprint 305、306 的做法）。
+功能 commit `79302fcf` 已 push（`01edcea1..79302fcf  main -> main`；同一次 push 也帶出 Sprint 306 的純文件回填 commit `f3f5b7d2`）；`git fetch` 後本機 `HEAD` 與 `origin/main` 同為 `79302fcf008caaa5ca1d5de74badd04b521345b2`，ahead／behind 為 0／0。開工時 Docker daemon 沒有開，我啟動了 Docker Desktop 才能跑整合測試（§9 第 10 點）。
 
-- 開工前 `git status` 乾淨、本機領先 `origin/main` 1 個純文件 commit（`f3f5b7d2`，Sprint 306 的回填），它會隨本輪的 push 一起出去。
-- 開工時 Docker daemon 沒有開，我啟動了 Docker Desktop 才能跑整合測試（§9 第 10 點）。
+- **pre-commit**：一次通過——Checkstyle、Maven compile、核心層快速測試（commit 前以 `docker ps | grep -c nk-test` 確認測試 DB 容器在；沒有繞過 hook）。本輪沒有動遷移或 SRD／PRD，所以 schema 文件漂移檢查沒有被觸發。
+- **pre-push 輕量守門**通過：本機 act 的 Backend Unit Tests `Job succeeded`（單元測試步驟 3 分 4 秒）、Frontend Lint & Build `Job succeeded`；schema 漂移守門「backend 啟動成功 → entity 與 Flyway schema 對齊，無漂移」；push 之後 `docker ps -a` 為空（pre-push 清掉了 `nk-test-*`）。
+- **雲端 CI** run [40517176358](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/40517176358)：`completed／success`，三個 job 皆 success，約 12 分 34 秒（14:01:01Z～14:13:35Z）；`gh run view --json` 的 `headSha` 為 `79302fcf008caaa5ca1d5de74badd04b521345b2`。
+  - 下載了「Backend Integration Tests & Package」job 的**完整**雲端日誌（54,445,100 位元組、208,740 行；下載結束 exit 0、stderr 為空、檔尾是 job 收尾）：去除 ANSI 色碼後 failsafe 彙總 **`Tests run: 948, Failures: 0, Errors: 0, Skipped: 0`**（與本機整合測試 948 一致），`BUILD SUCCESS`，`<<< FAILURE`／`<<< ERROR` 標記 0 個；`PricingRuleScopeIsolationE2ETest` 13／13、`PlatformStatsCorruptRowFlywayIntegrationTest` 2／2（GitHub service 的全新 Postgres 上由 Flyway 實跑）、`AdminControllerE2ETest` 24／24、`PricingRulesCorruptRowFlywayIntegrationTest` 4／4。
+  - 這次也下載了「Backend Unit Tests」job 的日誌（3,160,183 位元組；Sprint 306 當時沒下載）：它依序執行 `mvn checkstyle:check`（`You have 0 Checkstyle violations.`）→ 重設資料庫 → `mvn clean compile -DskipTests -q` → `mvn test -Dspring.profiles.active=test -q`。**`-q` 安靜模式不印測試數**，所以雲端只能確認每個步驟成功（job 結論 success），單元測試 2370 以本機全量為準；日誌裡有測試產生的例外堆疊，job 結論不是失敗。
+  - 雲端三個 job 不含 Playwright E2E，E2E 以本機 `make validate-e2e` 為準（§6）；雲端 e2e job（只能手動觸發）沒有實跑。
+- **Docker 清理**（所有 commit、push、本機守門都結束之後）：容器 0；8 個匿名卷逐一刪除（0 失敗），卷 1.277GB → 928MB；2 個懸空映像（回收 45.72MB）；5 個具名卷（`act-toolcache`、`e-commerce_minimax_maven_cache`、`_minio_data`、`_postgres_data`、`_redis_data`）全部保留；映像只留 3 個核准的基底映像（`postgres:18-alpine`、`redis:7-alpine`、`catthehacker/ubuntu:act-latest`）。**建置快取有 25 筆、1.889GB**（Sprint 306 結束時是 17 筆、1.68GB；我沒有查增加的原因），不在「卷與映像」的清理範圍內，沒有刪；要清可執行 `docker builder prune -af`。Docker Desktop 本身是我啟動的，結束時沒有關閉。
 
 ## 11. 文件與程式異動清單
 

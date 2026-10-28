@@ -2240,6 +2240,57 @@ class PricingServiceTest {
         }
     }
 
+    /**
+     * DEF-426（Sprint 311，使用者以互動選項裁決）：日曆手動改價建出的是 {@code MANUAL_OVERRIDE} 規則，DEF-424 之後所有規則都
+     * 只在店鋪的動態定價開關開啟時才套用；但這兩個端點原本不檢查開關，開關關閉時建立成功（200）卻不生效——建立一個不會生效的
+     * 規則等於騙人。現在比照 {@code createRule}：開關關閉回 {@code E_2004}，而且是第一件事（不查房源、不寫規則、不記稽核）。
+     */
+    @Nested
+    @DisplayName("DEF-426: 日曆手動改價在呼叫者租戶的動態定價開關關閉時回 E_2004")
+    class CalendarManualOverrideToggleTests {
+
+        private static final String TOGGLE = "DYNAMIC_PRICING_ENABLED";
+
+        private void toggleOff() {
+            doThrow(new BusinessException(ErrorCode.E_2004,
+                    "Feature '" + TOGGLE + "' is disabled for this tenant"))
+                    .when(featureToggleService).checkFeatureEnabled(TOGGLE);
+        }
+
+        @Test
+        @DisplayName("setCalendarPrice：開關關閉 → E_2004，不查房源、不建立規則、不記稽核")
+        void setCalendarPrice_toggleOff_throwsE2004_andWritesNothing() {
+            toggleOff();
+            PricingDto.SetCalendarPriceRequest request = PricingDto.SetCalendarPriceRequest.builder()
+                    .roomListingId(ROOM_LISTING_ID).date(LocalDate.of(2026, 6, 1))
+                    .price(BigDecimal.valueOf(900)).reason("週末特價").build();
+
+            assertThatThrownBy(() -> pricingService.setCalendarPrice(request, false))
+                    .isInstanceOfSatisfying(BusinessException.class,
+                            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.E_2004));
+
+            verify(roomRepository, never()).findByListingId(any());
+            verify(pricingRuleRepository, never()).save(any());
+            verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("overridePrice：開關關閉 → E_2004，不查規則、不建立覆蓋規則、不記稽核")
+        void overridePrice_toggleOff_throwsE2004_andWritesNothing() {
+            toggleOff();
+            UUID ruleId = UUID.randomUUID();
+
+            assertThatThrownBy(() -> pricingService.overridePrice(ruleId, LocalDate.of(2026, 6, 1),
+                    LocalDate.of(2026, 6, 3), BigDecimal.valueOf(900), "旺季覆蓋", false))
+                    .isInstanceOfSatisfying(BusinessException.class,
+                            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.E_2004));
+
+            verify(pricingRuleRepository, never()).findById(any());
+            verify(pricingRuleRepository, never()).save(any());
+            verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any());
+        }
+    }
+
     private Room buildMockRoom() {
         Listing listing = Listing.builder()
                 .basePrice(BASE_PRICE)

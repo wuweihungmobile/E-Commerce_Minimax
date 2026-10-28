@@ -658,6 +658,71 @@ class TenantServiceTest {
             assertEquals("INACTIVE", byKey.get("DYNAMIC_PRICING_ENABLED").getStatus());
         }
 
+        // ── DEF-429（Sprint 311）：待審核＝「店主申請過」，不是「有一列資料」────────────────────
+        // 核准開店時 AdminService.initializeFeatureToggles 替六個功能都建了預設列，三個需審核的預設 is_enabled=false；
+        // 先前 resolveFeatureStatus 只看「有列＋需審核＋未啟用」，所以全新店鋪沒申請過也是 PENDING。
+        // 現在只認 requestedAt（店主送出申請時才寫入）。
+
+        private TenantFeatureToggle toggleRow(String featureKey, boolean enabled, Instant requestedAt) {
+            return TenantFeatureToggle.builder()
+                    .tenant(Tenant.builder().id(TEST_TENANT_ID).build())
+                    .featureKey(featureKey).isEnabled(enabled).requestedAt(requestedAt).build();
+        }
+
+        private Map<String, FeatureToggleResponse.FeatureInfo> featuresOf(FeatureToggleResponse response) {
+            Map<String, FeatureToggleResponse.FeatureInfo> byKey = new HashMap<>();
+            for (FeatureToggleResponse.FeatureInfo f : response.getFeatures()) {
+                byKey.put(f.getFeatureKey(), f);
+            }
+            return byKey;
+        }
+
+        @Test
+        @DisplayName("DEF-429：核准開店建的預設列（需審核功能、未啟用、沒有申請時間）→ INACTIVE，不是 PENDING，requestedAt 為 null")
+        void getFeatureToggles_defaultRowsOfApprovalFeatures_areInactiveNotPending() {
+            when(tenantFeatureToggleRepository.findByTenantId(TEST_TENANT_ID)).thenReturn(List.of(
+                    toggleRow("RETAIL_ENABLED", true, null),
+                    toggleRow("BOOKING_ENABLED", false, null),
+                    toggleRow("DYNAMIC_PRICING_ENABLED", false, null),
+                    toggleRow("PROMO_ENABLED", false, null)));
+
+            Map<String, FeatureToggleResponse.FeatureInfo> byKey = featuresOf(tenantService.getFeatureToggles(TEST_TENANT_ID));
+
+            for (String key : List.of("BOOKING_ENABLED", "DYNAMIC_PRICING_ENABLED", "PROMO_ENABLED")) {
+                assertEquals("INACTIVE", byKey.get(key).getStatus(), key + " 沒申請過不該是待審核");
+                assertNull(byKey.get(key).getRequestedAt(), key + " 沒申請過不該有申請時間");
+            }
+            assertEquals("ACTIVE", byKey.get("RETAIL_ENABLED").getStatus());
+        }
+
+        @Test
+        @DisplayName("DEF-429：店主送出過申請（requestedAt 有值）且未啟用的需審核功能 → PENDING，並帶出申請時間；其餘預設列仍是 INACTIVE")
+        void getFeatureToggles_requestedApprovalFeature_isPendingWithRequestedAt() {
+            Instant requestedAt = Instant.parse("2026-10-20T08:00:00Z");
+            when(tenantFeatureToggleRepository.findByTenantId(TEST_TENANT_ID)).thenReturn(List.of(
+                    toggleRow("BOOKING_ENABLED", false, null),
+                    toggleRow("PROMO_ENABLED", false, requestedAt)));
+
+            Map<String, FeatureToggleResponse.FeatureInfo> byKey = featuresOf(tenantService.getFeatureToggles(TEST_TENANT_ID));
+
+            assertEquals("PENDING", byKey.get("PROMO_ENABLED").getStatus());
+            assertEquals(requestedAt, byKey.get("PROMO_ENABLED").getRequestedAt());
+            assertEquals("INACTIVE", byKey.get("BOOKING_ENABLED").getStatus());
+            assertNull(byKey.get("BOOKING_ENABLED").getRequestedAt());
+        }
+
+        @Test
+        @DisplayName("DEF-429：已啟用 → ACTIVE，而且不對外帶申請時間（即使資料列殘留舊值）")
+        void getFeatureToggles_enabledFeature_isActiveAndHidesRequestedAt() {
+            when(tenantFeatureToggleRepository.findByTenantId(TEST_TENANT_ID)).thenReturn(List.of(
+                    toggleRow("PROMO_ENABLED", true, Instant.parse("2026-10-20T08:00:00Z"))));
+
+            Map<String, FeatureToggleResponse.FeatureInfo> byKey = featuresOf(tenantService.getFeatureToggles(TEST_TENANT_ID));
+
+            assertEquals("ACTIVE", byKey.get("PROMO_ENABLED").getStatus());
+            assertNull(byKey.get("PROMO_ENABLED").getRequestedAt());
+        }
+
         @Test
         @DisplayName("Sprint 153（Sprint 147 §6 範圍外項目）：quotas 回傳三個數值配額的上限與目前用量，"
                 + "計數口徑須與 checkQuotaNotExceeded 實際攔截條件一致（ACTIVE 商品/房源、PUBLISHED 貼文）")
@@ -829,6 +894,101 @@ class TenantServiceTest {
 
             assertEquals(true, response.getNewState());
             assertEquals(true, existing.getIsEnabled());
+        }
+
+        // ── DEF-429（Sprint 311）：申請時間 requestedAt ──────────────────────────────────────
+
+        private TenantFeatureToggle existingRow(String featureKey, boolean enabled, Instant requestedAt) {
+            return TenantFeatureToggle.builder()
+                    .tenant(Tenant.builder().id(TEST_TENANT_ID).build())
+                    .featureKey(featureKey).isEnabled(enabled).requestedAt(requestedAt).build();
+        }
+
+        private void ownerWithExistingRow(TenantFeatureToggle row) {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(TEST_TENANT_ID, TEST_USER_ID,
+                    TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            when(tenantFeatureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, row.getFeatureKey()))
+                    .thenReturn(Optional.of(row));
+            when(tenantFeatureToggleRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
+        }
+
+        @Test
+        @DisplayName("DEF-429：需審核功能的預設列（未啟用、沒有申請時間）收到啟用申請 → 仍未啟用，並記下申請時間")
+        void updateFeatureToggle_approvalFeature_requestOnDefaultRow_recordsRequestedAt() {
+            TenantFeatureToggle row = existingRow("PROMO_ENABLED", false, null);
+            ownerWithExistingRow(row);
+
+            FeatureToggleUpdateResponse response = tenantService.updateFeatureToggle(TEST_TENANT_ID, "PROMO_ENABLED", true);
+
+            assertEquals("PENDING_APPROVAL", response.getStatus());
+            assertEquals(false, row.getIsEnabled());
+            assertNotNull(row.getRequestedAt(), "送出申請要記下申請時間，待審核才認得出來");
+        }
+
+        @Test
+        @DisplayName("DEF-429：還沒有資料列的需審核功能收到啟用申請 → 新建的列也記下申請時間")
+        void updateFeatureToggle_approvalFeature_requestOnNewRow_recordsRequestedAt() {
+            when(tenantMemberRepository.existsByTenantIdAndUserIdAndStoreRole(TEST_TENANT_ID, TEST_USER_ID,
+                    TenantMember.StoreRole.STORE_OWNER)).thenReturn(true);
+            when(tenantFeatureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "PROMO_ENABLED"))
+                    .thenReturn(Optional.empty());
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TEST_TENANT_ID).build()));
+            when(tenantFeatureToggleRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            tenantService.updateFeatureToggle(TEST_TENANT_ID, "PROMO_ENABLED", true);
+
+            ArgumentCaptor<TenantFeatureToggle> captor = ArgumentCaptor.forClass(TenantFeatureToggle.class);
+            verify(tenantFeatureToggleRepository).saveAndFlush(captor.capture());
+            assertEquals(false, captor.getValue().getIsEnabled());
+            assertNotNull(captor.getValue().getRequestedAt());
+        }
+
+        @Test
+        @DisplayName("DEF-429：已經待審核的功能再送一次申請 → 保留最早的申請時間（等待時間不被重置）")
+        void updateFeatureToggle_approvalFeature_repeatedRequest_keepsOriginalRequestedAt() {
+            Instant first = Instant.parse("2026-10-01T00:00:00Z");
+            TenantFeatureToggle row = existingRow("PROMO_ENABLED", false, first);
+            ownerWithExistingRow(row);
+
+            tenantService.updateFeatureToggle(TEST_TENANT_ID, "PROMO_ENABLED", true);
+
+            assertEquals(first, row.getRequestedAt());
+        }
+
+        @Test
+        @DisplayName("DEF-429：店主對待審核的功能送 enabled=false（撤回申請）→ 清掉申請時間，回到 INACTIVE")
+        void updateFeatureToggle_pendingFeature_ownerWithdraws_clearsRequestedAt() {
+            TenantFeatureToggle row = existingRow("PROMO_ENABLED", false, Instant.parse("2026-10-01T00:00:00Z"));
+            ownerWithExistingRow(row);
+
+            tenantService.updateFeatureToggle(TEST_TENANT_ID, "PROMO_ENABLED", false);
+
+            assertNull(row.getRequestedAt());
+            assertEquals(false, row.getIsEnabled());
+        }
+
+        @Test
+        @DisplayName("DEF-429：店主關閉已核准的需審核功能 → 申請時間清掉（關閉後不會因為殘留的舊申請時間又變成待審核）")
+        void updateFeatureToggle_approvedFeature_ownerDisables_leavesNoRequestedAt() {
+            TenantFeatureToggle row = existingRow("PROMO_ENABLED", true, Instant.parse("2026-10-01T00:00:00Z"));
+            ownerWithExistingRow(row);
+
+            tenantService.updateFeatureToggle(TEST_TENANT_ID, "PROMO_ENABLED", false);
+
+            assertEquals(false, row.getIsEnabled());
+            assertNull(row.getRequestedAt());
+        }
+
+        @Test
+        @DisplayName("DEF-429：免審核功能啟用 → 直接生效，不產生申請時間")
+        void updateFeatureToggle_noApprovalFeature_enable_leavesRequestedAtNull() {
+            TenantFeatureToggle row = existingRow("CMS_ENABLED", false, null);
+            ownerWithExistingRow(row);
+
+            tenantService.updateFeatureToggle(TEST_TENANT_ID, "CMS_ENABLED", true);
+
+            assertEquals(true, row.getIsEnabled());
+            assertNull(row.getRequestedAt());
         }
 
         @Test

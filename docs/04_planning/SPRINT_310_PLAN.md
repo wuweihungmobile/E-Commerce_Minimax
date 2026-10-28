@@ -207,3 +207,5 @@ BM5 是專門為了證明 004-02 的獨立價值設計的：原本 FM5／BM4 這
 見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 310 列。**本輪的 commit 留在本機，沒有 push**（本機另有 Sprint 309 的純文件回填 commit `0532edc0`，同樣未 push）。
 
 本輪的 commit 範圍：生產程式 `IdempotencyService`；測試 `BookingControllerE2ETest`、`IdempotencyServiceTest`、`ContractFixture`、`BookingApiRealStackIntegrationTest`、`OrderApiRealStackIntegrationTest`、Playwright `at-m17-003.spec.ts`／`at-m17-004.spec.ts`；文件 `API_M05_Order.md`（v2.1）、`API_M06_Booking.md`（v2.5）、`API_M17_Tenant.md`（v2.4）、`DEFERRED_ITEMS_TRACKER.md`、`RELEASE_TRACKER.md`、`SPRINT_308_PLAN.md`／`SPRINT_309_PLAN.md`（各補一則後續指引）與本計畫書。沒有改遷移、PRD、前端應用程式碼。
+
+> **後續（Sprint 311）**：上面是 Sprint 310 收尾時的狀態。使用者在收尾的互動選項選了「現在 push」，兩個 commit 已於 `035a14e6..164ca615` push，pre-push 輕量守門通過；雲端 CI run [40673442467](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/40673442467) 三個 job 皆 success（約 13 分鐘），整合測試 957／0 失敗、`BookingControllerE2ETest` 25／0／0，所以 §8 第 7 點「雲端 CI 沒有驗證這一輪」已過期。同一次互動，使用者對 `DEF-426`（選「回 E-2004」）與 `DEF-429`（選「新增申請時間欄位」）做了裁決，已於 Sprint 311 處理（連同與 429 互相影響的 `DEF-428`）。見 [SPRINT_311_PLAN.md](SPRINT_311_PLAN.md)。

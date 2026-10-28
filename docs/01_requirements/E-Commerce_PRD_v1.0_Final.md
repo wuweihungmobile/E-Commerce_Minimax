@@ -1465,6 +1465,7 @@ StoreStaff (店員)
 | updated_at | TIMESTAMP | 更新時間（**由 Hibernate 維護，無 DB 觸發器**） |
 | enabled_at | TIMESTAMP | 最近一次啟用時間 |
 | disabled_at | TIMESTAMP | 最近一次停用時間 |
+| requested_at | TIMESTAMP | 店主送出啟用申請的時間（僅需審核的功能）；待審核＝需審核、未啟用且此欄有值，核准、停用或撤回時清除（DEF-429，Sprint 311） |
 | UNIQUE | (tenant_id, feature_key) | |
 
 > **⚠️ v1.0.2 更正（Sprint 111）**：原列的 `feature_value`、`updated_by` 在實作中不存在。

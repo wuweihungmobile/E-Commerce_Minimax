@@ -1,7 +1,7 @@
 # API 規格文件 - M17 租戶/店鋪管理 / API Specification - M17 Tenant Management
 
 > **文件編號**: API-M17
-> **文件版本**: v2.4（Sprint 310：§4.5 補記 `status` 的實際判定與 `DEF-429`）；v2.3（Sprint 298 補上全域角色對店主自助端點的真實後端實測矩陣，見註記 9 與 §2.1；v2.2 為 Sprint 294 校正 §4.4／§4.8／§4.9／§4.13／§4.14 與 `E-4031` 總表；v2.1 為 Sprint 292 校正 §4.6；v2.0 為 Sprint 266 依實作改寫）
+> **文件版本**: v2.5（Sprint 311：`DEF-429` 修復——新增 `requested_at`，待審核只認店主真的申請過；§4.5、§4.6、§4.29 同步）；v2.4（Sprint 310：§4.5 補記 `status` 的實際判定與 `DEF-429`）；v2.3（Sprint 298 補上全域角色對店主自助端點的真實後端實測矩陣，見註記 9 與 §2.1；v2.2 為 Sprint 294 校正 §4.4／§4.8／§4.9／§4.13／§4.14 與 `E-4031` 總表；v2.1 為 Sprint 292 校正 §4.6；v2.0 為 Sprint 266 依實作改寫）
 > **建立日期**: 2026-04-09（v1.0）
 > **最後更新**: 2026-10-28
 > **負責人**: SD (Marcus)
@@ -199,7 +199,7 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 **回應**：`tenantId`／`features: List<FeatureInfo>`（`featureKey`／`featureName`／`description`／`isEnabled`／`enabledAt`／`requestedAt`／`category`／`status`：`ACTIVE`/`PENDING`/`INACTIVE`／`requiresAdminReview`）／`quotas: List<QuotaInfo>`（`featureKey`／`featureName`／`limit`／`currentUsage`，數量型配額如 `MAX_PRODUCTS`，與布林開關分開回傳）
 
-**`status` 的判定（Sprint 310 實測，`DEF-429`）**：已啟用 → `ACTIVE`；**有資料列、未啟用、且該功能需審核 → `PENDING`**；其餘 → `INACTIVE`。核准開店時系統就替六個功能都建了預設資料列（`AdminService.initializeFeatureToggles`），其中三個需審核的功能（`BOOKING_ENABLED`／`DYNAMIC_PRICING_ENABLED`／`PROMO_ENABLED`）預設 `isEnabled=false`，所以**全新店鋪從沒申請過這三項也是 `PENDING`**，`requestedAt` 是資料列的建立時間。也就是說 `PENDING` 目前**不等於**「店主已送出申請」；Admin 功能頁的「N 項功能待審核」用同一個欄位計數（`requiresAdminReview && status==='PENDING'`），全新店鋪會顯示 3 項。
+**`status` 的判定（Sprint 311，`DEF-429` 修復）**：已啟用 → `ACTIVE`；**需審核、未啟用、且店主送出過啟用申請（`requestedAt` 有值）→ `PENDING`**；其餘 → `INACTIVE`（從未申請、申請被駁回或撤回、停用，以及不需審核的單純停用）。`requestedAt` 只在店主送出需審核功能的啟用申請時寫入（§4.6）；管理員核准或駁回（§4.29）、店主撤回或關閉時清除；功能已啟用時回應不帶申請時間。核准開店時系統替六個功能建的預設資料列（`AdminService.initializeFeatureToggles`；三個需審核的預設 `isEnabled=false`）沒有申請時間，所以**全新店鋪沒申請過也是 `INACTIVE`，不是 `PENDING`**；Admin 功能頁的「N 項功能待審核」（`requiresAdminReview && status==='PENDING'`）因此只算店主真的申請過的。**遷移注意**：V95 新增 `requested_at` 時既有資料列一律為 `NULL`（預設列與真申請在既有資料裡無法分辨），遷移前已送出、尚未被核准的申請會變成 `INACTIVE`，店主需要重新送出。（修復前，只要有資料列、需審核、未啟用就判 `PENDING`，全新店鋪會顯示 3 項待審核，`requestedAt` 是資料列建立時間。）
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
@@ -213,6 +213,8 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 **請求**：`enabled`(必填，Boolean)
 
 **回應**：`featureKey`／`previousState`／`newState`／`status`／`statusDescription`——`requiresApproval=true` 的功能提交後 `newState` 仍為舊值、`status="PENDING_APPROVAL"`
+
+**申請時間（Sprint 311／DEF-429）**：送出需審核功能的啟用申請時，資料列的 `requested_at` 記下申請時間；已在待審核時再送一次，保留最早的時間（等待時間不被重置）；店主送 `enabled=false`（撤回）、關閉已核准的功能、或啟用不需審核的功能，一律清掉申請時間。畫面應以本回應的 `newState`／`status` 更新（`PENDING_APPROVAL` 表示「已送出、尚未生效」），不要用送出的 `enabled` 推測——修復前前端用請求值更新，點了需審核功能會立刻顯示開關已開、提示「已啟用」，重新整理後又變回關閉（`DEF-428`）。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
@@ -445,7 +447,7 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 **端點（不受機械防漂移保護，見 §7）**：PUT /v2/admin/tenants/{id}/features/{feature}
 
-**權限**：`hasRole('SUPER_ADMIN')`。與 §4.6 的自助申請不同，**不經過** `requiresApproval` 待審邏輯；若該租戶從未建立過此功能的資料列，直接建立新列而非回 404。
+**權限**：`hasRole('SUPER_ADMIN')`。與 §4.6 的自助申請不同，**不經過** `requiresApproval` 待審邏輯；若該租戶從未建立過此功能的資料列，直接建立新列而非回 404。**管理員的直接設定代表申請已被處理——核准（`enabled=true`）或駁回（`enabled=false`）都會清掉店主的申請時間**（Sprint 311／DEF-429），所以核准後店主再關閉，狀態是 `INACTIVE`，不會因殘留的舊申請時間又變成待審核。
 
 **請求**：`enabled`(必填，Boolean)
 

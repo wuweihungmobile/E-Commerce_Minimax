@@ -237,6 +237,7 @@ CREATE TABLE tenant_feature_toggles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     enabled_at TIMESTAMP WITH TIME ZONE,
     disabled_at TIMESTAMP WITH TIME ZONE,
+    requested_at TIMESTAMP WITH TIME ZONE,
 
     -- 約束
     CONSTRAINT tenant_feature_toggles_pkey PRIMARY KEY (id),

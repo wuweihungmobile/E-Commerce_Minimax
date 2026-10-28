@@ -109,25 +109,32 @@ export default function FeatureTogglePage() {
       // DEF-168：型別需與後端 FeatureToggleUpdateResponse 一致。原宣告為
       // { feature, enabled, status }，三欄有兩欄對不上；因回傳值未被使用故無執行後果，
       // 但錯誤的宣告會誤導未來的取用者，一併更正。
-      await apiClient.put<{ data: { featureKey: string; previousState: boolean; newState: boolean; status: string; statusDescription: string } }>(
+      const response = await apiClient.put<{ data: { featureKey: string; previousState: boolean; newState: boolean; status: string; statusDescription: string } }>(
         API_ENDPOINTS.dashboard.tenants.updateFeature(feature),
         { enabled } as UpdateRequest
       )
 
-      // Update local state
+      // DEF-428：用後端回應的結果更新畫面，不是用「我送出的要求」。需審核的功能送出啟用申請後，後端的 newState 仍是 false、
+      // status 是 PENDING_APPROVAL（待平台審核）；先前直接把畫面改成已啟用並提示「已啟用」，重新整理後開關又變回關閉。
+      const { newState, status } = response.data.data
+      const pendingApproval = enabled && status === 'PENDING_APPROVAL'
       setFeatures(prev =>
         prev.map(f =>
           f.featureKey === feature
             ? {
                 ...f,
-                isEnabled: enabled,
-                status: f.requiresAdminReview && enabled ? 'PENDING' : enabled ? 'ACTIVE' : 'INACTIVE'
+                isEnabled: newState,
+                status: pendingApproval ? 'PENDING' : newState ? 'ACTIVE' : 'INACTIVE'
               }
             : f
         )
       )
 
-      setSuccessMessage(`功能「${feature}」已${enabled ? '啟用' : '停用'}`)
+      setSuccessMessage(
+        pendingApproval
+          ? `功能「${feature}」已送出啟用申請，待平台審核後生效`
+          : `功能「${feature}」已${newState ? '啟用' : '停用'}`
+      )
       setTimeout(() => setSuccessMessage(null), 3000)
     } catch (err: unknown) {
       console.error('Failed to update feature toggle:', err)

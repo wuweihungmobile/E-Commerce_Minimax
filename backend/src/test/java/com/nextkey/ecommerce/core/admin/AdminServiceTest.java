@@ -166,6 +166,42 @@ class AdminServiceTest {
         }
 
         @Test
+        @DisplayName("DEF-429：管理員核准待審核的功能 → 啟用並清掉申請時間")
+        void updateTenantFeatureToggle_approvePending_clearsRequestedAt() {
+            Tenant tenant = buildTenant();
+            TenantFeatureToggle toggle = buildFeatureToggle(tenant, "PROMO_ENABLED", false);
+            toggle.setRequestedAt(Instant.parse("2026-10-20T08:00:00Z"));
+
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+            when(featureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "PROMO_ENABLED"))
+                    .thenReturn(Optional.of(toggle));
+            when(featureToggleRepository.save(any(TenantFeatureToggle.class))).thenAnswer(i -> i.getArgument(0));
+
+            adminService.updateTenantFeatureToggle(TEST_TENANT_ID, "PROMO_ENABLED", true);
+
+            assertThat(toggle.getIsEnabled()).isTrue();
+            assertThat(toggle.getRequestedAt()).as("核准後申請時間要清掉，之後關閉才不會又變成待審核").isNull();
+        }
+
+        @Test
+        @DisplayName("DEF-429：管理員對待審核的功能送 enabled=false（駁回）→ 仍未啟用，申請時間清掉")
+        void updateTenantFeatureToggle_declinePending_clearsRequestedAt() {
+            Tenant tenant = buildTenant();
+            TenantFeatureToggle toggle = buildFeatureToggle(tenant, "PROMO_ENABLED", false);
+            toggle.setRequestedAt(Instant.parse("2026-10-20T08:00:00Z"));
+
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+            when(featureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "PROMO_ENABLED"))
+                    .thenReturn(Optional.of(toggle));
+            when(featureToggleRepository.save(any(TenantFeatureToggle.class))).thenAnswer(i -> i.getArgument(0));
+
+            adminService.updateTenantFeatureToggle(TEST_TENANT_ID, "PROMO_ENABLED", false);
+
+            assertThat(toggle.getIsEnabled()).isFalse();
+            assertThat(toggle.getRequestedAt()).isNull();
+        }
+
+        @Test
         @DisplayName("updateTenantFeatureToggle_tenantNotFound_throwsException")
         void updateTenantFeatureToggle_tenantNotFound_throwsException() {
             // Arrange
@@ -412,6 +448,25 @@ class AdminServiceTest {
             // Assert
             assertThat(response.getIsEnabled()).isTrue();
             assertThat(response.getEnabledAt()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("DEF-429：setFeatureToggle 是管理員的直接設定，會清掉店主的申請時間（申請已被處理）")
+        void setFeatureToggle_clearsRequestedAt() {
+            Tenant tenant = buildTenant();
+            TenantFeatureToggle toggle = buildFeatureToggle(tenant, "PROMO_ENABLED", false);
+            toggle.setRequestedAt(Instant.parse("2026-10-20T08:00:00Z"));
+            AdminDto.FeatureToggleRequest request = AdminDto.FeatureToggleRequest.builder()
+                    .tenantId(TEST_TENANT_ID).featureKey("PROMO_ENABLED").isEnabled(true).build();
+
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+            when(featureToggleRepository.findByTenantIdAndFeatureKey(TEST_TENANT_ID, "PROMO_ENABLED"))
+                    .thenReturn(Optional.of(toggle));
+            when(featureToggleRepository.saveAndFlush(any(TenantFeatureToggle.class))).thenAnswer(i -> i.getArgument(0));
+
+            adminService.setFeatureToggle(request);
+
+            assertThat(toggle.getRequestedAt()).isNull();
         }
 
         @Test

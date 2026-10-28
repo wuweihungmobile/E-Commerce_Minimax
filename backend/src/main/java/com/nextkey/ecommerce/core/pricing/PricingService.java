@@ -367,6 +367,9 @@ public class PricingService {
      */
     @Transactional
     public PricingDto.CalendarPriceResponse setCalendarPrice(PricingDto.SetCalendarPriceRequest request, boolean isSuperAdmin) {
+        // DEF-426：建出的 MANUAL_OVERRIDE 是規則，開關關閉時不會生效；比照 createRule，建立一條不會生效的規則等於騙人
+        featureToggleService.checkFeatureEnabled("DYNAMIC_PRICING_ENABLED");
+
         Room room = roomRepository.findByListingId(request.getRoomListingId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000));
         // DEF-242：同 createRule，先前未驗證房源屬於呼叫者租戶
@@ -413,6 +416,9 @@ public class PricingService {
     @Transactional
     public PricingDto.RuleOverrideResponse overridePrice(UUID ruleId, LocalDate startDate, LocalDate endDate,
                                                           BigDecimal overridePrice, String reason, boolean isSuperAdmin) {
+        // DEF-426：同 setCalendarPrice／createRule，開關關閉時建立的覆蓋規則不會生效
+        featureToggleService.checkFeatureEnabled("DYNAMIC_PRICING_ENABLED");
+
         PricingRule existingRule = pricingRuleRepository.findById(ruleId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Pricing rule not found"));
         // DEF-242：同 createRule，先前未驗證規則屬於呼叫者租戶

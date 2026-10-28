@@ -55,8 +55,9 @@ test.describe('AT-ADMIN-TENANT-FEATURES-REAL: 平台管理台功能開關（真�
     await expect(page.getByText('零售功能', { exact: true })).toBeVisible();
     await expect(page.getByText('民宿預訂功能', { exact: true })).toBeVisible();
 
-    // 待審核提示（頂部摘要 Alert + 該項目的狀態徽章，徽章有 3 個同文字，取第一個即可）
-    await expect(page.getByText(/項功能待審核/)).toBeVisible();
+    // 待審核提示（頂部摘要 Alert + 該項目的狀態徽章）。摘要只算店主真的申請過的功能：這間店只申請了民宿預訂，所以是「1 項」。
+    // DEF-429 修復前，核准開店時建的三個預設列也被算成待審核，這裡會是「3 項」，而且管理員分不出哪些是真的申請。
+    await expect(page.getByText(/1 項功能待審核：民宿預訂功能/)).toBeVisible();
     await expect(page.getByText('待審核').first()).toBeVisible();
   });
 

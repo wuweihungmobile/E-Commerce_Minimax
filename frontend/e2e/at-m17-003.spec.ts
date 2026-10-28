@@ -35,6 +35,7 @@ interface FeatureInfo {
   featureKey: string;
   isEnabled: boolean;
   status: 'ACTIVE' | 'PENDING' | 'INACTIVE';
+  requestedAt: string | null;
 }
 
 /** 以店主身分讀回某功能目前的狀態（GET /v2/dashboard/tenants/features）：驗證「後端真的存了」，不只相信畫面。 */
@@ -118,7 +119,7 @@ test.describe('AT-M17-003: Feature Toggle 更新（真實後端）', () => {
     expect(await readFeature(page, 'CMS_ENABLED')).toMatchObject({ isEnabled: true, status: 'ACTIVE' });
   });
 
-  test('E2E-M17-003-02: 需審核的功能（促銷）點開後是「待審核」、不會直接生效 → 重新整理後仍是待審核', async ({
+  test('E2E-M17-003-02: 需審核的功能（促銷）→ 沒申請過是「已停用」；點開送出申請後是「待審核」、開關仍是關的、功能沒有生效 → 重新整理後一致', async ({
     page,
   }: {
     page: Page;
@@ -126,28 +127,42 @@ test.describe('AT-M17-003: Feature Toggle 更新（真實後端）', () => {
     await loginOnly(page, ownerEmail, ownerPassword);
     await page.goto(`/dashboard/tenants/${tenantId}/features`);
     const toggle = page.locator('#PROMO_ENABLED');
+    const row = featureRow(page, 'PROMO_ENABLED');
     await expect(toggle).toBeVisible({ timeout: 15_000 });
 
-    // 前提：PROMO_ENABLED 需審核、預設未啟用。
-    // 注意：核准開店時系統就替需審核的功能建了預設資料列（AdminService.initializeFeatureToggles），而功能清單把「有資料列、
-    // 未啟用、需審核」一律算成 PENDING——所以「待審核」徽章在店主點擊**之前**就已經在（見 DEF-429）。本案例鎖的是
-    // 「申請的回應契約」與「點擊不會讓功能直接生效」（DEF-247 的回歸防線），不是徽章的出現時機。
+    // 前提（DEF-429）：核准開店時系統替需審核的功能建了預設資料列，但店主沒申請過 → 是「已停用」，不是「待審核」，
+    // 後端也沒有申請時間。（修復前這三項在沒人申請時就顯示「待審核」，下面「點了才變待審核」的斷言因此沒有鑑別力。）
     await expect(toggle).toHaveAttribute('aria-checked', 'false');
-    expect((await readFeature(page, 'PROMO_ENABLED')).isEnabled).toBe(false);
+    await expect(row.getByText('已停用', { exact: true })).toBeVisible();
+    await expect(row.getByText('待審核', { exact: true })).toHaveCount(0);
+    expect(await readFeature(page, 'PROMO_ENABLED')).toMatchObject({
+      isEnabled: false,
+      status: 'INACTIVE',
+      requestedAt: null,
+    });
 
     const response = await clickToggle(page, 'PROMO_ENABLED');
     expect(response.status()).toBe(200);
-    // AC-M17-006-1：系統記錄申請、等待 Admin 審核——功能本身沒有啟用
+    // AC-M17-006-1：系統記錄申請、等待 Admin 審核——功能本身沒有啟用（DEF-247 的回歸防線）
     expect((await response.json()).data).toMatchObject({
       featureKey: 'PROMO_ENABLED',
       previousState: false,
       newState: false,
       status: 'PENDING_APPROVAL',
     });
-    await expect(featureRow(page, 'PROMO_ENABLED').getByText('待審核', { exact: true })).toBeVisible();
-    expect(await readFeature(page, 'PROMO_ENABLED')).toMatchObject({ isEnabled: false, status: 'PENDING' });
 
-    // 重新整理後仍是待審核、開關仍是關的
+    // DEF-428：點擊當下的畫面就要和後端一致——開關仍是關的、徽章是「待審核」、提示不是「已啟用」
+    // （修復前畫面把開關翻成開、提示「功能「PROMO_ENABLED」已啟用」，重新整理後又變回關閉）
+    await expect(toggle).toHaveAttribute('aria-checked', 'false');
+    await expect(row.getByText('待審核', { exact: true })).toBeVisible();
+    await expect(page.getByText('功能「PROMO_ENABLED」已啟用')).toHaveCount(0);
+
+    // 後端：仍未啟用，但記下了申請（待審核）
+    const pending = await readFeature(page, 'PROMO_ENABLED');
+    expect(pending).toMatchObject({ isEnabled: false, status: 'PENDING' });
+    expect(pending.requestedAt, '送出申請要記下申請時間').toBeTruthy();
+
+    // 重新整理後仍然一致
     await page.reload();
     await expect(page.locator('#PROMO_ENABLED')).toHaveAttribute('aria-checked', 'false');
     await expect(featureRow(page, 'PROMO_ENABLED').getByText('待審核', { exact: true })).toBeVisible();

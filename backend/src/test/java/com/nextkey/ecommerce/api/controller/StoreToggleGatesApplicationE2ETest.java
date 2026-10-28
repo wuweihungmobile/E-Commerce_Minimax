@@ -245,7 +245,69 @@ class StoreToggleGatesApplicationE2ETest {
         assertThat(availability(consumer, roomOff).path("totalPrice").decimalValue()).isEqualByComparingTo("2400");
     }
 
+    // ── 日曆手動改價也受店鋪開關約束（Sprint 311，DEF-426，使用者以互動選項裁決）──────────────
+
+    @Test
+    @DisplayName("DEF-426：日曆手動改價（calendar/price、rules/{id}/override）在店主店鋪的動態定價開關關閉時回 403 E-2004、不建立規則；"
+            + "同一位店主、同一個房源只翻轉開關就恢復 200")
+    void calendarManualOverrideEndpoints_followTheOwnersStoreToggle() throws Exception {
+        LocalDate date = today.plusDays(10);
+        UUID offRule = roomRuleId(storeOff, roomOff);
+        int rulesBefore = pricingRuleRepository.findByTenantId(storeOff.getId()).size();
+
+        // setCalendarPrice 先查 rooms 列（其餘案例只用 listings 列）；只在本案例建立、結束時清掉，不改變其他案例的固件
+        jdbcTemplate.update("INSERT INTO rooms (listing_id, max_guests, room_count, check_in_time, check_out_time, "
+                + "created_at, updated_at) VALUES (?, 2, 1, '15:00'::time, '11:00'::time, NOW(), NOW())", roomOff);
+        try {
+            // 開關關閉：兩個端點都擋下，而且沒有留下任何規則（原本回 200 卻建出一條不會生效的規則）
+            assertThat(errorCode(postJson("/v2/dashboard/pricing/calendar/price", ownerOffToken,
+                    calendarPriceBody(roomOff, date), 403))).isEqualTo("E-2004");
+            assertThat(errorCode(postJson("/v2/dashboard/pricing/rules/" + offRule + "/override", ownerOffToken,
+                    overrideBody(date, date.plusDays(2)), 403))).isEqualTo("E-2004");
+            assertThat(pricingRuleRepository.findByTenantId(storeOff.getId()))
+                    .as("被擋下的請求不可建立規則").hasSize(rulesBefore);
+
+            // 只翻轉開關（其餘完全相同）：同一位店主、同一個房源、同一組請求 → 200，規則建立
+            setToggle(storeOff, true);
+            postJson("/v2/dashboard/pricing/calendar/price", ownerOffToken, calendarPriceBody(roomOff, date), 200);
+            postJson("/v2/dashboard/pricing/rules/" + offRule + "/override", ownerOffToken,
+                    overrideBody(date, date.plusDays(2)), 200);
+            assertThat(pricingRuleRepository.findByTenantId(storeOff.getId()))
+                    .as("開關開啟後兩個端點各建立一條規則").hasSize(rulesBefore + 2);
+        } finally {
+            jdbcTemplate.update("DELETE FROM rooms WHERE listing_id = ?", roomOff);
+        }
+    }
+
     // ── 固件與輔助 ────────────────────────────────────────────────────────────
+
+    private UUID roomRuleId(Tenant store, UUID roomListingId) {
+        return pricingRuleRepository.findByTenantId(store.getId()).stream()
+                .filter(r -> roomListingId.equals(r.getRoomListingId()) && ROOM_RULE_NAME.equals(r.getRuleName()))
+                .findFirst().orElseThrow().getId();
+    }
+
+    private Map<String, Object> calendarPriceBody(UUID roomListingId, LocalDate date) {
+        return Map.of("roomListingId", roomListingId.toString(), "date", date.toString(),
+                "price", 900, "reason", "S311 日曆手動改價");
+    }
+
+    private Map<String, Object> overrideBody(LocalDate start, LocalDate end) {
+        return Map.of("startDate", start.toString(), "endDate", end.toString(),
+                "overridePrice", 900, "reason", "S311 手動覆蓋");
+    }
+
+    private String postJson(String path, String token, Object body, int expectedStatus) throws Exception {
+        return given().header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(objectMapper.writeValueAsString(body))
+                .when().post(path)
+                .then().statusCode(expectedStatus).extract().asString();
+    }
+
+    private String errorCode(String json) throws Exception {
+        return objectMapper.readTree(json).path("code").asText();
+    }
 
     private Tenant seedStore(String label, long stamp, boolean pricingEnabled) {
         Tenant store = tenantRepository.save(Tenant.builder()

@@ -73,6 +73,13 @@ public class TenantFeatureToggle {
     @Column(name = "disabled_at")
     private Instant disabledAt;
 
+    /**
+     * 店主送出啟用申請的時間（只有需審核的功能會有值）。待審核＝需審核、未啟用、且此欄有值；
+     * 核准、停用或撤回時清除（DEF-429：先前只憑「有資料列」判斷，核准開店建的預設列也被當成待審核）。
+     */
+    @Column(name = "requested_at")
+    private Instant requestedAt;
+
     @Column(name = "created_at")
     private Instant createdAt;
 

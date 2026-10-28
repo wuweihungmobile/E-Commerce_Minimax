@@ -441,7 +441,8 @@ public class TenantService {
                     .description(def.description)
                     .isEnabled(toggle != null ? toggle.getIsEnabled() : def.booleanDefault)
                     .enabledAt(toggle != null ? toggle.getEnabledAt() : null)
-                    .requestedAt(toggle != null && !toggle.getIsEnabled() ? toggle.getCreatedAt() : null)
+                    // DEF-429：申請時間是店主送出申請時才寫入的 requestedAt；先前拿資料列建立時間（核准開店時的預設列也有）
+                    .requestedAt(toggle != null && !toggle.getIsEnabled() ? toggle.getRequestedAt() : null)
                     // DEF-168：以下三欄前端一直在讀卻從未被提供，導致分組、名稱徽章、審核提示全失效
                     .category(def.category)
                     .status(resolveFeatureStatus(toggle, def))
@@ -535,6 +536,7 @@ public class TenantService {
         if (effectiveEnabled && !previousState) {
             toggle.setEnabledAt(Instant.now());
         }
+        recordRequestTime(toggle, pendingApproval);
 
         toggle = saveFeatureToggleOrTranslateConflict(toggle, isNewToggle, featureKey);
         auditService.record("FEATURE_TOGGLE_SELF_SERVICE_UPDATED", "FEATURE_TOGGLE", tenantId, tenantId,
@@ -561,18 +563,34 @@ public class TenantService {
     /**
      * DEF-168：推導前端所需的功能開關狀態。
      *
-     * <p>ACTIVE＝目前已啟用；PENDING＝已建立紀錄但未啟用且該功能需管理員審核（即已送出申請待審）；
-     * INACTIVE＝其餘（從未申請，或不需審核的單純停用）。
+     * <p>ACTIVE＝目前已啟用；PENDING＝該功能需管理員審核、未啟用、且店主送出過啟用申請（{@code requestedAt} 有值）；
+     * INACTIVE＝其餘（從未申請、申請被駁回或撤回、停用，或不需審核的單純停用）。
+     *
+     * <p>DEF-429：先前只憑「有資料列」判斷待審核，但核准開店時 {@code AdminService.initializeFeatureToggles} 就替三個
+     * 需審核的功能建了預設列，所以全新店鋪沒申請過也顯示待審核。現在只認申請時間。
      */
     private String resolveFeatureStatus(final TenantFeatureToggle toggle, final FeatureDefinition def) {
         boolean enabled = toggle != null ? toggle.getIsEnabled() : def.booleanDefault;
         if (enabled) {
             return "ACTIVE";
         }
-        if (toggle != null && def.requiresApproval) {
+        if (toggle != null && def.requiresApproval && toggle.getRequestedAt() != null) {
             return "PENDING";
         }
         return "INACTIVE";
+    }
+
+    /**
+     * DEF-429：申請時間只在「店主送出需審核功能的啟用申請」時寫入——重複申請保留最早的時間（等待時間不被重置）；
+     * 其他情況（啟用、停用、撤回）一律清掉，避免殘留的舊申請時間讓之後被關閉的功能又顯示成待審核。
+     * 獨立成方法以免推高 {@code updateFeatureToggle} 的 NPathComplexity（checkstyle 門檻 200）。
+     */
+    private void recordRequestTime(final TenantFeatureToggle toggle, final boolean pendingApproval) {
+        if (!pendingApproval) {
+            toggle.setRequestedAt(null);
+        } else if (toggle.getRequestedAt() == null) {
+            toggle.setRequestedAt(Instant.now());
+        }
     }
 
     /**

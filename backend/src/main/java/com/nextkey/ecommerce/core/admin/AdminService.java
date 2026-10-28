@@ -616,6 +616,8 @@ public class AdminService {
                         .build());
 
         toggle.setIsEnabled(request.getIsEnabled() != null ? request.getIsEnabled() : false);
+        // DEF-429：管理員的直接設定代表申請已被處理（核准或駁回），清掉店主的申請時間
+        toggle.setRequestedAt(null);
         toggle.setConfig(request.getConfig());
 
         if (Boolean.TRUE.equals(request.getIsEnabled())) {
@@ -677,6 +679,8 @@ public class AdminService {
                         .build());
 
         toggle.setIsEnabled(enabled != null ? enabled : false);
+        // DEF-429：核准（enabled=true）或駁回（enabled=false）都代表申請已被處理，清掉店主的申請時間
+        toggle.setRequestedAt(null);
 
         if (Boolean.TRUE.equals(enabled)) {
             toggle.setEnabledAt(Instant.now());

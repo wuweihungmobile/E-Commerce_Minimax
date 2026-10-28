@@ -23,6 +23,8 @@ public class IdempotencyService {
     private final RedisTemplate<String, Object> redisTemplate;
 
     private static final String IDEMPOTENCY_PREFIX = "idempotency:";
+    /** 鍵已被某個請求搶到、但還沒有回應可回放時，存在 Redis 的標記值。 */
+    private static final String PROCESSING_MARKER = "PROCESSING";
     private static final Duration IDEMPOTENCY_TTL = Duration.ofHours(24);
 
     /**
@@ -32,7 +34,7 @@ public class IdempotencyService {
     public boolean checkAndMark(final String idempotencyKey) {
         String key = buildKey(idempotencyKey);
         Boolean result = redisTemplate.opsForValue()
-                .setIfAbsent(key, "PROCESSING", IDEMPOTENCY_TTL);
+                .setIfAbsent(key, PROCESSING_MARKER, IDEMPOTENCY_TTL);
 
         if (Boolean.TRUE.equals(result)) {
             log.info("Idempotency key marked as PROCESSING: {}", idempotencyKey);
@@ -54,11 +56,16 @@ public class IdempotencyService {
 
     /**
      * 取得已儲存的回應（用於重複請求）
+     *
+     * <p>回傳 {@code null} 代表「沒有可回放的回應」：鍵不存在，或鍵仍在處理中（Redis 裡存的是 PROCESSING 標記，
+     * 不是回應）。呼叫端（訂房／訂單／合併結帳控制器）把回傳值指派給具體的回應型別並以 null 判斷；
+     * 處理中若回傳標記字串，呼叫端會 ClassCastException → 500，而不是 409 E-6005（DEF-433）。
      */
     @SuppressWarnings("unchecked")
     public <T> T getStoredResponse(final String idempotencyKey) {
         String key = buildKey(idempotencyKey);
-        return (T) redisTemplate.opsForValue().get(key);
+        Object value = redisTemplate.opsForValue().get(key);
+        return PROCESSING_MARKER.equals(value) ? null : (T) value;
     }
 
     /**
@@ -67,7 +74,7 @@ public class IdempotencyService {
     public boolean isStillProcessing(final String idempotencyKey) {
         String key = buildKey(idempotencyKey);
         Object value = redisTemplate.opsForValue().get(key);
-        return "PROCESSING".equals(value);
+        return PROCESSING_MARKER.equals(value);
     }
 
     /**

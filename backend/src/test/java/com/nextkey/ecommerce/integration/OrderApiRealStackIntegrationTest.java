@@ -28,6 +28,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.core.cart.RedisCartService;
+import com.nextkey.ecommerce.core.idempotency.IdempotencyService;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
@@ -56,6 +57,7 @@ class OrderApiRealStackIntegrationTest {
     @Autowired private ListingRepository listingRepository;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private RedisCartService cartService;
+    @Autowired private IdempotencyService idempotencyService;
 
     private ContractFixture fx;
 
@@ -115,6 +117,32 @@ class OrderApiRealStackIntegrationTest {
         send(post("/v2/orders").header("Idempotency-Key", "not-a-uuid").content(body(orderRequest())), fx.buyerToken)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("E-9004"));
+    }
+
+    /**
+     * DEF-433：鍵仍在處理中時，真實服務的 {@code getStoredResponse} 回的是標記字串 {@code "PROCESSING"}，控制器把它指派給
+     * {@code OrderResponse} 變數 → {@code ClassCastException} → 500（{@code E-9900}），不是 409。
+     */
+    @Test
+    @DisplayName("Idempotency-Key 仍在處理中（真實 Redis，DEF-433）：同鍵請求回 409 E-6005（原本是 500 ClassCastException）、不建立訂單、購物車保持原樣")
+    void createOrder_idempotencyKeyStillProcessing_returns409() throws Exception {
+        addProduct(1);
+        String key = UUID.randomUUID().toString();
+        org.assertj.core.api.Assertions.assertThat(fx.markBuyerIdempotencyKeyProcessing(idempotencyService, key))
+                .as("這把鍵應是第一次出現，預先標記才會成立").isTrue();
+        try {
+            send(post("/v2/orders").header("Idempotency-Key", key).content(body(orderRequest())), fx.buyerToken)
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.success").value(false))
+                    .andExpect(jsonPath("$.code").value("E-6005"));
+            // 409 的意義是「這個請求沒有被執行」：不可留下訂單，也不可清掉購物車
+            get("/v2/orders", fx.buyerToken).andExpect(jsonPath("$.data.totalElements").value(0));
+            org.assertj.core.api.Assertions.assertThat(
+                    cartService.getCart(fx.buyer.getId(), ContractFixture.SYSTEM_TENANT_ID).getItems())
+                    .as("沒有被執行的請求不可清掉購物車").hasSize(1);
+        } finally {
+            fx.releaseBuyerIdempotencyKey(idempotencyService, key);
+        }
     }
 
     @Test
@@ -354,6 +382,35 @@ class OrderApiRealStackIntegrationTest {
                 .andExpect(jsonPath("$.data.totalDiscountAmount").value(0));
         send(post("/v2/checkout/mixed").content(body(request)), fx.buyerToken)
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("E-5004"));
+    }
+
+    /** DEF-433：與 {@link #createOrder_idempotencyKeyStillProcessing_returns409()} 同一個缺陷，合併結帳的回應型別是 MixedCheckoutResponse。 */
+    @Test
+    @DisplayName("合併結帳的 Idempotency-Key 仍在處理中（真實 Redis，DEF-433）：同鍵請求回 409 E-6005（原本是 500 ClassCastException）、不建立訂單與訂房、購物車保持原樣")
+    void mixedCheckout_idempotencyKeyStillProcessing_returns409() throws Exception {
+        addProduct(1);
+        cartService.addItem(fx.buyer.getId(), ContractFixture.SYSTEM_TENANT_ID, CartDto.AddItemRequest.builder()
+                .listingId(fx.roomId).quantity(1)
+                .startDate(java.time.LocalDate.now().plusDays(40)).endDate(java.time.LocalDate.now().plusDays(42)).build());
+        Map<String, Object> request = new java.util.LinkedHashMap<>(orderRequest());
+        request.remove("orderType");
+        request.put("guestCount", 2);
+        request.put("guestName", "合併住客");
+        String key = UUID.randomUUID().toString();
+        org.assertj.core.api.Assertions.assertThat(fx.markBuyerIdempotencyKeyProcessing(idempotencyService, key))
+                .as("這把鍵應是第一次出現，預先標記才會成立").isTrue();
+        try {
+            send(post("/v2/checkout/mixed").header("Idempotency-Key", key).content(body(request)), fx.buyerToken)
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.success").value(false))
+                    .andExpect(jsonPath("$.code").value("E-6005"));
+            get("/v2/orders", fx.buyerToken).andExpect(jsonPath("$.data.totalElements").value(0));
+            org.assertj.core.api.Assertions.assertThat(
+                    cartService.getCart(fx.buyer.getId(), ContractFixture.SYSTEM_TENANT_ID).getItems())
+                    .as("沒有被執行的請求不可清掉購物車").hasSize(2);
+        } finally {
+            fx.releaseBuyerIdempotencyKey(idempotencyService, key);
+        }
     }
 
     // ── 輔助 ─────────────────────────────────────────────────

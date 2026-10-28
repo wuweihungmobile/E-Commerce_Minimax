@@ -159,3 +159,5 @@
 ### 9.3 commit 範圍
 
 本輪的 commit 範圍：生產程式 `PricingService`、`RedisCartService`、`BookingService`（引擎關卡、移除孤兒欄位）；測試 `PricingServiceTest`、`StoreToggleGatesApplicationE2ETest`（新增）、`M12EffectivePriceIntegrationTest`、訂房與購物車單元測試、`BookingPricingFixtures`（新增）、Playwright `at-pricing-cart-checkout-real.spec.ts`；文件 `API_M01`、`API_M04`、`API_M06`、`API_M12`、`DEFERRED_ITEMS_TRACKER.md`、`RELEASE_TRACKER.md`、`SPRINT_308_PLAN.md`（補一行後續指引）與本計畫書。沒有改遷移、PRD、前端應用程式碼。 之後的兩個 commit：修復 commit `035a14e6`（只改 `BookingControllerE2ETest.java`）；以及純文件的回填 commit（`RELEASE_TRACKER.md` v4.40、`DEFERRED_ITEMS_TRACKER.md` 新增 `DEF-427`、`SPRINT_151_PLAN.md` 更正註記、`SPRINT_308_PLAN.md` §10 後續、本計畫書；依慣例留在本機，隨下次有功能變更的 push 出去）。
+
+> **後續（Sprint 310）**：`DEF-427`（IT-M06-103 斷言偏弱）已修復，且修復過程發現一個更大的問題——真實 Redis 下，訂房、訂單、合併結帳三個端點的同鍵請求「仍在處理中」其實回 500 而不是 409（`DEF-433`，已修）；§9.2 的 `inFlightRequest`＋`tearDown` 等待因為IT-M06-103 已不再有背景請求而移除。`DEF-425` 也已修復。見 [SPRINT_310_PLAN.md](SPRINT_310_PLAN.md)。

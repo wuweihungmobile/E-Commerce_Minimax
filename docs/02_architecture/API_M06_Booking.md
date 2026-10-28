@@ -1,7 +1,7 @@
 # API 規格文件 - M06 預訂系統 / API Specification - M06 Booking System
 
 > **文件編號**: API-M06
-> **文件版本**: v2.4（Sprint 309：DEF-424——可用性報價補記動態定價開關以房源所屬店鋪把關）；v2.3（Sprint 247 訂房納入結算；v2.2 為 Sprint 246 新增狀態日誌、店家後台按鈕與人工退款；v2.1 為 Sprint 245 新增入住與退房；v2.0 為 Sprint 243 依實作改寫）
+> **文件版本**: v2.5（Sprint 310：DEF-433——同鍵請求仍在處理中的 `409 E-6005` 補記修復前實為 500）；v2.4（Sprint 309：DEF-424——可用性報價補記動態定價開關以房源所屬店鋪把關）；v2.3（Sprint 247 訂房納入結算；v2.2 為 Sprint 246 新增狀態日誌、店家後台按鈕與人工退款；v2.1 為 Sprint 245 新增入住與退房；v2.0 為 Sprint 243 依實作改寫）
 > **建立日期**: 2026-04-28（v1.0，Sprint 4）
 > **最後更新**: 2026-10-28
 > **負責人**: SD (Marcus)
@@ -279,6 +279,7 @@
 **權限**：`booking:create`（Buyer、Store Owner、Admin、Super Admin 持有；**Host 沒有**）。標頭 `Idempotency-Key`（選填，UUID v4）：
 
 - 帶了：第一次 `201`，**同一把鍵**重送回 `200` 與**同一筆訂房**（不重複建立）；處理中回 `409 E-6005`；格式不對回 `400 E-9004`；建立失敗時鍵被清除，可安全重試。前端結帳每次都帶。
+- **處理中的 `409` 在 Sprint 310 前實際是 `500 E-9900`**（`DEF-433`）：真實的 `IdempotencyService.getStoredResponse` 在鍵仍處理中時回傳 Redis 裡的 `PROCESSING` 標記字串，控制器把它指派給 `BookingResponse` 變數而 `ClassCastException`；`BookingControllerE2ETest` 的記憶體 mock 在處理中回 `null`，所以測試看不到。現在處理中回 `null`，由 `BookingApiRealStackIntegrationTest`（真實 Redis）守住；訂單與合併結帳（[API_M05](api/API_M05_Order.md) §4.1）是同一個修復。
 - 不帶：維持原行為（不建議）。
 
 **成功 `201`**：`data` 是 `BookingResponse`（`status` `CREATED`、`refundStatus` `NONE`、`paymentDueAt` 約 24 小時後）。

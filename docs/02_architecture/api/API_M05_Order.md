@@ -1,8 +1,8 @@
 # API 規格文件 - M05 訂單履約系統 / API Specification - M05 Order Fulfillment
 
-> **文件版本**: v2.0（Sprint 243 依實作改寫）
+> **文件版本**: v2.1（Sprint 310：DEF-433——同鍵請求仍在處理中的 `409 E-6005` 補記修復前實為 500）；v2.0（Sprint 243 依實作改寫）
 > **建立日期**: 2026-04-09（v1.0）
-> **最後更新**: 2026-10-03
+> **最後更新**: 2026-10-28
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`OrderController`、`CheckoutController`、`OrderPaymentController`、`OrderService`、`OrderStateMachine`、`PaymentStateService`、`CombinedCheckoutService`、`OrderDto`、`CheckoutDto`、`OrderPaymentStateDto`、`GlobalExceptionHandler`；**每個回應形狀、狀態碼、錯誤碼與權限宣稱都用真實 PostgreSQL＋Redis＋完整 HTTP／JWT／權限鏈實測**（[OrderApiRealStackIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/OrderApiRealStackIntegrationTest.java)）
@@ -299,6 +299,7 @@
 **標頭**：`Idempotency-Key`（選填，UUID v4）。
 
 - 帶了：第一次 `201`，之後**同一把鍵**重送回 `200` 與**同一張訂單**（不重複建立）；上一次還在處理中回 `409 E-6005`；格式不是 UUID v4 回 `400 E-9004`；建立失敗（拋例外）時鍵會被清除，客戶端可以安全重試。
+- **處理中的 `409` 在 Sprint 310 前實際是 `500 E-9900`**（`DEF-433`，`POST /v2/orders`、`POST /v2/checkout/mixed` 與 `POST /v2/bookings` 三個端點都是）：真實的 `IdempotencyService.getStoredResponse` 在鍵仍處理中時回傳 `PROCESSING` 標記字串，控制器把它指派給具體回應型別而 `ClassCastException`。現在處理中回 `null`，三個端點各有一個真實 Redis 案例守住（`OrderApiRealStackIntegrationTest`、`BookingApiRealStackIntegrationTest`）。
 - 不帶：維持原行為（不建議）。
 - **不解決**兩個沒有共用鍵的獨立請求對同一購物車的併發競態。
 

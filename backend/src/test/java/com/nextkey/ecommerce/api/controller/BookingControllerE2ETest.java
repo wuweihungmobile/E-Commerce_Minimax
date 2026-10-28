@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.api.dto.BookingDto;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
+import com.nextkey.ecommerce.core.idempotency.IdempotencyService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.promo.PromoCode;
 import com.nextkey.ecommerce.domain.model.room.PricingRule;
@@ -39,7 +40,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -65,7 +65,9 @@ import org.springframework.security.core.context.SecurityContextHolder;
  * - API-M06-011: 未授權操作
  * - API-M06-012: 取得不存在的預訂
  *
- * 注意：此測試使用真實的 PostgreSQL 和 Redis，確保完整的 E2E 測試覆蓋
+ * 注意：此測試使用真實的 PostgreSQL；Redis、RedisLockService 與 IdempotencyService 由 IntegrationTestConfiguration
+ * 換成記憶體版 mock（冪等狀態以記憶體 Map 追蹤、分散式鎖永遠取得成功），所以這裡驗不到真實 Redis 的行為。
+ * 冪等鍵的真實 Redis 行為見 BookingApiRealStackIntegrationTest。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -119,6 +121,10 @@ class BookingControllerE2ETest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    /** IntegrationTestConfiguration 提供的記憶體版（IT-M06-103 用它把鍵預先標成處理中）。 */
+    @Autowired
+    private IdempotencyService idempotencyService;
+
     private static final String BOOKING_URL = "/v2/bookings";
     private static final String AUTH_URL = "/v2/auth";
     private static final String TEST_PASSWORD = "SecurePass123!";
@@ -131,8 +137,6 @@ class BookingControllerE2ETest {
     private String buyerToken;
     private String buyerEmail;
     private UUID createdBookingId;
-    /** 測試中「射後不理」啟動的背景請求；tearDown 清理前一定要等它結束（見 IT-M06-103）。 */
-    private CompletableFuture<Void> inFlightRequest;
 
     @BeforeAll
     static void setUpTestData(@Autowired TenantRepository tenantRepo,
@@ -260,11 +264,6 @@ class BookingControllerE2ETest {
 
     @AfterEach
     void tearDown() {
-        // 先等背景請求結束：它若在下面清理到一半才提交預訂，刪除使用者／房源時會撞到 FK（IT-M06-103）
-        if (inFlightRequest != null) {
-            inFlightRequest.exceptionally(e -> null).orTimeout(30, TimeUnit.SECONDS).join();
-            inFlightRequest = null;
-        }
         // 清理買家用戶的預訂和用戶（遵循 FK 約束順序）
         userRepository.findByEmail(buyerEmail).ifPresent(user -> {
             // 1. 先刪除該用戶關聯的 tenant_members
@@ -847,16 +846,32 @@ class BookingControllerE2ETest {
 
     // ── IT-M06-103: Idempotency-Key 仍在處理中 ───────────────────
 
+    /**
+     * DEF-427：原本用 {@code CompletableFuture.runAsync} 送第一個請求、睡 100 毫秒再送第二個，結果取決於機器快慢——
+     * 夠快時第一個先完成，只走到「回快取 200」，「處理中回 409」這條契約從沒被驗到；而且收到 409／200 以外的狀態碼只印
+     * 警告、不會失敗（Sprint 310 量測：把處理中分支改成回 500，舊版 25 個案例仍全過）。
+     *
+     * <p>現在直接把鍵預先標成處理中（等同另一個同鍵請求正在執行），再送單一請求，走哪一支是確定的。
+     * 「重送回快取 200、不重複建立」由 IT-M06-102 與 BookingApiRealStackIntegrationTest（真實 Redis）負責。
+     *
+     * <p>注意：這裡的 IdempotencyService 是記憶體版，處理中時 {@code getStoredResponse} 回 {@code null}（沒有可回放的回應）。
+     * 真實服務原本在處理中回的是 PROCESSING 標記字串，控制器 ClassCastException → 500（DEF-433，Sprint 310 已修）——
+     * 這正是記憶體 mock 看不到的部分，所以「真實 Redis 下處理中回 409」由 BookingApiRealStackIntegrationTest 守住；
+     * 本案例只鎖控制器對「沒有可回放的回應」的處理（409、E-6005、不建立預訂）。
+     */
     @Test
     @Order(15)
-    @DisplayName("IT-M06-103: POST /v2/bookings with Idempotency-Key still processing returns 409")
+    @DisplayName("IT-M06-103: POST /v2/bookings with Idempotency-Key still processing returns 409 E-6005 and creates no booking")
     void createBooking_idempotencyKeyStillProcessing_returns409() {
         String idempotencyKey = UUID.randomUUID().toString();
         LocalDate checkIn = LocalDate.now().plusDays(90);
         LocalDate checkOut = LocalDate.now().plusDays(92);
 
-        // 第一次請求啟動（本測試不等待結果；結束由 tearDown 統一等待）
-        inFlightRequest = CompletableFuture.runAsync(() -> {
+        // 預先標成「處理中」。IntegrationTestConfiguration 的記憶體版 IdempotencyService 以原始鍵為索引（不分租戶／使用者），
+        // 所以從測試執行緒標記，控制器看到的就是同一把鍵，不必先設定 TenantContext。
+        assertThat(idempotencyService.checkAndMark(idempotencyKey))
+                .as("這把鍵應是第一次出現，預先標記才會成立").isTrue();
+        try {
             given()
                     .header("Authorization", "Bearer " + buyerToken)
                     .header("Idempotency-Key", idempotencyKey)
@@ -866,50 +881,26 @@ class BookingControllerE2ETest {
                             .checkInDate(checkIn)
                             .checkOutDate(checkOut)
                             .guestCount(2)
-                            .guestName("First Request")
-                            .guestPhone("0912345678")
-                            .guestEmail("first@example.com")
+                            .guestName("Duplicate While Processing")
+                            .guestPhone("0987654321")
+                            .guestEmail("processing@example.com")
                             .build())
                     .when()
-                    .post(BOOKING_URL);
-        });
-
-        // 稍微等待讓第一個請求啟動
-        try { Thread.sleep(100); } catch (InterruptedException e) {}
-
-        // 第二個請求：相同的 Idempotency-Key，應該返回 409 Conflict
-        var secondResponse = given()
-                .header("Authorization", "Bearer " + buyerToken)
-                .header("Idempotency-Key", idempotencyKey)
-                .contentType(MediaType.APPLICATION_JSON_VALUE)
-                .body(BookingDto.CreateRequest.builder()
-                        .roomListingId(testRoomListingId)
-                        .checkInDate(checkIn)
-                        .checkOutDate(checkOut)
-                        .guestCount(2)
-                        .guestName("Second Request")
-                        .guestPhone("0987654321")
-                        .guestEmail("second@example.com")
-                        .build())
-                .when()
-                .post(BOOKING_URL);
-
-        // 可能返回 409 (still processing) 或 200 (completed, cached)
-        // 如果第一個請求已經完成，則返回 200 cached response
-        int statusCode = secondResponse.getStatusCode();
-        if (statusCode == 409) {
-            secondResponse.then()
+                    .post(BOOKING_URL)
+                    .then()
+                    .statusCode(409)
                     .body("success", is(false))
                     .body("code", equalTo("E-6005"));
-            System.out.println("✅ IT-M06-103 PASSED: Idempotency-Key 仍在處理中返回 409");
-        } else if (statusCode == 200) {
-            // 第一個請求已經完成，這也是預期行為
-            secondResponse.then()
-                    .body("success", is(true));
-            System.out.println("✅ IT-M06-103 PASSED: 第一個請求已完成，返回 cached response");
-        } else {
-            System.out.println("⚠️ IT-M06-103: 收到狀態碼 " + statusCode + ", Body: " + secondResponse.getBody().asString());
+
+            // 409 的意義是「這個請求沒有被執行」：不可留下任何預訂
+            UUID buyerId = userRepository.findByEmail(buyerEmail).orElseThrow().getId();
+            assertThat(bookingRepository.findByUserIdOrderByCreatedAtDesc(buyerId, Pageable.unpaged()).getContent())
+                    .as("仍在處理中的鍵送來的請求不可建立預訂").isEmpty();
+        } finally {
+            idempotencyService.remove(idempotencyKey);
         }
+
+        System.out.println("✅ IT-M06-103 PASSED: Idempotency-Key 仍在處理中返回 409 E-6005，且沒有建立預訂");
     }
 
     // ── IT-M06-104: Redis Lock 失敗 (並發搶鎖) ─────────────────────

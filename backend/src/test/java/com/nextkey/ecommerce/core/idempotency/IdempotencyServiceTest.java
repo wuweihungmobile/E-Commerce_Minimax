@@ -100,6 +100,33 @@ class IdempotencyServiceTest {
         assertThat(result).isEqualTo("response-body");
     }
 
+    /**
+     * DEF-433：處理中的鍵存的是標記字串 {@code "PROCESSING"}（見 checkAndMark），不是回應。呼叫端（訂房／訂單／合併結帳控制器）
+     * 把回傳值指派給具體的回應型別並以 null 判斷「有沒有可回放的回應」，所以處理中必須回 null；
+     * 回傳標記字串會在呼叫端 ClassCastException → 500，而不是文件寫的 409 E-6005。
+     */
+    @Test
+    @DisplayName("getStoredResponse：鍵仍在處理中（值是 PROCESSING 標記）時回傳 null，不把標記當成回應（DEF-433）")
+    void getStoredResponse_whenStillProcessing_returnsNull() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenReturn("PROCESSING");
+
+        String result = idempotencyService.getStoredResponse("key-1");
+
+        assertThat(result).isNull();
+    }
+
+    @Test
+    @DisplayName("getStoredResponse：鍵不存在時回傳 null")
+    void getStoredResponse_whenKeyMissing_returnsNull() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenReturn(null);
+
+        String result = idempotencyService.getStoredResponse("key-1");
+
+        assertThat(result).isNull();
+    }
+
     @Test
     @DisplayName("isStillProcessing：值為 PROCESSING 時回傳 true")
     void isStillProcessing_whenProcessing_returnsTrue() {

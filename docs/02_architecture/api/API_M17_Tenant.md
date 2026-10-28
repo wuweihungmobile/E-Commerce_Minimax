@@ -1,9 +1,9 @@
 # API 規格文件 - M17 租戶/店鋪管理 / API Specification - M17 Tenant Management
 
 > **文件編號**: API-M17
-> **文件版本**: v2.3（Sprint 298 補上全域角色對店主自助端點的真實後端實測矩陣，見註記 9 與 §2.1；v2.2 為 Sprint 294 校正 §4.4／§4.8／§4.9／§4.13／§4.14 與 `E-4031` 總表；v2.1 為 Sprint 292 校正 §4.6；v2.0 為 Sprint 266 依實作改寫）
+> **文件版本**: v2.4（Sprint 310：§4.5 補記 `status` 的實際判定與 `DEF-429`）；v2.3（Sprint 298 補上全域角色對店主自助端點的真實後端實測矩陣，見註記 9 與 §2.1；v2.2 為 Sprint 294 校正 §4.4／§4.8／§4.9／§4.13／§4.14 與 `E-4031` 總表；v2.1 為 Sprint 292 校正 §4.6；v2.0 為 Sprint 266 依實作改寫）
 > **建立日期**: 2026-04-09（v1.0）
-> **最後更新**: 2026-10-22
+> **最後更新**: 2026-10-28
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`TenantController`、`AdminController`、`StorefrontController`（`api/controller/`）、`TenantService`、`AdminService`（`core/tenant/`、`core/admin/`）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[TenantServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/tenant/TenantServiceTest.java)、[AdminServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/admin/AdminServiceTest.java)、[AdminControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/AdminControllerE2ETest.java)、[TenantControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantControllerE2ETest.java)、[TenantMemberLookupIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantMemberLookupIntegrationTest.java)、[TenantMemberInviteE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantMemberInviteE2ETest.java)
@@ -198,6 +198,8 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 **權限**：`SCOPE_store:read`／`ROLE_STORE_OWNER`／`ROLE_ADMIN`，租戶由 `X-Tenant-ID`/principal 解析，解析不到回 `E-2003`。
 
 **回應**：`tenantId`／`features: List<FeatureInfo>`（`featureKey`／`featureName`／`description`／`isEnabled`／`enabledAt`／`requestedAt`／`category`／`status`：`ACTIVE`/`PENDING`/`INACTIVE`／`requiresAdminReview`）／`quotas: List<QuotaInfo>`（`featureKey`／`featureName`／`limit`／`currentUsage`，數量型配額如 `MAX_PRODUCTS`，與布林開關分開回傳）
+
+**`status` 的判定（Sprint 310 實測，`DEF-429`）**：已啟用 → `ACTIVE`；**有資料列、未啟用、且該功能需審核 → `PENDING`**；其餘 → `INACTIVE`。核准開店時系統就替六個功能都建了預設資料列（`AdminService.initializeFeatureToggles`），其中三個需審核的功能（`BOOKING_ENABLED`／`DYNAMIC_PRICING_ENABLED`／`PROMO_ENABLED`）預設 `isEnabled=false`，所以**全新店鋪從沒申請過這三項也是 `PENDING`**，`requestedAt` 是資料列的建立時間。也就是說 `PENDING` 目前**不等於**「店主已送出申請」；Admin 功能頁的「N 項功能待審核」用同一個欄位計數（`requiresAdminReview && status==='PENDING'`），全新店鋪會顯示 3 項。
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|

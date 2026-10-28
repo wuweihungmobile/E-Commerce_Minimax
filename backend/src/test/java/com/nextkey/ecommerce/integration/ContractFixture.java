@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.nextkey.ecommerce.core.idempotency.IdempotencyService;
 import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
@@ -13,6 +14,7 @@ import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
+import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 /**
  * M05 訂單／M06 訂房 API 契約測試共用的真實資料（Sprint 243）：一家營業中的店鋪（店主、一件 100 元的商品、
@@ -53,6 +55,34 @@ final class ContractFixture {
         roomId = listing(listings, Listing.ListingType.ROOM, "契約測試房間", "1000.00");
         jdbc.update("INSERT INTO rooms (listing_id, max_guests, room_count, check_in_time, check_out_time, created_at, "
                 + "updated_at) VALUES (?, 2, 1, '15:00'::time, '11:00'::time, NOW(), NOW())", roomId);
+    }
+
+    /**
+     * 把冪等鍵預先標成「處理中」，等同另一個同鍵請求正在執行（DEF-433）。鍵以租戶＋使用者範圍化（DEF-039），
+     * 買家的請求脈絡是系統租戶＋買家本人，所以用同一個身分標記。MockMvc 在測試執行緒內執行請求、過濾器結束時會清掉
+     * {@link TenantContext}，所以每次操作都自己設定、用完自己清。
+     *
+     * @return 這把鍵是否為第一次出現（標記成立）
+     */
+    boolean markBuyerIdempotencyKeyProcessing(final IdempotencyService idempotency, final String key) {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+        TenantContext.setCurrentUser(buyer.getId());
+        try {
+            return idempotency.checkAndMark(key);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    /** 釋放買家的冪等鍵（測試收尾，不在 Redis 留下殘值）。 */
+    void releaseBuyerIdempotencyKey(final IdempotencyService idempotency, final String key) {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+        TenantContext.setCurrentUser(buyer.getId());
+        try {
+            idempotency.remove(key);
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     private User user(final UserRepository users, final String label, final long stamp, final User.UserRole role,

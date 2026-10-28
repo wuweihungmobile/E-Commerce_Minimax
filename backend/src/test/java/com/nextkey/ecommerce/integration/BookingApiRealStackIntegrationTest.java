@@ -32,6 +32,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nextkey.ecommerce.core.idempotency.IdempotencyService;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
@@ -61,6 +62,7 @@ class BookingApiRealStackIntegrationTest {
     @Autowired private UserRepository userRepository;
     @Autowired private ListingRepository listingRepository;
     @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private IdempotencyService idempotencyService;
 
     private ContractFixture fx;
 
@@ -201,6 +203,30 @@ class BookingApiRealStackIntegrationTest {
         get("/v2/bookings", fx.buyerToken).andExpect(jsonPath("$.data.totalElements").value(1));
         send(post("/v2/bookings").header("Idempotency-Key", "not-a-uuid").content(body(request)), fx.buyerToken)
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("E-9004"));
+    }
+
+    /**
+     * DEF-433：鍵仍在處理中時，真實服務的 {@code getStoredResponse} 回的是 Redis 裡的標記字串 {@code "PROCESSING"}，
+     * 控制器把它指派給 {@code BookingResponse} 變數 → {@code ClassCastException} → 500（{@code E-9900}），不是文件寫的 409。
+     * {@code BookingControllerE2ETest} 的記憶體 mock 在處理中時回 {@code null}，所以看不到；本案例用真實 Redis 與真實服務。
+     */
+    @Test
+    @DisplayName("Idempotency-Key 仍在處理中（真實 Redis，DEF-433）：同鍵請求回 409 E-6005（原本是 500 ClassCastException）、不建立訂房")
+    void create_idempotencyKeyStillProcessing_returns409() throws Exception {
+        String key = UUID.randomUUID().toString();
+        Assertions.assertThat(fx.markBuyerIdempotencyKeyProcessing(idempotencyService, key))
+                .as("這把鍵應是第一次出現，預先標記才會成立").isTrue();
+        try {
+            send(post("/v2/bookings").header("Idempotency-Key", key).content(body(bookingRequest(day(30), day(31), 2))),
+                    fx.buyerToken)
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.success").value(false))
+                    .andExpect(jsonPath("$.code").value("E-6005"));
+            // 409 的意義是「這個請求沒有被執行」：不可留下任何訂房
+            get("/v2/bookings", fx.buyerToken).andExpect(jsonPath("$.data.totalElements").value(0));
+        } finally {
+            fx.releaseBuyerIdempotencyKey(idempotencyService, key);
+        }
     }
 
     // ── 列表、詳情與更新 ─────────────────────────────────────

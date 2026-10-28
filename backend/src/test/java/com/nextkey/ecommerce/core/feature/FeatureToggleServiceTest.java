@@ -2,7 +2,10 @@ package com.nextkey.ecommerce.core.feature;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -21,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
+import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 
 /**
@@ -32,6 +36,10 @@ import com.nextkey.ecommerce.shared.tenant.TenantContext;
  * 傳入任意 tenantId 的參數，設計上不存在跨租戶讀取/寫入其他租戶開關的路徑（未發現需要修復的缺口）。
  * 本測試以 {@link ArgumentCaptor} 驗證傳入 Repository 的 tenantId 確實來自
  * {@code TenantContext}，不會被忽略或替換為其他值，佐證此結論。
+ *
+ * <p>另有兩個由呼叫端傳入租戶的變體（用於「操作的對象屬於另一個租戶」）：{@code isFeatureEnabledForTenant}（Sprint 80）與
+ * {@code checkFeatureEnabledForTenant}（Sprint 312，DEF-435）。上段結論只適用於以 {@code TenantContext} 為準的前兩個方法；
+ * 這兩個變體的安全前提是呼叫端傳入的租戶必須來自資料庫資源（如房源所屬店鋪），不可來自請求。
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("FeatureToggleService 單元測試（Sprint 79）")
@@ -127,6 +135,75 @@ class FeatureToggleServiceTest {
                 .thenReturn(Optional.empty());
 
         assertThat(featureToggleService.isFeatureEnabled(FEATURE_KEY)).isFalse();
+    }
+
+    // ========== Sprint 312（DEF-435）：checkFeatureEnabledForTenant（指定租戶、不讀 TenantContext，未啟用拋 E-2004）==========
+
+    @Test
+    @DisplayName("checkFeatureEnabledForTenant：指定租戶的功能已啟用時不拋例外")
+    void checkFeatureEnabledForTenant_enabled_doesNotThrow() {
+        UUID storeId = UUID.randomUUID();
+        when(featureToggleRepository.findByTenantIdAndFeatureKey(storeId, FEATURE_KEY))
+                .thenReturn(Optional.of(toggle(true)));
+
+        featureToggleService.checkFeatureEnabledForTenant(storeId, FEATURE_KEY);
+
+        verify(featureToggleRepository).findByTenantIdAndFeatureKey(storeId, FEATURE_KEY);
+    }
+
+    @Test
+    @DisplayName("checkFeatureEnabledForTenant：指定租戶的功能已停用 → BusinessException(E-2004)，訊息含功能鍵")
+    void checkFeatureEnabledForTenant_disabled_throwsE2004() {
+        UUID storeId = UUID.randomUUID();
+        when(featureToggleRepository.findByTenantIdAndFeatureKey(storeId, FEATURE_KEY))
+                .thenReturn(Optional.of(toggle(false)));
+
+        assertThatThrownBy(() -> featureToggleService.checkFeatureEnabledForTenant(storeId, FEATURE_KEY))
+                .isInstanceOfSatisfying(BusinessException.class, e -> {
+                    assertThat(e.getErrorCode()).isEqualTo(ErrorCode.E_2004);
+                    assertThat(e.getMessage()).contains(FEATURE_KEY);
+                });
+    }
+
+    @Test
+    @DisplayName("checkFeatureEnabledForTenant：指定租戶查無開關紀錄時視為停用（fail-closed）→ E-2004")
+    void checkFeatureEnabledForTenant_notFound_throwsE2004() {
+        UUID storeId = UUID.randomUUID();
+        when(featureToggleRepository.findByTenantIdAndFeatureKey(storeId, FEATURE_KEY))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> featureToggleService.checkFeatureEnabledForTenant(storeId, FEATURE_KEY))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.E_2004));
+    }
+
+    @Test
+    @DisplayName("checkFeatureEnabledForTenant：只看指定的租戶、完全不讀 TenantContext——呼叫者租戶開啟、指定租戶關閉 → 仍拋；"
+            + "呼叫者租戶關閉、指定租戶開啟 → 放行")
+    void checkFeatureEnabledForTenant_ignoresTenantContext() {
+        UUID callerOn = UUID.randomUUID();
+        UUID callerOff = UUID.randomUUID();
+        UUID storeOff = UUID.randomUUID();
+        UUID storeOn = UUID.randomUUID();
+        // 誘餌：呼叫者租戶的開關，正確的實作永遠不會去查它（所以用 lenient，下面另以 verify 證明沒查過）
+        lenient().when(featureToggleRepository.findByTenantIdAndFeatureKey(callerOn, FEATURE_KEY))
+                .thenReturn(Optional.of(toggle(true)));
+        lenient().when(featureToggleRepository.findByTenantIdAndFeatureKey(callerOff, FEATURE_KEY))
+                .thenReturn(Optional.of(toggle(false)));
+        when(featureToggleRepository.findByTenantIdAndFeatureKey(storeOff, FEATURE_KEY))
+                .thenReturn(Optional.of(toggle(false)));
+        when(featureToggleRepository.findByTenantIdAndFeatureKey(storeOn, FEATURE_KEY))
+                .thenReturn(Optional.of(toggle(true)));
+
+        TenantContext.setCurrentTenant(callerOn);
+        assertThatThrownBy(() -> featureToggleService.checkFeatureEnabledForTenant(storeOff, FEATURE_KEY))
+                .isInstanceOf(BusinessException.class);
+
+        TenantContext.setCurrentTenant(callerOff);
+        featureToggleService.checkFeatureEnabledForTenant(storeOn, FEATURE_KEY);
+
+        verify(featureToggleRepository, never()).findByTenantIdAndFeatureKey(eq(callerOn), anyString());
+        verify(featureToggleRepository, never()).findByTenantIdAndFeatureKey(eq(callerOff), anyString());
     }
 
     @Test

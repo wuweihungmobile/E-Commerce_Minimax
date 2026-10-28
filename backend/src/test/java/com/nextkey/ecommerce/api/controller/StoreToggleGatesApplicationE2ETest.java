@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,8 @@ import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
 
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
+import io.restassured.module.mockmvc.response.MockMvcResponse;
+import io.restassured.module.mockmvc.specification.MockMvcRequestSpecification;
 
 /**
  * 規則只在「房源／商品所屬店鋪」的動態定價開關開啟時套用（Sprint 309，DEF-424，使用者以互動選項裁決，
@@ -74,6 +77,8 @@ class StoreToggleGatesApplicationE2ETest {
     private static final BigDecimal ROOM_RULE_PRICE = new BigDecimal("1200.00");
     private static final String PRODUCT_RULE_NAME = "S309 商品規則";
     private static final String ROOM_RULE_NAME = "S309 房源規則";
+    private static final String RULES_PATH = "/v2/dashboard/pricing/rules";
+    private static final String CALENDAR_PRICE_PATH = "/v2/dashboard/pricing/calendar/price";
 
     private final LocalDate today = LocalDate.now();
     private final LocalDate checkIn = today.plusDays(3);
@@ -95,6 +100,14 @@ class StoreToggleGatesApplicationE2ETest {
     /** 呼叫者標籤 → access token。三種呼叫者的租戶開關狀態不同（其中系統租戶的開關值依資料庫而異，本類別不依賴）。 */
     private Map<String, String> callers;
     private String systemConsumerToken;
+    /**
+     * 平台管理員（SUPER_ADMIN）的 token（DEF-435）。管理員請求的 {@code TenantContext} 不是 token 裡的租戶：有 {@code X-Tenant-ID}
+     * 標頭就用標頭指定的租戶，沒有就是系統租戶（{@code TenantContextFilter.resolveEffectiveTenantId}）。所以用標頭指向兩個
+     * 我控制開關的租戶，來代表「管理員自己這一側的開關」一開一關。
+     */
+    private String adminToken;
+    private UUID adminTenantOn;
+    private UUID adminTenantOff;
 
     private UUID productOn;
     private UUID productOff;
@@ -121,6 +134,13 @@ class StoreToggleGatesApplicationE2ETest {
         callers.put("呼叫者租戶開關關閉", buyerToken(callerOffTenant.getId(), "caller-off", stamp));
         systemConsumerToken = buyerToken(SYSTEM_TENANT_ID, "system", stamp);
         callers.put("沒有店鋪的消費者（系統租戶）", systemConsumerToken);
+
+        // DEF-435：平台管理員代操作。系統租戶的開關值依資料庫而異（本類別的消費者案例不依賴也不去改），所以用兩個我控制開關的租戶
+        // （以 X-Tenant-ID 標頭指向）來代表「管理員自己這一側的開關」；真實設定（沒帶標頭、系統租戶開關開啟）另有一個案例暫時打開還原。
+        adminToken = token(seedUser(SYSTEM_TENANT_ID, User.UserRole.SUPER_ADMIN, "admin", stamp),
+                "SUPER_ADMIN", SYSTEM_TENANT_ID);
+        adminTenantOn = callerOnTenant.getId();
+        adminTenantOff = callerOffTenant.getId();
 
         productOn = seedListing(storeOn, ownerOn, Listing.ListingType.PRODUCT, "商品 ON", PRODUCT_BASE);
         productOff = seedListing(storeOff, ownerOff, Listing.ListingType.PRODUCT, "商品 OFF", PRODUCT_BASE);
@@ -256,8 +276,7 @@ class StoreToggleGatesApplicationE2ETest {
         int rulesBefore = pricingRuleRepository.findByTenantId(storeOff.getId()).size();
 
         // setCalendarPrice 先查 rooms 列（其餘案例只用 listings 列）；只在本案例建立、結束時清掉，不改變其他案例的固件
-        jdbcTemplate.update("INSERT INTO rooms (listing_id, max_guests, room_count, check_in_time, check_out_time, "
-                + "created_at, updated_at) VALUES (?, 2, 1, '15:00'::time, '11:00'::time, NOW(), NOW())", roomOff);
+        insertRoomRow(roomOff);
         try {
             // 開關關閉：兩個端點都擋下，而且沒有留下任何規則（原本回 200 卻建出一條不會生效的規則）
             assertThat(errorCode(postJson("/v2/dashboard/pricing/calendar/price", ownerOffToken,
@@ -275,7 +294,122 @@ class StoreToggleGatesApplicationE2ETest {
             assertThat(pricingRuleRepository.findByTenantId(storeOff.getId()))
                     .as("開關開啟後兩個端點各建立一條規則").hasSize(rulesBefore + 2);
         } finally {
-            jdbcTemplate.update("DELETE FROM rooms WHERE listing_id = ?", roomOff);
+            deleteRoomRows(roomOff);
+        }
+    }
+
+    // ── 管理員代操作看的是『房源所屬店鋪』的開關（Sprint 312，DEF-435，使用者以互動選項裁決「改檢查店鋪」）──────
+
+    @Test
+    @DisplayName("DEF-435：管理員代操作（建立規則、日曆改價、覆蓋價格）的結果只取決於房源所屬店鋪的開關，"
+            + "與管理員自己租戶的開關無關——兩位管理員（自己租戶開關一開一關）× 兩間店鋪 × 三個端點")
+    void superAdminDelegation_followsTheTargetStoresToggle() throws Exception {
+        LocalDate date = today.plusDays(10);
+        UUID offRule = roomRuleId(storeOff, roomOff);
+        UUID onRule = roomRuleId(storeOn, roomOn);
+        int offRulesBefore = pricingRuleRepository.findByRoomListingId(roomOff).size();
+        Map<String, UUID> admins = new LinkedHashMap<>(); // 管理員自己這一側的租戶（X-Tenant-ID 標頭）
+        admins.put("管理員租戶開關開啟", adminTenantOn);
+        admins.put("管理員租戶開關關閉", adminTenantOff);
+        List<String> mismatches = new ArrayList<>();
+
+        // setCalendarPrice 先查 rooms 列：兩間房源都補，結束時刪
+        insertRoomRow(roomOff);
+        insertRoomRow(roomOn);
+        try {
+            int n = 0; // 每個格子用不同的有效期間與日期，避免同類型重疊檢查把與開關無關的格子擋掉
+            for (Map.Entry<String, UUID> admin : admins.entrySet()) {
+                for (boolean storeEnabled : new boolean[] {false, true}) {
+                    UUID room = storeEnabled ? roomOn : roomOff;
+                    String cell = admin.getKey() + "／店鋪" + (storeEnabled ? "開啟" : "關閉");
+                    String blocked = "403 E-2004";
+                    String ruleName = "S312 管理員規則 " + (++n);
+                    expectOutcome(mismatches, cell + "／建立規則", RULES_PATH, admin.getValue(),
+                            ruleRequestBody(room, null, ruleName, n), storeEnabled ? "201" : blocked);
+                    expectOutcome(mismatches, cell + "／日曆改價", CALENDAR_PRICE_PATH, admin.getValue(),
+                            calendarPriceBody(room, date.plusDays(n)), storeEnabled ? "200" : blocked);
+                    // 店鋪開啟時覆蓋「管理員剛建立的那條規則」：它蓋的是管理員請求的租戶（標頭指定的租戶），不是店鋪——
+                    // 才分得出關卡看的是『規則上蓋的租戶』還是『房源所屬店鋪』（管理員那一側開關關閉時，前者會誤擋）
+                    UUID rule = storeEnabled ? createdRuleId(room, ruleName, onRule) : offRule;
+                    expectOutcome(mismatches, cell + "／覆蓋價格", RULES_PATH + "/" + rule + "/override", admin.getValue(),
+                            overrideBody(date.plusDays(n), date.plusDays(n + 1)), storeEnabled ? "200" : blocked);
+                }
+            }
+            assertThat(mismatches).as("每個格子的實際結果都應與房源所屬店鋪的開關一致").isEmpty();
+            assertThat(pricingRuleRepository.findByRoomListingId(roomOff))
+                    .as("店鋪關閉時被擋下的請求不可建立規則").hasSize(offRulesBefore);
+        } finally {
+            deleteRoomRows(roomOff, roomOn);
+            deleteTestCreatedRules();
+        }
+    }
+
+    @Test
+    @DisplayName("DEF-435：建立規則同時帶房源與商品 id 時，每個 id 所屬店鋪的開關都要開啟（比照 DEF-423：每個帶入的 id 都驗證）")
+    void superAdminCreateRule_everySuppliedIdsStoreMustBeEnabled() throws Exception {
+        List<String> mismatches = new ArrayList<>();
+        try {
+            // 管理員自己這一側的開關刻意取與預期相反的一邊：任何一格錯看呼叫者租戶，結果都會翻成相反
+            expectOutcome(mismatches, "房源開啟＋商品關閉", RULES_PATH, adminTenantOn,
+                    ruleRequestBody(roomOn, productOff, "S312 房源開＋商品關", 1), "403 E-2004");
+            expectOutcome(mismatches, "房源關閉＋商品開啟", RULES_PATH, adminTenantOn,
+                    ruleRequestBody(roomOff, productOn, "S312 房源關＋商品開", 2), "403 E-2004");
+            expectOutcome(mismatches, "房源開啟＋商品開啟", RULES_PATH, adminTenantOff,
+                    ruleRequestBody(roomOn, productOn, "S312 房源開＋商品開", 3), "201");
+            assertThat(mismatches).as("兩個 id 所屬店鋪的開關都開啟才放行").isEmpty();
+        } finally {
+            deleteTestCreatedRules();
+        }
+    }
+
+    @Test
+    @DisplayName("DEF-435：正式環境的樣子（管理員沒帶 X-Tenant-ID、系統租戶的動態定價開關開啟，Flyway 種子即如此）——"
+            + "替開關關閉的店鋪操作被擋（原本得到成功卻不生效），開關開啟的店鋪照常")
+    void superAdminOnSystemTenant_followsTheTargetStoresToggle() throws Exception {
+        LocalDate date = today.plusDays(10);
+        UUID offRule = roomRuleId(storeOff, roomOff);
+        UUID onRule = roomRuleId(storeOn, roomOn);
+        int offRulesBefore = pricingRuleRepository.findByRoomListingId(roomOff).size();
+        List<String> mismatches = new ArrayList<>();
+
+        // 測試庫的系統租戶開關預設關閉，Flyway 資料庫是開啟；暫時打開來還原正式環境的設定，結束時還原
+        Boolean originalSystemToggle = setSystemTenantPricingToggle(true);
+        insertRoomRow(roomOff);
+        insertRoomRow(roomOn);
+        try {
+            String blocked = "403 E-2004";
+            expectOutcome(mismatches, "店鋪關閉／建立規則", RULES_PATH, null,
+                    ruleRequestBody(roomOff, null, "S312 系統租戶管理員規則 1", 1), blocked);
+            expectOutcome(mismatches, "店鋪關閉／日曆改價", CALENDAR_PRICE_PATH, null,
+                    calendarPriceBody(roomOff, date), blocked);
+            expectOutcome(mismatches, "店鋪關閉／覆蓋價格", RULES_PATH + "/" + offRule + "/override", null,
+                    overrideBody(date, date.plusDays(1)), blocked);
+            expectOutcome(mismatches, "店鋪開啟／建立規則", RULES_PATH, null,
+                    ruleRequestBody(roomOn, null, "S312 系統租戶管理員規則 2", 2), "201");
+            expectOutcome(mismatches, "店鋪開啟／日曆改價", CALENDAR_PRICE_PATH, null,
+                    calendarPriceBody(roomOn, date.plusDays(2)), "200");
+            expectOutcome(mismatches, "店鋪開啟／覆蓋價格", RULES_PATH + "/" + onRule + "/override", null,
+                    overrideBody(date.plusDays(2), date.plusDays(3)), "200");
+            assertThat(mismatches).as("管理員自己這一側的開關開啟時，結果仍只取決於房源所屬店鋪的開關").isEmpty();
+            assertThat(pricingRuleRepository.findByRoomListingId(roomOff))
+                    .as("店鋪關閉時被擋下的請求不可建立規則").hasSize(offRulesBefore);
+        } finally {
+            deleteRoomRows(roomOff, roomOn);
+            deleteTestCreatedRules();
+            restoreSystemTenantPricingToggle(originalSystemToggle);
+        }
+    }
+
+    @Test
+    @DisplayName("DEF-435：管理員對不存在的房源建立規則 → 404 E-4000，而且沒有留下規則")
+    void superAdminCreateRule_unknownListing_returns404() throws Exception {
+        UUID unknown = UUID.randomUUID();
+        try {
+            assertThat(outcome(RULES_PATH, adminTenantOn, ruleRequestBody(unknown, null, "S312 不存在的房源", 4)))
+                    .isEqualTo("404 E-4000");
+            assertThat(pricingRuleRepository.findByRoomListingId(unknown)).as("不存在的房源不可有規則").isEmpty();
+        } finally {
+            jdbcTemplate.update("DELETE FROM pricing_rules WHERE room_listing_id = ?", unknown);
         }
     }
 
@@ -295,6 +429,99 @@ class StoreToggleGatesApplicationE2ETest {
     private Map<String, Object> overrideBody(LocalDate start, LocalDate end) {
         return Map.of("startDate", start.toString(), "endDate", end.toString(),
                 "overridePrice", 900, "reason", "S311 手動覆蓋");
+    }
+
+    /** 管理員剛建立的規則（依名稱找）；建立失敗找不到時退回種子規則，讓後面的格子照常比對、不因 NoSuchElement 掩蓋真正的差異。 */
+    private UUID createdRuleId(UUID roomListingId, String ruleName, UUID fallback) {
+        return pricingRuleRepository.findByRoomListingId(roomListingId).stream()
+                .filter(r -> ruleName.equals(r.getRuleName())).map(PricingRule::getId).findFirst().orElse(fallback);
+    }
+
+    /** 建立規則的請求本文；每條規則用不同的有效期間（{@code offsetYears}），避免同類型時間重疊檢查把與開關無關的案例擋下。 */
+    private Map<String, Object> ruleRequestBody(UUID roomListingId, UUID listingId, String name, int offsetYears) {
+        LocalDate from = today.plusYears(10L + offsetYears);
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (roomListingId != null) {
+            body.put("roomListingId", roomListingId.toString());
+        }
+        if (listingId != null) {
+            body.put("listingId", listingId.toString());
+        }
+        body.put("ruleType", "SEASONAL");
+        body.put("ruleName", name);
+        body.put("priority", 1);
+        body.put("config", Map.of("multiplier", 1.1));
+        body.put("validFrom", from.toString());
+        body.put("validTo", from.plusDays(3).toString());
+        return body;
+    }
+
+    /**
+     * 以平台管理員身分送出 POST 並回傳「狀態碼」或「狀態碼 錯誤碼」；不在這裡斷言，讓呼叫端一次比對整張結果表。
+     * {@code asTenant} 非 null 時帶 {@code X-Tenant-ID} 標頭（決定管理員請求的 TenantContext），null 是沒帶標頭（系統租戶）。
+     */
+    private String outcome(String path, UUID asTenant, Object body) throws Exception {
+        MockMvcRequestSpecification request = given().header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(objectMapper.writeValueAsString(body));
+        if (asTenant != null) {
+            request = request.header("X-Tenant-ID", asTenant.toString());
+        }
+        MockMvcResponse response = request.when().post(path);
+        int status = response.statusCode();
+        return status >= 400 ? status + " " + errorCode(response.asString()) : String.valueOf(status);
+    }
+
+    private void expectOutcome(List<String> mismatches, String cell, String path, UUID asTenant, Object body,
+            String expected) throws Exception {
+        String actual = outcome(path, asTenant, body);
+        if (!expected.equals(actual)) {
+            mismatches.add(cell + "：預期 " + expected + "，實際 " + actual);
+        }
+    }
+
+    /** 把系統租戶的動態定價開關設成 {@code enabled}，回傳原本的值（原本沒有開關列時回 null，還原時刪掉我補的列）。 */
+    private Boolean setSystemTenantPricingToggle(boolean enabled) {
+        List<Boolean> rows = jdbcTemplate.queryForList(
+                "SELECT is_enabled FROM tenant_feature_toggles WHERE tenant_id = ? AND feature_key = ?",
+                Boolean.class, SYSTEM_TENANT_ID, PRICING_TOGGLE);
+        if (rows.isEmpty()) {
+            jdbcTemplate.update("INSERT INTO tenant_feature_toggles "
+                    + "(id, tenant_id, feature_key, is_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())",
+                    UUID.randomUUID(), SYSTEM_TENANT_ID, PRICING_TOGGLE, enabled);
+            return null;
+        }
+        jdbcTemplate.update("UPDATE tenant_feature_toggles SET is_enabled = ? WHERE tenant_id = ? AND feature_key = ?",
+                enabled, SYSTEM_TENANT_ID, PRICING_TOGGLE);
+        return rows.get(0);
+    }
+
+    private void restoreSystemTenantPricingToggle(Boolean original) {
+        if (original == null) {
+            jdbcTemplate.update("DELETE FROM tenant_feature_toggles WHERE tenant_id = ? AND feature_key = ?",
+                    SYSTEM_TENANT_ID, PRICING_TOGGLE);
+        } else {
+            jdbcTemplate.update("UPDATE tenant_feature_toggles SET is_enabled = ? WHERE tenant_id = ? AND feature_key = ?",
+                    original, SYSTEM_TENANT_ID, PRICING_TOGGLE);
+        }
+    }
+
+    /** setCalendarPrice 先查 rooms 列，而這個類別的固件只種了 listings 列；需要的案例自己補、結束時用 deleteRoomRows 刪。 */
+    private void insertRoomRow(UUID roomListingId) {
+        jdbcTemplate.update("INSERT INTO rooms (listing_id, max_guests, room_count, check_in_time, check_out_time, "
+                + "created_at, updated_at) VALUES (?, 2, 1, '15:00'::time, '11:00'::time, NOW(), NOW())", roomListingId);
+    }
+
+    private void deleteRoomRows(UUID... roomListingIds) {
+        for (UUID id : roomListingIds) {
+            jdbcTemplate.update("DELETE FROM rooms WHERE listing_id = ?", id);
+        }
+    }
+
+    /** 刪掉案例建立的規則：綁在四個固件房源／商品上、而且不是種子規則的全部（含失敗案例的殘留）。 */
+    private void deleteTestCreatedRules() {
+        jdbcTemplate.update("DELETE FROM pricing_rules WHERE (room_listing_id IN (?, ?) OR listing_id IN (?, ?)) "
+                + "AND rule_name NOT IN (?, ?)", roomOn, roomOff, productOn, productOff, ROOM_RULE_NAME, PRODUCT_RULE_NAME);
     }
 
     private String postJson(String path, String token, Object body, int expectedStatus) throws Exception {

@@ -9,6 +9,7 @@ import com.nextkey.ecommerce.domain.model.room.Room;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.PricingRuleRepository;
+import com.nextkey.ecommerce.domain.repository.RoomCalendarRepository;
 import com.nextkey.ecommerce.domain.repository.RoomRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
@@ -62,6 +63,10 @@ class PricingServiceTest {
 
     @Mock
     private RoomRepository roomRepository;
+
+    // DEF-435：覆蓋價格的成功路徑會查日曆是否已被訂走；先前只有拒絕路徑的案例，不需要它
+    @Mock
+    private RoomCalendarRepository roomCalendarRepository;
 
     @Mock
     private ListingRepository listingRepository;
@@ -1142,8 +1147,11 @@ class PricingServiceTest {
         }
 
         @Test
-        @DisplayName("createRule：SUPER_ADMIN 可跨租戶建立規則（擁有權檢查略過，不查詢 listing）")
+        @DisplayName("createRule：SUPER_ADMIN 可跨租戶建立規則（擁有權檢查略過；DEF-435 起為了看房源所屬店鋪的開關會查一次 listing）")
         void createRule_superAdminBypassesOwnership() {
+            // DEF-435：原本這個案例斷言 SUPER_ADMIN「不查詢 listing」。擁有權檢查仍然略過，但規則會不會生效看的是房源所屬店鋪的開關，
+            // 所以現在會查一次房源取得店鋪（開關關閉的店鋪會被擋，見 SuperAdminDelegationToggleTests）。
+            when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listingOf(otherTenantId)));
             when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID))
                     .thenReturn(List.of());
             when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -1815,6 +1823,10 @@ class PricingServiceTest {
         @DisplayName("DEF-414: createRule 存檔的規則帶 Tenant 關聯物件（INSERT 依據它，不是影子欄位 tenantId）")
         void createRule_savesRuleWithTenantRelation() {
             TenantContext.setCurrentTenant(TENANT_ID);
+            // DEF-435：SUPER_ADMIN 建立規則會查一次房源取得所屬店鋪的開關；這個案例要驗的是 Tenant 關聯，房源備成呼叫者租戶名下
+            Listing ownListing = Listing.builder().tenantId(TENANT_ID).build();
+            ownListing.setId(ROOM_LISTING_ID);
+            when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(ownListing));
             when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID)).thenReturn(List.of());
             when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -2288,6 +2300,291 @@ class PricingServiceTest {
             verify(pricingRuleRepository, never()).findById(any());
             verify(pricingRuleRepository, never()).save(any());
             verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any());
+        }
+    }
+
+    /**
+     * DEF-435（Sprint 312，使用者以互動選項裁決「改檢查店鋪」）：平台管理員（SUPER_ADMIN）代操作建立規則、日曆改價、覆蓋價格時，
+     * 開關看的是<b>目標房源／商品所屬店鋪</b>的，不是呼叫者租戶的。
+     *
+     * <p>原本代操作看呼叫者租戶（管理員請求的 TenantContext：沒帶 {@code X-Tenant-ID} 是系統租戶，開關在 Flyway 種子是開啟）：
+     * 替開關關閉的店鋪操作得到成功卻永遠不生效（與 DEF-426 同一種「騙人」），呼叫者那一側的開關關閉時又連開關開啟的店鋪都不能代操作。
+     * 店鋪 id 與呼叫者租戶（{@code TENANT_ID}）刻意不同，才分得出程式碼查了哪一個租戶的開關。
+     *
+     * <p>誘餌（正確的實作永遠不會去讀呼叫者租戶的開關，所以用 {@code lenient}，另以 {@code verify(never())} 證明沒讀過）：
+     * 店鋪關閉的案例裡呼叫者租戶的檢查放行（Mockito 預設不拋）——「錯看呼叫者」的實作會放行而讓案例轉紅；店鋪開啟的案例裡呼叫者
+     * 租戶的檢查會拋——「錯看呼叫者」的實作會擋下而讓案例轉紅。
+     */
+    @Nested
+    @DisplayName("DEF-435: 管理員代操作時看目標房源所屬店鋪的動態定價開關")
+    class SuperAdminDelegationToggleTests {
+
+        private static final String TOGGLE = "DYNAMIC_PRICING_ENABLED";
+        private static final UUID STORE_ON = UUID.fromString("aa0e8400-e29b-41d4-a716-446655440011");
+        private static final UUID STORE_OFF = UUID.fromString("aa0e8400-e29b-41d4-a716-446655440012");
+        private static final UUID PRODUCT_ID = UUID.fromString("990e8400-e29b-41d4-a716-446655440004");
+
+        @BeforeEach
+        void everyStoreEnabledByDefault() {
+            // 預設每間店鋪都開啟；要驗證關閉的案例以指定店鋪的 stub 覆蓋（storeToggleOff）。用 lenient：有些案例在第一個 id 就被擋下，
+            // 而嚴格 stub 模式會把「stub 了但參數不同的呼叫」誤判成 stub 問題（Mockito PotentialStubbingProblem）
+            lenient().doNothing().when(featureToggleService).checkFeatureEnabledForTenant(any(), eq(TOGGLE));
+        }
+
+        private Listing listingIn(final UUID listingId, final UUID storeId) {
+            Listing listing = Listing.builder().tenantId(storeId).basePrice(BASE_PRICE).currency("TWD").build();
+            listing.setId(listingId);
+            return listing;
+        }
+
+        private BusinessException toggleDisabled() {
+            return new BusinessException(ErrorCode.E_2004, "Feature '" + TOGGLE + "' is disabled for this tenant");
+        }
+
+        /** 該店鋪的開關關閉：指定租戶版本的檢查拋 E_2004（與 FeatureToggleService 實際行為一致）。 */
+        private void storeToggleOff(final UUID storeId) {
+            doThrow(toggleDisabled()).when(featureToggleService).checkFeatureEnabledForTenant(storeId, TOGGLE);
+        }
+
+        /** 誘餌：呼叫者租戶（管理員請求的 TenantContext）的開關關閉。 */
+        private void callerToggleOff() {
+            lenient().doThrow(toggleDisabled()).when(featureToggleService).checkFeatureEnabled(TOGGLE);
+        }
+
+        private PricingDto.CreateRuleRequest createRequest(final UUID roomListingId, final UUID listingId) {
+            return PricingDto.CreateRuleRequest.builder()
+                    .roomListingId(roomListingId).listingId(listingId)
+                    .ruleType(PricingDto.PricingRuleType.SEASONAL).ruleName("Admin rule")
+                    .config(Map.of("multiplier", 1.2))
+                    .validFrom(LocalDate.of(2026, 1, 1)).validTo(LocalDate.of(2026, 12, 31)).build();
+        }
+
+        private PricingDto.SetCalendarPriceRequest calendarRequest() {
+            return PricingDto.SetCalendarPriceRequest.builder()
+                    .roomListingId(ROOM_LISTING_ID).date(LocalDate.of(2026, 6, 1))
+                    .price(BigDecimal.valueOf(900)).reason("週末特價").build();
+        }
+
+        /** 規則上蓋的租戶（{@code stampedTenantId}）刻意與規則作用房源的店鋪不同：SUPER_ADMIN 建的規則蓋的是他請求的租戶。 */
+        private PricingRule ruleBoundTo(final UUID ruleId, final UUID stampedTenantId) {
+            return PricingRule.builder()
+                    .id(ruleId).tenantId(stampedTenantId).roomListingId(ROOM_LISTING_ID)
+                    .ruleType(PricingRule.PricingRuleType.MANUAL_OVERRIDE).ruleName("Existing rule").priority(5)
+                    .config(Map.of("price", 1500.0))
+                    .validFrom(LocalDate.of(2026, 1, 1)).validTo(LocalDate.of(2026, 12, 31)).isActive(true).build();
+        }
+
+        private void assertE2004(final org.assertj.core.api.ThrowableAssert.ThrowingCallable call) {
+            assertThatThrownBy(call).isInstanceOfSatisfying(BusinessException.class,
+                    e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.E_2004));
+        }
+
+        private void assertNothingWritten() {
+            verify(pricingRuleRepository, never()).save(any());
+            verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any());
+        }
+
+        // ── createRule ──
+
+        @Test
+        @DisplayName("createRule：目標房源所屬店鋪的開關關閉 → E_2004，不寫入、不記稽核；沒有讀呼叫者租戶的開關")
+        void createRule_storeToggleOff_throwsE2004_andWritesNothing() {
+            when(listingRepository.findById(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(listingIn(ROOM_LISTING_ID, STORE_OFF)));
+            storeToggleOff(STORE_OFF);
+
+            assertE2004(() -> pricingService.createRule(createRequest(ROOM_LISTING_ID, null), true));
+
+            verify(featureToggleService, never()).checkFeatureEnabled(anyString());
+            assertNothingWritten();
+        }
+
+        @Test
+        @DisplayName("createRule：店鋪的開關開啟 → 放行，即使呼叫者租戶的開關是關閉的；檢查的是店鋪，沒有讀呼叫者租戶")
+        void createRule_storeToggleOn_passesEvenWhenCallerToggleIsOff() {
+            when(listingRepository.findById(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(listingIn(ROOM_LISTING_ID, STORE_ON)));
+            callerToggleOff();
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            PricingDto.RuleResponse response = pricingService.createRule(createRequest(ROOM_LISTING_ID, null), true);
+
+            assertThat(response.getRuleName()).isEqualTo("Admin rule");
+            verify(featureToggleService).checkFeatureEnabledForTenant(STORE_ON, TOGGLE);
+            verify(featureToggleService, never()).checkFeatureEnabled(anyString());
+        }
+
+        @Test
+        @DisplayName("createRule：同時帶房源與商品 id，第二個 id（商品）所屬店鋪關閉 → E_2004（每個帶入的 id 都檢查）")
+        void createRule_secondSuppliedIdStoreOff_throwsE2004() {
+            when(listingRepository.findById(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(listingIn(ROOM_LISTING_ID, STORE_ON)));
+            when(listingRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(listingIn(PRODUCT_ID, STORE_OFF)));
+            storeToggleOff(STORE_OFF);
+
+            assertE2004(() -> pricingService.createRule(createRequest(ROOM_LISTING_ID, PRODUCT_ID), true));
+
+            assertNothingWritten();
+        }
+
+        @Test
+        @DisplayName("createRule：同時帶房源與商品 id，第一個 id（房源）所屬店鋪關閉 → E_2004（不因第二個 id 的店鋪開啟而放行）")
+        void createRule_firstSuppliedIdStoreOff_throwsE2004() {
+            when(listingRepository.findById(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(listingIn(ROOM_LISTING_ID, STORE_OFF)));
+            // 第一個 id 就擋下，第二個 id 不會被查：用 lenient 備著，避免嚴格 stub 把「提早擋下」誤判成多餘的 stub
+            lenient().when(listingRepository.findById(PRODUCT_ID))
+                    .thenReturn(Optional.of(listingIn(PRODUCT_ID, STORE_ON)));
+            storeToggleOff(STORE_OFF);
+
+            assertE2004(() -> pricingService.createRule(createRequest(ROOM_LISTING_ID, PRODUCT_ID), true));
+
+            assertNothingWritten();
+        }
+
+        @Test
+        @DisplayName("createRule：同時帶房源與商品 id，兩家店鋪都開啟 → 放行，兩個 id 都檢查過各自店鋪")
+        void createRule_bothSuppliedIdsStoresOn_passes() {
+            when(listingRepository.findById(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(listingIn(ROOM_LISTING_ID, STORE_ON)));
+            when(listingRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(listingIn(PRODUCT_ID, STORE_ON)));
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            pricingService.createRule(createRequest(ROOM_LISTING_ID, PRODUCT_ID), true);
+
+            verify(featureToggleService, times(2)).checkFeatureEnabledForTenant(STORE_ON, TOGGLE);
+        }
+
+        @Test
+        @DisplayName("createRule：找不到的房源 id → E_4000，不寫入，也沒有去檢查任何店鋪的開關")
+        void createRule_unknownListing_throwsE4000_andWritesNothing() {
+            when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> pricingService.createRule(createRequest(ROOM_LISTING_ID, null), true))
+                    .isInstanceOfSatisfying(BusinessException.class,
+                            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.E_4000));
+
+            verify(featureToggleService, never()).checkFeatureEnabledForTenant(any(), anyString());
+            assertNothingWritten();
+        }
+
+        @Test
+        @DisplayName("createRule 不綁任何房源／商品：沒有店鋪可看，維持看呼叫者租戶的開關——關閉 → E_2004，且不查任何房源")
+        void createRule_noTarget_fallsBackToCallerTenantToggle() {
+            callerToggleOff();
+
+            assertE2004(() -> pricingService.createRule(createRequest(null, null), true));
+
+            verify(featureToggleService).checkFeatureEnabled(TOGGLE);
+            verify(featureToggleService, never()).checkFeatureEnabledForTenant(any(), anyString());
+            verify(listingRepository, never()).findById(any());
+            assertNothingWritten();
+        }
+
+        // ── setCalendarPrice ──
+
+        @Test
+        @DisplayName("setCalendarPrice：房源所屬店鋪的開關關閉 → E_2004，不建立規則、不記稽核；沒有讀呼叫者租戶的開關")
+        void setCalendarPrice_storeToggleOff_throwsE2004_andWritesNothing() {
+            Listing listing = listingIn(ROOM_LISTING_ID, STORE_OFF);
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(Room.builder().listing(listing).build()));
+            when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listing));
+            storeToggleOff(STORE_OFF);
+
+            assertE2004(() -> pricingService.setCalendarPrice(calendarRequest(), true));
+
+            verify(featureToggleService, never()).checkFeatureEnabled(anyString());
+            assertNothingWritten();
+        }
+
+        @Test
+        @DisplayName("setCalendarPrice：店鋪的開關開啟 → 放行，即使呼叫者租戶的開關是關閉的；檢查的是店鋪，沒有讀呼叫者租戶")
+        void setCalendarPrice_storeToggleOn_passesEvenWhenCallerToggleIsOff() {
+            Listing listing = listingIn(ROOM_LISTING_ID, STORE_ON);
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(Room.builder().listing(listing).build()));
+            when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listing));
+            callerToggleOff();
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            PricingDto.CalendarPriceResponse response = pricingService.setCalendarPrice(calendarRequest(), true);
+
+            assertThat(response.getPrice()).isEqualByComparingTo("900");
+            verify(featureToggleService).checkFeatureEnabledForTenant(STORE_ON, TOGGLE);
+            verify(featureToggleService, never()).checkFeatureEnabled(anyString());
+        }
+
+        // ── overridePrice ──
+
+        @Test
+        @DisplayName("overridePrice：規則作用房源所屬店鋪的開關關閉 → E_2004，即使規則上蓋的是別的租戶（SUPER_ADMIN 建的規則蓋他請求的租戶）")
+        void overridePrice_storeToggleOff_throwsE2004_evenWhenRuleIsStampedWithAnotherTenant() {
+            UUID ruleId = UUID.randomUUID();
+            when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(ruleBoundTo(ruleId, TENANT_ID)));
+            when(listingRepository.findById(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(listingIn(ROOM_LISTING_ID, STORE_OFF)));
+            storeToggleOff(STORE_OFF);
+            // 誘餌：萬一關卡錯用規則上蓋的租戶（TENANT_ID，預設放行），會一路放行建立覆蓋規則——讓案例轉紅的是「沒拋例外」而不是 NPE
+            lenient().when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            assertE2004(() -> pricingService.overridePrice(ruleId, LocalDate.of(2026, 6, 1),
+                    LocalDate.of(2026, 6, 3), BigDecimal.valueOf(900), "旺季覆蓋", true));
+
+            verify(featureToggleService, never()).checkFeatureEnabled(anyString());
+            assertNothingWritten();
+        }
+
+        @Test
+        @DisplayName("overridePrice：店鋪的開關開啟 → 放行，即使呼叫者租戶與規則上蓋的租戶的開關都是關閉的")
+        void overridePrice_storeToggleOn_passesEvenWhenCallerAndStampedTenantTogglesAreOff() {
+            UUID ruleId = UUID.randomUUID();
+            when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(ruleBoundTo(ruleId, TENANT_ID)));
+            when(listingRepository.findById(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(listingIn(ROOM_LISTING_ID, STORE_ON)));
+            callerToggleOff();
+            lenient().doThrow(toggleDisabled()).when(featureToggleService).checkFeatureEnabledForTenant(TENANT_ID, TOGGLE);
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            PricingDto.RuleOverrideResponse response = pricingService.overridePrice(ruleId, LocalDate.of(2026, 6, 1),
+                    LocalDate.of(2026, 6, 3), BigDecimal.valueOf(900), "旺季覆蓋", true);
+
+            assertThat(response.getStatus()).isEqualTo("APPLIED");
+            verify(featureToggleService).checkFeatureEnabledForTenant(STORE_ON, TOGGLE);
+            verify(featureToggleService, never()).checkFeatureEnabled(anyString());
+        }
+
+        // ── 店主路徑不變（DEF-426）──
+
+        @Test
+        @DisplayName("店主 createRule：第一件事檢查自己店鋪（呼叫者租戶）的開關，關閉 → E_2004，不查任何房源；不經過店鋪開關檢查")
+        void ownerCreateRule_callerToggleOff_throwsE2004_beforeAnyLookup() {
+            doThrow(toggleDisabled()).when(featureToggleService).checkFeatureEnabled(TOGGLE);
+
+            assertE2004(() -> pricingService.createRule(createRequest(ROOM_LISTING_ID, null), false));
+
+            verify(listingRepository, never()).findById(any());
+            verify(featureToggleService, never()).checkFeatureEnabledForTenant(any(), anyString());
+            assertNothingWritten();
+        }
+
+        @Test
+        @DisplayName("店主 createRule／setCalendarPrice／overridePrice 成功路徑：檢查自己店鋪的開關，且不經過 SUPER_ADMIN 的店鋪開關檢查（不多查房源）")
+        void ownerPaths_checkOwnStoreOnly() {
+            Listing own = listingIn(ROOM_LISTING_ID, TENANT_ID);
+            when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(own));
+            when(roomRepository.findByListingId(ROOM_LISTING_ID)).thenReturn(Optional.of(Room.builder().listing(own).build()));
+            UUID ruleId = UUID.randomUUID();
+            when(pricingRuleRepository.findById(ruleId)).thenReturn(Optional.of(ruleBoundTo(ruleId, TENANT_ID)));
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            pricingService.createRule(createRequest(ROOM_LISTING_ID, null), false);
+            pricingService.setCalendarPrice(calendarRequest(), false);
+            pricingService.overridePrice(ruleId, LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 3),
+                    BigDecimal.valueOf(900), "旺季覆蓋", false);
+
+            verify(featureToggleService, times(3)).checkFeatureEnabled(TOGGLE);
+            verify(featureToggleService, never()).checkFeatureEnabledForTenant(any(), anyString());
+            // 只有 createRule 的擁有權檢查查了一次房源；setCalendarPrice 走 roomRepository，overridePrice 走 pricingRuleRepository
+            verify(listingRepository, times(1)).findById(ROOM_LISTING_ID);
         }
     }
 

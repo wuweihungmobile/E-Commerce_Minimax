@@ -128,11 +128,11 @@
 
 1. **既有資料的遷移是保守的**：V95 不回填，既有資料列全是 `NULL`。遷移前已送出、尚未被核准的申請，遷移後會顯示「已停用」，店主需要重新送出。我沒有用生產資料量過這件事（沒有生產資料庫）；使用者選方案 A 時，選項說明已寫明這個代價。
 2. **`T4`（從不清除申請時間）只有單元案例抓得到**：整合測試的流程（管理員核准／駁回都會清除）蓋住了店主端清除路徑的缺口。店主撤回、關閉已核准功能的清除邏輯由 `TenantServiceTest` 的兩個案例守住。
-3. **`SUPER_ADMIN` 代操作的檢查看的是系統租戶的開關**（`createRule` 原本就如此，`DEF-426` 的修復「比照」它）：管理員替開關關閉的店鋪操作，仍可能得到 `200` 卻不生效——登記為 `DEF-435`，讀碼推論，沒有實測。
+3. **`SUPER_ADMIN` 代操作的檢查看的是系統租戶的開關**（`createRule` 原本就如此，`DEF-426` 的修復「比照」它）：管理員替開關關閉的店鋪操作，仍可能得到 `200` 卻不生效——登記為 `DEF-435`，讀碼推論，沒有實測（[Sprint 312](SPRINT_312_PLAN.md) 已實測屬實並修復）。
 4. `updateRule`／`deleteRule` 仍不查開關（本題不涵蓋）。
 5. `determineToggleStatus` 對「本來就未啟用的功能再送 `enabled=false`」仍回 `PENDING_APPROVAL`（舊行為，畫面無法觸發，只有直接打 API）——登記為 `DEF-434`，沒有順手改。
 6. 畫面沒有「撤回申請」的入口：開關為關時點擊送的是 `enabled=true`（再申請一次）。撤回只能走 API。
-7. **本輪尚未 push，雲端 CI 沒有驗證這一輪**：使用者的互動答案只授權了 Sprint 310 的 push；本輪新增 Flyway 遷移 `V95` 並改變生產行為，所以收尾再問一次。
+7. **本輪的 push 與雲端 CI（push 後回填）**：使用者的互動答案只授權了 Sprint 310 的 push，本輪新增 Flyway 遷移 `V95` 並改變生產行為，所以收尾再問一次；使用者選「現在 push」，已於 `164ca615..53a9073b` push。pre-push 輕量守門通過（後端單元與前端 Lint／建置兩個 act job 皆 `Job succeeded`，schema 漂移守門「entity 與 Flyway schema 對齊，無漂移」）。雲端 CI run [40698764431](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/40698764431) 三個 job 皆 success（Backend Unit Tests 2 分 53 秒、Frontend Lint & Build 54 秒、Backend Integration Tests & Package 10 分 06 秒；整個 run 13 分 05 秒，13:41:32Z～13:54:37Z），以 `gh run view --json status,conclusion,headSha` 交叉確認 headSha 為 `53a9073b`；下載整合 job 的完整雲端日誌（約 56 MB）確認整合測試 **962／0 失敗／0 錯誤／0 跳過**、`FeatureRequestLifecycleIntegrationTest` 4／0、`BUILD SUCCESS`。
 8. 管理員頁的「N 項功能待審核」靠前端對 `status` 的計數，沒有為它另寫前端單元測試（專案沒有前端單元測試，只有 Playwright）；由管理員頁規格 FEAT-01 的「1 項功能待審核：民宿預訂功能」斷言與 `FeatureRequestLifecycleIntegrationTest` 的 `pendingCount` 共同守住。
 
 ## 9. 我替使用者做的決定（可一句話推翻）
@@ -145,19 +145,19 @@
 | 4 | 店主送 `enabled=false`（含對待審核功能）＝撤回申請，清除申請時間 | 申請時間代表「仍在等待的申請」；留著會讓關閉後的功能又顯示待審核 | 告訴我撤回不清除（會需要另設撤回語意） |
 | 5 | `DEF-426` 照選項說明「比照 `createRule`」檢查**呼叫者租戶**的開關 | 使用者選的是我描述的做法；改成檢查房源所屬店鋪是更大的行為變更，且會讓三個端點不一致——登記 `DEF-435` 請你裁決 | 告訴我選 `DEF-435` 的 (a) |
 | 6 | 登記 `DEF-434`、`DEF-435`，不順手改 | Rule 3；前者是 API 回應語意的小落差，後者要你裁決範圍 | 告訴我先做哪個 |
-| 7 | **本輪不自動 push，收尾再問** | 使用者的互動答案只授權了 Sprint 310 的 push（「approval in one context doesn't extend to the next」）；本輪含 DB 遷移與生產行為變更 | 告訴我 push |
+| 7 | **本輪不自動 push，收尾再問**（結果：使用者選「現在 push」，已 push，雲端全綠，見 §8 第 7 點） | 使用者的互動答案只授權了 Sprint 310 的 push（「approval in one context doesn't extend to the next」）；本輪含 DB 遷移與生產行為變更 | （已執行） |
 
 ## 10. 新登記的缺陷
 
 | ID | 摘要 | 狀態 |
 |---|---|---|
 | `DEF-434` | `PUT …/features/{feature}` 對本來就未啟用的功能送 `enabled=false`，回應仍說 `PENDING_APPROVAL`（讀碼） | 未處理，不需產品決策 |
-| `DEF-435` | `SUPER_ADMIN` 代操作時開關檢查看系統租戶而非房源所屬店鋪（讀碼推論） | 未處理，**待你裁決範圍**（建議 (a)） |
+| `DEF-435` | `SUPER_ADMIN` 代操作時開關檢查看系統租戶而非房源所屬店鋪（讀碼推論） | 未處理，**待你裁決範圍**（建議 (a)）。**後續**：你選了 (a)，[Sprint 312](SPRINT_312_PLAN.md) 已實測並修復 |
 
 `DEF-426`、`DEF-428`、`DEF-429` 已於本輪修復。`DEF-430`～`DEF-432` 未動。
 
 ## 11. 狀態
 
-見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 311 列。本輪的 commit 留在本機，**尚未 push**（見 §8 第 7 點）；push 後要回填雲端 CI 結果。
+見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 311 列。本輪的 commit `53a9073b` 已 push，雲端 CI 全綠（見 §8 第 7 點）。`DEF-435` 已由 [Sprint 312](SPRINT_312_PLAN.md) 依使用者裁決實測並修復。
 
 本輪的 commit 範圍：生產程式 `PricingService`、`TenantService`、`AdminService`、`TenantFeatureToggle`、前端 `dashboard/tenants/[id]/features/page.tsx`；Flyway `V95`；測試 `PricingServiceTest`、`StoreToggleGatesApplicationE2ETest`、`TenantServiceTest`、`AdminServiceTest`、`FeatureRequestLifecycleIntegrationTest`（新增）、Playwright `at-m17-003.spec.ts`、`at-admin-tenant-features-real.spec.ts`；文件 `API_M12_Dynamic_Pricing.md`（v2.8）、`API_M17_Tenant.md`（v2.5）、`SRD_Database_Schema.md`（DDL 同步）、PRD §8.2.2（補一列）、`DEFERRED_ITEMS_TRACKER.md`、`RELEASE_TRACKER.md`、`SPRINT_310_PLAN.md`（補後續指引）與本計畫書。

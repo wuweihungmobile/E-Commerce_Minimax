@@ -28,16 +28,23 @@ public class FeatureToggleService {
 
     /**
      * 檢查 Feature Toggle 是否啟用
-     * 若未啟用則拋出 BusinessException(ErrorCode.E_2020)
+     * 若未啟用則拋出 BusinessException(ErrorCode.E_2004)
      */
     public void checkFeatureEnabled(final String featureKey) {
-        UUID tenantId = TenantContext.getCurrentTenant();
+        checkFeatureEnabledForTenant(TenantContext.getCurrentTenant(), featureKey);
+    }
 
-        TenantFeatureToggle toggle = featureToggleRepository
-                .findByTenantIdAndFeatureKey(tenantId, featureKey)
-                .orElse(null);
-
-        if (toggle == null || !toggle.getIsEnabled()) {
+    /**
+     * 檢查指定租戶的 Feature Toggle 是否啟用（不依賴 {@code TenantContext}），未啟用則拋出 BusinessException(ErrorCode.E_2004)
+     *
+     * <p>用在「操作的對象屬於另一個租戶」的情境：平台管理員（SUPER_ADMIN）代店鋪建立定價規則時，規則能不能生效看的是
+     * 房源所屬店鋪的開關，不是管理員請求的 {@code TenantContext}（系統租戶或 {@code X-Tenant-ID} 指定的租戶）
+     * （Sprint 312，DEF-435）。判斷就是 {@link #isFeatureEnabledForTenant}（定價引擎套用規則時用的同一個），所以「能建立」與
+     * 「會生效」不會分岔；沒有開關列視為停用。呼叫端必須傳入從資料庫資源推得的租戶（例如 {@code listing.getTenantId()}），
+     * 不可傳入請求帶來的值。
+     */
+    public void checkFeatureEnabledForTenant(final UUID tenantId, final String featureKey) {
+        if (!isFeatureEnabledForTenant(tenantId, featureKey)) {
             log.warn("Feature toggle disabled: tenantId={}, feature={}", tenantId, featureKey);
             throw new BusinessException(ErrorCode.E_2004,
                     String.format("Feature '%s' is disabled for this tenant", featureKey));

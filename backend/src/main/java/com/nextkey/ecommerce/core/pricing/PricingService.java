@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -90,7 +91,7 @@ public class PricingService {
      */
     @Transactional
     public PricingDto.RuleResponse createRule(PricingDto.CreateRuleRequest request, boolean isSuperAdmin) {
-        featureToggleService.checkFeatureEnabled("DYNAMIC_PRICING_ENABLED");
+        checkOwnStoreDynamicPricingEnabled(isSuperAdmin);
 
         UUID tenantId = TenantContext.getCurrentTenant();
 
@@ -101,6 +102,8 @@ public class PricingService {
         // 驗證——帶自己的房源 id、夾帶別家店的商品 id 就能繞過。每個帶入的 id 都要驗證（單一 id 的行為不變）。
         checkListingTenantOwnership(request.getRoomListingId(), isSuperAdmin);
         checkListingTenantOwnership(request.getListingId(), isSuperAdmin);
+        // DEF-435：SUPER_ADMIN 的擁有權檢查略過，但規則會不會生效看的是目標房源／商品所屬店鋪的開關
+        checkTargetStoresDynamicPricingEnabled(isSuperAdmin, request.getRoomListingId(), request.getListingId());
 
         validateRuleRequest(request);
         enforceRuleLimitAndConflict(request, tenantId);
@@ -368,12 +371,14 @@ public class PricingService {
     @Transactional
     public PricingDto.CalendarPriceResponse setCalendarPrice(PricingDto.SetCalendarPriceRequest request, boolean isSuperAdmin) {
         // DEF-426：建出的 MANUAL_OVERRIDE 是規則，開關關閉時不會生效；比照 createRule，建立一條不會生效的規則等於騙人
-        featureToggleService.checkFeatureEnabled("DYNAMIC_PRICING_ENABLED");
+        checkOwnStoreDynamicPricingEnabled(isSuperAdmin);
 
         Room room = roomRepository.findByListingId(request.getRoomListingId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000));
         // DEF-242：同 createRule，先前未驗證房源屬於呼叫者租戶
         checkRuleTenantOwnership(room.getListing().getTenantId(), isSuperAdmin);
+        // DEF-435：同 createRule，SUPER_ADMIN 看房源所屬店鋪的開關
+        checkTargetStoresDynamicPricingEnabled(isSuperAdmin, request.getRoomListingId());
 
         // 創建手動覆蓋規則
         // DEF-414：同 createRule，INSERT 依據的是 .tenant(...) 關聯物件
@@ -417,12 +422,14 @@ public class PricingService {
     public PricingDto.RuleOverrideResponse overridePrice(UUID ruleId, LocalDate startDate, LocalDate endDate,
                                                           BigDecimal overridePrice, String reason, boolean isSuperAdmin) {
         // DEF-426：同 setCalendarPrice／createRule，開關關閉時建立的覆蓋規則不會生效
-        featureToggleService.checkFeatureEnabled("DYNAMIC_PRICING_ENABLED");
+        checkOwnStoreDynamicPricingEnabled(isSuperAdmin);
 
         PricingRule existingRule = pricingRuleRepository.findById(ruleId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_8000, "Pricing rule not found"));
         // DEF-242：同 createRule，先前未驗證規則屬於呼叫者租戶
         checkRuleTenantOwnership(existingRule.getTenantId(), isSuperAdmin);
+        // DEF-435：同 createRule，SUPER_ADMIN 看覆蓋規則所作用房源的店鋪開關（不是規則上蓋的租戶：SUPER_ADMIN 建的規則蓋的是他請求的租戶）
+        checkTargetStoresDynamicPricingEnabled(isSuperAdmin, existingRule.getRoomListingId());
 
         UUID roomListingId = existingRule.getRoomListingId();
         UUID tenantId = existingRule.getTenantId();
@@ -519,6 +526,45 @@ public class PricingService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Listing not found"));
         if (!listing.getTenantId().equals(callerTenantId)) {
             throw new BusinessException(ErrorCode.E_1007, "Not authorized to access pricing for this listing");
+        }
+    }
+
+    /**
+     * 店主建立／覆蓋定價規則前的開關把關（DEF-426）：看呼叫者自己店鋪的開關，是第一件事——關閉就直接回 {@code E_2004}，
+     * 不查房源／規則、不寫入。平台管理員（SUPER_ADMIN）代操作不在這裡把關：他們請求的 {@code TenantContext} 是系統租戶或
+     * {@code X-Tenant-ID} 指定的租戶，跟規則會作用在哪間店鋪無關，改由 {@link #checkTargetStoresDynamicPricingEnabled} 看目標店鋪。
+     */
+    private void checkOwnStoreDynamicPricingEnabled(final boolean isSuperAdmin) {
+        if (!isSuperAdmin) {
+            featureToggleService.checkFeatureEnabled("DYNAMIC_PRICING_ENABLED");
+        }
+    }
+
+    /**
+     * 平台管理員代操作的開關把關（DEF-435，使用者 2026-10-28 以互動選項裁決「改檢查店鋪」）。
+     *
+     * <p>規則能不能生效，看的是目標房源／商品<b>所屬店鋪</b>的開關（{@link #isDynamicPricingEnabledFor}，DEF-424），不是呼叫者租戶的。
+     * 原本代操作看呼叫者租戶：正式環境的管理員沒帶 {@code X-Tenant-ID} 就是系統租戶，開關在 Flyway 種子是開啟，於是替開關關閉的
+     * 店鋪建立規則、日曆改價、覆蓋價格都得到成功卻永遠不生效（與 DEF-426 同一種「騙人」）；呼叫者那一側的開關關閉時，又連開關
+     * 開啟的店鋪都不能代操作。每個帶入的 id 都要檢查（比照 DEF-423）；找不到的 id 回 {@code E_4000}（先前 SUPER_ADMIN 完全不查
+     * 房源，不存在的 id 會一路寫到資料庫）。
+     *
+     * <p>沒有任何目標時（規則不綁房源／商品；引擎只依房源／商品 id 選規則，這種規則永遠不會被選到）沒有店鋪可看，維持看呼叫者租戶。
+     * 店主不經過這裡（{@code isSuperAdmin} 為 false 直接返回）：其後的擁有權檢查已保證目標屬於呼叫者，看的本來就是同一間店鋪。
+     */
+    private void checkTargetStoresDynamicPricingEnabled(final boolean isSuperAdmin, final UUID... targetListingIds) {
+        if (!isSuperAdmin) {
+            return;
+        }
+        List<UUID> targets = Stream.of(targetListingIds).filter(Objects::nonNull).toList();
+        if (targets.isEmpty()) {
+            featureToggleService.checkFeatureEnabled("DYNAMIC_PRICING_ENABLED");
+            return;
+        }
+        for (UUID listingId : targets) {
+            Listing listing = listingRepository.findById(listingId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Listing not found"));
+            featureToggleService.checkFeatureEnabledForTenant(listing.getTenantId(), "DYNAMIC_PRICING_ENABLED");
         }
     }
 

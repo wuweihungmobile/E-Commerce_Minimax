@@ -106,15 +106,17 @@ public class PricingService {
         checkTargetStoresDynamicPricingEnabled(isSuperAdmin, request.getRoomListingId(), request.getListingId());
 
         validateRuleRequest(request);
-        enforceRuleLimitAndConflict(request, tenantId);
+        // DEF-436：規則蓋的租戶——店主是自己的店鋪，管理員代操作蓋目標房源／商品所屬的店鋪（店主才管得到）
+        UUID ruleTenantId = resolveRuleTenantId(isSuperAdmin, tenantId, request.getRoomListingId(), request.getListingId());
+        enforceRuleLimitAndConflict(request, ruleTenantId);
 
         // DEF-414：tenantId 是 insertable=false 的唯讀影子欄位，INSERT 依據的是 .tenant(...) 關聯物件；
         // 只設影子欄位會把 NULL 寫進 pricing_rules.tenant_id（NOT NULL）→ 500。必須先查出 Tenant 實體。
-        Tenant tenant = tenantRepository.findById(tenantId)
+        Tenant tenant = tenantRepository.findById(ruleTenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
         PricingRule rule = PricingRule.builder()
                 .tenant(tenant)
-                .tenantId(tenantId)
+                .tenantId(ruleTenantId)
                 .roomListingId(request.getRoomListingId())
                 .listingId(request.getListingId())
                 .ruleType(PricingRule.PricingRuleType.valueOf(request.getRuleType().name()))
@@ -128,7 +130,7 @@ public class PricingService {
 
         rule = pricingRuleRepository.save(rule);
         log.info("Created pricing rule: ruleId={}, type={}", rule.getId(), rule.getRuleType());
-        auditService.record("PRICING_RULE_CREATED", "PRICING_RULE", rule.getId(), tenantId,
+        auditService.record("PRICING_RULE_CREATED", "PRICING_RULE", rule.getId(), ruleTenantId,
                 null, rule.getRuleType().name(), null);
 
         return toRuleResponse(rule);
@@ -566,6 +568,26 @@ public class PricingService {
                     .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Listing not found"));
             featureToggleService.checkFeatureEnabledForTenant(listing.getTenantId(), "DYNAMIC_PRICING_ENABLED");
         }
+    }
+
+    /**
+     * 新規則蓋章的租戶（DEF-436，Sprint 312 收尾使用者以互動選項裁決『蓋房源所屬店鋪』）。
+     *
+     * <p>店主就是呼叫者租戶（其後的擁有權檢查保證目標屬於他）。平台管理員（SUPER_ADMIN）代操作時蓋<b>目標房源／商品所屬的店鋪</b>：
+     * 原本蓋他的請求租戶（系統租戶，或 {@code X-Tenant-ID} 指定的租戶），該店店主列得到這條影響自己房源價格的規則，卻
+     * {@code PUT}／{@code DELETE} 都回 {@code E_1007}；同一位管理員經 {@code setCalendarPrice} 建的規則卻蓋店鋪、店主可停用。
+     * 兩個 id 屬於不同店鋪時（只有管理員做得到）以 {@code roomListingId} 的店鋪為準；兩個都沒帶時沒有店鋪可蓋，維持請求租戶。
+     * 目標房源／商品已由 {@link #checkTargetStoresDynamicPricingEnabled} 確認存在，這裡查不到只可能是競態，直接丟 {@code E_4000}。
+     */
+    private UUID resolveRuleTenantId(final boolean isSuperAdmin, final UUID requestTenantId,
+                                     final UUID roomListingId, final UUID listingId) {
+        UUID primaryTarget = roomListingId != null ? roomListingId : listingId;
+        if (!isSuperAdmin || primaryTarget == null) {
+            return requestTenantId;
+        }
+        return listingRepository.findById(primaryTarget)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_4000, "Listing not found"))
+                .getTenantId();
     }
 
     private void validateRuleRequest(PricingDto.CreateRuleRequest request) {

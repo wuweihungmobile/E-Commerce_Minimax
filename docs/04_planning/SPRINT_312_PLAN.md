@@ -110,7 +110,7 @@
 4. 管理員的真實設定（沒帶標頭、系統租戶開關開啟）在 Hibernate 測試庫要靠『暫時打開系統租戶開關、`finally` 還原』才能還原；這會短暫改動共用的列（`PlatformSelfRunWriteIsolationE2ETest` 已有同樣做法），測試序列執行、結束時還原。
 5. **`DEF-436`（蓋章租戶不一致）只登記、沒有改**，見 §9。
 6. M5、M6、M11 只有單元案例抓得到（整合層沒有對應案例，與預期一致）。
-7. **本輪尚未 push，雲端 CI 沒有驗證這一輪**：使用者的互動答案只授權了 Sprint 311 的 push；本輪改變生產行為（管理員代操作的開關檢查），所以收尾再問一次。
+7. **本輪的 push 與雲端 CI（push 後回填）**：使用者的互動答案只授權了 Sprint 311 的 push，本輪改變生產行為（管理員代操作的開關檢查），所以收尾再問一次；使用者選「現在 push」，已於 `53a9073b..a047721e` push。pre-push 輕量守門通過（後端單元與前端 Lint／建置兩個 act job 皆 `Job succeeded`，schema 漂移守門「entity 與 Flyway schema 對齊，無漂移」）。雲端 CI run [40729658346](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/40729658346) 三個 job 皆 success（Backend Unit Tests 3 分 40 秒、Frontend Lint & Build 45 秒、Backend Integration Tests & Package 9 分 07 秒；整個 run 12 分 52 秒，16:48:56Z～17:01:48Z），以 `gh run view --json status,conclusion,headSha` 交叉確認 headSha 為 `a047721e`；下載整合 job 的完整雲端日誌（約 56 MB）確認整合測試 **966／0 失敗／0 錯誤／0 跳過**、`StoreToggleGatesApplicationE2ETest` 與 `PlatformSelfRunWriteIsolationE2ETest` 都在清單內且 0 失敗、`BUILD SUCCESS`。
 
 ## 8. 我替使用者做的決定（可一句話推翻）
 
@@ -121,18 +121,18 @@
 | 3 | 管理員對不存在的房源建立規則回 `E-4000` | 要看店鋪必須先查房源；與店主路徑的行為一致（先前管理員完全不查房源） | 告訴我改回不驗證 |
 | 4 | 新增 `FeatureToggleService.checkFeatureEnabledForTenant`，`checkFeatureEnabled` 改為委派給它 | 使用者選的選項文字就是這個機制；委派避免兩份錯誤訊息，也讓『能建立』與『會生效』用同一個判斷。順帶把 `checkFeatureEnabled` Javadoc 裡寫錯的錯誤碼 `E_2020` 更正為實際丟的 `E_2004`（改的是我正在改的那個方法的說明） | 告訴我拆成兩份獨立實作 |
 | 5 | 登記 `DEF-436`，不順手改蓋章租戶 | Rule 3；這可能是刻意的設計（平台代營運的規則由平台管理），沒有需求文件，涉及店主能不能管理平台代建的規則 | 告訴我選哪個方向 |
-| 6 | 本輪不自動 push，收尾再問 | 使用者的互動答案只授權了 Sprint 311 的 push（『approval in one context doesn't extend to the next』） | 告訴我 push |
+| 6 | 本輪不自動 push，收尾再問（結果：使用者選「現在 push」，已 push，雲端全綠，見 §7 第 7 點） | 使用者的互動答案只授權了 Sprint 311 的 push（『approval in one context doesn't extend to the next』） | （已執行） |
 
 ## 9. 新登記的缺陷
 
 | ID | 摘要 | 狀態 |
 |---|---|---|
-| `DEF-436` | `SUPER_ADMIN` 經 `POST /rules` 在店鋪房源上建立的規則蓋成請求租戶（系統租戶），店主列得到卻 `PUT`／`DELETE` 都回 `403 E-1007`；同一位管理員經 `POST /calendar/price` 建的規則蓋店鋪、店主可停用。探針實測，見 `API_M12` §7 | 未處理，**待你裁決方向** |
+| `DEF-436` | `SUPER_ADMIN` 經 `POST /rules` 在店鋪房源上建立的規則蓋成請求租戶（系統租戶），店主列得到卻 `PUT`／`DELETE` 都回 `403 E-1007`；同一位管理員經 `POST /calendar/price` 建的規則蓋店鋪、店主可停用。探針實測，見 `API_M12` §7 | 未處理，**待你裁決方向**。**後續**：你選了『蓋房源所屬店鋪（建議）』，[Sprint 313](SPRINT_313_PLAN.md) 已修復 |
 
 `DEF-435` 已於本輪修復。`DEF-430`～`DEF-432`、`DEF-434` 未動。
 
 ## 10. 狀態
 
-見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 312 列。本輪的 commit 留在本機，**尚未 push**（見 §7 第 7 點）；push 後要回填雲端 CI 結果。
+見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 312 列。本輪的 commit `a047721e` 已 push，雲端 CI 全綠（見 §7 第 7 點）。
 
 本輪的 commit 範圍：生產程式 `FeatureToggleService`、`PricingService`；測試 `FeatureToggleServiceTest`、`PricingServiceTest`、`StoreToggleGatesApplicationE2ETest`；文件 `API_M12_Dynamic_Pricing.md`（v2.9）、`DEFERRED_ITEMS_TRACKER.md`、`RELEASE_TRACKER.md`（含 Sprint 311 的 push 與雲端 CI 回填）、`SPRINT_311_PLAN.md`（回填）與本計畫書。沒有 Flyway 遷移、沒有前端變更。

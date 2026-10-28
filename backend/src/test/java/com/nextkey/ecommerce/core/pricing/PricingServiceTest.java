@@ -1152,6 +1152,8 @@ class PricingServiceTest {
             // DEF-435：原本這個案例斷言 SUPER_ADMIN「不查詢 listing」。擁有權檢查仍然略過，但規則會不會生效看的是房源所屬店鋪的開關，
             // 所以現在會查一次房源取得店鋪（開關關閉的店鋪會被擋，見 SuperAdminDelegationToggleTests）。
             when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listingOf(otherTenantId)));
+            // DEF-436：規則蓋房源所屬店鋪（otherTenantId），所以要有那間店鋪的 Tenant 實體
+            when(tenantRepository.findById(otherTenantId)).thenReturn(Optional.of(tenantOf(otherTenantId)));
             when(pricingRuleRepository.findByRoomListingIdAndIsActiveTrue(ROOM_LISTING_ID))
                     .thenReturn(List.of());
             when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -2314,14 +2316,19 @@ class PricingServiceTest {
      * <p>誘餌（正確的實作永遠不會去讀呼叫者租戶的開關，所以用 {@code lenient}，另以 {@code verify(never())} 證明沒讀過）：
      * 店鋪關閉的案例裡呼叫者租戶的檢查放行（Mockito 預設不拋）——「錯看呼叫者」的實作會放行而讓案例轉紅；店鋪開啟的案例裡呼叫者
      * 租戶的檢查會拋——「錯看呼叫者」的實作會擋下而讓案例轉紅。
+     *
+     * <p>DEF-436（Sprint 313，使用者在 Sprint 312 收尾以互動選項裁決『蓋房源所屬店鋪』）：同一位管理員，{@code createRule} 建的規則原本蓋
+     * 請求租戶、{@code setCalendarPrice} 建的卻蓋房源的租戶，店主對前者列得到卻停用不了。現在 {@code createRule} 蓋房源所屬店鋪
+     * （「規則蓋章的租戶」一節）；店主與不綁房源／商品的規則不變。
      */
     @Nested
-    @DisplayName("DEF-435: 管理員代操作時看目標房源所屬店鋪的動態定價開關")
+    @DisplayName("DEF-435／DEF-436: 管理員代操作時看目標房源所屬店鋪的動態定價開關，且建立的規則蓋房源所屬店鋪")
     class SuperAdminDelegationToggleTests {
 
         private static final String TOGGLE = "DYNAMIC_PRICING_ENABLED";
         private static final UUID STORE_ON = UUID.fromString("aa0e8400-e29b-41d4-a716-446655440011");
         private static final UUID STORE_OFF = UUID.fromString("aa0e8400-e29b-41d4-a716-446655440012");
+        private static final UUID STORE_OTHER = UUID.fromString("aa0e8400-e29b-41d4-a716-446655440013");
         private static final UUID PRODUCT_ID = UUID.fromString("990e8400-e29b-41d4-a716-446655440004");
 
         @BeforeEach
@@ -2329,6 +2336,10 @@ class PricingServiceTest {
             // 預設每間店鋪都開啟；要驗證關閉的案例以指定店鋪的 stub 覆蓋（storeToggleOff）。用 lenient：有些案例在第一個 id 就被擋下，
             // 而嚴格 stub 模式會把「stub 了但參數不同的呼叫」誤判成 stub 問題（Mockito PotentialStubbingProblem）
             lenient().doNothing().when(featureToggleService).checkFeatureEnabledForTenant(any(), eq(TOGGLE));
+            // DEF-436：規則蓋房源所屬店鋪，建立規則時要查出那間店鋪的 Tenant 實體（呼叫者租戶 TENANT_ID 的由外層 setUp 備好）
+            for (UUID store : List.of(STORE_ON, STORE_OFF, STORE_OTHER)) {
+                lenient().when(tenantRepository.findById(store)).thenReturn(Optional.of(tenantOf(store)));
+            }
         }
 
         private Listing listingIn(final UUID listingId, final UUID storeId) {
@@ -2550,6 +2561,74 @@ class PricingServiceTest {
             assertThat(response.getStatus()).isEqualTo("APPLIED");
             verify(featureToggleService).checkFeatureEnabledForTenant(STORE_ON, TOGGLE);
             verify(featureToggleService, never()).checkFeatureEnabled(anyString());
+        }
+
+        // ── 規則蓋章的租戶（DEF-436）──
+
+        @Test
+        @DisplayName("DEF-436 createRule：管理員在店鋪房源上建立的規則蓋房源所屬店鋪——Tenant 關聯、影子欄位、稽核紀錄都是店鋪，請求租戶完全沒被拿來蓋章")
+        void createRule_superAdmin_isStampedWithTheListingsStore() {
+            when(listingRepository.findById(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(listingIn(ROOM_LISTING_ID, STORE_ON)));
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            pricingService.createRule(createRequest(ROOM_LISTING_ID, null), true);
+
+            ArgumentCaptor<PricingRule> saved = ArgumentCaptor.forClass(PricingRule.class);
+            verify(pricingRuleRepository).save(saved.capture());
+            assertThat(saved.getValue().getTenantId()).as("影子欄位").isEqualTo(STORE_ON);
+            assertThat(saved.getValue().getTenant()).as("INSERT 依據的 Tenant 關聯（DEF-414）").isNotNull()
+                    .extracting(Tenant::getId).isEqualTo(STORE_ON);
+            verify(auditService).record(eq("PRICING_RULE_CREATED"), eq("PRICING_RULE"), any(), eq(STORE_ON),
+                    any(), any(), any());
+            verify(tenantRepository, never()).findById(TENANT_ID);
+        }
+
+        @Test
+        @DisplayName("DEF-436 createRule：只帶商品 id 時，規則蓋商品所屬店鋪")
+        void createRule_superAdmin_productOnly_isStampedWithTheProductsStore() {
+            when(listingRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(listingIn(PRODUCT_ID, STORE_ON)));
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            pricingService.createRule(createRequest(null, PRODUCT_ID), true);
+
+            ArgumentCaptor<PricingRule> saved = ArgumentCaptor.forClass(PricingRule.class);
+            verify(pricingRuleRepository).save(saved.capture());
+            assertThat(saved.getValue().getTenantId()).isEqualTo(STORE_ON);
+        }
+
+        @Test
+        @DisplayName("DEF-436 createRule：房源與商品屬於不同店鋪（只有管理員做得到）→ 以房源（roomListingId）的店鋪為準")
+        void createRule_superAdmin_roomAndProductInDifferentStores_isStampedWithTheRoomsStore() {
+            when(listingRepository.findById(ROOM_LISTING_ID))
+                    .thenReturn(Optional.of(listingIn(ROOM_LISTING_ID, STORE_ON)));
+            when(listingRepository.findById(PRODUCT_ID))
+                    .thenReturn(Optional.of(listingIn(PRODUCT_ID, STORE_OTHER)));
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            pricingService.createRule(createRequest(ROOM_LISTING_ID, PRODUCT_ID), true);
+
+            ArgumentCaptor<PricingRule> saved = ArgumentCaptor.forClass(PricingRule.class);
+            verify(pricingRuleRepository).save(saved.capture());
+            assertThat(saved.getValue().getTenantId()).isEqualTo(STORE_ON);
+            verify(tenantRepository, never()).findById(STORE_OTHER);
+        }
+
+        @Test
+        @DisplayName("DEF-436 createRule：店主建立的規則蓋呼叫者租戶（自己的店鋪），不多查房源")
+        void createRule_owner_isStampedWithTheCallerTenant() {
+            Listing own = listingIn(ROOM_LISTING_ID, TENANT_ID);
+            when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(own));
+            when(pricingRuleRepository.save(any(PricingRule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            pricingService.createRule(createRequest(ROOM_LISTING_ID, null), false);
+
+            ArgumentCaptor<PricingRule> saved = ArgumentCaptor.forClass(PricingRule.class);
+            verify(pricingRuleRepository).save(saved.capture());
+            assertThat(saved.getValue().getTenantId()).isEqualTo(TENANT_ID);
+            verify(auditService).record(eq("PRICING_RULE_CREATED"), eq("PRICING_RULE"), any(), eq(TENANT_ID),
+                    any(), any(), any());
+            verify(listingRepository, times(1)).findById(ROOM_LISTING_ID); // 只有擁有權檢查查那一次
         }
 
         // ── 店主路徑不變（DEF-426）──

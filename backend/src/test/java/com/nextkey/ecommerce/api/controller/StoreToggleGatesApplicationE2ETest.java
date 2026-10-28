@@ -306,7 +306,6 @@ class StoreToggleGatesApplicationE2ETest {
     void superAdminDelegation_followsTheTargetStoresToggle() throws Exception {
         LocalDate date = today.plusDays(10);
         UUID offRule = roomRuleId(storeOff, roomOff);
-        UUID onRule = roomRuleId(storeOn, roomOn);
         int offRulesBefore = pricingRuleRepository.findByRoomListingId(roomOff).size();
         Map<String, UUID> admins = new LinkedHashMap<>(); // 管理員自己這一側的租戶（X-Tenant-ID 標頭）
         admins.put("管理員租戶開關開啟", adminTenantOn);
@@ -317,6 +316,9 @@ class StoreToggleGatesApplicationE2ETest {
         insertRoomRow(roomOff);
         insertRoomRow(roomOn);
         try {
+            // 舊式規則：蓋著『關閉的租戶』、卻綁在開啟店鋪的房源上——DEF-436 之前管理員經 POST /rules 建的規則就是這個樣子（蓋請求租戶），
+            // 也是上線前留下的舊資料的樣子。店鋪開啟時覆蓋它，才分得出關卡看的是『規則上蓋的租戶』還是『房源所屬店鋪』（前者會誤擋）
+            UUID legacyRule = seedLegacyStampedRule(roomOn, adminTenantOff);
             int n = 0; // 每個格子用不同的有效期間與日期，避免同類型重疊檢查把與開關無關的格子擋掉
             for (Map.Entry<String, UUID> admin : admins.entrySet()) {
                 for (boolean storeEnabled : new boolean[] {false, true}) {
@@ -328,9 +330,7 @@ class StoreToggleGatesApplicationE2ETest {
                             ruleRequestBody(room, null, ruleName, n), storeEnabled ? "201" : blocked);
                     expectOutcome(mismatches, cell + "／日曆改價", CALENDAR_PRICE_PATH, admin.getValue(),
                             calendarPriceBody(room, date.plusDays(n)), storeEnabled ? "200" : blocked);
-                    // 店鋪開啟時覆蓋「管理員剛建立的那條規則」：它蓋的是管理員請求的租戶（標頭指定的租戶），不是店鋪——
-                    // 才分得出關卡看的是『規則上蓋的租戶』還是『房源所屬店鋪』（管理員那一側開關關閉時，前者會誤擋）
-                    UUID rule = storeEnabled ? createdRuleId(room, ruleName, onRule) : offRule;
+                    UUID rule = storeEnabled ? legacyRule : offRule;
                     expectOutcome(mismatches, cell + "／覆蓋價格", RULES_PATH + "/" + rule + "/override", admin.getValue(),
                             overrideBody(date.plusDays(n), date.plusDays(n + 1)), storeEnabled ? "200" : blocked);
                 }
@@ -413,6 +413,53 @@ class StoreToggleGatesApplicationE2ETest {
         }
     }
 
+    // ── 管理員建立的規則蓋房源所屬店鋪（Sprint 313，DEF-436，使用者以互動選項裁決『蓋房源所屬店鋪』）──────
+
+    @Test
+    @DisplayName("DEF-436：管理員在店鋪房源上建立的規則蓋房源所屬店鋪（不看請求租戶），該店店主列得到、改得動、停用得了；"
+            + "不綁房源的規則仍蓋請求租戶")
+    void superAdminCreateRule_isStampedWithTheListingsStore_soTheOwnerCanManageIt() throws Exception {
+        String storeId = storeOn.getId().toString();
+        String unboundName = "S313 不綁房源的規則";
+        List<String> mismatches = new ArrayList<>();
+        // 管理員沒帶標頭是系統租戶，測試庫的系統租戶開關預設關閉；暫時打開來還原正式環境的設定，結束時還原
+        Boolean originalSystemToggle = setSystemTenantPricingToggle(true);
+        try {
+            // 蓋章不看請求租戶：沒帶標頭（系統租戶）與標頭指向『關閉的租戶』兩種請求，規則都蓋房源所屬店鋪
+            JsonNode byDefault = postAsAdminData(RULES_PATH, null,
+                    ruleRequestBody(roomOn, null, "S313 蓋章（沒帶標頭）", 11));
+            JsonNode byHeader = postAsAdminData(RULES_PATH, adminTenantOff,
+                    ruleRequestBody(roomOn, null, "S313 蓋章（標頭指向關閉的租戶）", 12));
+            String ruleId = byDefault.path("ruleId").asText();
+            expectEquals(mismatches, "回應的 tenantId（沒帶標頭）", storeId, byDefault.path("tenantId").asText());
+            expectEquals(mismatches, "資料庫 tenant_id（沒帶標頭）", storeId, ruleTenantInDb(ruleId));
+            expectEquals(mismatches, "資料庫 tenant_id（標頭指向關閉的租戶）", storeId,
+                    ruleTenantInDb(byHeader.path("ruleId").asText()));
+
+            // 該店店主：列得到、改得動、停用得了
+            String list = given().header("Authorization", "Bearer " + ownerOnToken)
+                    .when().get(RULES_PATH + "?roomListingId=" + roomOn).then().extract().asString();
+            expectEquals(mismatches, "店主列得到這條規則", true, !ruleId.isEmpty() && list.contains(ruleId));
+            expectEquals(mismatches, "店主 PUT", "200", outcomeOf(given().header("Authorization", "Bearer " + ownerOnToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE).body("{\"priority\":7}")
+                    .when().put(RULES_PATH + "/" + ruleId)));
+            expectEquals(mismatches, "店主 DELETE", "200", outcomeOf(given().header("Authorization", "Bearer " + ownerOnToken)
+                    .when().delete(RULES_PATH + "/" + ruleId)));
+            expectEquals(mismatches, "店主停用後的 is_active", false, ruleActiveInDb(ruleId));
+
+            // 不綁房源／商品：沒有店鋪可蓋，仍蓋請求租戶（系統租戶）
+            JsonNode unbound = postAsAdminData(RULES_PATH, null, ruleRequestBody(null, null, unboundName, 25));
+            expectEquals(mismatches, "不綁房源的規則：資料庫 tenant_id", SYSTEM_TENANT_ID.toString(),
+                    ruleTenantInDb(unbound.path("ruleId").asText()));
+
+            assertThat(mismatches).as("管理員建立的規則蓋房源所屬店鋪，店主管得到").isEmpty();
+        } finally {
+            deleteTestCreatedRules();
+            jdbcTemplate.update("DELETE FROM pricing_rules WHERE rule_name = ?", unboundName);
+            restoreSystemTenantPricingToggle(originalSystemToggle);
+        }
+    }
+
     // ── 固件與輔助 ────────────────────────────────────────────────────────────
 
     private UUID roomRuleId(Tenant store, UUID roomListingId) {
@@ -431,10 +478,17 @@ class StoreToggleGatesApplicationE2ETest {
                 "overridePrice", 900, "reason", "S311 手動覆蓋");
     }
 
-    /** 管理員剛建立的規則（依名稱找）；建立失敗找不到時退回種子規則，讓後面的格子照常比對、不因 NoSuchElement 掩蓋真正的差異。 */
-    private UUID createdRuleId(UUID roomListingId, String ruleName, UUID fallback) {
-        return pricingRuleRepository.findByRoomListingId(roomListingId).stream()
-                .filter(r -> ruleName.equals(r.getRuleName())).map(PricingRule::getId).findFirst().orElse(fallback);
+    /**
+     * 蓋著 {@code stampedTenantId}、卻綁在別間店鋪房源上的規則（有效期在很遠的未來，不影響其他案例的價格）：DEF-436 之前管理員經
+     * {@code POST /rules} 建的規則就是這個樣子，也是上線前留下的舊資料的樣子。由 {@link #deleteTestCreatedRules} 清掉。
+     */
+    private UUID seedLegacyStampedRule(UUID roomListingId, UUID stampedTenantId) {
+        Tenant stamped = tenantRepository.findById(stampedTenantId).orElseThrow();
+        return pricingRuleRepository.save(PricingRule.builder()
+                .tenant(stamped).roomListingId(roomListingId)
+                .ruleType(PricingRule.PricingRuleType.MANUAL_OVERRIDE).ruleName("S313 舊式規則（蓋著關閉的租戶）").priority(1)
+                .config(Map.of("price", ROOM_RULE_PRICE.doubleValue()))
+                .validFrom(today.plusYears(30)).validTo(today.plusYears(30).plusDays(3)).isActive(true).build()).getId();
     }
 
     /** 建立規則的請求本文；每條規則用不同的有效期間（{@code offsetYears}），避免同類型時間重疊檢查把與開關無關的案例擋下。 */
@@ -461,15 +515,43 @@ class StoreToggleGatesApplicationE2ETest {
      * {@code asTenant} 非 null 時帶 {@code X-Tenant-ID} 標頭（決定管理員請求的 TenantContext），null 是沒帶標頭（系統租戶）。
      */
     private String outcome(String path, UUID asTenant, Object body) throws Exception {
+        return outcomeOf(postAsAdmin(path, asTenant, body));
+    }
+
+    private String outcomeOf(MockMvcResponse response) throws Exception {
+        int status = response.statusCode();
+        return status >= 400 ? status + " " + errorCode(response.asString()) : String.valueOf(status);
+    }
+
+    /** 以管理員身分 POST 並回傳回應的 {@code data}（建立失敗時是空節點，讓呼叫端把差異記成不符，而不是丟例外）。 */
+    private JsonNode postAsAdminData(String path, UUID asTenant, Object body) throws Exception {
+        return objectMapper.readTree(postAsAdmin(path, asTenant, body).asString()).path("data");
+    }
+
+    private String ruleTenantInDb(String ruleId) {
+        return ruleId.isEmpty() ? "（沒有建立成功）" : jdbcTemplate.queryForObject(
+                "SELECT tenant_id::text FROM pricing_rules WHERE id = ?::uuid", String.class, ruleId);
+    }
+
+    private Boolean ruleActiveInDb(String ruleId) {
+        return ruleId.isEmpty() ? null : jdbcTemplate.queryForObject(
+                "SELECT is_active FROM pricing_rules WHERE id = ?::uuid", Boolean.class, ruleId);
+    }
+
+    private void expectEquals(List<String> mismatches, String what, Object expected, Object actual) {
+        if (!expected.equals(actual)) {
+            mismatches.add(what + "：預期 " + expected + "，實際 " + actual);
+        }
+    }
+
+    private MockMvcResponse postAsAdmin(String path, UUID asTenant, Object body) throws Exception {
         MockMvcRequestSpecification request = given().header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(objectMapper.writeValueAsString(body));
         if (asTenant != null) {
             request = request.header("X-Tenant-ID", asTenant.toString());
         }
-        MockMvcResponse response = request.when().post(path);
-        int status = response.statusCode();
-        return status >= 400 ? status + " " + errorCode(response.asString()) : String.valueOf(status);
+        return request.when().post(path);
     }
 
     private void expectOutcome(List<String> mismatches, String cell, String path, UUID asTenant, Object body,

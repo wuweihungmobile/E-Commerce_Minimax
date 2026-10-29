@@ -84,7 +84,7 @@
 2. **管理員不帶 id 的 `GET /rules` 列的是請求租戶名下的規則**，他在店鋪房源上建立的規則蓋的是那間店鋪，不再出現在那個列表（要帶 `roomListingId`／`listingId` 查）。這是選項 (a) 的直接結果，已寫進 `API_M12` §4.3。
 3. 兩個 id 屬於不同店鋪（只有管理員做得到）時以房源的店鋪為準——規則同時作用在兩處，只能蓋一個租戶；這是我替使用者做的決定（§8 第 1 點）。
 4. `D3`、`D5` 只有單元案例抓得到（真實棧看不到稽核紀錄的租戶與查詢次數）。
-5. **本輪尚未 push，雲端 CI 沒有驗證這一輪**：使用者的互動答案只授權了 Sprint 312 的 push；本輪改變生產行為（管理員建立的規則蓋章租戶），所以收尾再問一次。
+5. **本輪的 push 與雲端 CI（push 後回填）**：使用者的互動答案只授權了 Sprint 312 的 push，本輪改變生產行為（管理員建立的規則蓋章租戶），所以收尾再問一次；使用者選「現在 push」，已於 `a047721e..da5e366f` push。pre-push 輕量守門通過（後端單元與前端 Lint／建置兩個 act job 皆 `Job succeeded`，schema 漂移守門「entity 與 Flyway schema 對齊，無漂移」）。雲端 CI run [40805402099](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/40805402099) 三個 job 皆 success（Backend Unit Tests 2 分 53 秒、Frontend Lint & Build 57 秒、Backend Integration Tests & Package 10 分 32 秒；整個 run 13 分 31 秒，2026-10-29 02:16:47Z～02:30:18Z），以 `gh run view --json status,conclusion,headSha` 交叉確認 headSha 為 `da5e366f`；下載整合 job 的完整雲端日誌（約 56 MB）確認整合測試 **967／0 失敗／0 錯誤／0 跳過**、`StoreToggleGatesApplicationE2ETest` 11／0、`PlatformSelfRunWriteIsolationE2ETest` 18／0、`BUILD SUCCESS`。
 
 ## 8. 我替使用者做的決定（可一句話推翻）
 
@@ -94,7 +94,7 @@
 | 2 | 既有資料不回填、不寫 Flyway 遷移 | 對正式資料的變更需要另外授權；店主還是可以請平台管理員停用舊規則（管理員不受擁有權限制） | 告訴我寫遷移（我會先量出受影響的列數與樣態） |
 | 3 | 稽核紀錄的租戶跟著蓋章租戶 | 與 `setCalendarPrice` 一致；店主在自己店鋪的稽核紀錄看得到平台代建的規則 | 告訴我稽核紀錄維持請求租戶 |
 | 4 | `enforceRuleLimitAndConflict` 傳蓋章租戶（等價於請求租戶） | 語意一致：重疊檢核的範圍是『即將擁有這條規則的租戶』；D7 證明結果相同 | 告訴我維持傳請求租戶 |
-| 5 | 本輪不自動 push，收尾再問 | 使用者的互動答案只授權了 Sprint 312 的 push（『approval in one context doesn't extend to the next』） | 告訴我 push |
+| 5 | 本輪不自動 push，收尾再問（結果：使用者選「現在 push」，已 push，雲端全綠，見 §7 第 5 點） | 使用者的互動答案只授權了 Sprint 312 的 push（『approval in one context doesn't extend to the next』） | （已執行） |
 
 ## 9. 新登記的缺陷
 
@@ -102,6 +102,6 @@
 
 ## 10. 狀態
 
-見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 313 列。本輪的 commit 留在本機，**尚未 push**（見 §7 第 5 點）；push 後要回填雲端 CI 結果。
+見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 313 列。本輪的 commit `da5e366f` 已 push，雲端 CI 全綠（見 §7 第 5 點）。
 
 本輪的 commit 範圍：生產程式 `PricingService`；測試 `PricingServiceTest`、`StoreToggleGatesApplicationE2ETest`；文件 `API_M12_Dynamic_Pricing.md`（v2.10）、`DEFERRED_ITEMS_TRACKER.md`、`RELEASE_TRACKER.md`（含 Sprint 312 的 push 與雲端 CI 回填）、`SPRINT_312_PLAN.md`（回填）與本計畫書。沒有 Flyway 遷移、沒有前端變更。

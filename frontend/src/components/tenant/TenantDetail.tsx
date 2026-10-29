@@ -107,6 +107,9 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
   }
 
   const isOwner = currentTenantId === tenantId
+  // DEF-438：編輯（PUT /v2/tenants/{id}）與功能開關頁都只放行店主與管理員，一般成員（STORE_STAFF）看得到詳情但操作不了
+  // （按儲存只會得 403 E-1007），所以兩個入口共用同一條角色條件，避免兩邊各寫一份又漂移
+  const canManageStore = isOwner && (currentRole === 'STORE_OWNER' || currentRole === 'ADMIN')
 
   if (loading) {
     return (
@@ -154,13 +157,14 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
             </Badge>
           )}
           {/* DEF-430：功能開關頁（features/page.tsx）只放行店主與管理員，其他成員進去會被導回店鋪列表，所以不給入口 */}
-          {isOwner && tenant.status === 'ACTIVE' && (currentRole === 'STORE_OWNER' || currentRole === 'ADMIN') && (
+          {canManageStore && tenant.status === 'ACTIVE' && (
             <Link href={`/dashboard/tenants/${tenantId}/features`}>
               <Button variant="outline">功能開關</Button>
             </Link>
           )}
-          {/* Sprint 315（DEF-432③）：FRD US-M17-003 邊界條件『店鋪狀態非 ACTIVE：允許更新』，所以編輯入口不看店鋪狀態 */}
-          {isOwner && (
+          {/* Sprint 315（DEF-432③）：FRD US-M17-003 邊界條件『店鋪狀態非 ACTIVE：允許更新』，所以編輯入口不看店鋪狀態；
+              Sprint 316（DEF-438）：但要看角色——店員進得了表單，按儲存卻只會得 403 */}
+          {canManageStore && (
             <Link href={`/dashboard/tenants/${tenantId}/edit`}>
               <Button>編輯店鋪</Button>
             </Link>

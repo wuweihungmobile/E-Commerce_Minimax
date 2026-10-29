@@ -12,6 +12,8 @@ import { Account, adminAccessToken, seedStore, setStoreStatusWithToken } from '.
  * - 儀表板首頁 →「店鋪管理」→ 店鋪列表 →「查看詳情」→「功能開關」→ 功能開關頁，全程只點連結，不輸入網址；
  * - 入口的可見性與功能開關頁自己的放行條件一致（`features/page.tsx` 只放行 STORE_OWNER／ADMIN，其他成員進去會被導回店鋪列表）：
  *   店鋪成員（STORE_STAFF）沒有入口；只有核准中（ACTIVE）的店鋪有入口，被停權的沒有（『編輯店鋪』不受此限，見 NAV-03）。
+ * - 『編輯店鋪』（Sprint 316，DEF-438）同樣只給 STORE_OWNER／ADMIN：`PUT /v2/tenants/{id}` 的方法安全層不放行店員，店員進得了
+ *   表單、按儲存只會得到 403；核准中與被停權的店鋪都一樣（見 NAV-02、NAV-04）。
  *
  * 資料全由真實流程建立：店主開店（seedStore）→ 受邀人註冊 → 店主邀請為 STORE_STAFF → 受邀人接受（比照
  * at-store-member-revocation-real）；停權用管理員 API。登入端點有 IP 限流，所以 API 層的登入一律走 `postAuthApi`（429 自動重試）。
@@ -98,7 +100,7 @@ test.describe('AT-DASHBOARD-TENANT-NAV-REAL: 店鋪管理與功能開關的導�
     await expect(page.locator('#CMS_ENABLED')).toBeVisible({ timeout: 15_000 });
   });
 
-  test('E2E-TENANT-NAV-02: 店鋪成員（STORE_STAFF）看得到店鋪詳情，但沒有「功能開關」入口（那個頁面會把他導回列表）', async ({
+  test('E2E-TENANT-NAV-02: 店鋪成員（STORE_STAFF）看得到店鋪詳情，但沒有「功能開關」與「編輯店鋪」入口（前者的頁面會把他導回列表，後者按儲存只會得 403；DEF-438）', async ({
     page,
   }: {
     page: Page;
@@ -111,7 +113,12 @@ test.describe('AT-DASHBOARD-TENANT-NAV-REAL: 店鋪管理與功能開關的導�
 
     await page.goto(`/dashboard/tenants/${tenantId}`);
     await expect(page.getByText(tenantId, { exact: true }), '詳情頁有載入（顯示店鋪 ID）').toBeVisible({ timeout: 15_000 });
+    // 對照組：「目前店鋪」標籤只在登入帶的租戶就是這間店鋪時才渲染（isOwner）。店員這裡成立，所以下面兩個入口不見是
+    // 角色條件擋下的，不是「這個人不屬於這間店鋪」；也先等它出現，避免 isOwner 還沒算出來時的「還沒渲染」被誤當成「沒有入口」
+    await expect(page.getByText('目前店鋪', { exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: '功能開關' })).toHaveCount(0);
+    // DEF-438：『編輯店鋪』比照『功能開關』只給店主與管理員——PUT /v2/tenants/{id} 的方法安全層不放行店員（403 E-1007）
+    await expect(page.getByRole('link', { name: '編輯店鋪' })).toHaveCount(0);
   });
 
   test('E2E-TENANT-NAV-03: 店鋪被停權後，店主在詳情頁看不到「功能開關」入口（只有核准中的店鋪能管理功能），但「編輯店鋪」仍在（Sprint 315：非 ACTIVE 允許更新）', async ({
@@ -128,6 +135,27 @@ test.describe('AT-DASHBOARD-TENANT-NAV-REAL: 店鋪管理與功能開關的導�
     // 對照組：同一排按鈕裡的『編輯店鋪』在（FRD US-M17-003 邊界條件允許非 ACTIVE 的店鋪更新），
     // 所以『功能開關』不見是它自己的 ACTIVE 條件，不是整排按鈕都沒渲染
     await expect(page.getByRole('link', { name: '編輯店鋪' })).toBeVisible();
+    await expect(page.getByRole('link', { name: '功能開關' })).toHaveCount(0);
+  });
+
+  test('E2E-TENANT-NAV-04: 店鋪被停權後，店鋪成員（STORE_STAFF）拿得到完整資料，但仍沒有「編輯店鋪」與「功能開關」入口（DEF-438：Sprint 315 放寬讀取後的影響面）', async ({
+    page,
+  }: {
+    page: Page;
+  }) => {
+    // 依賴 NAV-03（serial 模式下它先跑）已把這間店鋪停權；下面第一個斷言會在沒停權時以清楚的訊息紅燈
+    await loginOnly(page, staff.email, staff.password);
+    await page.goto(`/dashboard/tenants/${tenantId}`);
+    await expect(page.getByText('已停權').first(), '前提：這間店鋪已被 NAV-03 停權').toBeVisible({ timeout: 15_000 });
+    // 前提：Sprint 315 起，停權店鋪的有效成員（含店員）拿到完整版——聯絡信箱有值。沒有這個前提，下面的「沒有入口」
+    // 也可能只是因為資料太少表單進不去，證明不了是角色條件擋的
+    await expect(
+      page.getByText('聯絡信箱', { exact: true }).locator('xpath=..').locator('input'),
+      '前提：店員在停權店鋪拿到完整資料（聯絡信箱有值）',
+    ).toHaveValue(/@/);
+    await expect(page.getByText('目前店鋪', { exact: true }), '對照組：店員的登入租戶就是這間店鋪').toBeVisible();
+
+    await expect(page.getByRole('link', { name: '編輯店鋪' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: '功能開關' })).toHaveCount(0);
   });
 });

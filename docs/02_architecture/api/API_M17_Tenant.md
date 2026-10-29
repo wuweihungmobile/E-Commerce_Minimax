@@ -1,9 +1,9 @@
 # API 規格文件 - M17 租戶/店鋪管理 / API Specification - M17 Tenant Management
 
 > **文件編號**: API-M17
-> **文件版本**: v2.7（Sprint 315：`DEF-432`③——§4.3 非 `ACTIVE` 店鋪對該店鋪的有效成員回完整版，店主可編輯停權中的店鋪）；v2.6（Sprint 314：`DEF-434` 修復——§4.6 的 `status` 說的是這次請求的結果，`enabled=false` 一律 `DISABLED`；§4.4 補記店鋪描述的部分更新語意）；v2.5（Sprint 311：`DEF-429` 修復——新增 `requested_at`，待審核只認店主真的申請過；§4.5、§4.6、§4.29 同步）；v2.4（Sprint 310：§4.5 補記 `status` 的實際判定與 `DEF-429`）；v2.3（Sprint 298 補上全域角色對店主自助端點的真實後端實測矩陣，見註記 9 與 §2.1；v2.2 為 Sprint 294 校正 §4.4／§4.8／§4.9／§4.13／§4.14 與 `E-4031` 總表；v2.1 為 Sprint 292 校正 §4.6；v2.0 為 Sprint 266 依實作改寫）
+> **文件版本**: v2.8（Sprint 316：`DEF-438`——§2.1 實測矩陣新增一般成員 `STORE_STAFF` 欄；§4.5～§4.9、§4.13、§4.14、§5、§6 對一般成員的說明依實測校正：店員在方法安全層就被擋下，回 `E-1007`，到不了 Service 層的 `E-4031` 檢查）；v2.7（Sprint 315：`DEF-432`③——§4.3 非 `ACTIVE` 店鋪對該店鋪的有效成員回完整版，店主可編輯停權中的店鋪）；v2.6（Sprint 314：`DEF-434` 修復——§4.6 的 `status` 說的是這次請求的結果，`enabled=false` 一律 `DISABLED`；§4.4 補記店鋪描述的部分更新語意）；v2.5（Sprint 311：`DEF-429` 修復——新增 `requested_at`，待審核只認店主真的申請過；§4.5、§4.6、§4.29 同步）；v2.4（Sprint 310：§4.5 補記 `status` 的實際判定與 `DEF-429`）；v2.3（Sprint 298 補上全域角色對店主自助端點的真實後端實測矩陣，見註記 9 與 §2.1；v2.2 為 Sprint 294 校正 §4.4／§4.8／§4.9／§4.13／§4.14 與 `E-4031` 總表；v2.1 為 Sprint 292 校正 §4.6；v2.0 為 Sprint 266 依實作改寫）
 > **建立日期**: 2026-04-09（v1.0）
-> **最後更新**: 2026-10-29
+> **最後更新**: 2026-10-30
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`TenantController`、`AdminController`、`StorefrontController`（`api/controller/`）、`TenantService`、`AdminService`（`core/tenant/`、`core/admin/`）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[TenantServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/tenant/TenantServiceTest.java)、[AdminServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/admin/AdminServiceTest.java)、[AdminControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/AdminControllerE2ETest.java)、[TenantControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantControllerE2ETest.java)、[TenantMemberLookupIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantMemberLookupIntegrationTest.java)、[TenantMemberInviteE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantMemberInviteE2ETest.java)
@@ -20,6 +20,7 @@
 > 7. **§4.6 的 403 條件校正（Sprint 292，文件一致性檢查第五輪）**：Sprint 281（DEF-331(f)）把 `TenantService.updateFeatureToggle` 的檢查從「是該租戶有效成員」改為「是該租戶的店主（`STORE_OWNER`）」，但該次 commit 沒有同步本文件，§4.6 的失敗列仍寫「非該租戶成員」，讀起來像是 `STORE_STAFF` 也能通過。已改為如實描述；單元測試 `TenantServiceTest.updateFeatureToggle_notOwner_rejectedWithoutAudit` 佐證。本文件其他章節的同款「非該租戶成員」列本輪**未逐一核對**對應的 service 檢查是店主還是成員（Sprint 294 已逐一核對，見註記 8）
 > 8. **§4.4／§4.8／§4.9／§4.13／§4.14 的權限行與 403 列、`E-4031` 總表校正（Sprint 294，補完註記 7 當時未核對的部分）**：逐一對照 `TenantService`——`updateTenant`、`inviteMember`、`lookupMemberCandidateByEmail`、`updateMemberRole`、`removeMember`（加上註記 7 的 `updateFeatureToggle`）六個寫入類方法的檢查都是 `existsByTenantIdAndUserIdAndStoreRole(…, STORE_OWNER)`，不是該租戶店主就拋 `E-4031`；只有 `getFeatureToggles`（§4.5）與 `getTenantMembers`（§4.7）是「有效成員（`ACTIVE`）」檢查。先前這五節寫「且限該租戶成員」「非該租戶成員」，讀起來像是僅為成員（如 `STORE_STAFF`）即可通過。§4.5、§4.7 本來就是成員檢查，文件正確，未動。**當時未驗證**：這些端點的 `@PreAuthorize` 先擋掉了哪些全域角色，以及 `ROLE_ADMIN` 通過註解後在 service 層的實際結果（service 只認該租戶的店主）——本註記只校正「service 層檢查的是店主不是成員」這一點；**Sprint 298 已對真實後端實測，見註記 9**
 > 9. **全域角色對店主自助端點的實測矩陣（Sprint 298，補完註記 8 當時未驗證的部分）**：對真實後端（打包 JAR＋PostgreSQL＋Redis，`ddl-auto=validate`）以匿名、`BUYER`、`ADMIN`、`SUPER_ADMIN`、該租戶店主五種身分呼叫 `TenantController` 的 9 個自助端點，完整表格見 §2.1。要點：(1) **§2 總覽表的「權限」欄是 `@PreAuthorize` 的原文，不是實際可通過者**；(2) `SCOPE_store:read`／`SCOPE_store:write` 是死權限（`Permission` 枚舉沒有任何 `store:*`、簽發 JWT 不寫 `scope`／`scp` claim，讀碼確認）；(3) `ROLE_ADMIN` 通過註解，但除了 `GET /v2/tenants/my`（回自己的成員資格，空清單）之外一律被 service 層擋下（`E-4031`）；(4) `SUPER_ADMIN` 連註解都過不了（`E-1007`）——沒有角色階層，`ROLE_SUPER_ADMIN` 不等於註解清單內的 `ROLE_ADMIN`；(5) 匿名在 §4.2、§4.4 得到 403 `E-1007` 而不是 401，原因見 §2.1
+> 10. **一般成員 `STORE_STAFF` 對店主自助端點的實測（Sprint 316，補完註記 9「範圍」欄留下的缺口，`DEF-438`）**：以本店的有效店員（`tenant_members.status = ACTIVE`、`store_role = STORE_STAFF`，JWT 角色 `STORE_STAFF`、`tenantId` 為該店鋪）呼叫 §2.1 的九個端點，**一律 `403 E-1007`**——方法層 `@PreAuthorize` 只放行 `SCOPE_store:*`（死權限）、`ROLE_STORE_OWNER`、`ROLE_ADMIN`，`ROLE_STORE_STAFF` 不在其中，請求在到達 Service 層之前就被擋下。先前 §4.6、§4.8、§4.9、§4.13、§4.14 寫的「一般成員亦為 403 `E-4031`」在狀態碼上對、錯誤碼上錯（`E-4031` 只有通過方法層、但不是該租戶店主者才會遇到，例如不是該店鋪成員的 `ADMIN`）；§4.5、§4.7 的「非該租戶成員」也不是店員會遇到的情境。**量測方式（兩種，結果完全一致）**：(1) 打包 JAR＋真實 PostgreSQL／Redis 的真實 HTTP——資料全由真實流程建立（店主開店 → 受邀人註冊 → 店主邀請為 `STORE_STAFF` → 受邀人接受 → 重新登入，JWT 角色與租戶已核對），店員與店主各發同樣的九個請求（一次性探針，未入庫）；(2) [TenantStaffAccessIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/TenantStaffAccessIntegrationTest.java)（真實 PostgreSQL／Redis＋完整 JWT／權限鏈，MockMvc）已把這張表機械化：店員九格一律 `403 E-1007`，店主對照組發同樣的九個請求都成功（八個 `200`、邀請 `201`），證明店員被擋是因為角色、不是路徑或請求本文寫錯。**同次一併更正**：§5 權限矩陣把「我的店鋪/功能/成員管理」對 `SUPER_ADMIN` 標 ✅，與 §2.1 自己的實測（`SUPER_ADMIN` 過不了方法層，403 `E-1007`）矛盾，已改為 ❌，並把「租戶成員」欄拆成店主與一般成員
 
 ---
 
@@ -33,7 +34,7 @@
 | **模組名稱** | 租戶/店鋪管理 / Tenant Management |
 | **描述** | 使用者申請開店、平台審核；店主管理店鋪資訊、功能開關、成員邀請；平台管理員管理所有租戶、功能開關、停權/終止；店鋪前台公開資料 |
 | **API 前綴** | 後端的 context path 是 `/api`，所以下列路徑的完整網址是 `/api/v2/tenants/...`、`/api/v2/dashboard/tenants/...`、`/api/v2/admin/...`、`/api/v2/public/stores/...` |
-| **多租戶隔離** | 店主自助端點的租戶檢查（`E-4031`）：寫入類（§4.4、§4.6、§4.8、§4.9、§4.13、§4.14）驗證呼叫者是該租戶的店主（`STORE_OWNER`），讀取類（§4.5、§4.7）驗證是該租戶的有效成員（Sprint 294 對照 `TenantService` 校正，見註記 8），各全域角色的實測結果見 §2.1；平台管理端點（§4.17~4.30）一律 `hasRole('SUPER_ADMIN')`，Service 層不再額外篩租戶；店鋪前台（§4.15~4.16）完全匿名、只回傳 `status=ACTIVE` 的租戶 |
+| **多租戶隔離** | 店主自助端點的租戶檢查（`E-4031`）：寫入類（§4.4、§4.6、§4.8、§4.9、§4.13、§4.14）驗證呼叫者是該租戶的店主（`STORE_OWNER`），讀取類（§4.5、§4.7）驗證是該租戶的有效成員（Sprint 294 對照 `TenantService` 校正，見註記 8），各全域角色的實測結果見 §2.1（一般成員 `STORE_STAFF` 在方法安全層就被擋下，回 `E-1007`，到不了這兩種檢查，Sprint 316 實測）；平台管理端點（§4.17~4.30）一律 `hasRole('SUPER_ADMIN')`，Service 層不再額外篩租戶；店鋪前台（§4.15~4.16）完全匿名、只回傳 `status=ACTIVE` 的租戶 |
 | **範圍外** | 無（本輪已補齊先前所有已知文件缺口） |
 
 ### 1.2 設計重點
@@ -100,28 +101,29 @@
 
 ### 2.1 全域角色對店主自助端點的實測矩陣（Sprint 298）
 
-**上面總覽表的「權限」欄是 `@PreAuthorize` 的原文，不是實際可通過者。** 下表是對真實後端（打包 JAR＋PostgreSQL＋Redis，`ddl-auto=validate`）實際呼叫的結果。身分：匿名；`BUYER`（新註冊使用者）；`ADMIN`（新註冊使用者，把 `users.role` 改成 `ADMIN` 後登入）；`SUPER_ADMIN`（Flyway 種入的 `admin@nextkey.local`）；店主（該租戶的 `STORE_OWNER`）。格子內是 HTTP 狀態與錯誤碼：`E-1007` 是方法層 `@PreAuthorize` 擋下（權限不足），`E-4031` 是 service 層的租戶檢查（不是該租戶的店主／成員），`E-1000` 是 URL 層要求登入。
+**上面總覽表的「權限」欄是 `@PreAuthorize` 的原文，不是實際可通過者。** 下表是對真實後端（打包 JAR＋PostgreSQL＋Redis，`ddl-auto=validate`）實際呼叫的結果。身分：匿名；`BUYER`（新註冊使用者）；`ADMIN`（新註冊使用者，把 `users.role` 改成 `ADMIN` 後登入）；`SUPER_ADMIN`（Flyway 種入的 `admin@nextkey.local`）；`STORE_STAFF`（Sprint 316 新增：本店的有效店員，由店主邀請、受邀人接受而來）；店主（該租戶的 `STORE_OWNER`）。格子內是 HTTP 狀態與錯誤碼：`E-1007` 是方法層 `@PreAuthorize` 擋下（權限不足），`E-4031` 是 service 層的租戶檢查（不是該租戶的店主／成員），`E-1000` 是 URL 層要求登入。
 
-| 端點 | 匿名 | `BUYER` | `ADMIN` | `SUPER_ADMIN` | 店主 |
-|------|------|---------|---------|---------------|------|
-| §4.2 `GET /v2/tenants/my` | 403 `E-1007` | 403 `E-1007` | **200**（空清單） | 403 `E-1007` | 200 |
-| §4.4 `PUT /v2/tenants/{id}` | 403 `E-1007` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 200 |
-| §4.5 `GET /v2/dashboard/tenants/features` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 200 |
-| §4.6 `PUT /v2/dashboard/tenants/features/{feature}` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 200 |
-| §4.7 `GET /v2/tenants/{id}/members` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 200 |
-| §4.8 `POST /v2/tenants/{id}/members/invite` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 201 |
-| §4.9 `GET /v2/tenants/{id}/members/lookup` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 200 |
-| §4.13 `PUT /v2/tenants/{id}/members/{userId}/role` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 200 |
-| §4.14 `DELETE /v2/tenants/{id}/members/{userId}` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 200 |
+| 端點 | 匿名 | `BUYER` | `ADMIN` | `SUPER_ADMIN` | `STORE_STAFF` | 店主 |
+|------|------|---------|---------|---------------|---------------|------|
+| §4.2 `GET /v2/tenants/my` | 403 `E-1007` | 403 `E-1007` | **200**（空清單） | 403 `E-1007` | 403 `E-1007` | 200 |
+| §4.4 `PUT /v2/tenants/{id}` | 403 `E-1007` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 403 `E-1007` | 200 |
+| §4.5 `GET /v2/dashboard/tenants/features` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 403 `E-1007` | 200 |
+| §4.6 `PUT /v2/dashboard/tenants/features/{feature}` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 403 `E-1007` | 200 |
+| §4.7 `GET /v2/tenants/{id}/members` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 403 `E-1007` | 200 |
+| §4.8 `POST /v2/tenants/{id}/members/invite` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 403 `E-1007` | 201 |
+| §4.9 `GET /v2/tenants/{id}/members/lookup` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 403 `E-1007` | 200 |
+| §4.13 `PUT /v2/tenants/{id}/members/{userId}/role` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 403 `E-1007` | 200 |
+| §4.14 `DELETE /v2/tenants/{id}/members/{userId}` | 401 `E-1000` | 403 `E-1007` | 403 `E-4031` | 403 `E-1007` | 403 `E-1007` | 200 |
 
 **怎麼讀這張表**：
 
 - **匿名在 §4.2、§4.4 得到 403 而不是 401**：`SecurityConfig` 的 `.requestMatchers("/v2/tenants/{id}").permitAll()`（為了 §4.3 公開）不限 HTTP 方法，而且 `{id}` 也符合 `/v2/tenants/my`，所以這兩個請求在 URL 層被放行，由方法層註解擋下回 403 `E-1007`；其他路徑（`/dashboard/...`、`/tenants/{id}/members...`）不符合該樣式，落到 `anyRequest().authenticated()` 回 401 `E-1000`。依賴「401 才導向登入」的用戶端，在這兩個端點上不會被觸發。
 - **`ROLE_ADMIN` 的實際效果**：通過註解，但 service 層只認該租戶的店主（寫入）或有效成員（讀取），所以不是該店鋪成員的 `ADMIN` 一律 `E-4031`。唯一的 200 是 `GET /v2/tenants/my`，它只回呼叫者自己的成員資格（這個測試用的 `ADMIN` 沒有任何成員資格，所以是空清單，沒有洩漏別人的店鋪）。平台管理員要管理店鋪走 §4.17～4.30。
+- **`STORE_STAFF` 同樣過不了註解（Sprint 316）**：店員是本店的有效成員，但 `@PreAuthorize` 看的是 JWT 的角色 authority，`ROLE_STORE_STAFF` 不在 `SCOPE_store:*`／`ROLE_STORE_OWNER`／`ROLE_ADMIN` 之內，九個端點一律在方法層回 `E-1007`，到不了 Service 層的任何檢查——所以 §4.5、§4.7 的「有效成員」檢查與寫入類端點的「店主」檢查（`E-4031`）都不是店員會遇到的錯誤碼。**方法層是 §4.2、§4.5、§4.7 在店員面前唯一的一道牆**：突變實測（Sprint 316，把九個端點的註解全部放寬到 `ROLE_STORE_STAFF`）這三個端點店員會得 `200`，因為 Service 層只要求「有效成員」（§4.2 只回呼叫者自己的成員資格），而店員正是；其餘六個（§4.4、§4.6、§4.8、§4.9、§4.13、§4.14，含雖是 `GET` 的 §4.9）放寬註解後仍有 Service 層的店主檢查接著擋下，回 `E-4031`。
 - **`SUPER_ADMIN` 過不了註解**：全庫沒有 `RoleHierarchy`，`ROLE_SUPER_ADMIN` 不等於註解清單內的 `ROLE_ADMIN`；`SUPER_ADMIN` 雖然擁有 `Permission` 全集，這些註解看的是角色 authority，不看權限碼。
 - **`SCOPE_store:read`／`SCOPE_store:write` 無法量測**，因為沒有任何角色或 token 會帶這兩個 authority（`Permission` 枚舉沒有 `store:*`、簽發 JWT 不寫 `scope`／`scp` claim；讀碼確認，沒有實際嘗試偽造 token）。
 - **沒有副作用**：非店主角色的每一次呼叫都被擋下，沒有任何一次意外成功；店主的 `invite`（201）→ `role`（200）→ `remove`（200）依序操作同一位被邀請的買家，屬於預期的狀態變化。
-- **範圍**：只量測了「該租戶的店主」與「不是成員的 `ADMIN`」。「另一間店鋪的店主」「同店 `STORE_STAFF`」兩種身分沒有在這次矩陣中量測；service 層「呼叫者不是該租戶的店主」這個分支另有 `TenantServiceTest` 的單元測試（Sprint 281、294）。
+- **範圍**：Sprint 298 只量測了「該租戶的店主」與「不是成員的 `ADMIN`」；「同店 `STORE_STAFF`」已於 Sprint 316 補上（上表 `STORE_STAFF` 欄，見註記 10）。「另一間店鋪的店主」仍沒有在這次矩陣中量測；service 層「呼叫者不是該租戶的店主」這個分支另有 `TenantServiceTest` 的單元測試（Sprint 281、294）。
 
 ---
 
@@ -208,7 +210,8 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | 租戶上下文不明 | 403 | `E-2003` |
-| 非該租戶成員 | 403 | `E-4031` |
+| 通過方法層、但不是該租戶有效成員者（例如不是該店鋪成員的 `ADMIN`） | 403 | `E-4031` |
+| 一般成員（`STORE_STAFF`）：方法層就被擋下，到不了 Service 層的成員檢查（Sprint 316 實測；先前此節沒有這一列，讀起來像店員會通過成員檢查） | 403 | `E-1007` |
 
 ### 4.6 `PUT /v2/dashboard/tenants/features/{feature}` — 申請更新功能開關
 
@@ -233,7 +236,8 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | 租戶上下文不明 | 403 | `E-2003` |
-| 呼叫者不是該租戶的店主（`STORE_OWNER`）——一般成員如 `STORE_STAFF` 同為 403（Sprint 281，DEF-331(f) 起；此前只驗證是有效成員） | 403 | `E-4031` |
+| 呼叫者通過方法層、但不是該租戶的店主（`STORE_OWNER`），例如 `ADMIN`（Sprint 281，DEF-331(f) 起 Service 層驗證店主；此前只驗證是有效成員） | 403 | `E-4031` |
+| 一般成員（`STORE_STAFF`）：方法層就被擋下，到不了 Service 層（Sprint 316 實測；先前此列寫 `E-4031`） | 403 | `E-1007` |
 | `feature` 不是已知鍵或是數量配額非開關 | 500 | `E-9000` |
 
 ### 4.7 `GET /v2/tenants/{id}/members` — 成員列表
@@ -244,7 +248,8 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 非該租戶成員 | 403 | `E-4031` |
+| 通過方法層、但不是該租戶有效成員者（例如不是該店鋪成員的 `ADMIN`） | 403 | `E-4031` |
+| 一般成員（`STORE_STAFF`）：方法層就被擋下，到不了 Service 層的成員檢查（Sprint 316 實測；先前此節沒有這一列，讀起來像店員會通過成員檢查） | 403 | `E-1007` |
 
 ### 4.8 `POST /v2/tenants/{id}/members/invite` — 邀請成員
 
@@ -256,7 +261,8 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 呼叫者不是該租戶的店主（`STORE_OWNER`；僅是一般成員亦為 403） | 403 | `E-4031` |
+| 呼叫者通過方法層、但不是該租戶的店主（`STORE_OWNER`），例如 `ADMIN` | 403 | `E-4031` |
+| 一般成員（`STORE_STAFF`）：方法層就被擋下，到不了 Service 層（Sprint 316 實測；先前此列寫 `E-4031`） | 403 | `E-1007` |
 | `role` 非 `STORE_STAFF` | 400 | `E-1001` |
 | 該使用者已是成員或已有待確認邀請 | 409 | `E-4092` |
 
@@ -270,7 +276,8 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 呼叫者不是該租戶的店主（`STORE_OWNER`；僅是一般成員亦為 403） | 403 | `E-4031` |
+| 呼叫者通過方法層、但不是該租戶的店主（`STORE_OWNER`），例如 `ADMIN` | 403 | `E-4031` |
+| 一般成員（`STORE_STAFF`）：方法層就被擋下，到不了 Service 層（Sprint 316 實測；先前此列寫 `E-4031`） | 403 | `E-1007` |
 | 查無此 email 對應的使用者 | 403 | `E-2001`（罐頭訊息「租戶未啟用」與實際情境不符，前端已覆寫顯示文字） |
 
 ### 4.10 `GET /v2/tenants/invites/my` — 我的待確認邀請列表
@@ -305,7 +312,8 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 呼叫者不是該租戶的店主（`STORE_OWNER`；僅是一般成員亦為 403） | 403 | `E-4031` |
+| 呼叫者通過方法層、但不是該租戶的店主（`STORE_OWNER`），例如 `ADMIN` | 403 | `E-4031` |
+| 一般成員（`STORE_STAFF`）：方法層就被擋下，到不了 Service 層（Sprint 316 實測；先前此列寫 `E-4031`） | 403 | `E-1007` |
 | `role` 缺失 | 400 | `E-1001` |
 | `role` 非 `STORE_STAFF` | 400 | `E-1001` |
 | 目標為店主 | 403 | `E-4031` |
@@ -317,7 +325,8 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 呼叫者不是該租戶的店主（`STORE_OWNER`；僅是一般成員亦為 403） | 403 | `E-4031` |
+| 呼叫者通過方法層、但不是該租戶的店主（`STORE_OWNER`），例如 `ADMIN` | 403 | `E-4031` |
+| 一般成員（`STORE_STAFF`）：方法層就被擋下，到不了 Service 層（Sprint 316 實測；先前此列寫 `E-4031`） | 403 | `E-1007` |
 | 移除對象是自己 | 403 | `E-4031` |
 
 ### 4.15 `GET /v2/public/stores/{slug}` — 店鋪前台公開資料
@@ -477,14 +486,14 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 ## 5. 權限矩陣 / Permission Matrix
 
-| 端點 | 匿名 | 租戶成員 | SUPER_ADMIN |
-|------|:----:|:----:|:----:|
-| 申請開店（§4.1） | ✅ | — | — |
-| 我的店鋪/功能/成員管理（§4.2、4.4~4.14） | ❌ | ✅（限自己租戶） | ✅ |
-| 店鋪詳情（§4.3） | ✅（實質匿名） | ✅ | ✅ |
-| 待確認邀請接受/拒絕/查詢（§4.10~4.12） | ❌ | ✅（已登入即可，無租戶限制） | ✅ |
-| 店鋪前台（§4.15~4.16） | ✅ | ✅ | ✅ |
-| 平台管理端點（§4.17~4.30） | ❌ | ❌ | ✅ |
+| 端點 | 匿名 | 店主（`STORE_OWNER`） | 一般成員（`STORE_STAFF`） | SUPER_ADMIN |
+|------|:----:|:----:|:----:|:----:|
+| 申請開店（§4.1） | ✅ | — | — | — |
+| 我的店鋪/功能/成員管理（§4.2、4.4~4.14） | ❌ | ✅（限自己租戶） | ❌（方法層擋下，`E-1007`；見 §2.1） | ❌（方法層擋下，`E-1007`；見 §2.1） |
+| 店鋪詳情（§4.3） | ✅（實質匿名） | ✅ | ✅ | ✅ |
+| 待確認邀請接受/拒絕/查詢（§4.10~4.12） | ❌ | ✅（已登入即可，無租戶限制） | ✅（同左） | ✅ |
+| 店鋪前台（§4.15~4.16） | ✅ | ✅ | ✅ | ✅ |
+| 平台管理端點（§4.17~4.30） | ❌ | ❌ | ❌ | ✅ |
 
 ---
 
@@ -493,6 +502,7 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 | 錯誤碼 | HTTP | 發生在 |
 |--------|:----:|--------|
 | `E-1001` | 400 | 角色字串缺失或不在允許值域（§4.8、4.13） |
+| `E-1007` | 403 | 方法安全層（`@PreAuthorize`）擋下：角色不在註解清單內——一般成員（`STORE_STAFF`）、`BUYER`、`SUPER_ADMIN` 對店主自助端點（§4.2、§4.4～§4.9、§4.13、§4.14；實測矩陣見 §2.1）；請求到不了 Service 層的任何檢查 |
 | `E-2000` | 404 | 找不到租戶，或店鋪前台 slug/狀態不符 |
 | `E-2001` | 403 | 找不到使用者（罐頭文字「租戶未啟用」與實際情境不符，§4.9） |
 | `E-2002` | 403 | 查無邀請/成員記錄（§4.11、4.12、4.13） |
@@ -502,7 +512,7 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 | `E-2007` | 403 | 申請狀態非 PENDING（含併發搶輸） |
 | `E-2008` | 403 | 申請無關聯帳號（匿名申請），無法授予角色 |
 | `E-2011` | 409 | `slug` 與其他租戶衝突 |
-| `E-4031` | 403 | 讀取類端點（§4.5、§4.7）：非該租戶成員；寫入類端點（§4.4、§4.6、§4.8、§4.9、§4.13、§4.14）：非該租戶店主（Sprint 294 逐一對照 `TenantService` 後校正）；另含嘗試變更店主角色／移除自己 |
+| `E-4031` | 403 | 讀取類端點（§4.5、§4.7）：非該租戶成員；寫入類端點（§4.4、§4.6、§4.8、§4.9、§4.13、§4.14）：非該租戶店主（Sprint 294 逐一對照 `TenantService` 後校正）；另含嘗試變更店主角色／移除自己。一般成員（`STORE_STAFF`）過不了方法層（`E-1007`），到不了這些檢查（Sprint 316 實測） |
 | `E-4092` | 409 | 已有 PENDING 開店申請，或使用者已是成員/已有待確認邀請 |
 | `E-9000` | 500／400 | 未預期的狀態值/不合法請求（含 Bean Validation 標準回應） |
 
@@ -527,7 +537,7 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 | FRD | BR-M17-001（開店審核流程） |
 | 相關規格 | [API_Error_Codes.md](../API_Error_Codes.md)、[SRD_Database_Schema.md](../SRD_Database_Schema.md) |
 | 實作 | `TenantController`、`AdminController`、`StorefrontController`（`api/controller/`）；`TenantService`（`core/tenant/`）、`AdminService`（`core/admin/`） |
-| 契約測試 | [TenantServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/tenant/TenantServiceTest.java)、[AdminServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/admin/AdminServiceTest.java)、[AdminServiceIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/AdminServiceIntegrationTest.java)、[AdminControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/AdminControllerE2ETest.java)、[TenantControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantControllerE2ETest.java)、[TenantMemberLookupIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantMemberLookupIntegrationTest.java)、[TenantMemberInviteE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantMemberInviteE2ETest.java) |
+| 契約測試 | [TenantStaffAccessIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/TenantStaffAccessIntegrationTest.java)（§2.1 的 `STORE_STAFF` 欄，Sprint 316）、[TenantServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/tenant/TenantServiceTest.java)、[AdminServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/admin/AdminServiceTest.java)、[AdminServiceIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/AdminServiceIntegrationTest.java)、[AdminControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/AdminControllerE2ETest.java)、[TenantControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantControllerE2ETest.java)、[TenantMemberLookupIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantMemberLookupIntegrationTest.java)、[TenantMemberInviteE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantMemberInviteE2ETest.java) |
 
 ---
 

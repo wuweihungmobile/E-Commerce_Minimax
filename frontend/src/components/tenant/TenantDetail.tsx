@@ -159,7 +159,8 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
               <Button variant="outline">功能開關</Button>
             </Link>
           )}
-          {isOwner && tenant.status === 'ACTIVE' && (
+          {/* Sprint 315（DEF-432③）：FRD US-M17-003 邊界條件『店鋪狀態非 ACTIVE：允許更新』，所以編輯入口不看店鋪狀態 */}
+          {isOwner && (
             <Link href={`/dashboard/tenants/${tenantId}/edit`}>
               <Button>編輯店鋪</Button>
             </Link>

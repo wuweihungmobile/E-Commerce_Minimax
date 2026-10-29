@@ -11,7 +11,7 @@ import { Account, adminAccessToken, seedStore, setStoreStatusWithToken } from '.
  *
  * - 儀表板首頁 →「店鋪管理」→ 店鋪列表 →「查看詳情」→「功能開關」→ 功能開關頁，全程只點連結，不輸入網址；
  * - 入口的可見性與功能開關頁自己的放行條件一致（`features/page.tsx` 只放行 STORE_OWNER／ADMIN，其他成員進去會被導回店鋪列表）：
- *   店鋪成員（STORE_STAFF）沒有入口；只有核准中（ACTIVE）的店鋪有入口，被停權的沒有。
+ *   店鋪成員（STORE_STAFF）沒有入口；只有核准中（ACTIVE）的店鋪有入口，被停權的沒有（『編輯店鋪』不受此限，見 NAV-03）。
  *
  * 資料全由真實流程建立：店主開店（seedStore）→ 受邀人註冊 → 店主邀請為 STORE_STAFF → 受邀人接受（比照
  * at-store-member-revocation-real）；停權用管理員 API。登入端點有 IP 限流，所以 API 層的登入一律走 `postAuthApi`（429 自動重試）。
@@ -114,7 +114,7 @@ test.describe('AT-DASHBOARD-TENANT-NAV-REAL: 店鋪管理與功能開關的導�
     await expect(page.getByRole('link', { name: '功能開關' })).toHaveCount(0);
   });
 
-  test('E2E-TENANT-NAV-03: 店鋪被停權後，店主在詳情頁看不到「功能開關」入口（只有核准中的店鋪能管理功能）', async ({
+  test('E2E-TENANT-NAV-03: 店鋪被停權後，店主在詳情頁看不到「功能開關」入口（只有核准中的店鋪能管理功能），但「編輯店鋪」仍在（Sprint 315：非 ACTIVE 允許更新）', async ({
     page,
   }: {
     page: Page;
@@ -125,6 +125,9 @@ test.describe('AT-DASHBOARD-TENANT-NAV-REAL: 店鋪管理與功能開關的導�
     await page.goto(`/dashboard/tenants/${tenantId}`);
     // 前提：詳情頁載入了、而且確實是停權狀態
     await expect(page.getByText('已停權').first()).toBeVisible({ timeout: 15_000 });
+    // 對照組：同一排按鈕裡的『編輯店鋪』在（FRD US-M17-003 邊界條件允許非 ACTIVE 的店鋪更新），
+    // 所以『功能開關』不見是它自己的 ACTIVE 條件，不是整排按鈕都沒渲染
+    await expect(page.getByRole('link', { name: '編輯店鋪' })).toBeVisible();
     await expect(page.getByRole('link', { name: '功能開關' })).toHaveCount(0);
   });
 });

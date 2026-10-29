@@ -1,7 +1,7 @@
 # API 規格文件 - M17 租戶/店鋪管理 / API Specification - M17 Tenant Management
 
 > **文件編號**: API-M17
-> **文件版本**: v2.6（Sprint 314：`DEF-434` 修復——§4.6 的 `status` 說的是這次請求的結果，`enabled=false` 一律 `DISABLED`；§4.4 補記店鋪描述的部分更新語意）；v2.5（Sprint 311：`DEF-429` 修復——新增 `requested_at`，待審核只認店主真的申請過；§4.5、§4.6、§4.29 同步）；v2.4（Sprint 310：§4.5 補記 `status` 的實際判定與 `DEF-429`）；v2.3（Sprint 298 補上全域角色對店主自助端點的真實後端實測矩陣，見註記 9 與 §2.1；v2.2 為 Sprint 294 校正 §4.4／§4.8／§4.9／§4.13／§4.14 與 `E-4031` 總表；v2.1 為 Sprint 292 校正 §4.6；v2.0 為 Sprint 266 依實作改寫）
+> **文件版本**: v2.7（Sprint 315：`DEF-432`③——§4.3 非 `ACTIVE` 店鋪對該店鋪的有效成員回完整版，店主可編輯停權中的店鋪）；v2.6（Sprint 314：`DEF-434` 修復——§4.6 的 `status` 說的是這次請求的結果，`enabled=false` 一律 `DISABLED`；§4.4 補記店鋪描述的部分更新語意）；v2.5（Sprint 311：`DEF-429` 修復——新增 `requested_at`，待審核只認店主真的申請過；§4.5、§4.6、§4.29 同步）；v2.4（Sprint 310：§4.5 補記 `status` 的實際判定與 `DEF-429`）；v2.3（Sprint 298 補上全域角色對店主自助端點的真實後端實測矩陣，見註記 9 與 §2.1；v2.2 為 Sprint 294 校正 §4.4／§4.8／§4.9／§4.13／§4.14 與 `E-4031` 總表；v2.1 為 Sprint 292 校正 §4.6；v2.0 為 Sprint 266 依實作改寫）
 > **建立日期**: 2026-04-09（v1.0）
 > **最後更新**: 2026-10-29
 > **負責人**: SD (Marcus)
@@ -174,7 +174,9 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 **權限**：`@PreAuthorize("isAuthenticated() or true")`——**實質等同匿名可呼叫**（`or true` 恆真）。`status` 非 `ACTIVE` 時回應**精簡版**（僅 `tenantId`／`storeName`／`slug`／`businessType`／`status`／`createdAt`）。
 
-**回應**（`ACTIVE` 時完整版）：`tenantId`／`storeName`／`slug`／`storeDescription`／`businessType`／`status`／`contactEmail`／`contactPhone`／`logoUrl`／`coverImageUrl`／`purchaseOrderApprovalThreshold`／`member{displayName,avatarUrl,joinedAt}`（店主，查無則 `null`）／`stats{listingCount,totalSales,rating}`／`createdAt`／`updatedAt`
+**非 `ACTIVE` 店鋪的例外（Sprint 315，`DEF-432`③）**：呼叫者是該店鋪的**有效成員**（`tenant_members.status = ACTIVE`，店主、店員皆是）時，不論店鋪狀態（`PENDING_REVIEW`／`REJECTED`／`SUSPENDED`／`TERMINATED`）都回**完整版**——店鋪編輯表單要靠這支預填聯絡信箱、電話、描述與採購審批門檻，而 FRD US-M17-003 邊界條件允許非 `ACTIVE` 的店鋪更新（§4.4 的 `PUT` 本來就不檢查店鋪狀態，修復前只有前端按鈕與這支精簡回應擋住）。匿名、已登入但不是該店鋪成員、已被移除（`REMOVED`）、只是受邀還沒接受（`INVITED`）的人，在非 `ACTIVE` 時**仍是精簡版**，公開端點不新增任何對外暴露；`purchaseOrderApprovalThreshold` 仍只對有效成員可見（`DEF-264`）。真實 PostgreSQL＋HTTP 鏈實測（5 種店鋪狀態 x 6 種觀看者共 30 格）：`ACTIVE` 完整版公開（門檻限成員）；非 `ACTIVE` 只有店主與店員看到完整版與門檻。放寬的是**讀取**，不是寫入：非店主對非 `ACTIVE` 店鋪的 `PUT` 仍被擋下（4xx、資料不變）。
+
+**回應**（`ACTIVE`，或呼叫者是該店鋪有效成員時的完整版）：`tenantId`／`storeName`／`slug`／`storeDescription`／`businessType`／`status`／`contactEmail`／`contactPhone`／`logoUrl`／`coverImageUrl`／`purchaseOrderApprovalThreshold`／`member{displayName,avatarUrl,joinedAt}`（店主，查無則 `null`）／`stats{listingCount,totalSales,rating}`／`createdAt`／`updatedAt`
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|

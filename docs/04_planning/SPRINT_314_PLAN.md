@@ -196,10 +196,10 @@ IT-M06-104 的第一版（沒有晚到請求）與最終版分兩輪跑。
 
 ## 10. 狀態
 
-見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 314 列。本輪已 commit，**尚未 push**：含生產程式碼（功能開關的回應語意、前端表單與導覽），不在 2026-07-08 的明確 push 授權範圍；收尾以互動選項詢問使用者要不要 push，以及 `DEF-432`③ 怎麼處理。本機同時領先遠端的還有 Sprint 313 的純文件回填 commit `9301f056`，若使用者選 push 會一起帶出。
+見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 314 列。本輪的 commit `cace4b8a` 已 push（`da5e366f..cace4b8a`，連同 Sprint 313 的純文件回填 commit `9301f056`）：收尾我用 `AskUserQuestion` 問了要不要 push 與 `DEF-432`③ 怎麼處理，使用者選了『現在 push（建議）』與『放寬到所有非 ACTIVE 狀態（照 FRD）』；pre-push 輕量守門通過，雲端 CI run [40879538243](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/40879538243) 三個 job 皆 success（13 分 41 秒），下載整合 job 的完整雲端日誌核對整合測試 **971／0 失敗／0 錯誤／0 跳過**，`BookingApiRealStackIntegrationTest` 18、`FeatureRequestLifecycleIntegrationTest` 7、`BookingControllerE2ETest` 25 與本機一致。`DEF-432`③ 已於 [Sprint 315](SPRINT_315_PLAN.md) 完成。
 
 本輪的 commit 範圍：生產程式 `TenantService`（後端）與 `TenantApplyForm`、`TenantEditForm`、`TenantDetail`、儀表板首頁、`edit/page.tsx`（前端）；測試 `TenantServiceTest`、`FeatureRequestLifecycleIntegrationTest`、`BookingApiRealStackIntegrationTest`、`BookingControllerE2ETest`，以及 E2E 規格 `at-dashboard-tenant-nav-real`（新增）、`at-m17-001`、`at-m17-003`、`at-m17-004`；文件 `API_M17_Tenant.md`（v2.6）、`DEFERRED_ITEMS_TRACKER.md`、`RELEASE_TRACKER.md` 與本計畫書。沒有 Flyway 遷移。
 
-**待使用者處理**：`DEF-419`、`DEF-432`③（『編輯店鋪』是否放寬到非 `ACTIVE`）、舊規則資料遷移（若要）、Sprint 306 的 `make down-clean` → `make up` → `make dev-admin-password`、Docker 建置快取。
+**待使用者處理**：`DEF-419`、舊規則資料遷移（若要）、Sprint 306 的 `make down-clean` → `make up` → `make dev-admin-password`、Docker 建置快取。
 
 **下次無 `==>` 的『請繼續』我可以直接做的**：`DEF-438`（`STORE_STAFF` 看得到『編輯店鋪』，並以 `STORE_STAFF` 重新量測 `API_M17` 其他端點的錯誤碼）、`DEF-437`（IT-M02-007 改名或刪除）。

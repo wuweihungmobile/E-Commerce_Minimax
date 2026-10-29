@@ -17,6 +17,8 @@ import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -559,6 +561,110 @@ class TenantServiceTest {
         assertNull(response.getPurchaseOrderApprovalThreshold()); // 內部門檻不得外洩給匿名訪客
         assertEquals("contact@example.com", response.getContactEmail());  // 公開店面資訊維持可見
         assertEquals("Active Store", response.getStoreName());
+    }
+
+    // ── getTenantDetails：非 ACTIVE 店鋪（Sprint 315，DEF-432③）──────────────────────────────
+    // FRD US-M17-003 邊界條件：店鋪狀態非 ACTIVE 仍允許更新。後端 PUT 本來就不檢查店鋪狀態，但編輯表單要靠 GET 預填
+    // 聯絡信箱、電話、描述與採購審批門檻；非 ACTIVE 時 GET 一律只回精簡版，店主進得了表單也預填不到。現在：該店鋪的
+    // 有效成員不論狀態都拿到完整資料；非成員（含匿名）仍是精簡版——GET 是公開端點，這裡不新增任何對外暴露。
+
+    private static Tenant fullTenant(final UUID tenantId, final Tenant.TenantStatus status) {
+        return Tenant.builder()
+                .id(tenantId)
+                .name("Sprint 315 Store")
+                .slug("sprint-315-store")
+                .status(status)
+                .description("Full description here")
+                .contactEmail("contact@example.com")
+                .contactPhone("+886-912345678")
+                .logoUrl("http://logo.url")
+                .purchaseOrderApprovalThreshold(new BigDecimal("5000.00"))
+                .metadata(Map.of("businessType", "RETAIL_ONLY"))
+                .updatedAt(Instant.parse("2026-10-29T10:00:00Z"))
+                .build();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Tenant.TenantStatus.class, names = "ACTIVE", mode = EnumSource.Mode.EXCLUDE)
+    @DisplayName("getTenantDetails（DEF-432③）：非 ACTIVE 店鋪、呼叫者是本租戶有效成員 → 完整資訊（含採購審批門檻與店主資訊），狀態照實回報")
+    void getTenantDetails_nonActiveStatus_tenantMember_returnsFullInfo(final Tenant.TenantStatus status) {
+        UUID tenantId = TEST_TENANT_ID;
+        TenantMember ownerMember = TenantMember.builder()
+                .tenantId(tenantId).userId(TEST_USER_ID)
+                .storeRole(TenantMember.StoreRole.STORE_OWNER).joinedAt(Instant.now()).build();
+        User owner = User.builder().id(TEST_USER_ID).fullName("Store Owner").avatarUrl("http://avatar.url").build();
+        when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(fullTenant(tenantId, status)));
+        when(tenantMemberRepository.findByTenantId(tenantId)).thenReturn(List.of(ownerMember));
+        when(userRepository.findById(TEST_USER_ID)).thenReturn(Optional.of(owner));
+        when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(
+                tenantId, TEST_USER_ID, TenantMember.MemberStatus.ACTIVE)).thenReturn(true);
+
+        try {
+            TenantContext.setCurrentUser(TEST_USER_ID);
+
+            TenantDetailsResponse response = tenantService.getTenantDetails(tenantId);
+
+            assertEquals(status.name(), response.getStatus());
+            assertEquals("Full description here", response.getStoreDescription());
+            assertEquals("contact@example.com", response.getContactEmail());
+            assertEquals("+886-912345678", response.getContactPhone());
+            assertEquals("http://logo.url", response.getLogoUrl());
+            assertEquals(new BigDecimal("5000.00"), response.getPurchaseOrderApprovalThreshold());
+            assertEquals("sprint-315-store", response.getSlug());
+            assertNotNull(response.getMember());
+            assertEquals("Store Owner", response.getMember().getDisplayName());
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Tenant.TenantStatus.class, names = "ACTIVE", mode = EnumSource.Mode.EXCLUDE)
+    @DisplayName("getTenantDetails（DEF-432③）：非 ACTIVE 店鋪、已登入但不是本租戶有效成員（含已移除、僅受邀）→ 仍只回精簡版，且成員檢查要求 ACTIVE 狀態")
+    void getTenantDetails_nonActiveStatus_authenticatedNonMember_returnsLimitedInfo(final Tenant.TenantStatus status) {
+        UUID tenantId = TEST_TENANT_ID;
+        UUID outsiderId = UUID.randomUUID();
+        when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(fullTenant(tenantId, status)));
+        when(tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(
+                tenantId, outsiderId, TenantMember.MemberStatus.ACTIVE)).thenReturn(false);
+
+        try {
+            TenantContext.setCurrentUser(outsiderId);
+
+            TenantDetailsResponse response = tenantService.getTenantDetails(tenantId);
+
+            assertEquals(status.name(), response.getStatus());
+            assertEquals("Sprint 315 Store", response.getStoreName());
+            assertNull(response.getStoreDescription());
+            assertNull(response.getContactEmail());
+            assertNull(response.getContactPhone());
+            assertNull(response.getLogoUrl());
+            assertNull(response.getPurchaseOrderApprovalThreshold());
+            assertNull(response.getMember());
+            verify(tenantMemberRepository).existsByTenantIdAndUserIdAndStatus(
+                    tenantId, outsiderId, TenantMember.MemberStatus.ACTIVE);
+            verify(tenantMemberRepository, never()).findByTenantId(any());
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Tenant.TenantStatus.class, names = "ACTIVE", mode = EnumSource.Mode.EXCLUDE)
+    @DisplayName("getTenantDetails（DEF-432③）：非 ACTIVE 店鋪、匿名訪客 → 仍只回精簡版，不做任何成員查詢")
+    void getTenantDetails_nonActiveStatus_anonymous_returnsLimitedInfo(final Tenant.TenantStatus status) {
+        UUID tenantId = TEST_TENANT_ID;
+        when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(fullTenant(tenantId, status)));
+
+        TenantDetailsResponse response = tenantService.getTenantDetails(tenantId);
+
+        assertEquals(status.name(), response.getStatus());
+        assertNull(response.getStoreDescription());
+        assertNull(response.getContactEmail());
+        assertNull(response.getContactPhone());
+        assertNull(response.getPurchaseOrderApprovalThreshold());
+        assertNull(response.getMember());
+        verify(tenantMemberRepository, never()).existsByTenantIdAndUserIdAndStatus(any(), any(), any());
     }
 
     // ── getFeatureToggles Tests（DEF-167：數值配額不得混入開關清單）──────────────

@@ -1,6 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 import { loginOnly } from './helpers/auth';
-import { authHeaders, seedStore } from './helpers/store';
+import { adminAccessToken, authHeaders, seedStore, setStoreStatusWithToken } from './helpers/store';
 
 /**
  * AT-M17-004: 店鋪 Profile 更新 E2E 測試（真實後端，FRD US-M17-003 / AC-M17-003-1）
@@ -26,6 +26,11 @@ import { authHeaders, seedStore } from './helpers/store';
  * FRD US-M17-003 / AC-M17-003-1 允許店主修改店鋪描述，後端 `PUT /v2/tenants/{id}` 也收（≤ 1000 字），表單先前沒有這個欄位。
  * 現在表單會預填目前的描述；**沒改過就不送出**（後端 null = 不變更），改過才送（空字串 = 清空）。案例 01／02 因此改為檢查
  * 「描述有被預填、沒改就沒送、沒被洗掉」，03／04 鎖「改了會存下」與「清空會真的清掉」。
+ *
+ * ── Sprint 315（DEF-432③）：非 ACTIVE 的店鋪也能編輯 ──────────────────────────────────
+ * FRD 邊界條件『店鋪狀態非 ACTIVE：允許更新』。後端 PUT 本來就不檢查店鋪狀態，但編輯表單靠 GET 預填，而 GET 對非 ACTIVE 一律只回
+ * 精簡版（沒有聯絡信箱、電話、描述）；詳情頁的『編輯店鋪』也只在 ACTIVE 時顯示。現在該店鋪的有效成員拿得到完整資料、按鈕不再看
+ * 店鋪狀態。案例 05 把店鋪停權後走完整個編輯流程。
  */
 
 const WEB_BASE = 'http://localhost:3000';
@@ -34,6 +39,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 interface TenantProfile {
   storeName: string;
   slug: string;
+  status: string;
   storeDescription: string | null;
   businessType: string;
   contactEmail: string;
@@ -54,7 +60,10 @@ async function openEditForm(page: Page, tenantId: string): Promise<void> {
   await page.goto('/dashboard/tenants');
   await page.getByRole('link', { name: '查看詳情' }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/tenants/${tenantId}$`));
-  await page.getByRole('link', { name: '編輯店鋪' }).click();
+  // 先斷言入口可見：沒有入口時幾秒內就紅，不要讓 click 等到整個案例逾時（90 秒）才失敗
+  const editEntry = page.getByRole('link', { name: '編輯店鋪' });
+  await expect(editEntry).toBeVisible();
+  await editEntry.click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/tenants/${tenantId}/edit$`));
   await expect(page.locator('#storeName')).toBeVisible();
 }
@@ -223,5 +232,38 @@ test.describe('AT-M17-004: 店鋪 Profile 更新（真實後端）', () => {
 
     await openEditForm(page, tenantId);
     await expect(page.locator('#storeDescription')).toHaveValue('');
+  });
+
+  test('E2E-M17-004-05: 店鋪被停權後，店主仍能修改店鋪資訊（FRD 邊界條件：非 ACTIVE 允許更新）→ 表單預填完整資料、儲存成功、狀態仍是停權', async ({
+    page,
+  }: {
+    page: Page;
+  }) => {
+    // 本案例放在最後：它把這間店鋪停權，之後不再還原
+    await setStoreStatusWithToken(page, await adminAccessToken(page), tenantId, 'SUSPENDED');
+    await loginOnly(page, ownerEmail, ownerPassword);
+
+    // 前提：後端對這位店主回的是完整資料（不是非 ACTIVE 的精簡版），否則下面的表單預填不到東西
+    const before = await readTenant(page, tenantId);
+    expect(before.status, '前提：店鋪確實是停權狀態').toBe('SUSPENDED');
+    expect(before.contactEmail, '前提：停權店鋪的店主拿得到聯絡信箱').toBeTruthy();
+
+    await openEditForm(page, tenantId);
+    await expect(page.locator('#contactEmail')).toHaveValue(before.contactEmail);
+    await expect(page.locator('#contactPhone')).toHaveValue(before.contactPhone ?? '');
+
+    const newName = `E2E 停權後改名 ${Date.now()}`;
+    await page.locator('#storeName').fill(newName);
+    const sent = await saveAndExpectDetail(page, tenantId);
+    expect(sent.storeName).toBe(newName);
+    await expect(page.getByRole('heading', { name: newName })).toBeVisible();
+    await expect(page.getByText('已停權').first(), '改資料不會改變店鋪狀態').toBeVisible();
+
+    const after = await readTenant(page, tenantId);
+    expect(after.storeName).toBe(newName);
+    expect(after.status).toBe('SUSPENDED');
+    for (const field of ['slug', 'storeDescription', 'businessType', 'contactEmail', 'contactPhone'] as const) {
+      expect(after[field], `只改名稱時 ${field} 不該變`).toEqual(before[field]);
+    }
   });
 });

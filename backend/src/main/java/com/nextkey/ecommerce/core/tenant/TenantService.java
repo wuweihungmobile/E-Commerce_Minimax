@@ -237,17 +237,30 @@ public class TenantService {
 
     /**
      * US-M17-003: Get tenant details
-     * For non-APPROVED/ACTIVE tenants, only return basic information
+     * For non-ACTIVE tenants, only return basic information — except to an active member of that tenant
+     * (Sprint 315, DEF-432③)
      */
     @Transactional(readOnly = true)
     public TenantDetailsResponse getTenantDetails(final UUID tenantId) {
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
 
-        // For PENDING_REVIEW, REJECTED, SUSPENDED, TERMINATED status, return limited info
+        // DEF-264：本端點是 SecurityConfig 明文放行的公開端點（Guest+，見 Controller Javadoc），
+        // 但 purchaseOrderApprovalThreshold 是 M16 ERP 採購審批門檻（Sprint 85/89），僅供店鋪
+        // 成員自助編輯時預填使用（見 TenantEditForm.tsx），對匿名訪客/其他租戶無任何合法用途，
+        // 屬內部經營設定不當外洩。僅在呼叫者是本租戶成員時才回傳，其餘一律隱藏為 null。
+        UUID currentUserId = TenantContext.getCurrentUser();
+        boolean isTenantMember = currentUserId != null
+                && tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(
+                        tenantId, currentUserId, TenantMember.MemberStatus.ACTIVE);
+
+        // For PENDING_REVIEW, REJECTED, SUSPENDED, TERMINATED status, return limited info.
+        // Sprint 315（DEF-432③）：該店鋪的有效成員例外——FRD US-M17-003 邊界條件允許非 ACTIVE 的店鋪更新資料
+        // （PUT 本來就不檢查店鋪狀態），編輯表單得靠這支預填聯絡信箱、電話、描述與採購審批門檻。非成員（含匿名）
+        // 仍是精簡版，公開端點不新增任何對外暴露。
         boolean isApproved = tenant.getStatus() == Tenant.TenantStatus.ACTIVE;
 
-        if (!isApproved) {
+        if (!isApproved && !isTenantMember) {
             return TenantDetailsResponse.builder()
                     .tenantId(tenant.getId().toString())
                     .storeName(tenant.getName())
@@ -275,15 +288,6 @@ public class TenantService {
                         .build();
             }
         }
-
-        // DEF-264：本端點是 SecurityConfig 明文放行的公開端點（Guest+，見 Controller Javadoc），
-        // 但 purchaseOrderApprovalThreshold 是 M16 ERP 採購審批門檻（Sprint 85/89），僅供店鋪
-        // 成員自助編輯時預填使用（見 TenantEditForm.tsx），對匿名訪客/其他租戶無任何合法用途，
-        // 屬內部經營設定不當外洩。僅在呼叫者是本租戶成員時才回傳，其餘一律隱藏為 null。
-        UUID currentUserId = TenantContext.getCurrentUser();
-        boolean isTenantMember = currentUserId != null
-                && tenantMemberRepository.existsByTenantIdAndUserIdAndStatus(
-                        tenantId, currentUserId, TenantMember.MemberStatus.ACTIVE);
 
         return TenantDetailsResponse.builder()
                 .tenantId(tenant.getId().toString())

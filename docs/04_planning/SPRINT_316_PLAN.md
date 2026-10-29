@@ -135,6 +135,7 @@ PALL 證明九個格子各自獨立有牙齒（每格的標籤都出現在訊息
 3. **zsh 未加引號的萬用字元**：第一次搜尋 `--include=*.md` 被 zsh 擋成 `no matches found`，加引號重跑（已知陷阱）。
 4. **macOS 的 `ls` 不支援 `--time-style`**：檢查後端 JAR 是否比主程式新時指令靜默失敗（沒有輸出），改用 `find -newer` 才得到可信的答案。
 5. **追蹤表只登記了 007，同檔案的 008 是同款**：讀測試本體時才發現，納入本項處理並在 §8 列為可推翻的決定。
+6. **下載雲端日誌第一次失敗**：較新的 `gh` 預設拒絕輸出含終端轉義序列（ANSI 顏色碼）的回應，`gh api …/logs` 退出碼 1、檔案是空的（背景任務的完成通知只說「failed」，原因要讀我自己導出的錯誤檔才知道）。加上它要求的 `--allow-escape-sequences` 重跑（輸出只進檔案、不進終端，再以 `python3 -I` 解析）才取得完整日誌。
 
 ## 7. 限制（誠實揭露）
 
@@ -166,7 +167,7 @@ PALL 證明九個格子各自獨立有牙齒（每格的標籤都出現在訊息
 
 ## 10. 狀態
 
-見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 316 列。本輪依使用者 2026-10-29 的長期授權（『做完一輪後，直接Commit + Push to main』）commit 後直接 push，不再詢問；push 狀態與雲端 CI 結果於回填 commit 補上（回填 commit 只改文件，照 Sprint 306 以來的慣例留在本機，隨下一個有功能變更的 Sprint 一起帶出）。
+見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 316 列。本輪的 commit `60d9beeb` 已 push（`12604d70..60d9beeb`，連同 Sprint 315 的純文件回填 commit `1a99d105` 一起帶出），依使用者 2026-10-29 的長期授權（『做完一輪後，直接Commit + Push to main』）直接 push，沒有再詢問；pre-push 輕量守門通過（後端單元與前端 Lint／建置兩個 act job 皆成功、schema 漂移無漂移）。雲端 CI run [40923546803](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/40923546803) 三個 job 皆 success（Backend Unit Tests 2 分 55 秒／Frontend Lint & Build 1 分 04 秒／Backend Integration Tests & Package 10 分 30 秒，整個 run 13 分 31 秒，2026-10-29 17:40:19Z～17:53:50Z）；以 `gh run view --json status,conclusion,headSha,jobs` 交叉確認 headSha 為 `60d9beeb`，並下載整合 job 的完整雲端日誌（約 56 MB）確認整合測試 **974／0 失敗／0 錯誤／0 跳過**、`BUILD SUCCESS`、`<<< FAILURE`／`<<< ERROR` 標記 0 個，`TenantStaffAccessIntegrationTest` 2、`BookingIntegrationTest` 2、`TenantDetailsNonActiveIntegrationTest` 3、`BookingApiRealStackIntegrationTest` 18、`TenantControllerE2ETest` 14 與本機一致。回填 commit 只改文件，照 Sprint 306 以來的慣例留在本機，隨下一個有功能變更的 Sprint 一起帶出。
 
 本輪的 commit 範圍：生產程式 `TenantDetail.tsx`（前端，唯一的生產碼變更）；測試 `TenantStaffAccessIntegrationTest`（新增）、`BookingIntegrationTest`（刪除 IT-M02-007／008 與孤兒）、E2E 規格 `at-dashboard-tenant-nav-real`；文件 `API_M17_Tenant.md`（v2.8）、`DEFERRED_ITEMS_TRACKER.md`（`DEF-437`／`DEF-438` 完成、新登記 `DEF-439`）、`RELEASE_TRACKER.md` 與本計畫書。沒有 Flyway 遷移，後端沒有任何生產碼變更。
 

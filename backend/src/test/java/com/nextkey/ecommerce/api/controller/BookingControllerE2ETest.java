@@ -22,6 +22,7 @@ import com.nextkey.ecommerce.domain.repository.TenantMemberRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
+import io.restassured.module.mockmvc.response.MockMvcResponse;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -38,8 +39,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -903,79 +912,129 @@ class BookingControllerE2ETest {
         System.out.println("✅ IT-M06-103 PASSED: Idempotency-Key 仍在處理中返回 409 E-6005，且沒有建立預訂");
     }
 
-    // ── IT-M06-104: Redis Lock 失敗 (並發搶鎖) ─────────────────────
+    // ── IT-M06-104: 鎖形同虛設時的並行搶訂 ─────────────────────────
 
+    /**
+     * DEF-431：原本的案例（名稱「Redis lock failure with concurrent requests」）沒有任何會失敗的斷言——三個分支都只
+     * {@code println}，整段包在 {@code try/catch} 吞掉例外；而且這個測試設定的 {@code RedisLockService} 是永遠取得鎖的 mock，
+     * 名稱說的「鎖失敗」根本不會發生。
+     *
+     * <p>現在利用這一點：鎖永遠取得＝Redis 鎖完全沒有互斥效果（等同 Redis 失效或鎖過期的最壞情況），並行的請求因此一路走到
+     * 資料庫那幾層（可用性檢查、日曆列的 FOR UPDATE NOWAIT、(房源, 日期) 唯一約束）。不變量：同一房源同一段日期同時進來的請求，
+     * 每一輪恰好一個成立（201），其餘 400 E-4001，資料庫只有一筆訂房、那幾晚的日曆都是 BOOKED 且指向勝出的那一筆；
+     * 每一輪並行之後再補一個確定性的「晚到」請求（勝出者已提交），同樣要 400 E-4001、訂房數不變。
+     * Sprint 314 實測（探針，20 輪 x 3 個同時請求）：40 個輸家中 31 個死在唯一約束、6 個被日曆列的「已被別筆訂走」擋下、
+     * 3 個被可用性檢查擋下——同時進來的請求主要走唯一約束那一層，所以晚到者的防線另用確定性的請求覆蓋。
+     * 真實 Redis 鎖下的同一個不變量由 BookingApiRealStackIntegrationTest 守住。
+     */
     @Test
     @Order(16)
-    @DisplayName("IT-M06-104: POST /v2/bookings - Redis lock failure with concurrent requests")
-    void createBooking_redisLockFailure_concurrentRequests() {
-        LocalDate checkIn = LocalDate.now().plusDays(100);
-        LocalDate checkOut = LocalDate.now().plusDays(102);
-
-        // 使用 CompletableFuture 並行發送兩個請求
-        var firstFuture = CompletableFuture.supplyAsync(() -> {
-            return given()
-                    .header("Authorization", "Bearer " + buyerToken)
-                    .header("Idempotency-Key", UUID.randomUUID().toString())
-                    .contentType(MediaType.APPLICATION_JSON_VALUE)
-                    .body(BookingDto.CreateRequest.builder()
-                            .roomListingId(testRoomListingId)
-                            .checkInDate(checkIn)
-                            .checkOutDate(checkOut)
-                            .guestCount(2)
-                            .guestName("First Concurrent Guest")
-                            .guestPhone("0912345678")
-                            .guestEmail("concurrent1@example.com")
-                            .build())
-                    .when()
-                    .post(BOOKING_URL);
-        });
-
-        var secondFuture = CompletableFuture.supplyAsync(() -> {
-            // 稍微延遲確保第一個請求先取得鎖
-            try { Thread.sleep(50); } catch (InterruptedException e) {}
-            return given()
-                    .header("Authorization", "Bearer " + buyerToken)
-                    .header("Idempotency-Key", UUID.randomUUID().toString())
-                    .contentType(MediaType.APPLICATION_JSON_VALUE)
-                    .body(BookingDto.CreateRequest.builder()
-                            .roomListingId(testRoomListingId)
-                            .checkInDate(checkIn)
-                            .checkOutDate(checkOut)
-                            .guestCount(2)
-                            .guestName("Second Concurrent Guest")
-                            .guestPhone("0987654321")
-                            .guestEmail("concurrent2@example.com")
-                            .build())
-                    .when()
-                    .post(BOOKING_URL);
-        });
-
-        CompletableFuture.allOf(firstFuture, secondFuture).join();
-
+    @DisplayName("IT-M06-104: POST /v2/bookings - 鎖形同虛設（永遠取得）時並行搶訂同一房源同一段日期：每一輪恰好一個 201、其餘 400 E-4001，資料庫只有一筆訂房（DEF-431）")
+    void createBooking_concurrentRequestsWithIneffectiveLock_exactlyOneWins() throws Exception {
+        UUID buyerId = userRepository.findByEmail(buyerEmail).orElseThrow().getId();
+        int threads = 3;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
         try {
-            var firstResponse = firstFuture.get();
-            var secondResponse = secondFuture.get();
+            for (int round = 0; round < 6; round++) {
+                LocalDate checkIn = LocalDate.now().plusDays(100 + round * 3L);
+                LocalDate checkOut = checkIn.plusDays(2);
 
-            int firstStatus = firstResponse.getStatusCode();
-            int secondStatus = secondResponse.getStatusCode();
+                // 起跑柵欄：每個執行緒都準備好才一起放行，盡量讓請求同時進入
+                CountDownLatch ready = new CountDownLatch(threads);
+                CountDownLatch go = new CountDownLatch(1);
+                List<Future<MockMvcResponse>> futures = new ArrayList<>();
+                for (int i = 0; i < threads; i++) {
+                    final int guestNo = i;
+                    futures.add(pool.submit(() -> {
+                        ready.countDown();
+                        go.await();
+                        return given()
+                                .header("Authorization", "Bearer " + buyerToken)
+                                .header("Idempotency-Key", UUID.randomUUID().toString())
+                                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                                .body(BookingDto.CreateRequest.builder()
+                                        .roomListingId(testRoomListingId)
+                                        .checkInDate(checkIn)
+                                        .checkOutDate(checkOut)
+                                        .guestCount(2)
+                                        .guestName("Concurrent Guest " + guestNo)
+                                        .guestPhone("0912345678")
+                                        .guestEmail("concurrent" + guestNo + "@example.com")
+                                        .build())
+                                .when()
+                                .post(BOOKING_URL);
+                    }));
+                }
+                ready.await();
+                go.countDown();
 
-            // 驗證：至少一個成功，另一個可能因為 lock 失敗而返回 400 或 409
-            boolean atLeastOneSuccess = (firstStatus == 201) || (secondStatus == 201);
-            boolean atLeastOneHasConflictError = (firstStatus == 400 && firstResponse.body().path("code") == "E-4001") ||
-                                                  (secondStatus == 400 && secondResponse.body().path("code") == "E-4001") ||
-                                                  (firstStatus == 409) || (secondStatus == 409);
+                List<String> outcomes = new ArrayList<>();
+                String winnerId = null;
+                for (Future<MockMvcResponse> future : futures) {
+                    MockMvcResponse response = future.get(60, TimeUnit.SECONDS);
+                    if (response.getStatusCode() == 201) {
+                        outcomes.add("201");
+                        winnerId = response.path("data.id");
+                    } else {
+                        outcomes.add(response.getStatusCode() + ":" + response.path("code"));
+                    }
+                }
+                assertThat(outcomes).as("第 %d 輪（%s ~ %s）每個請求的結果", round, checkIn, checkOut)
+                        .containsExactlyInAnyOrder("201", "400:E-4001", "400:E-4001");
 
-            if (atLeastOneSuccess) {
-                System.out.println("✅ IT-M06-104 PASSED: 並發請求處理完成 (firstStatus=" + firstStatus + ", secondStatus=" + secondStatus + ")");
-            } else if (atLeastOneHasConflictError) {
-                System.out.println("✅ IT-M06-104 PASSED: 衝突錯誤已觸發");
-            } else {
-                System.out.println("⚠️ IT-M06-104: firstStatus=" + firstStatus + ", secondStatus=" + secondStatus);
+                assertThat(bookingIdsCheckingInOn(buyerId, checkIn))
+                        .as("第 %d 輪：資料庫裡這個入住日的訂房只能有勝出的那一筆", round)
+                        .containsExactly(winnerId);
+
+                List<Map<String, Object>> nights = jdbcTemplate.queryForList(
+                        "SELECT status, booking_id FROM room_calendar WHERE room_listing_id = ? AND calendar_date >= ? "
+                                + "AND calendar_date < ? ORDER BY calendar_date",
+                        testRoomListingId, java.sql.Date.valueOf(checkIn), java.sql.Date.valueOf(checkOut));
+                assertThat(nights).as("第 %d 輪：兩晚各一列日曆", round).hasSize(2);
+                for (Map<String, Object> night : nights) {
+                    assertThat(night.get("status")).as("第 %d 輪：日曆狀態", round).isEqualTo("BOOKED");
+                    assertThat(String.valueOf(night.get("booking_id")))
+                            .as("第 %d 輪：日曆指向勝出的那一筆訂房", round).isEqualTo(winnerId);
+                }
+
+                // 晚到的請求（勝出者已提交之後才進來）：鎖形同虛設時同樣要被資料庫擋下（可用性檢查、日曆列的「已被別筆訂走」）。
+                // 同時進來的請求大多死在唯一約束，晚到者的這兩層要靠這個確定性的請求才測得到
+                // （Sprint 314 突變驗證：沒有它時，拿掉這兩層的突變不會讓本案例變紅）
+                given()
+                        .header("Authorization", "Bearer " + buyerToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON_VALUE)
+                        .body(BookingDto.CreateRequest.builder()
+                                .roomListingId(testRoomListingId)
+                                .checkInDate(checkIn)
+                                .checkOutDate(checkOut)
+                                .guestCount(2)
+                                .guestName("Late Guest")
+                                .guestPhone("0912345678")
+                                .guestEmail("late@example.com")
+                                .build())
+                        .when()
+                        .post(BOOKING_URL)
+                        .then()
+                        .statusCode(400)
+                        .body("code", equalTo("E-4001"));
+                assertThat(bookingIdsCheckingInOn(buyerId, checkIn))
+                        .as("第 %d 輪：晚到的請求被拒絕後，訂房仍只有勝出的那一筆", round)
+                        .containsExactly(winnerId);
             }
-        } catch (Exception e) {
-            System.err.println("❌ IT-M06-104 failed: " + e.getMessage());
+        } finally {
+            pool.shutdownNow();
         }
+
+        System.out.println("✅ IT-M06-104 PASSED: 鎖形同虛設時，並行搶訂同一段日期每一輪都恰好一筆成立，其餘（含晚到的）400 E-4001");
+    }
+
+    /** 這位買家、這個入住日的所有訂房 id。 */
+    private List<String> bookingIdsCheckingInOn(final UUID buyerId, final LocalDate checkIn) {
+        return bookingRepository.findByUserIdOrderByCreatedAtDesc(buyerId, Pageable.unpaged()).getContent().stream()
+                .filter(booking -> checkIn.equals(booking.getCheckInDate()))
+                .map(booking -> booking.getId().toString())
+                .toList();
     }
 
     // ── API-M06-013: 整月日曆查詢-成功（含 BOOKED 日期）─────────────

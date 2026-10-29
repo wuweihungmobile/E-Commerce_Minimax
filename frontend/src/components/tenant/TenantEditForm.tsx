@@ -27,6 +27,8 @@ interface Tenant {
   storeName: string
   // DEF-321(b)（Sprint 252）：店鋪前台 /stores/{slug}，開店審核通過時自動產生，此處可修改
   slug: string
+  // DEF-432：FRD US-M17-003 / AC-M17-003-1 允許店主修改店鋪描述（後端 ≤ 1000 字，沒填過是 null）
+  storeDescription?: string | null
   businessType: string
   contactEmail: string
   contactPhone: string | null
@@ -49,6 +51,7 @@ interface TenantEditFormProps {
 interface TenantEditFormData {
   storeName: string
   slug: string
+  storeDescription: string
   businessType: string
   contactEmail: string
   contactPhone: string
@@ -73,6 +76,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
   const [formData, setFormData] = useState<TenantEditFormData>({
     storeName: '',
     slug: '',
+    storeDescription: '',
     businessType: '',
     contactEmail: '',
     contactPhone: '',
@@ -100,6 +104,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
       setFormData({
         storeName: tenantData.storeName,
         slug: tenantData.slug,
+        storeDescription: tenantData.storeDescription || '',
         businessType: tenantData.businessType,
         contactEmail: tenantData.contactEmail,
         // Sprint 146：contactPhone 在申請時為選填，既有店鋪可能從未填寫過（後端回傳 null）。
@@ -190,7 +195,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
     return Object.keys(newErrors).length === 0
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
     // Clear error when user starts typing
@@ -227,6 +232,11 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
       }
       if (formData.purchaseOrderApprovalThreshold.trim()) {
         payload.purchaseOrderApprovalThreshold = Number(formData.purchaseOrderApprovalThreshold)
+      }
+      // 後端 storeDescription 為 null = 不變更、字串 = 改成該值（空字串 = 清空）；沒改過就不送，
+      // 原本沒有描述的店鋪才不會因為儲存其他欄位而被存成空字串
+      if (formData.storeDescription !== (tenant?.storeDescription ?? '')) {
+        payload.storeDescription = formData.storeDescription
       }
       await apiClient.put(API_ENDPOINTS.tenants.update(tenantId), payload)
       // 更新成功後導向至店鋪詳情頁
@@ -364,6 +374,20 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
             {errors.businessType && (
               <p className="text-error text-xs">{errors.businessType}</p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="storeDescription">店鋪描述</Label>
+            <textarea
+              id="storeDescription"
+              name="storeDescription"
+              className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="介紹一下您的店鋪（選填，最多 1000 字）"
+              maxLength={1000}
+              value={formData.storeDescription}
+              onChange={handleInputChange}
+              disabled={submitting}
+            />
           </div>
 
           <div className="space-y-2">

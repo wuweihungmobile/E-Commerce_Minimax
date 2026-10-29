@@ -59,39 +59,6 @@ export default function TenantEditPage({ params }: TenantEditPageProps) {
     )
   }
 
-  // StoreOwner role cannot edit tenants - redirect to 403 or tenant list
-  if (user.role === 'StoreOwner') {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <nav className="bg-white shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between h-16">
-              <div className="flex items-center">
-                <h1 className="text-xl font-bold text-gray-900">NextKey</h1>
-              </div>
-            </div>
-          </div>
-        </nav>
-        <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          <div className="px-4 py-6 sm:px-0">
-            <div className="flex flex-col items-center justify-center h-64">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">無權限訪問</h2>
-              <p className="text-gray-600 mb-6">
-                您的角色 (StoreOwner) 沒有編輯店鋪的權限。
-              </p>
-              <button
-                onClick={() => router.push('/dashboard/tenants')}
-                className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
-              >
-                返回店鋪列表
-              </button>
-            </div>
-          </div>
-        </main>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow-sm">

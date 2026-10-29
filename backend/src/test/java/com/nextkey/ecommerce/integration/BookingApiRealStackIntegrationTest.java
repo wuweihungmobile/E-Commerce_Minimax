@@ -7,13 +7,20 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +31,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -226,6 +234,56 @@ class BookingApiRealStackIntegrationTest {
             get("/v2/bookings", fx.buyerToken).andExpect(jsonPath("$.data.totalElements").value(0));
         } finally {
             fx.releaseBuyerIdempotencyKey(idempotencyService, key);
+        }
+    }
+
+    /**
+     * DEF-431：同一房源同一段日期同時送出多個訂房請求（真實 Redis 逐晚鎖＋真實 PostgreSQL）。不變量：每一輪恰好一個請求成立（201），
+     * 其餘 400 E-4001；資料庫只有一筆訂房，那幾晚的日曆都是 BOOKED 且指向勝出的那一筆（沒有雙重預訂，也沒有輸家留下的殘列）。
+     *
+     * <p>Sprint 314 實測（20 輪 x 3 個同時請求）：40 個輸家中 39 個是被 Redis 鎖擋下（{@code lockDateRangeNoWait} 取鎖失敗，
+     * {@code buildBookingCore} 回 E-4001「Date range is being modified by another user」），1 個被可用性檢查擋下。
+     * 鎖形同虛設時（{@code BookingControllerE2ETest} 的 mock 永遠取得），輸家改由資料庫那幾層擋下，不變量相同——那一半由該類別的
+     * IT-M06-104 守住。
+     */
+    @Test
+    @DisplayName("並行搶訂同一房源同一段日期（真實 Redis 鎖，DEF-431）：每一輪恰好一個 201、其餘 400 E-4001；資料庫只有一筆訂房，那幾晚的日曆都是 BOOKED 且指向勝出的訂房")
+    void create_concurrentRequestsForSameDates_exactlyOneWins() throws Exception {
+        int threads = 3;
+        for (int round = 0; round < 6; round++) {
+            String checkIn = day(20 + round * 3);
+            String checkOut = day(22 + round * 3);
+
+            List<MockHttpServletResponse> responses = bookConcurrently(checkIn, checkOut, threads);
+
+            List<String> outcomes = new ArrayList<>();
+            String winnerId = null;
+            for (MockHttpServletResponse response : responses) {
+                JsonNode json = objectMapper.readTree(response.getContentAsString(StandardCharsets.UTF_8));
+                if (response.getStatus() == 201) {
+                    outcomes.add("201");
+                    winnerId = json.at("/data/id").asText();
+                } else {
+                    outcomes.add(response.getStatus() + ":" + json.path("code").asText());
+                }
+            }
+            Assertions.assertThat(outcomes).as("第 %d 輪（%s ~ %s）每個請求的結果", round, checkIn, checkOut)
+                    .containsExactlyInAnyOrder("201", "400:E-4001", "400:E-4001");
+
+            Assertions.assertThat(jdbcTemplate.queryForObject(
+                            "SELECT count(*) FROM bookings WHERE room_listing_id = ? AND check_in_date = ?",
+                            Integer.class, fx.roomId, java.sql.Date.valueOf(checkIn)))
+                    .as("第 %d 輪：資料庫裡這間房、這個入住日的訂房只能有一筆", round).isEqualTo(1);
+            List<Map<String, Object>> nights = jdbcTemplate.queryForList(
+                    "SELECT status, booking_id FROM room_calendar WHERE room_listing_id = ? AND calendar_date >= ? "
+                            + "AND calendar_date < ? ORDER BY calendar_date",
+                    fx.roomId, java.sql.Date.valueOf(checkIn), java.sql.Date.valueOf(checkOut));
+            Assertions.assertThat(nights).as("第 %d 輪：兩晚各一列日曆", round).hasSize(2);
+            for (Map<String, Object> night : nights) {
+                Assertions.assertThat(night.get("status")).as("第 %d 輪：日曆狀態", round).isEqualTo("BOOKED");
+                Assertions.assertThat(String.valueOf(night.get("booking_id")))
+                        .as("第 %d 輪：日曆指向勝出的那一筆訂房", round).isEqualTo(winnerId);
+            }
         }
     }
 
@@ -535,6 +593,37 @@ class BookingApiRealStackIntegrationTest {
 
     private JsonNode book(final String checkIn, final String checkOut, final int guests, final String token) throws Exception {
         return json(post("/v2/bookings").content(body(bookingRequest(checkIn, checkOut, guests))), token, 201);
+    }
+
+    /**
+     * 同時送出 {@code threads} 個內容相同的訂房請求。起跑柵欄讓每個執行緒都準備好才一起放行，盡量讓請求同時進入
+     * （MockMvc 在呼叫它的執行緒內走完整條過濾器鏈，所以每個請求各自是獨立的執行緒）。
+     */
+    private List<MockHttpServletResponse> bookConcurrently(final String checkIn, final String checkOut, final int threads)
+            throws Exception {
+        String payload = body(bookingRequest(checkIn, checkOut, 2));
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        try {
+            CountDownLatch ready = new CountDownLatch(threads);
+            CountDownLatch go = new CountDownLatch(1);
+            List<Future<MockHttpServletResponse>> futures = new ArrayList<>();
+            for (int i = 0; i < threads; i++) {
+                futures.add(pool.submit(() -> {
+                    ready.countDown();
+                    go.await();
+                    return send(post("/v2/bookings").content(payload), fx.buyerToken).andReturn().getResponse();
+                }));
+            }
+            ready.await();
+            go.countDown();
+            List<MockHttpServletResponse> responses = new ArrayList<>();
+            for (Future<MockHttpServletResponse> future : futures) {
+                responses.add(future.get(60, TimeUnit.SECONDS));
+            }
+            return responses;
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     private String body(final Object payload) throws Exception {

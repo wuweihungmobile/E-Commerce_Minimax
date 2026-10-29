@@ -19,6 +19,7 @@ import AuthService, { getApiErrorInfo } from '@/services/auth'
 
 interface TenantApplyFormData {
   storeName: string
+  storeDescription: string
   businessType: string
   contactEmail: string
   contactPhone: string
@@ -40,6 +41,7 @@ export default function TenantApplyForm() {
   const [resendMessage, setResendMessage] = useState<string | null>(null)
   const [formData, setFormData] = useState<TenantApplyFormData>({
     storeName: '',
+    storeDescription: '',
     businessType: '',
     contactEmail: '',
     contactPhone: '',
@@ -96,7 +98,7 @@ export default function TenantApplyForm() {
     return Object.keys(newErrors).length === 0
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
     // Clear error when user starts typing
@@ -125,7 +127,11 @@ export default function TenantApplyForm() {
     setLoading(true)
 
     try {
-      await apiClient.post(API_ENDPOINTS.tenants.apply, formData)
+      // DEF-432：店鋪描述是選填（PRD §9.10.1），留空就不送出，後端才會是「沒填」(null) 而不是空字串
+      await apiClient.post(API_ENDPOINTS.tenants.apply, {
+        ...formData,
+        storeDescription: formData.storeDescription.trim() || undefined,
+      })
       // 申請成功後導向至店鋪列表頁
       router.push('/dashboard/tenants')
     } catch (err: unknown) {
@@ -190,6 +196,20 @@ export default function TenantApplyForm() {
             {errors.storeName && (
               <p className="text-error text-xs">{errors.storeName}</p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="storeDescription">店鋪描述</Label>
+            <textarea
+              id="storeDescription"
+              name="storeDescription"
+              className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="介紹一下您的店鋪（選填，最多 1000 字）"
+              maxLength={1000}
+              value={formData.storeDescription}
+              onChange={handleInputChange}
+              disabled={loading}
+            />
           </div>
 
           <div className="space-y-2">

@@ -24,7 +24,8 @@ import { authHeaders, seedStore } from './helpers/store';
  *   改測 FRD AC-M17-006-1／AC-M17-006-2 的另一半：需審核的功能點開後不會直接生效。
  *
  * 現在用 `seedStore` 保證前提（有店鋪的店主），**不再有任何 `test.skip()`**——前提不成立就該紅燈（比照 at-m17-002）。
- * 功能開關頁沒有任何導覽連結通到（只有網址），所以本 spec 與 at-dashboard-tenant-features-real 一樣直接用網址前往。
+ * 本 spec 與 at-dashboard-tenant-features-real 直接用網址前往功能開關頁；通往它的導覽入口（原本沒有，DEF-430，Sprint 314 補上）
+ * 由 at-dashboard-tenant-nav-real 負責。
  * Admin 核准待審核功能由 at-admin-tenant-features-real 負責，API 層的覆蓋在 `TenantControllerE2ETest`。
  */
 

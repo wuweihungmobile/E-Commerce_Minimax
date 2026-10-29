@@ -1,9 +1,9 @@
 # API 規格文件 - M17 租戶/店鋪管理 / API Specification - M17 Tenant Management
 
 > **文件編號**: API-M17
-> **文件版本**: v2.5（Sprint 311：`DEF-429` 修復——新增 `requested_at`，待審核只認店主真的申請過；§4.5、§4.6、§4.29 同步）；v2.4（Sprint 310：§4.5 補記 `status` 的實際判定與 `DEF-429`）；v2.3（Sprint 298 補上全域角色對店主自助端點的真實後端實測矩陣，見註記 9 與 §2.1；v2.2 為 Sprint 294 校正 §4.4／§4.8／§4.9／§4.13／§4.14 與 `E-4031` 總表；v2.1 為 Sprint 292 校正 §4.6；v2.0 為 Sprint 266 依實作改寫）
+> **文件版本**: v2.6（Sprint 314：`DEF-434` 修復——§4.6 的 `status` 說的是這次請求的結果，`enabled=false` 一律 `DISABLED`；§4.4 補記店鋪描述的部分更新語意）；v2.5（Sprint 311：`DEF-429` 修復——新增 `requested_at`，待審核只認店主真的申請過；§4.5、§4.6、§4.29 同步）；v2.4（Sprint 310：§4.5 補記 `status` 的實際判定與 `DEF-429`）；v2.3（Sprint 298 補上全域角色對店主自助端點的真實後端實測矩陣，見註記 9 與 §2.1；v2.2 為 Sprint 294 校正 §4.4／§4.8／§4.9／§4.13／§4.14 與 `E-4031` 總表；v2.1 為 Sprint 292 校正 §4.6；v2.0 為 Sprint 266 依實作改寫）
 > **建立日期**: 2026-04-09（v1.0）
-> **最後更新**: 2026-10-28
+> **最後更新**: 2026-10-29
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`TenantController`、`AdminController`、`StorefrontController`（`api/controller/`）、`TenantService`、`AdminService`（`core/tenant/`、`core/admin/`）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[TenantServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/tenant/TenantServiceTest.java)、[AdminServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/admin/AdminServiceTest.java)、[AdminControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/AdminControllerE2ETest.java)、[TenantControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantControllerE2ETest.java)、[TenantMemberLookupIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantMemberLookupIntegrationTest.java)、[TenantMemberInviteE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/api/controller/TenantMemberInviteE2ETest.java)
@@ -186,11 +186,13 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 **請求**（部分更新）：`storeName`(選填,2-100字)、`slug`(選填，格式同 §3.1，衝突回 `E-2011`)、`storeDescription`(選填,≤1000字)、`contactEmail`(選填)、`contactPhone`(選填,≤20字)、`logoUrl`(選填,≤500字，協定限制同 §4.1)、`coverImageUrl`(選填——**死欄位，送出必被丟棄**)、`businessType`(選填)、`status`(選填，**不建議使用**，狀態轉換應走 §4.25 以套用正確的狀態機驗證)、`purchaseOrderApprovalThreshold`(選填，≥0)
 
+**部分更新的語意（Sprint 314，`TenantService.applyTenantUpdate` 讀碼＋`E2E-M17-004-03／04` 實測）**：欄位省略（`null`）＝不變更；`storeDescription` 送**空字串＝清空**（`PUT` 回應與之後 `GET` 的 `storeDescription` 都是 `""`，不是 `null`；Sprint 314 實測），送非空字串＝改成該值。店主端編輯表單（Sprint 314 起有「店鋪描述」欄位，≤ 1000 字）因此只在店主改過描述時才送出這個欄位；開店申請（§4.1）同理，描述留空就不送（後端存成沒填，不是空字串）。
+
 **回應**：`tenantId`／`storeName`／`storeDescription`／`contactEmail`／`purchaseOrderApprovalThreshold`／`updatedAt`
 
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
-| 呼叫者不是該租戶的店主（`STORE_OWNER`；僅是一般成員亦為 403） | 403 | `E-4031` |
+| 呼叫者不是該租戶的店主（`STORE_OWNER`）。角色為 `STORE_STAFF` 的一般成員在方法安全層（`@PreAuthorize`）就被擋下，回 `E-1007`（Sprint 314 實測：店員在編輯表單按儲存得 403／`E-1007`）；通過方法安全層但不是該租戶店主者（例如其他店鋪的 `ADMIN`，見 §2.1）才走到 Service 層的檢查，回 `E-4031` | 403 | `E-1007`／`E-4031` |
 | `slug` 與其他租戶衝突 | 409 | `E-2011` |
 
 ### 4.5 `GET /v2/dashboard/tenants/features` — 取得功能開關狀態
@@ -212,7 +214,17 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 
 **請求**：`enabled`(必填，Boolean)
 
-**回應**：`featureKey`／`previousState`／`newState`／`status`／`statusDescription`——`requiresApproval=true` 的功能提交後 `newState` 仍為舊值、`status="PENDING_APPROVAL"`
+**回應**：`featureKey`／`previousState`／`newState`／`status`／`statusDescription`——`requiresApproval=true` 的功能提交啟用申請後 `newState` 仍為舊值、`status="PENDING_APPROVAL"`
+
+**`status` 的判定（Sprint 314／DEF-434）**：`status` 說的是**這次請求的結果**，只由請求的 `enabled`、功能是否需審核、請求前是否已啟用決定：
+
+| 請求 | 條件 | `status` | `statusDescription` | `newState` |
+|------|------|----------|---------------------|:----------:|
+| `enabled=true` | 功能需審核，且請求前未啟用 | `PENDING_APPROVAL` | `Feature request submitted, pending platform approval` | 維持 `false` |
+| `enabled=true` | 其餘（免審核功能；或需審核功能已啟用中再確認一次） | `ENABLED` | `Feature enabled` | `true` |
+| `enabled=false` | 不論請求前是否啟用、功能需不需要審核 | `DISABLED` | `Feature disabled` | `false` |
+
+修復前（`DEF-434`）：`enabled=false` 而請求前**本來就未啟用**時，回應是 `PENDING_APPROVAL`／`Feature request submitted`——不論功能需不需要審核（免審核功能連送兩次 `enabled=false`，第二次也說「已送出申請」）。實際效果只是「沒有變化」或「撤回待審核的申請」（清掉申請時間，下方），回應卻說「已送出申請」，與接著 `GET`（§4.5）看到的 `INACTIVE` 不一致。正常操作不會觸發這種請求（開關顯示為關時，點擊送的是 `enabled=true`，見 `features/page.tsx` 的 `onCheckedChange(!checked)`）；直接呼叫 API，或畫面停留在過期狀態（顯示為開、實際已被別處關掉）時再點擊才遇得到——兩種情況前端都以回應的 `newState` 更新畫面，修復前後畫面行為相同。
 
 **申請時間（Sprint 311／DEF-429）**：送出需審核功能的啟用申請時，資料列的 `requested_at` 記下申請時間；已在待審核時再送一次，保留最早的時間（等待時間不被重置）；店主送 `enabled=false`（撤回）、關閉已核准的功能、或啟用不需審核的功能，一律清掉申請時間。畫面應以本回應的 `newState`／`status` 更新（`PENDING_APPROVAL` 表示「已送出、尚未生效」），不要用送出的 `enabled` 推測——修復前前端用請求值更新，點了需審核功能會立刻顯示開關已開、提示「已啟用」，重新整理後又變回關閉（`DEF-428`）。
 

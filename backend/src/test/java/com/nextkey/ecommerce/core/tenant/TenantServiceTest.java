@@ -991,6 +991,91 @@ class TenantServiceTest {
             assertNull(row.getRequestedAt());
         }
 
+        // ── DEF-434（Sprint 314）：回應的 status 說的是這次請求的結果 ────────────────────────────
+        // 修復前：只要 enabled=false 且「本來就未啟用」就回 PENDING_APPROVAL／「Feature request submitted」——
+        // 不論功能需不需要審核。實際效果是「沒有變化」或「撤回申請」，回應卻說「已送出申請」。
+
+        @Test
+        @DisplayName("DEF-434：對本來就未啟用的需審核功能送 enabled=false（沒申請過）→ DISABLED，不是『已送出申請』")
+        void updateFeatureToggle_approvalFeature_disableWhenNeverRequested_reportsDisabled() {
+            TenantFeatureToggle row = existingRow("PROMO_ENABLED", false, null);
+            ownerWithExistingRow(row);
+
+            FeatureToggleUpdateResponse response =
+                    tenantService.updateFeatureToggle(TEST_TENANT_ID, "PROMO_ENABLED", false);
+
+            assertEquals("DISABLED", response.getStatus());
+            assertEquals("Feature disabled", response.getStatusDescription());
+            assertEquals(false, response.getNewState());
+        }
+
+        @Test
+        @DisplayName("DEF-434：店主撤回待審核的申請（enabled=false）→ DISABLED，申請時間清掉")
+        void updateFeatureToggle_approvalFeature_withdrawPendingRequest_reportsDisabled() {
+            TenantFeatureToggle row = existingRow("PROMO_ENABLED", false, Instant.parse("2026-10-01T00:00:00Z"));
+            ownerWithExistingRow(row);
+
+            FeatureToggleUpdateResponse response =
+                    tenantService.updateFeatureToggle(TEST_TENANT_ID, "PROMO_ENABLED", false);
+
+            assertEquals("DISABLED", response.getStatus());
+            assertNull(row.getRequestedAt(), "撤回後不再有申請時間");
+        }
+
+        @Test
+        @DisplayName("DEF-434：免審核功能本來就關著、再送 enabled=false → DISABLED（這種功能沒有『申請』這回事）")
+        void updateFeatureToggle_noApprovalFeature_disableWhenAlreadyOff_reportsDisabled() {
+            TenantFeatureToggle row = existingRow("CMS_ENABLED", false, null);
+            ownerWithExistingRow(row);
+
+            FeatureToggleUpdateResponse response =
+                    tenantService.updateFeatureToggle(TEST_TENANT_ID, "CMS_ENABLED", false);
+
+            assertEquals("DISABLED", response.getStatus());
+            assertEquals("Feature disabled", response.getStatusDescription());
+        }
+
+        @Test
+        @DisplayName("DEF-434：停用已啟用的功能 → DISABLED（既有行為，對照用）")
+        void updateFeatureToggle_disableEnabledFeature_reportsDisabled() {
+            TenantFeatureToggle row = existingRow("CMS_ENABLED", true, null);
+            ownerWithExistingRow(row);
+
+            FeatureToggleUpdateResponse response =
+                    tenantService.updateFeatureToggle(TEST_TENANT_ID, "CMS_ENABLED", false);
+
+            assertEquals("DISABLED", response.getStatus());
+            assertEquals(true, response.getPreviousState());
+            assertEquals(false, response.getNewState());
+        }
+
+        @Test
+        @DisplayName("DEF-434：啟用免審核功能 → ENABLED（對照用：調整停用分支不可讓啟用被當成申請）")
+        void updateFeatureToggle_noApprovalFeature_enable_reportsEnabled() {
+            TenantFeatureToggle row = existingRow("CMS_ENABLED", false, null);
+            ownerWithExistingRow(row);
+
+            FeatureToggleUpdateResponse response =
+                    tenantService.updateFeatureToggle(TEST_TENANT_ID, "CMS_ENABLED", true);
+
+            assertEquals("ENABLED", response.getStatus());
+            assertEquals("Feature enabled", response.getStatusDescription());
+            assertEquals(true, response.getNewState());
+        }
+
+        @Test
+        @DisplayName("DEF-434：需審核功能已啟用中再送 enabled=true → ENABLED（對照用：重複確認不是新申請）")
+        void updateFeatureToggle_approvalFeature_enableWhenAlreadyEnabled_reportsEnabled() {
+            TenantFeatureToggle row = existingRow("PROMO_ENABLED", true, null);
+            ownerWithExistingRow(row);
+
+            FeatureToggleUpdateResponse response =
+                    tenantService.updateFeatureToggle(TEST_TENANT_ID, "PROMO_ENABLED", true);
+
+            assertEquals("ENABLED", response.getStatus());
+            assertEquals(true, response.getNewState());
+        }
+
         @Test
         @DisplayName("updateFeatureToggle：數值配額 key（MAX_PRODUCTS）→ 拒絕，不得寫入布林 toggle")
         void updateFeatureToggle_numericQuotaKey_rejected() {

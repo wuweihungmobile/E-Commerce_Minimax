@@ -178,6 +178,51 @@ class FeatureRequestLifecycleIntegrationTest {
         assertThat(ownerFeatures().get("BOOKING_ENABLED").path("status").asText()).as("重新申請").isEqualTo("PENDING");
     }
 
+    // ── DEF-434（Sprint 314）：停用請求的回應說的是結果 ──────────────────────────────────────
+    // 修復前：enabled=false 且「本來就未啟用」一律回 PENDING_APPROVAL／「Feature request submitted」，
+    // 不論功能需不需要審核；實際效果只是「沒有變化」或「撤回申請」。
+
+    @Test
+    @DisplayName("DEF-434：對沒申請過的需審核功能送 enabled=false → 回應 DISABLED（修復前是『已送出申請』），列表仍是 INACTIVE、沒有申請時間")
+    void ownerDisablesApprovalFeatureNeverRequested_reportsDisabled() throws Exception {
+        JsonNode response = ownerPut("PROMO_ENABLED", false);
+
+        assertThat(response.path("data").path("status").asText()).isEqualTo("DISABLED");
+        assertThat(response.path("data").path("previousState").asBoolean()).isFalse();
+        assertThat(response.path("data").path("newState").asBoolean()).isFalse();
+        assertThat(ownerFeatures().get("PROMO_ENABLED").path("status").asText()).isEqualTo("INACTIVE");
+        assertThat(requestedAtInDb("PROMO_ENABLED")).isNull();
+    }
+
+    @Test
+    @DisplayName("DEF-434：店主撤回待審核的申請 → 回應 DISABLED，列表回到 INACTIVE、申請時間清掉；之後重新申請仍是正常的申請")
+    void ownerWithdrawsPendingRequest_reportsDisabled_andCanRequestAgain() throws Exception {
+        assertThat(ownerPut("BOOKING_ENABLED", true).path("data").path("status").asText()).isEqualTo("PENDING_APPROVAL");
+        assertThat(ownerFeatures().get("BOOKING_ENABLED").path("status").asText()).isEqualTo("PENDING");
+
+        JsonNode withdraw = ownerPut("BOOKING_ENABLED", false);
+
+        assertThat(withdraw.path("data").path("status").asText()).isEqualTo("DISABLED");
+        assertThat(ownerFeatures().get("BOOKING_ENABLED").path("status").asText()).isEqualTo("INACTIVE");
+        assertThat(requestedAtInDb("BOOKING_ENABLED")).isNull();
+
+        assertThat(ownerPut("BOOKING_ENABLED", true).path("data").path("status").asText())
+                .as("撤回後再申請").isEqualTo("PENDING_APPROVAL");
+        assertThat(ownerFeatures().get("BOOKING_ENABLED").path("status").asText()).isEqualTo("PENDING");
+    }
+
+    @Test
+    @DisplayName("DEF-434：免審核功能連送兩次 enabled=false → 兩次都是 DISABLED（修復前第二次回『已送出申請』，但這種功能沒有申請這回事）")
+    void ownerDisablesNoApprovalFeatureTwice_bothReportDisabled() throws Exception {
+        assertThat(ownerPut("CMS_ENABLED", false).path("data").path("status").asText()).isEqualTo("DISABLED");
+
+        JsonNode second = ownerPut("CMS_ENABLED", false);
+
+        assertThat(second.path("data").path("previousState").asBoolean()).as("第二次送出時功能已經是關的").isFalse();
+        assertThat(second.path("data").path("status").asText()).isEqualTo("DISABLED");
+        assertThat(ownerFeatures().get("CMS_ENABLED").path("status").asText()).isEqualTo("INACTIVE");
+    }
+
     // ── 輔助 ─────────────────────────────────────────────────
 
     private JsonNode ownerPut(String feature, boolean enabled) throws Exception {

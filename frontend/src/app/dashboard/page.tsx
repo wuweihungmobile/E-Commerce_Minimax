@@ -17,6 +17,7 @@ const QUICK_LINKS = [
   { href: '/dashboard/reviews', label: '評價管理', testId: 'dashboard-reviews-link' },
   { href: '/dashboard/shipping', label: '運費模板設定', testId: 'dashboard-shipping-link' },
   { href: '/dashboard/members', label: '店鋪成員管理', testId: 'dashboard-members-link' },
+  { href: '/dashboard/tenants', label: '店鋪管理', testId: 'dashboard-tenants-link' },
 ]
 
 type CurrentUser = { email: string; fullName: string; role: string }

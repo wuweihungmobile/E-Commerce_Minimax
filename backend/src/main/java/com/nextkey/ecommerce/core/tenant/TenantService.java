@@ -643,18 +643,20 @@ public class TenantService {
 
     private record StatusInfo(String status, String description) {}
 
+    /**
+     * DEF-434：{@code status} 說的是這次請求的結果。{@code enabled=false} 一律是 {@code DISABLED}（功能現在是關的）——先前
+     * 「本來就未啟用」時回 {@code PENDING_APPROVAL}／「Feature request submitted」，不論功能需不需要審核；實際效果只是
+     * 「沒有變化」或「撤回申請」（{@link #recordRequestTime} 會清掉申請時間）。只有送出需審核功能的啟用申請才是
+     * {@code PENDING_APPROVAL}。
+     */
     private StatusInfo determineToggleStatus(boolean enabled, boolean requiresApproval, Boolean previousState) {
-        if (enabled) {
-            if (requiresApproval && !previousState) {
-                return new StatusInfo("PENDING_APPROVAL", "Feature request submitted, pending platform approval");
-            }
-            return new StatusInfo("ENABLED", "Feature enabled");
-        } else {
-            if (previousState) {
-                return new StatusInfo("DISABLED", "Feature disabled");
-            }
-            return new StatusInfo("PENDING_APPROVAL", "Feature request submitted");
+        if (!enabled) {
+            return new StatusInfo("DISABLED", "Feature disabled");
         }
+        if (requiresApproval && !previousState) {
+            return new StatusInfo("PENDING_APPROVAL", "Feature request submitted, pending platform approval");
+        }
+        return new StatusInfo("ENABLED", "Feature enabled");
     }
 
     // Helper methods

@@ -21,6 +21,11 @@ import { authHeaders, seedStore } from './helpers/store';
  *
  * 現在用 `seedStore` 保證前提（有店鋪的店主），**不再有任何 `test.skip()`**——前提不成立就該紅燈（比照 at-m17-002）。
  * API 層的覆蓋在 `TenantControllerE2ETest`；本規格鎖的是 UI 這一層：表單送出的內容正確、其他欄位不被洗掉。
+ *
+ * ── Sprint 314（DEF-432）：編輯表單新增「店鋪描述」欄位 ────────────────────────────────
+ * FRD US-M17-003 / AC-M17-003-1 允許店主修改店鋪描述，後端 `PUT /v2/tenants/{id}` 也收（≤ 1000 字），表單先前沒有這個欄位。
+ * 現在表單會預填目前的描述；**沒改過就不送出**（後端 null = 不變更），改過才送（空字串 = 清空）。案例 01／02 因此改為檢查
+ * 「描述有被預填、沒改就沒送、沒被洗掉」，03／04 鎖「改了會存下」與「清空會真的清掉」。
  */
 
 const WEB_BASE = 'http://localhost:3000';
@@ -54,15 +59,20 @@ async function openEditForm(page: Page, tenantId: string): Promise<void> {
   await expect(page.locator('#storeName')).toBeVisible();
 }
 
-/** 按「儲存更改」並等 PUT 回應；成功後應導回詳情頁。 */
-async function saveAndExpectDetail(page: Page, tenantId: string): Promise<void> {
+/**
+ * 按「儲存更改」並等 PUT 回應；成功後應導回詳情頁。回傳這次 PUT **實際送出的內容**——
+ * 「沒改的欄位不送」是表單的行為，只讀回後端的結果看不出來。
+ */
+async function saveAndExpectDetail(page: Page, tenantId: string): Promise<Record<string, unknown>> {
   const saved = page.waitForResponse(
     (r) => r.url().includes(`/v2/tenants/${tenantId}`) && r.request().method() === 'PUT',
     { timeout: 20_000 }
   );
   await page.getByRole('button', { name: '儲存更改' }).click();
-  expect((await saved).status()).toBe(200);
+  const response = await saved;
+  expect(response.status()).toBe(200);
   await expect(page).toHaveURL(new RegExp(`/dashboard/tenants/${tenantId}$`));
+  return response.request().postDataJSON() as Record<string, unknown>;
 }
 
 /** 詳情頁「基本資訊／聯絡資訊」的唯讀欄位：標籤與輸入框包在同一個 div.space-y-1。 */
@@ -105,6 +115,8 @@ test.describe('AT-M17-004: 店鋪 Profile 更新（真實後端）', () => {
     const before = await readTenant(page, tenantId);
     expect(before.storeDescription, '前提：seedStore 申請開店時帶了店鋪描述').toBeTruthy();
     await openEditForm(page, tenantId);
+    // 表單預填目前的店鋪描述（DEF-432：先前沒有這個欄位）
+    await expect(page.locator('#storeDescription')).toHaveValue(before.storeDescription as string);
 
     const stamp = Date.now();
     const updated = {
@@ -117,14 +129,15 @@ test.describe('AT-M17-004: 店鋪 Profile 更新（真實後端）', () => {
     await page.locator('#slug').fill(updated.slug);
     await page.locator('#contactEmail').fill(updated.contactEmail);
     await page.locator('#contactPhone').fill(updated.contactPhone);
-    await saveAndExpectDetail(page, tenantId);
+    const sent = await saveAndExpectDetail(page, tenantId);
+    expect(sent, '沒改店鋪描述就不送出（後端 null = 不變更）').not.toHaveProperty('storeDescription');
 
     // 詳情頁顯示新值（不是編輯前的舊值）
     await expect(page.getByRole('heading', { name: updated.storeName })).toBeVisible();
     await expect(detailField(page, '聯絡信箱')).toHaveValue(updated.contactEmail);
     await expect(detailField(page, '聯絡電話')).toHaveValue(updated.contactPhone);
 
-    // 後端真的存下了；編輯表單沒有的欄位（店鋪描述）與沒改的營業類型不可被洗掉
+    // 後端真的存下了；沒改的店鋪描述與營業類型不可被洗掉
     const stored = await readTenant(page, tenantId);
     expect(stored).toMatchObject({
       ...updated,
@@ -146,14 +159,69 @@ test.describe('AT-M17-004: 店鋪 Profile 更新（真實後端）', () => {
     await openEditForm(page, tenantId);
     const newName = `E2E 只改名稱 ${Date.now()}`;
     await page.locator('#storeName').fill(newName);
-    await saveAndExpectDetail(page, tenantId);
+    const sent = await saveAndExpectDetail(page, tenantId);
+    expect(sent.storeName).toBe(newName);
+    expect(sent, '沒改店鋪描述就不送出（後端 null = 不變更）').not.toHaveProperty('storeDescription');
     await expect(page.getByRole('heading', { name: newName })).toBeVisible();
 
     const after = await readTenant(page, tenantId);
     expect(after.storeName).toBe(newName);
-    // 沒改的欄位逐一比對；storeDescription 不在表單裡，也不該因為儲存而消失
+    // 沒改的欄位逐一比對；表單裡的店鋪描述沒動，也不該因為儲存其他欄位而消失
     for (const field of ['slug', 'storeDescription', 'businessType', 'contactEmail', 'contactPhone'] as const) {
       expect(after[field], `只改名稱時 ${field} 不該變`).toEqual(before[field]);
     }
+  });
+
+  test('E2E-M17-004-03: 修改店鋪描述 → 只送出描述的新值、後端存下、其他欄位不變；重新打開表單帶出新描述', async ({
+    page,
+  }: {
+    page: Page;
+  }) => {
+    await loginOnly(page, ownerEmail, ownerPassword);
+    const before = await readTenant(page, tenantId);
+    await openEditForm(page, tenantId);
+    const description = page.locator('#storeDescription');
+    // 後端上限 1000 字（TenantUpdateRequest）：表單一開始就限制輸入長度，不要等後端回 400
+    await expect(description).toHaveAttribute('maxlength', '1000');
+
+    const newDescription = `E2E 新的店鋪描述 ${Date.now()}\n第二行`;
+    await description.fill(newDescription);
+    const sent = await saveAndExpectDetail(page, tenantId);
+    expect(sent.storeDescription).toBe(newDescription);
+
+    const after = await readTenant(page, tenantId);
+    expect(after.storeDescription).toBe(newDescription);
+    for (const field of ['storeName', 'slug', 'businessType', 'contactEmail', 'contactPhone'] as const) {
+      expect(after[field], `只改描述時 ${field} 不該變`).toEqual(before[field]);
+    }
+
+    // 重新打開表單：帶出的是剛存的描述（不是空白、也不是舊值）
+    await openEditForm(page, tenantId);
+    await expect(page.locator('#storeDescription')).toHaveValue(newDescription);
+  });
+
+  test('E2E-M17-004-04: 清空店鋪描述 → 後端真的清掉（不是保留舊值）；其他欄位不變', async ({
+    page,
+  }: {
+    page: Page;
+  }) => {
+    await loginOnly(page, ownerEmail, ownerPassword);
+    const before = await readTenant(page, tenantId);
+    // 前提：上一個案例存了新描述，這裡才有東西可清
+    expect(before.storeDescription, '前提：此時店鋪還有描述').toBeTruthy();
+
+    await openEditForm(page, tenantId);
+    await page.locator('#storeDescription').fill('');
+    const sent = await saveAndExpectDetail(page, tenantId);
+    expect(sent.storeDescription, '清空要明確送出空字串（後端 null 才是不變更）').toBe('');
+
+    const after = await readTenant(page, tenantId);
+    expect(after.storeDescription ?? '', '描述應已被清掉').toBe('');
+    for (const field of ['storeName', 'slug', 'businessType', 'contactEmail', 'contactPhone'] as const) {
+      expect(after[field], `只清空描述時 ${field} 不該變`).toEqual(before[field]);
+    }
+
+    await openEditForm(page, tenantId);
+    await expect(page.locator('#storeDescription')).toHaveValue('');
   });
 });

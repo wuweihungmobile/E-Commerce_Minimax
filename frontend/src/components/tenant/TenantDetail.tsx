@@ -42,12 +42,14 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [currentTenantId, setCurrentTenantId] = useState<string | null>(null)
+  const [currentRole, setCurrentRole] = useState<string | null>(null)
 
   useEffect(() => {
     const user = AuthService.getCurrentUser()
     if (user?.tenantId) {
       setCurrentTenantId(user.tenantId)
     }
+    setCurrentRole(user?.role ?? null)
   }, [])
 
   const fetchTenantDetail = useCallback(async () => {
@@ -150,6 +152,12 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
             <Badge variant="success" className="text-sm px-3 py-1">
               已核准店鋪
             </Badge>
+          )}
+          {/* DEF-430：功能開關頁（features/page.tsx）只放行店主與管理員，其他成員進去會被導回店鋪列表，所以不給入口 */}
+          {isOwner && tenant.status === 'ACTIVE' && (currentRole === 'STORE_OWNER' || currentRole === 'ADMIN') && (
+            <Link href={`/dashboard/tenants/${tenantId}/features`}>
+              <Button variant="outline">功能開關</Button>
+            </Link>
           )}
           {isOwner && tenant.status === 'ACTIVE' && (
             <Link href={`/dashboard/tenants/${tenantId}/edit`}>

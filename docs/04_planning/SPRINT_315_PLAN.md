@@ -132,7 +132,7 @@ X3、X4 兩個突變證明單元案例對『成員檢查要帶 `ACTIVE`』是有
 
 ## 10. 狀態
 
-見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 315 列。依使用者 2026-10-29 的長期授權（『做完一輪後，直接Commit + Push to main』），commit 後直接 push，不再詢問；push 結果與雲端 CI 於下一輪回填。
+見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 315 列。本輪的 commit `12604d70` 已 push（`cace4b8a..12604d70`），依使用者 2026-10-29 的長期授權（『做完一輪後，直接Commit + Push to main』）直接 push，沒有再詢問；pre-push 輕量守門通過，雲端 CI run [40893210008](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/40893210008) 三個 job 皆 success（Backend Unit Tests 2 分 54 秒／Frontend Lint & Build 56 秒／Backend Integration Tests & Package 10 分 57 秒，整個 run 13 分 56 秒）；`gh run view --json status,conclusion,headSha` 交叉確認 headSha 為 `12604d70`；下載整合 job 的完整雲端日誌（約 58 MB）確認整合測試 **974／0 失敗／0 錯誤／0 跳過**、`BUILD SUCCESS`，`TenantDetailsNonActiveIntegrationTest` 3、`TenantControllerE2ETest` 14、`FeatureRequestLifecycleIntegrationTest` 7、`BookingApiRealStackIntegrationTest` 18、`BookingControllerE2ETest` 25 與本機一致。
 
 本輪的 commit 範圍：生產程式 `TenantService`（後端）與 `TenantDetail.tsx`（前端）；測試 `TenantServiceTest`、`TenantDetailsNonActiveIntegrationTest`（新增）、E2E 規格 `at-m17-004`、`at-dashboard-tenant-nav-real`；文件 `API_M17_Tenant.md`（v2.7）、`DEFERRED_ITEMS_TRACKER.md`（`DEF-432` 全部完成、`DEF-438` 補記）、`RELEASE_TRACKER.md`（含 Sprint 314 的 push 與雲端 CI 回填）、`SPRINT_314_PLAN.md`（回填）與本計畫書。沒有 Flyway 遷移。
 

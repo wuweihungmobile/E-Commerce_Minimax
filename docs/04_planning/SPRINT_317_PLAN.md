@@ -190,7 +190,7 @@
 
 ## 10. 狀態
 
-見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 317 列。本輪依使用者 2026-10-29 的長期授權（『做完一輪後，直接Commit + Push to main』）commit 後直接 push，不再詢問；Sprint 316 的純文件回填 commit `21efcfa3`（領先遠端 1 個）隨之帶出。push 結果與雲端 CI 由純文件回填 commit 補上。
+見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 317 列。本輪的 commit `d09fa12a` 已 push（`60d9beeb..d09fa12a`，連同 Sprint 316 的純文件回填 commit `21efcfa3` 一起帶出），依使用者 2026-10-29 的長期授權（『做完一輪後，直接Commit + Push to main』）直接 push，沒有再詢問；pre-push 輕量守門通過（後端單元與前端 Lint／建置兩個 act job 皆成功、schema 漂移無漂移）。雲端 CI run [41002227143](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/41002227143) 三個 job 皆 success（Backend Unit Tests 2 分 33 秒／Frontend Lint & Build 1 分 07 秒／Backend Integration Tests & Package 9 分 08 秒，整個 run 11 分 45 秒，2026-10-30 04:19:12Z～04:30:57Z）；以 `gh run view --json status,conclusion,headSha,jobs` 交叉確認 headSha 為 `d09fa12a`，並下載整合 job 的完整雲端日誌（約 56 MB）確認整合測試 **976／0 失敗／0 錯誤／0 跳過**、`BUILD SUCCESS`、`<<< FAILURE`／`<<< ERROR` 標記 0 個，`BookingApiRealStackIntegrationTest` 20（含新增 2）、`TenantStaffAccessIntegrationTest` 2、`RoomCalendarLockRealRedisIntegrationTest` 2、`BookingIntegrationTest` 2 與本機一致。回填 commit 只改文件，照 Sprint 306 以來的慣例留在本機，隨下一個有功能變更的 Sprint 一起帶出。
 
 本輪的 commit 範圍：測試 `BookingApiRealStackIntegrationTest`（新增 2 個案例與 2 個輔助方法）；文件 `API_M06_Booking.md`（v2.6）、`DEFERRED_ITEMS_TRACKER.md`（`DEF-439` 完成並更正推論、新登記 `DEF-440`）、`RELEASE_TRACKER.md` 與本計畫書。沒有生產程式碼、Flyway 遷移或前端變更。
 

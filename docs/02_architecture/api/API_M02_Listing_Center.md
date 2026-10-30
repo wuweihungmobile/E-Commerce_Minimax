@@ -1,8 +1,8 @@
 # API 規格文件 - M02 房源中心 / API Specification - M02 Listing Center
 
-> **文件版本**: v2.1（Sprint 304：DEF-415——房源與日曆維護的寫入端點要求呼叫者有真正的店鋪；v2.0 為 Sprint 273 依實作全面改寫，DEF-286 範圍）
+> **文件版本**: v2.2（Sprint 318：DEF-440——§4.7～4.8 補記：標記／解除維護只動這間房自己的日曆列，不影響別家店鋪同一段日期，由真實棧測試守住）；v2.1（Sprint 304：DEF-415——房源與日曆維護的寫入端點要求呼叫者有真正的店鋪；v2.0 為 Sprint 273 依實作全面改寫，DEF-286 範圍）
 > **建立日期**: 2026-04-09（v1.0）
-> **最後更新**: 2026-10-24
+> **最後更新**: 2026-10-31
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`RoomController`／`RoomCalendarController`（`api/controller/`）、`RoomService`／`RoomCalendarService`（`core/room/`、`core/booking/`）、`RoomDto`／`BookingDto.MaintenanceRequest`（`api/dto/`）、`Room`／`RoomCalendar`（`domain/model/`）
@@ -151,11 +151,11 @@
 
 ### 4.7 `POST /v2/dashboard/rooms/{roomListingId}/maintenance` — 標記維護狀態
 
-**權限**：`room:update`，且限房源所屬租戶（檢查方式同 §4.4，包含呼叫者須有真正的店鋪、且先判斷再查詢房源；`403 E-1007` 的回應訊息是錯誤碼的預設訊息「權限不足」，`Not authorized to manage this room's maintenance status` 只出現在伺服器端的例外與日誌，不外洩給使用者，AI-2418）。請求：`startDate`／`endDate`（皆必填，`endDate` 早於 `startDate` 回 `400 E-4003`）。把區間內每日 `room_calendar.status` 設為 `MAINTENANCE`；若某日原為 `BOOKED`，保留 `bookingId` 並在對應 `Booking.statusFlags` 標記 `under_maintenance=true`（供 Admin Dashboard 查詢，M09 通知系統上線前的替代方案）。區間內缺列的日期會先補建 `AVAILABLE` 再轉為 `MAINTENANCE`（DEF-360）。已是 `MAINTENANCE` 的日期跳過（idempotent）。
+**權限**：`room:update`，且限房源所屬租戶（檢查方式同 §4.4，包含呼叫者須有真正的店鋪、且先判斷再查詢房源；`403 E-1007` 的回應訊息是錯誤碼的預設訊息「權限不足」，`Not authorized to manage this room's maintenance status` 只出現在伺服器端的例外與日誌，不外洩給使用者，AI-2418）。請求：`startDate`／`endDate`（皆必填，`endDate` 早於 `startDate` 回 `400 E-4003`）。把區間內每日 `room_calendar.status` 設為 `MAINTENANCE`；若某日原為 `BOOKED`，保留 `bookingId` 並在對應 `Booking.statusFlags` 標記 `under_maintenance=true`（供 Admin Dashboard 查詢，M09 通知系統上線前的替代方案）。區間內缺列的日期會先補建 `AVAILABLE` 再轉為 `MAINTENANCE`（DEF-360）。已是 `MAINTENANCE` 的日期跳過（idempotent）。**只動 `roomListingId` 這間房自己的日曆列**：別間房（含別家店鋪）同一段日期的列——不論已被訂走的 `BOOKED` 或維護中的 `MAINTENANCE`——都不受影響（DEF-440，Sprint 318，`BookingApiRealStackIntegrationTest.maintenance_markedOnOneStoresRoom_doesNotTouchAnotherStoresBookedDates` 守住）。
 
 ### 4.8 `DELETE /v2/dashboard/rooms/{roomListingId}/maintenance` — 解除維護狀態
 
-**權限**：同 §4.7。查詢參數：`startDate`／`endDate`（皆必填）。區間內原為 `MAINTENANCE` 且保留 `bookingId` 的日期恢復 `BOOKED`（並清除 `under_maintenance` 標記）；否則恢復 `AVAILABLE`。非 `MAINTENANCE` 的日期跳過。
+**權限**：同 §4.7。查詢參數：`startDate`／`endDate`（皆必填）。區間內原為 `MAINTENANCE` 且保留 `bookingId` 的日期恢復 `BOOKED`（並清除 `under_maintenance` 標記）；否則恢復 `AVAILABLE`。非 `MAINTENANCE` 的日期跳過。**只動這間房自己的日曆列**：別間房（含別家店鋪）同一段日期仍在維護中的列不會被連帶解除（DEF-440，Sprint 318，`BookingApiRealStackIntegrationTest.maintenance_clearedOnOneStoresRoom_doesNotClearAnotherStoresMaintenance` 守住）。
 
 ---
 

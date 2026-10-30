@@ -503,6 +503,84 @@ class BookingApiRealStackIntegrationTest {
                 .andExpect(jsonPath("$.data.refundAmount").value(1000.0));
     }
 
+    // ── 日曆列以房源為單位：取消與維護（DEF-440）─────────────
+
+    /**
+     * DEF-440（取消）：取消一間房的訂房，只釋放這間房自己的日期，不動別家店鋪同一段日期的日曆。兩家店鋪的房間同一段日期都被訂走，
+     * 取消 B 店的訂房：B 店那兩晚回到 AVAILABLE（對照：取消真的釋放了日期）；A 店那兩晚仍是 BOOKED 且指向 A 店的訂房、別人訂不到。
+     * 若釋放日期時查到的是「所有房間在那段日期的列」，A 店的日期會被一併釋放，A 店的房間就能被重複預訂。
+     *
+     * <p>在此之前這個行為在真實棧沒有任何測試守住：單元測試只 stub 掉日曆查詢，整合／E2E 的取消案例都只看被取消的那一間房。
+     */
+    @Test
+    @DisplayName("取消一間房的訂房只釋放它自己的日期（DEF-440）：兩家店鋪的房間同一段日期都被訂走，取消 B 店的訂房 → B 店那兩晚回到 AVAILABLE；A 店那兩晚仍是 BOOKED、仍指向 A 店的訂房，別人訂不到（400 E-4001）")
+    void cancel_oneStoresBooking_doesNotReleaseAnotherStoresSameDates() throws Exception {
+        Listing otherRoom = roomInAnotherStore();
+        String ci = day(60);
+        String co = day(62);
+        String aBooking = book(ci, co, 2, fx.buyerToken).at("/data/id").asText();
+        Map<String, Object> bRequest = bookingRequest(ci, co, 2);
+        bRequest.put("roomListingId", otherRoom.getId());
+        String bBooking = json(post("/v2/bookings").content(body(bRequest)), fx.buyerToken, 201).at("/data/id").asText();
+
+        send(post("/v2/bookings/" + bBooking + "/cancel"), fx.buyerToken).andExpect(status().isOk());
+
+        // 對照：被取消的那一間（B 店）兩晚釋放了
+        assertNights(otherRoom.getId(), ci, co, "AVAILABLE", null);
+        // 沒被取消的那一間（A 店）：日曆仍指向它自己的訂房，別人訂不到
+        assertNightsBookedBy(fx.roomId, ci, co, aBooking);
+        send(post("/v2/bookings").content(body(bookingRequest(ci, co, 2))), fx.otherToken)
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("E-4001"));
+    }
+
+    /**
+     * DEF-440（標記維護）：標記維護只動這間房自己的日期。A 店的房間那兩晚已被訂走，B 店的店主對自己房間同一段日期標記維護：A 店那兩晚
+     * 仍是 BOOKED、仍指向 A 店的訂房；B 店那兩晚成為 MAINTENANCE（對照：標記真的生效）。若標記時查到的是「所有房間在那段日期的列」，
+     * A 店已被訂走的日期會被改成維護中（並把 A 店的訂房標成 under_maintenance），B 店自己反而沒有被標到。
+     *
+     * <p>A 店訂房的 under_maintenance 旗標不另外斷言：它與日曆列在同一個迴圈、同一個交易裡一起寫入，日曆列沒被改到就不可能有旗標。
+     */
+    @Test
+    @DisplayName("標記維護只動這間房自己的日期（DEF-440）：A 店的房間那兩晚已被訂走，B 店的店主對自己房間同一段日期標記維護 → 200，A 店那兩晚仍是 BOOKED、仍指向 A 店的訂房；B 店那兩晚成為 MAINTENANCE")
+    void maintenance_markedOnOneStoresRoom_doesNotTouchAnotherStoresBookedDates() throws Exception {
+        Listing otherRoom = roomInAnotherStore();
+        String ci = day(75);
+        String co = day(77);
+        String aBooking = book(ci, co, 2, fx.buyerToken).at("/data/id").asText();
+
+        send(post("/v2/dashboard/rooms/" + otherRoom.getId() + "/maintenance")
+                .content(body(Map.of("startDate", ci, "endDate", co))), ownerTokenOf(otherRoom))
+                .andExpect(status().isOk());
+
+        assertNightsBookedBy(fx.roomId, ci, co, aBooking);
+        // 對照：B 店自己的兩晚確實被標成維護中
+        assertNights(otherRoom.getId(), ci, co, "MAINTENANCE", null);
+    }
+
+    /**
+     * DEF-440（解除維護）：解除維護只動這間房自己的日期。兩家店鋪的房間同一段日期都在維護中，B 店的店主對自己房間解除維護：A 店那兩晚
+     * 仍是 MAINTENANCE；B 店那兩晚回到 AVAILABLE（對照：解除真的生效）。若解除時查到的是「所有房間在那段日期的列」，A 店正在維護的日期
+     * 會被一併解除而重新開放預訂。
+     *
+     * <p>維護中的前提列直接寫入資料庫、不經『標記維護』：這樣本案例只會因為『解除維護』而紅，不會因為前提的建立方式而連帶變紅。
+     */
+    @Test
+    @DisplayName("解除維護只動這間房自己的日期（DEF-440）：兩家店鋪的房間同一段日期都在維護中，B 店的店主對自己房間解除維護 → 200，A 店那兩晚仍是 MAINTENANCE；B 店那兩晚回到 AVAILABLE")
+    void maintenance_clearedOnOneStoresRoom_doesNotClearAnotherStoresMaintenance() throws Exception {
+        Listing otherRoom = roomInAnotherStore();
+        String ci = day(90);
+        String co = day(92);
+        insertNights(fx.roomId, ci, co, "MAINTENANCE");
+        insertNights(otherRoom.getId(), ci, co, "MAINTENANCE");
+
+        send(MockMvcRequestBuilders.delete("/v2/dashboard/rooms/" + otherRoom.getId() + "/maintenance?startDate=" + ci
+                + "&endDate=" + co), ownerTokenOf(otherRoom)).andExpect(status().isOk());
+
+        assertNights(fx.roomId, ci, co, "MAINTENANCE", null);
+        // 對照：B 店自己的兩晚確實解除了
+        assertNights(otherRoom.getId(), ci, co, "AVAILABLE", null);
+    }
+
     // ── 付款 ─────────────────────────────────────────────────
 
     @Test
@@ -783,16 +861,38 @@ class BookingApiRealStackIntegrationTest {
 
     /** 這間房在 [入住, 退房) 的兩晚各有一列日曆，狀態都是 BOOKED、都指向 {@code bookingId}。 */
     private void assertNightsBookedBy(final UUID roomId, final String checkIn, final String checkOut, final String bookingId) {
+        assertNights(roomId, checkIn, checkOut, "BOOKED", bookingId);
+    }
+
+    /** 這間房在 [入住, 退房) 的兩晚各有一列日曆，狀態都是 {@code status}、都指向 {@code bookingId}（null＝沒有指向任何訂房）。 */
+    private void assertNights(final UUID roomId, final String checkIn, final String checkOut, final String status,
+            final String bookingId) {
         List<Map<String, Object>> nights = jdbcTemplate.queryForList(
                 "SELECT status, booking_id FROM room_calendar WHERE room_listing_id = ? AND calendar_date >= ? "
                         + "AND calendar_date < ? ORDER BY calendar_date",
                 roomId, java.sql.Date.valueOf(checkIn), java.sql.Date.valueOf(checkOut));
         Assertions.assertThat(nights).as("房源 %s 兩晚的日曆列", roomId).hasSize(2);
         for (Map<String, Object> night : nights) {
-            Assertions.assertThat(night.get("status")).as("房源 %s 的日曆狀態", roomId).isEqualTo("BOOKED");
-            Assertions.assertThat(String.valueOf(night.get("booking_id")))
-                    .as("房源 %s 的日曆指向它自己的訂房", roomId).isEqualTo(bookingId);
+            Assertions.assertThat(night.get("status")).as("房源 %s 的日曆狀態", roomId).isEqualTo(status);
+            Object pointedAt = night.get("booking_id");
+            Assertions.assertThat(pointedAt == null ? null : pointedAt.toString())
+                    .as("房源 %s 的日曆指向的訂房", roomId).isEqualTo(bookingId);
         }
+    }
+
+    /** 直接寫入這間房 [入住, 退房) 每一晚的日曆列（不經訂房或維護流程）：用來做『已在維護中』這類前提。 */
+    private void insertNights(final UUID roomId, final String checkIn, final String checkOut, final String status) {
+        for (LocalDate night = LocalDate.parse(checkIn); night.isBefore(LocalDate.parse(checkOut)); night = night.plusDays(1)) {
+            jdbcTemplate.update("INSERT INTO room_calendar (id, room_listing_id, calendar_date, status) VALUES (?, ?, ?, ?)",
+                    UUID.randomUUID(), roomId, night, status);
+        }
+    }
+
+    /** {@link #roomInAnotherStore()} 建的那間房所屬店鋪的店主 token。 */
+    private String ownerTokenOf(final Listing room) {
+        User owner = room.getOwner();
+        return jwtTokenService.generateAccessToken(owner.getId(), owner.getEmail(), "STORE_OWNER",
+                room.getTenant().getId().toString());
     }
 
     /** 訂房的稽核動作（只看入住與退房相關者；建立、付款的稽核不在此列）。 */

@@ -1,9 +1,9 @@
 # API 規格文件 - M06 預訂系統 / API Specification - M06 Booking System
 
 > **文件編號**: API-M06
-> **文件版本**: v2.6（Sprint 317：DEF-439——§1.2 補記：日期鎖與日曆列的單位都是「房源＋日期」，不同房源〔含不同店鋪〕同一段日期互不衝突，由真實棧測試守住）；v2.5（Sprint 310：DEF-433——同鍵請求仍在處理中的 `409 E-6005` 補記修復前實為 500）；v2.4（Sprint 309：DEF-424——可用性報價補記動態定價開關以房源所屬店鋪把關）；v2.3（Sprint 247 訂房納入結算；v2.2 為 Sprint 246 新增狀態日誌、店家後台按鈕與人工退款；v2.1 為 Sprint 245 新增入住與退房；v2.0 為 Sprint 243 依實作改寫）
+> **文件版本**: v2.7（Sprint 318：DEF-440——§1.2 補記：取消訂房釋放日期、標記／解除維護也只動這間房自己的日曆列，不影響別家店鋪同一段日期，由真實棧測試守住）；v2.6（Sprint 317：DEF-439——§1.2 補記：日期鎖與日曆列的單位都是「房源＋日期」，不同房源〔含不同店鋪〕同一段日期互不衝突，由真實棧測試守住）；v2.5（Sprint 310：DEF-433——同鍵請求仍在處理中的 `409 E-6005` 補記修復前實為 500）；v2.4（Sprint 309：DEF-424——可用性報價補記動態定價開關以房源所屬店鋪把關）；v2.3（Sprint 247 訂房納入結算；v2.2 為 Sprint 246 新增狀態日誌、店家後台按鈕與人工退款；v2.1 為 Sprint 245 新增入住與退房；v2.0 為 Sprint 243 依實作改寫）
 > **建立日期**: 2026-04-28（v1.0，Sprint 4）
-> **最後更新**: 2026-10-30
+> **最後更新**: 2026-10-31
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`BookingController`、`BookingPaymentController`、`DashboardBookingController`、`BookingService`、`BookingNoShowService`、`RoomCalendarService`、`BookingRefundPolicy`、`PaymentStateService`、`BookingDto`、`GlobalExceptionHandler`；**每個回應形狀、狀態碼、錯誤碼與權限宣稱都用真實 PostgreSQL＋Redis（日曆鎖）＋完整 HTTP／JWT／權限鏈實測**（[BookingApiRealStackIntegrationTest](../../backend/src/test/java/com/nextkey/ecommerce/integration/BookingApiRealStackIntegrationTest.java)）
@@ -45,7 +45,7 @@
 ### 1.2 設計重點
 
 1. **日曆以「晚」為單位**：區間 `[checkInDate, checkOutDate)`，**退房日不佔用**；晚數 = 退房日 − 入住日，**必須 ≥ 1**。日曆只存「有記錄的日期」（`AVAILABLE`／`BOOKED`／`BLOCKED`／`MAINTENANCE`），**沒有記錄的日期視為可訂**；超出房源「開放窗」的日期回 `NOT_OPEN`。
-2. **併發與衝突**：建立訂房時對每一晚取 Redis 日期鎖（NO WAIT，取不到立刻 `E-4001`）、再以資料庫列鎖（`FOR UPDATE NOWAIT`）確認並標記 `BOOKED`；鎖在 `finally` 釋放。**鎖鍵與日曆列的單位都是「房源 id＋日期」**：別間房源（包含別家店鋪的房源）在同一段日期的訂房不受影響——查得到可訂、訂得成，連「這間房的日期鎖被另一個請求占住」也擋不到它（`DEF-439`，Sprint 317 以 `BookingApiRealStackIntegrationTest` 的 `create_sameDatesInAnotherStoresRoom_*` 兩個案例守住；之前只有鎖鍵字串與 mock 參數的白箱測試，以及共用資料庫殘留造成的偶然覆蓋）。
+2. **併發與衝突**：建立訂房時對每一晚取 Redis 日期鎖（NO WAIT，取不到立刻 `E-4001`）、再以資料庫列鎖（`FOR UPDATE NOWAIT`）確認並標記 `BOOKED`；鎖在 `finally` 釋放。**鎖鍵與日曆列的單位都是「房源 id＋日期」**：別間房源（包含別家店鋪的房源）在同一段日期的訂房不受影響——查得到可訂、訂得成，連「這間房的日期鎖被另一個請求占住」也擋不到它（`DEF-439`，Sprint 317 以 `BookingApiRealStackIntegrationTest` 的 `create_sameDatesInAnotherStoresRoom_*` 兩個案例守住；之前只有鎖鍵字串與 mock 參數的白箱測試，以及共用資料庫殘留造成的偶然覆蓋）。**釋放與維護用同一個單位**：取消一間房的訂房只釋放這間房自己的日期，標記／解除維護（M02 §4.7～4.8）也只動這間房自己的日曆列——別家店鋪同一段日期仍維持 `BOOKED`／`MAINTENANCE`，不會被連帶釋放或改寫（`DEF-440`，Sprint 318 以同一個類別的 `cancel_oneStoresBooking_*`、`maintenance_markedOnOneStoresRoom_*`、`maintenance_clearedOnOneStoresRoom_*` 三個案例守住；之前取消與解除維護在真實棧沒有任何守門，標記維護只有一個碰巧對兩間房標同一段日期的 E2E）。
 3. **金額在建立當下算好**：`totalAmount = 房價（動態定價優先，否則 basePrice × 晚數） − 優惠券折扣`。付款期限 `paymentDueAt` = 建立時間 + 24 小時（`BOOKING_PAYMENT_TIMEOUT_HOURS`）；**歷史訂房（`null`）永不逾時**。
 4. **狀態**：`CREATED → PAID → CHECKED_IN → CHECKED_OUT → COMPLETED`（付款即等同確認，PRD Phase 1；**不產生 `CONFIRMED`**，DEF-345），`CANCELLED` 為取消終態。**可取消**＝`CREATED`／`PAID`（入住後不可取消，回 `400 E-4007`）；**可更新**＝`CREATED`（實測：**已付款（`PAID`）與入住中的訂房不能更新**，回 `422 E-5010`）。`CHECKED_OUT` 只存在於同一次退房請求之內（自動完成），查得到的訂房不會停在這個狀態。
 5. **取消的退款（PRD Q14，Sprint 227）**：只有已付款的訂房才有款項可退。買家**本人**取消：入住前 **≥ 24 小時全額退款**、**不足 24 小時不退**；商家／管理員**代為取消**、系統逾時取消一律全額退款。入住時刻是「入住日＋房型的入住時間（預設 15:00）」在營運時區（Asia/Taipei）的絕對時刻。取消回應的 `refundStatus: PENDING` 表示**等待排程自動退款**（取消請求本身不呼叫金流）。

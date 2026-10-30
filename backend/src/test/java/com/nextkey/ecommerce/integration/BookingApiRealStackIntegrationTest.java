@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -40,7 +41,9 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nextkey.ecommerce.core.booking.RoomCalendarService;
 import com.nextkey.ecommerce.core.idempotency.IdempotencyService;
+import com.nextkey.ecommerce.domain.model.listing.Listing;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
@@ -71,6 +74,7 @@ class BookingApiRealStackIntegrationTest {
     @Autowired private ListingRepository listingRepository;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private IdempotencyService idempotencyService;
+    @Autowired private RoomCalendarService roomCalendarService;
 
     private ContractFixture fx;
 
@@ -284,6 +288,89 @@ class BookingApiRealStackIntegrationTest {
                 Assertions.assertThat(String.valueOf(night.get("booking_id")))
                         .as("第 %d 輪：日曆指向勝出的那一筆訂房", round).isEqualTo(winnerId);
             }
+        }
+    }
+
+    // ── 不同店鋪的房源互不衝突（Sprint 317，DEF-439）─────────
+
+    /**
+     * DEF-439：「日期被訂走」是以房源計，不是以日期計。TC_M02_Room 對 IT-M02-008 的原意是「Tenant A 預訂某日期 → Tenant B 查詢
+     * 同一日期 → Tenant B 仍可預訂（不應衝突）」；該案例原本把整個 {@code BookingService} mock 掉、斷言的是別的東西（DEF-437，
+     * Sprint 316 已刪除），這個不變量因此沒有專屬測試。本案例用真實服務與真實 PostgreSQL 的日曆列：同一位買家對同一段日期，
+     * 先訂 A 店的房間，再查、再訂 B 店的房間。對照組放在同一個案例裡（A 店那間房同一段日期確實被訂走），否則「B 店訂得成」
+     * 也可能只是衝突檢查整個失效。
+     *
+     * <p>本類別與其他整合測試的既有案例其實<b>偶然</b>也依賴這個不變量（每個案例各建一間房、卻都訂同樣的日期，共用同一個資料庫：
+     * 房源 id 被拿掉的日曆查詢會讓它們一起紅），但那是共用資料的巧合，案例一旦各自清資料就消失；本案例不依賴其他案例留下的資料。
+     */
+    @Test
+    @DisplayName("不同店鋪的房源同一段日期互不衝突（DEF-439）：A 店的房間被訂走後，同一段日期 B 店的房間仍查得到可訂、也訂得成（回應帶 B 店自己的店鋪與房源 id）；兩間房的日曆各自指向自己的訂房；A 店那間房同一段日期仍是 BOOKED／400 E-4001")
+    void create_sameDatesInAnotherStoresRoom_doNotConflict() throws Exception {
+        Listing otherRoom = roomInAnotherStore();
+        UUID otherRoomId = otherRoom.getId();
+        String ci = day(30);
+        String co = day(32);
+        String dates = "&checkInDate=" + ci + "&checkOutDate=" + co;
+
+        JsonNode first = book(ci, co, 2, fx.buyerToken);
+
+        // 對照：A 店那間房同一段日期確實被訂走（可用性與訂房兩條路都擋）
+        get("/v2/bookings/availability?roomListingId=" + fx.roomId + dates, fx.otherToken)
+                .andExpect(jsonPath("$.data.available").value(false))
+                .andExpect(jsonPath("$.data.unavailableReason").value("BOOKED"));
+        send(post("/v2/bookings").content(body(bookingRequest(ci, co, 2))), fx.otherToken)
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("E-4001"));
+
+        // B 店的房間：同一段日期查得到可訂（總價是它自己的每晚 800 元 x 2 晚）
+        JsonNode availability = json(MockMvcRequestBuilders.get("/v2/bookings/availability?roomListingId=" + otherRoomId + dates),
+                fx.buyerToken, 200);
+        Assertions.assertThat(availability.at("/data/available").asBoolean())
+                .as("B 店房間同一段日期的可用性（回應：%s）", availability).isTrue();
+        Assertions.assertThat(availability.at("/data/totalPrice").decimalValue()).isEqualByComparingTo("1600");
+
+        // B 店的房間：同一位買家同一段日期訂得成，回應是 B 店自己的店鋪與房源
+        Map<String, Object> request = bookingRequest(ci, co, 2);
+        request.put("roomListingId", otherRoomId);
+        JsonNode second = json(post("/v2/bookings").content(body(request)), fx.buyerToken, 201);
+        Assertions.assertThat(second.at("/data/id").asText()).isNotEqualTo(first.at("/data/id").asText());
+        Assertions.assertThat(second.at("/data/roomListingId").asText()).isEqualTo(otherRoomId.toString());
+        Assertions.assertThat(second.at("/data/tenantId").asText()).isEqualTo(otherRoom.getTenant().getId().toString());
+        Assertions.assertThat(second.at("/data/totalAmount").decimalValue()).isEqualByComparingTo("1600");
+
+        // 兩間房的日曆各自指向自己的訂房，沒有串到對方
+        assertNightsBookedBy(fx.roomId, ci, co, first.at("/data/id").asText());
+        assertNightsBookedBy(otherRoomId, ci, co, second.at("/data/id").asText());
+    }
+
+    /**
+     * DEF-439（日期鎖的那一半）：Redis 日期鎖以「房源 id＋日期」為鍵，A 店的房間有另一個請求正在處理（鎖被占住）時，不影響 B 店的房間。
+     * 順序執行的訂房看不到這個缺口（鎖在每次訂房結束時就釋放），並行搶訂也只能機率性地撞到，所以這裡直接把「另一個請求正在處理」
+     * 做成固定的前提：用服務自己的 {@code lockDateRange} 占住 A 店房間的那兩晚（測試因此不綁定鍵的字串格式），再各訂一次。
+     *
+     * <p>鎖鍵的格式另有白箱測試守住（{@code RoomCalendarLockRealRedisIntegrationTest} 斷言真實 Redis 的鍵字串、
+     * {@code RoomCalendarServiceTest}／{@code BookingServiceCreateBookingTest} 以 mock 比對呼叫參數）；它們只釘住「現在的寫法」，
+     * 沒有任何真實棧測試表達「別間房的訂房不被這間房的鎖擋住」這個行為。
+     */
+    @Test
+    @DisplayName("不同店鋪的房源互不占用日期鎖（DEF-439）：A 店房間那兩晚的鎖被占住（另一個請求正在處理）時，A 店同一段日期的訂房 400 E-4001（對照：鎖有效），B 店房間同一段日期照樣訂得成")
+    void create_sameDatesInAnotherStoresRoom_notBlockedByTheDateLock() throws Exception {
+        Listing otherRoom = roomInAnotherStore();
+        // 日期刻意與上一個案例（30 天後）錯開：兩個案例各自獨立，不靠對方留下的日曆列
+        LocalDate checkIn = LocalDate.now().plusDays(45);
+        LocalDate checkOut = checkIn.plusDays(2);
+
+        String held = roomCalendarService.lockDateRange(fx.roomId, checkIn, checkOut);
+        Assertions.assertThat(held).as("前提：A 店房間那兩晚的鎖要取得成功，才代表『另一個請求正在處理』").isNotNull();
+        try {
+            send(post("/v2/bookings").content(body(bookingRequest(checkIn.toString(), checkOut.toString(), 2))), fx.buyerToken)
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("E-4001"));
+
+            Map<String, Object> request = bookingRequest(checkIn.toString(), checkOut.toString(), 2);
+            request.put("roomListingId", otherRoom.getId());
+            JsonNode created = json(post("/v2/bookings").content(body(request)), fx.buyerToken, 201);
+            Assertions.assertThat(created.at("/data/roomListingId").asText()).isEqualTo(otherRoom.getId().toString());
+        } finally {
+            roomCalendarService.unlockDateRange(fx.roomId, checkIn, checkOut, held);
         }
     }
 
@@ -672,6 +759,40 @@ class BookingApiRealStackIntegrationTest {
                 .tenantId(otherStore.getId()).build());
         return jwtTokenService.generateAccessToken(owner.getId(), owner.getEmail(), "STORE_OWNER",
                 otherStore.getId().toString());
+    }
+
+    /**
+     * 另一家營業中的店鋪與它的一間房間（每晚 800 元、最多 2 人）：DEF-439 用。比照 {@link ContractFixture} 的建法（房源要同時設
+     * tenant／owner 關聯，rooms 列另外寫入）；回傳的房源 {@code getTenant()} 即它所屬的店鋪。
+     */
+    private Listing roomInAnotherStore() {
+        long stamp = System.nanoTime();
+        Tenant otherStore = tenantRepository.save(Tenant.builder().name("契約測試房間另一家店 " + stamp)
+                .slug("contract-room-store-" + stamp).contactEmail("contract-room-store-" + stamp + "@tenant.com")
+                .contactPhone("+886-123456789").status(Tenant.TenantStatus.ACTIVE).build());
+        User otherOwner = userRepository.save(User.builder().email("contract-room-owner-" + stamp + "@example.com")
+                .passwordHash("dummy").fullName("另一家店主").role(User.UserRole.STORE_OWNER).status("ACTIVE")
+                .tenantId(otherStore.getId()).build());
+        Listing room = listingRepository.save(Listing.builder().tenant(otherStore).owner(otherOwner)
+                .listingType(Listing.ListingType.ROOM).title("另一家店的房間").basePrice(new BigDecimal("800.00"))
+                .currency("TWD").status(Listing.ListingStatus.ACTIVE).build());
+        jdbcTemplate.update("INSERT INTO rooms (listing_id, max_guests, room_count, check_in_time, check_out_time, created_at, "
+                + "updated_at) VALUES (?, 2, 1, '15:00'::time, '11:00'::time, NOW(), NOW())", room.getId());
+        return room;
+    }
+
+    /** 這間房在 [入住, 退房) 的兩晚各有一列日曆，狀態都是 BOOKED、都指向 {@code bookingId}。 */
+    private void assertNightsBookedBy(final UUID roomId, final String checkIn, final String checkOut, final String bookingId) {
+        List<Map<String, Object>> nights = jdbcTemplate.queryForList(
+                "SELECT status, booking_id FROM room_calendar WHERE room_listing_id = ? AND calendar_date >= ? "
+                        + "AND calendar_date < ? ORDER BY calendar_date",
+                roomId, java.sql.Date.valueOf(checkIn), java.sql.Date.valueOf(checkOut));
+        Assertions.assertThat(nights).as("房源 %s 兩晚的日曆列", roomId).hasSize(2);
+        for (Map<String, Object> night : nights) {
+            Assertions.assertThat(night.get("status")).as("房源 %s 的日曆狀態", roomId).isEqualTo("BOOKED");
+            Assertions.assertThat(String.valueOf(night.get("booking_id")))
+                    .as("房源 %s 的日曆指向它自己的訂房", roomId).isEqualTo(bookingId);
+        }
     }
 
     /** 訂房的稽核動作（只看入住與退房相關者；建立、付款的稽核不在此列）。 */

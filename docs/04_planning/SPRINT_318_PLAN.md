@@ -153,6 +153,7 @@ Sprint 317 已用同一組測試、同一份生產程式碼量過；自那之後
 3. **M7 下標記維護案例的結果與我的預測不同**（預測 `400 E-4001`、實際 `500`）：沒有當成突變的副作用略過，追日誌發現 `current transaction is aborted`，再用一次性探針做真實競態重現，登記 `DEF-441`。
 4. **一個 `grep` 寫得太寬**：`grep -E "ERROR|FAIL"` 命中 Hibernate 建表 DDL 裡的列舉值 `'FAILED'`，輸出一大片；改成只抓 `Tests run:`／`BUILD`。
 5. **工作目錄漂移**：多次指令的 `cd` 讓 shell 的工作目錄殘留在子目錄（環境訊息提示），之後每個指令以專案根目錄的絕對路徑 `cd` 開頭。
+6. **『同型寫法是不是只有這一處』這個核查，我是 push 之後才做的**：登記 `DEF-441` 時只寫了 `RoomCalendarService` 一處；寫記憶時才想到該對全部 `catch (DataIntegrityViolationException)` 做一次唯讀 grep，結果同型的還有 3 處。這件事本該在登記之前做。已 push 的 commit 裡的 `DEF-441` 因此只有單一處，範圍補充放在下一個純文件 commit（追蹤表與本計畫書 §9 以後者為準）。
 
 ## 7. 限制（誠實揭露）
 
@@ -163,7 +164,7 @@ Sprint 317 已用同一組測試、同一份生產程式碼量過；自那之後
 5. **沒有量真實並行**：取消／維護與訂房的 `NOWAIT` 鎖互動（鎖衝突轉 `E-4001`）不在本輪範圍；`DEF-441` 的探針是唯一碰到並行的部分。
 6. **§4.4 的那幾個斷言沒有被單獨驗證過牙齒。**
 7. **本輪沒有執行 Playwright 完整 E2E 與 `make validate-schema-doc`**：沒有任何生產程式碼、前端或 schema／遷移變更（只改測試與文件）。依 Sprint 306 以來的慣例，仍跑了全量後端 `mvn clean verify`（見 §5）。
-8. **`DEF-441` 只有探針、沒有入庫的案例，也沒有修**：探針重現的是『另一個交易先寫入同一列』的等價情境，不是兩個標記維護請求真的同時打；『標記維護 vs 訂房建立日曆列』的機制相同但沒有另行重現。
+8. **`DEF-441` 只有探針、沒有入庫的案例，也沒有修**：探針重現的是『另一個交易先寫入同一列』的等價情境，不是兩個標記維護請求真的同時打；『標記維護 vs 訂房建立日曆列』的機制相同但沒有另行重現；同型的另外三處（§9）只讀了碼，沒有重現。
 
 ## 8. 我替使用者做的決定（可一句話推翻）
 
@@ -173,20 +174,20 @@ Sprint 317 已用同一組測試、同一份生產程式碼量過；自那之後
 4. 解除維護案例的前提列**直接寫進資料庫**，不經『標記維護』。
 5. 把 `assertNightsBookedBy` 泛化成 `assertNights`（原方法改成一行委派，行為不變）；輔助方法放在測試類別內，**不動共用的 `ContractFixture`**。
 6. 追蹤表如實更正我上一輪登記的『五個寫入路徑』，原文保留作證據。
-7. 量測順帶發現的 `500` 追到 `DEF-441`，寫了一次性探針重現（**不入庫**），**只登記、不修**（修它要動併發路徑，需要設計）——延續 Sprint 316／317 的做法。
+7. 量測順帶發現的 `500` 追到 `DEF-441`，寫了一次性探針重現（**不入庫**），**只登記、不修**（修它要動併發路徑，需要設計）——延續 Sprint 316／317 的做法；push 之後又對全部 18 處 `catch (DataIntegrityViolationException)` 做了唯讀核查，把同型的另外 3 處一併寫進 `DEF-441`（只讀碼、未重現）。
 8. 不執行完整 E2E 與 schema 文件守門（見 §7 第 7 點）。
 9. `API_M06_Booking.md` 升 v2.7、`API_M02_Listing_Center.md` 升 v2.2 補記契約；其他文件引用的舊版號（既有的版號漂移）照 Sprint 309／310 慣例不碰。
 
 ## 9. 新登記的缺陷
 
-- **`DEF-441`**（🟢 低風險，不需產品決策）：`RoomCalendarService.fillMissingCalendarEntries` 的『唯一約束衝突後改讀對方剛建立的列』恢復路徑在真實 PostgreSQL 上必然失敗——兩個交易同時為同一間房的同一個缺列日期補列時，後到的請求回 `500 E-9900`（交易整個回滾，沒有資料損毀）。**實測**：一次性探針（用完已刪）讓一個交易先寫入尚未提交的 (房源, 日期) 列，同時以 `STORE_OWNER` 打 `POST /v2/dashboard/rooms/{id}/maintenance`：請求被擋住，對方提交後回 `500 E-9900`，日誌是第 477 行唯一約束違反、第 481 行 `current transaction is aborted`，資料庫最後只剩對方那一列。對照 `bookDateRange` 同型的 `catch` 直接丟 `E-4001`，沒有這個問題。`RoomCalendarServiceTest.markMaintenance_concurrentCreationConflict_recoversExistingEntry` 用 mock 驗證『恢復』，看不到 PostgreSQL 的交易中止語意。詳見追蹤表。
+- **`DEF-441`**（🟢 低風險，不需產品決策）：`RoomCalendarService.fillMissingCalendarEntries` 的『唯一約束衝突後改讀對方剛建立的列』恢復路徑在真實 PostgreSQL 上必然失敗——兩個交易同時為同一間房的同一個缺列日期補列時，後到的請求回 `500 E-9900`（交易整個回滾，沒有資料損毀）。**實測**：一次性探針（用完已刪）讓一個交易先寫入尚未提交的 (房源, 日期) 列，同時以 `STORE_OWNER` 打 `POST /v2/dashboard/rooms/{id}/maintenance`：請求被擋住，對方提交後回 `500 E-9900`，日誌是第 477 行唯一約束違反、第 481 行 `current transaction is aborted`，資料庫最後只剩對方那一列。對照 `bookDateRange` 同型的 `catch` 直接丟 `E-4001`，沒有這個問題。`RoomCalendarServiceTest.markMaintenance_concurrentCreationConflict_recoversExistingEntry` 用 mock 驗證『恢復』，看不到 PostgreSQL 的交易中止語意。**同型寫法另有三處**（`TransferService.claimTransferSlotOrExisting`、`ChatService.createConversation`、`SupportTicketService.createTicket`，都是 `@Transactional` 方法內捕捉唯一約束違反後繼續用同一個交易）：我 push 之後對 `src/main` 全部 18 處 `catch (DataIntegrityViolationException)` 逐處讀過 catch 區塊與交易註解，其餘 14 處直接丟例外、不受影響；這三處只是**讀碼推論**，沒有逐一重現。詳見追蹤表。
 
 ## 10. 狀態
 
-見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 318 列。本輪的 commit 依使用者 2026-10-29 的長期授權（『做完一輪後，直接Commit + Push to main』）直接 push，連同 Sprint 317 的純文件回填 commit `4e6088d2` 一起帶出；push 後的 pre-push 守門與雲端 CI 結果回填在下一個純文件 commit（照 Sprint 306 以來的慣例留在本機，隨下一個有功能變更的 Sprint 帶出）。
+見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 318 列。本輪的 commit `17bd31ce` 已 push（`d09fa12a..17bd31ce`，連同 Sprint 317 的純文件回填 commit `4e6088d2` 一起帶出），依使用者 2026-10-29 的長期授權（『做完一輪後，直接Commit + Push to main』）直接 push，沒有再詢問；pre-push 輕量守門通過（後端單元與前端 Lint／建置兩個 act job 皆成功、schema 漂移無漂移）。雲端 CI run [41107644272](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/41107644272) 三個 job 皆 success（Backend Unit Tests 2 分 26 秒／Frontend Lint & Build 54 秒／Backend Integration Tests & Package 6 分 59 秒），整個 run 10 分 10 秒（2026-10-30 18:31:20Z～18:41:30Z）；以 `gh run view --json status,conclusion,headSha,jobs` 交叉確認 headSha 為 `17bd31ce`，並下載整合 job 的完整雲端日誌（約 60 MB）確認整合測試 **979／0 失敗／0 錯誤／0 跳過**、`BUILD SUCCESS`、`<<< FAILURE`／`<<< ERROR` 標記 0 個，`BookingApiRealStackIntegrationTest` 23（含新增 3）、`M17MaintenanceWorkflowIntegrationTest` 5、`RoomCalendarLockRealRedisIntegrationTest` 2、`BookingIntegrationTest` 2、`TenantStaffAccessIntegrationTest` 2 與本機一致。回填 commit 只改文件（也補進 push 之後才做的 `DEF-441` 範圍核查，見 §6 第 6 點與 §9），照 Sprint 306 以來的慣例留在本機，隨下一個有功能變更的 Sprint 一起帶出。
 
 本輪的 commit 範圍：測試 `BookingApiRealStackIntegrationTest`（新增 3 個案例與 3 個輔助方法、`assertNightsBookedBy` 改為委派）；文件 `API_M06_Booking.md`（v2.7）、`API_M02_Listing_Center.md`（v2.2）、`DEFERRED_ITEMS_TRACKER.md`（`DEF-440` 完成並更正、新登記 `DEF-441`）、`RELEASE_TRACKER.md` 與本計畫書。沒有生產程式碼、Flyway 遷移或前端變更。
 
 **待使用者處理**：`DEF-419`、舊規則資料遷移（若要）、Sprint 306 的 `make down-clean` → `make up` → `make dev-admin-password`、Docker 建置快取。
 
-**下次無 `==>` 的『請繼續』我可以直接做的**：`DEF-441`（低風險；先把探針正式化為入庫的真實競態案例〔紅燈先行〕，再把恢復路徑改成不碰資料庫，並同步改掉 mock 單元測試）。另有兩個**可選的量測**（不是缺陷，需要使用者決定要不要）：『另一間店鋪的店主』對 `API_M17` §2.1 九個端點的結果、編輯頁是否值得加進場角色守門。
+**下次無 `==>` 的『請繼續』我可以直接做的**：`DEF-441`（低風險；先把探針正式化為入庫的真實競態案例〔紅燈先行〕，再把恢復路徑改成不碰資料庫，並同步改掉 mock 單元測試；同型的另外三處〔`TransferService`、`ChatService`、`SupportTicketService`〕先逐一用探針確認是否真的失效）。另有兩個**可選的量測**（不是缺陷，需要使用者決定要不要）：『另一間店鋪的店主』對 `API_M17` §2.1 九個端點的結果、編輯頁是否值得加進場角色守門。

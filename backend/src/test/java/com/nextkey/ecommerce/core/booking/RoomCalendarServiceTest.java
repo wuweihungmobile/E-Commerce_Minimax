@@ -408,21 +408,30 @@ class RoomCalendarServiceTest {
         verify(roomCalendarRepository, times(2)).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE));
     }
 
+    /**
+     * DEF-441：原本這個案例斷言「衝突後改讀對方剛建立的列並繼續」——PostgreSQL 在唯一約束違反後整個交易已中止，那個
+     * 再查詢必然失敗（500 E-9900），mock 沒有交易中止語意所以一直看不到。真實競態見
+     * {@code UniqueConstraintRaceRealStackIntegrationTest}；這裡守的是「catch 內不再碰資料庫、轉成可重試的 E_4001、
+     * 沒有任何一列被寫成維護」。
+     */
     @Test
-    @DisplayName("DEF-360：建立缺漏記錄時發生 unique constraint 衝突（併發）→ 改讀取對方剛建立的記錄並繼續")
-    void markMaintenance_concurrentCreationConflict_recoversExistingEntry() {
+    @DisplayName("DEF-441：建立缺漏記錄時發生 unique constraint 衝突（併發）→ E_4001（可重試），catch 內不再查詢資料庫、不寫入任何維護狀態")
+    void markMaintenance_concurrentCreationConflict_throwsE4001WithoutTouchingTheDatabaseAgain() {
         when(roomCalendarRepository.findByRoomListingIdAndCalendarDateBetweenWithLockNowait(
                 ROOM_LISTING_ID, CHECK_IN, CHECK_OUT.minusDays(1))).thenReturn(List.of());
         Listing listing = Listing.builder().build();
         listing.setId(ROOM_LISTING_ID);
         when(listingRepository.findById(ROOM_LISTING_ID)).thenReturn(Optional.of(listing));
         when(roomCalendarRepository.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("dup"));
-        when(roomCalendarRepository.findByRoomListingIdAndCalendarDateWithLockNowait(eq(ROOM_LISTING_ID), any()))
-                .thenAnswer(inv -> Optional.of(calendarOf(inv.getArgument(1), RoomCalendar.RoomCalendarStatus.AVAILABLE, null)));
 
-        roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, true);
+        assertThatThrownBy(() -> roomCalendarService.markMaintenance(ROOM_LISTING_ID, CHECK_IN, CHECK_OUT, true))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.E_4001);
 
-        verify(roomCalendarRepository, times(2)).save(argThat(c -> c.getStatus() == RoomCalendar.RoomCalendarStatus.MAINTENANCE));
+        // 交易已中止：不可再用同一個交易去查對方的列，也不可把任何一列寫成維護中
+        verify(roomCalendarRepository, never()).findByRoomListingIdAndCalendarDateWithLockNowait(any(), any());
+        verify(roomCalendarRepository, never()).save(any());
     }
 
     @Test

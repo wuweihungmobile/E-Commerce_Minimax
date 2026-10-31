@@ -12,12 +12,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import com.nextkey.ecommerce.api.dto.ChatDto;
 import com.nextkey.ecommerce.domain.model.chat.Conversation;
@@ -26,6 +28,7 @@ import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.MessageRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.infrastructure.persistence.UniqueConflictRetry;
 
 /**
  * DEF-383：{@code ChatDto.ConversationResponse.unreadCount} 依瀏覽者角色正確填值。
@@ -46,6 +49,10 @@ class ChatServiceUnreadCountTest {
     @Mock private ListingRepository listingRepository;
     @Mock private OrderRepository orderRepository;
     @Mock private SimpMessagingTemplate messagingTemplate;
+    /** DEF-441：createConversation 撞唯一索引時由 UniqueConflictRetry 整個交易重做；這裡用 mock 的交易管理員，
+     *  只驗重做的次數與結果（真實 PostgreSQL 上的行為見 UniqueConstraintRaceRealStackIntegrationTest）。 */
+    @Spy private UniqueConflictRetry uniqueConflictRetry =
+            new UniqueConflictRetry(org.mockito.Mockito.mock(PlatformTransactionManager.class));
 
     @InjectMocks
     private ChatService chatService;

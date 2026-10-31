@@ -1,6 +1,6 @@
 # API 規格文件 - M02 房源中心 / API Specification - M02 Listing Center
 
-> **文件版本**: v2.2（Sprint 318：DEF-440——§4.7～4.8 補記：標記／解除維護只動這間房自己的日曆列，不影響別家店鋪同一段日期，由真實棧測試守住）；v2.1（Sprint 304：DEF-415——房源與日曆維護的寫入端點要求呼叫者有真正的店鋪；v2.0 為 Sprint 273 依實作全面改寫，DEF-286 範圍）
+> **文件版本**: v2.3（Sprint 319：DEF-441——§4.7 補記：兩個請求同時為同一間「全新、沒有任何日曆列」的房間補同一天的列，後到的回 `400 E-4001` 而不是 `500 E-9900`；§6 補列 `E-4001`）；v2.2（Sprint 318：DEF-440——§4.7～4.8 補記：標記／解除維護只動這間房自己的日曆列，不影響別家店鋪同一段日期，由真實棧測試守住）；v2.1（Sprint 304：DEF-415——房源與日曆維護的寫入端點要求呼叫者有真正的店鋪；v2.0 為 Sprint 273 依實作全面改寫，DEF-286 範圍）
 > **建立日期**: 2026-04-09（v1.0）
 > **最後更新**: 2026-10-31
 > **負責人**: SD (Marcus)
@@ -151,7 +151,7 @@
 
 ### 4.7 `POST /v2/dashboard/rooms/{roomListingId}/maintenance` — 標記維護狀態
 
-**權限**：`room:update`，且限房源所屬租戶（檢查方式同 §4.4，包含呼叫者須有真正的店鋪、且先判斷再查詢房源；`403 E-1007` 的回應訊息是錯誤碼的預設訊息「權限不足」，`Not authorized to manage this room's maintenance status` 只出現在伺服器端的例外與日誌，不外洩給使用者，AI-2418）。請求：`startDate`／`endDate`（皆必填，`endDate` 早於 `startDate` 回 `400 E-4003`）。把區間內每日 `room_calendar.status` 設為 `MAINTENANCE`；若某日原為 `BOOKED`，保留 `bookingId` 並在對應 `Booking.statusFlags` 標記 `under_maintenance=true`（供 Admin Dashboard 查詢，M09 通知系統上線前的替代方案）。區間內缺列的日期會先補建 `AVAILABLE` 再轉為 `MAINTENANCE`（DEF-360）。已是 `MAINTENANCE` 的日期跳過（idempotent）。**只動 `roomListingId` 這間房自己的日曆列**：別間房（含別家店鋪）同一段日期的列——不論已被訂走的 `BOOKED` 或維護中的 `MAINTENANCE`——都不受影響（DEF-440，Sprint 318，`BookingApiRealStackIntegrationTest.maintenance_markedOnOneStoresRoom_doesNotTouchAnotherStoresBookedDates` 守住）。
+**權限**：`room:update`，且限房源所屬租戶（檢查方式同 §4.4，包含呼叫者須有真正的店鋪、且先判斷再查詢房源；`403 E-1007` 的回應訊息是錯誤碼的預設訊息「權限不足」，`Not authorized to manage this room's maintenance status` 只出現在伺服器端的例外與日誌，不外洩給使用者，AI-2418）。請求：`startDate`／`endDate`（皆必填，`endDate` 早於 `startDate` 回 `400 E-4003`）。把區間內每日 `room_calendar.status` 設為 `MAINTENANCE`；若某日原為 `BOOKED`，保留 `bookingId` 並在對應 `Booking.statusFlags` 標記 `under_maintenance=true`（供 Admin Dashboard 查詢，M09 通知系統上線前的替代方案）。區間內缺列的日期會先補建 `AVAILABLE` 再轉為 `MAINTENANCE`（DEF-360）。已是 `MAINTENANCE` 的日期跳過（idempotent）。**只動 `roomListingId` 這間房自己的日曆列**：別間房（含別家店鋪）同一段日期的列——不論已被訂走的 `BOOKED` 或維護中的 `MAINTENANCE`——都不受影響（DEF-440，Sprint 318，`BookingApiRealStackIntegrationTest.maintenance_markedOnOneStoresRoom_doesNotTouchAnotherStoresBookedDates` 守住）。**併發**：日期範圍內的列被另一個交易鎖住（`FOR UPDATE NOWAIT`），或兩個請求同時為同一間「全新、沒有任何日曆列」的房間補同一天的列而輸掉（唯一約束衝突）時，回 `400 E-4001`（該日期區間正被另一個操作修改，整個交易回滾、沒有留下半套的列，**重試即成功**）。DEF-441（Sprint 319）前，補列輸掉的那一方回的是 `500 E-9900`：catch 之後在同一個交易裡改讀對方剛建立的列，但 PostgreSQL 在唯一約束違反後整個交易已中止，那個查詢必然失敗（`UniqueConstraintRaceRealStackIntegrationTest.markMaintenance_losingTheMissingRowRace_returnsRetryableE4001` 用真實競態守住）。
 
 ### 4.8 `DELETE /v2/dashboard/rooms/{roomListingId}/maintenance` — 解除維護狀態
 
@@ -182,6 +182,7 @@
 |--------|:----:|--------|
 | `E-4000` | 404 | 找不到房源（§4.2、§4.4～4.8） |
 | `E-4003` | 400 | 維護區間日期範圍無效（`endDate` 早於 `startDate`，§4.7） |
+| `E-4001` | 400 | 標記維護的日期區間正被另一個操作修改（列被鎖住或補列輸給另一個交易，可重試；§4.7，DEF-441） |
 | `E-2004` | 403 | `BOOKING_ENABLED` 未對該租戶啟用（§4.3） |
 | `E-2009` | 400 | 已達房源配額上限（§4.3、§4.4 轉為 `ACTIVE` 時） |
 | `E-1007` | 403 | 跨租戶操作他人房源，或呼叫者沒有店鋪（§4.3～4.8，Sprint 304／DEF-415） |

@@ -1,7 +1,7 @@
 # API 規格文件 - M18 客服工單 / API Specification - M18 Support Ticket
 
 > **文件編號**: API-M18-SUP
-> **文件版本**: v1.0（Sprint 265，首次建立；Sprint 91 功能上線至今 `docs/02_architecture/` 下從未有獨立規格文件，DEF-367）
+> **文件版本**: v1.1（Sprint 319：DEF-441——§1 第 5 點與限制表更正：撞號重試改為整個交易重做，原本的重試在 PostgreSQL 上從沒生效過）；v1.0（Sprint 265，首次建立；Sprint 91 功能上線至今 `docs/02_architecture/` 下從未有獨立規格文件，DEF-367）
 > **建立日期**: 2026-10-14
 > **最後更新**: 2026-10-14
 > **負責人**: SD (Marcus)
@@ -32,7 +32,7 @@
 2. **刻意用 404 而非 403 隱藏工單存在性**：非本人／非同租戶店家查詢他人工單時，一律回 `E-8008`（404 找不到），**不是** `E-8009`（403 無權限）——程式碼註解明確寫「不洩漏工單是否存在」，與多數模組「查無權限才 403」的慣例不同。因此 `E-8009` 目前是**定義了但從未被任何程式碼路徑拋出的死碼**（已用 `grep` 確認 `ErrorCode.java` 定義與 `GlobalExceptionHandler` 分組之外，全庫零 `throw` 呼叫點）。
 3. **狀態機**（詳見 §3.3）：`OPEN → IN_PROGRESS → RESOLVED → CLOSED`，`CLOSED` 為終態；`OPEN`／`IN_PROGRESS` 皆可直接跳到 `CLOSED`（例如買家自行取消問題或客服判定無需繼續處理）。轉為 `RESOLVED` 時若 `resolvedAt` 尚未設定會自動寫入當下時間。
 4. **平台層「指派」端點完全不做租戶篛選**：`assignTicket` 的存取邊界完全交給 Controller 的 `@PreAuthorize("hasAuthority('support_ticket:manage:all')")`，比照既有 M16 審批端點的慣例（Service 內部不重複檢查）。
-5. **工單編號產生用「查詢當日序號 + 重試」而非原子操作**：`countByTicketNumberStartingWith` 算當日序號後組字串，若撞到資料庫唯一約束（同秒高併發）則捕捉 `DataIntegrityViolationException` 重試，上限 3 次（DEF-139）。
+5. **工單編號產生用「查詢當日序號 + 重試」而非原子操作**：`countByTicketNumberStartingWith` 算當日序號後組字串，若撞到資料庫唯一約束（同秒高併發），整個交易回滾並在全新的交易重做（`UniqueConflictRetry`，含第一次最多 3 次）；重做時當日序號已包含贏家那張工單，單號自然錯開，使用者無感（DEF-139、DEF-441）。**DEF-441（Sprint 319）前這個重試從沒生效過**：原本在同一個交易裡 catch 後重新產生編號，但 PostgreSQL 在唯一約束違反後整個交易已中止，重算編號的 `count` 查詢必然失敗，撞號的請求實際得到 `500 E-9900`（`UniqueConstraintRaceRealStackIntegrationTest.createTicket_ticketNumberTakenByRival_retriesWithTheNextNumber` 用真實競態守住）。
 6. **`SenderType.SYSTEM` 是定義了但目前沒有任何程式碼路徑會寫入的列舉值**（與 `E-8009` 同類「預留但未啟用」狀態），目前訊息只會是 `CUSTOMER` 或 `STAFF`。
 
 ### 1.3 User Stories
@@ -250,7 +250,7 @@ OPEN ──→ IN_PROGRESS ──→ RESOLVED ──→ CLOSED（終態）
 |------|------|
 | `E-8009` 是死碼 | 已定義 HTTP 狀態碼與測試案例，但業務邏輯從不拋出（一律用 `E-8008` 取代，避免洩漏工單存在性），見 §1.2 第 2 點 |
 | `SenderType.SYSTEM` 未啟用 | 列舉值存在，但目前沒有任何程式碼路徑寫入此類型的留言 |
-| 工單編號產生非原子操作 | `countByTicketNumberStartingWith` 查詢後組字串，靠捕捉 DB 唯一約束違反重試（上限 3 次），高併發下理論上仍有極小機率連續 3 次撞號失敗（DEF-139） |
+| 工單編號產生非原子操作 | `countByTicketNumberStartingWith` 查詢後組字串，靠 DB 唯一約束仲裁、撞號時整個交易重做（含第一次最多 3 次），高併發下理論上仍有極小機率連續 3 次撞號失敗（DEF-139、DEF-441） |
 | FRD 完全無 M18 章節 | PRD 側有 `M18_Knowledge_Management_SPEC.md` §5，但 FRD（User Story/AC 的權威來源）從未補上對應章節 |
 | Controller／`@PreAuthorize` 層完全無測試覆蓋 | 既有測試（`SupportTicketServiceTest`、`SupportMessageServiceTest`）皆直接呼叫 Service，不經過 Spring Security／HTTP 層，本文件列出的權限字串未被任何測試驗證過會正確生效或正確 403/404 |
 | `ApiRouteDocDriftTest` 先前未覆蓋 | 本文件完成後新增 `SupportTicketController` 至 `GUARDED` 清單，從此有常態機械防漂移 |

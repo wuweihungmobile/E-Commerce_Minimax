@@ -1,7 +1,7 @@
 # API 規格文件 - M10 即時通訊 / API Specification - M10 Chat (IM)
 
 > **文件編號**: API-M10
-> **文件版本**: v1.0（Sprint 274，首次建立；Sprint 25 功能上線至今 `docs/02_architecture/` 下從未有獨立規格文件，DEF-286 範圍）
+> **文件版本**: v1.1（Sprint 319：DEF-441——§1 第 2 點更正：搶輸者拿到贏家那一筆的做法改為整個交易重做，由真實競態測試守住）；v1.0（Sprint 274，首次建立；Sprint 25 功能上線至今 `docs/02_architecture/` 下從未有獨立規格文件，DEF-286 範圍）
 > **建立日期**: 2026-10-16
 > **最後更新**: 2026-10-16
 > **負責人**: SD (Marcus)
@@ -28,7 +28,7 @@
 ### 1.2 設計重點
 
 1. **對話租戶的推導規則**（`resolveTenantId`）：有 `listingId` → 取該 listing 的 `tenantId`；否則有 `orderId` → 取該 order 的 `tenantId`；兩者皆無或關聯實體不存在 → 退回系統租戶常數 `00000000-0000-0000-0000-000000000001`。此 `tenantId` 目前只存入資料庫，**不出現在任何回應 DTO、也不被任何查詢用作過濾條件**。
-2. **同一對 initiator/recipient 至多一筆作用中對話**：`createConversation` 先查詢既有作用中對話，沒有才建立；DB 另有 `(initiator_id, recipient_id) WHERE is_active=true` 部分唯一索引（V81）兜底併發搶建（DEF-118），搶輸的請求改為重新查詢並回傳搶贏者那一筆，**不會**把自己的 `initialMessage` 併入。
+2. **同一對 initiator/recipient 至多一筆作用中對話**：`createConversation` 先查詢既有作用中對話，沒有才建立；DB 另有 `(initiator_id, recipient_id) WHERE is_active=true` 部分唯一索引（V81）兜底併發搶建（DEF-118），搶輸的請求回 `200` 與搶贏者那一筆，**不會**把自己的 `initialMessage` 併入。做法（DEF-441，Sprint 319）：搶輸時整個交易回滾、在全新的交易重做（`UniqueConflictRetry`），第二次的「是否已有對話」檢查就看得到贏家那一筆。此前的寫法是 catch 之後在同一個交易裡重查，但 PostgreSQL 在唯一約束違反後整個交易已中止，重查必然失敗——搶輸者實際得到 `500 E-9900`（mock Repository 的單元測試看不到；`UniqueConstraintRaceRealStackIntegrationTest.createConversation_losingTheRace_returnsTheWinnersConversation` 用真實競態守住；觸發條件是同一位使用者對同一個對象的兩個發起請求幾乎同時送出，例如重複點擊或重送）。
 3. **「發起人／收件人」是依建立對話時呼叫者身分固定下來的角色**，之後不會因為誰說話而互換；`initiatorUnreadCount`／`recipientUnreadCount` 各自獨立計數。
 4. **軟刪除會讓同一對使用者可以建立全新對話**：`deleteConversation` 只將 `isActive` 設為 `false`；因為唯一索引只保護 `is_active = true` 的列，刪除後若雙方其中一人再呼叫 `POST /conversations`，會產生一筆**全新**的對話（原對話與其訊息仍存在資料庫，但雙方都查不到），不是「復原已刪除對話」。
 5. **即時推播**：`sendMessage` 成功寫入後，透過 Spring `SimpMessagingTemplate` 廣播到 STOMP 目的地 `/queue/conversations/{conversationId}/messages`；訂閱授權由 `StompAuthChannelInterceptor` 在 `SUBSCRIBE` frame 把關（DEF-035 已修復，非本文件範圍）。

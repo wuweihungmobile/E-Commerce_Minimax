@@ -207,28 +207,27 @@ class TransferServiceTest {
     }
 
     @Test
-    @DisplayName("🔴 createTransferForStatement: 併發搶佔（saveAndFlush 唯一索引衝突）應回既有記錄，絕不呼叫 Stripe")
-    @SuppressWarnings("unchecked")
-    void createTransferForStatement_concurrentClaim_returnsExistingWithoutCallingStripe() {
+    @DisplayName("🔴 createTransferForStatement: 併發搶佔（saveAndFlush 唯一索引衝突）→ E_5014 乾淨失敗，絕不呼叫 Stripe、不重查資料庫、不寫入（DEF-441）")
+    void createTransferForStatement_concurrentClaim_failsWithE5014WithoutCallingStripe() {
         transferService = newService();
         when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(approvedStatement()));
-        Transfer completedByOtherTransaction = Transfer.builder().id(UUID.randomUUID())
-                .settlementStatementId(STATEMENT_ID).status(TransferStatus.COMPLETED)
-                .stripeTransferId("tr_winner").build();
         // 第一次查詢（existing 檢查）回空，模擬本交易先通過檢查；saveAndFlush 才因為
-        // 另一個交易已搶先提交同一 statementId 而違反唯一索引；第二次查詢（違反後重查）拿到贏家的記錄。
-        when(transferRepository.findBySettlementStatementId(STATEMENT_ID))
-                .thenReturn(Optional.empty(), Optional.of(completedByOtherTransaction));
+        // 另一個交易已搶先提交同一 statementId 而違反唯一索引。
+        when(transferRepository.findBySettlementStatementId(STATEMENT_ID)).thenReturn(Optional.empty());
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(readyTenant()));
         when(transferRepository.saveAndFlush(any(Transfer.class)))
                 .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key"));
 
-        Transfer result = transferService.createTransferForStatement(STATEMENT_ID);
+        assertThatThrownBy(() -> transferService.createTransferForStatement(STATEMENT_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
 
-        assertThat(result).isSameAs(completedByOtherTransaction);
         verify(paymentGatewayFactory, org.mockito.Mockito.never())
                 .createTransfer(anyString(), anyString(), any(Long.class), anyString(), anyString());
         verify(settlementRepository, org.mockito.Mockito.never()).save(any());
+        // 交易已中止（PostgreSQL）：違反之後不可再用同一個交易查詢（原本改查贏家的記錄，必然失敗）；
+        // existing 檢查那一次是違反「之前」，所以恰好一次
+        verify(transferRepository, org.mockito.Mockito.times(1)).findBySettlementStatementId(STATEMENT_ID);
     }
 
     @Test

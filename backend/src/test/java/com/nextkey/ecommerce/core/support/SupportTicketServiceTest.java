@@ -23,6 +23,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import com.nextkey.ecommerce.api.dto.SupportTicketDto.CreateTicketRequest;
 import com.nextkey.ecommerce.api.dto.SupportTicketDto.MessageResponse;
@@ -33,6 +34,7 @@ import com.nextkey.ecommerce.domain.model.support.SupportTicket;
 import com.nextkey.ecommerce.domain.model.support.SupportTicket.TicketStatus;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.support.SupportTicketRepository;
+import com.nextkey.ecommerce.infrastructure.persistence.UniqueConflictRetry;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
@@ -61,7 +63,10 @@ class SupportTicketServiceTest {
     private static final UUID SYSTEM_TENANT_ID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
 
     private SupportTicketService newService() {
-        return new SupportTicketService(ticketRepository, orderRepository, messageService);
+        // DEF-441：撞號時由 UniqueConflictRetry 整個交易重做；這裡用 mock 的交易管理員，只驗重做的次數與結果。
+        // 真實 PostgreSQL 上的行為見 UniqueConstraintRaceRealStackIntegrationTest
+        return new SupportTicketService(ticketRepository, orderRepository, messageService,
+                new UniqueConflictRetry(org.mockito.Mockito.mock(PlatformTransactionManager.class)));
     }
 
     private SupportTicket ticket(final TicketStatus status) {

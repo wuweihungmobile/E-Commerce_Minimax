@@ -17,8 +17,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import com.nextkey.ecommerce.api.dto.ChatDto;
 import com.nextkey.ecommerce.domain.model.chat.Conversation;
@@ -29,6 +31,7 @@ import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.MessageRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.infrastructure.persistence.UniqueConflictRetry;
 
 /**
  * ChatService 對話租戶推導行為驗證（Sprint 25 US-003 / AI-802）。
@@ -65,6 +68,12 @@ class ChatServiceTenantResolutionTest {
 
     @Mock
     private SimpMessagingTemplate messagingTemplate;
+
+    /** DEF-441：createConversation 撞唯一索引時由 UniqueConflictRetry 整個交易重做；這裡用 mock 的交易管理員，
+     *  只驗重做的次數與結果（真實 PostgreSQL 上的行為見 UniqueConstraintRaceRealStackIntegrationTest）。 */
+    @Spy
+    private UniqueConflictRetry uniqueConflictRetry =
+            new UniqueConflictRetry(org.mockito.Mockito.mock(PlatformTransactionManager.class));
 
     @InjectMocks
     private ChatService chatService;
@@ -150,7 +159,7 @@ class ChatServiceTenantResolutionTest {
     }
 
     @Test
-    @DisplayName("DEF-118：併發搶占失敗（另一請求已建立同一對 active 對話）→ 回傳搶贏的既有對話，而非拋出原始例外")
+    @DisplayName("DEF-118／DEF-441：併發搶占失敗（另一請求已建立同一對 active 對話）→ 整個交易重做，第二次的『已有對話』檢查回傳搶贏的既有對話，而非拋出原始例外（同交易內重查在 PostgreSQL 上不成立，真實行為見 UniqueConstraintRaceRealStackIntegrationTest）")
     @SuppressWarnings("unchecked")
     void createConversation_concurrentClaimLost_returnsRaceWinner() {
         Conversation raceWinner = Conversation.builder()

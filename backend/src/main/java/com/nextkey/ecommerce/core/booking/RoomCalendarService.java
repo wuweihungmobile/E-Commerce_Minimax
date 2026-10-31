@@ -452,7 +452,8 @@ public class RoomCalendarService {
      * 仍可訂。{@code existing} 是呼叫端已用自己原有的方式（有鎖／無鎖）查到的既有記錄；本方法只負責
      * 把範圍內缺列的日期以 {@link #createCalendarEntry} 補上（預設 AVAILABLE，供呼叫端接續的迴圈轉為
      * 目標狀態），不改變呼叫端既有的鎖定行為。並發建立衝突（unique constraint）的處理方式與既有
-     * {@code bookDateRange} 一致：改讀取對方剛建立的列。
+     * {@code bookDateRange} 一致：轉成可重試的 {@code E_4001}。DEF-441：原本寫「改讀取對方剛建立的列」，但
+     * PostgreSQL 在唯一約束違反後整個交易已中止，再查詢必然失敗（回 500 E-9900），所以 catch 內不可再碰資料庫。
      *
      * <p>{@code unmarkMaintenance}/{@code unblockDateRange}/{@code releaseDateRange}
      * 不適用此方法：這三者是「回復預設狀態」的操作，缺列本身就等同已經是預設的 AVAILABLE
@@ -476,11 +477,12 @@ public class RoomCalendarService {
                 try {
                     calendar = roomCalendarRepository.saveAndFlush(createCalendarEntry(roomListingId, date));
                 } catch (DataIntegrityViolationException e) {
+                    // DEF-441：輸給另一個同時為同一天補列的交易。PostgreSQL 在這個語句失敗後整個交易已中止，這裡不能再
+                    // 碰資料庫（原本改讀對方剛建立的列，必然回 500 E-9900）；比照 bookDateRange 轉成可重試的 E_4001。
                     log.warn("fillMissingCalendarEntries: Unique constraint violation for date {}, "
                             + "another operation already created it", date);
-                    calendar = roomCalendarRepository.findByRoomListingIdAndCalendarDateWithLockNowait(roomListingId, date)
-                            .orElseThrow(() -> new BusinessException(ErrorCode.E_4001,
-                                    "Date " + date + " is currently being modified by another operation"));
+                    throw new BusinessException(ErrorCode.E_4001,
+                            "Date " + date + " is currently being modified by another operation");
                 }
             }
             result.add(calendar);

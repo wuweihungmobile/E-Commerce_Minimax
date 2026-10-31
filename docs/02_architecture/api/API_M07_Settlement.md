@@ -1,7 +1,7 @@
 # API 規格文件 - M07 結算與撥款 / API Specification - M07 Settlement & Transfer
 
 > **文件編號**: API-M07
-> **文件版本**: v1.0（Sprint 262，首次建立；Sprint 16 規劃時僅留一張 6 端點的草表於 `API_Index.md`，從未真正建立獨立文件，DEF-364）
+> **文件版本**: v1.1（Sprint 319：DEF-441——Transfer 佔位輸給另一個交易時回明確的 `E-5014`，並補上真實競態測試）；v1.0（Sprint 262，首次建立；Sprint 16 規劃時僅留一張 6 端點的草表於 `API_Index.md`，從未真正建立獨立文件，DEF-364）
 > **建立日期**: 2026-10-13
 > **最後更新**: 2026-10-13
 > **負責人**: SD (Marcus)
@@ -31,7 +31,7 @@
 
 1. **結算單狀態機**：`PENDING → PENDING_REVIEW → APPROVED → PAID`（正常路徑）；`PENDING_REVIEW → REJECTED`（駁回，釋放已認領的訂單/訂房，讓下一期重新結算）；`APPROVED → FAILED`（撥款失敗，可重試回到 `APPROVED` 再次嘗試）；`PAID → REVERSAL_PENDING → REVERSED`（雙重授權逆轉，需 `SUPER_ADMIN` 與 `CFO` 各一人、角色不同）。**狀態轉換一律用 `BusinessException(E_5014)` 擋非法轉換**，沒有獨立的狀態圖算式，以程式碼的 `if (status != X)` 判斷為準。
 2. **每筆訂單/訂房恰好結算一次**：`SettlementGenerator` 用 `UPDATE ... WHERE settled_statement_id IS NULL` 原子認領當週已完成的訂單與訂房，認領不足即回滾整張結算單（避免漏單或重複結算）；駁回時反向釋放（`releaseOrdersOfStatement`／`releaseBookingsOfStatement`／`releaseAppliedTo`），讓下一期能重新認領。
-3. **撥款與審核解耦**：`SettlementReviewer.approveStatement` 核准後立即嘗試呼叫 `TransferService.createTransferForStatement`，但**任何撥款失敗都只記錄，絕不回滾「已核准」這個 Admin 決策**（try-catch 隔離）。`Transfer` 記錄以 `settlement_statement_id` 唯一索引**原子佔位**防止併發重複撥款；賣家 Stripe Connect 帳戶未完成 onboarding 時狀態為 `SKIPPED_ONBOARDING_INCOMPLETE`（非失敗，可之後補建）。
+3. **撥款與審核解耦**：`SettlementReviewer.approveStatement` 核准後立即嘗試呼叫 `TransferService.createTransferForStatement`，但**任何撥款失敗都只記錄，絕不回滾「已核准」這個 Admin 決策**（try-catch 隔離）。`Transfer` 記錄以 `settlement_statement_id` 唯一索引**原子佔位**防止併發重複撥款（佔位輸給另一個交易的那個請求以 `E-5014` 乾淨失敗，不撥款、不重查；DEF-441，Sprint 319）；賣家 Stripe Connect 帳戶未完成 onboarding 時狀態為 `SKIPPED_ONBOARDING_INCOMPLETE`（非失敗，可之後補建）。
 4. **手動補產（DEF-287，Sprint 208）**：僅 `SUPER_ADMIN`（`settlement:generate`）可用，供排程漏產補救或上線前 Stripe 測試走查；與排程共用同一套冪等與認領防護，不會重複結算同一筆訂單。
 5. **逆轉不處理真實資金收回**：`SettlementReversalService` 的「逆轉」只產生 `CreditNote` 會計沖銷記錄，**不呼叫任何 Stripe API 把錢拿回來**（Sprint 80/81 既定範圍界線）。真正的資金收回只能靠 Stripe 主動發出的 `transfer.reversed` webhook（`TransferService.handleTransferReversedWebhook`，見 [API_M05_Order.md](API_M05_Order.md) §8 Webhook 章節），兩條路徑彼此不覆寫已進入正式流程的狀態（見 §4.10 備註）。
 6. **抽成採租戶自訂費率**：`commissionAmount = GMV × Tenant.commissionRate`（四捨五入至 2 位小數），非固定費率（Sprint 80 起取代先前硬編碼 10%）。
@@ -248,7 +248,7 @@ M07 常見錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](../
 | `E-1007` | 403 | 權限不足／非自己租戶／雙重授權角色相同 |
 | `E-2000` | 404 | 找不到租戶（§4.7） |
 | `E-5013` | 404 | 找不到結算單 |
-| `E-5014` | 409 | 無效的結算單／transfer 狀態轉換 |
+| `E-5014` | 409 | 無效的結算單／transfer 狀態轉換；或 transfer 佔位輸給另一個併發交易（DEF-441） |
 | `E-9008` | 400 | 數值超出範圍（§4.7：`periodEnd` 早於 `periodStart`） |
 
 ---
@@ -260,7 +260,7 @@ M07 常見錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](../
 | 真實 Stripe Connect 撥款未對真實服務驗證 | `createTransferForStatement` 呼叫 `PaymentGatewayFactory.createTransfer`，與訂單/訂房付款同樣的「未對真實 Stripe 驗證」限制（見 [API_M06_Booking.md](../API_M06_Booking.md) §7）適用於此 |
 | 逆轉不處理真實資金收回 | `CreditNote` 僅會計沖銷記錄，不呼叫任何 Stripe API 把已撥款的錢拿回來（Sprint 80/81 既定範圍外） |
 | 本文件撰寫前自動化守門未覆蓋此模組 | `ApiRouteDocDriftTest` 的 `GUARDED` 清單目前只含 M03／M04／M05／M06，本文件完成後是否納入 M07 由下一輪決定（DEF-372） |
-| `Transfer` 併發防護靠唯一索引而非樂觀鎖 | `createTransferForStatement` 的併發防護是 `saveAndFlush` 搶 `idx_transfers_settlement_statement_id` 唯一索引，非 `@Version` 樂觀鎖；重試時先刪記錄再重建，若與另一個真正併發的核准/重試交錯，理論上仍可能有極短暫的競態窗口，未專門寫併發測試驗證（一般業務頻率下核准與重試不會真的同時對同一張結算單發生） |
+| `Transfer` 併發防護靠唯一索引而非樂觀鎖 | `createTransferForStatement` 的併發防護是 `saveAndFlush` 搶 `idx_transfers_settlement_statement_id` 唯一索引，非 `@Version` 樂觀鎖；重試時先刪記錄再重建，若與另一個真正併發的核准/重試交錯，理論上仍可能有極短暫的競態窗口（一般業務頻率下核准與重試不會真的同時對同一張結算單發生）。**佔位本身的競態已有真實 PostgreSQL 測試**（DEF-441，Sprint 319，`UniqueConstraintRaceRealStackIntegrationTest.createTransfer_losingTheClaimRace_failsCleanlyWithE5014`）：輸家得到明確的 `E-5014`、只剩贏家那一筆 transfer（不會撥款兩次）。原本的 catch 想「回傳贏家的記錄」而在同一個交易裡重查，PostgreSQL 在唯一約束違反後交易已中止，重查必然失敗；刻意不讓輸家改成「成功」——`approveStatement` 在自己的交易裡先把結算單改成 `APPROVED`，輸家若成功並提交，會把贏家已推進到 `PAID` 的結算單覆寫回 `APPROVED`（遺失更新，讀碼推論、未重現），讓整個操作失敗並回滾才是安全的 |
 | 撥款失敗原因可能模糊 | `TransferService.createTransferForStatement` 的 catch block 只記錄 `BusinessException` 的 `message`，若底層是其他未分類例外則不會被捕捉為 `FAILED`（會往外拋，由 `GlobalExceptionHandler` 處理，結算單仍停在 `APPROVED` 等待人工介入） |
 
 ---

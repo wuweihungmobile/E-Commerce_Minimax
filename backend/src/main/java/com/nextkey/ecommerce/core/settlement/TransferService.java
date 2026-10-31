@@ -86,11 +86,7 @@ public class TransferService {
 
         // 🔴 併發防護：先以 idx_transfers_settlement_statement_id 唯一索引原子性佔位，才能呼叫
         // Stripe，避免兩個併發請求都通過上面的 existing==null 檢查而各自真的撥款一次。
-        Transfer claimed = claimTransferSlotOrExisting(statementId, transfer);
-        if (claimed != transfer) {
-            return claimed;
-        }
-        transfer = claimed;
+        transfer = claimTransferSlot(statementId, transfer);
 
         if (!featureToggleService.isFeatureEnabledForTenant(tenant.getId(), STRIPE_TRANSFER_ENABLED)) {
             log.info("STRIPE_TRANSFER_ENABLED disabled for tenant, skipping transfer: tenantId={}, statementId={}",
@@ -224,17 +220,21 @@ public class TransferService {
     /**
      * 以 {@code idx_transfers_settlement_statement_id} 唯一索引原子性佔位（saveAndFlush 立即送出
      * INSERT）。若同一結算單已被另一交易搶先佔位並提交，會拋 {@link DataIntegrityViolationException}，
-     * 代表本次不是第一個處理者：回傳既有記錄（呼叫端應直接回傳，不再呼叫 Stripe）。
-     * 回傳值與傳入的 {@code transfer} 為同一物件參考時，代表本次成功佔位，呼叫端可繼續處理。
+     * 代表本次不是第一個處理者：以 {@code E_5014} 失敗，呼叫端不會再呼叫 Stripe（只有佔位成功的交易才撥款）。
+     *
+     * <p>DEF-441：原本在這個 catch 裡「改查贏家的記錄並回傳」，但 PostgreSQL 在唯一約束違反後整個交易已中止，
+     * 重查必然失敗（輸家得到難以辨認的 {@code current transaction is aborted}）。這裡也<strong>不</strong>用
+     * {@code UniqueConflictRetry} 重做或讓輸家「成功」：呼叫端 {@code SettlementReviewer.approveStatement} 在自己的交易裡
+     * 先把結算單改成 APPROVED 才呼叫本服務，輸家若成功並提交，會把贏家已推進到 PAID 的結算單覆寫回 APPROVED（遺失更新）；
+     * 讓整個操作乾淨地失敗（輸家的交易整個回滾）才是安全的。
      */
-    private Transfer claimTransferSlotOrExisting(final UUID statementId, final Transfer transfer) {
+    private Transfer claimTransferSlot(final UUID statementId, final Transfer transfer) {
         try {
             return transferRepository.saveAndFlush(transfer);
         } catch (DataIntegrityViolationException e) {
             log.warn("Transfer already claimed by concurrent request, statementId={}", statementId);
-            return transferRepository.findBySettlementStatementId(statementId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.E_5014,
-                            "Concurrent transfer claim detected but record not found"));
+            throw new BusinessException(ErrorCode.E_5014,
+                    "Transfer for this statement is already being processed by a concurrent request");
         }
     }
 

@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -23,6 +22,7 @@ import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.MessageRepository;
 import com.nextkey.ecommerce.domain.repository.OrderRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.infrastructure.persistence.UniqueConflictRetry;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.util.PageableUtils;
@@ -47,6 +47,7 @@ public class ChatService {
     private final ListingRepository listingRepository;
     private final OrderRepository orderRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final UniqueConflictRetry uniqueConflictRetry;
 
     // Message preview and page size limits
     private static final int MESSAGE_PREVIEW_MAX_LENGTH = 50;
@@ -79,9 +80,18 @@ public class ChatService {
 
     /**
      * 建立對話
+     *
+     * <p>DEF-441：搶輸時（兩個併發「發起聊天」請求，輸的撞上 V81 的部分唯一索引）整個交易丟掉、在全新的交易重做——
+     * 重做時贏家的對話已提交，下面「是否已有對話」的檢查就看得到它並直接回傳（DEF-118 的本意）。原本在同一個交易裡
+     * catch 之後重查，但 PostgreSQL 在唯一約束違反後整個交易已中止，重查必然失敗（500 E-9900）。元件說明見
+     * {@link UniqueConflictRetry}。
      */
-    @Transactional
     public ChatDto.ConversationResponse createConversation(ChatDto.CreateConversationRequest request, UUID userId) {
+        return uniqueConflictRetry.execute(() -> createConversationOnce(request, userId));
+    }
+
+    private ChatDto.ConversationResponse createConversationOnce(
+            ChatDto.CreateConversationRequest request, UUID userId) {
         // 檢查是否已有對話
         Conversation existing = conversationRepository
                 .findByInitiatorIdAndRecipientIdAndIsActiveTrue(userId, request.getRecipientId())
@@ -107,17 +117,10 @@ public class ChatService {
 
         // 併發防護（DEF-118）：上面的檢查與這裡的 save() 之間是 TOCTOU，兩個併發「發起聊天」
         // 請求都可能通過檢查各自建立對話。V81 已對 (initiator_id, recipient_id) WHERE
-        // is_active=true 建立部分唯一索引，這裡改用 saveAndFlush 捕捉違反約束；搶輸時比照
-        // 上面「已有對話則直接回傳」的既有語意，重新查詢後回傳該筆（而非送出初始訊息或拋錯），
-        // 不建立第二筆重複的 active 對話。
-        try {
-            conversation = conversationRepository.saveAndFlush(conversation);
-        } catch (DataIntegrityViolationException e) {
-            Conversation raceWinner = conversationRepository
-                    .findByInitiatorIdAndRecipientIdAndIsActiveTrue(userId, request.getRecipientId())
-                    .orElseThrow(() -> e);
-            return toConversationResponse(raceWinner, userId);
-        }
+        // is_active=true 建立部分唯一索引，這裡改用 saveAndFlush 立即送出 INSERT 讓衝突當場浮現；
+        // 搶輸時違反約束的例外原樣往外拋，由 createConversation 的 UniqueConflictRetry 整個交易重做
+        // （DEF-441），重做時上面的檢查就會回傳贏家的那一筆，不建立第二筆重複的 active 對話。
+        conversation = conversationRepository.saveAndFlush(conversation);
 
         // 發送初始消息
         if (request.getInitialMessage() != null && !request.getInitialMessage().isBlank()) {

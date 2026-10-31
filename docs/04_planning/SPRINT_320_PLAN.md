@@ -167,7 +167,7 @@
 
 **文件守門測試**（`DocMarkdownFenceTest`、`ApiRouteDocDriftTest`、`ErrorCodeDocDriftTest`、`TechStackDocDriftTest`）在文件定稿後執行：4 個類別共 **14 個案例，0 失敗**（`ApiRouteDocDriftTest` 2、`DocMarkdownFenceTest` 9、`TechStackDocDriftTest` 2、`ErrorCodeDocDriftTest` 1），`BUILD SUCCESS`。
 
-見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 320 列。本輪依使用者 2026-10-29 的長期授權（『做完一輪後，直接 Commit + Push to main』）commit 後直接 push，連同 Sprint 319 的純文件回填 commit `e91f8de6` 一起帶出；push 結果與雲端 CI 結果由回填 commit 補在 RELEASE_TRACKER 的 Sprint 320 列。
+見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 320 列。本輪的 commit `eb54106c` 已 push（`5a915252..eb54106c`，連同 Sprint 319 的純文件回填 commit `e91f8de6` 一起帶出），依使用者 2026-10-29 的長期授權（『做完一輪後，直接 Commit + Push to main』）直接 push，沒有再詢問；pre-commit 與 pre-push 輕量守門通過（act 單元、前端、schema 漂移守門無漂移）。**雲端 CI 全綠**：run [41190862552](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/41190862552)，三個 job 皆 success（單元 2 分 29 秒／前端 1 分 14 秒／整合 10 分 43 秒，整個 run 13 分 18 秒），以 `gh run view --json` 交叉確認 headSha 為 `eb54106c`，並下載整合 job 的完整雲端日誌（57.9 MB）確認整合測試 **989／0 失敗／0 錯誤／0 跳過**、`BUILD SUCCESS`、Checkstyle 0 違規，`SettlementReviewRaceRealStackIntegrationTest` 在雲端環境也是 6／0。
 
 本輪的 commit 範圍：生產程式碼 `SettlementReviewer`（批准／駁回的條件式搶占）、`SettlementStatementRepository`（只補 Javadoc）；測試 `SettlementReviewRaceRealStackIntegrationTest`（新）、`SettlementReviewerTest`；文件 `API_M07_Settlement.md`（v1.2）、`DEFERRED_ITEMS_TRACKER.md`（`DEF-442` 已完成、新增 `DEF-443`／`DEF-444`）、`RELEASE_TRACKER.md`、本文件。
 

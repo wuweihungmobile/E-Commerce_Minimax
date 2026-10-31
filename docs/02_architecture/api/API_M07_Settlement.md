@@ -1,9 +1,9 @@
 # API 規格文件 - M07 結算與撥款 / API Specification - M07 Settlement & Transfer
 
 > **文件編號**: API-M07
-> **文件版本**: v1.1（Sprint 319：DEF-441——Transfer 佔位輸給另一個交易時回明確的 `E-5014`，並補上真實競態測試）；v1.0（Sprint 262，首次建立；Sprint 16 規劃時僅留一張 6 端點的草表於 `API_Index.md`，從未真正建立獨立文件，DEF-364）
+> **文件版本**: v1.2（Sprint 320：DEF-442——批准／駁回改用條件式更新搶占，同時送出時只有先到的成功、輸家 `409 E-5014` 且不留任何痕跡，並補上真實競態測試）；v1.1（Sprint 319：DEF-441——Transfer 佔位輸給另一個交易時回明確的 `E-5014`，並補上真實競態測試）；v1.0（Sprint 262，首次建立；Sprint 16 規劃時僅留一張 6 端點的草表於 `API_Index.md`，從未真正建立獨立文件，DEF-364）
 > **建立日期**: 2026-10-13
-> **最後更新**: 2026-10-13
+> **最後更新**: 2026-10-31
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`SettlementController`、`TransferController`（`api/controller/settlement/`）、`SettlementGenerator`、`SettlementReviewer`、`SettlementReversalService`、`TransferService`、`SettlementCalculator`（`core/settlement/`）；回應形狀、狀態碼、錯誤碼與權限宣稱皆逐行讀碼核對，部分另有真實測試佐證：[TransferControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/TransferControllerE2ETest.java)（真實 HTTP）、[M07SettlementIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M07SettlementIntegrationTest.java)、[SettlementReversalServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/settlement/SettlementReversalServiceTest.java)、[SettlementReviewerTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/settlement/SettlementReviewerTest.java)、[SettlementGeneratorManualTriggerTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/settlement/SettlementGeneratorManualTriggerTest.java)
@@ -29,9 +29,9 @@
 
 ### 1.2 設計重點
 
-1. **結算單狀態機**：`PENDING → PENDING_REVIEW → APPROVED → PAID`（正常路徑）；`PENDING_REVIEW → REJECTED`（駁回，釋放已認領的訂單/訂房，讓下一期重新結算）；`APPROVED → FAILED`（撥款失敗，可重試回到 `APPROVED` 再次嘗試）；`PAID → REVERSAL_PENDING → REVERSED`（雙重授權逆轉，需 `SUPER_ADMIN` 與 `CFO` 各一人、角色不同）。**狀態轉換一律用 `BusinessException(E_5014)` 擋非法轉換**，沒有獨立的狀態圖算式，以程式碼的 `if (status != X)` 判斷為準。
+1. **結算單狀態機**：`PENDING → PENDING_REVIEW → APPROVED → PAID`（正常路徑）；`PENDING_REVIEW → REJECTED`（駁回，釋放已認領的訂單/訂房，讓下一期重新結算）；`APPROVED → FAILED`（撥款失敗，可重試回到 `APPROVED` 再次嘗試）；`PAID → REVERSAL_PENDING → REVERSED`（雙重授權逆轉，需 `SUPER_ADMIN` 與 `CFO` 各一人、角色不同）。**狀態轉換一律用 `BusinessException(E_5014)` 擋非法轉換**，沒有獨立的狀態圖算式，以程式碼的 `if (status != X)` 判斷為準。**同一張結算單被同時批准／駁回時，只有一個請求會成功**（Sprint 320，DEF-442）：`approveStatement`／`rejectStatement`（與 Sprint 137 DEF-138 的 `initiateReversal`）在任何寫入之前，先用資料庫條件式更新 `updateStatusIfCurrent`（`UPDATE … WHERE id = ? AND status = 預期狀態`）搶占；搶輸的請求（影響 0 列）得到 `409 E-5014`，不留稽核、不建立 transfer、不釋放訂單。上面的 `if (status != X)` 只是循序情境的前置檢查，擋不住兩個請求同時通過它。
 2. **每筆訂單/訂房恰好結算一次**：`SettlementGenerator` 用 `UPDATE ... WHERE settled_statement_id IS NULL` 原子認領當週已完成的訂單與訂房，認領不足即回滾整張結算單（避免漏單或重複結算）；駁回時反向釋放（`releaseOrdersOfStatement`／`releaseBookingsOfStatement`／`releaseAppliedTo`），讓下一期能重新認領。
-3. **撥款與審核解耦**：`SettlementReviewer.approveStatement` 核准後立即嘗試呼叫 `TransferService.createTransferForStatement`，但**任何撥款失敗都只記錄，絕不回滾「已核准」這個 Admin 決策**（try-catch 隔離）。`Transfer` 記錄以 `settlement_statement_id` 唯一索引**原子佔位**防止併發重複撥款（佔位輸給另一個交易的那個請求以 `E-5014` 乾淨失敗，不撥款、不重查；DEF-441，Sprint 319）；賣家 Stripe Connect 帳戶未完成 onboarding 時狀態為 `SKIPPED_ONBOARDING_INCOMPLETE`（非失敗，可之後補建）。
+3. **撥款與審核解耦**：`SettlementReviewer.approveStatement` 核准後立即嘗試呼叫 `TransferService.createTransferForStatement`，但**任何撥款失敗都只記錄，絕不回滾「已核准」這個 Admin 決策**（try-catch 隔離；⚠️ 實測並不完全成立：穿出 `TransferService` 交易代理的 `RuntimeException` 會讓外層交易 rollback-only，核准連同稽核被回滾並回 `500 E-9900`，見 §7 與 DEF-443）。`Transfer` 記錄以 `settlement_statement_id` 唯一索引**原子佔位**防止併發重複撥款（佔位輸給另一個交易的那個請求在 `TransferService` 層以 `E-5014` 乾淨失敗，不撥款、不重查；DEF-441，Sprint 319。⚠️ 經 `approveStatement` 走到時，這個 `E-5014` 會被 try-catch 吞掉而變成上述 `500`，Sprint 320 實測；兩個批准如今在更早的狀態搶占就分出勝負，不會走到這裡）；賣家 Stripe Connect 帳戶未完成 onboarding 時狀態為 `SKIPPED_ONBOARDING_INCOMPLETE`（非失敗，可之後補建）。
 4. **手動補產（DEF-287，Sprint 208）**：僅 `SUPER_ADMIN`（`settlement:generate`）可用，供排程漏產補救或上線前 Stripe 測試走查；與排程共用同一套冪等與認領防護，不會重複結算同一筆訂單。
 5. **逆轉不處理真實資金收回**：`SettlementReversalService` 的「逆轉」只產生 `CreditNote` 會計沖銷記錄，**不呼叫任何 Stripe API 把錢拿回來**（Sprint 80/81 既定範圍界線）。真正的資金收回只能靠 Stripe 主動發出的 `transfer.reversed` webhook（`TransferService.handleTransferReversedWebhook`，見 [API_M05_Order.md](API_M05_Order.md) §8 Webhook 章節），兩條路徑彼此不覆寫已進入正式流程的狀態（見 §4.10 備註）。
 6. **抽成採租戶自訂費率**：`commissionAmount = GMV × Tenant.commissionRate`（四捨五入至 2 位小數），非固定費率（Sprint 80 起取代先前硬編碼 10%）。
@@ -156,6 +156,9 @@
 | 結算單不存在 | 404 | `E-5013` |
 | 非 `SUPER_ADMIN` 且結算單不屬於自己租戶 | 403 | `E-1007` |
 | 狀態不是 `PENDING_REVIEW` | 409 | `E-5014` |
+| 併發搶占輸了（另一個請求已先批准或駁回這張結算單，包含同一位管理員連點兩下；條件式更新影響 0 列，Sprint 320 DEF-442） | 409 | `E-5014` |
+
+**同時送出的批准／駁回只有先到的成功**（Sprint 320，DEF-442）：輸家的交易整個回滾——沒有稽核紀錄、沒有 transfer、沒有釋放訂單／訂房／調整單，結算單停在贏家寫下的狀態。實測（真實 PostgreSQL，兩位 `SUPER_ADMIN` 同時送出，[SettlementReviewRaceRealStackIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/SettlementReviewRaceRealStackIntegrationTest.java)）的修復前行為：批准 vs 駁回兩邊都回 `200`、後寫者覆寫先寫者（結算單 `REJECTED` 但 transfer 已建立且訂單被釋放，或相反）；批准 vs 批准的後到者回 `500 E-9900`（見 §7）。
 
 ### 4.6 `PUT /v2/admin/settlements/{statementId}/reject` — Admin 駁回
 
@@ -166,6 +169,9 @@
 | 結算單不存在 | 404 | `E-5013` |
 | 非 `SUPER_ADMIN` 且結算單不屬於自己租戶 | 403 | `E-1007` |
 | 狀態不是 `PENDING_REVIEW` | 409 | `E-5014` |
+| 併發搶占輸了（另一個請求已先批准或駁回這張結算單；條件式更新影響 0 列，Sprint 320 DEF-442） | 409 | `E-5014` |
+
+輸家不寫入駁回原因與審核人、不釋放任何訂單／訂房／調整單（釋放發生在搶占成功之後）。若輸家也「成功」，會在贏家批准（將撥款）的結算單上釋放訂單，下一期重複結算——這正是修復前批准先、駁回後的實測結果。
 
 ### 4.7 `POST /v2/admin/settlements/generate` — 手動補產結算單（DEF-287，Sprint 208）🆕
 
@@ -248,7 +254,7 @@ M07 常見錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](../
 | `E-1007` | 403 | 權限不足／非自己租戶／雙重授權角色相同 |
 | `E-2000` | 404 | 找不到租戶（§4.7） |
 | `E-5013` | 404 | 找不到結算單 |
-| `E-5014` | 409 | 無效的結算單／transfer 狀態轉換；或 transfer 佔位輸給另一個併發交易（DEF-441） |
+| `E-5014` | 409 | 無效的結算單／transfer 狀態轉換；批准／駁回／逆轉發起的併發搶占輸了（DEF-442／DEF-138）；或 transfer 佔位輸給另一個併發交易（DEF-441） |
 | `E-9008` | 400 | 數值超出範圍（§4.7：`periodEnd` 早於 `periodStart`） |
 
 ---
@@ -260,7 +266,9 @@ M07 常見錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](../
 | 真實 Stripe Connect 撥款未對真實服務驗證 | `createTransferForStatement` 呼叫 `PaymentGatewayFactory.createTransfer`，與訂單/訂房付款同樣的「未對真實 Stripe 驗證」限制（見 [API_M06_Booking.md](../API_M06_Booking.md) §7）適用於此 |
 | 逆轉不處理真實資金收回 | `CreditNote` 僅會計沖銷記錄，不呼叫任何 Stripe API 把已撥款的錢拿回來（Sprint 80/81 既定範圍外） |
 | 本文件撰寫前自動化守門未覆蓋此模組 | `ApiRouteDocDriftTest` 的 `GUARDED` 清單目前只含 M03／M04／M05／M06，本文件完成後是否納入 M07 由下一輪決定（DEF-372） |
-| `Transfer` 併發防護靠唯一索引而非樂觀鎖 | `createTransferForStatement` 的併發防護是 `saveAndFlush` 搶 `idx_transfers_settlement_statement_id` 唯一索引，非 `@Version` 樂觀鎖；重試時先刪記錄再重建，若與另一個真正併發的核准/重試交錯，理論上仍可能有極短暫的競態窗口（一般業務頻率下核准與重試不會真的同時對同一張結算單發生）。**佔位本身的競態已有真實 PostgreSQL 測試**（DEF-441，Sprint 319，`UniqueConstraintRaceRealStackIntegrationTest.createTransfer_losingTheClaimRace_failsCleanlyWithE5014`）：輸家得到明確的 `E-5014`、只剩贏家那一筆 transfer（不會撥款兩次）。原本的 catch 想「回傳贏家的記錄」而在同一個交易裡重查，PostgreSQL 在唯一約束違反後交易已中止，重查必然失敗；刻意不讓輸家改成「成功」——`approveStatement` 在自己的交易裡先把結算單改成 `APPROVED`，輸家若成功並提交，會把贏家已推進到 `PAID` 的結算單覆寫回 `APPROVED`（遺失更新，讀碼推論、未重現），讓整個操作失敗並回滾才是安全的 |
+| `Transfer` 併發防護靠唯一索引而非樂觀鎖 | `createTransferForStatement` 的併發防護是 `saveAndFlush` 搶 `idx_transfers_settlement_statement_id` 唯一索引，非 `@Version` 樂觀鎖；重試時先刪記錄再重建，若與另一個真正併發的核准/重試交錯，理論上仍可能有極短暫的競態窗口（一般業務頻率下核准與重試不會真的同時對同一張結算單發生）。**佔位本身的競態已有真實 PostgreSQL 測試**（DEF-441，Sprint 319，`UniqueConstraintRaceRealStackIntegrationTest.createTransfer_losingTheClaimRace_failsCleanlyWithE5014`）：輸家得到明確的 `E-5014`、只剩贏家那一筆 transfer（不會撥款兩次）。原本的 catch 想「回傳贏家的記錄」而在同一個交易裡重查，PostgreSQL 在唯一約束違反後交易已中止，重查必然失敗；刻意不讓輸家改成「成功」——`approveStatement` 在自己的交易裡先把結算單改成 `APPROVED`，輸家若成功並提交，會把贏家已推進到 `PAID` 的結算單覆寫回 `APPROVED`（遺失更新；Sprint 320 以突變驗證證實會發生：把批准的狀態搶占結果忽略時，後到的批准回 `200`、把 `PAID` 改回 `APPROVED`，transfer 仍是 `COMPLETED`），讓整個操作失敗並回滾才是安全的。注意這個 `E-5014` 經 `approveStatement` 走到時會被它的 try-catch 吞掉，HTTP 回應變成 `500`，見下一列（DEF-443）；Sprint 320 起兩個批准在更早的狀態搶占就分出勝負，不會走到這裡 |
+| 核准後觸發撥款的 try-catch 擋不住回滾（DEF-443，Sprint 320 實測，**未修**） | `approveStatement` 用 `try { createTransferForStatement } catch (RuntimeException) { log }` 隔離撥款失敗，但 `createTransferForStatement` 是 `@Transactional`（加入呼叫端的交易）：任何 `RuntimeException` 穿出它的交易代理時，外層交易就被標成 rollback-only；`approveStatement` 吞掉例外後正常返回，提交時 Spring 丟 `UnexpectedRollbackException`，**整個核准（含稽核）被回滾，HTTP `500 E-9900`**——與 §1.2 第 3 點「任何撥款失敗都只記錄，絕不回滾」相反。回滾時沒有資料損毀（結算單仍是 `PENDING_REVIEW`）。**實測的觸發點只有一個**：Sprint 320 修復前，批准 vs 批准的後到者撞 transfer 唯一索引（Sprint 319 的 `E-5014`），日誌依序是 `Transfer already claimed by concurrent request` → `Transfer trigger failed after settlement approval` → `UnexpectedRollbackException … marked as rollback-only` → `E-9900`。Sprint 320 的條件式搶占讓兩個批准不再走到這裡（後到者在更早處 `409`）；其他會穿出 `TransferService` 的 `RuntimeException` 依 Spring 語意應有相同結果，但沒有逐一實測 |
+| 批准／駁回的整列寫回會蓋掉同時入帳的退款扣款（DEF-444，Sprint 320 實測，**未修**） | `SettlementStatement` 沒有 `@Version` 也沒有 `@DynamicUpdate`，批准／駁回在讀取結算單後以**整列** `UPDATE` 寫回，用讀取當下的 `total_refunds`／`net_settlement_amount` 覆蓋。退款（`SettlementAdjustmentService.handleOrderRefund`，對 `PENDING`／`PENDING_REVIEW` 的結算單以原子 `UPDATE` 直接扣款）若在這個窗口內提交就被蓋掉。實測（真實 PostgreSQL，已套用 DEF-442 的搶占，一次性探針、未入庫）：批准後 `total_refunds` 仍是 `0.00`、淨額仍是 `900.00`、transfer 金額 `900.00`（賣家多拿到被退款的 100）；駁回同樣蓋掉退款，但結算單已作廢、訂單會在下一期重新結算，金額影響較小。窗口極窄（批准請求讀取結算單到寫回之間），但沒有任何保護 |
 | 撥款失敗原因可能模糊 | `TransferService.createTransferForStatement` 的 catch block 只記錄 `BusinessException` 的 `message`，若底層是其他未分類例外則不會被捕捉為 `FAILED`（會往外拋，由 `GlobalExceptionHandler` 處理，結算單仍停在 `APPROVED` 等待人工介入） |
 
 ---
@@ -273,9 +281,9 @@ M07 常見錯誤碼（完整對照表與預設訊息見 [API_Error_Codes.md](../
 | FRD | §6B 金流與結算（BR-M07-09～12 結算與撥款規則） |
 | 相關規格 | [API_M05_Order.md](API_M05_Order.md) §7（訂單付款與退款）、[API_M06_Booking.md](../API_M06_Booking.md) §4.8～4.10／4.15（訂房付款與人工退款）、[API_Error_Codes.md](../API_Error_Codes.md) |
 | 實作 | `SettlementController`、`TransferController`（`api/controller/settlement/`）；`SettlementGenerator`、`SettlementReviewer`、`SettlementReversalService`、`TransferService`、`SettlementCalculator`（`core/settlement/`） |
-| 契約測試 | [TransferControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/TransferControllerE2ETest.java)、[M07SettlementIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M07SettlementIntegrationTest.java)、[SettlementReversalServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/settlement/SettlementReversalServiceTest.java)、[SettlementReviewerTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/settlement/SettlementReviewerTest.java)、[SettlementGeneratorManualTriggerTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/settlement/SettlementGeneratorManualTriggerTest.java)、[SettlementConcurrentClaimIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/settlement/SettlementConcurrentClaimIntegrationTest.java)（原子認領併發防護） |
+| 契約測試 | [TransferControllerE2ETest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/TransferControllerE2ETest.java)、[M07SettlementIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/M07SettlementIntegrationTest.java)、[SettlementReversalServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/settlement/SettlementReversalServiceTest.java)、[SettlementReviewerTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/settlement/SettlementReviewerTest.java)、[SettlementGeneratorManualTriggerTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/settlement/SettlementGeneratorManualTriggerTest.java)、[SettlementConcurrentClaimIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/settlement/SettlementConcurrentClaimIntegrationTest.java)（原子認領併發防護）、[SettlementReviewRaceRealStackIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/SettlementReviewRaceRealStackIntegrationTest.java)（批准／駁回併發，真實 PostgreSQL，Sprint 320） |
 | 相容性 | 既有 [TC_M07_Settlement.md](../../03_testing/TC_M07_Settlement.md) 引用的 `API-M07-S-001～006` 編號在本文件保持不變 |
 
 ---
 
-**文件狀態**：v1.0（Sprint 262 新建，DEF-364）。
+**文件狀態**：v1.2（Sprint 320，DEF-442）；v1.1（Sprint 319，DEF-441）；v1.0（Sprint 262 新建，DEF-364）。

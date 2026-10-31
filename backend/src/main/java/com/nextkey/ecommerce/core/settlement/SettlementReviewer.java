@@ -96,6 +96,14 @@ public class SettlementReviewer {
             throw new BusinessException(ErrorCode.E_5014, "Only PENDING_REVIEW statements can be approved");
         }
 
+        // 🔴 併發防護（Sprint 320 DEF-442）：上面的狀態檢查只是快照，兩位管理員（或同一位連點兩下）可能同時通過它，
+        // 後寫者會無條件覆寫先寫者已提交的批准／駁回。見 SettlementStatementRepository.updateStatusIfCurrent 說明。
+        int claimed = settlementRepository.updateStatusIfCurrent(statementId,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.APPROVED);
+        if (claimed == 0) {
+            throw new BusinessException(ErrorCode.E_5014, "Only PENDING_REVIEW statements can be approved");
+        }
+
         statement.setStatus(SettlementStatus.APPROVED);
         statement.setReviewedAt(Instant.now());
         statement.setApprovedAt(Instant.now());
@@ -130,6 +138,14 @@ public class SettlementReviewer {
         checkTenantAccess(statement.getTenantId(), isSuperAdmin);
 
         if (statement.getStatus() != SettlementStatus.PENDING_REVIEW) {
+            throw new BusinessException(ErrorCode.E_5014, "Only PENDING_REVIEW statements can be rejected");
+        }
+
+        // 🔴 併發防護（Sprint 320 DEF-442）：同 approveStatement。駁回還會釋放訂單／調整單，輸家若也「成功」，
+        // 會在贏家批准（將撥款）的結算單上釋放訂單，下一期重複結算。
+        int claimed = settlementRepository.updateStatusIfCurrent(statementId,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.REJECTED);
+        if (claimed == 0) {
             throw new BusinessException(ErrorCode.E_5014, "Only PENDING_REVIEW statements can be rejected");
         }
 

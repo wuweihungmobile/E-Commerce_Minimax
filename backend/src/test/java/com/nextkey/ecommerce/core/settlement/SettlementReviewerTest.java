@@ -4,7 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.Optional;
@@ -15,6 +18,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -111,6 +115,8 @@ class SettlementReviewerTest {
         SettlementStatement statement = pendingReviewStatement(TENANT_ID);
         User admin = User.builder().id(ADMIN_ID).build();
         when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.APPROVED)).thenReturn(1);
         when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
         when(userRepository.getReferenceById(ADMIN_ID)).thenReturn(admin);
         when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder()
@@ -134,6 +140,8 @@ class SettlementReviewerTest {
         reviewer = newReviewer();
         SettlementStatement statement = pendingReviewStatement(OTHER_TENANT_ID);
         when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.APPROVED)).thenReturn(1);
         when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
         when(userRepository.getReferenceById(ADMIN_ID)).thenReturn(User.builder().id(ADMIN_ID).build());
         when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder()
@@ -165,6 +173,8 @@ class SettlementReviewerTest {
         SettlementStatement statement = pendingReviewStatement(TENANT_ID);
         User admin = User.builder().id(ADMIN_ID).build();
         when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.REJECTED)).thenReturn(1);
         when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
         when(userRepository.getReferenceById(ADMIN_ID)).thenReturn(admin);
         when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder()
@@ -177,6 +187,123 @@ class SettlementReviewerTest {
         assertThat(statement.getReviewedBy()).isEqualTo(admin);
         verify(auditService).record(eq("SETTLEMENT_REJECTED"), eq("SETTLEMENT_STATEMENT"), eq(STATEMENT_ID), eq(TENANT_ID),
                 eq("PENDING_REVIEW"), eq("REJECTED"), eq("reason"), eq(ADMIN_ID));
+    }
+
+    // ── Sprint 320 DEF-442：批准／駁回要用條件式更新搶占，輸家不寫入任何東西 ──────────────
+
+    private SettlementStatement statementWithStatus(SettlementStatus status) {
+        return SettlementStatement.builder().id(STATEMENT_ID).tenantId(TENANT_ID).status(status).build();
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-442 approveStatement: 搶占輸了（updateStatusIfCurrent 影響 0 列）→ E-5014；不儲存、不留稽核、不觸發 transfer、記憶體狀態不變")
+    void approveStatement_lostTheClaim_failsWithoutAnyWrite() {
+        reviewer = newReviewer();
+        SettlementStatement statement = pendingReviewStatement(TENANT_ID);
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.APPROVED)).thenReturn(0);
+        TenantContext.setCurrentTenant(TENANT_ID);
+
+        assertThatThrownBy(() -> reviewer.approveStatement(STATEMENT_ID, ADMIN_ID, false))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
+
+        verify(settlementRepository, never()).save(any(SettlementStatement.class));
+        verifyNoInteractions(auditService, transferService);
+        assertThat(statement.getStatus()).isEqualTo(SettlementStatus.PENDING_REVIEW);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-442 rejectStatement: 搶占輸了 → E-5014；不儲存、不留稽核、不釋放訂單／訂房／調整單（否則會在贏家批准的結算單上釋放訂單）")
+    void rejectStatement_lostTheClaim_failsWithoutAnyWriteOrRelease() {
+        reviewer = newReviewer();
+        SettlementStatement statement = pendingReviewStatement(TENANT_ID);
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.REJECTED)).thenReturn(0);
+        TenantContext.setCurrentTenant(TENANT_ID);
+
+        assertThatThrownBy(() -> reviewer.rejectStatement(STATEMENT_ID, ADMIN_ID, "reason", false))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
+
+        verify(settlementRepository, never()).save(any(SettlementStatement.class));
+        verifyNoInteractions(auditService, orderRepository, bookingRepository, adjustmentRepository);
+        assertThat(statement.getStatus()).isEqualTo(SettlementStatus.PENDING_REVIEW);
+        assertThat(statement.getRejectionReason()).isNull();
+    }
+
+    @Test
+    @DisplayName("DEF-442 approveStatement／rejectStatement: 狀態早已不是 PENDING_REVIEW → 直接 E-5014，不必打資料庫搶占（循序情境的前置檢查）")
+    void notPendingReview_failsBeforeClaiming() {
+        reviewer = newReviewer();
+        when(settlementRepository.findById(STATEMENT_ID))
+                .thenReturn(Optional.of(statementWithStatus(SettlementStatus.APPROVED)));
+        TenantContext.setCurrentTenant(TENANT_ID);
+
+        assertThatThrownBy(() -> reviewer.approveStatement(STATEMENT_ID, ADMIN_ID, false))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
+        assertThatThrownBy(() -> reviewer.rejectStatement(STATEMENT_ID, ADMIN_ID, "reason", false))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
+
+        verify(settlementRepository, never()).updateStatusIfCurrent(any(), any(), any());
+        verify(settlementRepository, never()).save(any(SettlementStatement.class));
+    }
+
+    @Test
+    @DisplayName("DEF-442 approveStatement: 搶占發生在任何寫入之前（先搶占 → 儲存 → 稽核 → 觸發 transfer）")
+    void approveStatement_claimsBeforeAnyWrite() {
+        reviewer = newReviewer();
+        SettlementStatement statement = pendingReviewStatement(TENANT_ID);
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.APPROVED)).thenReturn(1);
+        when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.getReferenceById(ADMIN_ID)).thenReturn(User.builder().id(ADMIN_ID).build());
+        when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder()
+                .id(STATEMENT_ID).status("APPROVED").build());
+        TenantContext.setCurrentTenant(TENANT_ID);
+
+        reviewer.approveStatement(STATEMENT_ID, ADMIN_ID, false);
+
+        InOrder order = inOrder(settlementRepository, auditService, transferService);
+        order.verify(settlementRepository).updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.APPROVED);
+        order.verify(settlementRepository).save(statement);
+        order.verify(auditService).record(eq("SETTLEMENT_APPROVED"), eq("SETTLEMENT_STATEMENT"), eq(STATEMENT_ID),
+                eq(TENANT_ID), eq("PENDING_REVIEW"), eq("APPROVED"), any(), eq(ADMIN_ID));
+        order.verify(transferService).createTransferForStatement(STATEMENT_ID);
+    }
+
+    @Test
+    @DisplayName("DEF-442 rejectStatement: 搶占發生在任何寫入與釋放之前（先搶占 → 儲存 → 稽核 → 釋放訂單／訂房／調整單）")
+    void rejectStatement_claimsBeforeAnyWriteOrRelease() {
+        reviewer = newReviewer();
+        SettlementStatement statement = pendingReviewStatement(TENANT_ID);
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.REJECTED)).thenReturn(1);
+        when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.getReferenceById(ADMIN_ID)).thenReturn(User.builder().id(ADMIN_ID).build());
+        when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder()
+                .id(STATEMENT_ID).status("REJECTED").build());
+        TenantContext.setCurrentTenant(TENANT_ID);
+
+        reviewer.rejectStatement(STATEMENT_ID, ADMIN_ID, "reason", false);
+
+        InOrder order = inOrder(settlementRepository, auditService, orderRepository, bookingRepository,
+                adjustmentRepository);
+        order.verify(settlementRepository).updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.REJECTED);
+        order.verify(settlementRepository).save(statement);
+        order.verify(auditService).record(eq("SETTLEMENT_REJECTED"), eq("SETTLEMENT_STATEMENT"), eq(STATEMENT_ID),
+                eq(TENANT_ID), eq("PENDING_REVIEW"), eq("REJECTED"), eq("reason"), eq(ADMIN_ID));
+        order.verify(orderRepository).releaseOrdersOfStatement(STATEMENT_ID);
+        order.verify(bookingRepository).releaseBookingsOfStatement(STATEMENT_ID);
+        order.verify(adjustmentRepository).releaseAppliedTo(STATEMENT_ID);
     }
 
     @Test

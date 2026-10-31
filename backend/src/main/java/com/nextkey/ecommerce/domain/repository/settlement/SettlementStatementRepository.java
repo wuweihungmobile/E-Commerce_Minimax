@@ -113,7 +113,12 @@ public interface SettlementStatementRepository extends JpaRepository<SettlementS
      * {@code confirmReversal} 之後比對「確認人角色須與發起人不同」時，比對到的是被覆寫後的錯誤角色，
      * 削弱雙重授權（dual authorization）的安全承諾。
      *
-     * @return 受影響筆數；1 代表本次成功搶占發起權，0 代表已被另一併發請求搶先發起
+     * <p>Sprint 320（DEF-442）：{@code SettlementReviewer} 的批准／駁回（{@code PENDING_REVIEW → APPROVED／REJECTED}）
+     * 也用它搶占，原本同樣是「讀 status → 檢查 → setStatus → save」。實測（真實 PostgreSQL，兩位管理員同時送出）：
+     * 批准 vs 駁回兩邊都回 200，後寫者覆寫先寫者——結算單 {@code REJECTED} 但 transfer 已建立且訂單被釋放（或相反）。
+     * 呼叫端必須<strong>在任何寫入之前</strong>先搶占，輸家（回傳 0）就不會留下稽核、transfer 或訂單釋放。
+     *
+     * @return 受影響筆數；1 代表本次成功搶占，0 代表已被另一併發請求搶先轉換
      */
     @Modifying(flushAutomatically = true)
     @Query("UPDATE SettlementStatement s SET s.status = :newStatus WHERE s.id = :id AND s.status = :expectedStatus")

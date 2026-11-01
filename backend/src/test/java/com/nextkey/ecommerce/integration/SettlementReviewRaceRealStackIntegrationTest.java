@@ -1,7 +1,14 @@
 package com.nextkey.ecommerce.integration;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,9 +26,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -33,10 +42,13 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nextkey.ecommerce.core.settlement.SettlementAdjustmentService;
 import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.ListingRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
+import com.nextkey.ecommerce.infrastructure.payment.PaymentGatewayFactory;
+import com.nextkey.ecommerce.infrastructure.payment.PaymentGatewayRequestResponse;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
 
 /**
@@ -50,6 +62,10 @@ import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
  *
  * <p>斷言的是一致性不變量（贏家與輸家各自的回應，加上資料庫最終狀態），不綁定修法的機制：結算單的狀態轉換不論用
  * 條件式更新或悲觀鎖，都該通過同一組斷言。
+ *
+ * <p>Sprint 321（DEF-444）補上另一類不變量：搶占只保證<strong>狀態</strong>轉換不被覆寫，批准／駁回之後的整列寫回仍會用
+ * 讀取當下的舊金額蓋掉同時入帳的退款。這類案例的對手不是另一位管理員，而是一筆真實的退款（
+ * {@code SettlementAdjustmentService.handleOrderRefund}）：它先提交，批准／駁回的整列寫回不可以把它抹掉。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -59,7 +75,12 @@ class SettlementReviewRaceRealStackIntegrationTest {
 
     private static final int AWAIT_SECONDS = 30;
     private static final String CONFLICT_CODE = "E-5014";
+    /** 種子結算單是 GMV 1000、抽成 100、淨額 900；這筆退款入帳後應該是 total_refunds 100、淨額 800（DEF-444）。 */
+    private static final BigDecimal REFUND = new BigDecimal("100.00");
 
+    /** 只有「送給 Stripe 的金額」那個案例會走到閘道（店鋪設成可撥款）；其餘案例的店鋪沒有 Connect 帳戶，撥款在到達閘道前就略過。 */
+    @MockBean private PaymentGatewayFactory paymentGatewayFactory;
+    @Autowired private SettlementAdjustmentService settlementAdjustmentService;
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
     @Autowired private JwtTokenService jwtTokenService;
@@ -253,6 +274,112 @@ class SettlementReviewRaceRealStackIntegrationTest {
         });
     }
 
+    // ── 非狀態欄位：同時入帳的退款不可被整列寫回蓋掉（DEF-444，Sprint 321）─────────────
+
+    /**
+     * 不含併發的對照：退款先提交、批准後到，批准讀到的就是退款後的金額，所以 total_refunds／淨額／transfer 金額都對。
+     * 它一失敗，下面兩個併發案例的紅燈就不能歸因於「整列寫回用了過期金額」。
+     */
+    @Test
+    @DisplayName("對照（不含併發，DEF-444）：退款先提交、批准後到 → total_refunds 100、淨額 800、transfer 金額 800、回應也是 800")
+    void sequential_refundBeforeApprove_amountsAreReduced() throws Exception {
+        Seed seed = seedPendingReview();
+        settlementAdjustmentService.handleOrderRefund(fx.store.getId(), seed.orderId, REFUND);
+
+        MockHttpServletResponse approved = approve(seed.statementId, firstAdminToken);
+
+        State state = stateOf(seed);
+        SoftAssertions.assertSoftly(softly -> {
+            softly.assertThat(approved.getStatus()).as("批准：%s", safeBody(approved)).isEqualTo(200);
+            softly.assertThat(state.status).as("最終狀態：%s", state).isEqualTo("APPROVED");
+            softly.assertThat(state.totalRefunds).as("退款扣款：%s", state).isEqualTo("100.00");
+            softly.assertThat(state.netAmount).as("淨額：%s", state).isEqualTo("800.00");
+            softly.assertThat(state.transferAmounts).as("transfer 金額：%s", state).containsExactly("800.00");
+            softly.assertThat(responseAmount(approved, "totalRefunds")).as("回應的 totalRefunds：%s", safeBody(approved))
+                    .isEqualTo("100.00");
+            softly.assertThat(responseAmount(approved, "netSettlementAmount"))
+                    .as("回應的 netSettlementAmount：%s", safeBody(approved)).isEqualTo("800.00");
+        });
+    }
+
+    /**
+     * 批准請求先讀到「沒有退款」的結算單（total_refunds 0／淨額 900），卡在搶占的 UPDATE；此時一筆退款
+     * （真實的 {@code SettlementAdjustmentService.handleOrderRefund}，對 PENDING_REVIEW 的結算單以原子 UPDATE 扣款）先提交。
+     * 批准的整列寫回不可以用讀到的舊金額把退款蓋掉，也不可以拿舊的淨額撥款——否則賣家多拿到被退款的錢。
+     */
+    @Test
+    @DisplayName("批准時同時入帳的退款（DEF-444）：total_refunds 100、淨額 800 保留；transfer 金額是 800；回應也是 800")
+    void approveWhileRefundLandsConcurrently_refundIsNotOverwritten() throws Exception {
+        Seed seed = seedPendingReview();
+
+        MockHttpServletResponse approved = requestWhileRefundLands(seed, () -> approve(seed.statementId, firstAdminToken));
+
+        State state = stateOf(seed);
+        SoftAssertions.assertSoftly(softly -> {
+            softly.assertThat(approved.getStatus()).as("批准：%s", safeBody(approved)).isEqualTo(200);
+            softly.assertThat(state.status).as("最終狀態：%s", state).isEqualTo("APPROVED");
+            softly.assertThat(state.reviewedBy).as("審核人：%s", state).isEqualTo(firstAdmin.getId());
+            softly.assertThat(state.totalRefunds).as("同時入帳的退款不可被蓋掉：%s", state).isEqualTo("100.00");
+            softly.assertThat(state.netAmount).as("淨額要扣掉退款：%s", state).isEqualTo("800.00");
+            softly.assertThat(state.transferAmounts).as("撥款金額要用退款後的淨額：%s", state).containsExactly("800.00");
+            softly.assertThat(responseAmount(approved, "totalRefunds")).as("回應的 totalRefunds：%s", safeBody(approved))
+                    .isEqualTo("100.00");
+            softly.assertThat(responseAmount(approved, "netSettlementAmount"))
+                    .as("回應的 netSettlementAmount：%s", safeBody(approved)).isEqualTo("800.00");
+        });
+    }
+
+    /**
+     * 上面的案例斷言資料庫裡的金額；這個案例量到<strong>錢的出口</strong>：退款在批准期間入帳時，送給 Stripe 的撥款金額必須是退款後的
+     * 淨額（800.00＝80000 分）。修復前批准會用過期的 900.00 撥款，賣家多拿到被退款的 100——Sprint 320 只能「依構造推論」
+     * （測試租戶的 transfer 一律略過、沒有走到閘道），這裡讓店鋪可撥款，用 {@code @MockBean} 的閘道直接看它收到什麼。
+     */
+    @Test
+    @DisplayName("批准時同時入帳的退款（DEF-444）：送給 Stripe 的撥款金額是退款後的淨額 80000 分（不是過期的 90000 分）")
+    void approveWhileRefundLandsConcurrently_stripeIsAskedToTransferTheReducedNet() throws Exception {
+        Seed seed = seedPendingReview();
+        String connectAccountId = makeStorePayoutReady();
+        when(paymentGatewayFactory.createTransfer(eq("STRIPE"), eq(connectAccountId), anyLong(), any(), any()))
+                .thenReturn(PaymentGatewayRequestResponse.TransferResult.builder().transferId("tr_it_refund_race").build());
+
+        MockHttpServletResponse approved = requestWhileRefundLands(seed, () -> approve(seed.statementId, firstAdminToken));
+
+        ArgumentCaptor<Long> cents = ArgumentCaptor.forClass(Long.class);
+        verify(paymentGatewayFactory).createTransfer(eq("STRIPE"), eq(connectAccountId), cents.capture(), eq("TWD"),
+                eq(seed.statementId.toString()));
+        State state = stateOf(seed);
+        SoftAssertions.assertSoftly(softly -> {
+            softly.assertThat(approved.getStatus()).as("批准：%s", safeBody(approved)).isEqualTo(200);
+            softly.assertThat(cents.getValue()).as("送給 Stripe 的金額（分）：%s", state).isEqualTo(80000L);
+            softly.assertThat(state.status).as("撥款完成：%s", state).isEqualTo("PAID");
+            softly.assertThat(state.totalRefunds).as("退款扣款：%s", state).isEqualTo("100.00");
+            softly.assertThat(state.transferAmounts).as("transfer 金額：%s", state).containsExactly("800.00");
+        });
+    }
+
+    /**
+     * 駁回同樣會整列寫回。結算單作廢、訂單下一期重新結算，金額影響比批准小，但「別人已提交的原子更新被我蓋掉」的不變量一樣。
+     */
+    @Test
+    @DisplayName("駁回時同時入帳的退款（DEF-444）：total_refunds 100、淨額 800 保留；訂單已釋放；審核人與駁回原因是這位管理員的")
+    void rejectWhileRefundLandsConcurrently_refundIsNotOverwritten() throws Exception {
+        Seed seed = seedPendingReview();
+
+        MockHttpServletResponse rejected = requestWhileRefundLands(seed,
+                () -> reject(seed.statementId, firstAdminToken, "金額有疑慮"));
+
+        State state = stateOf(seed);
+        SoftAssertions.assertSoftly(softly -> {
+            softly.assertThat(rejected.getStatus()).as("駁回：%s", safeBody(rejected)).isEqualTo(200);
+            softly.assertThat(state.status).as("最終狀態：%s", state).isEqualTo("REJECTED");
+            softly.assertThat(state.reviewedBy).as("審核人：%s", state).isEqualTo(firstAdmin.getId());
+            softly.assertThat(state.rejectionReason).as("駁回原因：%s", state).isEqualTo("金額有疑慮");
+            softly.assertThat(state.orderClaimedByStatement).as("訂單已釋放：%s", state).isFalse();
+            softly.assertThat(state.totalRefunds).as("同時入帳的退款不可被蓋掉：%s", state).isEqualTo("100.00");
+            softly.assertThat(state.netAmount).as("淨額要扣掉退款：%s", state).isEqualTo("800.00");
+        });
+    }
+
     // ── 輔助：競態編排 ─────────────────────────────────────────────
 
     private interface Call {
@@ -291,6 +418,36 @@ class SettlementReviewRaceRealStackIntegrationTest {
         softly.assertThat(code(outcome.second)).as("後到的請求要輸：%s", safeBody(outcome.second)).isEqualTo(CONFLICT_CODE);
     }
 
+    /**
+     * 一筆退款先寫入結算單那一列（真實的退款服務、持鎖、尚未提交）；{@code call} 的請求先讀到退款前的金額、卡在寫入；
+     * 然後退款提交。回傳那個請求的回應。請求「已讀過舊金額」因此是確定的（它被觀察到卡住時，退款還沒提交）。
+     */
+    private MockHttpServletResponse requestWhileRefundLands(final Seed seed, final Call call) throws Exception {
+        HeldTransaction refund = holdTransaction(jdbc ->
+                settlementAdjustmentService.handleOrderRefund(fx.store.getId(), seed.orderId, REFUND));
+        try {
+            Future<MockHttpServletResponse> request = pool.submit(call::run);
+            awaitRequestsBlockedOnStatement(1);
+            Assertions.assertThat(request.isDone()).as("請求應該卡在退款交易持有的結算單那一列上").isFalse();
+            refund.commit();
+            return request.get(AWAIT_SECONDS, TimeUnit.SECONDS);
+        } finally {
+            refund.release();
+        }
+    }
+
+    /** 讓種子結算單所屬的店鋪成為可撥款的：Connect 帳戶就緒，且撥款功能開關開啟。回傳 Connect 帳戶 id。 */
+    private String makeStorePayoutReady() {
+        String accountId = "acct_it_refund_race_" + System.nanoTime();
+        jdbcTemplate.update("UPDATE tenants SET stripe_connect_account_id = ?, connect_onboarding_status = 'COMPLETE', "
+                + "connect_charges_enabled = TRUE, connect_payouts_enabled = TRUE WHERE id = ?",
+                accountId, fx.store.getId());
+        jdbcTemplate.update("INSERT INTO tenant_feature_toggles (id, tenant_id, feature_key, is_enabled, created_at, "
+                + "updated_at) VALUES (?, ?, 'STRIPE_TRANSFER_ENABLED', TRUE, NOW(), NOW())",
+                UUID.randomUUID(), fx.store.getId());
+        return accountId;
+    }
+
     // ── 輔助：資料 ────────────────────────────────────────────────
 
     private record Seed(UUID statementId, UUID orderId) { }
@@ -326,20 +483,41 @@ class SettlementReviewRaceRealStackIntegrationTest {
         return new Seed(statementId, orderId);
     }
 
+    /** 金額一律轉成兩位小數的字串（{@code "800.00"}），失敗訊息讀起來直接，也避開 {@code BigDecimal} 的 scale 比較陷阱。 */
     private record State(String status, UUID reviewedBy, String rejectionReason, List<String> transferStatuses,
-                         boolean orderClaimedByStatement, long approvedAudits, long rejectedAudits) { }
+                         boolean orderClaimedByStatement, long approvedAudits, long rejectedAudits,
+                         String totalRefunds, String netAmount, List<String> transferAmounts) { }
 
     private State stateOf(final Seed seed) {
         var row = jdbcTemplate.queryForMap(
-                "SELECT status, reviewed_by, rejection_reason FROM settlement_statements WHERE id = ?", seed.statementId);
+                "SELECT status, reviewed_by, rejection_reason, total_refunds, net_settlement_amount "
+                        + "FROM settlement_statements WHERE id = ?", seed.statementId);
         List<String> transfers = jdbcTemplate.queryForList(
                 "SELECT status FROM transfers WHERE settlement_statement_id = ? ORDER BY created_at",
                 String.class, seed.statementId);
+        List<String> transferAmounts = jdbcTemplate.queryForList(
+                "SELECT transfer_amount FROM transfers WHERE settlement_statement_id = ? ORDER BY created_at",
+                BigDecimal.class, seed.statementId).stream().map(SettlementReviewRaceRealStackIntegrationTest::money).toList();
         UUID claimedBy = jdbcTemplate.queryForObject(
                 "SELECT settled_statement_id FROM orders WHERE id = ?", UUID.class, seed.orderId);
         return new State((String) row.get("status"), (UUID) row.get("reviewed_by"), (String) row.get("rejection_reason"),
                 transfers, seed.statementId.equals(claimedBy), auditCount(seed, "SETTLEMENT_APPROVED"),
-                auditCount(seed, "SETTLEMENT_REJECTED"));
+                auditCount(seed, "SETTLEMENT_REJECTED"), money(row.get("total_refunds")), money(row.get("net_settlement_amount")),
+                transferAmounts);
+    }
+
+    private static String money(final Object amount) {
+        return amount == null ? "<null>" : new BigDecimal(amount.toString()).setScale(2, RoundingMode.HALF_UP).toPlainString();
+    }
+
+    /** 回應 {@code data} 裡的金額欄位（兩位小數字串）；欄位不存在或回應不是 JSON 時回標記字串，讓斷言訊息自己說明。 */
+    private String responseAmount(final MockHttpServletResponse response, final String field) {
+        try {
+            JsonNode node = objectMapper.readTree(safeBody(response)).path("data").path(field);
+            return node.isMissingNode() || node.isNull() ? "<missing>" : money(node.decimalValue());
+        } catch (java.io.IOException e) {
+            return "<not json>";
+        }
     }
 
     private long auditCount(final Seed seed, final String action) {

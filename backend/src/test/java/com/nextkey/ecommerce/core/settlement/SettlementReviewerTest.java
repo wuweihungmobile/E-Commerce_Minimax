@@ -1,17 +1,23 @@
 package com.nextkey.ecommerce.core.settlement;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.UUID;
+
+import jakarta.persistence.EntityManager;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -24,6 +30,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionSynchronizationUtils;
 
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementListResponse;
@@ -70,6 +80,9 @@ class SettlementReviewerTest {
     @Mock
     private com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository adjustmentRepository;
 
+    @Mock
+    private EntityManager entityManager;
+
     private SettlementReviewer reviewer;
 
     private static final UUID TENANT_ID = UUID.randomUUID();
@@ -78,13 +91,20 @@ class SettlementReviewerTest {
     private static final UUID ADMIN_ID = UUID.randomUUID();
 
     private SettlementReviewer newReviewer() {
-        return new SettlementReviewer(settlementRepository, mapper, transferService, userRepository, auditService,
-                orderRepository, bookingRepository, adjustmentRepository);
+        SettlementReviewer created = new SettlementReviewer(settlementRepository, mapper, transferService, userRepository,
+                auditService, orderRepository, bookingRepository, adjustmentRepository);
+        // EntityManager 是 @PersistenceContext 欄位注入（不在建構子），比照 PaymentStateServiceBookingTest 的作法
+        ReflectionTestUtils.setField(created, "entityManager", entityManager);
+        return created;
     }
 
     @AfterEach
     void tearDown() {
         TenantContext.clear();
+        // DEF-443 的案例會手動啟用交易同步；案例中途失敗也不能把它留給下一個案例
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     private SettlementStatement pendingReviewStatement(UUID tenantId) {
@@ -129,7 +149,7 @@ class SettlementReviewerTest {
         assertThat(statement.getStatus()).isEqualTo(SettlementStatus.APPROVED);
         assertThat(statement.getReviewedBy()).isEqualTo(admin);
         assertThat(statement.getApprovedAt()).isNotNull();
-        verify(transferService).createTransferForStatement(STATEMENT_ID);
+        verify(transferService).createTransferAfterApproval(STATEMENT_ID);
         verify(auditService).record(eq("SETTLEMENT_APPROVED"), eq("SETTLEMENT_STATEMENT"), eq(STATEMENT_ID), eq(TENANT_ID),
                 eq("PENDING_REVIEW"), eq("APPROVED"), any(), eq(ADMIN_ID));
     }
@@ -275,7 +295,7 @@ class SettlementReviewerTest {
         order.verify(settlementRepository).save(statement);
         order.verify(auditService).record(eq("SETTLEMENT_APPROVED"), eq("SETTLEMENT_STATEMENT"), eq(STATEMENT_ID),
                 eq(TENANT_ID), eq("PENDING_REVIEW"), eq("APPROVED"), any(), eq(ADMIN_ID));
-        order.verify(transferService).createTransferForStatement(STATEMENT_ID);
+        order.verify(transferService).createTransferAfterApproval(STATEMENT_ID);
     }
 
     @Test
@@ -304,6 +324,150 @@ class SettlementReviewerTest {
         order.verify(orderRepository).releaseOrdersOfStatement(STATEMENT_ID);
         order.verify(bookingRepository).releaseBookingsOfStatement(STATEMENT_ID);
         order.verify(adjustmentRepository).releaseAppliedTo(STATEMENT_ID);
+    }
+
+    // ── Sprint 321 DEF-444：搶占成功後要重新載入，整列寫回才不會蓋掉同時入帳的退款 ─────────────
+
+    /**
+     * 真實的 {@code EntityManager.refresh} 會用資料庫那一列<strong>取代</strong>記憶體狀態（包含丟棄尚未寫出的修改）。
+     * mock 的 refresh 什麼都不做，測不出「refresh 放在哪裡」——這裡讓它照真實語意取代：搶占之後資料庫是目標狀態、
+     * 還沒有審核欄位，而且同時入帳的退款已把金額改成 total_refunds 100／淨額 800。
+     */
+    private void stubRefreshAsReloadFromDatabase(SettlementStatement statement, SettlementStatus statusAfterClaim) {
+        doAnswer(inv -> {
+            SettlementStatement s = inv.getArgument(0);
+            s.setStatus(statusAfterClaim);
+            s.setReviewedBy(null);
+            s.setReviewedAt(null);
+            s.setApprovedAt(null);
+            s.setRejectionReason(null);
+            s.setTotalRefunds(new BigDecimal("100.00"));
+            s.setNetSettlementAmount(new BigDecimal("800.00"));
+            return null;
+        }).when(entityManager).refresh(statement);
+    }
+
+    private SettlementStatement statementWithStaleAmounts() {
+        SettlementStatement statement = pendingReviewStatement(TENANT_ID);
+        statement.setTotalRefunds(new BigDecimal("0.00"));
+        statement.setNetSettlementAmount(new BigDecimal("900.00"));
+        return statement;
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-444 approveStatement: 搶占成功後、任何 setter 之前先 refresh——寫回的實體帶資料庫的最新金額，也帶這次批准的審核欄位")
+    void approveStatement_refreshesAfterClaimBeforeAnySetter() {
+        reviewer = newReviewer();
+        SettlementStatement statement = statementWithStaleAmounts();
+        User admin = User.builder().id(ADMIN_ID).build();
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.APPROVED)).thenReturn(1);
+        when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.getReferenceById(ADMIN_ID)).thenReturn(admin);
+        when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder()
+                .id(STATEMENT_ID).status("APPROVED").build());
+        stubRefreshAsReloadFromDatabase(statement, SettlementStatus.APPROVED);
+        TenantContext.setCurrentTenant(TENANT_ID);
+
+        reviewer.approveStatement(STATEMENT_ID, ADMIN_ID, false);
+
+        InOrder order = inOrder(settlementRepository, entityManager);
+        order.verify(settlementRepository).updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.APPROVED);
+        order.verify(entityManager).refresh(statement);
+        order.verify(settlementRepository).save(statement);
+        assertThat(statement.getTotalRefunds()).as("寫回的退款扣款是資料庫的最新值，不是讀取當下的舊值").isEqualByComparingTo("100.00");
+        assertThat(statement.getNetSettlementAmount()).as("寫回的淨額是資料庫的最新值").isEqualByComparingTo("800.00");
+        assertThat(statement.getReviewedBy()).as("refresh 在 setter 之前，沒有把審核人丟掉").isEqualTo(admin);
+        assertThat(statement.getApprovedAt()).as("refresh 在 setter 之前，沒有把批准時間丟掉").isNotNull();
+        assertThat(statement.getStatus()).isEqualTo(SettlementStatus.APPROVED);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-444 rejectStatement: 搶占成功後、任何 setter 之前先 refresh——寫回的實體帶資料庫的最新金額，也帶這次駁回的審核欄位與原因")
+    void rejectStatement_refreshesAfterClaimBeforeAnySetter() {
+        reviewer = newReviewer();
+        SettlementStatement statement = statementWithStaleAmounts();
+        User admin = User.builder().id(ADMIN_ID).build();
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.REJECTED)).thenReturn(1);
+        when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.getReferenceById(ADMIN_ID)).thenReturn(admin);
+        when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder()
+                .id(STATEMENT_ID).status("REJECTED").build());
+        stubRefreshAsReloadFromDatabase(statement, SettlementStatus.REJECTED);
+        TenantContext.setCurrentTenant(TENANT_ID);
+
+        reviewer.rejectStatement(STATEMENT_ID, ADMIN_ID, "金額有疑慮", false);
+
+        InOrder order = inOrder(settlementRepository, entityManager);
+        order.verify(settlementRepository).updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.REJECTED);
+        order.verify(entityManager).refresh(statement);
+        order.verify(settlementRepository).save(statement);
+        assertThat(statement.getTotalRefunds()).as("寫回的退款扣款是資料庫的最新值，不是讀取當下的舊值").isEqualByComparingTo("100.00");
+        assertThat(statement.getNetSettlementAmount()).as("寫回的淨額是資料庫的最新值").isEqualByComparingTo("800.00");
+        assertThat(statement.getReviewedBy()).as("refresh 在 setter 之前，沒有把審核人丟掉").isEqualTo(admin);
+        assertThat(statement.getRejectionReason()).as("refresh 在 setter 之前，沒有把駁回原因丟掉").isEqualTo("金額有疑慮");
+        assertThat(statement.getStatus()).isEqualTo(SettlementStatus.REJECTED);
+    }
+
+    // ── Sprint 321 DEF-443：撥款觸發在核准交易「提交之後」才執行，失敗不影響核准 ──────────────
+
+    private void stubApprovableStatement() {
+        SettlementStatement statement = pendingReviewStatement(TENANT_ID);
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING_REVIEW, SettlementStatus.APPROVED)).thenReturn(1);
+        when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.getReferenceById(ADMIN_ID)).thenReturn(User.builder().id(ADMIN_ID).build());
+        when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder()
+                .id(STATEMENT_ID).status("APPROVED").build());
+        TenantContext.setCurrentTenant(TENANT_ID);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-443 approveStatement: 有交易時，撥款要等核准交易提交（afterCommit）之後才觸發——提交前不可撥款")
+    void approveStatement_triggersTransferOnlyAfterTheTransactionCommits() {
+        reviewer = newReviewer();
+        stubApprovableStatement();
+        TransactionSynchronizationManager.initSynchronization();
+
+        reviewer.approveStatement(STATEMENT_ID, ADMIN_ID, false);
+
+        verifyNoInteractions(transferService);
+        TransactionSynchronizationUtils.triggerAfterCommit();
+        verify(transferService).createTransferAfterApproval(STATEMENT_ID);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-443 approveStatement: 核准交易回滾（沒有 afterCommit）→ 不可撥款（沒有提交的核准不能付錢）")
+    void approveStatement_rolledBackTransaction_neverTriggersTransfer() {
+        reviewer = newReviewer();
+        stubApprovableStatement();
+        TransactionSynchronizationManager.initSynchronization();
+
+        reviewer.approveStatement(STATEMENT_ID, ADMIN_ID, false);
+        TransactionSynchronizationUtils.triggerAfterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+
+        verifyNoInteractions(transferService);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-443 approveStatement: 撥款觸發丟出例外 → 只記錄，不外洩（afterCommit 的例外會讓已提交的核准變成 HTTP 500）")
+    void approveStatement_transferTriggerFailure_isLoggedNotThrown() {
+        reviewer = newReviewer();
+        stubApprovableStatement();
+        doThrow(new IllegalStateException("模擬閘道連線層當機")).when(transferService).createTransferAfterApproval(STATEMENT_ID);
+        TransactionSynchronizationManager.initSynchronization();
+
+        SettlementStatementResponse response = reviewer.approveStatement(STATEMENT_ID, ADMIN_ID, false);
+
+        assertThatCode(TransactionSynchronizationUtils::triggerAfterCommit).doesNotThrowAnyException();
+        verify(transferService).createTransferAfterApproval(STATEMENT_ID);
+        assertThat(response.getStatus()).as("回應是核准決定的快照").isEqualTo("APPROVED");
     }
 
     @Test

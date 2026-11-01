@@ -11,6 +11,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
@@ -36,8 +37,12 @@ import lombok.extern.slf4j.Slf4j;
  * （Sprint 80，AI-2416 Phase D-2）。
  *
  * <p>由 {@link SettlementReviewer#approveStatement} 於狀態轉換完成後呼叫，實作該類別 Javadoc
- * 早已記載但從未實作的 {@code APPROVED → PAID} 轉換。呼叫端必須以 try-catch 隔離本服務的例外，
- * 任何 transfer 失敗絕不可回滾「審核通過」這個既定的 Admin 決策。
+ * 早已記載但從未實作的 {@code APPROVED → PAID} 轉換。任何 transfer 失敗絕不可回滾「審核通過」這個既定的 Admin 決策。
+ *
+ * <p>Sprint 321（DEF-443）：原本靠呼叫端的 try-catch 隔離，但本服務的方法是 {@code @Transactional}（預設 REQUIRED，
+ * 加入呼叫端的交易）：任何 {@code RuntimeException} 穿出交易代理時，呼叫端的交易就被標成 rollback-only，吞掉例外也沒用，
+ * 提交時 {@code UnexpectedRollbackException}，核准連同稽核整個回滾（Sprint 320、321 在兩個不同的觸發點都實測到）。
+ * 現在由核准交易<strong>提交之後</strong>透過 {@link #createTransferAfterApproval} 在自己的新交易裡執行。
  */
 @Slf4j
 @Service
@@ -137,7 +142,22 @@ public class TransferService {
     }
 
     /**
+     * 核准提交之後觸發撥款（DEF-443，Sprint 321）。由 {@link SettlementReviewer#approveStatement} 在核准交易的
+     * {@code afterCommit} 回呼裡呼叫：那時核准的交易雖已提交、資源卻仍綁在執行緒上，用預設的 {@code REQUIRED} 會加入那個
+     * 已完成的交易，撥款的寫入永遠不會被提交（比照 {@code BuyerNotificationService}），所以必須 {@code REQUIRES_NEW}。
+     * 撥款失敗（任何例外）只回滾撥款自己的寫入——含 transfer 佔位，不會留下卡在 {@code PENDING} 的記錄擋住之後的重試——
+     * 核准已經提交、不受影響；呼叫端負責記錄例外。非預期失敗之後結算單停在 {@code APPROVED}、沒有 transfer 記錄，
+     * 可用 {@link #retryFailedTransfer} 補撥款。
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Transfer createTransferAfterApproval(final UUID statementId) {
+        return createTransferForStatement(statementId);
+    }
+
+    /**
      * 管理端重試失敗/前置條件未滿足的 transfer（限自己租戶的 ADMIN，或 SUPER_ADMIN 跨租戶）。
+     * Sprint 321（DEF-443）起也接受「已核准（{@code APPROVED}）但完全沒有 transfer 記錄」的結算單——核准之後的撥款觸發
+     * 本身失敗（非預期例外，連佔位都沒留下）就是這個狀態，沒有記錄可「清掉再重來」，直接再觸發一次。
      */
     @Transactional
     public Transfer retryFailedTransfer(final UUID statementId, final boolean isSuperAdmin) {
@@ -147,8 +167,13 @@ public class TransferService {
         checkTenantAccess(statement.getTenantId(), isSuperAdmin);
 
         Transfer existing = transferRepository.findBySettlementStatementId(statementId).orElse(null);
-        if (existing == null || (existing.getStatus() != TransferStatus.FAILED
-                && existing.getStatus() != TransferStatus.SKIPPED_ONBOARDING_INCOMPLETE)) {
+        if (existing == null) {
+            // createTransferForStatement 冪等，而且自己擋非 APPROVED 的結算單（E-5014）——尚未核准、已駁回…的結算單
+            // 沒有 transfer 並不代表撥款失敗，不會被觸發；併發的重試靠 transfer 佔位的唯一索引只讓一個真的撥款（DEF-441）。
+            return createTransferForStatement(statementId);
+        }
+        if (existing.getStatus() != TransferStatus.FAILED
+                && existing.getStatus() != TransferStatus.SKIPPED_ONBOARDING_INCOMPLETE) {
             throw new BusinessException(ErrorCode.E_5014, "Only FAILED or SKIPPED transfers can be retried");
         }
 

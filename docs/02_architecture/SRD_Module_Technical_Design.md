@@ -1325,7 +1325,7 @@ public class TransferService {
                                                                                     REVERSED
 ```
 
-**核准→撥款的同步觸發與失敗隔離**：`SettlementReviewer.approveStatement` 完成狀態轉換與稽核紀錄寫入後，在同一次呼叫內以 `try { transferService.createTransferForStatement(...) } catch (RuntimeException e) { log.error(...) }` 呼叫撥款——**任何撥款例外都只記錄，不會回滾或影響已持久化的「核准」決策**，也不會讓 `PUT .../approve` 的 HTTP 回應失敗；撥款的實際結果需另外呼叫 `GET /v2/transfers` 或結算單詳情查詢。
+**核准→撥款的提交後觸發與失敗隔離**（Sprint 321，DEF-443）：`SettlementReviewer.approveStatement` 完成狀態轉換與稽核紀錄寫入後，註冊 `afterCommit` 回呼，在**核准交易提交之後**才呼叫 `transferService.createTransferAfterApproval(...)`（`REQUIRES_NEW`，自己的新交易）——**任何撥款例外都只記錄，不會回滾或影響已提交的「核准」決策**，也不會讓 `PUT .../approve` 的 HTTP 回應失敗。修復前撥款在核准的交易裡同步執行並用 try-catch 隔離，但 `createTransferForStatement` 是 `@Transactional`（加入呼叫端的交易），穿出它的例外會讓核准的交易 rollback-only、核准連同稽核整個回滾並回 `500`（Sprint 320、321 在兩個不同觸發點實測）。回應的 `data.status` 是核准當下的 `APPROVED`；撥款的實際結果需另外呼叫 `GET /v2/transfers` 或結算單詳情查詢；非預期失敗後結算單停在 `APPROVED`、沒有 transfer 記錄，用 `POST /v2/admin/transfers/{statementId}/retry` 補撥款。
 
 **逆轉與 Stripe webhook 的交錯**：`TransferService.handleTransferReversedWebhook` 處理 Stripe 主動送達的 `transfer.reversed` 事件，只有結算單仍是 `PAID`（webhook 延遲送達前的預期狀態）才會被改回 `FAILED`；若雙重授權逆轉流程已將其推進到 `REVERSAL_PENDING`／`REVERSED`，則不覆寫，只記錄 info log——避免 webhook 無條件覆寫掉已簽核或已完成的人工決策。
 

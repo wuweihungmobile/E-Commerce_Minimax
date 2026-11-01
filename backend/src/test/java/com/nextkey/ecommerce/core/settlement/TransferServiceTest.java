@@ -18,6 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
@@ -289,6 +291,71 @@ class TransferServiceTest {
         assertThatThrownBy(() -> transferService.retryFailedTransfer(STATEMENT_ID, false))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
+    }
+
+    // ── Sprint 321 DEF-443：核准提交之後觸發撥款；非預期失敗後（APPROVED、沒有 transfer）可補撥款 ────────
+
+    @Test
+    @DisplayName("🔴 DEF-443 createTransferAfterApproval: 必須 REQUIRES_NEW——在 afterCommit 回呼裡用 REQUIRED 會加入已完成的核准交易，撥款的寫入永遠不會被提交")
+    void createTransferAfterApproval_runsInItsOwnNewTransaction() throws NoSuchMethodException {
+        Transactional transactional = TransferService.class
+                .getMethod("createTransferAfterApproval", UUID.class).getAnnotation(Transactional.class);
+
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
+    }
+
+    @Test
+    @DisplayName("DEF-443 createTransferAfterApproval: 實際做事的仍是 createTransferForStatement（冪等：已有記錄直接回傳）")
+    void createTransferAfterApproval_delegatesToCreateTransferForStatement() {
+        transferService = newService();
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(approvedStatement()));
+        Transfer existing = Transfer.builder().id(UUID.randomUUID()).settlementStatementId(STATEMENT_ID)
+                .status(TransferStatus.COMPLETED).build();
+        when(transferRepository.findBySettlementStatementId(STATEMENT_ID)).thenReturn(Optional.of(existing));
+
+        assertThat(transferService.createTransferAfterApproval(STATEMENT_ID)).isSameAs(existing);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-443 retryFailedTransfer: 已核准（APPROVED）但完全沒有 transfer 記錄（撥款觸發本身失敗）→ 直接觸發撥款，沒有舊記錄可刪")
+    void retryFailedTransfer_approvedWithoutAnyTransfer_triggersThePayout() {
+        transferService = newService();
+        SettlementStatement statement = approvedStatement();
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(transferRepository.findBySettlementStatementId(STATEMENT_ID)).thenReturn(Optional.empty());
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(readyTenant()));
+        when(featureToggleService.isFeatureEnabledForTenant(TENANT_ID, "STRIPE_TRANSFER_ENABLED")).thenReturn(true);
+        when(paymentGatewayFactory.createTransfer(anyString(), anyString(), any(Long.class), anyString(), anyString()))
+                .thenReturn(PaymentGatewayRequestResponse.TransferResult.builder().transferId("tr_after_failure").build());
+        when(transferRepository.saveAndFlush(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(transferRepository.save(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Transfer result = transferService.retryFailedTransfer(STATEMENT_ID, true);
+
+        assertThat(result.getStatus()).isEqualTo(TransferStatus.COMPLETED);
+        assertThat(result.getStripeTransferId()).isEqualTo("tr_after_failure");
+        assertThat(statement.getStatus()).isEqualTo(SettlementStatus.PAID);
+        verify(transferRepository, org.mockito.Mockito.never()).delete(any(Transfer.class));
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-443 retryFailedTransfer: 沒有 transfer、結算單也不是 APPROVED（尚未核准／已駁回…）→ E-5014，絕不撥款（沒有 transfer 不等於撥款失敗）")
+    void retryFailedTransfer_noTransferAndNotApproved_throwsWithoutPayout() {
+        transferService = newService();
+        SettlementStatement statement = approvedStatement();
+        statement.setStatus(SettlementStatus.PENDING_REVIEW);
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(transferRepository.findBySettlementStatementId(STATEMENT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> transferService.retryFailedTransfer(STATEMENT_ID, true))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
+
+        verify(paymentGatewayFactory, org.mockito.Mockito.never())
+                .createTransfer(anyString(), anyString(), any(Long.class), anyString(), anyString());
+        verify(transferRepository, org.mockito.Mockito.never()).saveAndFlush(any(Transfer.class));
     }
 
     @Test

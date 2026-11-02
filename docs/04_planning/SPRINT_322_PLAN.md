@@ -183,7 +183,7 @@
 
 ## 10. 狀態
 
-**文件守門測試**（`DocMarkdownFenceTest`、`ApiRouteDocDriftTest`、`ErrorCodeDocDriftTest`、`TechStackDocDriftTest`）在文件定稿後執行：4 個類別共 **14 個案例，0 失敗**（`ApiRouteDocDriftTest` 2、`DocMarkdownFenceTest` 9、`TechStackDocDriftTest` 2、`ErrorCodeDocDriftTest` 1），`BUILD SUCCESS`。
+**文件守門測試**（`DocMarkdownFenceTest`、`ApiRouteDocDriftTest`、`ErrorCodeDocDriftTest`、`TechStackDocDriftTest`）在文件定稿後執行：4 個類別共 **14 個案例，0 失敗**（`ApiRouteDocDriftTest` 2、`DocMarkdownFenceTest` 9、`TechStackDocDriftTest` 2、`ErrorCodeDocDriftTest` 1），`BUILD SUCCESS`；計畫書更正 commit 之後與 push 結果回填之後各再執行一次，每次都是 14 案例 0 失敗。
 
 見 [RELEASE_TRACKER.md](RELEASE_TRACKER.md) 的 Sprint 322 列。本輪的 commit 範圍：生產程式碼 `SettlementStatementRepository`（`applyRefundDeduction` 加狀態條件、新增 `findStatusById`）、`SettlementAdjustmentService`（0 列時重讀狀態、依同一張表分流）、`SettlementReviewer`（`submitForReview` 搶占＋`refresh`）；測試 `SettlementReviewRaceRealStackIntegrationTest`（10→18）、`SettlementAdjustmentServiceTest`（18→26）、`SettlementReviewerTest`（19→23）；文件 `API_M07_Settlement.md`（v1.4）、`DEFERRED_ITEMS_TRACKER.md`（`DEF-445`／`DEF-446` 已完成、新增 `DEF-447`／`DEF-448`）、`RELEASE_TRACKER.md`、本文件。
 
@@ -191,4 +191,4 @@
 
 **下次無 `==>` 的『請繼續』我可以直接做的**：`DEF-447`（量測題：每條路徑先用本輪的競態編排在未修改的程式碼上量成事實，屬實才修）與 `DEF-448` 的量測（先以同形唯一索引模擬 `V36`；修法的編號格式屬產品／會計決策，要你拍板）。另有兩個**可選的量測**（不是缺陷，需要你決定值不值得）：另一間店鋪的店主打九個端點、編輯頁進場守門（見 [SPRINT_318_PLAN.md](SPRINT_318_PLAN.md) §10）。
 
-**push 與雲端 CI**：本輪 commit 後依 2026-10-29 長期授權直接 push（連同 Sprint 321 的純文件回填 commit `6eca29c0`）；push 結果與雲端 CI 於 push 後回填。
+**push 與雲端 CI**：功能 commit `db6841df` 與計畫書更正 commit `df7c84f5`（push 前自審抓到四處說得比證據多的敘述，見該 commit 訊息）已 push（`26cbb4cd..df7c84f5`，連同 Sprint 321 的純文件回填 commit `6eca29c0`），依使用者 2026-10-29 的長期授權（『做完一輪後，直接 Commit + Push to main』）直接 push，沒有再詢問；pre-commit（Checkstyle、編譯、核心測試、secret 掃描）與 pre-push 輕量守門（act 單元、前端、schema 漂移無漂移）通過，沒有使用 `--no-verify`。**雲端 CI 全綠**：run [41385105346](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/41385105346)，三個 job 皆 success（Backend Unit Tests 2 分 45 秒／Frontend Lint & Build 1 分 54 秒／Backend Integration Tests & Package 10 分 52 秒），整個 run 13 分 41 秒（2026-11-02 03:49:05Z～04:02:46Z），以 `gh run view --json status,conclusion,headSha,jobs` 交叉確認 headSha 為 `df7c84f5`，並下載整合 job 的完整雲端日誌（61.4 MB，剝掉 ANSI 色碼後）確認整合測試 **1005／0 失敗／0 錯誤／0 跳過**、`BUILD SUCCESS`、Checkstyle main／test 各 0 違規、`<<< FAILURE`／`<<< ERROR` 標記 0 個，`SettlementReviewRaceRealStackIntegrationTest` 18、`SettlementApprovalPayoutTriggerRealStackIntegrationTest` 4、`SettlementBookingIntegrationTest` 7、`SettlementExactlyOnceIntegrationTest` 6、`M07SettlementRefundConcurrencyIntegrationTest` 2、`SystemTenantIsolationE2ETest` 9、`M07SettlementIntegrationTest` 14 在雲端環境也通過，與本機 verify 逐類別一致（單元 job 只確認 job 結論為 success，沒有另外抓雲端的單元案例數）。本輪結尾的 Docker 清理：匿名卷 4 個全刪（0 失敗）、卷 1.112GB → 928MB，3 個核准基底映像與 5 個具名卷保留，建置快取 1.889GB 只回報、沒刪。

@@ -3,7 +3,9 @@ package com.nextkey.ecommerce.core.settlement;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -226,6 +228,102 @@ class SettlementAdjustmentServiceTest {
         verify(settlementAdjustmentRepository, never()).save(any());
     }
 
+    // ========== 直接扣款落空時的後備路徑（Sprint 322，DEF-446） ==========
+    //
+    // 直接扣款的 UPDATE 帶狀態條件（PENDING／PENDING_REVIEW）。讀狀態與 UPDATE 之間若被批准／駁回搶先推進，UPDATE 回 0 列，
+    // 退款不能被丟掉（錢已退給買家）、也不能一律建調整單（已駁回的結算單，重新結算時由 Payment.refundedAmount 帶入退款，
+    // 再建調整單會重複扣）——所以重讀目前狀態，依同一張狀態表處理。真實競態由 SettlementReviewRaceRealStackIntegrationTest 守住，
+    // 這裡守的是 mock 看得到的分支：每種「重讀到的狀態」各自的處置，以及「成功扣款後不可再碰調整單」。
+
+    /** 退款讀到的是 PENDING_REVIEW（要直接扣款），但 UPDATE 落空：{@code repoStatusNow} 是資料庫「現在」的狀態。 */
+    private void directDeductionMissedBecauseStatementIsNow(final SettlementStatus repoStatusNow) {
+        orderSettledBy(statementOf(SettlementStatus.PENDING_REVIEW));
+        when(settlementStatementRepository.applyRefundDeduction(eq(STATEMENT_ID), any(BigDecimal.class))).thenReturn(0);
+        when(settlementStatementRepository.findStatusById(STATEMENT_ID)).thenReturn(Optional.of(repoStatusNow));
+    }
+
+    @Test
+    @DisplayName("DEF-446 handleOrderRefund：直接扣款落空、重讀到 APPROVED／PAID／FAILED → 各產生一筆訂單調整單（不可把退款丟掉）")
+    void handleOrderRefund_directDeductionMissed_statementNowApprovedPaidOrFailed_createsOrderAdjustment() {
+        service = newService();
+        for (SettlementStatus now : new SettlementStatus[] {
+                SettlementStatus.APPROVED, SettlementStatus.PAID, SettlementStatus.FAILED}) {
+            directDeductionMissedBecauseStatementIsNow(now);
+
+            service.handleOrderRefund(TENANT_ID, ORDER_ID, new BigDecimal("100.00"));
+        }
+
+        ArgumentCaptor<SettlementAdjustment> captor = ArgumentCaptor.forClass(SettlementAdjustment.class);
+        verify(settlementAdjustmentRepository, times(3)).save(captor.capture());
+        for (SettlementAdjustment adjustment : captor.getAllValues()) {
+            assertThat(adjustment.getTenantId()).isEqualTo(TENANT_ID);
+            assertThat(adjustment.getOrderId()).isEqualTo(ORDER_ID);
+            assertThat(adjustment.getBookingId()).isNull();
+            assertThat(adjustment.getOriginalStatementId()).isEqualTo(STATEMENT_ID);
+            assertThat(adjustment.getAdjustmentType()).isEqualTo("REFUND_DEDUCTION");
+            assertThat(adjustment.getAmount()).isEqualByComparingTo("-100.00");
+            assertThat(adjustment.getStatus()).isEqualTo(SettlementAdjustment.AdjustmentStatus.PENDING);
+        }
+        verify(settlementStatementRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("DEF-446 handleOrderRefund：直接扣款落空、重讀到 REJECTED／REVERSAL_PENDING／REVERSED → 不做事（不可建調整單，否則重新結算時重複扣）")
+    void handleOrderRefund_directDeductionMissed_statementNowVoided_doesNothing() {
+        service = newService();
+        for (SettlementStatus now : new SettlementStatus[] {
+                SettlementStatus.REJECTED, SettlementStatus.REVERSAL_PENDING, SettlementStatus.REVERSED}) {
+            directDeductionMissedBecauseStatementIsNow(now);
+
+            service.handleOrderRefund(TENANT_ID, ORDER_ID, new BigDecimal("100.00"));
+        }
+
+        verify(settlementAdjustmentRepository, never()).save(any());
+        verify(settlementStatementRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("DEF-446 handleOrderRefund：直接扣款落空、結算單已不存在 → 不做事、不丟例外（退款路徑不可因此回滾）")
+    void handleOrderRefund_directDeductionMissed_statementGone_doesNothingAndDoesNotThrow() {
+        service = newService();
+        orderSettledBy(statementOf(SettlementStatus.PENDING));
+        when(settlementStatementRepository.applyRefundDeduction(eq(STATEMENT_ID), any(BigDecimal.class))).thenReturn(0);
+        when(settlementStatementRepository.findStatusById(STATEMENT_ID)).thenReturn(Optional.empty());
+
+        service.handleOrderRefund(TENANT_ID, ORDER_ID, new BigDecimal("100.00"));
+
+        verify(settlementAdjustmentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("DEF-446 handleOrderRefund：直接扣款落空但重讀仍是 PENDING／PENDING_REVIEW（不應發生）→ 不猜、不建調整單、不丟例外")
+    void handleOrderRefund_directDeductionMissed_statementStillDirectlyDeductible_doesNotGuessOrThrow() {
+        service = newService();
+        for (SettlementStatus now : new SettlementStatus[] {SettlementStatus.PENDING, SettlementStatus.PENDING_REVIEW}) {
+            directDeductionMissedBecauseStatementIsNow(now);
+
+            service.handleOrderRefund(TENANT_ID, ORDER_ID, new BigDecimal("100.00"));
+        }
+
+        verify(settlementAdjustmentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("DEF-446 handleOrderRefund：直接扣款成功（影響 1 列）→ 不重讀狀態、不建調整單（否則批准在扣款之後提交會重複計入）")
+    void handleOrderRefund_directDeductionApplied_doesNotReReadStatusNorCreateAdjustment() {
+        service = newService();
+        orderSettledBy(statementOf(SettlementStatus.PENDING_REVIEW));
+        when(settlementStatementRepository.applyRefundDeduction(eq(STATEMENT_ID), any(BigDecimal.class))).thenReturn(1);
+        // 即使「重讀」會看到已批准（扣款之後批准才提交），成功的扣款也不能再被當成需要調整單
+        lenient().when(settlementStatementRepository.findStatusById(STATEMENT_ID))
+                .thenReturn(Optional.of(SettlementStatus.APPROVED));
+
+        service.handleOrderRefund(TENANT_ID, ORDER_ID, new BigDecimal("100.00"));
+
+        verify(settlementStatementRepository, never()).findStatusById(any());
+        verify(settlementAdjustmentRepository, never()).save(any());
+    }
+
     // ========== handleBookingRefund（Sprint 247，DEF-353；與上方 handleOrderRefund 對稱） ==========
 
     @Test
@@ -360,6 +458,67 @@ class SettlementAdjustmentServiceTest {
         }
 
         verify(settlementStatementRepository, never()).save(any());
+        verify(settlementAdjustmentRepository, never()).save(any());
+    }
+
+    // ========== 訂房版的後備路徑（Sprint 322，DEF-446）：調整單要掛在訂房上，不是訂單 ==========
+
+    /** 訂房退款讀到的是 PENDING_REVIEW（要直接扣款），但 UPDATE 落空：{@code repoStatusNow} 是資料庫「現在」的狀態。 */
+    private void bookingDirectDeductionMissedBecauseStatementIsNow(final SettlementStatus repoStatusNow) {
+        bookingSettledBy(statementOf(SettlementStatus.PENDING_REVIEW));
+        when(settlementStatementRepository.applyRefundDeduction(eq(STATEMENT_ID), any(BigDecimal.class))).thenReturn(0);
+        when(settlementStatementRepository.findStatusById(STATEMENT_ID)).thenReturn(Optional.of(repoStatusNow));
+    }
+
+    @Test
+    @DisplayName("DEF-446 handleBookingRefund：直接扣款落空、重讀到 APPROVED／PAID／FAILED → 各產生一筆訂房調整單（bookingId 有值、orderId 空）")
+    void handleBookingRefund_directDeductionMissed_statementNowApprovedPaidOrFailed_createsBookingAdjustment() {
+        service = newService();
+        for (SettlementStatus now : new SettlementStatus[] {
+                SettlementStatus.APPROVED, SettlementStatus.PAID, SettlementStatus.FAILED}) {
+            bookingDirectDeductionMissedBecauseStatementIsNow(now);
+
+            service.handleBookingRefund(TENANT_ID, BOOKING_ID, new BigDecimal("100.00"));
+        }
+
+        ArgumentCaptor<SettlementAdjustment> captor = ArgumentCaptor.forClass(SettlementAdjustment.class);
+        verify(settlementAdjustmentRepository, times(3)).save(captor.capture());
+        for (SettlementAdjustment adjustment : captor.getAllValues()) {
+            assertThat(adjustment.getTenantId()).isEqualTo(TENANT_ID);
+            assertThat(adjustment.getBookingId()).isEqualTo(BOOKING_ID);
+            assertThat(adjustment.getOrderId()).isNull();
+            assertThat(adjustment.getOriginalStatementId()).isEqualTo(STATEMENT_ID);
+            assertThat(adjustment.getAmount()).isEqualByComparingTo("-100.00");
+            assertThat(adjustment.getStatus()).isEqualTo(SettlementAdjustment.AdjustmentStatus.PENDING);
+        }
+    }
+
+    @Test
+    @DisplayName("DEF-446 handleBookingRefund：直接扣款落空、重讀到 REJECTED／REVERSAL_PENDING／REVERSED → 不做事")
+    void handleBookingRefund_directDeductionMissed_statementNowVoided_doesNothing() {
+        service = newService();
+        for (SettlementStatus now : new SettlementStatus[] {
+                SettlementStatus.REJECTED, SettlementStatus.REVERSAL_PENDING, SettlementStatus.REVERSED}) {
+            bookingDirectDeductionMissedBecauseStatementIsNow(now);
+
+            service.handleBookingRefund(TENANT_ID, BOOKING_ID, new BigDecimal("100.00"));
+        }
+
+        verify(settlementAdjustmentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("DEF-446 handleBookingRefund：直接扣款成功（影響 1 列）→ 不重讀狀態、不建調整單")
+    void handleBookingRefund_directDeductionApplied_doesNotReReadStatusNorCreateAdjustment() {
+        service = newService();
+        bookingSettledBy(statementOf(SettlementStatus.PENDING));
+        when(settlementStatementRepository.applyRefundDeduction(eq(STATEMENT_ID), any(BigDecimal.class))).thenReturn(1);
+        lenient().when(settlementStatementRepository.findStatusById(STATEMENT_ID))
+                .thenReturn(Optional.of(SettlementStatus.APPROVED));
+
+        service.handleBookingRefund(TENANT_ID, BOOKING_ID, new BigDecimal("100.00"));
+
+        verify(settlementStatementRepository, never()).findStatusById(any());
         verify(settlementAdjustmentRepository, never()).save(any());
     }
 }

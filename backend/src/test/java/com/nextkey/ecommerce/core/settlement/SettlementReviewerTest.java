@@ -414,6 +414,96 @@ class SettlementReviewerTest {
         assertThat(statement.getStatus()).isEqualTo(SettlementStatus.REJECTED);
     }
 
+    // ── Sprint 322 DEF-445：提交審核要搶占＋refresh，不可用整列寫回蓋掉同時入帳的退款 ─────────────
+    //
+    // submitForReview 在真實類別上原本沒有任何單元測試（只有系統租戶守門與 mock 掉 reviewer 的 controller 測試）。
+    // 真實競態由 SettlementReviewRaceRealStackIntegrationTest 守住；這裡守 mock 看得到的部分：搶占的方向、輸家不碰任何東西、
+    // refresh 在搶占之後，以及回應是由「重新載入後」的實體組出來的（不是讀取當下的過期快照）。
+
+    private SettlementStatement pendingStatementWithStaleAmounts() {
+        SettlementStatement statement = statementWithStaleAmounts();
+        statement.setStatus(SettlementStatus.PENDING);
+        return statement;
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-445 submitForReview: 先搶占（PENDING→PENDING_REVIEW）、再 refresh；回應是重新載入後的狀態與金額（不是過期的 PENDING／0／900）")
+    void submitForReview_claimsThenRefreshesAndRespondsWithTheReloadedState() {
+        reviewer = newReviewer();
+        SettlementStatement statement = pendingStatementWithStaleAmounts();
+        when(settlementRepository.findByIdAndTenantId(STATEMENT_ID, TENANT_ID)).thenReturn(Optional.of(statement));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING, SettlementStatus.PENDING_REVIEW)).thenReturn(1);
+        // 同時入帳的退款已把資料庫的金額改成 100／800；真實的 refresh 會用它取代記憶體狀態
+        stubRefreshAsReloadFromDatabase(statement, SettlementStatus.PENDING_REVIEW);
+        when(mapper.toStatementResponse(any())).thenAnswer(inv -> {
+            SettlementStatement s = inv.getArgument(0);
+            return SettlementStatementResponse.builder().id(s.getId()).status(s.getStatus().name())
+                    .totalRefunds(s.getTotalRefunds()).netSettlementAmount(s.getNetSettlementAmount()).build();
+        });
+        TenantContext.setCurrentTenant(TENANT_ID);
+
+        SettlementStatementResponse response = reviewer.submitForReview(STATEMENT_ID);
+
+        InOrder order = inOrder(settlementRepository, entityManager);
+        order.verify(settlementRepository).updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING, SettlementStatus.PENDING_REVIEW);
+        order.verify(entityManager).refresh(statement);
+        assertThat(response.getStatus()).as("回應的狀態是搶占之後資料庫的狀態").isEqualTo("PENDING_REVIEW");
+        assertThat(response.getTotalRefunds()).as("回應的退款扣款是鎖住當下的最新值").isEqualByComparingTo("100.00");
+        assertThat(response.getNetSettlementAmount()).as("回應的淨額是鎖住當下的最新值").isEqualByComparingTo("800.00");
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-445 submitForReview: 搶占輸了（updateStatusIfCurrent 影響 0 列）→ E-5014；不 refresh、不組回應、記憶體狀態不變")
+    void submitForReview_lostTheClaim_failsWithoutRefreshing() {
+        reviewer = newReviewer();
+        SettlementStatement statement = pendingStatementWithStaleAmounts();
+        when(settlementRepository.findByIdAndTenantId(STATEMENT_ID, TENANT_ID)).thenReturn(Optional.of(statement));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.PENDING, SettlementStatus.PENDING_REVIEW)).thenReturn(0);
+        TenantContext.setCurrentTenant(TENANT_ID);
+
+        assertThatThrownBy(() -> reviewer.submitForReview(STATEMENT_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
+
+        verifyNoInteractions(entityManager, mapper);
+        verify(settlementRepository, never()).save(any(SettlementStatement.class));
+        assertThat(statement.getStatus()).isEqualTo(SettlementStatus.PENDING);
+    }
+
+    @Test
+    @DisplayName("DEF-445 submitForReview: 狀態早已不是 PENDING（循序的第二次提交）→ 直接 E-5014，不必打資料庫搶占")
+    void submitForReview_alreadyPendingReview_failsBeforeClaiming() {
+        reviewer = newReviewer();
+        when(settlementRepository.findByIdAndTenantId(STATEMENT_ID, TENANT_ID))
+                .thenReturn(Optional.of(statementWithStatus(SettlementStatus.PENDING_REVIEW)));
+        TenantContext.setCurrentTenant(TENANT_ID);
+
+        assertThatThrownBy(() -> reviewer.submitForReview(STATEMENT_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
+
+        verify(settlementRepository, never()).updateStatusIfCurrent(any(), any(), any());
+        verifyNoInteractions(entityManager);
+    }
+
+    @Test
+    @DisplayName("DEF-445 submitForReview: 結算單不存在（或不屬於呼叫者的租戶）→ E-5013，不搶占")
+    void submitForReview_notFound_failsWithE5013WithoutClaiming() {
+        reviewer = newReviewer();
+        when(settlementRepository.findByIdAndTenantId(STATEMENT_ID, TENANT_ID)).thenReturn(Optional.empty());
+        TenantContext.setCurrentTenant(TENANT_ID);
+
+        assertThatThrownBy(() -> reviewer.submitForReview(STATEMENT_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5013));
+
+        verify(settlementRepository, never()).updateStatusIfCurrent(any(), any(), any());
+        verifyNoInteractions(entityManager);
+    }
+
     // ── Sprint 321 DEF-443：撥款觸發在核准交易「提交之後」才執行，失敗不影響核准 ──────────────
 
     private void stubApprovableStatement() {

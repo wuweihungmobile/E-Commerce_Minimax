@@ -93,7 +93,14 @@ public interface SettlementStatementRepository extends JpaRepository<SettlementS
      * {@code COALESCE} 對齊既有語意（欄位 DEFAULT 0，但允許為 NULL）。
      * 本表無 {@code version} 欄位，故不需比照 Sprint 103 推進版號。
      *
-     * @return 受影響筆數；1 表示扣除成功，0 表示該 id 不存在
+     * <p>Sprint 322（DEF-446）：<strong>狀態條件由資料庫在 UPDATE 生效的那一刻判斷</strong>。呼叫端（{@code SettlementAdjustmentService}）
+     * 是先讀結算單狀態、再依狀態分流：只有 {@code PENDING}／{@code PENDING_REVIEW}（尚未核准撥款）才直接扣款，
+     * {@code APPROVED} 以後走調整單、下一期折入。讀與 UPDATE 之間批准／駁回若搶先拿到鎖並提交，沒有條件的 UPDATE 等到鎖釋放後
+     * 仍會生效——退款直接扣在已批准（將撥款）的結算單上、沒有調整單，撥款金額與結算單對不上。加上條件後，被鎖擋住的 UPDATE
+     * 在鎖釋放時會對該列最新已提交的版本重新評估 WHERE（PostgreSQL READ COMMITTED），狀態已不符就回 0 列。
+     *
+     * @return 受影響筆數；1 表示扣除成功，0 表示該 id 不存在，<strong>或</strong>狀態已不在直接扣款範圍
+     *         （呼叫端必須用 {@link #findStatusById} 重讀目前狀態再分流，不可把 0 當成「什麼都不用做」）
      */
     @Modifying(flushAutomatically = true)
     @Query(value = """
@@ -102,8 +109,17 @@ public interface SettlementStatementRepository extends JpaRepository<SettlementS
                    net_settlement_amount = COALESCE(net_settlement_amount, 0) - :refundAmount,
                    updated_at = CURRENT_TIMESTAMP
              WHERE id = :id
+               AND status IN ('PENDING', 'PENDING_REVIEW')
             """, nativeQuery = true)
     int applyRefundDeduction(@Param("id") UUID id, @Param("refundAmount") BigDecimal refundAmount);
+
+    /**
+     * 只讀回結算單目前的狀態（Sprint 322，DEF-446）。純量投影，<strong>每次都查資料庫</strong>，不會回傳同一個持久化上下文裡
+     * 已快取的實體：退款剛用 {@code findById} 讀過這張結算單，之後它的狀態在別的交易被改了，此時 {@code findById}
+     * 仍回傳快取的舊狀態，只有這個查詢拿得到資料庫現在的狀態。結算單不存在時回 empty。
+     */
+    @Query("SELECT s.status FROM SettlementStatement s WHERE s.id = :id")
+    Optional<SettlementStatement.SettlementStatus> findStatusById(@Param("id") UUID id);
 
     /**
      * 原子搶占結算單逆轉發起權（Sprint 137 DEF-138，PAID→REVERSAL_PENDING）。取代原本
@@ -117,6 +133,9 @@ public interface SettlementStatementRepository extends JpaRepository<SettlementS
      * 也用它搶占，原本同樣是「讀 status → 檢查 → setStatus → save」。實測（真實 PostgreSQL，兩位管理員同時送出）：
      * 批准 vs 駁回兩邊都回 200，後寫者覆寫先寫者——結算單 {@code REJECTED} 但 transfer 已建立且訂單被釋放（或相反）。
      * 呼叫端必須<strong>在任何寫入之前</strong>先搶占，輸家（回傳 0）就不會留下稽核、transfer 或訂單釋放。
+     *
+     * <p>Sprint 322（DEF-445）：店主提交審核（{@code PENDING → PENDING_REVIEW}）同樣用它搶占——原本沒有任何保護，兩次提交各自整列寫回，
+     * 而且整列寫回會用舊金額蓋掉同時入帳的退款。
      *
      * @return 受影響筆數；1 代表本次成功搶占，0 代表已被另一併發請求搶先轉換
      */

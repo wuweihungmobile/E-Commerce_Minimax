@@ -82,8 +82,18 @@ public class SettlementReviewer {
             throw new BusinessException(ErrorCode.E_5014, "Only PENDING statements can be submitted for review");
         }
 
-        statement.setStatus(SettlementStatus.PENDING_REVIEW);
-        statement = settlementRepository.save(statement);
+        // 🔴 併發防護與金額防護（Sprint 322 DEF-445）：上面的狀態檢查只是快照。原本在這裡 setStatus＋save，是整列寫回
+        // （SettlementStatement 沒有 @DynamicUpdate），用讀取當下的金額把同時入帳的退款扣款蓋掉（退款對 PENDING 的結算單以
+        // 原子 UPDATE 直接扣款，見 SettlementAdjustmentService.applyDirectDeduction），而且沒有搶占，兩次提交各自整列寫回。
+        // 比照批准／駁回（DEF-442／444）：先條件式更新搶占，輸家得到與循序的第二次提交相同的 E-5014；搶占成功＝這一列已被本交易鎖住，
+        // 退款的 UPDATE 要等本交易結束，此時 refresh 拿到的是鎖住當下最新的已提交值，回應才不會顯示過期的狀態與金額。
+        // 狀態已由上面的 UPDATE 寫完，之後不可再呼叫任何 setter：實體在持久化上下文中，碰了 setter 髒檢查就會整列寫回。
+        int claimed = settlementRepository.updateStatusIfCurrent(statementId,
+                SettlementStatus.PENDING, SettlementStatus.PENDING_REVIEW);
+        if (claimed == 0) {
+            throw new BusinessException(ErrorCode.E_5014, "Only PENDING statements can be submitted for review");
+        }
+        entityManager.refresh(statement);
 
         log.info("Settlement statement submitted for review: id={}", statementId);
 

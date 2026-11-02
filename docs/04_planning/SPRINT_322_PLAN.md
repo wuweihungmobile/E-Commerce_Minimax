@@ -26,8 +26,8 @@
 | 退款呼叫端『失敗不應影響已完成的退款主流程』 | `PaymentStateService`（第 538～543 行）以 `try/catch (RuntimeException)` 包住；但 `handleOrderRefund`／`handleBookingRefund` 是 `@Transactional`、**加入呼叫端的交易**，例外穿出代理時共用交易被標成 rollback-only（與 `DEF-443` 同一個機制）。所以後備路徑**絕不可丟例外**，否則已經成功退給 Stripe 的款項，本地的付款狀態會連帶回滾。 |
 | 交易隔離等級 | `src/main` 沒有任何自訂隔離設定 → PostgreSQL 預設 `READ COMMITTED`。**推論**：被鎖擋住的 `UPDATE` 在鎖釋放後，會對該列的最新已提交版本重新評估 `WHERE`（`EvalPlanQual`），狀態已變時回 0 列而不是套用——修法依賴這個語意；真實棧案例驗證，Sprint 320／321 的搶占（`updateStatusIfCurrent`）已經在依賴同一個語意。 |
 | 追蹤表 `DEF-445`：『`submitForReview` 讀取後 `setStatus(PENDING_REVIEW)`＋`save`，沒有搶占』 | 屬實（`SettlementReviewer.submitForReview`，第 85～86 行）。 |
-| `submitForReview` 現有的單元測試 | **真實類別上沒有**：只有 `SettlementTenantScopeTest` 的系統租戶守門案例，與 `M07SettlementIntegrationTest` 把 `SettlementReviewer` 整個 mock 掉的 controller 測試。happy path、狀態守門、搶占都沒有單元層守門。 |
-| 提交改成『搶占＋`refresh`』後不再有任何 setter，`updated_at` 不會被推進 | 生產碼 grep：`SettlementStatement.updatedAt`／`updated_at` 在結算套件的**唯一**出現處是退款的原子 UPDATE 自己設 `updated_at = CURRENT_TIMESTAMP`；回應 DTO 不含 `updatedAt`、前端沒有呼叫 submit（`frontend/src` 只有沖正三個端點）。**沒有讀取者**；列為可推翻的決定（§8）。 |
+| `submitForReview` 現有的單元測試 | **真實類別上沒有**：只有 `SettlementTenantScopeTest` 的系統租戶守門案例，與 `M07SettlementIntegrationTest` 把 `SettlementReviewer` 整個 mock 掉的 controller 測試。happy path、狀態守門、搶占都沒有單元層守門。（另有 `SystemTenantIsolationE2ETest` 的一個 HTTP 層案例走過真實的提交成功路徑，但它只斷言 `200` 與最終狀態，不守搶占或金額。） |
+| 提交改成『搶占＋`refresh`』後不再有任何 setter，`updated_at` 不會被推進 | 實體本身宣告 `updatedAt`、由 `@PreUpdate` 維護；退款的原子 UPDATE 另自己設 `updated_at = CURRENT_TIMESTAMP`。**讀取者**：全庫生產碼（`backend/src/main/java` 中引用 `SettlementStatement` 的檔案，精確 grep `getUpdatedAt`／`updatedAt`）只命中 `Transfer`、`Order` 自己的欄位，沒有任何地方讀結算單的 `updatedAt`；回應 DTO 不含它、`frontend/src` 沒有 settlement 型別含它，也沒有呼叫 submit（只有沖正三個端點）。列為可推翻的決定（§8）。 |
 | `applyRefundDeduction` 的呼叫點 | 生產碼只有 `SettlementAdjustmentService.applyDirectDeduction` 一處（訂單與訂房退款共用）；改它同時涵蓋 `handleOrderRefund` 與 `handleBookingRefund`。 |
 
 ## 2. 做法（開工前的設計，結果見 §4～§5）
@@ -128,7 +128,7 @@
 
 1. **R2（狀態條件只留 `PENDING`）的 8 個失敗有兩種原因**：6 個是『靠鎖編排』的案例——退款對 `PENDING_REVIEW` 的結算單回 0 列、不再持有或等待那一列的鎖，案例等不到『N 個請求卡在鎖上』而逾時（訊息 `等不到 N 個請求卡在結算單的鎖上（目前 k 個）`；對手交易自己有 30 秒持鎖上限，到期放行，所以 k 可能是 0）；另 2 個（循序退款對照、h）是退款真的被丟掉（`total_refunds` 預期 `100.00` 實際 `0.00`）。h 守的正是這件事：狀態條件若漏掉 `PENDING_REVIEW`，『提交先、退款後』的交錯下退款會消失。
 2. **A3（後備路徑改用 `findById` 重讀）把 §1.3 標為『推論』的事升級為事實**：同一個持久化上下文裡 `findById` 回傳快取的舊狀態（`PENDING_REVIEW`），落入『不可能』分支、退款被丟掉；a、b 兩案各只剩一項違反（調整單預期 1 筆、實際 `[]`），資料庫金額維持 `0.00`／`900.00`。
-3. **A4（直接扣款成功後仍走後備）只被單元案例殺掉**：真實棧裡，成功扣款後多一次重讀頂多讀到 `PENDING_REVIEW`（只多一行 error 日誌）；『重複計入』要在『扣款成功之後、批准才提交』的交錯下才會發生，真實棧排不出這個時序，單元層用 `lenient()` 讓重讀回 `APPROVED` 模擬。
+3. **A4（直接扣款成功後仍走後備）只被單元案例殺掉**：真實棧裡，成功扣款後多一次重讀只會讀到 `PENDING`／`PENDING_REVIEW`，落入『不可能』分支、只多一行 `error` 日誌——**日誌對照量到**：基準 Z0 的 `unexpected, refund NOT applied` 是 2 行（單元案例故意模擬『不可能』），A4 是 19 行，多出的 17 行逐一對得上成功扣款的真實棧案例（`M07SettlementRefundConcurrencyIntegrationTest` 的 10 筆併發退款 10 行；競態類別 7 行，其中 2 行在測試主執行緒＝兩個循序案例、5 行在執行緒池＝五個併發案例），沒有改變任何結果。『重複計入』要在『扣款成功之後、批准才提交』的交錯下才會發生，真實棧排不出這個時序，單元層用 `lenient()` 讓重讀回 `APPROVED` 模擬。
 4. **A6／A7／A8 各被恰好一個單元案例殺掉**：釘住『不可能』分支不猜（不建調整單）、不丟例外，以及『結算單不存在』分支不丟例外——例外穿出會把共用的退款交易標成 rollback-only，已經成功退給 Stripe 的款項在本地的付款狀態就會連帶回滾。
 5. **V3／V4 的真實棧案例（e）紅在『回應』，不是資料庫**：提交之後沒有任何 setter，搶占的 UPDATE 已經寫完狀態，資料庫本來就是對的；`refresh` 管的是回應（e 的 3 項違反是回應的 `status` `PENDING`、`totalRefunds` `0.00`、`netSettlementAmount` `900.00`，資料庫斷言都通過）以及『之後若加了 setter 時整列寫回帶的是不是最新值』。V4 連帶讓單元 S2 紅（登記時就預測了）：`refresh` 移到搶占前，搶占輸了時 `entityManager` 已被碰到。
 6. **V6 是外部行為等價的突變**（搶占也會擋下，回應同樣是 `409 E-5014`），只有單元 S3 的『不打資料庫搶占』守得住（同 Sprint 245 的『防禦縱深前置檢查』）。
@@ -159,7 +159,7 @@
 1. **新案例沒有走到閘道**：測試店鋪沒有 Connect 帳戶，transfer 一律是 `SKIPPED_ONBOARDING_INCOMPLETE`；批准先拿到鎖的交錯下，送給 Stripe 的最終金額沒有斷言（Sprint 321 的『送給 Stripe 的金額』案例仍在，但那是退款先提交的交錯）。閘道本身仍是 `@MockBean`、沒有對真實 Stripe 驗證（承 Sprint 80 起的既有限制）。
 2. **每個案例只確定一個交錯**：批准、駁回、提交三種請求與退款的兩個先後順序都有案例，但沒有窮舉更細的時序（鎖序由 `pg_stat_activity` 確認，不靠睡眠）。
 3. **後備路徑在真實棧只走到 `APPROVED`（a、b）與 `REJECTED`（c）**；`PAID`／`FAILED`／`REVERSAL_PENDING`／`REVERSED`、『結算單不存在』與『不可能』分支只有單元層（mock）守門。
-4. **『不可能』分支是依狀態機推論的**：`SettlementStatus` 的所有 `setStatus`／`updateStatusIfCurrent` 呼叫點 grep，沒有任何轉換會把結算單從直接扣款範圍之外帶回 `PENDING`／`PENDING_REVIEW`；真的發生時的處置（記 `error`、不猜、不丟例外）由單元案例釘住。
+4. **『不可能』分支是依狀態機推論的**：全庫 grep——只有 `SettlementGenerator` 建立新結算單與實體的預設值是 `PENDING`，提交的搶占（`PENDING → PENDING_REVIEW`）在直接扣款範圍之內，沒有任何 SQL 或 Flyway 遷移把結算單狀態設回去；真的發生時的處置（記 `error`、不猜、不丟例外）由單元案例釘住。
 5. **提交不再推進 `updated_at`**（§8 第 5 點）。
 6. **提交之後『加 setter』的保護只靠 `refresh` 的位置**：單元測試不禁止之後再 `save`（`refresh` 之後的整列寫回帶的是最新值，本身是安全的）；『`refresh` 之後再 `setStatus(PENDING_REVIEW)`＋`save`』這個突變依構造等價（狀態已是 `PENDING_REVIEW`，髒檢查看不到變動），沒有登記也沒有跑。
 7. **其他整列寫回結算單的路徑仍未量測**（`DEF-447`）、**信用票據編號每租戶每天一個**（`DEF-448`）：兩者都只有讀碼推論，沒有跑任何測試或探針。

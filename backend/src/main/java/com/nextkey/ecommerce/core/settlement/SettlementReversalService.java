@@ -109,6 +109,22 @@ public class SettlementReversalService {
         User confirmer = userRepository.findById(confirmerId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_1006));
 
+        // 🔴 併發防護（Sprint 323 DEF-447）：上面的狀態檢查只是快照。原本這裡沒有任何搶占：兩位 CFO（或同一位連點兩下）
+        // 同時確認，都會通過檢查、各自產生一張信用票據。正式環境只靠 credit_notes 的 UNIQUE (tenant_id, credit_note_number)
+        // 偶然擋住後到者（編號是租戶前綴＋日期，同一張結算單必然相同），輸家得到的是資料庫錯誤 500 E-9900，不是乾淨的 409；
+        // 沒有那條約束的地方（整合測試庫）兩個都成功，同一張逆轉被沖銷兩次——DEF-448 若把編號改成每張結算單唯一，
+        // 這道偶然的保護就消失。比照 initiateReversal（DEF-138）與批准／駁回（DEF-442）：先條件式更新搶占，
+        // 輸家（回傳 0）不產生信用票據。
+        //
+        // 搶占的 UPDATE 已把狀態寫完，之後不再 setStatus／save：REVERSAL_PENDING 的內容是凍結的（金額在 DEF-446 之後只在
+        // PENDING／PENDING_REVIEW 變動，逆轉欄位只在 PAID → REVERSAL_PENDING 時寫一次），所以不需要 refresh；而讓實體保持
+        // 乾淨（沒有 setter）就不會有整列寫回（DEF-444 的機制）。回應的狀態補在 DTO 上，不補在實體上。
+        int claimed = settlementRepository.updateStatusIfCurrent(statementId,
+                SettlementStatus.REVERSAL_PENDING, SettlementStatus.REVERSED);
+        if (claimed == 0) {
+            throw new BusinessException(ErrorCode.E_5014, "Only REVERSAL_PENDING statements can be confirmed");
+        }
+
         CreditNote creditNote = CreditNote.builder()
                 .tenant(statement.getTenant())
                 .originalStatement(statement)
@@ -121,13 +137,12 @@ public class SettlementReversalService {
                 .build();
         creditNoteRepository.save(creditNote);
 
-        statement.setStatus(SettlementStatus.REVERSED);
-        statement = settlementRepository.save(statement);
-
         log.info("Settlement statement reversal confirmed: statementId={}, confirmerId={}, confirmerRole={}, "
                 + "creditNoteId={}", statementId, confirmerId, confirmerRole, creditNote.getId());
 
-        return mapper.toStatementResponse(statement);
+        SettlementStatementResponse response = mapper.toStatementResponse(statement);
+        response.setStatus(SettlementStatus.REVERSED.name());
+        return response;
     }
 
     private static final List<SettlementStatus> REVERSAL_CANDIDATE_STATUSES =

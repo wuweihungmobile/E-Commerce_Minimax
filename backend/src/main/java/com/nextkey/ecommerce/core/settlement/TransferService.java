@@ -53,6 +53,10 @@ public class TransferService {
     private static final String STRIPE_TRANSFER_ENABLED = "STRIPE_TRANSFER_ENABLED";
     private static final int CENTS_PER_UNIT = 100;
 
+    /** 可重試的 transfer 狀態：重試的前置檢查與『搶占舊記錄』的條件式刪除共用同一份（Sprint 323，DEF-447）。 */
+    private static final List<TransferStatus> RETRYABLE_TRANSFER_STATUSES =
+            List.of(TransferStatus.FAILED, TransferStatus.SKIPPED_ONBOARDING_INCOMPLETE);
+
     private final SettlementStatementRepository settlementRepository;
     private final TransferRepository transferRepository;
     private final TenantRepository tenantRepository;
@@ -172,13 +176,22 @@ public class TransferService {
             // 沒有 transfer 並不代表撥款失敗，不會被觸發；併發的重試靠 transfer 佔位的唯一索引只讓一個真的撥款（DEF-441）。
             return createTransferForStatement(statementId);
         }
-        if (existing.getStatus() != TransferStatus.FAILED
-                && existing.getStatus() != TransferStatus.SKIPPED_ONBOARDING_INCOMPLETE) {
+        if (!RETRYABLE_TRANSFER_STATUSES.contains(existing.getStatus())) {
             throw new BusinessException(ErrorCode.E_5014, "Only FAILED or SKIPPED transfers can be retried");
         }
 
         // 重試等同重新走一次結算單觸發流程：先清掉舊記錄，讓 createTransferForStatement 重新判斷前置條件
-        transferRepository.delete(existing);
+        //
+        // 🔴 併發防護（Sprint 323 DEF-447）：上面的狀態檢查只是快照。兩位管理員同時重試同一筆失敗的撥款，都會通過它、都打算
+        // 刪掉這筆舊記錄。原本用實體層級的 delete：輸家在先到者提交之後刪不到列，Hibernate 的列數檢查丟
+        // ObjectOptimisticLockingFailureException，HTTP 500 E-9900（實測，SettlementPostApprovalRaceRealStackIntegrationTest）。
+        // 改成條件式刪除當作搶占：由資料庫在 DELETE 生效的那一刻判斷「這筆仍是可重試的狀態」，輸家（回傳 0）得到與循序的第二次
+        // 重試相同的 E-5014，而且在搶占之前不碰結算單、也走不到 Stripe。撥款本身不會重複——輸家的交易在這裡就結束了。
+        // 順帶讓重試的鎖序變成「先 transfer、後結算單」，與撥款（先佔位 transfer、後寫結算單）和 transfer.reversed webhook 一致。
+        int claimed = transferRepository.deleteByIdAndStatusIn(existing.getId(), RETRYABLE_TRANSFER_STATUSES);
+        if (claimed == 0) {
+            throw new BusinessException(ErrorCode.E_5014, "Transfer was already retried by a concurrent request");
+        }
         statement.setStatus(SettlementStatus.APPROVED);
         settlementRepository.save(statement);
 
@@ -206,16 +219,22 @@ public class TransferService {
         // 🔴 只有結算單仍是 PAID（webhook 延遲送達前的預期前置狀態）才改回 FAILED；若人工雙重授權
         // 逆轉流程（SettlementReversalService）已將其推進到 REVERSAL_PENDING/REVERSED，代表該筆
         // 逆轉已在正式流程中處理，不可被此 webhook 無條件覆寫掉已簽核或已完成的決策。
-        settlementRepository.findById(transfer.getSettlementStatementId()).ifPresent(statement -> {
-            if (statement.getStatus() == SettlementStatus.PAID) {
-                statement.setStatus(SettlementStatus.FAILED);
-                settlementRepository.save(statement);
-            } else {
-                log.info("Skip settlement status override: statementId={} already in {} "
-                                + "(manual reversal flow in progress or completed)",
-                        transfer.getSettlementStatementId(), statement.getStatus());
-            }
-        });
+        //
+        // 🔴 併發防護（Sprint 323 DEF-447）：「讀到 PAID 才改」只是快照。原本在這裡 findById → setStatus(FAILED) → save，
+        // 是整列寫回（SettlementStatement 沒有 @DynamicUpdate）：與 initiateReversal 交錯時（webhook 讀到 PAID 之後、寫入之前，
+        // 發起逆轉提交了），webhook 的寫回會把剛進入 REVERSAL_PENDING 的結算單蓋回 FAILED，連發起人、角色、時間、原因四個欄位
+        // 也一併清成 null（實測，SettlementPostApprovalRaceRealStackIntegrationTest）——發起人拿到 200，逆轉請求卻憑空消失。
+        // 改成條件式更新：由資料庫在 UPDATE 生效的那一刻判斷「仍是 PAID」，不載入結算單實體，因此也沒有整列寫回。
+        // 搶輸（0 筆）＝狀態已被別的流程推進，只記錄，transfer 的 REVERSED 照記（Stripe 的事實不因此改變）。
+        UUID statementId = transfer.getSettlementStatementId();
+        int updated = settlementRepository.updateStatusIfCurrent(statementId,
+                SettlementStatus.PAID, SettlementStatus.FAILED);
+        if (updated == 0) {
+            log.info("Skip settlement status override: statementId={} already in {} "
+                            + "(manual reversal flow in progress or completed)",
+                    statementId, settlementRepository.findStatusById(statementId)
+                            .map(SettlementStatus::name).orElse("NOT_FOUND"));
+        }
 
         log.info("Transfer reversed via webhook: stripeTransferId={}, settlementStatementId={}",
                 stripeTransferId, transfer.getSettlementStatementId());

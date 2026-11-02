@@ -131,29 +131,59 @@ class SettlementReversalServiceTest {
     }
 
     @Test
-    @DisplayName("confirmReversal：CFO 確認 SUPER_ADMIN 發起的逆轉成功，產生 CreditNote 並轉 REVERSED")
+    @DisplayName("confirmReversal：CFO 確認 SUPER_ADMIN 發起的逆轉成功——先條件式更新搶占（REVERSAL_PENDING → REVERSED）再產生 CreditNote，回應狀態是 REVERSED")
     void confirmReversal_differentRole_succeeds() {
         service = newService();
-        when(settlementRepository.findById(STATEMENT_ID))
-                .thenReturn(Optional.of(reversalPendingStatement("SUPER_ADMIN")));
+        SettlementStatement statement = reversalPendingStatement("SUPER_ADMIN");
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
         when(userRepository.findById(CFO_ID)).thenReturn(Optional.of(User.builder().id(CFO_ID).build()));
-        when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder().build());
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.REVERSAL_PENDING, SettlementStatus.REVERSED)).thenReturn(1);
+        // 回應是由「搶占前讀到的實體」組出來的，所以 mapper 看到的狀態還是 REVERSAL_PENDING——服務要把它補成 REVERSED
+        when(mapper.toStatementResponse(any())).thenReturn(
+                SettlementStatementResponse.builder().id(STATEMENT_ID).status("REVERSAL_PENDING").build());
 
-        service.confirmReversal(STATEMENT_ID, CFO_ID, "CFO");
+        SettlementStatementResponse response = service.confirmReversal(STATEMENT_ID, CFO_ID, "CFO");
 
         ArgumentCaptor<CreditNote> creditNoteCaptor = ArgumentCaptor.forClass(CreditNote.class);
         verify(creditNoteRepository).save(creditNoteCaptor.capture());
         assertThat(creditNoteCaptor.getValue().getAmount()).isEqualByComparingTo("-5000.00");
         assertThat(creditNoteCaptor.getValue().getTenant().getId()).isEqualTo(TENANT_ID);
+        assertThat(response.getStatus()).as("狀態已由搶占的 UPDATE 寫成 REVERSED，回應要反映它").isEqualTo("REVERSED");
 
-        ArgumentCaptor<SettlementStatement> statementCaptor = ArgumentCaptor.forClass(SettlementStatement.class);
-        verify(settlementRepository).save(statementCaptor.capture());
-        assertThat(statementCaptor.getValue().getStatus()).isEqualTo(SettlementStatus.REVERSED);
+        // DEF-447：搶占在產生信用票據之前（輸家不可留下信用票據）
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(settlementRepository, creditNoteRepository);
+        order.verify(settlementRepository).updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.REVERSAL_PENDING, SettlementStatus.REVERSED);
+        order.verify(creditNoteRepository).save(any(CreditNote.class));
+
+        // 搶占的 UPDATE 已經把狀態寫完：實體不可再被 setter 弄髒、也不可 save（整列寫回正是 DEF-444／447 的機制）
+        assertThat(statement.getStatus()).as("實體不該被 setter 修改（髒檢查會整列寫回）").isEqualTo(SettlementStatus.REVERSAL_PENDING);
+        verify(settlementRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("confirmReversal：同角色確認應被拒絕（雙重授權核心檢查）")
+    @DisplayName("🔴 DEF-447 confirmReversal：併發搶占失敗（快照仍是 REVERSAL_PENDING，條件式更新回 0）→ E_5014，輸家不產生信用票據、不 save")
+    void confirmReversal_concurrentClaimLost_throwsE5014WithoutCreditNote() {
+        // 兩位 CFO 幾乎同時確認，都通過「快照 status == REVERSAL_PENDING」的前置檢查，但只有一邊搶到條件式更新
+        service = newService();
+        when(settlementRepository.findById(STATEMENT_ID))
+                .thenReturn(Optional.of(reversalPendingStatement("SUPER_ADMIN")));
+        when(userRepository.findById(CFO_ID)).thenReturn(Optional.of(User.builder().id(CFO_ID).build()));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.REVERSAL_PENDING, SettlementStatus.REVERSED)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.confirmReversal(STATEMENT_ID, CFO_ID, "CFO"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
+
+        verify(creditNoteRepository, never()).save(any());
+        verify(settlementRepository, never()).save(any());
+        org.mockito.Mockito.verifyNoInteractions(mapper);
+    }
+
+    @Test
+    @DisplayName("confirmReversal：同角色確認應被拒絕（雙重授權核心檢查）——連搶占都不嘗試")
     void confirmReversal_sameRoleAsInitiator_throwsE1007() {
         service = newService();
         when(settlementRepository.findById(STATEMENT_ID))
@@ -165,10 +195,11 @@ class SettlementReversalServiceTest {
 
         verify(creditNoteRepository, never()).save(any());
         verify(settlementRepository, never()).save(any());
+        verify(settlementRepository, never()).updateStatusIfCurrent(any(), any(), any());
     }
 
     @Test
-    @DisplayName("confirmReversal：非 REVERSAL_PENDING 狀態確認應拋出 E_5014")
+    @DisplayName("confirmReversal：非 REVERSAL_PENDING 狀態確認應拋出 E_5014——連搶占都不嘗試")
     void confirmReversal_nonReversalPendingStatus_throwsE5014() {
         service = newService();
         when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(paidStatement()));
@@ -176,6 +207,8 @@ class SettlementReversalServiceTest {
         assertThatThrownBy(() -> service.confirmReversal(STATEMENT_ID, CFO_ID, "CFO"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
+
+        verify(settlementRepository, never()).updateStatusIfCurrent(any(), any(), any());
     }
 
     @Test

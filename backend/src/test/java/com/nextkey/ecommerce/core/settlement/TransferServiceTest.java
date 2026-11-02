@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,6 +17,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.annotation.Propagation;
@@ -260,6 +263,8 @@ class TransferServiceTest {
         // delete 後第二次呼叫（createTransferForStatement 內的冪等檢查）應回空，模擬記錄已被清除。
         when(transferRepository.findBySettlementStatementId(STATEMENT_ID))
                 .thenReturn(Optional.of(failedTransfer), Optional.empty());
+        // Sprint 323（DEF-447）：舊記錄改用條件式刪除搶占，回傳 1＝本次搶到
+        when(transferRepository.deleteByIdAndStatusIn(eq(failedTransfer.getId()), any())).thenReturn(1);
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(readyTenant()));
         when(featureToggleService.isFeatureEnabledForTenant(TENANT_ID, "STRIPE_TRANSFER_ENABLED")).thenReturn(true);
         when(paymentGatewayFactory.createTransfer(anyString(), anyString(), any(Long.class), anyString(), anyString()))
@@ -291,6 +296,90 @@ class TransferServiceTest {
         assertThatThrownBy(() -> transferService.retryFailedTransfer(STATEMENT_ID, false))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
+
+        // 前置狀態檢查先擋下，連搶占（條件式刪除）都不嘗試——不可動到已完成的 transfer
+        verify(transferRepository, org.mockito.Mockito.never()).deleteByIdAndStatusIn(any(), any());
+    }
+
+    // ── Sprint 323 DEF-447：重試對舊 transfer 記錄的條件式刪除搶占 ────────────────────────────
+    //
+    // 真實競態（兩位管理員同時重試）由 SettlementPostApprovalRaceRealStackIntegrationTest 守住；這裡守 mock 看得到的部分：
+    // 搶輸時乾淨失敗（不碰結算單、不走到閘道）、SKIPPED 的 transfer 也可重試、搶占發生在寫入結算單之前。
+
+    /** 重試一筆既有的 transfer，走到『撥款開關關閉 → SKIPPED』的最短路徑（不碰閘道）。 */
+    @SuppressWarnings("unchecked")
+    private SettlementStatement arrangeRetryOf(final Transfer existing, final SettlementStatus statementStatus) {
+        SettlementStatement statement = approvedStatement();
+        statement.setStatus(statementStatus);
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        when(transferRepository.findBySettlementStatementId(STATEMENT_ID))
+                .thenReturn(Optional.of(existing), Optional.empty());
+        when(transferRepository.deleteByIdAndStatusIn(eq(existing.getId()), any())).thenReturn(1);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(readyTenant()));
+        when(featureToggleService.isFeatureEnabledForTenant(TENANT_ID, "STRIPE_TRANSFER_ENABLED")).thenReturn(false);
+        when(transferRepository.saveAndFlush(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(transferRepository.save(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
+        TenantContext.setCurrentTenant(TENANT_ID);
+        return statement;
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-447 retryFailedTransfer: 舊 transfer 記錄已被另一個併發的重試搶先刪除（條件式刪除回 0）→ E-5014，不碰結算單、不走到閘道、不建立新 transfer")
+    void retryFailedTransfer_concurrentRetryClaimedTheTransfer_throwsE5014WithoutSideEffects() {
+        transferService = newService();
+        SettlementStatement statement = approvedStatement();
+        statement.setStatus(SettlementStatus.FAILED);
+        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
+        Transfer failedTransfer = Transfer.builder().id(UUID.randomUUID()).settlementStatementId(STATEMENT_ID)
+                .status(TransferStatus.FAILED).build();
+        when(transferRepository.findBySettlementStatementId(STATEMENT_ID)).thenReturn(Optional.of(failedTransfer));
+        when(transferRepository.deleteByIdAndStatusIn(eq(failedTransfer.getId()), any())).thenReturn(0);
+        TenantContext.setCurrentTenant(TENANT_ID);
+
+        assertThatThrownBy(() -> transferService.retryFailedTransfer(STATEMENT_ID, false))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_5014));
+
+        assertThat(statement.getStatus()).as("搶輸之前不可動到結算單的狀態").isEqualTo(SettlementStatus.FAILED);
+        verify(settlementRepository, org.mockito.Mockito.never()).save(any());
+        verify(transferRepository, org.mockito.Mockito.never()).saveAndFlush(any());
+        verify(paymentGatewayFactory, org.mockito.Mockito.never())
+                .createTransfer(anyString(), anyString(), any(Long.class), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("DEF-447 retryFailedTransfer: SKIPPED 的 transfer 也可重試——條件式刪除涵蓋 FAILED 與 SKIPPED_ONBOARDING_INCOMPLETE 兩種狀態")
+    @SuppressWarnings("unchecked")
+    void retryFailedTransfer_skippedTransfer_isRetryable_claimCoversBothRetryableStatuses() {
+        transferService = newService();
+        Transfer skipped = Transfer.builder().id(UUID.randomUUID()).settlementStatementId(STATEMENT_ID)
+                .status(TransferStatus.SKIPPED_ONBOARDING_INCOMPLETE).build();
+        arrangeRetryOf(skipped, SettlementStatus.APPROVED);
+
+        Transfer result = transferService.retryFailedTransfer(STATEMENT_ID, false);
+
+        ArgumentCaptor<Collection<TransferStatus>> statuses = ArgumentCaptor.forClass(Collection.class);
+        verify(transferRepository).deleteByIdAndStatusIn(eq(skipped.getId()), statuses.capture());
+        assertThat(statuses.getValue()).containsExactlyInAnyOrder(
+                TransferStatus.FAILED, TransferStatus.SKIPPED_ONBOARDING_INCOMPLETE);
+        assertThat(result.getStatus()).isEqualTo(TransferStatus.SKIPPED_ONBOARDING_INCOMPLETE);
+    }
+
+    @Test
+    @DisplayName("DEF-447 retryFailedTransfer: 先搶占舊 transfer（條件式刪除）、再寫結算單——輸家不可在搶占之前改動結算單")
+    void retryFailedTransfer_claimsTheOldTransferBeforeWritingTheStatement() {
+        transferService = newService();
+        Transfer failed = Transfer.builder().id(UUID.randomUUID()).settlementStatementId(STATEMENT_ID)
+                .status(TransferStatus.FAILED).build();
+        SettlementStatement statement = arrangeRetryOf(failed, SettlementStatus.FAILED);
+
+        transferService.retryFailedTransfer(STATEMENT_ID, false);
+
+        InOrder order = org.mockito.Mockito.inOrder(transferRepository, settlementRepository);
+        order.verify(transferRepository).deleteByIdAndStatusIn(eq(failed.getId()), any());
+        order.verify(settlementRepository).save(statement);
+        assertThat(statement.getStatus()).as("重試把結算單退回 APPROVED 重新判斷前置條件").isEqualTo(SettlementStatus.APPROVED);
     }
 
     // ── Sprint 321 DEF-443：核准提交之後觸發撥款；非預期失敗後（APPROVED、沒有 transfer）可補撥款 ────────
@@ -358,47 +447,73 @@ class TransferServiceTest {
         verify(transferRepository, org.mockito.Mockito.never()).saveAndFlush(any(Transfer.class));
     }
 
+    // ── Sprint 323 DEF-447：webhook 改成條件式更新（PAID → FAILED），不再讀實體後整列寫回 ─────────────
+    //
+    // 原本的單元測試斷言「記憶體裡的 statement.getStatus() 變成 FAILED」——那個斷言在缺陷存在時照樣全綠（整列寫回正是缺陷本身）。
+    // 真實競態（與 initiateReversal 交錯）由 SettlementPostApprovalRaceRealStackIntegrationTest 守住；這裡守 mock 看得到的部分：
+    // 委派給條件式更新、搶不到時不覆寫、完全不載入也不 save 結算單實體。
+
     @Test
-    @DisplayName("handleTransferReversedWebhook: 查有記錄 → Transfer 轉 REVERSED，結算單轉 FAILED")
+    @DisplayName("handleTransferReversedWebhook: 查有記錄 → Transfer 轉 REVERSED，結算單以條件式更新（PAID → FAILED）轉 FAILED")
     void handleTransferReversedWebhook_existingTransfer_marksReversedAndFailsStatement() {
         transferService = newService();
-        SettlementStatement statement = approvedStatement();
-        statement.setStatus(SettlementStatus.PAID);
         Transfer completed = Transfer.builder().id(UUID.randomUUID()).settlementStatementId(STATEMENT_ID)
                 .status(TransferStatus.COMPLETED).stripeTransferId("tr_rev_1").build();
         when(transferRepository.findByStripeTransferId("tr_rev_1")).thenReturn(Optional.of(completed));
-        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
         when(transferRepository.save(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(settlementRepository.save(any(SettlementStatement.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID, SettlementStatus.PAID, SettlementStatus.FAILED))
+                .thenReturn(1);
 
         transferService.handleTransferReversedWebhook("tr_rev_1");
 
         assertThat(completed.getStatus()).isEqualTo(TransferStatus.REVERSED);
-        assertThat(statement.getStatus()).isEqualTo(SettlementStatus.FAILED);
-    }
-
-    @Test
-    @DisplayName("🔴 handleTransferReversedWebhook: 結算單已在人工雙重授權逆轉流程中（REVERSAL_PENDING）"
-            + "，不可被 webhook 覆寫回 FAILED")
-    void handleTransferReversedWebhook_statementInReversalPending_doesNotOverrideStatus() {
-        transferService = newService();
-        SettlementStatement statement = approvedStatement();
-        statement.setStatus(SettlementStatus.REVERSAL_PENDING);
-        Transfer completed = Transfer.builder().id(UUID.randomUUID()).settlementStatementId(STATEMENT_ID)
-                .status(TransferStatus.COMPLETED).stripeTransferId("tr_rev_2").build();
-        when(transferRepository.findByStripeTransferId("tr_rev_2")).thenReturn(Optional.of(completed));
-        when(settlementRepository.findById(STATEMENT_ID)).thenReturn(Optional.of(statement));
-        when(transferRepository.save(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        transferService.handleTransferReversedWebhook("tr_rev_2");
-
-        assertThat(completed.getStatus()).isEqualTo(TransferStatus.REVERSED);
-        assertThat(statement.getStatus()).isEqualTo(SettlementStatus.REVERSAL_PENDING);
+        verify(settlementRepository).updateStatusIfCurrent(STATEMENT_ID, SettlementStatus.PAID, SettlementStatus.FAILED);
+        // 不載入結算單實體、不 save：整列寫回會用讀取當下的舊值蓋掉同時提交的逆轉發起（含四個逆轉欄位）
+        verify(settlementRepository, org.mockito.Mockito.never()).findById(any());
         verify(settlementRepository, org.mockito.Mockito.never()).save(any());
     }
 
     @Test
-    @DisplayName("handleTransferReversedWebhook: 查無記錄 → 不拋例外，不呼叫 save")
+    @DisplayName("🔴 handleTransferReversedWebhook: 結算單已在人工雙重授權逆轉流程中（REVERSAL_PENDING）"
+            + "——條件式更新搶不到，不可覆寫回 FAILED；transfer 仍記為 REVERSED")
+    void handleTransferReversedWebhook_statementInReversalPending_doesNotOverrideStatus() {
+        transferService = newService();
+        Transfer completed = Transfer.builder().id(UUID.randomUUID()).settlementStatementId(STATEMENT_ID)
+                .status(TransferStatus.COMPLETED).stripeTransferId("tr_rev_2").build();
+        when(transferRepository.findByStripeTransferId("tr_rev_2")).thenReturn(Optional.of(completed));
+        when(transferRepository.save(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID, SettlementStatus.PAID, SettlementStatus.FAILED))
+                .thenReturn(0);
+        when(settlementRepository.findStatusById(STATEMENT_ID)).thenReturn(Optional.of(SettlementStatus.REVERSAL_PENDING));
+
+        transferService.handleTransferReversedWebhook("tr_rev_2");
+
+        assertThat(completed.getStatus()).isEqualTo(TransferStatus.REVERSED);
+        verify(settlementRepository).updateStatusIfCurrent(STATEMENT_ID, SettlementStatus.PAID, SettlementStatus.FAILED);
+        verify(settlementRepository, org.mockito.Mockito.never()).findById(any());
+        verify(settlementRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    @DisplayName("handleTransferReversedWebhook: 結算單不存在（條件式更新 0 筆、重讀也沒有）→ 不拋例外（Stripe 不該因此無限重送），transfer 仍記為 REVERSED")
+    void handleTransferReversedWebhook_statementNotFound_doesNotThrow() {
+        transferService = newService();
+        Transfer completed = Transfer.builder().id(UUID.randomUUID()).settlementStatementId(STATEMENT_ID)
+                .status(TransferStatus.COMPLETED).stripeTransferId("tr_rev_3").build();
+        when(transferRepository.findByStripeTransferId("tr_rev_3")).thenReturn(Optional.of(completed));
+        when(transferRepository.save(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID, SettlementStatus.PAID, SettlementStatus.FAILED))
+                .thenReturn(0);
+        when(settlementRepository.findStatusById(STATEMENT_ID)).thenReturn(Optional.empty());
+
+        transferService.handleTransferReversedWebhook("tr_rev_3");
+
+        assertThat(completed.getStatus()).isEqualTo(TransferStatus.REVERSED);
+        verify(settlementRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    @DisplayName("handleTransferReversedWebhook: 查無記錄 → 不拋例外，不呼叫 save，也不碰結算單")
     void handleTransferReversedWebhook_noMatchingTransfer_doesNothing() {
         transferService = newService();
         when(transferRepository.findByStripeTransferId("tr_unknown")).thenReturn(Optional.empty());
@@ -407,6 +522,7 @@ class TransferServiceTest {
 
         verify(transferRepository, org.mockito.Mockito.never()).save(any());
         verify(settlementRepository, org.mockito.Mockito.never()).save(any());
+        verify(settlementRepository, org.mockito.Mockito.never()).updateStatusIfCurrent(any(), any(), any());
     }
 
     @Test

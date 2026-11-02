@@ -384,6 +384,10 @@ class M07SettlementIntegrationTest {
         testStatement.setStatus(SettlementStatus.REVERSAL_PENDING);
         testStatement.setReversalInitiatedByRole("SUPER_ADMIN");
         testStatement.setReversalReason("客戶投訴要求全額退款");
+        // Sprint 323 DEF-447：確認逆轉新增了條件式更新搶占（REVERSAL_PENDING → REVERSED）。settlementStatementRepository 是
+        // @MockBean，必須顯式 stub，否則 Mockito 對未 stub 的 int 回傳方法預設回傳 0，會被誤判為併發搶占失敗（409）。
+        when(settlementStatementRepository.updateStatusIfCurrent(eq(testStatementId),
+                eq(SettlementStatus.REVERSAL_PENDING), eq(SettlementStatus.REVERSED))).thenReturn(1);
 
         mockMvc.perform(post("/v2/admin/settlements/{id}/reverse/confirm", testStatementId)
                         .with(authentication(authAs("CFO", "settlement:reverse"))))

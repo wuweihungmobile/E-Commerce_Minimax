@@ -6,10 +6,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,9 +22,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementListResponse;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementResponse;
@@ -34,6 +39,7 @@ import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.CreditNoteRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
+import com.nextkey.ecommerce.infrastructure.persistence.UniqueConflictRetry;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 
@@ -64,7 +70,9 @@ class SettlementReversalServiceTest {
     private static final UUID CFO_ID = UUID.randomUUID();
 
     private SettlementReversalService newService() {
-        return new SettlementReversalService(settlementRepository, creditNoteRepository, userRepository, mapper);
+        // DEF-448：撞號時由 UniqueConflictRetry 整個交易重做；這裡用 mock 的交易管理員，只驗重做的次數與結果。
+        return new SettlementReversalService(settlementRepository, creditNoteRepository, userRepository, mapper,
+                new UniqueConflictRetry(org.mockito.Mockito.mock(PlatformTransactionManager.class)));
     }
 
     private SettlementStatement paidStatement() {
@@ -150,11 +158,14 @@ class SettlementReversalServiceTest {
         assertThat(creditNoteCaptor.getValue().getAmount()).isEqualByComparingTo("-5000.00");
         assertThat(creditNoteCaptor.getValue().getTenant().getId()).isEqualTo(TENANT_ID);
         assertThat(response.getStatus()).as("狀態已由搶占的 UPDATE 寫成 REVERSED，回應要反映它").isEqualTo("REVERSED");
+        assertThat(creditNoteCaptor.getValue().getCreditNoteNumber())
+                .as("DEF-448：當日第一張，編號是 CN-{租戶前 8 碼}-{開立日}-01").isEqualTo(todayNumberPrefix() + "01");
 
-        // DEF-447：搶占在產生信用票據之前（輸家不可留下信用票據）
+        // DEF-447：搶占在產生信用票據之前（輸家不可留下信用票據）；DEF-448：流水號在搶占之後才算（只有贏家算）
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(settlementRepository, creditNoteRepository);
         order.verify(settlementRepository).updateStatusIfCurrent(STATEMENT_ID,
                 SettlementStatus.REVERSAL_PENDING, SettlementStatus.REVERSED);
+        order.verify(creditNoteRepository).countByTenantIdAndCreditNoteNumberStartingWith(TENANT_ID, todayNumberPrefix());
         order.verify(creditNoteRepository).save(any(CreditNote.class));
 
         // 搶占的 UPDATE 已經把狀態寫完：實體不可再被 setter 弄髒、也不可 save（整列寫回正是 DEF-444／447 的機制）
@@ -180,6 +191,88 @@ class SettlementReversalServiceTest {
         verify(creditNoteRepository, never()).save(any());
         verify(settlementRepository, never()).save(any());
         org.mockito.Mockito.verifyNoInteractions(mapper);
+        // DEF-448：搶輸是 BusinessException（409），不是唯一約束違反——UniqueConflictRetry 不可把它當成撞號重做
+        verify(settlementRepository, times(1)).updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.REVERSAL_PENDING, SettlementStatus.REVERSED);
+        verify(creditNoteRepository, never()).countByTenantIdAndCreditNoteNumberStartingWith(any(), any());
+    }
+
+    // ── Sprint 324 DEF-448：信用票據編號＝開立日＋當日流水號；撞號整個交易重做 ───────────────────
+
+    /** 今天開立的信用票據編號前綴 {@code CN-{租戶 id 前 8 碼}-{yyyyMMdd}-}。 */
+    private static String todayNumberPrefix() {
+        return "CN-" + TENANT_ID.toString().substring(0, 8) + "-" + LocalDate.now().toString().replace("-", "") + "-";
+    }
+
+    /** 當日已有 {@code alreadyIssued} 張時確認一張逆轉，回傳開出來的信用票據編號。 */
+    private String confirmAndCaptureNumber(final long alreadyIssued) {
+        service = newService();
+        when(settlementRepository.findById(STATEMENT_ID))
+                .thenReturn(Optional.of(reversalPendingStatement("SUPER_ADMIN")));
+        when(userRepository.findById(CFO_ID)).thenReturn(Optional.of(User.builder().id(CFO_ID).build()));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.REVERSAL_PENDING, SettlementStatus.REVERSED)).thenReturn(1);
+        when(creditNoteRepository.countByTenantIdAndCreditNoteNumberStartingWith(TENANT_ID, todayNumberPrefix()))
+                .thenReturn(alreadyIssued);
+        when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder().build());
+
+        service.confirmReversal(STATEMENT_ID, CFO_ID, "CFO");
+
+        ArgumentCaptor<CreditNote> captor = ArgumentCaptor.forClass(CreditNote.class);
+        verify(creditNoteRepository).save(captor.capture());
+        return captor.getValue().getCreditNoteNumber();
+    }
+
+    @Test
+    @DisplayName("DEF-448 confirmReversal：流水號＝當日已開立張數＋1，至少兩位（0 張→-01、8 張→-09、9 張→-10、98 張→-99、99 張→-100）")
+    void confirmReversal_runningNumberIsCountPlusOnePaddedToTwoDigits() {
+        assertThat(confirmAndCaptureNumber(0)).isEqualTo(todayNumberPrefix() + "01");
+        org.mockito.Mockito.reset(settlementRepository, creditNoteRepository, userRepository, mapper);
+        assertThat(confirmAndCaptureNumber(8)).isEqualTo(todayNumberPrefix() + "09");
+        org.mockito.Mockito.reset(settlementRepository, creditNoteRepository, userRepository, mapper);
+        assertThat(confirmAndCaptureNumber(9)).isEqualTo(todayNumberPrefix() + "10");
+        org.mockito.Mockito.reset(settlementRepository, creditNoteRepository, userRepository, mapper);
+        assertThat(confirmAndCaptureNumber(98)).isEqualTo(todayNumberPrefix() + "99");
+        org.mockito.Mockito.reset(settlementRepository, creditNoteRepository, userRepository, mapper);
+        assertThat(confirmAndCaptureNumber(99)).isEqualTo(todayNumberPrefix() + "100");
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-448 confirmReversal：INSERT 撞唯一約束（別張結算單搶先用掉流水號）→ 整個交易（含狀態搶占）重做，這次改用下一個流水號，回應仍是成功")
+    void confirmReversal_uniqueConflictOnTheFirstAttempt_rerunsTheWholeTransactionWithTheNextNumber() {
+        service = newService();
+        when(settlementRepository.findById(STATEMENT_ID))
+                .thenReturn(Optional.of(reversalPendingStatement("SUPER_ADMIN")));
+        when(userRepository.findById(CFO_ID)).thenReturn(Optional.of(User.builder().id(CFO_ID).build()));
+        when(settlementRepository.updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.REVERSAL_PENDING, SettlementStatus.REVERSED)).thenReturn(1);
+        // 第一次計數時別張結算單的票據還沒提交（0 張）；撞約束整個重做之後，它已提交（1 張）
+        when(creditNoteRepository.countByTenantIdAndCreditNoteNumberStartingWith(TENANT_ID, todayNumberPrefix()))
+                .thenReturn(0L, 1L);
+        when(creditNoteRepository.save(any(CreditNote.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint"))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(mapper.toStatementResponse(any())).thenReturn(SettlementStatementResponse.builder().build());
+
+        SettlementStatementResponse response = service.confirmReversal(STATEMENT_ID, CFO_ID, "CFO");
+
+        assertThat(response.getStatus()).isEqualTo("REVERSED");
+        ArgumentCaptor<CreditNote> captor = ArgumentCaptor.forClass(CreditNote.class);
+        verify(creditNoteRepository, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues()).extracting(CreditNote::getCreditNoteNumber)
+                .containsExactly(todayNumberPrefix() + "01", todayNumberPrefix() + "02");
+        // 「整個重做」：狀態搶占也重做了一次（第一次的搶占隨交易回滾，不能沿用）
+        verify(settlementRepository, times(2)).updateStatusIfCurrent(STATEMENT_ID,
+                SettlementStatus.REVERSAL_PENDING, SettlementStatus.REVERSED);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-448 confirmReversal 不可標 @Transactional：UniqueConflictRetry 必須是最外層，已在交易內就無法重做（撞號會直接 500）")
+    void confirmReversal_isNotTransactional_soTheRetryComponentOwnsTheTransaction() throws NoSuchMethodException {
+        assertThat(SettlementReversalService.class
+                .getMethod("confirmReversal", java.util.UUID.class, java.util.UUID.class, String.class)
+                .getAnnotation(Transactional.class)).isNull();
+        assertThat(SettlementReversalService.class.getAnnotation(Transactional.class)).isNull();
     }
 
     @Test

@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -272,6 +273,88 @@ class SettlementPostApprovalRaceRealStackIntegrationTest {
         });
     }
 
+    // ── 信用票據編號：開立日＋當日流水號（DEF-448，Sprint 324）──────────────────────────
+    //
+    // 原本編號是『租戶前綴＋今天日期』（每租戶每天一個），同一租戶同一天的第二張逆轉確認會撞 V36 的
+    // UNIQUE (tenant_id, credit_note_number) 回 500（Sprint 323 實測），要等隔天才確認得了。使用者以互動選項選了
+    // 『開立日＋當日流水號』：CN-{租戶 id 前 8 碼}-{開立日}-01、-02…（做法同 SupportTicketService 的工單單號）。
+
+    @Test
+    @DisplayName("同租戶同一天的兩張結算單依序確認：都成功，信用票據編號是 CN-{租戶前 8 碼}-{開立日}-01 與 -02（有 V36 同形唯一索引）")
+    void confirmTwoStatementsOfTheSameTenantOnTheSameDay_getConsecutiveNumbers() throws Exception {
+        UUID first = seedReversalPending();
+        UUID second = seedReversalPending();
+        createCreditNoteNumberIndex();
+
+        MockHttpServletResponse firstConfirmed = confirm(first, cfoOneToken);
+        MockHttpServletResponse secondConfirmed = confirm(second, cfoTwoToken);
+
+        SoftAssertions.assertSoftly(softly -> {
+            softly.assertThat(firstConfirmed.getStatus()).as("第一張確認：%s", safeBody(firstConfirmed)).isEqualTo(200);
+            softly.assertThat(secondConfirmed.getStatus()).as("第二張確認：%s", safeBody(secondConfirmed)).isEqualTo(200);
+            softly.assertThat(creditNoteNumbersOfTenant()).as("當日信用票據編號")
+                    .containsExactly(todayNumberPrefix() + "01", todayNumberPrefix() + "02");
+            softly.assertThat(stateOf(first).status).as("第一張結算單").isEqualTo("REVERSED");
+            softly.assertThat(stateOf(second).status).as("第二張結算單").isEqualTo("REVERSED");
+        });
+    }
+
+    /**
+     * 兩張不同結算單同時確認、算出同一個流水號——模擬方式：另一個交易已插入（尚未提交）同租戶當日的 {@code …-01}。
+     * 確認請求算出的也是 {@code …-01}（對手尚未提交，count 看不到它），它的 INSERT 卡在對手尚未提交的唯一索引項目上；
+     * 對手提交後撞唯一約束，整個交易（含狀態搶占）回滾，在新交易重做：這次 count 看得到對手的票據，編號是 {@code …-02}。
+     */
+    @Test
+    @DisplayName("確認時流水號被別張結算單搶先用掉（唯一索引衝突）：整個交易重做，改用下一個流水號 -02，仍回 200（不是 500）")
+    void confirmLosesTheDailyNumberToAnotherStatement_retriesWithTheNextNumber() throws Exception {
+        UUID otherStatement = seedStatement("REVERSED");
+        UUID statementId = seedReversalPending();
+        createCreditNoteNumberIndex();
+        String takenNumber = todayNumberPrefix() + "01";
+
+        HeldTransaction opponent = holdTransaction(jdbc -> insertCreditNote(jdbc, otherStatement, takenNumber));
+        MockHttpServletResponse confirmed;
+        try {
+            Future<MockHttpServletResponse> request = pool.submit(() -> confirm(statementId, cfoOneToken));
+            awaitRequestsBlocked(1);
+            Assertions.assertThat(request.isDone()).as("確認請求應該卡在對手尚未提交的信用票據編號上").isFalse();
+            opponent.commit();
+            confirmed = request.get(AWAIT_SECONDS, TimeUnit.SECONDS);
+        } finally {
+            opponent.release();
+        }
+
+        StatementState state = stateOf(statementId);
+        SoftAssertions.assertSoftly(softly -> {
+            softly.assertThat(confirmed.getStatus()).as("輸給對手的確認：%s", safeBody(confirmed)).isEqualTo(200);
+            softly.assertThat(responseStatus(confirmed)).as("回應狀態：%s", safeBody(confirmed)).isEqualTo("REVERSED");
+            softly.assertThat(creditNoteNumbersOfTenant()).as("當日信用票據編號")
+                    .containsExactly(takenNumber, todayNumberPrefix() + "02");
+            softly.assertThat(state.status).as("結算單：%s", state).isEqualTo("REVERSED");
+            softly.assertThat(state.creditNoteNumbers).as("這張結算單自己的信用票據：%s", state)
+                    .containsExactly(todayNumberPrefix() + "02");
+        });
+    }
+
+    /** 流水號是『當日』的：同租戶以前日期開立的票據不算進今天的流水號，今天的第一張仍是 -01。 */
+    @Test
+    @DisplayName("流水號每天重新從 01 開始：同租戶舊日期的信用票據不算進今天的流水號")
+    void dailyNumberRestartsAtOneEachDay() throws Exception {
+        UUID olderStatement = seedStatement("REVERSED");
+        insertCreditNote(jdbcTemplate, olderStatement, tenantNumberPrefix() + "20200101-05");
+        UUID statementId = seedReversalPending();
+        createCreditNoteNumberIndex();
+
+        MockHttpServletResponse confirmed = confirm(statementId, cfoOneToken);
+
+        StatementState state = stateOf(statementId);
+        SoftAssertions.assertSoftly(softly -> {
+            softly.assertThat(confirmed.getStatus()).as("確認：%s", safeBody(confirmed)).isEqualTo(200);
+            softly.assertThat(state.creditNoteNumbers).as("今天的第一張信用票據：%s", state)
+                    .containsExactly(todayNumberPrefix() + "01");
+        });
+    }
+
     // ── 重試撥款（FAILED 上的兩個重試）──────────────────────────────────────────
 
     @Test
@@ -493,6 +576,30 @@ class SettlementPostApprovalRaceRealStackIntegrationTest {
         jdbcTemplate.execute("CREATE UNIQUE INDEX IF NOT EXISTS " + indexName
                 + " ON credit_notes (tenant_id, credit_note_number) WHERE tenant_id = '" + fx.store.getId() + "'");
         createdIndexes.add(indexName);
+    }
+
+    /** 信用票據編號的租戶前綴：{@code CN-{租戶 id 前 8 碼}-}。 */
+    private String tenantNumberPrefix() {
+        return "CN-" + fx.store.getId().toString().substring(0, 8) + "-";
+    }
+
+    /** 今天開立的信用票據編號前綴：{@code CN-{租戶 id 前 8 碼}-{yyyyMMdd}-}（後面接當日流水號）。 */
+    private String todayNumberPrefix() {
+        return tenantNumberPrefix() + LocalDate.now().toString().replace("-", "") + "-";
+    }
+
+    /** 本案例店鋪（租戶）名下所有信用票據編號，依編號排序。 */
+    private List<String> creditNoteNumbersOfTenant() {
+        return jdbcTemplate.queryForList(
+                "SELECT credit_note_number FROM credit_notes WHERE tenant_id = ? ORDER BY credit_note_number",
+                String.class, fx.store.getId());
+    }
+
+    /** 直接插入一張信用票據（對手交易或舊日期的既有票據用）；{@code issued_by}、{@code issued_at} 可為空。 */
+    private void insertCreditNote(final JdbcTemplate jdbc, final UUID originalStatementId, final String number) {
+        jdbc.update("INSERT INTO credit_notes (id, tenant_id, original_statement_id, credit_note_number, type, amount, "
+                + "status) VALUES (?, ?, ?, ?, 'CREDIT_NOTE', -900.00, 'PENDING')",
+                UUID.randomUUID(), fx.store.getId(), originalStatementId, number);
     }
 
     /** 讓店鋪成為可撥款的（Connect 帳戶就緒＋撥款開關開啟），並讓閘道回報撥款成功。回傳 Connect 帳戶 id。 */

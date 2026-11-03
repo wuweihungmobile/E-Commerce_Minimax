@@ -149,4 +149,12 @@
 
 ## 10. 狀態
 
-**狀態：功能完成、待 push。** 本輪的功能 commit（生產碼、測試、`API_M07` v1.6、追蹤表、發布追蹤表、本計畫書）完成後，依 2026-10-29 長期授權（使用者明文：『做完一輪後，直接 Commit + Push to main』）直接 push，不再詢問；**本節寫作時尚未 push，push 結果與雲端 CI 結果在 push 之後以純文件 commit 回填**（同 Sprint 322／323 的做法）。Sprint 323 的純文件回填（push 狀態與雲端 CI 結果）先另成一個 commit，與本輪一起 push。雲端 CI 預期：整合測試 **1017／0**（與本機 verify 同數；這是預期，不是結果）。Docker 清理與最終回報在 push 與雲端 CI 之後。
+**狀態：已 push，雲端 CI 全綠。**
+
+**push**：功能 commit `ce23f3e1` 已 push（`297e101a..ce23f3e1`，連同 Sprint 323 的純文件回填 commit `6c27e63e`；依 2026-10-29 長期授權直接 push，沒有再詢問）。pre-commit〔Checkstyle、編譯、核心測試、secret 掃描〕兩個 commit 各一次通過，pre-push 輕量守門〔act 單元、前端、schema 漂移無漂移〕一次通過，沒有使用 `--no-verify`；push 前主工作目錄已 commit 乾淨，所以沒有再碰到 `DEF-449`。
+
+**雲端 CI 全綠**：run [41559586116](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/41559586116)，三個 job 皆 success（Backend Unit Tests 2 分 37 秒／Frontend Lint & Build 1 分 59 秒／Backend Integration Tests & Package 8 分 28 秒），整個 run 11 分 11 秒（2026-11-03 01:24:54Z～01:36:05Z）。`gh run watch` 回 0 之後，另以 `gh run view --json status,conclusion,headSha,jobs` 交叉確認 headSha 為 `ce23f3e1`，並下載整合 job 的完整雲端日誌（61.8 MB，剝掉 ANSI 色碼後）確認：整合測試 **1017／0 失敗／0 錯誤／0 跳過**（與本機 verify 同數，§5 的預期成真）、`BUILD SUCCESS`、Checkstyle main／test 各 0 違規、`<<< FAILURE`／`<<< ERROR`／`Unresolved compilation`／`ClassFormatError`／`NoClassDefFoundError` 各 0 個；`SettlementPostApprovalRaceRealStackIntegrationTest` 12、`SettlementReviewRaceRealStackIntegrationTest` 18、`M07SettlementIntegrationTest` 14、`SettlementApprovalPayoutTriggerRealStackIntegrationTest` 4、`UniqueConstraintRaceRealStackIntegrationTest` 4，與本機 verify 逐類別一致。**單元 job 只確認結論為 success 與 Checkstyle 0**：它的 `mvn test` 帶 `-q`（安靜模式），日誌不印案例數，所以沒有雲端的單元案例數可核對。
+
+**Docker 清理**（本輪結尾）：匿名卷 4 個全刪（0 失敗）、卷 1.112GB → 928MB，3 個核准基底映像與 5 個具名卷保留，懸空映像清理回收 0B，建置快取 1.889GB 只回報、沒刪。另一個觀察：push 前 `docker ps` 看得到 `nk-test-pg`／`nk-test-redis`，push（含 pre-push 守門）之後 `docker ps -a` 一個容器都沒有，下次後端 commit 前要先重新 `make test-db-up`。
+
+**這個回填 commit 只改文件，尚未 push**，隨下一輪的 push 帶出（沿用 Sprint 322／323 的做法，避免『回填→再 push→再回填』無限循環）。

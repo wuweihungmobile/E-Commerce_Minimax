@@ -194,16 +194,16 @@
 6. **兩個可見行為變更**：同時確認／同時重試的輸家從 `500` 變成 `409 E-5014`；webhook 與確認逆轉不再推進結算單的 `updated_at`（§7 第 6 點）。
 7. **依賴修復用針對單一套件的 `npm update follow-redirects --package-lock-only`**，不用整批 `npm audit fix`（§6 第 3 點）。
 8. **不改 `Makefile`／守門**：`DEF-449` 只登記（動守門是基礎設施變更）。
-9. **`DEF-448` 的編號格式用互動選項問使用者**，收尾提出三個選項並附建議。
+9. **`DEF-448` 的編號格式用互動選項問使用者**：收尾提出四個選項（A 沿用結算單編號〔我的建議〕／B 開立日＋結算單碼／C 開立日＋當日流水號／先不改）。**使用者選了 C**，實作見 [SPRINT_324_PLAN.md](SPRINT_324_PLAN.md)。
 
 ## 9. 新登記與更新的缺陷
 
 - **`DEF-447`**（🟢→✅）：已量測、已修，見追蹤表。新發現一個原登記沒有的子項（確認逆轉沒有搶占），並證明它是 `DEF-448` 修法的前置條件。
-- **`DEF-448`**（🟢，**已量測、尚未修**）：同一租戶同一天的第二張逆轉確認 `500 E-9900`（確定性缺陷）；修法待使用者決定編號格式。收尾以互動選項詢問使用者要選哪個編號格式（選項見追蹤表 `DEF-448`）；答案會在回填 commit 補記。
+- **`DEF-448`**（🟢，**已量測、尚未修**）：同一租戶同一天的第二張逆轉確認 `500 E-9900`（確定性缺陷）；修法待使用者決定編號格式。收尾以互動選項詢問使用者，**使用者選了 C**（`CN-{租戶 id 前 8 碼}-{開立日}-{當日流水號}`），由 [Sprint 324](SPRINT_324_PLAN.md) 實作。
 - **`DEF-449`**（🟢，**新登記，只登記不修**）：`make validate-fast`／`validate-all` 一律驗主倉庫目錄（`Makefile` 第 153、174 行寫死絕對路徑），不是正在 push 的那棵樹；有未提交的在途工作時無關的 push 會被擋下，從別的 worktree push 也無法隔離。建議把路徑改成 `$(CURDIR)`，或讓守門驗 HEAD 的匯出副本。目前的繞法：push 前備份＋`git stash -u`。
 
 ## 10. 狀態
 
 **使用者回報的 CI 失敗（依賴安全審計 #7，已修並在雲端驗證）**：排程 run [41406412925](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/41406412925)（2026-11-02 07:27Z）因 `follow-redirects 1.16.1`（`axios` 的傳遞相依，high，`GHSA-mrwp-f3q8-3g9p`）exit 1。修復 commit `959dbeca`（`frontend/package-lock.json` 三行，`follow-redirects → 1.16.2`；整批 `npm audit fix` 因夾帶開發工具鏈升級被還原）已 push（`df7c84f5..959dbeca`，連同 Sprint 322 的純文件回填 commit `e8383a4e`）。**雲端驗證**：手動觸發 [41467316938](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/41467316938)（`workflow_dispatch`）success，headSha `959dbeca`，`npm audit` 步驟通過；push 觸發的主 CI [41467149421](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/41467149421) 三個 job 全綠（單元 3 分 06 秒／前端 2 分 02 秒／整合 10 分 40 秒）。第一次 push 被 pre-push 守門擋下（`DEF-449`，§6 第 2 點）。
 
-**Sprint 323 本身**：功能 commit 待建立並 push（依 2026-10-29 長期授權，commit 後直接 push，不再詢問）；push 結果與雲端 CI 於回填 commit 補記。
+**Sprint 323 本身**：功能 commit `297e101a` 已 push（`959dbeca..297e101a`，依 2026-10-29 長期授權直接 push，沒有再詢問；pre-commit〔Checkstyle、編譯、核心測試、secret 掃描〕與 pre-push 輕量守門〔act 單元、前端、schema 漂移無漂移〕都一次通過，沒有使用 `--no-verify`）。**雲端 CI 全綠**：run [41486537336](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/41486537336)，三個 job 皆 success（Backend Unit Tests 2 分 45 秒／Frontend Lint & Build 2 分 02 秒／Backend Integration Tests & Package 7 分 58 秒），整個 run 10 分 48 秒（2026-11-02 16:57:53Z～17:08:41Z），以 `gh run view --json status,conclusion,headSha,jobs` 確認 headSha 為 `297e101a`，並下載整合 job 的完整雲端日誌（61.8 MB，剝掉 ANSI 色碼後）確認整合測試 **1014／0 失敗／0 錯誤／0 跳過**、`BUILD SUCCESS`、Checkstyle main／test 各 0 違規、`<<< FAILURE`／`<<< ERROR` 標記 0 個，`SettlementPostApprovalRaceRealStackIntegrationTest` 9、`SettlementReviewRaceRealStackIntegrationTest` 18、`M07SettlementIntegrationTest` 14、`SettlementApprovalPayoutTriggerRealStackIntegrationTest` 4 與本機 verify 逐類別一致（單元 job 只確認結論為 success，沒有另外抓雲端的單元案例數）。本輪結尾的 Docker 清理：匿名卷 8 個全刪（0 失敗）、卷 1.234GB → 928MB，3 個核准基底映像與 5 個具名卷保留，建置快取 1.889GB 只回報、沒刪。

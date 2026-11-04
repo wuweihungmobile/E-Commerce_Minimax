@@ -7,6 +7,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.IntSupplier;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
@@ -33,6 +34,7 @@ import com.nextkey.ecommerce.domain.repository.SupplierRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
+import com.nextkey.ecommerce.infrastructure.persistence.UniqueConflictRetry;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -61,16 +63,34 @@ public class PurchaseOrderService {
     private final ListingRepository listingRepository;
     private final TenantRepository tenantRepository;
     private final FeatureToggleService featureToggleService;
+    private final UniqueConflictRetry uniqueConflictRetry;
 
     // PO Number generation
     private static final int PO_NUMBER_MIN = 100000;
     private static final int PO_NUMBER_MAX = 999999;
 
     /**
-     * 建立採購單 (DRAFT)
+     * 單號後綴（6 位數）的來源，預設每次取新的隨機數。這是<b>只為測試存在的接縫</b>：整合測試把它換成固定序列，
+     * 才能確定性地讓兩個建單請求產生同一個單號（真實撞號），驗證輸家會重做（DEF-297）。生產碼不應改動它。
      */
-    @Transactional
+    private IntSupplier poNumberSuffix = () -> ThreadLocalRandom.current().nextInt(PO_NUMBER_MIN, PO_NUMBER_MAX);
+
+    /**
+     * 建立採購單 (DRAFT)
+     *
+     * <p>單號是 {@code PO-日期-6 位隨機數}，{@code purchase_orders.po_number} 是全平台唯一約束：隨機數撞上別人手上的單號時
+     * INSERT 會違反唯一約束（DEF-297；Sprint 215 全量驗證撞到過一次）。PostgreSQL 在交易內任何語句失敗後整個交易就中止，
+     * 所以輸家只能把整個交易丟掉、在全新的交易裡重做（重做時重新產生單號，見 {@link UniqueConflictRetry}，DEF-441）。
+     *
+     * <p><b>不可標 {@code @Transactional}</b>：{@link UniqueConflictRetry} 必須是最外層，已在交易內就無法重做
+     * （撞號會直接 500）。比照 {@code SupportTicketService.createTicket}、{@code SettlementReversalService.confirmReversal}；
+     * 單元測試有結構守門。
+     */
     public PurchaseOrderDto createPurchaseOrder(final PurchaseOrderCreateRequest request, final UUID userId) {
+        return uniqueConflictRetry.execute(() -> createPurchaseOrderOnce(request, userId));
+    }
+
+    private PurchaseOrderDto createPurchaseOrderOnce(final PurchaseOrderCreateRequest request, final UUID userId) {
         featureToggleService.checkFeatureEnabled("ERP_ENABLED");
 
         UUID tenantId = TenantContext.getCurrentTenant();
@@ -384,7 +404,7 @@ public class PurchaseOrderService {
      */
     private String generatePoNumber() {
         String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-        int random = ThreadLocalRandom.current().nextInt(PO_NUMBER_MIN, PO_NUMBER_MAX);
+        int random = poNumberSuffix.getAsInt();
         return String.format("PO-%s-%d", date, random);
     }
 

@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -14,6 +16,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntSupplier;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,11 +27,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderCreateRequest;
 import com.nextkey.ecommerce.api.dto.erp.PurchaseOrderDto;
@@ -49,6 +58,7 @@ import com.nextkey.ecommerce.domain.repository.StockMovementRepository;
 import com.nextkey.ecommerce.domain.repository.SupplierRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.core.feature.FeatureToggleService;
+import com.nextkey.ecommerce.infrastructure.persistence.UniqueConflictRetry;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -90,6 +100,10 @@ class PurchaseOrderServiceTest {
 
     @Mock
     private FeatureToggleService featureToggleService;
+
+    // DEF-297：撞號時由 UniqueConflictRetry 整個交易重做；這裡用 mock 的交易管理員，只驗重做的次數與結果
+    @Spy
+    private UniqueConflictRetry uniqueConflictRetry = new UniqueConflictRetry(mock(PlatformTransactionManager.class));
 
     @InjectMocks
     private PurchaseOrderService purchaseOrderService;
@@ -220,6 +234,54 @@ class PurchaseOrderServiceTest {
         assertThatThrownBy(() -> purchaseOrderService.createPurchaseOrder(request, userId))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_7008));
+    }
+
+    // ── DEF-297：單號撞上唯一約束 ─────────────────────────────
+
+    @Test
+    @DisplayName("🔴 DEF-297 createPurchaseOrder：單號撞上唯一約束（save 拋 DataIntegrityViolationException）→ 整個重做，第二次用新單號，最後成功")
+    void createPurchaseOrder_numberCollision_redoesWholeTransactionWithFreshNumber() {
+        // 接縫：第一次產生 111111（撞號），第二次產生 222222
+        AtomicInteger generated = new AtomicInteger();
+        IntSupplier source = () -> generated.getAndIncrement() == 0 ? 111111 : 222222;
+        ReflectionTestUtils.setField(purchaseOrderService, "poNumberSuffix", source);
+        when(supplierRepository.existsByIdAndTenantId(supplierId, tenantId)).thenReturn(true);
+        when(listingRepository.findById(listingId)).thenReturn(Optional.of(listingOf(tenantId)));
+        when(productSkuRepository.existsByIdAndProductListingId(skuId, listingId)).thenReturn(true);
+        when(purchaseOrderRepository.save(any(PurchaseOrder.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint"))
+                .thenAnswer(inv -> {
+                    PurchaseOrder po = inv.getArgument(0);
+                    po.setId(poId);
+                    return po;
+                });
+
+        PurchaseOrderCreateRequest request = PurchaseOrderCreateRequest.builder()
+                .supplierId(supplierId)
+                .items(List.of(itemRequest(2, "50.00")))
+                .build();
+        PurchaseOrderDto result = purchaseOrderService.createPurchaseOrder(request, userId);
+
+        ArgumentCaptor<PurchaseOrder> captor = ArgumentCaptor.forClass(PurchaseOrder.class);
+        verify(purchaseOrderRepository, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues()).extracting(PurchaseOrder::getPoNumber)
+                .as("兩次嘗試各自產生單號：第一次撞號的 111111、重做時換成 222222")
+                .satisfiesExactly(
+                        first -> assertThat(first).matches("PO-\\d{8}-111111"),
+                        second -> assertThat(second).matches("PO-\\d{8}-222222"));
+        assertThat(generated.get()).as("單號被產生的次數").isEqualTo(2);
+        assertThat(result.getPoNumber()).endsWith("-222222");
+        // 重做是整個重做：前置檢查（供應商存在）也跟著再做一次，不是只重試 save
+        verify(supplierRepository, times(2)).existsByIdAndTenantId(supplierId, tenantId);
+    }
+
+    @Test
+    @DisplayName("🔴 DEF-297 createPurchaseOrder 不可標 @Transactional：UniqueConflictRetry 必須是最外層，已在交易內就無法重做（撞號會直接 500）")
+    void createPurchaseOrder_mustNotBeTransactional() throws NoSuchMethodException {
+        assertThat(PurchaseOrderService.class
+                .getMethod("createPurchaseOrder", PurchaseOrderCreateRequest.class, UUID.class)
+                .getAnnotation(Transactional.class)).isNull();
+        assertThat(PurchaseOrderService.class.getAnnotation(Transactional.class)).isNull();
     }
 
     // ── US-003（驗證中）：跨租戶庫存挪用 ─────────────────────────

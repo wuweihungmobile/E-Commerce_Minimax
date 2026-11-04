@@ -1,7 +1,7 @@
 # API 規格文件 - M16 進銷存管理 / API Specification - M16 ERP (Inventory & Purchasing)
 
 > **文件編號**: API-M16
-> **文件版本**: v1.0（Sprint 276，首次建立；首次有獨立規格文件，DEF-286 範圍）
+> **文件版本**: v1.1（Sprint 325：DEF-297——建立採購單時單號撞上唯一約束，改為整個交易自動重做並換新單號，最多 3 次，對呼叫者透明；修復前該請求 `500 E-9900`。單號格式不變。v1.0 為 Sprint 276 首次建立，首次有獨立規格文件，DEF-286 範圍）
 > **建立日期**: 2026-10-16
 > **最後更新**: 2026-10-16
 > **負責人**: SD (Marcus)
@@ -96,7 +96,7 @@ FRD 完全無 M16 章節（見文件頂部狀態說明）。
 | 欄位 | 類型 | 說明 |
 |------|------|------|
 | `id` / `tenantId` / `supplierId` | UUID | |
-| `poNumber` | String | 格式 `PO-{yyyyMMdd}-{6 位隨機數}`，非原子產生（見 §7） |
+| `poNumber` | String | 格式 `PO-{yyyyMMdd}-{6 位隨機數}`；隨機數撞上別人手上的單號時，建立動作自動重做並換新單號（見 §4.7、§7） |
 | `status` | enum `POStatus` | 見 §1.2 第 3 點 |
 | `totalAmount` | BigDecimal | 建立時由各品項 `unitCost × quantity` 加總 |
 | `currency` | String | 固定 `"TWD"`，無其他幣別支援 |
@@ -178,6 +178,8 @@ FRD 完全無 M16 章節（見文件頂部狀態說明）。
 | 品項的 `listingId` 不屬於本租戶 | 403 | `E-1007` |
 | 品項的 `skuId` 不屬於該 `listingId` | 404 | `E-3003`（刻意與「SKU 真的不存在」同碼，避免洩漏他租戶 SKU 存在性） |
 | `items` 缺失或為空陣列 | 400 | `E-9000`（`@NotEmpty` 驗證失敗，由 `@Valid` 攔截，見 §7） |
+
+**單號撞號（DEF-297，Sprint 325）**：單號 `PO-{yyyyMMdd}-{6 位隨機數}` 由系統產生，`purchase_orders.po_number` 是**全平台**唯一約束。兩個請求（可以是不同店鋪）產生同一個單號時，後到的那個 INSERT 違反唯一約束；服務把失敗的那一次交易整個回滾，在全新的交易裡**重新產生單號**再做一次（最多 3 次，`UniqueConflictRetry`），呼叫者只會看到 `201` 和重做成功的那個單號，不會留下半套的列。連續 3 次都撞號才回 `500 E-9900`（見 §7）。修復前撞號的那個請求直接 `500 E-9900`。
 
 ### 4.8 `GET /v2/dashboard/purchase-orders/{id}` — 採購單詳情
 
@@ -336,7 +338,7 @@ FRD 完全無 M16 章節（見文件頂部狀態說明）。
 | **多處輸入驗證缺口，特定輸入觸發 500（DEF-385，已於 Sprint 278 修復；另一實例見 M11 模組）** | 原兩個實例：(1) §4.2 `listSuppliers`、(2) §4.6 `listPurchaseOrders` 的 `status` 篩選皆以 `Enum.valueOf()` 手動解析卻未包 try-catch，已補上並轉譯為對應的 `E-7010`／`E-7002`（422）。**查證後更正**：原登記的第三個實例「§4.7 `createPurchaseOrder` 的 `items` 缺 `@NotNull`／`@NotEmpty`」經 `git log -L` 確認描述有誤——`items` 自 Sprint 10（M16 最初建立）起即有 `@NotEmpty`＋`@Valid`，從未真的會 NPE 成 500，本欄原判斷錯誤。第四個實例（`LogisticsController.updateLogisticsStatus`，M11 模組）已於 [API_M11_Logistics.md](./API_M11_Logistics.md) §7 一併修復 |
 | `E-7008` 的訊息與官方定義不符 | 官方定義「供應商已停用」，但 `validateSupplier` 實際檢查的是 `existsByIdAndTenantId`（純存在性＋租戶歸屬），不检查 `status`——停用（`INACTIVE`）的供應商仍可用於建立採購單，訊息文字「not found or inactive」暗示會檢查停用狀態，但程式碼並未如此 |
 | `PurchaseOrder.POStatus.ORDER`／`SHIPPED` 是未使用的保留列舉值 | 全庫無任何程式碼路徑會設定這兩個狀態，`canSubmit`／`canReceive`／`canCancel` 三個狀態機方法都不提及 |
-| 採購單號非原子產生 | `PO-{日期}-{6 位隨機數}` 僅靠隨機數范围（900000 種組合）降低碰撞機率，無資料庫層級的重試保證；真實碰撞機率極低但非結構性保證（另見 [[po-number-random-collision-def297]] 類似的既有教訓，本模組未採用同類保護） |
+| 採購單號是隨機產生，撞號靠重做解決（DEF-297，撞號 `500` 已於 Sprint 325 修復） | `PO-{日期}-{6 位隨機數}`（每天 899,999 種後綴），`po_number` 是**全平台**唯一約束（`V1`，不分租戶；PRD 資料字典寫『Tenant 內唯一』、`VARCHAR(30)`，實作是全平台唯一、`VARCHAR(50)`，本輪未對齊）。修復前隨機數撞上別人手上的單號時 INSERT 違反唯一約束、建單請求 `500 E-9900`（Sprint 215 全量驗證撞到過一次）；現在 `createPurchaseOrder` 不在外層交易內，整個建立動作交給 `UniqueConflictRetry`：撞號時交易整個回滾、換新單號在新交易重做，最多 3 次（見 §4.7）。**限制**：連續 3 次都撞號仍是 `500 E-9900`（`API_Error_Codes.md` 另列了 `E-7006` 採購單號重複〔409〕，但程式碼從未拋出它）；單號不保證連續、不保證可預測 |
 | 審批門檐為租戶層級單一值 | `Tenant.purchaseOrderApprovalThreshold` 不分供應商／品類，無法設定「特定供應商一律需審批」等更細緻規則 |
 | `GET /inventory/{skuId}` 的錯誤回應繞過 `GlobalExceptionHandler` | 直接 `ResponseEntity.status(404).body(ApiResponse.error(...))`，封包格式與其他端點一致，但不經過集中式例外處理（純風格差異，非功能缺陷） |
 

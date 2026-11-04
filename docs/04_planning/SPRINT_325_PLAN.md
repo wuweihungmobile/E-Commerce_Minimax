@@ -155,7 +155,7 @@
 | 突變驗證 | 基準 Z0＋6 組，全部 `KILLED(exactly must)` |
 | 全量後端 `mvn -o clean verify`（全新資料庫） | `BUILD SUCCESS`，34 分 40 秒（比 Sprint 324 的 19 分長不少，沒有查原因）；單元 **2474／0**（2472＋2）、整合 **1019／0**（1017＋2）、0 失敗／0 錯誤／0 跳過；Checkstyle main／test 0 違規、PMD 通過。`PurchaseOrderServiceTest` 41、`BusinessNumberRaceRealStackIntegrationTest` 2、`M16ErpIntegrationTest` 41、`M16ErpE2ETest` 7、`M16ErpInventoryConcurrencyIntegrationTest` 5、`AdminControllerE2ETest` 24、`SkuManagementIntegrationTest` 2，與先前單跑一致 |
 | 文件守門（四個類別，改完所有文件後跑） | **14／0**：`ApiRouteDocDriftTest` 2、`DocMarkdownFenceTest` 9、`TechStackDocDriftTest` 2、`ErrorCodeDocDriftTest` 1 |
-| push／雲端 CI | commit 後依長期授權直接 push；push 結果與雲端 CI 於回填 commit 補上（見 §10） |
+| push／雲端 CI | **已 push**：`ce23f3e1..6932928c`（連同 Sprint 324 的純文件回填 commit `7817cf95`），pre-commit 與 pre-push 輕量守門〔含 schema 漂移關卡〕都一次通過，沒有使用 `--no-verify`。**雲端 CI 全綠**：run [41848238162](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/41848238162)，三個 job 皆 success（Unit 3 分 9 秒／Frontend 1 分 53 秒／Integration 7 分 28 秒，整個 run 10 分 44 秒），`gh run view --json` 確認 headSha 為 `6932928c`；下載整合 job 完整日誌（約 62 MB）確認整合 **1019／0／0／0**、Checkstyle 0，新類別 2、`M16ErpIntegrationTest` 41、`M16ErpInventoryConcurrencyIntegrationTest` 5、`M16ErpE2ETest` 7、`AdminControllerE2ETest` 24、`SkuManagementIntegrationTest` 2 與本機逐類別一致，日誌可見真實的 `Key (po_number)=(PO-…) already exists` 與 `UniqueConflictRetry … attempt=1/3`（單元 job 的 `mvn test` 帶 `-q`，日誌不印案例數，單元案例數只核對了本機） |
 
 本輪有生產程式碼變更（後端），未跑 Playwright 完整 E2E 與 `validate-schema-doc`（沒有前端或 schema 變更）。
 
@@ -200,8 +200,10 @@
 
 ## 10. 狀態
 
-- **commit 時的狀態**：實作、真實棧測試、突變驗證、全量 verify、文件均完成；追蹤表 `DEF-297` 轉 ✅，新登記 `DEF-450`、`DEF-451`。
-- **push**：依 2026-10-29 長期授權（『做完一輪後，直接 Commit + Push to main』），commit 後直接 push，連同 Sprint 324 留在本機的純文件回填 commit `7817cf95` 一起帶出；push 結果與雲端 CI 於回填 commit 補上。
+- **狀態**：實作、真實棧測試、突變驗證、全量 verify、文件均完成；追蹤表 `DEF-297` 轉 ✅，新登記 `DEF-450`、`DEF-451`。
+- **push**：依 2026-10-29 長期授權（『做完一輪後，直接 Commit + Push to main』）直接 push，`ce23f3e1..6932928c`，連同 Sprint 324 留在本機的純文件回填 commit `7817cf95`；沒有詢問、沒有使用 `--no-verify`。**雲端 CI 全綠**（run 41848238162，見 §5）。
+- **本回填 commit 只改文件，刻意不 push**，隨下一輪的 push 帶出（沿用 Sprint 322～324，免得『回填→push→再回填』無限循環）。
+- **收尾 Docker 清理**：刪 4 個匿名卷（0 失敗），卷 1.112GB → 928MB，懸空映像回收 0B；保留 5 個具名卷與 3 個核准基底映像，建置快取 1.889GB 只回報不刪。Docker Desktop 開工時沒在跑、是我啟動的，沒有關閉。
 - **下次說『請繼續』我可以直接做**：`DEF-450`（結算單手動產生同期競態，**已量測屬實**，附錄 A 有紅燈起點）；`DEF-451` 先量測（量測題，不是修復題）。
 - **仍等你決定**：`DEF-294`（購物車併發加入掉數量，已實測，值不值得修）、`DEF-449`（pre-push 守門驗主目錄，動守門屬基礎設施變更）、`DEF-419`（運費模板的權限模型）、舊規則資料遷移、`make down-clean` 流程、Docker 建置快取；以及本輪新看到的兩個觀察——PRD 資料字典與 `V1` 對 `po_number` 的唯一範圍不一致（Tenant 內 vs 全平台）、`E-7006` 採購單號重複已定義卻從未被拋出。
 

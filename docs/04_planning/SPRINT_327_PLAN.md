@@ -128,6 +128,7 @@ Settlement adjustment failed after refund: orderId=…, error=Cannot invoke "…
 | 一次性探針（`DEF-453`） | 2 案例，輸出原文在附錄 A；已從測試類別移除，還原後 SHA-256 與探針前一致、類別裡沒有探針殘留，`target` 裡含探針的舊 class 與報告已刪 |
 | 全量後端 `mvn -o clean verify`（全新資料庫） | `BUILD SUCCESS`，**24 分 24 秒**（Sprint 326 為 19 分 07 秒；差異原因沒查）；單元 **2482／0**（2478＋4）、整合 **1027／0**（1022＋5）、0 失敗／0 錯誤／0 跳過；Checkstyle main／test 0 違規。關聯類別：新類別 5、`PaymentStateServiceStripeTest` 22、`PaymentStateServiceBookingTest` 的退款兩組 10＋11、`RefundProcessingServiceTest` 17、`OrderAutoRefundIntegrationTest` 11、`BookingCancellationRefundIntegrationTest` 19 |
 | 文件守門（四個類別，改完所有文件後跑） | **14／0**：`ApiRouteDocDriftTest` 2、`DocMarkdownFenceTest` 9、`TechStackDocDriftTest` 2、`ErrorCodeDocDriftTest` 1 |
+| push／雲端 CI | **已 push**：`59cd8e72..3e03d234`（連同 Sprint 326 的純文件回填 commit `6e8d8fef`），pre-commit 與 pre-push 輕量守門〔含 schema 漂移關卡〕都一次通過，沒有使用 `--no-verify`。**雲端 CI 全綠**：run [42030547563](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/42030547563)，三個 job 皆 success（Backend Unit Tests 2 分 45 秒／Frontend Lint & Build 1 分 11 秒／Backend Integration Tests & Package 12 分 56 秒），整個 run 15 分 47 秒，`gh run view --json` 確認 headSha 為 `3e03d234`；下載整合 job 完整日誌（約 84 MB，去除 ANSI 色碼後解析；這版 `gh` 把 ESC 字元顯示成字面的 `^[`，兩種寫法都要去）確認整合 **1027／0／0／0**、Checkstyle 0，`RefundSettlementAdjustmentFailureRealStackIntegrationTest` 5、`OrderAutoRefundIntegrationTest` 11、`BookingCancellationRefundIntegrationTest` 19 與本機逐類別一致（沿用 Sprint 326 的觀察：單元 job 的 `mvn test` 帶 `-q`，日誌不印案例數；這次沒有下載單元 job 的日誌，單元案例數只核對了本機） |
 
 本輪有生產程式碼變更（後端 `PaymentStateService` 三處＋一段 Javadoc），未跑 Playwright 完整 E2E 與 `validate-schema-doc`（沒有前端或 schema 變更）。測試類別的 Javadoc 限定（`DEF-453`）是全量 verify 之後才補的註解，沒有重跑全量；它是純註解變更，由 commit 時的編譯與 Checkstyle 檢查把關。
 
@@ -168,7 +169,9 @@ Settlement adjustment failed after refund: orderId=…, error=Cannot invoke "…
 ## 10. 狀態
 
 - **狀態**：實作、真實棧測試、突變驗證、全量 verify、文件均完成；追蹤表 `DEF-452` 轉 ✅，新登記 `DEF-453`。
-- **push**：依 2026-10-29 長期授權（『做完一輪後，直接 Commit + Push to main』）直接 push，連同 Sprint 326 留在本機的純文件回填 commit `6e8d8fef` 一起帶出；push 結果與雲端 CI 於 push 後回填。
+- **push**：依 2026-10-29 長期授權（『做完一輪後，直接 Commit + Push to main』）直接 push，`59cd8e72..3e03d234`，連同 Sprint 326 留在本機的純文件回填 commit `6e8d8fef`；沒有詢問、沒有使用 `--no-verify`；pre-commit 與 pre-push 輕量守門都一次通過。**雲端 CI 全綠**（run 42030547563，見 §5）。
+- **本回填 commit 只改文件，刻意不 push**，隨下一輪的 push 帶出（沿用 Sprint 322～326，免得『回填→push→再回填』無限循環）。
+- **收尾 Docker 清理**：刪 4 個匿名卷（0 失敗），卷 1.112GB → 928MB，懸空映像回收 0B；保留 5 個具名卷（`act-toolcache`、`maven_cache`、`minio_data`、`postgres_data`、`redis_data`）與 3 個核准基底映像，建置快取 1.889GB 只回報不刪。Docker Desktop 開工時已在跑（不是我啟動的），沒有關閉。
 - **仍等你決定**：`DEF-294`（購物車併發加入掉數量）、`DEF-449`（pre-push 守門驗主目錄）、`DEF-419`（運費模板的權限模型）、舊規則資料遷移、`make down-clean` 流程、Docker 建置快取，以及 Sprint 325 留下的兩個觀察（PRD 資料字典與 `V1` 對 `po_number` 的唯一範圍不一致、`E-7006` 採購單號重複已定義卻從未被拋出）；**加上本輪新增的一個可推翻的取捨**：退款流程要不要改成『退款永遠不被結算簿記拖垮』（fail-open），見 §8 第 2 點。
 - **下次說『請繼續』我可以直接做**：`DEF-453` 的補量測（用 `COMPLETED` 訂單與部分退款補探針，確認 Stripe 後台退款的實際後果）；修不修、怎麼修是設計題，先量測再決定。
 

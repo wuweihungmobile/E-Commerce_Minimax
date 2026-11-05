@@ -56,28 +56,28 @@ export default function NewPostPage() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">新建貼文</h1>
+      <h1 className="text-2xl font-semibold mb-6">新建貼文</h1>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">標題 *</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">標題 *</label>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
-            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-rs-primary focus:border-rs-primary"
             placeholder="輸入貼文標題"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">內容 (Markdown)</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">內容 (Markdown)</label>
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
             rows={15}
-            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-rs-primary focus:border-rs-primary font-mono"
             placeholder="使用 Markdown 格式撰寫內容
 
 範例：
@@ -87,18 +87,18 @@ export default function NewPostPage() {
 嵌入商品卡片：
 {{embed:listing:<listing_id>}}"
           />
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-rs-ink-muted">
             使用 &#123;&#123;embed:listing:&lt;listing_id&gt;&#125;&#125; 嵌入商品/房型卡片
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">分類</label>
+            <label className="block text-sm font-medium text-rs-ink mb-1">分類</label>
             <select
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-rs-primary focus:border-rs-primary"
             >
               <option value="">選擇分類</option>
               {categories.map((cat) => (
@@ -108,24 +108,24 @@ export default function NewPostPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">標籤</label>
+            <label className="block text-sm font-medium text-rs-ink mb-1">標籤</label>
             <input
               type="text"
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-rs-primary focus:border-rs-primary"
               placeholder="標籤1, 標籤2, 標籤3"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">封面圖片 URL</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">封面圖片 URL</label>
           <input
             type="url"
             value={featuredImageUrl}
             onChange={(e) => setFeaturedImageUrl(e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-rs-primary focus:border-rs-primary"
             placeholder="https://example.com/image.jpg"
           />
         </div>
@@ -136,9 +136,9 @@ export default function NewPostPage() {
             id="autoPublish"
             checked={autoPublish}
             onChange={(e) => setAutoPublish(e.target.checked)}
-            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            className="h-4 w-4 text-rs-primary focus:ring-rs-primary border-rs-hairline rounded"
           />
-          <label htmlFor="autoPublish" className="ml-2 text-sm text-gray-700">
+          <label htmlFor="autoPublish" className="ml-2 text-sm text-rs-ink">
             建立後立即發布
           </label>
         </div>
@@ -147,14 +147,14 @@ export default function NewPostPage() {
           <button
             type="submit"
             disabled={saving}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            className="bg-rs-primary text-white px-6 py-2 rounded-lg hover:bg-rs-primary-hover disabled:opacity-50"
           >
             {saving ? '儲存中...' : '儲存'}
           </button>
           <button
             type="button"
             onClick={() => router.back()}
-            className="bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300"
+            className="bg-rs-hairline text-rs-ink px-6 py-2 rounded-lg hover:bg-rs-hairline"
           >
             取消
           </button>

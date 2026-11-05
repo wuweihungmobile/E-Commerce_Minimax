@@ -100,7 +100,7 @@ export default function DashboardSupportTicketDetailPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
@@ -108,7 +108,7 @@ export default function DashboardSupportTicketDetailPage() {
   if (error || !ticket) {
     return (
       <div className="space-y-4">
-        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
           {error || '找不到工單'}
         </div>
         <Link href="/dashboard/support/tickets">
@@ -124,7 +124,7 @@ export default function DashboardSupportTicketDetailPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{ticket.subject}</h1>
+          <h1 className="text-2xl font-semibold">{ticket.subject}</h1>
           <p className="text-muted-foreground">{ticket.ticketNumber}</p>
         </div>
         <Badge variant={ticket.status === 'CLOSED' ? 'outline' : 'default'}>
@@ -134,7 +134,7 @@ export default function DashboardSupportTicketDetailPage() {
 
       <Card>
         <CardContent className="py-5">
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{ticket.description}</p>
+          <p className="text-sm text-rs-ink whitespace-pre-wrap">{ticket.description}</p>
         </CardContent>
         {nextStatuses.length > 0 && (
           <CardFooter className="flex gap-2">
@@ -156,20 +156,20 @@ export default function DashboardSupportTicketDetailPage() {
       <h2 className="text-sm font-semibold">對話記錄</h2>
       <div className="space-y-3">
         {(ticket.messages || []).length === 0 ? (
-          <p className="text-sm text-gray-500">尚無訊息</p>
+          <p className="text-sm text-rs-ink-muted">尚無訊息</p>
         ) : (
           ticket.messages!.map((message) => (
-            <Card key={message.id} className={message.senderType === 'STAFF' ? 'bg-gray-50' : ''}>
+            <Card key={message.id} className={message.senderType === 'STAFF' ? 'bg-rs-bg-base' : ''}>
               <CardContent className="py-3">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-medium">
                     {message.senderType === 'STAFF' ? '客服' : '買家'}
                   </span>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-rs-disabled-text">
                     {new Date(message.createdAt).toLocaleString('zh-TW')}
                   </span>
                 </div>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap">{message.message}</p>
+                <p className="text-sm text-rs-ink whitespace-pre-wrap">{message.message}</p>
               </CardContent>
             </Card>
           ))

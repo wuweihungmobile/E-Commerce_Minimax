@@ -127,25 +127,25 @@ export default function FaqCategoriesPage() {
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-3">
-          <Link href="/dashboard/faq" className="text-sm text-blue-600 hover:underline">
+          <Link href="/dashboard/faq" className="text-sm text-rs-primary hover:underline">
             ← 返回 FAQ 列表
           </Link>
-          <h1 className="text-2xl font-bold">FAQ 分類管理</h1>
+          <h1 className="text-2xl font-semibold">FAQ 分類管理</h1>
         </div>
         <button
           onClick={startCreate}
-          className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+          className="px-4 py-1.5 bg-rs-primary text-white rounded text-sm hover:bg-rs-primary-hover"
         >
           新增分類
         </button>
       </div>
 
       {showCreateForm && (
-        <div className="bg-white border rounded-lg shadow p-4 mb-6">
+        <div className="bg-white border rounded-lg p-4 mb-6">
           <h2 className="text-sm font-semibold mb-3">{editingId ? '編輯分類' : '新增分類'}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">名稱 *</label>
+              <label className="block text-xs font-medium text-rs-ink mb-1">名稱 *</label>
               <input
                 type="text"
                 value={form.name}
@@ -154,7 +154,7 @@ export default function FaqCategoriesPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Slug *</label>
+              <label className="block text-xs font-medium text-rs-ink mb-1">Slug *</label>
               <input
                 type="text"
                 value={form.slug}
@@ -163,7 +163,7 @@ export default function FaqCategoriesPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">描述</label>
+              <label className="block text-xs font-medium text-rs-ink mb-1">描述</label>
               <input
                 type="text"
                 value={form.description}
@@ -172,7 +172,7 @@ export default function FaqCategoriesPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Icon</label>
+              <label className="block text-xs font-medium text-rs-ink mb-1">Icon</label>
               <input
                 type="text"
                 value={form.icon}
@@ -181,7 +181,7 @@ export default function FaqCategoriesPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">排序</label>
+              <label className="block text-xs font-medium text-rs-ink mb-1">排序</label>
               <input
                 type="number"
                 value={form.sortOrder}
@@ -194,13 +194,13 @@ export default function FaqCategoriesPage() {
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+              className="px-4 py-1.5 bg-rs-primary text-white rounded text-sm hover:bg-rs-primary-hover disabled:opacity-50"
             >
               {submitting ? '儲存中...' : '儲存'}
             </button>
             <button
               onClick={cancelForm}
-              className="px-4 py-1.5 border rounded text-sm hover:bg-gray-50"
+              className="px-4 py-1.5 border rounded text-sm hover:bg-rs-bg-base"
             >
               取消
             </button>
@@ -209,45 +209,45 @@ export default function FaqCategoriesPage() {
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-gray-500">載入中...</div>
+        <div className="text-center py-12 text-rs-ink-muted">載入中...</div>
       ) : categories.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">尚無分類</div>
+        <div className="text-center py-12 text-rs-ink-muted">尚無分類</div>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className="bg-white rounded-lg overflow-hidden border border-rs-hairline">
+          <table className="min-w-full divide-y divide-rs-hairline">
+            <thead className="bg-rs-bg-base">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">名稱</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Slug</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">文章數</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">已發布</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">名稱</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">Slug</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">文章數</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">已發布</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-rs-ink-muted uppercase">操作</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white divide-y divide-rs-hairline">
               {categories.map((category) => {
                 const stat = stats[category.id];
                 return (
-                  <tr key={category.id} className="hover:bg-gray-50">
+                  <tr key={category.id} className="hover:bg-rs-bg-base">
                     <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-gray-900">{category.name}</div>
+                      <div className="text-sm font-medium text-rs-ink">{category.name}</div>
                       {category.description && (
-                        <div className="text-xs text-gray-500">{category.description}</div>
+                        <div className="text-xs text-rs-ink-muted">{category.description}</div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 font-mono">{category.slug}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{stat?.totalArticles ?? 0}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{stat?.publishedArticles ?? 0}</td>
+                    <td className="px-4 py-3 text-sm text-rs-ink-muted font-mono">{category.slug}</td>
+                    <td className="px-4 py-3 text-sm text-rs-ink-muted">{stat?.totalArticles ?? 0}</td>
+                    <td className="px-4 py-3 text-sm text-rs-ink-muted">{stat?.publishedArticles ?? 0}</td>
                     <td className="px-4 py-3 text-right text-sm">
                       <button
                         onClick={() => startEdit(category)}
-                        className="text-blue-600 hover:text-blue-800 mr-3"
+                        className="text-rs-primary hover:text-rs-primary-hover mr-3"
                       >
                         編輯
                       </button>
                       <button
                         onClick={() => handleDelete(category)}
-                        className="text-red-600 hover:text-red-800"
+                        className="text-rs-error hover:text-rs-error/80"
                       >
                         刪除
                       </button>

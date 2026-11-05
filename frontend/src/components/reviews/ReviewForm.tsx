@@ -86,7 +86,7 @@ export default function ReviewForm({ onSubmit, onCancel }: ReviewFormProps) {
         <Label htmlFor="reviewContent">內容 *</Label>
         <textarea
           id="reviewContent"
-          className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           placeholder="分享你的使用心得（最多 2000 字）"
           maxLength={2000}
           value={content}
@@ -94,7 +94,7 @@ export default function ReviewForm({ onSubmit, onCancel }: ReviewFormProps) {
         />
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-gray-700">
+      <label className="flex items-center gap-2 text-sm text-rs-ink">
         <input
           type="checkbox"
           className="h-4 w-4"

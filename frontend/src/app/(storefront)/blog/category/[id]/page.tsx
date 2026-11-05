@@ -69,20 +69,20 @@ export default function BlogCategoryPage() {
   }, [tenantId, categoryId, categoryNotFound, loadPosts]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex-1">
       {/* Header */}
-      <header className="bg-white shadow-sm">
+      <header className="bg-white border border-rs-hairline">
         <div className="max-w-4xl mx-auto px-4 py-6">
-          <Link href="/blog" className="text-sm text-blue-600 hover:underline">
+          <Link href="/blog" className="text-sm text-rs-primary hover:underline">
             ← 返回部落格
           </Link>
           {category && (
             <>
-              <h1 className="mt-2 text-3xl font-bold text-gray-900" data-testid="blog-category-title">
+              <h1 className="mt-2 text-3xl font-semibold text-rs-ink" data-testid="blog-category-title">
                 {category.name}
               </h1>
               {category.description && (
-                <p className="mt-2 text-gray-600">{category.description}</p>
+                <p className="mt-2 text-rs-ink-muted">{category.description}</p>
               )}
             </>
           )}
@@ -92,20 +92,20 @@ export default function BlogCategoryPage() {
       {/* Content */}
       <main className="max-w-4xl mx-auto px-4 py-8">
         {!tenantId ? (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-rs-ink-muted">
             <p>請先登入並設定店鋪以瀏覽部落格</p>
-            <Link href="/login" className="text-blue-600 hover:underline mt-2 inline-block">
+            <Link href="/login" className="text-rs-primary hover:underline mt-2 inline-block">
               前往登入
             </Link>
           </div>
         ) : categoryNotFound ? (
-          <div className="text-center py-12 text-gray-500" data-testid="blog-category-not-found">
+          <div className="text-center py-12 text-rs-ink-muted" data-testid="blog-category-not-found">
             此分類不存在
           </div>
         ) : loading ? (
           <div className="text-center py-12">載入中...</div>
         ) : posts.length === 0 ? (
-          <div className="text-center py-12 text-gray-500" data-testid="blog-category-empty">
+          <div className="text-center py-12 text-rs-ink-muted" data-testid="blog-category-empty">
             此分類尚無已發布的文章
           </div>
         ) : (
@@ -116,10 +116,10 @@ export default function BlogCategoryPage() {
                 <Link
                   key={post.id}
                   href={`/blog/${post.slug}`}
-                  className="bg-white rounded-lg shadow overflow-hidden hover:shadow-md transition-shadow"
+                  className="bg-white rounded-lg overflow-hidden hover:border-rs-primary transition-colors border border-rs-hairline"
                 >
                   {post.featuredImageUrl && (
-                    <div className="aspect-video bg-gray-100">
+                    <div className="aspect-video bg-rs-disabled-bg">
                       {/* eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns */}
                       <img
                         src={post.featuredImageUrl}
@@ -132,13 +132,13 @@ export default function BlogCategoryPage() {
                     </div>
                   )}
                   <div className="p-4">
-                    <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                    <h2 className="text-xl font-semibold text-rs-ink mb-2">
                       {post.title}
                     </h2>
-                    <p className="text-gray-600 text-sm mb-3 line-clamp-2">
+                    <p className="text-rs-ink-muted text-sm mb-3 line-clamp-2">
                       {post.excerpt || post.content.substring(0, 100) + '...'}
                     </p>
-                    <div className="flex items-center justify-between text-sm text-gray-500">
+                    <div className="flex items-center justify-between text-sm text-rs-ink-muted">
                       <span>{post.authorName}</span>
                       <span>
                         {post.publishedAt

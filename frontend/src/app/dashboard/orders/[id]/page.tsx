@@ -23,7 +23,6 @@ import LogisticsService, {
   LOGISTICS_PROVIDER_LABELS,
 } from '@/services/logistics'
 import AuthService from '@/services/auth'
-import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
 import { loginHref } from '@/lib/auth-redirect'
 
 function extractErrorMessage(error: unknown, fallback: string): string {
@@ -56,7 +55,6 @@ function statusLabel(status: string) {
 export default function DashboardOrderDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const userEmail = useCurrentUserEmail()
   const orderId = params.id as string
 
   const [order, setOrder] = useState<Order | null>(null)
@@ -152,7 +150,7 @@ export default function DashboardOrderDetailPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
@@ -160,7 +158,7 @@ export default function DashboardOrderDetailPage() {
   if (error || !order) {
     return (
       <div className="space-y-4 p-6">
-        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
           {error || '找不到此訂單'}
         </div>
         <Link href="/dashboard/orders">
@@ -173,51 +171,21 @@ export default function DashboardOrderDetailPage() {
   const canManageFulfillment = order.orderType === 'PRODUCT'
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-                Dashboard
-              </Link>
-              <span className="text-gray-400">/</span>
-              <Link href="/dashboard/orders" className="text-gray-600 hover:text-gray-900">
-                訂單管理
-              </Link>
-              <span className="text-gray-400">/</span>
-              <span className="text-gray-900 font-medium">#{order.id.slice(0, 8)}</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">{userEmail}</span>
-              <button
-                onClick={async () => {
-                  await AuthService.logout()
-                  router.push('/login')
-                }}
-                className="px-3 py-1.5 text-sm text-white bg-red-500 rounded-md hover:bg-red-600"
-              >
-                登出
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-5xl mx-auto py-6 sm:px-6 lg:px-8 space-y-6">
-        <div className="flex items-start justify-between gap-4 px-4 sm:px-0">
+    <div>
+      <main className="max-w-5xl space-y-6">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-2xl font-bold text-gray-900">訂單 #{order.id.slice(0, 8)}</h1>
+              <h1 className="text-2xl font-semibold text-rs-ink">訂單 #{order.id.slice(0, 8)}</h1>
               <Badge variant={orderStatusBadgeVariant(order.status)}>{ORDER_STATUS_LABELS[order.status]}</Badge>
               <Badge variant="outline">{order.orderType === 'ROOM' ? '訂房' : '商品'}</Badge>
             </div>
-            <p className="text-sm text-gray-500">建立於 {formatDateTime(order.createdAt)}</p>
+            <p className="text-sm text-rs-ink-muted">建立於 {formatDateTime(order.createdAt)}</p>
           </div>
         </div>
 
         {actionError && (
-          <div className="mx-4 sm:mx-0 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+          <div className="mx-4 sm:mx-0 bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
             {actionError}
           </div>
         )}
@@ -231,7 +199,7 @@ export default function DashboardOrderDetailPage() {
             <CardContent className="space-y-4">
               {order.status === 'PAID' && (
                 <div className="flex items-center justify-between">
-                  <p className="text-sm text-gray-600">買家已付款，請確認訂單以進入備貨。</p>
+                  <p className="text-sm text-rs-ink-muted">買家已付款，請確認訂單以進入備貨。</p>
                   <Button onClick={() => transitionTo('CONFIRMED', 'Seller confirmed order')} disabled={actionLoading}>
                     {actionLoading ? '處理中…' : '確認訂單'}
                   </Button>
@@ -240,7 +208,7 @@ export default function DashboardOrderDetailPage() {
 
               {order.status === 'CONFIRMED' && !showLogisticsForm && (
                 <div className="flex items-center justify-between">
-                  <p className="text-sm text-gray-600">訂單已確認，請建立物流單以出貨。</p>
+                  <p className="text-sm text-rs-ink-muted">訂單已確認，請建立物流單以出貨。</p>
                   <Button onClick={() => setShowLogisticsForm(true)} disabled={actionLoading}>
                     建立物流單
                   </Button>
@@ -295,7 +263,7 @@ export default function DashboardOrderDetailPage() {
 
               {order.status === 'SHIPPING' && (
                 <div className="flex items-center justify-between">
-                  <p className="text-sm text-gray-600">貨物運送中，買家簽收後請確認送達。</p>
+                  <p className="text-sm text-rs-ink-muted">貨物運送中，買家簽收後請確認送達。</p>
                   <Button onClick={() => transitionTo('DELIVERED', 'Seller marked as delivered')} disabled={actionLoading}>
                     {actionLoading ? '處理中…' : '確認送達'}
                   </Button>
@@ -304,7 +272,7 @@ export default function DashboardOrderDetailPage() {
 
               {order.status === 'DELIVERED' && (
                 <div className="flex items-center justify-between">
-                  <p className="text-sm text-gray-600">貨物已送達，可標記訂單完成。</p>
+                  <p className="text-sm text-rs-ink-muted">貨物已送達，可標記訂單完成。</p>
                   <Button onClick={() => transitionTo('COMPLETED', 'Seller marked order as completed')} disabled={actionLoading}>
                     {actionLoading ? '處理中…' : '標記完成'}
                   </Button>
@@ -312,14 +280,14 @@ export default function DashboardOrderDetailPage() {
               )}
 
               {!['PAID', 'CONFIRMED', 'SHIPPING', 'DELIVERED'].includes(order.status) && (
-                <p className="text-sm text-gray-500">此訂單目前狀態無需出貨操作。</p>
+                <p className="text-sm text-rs-ink-muted">此訂單目前狀態無需出貨操作。</p>
               )}
 
               {shipments.length > 0 && (
                 <div className="border-t pt-4 space-y-2">
-                  <p className="text-xs font-medium text-gray-500">物流單</p>
+                  <p className="text-xs font-medium text-rs-ink-muted">物流單</p>
                   {shipments.map((s) => (
-                    <div key={s.logisticsId} className="text-sm text-gray-700 flex items-center justify-between">
+                    <div key={s.logisticsId} className="text-sm text-rs-ink flex items-center justify-between">
                       <span>
                         {LOGISTICS_PROVIDER_LABELS[s.logisticsProvider]} · {s.trackingNumber}
                       </span>
@@ -344,32 +312,32 @@ export default function DashboardOrderDetailPage() {
                 <img
                   src={item.coverImageUrl || '/placeholder.svg'}
                   alt={item.listingTitle}
-                  className="h-16 w-16 rounded object-cover bg-gray-100 shrink-0"
+                  className="h-16 w-16 rounded object-cover bg-rs-disabled-bg shrink-0"
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 truncate">{item.listingTitle}</p>
-                  {item.specName && <p className="text-xs text-gray-500">{item.specName}</p>}
-                  <p className="text-xs text-gray-500">
+                  <p className="text-sm font-medium text-rs-ink truncate">{item.listingTitle}</p>
+                  {item.specName && <p className="text-xs text-rs-ink-muted">{item.specName}</p>}
+                  <p className="text-xs text-rs-ink-muted">
                     {formatPrice(item.unitPrice, order.currency)} × {item.quantity}
                   </p>
                 </div>
-                <div className="text-sm font-semibold text-gray-900 shrink-0">
+                <div className="text-sm font-semibold text-rs-ink shrink-0">
                   {formatPrice(item.subtotal, order.currency)}
                 </div>
               </div>
             ))}
             <div className="border-t pt-4 space-y-1">
-              <div className="flex justify-between text-sm text-gray-600">
+              <div className="flex justify-between text-sm text-rs-ink-muted">
                 <span>運費</span>
                 <span>{formatPrice(order.shippingFee, order.currency)}</span>
               </div>
               {order.discountAmount != null && order.discountAmount > 0 && (
-                <div className="flex justify-between text-sm text-green-700">
+                <div className="flex justify-between text-sm text-rs-success">
                   <span>優惠折扣{order.promoCode ? `（${order.promoCode}）` : ''}</span>
                   <span>-{formatPrice(order.discountAmount, order.currency)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-base font-bold text-gray-900">
+              <div className="flex justify-between text-base font-bold text-rs-ink">
                 <span>訂單總額</span>
                 <span>{formatPrice(order.totalAmount, order.currency)}</span>
               </div>
@@ -383,7 +351,7 @@ export default function DashboardOrderDetailPage() {
             <CardHeader>
               <CardTitle className="text-base">收件資訊</CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-gray-700 space-y-1">
+            <CardContent className="text-sm text-rs-ink space-y-1">
               {order.shippingRecipientName && <p>收件人：{order.shippingRecipientName}</p>}
               {order.shippingPhone && <p>電話：{order.shippingPhone}</p>}
               {order.shippingAddress && <p>地址：{order.shippingAddress}</p>}
@@ -396,7 +364,7 @@ export default function DashboardOrderDetailPage() {
             <CardHeader>
               <CardTitle className="text-base">備註</CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-gray-700">{order.notes}</CardContent>
+            <CardContent className="text-sm text-rs-ink">{order.notes}</CardContent>
           </Card>
         )}
 
@@ -411,15 +379,15 @@ export default function DashboardOrderDetailPage() {
                 {logs.map((logEntry) => (
                   <li key={logEntry.id} className="flex gap-3">
                     <div className="flex flex-col items-center">
-                      <div className="h-2.5 w-2.5 rounded-full bg-gray-400 mt-1.5" />
+                      <div className="h-2.5 w-2.5 rounded-full bg-rs-disabled-text mt-1.5" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm text-gray-900">
+                      <p className="text-sm text-rs-ink">
                         {logEntry.fromStatus ? `${statusLabel(logEntry.fromStatus)} → ` : ''}
                         <span className="font-medium">{statusLabel(logEntry.toStatus)}</span>
                       </p>
-                      <p className="text-xs text-gray-500">{formatDateTime(logEntry.createdAt)}</p>
-                      {logEntry.reason && <p className="text-xs text-gray-500">原因：{logEntry.reason}</p>}
+                      <p className="text-xs text-rs-ink-muted">{formatDateTime(logEntry.createdAt)}</p>
+                      {logEntry.reason && <p className="text-xs text-rs-ink-muted">原因：{logEntry.reason}</p>}
                     </div>
                   </li>
                 ))}

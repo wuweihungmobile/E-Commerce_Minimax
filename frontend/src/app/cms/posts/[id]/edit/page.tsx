@@ -179,9 +179,9 @@ export default function EditPostPage() {
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
-      DRAFT: 'bg-gray-100 text-gray-800',
-      PUBLISHED: 'bg-green-100 text-green-800',
-      ARCHIVED: 'bg-yellow-100 text-yellow-800',
+      DRAFT: 'bg-rs-disabled-bg text-rs-ink',
+      PUBLISHED: 'bg-rs-success/10 text-rs-success',
+      ARCHIVED: 'bg-rs-warning/15 text-rs-ink',
     };
     const labels: Record<string, string> = {
       DRAFT: '草稿',
@@ -207,10 +207,10 @@ export default function EditPostPage() {
     <div className="p-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
-          <Link href="/cms" className="text-gray-500 hover:text-gray-700">
+          <Link href="/cms" className="text-rs-ink-muted hover:text-rs-ink">
             ← 返回
           </Link>
-          <h1 className="text-2xl font-bold">編輯貼文</h1>
+          <h1 className="text-2xl font-semibold">編輯貼文</h1>
         </div>
         <div className="flex items-center gap-2">
           {getStatusBadge(post.status)}
@@ -220,37 +220,37 @@ export default function EditPostPage() {
       <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-6">
         {/* Title */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            標題 <span className="text-red-500">*</span>
+          <label className="block text-sm font-medium text-rs-ink mb-1">
+            標題 <span className="text-rs-error">*</span>
           </label>
           <input
             type="text"
             value={formData.title || ''}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary"
           />
         </div>
 
         {/* Content */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            內容 <span className="text-red-500">*</span>
+          <label className="block text-sm font-medium text-rs-ink mb-1">
+            內容 <span className="text-rs-error">*</span>
           </label>
           <textarea
             value={formData.content || ''}
             onChange={handleContentChange}
             rows={12}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+            className="w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary font-mono text-sm"
           />
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-rs-ink-muted">
             嵌入商品卡語法: {'{{embed:listing:<listingId>}}'}
           </p>
         </div>
 
         {/* Embed Cards Preview */}
         {embedCards.size > 0 && (
-          <div className="border rounded-lg p-4 bg-gray-50">
-            <h3 className="text-sm font-medium text-gray-700 mb-3">嵌入商品卡預覽</h3>
+          <div className="border rounded-lg p-4 bg-rs-bg-base">
+            <h3 className="text-sm font-medium text-rs-ink mb-3">嵌入商品卡預覽</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Array.from(embedCards.entries()).map(([listingId, card]) => (
                 <div key={listingId} className="border rounded p-3 bg-white">
@@ -265,8 +265,8 @@ export default function EditPostPage() {
                     )}
                     <div className="flex-1">
                       <div className="font-medium">{card.title}</div>
-                      <div className="text-sm text-gray-500">{card.tenantName}</div>
-                      <div className="text-sm font-medium text-blue-600">
+                      <div className="text-sm text-rs-ink-muted">{card.tenantName}</div>
+                      <div className="text-sm font-medium text-rs-primary">
                         {card.currentPrice !== null
                           ? `${card.currency} ${card.currentPrice.toLocaleString()}`
                           : '無定價'}
@@ -281,11 +281,11 @@ export default function EditPostPage() {
 
         {/* Category */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">分類</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">分類</label>
           <select
             value={formData.categoryId || ''}
             onChange={(e) => setFormData({ ...formData, categoryId: e.target.value || undefined })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary"
           >
             <option value="">選擇分類</option>
             {categories.map((cat) => (
@@ -296,7 +296,7 @@ export default function EditPostPage() {
 
         {/* Tags */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">標籤</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">標籤</label>
           <div className="flex gap-2 mb-2">
             <input
               type="text"
@@ -308,12 +308,12 @@ export default function EditPostPage() {
                   handleAddTag();
                 }
               }}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary"
             />
             <button
               type="button"
               onClick={handleAddTag}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+              className="px-4 py-2 bg-rs-disabled-bg text-rs-ink rounded-md hover:bg-rs-hairline"
             >
               新增
             </button>
@@ -322,13 +322,13 @@ export default function EditPostPage() {
             {(formData.tags || []).map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                className="inline-flex items-center gap-1 px-2 py-1 bg-rs-tertiary text-rs-primary rounded-full text-sm"
               >
                 {tag}
                 <button
                   type="button"
                   onClick={() => handleRemoveTag(tag)}
-                  className="hover:text-blue-900"
+                  className="hover:text-rs-primary-hover"
                 >
                   ×
                 </button>
@@ -339,12 +339,12 @@ export default function EditPostPage() {
 
         {/* Featured Image */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">精選圖片 URL</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">精選圖片 URL</label>
           <input
             type="text"
             value={formData.featuredImageUrl || ''}
             onChange={(e) => setFormData({ ...formData, featuredImageUrl: e.target.value || undefined })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary"
           />
           {formData.featuredImageUrl && (
             // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
@@ -358,7 +358,7 @@ export default function EditPostPage() {
         </div>
 
         {/* Post Info */}
-        <div className="text-sm text-gray-500 space-y-1 pt-4 border-t">
+        <div className="text-sm text-rs-ink-muted space-y-1 pt-4 border-t">
           <div>瀏覽次數: {post.viewCount}</div>
           <div>建立時間: {new Date(post.createdAt).toLocaleString('zh-TW')}</div>
           <div>更新時間: {new Date(post.updatedAt).toLocaleString('zh-TW')}</div>
@@ -372,7 +372,7 @@ export default function EditPostPage() {
           <button
             type="submit"
             disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+            className="px-4 py-2 bg-rs-primary text-white rounded-md hover:bg-rs-primary-hover disabled:opacity-50"
           >
             儲存變更
           </button>
@@ -381,7 +381,7 @@ export default function EditPostPage() {
             <button
               type="button"
               onClick={handlePublish}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+              className="px-4 py-2 bg-rs-success text-white rounded-md hover:bg-rs-success/90"
             >
               發布
             </button>
@@ -391,7 +391,7 @@ export default function EditPostPage() {
             <button
               type="button"
               onClick={handleUnpublish}
-              className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700"
+              className="px-4 py-2 bg-rs-warning text-white rounded-md hover:bg-rs-warning/90"
             >
               下架
             </button>
@@ -400,14 +400,14 @@ export default function EditPostPage() {
           <button
             type="button"
             onClick={handleDelete}
-            className="px-4 py-2 text-red-600 hover:text-red-800"
+            className="px-4 py-2 text-rs-error hover:text-rs-error/80"
           >
             刪除
           </button>
 
           <Link
             href="/cms"
-            className="px-4 py-2 text-gray-500 hover:text-gray-700"
+            className="px-4 py-2 text-rs-ink-muted hover:text-rs-ink"
           >
             取消
           </Link>

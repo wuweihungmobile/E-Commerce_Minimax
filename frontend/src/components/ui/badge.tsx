@@ -3,22 +3,19 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+// 設計稿 rs-badge 規格：12px／字重 500／行高 1／padding 4×8／radius-sm（4px）；無陰影。
+// 語意變體（default～warning）取設計稿狀態色；warning 文字用 ink（亮黃當文字不可讀）。
 const badgeVariants = cva(
-  "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex items-center rounded-sm border px-2 py-1 text-xs font-medium leading-none whitespace-nowrap transition-colors",
   {
     variants: {
       variant: {
-        default:
-          "border-transparent bg-primary text-primary-foreground shadow hover:bg-primary/80",
-        secondary:
-          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        destructive:
-          "border-transparent bg-error text-error-foreground shadow hover:bg-error/80",
-        success:
-          "border-transparent bg-success text-success-foreground shadow hover:bg-success/80",
-        outline: "text-foreground",
-        warning:
-          "border-transparent bg-amber-100 text-amber-800 hover:bg-amber-200",
+        default: "border-transparent bg-rs-primary text-white",
+        secondary: "border-transparent bg-rs-tertiary text-rs-ink",
+        destructive: "border-transparent bg-rs-error text-white",
+        success: "border-transparent bg-rs-success text-white",
+        outline: "border-rs-hairline text-rs-ink",
+        warning: "border-transparent bg-rs-warning/20 text-rs-ink",
         // 意象若水 RUOSHUI 賣場徽章變體
         promo: "border-transparent rounded-sm bg-rs-accent text-white",
         logistics: "border-transparent rounded-sm bg-rs-tertiary text-rs-ink",

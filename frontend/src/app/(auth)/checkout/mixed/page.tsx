@@ -198,8 +198,8 @@ export default function MixedCheckoutPage() {
   return (
     <StorefrontShell>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">合併結帳</h1>
-        <p className="mt-1 text-sm text-gray-600">一次動作同時結清商品與訂房，優惠券折扣將分攤至兩者</p>
+        <h1 className="text-2xl font-semibold text-rs-ink">合併結帳</h1>
+        <p className="mt-1 text-sm text-rs-ink-muted">一次動作同時結清商品與訂房，優惠券折扣將分攤至兩者</p>
       </div>
 
       {error && (
@@ -212,8 +212,8 @@ export default function MixedCheckoutPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <div className="text-5xl mb-4">🛒</div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-1">購物車須同時有商品與房型項目</h2>
-            <p className="text-sm text-gray-500">請先返回購物車確認項目</p>
+            <h2 className="text-lg font-semibold text-rs-ink mb-1">購物車須同時有商品與房型項目</h2>
+            <p className="text-sm text-rs-ink-muted">請先返回購物車確認項目</p>
           </CardContent>
         </Card>
       ) : (
@@ -230,7 +230,7 @@ export default function MixedCheckoutPage() {
                     {addresses.map((address) => (
                       <label
                         key={address.id}
-                        className="flex items-start gap-3 rounded-md border p-3 cursor-pointer hover:bg-gray-50"
+                        className="flex items-start gap-3 rounded-md border p-3 cursor-pointer hover:bg-rs-bg-base"
                       >
                         <input
                           type="radio"
@@ -240,10 +240,10 @@ export default function MixedCheckoutPage() {
                           onChange={() => setSelectedAddressId(address.id)}
                         />
                         <div className="text-sm">
-                          <div className="font-medium text-gray-900">
+                          <div className="font-medium text-rs-ink">
                             {address.recipientName} {address.phone}
                           </div>
-                          <div className="text-gray-600">
+                          <div className="text-rs-ink-muted">
                             {address.postalCode ? address.postalCode + ' ' : ''}
                             {address.city}
                             {address.district || ''}
@@ -347,7 +347,7 @@ export default function MixedCheckoutPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <div className="text-sm font-medium text-gray-700 mb-2">商品</div>
+                  <div className="text-sm font-medium text-rs-ink mb-2">商品</div>
                   <div className="space-y-2">
                     {productItems.map((item) => (
                       <div key={item.cartItemKey} className="flex justify-between text-sm">
@@ -361,12 +361,12 @@ export default function MixedCheckoutPage() {
                 </div>
                 {roomItem && (
                   <div className="border-t pt-3">
-                    <div className="text-sm font-medium text-gray-700 mb-2">房型</div>
+                    <div className="text-sm font-medium text-rs-ink mb-2">房型</div>
                     <div className="flex justify-between text-sm">
                       <span>
                         {roomItem.listingName}
                         {roomItem.startDate && roomItem.endDate && (
-                          <span className="text-gray-500">
+                          <span className="text-rs-ink-muted">
                             {' '}
                             （{formatDate(roomItem.startDate)} - {formatDate(roomItem.endDate)}）
                           </span>
@@ -392,14 +392,14 @@ export default function MixedCheckoutPage() {
                   </Alert>
                 )}
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">商品小計</span>
+                  <span className="text-rs-ink-muted">商品小計</span>
                   <span>{formatPrice(productSubtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">房型小計</span>
+                  <span className="text-rs-ink-muted">房型小計</span>
                   <span>{formatPrice(roomSubtotal)}</span>
                 </div>
-                <div className="text-xs text-gray-500">運費將於建立訂單時計算，優惠券折扣將分攤至兩者</div>
+                <div className="text-xs text-rs-ink-muted">運費將於建立訂單時計算，優惠券折扣將分攤至兩者</div>
 
                 <div className="space-y-2">
                   <Label htmlFor="promoCode">優惠碼（選填）</Label>

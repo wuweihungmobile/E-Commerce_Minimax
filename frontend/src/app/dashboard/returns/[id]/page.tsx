@@ -135,7 +135,7 @@ export default function DashboardReturnDetailPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
@@ -143,7 +143,7 @@ export default function DashboardReturnDetailPage() {
   if (error || !returnRequest) {
     return (
       <div className="space-y-4">
-        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
           {error || '找不到退貨申請'}
         </div>
         <Link href="/dashboard/returns">
@@ -157,7 +157,7 @@ export default function DashboardReturnDetailPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{returnRequest.returnNumber}</h1>
+          <h1 className="text-2xl font-semibold">{returnRequest.returnNumber}</h1>
           <p className="text-muted-foreground">
             訂單 #{returnRequest.orderId.slice(0, 8)} ·{' '}
             {new Date(returnRequest.createdAt).toLocaleString('zh-TW')}
@@ -169,7 +169,7 @@ export default function DashboardReturnDetailPage() {
       </div>
 
       {actionError && (
-        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
           {actionError}
         </div>
       )}
@@ -179,7 +179,7 @@ export default function DashboardReturnDetailPage() {
           <CardHeader>
             <CardTitle className="text-sm">買家退貨原因</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-gray-700 whitespace-pre-wrap">
+          <CardContent className="text-sm text-rs-ink whitespace-pre-wrap">
             {returnRequest.reason}
           </CardContent>
         </Card>
@@ -193,18 +193,18 @@ export default function DashboardReturnDetailPage() {
           {returnRequest.items.map((item) => (
             <div key={item.id} className="flex items-center gap-4 border-b last:border-b-0 pb-4 last:pb-0">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-sm font-medium text-rs-ink">
                   {item.productName ?? `品項 #${item.orderItemId.slice(0, 8)}`}
                 </p>
-                {item.specName && <p className="text-xs text-gray-500">{item.specName}</p>}
-                <p className="text-xs text-gray-500">
+                {item.specName && <p className="text-xs text-rs-ink-muted">{item.specName}</p>}
+                <p className="text-xs text-rs-ink-muted">
                   {item.skuCode && `${item.skuCode} · `}申請退貨 {item.requestedQty} 件
                 </p>
               </div>
               {returnRequest.status === 'APPROVED' ? (
                 <div className="flex items-center gap-3 shrink-0">
                   <div className="flex items-center gap-1">
-                    <Label htmlFor={`sellable-${item.id}`} className="text-xs text-gray-500">
+                    <Label htmlFor={`sellable-${item.id}`} className="text-xs text-rs-ink-muted">
                       可售
                     </Label>
                     <input
@@ -220,7 +220,7 @@ export default function DashboardReturnDetailPage() {
                     />
                   </div>
                   <div className="flex items-center gap-1">
-                    <Label htmlFor={`unsellable-${item.id}`} className="text-xs text-gray-500">
+                    <Label htmlFor={`unsellable-${item.id}`} className="text-xs text-rs-ink-muted">
                       不可售
                     </Label>
                     <input
@@ -238,7 +238,7 @@ export default function DashboardReturnDetailPage() {
                 </div>
               ) : (
                 returnRequest.status === 'RECEIVED' && (
-                  <div className="text-right text-xs text-gray-600 shrink-0">
+                  <div className="text-right text-xs text-rs-ink-muted shrink-0">
                     <p>可售 {item.sellableQty ?? 0}</p>
                     <p>不可售 {item.unsellableQty ?? 0}</p>
                   </div>
@@ -274,7 +274,7 @@ export default function DashboardReturnDetailPage() {
       </Card>
 
       {showRejectForm && (
-        <Card className="border-red-200">
+        <Card className="border-rs-error/30">
           <CardHeader>
             <CardTitle className="text-sm">駁回原因（選填）</CardTitle>
           </CardHeader>
@@ -306,11 +306,11 @@ export default function DashboardReturnDetailPage() {
       )}
 
       {returnRequest.status === 'REJECTED' && returnRequest.rejectionReason && (
-        <Card className="border-red-200">
+        <Card className="border-rs-error/30">
           <CardHeader>
             <CardTitle className="text-sm">駁回原因</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-gray-700 whitespace-pre-wrap">
+          <CardContent className="text-sm text-rs-ink whitespace-pre-wrap">
             {returnRequest.rejectionReason}
           </CardContent>
         </Card>

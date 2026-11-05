@@ -87,13 +87,13 @@ export default function SkuManager({ listingId }: SkuManagerProps) {
         )}
 
         {loading ? (
-          <div className="text-sm text-gray-500 py-4">載入中...</div>
+          <div className="text-sm text-rs-ink-muted py-4">載入中...</div>
         ) : error ? (
-          <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
+          <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md text-sm">
             {error}
           </div>
         ) : skus.length === 0 ? (
-          <p className="text-sm text-gray-500 py-4">尚未建立任何規格</p>
+          <p className="text-sm text-rs-ink-muted py-4">尚未建立任何規格</p>
         ) : (
           <div className="space-y-2">
             {skus.map((sku) => (
@@ -104,13 +104,13 @@ export default function SkuManager({ listingId }: SkuManagerProps) {
               >
                 <div className="flex items-center gap-3">
                   <span className="font-mono">{sku.skuCode}</span>
-                  {sku.specName && <span className="text-gray-600">{sku.specName}</span>}
+                  {sku.specName && <span className="text-rs-ink-muted">{sku.specName}</span>}
                   <Badge variant={sku.status === 'ACTIVE' ? 'success' : 'secondary'}>
                     {sku.status === 'ACTIVE' ? '啟用中' : '已停用'}
                   </Badge>
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className="text-gray-600">
+                  <span className="text-rs-ink-muted">
                     可售 {sku.availableQty}（總量 {sku.totalQty} / 預留 {sku.reservedQty}）
                   </span>
                   <Button
@@ -172,15 +172,15 @@ function SkuCreateForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mb-4 border rounded-md p-4 space-y-3 bg-gray-50">
+    <form onSubmit={handleSubmit} className="mb-4 border rounded-md p-4 space-y-3 bg-rs-bg-base">
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-md text-sm">
+        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-3 py-2 rounded-md text-sm">
           {error}
         </div>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <label className="text-sm font-medium">SKU 代碼 <span className="text-red-500">*</span></label>
+          <label className="text-sm font-medium">SKU 代碼 <span className="text-rs-error">*</span></label>
           <Input
             value={skuCode}
             onChange={(e) => setSkuCode(e.target.value)}

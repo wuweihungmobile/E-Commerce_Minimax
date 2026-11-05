@@ -167,8 +167,8 @@ export default function MediaPage() {
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">媒體中心</h1>
-        <div className="text-sm text-gray-500">
+        <h1 className="text-2xl font-semibold">媒體中心</h1>
+        <div className="text-sm text-rs-ink-muted">
           總計 {totalElements} 個媒體
         </div>
       </div>
@@ -176,7 +176,7 @@ export default function MediaPage() {
       {/* Upload */}
       <div className="mb-4 p-4 bg-white border rounded-md flex flex-wrap items-end gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">上傳到分類（選填）</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">上傳到分類（選填）</label>
           <select
             value={uploadCategoryId}
             onChange={(e) => setUploadCategoryId(e.target.value)}
@@ -189,7 +189,7 @@ export default function MediaPage() {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">標籤（選填，以逗號分隔）</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">標籤（選填，以逗號分隔）</label>
           <input
             type="text"
             value={uploadTags}
@@ -209,14 +209,14 @@ export default function MediaPage() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+            className="px-4 py-1.5 bg-rs-primary text-white rounded text-sm hover:bg-rs-primary-hover disabled:opacity-50"
           >
             {uploading ? '上傳中...' : '上傳媒體'}
           </button>
         </div>
         <div className="flex items-end gap-2 ml-auto">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">新增分類</label>
+            <label className="block text-sm font-medium text-rs-ink mb-1">新增分類</label>
             <input
               type="text"
               value={newCategoryName}
@@ -228,7 +228,7 @@ export default function MediaPage() {
           <button
             onClick={handleCreateCategory}
             disabled={creatingCategory || !newCategoryName.trim()}
-            className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 border rounded text-sm hover:bg-rs-bg-base disabled:opacity-50"
           >
             {creatingCategory ? '新增中...' : '新增'}
           </button>
@@ -238,7 +238,7 @@ export default function MediaPage() {
       {/* Filters */}
       <div className="mb-4 flex flex-wrap gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">分類</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">分類</label>
           <select
             value={categoryFilter}
             onChange={(e) => {
@@ -254,7 +254,7 @@ export default function MediaPage() {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">檔案類型</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">檔案類型</label>
           <select
             value={mimeTypeFilter}
             onChange={(e) => {
@@ -270,7 +270,7 @@ export default function MediaPage() {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">關鍵字搜尋</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">關鍵字搜尋</label>
           <input
             type="text"
             value={keyword}
@@ -285,7 +285,7 @@ export default function MediaPage() {
         <div className="flex items-end">
           <button
             onClick={() => loadMedia()}
-            className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+            className="px-4 py-1.5 bg-rs-primary text-white rounded text-sm hover:bg-rs-primary-hover"
           >
             搜尋
           </button>
@@ -294,15 +294,15 @@ export default function MediaPage() {
 
       {/* Media Grid */}
       {loading ? (
-        <div className="text-center py-12 text-gray-500">載入中...</div>
+        <div className="text-center py-12 text-rs-ink-muted">載入中...</div>
       ) : media.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">尚無媒體</div>
+        <div className="text-center py-12 text-rs-ink-muted">尚無媒體</div>
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {media.map((item) => (
-              <div key={item.id} className="bg-white rounded-lg shadow overflow-hidden border">
-                <div className="aspect-square bg-gray-100 flex items-center justify-center relative">
+              <div key={item.id} className="bg-white rounded-lg overflow-hidden border">
+                <div className="aspect-square bg-rs-disabled-bg flex items-center justify-center relative">
                   {isImage(item.mimeType) ? (
                     <AuthenticatedImage
                       id={item.id}
@@ -319,21 +319,21 @@ export default function MediaPage() {
                   <p className="text-sm font-medium truncate" title={item.fileName}>
                     {item.fileName}
                   </p>
-                  <p className="text-xs text-gray-500">{formatFileSize(item.fileSize)}</p>
+                  <p className="text-xs text-rs-ink-muted">{formatFileSize(item.fileSize)}</p>
                   {item.categoryName && (
-                    <p className="text-xs text-blue-600">{item.categoryName}</p>
+                    <p className="text-xs text-rs-primary">{item.categoryName}</p>
                   )}
                   {item.tags && item.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {item.tags.slice(0, 2).map((tag, i) => (
-                        <span key={i} className="text-xs bg-gray-100 px-1 rounded">{tag}</span>
+                        <span key={i} className="text-xs bg-rs-disabled-bg px-1 rounded">{tag}</span>
                       ))}
                     </div>
                   )}
                   <button
                     onClick={() => handleDelete(item.id)}
                     disabled={deleting === item.id}
-                    className="mt-2 text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
+                    className="mt-2 text-xs text-rs-error hover:text-rs-error/80 disabled:opacity-50"
                   >
                     {deleting === item.id ? '刪除中...' : '刪除'}
                   </button>
@@ -359,7 +359,7 @@ export default function MediaPage() {
               >
                 上一頁
               </button>
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-rs-ink-muted">
                 第 {page + 1} / {totalPages} 頁
               </span>
               <button

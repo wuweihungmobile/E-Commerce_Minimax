@@ -88,7 +88,9 @@ test.describe('AT-EMBED-CARD-STATUS: 嵌入卡片狀態顯示（真實後端）'
 
     await expect(page.getByText('房源維護中')).toBeVisible();
     await expect(page.getByText('無定價')).toBeVisible();
-    const contactCta = page.getByRole('link', { name: '聯絡客服' });
+    // blog 頁自 Sprint 328 起套用店面外殼，頁尾也有一個『聯絡客服』連結（/notifications）；
+    // 這裡要驗的是嵌入卡片自己的 CTA（/contact），所以限定在卡片 <article> 內查詢
+    const contactCta = page.getByRole('article').getByRole('link', { name: '聯絡客服' });
     await expect(contactCta).toHaveAttribute('href', '/contact');
 
     // 商品卡不受影響，仍是正常狀態

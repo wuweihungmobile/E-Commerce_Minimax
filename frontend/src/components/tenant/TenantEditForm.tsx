@@ -265,7 +265,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
@@ -286,7 +286,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
   if (!tenant) {
     return (
       <div className="space-y-4">
-        <div className="text-gray-500">找不到店鋪資料</div>
+        <div className="text-rs-ink-muted">找不到店鋪資料</div>
         <Link href="/dashboard/tenants">
           <Button variant="outline">返回店鋪列表</Button>
         </Link>
@@ -381,7 +381,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
             <textarea
               id="storeDescription"
               name="storeDescription"
-              className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
               placeholder="介紹一下您的店鋪（選填，最多 1000 字）"
               maxLength={1000}
               value={formData.storeDescription}

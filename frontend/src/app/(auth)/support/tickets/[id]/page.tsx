@@ -72,7 +72,7 @@ export default function SupportTicketDetailPage() {
   if (loading) {
     return (
       <StorefrontShell>
-        <div className="text-sm text-gray-500">載入中...</div>
+        <div className="text-sm text-rs-ink-muted">載入中...</div>
       </StorefrontShell>
     )
   }
@@ -96,16 +96,16 @@ export default function SupportTicketDetailPage() {
     <StorefrontShell>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{ticket.subject}</h1>
-          <p className="mt-1 text-sm text-gray-600">{ticket.ticketNumber}</p>
+          <h1 className="text-2xl font-semibold text-rs-ink">{ticket.subject}</h1>
+          <p className="mt-1 text-sm text-rs-ink-muted">{ticket.ticketNumber}</p>
         </div>
         <Badge variant={isClosed ? 'outline' : 'default'}>{STATUS_LABEL[ticket.status]}</Badge>
       </div>
 
       <Card className="mb-6">
         <CardContent className="py-5">
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{ticket.description}</p>
-          <p className="text-xs text-gray-500 mt-3">
+          <p className="text-sm text-rs-ink whitespace-pre-wrap">{ticket.description}</p>
+          <p className="text-xs text-rs-ink-muted mt-3">
             建立時間：{new Date(ticket.createdAt).toLocaleString('zh-TW')}
           </p>
         </CardContent>
@@ -114,20 +114,20 @@ export default function SupportTicketDetailPage() {
       <h2 className="text-sm font-semibold mb-3">對話記錄</h2>
       <div className="space-y-3 mb-6">
         {(ticket.messages || []).length === 0 ? (
-          <p className="text-sm text-gray-500">尚無訊息</p>
+          <p className="text-sm text-rs-ink-muted">尚無訊息</p>
         ) : (
           ticket.messages!.map((message) => (
-            <Card key={message.id} className={message.senderType === 'CUSTOMER' ? '' : 'bg-gray-50'}>
+            <Card key={message.id} className={message.senderType === 'CUSTOMER' ? '' : 'bg-rs-bg-base'}>
               <CardContent className="py-3">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-medium text-gray-900">
+                  <span className="text-xs font-medium text-rs-ink">
                     {message.senderType === 'CUSTOMER' ? '我' : '客服'}
                   </span>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-rs-disabled-text">
                     {new Date(message.createdAt).toLocaleString('zh-TW')}
                   </span>
                 </div>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap">{message.message}</p>
+                <p className="text-sm text-rs-ink whitespace-pre-wrap">{message.message}</p>
               </CardContent>
             </Card>
           ))

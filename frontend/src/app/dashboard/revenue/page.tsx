@@ -16,9 +16,9 @@ function formatCurrency(value: number): string {
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-white rounded-lg shadow p-5">
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-gray-900">{value}</p>
+    <div className="bg-white rounded-lg p-5 border border-rs-hairline">
+      <p className="text-sm text-rs-ink-muted">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-rs-ink">{value}</p>
     </div>
   )
 }
@@ -65,14 +65,14 @@ export default function RevenueReportPage() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">營收報表</h1>
+        <h1 className="text-2xl font-semibold">營收報表</h1>
         <p className="text-muted-foreground text-sm mt-1">自訂日期範圍與統計粒度查看營收趨勢</p>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6 flex flex-wrap gap-4 items-end">
+      <div className="bg-white rounded-lg p-4 mb-6 flex flex-wrap gap-4 items-end border border-rs-hairline">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">開始日期</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">開始日期</label>
           <input
             type="date"
             value={startDate}
@@ -81,7 +81,7 @@ export default function RevenueReportPage() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">結束日期</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">結束日期</label>
           <input
             type="date"
             value={endDate}
@@ -90,7 +90,7 @@ export default function RevenueReportPage() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">統計粒度</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">統計粒度</label>
           <select
             value={granularity}
             onChange={(e) => setGranularity(e.target.value as Granularity)}
@@ -104,13 +104,13 @@ export default function RevenueReportPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">
+        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md mb-6">
           {error}
         </div>
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-gray-500">載入中...</div>
+        <div className="text-center py-12 text-rs-ink-muted">載入中...</div>
       ) : (
         <>
           {/* Summary Cards */}
@@ -122,23 +122,23 @@ export default function RevenueReportPage() {
           </div>
 
           {/* Revenue Chart */}
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-white rounded-lg p-6 border border-rs-hairline">
             <div className="flex items-baseline justify-between mb-4">
-              <h3 className="text-base font-medium text-gray-900">
+              <h3 className="text-base font-medium text-rs-ink">
                 營收趨勢（{granularityLabel[granularity]}）
               </h3>
-              <span className="text-sm text-gray-500">
+              <span className="text-sm text-rs-ink-muted">
                 訂單總數 {revenue?.totalOrders ?? 0} 筆
               </span>
             </div>
             {dailyData.length === 0 ? (
-              <p className="text-sm text-gray-400">此區間尚無營收資料</p>
+              <p className="text-sm text-rs-disabled-text">此區間尚無營收資料</p>
             ) : (
               <div className="flex items-end gap-1 h-48" role="img" aria-label="營收趨勢長條圖">
                 {dailyData.map((d) => (
                   <div
                     key={d.date}
-                    className="flex-1 bg-blue-500 rounded-t hover:bg-blue-600 transition-colors"
+                    className="flex-1 bg-rs-primary rounded-t hover:bg-rs-primary-hover transition-colors"
                     style={{ height: `${Math.round((d.revenue / maxRevenue) * 100)}%` }}
                     title={`${d.date}：${formatCurrency(d.revenue)}（${d.orderCount} 筆）`}
                   />

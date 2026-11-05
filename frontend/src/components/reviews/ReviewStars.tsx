@@ -22,7 +22,7 @@ export default function ReviewStars({ rating, onChange, size = 'md' }: ReviewSta
       {[1, 2, 3, 4, 5].map((star) => {
         const filled = star <= rating
         const content = (
-          <span className={filled ? 'text-amber-400' : 'text-gray-300'}>★</span>
+          <span className={filled ? 'text-rs-ink' : 'text-rs-disabled-text'}>★</span>
         )
         if (!interactive) {
           return (

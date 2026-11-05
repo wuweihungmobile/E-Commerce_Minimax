@@ -71,14 +71,14 @@ export default function InventoryPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
         {error}
       </div>
     )
@@ -106,33 +106,33 @@ export default function InventoryPage() {
 
       {activeTab === 'ledger' ? (
         <>
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-rs-ink-muted">
             共 {totalElements} 筆資料，第 {page + 1} / {totalPages} 頁
           </div>
 
           {inventory.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center h-48">
-                <p className="text-gray-500">尚無庫存資料</p>
+                <p className="text-rs-ink-muted">尚無庫存資料</p>
               </CardContent>
             </Card>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 border">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-rs-hairline border">
+                <thead className="bg-rs-bg-base">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">品名</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">庫存</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">可用</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">狀態</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">SKU</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">品名</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-rs-ink-muted uppercase">庫存</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-rs-ink-muted uppercase">可用</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">狀態</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white divide-y divide-rs-hairline">
                   {inventory.map((item) => (
                     <tr key={item.skuId}>
-                      <td className="px-4 py-3 text-sm text-gray-900">{item.skuCode}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{item.productName}</td>
+                      <td className="px-4 py-3 text-sm text-rs-ink">{item.skuCode}</td>
+                      <td className="px-4 py-3 text-sm text-rs-ink">{item.productName}</td>
                       <td className="px-4 py-3 text-sm text-right">{item.quantity}</td>
                       <td className="px-4 py-3 text-sm text-right">{item.availableQuantity}</td>
                       <td className="px-4 py-3 text-sm">
@@ -167,14 +167,14 @@ export default function InventoryPage() {
           {alerts.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center h-48">
-                <p className="text-gray-500 mb-2">目前沒有低庫存警告</p>
-                <p className="text-sm text-gray-400">所有商品庫存都處於安全範圍</p>
+                <p className="text-rs-ink-muted mb-2">目前沒有低庫存警告</p>
+                <p className="text-sm text-rs-disabled-text">所有商品庫存都處於安全範圍</p>
               </CardContent>
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {alerts.map((alert) => (
-                <Card key={alert.skuId} className="border-yellow-200 bg-yellow-50">
+                <Card key={alert.skuId} className="border-rs-warning/40 bg-rs-warning/15">
                   <CardHeader>
                     <CardTitle className="text-lg">{alert.productName}</CardTitle>
                     <CardDescription>SKU: {alert.skuCode}</CardDescription>
@@ -182,7 +182,7 @@ export default function InventoryPage() {
                   <CardContent className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">目前庫存：</span>
-                      <span className="font-bold text-red-600">{alert.currentQuantity}</span>
+                      <span className="font-bold text-rs-error">{alert.currentQuantity}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">低庫存門檻：</span>

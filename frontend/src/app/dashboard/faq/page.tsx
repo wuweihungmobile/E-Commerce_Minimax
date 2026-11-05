@@ -103,27 +103,27 @@ export default function FaqPage() {
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">FAQ 管理</h1>
+        <h1 className="text-2xl font-semibold">FAQ 管理</h1>
         <div className="flex items-center gap-4">
           <Link
             href="/dashboard/faq/categories"
-            className="px-4 py-1.5 border rounded text-sm hover:bg-gray-50"
+            className="px-4 py-1.5 border rounded text-sm hover:bg-rs-bg-base"
           >
             分類管理
           </Link>
-          <div className="text-sm text-gray-500">總計 {totalElements} 則 FAQ</div>
+          <div className="text-sm text-rs-ink-muted">總計 {totalElements} 則 FAQ</div>
         </div>
       </div>
 
       {/* Pinned Articles */}
       {pinnedArticles.length > 0 && (
         <div className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">置頂 FAQ</h2>
+          <h2 className="text-sm font-semibold text-rs-ink mb-2">置頂 FAQ</h2>
           <div className="flex flex-wrap gap-2">
             {pinnedArticles.map((article) => (
               <span
                 key={article.id}
-                className="text-xs bg-yellow-50 border border-yellow-200 text-yellow-800 px-2 py-1 rounded"
+                className="text-xs bg-rs-warning/15 border border-rs-warning/40 text-rs-ink px-2 py-1 rounded"
               >
                 {article.question}
               </span>
@@ -135,7 +135,7 @@ export default function FaqPage() {
       {/* Filters */}
       <div className="mb-4 flex flex-wrap gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">分類</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">分類</label>
           <select
             value={categoryFilter}
             onChange={(e) => {
@@ -153,7 +153,7 @@ export default function FaqPage() {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">關鍵字搜尋</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">關鍵字搜尋</label>
           <input
             type="text"
             value={keyword}
@@ -169,40 +169,40 @@ export default function FaqPage() {
 
       {/* Articles List */}
       {loading ? (
-        <div className="text-center py-12 text-gray-500">載入中...</div>
+        <div className="text-center py-12 text-rs-ink-muted">載入中...</div>
       ) : articles.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">尚無 FAQ</div>
+        <div className="text-center py-12 text-rs-ink-muted">尚無 FAQ</div>
       ) : (
         <>
-          <div className="bg-white rounded-lg shadow overflow-hidden divide-y divide-gray-200">
+          <div className="bg-white rounded-lg overflow-hidden divide-y divide-rs-hairline border border-rs-hairline">
             {articles.map((article) => (
-              <div key={article.id} className="px-4 py-4 hover:bg-gray-50">
+              <div key={article.id} className="px-4 py-4 hover:bg-rs-bg-base">
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       {article.isPinned && (
-                        <span className="text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded">
+                        <span className="text-xs bg-rs-warning/15 text-rs-ink px-1.5 py-0.5 rounded">
                           置頂
                         </span>
                       )}
                       {article.highlightedQuestion ? (
                         <div
-                          className="text-sm font-medium text-gray-900"
+                          className="text-sm font-medium text-rs-ink"
                           dangerouslySetInnerHTML={{ __html: article.highlightedQuestion }}
                         />
                       ) : (
-                        <div className="text-sm font-medium text-gray-900">{article.question}</div>
+                        <div className="text-sm font-medium text-rs-ink">{article.question}</div>
                       )}
                     </div>
                     {article.highlightedAnswer ? (
                       <div
-                        className="text-xs text-gray-500 mt-1 line-clamp-2"
+                        className="text-xs text-rs-ink-muted mt-1 line-clamp-2"
                         dangerouslySetInnerHTML={{ __html: article.highlightedAnswer }}
                       />
                     ) : (
-                      <div className="text-xs text-gray-500 mt-1 line-clamp-2">{article.answer}</div>
+                      <div className="text-xs text-rs-ink-muted mt-1 line-clamp-2">{article.answer}</div>
                     )}
-                    <div className="text-xs text-gray-400 mt-1">
+                    <div className="text-xs text-rs-disabled-text mt-1">
                       {article.categoryName || '未分類'} · 瀏覽 {article.viewCount || 0} ·{' '}
                       {formatDate(article.publishedAt)}
                     </div>
@@ -210,7 +210,7 @@ export default function FaqPage() {
                   <button
                     onClick={() => handleDelete(article.id)}
                     disabled={deleting === article.id}
-                    className="ml-4 text-red-600 hover:text-red-800 disabled:opacity-50 text-sm"
+                    className="ml-4 text-rs-error hover:text-rs-error/80 disabled:opacity-50 text-sm"
                   >
                     {deleting === article.id ? '刪除中...' : '刪除'}
                   </button>
@@ -236,7 +236,7 @@ export default function FaqPage() {
               >
                 上一頁
               </button>
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-rs-ink-muted">
                 第 {page + 1} / {totalPages} 頁
               </span>
               <button

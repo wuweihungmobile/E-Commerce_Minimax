@@ -71,7 +71,7 @@ export default function BookingPaymentSuccessPage() {
                 <p>
                   付款狀態：<Badge variant="success">付款成功</Badge>
                 </p>
-                <p className="text-sm text-gray-600">預訂編號：{bookingId}</p>
+                <p className="text-sm text-rs-ink-muted">預訂編號：{bookingId}</p>
               </div>
             )}
             {!loading && !error && !paid && (
@@ -79,7 +79,7 @@ export default function BookingPaymentSuccessPage() {
                 <p>
                   付款狀態：<Badge variant="secondary">處理中</Badge>
                 </p>
-                <p className="text-sm text-gray-600">尚未確認付款完成，請稍後至預訂查看，或重新付款。</p>
+                <p className="text-sm text-rs-ink-muted">尚未確認付款完成，請稍後至預訂查看，或重新付款。</p>
               </div>
             )}
             <div className="flex gap-3 pt-2">

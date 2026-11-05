@@ -141,8 +141,8 @@ export default function NewReturnPage() {
   return (
     <StorefrontShell>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">申請退貨</h1>
-        <p className="mt-1 text-sm text-gray-600">訂單 #{order.id.slice(0, 8)}</p>
+        <h1 className="text-2xl font-semibold text-rs-ink">申請退貨</h1>
+        <p className="mt-1 text-sm text-rs-ink-muted">訂單 #{order.id.slice(0, 8)}</p>
       </div>
 
       {submitError && (
@@ -162,15 +162,15 @@ export default function NewReturnPage() {
               <img
                 src={item.coverImageUrl || '/placeholder.svg'}
                 alt={item.listingTitle}
-                className="h-14 w-14 rounded object-cover bg-gray-100 shrink-0"
+                className="h-14 w-14 rounded object-cover bg-rs-disabled-bg shrink-0"
               />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-900 truncate">{item.listingTitle}</p>
-                {item.specName && <p className="text-xs text-gray-500">{item.specName}</p>}
-                <p className="text-xs text-gray-500">已購買 {item.quantity} 件</p>
+                <p className="text-sm font-medium text-rs-ink truncate">{item.listingTitle}</p>
+                {item.specName && <p className="text-xs text-rs-ink-muted">{item.specName}</p>}
+                <p className="text-xs text-rs-ink-muted">已購買 {item.quantity} 件</p>
               </div>
               <div className="shrink-0 flex items-center gap-2">
-                <Label htmlFor={`qty-${item.id}`} className="text-xs text-gray-500">
+                <Label htmlFor={`qty-${item.id}`} className="text-xs text-rs-ink-muted">
                   退貨數量
                 </Label>
                 <input

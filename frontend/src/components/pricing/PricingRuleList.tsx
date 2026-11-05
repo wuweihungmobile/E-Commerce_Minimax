@@ -123,14 +123,14 @@ export default function PricingRuleList() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
         {error}
       </div>
     )
@@ -192,7 +192,7 @@ export default function PricingRuleList() {
       {rules.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-gray-500 mb-4">尚無定價規則</p>
+            <p className="text-rs-ink-muted mb-4">尚無定價規則</p>
             <Button onClick={() => { setEditingRule(null); setShowForm(true) }}>
               新增第一個規則
             </Button>
@@ -347,13 +347,13 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+              <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
                 {error}
               </div>
             )}
 
             <div>
-              <label className="text-sm font-medium">房源 ID <span className="text-red-500">*</span></label>
+              <label className="text-sm font-medium">房源 ID <span className="text-rs-error">*</span></label>
               <Input
                 value={formData.roomListingId}
                 onChange={(e) => setFormData({ ...formData, roomListingId: e.target.value })}
@@ -381,7 +381,7 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
             </div>
 
             <div>
-              <label className="text-sm font-medium">規則名稱 <span className="text-red-500">*</span></label>
+              <label className="text-sm font-medium">規則名稱 <span className="text-rs-error">*</span></label>
               <Input
                 value={formData.ruleName}
                 onChange={(e) => setFormData({ ...formData, ruleName: e.target.value })}
@@ -402,12 +402,12 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
             </div>
 
             {configFields.length > 0 && (
-              <div className="space-y-3 rounded-md border border-gray-100 bg-gray-50 p-3" data-testid="pricing-config-fields">
+              <div className="space-y-3 rounded-md border border-rs-hairline bg-rs-bg-base p-3" data-testid="pricing-config-fields">
                 <p className="text-sm font-medium">規則參數</p>
                 {configFields.map((f) => (
                   <div key={f.key}>
                     <label className="text-sm font-medium">
-                      {f.label} <span className="text-red-500">*</span>
+                      {f.label} <span className="text-rs-error">*</span>
                     </label>
                     <Input
                       type="number"
@@ -425,7 +425,7 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium">開始日期 <span className="text-red-500">*</span></label>
+                <label className="text-sm font-medium">開始日期 <span className="text-rs-error">*</span></label>
                 <Input
                   type="date"
                   value={formData.validFrom}
@@ -434,7 +434,7 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">結束日期 <span className="text-red-500">*</span></label>
+                <label className="text-sm font-medium">結束日期 <span className="text-rs-error">*</span></label>
                 <Input
                   type="date"
                   value={formData.validTo}

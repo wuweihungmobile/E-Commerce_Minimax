@@ -135,7 +135,7 @@ export default function AccountPage() {
   return (
     <StorefrontShell>
       <div className="max-w-2xl space-y-6">
-        <h1 className="text-2xl font-bold text-gray-900">帳戶設定</h1>
+        <h1 className="text-2xl font-semibold text-rs-ink">帳戶設定</h1>
 
         {invites.length > 0 && (
           <Card>
@@ -153,7 +153,7 @@ export default function AccountPage() {
                   key={invite.tenantId}
                   className="flex items-center justify-between gap-4 flex-wrap border-b pb-4 last:border-b-0 last:pb-0"
                 >
-                  <p className="text-sm text-gray-700">
+                  <p className="text-sm text-rs-ink">
                     <span className="font-medium">{invite.tenantName}</span> 邀請您加入成為{' '}
                     {STORE_MEMBER_ROLE_LABELS[invite.role]}
                   </p>
@@ -186,7 +186,7 @@ export default function AccountPage() {
             <CardTitle className="text-base">個人資料</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-gray-600">編輯您的姓名與電話。</p>
+            <p className="text-sm text-rs-ink-muted">編輯您的姓名與電話。</p>
             <Button asChild data-testid="account-edit-profile">
               <Link href="/auth/profile">編輯個人資料</Link>
             </Button>
@@ -198,7 +198,7 @@ export default function AccountPage() {
             <CardTitle className="text-base">匯出我的資料</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-rs-ink-muted">
               下載您在本平台的個人資料副本，包含基本資料、訂單、訂房、評價、地址簿、通知與客服工單摘要（JSON
               格式）。聊天訊息與客服工單訊息串的完整內容不包含在匯出範圍內，請至對應頁面查看。
             </p>
@@ -219,7 +219,7 @@ export default function AccountPage() {
               <CardTitle className="text-base">連結第三方帳號</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-gray-600">連結後可使用第三方帳號快速登入。</p>
+              <p className="text-sm text-rs-ink-muted">連結後可使用第三方帳號快速登入。</p>
               {linkedProvider && (
                 <Alert variant="success">
                   <AlertDescription>已成功連結 {linkedProvider === 'google' ? 'Google' : 'GitHub'} 帳號</AlertDescription>
@@ -242,12 +242,12 @@ export default function AccountPage() {
         )}
 
         {canDeleteAccount && (
-          <Card className="border-red-200">
+          <Card className="border-rs-error/30">
             <CardHeader>
-              <CardTitle className="text-base text-red-700">刪除帳戶</CardTitle>
+              <CardTitle className="text-base text-rs-error">刪除帳戶</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-rs-ink-muted">
                 刪除帳戶將匿名化您的個人資料且無法復原。若尚有未完成的訂單或訂房，將無法刪除。
               </p>
               {deleteError && (
@@ -258,7 +258,7 @@ export default function AccountPage() {
               {!showDeleteConfirm ? (
                 <Button
                   variant="outline"
-                  className="border-red-300 text-red-700 hover:bg-red-50"
+                  className="border-rs-error/30 text-rs-error hover:bg-rs-error/10"
                   onClick={() => setShowDeleteConfirm(true)}
                   data-testid="account-delete-open"
                 >
@@ -266,7 +266,7 @@ export default function AccountPage() {
                 </Button>
               ) : (
                 <div className="space-y-3 border-t pt-4">
-                  <p className="text-sm font-medium text-red-700">確定要刪除帳戶嗎？此操作無法復原。</p>
+                  <p className="text-sm font-medium text-rs-error">確定要刪除帳戶嗎？此操作無法復原。</p>
                   <div className="flex gap-3">
                     <Button
                       variant="destructive"

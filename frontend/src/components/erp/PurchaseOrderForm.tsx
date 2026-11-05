@@ -217,7 +217,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       CANCELLED: { variant: 'destructive', label: '已取消' },
     }
     const c = config[status] || { variant: 'outline', label: status }
-    return <span className={`px-2 py-1 text-xs rounded-full ${c.variant === 'success' ? 'bg-green-100 text-green-800' : c.variant === 'destructive' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>{c.label}</span>
+    return <span className={`px-2 py-1 text-xs rounded-full ${c.variant === 'success' ? 'bg-rs-success/10 text-rs-success' : c.variant === 'destructive' ? 'bg-rs-error/10 text-rs-error' : 'bg-rs-disabled-bg text-rs-ink'}`}>{c.label}</span>
   }
 
   const handleCreate = async () => {
@@ -365,7 +365,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
   if (initialLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
@@ -398,21 +398,21 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       </CardHeader>
       <CardContent className="space-y-6">
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+          <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
             {error}
           </div>
         )}
 
         {orderStatus === 'REJECTED' && rejectionReason && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+          <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
             <p className="text-sm font-medium">駁回原因</p>
             <p className="text-sm mt-1">{rejectionReason}</p>
           </div>
         )}
 
         {mode !== 'create' && orderId && (
-          <div className="bg-gray-50 p-4 rounded-md">
-            <p className="text-sm text-gray-600">訂單編號：{(orderId as string).slice(0, 8)}...</p>
+          <div className="bg-rs-bg-base p-4 rounded-md">
+            <p className="text-sm text-rs-ink-muted">訂單編號：{(orderId as string).slice(0, 8)}...</p>
           </div>
         )}
 
@@ -469,27 +469,27 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
           </div>
 
           <div className="border rounded-md">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-rs-hairline">
+              <thead className="bg-rs-bg-base">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">商品</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-rs-ink-muted">商品</th>
                   {mode === 'create' && (
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">規格（SKU）</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-rs-ink-muted">規格（SKU）</th>
                   )}
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">品名</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">數量</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">單價</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">小計</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-rs-ink-muted">品名</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-rs-ink-muted">數量</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-rs-ink-muted">單價</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-rs-ink-muted">小計</th>
                   {mode === 'receive' && (
                     <>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">已收</th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">本次收貨</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-rs-ink-muted">已收</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-rs-ink-muted">本次收貨</th>
                     </>
                   )}
                   {mode === 'create' && <th className="w-16"></th>}
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white divide-y divide-rs-hairline">
                 {items.map((item, index) => (
                   <tr key={index}>
                     <td className="px-3 py-2">
@@ -519,10 +519,10 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
                         {(() => {
                           const listing = listingOptions.find(l => l.id === item.listingId)
                           if (!item.listingId) {
-                            return <span className="text-sm text-gray-400">請先選擇商品</span>
+                            return <span className="text-sm text-rs-disabled-text">請先選擇商品</span>
                           }
                           if (!listing || listing.skus.length === 0) {
-                            return <span className="text-sm text-red-500">尚未建立規格，請先至商品編輯頁新增</span>
+                            return <span className="text-sm text-rs-error">尚未建立規格，請先至商品編輯頁新增</span>
                           }
                           return (
                             <select
@@ -614,7 +614,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-gray-50">
+              <tfoot className="bg-rs-bg-base">
                 <tr>
                   <td colSpan={mode === 'create' ? 5 : 4} className="px-3 py-2 text-right font-medium">總金額：</td>
                   <td className="px-3 py-2 text-right font-bold text-lg">

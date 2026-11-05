@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,7 +10,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import ReviewService, { type Review, type ReviewReply } from '@/services/review'
 import ReviewStars from '@/components/reviews/ReviewStars'
 import AuthService from '@/services/auth'
-import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
 import { loginHref } from '@/lib/auth-redirect'
 
 const PAGE_SIZE = 20
@@ -27,7 +25,6 @@ function errorMessage(err: unknown, fallback: string): string {
 
 export default function DashboardReviewsPage() {
   const router = useRouter()
-  const userEmail = useCurrentUserEmail()
 
   const [reviews, setReviews] = useState<Review[]>([])
   const [replies, setReplies] = useState<Record<string, ReviewReply | null>>({})
@@ -108,39 +105,13 @@ export default function DashboardReviewsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-                Dashboard
-              </Link>
-              <span className="text-gray-400">/</span>
-              <span className="text-gray-900 font-medium">評價管理</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">{userEmail}</span>
-              <button
-                onClick={async () => {
-                  await AuthService.logout()
-                  router.push('/login')
-                }}
-                className="px-3 py-1.5 text-sm text-white bg-red-500 rounded-md hover:bg-red-600"
-              >
-                登出
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0 space-y-6">
+    <div>
+      <main>
+        <div className="space-y-6">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">評價管理</h1>
-              <p className="mt-1 text-sm text-gray-600">
+              <h1 className="text-2xl font-semibold text-rs-ink">評價管理</h1>
+              <p className="mt-1 text-sm text-rs-ink-muted">
                 {totalElements > 0
                   ? `共 ${totalElements} 筆${isHandled ? '已處理' : '未處理'}評價`
                   : '目前沒有符合篩選條件的評價'}
@@ -165,20 +136,20 @@ export default function DashboardReviewsPage() {
 
           {forbidden ? (
             <Card>
-              <CardContent className="py-8 text-center text-gray-500">
+              <CardContent className="py-8 text-center text-rs-ink-muted">
                 您的角色沒有權限管理評價（僅限店主／房東／管理員）
               </CardContent>
             </Card>
           ) : error ? (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">{error}</div>
+            <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">{error}</div>
           ) : loading ? (
             <div className="flex items-center justify-center h-64">
-              <div className="text-gray-500">載入中...</div>
+              <div className="text-rs-ink-muted">載入中...</div>
             </div>
           ) : reviews.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center h-48">
-                <p className="text-gray-500">{isHandled ? '尚無已處理的評價' : '目前沒有待處理的評價'}</p>
+                <p className="text-rs-ink-muted">{isHandled ? '尚無已處理的評價' : '目前沒有待處理的評價'}</p>
               </CardContent>
             </Card>
           ) : (
@@ -191,24 +162,24 @@ export default function DashboardReviewsPage() {
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <div className="flex items-center gap-2">
                           <ReviewStars rating={review.rating} size="sm" />
-                          <span className="text-sm font-medium text-gray-900">
+                          <span className="text-sm font-medium text-rs-ink">
                             {review.isAnonymous ? '匿名' : review.userFullName}
                           </span>
                           <Badge variant={review.isHandled ? 'success' : 'warning'}>
                             {review.isHandled ? '已處理' : '未處理'}
                           </Badge>
                         </div>
-                        <span className="text-xs text-gray-400">{formatDate(review.createdAt)}</span>
+                        <span className="text-xs text-rs-disabled-text">{formatDate(review.createdAt)}</span>
                       </div>
-                      {review.title && <p className="text-sm font-medium text-gray-900">{review.title}</p>}
-                      <p className="text-sm text-gray-700 whitespace-pre-line">{review.content}</p>
+                      {review.title && <p className="text-sm font-medium text-rs-ink">{review.title}</p>}
+                      <p className="text-sm text-rs-ink whitespace-pre-line">{review.content}</p>
 
                       {reply ? (
-                        <div className="rounded-md bg-gray-50 border border-gray-200 px-3 py-2">
-                          <p className="text-xs font-medium text-gray-500 mb-1">
+                        <div className="rounded-md bg-rs-bg-base border border-rs-hairline px-3 py-2">
+                          <p className="text-xs font-medium text-rs-ink-muted mb-1">
                             您的回覆（{formatDate(reply.createdAt)}）
                           </p>
-                          <p className="text-sm text-gray-700 whitespace-pre-line">{reply.content}</p>
+                          <p className="text-sm text-rs-ink whitespace-pre-line">{reply.content}</p>
                         </div>
                       ) : (
                         <div className="space-y-2">

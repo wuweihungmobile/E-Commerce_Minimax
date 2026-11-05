@@ -38,20 +38,11 @@ export default function TenantEditPage({ params }: TenantEditPageProps) {
   // Render loading state until we have the tenant ID
   if (!tenantId || !user) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <nav className="bg-white shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between h-16">
-              <div className="flex items-center">
-                <h1 className="text-xl font-bold text-gray-900">NextKey</h1>
-              </div>
-            </div>
-          </div>
-        </nav>
-        <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          <div className="px-4 py-6 sm:px-0">
+      <div>
+        <main>
+          <div>
             <div className="flex items-center justify-center h-64">
-              <div className="text-gray-500">載入中...</div>
+              <div className="text-rs-ink-muted">載入中...</div>
             </div>
           </div>
         </main>
@@ -60,50 +51,12 @@ export default function TenantEditPage({ params }: TenantEditPageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.push('/dashboard/tenants')}
-                className="text-gray-600 hover:text-gray-900"
-              >
-                店鋪管理
-              </button>
-              <span className="text-gray-400">/</span>
-              <button
-                onClick={() => router.push(`/dashboard/tenants/${tenantId}`)}
-                className="text-gray-600 hover:text-gray-900"
-              >
-                店鋪詳情
-              </button>
-              <span className="text-gray-400">/</span>
-              <span className="text-gray-900 font-medium">編輯</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">
-                {user.email}
-              </span>
-              <button
-                onClick={async () => {
-                  await AuthService.logout()
-                  router.push('/login')
-                }}
-                className="px-3 py-1.5 text-sm text-white bg-red-500 rounded-md hover:bg-red-600"
-              >
-                登出
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
+    <div>
+      <main>
+        <div>
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">編輯店鋪</h1>
-            <p className="mt-1 text-sm text-gray-600">
+            <h1 className="text-2xl font-semibold text-rs-ink">編輯店鋪</h1>
+            <p className="mt-1 text-sm text-rs-ink-muted">
               修改店鋪的基本資訊
             </p>
           </div>

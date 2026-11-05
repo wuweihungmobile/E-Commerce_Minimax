@@ -124,8 +124,8 @@ export default function NotificationsPage() {
     <StorefrontShell>
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">通知收件匣</h1>
-            <p className="mt-1 text-sm text-gray-600">
+            <h1 className="text-2xl font-semibold text-rs-ink">通知收件匣</h1>
+            <p className="mt-1 text-sm text-rs-ink-muted">
               {unreadCount > 0 ? `${unreadCount} 則未讀` : '沒有未讀通知'}
             </p>
           </div>
@@ -173,10 +173,10 @@ export default function NotificationsPage() {
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-16">
               <div className="text-5xl mb-4">🔔</div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-1">
+              <h2 className="text-lg font-semibold text-rs-ink mb-1">
                 {unreadOnly ? '沒有未讀通知' : '尚無通知'}
               </h2>
-              <p className="text-sm text-gray-500">訂單、付款與物流的更新會顯示在這裡</p>
+              <p className="text-sm text-rs-ink-muted">訂單、付款與物流的更新會顯示在這裡</p>
             </CardContent>
           </Card>
         ) : (
@@ -196,9 +196,9 @@ export default function NotificationsPage() {
                           </Badge>
                           {!n.isRead && <span className="text-xs text-primary font-medium">未讀</span>}
                         </div>
-                        <p className="text-sm font-medium text-gray-900">{n.title}</p>
-                        <p className="text-sm text-gray-600 mt-0.5 whitespace-pre-line">{n.content}</p>
-                        <p className="text-xs text-gray-400 mt-1">{formatDateTime(n.createdAt)}</p>
+                        <p className="text-sm font-medium text-rs-ink">{n.title}</p>
+                        <p className="text-sm text-rs-ink-muted mt-0.5 whitespace-pre-line">{n.content}</p>
+                        <p className="text-xs text-rs-disabled-text mt-1">{formatDateTime(n.createdAt)}</p>
                         {orderId && (
                           <Link
                             href={`/orders/${orderId}`}
@@ -261,7 +261,7 @@ export default function NotificationsPage() {
             >
               上一頁
             </Button>
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-rs-ink-muted">
               第 {page + 1} / {totalPages} 頁
             </span>
             <Button

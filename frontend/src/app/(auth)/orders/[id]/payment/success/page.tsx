@@ -70,7 +70,7 @@ export default function PaymentSuccessPage() {
                 <p>
                   付款狀態：<Badge variant="success">付款成功</Badge>
                 </p>
-                <p className="text-sm text-gray-600">訂單編號：{orderId}</p>
+                <p className="text-sm text-rs-ink-muted">訂單編號：{orderId}</p>
               </div>
             )}
             {!loading && !error && !paid && (
@@ -78,7 +78,7 @@ export default function PaymentSuccessPage() {
                 <p>
                   付款狀態：<Badge variant="secondary">處理中</Badge>
                 </p>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-rs-ink-muted">
                   尚未確認付款完成，請稍後至訂單查看，或重新付款。
                 </p>
               </div>

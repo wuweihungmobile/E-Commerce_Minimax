@@ -153,7 +153,7 @@ export default function AdminTenantFeaturesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">功能開關管理</h1>
+          <h1 className="text-2xl font-semibold">功能開關管理</h1>
           <p className="text-muted-foreground">檢視並設定此店鋪的功能開關</p>
         </div>
         <Button variant="outline" onClick={() => router.push(`/admin/tenants/${tenantId}/review`)}>
@@ -199,7 +199,7 @@ export default function AdminTenantFeaturesPage() {
       ) : features.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <p className="text-gray-500">尚無功能開關設定</p>
+            <p className="text-rs-ink-muted">尚無功能開關設定</p>
           </CardContent>
         </Card>
       ) : (
@@ -217,14 +217,14 @@ export default function AdminTenantFeaturesPage() {
                   return (
                     <div key={quota.featureKey}>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium text-gray-900">{quota.featureName}</span>
-                        <span className={isNearLimit ? 'text-amber-600 font-medium' : 'text-gray-600'}>
+                        <span className="font-medium text-rs-ink">{quota.featureName}</span>
+                        <span className={isNearLimit ? 'text-rs-ink font-medium' : 'text-rs-ink-muted'}>
                           {quota.currentUsage} / {quota.limit}
                         </span>
                       </div>
-                      <div className="mt-1.5 h-2 w-full rounded-full bg-gray-100">
+                      <div className="mt-1.5 h-2 w-full rounded-full bg-rs-disabled-bg">
                         <div
-                          className={`h-2 rounded-full ${isNearLimit ? 'bg-amber-500' : 'bg-primary'}`}
+                          className={`h-2 rounded-full ${isNearLimit ? 'bg-rs-warning' : 'bg-primary'}`}
                           style={{ width: `${ratio * 100}%` }}
                         />
                       </div>
@@ -249,7 +249,7 @@ export default function AdminTenantFeaturesPage() {
                         <Label className="text-base font-medium">{feature.featureName}</Label>
                         {getStatusBadge(feature.status, feature.requiresAdminReview, feature.isEnabled)}
                       </div>
-                      <p className="text-sm text-gray-500 mt-1">{feature.description}</p>
+                      <p className="text-sm text-rs-ink-muted mt-1">{feature.description}</p>
                     </div>
                     <div className="flex items-center gap-3">
                       <Switch
@@ -259,7 +259,7 @@ export default function AdminTenantFeaturesPage() {
                         disabled={updating === feature.featureKey}
                       />
                       {updating === feature.featureKey && (
-                        <span className="text-sm text-gray-500">更新中...</span>
+                        <span className="text-sm text-rs-ink-muted">更新中...</span>
                       )}
                     </div>
                   </div>

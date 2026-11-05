@@ -121,7 +121,7 @@ export default function TenantList() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
@@ -170,7 +170,7 @@ export default function TenantList() {
       {filteredTenants.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-gray-500 mb-4">尚無店鋪資料</p>
+            <p className="text-rs-ink-muted mb-4">尚無店鋪資料</p>
             <Link href="/tenant/apply">
               <Button>申請第一個店鋪</Button>
             </Link>

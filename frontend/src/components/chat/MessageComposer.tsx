@@ -38,14 +38,14 @@ export default function MessageComposer({ disabled, onSend }: MessageComposerPro
         placeholder={disabled ? '請先選擇對話' : '輸入訊息…'}
         disabled={disabled}
         rows={1}
-        className="flex-1 resize-none rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+        className="flex-1 resize-none rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-rs-primary disabled:bg-rs-disabled-bg"
       />
       <button
         type="button"
         data-testid="send-button"
         onClick={submit}
         disabled={disabled || !text.trim()}
-        className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+        className="rounded bg-rs-primary px-4 py-2 text-sm text-white hover:bg-rs-primary-hover disabled:opacity-50"
       >
         送出
       </button>

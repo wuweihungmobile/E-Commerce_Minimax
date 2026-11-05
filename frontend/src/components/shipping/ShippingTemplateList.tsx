@@ -67,14 +67,14 @@ export default function ShippingTemplateList() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
         {error}
       </div>
     )
@@ -83,7 +83,7 @@ export default function ShippingTemplateList() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between gap-4">
-        <p className="text-sm text-gray-600 max-w-2xl">
+        <p className="text-sm text-rs-ink-muted max-w-2xl">
           結帳時系統以此清單的<strong>第一筆</strong>模板計算運費；尚未建立任何模板時，訂單一律免運費。
         </p>
         <div className="flex gap-2">
@@ -107,7 +107,7 @@ export default function ShippingTemplateList() {
       {templates.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-gray-500 mb-4">尚無運費模板，全站訂單目前一律免運費</p>
+            <p className="text-rs-ink-muted mb-4">尚無運費模板，全站訂單目前一律免運費</p>
             <Button onClick={() => { setEditingTemplate(null); setShowForm(true) }}>
               建立第一個運費模板
             </Button>
@@ -240,13 +240,13 @@ function ShippingTemplateFormModal({
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+              <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
                 {error}
               </div>
             )}
 
             <div>
-              <label className="text-sm font-medium">模板名稱 <span className="text-red-500">*</span></label>
+              <label className="text-sm font-medium">模板名稱 <span className="text-rs-error">*</span></label>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -279,7 +279,7 @@ function ShippingTemplateFormModal({
 
             <div>
               <label className="text-sm font-medium">
-                {feeType === 'FIXED' ? '固定運費金額' : '未達門檻時的運費'} <span className="text-red-500">*</span>
+                {feeType === 'FIXED' ? '固定運費金額' : '未達門檻時的運費'} <span className="text-rs-error">*</span>
               </label>
               <Input
                 type="number"
@@ -295,7 +295,7 @@ function ShippingTemplateFormModal({
 
             {feeType === 'FREE_THRESHOLD' && (
               <div>
-                <label className="text-sm font-medium">免運門檻金額 <span className="text-red-500">*</span></label>
+                <label className="text-sm font-medium">免運門檻金額 <span className="text-rs-error">*</span></label>
                 <Input
                   type="number"
                   min="0"

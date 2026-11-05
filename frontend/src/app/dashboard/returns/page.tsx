@@ -52,7 +52,7 @@ export default function DashboardReturnsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
@@ -60,7 +60,7 @@ export default function DashboardReturnsPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">{error}</div>
+        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">{error}</div>
         <Button variant="outline" onClick={fetchReturns}>重試</Button>
       </div>
     )
@@ -70,7 +70,7 @@ export default function DashboardReturnsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">退貨審核</h1>
+          <h1 className="text-2xl font-semibold">退貨審核</h1>
           <p className="text-muted-foreground">共 {returns.length} 筆退貨申請</p>
         </div>
         <Button variant="outline" onClick={fetchReturns}>重新整理</Button>
@@ -79,7 +79,7 @@ export default function DashboardReturnsPage() {
       {returns.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-gray-500">尚無退貨申請</p>
+            <p className="text-rs-ink-muted">尚無退貨申請</p>
           </CardContent>
         </Card>
       ) : (

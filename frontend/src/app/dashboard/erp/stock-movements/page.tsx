@@ -80,14 +80,14 @@ export default function StockMovementsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
         {error}
       </div>
     )
@@ -96,7 +96,7 @@ export default function StockMovementsPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-rs-ink-muted">
           共 {totalElements} 筆異動記錄
         </div>
         <div className="flex gap-2">
@@ -110,7 +110,7 @@ export default function StockMovementsPage() {
       {movements.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-gray-500 mb-4">尚無庫存異動記錄</p>
+            <p className="text-rs-ink-muted mb-4">尚無庫存異動記錄</p>
             <Button onClick={() => router.push('/dashboard/erp/stock-movements/new')}>
               建立第一筆記錄
             </Button>
@@ -118,45 +118,45 @@ export default function StockMovementsPage() {
         </Card>
       ) : (
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 border">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-rs-hairline border">
+            <thead className="bg-rs-bg-base">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">時間</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">類型</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">品名</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">數量</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">來源單據</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">參考單號</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">備註</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">時間</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">類型</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">SKU</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">品名</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-rs-ink-muted uppercase">數量</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">來源單據</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">參考單號</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">備註</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white divide-y divide-rs-hairline">
               {movements.map((movement) => (
                 <tr key={movement.id}>
-                  <td className="px-4 py-3 text-sm text-gray-500">
+                  <td className="px-4 py-3 text-sm text-rs-ink-muted">
                     {new Date(movement.createdAt).toLocaleString('zh-TW')}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     {getMovementBadge(movement.movementType)}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-900">{movement.skuCode}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900">{movement.productName}</td>
+                  <td className="px-4 py-3 text-sm text-rs-ink">{movement.skuCode}</td>
+                  <td className="px-4 py-3 text-sm text-rs-ink">{movement.productName}</td>
                   <td className="px-4 py-3 text-sm text-right font-medium">
                     {/* 依 PRD §6.7.4 的方向表判定，不用字串比對：'OUTBOUND'.endsWith('OUT') 為 false，
                         原本的寫法會把訂單出貨顯示成綠色 +N */}
                     {INBOUND_MOVEMENT_TYPES.includes(movement.movementType)
-                      ? <span className="text-green-600">+{movement.quantity}</span>
-                      : <span className="text-red-600">-{movement.quantity}</span>
+                      ? <span className="text-rs-success">+{movement.quantity}</span>
+                      : <span className="text-rs-error">-{movement.quantity}</span>
                     }
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
+                  <td className="px-4 py-3 text-sm text-rs-ink-muted">
                     {movement.sourceDocument
                       ? <span className="font-mono text-xs">{sourceDocumentLabel(movement)}</span>
                       : '-'}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{movement.referenceNumber || '-'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{movement.notes || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-rs-ink-muted">{movement.referenceNumber || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-rs-ink-muted">{movement.notes || '-'}</td>
                 </tr>
               ))}
             </tbody>

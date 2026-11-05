@@ -22,7 +22,7 @@ export default function PaymentCancelPage() {
             <CardTitle>付款已取消</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-rs-ink-muted">
               您已取消本次付款，訂單尚未付款。您可以返回訂單重新付款。
             </p>
             <div className="flex gap-3">

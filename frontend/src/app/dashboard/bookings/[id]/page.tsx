@@ -151,7 +151,7 @@ export default function DashboardBookingDetailPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
@@ -159,7 +159,7 @@ export default function DashboardBookingDetailPage() {
   if (error || !booking) {
     return (
       <div className="space-y-4">
-        {error && <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">{error}</div>}
+        {error && <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">{error}</div>}
         <Link href="/dashboard/bookings">
           <Button variant="outline">返回訂房列表</Button>
         </Link>
@@ -172,14 +172,14 @@ export default function DashboardBookingDetailPage() {
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-bold truncate">
+            <h1 className="text-2xl font-semibold truncate">
               {booking.roomTitle || `訂房 #${booking.id.slice(0, 8)}`}
             </h1>
             <Badge variant={bookingStatusBadgeVariant(booking.status)}>
               {BOOKING_STATUS_LABELS[booking.status] ?? booking.status}
             </Badge>
           </div>
-          <p className="text-sm text-gray-500">建立於 {formatDate(booking.createdAt)}</p>
+          <p className="text-sm text-rs-ink-muted">建立於 {formatDate(booking.createdAt)}</p>
         </div>
         <div className="flex gap-2 shrink-0">
           {booking.status === 'PAID' && (
@@ -207,7 +207,7 @@ export default function DashboardBookingDetailPage() {
       )}
 
       {showCancel && (
-        <Card className="border-red-200">
+        <Card className="border-rs-error/30">
           <CardHeader>
             <CardTitle className="text-base">取消訂房</CardTitle>
           </CardHeader>
@@ -217,7 +217,7 @@ export default function DashboardBookingDetailPage() {
                 <AlertDescription>{cancelError}</AlertDescription>
               </Alert>
             )}
-            <p className="text-sm text-gray-600">{CANCELLATION_POLICY_SUMMARY}</p>
+            <p className="text-sm text-rs-ink-muted">{CANCELLATION_POLICY_SUMMARY}</p>
             <div className="space-y-2">
               <Label htmlFor="cancelReason">取消原因（選填）</Label>
               <Input
@@ -253,11 +253,11 @@ export default function DashboardBookingDetailPage() {
       )}
 
       {booking.status === 'CANCELLED' && booking.refundStatus !== 'NONE' && booking.refundAmount != null && (
-        <Card className="border-amber-200">
+        <Card className="border-rs-warning/40">
           <CardHeader>
             <CardTitle className="text-base">退款資訊</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-gray-700 space-y-1">
+          <CardContent className="text-sm text-rs-ink space-y-1">
             {booking.refundStatus === 'PENDING' ? (
               <p>退款處理中：將退款 {formatPrice(booking.refundAmount, booking.currency)}，系統會自動退回買家原付款方式。</p>
             ) : (
@@ -271,30 +271,30 @@ export default function DashboardBookingDetailPage() {
         <CardHeader>
           <CardTitle className="text-base">住宿資訊</CardTitle>
         </CardHeader>
-        <CardContent className="text-sm text-gray-700 space-y-2">
+        <CardContent className="text-sm text-rs-ink space-y-2">
           <div className="flex justify-between">
-            <span className="text-gray-500">入住</span>
+            <span className="text-rs-ink-muted">入住</span>
             <span>
               {formatDate(booking.checkInDate)}
               {booking.checkInTime ? `（${booking.checkInTime} 後）` : ''}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">退房</span>
+            <span className="text-rs-ink-muted">退房</span>
             <span>
               {formatDate(booking.checkOutDate)}
               {booking.checkOutTime ? `（${booking.checkOutTime} 前）` : ''}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">住宿天數</span>
+            <span className="text-rs-ink-muted">住宿天數</span>
             <span>{booking.nightsCount} 晚</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">入住人數</span>
+            <span className="text-rs-ink-muted">入住人數</span>
             <span>{booking.guestCount} 人</span>
           </div>
-          <div className="flex justify-between border-t pt-2 text-base font-bold text-gray-900">
+          <div className="flex justify-between border-t pt-2 text-base font-bold text-rs-ink">
             <span>總金額</span>
             <span>{formatPrice(booking.totalAmount, booking.currency)}</span>
           </div>
@@ -306,7 +306,7 @@ export default function DashboardBookingDetailPage() {
           <CardHeader>
             <CardTitle className="text-base">訂房人資料</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-gray-700 space-y-1">
+          <CardContent className="text-sm text-rs-ink space-y-1">
             {booking.guestName && <p>姓名：{booking.guestName}</p>}
             {booking.guestPhone && <p>電話：{booking.guestPhone}</p>}
             {booking.guestEmail && <p>Email：{booking.guestEmail}</p>}
@@ -320,14 +320,14 @@ export default function DashboardBookingDetailPage() {
           <CardHeader>
             <CardTitle className="text-base">狀態歷程</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-gray-700 space-y-2">
+          <CardContent className="text-sm text-rs-ink space-y-2">
             {stateLog.map((entry) => (
               <div key={entry.id} className="flex justify-between border-b last:border-0 pb-2 last:pb-0">
                 <span>
                   {STATE_LOG_ACTION_LABELS[entry.action] ?? entry.action}
                   {entry.fromStatus && entry.toStatus ? `（${entry.fromStatus} → ${entry.toStatus}）` : ''}
                 </span>
-                <span className="text-gray-500">{formatDateTime(entry.createdAt)}</span>
+                <span className="text-rs-ink-muted">{formatDateTime(entry.createdAt)}</span>
               </div>
             ))}
           </CardContent>

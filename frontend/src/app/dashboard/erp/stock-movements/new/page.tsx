@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,12 +10,10 @@ import StockMovementService, {
   StockMovementRequest,
 } from '@/services/erp/stockMovement'
 import AuthService from '@/services/auth'
-import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
 import { loginHref } from '@/lib/auth-redirect'
 
 export default function NewStockMovementPage() {
   const router = useRouter()
-  const userEmail = useCurrentUserEmail()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -89,43 +86,11 @@ export default function NewStockMovementPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-                Dashboard
-              </Link>
-              <span className="text-gray-400">/</span>
-              <Link href="/dashboard/erp/stock-movements" className="text-gray-600 hover:text-gray-900">
-                庫存異動
-              </Link>
-              <span className="text-gray-400">/</span>
-              <span className="text-gray-900 font-medium">新增</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">
-                {userEmail}
-              </span>
-              <button
-                onClick={async () => {
-                  await AuthService.logout()
-                  router.push('/login')
-                }}
-                className="px-3 py-1.5 text-sm text-white bg-red-500 rounded-md hover:bg-red-600"
-              >
-                登出
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
+    <div>
+      <main>
+        <div>
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">新增庫存異動</h1>
+            <h1 className="text-2xl font-semibold text-rs-ink">新增庫存異動</h1>
           </div>
 
           <Card>
@@ -136,7 +101,7 @@ export default function NewStockMovementPage() {
             <form onSubmit={handleSubmit}>
               <CardContent className="space-y-4">
                 {error && (
-                  <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+                  <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
                     {error}
                   </div>
                 )}
@@ -167,7 +132,7 @@ export default function NewStockMovementPage() {
                         </option>
                       ))}
                     </select>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-rs-ink-muted">
                       採購入庫與訂單出貨由採購單、訂單流程自動產生，不在此手動建立
                     </p>
                   </div>
@@ -188,7 +153,7 @@ export default function NewStockMovementPage() {
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium">參考單號</label>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-rs-ink-muted">
                       店家自己記的單號；採購單／訂單產生的異動會自動顯示來源單據
                     </p>
                     <Input

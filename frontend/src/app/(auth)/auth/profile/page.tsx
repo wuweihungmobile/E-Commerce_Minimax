@@ -58,8 +58,8 @@ export default function ProfilePage() {
     <StorefrontShell>
       <div className="max-w-2xl space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">個人資料</h1>
-          <Link href="/account" className="text-sm text-blue-600 hover:underline">
+          <h1 className="text-2xl font-semibold text-rs-ink">個人資料</h1>
+          <Link href="/account" className="text-sm text-rs-primary hover:underline">
             返回帳戶設定
           </Link>
         </div>
@@ -70,7 +70,7 @@ export default function ProfilePage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {loading ? (
-              <p className="text-sm text-gray-500" data-testid="profile-loading">
+              <p className="text-sm text-rs-ink-muted" data-testid="profile-loading">
                 載入中…
               </p>
             ) : loadError ? (
@@ -80,7 +80,7 @@ export default function ProfilePage() {
             ) : (
               <>
                 {profile && (
-                  <p className="text-sm text-gray-500">{profile.email}</p>
+                  <p className="text-sm text-rs-ink-muted">{profile.email}</p>
                 )}
                 {saveError && (
                   <Alert variant="destructive">

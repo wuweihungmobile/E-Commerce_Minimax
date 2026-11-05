@@ -169,8 +169,8 @@ export default function ProductCheckoutPage() {
   return (
     <StorefrontShell>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">商品結帳</h1>
-        <p className="mt-1 text-sm text-gray-600">請確認收件地址並完成付款</p>
+        <h1 className="text-2xl font-semibold text-rs-ink">商品結帳</h1>
+        <p className="mt-1 text-sm text-rs-ink-muted">請確認收件地址並完成付款</p>
       </div>
 
       {error && (
@@ -183,8 +183,8 @@ export default function ProductCheckoutPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <div className="text-5xl mb-4">🛒</div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-1">購物車無商品項目</h2>
-            <p className="text-sm text-gray-500">請先至購物車加入商品</p>
+            <h2 className="text-lg font-semibold text-rs-ink mb-1">購物車無商品項目</h2>
+            <p className="text-sm text-rs-ink-muted">請先至購物車加入商品</p>
           </CardContent>
         </Card>
       ) : (
@@ -201,7 +201,7 @@ export default function ProductCheckoutPage() {
                     {addresses.map((address) => (
                       <label
                         key={address.id}
-                        className="flex items-start gap-3 rounded-md border p-3 cursor-pointer hover:bg-gray-50"
+                        className="flex items-start gap-3 rounded-md border p-3 cursor-pointer hover:bg-rs-bg-base"
                       >
                         <input
                           type="radio"
@@ -211,10 +211,10 @@ export default function ProductCheckoutPage() {
                           onChange={() => setSelectedAddressId(address.id)}
                         />
                         <div className="text-sm">
-                          <div className="font-medium text-gray-900">
+                          <div className="font-medium text-rs-ink">
                             {address.recipientName} {address.phone}
                           </div>
-                          <div className="text-gray-600">
+                          <div className="text-rs-ink-muted">
                             {address.postalCode ? address.postalCode + ' ' : ''}
                             {address.city}
                             {address.district || ''}
@@ -295,10 +295,10 @@ export default function ProductCheckoutPage() {
                   </Alert>
                 )}
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">商品小計</span>
+                  <span className="text-rs-ink-muted">商品小計</span>
                   <span>{formatPrice(totalAmount)}</span>
                 </div>
-                <div className="text-xs text-gray-500">運費將於建立訂單時計算</div>
+                <div className="text-xs text-rs-ink-muted">運費將於建立訂單時計算</div>
                 <div className="border-t pt-4">
                   <Button className="w-full" size="lg" onClick={handleSubmit} disabled={submitting}>
                     {submitting ? '處理中...' : '確認送出並付款'}

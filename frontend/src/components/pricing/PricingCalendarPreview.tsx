@@ -142,7 +142,7 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
             <div className="text-sm text-muted-foreground">載入中...</div>
           )}
           {calendarError && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
+            <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md text-sm">
               {calendarError}
             </div>
           )}
@@ -152,7 +152,7 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
                 <div key={day.date} className="grid grid-cols-4 gap-4 p-2 items-center text-sm">
                   <div>
                     <div>{formatDate(day.date)}</div>
-                    <div className={`text-xs ${isWeekend(day.date) ? 'text-blue-600' : 'text-gray-500'}`}>
+                    <div className={`text-xs ${isWeekend(day.date) ? 'text-rs-primary' : 'text-rs-ink-muted'}`}>
                       {isWeekend(day.date) ? '週末' : '平日'}
                     </div>
                   </div>
@@ -161,7 +161,7 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
                   </div>
                   <div className="text-right">
                     {day.originalPrice != null && (
-                      <span className="text-xs text-gray-400 line-through mr-1">
+                      <span className="text-xs text-rs-disabled-text line-through mr-1">
                         {formatPrice(day.originalPrice)}
                       </span>
                     )}
@@ -185,7 +185,7 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+          <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
             {error}
           </div>
         )}
@@ -233,7 +233,7 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
 
         {result && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-rs-bg-base rounded-lg">
               <div>
                 <div className="text-sm text-muted-foreground">晚數</div>
                 <div className="text-2xl font-bold">{result.nights}</div>
@@ -252,7 +252,7 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">折扣</div>
-                <div className="text-lg text-green-600">
+                <div className="text-lg text-rs-success">
                   {result.discount > 0 ? '-' : ''}{formatPrice(result.discount, result.currency)}
                 </div>
               </div>
@@ -264,7 +264,7 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
                   <div key={index} className="grid grid-cols-4 gap-4 p-3 items-center">
                     <div className="text-sm">
                       <div>{formatDate(day.date)}</div>
-                      <div className={`text-xs ${isWeekend(day.date) ? 'text-blue-600' : 'text-gray-500'}`}>
+                      <div className={`text-xs ${isWeekend(day.date) ? 'text-rs-primary' : 'text-rs-ink-muted'}`}>
                         {isWeekend(day.date) ? '週末' : '平日'}
                       </div>
                     </div>

@@ -10,7 +10,7 @@ export default function ProductReviewsPage() {
 
   return (
     <StorefrontShell>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">商品評價</h1>
+      <h1 className="text-2xl font-semibold text-rs-ink mb-6">商品評價</h1>
       <ReviewList listingId={listingId} />
     </StorefrontShell>
   )

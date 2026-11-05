@@ -24,10 +24,10 @@ const STATUS_LABEL: Record<ChatSocketStatus, string> = {
 };
 
 const STATUS_COLOR: Record<ChatSocketStatus, string> = {
-  idle: 'bg-gray-400',
-  connecting: 'bg-yellow-400',
-  connected: 'bg-green-500',
-  disconnected: 'bg-red-500',
+  idle: 'bg-rs-disabled-text',
+  connecting: 'bg-rs-warning',
+  connected: 'bg-rs-success',
+  disconnected: 'bg-rs-error',
 };
 
 function formatTime(iso: string): string {
@@ -54,7 +54,7 @@ export default function MessageThread({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b px-4 py-2 text-xs text-gray-500">
+      <div className="flex items-center gap-2 border-b px-4 py-2 text-xs text-rs-ink-muted">
         <span
           className={`inline-block h-2 w-2 rounded-full ${STATUS_COLOR[status]}`}
           data-testid="socket-status-dot"
@@ -64,9 +64,9 @@ export default function MessageThread({
 
       <div className="flex-1 space-y-3 overflow-y-auto p-4" data-testid="message-thread">
         {loading ? (
-          <div className="py-8 text-center text-sm text-gray-500">載入中…</div>
+          <div className="py-8 text-center text-sm text-rs-ink-muted">載入中…</div>
         ) : messages.length === 0 ? (
-          <div className="py-8 text-center text-sm text-gray-500">尚無訊息，開始聊天吧！</div>
+          <div className="py-8 text-center text-sm text-rs-ink-muted">尚無訊息，開始聊天吧！</div>
         ) : (
           messages.map((message) => {
             const own = currentUserId != null && message.senderId === currentUserId;
@@ -78,7 +78,7 @@ export default function MessageThread({
               >
                 <div
                   className={`max-w-[70%] rounded-lg px-3 py-2 text-sm ${
-                    own ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900'
+                    own ? 'bg-rs-primary text-white' : 'bg-rs-disabled-bg text-rs-ink'
                   }`}
                 >
                   {!own && (
@@ -89,7 +89,7 @@ export default function MessageThread({
                   <div className="whitespace-pre-wrap break-words">{message.content}</div>
                   <div
                     className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${
-                      own ? 'text-blue-100' : 'text-gray-400'
+                      own ? 'text-rs-primary' : 'text-rs-disabled-text'
                     }`}
                   >
                     <span>{formatTime(message.createdAt)}</span>

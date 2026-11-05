@@ -30,26 +30,18 @@ interface PurchaseOrderPendingListResponse {
   totalElements: number
 }
 
-const QUICK_LINKS = [
-  { href: '/admin/tenants', label: '租戶管理', testId: 'admin-tenants-link' },
-  { href: '/admin/audit-logs', label: '稽核紀錄', testId: 'admin-audit-logs-link' },
-  { href: '/admin/purchase-orders', label: '採購單審批', testId: 'admin-purchase-orders-link' },
-  { href: '/admin/settlements/reversal', label: '結算沖正', testId: 'admin-settlements-link' },
-  { href: '/admin/support/tickets', label: '客服工單', testId: 'admin-support-tickets-link' },
-]
-
-type CurrentUser = { email: string; role: string }
+// 快速管理入口已移到共用外殼的側欄（components/layout/sellerNav.ts，沿用原本的標籤與 data-testid）。
 
 function StatCard({ label, value, href, testId }: { label: string; value: string; href?: string; testId?: string }) {
   const content = (
-    <div className="bg-white rounded-lg shadow p-5">
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-gray-900">{value}</p>
+    <div className="bg-white rounded-lg p-5 border border-rs-hairline">
+      <p className="text-sm text-rs-ink-muted">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-rs-ink">{value}</p>
     </div>
   )
   if (!href) return content
   return (
-    <Link href={href} data-testid={testId} className="block hover:shadow-md transition-shadow rounded-lg">
+    <Link href={href} data-testid={testId} className="block hover:border-rs-primary transition-colors rounded-lg border border-rs-hairline">
       {content}
     </Link>
   )
@@ -57,7 +49,6 @@ function StatCard({ label, value, href, testId }: { label: string; value: string
 
 export default function AdminOverviewPage() {
   const router = useRouter()
-  const [user, setUser] = useState<CurrentUser | null>(null)
   const [stats, setStats] = useState<PlatformStatsResponse | null>(null)
   const [pendingPurchaseOrders, setPendingPurchaseOrders] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -82,10 +73,7 @@ export default function AdminOverviewPage() {
       } catch {
         if (!cancelled) setError('無法載入平台統計資料，請稍後再試')
       } finally {
-        if (!cancelled) {
-          setUser(currentUser as CurrentUser)
-          setLoading(false)
-        }
+        if (!cancelled) setLoading(false)
       }
     })()
     return () => {
@@ -93,61 +81,21 @@ export default function AdminOverviewPage() {
     }
   }, [router])
 
-  const handleLogout = async () => {
-    await AuthService.logout()
-    router.push('/login')
-  }
-
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-lg text-gray-600">Loading...</div>
+      <div className="min-h-[40vh] flex items-center justify-center">
+        <div className="text-lg text-rs-ink-muted">Loading...</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold text-gray-900">平台管理台</h1>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">
-                {user?.email} ({user?.role})
-              </span>
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">平台總覽</h2>
-
-        {/* 快速管理入口 */}
-        <section className="mb-6 flex flex-wrap gap-3">
-          {QUICK_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              data-testid={link.testId}
-              className="inline-flex items-center rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-            >
-              {link.label}
-            </Link>
-          ))}
-        </section>
+    <div>
+      <main>
+        <h2 className="text-lg font-medium text-rs-ink mb-4">平台總覽</h2>
 
         {error ? (
-          <div className="mb-6 rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-700" data-testid="admin-overview-error">
+          <div className="mb-6 rounded-md bg-rs-error/10 border border-rs-error/30 p-4 text-sm text-rs-error" data-testid="admin-overview-error">
             {error}
           </div>
         ) : null}

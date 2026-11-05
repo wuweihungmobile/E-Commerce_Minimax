@@ -14,7 +14,6 @@ import OrderService, {
   orderStatusBadgeVariant,
 } from '@/services/order'
 import AuthService from '@/services/auth'
-import { useCurrentUserEmail } from '@/hooks/useCurrentUserEmail'
 import { loginHref } from '@/lib/auth-redirect'
 
 const PAGE_SIZE = 20
@@ -34,7 +33,6 @@ function formatPrice(amount: number, currency: string) {
 
 export default function DashboardOrdersPage() {
   const router = useRouter()
-  const userEmail = useCurrentUserEmail()
 
   const [orders, setOrders] = useState<OrderListItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -83,41 +81,13 @@ export default function DashboardOrdersPage() {
   }, [router, fetchOrders, currentPage, status])
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-                Dashboard
-              </Link>
-              <span className="text-gray-400">/</span>
-              <span className="text-gray-900 font-medium">訂單管理</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">
-                {userEmail}
-              </span>
-              <button
-                onClick={async () => {
-                  await AuthService.logout()
-                  router.push('/login')
-                }}
-                className="px-3 py-1.5 text-sm text-white bg-red-500 rounded-md hover:bg-red-600"
-              >
-                登出
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0 space-y-6">
+    <div>
+      <main>
+        <div className="space-y-6">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">訂單管理</h1>
-              <p className="mt-1 text-sm text-gray-600">
+              <h1 className="text-2xl font-semibold text-rs-ink">訂單管理</h1>
+              <p className="mt-1 text-sm text-rs-ink-muted">
                 {totalElements > 0 ? `共 ${totalElements} 筆訂單` : '目前尚無訂單'}
               </p>
             </div>
@@ -142,17 +112,17 @@ export default function DashboardOrdersPage() {
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">{error}</div>
+            <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">{error}</div>
           )}
 
           {loading ? (
             <div className="flex items-center justify-center h-64">
-              <div className="text-gray-500">載入中...</div>
+              <div className="text-rs-ink-muted">載入中...</div>
             </div>
           ) : orders.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center h-48">
-                <p className="text-gray-500">
+                <p className="text-rs-ink-muted">
                   {status === 'ALL' ? '尚無訂單' : `尚無「${ORDER_STATUS_LABELS[status]}」狀態的訂單`}
                 </p>
               </CardContent>
@@ -165,20 +135,20 @@ export default function DashboardOrdersPage() {
                     <CardContent className="py-4 flex items-center justify-between gap-4">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="font-mono text-sm text-gray-900">
+                          <span className="font-mono text-sm text-rs-ink">
                             #{order.id.slice(0, 8)}
                           </span>
                           <Badge variant={orderStatusBadgeVariant(order.status)}>
                             {ORDER_STATUS_LABELS[order.status]}
                           </Badge>
                         </div>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-rs-ink-muted">
                           {order.shippingRecipientName ? `收件人：${order.shippingRecipientName} · ` : ''}
                           {order.itemCount} 項商品 · {new Date(order.createdAt).toLocaleString('zh-TW')}
                         </p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-sm font-semibold text-gray-900">
+                        <p className="text-sm font-semibold text-rs-ink">
                           {formatPrice(order.totalAmount, order.currency)}
                         </p>
                       </div>

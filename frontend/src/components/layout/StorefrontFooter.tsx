@@ -2,7 +2,8 @@ import Link from "next/link"
 import { MessageCircleMore } from "lucide-react"
 
 // Bottom 區塊：頁尾（版權 + 連結）+ 懸浮客服鈕。
-export function StorefrontFooter() {
+// showChatFab=false：賣家外殼不放懸浮鈕（會蓋住資料表右下角，且訊息中心已在側欄）。
+export function StorefrontFooter({ showChatFab = true }: { showChatFab?: boolean }) {
   return (
     <>
       <footer className="bg-rs-surface border-t border-rs-hairline mt-auto" data-testid="storefront-footer">
@@ -23,16 +24,18 @@ export function StorefrontFooter() {
           </div>
         </div>
       </footer>
-      {/* 懸浮客服 */}
-      <Link
-        href="/dashboard/chat"
-        aria-label="聊聊客服"
-        className="fixed right-2 bottom-8 z-[60] inline-flex items-center justify-center gap-2 bg-rs-primary text-white rounded-full px-4 py-3 shadow-lg transition-colors hover:bg-rs-primary-hover"
-      >
-        <MessageCircleMore className="w-6 h-6" aria-hidden />
-        <span className="text-sm font-medium">聊聊</span>
-        <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-rs-accent border-2 border-white" />
-      </Link>
+      {/* 懸浮客服（設計稿規格：radius-md、padding 10×20、18px／500；無陰影） */}
+      {showChatFab && (
+        <Link
+          href="/dashboard/chat"
+          aria-label="聊聊客服"
+          className="fixed right-2 bottom-8 z-[60] inline-flex items-center justify-center gap-2 bg-rs-primary text-white rounded-md px-5 py-2.5 transition-colors hover:bg-rs-primary-hover"
+        >
+          <MessageCircleMore className="w-6 h-6" aria-hidden />
+          <span className="text-lg font-medium">聊聊</span>
+          <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-rs-accent border-2 border-white" />
+        </Link>
+      )}
     </>
   )
 }

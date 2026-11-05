@@ -160,7 +160,7 @@ export default function ProductForm({ productId }: ProductFormProps) {
   if (fetchLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
@@ -176,7 +176,7 @@ export default function ProductForm({ productId }: ProductFormProps) {
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-6">
           {generalError && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+            <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
               {generalError}
             </div>
           )}
@@ -184,25 +184,25 @@ export default function ProductForm({ productId }: ProductFormProps) {
           <div className="space-y-4">
             <div>
               <Label htmlFor="title">
-                商品名稱 <span className="text-red-500">*</span>
+                商品名稱 <span className="text-rs-error">*</span>
               </Label>
               <Input
                 id="title"
                 value={formData.title}
                 onChange={(e) => handleChange('title', e.target.value)}
                 placeholder="請輸入商品名稱"
-                className={errors.title ? 'border-red-500' : ''}
+                className={errors.title ? 'border-rs-error' : ''}
               />
-              {errors.title && <p className="text-red-500 text-sm mt-1">{errors.title}</p>}
+              {errors.title && <p className="text-rs-error text-sm mt-1">{errors.title}</p>}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="category">
-                  類別 <span className="text-red-500">*</span>
+                  類別 <span className="text-rs-error">*</span>
                 </Label>
                 <Select value={formData.category} onValueChange={(v) => handleChange('category', v)}>
-                  <SelectTrigger className={errors.category ? 'border-red-500' : ''}>
+                  <SelectTrigger className={errors.category ? 'border-rs-error' : ''}>
                     <SelectValue placeholder="請選擇類別" />
                   </SelectTrigger>
                   <SelectContent>
@@ -216,7 +216,7 @@ export default function ProductForm({ productId }: ProductFormProps) {
                     <SelectItem value="OTHER">其他</SelectItem>
                   </SelectContent>
                 </Select>
-                {errors.category && <p className="text-red-500 text-sm mt-1">{errors.category}</p>}
+                {errors.category && <p className="text-rs-error text-sm mt-1">{errors.category}</p>}
               </div>
 
               <div>
@@ -233,7 +233,7 @@ export default function ProductForm({ productId }: ProductFormProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="basePrice">
-                  價格 <span className="text-red-500">*</span>
+                  價格 <span className="text-rs-error">*</span>
                 </Label>
                 <Input
                   id="basePrice"
@@ -243,9 +243,9 @@ export default function ProductForm({ productId }: ProductFormProps) {
                   value={formData.basePrice}
                   onChange={(e) => handleChange('basePrice', parseFloat(e.target.value) || 0)}
                   placeholder="0.00"
-                  className={errors.basePrice ? 'border-red-500' : ''}
+                  className={errors.basePrice ? 'border-rs-error' : ''}
                 />
-                {errors.basePrice && <p className="text-red-500 text-sm mt-1">{errors.basePrice}</p>}
+                {errors.basePrice && <p className="text-rs-error text-sm mt-1">{errors.basePrice}</p>}
               </div>
 
               <div>

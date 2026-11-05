@@ -203,7 +203,7 @@ export default function TenantApplyForm() {
             <textarea
               id="storeDescription"
               name="storeDescription"
-              className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
               placeholder="介紹一下您的店鋪（選填，最多 1000 字）"
               maxLength={1000}
               value={formData.storeDescription}

@@ -282,7 +282,7 @@ export default function AdminTenantListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">店鋪管理</h1>
+          <h1 className="text-2xl font-semibold">店鋪管理</h1>
           <p className="text-muted-foreground">
             {tabCounts.PENDING > 0 ? (
               <span className="text-warning">有待審核開店申請 {tabCounts.PENDING} 件</span>
@@ -366,14 +366,14 @@ export default function AdminTenantListPage() {
 
       {loading ? (
         <div className="flex items-center justify-center h-64">
-          <div className="text-gray-500">載入中...</div>
+          <div className="text-rs-ink-muted">載入中...</div>
         </div>
       ) : showApplications ? (
         /* ── 待審核開店申請 ────────────────────────────── */
         applications.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center h-48">
-              <p className="text-gray-500 mb-4">目前沒有待審核的開店申請</p>
+              <p className="text-rs-ink-muted mb-4">目前沒有待審核的開店申請</p>
             </CardContent>
           </Card>
         ) : (
@@ -490,7 +490,7 @@ export default function AdminTenantListPage() {
       tenants.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-gray-500 mb-4">
+            <p className="text-rs-ink-muted mb-4">
               {filter === 'ALL' ? '尚無店鋪資料' : '無符合條件的店鋪'}
             </p>
           </CardContent>

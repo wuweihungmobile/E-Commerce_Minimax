@@ -60,7 +60,7 @@ export default function DashboardBookingsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
@@ -68,7 +68,7 @@ export default function DashboardBookingsPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">{error}</div>
+        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">{error}</div>
         <Button variant="outline" onClick={fetchBookings}>重試</Button>
       </div>
     )
@@ -78,7 +78,7 @@ export default function DashboardBookingsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">訂房管理</h1>
+          <h1 className="text-2xl font-semibold">訂房管理</h1>
           <p className="text-muted-foreground">共 {bookings.length} 筆訂房</p>
         </div>
         <Button variant="outline" onClick={fetchBookings}>重新整理</Button>
@@ -87,7 +87,7 @@ export default function DashboardBookingsPage() {
       {bookings.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-gray-500">尚無訂房</p>
+            <p className="text-rs-ink-muted">尚無訂房</p>
           </CardContent>
         </Card>
       ) : (
@@ -105,7 +105,7 @@ export default function DashboardBookingsPage() {
                       </CardDescription>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-medium text-gray-900">
+                      <span className="text-sm font-medium text-rs-ink">
                         {formatPrice(item.totalAmount, item.currency)}
                       </span>
                       <Badge variant={bookingStatusBadgeVariant(item.status)}>

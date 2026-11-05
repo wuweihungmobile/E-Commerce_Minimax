@@ -74,7 +74,7 @@ export default function AdminTenantReviewPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
@@ -97,7 +97,7 @@ export default function AdminTenantReviewPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">店鋪詳情</h1>
+          <h1 className="text-2xl font-semibold">店鋪詳情</h1>
           <p className="text-muted-foreground">檢視既有店鋪資料</p>
         </div>
         <div className="flex gap-2">
@@ -128,8 +128,8 @@ export default function AdminTenantReviewPage() {
         <CardContent className="space-y-4">
           {/* Reject Reason */}
           {tenant.status === 'TERMINATED' && tenant.rejectReason && (
-            <div className="bg-destructive/10 border border-destructive/20 rounded-md p-4">
-              <Label className="text-destructive">駁回原因</Label>
+            <div className="bg-rs-error/10 border border-rs-error/30 rounded-md p-4">
+              <Label className="text-rs-error">駁回原因</Label>
               <p className="mt-1">{tenant.rejectReason}</p>
             </div>
           )}

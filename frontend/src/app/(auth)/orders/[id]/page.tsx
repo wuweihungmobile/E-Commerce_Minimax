@@ -222,7 +222,7 @@ export default function OrderDetailPage() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <h1 className="text-2xl font-bold text-gray-900">
+                  <h1 className="text-2xl font-semibold text-rs-ink">
                     訂單 #{order.id.slice(0, 8)}
                   </h1>
                   <Badge variant={orderStatusBadgeVariant(order.status)}>
@@ -230,7 +230,7 @@ export default function OrderDetailPage() {
                   </Badge>
                   <Badge variant="outline">{order.orderType === 'ROOM' ? '訂房' : '商品'}</Badge>
                 </div>
-                <p className="text-sm text-gray-500">建立於 {formatDateTime(order.createdAt)}</p>
+                <p className="text-sm text-rs-ink-muted">建立於 {formatDateTime(order.createdAt)}</p>
               </div>
               <div className="flex gap-2 shrink-0">
                 {(payment?.canCancel ?? isCancellable(order.status)) && !showCancel && (
@@ -248,7 +248,7 @@ export default function OrderDetailPage() {
 
             {/* Cancel panel */}
             {showCancel && (
-              <Card className="border-red-200">
+              <Card className="border-rs-error/30">
                 <CardHeader>
                   <CardTitle className="text-base">取消訂單</CardTitle>
                 </CardHeader>
@@ -288,11 +288,11 @@ export default function OrderDetailPage() {
 
             {/* Sprint 242：店鋪暫停營業時不能付款（後端回 E-2010），改顯示說明；仍可取消訂單 */}
             {payment?.canPay && payment.storeOpen === false && (
-              <Card className="border-amber-200" data-testid="order-store-closed">
+              <Card className="border-rs-warning/40" data-testid="order-store-closed">
                 <CardHeader>
                   <CardTitle className="text-base">店鋪暫停營業</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2 text-sm text-gray-700">
+                <CardContent className="space-y-2 text-sm text-rs-ink">
                   <p>此店鋪目前暫停營業，暫時無法付款。</p>
                   <p>您可以按上方的「取消訂單」取消這筆訂單；若店鋪恢復營業，這裡會再出現付款按鈕。</p>
                 </CardContent>
@@ -312,15 +312,15 @@ export default function OrderDetailPage() {
                     </Alert>
                   )}
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">應付金額</span>
-                    <span className="text-xl font-bold text-gray-900">
+                    <span className="text-sm text-rs-ink-muted">應付金額</span>
+                    <span className="text-xl font-bold text-rs-ink">
                       {formatPrice(order.totalAmount, order.currency)}
                     </span>
                   </div>
                   {payment?.paymentProvider === 'stripe' ? (
                     <>
                       {/* 真實金流 Phase A（AI-2410）：重導至 Stripe 託管付款頁 */}
-                      <p className="text-xs text-gray-500">將導向 Stripe 安全付款頁完成信用卡付款。</p>
+                      <p className="text-xs text-rs-ink-muted">將導向 Stripe 安全付款頁完成信用卡付款。</p>
                       <div className="flex flex-wrap gap-3">
                         <Button data-testid="order-pay-checkout" onClick={handleStripeCheckout} disabled={paying}>
                           {paying ? '前往付款中…' : '前往付款'}
@@ -329,7 +329,7 @@ export default function OrderDetailPage() {
                     </>
                   ) : (
                     <>
-                      <p className="text-xs text-gray-500">目前為模擬付款（Mock），不會實際扣款。</p>
+                      <p className="text-xs text-rs-ink-muted">目前為模擬付款（Mock），不會實際扣款。</p>
                       <div className="flex flex-wrap gap-3">
                         <Button onClick={handlePay} disabled={paying}>
                           {paying ? '處理中…' : '確認付款（模擬）'}
@@ -345,11 +345,11 @@ export default function OrderDetailPage() {
             )}
 
             {payment?.paymentStatus === 'SUCCESS' && (
-              <Card className="border-green-200">
+              <Card className="border-rs-success/30">
                 <CardHeader>
                   <CardTitle className="text-base">付款資訊</CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm text-gray-700 space-y-1">
+                <CardContent className="text-sm text-rs-ink space-y-1">
                   <p>
                     付款狀態：<Badge variant="success">付款成功</Badge>
                   </p>
@@ -361,11 +361,11 @@ export default function OrderDetailPage() {
 
             {/* 退款（Sprint 226，DEF-303 (5)）：取消已付款訂單後系統自動退款；REFUNDING ＝ 處理中，REFUNDED ＝ 已退回 */}
             {(order.status === 'REFUNDING' || order.status === 'REFUNDED') && (
-              <Card className="border-amber-200" data-testid="order-refund-card">
+              <Card className="border-rs-warning/40" data-testid="order-refund-card">
                 <CardHeader>
                   <CardTitle className="text-base">退款資訊</CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm text-gray-700 space-y-1">
+                <CardContent className="text-sm text-rs-ink space-y-1">
                   {order.status === 'REFUNDING' ? (
                     <p>退款處理中，系統會自動把款項退回原付款方式，請稍後重新整理查看結果。</p>
                   ) : (
@@ -391,16 +391,16 @@ export default function OrderDetailPage() {
                       <img
                         src={item.coverImageUrl || '/placeholder.svg'}
                         alt={item.listingTitle}
-                        className="h-16 w-16 rounded object-cover bg-gray-100 shrink-0"
+                        className="h-16 w-16 rounded object-cover bg-rs-disabled-bg shrink-0"
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 truncate">{item.listingTitle}</p>
-                        {item.specName && <p className="text-xs text-gray-500">{item.specName}</p>}
-                        <p className="text-xs text-gray-500">
+                        <p className="text-sm font-medium text-rs-ink truncate">{item.listingTitle}</p>
+                        {item.specName && <p className="text-xs text-rs-ink-muted">{item.specName}</p>}
+                        <p className="text-xs text-rs-ink-muted">
                           {formatPrice(item.unitPrice, order.currency)} × {item.quantity}
                         </p>
                       </div>
-                      <div className="text-sm font-semibold text-gray-900 shrink-0">
+                      <div className="text-sm font-semibold text-rs-ink shrink-0">
                         {formatPrice(item.subtotal, order.currency)}
                       </div>
                     </div>
@@ -415,7 +415,7 @@ export default function OrderDetailPage() {
                       </Link>
                       {canReview &&
                         (reviewedItemIds.has(item.id) ? (
-                          <span className="text-xs text-green-600">已送出評價 ✓</span>
+                          <span className="text-xs text-rs-success">已送出評價 ✓</span>
                         ) : reviewOpenItemId === item.id ? null : (
                           <button
                             type="button"
@@ -439,18 +439,18 @@ export default function OrderDetailPage() {
                 ))}
 
                 <div className="border-t pt-4 space-y-1">
-                  <div className="flex justify-between text-sm text-gray-600">
+                  <div className="flex justify-between text-sm text-rs-ink-muted">
                     <span>運費</span>
                     <span>{formatPrice(order.shippingFee, order.currency)}</span>
                   </div>
                   {/* Sprint 100：買家在購物車看到折扣，訂單也須看得到用了哪張券、折了多少 */}
                   {order.discountAmount != null && order.discountAmount > 0 && (
-                    <div className="flex justify-between text-sm text-green-700" data-testid="order-discount">
+                    <div className="flex justify-between text-sm text-rs-success" data-testid="order-discount">
                       <span>優惠折扣{order.promoCode ? `（${order.promoCode}）` : ''}</span>
                       <span>-{formatPrice(order.discountAmount, order.currency)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-base font-bold text-gray-900">
+                  <div className="flex justify-between text-base font-bold text-rs-ink">
                     <span>訂單總額</span>
                     <span>{formatPrice(order.totalAmount, order.currency)}</span>
                   </div>
@@ -465,7 +465,7 @@ export default function OrderDetailPage() {
                   <CardHeader>
                     <CardTitle className="text-base">訂房資料</CardTitle>
                   </CardHeader>
-                  <CardContent className="text-sm text-gray-700 space-y-1">
+                  <CardContent className="text-sm text-rs-ink space-y-1">
                     {order.guestName && <p>入住人：{order.guestName}</p>}
                     {order.guestCount != null && <p>入住人數：{order.guestCount}</p>}
                     {order.guestPhone && <p>電話：{order.guestPhone}</p>}
@@ -479,7 +479,7 @@ export default function OrderDetailPage() {
                   <CardHeader>
                     <CardTitle className="text-base">收件資訊</CardTitle>
                   </CardHeader>
-                  <CardContent className="text-sm text-gray-700 space-y-1">
+                  <CardContent className="text-sm text-rs-ink space-y-1">
                     {order.shippingRecipientName && <p>收件人：{order.shippingRecipientName}</p>}
                     {order.shippingPhone && <p>電話：{order.shippingPhone}</p>}
                     {order.shippingAddress && <p>地址：{order.shippingAddress}</p>}
@@ -497,7 +497,7 @@ export default function OrderDetailPage() {
                 <CardContent>
                   {tracking ? (
                     <div className="space-y-4">
-                      <div className="text-sm text-gray-700 space-y-1">
+                      <div className="text-sm text-rs-ink space-y-1">
                         <p>
                           物流商：{LOGISTICS_PROVIDER_LABELS[tracking.logisticsProvider] ?? tracking.logisticsProvider}
                         </p>
@@ -517,15 +517,15 @@ export default function OrderDetailPage() {
                                 <div
                                   className={
                                     'h-2.5 w-2.5 rounded-full mt-1.5 ' +
-                                    (idx === tracking.events.length - 1 ? 'bg-primary' : 'bg-gray-300')
+                                    (idx === tracking.events.length - 1 ? 'bg-primary' : 'bg-rs-hairline')
                                   }
                                 />
                               </div>
                               <div className="flex-1">
-                                <p className="text-sm text-gray-900">
+                                <p className="text-sm text-rs-ink">
                                   {event.description || (LOGISTICS_STATUS_LABELS[event.status] ?? event.status)}
                                 </p>
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-rs-ink-muted">
                                   {event.location ? event.location + ' · ' : ''}
                                   {formatDateTime(event.eventTime)}
                                 </p>
@@ -536,7 +536,7 @@ export default function OrderDetailPage() {
                       )}
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500">尚未出貨，物流資訊將於出貨後顯示。</p>
+                    <p className="text-sm text-rs-ink-muted">尚未出貨，物流資訊將於出貨後顯示。</p>
                   )}
                 </CardContent>
               </Card>
@@ -547,7 +547,7 @@ export default function OrderDetailPage() {
                 <CardHeader>
                   <CardTitle className="text-base">備註</CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm text-gray-700">{order.notes}</CardContent>
+                <CardContent className="text-sm text-rs-ink">{order.notes}</CardContent>
               </Card>
             )}
 
@@ -562,15 +562,15 @@ export default function OrderDetailPage() {
                     {logs.map((log) => (
                       <li key={log.id} className="flex gap-3">
                         <div className="flex flex-col items-center">
-                          <div className="h-2.5 w-2.5 rounded-full bg-gray-400 mt-1.5" />
+                          <div className="h-2.5 w-2.5 rounded-full bg-rs-disabled-text mt-1.5" />
                         </div>
                         <div className="flex-1">
-                          <p className="text-sm text-gray-900">
+                          <p className="text-sm text-rs-ink">
                             {log.fromStatus ? `${statusLabel(log.fromStatus)} → ` : ''}
                             <span className="font-medium">{statusLabel(log.toStatus)}</span>
                           </p>
-                          <p className="text-xs text-gray-500">{formatDateTime(log.createdAt)}</p>
-                          {log.reason && <p className="text-xs text-gray-500">原因：{log.reason}</p>}
+                          <p className="text-xs text-rs-ink-muted">{formatDateTime(log.createdAt)}</p>
+                          {log.reason && <p className="text-xs text-rs-ink-muted">原因：{log.reason}</p>}
                         </div>
                       </li>
                     ))}
@@ -583,7 +583,7 @@ export default function OrderDetailPage() {
           !error && (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16">
-                <p className="text-gray-500 mb-4">找不到此訂單</p>
+                <p className="text-rs-ink-muted mb-4">找不到此訂單</p>
                 <Link href="/orders">
                   <Button variant="outline">返回訂單列表</Button>
                 </Link>

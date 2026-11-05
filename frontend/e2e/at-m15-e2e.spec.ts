@@ -52,7 +52,8 @@ test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
     await page.goto('/cms');
     // 🔴 不可只等 domcontentloaded：它在 React hydration 完成前就返回，
     // 此時篩選按鈕已由 SSR 渲染出來但 onClick 尚未接上，click 會是**空操作**，
-    // 後續斷言 class 變成 bg-blue-100 便會輪詢到逾時（S107 實測 14 次都是 bg-gray-100）。
+    // 後續斷言 class 變成 bg-rs-tertiary 便會輪詢到逾時（S107 實測 14 次都是 bg-gray-100；
+    // Sprint 328 起 active 樣式是設計稿 token bg-rs-tertiary，原本的 bg-blue-100 已隨全站改用設計稿 token 移除）。
     // 列表資料由 useEffect 內的 loadPosts() 取得，故該回應到達即證明 hydration 已完成。
     await page.waitForResponse(
       (r) => r.url().includes('/v2/dashboard/posts') && r.request().method() === 'GET',
@@ -64,7 +65,7 @@ test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
     const publishedBtn = page.locator('button:has-text("已發布")').first();
     if (await publishedBtn.isVisible()) {
       await publishedBtn.click();
-      await expect(publishedBtn).toHaveClass(/bg-blue-100/, { timeout: 10000 });
+      await expect(publishedBtn).toHaveClass(/bg-rs-tertiary/, { timeout: 10000 });
       console.log('已發布篩選完成');
     }
 
@@ -72,7 +73,7 @@ test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
     const draftBtn = page.locator('button:has-text("草稿")').first();
     if (await draftBtn.isVisible()) {
       await draftBtn.click();
-      await expect(draftBtn).toHaveClass(/bg-blue-100/, { timeout: 10000 });
+      await expect(draftBtn).toHaveClass(/bg-rs-tertiary/, { timeout: 10000 });
       console.log('草稿篩選完成');
     }
   });
@@ -110,7 +111,7 @@ test.describe('E2E-M15-003: 媒體上傳流程', () => {
     await page.goto('/cms/media');
     await page.waitForLoadState('domcontentloaded');
 
-    // 篩選鈕的 active class（bg-blue-100）由本地 filter state 控制、不依賴後端資料 → 穩定可斷言
+    // 篩選鈕的 active class（bg-rs-tertiary，Sprint 328 前是 bg-blue-100）由本地 filter state 控制、不依賴後端資料 → 穩定可斷言
     const allBtn = page.getByRole('button', { name: /^全部/ });
     const imageBtn = page.getByRole('button', { name: '圖片', exact: true });
     await expect(allBtn).toBeVisible({ timeout: 15000 });
@@ -118,12 +119,12 @@ test.describe('E2E-M15-003: 媒體上傳流程', () => {
 
     // 點「圖片」→ 該鈕轉 active
     await imageBtn.click();
-    await expect(imageBtn).toHaveClass(/bg-blue-100/, { timeout: 10000 });
+    await expect(imageBtn).toHaveClass(/bg-rs-tertiary/, { timeout: 10000 });
 
     // 點「全部」→ 轉 active；再等網路 idle，確保篩選 refetch 完成後才結束測試，
     // 避免 in-flight 請求（及其失敗 alert）於 teardown 時崩潰（取代原無斷言 + 固定 sleep）。
     await allBtn.click();
-    await expect(allBtn).toHaveClass(/bg-blue-100/, { timeout: 10000 });
+    await expect(allBtn).toHaveClass(/bg-rs-tertiary/, { timeout: 10000 });
     await page.waitForLoadState('networkidle');
   });
 });

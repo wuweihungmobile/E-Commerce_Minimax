@@ -44,16 +44,16 @@ function VerifyEmailContent() {
   }
 
   if (status === 'verifying') {
-    return <p className="text-center text-gray-600">Verifying your email...</p>
+    return <p className="text-center text-rs-ink-muted">Verifying your email...</p>
   }
 
   if (status === 'success') {
     return (
       <div className="space-y-6" data-testid="verify-email-success">
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
+        <div className="bg-rs-success/10 border border-rs-success/30 text-rs-success px-4 py-3 rounded">
           Your email has been verified.
         </div>
-        <Link href="/dashboard" className="block text-center font-medium text-blue-600 hover:text-blue-500">
+        <Link href="/dashboard" className="block text-center font-medium text-rs-primary hover:text-rs-primary">
           Continue
         </Link>
       </div>
@@ -62,7 +62,7 @@ function VerifyEmailContent() {
 
   return (
     <div className="space-y-6" data-testid="verify-email-failed">
-      <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded">
+      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded">
         {status === 'invalid'
           ? 'This verification link is invalid or has expired. Links can only be used once and expire after 24 hours.'
           : 'We could not verify your email right now. Please try again later.'}
@@ -72,14 +72,14 @@ function VerifyEmailContent() {
           <button
             type="button"
             onClick={handleResend}
-            className="font-medium text-blue-600 hover:text-blue-500"
+            className="font-medium text-rs-primary hover:text-rs-primary"
           >
             Send me a new verification email
           </button>
-          {resendMessage && <p className="text-sm text-gray-600">{resendMessage}</p>}
+          {resendMessage && <p className="text-sm text-rs-ink-muted">{resendMessage}</p>}
         </div>
       ) : (
-        <Link href="/login" className="block text-center font-medium text-blue-600 hover:text-blue-500">
+        <Link href="/login" className="block text-center font-medium text-rs-primary hover:text-rs-primary">
           Sign in to request a new link
         </Link>
       )}
@@ -90,8 +90,8 @@ function VerifyEmailContent() {
 export default function VerifyEmailPage() {
   return (
     <div className="flex-1 flex items-center justify-center px-4 py-12">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-md">
-        <h2 className="text-center text-3xl font-bold text-gray-900">Verify your email</h2>
+      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg border border-rs-hairline">
+        <h2 className="text-center text-3xl font-semibold text-rs-ink">Verify your email</h2>
         <Suspense fallback={null}>
           <VerifyEmailContent />
         </Suspense>

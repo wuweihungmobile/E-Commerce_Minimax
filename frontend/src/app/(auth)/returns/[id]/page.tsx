@@ -106,12 +106,12 @@ export default function ReturnDetailPage() {
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-bold text-gray-900">{returnRequest.returnNumber}</h1>
+            <h1 className="text-2xl font-semibold text-rs-ink">{returnRequest.returnNumber}</h1>
             <Badge variant={returnStatusBadgeVariant(returnRequest.status)}>
               {RETURN_STATUS_LABELS[returnRequest.status]}
             </Badge>
           </div>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-rs-ink-muted">
             <Link href={`/orders/${returnRequest.orderId}`} className="hover:underline">
               訂單 #{returnRequest.orderId.slice(0, 8)}
             </Link>
@@ -146,18 +146,18 @@ export default function ReturnDetailPage() {
                   <img
                     src={orderItem.coverImageUrl || '/placeholder.svg'}
                     alt={orderItem.listingTitle}
-                    className="h-14 w-14 rounded object-cover bg-gray-100 shrink-0"
+                    className="h-14 w-14 rounded object-cover bg-rs-disabled-bg shrink-0"
                   />
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 truncate">
+                  <p className="text-sm font-medium text-rs-ink truncate">
                     {orderItem?.listingTitle ?? '商品品項'}
                   </p>
-                  {orderItem?.specName && <p className="text-xs text-gray-500">{orderItem.specName}</p>}
-                  <p className="text-xs text-gray-500">申請退貨 {item.requestedQty} 件</p>
+                  {orderItem?.specName && <p className="text-xs text-rs-ink-muted">{orderItem.specName}</p>}
+                  <p className="text-xs text-rs-ink-muted">申請退貨 {item.requestedQty} 件</p>
                 </div>
                 {isReceived && (
-                  <div className="text-right text-xs text-gray-600 shrink-0">
+                  <div className="text-right text-xs text-rs-ink-muted shrink-0">
                     <p>可售 {item.sellableQty ?? 0}</p>
                     <p>不可售 {item.unsellableQty ?? 0}</p>
                   </div>
@@ -173,18 +173,18 @@ export default function ReturnDetailPage() {
           <CardHeader>
             <CardTitle className="text-base">退貨原因</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-gray-700 whitespace-pre-wrap">
+          <CardContent className="text-sm text-rs-ink whitespace-pre-wrap">
             {returnRequest.reason}
           </CardContent>
         </Card>
       )}
 
       {returnRequest.status === 'REJECTED' && returnRequest.rejectionReason && (
-        <Card className="mb-6 border-red-200">
+        <Card className="mb-6 border-rs-error/30">
           <CardHeader>
             <CardTitle className="text-base">店家駁回原因</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-gray-700 whitespace-pre-wrap">
+          <CardContent className="text-sm text-rs-ink whitespace-pre-wrap">
             {returnRequest.rejectionReason}
           </CardContent>
         </Card>
@@ -194,7 +194,7 @@ export default function ReturnDetailPage() {
         <CardHeader>
           <CardTitle className="text-base">進度</CardTitle>
         </CardHeader>
-        <CardContent className="text-sm text-gray-700 space-y-1">
+        <CardContent className="text-sm text-rs-ink space-y-1">
           <p>已送出申請：{new Date(returnRequest.createdAt).toLocaleString('zh-TW')}</p>
           {returnRequest.reviewedAt && (
             <p>店家審核：{new Date(returnRequest.reviewedAt).toLocaleString('zh-TW')}</p>

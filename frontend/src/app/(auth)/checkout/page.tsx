@@ -167,11 +167,11 @@ export default function CheckoutPage() {
         <Card className="max-w-xl mx-auto">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <div className="text-6xl mb-4">✓</div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">預訂成功！</h2>
-            <p className="text-gray-600 mb-4">您的預訂已建立，請於下方完成付款</p>
-            <p className="text-sm text-gray-500 mb-2">預訂編號: {bookingId}</p>
+            <h2 className="text-2xl font-semibold text-rs-ink mb-2">預訂成功！</h2>
+            <p className="text-rs-ink-muted mb-4">您的預訂已建立，請於下方完成付款</p>
+            <p className="text-sm text-rs-ink-muted mb-2">預訂編號: {bookingId}</p>
             {appliedPromoCode && (
-              <p className="text-sm text-green-600 mb-4">
+              <p className="text-sm text-rs-success mb-4">
                 已套用優惠券 {appliedPromoCode}，折扣 {formatPrice(discountAmount)}
               </p>
             )}
@@ -200,8 +200,8 @@ export default function CheckoutPage() {
   return (
     <StorefrontShell>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">填寫預訂資料</h1>
-        <p className="mt-1 text-sm text-gray-600">
+        <h1 className="text-2xl font-semibold text-rs-ink">填寫預訂資料</h1>
+        <p className="mt-1 text-sm text-rs-ink-muted">
           請填寫以下資料以完成預訂
         </p>
       </div>
@@ -230,7 +230,7 @@ export default function CheckoutPage() {
                   onChange={(e) => setGuestName(e.target.value)}
                 />
                 {validationErrors.guestName && (
-                  <p className="text-sm text-red-500">{validationErrors.guestName}</p>
+                  <p className="text-sm text-rs-error">{validationErrors.guestName}</p>
                 )}
               </div>
 
@@ -243,7 +243,7 @@ export default function CheckoutPage() {
                   onChange={(e) => setGuestPhone(e.target.value)}
                 />
                 {validationErrors.guestPhone && (
-                  <p className="text-sm text-red-500">{validationErrors.guestPhone}</p>
+                  <p className="text-sm text-rs-error">{validationErrors.guestPhone}</p>
                 )}
               </div>
 
@@ -257,7 +257,7 @@ export default function CheckoutPage() {
                   onChange={(e) => setGuestEmail(e.target.value)}
                 />
                 {validationErrors.guestEmail && (
-                  <p className="text-sm text-red-500">{validationErrors.guestEmail}</p>
+                  <p className="text-sm text-rs-error">{validationErrors.guestEmail}</p>
                 )}
               </div>
 
@@ -281,7 +281,7 @@ export default function CheckoutPage() {
               <CardTitle>訂單摘要</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-rs-ink-muted">
                 請從購物車選擇要預訂的房間
               </div>
 
@@ -297,7 +297,7 @@ export default function CheckoutPage() {
               </div>
 
               {/* PRD US-012：確認預訂前顯示取消政策摘要（Q14，Sprint 227） */}
-              <p className="text-xs text-gray-600" data-testid="checkout-cancel-policy">
+              <p className="text-xs text-rs-ink-muted" data-testid="checkout-cancel-policy">
                 {CANCELLATION_POLICY_SUMMARY}
               </p>
 
@@ -312,7 +312,7 @@ export default function CheckoutPage() {
                 </Button>
               </div>
 
-              <div className="text-xs text-gray-500 text-center">
+              <div className="text-xs text-rs-ink-muted text-center">
                 點擊「確認預訂」即表示您同意我們的服務條款和隱私政策
               </div>
             </CardContent>

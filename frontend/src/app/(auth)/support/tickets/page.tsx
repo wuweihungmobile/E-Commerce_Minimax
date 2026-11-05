@@ -122,8 +122,8 @@ export default function SupportTicketsPage() {
     <StorefrontShell>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">我的客服工單</h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <h1 className="text-2xl font-semibold text-rs-ink">我的客服工單</h1>
+          <p className="mt-1 text-sm text-rs-ink-muted">
             {loading ? '載入中…' : `共 ${tickets.length} 筆工單`}
           </p>
         </div>
@@ -202,8 +202,8 @@ export default function SupportTicketsPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <div className="text-5xl mb-4">🎫</div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-1">尚無客服工單</h2>
-            <p className="text-sm text-gray-500 mb-6">有問題想詢問？提交工單讓客服協助您</p>
+            <h2 className="text-lg font-semibold text-rs-ink mb-1">尚無客服工單</h2>
+            <p className="text-sm text-rs-ink-muted mb-6">有問題想詢問？提交工單讓客服協助您</p>
             <Button onClick={startCreate}>提交新工單</Button>
           </CardContent>
         </Card>
@@ -216,12 +216,12 @@ export default function SupportTicketsPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium text-gray-900">{ticket.subject}</span>
+                        <span className="text-sm font-medium text-rs-ink">{ticket.subject}</span>
                         <Badge variant={ticket.status === 'CLOSED' ? 'outline' : 'default'}>
                           {STATUS_LABEL[ticket.status]}
                         </Badge>
                       </div>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-rs-ink-muted">
                         {ticket.ticketNumber} · {new Date(ticket.createdAt).toLocaleDateString('zh-TW')}
                       </p>
                     </div>

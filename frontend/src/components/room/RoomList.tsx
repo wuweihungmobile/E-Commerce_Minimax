@@ -107,14 +107,14 @@ export default function RoomList() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
         {error}
       </div>
     )
@@ -159,7 +159,7 @@ export default function RoomList() {
       {rooms.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-gray-500 mb-4">尚無房源資料</p>
+            <p className="text-rs-ink-muted mb-4">尚無房源資料</p>
             <Link href="/dashboard/rooms/new">
               <Button>新增第一個房源</Button>
             </Link>
@@ -167,7 +167,7 @@ export default function RoomList() {
         </Card>
       ) : (
         <>
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-rs-ink-muted">
             共 {totalElements} 筆資料，第 {page + 1} / {totalPages} 頁
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

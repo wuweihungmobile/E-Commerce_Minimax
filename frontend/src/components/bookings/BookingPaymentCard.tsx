@@ -105,7 +105,7 @@ export default function BookingPaymentCard({
   if (loadFailed || !state) {
     return (
       <Card data-testid="booking-payment-unavailable">
-        <CardContent className="py-4 text-sm text-gray-600">
+        <CardContent className="py-4 text-sm text-rs-ink-muted">
           暫時無法取得付款資訊。您可以稍後到「我的預訂」查看並完成付款。
         </CardContent>
       </Card>
@@ -115,11 +115,11 @@ export default function BookingPaymentCard({
   // Sprint 242：店鋪暫停營業時不能付款（後端回 E-2010）；仍可取消預訂
   if (state.canPay && state.storeOpen === false) {
     return (
-      <Card className="border-amber-200" data-testid="booking-store-closed">
+      <Card className="border-rs-warning/40" data-testid="booking-store-closed">
         <CardHeader>
           <CardTitle className="text-base">店鋪暫停營業</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm text-gray-700">
+        <CardContent className="space-y-2 text-sm text-rs-ink">
           <p>此店鋪目前暫停營業，暫時無法付款。</p>
           <p>您可以取消這筆預訂；若店鋪恢復營業，這裡會再出現付款按鈕。</p>
         </CardContent>
@@ -140,17 +140,17 @@ export default function BookingPaymentCard({
             </Alert>
           )}
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">應付金額</span>
-            <span className="text-xl font-bold text-gray-900">{formatPrice(totalAmount, currency)}</span>
+            <span className="text-sm text-rs-ink-muted">應付金額</span>
+            <span className="text-xl font-bold text-rs-ink">{formatPrice(totalAmount, currency)}</span>
           </div>
           {paymentDueAt && (
-            <p className="text-sm text-amber-700" data-testid="booking-payment-due">
+            <p className="text-sm text-rs-ink" data-testid="booking-payment-due">
               請於 {formatDateTime(paymentDueAt)} 前完成付款，逾時預訂將自動取消並釋出日期。
             </p>
           )}
           {state.paymentProvider === 'stripe' ? (
             <>
-              <p className="text-xs text-gray-500">將導向 Stripe 安全付款頁完成信用卡付款。</p>
+              <p className="text-xs text-rs-ink-muted">將導向 Stripe 安全付款頁完成信用卡付款。</p>
               <div className="flex flex-wrap gap-3">
                 <Button data-testid="booking-pay-checkout" onClick={handleStripeCheckout} disabled={paying}>
                   {paying ? '前往付款中…' : '前往付款'}
@@ -159,7 +159,7 @@ export default function BookingPaymentCard({
             </>
           ) : (
             <>
-              <p className="text-xs text-gray-500">目前為模擬付款（Mock），不會實際扣款。</p>
+              <p className="text-xs text-rs-ink-muted">目前為模擬付款（Mock），不會實際扣款。</p>
               <div className="flex flex-wrap gap-3">
                 <Button data-testid="booking-pay-mock" onClick={handlePay} disabled={paying}>
                   {paying ? '處理中…' : '確認付款（模擬）'}
@@ -174,11 +174,11 @@ export default function BookingPaymentCard({
 
   if (state.paymentStatus === 'SUCCESS' || state.paymentStatus === 'REFUNDED') {
     return (
-      <Card className="border-green-200" data-testid="booking-payment-paid">
+      <Card className="border-rs-success/30" data-testid="booking-payment-paid">
         <CardHeader>
           <CardTitle className="text-base">付款資訊</CardTitle>
         </CardHeader>
-        <CardContent className="text-sm text-gray-700 space-y-1">
+        <CardContent className="text-sm text-rs-ink space-y-1">
           <p>
             付款狀態：
             <Badge variant={state.paymentStatus === 'SUCCESS' ? 'success' : 'secondary'}>

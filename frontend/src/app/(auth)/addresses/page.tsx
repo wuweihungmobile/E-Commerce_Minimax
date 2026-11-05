@@ -157,8 +157,8 @@ export default function AddressesPage() {
     <StorefrontShell>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">收貨地址簿</h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <h1 className="text-2xl font-semibold text-rs-ink">收貨地址簿</h1>
+          <p className="mt-1 text-sm text-rs-ink-muted">
             {loading ? '載入中…' : `共 ${addresses.length} 筆地址`}
           </p>
         </div>
@@ -252,8 +252,8 @@ export default function AddressesPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <div className="text-5xl mb-4">📍</div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-1">尚無收貨地址</h2>
-            <p className="text-sm text-gray-500 mb-6">新增常用地址，結帳時可快速選用</p>
+            <h2 className="text-lg font-semibold text-rs-ink mb-1">尚無收貨地址</h2>
+            <p className="text-sm text-rs-ink-muted mb-6">新增常用地址，結帳時可快速選用</p>
             <Button onClick={startCreate}>新增地址</Button>
           </CardContent>
         </Card>
@@ -265,11 +265,11 @@ export default function AddressesPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-gray-900">{address.recipientName}</span>
-                      <span className="text-sm text-gray-500">{address.phone}</span>
+                      <span className="text-sm font-medium text-rs-ink">{address.recipientName}</span>
+                      <span className="text-sm text-rs-ink-muted">{address.phone}</span>
                       {address.isDefault && <Badge>預設地址</Badge>}
                     </div>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-rs-ink-muted">
                       {address.postalCode ? address.postalCode + ' ' : ''}
                       {address.city}
                       {address.district || ''}

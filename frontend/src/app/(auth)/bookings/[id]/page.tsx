@@ -135,14 +135,14 @@ export default function BookingDetailPage() {
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <h1 className="text-2xl font-bold text-gray-900 truncate">
+                  <h1 className="text-2xl font-semibold text-rs-ink truncate">
                     {booking.roomTitle || `訂房 #${booking.id.slice(0, 8)}`}
                   </h1>
                   <Badge variant={bookingStatusBadgeVariant(booking.status)}>
                     {BOOKING_STATUS_LABELS[booking.status] ?? booking.status}
                   </Badge>
                 </div>
-                <p className="text-sm text-gray-500">建立於 {formatDate(booking.createdAt)}</p>
+                <p className="text-sm text-rs-ink-muted">建立於 {formatDate(booking.createdAt)}</p>
               </div>
               {isBookingCancellable(booking.status) && !showCancel && (
                 <Button variant="outline" onClick={() => setShowCancel(true)}>
@@ -153,7 +153,7 @@ export default function BookingDetailPage() {
 
             {/* Cancel panel */}
             {showCancel && (
-              <Card className="border-red-200">
+              <Card className="border-rs-error/30">
                 <CardHeader>
                   <CardTitle className="text-base">取消預訂</CardTitle>
                 </CardHeader>
@@ -163,7 +163,7 @@ export default function BookingDetailPage() {
                       <AlertDescription>{cancelError}</AlertDescription>
                     </Alert>
                   )}
-                  <p className="text-sm text-gray-600" data-testid="booking-cancel-policy">
+                  <p className="text-sm text-rs-ink-muted" data-testid="booking-cancel-policy">
                     {CANCELLATION_POLICY_SUMMARY}
                   </p>
                   <div className="space-y-2">
@@ -203,11 +203,11 @@ export default function BookingDetailPage() {
 
             {/* 退款資訊（Sprint 227，PRD Q14）：取消已付款訂房後依取消政策決定的退款進度 */}
             {booking.status === 'CANCELLED' && booking.refundStatus !== 'NONE' && booking.refundAmount != null && (
-              <Card className="border-amber-200" data-testid="booking-refund-card">
+              <Card className="border-rs-warning/40" data-testid="booking-refund-card">
                 <CardHeader>
                   <CardTitle className="text-base">退款資訊</CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm text-gray-700 space-y-1">
+                <CardContent className="text-sm text-rs-ink space-y-1">
                   {booking.refundStatus === 'PENDING' ? (
                     <p>退款處理中：將退款 {formatPrice(booking.refundAmount, booking.currency)}，系統會自動退回原付款方式，請稍後重新整理查看結果。</p>
                   ) : (
@@ -231,30 +231,30 @@ export default function BookingDetailPage() {
               <CardHeader>
                 <CardTitle className="text-base">住宿資訊</CardTitle>
               </CardHeader>
-              <CardContent className="text-sm text-gray-700 space-y-2">
+              <CardContent className="text-sm text-rs-ink space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">入住</span>
+                  <span className="text-rs-ink-muted">入住</span>
                   <span>
                     {formatDate(booking.checkInDate)}
                     {booking.checkInTime ? `（${booking.checkInTime} 後）` : ''}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">退房</span>
+                  <span className="text-rs-ink-muted">退房</span>
                   <span>
                     {formatDate(booking.checkOutDate)}
                     {booking.checkOutTime ? `（${booking.checkOutTime} 前）` : ''}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">住宿天數</span>
+                  <span className="text-rs-ink-muted">住宿天數</span>
                   <span>{booking.nightsCount} 晚</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">入住人數</span>
+                  <span className="text-rs-ink-muted">入住人數</span>
                   <span>{booking.guestCount} 人</span>
                 </div>
-                <div className="flex justify-between border-t pt-2 text-base font-bold text-gray-900">
+                <div className="flex justify-between border-t pt-2 text-base font-bold text-rs-ink">
                   <span>總金額</span>
                   <span>{formatPrice(booking.totalAmount, booking.currency)}</span>
                 </div>
@@ -267,7 +267,7 @@ export default function BookingDetailPage() {
                 <CardHeader>
                   <CardTitle className="text-base">訂房人資料</CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm text-gray-700 space-y-1">
+                <CardContent className="text-sm text-rs-ink space-y-1">
                   {booking.guestName && <p>姓名：{booking.guestName}</p>}
                   {booking.guestPhone && <p>電話：{booking.guestPhone}</p>}
                   {booking.guestEmail && <p>Email：{booking.guestEmail}</p>}
@@ -284,7 +284,7 @@ export default function BookingDetailPage() {
                 </CardHeader>
                 <CardContent>
                   {reviewed ? (
-                    <p className="text-sm text-green-600">已送出評價 ✓ 感謝您的回饋！</p>
+                    <p className="text-sm text-rs-success">已送出評價 ✓ 感謝您的回饋！</p>
                   ) : showReview ? (
                     <ReviewForm
                       onSubmit={submitBookingReview}
@@ -301,7 +301,7 @@ export default function BookingDetailPage() {
           !error && (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16">
-                <p className="text-gray-500 mb-4">找不到此預訂</p>
+                <p className="text-rs-ink-muted mb-4">找不到此預訂</p>
                 <Link href="/bookings">
                   <Button variant="outline">返回預訂列表</Button>
                 </Link>

@@ -112,7 +112,7 @@ export default function BlogPostPage() {
         parts.push(
           <div
             key={`embed-${listingId}`}
-            className="my-4 p-4 border rounded-lg bg-white shadow-sm"
+            className="my-4 p-4 border rounded-lg bg-white"
           >
             <div className="flex gap-4">
               {card.coverImageUrl && (
@@ -124,28 +124,28 @@ export default function BlogPostPage() {
                 />
               )}
               <div className="flex-1">
-                <div className="text-xs text-gray-500 mb-1">{card.listingType}</div>
-                <h3 className="font-semibold text-gray-900">{card.title}</h3>
-                <p className="text-sm text-gray-600">{card.tenantName}</p>
+                <div className="text-xs text-rs-ink-muted mb-1">{card.listingType}</div>
+                <h3 className="font-semibold text-rs-ink">{card.title}</h3>
+                <p className="text-sm text-rs-ink-muted">{card.tenantName}</p>
                 <div className="mt-2 flex items-center justify-between">
                   {card.currentPrice !== null ? (
-                    <span className="text-lg font-bold text-blue-600">
+                    <span className="text-lg font-bold text-rs-primary">
                       {card.currency} {card.currentPrice.toLocaleString()}
                     </span>
                   ) : (
-                    <span className="text-sm text-gray-400">無定價</span>
+                    <span className="text-sm text-rs-disabled-text">無定價</span>
                   )}
                   {statusLabel ? (
-                    <span className="text-xs text-red-600">{statusLabel}</span>
+                    <span className="text-xs text-rs-error">{statusLabel}</span>
                   ) : card.availability.available ? (
-                    <span className="text-xs text-green-600">可預訂</span>
+                    <span className="text-xs text-rs-success">可預訂</span>
                   ) : (
-                    <span className="text-xs text-red-600">已額滿</span>
+                    <span className="text-xs text-rs-error">已額滿</span>
                   )}
                 </div>
                 <a
                   href={card.ctaUrl}
-                  className="mt-2 inline-block px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                  className="mt-2 inline-block px-3 py-1 bg-rs-primary text-white text-sm rounded hover:bg-rs-primary-hover"
                 >
                   {ctaLabel}
                 </a>
@@ -157,14 +157,14 @@ export default function BlogPostPage() {
         parts.push(
           <div
             key={`embed-${match[1]}`}
-            className="my-4 p-4 border rounded-lg bg-gray-50 animate-pulse"
+            className="my-4 p-4 border rounded-lg bg-rs-bg-base animate-pulse"
           >
             <div className="flex gap-4">
-              <div className="w-24 h-24 bg-gray-200 rounded" />
+              <div className="w-24 h-24 bg-rs-hairline rounded" />
               <div className="flex-1">
-                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
-                <div className="h-3 bg-gray-200 rounded w-1/2 mb-2" />
-                <div className="h-5 bg-gray-200 rounded w-1/4" />
+                <div className="h-4 bg-rs-hairline rounded w-3/4 mb-2" />
+                <div className="h-3 bg-rs-hairline rounded w-1/2 mb-2" />
+                <div className="h-5 bg-rs-hairline rounded w-1/4" />
               </div>
             </div>
           </div>
@@ -175,7 +175,7 @@ export default function BlogPostPage() {
         parts.push(
           <div
             key={`embed-${match[1]}`}
-            className="my-4 p-4 border border-red-200 rounded-lg bg-red-50 text-red-600 text-sm"
+            className="my-4 p-4 border border-rs-error/30 rounded-lg bg-rs-error/10 text-rs-error text-sm"
           >
             此商品已下架
           </div>
@@ -195,7 +195,7 @@ export default function BlogPostPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="flex-1">
         <div className="max-w-3xl mx-auto px-4 py-12 text-center">
           載入中...
         </div>
@@ -205,11 +205,11 @@ export default function BlogPostPage() {
 
   if (error || !post) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="flex-1">
         <div className="max-w-3xl mx-auto px-4 py-12 text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">找不到文章</h1>
-          <p className="text-gray-600 mb-6">{error || '此文章不存在或已下架'}</p>
-          <Link href="/blog" className="text-blue-600 hover:underline">
+          <h1 className="text-2xl font-semibold text-rs-ink mb-4">找不到文章</h1>
+          <p className="text-rs-ink-muted mb-6">{error || '此文章不存在或已下架'}</p>
+          <Link href="/blog" className="text-rs-primary hover:underline">
             返回部落格
           </Link>
         </div>
@@ -218,11 +218,11 @@ export default function BlogPostPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex-1">
       {/* Header */}
-      <header className="bg-white shadow-sm">
+      <header className="bg-white border border-rs-hairline">
         <div className="max-w-3xl mx-auto px-4 py-6">
-          <Link href="/blog" className="text-blue-600 hover:underline text-sm">
+          <Link href="/blog" className="text-rs-primary hover:underline text-sm">
             ← 返回部落格
           </Link>
         </div>
@@ -230,10 +230,10 @@ export default function BlogPostPage() {
 
       {/* Article */}
       <main className="max-w-3xl mx-auto px-4 py-8">
-        <article className="bg-white rounded-lg shadow-sm">
+        <article className="bg-white rounded-lg border border-rs-hairline">
           {/* Featured Image */}
           {post.featuredImageUrl && (
-            <div className="aspect-video bg-gray-100 rounded-t-lg overflow-hidden">
+            <div className="aspect-video bg-rs-disabled-bg rounded-t-lg overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns */}
               <img
                 src={post.featuredImageUrl}
@@ -248,7 +248,7 @@ export default function BlogPostPage() {
 
           <div className="p-8">
             {/* Meta */}
-            <div className="mb-6 text-sm text-gray-500">
+            <div className="mb-6 text-sm text-rs-ink-muted">
               <span>{post.authorName}</span>
               <span className="mx-2">•</span>
               <span>
@@ -261,7 +261,7 @@ export default function BlogPostPage() {
             </div>
 
             {/* Title */}
-            <h1 className="text-3xl font-bold text-gray-900 mb-6">
+            <h1 className="text-3xl font-semibold text-rs-ink mb-6">
               {post.title}
             </h1>
 
@@ -270,7 +270,7 @@ export default function BlogPostPage() {
               <div className="mb-4">
                 <Link
                   href={`/blog/category/${post.categoryId}`}
-                  className="inline-block px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded hover:bg-blue-200"
+                  className="inline-block px-2 py-1 bg-rs-tertiary text-rs-primary text-sm rounded hover:bg-rs-secondary"
                   data-testid="blog-post-category-link"
                 >
                   {post.categoryName}
@@ -290,7 +290,7 @@ export default function BlogPostPage() {
                   {post.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="px-2 py-1 bg-gray-100 text-gray-600 text-sm rounded"
+                      className="px-2 py-1 bg-rs-disabled-bg text-rs-ink-muted text-sm rounded"
                     >
                       #{tag}
                     </span>

@@ -62,14 +62,14 @@ export default function SuppliersPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
         {error}
       </div>
     )
@@ -105,7 +105,7 @@ export default function SuppliersPage() {
       {filteredSuppliers.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-gray-500 mb-4">尚無供應商資料</p>
+            <p className="text-rs-ink-muted mb-4">尚無供應商資料</p>
             <Link href="/dashboard/erp/suppliers/new">
               <Button>新增第一個供應商</Button>
             </Link>

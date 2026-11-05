@@ -208,7 +208,7 @@ export default function RoomForm({ roomId }: RoomFormProps) {
   if (fetchLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
@@ -224,7 +224,7 @@ export default function RoomForm({ roomId }: RoomFormProps) {
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-6">
           {generalError && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+            <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
               {generalError}
             </div>
           )}
@@ -232,30 +232,30 @@ export default function RoomForm({ roomId }: RoomFormProps) {
           <div className="space-y-4">
             <div>
               <Label htmlFor="title">
-                房源名稱 <span className="text-red-500">*</span>
+                房源名稱 <span className="text-rs-error">*</span>
               </Label>
               <Input
                 id="title"
                 value={formData.title}
                 onChange={(e) => handleChange('title', e.target.value)}
                 placeholder="請輸入房源名稱"
-                className={errors.title ? 'border-red-500' : ''}
+                className={errors.title ? 'border-rs-error' : ''}
               />
-              {errors.title && <p className="text-red-500 text-sm mt-1">{errors.title}</p>}
+              {errors.title && <p className="text-rs-error text-sm mt-1">{errors.title}</p>}
             </div>
 
             <div>
               <Label htmlFor="location">
-                地點 <span className="text-red-500">*</span>
+                地點 <span className="text-rs-error">*</span>
               </Label>
               <Input
                 id="location"
                 value={formData.location}
                 onChange={(e) => handleChange('location', e.target.value)}
                 placeholder="請輸入房源地點"
-                className={errors.location ? 'border-red-500' : ''}
+                className={errors.location ? 'border-rs-error' : ''}
               />
-              {errors.location && <p className="text-red-500 text-sm mt-1">{errors.location}</p>}
+              {errors.location && <p className="text-rs-error text-sm mt-1">{errors.location}</p>}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -286,7 +286,7 @@ export default function RoomForm({ roomId }: RoomFormProps) {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="basePrice">
-                  每晚價格 <span className="text-red-500">*</span>
+                  每晚價格 <span className="text-rs-error">*</span>
                 </Label>
                 <Input
                   id="basePrice"
@@ -296,9 +296,9 @@ export default function RoomForm({ roomId }: RoomFormProps) {
                   value={formData.basePrice}
                   onChange={(e) => handleChange('basePrice', parseFloat(e.target.value) || 0)}
                   placeholder="0.00"
-                  className={errors.basePrice ? 'border-red-500' : ''}
+                  className={errors.basePrice ? 'border-rs-error' : ''}
                 />
-                {errors.basePrice && <p className="text-red-500 text-sm mt-1">{errors.basePrice}</p>}
+                {errors.basePrice && <p className="text-rs-error text-sm mt-1">{errors.basePrice}</p>}
               </div>
 
               <div>
@@ -356,7 +356,7 @@ export default function RoomForm({ roomId }: RoomFormProps) {
                   value={formData.openUntilDate || ''}
                   onChange={(e) => handleChange('openUntilDate', e.target.value || undefined)}
                 />
-                <p className="text-xs text-gray-500 mt-1">開放至某固定日；未填 = 無限制</p>
+                <p className="text-xs text-rs-ink-muted mt-1">開放至某固定日；未填 = 無限制</p>
               </div>
               <div>
                 <Label htmlFor="bookingWindowDays">開放未來天數（選填）</Label>
@@ -368,7 +368,7 @@ export default function RoomForm({ roomId }: RoomFormProps) {
                   onChange={(e) => handleChange('bookingWindowDays', e.target.value ? parseInt(e.target.value) : undefined)}
                   placeholder="90"
                 />
-                <p className="text-xs text-gray-500 mt-1">開放未來 N 天（滾動）；與截止日兩者取最早生效</p>
+                <p className="text-xs text-rs-ink-muted mt-1">開放未來 N 天（滾動）；與截止日兩者取最早生效</p>
               </div>
             </div>
             {(formData.openUntilDate || formData.bookingWindowDays) && (
@@ -417,7 +417,7 @@ export default function RoomForm({ roomId }: RoomFormProps) {
                     className={`px-3 py-1 text-sm rounded-full border ${
                       (formData.amenities || []).includes(amenity)
                         ? 'bg-primary text-primary-foreground'
-                        : 'bg-gray-50 text-gray-700 border-gray-300'
+                        : 'bg-rs-bg-base text-rs-ink border-rs-hairline'
                     }`}
                   >
                     {amenity}

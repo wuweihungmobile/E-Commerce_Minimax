@@ -38,6 +38,8 @@
 
 ## 3. Design System 元件（從設計稿抽出，shadcn 重建）
 
+> **Sprint 328 更正**：本節與下表依 Sprint 35 當時的盤點寫成「6 個 React 元件」。Sprint 328 解包設計稿後，`@ds-bundle` 標頭實際列出 **12 個元件**（Button、IconButton、Pagination、Avatar、Badge、ProductCard、Skeleton、Input、SearchBar、SidebarNav、SortToolbar、Icon）。下表只是當年重建的那 6 個；Button／Input／Skeleton 等其餘規格已於 Sprint 328 套到 `components/ui/*`（見 [UI_DESIGN_SYSTEM_CONVENTIONS.md](../07_design/UI_DESIGN_SYSTEM_CONVENTIONS.md) §4）。
+
 設計稿內含完整可移植 Design System（原 `rs-*` 命名，來自 bundle `js_fadb426d.js`：6 個 React 元件 + 43 條 CSS）作為規格參考。實作策略：`Badge`、`Pagination` 遵循 shadcn 慣例（`cva` / `VariantProps`）；`SearchBar` / `SidebarNav` / `SortToolbar` / `ProductCard` 為「以 Tailwind + `rs-*` token 對齊設計稿之自訂元件」，**非全數組合 shadcn 基礎元件**：
 
 | 元件 | 原始 props | 實作重建策略 |
@@ -104,8 +106,22 @@
 | 階段二：買家店面全頁 | `(auth)` 買家頁（cart/checkout/orders/bookings/notifications/reviews）套 Shell（Tools 隱藏）| Sprint 36 |
 | 階段三：賣家後台 | dashboard/admin/cms 套 Shell（seller 變體 header + 側欄導覽）| Sprint 37+ |
 
+### 7.1 路線圖實際執行結果（Sprint 328 補記）
+
+| 階段 | 原定 | 實際 |
+|---|---|---|
+| 一：基礎＋首頁 | Sprint 35 | ✅ Sprint 35（主題系統、6 個 DS 元件、共用 Header／Footer、首頁） |
+| 二：買家店面全頁 | Sprint 36 | ✅ **Sprint 37**（Sprint 36 先做 DEF-019 安全收尾與 DEF-020 route-group 架構債；`(auth)/layout.tsx` 註解『S37 AI-1901』） |
+| 三：賣家後台（行動項 `AI-1904`：dashboard／admin／cms 套 Shell，seller 變體） | Sprint 37+ | ✅ **Sprint 328**。`AI-1904` 在 `SPRINT_35_RETRO.md` 排進『Sprint 37』，之後沒有任何計畫書、追蹤表接手或結案（全部 docs 精確 grep 只有 1 處）；Sprint 328 因使用者明確要求「以設計稿為 BASE 統一所有 UI」才補上 |
+
+另外 Sprint 37 完成後，買家頁只有**外殼**（Header／Footer）套用設計稿，**內容區**（27／28 個檔案）仍是 Tailwind 預設灰藍紅，換主題不會跟著變；Sprint 328 一併遷移，並用 ESLint 規則守住。
+
+## 8. 全站統一後的規範（Sprint 328）
+
+全站 UI 的規格、token 對照、外殼對應與守門規則見 [UI_DESIGN_SYSTEM_CONVENTIONS.md](../07_design/UI_DESIGN_SYSTEM_CONVENTIONS.md)；執行紀錄與驗證見 [SPRINT_328_PLAN.md](../04_planning/SPRINT_328_PLAN.md)。
+
 ---
 
-**文件版本**: v1.0
+**文件版本**: v1.1（Sprint 328 補記 §3 更正、§7.1、§8；原 v1.0 內容未改）
 **建立者**: SA Amanda + SD Marcus + PM Victoria + Dev David + QA Quincy + Claude Code
 **基於**: AISDLC v0.09 Requirements Workflow

@@ -22,7 +22,7 @@ export default function BookingPaymentCancelPage() {
             <CardTitle>付款已取消</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-gray-600">您已取消本次付款，預訂尚未付款。您可以返回預訂重新付款。</p>
+            <p className="text-sm text-rs-ink-muted">您已取消本次付款，預訂尚未付款。您可以返回預訂重新付款。</p>
             <div className="flex gap-3">
               <Link href={`/bookings/${bookingId}`}>
                 <Button data-testid="booking-payment-cancel-back">返回預訂</Button>

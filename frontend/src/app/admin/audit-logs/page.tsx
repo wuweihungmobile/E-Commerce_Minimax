@@ -101,7 +101,7 @@ export default function AdminAuditLogsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">稽核紀錄</h1>
+        <h1 className="text-2xl font-semibold">稽核紀錄</h1>
         <p className="text-muted-foreground">
           共 {totalElements} 筆平台管理操作紀錄
         </p>
@@ -149,7 +149,7 @@ export default function AdminAuditLogsPage() {
 
       {loading ? (
         <div className="flex items-center justify-center h-64">
-          <div className="text-gray-500">載入中...</div>
+          <div className="text-rs-ink-muted">載入中...</div>
         </div>
       ) : error ? (
         <div className="space-y-4">
@@ -163,7 +163,7 @@ export default function AdminAuditLogsPage() {
       ) : logs.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-gray-500">無符合條件的稽核紀錄</p>
+            <p className="text-rs-ink-muted">無符合條件的稽核紀錄</p>
           </CardContent>
         </Card>
       ) : (

@@ -114,7 +114,7 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
@@ -135,7 +135,7 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
   if (!tenant) {
     return (
       <div className="space-y-4">
-        <div className="text-gray-500">找不到店鋪資料</div>
+        <div className="text-rs-ink-muted">找不到店鋪資料</div>
         <Link href="/dashboard/tenants">
           <Button variant="outline">返回店鋪列表</Button>
         </Link>

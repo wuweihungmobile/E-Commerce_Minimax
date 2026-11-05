@@ -108,7 +108,7 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
   if (initialLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
@@ -128,7 +128,7 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+            <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
               {error}
             </div>
           )}

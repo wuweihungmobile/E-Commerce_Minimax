@@ -1,31 +1,48 @@
 @import "tailwindcss";
 
 /* ============================================================
-   既有 shadcn/ui 中性 token（保留不動，避免破壞既有頁面）
+   設計稿圓角約束（Homepage (standalone) 設計稿 00.tokens）：
+   radius-sm 4（徽章、分頁色塊）／md 8（按鈕、輸入框）／lg 12（卡片、影像、控制列）／full。
+   Tailwind 預設 md=6px、lg=8px；覆寫後全站 rounded-md／rounded-lg 自動對齊設計稿
+   （sm=4px、xl=12px 的 Tailwind 預設本來就等於設計稿，不需覆寫）。
    ============================================================ */
 @theme {
-  --color-background: hsl(0 0% 100%);
-  --color-foreground: hsl(0 0% 3.9%);
-  --color-card: hsl(0 0% 100%);
-  --color-card-foreground: hsl(0 0% 3.9%);
-  --color-popover: hsl(0 0% 100%);
-  --color-popover-foreground: hsl(0 0% 3.9%);
-  --color-primary: hsl(221.2 83.2% 53.3%);
-  --color-primary-foreground: hsl(210 40% 98%);
-  --color-secondary: hsl(210 40% 96.1%);
-  --color-secondary-foreground: hsl(222.2 47.4% 11.2%);
-  --color-muted: hsl(210 40% 96.1%);
-  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
-  --color-accent: hsl(210 40% 96.1%);
-  --color-accent-foreground: hsl(222.2 47.4% 11.2%);
-  --color-error: hsl(0 84.2% 60.2%);
-  --color-error-foreground: hsl(210 40% 98%);
-  --color-success: hsl(142.1 76.2% 36.3%);
-  --color-success-foreground: hsl(210 40% 98%);
-  --color-border: hsl(214.3 31.8% 91.4%);
-  --color-input: hsl(214.3 31.8% 91.4%);
-  --color-ring: hsl(221.2 83.2% 53.3%);
   --radius: 0.5rem;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+/* ============================================================
+   shadcn/ui 語意 token → 設計稿 token（Sprint 328）
+   原本是一組獨立的中性灰藍（與品牌色票無關，換主題不會變）。改成指向 --rs-*，
+   使沿用 shadcn token 的元件（components/ui/*）與頁面自動跟隨 <html data-theme>。
+   @theme inline：utility 直接引用執行期 CSS 變數，主題切換即時生效。
+   對應原則：background＝頁面底（bg-base）、card／popover＝表面（bg-surface）、
+   primary＝主色、secondary／accent＝主色淺底（tertiary；shadcn 的 accent 是「hover 淺色強調」，
+   不是設計稿的橘色 accent，故刻意不對應 --rs-accent）。
+   ============================================================ */
+@theme inline {
+  --color-background: var(--rs-bg-base);
+  --color-foreground: var(--rs-text-main);
+  --color-card: var(--rs-bg-surface);
+  --color-card-foreground: var(--rs-text-main);
+  --color-popover: var(--rs-bg-surface);
+  --color-popover-foreground: var(--rs-text-main);
+  --color-primary: var(--rs-primary);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--rs-tertiary);
+  --color-secondary-foreground: var(--rs-text-main);
+  --color-muted: var(--rs-bg-base);
+  --color-muted-foreground: var(--rs-text-muted);
+  --color-accent: var(--rs-tertiary);
+  --color-accent-foreground: var(--rs-text-main);
+  --color-error: var(--rs-error);
+  --color-error-foreground: #ffffff;
+  --color-success: var(--rs-success);
+  --color-success-foreground: #ffffff;
+  --color-border: var(--rs-border);
+  --color-input: var(--rs-border);
+  --color-ring: var(--rs-primary);
 }
 
 /* ============================================================
@@ -154,11 +171,17 @@
   --rs-info-soft: #87aece;
 }
 
+/* 骨架屏底色：設計稿 --color-skeleton，不隨主題變 */
+:root {
+  --rs-skeleton: #f3f4f6;
+}
+
 /* ============================================================
    Tailwind v4：以 inline 讓 utility 直接引用執行期 CSS 變數，
    使 data-theme 切換即時生效（bg-rs-primary / text-rs-ink …）
    ============================================================ */
 @theme inline {
+  --color-rs-skeleton: var(--rs-skeleton);
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, "PingFang TC",
     "Noto Sans TC", "Microsoft JhengHei", "Heiti TC", sans-serif;
 
@@ -185,8 +208,85 @@
   --color-rs-info-soft: var(--rs-info-soft);
 }
 
-body {
-  background: var(--color-background);
-  color: var(--color-foreground);
-  font-family: var(--font-sans);
+/* ============================================================
+   全域基礎規則（設計稿「全域基礎重置」與「全域字體排版」）。
+   放在 @layer base：utility（含元件上的 text-*／font-*）永遠優先，只填補沒有明確指定的地方。
+   ============================================================ */
+@layer base {
+  /* Tailwind v4 的裸 `border` 預設是 currentColor（文字色，卡片會變近黑邊框）；
+     設計稿的邊框一律是 1px 實線 --color-border。 */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--rs-border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    color-scheme: light; /* 設計稿僅支援淺色模式 */
+  }
+
+  body {
+    background: var(--rs-bg-base);
+    color: var(--rs-text-main);
+    font-family: var(--font-sans);
+    font-size: 16px; /* 內文基準 */
+    line-height: 1.65; /* 內文呼吸 */
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 標題：600 字重、緊湊行高（設計稿 --fw-semibold／--lh-tight）。
+     字級用 Tailwind 的 text-* 指定（Tailwind 預設字級恰等於設計稿字級階層），
+     這裡的字級只是沒有指定時的設計稿預設。 */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-weight: 600;
+    line-height: 1.35;
+    text-wrap: balance;
+  }
+  h1 {
+    font-size: 36px;
+  }
+  h2 {
+    font-size: 30px;
+  }
+  h3 {
+    font-size: 24px;
+  }
+  h4 {
+    font-size: 20px;
+  }
+  h5 {
+    font-size: 18px;
+  }
+  h6 {
+    font-size: 16px;
+  }
+
+  /* 鍵盤導覽可見回饋 */
+  :focus-visible {
+    outline: 2px solid var(--rs-primary);
+    outline-offset: 2px;
+  }
+
+  /* 輕量化捲動條 */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--rs-border);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }

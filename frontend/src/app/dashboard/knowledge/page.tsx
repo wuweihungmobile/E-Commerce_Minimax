@@ -89,21 +89,21 @@ export default function KnowledgePage() {
   function getStatusBadge(status: string): { label: string; className: string } {
     switch (status) {
       case 'PUBLISHED':
-        return { label: '已發布', className: 'bg-green-100 text-green-800' };
+        return { label: '已發布', className: 'bg-rs-success/10 text-rs-success' };
       case 'DRAFT':
-        return { label: '草稿', className: 'bg-yellow-100 text-yellow-800' };
+        return { label: '草稿', className: 'bg-rs-warning/15 text-rs-ink' };
       case 'ARCHIVED':
-        return { label: '已封存', className: 'bg-gray-100 text-gray-800' };
+        return { label: '已封存', className: 'bg-rs-disabled-bg text-rs-ink' };
       default:
-        return { label: status, className: 'bg-gray-100 text-gray-800' };
+        return { label: status, className: 'bg-rs-disabled-bg text-rs-ink' };
     }
   }
 
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">知識庫</h1>
-        <div className="text-sm text-gray-500">
+        <h1 className="text-2xl font-semibold">知識庫</h1>
+        <div className="text-sm text-rs-ink-muted">
           總計 {totalElements} 篇文章
         </div>
       </div>
@@ -111,7 +111,7 @@ export default function KnowledgePage() {
       {/* Filters */}
       <div className="mb-4 flex flex-wrap gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">分類</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">分類</label>
           <select
             value={categoryFilter}
             onChange={(e) => {
@@ -127,7 +127,7 @@ export default function KnowledgePage() {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">關鍵字搜尋</label>
+          <label className="block text-sm font-medium text-rs-ink mb-1">關鍵字搜尋</label>
           <input
             type="text"
             value={keyword}
@@ -142,7 +142,7 @@ export default function KnowledgePage() {
         <div className="flex items-end">
           <button
             onClick={() => loadArticles()}
-            className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+            className="px-4 py-1.5 bg-rs-primary text-white rounded text-sm hover:bg-rs-primary-hover"
           >
             搜尋
           </button>
@@ -151,54 +151,54 @@ export default function KnowledgePage() {
 
       {/* Articles Table */}
       {loading ? (
-        <div className="text-center py-12 text-gray-500">載入中...</div>
+        <div className="text-center py-12 text-rs-ink-muted">載入中...</div>
       ) : articles.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">尚無文章</div>
+        <div className="text-center py-12 text-rs-ink-muted">尚無文章</div>
       ) : (
         <>
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className="bg-white rounded-lg overflow-hidden border border-rs-hairline">
+            <table className="min-w-full divide-y divide-rs-hairline">
+              <thead className="bg-rs-bg-base">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">標題</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">分類</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">狀態</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">瀏覽</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">發布日期</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">標題</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">分類</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">狀態</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">瀏覽</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">發布日期</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-rs-ink-muted uppercase">操作</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white divide-y divide-rs-hairline">
                 {articles.map((article) => {
                   const statusBadge = getStatusBadge(article.status);
                   return (
-                    <tr key={article.id} className="hover:bg-gray-50">
+                    <tr key={article.id} className="hover:bg-rs-bg-base">
                       <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-gray-900">{article.title}</div>
+                        <div className="text-sm font-medium text-rs-ink">{article.title}</div>
                         {article.excerpt && (
-                          <div className="text-xs text-gray-500 truncate max-w-xs">{article.excerpt}</div>
+                          <div className="text-xs text-rs-ink-muted truncate max-w-xs">{article.excerpt}</div>
                         )}
                         {article.tags && article.tags.length > 0 && (
                           <div className="flex gap-1 mt-1">
                             {article.tags.slice(0, 3).map((tag, i) => (
-                              <span key={i} className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{tag}</span>
+                              <span key={i} className="text-xs bg-rs-disabled-bg px-1.5 py-0.5 rounded">{tag}</span>
                             ))}
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{article.categoryName || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-rs-ink-muted">{article.categoryName || '-'}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 text-xs rounded-full ${statusBadge.className}`}>
                           {statusBadge.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{article.viewCount || 0}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{formatDate(article.publishedAt)}</td>
+                      <td className="px-4 py-3 text-sm text-rs-ink-muted">{article.viewCount || 0}</td>
+                      <td className="px-4 py-3 text-sm text-rs-ink-muted">{formatDate(article.publishedAt)}</td>
                       <td className="px-4 py-3 text-right text-sm">
                         <button
                           onClick={() => handleDelete(article.id)}
                           disabled={deleting === article.id}
-                          className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                          className="text-rs-error hover:text-rs-error/80 disabled:opacity-50"
                         >
                           {deleting === article.id ? '刪除中...' : '刪除'}
                         </button>
@@ -227,7 +227,7 @@ export default function KnowledgePage() {
               >
                 上一頁
               </button>
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-rs-ink-muted">
                 第 {page + 1} / {totalPages} 頁
               </span>
               <button

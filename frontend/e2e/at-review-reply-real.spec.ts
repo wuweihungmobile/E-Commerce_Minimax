@@ -173,7 +173,8 @@ test.describe('AT-REVIEW-REPLY-REAL: 賣家回覆評價與評價管理（真實�
     await expect(page.getByText('目前沒有待處理的評價')).toBeVisible();
 
     // 切到「已處理」篩選：這筆出現在這裡，且按鈕變成「標記為未處理」
-    await page.getByRole('combobox').click();
+    // 賣家外殼的 Header 也有一個主題切換 <select>（role=combobox，Sprint 328），所以限定在頁面內容 main 內，只選評價篩選
+    await page.getByRole('main').getByRole('combobox').click();
     await page.getByRole('option', { name: '已處理' }).click();
     await expect(page.getByText(REVIEW_TITLE)).toBeVisible();
     await expect(page.getByRole('button', { name: '標記為未處理' })).toBeVisible();

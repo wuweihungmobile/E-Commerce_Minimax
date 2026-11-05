@@ -174,12 +174,12 @@ export default function ChatPage() {
   return (
     <div className="flex h-[calc(100vh-3rem)] flex-col p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">訊息中心</h1>
+        <h1 className="text-2xl font-semibold">訊息中心</h1>
         <button
           type="button"
           data-testid="new-conversation-button"
           onClick={() => setNewConvOpen((open) => !open)}
-          className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
+          className="rounded bg-rs-primary px-4 py-1.5 text-sm text-white hover:bg-rs-primary-hover"
         >
           發起對話
         </button>
@@ -189,7 +189,7 @@ export default function ChatPage() {
         <div className="mb-4 rounded-lg border bg-white p-4" data-testid="new-conversation-form">
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[16rem]">
-              <label className="mb-1 block text-sm font-medium text-gray-700">收件者使用者 ID</label>
+              <label className="mb-1 block text-sm font-medium text-rs-ink">收件者使用者 ID</label>
               <input
                 data-testid="new-recipient-input"
                 value={newRecipientId}
@@ -199,7 +199,7 @@ export default function ChatPage() {
               />
             </div>
             <div className="flex-1 min-w-[16rem]">
-              <label className="mb-1 block text-sm font-medium text-gray-700">第一則訊息（選填）</label>
+              <label className="mb-1 block text-sm font-medium text-rs-ink">第一則訊息（選填）</label>
               <input
                 data-testid="new-message-input"
                 value={newInitialMessage}
@@ -213,7 +213,7 @@ export default function ChatPage() {
               data-testid="create-conversation-submit"
               onClick={handleCreateConversation}
               disabled={!newRecipientId.trim()}
-              className="rounded bg-green-600 px-4 py-1.5 text-sm text-white hover:bg-green-700 disabled:opacity-50"
+              className="rounded bg-rs-success px-4 py-1.5 text-sm text-white hover:bg-rs-success/90 disabled:opacity-50"
             >
               建立
             </button>
@@ -242,7 +242,7 @@ export default function ChatPage() {
                   type="button"
                   data-testid="delete-conversation-button"
                   onClick={() => handleDelete(selectedId)}
-                  className="text-xs text-red-600 hover:text-red-800"
+                  className="text-xs text-rs-error hover:text-rs-error/80"
                 >
                   刪除對話
                 </button>
@@ -258,7 +258,7 @@ export default function ChatPage() {
               <MessageComposer disabled={false} onSend={handleSend} />
             </>
           ) : (
-            <div className="flex flex-1 items-center justify-center text-sm text-gray-500">
+            <div className="flex flex-1 items-center justify-center text-sm text-rs-ink-muted">
               選擇左側對話開始聊天
             </div>
           )}

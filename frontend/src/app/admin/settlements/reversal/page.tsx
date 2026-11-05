@@ -106,7 +106,7 @@ export default function AdminSettlementReversalPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">結算單逆轉</h1>
+        <h1 className="text-2xl font-semibold">結算單逆轉</h1>
         <p className="text-muted-foreground">
           {totalElements > 0 ? <span className="text-warning">可操作結算單 {totalElements} 筆</span> : '目前無可發起/確認逆轉的結算單'}
         </p>
@@ -114,12 +114,12 @@ export default function AdminSettlementReversalPage() {
 
       {loading ? (
         <div className="flex items-center justify-center h-64">
-          <div className="text-gray-500">載入中...</div>
+          <div className="text-rs-ink-muted">載入中...</div>
         </div>
       ) : statements.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-gray-500">目前無可操作的結算單</p>
+            <p className="text-rs-ink-muted">目前無可操作的結算單</p>
           </CardContent>
         </Card>
       ) : (

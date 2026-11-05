@@ -54,12 +54,12 @@ export default function InventoryDetailPage() {
   // 判準與列表頁、後端的 severity 一致：低於門檻一半為危險，低於門檻為低庫存。
   const getStockStatus = (available: number, threshold: number) => {
     if (available <= threshold * 0.5) {
-      return { variant: 'destructive' as const, label: '危險', color: 'text-red-600 bg-red-100' }
+      return { variant: 'destructive' as const, label: '危險', color: 'text-rs-error bg-rs-error/10' }
     }
     if (available <= threshold) {
-      return { variant: 'warning' as const, label: '低庫存', color: 'text-yellow-600 bg-yellow-100' }
+      return { variant: 'warning' as const, label: '低庫存', color: 'text-rs-ink bg-rs-warning/15' }
     }
-    return { variant: 'success' as const, label: '正常', color: 'text-green-600 bg-green-100' }
+    return { variant: 'success' as const, label: '正常', color: 'text-rs-success bg-rs-success/10' }
   }
 
   const formatDate = (dateStr: string) => {
@@ -70,14 +70,14 @@ export default function InventoryDetailPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-rs-ink-muted">載入中...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
         {error}
       </div>
     )
@@ -85,7 +85,7 @@ export default function InventoryDetailPage() {
 
   if (!inventory) {
     return (
-      <div className="bg-gray-50 border border-gray-200 px-4 py-3 rounded-md">
+      <div className="bg-rs-bg-base border border-rs-hairline px-4 py-3 rounded-md">
         無庫存資料
       </div>
     )
@@ -97,8 +97,8 @@ export default function InventoryDetailPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">{inventory.productName}</h2>
-          <p className="text-gray-500">SKU: {inventory.skuCode}</p>
+          <h2 className="text-2xl font-semibold text-rs-ink">{inventory.productName}</h2>
+          <p className="text-rs-ink-muted">SKU: {inventory.skuCode}</p>
         </div>
         <div className="flex gap-2">
           <Link href="/dashboard/erp/inventory">
@@ -164,23 +164,23 @@ export default function InventoryDetailPage() {
         </CardHeader>
         <CardContent>
           {inventory.movements.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">尚無異動記錄</p>
+            <p className="text-rs-ink-muted text-center py-8">尚無異動記錄</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 border">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-rs-hairline border">
+                <thead className="bg-rs-bg-base">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">時間</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">類型</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">數量</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">參考單號</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">備註</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-rs-ink-muted uppercase">時間</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-rs-ink-muted uppercase">類型</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-rs-ink-muted uppercase">數量</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-rs-ink-muted uppercase">參考單號</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-rs-ink-muted uppercase">備註</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white divide-y divide-rs-hairline">
                   {inventory.movements.map((movement) => (
                     <tr key={movement.id}>
-                      <td className="px-4 py-2 text-sm text-gray-500">
+                      <td className="px-4 py-2 text-sm text-rs-ink-muted">
                         {formatDate(movement.createdAt)}
                       </td>
                       <td className="px-4 py-2 text-sm">
@@ -189,10 +189,10 @@ export default function InventoryDetailPage() {
                       <td className="px-4 py-2 text-sm text-right font-medium">
                         {movement.quantity > 0 ? '+' : ''}{movement.quantity}
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-500">
+                      <td className="px-4 py-2 text-sm text-rs-ink-muted">
                         {movement.referenceNumber || '-'}
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-500">
+                      <td className="px-4 py-2 text-sm text-rs-ink-muted">
                         {movement.notes || '-'}
                       </td>
                     </tr>

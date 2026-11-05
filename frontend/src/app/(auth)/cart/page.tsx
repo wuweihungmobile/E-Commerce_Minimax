@@ -120,15 +120,15 @@ function CartSummaryCard(props: CartSummaryCardProps) {
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <div className="flex justify-between">
-            <span className="text-gray-600">小計</span>
+            <span className="text-rs-ink-muted">小計</span>
             <span>{formatPrice(props.subtotal)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-600">運費</span>
+            <span className="text-rs-ink-muted">運費</span>
             <span>{props.shippingFee > 0 ? formatPrice(props.shippingFee) : '免運'}</span>
           </div>
           {props.appliedPromoCode && (
-            <div className="flex justify-between text-green-600">
+            <div className="flex justify-between text-rs-success">
               <span>優惠折抵</span>
               <span>-{formatPrice(props.discountAmount)}</span>
             </div>
@@ -167,18 +167,18 @@ function CartSummaryCard(props: CartSummaryCardProps) {
                 size="sm"
                 onClick={props.onRemovePromo}
                 disabled={props.promoLoading}
-                className="text-red-500 hover:text-red-700"
+                className="text-rs-error hover:text-rs-error/80"
               >
                 移除
               </Button>
             </div>
           )}
-          {props.promoError && <p className="text-sm text-red-500 mt-1">{props.promoError}</p>}
-          {props.promoSuccess && <p className="text-sm text-green-600 mt-1">{props.promoSuccess}</p>}
+          {props.promoError && <p className="text-sm text-rs-error mt-1">{props.promoError}</p>}
+          {props.promoSuccess && <p className="text-sm text-rs-success mt-1">{props.promoSuccess}</p>}
         </div>
 
         {props.storeClosed && (
-          <p className="text-sm text-red-600" data-testid={`${checkoutTestId}-closed`}>
+          <p className="text-sm text-rs-error" data-testid={`${checkoutTestId}-closed`}>
             此店鋪目前暫停營業，無法下單。請移除這家店鋪的商品，或等店鋪恢復營業。
           </p>
         )}
@@ -442,7 +442,7 @@ export default function CartPage() {
       <CardContent className="p-6">
         <div className="flex gap-4">
           {/* Product Image */}
-          <div className="w-24 h-24 bg-gray-200 rounded-md flex-shrink-0 overflow-hidden">
+          <div className="w-24 h-24 bg-rs-hairline rounded-md flex-shrink-0 overflow-hidden">
             {item.coverImageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
               <img
@@ -451,7 +451,7 @@ export default function CartPage() {
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-gray-400">
+              <div className="w-full h-full flex items-center justify-center text-rs-disabled-text">
                 無圖片
               </div>
             )}
@@ -461,10 +461,10 @@ export default function CartPage() {
           <div className="flex-1">
             <div className="flex justify-between">
               <div>
-                <h3 className="text-lg font-medium text-gray-900">
+                <h3 className="text-lg font-medium text-rs-ink">
                   {item.listingName}
                 </h3>
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="text-sm text-rs-ink-muted mt-1">
                   {/* 動態定價調整（AI-2406c）：折扣（>0）原價刪除線；加價（<0）原價不刪除線 */}
                   {item.discountAmount != null &&
                     item.discountAmount !== 0 &&
@@ -473,8 +473,8 @@ export default function CartPage() {
                         data-testid={`cart-original-price-${item.cartItemKey}`}
                         className={
                           item.discountAmount > 0
-                            ? 'mr-1 text-gray-400 line-through'
-                            : 'mr-1 text-gray-400'
+                            ? 'mr-1 text-rs-disabled-text line-through'
+                            : 'mr-1 text-rs-disabled-text'
                         }
                       >
                         {formatPrice(item.originalUnitPrice)}
@@ -489,8 +489,8 @@ export default function CartPage() {
                       data-testid={`cart-adjust-badge-${item.cartItemKey}`}
                       className={
                         item.discountAmount > 0
-                          ? 'inline-block mt-1 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700'
-                          : 'inline-block mt-1 rounded bg-orange-100 px-2 py-0.5 text-xs text-orange-700'
+                          ? 'inline-block mt-1 rounded bg-rs-success/10 px-2 py-0.5 text-xs text-rs-success'
+                          : 'inline-block mt-1 rounded bg-rs-accent/10 px-2 py-0.5 text-xs text-rs-accent'
                       }
                     >
                       {item.appliedRuleName}｜{item.discountAmount > 0 ? '省 ' : '加價 '}
@@ -498,13 +498,13 @@ export default function CartPage() {
                     </span>
                   )}
                 {item.startDate && item.endDate && (
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-rs-ink-muted">
                     日期: {formatDate(item.startDate)} - {formatDate(item.endDate)}
                   </p>
                 )}
               </div>
               <div className="text-right">
-                <p className="text-lg font-medium text-gray-900">
+                <p className="text-lg font-medium text-rs-ink">
                   {formatPrice(item.subtotal)}
                 </p>
               </div>
@@ -549,7 +549,7 @@ export default function CartPage() {
                 size="sm"
                 onClick={() => removeItem(item.cartItemKey)}
                 disabled={updating === item.cartItemKey}
-                className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                className="text-rs-error hover:text-rs-error/80 hover:bg-rs-error/10"
               >
                 移除
               </Button>
@@ -597,8 +597,8 @@ export default function CartPage() {
   return (
     <StorefrontShell>
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">購物車</h1>
-            <p className="mt-1 text-sm text-gray-600">
+            <h1 className="text-2xl font-semibold text-rs-ink">購物車</h1>
+            <p className="mt-1 text-sm text-rs-ink-muted">
               檢視和管理您的購物車商品
             </p>
           </div>
@@ -613,7 +613,7 @@ export default function CartPage() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <div className="text-6xl mb-4">🛒</div>
-                <p className="text-gray-500 mb-4">購物車是空的</p>
+                <p className="text-rs-ink-muted mb-4">購物車是空的</p>
                 <Link href="/">
                   <Button variant="outline">開始購物</Button>
                 </Link>
@@ -629,7 +629,7 @@ export default function CartPage() {
 
               {groups.map(({ store, items }) => (
                 <section key={store.storeId} data-testid={`cart-store-${store.storeId}`} className="space-y-4">
-                  <h2 className="text-lg font-semibold text-gray-900">店鋪：{store.storeName || '未命名店鋪'}</h2>
+                  <h2 className="text-lg font-semibold text-rs-ink">店鋪：{store.storeName || '未命名店鋪'}</h2>
                   <div className="space-y-4">{items.map(renderItem)}</div>
                   <CartSummaryCard
                     title={`訂單摘要（${store.storeName || '未命名店鋪'}）`}
@@ -654,8 +654,8 @@ export default function CartPage() {
 
               {looseItems.length > 0 && (
                 <section className="space-y-4" data-testid="cart-store-unavailable">
-                  <h2 className="text-lg font-semibold text-gray-900">無法結帳的項目</h2>
-                  <p className="text-sm text-gray-600">這些項目所屬的商品或房源已不存在，請移除。</p>
+                  <h2 className="text-lg font-semibold text-rs-ink">無法結帳的項目</h2>
+                  <p className="text-sm text-rs-ink-muted">這些項目所屬的商品或房源已不存在，請移除。</p>
                   <div className="space-y-4">{looseItems.map(renderItem)}</div>
                 </section>
               )}
@@ -663,7 +663,7 @@ export default function CartPage() {
               {/* Continue Shopping */}
               <div className="text-center">
                 <Link href="/">
-                  <Button variant="link" className="text-gray-600">
+                  <Button variant="link" className="text-rs-ink-muted">
                     繼續購物
                   </Button>
                 </Link>
@@ -672,7 +672,7 @@ export default function CartPage() {
           ) : (
             <div className="space-y-4">
               {singleStore && (
-                <p className="text-sm text-gray-600">店鋪：{singleStore.storeName || '未命名店鋪'}</p>
+                <p className="text-sm text-rs-ink-muted">店鋪：{singleStore.storeName || '未命名店鋪'}</p>
               )}
 
               {/* Cart Items */}
@@ -704,7 +704,7 @@ export default function CartPage() {
               {/* Continue Shopping */}
               <div className="text-center">
                 <Link href="/">
-                  <Button variant="link" className="text-gray-600">
+                  <Button variant="link" className="text-rs-ink-muted">
                     繼續購物
                   </Button>
                 </Link>

@@ -123,8 +123,8 @@ export default function MediaLibraryPage() {
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold">媒體庫</h1>
-          <Link href="/cms" className="text-blue-600 hover:text-blue-800 text-sm">
+          <h1 className="text-2xl font-semibold">媒體庫</h1>
+          <Link href="/cms" className="text-rs-primary hover:text-rs-primary-hover text-sm">
             返回 CMS
           </Link>
         </div>
@@ -139,7 +139,7 @@ export default function MediaLibraryPage() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+            className="bg-rs-primary text-white px-4 py-2 rounded hover:bg-rs-primary-hover disabled:opacity-50"
           >
             {uploading ? '上傳中...' : '上傳檔案'}
           </button>
@@ -150,25 +150,25 @@ export default function MediaLibraryPage() {
       <div className="mb-4 flex gap-2">
         <button
           onClick={() => { setFilter(''); setPage(0); }}
-          className={`px-3 py-1 rounded ${!filter ? 'bg-blue-100 text-blue-800' : 'bg-gray-100'}`}
+          className={`px-3 py-1 rounded ${!filter ? 'bg-rs-tertiary text-rs-primary' : 'bg-rs-disabled-bg'}`}
         >
           全部 ({totalCount})
         </button>
         <button
           onClick={() => { setFilter('IMAGE'); setPage(0); }}
-          className={`px-3 py-1 rounded ${filter === 'IMAGE' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100'}`}
+          className={`px-3 py-1 rounded ${filter === 'IMAGE' ? 'bg-rs-tertiary text-rs-primary' : 'bg-rs-disabled-bg'}`}
         >
           圖片
         </button>
         <button
           onClick={() => { setFilter('VIDEO'); setPage(0); }}
-          className={`px-3 py-1 rounded ${filter === 'VIDEO' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100'}`}
+          className={`px-3 py-1 rounded ${filter === 'VIDEO' ? 'bg-rs-tertiary text-rs-primary' : 'bg-rs-disabled-bg'}`}
         >
           影片
         </button>
         <button
           onClick={() => { setFilter('DOCUMENT'); setPage(0); }}
-          className={`px-3 py-1 rounded ${filter === 'DOCUMENT' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100'}`}
+          className={`px-3 py-1 rounded ${filter === 'DOCUMENT' ? 'bg-rs-tertiary text-rs-primary' : 'bg-rs-disabled-bg'}`}
         >
           文件
         </button>
@@ -178,16 +178,16 @@ export default function MediaLibraryPage() {
       {loading ? (
         <div className="text-center py-8">載入中...</div>
       ) : mediaList.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">尚無媒體檔案</div>
+        <div className="text-center py-8 text-rs-ink-muted">尚無媒體檔案</div>
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {mediaList.map((media) => (
               <div
                 key={media.id}
-                className="border rounded-lg overflow-hidden bg-white hover:shadow-md transition-shadow"
+                className="border rounded-lg overflow-hidden bg-white hover:border-rs-primary transition-colors"
               >
-                <div className="aspect-square flex items-center justify-center bg-gray-100 relative group">
+                <div className="aspect-square flex items-center justify-center bg-rs-disabled-bg relative group">
                   {media.mimeType.startsWith('image/') ? (
                     <AuthenticatedImage
                       id={media.id}
@@ -201,7 +201,7 @@ export default function MediaLibraryPage() {
                   )}
                   <button
                     onClick={() => handleDelete(media.id)}
-                    className="absolute top-2 right-2 w-6 h-6 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity text-sm"
+                    className="absolute top-2 right-2 w-6 h-6 bg-rs-error text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity text-sm"
                   >
                     ×
                   </button>
@@ -210,7 +210,7 @@ export default function MediaLibraryPage() {
                   <div className="text-sm truncate" title={media.originalName}>
                     {media.originalName}
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-rs-ink-muted">
                     {formatFileSize(media.fileSize)}
                   </div>
                 </div>
@@ -224,7 +224,7 @@ export default function MediaLibraryPage() {
               <button
                 onClick={() => setPage(Math.max(0, page - 1))}
                 disabled={page === 0}
-                className="px-3 py-1 rounded bg-gray-100 disabled:opacity-50"
+                className="px-3 py-1 rounded bg-rs-disabled-bg disabled:opacity-50"
               >
                 上一頁
               </button>
@@ -234,7 +234,7 @@ export default function MediaLibraryPage() {
               <button
                 onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
                 disabled={page >= totalPages - 1}
-                className="px-3 py-1 rounded bg-gray-100 disabled:opacity-50"
+                className="px-3 py-1 rounded bg-rs-disabled-bg disabled:opacity-50"
               >
                 下一頁
               </button>

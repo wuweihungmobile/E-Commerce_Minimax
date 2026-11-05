@@ -449,9 +449,16 @@ class PaymentStateServiceStripeTest {
                 order.getTenantId(), order.getId(), BigDecimal.valueOf(500));
     }
 
+    /**
+     * Sprint 327（DEF-452）：原本這個案例叫 {@code refund_settlementHookThrows_doesNotFailRefund}，斷言『調整單拋例外不影響
+     * 已完成的退款』。那個承諾在真實環境不成立：{@code handleOrderRefund} 是 {@code @Transactional}（加入退款的交易），例外穿出它的
+     * 交易代理時共用交易就被標成 rollback-only，退款在提交時整個回滾；mock 沒有交易代理，所以舊案例看不到。契約改成：
+     * 調整單與退款同一個交易原子提交，例外原樣往外拋、不被吞（真實棧行為見
+     * {@code RefundSettlementAdjustmentFailureRealStackIntegrationTest}）。
+     */
     @Test
-    @DisplayName("Sprint 86: SettlementAdjustmentService 拋例外不影響已完成的退款主流程")
-    void refund_settlementHookThrows_doesNotFailRefund() {
+    @DisplayName("Sprint 327（DEF-452）: SettlementAdjustmentService 拋例外 → 原樣往外拋、不被吞（與退款同一個交易，整個退款回滾）")
+    void refund_settlementHookThrows_propagatesTheOriginalException() {
         Order order = paidOrder();
         Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
                 .amount(BigDecimal.valueOf(1500)).currency("TWD").status(Payment.PaymentStatus.SUCCESS)
@@ -463,12 +470,11 @@ class PaymentStateServiceStripeTest {
         when(paymentGatewayFactory.processRefund(eq("STRIPE"), eq("pi_1"), eq(BigDecimal.valueOf(500)), eq("damaged item"), any()))
                 .thenReturn(PaymentGatewayRequestResponse.RefundResult.builder()
                         .success(true).refundId("re_partial_1").status("succeeded").build());
-        org.mockito.Mockito.doThrow(new RuntimeException("settlement lookup failed"))
-                .when(settlementAdjustmentService).handleOrderRefund(any(), any(), any());
+        RuntimeException failure = new RuntimeException("settlement lookup failed");
+        org.mockito.Mockito.doThrow(failure).when(settlementAdjustmentService).handleOrderRefund(any(), any(), any());
 
-        service.refundOrderPayment(ORDER_ID, BigDecimal.valueOf(500), "damaged item");
-
-        assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.PARTIALLY_REFUNDED);
+        assertThatThrownBy(() -> service.refundOrderPayment(ORDER_ID, BigDecimal.valueOf(500), "damaged item"))
+                .isSameAs(failure);
     }
 
     @Test

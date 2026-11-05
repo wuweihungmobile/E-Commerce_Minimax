@@ -378,13 +378,8 @@ public class PaymentStateService {
                 "refunded=" + previousRefundedAmount, "refunded=" + newRefundedAmount + ",status=" + newPaymentStatus,
                 reason, TenantContext.getCurrentUser());
 
-        // Sprint 247（DEF-353，PRD §6.2.1）：跨結算週期退款處理，失敗不應影響已完成的退款主流程（比照 refundOrderPaymentCore）
-        try {
-            settlementAdjustmentService.handleBookingRefund(booking.getTenantId(), bookingId, refundAmount);
-        } catch (RuntimeException e) {
-            log.error("Settlement adjustment failed after booking refund: bookingId={}, error={}", bookingId,
-                    e.getMessage(), e);
-        }
+        // Sprint 247（DEF-353，PRD §6.2.1）：跨結算週期退款處理。與退款同一個交易原子提交、不吞例外，理由見 refundOrderPaymentCore
+        settlementAdjustmentService.handleBookingRefund(booking.getTenantId(), bookingId, refundAmount);
     }
 
     /**
@@ -447,13 +442,9 @@ public class PaymentStateService {
 
         // Sprint 247（DEF-353，PRD §6.2.1）：這類訂房（no-show，refundStatus 原為 NONE）很可能已被某次週結算
         // 認領為商家收益（見 BookingRepository 的可結算條件），管理員人工退款後必須比照訂單退款做跨期調整，
-        // 否則已撥給商家的款項裡會含一筆事後被全額退還的訂房金額，形成真實的錯帳。失敗不應影響已完成的退款主流程。
-        try {
-            settlementAdjustmentService.handleBookingRefund(booking.getTenantId(), bookingId, refundAmount);
-        } catch (RuntimeException e) {
-            log.error("Settlement adjustment failed after manual booking refund: bookingId={}, error={}", bookingId,
-                    e.getMessage(), e);
-        }
+        // 否則已撥給商家的款項裡會含一筆事後被全額退還的訂房金額，形成真實的錯帳。與退款同一個交易原子提交、不吞例外，
+        // 理由見 refundOrderPaymentCore。
+        settlementAdjustmentService.handleBookingRefund(booking.getTenantId(), bookingId, refundAmount);
         return toBookingPaymentStateDto(booking, payment);
     }
 
@@ -534,13 +525,13 @@ public class PaymentStateService {
                 "refunded=" + previousRefundedAmount, "refunded=" + newRefundedAmount + ",status=" + newPaymentStatus,
                 reason, TenantContext.getCurrentUser());
 
-        // Sprint 86（PRD §6.2.1）：跨結算週期退款處理，失敗不應影響已完成的退款主流程
-        try {
-            settlementAdjustmentService.handleOrderRefund(
-                    order.getTenantId(), order.getId(), refundAmount);
-        } catch (RuntimeException e) {
-            log.error("Settlement adjustment failed after refund: orderId={}, error={}", orderId, e.getMessage(), e);
-        }
+        // Sprint 86（PRD §6.2.1）：跨結算週期退款處理——退款涉及已結算的結算單時『系統自動生成』調整單，是退款的必然後果。
+        // 與退款同一個交易原子提交，刻意不吞例外（Sprint 327，DEF-452 實測；訂房兩處同理）：handleOrderRefund 是
+        // @Transactional（加入本交易），例外一穿出它的交易代理，共用交易就被標成 rollback-only——try/catch 救不了退款，
+        // 只會讓提交時改丟 UnexpectedRollbackException，呼叫者與自動退款的失敗稽核都看不到真正的原因
+        // （OrderService.compensateCancellation 對同一種形狀也是這個結論）。失敗時整個退款回滾，重試是安全的：
+        // Stripe 冪等鍵＝付款意圖＋退款前累計額＋本次金額（見 executeStripeRefund），不會多退。
+        settlementAdjustmentService.handleOrderRefund(order.getTenantId(), order.getId(), refundAmount);
 
         return toOrderPaymentStateDto(order, payment);
     }

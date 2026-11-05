@@ -33,6 +33,11 @@ import lombok.extern.slf4j.Slf4j;
  *   <li>{@code REJECTED}/{@code REVERSAL_PENDING}/{@code REVERSED}，或訂單/訂房尚未被任何結算單結算：不做事
  *       （被駁回結算單的訂單/訂房已釋放、之後重新結算時由 {@code Payment.refundedAmount} 帶入退款）</li>
  * </ul>
+ *
+ * <p>Sprint 327（DEF-452）：兩個入口加入呼叫端（退款）的交易，與退款<strong>同一個交易原子提交</strong>，呼叫端不吞例外。
+ * 這裡任何例外（資料庫錯誤、資料異常）都會讓整個退款回滾：例外一穿出本類別的交易代理，共用的交易就被標成 rollback-only，
+ * 呼叫端即使 catch 住，提交時仍會丟 {@code UnexpectedRollbackException}（實測見
+ * {@code RefundSettlementAdjustmentFailureRealStackIntegrationTest}）。回滾後重試是安全的，見 {@code PaymentStateService}。
  */
 @Slf4j
 @Service

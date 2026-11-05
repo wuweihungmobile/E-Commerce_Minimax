@@ -730,6 +730,26 @@ class PaymentStateServiceBookingTest {
             verify(paymentRepository).applyRefundIfUnchanged(eq(PAYMENT_ID), eq(new BigDecimal("2000.00")),
                     eq(new BigDecimal("3000.00")), eq(Payment.PaymentStatus.REFUNDED));
         }
+
+        @Test
+        @DisplayName("Sprint 247（DEF-353）：退款成功後呼叫訂房版跨結算週期調整（租戶、訂房、實際退款金額）")
+        void successfulRefund_invokesTheSettlementAdjustmentForTheBooking() {
+            given(pendingBooking("3000.00"), paidPayment(Payment.PaymentMethod.MOCK, "0"));
+
+            service.refundBookingPaymentAsSystem(BOOKING_ID, "x");
+
+            verify(settlementAdjustmentService).handleBookingRefund(TENANT_ID, BOOKING_ID, new BigDecimal("3000.00"));
+        }
+
+        @Test
+        @DisplayName("Sprint 327（DEF-452）：調整單處理拋例外 → 原樣往外拋、不被吞（調整單與退款同一個交易原子提交，整個退款回滾）")
+        void settlementAdjustmentFailure_propagatesTheOriginalException() {
+            given(pendingBooking("3000.00"), paidPayment(Payment.PaymentMethod.MOCK, "0"));
+            RuntimeException failure = new IllegalStateException("settlement lookup failed");
+            doThrow(failure).when(settlementAdjustmentService).handleBookingRefund(any(), any(), any());
+
+            assertThatThrownBy(() -> service.refundBookingPaymentAsSystem(BOOKING_ID, "x")).isSameAs(failure);
+        }
     }
 
     // ========== 人工退款（Sprint 246，DEF-354） ==========
@@ -884,6 +904,28 @@ class PaymentStateServiceBookingTest {
 
             assertThatThrownBy(() -> service.refundBookingPaymentManually(BOOKING_ID, null, "x"))
                     .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.E_6009));
+        }
+
+        @Test
+        @DisplayName("Sprint 247（DEF-353）：人工退款成功後呼叫訂房版跨結算週期調整（no-show 的訂房很可能已被週結算認領）")
+        void successfulRefund_invokesTheSettlementAdjustmentForTheBooking() {
+            given(noShowCancelledBooking(Booking.RefundStatus.NONE), paidPaymentOf(Payment.PaymentMethod.MOCK));
+            actAsAdmin();
+
+            service.refundBookingPaymentManually(BOOKING_ID, new BigDecimal("1000.00"), "x");
+
+            verify(settlementAdjustmentService).handleBookingRefund(TENANT_ID, BOOKING_ID, new BigDecimal("1000.00"));
+        }
+
+        @Test
+        @DisplayName("Sprint 327（DEF-452）：調整單處理拋例外 → 原樣往外拋、不被吞（整個人工退款回滾，管理員重試是安全的）")
+        void settlementAdjustmentFailure_propagatesTheOriginalException() {
+            given(noShowCancelledBooking(Booking.RefundStatus.NONE), paidPaymentOf(Payment.PaymentMethod.MOCK));
+            actAsAdmin();
+            RuntimeException failure = new IllegalStateException("settlement lookup failed");
+            doThrow(failure).when(settlementAdjustmentService).handleBookingRefund(any(), any(), any());
+
+            assertThatThrownBy(() -> service.refundBookingPaymentManually(BOOKING_ID, null, "x")).isSameAs(failure);
         }
     }
 }

@@ -1,9 +1,9 @@
 # API 規格文件 - M06 預訂系統 / API Specification - M06 Booking System
 
 > **文件編號**: API-M06
-> **文件版本**: v2.7（Sprint 318：DEF-440——§1.2 補記：取消訂房釋放日期、標記／解除維護也只動這間房自己的日曆列，不影響別家店鋪同一段日期，由真實棧測試守住）；v2.6（Sprint 317：DEF-439——§1.2 補記：日期鎖與日曆列的單位都是「房源＋日期」，不同房源〔含不同店鋪〕同一段日期互不衝突，由真實棧測試守住）；v2.5（Sprint 310：DEF-433——同鍵請求仍在處理中的 `409 E-6005` 補記修復前實為 500）；v2.4（Sprint 309：DEF-424——可用性報價補記動態定價開關以房源所屬店鋪把關）；v2.3（Sprint 247 訂房納入結算；v2.2 為 Sprint 246 新增狀態日誌、店家後台按鈕與人工退款；v2.1 為 Sprint 245 新增入住與退房；v2.0 為 Sprint 243 依實作改寫）
+> **文件版本**: v2.8（Sprint 327：DEF-452——§4.15 人工退款補記：跨結算週期調整單與退款同一個交易原子提交，調整單處理失敗時整個人工退款回滾，由真實棧測試守住）；v2.7（Sprint 318：DEF-440——§1.2 補記：取消訂房釋放日期、標記／解除維護也只動這間房自己的日曆列，不影響別家店鋪同一段日期，由真實棧測試守住）；v2.6（Sprint 317：DEF-439——§1.2 補記：日期鎖與日曆列的單位都是「房源＋日期」，不同房源〔含不同店鋪〕同一段日期互不衝突，由真實棧測試守住）；v2.5（Sprint 310：DEF-433——同鍵請求仍在處理中的 `409 E-6005` 補記修復前實為 500）；v2.4（Sprint 309：DEF-424——可用性報價補記動態定價開關以房源所屬店鋪把關）；v2.3（Sprint 247 訂房納入結算；v2.2 為 Sprint 246 新增狀態日誌、店家後台按鈕與人工退款；v2.1 為 Sprint 245 新增入住與退房；v2.0 為 Sprint 243 依實作改寫）
 > **建立日期**: 2026-04-28（v1.0，Sprint 4）
-> **最後更新**: 2026-10-31
+> **最後更新**: 2026-11-05
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`BookingController`、`BookingPaymentController`、`DashboardBookingController`、`BookingService`、`BookingNoShowService`、`RoomCalendarService`、`BookingRefundPolicy`、`PaymentStateService`、`BookingDto`、`GlobalExceptionHandler`；**每個回應形狀、狀態碼、錯誤碼與權限宣稱都用真實 PostgreSQL＋Redis（日曆鎖）＋完整 HTTP／JWT／權限鏈實測**（[BookingApiRealStackIntegrationTest](../../backend/src/test/java/com/nextkey/ecommerce/integration/BookingApiRealStackIntegrationTest.java)）
@@ -447,7 +447,7 @@
 
 **請求參數**（query，皆選填）：`amount`（未指定＝退實付全額；超過可退餘額回 `400 E-6009`）、`reason`（寫入稽核）。
 
-**行為**：與付款層共用的退款核心一致（CAS 佔用退款額度、Stripe 付款會真的呼叫 Stripe）；成功後 `refundStatus` 直接 `NONE → COMPLETED`（管理員的即時動作，不經過 `PENDING` 中繼態）。稽核寫入 `BOOKING_MANUAL_REFUND`。**Sprint 247（DEF-353）起**：這類訂房很可能已被某次週結算認領為商家收益（no-show 的 `refundStatus=NONE` 正是結算的可結算條件之一），退款會比照訂單走跨結算週期調整（已結算→生成下期折入的調整單；未結算→不動，之後結算時自然反映 0 收益）。
+**行為**：與付款層共用的退款核心一致（CAS 佔用退款額度、Stripe 付款會真的呼叫 Stripe）；成功後 `refundStatus` 直接 `NONE → COMPLETED`（管理員的即時動作，不經過 `PENDING` 中繼態）。稽核寫入 `BOOKING_MANUAL_REFUND`。**Sprint 247（DEF-353）起**：這類訂房很可能已被某次週結算認領為商家收益（no-show 的 `refundStatus=NONE` 正是結算的可結算條件之一），退款會比照訂單走跨結算週期調整（已結算→生成下期折入的調整單；未結算→不動，之後結算時自然反映 0 收益）。**Sprint 327（DEF-452）**：調整單處理與退款**同一個交易原子提交**——調整單處理失敗（資料庫錯誤、資料異常）時整個人工退款回滾，付款額度、訂房 `refundStatus`、稽核都不變，依一般的非業務例外回 `500 E-9900`；Stripe 付款時錢可能已經退出去，管理員重試是安全的（Stripe 冪等鍵＝付款意圖＋退款前累計額＋本次金額，不會多退）。此前的程式碼用 `try/catch` 吞掉調整單處理的例外、註解宣稱『不影響退款』，實測該承諾不成立（交易已被標成 rollback-only，退款照樣整個回滾）。
 
 **回應**：`200`，`data` 形狀同 §4.8（`OrderPaymentState`，`orderId` 欄位裝的是訂房 id）。
 

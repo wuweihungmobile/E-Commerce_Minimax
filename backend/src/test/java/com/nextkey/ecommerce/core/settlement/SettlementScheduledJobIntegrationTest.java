@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
@@ -29,6 +30,7 @@ import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
+import com.nextkey.ecommerce.infrastructure.persistence.UniqueConflictRetry;
 
 /**
  * SettlementGenerator Scheduled Job 實測驗證
@@ -74,6 +76,9 @@ class SettlementScheduledJobIntegrationTest {
     @Mock
     private SettlementMapper mapper;
 
+    private final UniqueConflictRetry uniqueConflictRetry =
+            new UniqueConflictRetry(mock(PlatformTransactionManager.class));
+
     private SettlementGenerator settlementGenerator;
 
     /** DEF-273：生成結算單會原子認領訂單；預設「全部認領成功」，個別測試如需驗證衝突可覆寫。 */
@@ -96,7 +101,7 @@ class SettlementScheduledJobIntegrationTest {
         // 重新建立 generator 確保 mock 是 fresh
         settlementGenerator = new SettlementGenerator(
                 settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
-                adjustmentRepository, calculator, mapper);
+                adjustmentRepository, calculator, mapper, uniqueConflictRetry);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
                 .thenReturn(List.of(tenant1, tenant2, tenant3));
@@ -161,7 +166,7 @@ class SettlementScheduledJobIntegrationTest {
         Tenant tenant = createActiveTenant("tenant-1");
         settlementGenerator = new SettlementGenerator(
                 settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
-                adjustmentRepository, calculator, mapper);
+                adjustmentRepository, calculator, mapper, uniqueConflictRetry);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
                 .thenReturn(List.of(tenant));
@@ -194,7 +199,7 @@ class SettlementScheduledJobIntegrationTest {
         Tenant tenant = createActiveTenant("tenant-1");
         settlementGenerator = new SettlementGenerator(
                 settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
-                adjustmentRepository, calculator, mapper);
+                adjustmentRepository, calculator, mapper, uniqueConflictRetry);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
                 .thenReturn(List.of(tenant));
@@ -234,7 +239,7 @@ class SettlementScheduledJobIntegrationTest {
         Tenant tenant = createActiveTenant("tenant-1");
         settlementGenerator = new SettlementGenerator(
                 settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
-                adjustmentRepository, calculator, mapper);
+                adjustmentRepository, calculator, mapper, uniqueConflictRetry);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
                 .thenReturn(List.of(tenant));
@@ -281,7 +286,7 @@ class SettlementScheduledJobIntegrationTest {
         Tenant tenant2 = createActiveTenant("tenant-2");
         settlementGenerator = new SettlementGenerator(
                 settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
-                adjustmentRepository, calculator, mapper);
+                adjustmentRepository, calculator, mapper, uniqueConflictRetry);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE))
                 .thenReturn(List.of(tenant1, tenant2));
@@ -334,7 +339,7 @@ class SettlementScheduledJobIntegrationTest {
                 .build();
         settlementGenerator = new SettlementGenerator(
                 settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
-                adjustmentRepository, calculator, mapper);
+                adjustmentRepository, calculator, mapper, uniqueConflictRetry);
 
         when(tenantRepository.findByStatus(TenantStatus.ACTIVE)).thenReturn(List.of(tenant));
         when(tenantRepository.findById(tenant.getId())).thenReturn(Optional.of(tenant));
@@ -380,7 +385,7 @@ class SettlementScheduledJobIntegrationTest {
         Tenant tenant = createActiveTenant("tenant-1");
         settlementGenerator = new SettlementGenerator(
                 settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
-                adjustmentRepository, calculator, mapper);
+                adjustmentRepository, calculator, mapper, uniqueConflictRetry);
 
         UUID otherStatementId = UUID.randomUUID();
         com.nextkey.ecommerce.domain.model.settlement.SettlementAdjustment adjustment1 =
@@ -446,7 +451,7 @@ class SettlementScheduledJobIntegrationTest {
         Tenant tenant = createActiveTenant("tenant-1");
         settlementGenerator = new SettlementGenerator(
                 settlementRepository, tenantRepository, orderRepository, bookingRepository, paymentRepository,
-                adjustmentRepository, calculator, mapper);
+                adjustmentRepository, calculator, mapper, uniqueConflictRetry);
 
         List<Order> orders = createCompletedOrders(2, "1000");
         Order refundedOrder = orders.get(0);

@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.settlement;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,6 +23,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import com.nextkey.ecommerce.domain.model.order.Order;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
@@ -32,6 +34,7 @@ import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
+import com.nextkey.ecommerce.infrastructure.persistence.UniqueConflictRetry;
 
 /**
  * DEF-273：結算單認領訂單的併發防護。
@@ -58,6 +61,9 @@ class SettlementGeneratorClaimTest {
     private final Order orderA = order();
     private final Order orderB = order();
 
+    private final UniqueConflictRetry uniqueConflictRetry =
+            new UniqueConflictRetry(mock(PlatformTransactionManager.class));
+
     private SettlementGenerator generator;
 
     private static Order order() {
@@ -68,7 +74,7 @@ class SettlementGeneratorClaimTest {
     @BeforeEach
     void setUp() {
         generator = new SettlementGenerator(settlementRepository, tenantRepository, orderRepository,
-                bookingRepository, paymentRepository, adjustmentRepository, new SettlementCalculator(), mapper);
+                bookingRepository, paymentRepository, adjustmentRepository, new SettlementCalculator(), mapper, uniqueConflictRetry);
         when(settlementRepository.findByTenantIdAndPeriodStartBetween(any(), any(), any())).thenReturn(List.of());
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(
                 Tenant.builder().id(TENANT_ID).status(Tenant.TenantStatus.ACTIVE).name("t").commissionRate(0.05).build()));

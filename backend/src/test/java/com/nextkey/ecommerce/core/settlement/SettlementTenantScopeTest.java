@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.settlement;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -18,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import com.nextkey.ecommerce.core.audit.AuditService;
 import com.nextkey.ecommerce.core.settlement.SettlementService.SettlementStatementListResponse;
@@ -33,6 +35,7 @@ import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
+import com.nextkey.ecommerce.infrastructure.persistence.UniqueConflictRetry;
 
 /**
  * 結算單店家層端點的租戶範圍（Sprint 234）。
@@ -62,13 +65,16 @@ class SettlementTenantScopeTest {
     /** 沒有店鋪的使用者（一般買家）的租戶：系統租戶佔位值，不是 null，且所有這類使用者共用。 */
     private static final UUID SYSTEM_TENANT_ID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
 
+    private final UniqueConflictRetry uniqueConflictRetry =
+            new UniqueConflictRetry(mock(PlatformTransactionManager.class));
+
     private SettlementGenerator generator;
     private SettlementReviewer reviewer;
 
     @BeforeEach
     void setUp() {
         generator = new SettlementGenerator(settlementRepository, tenantRepository, orderRepository,
-                bookingRepository, paymentRepository, adjustmentRepository, new SettlementCalculator(), mapper);
+                bookingRepository, paymentRepository, adjustmentRepository, new SettlementCalculator(), mapper, uniqueConflictRetry);
         reviewer = new SettlementReviewer(settlementRepository, mapper, transferService, userRepository,
                 auditService, orderRepository, bookingRepository, adjustmentRepository);
     }

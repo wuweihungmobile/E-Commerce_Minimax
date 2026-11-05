@@ -3,6 +3,7 @@ package com.nextkey.ecommerce.core.settlement;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -24,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import com.nextkey.ecommerce.domain.model.settlement.SettlementStatement;
 import com.nextkey.ecommerce.domain.model.tenant.Tenant;
@@ -33,6 +35,7 @@ import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
+import com.nextkey.ecommerce.infrastructure.persistence.UniqueConflictRetry;
 import com.nextkey.ecommerce.shared.time.BusinessTime;
 
 /**
@@ -57,9 +60,12 @@ class SettlementGeneratorBusinessWeekTest {
 
     private static final UUID TENANT_ID = UUID.randomUUID();
 
+    private final UniqueConflictRetry uniqueConflictRetry =
+            new UniqueConflictRetry(mock(PlatformTransactionManager.class));
+
     private SettlementGenerator newGenerator() {
         return new SettlementGenerator(settlementRepository, tenantRepository, orderRepository, bookingRepository,
-                paymentRepository, adjustmentRepository, new SettlementCalculator(), mapper);
+                paymentRepository, adjustmentRepository, new SettlementCalculator(), mapper, uniqueConflictRetry);
     }
 
     private Tenant tenant() {

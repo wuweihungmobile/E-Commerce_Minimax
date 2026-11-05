@@ -128,7 +128,9 @@ ORDER BY t.name;
 
 **現象**: 應用日誌出現 `Failed to generate settlement statement for tenant: {tenantId}`
 
-**影響**: 該 Tenant 當週無結算單，**但其他 Tenant 仍正常處理**（異常隔離設計）
+**影響**: 該 Tenant 當週無結算單，**但其他 Tenant 仍正常處理**（異常隔離設計）。
+
+> **Sprint 326 之前這句話對資料庫層級的失敗並不成立**（DEF-451）：整個週結算作業曾是單一交易，任一租戶發生唯一約束、死鎖、逾時等資料庫失敗，所有租戶的結算單會一起被回滾，作業以 `UnexpectedRollbackException` 結束（探針日誌的徵兆：失敗租戶之後的租戶也接連 `Failed to generate`〔`current transaction is aborted`〕，作業以 `UnexpectedRollbackException … marked as rollback-only` 結束；排程器端怎麼記錄這個例外沒有量過）。Sprint 326 起每個租戶各自一個交易，失敗只回滾失敗的那個租戶。若看到歷史上某週一次全部租戶都沒有結算單，先查這個徵兆。
 
 **處理**:
 ```bash

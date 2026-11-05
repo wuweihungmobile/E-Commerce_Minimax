@@ -30,6 +30,7 @@ import com.nextkey.ecommerce.domain.repository.PaymentRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementAdjustmentRepository;
 import com.nextkey.ecommerce.domain.repository.settlement.SettlementStatementRepository;
+import com.nextkey.ecommerce.infrastructure.persistence.UniqueConflictRetry;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
 import com.nextkey.ecommerce.shared.tenant.TenantContext;
@@ -67,15 +68,22 @@ public class SettlementGenerator {
     private final SettlementAdjustmentRepository adjustmentRepository;
     private final SettlementCalculator calculator;
     private final SettlementMapper mapper;
+    private final UniqueConflictRetry uniqueConflictRetry;
 
     /**
      * 每週一凌晨自動生成結算單
      * 結算上一週 (週一 00:00 至 週日 23:59) 的已完成訂單
+     *
+     * <p>DEF-451：這個方法<b>不開交易</b>，每個租戶的生成各自一個交易（{@link UniqueConflictRetry#execute}）。
+     * 原本整個方法是一個 {@code @Transactional}，而 {@link #generateStatementForTenant} 是同類別的自我呼叫、
+     * 自己的 {@code @Transactional} 不生效，所以所有租戶共用一個交易：任一租戶發生資料庫層級的失敗（唯一約束、死鎖、逾時），
+     * PostgreSQL 把整個交易標成中止，全部租戶（包含失敗者之前已處理好的）一起丟掉；而「認領筆數不足」的
+     * {@link IllegalStateException} 被下面的 {@code try/catch} 吞掉後外層交易照常提交，『回滾整張結算單』的承諾不成立。
+     * 逐租戶一個交易之後，失敗只回滾失敗的那個租戶自己，其他租戶不受影響。
      */
     // DEF-271（使用者 2026-09-24 拍板）：結算週以營運時區（UTC+8）切分。未指定 zone 時 Spring 以 JVM
     // 預設時區解讀 cron，正式容器（UTC）會變成「台灣週一 08:00」才觸發，且與開發機（台灣）切出不同的週期。
     @Scheduled(cron = "0 0 0 ? * MON", zone = BusinessTime.ZONE_ID)
-    @Transactional
     public void generateWeeklyStatements() {
         log.info("Starting weekly settlement statement generation");
 
@@ -90,10 +98,11 @@ public class SettlementGenerator {
         int generatedCount = 0;
         for (Tenant tenant : activeTenants) {
             try {
-                generateStatementForTenant(tenant.getId(), lastWeekMonday, lastWeekSunday);
+                uniqueConflictRetry.execute(
+                        () -> generateStatementForTenant(tenant.getId(), lastWeekMonday, lastWeekSunday));
                 generatedCount++;
             } catch (RuntimeException e) {
-                // Batch 容錯：單一 tenant 失敗不中斷整個排程，確保其他 tenant 仍能完成結算
+                // Batch 容錯：單一 tenant 失敗不中斷整個排程，確保其他 tenant 仍能完成結算（該租戶自己的交易已整個回滾）
                 log.error("Failed to generate settlement statement for tenant: {}", tenant.getId(), e);
             }
         }
@@ -190,7 +199,8 @@ public class SettlementGenerator {
 
         // DEF-273：原子認領這批訂單（UPDATE ... WHERE settled_statement_id IS NULL）。認領筆數不足代表有訂單在
         // 讀取與認領之間被另一個結算搶先認領（例如兩個節點同時跑排程）——必須回滾整張結算單，否則同一筆訂單
-        // 會被兩張結算單各結算一次。IllegalStateException 由 generateWeeklyStatements 逐租戶攔截並記錄，下次重試。
+        // 會被兩張結算單各結算一次。IllegalStateException 由 generateWeeklyStatements 逐租戶攔截並記錄，下次重試
+        // ——該租戶自己的交易（DEF-451：逐租戶一個交易）已整個回滾，結算單與已認領的那幾筆都不會留下。
         if (!completedOrders.isEmpty()) {
             List<UUID> orderIds = completedOrders.stream().map(Order::getId).toList();
             int claimed = orderRepository.markSettled(orderIds, statement.getId());
@@ -270,15 +280,19 @@ public class SettlementGenerator {
      * <p>刻意只加驗證與轉換，不重複實作防護：{@link #generateStatementForTenant} 既有的「同租戶＋
      * 期間已有結算單就直接回傳既有的」冪等檢查與「原子認領訂單」併發防護，對排程與本方法一視同仁，
      * 手動觸發不會讓同一筆訂單被兩張結算單重複結算。
+     *
+     * <p>DEF-450：這個方法<b>不開交易</b>，整個生成動作交給 {@link UniqueConflictRetry}。同一期間的兩個並行請求都通過
+     * 「是否已有結算單」的檢查後各自 INSERT，輸的那個撞 {@code (tenant_id, statement_number)} 唯一約束
+     * （結算單號是決定性的）；它的交易整個回滾、在新交易裡重做，重做時冪等檢查看得到贏家的結算單並直接回傳——
+     * 端點文件承諾的冪等因此在並行下也成立（原本輸家得 {@code 500 E-9900}）。
      */
-    @Transactional
     public SettlementStatementResponse generateStatementManually(
             UUID tenantId, LocalDate periodStart, LocalDate periodEnd) {
         if (periodEnd.isBefore(periodStart)) {
             throw new BusinessException(ErrorCode.E_9008, "periodEnd must not be before periodStart");
         }
-        SettlementStatement statement = generateStatementForTenant(tenantId, periodStart, periodEnd);
-        return mapper.toStatementResponse(statement);
+        return uniqueConflictRetry.execute(
+                () -> mapper.toStatementResponse(generateStatementForTenant(tenantId, periodStart, periodEnd)));
     }
 
     /**

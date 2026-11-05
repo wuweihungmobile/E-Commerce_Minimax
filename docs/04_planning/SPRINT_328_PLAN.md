@@ -229,4 +229,11 @@
 
 ## 10. 狀態
 
-（待回填：commit、push、雲端 CI）
+- **狀態**：實作、新 E2E（7 案例）、突變驗證、完整本地 E2E 守門（302／302）、文件均完成；追蹤表登記 `DEF-454`；`AI-1904`（FRD 階段三）本輪結案（見 FRD §7.1）。**沒有後端變更**。
+- **push**：依 2026-10-29 長期授權直接 push：`3e03d234..0d69f9db`（連同 Sprint 327 留在本機的純文件回填 commit `89623513`）；沒有詢問、沒有使用 `--no-verify`；pre-commit（`eslint --fix`＋`tsc`＋secret 掃描）與 pre-push 輕量守門（後端單元〔act〕、schema 漂移、前端）都一次通過。
+- **雲端 CI 全綠**：run [42064093164](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/42064093164)，三個 job 皆 success（後端單元 2:42、前端 lint＆build 1:07、後端整合 8:04，整個 run 約 10 分 50 秒），以 `gh run view --json` 交叉確認 `headSha` 與本機 commit 一致；下載整合 job 的完整日誌（約 69 MB）核對 **整合 1027／0**（140 個類別沒有任何失敗；與 Sprint 327 相同，符合沒有後端變更）、Checkstyle 0 違規、`BUILD SUCCESS`。這個 workflow 的三個 job **不含 Playwright**，E2E 的證據是本機的 302／302。
+  - 兩個工具上的小失誤：①`gh run watch` 第一次因網路連線被重置回 1（日誌是 `failed to get run … read: ca…`，**不是 CI 失敗**），改用 `gh run view --json` 確認後重新 watch；②`gh api …/logs` 沒加 `--allow-escape-sequences`，得到 0 bytes 的日誌檔，而我的核對腳本讀空檔也「成功結束」——記憶裡早就有這條，我又忘了一次。
+- **本回填 commit 只改文件，刻意不 push**，隨下一輪的 push 帶出（沿用 Sprint 322～327）。
+- **收尾 Docker 清理**（所有 Docker 用途結束之後、雲端 CI 還在跑時）：盤點容器 0、映像 3 個（核准基底，無懸空）、卷 13＝8 匿名＋5 具名（1.178GB）、建置快取 25 筆 1.889GB；逐一刪 8 個匿名卷（0 失敗），卷→928MB，`docker image prune -f` 回收 0B；保留 5 個具名卷（`act-toolcache`、`e-commerce_minimax_maven_cache`／`minio_data`／`postgres_data`／`redis_data`）與 3 個核准基底映像；建置快取只回報、不刪。Docker Desktop 開工前就在跑，未關閉。匿名卷比平常的 4 個多：這輪跑了 3 次本地 E2E 守門（含 1 次中止的）、我自己起的 2 次全棧、1 次 pre-push 守門；沒有逐一驗證來源。
+- **仍等你決定**：沿用 Sprint 327 的清單（`DEF-294`、`DEF-449`、`DEF-419`、舊規則資料遷移、`make down-clean` 流程、Docker 建置快取、Sprint 325 的兩個觀察、退款 fail-open 的取捨）。**本輪新增兩件請你看一眼的 UI 事項**：①蓮田／柔彩／橄欖三個主題我沒看過畫面（色票逐項一致、E2E 只切了藍↔綠）；②設計稿的 `error`／`success`／`ink-muted` 對白底對比度偏低，我沿用 token 沒加深——要不要在設計稿層面加深，是你的設計決定。
+- **下次說『請繼續』我可以直接做**：`DEF-453` 的補量測（Sprint 327 總結的下一步，本輪順延）。`DEF-454`（店面 Header 窄螢幕怎麼收）是設計題，我可以先量測影響範圍並提出方案，但頂欄怎麼收要你定。

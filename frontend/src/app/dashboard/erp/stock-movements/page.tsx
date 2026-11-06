@@ -14,6 +14,7 @@ import { useAsyncData } from '@/hooks/useAsyncData'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
+import { PageTitle } from '@/components/ui/page-title'
 
 export default function StockMovementsPage() {
   const router = useRouter()
@@ -71,6 +72,7 @@ export default function StockMovementsPage() {
 
   return (
     <div className="space-y-6">
+      <PageTitle className="sr-only">庫存異動</PageTitle>
       <div className="flex justify-between items-center">
         <div className="text-sm text-rs-ink-muted">
           共 {totalElements} 筆異動記錄

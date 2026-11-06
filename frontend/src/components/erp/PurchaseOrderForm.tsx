@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -13,9 +13,8 @@ import {
   POStatus,
 } from '@/services/erp/purchaseOrder'
 import SupplierService, { SupplierDto } from '@/services/erp/supplier'
-import PurchaseOrderService from '@/services/erp/purchaseOrder'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import PurchaseOrderService, { type PurchaseOrderDto } from '@/services/erp/purchaseOrder'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/native-select'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableFooter, TableCell } from '@/components/ui/table'
@@ -44,106 +43,104 @@ interface OrderItem {
   subtotal: number
 }
 
+// 檢視／編輯／收貨模式先載入採購單，載入完成才掛載表單：表單初值由載入的資料一次帶入，之後是使用者的編輯。
+// 建立模式不載入採購單，直接掛載空表單；載入失敗時仍顯示表單與錯誤訊息（與原本相同）。
+// 登入守門在賣家外殼（SellerShell），這裡不再自己檢查。
 export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormProps) {
+  const { data: order, error: loadError, loading } = useAsyncData(
+    () => PurchaseOrderService.getPurchaseOrder(orderId!),
+    [orderId],
+    { enabled: Boolean(orderId) && mode !== 'create', errorMessage: '載入採購訂單失敗' }
+  )
+
+  if (loading) {
+    return (
+      <LoadingState />
+    )
+  }
+
+  return <PurchaseOrderFormBody orderId={orderId} mode={mode} order={order} loadError={loadError} />
+}
+
+function PurchaseOrderFormBody({
+  orderId,
+  mode,
+  order,
+  loadError,
+}: PurchaseOrderFormProps & { order?: PurchaseOrderDto; loadError: string | null }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [initialLoading, setInitialLoading] = useState(orderId ? true : false)
-  const [suppliers, setSuppliers] = useState<SupplierDto[]>([])
-  const [listingOptions, setListingOptions] = useState<ListingOption[]>([])
+  const [error, setError] = useState<string | null>(loadError)
 
-  const [formData, setFormData] = useState<PurchaseOrderCreateRequest>({
-    supplierId: '',
-    expectedDeliveryDate: '',
-    notes: '',
-    items: [],
-  })
+  // 建立模式才需要的下拉選項（供應商、可選商品）；載入失敗只記錄，下拉就沒有選項（與原本相同）
+  const { data: suppliersData } = useAsyncData(
+    () => SupplierService.listSuppliers('ACTIVE'),
+    [],
+    {
+      enabled: mode === 'create',
+      errorMessage: '載入供應商失敗',
+      onError: (_message, err) => console.error('Failed to fetch suppliers:', err),
+    }
+  )
+  const suppliers: SupplierDto[] = suppliersData ?? []
+  // DEF-076：前端原本沒有任何選擇 listing 的來源，建單品項的 listingId 永遠無法送出
+  const { data: listingOptionsData } = useAsyncData(
+    () => PurchaseOrderService.listListingOptions(),
+    [],
+    {
+      enabled: mode === 'create',
+      errorMessage: '載入商品選項失敗',
+      onError: (_message, err) => console.error('Failed to fetch listing options:', err),
+    }
+  )
+  const listingOptions: ListingOption[] = listingOptionsData ?? []
 
-  const [items, setItems] = useState<OrderItem[]>([
-    { id: '', listingId: '', skuId: '', skuCode: '', productName: '', quantity: 1, receivedQuantity: 0, unitPrice: 0, subtotal: 0 },
-  ])
-
-  const [orderStatus, setOrderStatus] = useState<POStatus | null>(null)
-  const [rejectionReason, setRejectionReason] = useState<string | null>(null)
-
-  const fetchOrder = useCallback(async () => {
-    if (!orderId) return
-    setInitialLoading(true)
-    try {
-      const data = await PurchaseOrderService.getPurchaseOrder(orderId)
-      setOrderStatus(data.status)
-      setRejectionReason(data.rejectionReason || null)
-      if (mode === 'receive') {
-        setItems(data.items.map(item => ({
-          id: item.id,
-          listingId: item.listingId,
-          skuId: item.skuId,
-          skuCode: item.skuCode,
-          productName: item.productName,
-          quantity: item.quantity,
-          receivedQuantity: item.receivedQuantity,
-          // 預設帶入尚未收到的剩餘量，使用者可再調整（DEF-071：原本沒有輸入框，只會把舊的已收數量原樣送回）
-          receiveQty: Math.max(0, item.quantity - item.receivedQuantity),
-          unitPrice: item.unitPrice,
-          subtotal: item.subtotal,
-        })))
-      } else {
-        setFormData({
-          supplierId: data.supplierId,
+  const [formData, setFormData] = useState<PurchaseOrderCreateRequest>(() =>
+    order && mode !== 'receive'
+      ? {
+          supplierId: order.supplierId,
           // DEF-078：expectedDeliveryDate 為選填欄位，既有（修復前建立的）採購單恆為 null
-          expectedDeliveryDate: data.expectedDeliveryDate ? data.expectedDeliveryDate.split('T')[0] : '',
-          notes: data.notes || '',
-          items: data.items.map(item => ({
+          expectedDeliveryDate: order.expectedDeliveryDate ? order.expectedDeliveryDate.split('T')[0] : '',
+          notes: order.notes || '',
+          items: order.items.map(item => ({
             listingId: item.listingId,
             skuId: item.skuId,
             quantity: item.quantity,
             unitCost: item.unitPrice,
           })),
-        })
-        setItems(data.items)
-      }
-      if (mode === 'create') {
-        fetchSuppliers()
-      }
-    } catch (err: unknown) {
-      setError(apiErrorMessage(err, '載入採購訂單失敗'))
-    } finally {
-      setInitialLoading(false)
-    }
-  }, [orderId, mode])
+        }
+      : {
+          supplierId: '',
+          expectedDeliveryDate: '',
+          notes: '',
+          items: [],
+        }
+  )
 
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
+  const [items, setItems] = useState<OrderItem[]>(() => {
+    if (order && mode === 'receive') {
+      return order.items.map(item => ({
+        id: item.id,
+        listingId: item.listingId,
+        skuId: item.skuId,
+        skuCode: item.skuCode,
+        productName: item.productName,
+        quantity: item.quantity,
+        receivedQuantity: item.receivedQuantity,
+        // 預設帶入尚未收到的剩餘量，使用者可再調整（DEF-071：原本沒有輸入框，只會把舊的已收數量原樣送回）
+        receiveQty: Math.max(0, item.quantity - item.receivedQuantity),
+        unitPrice: item.unitPrice,
+        subtotal: item.subtotal,
+      }))
     }
+    if (order) return order.items
+    return [
+      { id: '', listingId: '', skuId: '', skuCode: '', productName: '', quantity: 1, receivedQuantity: 0, unitPrice: 0, subtotal: 0 },
+    ]
+  })
 
-    if (mode === 'create') {
-      fetchSuppliers()
-      fetchListingOptions()
-    } else if (orderId) {
-      fetchOrder()
-    }
-  }, [router, orderId, mode, fetchOrder])
-
-  const fetchSuppliers = async () => {
-    try {
-      const data = await SupplierService.listSuppliers('ACTIVE')
-      setSuppliers(data)
-    } catch (err) {
-      console.error('Failed to fetch suppliers:', err)
-    }
-  }
-
-  // DEF-076：前端原本沒有任何選擇 listing 的來源，建單品項的 listingId 永遠無法送出
-  const fetchListingOptions = async () => {
-    try {
-      const data = await PurchaseOrderService.listListingOptions()
-      setListingOptions(data)
-    } catch (err) {
-      console.error('Failed to fetch listing options:', err)
-    }
-  }
+  const orderStatus: POStatus | null = order?.status ?? null
+  const rejectionReason: string | null = order?.rejectionReason || null
 
   const handleSupplierChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setFormData(prev => ({ ...prev, supplierId: e.target.value }))
@@ -324,12 +321,6 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
     } finally {
       setLoading(false)
     }
-  }
-
-  if (initialLoading) {
-    return (
-      <LoadingState />
-    )
   }
 
   const isViewMode = mode === 'view'

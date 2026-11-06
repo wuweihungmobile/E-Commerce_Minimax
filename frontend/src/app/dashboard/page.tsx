@@ -6,6 +6,7 @@ import { useAsyncData } from '@/hooks/useAsyncData'
 import { Alert } from '@/components/ui/alert'
 import { Card } from '@/components/ui/card'
 import { LoadingState } from '@/components/ui/states'
+import { PageTitle } from '@/components/ui/page-title'
 
 // 快速管理入口已移到共用賣家外殼的側欄（components/layout/sellerNav.ts，沿用原本的標籤與 data-testid），
 // 本頁只留營運數據。
@@ -57,7 +58,7 @@ export default function DashboardPage() {
   return (
     <div>
       <main>
-        <h2 className="text-lg font-medium text-rs-ink mb-4">營運總覽</h2>
+        <PageTitle className="mb-4 text-lg font-medium">營運總覽</PageTitle>
 
         {error ? (
           <Alert variant="destructive" className="mb-6">

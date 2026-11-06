@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   getMediaAssets,
   deleteMediaAsset,
@@ -8,7 +8,6 @@ import {
   createMediaCategory,
   uploadMediaAssetMultipart,
   getMediaAssetFileBlob,
-  MediaCategoryDto,
 } from '@/services/media';
 import { useAsyncData } from '@/hooks/useAsyncData';
 import { AuthenticatedImage } from '@/components/ui/authenticated-image';
@@ -27,7 +26,6 @@ export default function MediaPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [mimeTypeFilter, setMimeTypeFilter] = useState<string>('');
   const [keyword, setKeyword] = useState<string>('');
-  const [categories, setCategories] = useState<MediaCategoryDto[]>([]);
   const [deleting, setDeleting] = useState<string | null>(null);
 
   // Sprint 132（DEF-096）：真實檔案上傳 + 快速新增分類
@@ -38,9 +36,16 @@ export default function MediaPage() {
   const [creatingCategory, setCreatingCategory] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    loadCategories();
-  }, []);
+  // 分類只是篩選／上傳用的選項：載入失敗只記錄，下拉就沒有選項
+  const { data: categoriesData, reload: loadCategories } = useAsyncData(
+    () => getMediaCategories(),
+    [],
+    {
+      errorMessage: () => '載入分類失敗',
+      onError: (_message, error) => console.error('Failed to load categories:', error),
+    }
+  );
+  const categories = categoriesData ?? [];
 
   const { data, loading, reload } = useAsyncData(
     () => {
@@ -71,15 +76,6 @@ export default function MediaPage() {
   const media = data?.content ?? [];
   const totalPages = data?.totalPages ?? 0;
   const totalElements = data?.totalElements ?? 0;
-
-  async function loadCategories() {
-    try {
-      const data = await getMediaCategories();
-      setCategories(data);
-    } catch (error) {
-      console.error('Failed to load categories:', error);
-    }
-  }
 
   async function handleUpload(file: File) {
     setUploading(true);

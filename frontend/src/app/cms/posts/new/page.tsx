@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useAsyncData } from '@/hooks/useAsyncData';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createPost, getCategories, CategoryResponse, CreatePostRequest } from '@/services/cms';
+import { createPost, getCategories, CreatePostRequest } from '@/services/cms';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -16,7 +17,6 @@ import { toast } from '@/components/ui/toast';
 export default function NewPostPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [categories, setCategories] = useState<CategoryResponse[]>([]);
   const [formData, setFormData] = useState<CreatePostRequest>({
     title: '',
     content: '',
@@ -27,18 +27,16 @@ export default function NewPostPage() {
   });
   const [tagInput, setTagInput] = useState('');
 
-  useEffect(() => {
-    loadCategories();
-  }, []);
-
-  async function loadCategories() {
-    try {
-      const data = await getCategories();
-      setCategories(data.categories);
-    } catch (error) {
-      console.error('Failed to load categories:', error);
+  // 分類只是下拉選項：載入失敗只記錄
+  const { data: categoriesData } = useAsyncData(
+    () => getCategories(),
+    [],
+    {
+      errorMessage: () => '載入分類失敗',
+      onError: (_message, error) => console.error('Failed to load categories:', error),
     }
-  }
+  );
+  const categories = categoriesData?.categories ?? [];
 
   async function handleSubmit(e: React.FormEvent, autoPublish = false) {
     e.preventDefault();

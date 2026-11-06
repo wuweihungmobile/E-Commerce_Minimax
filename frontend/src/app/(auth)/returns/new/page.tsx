@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import OrderService, { type Order } from '@/services/order'
@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 const RETURNABLE_STATUSES = new Set<Order['status']>(['DELIVERED', 'COMPLETED'])
 
@@ -25,42 +26,26 @@ const RETURNABLE_STATUSES = new Set<Order['status']>(['DELIVERED', 'COMPLETED'])
 export default function NewReturnPage() {
   const router = useRouter()
 
-  const [order, setOrder] = useState<Order | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
-
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    // 於 client 端讀 orderId（避免 useSearchParams 的 Suspense 邊界需求，比照付款回跳頁）
-    const orderId = new URLSearchParams(window.location.search).get('orderId')
-    const run = orderId
-      ? OrderService.getOrder(orderId)
-      : Promise.reject(new Error('no-order-id'))
-    run
-      .then((detail) => {
-        if (cancelled) return
-        setOrder(detail)
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        setLoadError(
-          err instanceof Error && err.message === 'no-order-id'
-            ? '缺少訂單資訊，請由訂單詳情頁提出退貨申請'
-            : apiErrorMessage(err, '無法載入訂單詳情，請稍後再試')
-        )
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
+  const { data: order, error: loadError, loading } = useAsyncData(
+    async () => {
+      // 於 client 端讀 orderId（避免 useSearchParams 的 Suspense 邊界需求，比照付款回跳頁）
+      const orderId = new URLSearchParams(window.location.search).get('orderId')
+      if (!orderId) throw new Error('no-order-id')
+      return OrderService.getOrder(orderId)
+    },
+    [],
+    {
+      errorMessage: ({ message }, err) =>
+        err instanceof Error && err.message === 'no-order-id'
+          ? '缺少訂單資訊，請由訂單詳情頁提出退貨申請'
+          : message || '無法載入訂單詳情，請稍後再試',
     }
-  }, [])
+  )
 
   function setQuantity(itemId: string, max: number, value: number) {
     const clamped = Math.max(0, Math.min(max, Math.floor(value) || 0))
@@ -111,6 +96,7 @@ export default function NewReturnPage() {
   if (loadError || !order) {
     return (
       <StorefrontShell>
+        <PageTitle className="sr-only">申請退貨</PageTitle>
         <Alert variant="destructive" className="mb-4">
           <AlertDescription>{loadError || '找不到此訂單'}</AlertDescription>
         </Alert>
@@ -124,6 +110,7 @@ export default function NewReturnPage() {
   if (!RETURNABLE_STATUSES.has(order.status)) {
     return (
       <StorefrontShell>
+        <PageTitle className="sr-only">申請退貨</PageTitle>
         <Alert variant="destructive" className="mb-4">
           <AlertDescription>此訂單目前狀態不允許申請退貨（須為已送達或已完成）</AlertDescription>
         </Alert>

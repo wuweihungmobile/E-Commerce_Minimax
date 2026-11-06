@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import AddressService, { type Address, type AddressInput } from '@/services/address'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/ui/states'
 import { confirmDialog } from '@/components/ui/confirm-dialog'
 import { toast } from '@/components/ui/toast'
 import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 const EMPTY_FORM: AddressInput = {
   recipientName: '',
@@ -28,40 +29,21 @@ const EMPTY_FORM: AddressInput = {
 const PHONE_PATTERN = /^09\d{8}$/
 
 export default function AddressesPage() {
-  const [addresses, setAddresses] = useState<Address[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, error, loading, setData } = useAsyncData(
+    () => AddressService.list(),
+    [],
+    { errorMessage: () => '無法載入地址簿，請稍後再試' }
+  )
+  const addresses = data ?? []
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<AddressInput>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await AddressService.list()
-        if (cancelled) return
-        setAddresses(result)
-      } catch {
-        if (cancelled) return
-        setError('無法載入地址簿，請稍後再試')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
+  // 新增／修改／刪除之後在原地更新清單（不顯示載入畫面；失敗由呼叫端的 try/catch 處理）
   async function reload() {
-    const result = await AddressService.list()
-    setAddresses(result)
+    setData(await AddressService.list())
   }
 
   function startCreate() {

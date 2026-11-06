@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { Card } from '@/components/ui/card'
+import { PageTitle } from '@/components/ui/page-title'
 import { Button } from '@/components/ui/button'
 
 // Sprint 204（FRD US-M03-006，DEF-253）：/login 頁的「Forgot your password?」原本指向不存在的此頁（死連結）。
@@ -43,7 +44,7 @@ export default function ForgotPasswordPage() {
     <div className="flex-1 flex items-center justify-center px-4 py-12">
       <Card className="max-w-md w-full space-y-8 p-8">
         <div>
-          <h2 className="text-center text-3xl font-semibold text-rs-ink">Reset your password</h2>
+          <PageTitle className="text-center text-3xl">Reset your password</PageTitle>
           <p className="mt-2 text-center text-sm text-rs-ink-muted">
             Enter the email you registered with and we&apos;ll send you a reset link.
           </p>

@@ -10,6 +10,7 @@ import { NativeSelect } from '@/components/ui/native-select'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { PageTitle } from '@/components/ui/page-title'
 
 export default function PurchaseOrdersPage() {
   const [statusFilter, setStatusFilter] = useState<string>('')
@@ -47,6 +48,7 @@ export default function PurchaseOrdersPage() {
 
   return (
     <div className="space-y-6">
+      <PageTitle className="sr-only">採購訂單</PageTitle>
       <div className="flex flex-col sm:flex-row justify-between gap-4">
         <div className="flex-1 flex gap-4">
           <NativeSelect

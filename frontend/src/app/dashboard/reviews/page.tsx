@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,14 +8,13 @@ import { Pagination } from '@/components/ui/pagination'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import ReviewService, { type Review, type ReviewReply } from '@/services/review'
 import ReviewStars from '@/components/reviews/ReviewStars'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Textarea } from '@/components/ui/textarea'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { toast } from '@/components/ui/toast'
-import { apiErrorMessage, getApiErrorInfo } from '@/lib/api-error'
+import { apiErrorMessage } from '@/lib/api-error'
 
 const PAGE_SIZE = 20
 
@@ -25,56 +23,33 @@ function formatDate(dateStr: string) {
 }
 
 export default function DashboardReviewsPage() {
-  const router = useRouter()
-
-  const [reviews, setReviews] = useState<Review[]>([])
-  const [replies, setReplies] = useState<Record<string, ReviewReply | null>>({})
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [forbidden, setForbidden] = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   // 後端 /v2/reviews/managed 的 isHandled 為必填布林（無「全部」選項），預設顯示待處理項目
   const [isHandled, setIsHandled] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalElements, setTotalElements] = useState(0)
 
-  const fetchReviews = useCallback(async (page: number, handled: boolean) => {
-    setLoading(true)
-    setError(null)
-    setForbidden(false)
-    try {
-      const result = await ReviewService.getManagedReviews(handled, page - 1, PAGE_SIZE)
-      setReviews(result.reviews)
-      setTotalPages(result.totalPages || 1)
-      setTotalElements(result.totalElements || 0)
-
+  const { data, error: loadError, errorInfo, loading, reload, setData } = useAsyncData(
+    async () => {
+      const result = await ReviewService.getManagedReviews(isHandled, currentPage - 1, PAGE_SIZE)
       const replyEntries = await Promise.all(
         result.reviews.map(async (review) => {
           const reviewReplies = await ReviewService.getReplies(review.reviewId).catch(() => [])
           return [review.reviewId, reviewReplies[0] ?? null] as const
         })
       )
-      setReplies(Object.fromEntries(replyEntries))
-    } catch (err: unknown) {
-      if (getApiErrorInfo(err).status === 403) {
-        setForbidden(true)
-      } else {
-        setError(apiErrorMessage(err, '載入評價列表失敗'))
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    fetchReviews(currentPage, isHandled)
-  }, [router, fetchReviews, currentPage, isHandled])
+      return { result, replies: Object.fromEntries(replyEntries) as Record<string, ReviewReply | null> }
+    },
+    [currentPage, isHandled],
+    { errorMessage: '載入評價列表失敗' }
+  )
+  // 403＝這個帳號沒有評價管理權限：顯示專用畫面，不顯示一般的錯誤橫幅
+  const forbidden = errorInfo?.status === 403
+  const error = forbidden ? null : loadError
+  const reviews = data?.result.reviews ?? []
+  const replies = data?.replies ?? {}
+  const totalPages = data?.result.totalPages || 1
+  const totalElements = data?.result.totalElements || 0
 
   const handleReply = async (reviewId: string) => {
     const content = (replyDrafts[reviewId] || '').trim()
@@ -82,7 +57,7 @@ export default function DashboardReviewsPage() {
     setActionLoading(reviewId)
     try {
       const reply = await ReviewService.createReply(reviewId, content)
-      setReplies((prev) => ({ ...prev, [reviewId]: reply }))
+      setData((prev) => prev && { ...prev, replies: { ...prev.replies, [reviewId]: reply } })
       setReplyDrafts((prev) => ({ ...prev, [reviewId]: '' }))
     } catch (err: unknown) {
       toast.error(apiErrorMessage(err, '回覆失敗'))
@@ -96,7 +71,7 @@ export default function DashboardReviewsPage() {
     try {
       await ReviewService.setHandled(review.reviewId, !review.isHandled)
       // 切換後這筆通常不再符合目前的篩選條件，重新整理列表
-      await fetchReviews(currentPage, isHandled)
+      reload()
     } catch (err: unknown) {
       toast.error(apiErrorMessage(err, '更新處理狀態失敗'))
     } finally {

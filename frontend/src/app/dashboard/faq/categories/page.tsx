@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import {
   getFaqCategories,
@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { apiErrorMessage } from '@/lib/api-error';
+import { useAsyncData } from '@/hooks/useAsyncData';
 
 interface CategoryFormState {
   name: string;
@@ -32,36 +33,33 @@ interface CategoryFormState {
 
 const EMPTY_FORM: CategoryFormState = { name: '', slug: '', description: '', icon: '', sortOrder: '0' };
 
+const NO_STATS: Record<string, FaqCategoryStatsDto> = {};
+
 export default function FaqCategoriesPage() {
-  const [categories, setCategories] = useState<FaqCategoryDto[]>([]);
-  const [stats, setStats] = useState<Record<string, FaqCategoryStatsDto>>({});
-  const [loading, setLoading] = useState(true);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<CategoryFormState>(EMPTY_FORM);
-  const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    loadCategories();
-  }, []);
-
-  async function loadCategories() {
-    setLoading(true);
-    try {
+  const { data, loading, reload: loadCategories } = useAsyncData(
+    async () => {
       const [categoryList, statsList] = await Promise.all([getFaqCategories(), getFaqCategoryStats()]);
-      setCategories(categoryList);
       const statsMap: Record<string, FaqCategoryStatsDto> = {};
       statsList.forEach((s) => {
         statsMap[s.categoryId] = s;
       });
-      setStats(statsMap);
-    } catch (error) {
-      console.error('Failed to load FAQ categories:', error);
-      toast.error('載入分類失敗，請稍後再試');
-    } finally {
-      setLoading(false);
+      return { categories: categoryList, stats: statsMap };
+    },
+    [],
+    {
+      errorMessage: () => '載入分類失敗，請稍後再試',
+      onError: (message, error) => {
+        console.error('Failed to load FAQ categories:', error);
+        toast.error(message);
+      },
     }
-  }
+  );
+  const categories = data?.categories ?? [];
+  const stats = data?.stats ?? NO_STATS;
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<CategoryFormState>(EMPTY_FORM);
+  const [submitting, setSubmitting] = useState(false);
 
   function startCreate() {
     setForm(EMPTY_FORM);

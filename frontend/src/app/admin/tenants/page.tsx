@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Pagination } from '@/components/ui/pagination'
 import adminService, { type AdminTenant as Tenant, type AdminTenantListParams, type TenantApplication } from '@/services/admin'
 import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
@@ -29,15 +30,9 @@ const FILTER_TO_STATUS: Record<FilterTab, Tenant['status'] | undefined> = {
 const PAGE_SIZE = 20
 
 export default function AdminTenantListPage() {
-  const [tenants, setTenants] = useState<Tenant[]>([])
-  const [applications, setApplications] = useState<TenantApplication[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterTab>('ALL')
   const [keyword, setKeyword] = useState('')
   const [currentPage, setCurrentPage] = useState(1) // 1-based，供 Pagination 元件使用
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalElements, setTotalElements] = useState(0)
   // 審核動作的結果訊息。刻意**不用原生 alert()**：alert 會讓 Playwright 的 teardown
   // 崩潰（既有 flaky 的已知成因），且畫面內訊息才可被 E2E 斷言。
   const [actionMessage, setActionMessage] = useState<string | null>(null)
@@ -45,64 +40,49 @@ export default function AdminTenantListPage() {
   const [actionId, setActionId] = useState<string | null>(null)
   const [rejectingId, setRejectingId] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState('')
-  // 各分頁籤的數量，伺服器端篩選下需分別查詢才能同時顯示
-  const [tabCounts, setTabCounts] = useState<Record<FilterTab, number>>({
-    ALL: 0,
-    PENDING: 0,
-    APPROVED: 0,
-    REJECTED: 0,
-  })
-
-  const fetchTenants = useCallback(async (page: number) => {
-    setLoading(true)
-    setError(null)
-
-    try {
+  // 清單：「審核中」分頁查開店申請，其餘分頁查店鋪（伺服器端篩選＋分頁）。條件一變就重抓，且只認最後一次請求的結果。
+  const { data: list, error, loading, reload: reloadList } = useAsyncData(
+    async (signal) => {
+      if (filter === 'PENDING') {
+        const applications = await adminService.listTenantApplications({ signal })
+        // 後端此端點回傳全部待審核申請，無分頁
+        return { tenants: [] as Tenant[], applications, totalPages: 1, totalElements: applications.length }
+      }
       const params: AdminTenantListParams = {
-        page: page - 1, // 後端 page 為 0-based
+        page: currentPage - 1, // 後端 page 為 0-based
         size: PAGE_SIZE,
       }
       const status = FILTER_TO_STATUS[filter]
       if (status) params.status = status
       if (keyword) params.keyword = keyword
 
-      const data = await adminService.listTenants(params)
-      setTenants(data?.tenants || [])
-      setTotalPages(data?.totalPages || 1)
-      setTotalElements(data?.totalElements ?? data?.totalCount ?? 0)
-    } catch (err: unknown) {
-      setError(apiErrorMessage(err, '載入店鋪列表失敗'))
-    } finally {
-      setLoading(false)
-    }
-  }, [filter, keyword])
+      const data = await adminService.listTenants(params, { signal })
+      return {
+        tenants: data?.tenants || [],
+        applications: [] as TenantApplication[],
+        totalPages: data?.totalPages || 1,
+        totalElements: data?.totalElements ?? data?.totalCount ?? 0,
+      }
+    },
+    [filter, currentPage, keyword],
+    { errorMessage: ({ message }) => message || (filter === 'PENDING' ? '載入開店申請失敗' : '載入店鋪列表失敗') }
+  )
+  const tenants = list?.tenants ?? []
+  const applications = list?.applications ?? []
+  const totalPages = list?.totalPages ?? 1
+  const totalElements = list?.totalElements ?? 0
 
-  const fetchApplications = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const list = await adminService.listTenantApplications()
-      setApplications(list)
-      setTotalPages(1) // 後端此端點回傳全部待審核申請，無分頁
-      setTotalElements(list.length)
-    } catch (err: unknown) {
-      setError(apiErrorMessage(err, '載入開店申請失敗'))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  const fetchTabCounts = useCallback(async () => {
-    try {
+  // 各分頁籤的數量，伺服器端篩選下需分別查詢才能同時顯示。失敗只記錄、維持上一次的數字（不顯示錯誤畫面）
+  const { data: tabCountsData, reload: reloadTabCounts } = useAsyncData(
+    async (signal) => {
       const tenantTabs: FilterTab[] = ['ALL', 'APPROVED', 'REJECTED']
       const [pendingApplications, ...tenantResults] = await Promise.all([
-        adminService.listTenantApplications(),
+        adminService.listTenantApplications({ signal }),
         ...tenantTabs.map((tab) => {
           const status = FILTER_TO_STATUS[tab]
           const params: AdminTenantListParams = { page: 0, size: 1 }
           if (status) params.status = status
-          return adminService.listTenants(params)
+          return adminService.listTenants(params, { signal })
         }),
       ])
       const counts = {} as Record<FilterTab, number>
@@ -111,25 +91,15 @@ export default function AdminTenantListPage() {
         const data = tenantResults[i]
         counts[tab] = data?.totalElements ?? data?.totalCount ?? 0
       })
-      setTabCounts(counts)
-    } catch (err) {
-      console.error('Failed to load tab counts:', err)
+      return counts
+    },
+    [],
+    {
+      errorMessage: '載入分頁籤數量失敗',
+      onError: (_message, err) => console.error('Failed to load tab counts:', err),
     }
-  }, [])
-
-  useEffect(() => {
-    fetchTabCounts()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  useEffect(() => {
-    if (filter === 'PENDING') {
-      fetchApplications()
-    } else {
-      fetchTenants(currentPage)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, filter, keyword])
+  )
+  const tabCounts: Record<FilterTab, number> = tabCountsData ?? { ALL: 0, PENDING: 0, APPROVED: 0, REJECTED: 0 }
 
   const handleFilterChange = (tab: FilterTab) => {
     setFilter(tab)
@@ -141,12 +111,8 @@ export default function AdminTenantListPage() {
   }
 
   const refresh = () => {
-    if (filter === 'PENDING') {
-      fetchApplications()
-    } else {
-      fetchTenants(currentPage)
-    }
-    fetchTabCounts()
+    reloadList()
+    reloadTabCounts()
   }
 
   const handleApprove = async (application: TenantApplication) => {
@@ -156,8 +122,7 @@ export default function AdminTenantListPage() {
     try {
       await adminService.approveTenantApplication(application.applicationId)
       setActionMessage(`已核准「${application.storeName}」，店鋪已建立並啟用`)
-      await fetchApplications()
-      await fetchTabCounts()
+      refresh()
     } catch (err: unknown) {
       setActionError(apiErrorMessage(err, '核准失敗'))
     } finally {
@@ -179,8 +144,7 @@ export default function AdminTenantListPage() {
       setActionMessage(`已駁回「${application.storeName}」`)
       setRejectingId(null)
       setRejectReason('')
-      await fetchApplications()
-      await fetchTabCounts()
+      refresh()
     } catch (err: unknown) {
       setActionError(apiErrorMessage(err, '駁回失敗'))
     } finally {

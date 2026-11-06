@@ -1,14 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import BookingPaymentService from '@/services/bookingPayment'
-import { PAYMENT_STATUS_LABELS, type OrderPaymentState } from '@/services/payment'
+import { PAYMENT_STATUS_LABELS } from '@/services/payment'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 interface BookingPaymentCardProps {
   bookingId: string
@@ -47,29 +48,14 @@ export default function BookingPaymentCard({
   paymentDueAt,
   onPaid,
 }: BookingPaymentCardProps) {
-  const [state, setState] = useState<OrderPaymentState | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadFailed, setLoadFailed] = useState(false)
+  const { data: state, error: loadError, loading, setData: setState } = useAsyncData(
+    () => BookingPaymentService.getPaymentState(bookingId),
+    [bookingId],
+    { errorMessage: '載入付款資訊失敗' }
+  )
+  const loadFailed = loadError !== null
   const [paying, setPaying] = useState(false)
   const [payError, setPayError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    // 全程走 async callback 更新狀態，不在 effect 內同步 setState（遵循 React 19 嚴格 hooks）。
-    BookingPaymentService.getPaymentState(bookingId)
-      .then((s) => {
-        if (!cancelled) setState(s)
-      })
-      .catch(() => {
-        if (!cancelled) setLoadFailed(true)
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [bookingId])
 
   const handlePay = async () => {
     setPaying(true)

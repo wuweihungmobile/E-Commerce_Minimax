@@ -1,65 +1,47 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import ReviewService, { type Review, type RatingStats } from '@/services/review'
+import ReviewService from '@/services/review'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import ReviewStars from './ReviewStars'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 interface ReviewListProps {
   listingId: string
-  // 用於在提交新評價後觸發重新載入
-  reloadKey?: number
 }
+
+const NO_REPLIES: Record<string, string> = {}
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
-export default function ReviewList({ listingId, reloadKey = 0 }: ReviewListProps) {
-  const [reviews, setReviews] = useState<Review[]>([])
-  const [stats, setStats] = useState<RatingStats | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  // 賣家回覆（Sprint 287，DEF-392）：每則評價至多一筆，key 為 reviewId
-  const [replies, setReplies] = useState<Record<string, string>>({})
-
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        const [list, ratingStats] = await Promise.all([
-          ReviewService.getListingReviews(listingId, 0, 20),
-          ReviewService.getRatingStats(listingId).catch(() => null),
-        ])
-        if (cancelled) return
-        setReviews(list.reviews)
-        setStats(ratingStats)
-
-        const replyEntries = await Promise.all(
-          list.reviews.map(async (review) => {
-            const reviewReplies = await ReviewService.getReplies(review.reviewId).catch(() => [])
-            return [review.reviewId, reviewReplies[0]?.content ?? null] as const
-          })
-        )
-        if (cancelled) return
-        setReplies(
-          Object.fromEntries(replyEntries.filter(([, content]) => content != null)) as Record<string, string>
-        )
-      } catch {
-        if (cancelled) return
-        setError('無法載入評價')
-      } finally {
-        if (!cancelled) setLoading(false)
+export default function ReviewList({ listingId }: ReviewListProps) {
+  const { data, error, loading } = useAsyncData(
+    async () => {
+      const [list, ratingStats] = await Promise.all([
+        ReviewService.getListingReviews(listingId, 0, 20),
+        ReviewService.getRatingStats(listingId).catch(() => null),
+      ])
+      // 賣家回覆（Sprint 287，DEF-392）：每則評價至多一筆，key 為 reviewId
+      const replyEntries = await Promise.all(
+        list.reviews.map(async (review) => {
+          const reviewReplies = await ReviewService.getReplies(review.reviewId).catch(() => [])
+          return [review.reviewId, reviewReplies[0]?.content ?? null] as const
+        })
+      )
+      return {
+        reviews: list.reviews,
+        stats: ratingStats,
+        replies: Object.fromEntries(replyEntries.filter(([, content]) => content != null)) as Record<string, string>,
       }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [listingId, reloadKey])
+    },
+    [listingId],
+    { errorMessage: () => '無法載入評價' }
+  )
+  const reviews = data?.reviews ?? []
+  const stats = data?.stats ?? null
+  const replies = data?.replies ?? NO_REPLIES
 
   if (loading) {
     return (

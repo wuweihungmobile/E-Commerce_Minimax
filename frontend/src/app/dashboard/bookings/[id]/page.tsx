@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,7 +10,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import BookingService, {
-  type Booking,
   type BookingStateLogEntry,
   BOOKING_STATUS_LABELS,
   CANCELLATION_POLICY_SUMMARY,
@@ -18,8 +17,7 @@ import BookingService, {
   cancelResultMessage,
   isBookingCancellable,
 } from '@/services/booking'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { PageTitle } from '@/components/ui/page-title'
 import { LoadingState } from '@/components/ui/states'
 import { apiErrorMessage } from '@/lib/api-error'
@@ -48,12 +46,13 @@ const STATE_LOG_ACTION_LABELS: Record<string, string> = {
 
 export default function DashboardBookingDetailPage() {
   const params = useParams()
-  const router = useRouter()
   const bookingId = params.id as string
 
-  const [booking, setBooking] = useState<Booking | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: booking, error, loading, reload: reloadBooking } = useAsyncData(
+    () => BookingService.getBooking(bookingId),
+    [bookingId],
+    { errorMessage: '載入訂房詳情失敗' }
+  )
 
   const [showCancel, setShowCancel] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
@@ -65,45 +64,21 @@ export default function DashboardBookingDetailPage() {
   const [checkingOut, setCheckingOut] = useState(false)
   const [checkInOutError, setCheckInOutError] = useState<string | null>(null)
 
-  const [stateLog, setStateLog] = useState<BookingStateLogEntry[]>([])
-
-  const fetchBooking = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const detail = await BookingService.getBooking(bookingId)
-      setBooking(detail)
-    } catch (err) {
-      setError(apiErrorMessage(err, '載入訂房詳情失敗'))
-    } finally {
-      setLoading(false)
-    }
-  }, [bookingId])
-
-  const fetchStateLog = useCallback(async () => {
-    try {
-      const logs = await BookingService.getStateLog(bookingId)
-      setStateLog(logs)
-    } catch {
-      // 狀態日誌是輔助資訊，載入失敗不影響主要頁面功能，靜默忽略
-    }
-  }, [bookingId])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    fetchBooking()
-    fetchStateLog()
-  }, [router, fetchBooking, fetchStateLog])
+  // 狀態日誌是輔助資訊，載入失敗不影響主要頁面功能（hook 的 error 不顯示，等同原本的靜默忽略）
+  const { data: stateLogData, reload: reloadStateLog } = useAsyncData(
+    () => BookingService.getStateLog(bookingId),
+    [bookingId],
+    { errorMessage: '載入狀態日誌失敗' }
+  )
+  const stateLog: BookingStateLogEntry[] = stateLogData ?? []
 
   async function handleCheckIn() {
     setCheckingIn(true)
     setCheckInOutError(null)
     try {
       await BookingService.checkIn(bookingId)
-      await Promise.all([fetchBooking(), fetchStateLog()])
+      reloadBooking()
+      reloadStateLog()
     } catch (err) {
       setCheckInOutError(apiErrorMessage(err, '辦理入住失敗'))
     } finally {
@@ -116,7 +91,8 @@ export default function DashboardBookingDetailPage() {
     setCheckInOutError(null)
     try {
       await BookingService.checkOut(bookingId)
-      await Promise.all([fetchBooking(), fetchStateLog()])
+      reloadBooking()
+      reloadStateLog()
     } catch (err) {
       setCheckInOutError(apiErrorMessage(err, '辦理退房失敗'))
     } finally {
@@ -135,7 +111,7 @@ export default function DashboardBookingDetailPage() {
       )
       setShowCancel(false)
       setCancelReason('')
-      await fetchBooking()
+      reloadBooking()
     } catch (err) {
       setCancelError(apiErrorMessage(err, '取消訂房失敗，此預訂目前狀態可能無法取消'))
     } finally {

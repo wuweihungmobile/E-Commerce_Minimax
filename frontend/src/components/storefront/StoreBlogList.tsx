@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Pagination } from "@/components/ui/pagination"
 import { Skeleton } from "@/components/ui/skeleton"
-import { getPublishedPosts, type PostResponse } from "@/services/cms"
+import { getPublishedPosts } from "@/services/cms"
+import { useAsyncData } from "@/hooks/useAsyncData"
 import { Card } from "@/components/ui/card"
 
 const PAGE_SIZE = 12
@@ -22,28 +22,14 @@ export interface StoreBlogListProps {
 // 本就支援任意 tenantId），不另建新後端端點。
 export function StoreBlogList({ slug, tenantId, page }: StoreBlogListProps) {
   const router = useRouter()
-  const [posts, setPosts] = useState<PostResponse[] | null>(null)
-  const [totalPages, setTotalPages] = useState(0)
-  const [error, setError] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    getPublishedPosts(tenantId, { page, size: PAGE_SIZE })
-      .then((data) => {
-        if (cancelled) return
-        setPosts(data.posts)
-        setTotalPages(data.totalPages)
-        setError(false)
-      })
-      .catch(() => {
-        if (cancelled) return
-        setPosts(null)
-        setError(true)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [tenantId, page])
+  // 失敗（error）與載入中（posts 還是 undefined）分開處理：失敗顯示「載入失敗」，載入中顯示骨架
+  const { data, error } = useAsyncData(
+    (signal) => getPublishedPosts(tenantId, { page, size: PAGE_SIZE }, { signal }),
+    [tenantId, page],
+    { errorMessage: '載入貼文失敗' }
+  )
+  const posts = data?.posts
+  const totalPages = data?.totalPages ?? 0
 
   const handlePageChange = (oneBased: number) => {
     const params = new URLSearchParams()
@@ -60,7 +46,7 @@ export function StoreBlogList({ slug, tenantId, page }: StoreBlogListProps) {
     )
   }
 
-  if (posts === null) {
+  if (posts === undefined) {
     return (
       <div className="grid md:grid-cols-2 gap-6">
         {Array.from({ length: 4 }).map((_, i) => (

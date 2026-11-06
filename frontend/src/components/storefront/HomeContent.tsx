@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { StorefrontShell } from "@/components/layout/StorefrontShell"
 import { SidebarNav } from "@/components/storefront/SidebarNav"
@@ -8,8 +8,10 @@ import { SortToolbar } from "@/components/storefront/SortToolbar"
 import { ProductCard } from "@/components/storefront/ProductCard"
 import { Pagination } from "@/components/ui/pagination"
 import { Skeleton } from "@/components/ui/skeleton"
-import listingService, { type Listing, type Page } from "@/services/listing"
+import listingService from "@/services/listing"
+import { useAsyncData } from "@/hooks/useAsyncData"
 import { Button } from "@/components/ui/button"
+import { PageTitle } from '@/components/ui/page-title'
 
 const CATEGORIES = [
   { id: "all", label: "全部商品" },
@@ -51,18 +53,10 @@ export interface HomeContentProps {
 // 「登入後即可瀏覽精選商品」的 needsAuth 分支因此移除，不再是必要狀態。
 export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
   const router = useRouter()
-  const [data, setData] = useState<Page<Listing> | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
-  const [reloadKey, setReloadKey] = useState(0) // 僅供「重試同一查詢」用（非篩選變更）
-
-  useEffect(() => {
-    // 注意：不在 effect 內同步 setState（React 19 嚴格 hooks 禁令）。loading 初值為 true；
-    // 篩選變更由 server page 以 key 觸發 remount（回到初值顯示 skeleton），retry 於 handler 設 loading。
-    let cancelled = false
-    const { sortBy, sortDir } = SORT_MAP[sortTab] ?? SORT_MAP.newest
-    listingService
-      .getPublicListings({
+  const { data: result, error, loading, reload } = useAsyncData(
+    () => {
+      const { sortBy, sortDir } = SORT_MAP[sortTab] ?? SORT_MAP.newest
+      return listingService.getPublicListings({
         page,
         size: PAGE_SIZE,
         type: cat === "all" ? undefined : (cat as "product" | "room"),
@@ -70,22 +64,12 @@ export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
         sortBy,
         sortDir,
       })
-      .then((res) => {
-        if (cancelled) return
-        setData(res)
-        setError(false)
-        setLoading(false)
-      })
-      .catch(() => {
-        if (cancelled) return
-        setError(true)
-        setData(null)
-        setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [cat, sortTab, keyword, page, reloadKey])
+    },
+    [cat, sortTab, keyword, page],
+    { errorMessage: "載入失敗，請稍後再試" }
+  )
+  // 失敗時不顯示舊資料（與原本失敗後清成 null 相同）
+  const data = error === null ? result : undefined
 
   // 更新 URL query（保留其他篩選）。篩選變更預設回第 1 頁。
   const navigate = useCallback(
@@ -108,10 +92,7 @@ export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
   const handleSort = (id: string) => navigate({ sort: id, page: 0 })
   const handlePageChange = (oneBased: number) => navigate({ page: oneBased - 1 })
   const handleRetry = () => {
-    // 事件處理器內 setState 合法（非 effect 同步）；顯示 skeleton 並重跑同一查詢
-    setError(false)
-    setLoading(true)
-    setReloadKey((k) => k + 1)
+    reload()
   }
 
   return (
@@ -120,6 +101,7 @@ export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
         <SidebarNav items={CATEGORIES} active={cat} onSelect={handleSelectCat} />
       }
     >
+      <PageTitle className="sr-only">意象若水 RUOSHUI</PageTitle>
       <SortToolbar
         tabs={SORT_TABS}
         activeTab={sortTab}

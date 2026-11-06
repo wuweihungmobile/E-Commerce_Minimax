@@ -6,6 +6,7 @@ import { useAsyncData } from '@/hooks/useAsyncData'
 import { Alert } from '@/components/ui/alert'
 import { Card } from '@/components/ui/card'
 import { LoadingState } from '@/components/ui/states'
+import { PageTitle } from '@/components/ui/page-title'
 
 // PRD §10.1.3 `/admin`（DEF-358(d)，Sprint 258）：平台管理台統一入口首頁。
 // 各功能頁（/admin/tenants 等）皆無前端角色守門，純依賴後端 403；本頁沿用同一慣例，
@@ -53,7 +54,7 @@ export default function AdminOverviewPage() {
   return (
     <div>
       <main>
-        <h2 className="text-lg font-medium text-rs-ink mb-4">平台總覽</h2>
+        <PageTitle className="mb-4 text-lg font-medium">平台總覽</PageTitle>
 
         {error ? (
           <Alert variant="destructive" className="mb-6" data-testid="admin-overview-error">

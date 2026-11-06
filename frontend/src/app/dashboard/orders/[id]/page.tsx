@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -22,8 +22,7 @@ import LogisticsService, {
   LOGISTICS_STATUS_LABELS,
   LOGISTICS_PROVIDER_LABELS,
 } from '@/services/logistics'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { PageTitle } from '@/components/ui/page-title'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
@@ -50,72 +49,47 @@ function statusLabel(status: string) {
 
 export default function DashboardOrderDetailPage() {
   const params = useParams()
-  const router = useRouter()
   const orderId = params.id as string
 
-  const [order, setOrder] = useState<Order | null>(null)
-  const [shipments, setShipments] = useState<LogisticsResponse[]>([])
-  const [logs, setLogs] = useState<OrderStateLog[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, error, loading, reload, setData } = useAsyncData(
+    async () => {
+      const [order, logs] = await Promise.all([
+        OrderService.getOrder(orderId),
+        OrderService.getOrderLogs(orderId).catch(() => [] as OrderStateLog[]),
+      ])
+      const shipments: LogisticsResponse[] =
+        order.orderType === 'PRODUCT' ? await LogisticsService.getByOrder(orderId).catch(() => []) : []
+      return { order, logs, shipments }
+    },
+    [orderId],
+    { errorMessage: '載入訂單詳情失敗' }
+  )
+  const order: Order | null = data?.order ?? null
+  const logs = data?.logs ?? []
+  const shipments = data?.shipments ?? []
 
   const [actionLoading, setActionLoading] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  // 建立物流單表單（訂單 CONFIRMED 時顯示）
+  // 建立物流單表單（訂單 CONFIRMED 時顯示）。收件資訊預設帶入訂單的收件資料；使用者改過的值另存（null＝沒改過），
+  // 建立物流單成功、重新載入之後清掉，回到訂單上的資料——與原本「訂單載入後依訂單重設表單」的行為相同。
   const [showLogisticsForm, setShowLogisticsForm] = useState(false)
   const [provider, setProvider] = useState<LogisticsProvider>('HCT')
-  const [receiverName, setReceiverName] = useState('')
-  const [receiverPhone, setReceiverPhone] = useState('')
-  const [shippingAddress, setShippingAddress] = useState('')
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [detail, stateLogs] = await Promise.all([
-        OrderService.getOrder(orderId),
-        OrderService.getOrderLogs(orderId).catch(() => [] as OrderStateLog[]),
-      ])
-      setOrder(detail)
-      setLogs(stateLogs)
-      if (detail.orderType === 'PRODUCT') {
-        const list = await LogisticsService.getByOrder(orderId).catch(() => [])
-        setShipments(list)
-      } else {
-        setShipments([])
-      }
-    } catch (err) {
-      setError(apiErrorMessage(err, '載入訂單詳情失敗'))
-    } finally {
-      setLoading(false)
-    }
-  }, [orderId])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    load()
-  }, [router, load])
-
-  useEffect(() => {
-    if (order) {
-      setReceiverName(order.shippingRecipientName ?? '')
-      setReceiverPhone(order.shippingPhone ?? '')
-      setShippingAddress(order.shippingAddress ?? '')
-    }
-  }, [order])
+  const [receiverNameInput, setReceiverName] = useState<string | null>(null)
+  const [receiverPhoneInput, setReceiverPhone] = useState<string | null>(null)
+  const [shippingAddressInput, setShippingAddress] = useState<string | null>(null)
+  const receiverName = receiverNameInput ?? order?.shippingRecipientName ?? ''
+  const receiverPhone = receiverPhoneInput ?? order?.shippingPhone ?? ''
+  const shippingAddress = shippingAddressInput ?? order?.shippingAddress ?? ''
 
   async function transitionTo(targetStatus: OrderStatus, reason: string) {
     setActionLoading(true)
     setActionError(null)
     try {
       const updated = await OrderService.updateOrderStatus(orderId, targetStatus, reason)
-      setOrder(updated)
+      setData((prev) => prev && { ...prev, order: updated })
       const stateLogs = await OrderService.getOrderLogs(orderId).catch(() => [] as OrderStateLog[])
-      setLogs(stateLogs)
+      setData((prev) => prev && { ...prev, logs: stateLogs })
     } catch (err) {
       setActionError(apiErrorMessage(err, '更新訂單狀態失敗'))
     } finally {
@@ -135,7 +109,10 @@ export default function DashboardOrderDetailPage() {
         shippingAddress: shippingAddress.trim() || undefined,
       })
       setShowLogisticsForm(false)
-      await load()
+      setReceiverName(null)
+      setReceiverPhone(null)
+      setShippingAddress(null)
+      reload()
     } catch (err) {
       setActionError(apiErrorMessage(err, '建立物流單失敗'))
     } finally {

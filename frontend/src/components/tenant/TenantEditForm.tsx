@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ import {
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import tenantService, { type TenantDetails as Tenant, type TenantUpdateRequest } from '@/services/tenant'
 import { getApiErrorInfo } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Textarea } from '@/components/ui/textarea'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
@@ -44,20 +45,72 @@ interface FormErrors {
 }
 
 export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
+  const { data: tenant, error, loading } = useAsyncData(
+    (signal) => tenantService.getById(tenantId, { signal }),
+    [tenantId],
+    {
+      errorMessage: ({ status, message }) => {
+        if (status === 404) return '找不到此店鋪'
+        if (status === 403) return '您沒有權限編輯此店鋪'
+        return message || '載入店鋪失敗'
+      },
+    }
+  )
+
+  if (loading) {
+    return (
+      <LoadingState />
+    )
+  }
+
+  if (error && !tenant) {
+    return (
+      <div className="space-y-4">
+        <Alert variant="destructive">
+          {error}
+        </Alert>
+        <Link href="/dashboard/tenants">
+          <Button variant="outline">返回店鋪列表</Button>
+        </Link>
+      </div>
+    )
+  }
+
+  if (!tenant) {
+    return (
+      <div className="space-y-4">
+        <div className="text-rs-ink-muted">找不到店鋪資料</div>
+        <Link href="/dashboard/tenants">
+          <Button variant="outline">返回店鋪列表</Button>
+        </Link>
+      </div>
+    )
+  }
+
+  return <TenantEditFormBody tenant={tenant} />
+}
+
+/**
+ * 載入完成後才掛載：表單的初始值由載入的店鋪資料一次帶入，之後是使用者的編輯，不會再被資料覆蓋。
+ * （原本是載入函式裡 setTenant 之後再 setFormData；拆成兩層後初始值在第一次 render 就有，不需要在 effect 或回呼裡補寫狀態。）
+ */
+function TenantEditFormBody({ tenant }: { tenant: Tenant }) {
   const router = useRouter()
-  const [tenant, setTenant] = useState<Tenant | null>(null)
-  const [loading, setLoading] = useState(true)
+  const tenantId = tenant.tenantId
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [formData, setFormData] = useState<TenantEditFormData>({
-    storeName: '',
-    slug: '',
-    storeDescription: '',
-    businessType: '',
-    contactEmail: '',
-    contactPhone: '',
-    purchaseOrderApprovalThreshold: '',
-  })
+  const [formData, setFormData] = useState<TenantEditFormData>(() => ({
+    storeName: tenant.storeName,
+    slug: tenant.slug,
+    storeDescription: tenant.storeDescription || '',
+    businessType: tenant.businessType,
+    contactEmail: tenant.contactEmail,
+    // Sprint 146：contactPhone 在申請時為選填，既有店鋪可能從未填寫過（後端回傳 null）。
+    // 若直接指派 null/undefined，下方 validateForm() 呼叫 .trim() 會直接拋出 TypeError。
+    contactPhone: tenant.contactPhone || '',
+    purchaseOrderApprovalThreshold:
+      tenant.purchaseOrderApprovalThreshold != null ? String(tenant.purchaseOrderApprovalThreshold) : '',
+  }))
   const [errors, setErrors] = useState<FormErrors>({})
 
   // Sprint 146：值域比照 TenantApplyForm 的修正，對齊後端 TenantUpdateRequest.businessType 值域
@@ -66,45 +119,6 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
     { value: 'BOOKING_ONLY', label: '民宿訂房' },
     { value: 'HYBRID', label: '複合式（零售＋訂房）' },
   ]
-
-  const fetchTenantDetail = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const tenantData = await tenantService.getById(tenantId)
-      setTenant(tenantData)
-      setFormData({
-        storeName: tenantData.storeName,
-        slug: tenantData.slug,
-        storeDescription: tenantData.storeDescription || '',
-        businessType: tenantData.businessType,
-        contactEmail: tenantData.contactEmail,
-        // Sprint 146：contactPhone 在申請時為選填，既有店鋪可能從未填寫過（後端回傳 null）。
-        // 若直接指派 null/undefined，下方 validateForm() 呼叫 .trim() 會直接拋出 TypeError。
-        contactPhone: tenantData.contactPhone || '',
-        purchaseOrderApprovalThreshold:
-          tenantData.purchaseOrderApprovalThreshold != null
-            ? String(tenantData.purchaseOrderApprovalThreshold)
-            : '',
-      })
-    } catch (err: unknown) {
-      const { status, message } = getApiErrorInfo(err)
-      if (status === 404) {
-        setError('找不到此店鋪')
-      } else if (status === 403) {
-        setError('您沒有權限編輯此店鋪')
-      } else {
-        setError(message || '載入店鋪失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [tenantId])
-
-  useEffect(() => {
-    fetchTenantDetail()
-  }, [fetchTenantDetail])
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {}
@@ -204,7 +218,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
       }
       // 後端 storeDescription 為 null = 不變更、字串 = 改成該值（空字串 = 清空）；沒改過就不送，
       // 原本沒有描述的店鋪才不會因為儲存其他欄位而被存成空字串
-      if (formData.storeDescription !== (tenant?.storeDescription ?? '')) {
+      if (formData.storeDescription !== (tenant.storeDescription ?? '')) {
         payload.storeDescription = formData.storeDescription
       }
       await tenantService.update(tenantId, payload)
@@ -225,36 +239,6 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
     } finally {
       setSubmitting(false)
     }
-  }
-
-  if (loading) {
-    return (
-      <LoadingState />
-    )
-  }
-
-  if (error && !tenant) {
-    return (
-      <div className="space-y-4">
-        <Alert variant="destructive">
-          {error}
-        </Alert>
-        <Link href="/dashboard/tenants">
-          <Button variant="outline">返回店鋪列表</Button>
-        </Link>
-      </div>
-    )
-  }
-
-  if (!tenant) {
-    return (
-      <div className="space-y-4">
-        <div className="text-rs-ink-muted">找不到店鋪資料</div>
-        <Link href="/dashboard/tenants">
-          <Button variant="outline">返回店鋪列表</Button>
-        </Link>
-      </div>
-    )
   }
 
   return (

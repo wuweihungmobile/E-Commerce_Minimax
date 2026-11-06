@@ -1,21 +1,21 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import RoomService, { CreateRoomRequest, UpdateRoomRequest } from '@/services/room'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import RoomService, { CreateRoomRequest, UpdateRoomRequest, type Room } from '@/services/room'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Textarea } from '@/components/ui/textarea'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { Chip } from '@/components/ui/chip'
-import { apiErrorMessage, getApiErrorInfo } from '@/lib/api-error'
+import { getApiErrorInfo } from '@/lib/api-error'
+import { PageTitle } from '@/components/ui/page-title'
 
 interface FormErrors {
   title?: string
@@ -28,70 +28,70 @@ interface RoomFormProps {
   roomId?: string
 }
 
+// 編輯模式先載入房源，載入完成才掛載表單：表單初值由載入的資料一次帶入，之後是使用者的編輯（不會被資料覆蓋）。
+// 新增模式（沒有 roomId）不載入，直接掛載空表單；載入失敗時仍顯示表單與錯誤訊息（與原本相同）。
+// 登入守門在賣家外殼（SellerShell），這裡不再自己檢查。
 export default function RoomForm({ roomId }: RoomFormProps) {
+  const { data: room, error: loadError, loading } = useAsyncData(
+    () => RoomService.getRoom(roomId!),
+    [roomId],
+    { enabled: Boolean(roomId), errorMessage: '載入房源失敗' }
+  )
+
+  if (loading) {
+    return (
+      <LoadingState />
+    )
+  }
+
+  return <RoomFormBody roomId={roomId} room={room} loadError={loadError} />
+}
+
+function RoomFormBody({ roomId, room, loadError }: { roomId?: string; room?: Room; loadError: string | null }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [fetchLoading, setFetchLoading] = useState(!!roomId)
   const [errors, setErrors] = useState<FormErrors>({})
-  const [generalError, setGeneralError] = useState<string | null>(null)
+  const [generalError, setGeneralError] = useState<string | null>(loadError)
 
-  const [formData, setFormData] = useState<CreateRoomRequest>({
-    title: '',
-    description: '',
-    location: '',
-    latitude: undefined,
-    longitude: undefined,
-    basePrice: 0,
-    coverImageUrl: '',
-    tags: [],
-    maxGuests: undefined,
-    amenities: [],
-    checkInTime: undefined,
-    checkOutTime: undefined,
-    roomCount: undefined,
-    openUntilDate: undefined,
-    bookingWindowDays: undefined,
-    isFeatured: false,
-  })
-
-  const fetchRoom = useCallback(async () => {
-    setFetchLoading(true)
-    try {
-      const room = await RoomService.getRoom(roomId!)
-      setFormData({
-        title: room.title,
-        description: room.description || '',
-        location: room.location,
-        latitude: room.latitude || undefined,
-        longitude: room.longitude || undefined,
-        basePrice: room.basePrice,
-        coverImageUrl: room.coverImageUrl || '',
-        tags: room.tags || [],
-        maxGuests: room.maxGuests || undefined,
-        amenities: room.amenities || [],
-        checkInTime: room.checkInTime || undefined,
-        checkOutTime: room.checkOutTime || undefined,
-        roomCount: room.roomCount || undefined,
-        openUntilDate: room.openUntilDate || undefined,
-        bookingWindowDays: room.bookingWindowDays || undefined,
-        isFeatured: room.isFeatured || false,
-      })
-    } catch (err: unknown) {
-      setGeneralError(apiErrorMessage(err, '載入房源失敗'))
-    } finally {
-      setFetchLoading(false)
-    }
-  }, [roomId])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    if (roomId) {
-      fetchRoom()
-    }
-  }, [router, roomId, fetchRoom])
+  const [formData, setFormData] = useState<CreateRoomRequest>(() =>
+    room
+      ? {
+          title: room.title,
+          description: room.description || '',
+          location: room.location,
+          latitude: room.latitude || undefined,
+          longitude: room.longitude || undefined,
+          basePrice: room.basePrice,
+          coverImageUrl: room.coverImageUrl || '',
+          tags: room.tags || [],
+          maxGuests: room.maxGuests || undefined,
+          amenities: room.amenities || [],
+          checkInTime: room.checkInTime || undefined,
+          checkOutTime: room.checkOutTime || undefined,
+          roomCount: room.roomCount || undefined,
+          openUntilDate: room.openUntilDate || undefined,
+          bookingWindowDays: room.bookingWindowDays || undefined,
+          isFeatured: room.isFeatured || false,
+        }
+      : {
+          title: '',
+          description: '',
+          location: '',
+          latitude: undefined,
+          longitude: undefined,
+          basePrice: 0,
+          coverImageUrl: '',
+          tags: [],
+          maxGuests: undefined,
+          amenities: [],
+          checkInTime: undefined,
+          checkOutTime: undefined,
+          roomCount: undefined,
+          openUntilDate: undefined,
+          bookingWindowDays: undefined,
+          isFeatured: false,
+        }
+  )
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {}
@@ -200,16 +200,10 @@ export default function RoomForm({ roomId }: RoomFormProps) {
     }
   }
 
-  if (fetchLoading) {
-    return (
-      <LoadingState />
-    )
-  }
-
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{roomId ? '編輯房源' : '新增房源'}</CardTitle>
+        <PageTitle className="text-base leading-none tracking-tight">{roomId ? '編輯房源' : '新增房源'}</PageTitle>
         <CardDescription>
           {roomId ? '修改房源資料' : '填寫房源資料以建立新房源'}
         </CardDescription>

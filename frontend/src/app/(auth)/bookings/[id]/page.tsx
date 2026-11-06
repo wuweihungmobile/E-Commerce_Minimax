@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import BookingService, {
-  type Booking,
   BOOKING_STATUS_LABELS,
   CANCELLATION_POLICY_SUMMARY,
   bookingStatusBadgeVariant,
@@ -25,6 +24,7 @@ import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { PageTitle } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
 import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 function formatPrice(amount: number, currency: string) {
   return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: currency || 'TWD' }).format(amount)
@@ -38,9 +38,11 @@ export default function BookingDetailPage() {
   const params = useParams()
   const bookingId = params.id as string
 
-  const [booking, setBooking] = useState<Booking | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: booking, error, loading, reload } = useAsyncData(
+    () => BookingService.getBooking(bookingId),
+    [bookingId],
+    { errorMessage: () => '無法載入預訂詳情，請稍後再試' }
+  )
 
   const [showCancel, setShowCancel] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
@@ -53,32 +55,6 @@ export default function BookingDetailPage() {
   const [showReview, setShowReview] = useState(false)
   const [reviewed, setReviewed] = useState(false)
 
-  const load = useCallback(
-    async (signal?: { cancelled: boolean }) => {
-      setLoading(true)
-      setError(null)
-      try {
-        const detail = await BookingService.getBooking(bookingId)
-        if (signal?.cancelled) return
-        setBooking(detail)
-      } catch {
-        if (signal?.cancelled) return
-        setError('無法載入預訂詳情，請稍後再試')
-      } finally {
-        if (!signal?.cancelled) setLoading(false)
-      }
-    },
-    [bookingId]
-  )
-
-  useEffect(() => {
-    const signal = { cancelled: false }
-    load(signal)
-    return () => {
-      signal.cancelled = true
-    }
-  }, [load])
-
   const handleCancel = async () => {
     setCancelling(true)
     setCancelError(null)
@@ -90,7 +66,7 @@ export default function BookingDetailPage() {
       )
       setShowCancel(false)
       setCancelReason('')
-      await load()
+      reload()
     } catch (err: unknown) {
       setCancelError(apiErrorMessage(err, '取消預訂失敗，此預訂目前狀態可能無法取消'))
     } finally {
@@ -225,7 +201,7 @@ export default function BookingDetailPage() {
               totalAmount={booking.totalAmount}
               currency={booking.currency}
               paymentDueAt={booking.paymentDueAt}
-              onPaid={() => load()}
+              onPaid={() => reload()}
             />
 
             {/* Stay info */}

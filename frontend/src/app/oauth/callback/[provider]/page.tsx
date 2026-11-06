@@ -11,7 +11,8 @@ import OAuthApiService, {
   consumeOAuthState,
   oauthRedirectUri,
 } from '@/services/oauth'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { PageTitle } from '@/components/ui/page-title'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
@@ -81,9 +82,9 @@ export default function OAuthCallbackPage() {
     <div className="flex-1 flex items-center justify-center px-4 py-12">
       <Card className="max-w-md w-full">
         <CardHeader>
-          <CardTitle className="text-base">
+          <PageTitle className="text-base">
             {status === 'processing' ? '登入處理中…' : '登入失敗'}
-          </CardTitle>
+          </PageTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {status === 'processing' ? (

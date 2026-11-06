@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Alert } from '@/components/ui/alert'
 import { Card } from '@/components/ui/card'
+import { PageTitle } from '@/components/ui/page-title'
 import { Button } from '@/components/ui/button'
 import { apiErrorMessage } from '@/lib/api-error'
 
@@ -57,9 +58,9 @@ export default function LoginPage() {
     <div className="flex-1 flex items-center justify-center px-4 py-12">
       <Card className="max-w-md w-full space-y-8 p-8">
         <div>
-          <h2 className="text-center text-3xl font-semibold text-rs-ink">
+          <PageTitle className="text-center text-3xl">
             Sign in to NextKey
-          </h2>
+          </PageTitle>
           <p className="mt-2 text-center text-sm text-rs-ink-muted">
             Or{' '}
             <Link href="/register" className="font-medium text-rs-primary hover:text-rs-primary">

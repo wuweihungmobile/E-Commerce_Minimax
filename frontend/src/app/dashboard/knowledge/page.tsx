@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   getKnowledgeArticles,
   deleteKnowledgeArticle,
   getKnowledgeCategories,
-  KnowledgeCategoryDto,
 } from '@/services/knowledge';
 import { useAsyncData } from '@/hooks/useAsyncData';
 import { Label } from '@/components/ui/label';
@@ -24,12 +23,18 @@ export default function KnowledgePage() {
   const [page, setPage] = useState(0);
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [keyword, setKeyword] = useState<string>('');
-  const [categories, setCategories] = useState<KnowledgeCategoryDto[]>([]);
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadCategories();
-  }, []);
+  // 分類只是篩選用的選項：載入失敗只記錄，篩選器就沒有選項
+  const { data: categoriesData } = useAsyncData(
+    () => getKnowledgeCategories(),
+    [],
+    {
+      errorMessage: () => '載入分類失敗',
+      onError: (_message, error) => console.error('Failed to load categories:', error),
+    }
+  );
+  const categories = categoriesData ?? [];
 
   const { data, loading, reload } = useAsyncData(
     () => {
@@ -58,15 +63,6 @@ export default function KnowledgePage() {
   const articles = data?.content ?? [];
   const totalPages = data?.totalPages ?? 0;
   const totalElements = data?.totalElements ?? 0;
-
-  async function loadCategories() {
-    try {
-      const data = await getKnowledgeCategories();
-      setCategories(data);
-    } catch (error) {
-      console.error('Failed to load categories:', error);
-    }
-  }
 
   async function handleDelete(articleId: string) {
     if (!(await confirmDialog({ message: '確定要刪除這篇文章嗎？', confirmLabel: '刪除', destructive: true }))) return;

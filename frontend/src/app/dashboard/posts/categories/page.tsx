@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useAsyncData } from '@/hooks/useAsyncData';
 import {
   getCategories,
   createCategory,
@@ -22,30 +23,23 @@ import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { StatusBadge } from '@/components/ui/status-badge';
 
 export default function CategoriesPage() {
-  const [categories, setCategories] = useState<CategoryResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: categoriesData, loading, reload: loadCategories } = useAsyncData(
+    () => getCategories(),
+    [],
+    {
+      errorMessage: () => '載入分類失敗，請稍後再試',
+      onError: (message, error) => {
+        console.error('Failed to load categories:', error);
+        toast.error(message);
+      },
+    }
+  );
+  const categories = categoriesData?.categories ?? [];
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    loadCategories();
-  }, []);
-
-  async function loadCategories() {
-    setLoading(true);
-    try {
-      const data = await getCategories();
-      setCategories(data.categories);
-    } catch (error) {
-      console.error('Failed to load categories:', error);
-      toast.error('載入分類失敗，請稍後再試');
-    } finally {
-      setLoading(false);
-    }
-  }
 
   function openCreateForm() {
     setEditingId(null);

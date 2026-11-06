@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { PageTitle } from '@/components/ui/page-title'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 
 /**
@@ -19,7 +20,7 @@ export default function BookingPaymentCancelPage() {
       <div className="mx-auto max-w-2xl px-4 py-8">
         <Card data-testid="booking-payment-cancel-card">
           <CardHeader>
-            <CardTitle>付款已取消</CardTitle>
+            <PageTitle className="text-base leading-none tracking-tight">付款已取消</PageTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-rs-ink-muted">您已取消本次付款，預訂尚未付款。您可以返回預訂重新付款。</p>

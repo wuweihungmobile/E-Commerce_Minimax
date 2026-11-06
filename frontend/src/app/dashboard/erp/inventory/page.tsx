@@ -9,6 +9,7 @@ import { useAsyncData } from '@/hooks/useAsyncData'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
+import { PageTitle } from '@/components/ui/page-title'
 
 export default function InventoryPage() {
   const [page, setPage] = useState(0)
@@ -59,6 +60,7 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-6">
+      <PageTitle className="sr-only">庫存</PageTitle>
       <div className="flex justify-between items-center">
         <div className="flex gap-4">
           <Button

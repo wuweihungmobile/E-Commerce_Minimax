@@ -1,15 +1,17 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { StorefrontShell } from "@/components/layout/StorefrontShell"
 import { SortToolbar } from "@/components/storefront/SortToolbar"
 import { ProductCard } from "@/components/storefront/ProductCard"
 import { Pagination } from "@/components/ui/pagination"
 import { Skeleton } from "@/components/ui/skeleton"
-import listingService, { type Listing, type Page } from "@/services/listing"
+import listingService from "@/services/listing"
+import { useAsyncData } from "@/hooks/useAsyncData"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from '@/components/ui/states'
+import { PageTitle } from "@/components/ui/page-title"
 
 const SORT_TABS = [
   { id: "newest", label: "最新" },
@@ -45,17 +47,10 @@ export interface ListingTypeBrowserProps {
 // getPublicListings，匿名可用，不需要 needsAuth 分支。
 export function ListingTypeBrowser({ type, basePath, emptyMessage, sortTab, keyword, page }: ListingTypeBrowserProps) {
   const router = useRouter()
-  const [data, setData] = useState<Page<Listing> | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
-  const [reloadKey, setReloadKey] = useState(0)
-
-  useEffect(() => {
-    // 注意：不在 effect 內同步 setState（React 19 嚴格 hooks 禁令），比照 HomeContent 既有寫法。
-    let cancelled = false
-    const { sortBy, sortDir } = SORT_MAP[sortTab] ?? SORT_MAP.newest
-    listingService
-      .getPublicListings({
+  const { data: result, error, loading, reload } = useAsyncData(
+    () => {
+      const { sortBy, sortDir } = SORT_MAP[sortTab] ?? SORT_MAP.newest
+      return listingService.getPublicListings({
         page,
         size: PAGE_SIZE,
         type: type === "PRODUCT" ? "product" : "room",
@@ -63,22 +58,12 @@ export function ListingTypeBrowser({ type, basePath, emptyMessage, sortTab, keyw
         sortBy,
         sortDir,
       })
-      .then((res) => {
-        if (cancelled) return
-        setData(res)
-        setError(false)
-        setLoading(false)
-      })
-      .catch(() => {
-        if (cancelled) return
-        setError(true)
-        setData(null)
-        setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [type, sortTab, keyword, page, reloadKey])
+    },
+    [type, sortTab, keyword, page],
+    { errorMessage: "載入失敗，請稍後再試" }
+  )
+  // 失敗時不顯示舊資料（與原本失敗後清成 null 相同）
+  const data = error === null ? result : undefined
 
   const navigate = useCallback(
     (next: { sort?: string; page?: number }) => {
@@ -97,13 +82,12 @@ export function ListingTypeBrowser({ type, basePath, emptyMessage, sortTab, keyw
   const handleSort = (id: string) => navigate({ sort: id, page: 0 })
   const handlePageChange = (oneBased: number) => navigate({ page: oneBased - 1 })
   const handleRetry = () => {
-    setError(false)
-    setLoading(true)
-    setReloadKey((k) => k + 1)
+    reload()
   }
 
   return (
     <StorefrontShell>
+      <PageTitle className="sr-only">{type === "PRODUCT" ? "商品" : "房源"}</PageTitle>
       <SortToolbar
         tabs={SORT_TABS}
         activeTab={sortTab}

@@ -1,16 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import BookingPaymentService from '@/services/bookingPayment'
-import type { OrderPaymentState } from '@/services/payment'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { PageTitle } from '@/components/ui/page-title'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 /**
  * 訂房 Stripe Checkout 回跳成功頁（Sprint 222，DEF-303 (1)）。
@@ -20,35 +20,19 @@ export default function BookingPaymentSuccessPage() {
   const params = useParams()
   const bookingId = params.id as string
 
-  const [state, setState] = useState<OrderPaymentState | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    // 於 client 端讀 session_id（避免 useSearchParams 的 Suspense 邊界需求）。
-    // 全程走 async callback 更新狀態，不在 effect 內同步 setState（遵循 React 19 嚴格 hooks）。
-    const sessionId = new URLSearchParams(window.location.search).get('session_id')
-    const run = sessionId
-      ? BookingPaymentService.confirmCheckoutReturn(bookingId, sessionId)
-      : Promise.reject(new Error('no-session'))
-    run
-      .then((s) => {
-        if (!cancelled) setState(s)
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return
-        setError(e instanceof Error && e.message === 'no-session'
-          ? '缺少付款工作階段資訊'
-          : '確認付款狀態失敗，請至預訂查看')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
+  const { data: state, error, loading } = useAsyncData(
+    async () => {
+      // 於 client 端讀 session_id（避免 useSearchParams 的 Suspense 邊界需求）
+      const sessionId = new URLSearchParams(window.location.search).get('session_id')
+      if (!sessionId) throw new Error('no-session')
+      return BookingPaymentService.confirmCheckoutReturn(bookingId, sessionId)
+    },
+    [bookingId],
+    {
+      errorMessage: (_info, err) =>
+        err instanceof Error && err.message === 'no-session' ? '缺少付款工作階段資訊' : '確認付款狀態失敗，請至預訂查看',
     }
-  }, [bookingId])
+  )
 
   const paid = state?.paymentStatus === 'SUCCESS' || state?.orderStatus === 'PAID'
 
@@ -57,7 +41,7 @@ export default function BookingPaymentSuccessPage() {
       <div className="mx-auto max-w-2xl px-4 py-8">
         <Card data-testid="booking-payment-success-card">
           <CardHeader>
-            <CardTitle>付款結果</CardTitle>
+            <PageTitle className="text-base leading-none tracking-tight">付款結果</PageTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {loading && <Skeleton className="h-20 w-full" />}

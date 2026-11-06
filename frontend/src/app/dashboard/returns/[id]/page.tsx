@@ -1,19 +1,17 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import ReturnService, {
-  type ReturnRequest,
   RETURN_STATUS_LABELS,
   returnStatusBadgeVariant,
 } from '@/services/returns'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
@@ -29,52 +27,37 @@ interface ReceiveDraft {
 
 export default function DashboardReturnDetailPage() {
   const params = useParams()
-  const router = useRouter()
   const returnId = params.id as string
 
-  const [returnRequest, setReturnRequest] = useState<ReturnRequest | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: returnRequest, error, loading, reload } = useAsyncData(
+    () => ReturnService.getTenantReturn(returnId),
+    [returnId],
+    { errorMessage: '載入退貨申請詳情失敗' }
+  )
   const [actionLoading, setActionLoading] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
   const [showRejectForm, setShowRejectForm] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
 
-  const [receiveDrafts, setReceiveDrafts] = useState<Record<string, ReceiveDraft>>({})
-
-  const fetchReturn = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await ReturnService.getTenantReturn(returnId)
-      setReturnRequest(data)
-      setReceiveDrafts(
-        Object.fromEntries(
-          data.items.map((item) => [item.id, { sellableQty: item.requestedQty, unsellableQty: 0 }])
-        )
-      )
-    } catch (err) {
-      setError(apiErrorMessage(err, '載入退貨申請詳情失敗'))
-    } finally {
-      setLoading(false)
-    }
-  }, [returnId])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    fetchReturn()
-  }, [router, fetchReturn])
+  // 收貨確認每一項的暫存輸入：只存使用者改過的值，沒改的項目用預設（可售＝申請數量、不可售＝0）。
+  // 重新載入（核准、駁回、收貨之後）會清掉——與原本「載入完成就依資料重設全部草稿」的行為相同。
+  const [draftOverrides, setDraftOverrides] = useState<Record<string, ReceiveDraft>>({})
+  const defaultDraft = (requestedQty: number): ReceiveDraft => ({ sellableQty: requestedQty, unsellableQty: 0 })
+  const receiveDrafts: Record<string, ReceiveDraft> = Object.fromEntries(
+    (returnRequest?.items ?? []).map((item) => [item.id, draftOverrides[item.id] ?? defaultDraft(item.requestedQty)])
+  )
+  const refresh = () => {
+    setDraftOverrides({})
+    reload()
+  }
 
   async function handleApprove() {
     setActionLoading(true)
     setActionError(null)
     try {
       await ReturnService.approveReturn(returnId)
-      await fetchReturn()
+      refresh()
     } catch (err) {
       setActionError(apiErrorMessage(err, '核准失敗'))
     } finally {
@@ -89,7 +72,7 @@ export default function DashboardReturnDetailPage() {
       await ReturnService.rejectReturn(returnId, rejectionReason.trim() || undefined)
       setShowRejectForm(false)
       setRejectionReason('')
-      await fetchReturn()
+      refresh()
     } catch (err) {
       setActionError(apiErrorMessage(err, '駁回失敗'))
     } finally {
@@ -99,7 +82,10 @@ export default function DashboardReturnDetailPage() {
 
   function setDraft(itemId: string, field: keyof ReceiveDraft, max: number, value: number) {
     const clamped = Math.max(0, Math.min(max, Math.floor(value) || 0))
-    setReceiveDrafts((prev) => ({ ...prev, [itemId]: { ...prev[itemId], [field]: clamped } }))
+    setDraftOverrides((prev) => {
+      const base = prev[itemId] ?? defaultDraft(returnRequest?.items.find((item) => item.id === itemId)?.requestedQty ?? 0)
+      return { ...prev, [itemId]: { ...base, [field]: clamped } }
+    })
   }
 
   async function handleReceive() {
@@ -122,7 +108,7 @@ export default function DashboardReturnDetailPage() {
           unsellableQty: receiveDrafts[item.id]?.unsellableQty ?? 0,
         }))
       )
-      await fetchReturn()
+      refresh()
     } catch (err) {
       setActionError(apiErrorMessage(err, '收貨確認失敗'))
     } finally {

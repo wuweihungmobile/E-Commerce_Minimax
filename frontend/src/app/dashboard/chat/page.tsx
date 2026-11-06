@@ -7,8 +7,9 @@
  * 自己/對方訊息去重（送出走 REST、後端亦廣播回來），非開啟對話即時累計未讀。
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import authService from '@/services/auth';
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
+import { getAuthServerSnapshot, getAuthUserIdSnapshot, subscribeAuth } from '@/services/authStore';
+import { useAsyncData } from '@/hooks/useAsyncData';
 import {
   createConversation,
   deleteConversation,
@@ -32,8 +33,18 @@ import { toast } from '@/components/ui/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 export default function ChatPage() {
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [conversations, setConversations] = useState<ConversationResponse[]>([]);
+  // 登入者 id 從 auth store 讀（SSR／hydration 前是 null）
+  const currentUserId = useSyncExternalStore(subscribeAuth, getAuthUserIdSnapshot, getAuthServerSnapshot);
+  // 對話列表：首次載入用 hook；之後由 STOMP 收訊與各動作就地更新（setData），建立／刪除對話後靜默重抓
+  const { data: conversationPage, setData: setConversationPage } = useAsyncData(
+    () => getConversations(0, 50),
+    [],
+    {
+      errorMessage: () => '載入對話失敗',
+      onError: (_message, error) => console.error('Failed to load conversations:', error),
+    }
+  );
+  const conversations = useMemo(() => conversationPage?.conversations ?? [], [conversationPage]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageResponse[]>([]);
   const [unreadMap, setUnreadMap] = useState<Record<string, number>>({});
@@ -42,22 +53,13 @@ export default function ChatPage() {
   const [newRecipientId, setNewRecipientId] = useState('');
   const [newInitialMessage, setNewInitialMessage] = useState('');
 
-  useEffect(() => {
-    setCurrentUserId(authService.getCurrentUser()?.id ?? null);
-  }, []);
-
-  const loadConversations = useCallback(async () => {
+  async function loadConversations() {
     try {
-      const data = await getConversations(0, 50);
-      setConversations(data.conversations);
+      setConversationPage(await getConversations(0, 50));
     } catch (error) {
       console.error('Failed to load conversations:', error);
     }
-  }, []);
-
-  useEffect(() => {
-    loadConversations();
-  }, [loadConversations]);
+  }
 
   const conversationIds = useMemo(
     () => conversations.map((c) => c.conversationId),
@@ -73,19 +75,22 @@ export default function ChatPage() {
 
   /** 更新對話列表的最後訊息預覽並移到最前。 */
   const bumpConversation = useCallback((message: MessageResponse) => {
-    setConversations((prev) => {
-      const index = prev.findIndex((c) => c.conversationId === message.conversationId);
+    setConversationPage((prev) => {
+      if (!prev) {
+        return prev;
+      }
+      const index = prev.conversations.findIndex((c) => c.conversationId === message.conversationId);
       if (index === -1) {
         return prev;
       }
       const updated: ConversationResponse = {
-        ...prev[index],
+        ...prev.conversations[index],
         lastMessage: message,
         lastMessageAt: message.createdAt,
       };
-      return [updated, ...prev.filter((_, i) => i !== index)];
+      return { ...prev, conversations: [updated, ...prev.conversations.filter((_, i) => i !== index)] };
     });
-  }, []);
+  }, [setConversationPage]);
 
   /** STOMP 收到新訊息。 */
   const handleIncoming = useCallback(

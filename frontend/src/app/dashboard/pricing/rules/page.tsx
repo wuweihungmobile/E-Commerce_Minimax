@@ -1,22 +1,9 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import PricingRuleList from '@/components/pricing/PricingRuleList'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 
 export default function PricingRulesPage() {
-  const router = useRouter()
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-  }, [router])
-
   return (
     <div>
       <main>

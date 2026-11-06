@@ -1,19 +1,14 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import Link from "next/link"
 import { StorefrontShell } from "@/components/layout/StorefrontShell"
 import { Skeleton } from "@/components/ui/skeleton"
 import storefrontService, { type StoreProfile } from "@/services/storefront"
+import { useAsyncData } from "@/hooks/useAsyncData"
 import { StoreNav, type StoreNavTab } from "@/components/storefront/StoreNav"
 import { buttonVariants, Button } from "@/components/ui/button"
-import { getApiErrorInfo } from '@/lib/api-error'
 
 type LoadState = "loading" | "ok" | "notfound" | "error"
-
-function statusOf(err: unknown): number | undefined {
-  return getApiErrorInfo(err).status
-}
 
 export interface StoreLayoutProps {
   slug: string
@@ -26,27 +21,12 @@ export interface StoreLayoutProps {
 // 「店鋪不存在／非 ACTIVE」（皆回 404，不區分，避免列舉店鋪狀態）與錯誤重試，
 // 其餘 4 條路線（home/products/rooms/blog）共用同一份已解析的 StoreProfile。
 export function StoreLayout({ slug, active, children }: StoreLayoutProps) {
-  const [state, setState] = useState<LoadState>("loading")
-  const [profile, setProfile] = useState<StoreProfile | null>(null)
-  const [reloadKey, setReloadKey] = useState(0)
-
-  useEffect(() => {
-    let cancelled = false
-    storefrontService
-      .getStoreProfile(slug)
-      .then((p) => {
-        if (cancelled) return
-        setProfile(p)
-        setState("ok")
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        setState(statusOf(err) === 404 ? "notfound" : "error")
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [slug, reloadKey])
+  const { data: profile, error, errorInfo, loading, reload } = useAsyncData(
+    () => storefrontService.getStoreProfile(slug),
+    [slug],
+    { errorMessage: "載入店鋪失敗" }
+  )
+  const state: LoadState = loading ? "loading" : error === null ? "ok" : errorInfo?.status === 404 ? "notfound" : "error"
 
   if (state === "loading") {
     return (
@@ -90,10 +70,7 @@ export function StoreLayout({ slug, active, children }: StoreLayoutProps) {
           <Button
             variant="default"
             type="button"
-            onClick={() => {
-              setState("loading")
-              setReloadKey((k) => k + 1)
-            }}
+            onClick={() => reload()}
           >
             重新載入
           </Button>

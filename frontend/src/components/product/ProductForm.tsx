@@ -1,21 +1,21 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import ProductService, { CreateProductRequest, UpdateProductRequest } from '@/services/product'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import ProductService, { CreateProductRequest, UpdateProductRequest, type Product } from '@/services/product'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Textarea } from '@/components/ui/textarea'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
-import { apiErrorMessage, getApiErrorInfo } from '@/lib/api-error'
+import { getApiErrorInfo } from '@/lib/api-error'
+import { PageTitle } from '@/components/ui/page-title'
 
 interface FormErrors {
   title?: string
@@ -28,58 +28,58 @@ interface ProductFormProps {
   productId?: string
 }
 
+// 編輯模式先載入商品，載入完成才掛載表單：表單初值由載入的資料一次帶入，之後是使用者的編輯（不會被資料覆蓋）。
+// 新增模式（沒有 productId）不載入，直接掛載空表單；載入失敗時仍顯示表單與錯誤訊息（與原本相同）。
+// 登入守門在賣家外殼（SellerShell），這裡不再自己檢查。
 export default function ProductForm({ productId }: ProductFormProps) {
+  const { data: product, error: loadError, loading } = useAsyncData(
+    () => ProductService.getProduct(productId!),
+    [productId],
+    { enabled: Boolean(productId), errorMessage: '載入商品失敗' }
+  )
+
+  if (loading) {
+    return (
+      <LoadingState />
+    )
+  }
+
+  return <ProductFormBody productId={productId} product={product} loadError={loadError} />
+}
+
+function ProductFormBody({ productId, product, loadError }: { productId?: string; product?: Product; loadError: string | null }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [fetchLoading, setFetchLoading] = useState(!!productId)
   const [errors, setErrors] = useState<FormErrors>({})
-  const [generalError, setGeneralError] = useState<string | null>(null)
+  const [generalError, setGeneralError] = useState<string | null>(loadError)
 
-  const [formData, setFormData] = useState<CreateProductRequest>({
-    title: '',
-    description: '',
-    category: '',
-    brand: '',
-    basePrice: 0,
-    coverImageUrl: '',
-    tags: [],
-    weightGrams: undefined,
-    dimensionsCm: '',
-    isFeatured: false,
-  })
-
-  const fetchProduct = useCallback(async () => {
-    setFetchLoading(true)
-    try {
-      const product = await ProductService.getProduct(productId!)
-      setFormData({
-        title: product.title,
-        description: product.description || '',
-        category: product.category,
-        brand: product.brand || '',
-        basePrice: product.basePrice,
-        coverImageUrl: product.coverImageUrl || '',
-        tags: product.tags || [],
-        weightGrams: product.weightGrams || undefined,
-        dimensionsCm: product.dimensionsCm || '',
-        isFeatured: product.isFeatured || false,
-      })
-    } catch (err: unknown) {
-      setGeneralError(apiErrorMessage(err, '載入商品失敗'))
-    } finally {
-      setFetchLoading(false)
-    }
-  }, [productId])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    if (productId) {
-      fetchProduct()
-    }
-  }, [router, productId, fetchProduct])
+  const [formData, setFormData] = useState<CreateProductRequest>(() =>
+    product
+      ? {
+          title: product.title,
+          description: product.description || '',
+          category: product.category,
+          brand: product.brand || '',
+          basePrice: product.basePrice,
+          coverImageUrl: product.coverImageUrl || '',
+          tags: product.tags || [],
+          weightGrams: product.weightGrams || undefined,
+          dimensionsCm: product.dimensionsCm || '',
+          isFeatured: product.isFeatured || false,
+        }
+      : {
+          title: '',
+          description: '',
+          category: '',
+          brand: '',
+          basePrice: 0,
+          coverImageUrl: '',
+          tags: [],
+          weightGrams: undefined,
+          dimensionsCm: '',
+          isFeatured: false,
+        }
+  )
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {}
@@ -151,16 +151,10 @@ export default function ProductForm({ productId }: ProductFormProps) {
     }
   }
 
-  if (fetchLoading) {
-    return (
-      <LoadingState />
-    )
-  }
-
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{productId ? '編輯商品' : '新增商品'}</CardTitle>
+        <PageTitle className="text-base leading-none tracking-tight">{productId ? '編輯商品' : '新增商品'}</PageTitle>
         <CardDescription>
           {productId ? '修改商品資料' : '填寫商品資料以建立新商品'}
         </CardDescription>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import NotificationInboxService, {
   type InboxNotification,
@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 const PAGE_SIZE = 15
 
@@ -39,54 +40,34 @@ function dataIdOf(n: InboxNotification, key: 'orderId' | 'bookingId' | 'listingI
 }
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<InboxNotification[]>([])
   const [page, setPage] = useState(0)
-  const [totalPages, setTotalPages] = useState(0)
-  const [unreadCount, setUnreadCount] = useState(0)
   const [unreadOnly, setUnreadOnly] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  const load = useCallback(
-    async (signal?: { cancelled: boolean }) => {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await NotificationInboxService.getNotifications({
-          page,
-          size: PAGE_SIZE,
-          unreadOnly,
-        })
-        if (signal?.cancelled) return
-        setNotifications(result.notifications)
-        setTotalPages(result.totalPages)
-        setUnreadCount(result.unreadCount)
-      } catch {
-        if (signal?.cancelled) return
-        setError('無法載入通知，請稍後再試')
-      } finally {
-        if (!signal?.cancelled) setLoading(false)
-      }
-    },
-    [page, unreadOnly]
+  const { data, error: loadError, loading, reload } = useAsyncData(
+    () =>
+      NotificationInboxService.getNotifications({
+        page,
+        size: PAGE_SIZE,
+        unreadOnly,
+      }),
+    [page, unreadOnly],
+    { errorMessage: () => '無法載入通知，請稍後再試' }
   )
-
-  useEffect(() => {
-    const signal = { cancelled: false }
-    load(signal)
-    return () => {
-      signal.cancelled = true
-    }
-  }, [load])
+  const notifications = data?.notifications ?? []
+  const totalPages = data?.totalPages ?? 0
+  const unreadCount = data?.unreadCount ?? 0
+  // 動作（標記已讀、刪除）失敗的訊息與載入失敗共用同一個顯示位置；任何新的載入（換頁、換篩選、動作後重抓）都會清掉它
+  const [actionError, setActionError] = useState<string | null>(null)
+  const error = actionError ?? loadError
+  const [busy, setBusy] = useState(false)
 
   const handleMarkRead = async (id: string) => {
     setBusy(true)
     try {
       await NotificationInboxService.markAsRead([id])
-      await load()
+      setActionError(null)
+      reload()
     } catch {
-      setError('標記已讀失敗，請稍後再試')
+      setActionError('標記已讀失敗，請稍後再試')
     } finally {
       setBusy(false)
     }
@@ -96,9 +77,10 @@ export default function NotificationsPage() {
     setBusy(true)
     try {
       await NotificationInboxService.markAsRead()
-      await load()
+      setActionError(null)
+      reload()
     } catch {
-      setError('標記全部已讀失敗，請稍後再試')
+      setActionError('標記全部已讀失敗，請稍後再試')
     } finally {
       setBusy(false)
     }
@@ -108,9 +90,10 @@ export default function NotificationsPage() {
     setBusy(true)
     try {
       await NotificationInboxService.deleteNotification(id)
-      await load()
+      setActionError(null)
+      reload()
     } catch {
-      setError('刪除通知失敗，請稍後再試')
+      setActionError('刪除通知失敗，請稍後再試')
     } finally {
       setBusy(false)
     }
@@ -118,6 +101,7 @@ export default function NotificationsPage() {
 
   const changeFilter = (next: boolean) => {
     if (next === unreadOnly) return
+    setActionError(null)
     setPage(0)
     setUnreadOnly(next)
   }
@@ -253,7 +237,10 @@ export default function NotificationsPage() {
             <Button
               variant="outline"
               disabled={page <= 0 || loading}
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              onClick={() => {
+                setActionError(null)
+                setPage((p) => Math.max(0, p - 1))
+              }}
             >
               上一頁
             </Button>
@@ -263,7 +250,10 @@ export default function NotificationsPage() {
             <Button
               variant="outline"
               disabled={page >= totalPages - 1 || loading}
-              onClick={() => setPage((p) => p + 1)}
+              onClick={() => {
+                setActionError(null)
+                setPage((p) => p + 1)
+              }}
             >
               下一頁
             </Button>

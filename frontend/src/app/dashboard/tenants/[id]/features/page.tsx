@@ -1,17 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import AuthService from '@/services/auth'
-import tenantService, { type FeatureToggle, type QuotaInfo } from '@/services/tenant'
+import tenantService, { type FeatureToggle } from '@/services/tenant'
+import { useAsyncData } from '@/hooks/useAsyncData'
+import { getAuthRoleSnapshot, getAuthServerSnapshot, getAuthTenantIdSnapshot, subscribeAuth } from '@/services/authStore'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { loginHref } from '@/lib/auth-redirect'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { StatusBadge } from '@/components/ui/status-badge'
@@ -19,60 +19,32 @@ import { featureStatusEntry } from '@/lib/status'
 
 export default function FeatureTogglePage() {
   const router = useRouter()
-  const [tenantId, setTenantId] = useState<string | null>(null)
-  const [user, setUser] = useState<{ email: string; role: string; tenantId: string | null } | null>(null)
-  const [features, setFeatures] = useState<FeatureToggle[]>([])
-  const [quotas, setQuotas] = useState<QuotaInfo[]>([])
-  const [loading, setLoading] = useState(true)
+  // 角色與店鋪一律從 auth store 讀（SSR／hydration 前是 null）；只有店主與管理員能開這一頁，其他角色回店鋪管理
+  const role = useSyncExternalStore(subscribeAuth, getAuthRoleSnapshot, getAuthServerSnapshot)
+  const tenantId = useSyncExternalStore(subscribeAuth, getAuthTenantIdSnapshot, getAuthServerSnapshot)
+  const canManage = role === 'STORE_OWNER' || role === 'ADMIN'
+  useEffect(() => {
+    if (role !== null && !canManage) router.push('/dashboard/tenants')
+  }, [role, canManage, router])
+
+  // 原本載入失敗固定顯示這句；「更新開關」失敗也共用同一個 error。hook 只管載入，動作失敗另外記在 actionError
+  const { data, error: loadError, loading, setData } = useAsyncData(
+    (signal) => tenantService.getMyFeatures({ signal }),
+    [],
+    { enabled: canManage && Boolean(tenantId), errorMessage: () => '載入功能開關失敗，請稍後再試' }
+  )
+  const features = data?.features ?? []
+  const quotas = data?.quotas ?? []
   const [updating, setUpdating] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const error = actionError ?? loadError
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-
-    const currentUser = AuthService.getCurrentUser()
-    if (currentUser?.role !== 'STORE_OWNER' && currentUser?.role !== 'ADMIN') {
-      router.push('/dashboard/tenants')
-      return
-    }
-
-    setUser(currentUser)
-    if (currentUser?.tenantId) {
-      setTenantId(currentUser.tenantId)
-    }
-  }, [router])
-
-  useEffect(() => {
-    if (tenantId) {
-      fetchFeatures()
-    }
-  }, [tenantId])
-
-  const fetchFeatures = async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const data = await tenantService.getMyFeatures()
-      setFeatures(data.features)
-      setQuotas(data.quotas)
-    } catch (err: unknown) {
-      console.error('Failed to fetch features:', err)
-      setError('載入功能開關失敗，請稍後再試')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const updateFeatureToggle = async (feature: string, enabled: boolean) => {
     if (!tenantId) return
 
     setUpdating(feature)
-    setError(null)
+    setActionError(null)
     setSuccessMessage(null)
 
     try {
@@ -81,16 +53,19 @@ export default function FeatureTogglePage() {
       // DEF-428：用後端回應的結果更新畫面，不是用「我送出的要求」。需審核的功能送出啟用申請後，後端的 newState 仍是 false、
       // status 是 PENDING_APPROVAL（待平台審核）；先前直接把畫面改成已啟用並提示「已啟用」，重新整理後開關又變回關閉。
       const pendingApproval = enabled && status === 'PENDING_APPROVAL'
-      setFeatures(prev =>
-        prev.map(f =>
-          f.featureKey === feature
-            ? {
-                ...f,
-                isEnabled: newState,
-                status: pendingApproval ? 'PENDING' : newState ? 'ACTIVE' : 'INACTIVE'
-              }
-            : f
-        )
+      setData(prev =>
+        prev && {
+          ...prev,
+          features: prev.features.map(f =>
+            f.featureKey === feature
+              ? {
+                  ...f,
+                  isEnabled: newState,
+                  status: pendingApproval ? ('PENDING' as const) : newState ? ('ACTIVE' as const) : ('INACTIVE' as const),
+                }
+              : f
+          ),
+        }
       )
 
       setSuccessMessage(
@@ -101,7 +76,7 @@ export default function FeatureTogglePage() {
       setTimeout(() => setSuccessMessage(null), 3000)
     } catch (err: unknown) {
       console.error('Failed to update feature toggle:', err)
-      setError(`更新功能開關失敗，請稍後再試`)
+      setActionError('更新功能開關失敗，請稍後再試')
     } finally {
       setUpdating(null)
     }
@@ -129,7 +104,7 @@ export default function FeatureTogglePage() {
     return acc
   }, {} as Record<string, FeatureToggle[]>)
 
-  if (!user || !tenantId) {
+  if (!canManage || !tenantId) {
     return (
       <div>
         <main>

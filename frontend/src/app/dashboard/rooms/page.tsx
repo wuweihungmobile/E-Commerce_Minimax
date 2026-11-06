@@ -1,22 +1,9 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import RoomList from '@/components/room/RoomList'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 
 export default function RoomsPage() {
-  const router = useRouter()
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-  }, [router])
-
   return (
     <div>
       <main>

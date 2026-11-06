@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import { Droplets, Star } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import listingService, { type Listing } from "@/services/listing"
+import listingService from "@/services/listing"
+import { useAsyncData } from "@/hooks/useAsyncData"
 import cartService from "@/services/cart"
 import { notifyCartChanged } from "@/services/cartEvents"
 import bookingService, { type AvailabilityResponse } from "@/services/booking"
@@ -45,9 +46,21 @@ function unavailableReasonText(reason: string): string {
 // 買家商品詳情內容（client）：載入 GET /v2/listings/{id}，三態處理，
 // PRODUCT → 數量 + 加入購物車；ROOM → 日期選擇 + 計價 + 加入購物車（帶日期）。
 export function ListingDetail({ id }: { id: string }) {
-  const [state, setState] = useState<LoadState>("loading")
-  const [listing, setListing] = useState<Listing | null>(null)
-  const [reloadKey, setReloadKey] = useState(0)
+  const { data: listing, error, errorInfo, loading, reload } = useAsyncData(
+    () => listingService.getListingById(id),
+    [id],
+    { errorMessage: "載入商品失敗" }
+  )
+  const status = errorInfo?.status
+  const state: LoadState = loading
+    ? "loading"
+    : error === null
+      ? "ok"
+      : status === 401 || status === 403
+        ? "auth"
+        : status === 404
+          ? "notfound"
+          : "error"
 
   // PRODUCT
   const [quantity, setQuantity] = useState(1)
@@ -63,29 +76,8 @@ export function ListingDetail({ id }: { id: string }) {
   const [added, setAdded] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    listingService
-      .getListingById(id)
-      .then((l) => {
-        if (!cancelled) {
-          setListing(l)
-          setState("ok")
-        }
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        const s = statusOf(err)
-        setState(s === 401 || s === 403 ? "auth" : s === 404 ? "notfound" : "error")
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [id, reloadKey])
-
   const handleRetry = () => {
-    setState("loading")
-    setReloadKey((k) => k + 1)
+    reload()
   }
 
   // ROOM 日期驗證：入住不早於今日、退房晚於入住

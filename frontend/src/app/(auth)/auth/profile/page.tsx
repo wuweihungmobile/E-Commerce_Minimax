@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
-import AuthService, { getApiErrorInfo, type UserInfoResponse } from '@/services/auth'
+import AuthService, { getApiErrorInfo } from '@/services/auth'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -15,28 +16,20 @@ import { PageTitle } from '@/components/ui/page-title'
 // 範圍僅限姓名/電話——email 變更牽涉重新驗證流程，角色/租戶/狀態等欄位屬系統管理，
 // 皆不在此表單範圍內（見 SPRINT_257_PLAN.md）。
 export default function ProfilePage() {
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [profile, setProfile] = useState<UserInfoResponse | null>(null)
+  const { data: profile, error: loadError, loading, setData: setProfile } = useAsyncData(
+    () => AuthService.fetchCurrentUser(),
+    [],
+    { errorMessage: '載入個人資料失敗，請稍後再試' }
+  )
 
-  const [fullName, setFullName] = useState('')
-  const [phone, setPhone] = useState('')
+  // 表單欄位預設帶入載入的資料；使用者改過的值另存（null＝沒改過），儲存成功後清掉，回到伺服器回傳的值
+  const [fullNameInput, setFullName] = useState<string | null>(null)
+  const [phoneInput, setPhone] = useState<string | null>(null)
+  const fullName = fullNameInput ?? profile?.profile.displayName ?? ''
+  const phone = phoneInput ?? profile?.profile.phone ?? ''
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
-
-  useEffect(() => {
-    AuthService.fetchCurrentUser()
-      .then((data) => {
-        setProfile(data)
-        setFullName(data.profile.displayName ?? '')
-        setPhone(data.profile.phone ?? '')
-      })
-      .catch((err) => {
-        setLoadError(getApiErrorInfo(err).message || '載入個人資料失敗，請稍後再試')
-      })
-      .finally(() => setLoading(false))
-  }, [])
 
   const handleSave = async () => {
     setSaving(true)
@@ -45,8 +38,8 @@ export default function ProfilePage() {
     try {
       const updated = await AuthService.updateProfile({ fullName, phone })
       setProfile(updated)
-      setFullName(updated.profile.displayName ?? '')
-      setPhone(updated.profile.phone ?? '')
+      setFullName(null)
+      setPhone(null)
       setSaveSuccess(true)
     } catch (err) {
       setSaveError(getApiErrorInfo(err).message || '更新個人資料失敗，請稍後再試')

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useSyncExternalStore } from "react"
+import { useState, useSyncExternalStore } from "react"
 import bookingService, { type CalendarDay, type RoomCalendarStatus } from "@/services/booking"
 import {
   subscribeAuth,
@@ -8,6 +8,7 @@ import {
   getAuthenticatedServerSnapshot,
 } from "@/services/authStore"
 import { Button } from "@/components/ui/button"
+import { useAsyncData } from "@/hooks/useAsyncData"
 
 // 整月日曆（Sprint 41 US-004 / AI-2202b）：顯示房源某月每日可訂狀況，
 // 並支援點選挑選入住／退房區間，與 ListingDetail 的 checkIn/checkOut 同步。
@@ -20,6 +21,9 @@ const UNAVAILABLE_STATUS: ReadonlySet<RoomCalendarStatus> = new Set<RoomCalendar
   // 未開放（AI-2202e）：禁選；樣式與已訂/封鎖不同（灰底不刪除線，見下方 className）
   "NOT_OPEN",
 ])
+
+const NO_STATUS: Record<string, RoomCalendarStatus> = {}
+const NO_PRICE: Record<string, number> = {}
 
 function pad(n: number): string {
   return n < 10 ? "0" + n : String(n)
@@ -68,46 +72,31 @@ export function MonthCalendar({
   // 登入狀態比照共用 Header 走 authStore 外部 store：SSR／hydration 一律當訪客、client 端切換為實際登入態，
   // 登入／登出時由 notifyAuthChange 即時通知；避免 effect 內同步 setState（React 19 嚴格 hooks）。
   const guest = !useSyncExternalStore(subscribeAuth, getAuthenticatedSnapshot, getAuthenticatedServerSnapshot)
-  const [statusByDate, setStatusByDate] = useState<Record<string, RoomCalendarStatus>>({})
-  const [priceByDate, setPriceByDate] = useState<Record<string, number>>({})
-  // 每日折扣前原價（AI-2405b）：有折扣之日才有值，用於顯示刪除線原價
-  const [originalPriceByDate, setOriginalPriceByDate] = useState<Record<string, number>>({})
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  // 載入可視月份的日曆（async；不在 effect 內同步 setState — 遵循 React 19 嚴格 hooks）
-  useEffect(() => {
-    if (guest) return
-    let cancelled = false
-    const start = iso(view.year, view.month, 1)
-    const end = iso(view.year, view.month, daysInMonth(view.year, view.month))
-    bookingService
-      .getCalendar(roomListingId, start, end)
-      .then((days: CalendarDay[]) => {
-        if (cancelled) return
-        const statusMap: Record<string, RoomCalendarStatus> = {}
-        const priceMap: Record<string, number> = {}
-        const originalMap: Record<string, number> = {}
-        for (const d of days) {
-          statusMap[d.date] = d.status
-          if (d.price != null) priceMap[d.date] = d.price
-          if (d.originalPrice != null) originalMap[d.date] = d.originalPrice
-        }
-        setStatusByDate(statusMap)
-        setPriceByDate(priceMap)
-        setOriginalPriceByDate(originalMap)
-        setError(null)
-      })
-      .catch(() => {
-        if (!cancelled) setError("日曆載入失敗，仍可手動輸入日期")
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [roomListingId, view.year, view.month, guest])
+  // 載入可視月份的日曆；訪客不發請求（enabled）。換月時舊月份的資料保留到新月份載入完成（與原本相同）
+  const { data: calendar, error, loading } = useAsyncData(
+    async () => {
+      const days: CalendarDay[] = await bookingService.getCalendar(
+        roomListingId,
+        iso(view.year, view.month, 1),
+        iso(view.year, view.month, daysInMonth(view.year, view.month))
+      )
+      const statusMap: Record<string, RoomCalendarStatus> = {}
+      const priceMap: Record<string, number> = {}
+      // 每日折扣前原價（AI-2405b）：有折扣之日才有值，用於顯示刪除線原價
+      const originalMap: Record<string, number> = {}
+      for (const d of days) {
+        statusMap[d.date] = d.status
+        if (d.price != null) priceMap[d.date] = d.price
+        if (d.originalPrice != null) originalMap[d.date] = d.originalPrice
+      }
+      return { statusMap, priceMap, originalMap }
+    },
+    [roomListingId, view.year, view.month],
+    { enabled: !guest, errorMessage: () => "日曆載入失敗，仍可手動輸入日期" }
+  )
+  const statusByDate = calendar?.statusMap ?? NO_STATUS
+  const priceByDate = calendar?.priceMap ?? NO_PRICE
+  const originalPriceByDate = calendar?.originalMap ?? NO_PRICE
 
   const isUnavailable = (dateStr: string): boolean => {
     if (dateStr < todayIso) return true
@@ -159,11 +148,9 @@ export function MonthCalendar({
   for (let day = 1; day <= dim; day++) cells.push(day)
 
   const goPrev = () => {
-    setLoading(true)
     setView((v) => (v.month === 0 ? { year: v.year - 1, month: 11 } : { year: v.year, month: v.month - 1 }))
   }
   const goNext = () => {
-    setLoading(true)
     setView((v) => (v.month === 11 ? { year: v.year + 1, month: 0 } : { year: v.year, month: v.month + 1 }))
   }
 

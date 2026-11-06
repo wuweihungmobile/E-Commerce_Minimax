@@ -38,6 +38,21 @@ export function getAuthTenantIdSnapshot(): string | null {
   return AuthService.getCurrentUser()?.tenantId ?? null
 }
 
+// client 快照：目前選用的店鋪 id＝localStorage 的 'tenantId'（登入時寫入、店主切換店鋪時改寫，axios 的 X-Tenant-ID 也讀它）。
+// 與 getAuthTenantIdSnapshot 不同：那個讀的是登入者資料（user）裡的所屬店鋪，切換店鋪不會改它。沒有（或空字串）回 null。
+// Sprint 331：公開部落格三頁原本在 effect 裡讀 localStorage 再 setState（React 19 嚴格 hooks 禁令）。
+export function getSelectedTenantIdSnapshot(): string | null {
+  if (typeof window === "undefined") return null
+  return localStorage.getItem("tenantId") || null
+}
+
+// client 快照：登入者的使用者 id（primitive），沒登入回 null。
+// Sprint 331：店鋪成員管理頁要標示「你自己」，原本在 effect 裡同步 setState（React 19 嚴格 hooks 禁令）。
+export function getAuthUserIdSnapshot(): string | null {
+  if (!AuthService.isAuthenticated()) return null
+  return AuthService.getCurrentUser()?.id ?? null
+}
+
 // server / hydration 快照：一律 null（SSR 無 localStorage），確保 hydration 無 mismatch
 export function getAuthServerSnapshot(): null {
   return null

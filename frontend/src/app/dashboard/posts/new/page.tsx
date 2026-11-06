@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createPost, getCategories, CategoryResponse } from '@/services/cms';
+import { createPost, getCategories } from '@/services/cms';
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -20,26 +21,20 @@ export default function NewPostPage() {
   const [tags, setTags] = useState('');
   const [featuredImageUrl, setFeaturedImageUrl] = useState('');
   const [autoPublish, setAutoPublish] = useState(false);
-  const [categories, setCategories] = useState<CategoryResponse[]>([]);
   const [saving, setSaving] = useState(false);
 
-  const loadCategories = useCallback(async () => {
-    try {
-      const data = await getCategories();
-      setCategories(data.categories);
-    } catch (error) {
-      console.error('Failed to load categories:', error);
-      toast.error('載入分類失敗，請稍後再試');
+  const { data: categoriesData } = useAsyncData(
+    () => getCategories(),
+    [],
+    {
+      errorMessage: () => '載入分類失敗，請稍後再試',
+      onError: (message, error) => {
+        console.error('Failed to load categories:', error);
+        toast.error(message);
+      },
     }
-  }, []);
-
-  useEffect(() => {
-    // Use setTimeout to defer the async call to avoid setState-in-effect
-    const timer = setTimeout(() => {
-      loadCategories();
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [loadCategories]);
+  );
+  const categories = categoriesData?.categories ?? [];
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

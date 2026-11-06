@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { Card } from '@/components/ui/card'
+import { PageTitle } from '@/components/ui/page-title'
 import { Button } from '@/components/ui/button'
 
 // Sprint 204（FRD US-M03-006，DEF-253）：密碼規則與註冊頁相同（BR-M03-002）。
@@ -142,7 +143,7 @@ export default function ResetPasswordPage() {
   return (
     <div className="flex-1 flex items-center justify-center px-4 py-12">
       <Card className="max-w-md w-full space-y-8 p-8">
-        <h2 className="text-center text-3xl font-semibold text-rs-ink">Choose a new password</h2>
+        <PageTitle className="text-center text-3xl">Choose a new password</PageTitle>
         <Suspense fallback={null}>
           <ResetPasswordForm />
         </Suspense>

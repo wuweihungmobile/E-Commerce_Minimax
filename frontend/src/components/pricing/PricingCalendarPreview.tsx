@@ -1,19 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import PricingService, { CalculatePriceRequest, CalculatePriceResponse, PriceBreakdown } from '@/services/pricing'
-import AuthService from '@/services/auth'
-import type { CalendarDay } from '@/services/booking'
 import { toLocalDateString } from '@/lib/date'
-import { loginHref } from '@/lib/auth-redirect'
 import { Label } from '@/components/ui/label'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 interface PricingCalendarProps {
   roomListingId: string
@@ -21,66 +18,38 @@ interface PricingCalendarProps {
 
 const CALENDAR_PREVIEW_DAYS = 90
 
+// 試算區間的預設值：明天入住、住兩晚
+function getDefaultDates() {
+  const today = new Date()
+  const tomorrow = new Date(today)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+
+  return {
+    checkIn: toLocalDateString(tomorrow),
+    checkOut: toLocalDateString(new Date(tomorrow.getTime() + 2 * 24 * 60 * 60 * 1000)),
+  }
+}
+
 export default function PricingCalendarPreview({ roomListingId }: PricingCalendarProps) {
-  const router = useRouter()
-  const [checkInDate, setCheckInDate] = useState('')
-  const [checkOutDate, setCheckOutDate] = useState('')
+  const [checkInDate, setCheckInDate] = useState(() => getDefaultDates().checkIn)
+  const [checkOutDate, setCheckOutDate] = useState(() => getDefaultDates().checkOut)
   const [guestCount, setGuestCount] = useState(1)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<CalculatePriceResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // 未來 90 天定價日曆總覽（Sprint 83，PRD P0），掛載時自動載入，不需手動選日期。
-  const [calendarDays, setCalendarDays] = useState<CalendarDay[]>([])
-  const [calendarLoading, setCalendarLoading] = useState(true)
-  const [calendarError, setCalendarError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-    }
-  }, [router])
-
-  // 載入未來 90 天定價日曆（async；不在 effect 內同步 setState，遵循 React 19 嚴格 hooks，比照 MonthCalendar 既有模式）
-  useEffect(() => {
-    let cancelled = false
-    const today = new Date()
-    const start = toLocalDateString(today)
-    const end = toLocalDateString(new Date(today.getTime() + (CALENDAR_PREVIEW_DAYS - 1) * 24 * 60 * 60 * 1000))
-
-    PricingService.getCalendarPreview(roomListingId, start, end)
-      .then((days) => {
-        if (cancelled) return
-        setCalendarDays(days)
-        setCalendarError(null)
-      })
-      .catch(() => {
-        if (!cancelled) setCalendarError('載入定價日曆失敗')
-      })
-      .finally(() => {
-        if (!cancelled) setCalendarLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [roomListingId])
-
-  const getDefaultDates = () => {
-    const today = new Date()
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1)
-
-    return {
-      checkIn: toLocalDateString(tomorrow),
-      checkOut: toLocalDateString(new Date(tomorrow.getTime() + 2 * 24 * 60 * 60 * 1000)),
-    }
-  }
-
-  useEffect(() => {
-    const defaults = getDefaultDates()
-    setCheckInDate(defaults.checkIn)
-    setCheckOutDate(defaults.checkOut)
-  }, [])
+  const { data: calendarData, error: calendarError, loading: calendarLoading } = useAsyncData(
+    () => {
+      const today = new Date()
+      const start = toLocalDateString(today)
+      const end = toLocalDateString(new Date(today.getTime() + (CALENDAR_PREVIEW_DAYS - 1) * 24 * 60 * 60 * 1000))
+      return PricingService.getCalendarPreview(roomListingId, start, end)
+    },
+    [roomListingId],
+    { errorMessage: () => '載入定價日曆失敗' }
+  )
+  const calendarDays = calendarData ?? []
 
   const handleCalculate = async () => {
     if (!checkInDate || !checkOutDate) {

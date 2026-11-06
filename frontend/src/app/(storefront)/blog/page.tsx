@@ -1,49 +1,30 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { getPublishedPosts, PostResponse } from '@/services/cms';
+import { getPublishedPosts } from '@/services/cms';
+import { useAsyncData } from '@/hooks/useAsyncData';
+import { getAuthServerSnapshot, getSelectedTenantIdSnapshot, subscribeAuth } from '@/services/authStore';
 import { EmptyState, LoadingState } from '@/components/ui/states';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
 export default function BlogPage() {
-  const [posts, setPosts] = useState<PostResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [tenantId, setTenantId] = useState<string>('');
+  // 目前選用的店鋪（localStorage）；SSR／hydration 前是 null，與原本「mount 之後才讀到」相同
+  const tenantId = useSyncExternalStore(subscribeAuth, getSelectedTenantIdSnapshot, getAuthServerSnapshot);
   const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [, setTotalCount] = useState(0);
-
-  useEffect(() => {
-    // Get tenantId from localStorage
-    const storedTenantId = localStorage.getItem('tenantId');
-    if (storedTenantId) {
-      setTenantId(storedTenantId);
+  // 載入失敗只記錄、畫面照舊顯示「尚無已發布的文章」（原本就是這樣）；沒有店鋪時不發請求（enabled）
+  const { data, loading } = useAsyncData(
+    (signal) => getPublishedPosts(tenantId ?? '', { page, size: 12 }, { signal }),
+    [tenantId, page],
+    {
+      enabled: Boolean(tenantId),
+      errorMessage: '載入文章失敗',
+      onError: (_message, error) => console.error('Failed to load posts:', error),
     }
-  }, []);
-
-  const loadPosts = useCallback(async () => {
-    if (!tenantId) return;
-
-    setLoading(true);
-    try {
-      const data = await getPublishedPosts(tenantId, { page, size: 12 });
-      setPosts(data.posts);
-      setTotalCount(data.totalCount);
-      setTotalPages(data.totalPages);
-    } catch (error) {
-      console.error('Failed to load posts:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [tenantId, page]);
-
-  useEffect(() => {
-    if (tenantId) {
-      loadPosts();
-    }
-  }, [tenantId, loadPosts]);
+  );
+  const posts = data?.posts ?? [];
+  const totalPages = data?.totalPages ?? 0;
 
   return (
     <div className="flex-1">

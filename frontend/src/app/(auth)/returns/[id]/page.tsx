@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import ReturnService, {
@@ -9,6 +9,7 @@ import ReturnService, {
   returnStatusBadgeVariant,
 } from '@/services/returns'
 import OrderService, { type OrderItem } from '@/services/order'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -24,41 +25,28 @@ export default function ReturnDetailPage() {
   const params = useParams()
   const returnId = params.id as string
 
-  const [returnRequest, setReturnRequest] = useState<ReturnRequest | null>(null)
-  const [orderItems, setOrderItems] = useState<Record<string, OrderItem>>({})
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [cancelling, setCancelling] = useState(false)
-  const [cancelError, setCancelError] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
+  const { data, error, loading, setData } = useAsyncData(
+    async () => {
       const detail = await ReturnService.getReturn(returnId)
-      setReturnRequest(detail)
       // 退貨品項只帶 orderItemId／skuId，補上訂單品項資訊（品名/規格/圖片）供顯示
       const order = await OrderService.getOrder(detail.orderId).catch(() => null)
-      if (order) {
-        setOrderItems(Object.fromEntries(order.items.map((item) => [item.id, item])))
-      }
-    } catch (err) {
-      setError(apiErrorMessage(err, '無法載入退貨申請詳情'))
-    } finally {
-      setLoading(false)
-    }
-  }, [returnId])
-
-  useEffect(() => {
-    load()
-  }, [load])
+      const orderItems: Record<string, OrderItem> = order ? Object.fromEntries(order.items.map((item) => [item.id, item])) : {}
+      return { returnRequest: detail, orderItems }
+    },
+    [returnId],
+    { errorMessage: '無法載入退貨申請詳情' }
+  )
+  const returnRequest = data?.returnRequest ?? null
+  const orderItems = data?.orderItems ?? {}
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelError, setCancelError] = useState<string | null>(null)
 
   async function handleCancel() {
     setCancelling(true)
     setCancelError(null)
     try {
       const updated = await ReturnService.cancelReturn(returnId)
-      setReturnRequest(updated)
+      setData((prev) => prev && { ...prev, returnRequest: updated })
     } catch (err) {
       setCancelError(apiErrorMessage(err, '撤回退貨申請失敗'))
     } finally {

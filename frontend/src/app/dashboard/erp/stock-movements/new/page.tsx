@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,8 +9,6 @@ import StockMovementService, {
   ManualStockMovementType,
   StockMovementRequest,
 } from '@/services/erp/stockMovement'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { NativeSelect } from '@/components/ui/native-select'
@@ -31,13 +29,6 @@ export default function NewStockMovementPage() {
     referenceNumber: '',
     notes: '',
   })
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-  }, [router])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target

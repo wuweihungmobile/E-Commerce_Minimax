@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, use, useCallback } from 'react';
+import { useState, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { getPost, updatePost, getCategories, deletePost, publishPost, unpublishPost, PostResponse, CategoryResponse } from '@/services/cms';
+import { getPost, updatePost, getCategories, deletePost, publishPost, unpublishPost, CategoryResponse } from '@/services/cms';
+import { useAsyncData } from '@/hooks/useAsyncData';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -17,48 +18,51 @@ import { StatusBadge } from '@/components/ui/status-badge';
 export default function EditPostPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const [post, setPost] = useState<PostResponse | null>(null);
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [tags, setTags] = useState('');
-  const [featuredImageUrl, setFeaturedImageUrl] = useState('');
-  const [categories, setCategories] = useState<CategoryResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: post, loading, reload } = useAsyncData(
+    () => getPost(id),
+    [id],
+    {
+      errorMessage: () => '載入貼文失敗，請稍後再試',
+      onError: (message, error) => {
+        console.error('Failed to load post:', error);
+        toast.error(message);
+      },
+    }
+  );
+  const { data: categoriesData } = useAsyncData(
+    () => getCategories(),
+    [],
+    {
+      errorMessage: () => '載入分類失敗，請稍後再試',
+      onError: (message, error) => {
+        console.error('Failed to load categories:', error);
+        toast.error(message);
+      },
+    }
+  );
+  const categories: CategoryResponse[] = categoriesData?.categories ?? [];
+  // 表單欄位預設帶入貼文上的值；使用者改過的值另存（null＝沒改過）。儲存、發布、下架之後重新載入時清掉，回到伺服器上的值
+  // ——與原本「每次載入完成就依資料重設全部欄位」的行為相同。
+  const [titleInput, setTitle] = useState<string | null>(null);
+  const [contentInput, setContent] = useState<string | null>(null);
+  const [categoryIdInput, setCategoryId] = useState<string | null>(null);
+  const [tagsInput, setTags] = useState<string | null>(null);
+  const [featuredImageUrlInput, setFeaturedImageUrl] = useState<string | null>(null);
+  const title = titleInput ?? post?.title ?? '';
+  const content = contentInput ?? post?.content ?? '';
+  const categoryId = categoryIdInput ?? post?.categoryId ?? '';
+  const tags = tagsInput ?? post?.tags?.join(', ') ?? '';
+  const featuredImageUrl = featuredImageUrlInput ?? post?.featuredImageUrl ?? '';
   const [saving, setSaving] = useState(false);
 
-  const loadPost = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await getPost(id);
-      setPost(data);
-      setTitle(data.title);
-      setContent(data.content);
-      setCategoryId(data.categoryId || '');
-      setTags(data.tags?.join(', ') || '');
-      setFeaturedImageUrl(data.featuredImageUrl || '');
-    } catch (error) {
-      console.error('Failed to load post:', error);
-      toast.error('載入貼文失敗，請稍後再試');
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    loadPost();
-    loadCategories();
-  }, [loadPost]);
-
-  async function loadCategories() {
-    try {
-      const data = await getCategories();
-      setCategories(data.categories);
-    } catch (error) {
-      console.error('Failed to load categories:', error);
-      toast.error('載入分類失敗，請稍後再試');
-    }
-  }
+  const refresh = () => {
+    setTitle(null);
+    setContent(null);
+    setCategoryId(null);
+    setTags(null);
+    setFeaturedImageUrl(null);
+    reload();
+  };
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -72,7 +76,7 @@ export default function EditPostPage({ params }: { params: Promise<{ id: string 
         tags: tagsArray,
         featuredImageUrl: featuredImageUrl || undefined,
       });
-      loadPost();
+      refresh();
       toast.success('貼文已更新');
     } catch (error) {
       console.error('Failed to update post:', error);
@@ -84,7 +88,7 @@ export default function EditPostPage({ params }: { params: Promise<{ id: string 
   async function handlePublish() {
     try {
       await publishPost(id);
-      loadPost();
+      refresh();
     } catch (error) {
       console.error('Failed to publish post:', error);
       toast.error('發布貼文失敗，請稍後再試');
@@ -94,7 +98,7 @@ export default function EditPostPage({ params }: { params: Promise<{ id: string 
   async function handleUnpublish() {
     try {
       await unpublishPost(id);
-      loadPost();
+      refresh();
     } catch (error) {
       console.error('Failed to unpublish post:', error);
       toast.error('下架貼文失敗，請稍後再試');

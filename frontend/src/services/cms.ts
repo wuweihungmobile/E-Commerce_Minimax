@@ -3,7 +3,7 @@
  * 貼文、分類、媒體庫 API 服務
  */
 
-import apiClient from '@/lib/axios';
+import apiClient, { type RequestOptions } from '@/lib/axios';
 
 // Types
 export interface PostEmbedResponse {
@@ -182,28 +182,28 @@ export async function getPublishedPosts(tenantId: string, params?: {
   page?: number;
   size?: number;
   categoryId?: string;
-}): Promise<PostListResponse> {
-  const response = await apiClient.get('/v2/posts', { params: { tenantId, ...params } });
+}, options?: RequestOptions): Promise<PostListResponse> {
+  const response = await apiClient.get('/v2/posts', { params: { tenantId, ...params }, ...options });
   return response.data.data;
 }
 
 /**
  * 前台：取得分類列表（公開，僅回傳啟用中分類，DEF-358(c)）
  */
-export async function getPublicCategories(tenantId: string): Promise<CategoryListResponse> {
-  const response = await apiClient.get('/v2/posts/categories', { params: { tenantId } });
+export async function getPublicCategories(tenantId: string, options?: RequestOptions): Promise<CategoryListResponse> {
+  const response = await apiClient.get('/v2/posts/categories', { params: { tenantId }, ...options });
   return response.data.data;
 }
 
-export async function getPublishedPostBySlug(slug: string, tenantId: string): Promise<PostResponse> {
-  const response = await apiClient.get(`/v2/posts/${slug}`, { params: { tenantId } });
+export async function getPublishedPostBySlug(slug: string, tenantId: string, options?: RequestOptions): Promise<PostResponse> {
+  const response = await apiClient.get(`/v2/posts/${slug}`, { params: { tenantId }, ...options });
   return response.data.data;
 }
 
 // Listing Card API
 
-export async function getListingCard(listingId: string): Promise<ListingCardResponse> {
-  const response = await apiClient.get(`/v2/listings/${listingId}/card`);
+export async function getListingCard(listingId: string, options?: RequestOptions): Promise<ListingCardResponse> {
+  const response = await apiClient.get(`/v2/listings/${listingId}/card`, options);
   return response.data.data;
 }
 

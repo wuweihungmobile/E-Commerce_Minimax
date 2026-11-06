@@ -11,6 +11,7 @@ import { useAsyncData } from '@/hooks/useAsyncData'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
+import { PageTitle } from '@/components/ui/page-title'
 
 export default function InventoryDetailPage() {
   const router = useRouter()
@@ -68,7 +69,7 @@ export default function InventoryDetailPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-semibold text-rs-ink">{inventory.productName}</h2>
+          <PageTitle>{inventory.productName}</PageTitle>
           <p className="text-rs-ink-muted">SKU: {inventory.skuCode}</p>
         </div>
         <div className="flex gap-2">

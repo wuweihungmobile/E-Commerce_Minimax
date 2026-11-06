@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import cartService, { type CartItem } from '@/services/cart'
 import OrderService from '@/services/order'
@@ -17,6 +17,7 @@ import { Radio } from '@/components/ui/checkbox'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
 import { getApiErrorInfo } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 const PHONE_PATTERN = /^09\d{8}$/
 
@@ -41,57 +42,37 @@ function formatPrice(price: number) {
 
 export default function ProductCheckoutPage() {
   const router = useRouter()
-  const [loadingCart, setLoadingCart] = useState(true)
-  const [items, setItems] = useState<CartItem[]>([])
-  const [storeId, setStoreId] = useState<string | null>(null)
-  const [addresses, setAddresses] = useState<Address[]>([])
-  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null)
-  const [useManualAddress, setUseManualAddress] = useState(false)
+  const { data, error, loading: loadingCart } = useAsyncData(
+    async () => {
+      const [cartResponse, addressList] = await Promise.all([
+        cartService.getCart(),
+        AddressService.list().catch(() => [] as Address[]),
+      ])
+      // Sprint 238（DEF-319 同店結帳）：購物車頁依店鋪分組，點某家店鋪的「前往結帳」會帶 ?storeId=…；
+      // 結帳頁只處理那家店鋪的項目（訂單只能包含同一家店鋪的商品，PRD US-008／PC-005）。沒帶 storeId（單一店鋪的舊連結）時取全部。
+      const storeId = new URLSearchParams(window.location.search).get('storeId')
+      const items = (cartResponse.items || []).filter(
+        (i) => i.listingType === 'PRODUCT' && (!storeId || i.storeId === storeId)
+      )
+      return { items, storeId, addresses: addressList }
+    },
+    [],
+    { errorMessage: () => '無法載入購物車，請稍後再試' }
+  )
+  const items: CartItem[] = data?.items ?? []
+  const storeId = data?.storeId ?? null
+  const addresses: Address[] = data?.addresses ?? []
+  // 收件地址：預設選預設地址（沒有就第一筆）；一筆都沒有時改手動輸入。使用者操作過之後以使用者的選擇為準（null＝沒操作過）
+  const [selectedAddressIdInput, setSelectedAddressId] = useState<string | null>(null)
+  const [useManualAddressInput, setUseManualAddress] = useState<boolean | null>(null)
+  const defaultAddress = addresses.find((a) => a.isDefault) || addresses[0]
+  const selectedAddressId = selectedAddressIdInput ?? defaultAddress?.id ?? null
+  const useManualAddress = useManualAddressInput ?? (data !== undefined && defaultAddress === undefined)
   const [manualRecipient, setManualRecipient] = useState('')
   const [manualPhone, setManualPhone] = useState('')
   const [manualAddress, setManualAddress] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoadingCart(true)
-      setError(null)
-      try {
-        const [cartResponse, addressList] = await Promise.all([
-          cartService.getCart(),
-          AddressService.list().catch(() => [] as Address[]),
-        ])
-        if (cancelled) return
-        // Sprint 238（DEF-319 同店結帳）：購物車頁依店鋪分組，點某家店鋪的「前往結帳」會帶 ?storeId=…；
-  // 結帳頁只處理那家店鋪的項目（訂單只能包含同一家店鋪的商品，PRD US-008／PC-005）。沒帶 storeId（單一店鋪的舊連結）時取全部。
-        const sid = new URLSearchParams(window.location.search).get('storeId')
-        setStoreId(sid)
-        const productItems = (cartResponse.items || []).filter(
-          (i) => i.listingType === 'PRODUCT' && (!sid || i.storeId === sid)
-        )
-        setItems(productItems)
-        setAddresses(addressList)
-        const defaultAddress = addressList.find((a) => a.isDefault) || addressList[0]
-        if (defaultAddress) {
-          setSelectedAddressId(defaultAddress.id)
-        } else {
-          setUseManualAddress(true)
-        }
-      } catch {
-        if (cancelled) return
-        setError('無法載入購物車，請稍後再試')
-      } finally {
-        if (!cancelled) setLoadingCart(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const totalAmount = items.reduce((sum, item) => sum + item.subtotal, 0)
 

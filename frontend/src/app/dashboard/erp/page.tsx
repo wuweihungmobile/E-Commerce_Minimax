@@ -1,22 +1,10 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { Card } from '@/components/ui/card'
 
 export default function ErpDashboardPage() {
-  const router = useRouter()
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-  }, [router])
 
   const erpModules = [
     {

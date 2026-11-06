@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import SupportService, { type SupportTicket, type CreateTicketInput, type TicketCategory } from '@/services/support'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ import { NativeSelect } from '@/components/ui/native-select'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
 import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 const EMPTY_FORM: CreateTicketInput = {
   category: 'OTHER',
@@ -39,39 +40,20 @@ const STATUS_LABEL: Record<SupportTicket['status'], string> = {
 }
 
 export default function SupportTicketsPage() {
-  const [tickets, setTickets] = useState<SupportTicket[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, error, loading, setData } = useAsyncData(
+    () => SupportService.listMyTickets(),
+    [],
+    { errorMessage: () => '無法載入工單列表，請稍後再試' }
+  )
+  const tickets = data?.tickets ?? []
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState<CreateTicketInput>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await SupportService.listMyTickets()
-        if (cancelled) return
-        setTickets(result.tickets)
-      } catch {
-        if (cancelled) return
-        setError('無法載入工單列表，請稍後再試')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
+  // 建立工單之後在原地更新清單（不顯示載入畫面；失敗由呼叫端的 try/catch 處理）
   async function reload() {
-    const result = await SupportService.listMyTickets()
-    setTickets(result.tickets)
+    setData(await SupportService.listMyTickets())
   }
 
   function startCreate() {

@@ -1,22 +1,9 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import TenantList from '@/components/tenant/TenantList'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 
 export default function TenantsPage() {
-  const router = useRouter()
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-  }, [router])
-
   return (
     <div>
       <main>

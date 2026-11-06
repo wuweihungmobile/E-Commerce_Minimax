@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import BookingService, {
-  type BookingListItem,
   BOOKING_STATUS_LABELS,
   bookingStatusBadgeVariant,
 } from '@/services/booking'
@@ -15,6 +14,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 const PAGE_SIZE = 10
 
@@ -27,36 +27,15 @@ function formatDate(dateStr: string) {
 }
 
 export default function BookingsPage() {
-  const [bookings, setBookings] = useState<BookingListItem[]>([])
   const [page, setPage] = useState(0)
-  const [totalPages, setTotalPages] = useState(0)
-  const [totalElements, setTotalElements] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await BookingService.getBookings({ page, size: PAGE_SIZE, sortBy: 'createdAt', sortDir: 'DESC' })
-        if (cancelled) return
-        setBookings(result.content)
-        setTotalPages(result.totalPages)
-        setTotalElements(result.totalElements)
-      } catch {
-        if (cancelled) return
-        setError('無法載入預訂，請稍後再試')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [page])
+  const { data, error, loading } = useAsyncData(
+    () => BookingService.getBookings({ page, size: PAGE_SIZE, sortBy: 'createdAt', sortDir: 'DESC' }),
+    [page],
+    { errorMessage: () => '無法載入預訂，請稍後再試' }
+  )
+  const bookings = data?.content ?? []
+  const totalPages = data?.totalPages ?? 0
+  const totalElements = data?.totalElements ?? 0
 
   return (
     <StorefrontShell>

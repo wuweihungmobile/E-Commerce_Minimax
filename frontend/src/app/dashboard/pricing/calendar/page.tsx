@@ -1,26 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { Input } from '@/components/ui/input'
 import PricingCalendarPreview from '@/components/pricing/PricingCalendarPreview'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 
 // DEF-321(e)：PRD §10.1.2 列為獨立路由 /dashboard/pricing/calendar，
 // 但原實作只把 <PricingCalendarPreview /> 嵌在 /dashboard/pricing/rules 篩選房源 ID 之後，
 // 沒有獨立頁面可用。本頁重用同一元件，提供對齊 PRD 路由表的獨立入口。
 export default function PricingCalendarPage() {
-  const router = useRouter()
   const [roomListingId, setRoomListingId] = useState('')
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-  }, [router])
 
   return (
     <div>

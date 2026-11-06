@@ -76,6 +76,7 @@ export default function DashboardSupportTicketDetailPage() {
   if (error || !ticket) {
     return (
       <div className="space-y-4">
+        <PageTitle className="sr-only">工單詳情</PageTitle>
         <Alert variant="destructive">
           {error || '找不到工單'}
         </Alert>

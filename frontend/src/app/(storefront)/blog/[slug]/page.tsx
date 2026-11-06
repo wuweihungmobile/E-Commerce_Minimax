@@ -1,203 +1,162 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useSyncExternalStore } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { getPublishedPostBySlug, PostResponse, getListingCard, ListingCardResponse } from '@/services/cms';
+import { getPublishedPostBySlug, getListingCard } from '@/services/cms';
+import { useAsyncData } from '@/hooks/useAsyncData';
+import { getAuthServerSnapshot, getSelectedTenantIdSnapshot, subscribeAuth } from '@/services/authStore';
 import { PageTitle } from '@/components/ui/page-title';
+import { EmptyState } from '@/components/ui/states';
 import { Alert } from '@/components/ui/alert';
 import { Card } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { apiErrorMessage } from '@/lib/api-error';
 
-interface EmbedCardData {
-  listingId: string;
-  card?: ListingCardResponse;
-  loading: boolean;
+// 文章內嵌的商品／房源卡片：每張卡自己載入自己的資料（DEF-321(d)，PRD §6.6.3）
+function EmbeddedListingCard({ listingId }: { listingId: string }) {
+  const { data: card, loading } = useAsyncData(
+    (signal) => getListingCard(listingId, { signal }),
+    [listingId],
+    {
+      errorMessage: '載入商品卡片失敗',
+      onError: (_message, err) => console.error('Failed to load listing card:', listingId, err),
+    }
+  );
+
+  if (loading) {
+    return (
+      <div className="my-4 p-4 border rounded-lg bg-rs-bg-base animate-pulse">
+        <div className="flex gap-4">
+          <div className="w-24 h-24 bg-rs-hairline rounded" />
+          <div className="flex-1">
+            <div className="h-4 bg-rs-hairline rounded w-3/4 mb-2" />
+            <div className="h-3 bg-rs-hairline rounded w-1/2 mb-2" />
+            <div className="h-5 bg-rs-hairline rounded w-1/4" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!card) {
+    // DEF-321(d)：PRD §6.6.3——listing_id 不存在（已刪除或格式有誤）時顯示「此商品已下架」，
+    // 用語與「下架但列尚存在」（statusReason=listing_unavailable）一致
+    return (
+      <Alert variant="destructive" className="my-4">
+        此商品已下架
+      </Alert>
+    );
+  }
+
+  // DEF-321(d)：依 statusReason 分流文案與 CTA（PRD §6.6.3）
+  const isUnavailable = card.statusReason === 'listing_unavailable';
+  const isUnderMaintenance = card.statusReason === 'under_maintenance';
+  const statusLabel = isUnavailable
+    ? '此商品已下架'
+    : isUnderMaintenance
+      ? '房源維護中'
+      : null;
+  const ctaLabel = isUnavailable ? '前往店鋪' : isUnderMaintenance ? '聯絡客服' : '查看詳情';
+
+  return (
+    <Card className="my-4 p-4">
+      <div className="flex gap-4">
+        {card.coverImageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
+          <img
+            src={card.coverImageUrl}
+            alt={card.title}
+            className="w-24 h-24 object-cover rounded"
+          />
+        )}
+        <div className="flex-1">
+          <div className="text-xs text-rs-ink-muted mb-1">{card.listingType}</div>
+          <h3 className="font-semibold text-rs-ink">{card.title}</h3>
+          <p className="text-sm text-rs-ink-muted">{card.tenantName}</p>
+          <div className="mt-2 flex items-center justify-between">
+            {card.currentPrice !== null ? (
+              <span className="text-lg font-bold text-rs-primary">
+                {card.currency} {card.currentPrice.toLocaleString()}
+              </span>
+            ) : (
+              <span className="text-sm text-rs-disabled-text">無定價</span>
+            )}
+            {statusLabel ? (
+              <span className="text-xs text-rs-error">{statusLabel}</span>
+            ) : card.availability.available ? (
+              <span className="text-xs text-rs-success">可預訂</span>
+            ) : (
+              <span className="text-xs text-rs-error">已額滿</span>
+            )}
+          </div>
+          <a
+            href={card.ctaUrl}
+            className={cn(buttonVariants({ variant: "default", size: "sm" }), "mt-2 inline-block")}
+          >
+            {ctaLabel}
+          </a>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function renderContentWithEmbeds(content: string): React.ReactNode[] {
+  const embedPattern = /{{embed:listing:([a-f0-9-]+)}}/gi;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = embedPattern.exec(content)) !== null) {
+    // Add text before the embed
+    if (match.index > lastIndex) {
+      parts.push(content.slice(lastIndex, match.index));
+    }
+
+    parts.push(<EmbeddedListingCard key={`embed-${match[1]}`} listingId={match[1]} />);
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text
+  if (lastIndex < content.length) {
+    parts.push(content.slice(lastIndex));
+  }
+
+  return parts;
 }
 
 export default function BlogPostPage() {
   const params = useParams();
   const slug = params.slug as string;
 
-  const [post, setPost] = useState<PostResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [embedCards, setEmbedCards] = useState<EmbedCardData[]>([]);
-  const [tenantId, setTenantId] = useState<string>('');
-
-  useEffect(() => {
-    const storedTenantId = localStorage.getItem('tenantId');
-    if (storedTenantId) {
-      setTenantId(storedTenantId);
+  // 目前選用的店鋪（localStorage）；SSR／hydration 前是 null
+  const tenantId = useSyncExternalStore(subscribeAuth, getSelectedTenantIdSnapshot, getAuthServerSnapshot);
+  const { data: post, error, loading } = useAsyncData(
+    (signal) => getPublishedPostBySlug(slug, tenantId ?? '', { signal }),
+    [slug, tenantId],
+    {
+      enabled: Boolean(slug && tenantId),
+      // 與原本相同：Error 實例（含 axios 錯誤）優先用它的 message，其餘才用伺服器訊息或後備文案
+      errorMessage: (info, err) => (err instanceof Error ? err.message : info.message || '載入失敗'),
+      onError: (_message, err) => console.error('Failed to load post:', err),
     }
-  }, []);
+  );
 
-  const loadPost = useCallback(async () => {
-    if (!tenantId) return;
-
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getPublishedPostBySlug(slug, tenantId);
-      setPost(data);
-      parseEmbeds(data.content);
-    } catch (err) {
-      console.error('Failed to load post:', err);
-      setError(err instanceof Error ? err.message : apiErrorMessage(err, '載入失敗'));
-    } finally {
-      setLoading(false);
-    }
-  }, [slug, tenantId]);
-
-  useEffect(() => {
-    if (slug && tenantId) {
-      loadPost();
-    }
-  }, [slug, tenantId, loadPost]);
-
-  async function parseEmbeds(content: string) {
-    const embedPattern = /{{embed:listing:([a-f0-9-]+)}}/gi;
-    const matches = [...content.matchAll(embedPattern)];
-    const uniqueIds = [...new Set(matches.map(m => m[1]))];
-
-    const cards: EmbedCardData[] = uniqueIds.map(id => ({
-      listingId: id,
-      loading: true,
-    }));
-    setEmbedCards(cards);
-
-    for (const cardData of cards) {
-      try {
-        const card = await getListingCard(cardData.listingId);
-        setEmbedCards(prev =>
-          prev.map(c =>
-            c.listingId === cardData.listingId ? { ...c, card, loading: false } : c
-          )
-        );
-      } catch (err) {
-        console.error('Failed to load listing card:', cardData.listingId, err);
-        setEmbedCards(prev =>
-          prev.map(c =>
-            c.listingId === cardData.listingId ? { ...c, loading: false } : c
-          )
-        );
-      }
-    }
-  }
-
-  function renderContentWithEmbeds(content: string): React.ReactNode[] {
-    const embedPattern = /{{embed:listing:([a-f0-9-]+)}}/gi;
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-
-    while ((match = embedPattern.exec(content)) !== null) {
-      // Add text before the embed
-      if (match.index > lastIndex) {
-        parts.push(content.slice(lastIndex, match.index));
-      }
-
-      // Find the card data
-      const listingId = match[1];
-      const cardData = embedCards.find(c => c.listingId === listingId);
-
-      if (cardData?.card) {
-        const card = cardData.card;
-        // DEF-321(d)：依 statusReason 分流文案與 CTA（PRD §6.6.3）
-        const isUnavailable = card.statusReason === 'listing_unavailable';
-        const isUnderMaintenance = card.statusReason === 'under_maintenance';
-        const statusLabel = isUnavailable
-          ? '此商品已下架'
-          : isUnderMaintenance
-            ? '房源維護中'
-            : null;
-        const ctaLabel = isUnavailable ? '前往店鋪' : isUnderMaintenance ? '聯絡客服' : '查看詳情';
-
-        parts.push(
-          <Card
-            key={`embed-${listingId}`}
-            className="my-4 p-4"
-          >
-            <div className="flex gap-4">
-              {card.coverImageUrl && (
-                // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
-                <img
-                  src={card.coverImageUrl}
-                  alt={card.title}
-                  className="w-24 h-24 object-cover rounded"
-                />
-              )}
-              <div className="flex-1">
-                <div className="text-xs text-rs-ink-muted mb-1">{card.listingType}</div>
-                <h3 className="font-semibold text-rs-ink">{card.title}</h3>
-                <p className="text-sm text-rs-ink-muted">{card.tenantName}</p>
-                <div className="mt-2 flex items-center justify-between">
-                  {card.currentPrice !== null ? (
-                    <span className="text-lg font-bold text-rs-primary">
-                      {card.currency} {card.currentPrice.toLocaleString()}
-                    </span>
-                  ) : (
-                    <span className="text-sm text-rs-disabled-text">無定價</span>
-                  )}
-                  {statusLabel ? (
-                    <span className="text-xs text-rs-error">{statusLabel}</span>
-                  ) : card.availability.available ? (
-                    <span className="text-xs text-rs-success">可預訂</span>
-                  ) : (
-                    <span className="text-xs text-rs-error">已額滿</span>
-                  )}
-                </div>
-                <a
-                  href={card.ctaUrl}
-                  className={cn(buttonVariants({ variant: "default", size: "sm" }), "mt-2 inline-block")}
-                >
-                  {ctaLabel}
-                </a>
-              </div>
-            </div>
-          </Card>
-        );
-      } else if (cardData?.loading) {
-        parts.push(
-          <div
-            key={`embed-${match[1]}`}
-            className="my-4 p-4 border rounded-lg bg-rs-bg-base animate-pulse"
-          >
-            <div className="flex gap-4">
-              <div className="w-24 h-24 bg-rs-hairline rounded" />
-              <div className="flex-1">
-                <div className="h-4 bg-rs-hairline rounded w-3/4 mb-2" />
-                <div className="h-3 bg-rs-hairline rounded w-1/2 mb-2" />
-                <div className="h-5 bg-rs-hairline rounded w-1/4" />
-              </div>
-            </div>
-          </div>
-        );
-      } else {
-        // DEF-321(d)：PRD §6.6.3——listing_id 不存在（已刪除或格式有誤）時顯示「此商品已下架」，
-        // 用語與「下架但列尚存在」（statusReason=listing_unavailable）一致
-        parts.push(
-          <Alert
-            variant="destructive"
-            key={`embed-${match[1]}`}
-            className="my-4"
-          >
-            此商品已下架
-          </Alert>
-        );
-      }
-
-      lastIndex = match.index + match[0].length;
-    }
-
-    // Add remaining text
-    if (lastIndex < content.length) {
-      parts.push(content.slice(lastIndex));
-    }
-
-    return parts;
+  // 沒有選用店鋪的訪客：與部落格清單頁一致，提示登入（原本永遠停在「載入中...」）
+  if (!tenantId) {
+    return (
+      <div className="flex-1">
+        <div className="max-w-3xl mx-auto px-4 py-12 text-center">
+          <PageTitle className="mb-4">部落格文章</PageTitle>
+          <EmptyState
+            title="請先登入並設定店鋪以瀏覽部落格"
+            action={<Link href="/login" className="text-rs-primary hover:underline">前往登入</Link>}
+          />
+        </div>
+      </div>
+    );
   }
 
   if (loading) {

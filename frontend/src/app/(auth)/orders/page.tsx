@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import OrderService, {
-  type OrderListItem,
   ORDER_STATUS_LABELS,
   orderStatusBadgeVariant,
 } from '@/services/order'
@@ -15,6 +14,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 const PAGE_SIZE = 10
 
@@ -34,36 +34,15 @@ function formatDateTime(dateStr: string) {
 }
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<OrderListItem[]>([])
   const [page, setPage] = useState(0)
-  const [totalPages, setTotalPages] = useState(0)
-  const [totalElements, setTotalElements] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await OrderService.getOrders({ page, size: PAGE_SIZE, sortBy: 'createdAt', sortDir: 'DESC' })
-        if (cancelled) return
-        setOrders(result.content)
-        setTotalPages(result.totalPages)
-        setTotalElements(result.totalElements)
-      } catch {
-        if (cancelled) return
-        setError('無法載入訂單，請稍後再試')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [page])
+  const { data, error, loading } = useAsyncData(
+    () => OrderService.getOrders({ page, size: PAGE_SIZE, sortBy: 'createdAt', sortDir: 'DESC' }),
+    [page],
+    { errorMessage: () => '無法載入訂單，請稍後再試' }
+  )
+  const orders = data?.content ?? []
+  const totalPages = data?.totalPages ?? 0
+  const totalElements = data?.totalElements ?? 0
 
   return (
     <StorefrontShell>

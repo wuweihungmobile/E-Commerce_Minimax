@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import SupportService, { type SupportTicket } from '@/services/support'
@@ -12,6 +12,7 @@ import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { Textarea } from '@/components/ui/textarea'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 const STATUS_LABEL: Record<SupportTicket['status'], string> = {
   OPEN: '開立',
@@ -24,30 +25,14 @@ export default function SupportTicketDetailPage() {
   const params = useParams()
   const ticketId = params.id as string
 
-  const [ticket, setTicket] = useState<SupportTicket | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: ticket, error, loading, reload } = useAsyncData(
+    () => SupportService.getTicket(ticketId),
+    [ticketId],
+    { errorMessage: '無法載入工單詳情' }
+  )
   const [reply, setReply] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
-
-  async function load() {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await SupportService.getTicket(ticketId)
-      setTicket(result)
-    } catch (err) {
-      setError(apiErrorMessage(err, '無法載入工單詳情'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticketId])
 
   async function handleReply() {
     if (!reply.trim()) return
@@ -56,7 +41,7 @@ export default function SupportTicketDetailPage() {
     try {
       await SupportService.postMessage(ticketId, reply.trim())
       setReply('')
-      await load()
+      reload()
     } catch (err) {
       setSendError(apiErrorMessage(err, '發送訊息失敗'))
     } finally {

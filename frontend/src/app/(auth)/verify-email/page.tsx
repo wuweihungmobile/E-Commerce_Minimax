@@ -6,6 +6,7 @@ import Link from 'next/link'
 import AuthService, { getApiErrorInfo } from '@/services/auth'
 import { Alert } from '@/components/ui/alert'
 import { Card } from '@/components/ui/card'
+import { PageTitle } from '@/components/ui/page-title'
 import { Button } from '@/components/ui/button'
 
 type Status = 'verifying' | 'success' | 'invalid' | 'error'
@@ -95,7 +96,7 @@ export default function VerifyEmailPage() {
   return (
     <div className="flex-1 flex items-center justify-center px-4 py-12">
       <Card className="max-w-md w-full space-y-8 p-8">
-        <h2 className="text-center text-3xl font-semibold text-rs-ink">Verify your email</h2>
+        <PageTitle className="text-center text-3xl">Verify your email</PageTitle>
         <Suspense fallback={null}>
           <VerifyEmailContent />
         </Suspense>

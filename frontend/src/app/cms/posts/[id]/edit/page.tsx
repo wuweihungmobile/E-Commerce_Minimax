@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -11,11 +11,10 @@ import {
   getCategories,
   deletePost,
   PostResponse,
-  CategoryResponse,
   UpdatePostRequest,
   getListingCard,
-  ListingCardResponse,
 } from '@/services/cms';
+import { useAsyncData } from '@/hooks/useAsyncData';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -28,75 +27,113 @@ import { toast } from '@/components/ui/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { StatusBadge } from '@/components/ui/status-badge';
 
+// 內文裡的嵌入商品卡語法 {{embed:listing:<id>}}：取出不重複的 listingId（保持出現順序）
+function embeddedListingIds(content: string): string[] {
+  const pattern = /{{embed:listing:([a-f0-9-]+)}}/gi;
+  return [...new Set([...content.matchAll(pattern)].map((m) => m[1]))];
+}
+
+// 嵌入商品卡預覽：跟著編輯中的內文，內文裡的 listingId 集合一變就重新載入；載入失敗的卡片只記錄、不顯示
+function EmbeddedCardsPreview({ content }: { content: string }) {
+  const idsKey = embeddedListingIds(content).join(',');
+  const { data: cards } = useAsyncData(
+    async (signal) => {
+      const ids = idsKey ? idsKey.split(',') : [];
+      const loaded = await Promise.all(
+        ids.map((id) =>
+          getListingCard(id, { signal }).then(
+            (card) => [id, card] as const,
+            (err: unknown) => {
+              if (!signal.aborted) console.error('Failed to load listing card:', id, err);
+              return null;
+            }
+          )
+        )
+      );
+      return loaded.filter((entry) => entry !== null);
+    },
+    [idsKey],
+    { enabled: idsKey !== '', errorMessage: '載入嵌入商品卡失敗' }
+  );
+  const shown = idsKey === '' ? [] : (cards ?? []);
+  if (shown.length === 0) return null;
+
+  return (
+    <div className="border rounded-lg p-4 bg-rs-bg-base">
+      <h3 className="text-sm font-medium text-rs-ink mb-3">嵌入商品卡預覽</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {shown.map(([listingId, card]) => (
+          <Card key={listingId} className="p-3">
+            <div className="flex gap-3">
+              {card.coverImageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
+                <img
+                  src={card.coverImageUrl}
+                  alt={card.title}
+                  className="w-16 h-16 object-cover rounded"
+                />
+              )}
+              <div className="flex-1">
+                <div className="font-medium">{card.title}</div>
+                <div className="text-sm text-rs-ink-muted">{card.tenantName}</div>
+                <div className="text-sm font-medium text-rs-primary">
+                  {card.currentPrice !== null
+                    ? `${card.currency} ${card.currentPrice.toLocaleString()}`
+                    : '無定價'}
+                </div>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function EditPostPage() {
   const router = useRouter();
   const params = useParams();
   const postId = params.id as string;
 
   const [loading, setLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [post, setPost] = useState<PostResponse | null>(null);
-  const [categories, setCategories] = useState<CategoryResponse[]>([]);
-  const [embedCards, setEmbedCards] = useState<Map<string, ListingCardResponse>>(new Map());
-
-  const [formData, setFormData] = useState<UpdatePostRequest>({});
-  const [tagInput, setTagInput] = useState('');
-
-  useEffect(() => {
-    loadPost();
-    loadCategories();
-    // loadPost 內的 parseEmbedCards 會讀取 embedCards（用來避免重複載入同一張嵌入卡片），而 loadPost 又會用
-    // 伺服器內容覆蓋 formData。若把它們列為依賴，每載完一張卡片 embedCards 改變，這個 effect 就會重新執行、
-    // 重新抓貼文並蓋掉使用者正在編輯的內容；它只應在 postId 改變時執行。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [postId]);
-
-  async function loadPost() {
-    try {
-      const data = await getPost(postId);
-      setPost(data);
-      setFormData({
-        title: data.title,
-        content: data.content,
-        categoryId: data.categoryId || undefined,
-        tags: data.tags,
-        featuredImageUrl: data.featuredImageUrl || undefined,
-      });
-      // Parse embed cards from content
-      parseEmbedCards(data.content);
-    } catch (error) {
-      console.error('Failed to load post:', error);
-      toast.error('載入貼文失敗');
-      router.push('/cms');
-    } finally {
-      setInitialLoading(false);
+  const { data: post, loading: postLoading, reload: loadPost } = useAsyncData(
+    () => getPost(postId),
+    [postId],
+    {
+      errorMessage: () => '載入貼文失敗',
+      // 載入失敗（含儲存後重新載入失敗）一律回後台首頁，與原本相同
+      onError: (message, error) => {
+        console.error('Failed to load post:', error);
+        toast.error(message);
+        router.push('/cms');
+      },
     }
-  }
-
-  async function loadCategories() {
-    try {
-      const data = await getCategories();
-      setCategories(data.categories);
-    } catch (error) {
-      console.error('Failed to load categories:', error);
+  );
+  const { data: categoriesData } = useAsyncData(
+    () => getCategories(),
+    [],
+    {
+      errorMessage: () => '載入分類失敗',
+      onError: (_message, error) => console.error('Failed to load categories:', error),
     }
-  }
+  );
+  const categories = categoriesData?.categories ?? [];
 
-  function parseEmbedCards(content: string) {
-    const embedPattern = /{{embed:listing:([a-f0-9-]+)}}/gi;
-    const matches = content.matchAll(embedPattern);
-    const listingIds = [...matches].map(m => m[1]);
-
-    listingIds.forEach(id => {
-      if (!embedCards.has(id)) {
-        getListingCard(id)
-          .then(card => {
-            setEmbedCards(prev => new Map(prev).set(id, card));
-          })
-          .catch(err => console.error('Failed to load listing card:', id, err));
+  // 表單內容：預設是伺服器上的貼文；使用者編輯後存成「針對哪一份貼文改的」草稿。
+  // 儲存／發布／下架後重新載入，新的貼文一到，草稿就自動失效、表單改帶入新資料（重新載入失敗則保留使用者輸入的內容）。
+  const [draft, setDraft] = useState<{ base: PostResponse | undefined; values: UpdatePostRequest } | null>(null);
+  const seeded: UpdatePostRequest = post
+    ? {
+        title: post.title,
+        content: post.content,
+        categoryId: post.categoryId || undefined,
+        tags: post.tags,
+        featuredImageUrl: post.featuredImageUrl || undefined,
       }
-    });
-  }
+    : {};
+  const formData: UpdatePostRequest = draft !== null && draft.base === post ? draft.values : seeded;
+  const setFormData = (values: UpdatePostRequest) => setDraft({ base: post, values });
+  const [tagInput, setTagInput] = useState('');
 
   async function handleSubmit(e: React.FormEvent, autoPublish = false) {
     e.preventDefault();
@@ -179,16 +216,10 @@ export default function EditPostPage() {
   }
 
   function handleContentChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    const newContent = e.target.value;
-    setFormData({ ...formData, content: newContent });
-
-    // Debounced embed card parsing
-    setTimeout(() => {
-      parseEmbedCards(newContent);
-    }, 500);
+    setFormData({ ...formData, content: e.target.value });
   }
 
-  if (initialLoading) {
+  if (postLoading && post === undefined) {
     return <div className="p-6 text-center">載入中...</div>;
   }
 
@@ -240,36 +271,7 @@ export default function EditPostPage() {
         </div>
 
         {/* Embed Cards Preview */}
-        {embedCards.size > 0 && (
-          <div className="border rounded-lg p-4 bg-rs-bg-base">
-            <h3 className="text-sm font-medium text-rs-ink mb-3">嵌入商品卡預覽</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {Array.from(embedCards.entries()).map(([listingId, card]) => (
-                <Card key={listingId} className="p-3">
-                  <div className="flex gap-3">
-                    {card.coverImageUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
-                      <img
-                        src={card.coverImageUrl}
-                        alt={card.title}
-                        className="w-16 h-16 object-cover rounded"
-                      />
-                    )}
-                    <div className="flex-1">
-                      <div className="font-medium">{card.title}</div>
-                      <div className="text-sm text-rs-ink-muted">{card.tenantName}</div>
-                      <div className="text-sm font-medium text-rs-primary">
-                        {card.currentPrice !== null
-                          ? `${card.currency} ${card.currentPrice.toLocaleString()}`
-                          : '無定價'}
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
+        <EmbeddedCardsPreview content={formData.content ?? ''} />
 
         {/* Category */}
         <div>

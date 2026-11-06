@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { getPublishedPosts, getPublicCategories, PostResponse, CategoryResponse } from '@/services/cms';
+import { getPublishedPosts, getPublicCategories } from '@/services/cms';
+import { useAsyncData } from '@/hooks/useAsyncData';
+import { getAuthServerSnapshot, getSelectedTenantIdSnapshot, subscribeAuth } from '@/services/authStore';
 import { Pagination } from '@/components/ui/pagination';
 import { EmptyState, LoadingState } from '@/components/ui/states';
 import { Card } from '@/components/ui/card';
@@ -14,61 +16,38 @@ export default function BlogCategoryPage() {
   const params = useParams();
   const categoryId = params.id as string;
 
-  const [posts, setPosts] = useState<PostResponse[]>([]);
-  const [category, setCategory] = useState<CategoryResponse | null>(null);
-  const [categoryNotFound, setCategoryNotFound] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [tenantId, setTenantId] = useState<string>('');
+  // 目前選用的店鋪（localStorage）；SSR／hydration 前是 null，與原本「mount 之後才讀到」相同
+  const tenantId = useSyncExternalStore(subscribeAuth, getSelectedTenantIdSnapshot, getAuthServerSnapshot);
   const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
 
-  useEffect(() => {
-    const storedTenantId = localStorage.getItem('tenantId');
-    if (storedTenantId) {
-      setTenantId(storedTenantId);
+  // 公開端點只回傳啟用中分類；找不到就視為「此分類不存在」（含店主已停用的情況）。
+  // 載入失敗也當作不存在（原本就是這樣）：category 是 null＝載入完成但沒有這個分類；undefined＝還沒載入或沒有發請求
+  const { data: category, error: categoryError } = useAsyncData(
+    async (signal) => {
+      const data = await getPublicCategories(tenantId ?? '', { signal });
+      return data.categories.find((c) => c.id === categoryId) ?? null;
+    },
+    [tenantId, categoryId],
+    {
+      enabled: Boolean(tenantId && categoryId),
+      errorMessage: '載入分類失敗',
+      onError: (_message, error) => console.error('Failed to load category:', error),
     }
-  }, []);
+  );
+  const categoryNotFound = category === null || categoryError !== null;
 
-  const loadCategory = useCallback(async () => {
-    try {
-      // 公開端點只回傳啟用中分類；找不到就視為「此分類不存在」（含店主已停用的情況）
-      const data = await getPublicCategories(tenantId);
-      const found = data.categories.find((c) => c.id === categoryId);
-      if (found) {
-        setCategory(found);
-      } else {
-        setCategoryNotFound(true);
-      }
-    } catch (error) {
-      console.error('Failed to load category:', error);
-      setCategoryNotFound(true);
+  // 文章與分類同時載入（分類確定不存在就不需要文章）；載入失敗只記錄、畫面顯示「此分類尚無已發布的文章」
+  const { data: postsData, loading } = useAsyncData(
+    (signal) => getPublishedPosts(tenantId ?? '', { page, size: PAGE_SIZE, categoryId }, { signal }),
+    [tenantId, categoryId, page],
+    {
+      enabled: Boolean(tenantId && categoryId) && !categoryNotFound,
+      errorMessage: '載入文章失敗',
+      onError: (_message, error) => console.error('Failed to load posts:', error),
     }
-  }, [tenantId, categoryId]);
-
-  useEffect(() => {
-    if (tenantId && categoryId) {
-      loadCategory();
-    }
-  }, [tenantId, categoryId, loadCategory]);
-
-  const loadPosts = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await getPublishedPosts(tenantId, { page, size: PAGE_SIZE, categoryId });
-      setPosts(data.posts);
-      setTotalPages(data.totalPages);
-    } catch (error) {
-      console.error('Failed to load posts:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [tenantId, categoryId, page]);
-
-  useEffect(() => {
-    if (tenantId && categoryId && !categoryNotFound) {
-      loadPosts();
-    }
-  }, [tenantId, categoryId, categoryNotFound, loadPosts]);
+  );
+  const posts = postsData?.posts ?? [];
+  const totalPages = postsData?.totalPages ?? 0;
 
   return (
     <div className="flex-1">
@@ -78,7 +57,7 @@ export default function BlogCategoryPage() {
           <Link href="/blog" className="text-sm text-rs-primary hover:underline">
             ← 返回部落格
           </Link>
-          {category && (
+          {category ? (
             <>
               <h1 className="mt-2 text-3xl font-semibold text-rs-ink" data-testid="blog-category-title">
                 {category.name}
@@ -87,6 +66,9 @@ export default function BlogCategoryPage() {
                 <p className="mt-2 text-rs-ink-muted">{category.description}</p>
               )}
             </>
+          ) : (
+            // 分類還沒載入、不存在、或沒有店鋪時也要有頁面主標題（DEF-459）
+            <h1 className="mt-2 text-3xl font-semibold text-rs-ink">文章分類</h1>
           )}
         </div>
       </header>

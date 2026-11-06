@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,8 +8,15 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import AuthService from '@/services/auth'
-import { getApiErrorInfo } from '@/services/auth'
+import { getApiErrorInfo } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
+import {
+  getAuthRoleSnapshot,
+  getAuthServerSnapshot,
+  getAuthTenantIdSnapshot,
+  getAuthUserIdSnapshot,
+  subscribeAuth,
+} from '@/services/authStore'
 import TenantMemberService, {
   type TenantMemberResponse,
   type MemberCandidateResponse,
@@ -17,7 +24,6 @@ import TenantMemberService, {
   STORE_MEMBER_STATUS_LABELS,
   storeMemberStatusBadgeVariant,
 } from '@/services/tenantMember'
-import { loginHref } from '@/lib/auth-redirect'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 
 // 邀請／移除共用的錯誤碼對應（DEF-321 (a)，Sprint 248）：後端 BusinessException.getUserMessage()
@@ -45,15 +51,35 @@ function formatJoinedAt(joinedAt: string | null): string {
 export default function DashboardMembersPage() {
   const router = useRouter()
 
-  const [tenantId, setTenantId] = useState<string | null>(null)
-  // 不可直接在 render 期呼叫 AuthService.getCurrentUser()：SSR 階段讀不到 localStorage，
-  // 與 client 端首次 render 的結果不一致會觸發 hydration 失敗，React 判定需要在 client 端
-  // 整棵子樹重新掛載，連帶把當下輸入到 Email 欄位的使用者輸入一併清空（真實瀏覽器實測）。
-  // （目前使用者的 email 原本也放在這裡給頁面自己的頂欄顯示；頂欄改由共用外殼提供後已移除。）
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [members, setMembers] = useState<TenantMemberResponse[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  // 登入者的角色、店鋪、使用者 id 一律從 auth store 讀（不可在 render 期直接呼叫 AuthService.getCurrentUser()：
+  // SSR 階段讀不到 localStorage，與 client 端首次 render 的結果不一致會觸發 hydration 失敗，React 判定需要在 client 端
+  // 整棵子樹重新掛載，連帶把當下輸入到 Email 欄位的使用者輸入一併清空——真實瀏覽器實測）。
+  const role = useSyncExternalStore(subscribeAuth, getAuthRoleSnapshot, getAuthServerSnapshot)
+  const tenantId = useSyncExternalStore(subscribeAuth, getAuthTenantIdSnapshot, getAuthServerSnapshot)
+  const currentUserId = useSyncExternalStore(subscribeAuth, getAuthUserIdSnapshot, getAuthServerSnapshot)
+  // 只有店主與管理員能管理成員；其他角色回儀表板（role 為 null＝hydration 前或未登入，交給外殼的登入守門）
+  const canManageMembers = role === 'STORE_OWNER' || role === 'ADMIN'
+  useEffect(() => {
+    if (role !== null && !canManageMembers) router.push('/dashboard')
+  }, [role, canManageMembers, router])
+
+  const {
+    data,
+    error: membersError,
+    loading: membersLoading,
+    reload,
+  } = useAsyncData(
+    () => TenantMemberService.listMembers(tenantId as string),
+    [tenantId],
+    {
+      enabled: canManageMembers && Boolean(tenantId),
+      errorMessage: ({ code }) => mapMemberErrorMessage(code, '載入店鋪成員失敗，請稍後再試'),
+    }
+  )
+  const members = data ?? []
+  // 角色確認前（SSR／hydration）與沒有權限的角色都顯示載入中直到導走，與原本相同；沒有店鋪資訊則直接顯示錯誤
+  const loading = membersLoading || !canManageMembers
+  const loadError = canManageMembers && !tenantId ? '找不到店鋪資訊' : membersError
 
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -67,45 +93,6 @@ export default function DashboardMembersPage() {
   const [removingUserId, setRemovingUserId] = useState<string | null>(null)
   const [actionUserId, setActionUserId] = useState<string | null>(null)
 
-  const fetchMembers = useCallback(async (id: string) => {
-    setLoading(true)
-    setLoadError(null)
-    try {
-      const result = await TenantMemberService.listMembers(id)
-      setMembers(result)
-    } catch (err) {
-      setLoadError(mapMemberErrorMessage(getApiErrorInfo(err).code, '載入店鋪成員失敗，請稍後再試'))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-
-    const currentUser = AuthService.getCurrentUser()
-    if (currentUser?.role !== 'STORE_OWNER' && currentUser?.role !== 'ADMIN') {
-      router.push('/dashboard')
-      return
-    }
-
-    setCurrentUserId(currentUser.id)
-    if (currentUser.tenantId) {
-      setTenantId(currentUser.tenantId)
-    } else {
-      setLoading(false)
-      setLoadError('找不到店鋪資訊')
-    }
-  }, [router])
-
-  useEffect(() => {
-    if (tenantId) {
-      fetchMembers(tenantId)
-    }
-  }, [tenantId, fetchMembers])
 
   const handleLookup = async () => {
     if (!tenantId || !inviteEmail.trim()) return
@@ -137,7 +124,7 @@ export default function DashboardMembersPage() {
       setActionMessage(`已成功邀請 ${candidate.displayName}`)
       setInviteEmail('')
       setCandidate(null)
-      await fetchMembers(tenantId)
+      reload()
     } catch (err) {
       setActionError(mapMemberErrorMessage(getApiErrorInfo(err).code, '邀請失敗，請稍後再試'))
     } finally {
@@ -156,7 +143,7 @@ export default function DashboardMembersPage() {
         member.status === 'INVITED' ? `已撤回對 ${member.displayName} 的邀請` : `已移除 ${member.displayName}`
       )
       setRemovingUserId(null)
-      await fetchMembers(tenantId)
+      reload()
     } catch (err) {
       setActionError(mapMemberErrorMessage(getApiErrorInfo(err).code, '操作失敗，請稍後再試'))
     } finally {

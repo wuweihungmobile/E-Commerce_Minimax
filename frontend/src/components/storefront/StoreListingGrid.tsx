@@ -1,12 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ProductCard } from "@/components/storefront/ProductCard"
 import { Pagination } from "@/components/ui/pagination"
 import { Skeleton } from "@/components/ui/skeleton"
 import storefrontService from "@/services/storefront"
-import type { Listing, Page } from "@/services/listing"
+import { useAsyncData } from "@/hooks/useAsyncData"
 import { Button } from "@/components/ui/button"
 
 const PAGE_SIZE = 12
@@ -23,28 +22,11 @@ export interface StoreListingGridProps {
 // 只回傳該店鋪 ACTIVE 上架項目，比照 HomeContent.tsx 的分頁與卡片呈現慣例。
 export function StoreListingGrid({ slug, type, page }: StoreListingGridProps) {
   const router = useRouter()
-  const [data, setData] = useState<Page<Listing> | null>(null)
-  const [error, setError] = useState(false)
-  const [reloadKey, setReloadKey] = useState(0)
-
-  useEffect(() => {
-    let cancelled = false
-    storefrontService
-      .getStoreListings(slug, { type, page, size: PAGE_SIZE })
-      .then((res) => {
-        if (cancelled) return
-        setData(res)
-        setError(false)
-      })
-      .catch(() => {
-        if (cancelled) return
-        setData(null)
-        setError(true)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [slug, type, page, reloadKey])
+  const { data, error, reload } = useAsyncData(
+    () => storefrontService.getStoreListings(slug, { type, page, size: PAGE_SIZE }),
+    [slug, type, page],
+    { errorMessage: "載入失敗，請稍後再試" }
+  )
 
   const handlePageChange = (oneBased: number) => {
     const params = new URLSearchParams()
@@ -63,7 +45,7 @@ export function StoreListingGrid({ slug, type, page }: StoreListingGridProps) {
         <Button
           variant="default"
           type="button"
-          onClick={() => setReloadKey((k) => k + 1)}
+          onClick={() => reload()}
         >
           重新載入
         </Button>
@@ -71,7 +53,7 @@ export function StoreListingGrid({ slug, type, page }: StoreListingGridProps) {
     )
   }
 
-  if (data === null) {
+  if (data === undefined) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
         {Array.from({ length: PAGE_SIZE }).map((_, i) => (

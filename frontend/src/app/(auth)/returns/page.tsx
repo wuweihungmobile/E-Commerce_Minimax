@@ -1,9 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import ReturnService, {
-  type ReturnRequest,
   RETURN_STATUS_LABELS,
   returnStatusBadgeVariant,
 } from '@/services/returns'
@@ -15,34 +13,15 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
-import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 export default function MyReturnsPage() {
-  const [returns, setReturns] = useState<ReturnRequest[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await ReturnService.listMyReturns()
-        if (cancelled) return
-        setReturns(result.content)
-      } catch (err) {
-        if (cancelled) return
-        setError(apiErrorMessage(err, '無法載入退貨申請列表，請稍後再試'))
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const { data, error, loading } = useAsyncData(
+    () => ReturnService.listMyReturns(),
+    [],
+    { errorMessage: '無法載入退貨申請列表，請稍後再試' }
+  )
+  const returns = data?.content ?? []
 
   return (
     <StorefrontShell>

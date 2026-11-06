@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import {
   getFaqArticles,
@@ -8,10 +8,8 @@ import {
   getFaqCategories,
   getPinnedFaqArticles,
   searchFaqArticlesWithHighlight,
-  FaqArticleDto,
-  FaqCategoryDto,
-  PageResponse,
 } from '@/services/faq';
+import { useAsyncData } from '@/hooks/useAsyncData';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Input } from '@/components/ui/input';
@@ -24,77 +22,63 @@ import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 
 export default function FaqPage() {
-  const [articles, setArticles] = useState<FaqArticleDto[]>([]);
-  const [pinnedArticles, setPinnedArticles] = useState<FaqArticleDto[]>([]);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalElements, setTotalElements] = useState(0);
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [keyword, setKeyword] = useState<string>('');
-  const [categories, setCategories] = useState<FaqCategoryDto[]>([]);
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadCategories();
-    loadPinnedArticles();
-  }, []);
-
-  useEffect(() => {
-    loadArticles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, categoryFilter, keyword]);
-
-  async function loadCategories() {
-    try {
-      const data = await getFaqCategories();
-      setCategories(data);
-    } catch (error) {
-      console.error('Failed to load FAQ categories:', error);
+  // 分類與置頂文章只是輔助資訊：載入失敗只記錄，畫面照常（與原本相同）
+  const { data: categoriesData } = useAsyncData(
+    () => getFaqCategories(),
+    [],
+    {
+      errorMessage: () => '載入 FAQ 分類失敗',
+      onError: (_message, error) => console.error('Failed to load FAQ categories:', error),
     }
-  }
-
-  async function loadPinnedArticles() {
-    try {
-      const data = await getPinnedFaqArticles();
-      setPinnedArticles(data);
-    } catch (error) {
-      console.error('Failed to load pinned FAQ articles:', error);
+  );
+  const categories = categoriesData ?? [];
+  const { data: pinnedData, reload: reloadPinned } = useAsyncData(
+    () => getPinnedFaqArticles(),
+    [],
+    {
+      errorMessage: () => '載入置頂 FAQ 失敗',
+      onError: (_message, error) => console.error('Failed to load pinned FAQ articles:', error),
     }
-  }
+  );
+  const pinnedArticles = pinnedData ?? [];
 
-  async function loadArticles() {
-    setLoading(true);
-    try {
-      let data: PageResponse<FaqArticleDto>;
+  const { data, loading, reload: reloadArticles } = useAsyncData(
+    () => {
       if (keyword) {
         // 關鍵字搜尋改走高亮端點，呈現後端已支援的 <mark> 高亮結果
-        data = await searchFaqArticlesWithHighlight({ page, size: 20, keyword });
-      } else {
-        data = await getFaqArticles({
-          page,
-          size: 20,
-          categoryId: categoryFilter || undefined,
-        });
+        return searchFaqArticlesWithHighlight({ page, size: 20, keyword });
       }
-      setArticles(data.content);
-      setTotalPages(data.totalPages);
-      setTotalElements(data.totalElements);
-    } catch (error) {
-      console.error('Failed to load FAQ articles:', error);
-      toast.error('載入 FAQ 文章失敗，請稍後再試');
-    } finally {
-      setLoading(false);
+      return getFaqArticles({
+        page,
+        size: 20,
+        categoryId: categoryFilter || undefined,
+      });
+    },
+    [page, categoryFilter, keyword],
+    {
+      errorMessage: () => '載入 FAQ 文章失敗，請稍後再試',
+      onError: (message, error) => {
+        console.error('Failed to load FAQ articles:', error);
+        toast.error(message);
+      },
     }
-  }
+  );
+  const articles = data?.content ?? [];
+  const totalPages = data?.totalPages ?? 0;
+  const totalElements = data?.totalElements ?? 0;
 
   async function handleDelete(articleId: string) {
     if (!(await confirmDialog({ message: '確定要刪除這則 FAQ 嗎？', confirmLabel: '刪除', destructive: true }))) return;
     setDeleting(articleId);
     try {
       await deleteFaqArticle(articleId);
-      loadArticles();
-      loadPinnedArticles();
+      reloadArticles();
+      reloadPinned();
       toast.success('刪除成功');
     } catch (error) {
       console.error('Failed to delete FAQ article:', error);

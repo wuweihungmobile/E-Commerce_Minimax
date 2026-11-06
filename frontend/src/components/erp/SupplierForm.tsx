@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -8,9 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import SupplierService, {
   SupplierCreateRequest,
+  type SupplierDto,
 } from '@/services/erp/supplier'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Label } from '@/components/ui/label'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
@@ -22,49 +22,42 @@ interface SupplierFormProps {
   mode: 'create' | 'edit' | 'view'
 }
 
+// 編輯／檢視模式先載入供應商，載入完成才掛載表單：表單初值由載入的資料一次帶入，之後是使用者的編輯。
+// 新增模式（沒有 supplierId）不載入，直接掛載空表單；載入失敗時仍顯示表單與錯誤訊息（與原本相同）。
+// 登入守門在賣家外殼（SellerShell），這裡不再自己檢查。
 export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
+  const { data: supplier, error: loadError, loading } = useAsyncData(
+    () => SupplierService.getSupplier(supplierId!),
+    [supplierId],
+    { enabled: Boolean(supplierId), errorMessage: '載入供應商失敗' }
+  )
+
+  if (loading) {
+    return (
+      <LoadingState />
+    )
+  }
+
+  return <SupplierFormBody supplierId={supplierId} mode={mode} supplier={supplier} loadError={loadError} />
+}
+
+function SupplierFormBody({
+  supplierId,
+  mode,
+  supplier,
+  loadError,
+}: SupplierFormProps & { supplier?: SupplierDto; loadError: string | null }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [initialLoading, setInitialLoading] = useState(supplierId ? true : false)
+  const [error, setError] = useState<string | null>(loadError)
 
-  const [formData, setFormData] = useState<SupplierCreateRequest>({
-    name: '',
-    contactPerson: '',
-    email: '',
-    phone: '',
-    address: '',
-  })
-
-  const fetchSupplier = useCallback(async () => {
-    if (!supplierId) return
-    setInitialLoading(true)
-    try {
-      const data = await SupplierService.getSupplier(supplierId)
-      setFormData({
-        name: data.name,
-        contactPerson: data.contactPerson || '',
-        email: data.email || '',
-        phone: data.phone || '',
-        address: data.address || '',
-      })
-    } catch (err: unknown) {
-      setError(apiErrorMessage(err, '載入供應商失敗'))
-    } finally {
-      setInitialLoading(false)
-    }
-  }, [supplierId])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-
-    if (supplierId) {
-      fetchSupplier()
-    }
-  }, [router, supplierId, fetchSupplier])
+  const [formData, setFormData] = useState<SupplierCreateRequest>(() => ({
+    name: supplier?.name ?? '',
+    contactPerson: supplier?.contactPerson || '',
+    email: supplier?.email || '',
+    phone: supplier?.phone || '',
+    address: supplier?.address || '',
+  }))
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -99,12 +92,6 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
   }
 
   const isViewMode = mode === 'view'
-
-  if (initialLoading) {
-    return (
-      <LoadingState />
-    )
-  }
 
   return (
     <Card>

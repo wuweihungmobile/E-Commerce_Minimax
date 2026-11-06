@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import OrderService, {
@@ -29,6 +29,7 @@ import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { PageTitle } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
 import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 function formatPrice(amount: number, currency: string) {
   return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: currency || 'TWD' }).format(amount)
@@ -53,12 +54,31 @@ export default function OrderDetailPage() {
   const params = useParams()
   const orderId = params.id as string
 
-  const [order, setOrder] = useState<Order | null>(null)
-  const [logs, setLogs] = useState<OrderStateLog[]>([])
-  const [payment, setPayment] = useState<OrderPaymentState | null>(null)
-  const [tracking, setTracking] = useState<TrackingDetail | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, error, loading, reload, setData } = useAsyncData(
+    async () => {
+      const [detail, stateLogs, paymentState] = await Promise.all([
+        OrderService.getOrder(orderId),
+        OrderService.getOrderLogs(orderId).catch(() => [] as OrderStateLog[]),
+        OrderPaymentService.getPaymentState(orderId).catch(() => null),
+      ])
+      // 物流追蹤（僅商品訂單；無出貨回空陣列）
+      let trackingDetail: TrackingDetail | null = null
+      if (detail.orderType === 'PRODUCT') {
+        const shipments = await LogisticsService.getByOrder(orderId).catch(() => [])
+        trackingDetail =
+          shipments.length > 0
+            ? await LogisticsService.getTrackingDetail(shipments[0].logisticsId).catch(() => null)
+            : null
+      }
+      return { order: detail, logs: stateLogs, payment: paymentState, tracking: trackingDetail }
+    },
+    [orderId],
+    { errorMessage: () => '無法載入訂單詳情，請稍後再試' }
+  )
+  const order: Order | null = data?.order ?? null
+  const logs: OrderStateLog[] = data?.logs ?? []
+  const payment: OrderPaymentState | null = data?.payment ?? null
+  const tracking: TrackingDetail | null = data?.tracking ?? null
 
   // Cancel flow
   const [showCancel, setShowCancel] = useState(false)
@@ -74,62 +94,17 @@ export default function OrderDetailPage() {
   const [reviewOpenItemId, setReviewOpenItemId] = useState<string | null>(null)
   const [reviewedItemIds, setReviewedItemIds] = useState<Set<string>>(new Set())
 
-  const load = useCallback(
-    async (signal?: { cancelled: boolean }) => {
-      setLoading(true)
-      setError(null)
-      try {
-        const [detail, stateLogs, paymentState] = await Promise.all([
-          OrderService.getOrder(orderId),
-          OrderService.getOrderLogs(orderId).catch(() => [] as OrderStateLog[]),
-          OrderPaymentService.getPaymentState(orderId).catch(() => null),
-        ])
-        if (signal?.cancelled) return
-        setOrder(detail)
-        setLogs(stateLogs)
-        setPayment(paymentState)
-
-        // 物流追蹤（僅商品訂單；無出貨回空陣列）
-        if (detail.orderType === 'PRODUCT') {
-          const shipments = await LogisticsService.getByOrder(orderId).catch(() => [])
-          const trackingDetail =
-            shipments.length > 0
-              ? await LogisticsService.getTrackingDetail(shipments[0].logisticsId).catch(() => null)
-              : null
-          if (signal?.cancelled) return
-          setTracking(trackingDetail)
-        } else {
-          setTracking(null)
-        }
-      } catch {
-        if (signal?.cancelled) return
-        setError('無法載入訂單詳情，請稍後再試')
-      } finally {
-        if (!signal?.cancelled) setLoading(false)
-      }
-    },
-    [orderId]
-  )
-
-  useEffect(() => {
-    const signal = { cancelled: false }
-    load(signal)
-    return () => {
-      signal.cancelled = true
-    }
-  }, [load])
-
   const handleCancel = async () => {
     setCancelling(true)
     setCancelError(null)
     try {
       const updated = await OrderService.cancelOrder(orderId, cancelReason.trim() || undefined)
-      setOrder(updated)
+      setData((prev) => prev && { ...prev, order: updated })
       setShowCancel(false)
       setCancelReason('')
       // Refresh logs to reflect the new CANCELLED state transition
       const stateLogs = await OrderService.getOrderLogs(orderId).catch(() => [] as OrderStateLog[])
-      setLogs(stateLogs)
+      setData((prev) => prev && { ...prev, logs: stateLogs })
     } catch (err: unknown) {
       setCancelError(apiErrorMessage(err, '取消訂單失敗，此訂單目前狀態可能無法取消'))
     } finally {
@@ -142,7 +117,7 @@ export default function OrderDetailPage() {
     setPayError(null)
     try {
       await OrderPaymentService.pay(orderId)
-      await load()
+      reload()
     } catch (err: unknown) {
       setPayError(apiErrorMessage(err, '付款失敗，請稍後再試'))
     } finally {
@@ -155,7 +130,7 @@ export default function OrderDetailPage() {
     setPayError(null)
     try {
       await OrderPaymentService.payFail(orderId, '使用者模擬付款失敗')
-      await load()
+      reload()
     } catch (err: unknown) {
       setPayError(apiErrorMessage(err, '操作失敗，請稍後再試'))
     } finally {

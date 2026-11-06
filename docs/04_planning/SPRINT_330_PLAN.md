@@ -1,6 +1,6 @@
 # Sprint 330 Plan — DEF-460（重複 slug 回 500）量測與修正；DEF-453（Stripe 後台退款不扣結算單）補量測
 
-> **狀態：進行中。** 本文件分階段填寫：§1～§2 在跑任何量測之前寫成（預測先登記），其餘章節在量測與修復完成後補上。
+> **狀態：已完成（2026-11-06）。** §1～§2（含 §2.3、§2.4）在跑任何量測、突變之前寫成（預測先登記），其餘章節在量測與修復完成後補上；push 與雲端 CI 的結果已回填（§5、§10）。
 
 ## 1. 起點與範圍
 
@@ -206,7 +206,7 @@ Hibernate 產生的一般整合測試庫**不能用**：它的實體有 `unique 
 | 全量後端 `mvn -o clean verify`（全新資料庫：先 `docker rm -f -v` 再 `make test-db-up`） | **BUILD SUCCESS（20 分 11 秒）**：單元 **2482／0**（0 失敗、0 錯誤、0 跳過）、整合 **1033／0**（0 失敗、0 錯誤、0 跳過；Sprint 329 雲端為 1027，多出的 6 個是本輪的守門類別）；Checkstyle main 與 test 皆 **0 violations** |
 | 實體註解變更（E1）的驗證 | 全量 verify 在全新容器上讓 Hibernate 依實體建表，事後用 `pg_get_indexdef` 讀 `nextkeytest`：`faq_categories.uk_faq_categories_tenant_slug → btree (tenant_id, slug)`、`faq_articles.uk_faq_articles_tenant_slug → btree (tenant_id, slug)`，兩張表**沒有**單欄位 slug 唯一索引。對照：註解沒改的 `knowledge_categories` 在同一個庫是 `uk_gbvapl2qo99ypgv6b3tlli57x → btree (slug)`，也就是 Hibernate 確實會把 `unique = true` 變成單欄位唯一索引（所以 FAQ 兩表修改前也是這個形狀——這一點是類比推論，我沒有建修改前的 schema 來看）。這是一次性查驗，不是自動化測試 |
 | 同族盤點（擴大版：所有不含 `tenant_id`、但表有 `tenant_id` 的唯一索引，不限單欄位） | V96 之後共 10 列；與第一版相比 FAQ 兩條消失，多出 `conversations.idx_conversations_active_pair_unique`（`(initiator_id, recipient_id) WHERE is_active`）——`ChatService` 的『已有對話』檢查 `findByInitiatorIdAndRecipientIdAndIsActiveTrue` 同樣不帶租戶，一致。沒有新增缺陷 |
-| push 與雲端 CI | **本列在 push 之前寫成**：commit 後依長期授權（2026-10-29）直接 push，連同 Sprint 329 留在本機的純文件回填 commit `9fd75a4b`；push 結果與雲端 CI 由之後的回填 commit 補記 |
+| push 與雲端 CI | push 範圍 `96f8afac..d6607a81`（依 2026-10-29 長期授權直接 push，連同 Sprint 329 留在本機的純文件回填 commit `9fd75a4b`）。pre-commit 與 pre-push 各一次通過，沒用 `--no-verify`；pre-push 的 schema 守門在乾淨 Flyway 庫啟動 backend（含 V96），『entity 與 Flyway schema 對齊，無漂移』。雲端 CI run [42159216459](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/42159216459)：三個 job 皆 success（單元 2 分 23 秒、前端 1 分 46 秒、整合 14 分 19 秒；整個 run 16 分 49 秒），以 `gh run view --json` 確認 headSha `d6607a81` 與本機 commit 一致，並下載整合 job 的完整雲端日誌（約 84 MB）核對：整合 **1033／0／0／0**（141 個類別、沒有失敗行）、新守門類別 6／0／0／0 與本機一致、Checkstyle main 與 test 皆 0 違規 |
 | Playwright／前端 | **沒跑**：本輪沒有前端變更（`git status` 只有後端、遷移與文件） |
 
 ## 6. 過程中的失誤與修正
@@ -250,7 +250,7 @@ Hibernate 產生的一般整合測試庫**不能用**：它的實體有 `unique 
 
 ## 10. 狀態
 
-- **狀態**：實作、守門類別、突變驗證、全量 verify、文件均完成；push 與雲端 CI 的結果由 push 之後的純文件回填 commit 補記（該 commit 不 push，隨下一輪帶出）。
+- **狀態**：實作、守門類別、突變驗證、全量 verify、文件均完成；功能 commit `d6607a81` 已 push，雲端 CI 全綠（§5）。本回填 commit 只改文件，不 push，隨下一輪帶出。收尾的 Docker 清理已做（刪 6 個匿名卷、清 1 個懸空映像；5 個具名卷與 3 個核准基底映像保留）。
 - **`DEF-460`** 已修（✅）；**`DEF-453`** 已補量測、升為 🟠，**未修**（沒有改任何金流程式）；新登記 **`DEF-462`**（FAQ／知識庫重複 slug 的錯誤碼與 FAQ 併發轉譯）、**`DEF-463`**（`KnowledgeCategory` 實體註解）、**`DEF-464`**（`promo_codes.code` 潛在落差）。
 - **下次說『請繼續』我可以直接做**：①`DEF-453` 修復——先寫紅燈（全額／部分／重送／`COMPLETED` 訂單／API 與 webhook 兩種到達順序／API 回滾後 webhook 補記），設計見追蹤表右欄（沿用 `refundOrderPaymentCore` 的既有語意，以 `charge.amount_refunded` 當累計真相來源）；②`DEF-462`——需要先決定新錯誤碼的編號與訊息（對外契約，要與 API 文件的錯誤碼表同步）。
 - **仍然等你決定／建議你先決定**：`DEF-455`～`DEF-459`（較大的前端結構題，Sprint 329 總結已寫明建議你先決定要不要做）；其餘『還等你決定』的項目與 Sprint 329 相同，本輪沒有碰。`DEF-454` 仍順延。

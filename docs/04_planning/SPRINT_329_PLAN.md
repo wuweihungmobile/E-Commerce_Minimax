@@ -470,6 +470,7 @@ S328 把「值」（顏色、陰影）與「外殼」（頂欄）收回單一來
 9. **轉換器漏掉動態 className**：它只處理靜態字串，template literal／條件式寫的徽章與橫幅（13 處）、`min-h-[40vh]` 的「Loading...」區塊（2）、`py-24` 的空狀態（5）、類別胶囊連結（1），是**補強 lint 配方、再列出殘留配方的位置逐一看**才現形的——所以「先把守門做強，再迁移」這個順序是對的；也提醒轉換器的「完成」不等於「沒有殘留」。
 10. **這輪改動面積（150 個檔案＝已追蹤修改 134＋新檔案 16）與 Sprint 328（144 個）相當，沒有比較小**。「重構」不該讓人聽起來像「更小的改動」；價值在下一次（§7.3），要明說。
 11. **整元素替換的轉換器丟掉了屬性——第一次完整守門因此失敗**：`empty`（以及 `loading`）轉換器遇到特定 className 的 `<div>`，就把**整個元素**換成 `<EmptyState title=… />`。我自己的原則是「保留所有非 className 屬性」，這幾支卻沒做到：`blog/category/[id]` 的 `data-testid="blog-category-not-found"` 與 `blog-category-empty` 因此被丟掉。**第一次完整守門 310 個案例：308 通過、1 失敗（`E2E-BLOGCAT-03`）、1 因 serial 相依未執行（`E2E-BLOGCAT-04`，同一個原因）**。我自己的檢查（`type-check`、`lint`、契約規格、探針、突變驗證）**全都沒抓到，是完整守門抓到的**。修復後我用 `git diff` 做了**機械審計**：列出 diff 中被移除、卻沒有在新增行重新出現的屬性（`data-testid`、`id`、`role`、`aria-*`、`htmlFor`、`name`、`placeholder`、`data-*`、`href`、`onClick`、`onChange`…），確認丟失的**只有這 2 個** `data-testid`；修復只是用已有的 `EmptyState` 轉傳屬性把它們補回去（轉傳是我在完整守門之前、遷移 `ListingDetail` 那幾處時就加的）。**教訓：整元素替換的轉換器，轉換後要立刻做「屬性丟失」的機械審計，不要等到完整守門；這個審計寫進測試策略 §8.2 第 6 點。**修復後**重跑完整守門**（不是只跑受影響的規格）。
+12. **統計區的計數器在我手上又被機械式加 1（回填時才發現）**：Sprint 328 與本輪更新 `RELEASE_TRACKER` 時，我都照慣例把『建立 Release Tag 次數』加 1，沒有先問這個數字是不是真的。回填時用 `grep -c` 數總覽表，**實數是 300 列（300 個不重複編號）**；這一格自 Sprint 322 到 327 一直是 268（沒遞增），Sprint 328 只加 1，所以本輪先加成 270 是在錯的基準上累加。已更正為實數並寫明推導方式；『已 push』格自 Sprint 322 後也停更，**只加註『未重新核對』、沒有重建**（它的語意與清單已無法機械核對）。收尾時我核對的是『Sprint 328 改了哪幾格』（結構），沒有核對『那一格的數字是不是真的』（內容）——這與記憶裡『規劃文件會沉默漂移』同型。
 
 ## 11. 限制（誠實揭露）
 
@@ -486,6 +487,10 @@ S328 把「值」（顏色、陰影）與「外殼」（頂欄）收回單一來
 ## 12. 狀態
 
 - **狀態**：實作、新契約規格（8 案例）、守門與契約的突變驗證、換皮演練、完整本地 E2E 守門（**310／310**，第一次守門抓到我自己造成的 1 個回歸，修復後整個重跑）、文件（計畫書、ADR-001、規範、FRD §9、測試策略 §8）均完成；追蹤表登記 `DEF-455`～`DEF-461`；**沒有後端變更**。
-- **push／雲端 CI／Docker 收尾**：依 2026-10-29 長期授權 commit 後直接 push；結果由回填 commit 補記（沿用 Sprint 322～328：回填 commit 只改文件，隨下一輪帶出）。
+- **commit／push**：功能 commit `96f8afac`（150 個檔案：已追蹤修改 134＋新檔案 16；`4,168` 增、`2,223` 刪）。依 2026-10-29 長期授權直接 push：`0d69f9db..96f8afac`（連同 Sprint 328 留在本機的純文件回填 commit `2d5ed426`）；沒有詢問、沒有使用 `--no-verify`；pre-commit（`eslint --fix`＋`tsc`＋secret 掃描）與 pre-push 輕量守門（後端單元〔act〕、前端 lint＆build〔act〕、schema 漂移守門〔`ddl-auto=validate`＋Flyway 乾淨庫，backend 啟動成功〕）都一次通過；push 後 `git ls-remote` 與本機 HEAD 一致、領先遠端 0。
+- **雲端 CI 全綠**：run [42142869475](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/42142869475)，三個 job 皆 success（後端單元 2:43、前端 lint＆build 1:41、後端整合 9:51，整個 run 約 12 分 39 秒），以 `gh run view --json` 交叉確認 `headSha` 與本機 commit 一致；下載整合 job 的完整日誌（約 69 MB，大小 > 0 已驗證，有加 `--allow-escape-sequences`）核對 **整合 1027／0**（140 個類別沒有任何失敗、0 跳過；與 Sprint 328 相同，符合沒有後端變更）、Checkstyle 0 違規、`BUILD SUCCESS`。這個 workflow 的三個 job **不含 Playwright**，E2E 的證據是本機的 310／310。`gh run watch` 這次一次回 0（沒有再遇到網路重置）；後端單元 job 帶 `-q`，雲端日誌沒有單元案例數，單元案例數只核對了本機。
+- **本回填 commit 只改文件，刻意不 push**，隨下一輪的 push 帶出（沿用 Sprint 322～328）。
+- **收尾 Docker 清理**（所有 Docker 用途結束之後、雲端 CI 還在跑時）：盤點容器 0、核准基底映像 3 個、卷 11＝6 匿名＋5 具名；逐一刪 6 個匿名卷（0 失敗）、`docker image prune -f` 清掉 2 個無標籤映像（回收 491.2 MB）；保留 5 個具名卷（`act-toolcache`、`e-commerce_minimax_maven_cache`／`minio_data`／`postgres_data`／`redis_data`，共 928 MB）與 3 個核准基底映像（`redis:7-alpine`、`postgres:18-alpine`、`catthehacker/ubuntu:act-latest`，2.787 GB）；建置快取 25 筆 1.889 GB 只回報、不刪。沒有裸跑 `volume prune`、`image prune` 沒加 `-a`；未關閉 Docker Desktop。
+- **統計區更正（回填時發現，見 §10 第 12 點）**：`RELEASE_TRACKER` 的『建立 Release Tag 次數』改為實數 300，『已 push』格加註停更未核對。
 - **仍等你決定**：沿用 Sprint 328 的清單（`DEF-294`、`DEF-449`、`DEF-419`、舊規則資料遷移、`make down-clean` 流程、Docker 建置快取、退款 fail-open 的取捨…）。**本輪新增請你看一眼的**：①§11 列的「使用者可見的設計變更」（狀態顏色統一、`EmptyState` 標題改 ink 字、價格調整徽章淡底→實心、類別連結改 `Button secondary sm`）——這些是我替你做的決定，可一句話推翻；②蓮田／柔彩／橄欖三個主題我仍沒看過畫面；③設計稿的 `error`／`success`／`ink-muted` 對白底對比度偏低，沿用 token 沒加深。
 - **下次說『請繼續』我可以直接做**：`DEF-453` 補量測（已順延兩輪）；或 `DEF-460`（量測題：同店鋪／不同店鋪重複 slug 的 HTTP 狀態與錯誤碼）。`DEF-455`～`DEF-459` 是較大的結構題，建議你先決定要不要做。

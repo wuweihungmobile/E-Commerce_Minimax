@@ -203,6 +203,35 @@
 
 另外 H19 第一輪（見 §3）因服務測試用 `clearAllMocks`，失敗案例沒用完的 `mockResolvedValueOnce` 佇列漏到下一個案例而多紅 1 個；已改 `resetAllMocks`，H19 會重跑。
 
+#### 2.4.3 WP3／WP4 守門測試與後補的服務測試（跑之前登記；檢查點二提交之後、突變驗證之前寫下）
+
+**為什麼有這一節**：DEF-456 的守門（`src/architecture/data-loading.test.ts`）與 DEF-459／登入守門的靜態守門（`page-structure.test.ts`）是在 WP3 後半才寫的，原先的 §2.4.1／§2.4.2 沒有涵蓋。守門測試如果自己不會紅，等於沒有守門，所以照同一套做法驗證：把受守護的原始碼或守門的偵測器弄壞，指定的案例要恰好紅。突變驅動腳本要求目標檔在 git 上是乾淨的，所以先提交檢查點二（`38c5e47a`）再跑。
+
+預測的紅燈集合是**依讀碼推演**：G12 推演到 2 個（偵測器拿掉 `.then` 之後，單元案例 1 紅；而 `ALLOWED` 裡兩筆只靠 `.then` 命中的例外——購物車數量事件訂閱、blob 圖片——不再命中，「還在命中」紅）、G13 推演到 2 個（縮小掃描範圍：「掃描範圍」與「還在命中」）、G14 推演到 4 個（掃描函式變成空：兩份守門的「掃描範圍」共 3 個，加上 `ALLOWED` 的「還在命中」；其餘規則案例會**假綠燈**——這正是需要「掃描範圍」案例的原因）。
+
+| # | 檔案 | 突變 | 預期恰好紅的案例（`must`，子字串比對） |
+|---|---|---|---|
+| G01 | `app/(auth)/addresses/page.tsx` | 在 `useAsyncData` 之後加一個 `useEffect(() => { AddressService.list().then((r) => setData(r)) })`（形狀 1：effect 自己發請求再 setState） | 沒有手寫的「在 effect 裡載入資料再 setState」 |
+| G02 | `app/(auth)/support/tickets/page.tsx` | 加 `async function loadAgain()`（內含 `setData(await …)`）並在 `useEffect` 呼叫它（形狀 2：載入函式寫在 effect 外面） | 同上 |
+| G03 | `app/(auth)/orders/page.tsx` | 加 `useCallback(async (signal?: { cancelled: boolean }) => {…setPage(await …)})` 並由 `useEffect` 呼叫（曾是偵測器盲點的形狀） | 同上 |
+| G04 | `architecture/data-loading.test.ts` | 把 `ALLOWED` 的 `StorefrontHeader` 鍵名改錯一個字 | 沒有手寫的…、ALLOWED 的每一筆都還在命中（共 2） |
+| G05 | 同上 | 在 `ALLOWED` 加一筆假例外（`components/ui/page-title.tsx`，它沒有任何手寫載入） | ALLOWED 的每一筆都還在命中 |
+| G06 | 同上 | 把一筆例外的理由改成「略」 | 每一筆例外都寫了理由 |
+| G07 | `app/dashboard/products/page.tsx` | 加回 `if (!AuthService.isAuthenticated()) return null` | 賣家區域的頁面不再自己檢查登入 |
+| G08 | `components/layout/SellerShell.tsx` | 拿掉 `<AuthGuard>…</AuthGuard>`（內容直接渲染） | SellerShell 用 AuthGuard 包住頁面內容 |
+| G09 | `components/product/ProductForm.tsx` | 把唯一的 `<PageTitle>` 換成 `<p>`（`products/new` 的標題只在這個元件裡） | 每個 page.tsx 自己或它（傳遞式）引用的元件裡有 <PageTitle> 或 <h1> |
+| G10 | `architecture/detect.ts` | `hasHeadingTransitively` 不再追 import | 追得到元件裡的標題、每個 page.tsx 自己或它…（共 2） |
+| G11 | 同上 | `asyncFunctions` 用「參數後第一個大括號」找函式本體（回到盲點） | 參數型別裡有大括號的 useCallback…、括號不成對：丟錯而不是靜默漏掉（共 2；第二個是寫表時漏推演、跑之前補上：這個突變讓參數括號不再被配對，也就不會丟「括號不成對」） |
+| G12 | 同上 | 效果偵測拿掉 `.then(` 這一條 | effect 內 .then 之後 setState：違規、ALLOWED 的每一筆都還在命中（共 2） |
+| G13 | `architecture/data-loading.test.ts` | `isScanned` 不掃 `components/` | 掃描範圍涵蓋頁面、元件與 hooks、ALLOWED 的每一筆都還在命中（共 2） |
+| G14 | `architecture/source.ts` | `listSourceFiles` 永遠回空（`accept` 被忽略） | 掃描範圍涵蓋頁面…（data-loading）、ALLOWED 的每一筆都還在命中、掃描範圍涵蓋賣家三個區域、掃描範圍涵蓋全部頁面（共 4） |
+| G15 | `architecture/detect.ts` | 追 import 時不排除 `components/ui/page-title.tsx`（回到 G09 發現的有洞版本）——**G09 第一輪不吻合之後補登記**：G09 把 `ProductForm` 的 `<PageTitle>` 換成 `<p>`，守門卻沒紅，原因是 `ProductForm` 還留著 `PageTitle` 的 import，追進它的定義檔就撿到那裡面的 `<h1>`；修正是追 import 時跳過定義檔，並加單元案例 | 只 import PageTitle 卻沒有渲染它：不算有標題（1） |
+| C01 | `services/cms.ts` | `getPublishedPosts` 不轉傳 `options` | getPublishedPosts：tenantId、分頁、分類篩選都放在 query；signal 原樣轉給 axios |
+| C02 | 同上 | `getListingCard` 不轉傳 `options` | getListingCard：沒有 query；signal 原樣轉給 axios |
+| A01 | `services/authStore.ts` | `getSelectedTenantIdSnapshot` 改讀登入者資料（user）裡的 tenantId | 讀 localStorage 的 tenantId、不看登入者資料（user）裡的 tenantId（共 2） |
+
+預測（登記）：17 個突變各自恰好擊中表中案例，沒有連帶紅燈（G15 是 G09 失敗後補登記的第 18 個；修正偵測器後 G09、G10 重跑，G10 的 `old` 隨修正過的那一行改寫）。G01～G03 與 G09 是對**真實頁面**下手的，其餘是對守門自己下手。已知弱點先講：偵測器只做括號計數（不解析字串、註解、正規表達式），遇到括號不成對會丟錯而不是靜默漏掉；`HEADING` 用文字比對，註解裡的 `<h1>` 會被誤算成有標題——這兩點是刻意的取捨，不是遺漏。
+
 ## 3. 量測結果
 
 （待補：§3.1 基線 E2E；§3.2 前版探針與雜訊基準；§3.3 對答案。）

@@ -105,6 +105,13 @@ export function findHandWrittenLoading(text: string): LoadingFinding[] {
 /** 頁面標題：PageTitle 元件或原生 <h1> */
 export const HEADING = /<PageTitle\b|<h1\b/
 
+/**
+ * PageTitle 元件自己的定義檔：它裡面當然有 <h1>，但「只是 import 它」不代表檔案真的渲染了標題。
+ * 追 import 時不能算（Sprint 331 突變驗證 G09 發現：不排除的話，任何檔案只要留著 PageTitle 的 import——即使已經沒在用——
+ * 就會透過它「有標題」，守門等於對這種情形失明）。
+ */
+export const HEADING_DEFINITION = 'components/ui/page-title.tsx'
+
 const IMPORT_SPECIFIER = /(?:import|export)\s[^;]*?from\s+['"]([^'"]+)['"]/g
 
 /**
@@ -150,7 +157,7 @@ export function hasHeadingTransitively(
     if (HEADING.test(text)) return true
     for (const m of text.matchAll(IMPORT_SPECIFIER)) {
       const target = resolveComponentImport(file, m[1], exists)
-      if (target !== null && visit(target)) return true
+      if (target !== null && target !== HEADING_DEFINITION && visit(target)) return true
     }
     return false
   }

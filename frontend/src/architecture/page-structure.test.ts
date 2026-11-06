@@ -64,6 +64,16 @@ describe('每個頁面都有頁面標題（DEF-459 靜態口徑）', () => {
     expect(hasHeadingTransitively('app/b/page.tsx', read, exists)).toBe(false)
   })
 
+  it('只 import PageTitle 卻沒有渲染它：不算有標題（定義檔裡的 <h1> 不能讓每個 import 它的檔案都過關）', () => {
+    const files: Record<string, string> = {
+      'app/c/page.tsx': "import Body from '@/components/c/Body'\nexport default function P() { return <Body /> }",
+      'components/c/Body.tsx':
+        "import { PageTitle } from '@/components/ui/page-title'\nexport default function B() { return <div>沒有渲染標題</div> }",
+      'components/ui/page-title.tsx': 'export const PageTitle = (p: object) => <h1 {...p} />',
+    }
+    expect(hasHeadingTransitively('app/c/page.tsx', (p) => files[p], (p) => p in files)).toBe(false)
+  })
+
   it('引用迴圈不會無限遞迴', () => {
     const files: Record<string, string> = {
       'components/x/A.tsx': "import B from './B'\nexport const A = () => <B />",

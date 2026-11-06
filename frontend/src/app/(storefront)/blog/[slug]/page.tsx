@@ -4,6 +4,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { getPublishedPostBySlug, PostResponse, getListingCard, ListingCardResponse } from '@/services/cms';
+import { PageTitle } from '@/components/ui/page-title';
+import { Alert } from '@/components/ui/alert';
+import { Card } from '@/components/ui/card';
+import { buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface EmbedCardData {
   listingId: string;
@@ -110,9 +115,9 @@ export default function BlogPostPage() {
         const ctaLabel = isUnavailable ? '前往店鋪' : isUnderMaintenance ? '聯絡客服' : '查看詳情';
 
         parts.push(
-          <div
+          <Card
             key={`embed-${listingId}`}
-            className="my-4 p-4 border rounded-lg bg-white"
+            className="my-4 p-4"
           >
             <div className="flex gap-4">
               {card.coverImageUrl && (
@@ -145,13 +150,13 @@ export default function BlogPostPage() {
                 </div>
                 <a
                   href={card.ctaUrl}
-                  className="mt-2 inline-block px-3 py-1 bg-rs-primary text-white text-sm rounded hover:bg-rs-primary-hover"
+                  className={cn(buttonVariants({ variant: "default", size: "sm" }), "mt-2 inline-block")}
                 >
                   {ctaLabel}
                 </a>
               </div>
             </div>
-          </div>
+          </Card>
         );
       } else if (cardData?.loading) {
         parts.push(
@@ -173,12 +178,13 @@ export default function BlogPostPage() {
         // DEF-321(d)：PRD §6.6.3——listing_id 不存在（已刪除或格式有誤）時顯示「此商品已下架」，
         // 用語與「下架但列尚存在」（statusReason=listing_unavailable）一致
         parts.push(
-          <div
+          <Alert
+            variant="destructive"
             key={`embed-${match[1]}`}
-            className="my-4 p-4 border border-rs-error/30 rounded-lg bg-rs-error/10 text-rs-error text-sm"
+            className="my-4"
           >
             此商品已下架
-          </div>
+          </Alert>
         );
       }
 
@@ -207,7 +213,7 @@ export default function BlogPostPage() {
     return (
       <div className="flex-1">
         <div className="max-w-3xl mx-auto px-4 py-12 text-center">
-          <h1 className="text-2xl font-semibold text-rs-ink mb-4">找不到文章</h1>
+          <PageTitle className="mb-4">找不到文章</PageTitle>
           <p className="text-rs-ink-muted mb-6">{error || '此文章不存在或已下架'}</p>
           <Link href="/blog" className="text-rs-primary hover:underline">
             返回部落格
@@ -230,7 +236,8 @@ export default function BlogPostPage() {
 
       {/* Article */}
       <main className="max-w-3xl mx-auto px-4 py-8">
-        <article className="bg-white rounded-lg border border-rs-hairline">
+        <Card asChild>
+<article>
           {/* Featured Image */}
           {post.featuredImageUrl && (
             <div className="aspect-video bg-rs-disabled-bg rounded-t-lg overflow-hidden">
@@ -270,7 +277,7 @@ export default function BlogPostPage() {
               <div className="mb-4">
                 <Link
                   href={`/blog/category/${post.categoryId}`}
-                  className="inline-block px-2 py-1 bg-rs-tertiary text-rs-primary text-sm rounded hover:bg-rs-secondary"
+                  className={buttonVariants({ variant: "secondary", size: "sm" })}
                   data-testid="blog-post-category-link"
                 >
                   {post.categoryName}
@@ -300,6 +307,7 @@ export default function BlogPostPage() {
             )}
           </div>
         </article>
+</Card>
       </main>
     </div>
   );

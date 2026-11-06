@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import TenantList from '@/components/tenant/TenantList'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
 
 export default function TenantsPage() {
   const router = useRouter()
@@ -21,10 +22,10 @@ export default function TenantsPage() {
       <main>
         <div>
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-rs-ink">店鋪管理</h1>
-            <p className="mt-1 text-sm text-rs-ink-muted">
+            <PageTitle>店鋪管理</PageTitle>
+            <PageDescription>
               管理您的店鋪資訊，切換不同店鋪
-            </p>
+            </PageDescription>
           </div>
           <TenantList />
         </div>

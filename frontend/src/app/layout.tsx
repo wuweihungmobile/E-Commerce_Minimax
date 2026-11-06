@@ -4,6 +4,8 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeScript } from "@/components/theme/ThemeScript";
 import { DEFAULT_THEME } from "@/components/theme/theme";
+import { Toaster } from "@/components/ui/toast";
+import { ConfirmDialogHost } from "@/components/ui/confirm-dialog";
 
 // 拉丁字型以 next/font/local self-host（Inter latin variable woff2，committed 於 ./fonts）。
 // 改用 local（AI-2303）以消除 build 期對 Google Fonts 的網路依賴（原 next/font/google 於
@@ -41,6 +43,9 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <ThemeScript nonce={nonce} />
         {children}
+        {/* 回饋層（取代原生 alert()／confirm()）：命令式 API toast.*／confirmDialog() 的畫面，全站只掛這一份 */}
+        <Toaster />
+        <ConfirmDialogHost />
       </body>
     </html>
   );

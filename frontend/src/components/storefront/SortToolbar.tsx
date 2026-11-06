@@ -1,6 +1,7 @@
 "use client"
 
 import { cn } from "@/lib/utils"
+import { Card } from "@/components/ui/card"
 
 export interface SortTab {
   id: string
@@ -31,9 +32,9 @@ export function SortToolbar({
   className,
 }: SortToolbarProps) {
   return (
-    <div
+    <Card
       className={cn(
-        "flex items-center justify-between gap-3 bg-white border border-rs-hairline rounded-lg py-3 pl-5 pr-3",
+        "flex items-center justify-between gap-3 py-3 pl-5 pr-3",
         className
       )}
     >
@@ -41,6 +42,7 @@ export function SortToolbar({
         {tabs.map((tab) => {
           const isActive = tab.id === activeTab
           return (
+            // eslint-disable-next-line design-tokens/no-raw-control -- 設計稿 DS 元件 SortToolbar：分頁籤式排序鈕（選取＝主色實心）是它自己的視覺規格
             <button
               key={tab.id}
               type="button"
@@ -61,6 +63,6 @@ export function SortToolbar({
           {right}
         </div>
       )}
-    </div>
+    </Card>
   )
 }

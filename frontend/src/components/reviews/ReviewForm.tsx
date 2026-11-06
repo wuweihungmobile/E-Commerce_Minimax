@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
 
 export interface ReviewFormValue {
   rating: number
@@ -84,9 +86,9 @@ export default function ReviewForm({ onSubmit, onCancel }: ReviewFormProps) {
 
       <div className="space-y-2">
         <Label htmlFor="reviewContent">內容 *</Label>
-        <textarea
+        <Textarea
           id="reviewContent"
-          className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="flex"
           placeholder="分享你的使用心得（最多 2000 字）"
           maxLength={2000}
           value={content}
@@ -94,15 +96,13 @@ export default function ReviewForm({ onSubmit, onCancel }: ReviewFormProps) {
         />
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-rs-ink">
-        <input
-          type="checkbox"
-          className="h-4 w-4"
+      <Label className="flex items-center gap-2">
+        <Checkbox
           checked={isAnonymous}
           onChange={(e) => setIsAnonymous(e.target.checked)}
         />
         匿名評價
-      </label>
+      </Label>
 
       <div className="flex gap-3">
         <Button onClick={handleSubmit} disabled={submitting}>

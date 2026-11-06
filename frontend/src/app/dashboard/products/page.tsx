@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import ProductList from '@/components/product/ProductList'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
 
 export default function ProductsPage() {
   const router = useRouter()
@@ -21,10 +22,10 @@ export default function ProductsPage() {
       <main>
         <div>
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-rs-ink">商品管理</h1>
-            <p className="mt-1 text-sm text-rs-ink-muted">
+            <PageTitle>商品管理</PageTitle>
+            <PageDescription>
               管理您的商品資料，上下架商品
-            </p>
+            </PageDescription>
           </div>
           <ProductList />
         </div>

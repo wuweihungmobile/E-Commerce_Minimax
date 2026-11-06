@@ -1,21 +1,26 @@
 import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
 
 import { cn } from "@/lib/utils"
 
 // 設計稿層次規則：「嚴禁陰影，僅用 1px 實線框與色差分層」——白色表面＋1px 邊框，radius-lg。
+// asChild：整張卡片是一個連結時（<Card asChild><Link href=…>…</Link></Card>），讓連結本身長成卡片，不用多包一層。
 const Card = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn(
-      "rounded-lg border border-rs-hairline bg-rs-surface text-rs-ink",
-      className
-    )}
-    {...props}
-  />
-))
+  React.HTMLAttributes<HTMLDivElement> & { asChild?: boolean }
+>(({ className, asChild = false, ...props }, ref) => {
+  const Comp = asChild ? Slot : "div"
+  return (
+    <Comp
+      ref={ref}
+      className={cn(
+        "rounded-lg border border-rs-hairline bg-rs-surface text-rs-ink",
+        className
+      )}
+      {...props}
+    />
+  )
+})
 Card.displayName = "Card"
 
 const CardHeader = React.forwardRef<

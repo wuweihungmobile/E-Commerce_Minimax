@@ -13,6 +13,15 @@ import {
   PageResponse,
 } from '@/services/media';
 import { AuthenticatedImage } from '@/components/ui/authenticated-image';
+import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
+import { Input } from '@/components/ui/input';
+import { PageTitle } from '@/components/ui/page-title';
+import { EmptyState, LoadingState } from '@/components/ui/states';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 export default function MediaPage() {
   const [media, setMedia] = useState<MediaAssetDto[]>([]);
@@ -61,7 +70,7 @@ export default function MediaPage() {
       setTotalElements(data.totalElements);
     } catch (error) {
       console.error('Failed to load media:', error);
-      alert('載入媒體失敗，請稍後再試');
+      toast.error('載入媒體失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
@@ -91,12 +100,12 @@ export default function MediaPage() {
         categoryId: uploadCategoryId || undefined,
         tags: tags.length > 0 ? tags : undefined,
       });
-      alert('上傳成功');
+      toast.success('上傳成功');
       setPage(0);
       loadMedia();
     } catch (error) {
       console.error('Failed to upload media:', error);
-      alert('上傳失敗，請稍後再試');
+      toast.error('上傳失敗，請稍後再試');
     } finally {
       setUploading(false);
     }
@@ -121,22 +130,22 @@ export default function MediaPage() {
       loadCategories();
     } catch (error) {
       console.error('Failed to create category:', error);
-      alert('新增分類失敗，請稍後再試');
+      toast.error('新增分類失敗，請稍後再試');
     } finally {
       setCreatingCategory(false);
     }
   }
 
   async function handleDelete(mediaId: string) {
-    if (!confirm('確定要刪除這個媒體嗎？')) return;
+    if (!(await confirmDialog({ message: '確定要刪除這個媒體嗎？', confirmLabel: '刪除', destructive: true }))) return;
     setDeleting(mediaId);
     try {
       await deleteMediaAsset(mediaId);
       loadMedia();
-      alert('刪除成功');
+      toast.success('刪除成功');
     } catch (error) {
       console.error('Failed to delete media:', error);
-      alert('刪除失敗，請稍後再試');
+      toast.error('刪除失敗，請稍後再試');
     } finally {
       setDeleting(null);
     }
@@ -167,111 +176,113 @@ export default function MediaPage() {
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">媒體中心</h1>
+        <PageTitle>媒體中心</PageTitle>
         <div className="text-sm text-rs-ink-muted">
           總計 {totalElements} 個媒體
         </div>
       </div>
 
       {/* Upload */}
-      <div className="mb-4 p-4 bg-white border rounded-md flex flex-wrap items-end gap-4">
+      <Card className="mb-4 p-4 flex flex-wrap items-end gap-4">
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">上傳到分類（選填）</label>
-          <select
+          <Label className="block mb-1">上傳到分類（選填）</Label>
+          <NativeSelect
             value={uploadCategoryId}
             onChange={(e) => setUploadCategoryId(e.target.value)}
-            className="border rounded px-3 py-1.5 text-sm"
+            className="w-auto"
           >
             <option value="">未分類</option>
             {categories.map((cat) => (
               <option key={cat.id} value={cat.id}>{cat.name}</option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">標籤（選填，以逗號分隔）</label>
-          <input
+          <Label className="block mb-1">標籤（選填，以逗號分隔）</Label>
+          <Input
             type="text"
             value={uploadTags}
             onChange={(e) => setUploadTags(e.target.value)}
             placeholder="banner, 首頁"
-            className="border rounded px-3 py-1.5 text-sm w-48"
+            className="w-48"
           />
         </div>
         <div>
-          <input
+          <Input
             ref={fileInputRef}
             type="file"
             accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/x-msvideo,application/pdf"
             onChange={handleFileChange}
-            className="hidden"
+            className="hidden w-auto"
           />
-          <button
+          <Button
+            variant="default"
+            size="sm"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="px-4 py-1.5 bg-rs-primary text-white rounded text-sm hover:bg-rs-primary-hover disabled:opacity-50"
           >
             {uploading ? '上傳中...' : '上傳媒體'}
-          </button>
+          </Button>
         </div>
         <div className="flex items-end gap-2 ml-auto">
           <div>
-            <label className="block text-sm font-medium text-rs-ink mb-1">新增分類</label>
-            <input
+            <Label className="block mb-1">新增分類</Label>
+            <Input
               type="text"
               value={newCategoryName}
               onChange={(e) => setNewCategoryName(e.target.value)}
               placeholder="分類名稱"
-              className="border rounded px-3 py-1.5 text-sm w-32"
+              className="w-32"
             />
           </div>
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handleCreateCategory}
             disabled={creatingCategory || !newCategoryName.trim()}
-            className="px-3 py-1.5 border rounded text-sm hover:bg-rs-bg-base disabled:opacity-50"
           >
             {creatingCategory ? '新增中...' : '新增'}
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       {/* Filters */}
       <div className="mb-4 flex flex-wrap gap-4">
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">分類</label>
-          <select
+          <Label className="block mb-1">分類</Label>
+          <NativeSelect
             value={categoryFilter}
             onChange={(e) => {
               setCategoryFilter(e.target.value);
               setPage(0);
             }}
-            className="border rounded px-3 py-1.5 text-sm"
+            className="w-auto"
           >
             <option value="">全部分類</option>
             {categories.map((cat) => (
               <option key={cat.id} value={cat.id}>{cat.name}</option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">檔案類型</label>
-          <select
+          <Label className="block mb-1">檔案類型</Label>
+          <NativeSelect
             value={mimeTypeFilter}
             onChange={(e) => {
               setMimeTypeFilter(e.target.value);
               setPage(0);
             }}
-            className="border rounded px-3 py-1.5 text-sm"
+            className="w-auto"
           >
             <option value="">全部類型</option>
             <option value="image/">圖片</option>
             <option value="video/">影片</option>
             <option value="application/pdf">PDF</option>
-          </select>
+          </NativeSelect>
         </div>
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">關鍵字搜尋</label>
-          <input
+          <Label className="block mb-1">關鍵字搜尋</Label>
+          <Input
             type="text"
             value={keyword}
             onChange={(e) => {
@@ -279,29 +290,30 @@ export default function MediaPage() {
               setPage(0);
             }}
             placeholder="搜尋檔案名稱..."
-            className="border rounded px-3 py-1.5 text-sm w-48"
+            className="w-48"
           />
         </div>
         <div className="flex items-end">
-          <button
+          <Button
+            variant="default"
+            size="sm"
             onClick={() => loadMedia()}
-            className="px-4 py-1.5 bg-rs-primary text-white rounded text-sm hover:bg-rs-primary-hover"
           >
             搜尋
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Media Grid */}
       {loading ? (
-        <div className="text-center py-12 text-rs-ink-muted">載入中...</div>
+        <LoadingState className="h-auto py-12" />
       ) : media.length === 0 ? (
-        <div className="text-center py-12 text-rs-ink-muted">尚無媒體</div>
+        <EmptyState title="尚無媒體" />
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {media.map((item) => (
-              <div key={item.id} className="bg-white rounded-lg overflow-hidden border">
+              <Card key={item.id} className="overflow-hidden">
                 <div className="aspect-square bg-rs-disabled-bg flex items-center justify-center relative">
                   {isImage(item.mimeType) ? (
                     <AuthenticatedImage
@@ -330,52 +342,58 @@ export default function MediaPage() {
                       ))}
                     </div>
                   )}
-                  <button
+                  <Button
+                    variant="linkDestructive"
+                    size="inline"
                     onClick={() => handleDelete(item.id)}
                     disabled={deleting === item.id}
-                    className="mt-2 text-xs text-rs-error hover:text-rs-error/80 disabled:opacity-50"
+                    className="mt-2"
                   >
                     {deleting === item.id ? '刪除中...' : '刪除'}
-                  </button>
+                  </Button>
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex justify-center items-center gap-2 mt-6">
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(0)}
                 disabled={page === 0}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 首頁
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(page - 1)}
                 disabled={page === 0}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 上一頁
-              </button>
+              </Button>
               <span className="text-sm text-rs-ink-muted">
                 第 {page + 1} / {totalPages} 頁
               </span>
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(page + 1)}
                 disabled={page >= totalPages - 1}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 下一頁
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(totalPages - 1)}
                 disabled={page >= totalPages - 1}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 末頁
-              </button>
+              </Button>
             </div>
           )}
         </>

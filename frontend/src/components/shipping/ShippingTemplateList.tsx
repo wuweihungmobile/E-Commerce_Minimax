@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -11,6 +12,11 @@ import ShippingTemplateService, {
   ShippingFeeType,
   SHIPPING_FEE_TYPE_LABELS,
 } from '@/services/shippingTemplate'
+import { Label } from '@/components/ui/label'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { confirmDialog } from '@/components/ui/confirm-dialog'
+import { toast } from '@/components/ui/toast'
 
 function extractErrorMessage(err: unknown, fallback: string): string {
   if (err && typeof err === 'object' && 'response' in err) {
@@ -51,14 +57,14 @@ export default function ShippingTemplateList() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('確定要刪除這個運費模板嗎？刪除後，若無其他模板，訂單將恢復為一律免運費。')) return
+    if (!(await confirmDialog({ message: '確定要刪除這個運費模板嗎？刪除後，若無其他模板，訂單將恢復為一律免運費。', confirmLabel: '刪除', destructive: true }))) return
 
     setDeleteLoading(id)
     try {
       await ShippingTemplateService.remove(id)
       fetchTemplates()
     } catch (err: unknown) {
-      alert(extractErrorMessage(err, '刪除失敗'))
+      toast.error(extractErrorMessage(err, '刪除失敗'))
     } finally {
       setDeleteLoading(null)
     }
@@ -66,17 +72,15 @@ export default function ShippingTemplateList() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error) {
     return (
-      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+      <Alert variant="destructive">
         {error}
-      </div>
+      </Alert>
     )
   }
 
@@ -106,12 +110,9 @@ export default function ShippingTemplateList() {
 
       {templates.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-rs-ink-muted mb-4">尚無運費模板，全站訂單目前一律免運費</p>
-            <Button onClick={() => { setEditingTemplate(null); setShowForm(true) }}>
+          <EmptyState title="尚無運費模板，全站訂單目前一律免運費" action={<Button onClick={() => { setEditingTemplate(null); setShowForm(true) }}>
               建立第一個運費模板
-            </Button>
-          </CardContent>
+            </Button>} className="h-48" />
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -231,22 +232,22 @@ function ShippingTemplateFormModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent className="max-w-lg gap-0 p-0">
         <CardHeader>
-          <CardTitle>{template ? '編輯運費模板' : '新增運費模板'}</CardTitle>
-          <CardDescription>設定固定運費，或滿額免運門檻</CardDescription>
+          <DialogTitle>{template ? '編輯運費模板' : '新增運費模板'}</DialogTitle>
+          <DialogDescription>設定固定運費，或滿額免運門檻</DialogDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             {error && (
-              <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+              <Alert variant="destructive">
                 {error}
-              </div>
+              </Alert>
             )}
 
             <div>
-              <label className="text-sm font-medium">模板名稱 <span className="text-rs-error">*</span></label>
+              <Label>模板名稱 <span className="text-rs-error">*</span></Label>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -257,7 +258,7 @@ function ShippingTemplateFormModal({
             </div>
 
             <div>
-              <label className="text-sm font-medium">計費方式</label>
+              <Label>計費方式</Label>
               {/* 對齊後端 ShippingTemplateDto.UpdateRequest：不含 feeType，建立後類型不可變更 */}
               <Select
                 value={feeType}
@@ -278,9 +279,9 @@ function ShippingTemplateFormModal({
             </div>
 
             <div>
-              <label className="text-sm font-medium">
+              <Label>
                 {feeType === 'FIXED' ? '固定運費金額' : '未達門檻時的運費'} <span className="text-rs-error">*</span>
-              </label>
+              </Label>
               <Input
                 type="number"
                 min="0"
@@ -295,7 +296,7 @@ function ShippingTemplateFormModal({
 
             {feeType === 'FREE_THRESHOLD' && (
               <div>
-                <label className="text-sm font-medium">免運門檻金額 <span className="text-rs-error">*</span></label>
+                <Label>免運門檻金額 <span className="text-rs-error">*</span></Label>
                 <Input
                   type="number"
                   min="0"
@@ -319,7 +320,7 @@ function ShippingTemplateFormModal({
             </Button>
           </CardFooter>
         </form>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

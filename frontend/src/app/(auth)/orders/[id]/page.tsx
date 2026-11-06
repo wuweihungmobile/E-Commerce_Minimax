@@ -26,6 +26,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { PageTitle } from '@/components/ui/page-title'
+import { EmptyState } from '@/components/ui/states'
 
 function formatPrice(amount: number, currency: string) {
   return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: currency || 'TWD' }).format(amount)
@@ -222,9 +224,9 @@ export default function OrderDetailPage() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <h1 className="text-2xl font-semibold text-rs-ink">
+                  <PageTitle>
                     訂單 #{order.id.slice(0, 8)}
-                  </h1>
+                  </PageTitle>
                   <Badge variant={orderStatusBadgeVariant(order.status)}>
                     {statusLabel(order.status)}
                   </Badge>
@@ -417,13 +419,14 @@ export default function OrderDetailPage() {
                         (reviewedItemIds.has(item.id) ? (
                           <span className="text-xs text-rs-success">已送出評價 ✓</span>
                         ) : reviewOpenItemId === item.id ? null : (
-                          <button
+                          <Button
+                            variant="link"
+                            size="inline"
                             type="button"
-                            className="text-xs text-primary hover:underline"
                             onClick={() => setReviewOpenItemId(item.id)}
                           >
                             撰寫評價
-                          </button>
+                          </Button>
                         ))}
                     </div>
 
@@ -582,12 +585,9 @@ export default function OrderDetailPage() {
         ) : (
           !error && (
             <Card>
-              <CardContent className="flex flex-col items-center justify-center py-16">
-                <p className="text-rs-ink-muted mb-4">找不到此訂單</p>
-                <Link href="/orders">
+              <EmptyState title="找不到此訂單" action={<Link href="/orders">
                   <Button variant="outline">返回訂單列表</Button>
-                </Link>
-              </CardContent>
+                </Link>} className="py-16" />
             </Card>
           )
         )}

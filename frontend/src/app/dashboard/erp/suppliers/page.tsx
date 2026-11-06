@@ -5,11 +5,14 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import SupplierService, { SupplierDto } from '@/services/erp/supplier'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { NativeSelect } from '@/components/ui/native-select'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 export default function SuppliersPage() {
   const router = useRouter()
@@ -50,28 +53,17 @@ export default function SuppliersPage() {
     s.email?.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  const getStatusBadge = (status: string) => {
-    const config: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline'; label: string }> = {
-      ACTIVE: { variant: 'success', label: '啟用' },
-      INACTIVE: { variant: 'secondary', label: '停用' },
-    }
-    const c = config[status] || { variant: 'outline', label: status }
-    return <Badge variant={c.variant}>{c.label}</Badge>
-  }
-
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error) {
     return (
-      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+      <Alert variant="destructive">
         {error}
-      </div>
+      </Alert>
     )
   }
 
@@ -86,15 +78,15 @@ export default function SuppliersPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="max-w-xs"
           />
-          <select
+          <NativeSelect
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="border rounded-md px-3 py-2"
+            className="w-auto"
           >
             <option value="">所有狀態</option>
             <option value="ACTIVE">啟用</option>
             <option value="INACTIVE">停用</option>
-          </select>
+          </NativeSelect>
           <Button variant="outline" onClick={fetchSuppliers}>重新整理</Button>
         </div>
         <Link href="/dashboard/erp/suppliers/new">
@@ -104,12 +96,9 @@ export default function SuppliersPage() {
 
       {filteredSuppliers.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-rs-ink-muted mb-4">尚無供應商資料</p>
-            <Link href="/dashboard/erp/suppliers/new">
+          <EmptyState title="尚無供應商資料" action={<Link href="/dashboard/erp/suppliers/new">
               <Button>新增第一個供應商</Button>
-            </Link>
-          </CardContent>
+            </Link>} className="h-48" />
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -118,7 +107,7 @@ export default function SuppliersPage() {
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <CardTitle className="text-lg">{supplier.name}</CardTitle>
-                  {getStatusBadge(supplier.status)}
+                  <StatusBadge domain="supplier" status={supplier.status} />
                 </div>
                 <CardDescription>{supplier.contactPerson || '-'}</CardDescription>
               </CardHeader>

@@ -12,6 +12,9 @@ import InventoryService, {
 } from '@/services/erp/inventory'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table'
+import { LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
 
 export default function InventoryDetailPage() {
   const router = useRouter()
@@ -69,17 +72,15 @@ export default function InventoryDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error) {
     return (
-      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+      <Alert variant="destructive">
         {error}
-      </div>
+      </Alert>
     )
   }
 
@@ -166,40 +167,38 @@ export default function InventoryDetailPage() {
           {inventory.movements.length === 0 ? (
             <p className="text-rs-ink-muted text-center py-8">尚無異動記錄</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-rs-hairline border">
-                <thead className="bg-rs-bg-base">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-rs-ink-muted uppercase">時間</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-rs-ink-muted uppercase">類型</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-rs-ink-muted uppercase">數量</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-rs-ink-muted uppercase">參考單號</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-rs-ink-muted uppercase">備註</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-rs-hairline">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>時間</TableHead>
+                    <TableHead>類型</TableHead>
+                    <TableHead className="text-right">數量</TableHead>
+                    <TableHead>參考單號</TableHead>
+                    <TableHead>備註</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {inventory.movements.map((movement) => (
-                    <tr key={movement.id}>
-                      <td className="px-4 py-2 text-sm text-rs-ink-muted">
+                    <TableRow key={movement.id}>
+                      <TableCell className="text-sm text-rs-ink-muted">
                         {formatDate(movement.createdAt)}
-                      </td>
-                      <td className="px-4 py-2 text-sm">
+                      </TableCell>
+                      <TableCell className="text-sm">
                         <Badge variant="outline">{movement.movementType}</Badge>
-                      </td>
-                      <td className="px-4 py-2 text-sm text-right font-medium">
+                      </TableCell>
+                      <TableCell className="text-sm text-right font-medium">
                         {movement.quantity > 0 ? '+' : ''}{movement.quantity}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-rs-ink-muted">
+                      </TableCell>
+                      <TableCell className="text-sm text-rs-ink-muted">
                         {movement.referenceNumber || '-'}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-rs-ink-muted">
+                      </TableCell>
+                      <TableCell className="text-sm text-rs-ink-muted">
                         {movement.notes || '-'}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
           )}
         </CardContent>
       </Card>

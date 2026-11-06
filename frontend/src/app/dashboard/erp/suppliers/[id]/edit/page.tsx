@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation'
 import SupplierForm from '@/components/erp/SupplierForm'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle } from '@/components/ui/page-title'
 
 export default function EditSupplierPage() {
   const router = useRouter()
@@ -25,7 +26,7 @@ export default function EditSupplierPage() {
       <main>
         <div>
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-rs-ink">編輯供應商</h1>
+            <PageTitle>編輯供應商</PageTitle>
           </div>
           <SupplierForm supplierId={supplierId} mode="edit" />
         </div>

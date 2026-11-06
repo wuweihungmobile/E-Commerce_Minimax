@@ -23,6 +23,13 @@ import { useChatSocket } from '@/hooks/useChatSocket';
 import ConversationList from '@/components/chat/ConversationList';
 import MessageThread from '@/components/chat/MessageThread';
 import MessageComposer from '@/components/chat/MessageComposer';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { PageTitle } from '@/components/ui/page-title';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 export default function ChatPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -128,7 +135,7 @@ export default function ChatPage() {
       bumpConversation(sent);
     } catch (error) {
       console.error('Failed to send message:', error);
-      alert('訊息傳送失敗，請稍後再試');
+      toast.error('訊息傳送失敗，請稍後再試');
     }
   }
 
@@ -150,12 +157,12 @@ export default function ChatPage() {
       await handleSelect(conversation.conversationId);
     } catch (error) {
       console.error('Failed to create conversation:', error);
-      alert('建立對話失敗，請確認收件者 ID 是否正確');
+      toast.error('建立對話失敗，請確認收件者 ID 是否正確');
     }
   }
 
   async function handleDelete(conversationId: string) {
-    if (!confirm('確定要刪除這個對話嗎？')) {
+    if (!(await confirmDialog({ message: '確定要刪除這個對話嗎？', confirmLabel: '刪除', destructive: true }))) {
       return;
     }
     try {
@@ -167,61 +174,61 @@ export default function ChatPage() {
       await loadConversations();
     } catch (error) {
       console.error('Failed to delete conversation:', error);
-      alert('刪除對話失敗，請稍後再試');
+      toast.error('刪除對話失敗，請稍後再試');
     }
   }
 
   return (
     <div className="flex h-[calc(100vh-3rem)] flex-col p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">訊息中心</h1>
-        <button
+        <PageTitle>訊息中心</PageTitle>
+        <Button
+          variant="default"
+          size="sm"
           type="button"
           data-testid="new-conversation-button"
           onClick={() => setNewConvOpen((open) => !open)}
-          className="rounded bg-rs-primary px-4 py-1.5 text-sm text-white hover:bg-rs-primary-hover"
         >
           發起對話
-        </button>
+        </Button>
       </div>
 
       {newConvOpen && (
-        <div className="mb-4 rounded-lg border bg-white p-4" data-testid="new-conversation-form">
+        <Card className="mb-4 p-4" data-testid="new-conversation-form">
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[16rem]">
-              <label className="mb-1 block text-sm font-medium text-rs-ink">收件者使用者 ID</label>
-              <input
+              <Label className="mb-1 block">收件者使用者 ID</Label>
+              <Input
                 data-testid="new-recipient-input"
                 value={newRecipientId}
                 onChange={(e) => setNewRecipientId(e.target.value)}
                 placeholder="recipient user UUID"
-                className="w-full rounded border px-3 py-1.5 text-sm"
               />
             </div>
             <div className="flex-1 min-w-[16rem]">
-              <label className="mb-1 block text-sm font-medium text-rs-ink">第一則訊息（選填）</label>
-              <input
+              <Label className="mb-1 block">第一則訊息（選填）</Label>
+              <Input
                 data-testid="new-message-input"
                 value={newInitialMessage}
                 onChange={(e) => setNewInitialMessage(e.target.value)}
                 placeholder="你好！"
-                className="w-full rounded border px-3 py-1.5 text-sm"
               />
             </div>
-            <button
+            <Button
+              variant="success"
+              size="sm"
               type="button"
               data-testid="create-conversation-submit"
               onClick={handleCreateConversation}
               disabled={!newRecipientId.trim()}
-              className="rounded bg-rs-success px-4 py-1.5 text-sm text-white hover:bg-rs-success/90 disabled:opacity-50"
             >
               建立
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
 
-      <div className="flex flex-1 overflow-hidden rounded-lg border bg-white">
+      <Card className="flex flex-1 overflow-hidden">
         {/* 左：對話列表 */}
         <aside className="w-72 shrink-0 overflow-y-auto border-r">
           <ConversationList
@@ -238,14 +245,15 @@ export default function ChatPage() {
           {selectedId ? (
             <>
               <div className="flex items-center justify-end border-b px-4 py-1.5">
-                <button
+                <Button
+                  variant="linkDestructive"
+                  size="inline"
                   type="button"
                   data-testid="delete-conversation-button"
                   onClick={() => handleDelete(selectedId)}
-                  className="text-xs text-rs-error hover:text-rs-error/80"
                 >
                   刪除對話
-                </button>
+                </Button>
               </div>
               <div className="flex-1 overflow-hidden">
                 <MessageThread
@@ -263,7 +271,7 @@ export default function ChatPage() {
             </div>
           )}
         </section>
-      </div>
+      </Card>
     </div>
   );
 }

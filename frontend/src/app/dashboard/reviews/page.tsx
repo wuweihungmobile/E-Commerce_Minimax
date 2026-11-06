@@ -11,6 +11,11 @@ import ReviewService, { type Review, type ReviewReply } from '@/services/review'
 import ReviewStars from '@/components/reviews/ReviewStars'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { Textarea } from '@/components/ui/textarea'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { toast } from '@/components/ui/toast'
 
 const PAGE_SIZE = 20
 
@@ -85,7 +90,7 @@ export default function DashboardReviewsPage() {
       setReplies((prev) => ({ ...prev, [reviewId]: reply }))
       setReplyDrafts((prev) => ({ ...prev, [reviewId]: '' }))
     } catch (err: unknown) {
-      alert(errorMessage(err, '回覆失敗'))
+      toast.error(errorMessage(err, '回覆失敗'))
     } finally {
       setActionLoading(null)
     }
@@ -98,7 +103,7 @@ export default function DashboardReviewsPage() {
       // 切換後這筆通常不再符合目前的篩選條件，重新整理列表
       await fetchReviews(currentPage, isHandled)
     } catch (err: unknown) {
-      alert(errorMessage(err, '更新處理狀態失敗'))
+      toast.error(errorMessage(err, '更新處理狀態失敗'))
     } finally {
       setActionLoading(null)
     }
@@ -110,12 +115,12 @@ export default function DashboardReviewsPage() {
         <div className="space-y-6">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h1 className="text-2xl font-semibold text-rs-ink">評價管理</h1>
-              <p className="mt-1 text-sm text-rs-ink-muted">
+              <PageTitle>評價管理</PageTitle>
+              <PageDescription>
                 {totalElements > 0
                   ? `共 ${totalElements} 筆${isHandled ? '已處理' : '未處理'}評價`
                   : '目前沒有符合篩選條件的評價'}
-              </p>
+              </PageDescription>
             </div>
             <Select
               value={isHandled ? 'HANDLED' : 'UNHANDLED'}
@@ -141,16 +146,12 @@ export default function DashboardReviewsPage() {
               </CardContent>
             </Card>
           ) : error ? (
-            <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">{error}</div>
+            <Alert variant="destructive">{error}</Alert>
           ) : loading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="text-rs-ink-muted">載入中...</div>
-            </div>
+            <LoadingState />
           ) : reviews.length === 0 ? (
             <Card>
-              <CardContent className="flex flex-col items-center justify-center h-48">
-                <p className="text-rs-ink-muted">{isHandled ? '尚無已處理的評價' : '目前沒有待處理的評價'}</p>
-              </CardContent>
+              <EmptyState title={isHandled ? '尚無已處理的評價' : '目前沒有待處理的評價'} className="h-48" />
             </Card>
           ) : (
             <div className="space-y-3">
@@ -183,8 +184,7 @@ export default function DashboardReviewsPage() {
                         </div>
                       ) : (
                         <div className="space-y-2">
-                          <textarea
-                            className="w-full border rounded-md px-3 py-2 text-sm min-h-16"
+                          <Textarea
                             placeholder="回覆這則評價..."
                             value={replyDrafts[review.reviewId] || ''}
                             onChange={(e) =>

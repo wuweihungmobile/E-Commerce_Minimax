@@ -8,6 +8,8 @@ import { ProductCard } from "@/components/storefront/ProductCard"
 import { Pagination } from "@/components/ui/pagination"
 import { Skeleton } from "@/components/ui/skeleton"
 import listingService, { type Listing, type Page } from "@/services/listing"
+import { Button } from "@/components/ui/button"
+import { EmptyState } from '@/components/ui/states'
 
 const SORT_TABS = [
   { id: "newest", label: "最新" },
@@ -124,20 +126,17 @@ export function ListingTypeBrowser({ type, basePath, emptyMessage, sortTab, keyw
           ))}
         </div>
       ) : error ? (
-        <div
+        <EmptyState
           data-testid="listing-type-error"
-          className="flex flex-col items-center justify-center py-24 text-center gap-3"
-        >
-          <p className="text-lg text-rs-ink">載入失敗，請稍後再試</p>
-          <p className="text-sm text-rs-ink-muted">請確認網路連線後重試</p>
-          <button
-            type="button"
-            onClick={handleRetry}
-            className="mt-2 inline-flex items-center justify-center bg-rs-primary text-white rounded-md px-6 py-2.5 text-sm font-medium transition-colors hover:bg-rs-primary-hover"
-          >
-            重新載入
-          </button>
-        </div>
+          className="py-24"
+          title="載入失敗，請稍後再試"
+          description="請確認網路連線後重試"
+          action={
+            <Button variant="default" type="button" onClick={handleRetry}>
+              重新載入
+            </Button>
+          }
+        />
       ) : data && data.content.length > 0 ? (
         <div
           data-testid="listing-type-grid"
@@ -157,12 +156,7 @@ export function ListingTypeBrowser({ type, basePath, emptyMessage, sortTab, keyw
           ))}
         </div>
       ) : (
-        <div
-          data-testid="listing-type-empty"
-          className="flex flex-col items-center justify-center py-24 text-center gap-2"
-        >
-          <p className="text-lg text-rs-ink">{emptyMessage}</p>
-        </div>
+        <EmptyState data-testid="listing-type-empty" className="py-24" title={emptyMessage} />
       )}
 
       {data && data.totalPages > 1 && (

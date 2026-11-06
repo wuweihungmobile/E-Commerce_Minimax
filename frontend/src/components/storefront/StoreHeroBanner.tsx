@@ -1,5 +1,6 @@
 import Link from "next/link"
 import type { StoreProfile } from "@/services/storefront"
+import { buttonVariants } from "@/components/ui/button"
 
 // 店鋪前台首頁 Hero 區塊（PRD §11.3.1 <StoreHeroBanner/>；DEF-321(b)，Sprint 252）。
 //
@@ -28,13 +29,13 @@ export function StoreHeroBanner({ profile, slug }: { profile: StoreProfile; slug
       <div className="flex gap-3">
         <Link
           href={`/stores/${slug}/products`}
-          className="inline-flex items-center justify-center bg-rs-primary text-white rounded-md px-6 py-2.5 text-sm font-medium transition-colors hover:bg-rs-primary-hover"
+          className={buttonVariants({ variant: "default" })}
         >
           查看商品
         </Link>
         <Link
           href={`/stores/${slug}/rooms`}
-          className="inline-flex items-center justify-center border border-rs-primary text-rs-primary rounded-md px-6 py-2.5 text-sm font-medium transition-colors hover:bg-rs-primary hover:text-white"
+          className={buttonVariants({ variant: "outline" })}
         >
           查看房源
         </Link>

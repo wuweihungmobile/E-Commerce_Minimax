@@ -14,6 +14,11 @@ import ReturnService, {
 } from '@/services/returns'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -134,18 +139,16 @@ export default function DashboardReturnDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error || !returnRequest) {
     return (
       <div className="space-y-4">
-        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+        <Alert variant="destructive">
           {error || '找不到退貨申請'}
-        </div>
+        </Alert>
         <Link href="/dashboard/returns">
           <Button variant="outline">返回列表</Button>
         </Link>
@@ -157,11 +160,11 @@ export default function DashboardReturnDetailPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">{returnRequest.returnNumber}</h1>
-          <p className="text-muted-foreground">
+          <PageTitle>{returnRequest.returnNumber}</PageTitle>
+          <PageDescription>
             訂單 #{returnRequest.orderId.slice(0, 8)} ·{' '}
             {new Date(returnRequest.createdAt).toLocaleString('zh-TW')}
-          </p>
+          </PageDescription>
         </div>
         <Badge variant={returnStatusBadgeVariant(returnRequest.status)}>
           {RETURN_STATUS_LABELS[returnRequest.status]}
@@ -169,9 +172,9 @@ export default function DashboardReturnDetailPage() {
       </div>
 
       {actionError && (
-        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+        <Alert variant="destructive">
           {actionError}
-        </div>
+        </Alert>
       )}
 
       {returnRequest.reason && (
@@ -207,7 +210,7 @@ export default function DashboardReturnDetailPage() {
                     <Label htmlFor={`sellable-${item.id}`} className="text-xs text-rs-ink-muted">
                       可售
                     </Label>
-                    <input
+                    <Input
                       id={`sellable-${item.id}`}
                       type="number"
                       min={0}
@@ -216,14 +219,14 @@ export default function DashboardReturnDetailPage() {
                       onChange={(e) =>
                         setDraft(item.id, 'sellableQty', item.requestedQty, Number(e.target.value))
                       }
-                      className="w-16 border rounded-md px-2 py-1 text-sm text-center"
+                      className="w-16 text-center"
                     />
                   </div>
                   <div className="flex items-center gap-1">
                     <Label htmlFor={`unsellable-${item.id}`} className="text-xs text-rs-ink-muted">
                       不可售
                     </Label>
-                    <input
+                    <Input
                       id={`unsellable-${item.id}`}
                       type="number"
                       min={0}
@@ -232,7 +235,7 @@ export default function DashboardReturnDetailPage() {
                       onChange={(e) =>
                         setDraft(item.id, 'unsellableQty', item.requestedQty, Number(e.target.value))
                       }
-                      className="w-16 border rounded-md px-2 py-1 text-sm text-center"
+                      className="w-16 text-center"
                     />
                   </div>
                 </div>
@@ -279,8 +282,7 @@ export default function DashboardReturnDetailPage() {
             <CardTitle className="text-sm">駁回原因（選填）</CardTitle>
           </CardHeader>
           <CardContent>
-            <textarea
-              className="w-full border rounded-md px-3 py-2 text-sm min-h-20"
+            <Textarea
               placeholder="請說明駁回原因，買家將可看到此說明"
               value={rejectionReason}
               onChange={(e) => setRejectionReason(e.target.value)}

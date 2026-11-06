@@ -18,6 +18,7 @@ import TenantMemberService, {
   storeMemberStatusBadgeVariant,
 } from '@/services/tenantMember'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
 
 // 邀請／移除共用的錯誤碼對應（DEF-321 (a)，Sprint 248）：後端 BusinessException.getUserMessage()
 // 回傳的是 ErrorCode 的罐頭文字，不是拋出時的 details（例如 E-2001 罐頭文字是「租戶未啟用」），
@@ -168,21 +169,21 @@ export default function DashboardMembersPage() {
       <main>
         <div className="space-y-6">
           <div>
-            <h1 className="text-2xl font-semibold text-rs-ink">店鋪成員管理</h1>
-            <p className="mt-1 text-sm text-rs-ink-muted">
+            <PageTitle>店鋪成員管理</PageTitle>
+            <PageDescription>
               {members.length > 0 ? `共 ${members.length} 位成員` : '目前尚無店員'}
-            </p>
+            </PageDescription>
           </div>
 
           {actionMessage && (
-            <div data-testid="action-message" className="bg-rs-success/10 border border-rs-success/30 text-rs-success px-4 py-3 rounded-md">
+            <Alert variant="success" data-testid="action-message">
               {actionMessage}
-            </div>
+            </Alert>
           )}
           {actionError && (
-            <div data-testid="action-error" className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+            <Alert variant="destructive" data-testid="action-error">
               {actionError}
-            </div>
+            </Alert>
           )}
 
           <Card>

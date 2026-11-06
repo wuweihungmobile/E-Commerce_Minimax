@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { PageTitle } from '@/components/ui/page-title'
 
 // PRD §10.1.1 `/auth/profile`（DEF-358(b)，Sprint 257）：個人資料編輯表單。
 // 範圍僅限姓名/電話——email 變更牽涉重新驗證流程，角色/租戶/狀態等欄位屬系統管理，
@@ -58,7 +59,7 @@ export default function ProfilePage() {
     <StorefrontShell>
       <div className="max-w-2xl space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold text-rs-ink">個人資料</h1>
+          <PageTitle>個人資料</PageTitle>
           <Link href="/account" className="text-sm text-rs-primary hover:underline">
             返回帳戶設定
           </Link>

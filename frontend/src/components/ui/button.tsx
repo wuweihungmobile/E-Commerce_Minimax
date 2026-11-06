@@ -15,17 +15,26 @@ const buttonVariants = cva(
         default: "bg-rs-primary text-white hover:bg-rs-primary-hover",
         accent: "bg-rs-accent text-white hover:bg-rs-accent-hover",
         destructive: "bg-rs-error text-white hover:bg-rs-error/90",
+        success: "bg-rs-success text-white hover:bg-rs-success/90",
+        // 警告色是亮黃，白字不可讀：文字用 ink（設計稿規定警告色不當文字色，白字也不行）
+        warning: "bg-rs-warning text-rs-ink hover:bg-rs-warning/90",
         outline:
           "border-rs-hairline bg-rs-surface text-rs-ink hover:border-rs-primary hover:text-rs-primary",
         secondary: "bg-rs-tertiary text-rs-ink hover:bg-rs-secondary",
         ghost: "text-rs-ink hover:bg-rs-bg-base hover:text-rs-primary",
+        // 文字連結樣式的按鈕（表格列內的「編輯」「刪除」「下架」）：搭配 size="inline"
         link: "text-rs-primary underline-offset-4 hover:underline",
+        linkDestructive: "text-rs-error underline-offset-4 hover:underline",
+        linkSuccess: "text-rs-success underline-offset-4 hover:underline",
+        linkNeutral: "text-rs-ink underline-offset-4 hover:underline",
       },
       size: {
         default: "h-10 px-5",
         sm: "h-8 px-4",
         lg: "h-12 px-7 text-base",
         icon: "size-10",
+        // 行內：沒有最小高與內距，高度跟著文字（表格列內的文字連結按鈕）
+        inline: "h-auto p-0",
       },
     },
     defaultVariants: {

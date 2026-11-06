@@ -3,9 +3,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import SupportService, { SupportTicket } from '@/services/support'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
 
 const STATUS_LABEL: Record<SupportTicket['status'], string> = {
   OPEN: '開立',
@@ -43,16 +46,14 @@ export default function AdminSupportTicketsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error) {
     return (
       <div className="space-y-4">
-        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">{error}</div>
+        <Alert variant="destructive">{error}</Alert>
         <Button variant="outline" onClick={fetchTickets}>重試</Button>
       </div>
     )
@@ -62,17 +63,15 @@ export default function AdminSupportTicketsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">平台客服工單</h1>
-          <p className="text-muted-foreground">共 {tickets.length} 筆工單（跨租戶）</p>
+          <PageTitle>平台客服工單</PageTitle>
+          <PageDescription>共 {tickets.length} 筆工單（跨租戶）</PageDescription>
         </div>
         <Button variant="outline" onClick={fetchTickets}>重新整理</Button>
       </div>
 
       {tickets.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-rs-ink-muted">尚無客服工單</p>
-          </CardContent>
+          <EmptyState title="尚無客服工單" className="h-48" />
         </Card>
       ) : (
         <div className="space-y-4">

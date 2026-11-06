@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState } from '@/components/ui/states'
 
 const PAGE_SIZE = 10
 
@@ -66,10 +68,10 @@ export default function OrdersPage() {
   return (
     <StorefrontShell>
       <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-rs-ink">我的訂單</h1>
-          <p className="mt-1 text-sm text-rs-ink-muted">
+          <PageTitle>我的訂單</PageTitle>
+          <PageDescription>
             {loading ? '載入中…' : `共 ${totalElements} 筆訂單`}
-          </p>
+          </PageDescription>
         </div>
 
         {error && (
@@ -91,14 +93,9 @@ export default function OrdersPage() {
           </div>
         ) : orders.length === 0 && !error ? (
           <Card>
-            <CardContent className="flex flex-col items-center justify-center py-16">
-              <div className="text-5xl mb-4">🧾</div>
-              <h2 className="text-lg font-semibold text-rs-ink mb-1">尚無訂單</h2>
-              <p className="text-sm text-rs-ink-muted mb-6">您目前還沒有任何訂單</p>
-              <Link href="/">
+            <EmptyState icon="🧾" title="尚無訂單" description="您目前還沒有任何訂單" action={<Link href="/">
                 <Button>去逛逛</Button>
-              </Link>
-            </CardContent>
+              </Link>} className="py-16" />
           </Card>
         ) : (
           <div className="space-y-4">

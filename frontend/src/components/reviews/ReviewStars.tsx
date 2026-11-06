@@ -32,6 +32,7 @@ export default function ReviewStars({ rating, onChange, size = 'md' }: ReviewSta
           )
         }
         return (
+          // eslint-disable-next-line design-tokens/no-raw-control -- 星等評分鈕：尺寸由星星圖示決定的領域專用控制項，不是視覺按鈕
           <button
             key={star}
             type="button"

@@ -11,6 +11,12 @@ import StockMovementService, {
 } from '@/services/erp/stockMovement'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { NativeSelect } from '@/components/ui/native-select'
+import { PageTitle } from '@/components/ui/page-title'
+import { Alert } from '@/components/ui/alert'
+import { toast } from '@/components/ui/toast'
 
 export default function NewStockMovementPage() {
   const router = useRouter()
@@ -44,12 +50,12 @@ export default function NewStockMovementPage() {
     e.preventDefault()
 
     if (!formData.skuId.trim()) {
-      alert('請輸入 SKU ID')
+      toast.error('請輸入 SKU ID')
       return
     }
 
     if (formData.quantity <= 0) {
-      alert('數量必須大於 0')
+      toast.error('數量必須大於 0')
       return
     }
 
@@ -58,7 +64,7 @@ export default function NewStockMovementPage() {
 
     try {
       await StockMovementService.createStockMovement(formData)
-      alert('庫存異動建立成功')
+      toast.success('庫存異動建立成功')
       router.push('/dashboard/erp/stock-movements')
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
@@ -90,7 +96,7 @@ export default function NewStockMovementPage() {
       <main>
         <div>
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-rs-ink">新增庫存異動</h1>
+            <PageTitle>新增庫存異動</PageTitle>
           </div>
 
           <Card>
@@ -101,14 +107,14 @@ export default function NewStockMovementPage() {
             <form onSubmit={handleSubmit}>
               <CardContent className="space-y-4">
                 {error && (
-                  <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+                  <Alert variant="destructive">
                     {error}
-                  </div>
+                  </Alert>
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">SKU ID *</label>
+                    <Label>SKU ID *</Label>
                     <Input
                       name="skuId"
                       value={formData.skuId}
@@ -119,19 +125,18 @@ export default function NewStockMovementPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">異動類型 *</label>
-                    <select
+                    <Label>異動類型 *</Label>
+                    <NativeSelect
                       name="movementType"
                       value={formData.movementType}
                       onChange={handleChange}
-                      className="w-full border rounded-md px-3 py-2"
                     >
                       {movementTypes.map(type => (
                         <option key={type.value} value={type.value}>
                           {type.label}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                     <p className="text-xs text-rs-ink-muted">
                       採購入庫與訂單出貨由採購單、訂單流程自動產生，不在此手動建立
                     </p>
@@ -140,7 +145,7 @@ export default function NewStockMovementPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">數量 *</label>
+                    <Label>數量 *</Label>
                     <Input
                       name="quantity"
                       type="number"
@@ -152,7 +157,7 @@ export default function NewStockMovementPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">參考單號</label>
+                    <Label>參考單號</Label>
                     <p className="text-xs text-rs-ink-muted">
                       店家自己記的單號；採購單／訂單產生的異動會自動顯示來源單據
                     </p>
@@ -166,14 +171,13 @@ export default function NewStockMovementPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">備註</label>
-                  <textarea
+                  <Label>備註</Label>
+                  <Textarea
                     name="notes"
                     value={formData.notes}
                     onChange={handleChange}
                     placeholder="選填，補充說明..."
                     rows={3}
-                    className="w-full border rounded-md px-3 py-2"
                   />
                 </div>
               </CardContent>

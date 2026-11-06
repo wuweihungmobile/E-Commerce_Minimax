@@ -9,6 +9,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { Textarea } from '@/components/ui/textarea'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
 
 const STATUS_LABEL: Record<SupportTicket['status'], string> = {
   OPEN: '開立',
@@ -96,8 +98,8 @@ export default function SupportTicketDetailPage() {
     <StorefrontShell>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-rs-ink">{ticket.subject}</h1>
-          <p className="mt-1 text-sm text-rs-ink-muted">{ticket.ticketNumber}</p>
+          <PageTitle>{ticket.subject}</PageTitle>
+          <PageDescription>{ticket.ticketNumber}</PageDescription>
         </div>
         <Badge variant={isClosed ? 'outline' : 'default'}>{STATUS_LABEL[ticket.status]}</Badge>
       </div>
@@ -142,8 +144,7 @@ export default function SupportTicketDetailPage() {
                 <AlertDescription>{sendError}</AlertDescription>
               </Alert>
             )}
-            <textarea
-              className="w-full border rounded-md px-3 py-2 text-sm min-h-20"
+            <Textarea
               placeholder="輸入訊息..."
               value={reply}
               onChange={(e) => setReply(e.target.value)}

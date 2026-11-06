@@ -12,6 +12,8 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState } from '@/components/ui/states'
 
 const PAGE_SIZE = 15
 
@@ -124,10 +126,10 @@ export default function NotificationsPage() {
     <StorefrontShell>
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-semibold text-rs-ink">通知收件匣</h1>
-            <p className="mt-1 text-sm text-rs-ink-muted">
+            <PageTitle>通知收件匣</PageTitle>
+            <PageDescription>
               {unreadCount > 0 ? `${unreadCount} 則未讀` : '沒有未讀通知'}
-            </p>
+            </PageDescription>
           </div>
           <Button variant="outline" onClick={handleMarkAllRead} disabled={busy || unreadCount === 0}>
             全部標為已讀
@@ -171,13 +173,7 @@ export default function NotificationsPage() {
           </div>
         ) : notifications.length === 0 && !error ? (
           <Card>
-            <CardContent className="flex flex-col items-center justify-center py-16">
-              <div className="text-5xl mb-4">🔔</div>
-              <h2 className="text-lg font-semibold text-rs-ink mb-1">
-                {unreadOnly ? '沒有未讀通知' : '尚無通知'}
-              </h2>
-              <p className="text-sm text-rs-ink-muted">訂單、付款與物流的更新會顯示在這裡</p>
-            </CardContent>
+            <EmptyState icon="🔔" title={unreadOnly ? '沒有未讀通知' : '尚無通知'} description="訂單、付款與物流的更新會顯示在這裡" className="py-16" />
           </Card>
         ) : (
           <div className="space-y-3">

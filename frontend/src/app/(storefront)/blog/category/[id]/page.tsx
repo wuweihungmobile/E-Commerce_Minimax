@@ -5,6 +5,8 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { getPublishedPosts, getPublicCategories, PostResponse, CategoryResponse } from '@/services/cms';
 import { Pagination } from '@/components/ui/pagination';
+import { EmptyState, LoadingState } from '@/components/ui/states';
+import { Card } from '@/components/ui/card';
 
 const PAGE_SIZE = 12;
 
@@ -92,31 +94,24 @@ export default function BlogCategoryPage() {
       {/* Content */}
       <main className="max-w-4xl mx-auto px-4 py-8">
         {!tenantId ? (
-          <div className="text-center py-12 text-rs-ink-muted">
-            <p>請先登入並設定店鋪以瀏覽部落格</p>
-            <Link href="/login" className="text-rs-primary hover:underline mt-2 inline-block">
-              前往登入
-            </Link>
-          </div>
+          <EmptyState
+            title="請先登入並設定店鋪以瀏覽部落格"
+            action={<Link href="/login" className="text-rs-primary hover:underline">前往登入</Link>}
+          />
         ) : categoryNotFound ? (
-          <div className="text-center py-12 text-rs-ink-muted" data-testid="blog-category-not-found">
-            此分類不存在
-          </div>
+          <EmptyState data-testid="blog-category-not-found" title="此分類不存在" />
         ) : loading ? (
-          <div className="text-center py-12">載入中...</div>
+          <LoadingState className="h-auto py-12" />
         ) : posts.length === 0 ? (
-          <div className="text-center py-12 text-rs-ink-muted" data-testid="blog-category-empty">
-            此分類尚無已發布的文章
-          </div>
+          <EmptyState data-testid="blog-category-empty" title="此分類尚無已發布的文章" />
         ) : (
           <>
             {/* Post Grid */}
             <div className="grid md:grid-cols-2 gap-6" data-testid="blog-category-grid">
               {posts.map((post) => (
-                <Link
-                  key={post.id}
+                <Card asChild key={post.id} className="overflow-hidden hover:border-rs-primary transition-colors">
+<Link
                   href={`/blog/${post.slug}`}
-                  className="bg-white rounded-lg overflow-hidden hover:border-rs-primary transition-colors border border-rs-hairline"
                 >
                   {post.featuredImageUrl && (
                     <div className="aspect-video bg-rs-disabled-bg">
@@ -148,6 +143,7 @@ export default function BlogCategoryPage() {
                     </div>
                   </div>
                 </Link>
+</Card>
               ))}
             </div>
 

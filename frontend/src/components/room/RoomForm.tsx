@@ -11,6 +11,10 @@ import { Switch } from '@/components/ui/switch'
 import RoomService, { CreateRoomRequest, UpdateRoomRequest } from '@/services/room'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { Textarea } from '@/components/ui/textarea'
+import { LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { Chip } from '@/components/ui/chip'
 
 interface FormErrors {
   title?: string
@@ -207,9 +211,7 @@ export default function RoomForm({ roomId }: RoomFormProps) {
 
   if (fetchLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
@@ -224,9 +226,9 @@ export default function RoomForm({ roomId }: RoomFormProps) {
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-6">
           {generalError && (
-            <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+            <Alert variant="destructive">
               {generalError}
-            </div>
+            </Alert>
           )}
 
           <div className="space-y-4">
@@ -410,31 +412,25 @@ export default function RoomForm({ roomId }: RoomFormProps) {
               <Label>設施</Label>
               <div className="flex flex-wrap gap-2 mt-2">
                 {amenitiesList.map((amenity) => (
-                  <button
+                  <Chip
                     key={amenity}
-                    type="button"
+                    selected={(formData.amenities || []).includes(amenity)}
                     onClick={() => toggleAmenity(amenity)}
-                    className={`px-3 py-1 text-sm rounded-full border ${
-                      (formData.amenities || []).includes(amenity)
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-rs-bg-base text-rs-ink border-rs-hairline'
-                    }`}
                   >
                     {amenity}
-                  </button>
+                  </Chip>
                 ))}
               </div>
             </div>
 
             <div>
               <Label htmlFor="description">房源描述</Label>
-              <textarea
+              <Textarea
                 id="description"
                 value={formData.description}
                 onChange={(e) => handleChange('description', e.target.value)}
                 placeholder="請輸入房源描述..."
                 rows={4}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
 

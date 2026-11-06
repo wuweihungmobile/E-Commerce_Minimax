@@ -6,6 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import SkuService, { Sku, SkuStatus } from '@/services/sku'
+import { Label } from '@/components/ui/label'
+import { Alert } from '@/components/ui/alert'
+import { toast } from '@/components/ui/toast'
 
 // 商品規格（SKU）管理（Sprint 178）。
 // 背景：product_skus/product_inventory 先前在正式環境完全無法產生資料，導致依賴 SKU 的既有 ERP
@@ -56,7 +59,7 @@ export default function SkuManager({ listingId }: SkuManagerProps) {
       await SkuService.update(listingId, sku.id, { status: nextStatus })
       fetchSkus()
     } catch (err: unknown) {
-      alert(extractErrorMessage(err, '更新狀態失敗'))
+      toast.error(extractErrorMessage(err, '更新狀態失敗'))
     } finally {
       setToggleLoading(null)
     }
@@ -89,9 +92,9 @@ export default function SkuManager({ listingId }: SkuManagerProps) {
         {loading ? (
           <div className="text-sm text-rs-ink-muted py-4">載入中...</div>
         ) : error ? (
-          <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md text-sm">
+          <Alert variant="destructive">
             {error}
-          </div>
+          </Alert>
         ) : skus.length === 0 ? (
           <p className="text-sm text-rs-ink-muted py-4">尚未建立任何規格</p>
         ) : (
@@ -174,13 +177,13 @@ function SkuCreateForm({
   return (
     <form onSubmit={handleSubmit} className="mb-4 border rounded-md p-4 space-y-3 bg-rs-bg-base">
       {error && (
-        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-3 py-2 rounded-md text-sm">
+        <Alert variant="destructive">
           {error}
-        </div>
+        </Alert>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <label className="text-sm font-medium">SKU 代碼 <span className="text-rs-error">*</span></label>
+          <Label>SKU 代碼 <span className="text-rs-error">*</span></Label>
           <Input
             value={skuCode}
             onChange={(e) => setSkuCode(e.target.value)}
@@ -190,7 +193,7 @@ function SkuCreateForm({
           />
         </div>
         <div>
-          <label className="text-sm font-medium">規格名稱</label>
+          <Label>規格名稱</Label>
           <Input
             value={specName}
             onChange={(e) => setSpecName(e.target.value)}
@@ -200,7 +203,7 @@ function SkuCreateForm({
           />
         </div>
         <div>
-          <label className="text-sm font-medium">價格覆寫</label>
+          <Label>價格覆寫</Label>
           <Input
             type="number"
             min="0.01"

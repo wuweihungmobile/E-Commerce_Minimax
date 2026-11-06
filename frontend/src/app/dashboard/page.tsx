@@ -6,6 +6,9 @@ import Link from 'next/link'
 import AuthService from '@/services/auth'
 import AnalyticsService, { DashboardStats, OrderStats, RevenueStats } from '@/services/analytics'
 import { loginHref } from '@/lib/auth-redirect'
+import { Alert } from '@/components/ui/alert'
+import { Card } from '@/components/ui/card'
+import { LoadingState } from '@/components/ui/states'
 
 // 快速管理入口已移到共用賣家外殼的側欄（components/layout/sellerNav.ts，沿用原本的標籤與 data-testid），
 // 本頁只留營運數據。
@@ -20,11 +23,11 @@ function formatCurrency(value: number): string {
 
 function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="bg-white rounded-lg p-5 border border-rs-hairline">
+    <Card className="p-5">
       <p className="text-sm text-rs-ink-muted">{label}</p>
       <p className="mt-2 text-2xl font-semibold text-rs-ink">{value}</p>
       {hint ? <p className="mt-1 text-xs text-rs-disabled-text">{hint}</p> : null}
-    </div>
+    </Card>
   )
 }
 
@@ -67,9 +70,7 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-[40vh] flex items-center justify-center">
-        <div className="text-lg text-rs-ink-muted">Loading...</div>
-      </div>
+      <LoadingState label="Loading..." className="h-auto min-h-[40vh]" />
     )
   }
 
@@ -81,9 +82,9 @@ export default function DashboardPage() {
         <h2 className="text-lg font-medium text-rs-ink mb-4">營運總覽</h2>
 
         {error ? (
-          <div className="mb-6 rounded-md bg-rs-error/10 border border-rs-error/30 p-4 text-sm text-rs-error">
+          <Alert variant="destructive" className="mb-6">
             {error}
-          </div>
+          </Alert>
         ) : null}
 
         {/* 營收統計 */}
@@ -111,7 +112,8 @@ export default function DashboardPage() {
 
         {/* 訂單狀態總覽（Sprint 151，DEF-188：各狀態數字連結至 /dashboard/orders 對應篩選，
             補上先前「有統計數字、無管理入口」的缺口） */}
-        <section className="mt-6 bg-white rounded-lg p-6 border border-rs-hairline">
+        <Card asChild className="mt-6 p-6">
+<section>
           <h3 className="text-base font-medium text-rs-ink mb-4">訂單狀態總覽</h3>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
             {[
@@ -136,9 +138,11 @@ export default function DashboardPage() {
             訂單總數：<span className="font-medium text-rs-ink">{orderStats?.totalOrders ?? 0}</span>
           </p>
         </section>
+</Card>
 
         {/* 營收趨勢（近 30 天） */}
-        <section className="mt-6 bg-white rounded-lg p-6 border border-rs-hairline">
+        <Card asChild className="mt-6 p-6">
+<section>
           <div className="flex items-baseline justify-between mb-4">
             <h3 className="text-base font-medium text-rs-ink">營收趨勢（近 30 天）</h3>
             <span className="text-sm text-rs-ink-muted">
@@ -165,6 +169,7 @@ export default function DashboardPage() {
             )
           })()}
         </section>
+</Card>
       </main>
     </div>
   )

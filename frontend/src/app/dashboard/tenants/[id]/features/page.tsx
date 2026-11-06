@@ -8,12 +8,15 @@ import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { featureStatusEntry } from '@/lib/status'
 
 // 欄位名必須與後端 FeatureToggleResponse.FeatureInfo 完全一致（DEF-168）。
 // 本介面原本用 feature/displayName/enabled，與後端的 featureKey/featureName/isEnabled 全數對不上，
@@ -157,21 +160,6 @@ export default function FeatureTogglePage() {
     return labels[category] || category
   }
 
-  const getStatusBadge = (status: string, requiresAdminReview: boolean, enabled: boolean) => {
-    // 待審核必須先判斷：PENDING 時 isEnabled 本身就是 false（DEF-247 既有設計），
-    // 若先判斷 !enabled 會讓「待審核」被誤標成「已停用」，看起來已直接被駁回（DEF-359）。
-    if (requiresAdminReview && status === 'PENDING') {
-      return <Badge variant="warning">待審核</Badge>
-    }
-    if (!enabled) {
-      return <Badge variant="secondary">已停用</Badge>
-    }
-    if (status === 'ACTIVE') {
-      return <Badge variant="success">已啟用</Badge>
-    }
-    return <Badge variant="secondary">{status}</Badge>
-  }
-
   // Group features by category
   const groupedFeatures = features.reduce((acc, feature) => {
     const category = feature.category || 'other'
@@ -187,9 +175,7 @@ export default function FeatureTogglePage() {
       <div>
         <main>
           <div>
-            <div className="flex items-center justify-center h-64">
-              <div className="text-rs-ink-muted">載入中...</div>
-            </div>
+            <LoadingState />
           </div>
         </main>
       </div>
@@ -206,10 +192,10 @@ export default function FeatureTogglePage() {
             <Link href={`/dashboard/tenants/${tenantId}`} className="text-sm text-rs-primary hover:underline">
               ← 返回店鋪詳情
             </Link>
-            <h1 className="mt-2 text-2xl font-semibold text-rs-ink">功能開關</h1>
-            <p className="mt-1 text-sm text-rs-ink-muted">
+            <PageTitle className="mt-2">功能開關</PageTitle>
+            <PageDescription>
               管理店鋪的功能開啟狀態。部分功能需要管理員審核後才會生效。
-            </p>
+            </PageDescription>
           </div>
 
           {error && (
@@ -240,12 +226,9 @@ export default function FeatureTogglePage() {
             </div>
           ) : features.length === 0 ? (
             <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <p className="text-rs-ink-muted mb-4">尚無功能開關設定</p>
-                <Button variant="outline" onClick={() => router.push('/dashboard/tenants')}>
+              <EmptyState title="尚無功能開關設定" action={<Button variant="outline" onClick={() => router.push('/dashboard/tenants')}>
                   返回店鋪列表
-                </Button>
-              </CardContent>
+                </Button>} />
             </Card>
           ) : (
             <div className="space-y-6">
@@ -303,7 +286,7 @@ export default function FeatureTogglePage() {
                             <Label className="text-base font-medium">
                               {feature.featureName}
                             </Label>
-                            {getStatusBadge(feature.status, feature.requiresAdminReview, feature.isEnabled)}
+                            <StatusBadge entry={featureStatusEntry(feature.status, feature.requiresAdminReview, feature.isEnabled)} />
                           </div>
                           <p className="text-sm text-rs-ink-muted mt-1">
                             {feature.description}

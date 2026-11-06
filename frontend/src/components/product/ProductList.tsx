@@ -5,12 +5,16 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import ProductService, { ProductListItem, ProductFilters } from '@/services/product'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { confirmDialog } from '@/components/ui/confirm-dialog'
+import { toast } from '@/components/ui/toast'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 // Radix 的 Select.Item 不接受空字串 value（render 時直接 throw，整頁崩潰）；「所有類別」用哨兵值代表，
 // category 狀態與送出的篩選參數仍以空字串代表不篩選。
@@ -74,7 +78,7 @@ export default function ProductList() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('確定要刪除這個商品嗎？')) return
+    if (!(await confirmDialog({ message: '確定要刪除這個商品嗎？', confirmLabel: '刪除', destructive: true }))) return
 
     setDeleteLoading(id)
     try {
@@ -83,23 +87,13 @@ export default function ProductList() {
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { message?: string } } }
-        alert(axiosErr.response?.data?.message || '刪除失敗')
+        toast.error(axiosErr.response?.data?.message || '刪除失敗')
       } else {
-        alert('刪除失敗')
+        toast.error('刪除失敗')
       }
     } finally {
       setDeleteLoading(null)
     }
-  }
-
-  const getStatusBadge = (status: string) => {
-    const statusConfig: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline'; label: string }> = {
-      ACTIVE: { variant: 'success', label: '上架中' },
-      INACTIVE: { variant: 'secondary', label: '已下架' },
-      DRAFT: { variant: 'outline', label: '草稿' },
-    }
-    const config = statusConfig[status] || { variant: 'outline', label: status }
-    return <Badge variant={config.variant}>{config.label}</Badge>
   }
 
   const formatPrice = (price: number, currency: string) => {
@@ -111,17 +105,15 @@ export default function ProductList() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error) {
     return (
-      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+      <Alert variant="destructive">
         {error}
-      </div>
+      </Alert>
     )
   }
 
@@ -174,12 +166,9 @@ export default function ProductList() {
       {/* Product List */}
       {products.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-rs-ink-muted mb-4">尚無商品資料</p>
-            <Link href="/dashboard/products/new">
+          <EmptyState title="尚無商品資料" action={<Link href="/dashboard/products/new">
               <Button>新增第一個商品</Button>
-            </Link>
-          </CardContent>
+            </Link>} className="h-48" />
         </Card>
       ) : (
         <>
@@ -192,7 +181,7 @@ export default function ProductList() {
                 <CardHeader>
                   <div className="flex justify-between items-start">
                     <CardTitle className="text-lg line-clamp-1">{product.title}</CardTitle>
-                    {getStatusBadge(product.status)}
+                    <StatusBadge domain="listing" status={product.status} />
                   </div>
                   <CardDescription>{product.category}</CardDescription>
                 </CardHeader>

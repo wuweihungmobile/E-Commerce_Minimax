@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { PageTitle } from '@/components/ui/page-title'
 
 function mapInviteErrorMessage(code: string | undefined, fallback: string): string {
   return code === 'E-2002' ? '此邀請已不存在，可能已被處理，請重新整理頁面' : fallback
@@ -135,7 +136,7 @@ export default function AccountPage() {
   return (
     <StorefrontShell>
       <div className="max-w-2xl space-y-6">
-        <h1 className="text-2xl font-semibold text-rs-ink">帳戶設定</h1>
+        <PageTitle>帳戶設定</PageTitle>
 
         {invites.length > 0 && (
           <Card>

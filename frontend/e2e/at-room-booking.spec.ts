@@ -486,7 +486,7 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
     await expect(page.getByTestId('listing-total-price')).toContainText('7,680');
     const original = page.getByTestId('listing-original-price');
     await expect(original).toContainText('6,400');
-    await expect(original).not.toHaveClass(/line-through/);
+    await expect(original).toHaveCSS('text-decoration-line', 'none'); // 漲價：原價不畫刪除線（斷言實際樣式，不斷言 class 名）
     const badge = page.getByTestId('listing-discount-badge');
     await expect(badge).toContainText('週末加成 20%');
     await expect(badge).toContainText('加價');
@@ -524,7 +524,7 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
     await expect(page.getByTestId(`calendar-price-${upDay}`)).toContainText('3,840');
     const originalCell = page.getByTestId(`calendar-original-price-${upDay}`);
     await expect(originalCell).toContainText('3,200');
-    await expect(originalCell).not.toHaveClass(/line-through/);
+    await expect(originalCell).toHaveCSS('text-decoration-line', 'none');
   });
 
   test('E2E-ROOM-10: 日曆未開放日 NOT_OPEN → 禁選 + 灰底不刪除線（Sprint 47 AI-2202e）', async ({ page }: { page: Page }) => {
@@ -561,7 +561,7 @@ test.describe('AT-ROOM-BOOKING: ROOM 訂房閉環（S39）', () => {
     await expect(cell).toBeDisabled();
     await expect(cell).toHaveAttribute('data-not-open', 'true');
     await expect(cell).toHaveAttribute('data-unavailable', 'true');
-    await expect(cell).not.toHaveClass(/line-through/);
+    await expect(cell).toHaveCSS('text-decoration-line', 'none');
   });
 
   test('E2E-ROOM-11: 可用性回未開放 → 禁用加購 + 顯示未開放原因（Sprint 47 AI-2202e）', async ({ page }: { page: Page }) => {

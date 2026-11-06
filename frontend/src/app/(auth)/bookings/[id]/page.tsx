@@ -22,6 +22,8 @@ import BookingPaymentCard from '@/components/bookings/BookingPaymentCard'
 import ReviewService from '@/services/review'
 import ReviewForm, { type ReviewFormValue } from '@/components/reviews/ReviewForm'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { PageTitle } from '@/components/ui/page-title'
+import { EmptyState } from '@/components/ui/states'
 
 function formatPrice(amount: number, currency: string) {
   return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: currency || 'TWD' }).format(amount)
@@ -135,9 +137,9 @@ export default function BookingDetailPage() {
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <h1 className="text-2xl font-semibold text-rs-ink truncate">
+                  <PageTitle className="truncate">
                     {booking.roomTitle || `訂房 #${booking.id.slice(0, 8)}`}
-                  </h1>
+                  </PageTitle>
                   <Badge variant={bookingStatusBadgeVariant(booking.status)}>
                     {BOOKING_STATUS_LABELS[booking.status] ?? booking.status}
                   </Badge>
@@ -300,12 +302,9 @@ export default function BookingDetailPage() {
         ) : (
           !error && (
             <Card>
-              <CardContent className="flex flex-col items-center justify-center py-16">
-                <p className="text-rs-ink-muted mb-4">找不到此預訂</p>
-                <Link href="/bookings">
+              <EmptyState title="找不到此預訂" action={<Link href="/bookings">
                   <Button variant="outline">返回預訂列表</Button>
-                </Link>
-              </CardContent>
+                </Link>} className="py-16" />
             </Card>
           )
         )}

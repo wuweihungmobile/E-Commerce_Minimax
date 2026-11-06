@@ -20,6 +20,8 @@ import BookingService, {
 } from '@/services/booking'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle } from '@/components/ui/page-title'
+import { LoadingState } from '@/components/ui/states'
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -150,16 +152,14 @@ export default function DashboardBookingDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error || !booking) {
     return (
       <div className="space-y-4">
-        {error && <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">{error}</div>}
+        {error && <Alert variant="destructive">{error}</Alert>}
         <Link href="/dashboard/bookings">
           <Button variant="outline">返回訂房列表</Button>
         </Link>
@@ -172,9 +172,9 @@ export default function DashboardBookingDetailPage() {
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-semibold truncate">
+            <PageTitle className="truncate">
               {booking.roomTitle || `訂房 #${booking.id.slice(0, 8)}`}
-            </h1>
+            </PageTitle>
             <Badge variant={bookingStatusBadgeVariant(booking.status)}>
               {BOOKING_STATUS_LABELS[booking.status] ?? booking.status}
             </Badge>

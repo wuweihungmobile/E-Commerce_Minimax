@@ -236,7 +236,34 @@ private String createSuperAdminToken() {
 
 ---
 
-## 8. 相關文件
+## 8. 前端 UI 測試原則（Sprint 329 補記，QA）
+
+> 背景：Sprint 328 換皮改了 144 個檔案，其中 4 支 E2E 要改（同名連結、同 role 元素數量、**斷言 class 名**、頁面頂欄裡的功能連結）；`at-m15-e2e` 把原生 `alert()` 當同步訊號，並曾因原生對話框造成 Playwright session 崩潰（S37 AI-2001）。證據與完整檢視見 [SPRINT_329_PLAN.md](../04_planning/SPRINT_329_PLAN.md) §3.4。
+
+### 8.1 三層守門（由便宜到貴）
+
+| 層 | 工具 | 守什麼 | 位置 |
+|---|---|---|---|
+| 靜態 | ESLint `design-tokens/*`（5 條規則） | 色盤／陰影／hex、原生表單／表格元素、原生對話框、靜默失效的 class、已有元件的配方被手刻 | `frontend/eslint-rules/design-tokens.mjs`，`npm run lint`（pre-commit／CI／pre-push） |
+| 契約（執行期，mock） | `at-ui-design-system.spec.ts` | 控制項實際幾何（computed style）、表格、標題、Toast、ConfirmDialog、Dialog 遮罩、換皮演練、狀態登錄表語意 | `frontend/e2e/`，全程 mock、不需後端 seed、不吃登入限流額度 |
+| 整合（真實後端） | 各 `at-*-real.spec.ts` | 流程與資料 | `frontend/e2e/` |
+
+### 8.2 E2E 選擇器與斷言原則
+
+1. **斷言語意與實際樣式，不斷言 class 名**：選取態 → `aria-pressed`；刪除線 → `toHaveCSS('text-decoration-line', …)`；通知 → `getByTestId('toast')`＋`data-kind`；確認框 → `confirm-dialog-confirm`／`confirm-dialog-cancel`。換皮改 class 名時，這些都不該紅。
+2. **不要用原生對話框當同步訊號**；全站已沒有原生 `alert()`／`confirm()`（`no-native-dialog` 守門），所以也不需要 `page.on('dialog')` 的全域 workaround。
+3. **新增共用元素前先查同名／同 role 的泛用查詢**（`getByRole('link', { name })`、`getByRole('combobox')`、`locator('select')`…）：Playwright strict mode 遇到 2 個就失敗。目前 E2E 沒有 `getByRole('alert'|'status'|'dialog')` 查詢。
+4. 破壞性操作要測「**取消與 ESC 不送出、確定才送出**」（E2E-UIDS-05）——Playwright 預設自動關閉原生 `confirm()`（回 `false`），所以原生版本的刪除流程在 E2E 裡根本走不到「確定」。
+5. 契約測試要量**實際 computed style**（高度、圓角、框色、字級、內距），並用 `tokenColor()` 把 token 解析成 rgb 再比對，不要寫死色碼（換主題也成立）；量動畫會誤判，換皮演練時關掉 `transition`。
+6. **機械式／大量重構之後，用 `git diff` 做「屬性丟失」審計**：列出 diff 中被移除、卻沒有在新增行重新出現的屬性（`data-testid`、`id`、`role`、`aria-*`、`htmlFor`、`name`、`placeholder`、`data-*`…）。把整個元素換成元件的轉換器最容易丟屬性——Sprint 329 的轉換器丟了 2 個 `data-testid`，`type-check`、`lint`、契約規格、探針全都沒抓到，是完整守門抓到的（`E2E-BLOGCAT-03` 失敗）。審計是便宜的，完整守門是 8 分鐘。
+
+### 8.3 契約規格的突變驗證
+
+契約規格自己也要證明「會紅」：預先登記突變（把某頁的 `<Input>` 換回手刻、改壞 `field-styles.ts`、把 Dialog 遮罩改回不透明、讓 ConfirmDialog 的取消回 `true`…），確認對應案例紅、不相干的改動維持綠。做法見記憶 `mutation-validation-driver-pattern`；本輪結果在 SPRINT_329_PLAN §7。
+
+---
+
+## 9. 相關文件
 
 | 文件 | 路徑 | 說明 |
 |------|------|------|
@@ -256,3 +283,4 @@ private String createSuperAdminToken() {
 |------|------|----------|
 | v1.0 | 2026-04-26 | 初始版本（基於 Sprint 3-A 補漏項目） |
 | v1.1 | 2026-04-26 | 更新 RBAC 測試案例 ID（API-M17-010~013 → API-M17-018~021）以避免 ID 衝突 |
+| v1.2 | 2026-11-06 | Sprint 329：新增 §8「前端 UI 測試原則」（三層守門、E2E 選擇器與斷言原則、契約規格突變驗證）；原 §8 相關文件順延為 §9 |

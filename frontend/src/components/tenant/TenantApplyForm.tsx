@@ -16,6 +16,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
 import AuthService, { getApiErrorInfo } from '@/services/auth'
+import { Textarea } from '@/components/ui/textarea'
+import { Alert } from '@/components/ui/alert'
 
 interface TenantApplyFormData {
   storeName: string
@@ -166,7 +168,7 @@ export default function TenantApplyForm() {
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
           {error && (
-            <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md text-sm">
+            <Alert variant="destructive">
               {error}
               {needsEmailVerification && (
                 <div className="mt-2 space-y-1">
@@ -176,7 +178,7 @@ export default function TenantApplyForm() {
                   {resendMessage && <p className="text-xs">{resendMessage}</p>}
                 </div>
               )}
-            </div>
+            </Alert>
           )}
 
           <div className="space-y-2">
@@ -200,10 +202,10 @@ export default function TenantApplyForm() {
 
           <div className="space-y-2">
             <Label htmlFor="storeDescription">店鋪描述</Label>
-            <textarea
+            <Textarea
               id="storeDescription"
               name="storeDescription"
-              className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex"
               placeholder="介紹一下您的店鋪（選填，最多 1000 字）"
               maxLength={1000}
               value={formData.storeDescription}

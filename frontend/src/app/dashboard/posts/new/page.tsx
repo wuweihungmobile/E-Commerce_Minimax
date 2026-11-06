@@ -3,6 +3,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPost, getCategories, CategoryResponse } from '@/services/cms';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { NativeSelect } from '@/components/ui/native-select';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { PageTitle } from '@/components/ui/page-title';
+import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/toast';
 
 export default function NewPostPage() {
   const router = useRouter();
@@ -21,7 +29,7 @@ export default function NewPostPage() {
       setCategories(data.categories);
     } catch (error) {
       console.error('Failed to load categories:', error);
-      alert('載入分類失敗，請稍後再試');
+      toast.error('載入分類失敗，請稍後再試');
     }
   }, []);
 
@@ -49,35 +57,34 @@ export default function NewPostPage() {
       router.push('/dashboard/posts');
     } catch (error) {
       console.error('Failed to create post:', error);
-      alert('建立貼文失敗，請稍後再試');
+      toast.error('建立貼文失敗，請稍後再試');
       setSaving(false);
     }
   }
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-6">新建貼文</h1>
+      <PageTitle className="mb-6">新建貼文</PageTitle>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">標題 *</label>
-          <input
+          <Label className="block mb-1">標題 *</Label>
+          <Input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
-            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-rs-primary focus:border-rs-primary"
             placeholder="輸入貼文標題"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">內容 (Markdown)</label>
-          <textarea
+          <Label className="block mb-1">內容 (Markdown)</Label>
+          <Textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
             rows={15}
-            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-rs-primary focus:border-rs-primary font-mono"
+            className="font-mono"
             placeholder="使用 Markdown 格式撰寫內容
 
 範例：
@@ -94,70 +101,65 @@ export default function NewPostPage() {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-rs-ink mb-1">分類</label>
-            <select
+            <Label className="block mb-1">分類</Label>
+            <NativeSelect
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-rs-primary focus:border-rs-primary"
             >
               <option value="">選擇分類</option>
               {categories.map((cat) => (
                 <option key={cat.id} value={cat.id}>{cat.name}</option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-rs-ink mb-1">標籤</label>
-            <input
+            <Label className="block mb-1">標籤</Label>
+            <Input
               type="text"
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-rs-primary focus:border-rs-primary"
               placeholder="標籤1, 標籤2, 標籤3"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">封面圖片 URL</label>
-          <input
+          <Label className="block mb-1">封面圖片 URL</Label>
+          <Input
             type="url"
             value={featuredImageUrl}
             onChange={(e) => setFeaturedImageUrl(e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-rs-primary focus:border-rs-primary"
             placeholder="https://example.com/image.jpg"
           />
         </div>
 
         <div className="flex items-center">
-          <input
-            type="checkbox"
+          <Checkbox
             id="autoPublish"
             checked={autoPublish}
             onChange={(e) => setAutoPublish(e.target.checked)}
-            className="h-4 w-4 text-rs-primary focus:ring-rs-primary border-rs-hairline rounded"
           />
-          <label htmlFor="autoPublish" className="ml-2 text-sm text-rs-ink">
+          <Label htmlFor="autoPublish" className="ml-2">
             建立後立即發布
-          </label>
+          </Label>
         </div>
 
         <div className="flex gap-4">
-          <button
+          <Button
+            variant="default"
             type="submit"
             disabled={saving}
-            className="bg-rs-primary text-white px-6 py-2 rounded-lg hover:bg-rs-primary-hover disabled:opacity-50"
           >
             {saving ? '儲存中...' : '儲存'}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
             type="button"
             onClick={() => router.back()}
-            className="bg-rs-hairline text-rs-ink px-6 py-2 rounded-lg hover:bg-rs-hairline"
           >
             取消
-          </button>
+          </Button>
         </div>
       </form>
     </div>

@@ -9,6 +9,17 @@ import {
   KnowledgeCategoryDto,
   PageResponse,
 } from '@/services/knowledge';
+import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
+import { Input } from '@/components/ui/input';
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
+import { PageTitle } from '@/components/ui/page-title';
+import { EmptyState, LoadingState } from '@/components/ui/states';
+import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { Badge } from '@/components/ui/badge';
 
 export default function KnowledgePage() {
   const [articles, setArticles] = useState<KnowledgeArticleDto[]>([]);
@@ -46,7 +57,7 @@ export default function KnowledgePage() {
       setTotalElements(data.totalElements);
     } catch (error) {
       console.error('Failed to load articles:', error);
-      alert('載入知識庫文章失敗，請稍後再試');
+      toast.error('載入知識庫文章失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
@@ -66,15 +77,15 @@ export default function KnowledgePage() {
   }
 
   async function handleDelete(articleId: string) {
-    if (!confirm('確定要刪除這篇文章嗎？')) return;
+    if (!(await confirmDialog({ message: '確定要刪除這篇文章嗎？', confirmLabel: '刪除', destructive: true }))) return;
     setDeleting(articleId);
     try {
       await deleteKnowledgeArticle(articleId);
       loadArticles();
-      alert('刪除成功');
+      toast.success('刪除成功');
     } catch (error) {
       console.error('Failed to delete article:', error);
-      alert('刪除失敗，請稍後再試');
+      toast.error('刪除失敗，請稍後再試');
     } finally {
       setDeleting(null);
     }
@@ -86,23 +97,10 @@ export default function KnowledgePage() {
     return date.toLocaleDateString('zh-TW');
   }
 
-  function getStatusBadge(status: string): { label: string; className: string } {
-    switch (status) {
-      case 'PUBLISHED':
-        return { label: '已發布', className: 'bg-rs-success/10 text-rs-success' };
-      case 'DRAFT':
-        return { label: '草稿', className: 'bg-rs-warning/15 text-rs-ink' };
-      case 'ARCHIVED':
-        return { label: '已封存', className: 'bg-rs-disabled-bg text-rs-ink' };
-      default:
-        return { label: status, className: 'bg-rs-disabled-bg text-rs-ink' };
-    }
-  }
-
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">知識庫</h1>
+        <PageTitle>知識庫</PageTitle>
         <div className="text-sm text-rs-ink-muted">
           總計 {totalElements} 篇文章
         </div>
@@ -111,24 +109,24 @@ export default function KnowledgePage() {
       {/* Filters */}
       <div className="mb-4 flex flex-wrap gap-4">
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">分類</label>
-          <select
+          <Label className="block mb-1">分類</Label>
+          <NativeSelect
             value={categoryFilter}
             onChange={(e) => {
               setCategoryFilter(e.target.value);
               setPage(0);
             }}
-            className="border rounded px-3 py-1.5 text-sm"
+            className="w-auto"
           >
             <option value="">全部分類</option>
             {categories.map((cat) => (
               <option key={cat.id} value={cat.id}>{cat.name}</option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">關鍵字搜尋</label>
-          <input
+          <Label className="block mb-1">關鍵字搜尋</Label>
+          <Input
             type="text"
             value={keyword}
             onChange={(e) => {
@@ -136,44 +134,43 @@ export default function KnowledgePage() {
               setPage(0);
             }}
             placeholder="搜尋標題..."
-            className="border rounded px-3 py-1.5 text-sm w-48"
+            className="w-48"
           />
         </div>
         <div className="flex items-end">
-          <button
+          <Button
+            variant="default"
+            size="sm"
             onClick={() => loadArticles()}
-            className="px-4 py-1.5 bg-rs-primary text-white rounded text-sm hover:bg-rs-primary-hover"
           >
             搜尋
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Articles Table */}
       {loading ? (
-        <div className="text-center py-12 text-rs-ink-muted">載入中...</div>
+        <LoadingState className="h-auto py-12" />
       ) : articles.length === 0 ? (
-        <div className="text-center py-12 text-rs-ink-muted">尚無文章</div>
+        <EmptyState title="尚無文章" />
       ) : (
         <>
-          <div className="bg-white rounded-lg overflow-hidden border border-rs-hairline">
-            <table className="min-w-full divide-y divide-rs-hairline">
-              <thead className="bg-rs-bg-base">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">標題</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">分類</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">狀態</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">瀏覽</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">發布日期</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-rs-ink-muted uppercase">操作</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-rs-hairline">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>標題</TableHead>
+                  <TableHead>分類</TableHead>
+                  <TableHead>狀態</TableHead>
+                  <TableHead>瀏覽</TableHead>
+                  <TableHead>發布日期</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {articles.map((article) => {
-                  const statusBadge = getStatusBadge(article.status);
                   return (
-                    <tr key={article.id} className="hover:bg-rs-bg-base">
-                      <td className="px-4 py-3">
+                    <TableRow key={article.id}>
+                      <TableCell>
                         <div className="text-sm font-medium text-rs-ink">{article.title}</div>
                         {article.excerpt && (
                           <div className="text-xs text-rs-ink-muted truncate max-w-xs">{article.excerpt}</div>
@@ -181,69 +178,71 @@ export default function KnowledgePage() {
                         {article.tags && article.tags.length > 0 && (
                           <div className="flex gap-1 mt-1">
                             {article.tags.slice(0, 3).map((tag, i) => (
-                              <span key={i} className="text-xs bg-rs-disabled-bg px-1.5 py-0.5 rounded">{tag}</span>
+                              <Badge key={i} variant="secondary">{tag}</Badge>
                             ))}
                           </div>
                         )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-rs-ink-muted">{article.categoryName || '-'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 text-xs rounded-full ${statusBadge.className}`}>
-                          {statusBadge.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-rs-ink-muted">{article.viewCount || 0}</td>
-                      <td className="px-4 py-3 text-sm text-rs-ink-muted">{formatDate(article.publishedAt)}</td>
-                      <td className="px-4 py-3 text-right text-sm">
-                        <button
+                      </TableCell>
+                      <TableCell className="text-sm text-rs-ink-muted">{article.categoryName || '-'}</TableCell>
+                      <TableCell>
+                        <StatusBadge domain="knowledgeArticle" status={article.status} />
+                      </TableCell>
+                      <TableCell className="text-sm text-rs-ink-muted">{article.viewCount || 0}</TableCell>
+                      <TableCell className="text-sm text-rs-ink-muted">{formatDate(article.publishedAt)}</TableCell>
+                      <TableCell className="text-right text-sm">
+                        <Button
+                          variant="linkDestructive"
+                          size="inline"
                           onClick={() => handleDelete(article.id)}
                           disabled={deleting === article.id}
-                          className="text-rs-error hover:text-rs-error/80 disabled:opacity-50"
                         >
                           {deleting === article.id ? '刪除中...' : '刪除'}
-                        </button>
-                      </td>
-                    </tr>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
 
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex justify-center items-center gap-2 mt-6">
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(0)}
                 disabled={page === 0}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 首頁
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(page - 1)}
                 disabled={page === 0}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 上一頁
-              </button>
+              </Button>
               <span className="text-sm text-rs-ink-muted">
                 第 {page + 1} / {totalPages} 頁
               </span>
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(page + 1)}
                 disabled={page >= totalPages - 1}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 下一頁
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(totalPages - 1)}
                 disabled={page >= totalPages - 1}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 末頁
-              </button>
+              </Button>
             </div>
           )}
         </>

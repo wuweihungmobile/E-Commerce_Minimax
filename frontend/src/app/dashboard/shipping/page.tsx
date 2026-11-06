@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import ShippingTemplateList from '@/components/shipping/ShippingTemplateList'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
 
 export default function ShippingTemplatesPage() {
   const router = useRouter()
@@ -21,10 +22,10 @@ export default function ShippingTemplatesPage() {
       <main>
         <div>
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-rs-ink">運費模板設定</h1>
-            <p className="mt-1 text-sm text-rs-ink-muted">
+            <PageTitle>運費模板設定</PageTitle>
+            <PageDescription>
               設定固定運費或滿額免運門檻，套用於商品訂單結帳計算
-            </p>
+            </PageDescription>
           </div>
           <ShippingTemplateList />
         </div>

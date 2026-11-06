@@ -3,6 +3,7 @@
 import { useParams } from 'next/navigation'
 import ReviewList from '@/components/reviews/ReviewList'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { PageTitle } from '@/components/ui/page-title'
 
 export default function ProductReviewsPage() {
   const params = useParams()
@@ -10,7 +11,7 @@ export default function ProductReviewsPage() {
 
   return (
     <StorefrontShell>
-      <h1 className="text-2xl font-semibold text-rs-ink mb-6">商品評價</h1>
+      <PageTitle className="mb-6">商品評價</PageTitle>
       <ReviewList listingId={listingId} />
     </StorefrontShell>
   )

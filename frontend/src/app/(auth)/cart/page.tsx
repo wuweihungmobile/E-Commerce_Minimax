@@ -14,6 +14,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState } from '@/components/ui/states'
 
 interface CartItem {
   cartItemKey: string
@@ -485,17 +487,14 @@ export default function CartPage() {
                 {item.appliedRuleName &&
                   item.discountAmount != null &&
                   item.discountAmount !== 0 && (
-                    <span
+                    <Badge
                       data-testid={`cart-adjust-badge-${item.cartItemKey}`}
-                      className={
-                        item.discountAmount > 0
-                          ? 'inline-block mt-1 rounded bg-rs-success/10 px-2 py-0.5 text-xs text-rs-success'
-                          : 'inline-block mt-1 rounded bg-rs-accent/10 px-2 py-0.5 text-xs text-rs-accent'
-                      }
+                      variant={item.discountAmount > 0 ? 'success' : 'warning'}
+                      className="mt-1"
                     >
                       {item.appliedRuleName}｜{item.discountAmount > 0 ? '省 ' : '加價 '}
                       {formatPrice(Math.abs(item.discountAmount))}
-                    </span>
+                    </Badge>
                   )}
                 {item.startDate && item.endDate && (
                   <p className="text-sm text-rs-ink-muted">
@@ -597,10 +596,10 @@ export default function CartPage() {
   return (
     <StorefrontShell>
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-rs-ink">購物車</h1>
-            <p className="mt-1 text-sm text-rs-ink-muted">
+            <PageTitle>購物車</PageTitle>
+            <PageDescription>
               檢視和管理您的購物車商品
-            </p>
+            </PageDescription>
           </div>
 
           {error && (
@@ -611,13 +610,9 @@ export default function CartPage() {
 
           {!cart || cart.items.length === 0 ? (
             <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <div className="text-6xl mb-4">🛒</div>
-                <p className="text-rs-ink-muted mb-4">購物車是空的</p>
-                <Link href="/">
+              <EmptyState icon="🛒" title="購物車是空的" action={<Link href="/">
                   <Button variant="outline">開始購物</Button>
-                </Link>
-              </CardContent>
+                </Link>} />
             </Card>
           ) : isMultiStore ? (
             <div className="space-y-8">

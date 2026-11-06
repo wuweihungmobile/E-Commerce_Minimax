@@ -10,6 +10,9 @@ import { Input } from '@/components/ui/input'
 import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
 import AuthService from '@/services/auth'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 // Tenant status enum（Sprint 146：對齊後端 Tenant.TenantStatus 實際值域，先前的 PENDING/APPROVED 從未存在）
 type TenantStatus = 'PENDING_REVIEW' | 'ACTIVE' | 'REJECTED' | 'SUSPENDED' | 'TERMINATED'
@@ -81,19 +84,6 @@ export default function TenantList() {
     router.refresh()
   }
 
-  const getStatusBadge = (status: TenantStatus) => {
-    // Sprint 146：對齊後端 Tenant.TenantStatus 實際值域（PENDING_REVIEW/ACTIVE/REJECTED/SUSPENDED/TERMINATED）
-    const statusConfig: Record<TenantStatus, { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline'; label: string }> = {
-      PENDING_REVIEW: { variant: 'secondary', label: '審核中' },
-      ACTIVE: { variant: 'success', label: '已核准' },
-      REJECTED: { variant: 'destructive', label: '已拒絕' },
-      SUSPENDED: { variant: 'destructive', label: '已停權' },
-      TERMINATED: { variant: 'destructive', label: '已終止' },
-    }
-    const config = statusConfig[status] || { variant: 'outline', label: status }
-    return <Badge variant={config.variant}>{config.label}</Badge>
-  }
-
   const getBusinessTypeLabel = (type: string) => {
     // Sprint 146：對齊後端 TenantApplicationRequest/TenantUpdateRequest 的 businessType 值域
     const typeLabels: Record<string, string> = {
@@ -120,17 +110,15 @@ export default function TenantList() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error) {
     return (
-      <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md">
+      <Alert variant="destructive">
         {error}
-      </div>
+      </Alert>
     )
   }
 
@@ -169,12 +157,9 @@ export default function TenantList() {
       {/* Tenant List */}
       {filteredTenants.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-rs-ink-muted mb-4">尚無店鋪資料</p>
-            <Link href="/tenant/apply">
+          <EmptyState title="尚無店鋪資料" action={<Link href="/tenant/apply">
               <Button>申請第一個店鋪</Button>
-            </Link>
-          </CardContent>
+            </Link>} className="h-48" />
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -194,7 +179,7 @@ export default function TenantList() {
               <CardContent className="space-y-2">
                 <div className="text-sm">
                   <span className="text-muted-foreground">狀態：</span>
-                  {getStatusBadge(tenant.status)}
+                  <StatusBadge domain="tenant" status={tenant.status} />
                 </div>
                 <div className="text-sm">
                   <span className="text-muted-foreground">我的角色：</span>

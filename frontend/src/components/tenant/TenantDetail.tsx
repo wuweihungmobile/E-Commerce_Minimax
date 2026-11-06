@@ -10,6 +10,9 @@ import { Label } from '@/components/ui/label'
 import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
 import AuthService from '@/services/auth'
+import { LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 // Tenant status enum（Sprint 146：對齊後端 Tenant.TenantStatus 實際值域，先前的 PENDING/APPROVED 從未存在）
 type TenantStatus = 'PENDING_REVIEW' | 'ACTIVE' | 'REJECTED' | 'SUSPENDED' | 'TERMINATED'
@@ -83,19 +86,6 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
     }
   }, [tenantId, fetchTenantDetail])
 
-  const getStatusBadge = (status: TenantStatus) => {
-    // Sprint 146：對齊後端 Tenant.TenantStatus 實際值域（PENDING_REVIEW/ACTIVE/REJECTED/SUSPENDED/TERMINATED）
-    const statusConfig: Record<TenantStatus, { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline'; label: string }> = {
-      PENDING_REVIEW: { variant: 'secondary', label: '審核中' },
-      ACTIVE: { variant: 'success', label: '已核准' },
-      REJECTED: { variant: 'destructive', label: '已拒絕' },
-      SUSPENDED: { variant: 'destructive', label: '已停權' },
-      TERMINATED: { variant: 'destructive', label: '已終止' },
-    }
-    const config = statusConfig[status] || { variant: 'outline', label: status }
-    return <Badge variant={config.variant}>{config.label}</Badge>
-  }
-
   const getBusinessTypeLabel = (type: string) => {
     // Sprint 146：對齊後端 TenantApplicationRequest/TenantUpdateRequest 的 businessType 值域
     const typeLabels: Record<string, string> = {
@@ -113,18 +103,16 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error) {
     return (
       <div className="space-y-4">
-        <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md">
+        <Alert variant="destructive">
           {error}
-        </div>
+        </Alert>
         <Link href="/dashboard/tenants">
           <Button variant="outline">返回店鋪列表</Button>
         </Link>
@@ -183,7 +171,7 @@ export default function TenantDetail({ tenantId }: TenantDetailProps) {
               </CardDescription>
             </div>
             <div className="flex flex-col items-end gap-2">
-              {getStatusBadge(tenant.status)}
+              <StatusBadge domain="tenant" status={tenant.status} />
               {isOwner && (
                 <Badge variant="outline">目前店鋪</Badge>
               )}

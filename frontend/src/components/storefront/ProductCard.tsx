@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Droplets, Star } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { Card } from "@/components/ui/card"
 
 export interface ProductCardProps {
   image?: string
@@ -44,13 +45,14 @@ export function ProductCard({
   className,
 }: ProductCardProps) {
   return (
-    <Link
-      href={href}
+    <Card
+      asChild
       className={cn(
-        "group flex flex-col bg-white border border-rs-hairline rounded-lg overflow-hidden transition-colors no-underline text-inherit hover:border-rs-primary",
+        "group flex flex-col overflow-hidden transition-colors no-underline text-inherit hover:border-rs-primary",
         className
       )}
     >
+      <Link href={href}>
       <div className="relative aspect-square overflow-hidden bg-rs-tertiary">
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element -- 商品圖為後端動態 URL，避免 next/image remotePatterns 設定
@@ -119,6 +121,7 @@ export function ProductCard({
           )}
         </div>
       </div>
-    </Link>
+      </Link>
+    </Card>
   )
 }

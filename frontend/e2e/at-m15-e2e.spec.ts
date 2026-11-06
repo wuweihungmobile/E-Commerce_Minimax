@@ -22,14 +22,10 @@ import { Account, authHeaders, seedStore } from './helpers/store';
 const WEB_BASE = 'http://localhost:3000';
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
-// 全域 dialog 處理器：CMS/媒體/儀表板頁在載入或操作失敗時（新帳號權限不足 → 4xx）會觸發
-// 原生 alert()，該 dialog 於 teardown 間歇造成 session 崩潰（m15 flaky 根因，S37 AI-2001）。
-// 檔案級 beforeEach 註冊自動關閉，涵蓋本檔所有測試（取代 DEF-022 移除的固定 sleep 之保護作用）。
-test.beforeEach(async ({ page }) => {
-  page.on('dialog', (dialog) => {
-    void dialog.dismiss().catch(() => {})
-  })
-})
+// 歷史：CMS／媒體／儀表板頁在載入或操作失敗時（新帳號權限不足 → 4xx）曾觸發原生 alert()，該 dialog 於 teardown
+// 間歇造成 session 崩潰（m15 flaky 根因，S37 AI-2001），當時用「檔案級 dialog.dismiss()」繞過症狀。
+// Sprint 329 起全站不再有原生 alert()／confirm()（改為 Toast／ConfirmDialog，ESLint design-tokens/no-native-dialog 守門），
+// 根因已移除，所以這個 workaround 一併拿掉；訊息改用 getByTestId('toast') 斷言。
 
 /**
  * E2E-M15-001: 建立並發布貼文流程
@@ -65,7 +61,7 @@ test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
     const publishedBtn = page.locator('button:has-text("已發布")').first();
     if (await publishedBtn.isVisible()) {
       await publishedBtn.click();
-      await expect(publishedBtn).toHaveClass(/bg-rs-tertiary/, { timeout: 10000 });
+      await expect(publishedBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 10000 });
       console.log('已發布篩選完成');
     }
 
@@ -73,7 +69,7 @@ test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
     const draftBtn = page.locator('button:has-text("草稿")').first();
     if (await draftBtn.isVisible()) {
       await draftBtn.click();
-      await expect(draftBtn).toHaveClass(/bg-rs-tertiary/, { timeout: 10000 });
+      await expect(draftBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 10000 });
       console.log('草稿篩選完成');
     }
   });
@@ -99,19 +95,15 @@ test.describe('E2E-M15-003: 媒體上傳流程', () => {
   });
 
   test('媒體庫篩選功能', async ({ page }) => {
-    // 媒體庫載入/篩選失敗時頁面會觸發原生 alert()（media/page.tsx loadMedia catch）；
-    // 新帳號可能無 CMS 媒體權限 → getMediaList 403 → alert，該原生 dialog 於 teardown 時
-    // 會間歇造成 session 崩潰（既有 flaky 根因，S37 AI-2001）。註冊 dialog 處理器自動關閉。
-    page.on('dialog', (dialog) => {
-      void dialog.dismiss().catch(() => {});
-    });
-
+    // 新帳號可能無 CMS 媒體權限 → getMediaList 403 → 頁面顯示錯誤 Toast（Sprint 329 前是原生 alert()，
+    // 曾於 teardown 間歇造成 session 崩潰，S37 AI-2001；現在是普通 DOM，不需要 dialog 處理器）。
     await registerAndLogin(page);
 
     await page.goto('/cms/media');
     await page.waitForLoadState('domcontentloaded');
 
-    // 篩選鈕的 active class（bg-rs-tertiary，Sprint 328 前是 bg-blue-100）由本地 filter state 控制、不依賴後端資料 → 穩定可斷言
+    // 篩選鈕的選取態（Chip 的 aria-pressed）由本地 filter state 控制、不依賴後端資料 → 穩定可斷言。
+    // Sprint 329：原本斷言 class 名（bg-blue-100 → bg-rs-tertiary），換皮就紅；改斷言語意屬性。
     const allBtn = page.getByRole('button', { name: /^全部/ });
     const imageBtn = page.getByRole('button', { name: '圖片', exact: true });
     await expect(allBtn).toBeVisible({ timeout: 15000 });
@@ -119,12 +111,12 @@ test.describe('E2E-M15-003: 媒體上傳流程', () => {
 
     // 點「圖片」→ 該鈕轉 active
     await imageBtn.click();
-    await expect(imageBtn).toHaveClass(/bg-rs-tertiary/, { timeout: 10000 });
+    await expect(imageBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 10000 });
 
     // 點「全部」→ 轉 active；再等網路 idle，確保篩選 refetch 完成後才結束測試，
     // 避免 in-flight 請求（及其失敗 alert）於 teardown 時崩潰（取代原無斷言 + 固定 sleep）。
     await allBtn.click();
-    await expect(allBtn).toHaveClass(/bg-rs-tertiary/, { timeout: 10000 });
+    await expect(allBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 10000 });
     await page.waitForLoadState('networkidle');
   });
 });
@@ -149,7 +141,7 @@ test.describe('E2E-M15-004: 前台部落格瀏覽流程', () => {
  * 資料全由真實流程建立（見 helpers/store.ts）：店主註冊→驗證 Email→申請開店→管理員核准→店主重新登入→建立商品與房源，
  * 再由 API 建立一篇草稿與一篇已發布且嵌入商品卡的貼文。每個案例都先在畫面上看到「播種進去的那筆資料」，才算頁面真的載入。
  *
- * 同步訊號一律用「這一次操作的網路回應」與原生 alert 的訊息（waitForResponse／waitForEvent('dialog')），
+ * 同步訊號一律用「這一次操作的網路回應」與 Toast 訊息（waitForResponse／getByTestId('toast')；Sprint 329 前是原生 alert 的 waitForEvent('dialog')），
  * 不用畫面文字：按鈕名稱含「發布」「已發布」，用文字比對會誤判（見 playwright-text-sync-and-role-login-pitfalls）。
  */
 test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主視角）', () => {
@@ -210,7 +202,6 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
     await page.getByPlaceholder('輸入標題').fill(title);
     await page.getByPlaceholder(/^輸入內容/).fill('# 標題\n\n這是 E2E 新建並發布的貼文內容。');
 
-    const dialog = page.waitForEvent('dialog');
     const [create] = await Promise.all([
       page.waitForResponse(
         (r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/v2/dashboard/posts')
@@ -220,7 +211,8 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
     expect(create.status(), await create.text()).toBe(200);
     const created = (await create.json()).data as { id: string; status: string };
     expect(created.status, '點「發布」建立的貼文應直接是已發布').toBe('PUBLISHED');
-    expect((await dialog).message()).toBe('貼文已發布');
+    // Toast 掛在根 layout，client 端導向（router.push）後仍在，所以可以在導向後再斷言
+    await expect(page.getByTestId('toast').filter({ hasText: '貼文已發布' })).toBeVisible();
     await page.waitForURL(`**/cms/posts/${created.id}/edit`);
 
     // 前台部落格（tenantId 取自登入後的 localStorage）列得出剛發布的貼文
@@ -246,7 +238,6 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
 
     const newTitle = `${DRAFT_TITLE}（改）`;
     await titleInput.fill(newTitle);
-    const dialog = page.waitForEvent('dialog');
     const [update] = await Promise.all([
       page.waitForResponse(
         (r) => r.request().method() === 'PUT' && new URL(r.url()).pathname.endsWith(`/v2/dashboard/posts/${draftId}`)
@@ -254,7 +245,7 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
       page.getByRole('button', { name: '儲存變更' }).click(),
     ]);
     expect(update.status(), await update.text()).toBe(200);
-    expect((await dialog).message()).toBe('貼文已儲存');
+    await expect(page.getByTestId('toast').filter({ hasText: '貼文已儲存' })).toBeVisible();
 
     await page.goto('/cms');
     const editedRow = page.locator('tr', { hasText: newTitle });

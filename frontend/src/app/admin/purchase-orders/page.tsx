@@ -9,6 +9,10 @@ import { Label } from '@/components/ui/label'
 import { Pagination } from '@/components/ui/pagination'
 import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { toast } from '@/components/ui/toast'
 
 interface PurchaseOrderSummary {
   id: string
@@ -87,9 +91,9 @@ export default function AdminPurchaseOrdersPage() {
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { message?: string } } }
-        alert(axiosErr.response?.data?.message || '核准失敗')
+        toast.error(axiosErr.response?.data?.message || '核准失敗')
       } else {
-        alert('核准失敗')
+        toast.error('核准失敗')
       }
     } finally {
       setActionLoadingId(null)
@@ -98,7 +102,7 @@ export default function AdminPurchaseOrdersPage() {
 
   const handleReject = async (poId: string) => {
     if (!rejectReason.trim()) {
-      alert('請填寫駁回原因')
+      toast.error('請填寫駁回原因')
       return
     }
     setActionLoadingId(poId)
@@ -110,9 +114,9 @@ export default function AdminPurchaseOrdersPage() {
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { message?: string } } }
-        alert(axiosErr.response?.data?.message || '駁回失敗')
+        toast.error(axiosErr.response?.data?.message || '駁回失敗')
       } else {
-        alert('駁回失敗')
+        toast.error('駁回失敗')
       }
     } finally {
       setActionLoadingId(null)
@@ -126,7 +130,7 @@ export default function AdminPurchaseOrdersPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md">{error}</div>
+        <Alert variant="destructive">{error}</Alert>
         <Button variant="outline" onClick={() => fetchOrders(currentPage)}>重試</Button>
       </div>
     )
@@ -135,26 +139,22 @@ export default function AdminPurchaseOrdersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">採購單審批</h1>
-        <p className="text-muted-foreground">
-          {totalElements > 0 ? <span className="text-warning">待審批採購單 {totalElements} 筆</span> : '目前無待審批採購單'}
-        </p>
+        <PageTitle>採購單審批</PageTitle>
+        <PageDescription>
+          {totalElements > 0 ? <span className="font-medium text-rs-ink">待審批採購單 {totalElements} 筆</span> : '目前無待審批採購單'}
+        </PageDescription>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="text-rs-ink-muted">載入中...</div>
-        </div>
+        <LoadingState />
       ) : orders.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-rs-ink-muted">目前無待審批採購單</p>
-          </CardContent>
+          <EmptyState title="目前無待審批採購單" className="h-48" />
         </Card>
       ) : (
         <div className="space-y-4">
           {orders.map((order) => (
-            <Card key={order.id} className="border-warning">
+            <Card key={order.id} className="border-rs-warning/40">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>

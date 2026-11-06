@@ -7,6 +7,7 @@ import {
   getAuthenticatedSnapshot,
   getAuthenticatedServerSnapshot,
 } from "@/services/authStore"
+import { Button } from "@/components/ui/button"
 
 // 整月日曆（Sprint 41 US-004 / AI-2202b）：顯示房源某月每日可訂狀況，
 // 並支援點選挑選入住／退房區間，與 ListingDetail 的 checkIn/checkOut 同步。
@@ -169,27 +170,31 @@ export function MonthCalendar({
   return (
     <div data-testid="listing-calendar" className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <button
+        <Button
+          variant="outline"
+          size="icon"
           type="button"
           data-testid="calendar-prev"
           onClick={goPrev}
           aria-label="上個月"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-rs-hairline text-rs-ink transition-colors hover:border-rs-primary"
+          className="h-8 w-8"
         >
           ‹
-        </button>
+        </Button>
         <span className="text-sm font-medium text-rs-ink">
           {view.year} 年 {view.month + 1} 月
         </span>
-        <button
+        <Button
+          variant="outline"
+          size="icon"
           type="button"
           data-testid="calendar-next"
           onClick={goNext}
           aria-label="下個月"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-rs-hairline text-rs-ink transition-colors hover:border-rs-primary"
+          className="h-8 w-8"
         >
           ›
-        </button>
+        </Button>
       </div>
 
       {guest && (
@@ -213,6 +218,7 @@ export function MonthCalendar({
           const notOpen = statusByDate[dateStr] === "NOT_OPEN"
           const selected = inRange(dateStr)
           return (
+            // eslint-disable-next-line design-tokens/no-raw-control -- 月曆日期格：可選／已訂／未開放／選取範圍等狀態是它自己的視覺語言，不是視覺按鈕
             <button
               key={dateStr}
               type="button"

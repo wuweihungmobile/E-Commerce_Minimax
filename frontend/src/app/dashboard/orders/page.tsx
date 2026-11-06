@@ -15,6 +15,9 @@ import OrderService, {
 } from '@/services/order'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
 
 const PAGE_SIZE = 20
 
@@ -86,10 +89,10 @@ export default function DashboardOrdersPage() {
         <div className="space-y-6">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h1 className="text-2xl font-semibold text-rs-ink">訂單管理</h1>
-              <p className="mt-1 text-sm text-rs-ink-muted">
+              <PageTitle>訂單管理</PageTitle>
+              <PageDescription>
                 {totalElements > 0 ? `共 ${totalElements} 筆訂單` : '目前尚無訂單'}
-              </p>
+              </PageDescription>
             </div>
             <Select
               value={status}
@@ -112,20 +115,14 @@ export default function DashboardOrdersPage() {
           </div>
 
           {error && (
-            <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">{error}</div>
+            <Alert variant="destructive">{error}</Alert>
           )}
 
           {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="text-rs-ink-muted">載入中...</div>
-            </div>
+            <LoadingState />
           ) : orders.length === 0 ? (
             <Card>
-              <CardContent className="flex flex-col items-center justify-center h-48">
-                <p className="text-rs-ink-muted">
-                  {status === 'ALL' ? '尚無訂單' : `尚無「${ORDER_STATUS_LABELS[status]}」狀態的訂單`}
-                </p>
-              </CardContent>
+              <EmptyState title={status === 'ALL' ? '尚無訂單' : `尚無「${ORDER_STATUS_LABELS[status]}」狀態的訂單`} className="h-48" />
             </Card>
           ) : (
             <div className="space-y-3">

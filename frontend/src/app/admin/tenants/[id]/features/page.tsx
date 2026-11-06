@@ -7,12 +7,15 @@ import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState } from '@/components/ui/states'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { featureStatusEntry } from '@/lib/status'
 
 // DEF-321(e)：PRD §10.1.3 列為 /admin/tenants/[id]/features，先前後端端點
 // （GET/PUT /v2/admin/tenants/{id}/features）已存在但零前端呼叫點，本頁補上。
@@ -123,21 +126,6 @@ export default function AdminTenantFeaturesPage() {
     return labels[category] || category
   }
 
-  const getStatusBadge = (status: string, requiresAdminReview: boolean, enabled: boolean) => {
-    // 待審核必須先判斷：PENDING 時 isEnabled 本身就是 false（DEF-247 既有設計），
-    // 若先判斷 !enabled 會讓「待審核」被誤標成「已停用」，看起來已直接被駁回。
-    if (requiresAdminReview && status === 'PENDING') {
-      return <Badge variant="warning">待審核</Badge>
-    }
-    if (!enabled) {
-      return <Badge variant="secondary">已停用</Badge>
-    }
-    if (status === 'ACTIVE') {
-      return <Badge variant="success">已啟用</Badge>
-    }
-    return <Badge variant="secondary">{status}</Badge>
-  }
-
   const pendingFeatures = features.filter(f => f.requiresAdminReview && f.status === 'PENDING')
 
   const groupedFeatures = features.reduce((acc, feature) => {
@@ -153,8 +141,8 @@ export default function AdminTenantFeaturesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">功能開關管理</h1>
-          <p className="text-muted-foreground">檢視並設定此店鋪的功能開關</p>
+          <PageTitle>功能開關管理</PageTitle>
+          <PageDescription>檢視並設定此店鋪的功能開關</PageDescription>
         </div>
         <Button variant="outline" onClick={() => router.push(`/admin/tenants/${tenantId}/review`)}>
           返回店鋪詳情
@@ -198,9 +186,7 @@ export default function AdminTenantFeaturesPage() {
         </div>
       ) : features.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <p className="text-rs-ink-muted">尚無功能開關設定</p>
-          </CardContent>
+          <EmptyState title="尚無功能開關設定" />
         </Card>
       ) : (
         <div className="space-y-6">
@@ -247,7 +233,7 @@ export default function AdminTenantFeaturesPage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <Label className="text-base font-medium">{feature.featureName}</Label>
-                        {getStatusBadge(feature.status, feature.requiresAdminReview, feature.isEnabled)}
+                        <StatusBadge entry={featureStatusEntry(feature.status, feature.requiresAdminReview, feature.isEnabled)} />
                       </div>
                       <p className="text-sm text-rs-ink-muted mt-1">{feature.description}</p>
                     </div>

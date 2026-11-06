@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { Card } from '@/components/ui/card'
 
 export default function ErpDashboardPage() {
   const router = useRouter()
@@ -52,10 +54,10 @@ export default function ErpDashboardPage() {
       <main>
         <div>
           <div className="mb-8">
-            <h1 className="text-3xl font-semibold text-rs-ink">ERP 進銷存系統</h1>
-            <p className="mt-2 text-rs-ink-muted">
+            <PageTitle>ERP 進銷存系統</PageTitle>
+            <PageDescription>
               管理供應商、採購訂單、庫存和異動記錄
-            </p>
+            </PageDescription>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -65,7 +67,7 @@ export default function ErpDashboardPage() {
                 href={module.href}
                 className="block group"
               >
-                <div className="bg-white rounded-lg hover:border-rs-primary transition-colors p-6 border border-rs-hairline">
+                <Card className="hover:border-rs-primary transition-colors p-6">
                   <div className="flex items-start gap-4">
                     <div className={`${module.color} rounded-lg p-3 text-white text-2xl`}>
                       {module.icon}
@@ -82,7 +84,7 @@ export default function ErpDashboardPage() {
                       →
                     </div>
                   </div>
-                </div>
+                </Card>
               </Link>
             ))}
           </div>

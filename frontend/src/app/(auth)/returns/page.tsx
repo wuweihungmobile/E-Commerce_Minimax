@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState } from '@/components/ui/states'
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -52,10 +54,10 @@ export default function MyReturnsPage() {
   return (
     <StorefrontShell>
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-rs-ink">我的退貨申請</h1>
-        <p className="mt-1 text-sm text-rs-ink-muted">
+        <PageTitle>我的退貨申請</PageTitle>
+        <PageDescription>
           {loading ? '載入中…' : `共 ${returns.length} 筆申請`}
-        </p>
+        </PageDescription>
       </div>
 
       {error && (
@@ -77,16 +79,9 @@ export default function MyReturnsPage() {
         </div>
       ) : returns.length === 0 && !error ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <div className="text-5xl mb-4">📦</div>
-            <h2 className="text-lg font-semibold text-rs-ink mb-1">尚無退貨申請</h2>
-            <p className="text-sm text-rs-ink-muted mb-6">
-              可於「我的訂單」中，對已送達的訂單提出退貨申請
-            </p>
-            <Link href="/orders">
+          <EmptyState icon="📦" title="尚無退貨申請" description="可於「我的訂單」中，對已送達的訂單提出退貨申請" action={<Link href="/orders">
               <Button variant="outline">前往我的訂單</Button>
-            </Link>
-          </CardContent>
+            </Link>} className="py-16" />
         </Card>
       ) : (
         <div className="space-y-4">

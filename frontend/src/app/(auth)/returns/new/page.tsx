@@ -11,6 +11,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -141,8 +144,8 @@ export default function NewReturnPage() {
   return (
     <StorefrontShell>
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-rs-ink">申請退貨</h1>
-        <p className="mt-1 text-sm text-rs-ink-muted">訂單 #{order.id.slice(0, 8)}</p>
+        <PageTitle>申請退貨</PageTitle>
+        <PageDescription>訂單 #{order.id.slice(0, 8)}</PageDescription>
       </div>
 
       {submitError && (
@@ -173,14 +176,14 @@ export default function NewReturnPage() {
                 <Label htmlFor={`qty-${item.id}`} className="text-xs text-rs-ink-muted">
                   退貨數量
                 </Label>
-                <input
+                <Input
                   id={`qty-${item.id}`}
                   type="number"
                   min={0}
                   max={item.quantity}
                   value={quantities[item.id] || 0}
                   onChange={(e) => setQuantity(item.id, item.quantity, Number(e.target.value))}
-                  className="w-16 border rounded-md px-2 py-1 text-sm text-center"
+                  className="w-16 text-center"
                 />
               </div>
             </div>
@@ -193,8 +196,7 @@ export default function NewReturnPage() {
           <CardTitle className="text-base">退貨原因（選填）</CardTitle>
         </CardHeader>
         <CardContent>
-          <textarea
-            className="w-full border rounded-md px-3 py-2 text-sm min-h-24"
+          <Textarea
             placeholder="請說明退貨原因，方便店家審核"
             value={reason}
             onChange={(e) => setReason(e.target.value)}

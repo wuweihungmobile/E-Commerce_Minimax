@@ -4,6 +4,11 @@ import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import AuthService, { getApiErrorInfo } from '@/services/auth'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { Alert } from '@/components/ui/alert'
+import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 
 // Sprint 204（FRD US-M03-006，DEF-253）：密碼規則與註冊頁相同（BR-M03-002）。
 // 格式不合時後端在消耗連結之前就會拒絕，所以使用者改好密碼可以直接再送，不必重新申請連結。
@@ -56,9 +61,9 @@ function ResetPasswordForm() {
   if (done) {
     return (
       <div className="space-y-6" data-testid="reset-password-done">
-        <div className="bg-rs-success/10 border border-rs-success/30 text-rs-success px-4 py-3 rounded">
+        <Alert variant="success">
           Your password has been reset. You have been signed out on all devices.
-        </div>
+        </Alert>
         <Link href="/login" className="block text-center font-medium text-rs-primary hover:text-rs-primary">
           Sign in with your new password
         </Link>
@@ -69,9 +74,9 @@ function ResetPasswordForm() {
   if (!token || linkInvalid) {
     return (
       <div className="space-y-6" data-testid="reset-password-invalid-link">
-        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded">
+        <Alert variant="destructive">
           This reset link is invalid or has expired. Links can only be used once and expire after 30 minutes.
-        </div>
+        </Alert>
         <Link href="/forgot-password" className="block text-center font-medium text-rs-primary hover:text-rs-primary">
           Request a new link
         </Link>
@@ -81,14 +86,14 @@ function ResetPasswordForm() {
 
   return (
     <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-      {error && <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded">{error}</div>}
+      {error && <Alert variant="destructive">{error}</Alert>}
 
       <div className="space-y-4">
         <div>
-          <label htmlFor="password" className="block text-sm font-medium text-rs-ink">
+          <Label htmlFor="password" className="block">
             New password
-          </label>
-          <input
+          </Label>
+          <Input
             id="password"
             name="password"
             type="password"
@@ -96,16 +101,16 @@ function ResetPasswordForm() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 block w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-rs-primary focus:border-rs-primary placeholder:text-rs-ink-muted"
+            className="mt-1 block"
             placeholder="••••••••"
             suppressHydrationWarning
           />
         </div>
         <div>
-          <label htmlFor="confirmPassword" className="block text-sm font-medium text-rs-ink">
+          <Label htmlFor="confirmPassword" className="block">
             Confirm new password
-          </label>
-          <input
+          </Label>
+          <Input
             id="confirmPassword"
             name="confirmPassword"
             type="password"
@@ -113,7 +118,7 @@ function ResetPasswordForm() {
             required
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className="mt-1 block w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-rs-primary focus:border-rs-primary placeholder:text-rs-ink-muted"
+            className="mt-1 block"
             placeholder="••••••••"
             suppressHydrationWarning
           />
@@ -121,13 +126,14 @@ function ResetPasswordForm() {
         <p className="text-xs text-rs-ink-muted">At least 8 characters, with uppercase, lowercase and a number.</p>
       </div>
 
-      <button
+      <Button
+        variant="default"
         type="submit"
         disabled={loading}
-        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md text-sm font-medium text-white bg-rs-primary hover:bg-rs-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rs-primary disabled:opacity-50"
+        className="w-full"
       >
         {loading ? 'Saving...' : 'Set new password'}
-      </button>
+      </Button>
     </form>
   )
 }
@@ -135,12 +141,12 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
   return (
     <div className="flex-1 flex items-center justify-center px-4 py-12">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg border border-rs-hairline">
+      <Card className="max-w-md w-full space-y-8 p-8">
         <h2 className="text-center text-3xl font-semibold text-rs-ink">Choose a new password</h2>
         <Suspense fallback={null}>
           <ResetPasswordForm />
         </Suspense>
-      </div>
+      </Card>
     </div>
   )
 }

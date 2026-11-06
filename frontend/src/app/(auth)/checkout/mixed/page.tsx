@@ -15,6 +15,9 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { Radio } from '@/components/ui/checkbox'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState } from '@/components/ui/states'
 
 interface CartItem {
   cartItemKey: string
@@ -198,8 +201,8 @@ export default function MixedCheckoutPage() {
   return (
     <StorefrontShell>
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-rs-ink">合併結帳</h1>
-        <p className="mt-1 text-sm text-rs-ink-muted">一次動作同時結清商品與訂房，優惠券折扣將分攤至兩者</p>
+        <PageTitle>合併結帳</PageTitle>
+        <PageDescription>一次動作同時結清商品與訂房，優惠券折扣將分攤至兩者</PageDescription>
       </div>
 
       {error && (
@@ -210,11 +213,7 @@ export default function MixedCheckoutPage() {
 
       {!error && (productItems.length === 0 || !roomItem) ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <div className="text-5xl mb-4">🛒</div>
-            <h2 className="text-lg font-semibold text-rs-ink mb-1">購物車須同時有商品與房型項目</h2>
-            <p className="text-sm text-rs-ink-muted">請先返回購物車確認項目</p>
-          </CardContent>
+          <EmptyState icon="🛒" title="購物車須同時有商品與房型項目" description="請先返回購物車確認項目" className="py-16" />
         </Card>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -228,12 +227,11 @@ export default function MixedCheckoutPage() {
                 {addresses.length > 0 && !useManualAddress && (
                   <div className="space-y-2">
                     {addresses.map((address) => (
-                      <label
+                      <Label
                         key={address.id}
                         className="flex items-start gap-3 rounded-md border p-3 cursor-pointer hover:bg-rs-bg-base"
                       >
-                        <input
-                          type="radio"
+                        <Radio
                           name="address"
                           className="mt-1"
                           checked={selectedAddressId === address.id}
@@ -250,7 +248,7 @@ export default function MixedCheckoutPage() {
                             {address.addressLine}
                           </div>
                         </div>
-                      </label>
+                      </Label>
                     ))}
                     <Button variant="outline" size="sm" onClick={() => setUseManualAddress(true)}>
                       改用其他地址

@@ -12,6 +12,9 @@ import { Switch } from '@/components/ui/switch'
 import ProductService, { CreateProductRequest, UpdateProductRequest } from '@/services/product'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { Textarea } from '@/components/ui/textarea'
+import { LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
 
 interface FormErrors {
   title?: string
@@ -159,9 +162,7 @@ export default function ProductForm({ productId }: ProductFormProps) {
 
   if (fetchLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
@@ -176,9 +177,9 @@ export default function ProductForm({ productId }: ProductFormProps) {
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-6">
           {generalError && (
-            <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+            <Alert variant="destructive">
               {generalError}
-            </div>
+            </Alert>
           )}
 
           <div className="space-y-4">
@@ -294,13 +295,12 @@ export default function ProductForm({ productId }: ProductFormProps) {
 
             <div>
               <Label htmlFor="description">商品描述</Label>
-              <textarea
+              <Textarea
                 id="description"
                 value={formData.description}
                 onChange={(e) => handleChange('description', e.target.value)}
                 placeholder="請輸入商品描述..."
                 rows={4}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
 

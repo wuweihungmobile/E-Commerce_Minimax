@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { PageTitle } from '@/components/ui/page-title'
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -106,7 +107,7 @@ export default function ReturnDetailPage() {
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-semibold text-rs-ink">{returnRequest.returnNumber}</h1>
+            <PageTitle>{returnRequest.returnNumber}</PageTitle>
             <Badge variant={returnStatusBadgeVariant(returnRequest.status)}>
               {RETURN_STATUS_LABELS[returnRequest.status]}
             </Badge>

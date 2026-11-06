@@ -17,6 +17,7 @@ import bookingService, {
   bookingErrorMessage,
 } from '@/services/booking'
 import { notifyCartChanged } from '@/services/cartEvents'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
 
 interface BookingItem {
   cartItemKey: string
@@ -200,10 +201,10 @@ export default function CheckoutPage() {
   return (
     <StorefrontShell>
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-rs-ink">填寫預訂資料</h1>
-        <p className="mt-1 text-sm text-rs-ink-muted">
+        <PageTitle>填寫預訂資料</PageTitle>
+        <PageDescription>
           請填寫以下資料以完成預訂
-        </p>
+        </PageDescription>
       </div>
 
       {error && (

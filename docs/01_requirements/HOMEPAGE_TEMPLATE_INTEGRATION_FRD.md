@@ -120,8 +120,23 @@
 
 全站 UI 的規格、token 對照、外殼對應與守門規則見 [UI_DESIGN_SYSTEM_CONVENTIONS.md](../07_design/UI_DESIGN_SYSTEM_CONVENTIONS.md)；執行紀錄與驗證見 [SPRINT_328_PLAN.md](../04_planning/SPRINT_328_PLAN.md)。
 
+## 9. 非功能需求：可換膚性、一致性、回饋與可測試性（Sprint 329 補記）
+
+> **為什麼補**：本 FRD 原本只定義「外殼套用範圍」（§1～§7）與 Sprint 328 補的規範（§8），**從沒定義過可維護性類的非功能需求**，因此沒有驗收準則，也就沒有人會發現「同一個設計決定被複製到 80 個檔案」是缺陷——直到 Sprint 328 換皮改了 144 個檔案。四角色檢視見 [SPRINT_329_PLAN.md](../04_planning/SPRINT_329_PLAN.md) §3，決策見 [ADR-001](../02_architecture/adr/ADR-001-ui-design-system-layering.md)。
+
+| NFR-ID | 需求 | 驗收準則（可量測） | 驗證方式 |
+|---|---|---|---|
+| **NFR-UI-001 可換膚性** | 改一個設計 token 或一個 `components/ui` 元件，全站對應的控制項即時跟著變；**頁面與領域元件不得含視覺決定** | ① 對 token 與 ui 元件做一次合成換皮，需要動的檔案數 ≤ 10，且頁面 0 個；② 換皮後全站欄位／按鈕／表格外框 100% 跟著變（沒有繞過元件的控制項）；③ `components/ui` 之外沒有原生表單／表格元素（領域專用控制項除外，逐行明列） | E2E-UIDS-07（執行期換皮）；`design-tokens/no-raw-control`、`no-ui-recipe`；換皮演練（計畫書 §7） |
+| **NFR-UI-002 控制項一致性** | 同類控制項在全站同一規格：單行欄位高 44、圓角 8、框色 `--rs-border`、字級 16、內距 16、無陰影；表頭 12px／500、儲存格內距 12×16；頁面標題 24px／600 | 實測 computed style 與規格一致；同一頁的單行欄位等高 | E2E-UIDS-01／02／03 |
+| **NFR-UI-003 狀態語意一致** | 同一種狀態在所有領域是同一個語意色（草稿＝outline、待審＝warning、啟用／已發布＝success、停用／封存＝secondary、駁回／取消＝destructive） | 登錄表遍歷無矛盾；新增狀態必須歸入既有規則 | E2E-UIDS-08；`lib/status.ts` |
+| **NFR-UI-004 回饋可主題化且可觀察** | 通知與確認不使用原生對話框（不可主題化、阻塞執行緒、Playwright 會自動關閉）；通知是普通 DOM（`role`、`data-kind`），確認框有穩定的 testid | 全站 `alert()`／`confirm()`／`prompt()` 為 0；E2E 以 `getByTestId('toast')` 斷言 | `design-tokens/no-native-dialog`；E2E-UIDS-04／05 |
+| **NFR-UI-005 破壞性操作的安全網可被驗證** | 刪除、取消等破壞性操作必須先確認；「取消與 ESC 不送出、確定才送出」要有自動化測試 | 取消、ESC 時 DELETE 請求數＝0；確定時＝1 | E2E-UIDS-05（Sprint 329 前 19 個 `confirm()` 流程 E2E 覆蓋為 0） |
+| **NFR-UI-006 沒有靜默失效的樣式** | 原始碼裡寫出的 class 必須真的產生樣式；Tailwind 版本升級移除的語法不得殘留 | 原始碼 token 對照建置後 CSS：0 個無規則的 utility；Modal 遮罩半透明（不是純黑） | `design-tokens/no-removed-utility`；E2E-UIDS-06；`scan_dead_classes.py` 做法（計畫書 §2.4） |
+
+**需求追溯**：`AI-1904`（階段三）→ Sprint 328（外殼與 token）→ **Sprint 329（元件分層與守門：NFR-UI-001～006）**。定義見 [UI_DESIGN_SYSTEM_CONVENTIONS.md](../07_design/UI_DESIGN_SYSTEM_CONVENTIONS.md) §9（含完成定義 DoD）。
+
 ---
 
-**文件版本**: v1.1（Sprint 328 補記 §3 更正、§7.1、§8；原 v1.0 內容未改）
+**文件版本**: v1.2（Sprint 329 補記 §9 非功能需求；v1.1：Sprint 328 補記 §3 更正、§7.1、§8；原 v1.0 內容未改）
 **建立者**: SA Amanda + SD Marcus + PM Victoria + Dev David + QA Quincy + Claude Code
 **基於**: AISDLC v0.09 Requirements Workflow

@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { getPublishedPosts, PostResponse } from '@/services/cms';
+import { EmptyState, LoadingState } from '@/components/ui/states';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 
 export default function BlogPage() {
   const [posts, setPosts] = useState<PostResponse[]>([]);
@@ -55,25 +58,22 @@ export default function BlogPage() {
       {/* Content */}
       <main className="max-w-4xl mx-auto px-4 py-8">
         {!tenantId ? (
-          <div className="text-center py-12 text-rs-ink-muted">
-            <p>請先登入並設定店鋪以瀏覽部落格</p>
-            <Link href="/login" className="text-rs-primary hover:underline mt-2 inline-block">
-              前往登入
-            </Link>
-          </div>
+          <EmptyState
+            title="請先登入並設定店鋪以瀏覽部落格"
+            action={<Link href="/login" className="text-rs-primary hover:underline">前往登入</Link>}
+          />
         ) : loading ? (
-          <div className="text-center py-12">載入中...</div>
+          <LoadingState className="h-auto py-12" />
         ) : posts.length === 0 ? (
-          <div className="text-center py-12 text-rs-ink-muted">尚無已發布的文章</div>
+          <EmptyState title="尚無已發布的文章" />
         ) : (
           <>
             {/* Post Grid */}
             <div className="grid md:grid-cols-2 gap-6">
               {posts.map((post) => (
-                <Link
-                  key={post.id}
+                <Card asChild key={post.id} className="overflow-hidden hover:border-rs-primary transition-colors">
+<Link
                   href={`/blog/${post.slug}`}
-                  className="bg-white rounded-lg overflow-hidden hover:border-rs-primary transition-colors border border-rs-hairline"
                 >
                   {post.featuredImageUrl && (
                     <div className="aspect-video bg-rs-disabled-bg">
@@ -105,29 +105,30 @@ export default function BlogPage() {
                     </div>
                   </div>
                 </Link>
+</Card>
               ))}
             </div>
 
             {/* Pagination */}
             {totalPages > 1 && (
               <div className="mt-8 flex justify-center gap-2">
-                <button
+                <Button
+                  variant="outline"
                   onClick={() => setPage(Math.max(0, page - 1))}
                   disabled={page === 0}
-                  className="px-4 py-2 rounded bg-white disabled:opacity-50 hover:bg-rs-bg-base border border-rs-hairline"
                 >
                   上一頁
-                </button>
+                </Button>
                 <span className="px-4 py-2">
                   第 {page + 1} 頁，共 {totalPages} 頁
                 </span>
-                <button
+                <Button
+                  variant="outline"
                   onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
                   disabled={page >= totalPages - 1}
-                  className="px-4 py-2 rounded bg-white disabled:opacity-50 hover:bg-rs-bg-base border border-rs-hairline"
                 >
                   下一頁
-                </button>
+                </Button>
               </div>
             )}
           </>

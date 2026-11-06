@@ -4,6 +4,14 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createPost, getCategories, CategoryResponse, CreatePostRequest } from '@/services/cms';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { NativeSelect } from '@/components/ui/native-select';
+import { Input } from '@/components/ui/input';
+import { PageTitle } from '@/components/ui/page-title';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { toast } from '@/components/ui/toast';
 
 export default function NewPostPage() {
   const router = useRouter();
@@ -35,11 +43,11 @@ export default function NewPostPage() {
   async function handleSubmit(e: React.FormEvent, autoPublish = false) {
     e.preventDefault();
     if (!formData.title.trim()) {
-      alert('請輸入標題');
+      toast.error('請輸入標題');
       return;
     }
     if (!formData.content.trim()) {
-      alert('請輸入內容');
+      toast.error('請輸入內容');
       return;
     }
 
@@ -47,11 +55,11 @@ export default function NewPostPage() {
     try {
       const postData = { ...formData, autoPublish };
       const post = await createPost(postData);
-      alert(autoPublish ? '貼文已發布' : '貼文已儲存為草稿');
+      toast.success(autoPublish ? '貼文已發布' : '貼文已儲存為草稿');
       router.push(`/cms/posts/${post.id}/edit`);
     } catch (error) {
       console.error('Failed to create post:', error);
-      alert('建立貼文失敗，請稍後再試');
+      toast.error('建立貼文失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
@@ -75,34 +83,33 @@ export default function NewPostPage() {
         <Link href="/cms" className="text-rs-ink-muted hover:text-rs-ink">
           ← 返回
         </Link>
-        <h1 className="text-2xl font-semibold">新建貼文</h1>
+        <PageTitle>新建貼文</PageTitle>
       </div>
 
       <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-6">
         {/* Title */}
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">
+          <Label className="block mb-1">
             標題 <span className="text-rs-error">*</span>
-          </label>
-          <input
+          </Label>
+          <Input
             type="text"
             value={formData.title}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-            className="w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary"
             placeholder="輸入標題"
           />
         </div>
 
         {/* Content */}
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">
+          <Label className="block mb-1">
             內容 <span className="text-rs-error">*</span>
-          </label>
-          <textarea
+          </Label>
+          <Textarea
             value={formData.content}
             onChange={(e) => setFormData({ ...formData, content: e.target.value })}
             rows={12}
-            className="w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary font-mono text-sm"
+            className="font-mono"
             placeholder="輸入內容... (可使用 {{embed:listing:<id>}} 嵌入商品卡)"
           />
           <p className="mt-1 text-xs text-rs-ink-muted">
@@ -112,24 +119,23 @@ export default function NewPostPage() {
 
         {/* Category */}
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">分類</label>
-          <select
+          <Label className="block mb-1">分類</Label>
+          <NativeSelect
             value={formData.categoryId || ''}
             onChange={(e) => setFormData({ ...formData, categoryId: e.target.value || undefined })}
-            className="w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary"
           >
             <option value="">選擇分類</option>
             {categories.map((cat) => (
               <option key={cat.id} value={cat.id}>{cat.name}</option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
 
         {/* Tags */}
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">標籤</label>
+          <Label className="block mb-1">標籤</Label>
           <div className="flex gap-2 mb-2">
-            <input
+            <Input
               type="text"
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
@@ -139,44 +145,42 @@ export default function NewPostPage() {
                   handleAddTag();
                 }
               }}
-              className="flex-1 px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary"
+              className="flex-1"
               placeholder="輸入標籤後按 Enter"
             />
-            <button
+            <Button
+              variant="secondary"
               type="button"
               onClick={handleAddTag}
-              className="px-4 py-2 bg-rs-disabled-bg text-rs-ink rounded-md hover:bg-rs-hairline"
             >
               新增
-            </button>
+            </Button>
           </div>
           <div className="flex flex-wrap gap-2">
             {(formData.tags || []).map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center gap-1 px-2 py-1 bg-rs-tertiary text-rs-primary rounded-full text-sm"
-              >
+              <Badge key={tag} variant="secondary" className="gap-1">
                 {tag}
-                <button
+                <Button
                   type="button"
+                  variant="link"
+                  size="inline"
+                  aria-label={`移除標籤 ${tag}`}
                   onClick={() => handleRemoveTag(tag)}
-                  className="hover:text-rs-primary-hover"
                 >
                   ×
-                </button>
-              </span>
+                </Button>
+              </Badge>
             ))}
           </div>
         </div>
 
         {/* Featured Image */}
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">精選圖片 URL</label>
-          <input
+          <Label className="block mb-1">精選圖片 URL</Label>
+          <Input
             type="text"
             value={formData.featuredImageUrl || ''}
             onChange={(e) => setFormData({ ...formData, featuredImageUrl: e.target.value || undefined })}
-            className="w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary"
             placeholder="https://..."
           />
           {formData.featuredImageUrl && (
@@ -192,22 +196,22 @@ export default function NewPostPage() {
 
         {/* Actions */}
         <div className="flex gap-3 pt-4 border-t">
-          <button
+          <Button
+            variant="secondary"
             type="button"
             onClick={(e) => handleSubmit(e as unknown as React.FormEvent, false)}
             disabled={loading}
-            className="px-4 py-2 bg-rs-disabled-bg text-rs-ink rounded-md hover:bg-rs-hairline disabled:opacity-50"
           >
             儲存草稿
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="default"
             type="button"
             onClick={(e) => handleSubmit(e as unknown as React.FormEvent, true)}
             disabled={loading}
-            className="px-4 py-2 bg-rs-primary text-white rounded-md hover:bg-rs-primary-hover disabled:opacity-50"
           >
             發布
-          </button>
+          </Button>
           <Link
             href="/cms"
             className="px-4 py-2 text-rs-ink-muted hover:text-rs-ink"

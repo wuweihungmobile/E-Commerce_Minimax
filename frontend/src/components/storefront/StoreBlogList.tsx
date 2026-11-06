@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Pagination } from "@/components/ui/pagination"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getPublishedPosts, type PostResponse } from "@/services/cms"
+import { Card } from "@/components/ui/card"
 
 const PAGE_SIZE = 12
 
@@ -84,10 +85,9 @@ export function StoreBlogList({ slug, tenantId, page }: StoreBlogListProps) {
     <div className="flex flex-col gap-6">
       <div data-testid="store-blog-grid" className="grid md:grid-cols-2 gap-6">
         {posts.map((post) => (
-          <Link
-            key={post.id}
+          <Card asChild key={post.id} className="flex flex-col overflow-hidden no-underline text-inherit transition-colors hover:border-rs-primary">
+<Link
             href={`/blog/${post.slug}`}
-            className="flex flex-col bg-white border border-rs-hairline rounded-lg overflow-hidden no-underline text-inherit transition-colors hover:border-rs-primary"
           >
             {post.featuredImageUrl && (
               // eslint-disable-next-line @next/next/no-img-element -- 貼文封面圖為後端動態 URL
@@ -104,6 +104,7 @@ export function StoreBlogList({ slug, tenantId, page }: StoreBlogListProps) {
               </p>
             </div>
           </Link>
+</Card>
         ))}
       </div>
       {totalPages > 1 && (

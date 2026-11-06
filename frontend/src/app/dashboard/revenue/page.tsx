@@ -3,6 +3,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import AnalyticsService, { RevenueStats } from '@/services/analytics'
 import { toLocalDateString } from '@/lib/date'
+import { Label } from '@/components/ui/label'
+import { NativeSelect } from '@/components/ui/native-select'
+import { Input } from '@/components/ui/input'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { Card } from '@/components/ui/card'
 
 type Granularity = 'DAY' | 'WEEK' | 'MONTH'
 
@@ -16,10 +23,10 @@ function formatCurrency(value: number): string {
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-white rounded-lg p-5 border border-rs-hairline">
+    <Card className="p-5">
       <p className="text-sm text-rs-ink-muted">{label}</p>
       <p className="mt-2 text-2xl font-semibold text-rs-ink">{value}</p>
-    </div>
+    </Card>
   )
 }
 
@@ -65,52 +72,52 @@ export default function RevenueReportPage() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold">營收報表</h1>
-        <p className="text-muted-foreground text-sm mt-1">自訂日期範圍與統計粒度查看營收趨勢</p>
+        <PageTitle>營收報表</PageTitle>
+        <PageDescription>自訂日期範圍與統計粒度查看營收趨勢</PageDescription>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg p-4 mb-6 flex flex-wrap gap-4 items-end border border-rs-hairline">
+      <Card className="p-4 mb-6 flex flex-wrap gap-4 items-end">
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">開始日期</label>
-          <input
+          <Label className="block mb-1">開始日期</Label>
+          <Input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="border rounded px-3 py-1.5 text-sm"
+            className="w-auto"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">結束日期</label>
-          <input
+          <Label className="block mb-1">結束日期</Label>
+          <Input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="border rounded px-3 py-1.5 text-sm"
+            className="w-auto"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">統計粒度</label>
-          <select
+          <Label className="block mb-1">統計粒度</Label>
+          <NativeSelect
             value={granularity}
             onChange={(e) => setGranularity(e.target.value as Granularity)}
-            className="border rounded px-3 py-1.5 text-sm"
+            className="w-auto"
           >
             <option value="DAY">依日</option>
             <option value="WEEK">依週</option>
             <option value="MONTH">依月</option>
-          </select>
+          </NativeSelect>
         </div>
-      </div>
+      </Card>
 
       {error && (
-        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md mb-6">
+        <Alert variant="destructive" className="mb-6">
           {error}
-        </div>
+        </Alert>
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-rs-ink-muted">載入中...</div>
+        <LoadingState className="h-auto py-12" />
       ) : (
         <>
           {/* Summary Cards */}
@@ -122,7 +129,7 @@ export default function RevenueReportPage() {
           </div>
 
           {/* Revenue Chart */}
-          <div className="bg-white rounded-lg p-6 border border-rs-hairline">
+          <Card className="p-6">
             <div className="flex items-baseline justify-between mb-4">
               <h3 className="text-base font-medium text-rs-ink">
                 營收趨勢（{granularityLabel[granularity]}）
@@ -145,7 +152,7 @@ export default function RevenueReportPage() {
                 ))}
               </div>
             )}
-          </div>
+          </Card>
         </>
       )}
     </div>

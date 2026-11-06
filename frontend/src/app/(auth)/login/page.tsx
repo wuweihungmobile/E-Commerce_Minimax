@@ -6,6 +6,12 @@ import Link from 'next/link'
 import AuthService from '@/services/auth'
 import { isOAuthProviderConfigured, startOAuthFlow, type OAuthProviderId } from '@/services/oauth'
 import { landingPathForRole, safeRedirectTarget } from '@/lib/auth-redirect'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Alert } from '@/components/ui/alert'
+import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -49,7 +55,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex-1 flex items-center justify-center px-4 py-12">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg border border-rs-hairline">
+      <Card className="max-w-md w-full space-y-8 p-8">
         <div>
           <h2 className="text-center text-3xl font-semibold text-rs-ink">
             Sign in to NextKey
@@ -64,17 +70,17 @@ export default function LoginPage() {
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
-            <div data-testid="login-error" className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded">
+            <Alert variant="destructive" data-testid="login-error">
               {error}
-            </div>
+            </Alert>
           )}
 
           <div className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-rs-ink">
+              <Label htmlFor="email" className="block">
                 Email address
-              </label>
-              <input
+              </Label>
+              <Input
                 id="email"
                 name="email"
                 type="email"
@@ -82,17 +88,17 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-rs-primary focus:border-rs-primary placeholder:text-rs-ink-muted"
+                className="mt-1 block"
                 placeholder="you@example.com"
                 suppressHydrationWarning
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-rs-ink">
+              <Label htmlFor="password" className="block">
                 Password
-              </label>
-              <input
+              </Label>
+              <Input
                 id="password"
                 name="password"
                 type="password"
@@ -100,7 +106,7 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-rs-primary focus:border-rs-primary placeholder:text-rs-ink-muted"
+                className="mt-1 block"
                 placeholder="••••••••"
                 suppressHydrationWarning
               />
@@ -109,15 +115,13 @@ export default function LoginPage() {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <input
+              <Checkbox
                 id="remember-me"
                 name="remember-me"
-                type="checkbox"
-                className="h-4 w-4 text-rs-primary focus:ring-rs-primary border-rs-hairline rounded"
               />
-              <label htmlFor="remember-me" className="ml-2 block text-sm text-rs-ink">
+              <Label htmlFor="remember-me" className="ml-2 block">
                 Remember me
-              </label>
+              </Label>
             </div>
 
             <div className="text-sm">
@@ -127,13 +131,14 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <button
+          <Button
+            variant="default"
             type="submit"
             disabled={loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md text-sm font-medium text-white bg-rs-primary hover:bg-rs-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rs-primary disabled:opacity-50"
+            className="w-full"
           >
             {loading ? 'Signing in...' : 'Sign in'}
-          </button>
+          </Button>
         </form>
 
         {oauthProviders.length > 0 && (
@@ -149,20 +154,21 @@ export default function LoginPage() {
 
             <div className="mt-6 grid grid-cols-2 gap-3">
               {oauthProviders.map((provider) => (
-                <button
+                <Button
+                  variant="outline"
                   key={provider}
                   type="button"
                   data-testid={`oauth-login-${provider}`}
                   onClick={() => startOAuthFlow(provider, 'login')}
-                  className="w-full flex justify-center py-2 px-4 border border-rs-hairline rounded-md text-sm font-medium text-rs-ink bg-white hover:bg-rs-bg-base"
+                  className="w-full"
                 >
                   {provider === 'google' ? 'Google' : 'GitHub'}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   )
 }

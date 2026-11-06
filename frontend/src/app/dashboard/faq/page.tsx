@@ -12,6 +12,16 @@ import {
   FaqCategoryDto,
   PageResponse,
 } from '@/services/faq';
+import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
+import { Input } from '@/components/ui/input';
+import { PageTitle } from '@/components/ui/page-title';
+import { EmptyState, LoadingState } from '@/components/ui/states';
+import { Card } from '@/components/ui/card';
+import { buttonVariants, Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { Badge } from '@/components/ui/badge';
 
 export default function FaqPage() {
   const [articles, setArticles] = useState<FaqArticleDto[]>([]);
@@ -72,23 +82,23 @@ export default function FaqPage() {
       setTotalElements(data.totalElements);
     } catch (error) {
       console.error('Failed to load FAQ articles:', error);
-      alert('載入 FAQ 文章失敗，請稍後再試');
+      toast.error('載入 FAQ 文章失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
   }
 
   async function handleDelete(articleId: string) {
-    if (!confirm('確定要刪除這則 FAQ 嗎？')) return;
+    if (!(await confirmDialog({ message: '確定要刪除這則 FAQ 嗎？', confirmLabel: '刪除', destructive: true }))) return;
     setDeleting(articleId);
     try {
       await deleteFaqArticle(articleId);
       loadArticles();
       loadPinnedArticles();
-      alert('刪除成功');
+      toast.success('刪除成功');
     } catch (error) {
       console.error('Failed to delete FAQ article:', error);
-      alert('刪除失敗，請稍後再試');
+      toast.error('刪除失敗，請稍後再試');
     } finally {
       setDeleting(null);
     }
@@ -103,11 +113,11 @@ export default function FaqPage() {
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">FAQ 管理</h1>
+        <PageTitle>FAQ 管理</PageTitle>
         <div className="flex items-center gap-4">
           <Link
             href="/dashboard/faq/categories"
-            className="px-4 py-1.5 border rounded text-sm hover:bg-rs-bg-base"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
           >
             分類管理
           </Link>
@@ -121,12 +131,9 @@ export default function FaqPage() {
           <h2 className="text-sm font-semibold text-rs-ink mb-2">置頂 FAQ</h2>
           <div className="flex flex-wrap gap-2">
             {pinnedArticles.map((article) => (
-              <span
-                key={article.id}
-                className="text-xs bg-rs-warning/15 border border-rs-warning/40 text-rs-ink px-2 py-1 rounded"
-              >
+              <Badge key={article.id} variant="warning">
                 {article.question}
-              </span>
+              </Badge>
             ))}
           </div>
         </div>
@@ -135,14 +142,14 @@ export default function FaqPage() {
       {/* Filters */}
       <div className="mb-4 flex flex-wrap gap-4">
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">分類</label>
-          <select
+          <Label className="block mb-1">分類</Label>
+          <NativeSelect
             value={categoryFilter}
             onChange={(e) => {
               setCategoryFilter(e.target.value);
               setPage(0);
             }}
-            className="border rounded px-3 py-1.5 text-sm"
+            className="w-auto"
           >
             <option value="">全部分類</option>
             {categories.map((cat) => (
@@ -150,11 +157,11 @@ export default function FaqPage() {
                 {cat.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">關鍵字搜尋</label>
-          <input
+          <Label className="block mb-1">關鍵字搜尋</Label>
+          <Input
             type="text"
             value={keyword}
             onChange={(e) => {
@@ -162,28 +169,26 @@ export default function FaqPage() {
               setPage(0);
             }}
             placeholder="搜尋問題或答案..."
-            className="border rounded px-3 py-1.5 text-sm w-48"
+            className="w-48"
           />
         </div>
       </div>
 
       {/* Articles List */}
       {loading ? (
-        <div className="text-center py-12 text-rs-ink-muted">載入中...</div>
+        <LoadingState className="h-auto py-12" />
       ) : articles.length === 0 ? (
-        <div className="text-center py-12 text-rs-ink-muted">尚無 FAQ</div>
+        <EmptyState title="尚無 FAQ" />
       ) : (
         <>
-          <div className="bg-white rounded-lg overflow-hidden divide-y divide-rs-hairline border border-rs-hairline">
+          <Card className="overflow-hidden divide-y divide-rs-hairline">
             {articles.map((article) => (
               <div key={article.id} className="px-4 py-4 hover:bg-rs-bg-base">
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       {article.isPinned && (
-                        <span className="text-xs bg-rs-warning/15 text-rs-ink px-1.5 py-0.5 rounded">
-                          置頂
-                        </span>
+                        <Badge variant="warning">置頂</Badge>
                       )}
                       {article.highlightedQuestion ? (
                         <div
@@ -207,52 +212,58 @@ export default function FaqPage() {
                       {formatDate(article.publishedAt)}
                     </div>
                   </div>
-                  <button
+                  <Button
+                    variant="linkDestructive"
+                    size="inline"
                     onClick={() => handleDelete(article.id)}
                     disabled={deleting === article.id}
-                    className="ml-4 text-rs-error hover:text-rs-error/80 disabled:opacity-50 text-sm"
+                    className="ml-4"
                   >
                     {deleting === article.id ? '刪除中...' : '刪除'}
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
-          </div>
+          </Card>
 
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex justify-center items-center gap-2 mt-6">
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(0)}
                 disabled={page === 0}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 首頁
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(page - 1)}
                 disabled={page === 0}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 上一頁
-              </button>
+              </Button>
               <span className="text-sm text-rs-ink-muted">
                 第 {page + 1} / {totalPages} 頁
               </span>
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(page + 1)}
                 disabled={page >= totalPages - 1}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 下一頁
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(totalPages - 1)}
                 disabled={page >= totalPages - 1}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 末頁
-              </button>
+              </Button>
             </div>
           )}
         </>

@@ -5,13 +5,16 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import PurchaseOrderService, {
   PurchaseOrderDto,
   POStatus,
 } from '@/services/erp/purchaseOrder'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { NativeSelect } from '@/components/ui/native-select'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 export default function PurchaseOrdersPage() {
   const router = useRouter()
@@ -52,21 +55,6 @@ export default function PurchaseOrdersPage() {
     fetchOrders()
   }, [router, fetchOrders])
 
-  const getStatusBadge = (status: POStatus) => {
-    const config: Record<POStatus, { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline' | 'warning'; label: string }> = {
-      DRAFT: { variant: 'outline', label: '草稿' },
-      SUBMITTED: { variant: 'default', label: '已提交' },
-      PENDING_APPROVAL: { variant: 'warning', label: '待審批' },
-      APPROVED: { variant: 'success', label: '已核准' },
-      REJECTED: { variant: 'destructive', label: '已駁回' },
-      PARTIALLY_RECEIVED: { variant: 'warning', label: '部分到貨' },
-      RECEIVED: { variant: 'success', label: '已到貨' },
-      CANCELLED: { variant: 'destructive', label: '已取消' },
-    }
-    const c = config[status] || { variant: 'outline', label: status }
-    return <Badge variant={c.variant}>{c.label}</Badge>
-  }
-
   const formatPrice = (price: number, currency: string) => {
     return new Intl.NumberFormat('zh-TW', {
       style: 'currency',
@@ -76,17 +64,15 @@ export default function PurchaseOrdersPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error) {
     return (
-      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+      <Alert variant="destructive">
         {error}
-      </div>
+      </Alert>
     )
   }
 
@@ -94,10 +80,10 @@ export default function PurchaseOrdersPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between gap-4">
         <div className="flex-1 flex gap-4">
-          <select
+          <NativeSelect
             value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
-            className="border rounded-md px-3 py-2"
+            className="w-auto"
           >
             <option value="">所有狀態</option>
             <option value="DRAFT">草稿</option>
@@ -108,7 +94,7 @@ export default function PurchaseOrdersPage() {
             <option value="PARTIALLY_RECEIVED">部分到貨</option>
             <option value="RECEIVED">已到貨</option>
             <option value="CANCELLED">已取消</option>
-          </select>
+          </NativeSelect>
           <Button variant="outline" onClick={fetchOrders}>重新整理</Button>
         </div>
         <Link href="/dashboard/erp/purchase-orders/new">
@@ -122,12 +108,9 @@ export default function PurchaseOrdersPage() {
 
       {orders.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-rs-ink-muted mb-4">尚無採購訂單</p>
-            <Link href="/dashboard/erp/purchase-orders/new">
+          <EmptyState title="尚無採購訂單" action={<Link href="/dashboard/erp/purchase-orders/new">
               <Button>建立第一張採購訂單</Button>
-            </Link>
-          </CardContent>
+            </Link>} className="h-48" />
         </Card>
       ) : (
         <div className="space-y-4">
@@ -139,7 +122,7 @@ export default function PurchaseOrdersPage() {
                     <CardTitle className="text-lg">{order.poNumber}</CardTitle>
                     <CardDescription>供應商：{order.supplierName}</CardDescription>
                   </div>
-                  {getStatusBadge(order.status)}
+                  <StatusBadge domain="purchaseOrder" status={order.status} />
                 </div>
               </CardHeader>
               <CardContent className="space-y-2">

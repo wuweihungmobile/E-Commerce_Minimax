@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { Search } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 
 export interface SearchBarProps {
   placeholder?: string
@@ -49,22 +51,23 @@ export function SearchBar({
       )}
       role="search"
     >
-      <input
+      <Input
         type="search"
         value={current}
         onChange={(e) => handleChange(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="flex-1 min-w-0 border-none outline-none bg-transparent text-base text-rs-ink px-4 min-h-[48px] placeholder:text-rs-ink-muted"
+        className="flex-1 min-w-0"
         suppressHydrationWarning
       />
-      <button
+      <Button
+        variant="default"
         type="submit"
-        className="flex-none inline-flex items-center justify-center gap-2 border-none cursor-pointer bg-rs-primary text-white px-7 text-base font-medium transition-colors hover:bg-rs-primary-hover"
+        className="flex-none gap-2"
       >
         <Search className="w-4 h-4" aria-hidden />
         <span>{buttonLabel}</span>
-      </button>
+      </Button>
     </form>
   )
 }

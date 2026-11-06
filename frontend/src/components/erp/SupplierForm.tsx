@@ -11,6 +11,10 @@ import SupplierService, {
 } from '@/services/erp/supplier'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { Label } from '@/components/ui/label'
+import { LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { toast } from '@/components/ui/toast'
 
 interface SupplierFormProps {
   supplierId?: string
@@ -74,7 +78,7 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.name.trim()) {
-      alert('請輸入供應商名稱')
+      toast.error('請輸入供應商名稱')
       return
     }
 
@@ -84,11 +88,11 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
     try {
       if (mode === 'create') {
         await SupplierService.createSupplier(formData)
-        alert('供應商建立成功')
+        toast.success('供應商建立成功')
         router.push('/dashboard/erp/suppliers')
       } else if (supplierId) {
         await SupplierService.updateSupplier(supplierId, formData)
-        alert('供應商更新成功')
+        toast.success('供應商更新成功')
         router.push('/dashboard/erp/suppliers')
       }
     } catch (err: unknown) {
@@ -107,9 +111,7 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
 
   if (initialLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
@@ -128,13 +130,13 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
           {error && (
-            <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+            <Alert variant="destructive">
               {error}
-            </div>
+            </Alert>
           )}
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">供應商名稱 *</label>
+            <Label>供應商名稱 *</Label>
             <Input
               name="name"
               value={formData.name}
@@ -146,7 +148,7 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">聯絡人</label>
+            <Label>聯絡人</Label>
             <Input
               name="contactPerson"
               value={formData.contactPerson}
@@ -157,7 +159,7 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Email</label>
+            <Label>Email</Label>
             <Input
               name="email"
               type="email"
@@ -169,7 +171,7 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">電話</label>
+            <Label>電話</Label>
             <Input
               name="phone"
               value={formData.phone}
@@ -180,7 +182,7 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">地址</label>
+            <Label>地址</Label>
             <Input
               name="address"
               value={formData.address}

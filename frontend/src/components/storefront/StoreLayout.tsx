@@ -6,6 +6,7 @@ import { StorefrontShell } from "@/components/layout/StorefrontShell"
 import { Skeleton } from "@/components/ui/skeleton"
 import storefrontService, { type StoreProfile } from "@/services/storefront"
 import { StoreNav, type StoreNavTab } from "@/components/storefront/StoreNav"
+import { buttonVariants, Button } from "@/components/ui/button"
 
 type LoadState = "loading" | "ok" | "notfound" | "error"
 
@@ -71,7 +72,7 @@ export function StoreLayout({ slug, active, children }: StoreLayoutProps) {
           <p className="text-sm text-rs-ink-muted">店鋪可能已下架或不存在</p>
           <Link
             href="/"
-            className="inline-flex items-center justify-center border border-rs-hairline rounded-md px-6 py-2.5 text-sm font-medium text-rs-ink transition-colors hover:border-rs-primary"
+            className={buttonVariants({ variant: "outline" })}
           >
             回首頁逛逛
           </Link>
@@ -88,16 +89,16 @@ export function StoreLayout({ slug, active, children }: StoreLayoutProps) {
           className="flex flex-col items-center justify-center py-24 text-center gap-3"
         >
           <p className="text-lg text-rs-ink">載入失敗，請稍後再試</p>
-          <button
+          <Button
+            variant="default"
             type="button"
             onClick={() => {
               setState("loading")
               setReloadKey((k) => k + 1)
             }}
-            className="inline-flex items-center justify-center bg-rs-primary text-white rounded-md px-6 py-2.5 text-sm font-medium transition-colors hover:bg-rs-primary-hover"
           >
             重新載入
-          </button>
+          </Button>
         </div>
       </StorefrontShell>
     )

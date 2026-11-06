@@ -7,6 +7,7 @@ import { Pagination } from "@/components/ui/pagination"
 import { Skeleton } from "@/components/ui/skeleton"
 import storefrontService from "@/services/storefront"
 import type { Listing, Page } from "@/services/listing"
+import { Button } from "@/components/ui/button"
 
 const PAGE_SIZE = 12
 
@@ -59,13 +60,13 @@ export function StoreListingGrid({ slug, type, page }: StoreListingGridProps) {
         className="flex flex-col items-center justify-center py-24 text-center gap-3"
       >
         <p className="text-lg text-rs-ink">載入失敗，請稍後再試</p>
-        <button
+        <Button
+          variant="default"
           type="button"
           onClick={() => setReloadKey((k) => k + 1)}
-          className="inline-flex items-center justify-center bg-rs-primary text-white rounded-md px-6 py-2.5 text-sm font-medium transition-colors hover:bg-rs-primary-hover"
         >
           重新載入
-        </button>
+        </Button>
       </div>
     )
   }

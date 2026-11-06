@@ -4,11 +4,14 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Pagination } from '@/components/ui/pagination'
 import apiClient from '@/lib/axios'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 // Tenant interface - matches actual API response
 interface Tenant {
@@ -251,23 +254,12 @@ export default function AdminTenantListPage() {
     }
   }
 
-  const getStatusBadge = (status: Tenant['status']) => {
-    const statusConfig: Record<Tenant['status'], { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline'; label: string }> = {
-      PENDING_REVIEW: { variant: 'secondary', label: '審核中' },
-      ACTIVE: { variant: 'success', label: '已核准' },
-      SUSPENDED: { variant: 'destructive', label: '已停權' },
-      TERMINATED: { variant: 'destructive', label: '已終止' },
-    }
-    const config = statusConfig[status] || { variant: 'outline', label: status }
-    return <Badge variant={config.variant}>{config.label}</Badge>
-  }
-
   if (error) {
     return (
       <div className="space-y-4">
-        <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md">
+        <Alert variant="destructive">
           {error}
-        </div>
+        </Alert>
         <Button variant="outline" onClick={refresh}>
           重試
         </Button>
@@ -282,14 +274,14 @@ export default function AdminTenantListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">店鋪管理</h1>
-          <p className="text-muted-foreground">
+          <PageTitle>店鋪管理</PageTitle>
+          <PageDescription>
             {tabCounts.PENDING > 0 ? (
-              <span className="text-warning">有待審核開店申請 {tabCounts.PENDING} 件</span>
+              <span className="font-medium text-rs-ink">有待審核開店申請 {tabCounts.PENDING} 件</span>
             ) : (
               '目前無待審核開店申請'
             )}
-          </p>
+          </PageDescription>
         </div>
         <Button variant="outline" onClick={refresh}>
           重新整理
@@ -298,20 +290,20 @@ export default function AdminTenantListPage() {
 
       {/* 審核動作結果 */}
       {actionMessage && (
-        <div
+        <Alert
+          variant="success"
           data-testid="action-message"
-          className="bg-success/10 border border-success/20 text-success px-4 py-3 rounded-md"
         >
           {actionMessage}
-        </div>
+        </Alert>
       )}
       {actionError && (
-        <div
+        <Alert
+          variant="destructive"
           data-testid="action-error"
-          className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md"
         >
           {actionError}
-        </div>
+        </Alert>
       )}
 
       {/* Filter Tabs */}
@@ -351,7 +343,7 @@ export default function AdminTenantListPage() {
       {!showApplications && (
         <div className="flex gap-2 items-end">
           <div className="flex-1 max-w-xs">
-            <label className="text-sm text-muted-foreground mb-1 block">搜尋店鋪名稱</label>
+            <Label className="text-muted-foreground mb-1 block">搜尋店鋪名稱</Label>
             <Input
               placeholder="輸入店鋪名稱或 slug"
               value={keyword}
@@ -365,16 +357,12 @@ export default function AdminTenantListPage() {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="text-rs-ink-muted">載入中...</div>
-        </div>
+        <LoadingState />
       ) : showApplications ? (
         /* ── 待審核開店申請 ────────────────────────────── */
         applications.length === 0 ? (
           <Card>
-            <CardContent className="flex flex-col items-center justify-center h-48">
-              <p className="text-rs-ink-muted mb-4">目前沒有待審核的開店申請</p>
-            </CardContent>
+            <EmptyState title="目前沒有待審核的開店申請" className="h-48" />
           </Card>
         ) : (
           <div className="space-y-4">
@@ -382,7 +370,7 @@ export default function AdminTenantListPage() {
               <Card
                 key={application.applicationId}
                 data-testid="application-card"
-                className="border-warning"
+                className="border-rs-warning/40"
               >
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -392,7 +380,7 @@ export default function AdminTenantListPage() {
                         申請時間：{new Date(application.submittedAt).toLocaleDateString('zh-TW')}
                       </CardDescription>
                     </div>
-                    <Badge variant="secondary">審核中</Badge>
+                    <StatusBadge domain="tenant" status="PENDING_REVIEW" />
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -489,11 +477,7 @@ export default function AdminTenantListPage() {
       ) : /* ── 既有店鋪（Tenant）────────────────────────── */
       tenants.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-rs-ink-muted mb-4">
-              {filter === 'ALL' ? '尚無店鋪資料' : '無符合條件的店鋪'}
-            </p>
-          </CardContent>
+          <EmptyState title={filter === 'ALL' ? '尚無店鋪資料' : '無符合條件的店鋪'} className="h-48" />
         </Card>
       ) : (
         <div className="space-y-4">
@@ -507,7 +491,7 @@ export default function AdminTenantListPage() {
                       建立時間：{new Date(tenant.createdAt).toLocaleDateString('zh-TW')}
                     </CardDescription>
                   </div>
-                  {getStatusBadge(tenant.status)}
+                  <StatusBadge domain="tenant" status={tenant.status} />
                 </div>
               </CardHeader>
               <CardContent>

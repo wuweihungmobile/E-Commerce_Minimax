@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation'
 import PurchaseOrderForm from '@/components/erp/PurchaseOrderForm'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle } from '@/components/ui/page-title'
 
 export default function ViewPurchaseOrderPage() {
   const router = useRouter()
@@ -25,7 +26,7 @@ export default function ViewPurchaseOrderPage() {
       <main>
         <div>
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-rs-ink">採購訂單詳情</h1>
+            <PageTitle>採購訂單詳情</PageTitle>
           </div>
           <PurchaseOrderForm orderId={orderId} mode="view" />
         </div>

@@ -1,5 +1,7 @@
 import Link from "next/link"
 import { MessageCircleMore } from "lucide-react"
+import { buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 // Bottom 區塊：頁尾（版權 + 連結）+ 懸浮客服鈕。
 // showChatFab=false：賣家外殼不放懸浮鈕（會蓋住資料表右下角，且訊息中心已在側欄）。
@@ -29,7 +31,7 @@ export function StorefrontFooter({ showChatFab = true }: { showChatFab?: boolean
         <Link
           href="/dashboard/chat"
           aria-label="聊聊客服"
-          className="fixed right-2 bottom-8 z-[60] inline-flex items-center justify-center gap-2 bg-rs-primary text-white rounded-md px-5 py-2.5 transition-colors hover:bg-rs-primary-hover"
+          className={cn(buttonVariants({ variant: "default" }), "fixed right-2 bottom-8 z-[60] gap-2")}
         >
           <MessageCircleMore className="w-6 h-6" aria-hidden />
           <span className="text-lg font-medium">聊聊</span>

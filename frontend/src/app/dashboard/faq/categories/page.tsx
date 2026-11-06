@@ -11,6 +11,15 @@ import {
   FaqCategoryDto,
   FaqCategoryStatsDto,
 } from '@/services/faq';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
+import { PageTitle } from '@/components/ui/page-title';
+import { EmptyState, LoadingState } from '@/components/ui/states';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 interface CategoryFormState {
   name: string;
@@ -55,7 +64,7 @@ export default function FaqCategoriesPage() {
       setStats(statsMap);
     } catch (error) {
       console.error('Failed to load FAQ categories:', error);
-      alert('載入分類失敗，請稍後再試');
+      toast.error('載入分類失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
@@ -87,7 +96,7 @@ export default function FaqCategoriesPage() {
 
   async function handleSubmit() {
     if (!form.name.trim() || !form.slug.trim()) {
-      alert('名稱與 slug 為必填');
+      toast.error('名稱與 slug 為必填');
       return;
     }
     setSubmitting(true);
@@ -107,19 +116,19 @@ export default function FaqCategoriesPage() {
       cancelForm();
       loadCategories();
     } catch (error) {
-      alert(extractErrorMessage(error, editingId ? '更新分類失敗' : '新增分類失敗'));
+      toast.error(extractErrorMessage(error, editingId ? '更新分類失敗' : '新增分類失敗'));
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleDelete(category: FaqCategoryDto) {
-    if (!confirm(`確定要刪除分類「${category.name}」嗎？`)) return;
+    if (!(await confirmDialog({ message: `確定要刪除分類「${category.name}」嗎？`, confirmLabel: '刪除', destructive: true }))) return;
     try {
       await deleteFaqCategory(category.id);
       loadCategories();
     } catch (error) {
-      alert(extractErrorMessage(error, '刪除分類失敗（分類底下可能仍有 FAQ 文章）'));
+      toast.error(extractErrorMessage(error, '刪除分類失敗（分類底下可能仍有 FAQ 文章）'));
     }
   }
 
@@ -130,134 +139,133 @@ export default function FaqCategoriesPage() {
           <Link href="/dashboard/faq" className="text-sm text-rs-primary hover:underline">
             ← 返回 FAQ 列表
           </Link>
-          <h1 className="text-2xl font-semibold">FAQ 分類管理</h1>
+          <PageTitle>FAQ 分類管理</PageTitle>
         </div>
-        <button
+        <Button
+          variant="default"
+          size="sm"
           onClick={startCreate}
-          className="px-4 py-1.5 bg-rs-primary text-white rounded text-sm hover:bg-rs-primary-hover"
         >
           新增分類
-        </button>
+        </Button>
       </div>
 
       {showCreateForm && (
-        <div className="bg-white border rounded-lg p-4 mb-6">
+        <Card className="p-4 mb-6">
           <h2 className="text-sm font-semibold mb-3">{editingId ? '編輯分類' : '新增分類'}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-rs-ink mb-1">名稱 *</label>
-              <input
+              <Label className="block text-xs mb-1">名稱 *</Label>
+              <Input
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="border rounded px-3 py-1.5 text-sm w-full"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-rs-ink mb-1">Slug *</label>
-              <input
+              <Label className="block text-xs mb-1">Slug *</Label>
+              <Input
                 type="text"
                 value={form.slug}
                 onChange={(e) => setForm({ ...form, slug: e.target.value })}
-                className="border rounded px-3 py-1.5 text-sm w-full"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-rs-ink mb-1">描述</label>
-              <input
+              <Label className="block text-xs mb-1">描述</Label>
+              <Input
                 type="text"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                className="border rounded px-3 py-1.5 text-sm w-full"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-rs-ink mb-1">Icon</label>
-              <input
+              <Label className="block text-xs mb-1">Icon</Label>
+              <Input
                 type="text"
                 value={form.icon}
                 onChange={(e) => setForm({ ...form, icon: e.target.value })}
-                className="border rounded px-3 py-1.5 text-sm w-full"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-rs-ink mb-1">排序</label>
-              <input
+              <Label className="block text-xs mb-1">排序</Label>
+              <Input
                 type="number"
                 value={form.sortOrder}
                 onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
-                className="border rounded px-3 py-1.5 text-sm w-full"
               />
             </div>
           </div>
           <div className="flex gap-2 mt-4">
-            <button
+            <Button
+              variant="default"
+              size="sm"
               onClick={handleSubmit}
               disabled={submitting}
-              className="px-4 py-1.5 bg-rs-primary text-white rounded text-sm hover:bg-rs-primary-hover disabled:opacity-50"
             >
               {submitting ? '儲存中...' : '儲存'}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={cancelForm}
-              className="px-4 py-1.5 border rounded text-sm hover:bg-rs-bg-base"
             >
               取消
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-rs-ink-muted">載入中...</div>
+        <LoadingState className="h-auto py-12" />
       ) : categories.length === 0 ? (
-        <div className="text-center py-12 text-rs-ink-muted">尚無分類</div>
+        <EmptyState title="尚無分類" />
       ) : (
-        <div className="bg-white rounded-lg overflow-hidden border border-rs-hairline">
-          <table className="min-w-full divide-y divide-rs-hairline">
-            <thead className="bg-rs-bg-base">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">名稱</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">Slug</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">文章數</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">已發布</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-rs-ink-muted uppercase">操作</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-rs-hairline">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>名稱</TableHead>
+                <TableHead>Slug</TableHead>
+                <TableHead>文章數</TableHead>
+                <TableHead>已發布</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {categories.map((category) => {
                 const stat = stats[category.id];
                 return (
-                  <tr key={category.id} className="hover:bg-rs-bg-base">
-                    <td className="px-4 py-3">
+                  <TableRow key={category.id}>
+                    <TableCell>
                       <div className="text-sm font-medium text-rs-ink">{category.name}</div>
                       {category.description && (
                         <div className="text-xs text-rs-ink-muted">{category.description}</div>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-rs-ink-muted font-mono">{category.slug}</td>
-                    <td className="px-4 py-3 text-sm text-rs-ink-muted">{stat?.totalArticles ?? 0}</td>
-                    <td className="px-4 py-3 text-sm text-rs-ink-muted">{stat?.publishedArticles ?? 0}</td>
-                    <td className="px-4 py-3 text-right text-sm">
-                      <button
+                    </TableCell>
+                    <TableCell className="text-sm text-rs-ink-muted font-mono">{category.slug}</TableCell>
+                    <TableCell className="text-sm text-rs-ink-muted">{stat?.totalArticles ?? 0}</TableCell>
+                    <TableCell className="text-sm text-rs-ink-muted">{stat?.publishedArticles ?? 0}</TableCell>
+                    <TableCell className="text-right text-sm">
+                      <Button
+                        variant="link"
+                        size="inline"
                         onClick={() => startEdit(category)}
-                        className="text-rs-primary hover:text-rs-primary-hover mr-3"
+                        className="mr-3"
                       >
                         編輯
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="linkDestructive"
+                        size="inline"
                         onClick={() => handleDelete(category)}
-                        className="text-rs-error hover:text-rs-error/80"
                       >
                         刪除
-                      </button>
-                    </td>
-                  </tr>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
       )}
     </div>
   );

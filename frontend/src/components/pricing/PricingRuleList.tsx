@@ -4,13 +4,20 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import PricingService, { PricingRule, PricingRuleType } from '@/services/pricing'
 import AuthService from '@/services/auth'
 import PricingCalendarPreview from '@/components/pricing/PricingCalendarPreview'
 import { loginHref } from '@/lib/auth-redirect'
+import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { confirmDialog } from '@/components/ui/confirm-dialog'
+import { toast } from '@/components/ui/toast'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 /**
  * 各規則型別的 config 參數欄位（AI-2404）。key 對齊後端 jsonb config。
@@ -80,7 +87,7 @@ export default function PricingRuleList() {
   }, [router, fetchRules])
 
   const handleDelete = async (id: string) => {
-    if (!confirm('確定要刪除這個定價規則嗎？')) return
+    if (!(await confirmDialog({ message: '確定要刪除這個定價規則嗎？', confirmLabel: '刪除', destructive: true }))) return
 
     setDeleteLoading(id)
     try {
@@ -89,9 +96,9 @@ export default function PricingRuleList() {
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { message?: string } } }
-        alert(axiosErr.response?.data?.message || '刪除失敗')
+        toast.error(axiosErr.response?.data?.message || '刪除失敗')
       } else {
-        alert('刪除失敗')
+        toast.error('刪除失敗')
       }
     } finally {
       setDeleteLoading(null)
@@ -110,29 +117,21 @@ export default function PricingRuleList() {
     return labels[type] || type
   }
 
-  const getStatusBadge = (isActive: boolean) => {
-    return isActive
-      ? <Badge variant="success">啟用中</Badge>
-      : <Badge variant="secondary">已停用</Badge>
-  }
-
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('zh-TW')
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error) {
     return (
-      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+      <Alert variant="destructive">
         {error}
-      </div>
+      </Alert>
     )
   }
 
@@ -191,12 +190,9 @@ export default function PricingRuleList() {
       {/* Rule List */}
       {rules.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-rs-ink-muted mb-4">尚無定價規則</p>
-            <Button onClick={() => { setEditingRule(null); setShowForm(true) }}>
+          <EmptyState title="尚無定價規則" action={<Button onClick={() => { setEditingRule(null); setShowForm(true) }}>
               新增第一個規則
-            </Button>
-          </CardContent>
+            </Button>} className="h-48" />
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -205,7 +201,7 @@ export default function PricingRuleList() {
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <CardTitle className="text-lg">{rule.ruleName}</CardTitle>
-                  {getStatusBadge(rule.isActive)}
+                  <StatusBadge domain="pricingRule" status={rule.isActive ? 'ACTIVE' : 'INACTIVE'} />
                 </div>
                 <CardDescription>{getRuleTypeLabel(rule.ruleType as PricingRuleType)}</CardDescription>
               </CardHeader>
@@ -338,22 +334,22 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent className="max-w-lg gap-0 p-0">
         <CardHeader>
-          <CardTitle>{rule ? '編輯定價規則' : '新增定價規則'}</CardTitle>
-          <CardDescription>設定房源的動態定價規則</CardDescription>
+          <DialogTitle>{rule ? '編輯定價規則' : '新增定價規則'}</DialogTitle>
+          <DialogDescription>設定房源的動態定價規則</DialogDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             {error && (
-              <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+              <Alert variant="destructive">
                 {error}
-              </div>
+              </Alert>
             )}
 
             <div>
-              <label className="text-sm font-medium">房源 ID <span className="text-rs-error">*</span></label>
+              <Label>房源 ID <span className="text-rs-error">*</span></Label>
               <Input
                 value={formData.roomListingId}
                 onChange={(e) => setFormData({ ...formData, roomListingId: e.target.value })}
@@ -364,7 +360,7 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
             </div>
 
             <div>
-              <label className="text-sm font-medium">規則類型</label>
+              <Label>規則類型</Label>
               <Select value={formData.ruleType} onValueChange={(v) => setFormData({ ...formData, ruleType: v as PricingRuleType, config: {} })} disabled={!!rule}>
                 <SelectTrigger className="mt-1">
                   <SelectValue />
@@ -381,7 +377,7 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
             </div>
 
             <div>
-              <label className="text-sm font-medium">規則名稱 <span className="text-rs-error">*</span></label>
+              <Label>規則名稱 <span className="text-rs-error">*</span></Label>
               <Input
                 value={formData.ruleName}
                 onChange={(e) => setFormData({ ...formData, ruleName: e.target.value })}
@@ -391,7 +387,7 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
             </div>
 
             <div>
-              <label className="text-sm font-medium">優先級</label>
+              <Label>優先級</Label>
               <Input
                 type="number"
                 value={formData.priority}
@@ -406,9 +402,9 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
                 <p className="text-sm font-medium">規則參數</p>
                 {configFields.map((f) => (
                   <div key={f.key}>
-                    <label className="text-sm font-medium">
+                    <Label>
                       {f.label} <span className="text-rs-error">*</span>
-                    </label>
+                    </Label>
                     <Input
                       type="number"
                       step={f.step}
@@ -425,7 +421,7 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium">開始日期 <span className="text-rs-error">*</span></label>
+                <Label>開始日期 <span className="text-rs-error">*</span></Label>
                 <Input
                   type="date"
                   value={formData.validFrom}
@@ -434,7 +430,7 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">結束日期 <span className="text-rs-error">*</span></label>
+                <Label>結束日期 <span className="text-rs-error">*</span></Label>
                 <Input
                   type="date"
                   value={formData.validTo}
@@ -445,13 +441,12 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
             </div>
 
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="isActive"
                 checked={formData.isActive}
                 onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
               />
-              <label htmlFor="isActive" className="text-sm">啟用此規則</label>
+              <Label htmlFor="isActive">啟用此規則</Label>
             </div>
           </CardContent>
           <CardFooter className="flex gap-2">
@@ -463,7 +458,7 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
             </Button>
           </CardFooter>
         </form>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

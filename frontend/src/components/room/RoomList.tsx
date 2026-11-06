@@ -5,11 +5,15 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import RoomService, { RoomListItem, RoomFilters } from '@/services/room'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { confirmDialog } from '@/components/ui/confirm-dialog'
+import { toast } from '@/components/ui/toast'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 export default function RoomList() {
   const router = useRouter()
@@ -69,7 +73,7 @@ export default function RoomList() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('確定要刪除這個房源嗎？')) return
+    if (!(await confirmDialog({ message: '確定要刪除這個房源嗎？', confirmLabel: '刪除', destructive: true }))) return
 
     setDeleteLoading(id)
     try {
@@ -78,23 +82,13 @@ export default function RoomList() {
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { message?: string } } }
-        alert(axiosErr.response?.data?.message || '刪除失敗')
+        toast.error(axiosErr.response?.data?.message || '刪除失敗')
       } else {
-        alert('刪除失敗')
+        toast.error('刪除失敗')
       }
     } finally {
       setDeleteLoading(null)
     }
-  }
-
-  const getStatusBadge = (status: string) => {
-    const statusConfig: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline'; label: string }> = {
-      ACTIVE: { variant: 'success', label: '上架中' },
-      INACTIVE: { variant: 'secondary', label: '已下架' },
-      DRAFT: { variant: 'outline', label: '草稿' },
-    }
-    const config = statusConfig[status] || { variant: 'outline', label: status }
-    return <Badge variant={config.variant}>{config.label}</Badge>
   }
 
   const formatPrice = (price: number, currency: string) => {
@@ -106,17 +100,15 @@ export default function RoomList() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error) {
     return (
-      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+      <Alert variant="destructive">
         {error}
-      </div>
+      </Alert>
     )
   }
 
@@ -158,12 +150,9 @@ export default function RoomList() {
       {/* Room List */}
       {rooms.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-rs-ink-muted mb-4">尚無房源資料</p>
-            <Link href="/dashboard/rooms/new">
+          <EmptyState title="尚無房源資料" action={<Link href="/dashboard/rooms/new">
               <Button>新增第一個房源</Button>
-            </Link>
-          </CardContent>
+            </Link>} className="h-48" />
         </Card>
       ) : (
         <>
@@ -176,7 +165,7 @@ export default function RoomList() {
                 <CardHeader>
                   <div className="flex justify-between items-start">
                     <CardTitle className="text-lg line-clamp-1">{room.title}</CardTitle>
-                    {getStatusBadge(room.status)}
+                    <StatusBadge domain="listing" status={room.status} />
                   </div>
                   <CardDescription>{room.location}</CardDescription>
                 </CardHeader>

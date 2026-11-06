@@ -9,6 +9,11 @@ import { Label } from '@/components/ui/label'
 import { Pagination } from '@/components/ui/pagination'
 import SettlementService, { SettlementStatementDto } from '@/services/settlement'
 import AuthService from '@/services/auth'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { toast } from '@/components/ui/toast'
+import { confirmDialog } from '@/components/ui/confirm-dialog'
 
 const PAGE_SIZE = 20
 
@@ -51,7 +56,7 @@ export default function AdminSettlementReversalPage() {
 
   const handleInitiate = async (statementId: string) => {
     if (!reason.trim()) {
-      alert('請填寫逆轉原因')
+      toast.error('請填寫逆轉原因')
       return
     }
     setActionLoadingId(statementId)
@@ -63,9 +68,9 @@ export default function AdminSettlementReversalPage() {
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { message?: string } } }
-        alert(axiosErr.response?.data?.message || '發起逆轉失敗')
+        toast.error(axiosErr.response?.data?.message || '發起逆轉失敗')
       } else {
-        alert('發起逆轉失敗')
+        toast.error('發起逆轉失敗')
       }
     } finally {
       setActionLoadingId(null)
@@ -73,7 +78,7 @@ export default function AdminSettlementReversalPage() {
   }
 
   const handleConfirm = async (statementId: string) => {
-    if (!confirm('確定要確認此結算單逆轉嗎？確認後將產生沖銷用的 Credit Note，無法復原。')) return
+    if (!(await confirmDialog({ message: '確定要確認此結算單逆轉嗎？確認後將產生沖銷用的 Credit Note，無法復原。', confirmLabel: '確認逆轉', destructive: true }))) return
     setActionLoadingId(statementId)
     try {
       await SettlementService.confirmReversal(statementId)
@@ -81,9 +86,9 @@ export default function AdminSettlementReversalPage() {
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { message?: string } } }
-        alert(axiosErr.response?.data?.message || '確認逆轉失敗')
+        toast.error(axiosErr.response?.data?.message || '確認逆轉失敗')
       } else {
-        alert('確認逆轉失敗')
+        toast.error('確認逆轉失敗')
       }
     } finally {
       setActionLoadingId(null)
@@ -97,7 +102,7 @@ export default function AdminSettlementReversalPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md">{error}</div>
+        <Alert variant="destructive">{error}</Alert>
         <Button variant="outline" onClick={() => fetchStatements(currentPage)}>重試</Button>
       </div>
     )
@@ -106,21 +111,17 @@ export default function AdminSettlementReversalPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">結算單逆轉</h1>
-        <p className="text-muted-foreground">
-          {totalElements > 0 ? <span className="text-warning">可操作結算單 {totalElements} 筆</span> : '目前無可發起/確認逆轉的結算單'}
-        </p>
+        <PageTitle>結算單逆轉</PageTitle>
+        <PageDescription>
+          {totalElements > 0 ? <span className="font-medium text-rs-ink">可操作結算單 {totalElements} 筆</span> : '目前無可發起/確認逆轉的結算單'}
+        </PageDescription>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="text-rs-ink-muted">載入中...</div>
-        </div>
+        <LoadingState />
       ) : statements.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-rs-ink-muted">目前無可操作的結算單</p>
-          </CardContent>
+          <EmptyState title="目前無可操作的結算單" className="h-48" />
         </Card>
       ) : (
         <div className="space-y-4">
@@ -128,7 +129,7 @@ export default function AdminSettlementReversalPage() {
             const canConfirm = statement.status === 'REVERSAL_PENDING'
               && statement.reversalInitiatedByRole !== currentRole
             return (
-              <Card key={statement.id} className="border-warning">
+              <Card key={statement.id} className="border-rs-warning/40">
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>

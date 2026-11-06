@@ -24,6 +24,9 @@ import LogisticsService, {
 } from '@/services/logistics'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle } from '@/components/ui/page-title'
+import { LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -149,18 +152,16 @@ export default function DashboardOrderDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error || !order) {
     return (
       <div className="space-y-4 p-6">
-        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+        <Alert variant="destructive">
           {error || '找不到此訂單'}
-        </div>
+        </Alert>
         <Link href="/dashboard/orders">
           <Button variant="outline">返回訂單列表</Button>
         </Link>
@@ -176,7 +177,7 @@ export default function DashboardOrderDetailPage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-2xl font-semibold text-rs-ink">訂單 #{order.id.slice(0, 8)}</h1>
+              <PageTitle>訂單 #{order.id.slice(0, 8)}</PageTitle>
               <Badge variant={orderStatusBadgeVariant(order.status)}>{ORDER_STATUS_LABELS[order.status]}</Badge>
               <Badge variant="outline">{order.orderType === 'ROOM' ? '訂房' : '商品'}</Badge>
             </div>
@@ -185,9 +186,9 @@ export default function DashboardOrderDetailPage() {
         </div>
 
         {actionError && (
-          <div className="mx-4 sm:mx-0 bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+          <Alert variant="destructive" className="mx-4 sm:mx-0">
             {actionError}
-          </div>
+          </Alert>
         )}
 
         {/* 出貨作業（僅商品訂單） */}

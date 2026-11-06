@@ -3,6 +3,11 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import AuthService, { getApiErrorInfo } from '@/services/auth'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { Alert } from '@/components/ui/alert'
+import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 
 // Sprint 204（FRD US-M03-006，DEF-253）：/login 頁的「Forgot your password?」原本指向不存在的此頁（死連結）。
 // 不論 Email 是否已註冊，成功畫面一律相同——後端刻意不揭露帳號是否存在，前端也不可自己洩漏。
@@ -36,7 +41,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="flex-1 flex items-center justify-center px-4 py-12">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg border border-rs-hairline">
+      <Card className="max-w-md w-full space-y-8 p-8">
         <div>
           <h2 className="text-center text-3xl font-semibold text-rs-ink">Reset your password</h2>
           <p className="mt-2 text-center text-sm text-rs-ink-muted">
@@ -46,10 +51,10 @@ export default function ForgotPasswordPage() {
 
         {submitted ? (
           <div className="space-y-6" data-testid="forgot-password-submitted">
-            <div className="bg-rs-success/10 border border-rs-success/30 text-rs-success px-4 py-3 rounded">
+            <Alert variant="success">
               If that email is registered, we&apos;ve sent a link to reset your password. The link expires in 30
               minutes and can only be used once.
-            </div>
+            </Alert>
             <Link href="/login" className="block text-center font-medium text-rs-primary hover:text-rs-primary">
               Back to sign in
             </Link>
@@ -57,14 +62,14 @@ export default function ForgotPasswordPage() {
         ) : (
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             {error && (
-              <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded">{error}</div>
+              <Alert variant="destructive">{error}</Alert>
             )}
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-rs-ink">
+              <Label htmlFor="email" className="block">
                 Email address
-              </label>
-              <input
+              </Label>
+              <Input
                 id="email"
                 name="email"
                 type="email"
@@ -72,19 +77,20 @@ export default function ForgotPasswordPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-rs-primary focus:border-rs-primary placeholder:text-rs-ink-muted"
+                className="mt-1 block"
                 placeholder="you@example.com"
                 suppressHydrationWarning
               />
             </div>
 
-            <button
+            <Button
+              variant="default"
               type="submit"
               disabled={loading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md text-sm font-medium text-white bg-rs-primary hover:bg-rs-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rs-primary disabled:opacity-50"
+              className="w-full"
             >
               {loading ? 'Sending...' : 'Send reset link'}
-            </button>
+            </Button>
 
             <p className="text-center text-sm text-rs-ink-muted">
               <Link href="/login" className="font-medium text-rs-primary hover:text-rs-primary">
@@ -93,7 +99,7 @@ export default function ForgotPasswordPage() {
             </p>
           </form>
         )}
-      </div>
+      </Card>
     </div>
   )
 }

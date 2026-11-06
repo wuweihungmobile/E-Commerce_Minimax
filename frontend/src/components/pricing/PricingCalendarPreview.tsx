@@ -10,6 +10,9 @@ import AuthService from '@/services/auth'
 import type { CalendarDay } from '@/services/booking'
 import { toLocalDateString } from '@/lib/date'
 import { loginHref } from '@/lib/auth-redirect'
+import { Label } from '@/components/ui/label'
+import { Alert } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 
 interface PricingCalendarProps {
   roomListingId: string
@@ -142,9 +145,9 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
             <div className="text-sm text-muted-foreground">載入中...</div>
           )}
           {calendarError && (
-            <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md text-sm">
+            <Alert variant="destructive">
               {calendarError}
-            </div>
+            </Alert>
           )}
           {!calendarLoading && !calendarError && (
             <div className="border rounded-lg max-h-80 overflow-y-auto divide-y">
@@ -185,14 +188,14 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
         </div>
 
         {error && (
-          <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+          <Alert variant="destructive">
             {error}
-          </div>
+          </Alert>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
-            <label className="text-sm font-medium">入住日期</label>
+            <Label>入住日期</Label>
             <Input
               type="date"
               value={checkInDate}
@@ -203,7 +206,7 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
             />
           </div>
           <div>
-            <label className="text-sm font-medium">退房日期</label>
+            <Label>退房日期</Label>
             <Input
               type="date"
               value={checkOutDate}
@@ -214,7 +217,7 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
             />
           </div>
           <div>
-            <label className="text-sm font-medium">入住人數</label>
+            <Label>入住人數</Label>
             <Input
               type="number"
               min="1"
@@ -292,12 +295,4 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
       </CardContent>
     </Card>
   )
-}
-
-function Badge({ variant, className, children }: { variant?: string; className?: string; children: React.ReactNode }) {
-  const variantClasses: Record<string, string> = {
-    outline: 'border bg-transparent px-2 py-0.5 text-xs rounded',
-    default: 'bg-primary px-2 py-0.5 text-xs rounded text-primary-foreground',
-  }
-  return <span className={`${variantClasses[variant || 'default']} ${className || ''}`}>{children}</span>
 }

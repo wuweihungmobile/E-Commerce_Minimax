@@ -11,6 +11,10 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { Textarea } from '@/components/ui/textarea'
+import { NativeSelect } from '@/components/ui/native-select'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState } from '@/components/ui/states'
 
 const EMPTY_FORM: CreateTicketInput = {
   category: 'OTHER',
@@ -122,10 +126,10 @@ export default function SupportTicketsPage() {
     <StorefrontShell>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-rs-ink">我的客服工單</h1>
-          <p className="mt-1 text-sm text-rs-ink-muted">
+          <PageTitle>我的客服工單</PageTitle>
+          <PageDescription>
             {loading ? '載入中…' : `共 ${tickets.length} 筆工單`}
-          </p>
+          </PageDescription>
         </div>
         <Button onClick={startCreate}>提交新工單</Button>
       </div>
@@ -148,15 +152,14 @@ export default function SupportTicketsPage() {
             <div className="space-y-3">
               <div>
                 <Label className="mb-1 block">問題類型 *</Label>
-                <select
-                  className="w-full border rounded-md px-3 py-2 text-sm"
+                <NativeSelect
                   value={form.category}
                   onChange={(e) => setForm({ ...form, category: e.target.value as TicketCategory })}
                 >
                   {CATEGORY_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <div>
                 <Label className="mb-1 block">問題主旨 *</Label>
@@ -168,8 +171,7 @@ export default function SupportTicketsPage() {
               </div>
               <div>
                 <Label className="mb-1 block">問題描述 *</Label>
-                <textarea
-                  className="w-full border rounded-md px-3 py-2 text-sm min-h-24"
+                <Textarea
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                 />
@@ -200,12 +202,7 @@ export default function SupportTicketsPage() {
         </div>
       ) : tickets.length === 0 && !error ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <div className="text-5xl mb-4">🎫</div>
-            <h2 className="text-lg font-semibold text-rs-ink mb-1">尚無客服工單</h2>
-            <p className="text-sm text-rs-ink-muted mb-6">有問題想詢問？提交工單讓客服協助您</p>
-            <Button onClick={startCreate}>提交新工單</Button>
-          </CardContent>
+          <EmptyState icon="🎫" title="尚無客服工單" description="有問題想詢問？提交工單讓客服協助您" action={<Button onClick={startCreate}>提交新工單</Button>} className="py-16" />
         </Card>
       ) : (
         <div className="space-y-4">

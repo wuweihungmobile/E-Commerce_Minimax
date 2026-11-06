@@ -9,6 +9,11 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import SupportService, { SupportTicket } from '@/services/support'
+import { Textarea } from '@/components/ui/textarea'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { toast } from '@/components/ui/toast'
 
 const STATUS_LABEL: Record<SupportTicket['status'], string> = {
   OPEN: '開立',
@@ -60,9 +65,9 @@ export default function AdminSupportTicketDetailPage() {
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { message?: string } } }
-        alert(axiosErr.response?.data?.message || '指派失敗')
+        toast.error(axiosErr.response?.data?.message || '指派失敗')
       } else {
-        alert('指派失敗')
+        toast.error('指派失敗')
       }
     } finally {
       setActionLoading(false)
@@ -80,9 +85,9 @@ export default function AdminSupportTicketDetailPage() {
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { message?: string } } }
-        alert(axiosErr.response?.data?.message || '發送訊息失敗')
+        toast.error(axiosErr.response?.data?.message || '發送訊息失敗')
       } else {
-        alert('發送訊息失敗')
+        toast.error('發送訊息失敗')
       }
     } finally {
       setActionLoading(false)
@@ -91,18 +96,16 @@ export default function AdminSupportTicketDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error || !ticket) {
     return (
       <div className="space-y-4">
-        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+        <Alert variant="destructive">
           {error || '找不到工單'}
-        </div>
+        </Alert>
         <Link href="/admin/support/tickets">
           <Button variant="outline">返回列表</Button>
         </Link>
@@ -114,10 +117,10 @@ export default function AdminSupportTicketDetailPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">{ticket.subject}</h1>
-          <p className="text-muted-foreground">
+          <PageTitle>{ticket.subject}</PageTitle>
+          <PageDescription>
             {ticket.ticketNumber} · {ticket.tenantId ? `租戶 ${ticket.tenantId.slice(0, 8)}` : '平台工單'}
-          </p>
+          </PageDescription>
         </div>
         <Badge variant={ticket.status === 'CLOSED' ? 'outline' : 'default'}>
           {STATUS_LABEL[ticket.status]}
@@ -176,8 +179,7 @@ export default function AdminSupportTicketDetailPage() {
             <CardTitle className="text-sm">回覆</CardTitle>
           </CardHeader>
           <CardContent>
-            <textarea
-              className="w-full border rounded-md px-3 py-2 text-sm min-h-20"
+            <Textarea
               placeholder="輸入回覆內容..."
               value={reply}
               onChange={(e) => setReply(e.target.value)}

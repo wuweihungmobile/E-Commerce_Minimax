@@ -49,21 +49,48 @@
 | 間距 | 8px 基準 | Tailwind 預設間距（4 的倍數） |
 | 圓角 | sm 4（徽章、分頁）／md 8（按鈕、輸入框）／lg 12（卡片、影像）／full | `rounded-sm`／`rounded-md`／`rounded-lg`／`rounded-full`（`globals.css` 已把 md、lg 覆寫成設計稿值） |
 | 容器 | 最大 1440、左右 24、側欄 240、欄距 24（頁面級 32） | `max-w-[1440px] mx-auto px-6`、`grid-cols-[240px_1fr]` |
-| **層次** | **嚴禁陰影**，只用 1px 實線框與色差分層 | 卡片＝`bg-rs-surface border border-rs-hairline`；**不得出現 `shadow-*`** |
+| **層次** | **嚴禁陰影**，只用 1px 實線框與色差分層 | 卡片＝`<Card>`（`bg-rs-surface border border-rs-hairline`）；**不得出現 `shadow-*`** |
+| **覆蓋層（z-index）** | 頁首 70 < `Dialog` 80 < `ConfirmDialog` 90 < Radix `Select` 彈出面板 95 < `Toast` 100；聊天懸浮鈕 60。Sprint 329 前 Modal 是 `z-50`、頁首是 `z-[70]`，所以 Modal 開啟時頁首仍浮在遮罩之上、Select 在 Dialog 裡會被蓋住 | 集中在 `components/ui/{dialog,confirm-dialog,select,toast}.tsx`；頁面不自己寫 `z-*` |
 | 焦點 | `:focus-visible` 2px 主色外框、offset 2px | 全域規則，不要再寫 `focus:ring-*` |
 | 轉場 | `all 0.2s ease-out` | `transition-colors` |
 | 模式 | 只支援淺色 | `color-scheme: light`，不做 dark mode |
 
-## 4. 基礎元件（`frontend/src/components/ui/`）
+## 4. 元件目錄（`frontend/src/components/ui/`）
+
+> **這是視覺決定唯一允許存在的地方**（見 §9）。頁面與領域元件只組合下列元件，不自己寫視覺 class。Sprint 329 前這個目錄只有 11 個原子；缺的「配方」層（標題、表格、狀態、回饋…）是 Sprint 328 換皮要動 144 個檔案的原因（[ADR-001](../02_architecture/adr/ADR-001-ui-design-system-layering.md)）。
+
+### 4.1 原子
 
 | 元件 | 規格 |
 |---|---|
-| `Button` | 高 sm 32／預設 40／lg 48；radius-md；字重 500；變體 `default`（solid 主色）、`accent`、`destructive`、`outline`、`secondary`、`ghost`、`link`；停用＝disabled 底與字（不是 opacity） |
-| `Input`、`SelectTrigger` | 最小高 44、padding 10×16、1px 邊框、radius-md、16px；聚焦＝主色邊框＋外框；`aria-invalid`＝error 色；停用＝disabled 底與字 |
-| `Card` | `rounded-lg`、1px 邊框、`bg-rs-surface`、無陰影 |
-| `Alert` | `default`／`destructive`／`success`／`warning`，狀態色 token＋透明度 |
+| `Button` | 高 sm 32／預設 40／lg 48／`icon` 40 方形／`inline`（行內，高度跟著文字）；radius-md；字重 500；變體 `default`（solid 主色）、`accent`、`destructive`、`success`、`warning`（文字用 ink）、`outline`、`secondary`、`ghost`、`link`（主色）、`linkDestructive`、`linkSuccess`、`linkNeutral`（表格列內的文字連結式按鈕，搭配 `size="inline"`）；停用＝disabled 底與字（不是 opacity）。連結要長成按鈕：`<Link className={buttonVariants({ variant, size })}>` |
+| `Input`、`Textarea`、`NativeSelect`、`SelectTrigger`（Radix `Select`） | **單一規格 `field-styles.ts`**：單行固定高 44（`h-11`）、padding 8×16、1px 邊框（`--rs-border`）、radius-md、16px；聚焦＝主色邊框＋外框；`aria-invalid`＝error 色；停用＝disabled 底與字。`Textarea` 取消固定高、最小高 80。`NativeSelect` 是 `<select>` 的相容替代（`value`／`onChange(e)` 不變，Playwright 可 `selectOption`）；要自訂下拉面板才用 Radix 版 |
+| `Checkbox`、`Radio` | 原生控制項＋`accent-color: --rs-primary`（保留原生鍵盤與無障礙行為） |
+| `Label` | 14px／500／`text-rs-ink`。要上下排列加 `block mb-1`（版面 class 寫在頁面） |
+| `Card`（`asChild`） | `rounded-lg`、1px 邊框、`bg-rs-surface`、無陰影。整張卡片是連結：`<Card asChild><Link href=…>…</Link></Card>` |
+| `Alert` | `default`／`destructive`／`success`／`warning`，狀態色 token＋透明度，14px；頁面上的錯誤／成功／警告**橫幅**一律用它 |
 | `Badge` | 12px／500／padding 4×8／`rounded-sm`；語意變體＋設計稿變體（`promo`、`logistics`、`feature`、`rating`、`count`…） |
-| `Switch`、`Skeleton`、`Label`、`Pagination` | 同上述 token |
+| `Chip` | 可切換的小按鈕（篩選列、分頁籤、設施標籤）。選取態用 `selected`（輸出 `aria-pressed`），**不要用條件式 class 自己拼，E2E 也不要斷言 class 名** |
+| `Switch`、`Skeleton`、`Pagination` | 同上述 token |
+
+### 4.2 配方（頁面反覆出現的組合）
+
+| 元件 | 取代的手刻 | 備註 |
+|---|---|---|
+| `PageTitle`、`PageDescription` | `<h1 className="text-2xl font-semibold…">`、`<p className="mt-1 text-sm text-rs-ink-muted">` | 1:1 取代元素，版面 class（`mb-6`、`flex`）仍寫在頁面 |
+| `Table`、`TableHeader`、`TableBody`、`TableFooter`、`TableRow`、`TableHead`、`TableCell` | 10 張手刻 `<table>`（167 個 `thead/tbody/tr/th/td`） | `Table` 自帶外框（1px、`rounded-lg`）與橫向捲動容器；**不要再自己包 `overflow-x-auto` 或卡片容器**。表頭 12px／500／次要色／uppercase、儲存格 padding 12×16、列 hover 底色。欄位語意（對齊 `text-right`、次要欄 `text-rs-ink-muted`）寫在頁面 |
+| `LoadingState`、`EmptyState` | 「載入中...」置中區塊、各式「尚無…」空狀態 | `LoadingState` 預設文字「載入中...」；`EmptyState` 有 `icon`（emoji／圖示）、`title`、`description`、`action` |
+| `StatusBadge`＋`lib/status.ts` | 16 份各自為政的 `getStatusBadge` | `<StatusBadge domain="post" status={…} />`。「中文標籤＋語意色」集中在登錄表，**頁面不決定顏色**。語意規則：草稿＝outline、待審／審批中／部分到貨＝warning、啟用／已發布／已核准／已到貨／上架中＝success、停用／已封存／已下架＝secondary、駁回／取消／停權／終止＝destructive、已提交＝default。新增狀態只在 `status.ts` 加一列（E2E-UIDS-08 會驗證規則）。訂單、訂房、退貨、成員、付款、物流的狀態維持在各自的 `services/*.ts` |
+
+### 4.3 回饋與覆蓋層
+
+| 元件 | 用法 | 取代 |
+|---|---|---|
+| `toast`／`<Toaster />` | `toast.success('已儲存')`、`toast.error('刪除失敗')`、`toast.info(…)`。命令式，事件處理器與 `catch` 內可直接呼叫；成功／資訊 4 秒、錯誤 6 秒後自動消失，可手動關閉；錯誤 `role="alert"`、成功／資訊 `role="status"`；`data-testid="toast"`、`data-kind` | 113 個原生 `alert()` |
+| `confirmDialog()`／`<ConfirmDialogHost />` | `if (!(await confirmDialog({ message, confirmLabel: '刪除', destructive: true }))) return`。取消、ESC、點遮罩一律回 `false`；`data-testid="confirm-dialog"`／`confirm-dialog-confirm`／`confirm-dialog-cancel` | 19 個原生 `confirm()`（刪除、取消確認） |
+| `Dialog`（Radix） | `<Dialog open onOpenChange={…}><DialogContent><DialogTitle>…</DialogTitle>…</DialogContent></Dialog>`。焦點鎖定、ESC、`aria-modal`、遮罩 `bg-black/50`。**一定要有 `DialogTitle`**；沒有說明文字時在 `DialogContent` 傳 `aria-describedby={undefined}` | 5 個手刻 `fixed inset-0` Modal |
+
+`<Toaster />` 與 `<ConfirmDialogHost />` 已在根 layout（`app/layout.tsx`）各掛一次，**不要在別處再掛**。
 
 ## 5. 外殼：每個頁面都在其中一個之下
 
@@ -80,13 +107,19 @@
 
 ## 6. 守門
 
-ESLint 規則 `design-tokens/no-raw-palette`（`frontend/eslint-rules/design-tokens.mjs`）檢查所有字串字面值與 template literal 的靜態片段，禁止：
+`frontend/eslint-rules/design-tokens.mjs`（同一個 plugin，`npm run lint`，pre-commit／CI／pre-push 都會跑）。錯誤訊息會直接指出該改成什麼。
 
-1. Tailwind 預設色盤 class：`bg|text|border|ring|divide|fill|stroke|from|to|via|outline|decoration|placeholder-<色>-<色階>`（含 `hover:`／`focus:` 前綴、`/透明度`、`border-t-…`、`ring-offset-…`）；
-2. 陰影 class：`shadow`、`shadow-sm|md|lg|xl|2xl|xs|2xs|inner`（`shadow-none` 允許）；
-3. class 裡的任意 hex：`bg-[#123456]`。
+| 規則 | 範圍 | 禁止 |
+|---|---|---|
+| `design-tokens/no-raw-palette`（Sprint 328） | 全部 `src/**` | ① Tailwind 預設色盤 class（`bg\|text\|border\|ring\|divide\|fill\|stroke\|from\|to\|via\|outline\|decoration\|placeholder-<色>-<色階>`，含 `hover:`／`focus:` 前綴、`/透明度`）；② 陰影 class（`shadow-*`，`shadow-none` 允許）；③ class 裡的任意 hex（`bg-[#123456]`） |
+| `design-tokens/no-native-dialog`（Sprint 329） | 全部 `src/**` | 全域的 `alert()`／`confirm()`／`prompt()`（含 `window.`）；同名區域變數（`alerts.map((alert) => …)`）不算 |
+| `design-tokens/no-removed-utility`（Sprint 329） | 全部 `src/**` | Tailwind v3 已移除的 `bg\|text\|border\|ring\|divide\|placeholder-opacity-*`（`bg-black bg-opacity-50` 在 v4 會變成**純黑不透明**）；專案沒定義的語意色 `destructive`／`warning`／`info`（`text-warning` 沒有任何樣式）。這兩類「不報錯、只是靜靜地沒有效果」 |
+| `design-tokens/no-raw-control`（Sprint 329） | `src/**`，**豁免** `components/ui`、`components/layout`、`components/theme` | 原生 `<button>`、`<input>`、`<select>`、`<textarea>`、`<label>`、`<table>`／`<thead>`／`<tbody>`／`<tfoot>`／`<tr>`／`<th>`／`<td>` |
+| `design-tokens/no-ui-recipe`（Sprint 329） | 同上豁免 | 手刻「已有元件」的配方：`<h1 className="text-2xl font-semibold…">`（→ `PageTitle`）、`bg-rs-error/10`＋`text-rs-error`＋`border`（→ `Alert`）、`flex items-center justify-center h-64`（→ `LoadingState`）、`text-center py-12 text-rs-ink-muted`（→ `EmptyState`）、`fixed inset-0`（→ `Dialog`）、`bg-white border rounded-lg`（→ `Card`） |
 
-錯誤訊息會直接建議該改成什麼。**要新增設計稿沒有的顏色，不是在頁面裡寫死，而是先改 `globals.css`（五套主題同步）並在設計稿層面確認。**
+**例外必須逐行明列**：領域專用控制項（月曆日期格、星等評分鈕、對話列、設計稿 DS 元件 `SortToolbar`／`SidebarNav` 的選項）用 `// eslint-disable-next-line design-tokens/no-raw-control -- <理由>`；目前 5 處，新增例外要在 code review 說明為什麼不能用 `Button`／`Chip`。
+
+**要新增設計稿沒有的顏色，不是在頁面裡寫死，而是先改 `globals.css`（五套主題同步）並在設計稿層面確認。**
 
 ## 7. 原始色盤 → token 對照（Sprint 328 遷移時使用，新程式碼也可參照）
 
@@ -110,3 +143,86 @@ ESLint 規則 `design-tokens/no-raw-palette`（`frontend/eslint-rules/design-tok
 - 共用的店面 Header（頂欄一排連結＋搜尋列）在 390px 寬度會橫向溢出（既有，非 Sprint 328 造成；追蹤表 `DEF-454`）。賣家外殼在 390px 沒有溢出，側欄可收合。
 - 賣家側欄有 27 項，自己會捲動；目前頁會自動捲到側欄中間。
 - 設計稿沒有 dark mode，專案也不做。
+- **Sprint 328 的「統一」只對走 `ui/*` 的控制項成立**：手刻與原生的輸入框、下拉、多行輸入、按鈕、表格當時沒有吃到規格（Sprint 329 實測：原生 `<select>` 17 個只有 1 個達 44px；textarea 10 個內距全是 12px；按鈕字重非 500 占 49%）。Sprint 329 起這些都走元件並由 lint 守門（§9）。
+- 設計稿的 `warning`（亮黃）不可當文字色；`Button variant="warning"` 因此用 ink 文字。
+- 這輪沒有的元件：`Avatar`、`IconButton`（設計稿有，專案沒有使用處）、`Tabs`（篩選用 `Chip`）、`Tooltip`、`DropdownMenu`。需要時照 §9.4 新增，不要手刻。
+
+## 9. 分層、頁面怎麼寫、新增元件、完成定義（Sprint 329）
+
+> 背景與證據：[SPRINT_329_PLAN.md](../04_planning/SPRINT_329_PLAN.md)（四角色檢視）；決策：[ADR-001](../02_architecture/adr/ADR-001-ui-design-system-layering.md)；需求：[FRD §9 NFR-UI-001～006](../01_requirements/HOMEPAGE_TEMPLATE_INTEGRATION_FRD.md)。
+
+### 9.1 誰可以寫視覺 class
+
+| 層 | 位置 | 可以寫視覺 class（顏色、圓角、框、陰影、字級、字重、padding…）嗎 |
+|---|---|---|
+| 值（token） | `app/globals.css` | 是（唯一定義顏色／圓角／字族的地方） |
+| 原子＋配方＋回饋 | `components/ui/*` | **是（唯一允許）** |
+| 外殼 | `components/layout/*`、`components/theme/*` | 是（外殼自己的版面） |
+| 領域元件、頁面 | `components/<領域>/*`、`app/**` | **否**：只做語意組合與**版面 utility**（`flex`、`grid`、`gap-*`、`w-*`、`max-w-*`、`mt-*`／`mb-*`、`col-span-*`、`text-right`、響應式前綴） |
+
+換皮成本取決於「有多少檔案知道這個設計決定」——所以頁面不該知道。
+
+### 9.2 頁面怎麼寫
+
+```tsx
+// ✅ 頁面只說「是什麼」
+<PageTitle>貼文管理</PageTitle>
+<Table>
+  <TableHeader><TableRow><TableHead>標題</TableHead><TableHead className="text-right">操作</TableHead></TableRow></TableHeader>
+  <TableBody>{posts.map((p) => (
+    <TableRow key={p.id}>
+      <TableCell>{p.title}</TableCell>
+      <TableCell className="text-right"><StatusBadge domain="post" status={p.status} /></TableCell>
+    </TableRow>
+  ))}</TableBody>
+</Table>
+if (loading) return <LoadingState />
+if (!rows.length) return <EmptyState title="尚無貼文" action={<Button>新增</Button>} />
+if (!(await confirmDialog({ message: '確定要刪除嗎？', confirmLabel: '刪除', destructive: true }))) return
+toast.success('刪除成功')
+
+// ❌ 頁面不要自己決定「長什麼樣」
+<h1 className="text-2xl font-semibold text-rs-ink">…</h1>          // → PageTitle
+<input className="border rounded px-3 py-1.5 text-sm" />            // → Input／NativeSelect／Textarea
+<div className="bg-rs-error/10 border border-rs-error/30 …">…</div> // → Alert variant="destructive"
+alert('已儲存'); confirm('確定？')                                   // → toast／confirmDialog
+```
+
+### 9.3 E2E 怎麼寫（QA）
+
+- **斷言語意與實際樣式，不斷言 class 名**：選取態斷言 `aria-pressed`（`Chip`）、刪除線斷言 `toHaveCSS('text-decoration-line', 'line-through')`、通知斷言 `getByTestId('toast')`（`data-kind`）、確認框用 `confirm-dialog-confirm`／`confirm-dialog-cancel`。換皮改 class 名時，E2E 不該紅。
+- **不再有原生對話框**：不需要 `page.on('dialog')`；若某個流程又出現原生對話框，是 `no-native-dialog` 應該擋下的缺陷。
+- 設計系統契約在 `frontend/e2e/at-ui-design-system.spec.ts`（全程 mock、量實際 computed style）；外殼與主題在 `at-ui-design-base.spec.ts`。
+- 同 role 的新元素會讓泛用查詢變多（Playwright strict mode）：`Toast` 區域掛在 `body` 末端、不在任何 `main` 內；E2E 目前沒有 `getByRole('alert'|'status'|'dialog')` 查詢，新增這類查詢前先確認不會撞到 `Alert`／`Toast`／`Dialog`。
+
+### 9.4 新增或修改元件的流程（SD）
+
+1. **先確認真的需要新元件**：同一個配方在 ≥3 個地方出現、或有「長相由設計決定」的語意。只出現一次的版面不要抽。
+2. 放在 `components/ui/`，檔名 `kebab-case`，沿用 `forwardRef`＋`cn`＋`cva`；API 克制（優先 `variant`／`size`，避免 prop 森林）；顏色只用 `rs-*` token。
+3. **把它取代的手刻配方登記進 `eslint-rules/design-tokens.mjs` 的 `RECIPES`**（若是原生元素就加進 `RAW_CONTROLS`）——這一步讓「已有元件的配方不能再手刻」成為制度。
+4. 加進本文件 §4 的目錄；若它改變可觀察的規格（高度、圓角、框色…），在 `at-ui-design-system.spec.ts` 加對應的契約。
+5. 用掃描腳本或 AST 遷移既有用法（先乾跑、冪等），再 `type-check`＋`lint`；**不要只改一部分頁面就停**——一半手刻、一半元件是最糟的狀態。
+
+### 9.5 完成定義（DoD）：任何新增或修改 UI 的工作
+
+- [ ] `npm run type-check`、`npm run lint` 為 0（含本文件 §6 的全部規則）。
+- [ ] 沒有手刻配方、沒有原生表單／表格元素（領域專用控制項逐行 `eslint-disable` 並寫理由）。
+- [ ] 顏色／圓角／陰影沒有寫死；狀態顏色走 `lib/status.ts`；確認與通知走 `confirmDialog`／`toast`。
+- [ ] 新增頁面放在 §5 對應目錄（自動套用外殼），沒有自己組頂欄／頁尾／`min-h-screen`。
+- [ ] 有 E2E 或契約覆蓋新的行為（尤其破壞性操作的確認流程）；斷言語意而非 class 名。
+- [ ] 看過截圖（桌面＋390px 手機各一張），沒有溢出、疊在一起、不可讀的對比。
+
+### 9.6 換皮成本模型（Sprint 329 換皮演練實測）
+
+> 演練方法與數字見 [SPRINT_329_PLAN.md](../04_planning/SPRINT_329_PLAN.md) §7.3：對 `ui/*` 與 `globals.css` 做一次合成的重新設計（圓角 8→14、主色、欄位高 44→48、頁面標題 24→30、表頭 12→14、徽章全圓角、警示框線 2px、卡片 16px），**動 7 個檔案（`globals.css`＋6 個 ui 元件）、0 個頁面**；全站 81 條路由實測：欄位 155／155、單行欄位高度 145／145、主色按鈕 55／55、`<h1>` 61／61、表頭 46／46 跟著變（未跟上的 5 個按鈕本來就不用 `radius-md`）。同一次重新設計在 Sprint 328 的程式碼上，含手刻配方、不會自動跟著變的檔案約 **119 個**（靜態估計）。
+>
+> **例外（目前不會自動跟著 `ui/*` 變）**：外殼（`components/layout`、`components/theme`）與 5 處逐行 `eslint-disable` 的領域控件／DS 元件（`SidebarNav`、`SortToolbar`、`MonthCalendar`、`ReviewStars`、`ConversationList`），以及頁面裡少數對 ui 元件的視覺 className 覆寫（`account` 的外框危險鈕、`inventory` 的低庫存警示卡）。它們用到 `rounded-md`、`rs-*` 時仍會跟著 token 變。
+
+| 想改的東西 | 改哪裡 |
+|---|---|
+| 顏色、字族、圓角比例 | `app/globals.css`（五套主題同步） |
+| 所有欄位的高度、框、字級、padding | `components/ui/field-styles.ts`（一個字串） |
+| 按鈕、徽章、卡片、警示、表格、頁面標題、載入／空狀態、確認框、通知的外觀 | 各自對應的 `components/ui/*.tsx`（一個檔案） |
+| 頂欄、側欄、頁尾 | `components/layout/*` |
+| 某個狀態的顏色或文字 | `lib/status.ts`（一列） |
+| **頁面** | **不用改**——頁面不知道這些決定 |

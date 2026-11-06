@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import TenantDetail from '@/components/tenant/TenantDetail'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { LoadingState } from '@/components/ui/states'
 
 interface TenantDetailPageProps {
   params: Promise<{
@@ -34,9 +36,7 @@ export default function TenantDetailPage({ params }: TenantDetailPageProps) {
       <div>
         <main>
           <div>
-            <div className="flex items-center justify-center h-64">
-              <div className="text-rs-ink-muted">載入中...</div>
-            </div>
+            <LoadingState />
           </div>
         </main>
       </div>
@@ -48,10 +48,10 @@ export default function TenantDetailPage({ params }: TenantDetailPageProps) {
       <main>
         <div>
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-rs-ink">店鋪詳情</h1>
-            <p className="mt-1 text-sm text-rs-ink-muted">
+            <PageTitle>店鋪詳情</PageTitle>
+            <PageDescription>
               檢視店鋪詳細資訊
-            </p>
+            </PageDescription>
           </div>
           <TenantDetail tenantId={tenantId} />
         </div>

@@ -9,6 +9,7 @@ import { ProductCard } from "@/components/storefront/ProductCard"
 import { Pagination } from "@/components/ui/pagination"
 import { Skeleton } from "@/components/ui/skeleton"
 import listingService, { type Listing, type Page } from "@/services/listing"
+import { Button } from "@/components/ui/button"
 
 const CATEGORIES = [
   { id: "all", label: "全部商品" },
@@ -147,13 +148,14 @@ export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
         >
           <p className="text-lg text-rs-ink">載入失敗，請稍後再試</p>
           <p className="text-sm text-rs-ink-muted">請確認網路連線後重試</p>
-          <button
+          <Button
+            variant="default"
             type="button"
             onClick={handleRetry}
-            className="mt-2 inline-flex items-center justify-center bg-rs-primary text-white rounded-md px-6 py-2.5 text-sm font-medium transition-colors hover:bg-rs-primary-hover"
+            className="mt-2"
           >
             重新載入
-          </button>
+          </Button>
         </div>
       ) : data && data.content.length > 0 ? (
         <div

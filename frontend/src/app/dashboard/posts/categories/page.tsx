@@ -10,6 +10,16 @@ import {
   CreateCategoryRequest,
   UpdateCategoryRequest
 } from '@/services/cms';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
+import { PageTitle } from '@/components/ui/page-title';
+import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { StatusBadge } from '@/components/ui/status-badge';
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<CategoryResponse[]>([]);
@@ -31,7 +41,7 @@ export default function CategoriesPage() {
       setCategories(data.categories);
     } catch (error) {
       console.error('Failed to load categories:', error);
-      alert('載入分類失敗，請稍後再試');
+      toast.error('載入分類失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
@@ -61,100 +71,98 @@ export default function CategoriesPage() {
           description: description || undefined,
         };
         await updateCategory(editingId, data);
-        alert('分類已更新');
+        toast.success('分類已更新');
       } else {
         const data: CreateCategoryRequest = {
           name,
           description: description || undefined,
         };
         await createCategory(data);
-        alert('分類已建立');
+        toast.success('分類已建立');
       }
       setShowForm(false);
       loadCategories();
     } catch (error) {
       console.error('Failed to save category:', error);
-      alert('儲存分類失敗，請稍後再試');
+      toast.error('儲存分類失敗，請稍後再試');
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete(categoryId: string) {
-    if (!confirm('確定要刪除這個分類嗎？')) return;
+    if (!(await confirmDialog({ message: '確定要刪除這個分類嗎？', confirmLabel: '刪除', destructive: true }))) return;
     try {
       await deleteCategory(categoryId);
       loadCategories();
     } catch (error) {
       console.error('Failed to delete category:', error);
-      alert('刪除分類失敗，請稍後再試');
+      toast.error('刪除分類失敗，請稍後再試');
     }
   }
 
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">貼文分類管理</h1>
-        <button
+        <PageTitle>貼文分類管理</PageTitle>
+        <Button
+          variant="default"
           onClick={openCreateForm}
-          className="bg-rs-primary text-white px-4 py-2 rounded hover:bg-rs-primary-hover"
         >
           新增分類
-        </button>
+        </Button>
       </div>
 
       {/* Category Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-semibold mb-4">
-              {editingId ? '編輯分類' : '新增分類'}
-            </h2>
+        <Dialog open onOpenChange={(open) => { if (!open) setShowForm(false); }}>
+          <DialogContent className="max-w-md" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>{editingId ? '編輯分類' : '新增分類'}</DialogTitle>
+            </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-rs-ink mb-1">
+                <Label className="block mb-1">
                   名稱 *
-                </label>
-                <input
+                </Label>
+                <Input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-rs-primary focus:border-rs-primary"
                   placeholder="分類名稱"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-rs-ink mb-1">
+                <Label className="block mb-1">
                   描述
-                </label>
-                <textarea
+                </Label>
+                <Textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={3}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-rs-primary focus:border-rs-primary"
                   placeholder="分類描述（選填）"
                 />
               </div>
               <div className="flex justify-end gap-2">
-                <button
+                <Button
+                  variant="secondary"
                   type="button"
                   onClick={() => setShowForm(false)}
-                  className="bg-rs-hairline text-rs-ink px-4 py-2 rounded hover:bg-rs-hairline"
                 >
                   取消
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="default"
                   type="submit"
                   disabled={saving}
-                  className="bg-rs-primary text-white px-4 py-2 rounded hover:bg-rs-primary-hover disabled:opacity-50"
                 >
                   {saving ? '儲存中...' : '儲存'}
-                </button>
+                </Button>
               </div>
             </form>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* Categories List */}
@@ -163,67 +171,60 @@ export default function CategoriesPage() {
       ) : categories.length === 0 ? (
         <div className="text-center py-8 text-rs-ink-muted">尚無分類</div>
       ) : (
-        <div className="bg-white rounded-lg overflow-hidden border border-rs-hairline">
-          <table className="min-w-full">
-            <thead className="bg-rs-bg-base">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>
                   名稱
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">
+                </TableHead>
+                <TableHead>
                   描述
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">
+                </TableHead>
+                <TableHead>
                   排序
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">
+                </TableHead>
+                <TableHead>
                   狀態
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-rs-ink-muted uppercase">
+                </TableHead>
+                <TableHead className="text-right">
                   操作
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {categories.map((category) => (
-                <tr key={category.id} className="hover:bg-rs-bg-base">
-                  <td className="px-4 py-3 font-medium">{category.name}</td>
-                  <td className="px-4 py-3 text-rs-ink-muted">
+                <TableRow key={category.id}>
+                  <TableCell className="font-medium">{category.name}</TableCell>
+                  <TableCell className="text-rs-ink-muted">
                     {category.description || '-'}
-                  </td>
-                  <td className="px-4 py-3 text-rs-ink-muted">
+                  </TableCell>
+                  <TableCell className="text-rs-ink-muted">
                     {category.sortOrder}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs ${
-                        category.isActive
-                          ? 'bg-rs-success/10 text-rs-success'
-                          : 'bg-rs-disabled-bg text-rs-ink'
-                      }`}
-                    >
-                      {category.isActive ? '啟用' : '停用'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge domain="activation" status={category.isActive ? 'ACTIVE' : 'INACTIVE'} />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="link"
+                      size="inline"
                       onClick={() => openEditForm(category)}
-                      className="text-rs-primary hover:text-rs-primary-hover text-sm mr-2"
+                      className="mr-2"
                     >
                       編輯
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="linkDestructive"
+                      size="inline"
                       onClick={() => handleDelete(category.id)}
-                      className="text-rs-error hover:text-rs-error/80 text-sm"
                     >
                       刪除
-                    </button>
-                  </td>
-                </tr>
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
       )}
     </div>
   );

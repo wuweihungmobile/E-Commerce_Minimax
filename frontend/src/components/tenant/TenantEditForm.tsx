@@ -16,6 +16,9 @@ import {
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
+import { Textarea } from '@/components/ui/textarea'
+import { LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
 
 // Tenant status enum（Sprint 146：對齊後端 Tenant.TenantStatus 實際值域，先前的 PENDING/APPROVED 從未存在）
 type TenantStatus = 'PENDING_REVIEW' | 'ACTIVE' | 'REJECTED' | 'SUSPENDED' | 'TERMINATED'
@@ -264,18 +267,16 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error && !tenant) {
     return (
       <div className="space-y-4">
-        <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md">
+        <Alert variant="destructive">
           {error}
-        </div>
+        </Alert>
         <Link href="/dashboard/tenants">
           <Button variant="outline">返回店鋪列表</Button>
         </Link>
@@ -305,9 +306,9 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
           {error && (
-            <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md text-sm">
+            <Alert variant="destructive">
               {error}
-            </div>
+            </Alert>
           )}
 
           <div className="space-y-2">
@@ -378,10 +379,10 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="storeDescription">店鋪描述</Label>
-            <textarea
+            <Textarea
               id="storeDescription"
               name="storeDescription"
-              className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex"
               placeholder="介紹一下您的店鋪（選填，最多 1000 字）"
               maxLength={1000}
               value={formData.storeDescription}

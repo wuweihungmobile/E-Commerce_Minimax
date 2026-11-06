@@ -11,6 +11,9 @@ import InventoryService, {
 } from '@/services/erp/inventory'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
 
 export default function InventoryPage() {
   const router = useRouter()
@@ -70,17 +73,15 @@ export default function InventoryPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error) {
     return (
-      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+      <Alert variant="destructive">
         {error}
-      </div>
+      </Alert>
     )
   }
 
@@ -112,40 +113,36 @@ export default function InventoryPage() {
 
           {inventory.length === 0 ? (
             <Card>
-              <CardContent className="flex flex-col items-center justify-center h-48">
-                <p className="text-rs-ink-muted">尚無庫存資料</p>
-              </CardContent>
+              <EmptyState title="尚無庫存資料" className="h-48" />
             </Card>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-rs-hairline border">
-                <thead className="bg-rs-bg-base">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">SKU</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">品名</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-rs-ink-muted uppercase">庫存</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-rs-ink-muted uppercase">可用</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">狀態</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-rs-hairline">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>SKU</TableHead>
+                    <TableHead>品名</TableHead>
+                    <TableHead className="text-right">庫存</TableHead>
+                    <TableHead className="text-right">可用</TableHead>
+                    <TableHead>狀態</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {inventory.map((item) => (
-                    <tr key={item.skuId}>
-                      <td className="px-4 py-3 text-sm text-rs-ink">{item.skuCode}</td>
-                      <td className="px-4 py-3 text-sm text-rs-ink">{item.productName}</td>
-                      <td className="px-4 py-3 text-sm text-right">{item.quantity}</td>
-                      <td className="px-4 py-3 text-sm text-right">{item.availableQuantity}</td>
-                      <td className="px-4 py-3 text-sm">
+                    <TableRow key={item.skuId}>
+                      <TableCell className="text-sm text-rs-ink">{item.skuCode}</TableCell>
+                      <TableCell className="text-sm text-rs-ink">{item.productName}</TableCell>
+                      <TableCell className="text-sm text-right">{item.quantity}</TableCell>
+                      <TableCell className="text-sm text-right">{item.availableQuantity}</TableCell>
+                      <TableCell className="text-sm">
                         {(() => {
                           const status = getStockStatus(item.availableQuantity, item.lowStockThreshold)
                           return <Badge variant={status.variant}>{status.label}</Badge>
                         })()}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
           )}
 
           {totalPages > 1 && (
@@ -166,10 +163,7 @@ export default function InventoryPage() {
         <>
           {alerts.length === 0 ? (
             <Card>
-              <CardContent className="flex flex-col items-center justify-center h-48">
-                <p className="text-rs-ink-muted mb-2">目前沒有低庫存警告</p>
-                <p className="text-sm text-rs-disabled-text">所有商品庫存都處於安全範圍</p>
-              </CardContent>
+              <EmptyState className="h-48" title="目前沒有低庫存警告" description="所有商品庫存都處於安全範圍" />
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

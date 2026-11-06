@@ -6,6 +6,7 @@
  */
 
 import type { ConversationResponse } from '@/services/chat';
+import { Badge } from '@/components/ui/badge';
 
 interface ConversationListProps {
   conversations: ConversationResponse[];
@@ -47,6 +48,7 @@ export default function ConversationList({
         const selected = conversation.conversationId === selectedId;
         return (
           <li key={conversation.conversationId}>
+            {/* eslint-disable-next-line design-tokens/no-raw-control -- 可選取的對話列：整列是一個按鈕（含名稱與未讀徽章），不是視覺按鈕；列的規格由本元件決定 */}
             <button
               type="button"
               data-testid={`conversation-item-${conversation.conversationId}`}
@@ -60,12 +62,13 @@ export default function ConversationList({
                   {otherPartyName(conversation, currentUserId)}
                 </span>
                 {unread > 0 && (
-                  <span
+                  <Badge
+                    variant="destructive"
                     data-testid={`conversation-unread-${conversation.conversationId}`}
-                    className="ml-2 inline-flex items-center justify-center rounded-full bg-rs-error px-2 py-0.5 text-xs font-medium text-white"
+                    className="ml-2"
                   >
                     {unread}
-                  </span>
+                  </Badge>
                 )}
               </div>
               <div className="mt-1 text-xs text-rs-ink-muted truncate">

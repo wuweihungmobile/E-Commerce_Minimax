@@ -16,6 +16,17 @@ import {
   getListingCard,
   ListingCardResponse,
 } from '@/services/cms';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { NativeSelect } from '@/components/ui/native-select';
+import { Input } from '@/components/ui/input';
+import { PageTitle } from '@/components/ui/page-title';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { StatusBadge } from '@/components/ui/status-badge';
 
 export default function EditPostPage() {
   const router = useRouter();
@@ -55,7 +66,7 @@ export default function EditPostPage() {
       parseEmbedCards(data.content);
     } catch (error) {
       console.error('Failed to load post:', error);
-      alert('載入貼文失敗');
+      toast.error('載入貼文失敗');
       router.push('/cms');
     } finally {
       setInitialLoading(false);
@@ -90,11 +101,11 @@ export default function EditPostPage() {
   async function handleSubmit(e: React.FormEvent, autoPublish = false) {
     e.preventDefault();
     if (!formData.title?.trim()) {
-      alert('請輸入標題');
+      toast.error('請輸入標題');
       return;
     }
     if (!formData.content?.trim()) {
-      alert('請輸入內容');
+      toast.error('請輸入內容');
       return;
     }
 
@@ -104,14 +115,14 @@ export default function EditPostPage() {
 
       if (autoPublish && post?.status === 'DRAFT') {
         await publishPost(postId);
-        alert('貼文已更新並發布');
+        toast.success('貼文已更新並發布');
       } else {
-        alert('貼文已儲存');
+        toast.success('貼文已儲存');
       }
       loadPost();
     } catch (error) {
       console.error('Failed to update post:', error);
-      alert('更新貼文失敗，請稍後再試');
+      toast.error('更新貼文失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
@@ -121,11 +132,11 @@ export default function EditPostPage() {
     if (post?.status === 'DRAFT') {
       try {
         await publishPost(postId);
-        alert('貼文已發布');
+        toast.success('貼文已發布');
         loadPost();
       } catch (error) {
         console.error('Failed to publish post:', error);
-        alert('發布失敗，請稍後再試');
+        toast.error('發布失敗，請稍後再試');
       }
     }
   }
@@ -134,24 +145,24 @@ export default function EditPostPage() {
     if (post?.status === 'PUBLISHED') {
       try {
         await unpublishPost(postId);
-        alert('貼文已下架');
+        toast.success('貼文已下架');
         loadPost();
       } catch (error) {
         console.error('Failed to unpublish post:', error);
-        alert('下架失敗，請稍後再試');
+        toast.error('下架失敗，請稍後再試');
       }
     }
   }
 
   async function handleDelete() {
-    if (!confirm('確定要刪除這篇貼文嗎？')) return;
+    if (!(await confirmDialog({ message: '確定要刪除這篇貼文嗎？', confirmLabel: '刪除', destructive: true }))) return;
     try {
       await deletePost(postId);
-      alert('貼文已刪除');
+      toast.success('貼文已刪除');
       router.push('/cms');
     } catch (error) {
       console.error('Failed to delete post:', error);
-      alert('刪除失敗，請稍後再試');
+      toast.error('刪除失敗，請稍後再試');
     }
   }
 
@@ -177,24 +188,6 @@ export default function EditPostPage() {
     }, 500);
   }
 
-  const getStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      DRAFT: 'bg-rs-disabled-bg text-rs-ink',
-      PUBLISHED: 'bg-rs-success/10 text-rs-success',
-      ARCHIVED: 'bg-rs-warning/15 text-rs-ink',
-    };
-    const labels: Record<string, string> = {
-      DRAFT: '草稿',
-      PUBLISHED: '已發布',
-      ARCHIVED: '已歸檔',
-    };
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs ${styles[status] || ''}`}>
-        {labels[status] || status}
-      </span>
-    );
-  };
-
   if (initialLoading) {
     return <div className="p-6 text-center">載入中...</div>;
   }
@@ -210,37 +203,36 @@ export default function EditPostPage() {
           <Link href="/cms" className="text-rs-ink-muted hover:text-rs-ink">
             ← 返回
           </Link>
-          <h1 className="text-2xl font-semibold">編輯貼文</h1>
+          <PageTitle>編輯貼文</PageTitle>
         </div>
         <div className="flex items-center gap-2">
-          {getStatusBadge(post.status)}
+          <StatusBadge domain="post" status={post.status} />
         </div>
       </div>
 
       <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-6">
         {/* Title */}
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">
+          <Label className="block mb-1">
             標題 <span className="text-rs-error">*</span>
-          </label>
-          <input
+          </Label>
+          <Input
             type="text"
             value={formData.title || ''}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-            className="w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary"
           />
         </div>
 
         {/* Content */}
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">
+          <Label className="block mb-1">
             內容 <span className="text-rs-error">*</span>
-          </label>
-          <textarea
+          </Label>
+          <Textarea
             value={formData.content || ''}
             onChange={handleContentChange}
             rows={12}
-            className="w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary font-mono text-sm"
+            className="font-mono"
           />
           <p className="mt-1 text-xs text-rs-ink-muted">
             嵌入商品卡語法: {'{{embed:listing:<listingId>}}'}
@@ -253,7 +245,7 @@ export default function EditPostPage() {
             <h3 className="text-sm font-medium text-rs-ink mb-3">嵌入商品卡預覽</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Array.from(embedCards.entries()).map(([listingId, card]) => (
-                <div key={listingId} className="border rounded p-3 bg-white">
+                <Card key={listingId} className="p-3">
                   <div className="flex gap-3">
                     {card.coverImageUrl && (
                       // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
@@ -273,7 +265,7 @@ export default function EditPostPage() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </Card>
               ))}
             </div>
           </div>
@@ -281,24 +273,23 @@ export default function EditPostPage() {
 
         {/* Category */}
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">分類</label>
-          <select
+          <Label className="block mb-1">分類</Label>
+          <NativeSelect
             value={formData.categoryId || ''}
             onChange={(e) => setFormData({ ...formData, categoryId: e.target.value || undefined })}
-            className="w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary"
           >
             <option value="">選擇分類</option>
             {categories.map((cat) => (
               <option key={cat.id} value={cat.id}>{cat.name}</option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
 
         {/* Tags */}
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">標籤</label>
+          <Label className="block mb-1">標籤</Label>
           <div className="flex gap-2 mb-2">
-            <input
+            <Input
               type="text"
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
@@ -308,43 +299,41 @@ export default function EditPostPage() {
                   handleAddTag();
                 }
               }}
-              className="flex-1 px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary"
+              className="flex-1"
             />
-            <button
+            <Button
+              variant="secondary"
               type="button"
               onClick={handleAddTag}
-              className="px-4 py-2 bg-rs-disabled-bg text-rs-ink rounded-md hover:bg-rs-hairline"
             >
               新增
-            </button>
+            </Button>
           </div>
           <div className="flex flex-wrap gap-2">
             {(formData.tags || []).map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center gap-1 px-2 py-1 bg-rs-tertiary text-rs-primary rounded-full text-sm"
-              >
+              <Badge key={tag} variant="secondary" className="gap-1">
                 {tag}
-                <button
+                <Button
                   type="button"
+                  variant="link"
+                  size="inline"
+                  aria-label={`移除標籤 ${tag}`}
                   onClick={() => handleRemoveTag(tag)}
-                  className="hover:text-rs-primary-hover"
                 >
                   ×
-                </button>
-              </span>
+                </Button>
+              </Badge>
             ))}
           </div>
         </div>
 
         {/* Featured Image */}
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">精選圖片 URL</label>
-          <input
+          <Label className="block mb-1">精選圖片 URL</Label>
+          <Input
             type="text"
             value={formData.featuredImageUrl || ''}
             onChange={(e) => setFormData({ ...formData, featuredImageUrl: e.target.value || undefined })}
-            className="w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-rs-primary"
           />
           {formData.featuredImageUrl && (
             // eslint-disable-next-line @next/next/no-img-element -- 封面／精選圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns
@@ -369,41 +358,37 @@ export default function EditPostPage() {
 
         {/* Actions */}
         <div className="flex gap-3 pt-4 border-t">
-          <button
+          <Button
+            variant="default"
             type="submit"
             disabled={loading}
-            className="px-4 py-2 bg-rs-primary text-white rounded-md hover:bg-rs-primary-hover disabled:opacity-50"
           >
             儲存變更
-          </button>
+          </Button>
 
           {post.status === 'DRAFT' && (
-            <button
+            <Button
+              variant="success"
               type="button"
               onClick={handlePublish}
-              className="px-4 py-2 bg-rs-success text-white rounded-md hover:bg-rs-success/90"
             >
               發布
-            </button>
+            </Button>
           )}
 
           {post.status === 'PUBLISHED' && (
-            <button
+            <Button
+              variant="warning"
               type="button"
               onClick={handleUnpublish}
-              className="px-4 py-2 bg-rs-warning text-white rounded-md hover:bg-rs-warning/90"
             >
               下架
-            </button>
+            </Button>
           )}
 
-          <button
-            type="button"
-            onClick={handleDelete}
-            className="px-4 py-2 text-rs-error hover:text-rs-error/80"
-          >
+          <Button type="button" variant="linkDestructive" onClick={handleDelete}>
             刪除
-          </button>
+          </Button>
 
           <Link
             href="/cms"

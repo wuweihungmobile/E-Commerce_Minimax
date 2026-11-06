@@ -4,6 +4,9 @@ import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import AuthService, { getApiErrorInfo } from '@/services/auth'
+import { Alert } from '@/components/ui/alert'
+import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 
 type Status = 'verifying' | 'success' | 'invalid' | 'error'
 
@@ -50,9 +53,9 @@ function VerifyEmailContent() {
   if (status === 'success') {
     return (
       <div className="space-y-6" data-testid="verify-email-success">
-        <div className="bg-rs-success/10 border border-rs-success/30 text-rs-success px-4 py-3 rounded">
+        <Alert variant="success">
           Your email has been verified.
-        </div>
+        </Alert>
         <Link href="/dashboard" className="block text-center font-medium text-rs-primary hover:text-rs-primary">
           Continue
         </Link>
@@ -62,20 +65,21 @@ function VerifyEmailContent() {
 
   return (
     <div className="space-y-6" data-testid="verify-email-failed">
-      <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded">
+      <Alert variant="destructive">
         {status === 'invalid'
           ? 'This verification link is invalid or has expired. Links can only be used once and expire after 24 hours.'
           : 'We could not verify your email right now. Please try again later.'}
-      </div>
+      </Alert>
       {AuthService.isAuthenticated() ? (
         <div className="space-y-2 text-center">
-          <button
+          <Button
+            variant="link"
+            size="inline"
             type="button"
             onClick={handleResend}
-            className="font-medium text-rs-primary hover:text-rs-primary"
           >
             Send me a new verification email
-          </button>
+          </Button>
           {resendMessage && <p className="text-sm text-rs-ink-muted">{resendMessage}</p>}
         </div>
       ) : (
@@ -90,12 +94,12 @@ function VerifyEmailContent() {
 export default function VerifyEmailPage() {
   return (
     <div className="flex-1 flex items-center justify-center px-4 py-12">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg border border-rs-hairline">
+      <Card className="max-w-md w-full space-y-8 p-8">
         <h2 className="text-center text-3xl font-semibold text-rs-ink">Verify your email</h2>
         <Suspense fallback={null}>
           <VerifyEmailContent />
         </Suspense>
-      </div>
+      </Card>
     </div>
   )
 }

@@ -10,6 +10,10 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState } from '@/components/ui/states'
+import { confirmDialog } from '@/components/ui/confirm-dialog'
+import { toast } from '@/components/ui/toast'
 
 const EMPTY_FORM: AddressInput = {
   recipientName: '',
@@ -135,12 +139,12 @@ export default function AddressesPage() {
   }
 
   async function handleDelete(address: Address) {
-    if (!confirm(`確定要刪除「${address.recipientName}」的地址嗎？`)) return
+    if (!(await confirmDialog({ message: `確定要刪除「${address.recipientName}」的地址嗎？`, confirmLabel: '刪除', destructive: true }))) return
     try {
       await AddressService.remove(address.id)
       await reload()
     } catch (err) {
-      alert(extractErrorMessage(err, '刪除地址失敗'))
+      toast.error(extractErrorMessage(err, '刪除地址失敗'))
     }
   }
 
@@ -149,7 +153,7 @@ export default function AddressesPage() {
       await AddressService.setDefault(address.id)
       await reload()
     } catch (err) {
-      alert(extractErrorMessage(err, '設定預設地址失敗'))
+      toast.error(extractErrorMessage(err, '設定預設地址失敗'))
     }
   }
 
@@ -157,10 +161,10 @@ export default function AddressesPage() {
     <StorefrontShell>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-rs-ink">收貨地址簿</h1>
-          <p className="mt-1 text-sm text-rs-ink-muted">
+          <PageTitle>收貨地址簿</PageTitle>
+          <PageDescription>
             {loading ? '載入中…' : `共 ${addresses.length} 筆地址`}
-          </p>
+          </PageDescription>
         </div>
         <Button onClick={startCreate}>新增地址</Button>
       </div>
@@ -250,12 +254,7 @@ export default function AddressesPage() {
         </div>
       ) : addresses.length === 0 && !error ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <div className="text-5xl mb-4">📍</div>
-            <h2 className="text-lg font-semibold text-rs-ink mb-1">尚無收貨地址</h2>
-            <p className="text-sm text-rs-ink-muted mb-6">新增常用地址，結帳時可快速選用</p>
-            <Button onClick={startCreate}>新增地址</Button>
-          </CardContent>
+          <EmptyState icon="📍" title="尚無收貨地址" description="新增常用地址，結帳時可快速選用" action={<Button onClick={startCreate}>新增地址</Button>} className="py-16" />
         </Card>
       ) : (
         <div className="space-y-4">

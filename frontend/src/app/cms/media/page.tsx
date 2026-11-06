@@ -10,6 +10,13 @@ import {
   MediaResponse,
 } from '@/services/cms';
 import { AuthenticatedImage } from '@/components/ui/authenticated-image';
+import { Input } from '@/components/ui/input';
+import { PageTitle } from '@/components/ui/page-title';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Chip } from '@/components/ui/chip';
+import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 export default function MediaLibraryPage() {
   const [mediaList, setMediaList] = useState<MediaResponse[]>([]);
@@ -35,7 +42,7 @@ export default function MediaLibraryPage() {
       setTotalPages(data.totalPages);
     } catch (error) {
       console.error('Failed to load media:', error);
-      alert('載入媒體庫失敗，請稍後再試');
+      toast.error('載入媒體庫失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
@@ -49,7 +56,7 @@ export default function MediaLibraryPage() {
     // Validate file type
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'application/pdf'];
     if (!allowedTypes.includes(file.type)) {
-      alert('不支援的檔案類型');
+      toast.error('不支援的檔案類型');
       return;
     }
 
@@ -64,18 +71,18 @@ export default function MediaLibraryPage() {
     };
     const maxSize = maxSizes[file.type] || 10 * 1024 * 1024;
     if (file.size > maxSize) {
-      alert('檔案大小超過限制');
+      toast.error('檔案大小超過限制');
       return;
     }
 
     setUploading(true);
     try {
       await uploadMediaMultipart(file);
-      alert('上傳成功');
+      toast.success('上傳成功');
       loadMedia();
     } catch (error) {
       console.error('Failed to upload media:', error);
-      alert('上傳失敗，請稍後再試');
+      toast.error('上傳失敗，請稍後再試');
     } finally {
       setUploading(false);
     }
@@ -93,16 +100,16 @@ export default function MediaLibraryPage() {
   }
 
   async function handleDelete(mediaId: string) {
-    if (!confirm('確定要刪除這個媒體檔案嗎？')) return;
+    if (!(await confirmDialog({ message: '確定要刪除這個媒體檔案嗎？', confirmLabel: '刪除', destructive: true }))) return;
     try {
       await deleteMedia(mediaId);
-      alert('刪除成功');
+      toast.success('刪除成功');
       loadMedia();
     } catch (error) {
       console.error('Failed to delete media:', error);
       const errObj = error as { response?: { data?: { message?: string } } };
       const message = errObj?.response?.data?.message || '刪除失敗，請稍後再試';
-      alert(message);
+      toast.error(message);
     }
   }
 
@@ -123,55 +130,51 @@ export default function MediaLibraryPage() {
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-semibold">媒體庫</h1>
+          <PageTitle>媒體庫</PageTitle>
           <Link href="/cms" className="text-rs-primary hover:text-rs-primary-hover text-sm">
             返回 CMS
           </Link>
         </div>
         <div>
-          <input
+          <Input
             ref={fileInputRef}
             type="file"
             accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,application/pdf"
             onChange={handleFileChange}
-            className="hidden"
+            className="hidden w-auto"
           />
-          <button
+          <Button
+            variant="default"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="bg-rs-primary text-white px-4 py-2 rounded hover:bg-rs-primary-hover disabled:opacity-50"
           >
             {uploading ? '上傳中...' : '上傳檔案'}
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Filter */}
       <div className="mb-4 flex gap-2">
-        <button
-          onClick={() => { setFilter(''); setPage(0); }}
-          className={`px-3 py-1 rounded ${!filter ? 'bg-rs-tertiary text-rs-primary' : 'bg-rs-disabled-bg'}`}
+        <Chip
+          onClick={() => { setFilter(''); setPage(0); }} selected={!filter}
         >
           全部 ({totalCount})
-        </button>
-        <button
-          onClick={() => { setFilter('IMAGE'); setPage(0); }}
-          className={`px-3 py-1 rounded ${filter === 'IMAGE' ? 'bg-rs-tertiary text-rs-primary' : 'bg-rs-disabled-bg'}`}
+        </Chip>
+        <Chip
+          onClick={() => { setFilter('IMAGE'); setPage(0); }} selected={filter === 'IMAGE'}
         >
           圖片
-        </button>
-        <button
-          onClick={() => { setFilter('VIDEO'); setPage(0); }}
-          className={`px-3 py-1 rounded ${filter === 'VIDEO' ? 'bg-rs-tertiary text-rs-primary' : 'bg-rs-disabled-bg'}`}
+        </Chip>
+        <Chip
+          onClick={() => { setFilter('VIDEO'); setPage(0); }} selected={filter === 'VIDEO'}
         >
           影片
-        </button>
-        <button
-          onClick={() => { setFilter('DOCUMENT'); setPage(0); }}
-          className={`px-3 py-1 rounded ${filter === 'DOCUMENT' ? 'bg-rs-tertiary text-rs-primary' : 'bg-rs-disabled-bg'}`}
+        </Chip>
+        <Chip
+          onClick={() => { setFilter('DOCUMENT'); setPage(0); }} selected={filter === 'DOCUMENT'}
         >
           文件
-        </button>
+        </Chip>
       </div>
 
       {/* Media Grid */}
@@ -183,9 +186,9 @@ export default function MediaLibraryPage() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {mediaList.map((media) => (
-              <div
+              <Card
                 key={media.id}
-                className="border rounded-lg overflow-hidden bg-white hover:border-rs-primary transition-colors"
+                className="overflow-hidden hover:border-rs-primary transition-colors"
               >
                 <div className="aspect-square flex items-center justify-center bg-rs-disabled-bg relative group">
                   {media.mimeType.startsWith('image/') ? (
@@ -199,12 +202,14 @@ export default function MediaLibraryPage() {
                   ) : (
                     <div className="text-4xl">{getFileIcon(media.mimeType)}</div>
                   )}
-                  <button
+                  <Button
+                    variant="destructive"
+                    size="icon"
                     onClick={() => handleDelete(media.id)}
-                    className="absolute top-2 right-2 w-6 h-6 bg-rs-error text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity text-sm"
+                    className="absolute top-2 right-2 w-6 h-6 opacity-0 group-hover:opacity-100"
                   >
                     ×
-                  </button>
+                  </Button>
                 </div>
                 <div className="p-2">
                   <div className="text-sm truncate" title={media.originalName}>
@@ -214,30 +219,32 @@ export default function MediaLibraryPage() {
                     {formatFileSize(media.fileSize)}
                   </div>
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="mt-6 flex justify-center gap-2">
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setPage(Math.max(0, page - 1))}
                 disabled={page === 0}
-                className="px-3 py-1 rounded bg-rs-disabled-bg disabled:opacity-50"
               >
                 上一頁
-              </button>
+              </Button>
               <span className="px-3 py-1">
                 第 {page + 1} 頁，共 {totalPages} 頁
               </span>
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
                 disabled={page >= totalPages - 1}
-                className="px-3 py-1 rounded bg-rs-disabled-bg disabled:opacity-50"
               >
                 下一頁
-              </button>
+              </Button>
             </div>
           )}
         </>

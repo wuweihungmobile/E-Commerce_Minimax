@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import PricingCalendarPreview from '@/components/pricing/PricingCalendarPreview'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
 
 // DEF-321(e)：PRD §10.1.2 列為獨立路由 /dashboard/pricing/calendar，
 // 但原實作只把 <PricingCalendarPreview /> 嵌在 /dashboard/pricing/rules 篩選房源 ID 之後，
@@ -26,10 +27,10 @@ export default function PricingCalendarPage() {
       <main>
         <div>
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-rs-ink">定價日曆預覽</h1>
-            <p className="mt-1 text-sm text-rs-ink-muted">
+            <PageTitle>定價日曆預覽</PageTitle>
+            <PageDescription>
               輸入房源 ID，預覽套用動態定價規則後的每日價格與可用狀態
-            </p>
+            </PageDescription>
           </div>
 
           <div className="mb-6 max-w-md">

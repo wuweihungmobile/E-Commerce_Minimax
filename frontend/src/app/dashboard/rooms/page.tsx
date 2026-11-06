@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import RoomList from '@/components/room/RoomList'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
 
 export default function RoomsPage() {
   const router = useRouter()
@@ -21,10 +22,10 @@ export default function RoomsPage() {
       <main>
         <div>
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-rs-ink">房源管理</h1>
-            <p className="mt-1 text-sm text-rs-ink-muted">
+            <PageTitle>房源管理</PageTitle>
+            <PageDescription>
               管理您的房源資料，上下架房源
-            </p>
+            </PageDescription>
           </div>
           <RoomList />
         </div>

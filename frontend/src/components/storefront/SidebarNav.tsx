@@ -41,6 +41,7 @@ export function SidebarNav({
           const isActive = item.id === active
           return (
             <li key={item.id}>
+              {/* eslint-disable-next-line design-tokens/no-raw-control -- 設計稿 DS 元件 SidebarNav：導覽項（左側色條＋選取底色）是它自己的視覺規格，不是通用按鈕 */}
               <button
                 type="button"
                 onClick={() => onSelect?.(item.id)}

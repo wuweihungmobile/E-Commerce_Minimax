@@ -376,7 +376,7 @@ test.describe('E2E-M11-012: PRODUCT 動態定價雙向顯示（AI-2406c）', () 
     // 折扣項：原價刪除線 + 綠標「省」
     const discOriginal = page.getByTestId(`cart-original-price-${discountKey}`);
     await expect(discOriginal).toBeVisible({ timeout: 10000 });
-    await expect(discOriginal).toHaveClass(/line-through/);
+    await expect(discOriginal).toHaveCSS('text-decoration-line', 'line-through'); // 斷言實際樣式，不斷言 class 名
     const discBadge = page.getByTestId(`cart-adjust-badge-${discountKey}`);
     await expect(discBadge).toContainText('商品早鳥 15% off');
     await expect(discBadge).toContainText('省');
@@ -384,7 +384,7 @@ test.describe('E2E-M11-012: PRODUCT 動態定價雙向顯示（AI-2406c）', () 
     // 漲價項：原價不刪除線 + 橙標「加價」
     const markupOriginal = page.getByTestId(`cart-original-price-${markupKey}`);
     await expect(markupOriginal).toBeVisible();
-    await expect(markupOriginal).not.toHaveClass(/line-through/);
+    await expect(markupOriginal).toHaveCSS('text-decoration-line', 'none');
     const markupBadge = page.getByTestId(`cart-adjust-badge-${markupKey}`);
     await expect(markupBadge).toContainText('商品旺季加成 30%');
     await expect(markupBadge).toContainText('加價');

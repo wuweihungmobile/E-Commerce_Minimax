@@ -6,6 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Pagination } from '@/components/ui/pagination'
 import apiClient from '@/lib/axios'
+import { Label } from '@/components/ui/label'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
 
 interface AuditLog {
   id: string
@@ -101,10 +105,10 @@ export default function AdminAuditLogsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">稽核紀錄</h1>
-        <p className="text-muted-foreground">
+        <PageTitle>稽核紀錄</PageTitle>
+        <PageDescription>
           共 {totalElements} 筆平台管理操作紀錄
-        </p>
+        </PageDescription>
       </div>
 
       <Card>
@@ -114,7 +118,7 @@ export default function AdminAuditLogsPage() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">操作類型</label>
+              <Label className="text-muted-foreground mb-1 block">操作類型</Label>
               <Input
                 placeholder="如 TENANT_APPROVED"
                 value={actionFilter}
@@ -122,7 +126,7 @@ export default function AdminAuditLogsPage() {
               />
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">開始日期</label>
+              <Label className="text-muted-foreground mb-1 block">開始日期</Label>
               <Input
                 type="date"
                 value={startDate}
@@ -130,7 +134,7 @@ export default function AdminAuditLogsPage() {
               />
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">結束日期</label>
+              <Label className="text-muted-foreground mb-1 block">結束日期</Label>
               <Input
                 type="date"
                 value={endDate}
@@ -148,23 +152,19 @@ export default function AdminAuditLogsPage() {
       </Card>
 
       {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="text-rs-ink-muted">載入中...</div>
-        </div>
+        <LoadingState />
       ) : error ? (
         <div className="space-y-4">
-          <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md">
+          <Alert variant="destructive">
             {error}
-          </div>
+          </Alert>
           <Button variant="outline" onClick={() => fetchAuditLogs(currentPage)}>
             重試
           </Button>
         </div>
       ) : logs.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-rs-ink-muted">無符合條件的稽核紀錄</p>
-          </CardContent>
+          <EmptyState title="無符合條件的稽核紀錄" className="h-48" />
         </Card>
       ) : (
         <div className="space-y-3">

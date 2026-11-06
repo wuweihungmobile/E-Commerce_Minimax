@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import PurchaseOrderForm from '@/components/erp/PurchaseOrderForm'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle } from '@/components/ui/page-title'
 
 export default function NewPurchaseOrderPage() {
   const router = useRouter()
@@ -21,7 +22,7 @@ export default function NewPurchaseOrderPage() {
       <main>
         <div>
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-rs-ink">新增採購訂單</h1>
+            <PageTitle>新增採購訂單</PageTitle>
           </div>
           <PurchaseOrderForm mode="create" />
         </div>

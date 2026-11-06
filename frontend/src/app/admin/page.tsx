@@ -7,6 +7,9 @@ import AuthService from '@/services/auth'
 import apiClient from '@/lib/axios'
 import { API_ENDPOINTS } from '@/lib/api'
 import { loginHref } from '@/lib/auth-redirect'
+import { Alert } from '@/components/ui/alert'
+import { Card } from '@/components/ui/card'
+import { LoadingState } from '@/components/ui/states'
 
 // PRD §10.1.3 `/admin`（DEF-358(d)，Sprint 258）：平台管理台統一入口首頁。
 // 各功能頁（/admin/tenants 等）皆無前端角色守門，純依賴後端 403；本頁沿用同一慣例，
@@ -34,10 +37,10 @@ interface PurchaseOrderPendingListResponse {
 
 function StatCard({ label, value, href, testId }: { label: string; value: string; href?: string; testId?: string }) {
   const content = (
-    <div className="bg-white rounded-lg p-5 border border-rs-hairline">
+    <Card className="p-5">
       <p className="text-sm text-rs-ink-muted">{label}</p>
       <p className="mt-2 text-2xl font-semibold text-rs-ink">{value}</p>
-    </div>
+    </Card>
   )
   if (!href) return content
   return (
@@ -83,9 +86,7 @@ export default function AdminOverviewPage() {
 
   if (loading) {
     return (
-      <div className="min-h-[40vh] flex items-center justify-center">
-        <div className="text-lg text-rs-ink-muted">Loading...</div>
-      </div>
+      <LoadingState label="Loading..." className="h-auto min-h-[40vh]" />
     )
   }
 
@@ -95,9 +96,9 @@ export default function AdminOverviewPage() {
         <h2 className="text-lg font-medium text-rs-ink mb-4">平台總覽</h2>
 
         {error ? (
-          <div className="mb-6 rounded-md bg-rs-error/10 border border-rs-error/30 p-4 text-sm text-rs-error" data-testid="admin-overview-error">
+          <Alert variant="destructive" className="mb-6" data-testid="admin-overview-error">
             {error}
-          </div>
+          </Alert>
         ) : null}
 
         {/* 平台統計 */}

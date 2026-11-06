@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import ReturnService, {
   type ReturnRequest,
@@ -13,6 +13,9 @@ import ReturnService, {
 } from '@/services/returns'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { EmptyState, LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -51,16 +54,14 @@ export default function DashboardReturnsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
   if (error) {
     return (
       <div className="space-y-4">
-        <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">{error}</div>
+        <Alert variant="destructive">{error}</Alert>
         <Button variant="outline" onClick={fetchReturns}>重試</Button>
       </div>
     )
@@ -70,17 +71,15 @@ export default function DashboardReturnsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">退貨審核</h1>
-          <p className="text-muted-foreground">共 {returns.length} 筆退貨申請</p>
+          <PageTitle>退貨審核</PageTitle>
+          <PageDescription>共 {returns.length} 筆退貨申請</PageDescription>
         </div>
         <Button variant="outline" onClick={fetchReturns}>重新整理</Button>
       </div>
 
       {returns.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center h-48">
-            <p className="text-rs-ink-muted">尚無退貨申請</p>
-          </CardContent>
+          <EmptyState title="尚無退貨申請" className="h-48" />
         </Card>
       ) : (
         <div className="space-y-4">

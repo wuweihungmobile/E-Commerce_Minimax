@@ -16,6 +16,14 @@ import SupplierService, { SupplierDto } from '@/services/erp/supplier'
 import PurchaseOrderService from '@/services/erp/purchaseOrder'
 import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
+import { Label } from '@/components/ui/label'
+import { NativeSelect } from '@/components/ui/native-select'
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableFooter, TableCell } from '@/components/ui/table'
+import { LoadingState } from '@/components/ui/states'
+import { Alert } from '@/components/ui/alert'
+import { toast } from '@/components/ui/toast'
+import { confirmDialog } from '@/components/ui/confirm-dialog'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 interface PurchaseOrderFormProps {
   orderId?: string
@@ -205,34 +213,19 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
     }
   }
 
-  const getStatusBadge = (status: POStatus) => {
-    const config: Record<POStatus, { variant: 'default' | 'secondary' | 'destructive' | 'success' | 'outline' | 'warning'; label: string }> = {
-      DRAFT: { variant: 'outline', label: '草稿' },
-      SUBMITTED: { variant: 'default', label: '已提交' },
-      PENDING_APPROVAL: { variant: 'warning', label: '待審批' },
-      APPROVED: { variant: 'success', label: '已核准' },
-      REJECTED: { variant: 'destructive', label: '已駁回' },
-      PARTIALLY_RECEIVED: { variant: 'warning', label: '部分到貨' },
-      RECEIVED: { variant: 'success', label: '已到貨' },
-      CANCELLED: { variant: 'destructive', label: '已取消' },
-    }
-    const c = config[status] || { variant: 'outline', label: status }
-    return <span className={`px-2 py-1 text-xs rounded-full ${c.variant === 'success' ? 'bg-rs-success/10 text-rs-success' : c.variant === 'destructive' ? 'bg-rs-error/10 text-rs-error' : 'bg-rs-disabled-bg text-rs-ink'}`}>{c.label}</span>
-  }
-
   const handleCreate = async () => {
     if (!formData.supplierId) {
-      alert('請選擇供應商')
+      toast.error('請選擇供應商')
       return
     }
     if (items.length === 0 || !items[0].listingId) {
-      alert('請至少新增一個品項')
+      toast.error('請至少新增一個品項')
       return
     }
     // Sprint 178：skuId 缺失時收貨不會真正入庫（見 SkuManager 元件說明），前端強制要求選擇規格
     const selectedItems = items.filter(item => item.listingId)
     if (selectedItems.some(item => !item.skuId)) {
-      alert('請為每個品項選擇規格（SKU）；若商品尚未建立規格，請先至商品編輯頁新增')
+      toast.error('請為每個品項選擇規格（SKU）；若商品尚未建立規格，請先至商品編輯頁新增')
       return
     }
 
@@ -251,7 +244,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
         })),
       }
       await PurchaseOrderService.createPurchaseOrder(request)
-      alert('採購訂單建立成功')
+      toast.success('採購訂單建立成功')
       router.push('/dashboard/erp/purchase-orders')
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
@@ -271,7 +264,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
     setError(null)
     try {
       await PurchaseOrderService.submitPurchaseOrder(orderId)
-      alert('採購訂單已提交')
+      toast.success('採購訂單已提交')
       router.push('/dashboard/erp/purchase-orders')
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
@@ -304,7 +297,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
     try {
       const request: PurchaseOrderReceiveRequest = { items: receiveItems }
       await PurchaseOrderService.receivePurchaseOrder(orderId, request)
-      alert('收貨確認成功')
+      toast.success('收貨確認成功')
       router.push('/dashboard/erp/purchase-orders')
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
@@ -327,7 +320,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
         notes: formData.notes,
         expectedDeliveryDate: formData.expectedDeliveryDate || undefined,
       })
-      alert('採購訂單已更新')
+      toast.success('採購訂單已更新')
       router.push('/dashboard/erp/purchase-orders')
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
@@ -343,12 +336,12 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
 
   const handleCancel = async () => {
     if (!orderId) return
-    if (!confirm('確定要取消此採購訂單嗎？')) return
+    if (!(await confirmDialog({ message: '確定要取消此採購訂單嗎？', destructive: true }))) return
     setLoading(true)
     setError(null)
     try {
       await PurchaseOrderService.cancelPurchaseOrder(orderId)
-      alert('採購訂單已取消')
+      toast.success('採購訂單已取消')
       router.push('/dashboard/erp/purchase-orders')
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
@@ -364,9 +357,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
 
   if (initialLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-rs-ink-muted">載入中...</div>
-      </div>
+      <LoadingState />
     )
   }
 
@@ -393,21 +384,21 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
             {mode === 'view' && '採購訂單詳情'}
             {mode === 'receive' && '收貨確認'}
           </CardTitle>
-          {orderStatus && getStatusBadge(orderStatus)}
+          {orderStatus && <StatusBadge domain="purchaseOrder" status={orderStatus} />}
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
         {error && (
-          <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+          <Alert variant="destructive">
             {error}
-          </div>
+          </Alert>
         )}
 
         {orderStatus === 'REJECTED' && rejectionReason && (
-          <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded-md">
+          <Alert variant="destructive">
             <p className="text-sm font-medium">駁回原因</p>
             <p className="text-sm mt-1">{rejectionReason}</p>
-          </div>
+          </Alert>
         )}
 
         {mode !== 'create' && orderId && (
@@ -420,25 +411,24 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">供應商 *</label>
+                <Label>供應商 *</Label>
                 {mode === 'create' ? (
-                  <select
+                  <NativeSelect
                     value={formData.supplierId}
                     onChange={handleSupplierChange}
-                    className="w-full border rounded-md px-3 py-2"
                   >
                     <option value="">請選擇供應商</option>
                     {suppliers.map(s => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 ) : (
                   <Input value={formData.supplierId} disabled />
                 )}
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">預計到貨日期</label>
+                <Label>預計到貨日期</Label>
                 <Input
                   type="date"
                   value={formData.expectedDeliveryDate}
@@ -448,7 +438,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">備註</label>
+              <Label>備註</Label>
               <Input
                 value={formData.notes}
                 onChange={handleNotesChange}
@@ -460,7 +450,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
 
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <label className="text-sm font-medium">訂貨品項</label>
+            <Label>訂貨品項</Label>
             {mode === 'create' && (
               <Button type="button" variant="outline" size="sm" onClick={addItem}>
                 + 新增品項
@@ -468,44 +458,42 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
             )}
           </div>
 
-          <div className="border rounded-md">
-            <table className="min-w-full divide-y divide-rs-hairline">
-              <thead className="bg-rs-bg-base">
-                <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-rs-ink-muted">商品</th>
+            <Table density="compact">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>商品</TableHead>
                   {mode === 'create' && (
-                    <th className="px-3 py-2 text-left text-xs font-medium text-rs-ink-muted">規格（SKU）</th>
+                    <TableHead>規格（SKU）</TableHead>
                   )}
-                  <th className="px-3 py-2 text-left text-xs font-medium text-rs-ink-muted">品名</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-rs-ink-muted">數量</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-rs-ink-muted">單價</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-rs-ink-muted">小計</th>
+                  <TableHead>品名</TableHead>
+                  <TableHead className="text-right">數量</TableHead>
+                  <TableHead className="text-right">單價</TableHead>
+                  <TableHead className="text-right">小計</TableHead>
                   {mode === 'receive' && (
                     <>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-rs-ink-muted">已收</th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-rs-ink-muted">本次收貨</th>
+                      <TableHead className="text-right">已收</TableHead>
+                      <TableHead className="text-right">本次收貨</TableHead>
                     </>
                   )}
-                  {mode === 'create' && <th className="w-16"></th>}
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-rs-hairline">
+                  {mode === 'create' && <TableHead className="w-16"></TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {items.map((item, index) => (
-                  <tr key={index}>
-                    <td className="px-3 py-2">
+                  <TableRow key={index}>
+                    <TableCell>
                       {isViewMode || mode === 'edit' ? (
                         <span className="text-sm">{item.skuCode || item.skuId}</span>
                       ) : mode === 'create' ? (
-                        <select
+                        <NativeSelect
                           value={item.listingId}
                           onChange={(e) => handleListingChange(index, e.target.value)}
-                          className="w-full border rounded-md px-3 py-2"
                         >
                           <option value="">請選擇商品</option>
                           {listingOptions.map(l => (
                             <option key={l.id} value={l.id}>{l.title}</option>
                           ))}
-                        </select>
+                        </NativeSelect>
                       ) : (
                         <Input
                           value={item.skuId}
@@ -513,9 +501,9 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
                           placeholder="SKU001"
                         />
                       )}
-                    </td>
+                    </TableCell>
                     {mode === 'create' && (
-                      <td className="px-3 py-2">
+                      <TableCell>
                         {(() => {
                           const listing = listingOptions.find(l => l.id === item.listingId)
                           if (!item.listingId) {
@@ -525,10 +513,9 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
                             return <span className="text-sm text-rs-error">尚未建立規格，請先至商品編輯頁新增</span>
                           }
                           return (
-                            <select
+                            <NativeSelect
                               value={item.skuId}
                               onChange={(e) => handleSkuChange(index, e.target.value)}
-                              className="w-full border rounded-md px-3 py-2"
                             >
                               <option value="">請選擇規格</option>
                               {listing.skus.map(s => (
@@ -536,12 +523,12 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
                                   {s.skuCode}{s.specName ? ` - ${s.specName}` : ''}
                                 </option>
                               ))}
-                            </select>
+                            </NativeSelect>
                           )
                         })()}
-                      </td>
+                      </TableCell>
                     )}
-                    <td className="px-3 py-2">
+                    <TableCell>
                       {isViewMode || mode === 'edit' ? (
                         <span className="text-sm">{item.productName}</span>
                       ) : (
@@ -551,8 +538,8 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
                           placeholder="商品名稱"
                         />
                       )}
-                    </td>
-                    <td className="px-3 py-2">
+                    </TableCell>
+                    <TableCell>
                       {isViewMode || mode === 'edit' ? (
                         <span className="text-sm text-right">{item.quantity}</span>
                       ) : (
@@ -564,8 +551,8 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
                           className="w-20 text-right"
                         />
                       )}
-                    </td>
-                    <td className="px-3 py-2">
+                    </TableCell>
+                    <TableCell>
                       {isViewMode || mode === 'edit' ? (
                         <span className="text-sm text-right">{item.unitPrice}</span>
                       ) : (
@@ -577,16 +564,16 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
                           className="w-24 text-right"
                         />
                       )}
-                    </td>
-                    <td className="px-3 py-2 text-right font-medium">
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
                       {item.subtotal.toLocaleString('zh-TW')}
-                    </td>
+                    </TableCell>
                     {isReceiveMode && (
                       <>
-                        <td className="px-3 py-2 text-right">
+                        <TableCell className="text-right">
                           <span className="text-sm">{item.receivedQuantity}</span>
-                        </td>
-                        <td className="px-3 py-2 text-right">
+                        </TableCell>
+                        <TableCell className="text-right">
                           <Input
                             type="number"
                             min="0"
@@ -595,11 +582,11 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
                             onChange={(e) => handleReceiveQtyChange(index, parseInt(e.target.value) || 0)}
                             className="w-20 text-right"
                           />
-                        </td>
+                        </TableCell>
                       </>
                     )}
                     {mode === 'create' && (
-                      <td className="px-3 py-2">
+                      <TableCell>
                         <Button
                           type="button"
                           variant="ghost"
@@ -609,21 +596,20 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
                         >
                           ✕
                         </Button>
-                      </td>
+                      </TableCell>
                     )}
-                  </tr>
+                  </TableRow>
                 ))}
-              </tbody>
-              <tfoot className="bg-rs-bg-base">
-                <tr>
-                  <td colSpan={mode === 'create' ? 5 : 4} className="px-3 py-2 text-right font-medium">總金額：</td>
-                  <td className="px-3 py-2 text-right font-bold text-lg">
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell colSpan={mode === 'create' ? 5 : 4} className="text-right font-medium">總金額：</TableCell>
+                  <TableCell className="text-right font-bold text-lg">
                     {totalAmount.toLocaleString('zh-TW')} 元
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+                  </TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
         </div>
       </CardContent>
 

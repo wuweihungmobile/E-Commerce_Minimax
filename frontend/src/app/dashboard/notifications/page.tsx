@@ -13,6 +13,19 @@ import {
   NOTIFICATION_TYPES,
   CHANNELS,
 } from '@/services/notification';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { NativeSelect } from '@/components/ui/native-select';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
+import { PageTitle } from '@/components/ui/page-title';
+import { EmptyState, LoadingState } from '@/components/ui/states';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { StatusBadge } from '@/components/ui/status-badge';
 
 interface TemplateFormState {
   templateCode: string;
@@ -79,7 +92,7 @@ export default function NotificationsPage() {
       setTotalElements(data.totalElements);
     } catch (error) {
       console.error('Failed to load templates:', error);
-      alert('載入通知模板失敗，請稍後再試');
+      toast.error('載入通知模板失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
@@ -118,7 +131,7 @@ export default function NotificationsPage() {
 
   async function handleSubmit() {
     if (!form.templateCode.trim() || !form.name.trim() || !form.contentTemplate.trim()) {
-      alert('模板代碼、名稱與內容為必填');
+      toast.error('模板代碼、名稱與內容為必填');
       return;
     }
     setSubmitting(true);
@@ -141,22 +154,22 @@ export default function NotificationsPage() {
       cancelForm();
       loadTemplates();
     } catch (error) {
-      alert(extractErrorMessage(error, editingId ? '更新模板失敗' : '新增模板失敗'));
+      toast.error(extractErrorMessage(error, editingId ? '更新模板失敗' : '新增模板失敗'));
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleDelete(templateId: string) {
-    if (!confirm('確定要刪除這個模板嗎？')) return;
+    if (!(await confirmDialog({ message: '確定要刪除這個模板嗎？', confirmLabel: '刪除', destructive: true }))) return;
     setDeleting(templateId);
     try {
       await deleteTemplate(templateId);
       loadTemplates();
-      alert('刪除成功');
+      toast.success('刪除成功');
     } catch (error) {
       console.error('Failed to delete template:', error);
-      alert('刪除失敗，請稍後再試');
+      toast.error('刪除失敗，請稍後再試');
     } finally {
       setDeleting(null);
     }
@@ -221,176 +234,181 @@ export default function NotificationsPage() {
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">通知模板</h1>
+        <PageTitle>通知模板</PageTitle>
         <div className="flex items-center gap-4">
           <div className="text-sm text-rs-ink-muted">
             總計 {totalElements} 個模板
           </div>
-          <button
+          <Button
+            variant="default"
+            size="sm"
             onClick={startCreate}
-            className="px-4 py-1.5 bg-rs-primary text-white rounded text-sm hover:bg-rs-primary-hover"
           >
             新增模板
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Filters */}
       <div className="mb-4 flex flex-wrap gap-4">
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">通知類型</label>
-          <select
+          <Label className="block mb-1">通知類型</Label>
+          <NativeSelect
             value={typeFilter}
             onChange={(e) => {
               setTypeFilter(e.target.value);
               setPage(0);
             }}
-            className="border rounded px-3 py-1.5 text-sm"
+            className="w-auto"
           >
             <option value="">全部類型</option>
             {NOTIFICATION_TYPES.map((type) => (
               <option key={type.value} value={type.value}>{type.label}</option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">頻道</label>
-          <select
+          <Label className="block mb-1">頻道</Label>
+          <NativeSelect
             value={channelFilter}
             onChange={(e) => {
               setChannelFilter(e.target.value);
               setPage(0);
             }}
-            className="border rounded px-3 py-1.5 text-sm"
+            className="w-auto"
           >
             <option value="">全部頻道</option>
             {CHANNELS.map((channel) => (
               <option key={channel.value} value={channel.value}>{channel.label}</option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <div>
-          <label className="block text-sm font-medium text-rs-ink mb-1">狀態</label>
-          <select
+          <Label className="block mb-1">狀態</Label>
+          <NativeSelect
             value={activeFilter}
             onChange={(e) => {
               setActiveFilter(e.target.value);
               setPage(0);
             }}
-            className="border rounded px-3 py-1.5 text-sm"
+            className="w-auto"
           >
             <option value="">全部</option>
             <option value="true">啟用</option>
             <option value="false">停用</option>
-          </select>
+          </NativeSelect>
         </div>
         <div className="flex items-end">
-          <button
+          <Button
+            variant="default"
+            size="sm"
             onClick={() => loadTemplates()}
-            className="px-4 py-1.5 bg-rs-primary text-white rounded text-sm hover:bg-rs-primary-hover"
           >
             篩選
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Templates Table */}
       {loading ? (
-        <div className="text-center py-12 text-rs-ink-muted">載入中...</div>
+        <LoadingState className="h-auto py-12" />
       ) : templates.length === 0 ? (
-        <div className="text-center py-12 text-rs-ink-muted">尚無模板</div>
+        <EmptyState title="尚無模板" />
       ) : (
         <>
-          <div className="bg-white rounded-lg overflow-hidden border border-rs-hairline">
-            <table className="min-w-full divide-y divide-rs-hairline">
-              <thead className="bg-rs-bg-base">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">模板名稱</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">類型</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">頻道</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">狀態</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">優先級</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-rs-ink-muted uppercase">更新日期</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-rs-ink-muted uppercase">操作</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-rs-hairline">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>模板名稱</TableHead>
+                  <TableHead>類型</TableHead>
+                  <TableHead>頻道</TableHead>
+                  <TableHead>狀態</TableHead>
+                  <TableHead>優先級</TableHead>
+                  <TableHead>更新日期</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {templates.map((template) => (
-                  <tr key={template.id} className="hover:bg-rs-bg-base">
-                    <td className="px-4 py-3">
+                  <TableRow key={template.id}>
+                    <TableCell>
                       <div className="text-sm font-medium text-rs-ink">{template.name}</div>
                       <div className="text-xs text-rs-ink-muted">{template.templateCode}</div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-rs-ink-muted">{getTypeLabel(template.notificationType)}</td>
-                    <td className="px-4 py-3 text-sm text-rs-ink-muted">{getChannelLabel(template.channel)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 text-xs rounded-full ${template.isActive ? 'bg-rs-success/10 text-rs-success' : 'bg-rs-disabled-bg text-rs-ink'}`}>
-                        {template.isActive ? '啟用' : '停用'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-rs-ink-muted">{template.priority}</td>
-                    <td className="px-4 py-3 text-sm text-rs-ink-muted">{formatDate(template.updatedAt)}</td>
-                    <td className="px-4 py-3 text-right text-sm space-x-2">
-                      <button
+                    </TableCell>
+                    <TableCell className="text-sm text-rs-ink-muted">{getTypeLabel(template.notificationType)}</TableCell>
+                    <TableCell className="text-sm text-rs-ink-muted">{getChannelLabel(template.channel)}</TableCell>
+                    <TableCell>
+                      <StatusBadge domain="activation" status={template.isActive ? 'ACTIVE' : 'INACTIVE'} />
+                    </TableCell>
+                    <TableCell className="text-sm text-rs-ink-muted">{template.priority}</TableCell>
+                    <TableCell className="text-sm text-rs-ink-muted">{formatDate(template.updatedAt)}</TableCell>
+                    <TableCell className="text-right text-sm space-x-2">
+                      <Button
+                        variant="link"
+                        size="inline"
                         onClick={() => handlePreview(template)}
-                        className="text-rs-primary hover:text-rs-primary-hover"
                       >
                         預覽
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="link"
+                        size="inline"
                         onClick={() => startEdit(template)}
-                        className="text-rs-primary hover:text-rs-primary-hover"
                       >
                         編輯
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="linkDestructive"
+                        size="inline"
                         onClick={() => handleDelete(template.id)}
                         disabled={deleting === template.id}
-                        className="text-rs-error hover:text-rs-error/80 disabled:opacity-50"
                       >
                         {deleting === template.id ? '刪除中...' : '刪除'}
-                      </button>
-                    </td>
-                  </tr>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
 
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex justify-center items-center gap-2 mt-6">
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(0)}
                 disabled={page === 0}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 首頁
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(page - 1)}
                 disabled={page === 0}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 上一頁
-              </button>
+              </Button>
               <span className="text-sm text-rs-ink-muted">
                 第 {page + 1} / {totalPages} 頁
               </span>
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(page + 1)}
                 disabled={page >= totalPages - 1}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 下一頁
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(totalPages - 1)}
                 disabled={page >= totalPages - 1}
-                className="px-3 py-1 text-sm border rounded disabled:opacity-50"
               >
                 末頁
-              </button>
+              </Button>
             </div>
           )}
         </>
@@ -398,132 +416,124 @@ export default function NotificationsPage() {
 
       {/* Create/Edit Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto border border-rs-hairline">
+        <Dialog open onOpenChange={(open) => { if (!open) cancelForm(); }}>
+          <DialogContent className="max-w-2xl gap-0 p-0" aria-describedby={undefined}>
             <div className="p-6 border-b">
-              <h2 className="text-lg font-semibold">{editingId ? '編輯模板' : '新增模板'}</h2>
+              <DialogTitle>{editingId ? '編輯模板' : '新增模板'}</DialogTitle>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-rs-ink mb-1">模板代碼 *</label>
-                <input
+                <Label className="block text-xs mb-1">模板代碼 *</Label>
+                <Input
                   type="text"
                   value={form.templateCode}
                   onChange={(e) => setForm({ ...form, templateCode: e.target.value })}
-                  className="border rounded px-3 py-1.5 text-sm w-full"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-rs-ink mb-1">名稱 *</label>
-                <input
+                <Label className="block text-xs mb-1">名稱 *</Label>
+                <Input
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="border rounded px-3 py-1.5 text-sm w-full"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-rs-ink mb-1">通知類型</label>
-                <select
+                <Label className="block text-xs mb-1">通知類型</Label>
+                <NativeSelect
                   value={form.notificationType}
                   onChange={(e) => setForm({ ...form, notificationType: e.target.value })}
-                  className="border rounded px-3 py-1.5 text-sm w-full"
                 >
                   {NOTIFICATION_TYPES.map((type) => (
                     <option key={type.value} value={type.value}>{type.label}</option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <div>
-                <label className="block text-xs font-medium text-rs-ink mb-1">頻道</label>
-                <select
+                <Label className="block text-xs mb-1">頻道</Label>
+                <NativeSelect
                   value={form.channel}
                   onChange={(e) => setForm({ ...form, channel: e.target.value })}
-                  className="border rounded px-3 py-1.5 text-sm w-full"
                 >
                   {CHANNELS.map((channel) => (
                     <option key={channel.value} value={channel.value}>{channel.label}</option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <div>
-                <label className="block text-xs font-medium text-rs-ink mb-1">主旨</label>
-                <input
+                <Label className="block text-xs mb-1">主旨</Label>
+                <Input
                   type="text"
                   value={form.subject}
                   onChange={(e) => setForm({ ...form, subject: e.target.value })}
-                  className="border rounded px-3 py-1.5 text-sm w-full"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-rs-ink mb-1">優先級</label>
-                <input
+                <Label className="block text-xs mb-1">優先級</Label>
+                <Input
                   type="number"
                   value={form.priority}
                   onChange={(e) => setForm({ ...form, priority: e.target.value })}
-                  className="border rounded px-3 py-1.5 text-sm w-full"
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-rs-ink mb-1">
+                <Label className="block text-xs mb-1">
                   內容 * (以 {'{{變數名稱}}'} 標示變數，儲存時系統會自動偵測)
-                </label>
-                <textarea
+                </Label>
+                <Textarea
                   value={form.contentTemplate}
                   onChange={(e) => setForm({ ...form, contentTemplate: e.target.value })}
                   rows={6}
-                  className="border rounded px-3 py-1.5 text-sm w-full font-mono"
+                  className="font-mono"
                 />
               </div>
               <div className="md:col-span-2 flex items-center gap-2">
-                <input
-                  type="checkbox"
+                <Checkbox
                   id="isActive"
                   checked={form.isActive}
                   onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
                 />
-                <label htmlFor="isActive" className="text-sm text-rs-ink">啟用</label>
+                <Label htmlFor="isActive">啟用</Label>
               </div>
             </div>
             <div className="flex gap-2 p-6 border-t">
-              <button
+              <Button
+                variant="default"
+                size="sm"
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="px-4 py-1.5 bg-rs-primary text-white rounded text-sm hover:bg-rs-primary-hover disabled:opacity-50"
               >
                 {submitting ? '儲存中...' : '儲存'}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={cancelForm}
-                className="px-4 py-1.5 border rounded text-sm hover:bg-rs-bg-base"
               >
                 取消
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* Preview Modal */}
       {previewTemplate && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto border border-rs-hairline">
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              setPreviewTemplate(null);
+              setPreviewContent(null);
+            }
+          }}
+        >
+          <DialogContent className="max-w-2xl gap-0 p-0">
             <div className="p-6 border-b">
-              <div className="flex justify-between items-center">
-                <h2 className="text-lg font-semibold">模板預覽: {previewTemplate.name}</h2>
-                <button
-                  onClick={() => {
-                    setPreviewTemplate(null);
-                    setPreviewContent(null);
-                  }}
-                  className="text-rs-ink-muted hover:text-rs-ink"
-                >
-                  ✕
-                </button>
-              </div>
-              <p className="text-sm text-rs-ink-muted mt-1">
+              <DialogTitle>模板預覽: {previewTemplate.name}</DialogTitle>
+              <DialogDescription className="mt-1">
                 類型: {getTypeLabel(previewTemplate.notificationType)} | 頻道: {getChannelLabel(previewTemplate.channel)}
-              </p>
+              </DialogDescription>
             </div>
             <div className="p-6">
               {previewLoading ? (
@@ -531,18 +541,18 @@ export default function NotificationsPage() {
               ) : previewContent ? (
                 <div>
                   <div className="mb-4">
-                    <label className="block text-sm font-medium text-rs-ink mb-1">主旨</label>
+                    <Label className="block mb-1">主旨</Label>
                     <div className="p-3 bg-rs-bg-base rounded text-sm">{previewContent.subject}</div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-rs-ink mb-1">內容</label>
+                    <Label className="block mb-1">內容</Label>
                     <div className="p-3 bg-rs-bg-base rounded text-sm whitespace-pre-wrap">{previewContent.content}</div>
                   </div>
                 </div>
               ) : null}
             </div>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

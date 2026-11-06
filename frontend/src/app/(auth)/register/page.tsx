@@ -4,6 +4,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import AuthService from '@/services/auth'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { Alert } from '@/components/ui/alert'
+import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -62,7 +67,7 @@ export default function RegisterPage() {
 
   return (
     <div className="flex-1 flex items-center justify-center px-4 py-12">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg border border-rs-hairline">
+      <Card className="max-w-md w-full space-y-8 p-8">
         <div>
           <h2 className="text-center text-3xl font-semibold text-rs-ink">
             Create your account
@@ -77,17 +82,17 @@ export default function RegisterPage() {
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
-            <div className="bg-rs-error/10 border border-rs-error/30 text-rs-error px-4 py-3 rounded">
+            <Alert variant="destructive">
               {error}
-            </div>
+            </Alert>
           )}
 
           <div className="space-y-4">
             <div>
-              <label htmlFor="fullName" className="block text-sm font-medium text-rs-ink">
+              <Label htmlFor="fullName" className="block">
                 Full Name
-              </label>
-              <input
+              </Label>
+              <Input
                 id="fullName"
                 name="fullName"
                 type="text"
@@ -95,17 +100,17 @@ export default function RegisterPage() {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-rs-primary focus:border-rs-primary placeholder:text-rs-ink-muted"
+                className="mt-1 block"
                 placeholder="John Doe"
                 suppressHydrationWarning
               />
             </div>
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-rs-ink">
+              <Label htmlFor="email" className="block">
                 Email address
-              </label>
-              <input
+              </Label>
+              <Input
                 id="email"
                 name="email"
                 type="email"
@@ -113,17 +118,17 @@ export default function RegisterPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-rs-primary focus:border-rs-primary placeholder:text-rs-ink-muted"
+                className="mt-1 block"
                 placeholder="you@example.com"
                 suppressHydrationWarning
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-rs-ink">
+              <Label htmlFor="password" className="block">
                 Password
-              </label>
-              <input
+              </Label>
+              <Input
                 id="password"
                 name="password"
                 type="password"
@@ -131,17 +136,17 @@ export default function RegisterPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-rs-primary focus:border-rs-primary placeholder:text-rs-ink-muted"
+                className="mt-1 block"
                 placeholder="••••••••"
                 suppressHydrationWarning
               />
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-rs-ink">
+              <Label htmlFor="confirmPassword" className="block">
                 Confirm Password
-              </label>
-              <input
+              </Label>
+              <Input
                 id="confirmPassword"
                 name="confirmPassword"
                 type="password"
@@ -149,22 +154,23 @@ export default function RegisterPage() {
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-rs-hairline rounded-md focus:outline-none focus:ring-rs-primary focus:border-rs-primary placeholder:text-rs-ink-muted"
+                className="mt-1 block"
                 placeholder="••••••••"
                 suppressHydrationWarning
               />
             </div>
           </div>
 
-          <button
+          <Button
+            variant="default"
             type="submit"
             disabled={loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md text-sm font-medium text-white bg-rs-primary hover:bg-rs-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rs-primary disabled:opacity-50"
+            className="w-full"
           >
             {loading ? 'Creating account...' : 'Create account'}
-          </button>
+          </Button>
         </form>
-      </div>
+      </Card>
     </div>
   )
 }

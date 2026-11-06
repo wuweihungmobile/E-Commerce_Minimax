@@ -11,6 +11,11 @@ import { notifyCartChanged } from "@/services/cartEvents"
 import bookingService, { type AvailabilityResponse } from "@/services/booking"
 import { MonthCalendar } from "@/components/storefront/MonthCalendar"
 import { toLocalDateString } from "@/lib/date"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { PageTitle } from "@/components/ui/page-title"
+import { buttonVariants, Button } from "@/components/ui/button"
+import { EmptyState } from "@/components/ui/states"
 
 type LoadState = "loading" | "ok" | "auth" | "notfound" | "error"
 
@@ -169,54 +174,47 @@ export function ListingDetail({ id }: { id: string }) {
 
   if (state === "auth") {
     return (
-      <div
+      <EmptyState
         data-testid="listing-auth-empty"
-        className="flex flex-col items-center justify-center py-24 text-center gap-3"
-      >
-        <p className="text-lg text-rs-ink">請先登入以查看商品詳情</p>
-        <Link
-          href="/login"
-          className="inline-flex items-center justify-center bg-rs-primary text-white rounded-md px-6 py-2.5 text-sm font-medium transition-colors hover:bg-rs-primary-hover"
-        >
-          前往登入
-        </Link>
-      </div>
+        className="py-24"
+        title="請先登入以查看商品詳情"
+        action={
+          <Link href="/login" className={buttonVariants({ variant: "default" })}>
+            前往登入
+          </Link>
+        }
+      />
     )
   }
 
   if (state === "notfound") {
     return (
-      <div
+      <EmptyState
         data-testid="listing-notfound"
-        className="flex flex-col items-center justify-center py-24 text-center gap-3"
-      >
-        <p className="text-lg text-rs-ink">找不到這個商品</p>
-        <p className="text-sm text-rs-ink-muted">商品可能已下架或不存在</p>
-        <Link
-          href="/"
-          className="inline-flex items-center justify-center border border-rs-hairline rounded-md px-6 py-2.5 text-sm font-medium text-rs-ink transition-colors hover:border-rs-primary"
-        >
-          回首頁逛逛
-        </Link>
-      </div>
+        className="py-24"
+        title="找不到這個商品"
+        description="商品可能已下架或不存在"
+        action={
+          <Link href="/" className={buttonVariants({ variant: "outline" })}>
+            回首頁逛逛
+          </Link>
+        }
+      />
     )
   }
 
   if (state === "error" || !listing) {
     return (
-      <div
+      <EmptyState
         data-testid="listing-error"
-        className="flex flex-col items-center justify-center py-24 text-center gap-3"
-      >
-        <p className="text-lg text-rs-ink">商品載入失敗</p>
-        <button
-          type="button"
-          onClick={handleRetry}
-          className="inline-flex items-center justify-center bg-rs-primary text-white rounded-md px-6 py-2.5 text-sm font-medium transition-colors hover:bg-rs-primary-hover"
-        >
-          重新載入
-        </button>
-      </div>
+        className="py-24"
+        title="商品載入失敗"
+        action={
+          <Button variant="default" type="button" onClick={handleRetry}>
+            重新載入
+          </Button>
+        }
+      />
     )
   }
 
@@ -261,7 +259,7 @@ export function ListingDetail({ id }: { id: string }) {
           ))}
         </div>
 
-        <h1 className="text-2xl font-semibold text-rs-ink leading-snug">{listing.title}</h1>
+        <PageTitle className="leading-snug">{listing.title}</PageTitle>
 
         <div className="flex items-baseline gap-2">
           <span className="text-3xl font-bold text-rs-primary">
@@ -293,35 +291,36 @@ export function ListingDetail({ id }: { id: string }) {
               }}
             />
             <div className="flex flex-col gap-1 sm:flex-row sm:gap-4">
-              <label className="flex flex-col gap-1 text-sm text-rs-ink">
+              <Label className="flex flex-col gap-1">
                 入住日期
-                <input
+                <Input
                   type="date"
                   data-testid="listing-checkin"
                   value={checkIn}
                   onChange={(e) => setCheckIn(e.target.value)}
-                  className="rounded-md border border-rs-hairline px-3 py-2 text-rs-ink outline-none focus:border-rs-primary"
+                  className="w-auto"
                 />
-              </label>
-              <label className="flex flex-col gap-1 text-sm text-rs-ink">
+              </Label>
+              <Label className="flex flex-col gap-1">
                 退房日期
-                <input
+                <Input
                   type="date"
                   data-testid="listing-checkout"
                   value={checkOut}
                   onChange={(e) => setCheckOut(e.target.value)}
-                  className="rounded-md border border-rs-hairline px-3 py-2 text-rs-ink outline-none focus:border-rs-primary"
+                  className="w-auto"
                 />
-              </label>
+              </Label>
             </div>
-            <button
+            <Button
+              variant="outline"
               type="button"
               onClick={handleCheckAvailability}
               disabled={checking}
-              className="self-start inline-flex items-center justify-center border border-rs-primary text-rs-primary rounded-md px-4 py-2 text-sm font-medium transition-colors hover:bg-rs-primary hover:text-white disabled:opacity-50"
+              className="self-start"
             >
               {checking ? "查詢中…" : "查詢可用性"}
-            </button>
+            </Button>
             {availError && <p className="text-sm text-rs-error">{availError}</p>}
             {availability && availability.available && (
               <div data-testid="listing-availability" className="text-sm text-rs-ink">
@@ -360,13 +359,10 @@ export function ListingDetail({ id }: { id: string }) {
                     {availability.appliedRuleName &&
                       availability.discountAmount != null &&
                       availability.discountAmount !== 0 && (
-                        <span
+                        <Badge
                           data-testid="listing-discount-badge"
-                          className={
-                            availability.discountAmount > 0
-                              ? "ml-2 inline-block rounded bg-rs-success/10 px-2 py-0.5 text-xs text-rs-success"
-                              : "ml-2 inline-block rounded bg-rs-warning/10 px-2 py-0.5 text-xs text-rs-warning"
-                          }
+                          variant={availability.discountAmount > 0 ? "success" : "warning"}
+                          className="ml-2"
                         >
                           {availability.appliedRuleName}｜
                           {availability.discountAmount > 0 ? "省 " : "加價 "}
@@ -374,7 +370,7 @@ export function ListingDetail({ id }: { id: string }) {
                             availability.currency ?? listing.currency,
                             Math.abs(availability.discountAmount)
                           )}
-                        </span>
+                        </Badge>
                       )}
                   </>
                 )}
@@ -393,9 +389,9 @@ export function ListingDetail({ id }: { id: string }) {
 
         {/* PRODUCT：數量 */}
         {!isRoom && (
-          <label className="flex items-center gap-3 text-sm text-rs-ink">
+          <Label className="flex items-center gap-3">
             數量
-            <input
+            <Input
               type="number"
               min={1}
               max={999}
@@ -405,23 +401,24 @@ export function ListingDetail({ id }: { id: string }) {
                 const v = parseInt(e.target.value, 10)
                 if (!isNaN(v) && v >= 1 && v <= 999) setQuantity(v)
               }}
-              className="w-20 rounded-md border border-rs-hairline px-3 py-2 text-center text-rs-ink outline-none focus:border-rs-primary"
+              className="w-20 text-center"
             />
-          </label>
+          </Label>
         )}
 
         {/* 加入購物車 */}
         <div className="flex flex-col gap-2">
-          <button
+          <Button
+            variant="default"
             type="button"
             onClick={handleAddToCart}
             disabled={adding || roomAddBlocked}
             data-testid="listing-add-cart"
-            className="inline-flex items-center justify-center gap-2 bg-rs-primary text-white rounded-md px-6 py-3 text-base font-medium transition-colors hover:bg-rs-primary-hover disabled:opacity-50"
+            className="gap-2"
           >
             <Star className="w-4 h-4" aria-hidden />
             {adding ? "加入中…" : "加入購物車"}
-          </button>
+          </Button>
           {added && (
             <p data-testid="listing-add-success" className="text-sm text-rs-success">
               已加入購物車！

@@ -14,6 +14,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -24,7 +25,10 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "faq_articles")
+// slug 在同一間店鋪內唯一（與 V29 的 uk_faq_articles_tenant_slug 一致）；不可在欄位上寫 unique = true，
+// 那會讓 Hibernate 建的資料庫變成全平台唯一（DEF-460）
+@Table(name = "faq_articles", uniqueConstraints = @UniqueConstraint(
+        name = "uk_faq_articles_tenant_slug", columnNames = {"tenant_id", "slug"}))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -53,7 +57,7 @@ public class FaqArticle {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String answer;
 
-    @Column(nullable = false, unique = true, length = 100)
+    @Column(nullable = false, length = 100)
     private String slug;
 
     @Column(name = "sort_order")

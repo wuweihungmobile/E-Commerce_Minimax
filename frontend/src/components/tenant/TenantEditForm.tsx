@@ -14,38 +14,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import apiClient from '@/lib/axios'
-import { API_ENDPOINTS } from '@/lib/api'
+import tenantService, { type TenantDetails as Tenant, type TenantUpdateRequest } from '@/services/tenant'
+import { getApiErrorInfo } from '@/lib/api-error'
 import { Textarea } from '@/components/ui/textarea'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
-
-// Tenant status enum（Sprint 146：對齊後端 Tenant.TenantStatus 實際值域，先前的 PENDING/APPROVED 從未存在）
-type TenantStatus = 'PENDING_REVIEW' | 'ACTIVE' | 'REJECTED' | 'SUSPENDED' | 'TERMINATED'
-
-// Tenant interface（Sprint 146：對齊 TenantDetailsResponse——欄位是 tenantId 不是 id；
-// contactPhone/updatedAt 先前後端從未回傳，本輪已補齊)
-interface Tenant {
-  tenantId: string
-  storeName: string
-  // DEF-321(b)（Sprint 252）：店鋪前台 /stores/{slug}，開店審核通過時自動產生，此處可修改
-  slug: string
-  // DEF-432：FRD US-M17-003 / AC-M17-003-1 允許店主修改店鋪描述（後端 ≤ 1000 字，沒填過是 null）
-  storeDescription?: string | null
-  businessType: string
-  contactEmail: string
-  contactPhone: string | null
-  status: TenantStatus
-  createdAt: string
-  updatedAt: string
-  purchaseOrderApprovalThreshold?: number | null
-}
-
-interface ApiResponse<T> {
-  success: boolean
-  data: T
-  message?: string
-}
 
 interface TenantEditFormProps {
   tenantId: string
@@ -99,10 +72,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
     setError(null)
 
     try {
-      const response = await apiClient.get<ApiResponse<Tenant>>(
-        API_ENDPOINTS.tenants.detail(tenantId)
-      )
-      const tenantData = response.data.data
+      const tenantData = await tenantService.getById(tenantId)
       setTenant(tenantData)
       setFormData({
         storeName: tenantData.storeName,
@@ -119,17 +89,13 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
             : '',
       })
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { status?: number; data?: { message?: string } } }
-        if (axiosErr.response?.status === 404) {
-          setError('找不到此店鋪')
-        } else if (axiosErr.response?.status === 403) {
-          setError('您沒有權限編輯此店鋪')
-        } else {
-          setError(axiosErr.response?.data?.message || '載入店鋪失敗')
-        }
+      const { status, message } = getApiErrorInfo(err)
+      if (status === 404) {
+        setError('找不到此店鋪')
+      } else if (status === 403) {
+        setError('您沒有權限編輯此店鋪')
       } else {
-        setError('載入店鋪失敗')
+        setError(message || '載入店鋪失敗')
       }
     } finally {
       setLoading(false)
@@ -226,7 +192,7 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
 
     try {
       // 後端 purchaseOrderApprovalThreshold 為 null = 不變更此設定，故留空時不送出此欄位
-      const payload: Record<string, unknown> = {
+      const payload: TenantUpdateRequest = {
         storeName: formData.storeName,
         slug: formData.slug,
         businessType: formData.businessType,
@@ -241,24 +207,20 @@ export default function TenantEditForm({ tenantId }: TenantEditFormProps) {
       if (formData.storeDescription !== (tenant?.storeDescription ?? '')) {
         payload.storeDescription = formData.storeDescription
       }
-      await apiClient.put(API_ENDPOINTS.tenants.update(tenantId), payload)
+      await tenantService.update(tenantId, payload)
       // 更新成功後導向至店鋪詳情頁
       router.push(`/dashboard/tenants/${tenantId}`)
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { status?: number; data?: { message?: string } } }
-        if (axiosErr.response?.status === 403) {
-          setError('您沒有權限編輯此店鋪，即將跳轉至上一頁...')
-          setTimeout(() => {
-            router.push('/dashboard/tenants')
-          }, 2000)
-        } else if (axiosErr.response?.status === 409) {
-          setError('此店鋪網址代稱已被使用，請換一個')
-        } else {
-          setError(axiosErr.response?.data?.message || '更新失敗，請稍後再試')
-        }
+      const { status, message } = getApiErrorInfo(err)
+      if (status === 403) {
+        setError('您沒有權限編輯此店鋪，即將跳轉至上一頁...')
+        setTimeout(() => {
+          router.push('/dashboard/tenants')
+        }, 2000)
+      } else if (status === 409) {
+        setError('此店鋪網址代稱已被使用，請換一個')
       } else {
-        setError('更新失敗，請稍後再試')
+        setError(message || '更新失敗，請稍後再試')
       }
     } finally {
       setSubmitting(false)

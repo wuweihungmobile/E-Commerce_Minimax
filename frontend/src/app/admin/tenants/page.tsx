@@ -7,64 +7,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Pagination } from '@/components/ui/pagination'
-import apiClient from '@/lib/axios'
+import adminService, { type AdminTenant as Tenant, type AdminTenantListParams, type TenantApplication } from '@/services/admin'
+import { apiErrorMessage } from '@/lib/api-error'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { StatusBadge } from '@/components/ui/status-badge'
 
-// Tenant interface - matches actual API response
-interface Tenant {
-  tenantId: string
-  name: string
-  status: 'PENDING_REVIEW' | 'ACTIVE' | 'SUSPENDED' | 'TERMINATED'
-  userCount?: number
-  listingCount?: number
-  createdAt: string
-  updatedAt: string
-  rejectReason?: string
-}
-
-/**
- * 待審核的開店申請（`tenant_applications` 表）。
- *
- * 🔴 這是與 `Tenant` **不同的實體**，兩者不可混用（Sprint 109，DEF-060）：
- * 網友送出的開店申請寫入 `tenant_applications`（status=PENDING），要等 Admin 核准，
- * 後端才會建立真正的 `Tenant`（直接就是 ACTIVE）。因此「待審核」分頁必須查
- * `/v2/admin/tenant-applications`，**不可**查 `/v2/admin/tenants?status=PENDING_REVIEW`
- * ——生產環境沒有任何路徑會讓 `Tenant` 進入 `PENDING_REVIEW`，那樣查永遠是空的，
- * 也正是本頁在 Sprint 109 之前的缺陷（申請送出後 Admin 永遠看不到）。
- */
-interface TenantApplication {
-  applicationId: string
-  userId: string
-  storeName: string
-  storeDescription?: string
-  businessType: string
-  contactEmail?: string
-  contactPhone?: string
-  status: string
-  submittedAt: string
-}
-
-interface ApiResponse<T> {
-  success: boolean
-  data: T
-  message?: string
-}
-
-interface TenantListResponse {
-  tenants: Tenant[]
-  totalCount: number
-  page: number
-  size: number
-  totalElements: number
-  totalPages: number
-}
-
-interface TenantApplicationListResponse {
-  applications: TenantApplication[]
-}
+// 「待審核」分頁查的是開店申請（TenantApplication），不是店鋪（Tenant）——兩者是不同實體，說明見 services/admin.ts。
 
 type FilterTab = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'
 
@@ -77,15 +27,6 @@ const FILTER_TO_STATUS: Record<FilterTab, Tenant['status'] | undefined> = {
 }
 
 const PAGE_SIZE = 20
-const APPLICATIONS_URL = '/v2/admin/tenant-applications'
-
-function extractErrorMessage(err: unknown, fallback: string): string {
-  if (err && typeof err === 'object' && 'response' in err) {
-    const axiosErr = err as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
-}
 
 export default function AdminTenantListPage() {
   const [tenants, setTenants] = useState<Tenant[]>([])
@@ -117,7 +58,7 @@ export default function AdminTenantListPage() {
     setError(null)
 
     try {
-      const params: Record<string, string | number> = {
+      const params: AdminTenantListParams = {
         page: page - 1, // 後端 page 為 0-based
         size: PAGE_SIZE,
       }
@@ -125,13 +66,12 @@ export default function AdminTenantListPage() {
       if (status) params.status = status
       if (keyword) params.keyword = keyword
 
-      const response = await apiClient.get<ApiResponse<TenantListResponse>>('/v2/admin/tenants', { params })
-      const data = response.data.data
+      const data = await adminService.listTenants(params)
       setTenants(data?.tenants || [])
       setTotalPages(data?.totalPages || 1)
       setTotalElements(data?.totalElements ?? data?.totalCount ?? 0)
     } catch (err: unknown) {
-      setError(extractErrorMessage(err, '載入店鋪列表失敗'))
+      setError(apiErrorMessage(err, '載入店鋪列表失敗'))
     } finally {
       setLoading(false)
     }
@@ -142,13 +82,12 @@ export default function AdminTenantListPage() {
     setError(null)
 
     try {
-      const response = await apiClient.get<ApiResponse<TenantApplicationListResponse>>(APPLICATIONS_URL)
-      const list = response.data.data?.applications || []
+      const list = await adminService.listTenantApplications()
       setApplications(list)
       setTotalPages(1) // 後端此端點回傳全部待審核申請，無分頁
       setTotalElements(list.length)
     } catch (err: unknown) {
-      setError(extractErrorMessage(err, '載入開店申請失敗'))
+      setError(apiErrorMessage(err, '載入開店申請失敗'))
     } finally {
       setLoading(false)
     }
@@ -157,19 +96,19 @@ export default function AdminTenantListPage() {
   const fetchTabCounts = useCallback(async () => {
     try {
       const tenantTabs: FilterTab[] = ['ALL', 'APPROVED', 'REJECTED']
-      const [applicationsRes, ...tenantResults] = await Promise.all([
-        apiClient.get<ApiResponse<TenantApplicationListResponse>>(APPLICATIONS_URL),
+      const [pendingApplications, ...tenantResults] = await Promise.all([
+        adminService.listTenantApplications(),
         ...tenantTabs.map((tab) => {
           const status = FILTER_TO_STATUS[tab]
-          const params: Record<string, string | number> = { page: 0, size: 1 }
+          const params: AdminTenantListParams = { page: 0, size: 1 }
           if (status) params.status = status
-          return apiClient.get<ApiResponse<TenantListResponse>>('/v2/admin/tenants', { params })
+          return adminService.listTenants(params)
         }),
       ])
       const counts = {} as Record<FilterTab, number>
-      counts.PENDING = applicationsRes.data.data?.applications?.length ?? 0
+      counts.PENDING = pendingApplications.length
       tenantTabs.forEach((tab, i) => {
-        const data = tenantResults[i].data.data
+        const data = tenantResults[i]
         counts[tab] = data?.totalElements ?? data?.totalCount ?? 0
       })
       setTabCounts(counts)
@@ -215,14 +154,12 @@ export default function AdminTenantListPage() {
     setActionMessage(null)
     setActionError(null)
     try {
-      await apiClient.post<ApiResponse<unknown>>(
-        `${APPLICATIONS_URL}/${application.applicationId}/approve`
-      )
+      await adminService.approveTenantApplication(application.applicationId)
       setActionMessage(`已核准「${application.storeName}」，店鋪已建立並啟用`)
       await fetchApplications()
       await fetchTabCounts()
     } catch (err: unknown) {
-      setActionError(extractErrorMessage(err, '核准失敗'))
+      setActionError(apiErrorMessage(err, '核准失敗'))
     } finally {
       setActionId(null)
     }
@@ -238,17 +175,14 @@ export default function AdminTenantListPage() {
     setActionMessage(null)
     setActionError(null)
     try {
-      await apiClient.post<ApiResponse<unknown>>(
-        `${APPLICATIONS_URL}/${application.applicationId}/reject`,
-        { reason: rejectReason }
-      )
+      await adminService.rejectTenantApplication(application.applicationId, rejectReason)
       setActionMessage(`已駁回「${application.storeName}」`)
       setRejectingId(null)
       setRejectReason('')
       await fetchApplications()
       await fetchTabCounts()
     } catch (err: unknown) {
-      setActionError(extractErrorMessage(err, '駁回失敗'))
+      setActionError(apiErrorMessage(err, '駁回失敗'))
     } finally {
       setActionId(null)
     }

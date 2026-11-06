@@ -27,14 +27,7 @@ import { loginHref } from '@/lib/auth-redirect'
 import { PageTitle } from '@/components/ui/page-title'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
-}
+import { apiErrorMessage } from '@/lib/api-error'
 
 function formatPrice(amount: number, currency: string) {
   return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: currency || 'TWD' }).format(amount)
@@ -93,7 +86,7 @@ export default function DashboardOrderDetailPage() {
         setShipments([])
       }
     } catch (err) {
-      setError(extractErrorMessage(err, '載入訂單詳情失敗'))
+      setError(apiErrorMessage(err, '載入訂單詳情失敗'))
     } finally {
       setLoading(false)
     }
@@ -124,7 +117,7 @@ export default function DashboardOrderDetailPage() {
       const stateLogs = await OrderService.getOrderLogs(orderId).catch(() => [] as OrderStateLog[])
       setLogs(stateLogs)
     } catch (err) {
-      setActionError(extractErrorMessage(err, '更新訂單狀態失敗'))
+      setActionError(apiErrorMessage(err, '更新訂單狀態失敗'))
     } finally {
       setActionLoading(false)
     }
@@ -144,7 +137,7 @@ export default function DashboardOrderDetailPage() {
       setShowLogisticsForm(false)
       await load()
     } catch (err) {
-      setActionError(extractErrorMessage(err, '建立物流單失敗'))
+      setActionError(apiErrorMessage(err, '建立物流單失敗'))
     } finally {
       setActionLoading(false)
     }

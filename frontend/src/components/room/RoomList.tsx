@@ -1,75 +1,50 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import RoomService, { RoomListItem, RoomFilters } from '@/services/room'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import RoomService, { RoomFilters } from '@/services/room'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { confirmDialog } from '@/components/ui/confirm-dialog'
 import { toast } from '@/components/ui/toast'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 export default function RoomList() {
-  const router = useRouter()
-  const [rooms, setRooms] = useState<RoomListItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  // 搜尋框的內容與「已套用的搜尋」分開：只在按 Enter／搜尋鈕時套用，輸入時不重抓；
+  // 每次套用都是新物件，所以同樣的關鍵字再按一次也會重抓（等同重新整理）
+  const [applied, setApplied] = useState({ keyword: '' })
   const [location, setLocation] = useState<string>('')
   const [page, setPage] = useState(0)
-  const [totalPages, setTotalPages] = useState(0)
-  const [totalElements, setTotalElements] = useState(0)
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    fetchRooms()
-    // searchQuery 是搜尋框的受控狀態（每敲一個字就改變），只在使用者按 Enter／搜尋鈕（handleSearch）時才套用；
-    // fetchRooms 又是每次 render 都會重建的函式。把任一個列為依賴，都會變成每個按鍵（或每次 render）重新抓取資料。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, location, page])
-
-  const fetchRooms = async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
+  const { data, error, loading, reload } = useAsyncData(
+    () => {
       const filters: RoomFilters = {
-        keyword: searchQuery || undefined,
+        keyword: applied.keyword || undefined,
         location: location || undefined,
         page,
         size: 20,
         sortBy: 'createdAt',
         sortDir: 'DESC',
       }
-      const response = await RoomService.getRooms(filters)
-      setRooms(response.content)
-      setTotalPages(response.totalPages)
-      setTotalElements(response.totalElements)
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入房源失敗')
-      } else {
-        setError('載入房源失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
+      return RoomService.getRooms(filters)
+    },
+    [applied, location, page],
+    { errorMessage: '載入房源失敗' }
+  )
+  const rooms = data?.content ?? []
+  const totalPages = data?.totalPages ?? 0
+  const totalElements = data?.totalElements ?? 0
 
   const handleSearch = () => {
+    setApplied({ keyword: searchQuery })
     setPage(0)
-    fetchRooms()
   }
 
   const handleDelete = async (id: string) => {
@@ -78,14 +53,9 @@ export default function RoomList() {
     setDeleteLoading(id)
     try {
       await RoomService.deleteRoom(id)
-      fetchRooms()
+      reload()
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        toast.error(axiosErr.response?.data?.message || '刪除失敗')
-      } else {
-        toast.error('刪除失敗')
-      }
+      toast.error(apiErrorMessage(err, '刪除失敗'))
     } finally {
       setDeleteLoading(null)
     }
@@ -138,7 +108,7 @@ export default function RoomList() {
           </Button>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => fetchRooms()}>
+          <Button variant="outline" onClick={reload}>
             重新整理
           </Button>
           <Link href="/dashboard/rooms/new">

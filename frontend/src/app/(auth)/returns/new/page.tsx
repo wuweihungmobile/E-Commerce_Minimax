@@ -14,14 +14,7 @@ import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
-}
+import { apiErrorMessage } from '@/lib/api-error'
 
 const RETURNABLE_STATUSES = new Set<Order['status']>(['DELIVERED', 'COMPLETED'])
 
@@ -58,7 +51,7 @@ export default function NewReturnPage() {
         setLoadError(
           err instanceof Error && err.message === 'no-order-id'
             ? '缺少訂單資訊，請由訂單詳情頁提出退貨申請'
-            : extractErrorMessage(err, '無法載入訂單詳情，請稍後再試')
+            : apiErrorMessage(err, '無法載入訂單詳情，請稍後再試')
         )
       })
       .finally(() => {
@@ -95,7 +88,7 @@ export default function NewReturnPage() {
       })
       router.push(`/returns/${created.id}`)
     } catch (err) {
-      setSubmitError(extractErrorMessage(err, '提交退貨申請失敗'))
+      setSubmitError(apiErrorMessage(err, '提交退貨申請失敗'))
     } finally {
       setSubmitting(false)
     }

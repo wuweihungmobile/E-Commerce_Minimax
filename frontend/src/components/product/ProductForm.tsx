@@ -15,6 +15,7 @@ import { loginHref } from '@/lib/auth-redirect'
 import { Textarea } from '@/components/ui/textarea'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
+import { apiErrorMessage, getApiErrorInfo } from '@/lib/api-error'
 
 interface FormErrors {
   title?: string
@@ -64,12 +65,7 @@ export default function ProductForm({ productId }: ProductFormProps) {
         isFeatured: product.isFeatured || false,
       })
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setGeneralError(axiosErr.response?.data?.message || '載入商品失敗')
-      } else {
-        setGeneralError('載入商品失敗')
-      }
+      setGeneralError(apiErrorMessage(err, '載入商品失敗'))
     } finally {
       setFetchLoading(false)
     }
@@ -125,28 +121,23 @@ export default function ProductForm({ productId }: ProductFormProps) {
       }
       router.push('/dashboard/products')
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string; errors?: Array<{ field: string; message: string }> } } }
-        const serverErrors = axiosErr.response?.data?.errors
-        if (serverErrors && Array.isArray(serverErrors)) {
-          const fieldErrors: FormErrors = {}
-          serverErrors.forEach((error) => {
-            if (error.field === 'title') fieldErrors.title = error.message
-            else if (error.field === 'category') fieldErrors.category = error.message
-            else if (error.field === 'basePrice') fieldErrors.basePrice = error.message
-            else fieldErrors.general = error.message
-          })
-          setErrors(fieldErrors)
-        } else {
-          const message = axiosErr.response?.data?.message || '儲存失敗'
-          if (message.includes('RETAIL_ENABLED')) {
-            setGeneralError('您的店鋪尚未啟用商品功能，請聯繫管理員開啟「零售功能」')
-          } else {
-            setGeneralError(message)
-          }
-        }
+      const { message: serverMessage, fieldErrors: serverErrors } = getApiErrorInfo(err)
+      if (serverErrors && Array.isArray(serverErrors)) {
+        const fieldErrors: FormErrors = {}
+        serverErrors.forEach((error) => {
+          if (error.field === 'title') fieldErrors.title = error.message
+          else if (error.field === 'category') fieldErrors.category = error.message
+          else if (error.field === 'basePrice') fieldErrors.basePrice = error.message
+          else fieldErrors.general = error.message
+        })
+        setErrors(fieldErrors)
       } else {
-        setGeneralError('儲存失敗')
+        const message = serverMessage || '儲存失敗'
+        if (message.includes('RETAIL_ENABLED')) {
+          setGeneralError('您的店鋪尚未啟用商品功能，請聯繫管理員開啟「零售功能」')
+        } else {
+          setGeneralError(message)
+        }
       }
     } finally {
       setLoading(false)

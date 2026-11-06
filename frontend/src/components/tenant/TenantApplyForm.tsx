@@ -13,9 +13,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import apiClient from '@/lib/axios'
-import { API_ENDPOINTS } from '@/lib/api'
-import AuthService, { getApiErrorInfo } from '@/services/auth'
+import AuthService from '@/services/auth'
+import tenantService from '@/services/tenant'
+import { getApiErrorInfo } from '@/lib/api-error'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert } from '@/components/ui/alert'
 
@@ -130,7 +130,7 @@ export default function TenantApplyForm() {
 
     try {
       // DEF-432：店鋪描述是選填（PRD §9.10.1），留空就不送出，後端才會是「沒填」(null) 而不是空字串
-      await apiClient.post(API_ENDPOINTS.tenants.apply, {
+      await tenantService.apply({
         ...formData,
         storeDescription: formData.storeDescription.trim() || undefined,
       })

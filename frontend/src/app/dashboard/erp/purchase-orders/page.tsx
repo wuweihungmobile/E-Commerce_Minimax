@@ -1,59 +1,28 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import PurchaseOrderService, {
-  PurchaseOrderDto,
-  POStatus,
-} from '@/services/erp/purchaseOrder'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import PurchaseOrderService, { POStatus } from '@/services/erp/purchaseOrder'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { NativeSelect } from '@/components/ui/native-select'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { StatusBadge } from '@/components/ui/status-badge'
 
 export default function PurchaseOrdersPage() {
-  const router = useRouter()
-  const [orders, setOrders] = useState<PurchaseOrderDto[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [page, setPage] = useState(0)
-  const [totalPages, setTotalPages] = useState(0)
-  const [totalElements, setTotalElements] = useState(0)
 
-  const fetchOrders = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const status = statusFilter ? (statusFilter as POStatus) : undefined
-      const response = await PurchaseOrderService.listPurchaseOrders(status, page, 20)
-      setOrders(response.content)
-      setTotalPages(response.totalPages)
-      setTotalElements(response.totalElements)
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入採購訂單失敗')
-      } else {
-        setError('載入採購訂單失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [statusFilter, page])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    fetchOrders()
-  }, [router, fetchOrders])
+  const { data, error, loading, reload } = useAsyncData(
+    () => PurchaseOrderService.listPurchaseOrders(statusFilter ? (statusFilter as POStatus) : undefined, page, 20),
+    [statusFilter, page],
+    { errorMessage: '載入採購訂單失敗' }
+  )
+  const orders = data?.content ?? []
+  const totalPages = data?.totalPages ?? 0
+  const totalElements = data?.totalElements ?? 0
 
   const formatPrice = (price: number, currency: string) => {
     return new Intl.NumberFormat('zh-TW', {
@@ -95,7 +64,7 @@ export default function PurchaseOrdersPage() {
             <option value="RECEIVED">已到貨</option>
             <option value="CANCELLED">已取消</option>
           </NativeSelect>
-          <Button variant="outline" onClick={fetchOrders}>重新整理</Button>
+          <Button variant="outline" onClick={reload}>重新整理</Button>
         </div>
         <Link href="/dashboard/erp/purchase-orders/new">
           <Button>新增採購訂單</Button>

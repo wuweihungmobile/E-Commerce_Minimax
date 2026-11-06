@@ -2,8 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import apiClient from '@/lib/axios'
-import { API_ENDPOINTS } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -17,24 +15,9 @@ import bookingService, {
   bookingErrorMessage,
 } from '@/services/booking'
 import { notifyCartChanged } from '@/services/cartEvents'
+import cartService from '@/services/cart'
+import { getApiErrorInfo } from '@/lib/api-error'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
-
-interface BookingItem {
-  cartItemKey: string
-  listingId: string
-  listingName: string
-  coverImageUrl: string | null
-  skuId?: string
-  skuCode?: string
-  specName?: string
-  quantity: number
-  unitPrice: number
-  subtotal: number
-  listingType: string
-  startDate?: string
-  endDate?: string
-  storeId?: string | null
-}
 
 export default function CheckoutPage() {
   const [loading, setLoading] = useState(false)
@@ -97,10 +80,7 @@ export default function CheckoutPage() {
 
     try {
       // Get cart data first
-      const cartResponse = await apiClient.get<{ data: { items: BookingItem[]; totalAmount: number } }>(
-        API_ENDPOINTS.cart.get
-      )
-      const cartData = cartResponse.data.data
+      const cartData = await cartService.getCart()
 
       if (!cartData.items || cartData.items.length === 0) {
         setError('購物車是空的，請先選擇商品')
@@ -148,14 +128,13 @@ export default function CheckoutPage() {
       // 尚未結帳的 PRODUCT 項目、以及第二個以後的 ROOM 項目都會被靜默刪除。
       // 比照 PRODUCT 側既有作法（OrderService.createOrderFromCart 只 removeItem
       // 已處理項目，AI-2422）與 cart/page.tsx 的移除慣例。
-      await apiClient.delete(API_ENDPOINTS.cart.remove(roomItem.cartItemKey))
+      await cartService.removeItem(roomItem.cartItemKey)
       // Header 不隨導覽重新渲染，要主動通知，否則右上角購物車徽章停在移除前的數字（Sprint 223 真實走訪時發現）
       notifyCartChanged()
     } catch (err: unknown) {
       console.error('Booking failed:', err)
       // 後端 ErrorCode wire code 為連字號（如 E-4001 日期衝突）；統一以 bookingErrorMessage 對應可讀訊息
-      const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code
-      setError(bookingErrorMessage(code))
+      setError(bookingErrorMessage(getApiErrorInfo(err).code))
     } finally {
       setLoading(false)
     }

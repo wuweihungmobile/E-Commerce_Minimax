@@ -20,6 +20,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { apiErrorMessage } from '@/lib/api-error';
 
 interface CategoryFormState {
   name: string;
@@ -30,14 +31,6 @@ interface CategoryFormState {
 }
 
 const EMPTY_FORM: CategoryFormState = { name: '', slug: '', description: '', icon: '', sortOrder: '0' };
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } };
-    return axiosErr.response?.data?.message || fallback;
-  }
-  return fallback;
-}
 
 export default function FaqCategoriesPage() {
   const [categories, setCategories] = useState<FaqCategoryDto[]>([]);
@@ -116,7 +109,7 @@ export default function FaqCategoriesPage() {
       cancelForm();
       loadCategories();
     } catch (error) {
-      toast.error(extractErrorMessage(error, editingId ? '更新分類失敗' : '新增分類失敗'));
+      toast.error(apiErrorMessage(error, editingId ? '更新分類失敗' : '新增分類失敗'));
     } finally {
       setSubmitting(false);
     }
@@ -128,7 +121,7 @@ export default function FaqCategoriesPage() {
       await deleteFaqCategory(category.id);
       loadCategories();
     } catch (error) {
-      toast.error(extractErrorMessage(error, '刪除分類失敗（分類底下可能仍有 FAQ 文章）'));
+      toast.error(apiErrorMessage(error, '刪除分類失敗（分類底下可能仍有 FAQ 文章）'));
     }
   }
 

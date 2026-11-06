@@ -1,58 +1,39 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Pagination } from '@/components/ui/pagination'
-import SettlementService, { SettlementStatementDto } from '@/services/settlement'
+import SettlementService from '@/services/settlement'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import AuthService from '@/services/auth'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { toast } from '@/components/ui/toast'
 import { confirmDialog } from '@/components/ui/confirm-dialog'
+import { apiErrorMessage } from '@/lib/api-error'
 
 const PAGE_SIZE = 20
 
 export default function AdminSettlementReversalPage() {
-  const [statements, setStatements] = useState<SettlementStatementDto[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
   const [initiatingId, setInitiatingId] = useState<string | null>(null)
   const [reason, setReason] = useState('')
   const [currentPage, setCurrentPage] = useState(1) // 1-based，供 Pagination 元件使用
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalElements, setTotalElements] = useState(0)
-
   const currentRole = AuthService.getCurrentUser()?.role
 
-  const fetchStatements = useCallback(async (page: number) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await SettlementService.getReversalCandidates(undefined, page - 1, PAGE_SIZE)
-      setStatements(data?.statements || [])
-      setTotalPages(data?.totalPages || 1)
-      setTotalElements(data?.totalElements || 0)
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入結算單失敗')
-      } else {
-        setError('載入結算單失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchStatements(currentPage)
-  }, [currentPage, fetchStatements])
+  const { data, error, loading, reload } = useAsyncData(
+    () => SettlementService.getReversalCandidates(undefined, currentPage - 1, PAGE_SIZE),
+    [currentPage],
+    { errorMessage: '載入結算單失敗' }
+  )
+  const statements = data?.statements || []
+  const totalPages = data?.totalPages || 1
+  const totalElements = data?.totalElements || 0
 
   const handleInitiate = async (statementId: string) => {
     if (!reason.trim()) {
@@ -64,14 +45,9 @@ export default function AdminSettlementReversalPage() {
       await SettlementService.initiateReversal(statementId, reason)
       setInitiatingId(null)
       setReason('')
-      fetchStatements(currentPage)
+      reload()
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        toast.error(axiosErr.response?.data?.message || '發起逆轉失敗')
-      } else {
-        toast.error('發起逆轉失敗')
-      }
+      toast.error(apiErrorMessage(err, '發起逆轉失敗'))
     } finally {
       setActionLoadingId(null)
     }
@@ -82,14 +58,9 @@ export default function AdminSettlementReversalPage() {
     setActionLoadingId(statementId)
     try {
       await SettlementService.confirmReversal(statementId)
-      fetchStatements(currentPage)
+      reload()
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        toast.error(axiosErr.response?.data?.message || '確認逆轉失敗')
-      } else {
-        toast.error('確認逆轉失敗')
-      }
+      toast.error(apiErrorMessage(err, '確認逆轉失敗'))
     } finally {
       setActionLoadingId(null)
     }
@@ -103,7 +74,7 @@ export default function AdminSettlementReversalPage() {
     return (
       <div className="space-y-4">
         <Alert variant="destructive">{error}</Alert>
-        <Button variant="outline" onClick={() => fetchStatements(currentPage)}>重試</Button>
+        <Button variant="outline" onClick={reload}>重試</Button>
       </div>
     )
   }

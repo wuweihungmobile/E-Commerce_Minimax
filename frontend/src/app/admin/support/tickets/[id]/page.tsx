@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -9,11 +9,13 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import SupportService, { SupportTicket } from '@/services/support'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Textarea } from '@/components/ui/textarea'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { toast } from '@/components/ui/toast'
+import { apiErrorMessage } from '@/lib/api-error'
 
 const STATUS_LABEL: Record<SupportTicket['status'], string> = {
   OPEN: '開立',
@@ -26,34 +28,14 @@ export default function AdminSupportTicketDetailPage() {
   const params = useParams()
   const ticketId = params.id as string
 
-  const [ticket, setTicket] = useState<SupportTicket | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: ticket, error, loading, reload } = useAsyncData(
+    () => SupportService.getAdminTicket(ticketId),
+    [ticketId],
+    { errorMessage: '載入工單詳情失敗' }
+  )
   const [reply, setReply] = useState('')
   const [assignedTo, setAssignedTo] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
-
-  const fetchTicket = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await SupportService.getAdminTicket(ticketId)
-      setTicket(data)
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入工單詳情失敗')
-      } else {
-        setError('載入工單詳情失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [ticketId])
-
-  useEffect(() => {
-    fetchTicket()
-  }, [fetchTicket])
 
   const handleAssign = async () => {
     if (!assignedTo.trim()) return
@@ -61,14 +43,9 @@ export default function AdminSupportTicketDetailPage() {
     try {
       await SupportService.assignTicket(ticketId, assignedTo.trim())
       setAssignedTo('')
-      await fetchTicket()
+      reload()
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        toast.error(axiosErr.response?.data?.message || '指派失敗')
-      } else {
-        toast.error('指派失敗')
-      }
+      toast.error(apiErrorMessage(err, '指派失敗'))
     } finally {
       setActionLoading(false)
     }
@@ -81,14 +58,9 @@ export default function AdminSupportTicketDetailPage() {
       // 平台角色的回覆走與店家共用的 dashboard 端點，後端依角色自動判斷是否略過租戶篩選
       await SupportService.postStaffMessage(ticketId, reply.trim())
       setReply('')
-      await fetchTicket()
+      reload()
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        toast.error(axiosErr.response?.data?.message || '發送訊息失敗')
-      } else {
-        toast.error('發送訊息失敗')
-      }
+      toast.error(apiErrorMessage(err, '發送訊息失敗'))
     } finally {
       setActionLoading(false)
     }

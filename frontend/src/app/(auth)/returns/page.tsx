@@ -15,14 +15,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
-}
+import { apiErrorMessage } from '@/lib/api-error'
 
 export default function MyReturnsPage() {
   const [returns, setReturns] = useState<ReturnRequest[]>([])
@@ -40,7 +33,7 @@ export default function MyReturnsPage() {
         setReturns(result.content)
       } catch (err) {
         if (cancelled) return
-        setError(extractErrorMessage(err, '無法載入退貨申請列表，請稍後再試'))
+        setError(apiErrorMessage(err, '無法載入退貨申請列表，請稍後再試'))
       } finally {
         if (!cancelled) setLoading(false)
       }

@@ -301,6 +301,13 @@ jobs:
           npm run type-check
         continue-on-error: false
 
+      # Sprint 331（DEF-458）：前端單元／元件測試（Vitest + Testing Library + jsdom），約 20 秒
+      - name: Unit Tests
+        run: |
+          cd frontend
+          npm test
+        continue-on-error: false
+
       - name: Build Frontend
         run: |
           cd frontend

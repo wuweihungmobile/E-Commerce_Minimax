@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { Chip } from '@/components/ui/chip'
+import { apiErrorMessage, getApiErrorInfo } from '@/lib/api-error'
 
 interface FormErrors {
   title?: string
@@ -76,12 +77,7 @@ export default function RoomForm({ roomId }: RoomFormProps) {
         isFeatured: room.isFeatured || false,
       })
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setGeneralError(axiosErr.response?.data?.message || '載入房源失敗')
-      } else {
-        setGeneralError('載入房源失敗')
-      }
+      setGeneralError(apiErrorMessage(err, '載入房源失敗'))
     } finally {
       setFetchLoading(false)
     }
@@ -137,28 +133,23 @@ export default function RoomForm({ roomId }: RoomFormProps) {
       }
       router.push('/dashboard/rooms')
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string; errors?: Array<{ field: string; message: string }> } } }
-        const serverErrors = axiosErr.response?.data?.errors
-        if (serverErrors && Array.isArray(serverErrors)) {
-          const fieldErrors: FormErrors = {}
-          serverErrors.forEach((error) => {
-            if (error.field === 'title') fieldErrors.title = error.message
-            else if (error.field === 'location') fieldErrors.location = error.message
-            else if (error.field === 'basePrice') fieldErrors.basePrice = error.message
-            else fieldErrors.general = error.message
-          })
-          setErrors(fieldErrors)
-        } else {
-          const message = axiosErr.response?.data?.message || '儲存失敗'
-          if (message.includes('BOOKING_ENABLED')) {
-            setGeneralError('您的店鋪尚未啟用訂房功能，請聯繫管理員開啟「訂房功能」')
-          } else {
-            setGeneralError(message)
-          }
-        }
+      const { message: serverMessage, fieldErrors: serverErrors } = getApiErrorInfo(err)
+      if (serverErrors && Array.isArray(serverErrors)) {
+        const fieldErrors: FormErrors = {}
+        serverErrors.forEach((error) => {
+          if (error.field === 'title') fieldErrors.title = error.message
+          else if (error.field === 'location') fieldErrors.location = error.message
+          else if (error.field === 'basePrice') fieldErrors.basePrice = error.message
+          else fieldErrors.general = error.message
+        })
+        setErrors(fieldErrors)
       } else {
-        setGeneralError('儲存失敗')
+        const message = serverMessage || '儲存失敗'
+        if (message.includes('BOOKING_ENABLED')) {
+          setGeneralError('您的店鋪尚未啟用訂房功能，請聯繫管理員開啟「訂房功能」')
+        } else {
+          setGeneralError(message)
+        }
       }
     } finally {
       setLoading(false)

@@ -1,16 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import PricingService, { PricingRule, PricingRuleType } from '@/services/pricing'
-import AuthService from '@/services/auth'
 import PricingCalendarPreview from '@/components/pricing/PricingCalendarPreview'
-import { loginHref } from '@/lib/auth-redirect'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { EmptyState, LoadingState } from '@/components/ui/states'
@@ -18,6 +15,8 @@ import { Alert } from '@/components/ui/alert'
 import { confirmDialog } from '@/components/ui/confirm-dialog'
 import { toast } from '@/components/ui/toast'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 /**
  * 各規則型別的 config 參數欄位（AI-2404）。key 對齊後端 jsonb config。
@@ -49,42 +48,18 @@ const CONFIG_FIELDS: Record<PricingRuleType, { key: string; label: string; step:
 }
 
 export default function PricingRuleList() {
-  const router = useRouter()
-  const [rules, setRules] = useState<PricingRule[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [filterRoom, setFilterRoom] = useState<string>('')
   const [activeOnly, setActiveOnly] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingRule, setEditingRule] = useState<PricingRule | null>(null)
 
-  const fetchRules = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await PricingService.getRules(filterRoom || undefined, activeOnly)
-      setRules(response)
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入定價規則失敗')
-      } else {
-        setError('載入定價規則失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [filterRoom, activeOnly])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    fetchRules()
-  }, [router, fetchRules])
+  const { data, error, loading, reload } = useAsyncData(
+    () => PricingService.getRules(filterRoom || undefined, activeOnly),
+    [filterRoom, activeOnly],
+    { errorMessage: '載入定價規則失敗' }
+  )
+  const rules = data ?? []
 
   const handleDelete = async (id: string) => {
     if (!(await confirmDialog({ message: '確定要刪除這個定價規則嗎？', confirmLabel: '刪除', destructive: true }))) return
@@ -92,14 +67,9 @@ export default function PricingRuleList() {
     setDeleteLoading(id)
     try {
       await PricingService.deleteRule(id)
-      fetchRules()
+      reload()
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        toast.error(axiosErr.response?.data?.message || '刪除失敗')
-      } else {
-        toast.error('刪除失敗')
-      }
+      toast.error(apiErrorMessage(err, '刪除失敗'))
     } finally {
       setDeleteLoading(null)
     }
@@ -145,7 +115,7 @@ export default function PricingRuleList() {
             placeholder="篩選房源 ID..."
             value={filterRoom}
             onChange={(e) => setFilterRoom(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && fetchRules()}
+            onKeyDown={(e) => e.key === 'Enter' && reload()}
             className="max-w-xs"
           />
           <Select value={activeOnly ? 'true' : 'false'} onValueChange={(v) => setActiveOnly(v === 'true')}>
@@ -157,12 +127,12 @@ export default function PricingRuleList() {
               <SelectItem value="true">僅啟用</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={fetchRules}>
+          <Button variant="outline" onClick={reload}>
             搜尋
           </Button>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => fetchRules()}>
+          <Button variant="outline" onClick={reload}>
             重新整理
           </Button>
           <Button onClick={() => { setEditingRule(null); setShowForm(true) }}>
@@ -176,7 +146,7 @@ export default function PricingRuleList() {
         <PricingRuleFormModal
           rule={editingRule}
           onClose={() => { setShowForm(false); setEditingRule(null) }}
-          onSaved={fetchRules}
+          onSaved={reload}
         />
       )}
 
@@ -322,12 +292,7 @@ function PricingRuleFormModal({ rule, onClose, onSaved }: { rule?: PricingRule |
       onSaved()
       onClose()
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '儲存失敗')
-      } else {
-        setError('儲存失敗')
-      }
+      setError(apiErrorMessage(err, '儲存失敗'))
     } finally {
       setLoading(false)
     }

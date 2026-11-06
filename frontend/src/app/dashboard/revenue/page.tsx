@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import AnalyticsService, { RevenueStats } from '@/services/analytics'
+import { useState } from 'react'
+import AnalyticsService from '@/services/analytics'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { toLocalDateString } from '@/lib/date'
 import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/native-select'
@@ -38,27 +39,12 @@ export default function RevenueReportPage() {
   const [startDate, setStartDate] = useState(toLocalDateString(thirtyDaysAgo))
   const [endDate, setEndDate] = useState(toLocalDateString(today))
   const [granularity, setGranularity] = useState<Granularity>('DAY')
-  const [revenue, setRevenue] = useState<RevenueStats | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const loadRevenue = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await AnalyticsService.getRevenueStats(startDate, endDate, granularity)
-      setRevenue(data)
-    } catch (err) {
-      console.error('Failed to load revenue stats:', err)
-      setError('載入營收報表失敗，請稍後再試')
-    } finally {
-      setLoading(false)
-    }
-  }, [startDate, endDate, granularity])
-
-  useEffect(() => {
-    loadRevenue()
-  }, [loadRevenue])
+  // 原本的頁面不顯示後端訊息，固定顯示這句（沿用，所以 errorMessage 用函式形式忽略伺服器訊息）
+  const { data: revenue, error, loading } = useAsyncData(
+    () => AnalyticsService.getRevenueStats(startDate, endDate, granularity),
+    [startDate, endDate, granularity],
+    { errorMessage: () => '載入營收報表失敗，請稍後再試' }
+  )
 
   const dailyData = revenue?.dailyRevenue?.data ?? []
   const maxRevenue = Math.max(...dailyData.map((d) => d.revenue), 1)

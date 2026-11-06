@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import apiClient from '@/lib/axios'
-import { API_ENDPOINTS } from '@/lib/api'
+import cartService, { type CartItem } from '@/services/cart'
 import OrderService from '@/services/order'
 import OrderPaymentService from '@/services/payment'
 import AddressService, { type Address } from '@/services/address'
@@ -17,17 +16,7 @@ import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { Radio } from '@/components/ui/checkbox'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
-
-interface CartItem {
-  cartItemKey: string
-  listingId: string
-  listingName: string
-  quantity: number
-  unitPrice: number
-  subtotal: number
-  listingType: string
-  storeId?: string | null
-}
+import { getApiErrorInfo } from '@/lib/api-error'
 
 const PHONE_PATTERN = /^09\d{8}$/
 
@@ -41,13 +30,9 @@ const ERROR_MESSAGES: Record<string, string> = {
 }
 
 function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { code?: string; message?: string } } }
-    const code = axiosErr.response?.data?.code
-    if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code]
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
+  const { code, message } = getApiErrorInfo(error)
+  if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code]
+  return message || fallback
 }
 
 function formatPrice(price: number) {
@@ -76,7 +61,7 @@ export default function ProductCheckoutPage() {
       setError(null)
       try {
         const [cartResponse, addressList] = await Promise.all([
-          apiClient.get<{ data: { items: CartItem[] } }>(API_ENDPOINTS.cart.get),
+          cartService.getCart(),
           AddressService.list().catch(() => [] as Address[]),
         ])
         if (cancelled) return
@@ -84,7 +69,7 @@ export default function ProductCheckoutPage() {
   // 結帳頁只處理那家店鋪的項目（訂單只能包含同一家店鋪的商品，PRD US-008／PC-005）。沒帶 storeId（單一店鋪的舊連結）時取全部。
         const sid = new URLSearchParams(window.location.search).get('storeId')
         setStoreId(sid)
-        const productItems = (cartResponse.data.data.items || []).filter(
+        const productItems = (cartResponse.items || []).filter(
           (i) => i.listingType === 'PRODUCT' && (!sid || i.storeId === sid)
         )
         setItems(productItems)

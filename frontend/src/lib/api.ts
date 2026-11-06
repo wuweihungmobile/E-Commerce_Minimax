@@ -239,6 +239,14 @@ export const API_ENDPOINTS = {
   admin: {
     // Sprint 258（DEF-358(d)）：平台統計，供 /admin 總覽首頁使用；端點既有、先前零前端呼叫點
     stats: '/v2/admin/stats',
+    // 稽核紀錄（平台管理操作；GET，支援 page／size／action／startDate／endDate）
+    auditLogs: '/v2/admin/audit-logs',
+    // 開店申請（tenant_applications 表，與 Tenant 是不同實體，見 services/admin.ts 的 TenantApplication 說明）
+    tenantApplications: {
+      list: '/v2/admin/tenant-applications',
+      approve: (applicationId: string) => '/v2/admin/tenant-applications/' + applicationId + '/approve',
+      reject: (applicationId: string) => '/v2/admin/tenant-applications/' + applicationId + '/reject',
+    },
     tenants: {
       list: '/v2/admin/tenants',
       detail: (id: string) => '/v2/admin/tenants/' + id,

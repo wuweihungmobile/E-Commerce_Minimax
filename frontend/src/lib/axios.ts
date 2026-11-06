@@ -2,6 +2,11 @@ import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'ax
 import { API_CONFIG } from './api'
 import { loginHref } from './auth-redirect'
 
+/** service 的讀取方法可選擇接收 signal，讓 useAsyncData 在依賴改變／卸載時真正中止請求（見 hooks/useAsyncData.ts）。 */
+export interface RequestOptions {
+  signal?: AbortSignal
+}
+
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_CONFIG.baseUrl,

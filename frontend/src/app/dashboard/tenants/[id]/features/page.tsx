@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import AuthService from '@/services/auth'
-import apiClient from '@/lib/axios'
-import { API_ENDPOINTS } from '@/lib/api'
+import tenantService, { type FeatureToggle, type QuotaInfo } from '@/services/tenant'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -17,37 +16,6 @@ import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { featureStatusEntry } from '@/lib/status'
-
-// 欄位名必須與後端 FeatureToggleResponse.FeatureInfo 完全一致（DEF-168）。
-// 本介面原本用 feature/displayName/enabled，與後端的 featureKey/featureName/isEnabled 全數對不上，
-// 使整個頁面只有 description 顯示得出來——名稱空白、Switch 恆為 unchecked、
-// 點擊時把 undefined 當 featureKey 送給後端。專案未配置任何 Jackson 命名策略，不會自動轉換。
-interface FeatureToggle {
-  featureKey: string
-  category: string
-  featureName: string
-  description: string
-  isEnabled: boolean
-  status: 'ACTIVE' | 'PENDING' | 'INACTIVE'
-  requiresAdminReview: boolean
-}
-
-// Sprint 153（S147 §6 範圍外項目）：數值配額用量，與 features 分開回傳
-interface QuotaInfo {
-  featureKey: string
-  featureName: string
-  limit: number
-  currentUsage: number
-}
-
-interface FeatureToggleResponse {
-  features: FeatureToggle[]
-  quotas: QuotaInfo[]
-}
-
-interface UpdateRequest {
-  enabled: boolean
-}
 
 export default function FeatureTogglePage() {
   const router = useRouter()
@@ -89,11 +57,9 @@ export default function FeatureTogglePage() {
     setError(null)
 
     try {
-      const response = await apiClient.get<{ data: FeatureToggleResponse }>(
-        API_ENDPOINTS.dashboard.tenants.features
-      )
-      setFeatures(response.data.data.features)
-      setQuotas(response.data.data.quotas ?? [])
+      const data = await tenantService.getMyFeatures()
+      setFeatures(data.features)
+      setQuotas(data.quotas)
     } catch (err: unknown) {
       console.error('Failed to fetch features:', err)
       setError('載入功能開關失敗，請稍後再試')
@@ -110,17 +76,10 @@ export default function FeatureTogglePage() {
     setSuccessMessage(null)
 
     try {
-      // DEF-168：型別需與後端 FeatureToggleUpdateResponse 一致。原宣告為
-      // { feature, enabled, status }，三欄有兩欄對不上；因回傳值未被使用故無執行後果，
-      // 但錯誤的宣告會誤導未來的取用者，一併更正。
-      const response = await apiClient.put<{ data: { featureKey: string; previousState: boolean; newState: boolean; status: string; statusDescription: string } }>(
-        API_ENDPOINTS.dashboard.tenants.updateFeature(feature),
-        { enabled } as UpdateRequest
-      )
+      const { newState, status } = await tenantService.updateMyFeature(feature, enabled)
 
       // DEF-428：用後端回應的結果更新畫面，不是用「我送出的要求」。需審核的功能送出啟用申請後，後端的 newState 仍是 false、
       // status 是 PENDING_APPROVAL（待平台審核）；先前直接把畫面改成已啟用並提示「已啟用」，重新整理後開關又變回關閉。
-      const { newState, status } = response.data.data
       const pendingApproval = enabled && status === 'PENDING_APPROVAL'
       setFeatures(prev =>
         prev.map(f =>

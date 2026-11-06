@@ -1,67 +1,26 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import apiClient from '@/lib/axios'
+import adminService from '@/services/admin'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { StatusBadge } from '@/components/ui/status-badge'
-
-// Tenant interface - matches actual API response
-interface Tenant {
-  tenantId: string
-  name: string
-  status: 'PENDING_REVIEW' | 'ACTIVE' | 'SUSPENDED' | 'TERMINATED'
-  userCount?: number
-  listingCount?: number
-  createdAt: string
-  updatedAt: string
-  rejectReason?: string
-}
-
-interface ApiResponse<T> {
-  success: boolean
-  data: T
-  message?: string
-}
 
 export default function AdminTenantReviewPage() {
   const params = useParams()
   const router = useRouter()
   const tenantId = params.id as string
 
-  const [tenant, setTenant] = useState<Tenant | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const fetchTenantDetail = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await apiClient.get<ApiResponse<Tenant>>(
-        `/v2/admin/tenants/${tenantId}`
-      )
-      setTenant(response.data.data)
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入店鋪詳情失敗')
-      } else {
-        setError('載入店鋪詳情失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [tenantId])
-
-  useEffect(() => {
-    fetchTenantDetail()
-  }, [fetchTenantDetail])
+  const { data: tenant, error, loading } = useAsyncData(
+    (signal) => adminService.getTenant(tenantId, { signal }),
+    [tenantId],
+    { errorMessage: '載入店鋪詳情失敗' }
+  )
 
   if (loading) {
     return (

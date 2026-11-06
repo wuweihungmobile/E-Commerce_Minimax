@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Alert } from '@/components/ui/alert'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { apiErrorMessage } from '@/lib/api-error'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -43,8 +44,7 @@ export default function LoginPage() {
       )
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || 'Login failed')
+        setError(apiErrorMessage(err, 'Login failed'))
       } else {
         setError('An unexpected error occurred')
       }

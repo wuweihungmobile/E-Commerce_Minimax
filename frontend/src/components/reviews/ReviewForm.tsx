@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
+import { getApiErrorInfo } from '@/lib/api-error'
 
 export interface ReviewFormValue {
   rating: number
@@ -48,12 +49,11 @@ export default function ReviewForm({ onSubmit, onCancel }: ReviewFormProps) {
         isAnonymous,
       })
     } catch (err: unknown) {
-      const errorResponse = err as { response?: { data?: { code?: string; message?: string } } }
-      const code = errorResponse?.response?.data?.code
+      const { code, message } = getApiErrorInfo(err)
       if (code === 'E_1093' || code === 'E_1094') {
         setError('您已評價過此項目')
       } else {
-        setError(errorResponse?.response?.data?.message ?? '送出評價失敗，請稍後再試')
+        setError(message || '送出評價失敗，請稍後再試')
       }
     } finally {
       setSubmitting(false)

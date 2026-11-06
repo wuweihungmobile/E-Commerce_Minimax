@@ -1,90 +1,39 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import apiClient from '@/lib/axios'
-import { API_ENDPOINTS } from '@/lib/api'
-import AuthService from '@/services/auth'
+import {
+  getAuthRoleSnapshot,
+  getAuthServerSnapshot,
+  getAuthTenantIdSnapshot,
+  subscribeAuth,
+} from '@/services/authStore'
+import tenantService from '@/services/tenant'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { StatusBadge } from '@/components/ui/status-badge'
-
-// Tenant status enum（Sprint 146：對齊後端 Tenant.TenantStatus 實際值域，先前的 PENDING/APPROVED 從未存在）
-type TenantStatus = 'PENDING_REVIEW' | 'ACTIVE' | 'REJECTED' | 'SUSPENDED' | 'TERMINATED'
-
-// Tenant interface（Sprint 146：對齊 TenantDetailsResponse——欄位是 tenantId 不是 id；
-// contactPhone/updatedAt 先前後端從未回傳，本輪已補齊)
-interface Tenant {
-  tenantId: string
-  storeName: string
-  businessType: string
-  contactEmail: string
-  contactPhone: string | null
-  status: TenantStatus
-  createdAt: string
-  updatedAt: string
-}
-
-interface ApiResponse<T> {
-  success: boolean
-  data: T
-  message?: string
-}
 
 interface TenantDetailProps {
   tenantId: string
 }
 
 export default function TenantDetail({ tenantId }: TenantDetailProps) {
-  const [tenant, setTenant] = useState<Tenant | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [currentTenantId, setCurrentTenantId] = useState<string | null>(null)
-  const [currentRole, setCurrentRole] = useState<string | null>(null)
-
-  useEffect(() => {
-    const user = AuthService.getCurrentUser()
-    if (user?.tenantId) {
-      setCurrentTenantId(user.tenantId)
+  const { data: tenant, error, loading } = useAsyncData(
+    (signal) => tenantService.getById(tenantId, { signal }),
+    [tenantId],
+    {
+      enabled: Boolean(tenantId),
+      errorMessage: ({ status, message }) => (status === 404 ? '找不到此店鋪' : message || '載入店鋪詳情失敗'),
     }
-    setCurrentRole(user?.role ?? null)
-  }, [])
-
-  const fetchTenantDetail = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await apiClient.get<ApiResponse<Tenant>>(
-        API_ENDPOINTS.tenants.detail(tenantId)
-      )
-      setTenant(response.data.data)
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { status?: number; data?: { message?: string } } }
-        if (axiosErr.response?.status === 404) {
-          setError('找不到此店鋪')
-        } else {
-          setError(axiosErr.response?.data?.message || '載入店鋪詳情失敗')
-        }
-      } else {
-        setError('載入店鋪詳情失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [tenantId])
-
-  useEffect(() => {
-    if (tenantId) {
-      fetchTenantDetail()
-    }
-  }, [tenantId, fetchTenantDetail])
+  )
+  const currentTenantId = useSyncExternalStore(subscribeAuth, getAuthTenantIdSnapshot, getAuthServerSnapshot)
+  const currentRole = useSyncExternalStore(subscribeAuth, getAuthRoleSnapshot, getAuthServerSnapshot)
 
   const getBusinessTypeLabel = (type: string) => {
     // Sprint 146：對齊後端 TenantApplicationRequest/TenantUpdateRequest 的 businessType 值域

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import {
   getTemplates,
   createTemplate,
@@ -8,7 +8,6 @@ import {
   deleteTemplate,
   renderTemplate,
   NotificationTemplateDto,
-  PageResponse,
   SearchTemplateRequest,
   NOTIFICATION_TYPES,
   CHANNELS,
@@ -26,6 +25,8 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { apiErrorMessage } from '@/lib/api-error';
+import { useAsyncData } from '@/hooks/useAsyncData';
 
 interface TemplateFormState {
   templateCode: string;
@@ -49,20 +50,8 @@ const EMPTY_FORM: TemplateFormState = {
   priority: '0',
 };
 
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } };
-    return axiosErr.response?.data?.message || fallback;
-  }
-  return fallback;
-}
-
 export default function NotificationsPage() {
-  const [templates, setTemplates] = useState<NotificationTemplateDto[]>([]);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalElements, setTotalElements] = useState(0);
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [channelFilter, setChannelFilter] = useState<string>('');
   const [activeFilter, setActiveFilter] = useState<string>('');
@@ -75,9 +64,8 @@ export default function NotificationsPage() {
   const [form, setForm] = useState<TemplateFormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
 
-  const loadTemplates = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data, loading, reload } = useAsyncData(
+    () => {
       const params: SearchTemplateRequest = {
         page,
         size: 20,
@@ -85,22 +73,20 @@ export default function NotificationsPage() {
       if (typeFilter) params.notificationType = typeFilter;
       if (channelFilter) params.channel = channelFilter;
       if (activeFilter) params.isActive = activeFilter === 'true';
-
-      const data: PageResponse<NotificationTemplateDto> = await getTemplates(params);
-      setTemplates(data.templates);
-      setTotalPages(data.totalPages);
-      setTotalElements(data.totalElements);
-    } catch (error) {
-      console.error('Failed to load templates:', error);
-      toast.error('載入通知模板失敗，請稍後再試');
-    } finally {
-      setLoading(false);
+      return getTemplates(params);
+    },
+    [page, typeFilter, channelFilter, activeFilter],
+    {
+      errorMessage: () => '載入通知模板失敗，請稍後再試',
+      onError: (message, error) => {
+        console.error('Failed to load templates:', error);
+        toast.error(message);
+      },
     }
-  }, [page, typeFilter, channelFilter, activeFilter]);
-
-  useEffect(() => {
-    loadTemplates();
-  }, [loadTemplates]);
+  );
+  const templates = data?.templates ?? [];
+  const totalPages = data?.totalPages ?? 0;
+  const totalElements = data?.totalElements ?? 0;
 
   function startCreate() {
     setForm(EMPTY_FORM);
@@ -152,9 +138,9 @@ export default function NotificationsPage() {
         await createTemplate(payload);
       }
       cancelForm();
-      loadTemplates();
+      reload();
     } catch (error) {
-      toast.error(extractErrorMessage(error, editingId ? '更新模板失敗' : '新增模板失敗'));
+      toast.error(apiErrorMessage(error, editingId ? '更新模板失敗' : '新增模板失敗'));
     } finally {
       setSubmitting(false);
     }
@@ -165,7 +151,7 @@ export default function NotificationsPage() {
     setDeleting(templateId);
     try {
       await deleteTemplate(templateId);
-      loadTemplates();
+      reload();
       toast.success('刪除成功');
     } catch (error) {
       console.error('Failed to delete template:', error);
@@ -302,7 +288,7 @@ export default function NotificationsPage() {
           <Button
             variant="default"
             size="sm"
-            onClick={() => loadTemplates()}
+            onClick={() => reload()}
           >
             篩選
           </Button>

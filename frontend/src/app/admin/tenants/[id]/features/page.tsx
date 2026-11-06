@@ -1,17 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import AuthService from '@/services/auth'
-import apiClient from '@/lib/axios'
-import { API_ENDPOINTS } from '@/lib/api'
+import adminService from '@/services/admin'
+import type { FeatureToggle } from '@/services/tenant'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { loginHref } from '@/lib/auth-redirect'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
 import { StatusBadge } from '@/components/ui/status-badge'
@@ -23,92 +22,47 @@ import { featureStatusEntry } from '@/lib/status'
 // TenantService.FEATURE_DEFINITIONS 目錄+中繼資料），差異只在：
 // (1) 目標租戶來自路由參數而非呼叫者自己的租戶；(2) Admin 按下開關即直接生效，
 // 不會進入「待審核」——那是店主自助申請才有的限制，Admin 本身就是審核者。
-interface FeatureToggle {
-  featureKey: string
-  category: string
-  featureName: string
-  description: string
-  isEnabled: boolean
-  status: 'ACTIVE' | 'PENDING' | 'INACTIVE'
-  requiresAdminReview: boolean
-}
-
-interface QuotaInfo {
-  featureKey: string
-  featureName: string
-  limit: number
-  currentUsage: number
-}
-
-interface FeatureToggleResponse {
-  features: FeatureToggle[]
-  quotas: QuotaInfo[]
-}
-
 export default function AdminTenantFeaturesPage() {
   const params = useParams()
   const router = useRouter()
   const tenantId = params.id as string
 
-  const [features, setFeatures] = useState<FeatureToggle[]>([])
-  const [quotas, setQuotas] = useState<QuotaInfo[]>([])
-  const [loading, setLoading] = useState(true)
+  // 原本載入失敗固定顯示這句；「更新開關」失敗也共用同一個 error。hook 只管載入，動作失敗另外記在 actionError
+  const { data, error: loadError, loading, setData } = useAsyncData(
+    (signal) => adminService.getTenantFeatures(tenantId, { signal }),
+    [tenantId],
+    { enabled: Boolean(tenantId), errorMessage: () => '載入功能開關失敗，請稍後再試' }
+  )
+  const features = data?.features ?? []
+  const quotas = data?.quotas ?? []
   const [updating, setUpdating] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const error = actionError ?? loadError
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-  }, [router])
-
-  useEffect(() => {
-    if (tenantId) {
-      fetchFeatures()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId])
-
-  const fetchFeatures = async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await apiClient.get<{ data: FeatureToggleResponse }>(
-        API_ENDPOINTS.admin.tenants.features(tenantId)
-      )
-      setFeatures(response.data.data.features)
-      setQuotas(response.data.data.quotas ?? [])
-    } catch (err: unknown) {
-      console.error('Failed to fetch tenant features:', err)
-      setError('載入功能開關失敗，請稍後再試')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const updateFeatureToggle = async (feature: string, enabled: boolean) => {
     setUpdating(feature)
-    setError(null)
+    setActionError(null)
     setSuccessMessage(null)
 
     try {
-      await apiClient.put(API_ENDPOINTS.admin.tenants.updateFeature(tenantId, feature), { enabled })
+      await adminService.updateTenantFeature(tenantId, feature, enabled)
 
       // Admin 的設定即為最終決定，直接套用為 ACTIVE/INACTIVE（不會進入待審核）
-      setFeatures(prev =>
-        prev.map(f =>
-          f.featureKey === feature ? { ...f, isEnabled: enabled, status: enabled ? 'ACTIVE' : 'INACTIVE' } : f
-        )
+      setData(prev =>
+        prev && {
+          ...prev,
+          features: prev.features.map(f =>
+            f.featureKey === feature ? { ...f, isEnabled: enabled, status: enabled ? ('ACTIVE' as const) : ('INACTIVE' as const) } : f
+          ),
+        }
       )
 
       setSuccessMessage(`功能「${feature}」已${enabled ? '啟用' : '停用'}`)
       setTimeout(() => setSuccessMessage(null), 3000)
     } catch (err: unknown) {
       console.error('Failed to update tenant feature toggle:', err)
-      setError('更新功能開關失敗，請稍後再試')
+      setActionError('更新功能開關失敗，請稍後再試')
     } finally {
       setUpdating(null)
     }

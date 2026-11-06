@@ -1,5 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 import { registerAndLogin, loginOnly } from './helpers/auth';
+import { asMockLoggedInBuyer } from './helpers/mockLogin';
 import { Account, authHeaders, seedStore } from './helpers/store';
 
 /**
@@ -11,7 +12,8 @@ import { Account, authHeaders, seedStore } from './helpers/store';
  *
  * 以固定瀏覽器時間＋指定時區重現：台灣 2030-03-11 01:30＝UTC 2030-03-10 17:30，兩地日期差一天，是這個缺陷
  * 唯一會現形的時段；一般白天（或 CI 的 UTC 時區）根本測不出來，所以不能靠真實時鐘。
- * 以 page.route mock 營收 API（頁面沒有登入守門，不需真實登入），只斷言「頁面送出的日期區間」與畫面預設值。
+ * 以 page.route mock 營收 API，只斷言「頁面送出的日期區間」與畫面預設值。不走真實登入：賣家外殼有登入守門（Sprint 331，
+ * 與買家頁面同一個 AuthGuard），以假登入通過（asMockLoggedInBuyer：只種 accessToken，守門只看有沒有 token）。
  */
 
 test.use({ timezoneId: 'Asia/Taipei' });
@@ -32,6 +34,7 @@ function revenueStats() {
 test.describe('AT-DASHBOARD-REVENUE: 營收報表預設日期區間（DEF-405）', () => {
   test('E2E-REVENUE-01: 台灣凌晨 01:30（UTC 仍是前一天）開啟 → 預設結束日是台灣的「今天」，起日是 30 天前', async ({ page }: { page: Page }) => {
     await page.clock.setFixedTime(new Date('2030-03-10T17:30:00Z'));
+    await asMockLoggedInBuyer(page);
     const requested: URL[] = [];
     await page.route('**/v2/dashboard/revenue**', async (route) => {
       requested.push(new URL(route.request().url()));

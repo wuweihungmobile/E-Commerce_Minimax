@@ -1,20 +1,18 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Pagination } from '@/components/ui/pagination'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import OrderService, {
-  type OrderListItem,
   type OrderStatus,
   ORDER_STATUS_LABELS,
   orderStatusBadgeVariant,
 } from '@/services/order'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
@@ -35,53 +33,29 @@ function formatPrice(amount: number, currency: string) {
 }
 
 export default function DashboardOrdersPage() {
-  const router = useRouter()
-
-  const [orders, setOrders] = useState<OrderListItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  // 初始值 ALL；掛載後於 client 端讀 status query string 覆蓋（避免 useSearchParams 的
-  // Suspense 邊界需求，比照 (auth)/returns/new 讀 orderId 的既有慣例）
-  const [status, setStatus] = useState<'ALL' | OrderStatus>('ALL')
+  // 掛載時讀 ?status= 帶入初始篩選（例如儀表板「待出貨」統計連結過來）。用 useSearchParams 在第一次 render 就拿到，
+  // 不必掛載後再 setState 覆蓋（那樣會先以「全部」發一次請求，再以篩選條件發第二次，兩個回應的先後順序不保證）。
+  // 本專案所有路由都是動態渲染（根 layout 讀 headers()），所以不需要 Suspense 邊界。
+  const searchParams = useSearchParams()
+  const statusFromQuery = searchParams.get('status')
+  const [status, setStatus] = useState<'ALL' | OrderStatus>(
+    statusFromQuery && statusFromQuery in ORDER_STATUS_LABELS ? (statusFromQuery as OrderStatus) : 'ALL'
+  )
   const [currentPage, setCurrentPage] = useState(1) // 1-based，供 Pagination 元件使用
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalElements, setTotalElements] = useState(0)
 
-  const fetchOrders = useCallback(async (page: number, statusFilter: 'ALL' | OrderStatus) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await OrderService.getTenantOrders({
-        page: page - 1,
+  const { data, error, loading } = useAsyncData(
+    () =>
+      OrderService.getTenantOrders({
+        page: currentPage - 1,
         size: PAGE_SIZE,
-        status: statusFilter === 'ALL' ? undefined : statusFilter,
-      })
-      setOrders(result.content)
-      setTotalPages(result.totalPages || 1)
-      setTotalElements(result.totalElements || 0)
-    } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { message?: string } } }
-      setError(axiosErr?.response?.data?.message || '載入訂單列表失敗')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  // 掛載時讀 ?status= 帶入初始篩選（例如儀表板「待出貨」統計連結過來）
-  useEffect(() => {
-    const fromQuery = new URLSearchParams(window.location.search).get('status') as OrderStatus | null
-    if (fromQuery && fromQuery in ORDER_STATUS_LABELS) {
-      setStatus(fromQuery)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    fetchOrders(currentPage, status)
-  }, [router, fetchOrders, currentPage, status])
+        status: status === 'ALL' ? undefined : status,
+      }),
+    [currentPage, status],
+    { errorMessage: '載入訂單列表失敗' }
+  )
+  const orders = data?.content ?? []
+  const totalPages = data?.totalPages || 1
+  const totalElements = data?.totalElements || 0
 
   return (
     <div>

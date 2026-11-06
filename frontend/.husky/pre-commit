@@ -68,7 +68,22 @@ fi
 echo "✅ TypeScript type-check passed"
 echo ""
 
-# 3. Next.js Build 檢查（可選，較慢）
+# 3. 單元／元件測試（Sprint 331，DEF-458）：Vitest 全套約 20 秒
+echo "🧪 [3/3] Running unit tests (vitest run)..."
+npx --no-install vitest run
+VITEST_EXIT=$?
+
+if [ $VITEST_EXIT -ne 0 ]; then
+  echo ""
+  echo "❌ Unit tests failed (exit code: $VITEST_EXIT)"
+  echo "   Please fix failing tests before committing."
+  exit $VITEST_EXIT
+fi
+
+echo "✅ Unit tests passed"
+echo ""
+
+# 4. Next.js Build 檢查（可選，較慢）
 # 註解掉以加速 commit，建議改在 pre-push 階段執行
 # echo "🏗️  [3/3] Running Next.js build (sanity check)..."
 # npm run build

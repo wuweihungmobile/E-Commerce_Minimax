@@ -14,6 +14,7 @@ import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
 import { confirmDialog } from '@/components/ui/confirm-dialog'
 import { toast } from '@/components/ui/toast'
+import { apiErrorMessage } from '@/lib/api-error'
 
 const EMPTY_FORM: AddressInput = {
   recipientName: '',
@@ -25,14 +26,6 @@ const EMPTY_FORM: AddressInput = {
 }
 
 const PHONE_PATTERN = /^09\d{8}$/
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
-}
 
 export default function AddressesPage() {
   const [addresses, setAddresses] = useState<Address[]>([])
@@ -132,7 +125,7 @@ export default function AddressesPage() {
       cancelForm()
       await reload()
     } catch (err) {
-      setFormError(extractErrorMessage(err, editingId ? '更新地址失敗' : '新增地址失敗'))
+      setFormError(apiErrorMessage(err, editingId ? '更新地址失敗' : '新增地址失敗'))
     } finally {
       setSubmitting(false)
     }
@@ -144,7 +137,7 @@ export default function AddressesPage() {
       await AddressService.remove(address.id)
       await reload()
     } catch (err) {
-      toast.error(extractErrorMessage(err, '刪除地址失敗'))
+      toast.error(apiErrorMessage(err, '刪除地址失敗'))
     }
   }
 
@@ -153,7 +146,7 @@ export default function AddressesPage() {
       await AddressService.setDefault(address.id)
       await reload()
     } catch (err) {
-      toast.error(extractErrorMessage(err, '設定預設地址失敗'))
+      toast.error(apiErrorMessage(err, '設定預設地址失敗'))
     }
   }
 

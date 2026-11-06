@@ -16,16 +16,12 @@ import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { toast } from '@/components/ui/toast'
+import { apiErrorMessage, getApiErrorInfo } from '@/lib/api-error'
 
 const PAGE_SIZE = 20
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
-}
-
-function errorMessage(err: unknown, fallback: string): string {
-  const axiosErr = err as { response?: { data?: { message?: string } } }
-  return axiosErr?.response?.data?.message || fallback
 }
 
 export default function DashboardReviewsPage() {
@@ -62,11 +58,10 @@ export default function DashboardReviewsPage() {
       )
       setReplies(Object.fromEntries(replyEntries))
     } catch (err: unknown) {
-      const axiosErr = err as { response?: { status?: number } }
-      if (axiosErr?.response?.status === 403) {
+      if (getApiErrorInfo(err).status === 403) {
         setForbidden(true)
       } else {
-        setError(errorMessage(err, '載入評價列表失敗'))
+        setError(apiErrorMessage(err, '載入評價列表失敗'))
       }
     } finally {
       setLoading(false)
@@ -90,7 +85,7 @@ export default function DashboardReviewsPage() {
       setReplies((prev) => ({ ...prev, [reviewId]: reply }))
       setReplyDrafts((prev) => ({ ...prev, [reviewId]: '' }))
     } catch (err: unknown) {
-      toast.error(errorMessage(err, '回覆失敗'))
+      toast.error(apiErrorMessage(err, '回覆失敗'))
     } finally {
       setActionLoading(null)
     }
@@ -103,7 +98,7 @@ export default function DashboardReviewsPage() {
       // 切換後這筆通常不再符合目前的篩選條件，重新整理列表
       await fetchReviews(currentPage, isHandled)
     } catch (err: unknown) {
-      toast.error(errorMessage(err, '更新處理狀態失敗'))
+      toast.error(apiErrorMessage(err, '更新處理狀態失敗'))
     } finally {
       setActionLoading(null)
     }

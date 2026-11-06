@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import AuthService from '@/services/auth'
-import apiClient from '@/lib/axios'
-import { API_ENDPOINTS } from '@/lib/api'
+import { useAsyncData } from '@/hooks/useAsyncData'
+import cartService, { type CartItem, type CartResponse } from '@/services/cart'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -13,64 +12,9 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
-import { loginHref } from '@/lib/auth-redirect'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
-
-interface CartItem {
-  cartItemKey: string
-  listingId: string
-  listingName: string
-  coverImageUrl: string | null
-  quantity: number
-  unitPrice: number
-  subtotal: number
-  listingType?: string
-  startDate: string | null
-  endDate: string | null
-  // 動態定價調整（AI-2403 折扣 / AI-2406c 漲價）：規則生效時填入（unitPrice/subtotal 已為調整後）。
-  // discountAmount 為有號差額（正=折扣、負=加價）；priceAdjustmentType 明示方向。
-  originalUnitPrice?: number | null
-  discountAmount?: number | null
-  appliedRuleName?: string | null
-  priceAdjustmentType?: string | null
-  // Sprint 237（DEF-319 同店結帳）：商品／房源所屬的店鋪；房源已不存在時為 null（該項目無法結帳）
-  storeId?: string | null
-  storeName?: string | null
-  // Sprint 239：店鋪是否營業中（非 ACTIVE 的店鋪不能下單，結帳會回 E-2010）
-  storeActive?: boolean | null
-}
-
-// Sprint 237：後端 CartDto.StoreCartSummary——每家店鋪各自的小計、運費（該店鋪的運費模板）、已套用的促銷碼與折扣
-interface StoreSummary {
-  storeId: string
-  storeName?: string | null
-  /** 店鋪是否營業中（Sprint 239）；false 時標示「暫停營業」並停用結帳。舊版回應沒有此欄位時視為營業中。 */
-  storeActive?: boolean | null
-  itemCount: number
-  totalAmount: number
-  shippingFee: number
-  appliedPromoCode?: string | null
-  discountAmount: number
-  finalAmount: number
-}
-
-interface CartResponse {
-  cartId: string
-  userId: string
-  items: CartItem[]
-  totalAmount: number
-  // Sprint 146：後端 CartDto.CartResponse 以 @JsonProperty("totalItems") 序列化此欄位，
-  // 先前前端宣告為 itemCount，導致「共 __ 項商品」永遠讀到 undefined
-  totalItems: number
-  // Sprint 101：後端一律回傳預估運費（PRODUCT 項目小計為基數），並讓 finalAmount 含運費
-  shippingFee?: number
-  appliedPromoCode?: string
-  discountAmount?: number
-  finalAmount?: number
-  // Sprint 237：依店鋪分組的結帳摘要。購物車可以放多家店鋪的項目，但結帳、促銷碼、運費都以「一家店鋪」為單位
-  stores?: StoreSummary[]
-}
+import { getApiErrorInfo } from '@/lib/api-error'
 
 /** 沒有店鋪資訊的購物車（舊版回應）用這個鍵存放促銷碼的輸入狀態。 */
 const LEGACY_PROMO_KEY = '_cart'
@@ -200,38 +144,21 @@ function CartSummaryCard(props: CartSummaryCardProps) {
 
 export default function CartPage() {
   const router = useRouter()
-  const [cart, setCart] = useState<CartResponse | null>(null)
-  const [loading, setLoading] = useState(true)
+  // 原本的頁面不顯示後端訊息，固定顯示這句（所以 errorMessage 用函式形式忽略伺服器訊息）。
+  // 載入失敗與「更新數量／移除商品」失敗原本共用同一個 error；hook 只管載入，動作失敗另外記在 actionError。
+  const { data: cart, error: loadError, loading, setData: setCart } = useAsyncData(
+    (signal) => cartService.getCart({ signal }),
+    [],
+    { errorMessage: () => '載入購物車失敗，請稍後再試' }
+  )
   const [updating, setUpdating] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const error = actionError ?? loadError
   // 促銷碼屬於店鋪（Sprint 237）：輸入框與訊息以店鋪為單位，鍵是 storeId（舊版購物車用 LEGACY_PROMO_KEY）
   const [promoInputs, setPromoInputs] = useState<Record<string, string>>({})
   const [promoLoadingKey, setPromoLoadingKey] = useState<string | null>(null)
   const [promoErrors, setPromoErrors] = useState<Record<string, string | null>>({})
   const [promoSuccesses, setPromoSuccesses] = useState<Record<string, string | null>>({})
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    fetchCart()
-  }, [router])
-
-  const fetchCart = async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await apiClient.get<{ data: CartResponse }>(API_ENDPOINTS.cart.get)
-      setCart(response.data.data)
-    } catch (err: unknown) {
-      console.error('Failed to fetch cart:', err)
-      setError('載入購物車失敗，請稍後再試')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   /**
    * 項目變動後在本地重算：總額與（若有）每家店鋪的小計／件數。
@@ -263,13 +190,10 @@ export default function CartPage() {
     }
 
     setUpdating(cartItemKey)
-    setError(null)
+    setActionError(null)
 
     try {
-      const response = await apiClient.put<{ data: { cartItemKey: string; quantity: number; subtotal: number } }>(
-        API_ENDPOINTS.cart.update(cartItemKey),
-        { quantity: newQuantity }
-      )
+      const updated = await cartService.updateQuantity(cartItemKey, newQuantity)
 
       // Update local state
       setCart(prev => {
@@ -278,14 +202,14 @@ export default function CartPage() {
           prev,
           prev.items.map(item =>
             item.cartItemKey === cartItemKey
-              ? { ...item, quantity: response.data.data.quantity, subtotal: response.data.data.subtotal }
+              ? { ...item, quantity: updated.quantity, subtotal: updated.subtotal }
               : item
           )
         )
       })
     } catch (err: unknown) {
       console.error('Failed to update quantity:', err)
-      setError('更新數量失敗，請稍後再試')
+      setActionError('更新數量失敗，請稍後再試')
     } finally {
       setUpdating(null)
     }
@@ -293,10 +217,10 @@ export default function CartPage() {
 
   const removeItem = async (cartItemKey: string) => {
     setUpdating(cartItemKey)
-    setError(null)
+    setActionError(null)
 
     try {
-      await apiClient.delete(API_ENDPOINTS.cart.remove(cartItemKey))
+      await cartService.removeItem(cartItemKey)
 
       // Update local state
       setCart(prev => {
@@ -309,7 +233,7 @@ export default function CartPage() {
       })
     } catch (err: unknown) {
       console.error('Failed to remove item:', err)
-      setError('移除商品失敗，請稍後再試')
+      setActionError('移除商品失敗，請稍後再試')
     } finally {
       setUpdating(null)
     }
@@ -325,11 +249,7 @@ export default function CartPage() {
 
     try {
       // First validate（促銷碼在店鋪驗證：多家店鋪時要指定是哪一家）
-      const validateResponse = await apiClient.get<{ data: { valid: boolean; invalidReason?: string } }>(
-        `${API_ENDPOINTS.cart.validatePromo}?code=${encodeURIComponent(promoCode)}${storeId ? `&storeId=${storeId}` : ''}`
-      )
-
-      const validation = validateResponse.data.data
+      const validation = await cartService.validatePromo(promoCode, storeId)
       if (!validation.valid) {
         setPromoErrors(prev => ({ ...prev, [key]: validation.invalidReason || '優惠券無效' }))
         setPromoLoadingKey(null)
@@ -337,12 +257,7 @@ export default function CartPage() {
       }
 
       // Then apply
-      const applyResponse = await apiClient.post<{ data: { storeId?: string; appliedPromoCode: string; shippingFee: number; discountAmount: number; finalAmount: number } }>(
-        API_ENDPOINTS.cart.applyPromo,
-        storeId ? { promoCode, storeId } : { promoCode }
-      )
-
-      const result = applyResponse.data.data
+      const result = await cartService.applyPromo(promoCode, storeId)
       const appliedStoreId = storeId ?? result.storeId
       setCart(prev => {
         if (!prev) return prev
@@ -377,7 +292,7 @@ export default function CartPage() {
       setPromoInputs(prev => ({ ...prev, [key]: '' }))
     } catch (err: unknown) {
       console.error('Failed to apply promo:', err)
-      const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code
+      const code = getApiErrorInfo(err).code
       setPromoErrors(prev => ({
         ...prev,
         [key]: code === 'E-5020' ? '購物車含多家店鋪的商品，請在要使用優惠券的店鋪區塊套用' : '優惠券套用失敗，請稍後再試',
@@ -394,7 +309,7 @@ export default function CartPage() {
     setPromoErrors(prev => ({ ...prev, [key]: null }))
 
     try {
-      await apiClient.delete(API_ENDPOINTS.cart.removePromo, storeId ? { params: { storeId } } : undefined)
+      await cartService.removePromo(storeId)
 
       setCart(prev => {
         if (!prev) return prev

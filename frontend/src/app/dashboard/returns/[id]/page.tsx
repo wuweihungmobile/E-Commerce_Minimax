@@ -19,14 +19,7 @@ import { Input } from '@/components/ui/input'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
-}
+import { apiErrorMessage } from '@/lib/api-error'
 
 /** 收貨確認每一項的暫存輸入：預設可售數量＝申請數量，不可售為 0。 */
 interface ReceiveDraft {
@@ -62,7 +55,7 @@ export default function DashboardReturnDetailPage() {
         )
       )
     } catch (err) {
-      setError(extractErrorMessage(err, '載入退貨申請詳情失敗'))
+      setError(apiErrorMessage(err, '載入退貨申請詳情失敗'))
     } finally {
       setLoading(false)
     }
@@ -83,7 +76,7 @@ export default function DashboardReturnDetailPage() {
       await ReturnService.approveReturn(returnId)
       await fetchReturn()
     } catch (err) {
-      setActionError(extractErrorMessage(err, '核准失敗'))
+      setActionError(apiErrorMessage(err, '核准失敗'))
     } finally {
       setActionLoading(false)
     }
@@ -98,7 +91,7 @@ export default function DashboardReturnDetailPage() {
       setRejectionReason('')
       await fetchReturn()
     } catch (err) {
-      setActionError(extractErrorMessage(err, '駁回失敗'))
+      setActionError(apiErrorMessage(err, '駁回失敗'))
     } finally {
       setActionLoading(false)
     }
@@ -131,7 +124,7 @@ export default function DashboardReturnDetailPage() {
       )
       await fetchReturn()
     } catch (err) {
-      setActionError(extractErrorMessage(err, '收貨確認失敗'))
+      setActionError(apiErrorMessage(err, '收貨確認失敗'))
     } finally {
       setActionLoading(false)
     }

@@ -1,85 +1,36 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import apiClient from '@/lib/axios'
-import { API_ENDPOINTS } from '@/lib/api'
-import AuthService from '@/services/auth'
+import { getAuthServerSnapshot, getAuthTenantIdSnapshot, subscribeAuth } from '@/services/authStore'
+import tenantService from '@/services/tenant'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { StatusBadge } from '@/components/ui/status-badge'
 
-// Tenant status enum（Sprint 146：對齊後端 Tenant.TenantStatus 實際值域，先前的 PENDING/APPROVED 從未存在）
-type TenantStatus = 'PENDING_REVIEW' | 'ACTIVE' | 'REJECTED' | 'SUSPENDED' | 'TERMINATED'
-
-// Tenant interface（Sprint 146：對齊真正回傳此清單的 TenantListResponse——
-// 先前呼叫的 GET /v2/tenants 後端根本不存在此路徑，畫面必定 404；
-// 修正後改呼叫既有的 GET /v2/tenants/my，回應形狀是 { tenants: [...] }，
-// 沒有 contactEmail/contactPhone/updatedAt，改用真正存在的 role/memberCount）
-interface Tenant {
-  tenantId: string
-  storeName: string
-  businessType: string
-  status: TenantStatus
-  role: string
-  memberCount: number
-  createdAt: string
-}
-
-interface ApiResponse<T> {
-  success: boolean
-  data: T
-  message?: string
-}
-
 export default function TenantList() {
   const router = useRouter()
-  const [tenants, setTenants] = useState<Tenant[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [currentTenantId, setCurrentTenantId] = useState<string | null>(null)
+  const { data, error, loading, reload } = useAsyncData(
+    (signal) => tenantService.listMine({ signal }),
+    [],
+    { errorMessage: '載入店鋪失敗' }
+  )
+  const tenants = data ?? []
+  const storedTenantId = useSyncExternalStore(subscribeAuth, getAuthTenantIdSnapshot, getAuthServerSnapshot)
+  // 「切換至此店鋪」只在本頁生效（寫入 localStorage 並在畫面上標示），登入者資料裡的店鋪 id 不變
+  const [switchedTenantId, setSwitchedTenantId] = useState<string | null>(null)
+  const currentTenantId = switchedTenantId ?? storedTenantId
   const [searchQuery, setSearchQuery] = useState('')
-
-  useEffect(() => {
-    const user = AuthService.getCurrentUser()
-    if (user?.tenantId) {
-      setCurrentTenantId(user.tenantId)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchTenants()
-  }, [])
-
-  const fetchTenants = async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await apiClient.get<ApiResponse<{ tenants: Tenant[] }>>(
-        API_ENDPOINTS.tenants.list
-      )
-      setTenants(response.data.data?.tenants || [])
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入店鋪失敗')
-      } else {
-        setError('載入店鋪失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleSwitchTenant = (tenantId: string) => {
     localStorage.setItem('tenantId', tenantId)
-    setCurrentTenantId(tenantId)
+    setSwitchedTenantId(tenantId)
     // 觸發頁面重新整理以反映變更
     router.refresh()
   }
@@ -136,7 +87,7 @@ export default function TenantList() {
           />
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => fetchTenants()}>
+          <Button variant="outline" onClick={reload}>
             重新整理
           </Button>
           <Link href="/tenant/apply">

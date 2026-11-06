@@ -1,12 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import AuthService from '@/services/auth'
-import apiClient from '@/lib/axios'
-import { API_ENDPOINTS } from '@/lib/api'
-import { loginHref } from '@/lib/auth-redirect'
+import adminService from '@/services/admin'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Alert } from '@/components/ui/alert'
 import { Card } from '@/components/ui/card'
 import { LoadingState } from '@/components/ui/states'
@@ -14,24 +10,6 @@ import { LoadingState } from '@/components/ui/states'
 // PRD §10.1.3 `/admin`（DEF-358(d)，Sprint 258）：平台管理台統一入口首頁。
 // 各功能頁（/admin/tenants 等）皆無前端角色守門，純依賴後端 403；本頁沿用同一慣例，
 // 不額外新增角色導向邏輯（範圍精準對應缺口本身：補入口頁，不是重做既有頁面的存取控制）。
-
-interface ApiResponse<T> {
-  success: boolean
-  data: T
-}
-
-interface PlatformStatsResponse {
-  totalTenants: number
-  activeTenants: number
-  totalUsers: number
-  totalListings: number
-  totalOrders: number
-  pendingTenantReviews: number
-}
-
-interface PurchaseOrderPendingListResponse {
-  totalElements: number
-}
 
 // 快速管理入口已移到共用外殼的側欄（components/layout/sellerNav.ts，沿用原本的標籤與 data-testid）。
 
@@ -51,38 +29,20 @@ function StatCard({ label, value, href, testId }: { label: string; value: string
 }
 
 export default function AdminOverviewPage() {
-  const router = useRouter()
-  const [stats, setStats] = useState<PlatformStatsResponse | null>(null)
-  const [pendingPurchaseOrders, setPendingPurchaseOrders] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const currentUser = AuthService.getCurrentUser()
-    if (!currentUser) {
-      router.push(loginHref())
-      return
-    }
-    let cancelled = false
-    ;(async () => {
-      try {
-        const [statsRes, poRes] = await Promise.all([
-          apiClient.get<ApiResponse<PlatformStatsResponse>>(API_ENDPOINTS.admin.stats),
-          apiClient.get<ApiResponse<PurchaseOrderPendingListResponse>>(API_ENDPOINTS.admin.purchaseOrders.pending),
-        ])
-        if (cancelled) return
-        setStats(statsRes.data.data)
-        setPendingPurchaseOrders(poRes.data.data.totalElements)
-      } catch {
-        if (!cancelled) setError('無法載入平台統計資料，請稍後再試')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [router])
+  // 原本的頁面不顯示後端訊息，固定顯示這句（所以 errorMessage 用函式形式忽略伺服器訊息）
+  const { data, error, loading } = useAsyncData(
+    async () => {
+      const [stats, pendingPurchaseOrderList] = await Promise.all([
+        adminService.getPlatformStats(),
+        adminService.listPendingPurchaseOrders(),
+      ])
+      return { stats, pendingPurchaseOrders: pendingPurchaseOrderList.totalElements }
+    },
+    [],
+    { errorMessage: () => '無法載入平台統計資料，請稍後再試' }
+  )
+  const stats = data?.stats ?? null
+  const pendingPurchaseOrders = data?.pendingPurchaseOrders ?? 0
 
   if (loading) {
     return (

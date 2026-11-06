@@ -1,100 +1,44 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Pagination } from '@/components/ui/pagination'
-import apiClient from '@/lib/axios'
-import { API_ENDPOINTS } from '@/lib/api'
+import adminService from '@/services/admin'
+import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { toast } from '@/components/ui/toast'
 
-interface PurchaseOrderSummary {
-  id: string
-  tenantId: string
-  poNumber: string
-  status: string
-  totalAmount: number
-  currency: string
-  submittedAt: string
-  reviewedBy?: string
-  reviewedAt?: string
-  rejectionReason?: string
-}
-
-interface ApiResponse<T> {
-  success: boolean
-  data: T
-  message?: string
-}
-
-interface PurchaseOrderPendingListResponse {
-  purchaseOrders: PurchaseOrderSummary[]
-  page: number
-  size: number
-  totalElements: number
-  totalPages: number
-}
-
 const PAGE_SIZE = 20
 
 export default function AdminPurchaseOrdersPage() {
-  const [orders, setOrders] = useState<PurchaseOrderSummary[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
   const [rejectingId, setRejectingId] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState('')
   const [currentPage, setCurrentPage] = useState(1) // 1-based，供 Pagination 元件使用
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalElements, setTotalElements] = useState(0)
 
-  const fetchOrders = useCallback(async (page: number) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const response = await apiClient.get<ApiResponse<PurchaseOrderPendingListResponse>>(
-        API_ENDPOINTS.admin.purchaseOrders.pending,
-        { params: { page: page - 1, size: PAGE_SIZE } }
-      )
-      const data = response.data.data
-      setOrders(data?.purchaseOrders || [])
-      setTotalPages(data?.totalPages || 1)
-      setTotalElements(data?.totalElements || 0)
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入待審批採購單失敗')
-      } else {
-        setError('載入待審批採購單失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchOrders(currentPage)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage])
+  const { data, error, loading, reload } = useAsyncData(
+    (signal) => adminService.listPendingPurchaseOrders({ page: currentPage - 1, size: PAGE_SIZE }, { signal }),
+    [currentPage],
+    { errorMessage: '載入待審批採購單失敗' }
+  )
+  const orders = data?.purchaseOrders || []
+  const totalPages = data?.totalPages || 1
+  const totalElements = data?.totalElements || 0
 
   const handleApprove = async (poId: string) => {
     setActionLoadingId(poId)
     try {
-      await apiClient.post(API_ENDPOINTS.admin.purchaseOrders.approve(poId))
-      fetchOrders(currentPage)
+      await adminService.approvePurchaseOrder(poId)
+      reload()
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        toast.error(axiosErr.response?.data?.message || '核准失敗')
-      } else {
-        toast.error('核准失敗')
-      }
+      toast.error(apiErrorMessage(err, '核准失敗'))
     } finally {
       setActionLoadingId(null)
     }
@@ -107,17 +51,12 @@ export default function AdminPurchaseOrdersPage() {
     }
     setActionLoadingId(poId)
     try {
-      await apiClient.post(API_ENDPOINTS.admin.purchaseOrders.reject(poId), { reason: rejectReason })
+      await adminService.rejectPurchaseOrder(poId, rejectReason)
       setRejectingId(null)
       setRejectReason('')
-      fetchOrders(currentPage)
+      reload()
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        toast.error(axiosErr.response?.data?.message || '駁回失敗')
-      } else {
-        toast.error('駁回失敗')
-      }
+      toast.error(apiErrorMessage(err, '駁回失敗'))
     } finally {
       setActionLoadingId(null)
     }
@@ -131,7 +70,7 @@ export default function AdminPurchaseOrdersPage() {
     return (
       <div className="space-y-4">
         <Alert variant="destructive">{error}</Alert>
-        <Button variant="outline" onClick={() => fetchOrders(currentPage)}>重試</Button>
+        <Button variant="outline" onClick={reload}>重試</Button>
       </div>
     )
   }

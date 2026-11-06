@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { getPosts, publishPost, unpublishPost, deletePost, PostResponse } from '@/services/cms';
+import { getPosts, publishPost, unpublishPost, deletePost } from '@/services/cms';
+import { useAsyncData } from '@/hooks/useAsyncData';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { PageTitle } from '@/components/ui/page-title';
 import { buttonVariants, Button } from '@/components/ui/button';
@@ -12,32 +13,25 @@ import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { StatusBadge } from '@/components/ui/status-badge';
 
 export default function PostListPage() {
-  const [posts, setPosts] = useState<PostResponse[]>([]);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('');
 
-  const loadPosts = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = filter ? { status: filter } : {};
-      const data = await getPosts(params);
-      setPosts(data.posts);
-    } catch (error) {
-      console.error('Failed to load posts:', error);
-      toast.error('載入貼文失敗，請稍後再試');
-    } finally {
-      setLoading(false);
+  const { data, loading, reload } = useAsyncData(
+    () => getPosts(filter ? { status: filter } : {}),
+    [filter],
+    {
+      errorMessage: () => '載入貼文失敗，請稍後再試',
+      onError: (message, error) => {
+        console.error('Failed to load posts:', error);
+        toast.error(message);
+      },
     }
-  }, [filter]);
-
-  useEffect(() => {
-    loadPosts();
-  }, [loadPosts]);
+  );
+  const posts = data?.posts ?? [];
 
   async function handlePublish(postId: string) {
     try {
       await publishPost(postId);
-      loadPosts();
+      reload();
     } catch (error) {
       console.error('Failed to publish post:', error);
       toast.error('發布貼文失敗，請稍後再試');
@@ -47,7 +41,7 @@ export default function PostListPage() {
   async function handleUnpublish(postId: string) {
     try {
       await unpublishPost(postId);
-      loadPosts();
+      reload();
     } catch (error) {
       console.error('Failed to unpublish post:', error);
       toast.error('下架貼文失敗，請稍後再試');
@@ -58,7 +52,7 @@ export default function PostListPage() {
     if (!(await confirmDialog({ message: '確定要刪除這篇貼文嗎？', confirmLabel: '刪除', destructive: true }))) return;
     try {
       await deletePost(postId);
-      loadPosts();
+      reload();
     } catch (error) {
       console.error('Failed to delete post:', error);
       toast.error('刪除貼文失敗，請稍後再試');

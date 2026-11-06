@@ -28,6 +28,7 @@ import { Label } from '@/components/ui/label'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { PageTitle } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
+import { apiErrorMessage } from '@/lib/api-error'
 
 function formatPrice(amount: number, currency: string) {
   return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: currency || 'TWD' }).format(amount)
@@ -130,8 +131,7 @@ export default function OrderDetailPage() {
       const stateLogs = await OrderService.getOrderLogs(orderId).catch(() => [] as OrderStateLog[])
       setLogs(stateLogs)
     } catch (err: unknown) {
-      const errorResponse = err as { response?: { data?: { message?: string } } }
-      setCancelError(errorResponse?.response?.data?.message ?? '取消訂單失敗，此訂單目前狀態可能無法取消')
+      setCancelError(apiErrorMessage(err, '取消訂單失敗，此訂單目前狀態可能無法取消'))
     } finally {
       setCancelling(false)
     }
@@ -144,8 +144,7 @@ export default function OrderDetailPage() {
       await OrderPaymentService.pay(orderId)
       await load()
     } catch (err: unknown) {
-      const errorResponse = err as { response?: { data?: { message?: string } } }
-      setPayError(errorResponse?.response?.data?.message ?? '付款失敗，請稍後再試')
+      setPayError(apiErrorMessage(err, '付款失敗，請稍後再試'))
     } finally {
       setPaying(false)
     }
@@ -158,8 +157,7 @@ export default function OrderDetailPage() {
       await OrderPaymentService.payFail(orderId, '使用者模擬付款失敗')
       await load()
     } catch (err: unknown) {
-      const errorResponse = err as { response?: { data?: { message?: string } } }
-      setPayError(errorResponse?.response?.data?.message ?? '操作失敗，請稍後再試')
+      setPayError(apiErrorMessage(err, '操作失敗，請稍後再試'))
     } finally {
       setPaying(false)
     }
@@ -173,8 +171,7 @@ export default function OrderDetailPage() {
       const session = await OrderPaymentService.createCheckoutSession(orderId)
       window.location.href = session.sessionUrl
     } catch (err: unknown) {
-      const errorResponse = err as { response?: { data?: { message?: string } } }
-      setPayError(errorResponse?.response?.data?.message ?? '無法前往付款頁，請稍後再試')
+      setPayError(apiErrorMessage(err, '無法前往付款頁，請稍後再試'))
       setPaying(false)
     }
   }

@@ -255,10 +255,11 @@ check-backend: ## 本機快速檢查 backend（checkstyle + compile + test）
 	cd backend && mvn test -Dtest="com.nextkey.ecommerce.core.**" -DexcludedGroups=slow -Dspring.profiles.active=test
 	@echo "$(GREEN)✅ Backend 檢查通過（-DexcludedGroups=slow：排除需 DB 的 @SpringBootTest，見 AI-2302）$(NC)"
 
-check-frontend: ## 本機快速檢查 frontend（lint + type-check + build）
+check-frontend: ## 本機快速檢查 frontend（lint + type-check + 單元測試）
 	@echo "$(YELLOW)🎨 Frontend 快速檢查...$(NC)"
 	cd frontend && npm run lint
 	cd frontend && npm run type-check
+	cd frontend && npm test
 	@echo "$(GREEN)✅ Frontend 檢查通過$(NC)"
 
 check-secret: ## 掃描潛在 secrets（使用 gitleaks）

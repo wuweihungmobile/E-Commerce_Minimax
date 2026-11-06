@@ -9,6 +9,7 @@ import { Alert } from '@/components/ui/alert';
 import { Card } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { apiErrorMessage } from '@/lib/api-error';
 
 interface EmbedCardData {
   listingId: string;
@@ -44,7 +45,7 @@ export default function BlogPostPage() {
       parseEmbeds(data.content);
     } catch (err) {
       console.error('Failed to load post:', err);
-      setError(err instanceof Error ? err.message : (err as { response?: { data?: { message?: string } } })?.response?.data?.message || '載入失敗');
+      setError(err instanceof Error ? err.message : apiErrorMessage(err, '載入失敗'));
     } finally {
       setLoading(false);
     }

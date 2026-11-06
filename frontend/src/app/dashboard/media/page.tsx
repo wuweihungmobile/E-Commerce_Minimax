@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   getMediaAssets,
   deleteMediaAsset,
@@ -8,10 +8,9 @@ import {
   createMediaCategory,
   uploadMediaAssetMultipart,
   getMediaAssetFileBlob,
-  MediaAssetDto,
   MediaCategoryDto,
-  PageResponse,
 } from '@/services/media';
+import { useAsyncData } from '@/hooks/useAsyncData';
 import { AuthenticatedImage } from '@/components/ui/authenticated-image';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -24,11 +23,7 @@ import { toast } from '@/components/ui/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 export default function MediaPage() {
-  const [media, setMedia] = useState<MediaAssetDto[]>([]);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalElements, setTotalElements] = useState(0);
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [mimeTypeFilter, setMimeTypeFilter] = useState<string>('');
   const [keyword, setKeyword] = useState<string>('');
@@ -47,9 +42,8 @@ export default function MediaPage() {
     loadCategories();
   }, []);
 
-  const loadMedia = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data, loading, reload } = useAsyncData(
+    () => {
       const params: {
         page: number;
         size: number;
@@ -63,22 +57,20 @@ export default function MediaPage() {
       if (categoryFilter) params.categoryId = categoryFilter;
       if (mimeTypeFilter) params.mimeType = mimeTypeFilter;
       if (keyword) params.keyword = keyword;
-
-      const data: PageResponse<MediaAssetDto> = await getMediaAssets(params);
-      setMedia(data.content);
-      setTotalPages(data.totalPages);
-      setTotalElements(data.totalElements);
-    } catch (error) {
-      console.error('Failed to load media:', error);
-      toast.error('載入媒體失敗，請稍後再試');
-    } finally {
-      setLoading(false);
+      return getMediaAssets(params);
+    },
+    [page, categoryFilter, mimeTypeFilter, keyword],
+    {
+      errorMessage: () => '載入媒體失敗，請稍後再試',
+      onError: (message, error) => {
+        console.error('Failed to load media:', error);
+        toast.error(message);
+      },
     }
-  }, [page, categoryFilter, mimeTypeFilter, keyword]);
-
-  useEffect(() => {
-    loadMedia();
-  }, [loadMedia]);
+  );
+  const media = data?.content ?? [];
+  const totalPages = data?.totalPages ?? 0;
+  const totalElements = data?.totalElements ?? 0;
 
   async function loadCategories() {
     try {
@@ -102,7 +94,7 @@ export default function MediaPage() {
       });
       toast.success('上傳成功');
       setPage(0);
-      loadMedia();
+      reload();
     } catch (error) {
       console.error('Failed to upload media:', error);
       toast.error('上傳失敗，請稍後再試');
@@ -141,7 +133,7 @@ export default function MediaPage() {
     setDeleting(mediaId);
     try {
       await deleteMediaAsset(mediaId);
-      loadMedia();
+      reload();
       toast.success('刪除成功');
     } catch (error) {
       console.error('Failed to delete media:', error);
@@ -297,7 +289,7 @@ export default function MediaPage() {
           <Button
             variant="default"
             size="sm"
-            onClick={() => loadMedia()}
+            onClick={() => reload()}
           >
             搜尋
           </Button>

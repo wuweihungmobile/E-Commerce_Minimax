@@ -1,29 +1,17 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import BookingService, {
-  type BookingListItem,
   BOOKING_STATUS_LABELS,
   bookingStatusBadgeVariant,
 } from '@/services/booking'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
-}
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -34,31 +22,12 @@ function formatPrice(amount: number, currency: string) {
 }
 
 export default function DashboardBookingsPage() {
-  const router = useRouter()
-  const [bookings, setBookings] = useState<BookingListItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const fetchBookings = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await BookingService.listTenantBookings()
-      setBookings(result.content)
-    } catch (err) {
-      setError(extractErrorMessage(err, '載入訂房列表失敗'))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    fetchBookings()
-  }, [router, fetchBookings])
+  const { data, error, loading, reload } = useAsyncData(
+    () => BookingService.listTenantBookings(),
+    [],
+    { errorMessage: '載入訂房列表失敗' }
+  )
+  const bookings = data?.content ?? []
 
   if (loading) {
     return (
@@ -70,7 +39,7 @@ export default function DashboardBookingsPage() {
     return (
       <div className="space-y-4">
         <Alert variant="destructive">{error}</Alert>
-        <Button variant="outline" onClick={fetchBookings}>重試</Button>
+        <Button variant="outline" onClick={reload}>重試</Button>
       </div>
     )
   }
@@ -82,7 +51,7 @@ export default function DashboardBookingsPage() {
           <PageTitle>訂房管理</PageTitle>
           <PageDescription>共 {bookings.length} 筆訂房</PageDescription>
         </div>
-        <Button variant="outline" onClick={fetchBookings}>重新整理</Button>
+        <Button variant="outline" onClick={reload}>重新整理</Button>
       </div>
 
       {bookings.length === 0 ? (

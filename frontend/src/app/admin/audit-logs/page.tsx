@@ -1,104 +1,62 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Pagination } from '@/components/ui/pagination'
-import apiClient from '@/lib/axios'
+import adminService, { type AuditLogQuery } from '@/services/admin'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Label } from '@/components/ui/label'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 
-interface AuditLog {
-  id: string
-  tenantId: string | null
-  userId: string | null
-  action: string
-  entityType: string | null
-  entityId: string | null
-  oldValue: string | null
-  newValue: string | null
-  reason: string | null
-  createdAt: string
-}
-
-interface ApiResponse<T> {
-  success: boolean
-  data: T
-  message?: string
-}
-
-interface AuditLogListResponse {
-  logs: AuditLog[]
-  page: number
-  size: number
-  totalElements: number
-  totalPages: number
-}
-
 const PAGE_SIZE = 20
 
-export default function AdminAuditLogsPage() {
-  const [logs, setLogs] = useState<AuditLog[]>([])
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalElements, setTotalElements] = useState(0)
-  const [currentPage, setCurrentPage] = useState(1) // 1-based，供 Pagination 元件使用
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+interface AppliedFilters {
+  action: string
+  startDate: string
+  endDate: string
+}
 
+export default function AdminAuditLogsPage() {
+  const [currentPage, setCurrentPage] = useState(1) // 1-based，供 Pagination 元件使用
+
+  // 輸入框的內容與「已套用的篩選條件」分開：輸入時不重抓，按「查詢」或「清除」才套用（每次套用都是新物件，即使內容相同也會重抓）
   const [actionFilter, setActionFilter] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [applied, setApplied] = useState<AppliedFilters>({ action: '', startDate: '', endDate: '' })
 
-  const fetchAuditLogs = useCallback(async (page: number) => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const params: Record<string, string | number> = {
-        page: page - 1, // 後端 page 為 0-based
+  const { data, error, loading, reload } = useAsyncData(
+    (signal) => {
+      const query: AuditLogQuery = {
+        page: currentPage - 1, // 後端 page 為 0-based
         size: PAGE_SIZE,
       }
-      if (actionFilter) params.action = actionFilter
-      if (startDate) params.startDate = startDate
-      if (endDate) params.endDate = endDate
-
-      const response = await apiClient.get<ApiResponse<AuditLogListResponse>>(
-        '/v2/admin/audit-logs',
-        { params }
-      )
-      const data = response.data.data
-      setLogs(data?.logs || [])
-      setTotalPages(data?.totalPages || 1)
-      setTotalElements(data?.totalElements || 0)
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入稽核紀錄失敗')
-      } else {
-        setError('載入稽核紀錄失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [actionFilter, startDate, endDate])
-
-  useEffect(() => {
-    fetchAuditLogs(currentPage)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage])
+      if (applied.action) query.action = applied.action
+      if (applied.startDate) query.startDate = applied.startDate
+      if (applied.endDate) query.endDate = applied.endDate
+      return adminService.listAuditLogs(query, { signal })
+    },
+    [currentPage, applied],
+    { errorMessage: '載入稽核紀錄失敗' }
+  )
+  const logs = data?.logs || []
+  const totalPages = data?.totalPages || 1
+  const totalElements = data?.totalElements || 0
 
   const handleSearch = () => {
+    setApplied({ action: actionFilter, startDate, endDate })
     setCurrentPage(1)
-    fetchAuditLogs(1)
   }
 
   const handleReset = () => {
     setActionFilter('')
     setStartDate('')
     setEndDate('')
+    setApplied({ action: '', startDate: '', endDate: '' })
     setCurrentPage(1)
   }
 
@@ -158,7 +116,7 @@ export default function AdminAuditLogsPage() {
           <Alert variant="destructive">
             {error}
           </Alert>
-          <Button variant="outline" onClick={() => fetchAuditLogs(currentPage)}>
+          <Button variant="outline" onClick={reload}>
             重試
           </Button>
         </div>

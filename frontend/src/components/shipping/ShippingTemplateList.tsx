@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -17,14 +17,8 @@ import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { confirmDialog } from '@/components/ui/confirm-dialog'
 import { toast } from '@/components/ui/toast'
-
-function extractErrorMessage(err: unknown, fallback: string): string {
-  if (err && typeof err === 'object' && 'response' in err) {
-    const axiosErr = err as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
-}
+import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 function formatAmount(value: number | null): string {
   if (value === null || value === undefined) return '—'
@@ -32,29 +26,15 @@ function formatAmount(value: number | null): string {
 }
 
 export default function ShippingTemplateList() {
-  const [templates, setTemplates] = useState<ShippingTemplate[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, error, loading, reload } = useAsyncData(
+    () => ShippingTemplateService.list(),
+    [],
+    { errorMessage: '載入運費模板失敗' }
+  )
+  const templates = data ?? []
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<ShippingTemplate | null>(null)
-
-  useEffect(() => {
-    fetchTemplates()
-  }, [])
-
-  const fetchTemplates = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const response = await ShippingTemplateService.list()
-      setTemplates(response)
-    } catch (err: unknown) {
-      setError(extractErrorMessage(err, '載入運費模板失敗'))
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleDelete = async (id: string) => {
     if (!(await confirmDialog({ message: '確定要刪除這個運費模板嗎？刪除後，若無其他模板，訂單將恢復為一律免運費。', confirmLabel: '刪除', destructive: true }))) return
@@ -62,9 +42,9 @@ export default function ShippingTemplateList() {
     setDeleteLoading(id)
     try {
       await ShippingTemplateService.remove(id)
-      fetchTemplates()
+      reload()
     } catch (err: unknown) {
-      toast.error(extractErrorMessage(err, '刪除失敗'))
+      toast.error(apiErrorMessage(err, '刪除失敗'))
     } finally {
       setDeleteLoading(null)
     }
@@ -91,7 +71,7 @@ export default function ShippingTemplateList() {
           結帳時系統以此清單的<strong>第一筆</strong>模板計算運費；尚未建立任何模板時，訂單一律免運費。
         </p>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => fetchTemplates()}>
+          <Button variant="outline" onClick={reload}>
             重新整理
           </Button>
           <Button onClick={() => { setEditingTemplate(null); setShowForm(true) }} data-testid="shipping-template-add">
@@ -104,7 +84,7 @@ export default function ShippingTemplateList() {
         <ShippingTemplateFormModal
           template={editingTemplate}
           onClose={() => { setShowForm(false); setEditingTemplate(null) }}
-          onSaved={fetchTemplates}
+          onSaved={reload}
         />
       )}
 
@@ -225,7 +205,7 @@ function ShippingTemplateFormModal({
       onSaved()
       onClose()
     } catch (err: unknown) {
-      setError(extractErrorMessage(err, '儲存失敗'))
+      setError(apiErrorMessage(err, '儲存失敗'))
     } finally {
       setLoading(false)
     }

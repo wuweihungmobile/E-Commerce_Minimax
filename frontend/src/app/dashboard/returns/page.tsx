@@ -1,56 +1,25 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import ReturnService, {
-  type ReturnRequest,
   RETURN_STATUS_LABELS,
   returnStatusBadgeVariant,
 } from '@/services/returns'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
-}
-
 export default function DashboardReturnsPage() {
-  const router = useRouter()
-  const [returns, setReturns] = useState<ReturnRequest[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const fetchReturns = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await ReturnService.listTenantReturns()
-      setReturns(result.content)
-    } catch (err) {
-      setError(extractErrorMessage(err, '載入退貨申請列表失敗'))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    fetchReturns()
-  }, [router, fetchReturns])
+  const { data, error, loading, reload } = useAsyncData(
+    () => ReturnService.listTenantReturns(),
+    [],
+    { errorMessage: '載入退貨申請列表失敗' }
+  )
+  const returns = data?.content ?? []
 
   if (loading) {
     return (
@@ -62,7 +31,7 @@ export default function DashboardReturnsPage() {
     return (
       <div className="space-y-4">
         <Alert variant="destructive">{error}</Alert>
-        <Button variant="outline" onClick={fetchReturns}>重試</Button>
+        <Button variant="outline" onClick={reload}>重試</Button>
       </div>
     )
   }
@@ -74,7 +43,7 @@ export default function DashboardReturnsPage() {
           <PageTitle>退貨審核</PageTitle>
           <PageDescription>共 {returns.length} 筆退貨申請</PageDescription>
         </div>
-        <Button variant="outline" onClick={fetchReturns}>重新整理</Button>
+        <Button variant="outline" onClick={reload}>重新整理</Button>
       </div>
 
       {returns.length === 0 ? (

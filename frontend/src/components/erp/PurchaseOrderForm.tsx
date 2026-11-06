@@ -24,6 +24,7 @@ import { Alert } from '@/components/ui/alert'
 import { toast } from '@/components/ui/toast'
 import { confirmDialog } from '@/components/ui/confirm-dialog'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { apiErrorMessage } from '@/lib/api-error'
 
 interface PurchaseOrderFormProps {
   orderId?: string
@@ -105,12 +106,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
         fetchSuppliers()
       }
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入採購訂單失敗')
-      } else {
-        setError('載入採購訂單失敗')
-      }
+      setError(apiErrorMessage(err, '載入採購訂單失敗'))
     } finally {
       setInitialLoading(false)
     }
@@ -247,12 +243,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       toast.success('採購訂單建立成功')
       router.push('/dashboard/erp/purchase-orders')
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '建立失敗')
-      } else {
-        setError('建立失敗')
-      }
+      setError(apiErrorMessage(err, '建立失敗'))
     } finally {
       setLoading(false)
     }
@@ -267,12 +258,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       toast.success('採購訂單已提交')
       router.push('/dashboard/erp/purchase-orders')
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '提交失敗')
-      } else {
-        setError('提交失敗')
-      }
+      setError(apiErrorMessage(err, '提交失敗'))
     } finally {
       setLoading(false)
     }
@@ -300,12 +286,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       toast.success('收貨確認成功')
       router.push('/dashboard/erp/purchase-orders')
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '收貨失敗')
-      } else {
-        setError('收貨失敗')
-      }
+      setError(apiErrorMessage(err, '收貨失敗'))
     } finally {
       setLoading(false)
     }
@@ -323,12 +304,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       toast.success('採購訂單已更新')
       router.push('/dashboard/erp/purchase-orders')
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '更新失敗')
-      } else {
-        setError('更新失敗')
-      }
+      setError(apiErrorMessage(err, '更新失敗'))
     } finally {
       setLoading(false)
     }
@@ -344,12 +320,7 @@ export default function PurchaseOrderForm({ orderId, mode }: PurchaseOrderFormPr
       toast.success('採購訂單已取消')
       router.push('/dashboard/erp/purchase-orders')
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '取消失敗')
-      } else {
-        setError('取消失敗')
-      }
+      setError(apiErrorMessage(err, '取消失敗'))
     } finally {
       setLoading(false)
     }

@@ -281,6 +281,12 @@ jobs:
           cd frontend
           npm run type-check
 
+      # Layer 1: Unit Tests（Sprint 331，DEF-458：Vitest + Testing Library + jsdom）
+      - name: Unit Tests
+        run: |
+          cd frontend
+          npm test
+
       # Layer 1: Build
       - name: Build Frontend
         run: |

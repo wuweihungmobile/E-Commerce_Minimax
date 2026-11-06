@@ -33,7 +33,7 @@
 | 層級 | 觸發 | 內容 | 耗時 |
 |------|------|------|------|
 | **Tier 0** pre-commit | 每次 commit | lint + compile + 核心測試 + gitleaks | ~2 min |
-| **Tier 1** 開發快檢（可選） | 手動，開發中 | `make check-backend` / `make check-frontend`（host 快速 compile/lint/type-check） | ~3-5 min |
+| **Tier 1** 開發快檢（可選） | 手動，開發中 | `make check-backend` / `make check-frontend`（host 快速 compile/lint/type-check；frontend 另含 Vitest 單元測試） | ~3-5 min |
 | **Tier 2** pre-push＝完整測試程序 | 每次 push（低頻批次） | `make validate-release` = `validate-all`（act 完整含整合）+ `validate-schema`（ddl-auto=validate + Flyway 對乾淨 DB）+ `validate-e2e`（Playwright + 乾淨 DB） | **~30-45 min** |
 
 > 純文件/設定（無 `backend/`、`frontend/` 程式碼變動）→ pre-push 自動略過完整測試，直接放行。
@@ -179,7 +179,7 @@ git push origin main
 │  ├─ dependency-scan                                  │
 │  ├─ license-compliance                               │
 │  ├─ backend (build + test)                           │
-│  ├─ frontend (lint + build)                          │
+│  ├─ frontend (lint + type-check + 單元測試 + build)  │
 │  ├─ sast                                             │
 │  └─ e2e (Playwright)                                 │
 └─────────────────────────────────────────────────────┘
@@ -379,6 +379,7 @@ act -W .github/workflows/act-compat.yml -n
          └──> frontend/.husky/pre-commit
               ├─ ESLint --fix
               ├─ TypeScript --noEmit
+              ├─ Vitest 單元／元件測試（Sprint 331，DEF-458）
               └─ (Build 跳過，改在 pre-push)
 ```
 

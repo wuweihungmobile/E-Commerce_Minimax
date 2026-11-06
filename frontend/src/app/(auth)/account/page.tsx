@@ -13,17 +13,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { PageTitle } from '@/components/ui/page-title'
+import { apiErrorMessage } from '@/lib/api-error'
 
 function mapInviteErrorMessage(code: string | undefined, fallback: string): string {
   return code === 'E-2002' ? '此邀請已不存在，可能已被處理，請重新整理頁面' : fallback
-}
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
 }
 
 // PRD §1.5.1 會員資料權利（Sprint 153：Sprint 149 §7 範圍外項目，補前端入口——後端功能
@@ -107,7 +100,7 @@ export default function AccountPage() {
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
     } catch (err) {
-      setExportError(extractErrorMessage(err, '資料匯出失敗，請稍後再試'))
+      setExportError(apiErrorMessage(err, '資料匯出失敗，請稍後再試'))
     } finally {
       setExporting(false)
     }
@@ -124,7 +117,7 @@ export default function AccountPage() {
       notifyAuthChange()
       router.push('/login')
     } catch (err) {
-      setDeleteError(extractErrorMessage(err, '帳戶刪除失敗，請稍後再試'))
+      setDeleteError(apiErrorMessage(err, '帳戶刪除失敗，請稍後再試'))
       setDeleting(false)
     }
   }

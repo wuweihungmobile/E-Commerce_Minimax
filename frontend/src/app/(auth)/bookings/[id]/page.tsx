@@ -24,6 +24,7 @@ import ReviewForm, { type ReviewFormValue } from '@/components/reviews/ReviewFor
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { PageTitle } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
+import { apiErrorMessage } from '@/lib/api-error'
 
 function formatPrice(amount: number, currency: string) {
   return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: currency || 'TWD' }).format(amount)
@@ -91,8 +92,7 @@ export default function BookingDetailPage() {
       setCancelReason('')
       await load()
     } catch (err: unknown) {
-      const errorResponse = err as { response?: { data?: { message?: string } } }
-      setCancelError(errorResponse?.response?.data?.message ?? '取消預訂失敗，此預訂目前狀態可能無法取消')
+      setCancelError(apiErrorMessage(err, '取消預訂失敗，此預訂目前狀態可能無法取消'))
     } finally {
       setCancelling(false)
     }

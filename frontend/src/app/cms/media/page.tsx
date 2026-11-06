@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useRef } from 'react';
 import Link from 'next/link';
 import {
   getMediaList,
   uploadMediaMultipart,
   deleteMedia,
   getMediaFileBlob,
-  MediaResponse,
 } from '@/services/cms';
+import { useAsyncData } from '@/hooks/useAsyncData';
 import { AuthenticatedImage } from '@/components/ui/authenticated-image';
 import { Input } from '@/components/ui/input';
 import { PageTitle } from '@/components/ui/page-title';
@@ -17,40 +17,35 @@ import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { toast } from '@/components/ui/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { apiErrorMessage } from '@/lib/api-error';
 
 export default function MediaLibraryPage() {
-  const [mediaList, setMediaList] = useState<MediaResponse[]>([]);
-  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [filter, setFilter] = useState<string>('');
   const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadMedia = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data, loading, reload } = useAsyncData(
+    () => {
       const params: { page?: number; size?: number; fileType?: string } = {
         page,
         size: 24,
       };
       if (filter) params.fileType = filter;
-      const data = await getMediaList(params);
-      setMediaList(data.items);
-      setTotalCount(data.totalCount);
-      setTotalPages(data.totalPages);
-    } catch (error) {
-      console.error('Failed to load media:', error);
-      toast.error('載入媒體庫失敗，請稍後再試');
-    } finally {
-      setLoading(false);
+      return getMediaList(params);
+    },
+    [filter, page],
+    {
+      errorMessage: () => '載入媒體庫失敗，請稍後再試',
+      onError: (message, error) => {
+        console.error('Failed to load media:', error);
+        toast.error(message);
+      },
     }
-  }, [filter, page]);
-
-  useEffect(() => {
-    loadMedia();
-  }, [loadMedia]);
+  );
+  const mediaList = data?.items ?? [];
+  const totalCount = data?.totalCount ?? 0;
+  const totalPages = data?.totalPages ?? 0;
 
   async function handleUpload(file: File) {
     // Validate file type
@@ -79,7 +74,7 @@ export default function MediaLibraryPage() {
     try {
       await uploadMediaMultipart(file);
       toast.success('上傳成功');
-      loadMedia();
+      reload();
     } catch (error) {
       console.error('Failed to upload media:', error);
       toast.error('上傳失敗，請稍後再試');
@@ -104,12 +99,10 @@ export default function MediaLibraryPage() {
     try {
       await deleteMedia(mediaId);
       toast.success('刪除成功');
-      loadMedia();
+      reload();
     } catch (error) {
       console.error('Failed to delete media:', error);
-      const errObj = error as { response?: { data?: { message?: string } } };
-      const message = errObj?.response?.data?.message || '刪除失敗，請稍後再試';
-      toast.error(message);
+      toast.error(apiErrorMessage(error, '刪除失敗，請稍後再試'));
     }
   }
 

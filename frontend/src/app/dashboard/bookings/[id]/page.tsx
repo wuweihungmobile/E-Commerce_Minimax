@@ -22,14 +22,7 @@ import AuthService from '@/services/auth'
 import { loginHref } from '@/lib/auth-redirect'
 import { PageTitle } from '@/components/ui/page-title'
 import { LoadingState } from '@/components/ui/states'
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
-}
+import { apiErrorMessage } from '@/lib/api-error'
 
 function formatPrice(amount: number, currency: string) {
   return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: currency || 'TWD' }).format(amount)
@@ -81,7 +74,7 @@ export default function DashboardBookingDetailPage() {
       const detail = await BookingService.getBooking(bookingId)
       setBooking(detail)
     } catch (err) {
-      setError(extractErrorMessage(err, '載入訂房詳情失敗'))
+      setError(apiErrorMessage(err, '載入訂房詳情失敗'))
     } finally {
       setLoading(false)
     }
@@ -112,7 +105,7 @@ export default function DashboardBookingDetailPage() {
       await BookingService.checkIn(bookingId)
       await Promise.all([fetchBooking(), fetchStateLog()])
     } catch (err) {
-      setCheckInOutError(extractErrorMessage(err, '辦理入住失敗'))
+      setCheckInOutError(apiErrorMessage(err, '辦理入住失敗'))
     } finally {
       setCheckingIn(false)
     }
@@ -125,7 +118,7 @@ export default function DashboardBookingDetailPage() {
       await BookingService.checkOut(bookingId)
       await Promise.all([fetchBooking(), fetchStateLog()])
     } catch (err) {
-      setCheckInOutError(extractErrorMessage(err, '辦理退房失敗'))
+      setCheckInOutError(apiErrorMessage(err, '辦理退房失敗'))
     } finally {
       setCheckingOut(false)
     }
@@ -144,7 +137,7 @@ export default function DashboardBookingDetailPage() {
       setCancelReason('')
       await fetchBooking()
     } catch (err) {
-      setCancelError(extractErrorMessage(err, '取消訂房失敗，此預訂目前狀態可能無法取消'))
+      setCancelError(apiErrorMessage(err, '取消訂房失敗，此預訂目前狀態可能無法取消'))
     } finally {
       setCancelling(false)
     }

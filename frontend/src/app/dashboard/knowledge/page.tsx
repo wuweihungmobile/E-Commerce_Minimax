@@ -1,14 +1,13 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import {
   getKnowledgeArticles,
   deleteKnowledgeArticle,
   getKnowledgeCategories,
-  KnowledgeArticleDto,
   KnowledgeCategoryDto,
-  PageResponse,
 } from '@/services/knowledge';
+import { useAsyncData } from '@/hooks/useAsyncData';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Input } from '@/components/ui/input';
@@ -22,11 +21,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { Badge } from '@/components/ui/badge';
 
 export default function KnowledgePage() {
-  const [articles, setArticles] = useState<KnowledgeArticleDto[]>([]);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalElements, setTotalElements] = useState(0);
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [keyword, setKeyword] = useState<string>('');
   const [categories, setCategories] = useState<KnowledgeCategoryDto[]>([]);
@@ -36,9 +31,8 @@ export default function KnowledgePage() {
     loadCategories();
   }, []);
 
-  const loadArticles = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data, loading, reload } = useAsyncData(
+    () => {
       const params: {
         page: number;
         size: number;
@@ -50,22 +44,20 @@ export default function KnowledgePage() {
       };
       if (categoryFilter) params.categoryId = categoryFilter;
       if (keyword) params.keyword = keyword;
-
-      const data: PageResponse<KnowledgeArticleDto> = await getKnowledgeArticles(params);
-      setArticles(data.content);
-      setTotalPages(data.totalPages);
-      setTotalElements(data.totalElements);
-    } catch (error) {
-      console.error('Failed to load articles:', error);
-      toast.error('載入知識庫文章失敗，請稍後再試');
-    } finally {
-      setLoading(false);
+      return getKnowledgeArticles(params);
+    },
+    [page, categoryFilter, keyword],
+    {
+      errorMessage: () => '載入知識庫文章失敗，請稍後再試',
+      onError: (message, error) => {
+        console.error('Failed to load articles:', error);
+        toast.error(message);
+      },
     }
-  }, [page, categoryFilter, keyword]);
-
-  useEffect(() => {
-    loadArticles();
-  }, [loadArticles]);
+  );
+  const articles = data?.content ?? [];
+  const totalPages = data?.totalPages ?? 0;
+  const totalElements = data?.totalElements ?? 0;
 
   async function loadCategories() {
     try {
@@ -81,7 +73,7 @@ export default function KnowledgePage() {
     setDeleting(articleId);
     try {
       await deleteKnowledgeArticle(articleId);
-      loadArticles();
+      reload();
       toast.success('刪除成功');
     } catch (error) {
       console.error('Failed to delete article:', error);
@@ -141,7 +133,7 @@ export default function KnowledgePage() {
           <Button
             variant="default"
             size="sm"
-            onClick={() => loadArticles()}
+            onClick={() => reload()}
           >
             搜尋
           </Button>

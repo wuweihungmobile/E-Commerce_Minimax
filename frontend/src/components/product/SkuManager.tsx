@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -9,57 +9,36 @@ import SkuService, { Sku, SkuStatus } from '@/services/sku'
 import { Label } from '@/components/ui/label'
 import { Alert } from '@/components/ui/alert'
 import { toast } from '@/components/ui/toast'
+import { apiErrorMessage } from '@/lib/api-error'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 // 商品規格（SKU）管理（Sprint 178）。
 // 背景：product_skus/product_inventory 先前在正式環境完全無法產生資料，導致依賴 SKU 的既有 ERP
 // 庫存子系統（低庫存預警、採購單收貨入庫）實質上從未真正運作過。此元件是唯一缺少的建立入口，
 // 建立後續由既有的採購單收貨/庫存異動流程接手增減數量，本元件本身不提供調整數量的功能。
 
-function extractErrorMessage(err: unknown, fallback: string): string {
-  if (err && typeof err === 'object' && 'response' in err) {
-    const axiosErr = err as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
-}
-
 interface SkuManagerProps {
   listingId: string
 }
 
 export default function SkuManager({ listingId }: SkuManagerProps) {
-  const [skus, setSkus] = useState<Sku[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, error, loading, reload } = useAsyncData(
+    () => SkuService.list(listingId),
+    [listingId],
+    { errorMessage: '載入商品規格失敗' }
+  )
+  const skus = data ?? []
   const [showForm, setShowForm] = useState(false)
   const [toggleLoading, setToggleLoading] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetchSkus()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listingId])
-
-  const fetchSkus = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await SkuService.list(listingId)
-      setSkus(result)
-    } catch (err: unknown) {
-      setError(extractErrorMessage(err, '載入商品規格失敗'))
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleToggleStatus = async (sku: Sku) => {
     const nextStatus: SkuStatus = sku.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
     setToggleLoading(sku.id)
     try {
       await SkuService.update(listingId, sku.id, { status: nextStatus })
-      fetchSkus()
+      reload()
     } catch (err: unknown) {
-      toast.error(extractErrorMessage(err, '更新狀態失敗'))
+      toast.error(apiErrorMessage(err, '更新狀態失敗'))
     } finally {
       setToggleLoading(null)
     }
@@ -85,7 +64,7 @@ export default function SkuManager({ listingId }: SkuManagerProps) {
           <SkuCreateForm
             listingId={listingId}
             onClose={() => setShowForm(false)}
-            onSaved={fetchSkus}
+            onSaved={reload}
           />
         )}
 
@@ -168,7 +147,7 @@ function SkuCreateForm({
       onSaved()
       onClose()
     } catch (err: unknown) {
-      setError(extractErrorMessage(err, '建立規格失敗'))
+      setError(apiErrorMessage(err, '建立規格失敗'))
     } finally {
       setLoading(false)
     }

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { apiErrorMessage } from '@/lib/api-error'
 
 interface BookingPaymentCardProps {
   bookingId: string
@@ -77,8 +78,7 @@ export default function BookingPaymentCard({
       setState(await BookingPaymentService.pay(bookingId))
       onPaid?.()
     } catch (err: unknown) {
-      const errorResponse = err as { response?: { data?: { message?: string } } }
-      setPayError(errorResponse?.response?.data?.message ?? '付款失敗，請稍後再試')
+      setPayError(apiErrorMessage(err, '付款失敗，請稍後再試'))
     } finally {
       setPaying(false)
     }
@@ -92,8 +92,7 @@ export default function BookingPaymentCard({
       const session = await BookingPaymentService.createCheckoutSession(bookingId)
       window.location.href = session.sessionUrl
     } catch (err: unknown) {
-      const errorResponse = err as { response?: { data?: { message?: string } } }
-      setPayError(errorResponse?.response?.data?.message ?? '無法前往付款頁，請稍後再試')
+      setPayError(apiErrorMessage(err, '無法前往付款頁，請稍後再試'))
       setPaying(false)
     }
   }

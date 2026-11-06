@@ -31,6 +31,13 @@ export function getAuthRoleSnapshot(): string | null {
   return AuthService.getCurrentUser()?.role ?? null
 }
 
+// client 快照：登入者所屬店鋪 id（primitive），沒登入或沒有店鋪回 null。
+// Sprint 331：店鋪列表／詳情頁需要它來標示「目前店鋪」，原本在 effect 裡同步 setState（React 19 嚴格 hooks 禁令）。
+export function getAuthTenantIdSnapshot(): string | null {
+  if (!AuthService.isAuthenticated()) return null
+  return AuthService.getCurrentUser()?.tenantId ?? null
+}
+
 // server / hydration 快照：一律 null（SSR 無 localStorage），確保 hydration 無 mismatch
 export function getAuthServerSnapshot(): null {
   return null

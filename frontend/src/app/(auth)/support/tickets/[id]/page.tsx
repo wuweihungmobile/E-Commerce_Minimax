@@ -11,20 +11,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { Textarea } from '@/components/ui/textarea'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
+import { apiErrorMessage } from '@/lib/api-error'
 
 const STATUS_LABEL: Record<SupportTicket['status'], string> = {
   OPEN: '開立',
   IN_PROGRESS: '處理中',
   RESOLVED: '已解決',
   CLOSED: '已關閉',
-}
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
 }
 
 export default function SupportTicketDetailPage() {
@@ -45,7 +38,7 @@ export default function SupportTicketDetailPage() {
       const result = await SupportService.getTicket(ticketId)
       setTicket(result)
     } catch (err) {
-      setError(extractErrorMessage(err, '無法載入工單詳情'))
+      setError(apiErrorMessage(err, '無法載入工單詳情'))
     } finally {
       setLoading(false)
     }
@@ -65,7 +58,7 @@ export default function SupportTicketDetailPage() {
       setReply('')
       await load()
     } catch (err) {
-      setSendError(extractErrorMessage(err, '發送訊息失敗'))
+      setSendError(apiErrorMessage(err, '發送訊息失敗'))
     } finally {
       setSending(false)
     }

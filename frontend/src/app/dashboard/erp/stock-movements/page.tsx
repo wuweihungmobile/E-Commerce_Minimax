@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -10,48 +10,23 @@ import StockMovementService, {
   StockMovementDto,
   StockMovementType,
 } from '@/services/erp/stockMovement'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 
 export default function StockMovementsPage() {
   const router = useRouter()
-  const [movements, setMovements] = useState<StockMovementDto[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(0)
-  const [totalPages, setTotalPages] = useState(0)
-  const [totalElements, setTotalElements] = useState(0)
 
-  const fetchMovements = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const response = await StockMovementService.getStockMovements(page, 50)
-      setMovements(response.content)
-      setTotalPages(response.totalPages)
-      setTotalElements(response.totalElements)
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入庫存異動失敗')
-      } else {
-        setError('載入庫存異動失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [page])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    fetchMovements()
-  }, [router, fetchMovements])
+  const { data, error, loading, reload } = useAsyncData(
+    () => StockMovementService.getStockMovements(page, 50),
+    [page],
+    { errorMessage: '載入庫存異動失敗' }
+  )
+  const movements = data?.content ?? []
+  const totalPages = data?.totalPages ?? 0
+  const totalElements = data?.totalElements ?? 0
 
   // 涵蓋 PRD §6.7.4 全部型別：列表除了手動異動，也會顯示採購收貨與訂單流程產生的流水帳，
   // 少一型就會 fallback 成裸英文代碼（DEF-063 之前 INBOUND 以外的系統型別都是這樣顯示的）。
@@ -101,7 +76,7 @@ export default function StockMovementsPage() {
           共 {totalElements} 筆異動記錄
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchMovements}>重新整理</Button>
+          <Button variant="outline" onClick={reload}>重新整理</Button>
           <Button onClick={() => router.push('/dashboard/erp/stock-movements/new')}>
             新增異動
           </Button>

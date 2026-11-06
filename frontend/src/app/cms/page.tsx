@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { getPosts, publishPost, unpublishPost, deletePost, PostResponse } from '@/services/cms';
+import { getPosts, publishPost, unpublishPost, deletePost } from '@/services/cms';
+import { useAsyncData } from '@/hooks/useAsyncData';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { PageTitle } from '@/components/ui/page-title';
 import { buttonVariants, Button } from '@/components/ui/button';
@@ -12,41 +13,35 @@ import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { StatusBadge } from '@/components/ui/status-badge';
 
 export default function CmsPostListPage() {
-  const [posts, setPosts] = useState<PostResponse[]>([]);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('');
   const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
 
-  const loadPosts = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data, loading, reload } = useAsyncData(
+    () => {
       const params: { page?: number; size?: number; status?: string } = {
         page,
         size: 20,
       };
       if (filter) params.status = filter;
-      const data = await getPosts(params);
-      setPosts(data.posts);
-      setTotalCount(data.totalCount);
-      setTotalPages(data.totalPages);
-    } catch (error) {
-      console.error('Failed to load posts:', error);
-      toast.error('載入貼文失敗，請稍後再試');
-    } finally {
-      setLoading(false);
+      return getPosts(params);
+    },
+    [filter, page],
+    {
+      errorMessage: () => '載入貼文失敗，請稍後再試',
+      onError: (message, error) => {
+        console.error('Failed to load posts:', error);
+        toast.error(message);
+      },
     }
-  }, [filter, page]);
-
-  useEffect(() => {
-    loadPosts();
-  }, [loadPosts]);
+  );
+  const posts = data?.posts ?? [];
+  const totalCount = data?.totalCount ?? 0;
+  const totalPages = data?.totalPages ?? 0;
 
   async function handlePublish(postId: string) {
     try {
       await publishPost(postId);
-      loadPosts();
+      reload();
     } catch (error) {
       console.error('Failed to publish post:', error);
       toast.error('發布貼文失敗，請稍後再試');
@@ -56,7 +51,7 @@ export default function CmsPostListPage() {
   async function handleUnpublish(postId: string) {
     try {
       await unpublishPost(postId);
-      loadPosts();
+      reload();
     } catch (error) {
       console.error('Failed to unpublish post:', error);
       toast.error('下架貼文失敗，請稍後再試');
@@ -67,7 +62,7 @@ export default function CmsPostListPage() {
     if (!(await confirmDialog({ message: '確定要刪除這篇貼文嗎？', confirmLabel: '刪除', destructive: true }))) return;
     try {
       await deletePost(postId);
-      loadPosts();
+      reload();
     } catch (error) {
       console.error('Failed to delete post:', error);
       toast.error('刪除貼文失敗，請稍後再試');

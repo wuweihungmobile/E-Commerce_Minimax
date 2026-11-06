@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { NativeSelect } from '@/components/ui/native-select'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { EmptyState } from '@/components/ui/states'
+import { apiErrorMessage } from '@/lib/api-error'
 
 const EMPTY_FORM: CreateTicketInput = {
   category: 'OTHER',
@@ -35,14 +36,6 @@ const STATUS_LABEL: Record<SupportTicket['status'], string> = {
   IN_PROGRESS: '處理中',
   RESOLVED: '已解決',
   CLOSED: '已關閉',
-}
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
 }
 
 export default function SupportTicketsPage() {
@@ -116,7 +109,7 @@ export default function SupportTicketsPage() {
       cancelForm()
       await reload()
     } catch (err) {
-      setFormError(extractErrorMessage(err, '提交工單失敗'))
+      setFormError(apiErrorMessage(err, '提交工單失敗'))
     } finally {
       setSubmitting(false)
     }

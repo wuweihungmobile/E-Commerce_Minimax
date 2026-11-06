@@ -7,14 +7,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import storefrontService, { type StoreProfile } from "@/services/storefront"
 import { StoreNav, type StoreNavTab } from "@/components/storefront/StoreNav"
 import { buttonVariants, Button } from "@/components/ui/button"
+import { getApiErrorInfo } from '@/lib/api-error'
 
 type LoadState = "loading" | "ok" | "notfound" | "error"
 
 function statusOf(err: unknown): number | undefined {
-  if (err && typeof err === "object" && "response" in err) {
-    return (err as { response?: { status?: number } }).response?.status
-  }
-  return undefined
+  return getApiErrorInfo(err).status
 }
 
 export interface StoreLayoutProps {

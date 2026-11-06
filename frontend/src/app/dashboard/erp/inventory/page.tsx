@@ -1,62 +1,34 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import InventoryService, {
-  InventoryLedgerDto,
-  LowStockAlertDto,
-} from '@/services/erp/inventory'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import InventoryService from '@/services/erp/inventory'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 
 export default function InventoryPage() {
-  const router = useRouter()
-  const [inventory, setInventory] = useState<InventoryLedgerDto[]>([])
-  const [alerts, setAlerts] = useState<LowStockAlertDto[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(0)
-  const [totalPages, setTotalPages] = useState(0)
-  const [totalElements, setTotalElements] = useState(0)
   const [activeTab, setActiveTab] = useState<'ledger' | 'alerts'>('ledger')
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [ledgerResponse, alertData] = await Promise.all([
+  const { data, error, loading, reload } = useAsyncData(
+    async () => {
+      const [ledger, lowStockAlerts] = await Promise.all([
         InventoryService.getInventoryLedger(page, 50),
         InventoryService.getLowStockAlerts(),
       ])
-      setInventory(ledgerResponse.content)
-      setTotalPages(ledgerResponse.totalPages)
-      setTotalElements(ledgerResponse.totalElements)
-      setAlerts(alertData)
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入庫存失敗')
-      } else {
-        setError('載入庫存失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [page])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    fetchData()
-  }, [router, fetchData])
+      return { ledger, lowStockAlerts }
+    },
+    [page],
+    { errorMessage: '載入庫存失敗' }
+  )
+  const inventory = data?.ledger.content ?? []
+  const totalPages = data?.ledger.totalPages ?? 0
+  const totalElements = data?.ledger.totalElements ?? 0
+  const alerts = data?.lowStockAlerts ?? []
 
   // Sprint 116（DEF-066）：門檻改用後端實際提供的 lowStockThreshold（product_inventory 只有這一個）。
   // 這個函式原本就存在，但「狀態」欄過去是寫死的 <Badge>正常</Badge>，從來沒有呼叫過它
@@ -102,7 +74,7 @@ export default function InventoryPage() {
             低庫存警告 ({alerts.length})
           </Button>
         </div>
-        <Button variant="outline" onClick={fetchData}>重新整理</Button>
+        <Button variant="outline" onClick={reload}>重新整理</Button>
       </div>
 
       {activeTab === 'ledger' ? (

@@ -4,9 +4,8 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Droplets, Star } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import apiClient from "@/lib/axios"
-import { API_ENDPOINTS } from "@/lib/api"
 import listingService, { type Listing } from "@/services/listing"
+import cartService from "@/services/cart"
 import { notifyCartChanged } from "@/services/cartEvents"
 import bookingService, { type AvailabilityResponse } from "@/services/booking"
 import { MonthCalendar } from "@/components/storefront/MonthCalendar"
@@ -16,14 +15,12 @@ import { Input } from "@/components/ui/input"
 import { PageTitle } from "@/components/ui/page-title"
 import { buttonVariants, Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/states"
+import { getApiErrorInfo } from '@/lib/api-error'
 
 type LoadState = "loading" | "ok" | "auth" | "notfound" | "error"
 
 function statusOf(err: unknown): number | undefined {
-  if (err && typeof err === "object" && "response" in err) {
-    return (err as { response?: { status?: number } }).response?.status
-  }
-  return undefined
+  return getApiErrorInfo(err).status
 }
 
 function formatPrice(currency: string, value: number): string {
@@ -146,8 +143,8 @@ export function ListingDetail({ id }: { id: string }) {
     const payload = isRoom
       ? { listingId: id, quantity: 1, startDate: checkIn, endDate: checkOut }
       : { listingId: id, quantity }
-    apiClient
-      .post(API_ENDPOINTS.cart.add, payload)
+    cartService
+      .addItem(payload)
       .then(() => {
         setAdded(true)
         notifyCartChanged()

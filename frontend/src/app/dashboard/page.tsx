@@ -1,11 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import AuthService from '@/services/auth'
-import AnalyticsService, { DashboardStats, OrderStats, RevenueStats } from '@/services/analytics'
-import { loginHref } from '@/lib/auth-redirect'
+import AnalyticsService from '@/services/analytics'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Alert } from '@/components/ui/alert'
 import { Card } from '@/components/ui/card'
 import { LoadingState } from '@/components/ui/states'
@@ -32,41 +29,22 @@ function StatCard({ label, value, hint }: { label: string; value: string; hint?:
 }
 
 export default function DashboardPage() {
-  const router = useRouter()
-  const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [orderStats, setOrderStats] = useState<OrderStats | null>(null)
-  const [revenue, setRevenue] = useState<RevenueStats | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const currentUser = AuthService.getCurrentUser()
-    if (!currentUser) {
-      router.push(loginHref())
-      return
-    }
-    let cancelled = false
-    ;(async () => {
-      try {
-        const [s, o, r] = await Promise.all([
-          AnalyticsService.getDashboardStats(),
-          AnalyticsService.getOrderStats(),
-          AnalyticsService.getRevenueStats(),
-        ])
-        if (cancelled) return
-        setStats(s)
-        setOrderStats(o)
-        setRevenue(r)
-      } catch {
-        if (!cancelled) setError('無法載入儀表板資料，請稍後再試')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [router])
+  // 原本的頁面不顯示後端訊息，固定顯示這句（所以 errorMessage 用函式形式忽略伺服器訊息）
+  const { data, error, loading } = useAsyncData(
+    async () => {
+      const [stats, orderStats, revenue] = await Promise.all([
+        AnalyticsService.getDashboardStats(),
+        AnalyticsService.getOrderStats(),
+        AnalyticsService.getRevenueStats(),
+      ])
+      return { stats, orderStats, revenue }
+    },
+    [],
+    { errorMessage: () => '無法載入儀表板資料，請稍後再試' }
+  )
+  const stats = data?.stats ?? null
+  const orderStats = data?.orderStats ?? null
+  const revenue = data?.revenue ?? null
 
   if (loading) {
     return (

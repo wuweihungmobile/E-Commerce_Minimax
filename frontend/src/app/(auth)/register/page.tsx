@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { apiErrorMessage } from '@/lib/api-error'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -52,8 +53,7 @@ export default function RegisterPage() {
     } catch (err: unknown) {
       console.error('Registration error:', err)
       if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || 'Registration failed')
+        setError(apiErrorMessage(err, 'Registration failed'))
       } else if (err && typeof err === 'object' && 'message' in err) {
         const msgErr = err as { message?: string }
         setError(msgErr.message || 'An unexpected error occurred')

@@ -1,52 +1,27 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import SupplierService, { SupplierDto } from '@/services/erp/supplier'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import SupplierService from '@/services/erp/supplier'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { NativeSelect } from '@/components/ui/native-select'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { StatusBadge } from '@/components/ui/status-badge'
 
 export default function SuppliersPage() {
-  const router = useRouter()
-  const [suppliers, setSuppliers] = useState<SupplierDto[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
 
-  const fetchSuppliers = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await SupplierService.listSuppliers(statusFilter || undefined)
-      setSuppliers(data)
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入供應商失敗')
-      } else {
-        setError('載入供應商失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [statusFilter])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    fetchSuppliers()
-  }, [router, fetchSuppliers])
+  const { data, error, loading, reload } = useAsyncData(
+    () => SupplierService.listSuppliers(statusFilter || undefined),
+    [statusFilter],
+    { errorMessage: '載入供應商失敗' }
+  )
+  const suppliers = data ?? []
 
   const filteredSuppliers = suppliers.filter(s =>
     s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -87,7 +62,7 @@ export default function SuppliersPage() {
             <option value="ACTIVE">啟用</option>
             <option value="INACTIVE">停用</option>
           </NativeSelect>
-          <Button variant="outline" onClick={fetchSuppliers}>重新整理</Button>
+          <Button variant="outline" onClick={reload}>重新整理</Button>
         </div>
         <Link href="/dashboard/erp/suppliers/new">
           <Button>新增供應商</Button>

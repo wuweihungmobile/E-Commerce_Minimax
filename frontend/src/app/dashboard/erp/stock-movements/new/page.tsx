@@ -17,6 +17,7 @@ import { NativeSelect } from '@/components/ui/native-select'
 import { PageTitle } from '@/components/ui/page-title'
 import { Alert } from '@/components/ui/alert'
 import { toast } from '@/components/ui/toast'
+import { apiErrorMessage } from '@/lib/api-error'
 
 export default function NewStockMovementPage() {
   const router = useRouter()
@@ -67,12 +68,7 @@ export default function NewStockMovementPage() {
       toast.success('庫存異動建立成功')
       router.push('/dashboard/erp/stock-movements')
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '建立失敗')
-      } else {
-        setError('建立失敗')
-      }
+      setError(apiErrorMessage(err, '建立失敗'))
     } finally {
       setLoading(false)
     }

@@ -1,19 +1,19 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import SupportService, { SupportTicket, TicketStatus } from '@/services/support'
-import AuthService from '@/services/auth'
-import { loginHref } from '@/lib/auth-redirect'
+import SupportService, { TicketStatus } from '@/services/support'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { Textarea } from '@/components/ui/textarea'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { toast } from '@/components/ui/toast'
+import { apiErrorMessage } from '@/lib/api-error'
 
 const STATUS_LABEL: Record<TicketStatus, string> = {
   OPEN: '開立',
@@ -31,53 +31,23 @@ const NEXT_STATUSES: Record<TicketStatus, TicketStatus[]> = {
 
 export default function DashboardSupportTicketDetailPage() {
   const params = useParams()
-  const router = useRouter()
   const ticketId = params.id as string
 
-  const [ticket, setTicket] = useState<SupportTicket | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: ticket, error, loading, reload } = useAsyncData(
+    () => SupportService.getTenantTicket(ticketId),
+    [ticketId],
+    { errorMessage: '載入工單詳情失敗' }
+  )
   const [reply, setReply] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
-
-  const fetchTicket = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await SupportService.getTenantTicket(ticketId)
-      setTicket(data)
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入工單詳情失敗')
-      } else {
-        setError('載入工單詳情失敗')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [ticketId])
-
-  useEffect(() => {
-    if (!AuthService.isAuthenticated()) {
-      router.push(loginHref())
-      return
-    }
-    fetchTicket()
-  }, [router, fetchTicket])
 
   const handleStatusChange = async (status: TicketStatus) => {
     setActionLoading(true)
     try {
       await SupportService.updateTicketStatus(ticketId, status)
-      await fetchTicket()
+      reload()
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        toast.error(axiosErr.response?.data?.message || '更新狀態失敗')
-      } else {
-        toast.error('更新狀態失敗')
-      }
+      toast.error(apiErrorMessage(err, '更新狀態失敗'))
     } finally {
       setActionLoading(false)
     }
@@ -89,14 +59,9 @@ export default function DashboardSupportTicketDetailPage() {
     try {
       await SupportService.postStaffMessage(ticketId, reply.trim())
       setReply('')
-      await fetchTicket()
+      reload()
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        toast.error(axiosErr.response?.data?.message || '發送訊息失敗')
-      } else {
-        toast.error('發送訊息失敗')
-      }
+      toast.error(apiErrorMessage(err, '發送訊息失敗'))
     } finally {
       setActionLoading(false)
     }

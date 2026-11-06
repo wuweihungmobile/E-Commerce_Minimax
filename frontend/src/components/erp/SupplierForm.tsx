@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label'
 import { LoadingState } from '@/components/ui/states'
 import { Alert } from '@/components/ui/alert'
 import { toast } from '@/components/ui/toast'
+import { apiErrorMessage } from '@/lib/api-error'
 
 interface SupplierFormProps {
   supplierId?: string
@@ -48,12 +49,7 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
         address: data.address || '',
       })
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '載入供應商失敗')
-      } else {
-        setError('載入供應商失敗')
-      }
+      setError(apiErrorMessage(err, '載入供應商失敗'))
     } finally {
       setInitialLoading(false)
     }
@@ -96,12 +92,7 @@ export default function SupplierForm({ supplierId, mode }: SupplierFormProps) {
         router.push('/dashboard/erp/suppliers')
       }
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '操作失敗')
-      } else {
-        setError('操作失敗')
-      }
+      setError(apiErrorMessage(err, '操作失敗'))
     } finally {
       setLoading(false)
     }

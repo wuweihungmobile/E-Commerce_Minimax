@@ -15,14 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
-}
+import { apiErrorMessage } from '@/lib/api-error'
 
 const VALID_PROVIDERS: OAuthProviderId[] = ['google', 'github']
 
@@ -77,7 +70,7 @@ export default function OAuthCallbackPage() {
         }
       } catch (err) {
         setStatus('error')
-        setErrorMessage(extractErrorMessage(err, '處理失敗，請稍後再試'))
+        setErrorMessage(apiErrorMessage(err, '處理失敗，請稍後再試'))
       }
     }
     run()

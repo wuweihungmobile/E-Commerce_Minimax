@@ -13,6 +13,7 @@ import { loginHref } from '@/lib/auth-redirect'
 import { Label } from '@/components/ui/label'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { apiErrorMessage } from '@/lib/api-error'
 
 interface PricingCalendarProps {
   roomListingId: string
@@ -100,12 +101,7 @@ export default function PricingCalendarPreview({ roomListingId }: PricingCalenda
       const response = await PricingService.calculatePrice(request)
       setResult(response)
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } }
-        setError(axiosErr.response?.data?.message || '計算價格失敗')
-      } else {
-        setError('計算價格失敗')
-      }
+      setError(apiErrorMessage(err, '計算價格失敗'))
     } finally {
       setLoading(false)
     }

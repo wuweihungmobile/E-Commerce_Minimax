@@ -85,20 +85,9 @@ export interface ApiResponse<T> {
   }>
 }
 
-// 從 axios 錯誤取出後端 ApiResponse 的 code／message 與 HTTP 狀態（Sprint 204：三個新頁面與開店申請表單共用）
-export interface ApiErrorInfo {
-  status?: number
-  code?: string
-  message?: string
-}
-
-export function getApiErrorInfo(error: unknown): ApiErrorInfo {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const response = (error as { response?: { status?: number; data?: { code?: string; message?: string } } }).response
-    return { status: response?.status, code: response?.data?.code, message: response?.data?.message }
-  }
-  return {}
-}
+// 從 axios 錯誤取出後端 ApiResponse 的 code／message 與 HTTP 狀態（Sprint 204：三個新頁面與開店申請表單共用）。
+// Sprint 331（DEF-455）：實作搬到 lib/api-error.ts，這裡轉出同名成員讓既有的 import 維持有效。
+export { getApiErrorInfo, type ApiErrorInfo } from '@/lib/api-error'
 
 class AuthService {
   async login(request: LoginRequest): Promise<AuthResponse> {

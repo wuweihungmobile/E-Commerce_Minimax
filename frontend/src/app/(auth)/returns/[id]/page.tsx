@@ -16,14 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { PageTitle } from '@/components/ui/page-title'
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const axiosErr = error as { response?: { data?: { message?: string } } }
-    return axiosErr.response?.data?.message || fallback
-  }
-  return fallback
-}
+import { apiErrorMessage } from '@/lib/api-error'
 
 const CANCELLABLE_STATUSES = new Set<ReturnRequest['status']>(['REQUESTED', 'APPROVED'])
 
@@ -50,7 +43,7 @@ export default function ReturnDetailPage() {
         setOrderItems(Object.fromEntries(order.items.map((item) => [item.id, item])))
       }
     } catch (err) {
-      setError(extractErrorMessage(err, '無法載入退貨申請詳情'))
+      setError(apiErrorMessage(err, '無法載入退貨申請詳情'))
     } finally {
       setLoading(false)
     }
@@ -67,7 +60,7 @@ export default function ReturnDetailPage() {
       const updated = await ReturnService.cancelReturn(returnId)
       setReturnRequest(updated)
     } catch (err) {
-      setCancelError(extractErrorMessage(err, '撤回退貨申請失敗'))
+      setCancelError(apiErrorMessage(err, '撤回退貨申請失敗'))
     } finally {
       setCancelling(false)
     }

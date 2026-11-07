@@ -28,6 +28,17 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // 已移除的舊網址（Sprint 332，DEF-466）：/cms 是早期的內容管理後台，貼文與媒體介面已併進 /dashboard/posts、/dashboard/media。
+  // 專案內沒有任何連結指向 /cms（PRD §10.1.2 查證過），只可能是書籤或手打的網址，所以逐一轉到對應的新頁面而不是統一丟回首頁；
+  // 沒列在這裡的 /cms/* 仍是 404（沒有那個頁面）。permanent 的意思是 308：搬家是定案，不會再換回來。
+  async redirects() {
+    return [
+      { source: '/cms', destination: '/dashboard/posts', permanent: true },
+      { source: '/cms/posts/new', destination: '/dashboard/posts/new', permanent: true },
+      { source: '/cms/posts/:id/edit', destination: '/dashboard/posts/:id/edit', permanent: true },
+      { source: '/cms/media', destination: '/dashboard/media', permanent: true },
+    ];
+  },
   async rewrites() {
     return [
       {

@@ -20,6 +20,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { MEDIA_ACCEPT, validateMediaFile } from '@/lib/media';
 
 export default function MediaPage() {
   const [page, setPage] = useState(0);
@@ -78,6 +79,12 @@ export default function MediaPage() {
   const totalElements = data?.totalElements ?? 0;
 
   async function handleUpload(file: File) {
+    // 選檔當下就預檢類型與大小（DEF-466：自已移除的 /cms/media 移植；後端仍會再驗）
+    const invalid = validateMediaFile(file);
+    if (invalid) {
+      toast.error(invalid);
+      return;
+    }
     setUploading(true);
     try {
       const tags = uploadTags
@@ -199,7 +206,7 @@ export default function MediaPage() {
           <Input
             ref={fileInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/x-msvideo,application/pdf"
+            accept={MEDIA_ACCEPT}
             onChange={handleFileChange}
             className="hidden w-auto"
           />

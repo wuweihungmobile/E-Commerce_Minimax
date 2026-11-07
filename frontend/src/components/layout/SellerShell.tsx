@@ -4,8 +4,9 @@ import { SellerHeader } from "./SellerHeader"
 import { SellerSidebar } from "./SellerSidebar"
 import type { SellerArea } from "./sellerNav"
 
-// 賣家外殼（賣家後台／平台管理台／內容管理共用）：TOP（SellerHeader）＋ 側欄 ＋ Content（{children}）＋ Bottom（Footer）。
-// 由 app/dashboard、app/admin、app/cms 各自的 layout.tsx 使用；換頁時 Header／側欄／Footer 不重建（App Router 巢狀 layout）。
+// 賣家外殼（賣家後台／平台管理台共用）：TOP（SellerHeader）＋ 側欄 ＋ Content（{children}）＋ Bottom（Footer）。
+// 由 app/dashboard、app/admin 各自的 layout.tsx 使用；換頁時 Header／側欄／Footer 不重建（App Router 巢狀 layout）。
+// （原本還有 app/cms 第三個區域，Sprint 332 的 DEF-466 併進 dashboard 後移除。）
 //
 // 內容欄用 <div> 而不是 <main>：各頁自己已有 <main>，再包一層 <main> 會變成巢狀 landmark。
 //

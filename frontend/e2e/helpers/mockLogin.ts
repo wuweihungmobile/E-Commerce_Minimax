@@ -5,7 +5,7 @@ import { Page } from '@playwright/test';
  *
  * 為什麼需要：買家頁面共用的版面層有登入守門（DEF-413，Sprint 302）——沒有 accessToken 會被導去 /login?redirect=…，
  * 這些規格開的訂單、預訂、通知、結帳頁因此需要一個 token 才進得去。
- * Sprint 331 起賣家外殼（/dashboard、/admin、/cms）用的是同一個 AuthGuard，只看有沒有 token——開賣家頁面的 mock 規格也用這個函式
+ * Sprint 331 起賣家外殼（/dashboard、/admin；原本還有 /cms，Sprint 332 併入 /dashboard）用的是同一個 AuthGuard，只看有沒有 token——開賣家頁面的 mock 規格也用這個函式
  * （名稱裡的 Buyer 只是歷史；守門不看角色，角色權限由後端 403 負責）。
  *
  * 只種 accessToken，刻意不種 refreshToken 與 user（沿用 at-room-booking 的做法）：

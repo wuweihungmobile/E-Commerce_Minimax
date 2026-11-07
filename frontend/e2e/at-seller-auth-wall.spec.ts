@@ -2,7 +2,8 @@ import { test, expect, Page } from '@playwright/test';
 import { loginOnly } from './helpers/auth';
 
 /**
- * AT-SELLER-AUTH-WALL: 賣家外殼（/dashboard、/admin、/cms）的登入守門（真實瀏覽器，不 mock）—— Sprint 331
+ * AT-SELLER-AUTH-WALL: 賣家外殼（/dashboard、/admin）的登入守門（真實瀏覽器，不 mock）—— Sprint 331
+ * （原本還涵蓋 /cms；Sprint 332 的 DEF-466 把 /cms 併進 /dashboard 並移除，下面改測貼文管理與媒體中心。）
  *
  * 為什麼需要：Sprint 331 之前，登入守門寫在 37 個 dashboard 頁面各自的 useEffect 裡，/admin 與 /cms 的頁面（除了 /admin 首頁）完全沒有。
  * 沒登入的人開 /admin/tenants 會先看到整頁、先發出必然 401 的請求，再由 axios 攔截器的 refresh 失敗路徑整頁導去登入頁。
@@ -16,17 +17,17 @@ import { loginOnly } from './helpers/auth';
 const WEB_BASE = 'http://localhost:3000';
 const ADMIN = { email: 'admin@nextkey.local', password: 'Test123!' };
 
-/** 沒登入的訪客開這些頁面，都應該被導去登入頁。涵蓋三個區域的首頁、列表頁、巢狀路徑。 */
+/** 沒登入的訪客開這些頁面，都應該被導去登入頁。涵蓋兩個區域的首頁、列表頁、巢狀路徑。 */
 const PROTECTED: string[] = [
   '/dashboard',
   '/dashboard/products',
   '/dashboard/orders',
   '/dashboard/erp/suppliers',
+  '/dashboard/posts',
+  '/dashboard/media',
   '/admin',
   '/admin/tenants',
   '/admin/audit-logs',
-  '/cms',
-  '/cms/media',
 ];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
@@ -49,7 +50,7 @@ test.describe('AT-SELLER-AUTH-WALL: 沒登入的訪客開賣家外殼的頁面 �
 
       await expect(page).toHaveURL(`${WEB_BASE}/login?redirect=${encodeURIComponent(path)}`, { timeout: 20000 });
       await expect(page.getByRole('heading', { name: /Sign in/i })).toBeVisible();
-      // 修復前：/admin/* 與 /cms/* 的頁面先渲染、先打 API（401），才被攔截器導走
+      // 修復前：/admin/* 與 /cms/*（已於 Sprint 332 移除）的頁面先渲染、先打 API（401），才被攔截器導走
       expect(apiRequests, '沒登入不得對後端 API 發出任何請求（頁面內容根本不該渲染）').toEqual([]);
     });
   }

@@ -7,7 +7,7 @@ import { loginOnly } from './helpers/auth';
  * 設計稿：docs/01_requirements/Design_UI/Homepage (standalone) _OK.html。
  * 這支規格守住兩件事，缺一不可：
  *   1. 每個區域都在共用外殼之下，而且只有「一套」頂欄（不會又長出各頁自己的頂欄）：
- *      店面／blog／買家頁／開店申請 → StorefrontHeader；賣家後台／平台管理台／CMS → SellerHeader＋側欄。
+ *      店面／blog／買家頁／開店申請 → StorefrontHeader；賣家後台／平台管理台 → SellerHeader＋側欄。
  *   2. 外殼的顏色真的來自設計稿 token——切換 <html data-theme> 後，頂欄背景與側欄目前頁色條都跟著變。
  *      （若有人把顏色改回寫死的 Tailwind 色盤，換主題時這裡會紅；靜態面由 ESLint 的 design-tokens 規則守住。）
  *
@@ -20,8 +20,8 @@ import { loginOnly } from './helpers/auth';
  * - E2E-UI-02: 買家頁與開店申請（已登入）
  * - E2E-UI-03: 賣家後台 /dashboard（已登入）：外殼唯一、側欄目前頁、顏色隨主題、沒有各頁自帶的舊頂欄
  * - E2E-UI-04: 平台管理台 /admin（同上）
- * - E2E-UI-05: 內容管理 /cms（同上）
- * 三個後台區域各自一個案例（各登入一次），失敗時一眼看出是哪個區域的外殼壞了。
+ * - E2E-UI-05: （已移除）原本是內容管理 /cms；Sprint 332 的 DEF-466 把它併進賣家後台，編號保留不重用
+ * 兩個後台區域各自一個案例（各登入一次），失敗時一眼看出是哪個區域的外殼壞了。
  * - E2E-UI-06: 目前頁在側欄下半段時，側欄會捲到讓它可見（賣家側欄有 27 項，自己會捲動）
  * - E2E-UI-07: 賣家外殼的「登出」可用（28 個後台頁各自的登出鈕已移除，改由 Header 提供；原本沒有任何 E2E 在賣家區點過登出）
  */
@@ -92,7 +92,6 @@ test.describe('AT-UI-DESIGN-BASE: 全站共用外殼與設計稿主題', () => {
   const sellerAreas = [
     { id: 'E2E-UI-03', name: '賣家後台', path: '/dashboard', active: '營運總覽' },
     { id: 'E2E-UI-04', name: '平台管理台', path: '/admin', active: '平台總覽' },
-    { id: 'E2E-UI-05', name: '內容管理 CMS', path: '/cms', active: '貼文管理' },
   ];
   for (const { id, name, path, active } of sellerAreas) {
     test(`${id}: ${name} ${path} 套用賣家外殼（頂欄＋側欄），目前頁「${active}」，顏色隨主題`, async ({ page }: { page: Page }) => {

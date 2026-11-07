@@ -8,16 +8,23 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@
 import { PageTitle } from '@/components/ui/page-title';
 import { buttonVariants, Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
+import { Pagination } from '@/components/ui/pagination';
 import { toast } from '@/components/ui/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { StatusBadge } from '@/components/ui/status-badge';
 
+const PAGE_SIZE = 20;
+
+// 貼文管理（賣家後台）。Sprint 332（DEF-466）：與原本並行的 /cms 貼文介面合併成這一套——
+// 從 /cms 帶過來的：分頁（原本這頁只看得到第一頁 20 筆）、列表顯示 slug、總數；刪除規則沿用本頁原有的（只有草稿能刪，
+// 見 SPRINT_08 AC-007），/cms 的列表對任何狀態都開放刪除。
 export default function PostListPage() {
   const [filter, setFilter] = useState<string>('');
+  const [page, setPage] = useState(0);
 
   const { data, loading, reload } = useAsyncData(
-    () => getPosts(filter ? { status: filter } : {}),
-    [filter],
+    () => getPosts({ page, size: PAGE_SIZE, ...(filter ? { status: filter } : {}) }),
+    [filter, page],
     {
       errorMessage: () => '載入貼文失敗，請稍後再試',
       onError: (message, error) => {
@@ -27,11 +34,25 @@ export default function PostListPage() {
     }
   );
   const posts = data?.posts ?? [];
+  const totalCount = data?.totalCount ?? 0;
+  const totalPages = data?.totalPages ?? 0;
+
+  function selectFilter(status: string) {
+    setFilter(status);
+    setPage(0);
+  }
+
+  // 動作之後這一頁可能變空：刪掉最後一頁唯一的一筆，或在篩選條件下把唯一的一筆發布／下架而移出篩選結果。
+  // 總頁數會因此變成 1，分頁元件會把自己藏起來——使用者就停在一個沒有分頁控制的空頁。所以變空就退回前一頁（換頁會自動重新載入）。
+  function reloadAfterChange(rowLeavesView: boolean) {
+    if (rowLeavesView && page > 0 && posts.length === 1) setPage(page - 1);
+    else reload();
+  }
 
   async function handlePublish(postId: string) {
     try {
       await publishPost(postId);
-      reload();
+      reloadAfterChange(filter !== '');
     } catch (error) {
       console.error('Failed to publish post:', error);
       toast.error('發布貼文失敗，請稍後再試');
@@ -41,7 +62,7 @@ export default function PostListPage() {
   async function handleUnpublish(postId: string) {
     try {
       await unpublishPost(postId);
-      reload();
+      reloadAfterChange(filter !== '');
     } catch (error) {
       console.error('Failed to unpublish post:', error);
       toast.error('下架貼文失敗，請稍後再試');
@@ -52,7 +73,7 @@ export default function PostListPage() {
     if (!(await confirmDialog({ message: '確定要刪除這篇貼文嗎？', confirmLabel: '刪除', destructive: true }))) return;
     try {
       await deletePost(postId);
-      reload();
+      reloadAfterChange(true);
     } catch (error) {
       console.error('Failed to delete post:', error);
       toast.error('刪除貼文失敗，請稍後再試');
@@ -72,27 +93,29 @@ export default function PostListPage() {
       </div>
 
       {/* Filter */}
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex items-center gap-2">
         <Chip
-          onClick={() => setFilter('')} selected={!filter}
+          onClick={() => selectFilter('')} selected={!filter}
         >
           全部
         </Chip>
         <Chip
-          onClick={() => setFilter('DRAFT')} selected={filter === 'DRAFT'}
+          onClick={() => selectFilter('DRAFT')} selected={filter === 'DRAFT'}
         >
           草稿
         </Chip>
         <Chip
-          onClick={() => setFilter('PUBLISHED')} selected={filter === 'PUBLISHED'}
+          onClick={() => selectFilter('PUBLISHED')} selected={filter === 'PUBLISHED'}
         >
           已發布
         </Chip>
         <Chip
-          onClick={() => setFilter('ARCHIVED')} selected={filter === 'ARCHIVED'}
+          onClick={() => selectFilter('ARCHIVED')} selected={filter === 'ARCHIVED'}
         >
           已歸檔
         </Chip>
+        {/* 目前篩選條件下的總數（不放進「全部」鈕的標籤：選了「草稿」之後它會變成草稿數，鈕名卻還是「全部」） */}
+        {!loading && <span className="ml-auto text-sm text-rs-ink-muted">共 {totalCount} 篇</span>}
       </div>
 
       {/* Post List */}
@@ -119,6 +142,7 @@ export default function PostListPage() {
                     <Link href={`/dashboard/posts/${post.id}/edit`} className="text-rs-primary hover:underline">
                       {post.title}
                     </Link>
+                    <div className="text-xs text-rs-disabled-text">{post.slug}</div>
                   </TableCell>
                   <TableCell><StatusBadge domain="post" status={post.status} /></TableCell>
                   <TableCell className="text-rs-ink-muted">{post.categoryName || '-'}</TableCell>
@@ -167,6 +191,8 @@ export default function PostListPage() {
             </TableBody>
           </Table>
       )}
+
+      {!loading && <Pagination current={page + 1} total={totalPages} onChange={(p) => setPage(p - 1)} className="mt-4" />}
     </div>
   );
 }

@@ -6,16 +6,18 @@ import { listSourceFiles, readSource, sourceExists } from './source'
 // 頁面結構守門（Sprint 331）：登入守門在外殼（ADR-002 決定 4）、每頁都有頁面標題（DEF-459）。
 
 describe('登入守門在外殼，不在頁面（ADR-002 決定 4）', () => {
-  // dashboard／admin／cms 三個區域都包在 SellerShell 裡，SellerShell 用 AuthGuard 擋未登入的人（沒登入就不渲染內容、不發請求）。
+  // dashboard／admin 兩個區域都包在 SellerShell 裡，SellerShell 用 AuthGuard 擋未登入的人（沒登入就不渲染內容、不發請求）。
   // Sprint 331 之前：37 個 dashboard 頁面各自在 useEffect 裡檢查登入並導去 /login，admin／cms 幾乎沒有守門。
+  // （cms 區域在 Sprint 332 的 DEF-466 併進 dashboard 後移除。）
   const sellerAreaFiles = listSourceFiles('app', (path) =>
-    /^app\/(dashboard|admin|cms)\//.test(path) && /\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path)
+    /^app\/(dashboard|admin)\//.test(path) && /\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path)
   )
 
-  it('掃描範圍涵蓋賣家三個區域', () => {
-    expect(sellerAreaFiles.length).toBeGreaterThan(60)
+  it('掃描範圍涵蓋賣家兩個區域', () => {
+    // 下限只是確認掃描沒有掃空（路徑規則寫錯就會是 0），不是檔案數的規格；刪頁面（例如 Sprint 332 併掉 /cms）時要跟著放寬
+    expect(sellerAreaFiles.length).toBeGreaterThan(50)
     expect(sellerAreaFiles.some((f) => f.startsWith('app/admin/'))).toBe(true)
-    expect(sellerAreaFiles.some((f) => f.startsWith('app/cms/'))).toBe(true)
+    expect(sellerAreaFiles.some((f) => f.startsWith('app/dashboard/'))).toBe(true)
   })
 
   it('賣家區域的頁面不再自己檢查登入（AuthService.isAuthenticated）', () => {
@@ -33,7 +35,8 @@ describe('每個頁面都有頁面標題（DEF-459 靜態口徑）', () => {
   const pages = listSourceFiles('app', (path) => path.endsWith('/page.tsx'))
 
   it('掃描範圍涵蓋全部頁面', () => {
-    expect(pages.length).toBeGreaterThan(100)
+    // 同上：只是確認掃描沒有掃空（Sprint 332 併掉 /cms 的 4 頁之後是 100 頁）
+    expect(pages.length).toBeGreaterThan(90)
   })
 
   it('每個 page.tsx 自己或它（傳遞式）引用的元件裡有 <PageTitle> 或 <h1>', () => {

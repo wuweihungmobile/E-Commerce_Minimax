@@ -1,11 +1,12 @@
-// 賣家外殼（賣家後台 dashboard／平台管理台 admin／內容管理 cms）的導覽設定——側欄的單一來源。
+// 賣家外殼（賣家後台 dashboard／平台管理台 admin）的導覽設定——側欄的單一來源。
+// （原本還有第三個區域 cms〔內容管理〕，Sprint 332 的 DEF-466 把它的貼文／媒體介面併進 dashboard，區域與 /cms 路由一併移除。）
 //
 // 標籤與 data-testid 沿用原本儀表板首頁、管理台首頁的「快速入口」（E2E 依賴它們：at-m15-e2e 找連結
 // 『商品管理』『房型管理』、at-dashboard-tenant-nav-real 點 dashboard-tenants-link、at-admin-overview-real 點
-// admin-tenants-link）。側欄裡每個目的地只出現一次；頁面內已有的「動作」（例如 CMS 的『新建貼文』按鈕）不重複放進側欄，
+// admin-tenants-link）。側欄裡每個目的地只出現一次；頁面內已有的「動作」（例如貼文管理的『新建貼文』按鈕）不重複放進側欄，
 // 免得同一頁出現兩個同名連結（Playwright strict mode 會直接失敗）。
 
-export type SellerArea = "dashboard" | "admin" | "cms"
+export type SellerArea = "dashboard" | "admin"
 
 export interface SellerNavItem {
   href: string
@@ -107,18 +108,6 @@ export const SELLER_AREAS: Record<SellerArea, SellerAreaConfig> = {
           { href: "/admin/purchase-orders", label: "採購單審批", testId: "admin-purchase-orders-link" },
           { href: "/admin/settlements/reversal", label: "結算沖正", testId: "admin-settlements-link" },
           { href: "/admin/support/tickets", label: "客服工單", testId: "admin-support-tickets-link" },
-        ],
-      },
-    ],
-  },
-  cms: {
-    title: "內容管理",
-    navTitle: "CMS",
-    sections: [
-      {
-        items: [
-          { href: "/cms", label: "貼文管理", exact: true },
-          { href: "/cms/media", label: "媒體庫" },
         ],
       },
     ],

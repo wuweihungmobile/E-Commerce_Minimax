@@ -1,6 +1,6 @@
 /**
  * M15 CMS API Service
- * 貼文、分類、媒體庫 API 服務
+ * 貼文、分類 API 服務（媒體庫見 services/media.ts）
  */
 
 import apiClient, { type RequestOptions } from '@/lib/axios';
@@ -108,34 +108,6 @@ export interface ListingCardResponse {
   statusReason: string | null;
 }
 
-export interface MediaResponse {
-  id: string;
-  tenantId: string;
-  uploaderId: string;
-  uploaderName: string;
-  fileName: string;
-  originalName: string;
-  filePath: string;
-  fileSize: number;
-  formattedFileSize: string;
-  mimeType: string;
-  fileType: 'IMAGE' | 'VIDEO' | 'DOCUMENT';
-  width?: number;
-  height?: number;
-  durationSeconds?: number;
-  createdAt: string;
-}
-
-export interface MediaListResponse {
-  // 後端 M15Dto.MediaListResponse 的欄位名是 items（非 media）。原本宣告為 media 導致
-  // 讀到 undefined，媒體庫從未列出任何檔案。Sprint 128，DEF-074。
-  items: MediaResponse[];
-  totalCount: number;
-  page: number;
-  size: number;
-  totalPages: number;
-}
-
 // Post APIs
 
 export async function getPosts(params?: {
@@ -228,37 +200,6 @@ export async function deleteCategory(categoryId: string): Promise<void> {
   await apiClient.delete(`/v2/dashboard/post-categories/${categoryId}`);
 }
 
-// Media APIs
-
-export async function getMediaList(params?: {
-  page?: number;
-  size?: number;
-  fileType?: string;
-}): Promise<MediaListResponse> {
-  const response = await apiClient.get('/v2/dashboard/media', { params });
-  return response.data.data;
-}
-
-export async function uploadMediaMultipart(file: File): Promise<MediaResponse> {
-  const formData = new FormData();
-  formData.append('file', file);
-  const response = await apiClient.post('/v2/dashboard/media/upload-multipart', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
-  return response.data.data;
-}
-
-export async function deleteMedia(mediaId: string): Promise<void> {
-  await apiClient.delete(`/v2/dashboard/media/${mediaId}`);
-}
-
-/**
- * 取得媒體檔案內容（Sprint 133，DEF-097）
- * filePath 為 MinIO 內部物件路徑，瀏覽器無法直接存取，故改由後端授權端點串流回應
- */
-export async function getMediaFileBlob(mediaId: string): Promise<Blob> {
-  const response = await apiClient.get(`/v2/dashboard/media/${mediaId}/file`, {
-    responseType: 'blob',
-  });
-  return response.data;
-}
+// 媒體 API（原本接 /v2/dashboard/media 的 M15 部落格媒體庫）：Sprint 332（DEF-466）隨 /cms/media 頁面一併移除——
+// 媒體管理只剩 /dashboard/media 一個介面，走 services/media.ts（M18，/v2/media）。後端 PostController 的
+// /v2/dashboard/media/* 五個端點仍在，但沒有前端呼叫者了（見追蹤表）。

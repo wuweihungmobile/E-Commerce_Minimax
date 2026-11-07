@@ -31,21 +31,22 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
  * E2E-M15-001: 建立並發布貼文流程
  */
 test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
-  test('登入後訪問 CMS 列表頁', async ({ page }) => {
+  // Sprint 332（DEF-466）：原本的 /cms 貼文介面併進 /dashboard/posts；/cms 現在是轉址（at-cms-redirect.spec.ts 守住）
+  test('登入後訪問貼文管理列表頁', async ({ page }) => {
     await registerAndLogin(page);
 
-    // 訪問 CMS 列表頁
-    await page.goto('/cms');
+    // 訪問貼文管理列表頁
+    await page.goto('/dashboard/posts');
     await page.waitForLoadState('domcontentloaded');
 
-    console.log('CMS 列表 URL:', page.url());
-    expect(page.url()).toContain('/cms');
+    console.log('貼文列表 URL:', page.url());
+    expect(page.url()).toContain('/dashboard/posts');
   });
 
-  test('CMS 列表頁篩選功能', async ({ page }) => {
+  test('貼文管理列表頁篩選功能', async ({ page }) => {
     await registerAndLogin(page);
 
-    await page.goto('/cms');
+    await page.goto('/dashboard/posts');
     // 🔴 不可只等 domcontentloaded：它在 React hydration 完成前就返回，
     // 此時篩選按鈕已由 SSR 渲染出來但 onClick 尚未接上，click 會是**空操作**，
     // 後續斷言 class 變成 bg-rs-tertiary 便會輪詢到逾時（S107 實測 14 次都是 bg-gray-100；
@@ -79,44 +80,41 @@ test.describe('E2E-M15-001: 建立並發布貼文流程', () => {
  * E2E-M15-003: 媒體上傳流程
  */
 test.describe('E2E-M15-003: 媒體上傳流程', () => {
-  test('訪問媒體庫頁面', async ({ page }) => {
-    // dialog 處理器已由檔案級 beforeEach 註冊（涵蓋 /cms/media 載入失敗的原生 alert）
+  // Sprint 332（DEF-466）：媒體管理只剩 /dashboard/media（原本的 /cms/media 併入）。這兩個案例只守「頁面開得起來、
+  // 篩選控制項可操作」；真實的上傳／列出／刪除在 at-media-real.spec.ts（真實後端、真實檔案）。
+  test('訪問媒體中心頁面', async ({ page }) => {
     await registerAndLogin(page);
 
-    await page.goto('/cms/media');
+    await page.goto('/dashboard/media');
     await page.waitForLoadState('domcontentloaded');
 
-    console.log('媒體庫 URL:', page.url());
-    expect(page.url()).toContain('/cms/media');
+    console.log('媒體中心 URL:', page.url());
+    expect(page.url()).toContain('/dashboard/media');
 
     const content = await page.content();
-    console.log('頁面包含「媒體庫」:', content.includes('媒體庫'));
+    console.log('頁面包含「媒體中心」:', content.includes('媒體中心'));
     console.log('頁面包含「上傳」:', content.includes('上傳'));
   });
 
-  test('媒體庫篩選功能', async ({ page }) => {
-    // 新帳號可能無 CMS 媒體權限 → getMediaList 403 → 頁面顯示錯誤 Toast（Sprint 329 前是原生 alert()，
-    // 曾於 teardown 間歇造成 session 崩潰，S37 AI-2001；現在是普通 DOM，不需要 dialog 處理器）。
+  test('媒體中心篩選功能', async ({ page }) => {
+    // 新帳號沒有店鋪、沒有媒體權限 → 載入 403 → 頁面顯示錯誤 Toast；篩選控制項由本地 state 控制、不依賴後端資料，
+    // 仍然穩定可操作（Sprint 329 前錯誤是原生 alert()，曾於 teardown 間歇造成 session 崩潰，S37 AI-2001；現在是普通 DOM）。
     await registerAndLogin(page);
 
-    await page.goto('/cms/media');
+    await page.goto('/dashboard/media');
     await page.waitForLoadState('domcontentloaded');
 
-    // 篩選鈕的選取態（Chip 的 aria-pressed）由本地 filter state 控制、不依賴後端資料 → 穩定可斷言。
-    // Sprint 329：原本斷言 class 名（bg-blue-100 → bg-rs-tertiary），換皮就紅；改斷言語意屬性。
-    const allBtn = page.getByRole('button', { name: /^全部/ });
-    const imageBtn = page.getByRole('button', { name: '圖片', exact: true });
-    await expect(allBtn).toBeVisible({ timeout: 15000 });
-    await expect(imageBtn).toBeVisible();
+    // 檔案類型下拉是頁面上唯一有「圖片」選項（value=image/）的 select
+    const typeSelect = page.locator('select', { has: page.locator('option[value="image/"]') });
+    await expect(typeSelect).toBeVisible({ timeout: 15000 });
+    await expect(typeSelect).toHaveValue('');
 
-    // 點「圖片」→ 該鈕轉 active
-    await imageBtn.click();
-    await expect(imageBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 10000 });
+    await typeSelect.selectOption('image/');
+    await expect(typeSelect).toHaveValue('image/');
 
-    // 點「全部」→ 轉 active；再等網路 idle，確保篩選 refetch 完成後才結束測試，
-    // 避免 in-flight 請求（及其失敗 alert）於 teardown 時崩潰（取代原無斷言 + 固定 sleep）。
-    await allBtn.click();
-    await expect(allBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 10000 });
+    await typeSelect.selectOption('');
+    await expect(typeSelect).toHaveValue('');
+    // 等網路 idle，確保篩選 refetch 完成後才結束測試，避免 in-flight 請求於 teardown 時崩潰
     await page.waitForLoadState('networkidle');
   });
 });
@@ -196,7 +194,7 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
 
   test('E2E-M15-001: 新建貼文並發布——送出成功、導向編輯頁，前台部落格看得到', async ({ page }) => {
     await loginOnly(page, owner.email, owner.password);
-    await page.goto('/cms/posts/new');
+    await page.goto('/dashboard/posts/new');
 
     const title = `E2E M15 新建貼文 ${Date.now()}`;
     await page.getByPlaceholder('輸入標題').fill(title);
@@ -213,7 +211,7 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
     expect(created.status, '點「發布」建立的貼文應直接是已發布').toBe('PUBLISHED');
     // Toast 掛在根 layout，client 端導向（router.push）後仍在，所以可以在導向後再斷言
     await expect(page.getByTestId('toast').filter({ hasText: '貼文已發布' })).toBeVisible();
-    await page.waitForURL(`**/cms/posts/${created.id}/edit`);
+    await page.waitForURL(`**/dashboard/posts/${created.id}/edit`);
 
     // 前台部落格（tenantId 取自登入後的 localStorage）列得出剛發布的貼文
     await page.goto('/blog');
@@ -222,7 +220,7 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
 
   test('E2E-M15-002: 從列表進入編輯頁，改標題並儲存——列表顯示新標題', async ({ page }) => {
     await loginOnly(page, owner.email, owner.password);
-    await page.goto('/cms');
+    await page.goto('/dashboard/posts');
 
     // 播種的草稿顯示在列表，狀態是草稿
     const row = page.locator('tr', { hasText: DRAFT_TITLE });
@@ -230,7 +228,7 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
     await expect(row.getByText('草稿', { exact: true })).toBeVisible();
 
     await row.getByRole('link', { name: '編輯', exact: true }).click();
-    await page.waitForURL(`**/cms/posts/${draftId}/edit`);
+    await page.waitForURL(`**/dashboard/posts/${draftId}/edit`);
 
     // 編輯頁帶入原標題
     const titleInput = page.locator('form input[type="text"]').first();
@@ -247,7 +245,7 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
     expect(update.status(), await update.text()).toBe(200);
     await expect(page.getByTestId('toast').filter({ hasText: '貼文已儲存' })).toBeVisible();
 
-    await page.goto('/cms');
+    await page.goto('/dashboard/posts');
     const editedRow = page.locator('tr', { hasText: newTitle });
     await expect(editedRow).toBeVisible();
     await expect(editedRow.getByText('草稿', { exact: true })).toBeVisible();

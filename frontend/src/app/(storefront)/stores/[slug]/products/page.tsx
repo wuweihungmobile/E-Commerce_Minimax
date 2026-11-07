@@ -1,4 +1,9 @@
+import type { Metadata } from "next"
 import { StoreProductsView } from "@/components/storefront/StoreProductsView"
+
+export const metadata: Metadata = {
+  title: '店鋪商品',
+}
 
 // 店鋪前台商品列表（PRD §10 /stores/[slug]/products；DEF-321(b)，Sprint 252）。
 export default async function StoreProductsPage({

@@ -1,4 +1,9 @@
+import type { Metadata } from "next"
 import { StoreBlogView } from "@/components/storefront/StoreBlogView"
+
+export const metadata: Metadata = {
+  title: '店鋪部落格',
+}
 
 // 店鋪前台貼文列表（PRD §10 /stores/[slug]/blog；DEF-321(b)，Sprint 252）。
 export default async function StoreBlogPage({

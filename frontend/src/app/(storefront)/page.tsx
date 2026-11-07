@@ -1,4 +1,10 @@
+import type { Metadata } from "next"
+import { SITE_TITLE } from "@/lib/site"
 import { HomeContent } from "@/components/storefront/HomeContent"
+
+export const metadata: Metadata = {
+  title: { absolute: SITE_TITLE },
+}
 
 const VALID_CATS = ["all", "product", "room"]
 const VALID_SORTS = ["newest", "priceAsc", "priceDesc"]

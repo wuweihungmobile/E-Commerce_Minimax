@@ -1,8 +1,10 @@
-'use client'
-
-import { use } from 'react'
+import type { Metadata } from 'next'
 import TenantEditForm from '@/components/tenant/TenantEditForm'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
+
+export const metadata: Metadata = {
+  title: '編輯店鋪',
+}
 
 interface TenantEditPageProps {
   params: Promise<{
@@ -10,8 +12,8 @@ interface TenantEditPageProps {
   }>
 }
 
-export default function TenantEditPage({ params }: TenantEditPageProps) {
-  const { id: tenantId } = use(params)
+export default async function TenantEditPage({ params }: TenantEditPageProps) {
+  const { id: tenantId } = await params
 
   return (
     <div>

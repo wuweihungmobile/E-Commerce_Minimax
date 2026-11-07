@@ -1,8 +1,11 @@
-'use client'
-
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
 import { Card } from '@/components/ui/card'
+
+export const metadata: Metadata = {
+  title: 'ERP 總覽',
+}
 
 export default function ErpDashboardPage() {
 

@@ -1,13 +1,14 @@
-'use client'
-
-import { useParams } from 'next/navigation'
+import type { Metadata } from 'next'
 import ReviewList from '@/components/reviews/ReviewList'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { PageTitle } from '@/components/ui/page-title'
 
-export default function ProductReviewsPage() {
-  const params = useParams()
-  const listingId = params.listingId as string
+export const metadata: Metadata = {
+  title: '商品評價',
+}
+
+export default async function ProductReviewsPage({ params }: { params: Promise<{ listingId: string }> }) {
+  const { listingId } = await params
 
   return (
     <StorefrontShell>

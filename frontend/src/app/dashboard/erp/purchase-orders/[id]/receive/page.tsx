@@ -1,13 +1,13 @@
-'use client'
-
-import { useParams } from 'next/navigation'
+import type { Metadata } from 'next'
 import PurchaseOrderForm from '@/components/erp/PurchaseOrderForm'
 import { PageTitle } from '@/components/ui/page-title'
 
-export default function ReceivePurchaseOrderPage() {
-  const params = useParams()
+export const metadata: Metadata = {
+  title: '收貨確認',
+}
 
-  const orderId = params.id as string
+export default async function ReceivePurchaseOrderPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: orderId } = await params
 
   return (
     <div>

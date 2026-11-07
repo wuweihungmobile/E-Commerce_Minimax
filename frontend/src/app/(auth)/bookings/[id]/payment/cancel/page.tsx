@@ -1,19 +1,20 @@
-'use client'
-
+import type { Metadata } from 'next'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { PageTitle } from '@/components/ui/page-title'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 
+export const metadata: Metadata = {
+  title: '預訂付款已取消',
+}
+
 /**
  * 訂房 Stripe Checkout 取消頁（Sprint 222，DEF-303 (1)）。
  * 買家於 Stripe 付款頁取消時回跳；訂房維持待付款，可回到預訂重新付款。
  */
-export default function BookingPaymentCancelPage() {
-  const params = useParams()
-  const bookingId = params.id as string
+export default async function BookingPaymentCancelPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: bookingId } = await params
 
   return (
     <StorefrontShell>

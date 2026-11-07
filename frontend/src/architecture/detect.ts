@@ -102,6 +102,49 @@ export function findHandWrittenLoading(text: string): LoadingFinding[] {
   return findings
 }
 
+export interface SilentLoader {
+  /** useAsyncData( 所在行（1 起算） */
+  line: number
+}
+
+/**
+ * 「載入失敗沒有被使用者看見」的 useAsyncData 呼叫點（DEF-468）。一個呼叫點算「有顯示失敗」要滿足其一：
+ *  1. 解構出 error 或 errorInfo（可以改名），而且那個識別字在檔案其餘地方（不含解構敘述本身）還有被用到；
+ *  2. options 的 onError 本體呼叫 toast.（失敗用 toast 通知）。
+ * 兩者都沒有就是靜默：失敗時畫面只會是「沒有資料」或空白，使用者分不出是真的沒有還是壞了。
+ *
+ * 已知限制（刻意取捨）：「有用到 error」不代表有「顯示」——例如把它拿來把失敗當成空清單（`error ? [] : data`）也算有用到，
+ * 這種形狀偵測不到（Sprint 332 的 StoreFeaturedListings 就是，靠元件測試守）。這條守門只擋最明顯的一類：完全沒處理失敗。
+ */
+export function findSilentLoaders(text: string): SilentLoader[] {
+  const found: SilentLoader[] = []
+  for (const m of text.matchAll(/\buseAsyncData\(/g)) {
+    const index = m.index ?? 0
+    const open = index + m[0].length - 1
+    const close = matchingClose(text, open)
+    if (close < 0) throw new Error('useAsyncData( 的括號不成對，偵測器無法判斷')
+    const args = text.slice(open, close + 1)
+    const headStart = Math.max(0, index - 400)
+    const head = text.slice(headStart, index)
+    const decl = /(?:const|let)\s*(\{[^}]*\}|\w+)\s*=\s*(?:await\s*)?$/.exec(head)
+    const destructured = decl ? decl[1] : ''
+    // 去掉解構敘述與呼叫本身，剩下的才是「其餘地方」
+    const declStart = decl ? headStart + decl.index : index
+    const rest = text.slice(0, declStart) + ' ' + text.slice(close + 1)
+    let surfaced = false
+    for (const key of ['error', 'errorInfo']) {
+      const k = new RegExp(`\\b${key}\\b\\s*(?::\\s*(\\w+))?`).exec(destructured)
+      if (!k) continue
+      const name = k[1] ?? key
+      if (new RegExp(`\\b${name}\\b`).test(rest)) surfaced = true
+    }
+    const onError = /onError\s*:/.exec(args)
+    if (!surfaced && onError && args.slice(onError.index).includes('toast.')) surfaced = true
+    if (!surfaced) found.push({ line: text.slice(0, index).split('\n').length })
+  }
+  return found
+}
+
 /** 頁面標題：PageTitle 元件或原生 <h1> */
 export const HEADING = /<PageTitle\b|<h1\b/
 

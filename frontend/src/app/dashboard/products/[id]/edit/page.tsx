@@ -1,18 +1,20 @@
-'use client'
-
-import { useParams } from 'next/navigation'
+import type { Metadata } from 'next'
 import ProductForm from '@/components/product/ProductForm'
 import SkuManager from '@/components/product/SkuManager'
 
-export default function EditProductPage() {
-  const params = useParams()
+export const metadata: Metadata = {
+  title: '編輯商品',
+}
+
+export default async function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
 
   return (
     <div>
       <main className="max-w-3xl">
         <div className="space-y-6">
-          <ProductForm productId={params.id as string} />
-          <SkuManager listingId={params.id as string} />
+          <ProductForm productId={id} />
+          <SkuManager listingId={id} />
         </div>
       </main>
     </div>

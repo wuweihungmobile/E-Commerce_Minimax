@@ -1,7 +1,10 @@
-'use client'
-
+import type { Metadata } from 'next'
 import PurchaseOrderForm from '@/components/erp/PurchaseOrderForm'
 import { PageTitle } from '@/components/ui/page-title'
+
+export const metadata: Metadata = {
+  title: '新增採購訂單',
+}
 
 export default function NewPurchaseOrderPage() {
   return (

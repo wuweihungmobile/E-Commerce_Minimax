@@ -1,13 +1,13 @@
-'use client'
-
-import { useParams } from 'next/navigation'
+import type { Metadata } from 'next'
 import SupplierForm from '@/components/erp/SupplierForm'
 import { PageTitle } from '@/components/ui/page-title'
 
-export default function ViewSupplierPage() {
-  const params = useParams()
+export const metadata: Metadata = {
+  title: '供應商詳情',
+}
 
-  const supplierId = params.id as string
+export default async function ViewSupplierPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: supplierId } = await params
 
   return (
     <div>

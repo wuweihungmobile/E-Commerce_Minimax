@@ -1,7 +1,10 @@
-'use client'
-
+import type { Metadata } from 'next'
 import PricingRuleList from '@/components/pricing/PricingRuleList'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
+
+export const metadata: Metadata = {
+  title: '定價規則管理',
+}
 
 export default function PricingRulesPage() {
   return (

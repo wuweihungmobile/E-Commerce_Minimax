@@ -1,4 +1,9 @@
+import type { Metadata } from "next"
 import { ListingTypeBrowser } from "@/components/storefront/ListingTypeBrowser"
+
+export const metadata: Metadata = {
+  title: '房源',
+}
 
 const VALID_SORTS = ["newest", "priceAsc", "priceDesc"]
 

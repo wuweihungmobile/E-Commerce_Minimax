@@ -4,7 +4,7 @@ import { PageTitle } from "@/components/ui/page-title"
 // 服務條款頁（DEF-403 佔位）：頁尾連結原本指向不存在的 /terms（404）。
 // 正式內容屬法務／業務決定、尚未提供；此頁只說明「內容即將公告」，不含任何法律文字。
 export const metadata: Metadata = {
-  title: "服務條款｜意象若水 RUOSHUI",
+  title: "服務條款",
 }
 
 export default function TermsPage() {

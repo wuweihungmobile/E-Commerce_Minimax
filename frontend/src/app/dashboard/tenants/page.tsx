@@ -1,7 +1,10 @@
-'use client'
-
+import type { Metadata } from 'next'
 import TenantList from '@/components/tenant/TenantList'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
+
+export const metadata: Metadata = {
+  title: '店鋪管理',
+}
 
 export default function TenantsPage() {
   return (

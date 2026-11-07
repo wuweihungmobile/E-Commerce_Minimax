@@ -1,7 +1,10 @@
-'use client'
-
+import type { Metadata } from 'next'
 import ProductList from '@/components/product/ProductList'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
+
+export const metadata: Metadata = {
+  title: '商品管理',
+}
 
 export default function ProductsPage() {
   return (

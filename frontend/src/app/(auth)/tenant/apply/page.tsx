@@ -1,6 +1,11 @@
+import type { Metadata } from 'next'
 import TenantApplyForm from '@/components/tenant/TenantApplyForm'
 import { StorefrontShell } from '@/components/layout/StorefrontShell'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
+
+export const metadata: Metadata = {
+  title: '申請開店',
+}
 
 // 開店申請（Sprint 328 起放在 `(auth)` 路由群組，網址仍是 /tenant/apply）：
 // 沿用買家頁共用版型（Header／Footer），登入守門由 (auth)/layout.tsx 的 AuthGuard 提供——

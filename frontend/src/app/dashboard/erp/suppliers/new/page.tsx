@@ -1,7 +1,10 @@
-'use client'
-
+import type { Metadata } from 'next'
 import SupplierForm from '@/components/erp/SupplierForm'
 import { PageTitle } from '@/components/ui/page-title'
+
+export const metadata: Metadata = {
+  title: '新增供應商',
+}
 
 export default function NewSupplierPage() {
   return (

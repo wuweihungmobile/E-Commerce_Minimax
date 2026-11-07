@@ -1,7 +1,10 @@
-'use client'
-
+import type { Metadata } from 'next'
 import ShippingTemplateList from '@/components/shipping/ShippingTemplateList'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
+
+export const metadata: Metadata = {
+  title: '運費模板設定',
+}
 
 export default function ShippingTemplatesPage() {
   return (

@@ -1,8 +1,10 @@
-'use client'
-
-import { use } from 'react'
+import type { Metadata } from 'next'
 import TenantDetail from '@/components/tenant/TenantDetail'
 import { PageTitle, PageDescription } from '@/components/ui/page-title'
+
+export const metadata: Metadata = {
+  title: '店鋪詳情',
+}
 
 interface TenantDetailPageProps {
   params: Promise<{
@@ -10,8 +12,8 @@ interface TenantDetailPageProps {
   }>
 }
 
-export default function TenantDetailPage({ params }: TenantDetailPageProps) {
-  const { id: tenantId } = use(params)
+export default async function TenantDetailPage({ params }: TenantDetailPageProps) {
+  const { id: tenantId } = await params
 
   return (
     <div>

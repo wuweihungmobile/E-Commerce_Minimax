@@ -33,7 +33,7 @@
 | 層級 | 觸發 | 內容 | 耗時 |
 |------|------|------|------|
 | **Tier 0** pre-commit | 每次 commit | lint + compile + 核心測試 + gitleaks | ~2 min |
-| **Tier 1** 開發快檢（可選） | 手動，開發中 | `make check-backend` / `make check-frontend`（host 快速 compile/lint/type-check；frontend 另含 Vitest 單元測試） | ~3-5 min |
+| **Tier 1** 開發快檢（可選） | 手動，開發中 | `make check-backend` / `make check-frontend`（host 快速 compile/lint/type-check；frontend 另含 Vitest 單元測試，其中 `src/architecture/` 是架構守門測試：新增手寫的資料載入樣板、賣家頁面自己檢查登入、頁面沒有 `<h1>` 都會在這裡紅燈） | ~3-5 min |
 | **Tier 2** pre-push＝完整測試程序 | 每次 push（低頻批次） | `make validate-release` = `validate-all`（act 完整含整合）+ `validate-schema`（ddl-auto=validate + Flyway 對乾淨 DB）+ `validate-e2e`（Playwright + 乾淨 DB） | **~30-45 min** |
 
 > 純文件/設定（無 `backend/`、`frontend/` 程式碼變動）→ pre-push 自動略過完整測試，直接放行。

@@ -1,7 +1,7 @@
 # UI 設計系統開發規範（以「意象若水 Homepage 設計稿」為 BASE）
 
 > **建立**：Sprint 328（2026-11-05）
-> **適用**：`frontend/` 全部 UI（買家、店面、賣家後台、平台管理台、CMS）
+> **適用**：`frontend/` 全部 UI（買家、店面、賣家後台、平台管理台；原本的 CMS `/cms/*` 已於 Sprint 332 併入賣家後台）
 > **權威來源**：`docs/01_requirements/Design_UI/Homepage (standalone) _OK.html`
 > **守門**：`frontend/eslint-rules/design-tokens.mjs`（`npm run lint`，pre-commit／CI／pre-push 都會跑）
 > **背景**：[SPRINT_328_PLAN.md](../04_planning/SPRINT_328_PLAN.md)、[HOMEPAGE_TEMPLATE_INTEGRATION_FRD.md](../01_requirements/HOMEPAGE_TEMPLATE_INTEGRATION_FRD.md)
@@ -79,7 +79,7 @@
 |---|---|---|
 | `PageTitle`、`PageDescription` | `<h1 className="text-2xl font-semibold…">`、`<p className="mt-1 text-sm text-rs-ink-muted">` | 1:1 取代元素，版面 class（`mb-6`、`flex`）仍寫在頁面 |
 | `Table`、`TableHeader`、`TableBody`、`TableFooter`、`TableRow`、`TableHead`、`TableCell` | 10 張手刻 `<table>`（167 個 `thead/tbody/tr/th/td`） | `Table` 自帶外框（1px、`rounded-lg`）與橫向捲動容器；**不要再自己包 `overflow-x-auto` 或卡片容器**。表頭 12px／500／次要色／uppercase、儲存格 padding 12×16、列 hover 底色。欄位語意（對齊 `text-right`、次要欄 `text-rs-ink-muted`）寫在頁面 |
-| `LoadingState`、`EmptyState` | 「載入中...」置中區塊、各式「尚無…」空狀態 | `LoadingState` 預設文字「載入中...」；`EmptyState` 有 `icon`（emoji／圖示）、`title`、`description`、`action` |
+| `LoadingState`、`EmptyState`、`ErrorState` | 「載入中...」置中區塊、各式「尚無…」空狀態、載入失敗畫面 | `LoadingState` 預設文字「載入中...」；`EmptyState` 有 `icon`（emoji／圖示）、`title`、`description`、`action`；`ErrorState`（Sprint 332，DEF-468）`role="alert"`、預設標題「載入失敗，請稍後再試」、`onRetry` 有給才顯示「重新載入」鈕。**「失敗」與「沒有資料」必須是兩個畫面**——把失敗畫成 `EmptyState`，使用者會以為真的沒有資料、也不會重試 |
 | `StatusBadge`＋`lib/status.ts` | 16 份各自為政的 `getStatusBadge` | `<StatusBadge domain="post" status={…} />`。「中文標籤＋語意色」集中在登錄表，**頁面不決定顏色**。語意規則：草稿＝outline、待審／審批中／部分到貨＝warning、啟用／已發布／已核准／已到貨／上架中＝success、停用／已封存／已下架＝secondary、駁回／取消／停權／終止＝destructive、已提交＝default。新增狀態只在 `status.ts` 加一列（E2E-UIDS-08 會驗證規則）。訂單、訂房、退貨、成員、付款、物流的狀態維持在各自的 `services/*.ts` |
 
 ### 4.3 回饋與覆蓋層
@@ -98,7 +98,7 @@
 |---|---|---|
 | 店面（`/`、`/products`、`/listings`、`/rooms`、`/stores/*`、`/blog/*`、`/privacy`、`/terms`） | `StorefrontHeader`＋`StorefrontFooter` | `app/(storefront)/layout.tsx` |
 | 買家頁、開店申請（`/cart`、`/checkout`、`/orders`、`/account`、`/tenant/apply`…，含登入／註冊） | 同上＋`AuthGuard` | `app/(auth)/layout.tsx` |
-| 賣家後台 `/dashboard/*`、平台管理台 `/admin/*`、CMS `/cms/*` | `SellerShell`＝`SellerHeader`（無搜尋、無購物車）＋`SellerSidebar`＋Footer（無懸浮客服） | 各自的 `app/<區域>/layout.tsx`；導覽設定集中在 `components/layout/sellerNav.ts` |
+| 賣家後台 `/dashboard/*`、平台管理台 `/admin/*` | `SellerShell`＝`SellerHeader`（無搜尋、無購物車）＋`SellerSidebar`＋Footer（無懸浮客服） | 各自的 `app/<區域>/layout.tsx`；導覽設定集中在 `components/layout/sellerNav.ts` |
 | `/oauth/callback/*`、`/health` | 無（轉場頁／健康檢查） | |
 
 **新增頁面**：把檔案放進上表對應的目錄就會自動套用外殼——**不要再在頁面裡自己組頂欄／頁尾／`min-h-screen` 外框**。賣家端新增功能頁時，要在 `sellerNav.ts` 加一項（標籤與 `data-testid` 一次寫在那裡；同一頁不可出現兩個同名連結，Playwright strict mode 會失敗）。
@@ -177,6 +177,7 @@
   ))}</TableBody>
 </Table>
 if (loading) return <LoadingState />
+if (error) return <ErrorState title="載入貼文失敗，請稍後再試" onRetry={reload} />   // 失敗不能畫成下一行的「尚無貼文」
 if (!rows.length) return <EmptyState title="尚無貼文" action={<Button>新增</Button>} />
 if (!(await confirmDialog({ message: '確定要刪除嗎？', confirmLabel: '刪除', destructive: true }))) return
 toast.success('刪除成功')
@@ -211,6 +212,22 @@ alert('已儲存'); confirm('確定？')                                   // �
 - [ ] 新增頁面放在 §5 對應目錄（自動套用外殼），沒有自己組頂欄／頁尾／`min-h-screen`。
 - [ ] 有 E2E 或契約覆蓋新的行為（尤其破壞性操作的確認流程）；斷言語意而非 class 名。
 - [ ] 看過截圖（桌面＋390px 手機各一張），沒有溢出、疊在一起、不可讀的對比。
+
+### 9.7 頁面標題（Sprint 332，DEF-465）
+
+每個頁面都要有自己的 `<title>`（分頁列、瀏覽紀錄、書籤與螢幕閱讀器換頁時靠它辨認；在這之前 104 個頁面有 102 個共用同一個）。標題用 Next 的 metadata API 寫在**路由自己的資料夾**：
+
+| 頁面是什麼 | 標題寫在哪 |
+|---|---|
+| Server Component（沒有 `'use client'`） | `page.tsx`：`export const metadata: Metadata = { title: '頁名' }` |
+| 有 `'use client'` 的頁面（`metadata` 只能從 Server Component 匯出） | 同目錄新增 `layout.tsx`，只放 `metadata` 與 `return children`；寫法照 `app/dashboard/orders/layout.tsx` |
+| 薄殼頁（只是把路由參數傳給 client 元件） | 直接做成 Server Component：`async` 頁面、`const { id } = await params` |
+
+- **只寫「頁名」**，品牌與區域後綴由 `title.template` 加：一般頁 `頁名｜意象若水 RUOSHUI`（根 layout）、賣家後台 `頁名｜賣家後台｜意象若水 RUOSHUI`、平台管理台 `頁名｜平台管理｜意象若水 RUOSHUI`（兩個區域 layout）。常數與完整規則在 `src/lib/site.ts`。首頁是完整品牌標題（`title.absolute`）。
+- **中間層的 layout 必須重新宣告 template**：Next 的規則是中間層的標題沒有 `template` 就會切斷上層傳下來的 template。所以 client 頁的 `layout.tsx` 寫 `title: { default: '頁名', template: <區域的 TITLE_TEMPLATE> }`，不要寫成 `title: '頁名'`——否則它底下的子路由（例如 `/bookings/[id]/payment/cancel`）標題會少了品牌。這個錯誤 `tsc`、`eslint`、`next build` 都看不出來。
+- **同名頁面靠區域後綴區分**：「客服工單」「店鋪管理」「訂單詳情」在買家、賣家、平台各有一頁；同一區域內的頁名不可重複。
+- 動態路由（`/orders/[id]`、`/blog/[slug]`）用靜態的頁型名稱（「訂單詳情」「部落格文章」）：登入後頁面的資料在伺服器端取不到（憑證在 `localStorage`），公開頁的實體標題（商品名、店名）需要伺服器端的後端網址設定，見追蹤表 DEF-475。
+- **守門**：`src/architecture/page-titles.test.ts` 模擬 Next 的解析，檢查每頁自己有標題來源、解析後帶品牌、區域後綴正確、彼此不重複；`e2e/at-page-titles.spec.ts` 在真實瀏覽器驗證各種形態（含巢狀路由與換頁後標題更新）。新增頁面忘了標題、或標題與別頁重複，`npm test` 會紅燈。
 
 ### 9.6 換皮成本模型（Sprint 329 換皮演練實測）
 

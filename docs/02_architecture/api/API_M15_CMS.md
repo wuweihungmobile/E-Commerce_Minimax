@@ -3,7 +3,7 @@
 > **文件編號**: API-M15
 > **文件版本**: v1.0（Sprint 277，首次建立；首次有獨立規格文件，DEF-286 範圍）
 > **建立日期**: 2026-10-16
-> **最後更新**: 2026-10-16
+> **最後更新**: 2026-11-07（Sprint 332：前端 /cms 系列併入 /dashboard，媒體管理只剩一個介面；API 本身未變）
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`CmsController`／`PostController`／`MediaController`／`MediaCategoryController`（`api/controller/`）、`CmsService`（`core/cms/`）、`PostService`／`PostCategoryService`（`core/cms/post/`）、`ListingCardService`（`core/cms/listing/`）、`MediaService`（`core/cms/media/`，PostController 專用）、`MediaService`（`core/media/`，獨立媒體庫專用，與前者**同名不同類別**）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[CmsServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/CmsServiceTest.java)、[PostServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/post/PostServiceTest.java)、[PostCategoryServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/post/PostCategoryServiceTest.java)、[ListingCardServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/listing/ListingCardServiceTest.java)、[core/cms/media/MediaServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/media/MediaServiceTest.java)、[core/media/MediaServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/media/MediaServiceTest.java)
@@ -29,10 +29,11 @@
 
 1. **`PostController` 的租戶解析已統一（DEF-386，Sprint 280 修復）**：原先 `getTenantIdFromUser` 不直接呼叫 `TenantContext.getCurrentTenant()`，而是反查 `TenantMemberRepository`／`UserRepository`、失敗則反射挖 `UserDetails`、最終 fallback 寫死的 mock 租戶 UUID；現已全部移除，12 個端點方法改為直接呼叫 `TenantContext.getCurrentTenant()`／`getCurrentUser()`，與其餘三個 Controller 一致。
 2. **本模組有兩套完全獨立、互不相通的媒體庫**：
-   - **`core.cms.media.MediaService`**（`domain.model.cms.media.MediaAsset` 實體）：供 `PostController` 的 `/v2/dashboard/media/*` 使用，租戶來自 §1.2 第 1 點的風險解析；前端對應 `frontend/src/services/cms.ts`，頁面在 `/cms`、`/cms/media`。
+   - **`core.cms.media.MediaService`**（`domain.model.cms.media.MediaAsset` 實體）：供 `PostController` 的 `/v2/dashboard/media/*` 使用，租戶來自 §1.2 第 1 點的風險解析；前端對應 `frontend/src/services/cms.ts`（**Sprint 332 起該 service 只剩貼文與分類，媒體函式隨 `/cms/media` 頁面一併移除，這 5 個端點目前沒有任何前端呼叫者**，見 DEF-474）。
    - **`core.media.MediaService`**（同樣讀寫 `domain.model.cms.media.MediaAsset` 實體——**底層資料表其實是同一張**，但 Service／Controller／DTO 完全分開實作）：供 `MediaController`／`MediaCategoryController` 的 `/v2/media/*` 使用，租戶正確經 `TenantContext.getCurrentTenant()`；前端對應 `frontend/src/services/media.ts`，頁面在 `/dashboard/media`。
-   - 兩套 API 的 DTO 形狀、驗證規則、錯誤碼完全不同（見 §6），但操作的是**同一張 `media_assets` 表**——經由 `/cms/media` 上傳的檔案與經由 `/dashboard/media` 上傳的檔案理論上會互相出現在對方的查詢結果中（只要 `tenantId` 相同），但兩個前端頁面呈現的 UI／篩選條件完全獨立，使用者不會意識到這是同一個資料來源。
-   - **定位差異（Sprint 280，DEF-387 拍板維持現狀）**：`/cms/media` 是**部落格貼文專用**的媒體上傳，定位上從屬於 `PostController` 的貼文編輯流程（插入貼文內文的圖片）；`/dashboard/media` 是**獨立的通用媒體庫**，供商品/房源等其他內容情境重複使用素材，不綁定任何特定業務流程。兩者雖共用底層資料表，但服務的使用情境不同，**暫不合併**——除非未來觀察到使用者對兩個「媒體庫」頁面內容不一致感到困惑，否則合併是不小的重構成本（需統一 DTO／驗證規則／錯誤碼並改動兩個前端頁面），優先序低於其他已確認的缺陷。詳見 §7 DEF-387。
+   - 兩套 API 的 DTO 形狀、驗證規則、錯誤碼完全不同（見 §6），但操作的是**同一張 `media_assets` 表**——經由 `/v2/dashboard/media`（原 `/cms/media` 頁面使用）上傳的檔案與經由 `/v2/media`（`/dashboard/media` 頁面）上傳的檔案會互相出現在對方的查詢結果中（只要 `tenantId` 相同）。**Sprint 332 起前端只剩 `/dashboard/media` 一個媒體介面（走 `/v2/media`）**，原本兩個頁面各自獨立呈現、使用者不會意識到是同一個資料來源的問題已消失。
+   - **【Sprint 332（DEF-466）更新】前端的兩個媒體頁面已合併**：使用者決定合併兩套並行的貼文／媒體管理介面，`/cms/media` 移除，媒體管理只剩 `/dashboard/media`（M18，`/v2/media/*`）。**後端的兩套 API 沒有動**（下面 DEF-387 的「暫不合併」針對的就是後端的 DTO／驗證規則／錯誤碼統一，那個重構成本仍在）；但合併讓兩套 API 的差異變成實際的使用者影響，已登記 DEF-474：M15 端點依**角色**（`STORE_OWNER`／`STORE_STAFF`／`SELLER`／`HOST`）、刪除會擋「被貼文的精選圖引用」並同時刪除儲存的實體檔；M18 端點依 **`media:*` 權限**（`SELLER`／`HOST` 完全沒有、`STORE_STAFF` 只有讀取）、刪除是軟刪除且不檢查引用。以下是合併前的原決策，留作歷史：
+- **（歷史）定位差異（Sprint 280，DEF-387 拍板維持現狀）**：`/cms/media` 是**部落格貼文專用**的媒體上傳，定位上從屬於 `PostController` 的貼文編輯流程（插入貼文內文的圖片）；`/dashboard/media` 是**獨立的通用媒體庫**，供商品/房源等其他內容情境重複使用素材，不綁定任何特定業務流程。兩者雖共用底層資料表，但服務的使用情境不同，**暫不合併**——除非未來觀察到使用者對兩個「媒體庫」頁面內容不一致感到困惑，否則合併是不小的重構成本（需統一 DTO／驗證規則／錯誤碼並改動兩個前端頁面），優先序低於其他已確認的缺陷。詳見 §7 DEF-387。
 3. **`PostController` 另外還內嵌一套獨立的「部落格媒體」上傳**（`/v2/dashboard/media/*`，委派給上面第 2 點的 `core.cms.media.MediaService`），與 `MediaController` 的 `/v2/media/*` 是**第三條**上傳路徑的錯覺——實際上第 2 點已說明兩者寫入同一張表，這裡只是重複強調：目前已有 3 個 Controller（`PostController`、`MediaController`，以及下方會提到的 `ErpController`／`AdminController` 都不涉及媒體，純屬 M15 範圍內 2 個 Controller）可以上傳到同一張 `media_assets` 表。
 4. **CMS 頁面／橫幅（`CmsController`）Javadoc 標「(Admin)」但實際權限比字面寬**：`@PreAuthorize("hasRole('SUPER_ADMIN') or hasAuthority('cms:create')")` 這類寫法，而 `cms:create`／`cms:update`／`cms:read` 持有者包含 `SELLER`／`HOST`／`STORE_OWNER`／`STORE_STAFF`（見 `RolePermissionMapping`），`cms:publish` 則只有 `STORE_OWNER`／`ADMIN`。**實際語意是「任何店鋪角色管理自己租戶的頁面/橫幅，`SUPER_ADMIN` 亦可」**，不是字面註解暗示的「僅限平台管理員」；`CmsService` 內部一律用 `TenantContext.getCurrentTenant()` 隔離，不是全平台共用內容。
 5. **錯誤碼精確性曾是本模組的系統性弱點，已於 Sprint 278（DEF-388）修復**：原至少 4 類錯誤碼被跨領域誤用，包括已存在專屬碼卻未採用的情況（`E-3006`／`E-4103` 原已定義但 `core.media.MediaService` 從未使用，現已改用），詳見 §6／§7。
@@ -388,7 +389,7 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 | 項目 | 說明 |
 |------|------|
 | ~~`PostController` 反射式租戶解析含硬編碼假租戶 fallback~~（**DEF-386，Sprint 280 已修復**） | 見 §1.2 第 1 點。已移除整段反射邏輯（含同款問題的 `getUserIdFromUser`）與硬編碼 fallback，改為直接呼叫 `TenantContext.getCurrentTenant()`／`getCurrentUser()`，與同模組其餘三個 Controller 一致 |
-| **兩套互相獨立的媒體庫並存（DEF-387，Sprint 280 拍板維持現狀）** | 見 §1.2 第 2、3 點。`/cms/media`（部落格貼文專用）與 `/dashboard/media`（通用媒體庫，供其他內容情境重複使用素材）實際寫入同一張 `media_assets` 表卻各自有獨立的 DTO／驗證規則／錯誤碼。**決策**：兩者定位不同（前者從屬貼文編輯流程、後者是獨立通用素材庫），暫不合併；若未來觀察到使用者對兩個「媒體庫」頁面內容不一致感到困惑，再評估合併成本 |
+| **兩套互相獨立的媒體庫並存（DEF-387，Sprint 280 拍板維持現狀）** | 見 §1.2 第 2、3 點。`/cms/media`（部落格貼文專用）與 `/dashboard/media`（通用媒體庫，供其他內容情境重複使用素材）實際寫入同一張 `media_assets` 表卻各自有獨立的 DTO／驗證規則／錯誤碼。**決策**：兩者定位不同（前者從屬貼文編輯流程、後者是獨立通用素材庫），暫不合併；若未來觀察到使用者對兩個「媒體庫」頁面內容不一致感到困惑，再評估合併成本。**（Sprint 332 更新：使用者決定合併前端介面，只剩 `/dashboard/media`；後端兩套 API 仍分開，權限與刪除語意的差異登記為 DEF-474。）** |
 | **大量錯誤碼跨領域誤用（DEF-388，已於 Sprint 278 修復）** | 本模組是目前已完成的 11 個模組中錯誤碼精確性問題最密集的一個：原 `E-4000`（房源專用）、`E-3001`（刊登類型專用）、`E-1002`（憑證過期專用）、`E-9005`（缺少欄位專用）、`E-4102`（找不到分類）、`E-8004`（找不到頁面）皆被借用到語意不符的情境。已新增 7 個專屬碼 `E-8013`～`E-8019`，並改採既有但先前未使用的 `E-3006`／`E-4103`；過程中額外發現並連帶修復 2 處原描述未列出的同類誤用（頁面/分類 slug 重複）。`CmsServiceTest`／`PostServiceTest`／`PostCategoryServiceTest`／`MediaServiceTest` 已同步更新/新增測試斷言具體錯誤碼 |
 | `PostCategory.name`／`MediaCategory` 建立請求無 `@NotBlank` 驗證 | 可建立空白名稱的分類，無資料品質防護（非安全問題，純資料完整性缺口） |
 | CMS 頁面/橫幅、貼文、獨立媒體庫三套授權風格並存 | `cms:*`／角色字面字串／`media:*`，同一模組內三種不同慣例，見 §5 備註 |
@@ -404,7 +405,7 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 | FRD | 無章節（見文件頂部狀態說明） |
 | 實作 | `CmsController`／`PostController`／`MediaController`／`MediaCategoryController`（`api/controller/`）；`CmsService`（`core/cms/`）；`PostService`／`PostCategoryService`（`core/cms/post/`）；`ListingCardService`（`core/cms/listing/`）；`MediaService`（`core/cms/media/` 與 `core/media/`，兩個同名不同類別） |
 | 契約測試 | [CmsServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/CmsServiceTest.java)、[PostServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/post/PostServiceTest.java)、[PostCategoryServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/post/PostCategoryServiceTest.java)、[ListingCardServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/listing/ListingCardServiceTest.java)、[core/cms/media/MediaServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/media/MediaServiceTest.java)、[core/media/MediaServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/media/MediaServiceTest.java)、[CmsDtoValidationTest](../../../backend/src/test/java/com/nextkey/ecommerce/api/dto/CmsDtoValidationTest.java)、[M15DtoValidationTest](../../../backend/src/test/java/com/nextkey/ecommerce/api/dto/M15DtoValidationTest.java) |
-| 前端 | `frontend/src/services/cms.ts`（`/cms`、`/cms/media` 頁面）、`frontend/src/services/media.ts`（`/dashboard/media` 頁面） |
+| 前端 | `frontend/src/services/cms.ts`（`/dashboard/posts*` 頁面；Sprint 332 起原 `/cms*` 頁面已併入並移除，舊網址 308 轉址）、`frontend/src/services/media.ts`（`/dashboard/media` 頁面，唯一的媒體介面） |
 
 ---
 

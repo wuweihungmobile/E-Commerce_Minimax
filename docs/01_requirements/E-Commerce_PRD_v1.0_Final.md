@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0.11（文件修訂；規格基準仍為 v1.0）
+> **版本**: v1.0.12（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -22,6 +22,7 @@
 > - **v1.0.8 → v1.0.9（2026-10-23，Sprint 300，DEF-404）**：§8.2.13 `return_request_items.sku_id` 補註「可為空」——沒建 SKU（未啟用庫存追蹤）的商品，其訂單品項沒有 SKU，退貨品項的 `sku_id` 就是空的，收貨時不回補庫存（V93 將欄位由 NOT NULL 改為可空；修復前這種退貨申請回 500）。其餘規格內文未改寫。
 > - **v1.0.9 → v1.0.10（2026-10-23，Sprint 301，DEF-407／408／409）**：使用者在 Sprint 300 收尾的 `AskUserQuestion` 中本人選擇建議選項（真實的互動輸入，不是我的推論）。①§9.16 新增「營收口徑」：店鋪後台的營收＝已付款、未取消、未退款的訂單（`PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED`），平均客單價的分母為同一組訂單的筆數；②§10.1.1 `/orders/[id]`：買家本人可讀取自己訂單的物流（四個讀取端點放行該訂單的買家，寫入仍限店家／管理員）；③§10.1.1 `/login`：登入後依角色分流（`BUYER`→`/`、店家類→`/dashboard`、管理員→`/admin`），並支援同源站內路徑的 `?redirect=` 回到原頁（不接受外部網址，防開放轉址）。其餘規格內文未改寫。
 > - **v1.0.10 → v1.0.11（2026-10-23，Sprint 302，DEF-412／413）**：使用者在 Sprint 301 收尾的 `AskUserQuestion` 中本人選擇建議選項（真實的互動輸入，不是我的推論）。①§9.16 營收口徑補上退款：退款總額＝全額退款＋部分退款，淨營收＝計入營收的訂單金額 − 這些訂單上的退款（全額退款的訂單已不在營收裡，不再扣第二次）；②§10.1.1 新增 C 端登入守門說明：買家頁面（`(auth)` 路由群組）除認證流程頁面外都需要登入，沒登入導去 `/login?redirect=<原頁>`，`/checkout` 也需登入。其餘規格內文未改寫。
+> - **v1.0.11 → v1.0.12（2026-11-07，Sprint 332，DEF-466）**：使用者決定合併兩套並行的貼文／媒體管理介面。§10.1.2 把 `/cms` 系列四條路由的說明由「與 `/dashboard/*` 並存」改為「已併入並移除、舊網址 308 轉址」，並註記貼文管理列表分頁與媒體管理只剩 `/dashboard/media` 一個介面。路由表 `/dashboard/posts*`、`/dashboard/media` 的列本身沒有改。其餘規格內文未改寫。
 
 ---
 
@@ -2191,7 +2192,7 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `/dashboard/revenue` | M13 | 營收報表 |
 | `/dashboard/reviews` | M08 | 賣家評價管理與回覆（**Sprint 287 新增，DEF-392**；呼叫 `GET /v2/reviews/managed`，預設列待處理項目，可回覆評價。此前為「有後端、零前端」缺口。Sprint 292 補列） |
 
-**本節未收錄於原 PRD、但實際已存在的 B 端路由**（Sprint 253 補列，非窮舉每條巢狀子路由；Sprint 292 追補 `/dashboard/erp` 與 `/cms` 系列）：`/dashboard/chat`（店家客服即時通訊）、`/dashboard/faq`、`/dashboard/faq/categories`、`/dashboard/knowledge`（知識庫）、`/dashboard/notifications`、`/dashboard/returns`、`/dashboard/returns/[id]`、`/dashboard/shipping`、`/dashboard/support/tickets`、`/dashboard/support/tickets/[id]`、`/dashboard/erp`（ERP 進銷存系統總覽頁，各 `/dashboard/erp/*` 子頁的入口）、`/cms`（CMS 貼文管理）、`/cms/posts/new`、`/cms/posts/[id]/edit`、`/cms/media`（媒體庫）——`/cms` 系列是早期 M15 CMS 後台，與 `/dashboard/posts`（兩者皆用前端 `services/cms`）、`/dashboard/media`（用另一套 `services/media`，即 DEF-387 已決策維持現狀的兩套媒體庫實作）並存；以 grep 查證，專案內其他頁面沒有連結到 `/cms/*`，只能直接輸入網址進入。
+**本節未收錄於原 PRD、但實際已存在的 B 端路由**（Sprint 253 補列，非窮舉每條巢狀子路由；Sprint 292 追補 `/dashboard/erp` 與 `/cms` 系列）：`/dashboard/chat`（店家客服即時通訊）、`/dashboard/faq`、`/dashboard/faq/categories`、`/dashboard/knowledge`（知識庫）、`/dashboard/notifications`、`/dashboard/returns`、`/dashboard/returns/[id]`、`/dashboard/shipping`、`/dashboard/support/tickets`、`/dashboard/support/tickets/[id]`、`/dashboard/erp`（ERP 進銷存系統總覽頁，各 `/dashboard/erp/*` 子頁的入口）。**（Sprint 332，DEF-466）** 原本並存的 `/cms`、`/cms/posts/new`、`/cms/posts/[id]/edit`、`/cms/media`（早期 M15 CMS 後台，專案內沒有任何連結指向它）已併入上表的 `/dashboard/posts*` 與 `/dashboard/media` 並移除；舊網址由前端設定以 308 轉到對應的新頁面（`/cms`→`/dashboard/posts`、`/cms/posts/new`→`/dashboard/posts/new`、`/cms/posts/:id/edit`→`/dashboard/posts/:id/edit`、`/cms/media`→`/dashboard/media`）。貼文管理列表因此有分頁（每頁 20 篇）。媒體管理只剩 `/dashboard/media` 一個介面（走 `services/media`，M18 的 `/api/v2/media/*`）；後端 `PostController` 的 `/api/v2/dashboard/media/*` 端點仍在，但已沒有前端呼叫者（見追蹤表 DEF-474）。
 
 #### 10.1.3 平台管理台路由（繼承 v0.8 + v0.9 擴展；**Sprint 253 依實際程式碼校對**）
 

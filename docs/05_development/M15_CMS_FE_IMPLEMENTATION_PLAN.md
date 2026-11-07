@@ -4,6 +4,8 @@
 > **日期**: 2026-05-06
 > **依據**: API Contract v1.1 + Sprint 9 Tasks
 
+> **現況（Sprint 332，2026-11-07）**：這份是 Sprint 9 的歷史計畫（當時打算把 `/dashboard/posts` 遷移到新的 `/cms`），**實際沒有完成遷移**，兩套介面並行了很久。使用者在 Sprint 332（DEF-466）決定合併，結果與本計畫的方向相反：`/cms` 全部移除並轉址到 `/dashboard/posts*`、`/dashboard/media`，貼文管理只剩 `/dashboard/*` 一套。下文的路由與檔案對照表只代表 Sprint 9 的規劃，不是現況；現況見 PRD §10.1.2 與 [SPRINT_332_PLAN.md](../04_planning/SPRINT_332_PLAN.md)。
+
 ---
 
 ## 1. 技術棧 Overview

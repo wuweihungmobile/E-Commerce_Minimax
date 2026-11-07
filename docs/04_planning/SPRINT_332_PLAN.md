@@ -159,7 +159,10 @@ JS 傳輸量（同一支腳本、冷快取，15 條路由）：最大變化 **0.
 
 ### 6.4 pre-push 與雲端 CI
 
-（push 之後由回填 commit 補記：pre-push 守門結果、push 範圍、雲端 CI 的 run 編號與三個 job 的結論、整合測試與前端單元測試的數字。）
+- **pre-push**（act 裡的完整本地 CI：後端單元、schema 漂移、前端 lint／build／單元測試）：通過，push `58b80144..bd7cb29b`——本輪 6 個 commit，加上 Sprint 331 留在本機的文件回填 commit `a0d7194d`。
+- **雲端 CI** run [42339889970](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/42339889970)：三個 job **全部 success**（Backend Unit Tests、Frontend Lint & Build、Backend Integration Tests & Package；整個 run 約 10 分鐘）；以 `gh run view --json` 交叉確認 `headSha` 與本機 commit 一致（不是只看 `gh run watch`）。
+- **整合測試仍為 1033／0**（雲端日誌：`Tests run: 1033, Failures: 0, Errors: 0, Skipped: 0`、`BUILD SUCCESS`；後端本輪沒有變更）。
+- **前端 job** 的 `Unit Tests` 步驟：**22 個檔案、219 個案例全過**（與本機一致），代表新的 `src/architecture/` 守門（標題、失敗靜默）在雲端環境也跑得起來。
 
 ## 7. 行為變更與已知限制
 
@@ -241,7 +244,7 @@ JS 傳輸量（同一支腳本、冷快取，15 條路由）：最大變化 **0.
 
 **本機驗證**：`tsc --noEmit` 0 錯誤；`eslint --max-warnings 0`（`src`＋`e2e`）0 警告；Vitest **22 檔／219 案例**全過；`next build` 成功；完整本地 E2E 守門 **350／350**（§6.3）；全路由探針 107 次造訪的 `document.title` **0 筆不符**、前版對後版 104 條差異**全部只有 `title`**（§6.1、§6.2）；突變驗證 Vitest 22 個＋E2E 3 組，不吻合的如實記錄在 §5。
 
-**提交**：`1d35ac43`（`DEF-467`）→ `6dd84b36`（`DEF-468`）→ `05786b06`（`DEF-466`）→ `408ed81c`（`DEF-465`＋失敗靜默守門）→ `d14f65ee`（預檢規格的競態修正）→ 收尾文件 commit。push 與雲端 CI 結果見 §6.4。
+**提交**：`1d35ac43`（`DEF-467`）→ `6dd84b36`（`DEF-468`）→ `05786b06`（`DEF-466`）→ `408ed81c`（`DEF-465`＋失敗靜默守門）→ `d14f65ee`（預檢規格的競態修正）→ 收尾文件 commit。push 與雲端 CI 結果見 §6.4（雲端 CI 全綠）。
 
 **需要使用者決定的**（不影響本輪完成）：①`DEF-474`——媒體兩套後端 API 的權限與刪除語意不一致，合併之後變成實際影響（`STORE_STAFF` 能看不能上傳、`SELLER`／`HOST` 完全用不了、刪除貼文正在使用的精選圖不再被擋），選項 (a) 對齊 M15 的角色範圍並補「被引用不能刪」、(b) 維持現狀並寫明、(c) 移除沒有呼叫者的 M15 端點；②`DEF-476`——貼文「只有草稿能刪」要不要統一（現在只有列表按鈕執行，編輯頁與後端都不擋）。**不需要決定、下次可直接做**：`DEF-471`（聊天對話清單的失敗畫面）、`DEF-472`（採購單下拉載入失敗的提示）、`DEF-473`（內嵌商品卡把 404 與其他失敗分開）；`DEF-475`（公開頁的實體標題）要先決定伺服器端後端網址的設定名稱。
 

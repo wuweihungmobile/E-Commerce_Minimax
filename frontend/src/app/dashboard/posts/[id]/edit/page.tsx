@@ -81,6 +81,8 @@ export default function EditPostPage({ params }: { params: Promise<{ id: string 
     } catch (error) {
       console.error('Failed to update post:', error);
       toast.error('更新貼文失敗，請稍後再試');
+    } finally {
+      // DEF-467：成功路徑也要重設。頁面元件沒有卸載（只是重新載入），不重設的話按鈕會永遠停在「儲存中...」、不能再存
       setSaving(false);
     }
   }

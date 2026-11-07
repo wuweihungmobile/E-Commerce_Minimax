@@ -22,17 +22,21 @@ const ASSET = {
 // 1x1 透明 PNG
 const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 
-/** 假的後端：媒體列表永遠是空的；記下送到上傳端點的請求 */
+/** 假的後端：媒體列表永遠是空的；記下送出的上傳請求 */
 async function openMediaCenter(page: Page): Promise<{ uploads: string[] }> {
   const uploads: string[] = [];
   await asMockLoggedInBuyer(page);
+  // 在「請求發出」的當下記錄，不是等 route handler 收到完整內容才記：大檔案的內容還在傳輸時 handler 還沒跑，
+  // 「沒有送出請求」這種否定斷言會在請求被記錄之前就通過——突變驗證時 6 MB 的 PDF 案例就這樣倖存過一次
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === `/api${UPLOAD_PATH}`) uploads.push(UPLOAD_PATH);
+  });
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname.replace(/^\/api/, '');
     let data: unknown = [];
     let status = 200;
     if (request.method() === 'POST' && path === UPLOAD_PATH) {
-      uploads.push(path);
       data = ASSET;
       status = 201;
     } else if (path === '/v2/media') {
@@ -52,6 +56,7 @@ test.describe('AT-MEDIA-UPLOAD-PRECHECK: 選檔當下預檢，不合格的檔案
     await page.locator('input[type="file"]').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
 
     await expect(page.getByTestId('toast').filter({ hasText: '不支援的檔案類型' })).toBeVisible();
+    await page.waitForLoadState('networkidle'); // 否定斷言要等網路靜止之後才有意義
     expect(uploads, '不合格的檔案不應該送到後端').toEqual([]);
   });
 
@@ -61,6 +66,7 @@ test.describe('AT-MEDIA-UPLOAD-PRECHECK: 選檔當下預檢，不合格的檔案
     await page.locator('input[type="file"]').setInputFiles({ name: 'big.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(6 * MB) });
 
     await expect(page.getByTestId('toast').filter({ hasText: '文件上限 5 MB' })).toBeVisible();
+    await page.waitForLoadState('networkidle');
     expect(uploads).toEqual([]);
   });
 

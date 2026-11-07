@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { getPublishedPosts } from '@/services/cms';
 import { useAsyncData } from '@/hooks/useAsyncData';
 import { getAuthServerSnapshot, getSelectedTenantIdSnapshot, subscribeAuth } from '@/services/authStore';
-import { EmptyState, LoadingState } from '@/components/ui/states';
+import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
@@ -13,8 +13,8 @@ export default function BlogPage() {
   // 目前選用的店鋪（localStorage）；SSR／hydration 前是 null，與原本「mount 之後才讀到」相同
   const tenantId = useSyncExternalStore(subscribeAuth, getSelectedTenantIdSnapshot, getAuthServerSnapshot);
   const [page, setPage] = useState(0);
-  // 載入失敗只記錄、畫面照舊顯示「尚無已發布的文章」（原本就是這樣）；沒有店鋪時不發請求（enabled）
-  const { data, loading } = useAsyncData(
+  // 載入失敗顯示錯誤與重新載入（DEF-468：原本只記錄、畫面顯示「尚無已發布的文章」，使用者分不出沒有與出錯）；沒有店鋪時不發請求（enabled）
+  const { data, error, loading, reload } = useAsyncData(
     (signal) => getPublishedPosts(tenantId ?? '', { page, size: 12 }, { signal }),
     [tenantId, page],
     {
@@ -45,6 +45,8 @@ export default function BlogPage() {
           />
         ) : loading ? (
           <LoadingState className="h-auto py-12" />
+        ) : error !== null ? (
+          <ErrorState data-testid="blog-error" title="載入文章失敗，請稍後再試" onRetry={reload} />
         ) : posts.length === 0 ? (
           <EmptyState title="尚無已發布的文章" />
         ) : (

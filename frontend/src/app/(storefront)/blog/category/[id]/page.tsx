@@ -7,7 +7,7 @@ import { getPublishedPosts, getPublicCategories } from '@/services/cms';
 import { useAsyncData } from '@/hooks/useAsyncData';
 import { getAuthServerSnapshot, getSelectedTenantIdSnapshot, subscribeAuth } from '@/services/authStore';
 import { Pagination } from '@/components/ui/pagination';
-import { EmptyState, LoadingState } from '@/components/ui/states';
+import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { Card } from '@/components/ui/card';
 
 const PAGE_SIZE = 12;
@@ -20,9 +20,10 @@ export default function BlogCategoryPage() {
   const tenantId = useSyncExternalStore(subscribeAuth, getSelectedTenantIdSnapshot, getAuthServerSnapshot);
   const [page, setPage] = useState(0);
 
-  // 公開端點只回傳啟用中分類；找不到就視為「此分類不存在」（含店主已停用的情況）。
-  // 載入失敗也當作不存在（原本就是這樣）：category 是 null＝載入完成但沒有這個分類；undefined＝還沒載入或沒有發請求
-  const { data: category, error: categoryError } = useAsyncData(
+  // 公開端點只回傳啟用中分類；成功的回應裡找不到就是「此分類不存在」（含店主已停用的情況）。
+  // 載入失敗是另一回事（DEF-468：原本也當成不存在，使用者以為分類被刪了）：顯示錯誤與重新載入。
+  // category 是 null＝載入完成但沒有這個分類；undefined＝還沒載入、失敗、或沒有發請求
+  const { data: category, error: categoryError, reload: reloadCategory } = useAsyncData(
     async (signal) => {
       const data = await getPublicCategories(tenantId ?? '', { signal });
       return data.categories.find((c) => c.id === categoryId) ?? null;
@@ -34,14 +35,15 @@ export default function BlogCategoryPage() {
       onError: (_message, error) => console.error('Failed to load category:', error),
     }
   );
-  const categoryNotFound = category === null || categoryError !== null;
+  const categoryNotFound = category === null;
 
-  // 文章與分類同時載入（分類確定不存在就不需要文章）；載入失敗只記錄、畫面顯示「此分類尚無已發布的文章」
-  const { data: postsData, loading } = useAsyncData(
+  // 文章與分類同時載入（分類確定不存在、或查分類失敗就不需要文章；重新載入分類成功後文章才會跟著載入）。
+  // 文章載入失敗顯示錯誤與重新載入（DEF-468：原本畫面顯示「此分類尚無已發布的文章」）
+  const { data: postsData, error: postsError, loading, reload: reloadPosts } = useAsyncData(
     (signal) => getPublishedPosts(tenantId ?? '', { page, size: PAGE_SIZE, categoryId }, { signal }),
     [tenantId, categoryId, page],
     {
-      enabled: Boolean(tenantId && categoryId) && !categoryNotFound,
+      enabled: Boolean(tenantId && categoryId) && !categoryNotFound && categoryError === null,
       errorMessage: '載入文章失敗',
       onError: (_message, error) => console.error('Failed to load posts:', error),
     }
@@ -80,10 +82,14 @@ export default function BlogCategoryPage() {
             title="請先登入並設定店鋪以瀏覽部落格"
             action={<Link href="/login" className="text-rs-primary hover:underline">前往登入</Link>}
           />
+        ) : categoryError !== null ? (
+          <ErrorState data-testid="blog-category-error" title="載入分類失敗，請稍後再試" onRetry={reloadCategory} />
         ) : categoryNotFound ? (
           <EmptyState data-testid="blog-category-not-found" title="此分類不存在" />
         ) : loading ? (
           <LoadingState className="h-auto py-12" />
+        ) : postsError !== null ? (
+          <ErrorState data-testid="blog-category-error" title="載入文章失敗，請稍後再試" onRetry={reloadPosts} />
         ) : posts.length === 0 ? (
           <EmptyState data-testid="blog-category-empty" title="此分類尚無已發布的文章" />
         ) : (

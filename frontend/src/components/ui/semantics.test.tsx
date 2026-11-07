@@ -1,10 +1,10 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { Alert } from './alert'
 import { CardTitle } from './card'
 import { Chip } from './chip'
 import { PageTitle } from './page-title'
-import { EmptyState, LoadingState } from './states'
+import { EmptyState, ErrorState, LoadingState } from './states'
 import { StatusBadge } from './status-badge'
 
 // 這些元件的外觀由 E2E 的 computed style 守（at-ui-design-system.spec.ts）；這裡守的是外觀之外、
@@ -60,6 +60,37 @@ describe('LoadingState／EmptyState：轉傳其餘屬性', () => {
     const { container } = render(<EmptyState title="沒有資料" />)
     expect(container.querySelectorAll('p')).toHaveLength(1)
     expect(container.querySelector('[aria-hidden]')).toBeNull()
+  })
+})
+
+describe('ErrorState：載入失敗的畫面（DEF-468）', () => {
+  it('role=alert（失敗是使用者沒預期的事，螢幕閱讀器要主動念）；轉傳 data-testid；預設標題與「重新載入」', () => {
+    const onRetry = vi.fn()
+    render(<ErrorState data-testid="x-error" onRetry={onRetry} />)
+    const el = screen.getByTestId('x-error')
+    expect(el.getAttribute('role')).toBe('alert')
+    expect(el.textContent).toContain('載入失敗，請稍後再試')
+    fireEvent.click(screen.getByRole('button', { name: '重新載入' }))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('標題、說明、重試鈕文字都可換', () => {
+    render(<ErrorState title="載入文章失敗" description="請確認網路連線" onRetry={() => {}} retryLabel="再試一次" />)
+    expect(screen.getByText('載入文章失敗')).toBeTruthy()
+    expect(screen.getByText('請確認網路連線')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '再試一次' })).toBeTruthy()
+  })
+
+  it('沒給 onRetry 就沒有按鈕（不放一個按了沒反應的鈕）；沒給說明就不留空的 <p>', () => {
+    const { container } = render(<ErrorState />)
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(container.querySelectorAll('p')).toHaveLength(1)
+  })
+
+  it('與 EmptyState 長得不同、語意不同：EmptyState 不是 alert、也沒有重試鈕——兩者不能互相冒充', () => {
+    render(<EmptyState title="尚無資料" />)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
   })
 })
 

@@ -153,7 +153,10 @@
 
 ### 6.2 pre-push 與雲端 CI
 
-本檔提交時尚未 push；push 與雲端 CI 的結果在 push 之後的回填 commit 補上（連同 Sprint 332 留在本機的回填 commit `8740d1dd` 一起 push）。
+- **pre-push**（輕量守門：act 裡的 Backend Unit Tests 與 Frontend Lint & Build，加上 schema 漂移守門；完整整合測試改由雲端執行）：通過，push `bd7cb29b..42fb1902`——本輪 3 個 commit（`0d7a1496`、`af869469`、`42fb1902`），加上 Sprint 332 留在本機的文件回填 commit `8740d1dd`。
+- **雲端 CI** run [42443537311](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/42443537311)：三個 job **全部 success**（Backend Unit Tests、Backend Integration Tests & Package、Frontend Lint & Build；整個 run 約 11.5 分鐘）；以 `gh run view --json` 逐 job 交叉確認 `headSha`（`42fb1902`）與本機 commit 一致。**我第一次寫的等待迴圈用 `grep` 判斷 `completed`，被單一 job 的狀態命中而提早結束**——收到通知後另做的獨立查詢才發現整個 run 還在進行（`in_progress`、兩個 job 在排隊），改成只讀 run 層級狀態重新等待；本節的結論以第二次等待之後的查詢為準。
+- **整合測試仍是 1033／0**（雲端日誌：`Tests run: 1033, Failures: 0, Errors: 0, Skipped: 0`、`BUILD SUCCESS`；後端本輪沒有變更）。日誌第一次下載遇到網路瞬斷（`stream error … CANCEL`），重試一次成功。
+- **前端 job** 的 `Unit Tests` 步驟：**25 個檔案、247 個案例全過**（與本機一致）。
 
 ## 7. 行為變更與已知限制
 
@@ -225,7 +228,7 @@
 
 **本機驗證**：`tsc --noEmit` 0 錯誤；`eslint --max-warnings 0`（`src`＋`e2e`）0 警告；Vitest **25 檔／247 案例**全過；完整本地 E2E 守門 **355／355**（§6.1）；修復前先在真實瀏覽器實測三個缺陷（§3.4）；突變驗證 Vitest 24 個（21 擊殺且失敗集合與預先登記完全相同、3 個預先登記的等價突變如預測倖存）＋E2E 3 組全吻合（§5）；六個畫面目視檢查（§7.2 第 5 點）。
 
-**提交**：`0d7a1496`（`DEF-471`／`472`／`473` 修復＋測試＋E2E 規格）→ `af869469`（採購單測試補三個案例）→ 收尾文件 commit。push 與雲端 CI 結果見 §6.2。
+**提交**：`0d7a1496`（`DEF-471`／`472`／`473` 修復＋測試＋E2E 規格）→ `af869469`（採購單測試補三個案例）→ `42fb1902`（收尾文件）。已 push（`bd7cb29b..42fb1902`），**雲端 CI 全綠**（§6.2：整合 1033／0、前端 Unit Tests 25 檔 247 案例）。
 
 **需要使用者決定的**（不影響本輪完成，與 Sprint 332 相同、本輪沒有碰）：①`DEF-474`——媒體兩套後端 API 的權限與刪除語意不一致（選項 (a) 對齊 M15 角色範圍並補「被引用不能刪」、(b) 維持現狀並寫明、(c) 移除沒有呼叫者的 M15 端點）；②`DEF-476`——貼文「只有草稿能刪」要不要統一；③`DEF-475`——公開頁的實體標題要先決定伺服器端後端網址的設定名稱。**不需要決定、下次可直接做**：`DEF-480`（全中文標題的 slug 不可為空——修法的「絕不存空字串」不需要產品決策；要不要做拼音是另一題）、`DEF-479`（補採購單建立的真實後端 E2E）、`DEF-477`、`DEF-478`。
 

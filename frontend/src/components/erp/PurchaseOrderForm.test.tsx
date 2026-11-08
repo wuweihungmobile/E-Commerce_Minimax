@@ -110,6 +110,40 @@ describe('採購單表單（建立模式）的供應商與商品下拉', () => {
     expect(screen.queryByTestId('po-options-error')).toBeNull()
   })
 
+  it('商品選項載入失敗後按「重新載入」→ 只重抓商品選項；成功後錯誤消失、商品下拉有選項', async () => {
+    listSuppliers.mockResolvedValue([supplier] as never)
+    listListingOptions.mockRejectedValueOnce(new Error('network down')).mockResolvedValueOnce([listing] as never)
+    render(<PurchaseOrderForm mode="create" />)
+    fireEvent.click(await screen.findByRole('button', { name: '重新載入' }))
+    expect(await screen.findByRole('option', { name: '手沖咖啡豆' })).toBeTruthy()
+    expect(listListingOptions).toHaveBeenCalledTimes(2)
+    expect(listSuppliers, '成功的那個清單不該被重抓').toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('po-options-error')).toBeNull()
+  })
+
+  it('兩個都失敗後按一次「重新載入」→ 兩個清單都重抓，成功後錯誤消失', async () => {
+    listSuppliers.mockRejectedValueOnce(new Error('network down')).mockResolvedValueOnce([supplier] as never)
+    listListingOptions.mockRejectedValueOnce(new Error('network down')).mockResolvedValueOnce([listing] as never)
+    render(<PurchaseOrderForm mode="create" />)
+    fireEvent.click(await screen.findByRole('button', { name: '重新載入' }))
+    expect(await screen.findByRole('option', { name: '好供應商' })).toBeTruthy()
+    expect(await screen.findByRole('option', { name: '手沖咖啡豆' })).toBeTruthy()
+    expect(listSuppliers).toHaveBeenCalledTimes(2)
+    expect(listListingOptions).toHaveBeenCalledTimes(2)
+    expect(screen.queryByTestId('po-options-error')).toBeNull()
+  })
+
+  it('後端有給失敗訊息 → 接在「載入供應商失敗：」後面一起顯示（沒給才只顯示「載入供應商失敗」）', async () => {
+    const serverError = Object.assign(new Error('Request failed with status code 503'), {
+      response: { status: 503, data: { code: 'E-X', message: '資料庫忙碌中' } },
+    })
+    listSuppliers.mockRejectedValue(serverError)
+    listListingOptions.mockResolvedValue([listing] as never)
+    render(<PurchaseOrderForm mode="create" />)
+    const alert = await screen.findByTestId('po-options-error')
+    expect(alert.textContent).toContain('載入供應商失敗：資料庫忙碌中')
+  })
+
   it('載入成功但沒有任何啟用中的供應商 → 顯示「沒有啟用中的供應商」與新增入口，而且不是載入失敗的錯誤', async () => {
     listSuppliers.mockResolvedValue([] as never)
     listListingOptions.mockResolvedValue([listing] as never)

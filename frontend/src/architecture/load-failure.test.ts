@@ -25,9 +25,7 @@ const ALLOWED: Record<string, { count: number; reason: string }> = {
     reason: '嵌入商品卡預覽：失敗在 fetcher 內逐張處理，並在預覽區顯示「有 N 張無法載入」，hook 本身不會失敗',
   },
   // ---- 已登記待修的缺陷：失敗被畫成「沒有資料」或讓使用者卡住，修好就從這裡移除 ----
-  'app/dashboard/chat/page.tsx': { count: 1, reason: 'DEF-471：對話清單載入失敗被畫成「沒有對話」，使用者分不出沒有與壞了' },
-  'components/erp/PurchaseOrderForm.tsx': { count: 2, reason: 'DEF-472：建單用的供應商與商品下拉載入失敗毫無提示，使用者無法建單也不知道為什麼' },
-  'app/(storefront)/blog/[slug]/page.tsx': { count: 1, reason: 'DEF-473：文章內嵌商品卡載入失敗（任何原因）都顯示「此商品已下架」，只有 404 才是已下架' },
+  // （目前沒有：Sprint 332 登記的 DEF-471～473 已在 Sprint 333 全部修好並移除）
 }
 
 describe('useAsyncData 的失敗要讓使用者看見（真實專案）', () => {

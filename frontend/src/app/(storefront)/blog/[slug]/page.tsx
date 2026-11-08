@@ -7,15 +7,22 @@ import { getPublishedPostBySlug, getListingCard } from '@/services/cms';
 import { useAsyncData } from '@/hooks/useAsyncData';
 import { getAuthServerSnapshot, getSelectedTenantIdSnapshot, subscribeAuth } from '@/services/authStore';
 import { PageTitle } from '@/components/ui/page-title';
-import { EmptyState } from '@/components/ui/states';
+import { EmptyState, ErrorState } from '@/components/ui/states';
 import { Alert } from '@/components/ui/alert';
 import { Card } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
+// PRD §6.6.3：只有「listing_id 不存在（已刪除或格式有誤）」才是「此商品已下架」。後端對這兩種情形分別回
+// 404（E-3000 找不到刊登項目）與 400（E-9000 路徑參數格式錯誤）；其餘失敗（網路中斷、5xx、429…）商品可能好好的，
+// 說成「已下架」會讓使用者以為店家把商品拿掉了（DEF-473）。
+function isListingMissing(status: number | undefined): boolean {
+  return status === 404 || status === 400;
+}
+
 // 文章內嵌的商品／房源卡片：每張卡自己載入自己的資料（DEF-321(d)，PRD §6.6.3）
 function EmbeddedListingCard({ listingId }: { listingId: string }) {
-  const { data: card, loading } = useAsyncData(
+  const { data: card, error, errorInfo, loading, reload } = useAsyncData(
     (signal) => getListingCard(listingId, { signal }),
     [listingId],
     {
@@ -39,13 +46,24 @@ function EmbeddedListingCard({ listingId }: { listingId: string }) {
     );
   }
 
-  if (!card) {
+  if (error !== null || !card) {
     // DEF-321(d)：PRD §6.6.3——listing_id 不存在（已刪除或格式有誤）時顯示「此商品已下架」，
     // 用語與「下架但列尚存在」（statusReason=listing_unavailable）一致
+    if (isListingMissing(errorInfo?.status)) {
+      return (
+        <Alert variant="destructive" className="my-4" data-testid="embedded-card-gone">
+          此商品已下架
+        </Alert>
+      );
+    }
+    // 其餘失敗（含「沒有失敗卻沒有資料」這種不該發生的情形）一律是載入失敗：可以只重試這一張
     return (
-      <Alert variant="destructive" className="my-4">
-        此商品已下架
-      </Alert>
+      <ErrorState
+        data-testid="embedded-card-error"
+        className="my-4 rounded-lg border bg-rs-bg-base py-4"
+        title="載入商品卡片失敗，請稍後再試"
+        onRetry={reload}
+      />
     );
   }
 

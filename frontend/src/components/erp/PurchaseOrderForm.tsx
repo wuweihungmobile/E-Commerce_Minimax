@@ -72,28 +72,46 @@ function PurchaseOrderFormBody({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(loadError)
 
-  // 建立模式才需要的下拉選項（供應商、可選商品）；載入失敗只記錄，下拉就沒有選項（與原本相同）
-  const { data: suppliersData } = useAsyncData(
+  // 建立模式才需要的下拉選項（供應商、可選商品）。這兩個是建單的必填欄位，載入失敗不能只記錄：
+  // 下拉會只剩佔位選項，使用者無法建單也不知道為什麼（DEF-472）。失敗時在表單上方明講是哪一個失敗並提供重新載入。
+  // 失敗訊息一律寫明是哪個清單（後端有給訊息就接在後面），不單獨顯示後端的訊息（那樣兩個都失敗時看不出各是哪一個）。
+  const {
+    data: suppliersData,
+    error: suppliersError,
+    reload: reloadSuppliers,
+  } = useAsyncData(
     () => SupplierService.listSuppliers('ACTIVE'),
     [],
     {
       enabled: mode === 'create',
-      errorMessage: '載入供應商失敗',
+      errorMessage: (info) => (info.message ? `載入供應商失敗：${info.message}` : '載入供應商失敗'),
       onError: (_message, err) => console.error('Failed to fetch suppliers:', err),
     }
   )
   const suppliers: SupplierDto[] = suppliersData ?? []
   // DEF-076：前端原本沒有任何選擇 listing 的來源，建單品項的 listingId 永遠無法送出
-  const { data: listingOptionsData } = useAsyncData(
+  const {
+    data: listingOptionsData,
+    error: listingOptionsError,
+    reload: reloadListingOptions,
+  } = useAsyncData(
     () => PurchaseOrderService.listListingOptions(),
     [],
     {
       enabled: mode === 'create',
-      errorMessage: '載入商品選項失敗',
+      errorMessage: (info) => (info.message ? `載入商品選項失敗：${info.message}` : '載入商品選項失敗'),
       onError: (_message, err) => console.error('Failed to fetch listing options:', err),
     }
   )
   const listingOptions: ListingOption[] = listingOptionsData ?? []
+  const optionsErrors = [suppliersError, listingOptionsError].filter((message): message is string => message !== null)
+  // 只重抓失敗的那一個（成功的清單不需要再打一次）
+  const reloadFailedOptions = () => {
+    if (suppliersError !== null) reloadSuppliers()
+    if (listingOptionsError !== null) reloadListingOptions()
+  }
+  // 載入成功、但真的沒有任何啟用中的供應商：與「載入失敗」是兩回事（失敗時 suppliersData 沒有值，不會進這個分支）
+  const noActiveSupplier = suppliersData !== undefined && suppliersData.length === 0
 
   const [formData, setFormData] = useState<PurchaseOrderCreateRequest>(() =>
     order && mode !== 'receive'
@@ -356,6 +374,17 @@ function PurchaseOrderFormBody({
           </Alert>
         )}
 
+        {optionsErrors.length > 0 && (
+          <Alert variant="destructive" data-testid="po-options-error" className="space-y-2">
+            {optionsErrors.map((message, index) => (
+              <p key={index}>{message}</p>
+            ))}
+            <Button type="button" variant="outline" size="sm" onClick={reloadFailedOptions}>
+              重新載入
+            </Button>
+          </Alert>
+        )}
+
         {orderStatus === 'REJECTED' && rejectionReason && (
           <Alert variant="destructive">
             <p className="text-sm font-medium">駁回原因</p>
@@ -386,6 +415,12 @@ function PurchaseOrderFormBody({
                   </NativeSelect>
                 ) : (
                   <Input value={formData.supplierId} disabled />
+                )}
+                {mode === 'create' && noActiveSupplier && (
+                  <p className="text-sm text-rs-ink-muted" data-testid="po-no-supplier-hint">
+                    目前沒有啟用中的供應商，請先
+                    <Link href="/dashboard/erp/suppliers/new" className="text-rs-primary hover:underline">新增供應商</Link>
+                  </p>
                 )}
               </div>
 

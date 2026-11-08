@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/input';
 import { PageTitle } from '@/components/ui/page-title';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { ErrorState, LoadingState } from '@/components/ui/states';
 import { toast } from '@/components/ui/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 
@@ -36,7 +37,13 @@ export default function ChatPage() {
   // 登入者 id 從 auth store 讀（SSR／hydration 前是 null）
   const currentUserId = useSyncExternalStore(subscribeAuth, getAuthUserIdSnapshot, getAuthServerSnapshot);
   // 對話列表：首次載入用 hook；之後由 STOMP 收訊與各動作就地更新（setData），建立／刪除對話後靜默重抓
-  const { data: conversationPage, setData: setConversationPage } = useAsyncData(
+  const {
+    data: conversationPage,
+    error: conversationsError,
+    loading: conversationsLoading,
+    reload: reloadConversations,
+    setData: setConversationPage,
+  } = useAsyncData(
     () => getConversations(0, 50),
     [],
     {
@@ -45,6 +52,12 @@ export default function ChatPage() {
     }
   );
   const conversations = useMemo(() => conversationPage?.conversations ?? [], [conversationPage]);
+  // DEF-471：「還沒有清單資料」不能畫成「尚無對話」——載入中顯示載入中、首次載入失敗顯示錯誤與重新載入。
+  // 一旦有清單資料（首次載入成功，或失敗後使用者建立／刪除對話而由 loadConversations 填入），一律顯示清單：
+  // 資料已經是新的，不該再被 hook 保留的舊錯誤蓋住。
+  const noConversationData = conversationPage === undefined;
+  const showConversationsLoading = noConversationData && conversationsLoading;
+  const showConversationsError = noConversationData && conversationsError !== null;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageResponse[]>([]);
   const [unreadMap, setUnreadMap] = useState<Record<string, number>>({});
@@ -236,13 +249,24 @@ export default function ChatPage() {
       <Card className="flex flex-1 overflow-hidden">
         {/* 左：對話列表 */}
         <aside className="w-72 shrink-0 overflow-y-auto border-r">
-          <ConversationList
-            conversations={conversations}
-            selectedId={selectedId}
-            unreadMap={unreadMap}
-            currentUserId={currentUserId}
-            onSelect={handleSelect}
-          />
+          {showConversationsLoading ? (
+            <LoadingState className="h-32" />
+          ) : showConversationsError ? (
+            <ErrorState
+              data-testid="conversation-error"
+              className="px-4 py-8"
+              title="載入對話失敗，請稍後再試"
+              onRetry={reloadConversations}
+            />
+          ) : (
+            <ConversationList
+              conversations={conversations}
+              selectedId={selectedId}
+              unreadMap={unreadMap}
+              currentUserId={currentUserId}
+              onSelect={handleSelect}
+            />
+          )}
         </aside>
 
         {/* 右：訊息串 + 輸入框 */}

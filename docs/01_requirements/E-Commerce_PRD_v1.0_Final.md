@@ -948,6 +948,10 @@ v0.9 在 v0.8 的 M01–M14 基礎上新增 M15–M17 三個模組，並將 M12 
 
 系統解析 Markdown 內容時，遇格式錯誤的 `{{embed:...}}` 語法，自動忽略並記錄 warning log，不阻斷寫入；格式正確但 `listing_id` 不存在或非 ACTIVE 時，回傳嵌入卡片層級的錯誤（不阻斷整篇 Post 寫入），具體嵌入位置顯示「此商品已下架」提示。
 
+**[Specification] 嵌入卡片的載入失敗與「此商品已下架」的判準（Sprint 333，DEF-473）**
+
+前端載入嵌入卡片（`GET /api/v2/listings/:id/card`）時，**只有後端回 404（`E-3000` 找不到刊登項目）或 400（`E-9000` 路徑參數格式錯誤）才表示「`listing_id` 不存在（已刪除或格式有誤）」**，該位置顯示「此商品已下架」。其餘任何失敗（網路中斷、5xx、429…）是卡片暫時載不出來、商品不一定下架：顯示「載入商品卡片失敗，請稍後再試」與「重新載入」鈕，只重試該張卡，不影響同一篇文章的其他卡。（兩個狀態碼已於 Sprint 333 對真實後端實測。）
+
 **[Specification] PostEmbed 嵌入語法重複校驗（v0.9_R02_Loop_01 新增）**
 
 當 `POST /api/v2/dashboard/posts` 或 `PUT /api/v2/dashboard/posts/:id` 寫入貼文時，系統解析 Markdown 內容中的所有 `{{embed:listing:<listing_id>}}` 標記：

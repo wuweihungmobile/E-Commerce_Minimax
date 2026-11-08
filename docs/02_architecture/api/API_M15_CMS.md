@@ -294,7 +294,10 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | Listing 不存在 | 404 | `E-3000` |
+| `listingId` 格式有誤（路徑參數不是合法 UUID，例如 `abc`） | 400 | `E-9000`「請求參數格式錯誤」（Sprint 333 對真實後端實測；由 `GlobalExceptionHandler` 的型別轉換失敗統一處理） |
 | Listing 型別非 `PRODUCT`/`ROOM`（理論上不可達） | 422 | `E-3001`（此處用法正確） |
+
+**前端消費（Sprint 333，DEF-473）**：文章內嵌商品卡只有收到 404 或 400（上表前兩列）才顯示「此商品已下架」（PRD §6.6.3：已刪除或格式有誤）；其餘失敗顯示「載入商品卡片失敗」與重試。這個判準依賴上表的狀態碼，由真實後端 E2E（`at-load-failure-screens.spec.ts` 的 `E2E-LOADFAIL-01`）釘住。
 
 **已知限制**：商品卡的庫存欄位（`inStock`／`availableQty`）目前前端未渲染（`ListingCardService` 原始碼註解自承），屬已修復資料來源（Sprint 116 DEF-066 同款修復）但尚無 UI 消費的欄位。
 

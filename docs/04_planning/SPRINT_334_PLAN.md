@@ -116,7 +116,8 @@ Sprint 333 收尾：後端整合 1033／0、前端 Vitest 25 檔 247 案例、�
 
 ### 6.2 pre-push 與雲端 CI
 
-（push 後回填。）
+- **pre-push 輕量守門通過**（backend-unit〔act〕＋schema 漂移〔backend 以 `ddl-auto=validate` 對 Flyway 乾淨庫啟動成功〕＋frontend 快檢），已 push：`42fb1902..a9c94d92`（連同 Sprint 333 的純文件回填 commit `17ae2a96`）。
+- **雲端 CI 全綠**：run [42639300520](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/42639300520)，`headSha` `a9c94d92` 與本機 HEAD 一致；以 `gh run view --json` 取得 run 層級 `completed／success`，三個 job 逐一為 success（Backend Unit Tests、Backend Integration Tests & Package、Frontend Lint & Build）。下載日誌確認：**整合測試 1039／0**、**前端 Unit Tests 25 檔 247 案例**。（雲端後端單元 job 的彙總行我沒有從日誌取出數字——它的測試指令與本機 `verify` 不同；以 job 結論為準，未逐項核對 2463。）
 
 ## 7. 行為變更與已知限制
 
@@ -177,6 +178,6 @@ Sprint 333 收尾：後端整合 1033／0、前端 Vitest 25 檔 247 案例、�
 
 **本機驗證**：後端單元 **2463／0**、整合 **1039／0**；完整本地 E2E 守門 **360／360**；schema 文件漂移守門通過；後端 21 個＋前端 2 個突變全部擊殺且失敗集合與（修正後的）預先登記吻合（§5）。
 
-**提交**：`570287a8`（程式＋測試＋遷移＋API／PRD 文件）。push 與雲端 CI 結果見 §6.2（回填）。
+**提交**：`570287a8`（程式＋測試＋遷移＋API／PRD 文件）→ `a9c94d92`（收尾文件）。已 push（`42fb1902..a9c94d92`），**雲端 CI 全綠**（§6.2）。
 
 **關於本輪的誠實說明**：預測錯一次（S2，兩層防護）、突變寫法無鑑別力一次（M1）、規格寫錯讓驅動中止一次（V2）、驅動語系坑讓前端突變第一輪無效；E2E 層級的案例沒有對未修的程式碼跑出紅燈；第一次 `verify` 有 5 個守門失敗（我改動的連動）；沒有做目視檢查；`DEF-482` 只是讀碼推論。

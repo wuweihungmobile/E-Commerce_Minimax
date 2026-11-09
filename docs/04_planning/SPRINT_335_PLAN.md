@@ -121,7 +121,8 @@ Sprint 334 收尾（雲端 CI 全綠）：整合 1039／0、前端 Vitest 25 檔
 
 ### 6.2 pre-push 與雲端 CI
 
-（push 後回填。）
+- **pre-push 輕量守門通過**（backend-unit〔act〕＋schema 漂移＋frontend 快檢），已 push：`a9c94d92..57275512`（連同 Sprint 334 的純文件回填 commit `986b6603`）。
+- **雲端 CI 全綠**：run [42664284392](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/42664284392)，`headSha` `57275512` 與本機 HEAD 一致；以 `gh run view --json` 取得 run 層級 `completed／success`，三個 job 逐一為 success（Backend Unit Tests、Backend Integration Tests & Package、Frontend Lint & Build）。下載日誌確認：**整合測試 1039／0**（本輪沒有後端變更，與 Sprint 334 相同）、**前端 Unit Tests 26 檔 277 案例**（與本機吻合）。
 
 ## 7. 行為變更與已知限制
 
@@ -182,7 +183,9 @@ Sprint 334 收尾（雲端 CI 全綠）：整合 1039／0、前端 Vitest 25 檔
 
 **本機驗證**：`tsc` 0 錯誤；`eslint --max-warnings 0` 0 警告；Vitest **26 檔／277 案例**；完整本地 E2E 守門 **369／369**（第一次 368／369，唯一失敗是與這輪無關的間歇失敗，§6.1）；單元突變 25 個（24 與預先登記一致〔含 1 個預先登記的等價突變如預測倖存〕、1 個預測太窄）＋E2E 突變 4 個全擊殺（§5）。
 
-**提交**：`1268ec2f`（前端程式＋測試＋設定／設計慣例文件）。push 與雲端 CI 結果見 §6.2（回填）。
+**提交**：`1268ec2f`（前端程式＋測試＋設定／設計慣例文件；commit 訊息的單元突變數量事後更正過一次，見下）→ `57275512`（收尾文件）。已 push（`a9c94d92..57275512`），**雲端 CI 全綠**（§6.2）。
+
+**數字更正**：我把單元突變的數量一路寫成「26 個」（含了基準 Z0），實際是 **25 個突變**（U 6、S 10、L 4、P 3、G 2）。發現時 commit 還沒 push，已 `git commit --amend` 更正訊息（hash 由 `f98f8495` 變成 `1268ec2f`），文件裡的數字與引用一併同步。
 
 **需要使用者決定的**：①`DEF-483`（文章頁網址要不要改或新增公開端點）；②`DEF-482`（M18 檔案網址的公開性，先實測再決定）；③若要讓容器網路內的前端也取得實體標題，需要**明確指示**修改 `docker-compose*.yml` 加 `API_INTERNAL_URL=http://ecommerce-backend-dev:8080/api`（Docker 政策）；④我對 `www.nextkey.com` 的解讀（§10 第 1 點）若不對，一句話就能推翻。
 

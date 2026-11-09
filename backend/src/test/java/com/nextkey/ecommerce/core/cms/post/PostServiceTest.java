@@ -178,6 +178,71 @@ class PostServiceTest {
             verify(postRepository).save(any(Post.class));
         }
 
+        // DEF-480（Sprint 334）：全中文標題被 [^a-z0-9] 清光後 slug 曾是空字串（posts.slug 是 NOT NULL UNIQUE，
+        // 空字串合法，平台第一篇全中文貼文的清單連結變成 /blog）。slug 是公開網址的一部分，絕不能是空的。
+        @Test
+        @DisplayName("createPost_chineseOnlyTitle_slugFallsBackToPostPrefixNeverEmpty")
+        void createPost_chineseOnlyTitle_slugFallsBackToPostPrefixNeverEmpty() {
+            // Arrange
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+            when(userRepository.findById(TEST_AUTHOR_ID)).thenReturn(Optional.of(buildAuthor()));
+            when(postRepository.existsBySlug(anyString())).thenReturn(false);
+            when(postRepository.save(any(Post.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(any())).thenReturn(new ArrayList<>());
+
+            // Act
+            postService.createPost(TEST_TENANT_ID, TEST_AUTHOR_ID, M15Dto.CreatePostRequest.builder()
+                    .title("視覺檢查貼文").content("內容").build());
+
+            // Assert：後備格式為 post-<8 碼十六進位>，而不是 "" 或 "-<8碼>"
+            ArgumentCaptor<Post> captor = ArgumentCaptor.forClass(Post.class);
+            verify(postRepository).save(captor.capture());
+            assertThat(captor.getValue().getSlug()).matches("^post-[0-9a-f]{8}$");
+        }
+
+        @Test
+        @DisplayName("createPost_chineseOnlyTitle_twoPostsGetDifferentSlugs")
+        void createPost_chineseOnlyTitle_twoPostsGetDifferentSlugs() {
+            // Arrange
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+            when(userRepository.findById(TEST_AUTHOR_ID)).thenReturn(Optional.of(buildAuthor()));
+            when(postRepository.existsBySlug(anyString())).thenReturn(false);
+            when(postRepository.save(any(Post.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(any())).thenReturn(new ArrayList<>());
+
+            // Act
+            postService.createPost(TEST_TENANT_ID, TEST_AUTHOR_ID, M15Dto.CreatePostRequest.builder()
+                    .title("第一篇").content("內容").build());
+            postService.createPost(TEST_TENANT_ID, TEST_AUTHOR_ID, M15Dto.CreatePostRequest.builder()
+                    .title("第二篇").content("內容").build());
+
+            // Assert
+            ArgumentCaptor<Post> captor = ArgumentCaptor.forClass(Post.class);
+            verify(postRepository, org.mockito.Mockito.times(2)).save(captor.capture());
+            assertThat(captor.getAllValues().get(0).getSlug())
+                    .isNotEqualTo(captor.getAllValues().get(1).getSlug());
+        }
+
+        @Test
+        @DisplayName("createPost_mixedChineseAndEnglishTitle_keepsTheEnglishPart")
+        void createPost_mixedChineseAndEnglishTitle_keepsTheEnglishPart() {
+            // Arrange
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+            when(userRepository.findById(TEST_AUTHOR_ID)).thenReturn(Optional.of(buildAuthor()));
+            when(postRepository.existsBySlug(anyString())).thenReturn(false);
+            when(postRepository.save(any(Post.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(any())).thenReturn(new ArrayList<>());
+
+            // Act
+            postService.createPost(TEST_TENANT_ID, TEST_AUTHOR_ID, M15Dto.CreatePostRequest.builder()
+                    .title("Summer 夏日特賣").content("內容").build());
+
+            // Assert：有可用的英數部分就沿用，不是一律走後備
+            ArgumentCaptor<Post> captor = ArgumentCaptor.forClass(Post.class);
+            verify(postRepository).save(captor.capture());
+            assertThat(captor.getValue().getSlug()).isEqualTo("summer");
+        }
+
         @Test
         @DisplayName("createPost_withCategory_success")
         void createPost_withCategory_success() {
@@ -618,6 +683,83 @@ class PostServiceTest {
             verify(postRepository).save(any(Post.class));
         }
 
+        // Sprint 334（DEF-480 的前置量測）：編輯頁每次儲存都會帶 title。原本「title 非 null 就重算 slug」，
+        // 而 generateSlug 的唯一性檢查 existsBySlug 會把這篇貼文自己算進去——標題沒改也會被判成「slug 已存在」，
+        // 於是每次儲存都在網址後面再接一段隨機碼；全中文標題更會每次換成新的隨機後備。已分享出去的連結因此失效。
+        @Test
+        @DisplayName("updatePost_titleUnchanged_keepsTheExistingSlug")
+        void updatePost_titleUnchanged_keepsTheExistingSlug() {
+            // Arrange：資料庫裡這篇自己的 slug 就是 test-post，所以 existsBySlug("test-post") 為真
+            Post existingPost = buildPost(Post.PostStatus.PUBLISHED);
+            when(postRepository.findById(TEST_POST_ID)).thenReturn(Optional.of(existingPost));
+            // lenient：這是在模擬資料庫狀態；修好之後程式根本不會去問，不能因此判成「多餘的 stub」
+            org.mockito.Mockito.lenient().when(postRepository.existsBySlug("test-post")).thenReturn(true);
+            when(postRepository.save(any(Post.class))).thenReturn(existingPost);
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(any(UUID.class))).thenReturn(new ArrayList<>());
+
+            // Act：標題與現有的完全相同
+            postService.updatePost(TEST_POST_ID, TEST_TENANT_ID, M15Dto.UpdatePostRequest.builder()
+                    .title("Test Post").content("Edited body").build());
+
+            // Assert
+            assertThat(existingPost.getSlug()).isEqualTo("test-post");
+        }
+
+        @Test
+        @DisplayName("updatePost_chineseTitleUnchanged_keepsTheExistingSlug")
+        void updatePost_chineseTitleUnchanged_keepsTheExistingSlug() {
+            // Arrange：全中文標題的貼文，slug 是當初產生的後備
+            Post existingPost = buildPost(Post.PostStatus.PUBLISHED);
+            existingPost.setTitle("視覺檢查貼文");
+            existingPost.setSlug("post-0a1b2c3d");
+            when(postRepository.findById(TEST_POST_ID)).thenReturn(Optional.of(existingPost));
+            when(postRepository.save(any(Post.class))).thenReturn(existingPost);
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(any(UUID.class))).thenReturn(new ArrayList<>());
+
+            // Act
+            postService.updatePost(TEST_POST_ID, TEST_TENANT_ID, M15Dto.UpdatePostRequest.builder()
+                    .title("視覺檢查貼文").content("Edited body").build());
+
+            // Assert：沒改標題就不能換網址
+            assertThat(existingPost.getSlug()).isEqualTo("post-0a1b2c3d");
+        }
+
+        @Test
+        @DisplayName("updatePost_titleChangedButCleansToTheSameSlug_doesNotAppendRandomSuffix")
+        void updatePost_titleChangedButCleansToTheSameSlug_doesNotAppendRandomSuffix() {
+            // Arrange：標題改了標點與空白，但清出來還是 test-post；唯一性檢查必須排除貼文自己
+            Post existingPost = buildPost(Post.PostStatus.DRAFT);
+            when(postRepository.findById(TEST_POST_ID)).thenReturn(Optional.of(existingPost));
+            org.mockito.Mockito.lenient().when(postRepository.existsBySlug("test-post")).thenReturn(true);
+            when(postRepository.existsBySlugAndIdNot("test-post", TEST_POST_ID)).thenReturn(false);
+            when(postRepository.save(any(Post.class))).thenReturn(existingPost);
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(any(UUID.class))).thenReturn(new ArrayList<>());
+
+            // Act
+            postService.updatePost(TEST_POST_ID, TEST_TENANT_ID, M15Dto.UpdatePostRequest.builder()
+                    .title("Test  Post!!").build());
+
+            // Assert
+            assertThat(existingPost.getSlug()).isEqualTo("test-post");
+        }
+
+        @Test
+        @DisplayName("updatePost_titleChanged_regeneratesTheSlug")
+        void updatePost_titleChanged_regeneratesTheSlug() {
+            // Arrange
+            Post existingPost = buildPost(Post.PostStatus.DRAFT);
+            when(postRepository.findById(TEST_POST_ID)).thenReturn(Optional.of(existingPost));
+            when(postRepository.save(any(Post.class))).thenReturn(existingPost);
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(any(UUID.class))).thenReturn(new ArrayList<>());
+
+            // Act
+            postService.updatePost(TEST_POST_ID, TEST_TENANT_ID, M15Dto.UpdatePostRequest.builder()
+                    .title("Brand New Title").build());
+
+            // Assert：標題真的改了，slug 跟著換（保留原本「標題變更就更新 slug」的行為）
+            assertThat(existingPost.getSlug()).isEqualTo("brand-new-title");
+        }
+
         @Test
         @DisplayName("updatePost_withCategory_success")
         void updatePost_withCategory_success() {
@@ -867,6 +1009,23 @@ class PostServiceTest {
 
             // Assert
             verify(postRepository).delete(archivedPost);
+        }
+
+        // DEF-476（Sprint 334，使用者決定「要先下架才能刪」）：驗收條件 AC-007 與本方法自己的 Javadoc 都寫
+        // 「僅 DRAFT／ARCHIVED 可刪、已發布須先下架」，但原本只有列表頁的灰色按鈕在執行，後端直接放行。
+        @Test
+        @DisplayName("deletePost_published_rejectedAndNothingIsDeleted")
+        void deletePost_published_rejectedAndNothingIsDeleted() {
+            // Arrange
+            Post publishedPost = buildPost(Post.PostStatus.PUBLISHED);
+            when(postRepository.findById(TEST_POST_ID)).thenReturn(Optional.of(publishedPost));
+
+            // Act & Assert
+            assertThatThrownBy(() -> postService.deletePost(TEST_POST_ID, TEST_TENANT_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                            .isEqualTo(ErrorCode.E_4107));
+            verify(postRepository, org.mockito.Mockito.never()).delete(any(Post.class));
         }
 
         @Test

@@ -2074,7 +2074,7 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `GET` | `/api/v2/posts/categories` | 貼文分類列表 | Guest+ |
 | `POST` | `/api/v2/dashboard/posts` | 店鋪後台：建立貼文 | Seller/Host/StoreOwner |
 | `PUT` | `/api/v2/dashboard/posts/:id` | 店鋪後台：更新貼文 | Seller/Host/StoreOwner |
-| `DELETE` | `/api/v2/dashboard/posts/:id` | 店鋪後台：刪除貼文 | StoreOwner |
+| `DELETE` | `/api/v2/dashboard/posts/:id` | 店鋪後台：刪除貼文（已發布須先下架，否則 409 `E-4107`；Sprint 334，驗收條件 AC-007） | StoreOwner |
 | `PUT` | `/api/v2/dashboard/posts/:id/publish` | 發布/排程發布 | Seller/Host/StoreOwner |
 | `POST` | `/api/v2/dashboard/media` | 上傳媒體 | Seller/Host/StoreOwner |
 | `GET` | `/api/v2/dashboard/media` | 媒體庫列表 | Seller/Host/StoreOwner |

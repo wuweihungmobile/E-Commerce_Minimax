@@ -63,7 +63,7 @@ class RolePermissionMappingTest {
     }
 
     @Test
-    @DisplayName("STORE_STAFF 對 dashboard/faq/knowledge/media 僅唯讀，無寫入權")
+    @DisplayName("STORE_STAFF 對 dashboard/faq/knowledge 僅唯讀，無寫入權（media 另見 Sprint 334 對齊測試）")
     void storeStaff_isReadOnlyForDef075Modules() {
         assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.DASHBOARD_READ)).isTrue();
         assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.FAQ_READ)).isTrue();
@@ -72,7 +72,44 @@ class RolePermissionMappingTest {
 
         assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.FAQ_CREATE)).isFalse();
         assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.KNOWLEDGE_UPDATE)).isFalse();
-        assertThat(mapping.hasPermission(User.UserRole.STORE_STAFF, Permission.MEDIA_DELETE)).isFalse();
+    }
+
+    // ── Sprint 334（DEF-474）：媒體權限與貼文寫入權對齊 ──
+    // 合併前 /cms/media 走 M15 的角色判斷（STORE_OWNER／STORE_STAFF／SELLER／HOST），這些人都能寫貼文、
+    // 都能上傳圖片；合併成只走 M18（media:* 權限）後，員工只剩唯讀、SELLER／HOST 完全沒有，寫貼文卻沒辦法
+    // 傳圖。不變式用「所有角色」迴圈，之後新增角色或調整權限時，若有人能寫貼文卻不能管圖片就會被抓到。
+
+    @Test
+    @DisplayName("所有能寫貼文（cms:create）的角色，也都能檢視、上傳、更新、刪除媒體")
+    void everyRoleThatCanWritePosts_canManageMedia() {
+        for (User.UserRole role : User.UserRole.values()) {
+            if (!mapping.hasPermission(role, Permission.CMS_CREATE)) {
+                continue;
+            }
+            assertThat(mapping.hasPermission(role, Permission.MEDIA_READ)).as("%s media:read", role).isTrue();
+            assertThat(mapping.hasPermission(role, Permission.MEDIA_CREATE)).as("%s media:create", role).isTrue();
+            assertThat(mapping.hasPermission(role, Permission.MEDIA_UPDATE)).as("%s media:update", role).isTrue();
+            assertThat(mapping.hasPermission(role, Permission.MEDIA_DELETE)).as("%s media:delete", role).isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("四個店鋪端角色（店主、員工、舊賣家、民宿主人）確實都在上面的不變式範圍內（防止迴圈因角色沒有 cms:create 而空轉）")
+    void storeSideRolesAreCoveredByTheMediaInvariant() {
+        for (User.UserRole role : new User.UserRole[] {User.UserRole.STORE_OWNER, User.UserRole.STORE_STAFF,
+                User.UserRole.SELLER, User.UserRole.HOST}) {
+            assertThat(mapping.hasPermission(role, Permission.CMS_CREATE)).as("%s cms:create", role).isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("不能寫貼文的角色（買家、訪客）不因此拿到媒體權限")
+    void rolesThatCannotWritePosts_haveNoMediaAccess() {
+        for (User.UserRole role : new User.UserRole[] {User.UserRole.BUYER, User.UserRole.GUEST}) {
+            assertThat(mapping.hasPermission(role, Permission.MEDIA_READ)).as("%s media:read", role).isFalse();
+            assertThat(mapping.hasPermission(role, Permission.MEDIA_CREATE)).as("%s media:create", role).isFalse();
+            assertThat(mapping.hasPermission(role, Permission.MEDIA_DELETE)).as("%s media:delete", role).isFalse();
+        }
     }
 
     @Test

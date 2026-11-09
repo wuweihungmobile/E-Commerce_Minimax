@@ -67,7 +67,13 @@ public class RolePermissionMapping {
                 // （Sprint 129 拍板，Sprint 130 實作，DEF-092）
                 Permission.CMS_READ,
                 Permission.CMS_CREATE,
-                Permission.CMS_UPDATE
+                Permission.CMS_UPDATE,
+                // 能寫貼文的人就要能管理貼文用的圖片（Sprint 334 使用者拍板，DEF-474）：
+                // 合併前 /cms/media 走 M15 的角色判斷，這四個角色都能上傳；合併成只走 M18 後少了這項能力。
+                Permission.MEDIA_READ,
+                Permission.MEDIA_CREATE,
+                Permission.MEDIA_UPDATE,
+                Permission.MEDIA_DELETE
         ));
 
         // ========== HOST - 民宿主人，房源管理 ==========
@@ -88,7 +94,12 @@ public class RolePermissionMapping {
                 // 同 SELLER，比照 PostController 既有慣例（Sprint 129 拍板，Sprint 130 實作，DEF-092）
                 Permission.CMS_READ,
                 Permission.CMS_CREATE,
-                Permission.CMS_UPDATE
+                Permission.CMS_UPDATE,
+                // 同 SELLER：能寫貼文就能管理貼文用的圖片（Sprint 334，DEF-474）
+                Permission.MEDIA_READ,
+                Permission.MEDIA_CREATE,
+                Permission.MEDIA_UPDATE,
+                Permission.MEDIA_DELETE
         ));
 
         // ========== STORE_OWNER - 店主，店鋪全部權限 ==========
@@ -172,17 +183,22 @@ public class RolePermissionMapping {
                 // 運費模板列表原借用 product:read 即可查看，改用專屬權限後一併授予，
                 // 維持員工既有的唯讀能力不變（Sprint 287，DEF-330a）
                 Permission.SHIPPING_TEMPLATE_READ,
-                // dashboard/faq/knowledge/media 同樣屬設定類內容管理模組，員工唯讀（Sprint 129，DEF-075）
+                // dashboard/faq/knowledge 同樣屬設定類內容管理模組，員工唯讀（Sprint 129，DEF-075）。
+                // media 例外：Sprint 129 當時也設為唯讀，但員工能寫貼文（見下），貼文要插圖，
+                // 唯讀的媒體庫讓員工只能看不能傳；Sprint 334 使用者拍板改為與貼文寫入權對齊（DEF-474）。
                 Permission.DASHBOARD_READ,
                 Permission.FAQ_READ,
                 Permission.KNOWLEDGE_READ,
-                Permission.MEDIA_READ,
                 // cms:read/create/update 比照 PostController 開放給店鋪員工（無唯讀限制，
-                // 與 dashboard/faq/knowledge/media 的員工唯讀慣例不同）；cms:publish 限制較高層級不給
+                // 與 dashboard/faq/knowledge 的員工唯讀慣例不同）；cms:publish 限制較高層級不給
                 // （Sprint 129 拍板，Sprint 130 實作，DEF-092）
                 Permission.CMS_READ,
                 Permission.CMS_CREATE,
-                Permission.CMS_UPDATE
+                Permission.CMS_UPDATE,
+                Permission.MEDIA_READ,
+                Permission.MEDIA_CREATE,
+                Permission.MEDIA_UPDATE,
+                Permission.MEDIA_DELETE
         ));
 
         // ========== ADMIN - 管理員，一般業務（商品/房源/訂單/訂房）為租戶內管理；

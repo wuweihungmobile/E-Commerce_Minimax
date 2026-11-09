@@ -77,9 +77,12 @@ public class PostCategoryService {
         }
 
         if (request.getName() != null) {
+            // 只有名稱「真的改了」才換 slug（Sprint 334）：全中文名稱的 slug 是隨機後備，無條件重算會每存一次就換
+            boolean nameChanged = !request.getName().equals(category.getName());
             category.setName(request.getName());
-            // 更新 slug
-            category.setSlug(generateUniqueSlug(request.getName(), categoryId, tenantId));
+            if (nameChanged) {
+                category.setSlug(generateUniqueSlug(request.getName(), categoryId, tenantId));
+            }
         }
         if (request.getDescription() != null) {
             category.setDescription(request.getDescription());
@@ -178,11 +181,14 @@ public class PostCategoryService {
         if (name == null || name.isBlank()) {
             return UUID.randomUUID().toString();
         }
-        return name.toLowerCase()
+        String slug = name.toLowerCase()
                 .replaceAll("[^a-z0-9\\s\\-]", "")
                 .replaceAll("\\s+", "-")
                 .replaceAll("-+", "-")
                 .replaceAll("^-|-$", "");
+        // DEF-480（Sprint 334）：全中文名稱清完什麼都不剩——空字串 slug 在 (tenant_id, slug) 唯一約束下，
+        // 同店第二個全中文分類會被當成「slug 重複」(E-8014) 而建立失敗。改用 category-<8 碼> 後備。
+        return slug.isEmpty() ? "category-" + UUID.randomUUID().toString().substring(0, 8) : slug;
     }
 
     private String generateUniqueSlug(final String name, final UUID excludeId, final UUID tenantId) {

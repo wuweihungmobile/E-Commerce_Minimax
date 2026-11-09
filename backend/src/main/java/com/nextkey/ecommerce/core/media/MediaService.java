@@ -29,6 +29,7 @@ import com.nextkey.ecommerce.domain.model.user.User;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.domain.repository.cms.MediaAssetRepository;
+import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
 import com.nextkey.ecommerce.domain.repository.media.MediaCategoryRepository;
 import com.nextkey.ecommerce.infrastructure.storage.StorageService;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
@@ -51,6 +52,7 @@ public class MediaService {
     private final UserRepository userRepository;
     private final StorageService storageService;
     private final MediaValidationService mediaValidationService;
+    private final PostRepository postRepository;
 
     // ========== Media Category Operations ==========
 
@@ -395,6 +397,12 @@ public class MediaService {
         MediaAsset asset = mediaAssetRepository.findActiveByIdAndTenantId(assetId, tenantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4103, "Media asset not found"));
 
+        // DEF-474（Sprint 334）：正被貼文當封面圖就不能刪。軟刪除後 /files/{素材編號} 變成找不到，
+        // 貼文的封面圖會悄悄壞掉；合併前 /cms/media 走 M15 的刪除有這個保護，M18 原本沒有。
+        if (isUsedAsPostFeaturedImage(tenantId, asset)) {
+            throw new BusinessException(ErrorCode.E_8020);
+        }
+
         // 軟刪除
         asset.setIsDeleted(true);
         mediaAssetRepository.save(asset);
@@ -417,6 +425,20 @@ public class MediaService {
     }
 
     // ========== Helper Methods ==========
+
+    /**
+     * 封面圖網址是自由輸入的文字，可能貼的是 M18 檔案網址（含素材編號），也可能是儲存層網址（含儲存路徑），
+     * 兩種都要認；只比對儲存路徑（M15 的做法）抓不到 M18 的檔案網址。
+     */
+    private boolean isUsedAsPostFeaturedImage(final UUID tenantId, final MediaAsset asset) {
+        if (postRepository.existsByTenantIdAndFeaturedImageUrlReferencing(tenantId, asset.getId().toString())) {
+            return true;
+        }
+        String filePath = asset.getFilePath();
+        // 空片段在 LOCATE 恆為真，會讓所有素材都刪不掉，所以空白路徑不查
+        return filePath != null && !filePath.isBlank()
+                && postRepository.existsByTenantIdAndFeaturedImageUrlReferencing(tenantId, filePath);
+    }
 
     private MediaCategoryDto toMediaCategoryDto(MediaCategory category) {
         MediaCategoryDto.MediaCategoryDtoBuilder builder = MediaCategoryDto.builder()

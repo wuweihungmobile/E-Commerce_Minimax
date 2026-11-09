@@ -155,9 +155,13 @@ public class PostService {
 
         // 更新欄位
         if (request.getTitle() != null) {
+            // 只有標題「真的改了」才換 slug（Sprint 334）：編輯頁每次儲存都會帶 title，
+            // 原本無條件重算，已發布貼文的網址每存一次就變，分享出去的連結因此失效。
+            boolean titleChanged = !request.getTitle().equals(post.getTitle());
             post.setTitle(request.getTitle());
-            // 如果標題變更，更新 slug
-            post.setSlug(generateUniqueSlug(request.getTitle(), post.getId()));
+            if (titleChanged) {
+                post.setSlug(generateUniqueSlug(request.getTitle(), post.getId()));
+            }
         }
         if (request.getContent() != null) {
             post.setContent(request.getContent());
@@ -234,6 +238,11 @@ public class PostService {
     public void deletePost(final UUID postId, final UUID tenantId) {
         Post post = getPostOrThrow(postId);
         validateTenantOwnership(post, tenantId);
+
+        // DEF-476（Sprint 334）：已發布的貼文須先下架才能刪，避免誤刪上線中的文章（驗收條件 AC-007）
+        if (post.getStatus() == Post.PostStatus.PUBLISHED) {
+            throw new BusinessException(ErrorCode.E_4107);
+        }
 
         // 刪除貼文
         postRepository.delete(post);
@@ -441,7 +450,12 @@ public class PostService {
         }
     }
 
-    private String generateSlug(final String title) {
+    /**
+     * 由標題清出 URL 用的 slug 主體；<b>保證不是空字串</b>（DEF-480）。
+     * 全中文等「清完什麼都不剩」的標題改用 {@code post-<8 碼>} 後備：posts.slug 是 NOT NULL UNIQUE，
+     * 空字串是合法值，平台上第一篇全中文貼文會拿到 ""，公開清單連結變成 /blog 而點不進文章頁。
+     */
+    private String slugBase(final String title) {
         if (title == null || title.isBlank()) {
             return UUID.randomUUID().toString();
         }
@@ -451,18 +465,30 @@ public class PostService {
                 .replaceAll("\\s+", "-")
                 .replaceAll("-+", "-")
                 .replaceAll("^-|-$", "");
+        return slug.isEmpty() ? "post-" + randomSuffix() : slug;
+    }
 
+    private String randomSuffix() {
+        return UUID.randomUUID().toString().substring(0, 8);
+    }
+
+    private String generateSlug(final String title) {
+        String slug = slugBase(title);
         // 確保唯一性
         if (postRepository.existsBySlug(slug)) {
-            slug = slug + "-" + UUID.randomUUID().toString().substring(0, 8);
+            slug = slug + "-" + randomSuffix();
         }
         return slug;
     }
 
+    /**
+     * 更新用：唯一性檢查要排除貼文自己。不能沿用 {@link #generateSlug}——它的 existsBySlug 會把這篇自己算進去，
+     * 標題清出來和現有 slug 相同時會被誤判成「已存在」而多接一段隨機碼（Sprint 334 實測）。
+     */
     private String generateUniqueSlug(final String title, final UUID excludePostId) {
-        String slug = generateSlug(title);
+        String slug = slugBase(title);
         if (postRepository.existsBySlugAndIdNot(slug, excludePostId)) {
-            slug = slug + "-" + UUID.randomUUID().toString().substring(0, 8);
+            slug = slug + "-" + randomSuffix();
         }
         return slug;
     }

@@ -131,6 +131,34 @@ class PostCategoryServiceTest {
             verify(postCategoryRepository).save(any(PostCategory.class));
         }
 
+        // DEF-480（Sprint 334）：全中文名稱的 slug 曾是空字串；(tenant_id, slug) 唯一，所以同一家店第二個
+        // 全中文分類會被判成 slug 重複（E-8014）而建立失敗——店家只是想取個中文分類名。
+        @Test
+        @DisplayName("createCategory_chineseOnlyName_slugFallsBackToCategoryPrefix")
+        void createCategory_chineseOnlyName_slugFallsBackToCategoryPrefix() {
+            // Arrange
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+            when(postCategoryRepository.existsByTenantIdAndSlug(eq(TEST_TENANT_ID), anyString())).thenReturn(false);
+            when(postCategoryRepository.save(any(PostCategory.class))).thenAnswer(inv -> {
+                PostCategory c = inv.getArgument(0);
+                c.setId(UUID.randomUUID());
+                c.setCreatedAt(Instant.now());
+                c.setUpdatedAt(Instant.now());
+                return c;
+            });
+
+            // Act
+            M15Dto.CategoryResponse first = postCategoryService.createCategory(TEST_TENANT_ID,
+                    M15Dto.CreateCategoryRequest.builder().name("旅遊").build());
+            M15Dto.CategoryResponse second = postCategoryService.createCategory(TEST_TENANT_ID,
+                    M15Dto.CreateCategoryRequest.builder().name("美食").build());
+
+            // Assert
+            assertThat(first.getSlug()).matches("^category-[0-9a-f]{8}$");
+            assertThat(second.getSlug()).matches("^category-[0-9a-f]{8}$");
+            assertThat(first.getSlug()).isNotEqualTo(second.getSlug());
+        }
+
         @Test
         @DisplayName("createCategory_withDefaultSortOrder")
         void createCategory_withDefaultSortOrder() {
@@ -212,6 +240,24 @@ class PostCategoryServiceTest {
     @Nested
     @DisplayName("updateCategory()")
     class UpdateCategory {
+
+        @Test
+        @DisplayName("updateCategory_nameUnchanged_keepsTheExistingSlug")
+        void updateCategory_nameUnchanged_keepsTheExistingSlug() {
+            // Arrange：全中文名稱的分類，slug 是當初產生的隨機後備
+            PostCategory existingCategory = buildCategory();
+            existingCategory.setName("旅遊");
+            existingCategory.setSlug("category-0a1b2c3d");
+            when(postCategoryRepository.findById(TEST_CATEGORY_ID)).thenReturn(Optional.of(existingCategory));
+            when(postCategoryRepository.save(any(PostCategory.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // Act：只改描述，名稱照舊一併送出
+            postCategoryService.updateCategory(TEST_CATEGORY_ID, TEST_TENANT_ID,
+                    M15Dto.UpdateCategoryRequest.builder().name("旅遊").description("新的描述").build());
+
+            // Assert
+            assertThat(existingCategory.getSlug()).isEqualTo("category-0a1b2c3d");
+        }
 
         @Test
         @DisplayName("updateCategory_success")

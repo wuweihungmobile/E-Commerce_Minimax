@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
 import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.cms.post.PostCategory;
 import com.nextkey.ecommerce.domain.model.cms.post.PostEmbed;
@@ -228,75 +227,5 @@ public class M15Dto {
     public static class CategoryListResponse {
         private List<CategoryResponse> categories;
         private Integer totalCount;
-    }
-
-    // ========== Media DTOs ==========
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class MediaUploadResponse {
-        private UUID id;
-        private String fileName;
-        private String filePath;
-        private Long fileSize;
-        private String mimeType;
-        private String fileType;
-        private Instant uploadedAt;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class MediaResponse {
-        private UUID id;
-        private UUID tenantId;
-        private UUID uploaderId;
-        private String uploaderName;
-        private String fileName;
-        private String originalName;
-        private String filePath;
-        private Long fileSize;
-        private String formattedFileSize;
-        private String mimeType;
-        private String fileType;
-        private Integer width;
-        private Integer height;
-        private Integer durationSeconds;
-        private Instant createdAt;
-
-        public static MediaResponse from(final MediaAsset media) {
-            return MediaResponse.builder()
-                    .id(media.getId())
-                    .tenantId(media.getTenant().getId())
-                    .uploaderId(media.getUploader().getId())
-                    .uploaderName(media.getUploader().getFullName())
-                    .fileName(media.getFileName())
-                    .originalName(media.getOriginalName())
-                    .filePath(media.getFilePath())
-                    .fileSize(media.getFileSize())
-                    .formattedFileSize(media.getFormattedFileSize())
-                    .mimeType(media.getMimeType())
-                    .fileType(media.getFileType().name())
-                    .width(media.getWidth())
-                    .height(media.getHeight())
-                    .durationSeconds(media.getDurationSeconds())
-                    .createdAt(media.getCreatedAt())
-                    .build();
-        }
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class MediaListResponse {
-        private List<MediaResponse> items;
-        private Integer totalCount;
-        private Integer page;
-        private Integer size;
-        private Integer totalPages;
     }
 }

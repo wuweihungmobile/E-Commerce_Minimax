@@ -269,6 +269,10 @@ class M18MediaIntegrationTest {
     }
 
     private String createTestUserAndGetToken(String email) throws Exception {
+        return createTestUserAndGetToken(email, User.UserRole.STORE_OWNER);
+    }
+
+    private String createTestUserAndGetToken(String email, User.UserRole role) throws Exception {
         String registerJson = String.format("""
             {
                 "email": "%s",
@@ -287,7 +291,7 @@ class M18MediaIntegrationTest {
         // 比照 M09NotificationTemplateIntegrationTest，註冊後提升為本測試租戶的店主再登入，走生產授權路徑。
         // （註冊請求原本帶的 tenantId 自 DEF-244 起已不被採用，一併拿掉。）
         User registered = userRepository.findByEmail(email).orElseThrow();
-        registered.setRole(User.UserRole.STORE_OWNER);
+        registered.setRole(role);
         registered.setTenantId(testTenantId);
         userRepository.save(registered);
 
@@ -580,5 +584,44 @@ class M18MediaIntegrationTest {
                 // 這個案例要守的是「串流回的是 JPEG 位元組」，charset 參數與意圖無關，所以用「相容」而不是精確相等。
                 .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_JPEG))
                 .andExpect(content().bytes("mock-file-content".getBytes()));
+    }
+
+    // ── Sprint 334（DEF-474）：能寫貼文的店鋪角色也能管理媒體（走生產授權路徑，不手抄權限清單）──
+    // 合併前 /cms/media 走 M15（依角色），員工、舊賣家、民宿主人都能上傳／刪圖；合併成只走 M18（media:*）後
+    // 這三個角色分別是「只能看」「完全不能用」「完全不能用」。IntegrationTestConfiguration 把 MediaService 換成
+    // mock，所以這裡驗的是「授權層放行」（沒被 403 擋下）；刪除守門的真實邏輯由 MediaServiceTest 與
+    // PostFeaturedImageReferenceQueryIntegrationTest 守住。
+
+    @Test
+    @Order(20)
+    @DisplayName("IT-M18-020: 店員、舊賣家、民宿主人與店主一樣可以檢視媒體並刪除媒體（不被 403 擋下）")
+    void storeSideRolesThatCanWritePosts_canListAndDeleteMedia() throws Exception {
+        for (User.UserRole role : new User.UserRole[] {User.UserRole.STORE_STAFF, User.UserRole.SELLER,
+                User.UserRole.HOST}) {
+            String token = createTestUserAndGetToken(
+                    "media-" + role.name().toLowerCase() + "-" + UUID.randomUUID() + "@example.com", role);
+
+            mockMvc.perform(get(MEDIA_URL).header("Authorization", "Bearer " + token)
+                            .header("X-Tenant-ID", testTenantId.toString()))
+                    .andExpect(status().isOk());
+            mockMvc.perform(delete(MEDIA_URL + "/" + UUID.randomUUID()).header("Authorization", "Bearer " + token)
+                            .header("X-Tenant-ID", testTenantId.toString()))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    @Order(21)
+    @DisplayName("IT-M18-021: 買家沒有任何媒體權限：檢視與刪除都是 403（放寬店鋪角色不能順便放寬到所有人）")
+    void buyer_cannotListOrDeleteMedia() throws Exception {
+        String token = createTestUserAndGetToken("media-buyer-" + UUID.randomUUID() + "@example.com",
+                User.UserRole.BUYER);
+
+        mockMvc.perform(get(MEDIA_URL).header("Authorization", "Bearer " + token)
+                        .header("X-Tenant-ID", testTenantId.toString()))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(delete(MEDIA_URL + "/" + UUID.randomUUID()).header("Authorization", "Bearer " + token)
+                        .header("X-Tenant-ID", testTenantId.toString()))
+                .andExpect(status().isForbidden());
     }
 }

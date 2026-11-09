@@ -67,6 +67,9 @@ class MediaServiceTest {
     @Mock
     private MediaValidationService mediaValidationService;
 
+    @Mock
+    private com.nextkey.ecommerce.domain.repository.cms.PostRepository postRepository;
+
     @InjectMocks
     private MediaService mediaService;
 
@@ -452,5 +455,76 @@ class MediaServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_8019));
         org.mockito.Mockito.verify(mediaCategoryRepository, org.mockito.Mockito.never()).delete(any());
+    }
+
+    // ── deleteAsset：被貼文當封面圖就不能刪（Sprint 334，DEF-474）──
+    // 合併前 /cms/media 走 M15 的刪除，會擋「被貼文封面圖引用」；合併成只走 M18 後，M18 的刪除是軟刪除、
+    // 完全不檢查引用，貼文的封面圖連結會悄悄壞掉。注意兩套的網址形式不同：M18 的檔案網址是
+    // /api/v2/media/files/{素材編號}，所以引用檢查要認「素材編號」，只比對儲存路徑（M15 的做法）抓不到。
+
+    private MediaAsset buildActiveAsset() {
+        return MediaAsset.builder().id(ASSET_ID).tenant(buildTenant()).fileName("hero.png")
+                .filePath(TENANT_ID + "/uuid-hero.png").isDeleted(false).build();
+    }
+
+    @Test
+    @DisplayName("DEF-474: deleteAsset：封面圖網址含素材編號（M18 的檔案網址）→ 拒絕，拋出 E_8020，且不軟刪除")
+    void deleteAsset_referencedByAssetIdInFeaturedImageUrl_throwsE8020AndKeepsAsset() {
+        MediaAsset asset = buildActiveAsset();
+        when(mediaAssetRepository.findActiveByIdAndTenantId(ASSET_ID, TENANT_ID)).thenReturn(Optional.of(asset));
+        when(postRepository.existsByTenantIdAndFeaturedImageUrlReferencing(TENANT_ID, ASSET_ID.toString()))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> mediaService.deleteAsset(ASSET_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_8020));
+        assertThat(asset.getIsDeleted()).as("被擋下的刪除不能有副作用").isFalse();
+        org.mockito.Mockito.verify(mediaAssetRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    @DisplayName("DEF-474: deleteAsset：封面圖網址含儲存路徑（貼上儲存層網址的情況）→ 同樣拒絕")
+    void deleteAsset_referencedByStoragePathInFeaturedImageUrl_throwsE8020() {
+        MediaAsset asset = buildActiveAsset();
+        when(mediaAssetRepository.findActiveByIdAndTenantId(ASSET_ID, TENANT_ID)).thenReturn(Optional.of(asset));
+        when(postRepository.existsByTenantIdAndFeaturedImageUrlReferencing(TENANT_ID, ASSET_ID.toString()))
+                .thenReturn(false);
+        when(postRepository.existsByTenantIdAndFeaturedImageUrlReferencing(TENANT_ID, asset.getFilePath()))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> mediaService.deleteAsset(ASSET_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_8020));
+        assertThat(asset.getIsDeleted()).isFalse();
+    }
+
+    @Test
+    @DisplayName("DEF-474: deleteAsset：沒有任何貼文引用 → 照常軟刪除")
+    void deleteAsset_notReferenced_softDeletes() {
+        MediaAsset asset = buildActiveAsset();
+        when(mediaAssetRepository.findActiveByIdAndTenantId(ASSET_ID, TENANT_ID)).thenReturn(Optional.of(asset));
+        when(postRepository.existsByTenantIdAndFeaturedImageUrlReferencing(eq(TENANT_ID), anyString()))
+                .thenReturn(false);
+
+        mediaService.deleteAsset(ASSET_ID);
+
+        assertThat(asset.getIsDeleted()).isTrue();
+        org.mockito.Mockito.verify(mediaAssetRepository).save(asset);
+    }
+
+    @Test
+    @DisplayName("DEF-474: deleteAsset：儲存路徑是空白時不拿空字串去查（LOCATE('', x) 恆為真，會讓所有素材都刪不掉）")
+    void deleteAsset_blankFilePath_neverQueriesWithEmptyFragment() {
+        MediaAsset asset = buildActiveAsset();
+        asset.setFilePath("");
+        when(mediaAssetRepository.findActiveByIdAndTenantId(ASSET_ID, TENANT_ID)).thenReturn(Optional.of(asset));
+        when(postRepository.existsByTenantIdAndFeaturedImageUrlReferencing(TENANT_ID, ASSET_ID.toString()))
+                .thenReturn(false);
+
+        mediaService.deleteAsset(ASSET_ID);
+
+        org.mockito.Mockito.verify(postRepository, org.mockito.Mockito.never())
+                .existsByTenantIdAndFeaturedImageUrlReferencing(TENANT_ID, "");
+        assertThat(asset.getIsDeleted()).isTrue();
     }
 }

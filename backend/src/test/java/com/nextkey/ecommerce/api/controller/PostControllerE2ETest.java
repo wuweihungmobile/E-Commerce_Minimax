@@ -3,7 +3,6 @@ package com.nextkey.ecommerce.api.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.api.dto.LoginRequest;
 import com.nextkey.ecommerce.api.dto.RegisterRequest;
-import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
 import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.cms.post.PostCategory;
 import com.nextkey.ecommerce.domain.model.cms.post.PostEmbed;
@@ -662,12 +661,15 @@ class PostControllerE2ETest {
 
     // ═══════════════════════════════════════════════════════════════════════════
     // IT-M15-008: 刪除已發布貼文
+    // Sprint 334（DEF-476，使用者決定「要先下架才能刪」）：原本這個案例斷言已發布貼文刪除回 200，
+    // 與驗收條件 AC-007（僅 DRAFT／已下架可刪）相反；規則改為已發布須先下架，案例改成斷言被擋、
+    // 貼文仍在，並走完「下架 → 刪除」。
     // ═══════════════════════════════════════════════════════════════════════════
 
     @Test
     @Order(8)
-    @DisplayName("IT-M15-008: DELETE /api/v2/dashboard/posts/:id - 刪除已發布貼文")
-    void deletePublishedPost_shouldSucceed() throws Exception {
+    @DisplayName("IT-M15-008: DELETE /api/v2/dashboard/posts/:id - 已發布貼文不能直接刪（409 E-4107、貼文仍在）；先下架再刪才成功")
+    void deletePublishedPost_mustBeUnpublishedFirst() throws Exception {
         String email = uniqueEmail();
         authToken = createStoreOwnerAndGetToken(email);
 
@@ -686,8 +688,30 @@ class PostControllerE2ETest {
                 .when()
                 .delete(BASE_URL + "/dashboard/posts/" + postId)
                 .then()
+                .statusCode(409)
+                .body("success", is(false))
+                .body("code", equalTo("E-4107"));
+        org.assertj.core.api.Assertions.assertThat(postRepository.existsById(postId))
+                .as("被擋下的刪除不能有副作用：貼文必須還在").isTrue();
+
+        // 先下架（回到草稿）
+        given()
+                .header("Authorization", "Bearer " + authToken)
+                .when()
+                .delete(BASE_URL + "/dashboard/posts/" + postId + "/publish")
+                .then()
+                .statusCode(200)
+                .body("data.status", equalTo("DRAFT"));
+
+        // 再刪除
+        given()
+                .header("Authorization", "Bearer " + authToken)
+                .when()
+                .delete(BASE_URL + "/dashboard/posts/" + postId)
+                .then()
                 .statusCode(200)
                 .body("success", is(true));
+        org.assertj.core.api.Assertions.assertThat(postRepository.existsById(postId)).isFalse();
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -731,154 +755,10 @@ class PostControllerE2ETest {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // IT-M15-010: 媒體上傳成功
+    // IT-M15-010 ~ 012（媒體上傳／列表／取檔／刪除）：Sprint 334（DEF-474）隨 PostController 的
+    // /v2/dashboard/media/* 五個端點一併移除——媒體管理只剩 M18 的 /v2/media/*（見 M18MediaIntegrationTest、
+    // MediaServiceTest、M18MediaIntegrationTest IT-M18-020）。編號保留不重排。
     // ═══════════════════════════════════════════════════════════════════════════
-
-    @Test
-    @Order(10)
-    @DisplayName("IT-M15-010: POST /api/v2/dashboard/media/upload-by-path -媒體上傳成功（Form URL Encoded）")
-    void uploadMedia_shouldSucceed() throws Exception {
-        String email = uniqueEmail();
-        authToken = createStoreOwnerAndGetToken(email);
-
-        // upload-by-path 使用 @RequestParam，需要使用 form URL encoded 格式
-        // 注意：實際 implementation 返回 200（ResponseEntity.ok()），而非 201
-        given()
-                .header("Authorization", "Bearer " + authToken)
-                .contentType("application/x-www-form-urlencoded")
-                .formParam("fileName", "test-image.jpg")
-                .formParam("originalName", "Original Image.jpg")
-                .formParam("fileSize", 1024 * 1024)
-                .formParam("mimeType", "image/jpeg")
-                .formParam("filePath", "/test-tenant/media/test-image.jpg")
-                .when()
-                .post(BASE_URL + "/dashboard/media/upload-by-path")
-                .then()
-                .statusCode(200)
-                .body("success", is(true))
-                .body("data.fileName", equalTo("test-image.jpg"));
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // IT-M15-010b: Multipart 上傳媒體（實際上傳到 MinIO）
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    @Test
-    @Order(10)
-    @DisplayName("IT-M15-010b: POST /api/v2/dashboard/media/upload-multipart - Multipart 上傳成功")
-    void uploadMediaMultipart_shouldSucceed() throws Exception {
-        String email = uniqueEmail();
-        authToken = createStoreOwnerAndGetToken(email);
-
-        byte[] mockImageBytes = "mock-image-content".getBytes();
-
-        given()
-                .header("Authorization", "Bearer " + authToken)
-                .contentType(MediaType.MULTIPART_FORM_DATA_VALUE)
-                .multiPart("file", "test-multipart.jpg", mockImageBytes, "image/jpeg")
-                .when()
-                .post(BASE_URL + "/dashboard/media/upload-multipart")
-                .then()
-                .statusCode(200)
-                .body("success", is(true))
-                .body("data.fileName", equalTo("test-multipart.jpg"));
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // IT-M15-011: 媒體列表查詢（按 tenant 分隔）
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    @Test
-    @Order(11)
-    @DisplayName("IT-M15-011: GET /api/v2/dashboard/media - 媒體列表查詢（按 tenant 分隔）")
-    void getMediaList_shouldReturnTenantMedia() throws Exception {
-        String email = uniqueEmail();
-        authToken = createStoreOwnerAndGetToken(email);
-
-        // 上傳一個測試媒體
-        mediaAssetRepository.save(MediaAsset.builder()
-                .tenant(testTenant)
-                .uploader(testUser)
-                .fileName("test-media.jpg")
-                .originalName("Test Media.jpg")
-                .fileSize(2048L)
-                .mimeType("image/jpeg")
-                .filePath("/test/media/test-media.jpg")
-                .fileType(MediaAsset.FileType.IMAGE)
-                .build());
-
-        given()
-                .header("Authorization", "Bearer " + authToken)
-                .when()
-                .get(BASE_URL + "/dashboard/media")
-                .then()
-                .statusCode(200)
-                .body("success", is(true))
-                .body("data.items", notNullValue());
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // IT-M15-011b: 取得媒體檔案內容（串流回應，DEF-097）
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    @Test
-    @Order(11)
-    @DisplayName("IT-M15-011b: GET /api/v2/dashboard/media/:id/file - 取得媒體檔案內容（DEF-097）")
-    void getMediaFile_shouldSucceed() throws Exception {
-        String email = uniqueEmail();
-        authToken = createStoreOwnerAndGetToken(email);
-
-        UUID mediaId = mediaAssetRepository.save(MediaAsset.builder()
-                .tenant(testTenant)
-                .uploader(testUser)
-                .fileName("preview.jpg")
-                .originalName("Preview.jpg")
-                .fileSize(1024L)
-                .mimeType("image/jpeg")
-                .filePath("/test/media/preview.jpg")
-                .fileType(MediaAsset.FileType.IMAGE)
-                .build()).getId();
-
-        given()
-                .header("Authorization", "Bearer " + authToken)
-                .when()
-                .get(BASE_URL + "/dashboard/media/" + mediaId + "/file")
-                .then()
-                .statusCode(200)
-                .contentType("image/jpeg");
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // IT-M15-012: 刪除媒體成功
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    @Test
-    @Order(12)
-    @DisplayName("IT-M15-012: DELETE /api/v2/dashboard/media/:id - 刪除媒體成功")
-    void deleteMedia_shouldSucceed() throws Exception {
-        String email = uniqueEmail();
-        authToken = createStoreOwnerAndGetToken(email);
-
-        // 建立測試媒體
-        UUID mediaId = mediaAssetRepository.save(MediaAsset.builder()
-                .tenant(testTenant)
-                .uploader(testUser)
-                .fileName("to-be-deleted.jpg")
-                .originalName("To Be Deleted.jpg")
-                .fileSize(1024L)
-                .mimeType("image/jpeg")
-                .filePath("/test/media/to-be-deleted.jpg")
-                .fileType(MediaAsset.FileType.IMAGE)
-                .build()).getId();
-
-        given()
-                .header("Authorization", "Bearer " + authToken)
-                .when()
-                .delete(BASE_URL + "/dashboard/media/" + mediaId)
-                .then()
-                .statusCode(200)
-                .body("success", is(true));
-    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // IT-M15-013: 前台取得貼文列表（公開）
@@ -1231,7 +1111,7 @@ class PostControllerE2ETest {
     // 補上它的 TC-M15-002（空白標題）／007／011／015／016／024（本類別與服務層單元測試找不到對應的 HTTP 層斷言：
     // 路由是否存在、錯誤碼對應到哪個狀態碼）。TC-M15-018（不支援的檔案類型）沒有放在這裡：IntegrationTestConfiguration
     // 把 MediaService 換成回傳罐頭資料的 mock，在本類別打 upload-by-path 看不到真實驗證（Sprint 306 實測：未突變的程式碼
-    // 對 text/plain 也回 200）；該驗證由 MediaUploadServiceTest.uploadMedia_pathBased_unsupportedType_throwsException 守住。
+    // 對 text/plain 也回 200）。Sprint 334 起該端點已移除，檔案類型驗證由 MediaValidationServiceTest 守住。
     // ═══════════════════════════════════════════════════════════════════════════
 
     @Test
@@ -1363,6 +1243,91 @@ class PostControllerE2ETest {
                     .statusCode(400)
                     .body("code", equalTo("E-9005"));
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Sprint 334（DEF-480）：全中文標題的貼文——先前所有 E2E 的標題都含英文，從沒走過 slug 被清空的路徑
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    @Test
+    @Order(28)
+    @DisplayName("IT-M15-028: 全中文標題的貼文 slug 為 post-<8碼>（兩篇不同），發布後前台能用該 slug 取得文章；同店全中文分類能建兩個")
+    void chineseOnlyTitlesAndCategoryNames_getUsableDistinctSlugs() throws Exception {
+        authToken = createStoreOwnerAndGetToken(uniqueEmail());
+
+        String[] slugs = new String[2];
+        String[] ids = new String[2];
+        String[] titles = {"視覺檢查貼文", "第二篇全中文貼文"};
+        for (int i = 0; i < 2; i++) {
+            io.restassured.path.json.JsonPath created = given()
+                    .header("Authorization", "Bearer " + authToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(Map.of("title", titles[i], "content", "內容"))
+                    .when()
+                    .post(BASE_URL + "/dashboard/posts")
+                    .then()
+                    .statusCode(200)
+                    .extract().jsonPath();
+            slugs[i] = created.getString("data.slug");
+            ids[i] = created.getString("data.id");
+            org.assertj.core.api.Assertions.assertThat(slugs[i]).matches("^post-[0-9a-f]{8}$");
+        }
+        org.assertj.core.api.Assertions.assertThat(slugs[0]).isNotEqualTo(slugs[1]);
+
+        // 發布第一篇，公開端用它的 slug 取得（先前 slug 為空字串時，這條路徑根本打不到）
+        given().header("Authorization", "Bearer " + authToken)
+                .when().post(BASE_URL + "/dashboard/posts/" + ids[0] + "/publish")
+                .then().statusCode(200);
+        given().queryParam("tenantId", testTenantId.toString())
+                .when().get(BASE_URL + "/posts/" + slugs[0])
+                .then().statusCode(200)
+                .body("data.title", equalTo("視覺檢查貼文"));
+
+        // 同一家店的兩個全中文分類：原本第二個會因空字串 slug 重複而 409 E-8014
+        for (String name : new String[] {"旅遊", "美食"}) {
+            given().header("Authorization", "Bearer " + authToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(Map.of("name", name))
+                    .when().post(BASE_URL + "/dashboard/post-categories")
+                    .then().statusCode(200)
+                    .body("data.slug", matchesPattern("^category-[0-9a-f]{8}$"));
+        }
+    }
+
+    @Test
+    @Order(29)
+    @DisplayName("IT-M15-029: PUT /api/v2/dashboard/posts/:id - 標題沒改（編輯頁每次儲存都會帶）slug 不變；標題真的改了才換")
+    void updatePost_slugOnlyChangesWhenTheTitleChanges() throws Exception {
+        authToken = createStoreOwnerAndGetToken(uniqueEmail());
+        String title = "Slug Stability " + System.nanoTime();
+
+        io.restassured.path.json.JsonPath created = given()
+                .header("Authorization", "Bearer " + authToken)
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(Map.of("title", title, "content", "v1"))
+                .when().post(BASE_URL + "/dashboard/posts")
+                .then().statusCode(200)
+                .extract().jsonPath();
+        String id = created.getString("data.id");
+        String slug = created.getString("data.slug");
+
+        // 連續儲存三次、標題照舊：網址不能變
+        for (int i = 2; i <= 4; i++) {
+            given().header("Authorization", "Bearer " + authToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(Map.of("title", title, "content", "v" + i))
+                    .when().put(BASE_URL + "/dashboard/posts/" + id)
+                    .then().statusCode(200)
+                    .body("data.slug", equalTo(slug));
+        }
+
+        // 標題真的改了：slug 跟著換成新標題清出來的樣子
+        given().header("Authorization", "Bearer " + authToken)
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(Map.of("title", "Renamed Post " + System.nanoTime(), "content", "v5"))
+                .when().put(BASE_URL + "/dashboard/posts/" + id)
+                .then().statusCode(200)
+                .body("data.slug", startsWith("renamed-post-"));
     }
 
     @AfterAll

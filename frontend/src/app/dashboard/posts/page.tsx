@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { getPosts, publishPost, unpublishPost, deletePost } from '@/services/cms';
+import { apiErrorMessage } from '@/lib/api-error';
 import { useAsyncData } from '@/hooks/useAsyncData';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { PageTitle } from '@/components/ui/page-title';
@@ -16,8 +17,9 @@ import { StatusBadge } from '@/components/ui/status-badge';
 const PAGE_SIZE = 20;
 
 // 貼文管理（賣家後台）。Sprint 332（DEF-466）：與原本並行的 /cms 貼文介面合併成這一套——
-// 從 /cms 帶過來的：分頁（原本這頁只看得到第一頁 20 筆）、列表顯示 slug、總數；刪除規則沿用本頁原有的（只有草稿能刪，
-// 見 SPRINT_08 AC-007），/cms 的列表對任何狀態都開放刪除。
+// 從 /cms 帶過來的：分頁（原本這頁只看得到第一頁 20 筆）、列表顯示 slug、總數。
+// 刪除規則（Sprint 334，DEF-476，使用者決定）：已發布的貼文要先下架才能刪（SPRINT_08 AC-007）——列表、編輯頁、後端
+// （409 E-4107）三處一致；原本只有這裡的按鈕在執行，編輯頁與後端都放行。
 export default function PostListPage() {
   const [filter, setFilter] = useState<string>('');
   const [page, setPage] = useState(0);
@@ -76,7 +78,7 @@ export default function PostListPage() {
       reloadAfterChange(true);
     } catch (error) {
       console.error('Failed to delete post:', error);
-      toast.error('刪除貼文失敗，請稍後再試');
+      toast.error(apiErrorMessage(error, '刪除貼文失敗，請稍後再試'));
     }
   }
 
@@ -180,7 +182,8 @@ export default function PostListPage() {
                         variant="linkDestructive"
                         size="inline"
                         onClick={() => handleDelete(post.id)}
-                        disabled={post.status !== 'DRAFT'}
+                        disabled={post.status === 'PUBLISHED'}
+                        title={post.status === 'PUBLISHED' ? '已發布的貼文請先下架才能刪除' : undefined}
                       >
                         刪除
                       </Button>

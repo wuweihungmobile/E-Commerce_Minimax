@@ -352,6 +352,8 @@ curl -X DELETE http://localhost:8080/v2/posts/${DRAFT_ID} \
 
 #### TC-M15-009: 刪除已發布（自動下架後刪除）
 
+> ⚠️ **Sprint 334（DEF-476）規則變更**：已發布的貼文**不能直接刪除**——須先「下架」變回草稿才能刪（後端回 409 `E-4107`，列表與編輯頁的刪除鈕在已發布時不可按）。本案例寫於變更之前，描述的「自動下架後刪除」流程已不適用；現行驗證見 `frontend/e2e/at-post-slug-and-delete-rule-real.spec.ts`（E2E-POSTRULE-03～05）與 `PostControllerE2ETest` IT-M15-008。
+
 | 項目 | 內容 |
 |------|------|
 | **測試 ID** | TC-M15-009 |
@@ -847,6 +849,8 @@ curl -X GET http://localhost:8080/v2/listings/${INVALID_ID}/card
 | 4 | 前往前台確認 | http://localhost:3000/blog/{slug} | 顯示更新內容 |
 
 ### 4.3 FE-M15-003: 刪除已發布貼文
+
+> ⚠️ **Sprint 334（DEF-476）規則變更**：已發布的貼文**不能直接刪除**——須先「下架」變回草稿才能刪（後端回 409 `E-4107`，列表與編輯頁的刪除鈕在已發布時不可按）。本案例寫於變更之前，描述的「自動下架後刪除」流程已不適用；現行驗證見 `frontend/e2e/at-post-slug-and-delete-rule-real.spec.ts`（E2E-POSTRULE-03～05）與 `PostControllerE2ETest` IT-M15-008。
 
 | 步驟 | 操作 | Frontend URL | 預期結果 |
 |------|------|-------------|----------|

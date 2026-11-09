@@ -1,7 +1,5 @@
 package com.nextkey.ecommerce.integration;
 
-import com.nextkey.ecommerce.api.dto.M15Dto;
-import com.nextkey.ecommerce.core.cms.media.MediaService;
 import com.nextkey.ecommerce.api.dto.CartDto;
 import com.nextkey.ecommerce.infrastructure.redis.RedisLockService;
 import com.nextkey.ecommerce.infrastructure.security.JwtTokenService;
@@ -439,75 +437,6 @@ public class IntegrationTestConfiguration {
 
         // Mock deleteObject - 不拋出異常
         doNothing().when(mockService).deleteObject(anyString());
-
-        return mockService;
-    }
-
-    /**
-     * Mock MediaService - 避免實際上傳到 MinIO
-     * 這個 mock 會覆蓋 @Primary 的 StorageService mock
-     */
-    @Bean
-    @Primary
-    public MediaService mediaService() {
-        MediaService mockService = Mockito.mock(MediaService.class);
-
-        // Mock uploadMedia (MultipartFile version) - 返回假的回應
-        when(mockService.uploadMedia(any(UUID.class), any(UUID.class), any()))
-                .thenAnswer(invocation -> {
-                    Object multipartFile = invocation.getArgument(2);
-                    String fileName = "test-multipart.jpg";
-                    try {
-                        // 嘗試取得原始檔案名稱
-                        java.lang.reflect.Method getOriginalFilename = multipartFile.getClass().getMethod("getOriginalFilename");
-                        Object result = getOriginalFilename.invoke(multipartFile);
-                        if (result != null) {
-                            fileName = result.toString();
-                        }
-                    } catch (Exception e) {
-                        // 忽略，使用預設值
-                    }
-                    return M15Dto.MediaUploadResponse.builder()
-                            .fileName(fileName)
-                            .fileSize(1024L)
-                            .mimeType("image/jpeg")
-                            .filePath("/test-tenant/media/" + fileName)
-                            .build();
-                });
-
-        // Mock uploadMedia (path version) - 返回假的回應
-        when(mockService.uploadMedia(any(UUID.class), any(UUID.class), anyString(), anyString(), anyLong(), anyString(), anyString()))
-                .thenAnswer(invocation -> {
-                    String fileName = invocation.getArgument(2);
-                    return M15Dto.MediaUploadResponse.builder()
-                            .fileName(fileName)
-                            .fileSize(invocation.getArgument(4))
-                            .mimeType(invocation.getArgument(5))
-                            .filePath(invocation.getArgument(6))
-                            .build();
-                });
-
-        // Mock getMediaList - 返回空的媒體列表
-        when(mockService.getMediaList(any(UUID.class), anyInt(), anyInt(), any()))
-                .thenAnswer(invocation -> {
-                    return M15Dto.MediaListResponse.builder()
-                            .items(List.of())
-                            .totalCount(0)
-                            .page(0)
-                            .size(20)
-                            .totalPages(0)
-                            .build();
-                });
-
-        // Mock deleteMedia - 不拋出異常
-        doNothing().when(mockService).deleteMedia(any(UUID.class), any(UUID.class));
-
-        // Mock downloadMedia - 返回假的檔案內容（Sprint 133，DEF-097）
-        when(mockService.downloadMedia(any(UUID.class), any(UUID.class))).thenAnswer(invocation ->
-                new MediaService.MediaFile(
-                        new ByteArrayInputStream("mock-content".getBytes()),
-                        "image/jpeg",
-                        "mock-file.jpg"));
 
         return mockService;
     }

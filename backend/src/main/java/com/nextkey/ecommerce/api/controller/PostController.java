@@ -4,10 +4,6 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
-import org.springframework.core.io.InputStreamResource;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,16 +15,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 
 import com.nextkey.ecommerce.api.dto.ApiResponse;
 import com.nextkey.ecommerce.api.dto.M15Dto;
 import com.nextkey.ecommerce.core.cms.listing.ListingCardService;
-import com.nextkey.ecommerce.core.cms.media.MediaService;
-import org.springframework.beans.factory.annotation.Qualifier;
 import com.nextkey.ecommerce.core.cms.post.PostCategoryService;
 import com.nextkey.ecommerce.core.cms.post.PostService;
-import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
 import com.nextkey.ecommerce.domain.model.cms.post.Post;
 import com.nextkey.ecommerce.domain.model.tenant.TenantFeatureToggle;
 import com.nextkey.ecommerce.domain.repository.TenantFeatureToggleRepository;
@@ -43,7 +35,8 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * M15 CMS Post REST API
- * 貼文 CRUD、分類管理、媒體庫
+ * 貼文 CRUD、分類管理
+ * （媒體庫：Sprint 334 起只剩 M18 的 /v2/media/*；原本掛在這裡的 /v2/dashboard/media/* 五個端點已移除，DEF-474）
  */
 @Slf4j
 @RestController
@@ -54,8 +47,6 @@ public class PostController {
     private final PostService postService;
     private final PostCategoryService postCategoryService;
     private final ListingCardService listingCardService;
-    @Qualifier("cmsMediaService")
-    private final MediaService mediaService;
     private final TenantFeatureToggleRepository featureToggleRepository;
 
     // ========== Post CRUD ==========
@@ -325,123 +316,6 @@ public class PostController {
 
         postCategoryService.deleteCategory(categoryId, tenantId);
         return ResponseEntity.ok(ApiResponse.success("Category deleted", null));
-    }
-
-    // ========== Media APIs ==========
-
-    /**
-     * 取得媒體列表
-     * GET /api/v2/dashboard/media
-     */
-    @GetMapping("/dashboard/media")
-    @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
-    public ResponseEntity<ApiResponse<M15Dto.MediaListResponse>> getMediaList(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String fileType) {
-
-        UUID tenantId = TenantContext.getCurrentTenant();
-
-        // 檢查 CMS_ENABLED feature toggle
-        checkFeatureToggle(tenantId, "CMS_ENABLED");
-
-        MediaAsset.FileType type;
-        try {
-            type = fileType != null ? MediaAsset.FileType.valueOf(fileType.toUpperCase()) : null;
-        } catch (IllegalArgumentException e) {
-            throw new BusinessException(ErrorCode.E_9000, "Invalid fileType: " + fileType);
-        }
-        M15Dto.MediaListResponse response = mediaService.getMediaList(tenantId, page, size, type);
-        return ResponseEntity.ok(ApiResponse.success(response));
-    }
-
-    /**
-     * 上傳媒體（Mock - 使用路徑方式）
-     * POST /api/v2/dashboard/media/upload-by-path
-     */
-    @PostMapping("/dashboard/media/upload-by-path")
-    @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
-    public ResponseEntity<ApiResponse<M15Dto.MediaUploadResponse>> uploadMediaByPath(
-            @RequestParam String fileName,
-            @RequestParam String originalName,
-            @RequestParam Long fileSize,
-            @RequestParam String mimeType,
-            @RequestParam String filePath) {
-
-        UUID tenantId = TenantContext.getCurrentTenant();
-        UUID uploaderId = TenantContext.getCurrentUser();
-
-        // 檢查 CMS_ENABLED feature toggle
-        checkFeatureToggle(tenantId, "CMS_ENABLED");
-
-        M15Dto.MediaUploadResponse response = mediaService.uploadMedia(
-                tenantId, uploaderId, fileName, originalName, fileSize, mimeType, filePath);
-        return ResponseEntity.ok(ApiResponse.success("Media uploaded", response));
-    }
-
-    /**
-     * 上傳媒體（MultipartFile - 實際上傳到 MinIO）
-     * POST /api/v2/dashboard/media/upload-multipart
-     */
-    @PostMapping(value = "/dashboard/media/upload-multipart", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
-    public ResponseEntity<ApiResponse<M15Dto.MediaUploadResponse>> uploadMediaMultipart(
-            @RequestParam("file") MultipartFile file) {
-
-        UUID tenantId = TenantContext.getCurrentTenant();
-        UUID uploaderId = TenantContext.getCurrentUser();
-
-        // 檢查 CMS_ENABLED feature toggle
-        checkFeatureToggle(tenantId, "CMS_ENABLED");
-
-        log.info("Upload media (multipart): fileName={}, size={}, contentType={}",
-                file.getOriginalFilename(), file.getSize(), file.getContentType());
-
-        M15Dto.MediaUploadResponse response = mediaService.uploadMedia(tenantId, uploaderId, file);
-        return ResponseEntity.ok(ApiResponse.success("Media uploaded successfully", response));
-    }
-
-    /**
-     * 取得媒體檔案內容（串流回應，供 &lt;img&gt;/下載使用）
-     * GET /api/v2/dashboard/media/:id/file
-     * Sprint 133（DEF-097）
-     */
-    @GetMapping("/dashboard/media/{mediaId}/file")
-    @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
-    public ResponseEntity<InputStreamResource> getMediaFile(
-            @PathVariable UUID mediaId) {
-
-        UUID tenantId = TenantContext.getCurrentTenant();
-
-        // 檢查 CMS_ENABLED feature toggle
-        checkFeatureToggle(tenantId, "CMS_ENABLED");
-
-        MediaService.MediaFile file = mediaService.downloadMedia(mediaId, tenantId);
-        ContentDisposition disposition = ContentDisposition.inline()
-                .filename(file.fileName(), java.nio.charset.StandardCharsets.UTF_8)
-                .build();
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(file.mimeType()))
-                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
-                .body(new InputStreamResource(file.inputStream()));
-    }
-
-    /**
-     * 刪除媒體
-     * DELETE /api/v2/dashboard/media/:id
-     */
-    @DeleteMapping("/dashboard/media/{mediaId}")
-    @PreAuthorize("hasAnyRole('STORE_OWNER', 'STORE_STAFF', 'SELLER', 'HOST')")
-    public ResponseEntity<ApiResponse<Void>> deleteMedia(
-            @PathVariable UUID mediaId) {
-
-        UUID tenantId = TenantContext.getCurrentTenant();
-
-        // 檢查 CMS_ENABLED feature toggle
-        checkFeatureToggle(tenantId, "CMS_ENABLED");
-
-        mediaService.deleteMedia(mediaId, tenantId);
-        return ResponseEntity.ok(ApiResponse.success("Media deleted", null));
     }
 
     // ========== Admin APIs ==========

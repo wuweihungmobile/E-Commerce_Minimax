@@ -66,7 +66,9 @@ class TenantContextCallSiteDriftTest {
         BASELINE.put("com/nextkey/ecommerce/api/controller/NotificationTemplateController.java", 6);
 
         // 店家內容管理模組：CMS/Post/Media（Sprint 129 DEF-075；cms:*/media:* 權限）
-        BASELINE.put("com/nextkey/ecommerce/api/controller/PostController.java", 16);
+        // Sprint 334（DEF-474）：16 → 11。移除 5 個 /v2/dashboard/media/* 端點各少一處 getCurrentTenant()；只減不增，
+        // 沒有新的呼叫點需要評估系統租戶風險。
+        BASELINE.put("com/nextkey/ecommerce/api/controller/PostController.java", 11);
         BASELINE.put("com/nextkey/ecommerce/core/cms/CmsService.java", 5);
         BASELINE.put("com/nextkey/ecommerce/core/media/MediaService.java", 15);
 

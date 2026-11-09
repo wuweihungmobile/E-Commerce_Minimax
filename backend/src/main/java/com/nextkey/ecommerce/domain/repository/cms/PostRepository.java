@@ -100,10 +100,17 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
     int incrementViewCount(@Param("postId") UUID postId);
 
     /**
-     * 檢查是否有貼文使用指定的路徑作為封面圖
+     * 檢查本店鋪是否有貼文的封面圖網址含指定片段（Sprint 334，DEF-474）。
+     *
+     * <p>片段可能是媒體素材編號（M18 的檔案網址是 /api/v2/media/files/{素材編號}），也可能是儲存路徑。
+     * 取代原本不分店鋪、用 LIKE 的 existsByFeaturedImageUrlContaining：LIKE 會把儲存路徑裡的 _、% 當萬用字元，
+     * 且別家店鋪的貼文也會擋住這家店刪圖。這裡用 LOCATE 做純子字串比對。呼叫端必須保證 fragment 非空
+     * （LOCATE('', x) 恆大於 0）。
      */
-    @Query("SELECT COUNT(p) > 0 FROM Post p WHERE p.featuredImageUrl LIKE %:filePath%")
-    boolean existsByFeaturedImageUrlContaining(@Param("filePath") String filePath);
+    @Query("SELECT COUNT(p) > 0 FROM Post p WHERE p.tenant.id = :tenantId AND p.featuredImageUrl IS NOT NULL "
+            + "AND LOCATE(:fragment, p.featuredImageUrl) > 0")
+    boolean existsByTenantIdAndFeaturedImageUrlReferencing(@Param("tenantId") UUID tenantId,
+                                                           @Param("fragment") String fragment);
 
     /**
      * Sprint 147：MAX_POSTS 數量配額強制執行——計算目前已發布中的貼文數

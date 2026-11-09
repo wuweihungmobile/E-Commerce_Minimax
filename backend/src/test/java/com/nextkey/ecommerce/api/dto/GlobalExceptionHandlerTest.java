@@ -67,11 +67,12 @@ class GlobalExceptionHandlerTest {
 
         // 409 CONFLICT
         // Sprint 208（DEF-284）：E_1005 從 404 移到這裡，見 GlobalExceptionHandler 的同編號註解。
-        for (ErrorCode code : new ErrorCode[] {ErrorCode.E_2003, ErrorCode.E_4106, ErrorCode.E_1005,
+        // Sprint 334：E_4107（已發布的文章無法刪除）、E_8020（媒體正被貼文使用，無法刪除）——資料狀態衝突，409。
+        for (ErrorCode code : new ErrorCode[] {ErrorCode.E_2003, ErrorCode.E_4106, ErrorCode.E_4107, ErrorCode.E_1005,
                 ErrorCode.E_1008, ErrorCode.E_1010, ErrorCode.E_1086, ErrorCode.E_1093, ErrorCode.E_1094,
                 ErrorCode.E_3005, ErrorCode.E_4091, ErrorCode.E_4092, ErrorCode.E_5014, ErrorCode.E_7006,
                 ErrorCode.E_8010, ErrorCode.E_2011, ErrorCode.E_8012, ErrorCode.E_8013, ErrorCode.E_8014,
-                ErrorCode.E_8015, ErrorCode.E_8017, ErrorCode.E_8018, ErrorCode.E_8019}) {
+                ErrorCode.E_8015, ErrorCode.E_8017, ErrorCode.E_8018, ErrorCode.E_8019, ErrorCode.E_8020}) {
             expected.put(code, HttpStatus.CONFLICT);
         }
 

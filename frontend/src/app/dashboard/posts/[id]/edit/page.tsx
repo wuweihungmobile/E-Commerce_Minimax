@@ -15,6 +15,7 @@ import {
   getListingCard,
 } from '@/services/cms';
 import { useAsyncData } from '@/hooks/useAsyncData';
+import { apiErrorMessage } from '@/lib/api-error';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -207,7 +208,7 @@ export default function EditPostPage() {
       router.push('/dashboard/posts');
     } catch (error) {
       console.error('Failed to delete post:', error);
-      toast.error('刪除失敗，請稍後再試');
+      toast.error(apiErrorMessage(error, '刪除失敗，請稍後再試'));
     }
   }
 
@@ -422,7 +423,14 @@ export default function EditPostPage() {
             </Button>
           )}
 
-          <Button type="button" variant="linkDestructive" onClick={handleDelete}>
+          {/* 已發布的貼文要先下架才能刪（DEF-476，Sprint 334）：與列表、後端（409 E-4107）一致 */}
+          <Button
+            type="button"
+            variant="linkDestructive"
+            onClick={handleDelete}
+            disabled={post.status === 'PUBLISHED'}
+            title={post.status === 'PUBLISHED' ? '已發布的貼文請先下架才能刪除' : undefined}
+          >
             刪除
           </Button>
 

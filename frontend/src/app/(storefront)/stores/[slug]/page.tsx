@@ -1,8 +1,11 @@
 import type { Metadata } from "next"
 import { StoreHomeView } from "@/components/storefront/StoreHomeView"
+import { storeMetadata } from "@/lib/seo"
 
-export const metadata: Metadata = {
-  title: '店鋪首頁',
+// 標題用店名（DEF-475，Sprint 335）；取不到（店鋪不存在、後端慢或壞）就退回原本的頁型標題。
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params
+  return storeMetadata(slug, { fallbackTitle: '店鋪首頁', path: '' })
 }
 
 // 店鋪前台首頁（PRD §10 /stores/[slug]；§12.7 Guest/Buyer 瀏覽店鋪前台流程；

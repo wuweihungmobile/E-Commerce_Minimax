@@ -153,6 +153,42 @@ describe('採購單表單（建立模式）的供應商與商品下拉', () => {
     expect(screen.getByRole('link', { name: '新增供應商' }).getAttribute('href')).toBe('/dashboard/erp/suppliers/new')
     expect(screen.queryByTestId('po-options-error'), '「沒有供應商」被當成了載入失敗').toBeNull()
   })
+
+  // DEF-478（Sprint 335）：與供應商同一類問題——商品選項載入成功但是空的，下拉只剩「請選擇商品」，使用者不知道為什麼沒得選。
+  it('商品選項載入成功但是空的 → 顯示「目前沒有可選的商品」與連到商品管理的入口；這不是載入失敗', async () => {
+    listSuppliers.mockResolvedValue([supplier] as never)
+    listListingOptions.mockResolvedValue([] as never)
+    render(<PurchaseOrderForm mode="create" />)
+    const hint = await screen.findByTestId('po-no-listing-hint')
+    expect(hint.textContent).toContain('沒有可選的商品')
+    expect(screen.getByRole('link', { name: '新增商品' }).getAttribute('href')).toBe('/dashboard/products')
+    expect(screen.queryByTestId('po-options-error'), '「沒有商品」被當成了載入失敗').toBeNull()
+    expect(screen.queryByTestId('po-no-supplier-hint'), '有供應商卻顯示了「沒有供應商」').toBeNull()
+  })
+
+  it('商品選項載入失敗 → 只有錯誤區塊，沒有「沒有可選的商品」（失敗不是空）', async () => {
+    listSuppliers.mockResolvedValue([supplier] as never)
+    listListingOptions.mockRejectedValue(new Error('network down'))
+    render(<PurchaseOrderForm mode="create" />)
+    await screen.findByTestId('po-options-error')
+    expect(screen.queryByTestId('po-no-listing-hint'), '載入失敗被說成了「沒有可選的商品」').toBeNull()
+  })
+
+  it('有商品選項 → 不顯示「沒有可選的商品」', async () => {
+    listSuppliers.mockResolvedValue([supplier] as never)
+    listListingOptions.mockResolvedValue([listing] as never)
+    render(<PurchaseOrderForm mode="create" />)
+    expect(await screen.findByRole('option', { name: '手沖咖啡豆' })).toBeTruthy()
+    expect(screen.queryByTestId('po-no-listing-hint')).toBeNull()
+  })
+
+  it('供應商、商品都沒有 → 兩個提示同時出現（各說各的）', async () => {
+    listSuppliers.mockResolvedValue([] as never)
+    listListingOptions.mockResolvedValue([] as never)
+    render(<PurchaseOrderForm mode="create" />)
+    expect(await screen.findByTestId('po-no-supplier-hint')).toBeTruthy()
+    expect(await screen.findByTestId('po-no-listing-hint')).toBeTruthy()
+  })
 })
 
 describe('採購單表單（其他模式）', () => {
@@ -164,5 +200,6 @@ describe('採購單表單（其他模式）', () => {
     expect(listListingOptions).not.toHaveBeenCalled()
     expect(screen.queryByTestId('po-options-error')).toBeNull()
     expect(screen.queryByTestId('po-no-supplier-hint')).toBeNull()
+    expect(screen.queryByTestId('po-no-listing-hint')).toBeNull()
   })
 })

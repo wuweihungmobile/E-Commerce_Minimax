@@ -112,6 +112,8 @@ function PurchaseOrderFormBody({
   }
   // 載入成功、但真的沒有任何啟用中的供應商：與「載入失敗」是兩回事（失敗時 suppliersData 沒有值，不會進這個分支）
   const noActiveSupplier = suppliersData !== undefined && suppliersData.length === 0
+  // 同上：商品選項載入成功但是空的（DEF-478）。失敗時 listingOptionsData 沒有值，不會進這個分支
+  const noListingOption = listingOptionsData !== undefined && listingOptionsData.length === 0
 
   const [formData, setFormData] = useState<PurchaseOrderCreateRequest>(() =>
     order && mode !== 'receive'
@@ -454,6 +456,12 @@ function PurchaseOrderFormBody({
               </Button>
             )}
           </div>
+          {mode === 'create' && noListingOption && (
+            <p className="text-sm text-rs-ink-muted" data-testid="po-no-listing-hint">
+              目前沒有可選的商品，請先
+              <Link href="/dashboard/products" className="text-rs-primary hover:underline">新增商品</Link>
+            </p>
+          )}
 
             <Table density="compact">
               <TableHeader>

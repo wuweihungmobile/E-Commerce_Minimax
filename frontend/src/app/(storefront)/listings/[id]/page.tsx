@@ -1,9 +1,12 @@
 import type { Metadata } from "next"
 import { StorefrontShell } from "@/components/layout/StorefrontShell"
 import { ListingDetail } from "@/components/storefront/ListingDetail"
+import { listingMetadata } from "@/lib/seo"
 
-export const metadata: Metadata = {
-  title: '商品／房源詳情',
+// 標題用商品／房源名稱（DEF-475，Sprint 335）；id 不是 UUID 或取不到就退回原本的頁型標題。
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params
+  return listingMetadata(id, '商品／房源詳情')
 }
 
 // 買家商品詳情頁（S38 AI-2103）：置於 (storefront) group，沿用共用 Header/Footer + StorefrontShell。

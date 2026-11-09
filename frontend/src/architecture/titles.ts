@@ -13,10 +13,14 @@
 // 這個模擬本身由真實瀏覽器的 E2E（at-page-titles.spec.ts）與全路由探針對照過——模擬與 Next 不一致時，以瀏覽器為準。
 //
 // 已知限制（刻意取捨）：只認 `title: '字串'`、`title: { default, template }`、`title: { absolute }` 三種寫法，值可以是字串字面值或
-// 常數名稱（常數由呼叫端提供，見 lib/site.ts）；`generateMetadata` 只能確認「有」，算不出內容。不認得的寫法直接丟錯，讓測試紅燈並指出檔案，
-// 不會靜默放行。
+// 常數名稱（常數由呼叫端提供，見 lib/site.ts）；`generateMetadata` 只能確認「有」，算不出內容——解析時以 DYNAMIC_TITLE_PROBE 代入
+// （假設它回傳一般的字串標題，會接上上層的 template；Sprint 335 起公開頁的實體標題就是這樣，見 lib/seo.ts），所以『template 有沒有被中間層切斷』
+// 仍然查得到，只是動態標題的實際內容不參與『彼此不重複』的比對。不認得的寫法直接丟錯，讓測試紅燈並指出檔案，不會靜默放行。
 
 import { matchingClose } from './detect'
+
+/** 動態標題（generateMetadata）解析時代入的探針字串：用來確認標題有接上品牌 template，並讓呼叫端認得「這是動態的」。 */
+export const DYNAMIC_TITLE_PROBE = '〈動態標題〉'
 
 export type TitleSpec =
   | { kind: 'string'; text: string }
@@ -129,9 +133,9 @@ export function resolveTitle(chain: TitleSpec[]): string | null {
   let stash: string | null = null
   let current: string | null = null
   for (const spec of chain) {
-    if (spec.kind === 'dynamic') throw new Error('generateMetadata 的標題內容無法靜態解析')
-    if (spec.kind === 'string') {
-      current = apply(stash, spec.text)
+    if (spec.kind === 'string' || spec.kind === 'dynamic') {
+      // 動態標題假設是一般字串標題：接上上層的 template，並把 template 切斷（與靜態字串標題相同）
+      current = apply(stash, spec.kind === 'dynamic' ? DYNAMIC_TITLE_PROBE : spec.text)
       stash = null // 字串標題把 template 切斷
     } else {
       if (spec.absolute !== undefined) current = spec.absolute

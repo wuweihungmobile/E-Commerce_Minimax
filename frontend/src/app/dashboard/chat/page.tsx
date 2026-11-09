@@ -66,11 +66,16 @@ export default function ChatPage() {
   const [newRecipientId, setNewRecipientId] = useState('');
   const [newInitialMessage, setNewInitialMessage] = useState('');
 
-  async function loadConversations() {
+  /**
+   * 建立／刪除對話成功之後重抓清單。動作本身已經成功，只是清單沒更新（建立的對話沒出現、刪除的對話還留著）——
+   * 失敗時要明講這一點（DEF-477）：不能只 console.error，也不能沿用「建立／刪除失敗」的訊息（對話其實建好／刪掉了）。
+   */
+  async function loadConversations(doneAction: string) {
     try {
       setConversationPage(await getConversations(0, 50));
     } catch (error) {
       console.error('Failed to load conversations:', error);
+      toast.error(`${doneAction}，但對話清單沒有更新，請重新整理頁面`);
     }
   }
 
@@ -171,7 +176,7 @@ export default function ChatPage() {
       setNewConvOpen(false);
       setNewRecipientId('');
       setNewInitialMessage('');
-      await loadConversations();
+      await loadConversations('對話已建立');
       await handleSelect(conversation.conversationId);
     } catch (error) {
       console.error('Failed to create conversation:', error);
@@ -189,7 +194,7 @@ export default function ChatPage() {
         setSelectedId(null);
         setMessages([]);
       }
-      await loadConversations();
+      await loadConversations('對話已刪除');
     } catch (error) {
       console.error('Failed to delete conversation:', error);
       toast.error('刪除對話失敗，請稍後再試');

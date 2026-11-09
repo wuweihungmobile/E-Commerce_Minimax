@@ -13,6 +13,12 @@ export const SITE_NAME = '意象若水 RUOSHUI'
 export const SITE_TITLE = `${SITE_NAME}｜生活減法，無負擔的購物體驗`
 export const SITE_DESCRIPTION = `${SITE_NAME} 電商平台`
 
+/**
+ * 正式站的公開網域（使用者於 Sprint 334 收尾回覆 www.nextkey.com）。Open Graph 的網址與圖片需要絕對網址，
+ * 根 layout 以它設定 metadataBase，讓各頁用相對路徑（例如 /stores/demo）即可。要換網域（測試站、新網域）設 NEXT_PUBLIC_SITE_URL。
+ */
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.nextkey.com'
+
 /** 一般頁面的標題模板（%s 是頁名） */
 export const TITLE_TEMPLATE = `%s｜${SITE_NAME}`
 /** 賣家後台的標題模板 */

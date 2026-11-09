@@ -6,7 +6,7 @@ import { ThemeScript } from "@/components/theme/ThemeScript";
 import { DEFAULT_THEME } from "@/components/theme/theme";
 import { Toaster } from "@/components/ui/toast";
 import { ConfirmDialogHost } from "@/components/ui/confirm-dialog";
-import { SITE_DESCRIPTION, SITE_TITLE, TITLE_TEMPLATE } from "@/lib/site";
+import { SITE_DESCRIPTION, SITE_TITLE, SITE_URL, TITLE_TEMPLATE } from "@/lib/site";
 
 // 拉丁字型以 next/font/local self-host（Inter latin variable woff2，committed 於 ./fonts）。
 // 改用 local（AI-2303）以消除 build 期對 Google Fonts 的網路依賴（原 next/font/google 於
@@ -21,6 +21,8 @@ const inter = localFont({
 
 // 標題：沒有自己標題的頁面用 default；有的用 template 組成「頁名｜意象若水 RUOSHUI」（Sprint 332，DEF-465；常數見 lib/site.ts）。
 export const metadata: Metadata = {
+  // 公開頁（店鋪前台、商品詳情）的 Open Graph 用相對路徑，靠這個組成絕對網址（DEF-475，Sprint 335）
+  metadataBase: new URL(SITE_URL),
   title: { default: SITE_TITLE, template: TITLE_TEMPLATE },
   description: SITE_DESCRIPTION,
 };

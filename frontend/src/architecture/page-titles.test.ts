@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { ADMIN_TITLE_TEMPLATE, DASHBOARD_TITLE_TEMPLATE, SITE_NAME, SITE_TITLE, TITLE_TEMPLATE } from '@/lib/site'
-import { findTitleSpec, resolveTitle, titleSourceFiles, type TitleSpec } from './titles'
+import { DYNAMIC_TITLE_PROBE, findTitleSpec, resolveTitle, titleSourceFiles, type TitleSpec } from './titles'
 import { listSourceFiles, readSource, sourceExists } from './source'
 
 // 頁面標題守門（Sprint 332，DEF-465）：每個頁面都有自己的 <title>，而且解析出來的最終標題帶品牌、帶對的區域後綴、彼此不重複。
@@ -79,7 +79,8 @@ describe('每個頁面都有自己的標題（真實專案）', () => {
   it('解析後的標題彼此不重複（兩個不同的頁面不能有同一個標題）', () => {
     const groups = new Map<string, string[]>()
     for (const i of infos) {
-      if (i.resolved === null) continue
+      // 動態標題（generateMetadata，Sprint 335 起的公開頁實體標題）的內容算不出來，不參與比對；它們的靜態後備標題各自不同，由 E2E 守
+      if (i.resolved === null || i.resolved.includes(DYNAMIC_TITLE_PROBE)) continue
       groups.set(i.resolved, [...(groups.get(i.resolved) ?? []), i.page])
     }
     const duplicated = [...groups.entries()].filter(([, files]) => files.length > 1).map(([title, files]) => `${title}：${files.join('、')}`)
@@ -89,6 +90,33 @@ describe('每個頁面都有自己的標題（真實專案）', () => {
   it('首頁用完整品牌標題（title.absolute），不是「頁名｜品牌」', () => {
     const home = infos.find((i) => i.page === 'app/(storefront)/page.tsx')
     expect(home?.resolved).toBe(SITE_TITLE)
+  })
+})
+
+describe('動態標題頁（generateMetadata）', () => {
+  const pages = listSourceFiles('app', (path) => path.endsWith('/page.tsx'))
+  const dynamicPages = collect(pages).filter((i) => i.resolved?.includes(DYNAMIC_TITLE_PROBE))
+
+  it('實際有用 generateMetadata 的公開頁：店鋪前台四頁與商品／房源詳情，而且都接上了品牌 template', () => {
+    const names = dynamicPages.map((i) => i.page).sort()
+    expect(names).toEqual(
+      [
+        'app/(storefront)/listings/[id]/page.tsx',
+        'app/(storefront)/stores/[slug]/blog/page.tsx',
+        'app/(storefront)/stores/[slug]/page.tsx',
+        'app/(storefront)/stores/[slug]/products/page.tsx',
+        'app/(storefront)/stores/[slug]/rooms/page.tsx',
+      ].sort()
+    )
+    for (const i of dynamicPages) {
+      expect(i.resolved, `${i.page}：動態標題沒有接上品牌 template（上層有字串標題切斷了 template）`).toBe(
+        `${DYNAMIC_TITLE_PROBE}｜${SITE_NAME}`
+      )
+    }
+  })
+
+  it('動態標題頁算「自己有標題」（page.tsx 匯出 generateMetadata）', () => {
+    expect(dynamicPages.every((i) => i.own)).toBe(true)
   })
 })
 
@@ -159,6 +187,13 @@ describe('resolveTitle：模擬 Next 的標題解析', () => {
   it('中間層若重新宣告 template，底下的頁面標題保有品牌', () => {
     const middle: TitleSpec = { kind: 'object', default: '預訂詳情', template: TITLE_TEMPLATE }
     expect(resolveTitle([root, middle, { kind: 'string', text: '預訂付款已取消' }])).toBe(`預訂付款已取消｜${SITE_NAME}`)
+  })
+
+  it('動態標題以探針代入：接上根 template；若上層有字串標題切斷了 template，探針就失去品牌（守門才抓得到）', () => {
+    expect(resolveTitle([root, { kind: 'dynamic' }])).toBe(`${DYNAMIC_TITLE_PROBE}｜${SITE_NAME}`)
+    const cut = resolveTitle([root, { kind: 'string', text: '店鋪' }, { kind: 'dynamic' }])
+    expect(cut).toBe(DYNAMIC_TITLE_PROBE)
+    expect(hasBrand(cut as string)).toBe(false)
   })
 
   it('absolute 不套 template；沒有標題的鏈回傳 null', () => {

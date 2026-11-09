@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0.12（文件修訂；規格基準仍為 v1.0）
+> **版本**: v1.0.13（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -23,6 +23,7 @@
 > - **v1.0.9 → v1.0.10（2026-10-23，Sprint 301，DEF-407／408／409）**：使用者在 Sprint 300 收尾的 `AskUserQuestion` 中本人選擇建議選項（真實的互動輸入，不是我的推論）。①§9.16 新增「營收口徑」：店鋪後台的營收＝已付款、未取消、未退款的訂單（`PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED`），平均客單價的分母為同一組訂單的筆數；②§10.1.1 `/orders/[id]`：買家本人可讀取自己訂單的物流（四個讀取端點放行該訂單的買家，寫入仍限店家／管理員）；③§10.1.1 `/login`：登入後依角色分流（`BUYER`→`/`、店家類→`/dashboard`、管理員→`/admin`），並支援同源站內路徑的 `?redirect=` 回到原頁（不接受外部網址，防開放轉址）。其餘規格內文未改寫。
 > - **v1.0.10 → v1.0.11（2026-10-23，Sprint 302，DEF-412／413）**：使用者在 Sprint 301 收尾的 `AskUserQuestion` 中本人選擇建議選項（真實的互動輸入，不是我的推論）。①§9.16 營收口徑補上退款：退款總額＝全額退款＋部分退款，淨營收＝計入營收的訂單金額 − 這些訂單上的退款（全額退款的訂單已不在營收裡，不再扣第二次）；②§10.1.1 新增 C 端登入守門說明：買家頁面（`(auth)` 路由群組）除認證流程頁面外都需要登入，沒登入導去 `/login?redirect=<原頁>`，`/checkout` 也需登入。其餘規格內文未改寫。
 > - **v1.0.11 → v1.0.12（2026-11-07，Sprint 332，DEF-466）**：使用者決定合併兩套並行的貼文／媒體管理介面。§10.1.2 把 `/cms` 系列四條路由的說明由「與 `/dashboard/*` 並存」改為「已併入並移除、舊網址 308 轉址」，並註記貼文管理列表分頁與媒體管理只剩 `/dashboard/media` 一個介面。路由表 `/dashboard/posts*`、`/dashboard/media` 的列本身沒有改。其餘規格內文未改寫。
+> - **v1.0.12 → v1.0.13（2026-11-09，Sprint 334，DEF-474／476／480）**：使用者在互動選項中本人做了三個決定（真實的互動輸入，不是我的推論）。①§9.15 貼文刪除：已發布的貼文須先下架才能刪（驗收條件 AC-007；後端回 409 `E-4107`）；②§9.15 媒體 API：原 `/api/v2/dashboard/media/*` 已移除，媒體只剩 `/api/v2/media/*` 一套，並與貼文寫入權對齊——能寫貼文的店鋪角色（店主、店員、Seller、Host）都能上傳與刪除媒體，被本店鋪貼文封面圖使用的媒體不能刪（409 `E-8020`）；③貼文與貼文分類的 slug 在標題／名稱清完為空（例如全中文）時改用 `post-<8碼>`／`category-<8碼>`，且標題沒改的儲存不換網址（無需使用者決定，列此備查）。其餘規格內文未改寫。
 
 ---
 
@@ -2076,9 +2077,9 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `PUT` | `/api/v2/dashboard/posts/:id` | 店鋪後台：更新貼文 | Seller/Host/StoreOwner |
 | `DELETE` | `/api/v2/dashboard/posts/:id` | 店鋪後台：刪除貼文（已發布須先下架，否則 409 `E-4107`；Sprint 334，驗收條件 AC-007） | StoreOwner |
 | `PUT` | `/api/v2/dashboard/posts/:id/publish` | 發布/排程發布 | Seller/Host/StoreOwner |
-| `POST` | `/api/v2/dashboard/media` | 上傳媒體 | Seller/Host/StoreOwner |
-| `GET` | `/api/v2/dashboard/media` | 媒體庫列表 | Seller/Host/StoreOwner |
-| `DELETE` | `/api/v2/dashboard/media/:id` | 刪除媒體 | StoreOwner |
+| `POST` | `/api/v2/media/upload`、`/api/v2/media/upload-multipart` | 上傳媒體（Sprint 334：原 `/api/v2/dashboard/media/*` 已移除，媒體只剩這一套） | StoreOwner/StoreStaff/Seller/Host |
+| `GET` | `/api/v2/media` | 媒體庫列表 | StoreOwner/StoreStaff/Seller/Host |
+| `DELETE` | `/api/v2/media/:id` | 刪除媒體（軟刪除；被本店鋪貼文封面圖使用時 409 `E-8020`） | StoreOwner/StoreStaff/Seller/Host |
 
 ### 9.15 M16 ERP 進銷存 API（v0.9 新增）
 

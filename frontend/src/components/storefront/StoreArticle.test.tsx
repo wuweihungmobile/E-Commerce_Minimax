@@ -112,6 +112,15 @@ describe('版面', () => {
     await screen.findByTestId('store-article-title')
     expect(screen.queryByTestId('blog-post-category-link')).toBeNull()
   })
+
+  it('分類徽章連到「這間店鋪」貼文列表的分類篩選（DEF-486）——不是 /blog/category/{id}（那一頁要登入，匿名訪客點了只看到登入提示）', async () => {
+    getPost.mockResolvedValue(post({ categoryId: 'c1', categoryName: '教學' }))
+    renderArticle()
+
+    const href = (await screen.findByTestId('blog-post-category-link')).getAttribute('href')
+    expect(href).toBe('/stores/demo/blog?category=c1')
+    expect(href).not.toContain('/blog/category/')
+  })
 })
 
 describe('找不到與失敗', () => {

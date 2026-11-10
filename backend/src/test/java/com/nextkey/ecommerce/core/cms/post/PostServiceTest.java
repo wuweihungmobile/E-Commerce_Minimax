@@ -17,6 +17,7 @@ import com.nextkey.ecommerce.domain.repository.UserRepository;
 import com.nextkey.ecommerce.shared.constants.AppConstants;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -1132,6 +1133,31 @@ class PostServiceTest {
     @DisplayName("getPublishedPosts()")
     class GetPublishedPosts {
 
+        /**
+         * 前台讀取先確認店鋪是 ACTIVE（Sprint 337，DEF-485）。用 lenient：不是每個案例都會走到那一步；
+         * 狀態寫死 ACTIVE，所以守門若改查別的狀態，這個 stub 對不上、會讓下面的成功案例紅燈。
+         */
+        @BeforeEach
+        void storeIsActive() {
+            lenient().when(tenantRepository.findByIdAndStatus(TEST_TENANT_ID, Tenant.TenantStatus.ACTIVE))
+                    .thenReturn(Optional.of(buildTenant()));
+        }
+
+        @Test
+        @DisplayName("Sprint 337（DEF-485）: 店鋪不是 ACTIVE（或不存在）→ E-2000，而且一篇貼文都不讀（兩種列表查詢都不碰）")
+        void getPublishedPosts_nonActiveStore_throwsE2000_andReadsNothing() {
+            when(tenantRepository.findByIdAndStatus(TEST_TENANT_ID, Tenant.TenantStatus.ACTIVE))
+                    .thenReturn(Optional.empty());
+
+            for (UUID categoryId : new UUID[] {null, TEST_CATEGORY_ID}) {
+                assertThatThrownBy(() -> postService.getPublishedPosts(TEST_TENANT_ID, categoryId, 0, 20))
+                        .isInstanceOf(BusinessException.class)
+                        .extracting(e -> ((BusinessException) e).getErrorCode())
+                        .isEqualTo(ErrorCode.E_2000);
+            }
+            verifyNoInteractions(postRepository, postEmbedRepository);
+        }
+
         @Test
         @DisplayName("Sprint 164: size 帶超大值時，實際查詢頁面大小上限為 100（公開端點，無需登入即可觸發）")
         void getPublishedPosts_hugeSize_cappedAt100() {
@@ -1191,6 +1217,28 @@ class PostServiceTest {
     @Nested
     @DisplayName("getPublishedPostBySlug()")
     class GetPublishedPostBySlug {
+
+        /** 同 {@code GetPublishedPosts#storeIsActive}：先確認店鋪是 ACTIVE（Sprint 337，DEF-485）。 */
+        @BeforeEach
+        void storeIsActive() {
+            lenient().when(tenantRepository.findByIdAndStatus(TEST_TENANT_ID, Tenant.TenantStatus.ACTIVE))
+                    .thenReturn(Optional.of(buildTenant()));
+        }
+
+        @Test
+        @DisplayName("Sprint 337（DEF-485）: 店鋪不是 ACTIVE（或不存在）→ E-2000，不查文章、不計瀏覽、不組回應（countView 兩種都一樣）")
+        void getPublishedPostBySlug_nonActiveStore_throwsE2000_beforeLookingUpOrCounting() {
+            when(tenantRepository.findByIdAndStatus(TEST_TENANT_ID, Tenant.TenantStatus.ACTIVE))
+                    .thenReturn(Optional.empty());
+
+            for (boolean countView : new boolean[] {true, false}) {
+                assertThatThrownBy(() -> postService.getPublishedPostBySlug("test-post", TEST_TENANT_ID, countView))
+                        .isInstanceOf(BusinessException.class)
+                        .extracting(e -> ((BusinessException) e).getErrorCode())
+                        .isEqualTo(ErrorCode.E_2000);
+            }
+            verifyNoInteractions(postRepository, postEmbedRepository);
+        }
 
         @Test
         @DisplayName("getPublishedPostBySlug_incrementsViewCountAtomically")

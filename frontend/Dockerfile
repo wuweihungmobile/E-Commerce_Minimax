@@ -23,7 +23,8 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Build-time API URL (defaults to localhost for local development)
-ARG NEXT_PUBLIC_API_URL=http://localhost:8080/api/v2
+# 不含 /v2：前端每個 API 路徑自己就以 /v2/ 開頭（src/lib/api.ts）（Sprint 337，DEF-355／DEF-490）
+ARG NEXT_PUBLIC_API_URL=http://localhost:8080/api
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 # Build the application

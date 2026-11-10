@@ -294,9 +294,12 @@ public class PostService {
 
     /**
      * 前台：取得已發布貼文列表，可選依分類篩選（DEF-358(c)，Sprint 256）
+     *
+     * <p>只供應 ACTIVE 店鋪（Sprint 337，DEF-485）：店鋪不是 ACTIVE 或不存在 → 404 E-2000，見 {@link #requireActiveStore}。
      */
     @Transactional(readOnly = true)
     public M15Dto.PostListResponse getPublishedPosts(UUID tenantId, UUID categoryId, int page, int size) {
+        requireActiveStore(tenantId);
         PageRequest pageRequest = PageableUtils.of(page, size, 100, Sort.by(Sort.Direction.DESC, "publishedAt"));
         Page<Post> postPage = categoryId != null
                 ? postRepository.findPublishedByTenantIdAndCategoryId(tenantId, categoryId, pageRequest)
@@ -344,6 +347,8 @@ public class PostService {
         if (tenantId == null) {
             throw new BusinessException(ErrorCode.E_9005, "tenantId is required");
         }
+        // 先確認店鋪（Sprint 337，DEF-485），再查文章、再計瀏覽：非 ACTIVE 店鋪不會有任何寫入
+        requireActiveStore(tenantId);
         Post post = postRepository.findByTenantIdAndSlug(tenantId, slug)
                 .orElseThrow(() -> new BusinessException(ErrorCode.E_4100));
 
@@ -364,6 +369,19 @@ public class PostService {
             response.setViewCount((post.getViewCount() == null ? 0 : post.getViewCount()) + 1);
         }
         return response;
+    }
+
+    /**
+     * 公開（匿名）貼文端點只供應 ACTIVE 店鋪（Sprint 337，DEF-485，使用者以互動選項拍板）。
+     *
+     * <p>審核中、被拒、停權、終止與「根本不存在」的店鋪一律同一個 404（E-2000），外人分不出是哪一種，也就不能拿來探測店鋪狀態；
+     * 與公開店鋪（{@code StorefrontController}）、商品詳情、公開素材（{@code PublicMediaService}）的做法相同。
+     * 讀的是店鋪「現在」的狀態（每次請求查一次主鍵），停權與恢復立刻生效。
+     * {@link PostCategoryService#getActiveCategories} 有相同的檢查（同一個模組的另一個公開入口）。
+     */
+    private void requireActiveStore(final UUID tenantId) {
+        tenantRepository.findByIdAndStatus(tenantId, Tenant.TenantStatus.ACTIVE)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
     }
 
     // ========== Embed Parsing ==========

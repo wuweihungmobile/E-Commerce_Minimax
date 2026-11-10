@@ -8,6 +8,7 @@ import { Alert } from '@/components/ui/alert';
 import { Card } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { storeBlogPath } from '@/lib/article-path';
 
 // PRD §6.6.3：只有「listing_id 不存在（已刪除或格式有誤）」才是「此商品已下架」。後端對這兩種情形分別回
 // 404（E-3000 找不到刊登項目）與 400（E-9000 路徑參數格式錯誤）；其餘失敗（網路中斷、5xx、429…）商品可能好好的，
@@ -229,11 +230,11 @@ export function StoreArticle({ storeSlug, tenantId, postSlug }: StoreArticleProp
               {post.title}
             </h2>
 
-            {/* Category & Tags */}
+            {/* Category & Tags：徽章連到這間店鋪貼文列表的分類篩選（Sprint 337，DEF-486）——原本連到 /blog/category/{id}，匿名訪客點了只看到登入提示 */}
             {post.categoryName && post.categoryId && (
               <div className="mb-4">
                 <Link
-                  href={`/blog/category/${post.categoryId}`}
+                  href={storeBlogPath(storeSlug, { categoryId: post.categoryId })}
                   className={buttonVariants({ variant: "secondary", size: "sm" })}
                   data-testid="blog-post-category-link"
                 >

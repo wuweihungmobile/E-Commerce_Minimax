@@ -20,6 +20,10 @@ export default async function StoreBlogPage({
   const sp = await searchParams
   const pageRaw = typeof sp.page === "string" ? parseInt(sp.page, 10) : 1
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw - 1 : 0
+  // 分類篩選（Sprint 337，DEF-486）：?category={分類編號}；沒有或空字串＝全部。格式不在這裡檢查——
+  // 列表元件會拿它對照公開的分類清單，對不上（網址亂填、分類已被停用）一律顯示「此分類不存在或已停用」，也不會送出貼文請求。
+  const categoryRaw = typeof sp.category === "string" ? sp.category.trim() : ""
+  const categoryId = categoryRaw === "" ? undefined : categoryRaw
 
-  return <StoreBlogView slug={slug} page={page} />
+  return <StoreBlogView slug={slug} page={page} categoryId={categoryId} />
 }

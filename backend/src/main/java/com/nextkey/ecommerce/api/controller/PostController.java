@@ -188,6 +188,8 @@ public class PostController {
     }
 
     // ========== Public APIs (前台) ==========
+    // Sprint 337（DEF-485）：下面三個匿名端點（貼文列表、單篇、公開分類）只供應 ACTIVE 店鋪；店鋪不是 ACTIVE 或不存在 → 404 E-2000，
+    // 外人分不出是哪一種。規則在 PostService／PostCategoryService（讀店鋪現在的狀態），這裡不重複判斷。
 
     /**
      * 取得已發布貼文列表（公開）

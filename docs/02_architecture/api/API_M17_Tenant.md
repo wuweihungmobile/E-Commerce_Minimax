@@ -348,6 +348,8 @@ PENDING_REVIEW ──reject（§4.24）──→ REJECTED（終態，可重新�
 | 同 §4.15 | 404 | `E-2000` |
 
 > **貼文列表不另建端點**：`/stores/[slug]/blog` 前端取得 `slug` 對應的 `tenantId`（呼叫 §4.15）後，直接呼叫既有公開端點 `GET /v2/posts?tenantId=`（`PostController`，已 `permitAll`），不重複實作。
+>
+> **分類篩選（Sprint 337，DEF-486）**：同一頁以網址 `?category={分類編號}` 篩選，分類來自既有公開端點 `GET /v2/posts/categories?tenantId=`、貼文篩選用 `GET /v2/posts?tenantId=&categoryId=`（皆不新增端點；細節見 [API_M15_CMS.md](API_M15_CMS.md) §4.19～4.21）。這三個貼文端點自 Sprint 337 起只供應 `ACTIVE` 店鋪，非 `ACTIVE` 或不存在一律 404 `E-2000`（DEF-485），與本文件 §4.15 的規則一致。
 
 ---
 

@@ -606,7 +606,8 @@ REDIS_PORT=6379
 **前端 (Next.js)**:
 ```bash
 # 格式: NEXT_PUBLIC_{name} for client-exposed
-NEXT_PUBLIC_API_URL=http://localhost:8080/api/v2
+# 不含 /v2：前端每個 API 路徑自己就以 /v2/ 開頭（Sprint 337 更正，DEF-355／DEF-490）
+NEXT_PUBLIC_API_URL=http://localhost:8080/api
 NEXT_PUBLIC_APP_ENV=development
 ```
 

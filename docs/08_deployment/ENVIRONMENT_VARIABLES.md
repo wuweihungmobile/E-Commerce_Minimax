@@ -1,7 +1,7 @@
 # 環境變數說明 / Environment Variables
 
 > **文件類型**: 部署指南（環境變數）
-> **版本**: v1.1
+> **版本**: v1.3（檔頭原本停在 v1.1，修訂紀錄已有 v1.2；Sprint 337 一併對齊）
 > **建立日期**: 2026-10-03（Sprint 244，文件對齊 3/3；v1.1 為收尾追加）
 > **依據**: `backend/src/main/resources/application.yml`、後端 `@Value` 與條件式 bean、`docker-compose.yml`、`docker-compose.override.yml`、`.env.example`、`frontend/src`（`NEXT_PUBLIC_*`）、`scripts/validate-e2e.sh`、`Makefile`
 > **讀者**: 部署與維運人員、後端與前端開發者
@@ -114,7 +114,8 @@
 
 | 變數 | 預設值 | 用途 | 生效時機 | 說明 |
 |------|--------|------|----------|------|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8080/api/v2`（compose 的 build arg 與 `.env.example`） | 前端呼叫的 API 基底網址 | **建置時**（內嵌於 bundle） | 改變數後必須重新建置映像檔 |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8080/api`（compose 的 build arg 與預設值、`.env.example`、`frontend/Dockerfile` 的 ARG）。**不可含 `/v2`** | 瀏覽器端呼叫後端用的基底網址 | **建置時**（內嵌於 bundle） | 改變數後必須重新建置映像檔。前端每個 API 路徑自己就以 `/v2/` 開頭（`src/lib/api.ts`），多寫一段會變成 `/api/v2/v2/…`，後端回 `E-1000`，登入、註冊全部失敗（DEF-014 根因；`scripts/validate-e2e.sh` 一直用不含 `/v2` 的值）。**歷史**：compose、`.env.example`、Dockerfile 曾經寫成 `…/api/v2`（DEF-355，Sprint 248 實測發現；DEF-490 於 Sprint 336 重複登記），Sprint 337 使用者明確指示後改正。**既有的 `.env` 若是用舊版 `.env.example` 複製的**（`make setup` 只在 `.env` 不存在時才建立），要手動把這一行改成不含 `/v2`，否則 compose 的 `${NEXT_PUBLIC_API_URL:-預設值}` 仍會取 `.env` 的舊值 |
+| `API_INTERNAL_URL` | `http://backend:8080/api`（`docker-compose.yml`，正式與 CI 模擬）；`http://ecommerce-backend-dev:8080/api`（`docker-compose.override.yml`，開發，合併時以 override 為準，不受 `.env` 影響）；不走 compose（例如 `npm run dev` 直連本機後端）時程式預設 `http://localhost:8080/api` | Next **伺服器端**（Server Component、`generateMetadata`）呼叫後端公開 API 用的基底網址（`src/lib/server-api.ts`）。沒有 `NEXT_PUBLIC_` 前綴＝只存在於伺服器，不會進瀏覽器的 bundle | **執行時**（伺服器端每次請求才讀 `process.env`，不內嵌於 bundle） | 容器網路裡的 `localhost` 是前端容器自己，連不到後端，所以 compose 要指向後端服務（service 名稱 `backend`，context path `/api`）。取不到（沒設、連不上、逾時 2 秒）時，公開頁的標題退回靜態的頁型標題，頁面照常顯示（DEF-475、DEF-483）。正式（`docker-compose.yml`）於 Sprint 337 加入（使用者明確指示）；開發（override）於 Sprint 336 加入 |
 | `NEXT_PUBLIC_OAUTH_GOOGLE_CLIENT_ID` | 空 | 前端的 Google 登入按鈕 | 建置時 | 與後端 `OAUTH_GOOGLE_CLIENT_ID` 對應；compose 未傳遞 |
 | `NEXT_PUBLIC_OAUTH_GITHUB_CLIENT_ID` | 空 | 前端的 GitHub 登入按鈕 | 建置時 | 與後端 `OAUTH_GITHUB_CLIENT_ID` 對應；compose 未傳遞 |
 
@@ -130,7 +131,8 @@
 | `REDIS_PASSWORD` | `redis-dev-password` | **開發用預設值**，正式必須覆寫 |
 | `JWT_SECRET` | `your-256-bit-secret-key-please-change-in-production` | 含 `change-in-production`，後端拒絕啟動，正式必須覆寫 |
 | `STRIPE_SECRET_KEY`、`STRIPE_WEBHOOK_SECRET` | `sk_test_placeholder`、空 | 見 §2.7 |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8080/api/v2` | 見 §3 |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8080/api`（不含 `/v2`） | 見 §3 |
+| `API_INTERNAL_URL` | `http://backend:8080/api`（開發的 override 另設，見 §3） | 見 §3 |
 
 `.env.example` 列出 `DOCKER_PLATFORM`、`SPRING_PROFILES_ACTIVE`、`NEXT_PUBLIC_API_URL`、`JWT_SECRET`、`POSTGRES_*`、`REDIS_PASSWORD`、`SMTP_*`、`APP_FRONTEND_BASE_URL`、`APP_CORS_ALLOWED_ORIGINS`、`APP_SCHEDULING_ENABLED`，以及 CI 用的註解行。**沒有列出** Stripe、儲存、OAuth 與逾時變數（見 §7）。
 
@@ -197,6 +199,7 @@
 | v1.0 | 2026-10-03 | 首版（Sprint 244）：依 `application.yml`、`@Value`、`docker-compose.yml`、`.env.example` 與前端程式核對；新增 §5 功能開關與 §6 上線前檢查 | Claude Code（Sprint 244） |
 | v1.1 | 2026-10-03 | Sprint 244 收尾追加（使用者授權）：compose 補傳 `SMTP_*`、`APP_FRONTEND_BASE_URL`、`APP_CORS_ALLOWED_ORIGINS`、`APP_SCHEDULING_ENABLED`；`.env.example` 同步列出；§2、§4、§7 更新 | Claude Code（Sprint 244） |
 | v1.2 | 2026-10-09 | Sprint 246（DEF-352）：新增 `BOOKING_NO_SHOW_AUTO_CANCEL_ENABLED`（預設關閉）與相關排程設定（§2.6）；§6 新增上線前檢查第 10 項 | Claude Sonnet 5（Sprint 246） |
+| v1.3 | 2026-11-11 | Sprint 337（DEF-355／DEF-490，使用者明確指示）：`NEXT_PUBLIC_API_URL` 預設值改為不含 `/v2`（compose、`.env.example`、`frontend/Dockerfile`；§3、§4），並註記既有 `.env` 要手動改；新增 `API_INTERNAL_URL`（§3、§4；正式 `docker-compose.yml` 於本版加入，開發 override 於 Sprint 336 加入）；檔頭版本對齊修訂紀錄 | Claude Sonnet 5.5（Sprint 337） |
 
 ---
 

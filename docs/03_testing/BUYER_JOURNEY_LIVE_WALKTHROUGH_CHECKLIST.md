@@ -29,7 +29,7 @@
 ### A-2. 🔴 關鍵環境變數修正（DEF-014 雙前綴陷阱）
 - [ ] **確認 `NEXT_PUBLIC_API_URL=http://localhost:8080/api`**（**不是** `/api/v2`）
   - 原因：前端每個端點已自帶 `/v2`（見 `frontend/src/lib/api.ts`）；若設 `/api/v2` 會變成 `/api/v2/v2/...` → 401
-  - compose 預設值為 `/api/v2`（`docker-compose.yml`），走查前需覆寫為 `/api`
+  - compose 預設值原本是 `/api/v2`，**Sprint 337 起已改為 `/api`**（`docker-compose.yml`／`docker-compose.override.yml`／`.env.example`，DEF-355／DEF-490）；但**既有的 `.env`**（用舊版 `.env.example` 複製的，`make setup` 只在 `.env` 不存在時才建立）可能還帶 `/api/v2`，會蓋過 compose 的預設值——走查前確認 `.env` 裡的 `NEXT_PUBLIC_API_URL`（`grep NEXT_PUBLIC_API_URL .env`），舊值要改成 `http://localhost:8080/api`
   - 對照：`scripts/validate-e2e.sh` 即用 `http://localhost:8080/api` 並附警告註解
 
 ### A-3. 🔴 種子資料（否則首頁無商品可逛）

@@ -9,6 +9,7 @@ import com.nextkey.ecommerce.domain.repository.cms.PostRepository;
 import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.shared.exception.BusinessException;
 import com.nextkey.ecommerce.shared.exception.ErrorCode;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -539,6 +540,29 @@ class PostCategoryServiceTest {
     @DisplayName("getActiveCategories()")
     class GetActiveCategories {
 
+        /**
+         * 前台讀取先確認店鋪是 ACTIVE（Sprint 337，DEF-485）。用 lenient：不是每個案例都會走到那一步；
+         * 狀態寫死 ACTIVE，所以守門若改查別的狀態，這個 stub 對不上、會讓下面的成功案例紅燈。
+         */
+        @BeforeEach
+        void storeIsActive() {
+            lenient().when(tenantRepository.findByIdAndStatus(TEST_TENANT_ID, Tenant.TenantStatus.ACTIVE))
+                    .thenReturn(Optional.of(buildTenant()));
+        }
+
+        @Test
+        @DisplayName("Sprint 337（DEF-485）: 店鋪不是 ACTIVE（或不存在）→ E-2000，而且不讀任何分類")
+        void getActiveCategories_nonActiveStore_throwsE2000_andReadsNothing() {
+            when(tenantRepository.findByIdAndStatus(TEST_TENANT_ID, Tenant.TenantStatus.ACTIVE))
+                    .thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> postCategoryService.getActiveCategories(TEST_TENANT_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_2000);
+            verifyNoInteractions(postCategoryRepository);
+        }
+
         @Test
         @DisplayName("getActiveCategories_success_onlyQueriesActiveOnes")
         void getActiveCategories_success_onlyQueriesActiveOnes() {
@@ -588,6 +612,8 @@ class PostCategoryServiceTest {
         void getActiveCategories_tenantIsolation() {
             // Arrange
             UUID otherTenantId = UUID.randomUUID();
+            when(tenantRepository.findByIdAndStatus(otherTenantId, Tenant.TenantStatus.ACTIVE))
+                    .thenReturn(Optional.of(buildTenant()));
             when(postCategoryRepository.findByTenantIdAndIsActiveTrue(otherTenantId))
                     .thenReturn(List.of());
 

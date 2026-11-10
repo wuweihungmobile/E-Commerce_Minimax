@@ -15,3 +15,27 @@ export function articlePath(storeSlug: string | null | undefined, postSlug: stri
   const post = encodeURIComponent(postSlug)
   return storeSlug ? `/stores/${encodeURIComponent(storeSlug)}/blog/${post}` : `/blog/${post}`
 }
+
+/**
+ * 店鋪貼文列表的網址（Sprint 337，DEF-486）：/stores/{店鋪}/blog，可帶分類篩選與頁碼。
+ *
+ * 公開版的分類篩選：分類由網址的 category 決定（不再靠瀏覽器 localStorage 的 tenantId，匿名訪客也能用）。
+ * 文章頁的分類徽章與列表頁的篩選列、分頁都從這裡取，網址形狀只寫一處。
+ *
+ * @param storeSlug 店鋪的網址代稱
+ * @param options.categoryId 分類編號；沒有（null／undefined／空字串）＝全部，不帶 category
+ * @param options.page 1-based 頁碼（網址慣例）；沒有或 1＝第一頁，不帶 page
+ *
+ * 查詢字串只帶有值的項目，category 在前、page 在後；切換分類時呼叫端不傳 page，所以一定回到第一頁。
+ */
+export function storeBlogPath(
+  storeSlug: string,
+  options: { categoryId?: string | null; page?: number } = {}
+): string {
+  const base = `/stores/${encodeURIComponent(storeSlug)}/blog`
+  const params = new URLSearchParams()
+  if (options.categoryId) params.set('category', options.categoryId)
+  if (options.page !== undefined && options.page > 1) params.set('page', String(options.page))
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}

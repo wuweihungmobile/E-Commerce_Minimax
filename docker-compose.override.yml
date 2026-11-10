@@ -14,7 +14,8 @@ services:
     build:
       target: builder
       args:
-        - NEXT_PUBLIC_API_URL=http://localhost:8080/api/v2
+        # Sprint 337（DEF-355／DEF-490，使用者明確指示）：不含 /v2，理由見 docker-compose.yml。
+        - NEXT_PUBLIC_API_URL=http://localhost:8080/api
     container_name: ecommerce-frontend-dev
     environment:
       - NODE_ENV=development

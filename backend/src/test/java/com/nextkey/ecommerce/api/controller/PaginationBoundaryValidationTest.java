@@ -2,6 +2,7 @@ package com.nextkey.ecommerce.api.controller;
 
 import java.util.UUID;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +12,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
+import com.nextkey.ecommerce.domain.repository.TenantRepository;
 import com.nextkey.ecommerce.integration.IntegrationTestConfiguration;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -42,11 +45,35 @@ class PaginationBoundaryValidationTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private TenantRepository tenantRepository;
+
+    private UUID storeId;
+
+    @AfterEach
+    void cleanUp() {
+        if (storeId != null) {
+            tenantRepository.deleteById(storeId);
+        }
+    }
+
+    /**
+     * 要用真實存在、ACTIVE 的店鋪（Sprint 337，DEF-485）：公開貼文端點現在先確認店鋪是 ACTIVE，不存在的店鋪直接 404，
+     * 用隨機 tenantId 會在那一步就結束，根本走不到被測的 {@code PageableUtils} 正規化，這兩個案例就失去鑑別力。
+     */
+    private String activeStoreId() {
+        long stamp = System.nanoTime();
+        Tenant store = tenantRepository.saveAndFlush(Tenant.builder().name("分頁邊界店 " + stamp).slug("page-bound-" + stamp)
+                .contactEmail("page-bound-" + stamp + "@example.com").status(Tenant.TenantStatus.ACTIVE).build());
+        storeId = store.getId();
+        return storeId.toString();
+    }
+
     @Test
     @DisplayName("GET /v2/posts?size=0 → 200（靜默正規化為合法頁面大小），而非 500")
     void getPublishedPosts_sizeZero_returns200NotInternalServerError() throws Exception {
         mockMvc.perform(get("/v2/posts")
-                        .param("tenantId", UUID.randomUUID().toString())
+                        .param("tenantId", activeStoreId())
                         .param("size", "0"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
@@ -56,7 +83,7 @@ class PaginationBoundaryValidationTest {
     @DisplayName("GET /v2/posts?page=-1 → 200（靜默正規化為合法頁碼），而非 500")
     void getPublishedPosts_negativePage_returns200NotInternalServerError() throws Exception {
         mockMvc.perform(get("/v2/posts")
-                        .param("tenantId", UUID.randomUUID().toString())
+                        .param("tenantId", activeStoreId())
                         .param("page", "-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));

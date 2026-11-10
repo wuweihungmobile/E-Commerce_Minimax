@@ -18,13 +18,19 @@ services:
       dockerfile: Dockerfile
       target: runner
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080/api/v2}
+        # Sprint 337（DEF-355／DEF-490，使用者明確指示）：不可含 /v2——前端每個 API 路徑自己就以 /v2/ 開頭（src/lib/api.ts），
+        # 多寫一段會變成 /api/v2/v2/…（後端 E-1000）。
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080/api}
     container_name: ecommerce-frontend
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080/api/v2}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080/api}
+      # Sprint 337（使用者明確指示）：Next 伺服器端（generateMetadata）呼叫後端公開 API 用的基底網址（frontend/src/lib/server-api.ts）。
+      # 容器網路內的 localhost 是前端容器自己，連不到後端；這裡指向同一個 compose 網路的後端服務（service 名稱 backend，context path /api）。
+      # 開發用的 docker-compose.override.yml 另外設為 http://ecommerce-backend-dev:8080/api，合併時以 override 為準。
+      - API_INTERNAL_URL=${API_INTERNAL_URL:-http://backend:8080/api}
     depends_on:
       backend:
         condition: service_healthy

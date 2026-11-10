@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0.14（文件修訂；規格基準仍為 v1.0）
+> **版本**: v1.0.15（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -25,6 +25,7 @@
 > - **v1.0.11 → v1.0.12（2026-11-07，Sprint 332，DEF-466）**：使用者決定合併兩套並行的貼文／媒體管理介面。§10.1.2 把 `/cms` 系列四條路由的說明由「與 `/dashboard/*` 並存」改為「已併入並移除、舊網址 308 轉址」，並註記貼文管理列表分頁與媒體管理只剩 `/dashboard/media` 一個介面。路由表 `/dashboard/posts*`、`/dashboard/media` 的列本身沒有改。其餘規格內文未改寫。
 > - **v1.0.13 → v1.0.14（2026-11-10，Sprint 336，DEF-482／483）**：使用者在互動選項中本人做了兩個決定（真實的互動輸入，不是我的推論）。①§10.1.1 文章頁網址：由 `/blog/[slug]` 改為 `/stores/[slug]/blog/[postSlug]`（網址帶店鋪）——原本的文章頁靠瀏覽器 localStorage 的 tenantId 取文章，只有登入才有，匿名訪客（含從公開的店鋪貼文列表點進來的人）只看到登入提示，伺服器端也查不到文章所以沒有實體標題；新網址由網址決定店鋪，匿名可讀，並有「文章標題｜店名」的 `<title>` 與文章型 Open Graph；舊網址 `/blog/[slug]` 保留為導向頁（登入且選定店鋪的人導向新網址；匿名訪客維持原本的登入提示）。②§9.15／§8.2.6 媒體庫：每個素材有「公開」開關（`media_assets.is_public`，預設私有，既有素材全部維持私有）；公開的素材可由匿名端點 `GET /api/v2/public/media/:id` 讀取，私有、已刪除、店鋪非 ACTIVE 一律 404。另：`GET /api/v2/posts/:slug` 新增選填參數 `countView`（預設 true；Next 伺服器端組標題時傳 false，不計瀏覽），貼文回應新增 `tenantSlug`。其餘規格內文未改寫。
 > - **v1.0.12 → v1.0.13（2026-11-09，Sprint 334，DEF-474／476／480）**：使用者在互動選項中本人做了三個決定（真實的互動輸入，不是我的推論）。①§9.15 貼文刪除：已發布的貼文須先下架才能刪（驗收條件 AC-007；後端回 409 `E-4107`）；②§9.15 媒體 API：原 `/api/v2/dashboard/media/*` 已移除，媒體只剩 `/api/v2/media/*` 一套，並與貼文寫入權對齊——能寫貼文的店鋪角色（店主、店員、Seller、Host）都能上傳與刪除媒體，被本店鋪貼文封面圖使用的媒體不能刪（409 `E-8020`）；③貼文與貼文分類的 slug 在標題／名稱清完為空（例如全中文）時改用 `post-<8碼>`／`category-<8碼>`，且標題沒改的儲存不換網址（無需使用者決定，列此備查）。其餘規格內文未改寫。
+> - **v1.0.14 → v1.0.15（2026-11-11，Sprint 337，DEF-485／486）**：使用者回覆的兩個決定（DEF-486 是對 Sprint 336 收尾總結的內嵌回覆「要」；DEF-485 是互動選項中本人選了「全擋並回 404」，真實的輸入，不是我的推論）。①§9.15 公開貼文三個端點（`GET /api/v2/posts`、`/posts/:slug`、`/posts/categories`）只供應 `ACTIVE` 店鋪：店鋪非 `ACTIVE`（審核中、被拒、停權、終止）或不存在一律 404 `E-2000`，外人分不出是哪一種；②§10.1.1 `/stores/[slug]/blog` 新增公開版分類篩選（網址 `?category=`，匿名可用），文章頁的分類徽章改連過去；`/blog/category/[id]` 路由列註記「沒有任何連結指向它」。其餘規格內文未改寫。
 
 ---
 
@@ -2072,7 +2073,7 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 
 | 方法 | 端點 | 說明 | 角色 |
 |------|------|------|------|
-| `GET` | `/api/v2/posts` | 前台：公開貼文列表 | Guest+ |
+| `GET` | `/api/v2/posts` | 前台：公開貼文列表（可帶 `categoryId` 篩選）。**下面三個公開端點（列表、詳情、分類）只供應 `ACTIVE` 店鋪（Sprint 337，DEF-485）：店鋪非 `ACTIVE` 或不存在 → 404 `E-2000`，不區分是哪一種** | Guest+ |
 | `GET` | `/api/v2/posts/:slug` | 前台：貼文詳情 (含解析嵌入卡片)。需帶 `tenantId`；選填 `countView`（預設 true＝瀏覽數 +1；傳 false 不計瀏覽，給 Next 伺服器端組標題用，Sprint 336）；回應含 `tenantSlug`（文章的公開網址是 `/stores/{tenantSlug}/blog/{slug}`） | Guest+ |
 | `GET` | `/api/v2/posts/categories` | 貼文分類列表 | Guest+ |
 | `POST` | `/api/v2/dashboard/posts` | 店鋪後台：建立貼文 | Seller/Host/StoreOwner |
@@ -2167,11 +2168,11 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `/notifications` | M09 | 通知中心 | 不變 |
 | `/blog` | M15 | CMS 貼文列表 | 不變 |
 | `/blog/[slug]` | M15 | **（Sprint 336，DEF-483）舊的文章網址，保留為導向頁**：登入且選定店鋪的人（改版前唯一打得開它的人）被導向 `/stores/[slug]/blog/[postSlug]`；匿名訪客維持原本的「請先登入並設定店鋪以瀏覽部落格」提示 | 改為導向 |
-| `/blog/category/[id]` | M15 | **已補齊（DEF-358c，Sprint 256）**：貼文分類篩選頁 | 已完成 |
+| `/blog/category/[id]` | M15 | **已補齊（DEF-358c，Sprint 256）**：貼文分類篩選頁。**（Sprint 337，DEF-486）** 文章頁的分類徽章已改連店鋪前台的公開篩選 `/stores/[slug]/blog?category=`；這一頁（登入者專用，tenantId 取自 localStorage）沒有動，生產碼中沒有任何連結指向它，去留未決（DEF-491） | 已完成（已無入口） |
 | `/stores/[slug]` | M17 | 店鋪前台首頁（Sprint 252） | 不變 |
 | `/stores/[slug]/products` | M17/M01 | 店鋪商品列表（Sprint 252） | 不變 |
 | `/stores/[slug]/rooms` | M17/M02 | 店鋪房源列表（Sprint 252） | 不變 |
-| `/stores/[slug]/blog` | M17/M15 | 店鋪貼文列表（Sprint 252） | 不變 |
+| `/stores/[slug]/blog` | M17/M15 | 店鋪貼文列表（Sprint 252）。**（Sprint 337，DEF-486）公開版分類篩選**：網址 `?category={分類編號}`（可再帶 `&page=`），篩選列是「全部」＋店鋪啟用中的分類，匿名可用；換分類回第一頁、翻頁保留分類；分類編號對不上（亂填、已停用）顯示「此分類不存在或已停用」並不送出貼文請求；分類存在但沒有已發布貼文顯示「此分類尚無已發布的貼文」 | 新增分類篩選 |
 | `/stores/[slug]/blog/[postSlug]` | M17/M15 | **店鋪文章頁（Sprint 336，DEF-483，使用者拍板「文章網址帶店鋪」）**：貼文詳情（含嵌入購買卡片），取代原本的 `/blog/[slug]`；店鋪由網址決定，**匿名訪客可讀**（店鋪非 ACTIVE 整頁 404）；`<title>` 為「文章標題｜店名」，另有 description 與文章型 Open Graph | 改名＋改為匿名可讀 |
 
 **本節未收錄於原 PRD、但實際已存在的 C 端路由**（Sprint 253 補列，非窮舉每條巢狀子路由）：`/account`（個資下載/刪除帳戶自助頁）、`/addresses`、`/cart`／`/checkout` 下的 `mixed`／`product` 分流、`/returns`、`/returns/[id]`、`/returns/new`、`/reviews/product/[listingId]`、`/support/tickets`、`/support/tickets/[id]`、`/forgot-password`、`/reset-password`、`/verify-email`、`/tenant/apply`（開店申請入口）。

@@ -78,6 +78,19 @@ test.describe('AT-ARTICLE-TITLES-REAL: 文章頁（真實後端）', () => {
     return (await response.json()).data.viewCount as number;
   }
 
+  /**
+   * 三個公開貼文端點（列表、單篇、公開分類）對這間店鋪回的狀態碼（Sprint 337，DEF-485）。
+   * 單篇帶 countView=false，不動瀏覽數；其餘兩個端點不看這個參數。
+   */
+  async function publicPostApiStatuses(request: APIRequestContext): Promise<Record<string, number>> {
+    const statuses: Record<string, number> = {};
+    for (const path of ['/v2/posts', `/v2/posts/${postSlug}`, '/v2/posts/categories']) {
+      const response = await request.get(`${API_BASE}${path}`, { params: { tenantId, countView: 'false' } });
+      statuses[path] = response.status();
+    }
+    return statuses;
+  }
+
   test('E2E-ARTICLE-01: 匿名訪客從店鋪貼文列表點進文章 → 看得到文章（之前是「請先登入並設定店鋪以瀏覽部落格」）', async ({ page }: { page: Page }) => {
     await page.goto(`/stores/${storeSlug}/blog`);
     const link = page.getByRole('link', { name: new RegExp(POST_TITLE) });
@@ -139,10 +152,17 @@ test.describe('AT-ARTICLE-TITLES-REAL: 文章頁（真實後端）', () => {
     await expect(page.getByText(DRAFT_TITLE)).toHaveCount(0);
   });
 
-  test('E2E-ARTICLE-05: 停權的店鋪 → 文章頁整頁不公開（標題退回靜態、不含文章標題與店名），恢復後又回來', async ({ page, request }: { page: Page; request: APIRequestContext }) => {
+  test('E2E-ARTICLE-05: 停權的店鋪 → 文章頁整頁不公開（標題退回靜態、不含文章標題與店名），公開貼文 API 也都是 404，恢復後又回來', async ({ page, request }: { page: Page; request: APIRequestContext }) => {
+    const readable = { '/v2/posts': 200, [`/v2/posts/${postSlug}`]: 200, '/v2/posts/categories': 200 };
+    const hidden = { '/v2/posts': 404, [`/v2/posts/${postSlug}`]: 404, '/v2/posts/categories': 404 };
+    expect(await publicPostApiStatuses(request), '對照組：營業中的店鋪，三個公開貼文端點都讀得到').toEqual(readable);
+
     const adminToken = await adminAccessToken(page);
     await setStoreStatusWithToken(page, adminToken, tenantId, 'SUSPENDED');
     try {
+      // DEF-485（Sprint 337）：不只是頁面——直接打公開貼文 API 也一樣（之前停權店鋪的已發布貼文仍讀得到，只是畫面先擋了）
+      expect(await publicPostApiStatuses(request), '管理員停權後，三個公開貼文端點立刻都是 404').toEqual(hidden);
+
       const html = await (await request.get(`${WEB_BASE}${articleUrl(postSlug)}`)).text();
       expect(html).toContain(`<title>部落格文章｜${BRAND}</title>`);
       expect(html, '停權店鋪的文章標題不能出現在 HTML').not.toContain(POST_TITLE);
@@ -156,6 +176,7 @@ test.describe('AT-ARTICLE-TITLES-REAL: 文章頁（真實後端）', () => {
     }
     const restored = await (await request.get(`${WEB_BASE}${articleUrl(postSlug)}`)).text();
     expect(restored, '不快取：恢復營業後標題立刻回來').toContain(`<title>${POST_TITLE}｜${storeName}｜${BRAND}</title>`);
+    expect(await publicPostApiStatuses(request), '恢復營業後，公開貼文 API 立刻又讀得到').toEqual(readable);
   });
 
   test('E2E-ARTICLE-06: 舊網址 /blog/{文章}——登入的店主被導向新網址並看到文章（且只計一次瀏覽）；匿名訪客維持原本的登入提示', async ({ page, browser, request }: { page: Page; browser: import('@playwright/test').Browser; request: APIRequestContext }) => {

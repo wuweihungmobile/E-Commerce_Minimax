@@ -22,7 +22,8 @@ services:
     container_name: ci-frontend
     environment:
       - NODE_ENV=test
-      - NEXT_PUBLIC_API_URL=http://localhost:8080/api/v2
+      # Sprint 337（DEF-355／DEF-490）：不含 /v2，理由見 docker-compose.yml。
+      - NEXT_PUBLIC_API_URL=http://localhost:8080/api
     healthcheck:
       interval: 5s
       timeout: 3s

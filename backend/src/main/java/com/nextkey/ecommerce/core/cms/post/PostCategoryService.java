@@ -141,9 +141,14 @@ public class PostCategoryService {
      *
      * <p>與 {@link #getCategories} 的差異：Dashboard 管理視角需要看到停用中的分類才能重新啟用，
      * 前台訪客不應看到店主已停用、刻意隱藏的分類。
+     *
+     * <p>只供應 ACTIVE 店鋪（Sprint 337，DEF-485）：店鋪不是 ACTIVE 或不存在 → 404 E-2000，
+     * 與 {@code PostService#getPublishedPosts}、{@code PostService#getPublishedPostBySlug} 同一個規則（這是同一個模組的第三個公開入口）。
      */
     @Transactional(readOnly = true)
     public M15Dto.CategoryListResponse getActiveCategories(UUID tenantId) {
+        tenantRepository.findByIdAndStatus(tenantId, Tenant.TenantStatus.ACTIVE)
+                .orElseThrow(() -> new BusinessException(ErrorCode.E_2000));
         List<PostCategory> categories = postCategoryRepository.findByTenantIdAndIsActiveTrue(tenantId);
 
         List<M15Dto.CategoryResponse> responses = categories.stream()

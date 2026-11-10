@@ -21,4 +21,7 @@ public class UpdateMediaRequest {
     private String altText;
 
     private String title;
+
+    /** 公開開關（Sprint 336，DEF-482）；null＝不變。 */
+    private Boolean isPublic;
 }

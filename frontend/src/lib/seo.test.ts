@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchPublicData } from './server-api'
-import { listingMetadata, storeMetadata } from './seo'
+import { listingMetadata, postMetadata, storeMetadata } from './seo'
 import { SITE_NAME } from './site'
 
 // DEF-475（Sprint 335）：公開頁（店鋪前台、商品／房源詳情）的標題原本是靜態的頁型名稱（「店鋪首頁」「商品／房源詳情」），
@@ -29,6 +29,25 @@ const store = (extra: Record<string, unknown> = {}) => ({
   data: { tenantId: 't1', slug: 'demo', name: '山海小店', description: '賣山也賣海', logoUrl: null, ...extra },
 })
 const LISTING_ID = '0b135be9-bf30-4ddb-ab3f-092f3e26b845'
+const TENANT_ID = '3f2a1c9e-5b7d-4e8f-9a6b-1c2d3e4f5a6b'
+const post = (extra: Record<string, unknown> = {}) => ({
+  data: {
+    title: '手沖入門：從選豆開始',
+    excerpt: '三個步驟學會手沖',
+    content: '內文',
+    featuredImageUrl: null,
+    publishedAt: '2026-11-01T08:00:00Z',
+    ...extra,
+  },
+})
+/** 依請求的路徑回不同內容：店鋪 → store，文章 → post；其餘 404 */
+function routeFetch(routes: { store?: Response | Error; post?: Response | Error }) {
+  fetchMock.mockImplementation(async (url: string) => {
+    const hit = String(url).includes('/v2/public/stores/') ? routes.store : String(url).includes('/v2/posts/') ? routes.post : undefined
+    if (hit instanceof Error) throw hit
+    return hit ?? json({}, 404)
+  })
+}
 const listing = (extra: Record<string, unknown> = {}) => ({
   data: { id: LISTING_ID, title: '手沖咖啡豆', description: '淺焙', coverImageUrl: null, ...extra },
 })
@@ -187,5 +206,94 @@ describe('listingMetadata：商品／房源詳情', () => {
     expect(await listingMetadata(LISTING_ID, '商品／房源詳情')).toEqual({ title: '商品／房源詳情' })
     fetchMock.mockRejectedValue(new TypeError('fetch failed'))
     expect(await listingMetadata(LISTING_ID, '商品／房源詳情')).toEqual({ title: '商品／房源詳情' })
+  })
+})
+
+
+describe('postMetadata：文章頁（Sprint 336，DEF-483）', () => {
+  const storeWithTenant = (extra: Record<string, unknown> = {}) => json(store({ tenantId: TENANT_ID, ...extra }))
+
+  it('標題是「文章標題｜店名」；Open Graph 是文章型、帶發布時間，網址是 /stores/<店>/blog/<文章>', async () => {
+    routeFetch({ store: storeWithTenant(), post: json(post()) })
+    const meta = await postMetadata('demo', 'hand-brew', '部落格文章')
+    expect(meta.title).toBe('手沖入門：從選豆開始｜山海小店')
+    expect(meta.description).toBe('三個步驟學會手沖')
+    expect(meta.openGraph).toMatchObject({
+      title: '手沖入門：從選豆開始｜山海小店',
+      siteName: SITE_NAME,
+      type: 'article',
+      publishedTime: '2026-11-01T08:00:00Z',
+      url: '/stores/demo/blog/hand-brew',
+    })
+  })
+
+  it('先查店鋪（得到 tenantId）再查文章；查文章帶 tenantId 與 countView=false（標題請求不是一次瀏覽）', async () => {
+    routeFetch({ store: storeWithTenant(), post: json(post()) })
+    await postMetadata('demo', 'hand-brew', '部落格文章')
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]))
+    expect(urls).toEqual([
+      'http://localhost:8080/api/v2/public/stores/demo',
+      `http://localhost:8080/api/v2/posts/hand-brew?tenantId=${TENANT_ID}&countView=false`,
+    ])
+  })
+
+  it('沒有摘要 → 用內文當 description，而且商品嵌入語法 {{embed:listing:…}} 不能出現在裡面', async () => {
+    routeFetch({
+      store: storeWithTenant(),
+      post: json(post({ excerpt: '', content: `開頭 {{embed:listing:${LISTING_ID}}} 結尾` })),
+    })
+    const meta = await postMetadata('demo', 'hand-brew', '部落格文章')
+    expect(meta.description).toBe('開頭 結尾')
+  })
+
+  it('封面圖是絕對網址 → 放進 Open Graph 圖片；相對路徑（可能是需要登入的內部網址）→ 不放', async () => {
+    routeFetch({ store: storeWithTenant(), post: json(post({ featuredImageUrl: 'https://cdn.example.com/c.png' })) })
+    expect((await postMetadata('demo', 'a', 'x')).openGraph?.images).toEqual(['https://cdn.example.com/c.png'])
+    routeFetch({ store: storeWithTenant(), post: json(post({ featuredImageUrl: '/api/v2/media/files/abc' })) })
+    expect((await postMetadata('demo', 'a', 'x')).openGraph).not.toHaveProperty('images')
+  })
+
+  it('發布時間不是合法日期 → 不放 publishedTime（不把壞資料寫進分享資訊）', async () => {
+    routeFetch({ store: storeWithTenant(), post: json(post({ publishedAt: 'not-a-date' })) })
+    expect((await postMetadata('demo', 'a', 'x')).openGraph).not.toHaveProperty('publishedTime')
+  })
+
+  it('店鋪不存在或非 ACTIVE（404）→ 靜態標題，而且根本不去查文章（停權店鋪的文章標題不會出現）', async () => {
+    routeFetch({ store: json({ code: 'E-2000' }, 404), post: json(post()) })
+    expect(await postMetadata('demo', 'hand-brew', '部落格文章')).toEqual({ title: '部落格文章' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('文章不存在、未發布（404）→ 靜態標題，只有標題（沒有殘缺的 Open Graph）', async () => {
+    routeFetch({ store: storeWithTenant(), post: json({ code: 'E-4100' }, 404) })
+    expect(await postMetadata('demo', 'hand-brew', '部落格文章')).toEqual({ title: '部落格文章' })
+  })
+
+  it('後端壞了、網路中斷 → 靜態標題（標題請求不能讓頁面壞掉）', async () => {
+    routeFetch({ store: storeWithTenant(), post: json({}, 500) })
+    expect(await postMetadata('demo', 'a', '部落格文章')).toEqual({ title: '部落格文章' })
+    routeFetch({ store: new Error('ECONNREFUSED'), post: json(post()) })
+    expect(await postMetadata('demo', 'a', '部落格文章')).toEqual({ title: '部落格文章' })
+  })
+
+  it('後端給的 tenantId 不像 UUID → 不拿去組請求（它會被放進查詢字串），直接用靜態標題', async () => {
+    routeFetch({ store: json(store({ tenantId: 'x&evil=1' })), post: json(post()) })
+    expect(await postMetadata('demo', 'a', '部落格文章')).toEqual({ title: '部落格文章' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('店鋪沒有 tenantId 欄位、或文章標題是空的 → 靜態標題', async () => {
+    routeFetch({ store: json(store()), post: json(post()) }) // store() 預設 tenantId 是 't1'，不是 UUID
+    expect(await postMetadata('demo', 'a', '部落格文章')).toEqual({ title: '部落格文章' })
+    routeFetch({ store: storeWithTenant(), post: json(post({ title: '   ' })) })
+    expect(await postMetadata('demo', 'a', '部落格文章')).toEqual({ title: '部落格文章' })
+  })
+
+  it('兩段 slug 都來自網址：特殊字元要編碼後才放進請求的路徑', async () => {
+    routeFetch({ store: storeWithTenant(), post: json(post()) })
+    await postMetadata('a/../b', 'x?y#z', '部落格文章')
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]))
+    expect(urls[0]).toBe('http://localhost:8080/api/v2/public/stores/a%2F..%2Fb')
+    expect(urls[1]).toContain('/v2/posts/x%3Fy%23z?tenantId=')
   })
 })

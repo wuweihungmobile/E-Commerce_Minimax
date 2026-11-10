@@ -42,18 +42,19 @@ test.describe('AT-POST-RULES-REAL: 貼文 slug 與刪除規則（真實後端）
   test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
   let owner: Account;
+  let storeSlug: string;
 
   test.beforeAll(async ({ browser }) => {
     test.setTimeout(120_000);
     const page = await browser.newPage({ baseURL: WEB_BASE });
     try {
-      ({ owner } = await seedStore(page, { businessType: 'RETAIL_ONLY', storeLabel: 'E2E 貼文規則店' }));
+      ({ owner, storeSlug } = await seedStore(page, { businessType: 'RETAIL_ONLY', storeLabel: 'E2E 貼文規則店' }));
     } finally {
       await page.close();
     }
   });
 
-  test('E2E-POSTRULE-01: 全中文標題的貼文有可用的網址：部落格清單的連結是 /blog/post-<8碼>，點得進文章頁；兩篇網址不同', async ({ page }: { page: Page }) => {
+  test('E2E-POSTRULE-01: 全中文標題的貼文有可用的網址：部落格清單的連結是 /stores/{店鋪}/blog/post-<8碼>，點得進文章頁；兩篇網址不同', async ({ page }: { page: Page }) => {
     await loginOnly(page, owner.email, owner.password);
     const titleA = `視覺檢查貼文${zh(STAMP)}甲`;
     const titleB = `視覺檢查貼文${zh(STAMP)}乙`;
@@ -65,12 +66,16 @@ test.describe('AT-POST-RULES-REAL: 貼文 slug 與刪除規則（真實後端）
     expect(a.slug, '兩篇的網址不同').not.toBe(b.slug);
 
     await page.goto('/blog');
-    const linkA = page.locator('a[href^="/blog/post-"]', { hasText: titleA });
-    await expect(linkA, '清單裡的連結要指向文章頁，而不是 /blog').toHaveAttribute('href', `/blog/${a.slug}`);
+    const linkA = page.locator(`a[href^="/stores/${storeSlug}/blog/post-"]`, { hasText: titleA });
+    await expect(linkA, '清單裡的連結要指向這間店鋪的文章頁，而不是 /blog').toHaveAttribute(
+      'href',
+      `/stores/${storeSlug}/blog/${a.slug}`
+    );
 
     await linkA.click();
-    await expect(page).toHaveURL(new RegExp(`/blog/${a.slug}$`));
-    await expect(page.getByRole('heading', { level: 1, name: titleA })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/stores/${storeSlug}/blog/${a.slug}$`));
+    // 店鋪外殼的 h1 是店名，文章標題是 h2（Sprint 336，DEF-483）
+    await expect(page.getByRole('heading', { level: 2, name: titleA })).toBeVisible();
   });
 
   test('E2E-POSTRULE-02: 編輯頁照舊儲存（標題沒改）不會換網址；標題真的改了才換', async ({ page }: { page: Page }) => {

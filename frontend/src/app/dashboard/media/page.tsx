@@ -8,6 +8,8 @@ import {
   createMediaCategory,
   uploadMediaAssetMultipart,
   getMediaAssetFileBlob,
+  updateMediaAsset,
+  type MediaAssetDto,
 } from '@/services/media';
 import { useAsyncData } from '@/hooks/useAsyncData';
 import { AuthenticatedImage } from '@/components/ui/authenticated-image';
@@ -18,9 +20,10 @@ import { PageTitle } from '@/components/ui/page-title';
 import { EmptyState, LoadingState } from '@/components/ui/states';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { toast } from '@/components/ui/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
-import { MEDIA_ACCEPT, validateMediaFile } from '@/lib/media';
+import { absolutePublicMediaUrl, MEDIA_ACCEPT, validateMediaFile } from '@/lib/media';
 
 export default function MediaPage() {
   const [page, setPage] = useState(0);
@@ -28,6 +31,7 @@ export default function MediaPage() {
   const [mimeTypeFilter, setMimeTypeFilter] = useState<string>('');
   const [keyword, setKeyword] = useState<string>('');
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<string | null>(null);
 
   // Sprint 132（DEF-096）：真實檔案上傳 + 快速新增分類
   const [uploading, setUploading] = useState(false);
@@ -143,6 +147,51 @@ export default function MediaPage() {
       toast.error('刪除失敗，請稍後再試');
     } finally {
       setDeleting(null);
+    }
+  }
+
+  // 公開開關（Sprint 336，DEF-482）：預設私有。公開＝任何拿到網址的人都能看，不需要登入；兩個方向都先確認——
+  // 公開是不可逆的揭露（網址外流就收不回），取消公開則會讓已經用到網址的頁面顯示不出圖。
+  // 「最多 5 分鐘」對應後端 PublicMediaController.CACHE_SECONDS（公開圖片的 Cache-Control max-age）。
+  async function handleTogglePublic(item: MediaAssetDto, next: boolean) {
+    const confirmed = await confirmDialog(
+      next
+        ? {
+            title: '公開這個檔案？',
+            message: '公開後，任何人只要拿到網址都能看到這個檔案，不需要登入。之後可以隨時取消公開。',
+            confirmLabel: '公開',
+          }
+        : {
+            title: '取消公開？',
+            message:
+              '取消公開後，已經使用這個網址的頁面（例如貼文的精選圖片）會顯示不出圖片；已被瀏覽器快取的副本最多還會有 5 分鐘看得到。',
+            confirmLabel: '取消公開',
+          }
+    );
+    if (!confirmed) return;
+    setToggling(item.id);
+    try {
+      await updateMediaAsset(item.id, { isPublic: next });
+      toast.success(next ? '已公開' : '已取消公開');
+      reload();
+    } catch (error) {
+      console.error('Failed to update media visibility:', error);
+      toast.error('更新公開設定失敗，請稍後再試');
+    } finally {
+      setToggling(null);
+    }
+  }
+
+  async function handleCopyPublicUrl(item: MediaAssetDto) {
+    if (!item.publicUrl) return;
+    const url = absolutePublicMediaUrl(item.publicUrl);
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('已複製公開網址');
+    } catch (error) {
+      console.error('Failed to copy public url:', error);
+      // 剪貼簿不可用（非安全環境、權限被擋）：把網址放進訊息，至少能手動選取複製
+      toast.error(`無法自動複製，請手動複製：${url}`);
     }
   }
 
@@ -336,6 +385,29 @@ export default function MediaPage() {
                         <span key={i} className="text-xs bg-rs-disabled-bg px-1 rounded">{tag}</span>
                       ))}
                     </div>
+                  )}
+                  <div className="mt-2 flex items-center gap-2">
+                    <Switch
+                      checked={Boolean(item.isPublic)}
+                      onCheckedChange={(next) => handleTogglePublic(item, next)}
+                      disabled={toggling === item.id}
+                      aria-label={`公開 ${item.fileName}`}
+                      data-testid={`media-public-switch-${item.id}`}
+                    />
+                    <span className="text-xs text-rs-ink-muted" data-testid={`media-visibility-${item.id}`}>
+                      {item.isPublic ? '公開' : '私有'}
+                    </span>
+                  </div>
+                  {item.isPublic && item.publicUrl && (
+                    <Button
+                      variant="link"
+                      size="inline"
+                      onClick={() => handleCopyPublicUrl(item)}
+                      className="mt-1"
+                      data-testid={`media-copy-url-${item.id}`}
+                    >
+                      複製公開網址
+                    </Button>
                   )}
                   <Button
                     variant="linkDestructive"

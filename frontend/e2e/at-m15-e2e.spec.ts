@@ -153,6 +153,7 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
   const EMBED_TITLE = `E2E M15 嵌入商品卡文章 ${STAMP}`;
 
   let owner: Account;
+  let storeSlug: string;
   let draftId: string;
   let embedSlug: string;
 
@@ -168,6 +169,7 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
         room: { name: ROOM_NAME, price: 1600 },
       });
       owner = seeded.owner;
+      storeSlug = seeded.storeSlug;
 
       const draft = await page.request.post(`${API_BASE}/v2/dashboard/posts`, {
         headers: await authHeaders(page),
@@ -251,18 +253,18 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
     await expect(editedRow.getByText('草稿', { exact: true })).toBeVisible();
   });
 
-  test('E2E-M15-004: 前台文章詳情——已發布的 slug 顯示文章，不存在的 slug 顯示「找不到文章」', async ({ page }) => {
-    // 文章詳情頁的 tenantId 取自 localStorage；沒登入過的匿名頁面永遠停在載入中（所以原案例不可能看到「找不到文章」）
-    await loginOnly(page, owner.email, owner.password);
-
-    await page.goto(`/blog/${embedSlug}`);
-    await expect(page.getByRole('heading', { name: EMBED_TITLE, level: 1 })).toBeVisible();
+  test('E2E-M15-004: 前台文章詳情——匿名訪客也看得到已發布的文章；不存在的 slug 顯示「找不到文章」', async ({ page }) => {
+    // Sprint 336（DEF-483）：文章網址帶店鋪（/stores/{店鋪}/blog/{文章}），店鋪由網址決定，不再靠 localStorage 的 tenantId，
+    // 所以這個案例不登入——這就是匿名訪客從店鋪貼文列表點進文章時看到的畫面（之前只看得到「請先登入並設定店鋪以瀏覽部落格」）
+    await page.goto(`/stores/${storeSlug}/blog/${embedSlug}`);
+    await expect(page.getByRole('heading', { name: EMBED_TITLE, level: 2 })).toBeVisible();
     await expect(page.getByText('找不到文章')).toHaveCount(0);
+    await expect(page.getByText('請先登入並設定店鋪以瀏覽部落格')).toHaveCount(0);
 
     const notFound = page.waitForResponse(
       (r) => r.request().method() === 'GET' && new URL(r.url()).pathname.endsWith('/v2/posts/non-existent-slug-12345')
     );
-    await page.goto('/blog/non-existent-slug-12345');
+    await page.goto(`/stores/${storeSlug}/blog/non-existent-slug-12345`);
     expect((await notFound).status(), '不存在的 slug 後端應回 404').toBe(404);
     await expect(page.getByRole('heading', { name: '找不到文章' })).toBeVisible();
     await expect(page.getByRole('heading', { name: EMBED_TITLE })).toHaveCount(0);
@@ -273,7 +275,7 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
     await page.goto('/blog');
 
     await page.getByRole('link', { name: new RegExp(EMBED_TITLE) }).click();
-    await page.waitForURL(`**/blog/${embedSlug}`);
+    await page.waitForURL(`**/stores/${storeSlug}/blog/${embedSlug}`);
 
     // 嵌入語法被解析成商品卡：商品名稱、價格與「查看詳情」CTA 都在；原始語法不得外露
     await expect(page.getByRole('heading', { name: PRODUCT_NAME })).toBeVisible();

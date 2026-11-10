@@ -29,3 +29,28 @@ export function validateMediaFile(file: { type: string; size: number }): string 
   if (file.size > kind.maxBytes) return `檔案大小超過限制（${kind.label}上限 ${kind.maxBytes / MB} MB）`
   return null
 }
+
+/**
+ * 公開素材的完整網址（Sprint 336，DEF-482）：店主要把它貼到貼文的「精選圖片 URL」等欄位，所以必須是完整網址。
+ *
+ * 後端回的 publicUrl 是含 context-path 的路徑（/api/v2/public/media/{id}），少了主機。補的主機是「後端的 origin」：
+ * 取自 NEXT_PUBLIC_API_URL（絕對網址時；只取 origin，所以它帶不帶 /api、/v2 都不影響），
+ * 不是絕對網址（例如同源代理的 /api）就用目前頁面的 origin。兩者都沒有（伺服器端、沒有 window）就原樣回傳路徑。
+ * 這樣在本機（前端 3000、後端 8080）與正式環境（前後端網域不同或同網域）都指到真的讀得到圖的地方。
+ */
+export function absolutePublicMediaUrl(
+  publicUrl: string,
+  context: { apiBase?: string; pageOrigin?: string } = {}
+): string {
+  // 用 'in' 而不是 ??：測試要能明確傳入「沒有」（undefined），不能被環境的預設值悄悄補上
+  const apiBase = 'apiBase' in context ? context.apiBase : process.env.NEXT_PUBLIC_API_URL
+  const pageOrigin =
+    'pageOrigin' in context ? context.pageOrigin : typeof window !== 'undefined' ? window.location.origin : undefined
+  try {
+    if (apiBase && /^https?:\/\//i.test(apiBase)) return new URL(publicUrl, new URL(apiBase).origin).toString()
+    if (pageOrigin) return new URL(publicUrl, pageOrigin).toString()
+  } catch {
+    // 設定值不是合法網址：退回原樣，不讓複製按鈕壞掉
+  }
+  return publicUrl
+}

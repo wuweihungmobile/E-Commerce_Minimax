@@ -9,6 +9,7 @@ import { getAuthServerSnapshot, getSelectedTenantIdSnapshot, subscribeAuth } fro
 import { Pagination } from '@/components/ui/pagination';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { Card } from '@/components/ui/card';
+import { articlePath } from '@/lib/article-path';
 
 const PAGE_SIZE = 12;
 
@@ -99,7 +100,7 @@ export default function BlogCategoryPage() {
               {posts.map((post) => (
                 <Card asChild key={post.id} className="overflow-hidden hover:border-rs-primary transition-colors">
 <Link
-                  href={`/blog/${post.slug}`}
+                  href={articlePath(post.tenantSlug, post.slug)}
                 >
                   {post.featuredImageUrl && (
                     <div className="aspect-video bg-rs-disabled-bg">

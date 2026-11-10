@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0.13（文件修訂；規格基準仍為 v1.0）
+> **版本**: v1.0.14（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -23,6 +23,7 @@
 > - **v1.0.9 → v1.0.10（2026-10-23，Sprint 301，DEF-407／408／409）**：使用者在 Sprint 300 收尾的 `AskUserQuestion` 中本人選擇建議選項（真實的互動輸入，不是我的推論）。①§9.16 新增「營收口徑」：店鋪後台的營收＝已付款、未取消、未退款的訂單（`PAID`／`CONFIRMED`／`SHIPPING`／`DELIVERED`／`COMPLETED`），平均客單價的分母為同一組訂單的筆數；②§10.1.1 `/orders/[id]`：買家本人可讀取自己訂單的物流（四個讀取端點放行該訂單的買家，寫入仍限店家／管理員）；③§10.1.1 `/login`：登入後依角色分流（`BUYER`→`/`、店家類→`/dashboard`、管理員→`/admin`），並支援同源站內路徑的 `?redirect=` 回到原頁（不接受外部網址，防開放轉址）。其餘規格內文未改寫。
 > - **v1.0.10 → v1.0.11（2026-10-23，Sprint 302，DEF-412／413）**：使用者在 Sprint 301 收尾的 `AskUserQuestion` 中本人選擇建議選項（真實的互動輸入，不是我的推論）。①§9.16 營收口徑補上退款：退款總額＝全額退款＋部分退款，淨營收＝計入營收的訂單金額 − 這些訂單上的退款（全額退款的訂單已不在營收裡，不再扣第二次）；②§10.1.1 新增 C 端登入守門說明：買家頁面（`(auth)` 路由群組）除認證流程頁面外都需要登入，沒登入導去 `/login?redirect=<原頁>`，`/checkout` 也需登入。其餘規格內文未改寫。
 > - **v1.0.11 → v1.0.12（2026-11-07，Sprint 332，DEF-466）**：使用者決定合併兩套並行的貼文／媒體管理介面。§10.1.2 把 `/cms` 系列四條路由的說明由「與 `/dashboard/*` 並存」改為「已併入並移除、舊網址 308 轉址」，並註記貼文管理列表分頁與媒體管理只剩 `/dashboard/media` 一個介面。路由表 `/dashboard/posts*`、`/dashboard/media` 的列本身沒有改。其餘規格內文未改寫。
+> - **v1.0.13 → v1.0.14（2026-11-10，Sprint 336，DEF-482／483）**：使用者在互動選項中本人做了兩個決定（真實的互動輸入，不是我的推論）。①§10.1.1 文章頁網址：由 `/blog/[slug]` 改為 `/stores/[slug]/blog/[postSlug]`（網址帶店鋪）——原本的文章頁靠瀏覽器 localStorage 的 tenantId 取文章，只有登入才有，匿名訪客（含從公開的店鋪貼文列表點進來的人）只看到登入提示，伺服器端也查不到文章所以沒有實體標題；新網址由網址決定店鋪，匿名可讀，並有「文章標題｜店名」的 `<title>` 與文章型 Open Graph；舊網址 `/blog/[slug]` 保留為導向頁（登入且選定店鋪的人導向新網址；匿名訪客維持原本的登入提示）。②§9.15／§8.2.6 媒體庫：每個素材有「公開」開關（`media_assets.is_public`，預設私有，既有素材全部維持私有）；公開的素材可由匿名端點 `GET /api/v2/public/media/:id` 讀取，私有、已刪除、店鋪非 ACTIVE 一律 404。另：`GET /api/v2/posts/:slug` 新增選填參數 `countView`（預設 true；Next 伺服器端組標題時傳 false，不計瀏覽），貼文回應新增 `tenantSlug`。其餘規格內文未改寫。
 > - **v1.0.12 → v1.0.13（2026-11-09，Sprint 334，DEF-474／476／480）**：使用者在互動選項中本人做了三個決定（真實的互動輸入，不是我的推論）。①§9.15 貼文刪除：已發布的貼文須先下架才能刪（驗收條件 AC-007；後端回 409 `E-4107`）；②§9.15 媒體 API：原 `/api/v2/dashboard/media/*` 已移除，媒體只剩 `/api/v2/media/*` 一套，並與貼文寫入權對齊——能寫貼文的店鋪角色（店主、店員、Seller、Host）都能上傳與刪除媒體，被本店鋪貼文封面圖使用的媒體不能刪（409 `E-8020`）；③貼文與貼文分類的 slug 在標題／名稱清完為空（例如全中文）時改用 `post-<8碼>`／`category-<8碼>`，且標題沒改的儲存不換網址（無需使用者決定，列此備查）。其餘規格內文未改寫。
 
 ---
@@ -1554,6 +1555,7 @@ StoreStaff (店員)
 | alt_text | VARCHAR(255) | 替代文字 (Accessibility) |
 | title | VARCHAR(255) | 標題 |
 | is_deleted | BOOLEAN | 軟刪除旗標 |
+| is_public | BOOLEAN | 公開開關（NOT NULL，預設 FALSE＝私有）：true 才能由匿名端點 `GET /v2/public/media/{id}` 讀取（Sprint 336，DEF-482，V98） |
 
 > **⚠️ v1.0.2 更正（Sprint 111）**：原表只列了 10 個欄位，實作有 21 個。
 
@@ -2071,7 +2073,7 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | 方法 | 端點 | 說明 | 角色 |
 |------|------|------|------|
 | `GET` | `/api/v2/posts` | 前台：公開貼文列表 | Guest+ |
-| `GET` | `/api/v2/posts/:slug` | 前台：貼文詳情 (含解析嵌入卡片) | Guest+ |
+| `GET` | `/api/v2/posts/:slug` | 前台：貼文詳情 (含解析嵌入卡片)。需帶 `tenantId`；選填 `countView`（預設 true＝瀏覽數 +1；傳 false 不計瀏覽，給 Next 伺服器端組標題用，Sprint 336）；回應含 `tenantSlug`（文章的公開網址是 `/stores/{tenantSlug}/blog/{slug}`） | Guest+ |
 | `GET` | `/api/v2/posts/categories` | 貼文分類列表 | Guest+ |
 | `POST` | `/api/v2/dashboard/posts` | 店鋪後台：建立貼文 | Seller/Host/StoreOwner |
 | `PUT` | `/api/v2/dashboard/posts/:id` | 店鋪後台：更新貼文 | Seller/Host/StoreOwner |
@@ -2080,6 +2082,8 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `POST` | `/api/v2/media/upload`、`/api/v2/media/upload-multipart` | 上傳媒體（Sprint 334：原 `/api/v2/dashboard/media/*` 已移除，媒體只剩這一套） | StoreOwner/StoreStaff/Seller/Host |
 | `GET` | `/api/v2/media` | 媒體庫列表 | StoreOwner/StoreStaff/Seller/Host |
 | `DELETE` | `/api/v2/media/:id` | 刪除媒體（軟刪除；被本店鋪貼文封面圖使用時 409 `E-8020`） | StoreOwner/StoreStaff/Seller/Host |
+| `PUT` | `/api/v2/media/:id` | 更新媒體；含公開開關 `isPublic`（Sprint 336，DEF-482；沒帶＝不變，預設私有） | StoreOwner/StoreStaff/Seller/Host |
+| `GET` | `/api/v2/public/media/:id` | 匿名讀取「公開」素材的檔案內容（Sprint 336，DEF-482）；私有、已刪除、店鋪非 ACTIVE 一律 404；回 5 分鐘公開快取 | Guest+ |
 
 ### 9.15 M16 ERP 進銷存 API（v0.9 新增）
 
@@ -2162,12 +2166,13 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `/messages` | M10 | 即時通訊（Phase 2，尚未實作，符合既有 Phase 標註） | 不變 |
 | `/notifications` | M09 | 通知中心 | 不變 |
 | `/blog` | M15 | CMS 貼文列表 | 不變 |
-| `/blog/[slug]` | M15 | 貼文詳情（含嵌入購買卡片） | 不變 |
+| `/blog/[slug]` | M15 | **（Sprint 336，DEF-483）舊的文章網址，保留為導向頁**：登入且選定店鋪的人（改版前唯一打得開它的人）被導向 `/stores/[slug]/blog/[postSlug]`；匿名訪客維持原本的「請先登入並設定店鋪以瀏覽部落格」提示 | 改為導向 |
 | `/blog/category/[id]` | M15 | **已補齊（DEF-358c，Sprint 256）**：貼文分類篩選頁 | 已完成 |
 | `/stores/[slug]` | M17 | 店鋪前台首頁（Sprint 252） | 不變 |
 | `/stores/[slug]/products` | M17/M01 | 店鋪商品列表（Sprint 252） | 不變 |
 | `/stores/[slug]/rooms` | M17/M02 | 店鋪房源列表（Sprint 252） | 不變 |
 | `/stores/[slug]/blog` | M17/M15 | 店鋪貼文列表（Sprint 252） | 不變 |
+| `/stores/[slug]/blog/[postSlug]` | M17/M15 | **店鋪文章頁（Sprint 336，DEF-483，使用者拍板「文章網址帶店鋪」）**：貼文詳情（含嵌入購買卡片），取代原本的 `/blog/[slug]`；店鋪由網址決定，**匿名訪客可讀**（店鋪非 ACTIVE 整頁 404）；`<title>` 為「文章標題｜店名」，另有 description 與文章型 Open Graph | 改名＋改為匿名可讀 |
 
 **本節未收錄於原 PRD、但實際已存在的 C 端路由**（Sprint 253 補列，非窮舉每條巢狀子路由）：`/account`（個資下載/刪除帳戶自助頁）、`/addresses`、`/cart`／`/checkout` 下的 `mixed`／`product` 分流、`/returns`、`/returns/[id]`、`/returns/new`、`/reviews/product/[listingId]`、`/support/tickets`、`/support/tickets/[id]`、`/forgot-password`、`/reset-password`、`/verify-email`、`/tenant/apply`（開店申請入口）。
 

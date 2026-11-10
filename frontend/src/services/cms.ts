@@ -17,6 +17,8 @@ export interface PostResponse {
   id: string;
   tenantId: string;
   tenantName: string;
+  // 店鋪的網址代稱（Sprint 336，DEF-483）：文章的公開網址是 /stores/{tenantSlug}/blog/{slug}，見 lib/article-path
+  tenantSlug: string;
   authorId: string;
   authorName: string;
   title: string;
@@ -167,8 +169,20 @@ export async function getPublicCategories(tenantId: string, options?: RequestOpt
   return response.data.data;
 }
 
-export async function getPublishedPostBySlug(slug: string, tenantId: string, options?: RequestOptions): Promise<PostResponse> {
-  const response = await apiClient.get(`/v2/posts/${slug}`, { params: { tenantId }, ...options });
+/**
+ * 依 slug 取得已發布的文章。預設每呼叫一次瀏覽數 +1（後端的語意）；`countView: false` 只讀取不計瀏覽
+ * （Sprint 336，DEF-483：舊網址 /blog/{slug} 為了找出文章所屬店鋪而查詢、隨即導向新網址，新網址那一頁才是真正的瀏覽，不能算兩次）。
+ */
+export async function getPublishedPostBySlug(
+  slug: string,
+  tenantId: string,
+  options?: RequestOptions & { countView?: boolean }
+): Promise<PostResponse> {
+  const { countView, ...requestOptions } = options ?? {};
+  const response = await apiClient.get(`/v2/posts/${slug}`, {
+    params: { tenantId, ...(countView === false ? { countView: false } : {}) },
+    ...requestOptions,
+  });
   return response.data.data;
 }
 

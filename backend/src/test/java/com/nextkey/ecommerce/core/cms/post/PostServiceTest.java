@@ -1218,6 +1218,73 @@ class PostServiceTest {
         }
 
         @Test
+        @DisplayName("Sprint 336（DEF-483）: countView=false 不計瀏覽——整個方法沒有任何寫入，回應的瀏覽數是現況、不加一")
+        void getPublishedPostBySlug_countViewFalse_doesNotCountOrWrite() {
+            // Arrange：已經有 5 次瀏覽的文章
+            Post post = buildPost(Post.PostStatus.PUBLISHED);
+            post.setViewCount(5);
+            when(postRepository.findByTenantIdAndSlug(TEST_TENANT_ID, "test-post"))
+                    .thenReturn(Optional.of(post));
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(TEST_POST_ID))
+                    .thenReturn(new ArrayList<>());
+
+            // Act
+            M15Dto.PostResponse response = postService.getPublishedPostBySlug("test-post", TEST_TENANT_ID, false);
+
+            // Assert
+            verify(postRepository, never()).incrementViewCount(any(UUID.class));
+            verify(postRepository, never()).save(any(Post.class));
+            assertThat(response.getViewCount())
+                    .as("伺服器端為了組標題而讀取，不是一次瀏覽：瀏覽數維持 5，不是 6")
+                    .isEqualTo(5);
+            assertThat(response.getTitle()).isEqualTo("Test Post");
+        }
+
+        @Test
+        @DisplayName("Sprint 336（DEF-483）: countView=true 與舊的兩個參數版本行為相同（計一次、回應加一）")
+        void getPublishedPostBySlug_countViewTrue_countsOnce() {
+            Post post = buildPost(Post.PostStatus.PUBLISHED);
+            post.setViewCount(5);
+            when(postRepository.findByTenantIdAndSlug(TEST_TENANT_ID, "test-post"))
+                    .thenReturn(Optional.of(post));
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(TEST_POST_ID))
+                    .thenReturn(new ArrayList<>());
+
+            M15Dto.PostResponse response = postService.getPublishedPostBySlug("test-post", TEST_TENANT_ID, true);
+
+            verify(postRepository).incrementViewCount(TEST_POST_ID);
+            assertThat(response.getViewCount()).isEqualTo(6);
+        }
+
+        @Test
+        @DisplayName("Sprint 336（DEF-483）: 回應帶店鋪的網址代稱，列表頁才能組出 /stores/{tenantSlug}/blog/{slug}")
+        void getPublishedPostBySlug_responseCarriesTenantSlug() {
+            Post post = buildPost(Post.PostStatus.PUBLISHED);
+            when(postRepository.findByTenantIdAndSlug(TEST_TENANT_ID, "test-post"))
+                    .thenReturn(Optional.of(post));
+            when(postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(TEST_POST_ID))
+                    .thenReturn(new ArrayList<>());
+
+            M15Dto.PostResponse response = postService.getPublishedPostBySlug("test-post", TEST_TENANT_ID, false);
+
+            assertThat(response.getTenantSlug()).isEqualTo("test-tenant");
+        }
+
+        @Test
+        @DisplayName("countView=false 也不放寬檢查：草稿仍是 E-4101、沒有寫入")
+        void getPublishedPostBySlug_countViewFalse_draftPost_stillThrowsE4101() {
+            Post post = buildPost(Post.PostStatus.DRAFT);
+            when(postRepository.findByTenantIdAndSlug(TEST_TENANT_ID, "test-post"))
+                    .thenReturn(Optional.of(post));
+
+            assertThatThrownBy(() -> postService.getPublishedPostBySlug("test-post", TEST_TENANT_ID, false))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.E_4101);
+            verify(postRepository, never()).incrementViewCount(any(UUID.class));
+        }
+
+        @Test
         @DisplayName("getPublishedPostBySlug_draftPost_throwsE4101")
         void getPublishedPostBySlug_draftPost_throwsE4101() {
             // Arrange

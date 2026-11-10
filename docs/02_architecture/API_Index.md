@@ -220,7 +220,7 @@
 
 ### 內容管理系統 (M15)
 
-規格：[API_M15_CMS.md](./api/API_M15_CMS.md)（v1.0，Sprint 277，48 個端點）。⚠️ 實際是四個互相獨立的子系統（見文件 §1.2）：`CmsController` 頁面/橫幅、`PostController` 貼文/分類/部落格媒體/嵌入卡片、`MediaController`／`MediaCategoryController` 獨立媒體庫——其中兩套媒體庫互相獨立但寫入同一張表（DEF-387），`PostController` 另有自製租戶解析風險（DEF-386）。
+規格：[API_M15_CMS.md](./api/API_M15_CMS.md)（v1.0，Sprint 277 新建；Sprint 336 起 44 個端點、5 個 Controller〔含 `PublicMediaController`〕——先前寫 48，Sprint 334 移除 5 個端點後沒更新）。⚠️ 實際是四個互相獨立的子系統（見文件 §1.2）：`CmsController` 頁面/橫幅、`PostController` 貼文/分類/部落格媒體/嵌入卡片、`MediaController`／`MediaCategoryController` 獨立媒體庫——其中兩套媒體庫互相獨立但寫入同一張表（DEF-387），`PostController` 另有自製租戶解析風險（DEF-386）。
 
 | 端點（節錄，完整列表見文件 §2） | 方法 | 說明 | 權限 |
 |------|------|------|------|

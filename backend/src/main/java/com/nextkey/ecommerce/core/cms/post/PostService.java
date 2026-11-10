@@ -328,6 +328,18 @@ public class PostService {
      */
     @Transactional
     public M15Dto.PostResponse getPublishedPostBySlug(String slug, UUID tenantId) {
+        return getPublishedPostBySlug(slug, tenantId, true);
+    }
+
+    /**
+     * 同上，但可以選擇不計瀏覽（Sprint 336，DEF-483）。
+     *
+     * <p>{@code countView = false} 給 Next 伺服器端組頁面標題與分享資訊用：一次真正的瀏覽，瀏覽器會呼叫一次
+     * 取全文（計一次），伺服器端為了標題再呼叫一次——若這次也計，每篇文章的瀏覽數會多算一倍，
+     * 搜尋引擎或連結預覽機器人抓標題也會灌水。不計瀏覽時整個方法沒有任何寫入。
+     */
+    @Transactional
+    public M15Dto.PostResponse getPublishedPostBySlug(String slug, UUID tenantId, boolean countView) {
         // DEF-388：改用 E_9005（原誤用 E_1002「憑證已過期」，與缺少查詢參數語意無關）。
         if (tenantId == null) {
             throw new BusinessException(ErrorCode.E_9005, "tenantId is required");
@@ -339,14 +351,18 @@ public class PostService {
             throw new BusinessException(ErrorCode.E_4101);
         }
 
-        // 增加瀏覽次數：交由 DB 原子遞增。刻意不碰 post 的任何 setter——
-        // post 仍在持久化上下文中，改了會讓髒檢查在提交時整列寫回、覆蓋這次遞增。
-        postRepository.incrementViewCount(post.getId());
+        if (countView) {
+            // 增加瀏覽次數：交由 DB 原子遞增。刻意不碰 post 的任何 setter——
+            // post 仍在持久化上下文中，改了會讓髒檢查在提交時整列寫回、覆蓋這次遞增。
+            postRepository.incrementViewCount(post.getId());
+        }
 
         List<PostEmbed> embeds = postEmbedRepository.findByPostIdOrderByEmbedOrderAsc(post.getId());
         M15Dto.PostResponse response = buildPostResponse(post, embeds);
-        // post 的快照早於上面那筆遞增，補回本次瀏覽以維持既有的回應語意（前台會顯示「N 次瀏覽」）
-        response.setViewCount((post.getViewCount() == null ? 0 : post.getViewCount()) + 1);
+        if (countView) {
+            // post 的快照早於上面那筆遞增，補回本次瀏覽以維持既有的回應語意（前台會顯示「N 次瀏覽」）
+            response.setViewCount((post.getViewCount() == null ? 0 : post.getViewCount()) + 1);
+        }
         return response;
     }
 

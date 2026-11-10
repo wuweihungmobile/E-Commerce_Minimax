@@ -48,6 +48,7 @@ import com.nextkey.ecommerce.api.controller.PostController;
 import com.nextkey.ecommerce.api.controller.PricingController;
 import com.nextkey.ecommerce.api.controller.ProductController;
 import com.nextkey.ecommerce.api.controller.PublicListingController;
+import com.nextkey.ecommerce.api.controller.PublicMediaController;
 import com.nextkey.ecommerce.api.controller.ReviewController;
 import com.nextkey.ecommerce.api.controller.RoomCalendarController;
 import com.nextkey.ecommerce.api.controller.RoomController;
@@ -143,8 +144,10 @@ class ApiRouteDocDriftTest {
         // Sprint 277：M15 內容管理系統，文件先前完全不存在（DEF-286 範圍）。四個獨立 Controller
         // 全數登記（CmsController 頁面/橫幅、PostController 貼文/分類/部落格媒體/嵌入卡片、
         // MediaController／MediaCategoryController 獨立媒體庫），見文件 §1.2 架構說明
+        // Sprint 336：再加入 PublicMediaController（公開素材的匿名讀取，DEF-482）
         GUARDED.put("api/API_M15_CMS.md", List.of(
-                CmsController.class, PostController.class, MediaController.class, MediaCategoryController.class));
+                CmsController.class, PostController.class, MediaController.class, MediaCategoryController.class,
+                PublicMediaController.class));
     }
 
     /** 反引號包住的 `METHOD /path`：路徑到反引號、空白或 {@code ?} 為止。 */

@@ -8,6 +8,7 @@ import { getAuthServerSnapshot, getSelectedTenantIdSnapshot, subscribeAuth } fro
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { articlePath } from '@/lib/article-path';
 
 export default function BlogPage() {
   // 目前選用的店鋪（localStorage）；SSR／hydration 前是 null，與原本「mount 之後才讀到」相同
@@ -56,7 +57,7 @@ export default function BlogPage() {
               {posts.map((post) => (
                 <Card asChild key={post.id} className="overflow-hidden hover:border-rs-primary transition-colors">
 <Link
-                  href={`/blog/${post.slug}`}
+                  href={articlePath(post.tenantSlug, post.slug)}
                 >
                   {post.featuredImageUrl && (
                     <div className="aspect-video bg-rs-disabled-bg">

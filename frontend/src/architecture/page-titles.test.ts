@@ -97,11 +97,12 @@ describe('動態標題頁（generateMetadata）', () => {
   const pages = listSourceFiles('app', (path) => path.endsWith('/page.tsx'))
   const dynamicPages = collect(pages).filter((i) => i.resolved?.includes(DYNAMIC_TITLE_PROBE))
 
-  it('實際有用 generateMetadata 的公開頁：店鋪前台四頁與商品／房源詳情，而且都接上了品牌 template', () => {
+  it('實際有用 generateMetadata 的公開頁：店鋪前台四頁、店鋪文章頁與商品／房源詳情，而且都接上了品牌 template', () => {
     const names = dynamicPages.map((i) => i.page).sort()
     expect(names).toEqual(
       [
         'app/(storefront)/listings/[id]/page.tsx',
+        'app/(storefront)/stores/[slug]/blog/[postSlug]/page.tsx', // Sprint 336（DEF-483）
         'app/(storefront)/stores/[slug]/blog/page.tsx',
         'app/(storefront)/stores/[slug]/page.tsx',
         'app/(storefront)/stores/[slug]/products/page.tsx',

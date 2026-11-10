@@ -207,13 +207,17 @@ public class PostController {
     /**
      * 依 Slug 取得已發布貼文（公開）
      * GET /api/v2/posts/:slug
+     *
+     * <p>{@code countView} 預設 true（每次讀取瀏覽數 +1）；Next 伺服器端組頁面標題時傳 false，
+     * 才不會讓一次瀏覽被算兩次（Sprint 336，DEF-483）。
      */
     @GetMapping("/posts/{slug}")
     public ResponseEntity<ApiResponse<M15Dto.PostResponse>> getPublishedPostBySlug(
             @PathVariable String slug,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestParam(defaultValue = "true") boolean countView) {
 
-        M15Dto.PostResponse response = postService.getPublishedPostBySlug(slug, tenantId);
+        M15Dto.PostResponse response = postService.getPublishedPostBySlug(slug, tenantId, countView);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

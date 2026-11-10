@@ -61,6 +61,8 @@ public class M15Dto {
         private UUID id;
         private UUID tenantId;
         private String tenantName;
+        /** 店鋪的網址代稱（Sprint 336，DEF-483）：文章的公開網址是 /stores/{tenantSlug}/blog/{slug}，列表頁要靠它組連結。 */
+        private String tenantSlug;
         private UUID authorId;
         private String authorName;
         private String title;
@@ -83,6 +85,7 @@ public class M15Dto {
                     .id(post.getId())
                     .tenantId(post.getTenant().getId())
                     .tenantName(post.getTenant().getName())
+                    .tenantSlug(post.getTenant().getSlug())
                     .authorId(post.getAuthor().getId())
                     .authorName(post.getAuthor().getFullName())
                     .title(post.getTitle())

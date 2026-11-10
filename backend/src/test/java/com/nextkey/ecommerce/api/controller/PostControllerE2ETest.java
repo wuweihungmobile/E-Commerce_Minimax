@@ -1330,6 +1330,54 @@ class PostControllerE2ETest {
                 .body("data.slug", startsWith("renamed-post-"));
     }
 
+    @Test
+    @Order(30)
+    @DisplayName("IT-M15-030（Sprint 336，DEF-483）: GET /api/v2/posts/:slug?countView=false - 不計瀏覽（資料庫 view_count 不變）；不帶參數仍計一次；回應帶店鋪 slug")
+    void getPublishedPostBySlug_countViewParameter_controlsWhetherTheViewIsCounted() throws Exception {
+        authToken = createStoreOwnerAndGetToken(uniqueEmail());
+        String slug = "count-view-" + System.nanoTime();
+        Post post = postRepository.save(Post.builder()
+                .tenant(testTenant)
+                .author(testUser)
+                .title("Count View")
+                .content("c")
+                .slug(slug)
+                .status(Post.PostStatus.PUBLISHED)
+                .build());
+        try {
+            // Next 伺服器端組標題用的讀取：不計。回應的瀏覽數是現況（0），資料庫也沒動
+            given().queryParam("tenantId", testTenantId.toString()).queryParam("countView", "false")
+                    .when().get(BASE_URL + "/posts/" + slug)
+                    .then().statusCode(200)
+                    .body("data.viewCount", equalTo(0))
+                    .body("data.tenantSlug", equalTo(testTenant.getSlug()));
+            org.junit.jupiter.api.Assertions.assertEquals(0, viewCountInDb(post.getId()),
+                    "countView=false 不該寫入資料庫");
+
+            // 不帶參數＝一次真正的瀏覽：計一次
+            given().queryParam("tenantId", testTenantId.toString())
+                    .when().get(BASE_URL + "/posts/" + slug)
+                    .then().statusCode(200)
+                    .body("data.viewCount", equalTo(1));
+            org.junit.jupiter.api.Assertions.assertEquals(1, viewCountInDb(post.getId()),
+                    "預設要計一次瀏覽");
+
+            // 再來一次不計的讀取：回應是現況 1、資料庫仍是 1
+            given().queryParam("tenantId", testTenantId.toString()).queryParam("countView", "false")
+                    .when().get(BASE_URL + "/posts/" + slug)
+                    .then().statusCode(200)
+                    .body("data.viewCount", equalTo(1));
+            org.junit.jupiter.api.Assertions.assertEquals(1, viewCountInDb(post.getId()));
+        } finally {
+            cleanupPostData(post.getId());
+        }
+    }
+
+    private int viewCountInDb(UUID postId) {
+        Integer count = jdbcTemplate.queryForObject("SELECT view_count FROM posts WHERE id = ?", Integer.class, postId);
+        return count == null ? 0 : count;
+    }
+
     @AfterAll
     void tearDown() {
         cleanupAllTestData();

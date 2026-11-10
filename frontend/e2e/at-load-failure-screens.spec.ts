@@ -28,6 +28,7 @@ test.describe('AT-LOAD-FAILURE-SCREENS: 載入失敗不被畫成別的東西（�
   test.describe.configure({ mode: 'serial', timeout: 90_000 });
 
   let owner: Account;
+  let storeSlug: string;
   let slug: string;
 
   test.beforeAll(async ({ browser }) => {
@@ -40,6 +41,7 @@ test.describe('AT-LOAD-FAILURE-SCREENS: 載入失敗不被畫成別的東西（�
         product: { name: '載入失敗測試商品', price: 321 },
       });
       owner = seeded.owner;
+      storeSlug = seeded.storeSlug;
 
       const created = await page.request.post(`${API_BASE}/v2/dashboard/posts`, {
         headers: await authHeaders(page),
@@ -58,8 +60,8 @@ test.describe('AT-LOAD-FAILURE-SCREENS: 載入失敗不被畫成別的東西（�
   });
 
   test('E2E-LOADFAIL-01: 內嵌商品卡——真實後端回 404／400 才是「此商品已下架」，真實商品照常顯示', async ({ page }: { page: Page }) => {
-    await loginOnly(page, owner.email, owner.password);
-    await page.goto(`/blog/${slug}`);
+    // 文章網址帶店鋪（Sprint 336，DEF-483），匿名即可，不需要登入
+    await page.goto(`/stores/${storeSlug}/blog/${slug}`);
 
     await expect(page.getByText('載入失敗測試商品')).toBeVisible();
     // 不存在的 UUID（真實 404）與格式有誤的 id（真實 400）各一張
@@ -75,7 +77,6 @@ test.describe('AT-LOAD-FAILURE-SCREENS: 載入失敗不被畫成別的東西（�
   }: {
     page: Page;
   }) => {
-    await loginOnly(page, owner.email, owner.password);
     const cardEndpoint = '**/v2/listings/*/card';
     await page.route(cardEndpoint, (route) =>
       route.fulfill({
@@ -84,7 +85,7 @@ test.describe('AT-LOAD-FAILURE-SCREENS: 載入失敗不被畫成別的東西（�
         body: JSON.stringify({ success: false, code: 'E-9900', message: '模擬的伺服器錯誤' }),
       })
     );
-    await page.goto(`/blog/${slug}`);
+    await page.goto(`/stores/${storeSlug}/blog/${slug}`);
 
     const errors = page.getByTestId('embedded-card-error');
     await expect(errors, 'DEF-473：三張卡都該顯示載入失敗').toHaveCount(3);

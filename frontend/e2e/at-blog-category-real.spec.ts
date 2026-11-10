@@ -6,13 +6,14 @@ import { Account, authHeaders, seedStore } from './helpers/store';
 /**
  * AT-BLOG-CATEGORY-REAL: 部落格分類篩選頁 /blog/category/[id]（DEF-358(c)，Sprint 256，真實後端）
  *
- * PRD §10.1.1 登記的缺口：`/blog`、`/blog/[slug]` 皆已實作，僅分類篩選頁缺席。本規格驗證新頁面
+ * PRD §10.1.1 登記的缺口：`/blog`、文章頁皆已實作，僅分類篩選頁缺席。本規格驗證新頁面
  * 與新增的 `GET /v2/posts/categories`（公開，僅回傳啟用中分類）、`GET /v2/posts?categoryId=` 兩個
  * 後端端點串接後的真實行為——不 mock，真實註冊/開店/建分類/建貼文。
  *
- * `/blog/category/[id]` 與既有 `/blog`、`/blog/[slug]` 同屬一組既有慣例：tenantId 來自
+ * `/blog/category/[id]` 與既有 `/blog` 同屬一組既有慣例：tenantId 來自
  * localStorage（非 URL），所以每個 test 都要先以 loginOnly 讓瀏覽器真正登入過一次（登入會把
  * tenantId 寫入 localStorage，見 services/auth.ts），而不是用匿名 page。
+ * （文章頁自 Sprint 336 起網址帶店鋪、匿名可讀，不在這組慣例裡了，見 at-article-titles-real。）
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
@@ -44,6 +45,7 @@ test.describe('AT-BLOG-CATEGORY-REAL: 部落格分類篩選頁（真實後端）
   test.describe.configure({ mode: 'serial', timeout: 90_000 });
 
   let owner: Account;
+  let storeSlug: string;
   let categoryAId: string;
   let categoryASlugPost: string;
 
@@ -51,7 +53,7 @@ test.describe('AT-BLOG-CATEGORY-REAL: 部落格分類篩選頁（真實後端）
     test.setTimeout(120_000);
     const page = await browser.newPage();
     try {
-      ({ owner } = await seedStore(page, {
+      ({ owner, storeSlug } = await seedStore(page, {
         businessType: 'RETAIL_ONLY',
         storeLabel: 'E2E 部落格分類店',
       }));
@@ -75,6 +77,11 @@ test.describe('AT-BLOG-CATEGORY-REAL: 部落格分類篩選頁（真實後端）
     await expect(page.getByTestId('blog-category-title')).toBeVisible();
     await expect(page.getByTestId('blog-category-grid')).toContainText('分類A的文章');
     await expect(page.getByTestId('blog-category-grid')).not.toContainText('分類B的文章');
+    // 分類頁是產生文章連結的三個地方之一：連結要指向帶店鋪的新網址（Sprint 336，DEF-483），不是舊的 /blog/{文章}
+    await expect(page.getByTestId('blog-category-grid').getByRole('link', { name: /分類A的文章/ })).toHaveAttribute(
+      'href',
+      `/stores/${storeSlug}/blog/${categoryASlugPost}`
+    );
   });
 
   test('E2E-BLOGCAT-02: 貼文詳情頁的分類徽章可點擊，導向對應的分類篩選頁', async ({ page }: { page: Page }) => {
@@ -82,7 +89,8 @@ test.describe('AT-BLOG-CATEGORY-REAL: 部落格分類篩選頁（真實後端）
     await page.evaluate(() => localStorage.clear());
     await loginOnly(page, owner.email, owner.password);
 
-    await page.goto(`/blog/${categoryASlugPost}`);
+    // 文章頁的網址帶店鋪（Sprint 336，DEF-483）
+    await page.goto(`/stores/${storeSlug}/blog/${categoryASlugPost}`);
     await page.getByTestId('blog-post-category-link').click();
     await expect(page).toHaveURL(new RegExp(`/blog/category/${categoryAId}$`));
     await expect(page.getByTestId('blog-category-grid')).toContainText('分類A的文章');

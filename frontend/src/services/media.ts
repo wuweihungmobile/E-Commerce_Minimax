@@ -22,6 +22,10 @@ export interface MediaAssetDto {
   updatedAt: string;
   // Sprint 132（DEF-096）：後端組出的檔案串流端點路徑，供 <img>/下載使用
   url: string | null;
+  // Sprint 336（DEF-482）：公開開關（預設私有）與匿名可讀的路徑。只有公開的素材才有 publicUrl；
+  // 它是含 /api 的路徑（/api/v2/public/media/{id}），要貼到貼文封面圖等欄位請用 lib/media 的 absolutePublicMediaUrl 補成完整網址
+  isPublic?: boolean;
+  publicUrl?: string | null;
 }
 
 export interface MediaCategoryDto {
@@ -47,6 +51,8 @@ export interface UploadMediaRequest {
 export interface UpdateMediaRequest {
   categoryId?: string;
   tags?: string[];
+  // Sprint 336（DEF-482）：沒帶＝不變（後端的語意），編輯其他欄位不會誤動公開狀態
+  isPublic?: boolean;
 }
 
 export interface CreateCategoryRequest {

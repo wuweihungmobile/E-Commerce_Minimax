@@ -8,7 +8,7 @@ import { Account, adminAccessToken, authHeaders, seedStore, setStoreStatusWithTo
  * PRD §6.6.3 規格：ROOM 類型進入 MAINTENANCE 時，嵌入卡片 `ctaUrl="/contact"`、`currentPrice=null`；
  * Listing 進入 INACTIVE/DELETED（Cascade）時，`statusReason="listing_unavailable"`、
  * `ctaUrl="/stores/{slug}"`。本規格依序讓同一組商品/房源卡經歷「正常 → 維護中 → 下架」三個真實狀態，
- * 驗證 `/blog/[slug]` 的渲染確實依 statusReason 分流文案與連結，而非先前固定顯示「查看詳情」。
+ * 驗證文章頁（Sprint 336 起是 /stores/{店鋪}/blog/{文章}）的渲染確實依 statusReason 分流文案與連結，而非先前固定顯示「查看詳情」。
  */
 
 const WEB_BASE = 'http://localhost:3000';
@@ -18,6 +18,7 @@ test.describe('AT-EMBED-CARD-STATUS: 嵌入卡片狀態顯示（真實後端）'
   test.describe.configure({ mode: 'serial', timeout: 90_000 });
 
   let owner: Account;
+  let storeSlug: string;
   let tenantId: string;
   let productId: string;
   let roomId: string;
@@ -34,6 +35,7 @@ test.describe('AT-EMBED-CARD-STATUS: 嵌入卡片狀態顯示（真實後端）'
         room: { name: '嵌入卡片測試房型', price: 1777 },
       });
       owner = seeded.owner;
+      storeSlug = seeded.storeSlug;
       tenantId = seeded.tenantId;
       productId = seeded.productId!;
       roomId = seeded.roomId!;
@@ -55,8 +57,8 @@ test.describe('AT-EMBED-CARD-STATUS: 嵌入卡片狀態顯示（真實後端）'
   });
 
   test('E2E-EMBED-01: 正常狀態 → 商品卡與房型卡皆顯示價格與「查看詳情」', async ({ page }: { page: Page }) => {
-    await loginOnly(page, owner.email, owner.password);
-    await page.goto(`/blog/${slug}`);
+    // 不登入：文章網址帶店鋪之後，匿名訪客就是看得到（Sprint 336，DEF-483）
+    await page.goto(`/stores/${storeSlug}/blog/${slug}`);
 
     await expect(page.getByText('嵌入卡片測試商品')).toBeVisible();
     await expect(page.getByText('嵌入卡片測試房型')).toBeVisible();
@@ -84,11 +86,11 @@ test.describe('AT-EMBED-CARD-STATUS: 嵌入卡片狀態顯示（真實後端）'
     );
     expect(markMaintenance.status(), await markMaintenance.text()).toBe(200);
 
-    await page.goto(`/blog/${slug}`);
+    await page.goto(`/stores/${storeSlug}/blog/${slug}`);
 
     await expect(page.getByText('房源維護中')).toBeVisible();
     await expect(page.getByText('無定價')).toBeVisible();
-    // blog 頁自 Sprint 328 起套用店面外殼，頁尾也有一個『聯絡客服』連結（/notifications）；
+    // 文章頁自 Sprint 328 起套用店面外殼，頁尾也有一個『聯絡客服』連結（/notifications）；
     // 這裡要驗的是嵌入卡片自己的 CTA（/contact），所以限定在卡片 <article> 內查詢
     const contactCta = page.getByRole('article').getByRole('link', { name: '聯絡客服' });
     await expect(contactCta).toHaveAttribute('href', '/contact');
@@ -97,7 +99,24 @@ test.describe('AT-EMBED-CARD-STATUS: 嵌入卡片狀態顯示（真實後端）'
     await expect(page.getByText('TWD 777').first()).toBeVisible();
   });
 
-  test('E2E-EMBED-03: 店鋪被停權 → 商品卡顯示「此商品已下架」、CTA 導向店鋪', async ({
+  test('E2E-EMBED-03: 商品被刪除 → 商品卡顯示「此商品已下架」、CTA 導向店鋪', async ({ page }: { page: Page }) => {
+    // Sprint 336（DEF-483）：這個案例原本用「店鋪被停權」讓卡片進入 listing_unavailable，再以店主身分打開文章。
+    // 文章網址帶店鋪之後，停權店鋪的文章頁整頁不公開（與店鋪首頁、商品頁一致，見 E2E-EMBED-04），也就看不到卡片了；
+    // 改成直接刪除商品——PRD §6.6.3 對 listing_unavailable 的定義本來就是「Listing 進入 INACTIVE／DELETED」。
+    await loginOnly(page, owner.email, owner.password);
+    const deleted = await page.request.delete(`${API_BASE}/v2/products/${productId}`, {
+      headers: await authHeaders(page),
+    });
+    expect(deleted.status(), await deleted.text()).toBe(200);
+
+    await page.goto(`/stores/${storeSlug}/blog/${slug}`);
+
+    await expect(page.getByText('此商品已下架').first()).toBeVisible();
+    const storeCta = page.getByRole('link', { name: '前往店鋪' }).first();
+    await expect(storeCta).toHaveAttribute('href', new RegExp('^/stores/'));
+  });
+
+  test('E2E-EMBED-04: 店鋪被停權 → 文章頁整頁不公開（顯示「找不到這間店鋪」），文章與嵌入卡都不出現', async ({
     page,
   }: {
     page: Page;
@@ -108,11 +127,10 @@ test.describe('AT-EMBED-CARD-STATUS: 嵌入卡片狀態顯示（真實後端）'
     const adminToken = await adminAccessToken(page);
     await setStoreStatusWithToken(page, adminToken, tenantId, 'SUSPENDED');
 
-    await loginOnly(page, owner.email, owner.password);
-    await page.goto(`/blog/${slug}`);
+    await page.goto(`/stores/${storeSlug}/blog/${slug}`);
 
-    await expect(page.getByText('此商品已下架').first()).toBeVisible();
-    const storeCta = page.getByRole('link', { name: '前往店鋪' }).first();
-    await expect(storeCta).toHaveAttribute('href', new RegExp('^/stores/'));
+    await expect(page.getByTestId('store-notfound')).toBeVisible();
+    await expect(page.getByText('E2E 嵌入卡片狀態測試貼文')).toHaveCount(0);
+    await expect(page.getByText('此商品已下架')).toHaveCount(0);
   });
 });

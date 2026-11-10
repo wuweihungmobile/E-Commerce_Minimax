@@ -29,6 +29,8 @@ export interface SeedStoreOptions {
 export interface SeededStore {
   owner: Account;
   tenantId: string;
+  /** 店鋪的網址代稱（/stores/{storeSlug}/…）：文章網址是 /stores/{storeSlug}/blog/{文章}（Sprint 336，DEF-483） */
+  storeSlug: string;
   roomId?: string;
   productId?: string;
 }
@@ -139,10 +141,16 @@ export async function seedStore(page: Page, options: SeedStoreOptions): Promise<
     expect(toggle.status(), await toggle.text()).toBe(200);
   }
 
+  // 店鋪的網址代稱：匿名可呼叫的公開端點（同時確認後端這個端點真的對匿名開放）
+  const profile = await page.request.get(`${API_BASE}/v2/tenants/${tenantId}`);
+  expect(profile.status(), await profile.text()).toBe(200);
+  const storeSlug = (await profile.json()).data.slug as string;
+  expect(storeSlug, '核准後的店鋪應有網址代稱').toBeTruthy();
+
   await page.evaluate(() => localStorage.clear());
   await loginOnly(page, owner.email, owner.password);
   const ownerHeaders = await authHeaders(page);
-  const seeded: SeededStore = { owner: { email: owner.email, password: owner.password }, tenantId };
+  const seeded: SeededStore = { owner: { email: owner.email, password: owner.password }, tenantId, storeSlug };
 
   if (options.room) {
     const room = await page.request.post(`${API_BASE}/v2/dashboard/listings`, {

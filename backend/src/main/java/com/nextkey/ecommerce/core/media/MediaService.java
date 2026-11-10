@@ -46,6 +46,9 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class MediaService {
 
+    /** 匿名可讀的檔案網址前綴（PublicMediaController 的路由；context-path /api 與既有的 url 欄位同樣寫死）。 */
+    static final String PUBLIC_URL_PREFIX = "/api/v2/public/media/";
+
     private final MediaAssetRepository mediaAssetRepository;
     private final MediaCategoryRepository mediaCategoryRepository;
     private final TenantRepository tenantRepository;
@@ -385,6 +388,16 @@ public class MediaService {
             asset.setTitle(request.getTitle());
         }
 
+        // 公開開關（Sprint 336，DEF-482）：只有請求明確帶了才改；null＝不變（媒體中心的其他欄位編輯不會誤動它）
+        if (request.getIsPublic() != null) {
+            boolean wasPublic = Boolean.TRUE.equals(asset.getIsPublic());
+            asset.setIsPublic(request.getIsPublic());
+            if (wasPublic != request.getIsPublic()) {
+                log.info("Media asset visibility changed: id={}, tenantId={}, public={}",
+                        assetId, tenantId, request.getIsPublic());
+            }
+        }
+
         asset = mediaAssetRepository.save(asset);
         log.info("Updated media asset: id={}", assetId);
 
@@ -489,6 +502,13 @@ public class MediaService {
         // 生成 URL（基於檔案路徑）
         if (asset.getFilePath() != null) {
             builder.url("/api/v2/media/files/" + asset.getId());
+        }
+
+        // 公開開關與匿名可讀的網址（Sprint 336，DEF-482）：只有公開的素材才帶 publicUrl
+        boolean isPublic = Boolean.TRUE.equals(asset.getIsPublic());
+        builder.isPublic(isPublic);
+        if (isPublic) {
+            builder.publicUrl(PUBLIC_URL_PREFIX + asset.getId());
         }
 
         return builder.build();

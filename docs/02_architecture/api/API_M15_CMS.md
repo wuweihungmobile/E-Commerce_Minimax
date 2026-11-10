@@ -3,7 +3,7 @@
 > **文件編號**: API-M15
 > **文件版本**: v1.0（Sprint 277，首次建立；首次有獨立規格文件，DEF-286 範圍）
 > **建立日期**: 2026-10-16
-> **最後更新**: 2026-11-09（Sprint 334：移除 `PostController` 的 5 個 `/v2/dashboard/media/*` 舊媒體端點，媒體只剩 M18 一套；M18 媒體權限對齊貼文寫入權並新增「被貼文封面圖使用就不能刪」；已發布貼文須先下架才能刪；貼文／分類 slug 不再為空字串、標題沒改不換 slug。Sprint 332：前端 /cms 系列併入 /dashboard）
+> **最後更新**: 2026-11-10（Sprint 336：新增 `PublicMediaController` 與素材「公開開關」（`isPublic`，預設私有；`GET /v2/public/media/{assetId}` 匿名讀取）；`GET /v2/posts/{slug}` 新增 `countView` 參數、文章回應新增 `tenantSlug`，文章的公開網址改為 `/stores/{店鋪}/blog/{文章}`）。2026-11-09（Sprint 334：移除 `PostController` 的 5 個 `/v2/dashboard/media/*` 舊媒體端點，媒體只剩 M18 一套；M18 媒體權限對齊貼文寫入權並新增「被貼文封面圖使用就不能刪」；已發布貼文須先下架才能刪；貼文／分類 slug 不再為空字串、標題沒改不換 slug。Sprint 332：前端 /cms 系列併入 /dashboard）
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`CmsController`／`PostController`／`MediaController`／`MediaCategoryController`（`api/controller/`）、`CmsService`（`core/cms/`）、`PostService`／`PostCategoryService`（`core/cms/post/`）、`ListingCardService`（`core/cms/listing/`）、`MediaService`（`core/media/`，媒體庫，M18；Sprint 334 起是唯一的媒體 Service，原 `core/cms/media/MediaService` 已隨舊端點移除）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[CmsServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/CmsServiceTest.java)、[PostServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/post/PostServiceTest.java)、[PostCategoryServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/post/PostCategoryServiceTest.java)、[ListingCardServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/listing/ListingCardServiceTest.java)、[core/media/MediaServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/media/MediaServiceTest.java)
@@ -21,8 +21,8 @@
 |------|------|
 | **模組編號** | M15 |
 | **模組名稱** | 內容管理系統 / CMS |
-| **描述** | 平台靜態頁面與橫幅（`CmsController`）、店鋪部落格貼文與分類（`PostController`）、商品/房源嵌入卡片（`PostController` 一端點）、通用媒體庫與分類（`MediaController`／`MediaCategoryController`；Sprint 334 起貼文也用這一套） |
-| **API 前綴** | `/api/v2/cms/...`（`CmsController`）、`/api/v2/dashboard/posts|post-categories/...`／`/api/v2/posts/...`／`/api/v2/admin/posts/...`／`/api/v2/listings/{id}/card`（`PostController`，前綴不統一，見 §1.2）、`/api/v2/media/...`（`MediaController`／`MediaCategoryController`） |
+| **描述** | 平台靜態頁面與橫幅（`CmsController`）、店鋪部落格貼文與分類（`PostController`）、商品/房源嵌入卡片（`PostController` 一端點）、通用媒體庫與分類（`MediaController`／`MediaCategoryController`；Sprint 334 起貼文也用這一套）、公開素材的匿名讀取（`PublicMediaController`，Sprint 336） |
+| **API 前綴** | `/api/v2/cms/...`（`CmsController`）、`/api/v2/dashboard/posts|post-categories/...`／`/api/v2/posts/...`／`/api/v2/admin/posts/...`／`/api/v2/listings/{id}/card`（`PostController`，前綴不統一，見 §1.2）、`/api/v2/media/...`（`MediaController`／`MediaCategoryController`）、`/api/v2/public/media/...`（`PublicMediaController`） |
 | **多租戶隔離** | `CmsController`／`MediaController`／`MediaCategoryController`／`PostController` 四者皆直接使用 `TenantContext.getCurrentTenant()`（`PostController` 原自行重新實作一套反射式租戶解析，已於 Sprint 280／DEF-386 移除，見 §7） |
 
 ### 1.2 設計重點（本模組最重要的部分，請務必先讀）
@@ -86,7 +86,7 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 | API-M15-017 | POST | `/v2/dashboard/posts/{postId}/publish` | 發布貼文 | 同上 |
 | API-M15-018 | DELETE | `/v2/dashboard/posts/{postId}/publish` | 下架貼文 | 同上 |
 | API-M15-019 | GET | `/v2/posts` | 已發布貼文列表（公開） | 公開 |
-| API-M15-020 | GET | `/v2/posts/{slug}` | 依 slug 查已發布貼文（公開） | 公開 |
+| API-M15-020 | GET | `/v2/posts/{slug}` | 依 slug 查已發布貼文（公開，需帶 `tenantId`；`countView=false` 時不計瀏覽，Sprint 336） | 公開 |
 | API-M15-021 | GET | `/v2/posts/categories` | 公開分類列表（僅啟用中） | 公開 |
 | API-M15-022 | GET | `/v2/dashboard/post-categories` | 分類列表（Dashboard，含停用） | `STORE_OWNER`／`STORE_STAFF`／`SELLER`／`HOST` |
 | API-M15-023 | POST | `/v2/dashboard/post-categories` | 建立分類 | 同上 |
@@ -107,7 +107,7 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 | API-M15-037 | POST | `/v2/media/upload` | 上傳媒體（登記既有路徑） | `media:create` |
 | API-M15-038 | POST | `/v2/media/upload-multipart` | 上傳媒體（實際檔案） | `media:create` |
 | API-M15-039 | GET | `/v2/media/files/{assetId}` | 媒體檔案串流 | `media:read` |
-| API-M15-040 | PUT | `/v2/media/{assetId}` | 更新媒體 | `media:update` |
+| API-M15-040 | PUT | `/v2/media/{assetId}` | 更新媒體（含公開開關 `isPublic`，Sprint 336） | `media:update` |
 | API-M15-041 | DELETE | `/v2/media/{assetId}` | 刪除媒體（軟刪除；**被本店鋪貼文當封面圖使用時回 409 `E-8020`**，Sprint 334） | `media:delete` |
 | API-M15-042 | GET | `/v2/media/count` | 媒體總數 | `media:read` |
 
@@ -122,7 +122,13 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 | API-M15-047 | PUT | `/v2/media/categories/{categoryId}` | 更新分類 | `media:update` |
 | API-M15-048 | DELETE | `/v2/media/categories/{categoryId}` | 刪除分類（無子分類/媒體時） | `media:delete` |
 
-共 48 個端點，橫跨 4 個 Controller，全數納入 `ApiRouteDocDriftTest.GUARDED`。
+### 2.5 PublicMediaController（`/v2/public/media`）—— 公開素材（Sprint 336，DEF-482）
+
+| 編號 | 方法 | 路徑 | 說明 | 權限 |
+|------|------|------|------|------|
+| API-M15-049 | GET | `/v2/public/media/{assetId}` | 匿名讀取「公開」素材的檔案內容（串流）；私有、已刪除、店鋪非 `ACTIVE` 一律 404 | 公開 |
+
+共 44 個端點，橫跨 5 個 Controller，全數納入 `ApiRouteDocDriftTest.GUARDED`（Sprint 336 以工具重數：概覽表 44 列、「端點」宣告行 44 行。此句先前寫 48，Sprint 334 移除 5 個端點後沒有更新，Sprint 336 新增 1 個後應為 44）。
 
 ---
 
@@ -149,7 +155,7 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 
 | 欄位 | 說明 |
 |------|------|
-| `id`／`tenant`／`uploader`／`category`／`fileName`／`originalName`／`filePath`／`fileSize`／`mimeType`／`fileType`（`IMAGE`/`VIDEO`/`DOCUMENT`）／`tags[]`／`altText`／`title`／`usageCount`／`isDeleted` | `core.cms.media.MediaService` 與 `core.media.MediaService` 皆讀寫此實體，但走不同的 Repository 查詢方法與不同的 DTO（`M15Dto.MediaResponse` vs `api.dto.media.MediaAssetDto`） |
+| `id`／`tenant`／`uploader`／`category`／`fileName`／`originalName`／`filePath`／`fileSize`／`mimeType`／`fileType`（`IMAGE`/`VIDEO`/`DOCUMENT`）／`tags[]`／`altText`／`title`／`usageCount`／`isDeleted`／`isPublic` | `core.cms.media.MediaService` 與 `core.media.MediaService` 皆讀寫此實體，但走不同的 Repository 查詢方法與不同的 DTO（`M15Dto.MediaResponse` vs `api.dto.media.MediaAssetDto`）。**`isPublic`（Sprint 336，V98）**：`NOT NULL`，預設 `false`（私有）；`true` 才能由匿名端點 `GET /v2/public/media/{assetId}`（§4.49）讀取，既有素材全部回填為私有 |
 
 ### 3.4 `MediaCategory`（`domain.model.media.MediaCategory`，僅 `MediaCategoryController` 使用）
 
@@ -236,6 +242,12 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 
 **權限**：公開，無需登入。`getPublishedPosts`／`getPublishedPostBySlug` 皆**必須**帶 `tenantId`。`getPublishedPostBySlug` 每次呼叫原子遞增 `viewCount`（見 §1.2 第 8 點）。
 
+**`countView` 參數（`GET /v2/posts/{slug}`，Sprint 336，DEF-483）**：選填布林，預設 `true`（維持原行為，瀏覽數 +1）。傳 `false` 時整個請求沒有任何寫入，回應的 `viewCount` 是目前的值、不加一。給 Next 伺服器端組頁面標題與分享資訊用——一次真正的瀏覽，瀏覽器載入頁面會呼叫一次取全文（計一次），伺服器端為了標題再呼叫一次；若這次也計，每篇文章的瀏覽數會多算一倍，搜尋引擎與連結預覽機器人抓標題也會灌水。
+
+**回應的 `tenantSlug`（Sprint 336，DEF-483）**：貼文回應（所有回傳 `PostResponse` 的端點）新增店鋪的網址代稱 `tenantSlug`。文章的公開網址是 `/stores/{tenantSlug}/blog/{slug}`（前端 `lib/article-path.ts`），列表頁靠它組連結。舊的 `/blog/{slug}` 網址由前端導向新網址（登入且選定店鋪的人；匿名訪客維持原本的登入提示）。
+
+**公開的查詢只看貼文狀態，不看店鋪狀態**：`getPublishedPosts`／`getPublishedPostBySlug` 只過濾 `status = PUBLISHED`；店鋪被停權（非 `ACTIVE`）時，這兩個端點仍會回該店鋪已發布的貼文。前端文章頁因為先查公開店鋪資料（非 `ACTIVE` 回 404），整頁不會呈現停權店鋪的文章；但直接呼叫這兩個 API 仍讀得到。已登記為缺陷（見 §7）。
+
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | 缺少 `tenantId` | 400 | `E-9005`（Sprint 278／DEF-388 修復前誤用「憑證已過期」`E-1002`，見 §7） |
@@ -306,6 +318,24 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 | 租戶不存在 | 404 | `E-2000` |
 | 檔案路徑非法／上傳失敗 | 400 | `E-9000` |
 | 刪除正被本店鋪貼文當封面圖使用的媒體（§4.41，Sprint 334） | 409 | `E-8020`（封面圖網址含素材編號或儲存路徑；被擋下時不會軟刪除。只檢查封面圖，貼文內文裡的圖不在檢查範圍，見 §7） |
+
+**公開開關（Sprint 336，DEF-482）**：`PUT /v2/media/{assetId}`（§4.40）的請求新增選填的 `isPublic`（布林）——`true` 公開、`false` 撤回、**沒帶＝不變**（編輯替代文字、標題等其他欄位不會誤動公開狀態）。素材的回應（`MediaAssetDto`）新增 `isPublic`（一律有值，預設 `false`）與 `publicUrl`（只有公開的素材才有，`/api/v2/public/media/{assetId}`，含 context-path 的路徑，不含主機）。需要登入的 `url`（`/api/v2/media/files/{assetId}`，§4.39）不受影響，仍限本店鋪。切換權限與其他更新相同（`media:update`）。撤回公開**不會**檢查是否有貼文正在使用這個網址（與刪除不同，刪除會被 `E-8020` 擋下）——撤回的目的就是快速收回；使用中的頁面會顯示不出圖片，前端在確認視窗裡說明這件事。
+
+### 4.49 公開素材（`PublicMediaController` → `core.media.PublicMediaService`，Sprint 336，DEF-482）
+
+- **端點**: `GET /v2/public/media/{assetId}`
+
+**權限**：公開，無需登入（`/v2/public/**` 在 `SecurityConfig` 本來就是 `permitAll`）。這是整個媒體模組**唯一有意不看呼叫者店鋪**的讀取路徑——匿名者沒有租戶，素材自己的店鋪才是依據，所以獨立成 `PublicMediaService`，不放進以呼叫者租戶為邊界的 `MediaService`（DEF-101 的跨租戶防護）。
+
+**條件**（三個缺一就當作找不到）：素材 `isPublic = true`、`isDeleted = false`、所屬店鋪狀態是 `ACTIVE`；另外儲存路徑要屬於素材自己的店鋪（縱深防護，同 §4.39 的雙重檢查）。
+
+| 狀況 | HTTP | 錯誤碼 |
+|------|:----:|--------|
+| 私有、已刪除（軟刪除）、店鋪非 `ACTIVE`（審核中／被拒／停權／終止）、儲存路徑不屬於素材自己的店鋪、素材不存在 | 404 | `E-4103`（**一律同一個回應**，不區分原因，避免被拿來探測素材是否存在） |
+
+**回應**：檔案內容串流；`Content-Type` 為素材的 MIME 類型（全域 `force-response` 設定會補上 `;charset=UTF-8`，見 §7）、`Content-Disposition: inline`、`Cache-Control: public, max-age=300`、`X-Content-Type-Options: nosniff`（Spring Security 預設標頭）。
+
+**快取的代價**：公開圖片會被反覆載入，所以回 5 分鐘的公開快取（`PublicMediaController.CACHE_SECONDS`）。店主撤回公開或刪除素材之後，伺服器端立刻不再提供，但已經被瀏覽器或 CDN 快取的副本最多還看得到 5 分鐘。
 
 ### 4.43～4.48 媒體分類（`MediaCategoryController` → `core.media.MediaService`）
 
@@ -382,11 +412,15 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 | ~~`PostController` 反射式租戶解析含硬編碼假租戶 fallback~~（**DEF-386，Sprint 280 已修復**） | 見 §1.2 第 1 點。已移除整段反射邏輯（含同款問題的 `getUserIdFromUser`）與硬編碼 fallback，改為直接呼叫 `TenantContext.getCurrentTenant()`／`getCurrentUser()`，與同模組其餘三個 Controller 一致 |
 | ~~兩套互相獨立的媒體庫並存~~（**DEF-387 → DEF-474，Sprint 334 已解決**） | 歷史：Sprint 280 使用者拍板暫不合併（兩套定位不同）；Sprint 332 合併前端介面後，兩套後端的權限與刪除語意差異變成實際的使用者影響（DEF-474）；Sprint 334 使用者決定**對齊權限並移除舊的 5 個端點**，媒體只剩 M18 一套。見 §1.2 第 2 點 |
 | **媒體刪除的引用檢查只看貼文封面圖** | `E-8020` 只比對 `posts.featured_image_url`，不掃貼文 `content`（Markdown 內文裡的圖片）。內文引用的素材被刪後，貼文內文的圖會壞掉。已登記 DEF-481 |
+| **公開貼文端點不看店鋪狀態（DEF-485，Sprint 336 登記）** | `GET /v2/posts`、`GET /v2/posts/{slug}`、`GET /v2/posts/categories` 只過濾貼文狀態（`PUBLISHED`／啟用中），不檢查所屬店鋪是否 `ACTIVE`——店鋪被停權後，直接呼叫 API 仍讀得到它已發布的貼文（讀碼確認，`PostRepository` 的公開查詢沒有店鋪狀態條件；未實測）。前端文章頁因為先查公開店鋪資料（非 `ACTIVE` 回 404）而不會呈現，E2E-ARTICLE-05 守這一層；公開素材的 `GET /v2/public/media/{assetId}`（§4.49）則有檢查店鋪狀態 |
+| **平台層 `/blog`、`/blog/category/[id]` 對匿名訪客仍是登入提示（DEF-486，Sprint 336 登記）** | 這兩個頁面的 tenantId 取自瀏覽器 localStorage（只有登入才有）。文章頁自 Sprint 336 起網址帶店鋪、匿名可讀，但文章頁的「分類」徽章仍連到 `/blog/category/{id}`，匿名訪客點了會看到登入提示。後端 `GET /v2/posts?categoryId=` 已支援分類篩選，缺的是店鋪前台的公開版（例如 `/stores/{店鋪}/blog?category=`） |
+| **公開素材圖片經過後端串流，沒有 CDN／預簽網址（DEF-488，Sprint 336 登記）** | `GET /v2/public/media/{assetId}`（§4.49）從物件儲存讀出再由 Spring 回應。匿名請求以來源 IP 共用每分鐘 100 次的限流桶（`RateLimitFilter`，讀碼），一頁十幾張封面圖會吃掉十幾次額度；流量大時要改走預簽網址或 CDN。目前以 5 分鐘公開快取減輕（未量測實際影響） |
+| **全域 `force-response` 會替圖片的 `Content-Type` 補上 `;charset=UTF-8`** | `server.servlet.encoding.force-response=true`（DEF-397，Sprint 296）是全域設定，連 `image/png` 也變成 `image/png;charset=UTF-8`（`PublicMediaEndpointIntegrationTest` 實測）。瀏覽器對圖片類型忽略 charset 參數，不影響顯示；需要登入的 `/v2/media/files/{id}` 本來就是這樣，不是公開端點引入的 |
 | **既有的 `-<8碼>` slug（開頭有連字號）未被遷移** | V97 只補 `slug = ''` 的列；先前被存成 `-d46b778f` 的貼文網址是能開的，改掉會讓已分享的連結失效，故刻意不動 |
 | **大量錯誤碼跨領域誤用（DEF-388，已於 Sprint 278 修復）** | 本模組是目前已完成的 11 個模組中錯誤碼精確性問題最密集的一個：原 `E-4000`（房源專用）、`E-3001`（刊登類型專用）、`E-1002`（憑證過期專用）、`E-9005`（缺少欄位專用）、`E-4102`（找不到分類）、`E-8004`（找不到頁面）皆被借用到語意不符的情境。已新增 7 個專屬碼 `E-8013`～`E-8019`，並改採既有但先前未使用的 `E-3006`／`E-4103`；過程中額外發現並連帶修復 2 處原描述未列出的同類誤用（頁面/分類 slug 重複）。`CmsServiceTest`／`PostServiceTest`／`PostCategoryServiceTest`／`MediaServiceTest` 已同步更新/新增測試斷言具體錯誤碼 |
 | `PostCategory.name`／`MediaCategory` 建立請求無 `@NotBlank` 驗證 | 可建立空白名稱的分類，無資料品質防護（非安全問題，純資料完整性缺口） |
 | CMS 頁面/橫幅、貼文、獨立媒體庫三套授權風格並存 | `cms:*`／角色字面字串／`media:*`，同一模組內三種不同慣例，見 §5 備註 |
-| `ApiRouteDocDriftTest` 本次起覆蓋全部 4 個 Controller | 本文件完成後新增 `CmsController`／`PostController`／`MediaController`／`MediaCategoryController` 至 `GUARDED` 清單 |
+| `ApiRouteDocDriftTest` 覆蓋全部 5 個 Controller | 本文件完成後新增 `CmsController`／`PostController`／`MediaController`／`MediaCategoryController` 至 `GUARDED` 清單；Sprint 336 再加入 `PublicMediaController` |
 
 ---
 
@@ -396,8 +430,8 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 |------|------|
 | PRD | §6.6（內容管理系統 CMS）§6.6.1～6.6.3 |
 | FRD | 無章節（見文件頂部狀態說明） |
-| 實作 | `CmsController`／`PostController`／`MediaController`／`MediaCategoryController`（`api/controller/`）；`CmsService`（`core/cms/`）；`PostService`／`PostCategoryService`（`core/cms/post/`）；`ListingCardService`（`core/cms/listing/`）；`MediaService`（`core/media/`；`core/cms/media/` 只剩 `MediaValidationService`） |
-| 契約測試 | [CmsServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/CmsServiceTest.java)、[PostServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/post/PostServiceTest.java)、[PostCategoryServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/post/PostCategoryServiceTest.java)、[ListingCardServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/listing/ListingCardServiceTest.java)、[core/media/MediaServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/media/MediaServiceTest.java)、[CmsDtoValidationTest](../../../backend/src/test/java/com/nextkey/ecommerce/api/dto/CmsDtoValidationTest.java)、[M15DtoValidationTest](../../../backend/src/test/java/com/nextkey/ecommerce/api/dto/M15DtoValidationTest.java) |
+| 實作 | `CmsController`／`PostController`／`MediaController`／`MediaCategoryController`／`PublicMediaController`（`api/controller/`）；`CmsService`（`core/cms/`）；`PostService`／`PostCategoryService`（`core/cms/post/`）；`ListingCardService`（`core/cms/listing/`）；`MediaService`／`PublicMediaService`（`core/media/`；`core/cms/media/` 只剩 `MediaValidationService`） |
+| 契約測試 | [CmsServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/CmsServiceTest.java)、[PostServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/post/PostServiceTest.java)、[PostCategoryServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/post/PostCategoryServiceTest.java)、[ListingCardServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/listing/ListingCardServiceTest.java)、[core/media/MediaServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/media/MediaServiceTest.java)、[PublicMediaServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/media/PublicMediaServiceTest.java)、[PublicMediaEndpointIntegrationTest](../../../backend/src/test/java/com/nextkey/ecommerce/integration/PublicMediaEndpointIntegrationTest.java)（真實 PostgreSQL＋真實 HTTP）、[CmsDtoValidationTest](../../../backend/src/test/java/com/nextkey/ecommerce/api/dto/CmsDtoValidationTest.java)、[M15DtoValidationTest](../../../backend/src/test/java/com/nextkey/ecommerce/api/dto/M15DtoValidationTest.java) |
 | 前端 | `frontend/src/services/cms.ts`（`/dashboard/posts*` 頁面；Sprint 332 起原 `/cms*` 頁面已併入並移除，舊網址 308 轉址）、`frontend/src/services/media.ts`（`/dashboard/media` 頁面，唯一的媒體介面） |
 
 ---

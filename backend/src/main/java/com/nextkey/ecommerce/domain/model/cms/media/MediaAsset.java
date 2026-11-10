@@ -84,6 +84,14 @@ public class MediaAsset {
     @Builder.Default
     private Boolean isDeleted = false;
 
+    /**
+     * 公開開關（Sprint 336，DEF-482）：true 才能由匿名端點 {@code /v2/public/media/{id}} 讀取，預設私有。
+     * 需要登入的 {@code /v2/media/files/{id}} 不受它影響，仍限本店鋪。
+     */
+    @Column(name = "is_public", nullable = false)
+    @Builder.Default
+    private Boolean isPublic = false;
+
     @Column(name = "file_name", nullable = false)
     private String fileName;
 

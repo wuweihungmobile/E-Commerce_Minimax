@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
+import com.nextkey.ecommerce.domain.model.tenant.Tenant;
 
 /**
  * M15 CMS MediaAsset Repository
@@ -118,4 +119,16 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
      */
     @Query("SELECT COUNT(m) FROM CmsMediaAsset m WHERE m.tenant.id = :tenantId")
     long countByTenantId(@Param("tenantId") UUID tenantId);
+
+    /**
+     * 匿名讀取用：只找得到「公開、未刪除、所屬店鋪是指定狀態（呼叫端傳 ACTIVE）」的素材（Sprint 336，DEF-482）。
+     *
+     * <p>故意<b>不</b>帶 tenantId 條件——匿名者沒有租戶，素材自己的店鋪才是依據；也因此這個方法不能用在任何
+     * 需要登入的路徑上（那些路徑必須用 {@link #findActiveByIdAndTenantId}，限本店鋪）。三個條件缺一就查不到，
+     * 呼叫端拿到空值一律當成「找不到」，不區分是私有、已刪除、店鋪停權還是根本不存在。
+     */
+    @Query("SELECT m FROM CmsMediaAsset m WHERE m.id = :id AND m.isPublic = true AND m.isDeleted = false "
+            + "AND m.tenant.status = :tenantStatus")
+    Optional<MediaAsset> findPublicActiveById(@Param("id") UUID id,
+                                              @Param("tenantStatus") Tenant.TenantStatus tenantStatus);
 }

@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { getPublishedPosts } from "@/services/cms"
 import { useAsyncData } from "@/hooks/useAsyncData"
 import { Card } from "@/components/ui/card"
+import { articlePath } from "@/lib/article-path"
 
 const PAGE_SIZE = 12
 
@@ -73,7 +74,7 @@ export function StoreBlogList({ slug, tenantId, page }: StoreBlogListProps) {
         {posts.map((post) => (
           <Card asChild key={post.id} className="flex flex-col overflow-hidden no-underline text-inherit transition-colors hover:border-rs-primary">
 <Link
-            href={`/blog/${post.slug}`}
+            href={articlePath(slug, post.slug)}
           >
             {post.featuredImageUrl && (
               // eslint-disable-next-line @next/next/no-img-element -- 貼文封面圖為後端動態 URL

@@ -18,6 +18,10 @@ services:
     container_name: ecommerce-frontend-dev
     environment:
       - NODE_ENV=development
+      # Sprint 336（使用者 2026-11-10 明確指示加入）：Next 伺服器端（generateMetadata）呼叫後端公開 API 用的基底網址。
+      # 容器網路內的 localhost 是前端容器自己，預設值 http://localhost:8080/api 連不到後端，標題會退回靜態頁型標題；
+      # 這裡指向開發後端容器（container_name: ecommerce-backend-dev）。正式環境的 docker-compose.yml 沒有動。
+      - API_INTERNAL_URL=http://ecommerce-backend-dev:8080/api
     volumes:
       - ./frontend:/app
       - /app/node_modules

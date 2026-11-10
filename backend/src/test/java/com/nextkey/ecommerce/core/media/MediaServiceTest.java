@@ -16,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 
+import com.nextkey.ecommerce.api.dto.media.UpdateMediaRequest;
 import com.nextkey.ecommerce.core.cms.media.MediaValidationService;
 import com.nextkey.ecommerce.domain.model.cms.media.MediaAsset;
 import com.nextkey.ecommerce.domain.model.media.MediaCategory;
@@ -526,5 +527,76 @@ class MediaServiceTest {
         org.mockito.Mockito.verify(postRepository, org.mockito.Mockito.never())
                 .existsByTenantIdAndFeaturedImageUrlReferencing(TENANT_ID, "");
         assertThat(asset.getIsDeleted()).isTrue();
+    }
+
+    // ── 公開開關（Sprint 336，DEF-482）──
+    // 媒體庫的檔案網址需要登入，<img> 帶不出憑證，店主上傳的圖沒辦法拿去當公開頁的圖。每個素材一個「公開」開關（預設私有），
+    // 公開的素材多一個匿名可讀的網址 publicUrl。需要登入的 url 不受影響。
+
+    @Test
+    @DisplayName("DEF-482: 新建的素材預設私有——建構子與 builder 都是（沒有人期待一上傳就公開）")
+    void newAsset_isPrivateByDefault() {
+        assertThat(MediaAsset.builder().build().getIsPublic()).isFalse();
+        assertThat(new MediaAsset().getIsPublic()).isFalse();
+    }
+
+    @Test
+    @DisplayName("DEF-482: updateAsset：isPublic=true → 素材變公開，DTO 帶匿名可讀的 publicUrl；需要登入的 url 不變")
+    void updateAsset_isPublicTrue_marksPublicAndExposesPublicUrl() {
+        MediaAsset asset = buildActiveAsset();
+        when(mediaAssetRepository.findActiveByIdAndTenantId(ASSET_ID, TENANT_ID)).thenReturn(Optional.of(asset));
+        when(mediaAssetRepository.save(any(MediaAsset.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var dto = mediaService.updateAsset(ASSET_ID, UpdateMediaRequest.builder().isPublic(true).build());
+
+        assertThat(asset.getIsPublic()).isTrue();
+        assertThat(dto.getIsPublic()).isTrue();
+        assertThat(dto.getPublicUrl()).isEqualTo("/api/v2/public/media/" + ASSET_ID);
+        assertThat(dto.getUrl()).isEqualTo("/api/v2/media/files/" + ASSET_ID);
+    }
+
+    @Test
+    @DisplayName("DEF-482: updateAsset：isPublic=false → 撤回公開，DTO 不再帶 publicUrl")
+    void updateAsset_isPublicFalse_revokesAndHidesPublicUrl() {
+        MediaAsset asset = buildActiveAsset();
+        asset.setIsPublic(true);
+        when(mediaAssetRepository.findActiveByIdAndTenantId(ASSET_ID, TENANT_ID)).thenReturn(Optional.of(asset));
+        when(mediaAssetRepository.save(any(MediaAsset.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var dto = mediaService.updateAsset(ASSET_ID, UpdateMediaRequest.builder().isPublic(false).build());
+
+        assertThat(asset.getIsPublic()).isFalse();
+        assertThat(dto.getIsPublic()).isFalse();
+        assertThat(dto.getPublicUrl()).as("私有的素材不能有匿名網址").isNull();
+    }
+
+    @Test
+    @DisplayName("DEF-482: updateAsset：沒帶 isPublic（只改替代文字）→ 公開狀態維持原樣，不會被編輯其他欄位悄悄切掉")
+    void updateAsset_withoutIsPublic_leavesVisibilityUntouched() {
+        MediaAsset publicAsset = buildActiveAsset();
+        publicAsset.setIsPublic(true);
+        when(mediaAssetRepository.findActiveByIdAndTenantId(ASSET_ID, TENANT_ID)).thenReturn(Optional.of(publicAsset));
+        when(mediaAssetRepository.save(any(MediaAsset.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var dto = mediaService.updateAsset(ASSET_ID, UpdateMediaRequest.builder().altText("新的替代文字").build());
+
+        assertThat(publicAsset.getIsPublic()).isTrue();
+        assertThat(dto.getIsPublic()).isTrue();
+        assertThat(dto.getPublicUrl()).isEqualTo("/api/v2/public/media/" + ASSET_ID);
+        assertThat(dto.getAltText()).isEqualTo("新的替代文字");
+    }
+
+    @Test
+    @DisplayName("DEF-482: updateAsset：私有素材只改替代文字 → 仍是私有（不會因為沒帶 isPublic 而被公開）")
+    void updateAsset_withoutIsPublic_privateStaysPrivate() {
+        MediaAsset asset = buildActiveAsset();
+        when(mediaAssetRepository.findActiveByIdAndTenantId(ASSET_ID, TENANT_ID)).thenReturn(Optional.of(asset));
+        when(mediaAssetRepository.save(any(MediaAsset.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var dto = mediaService.updateAsset(ASSET_ID, UpdateMediaRequest.builder().title("標題").build());
+
+        assertThat(asset.getIsPublic()).isFalse();
+        assertThat(dto.getIsPublic()).isFalse();
+        assertThat(dto.getPublicUrl()).isNull();
     }
 }

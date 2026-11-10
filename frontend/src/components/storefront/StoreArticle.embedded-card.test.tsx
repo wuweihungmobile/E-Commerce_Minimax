@@ -10,15 +10,13 @@ vi.mock('@/services/cms', () => ({
   getPublishedPostBySlug: vi.fn(),
   getListingCard: vi.fn(),
 }))
-vi.mock('@/services/authStore', () => ({
-  subscribeAuth: () => () => {},
-  getSelectedTenantIdSnapshot: () => 'tenant-1',
-  getAuthServerSnapshot: () => null,
-}))
-vi.mock('next/navigation', () => ({ useParams: () => ({ slug: 'hello' }) }))
 
 import { getListingCard, getPublishedPostBySlug } from '@/services/cms'
-import BlogPostPage from './page'
+import { StoreArticle } from './StoreArticle'
+
+// Sprint 336（DEF-483）：文章頁搬進 StoreArticle，店鋪與 tenantId 改由 props 提供（不再讀 localStorage 與路由參數）；
+// 內嵌商品卡的行為（DEF-473）不變，這份測試原封不動地守著它。
+const BlogPostPage = () => <StoreArticle storeSlug="demo" tenantId="tenant-1" postSlug="hello" />
 
 const ID_A = '11111111-1111-1111-1111-111111111111'
 const ID_B = '22222222-2222-2222-2222-222222222222'

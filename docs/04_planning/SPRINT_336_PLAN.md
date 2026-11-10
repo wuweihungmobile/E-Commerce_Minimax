@@ -170,7 +170,9 @@ Sprint 335 收尾（雲端 CI 全綠）：整合 1039／0、前端 Vitest 26 檔
 
 ### 6.2 pre-push 與雲端 CI
 
-【push 後回填】（pre-commit 快速檢查已通過，commit `b1305a86`；pre-push 輕量守門與雲端 CI 的結果在 push 之後補上）
+- **pre-commit 快速檢查通過**（兩個 commit：`b1305a86`、`91bb3556`）。
+- **pre-push 輕量守門通過**（backend-unit〔act〕＋schema 漂移＋frontend 快檢），已 push：`57275512..91bb3556`（連同 Sprint 335 的純文件回填 commit `42cc6107`）。
+- **雲端 CI 全綠**：run [42768014944](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/42768014944)，`headSha` `91bb35563a07…` 與本機 HEAD 一致；以 `gh run view --json` 取得 run 層級 `completed／success`，再獨立查一次交叉確認；三個 job 逐一為 success（Backend Unit Tests、Backend Integration Tests & Package、Frontend Lint & Build）。下載日誌確認：**整合測試 1047／0**、**前端 Unit Tests 30 檔 318 案例**。**後端單元測試的總數沒有出現在 CI 日誌裡**（該步驟的輸出是應用程式日誌，沒有 Maven 的彙總行），所以單元 2476／0 的證據只有本機 `mvn clean verify`；雲端的證據是該 job 的步驟成功。
 
 ### 6.3 開發容器網路內的連線驗證（Docker 政策下可行的實測方式）
 
@@ -271,11 +273,11 @@ Sprint 335 收尾（雲端 CI 全綠）：整合 1039／0、前端 Vitest 26 檔
 
 ## 11. 狀態
 
-**完成（2026-11-10），push 與雲端 CI 結果待回填（§6.2）。** 處置：`DEF-483` ✅（文章網址帶店鋪、匿名可讀、實體標題）、`DEF-482` ✅（素材公開開關與匿名端點）、`docker-compose` 的 `API_INTERNAL_URL` ✅（只加在開發用的 override，容器內實測生效）；新登記 `DEF-485`～`DEF-490`。
+**完成（2026-11-10），已 push（`57275512..91bb3556`），雲端 CI 全綠（§6.2）。** 處置：`DEF-483` ✅（文章網址帶店鋪、匿名可讀、實體標題）、`DEF-482` ✅（素材公開開關與匿名端點）、`docker-compose` 的 `API_INTERNAL_URL` ✅（只加在開發用的 override，容器內實測生效）；新登記 `DEF-485`～`DEF-490`。
 
 **本機驗證**：`tsc` 0 錯誤；`eslint --max-warnings 0` 0 警告；Vitest **30 檔／318 案例**；後端 checkstyle 0 違規、**單元 2476／0、整合 1047／0**；`validate-schema`、`validate-schema-doc`、`ApiRouteDocDriftTest` 通過；**完整本地 E2E 守門 381／381**；突變驗證：前端 12 擊殺＋1 等價（`F11`，我的預測錯誤）、後端 12／12（基線 0 紅燈）、E2E 5／5（第一次因驅動腳本引號錯誤而無效，重跑後吻合）；容器堆疊上 `at-article-titles-real` 7／7（§6.3）；目視檢查補做。
 
-**提交**：`b1305a86`（程式＋測試＋E2E＋docker override＋API／PRD／設計慣例文件）→ 本文件 commit（計畫書、追蹤表關閉 `DEF-482`／`DEF-483` 並登記 `DEF-485`～`DEF-490`、發布追蹤新增 Sprint 336）。
+**提交**：`b1305a86`（程式＋測試＋E2E＋docker override＋API／PRD／設計慣例文件）→ `91bb3556`（計畫書、追蹤表關閉 `DEF-482`／`DEF-483` 並登記 `DEF-485`～`DEF-490`、發布追蹤新增 Sprint 336）→ 回填 commit（§6.2、§11 的 push 與雲端 CI 結果；只改文件）。
 
 **需要使用者決定的**：①`DEF-490`（開發 compose 的 `NEXT_PUBLIC_API_URL` 帶 `/v2`，要不要修；要明確指示）；②正式的 `docker-compose.yml` 要不要也加 `API_INTERNAL_URL`（值 `http://backend:8080/api`）；③`DEF-485`（公開貼文 API 要不要也只供應 ACTIVE 店鋪）；④`DEF-486`（店鋪前台公開版分類篩選）；⑤§10 裡我替你做的決定，尤其第 1 點（舊網址導向頁）與第 4 點（公開開關不限檔案類型）。
 

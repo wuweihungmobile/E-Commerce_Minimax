@@ -192,7 +192,10 @@ Sprint 336 收尾（雲端 CI 全綠，run 42768014944）：後端單元 2476／
 
 ### 6.2 pre-push 與雲端 CI
 
-待回填（push 與雲端 CI 完成後，與 `RELEASE_TRACKER` 的回填一起寫進本節；那是純文件 commit，留在本機隨下一輪帶出）。
+- **pre-commit 快速檢查通過**（`89db591d`，輸出見 §6.1；文件 commit `03b8f314` 也是正常的 `git commit`，沒有使用 `--no-verify`）。
+- **pre-push 輕量守門通過**（backend-unit〔act〕＋schema 漂移〔`ddl-auto=validate`〕＋frontend 快檢，約 16 分鐘），已 push：`91bb3556..03b8f314`（連同 Sprint 336 的純文件回填 commit `dd9dd295`）；`origin/main` 的 reflog 記錄 push 時間為 2026-11-11 03:12:32（+0800）。
+- **雲端 CI 全綠**：run [42882950938](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/42882950938)，`headSha` `03b8f314f3f6…` 與本機 HEAD 一致；以 `gh run view --json` 取得 run 層級 `completed／success`，再獨立查一次交叉確認；三個 job 逐一為 success（Backend Unit Tests、Backend Integration Tests & Package、Frontend Lint & Build），逐步查過也沒有任何步驟的結論不是 success 或 skipped。下載日誌確認：**整合測試 1051／0**（與本機相同，比 Sprint 336 多的 4 個是 `IT-PPS-001`～`004`）、**前端 Unit Tests 31 檔 337 案例**（與本機相同）。**後端單元測試的總數沒有出現在 CI 日誌裡**（該步驟的輸出是應用程式日誌，沒有 Maven 的彙總行），所以單元 2479／0 的證據只有本機 `mvn clean verify`；雲端的證據是該 job 的步驟成功。
+- 本節與 `RELEASE_TRACKER` 的回填是只改文件的 commit，留在本機隨下一輪的 push 帶出。
 
 ### 6.3 容器驗證（`DEF-490` 的實測、正式 compose 值的可行驗證、`DEF-493` 的實測）
 
@@ -291,6 +294,6 @@ Sprint 336 收尾（雲端 CI 全綠，run 42768014944）：後端單元 2476／
 
 ## 11. 狀態
 
-程式與測試（含 §4.4 的規格文件）已 commit：`89db591d`；本計畫書、`DEFERRED_ITEMS_TRACKER.md`、`RELEASE_TRACKER.md` 在隨後的純文件 commit。**push 與雲端 CI 的結果見 §6.2（待回填）。**
+程式與測試（含 §4.4 的規格文件）已 commit：`89db591d`；本計畫書、`DEFERRED_ITEMS_TRACKER.md`、`RELEASE_TRACKER.md` 在隨後的純文件 commit：`03b8f314`。**已 push（`91bb3556..03b8f314`），雲端 CI 全綠（§6.2）。** push 後的回填（§6.2、§11 與 `RELEASE_TRACKER` 的統計）是只改文件的 commit，留在本機隨下一輪帶出。
 
 要你決定（建議項放前面）：①`DEF-491` 平台層 `/blog` 與 `/blog/category/[id]` 的去留（我建議保留現狀）；②`DEF-492` 分類名稱只差中文時網址代稱重複（建議比照 `updateCategory` 接隨機後綴；「完全同名」是否仍擋是產品語意）；③`DEF-493` 正式前端映像建不出來（建議在 `next.config.ts` 加 `output: 'standalone'` 並用 `docker compose -f docker-compose.yml build` 與 `make up-ci` 實測；涉及 Docker 設定，需要你的明確指示）。`DEF-494`（`API_Index.md` 一列過期）不需要決定，下次可直接做。

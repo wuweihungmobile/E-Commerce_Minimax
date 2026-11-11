@@ -135,7 +135,9 @@ Sprint 338 收尾（本機）：後端單元 2495／整合 1052、Vitest 35 檔 
 
 ### 6.4 push 與雲端 CI
 
-Sprint 338 的兩個 commit（`6db07a0e`、`edfd2b14`）與本輪 commit 一起 push；結果在回填 commit 補到這裡。
+Sprint 338 的兩個 commit 與本輪 commit 一起 push：`03b8f314..22800e61`，共 5 個 commit（Sprint 337 的純文件回填 `ac6203b9`、Sprint 338 的 `6db07a0e`＋`edfd2b14`、Sprint 339 的 `b8b1aaa1`＋`22800e61`）。pre-push 的輕量守門（`act` 的 Backend Unit Tests、Frontend Lint & Build、schema 漂移守門）這次全過，先前的 DNS 失敗沒有再出現（我沒有改任何設定，原因不明）。
+
+**雲端 CI**：run [43081196174](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/43081196174)，`gh run view --json` 的結論是 `completed／success`，headSha `22800e61` 與本機 HEAD 一致，三個 job（Backend Unit Tests、Frontend Lint & Build、Backend Integration Tests & Package）皆 success，且各 job 都沒有非 success／skipped 的步驟（`gh run watch --exit-status` 先回報完成，但它在網路瞬斷時會提早 exit 0，所以另用結構化查詢交叉確認）。**雲端日誌的數字**：整合 **1053／0 失敗／0 略過**（Checkstyle 0 違規、`BUILD SUCCESS`、`mvn verify` 9 分 54 秒；`PostControllerE2ETest` 29／0）、前端 Unit Tests **36 檔 359／0**（ESLint `--max-warnings 0` 與 `next build` 通過）。後端單元總數不在 CI 日誌（只有本機 verify 的 2505／0）。雲端**沒有 e2e job**（`act-compat.yml` 只有上述三個 job），所以完整 E2E 守門 389／389 只有本機這一份證據（Sprint 338 計畫書曾誤寫成雲端有，已在該計畫書 §6.3 更正）。
 
 ## 7. 行為變更與已知限制
 
@@ -216,8 +218,8 @@ Sprint 338 的兩個 commit（`6db07a0e`、`edfd2b14`）與本輪 commit 一起 
 | `DEF-495` 跨店鋪公開部落格 | ✅ 已做並實測（你選了『做成跨店鋪部落格』）；追蹤表已結案；分類語意等 12 項由我決定，見 §10 |
 | `DEF-498` 前端 `.dockerignore` | ✅ 已做並實測（你選了『新增（建議）』）；追蹤表已結案 |
 | 新登記 | `DEF-499`（匿名來源 IP 限流桶／前台請求放大）、`DEF-500`（跨店鋪部落格後續） |
-| 程式 commit | `b8b1aaa1`（本機） |
-| 文件 commit（本計畫書、追蹤表、發布追蹤、Sprint 338 計畫書的指向備註） | 隨後建立（本機） |
-| Sprint 338 的兩個 commit | `6db07a0e`、`edfd2b14`（本機，與本輪一起 push） |
-| push、雲端 CI | 待執行；結果在回填 commit 補到 §6.4 |
+| 程式 commit | `b8b1aaa1`（已 push） |
+| 文件 commit（本計畫書、追蹤表、發布追蹤、Sprint 338 計畫書的指向備註） | `22800e61`（已 push） |
+| Sprint 338 的兩個 commit | `6db07a0e`、`edfd2b14`（已 push，與本輪一起） |
+| push、雲端 CI | ✅ 已 push（`03b8f314..22800e61`），雲端 CI 全綠（run 43081196174），見 §6.4；本回填 commit 留在本機，隨下一個 Sprint 一起 push |
 | 待你決定 | 沒有必須決定的項目。§10 的 12 項是我的預設，要推翻請一句話告訴我；`DEF-499`（要不要先量測前台請求放大倍率）與 `DEF-500`（要不要做伺服器端渲染／SEO）是之後的方向題 |

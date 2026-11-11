@@ -200,11 +200,13 @@ Sprint 337 收尾（雲端 CI 全綠，run 42882950938）：後端單元 2479／
 - 後端日誌顯示請求**都到了後端並在 22:58:38 處理完**；Playwright 的 30 秒測試逾時在同一刻用完——時間耗在點擊**之前**（註冊＋登入＋開頁）。同一份日誌裡還有一個請求在兩個過濾器之間停了 1.6 秒。
 - 機器只有 4 個邏輯核心，守門當時負載平均 59／116／111（1／5／15 分鐘），守門總時間也比 Sprint 337 慢一倍。
 - **單獨重跑這個規格通過**（當時負載平均仍有 74）。
-- **我沒有再跑第二次完整守門**（一次 20 分鐘，機器仍過載）；雲端 CI 的 e2e job 在乾淨的 runner 上跑整套，是獨立的確認，結果見 §6.3。
+- **我沒有再跑第二次完整守門**（一次 20 分鐘，機器仍過載）；雲端 CI 的 e2e job 在乾淨的 runner 上跑整套，是獨立的確認，結果見 §6.3。**（更正，Sprint 339 回填時發現：這句話寫錯了——雲端 `act-compat.yml` 沒有 e2e job，見 §6.3 的更正。）**
 
 ### 6.3 pre-push 與雲端 CI
 
-**寫成這一節時還沒有 push。** 程式 commit 是 `6db07a0e`（pre-commit 的 Maven 核心測試、ESLint、TypeScript、單元測試、SRD schema 文件一致性檢查全過，沒有用 `--no-verify`）。push、pre-push 輕量守門與雲端 CI（含 e2e job，也就是整套 389 案例在乾淨 runner 上的獨立確認）的結果，在 push 之後的回填 commit 補在這裡。
+程式 commit 是 `6db07a0e`（pre-commit 的 Maven 核心測試、ESLint、TypeScript、單元測試、SRD schema 文件一致性檢查全過，沒有用 `--no-verify`）。**第一次 push（2026-11-11 深夜）被 pre-push 擋下**，原因是環境：`act` 的 `Backend Unit Tests` 在 `apt-get install` 時容器內 DNS 解析不了 `archive.ubuntu.com`（exit 100；細節見 [SPRINT_339_PLAN.md](SPRINT_339_PLAN.md) §1）。**後來與 Sprint 339 一起 push 成功**（2026-11-12，`03b8f314..22800e61`，5 個 commit）：pre-push 輕量守門全過；雲端 CI run [43081196174](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/43081196174) 全綠（三個 job 皆 success，headSha `22800e61`），整合 1053／0（含 Sprint 338 新增的 `IT-M15-031`）、前端 Unit Tests 36 檔 359／0——這是 Sprint 338＋339 合計的結果，雲端沒有只含 Sprint 338 的 run。
+
+**更正**：本節與 §6.2 先前寫的『雲端 CI 含 e2e job、整套 389 案例在乾淨 runner 上獨立確認』是錯的——雲端 `act-compat.yml` 只有 Backend Unit Tests、Backend Integration Tests & Package、Frontend Lint & Build 三個 job，**沒有 e2e job**；E2E 是本機守門（`make validate-e2e`），所以 Sprint 338 的 389 案例（387 過＋2 個逾時、單獨重跑過）只有本機這一份證據。
 
 ## 7. 行為變更與已知限制
 
@@ -299,7 +301,7 @@ Sprint 337 收尾（雲端 CI 全綠，run 42882950938）：後端單元 2479／
 | `DEF-491` 平台層部落格暫時入口 | ✅ 暫時入口已做；正式去留 → `DEF-495`（待你決定） |
 | `DEF-492` 貼文分類同名規則 | ✅ 已修（你選了『擋下並提示』）；追蹤表已結案 |
 | `DEF-494` `API_Index.md` 過期列 | ✅ 已修 |
-| 程式 commit | `6db07a0e`（本機；**尚未 push**） |
-| 文件 commit（本計畫書、追蹤表、發布追蹤） | 隨後建立（本機；**尚未 push**） |
-| push、雲端 CI | 待執行；結果在回填 commit 補到 §6.3 |
+| 程式 commit | `6db07a0e`（已 push，與 Sprint 339 一起） |
+| 文件 commit（本計畫書、追蹤表、發布追蹤） | `edfd2b14`（已 push，與 Sprint 339 一起） |
+| push、雲端 CI | ✅ 已 push（`03b8f314..22800e61`），雲端 CI 全綠（run 43081196174），結果與更正見 §6.3 |
 | 待你決定 | `DEF-495`（平台層部落格的正式去留）、`DEF-498`（前端 `.dockerignore`，一句話同意就做）。**→ 已於 2026-11-12 由你以互動選項決定（`DEF-495`『做成跨店鋪部落格』、`DEF-498`『新增（建議）』），並在 Sprint 339 完成，見 [SPRINT_339_PLAN.md](SPRINT_339_PLAN.md)**（上一句保留作為當時的紀錄） |

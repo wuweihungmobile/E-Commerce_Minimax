@@ -227,7 +227,6 @@
 | `/api/v2/cms/pages`／`/banners` | 全套 CRUD＋發布 | 平台頁面／橫幅（實際任何店鋪角色可管理自己租戶內容） | `cms:*` |
 | `/api/v2/dashboard/posts`／`/post-categories` | 全套 CRUD＋發布 | 店鋪部落格貼文與分類 | 角色字面字串 |
 | `/api/v2/posts`／`/posts/{slug}`／`/posts/categories` | GET | 公開部落格瀏覽（Sprint 337 起只供應 `ACTIVE` 店鋪，非 `ACTIVE` 或不存在 → 404 `E-2000`） | 公開 |
-| `/api/v2/dashboard/media/*` | 全套 | 部落格專用媒體上傳 | 角色字面字串 |
 | `/api/v2/admin/posts/*` | GET／DELETE | 平台管理任意店鋪貼文 | `hasRole(SUPER_ADMIN)` |
 | `/api/v2/listings/{id}/card` | GET | 嵌入卡片資訊 | 公開 |
 | `/api/v2/media/*`／`/media/categories/*` | 全套 | 獨立通用媒體庫與分類 | `media:*` |

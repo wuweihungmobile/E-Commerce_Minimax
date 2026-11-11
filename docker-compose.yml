@@ -35,7 +35,10 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ >/dev/null 2>&1 || exit 1"]
+      # Sprint 338（DEF-493，使用者 2026-11-11 以互動選項明確同意）：用 127.0.0.1，不用 localhost。node:20-alpine 的 BusyBox wget
+      # 把 localhost 解析成 ::1（IPv6），而 Next standalone 只監聽 0.0.0.0（IPv4），連線被拒，容器永遠 unhealthy
+      # （實測：wget http://localhost:3000/ → Connection refused；wget http://127.0.0.1:3000/ → 成功）。間隔、重試、資源限制都沒動。
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

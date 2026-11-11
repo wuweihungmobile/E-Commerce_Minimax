@@ -177,6 +177,9 @@ public enum ErrorCode {
     // Sprint 334（DEF-474）：M18 刪除媒體前檢查是否正被貼文當封面圖使用。
     // 原 M15 /v2/dashboard/media 的刪除用 E_9000（驗證錯誤）代表這件事，隨 M15 媒體端點一併移除。
     E_8020("E-8020", "媒體正被貼文使用，無法刪除"),
+    // Sprint 338（DEF-492，使用者以互動選項決定「擋下並提示」）：貼文分類名稱與同店既有分類相同（忽略大小寫與前後空白）。
+    // 與 E_8014（分類網址代稱重複）不同：代稱撞到現在由 PostCategoryService 自動加隨機後綴，不再回 E_8014；名稱相同才擋。
+    E_8021("E-8021", "分類名稱已存在"),
 
     // Chat & Messaging (E-8100s) —— DEF-382：M10 原無專屬錯誤碼區段，sendMessage／getMessages／
     // markAsRead／deleteConversation 四處皆誤用通用驗證碼 E_9005（缺少必填欄位）代表「對話不存在或非本人」。

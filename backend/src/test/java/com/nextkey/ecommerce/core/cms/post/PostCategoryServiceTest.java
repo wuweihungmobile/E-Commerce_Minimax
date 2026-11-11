@@ -14,6 +14,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -25,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -77,6 +81,19 @@ class PostCategoryServiceTest {
                 .name("Test Category")
                 .slug("test-category")
                 .description("Test description")
+                .sortOrder(0)
+                .isActive(true)
+                .createdAt(Instant.now())
+                .build();
+    }
+
+    /** 同店既有的分類：只有編號與名稱重要（名稱檢查看名稱），代稱用編號衍生以免互撞。 */
+    private PostCategory buildCategoryNamed(UUID id, String name) {
+        return PostCategory.builder()
+                .id(id)
+                .tenant(buildTenant())
+                .name(name)
+                .slug("slug-" + id)
                 .sortOrder(0)
                 .isActive(true)
                 .createdAt(Instant.now())
@@ -213,26 +230,100 @@ class PostCategoryServiceTest {
                     });
         }
 
+        // DEF-492（Sprint 338）：名稱不同、只差中文的分類（「旅遊筆記2026」「咖啡手帖2026」）會產生同一個代稱「2026」。
+        // 原本第二個起直接 409 E-8014（本案例原本斷言的就是這個）——店主看到的是兩個名稱明明不同、卻建不起來；
+        // 現在比照 updateCategory：代稱撞到就接隨機後綴，建立成功。
         @Test
-        @DisplayName("DEF-388: createCategory_duplicateSlug_throwsE8014（原誤用 E_4102「找不到分類」）")
-        void createCategory_duplicateSlug_throwsException() {
-            // Arrange
-            Tenant tenant = buildTenant();
-            M15Dto.CreateCategoryRequest request = M15Dto.CreateCategoryRequest.builder()
-                    .name("Test Category")
-                    .build();
+        @DisplayName("DEF-492: createCategory_slugTakenByAnotherName_appendsRandomSuffixInsteadOfFailing")
+        void createCategory_slugTakenByAnotherName_appendsRandomSuffixInsteadOfFailing() {
+            // Arrange：第一個分類的代稱「2026」還沒被占用，第二個建立時已被占用
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+            when(postCategoryRepository.existsByTenantIdAndSlug(TEST_TENANT_ID, "2026")).thenReturn(false, true);
+            when(postCategoryRepository.save(any(PostCategory.class))).thenAnswer(inv -> {
+                PostCategory c = inv.getArgument(0);
+                c.setId(UUID.randomUUID());
+                c.setCreatedAt(Instant.now());
+                c.setUpdatedAt(Instant.now());
+                return c;
+            });
 
-            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
-            when(postCategoryRepository.existsByTenantIdAndSlug(eq(TEST_TENANT_ID), anyString())).thenReturn(true);
+            // Act
+            M15Dto.CategoryResponse first = postCategoryService.createCategory(TEST_TENANT_ID,
+                    M15Dto.CreateCategoryRequest.builder().name("旅遊筆記2026").build());
+            M15Dto.CategoryResponse second = postCategoryService.createCategory(TEST_TENANT_ID,
+                    M15Dto.CreateCategoryRequest.builder().name("咖啡手帖2026").build());
+
+            // Assert：兩個都建立成功；第二個保有自己的名稱，代稱是「2026-<8 碼>」
+            assertThat(first.getName()).isEqualTo("旅遊筆記2026");
+            assertThat(first.getSlug()).isEqualTo("2026");
+            assertThat(second.getName()).isEqualTo("咖啡手帖2026");
+            assertThat(second.getSlug()).matches("^2026-[0-9a-f]{8}$");
+        }
+
+        /** 同店既有「Food」「美食」時，以下寫法都算同名（忽略大小寫與前後空白，含全形空白 U+3000）。 */
+        private static Stream<Arguments> sameNameVariants() {
+            return Stream.of(
+                    Arguments.of("Food", "Food"),
+                    Arguments.of("Food", "food"),
+                    Arguments.of("Food", "FOOD"),
+                    Arguments.of("Food", "  Food  "),
+                    Arguments.of("Food", "　Food　"),
+                    Arguments.of("美食", "美食"),
+                    Arguments.of("美食", " 美食 "),
+                    Arguments.of("美食", "　美食　"),
+                    Arguments.of("  Food", "food"));
+        }
+
+        // DEF-492（Sprint 338，使用者以互動選項決定「擋下並提示」）：名稱與同店既有分類相同就擋。
+        // 現況原本不一致：英文同名會因代稱相同而被擋，全中文同名（代稱是隨機後備）卻能建立；這裡統一成「同名一律擋」。
+        @ParameterizedTest(name = "既有「{0}」，要建立「{1}」→ 擋下")
+        @MethodSource("sameNameVariants")
+        @DisplayName("DEF-492: createCategory_sameNameAsExistingCategory_throwsE8021AndSavesNothing")
+        void createCategory_sameNameAsExistingCategory_throwsE8021AndSavesNothing(String existingName, String requestedName) {
+            // Arrange
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+            when(postCategoryRepository.findByTenantIdOrderBySortOrderAsc(TEST_TENANT_ID))
+                    .thenReturn(List.of(buildCategoryNamed(UUID.randomUUID(), existingName)));
 
             // Act & Assert
-            assertThatThrownBy(() -> postCategoryService.createCategory(TEST_TENANT_ID, request))
+            assertThatThrownBy(() -> postCategoryService.createCategory(TEST_TENANT_ID,
+                    M15Dto.CreateCategoryRequest.builder().name(requestedName).build()))
                     .isInstanceOf(BusinessException.class)
-                    .satisfies(ex -> {
-                        BusinessException bex = (BusinessException) ex;
-                        assertThat(bex.getErrorCode()).isEqualTo(ErrorCode.E_8014);
-                        assertThat(bex.getMessage()).contains("Category slug already exists");
-                    });
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_8021));
+            verify(postCategoryRepository, never()).save(any(PostCategory.class));
+        }
+
+        private static Stream<Arguments> similarButDifferentNames() {
+            return Stream.of(
+                    Arguments.of("美食", "美食家"),
+                    Arguments.of("Food", "Foods"),
+                    Arguments.of("旅遊筆記2026", "咖啡手帖2026"));
+        }
+
+        // 反向守門：只擋「名稱相同」，名稱包含、相近、只差中文的都不能被誤擋（否則會把 DEF-492 要修的情形又擋回去）。
+        @ParameterizedTest(name = "既有「{0}」，要建立「{1}」→ 放行")
+        @MethodSource("similarButDifferentNames")
+        @DisplayName("DEF-492: createCategory_similarButDifferentName_isNotBlocked")
+        void createCategory_similarButDifferentName_isNotBlocked(String existingName, String requestedName) {
+            // Arrange
+            when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(buildTenant()));
+            when(postCategoryRepository.findByTenantIdOrderBySortOrderAsc(TEST_TENANT_ID))
+                    .thenReturn(List.of(buildCategoryNamed(UUID.randomUUID(), existingName)));
+            when(postCategoryRepository.save(any(PostCategory.class))).thenAnswer(inv -> {
+                PostCategory c = inv.getArgument(0);
+                c.setId(UUID.randomUUID());
+                c.setCreatedAt(Instant.now());
+                c.setUpdatedAt(Instant.now());
+                return c;
+            });
+
+            // Act
+            M15Dto.CategoryResponse response = postCategoryService.createCategory(TEST_TENANT_ID,
+                    M15Dto.CreateCategoryRequest.builder().name(requestedName).build());
+
+            // Assert
+            assertThat(response.getName()).isEqualTo(requestedName);
+            verify(postCategoryRepository).save(any(PostCategory.class));
         }
     }
 
@@ -258,6 +349,64 @@ class PostCategoryServiceTest {
 
             // Assert
             assertThat(existingCategory.getSlug()).isEqualTo("category-0a1b2c3d");
+        }
+
+        // DEF-492（Sprint 338）：改名也要守「同店名稱不重複」，否則建立時擋住、改名卻能繞過去。
+        @Test
+        @DisplayName("DEF-492: updateCategory_renameToAnotherCategorysName_throwsE8021AndLeavesTheCategoryUntouched")
+        void updateCategory_renameToAnotherCategorysName_throwsE8021AndLeavesTheCategoryUntouched() {
+            // Arrange：同店還有一個叫「Food」的分類
+            PostCategory current = buildCategory();
+            PostCategory other = buildCategoryNamed(UUID.randomUUID(), "Food");
+            when(postCategoryRepository.findById(TEST_CATEGORY_ID)).thenReturn(Optional.of(current));
+            when(postCategoryRepository.findByTenantIdOrderBySortOrderAsc(TEST_TENANT_ID)).thenReturn(List.of(current, other));
+
+            // Act & Assert：改名成「 food 」（大小寫與空白不同）→ 擋下，原本的名稱與代稱都沒動
+            assertThatThrownBy(() -> postCategoryService.updateCategory(TEST_CATEGORY_ID, TEST_TENANT_ID,
+                    M15Dto.UpdateCategoryRequest.builder().name(" food ").build()))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.E_8021));
+            assertThat(current.getName()).isEqualTo("Test Category");
+            assertThat(current.getSlug()).isEqualTo("test-category");
+            verify(postCategoryRepository, never()).save(any(PostCategory.class));
+        }
+
+        // 檢查要排除分類自己：只改自己名稱的大小寫（food → Food）不能被「與自己同名」擋住。
+        @Test
+        @DisplayName("DEF-492: updateCategory_changeOnlyTheCaseOfItsOwnName_isAllowed")
+        void updateCategory_changeOnlyTheCaseOfItsOwnName_isAllowed() {
+            // Arrange
+            PostCategory current = buildCategoryNamed(TEST_CATEGORY_ID, "food");
+            current.setSlug("food");
+            when(postCategoryRepository.findById(TEST_CATEGORY_ID)).thenReturn(Optional.of(current));
+            when(postCategoryRepository.findByTenantIdOrderBySortOrderAsc(TEST_TENANT_ID)).thenReturn(List.of(current));
+            when(postCategoryRepository.save(any(PostCategory.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // Act
+            postCategoryService.updateCategory(TEST_CATEGORY_ID, TEST_TENANT_ID,
+                    M15Dto.UpdateCategoryRequest.builder().name("Food").build());
+
+            // Assert
+            assertThat(current.getName()).isEqualTo("Food");
+            assertThat(current.getSlug()).isEqualTo("food");
+        }
+
+        // 名稱沒改就不檢查：這項規則上線前已經存在的同名分類（全中文同名原本能建立）不能因此連描述、排序都改不了。
+        @Test
+        @DisplayName("DEF-492: updateCategory_nameUnchanged_doesNotRecheckDuplicates_soExistingDuplicatesStayEditable")
+        void updateCategory_nameUnchanged_doesNotRecheckDuplicates_soExistingDuplicatesStayEditable() {
+            // Arrange：同店已有兩個「旅遊」（規則上線前建立的）
+            PostCategory current = buildCategoryNamed(TEST_CATEGORY_ID, "旅遊");
+            when(postCategoryRepository.findById(TEST_CATEGORY_ID)).thenReturn(Optional.of(current));
+            when(postCategoryRepository.save(any(PostCategory.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // Act：只改描述，名稱照舊一併送出
+            postCategoryService.updateCategory(TEST_CATEGORY_ID, TEST_TENANT_ID,
+                    M15Dto.UpdateCategoryRequest.builder().name("旅遊").description("新的描述").build());
+
+            // Assert
+            assertThat(current.getDescription()).isEqualTo("新的描述");
+            verify(postCategoryRepository, never()).findByTenantIdOrderBySortOrderAsc(any());
         }
 
         @Test

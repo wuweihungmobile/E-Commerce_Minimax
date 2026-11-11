@@ -17,7 +17,10 @@ import { Account, adminAccessToken, authHeaders, seedStore, setStoreStatusWithTo
  *
  * Sprint 337（DEF-486）：文章頁的分類徽章改連「店鋪前台貼文列表的公開版分類篩選」（/stores/{店鋪}/blog?category=），
  * 不再連到這一頁，所以原本的 E2E-BLOGCAT-02（徽章 → 這一頁）移到 at-store-blog-category-real 的 E2E-STOREBLOGCAT-03
- * （改成匿名訪客、導向新的篩選）。這一頁（登入者、tenantId 取自 localStorage）保留，目前沒有任何連結指向它。
+ * （改成匿名訪客、導向新的篩選）。這一頁（登入者、tenantId 取自 localStorage）保留，但有一段時間沒有任何連結指向它。
+ *
+ * Sprint 338（DEF-491，使用者指示「請先製作暫時入口暫代」）：頁尾加「部落格」連到 /blog，/blog 上方的分類篩選列連到這一頁
+ * （E2E-BLOGCAT-06 守住這條路徑）。正式的入口（跨店鋪部落格）或移除兩頁待 DEF-495 決定。
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
@@ -136,5 +139,28 @@ test.describe('AT-BLOG-CATEGORY-REAL: 部落格分類篩選頁（真實後端）
 
     await page.goto('/blog');
     await expect(page.getByText(/分類A的文章/).first()).toBeVisible();
+  });
+
+  test('E2E-BLOGCAT-06: 暫時入口（DEF-491）：從前台頁尾的「部落格」進 /blog、再點分類篩選列進分類頁，不必手打網址；分類頁的「返回部落格」回得來', async ({ page }: { page: Page }) => {
+    await page.goto('/login');
+    await page.evaluate(() => localStorage.clear());
+    await loginOnly(page, owner.email, owner.password);
+
+    // 從平台首頁出發：頁尾每個前台頁都有
+    await page.goto('/');
+    await page.getByTestId('storefront-footer').getByRole('link', { name: '部落格', exact: true }).click();
+    await expect(page).toHaveURL(/\/blog$/);
+
+    // /blog 上方的分類篩選列：「全部」是目前的選取態；點分類 A → 分類頁，只列該分類的貼文
+    const categoryBar = page.getByTestId('blog-categories');
+    await expect(categoryBar.getByRole('button', { name: '全部', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await categoryBar.getByRole('button', { name: /^分類 A / }).click();
+    await expect(page).toHaveURL(new RegExp(`/blog/category/${categoryAId}$`));
+    await expect(page.getByTestId('blog-category-grid')).toContainText('分類A的文章');
+    await expect(page.getByTestId('blog-category-grid')).not.toContainText('分類B的文章');
+
+    // 兩頁互相連得到
+    await page.getByRole('link', { name: '← 返回部落格' }).click();
+    await expect(page).toHaveURL(/\/blog$/);
   });
 });

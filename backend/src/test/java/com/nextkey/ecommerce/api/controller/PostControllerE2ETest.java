@@ -1373,6 +1373,77 @@ class PostControllerE2ETest {
         }
     }
 
+    @Test
+    @Order(31)
+    @DisplayName("IT-M15-031（Sprint 338，DEF-492）: 貼文分類名稱——只差中文的名稱都建得起來（代稱自動加後綴）；同名（忽略大小寫與前後空白）409 E-8021，改名同理；只在同一家店內比對")
+    void postCategoryNames_slugCollisionsAreResolved_sameNamesAreBlockedWithinOneStoreOnly() throws Exception {
+        String ownerToken = createStoreOwnerAndGetToken(uniqueEmail());
+
+        // 1. 名稱不同、只差中文：三個名稱的代稱原本都是「2026」，第二個起 409 E-8014（店主看到的是名稱明明不同卻建不起來）。
+        //    現在都建立成功、各自保有名稱，代稱不重複（第一個是「2026」，其餘接 8 碼隨機後綴）。
+        String[] names = {"旅遊筆記2026", "咖啡手帖2026", "親子活動2026"};
+        String[] ids = new String[names.length];
+        java.util.Set<String> slugs = new java.util.HashSet<>();
+        for (int i = 0; i < names.length; i++) {
+            io.restassured.path.json.JsonPath created = given().header("Authorization", "Bearer " + ownerToken)
+                    .contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(Map.of("name", names[i]))
+                    .when().post(BASE_URL + "/dashboard/post-categories")
+                    .then().statusCode(200)
+                    .body("data.name", equalTo(names[i]))
+                    .extract().jsonPath();
+            ids[i] = created.getString("data.id");
+            slugs.add(created.getString("data.slug"));
+        }
+        org.assertj.core.api.Assertions.assertThat(slugs).hasSize(3).allMatch(s -> s.matches("^2026(-[0-9a-f]{8})?$"));
+
+        // 2. 同名一律擋：大小寫、前後空白、全形空白不同也算同名；全中文同名（代稱是隨機後備，原本擋不住）也擋。
+        given().header("Authorization", "Bearer " + ownerToken).contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(Map.of("name", "Food")).when().post(BASE_URL + "/dashboard/post-categories")
+                .then().statusCode(200);
+        String foodId = null;
+        for (String duplicate : new String[] {"Food", "food", " FOOD ", "　Food　", "旅遊筆記2026", " 旅遊筆記2026 "}) {
+            given().header("Authorization", "Bearer " + ownerToken).contentType(MediaType.APPLICATION_JSON_VALUE)
+                    .body(Map.of("name", duplicate)).when().post(BASE_URL + "/dashboard/post-categories")
+                    .then().statusCode(409)
+                    .body("code", equalTo("E-8021"));
+        }
+        // 被擋的建立沒有留下任何分類：3 個旅遊／咖啡／親子 + 1 個 Food
+        io.restassured.path.json.JsonPath listing = given().header("Authorization", "Bearer " + ownerToken)
+                .when().get(BASE_URL + "/dashboard/post-categories")
+                .then().statusCode(200)
+                .body("data.totalCount", equalTo(4))
+                .extract().jsonPath();
+        for (java.util.Map<String, String> category : listing.<java.util.Map<String, String>>getList("data.categories")) {
+            if ("Food".equals(category.get("name"))) {
+                foodId = category.get("id");
+            }
+        }
+        org.junit.jupiter.api.Assertions.assertNotNull(foodId, "Food 分類應該存在");
+
+        // 3. 改名守同一條規則：改成別人的名稱（大小寫不同也算）→ 409，原本的名稱沒動
+        given().header("Authorization", "Bearer " + ownerToken).contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(Map.of("name", "food")).when().put(BASE_URL + "/dashboard/post-categories/" + ids[1])
+                .then().statusCode(409)
+                .body("code", equalTo("E-8021"));
+        given().header("Authorization", "Bearer " + ownerToken)
+                .when().get(BASE_URL + "/dashboard/post-categories")
+                .then().statusCode(200)
+                .body("data.categories.find { it.id == '" + ids[1] + "' }.name", equalTo("咖啡手帖2026"));
+        //    改成自己名稱的大小寫變化不算與自己同名
+        given().header("Authorization", "Bearer " + ownerToken).contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(Map.of("name", "FOOD")).when().put(BASE_URL + "/dashboard/post-categories/" + foodId)
+                .then().statusCode(200)
+                .body("data.name", equalTo("FOOD"));
+
+        // 4. 只在同一家店內比對：另一家店取同樣的名稱不受影響
+        String otherOwnerToken = createStoreOwnerAndGetToken(uniqueEmail());
+        given().header("Authorization", "Bearer " + otherOwnerToken).contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(Map.of("name", "Food")).when().post(BASE_URL + "/dashboard/post-categories")
+                .then().statusCode(200)
+                .body("data.name", equalTo("Food"));
+    }
+
     private int viewCountInDb(UUID postId) {
         Integer count = jdbcTemplate.queryForObject("SELECT view_count FROM posts WHERE id = ?", Integer.class, postId);
         return count == null ? 0 : count;

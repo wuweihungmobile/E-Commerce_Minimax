@@ -8,10 +8,12 @@
 #   全部對「Flyway 從零重建的乾淨 DB」執行。
 #
 # 為什麼不用 docker-compose build？
-#   - backend/frontend 的 Dockerfile runner target 已 bit-rot
-#     （backend: 死碼 COPY .mvn；frontend: 需 Next standalone 但 next.config 未啟用），
-#     且雲端 CI 根本不經 Dockerfile（它用 mvn package + npm start + host 程序）。
-#   - 本腳本忠實複製雲端 e2e job 的「host 程序」做法，繞過腐爛的 Dockerfile。
+#   - 雲端 CI 的 e2e job 根本不經 Dockerfile（它用 mvn package + npm start + host 程序），本腳本忠實複製這個做法。
+#   - 歷史：backend/frontend 的 Dockerfile runner target 曾經 bit-rot（backend: 死碼 COPY .mvn；frontend: 需 Next
+#     standalone 但 next.config 未啟用），當時才需要繞過它們。Sprint 338（DEF-493）已修並實測：兩個 runner 映像都建得起來、
+#     跑得起來（正式＋CI 模擬 compose 堆疊，真實規格 24 個案例通過），所以現在繞過 Dockerfile 的理由只剩上一點。
+#   - 附帶影響：next.config.ts 現在設了 output: 'standalone'，本腳本的 npm run start（next start）會印一行
+#     「does not work with output: standalone」警告但照常服務（Next 原始碼只 warn，只有 output: export 才會丟錯）。
 #
 # 一次涵蓋兩件事：
 #   1. schema 漂移：backend 以 ddl-auto=validate 對 Flyway 重建的乾淨 DB 啟動 → 漂移即啟動失敗

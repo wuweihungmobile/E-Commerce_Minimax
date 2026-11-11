@@ -3,7 +3,7 @@
 > **文件編號**: API-M15
 > **文件版本**: v1.0（Sprint 277，首次建立；首次有獨立規格文件，DEF-286 範圍）
 > **建立日期**: 2026-10-16
-> **最後更新**: 2026-11-11（Sprint 337：公開貼文三個端點 `GET /v2/posts`／`/v2/posts/{slug}`／`/v2/posts/categories` 只供應 `ACTIVE` 店鋪，非 `ACTIVE`（審核中、被拒、停權、終止）或不存在一律 404 `E-2000`（DEF-485，使用者以互動選項拍板）；店鋪前台貼文列表新增公開版分類篩選 `?category=`，文章頁的分類徽章改連過去（DEF-486，前端；後端 API 沒有新增或變更）。見 §4.19～4.21、§7）。2026-11-10（Sprint 336：新增 `PublicMediaController` 與素材「公開開關」（`isPublic`，預設私有；`GET /v2/public/media/{assetId}` 匿名讀取）；`GET /v2/posts/{slug}` 新增 `countView` 參數、文章回應新增 `tenantSlug`，文章的公開網址改為 `/stores/{店鋪}/blog/{文章}`）。2026-11-09（Sprint 334：移除 `PostController` 的 5 個 `/v2/dashboard/media/*` 舊媒體端點，媒體只剩 M18 一套；M18 媒體權限對齊貼文寫入權並新增「被貼文封面圖使用就不能刪」；已發布貼文須先下架才能刪；貼文／分類 slug 不再為空字串、標題沒改不換 slug。Sprint 332：前端 /cms 系列併入 /dashboard）
+> **最後更新**: 2026-11-11（Sprint 338：貼文分類名稱同店不可重複（忽略大小寫與前後空白）——`POST`／`PUT /v2/dashboard/post-categories` 同名回 409，新錯誤碼 `E-8021`；分類網址代稱撞到改為自動加隨機後綴、建立成功，`E-8014` 不再由任何端點回傳（DEF-492，使用者以互動選項拍板「擋下並提示」）。見 §4.22～4.25、§7）。2026-11-11（Sprint 337：公開貼文三個端點 `GET /v2/posts`／`/v2/posts/{slug}`／`/v2/posts/categories` 只供應 `ACTIVE` 店鋪，非 `ACTIVE`（審核中、被拒、停權、終止）或不存在一律 404 `E-2000`（DEF-485，使用者以互動選項拍板）；店鋪前台貼文列表新增公開版分類篩選 `?category=`，文章頁的分類徽章改連過去（DEF-486，前端；後端 API 沒有新增或變更）。見 §4.19～4.21、§7）。2026-11-10（Sprint 336：新增 `PublicMediaController` 與素材「公開開關」（`isPublic`，預設私有；`GET /v2/public/media/{assetId}` 匿名讀取）；`GET /v2/posts/{slug}` 新增 `countView` 參數、文章回應新增 `tenantSlug`，文章的公開網址改為 `/stores/{店鋪}/blog/{文章}`）。2026-11-09（Sprint 334：移除 `PostController` 的 5 個 `/v2/dashboard/media/*` 舊媒體端點，媒體只剩 M18 一套；M18 媒體權限對齊貼文寫入權並新增「被貼文封面圖使用就不能刪」；已發布貼文須先下架才能刪；貼文／分類 slug 不再為空字串、標題沒改不換 slug。Sprint 332：前端 /cms 系列併入 /dashboard）
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`CmsController`／`PostController`／`MediaController`／`MediaCategoryController`（`api/controller/`）、`CmsService`（`core/cms/`）、`PostService`／`PostCategoryService`（`core/cms/post/`）、`ListingCardService`（`core/cms/listing/`）、`MediaService`（`core/media/`，媒體庫，M18；Sprint 334 起是唯一的媒體 Service，原 `core/cms/media/MediaService` 已隨舊端點移除）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[CmsServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/CmsServiceTest.java)、[PostServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/post/PostServiceTest.java)、[PostCategoryServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/post/PostCategoryServiceTest.java)、[ListingCardServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/listing/ListingCardServiceTest.java)、[core/media/MediaServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/media/MediaServiceTest.java)
@@ -274,9 +274,16 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 | 狀況 | HTTP | 錯誤碼 |
 |------|:----:|--------|
 | 分類不存在 | 404 | `E-4102`（官方定義「找不到分類」，此處正確） |
-| 分類 slug 重複 | 409 | `E-8014`（Sprint 278／DEF-388 新增專屬碼並修正本文件先前的錯誤描述——`generateSlug` 不會自動加隨機尾碼避免衝突，重複時會直接拋錯；修復前誤用「找不到分類」`E-4102`，見 §7） |
+| 分類名稱與同店既有分類相同（`POST` 建立、`PUT` 改名；Sprint 338，DEF-492） | 409 | `E-8021`（忽略大小寫與前後空白；只比對同一家店；見下方「名稱與代稱」） |
 | 更新/刪除非本租戶分類 | 403 | `E-4031` |
 | 刪除有貼文關聯的分類 | 409 | `E-8015`（Sprint 278／DEF-388 新增專屬碼，修復前誤用「找不到分類」`E-4102`，見 §7） |
+
+**名稱與代稱（Sprint 338，DEF-492，使用者 2026-11-11 以互動選項拍板「擋下並提示」）**
+
+- **同店不可有同名分類**：`createCategory`、`updateCategory`（名稱**真的改了**才檢查，並排除分類自己）比對同一家店所有分類的名稱，**忽略大小寫與前後空白（含全形空白 U+3000）**，相同回 409 `E-8021`（訊息「分類名稱已存在」）。只比對名稱整串相同：包含、相近的不算同名（`美食`／`美食家`、`Food`／`Foods` 可並存）。名稱沒改的更新不檢查，所以規則上線前已經存在的同名分類（全中文同名原本能建立）仍能改描述與排序。別家店的同名分類互不影響。
+- **網址代稱（`slug`）撞到不再失敗**：代稱由名稱產生（只留英數字與連字號，中文被濾掉；全中文名稱用 `category-<8碼>`）。名稱不同、只差中文的分類會產生同一個代稱（`旅遊筆記2026` 與 `咖啡手帖2026` 都是 `2026`），修復前第二個起 `createCategory` 直接回 409 `E-8014`，店主看到的是兩個名稱明明不同卻建不起來。現在撞到同店既有代稱時**自動接 `-<8碼隨機>` 後綴並建立成功**（`updateCategory` 本來就這樣處理）。**`E-8014` 因此不再由任何端點回傳**（錯誤碼保留，見 §7）。
+- 修復前的現況不一致：英文同名會因代稱相同被擋，全中文同名（代稱是隨機後備）卻能建立；現在統一為「同名一律擋」。
+- 前端（儀表板「貼文分類管理」）：儲存失敗時，`E-8021` 顯示「分類名稱已存在，請換一個名稱」，其他失敗仍是「儲存分類失敗，請稍後再試」。
 
 ### 4.26～4.30 部落格媒體（**已於 Sprint 334 移除**）
 
@@ -400,12 +407,13 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 | `E-8004` | 404 | 找不到 CMS 頁面 | 正確使用（找不到；Sprint 278／DEF-388 前曾與「頁面未發布」共用，已改用 `E-8016`） |
 | `E-8005` | 404 | 找不到 CMS 橫幅 | 正確 |
 | `E-8013` | 409 | 頁面網址代稱重複 | §4.1（Sprint 278／DEF-388 新增，修復前誤用 `E-9005`） |
-| `E-8014` | 409 | 分類網址代稱重複 | §4.23（Sprint 278／DEF-388 新增，修復前誤用 `E-4102`） |
+| `E-8014` | 409 | 分類網址代稱重複 | §4.23（Sprint 278／DEF-388 新增，修復前誤用 `E-4102`）。**Sprint 338（DEF-492）起不再由任何端點回傳**：代稱撞到改為自動加隨機後綴，錯誤碼保留 |
 | `E-8015` | 409 | 分類仍有關聯貼文，無法刪除 | §4.25（Sprint 278／DEF-388 新增，修復前誤用 `E-4102`） |
 | `E-8016` | 404 | 頁面尚未發布 | §4.5（Sprint 278／DEF-388 新增，修復前與「頁面不存在」共用 `E-8004`） |
 | `E-8017` | 409 | 媒體分類名稱重複 | §4.45（Sprint 278／DEF-388 新增，修復前誤用 `E-3001`） |
 | `E-8018` | 409 | 媒體分類仍有子分類，無法刪除 | §4.48（Sprint 278／DEF-388 新增，修復前誤用 `E-3001`） |
 | `E-8019` | 409 | 媒體分類仍有關聯媒體，無法刪除 | §4.48（Sprint 278／DEF-388 新增，修復前誤用 `E-3001`） |
+| `E-8021` | 409 | 分類名稱已存在 | §4.23、§4.24 貼文分類同店名稱重複（Sprint 338，DEF-492 新增；與 `E-8017` 媒體分類名稱重複同類，但這是貼文分類） |
 | `E-8020` | 409 | 媒體正被貼文使用，無法刪除 | §4.41（Sprint 334，DEF-474 新增；舊的 M15 刪除用 `E-9000` 代表這件事，隨舊端點移除） |
 | `E-9000` | 400 | 驗證錯誤 | 一般請求驗證失敗 |
 | `E-9005` | 400 | 缺少必填欄位 | 貼文 `title` 缺失（正確）；§4.5／4.10／4.11／4.19／4.20 缺少 `tenantId` 查詢參數（Sprint 278／DEF-388 新採用，修復前誤用 `E-1002`） |
@@ -421,7 +429,8 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 | ~~兩套互相獨立的媒體庫並存~~（**DEF-387 → DEF-474，Sprint 334 已解決**） | 歷史：Sprint 280 使用者拍板暫不合併（兩套定位不同）；Sprint 332 合併前端介面後，兩套後端的權限與刪除語意差異變成實際的使用者影響（DEF-474）；Sprint 334 使用者決定**對齊權限並移除舊的 5 個端點**，媒體只剩 M18 一套。見 §1.2 第 2 點 |
 | **媒體刪除的引用檢查只看貼文封面圖** | `E-8020` 只比對 `posts.featured_image_url`，不掃貼文 `content`（Markdown 內文裡的圖片）。內文引用的素材被刪後，貼文內文的圖會壞掉。已登記 DEF-481 |
 | ~~公開貼文端點不看店鋪狀態~~（**DEF-485，Sprint 337 已解決**） | 歷史：Sprint 336 登記時是讀碼確認（`PostRepository` 的公開查詢沒有店鋪狀態條件）；Sprint 337 紅燈先行**實測屬實**（四種非 `ACTIVE` 狀態 × 五種請求形狀共 20 格全部回 200，不是 404），使用者以互動選項拍板「三個端點全擋並回 404」，現在非 `ACTIVE` 或不存在的店鋪一律 404 `E-2000`。見 §4.19～4.21 |
-| ~~平台層 `/blog`、`/blog/category/[id]` 對匿名訪客仍是登入提示~~ → **文章頁的分類徽章已改連店鋪前台的公開篩選（DEF-486，Sprint 337 已解決）；兩個平台層頁面保留現狀、成為沒有連結指向的孤兒頁（DEF-491）** | 歷史：這兩個頁面的 tenantId 取自瀏覽器 localStorage（只有登入才有），文章頁的「分類」徽章連到 `/blog/category/{id}`，匿名訪客點了看到登入提示。Sprint 337 在店鋪前台貼文列表做了公開版分類篩選（`/stores/{店鋪}/blog?category=`，見 §4.19～4.21），徽章改連過去。`/blog` 與 `/blog/category/[id]` 沒有動（仍是登入者專用）；生產碼中已沒有任何連結指向分類頁，`/blog` 只剩這兩個保留頁（分類頁、舊文章網址導向頁）內部連到它。去留未決，已登記 DEF-491 |
+| ~~平台層 `/blog`、`/blog/category/[id]` 對匿名訪客仍是登入提示~~ → **文章頁的分類徽章已改連店鋪前台的公開篩選（DEF-486，Sprint 337 已解決）；兩個平台層頁面保留現狀、成為沒有連結指向的孤兒頁（DEF-491）** | 歷史：這兩個頁面的 tenantId 取自瀏覽器 localStorage（只有登入才有），文章頁的「分類」徽章連到 `/blog/category/{id}`，匿名訪客點了看到登入提示。Sprint 337 在店鋪前台貼文列表做了公開版分類篩選（`/stores/{店鋪}/blog?category=`，見 §4.19～4.21），徽章改連過去。`/blog` 與 `/blog/category/[id]` 沒有動（仍是登入者專用）；生產碼中已沒有任何連結指向分類頁，`/blog` 只剩這兩個保留頁（分類頁、舊文章網址導向頁）內部連到它。去留未決，已登記 DEF-491。**Sprint 338（DEF-491，使用者指示「請先製作暫時入口暫代」）加了暫時入口**：前台頁尾「部落格」連到 `/blog`，`/blog` 上方的分類篩選列連到分類頁（兩頁仍是登入者專用，匿名訪客點進去看到登入提示）；正式的入口（跨店鋪部落格，要新的後端端點）或移除兩頁連同暫時入口，待 DEF-495 決定 |
+| **同名分類只在應用程式裡比對，沒有資料庫唯一索引（DEF-492，Sprint 338）** | 名稱檢查（§4.22～4.25）是「讀出同店分類再比對」，與寫入之間沒有鎖：兩個請求同時建立同名分類，兩個都可能通過檢查，結果是多一個同名分類（店主可自行改名或刪除）。**刻意不加資料庫唯一索引**：這項規則上線前，全中文同名的分類本來就能建立，已存在的同名資料會讓建索引的遷移失敗，要先修資料才能上；比較後認為得不償失。**規則上線前已存在的同名分類不會被清理**，也不會被鎖死（名稱沒改的更新不檢查） |
 | **公開素材圖片經過後端串流，沒有 CDN／預簽網址（DEF-488，Sprint 336 登記）** | `GET /v2/public/media/{assetId}`（§4.49）從物件儲存讀出再由 Spring 回應。匿名請求以來源 IP 共用每分鐘 100 次的限流桶（`RateLimitFilter`，讀碼），一頁十幾張封面圖會吃掉十幾次額度；流量大時要改走預簽網址或 CDN。目前以 5 分鐘公開快取減輕（未量測實際影響） |
 | **全域 `force-response` 會替圖片的 `Content-Type` 補上 `;charset=UTF-8`** | `server.servlet.encoding.force-response=true`（DEF-397，Sprint 296）是全域設定，連 `image/png` 也變成 `image/png;charset=UTF-8`（`PublicMediaEndpointIntegrationTest` 實測）。瀏覽器對圖片類型忽略 charset 參數，不影響顯示；需要登入的 `/v2/media/files/{id}` 本來就是這樣，不是公開端點引入的 |
 | **既有的 `-<8碼>` slug（開頭有連字號）未被遷移** | V97 只補 `slug = ''` 的列；先前被存成 `-d46b778f` 的貼文網址是能開的，改掉會讓已分享的連結失效，故刻意不動 |

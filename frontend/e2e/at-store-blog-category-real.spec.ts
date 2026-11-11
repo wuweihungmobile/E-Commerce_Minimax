@@ -20,12 +20,13 @@ import { authHeaders, seedStore } from './helpers/store';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 const STAMP = Date.now();
-// 分類名稱要帶不同的英文字：分類的網址代稱由名稱產生（中文會被濾掉，只剩英數字），同一間店鋪內不能重複（409 E-8014）；
-// 名稱只差中文、數字部分相同時，四個分類會產生同一個代稱
-const TRAVEL = `旅遊筆記 travel ${STAMP}`;
-const COFFEE = `咖啡手帖 coffee ${STAMP}`;
-const EMPTY = `只有草稿的分類 drafts ${STAMP}`;
-const PAGED = `很多文章的分類 paged ${STAMP}`;
+// 四個分類名稱只差中文、數字（時間戳）部分相同：網址代稱由名稱產生（中文會被濾掉），所以四個的代稱原本都是同一個時間戳，
+// 第二個起會被 409 E-8014 擋下（DEF-492，Sprint 337 寫這份規格時第一次執行就撞到，當時替名稱各加了不同的英文字繞過）。
+// Sprint 338 起代稱撞到會自動加後綴，這組名稱本身就是 DEF-492 在真實後端的回歸測試：beforeAll 建得起來才算過。
+const TRAVEL = `旅遊筆記${STAMP}`;
+const COFFEE = `咖啡手帖${STAMP}`;
+const EMPTY = `只有草稿的分類${STAMP}`;
+const PAGED = `很多文章的分類${STAMP}`;
 const TRAVEL_POST = `旅遊文章${STAMP}`;
 const COFFEE_POST = `咖啡文章${STAMP}`;
 const PLAIN_POST = `沒有分類的文章${STAMP}`;

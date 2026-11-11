@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAsyncData } from '@/hooks/useAsyncData';
+import { getApiErrorInfo } from '@/lib/api-error';
 import {
   getCategories,
   createCategory,
@@ -78,7 +79,10 @@ export default function CategoriesPage() {
       loadCategories();
     } catch (error) {
       console.error('Failed to save category:', error);
-      toast.error('儲存分類失敗，請稍後再試');
+      // 同店不可有同名分類（後端 409 E-8021，Sprint 338，DEF-492）：要告訴店主是名稱的問題——重試不會成功，換名稱才會
+      toast.error(
+        getApiErrorInfo(error).code === 'E-8021' ? '分類名稱已存在，請換一個名稱' : '儲存分類失敗，請稍後再試'
+      );
     } finally {
       setSaving(false);
     }

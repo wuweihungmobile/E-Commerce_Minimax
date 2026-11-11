@@ -284,6 +284,40 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
     await expect(page.getByText('{{embed:listing:')).toHaveCount(0);
   });
 
+  test('E2E-M15-006（Sprint 338，DEF-492）: 貼文分類管理——名稱只差中文的分類都建得起來；同名（大小寫不同也算）被擋並告知「分類名稱已存在」，不是籠統的「請稍後再試」', async ({ page }) => {
+    await loginOnly(page, owner.email, owner.password);
+    await page.goto('/dashboard/posts/categories');
+    await expect(page.getByRole('heading', { name: '貼文分類管理' })).toBeVisible();
+
+    const createCategory = async (name: string) => {
+      await page.getByRole('button', { name: '新增分類' }).click();
+      await page.getByPlaceholder('分類名稱').fill(name);
+      await page.getByRole('button', { name: '儲存', exact: true }).click();
+    };
+    const toast = (text: string) => page.getByTestId('toast').filter({ hasText: text });
+
+    // 名稱不同、只差中文（網址代稱都是時間戳）：原本第二個起被 409 E-8014 擋下；現在兩個都建立成功、列表看得到
+    const travel = `旅遊筆記${STAMP}`;
+    const coffee = `咖啡手帖${STAMP}`;
+    await createCategory(travel);
+    await expect(toast('分類已建立').first()).toBeVisible();
+    await expect(page.getByRole('cell', { name: travel, exact: true })).toBeVisible();
+    await createCategory(coffee);
+    await expect(page.getByRole('cell', { name: coffee, exact: true })).toBeVisible();
+    await expect(toast('儲存分類失敗')).toHaveCount(0);
+
+    // 同名（大小寫不同也算）：擋下，訊息明確指出是名稱的問題；表單留著，列表沒有多一列
+    const food = `Food${STAMP}`;
+    await createCategory(food);
+    await expect(page.getByRole('cell', { name: food, exact: true })).toBeVisible();
+    await createCategory(food.toUpperCase());
+    await expect(toast('分類名稱已存在，請換一個名稱')).toBeVisible();
+    await expect(toast('儲存分類失敗，請稍後再試')).toHaveCount(0);
+    await expect(page.getByPlaceholder('分類名稱')).toHaveValue(food.toUpperCase());
+    await page.getByRole('button', { name: '取消' }).click();
+    await expect(page.getByRole('cell', { name: food.toUpperCase(), exact: true })).toHaveCount(0);
+  });
+
   test('Dashboard 首頁：店主看到自己的帳號與角色、快速入口、播種的商品／房型數，沒有錯誤橫幅', async ({ page }) => {
     await loginOnly(page, owner.email, owner.password);
     await page.goto('/dashboard');

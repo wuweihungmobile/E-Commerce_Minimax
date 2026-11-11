@@ -25,7 +25,8 @@ export interface StoreBlogListProps {
 }
 
 // 公開端點不指定分類的順序：依店主設定的 sortOrder，相同再依名稱，篩選列的順序才穩定
-function sortCategories(categories: CategoryResponse[]): CategoryResponse[] {
+// （平台層 /blog 的暫時分類篩選列也用它，Sprint 338，DEF-491）
+export function sortCategories(categories: CategoryResponse[]): CategoryResponse[] {
   return [...categories].sort(
     (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name, "zh-Hant")
   )

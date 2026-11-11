@@ -14,7 +14,8 @@ vi.mock('@/services/authStore', () => ({
   getSelectedTenantIdSnapshot: () => 'tenant-1',
   getAuthServerSnapshot: () => null,
 }))
-vi.mock('next/navigation', () => ({ useParams: () => ({ id: 'cat-1' }) }))
+// useRouter：清單頁的分類篩選列（Sprint 338，DEF-491 暫時入口）點分類時導覽；這個檔案守的是載入失敗，不點它
+vi.mock('next/navigation', () => ({ useParams: () => ({ id: 'cat-1' }), useRouter: () => ({ push: vi.fn() }) }))
 
 import { getPublicCategories, getPublishedPosts } from '@/services/cms'
 import BlogCategoryPage from './category/[id]/page'
@@ -50,6 +51,11 @@ async function settled() {
 }
 
 describe('部落格清單頁 /blog', () => {
+  // 清單頁同時會載入分類（暫時入口的篩選列，DEF-491）：這裡一律回「沒有分類」，讓這組案例只守文章的載入行為
+  beforeEach(() => {
+    getCategories.mockResolvedValue(categoriesPage([]))
+  })
+
   it('成功且有文章 → 顯示文章', async () => {
     getPosts.mockResolvedValue(postsPage([post]))
     render(<BlogPage />)

@@ -15,6 +15,11 @@ import { listSourceFiles, readSource } from './source'
  */
 const ALLOWED: Record<string, { count: number; reason: string }> = {
   // ---- 輔助資訊：失敗只少一個選項或一個附屬區塊，頁面主要功能照常 ----
+  'app/(storefront)/blog/page.tsx': {
+    count: 1,
+    reason:
+      '分類篩選列是輔助資訊（Sprint 338，DEF-491 暫時入口，隨 DEF-495 一併處理）：失敗只少篩選列，文章列表本身失敗另有 blog-error 錯誤畫面；頁面沒有任何「分類」字樣，沒有篩選列不會被讀成「沒有分類」',
+  },
   'app/admin/tenants/page.tsx': { count: 1, reason: '分頁籤上的數量是輔助資訊：失敗時維持上一次的數字；列表本身失敗另有錯誤畫面' },
   'app/dashboard/bookings/[id]/page.tsx': { count: 1, reason: '狀態日誌是輔助資訊：載入失敗不影響訂房詳情與入住／退房等主要功能' },
   'app/dashboard/faq/page.tsx': { count: 2, reason: '分類篩選的選項與置頂文章區塊是輔助資訊：失敗只少選項／少置頂區塊，文章列表本身失敗另有 toast' },

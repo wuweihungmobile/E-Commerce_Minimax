@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // 獨立伺服器輸出（Sprint 338，DEF-493，使用者明確指示）：frontend/Dockerfile 的 runner 階段 COPY .next/standalone 並以 node server.js 啟動，
+  // 沒有這一行 next build 不會產生該目錄，正式（docker-compose.yml）與 CI 模擬（docker-compose.test.yml）的前端映像在 COPY 那一步就建不出來。
+  // 與 Dockerfile 的一致性由 src/architecture/docker-standalone.test.ts 守門。
+  // 對不經 Dockerfile 的路徑（本地 E2E 守門、雲端 CI、make up 的開發容器）：next build 多產出一份 .next/standalone，
+  // next start 會印「does not work with output: standalone」警告（Next 原始碼只 warn、不擋，只有 output: export 才會丟錯）。
+  output: 'standalone',
   poweredByHeader: false,
   // 安全標頭：頁面（含登入、結帳）原本不帶任何防點擊劫持／MIME 嗅探標頭。
   // 只放已查證不影響功能者——src 內無 iframe 嵌入、無第三方 script；OAuth 為整頁跳轉，不受影響。

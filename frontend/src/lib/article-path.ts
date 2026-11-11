@@ -39,3 +39,14 @@ export function storeBlogPath(
   const query = params.toString()
   return query ? `${base}?${query}` : base
 }
+
+/**
+ * 平台層部落格（跨店鋪）列表的網址（Sprint 339，DEF-495）：/blog，可帶頁碼。
+ *
+ * 頁尾連結與列表的分頁都從這裡取，網址形狀只寫一處。
+ *
+ * @param page 1-based 頁碼；沒有、1、0、負數、不是數字都當第一頁，不帶 page（與 storeBlogPath 同一慣例，server page 以同樣方式解析）
+ */
+export function platformBlogPath(page?: number): string {
+  return page !== undefined && page > 1 ? `/blog?page=${page}` : '/blog'
+}

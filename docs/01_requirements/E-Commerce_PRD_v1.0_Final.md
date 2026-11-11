@@ -1,7 +1,7 @@
 ﻿# E-Commerce System — 規格文件 v1.0
 
 > **狀態**: PRD 改善版（基於 v0.9_R02）
-> **版本**: v1.0.16（文件修訂；規格基準仍為 v1.0）
+> **版本**: v1.0.17（文件修訂；規格基準仍為 v1.0）
 > **建立日期**: 2026-03-23
 > **升版日期**: 2026-04-09
 > **負責人**: 衍墨 (SDD-Director) + Victoria (PM-PO) + Amanda (SA-Analyst)
@@ -27,6 +27,7 @@
 > - **v1.0.12 → v1.0.13（2026-11-09，Sprint 334，DEF-474／476／480）**：使用者在互動選項中本人做了三個決定（真實的互動輸入，不是我的推論）。①§9.15 貼文刪除：已發布的貼文須先下架才能刪（驗收條件 AC-007；後端回 409 `E-4107`）；②§9.15 媒體 API：原 `/api/v2/dashboard/media/*` 已移除，媒體只剩 `/api/v2/media/*` 一套，並與貼文寫入權對齊——能寫貼文的店鋪角色（店主、店員、Seller、Host）都能上傳與刪除媒體，被本店鋪貼文封面圖使用的媒體不能刪（409 `E-8020`）；③貼文與貼文分類的 slug 在標題／名稱清完為空（例如全中文）時改用 `post-<8碼>`／`category-<8碼>`，且標題沒改的儲存不換網址（無需使用者決定，列此備查）。其餘規格內文未改寫。
 > - **v1.0.14 → v1.0.15（2026-11-11，Sprint 337，DEF-485／486）**：使用者回覆的兩個決定（DEF-486 是對 Sprint 336 收尾總結的內嵌回覆「要」；DEF-485 是互動選項中本人選了「全擋並回 404」，真實的輸入，不是我的推論）。①§9.15 公開貼文三個端點（`GET /api/v2/posts`、`/posts/:slug`、`/posts/categories`）只供應 `ACTIVE` 店鋪：店鋪非 `ACTIVE`（審核中、被拒、停權、終止）或不存在一律 404 `E-2000`，外人分不出是哪一種；②§10.1.1 `/stores/[slug]/blog` 新增公開版分類篩選（網址 `?category=`，匿名可用），文章頁的分類徽章改連過去；`/blog/category/[id]` 路由列註記「沒有任何連結指向它」。其餘規格內文未改寫。
 > - **v1.0.15 → v1.0.16（2026-11-11，Sprint 338，DEF-491／492／493／494）**：使用者的決定有兩種來源，要分清楚。**對 Sprint 337 收尾總結的內嵌回覆**：DEF-491『請先製作暫時入口暫代』、DEF-493『請執行』、DEF-492『請提供我優缺點情境比較』。**互動選項中本人選的**（真實的輸入，不是我的推論）：DEF-492 的同名分類選了「擋下並提示」；正式前端容器的健康檢查改用 `127.0.0.1` 選了「改，套用」。①§10.1.1 平台層 `/blog` 有了暫時入口：前台頁尾「部落格」連結連到 `/blog`，`/blog` 上方的分類篩選列連到 `/blog/category/[id]`（兩頁仍是登入者專用，匿名訪客看到登入提示；正式的入口或移除兩頁待 DEF-495 決定）；②§10.1.1 `/dashboard/posts/categories`：貼文分類名稱同店不可重複（忽略大小寫與前後空白，後端 409 `E-8021`，畫面顯示「分類名稱已存在，請換一個名稱」），名稱不同但網址代稱撞到時自動加後綴、不再失敗；③前端 `next.config.ts` 啟用 `output: 'standalone'`，正式與 CI 模擬的 compose 前端映像（`target: runner`）才建得出來、跑得起來，並修正其健康檢查。其餘規格內文未改寫。
+> - **v1.0.16 → v1.0.17（2026-11-12，Sprint 339，DEF-495／498）**：使用者在 Sprint 338 收尾時以**互動選項本人選了**（真實的輸入，不是我的推論）：DEF-495 平台層部落格的長期方向『**做成跨店鋪部落格**』、DEF-498『**新增 `frontend/.dockerignore`**』。①§10.1.1 平台層 `/blog` 改為**跨店鋪、匿名可讀**的公開部落格：列出所有營業中（`ACTIVE`）店鋪的已發布貼文，新到舊，每頁 12 筆，網址 `?page=` 分頁；每張卡片帶店鋪名稱（與分類），連到那間店鋪的文章頁 `/stores/{店鋪}/blog/{文章}`；資料來源是新端點 `GET /api/v2/public/posts`（§9.15）。**沒有分類篩選**（分類是店鋪內的概念，店鋪內篩選仍是 `/stores/{店鋪}/blog?category=`）。②平台層分類頁 `/blog/category/[id]` 移除，舊網址 308 轉到 `/blog`；頁尾『部落格』連結成為正式入口。③前端建置上下文排除清單 `frontend/.dockerignore`（不涉及功能規格）。其餘規格內文未改寫。
 
 ---
 
@@ -2077,6 +2078,7 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `GET` | `/api/v2/posts` | 前台：公開貼文列表（可帶 `categoryId` 篩選）。**下面三個公開端點（列表、詳情、分類）只供應 `ACTIVE` 店鋪（Sprint 337，DEF-485）：店鋪非 `ACTIVE` 或不存在 → 404 `E-2000`，不區分是哪一種** | Guest+ |
 | `GET` | `/api/v2/posts/:slug` | 前台：貼文詳情 (含解析嵌入卡片)。需帶 `tenantId`；選填 `countView`（預設 true＝瀏覽數 +1；傳 false 不計瀏覽，給 Next 伺服器端組標題用，Sprint 336）；回應含 `tenantSlug`（文章的公開網址是 `/stores/{tenantSlug}/blog/{slug}`） | Guest+ |
 | `GET` | `/api/v2/posts/categories` | 貼文分類列表 | Guest+ |
+| `GET` | `/api/v2/public/posts` | 前台：**跨店鋪**的公開貼文列表（Sprint 339，DEF-495）。所有 `ACTIVE` 店鋪的已發布貼文，新到舊；選填 `page`（預設 0）、`size`（預設 12，收斂到 1～50）；只回摘要（標題、摘要、封面、發布時間、店鋪名稱與代稱、分類），**不含內文與作者**；店鋪非 `ACTIVE` 的貼文不出現 | Guest+ |
 | `POST` | `/api/v2/dashboard/posts` | 店鋪後台：建立貼文 | Seller/Host/StoreOwner |
 | `PUT` | `/api/v2/dashboard/posts/:id` | 店鋪後台：更新貼文 | Seller/Host/StoreOwner |
 | `DELETE` | `/api/v2/dashboard/posts/:id` | 店鋪後台：刪除貼文（已發布須先下架，否則 409 `E-4107`；Sprint 334，驗收條件 AC-007） | StoreOwner |
@@ -2167,9 +2169,9 @@ v0.9 新增 API 統一使用 `/api/v2/` 前綴，v0.8 既有 API 保持 `/api/v1
 | `/oauth/callback/[provider]` | M03 | **架構演進**：OAuth2 第三方登入改為按鈕觸發 `startOAuthFlow()` 重新導向，取代原規劃的 `/auth/oauth/:provider` 頁面；僅需回呼頁 | 改名 |
 | `/messages` | M10 | 即時通訊（Phase 2，尚未實作，符合既有 Phase 標註） | 不變 |
 | `/notifications` | M09 | 通知中心 | 不變 |
-| `/blog` | M15 | CMS 貼文列表。**（Sprint 338，DEF-491）暫時入口**：前台頁尾「部落格」連結連到這一頁（登入者專用，匿名訪客看到登入提示）；上方的分類篩選列連到 `/blog/category/[id]`。正式的入口（跨店鋪部落格）或移除兩頁待 DEF-495 決定 | 不變（加暫時入口） |
+| `/blog` | M15 | **平台層部落格（跨店鋪，匿名可讀；Sprint 339，DEF-495）**：列出所有營業中（`ACTIVE`）店鋪的已發布貼文，新到舊，每頁 12 筆（`?page=`）；卡片帶店鋪名稱與分類，連到那間店鋪的文章頁 `/stores/{店鋪}/blog/{文章}`；沒有分類篩選。資料來源 `GET /api/v2/public/posts`。（Sprint 338 的暫時入口〔頁尾連結＋分類篩選列〕已由它取代，頁尾連結成為正式入口） | 改為跨店鋪公開 |
 | `/blog/[slug]` | M15 | **（Sprint 336，DEF-483）舊的文章網址，保留為導向頁**：登入且選定店鋪的人（改版前唯一打得開它的人）被導向 `/stores/[slug]/blog/[postSlug]`；匿名訪客維持原本的「請先登入並設定店鋪以瀏覽部落格」提示 | 改為導向 |
-| `/blog/category/[id]` | M15 | **已補齊（DEF-358c，Sprint 256）**：貼文分類篩選頁。**（Sprint 337，DEF-486）** 文章頁的分類徽章已改連店鋪前台的公開篩選 `/stores/[slug]/blog?category=`；這一頁（登入者專用，tenantId 取自 localStorage）沒有動，Sprint 337 時生產碼中沒有任何連結指向它。**（Sprint 338，DEF-491）暫時入口**：`/blog` 上方的分類篩選列連到這一頁；正式去留待 DEF-495 | 已完成（暫時入口） |
+| `/blog/category/[id]` | M15 | **已移除（Sprint 339，DEF-495）**：原為登入者專用的貼文分類篩選頁（DEF-358c，Sprint 256）。分類是店鋪內的概念，跨店鋪的 `/blog` 沒有分類；店鋪內的分類篩選是 `/stores/[slug]/blog?category=`（Sprint 337）。舊網址 308 轉到 `/blog`（只有分類編號、沒有店鋪，無從轉到對應的店鋪篩選頁） | 已移除（轉址） |
 | `/stores/[slug]` | M17 | 店鋪前台首頁（Sprint 252） | 不變 |
 | `/stores/[slug]/products` | M17/M01 | 店鋪商品列表（Sprint 252） | 不變 |
 | `/stores/[slug]/rooms` | M17/M02 | 店鋪房源列表（Sprint 252） | 不變 |

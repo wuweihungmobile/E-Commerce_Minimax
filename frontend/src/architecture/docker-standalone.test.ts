@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import nextConfig from '../../next.config'
@@ -32,6 +32,20 @@ describe('正式前端映像：Dockerfile 與 next.config.ts 要一致（DEF-493
       nextConfig.output,
       "Dockerfile 要複製 .next/standalone，但 next.config.ts 沒有 output: 'standalone'：正式與 CI 模擬的 compose（target: runner）前端映像會建不出來"
     ).toBe('standalone')
+  })
+
+  // DEF-498（Sprint 339，使用者同意）：docker-compose.yml 的 frontend 以 ./frontend 當建置上下文，專案根目錄的 .dockerignore 對它無效。
+  // 沒有 frontend/.dockerignore 時，node_modules（約 600 MB、主機平台的原生套件）與 .next（約 440 MB）整包送進建置：實測上下文 1.07 GB、
+  // 傳輸 328 秒，最終映像還混入 @img/sharp-darwin-x64 等 macOS 套件。Dockerfile 的 deps 階段自己 npm ci、builder 階段自己 next build。
+  it('frontend/.dockerignore 排除 node_modules、.next 與 .env*：主機的依賴、建置產物與環境檔不能被送進建置上下文（DEF-498）', () => {
+    const path = fileURLToPath(new URL('../../.dockerignore', import.meta.url))
+    const entries = (existsSync(path) ? readFileSync(path, 'utf-8') : '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line !== '' && !line.startsWith('#'))
+    for (const required of ['node_modules', '.next', '.env*']) {
+      expect(entries, `frontend/.dockerignore 少了 ${required}：${required} 會被整包送進 docker 建置上下文`).toContain(required)
+    }
   })
 
   it('偵測器只認真的 COPY 指令：註解掉的、複製別的目錄的、沒有 --from 的都不算', () => {

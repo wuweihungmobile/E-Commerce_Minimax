@@ -1444,6 +1444,123 @@ class PostControllerE2ETest {
                 .body("data.name", equalTo("Food"));
     }
 
+    /** 建立一篇貼文並發布（店主身分，走真實 API），回傳貼文編號。 */
+    private String createAndPublishPost(String token, String title) {
+        String id = given().header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(Map.of("title", title, "content", "內文 " + title))
+                .when().post(BASE_URL + "/dashboard/posts")
+                .then().statusCode(200)
+                .extract().jsonPath().getString("data.id");
+        given().header("Authorization", "Bearer " + token)
+                .when().post(BASE_URL + "/dashboard/posts/" + id + "/publish")
+                .then().statusCode(200);
+        return id;
+    }
+
+    /** 跨店鋪公開列表的總篇數（用 size=1 取，原因見 IT-M15-032：頁要填滿，計數查詢才會執行）。 */
+    private int totalCountOfFeed() {
+        return given().queryParam("size", 1)
+                .when().get(BASE_URL + "/public/posts")
+                .then().statusCode(200)
+                .extract().jsonPath().getInt("data.totalCount");
+    }
+
+    @Test
+    @Order(32)
+    @DisplayName("IT-M15-032（Sprint 339，DEF-495）: GET /api/v2/public/posts - 匿名可讀的跨店鋪列表：只有已發布＋店鋪 ACTIVE 的貼文、新到舊、只回摘要、停權店鋪的貼文消失（總數同步）、分頁參數收斂")
+    void publicPostFeed_isAnonymousCrossStore_publishedAndActiveOnly_summariesOnly() throws Exception {
+        long stamp = System.nanoTime();
+        String titleA1 = "跨店鋪A已發布 " + stamp;
+        String titleA2 = "跨店鋪A草稿 " + stamp;
+        String titleB1 = "跨店鋪B已發布 " + stamp;
+
+        // 兩家店：A 一篇已發布＋一篇草稿，B 一篇已發布（B 比 A 晚發布）
+        String tokenA = createStoreOwnerAndGetToken(uniqueEmail());
+        UUID tenantA = testTenantId;
+        String slugA = testTenant.getSlug();
+        createAndPublishPost(tokenA, titleA1);
+        given().header("Authorization", "Bearer " + tokenA).contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(Map.of("title", titleA2, "content", "草稿內文"))
+                .when().post(BASE_URL + "/dashboard/posts")
+                .then().statusCode(200);
+        String tokenB = createStoreOwnerAndGetToken(uniqueEmail());
+        createAndPublishPost(tokenB, titleB1);
+
+        try {
+            // 1. 匿名（沒有 Authorization）可讀；兩家店的已發布貼文都在，草稿不在；B 比 A 新 → B 排在前面
+            io.restassured.path.json.JsonPath feed = given().queryParam("size", 50)
+                    .when().get(BASE_URL + "/public/posts")
+                    .then().statusCode(200)
+                    .extract().jsonPath();
+            java.util.List<String> titles = feed.getList("data.posts.title");
+            org.assertj.core.api.Assertions.assertThat(titles).contains(titleA1, titleB1).doesNotContain(titleA2);
+            org.assertj.core.api.Assertions.assertThat(titles.indexOf(titleB1)).isLessThan(titles.indexOf(titleA1));
+            // 總數一律用 size=1 取：Spring Data 在「第一頁沒填滿」（返回筆數小於每頁大小）時直接拿返回筆數當總數、根本不執行計數查詢，
+            // 用 size=50 取總數，計數查詢的店鋪條件寫錯也測不出來（突變 S2 第一次就這樣倖存）；size=1 時頁一定是滿的，計數查詢才會跑
+            int totalBefore = totalCountOfFeed();
+
+            // 2. 只回摘要：有店鋪名稱與代稱（文章公開網址要用），沒有內文、作者、瀏覽數、嵌入、狀態
+            java.util.Map<String, Object> cardA1 = feed.getMap("data.posts.find { it.title == '" + titleA1 + "' }");
+            org.assertj.core.api.Assertions.assertThat(cardA1.get("tenantSlug")).isEqualTo(slugA);
+            org.assertj.core.api.Assertions.assertThat(cardA1.get("tenantName")).isNotNull();
+            org.assertj.core.api.Assertions.assertThat(cardA1.keySet())
+                    .doesNotContain("content", "authorId", "authorName", "viewCount", "embeds", "status", "tenantId");
+
+            // 3. 店鋪 A 被停權：它的貼文從列表消失，總數剛好少 1（查詢與計數的店鋪條件一致）；B 不受影響
+            jdbcTemplate.update("UPDATE tenants SET status = 'SUSPENDED' WHERE id = ?", tenantA);
+            io.restassured.path.json.JsonPath whileSuspended = given().queryParam("size", 50)
+                    .when().get(BASE_URL + "/public/posts")
+                    .then().statusCode(200)
+                    .extract().jsonPath();
+            java.util.List<String> suspendedTitles = whileSuspended.getList("data.posts.title");
+            org.assertj.core.api.Assertions.assertThat(suspendedTitles).contains(titleB1).doesNotContain(titleA1);
+            org.assertj.core.api.Assertions.assertThat(totalCountOfFeed()).isEqualTo(totalBefore - 1);
+
+            // 4. 恢復營業：貼文回來，總數回到原本
+            jdbcTemplate.update("UPDATE tenants SET status = 'ACTIVE' WHERE id = ?", tenantA);
+            io.restassured.path.json.JsonPath restored = given().queryParam("size", 50)
+                    .when().get(BASE_URL + "/public/posts")
+                    .then().statusCode(200)
+                    .extract().jsonPath();
+            org.assertj.core.api.Assertions.assertThat(restored.<String>getList("data.posts.title")).contains(titleA1, titleB1);
+            org.assertj.core.api.Assertions.assertThat(totalCountOfFeed()).isEqualTo(totalBefore);
+
+            // 5. 分頁：size=1 時每頁一篇，第二頁是全部列表裡的第二篇；總頁數＝總篇數
+            given().queryParam("size", 1).queryParam("page", 0)
+                    .when().get(BASE_URL + "/public/posts")
+                    .then().statusCode(200)
+                    .body("data.posts.size()", equalTo(1))
+                    .body("data.posts[0].title", equalTo(titles.get(0)))
+                    .body("data.totalPages", equalTo(totalBefore));
+            given().queryParam("size", 1).queryParam("page", 1)
+                    .when().get(BASE_URL + "/public/posts")
+                    .then().statusCode(200)
+                    .body("data.posts[0].title", equalTo(titles.get(1)));
+
+            // 5b. 沒帶參數：預設第一頁、每頁 12 筆（前端 /blog 的每頁筆數與頁碼換算都以此為準）
+            given().when().get(BASE_URL + "/public/posts")
+                    .then().statusCode(200)
+                    .body("data.page", equalTo(0))
+                    .body("data.size", equalTo(12))
+                    .body("data.posts.size()", lessThanOrEqualTo(12));
+
+            // 6. 壞參數收斂、不是 500：page<0 → 0、size<1 → 1、size 過大 → 50；回應帶實際使用的值
+            given().queryParam("page", -1).queryParam("size", 0)
+                    .when().get(BASE_URL + "/public/posts")
+                    .then().statusCode(200)
+                    .body("data.page", equalTo(0))
+                    .body("data.size", equalTo(1));
+            given().queryParam("size", 100000)
+                    .when().get(BASE_URL + "/public/posts")
+                    .then().statusCode(200)
+                    .body("data.size", equalTo(50));
+        } finally {
+            // 不論成敗都把店鋪 A 恢復成 ACTIVE（其他測試共用同一個資料庫）
+            jdbcTemplate.update("UPDATE tenants SET status = 'ACTIVE' WHERE id = ?", tenantA);
+        }
+    }
+
     private int viewCountInDb(UUID postId) {
         Integer count = jdbcTemplate.queryForObject("SELECT view_count FROM posts WHERE id = ?", Integer.class, postId);
         return count == null ? 0 : count;

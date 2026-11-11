@@ -62,6 +62,34 @@ export interface PostListResponse {
   totalPages: number;
 }
 
+/**
+ * 跨店鋪公開貼文列表的一筆摘要（Sprint 339，DEF-495，GET /v2/public/posts）。
+ * 刻意沒有內文、作者、瀏覽數：這是匿名可讀、橫跨所有店鋪的端點，後端只回卡片需要的欄位。
+ * 文章的公開網址是 /stores/{tenantSlug}/blog/{slug}，見 lib/article-path。
+ */
+export interface PublicPostSummary {
+  id: string;
+  slug: string;
+  title: string;
+  /** 貼文自己的摘要；沒有就是內文開頭（後端已去掉商品嵌入語法）；都沒有是空字串 */
+  excerpt: string;
+  featuredImageUrl: string | null;
+  publishedAt: string | null;
+  tenantSlug: string;
+  tenantName: string;
+  categoryId: string | null;
+  categoryName: string | null;
+}
+
+export interface PublicPostFeed {
+  posts: PublicPostSummary[];
+  totalCount: number;
+  /** 實際使用的頁碼（0-based）與大小：後端會收斂超出範圍的請求值 */
+  page: number;
+  size: number;
+  totalPages: number;
+}
+
 export interface CategoryResponse {
   id: string;
   tenantId: string;
@@ -158,6 +186,18 @@ export async function getPublishedPosts(tenantId: string, params?: {
   categoryId?: string;
 }, options?: RequestOptions): Promise<PostListResponse> {
   const response = await apiClient.get('/v2/posts', { params: { tenantId, ...params }, ...options });
+  return response.data.data;
+}
+
+/**
+ * 前台：跨店鋪的公開貼文列表（Sprint 339，DEF-495）：所有店鋪（ACTIVE）已發布的貼文，新到舊，匿名可讀、沒有 tenantId。
+ * 單店鋪的列表仍用 getPublishedPosts。
+ */
+export async function getPublicPostFeed(params?: {
+  page?: number;
+  size?: number;
+}, options?: RequestOptions): Promise<PublicPostFeed> {
+  const response = await apiClient.get('/v2/public/posts', { params: { ...params }, ...options });
   return response.data.data;
 }
 

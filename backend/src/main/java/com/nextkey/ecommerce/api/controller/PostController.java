@@ -207,6 +207,23 @@ public class PostController {
     }
 
     /**
+     * 跨店鋪的公開貼文列表（匿名可讀；Sprint 339，DEF-495，使用者選了『做成跨店鋪部落格』）
+     * GET /api/v2/public/posts
+     *
+     * <p>所有已發布、且所屬店鋪是 ACTIVE 的貼文，發布時間新到舊，只回摘要（不含內文與作者）。掛在 SecurityConfig 既有的
+     * {@code /v2/public/**} permitAll 規則下（與 {@link PublicListingController} 同一慣例），不動 {@code /v2/posts} 本身的規則。
+     * 單店鋪的列表仍是 {@code GET /v2/posts?tenantId=}。
+     */
+    @GetMapping("/public/posts")
+    public ResponseEntity<ApiResponse<M15Dto.PublicPostFeedResponse>> getPublicPostFeed(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "12") int size) {
+
+        M15Dto.PublicPostFeedResponse response = postService.getPublicPostFeed(page, size);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
      * 依 Slug 取得已發布貼文（公開）
      * GET /api/v2/posts/:slug
      *

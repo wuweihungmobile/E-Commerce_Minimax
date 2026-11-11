@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { articlePath, storeBlogPath } from './article-path'
+import { articlePath, platformBlogPath, storeBlogPath } from './article-path'
 
 // 文章網址的形狀（Sprint 336，DEF-483）：產生文章連結的三個地方都靠它，形狀錯了所有文章連結都壞。
 describe('articlePath', () => {
@@ -44,5 +44,19 @@ describe('storeBlogPath', () => {
 
   it('店鋪代稱與分類編號都做 URL 編碼（來自後端資料與網址，不能把特殊字元原樣塞進去）', () => {
     expect(storeBlogPath('a b', { categoryId: 'x&y=z' })).toBe('/stores/a%20b/blog?category=x%26y%3Dz')
+  })
+})
+
+// 平台層部落格（跨店鋪）列表的網址（Sprint 339，DEF-495）：頁尾連結、分頁都靠它。
+describe('platformBlogPath', () => {
+  it('第一頁（沒有頁碼、1、0、負數、不是數字）→ /blog，不帶 page', () => {
+    for (const page of [undefined, 1, 0, -3, Number.NaN]) {
+      expect(platformBlogPath(page), String(page)).toBe('/blog')
+    }
+  })
+
+  it('頁碼是 1-based：第 2 頁起才帶 ?page=（與 server page 的解析、storeBlogPath 的慣例一致）', () => {
+    expect(platformBlogPath(2)).toBe('/blog?page=2')
+    expect(platformBlogPath(15)).toBe('/blog?page=15')
   })
 })

@@ -117,6 +117,44 @@ public class M15Dto {
         private Integer totalPages;
     }
 
+    // ========== 跨店鋪公開貼文列表 DTOs（Sprint 339，DEF-495）==========
+
+    /**
+     * 跨店鋪公開貼文列表的一筆摘要：只放卡片需要的欄位。刻意不含內文（列表不需要，也避免一次送出數十篇全文）、
+     * 作者、瀏覽數、嵌入、草稿相關欄位——這是匿名可讀、橫跨所有店鋪的端點，能不公開的就不公開。
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PublicPostSummaryResponse {
+        private UUID id;
+        private String slug;
+        private String title;
+        /** 摘要：貼文的 excerpt；沒有就取內文開頭（去掉商品嵌入語法）。 */
+        private String excerpt;
+        private String featuredImageUrl;
+        private Instant publishedAt;
+        /** 店鋪的網址代稱：文章的公開網址是 /stores/{tenantSlug}/blog/{slug}。 */
+        private String tenantSlug;
+        private String tenantName;
+        private UUID categoryId;
+        private String categoryName;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PublicPostFeedResponse {
+        private List<PublicPostSummaryResponse> posts;
+        private Integer totalCount;
+        /** 實際使用的頁碼與大小（超出範圍的請求值會被收斂，見 PostService.getPublicPostFeed）。 */
+        private Integer page;
+        private Integer size;
+        private Integer totalPages;
+    }
+
     // ========== PostEmbed DTOs ==========
 
     @Data

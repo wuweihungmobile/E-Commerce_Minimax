@@ -14,9 +14,8 @@ export function StorefrontFooter({ showChatFab = true }: { showChatFab?: boolean
             © 2026 意象若水 RUOSHUI. 生活減法，無負擔的購物體驗。
           </span>
           <div className="flex gap-6 text-sm text-rs-ink-muted">
-            {/* 暫時入口（Sprint 338，DEF-491）：平台層的部落格頁 /blog 原本沒有任何導覽連結指向它。
-                這頁靠瀏覽器 localStorage 的店鋪（登入才有）取文章，匿名訪客只看到登入提示；
-                正式的入口（跨店鋪部落格）或移除兩頁待 DEF-495 決定，到時連同這個連結一併處理。 */}
+            {/* 平台層部落格 /blog 的入口（Sprint 338，DEF-491 先以暫時入口出現；Sprint 339，DEF-495 成為正式入口）：
+                /blog 現在是跨店鋪的公開部落格（所有營業中店鋪的已發布貼文，匿名可讀），所以這個連結對所有訪客都有用。 */}
             <Link href="/blog" className="hover:text-rs-primary">
               部落格
             </Link>

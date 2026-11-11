@@ -215,8 +215,9 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
     await expect(page.getByTestId('toast').filter({ hasText: '貼文已發布' })).toBeVisible();
     await page.waitForURL(`**/dashboard/posts/${created.id}/edit`);
 
-    // 前台部落格（tenantId 取自登入後的 localStorage）列得出剛發布的貼文
-    await page.goto('/blog');
+    // 前台的店鋪貼文列表列得出剛發布的貼文（Sprint 339 起平台層 /blog 是跨店鋪的列表，全套並行時「剛建的一定在第一頁」不成立，
+    // 所以用這間店鋪自己的列表）
+    await page.goto(`/stores/${storeSlug}/blog`);
     await expect(page.getByRole('heading', { name: title })).toBeVisible();
   });
 
@@ -272,7 +273,7 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
 
   test('E2E-M15-005: 前台部落格列出含嵌入語法的文章，進入詳情後顯示嵌入的商品卡', async ({ page }) => {
     await loginOnly(page, owner.email, owner.password);
-    await page.goto('/blog');
+    await page.goto(`/stores/${storeSlug}/blog`);
 
     await page.getByRole('link', { name: new RegExp(EMBED_TITLE) }).click();
     await page.waitForURL(`**/stores/${storeSlug}/blog/${embedSlug}`);

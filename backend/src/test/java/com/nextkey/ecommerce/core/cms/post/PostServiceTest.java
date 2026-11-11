@@ -1358,4 +1358,162 @@ class PostServiceTest {
             verify(postRepository, never()).findByTenantIdAndSlug(any(), any());
         }
     }
+
+    // ── getPublicPostFeed() Tests（Sprint 339，DEF-495：跨店鋪公開部落格）────────────────
+
+    @Nested
+    @DisplayName("getPublicPostFeed()")
+    class GetPublicPostFeed {
+
+        private Post publishedPost(String title, String excerpt, String content) {
+            Post post = buildPost(Post.PostStatus.PUBLISHED);
+            post.setTitle(title);
+            post.setExcerpt(excerpt);
+            post.setContent(content);
+            post.setFeaturedImageUrl("https://img.example/cover.png");
+            post.setPublishedAt(java.time.Instant.parse("2026-11-01T00:00:00Z"));
+            return post;
+        }
+
+        private void feedReturns(Post... posts) {
+            when(postRepository.findPublishedFromActiveTenants(any(Pageable.class)))
+                    .thenAnswer(inv -> new PageImpl<>(List.of(posts), inv.getArgument(0), posts.length));
+        }
+
+        @Test
+        @DisplayName("卡片需要的欄位都在：標題、網址代稱、店鋪名稱與代稱（文章公開網址要用）、分類、封面、發布時間")
+        void getPublicPostFeed_mapsTheCardFields() {
+            Post post = publishedPost("第一篇", "手寫的摘要", "內文不該出現在列表");
+            post.setCategory(buildCategory());
+            feedReturns(post);
+
+            M15Dto.PublicPostFeedResponse response = postService.getPublicPostFeed(0, 12);
+
+            assertThat(response.getPosts()).hasSize(1);
+            M15Dto.PublicPostSummaryResponse card = response.getPosts().get(0);
+            assertThat(card.getId()).isEqualTo(TEST_POST_ID);
+            assertThat(card.getTitle()).isEqualTo("第一篇");
+            assertThat(card.getSlug()).isEqualTo("test-post");
+            assertThat(card.getExcerpt()).isEqualTo("手寫的摘要");
+            assertThat(card.getFeaturedImageUrl()).isEqualTo("https://img.example/cover.png");
+            assertThat(card.getPublishedAt()).isEqualTo(java.time.Instant.parse("2026-11-01T00:00:00Z"));
+            assertThat(card.getTenantSlug()).isEqualTo("test-tenant");
+            assertThat(card.getTenantName()).isEqualTo("Test Tenant");
+            assertThat(card.getCategoryId()).isEqualTo(TEST_CATEGORY_ID);
+            assertThat(card.getCategoryName()).isEqualTo("Test Category");
+        }
+
+        @Test
+        @DisplayName("沒有分類的貼文：分類欄位是 null，不丟例外")
+        void getPublicPostFeed_postWithoutCategory_hasNullCategoryFields() {
+            feedReturns(publishedPost("無分類", "摘要", "內文"));
+
+            M15Dto.PublicPostSummaryResponse card = postService.getPublicPostFeed(0, 12).getPosts().get(0);
+
+            assertThat(card.getCategoryId()).isNull();
+            assertThat(card.getCategoryName()).isNull();
+        }
+
+        // 這是匿名可讀、橫跨所有店鋪的端點：能不公開的就不公開（內文、作者、瀏覽數）。用反射守「回應型別根本沒有這些欄位」，
+        // 比逐一斷言值是 null 更不會被未來新增的欄位漏掉。
+        @Test
+        @DisplayName("回應型別沒有內文、作者、瀏覽數、嵌入、草稿相關欄位（匿名可讀的跨店鋪端點不外洩）")
+        void getPublicPostFeed_responseTypeHasNoContentAuthorOrViewCount() {
+            java.util.Set<String> fields = java.util.Arrays.stream(M15Dto.PublicPostSummaryResponse.class.getDeclaredFields())
+                    .map(java.lang.reflect.Field::getName)
+                    .collect(java.util.stream.Collectors.toSet());
+
+            assertThat(fields).doesNotContain("content", "authorId", "authorName", "viewCount", "embeds", "status", "tags", "tenantId");
+        }
+
+        @Test
+        @DisplayName("沒有手寫摘要：取內文開頭 100 字，商品嵌入語法 {{embed:listing:…}} 不能出現在摘要裡，多餘空白壓成一格")
+        void getPublicPostFeed_blankExcerpt_fallsBackToContentWithoutEmbedSyntax() {
+            String content = "歡迎光臨\n\n  推薦商品：{{embed:listing:" + TEST_LISTING_ID + "}} 這個很好用   " + "字".repeat(200);
+            feedReturns(publishedPost("標題", "   ", content));
+
+            String excerpt = postService.getPublicPostFeed(0, 12).getPosts().get(0).getExcerpt();
+
+            assertThat(excerpt).doesNotContain("{{embed").doesNotContain("\n");
+            assertThat(excerpt).startsWith("歡迎光臨 推薦商品： 這個很好用 字字字");
+            assertThat(excerpt.length()).isLessThanOrEqualTo(100);
+        }
+
+        @Test
+        @DisplayName("內文也是空的：摘要是空字串，不是 null、不丟例外（卡片自己決定怎麼顯示）")
+        void getPublicPostFeed_noExcerptAndNoContent_yieldsEmptyExcerpt() {
+            feedReturns(publishedPost("只有標題", null, null));
+
+            assertThat(postService.getPublicPostFeed(0, 12).getPosts().get(0).getExcerpt()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("size 上限 50、下限 1，page 下限 0（匿名公開端點，壞參數不能變成 500）；回應帶的是實際使用的頁碼與大小")
+        void getPublicPostFeed_clampsPageAndSize_andReportsTheEffectiveValues() {
+            when(postRepository.findPublishedFromActiveTenants(any(Pageable.class)))
+                    .thenAnswer(inv -> new PageImpl<>(List.<Post>of(), inv.getArgument(0), 0));
+
+            M15Dto.PublicPostFeedResponse huge = postService.getPublicPostFeed(-7, 999999999);
+            M15Dto.PublicPostFeedResponse zero = postService.getPublicPostFeed(3, 0);
+
+            ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+            verify(postRepository, times(2)).findPublishedFromActiveTenants(captor.capture());
+            assertThat(captor.getAllValues().get(0).getPageNumber()).isZero();
+            assertThat(captor.getAllValues().get(0).getPageSize()).isEqualTo(50);
+            assertThat(huge.getPage()).isZero();
+            assertThat(huge.getSize()).isEqualTo(50);
+            assertThat(captor.getAllValues().get(1).getPageNumber()).isEqualTo(3);
+            assertThat(captor.getAllValues().get(1).getPageSize()).isEqualTo(1);
+            assertThat(zero.getSize()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("排序：發布時間新到舊，相同再依建立時間新到舊，最後才用編號（分頁要穩定；編號是隨機值，不能當時間序）")
+        void getPublicPostFeed_ordersByPublishedAtThenCreatedAtThenId() {
+            when(postRepository.findPublishedFromActiveTenants(any(Pageable.class)))
+                    .thenAnswer(inv -> new PageImpl<>(List.<Post>of(), inv.getArgument(0), 0));
+
+            postService.getPublicPostFeed(0, 12);
+
+            ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+            verify(postRepository).findPublishedFromActiveTenants(captor.capture());
+            assertThat(captor.getValue().getSort().stream().map(o -> o.getProperty() + ":" + o.getDirection()).toList())
+                    .containsExactly("publishedAt:DESC", "createdAt:DESC", "id:ASC");
+        }
+
+        @Test
+        @DisplayName("沒有任何已發布貼文：空清單、總數 0、總頁數 0")
+        void getPublicPostFeed_emptyFeed() {
+            when(postRepository.findPublishedFromActiveTenants(any(Pageable.class)))
+                    .thenAnswer(inv -> new PageImpl<>(List.<Post>of(), inv.getArgument(0), 0));
+
+            M15Dto.PublicPostFeedResponse response = postService.getPublicPostFeed(0, 12);
+
+            assertThat(response.getPosts()).isEmpty();
+            assertThat(response.getTotalCount()).isZero();
+            assertThat(response.getTotalPages()).isZero();
+        }
+
+        @Test
+        @DisplayName("總數與總頁數取自資料庫的總筆數，不是這一頁的筆數")
+        void getPublicPostFeed_reportsTotalsFromThePage() {
+            when(postRepository.findPublishedFromActiveTenants(any(Pageable.class)))
+                    .thenAnswer(inv -> new PageImpl<>(List.of(publishedPost("a", "x", "y")), inv.getArgument(0), 25));
+
+            M15Dto.PublicPostFeedResponse response = postService.getPublicPostFeed(0, 12);
+
+            assertThat(response.getTotalCount()).isEqualTo(25);
+            assertThat(response.getTotalPages()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("列表不讀嵌入（不為每篇貼文再查一次 post_embeds）：卡片不需要，查了就是 N+1")
+        void getPublicPostFeed_doesNotQueryEmbeds() {
+            feedReturns(publishedPost("a", "x", "y"), publishedPost("b", "x", "y"));
+
+            postService.getPublicPostFeed(0, 12);
+
+            verifyNoInteractions(postEmbedRepository);
+        }
+    }
 }

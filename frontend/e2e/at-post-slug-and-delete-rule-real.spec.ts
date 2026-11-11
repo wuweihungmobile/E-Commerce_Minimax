@@ -54,7 +54,7 @@ test.describe('AT-POST-RULES-REAL: 貼文 slug 與刪除規則（真實後端）
     }
   });
 
-  test('E2E-POSTRULE-01: 全中文標題的貼文有可用的網址：部落格清單的連結是 /stores/{店鋪}/blog/post-<8碼>，點得進文章頁；兩篇網址不同', async ({ page }: { page: Page }) => {
+  test('E2E-POSTRULE-01: 全中文標題的貼文有可用的網址：店鋪貼文列表的連結是 /stores/{店鋪}/blog/post-<8碼>，點得進文章頁；兩篇網址不同', async ({ page }: { page: Page }) => {
     await loginOnly(page, owner.email, owner.password);
     const titleA = `視覺檢查貼文${zh(STAMP)}甲`;
     const titleB = `視覺檢查貼文${zh(STAMP)}乙`;
@@ -65,7 +65,8 @@ test.describe('AT-POST-RULES-REAL: 貼文 slug 與刪除規則（真實後端）
     expect(b.slug).toMatch(/^post-[0-9a-f]{8}$/);
     expect(a.slug, '兩篇的網址不同').not.toBe(b.slug);
 
-    await page.goto('/blog');
+    // 用這間店鋪自己的貼文列表（不是平台層 /blog：Sprint 339 起 /blog 是跨店鋪的列表，全套並行時「剛建的一定在第一頁」不成立）
+    await page.goto(`/stores/${storeSlug}/blog`);
     const linkA = page.locator(`a[href^="/stores/${storeSlug}/blog/post-"]`, { hasText: titleA });
     await expect(linkA, '清單裡的連結要指向這間店鋪的文章頁，而不是 /blog').toHaveAttribute(
       'href',

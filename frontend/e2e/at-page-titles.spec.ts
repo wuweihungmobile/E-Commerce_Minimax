@@ -34,7 +34,7 @@ const SSR_TITLES: Array<[string, string, string]> = [
   ['/stores/demo/products', site('店鋪商品'), 'Server Component（巢狀、動態路由）'],
   ['/privacy', site('隱私權政策'), '本來就有標題的頁面：不可變成「…｜品牌｜品牌」'],
   ['/login', site('登入'), '有狀態的 client 頁：標題由同目錄 layout 提供'],
-  ['/blog/category/x', site('文章分類'), 'client 頁（巢狀、動態路由）'],
+  ['/blog', site('部落格'), 'Server Component（Sprint 339，DEF-495：跨店鋪列表；標題在同目錄 layout，/blog/category/{id} 已轉址到這裡）'],
   ['/orders/x/payment/cancel', site('訂單付款已取消'), '薄殼改成 Server Component，在 client 頁 /orders/[id] 的 layout 底下（template 不能被切斷）'],
   ['/bookings/x/payment/success', site('預訂付款結果'), 'client 頁在 client 頁 /bookings/[id] 的 layout 底下'],
   ['/dashboard', dashboard('營運總覽'), '賣家後台首頁：區域 layout 的 default'],

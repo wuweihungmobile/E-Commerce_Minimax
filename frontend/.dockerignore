@@ -1,0 +1,27 @@
+# frontend 的 docker 建置上下文排除清單（Sprint 339，DEF-498，使用者 2026-11-12 以互動選項同意）。
+#
+# 為什麼需要：docker-compose.yml 的 frontend 以 ./frontend 當建置上下文，專案根目錄的 .dockerignore 對它無效。
+# 沒有這份檔案時，node_modules（約 600 MB，而且是主機平台 macOS 的原生套件）與 .next（約 440 MB，主機的建置產物）
+# 整包被送進建置：實測上下文 1.07 GB、傳輸 328 秒，最終映像還混入 @img/sharp-darwin-x64 等 macOS 套件。
+# Dockerfile 的 deps 階段自己 npm ci、builder 階段自己 next build，這些都不需要。
+# 由 src/architecture/docker-standalone.test.ts 守門（node_modules、.next、.env* 一定要在這裡）。
+
+# 依賴與建置產物（容器內自己產生；tsbuildinfo 是主機的型別檢查快取，不該帶進去）
+node_modules
+.next
+tsconfig.tsbuildinfo
+
+# 測試與報告（E2E 在主機跑，建置不需要）
+e2e
+test-results
+playwright-report
+coverage
+
+# 環境檔與機密：不要被燒進映像（Next 會讀 .env* 的 NEXT_PUBLIC_*，主機的值可能蓋掉建置參數）
+.env*
+
+# 其他
+.git
+.husky
+*.log
+.DS_Store

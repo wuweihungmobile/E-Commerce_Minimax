@@ -54,6 +54,19 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
             @Param("tenantId") UUID tenantId, @Param("categoryId") UUID categoryId, Pageable pageable);
 
     /**
+     * 跨店鋪公開貼文列表（Sprint 339，DEF-495）：所有「已發布」且「所屬店鋪是 ACTIVE」的貼文。
+     * 排序由呼叫端的 Pageable 決定（不在這裡寫死，與上面兩個查詢不同，避免 JPQL 與 Pageable 各排一次）。
+     *
+     * <p>店鋪狀態直接在查詢裡過濾（不是查出來再丟掉）：分頁與總數才會對得上，停權／審核中／被拒／終止的店鋪
+     * 一篇都不會出現（與 Sprint 337 的單店鋪公開端點同一個規則）。{@code JOIN FETCH} 只抓 ManyToOne（店鋪、分類），
+     * 所以分頁仍在資料庫端完成，也不會因為組卡片而為每篇貼文再查一次店鋪或分類。
+     */
+    @Query(value = "SELECT p FROM Post p JOIN FETCH p.tenant t LEFT JOIN FETCH p.category "
+            + "WHERE p.status = 'PUBLISHED' AND t.status = 'ACTIVE'",
+            countQuery = "SELECT COUNT(p) FROM Post p WHERE p.status = 'PUBLISHED' AND p.tenant.status = 'ACTIVE'")
+    Page<Post> findPublishedFromActiveTenants(Pageable pageable);
+
+    /**
      * 依作者查詢
      */
     Page<Post> findByAuthorId(UUID authorId, Pageable pageable);

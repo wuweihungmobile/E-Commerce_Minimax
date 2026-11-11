@@ -2,10 +2,10 @@ import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { StorefrontFooter } from './StorefrontFooter'
 
-// 暫時入口（Sprint 338，DEF-491）：平台層的部落格頁 /blog 原本沒有任何導覽連結指向它（只剩手打網址與書籤）。
-// 頁尾放一個「部落格」連結讓它有入口；正式的入口（跨店鋪部落格）或移除兩頁待 DEF-495 決定，到時這個連結與這個測試一併處理。
+// 平台層部落格 /blog 的入口（Sprint 338，DEF-491 先以暫時入口出現：原本沒有任何導覽連結指向它，只剩手打網址與書籤）。
+// Sprint 339（DEF-495）起 /blog 是跨店鋪的公開部落格，這個頁尾連結成為正式入口，所有前台頁（含賣家外殼）都有。
 
-describe('頁尾的暫時入口：部落格（DEF-491）', () => {
+describe('頁尾的部落格連結（DEF-491、DEF-495）', () => {
   it('頁尾有「部落格」連結，指向平台層的 /blog', () => {
     render(<StorefrontFooter />)
     const link = within(screen.getByTestId('storefront-footer')).getByRole('link', { name: '部落格' })

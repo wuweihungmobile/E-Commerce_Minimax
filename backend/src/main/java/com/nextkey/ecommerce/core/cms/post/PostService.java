@@ -71,6 +71,12 @@ public class PostService {
     // Post excerpt limits
     private static final int EXCERPT_MAX_LENGTH = 500;
 
+    /** 跨店鋪公開列表單頁筆數上限（Sprint 339，DEF-495）：比單店鋪的 100 小，因為這個列表橫跨所有店鋪、匿名可讀。 */
+    private static final int PUBLIC_FEED_MAX_SIZE = 50;
+
+    /** 列表卡片沒有手寫摘要時，取內文開頭的字數。 */
+    private static final int PUBLIC_EXCERPT_LENGTH = 100;
+
     // ========== Post CRUD ==========
 
     /**
@@ -319,6 +325,63 @@ public class PostService {
                 .size(size)
                 .totalPages(postPage.getTotalPages())
                 .build();
+    }
+
+    /**
+     * 前台：跨店鋪的公開貼文列表（Sprint 339，DEF-495，使用者選了『做成跨店鋪部落格』）。
+     *
+     * <p>所有已發布、且所屬店鋪是 {@code ACTIVE} 的貼文，發布時間新到舊（店鋪被停權、審核中、被拒、終止，它的貼文就不在列表裡，
+     * 規則與單店鋪的公開端點一致，Sprint 337 DEF-485）。回傳摘要（{@link M15Dto.PublicPostSummaryResponse}），不含內文與作者。
+     *
+     * <p>分頁參數收斂而不是拒絕（同 {@link #getPublishedPosts}）：page 至少 0、size 介於 1～{@value #PUBLIC_FEED_MAX_SIZE}，
+     * 匿名端點的壞參數不能變成 500；回應帶的是實際使用的值。排序最後用編號打平只為了分頁穩定——編號是隨機值，不代表時間先後。
+     */
+    @Transactional(readOnly = true)
+    public M15Dto.PublicPostFeedResponse getPublicPostFeed(int page, int size) {
+        PageRequest pageRequest = PageableUtils.of(page, size, PUBLIC_FEED_MAX_SIZE, Sort.by(
+                Sort.Order.desc("publishedAt"), Sort.Order.desc("createdAt"), Sort.Order.asc("id")));
+        Page<Post> postPage = postRepository.findPublishedFromActiveTenants(pageRequest);
+
+        return M15Dto.PublicPostFeedResponse.builder()
+                .posts(postPage.getContent().stream().map(this::toPublicSummary).toList())
+                .totalCount((int) postPage.getTotalElements())
+                .page(pageRequest.getPageNumber())
+                .size(pageRequest.getPageSize())
+                .totalPages(postPage.getTotalPages())
+                .build();
+    }
+
+    private M15Dto.PublicPostSummaryResponse toPublicSummary(final Post post) {
+        PostCategory category = post.getCategory();
+        return M15Dto.PublicPostSummaryResponse.builder()
+                .id(post.getId())
+                .slug(post.getSlug())
+                .title(post.getTitle())
+                .excerpt(publicExcerpt(post))
+                .featuredImageUrl(post.getFeaturedImageUrl())
+                .publishedAt(post.getPublishedAt())
+                .tenantSlug(post.getTenant().getSlug())
+                .tenantName(post.getTenant().getName())
+                .categoryId(category != null ? category.getId() : null)
+                .categoryName(category != null ? category.getName() : null)
+                .build();
+    }
+
+    /**
+     * 列表卡片的摘要：手寫的 excerpt 優先；沒有就取內文開頭 {@value #PUBLIC_EXCERPT_LENGTH} 字，去掉商品嵌入語法
+     * （{@code {{embed:listing:…}}} 不是給人讀的文字）並把空白壓成一格。以 code point 計算，不會把表情符號切成兩半。
+     */
+    private String publicExcerpt(final Post post) {
+        if (post.getExcerpt() != null && !post.getExcerpt().isBlank()) {
+            return post.getExcerpt();
+        }
+        if (post.getContent() == null) {
+            return "";
+        }
+        String text = EMBED_PATTERN.matcher(post.getContent()).replaceAll("").replaceAll("\\s+", " ").strip();
+        return text.codePointCount(0, text.length()) > PUBLIC_EXCERPT_LENGTH
+                ? text.substring(0, text.offsetByCodePoints(0, PUBLIC_EXCERPT_LENGTH))
+                : text;
     }
 
     /**

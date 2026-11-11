@@ -3,7 +3,7 @@
 > **文件編號**: API-M15
 > **文件版本**: v1.0（Sprint 277，首次建立；首次有獨立規格文件，DEF-286 範圍）
 > **建立日期**: 2026-10-16
-> **最後更新**: 2026-11-11（Sprint 338：貼文分類名稱同店不可重複（忽略大小寫與前後空白）——`POST`／`PUT /v2/dashboard/post-categories` 同名回 409，新錯誤碼 `E-8021`；分類網址代稱撞到改為自動加隨機後綴、建立成功，`E-8014` 不再由任何端點回傳（DEF-492，使用者以互動選項拍板「擋下並提示」）。見 §4.22～4.25、§7）。2026-11-11（Sprint 337：公開貼文三個端點 `GET /v2/posts`／`/v2/posts/{slug}`／`/v2/posts/categories` 只供應 `ACTIVE` 店鋪，非 `ACTIVE`（審核中、被拒、停權、終止）或不存在一律 404 `E-2000`（DEF-485，使用者以互動選項拍板）；店鋪前台貼文列表新增公開版分類篩選 `?category=`，文章頁的分類徽章改連過去（DEF-486，前端；後端 API 沒有新增或變更）。見 §4.19～4.21、§7）。2026-11-10（Sprint 336：新增 `PublicMediaController` 與素材「公開開關」（`isPublic`，預設私有；`GET /v2/public/media/{assetId}` 匿名讀取）；`GET /v2/posts/{slug}` 新增 `countView` 參數、文章回應新增 `tenantSlug`，文章的公開網址改為 `/stores/{店鋪}/blog/{文章}`）。2026-11-09（Sprint 334：移除 `PostController` 的 5 個 `/v2/dashboard/media/*` 舊媒體端點，媒體只剩 M18 一套；M18 媒體權限對齊貼文寫入權並新增「被貼文封面圖使用就不能刪」；已發布貼文須先下架才能刪；貼文／分類 slug 不再為空字串、標題沒改不換 slug。Sprint 332：前端 /cms 系列併入 /dashboard）
+> **最後更新**: 2026-11-12（Sprint 339：平台層部落格 `/blog` 改為**跨店鋪、匿名可讀**的公開部落格——新增 `GET /v2/public/posts`（所有店鋪 `ACTIVE` 的已發布貼文，新到舊，只回摘要；見 §4.50），平台層分類頁 `/blog/category/[id]` 移除並 308 轉到 `/blog`（DEF-495，使用者以互動選項選了『做成跨店鋪部落格』）。見 §4.50、§7）。2026-11-11（Sprint 338：貼文分類名稱同店不可重複（忽略大小寫與前後空白）——`POST`／`PUT /v2/dashboard/post-categories` 同名回 409，新錯誤碼 `E-8021`；分類網址代稱撞到改為自動加隨機後綴、建立成功，`E-8014` 不再由任何端點回傳（DEF-492，使用者以互動選項拍板「擋下並提示」）。見 §4.22～4.25、§7）。2026-11-11（Sprint 337：公開貼文三個端點 `GET /v2/posts`／`/v2/posts/{slug}`／`/v2/posts/categories` 只供應 `ACTIVE` 店鋪，非 `ACTIVE`（審核中、被拒、停權、終止）或不存在一律 404 `E-2000`（DEF-485，使用者以互動選項拍板）；店鋪前台貼文列表新增公開版分類篩選 `?category=`，文章頁的分類徽章改連過去（DEF-486，前端；後端 API 沒有新增或變更）。見 §4.19～4.21、§7）。2026-11-10（Sprint 336：新增 `PublicMediaController` 與素材「公開開關」（`isPublic`，預設私有；`GET /v2/public/media/{assetId}` 匿名讀取）；`GET /v2/posts/{slug}` 新增 `countView` 參數、文章回應新增 `tenantSlug`，文章的公開網址改為 `/stores/{店鋪}/blog/{文章}`）。2026-11-09（Sprint 334：移除 `PostController` 的 5 個 `/v2/dashboard/media/*` 舊媒體端點，媒體只剩 M18 一套；M18 媒體權限對齊貼文寫入權並新增「被貼文封面圖使用就不能刪」；已發布貼文須先下架才能刪；貼文／分類 slug 不再為空字串、標題沒改不換 slug。Sprint 332：前端 /cms 系列併入 /dashboard）
 > **負責人**: SD (Marcus)
 > **Framework**: AISDLC v0.09
 > **依據**: 後端實際行為——`CmsController`／`PostController`／`MediaController`／`MediaCategoryController`（`api/controller/`）、`CmsService`（`core/cms/`）、`PostService`／`PostCategoryService`（`core/cms/post/`）、`ListingCardService`（`core/cms/listing/`）、`MediaService`（`core/media/`，媒體庫，M18；Sprint 334 起是唯一的媒體 Service，原 `core/cms/media/MediaService` 已隨舊端點移除）；回應形狀、狀態碼、錯誤碼與權限皆逐行讀碼核對，並有真實測試佐證：[CmsServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/CmsServiceTest.java)、[PostServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/post/PostServiceTest.java)、[PostCategoryServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/post/PostCategoryServiceTest.java)、[ListingCardServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/cms/listing/ListingCardServiceTest.java)、[core/media/MediaServiceTest](../../../backend/src/test/java/com/nextkey/ecommerce/core/media/MediaServiceTest.java)
@@ -127,6 +127,7 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 | 編號 | 方法 | 路徑 | 說明 | 權限 |
 |------|------|------|------|------|
 | API-M15-049 | GET | `/v2/public/media/{assetId}` | 匿名讀取「公開」素材的檔案內容（串流）；私有、已刪除、店鋪非 `ACTIVE` 一律 404 | 公開 |
+| API-M15-050 | GET | `/v2/public/posts` | 跨店鋪公開貼文列表（只含已發布、店鋪 `ACTIVE` 的貼文，新到舊，只回摘要；Sprint 339，DEF-495） | 公開 |
 
 共 44 個端點，橫跨 5 個 Controller，全數納入 `ApiRouteDocDriftTest.GUARDED`（Sprint 336 以工具重數：概覽表 44 列、「端點」宣告行 44 行。此句先前寫 48，Sprint 334 移除 5 個端點後沒有更新，Sprint 336 新增 1 個後應為 44）。
 
@@ -352,6 +353,27 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 
 **快取的代價**：公開圖片會被反覆載入，所以回 5 分鐘的公開快取（`PublicMediaController.CACHE_SECONDS`）。店主撤回公開或刪除素材之後，伺服器端立刻不再提供，但已經被瀏覽器或 CDN 快取的副本最多還看得到 5 分鐘。
 
+### 4.50 跨店鋪公開貼文列表（`PostController` → `PostService.getPublicPostFeed`，Sprint 339，DEF-495）
+
+- **端點**: `GET /v2/public/posts`
+
+**權限**：公開，無需登入（`/v2/public/**` 在 `SecurityConfig` 本來就是 `permitAll`，與 §4.49、`PublicListingController` 同一慣例）。這是平台層部落格 `/blog` 的資料來源（使用者 2026-11-12 以互動選項選了『做成跨店鋪部落格』）；單店鋪的列表仍是 §4.19 的 `GET /v2/posts?tenantId=`，兩者並存。
+
+**查詢參數**：`page`（預設 0，小於 0 當 0）、`size`（預設 12，收斂到 1～50，比單店鋪列表的 100 小，因為這個列表橫跨所有店鋪、匿名可讀）。壞參數不會變成 500；回應帶**實際使用的** `page`／`size`。
+
+**條件**：貼文是 `PUBLISHED`，**且所屬店鋪是 `ACTIVE`**（審核中、被拒、停權、終止的店鋪，它的貼文一篇都不出現；與 §4.19～4.21 同一個規則，Sprint 337 DEF-485）。規則直接寫在列表查詢與計數查詢裡，不是查出來再丟掉，所以分頁與 `totalCount` 才對得上（整合測試 `IT-M15-032` 驗證：店鋪停權後它的貼文消失、總數剛好少一篇、恢復後回來）。排序：發布時間新到舊，相同再依建立時間新到舊，最後才用編號打平（只為了分頁穩定，編號是隨機值、不代表時間先後）。
+
+**回應**（`PublicPostFeedResponse`）：`posts[]`、`totalCount`、`page`、`size`、`totalPages`。每筆是**摘要** `PublicPostSummaryResponse`：`id`、`slug`、`title`、`excerpt`、`featuredImageUrl`、`publishedAt`、`tenantSlug`、`tenantName`、`categoryId`、`categoryName`。`excerpt` 是貼文自己的摘要；沒有就取內文開頭 100 字（去掉 `{{embed:listing:…}}` 商品嵌入語法、空白壓成一格；兩者都沒有是空字串）。文章的公開網址是 `/stores/{tenantSlug}/blog/{slug}`。**刻意不回**：內文、作者（`authorId`／`authorName`）、瀏覽數、嵌入、狀態、`tenantId`——這是匿名可讀、橫跨所有店鋪的端點，能不公開的就不公開（`PostServiceTest` 以反射守門：回應型別不能長出這些欄位）。
+
+| 狀況 | HTTP | 錯誤碼 |
+|------|:----:|--------|
+| 一般 | 200 | — |
+| 沒有任何符合的貼文 | 200 | —（`posts` 為空，`totalCount`、`totalPages` 為 0） |
+
+沒有 404：這個端點沒有店鋪參數，也就沒有『店鋪不存在』。
+
+**效能與限制**：沒有新索引（`posts` 已有 `idx_posts_status`、`idx_posts_published_at`）；查詢以 `JOIN FETCH` 一次取店鋪與分類（兩個都是 ManyToOne，分頁仍在資料庫端完成），不為每篇貼文再查一次；列表不讀貼文嵌入（卡片不需要，查了就是 N+1）。**沒有快取**（店鋪被停權後貼文要立刻消失）。**大量貼文下的實際耗時沒有量測**。分類是店鋪內的概念，所以這個列表**沒有分類篩選**；要篩選分類請用該店鋪的 `/stores/{店鋪}/blog?category=`（§4.19～4.21）。
+
 ### 4.43～4.48 媒體分類（`MediaCategoryController` → `core.media.MediaService`）
 
 - **端點**: `GET /v2/media/categories`
@@ -429,7 +451,7 @@ FRD 完全無 M15 章節（見文件頂部狀態說明）。
 | ~~兩套互相獨立的媒體庫並存~~（**DEF-387 → DEF-474，Sprint 334 已解決**） | 歷史：Sprint 280 使用者拍板暫不合併（兩套定位不同）；Sprint 332 合併前端介面後，兩套後端的權限與刪除語意差異變成實際的使用者影響（DEF-474）；Sprint 334 使用者決定**對齊權限並移除舊的 5 個端點**，媒體只剩 M18 一套。見 §1.2 第 2 點 |
 | **媒體刪除的引用檢查只看貼文封面圖** | `E-8020` 只比對 `posts.featured_image_url`，不掃貼文 `content`（Markdown 內文裡的圖片）。內文引用的素材被刪後，貼文內文的圖會壞掉。已登記 DEF-481 |
 | ~~公開貼文端點不看店鋪狀態~~（**DEF-485，Sprint 337 已解決**） | 歷史：Sprint 336 登記時是讀碼確認（`PostRepository` 的公開查詢沒有店鋪狀態條件）；Sprint 337 紅燈先行**實測屬實**（四種非 `ACTIVE` 狀態 × 五種請求形狀共 20 格全部回 200，不是 404），使用者以互動選項拍板「三個端點全擋並回 404」，現在非 `ACTIVE` 或不存在的店鋪一律 404 `E-2000`。見 §4.19～4.21 |
-| ~~平台層 `/blog`、`/blog/category/[id]` 對匿名訪客仍是登入提示~~ → **文章頁的分類徽章已改連店鋪前台的公開篩選（DEF-486，Sprint 337 已解決）；兩個平台層頁面保留現狀、成為沒有連結指向的孤兒頁（DEF-491）** | 歷史：這兩個頁面的 tenantId 取自瀏覽器 localStorage（只有登入才有），文章頁的「分類」徽章連到 `/blog/category/{id}`，匿名訪客點了看到登入提示。Sprint 337 在店鋪前台貼文列表做了公開版分類篩選（`/stores/{店鋪}/blog?category=`，見 §4.19～4.21），徽章改連過去。`/blog` 與 `/blog/category/[id]` 沒有動（仍是登入者專用）；生產碼中已沒有任何連結指向分類頁，`/blog` 只剩這兩個保留頁（分類頁、舊文章網址導向頁）內部連到它。去留未決，已登記 DEF-491。**Sprint 338（DEF-491，使用者指示「請先製作暫時入口暫代」）加了暫時入口**：前台頁尾「部落格」連到 `/blog`，`/blog` 上方的分類篩選列連到分類頁（兩頁仍是登入者專用，匿名訪客點進去看到登入提示）；正式的入口（跨店鋪部落格，要新的後端端點）或移除兩頁連同暫時入口，待 DEF-495 決定 |
+| ~~平台層 `/blog`、`/blog/category/[id]` 對匿名訪客仍是登入提示~~ → **文章頁的分類徽章已改連店鋪前台的公開篩選（DEF-486，Sprint 337 已解決）；兩個平台層頁面保留現狀、成為沒有連結指向的孤兒頁（DEF-491）** → **Sprint 339 已解決（DEF-495）：`/blog` 成為跨店鋪、匿名可讀的公開部落格，分類頁移除** | 歷史：這兩個頁面的 tenantId 取自瀏覽器 localStorage（只有登入才有），文章頁的「分類」徽章連到 `/blog/category/{id}`，匿名訪客點了看到登入提示。Sprint 337 在店鋪前台貼文列表做了公開版分類篩選（`/stores/{店鋪}/blog?category=`，見 §4.19～4.21），徽章改連過去。`/blog` 與 `/blog/category/[id]` 沒有動（仍是登入者專用）；生產碼中已沒有任何連結指向分類頁，`/blog` 只剩這兩個保留頁（分類頁、舊文章網址導向頁）內部連到它。去留未決，已登記 DEF-491。**Sprint 338（DEF-491，使用者指示「請先製作暫時入口暫代」）加了暫時入口**：前台頁尾「部落格」連到 `/blog`，`/blog` 上方的分類篩選列連到分類頁（兩頁仍是登入者專用，匿名訪客點進去看到登入提示）；正式的入口（跨店鋪部落格，要新的後端端點）或移除兩頁連同暫時入口，待 DEF-495 決定 |
 | **同名分類只在應用程式裡比對，沒有資料庫唯一索引（DEF-492，Sprint 338）** | 名稱檢查（§4.22～4.25）是「讀出同店分類再比對」，與寫入之間沒有鎖：兩個請求同時建立同名分類，兩個都可能通過檢查，結果是多一個同名分類（店主可自行改名或刪除）。**刻意不加資料庫唯一索引**：這項規則上線前，全中文同名的分類本來就能建立，已存在的同名資料會讓建索引的遷移失敗，要先修資料才能上；比較後認為得不償失。**規則上線前已存在的同名分類不會被清理**，也不會被鎖死（名稱沒改的更新不檢查） |
 | **公開素材圖片經過後端串流，沒有 CDN／預簽網址（DEF-488，Sprint 336 登記）** | `GET /v2/public/media/{assetId}`（§4.49）從物件儲存讀出再由 Spring 回應。匿名請求以來源 IP 共用每分鐘 100 次的限流桶（`RateLimitFilter`，讀碼），一頁十幾張封面圖會吃掉十幾次額度；流量大時要改走預簽網址或 CDN。目前以 5 分鐘公開快取減輕（未量測實際影響） |
 | **全域 `force-response` 會替圖片的 `Content-Type` 補上 `;charset=UTF-8`** | `server.servlet.encoding.force-response=true`（DEF-397，Sprint 296）是全域設定，連 `image/png` 也變成 `image/png;charset=UTF-8`（`PublicMediaEndpointIntegrationTest` 實測）。瀏覽器對圖片類型忽略 charset 參數，不影響顯示；需要登入的 `/v2/media/files/{id}` 本來就是這樣，不是公開端點引入的 |

@@ -43,6 +43,10 @@ const nextConfig: NextConfig = {
       { source: '/cms/posts/new', destination: '/dashboard/posts/new', permanent: true },
       { source: '/cms/posts/:id/edit', destination: '/dashboard/posts/:id/edit', permanent: true },
       { source: '/cms/media', destination: '/dashboard/media', permanent: true },
+      // 平台層分類頁已移除（Sprint 339，DEF-495，使用者選了『做成跨店鋪部落格』）：分類是店鋪內的概念，跨店鋪的 /blog 沒有分類；
+      // 店鋪內的分類篩選是 /stores/{店鋪}/blog?category=（Sprint 337）。舊網址只有分類編號、沒有店鋪，匿名訪客無從查出它屬於哪間店鋪，
+      // 所以統一轉到 /blog，而不是直接 404。
+      { source: '/blog/category/:id', destination: '/blog', permanent: true },
     ];
   },
   async rewrites() {

@@ -200,9 +200,20 @@ test.describe('AT-ARTICLE-TITLES-REAL: 文章頁（真實後端）', () => {
     }
   });
 
-  test('E2E-ARTICLE-07: 登入後的平台部落格清單 /blog，文章連結指向新網址（帶店鋪）', async ({ page }: { page: Page }) => {
-    await loginOnly(page, owner.email, owner.password);
-    await page.goto('/blog');
+  test('E2E-ARTICLE-07: 平台部落格 /blog（Sprint 339 起是跨店鋪、匿名可讀的列表），這篇文章的卡片連結指向新網址（帶店鋪）', async ({ page, request }) => {
+    // 這份列表橫跨整個資料庫，全套並行時別的規格也在建立貼文，「剛發布的一定在第一頁」不成立：
+    // 先用公開 API 依同樣的每頁 12 筆算出這篇文章在第幾頁，再開那一頁
+    let pageIndex = -1;
+    for (let p = 0; p < 60 && pageIndex < 0; p++) {
+      const response = await request.get(`${API_BASE}/v2/public/posts`, { params: { page: p, size: 12 } });
+      expect(response.status(), await response.text()).toBe(200);
+      const data = (await response.json()).data as { posts: Array<{ slug: string; tenantSlug: string }>; totalPages: number };
+      if (data.posts.some((post) => post.slug === postSlug && post.tenantSlug === storeSlug)) pageIndex = p;
+      else if (p + 1 >= data.totalPages) break;
+    }
+    expect(pageIndex, '公開列表裡應該有這篇已發布的文章').toBeGreaterThanOrEqual(0);
+
+    await page.goto(pageIndex === 0 ? '/blog' : `/blog?page=${pageIndex + 1}`);
     await expect(page.getByRole('link', { name: new RegExp(POST_TITLE) })).toHaveAttribute('href', articleUrl(postSlug));
   });
 });

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import apiClient from '@/lib/axios'
-import { getListingCard, getPublicCategories, getPublishedPostBySlug, getPublishedPosts } from './cms'
+import { getListingCard, getPublicCategories, getPublicPostFeed, getPublishedPostBySlug, getPublishedPosts } from './cms'
 
 vi.mock('@/lib/axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
@@ -31,6 +31,27 @@ describe('cms 公開端點', () => {
     http.get.mockResolvedValue(ok({ posts: [] }))
     await getPublishedPosts('t1')
     expect(http.get.mock.calls[0][1]).toEqual({ params: { tenantId: 't1' } })
+  })
+
+  // 跨店鋪公開貼文列表（Sprint 339，DEF-495）：匿名可讀，沒有 tenantId——這個端點橫跨所有店鋪
+  it('getPublicPostFeed：打 /v2/public/posts，分頁在 query、沒有 tenantId；signal 原樣轉給 axios；回傳 data.data', async () => {
+    http.get.mockResolvedValue(ok({ posts: [], totalCount: 0, page: 1, size: 12, totalPages: 0 }))
+    const controller = new AbortController()
+    await expect(getPublicPostFeed({ page: 1, size: 12 }, { signal: controller.signal })).resolves.toEqual({
+      posts: [],
+      totalCount: 0,
+      page: 1,
+      size: 12,
+      totalPages: 0,
+    })
+    expect(http.get).toHaveBeenCalledWith('/v2/public/posts', { params: { page: 1, size: 12 }, signal: controller.signal })
+    expect(http.get.mock.calls[0][1]).not.toHaveProperty('params.tenantId')
+  })
+
+  it('getPublicPostFeed：不傳參數與選項時只有空的 params（沒有 signal 這個鍵）', async () => {
+    http.get.mockResolvedValue(ok({ posts: [] }))
+    await getPublicPostFeed()
+    expect(http.get.mock.calls[0][1]).toEqual({ params: {} })
   })
 
   it('getPublicCategories：只帶 tenantId；signal 原樣轉給 axios', async () => {

@@ -3,7 +3,7 @@
 > **建立日期**: 2026-07-04
 > **Sprint**: Sprint 53 US-003（AI-2414）
 > **對應成果**: Sprint 49~53 真實金流 Phase A（付款）+ B（webhook 權威狀態）+ C（退款）+ D-1（Connect Express onboarding）；**Sprint 56 部分退款**；**Sprint 80 Phase D-2（結算單核准後 Transfer 撥款給賣家）**
-> **最後更新**: 2026-09-27（Sprint 205）——核對程式現況後更正 §F 已過時的「已知限制」（部分退款與 Transfer 早已實作），並補上 D-2 分潤的上線項目（`STRIPE_TRANSFER_ENABLED`、`transfer.reversed`、撥款走查）。**本文件仍是「人工逐項確認」清單，AI 不能代替 Dashboard 操作與測試模式端到端走查。**
+> **最後更新**: 2026-11-13（Sprint 342）——新增兩項 webhook 退款記帳的人工確認（DEF-453：經本系統部分退款後不得被 webhook 翻成整筆退款、Stripe Dashboard 直接退款要記到付款與結算單）；前次 2026-09-27（Sprint 205）——核對程式現況後更正 §F 已過時的「已知限制」（部分退款與 Transfer 早已實作），並補上 D-2 分潤的上線項目（`STRIPE_TRANSFER_ENABLED`、`transfer.reversed`、撥款走查）。**本文件仍是「人工逐項確認」清單，AI 不能代替 Dashboard 操作與測試模式端到端走查。**
 > **用途**: 供人工在**正式上線 Stripe 真金鑰前**逐項確認，避免測試模式設定誤帶入生產
 > **維護者**: QA Quincy + Dev David + Claude Code
 
@@ -48,6 +48,8 @@
 - [ ] **退款**：對已付款訂單觸發退款 → Stripe Dashboard 顯示退款成功 → webhook `charge.refunded` 送達（或 service 主動退款路徑）→ 本地 Payment/Order=REFUNDED
 - [ ] **部分退款**（Sprint 56）：對已付款訂單退一部分金額 → 本地 Payment=`PARTIALLY_REFUNDED`、**Order 狀態不變**（訂單持續履約）；再退至累計全額 → Payment/Order=`REFUNDED`。運費不參與部分退款（PO 決策 2026-07-04）。退款金額小數位數超過 2 位會被拒絕（`E-6009`，Sprint 192）
   - **必須在同一筆訂單上連續退兩次，且兩次間隔在 24 小時內**，並到 Stripe Dashboard 確認出現**兩筆**退款、金額各如預期（Sprint 207，DEF-288）。原本送給 Stripe 的冪等鍵對同一筆付款恆相同，依 Stripe 文件第二次會被拒或被當成重送而不建立新退款；修復後鍵已綁定累計已退額，**但這個行為只在本機以 WireMock 驗證過送出的鍵，從未對真實 Stripe 驗證**。建議兩次都試：一次金額不同、一次金額相同（例如先退 100 再退 100）。若兩次退款在 Dashboard 只看到一筆，本修復無效，請回報
+- [ ] **經本系統部分退款之後，Stripe 送來的 `charge.refunded` 不得把它變成整筆退款**（Sprint 342，DEF-453）：接在上一項「部分退款」之後觀察——本地付款**維持** `PARTIALLY_REFUNDED`、`refunded_amount` 等於已退金額、訂單狀態不變、結算單（若已被認領）只被扣那一筆、稽核**沒有**多出 `STRIPE_PAYMENT_REFUNDED_WEBHOOK`（webhook 發現本地已記帳就什麼都不做）。修復前這會讓付款與訂單被整筆翻成 `REFUNDED`。**尚未對真實 Stripe 驗證**：事件形狀只依 Stripe 文件（部分退款也送 `charge.refunded`、`amount_refunded` 是累計值），以手寫 JSON 驗證過
+- [ ] **在 Stripe Dashboard 直接退款（不經本系統）→ webhook 記帳**（Sprint 342，DEF-453；程式裡已出貨訂單沒有任何退款入口，這是它們把錢退回買家的唯一路徑）：對一筆已付款（可含已出貨／已完成）的訂單，到 Dashboard 手動退一部分、再退到全額 → webhook 送達後本地付款依序為 `PARTIALLY_REFUNDED`→`REFUNDED`、`refunded_amount` 與 Stripe 的累計已退款金額一致；結算單依狀態被直接扣款（`PENDING`／`PENDING_REVIEW`）或產生調整單（已核准／已撥款）；訂單只在**全額**且原狀態是 `PAID`／`CANCELLED`／`REFUNDING` 時轉 `REFUNDED`，已出貨訂單的狀態**不動**（沿用既有規則，DEF-508）。訂房付款同樣記帳，訂房狀態不動。**尚未對真實 Stripe 驗證**；webhook 處理若失敗，controller 仍回 2xx、Stripe 不會重送（DEF-506），所以做完要到後端日誌確認沒有 `Failed to process Stripe webhook event`
 - [ ] **取消已付款訂單 → 自動退款**（Sprint 226，DEF-303 (5)；此前只有管理員呼叫退款 API 才會動錢）：對已付款訂單按「取消訂單」→ 訂單先變 `REFUNDING` → **約 1 分鐘內**（`APP_REFUND_CHECK_INTERVAL_MS`，預設 60000）排程經 Stripe 全額退回 → Dashboard 出現退款、本地 Payment/Order=`REFUNDED`。若 Stripe 拒絕，訂單維持 `REFUNDING`、稽核紀錄出現 `AUTO_REFUND_FAILED`（含 Stripe 的錯誤原因），並以 5、10、20… 分鐘（上限 6 小時）退避重試。**尚未對真實 Stripe 驗證**：Stripe 對「同冪等鍵」的反應與退款延遲都只依文件推論
 - [ ] **取消已付款訂房 → 依 PRD Q14 自動退款**（Sprint 227，DEF-312）：對已付款、離入住還有好幾天的訂房按「取消預訂」→ 取消回應 `refundStatus = PENDING`、`refundAmount` ＝ 付款金額 → **約 1 分鐘內**排程經 Stripe 全額退回 → Dashboard 出現退款、本地付款 `REFUNDED`、訂房 `refundStatus = COMPLETED`。再用「入住日當天」的訂房驗證**不退款**（`refundStatus = NONE`、Stripe 沒有任何退款）。入住時間以房型設定為準，24 小時邊界以營運時區（Asia/Taipei）計算。**尚未對真實 Stripe 驗證**
 - [ ] **付款成功時訂房已被取消**（DEF-308 訂房側）：發起訂房 Checkout 後先不付款，到另一個分頁取消該訂房，再回 Checkout 用測試卡付款 → webhook 送達後訂房維持 `CANCELLED`、`refundStatus = PENDING`（金額＝付款金額，稽核 `STRIPE_PAYMENT_BOOKING_NOT_PAYABLE` 含 `refundQueued=true`），隨後自動全額退回

@@ -68,9 +68,10 @@ import com.nextkey.ecommerce.shared.time.BusinessTime;
  * 也記真正原因，而且資料修好後重試不會多退（Stripe 冪等鍵相同）。PRD §6.2.1 把調整單列為退款涉及已結算單時『系統自動生成』
  * 的必然後果，{@code OrderService.compensateCancellation}（DEF-303）對同一種形狀的結論也是不吞。
  *
- * <p><b>限定：本類別的『重試收斂』不經過 webhook。</b>Stripe 付款在本地回滾後，{@code charge.refunded} webhook 通常幾秒內就到，
- * {@code markStripeRefunded} 會把訂單與付款標成 {@code REFUNDED}（既不記 {@code refunded_amount}、也不呼叫調整單處理），之後排程不再重試，
- * 調整單就漏了——實測見 Sprint 327 計畫書附錄 A，登記為 DEF-453。
+ * <p><b>限定：本類別的『重試收斂』不經過 webhook。</b>Stripe 付款在本地回滾後，{@code charge.refunded} webhook 通常幾秒內就到。
+ * Sprint 342 以前 {@code markStripeRefunded} 會把訂單與付款標成 {@code REFUNDED}（既不記 {@code refunded_amount}、也不呼叫調整單處理），
+ * 之後排程不再重試，調整單就漏了——實測見 Sprint 327 計畫書附錄 A，登記為 DEF-453，已於 Sprint 342 修復：webhook 以累計金額的差額記帳
+ * 並扣結算單，見 {@code StripeRefundWebhookAccountingRealStackIntegrationTest} 的 A3。
  *
  * <p>做法：真實 PostgreSQL＋真實 Redis，走真實的 {@code PaymentStateService}／{@code SettlementAdjustmentService}（含各自的交易代理）與
  * {@code RefundProcessingService}；只有 Stripe 閘道以 {@code @MockBean} 取代。<b>不用任何測試替身讓調整單服務拋例外</b>——mock 沒有交易代理，

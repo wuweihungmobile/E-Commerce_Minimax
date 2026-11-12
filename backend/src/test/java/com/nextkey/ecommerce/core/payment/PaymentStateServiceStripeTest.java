@@ -384,20 +384,20 @@ class PaymentStateServiceStripeTest {
     }
 
     @Test
-    @DisplayName("UT-PAY-STRIPE-007: markStripeRefunded（webhook）→ REFUNDED + refund id + Order REFUNDED")
+    @DisplayName("UT-PAY-STRIPE-007: markStripeRefunded（webhook，累計＝全額）→ REFUNDED + 累計額 + refund id + Order REFUNDED（DEF-453）")
     void markStripeRefunded_updates() {
         Order order = paidOrder();
         Payment success = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
-                .status(Payment.PaymentStatus.SUCCESS).stripePaymentIntentId("pi_1").build();
-        when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(success));
-        when(paymentRepository.markRefundedIfNotAlready(any(), any(Payment.PaymentStatus.class), any()))
-                .thenReturn(1);
+                .amount(BigDecimal.valueOf(1500)).status(Payment.PaymentStatus.SUCCESS).stripePaymentIntentId("pi_1").build();
+        when(paymentRepository.findByStripePaymentIntentIdForUpdate("pi_1")).thenReturn(Optional.of(success));
         when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
 
-        boolean updated = service.markStripeRefunded("pi_1", "re_2");
+        boolean updated = service.markStripeRefunded("pi_1", "re_2", BigDecimal.valueOf(1500));
 
         assertThat(updated).isTrue();
-        verify(paymentRepository).markRefundedIfNotAlready(any(), eq(Payment.PaymentStatus.REFUNDED), eq("re_2"));
+        assertThat(success.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+        assertThat(success.getRefundedAmount()).isEqualByComparingTo("1500");
+        assertThat(success.getStripeRefundId()).isEqualTo("re_2");
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
         // Sprint 135（DEF-111）：webhook 驅動，changedBy=null（無使用者情境）
         org.mockito.ArgumentCaptor<OrderStateLog> logCaptor = org.mockito.ArgumentCaptor.forClass(OrderStateLog.class);

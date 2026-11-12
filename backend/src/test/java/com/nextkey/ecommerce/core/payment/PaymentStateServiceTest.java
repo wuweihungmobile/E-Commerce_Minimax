@@ -3,10 +3,13 @@ package com.nextkey.ecommerce.core.payment;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -21,6 +24,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -550,90 +556,197 @@ class PaymentStateServiceTest {
         }
     }
 
-    // ========== markStripeRefunded（webhook）補齊邊界案例 ==========
+    // ========== markStripeRefunded（webhook charge.refunded 的退款記帳）==========
 
+    /**
+     * Stripe 後台（或本系統 API）退款後，webhook 以「累計已退款金額」通知；本地只記<b>差額</b>（DEF-453，Sprint 342）。
+     * 這裡用 mock 鎖住每個分支的決定；真實 PostgreSQL 上的行為（鎖、併發、回滾、結算單的實際金額）在
+     * {@code StripeRefundWebhookAccountingRealStackIntegrationTest}。
+     */
     @Nested
-    @DisplayName("markStripeRefunded 邊界案例")
-    class MarkStripeRefundedEdgeCases {
+    @DisplayName("markStripeRefunded（webhook 退款記帳）")
+    class MarkStripeRefundedAccounting {
+
+        private static final UUID PAYMENT_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
+        private static final UUID TENANT_ID = UUID.fromString("55555555-5555-5555-5555-555555555555");
+
+        private Payment stripePayment(final Payment.PaymentStatus status, final String refunded) {
+            Payment payment = Payment.builder().orderId(ORDER_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                    .amount(new BigDecimal("1500.00")).refundedAmount(new BigDecimal(refunded)).status(status)
+                    .stripePaymentIntentId("pi_1").build();
+            payment.setId(PAYMENT_ID);
+            return payment;
+        }
+
+        private Order storeOrder(final Order.OrderStatus status) {
+            Order order = Order.builder().userId(USER_ID).tenantId(TENANT_ID).status(status)
+                    .totalAmount(BigDecimal.valueOf(1500)).currency("TWD").build();
+            order.setId(ORDER_ID);
+            return order;
+        }
+
+        private void paymentIs(final Payment payment) {
+            when(paymentRepository.findByStripePaymentIntentIdForUpdate("pi_1")).thenReturn(Optional.of(payment));
+        }
+
+        private BigDecimal money(final String amount) {
+            return new BigDecimal(amount);
+        }
+
+        private BigDecimal sameAs(final String amount) {
+            return argThat(value -> value != null && value.compareTo(new BigDecimal(amount)) == 0);
+        }
 
         @Test
         @DisplayName("UT-PAY-STATE-026: paymentIntentId 為 null -> 回傳 false，不查詢")
         void nullPaymentIntentId_returnsFalse() {
-            boolean result = service.markStripeRefunded(null, "re_1");
+            boolean result = service.markStripeRefunded(null, "re_1", money("100.00"));
 
             assertThat(result).isFalse();
+            verify(paymentRepository, never()).findByStripePaymentIntentIdForUpdate(any());
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-026b: 金額不可用（null＝webhook 沒給出可用的金額）-> 回傳 false，不查付款、不碰訂單與結算單、不留稽核："
+                + "不知道退了多少，就不能記成全額")
+        void nullAmount_changesNothing() {
+            boolean result = service.markStripeRefunded("pi_1", "re_1", null);
+
+            assertThat(result).isFalse();
+            verify(paymentRepository, never()).findByStripePaymentIntentIdForUpdate(any());
+            verifyNoInteractions(orderRepository, settlementAdjustmentService, auditService, orderStateLogRepository);
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-026c: 負數金額 -> 同 026b")
+        void negativeAmount_changesNothing() {
+            boolean result = service.markStripeRefunded("pi_1", "re_1", money("-0.01"));
+
+            assertThat(result).isFalse();
+            verify(paymentRepository, never()).findByStripePaymentIntentIdForUpdate(any());
+            verifyNoInteractions(orderRepository, settlementAdjustmentService, auditService, orderStateLogRepository);
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-027: 找不到付款記錄 -> 回傳 false，不碰訂單與結算單")
+        void paymentNotFound_returnsFalse() {
+            when(paymentRepository.findByStripePaymentIntentIdForUpdate("pi_1")).thenReturn(Optional.empty());
+
+            boolean result = service.markStripeRefunded("pi_1", "re_1", money("1500.00"));
+
+            assertThat(result).isFalse();
+            verifyNoInteractions(orderRepository, settlementAdjustmentService, auditService);
+        }
+
+        @ParameterizedTest(name = "付款狀態 {0}")
+        @EnumSource(value = Payment.PaymentStatus.class, names = {"PENDING", "PROCESSING", "FAILED"})
+        @DisplayName("UT-PAY-STATE-028: 付款沒有被確認收過款（處理中、失敗…）-> 不記退款、付款不變：沒有款項可退")
+        void paymentNeverConfirmedPaid_recordsNothing(final Payment.PaymentStatus status) {
+            Payment payment = stripePayment(status, "0.00");
+            paymentIs(payment);
+
+            boolean result = service.markStripeRefunded("pi_1", "re_1", money("1500.00"));
+
+            assertThat(result).isFalse();
+            assertThat(payment.getStatus()).isEqualTo(status);
+            assertThat(payment.getRefundedAmount()).isEqualByComparingTo("0");
+            verifyNoInteractions(orderRepository, settlementAdjustmentService, auditService);
+        }
+
+        @ParameterizedTest(name = "{0}：已記 {1}、Stripe 說累計 {2}")
+        @CsvSource({
+                "REFUNDED, 1500.00, 1500.00",
+                "PARTIALLY_REFUNDED, 500.00, 500.00",
+                "PARTIALLY_REFUNDED, 500.00, 300.00",
+                "REFUNDED, 1500.00, 500.00"})
+        @DisplayName("UT-PAY-STATE-029: 差額 ≤ 0（本系統 API 退款已先記帳／同額重送／亂序到達的舊事件）-> 回傳 false，"
+                + "付款、訂單、結算單、稽核都不動——三種到達順序才會收斂到同一個結果、不重複扣")
+        void noNewRefund_changesNothing(final Payment.PaymentStatus status, final String recorded, final String stripeTotal) {
+            Payment payment = stripePayment(status, recorded);
+            paymentIs(payment);
+
+            boolean result = service.markStripeRefunded("pi_1", "re_new", money(stripeTotal));
+
+            assertThat(result).isFalse();
+            assertThat(payment.getStatus()).isEqualTo(status);
+            assertThat(payment.getRefundedAmount()).isEqualByComparingTo(recorded);
+            assertThat(payment.getStripeRefundId()).as("不覆蓋既有的退款編號").isNull();
+            verifyNoInteractions(orderRepository, settlementAdjustmentService, auditService, orderStateLogRepository);
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-030: 全額（累計＝付款金額）-> 付款 REFUNDED＋累計額＋退款編號、PAID 訂單轉 REFUNDED（狀態紀錄無操作者）、"
+                + "結算調整以差額呼叫、稽核帶租戶；而且用鎖住付款列的查詢（不是普通查詢）")
+        void fullRefund_recordsPaymentOrderSettlementAndAudit() {
+            Order order = storeOrder(Order.OrderStatus.PAID);
+            Payment payment = stripePayment(Payment.PaymentStatus.SUCCESS, "0.00");
+            paymentIs(payment);
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+            boolean result = service.markStripeRefunded("pi_1", "re_1", money("1500.00"));
+
+            assertThat(result).isTrue();
+            assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+            assertThat(payment.getRefundedAmount()).isEqualByComparingTo("1500.00");
+            assertThat(payment.getStripeRefundId()).isEqualTo("re_1");
+            assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
+            verify(orderRepository).save(order);
+            org.mockito.ArgumentCaptor<OrderStateLog> logCaptor = org.mockito.ArgumentCaptor.forClass(OrderStateLog.class);
+            verify(orderStateLogRepository).save(logCaptor.capture());
+            assertThat(logCaptor.getValue().getToStatus()).isEqualTo("REFUNDED");
+            assertThat(logCaptor.getValue().getChangedBy()).as("webhook 驅動，沒有登入使用者").isNull();
+            assertThat(logCaptor.getValue().getReason()).contains("re_1");
+            verify(settlementAdjustmentService).handleOrderRefund(eq(TENANT_ID), eq(ORDER_ID), sameAs("1500.00"));
+            verify(auditService).record(eq("STRIPE_PAYMENT_REFUNDED_WEBHOOK"), eq("PAYMENT"), eq(PAYMENT_ID), eq(TENANT_ID),
+                    eq("refunded=0.00"), eq("refunded=1500.00,status=REFUNDED"), eq("refundId=re_1"));
             verify(paymentRepository, never()).findByStripePaymentIntentId(any());
         }
 
         @Test
-        @DisplayName("UT-PAY-STATE-027: 找不到付款記錄 -> 回傳 false")
-        void paymentNotFound_returnsFalse() {
-            when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.empty());
-
-            boolean result = service.markStripeRefunded("pi_1", "re_1");
-
-            assertThat(result).isFalse();
-        }
-
-        @Test
-        @DisplayName("UT-PAY-STATE-028: 已是 REFUNDED -> 冪等回傳 false，不覆蓋既有 refund id")
-        void alreadyRefunded_idempotentFalse() {
-            Payment refunded = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.REFUNDED)
-                    .stripeRefundId("re_old").build();
-            when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(refunded));
-
-            boolean result = service.markStripeRefunded("pi_1", "re_new");
-
-            assertThat(result).isFalse();
-            assertThat(refunded.getStripeRefundId()).isEqualTo("re_old");
-            verify(paymentRepository, never()).save(any());
-        }
-
-        @Test
-        @DisplayName("UT-PAY-STATE-029: refundId 為 null -> 更新為 REFUNDED，CAS 保留既有 stripeRefundId")
+        @DisplayName("UT-PAY-STATE-030a: refundId 為 null -> 仍記帳，保留既有的 stripeRefundId（Stripe 新版 API 的 charge 可能不帶 refunds 清單）")
         void nullRefundId_keepsExistingRefundId() {
-            Order order = orderOf(USER_ID, Order.OrderStatus.PAID);
-            Payment success = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.SUCCESS)
-                    .stripeRefundId("re_prior").build();
-            when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(success));
-            when(paymentRepository.markRefundedIfNotAlready(any(), any(Payment.PaymentStatus.class), any()))
-                    .thenReturn(1);
-            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+            Payment payment = stripePayment(Payment.PaymentStatus.SUCCESS, "0.00");
+            payment.setStripeRefundId("re_prior");
+            paymentIs(payment);
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(storeOrder(Order.OrderStatus.PAID)));
 
-            boolean result = service.markStripeRefunded("pi_1", null);
+            boolean result = service.markStripeRefunded("pi_1", null, money("1500.00"));
 
             assertThat(result).isTrue();
-            verify(paymentRepository).markRefundedIfNotAlready(any(), eq(Payment.PaymentStatus.REFUNDED), isNull());
+            assertThat(payment.getStripeRefundId()).isEqualTo("re_prior");
+            assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
         }
 
         @Test
-        @DisplayName("UT-PAY-STATE-030: 訂單狀態不可退款（已是 REFUNDED）-> 付款仍更新，Order 不重複觸發")
-        void orderCannotRefund_paymentStillUpdated() {
-            Order order = orderOf(USER_ID, Order.OrderStatus.REFUNDED);
-            Payment success = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.SUCCESS).build();
-            when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(success));
-            when(paymentRepository.markRefundedIfNotAlready(any(), any(Payment.PaymentStatus.class), any()))
-                    .thenReturn(1);
+        @DisplayName("UT-PAY-STATE-030b: 已出貨（COMPLETED）的訂單全額退款 -> 付款記帳、訂單狀態不動（沿用 canRefund 規則）、"
+                + "結算單仍要扣：Stripe 後台是已出貨訂單把錢退回買家的唯一路徑")
+        void fullRefundOfACompletedOrder_settlementStillAdjusted_orderUntouched() {
+            Order order = storeOrder(Order.OrderStatus.COMPLETED);
+            Payment payment = stripePayment(Payment.PaymentStatus.SUCCESS, "0.00");
+            paymentIs(payment);
             when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
 
-            boolean result = service.markStripeRefunded("pi_1", "re_1");
+            boolean result = service.markStripeRefunded("pi_1", "re_1", money("1500.00"));
 
             assertThat(result).isTrue();
+            assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+            assertThat(payment.getRefundedAmount()).isEqualByComparingTo("1500.00");
+            assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.COMPLETED);
             verify(orderRepository, never()).save(any());
+            verify(orderStateLogRepository, never()).save(any());
+            verify(settlementAdjustmentService).handleOrderRefund(eq(TENANT_ID), eq(ORDER_ID), sameAs("1500.00"));
         }
 
         @Test
         @DisplayName("UT-PAY-STATE-030c：買家取消已付款訂單後（REFUNDING），Stripe 退款完成的 webhook 必須把訂單轉 REFUNDED"
                 + "（DEF-300：原本 REFUNDING 不可退款，訂單永遠停在退款中）")
         void refundingOrder_webhookCompletesRefund() {
-            Order order = orderOf(USER_ID, Order.OrderStatus.REFUNDING);
-            Payment success = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.SUCCESS).build();
-            when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(success));
-            when(paymentRepository.markRefundedIfNotAlready(any(), any(Payment.PaymentStatus.class), any()))
-                    .thenReturn(1);
+            Order order = storeOrder(Order.OrderStatus.REFUNDING);
+            Payment payment = stripePayment(Payment.PaymentStatus.SUCCESS, "0.00");
+            paymentIs(payment);
             when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
 
-            boolean result = service.markStripeRefunded("pi_1", "re_1");
+            boolean result = service.markStripeRefunded("pi_1", "re_1", money("1500.00"));
 
             assertThat(result).isTrue();
             assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.REFUNDED);
@@ -641,19 +754,145 @@ class PaymentStateServiceTest {
         }
 
         @Test
-        @DisplayName("🔴 UT-PAY-STATE-030b：併發搶佔（原子 UPDATE 影響 0 列，例如 webhook 重複送達）"
-                + "-> 冪等回傳 false，絕不重複寫入 order_state_log（DEF-162）")
-        void concurrentClaim_lostRace_returnsFalseWithoutDuplicateAudit() {
-            Payment success = Payment.builder().orderId(ORDER_ID).status(Payment.PaymentStatus.SUCCESS).build();
-            when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(success));
-            // 模擬另一個併發 webhook 呼叫已搶先把這筆付款標記 REFUNDED，本次 UPDATE 影響 0 列
-            when(paymentRepository.markRefundedIfNotAlready(any(), any(Payment.PaymentStatus.class), any()))
-                    .thenReturn(0);
+        @DisplayName("UT-PAY-STATE-030d: 訂單已是 REFUNDED -> 付款仍記帳，訂單不重複轉換、不重複寫狀態紀錄")
+        void orderAlreadyRefunded_paymentStillRecorded_noDuplicateTransition() {
+            Order order = storeOrder(Order.OrderStatus.REFUNDED);
+            Payment payment = stripePayment(Payment.PaymentStatus.SUCCESS, "0.00");
+            paymentIs(payment);
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
 
-            boolean result = service.markStripeRefunded("pi_1", "re_1");
+            boolean result = service.markStripeRefunded("pi_1", "re_1", money("1500.00"));
 
-            assertThat(result).isFalse();
+            assertThat(result).isTrue();
+            verify(orderRepository, never()).save(any());
+            verify(orderStateLogRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-031: 部分退款（累計 500 / 1500）-> 付款 PARTIALLY_REFUNDED、訂單不動（持續履約）、結算調整只扣 500")
+        void partialRefund_isNotTreatedAsAFullRefund() {
+            Order order = storeOrder(Order.OrderStatus.PAID);
+            Payment payment = stripePayment(Payment.PaymentStatus.SUCCESS, "0.00");
+            paymentIs(payment);
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+            boolean result = service.markStripeRefunded("pi_1", "re_1", money("500.00"));
+
+            assertThat(result).isTrue();
+            assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.PARTIALLY_REFUNDED);
+            assertThat(payment.getRefundedAmount()).isEqualByComparingTo("500.00");
+            assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.PAID);
+            verify(orderRepository, never()).save(any());
+            verify(orderStateLogRepository, never()).save(any());
+            verify(settlementAdjustmentService).handleOrderRefund(eq(TENANT_ID), eq(ORDER_ID), sameAs("500.00"));
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-032: 累計值（已記 500、Stripe 說累計 1500）-> 結算調整的金額是差額 1000，不是累計值 1500")
+        void cumulativeRefund_settlementAdjustedByTheDifferenceOnly() {
+            Order order = storeOrder(Order.OrderStatus.PAID);
+            Payment payment = stripePayment(Payment.PaymentStatus.PARTIALLY_REFUNDED, "500.00");
+            paymentIs(payment);
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+            boolean result = service.markStripeRefunded("pi_1", "re_2", money("1500.00"));
+
+            assertThat(result).isTrue();
+            assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+            assertThat(payment.getRefundedAmount()).isEqualByComparingTo("1500.00");
+            assertThat(order.getStatus()).as("達到全額才轉訂單").isEqualTo(Order.OrderStatus.REFUNDED);
+            verify(settlementAdjustmentService).handleOrderRefund(eq(TENANT_ID), eq(ORDER_ID), sameAs("1000.00"));
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-033: Stripe 說累計 2000 > 付款金額 1500 -> 以付款金額為上限（記 1500，不會多扣結算單）")
+        void refundedTotalAbovePaymentAmount_isCappedAtThePaymentAmount() {
+            Order order = storeOrder(Order.OrderStatus.PAID);
+            Payment payment = stripePayment(Payment.PaymentStatus.SUCCESS, "0.00");
+            paymentIs(payment);
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(order));
+
+            boolean result = service.markStripeRefunded("pi_1", "re_1", money("2000.00"));
+
+            assertThat(result).isTrue();
+            assertThat(payment.getRefundedAmount()).isEqualByComparingTo("1500.00");
+            assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+            verify(settlementAdjustmentService).handleOrderRefund(eq(TENANT_ID), eq(ORDER_ID), sameAs("1500.00"));
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-034: 訂房付款 -> 以訂房的結算調整入口記帳（金額是差額）；訂房狀態不動、不碰訂單入口")
+        void bookingPayment_adjustsTheBookingSettlement() {
+            Booking booking = Booking.builder().tenantId(TENANT_ID).build();
+            booking.setId(BOOKING_ID);
+            Payment payment = Payment.builder().bookingId(BOOKING_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                    .amount(new BigDecimal("3000.00")).refundedAmount(new BigDecimal("0.00"))
+                    .status(Payment.PaymentStatus.SUCCESS).stripePaymentIntentId("pi_1").build();
+            payment.setId(PAYMENT_ID);
+            paymentIs(payment);
+            when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
+
+            boolean result = service.markStripeRefunded("pi_1", "re_1", money("1000.00"));
+
+            assertThat(result).isTrue();
+            assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.PARTIALLY_REFUNDED);
+            assertThat(payment.getRefundedAmount()).isEqualByComparingTo("1000.00");
+            verify(settlementAdjustmentService).handleBookingRefund(eq(TENANT_ID), eq(BOOKING_ID), sameAs("1000.00"));
+            verify(settlementAdjustmentService, never()).handleOrderRefund(any(), any(), any());
             verify(orderRepository, never()).findById(any());
+            verify(auditService).record(eq("STRIPE_PAYMENT_REFUNDED_WEBHOOK"), eq("PAYMENT"), eq(PAYMENT_ID), eq(TENANT_ID),
+                    eq("refunded=0.00"), eq("refunded=1000.00,status=PARTIALLY_REFUNDED"), eq("refundId=re_1"));
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-034b: 訂房付款已記 1000、Stripe 說累計 3000（全額）-> 訂房結算調整的金額是差額 2000，不是累計值 3000")
+        void bookingPayment_cumulativeRefund_settlementAdjustedByTheDifferenceOnly() {
+            Booking booking = Booking.builder().tenantId(TENANT_ID).build();
+            booking.setId(BOOKING_ID);
+            Payment payment = Payment.builder().bookingId(BOOKING_ID).paymentMethod(Payment.PaymentMethod.STRIPE)
+                    .amount(new BigDecimal("3000.00")).refundedAmount(new BigDecimal("1000.00"))
+                    .status(Payment.PaymentStatus.PARTIALLY_REFUNDED).stripePaymentIntentId("pi_1").build();
+            payment.setId(PAYMENT_ID);
+            paymentIs(payment);
+            when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
+
+            boolean result = service.markStripeRefunded("pi_1", "re_2", money("3000.00"));
+
+            assertThat(result).isTrue();
+            assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+            assertThat(payment.getRefundedAmount()).isEqualByComparingTo("3000.00");
+            verify(settlementAdjustmentService).handleBookingRefund(eq(TENANT_ID), eq(BOOKING_ID), sameAs("2000.00"));
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-035: 付款找得到、訂單找不到 -> 付款仍記帳，結算調整略過（無從定位）、稽核不帶租戶")
+        void orderMissing_paymentStillRecorded_settlementSkipped() {
+            Payment payment = stripePayment(Payment.PaymentStatus.SUCCESS, "0.00");
+            paymentIs(payment);
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.empty());
+
+            boolean result = service.markStripeRefunded("pi_1", "re_1", money("1500.00"));
+
+            assertThat(result).isTrue();
+            assertThat(payment.getStatus()).isEqualTo(Payment.PaymentStatus.REFUNDED);
+            verifyNoInteractions(settlementAdjustmentService);
+            verify(auditService).record(eq("STRIPE_PAYMENT_REFUNDED_WEBHOOK"), eq("PAYMENT"), eq(PAYMENT_ID), isNull(),
+                    any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("UT-PAY-STATE-036: 結算調整失敗 -> 例外原樣往外丟（不吞）：交易回滾才不會留下「付款說已退款、結算單沒扣」的半套；"
+                + "回滾本身由真實棧測試 X1 證明（mock 沒有交易代理）")
+        void settlementAdjustmentFailure_propagates() {
+            Payment payment = stripePayment(Payment.PaymentStatus.SUCCESS, "0.00");
+            paymentIs(payment);
+            when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(storeOrder(Order.OrderStatus.PAID)));
+            doThrow(new IllegalStateException("adjustment failed")).when(settlementAdjustmentService)
+                    .handleOrderRefund(any(), any(), any());
+
+            assertThatThrownBy(() -> service.markStripeRefunded("pi_1", "re_1", money("1500.00")))
+                    .isInstanceOf(IllegalStateException.class).hasMessage("adjustment failed");
+            verify(auditService, never()).record(eq("STRIPE_PAYMENT_REFUNDED_WEBHOOK"), any(), any(), any(), any(), any(), any());
         }
     }
 

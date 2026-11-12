@@ -582,45 +582,138 @@ public class PaymentStateService {
     }
 
     /**
-     * 標記 Stripe 退款完成（webhook charge.refunded 權威，AI-2412）：
-     * 依 payment_intent id 找 Payment → REFUNDED + Order REFUNDED。冪等：已 REFUNDED → no-op。
+     * 記錄 Stripe webhook（{@code charge.refunded}）通知的退款（AI-2412；Sprint 342 DEF-453 起以金額記帳）。
+     *
+     * <p>權威來源是 Stripe 端的<strong>累計</strong>已退款金額 {@code refundedTotal}（{@code charge.amount_refunded}，已換算成幣別主單位），
+     * 與本地 {@code payments.refunded_amount} 的<strong>差額</strong>才是本次退款：
+     * <ul>
+     *   <li>差額 ≤ 0：什麼都不做、回傳 false——事件重送、本系統 API 退款已先記帳（Stripe 之後才通知）、亂序到達的舊事件
+     *       都落在這裡，所以三種到達順序收斂到同一個結果，不會重複扣結算單；</li>
+     *   <li>差額 &gt; 0：記到付款上（累計達付款金額＝{@code REFUNDED}，否則 {@code PARTIALLY_REFUNDED}）；訂單只在全額、且
+     *       {@code canRefund} 時才轉 {@code REFUNDED}（已出貨的訂單狀態不動）；並在<strong>同一個交易</strong>呼叫結算調整
+     *       （訂單、訂房各一個入口），調整金額是差額。</li>
+     * </ul>
+     * 這是已出貨訂單（程式裡沒有任何退款入口）把錢退回買家的唯一路徑：Stripe 後台操作、再由 webhook 通知。修復前它只把付款標成
+     * {@code REFUNDED}——不記 {@code refunded_amount}、不看金額（部分退款被當成全額，連本系統 API 發起的部分退款之後也會被翻成整筆退款）、
+     * 不扣結算單，賣家因此保留已退還給買家的款項。
+     *
+     * <p>先鎖住付款列（{@code SELECT ... FOR UPDATE}）再讀 {@code refunded_amount}，與 API 退款的 compare-and-swap、其他併發 webhook
+     * 序列化，見 {@link PaymentRepository#findByStripePaymentIntentIdForUpdate}。結算調整失敗會讓例外往外丟、整個交易回滾
+     * （付款、訂單、狀態紀錄、稽核都不留半套），事件因此沒被標成已處理，重送時會收斂——不吞例外的理由同 {@link #refundOrderPaymentCore}。
+     *
+     * <p>不記帳（回傳 false、記警告）：金額不可用（{@code null}：缺漏、非整數、負數）、找不到付款、付款不是已收款狀態
+     * （{@code SUCCESS}／{@code PARTIALLY_REFUNDED}／{@code REFUNDED}，沒確認收過款的付款不能記退款）。累計值超過付款金額時以付款
+     * 金額為上限並記錯誤日誌。
+     *
+     * @param refundedTotal Stripe 端累計已退款金額（幣別主單位）；{@code null} 表示 webhook 沒給出可用的金額
+     * @return true 表示本次有記帳
      */
     @Transactional
-    public boolean markStripeRefunded(String paymentIntentId, String refundId) {
-        if (paymentIntentId == null) {
+    public boolean markStripeRefunded(String paymentIntentId, String refundId, BigDecimal refundedTotal) {
+        Payment payment = lockRecordablePayment(paymentIntentId, refundId, refundedTotal);
+        if (payment == null) {
             return false;
         }
-        Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntentId).orElse(null);
+        BigDecimal previousRefundedAmount = payment.getRefundedAmount();
+        BigDecimal newRefundedAmount = cappedAtPaymentAmount(payment, refundedTotal);
+        BigDecimal delta = newRefundedAmount.subtract(previousRefundedAmount);
+        if (delta.signum() <= 0) {
+            return false; // 已記帳（API 退款先到、事件重送、較舊的累計值）：沒有新的退款
+        }
+
+        boolean fullyRefunded = newRefundedAmount.compareTo(payment.getAmount()) >= 0;
+        Payment.PaymentStatus newStatus = fullyRefunded
+                ? Payment.PaymentStatus.REFUNDED : Payment.PaymentStatus.PARTIALLY_REFUNDED;
+        payment.setRefundedAmount(newRefundedAmount);
+        payment.setStatus(newStatus);
+        if (refundId != null) {
+            payment.setStripeRefundId(refundId);
+        }
+        UUID tenantId = payment.getOrderId() != null
+                ? recordWebhookRefundOnOrder(payment, fullyRefunded, delta, refundId)
+                : recordWebhookRefundOnBooking(payment, delta);
+
+        log.info("Stripe refund recorded (webhook): paymentIntent={}, orderId={}, bookingId={}, delta={}, refundedTotal={}, status={}",
+                paymentIntentId, payment.getOrderId(), payment.getBookingId(), delta, newRefundedAmount, newStatus);
+        auditService.record("STRIPE_PAYMENT_REFUNDED_WEBHOOK", "PAYMENT", payment.getId(), tenantId,
+                "refunded=" + previousRefundedAmount, "refunded=" + newRefundedAmount + ",status=" + newStatus,
+                "refundId=" + refundId);
+        return true;
+    }
+
+    /**
+     * 取得可以記退款的付款並鎖住它；不記帳的情況（金額不可用、找不到付款、付款沒有被確認收過款）記警告並回 null。
+     * 金額與狀態的檢查放在鎖住付款之前／之後各一次是刻意的：金額不可用時連查詢都不必做；付款狀態必須用鎖住之後讀到的最新值判斷。
+     */
+    private Payment lockRecordablePayment(String paymentIntentId, String refundId, BigDecimal refundedTotal) {
+        if (paymentIntentId == null) {
+            return null;
+        }
+        if (refundedTotal == null || refundedTotal.signum() < 0) {
+            log.warn("markStripeRefunded: refunded amount missing or unusable, nothing recorded: paymentIntent={}, refundId={}",
+                    paymentIntentId, refundId);
+            return null;
+        }
+        Payment payment = paymentRepository.findByStripePaymentIntentIdForUpdate(paymentIntentId).orElse(null);
         if (payment == null) {
             log.warn("markStripeRefunded: payment not found for paymentIntent={}", paymentIntentId);
-            return false;
+            return null;
         }
-        // 併發防護（DEF-162）：CAS 取代「讀 status==REFUNDED 冪等檢查→setStatus→save」，
-        // 避免 Stripe webhook 對同一筆退款事件重複送達時，兩邊都通過舊快照的冪等檢查，
-        // 各自對訂單寫入重複的 order_state_log。
-        int updated = paymentRepository.markRefundedIfNotAlready(payment.getId(), Payment.PaymentStatus.REFUNDED, refundId);
-        if (updated == 0) {
-            return false; // 已是 REFUNDED 或已被另一併發 webhook 搶先處理（冪等）
+        if (!isRefundRecordable(payment.getStatus())) {
+            log.warn("markStripeRefunded: payment was never confirmed paid, nothing recorded: paymentIntent={}, status={}",
+                    paymentIntentId, payment.getStatus());
+            return null;
         }
-        UUID refundTenantId = null;
-        if (payment.getOrderId() != null) {
-            Order order = orderRepository.findById(payment.getOrderId()).orElse(null);
-            if (order != null) {
-                refundTenantId = order.getTenantId();
-            }
-            if (order != null && OrderStateMachine.canRefund(order.getStatus().name())) {
-                String previousStatus = order.getStatus().name();
-                order.setStatus(Order.OrderStatus.REFUNDED);
-                orderRepository.save(order);
-                recordOrderStateLog(order, previousStatus, Order.OrderStatus.REFUNDED.name(),
-                        null, "Stripe refund webhook (charge.refunded), refundId=" + refundId);
-            }
+        return payment;
+    }
+
+    /** Stripe 說的累計已退款金額超過付款金額時（不該發生）以付款金額為上限，並記錯誤日誌——不會多扣結算單。 */
+    private static BigDecimal cappedAtPaymentAmount(Payment payment, BigDecimal refundedTotal) {
+        if (refundedTotal.compareTo(payment.getAmount()) > 0) {
+            log.error("markStripeRefunded: Stripe reports more refunded than the payment amount, capped at the payment amount: "
+                    + "paymentIntent={}, refundedTotal={}, paymentAmount={}", payment.getStripePaymentIntentId(), refundedTotal,
+                    payment.getAmount());
         }
-        log.info("Stripe payment marked REFUNDED (webhook): paymentIntent={}, orderId={}",
-                paymentIntentId, payment.getOrderId());
-        auditService.record("STRIPE_PAYMENT_REFUNDED_WEBHOOK", "PAYMENT", payment.getId(), refundTenantId,
-                null, "REFUNDED", "refundId=" + refundId);
-        return true;
+        return refundedTotal.min(payment.getAmount());
+    }
+
+    /** 付款已確認收過款（含已部分／全額退款）才能記退款；其餘狀態（處理中、失敗…）的付款沒有款項可退。 */
+    private static boolean isRefundRecordable(Payment.PaymentStatus status) {
+        return status == Payment.PaymentStatus.SUCCESS || status == Payment.PaymentStatus.PARTIALLY_REFUNDED
+                || status == Payment.PaymentStatus.REFUNDED;
+    }
+
+    /** webhook 退款對訂單的影響：全額且訂單可退款才轉 REFUNDED；結算調整一律做（金額是差額）。回傳訂單所屬租戶（供稽核）。 */
+    private UUID recordWebhookRefundOnOrder(Payment payment, boolean fullyRefunded, BigDecimal delta, String refundId) {
+        Order order = orderRepository.findById(payment.getOrderId()).orElse(null);
+        if (order == null) {
+            log.warn("markStripeRefunded: order not found, settlement not adjusted: orderId={}", payment.getOrderId());
+            return null;
+        }
+        if (fullyRefunded && OrderStateMachine.canRefund(order.getStatus().name())) {
+            String previousStatus = order.getStatus().name();
+            order.setStatus(Order.OrderStatus.REFUNDED);
+            orderRepository.save(order);
+            recordOrderStateLog(order, previousStatus, Order.OrderStatus.REFUNDED.name(),
+                    null, "Stripe refund webhook (charge.refunded), refundId=" + refundId);
+        }
+        // 與本交易同一個交易、不吞例外：理由見 refundOrderPaymentCore 與 markStripeRefunded 的說明
+        settlementAdjustmentService.handleOrderRefund(order.getTenantId(), order.getId(), delta);
+        return order.getTenantId();
+    }
+
+    /** webhook 退款對訂房的影響：訂房狀態不動（不知道這筆退款的業務意圖），只做結算調整。回傳訂房所屬租戶（供稽核）。 */
+    private UUID recordWebhookRefundOnBooking(Payment payment, BigDecimal delta) {
+        if (payment.getBookingId() == null) {
+            return null;
+        }
+        Booking booking = bookingRepository.findById(payment.getBookingId()).orElse(null);
+        if (booking == null) {
+            log.warn("markStripeRefunded: booking not found, settlement not adjusted: bookingId={}", payment.getBookingId());
+            return null;
+        }
+        settlementAdjustmentService.handleBookingRefund(booking.getTenantId(), booking.getId(), delta);
+        return booking.getTenantId();
     }
 
     /**

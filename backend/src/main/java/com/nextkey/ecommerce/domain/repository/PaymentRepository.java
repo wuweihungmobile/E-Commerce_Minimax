@@ -6,7 +6,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import jakarta.persistence.LockModeType;
+
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -56,19 +59,19 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             @Param("newStatus") Payment.PaymentStatus newStatus);
 
     /**
-     * 併發防護（DEF-162，PaymentStateService.markStripeRefunded）：以條件式 UPDATE
-     * （{@code WHERE status <> newStatus}）取代「讀 status==REFUNDED 冪等檢查→setStatus/
-     * setStripeRefundId→save」。Stripe webhook 可能對同一筆退款事件重複送達，兩個併發呼叫
-     * 都可能通過同一份舊快照的冪等檢查，各自對訂單寫入重複的 order_state_log。回傳受影響
-     * 列數：1 代表本次成功轉換（呼叫端才可繼續同步訂單狀態/寫稽核）；0 代表已是 REFUNDED
-     * 或已被另一併發 webhook 搶先處理，呼叫端應視為冪等 no-op。
+     * 併發防護（DEF-162、DEF-453，PaymentStateService.markStripeRefunded）：以 {@code SELECT ... FOR UPDATE} 鎖住這筆付款，
+     * 序列化 Stripe webhook 的退款記帳與「本系統 API 退款」「其他 webhook」。
+     *
+     * <p>原本（DEF-162）是條件式 UPDATE（{@code WHERE status <> REFUNDED}），只擋得住「重複送達的同一個事件」；
+     * 記帳要算<strong>差額</strong>（Stripe 端的累計已退款金額減去本地 {@code refunded_amount}），差額必須從「鎖住之後」讀到的
+     * 最新值算，否則兩個併發的 webhook（或 webhook 與 API 退款）會各自拿舊值算出差額、各扣一次結算單。
+     * API 退款端（{@link #applyRefundIfUnchanged}）持有同一列的鎖直到交易結束，webhook 在這裡等它提交後才讀，
+     * 所以一定看得到它記下的累計值；反過來 webhook 先鎖住時，API 退款的 compare-and-swap 會等到 webhook 提交，
+     * 發現累計值已變而回報衝突（不呼叫 Stripe）。兩邊都是先鎖付款列、之後才碰結算單列。
      */
-    @Modifying(flushAutomatically = true)
-    @Query("UPDATE Payment p SET p.status = :newStatus, "
-            + "p.stripeRefundId = COALESCE(:refundId, p.stripeRefundId) "
-            + "WHERE p.id = :id AND p.status <> :newStatus")
-    int markRefundedIfNotAlready(@Param("id") UUID id, @Param("newStatus") Payment.PaymentStatus newStatus,
-            @Param("refundId") String refundId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Payment p WHERE p.stripePaymentIntentId = :paymentIntentId")
+    Optional<Payment> findByStripePaymentIntentIdForUpdate(@Param("paymentIntentId") String paymentIntentId);
 
     /**
      * 這張訂單的所有付款紀錄，由新到舊（Sprint 220，DEF-309）。多筆是正常情況（先付款失敗再成功），

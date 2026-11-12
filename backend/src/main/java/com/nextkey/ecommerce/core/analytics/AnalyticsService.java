@@ -69,9 +69,9 @@ public class AnalyticsService {
     }
 
     /**
-     * 一筆付款實際退掉的金額（DEF-412）：全額退款（REFUNDED）以付款金額計——Stripe webhook 路徑
-     * （{@code PaymentRepository#markRefundedIfNotAlready}）只改 status、不寫 refundedAmount，直接加總 refundedAmount
-     * 會把它算成 0；部分退款（PARTIALLY_REFUNDED）以累計已退款金額計。
+     * 一筆付款實際退掉的金額（DEF-412）：全額退款（REFUNDED）以付款金額計；部分退款（PARTIALLY_REFUNDED）以累計已退款金額計。
+     * Sprint 342（DEF-453）以前 Stripe webhook 路徑只改 status、不寫 refundedAmount，REFUNDED 的付款其 refundedAmount 可能是 0.00，
+     * 直接加總會算成 0；現在 webhook 會記帳，但舊資料仍可能是那樣，所以全額退款維持以付款金額計。
      */
     private static BigDecimal refundedMoney(final Payment payment) {
         BigDecimal money = payment.getStatus() == Payment.PaymentStatus.REFUNDED

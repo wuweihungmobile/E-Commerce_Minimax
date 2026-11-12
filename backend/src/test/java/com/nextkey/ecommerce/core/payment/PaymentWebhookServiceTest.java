@@ -1,5 +1,7 @@
 package com.nextkey.ecommerce.core.payment;
 
+import java.math.BigDecimal;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nextkey.ecommerce.core.settlement.TransferService;
 import com.nextkey.ecommerce.core.tenant.TenantStripeConnectService;
@@ -9,6 +11,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -124,19 +128,61 @@ class PaymentWebhookServiceTest {
     }
 
     @Test
-    @DisplayName("UT-WH-006: charge.refunded → markStripeRefunded（pi + refund id）（AI-2412）")
+    @DisplayName("UT-WH-006: charge.refunded → markStripeRefunded（pi + refund id + 累計已退款金額換算成主單位）（AI-2412、DEF-453）")
     void chargeRefunded_marksRefunded() {
         String payload = """
                 {"id":"evt_5","type":"charge.refunded",
-                 "data":{"object":{"id":"ch_1","payment_intent":"pi_5",
+                 "data":{"object":{"id":"ch_1","payment_intent":"pi_5","amount":150000,"amount_refunded":12345,
                    "refunds":{"data":[{"id":"re_5"}]}}}}
                 """;
         when(processedStripeEventRepository.existsById("evt_5")).thenReturn(false);
 
         service.handleEvent(payload);
 
-        verify(paymentStateService).markStripeRefunded("pi_5", "re_5");
+        verify(paymentStateService).markStripeRefunded("pi_5", "re_5", new BigDecimal("123.45"));
         verify(processedStripeEventRepository).save(any(ProcessedStripeEvent.class));
+    }
+
+    @ParameterizedTest(name = "amount_refunded = {0}")
+    @ValueSource(strings = {"\"abc\"", "100.5", "-5", "null", "99999999999999999999"})
+    @DisplayName("UT-WH-006b: amount_refunded 不可用（字串、帶小數、負數、null、超出 long）→ 傳 null：不知道退了多少，就不能記帳（DEF-453）")
+    void chargeRefunded_unusableAmount_passesNull(final String rawAmount) {
+        String payload = "{\"id\":\"evt_5b\",\"type\":\"charge.refunded\",\"data\":{\"object\":{\"payment_intent\":\"pi_5\","
+                + "\"amount_refunded\":" + rawAmount + ",\"refunds\":{\"data\":[{\"id\":\"re_5\"}]}}}}";
+        when(processedStripeEventRepository.existsById("evt_5b")).thenReturn(false);
+
+        service.handleEvent(payload);
+
+        verify(paymentStateService).markStripeRefunded("pi_5", "re_5", null);
+        verify(processedStripeEventRepository).save(any(ProcessedStripeEvent.class));
+    }
+
+    @Test
+    @DisplayName("UT-WH-006c: charge.refunded 沒有 amount_refunded 欄位 → 傳 null（不可用），不是 0、也不是全額（DEF-453）")
+    void chargeRefunded_missingAmount_passesNull() {
+        String payload = """
+                {"id":"evt_5c","type":"charge.refunded",
+                 "data":{"object":{"id":"ch_1","payment_intent":"pi_5","refunds":{"data":[{"id":"re_5"}]}}}}
+                """;
+        when(processedStripeEventRepository.existsById("evt_5c")).thenReturn(false);
+
+        service.handleEvent(payload);
+
+        verify(paymentStateService).markStripeRefunded("pi_5", "re_5", null);
+    }
+
+    @Test
+    @DisplayName("UT-WH-006d: amount_refunded = 0 是合法的數字 → 傳 0.00，交給狀態服務依差額判斷（webhook 層不替它決定要不要記帳）")
+    void chargeRefunded_zeroAmount_passesZero() {
+        String payload = """
+                {"id":"evt_5d","type":"charge.refunded",
+                 "data":{"object":{"id":"ch_1","payment_intent":"pi_5","amount_refunded":0}}}
+                """;
+        when(processedStripeEventRepository.existsById("evt_5d")).thenReturn(false);
+
+        service.handleEvent(payload);
+
+        verify(paymentStateService).markStripeRefunded("pi_5", null, new BigDecimal("0.00"));
     }
 
     @Test

@@ -226,7 +226,7 @@ class AnalyticsServiceTest {
         AnalyticsDto.RevenueStats stats = analyticsService.getRevenueStats(AnalyticsDto.AnalyticsRequest.builder()
                 .startDate(day).endDate(day).build());
 
-        assertThat(stats.getTotalRefunds()).as("markRefundedIfNotAlready 只改 status，refundedAmount 仍是 0，不能因此算成 0")
+        assertThat(stats.getTotalRefunds()).as("舊資料（Sprint 342 以前的 webhook 只改 status）refundedAmount 仍是 0，不能因此算成 0")
                 .isEqualByComparingTo("300");
         assertThat(stats.getNetRevenue()).as("訂單仍計入營收 300，退款 300").isEqualByComparingTo("0");
     }

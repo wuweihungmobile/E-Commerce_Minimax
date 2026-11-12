@@ -1,5 +1,7 @@
 package com.nextkey.ecommerce.core.payment;
 
+import java.math.BigDecimal;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -86,10 +88,11 @@ public class PaymentWebhookService {
                 paymentStateService.markStripePaymentFailed(paymentIntentId);
             }
             case "charge.refunded" -> {
-                // charge 物件的 payment_intent 為關聯的 pi id；refunds.data[0].id 為 refund id
+                // charge 物件的 payment_intent 為關聯的 pi id；refunds.data[0].id 為 refund id；
+                // amount_refunded 是這筆 charge「累計」已退款金額（部分退款也會觸發本事件，Sprint 342 DEF-453）
                 String paymentIntentId = obj.path("payment_intent").asText(null);
                 String refundId = obj.path("refunds").path("data").path(0).path("id").asText(null);
-                paymentStateService.markStripeRefunded(paymentIntentId, refundId);
+                paymentStateService.markStripeRefunded(paymentIntentId, refundId, refundedTotal(obj));
             }
             case "account.updated" -> {
                 // Sprint 53（AI-2413 Phase D-1）：Connect 帳戶 KYC/啟用狀態變更，回填 tenant。
@@ -107,5 +110,19 @@ public class PaymentWebhookService {
             }
             default -> log.info("Stripe webhook: unhandled event type: {}", eventType);
         }
+    }
+
+    /**
+     * charge 的 {@code amount_refunded}（Stripe 端累計已退款金額，最小單位）換算成幣別主單位。換算慣例與
+     * {@code StripePaymentGateway} 建立付款與退款時一致（金額 ×100），沒有共用的換算方法。
+     *
+     * @return 缺漏、不是整數（例如字串、帶小數）、為負數、超出 long 範圍都回 null——不知道退了多少，就不能記帳
+     */
+    private static BigDecimal refundedTotal(JsonNode charge) {
+        JsonNode cents = charge.path("amount_refunded");
+        if (!cents.isIntegralNumber() || !cents.canConvertToLong() || cents.asLong() < 0) {
+            return null;
+        }
+        return BigDecimal.valueOf(cents.asLong(), 2);
     }
 }

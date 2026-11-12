@@ -282,11 +282,18 @@ console 沒有 hydration 錯誤（唯一的錯誤是我的假後端沒有 CORS �
 
 ### 7.3 push 與雲端 CI
 
-**尚未 push**；推送與雲端 CI 的結果於推送後回填本節。待推送的 commit：Sprint 340 的回填 `0ea5bf43`、Sprint 341 的後端 `20b5d1bf`、前端／測試／守門腳本 `99a76cfe`、文件 commit。
+- **push**：`25e25d81..665fb892`，4 個 commit——Sprint 340 的回填 `0ea5bf43`、Sprint 341 的後端 `20b5d1bf`、前端／測試／守門腳本 `99a76cfe`、文件 `665fb892`。pre-push 輕量守門（`make validate-push`：backend-unit＋schema 漂移＋frontend，act）全過（「輕量守門通過！允許 push」），沒有用 `--no-verify`。
+- **雲端 CI 全綠**：run [43228131094](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/43228131094)，`headSha` `665fb892` 與本機一致，三個 job 皆 success（以 `gh run view --json` 取得 run 層級結論、逐 job 檢查**沒有非 success／skipped 的步驟**——該查詢輸出為空）：Backend Unit Tests（`mvn test -q`，雲端日誌不印總數；Checkstyle 0 違規、BUILD SUCCESS，約 3 分）、Frontend Lint & Build（`eslint --max-warnings 0`、`tsc --noEmit`、Vitest **45 檔 518／0**＝與本機完全相同、`Compiled successfully`、靜態頁面 68／68，約 2 分）、Backend Integration Tests & Package（整合 1055／0／0 跳過（比 Sprint 340 的 1053 多 2＝`RateLimitFilterIntegrationTest` 3 → 5，日誌確認該類別 5／0；Checkstyle 0 違規；Maven BUILD SUCCESS 9 分 38 秒），job 約 11 分 4 秒）；整個 run 約 14 分鐘（13:31:36Z → 13:45:49Z）。
+- **雲端沒有 e2e job**（`act-compat.yml` 只有三個 job），所以完整 E2E 守門 399／399 只有本機證據（§7.2）。
+- 後端單元總數不在雲端日誌（`mvn test -q` 是安靜模式），這輪也沒有在本機重跑完整單元套件（§8.2 第 11 點）；這輪新增的後端測試中，`RateLimitFilterIntegrationTest` 屬於雲端整合 job 跑的範圍。
 
 ### 7.4 守門收尾與 Docker 清理
 
-**尚未做**（推送後的最後一步，結果回填）。目前的現況：埠 3000／3001／8080／8081 都已釋放；容器只剩測試資料庫 `nk-test-pg`、`nk-test-redis`；`docker volume ls -f dangling=true` 看得到 6 個匿名卷（64 位十六進位名稱，對應三輪守門），推送後逐一核對建立時間再刪除，不用 `volume prune`。
+推送（pre-push 的 act＋schema-gate 已結束）、雲端 CI 還在跑時做的（清理與雲端 run 無關；之後只剩純文件回填，不需要測試資料庫）：
+
+- **盤點**：容器 0（pre-push 清掉了 `nk-test-*`）、映像 3 個（核准的基底映像，無懸空）、卷 15＝10 匿名＋5 具名（1.282GB）、建置快取 84 筆 8.96GB（只回報，沒有刪）。埠 3000／3001／8080／8081 都已釋放。
+- **刪除**：10 個匿名卷，刪前用 `docker volume inspect` 逐一核對——都帶 `com.docker.volume.anonymous` 標籤、建立於當天 11:09～13:30Z、成 5 對（每對相差 1 秒）；逐一 `docker volume rm`（10 成功／0 失敗），卷 1.282GB → 928MB；`docker image prune -f` 回收 0B。成因沒有逐一驗證（推測：三輪完整守門、pre-commit 與 pre-push 的容器）；我自己起的量測容器一律 `docker rm -fv`，沒留卷。
+- **刻意保留**：5 個具名卷（`act-toolcache`、`e-commerce_minimax_maven_cache`、`e-commerce_minimax_minio_data`、`e-commerce_minimax_postgres_data`〔你的 dev 資料庫〕、`e-commerce_minimax_redis_data`）與 3 個核准的基底映像（`postgres:18-alpine`、`redis:7-alpine`、`catthehacker/ubuntu:act-latest`）；沒有用 `docker volume prune`、沒有用 `docker image prune -a`。
 
 ## 8. 行為變更與已知限制
 
@@ -371,10 +378,11 @@ console 沒有 hydration 錯誤（唯一的錯誤是我的假後端沒有 CORS �
 | `DEF-500` ① 公開頁 SEO 伺服器端渲染 | ✅ 已做；②③④⑤ 沒動 |
 | 新登記 | `DEF-502`（🟡）、`DEF-503`、`DEF-504`、`DEF-505`（🟢） |
 | 完整 E2E 守門 | ✅ 第三輪 399／399（§7.2） |
-| 後端 commit | `20b5d1bf`（尚未 push） |
-| 前端／測試／守門腳本 commit | `99a76cfe`（尚未 push） |
-| 文件 commit | 隨推送後的回填補上 |
-| push 與雲端 CI | ⏳ 尚未 push；推送後回填（§7.3） |
+| 後端 commit | `20b5d1bf`（已 push） |
+| 前端／測試／守門腳本 commit | `99a76cfe`（已 push） |
+| 文件 commit | `665fb892`（已 push） |
+| push 與雲端 CI | ✅ 已 push（`25e25d81..665fb892`）；雲端 CI 全綠：run 43228131094 三個 job 皆 success（§7.3） |
+| Docker 收尾 | ✅ 刪 10 個匿名卷、保留 5 個具名卷與 3 個核准基底映像（§7.4） |
 
 ---
 

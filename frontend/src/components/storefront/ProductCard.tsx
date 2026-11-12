@@ -52,7 +52,7 @@ export function ProductCard({
         className
       )}
     >
-      <Link href={href}>
+      <Link href={href} prefetch={false}>
       <div className="relative aspect-square overflow-hidden bg-rs-tertiary">
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element -- 商品圖為後端動態 URL，避免 next/image remotePatterns 設定

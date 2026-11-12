@@ -206,3 +206,85 @@ export function hasHeadingTransitively(
   }
   return visit(page)
 }
+
+export interface LinkElement {
+  /** `<Link` 所在行（1 起算） */
+  line: number
+  /** href 屬性的內容（運算式或字串，不含最外層的大括號／引號）；`href={某個識別字}` 會換成同檔 const／let 宣告的右式；沒有 href 就是空字串 */
+  href: string
+  /** 開頭標籤裡有沒有明確寫 `prefetch={false}` */
+  noPrefetch: boolean
+}
+
+/** 從 from（`<Link` 之後）開始，找開頭標籤結尾的 `>`；屬性的 {…} 運算式與 "…"／'…' 字串整段跳過（`=>` 與字串裡的 `>` 不算） */
+function openingTagEnd(text: string, from: number): number {
+  let i = from
+  while (i < text.length) {
+    const c = text[i]
+    if (c === '{') {
+      const close = matchingClose(text, i)
+      if (close < 0) throw new Error('<Link 屬性的大括號不成對，偵測器無法判斷')
+      i = close + 1
+    } else if (c === '"' || c === "'") {
+      const close = text.indexOf(c, i + 1)
+      if (close < 0) throw new Error('<Link 屬性的引號不成對，偵測器無法判斷')
+      i = close + 1
+    } else if (c === '>') {
+      return i
+    } else {
+      i++
+    }
+  }
+  throw new Error('<Link 的開頭標籤沒有結束，偵測器無法判斷')
+}
+
+function hrefOf(text: string, attrs: string): string {
+  const m = /\bhref\s*=\s*/.exec(attrs)
+  if (!m) return ''
+  const at = m.index + m[0].length
+  const c = attrs[at]
+  let value = ''
+  if (c === '{') {
+    const close = matchingClose(attrs, at)
+    if (close < 0) throw new Error('<Link 的 href 大括號不成對，偵測器無法判斷')
+    value = attrs.slice(at + 1, close).trim()
+  } else if (c === '"' || c === "'") {
+    const close = attrs.indexOf(c, at + 1)
+    if (close < 0) throw new Error('<Link 的 href 引號不成對，偵測器無法判斷')
+    value = attrs.slice(at + 1, close)
+  }
+  // href={blogHref}：換成同檔宣告的右式（const blogHref = `/stores/${slug}/blog`），才看得出它指向哪裡
+  if (/^[A-Za-z_$][\w$]*$/.test(value)) {
+    const decl = new RegExp(`\\b(?:const|let)\\s+${value}\\s*=\\s*([^;\\n]+)`).exec(text)
+    if (decl) return decl[1].trim()
+  }
+  return value
+}
+
+/**
+ * 檔案裡每個 `<Link …>` 的開頭標籤（不含 `<LinkButton` 這類名稱更長的元件）。
+ *
+ * 已知限制（刻意取捨）：只認得 JSX 的 `<Link`，不分它是不是 next/link 的（專案裡沒有別的叫 Link 的元件）；
+ * 括號計數同 matchingClose，不解析字串裡的括號；`prefetch` 只認字面的 `{false}`（寫成 `{cond ? false : null}` 會被當成沒關）。
+ */
+export function linkElements(text: string): LinkElement[] {
+  const found: LinkElement[] = []
+  for (const m of text.matchAll(/<Link(?=[\s/>])/g)) {
+    const start = m.index ?? 0
+    const attrs = text.slice(start, openingTagEnd(text, start + m[0].length))
+    found.push({
+      line: text.slice(0, start).split('\n').length,
+      href: hrefOf(text, attrs),
+      noPrefetch: /\bprefetch\s*=\s*\{\s*false\s*\}/.test(attrs),
+    })
+  }
+  return found
+}
+
+/**
+ * href 是不是指向「伺服器端 generateMetadata 會打後端」的實體頁：/stores/…（店鋪頁、貼文列表、文章頁）與 /listings/…（商品／房源詳情），
+ * 或產生這類網址的輔助函式（articlePath、storeBlogPath）。必須是網址的開頭（`/admin/stores/…` 這類後台路徑不算）。
+ */
+export function isEntityHref(href: string): boolean {
+  return /^\s*[`'"]\/(?:stores|listings)\//.test(href) || /^\s*(?:articlePath|storeBlogPath)\(/.test(href)
+}

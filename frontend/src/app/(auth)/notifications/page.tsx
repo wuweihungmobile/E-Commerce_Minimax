@@ -198,6 +198,7 @@ export default function NotificationsPage() {
                         {listingId && (
                           <Link
                             href={`/listings/${listingId}`}
+                            prefetch={false}
                             className="text-xs text-primary hover:underline mt-1 inline-block"
                           >
                             重新預訂 →

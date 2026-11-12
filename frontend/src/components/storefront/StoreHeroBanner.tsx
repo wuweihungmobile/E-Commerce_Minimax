@@ -29,12 +29,14 @@ export function StoreHeroBanner({ profile, slug }: { profile: StoreProfile; slug
       <div className="flex gap-3">
         <Link
           href={`/stores/${slug}/products`}
+          prefetch={false}
           className={buttonVariants({ variant: "default" })}
         >
           查看商品
         </Link>
         <Link
           href={`/stores/${slug}/rooms`}
+          prefetch={false}
           className={buttonVariants({ variant: "outline" })}
         >
           查看房源

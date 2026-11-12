@@ -181,7 +181,7 @@ export function StoreArticle({ storeSlug, tenantId, postSlug }: StoreArticleProp
         {/* 店鋪外殼已經有一個 h1（店名），文章區的標題用 h2 */}
         <h2 className="text-xl font-semibold text-rs-ink mb-4">找不到文章</h2>
         <p className="text-rs-ink-muted mb-6">{error || '此文章不存在或已下架'}</p>
-        <Link href={blogHref} className="text-rs-primary hover:underline">
+        <Link href={blogHref} prefetch={false} className="text-rs-primary hover:underline">
           返回部落格
         </Link>
       </div>
@@ -190,7 +190,7 @@ export function StoreArticle({ storeSlug, tenantId, postSlug }: StoreArticleProp
 
   return (
     <div className="max-w-3xl mx-auto">
-      <Link href={blogHref} className="text-rs-primary hover:underline text-sm" data-testid="store-article-back">
+      <Link href={blogHref} prefetch={false} className="text-rs-primary hover:underline text-sm" data-testid="store-article-back">
         ← 返回部落格
       </Link>
 
@@ -235,6 +235,7 @@ export function StoreArticle({ storeSlug, tenantId, postSlug }: StoreArticleProp
               <div className="mb-4">
                 <Link
                   href={storeBlogPath(storeSlug, { categoryId: post.categoryId })}
+                  prefetch={false}
                   className={buttonVariants({ variant: "secondary", size: "sm" })}
                   data-testid="blog-post-category-link"
                 >

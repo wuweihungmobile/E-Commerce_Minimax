@@ -18,6 +18,7 @@ export function StoreNav({ slug, active }: { slug: string; active: StoreNavTab }
         <Link
           key={tab.id}
           href={`/stores/${slug}${tab.hrefSuffix}`}
+          prefetch={false}
           data-testid={`store-nav-${tab.id}`}
           className={cn(
             "px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors",

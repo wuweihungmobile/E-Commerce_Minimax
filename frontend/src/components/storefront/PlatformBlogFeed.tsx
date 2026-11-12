@@ -59,7 +59,7 @@ export function PlatformBlogFeed({ page }: { page: number }) {
         <div data-testid="blog-grid" className="grid md:grid-cols-2 gap-6">
           {data.posts.map((post) => (
             <Card asChild key={post.id} className="overflow-hidden hover:border-rs-primary transition-colors">
-              <Link href={articlePath(post.tenantSlug, post.slug)}>
+              <Link href={articlePath(post.tenantSlug, post.slug)} prefetch={false}>
                 {post.featuredImageUrl && (
                   <div className="aspect-video bg-rs-disabled-bg">
                     {/* eslint-disable-next-line @next/next/no-img-element -- 封面圖是店家輸入的任意網址；next/image 需要 width／height，且網域須事先在 next.config 設定 remotePatterns */}

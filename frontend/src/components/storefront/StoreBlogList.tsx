@@ -117,7 +117,7 @@ export function StoreBlogList({ slug, tenantId, page, categoryId }: StoreBlogLis
         className="flex flex-col items-center justify-center py-24 text-center gap-3"
       >
         <p className="text-lg text-rs-ink">此分類不存在或已停用</p>
-        <Link href={storeBlogPath(slug)} className={buttonVariants({ variant: "outline" })}>
+        <Link href={storeBlogPath(slug)} prefetch={false} className={buttonVariants({ variant: "outline" })}>
           查看全部貼文
         </Link>
       </div>
@@ -149,6 +149,7 @@ export function StoreBlogList({ slug, tenantId, page, categoryId }: StoreBlogLis
             <Card asChild key={post.id} className="flex flex-col overflow-hidden no-underline text-inherit transition-colors hover:border-rs-primary">
 <Link
               href={articlePath(slug, post.slug)}
+              prefetch={false}
             >
               {post.featuredImageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element -- 貼文封面圖為後端動態 URL

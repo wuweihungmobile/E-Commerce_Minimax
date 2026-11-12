@@ -1,7 +1,7 @@
 # 環境變數說明 / Environment Variables
 
 > **文件類型**: 部署指南（環境變數）
-> **版本**: v1.3（檔頭原本停在 v1.1，修訂紀錄已有 v1.2；Sprint 337 一併對齊）
+> **版本**: v1.4（Sprint 341 新增 `APP_TRUSTED_PROXY_HOPS`；檔頭版本與修訂紀錄對齊）
 > **建立日期**: 2026-10-03（Sprint 244，文件對齊 3/3；v1.1 為收尾追加）
 > **依據**: `backend/src/main/resources/application.yml`、後端 `@Value` 與條件式 bean、`docker-compose.yml`、`docker-compose.override.yml`、`.env.example`、`frontend/src`（`NEXT_PUBLIC_*`）、`scripts/validate-e2e.sh`、`Makefile`
 > **讀者**: 部署與維運人員、後端與前端開發者
@@ -72,6 +72,32 @@
 | `APP_FRONTEND_BASE_URL` | `http://localhost:3000`（`@Value` 預設） | 重設密碼與 Email 驗證連結的網域；Stripe 回跳網址也用此設定 | ✅ | ✅（非 localhost 部署必填，見 SRD §5.5） |
 | `APP_CORS_ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:8080` | 允許的前端來源（逗號分隔）。不可用 `*`，因為 `allowCredentials=true` | ✅ | ✅ |
 
+### 2.5.1 反向代理層數（全專案唯一與「前面有沒有代理」有關的設定）
+
+| 變數 | 預設值 | 用途 | compose 傳遞 | 正式必填 |
+|------|--------|------|:------------:|:--------:|
+| `APP_TRUSTED_PROXY_HOPS`（`app.network.trusted-proxy-hops`） | `0`（沒有代理；範圍 0～10，超出啟動失敗） | 訪客的請求抵達後端之前要經過幾層反向代理／負載平衡器／CDN。後端用它決定「來源 IP」，供匿名限流（每 IP 每分鐘 100 次）與登入／註冊限流（每 IP 每路徑每分鐘 30 次）使用 | ✅（Sprint 341，使用者明確指示） | ✅ **前面有代理時必填**（沒有代理維持預設） |
+
+**怎麼設**（只有這一個數字，沒有第二個設定）：
+
+| 你的環境 | 設定 |
+|----------|------|
+| 沒有代理，訪客直連後端（現況；`docker-compose*.yml` 沒有 nginx／traefik） | `0`（預設，行為與 Sprint 341 之前完全相同） |
+| 一層：nginx、Traefik、Caddy、AWS ALB、雲端負載平衡器 | `1` |
+| 兩層：例如 Cloudflare ＋ nginx | `2` |
+
+**原理**：每一層代理都會把它看到的對端位址**附加**在 `X-Forwarded-For` 最右邊，所以由右數第 N 個才是真正的訪客；左邊更多的項目是訪客自己填的，一律不採信（`ClientIpResolver`，全專案決定來源 IP 的唯一處）。設 `0` 時完全不看這個標頭。項目比層數少、或選到的項目不是合法 IP，一律退回 TCP 對端位址。前端 Next 伺服器代訪客呼叫後端時，把收到的 `X-Forwarded-For` 原封不動帶過去（不附加、不改寫），所以「訪客→代理→Next→後端」與「訪客→代理→後端」到後端是同樣的 N 項，**同一個數字兩條路都適用，前端沒有對應的設定**。
+
+**設成 1 以上時兩個前提必須同時成立**（否則反而讓人可以偽造 IP 繞過限流）：
+1. 代理必須**附加**而不是覆寫 `X-Forwarded-For`（nginx：`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`；Traefik、Caddy、AWS ALB、Cloudflare 預設就是附加）。
+2. 後端（8080）與前端（3000）不能有繞過代理的直連入口——直連者可以自己填 `X-Forwarded-For` 假冒任何 IP。有代理之後只開放代理的 80／443。
+
+**不需要設定的事**：TLS 在哪終止。代理只要送 `X-Forwarded-Proto: https`，後端（`SecurityHeaderPolicy`）與前端（`next.config.ts`）就會送 HSTS。
+
+**有代理後要一併改的既有變數**（不是新設定，是既有的對外網址）：`NEXT_PUBLIC_API_URL`（瀏覽器呼叫後端的網址，建置時內嵌）、`APP_FRONTEND_BASE_URL`、`APP_CORS_ALLOWED_ORIGINS`、`NEXT_PUBLIC_SITE_URL`。`API_INTERNAL_URL`（Next 伺服器→後端）維持內網位址。
+
+**設錯的徵兆**：後端日誌出現 `[ClientIp] … 改用對端位址` 警告（只印一次）；或 `exceeded rate limit` 日誌裡所有請求的 IP 都是同一個（層數設太小或沒設）；或不同訪客的 IP 看起來是代理的位址。
+
 ### 2.6 排程與逾時
 
 | 變數 | 預設值 | 用途 | compose 傳遞 | 正式必填 |
@@ -134,7 +160,7 @@
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8080/api`（不含 `/v2`） | 見 §3 |
 | `API_INTERNAL_URL` | `http://backend:8080/api`（開發的 override 另設，見 §3） | 見 §3 |
 
-`.env.example` 列出 `DOCKER_PLATFORM`、`SPRING_PROFILES_ACTIVE`、`NEXT_PUBLIC_API_URL`、`JWT_SECRET`、`POSTGRES_*`、`REDIS_PASSWORD`、`SMTP_*`、`APP_FRONTEND_BASE_URL`、`APP_CORS_ALLOWED_ORIGINS`、`APP_SCHEDULING_ENABLED`，以及 CI 用的註解行。**沒有列出** Stripe、儲存、OAuth 與逾時變數（見 §7）。
+`.env.example` 列出 `DOCKER_PLATFORM`、`SPRING_PROFILES_ACTIVE`、`NEXT_PUBLIC_API_URL`、`JWT_SECRET`、`POSTGRES_*`、`REDIS_PASSWORD`、`SMTP_*`、`APP_FRONTEND_BASE_URL`、`APP_CORS_ALLOWED_ORIGINS`、`APP_TRUSTED_PROXY_HOPS`（§2.5.1）、`APP_SCHEDULING_ENABLED`，以及 CI 用的註解行。**沒有列出** Stripe、儲存、OAuth 與逾時變數（見 §7）。
 
 `docker-compose.override.yml` 是本機開發用：會設定 `STORAGE_*` 為 `minioadmin`，並定義 `minio` 服務（profile `storage`，見 DOCKER_POLICY.md）。
 
@@ -164,6 +190,7 @@
 | 8 | 決定 Refresh Token 天數（yml 7 天、compose 30 天，兩者不同） | §2.2 |
 | 9 | 其他部署前置（非環境變數）：執行 `V90__Unpublish_Orphaned_System_Tenant_Content.sql` 前，先跑檔頭的三個預覽 `SELECT` 看筆數 | Sprint 242 計畫書 |
 | 10 | `BOOKING_NO_SHOW_AUTO_CANCEL_ENABLED` 維持 `false`，直到**人工於生產環境驗證店家能透過 `/dashboard/bookings/[id]` 正常入住**（DEF-350）；確認後才改為 `true`，且須已部署 DEF-354（人工退款入口） | §2.6、DEF-352 |
+| 11 | 前面有反向代理／負載平衡器／CDN 時：`APP_TRUSTED_PROXY_HOPS` 設為層數（沒有代理維持 `0`），並確認代理**附加** `X-Forwarded-For`、後端 8080 與前端 3000 不對外開放；`NEXT_PUBLIC_API_URL` 等對外網址改為經過代理的網址 | §2.5.1、DEF-501 |
 
 ---
 
@@ -200,6 +227,7 @@
 | v1.1 | 2026-10-03 | Sprint 244 收尾追加（使用者授權）：compose 補傳 `SMTP_*`、`APP_FRONTEND_BASE_URL`、`APP_CORS_ALLOWED_ORIGINS`、`APP_SCHEDULING_ENABLED`；`.env.example` 同步列出；§2、§4、§7 更新 | Claude Code（Sprint 244） |
 | v1.2 | 2026-10-09 | Sprint 246（DEF-352）：新增 `BOOKING_NO_SHOW_AUTO_CANCEL_ENABLED`（預設關閉）與相關排程設定（§2.6）；§6 新增上線前檢查第 10 項 | Claude Sonnet 5（Sprint 246） |
 | v1.3 | 2026-11-11 | Sprint 337（DEF-355／DEF-490，使用者明確指示）：`NEXT_PUBLIC_API_URL` 預設值改為不含 `/v2`（compose、`.env.example`、`frontend/Dockerfile`；§3、§4），並註記既有 `.env` 要手動改；新增 `API_INTERNAL_URL`（§3、§4；正式 `docker-compose.yml` 於本版加入，開發 override 於 Sprint 336 加入）；檔頭版本對齊修訂紀錄 | Claude Sonnet 5.5（Sprint 337） |
+| v1.4 | 2026-11-12 | Sprint 341（DEF-501／DEF-487，使用者明確指示規劃單一參數）：新增 `APP_TRUSTED_PROXY_HOPS`（§2.5.1；compose 傳遞、`.env.example` 與 `application.yml` 同步說明）；§4、§6 同步 | Claude Sonnet 5.5（Sprint 341） |
 
 ---
 

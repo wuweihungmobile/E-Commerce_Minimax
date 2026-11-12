@@ -12,6 +12,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -40,8 +42,9 @@ import lombok.extern.slf4j.Slf4j;
  * 一個 100 次／分的桶，任一人（或一支爬蟲）打滿就讓全體收到 429——真實全棧 E2E 在兩三個並行 worker 下就把它耗盡，
  * 管理員後台與其他受測流程一起被 429（後端日誌 {@code Tenant 0000…0001 exceeded rate limit}）。PRD 沒有定義
  * 「不屬於任何店鋪的使用者」的限流單位，此為工程決策：已登入者以<b>使用者</b>、匿名者以<b>來源 IP</b> 為單位，
- * 容量與店鋪相同（100 次／分）。來源 IP 用 {@link HttpServletRequest#getRemoteAddr()}，刻意不採信
- * {@code X-Forwarded-For}，理由同 {@link LoginRateLimitFilter}。
+ * 容量與店鋪相同（100 次／分）。來源 IP 一律由 {@link ClientIpResolver} 決定：預設取 TCP 對端位址、不採信
+ * {@code X-Forwarded-For}（理由同 {@link LoginRateLimitFilter}）；前面有反向代理時設
+ * {@code APP_TRUSTED_PROXY_HOPS}，否則所有訪客都會被當成同一個來源 IP、共用一個桶（Sprint 341，DEF-501）。
  *
  * <p>Token Bucket 狀態存於 Redis（容量 100、每 60 秒完全補滿），以單支 Lua script 原子讀取-補充-扣除，
  * 避免高併發下的 race condition。Redis 故障時 fail-open（放行請求，僅記錄錯誤日誌），避免快取層
@@ -109,12 +112,21 @@ public class RateLimitFilter extends OncePerRequestFilter {
     // spring-boot-starter-data-redis 自動配置的 StringRedisTemplate，不受影響。
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final ClientIpResolver clientIpResolver;
 
+    /** 沒有反向代理（層數 0）：單元測試與不關心代理的呼叫端用。 */
     public RateLimitFilter(final ObjectProvider<StringRedisTemplate> redisTemplateProvider) {
+        this(redisTemplateProvider, 0);
+    }
+
+    @Autowired
+    public RateLimitFilter(final ObjectProvider<StringRedisTemplate> redisTemplateProvider,
+                           @Value("${app.network.trusted-proxy-hops:0}") final int trustedProxyHops) {
         this.redisTemplate = redisTemplateProvider.getIfAvailable();
         this.objectMapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        this.clientIpResolver = new ClientIpResolver(trustedProxyHops);
     }
 
     @Override
@@ -131,7 +143,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
-        String bucketKey = bucketKey(tenantId, TenantContext.getCurrentUser(), request.getRemoteAddr());
+        String bucketKey = bucketKey(tenantId, TenantContext.getCurrentUser(), request);
 
         String result;
         try {
@@ -186,11 +198,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
      * 限流的單位（Sprint 234，DEF-328）：真正的店鋪租戶以租戶為單位；沒有店鋪的使用者共用系統租戶佔位值，
      * 改以使用者（已登入）或來源 IP（匿名）為單位，避免全體一般買家合用一個桶。
      */
-    private static String bucketKey(final UUID tenantId, final UUID userId, final String remoteAddr) {
+    private String bucketKey(final UUID tenantId, final UUID userId, final HttpServletRequest request) {
         if (TenantContext.isStoreTenant(tenantId)) {
             return KEY_PREFIX + tenantId;
         }
-        return userId != null ? USER_KEY_PREFIX + userId : IP_KEY_PREFIX + remoteAddr;
+        // 只有匿名請求才需要來源 IP：其餘兩種單位不查，也就不會為了用不到的 IP 去解析標頭
+        return userId != null ? USER_KEY_PREFIX + userId : IP_KEY_PREFIX + clientIpResolver.resolve(request);
     }
 
     @Override

@@ -276,4 +276,45 @@ class LoginRateLimitFilterTest {
         assertThat(chainCalled[0]).isTrue();
         assertThat(response.getStatus()).isEqualTo(200);
     }
+
+    // Sprint 341（DEF-501）：來源 IP 由 ClientIpResolver 決定。登入桶的 key 是「路徑＋來源 IP」。
+
+    @SuppressWarnings("unchecked")
+    private String loginBucketKeyUsedBy(final LoginRateLimitFilter filter, final String peer, final String forwardedFor) throws Exception {
+        org.mockito.Mockito.clearInvocations(redisTemplate);
+        when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any(), any(), any()))
+                .thenReturn("1:7:0");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/v2/auth/login");
+        request.setServletPath("/v2/auth/login");
+        request.setRemoteAddr(peer);
+        if (forwardedFor != null) {
+            request.addHeader("X-Forwarded-For", forwardedFor);
+        }
+        filter.doFilter(request, new MockHttpServletResponse(), (req, res) -> { });
+        org.mockito.ArgumentCaptor<java.util.List<String>> keys = org.mockito.ArgumentCaptor.forClass(java.util.List.class);
+        org.mockito.Mockito.verify(redisTemplate).execute(any(RedisScript.class), keys.capture(), any(), any(), any(), any());
+        return keys.getValue().get(0);
+    }
+
+    @Test
+    @DisplayName("Sprint 341（DEF-501）：前面有一層代理時，登入限流依訪客 IP 計算——不同訪客不再共用代理那一個桶（30 次／分）")
+    void behindProxy_loginBucketIsPerForwardedVisitor() throws Exception {
+        LoginRateLimitFilter behindProxy = new LoginRateLimitFilter(new FixedObjectProvider<>(redisTemplate), 1);
+
+        assertThat(loginBucketKeyUsedBy(behindProxy, "10.0.0.9", "203.0.113.7"))
+                .isEqualTo("ratelimit:auth_ip:/v2/auth/login:203.0.113.7");
+        assertThat(loginBucketKeyUsedBy(behindProxy, "10.0.0.9", "203.0.113.8"))
+                .isEqualTo("ratelimit:auth_ip:/v2/auth/login:203.0.113.8");
+    }
+
+    @Test
+    @DisplayName("Sprint 341（DEF-501）：沒設代理層數（預設）時，登入限流不採信 X-Forwarded-For——攻擊者無法靠每次換一個偽造值繞過 IP 限流")
+    void withoutProxyConfig_loginBucketIgnoresForgedForwardedFor() throws Exception {
+        LoginRateLimitFilter filter = newFilter();
+
+        assertThat(loginBucketKeyUsedBy(filter, "198.51.100.4", "1.1.1.1"))
+                .isEqualTo("ratelimit:auth_ip:/v2/auth/login:198.51.100.4");
+        assertThat(loginBucketKeyUsedBy(filter, "198.51.100.4", "2.2.2.2"))
+                .isEqualTo("ratelimit:auth_ip:/v2/auth/login:198.51.100.4");
+    }
 }

@@ -129,6 +129,26 @@ app:
   cors:
     # 逗號分隔多個前端來源；正式環境以 APP_CORS_ALLOWED_ORIGINS 覆寫（不可用 *，因 allowCredentials=true）
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8080}
+  # ---- 前面有沒有反向代理／負載平衡器／CDN？（Sprint 341，DEF-501／DEF-487）----
+  # 全專案唯一與「前面有沒有代理」有關的設定，只有這一個數字：訪客的請求抵達本後端之前，要經過幾層代理。
+  #   0（預設）  沒有代理，訪客直連（現況：docker-compose.yml 沒有 nginx／traefik）。來源 IP ＝ TCP 對端位址，完全不看 X-Forwarded-For。
+  #   1          一層（nginx、Traefik、Caddy、AWS ALB、雲端負載平衡器…）
+  #   2          兩層（例如 Cloudflare ＋ nginx）；依此類推，上限 10，超出範圍啟動失敗。
+  # 為什麼需要：後端用「來源 IP」限流——匿名每 IP 每分鐘 100 次（RateLimitFilter）、登入／註冊等每 IP 每路徑每分鐘 30 次
+  # （LoginRateLimitFilter）。前面有代理卻沒設，每個請求的對端位址都是代理，所有訪客共用同一個桶，正常使用者互相擋。
+  # 設了之後：取 X-Forwarded-For 由右數第 N 項（每一層代理都會把它看到的對端位址附加在最右邊）；左邊更多的項目是訪客自己填的，
+  # 一律不採信。決定來源 IP 的程式只有一處：api/filter/ClientIpResolver。
+  # 前端（Next）伺服器代訪客呼叫後端時，會把收到的 X-Forwarded-For 原封不動帶過來（不附加、不改寫），
+  # 所以「訪客→代理→Next→後端」與「訪客→代理→後端」到這裡是同樣的 N 項——同一個數字兩條路都適用，前端不必另外設定。
+  # 設成 1 以上時，下面兩個條件必須同時成立（否則反而讓人可以偽造 IP 繞過限流）：
+  #   ① 代理必須「附加」X-Forwarded-For，不是覆寫（nginx：proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for；
+  #      Traefik、Caddy、AWS ALB、Cloudflare 預設就是附加）。
+  #   ② 後端 8080 與前端 3000 不能有繞過代理的直連入口：直連者可以自己填 X-Forwarded-For 假冒任何 IP。有代理之後只開放代理的 80／443。
+  # 不需要設定的事：TLS 在哪終止。代理只要送 X-Forwarded-Proto: https，後端與前端就會送 HSTS（SecurityHeaderPolicy、frontend/next.config.ts）。
+  # 設錯的徵兆：後端日誌出現「[ClientIp] … 改用對端位址」警告（只印一次），或 429 日誌裡所有請求的 IP 都是同一個。
+  # 部署時透過環境變數 APP_TRUSTED_PROXY_HOPS 設定（.env.example 有同樣的說明；docker-compose.yml 已傳遞）。
+  network:
+    trusted-proxy-hops: ${APP_TRUSTED_PROXY_HOPS:0}
   mail:
     # 寄件位址：預設沿用 spring.mail.username（一定能通過 Gmail 驗證）。改成其他位址前，
     # 須先在該 Google 帳戶的「設定 → 帳戶與匯入 → 代收郵件」新增並驗證為寄件別名，否則 Gmail

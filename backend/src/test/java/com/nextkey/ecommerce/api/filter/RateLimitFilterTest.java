@@ -220,12 +220,15 @@ class RateLimitFilterTest {
     private static final UUID SYSTEM_TENANT_ID = UUID.fromString(AppConstants.SYSTEM_TENANT_ID);
 
     /** 依序送出請求，回傳每一次實際送進 Redis script 的第一個 key（可在同一個測試內多次呼叫，每次只計本次的呼叫）。 */
-    @SuppressWarnings("unchecked")
     private List<String> bucketKeysUsedFor(final MockHttpServletRequest... requests) throws Exception {
+        return bucketKeysUsedBy(newFilter(), requests);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> bucketKeysUsedBy(final RateLimitFilter filter, final MockHttpServletRequest... requests) throws Exception {
         clearInvocations(redisTemplate);
         when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any(), any(), any()))
                 .thenReturn("1:99:0");
-        RateLimitFilter filter = newFilter();
         for (MockHttpServletRequest request : requests) {
             filter.doFilter(request, new MockHttpServletResponse(), (req, res) -> { });
         }
@@ -277,5 +280,51 @@ class RateLimitFilterTest {
         List<String> keys = bucketKeysUsedFor(requestFrom("10.0.0.1"), requestFrom("10.0.0.2"), requestFrom("10.0.0.1"));
 
         assertThat(keys).containsExactly("ratelimit:ip:10.0.0.1", "ratelimit:ip:10.0.0.2", "ratelimit:ip:10.0.0.1");
+    }
+
+    private static MockHttpServletRequest requestViaProxy(final String proxyAddr, final String forwardedFor) {
+        MockHttpServletRequest request = requestFrom(proxyAddr);
+        request.addHeader("X-Forwarded-For", forwardedFor);
+        return request;
+    }
+
+    @Test
+    @DisplayName("Sprint 341（DEF-501）：前面有一層代理（APP_TRUSTED_PROXY_HOPS=1）時，匿名請求依代理附加的訪客 IP 分桶，不再全部共用代理那一個桶")
+    void systemTenant_anonymous_behindProxy_isBucketedByForwardedVisitor() throws Exception {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+        RateLimitFilter behindProxy = new RateLimitFilter(new FixedObjectProvider<>(redisTemplate), 1);
+
+        List<String> keys = bucketKeysUsedBy(behindProxy,
+                requestViaProxy("10.0.0.9", "203.0.113.7"),
+                requestViaProxy("10.0.0.9", "203.0.113.8"),
+                requestViaProxy("10.0.0.9", "forged-by-visitor-1, 203.0.113.7"));
+
+        assertThat(keys).containsExactly("ratelimit:ip:203.0.113.7", "ratelimit:ip:203.0.113.8", "ratelimit:ip:203.0.113.7");
+    }
+
+    @Test
+    @DisplayName("Sprint 341（DEF-501）：沒設代理層數（預設）時，X-Forwarded-For 存在也不採信——訪客無法靠偽造標頭換桶來繞過限流")
+    void systemTenant_anonymous_withoutProxyConfig_forgedForwardedForDoesNotChangeBucket() throws Exception {
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+
+        List<String> keys = bucketKeysUsedFor(requestViaProxy("198.51.100.4", "1.1.1.1"), requestViaProxy("198.51.100.4", "2.2.2.2"));
+
+        assertThat(keys).containsExactly("ratelimit:ip:198.51.100.4", "ratelimit:ip:198.51.100.4");
+    }
+
+    @Test
+    @DisplayName("Sprint 341：代理層數只影響匿名請求的來源 IP；店鋪租戶與已登入使用者的限流單位不變")
+    void proxyConfig_doesNotChangeTenantOrUserBuckets() throws Exception {
+        RateLimitFilter behindProxy = new RateLimitFilter(new FixedObjectProvider<>(redisTemplate), 1);
+        UUID storeTenant = UUID.randomUUID();
+        TenantContext.setCurrentTenant(storeTenant);
+        assertThat(bucketKeysUsedBy(behindProxy, requestViaProxy("10.0.0.9", "203.0.113.7")))
+                .containsExactly("ratelimit:tenant:" + storeTenant);
+
+        UUID user = UUID.randomUUID();
+        TenantContext.setCurrentTenant(SYSTEM_TENANT_ID);
+        TenantContext.setCurrentUser(user);
+        assertThat(bucketKeysUsedBy(behindProxy, requestViaProxy("10.0.0.9", "203.0.113.7")))
+                .containsExactly("ratelimit:user:" + user);
     }
 }

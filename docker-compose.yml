@@ -96,6 +96,9 @@ services:
       - APP_FRONTEND_BASE_URL=${APP_FRONTEND_BASE_URL:-http://localhost:3000}
       - APP_CORS_ALLOWED_ORIGINS=${APP_CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8080}
       - APP_SCHEDULING_ENABLED=${APP_SCHEDULING_ENABLED:-true}
+      # 反向代理層數（Sprint 341，DEF-501；使用者明確指示規劃單一參數）：說明見 .env.example 與 backend/src/main/resources/application.yml。
+      # 預設 0＝沒有代理，行為與先前完全相同；只有前面真的有代理時才改。
+      - APP_TRUSTED_PROXY_HOPS=${APP_TRUSTED_PROXY_HOPS:-0}
     depends_on:
       postgres:
         condition: service_healthy

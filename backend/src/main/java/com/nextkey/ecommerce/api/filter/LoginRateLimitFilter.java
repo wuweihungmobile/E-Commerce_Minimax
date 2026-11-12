@@ -11,6 +11,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -48,11 +50,12 @@ import lombok.extern.slf4j.Slf4j;
  * <p><b>Sprint 204</b>：另涵蓋忘記密碼、重設密碼、Email 驗證（含重寄）四個端點（見 {@code RATE_LIMITED_PATHS}），
  * 同樣以「路徑+IP」獨立計量。
  *
- * <p>本專案沒有反向代理／CDN 在前端終止連線（見 {@code docker-compose.yml} 無 nginx/traefik
- * service），故直接信任 {@link HttpServletRequest#getRemoteAddr()} 作為真實來源 IP；刻意不採信
- * {@code X-Forwarded-For} 之類的 client 可自訂 header，否則攻擊者只要每次帶不同的偽造標頭值
- * 就能讓伺服器誤判為不同來源，直接繞過限流。若未來加入受信任的反向代理，須改用該代理層寫入的
- * 標頭並限定只信任該代理節點，此檔屆時需要一併調整。
+ * <p>來源 IP 由 {@link ClientIpResolver} 決定（Sprint 341，DEF-501）。預設（{@code APP_TRUSTED_PROXY_HOPS=0}，
+ * 目前的部署：{@code docker-compose.yml} 沒有 nginx/traefik）直接信任 {@link HttpServletRequest#getRemoteAddr()}；
+ * 刻意不採信 {@code X-Forwarded-For} 之類的 client 可自訂 header，否則攻擊者只要每次帶不同的偽造標頭值
+ * 就能讓伺服器誤判為不同來源，直接繞過限流。前面有反向代理時，把層數設進 {@code APP_TRUSTED_PROXY_HOPS}：
+ * 解析器只取代理自己附加的那一項（由右數第 N 個），左邊訪客填的一律不採信；沒設的話所有訪客的對端位址都是
+ * 代理，會共用同一個登入桶（30 次／分），正常使用者互相擋。
  *
  * <p>Token Bucket 演算法與 Lua script 比照 {@link RateLimitFilter}（同樣以單支 Lua script 原子
  * 讀取-補充-扣除，避免高併發下的 race condition；Redis 故障時 fail-open，理由相同：避免快取層
@@ -124,12 +127,21 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
     // 窄切片測試也能建構此 Filter 而不失敗
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final ClientIpResolver clientIpResolver;
 
+    /** 沒有反向代理（層數 0）：單元測試與不關心代理的呼叫端用。 */
     public LoginRateLimitFilter(final ObjectProvider<StringRedisTemplate> redisTemplateProvider) {
+        this(redisTemplateProvider, 0);
+    }
+
+    @Autowired
+    public LoginRateLimitFilter(final ObjectProvider<StringRedisTemplate> redisTemplateProvider,
+                                @Value("${app.network.trusted-proxy-hops:0}") final int trustedProxyHops) {
         this.redisTemplate = redisTemplateProvider.getIfAvailable();
         this.objectMapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        this.clientIpResolver = new ClientIpResolver(trustedProxyHops);
     }
 
     @Override
@@ -141,7 +153,7 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
-        String clientIp = request.getRemoteAddr();
+        String clientIp = clientIpResolver.resolve(request);
         String rateLimitKey = KEY_PREFIX + request.getServletPath() + ":" + clientIp;
 
         String result;

@@ -145,4 +145,61 @@ class RateLimitFilterIntegrationTest {
                 .as("匿名請求（以來源 IP 為單位）也不受使用者 A 影響")
                 .isTrue();
     }
+
+    // Sprint 341（DEF-501）：前面有反向代理時，後端看到的對端位址都是代理。以下用真 Redis 驗證 APP_TRUSTED_PROXY_HOPS 的實際效果。
+    // 位址每次隨機產生：Redis 的桶會留 120 秒，固定位址會讓重跑的測試吃到上一輪的餘額。
+
+    private static String randomAddress() {
+        return "10." + (int) (Math.random() * 250) + "." + (int) (Math.random() * 250) + "." + (int) (Math.random() * 250);
+    }
+
+    private boolean sendViaProxy(final RateLimitFilter filter, final String proxyAddr, final String visitorAddr) throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/v2/products");
+        request.setRemoteAddr(proxyAddr);
+        request.addHeader("X-Forwarded-For", visitorAddr);
+        boolean[] chainCalled = {false};
+        filter.doFilter(request, new MockHttpServletResponse(), (req, res) -> chainCalled[0] = true);
+        return chainCalled[0];
+    }
+
+    @Test
+    @DisplayName("Sprint 341（DEF-501）：沒設代理層數時，代理後面的所有訪客共用代理那一個桶——一位訪客打滿，其他訪客一起被擋（要修的問題本身）")
+    void behindProxyWithoutConfig_allVisitorsShareTheProxyBucket() throws Exception {
+        RateLimitFilter filter = new RateLimitFilter(new FixedObjectProvider<>(redisTemplate), 0);
+        TenantContext.setCurrentTenant(UUID.fromString(AppConstants.SYSTEM_TENANT_ID));
+        String proxy = randomAddress();
+        String heavyVisitor = randomAddress();
+        String innocentVisitor = randomAddress();
+
+        for (int i = 0; i < 100; i++) {
+            sendViaProxy(filter, proxy, heavyVisitor);
+        }
+        boolean denied = false;
+        for (int i = 0; i < BURST_AFTER_QUOTA && !denied; i++) {
+            denied = !sendViaProxy(filter, proxy, innocentVisitor);
+        }
+
+        assertThat(denied).as("另一位訪客什麼都沒做，卻因為共用代理的位址而被擋").isTrue();
+    }
+
+    @Test
+    @DisplayName("Sprint 341（DEF-501）：設了一層代理（APP_TRUSTED_PROXY_HOPS=1）後，每位訪客各自一個桶，一位打滿不影響另一位")
+    void behindProxyWithOneHop_eachVisitorHasOwnBucket() throws Exception {
+        RateLimitFilter filter = new RateLimitFilter(new FixedObjectProvider<>(redisTemplate), 1);
+        TenantContext.setCurrentTenant(UUID.fromString(AppConstants.SYSTEM_TENANT_ID));
+        String proxy = randomAddress();
+        String heavyVisitor = randomAddress();
+        String innocentVisitor = randomAddress();
+
+        for (int i = 0; i < 100; i++) {
+            sendViaProxy(filter, proxy, heavyVisitor);
+        }
+        boolean heavyDenied = false;
+        for (int i = 0; i < BURST_AFTER_QUOTA && !heavyDenied; i++) {
+            heavyDenied = !sendViaProxy(filter, proxy, heavyVisitor);
+        }
+
+        assertThat(heavyDenied).as("打滿的那位訪客自己仍然會被限流（限流沒有因為設了代理而失效）").isTrue();
+        assertThat(sendViaProxy(filter, proxy, innocentVisitor)).as("同一個代理後面的另一位訪客不受影響").isTrue();
+    }
 }

@@ -53,3 +53,15 @@
 ## 驗證
 
 見 [SPRINT_331_PLAN.md](../../04_planning/SPRINT_331_PLAN.md)：ESLint 守門的探針驗證、hook 與測試套件的突變驗證（§2.4.1～§2.4.2）、架構守門測試的突變驗證（§2.4.3）、前後差異探針、完整本地 E2E 守門。
+
+## 補充（Sprint 341，DEF-500）：公開頁的首份資料由伺服器端取
+
+決策 1～4 不變（請求寫在 `services/`、載入狀態寫在 `useAsyncData`、登入守門在外殼）。上面「考慮的選項」B 寫的「沒有 SSR 預取的場景」**在公開頁已經不成立**：為了讓搜尋引擎與不執行 JavaScript 的爬蟲看得到內容，公開頁（首頁、商品、房源、店鋪、部落格、商品詳情）的**首份資料改由 Next 伺服器端取、隨第一份 HTML 送出**。
+
+- **做法**：server `page.tsx` 用 `lib/server-api.ts` 的 `fetchPublic`（結果分成功／不存在／不可用三種）取資料 → 以 `initial*` 屬性傳給既有的用戶端元件 → 元件交給 `useAsyncData` 的 `initialData`。有 `initialData` 時首次渲染 `loading=false`、不發請求；依賴改變或 `reload()` 照常請求；伺服器端沒取到就不傳，元件退回原本的瀏覽器端載入。`useAsyncData` 的其餘行為（競態、衍生的 loading／error、`setData`）完全不變。
+- **這是「請求只寫在 services/」的有意例外**：伺服器端不能用 `services/`（axios、`localStorage` 憑證、`NEXT_PUBLIC_API_URL` 都是給瀏覽器的），所以另有 `lib/server-api.ts`（打後端公開端點）與 `lib/public-api.ts`（路徑與每頁筆數）。兩邊必須取同一批端點、同一組查詢參數，否則伺服器端渲染出的第一頁與瀏覽器之後載入的不一致——由 `lib/public-api.test.ts` 的**契約測試**守住（實際呼叫 `services/`、攔下送出的請求，與伺服器端的路徑逐項比對）。
+- **公開頁的失敗語意**：後端明確回 404 → `notFound()`（真正的 HTTP 404＋noindex，不是 200 加「找不到」畫面）；其餘失敗（429、5xx、逾時）→ **絕不是 404**，不帶資料、由瀏覽器載入。`useAsyncData` 的失敗畫面（DEF-468）因此仍然需要：它是伺服器端取不到時的備援。
+- **新增的架構守門**：`src/architecture/public-ssr.test.ts`（公開頁登記表、分頁是連結、店鋪存在只由 layout 判定、私人區域 `noindex`、輸出不依賴伺服器與瀏覽器各自的環境）。
+- **測試上的後果**：靠 `page.route` 模擬資料的 E2E 攔不到伺服器端的請求，改在「SSR 不可用」Playwright 專案（後端位址故意不通的第二台 Next）執行，驗證的正是這個備援路徑；真實後端的 `at-seo-ssr-real.spec.ts` 以「不執行 JavaScript」的 HTTP 請求驗證第一份 HTML。
+
+細節見 [SPRINT_341_PLAN.md](../../04_planning/SPRINT_341_PLAN.md) §2.4。

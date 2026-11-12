@@ -7,25 +7,18 @@ import { SortToolbar } from "@/components/storefront/SortToolbar"
 import { ProductCard } from "@/components/storefront/ProductCard"
 import { Pagination } from "@/components/ui/pagination"
 import { Skeleton } from "@/components/ui/skeleton"
-import listingService from "@/services/listing"
+import listingService, { type Listing, type Page } from "@/services/listing"
 import { useAsyncData } from "@/hooks/useAsyncData"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from '@/components/ui/states'
 import { PageTitle } from "@/components/ui/page-title"
+import { LIST_PAGE_SIZE as PAGE_SIZE, SORT_MAP } from "@/lib/public-api"
 
 const SORT_TABS = [
   { id: "newest", label: "最新" },
   { id: "priceAsc", label: "價格低到高" },
   { id: "priceDesc", label: "價格高到低" },
 ]
-
-const SORT_MAP: Record<string, { sortBy: string; sortDir: "ASC" | "DESC" }> = {
-  newest: { sortBy: "createdAt", sortDir: "DESC" },
-  priceAsc: { sortBy: "basePrice", sortDir: "ASC" },
-  priceDesc: { sortBy: "basePrice", sortDir: "DESC" },
-}
-
-const PAGE_SIZE = 12
 
 export interface ListingTypeBrowserProps {
   /** 固定瀏覽類型——與首頁 HomeContent 不同，本頁沒有「全部商品」切換，類型由路由本身決定 */
@@ -39,13 +32,17 @@ export interface ListingTypeBrowserProps {
   keyword: string
   /** 0-based 頁碼，由 server page 依 URL `page` 解析 */
   page: number
+  /** 伺服器端已取好的這一頁（SEO 的伺服器端渲染，DEF-500）：有就直接用、不再請求；沒有（沒取到）就由瀏覽器自己載入 */
+  initialResult?: Page<Listing>
 }
 
 // 跨店鋪公開商品/房源瀏覽（PRD §10.1.1 `/products`、`/rooms`，DEF-358(a)，Sprint 259）。
 // 與 HomeContent.tsx 共用同一套 URL-driven 篩選 + 四態處理骨架，差異僅在：固定 type（無分類
 // 切換側欄）、呼叫端自訂 basePath（HomeContent 寫死導回 "/"）。資料來源同為公開端點
 // getPublicListings，匿名可用，不需要 needsAuth 分支。
-export function ListingTypeBrowser({ type, basePath, emptyMessage, sortTab, keyword, page }: ListingTypeBrowserProps) {
+//
+// SEO（DEF-500，Sprint 341）：server page 先取好這一頁以 initialResult 傳進來，第一份 HTML 就有商品卡片與連結；分頁是真正的連結。
+export function ListingTypeBrowser({ type, basePath, emptyMessage, sortTab, keyword, page, initialResult }: ListingTypeBrowserProps) {
   const router = useRouter()
   const { data: result, error, loading, reload } = useAsyncData(
     () => {
@@ -60,27 +57,25 @@ export function ListingTypeBrowser({ type, basePath, emptyMessage, sortTab, keyw
       })
     },
     [type, sortTab, keyword, page],
-    { errorMessage: "載入失敗，請稍後再試" }
+    { errorMessage: "載入失敗，請稍後再試", initialData: initialResult }
   )
   // 失敗時不顯示舊資料（與原本失敗後清成 null 相同）
   const data = error === null ? result : undefined
 
-  const navigate = useCallback(
-    (next: { sort?: string; page?: number }) => {
-      const s = next.sort ?? sortTab
-      const p = next.page ?? 0
+  // 網址：只帶非預設值，第 1 頁不帶 page；page 是 0-based，網址是 1-based
+  const hrefFor = useCallback(
+    (sort: string, pageIndex: number) => {
       const params = new URLSearchParams()
-      if (s !== "newest") params.set("sort", s)
+      if (sort !== "newest") params.set("sort", sort)
       if (keyword) params.set("keyword", keyword)
-      if (p > 0) params.set("page", String(p + 1)) // URL 為 1-based
+      if (pageIndex > 0) params.set("page", String(pageIndex + 1))
       const qs = params.toString()
-      router.push(qs ? `${basePath}?${qs}` : basePath)
+      return qs ? `${basePath}?${qs}` : basePath
     },
-    [sortTab, keyword, basePath, router]
+    [keyword, basePath]
   )
 
-  const handleSort = (id: string) => navigate({ sort: id, page: 0 })
-  const handlePageChange = (oneBased: number) => navigate({ page: oneBased - 1 })
+  const handleSort = (id: string) => router.push(hrefFor(id, 0))
   const handleRetry = () => {
     reload()
   }
@@ -147,7 +142,7 @@ export function ListingTypeBrowser({ type, basePath, emptyMessage, sortTab, keyw
         <Pagination
           current={page + 1}
           total={data.totalPages}
-          onChange={handlePageChange}
+          hrefFor={(oneBased) => hrefFor(sortTab, oneBased - 1)}
         />
       )}
     </StorefrontShell>

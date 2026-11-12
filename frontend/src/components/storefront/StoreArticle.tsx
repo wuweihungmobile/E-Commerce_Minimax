@@ -1,14 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { getPublishedPostBySlug, getListingCard } from '@/services/cms';
+import { getPublishedPostBySlug, getListingCard, type ListingCardResponse, type PostResponse } from '@/services/cms';
 import { useAsyncData } from '@/hooks/useAsyncData';
 import { ErrorState } from '@/components/ui/states';
 import { Alert } from '@/components/ui/alert';
 import { Card } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
+import { ArticleNotFound } from '@/components/storefront/ArticleNotFound';
 import { cn } from '@/lib/utils';
 import { storeBlogPath } from '@/lib/article-path';
+import { EMBED_LISTING_PATTERN } from '@/lib/article-embeds';
+import { formatPublicDate } from '@/lib/date';
 
 // PRD §6.6.3：只有「listing_id 不存在（已刪除或格式有誤）」才是「此商品已下架」。後端對這兩種情形分別回
 // 404（E-3000 找不到刊登項目）與 400（E-9000 路徑參數格式錯誤）；其餘失敗（網路中斷、5xx、429…）商品可能好好的，
@@ -17,14 +20,17 @@ function isListingMissing(status: number | undefined): boolean {
   return status === 404 || status === 400;
 }
 
-// 文章內嵌的商品／房源卡片：每張卡自己載入自己的資料（DEF-321(d)，PRD §6.6.3）
-function EmbeddedListingCard({ listingId }: { listingId: string }) {
+// 文章內嵌的商品／房源卡片：每張卡自己載入自己的資料（DEF-321(d)，PRD §6.6.3）。
+// initialCard：伺服器端已取好的卡片（SEO 的伺服器端渲染，DEF-500）——卡片是文章內容的一部分，第一份 HTML 就該有；
+// 沒取到（商品已下架、後端暫時不可用）就不傳，由這張卡自己載入並顯示「此商品已下架」或錯誤。
+function EmbeddedListingCard({ listingId, initialCard }: { listingId: string; initialCard?: ListingCardResponse }) {
   const { data: card, error, errorInfo, loading, reload } = useAsyncData(
     (signal) => getListingCard(listingId, { signal }),
     [listingId],
     {
       errorMessage: '載入商品卡片失敗',
       onError: (_message, err) => console.error('Failed to load listing card:', listingId, err),
+      initialData: initialCard,
     }
   );
 
@@ -92,7 +98,7 @@ function EmbeddedListingCard({ listingId }: { listingId: string }) {
           <div className="mt-2 flex items-center justify-between">
             {card.currentPrice !== null ? (
               <span className="text-lg font-bold text-rs-primary">
-                {card.currency} {card.currentPrice.toLocaleString()}
+                {card.currency} {card.currentPrice.toLocaleString('zh-TW')}
               </span>
             ) : (
               <span className="text-sm text-rs-disabled-text">無定價</span>
@@ -117,8 +123,8 @@ function EmbeddedListingCard({ listingId }: { listingId: string }) {
   );
 }
 
-function renderContentWithEmbeds(content: string): React.ReactNode[] {
-  const embedPattern = /{{embed:listing:([a-f0-9-]+)}}/gi;
+function renderContentWithEmbeds(content: string, initialCards?: Record<string, ListingCardResponse>): React.ReactNode[] {
+  const embedPattern = new RegExp(EMBED_LISTING_PATTERN.source, 'gi'); // g 旗標有狀態，每次呼叫自己一個
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -129,7 +135,7 @@ function renderContentWithEmbeds(content: string): React.ReactNode[] {
       parts.push(content.slice(lastIndex, match.index));
     }
 
-    parts.push(<EmbeddedListingCard key={`embed-${match[1]}`} listingId={match[1]} />);
+    parts.push(<EmbeddedListingCard key={`embed-${match[1]}`} listingId={match[1]} initialCard={initialCards?.[match[1]]} />);
 
     lastIndex = match.index + match[0].length;
   }
@@ -148,17 +154,27 @@ export interface StoreArticleProps {
   /** 店鋪的 tenantId：由 StoreLayout 載入的公開店鋪資料提供（不再讀瀏覽器 localStorage，匿名訪客也能讀） */
   tenantId: string;
   postSlug: string;
+  /** 伺服器端已取好的文章（SEO 的伺服器端渲染，DEF-500；取的時候不計瀏覽）：有就直接用，沒有（沒取到）就由瀏覽器自己載入 */
+  initialPost?: PostResponse;
+  /** 伺服器端已取好的文章內嵌卡片（商品／房源編號 → 卡片） */
+  initialCards?: Record<string, ListingCardResponse>;
 }
 
 // 店鋪前台的單篇文章（Sprint 336，DEF-483）：從原本的 /blog/[slug] 搬來。
 // 原本的頁面靠 localStorage 的 tenantId 取文章，而它只有登入才會寫入，所以匿名訪客（包含從公開的店鋪貼文列表點進來的人、
 // 搜尋引擎與連結預覽）只看得到「請先登入並設定店鋪以瀏覽部落格」。現在店鋪由網址決定、tenantId 由公開的店鋪資料提供。
-export function StoreArticle({ storeSlug, tenantId, postSlug }: StoreArticleProps) {
+//
+// SEO（DEF-500，Sprint 341）：server page 先取好文章與內嵌卡片，第一份 HTML 就有文章全文（以前是「載入中...」）。
+// 伺服器端取文章「不計瀏覽」（countView=false，爬蟲與連結預覽不是一次瀏覽，見後端 PostService.getPublishedPostBySlug），
+// 所以瀏覽器載入頁面時在這裡計一次，並用回應裡含本次的瀏覽數更新畫面——一次真正的瀏覽只計一次，顯示的數字也和以前一樣包含這一次。
+export function StoreArticle({ storeSlug, tenantId, postSlug, initialPost, initialCards }: StoreArticleProps) {
   const blogHref = `/stores/${encodeURIComponent(storeSlug)}/blog`;
-  const { data: post, error, loading } = useAsyncData(
+  const { data: loaded, error, loading } = useAsyncData(
     (signal) => getPublishedPostBySlug(postSlug, tenantId, { signal }),
     [postSlug, tenantId],
     {
+      // 伺服器端已經帶來文章就不必再載入；沒帶（沒取到）時這一次載入同時就是那一次瀏覽（後端預設計瀏覽）
+      enabled: !initialPost,
       // 文章不存在或未發布（後端 404）對訪客是正常情形，用白話說明；其餘維持原本的優先順序：
       // Error 實例（含 axios 錯誤）優先用它的 message，其餘才用伺服器訊息或後備文案
       errorMessage: (info, err) =>
@@ -166,6 +182,15 @@ export function StoreArticle({ storeSlug, tenantId, postSlug }: StoreArticleProp
       onError: (_message, err) => console.error('Failed to load post:', err),
     }
   );
+  // 計一次瀏覽（只在伺服器端已經帶來文章時；否則上面那一次載入就是）。失敗只是瀏覽數少 1，不影響閱讀，所以不顯示錯誤
+  const { data: counted } = useAsyncData(
+    (signal) => getPublishedPostBySlug(postSlug, tenantId, { signal }),
+    [postSlug, tenantId],
+    { enabled: Boolean(initialPost), errorMessage: '計算瀏覽數失敗' }
+  );
+  const post = initialPost ?? loaded;
+  // 換文章時 hook 會保留上一篇的結果直到新結果到來：只採用「就是這一篇」的計數
+  const viewCount = counted && post && counted.id === post.id ? counted.viewCount : post?.viewCount;
 
   if (loading) {
     return (
@@ -176,16 +201,7 @@ export function StoreArticle({ storeSlug, tenantId, postSlug }: StoreArticleProp
   }
 
   if (error || !post) {
-    return (
-      <div className="py-12 text-center" data-testid="store-article-notfound">
-        {/* 店鋪外殼已經有一個 h1（店名），文章區的標題用 h2 */}
-        <h2 className="text-xl font-semibold text-rs-ink mb-4">找不到文章</h2>
-        <p className="text-rs-ink-muted mb-6">{error || '此文章不存在或已下架'}</p>
-        <Link href={blogHref} prefetch={false} className="text-rs-primary hover:underline">
-          返回部落格
-        </Link>
-      </div>
-    );
+    return <ArticleNotFound blogHref={blogHref} message={error} />;
   }
 
   return (
@@ -217,12 +233,10 @@ export function StoreArticle({ storeSlug, tenantId, postSlug }: StoreArticleProp
               <span>{post.authorName}</span>
               <span className="mx-2">•</span>
               <span>
-                {post.publishedAt
-                  ? new Date(post.publishedAt).toLocaleDateString('zh-TW')
-                  : new Date(post.createdAt).toLocaleDateString('zh-TW')}
+                {formatPublicDate(post.publishedAt || post.createdAt)}
               </span>
               <span className="mx-2">•</span>
-              <span>{post.viewCount} 次瀏覽</span>
+              <span>{viewCount} 次瀏覽</span>
             </div>
 
             {/* Title（店鋪外殼已經有一個 h1，文章標題用 h2） */}
@@ -246,7 +260,7 @@ export function StoreArticle({ storeSlug, tenantId, postSlug }: StoreArticleProp
 
             {/* Content with Embeds */}
             <div className="prose max-w-none">
-              {renderContentWithEmbeds(post.content)}
+              {renderContentWithEmbeds(post.content, initialCards)}
             </div>
 
             {/* Tags */}

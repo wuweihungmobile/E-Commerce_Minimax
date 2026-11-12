@@ -24,7 +24,8 @@
 #   E2E_GATE_SKIP_BUILD=1 ./scripts/validate-e2e.sh   # 重用既有 JAR + .next（快，供本機快速回歸）
 #
 # 連接埠（backend 固定 8080、frontend 固定 3000 —— 前端打包 API URL 與 playwright baseURL 對齊）：
-#   - 需 8080 / 3000 空閒；DB/Redis 用非標準 port（55432/56379）避免撞本機 dev DB。
+#   - 需 8080 / 3000 / 3001 空閒（3001＝「SSR 不可用」模式的第二台前端，見 playwright.config.ts 的 ssr-unavailable 專案）；
+#     DB/Redis 用非標準 port（55432/56379）避免撞本機 dev DB。
 #
 # 退出碼：0 = 全綠；1 = E2E 失敗 / schema 漂移；2 = 環境/前置錯誤
 ###############################################################################
@@ -42,6 +43,9 @@ RD_PORT="${E2E_GATE_RD_PORT:-56379}"
 PG_USER="koala"; PG_PASS="koala5"; PG_DB="nextkeytest"
 BACKEND_PORT="${E2E_GATE_BACKEND_PORT:-8080}"     # 與前端打包 NEXT_PUBLIC_API_URL 預設值對齊
 FRONTEND_PORT="${E2E_GATE_FRONTEND_PORT:-3000}"   # playwright.config.ts baseURL 固定 3000
+# Sprint 341（DEF-500）：第二台前端——「伺服器端渲染不可用」模式（後端位址故意不通），給 playwright.config.ts 的 ssr-unavailable 專案用。
+# 公開頁的首份資料改由 Next 伺服器端取之後，靠 page.route 模擬資料的規格要在「伺服器端取不到、由瀏覽器載入」的伺服器上跑。
+FRONTEND_FALLBACK_PORT="${E2E_GATE_FRONTEND_FALLBACK_PORT:-3001}"
 # 🔴 必須是 .../api（不可含 /v2）：前端 lib/api.ts 預設 baseUrl 即 http://localhost:8080/api，
 # 且 API_ENDPOINTS 路徑已含 /v2（如 /v2/auth/register）。若這裡誤帶 /v2 會變成 /api/v2/v2/auth/register
 # → servlet path 不匹配任何 permitAll → 落入 anyRequest().authenticated() → 401「Authentication required」
@@ -54,7 +58,8 @@ GATE_JWT_VALUE=e2e-gate-dummy-jwt-signing-value-min-32-chars-for-hs256-algo
 WAIT_SECONDS="${E2E_GATE_WAIT:-180}"
 BACKEND_LOG="$(mktemp -t e2e-gate-backend.XXXXXX)"
 FRONTEND_LOG="$(mktemp -t e2e-gate-frontend.XXXXXX)"
-BACKEND_PID=""; FRONTEND_PID=""
+FRONTEND_FALLBACK_LOG="$(mktemp -t e2e-gate-frontend-fallback.XXXXXX)"
+BACKEND_PID=""; FRONTEND_PID=""; FRONTEND_FALLBACK_PID=""
 
 log() { printf '\033[0;36m[e2e-gate]\033[0m %s\n' "$*"; }
 err() { printf '\033[0;31m[e2e-gate] ❌ %s\033[0m\n' "$*" >&2; }
@@ -62,14 +67,15 @@ ok()  { printf '\033[0;32m[e2e-gate] ✅ %s\033[0m\n' "$*"; }
 
 cleanup() {
   # 以 port 為主清掉 host 程序（kill PID 可能殺不到 npm 的 node 子程序）
-  for p in "$FRONTEND_PORT" "$BACKEND_PORT"; do
+  for p in "$FRONTEND_PORT" "$FRONTEND_FALLBACK_PORT" "$BACKEND_PORT"; do
     pids="$(lsof -ti "tcp:$p" 2>/dev/null || true)"
     [ -n "$pids" ] && kill $pids >/dev/null 2>&1 || true
   done
   [ -n "$FRONTEND_PID" ] && kill "$FRONTEND_PID" >/dev/null 2>&1 || true
+  [ -n "$FRONTEND_FALLBACK_PID" ] && kill "$FRONTEND_FALLBACK_PID" >/dev/null 2>&1 || true
   [ -n "$BACKEND_PID" ] && kill "$BACKEND_PID" >/dev/null 2>&1 || true
   docker rm -f "$PG_CONTAINER" "$RD_CONTAINER" >/dev/null 2>&1 || true
-  rm -f "$BACKEND_LOG" "$FRONTEND_LOG" >/dev/null 2>&1 || true
+  rm -f "$BACKEND_LOG" "$FRONTEND_LOG" "$FRONTEND_FALLBACK_LOG" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
 
@@ -83,6 +89,9 @@ if lsof -ti "tcp:${BACKEND_PORT}" >/dev/null 2>&1; then
 fi
 if lsof -ti "tcp:${FRONTEND_PORT}" >/dev/null 2>&1; then
   err "port ${FRONTEND_PORT} 已被占用（playwright baseURL 固定 3000）。請關閉占用該 port 的程序。"; exit 2
+fi
+if lsof -ti "tcp:${FRONTEND_FALLBACK_PORT}" >/dev/null 2>&1; then
+  err "port ${FRONTEND_FALLBACK_PORT} 已被占用（ssr-unavailable 專案的前端）。請關閉，或設 E2E_GATE_FRONTEND_FALLBACK_PORT 重試。"; exit 2
 fi
 
 # --- 1. 啟動乾淨 PostgreSQL + Redis（無 initdb，schema 全由 Flyway 建立）-------
@@ -121,6 +130,7 @@ SPRING_DATA_REDIS_HOST="localhost" \
 SPRING_DATA_REDIS_PORT="$RD_PORT" \
 SPRING_JPA_HIBERNATE_DDL_AUTO="validate" \
 SPRING_FLYWAY_ENABLED="true" \
+APP_CORS_ALLOWED_ORIGINS="http://localhost:${FRONTEND_PORT},http://localhost:${FRONTEND_FALLBACK_PORT},http://localhost:${BACKEND_PORT}" \
 APP_REFUND_INITIAL_DELAY_MS="3000" \
 APP_REFUND_CHECK_INTERVAL_MS="3000" \
 JWT_SECRET=$GATE_JWT_VALUE \
@@ -191,6 +201,18 @@ for i in $(seq 1 40); do
 done
 ok "frontend 就緒（:$FRONTEND_PORT）"
 
+# Sprint 341（DEF-500）：「伺服器端渲染不可用」模式的第二台前端（同一份建置，只差執行時的 API_INTERNAL_URL：指向沒人在聽的埠 1，
+# 伺服器端取後端資料一律立刻失敗，元件退回由瀏覽器載入）。瀏覽器端的 NEXT_PUBLIC_API_URL 不變，仍連真實後端。
+log "啟動 frontend（SSR 不可用模式）:$FRONTEND_FALLBACK_PORT ..."
+( cd frontend && NEXT_PUBLIC_API_URL="$API_URL" API_INTERNAL_URL="http://127.0.0.1:1/api" PORT="$FRONTEND_FALLBACK_PORT" npm run start > "$FRONTEND_FALLBACK_LOG" 2>&1 ) &
+FRONTEND_FALLBACK_PID=$!
+for i in $(seq 1 40); do
+  curl -fsS "http://localhost:${FRONTEND_FALLBACK_PORT}" >/dev/null 2>&1 && break
+  sleep 2
+  if [ "$i" -eq 40 ]; then err "frontend（SSR 不可用模式）未在 80s 內就緒"; tail -30 "$FRONTEND_FALLBACK_LOG" 2>/dev/null || true; exit 1; fi
+done
+ok "frontend（SSR 不可用模式）就緒（:$FRONTEND_FALLBACK_PORT）"
+
 # --- 5. 執行 Playwright E2E（baseURL=localhost:3000，reuseExistingServer）------
 #   到這裡為止：backend 以 ddl-auto=validate 對乾淨 DB 啟動成功 → schema 無漂移（硬性條件已過）。
 #   e2e spec 的 pass/fail 政策（Sprint 26 US-002/AI-1001 + DEF-014 修復後）：
@@ -200,13 +222,17 @@ ok "frontend 就緒（:$FRONTEND_PORT）"
 log "執行 Playwright E2E（npx playwright test）..."
 set +e
 # Sprint 204：忘記密碼／Email 驗證的信件是日誌型 Mock，E2E 從後端日誌取一次性連結（frontend/e2e/helpers/mailbox.ts）
-( cd frontend && E2E_BACKEND_LOG="$BACKEND_LOG" npx playwright test )
+( cd frontend && E2E_BACKEND_LOG="$BACKEND_LOG" E2E_SSR_UNAVAILABLE_URL="http://localhost:${FRONTEND_FALLBACK_PORT}" npx playwright test )
 E2E_EXIT=$?
 set -e
 # Sprint 306（DEF-420）：後端日誌在腳本結束時會被刪除（cleanup），而認證端點的 IP 限流有沒有被碰到、重試有沒有走到，只有這份日誌看得出來。
 # 先統計限流次數並印出；E2E 失敗時另存一份日誌（frontend/test-results/ 已被 git 忽略），不必等到第一次失敗才想到要搶救。
 RATE_LIMITED="$(grep -c 'exceeded rate limit on /v2/auth/' "$BACKEND_LOG" 2>/dev/null || true)"
 log "後端記錄到認證端點被限流 ${RATE_LIMITED:-0} 次（E2E 輔助函式遇到 HTTP 429 會依 Retry-After 重試；全綠時代表都已自癒）"
+# Sprint 341（DEF-487／DEF-500）：匿名每來源 IP 桶（每分鐘 100 次）被擋幾次。公開頁的首份資料改由 Next 伺服器端取之後，伺服器端的請求
+# 與瀏覽器、規格自己的 API 呼叫都從本機同一個 IP 出去，共用這個桶；Sprint 340 當時只統計認證端點、這個桶被擋幾次沒量過。
+ANON_LIMITED="$(grep -c 'Bucket ratelimit:ip:.* exceeded rate limit' "$BACKEND_LOG" 2>/dev/null || true)"
+log "後端記錄到匿名來源 IP 桶被限流 ${ANON_LIMITED:-0} 次（被擋的是公開頁的資料請求時，頁面會退回由瀏覽器載入；規格不一定失敗，但不為 0 就代表這套件已經逼近桶的容量）"
 if [ "$E2E_EXIT" -ne 0 ]; then
   mkdir -p frontend/test-results
   cp "$BACKEND_LOG" frontend/test-results/e2e-gate-backend.log 2>/dev/null \

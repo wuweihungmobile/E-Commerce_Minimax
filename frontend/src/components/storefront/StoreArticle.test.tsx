@@ -144,3 +144,51 @@ describe('找不到與失敗', () => {
     await waitFor(() => expect(box.textContent).toContain('500'))
   })
 })
+
+// DEF-500（Sprint 341）：SEO 的伺服器端渲染。server page 先取好文章全文（不計瀏覽），第一份 HTML 就有內文；
+// 一次「真正的瀏覽」由瀏覽器載入頁面時才計——爬蟲與連結預覽不是一次瀏覽，後端的瀏覽數不能被它們灌水（Sprint 336 的決定）。
+describe('伺服器端帶來的文章（initialPost）', () => {
+  const renderSsr = (initialPost = post()) =>
+    render(<StoreArticle storeSlug="demo" tenantId="tenant-1" postSlug="hand-brew" initialPost={initialPost} />)
+
+  it('第一個畫面就有標題與內文（同步就找得到＝在第一份 HTML 裡），沒有「載入中」', () => {
+    getPost.mockResolvedValue(post({ viewCount: 8 }))
+    renderSsr()
+
+    expect(screen.getByTestId('store-article-title').textContent).toBe('手沖入門：從選豆開始')
+    expect(screen.getByText('先選豆，再磨豆。')).toBeTruthy()
+    expect(screen.queryByTestId('store-article-loading')).toBeNull()
+  })
+
+  it('瀏覽器載入頁面時計一次瀏覽（請求不帶 countView:false），並把畫面上的瀏覽數更新成含本次的數字', async () => {
+    getPost.mockResolvedValue(post({ viewCount: 8 })) // 後端計一次之後回的是 7 + 1
+    renderSsr(post({ viewCount: 7 })) // 伺服器端取的是計之前的 7（不計瀏覽）
+
+    expect(screen.getByText(/7 次瀏覽/)).toBeTruthy()
+    await waitFor(() => expect(screen.getByText(/8 次瀏覽/)).toBeTruthy())
+    expect(getPost).toHaveBeenCalledTimes(1)
+    expect(
+      (getPost.mock.calls[0][2] as { countView?: boolean } | undefined)?.countView,
+      '這是那一次真正的瀏覽；帶 countView:false 的話瀏覽數永遠不會增加'
+    ).not.toBe(false)
+  })
+
+  it('計瀏覽失敗不影響閱讀：文章照常顯示、沒有錯誤畫面，瀏覽數維持伺服器端帶來的數字', async () => {
+    getPost.mockRejectedValue(httpError(500))
+    renderSsr(post({ viewCount: 7 }))
+
+    await waitFor(() => expect(getPost).toHaveBeenCalledTimes(1))
+    expect(screen.getByTestId('store-article-title')).toBeTruthy()
+    expect(screen.queryByTestId('store-article-notfound')).toBeNull()
+    expect(screen.getByText(/7 次瀏覽/)).toBeTruthy()
+  })
+
+  it('伺服器端沒取到文章（不傳）→ 與先前完全相同：載入中，由瀏覽器自己取（這一次請求同時就是那一次瀏覽，只計一次）', async () => {
+    getPost.mockResolvedValue(post())
+    renderArticle()
+
+    expect(screen.getByTestId('store-article-loading')).toBeTruthy()
+    await screen.findByTestId('store-article-title')
+    expect(getPost).toHaveBeenCalledTimes(1)
+  })
+})

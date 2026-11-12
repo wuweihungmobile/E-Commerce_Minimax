@@ -115,20 +115,20 @@ describe('篩選列', () => {
 })
 
 describe('翻頁', () => {
-  it('篩選中翻頁 → 網址同時帶 category 與 page（1-based）；沒有篩選時只帶 page', async () => {
+  // 分頁是真正的連結（DEF-500，Sprint 341）：搜尋引擎與不執行 JavaScript 的爬蟲只會沿著 <a href> 走
+  it('篩選中翻頁 → 連結同時帶 category 與 page（1-based）；沒有篩選時只帶 page', async () => {
     getCategories.mockResolvedValue(categoriesPage([category('c1', '旅遊筆記')]))
     getPosts.mockResolvedValue(postsPage([post('p1', '第一篇')], 3))
     const first = renderList({ categoryId: 'c1' })
     await screen.findByText('第一篇')
 
-    fireEvent.click(screen.getByRole('button', { name: '2' }))
-    expect(push).toHaveBeenLastCalledWith('/stores/demo/blog?category=c1&page=2')
+    expect(screen.getByRole('link', { name: '2' }).getAttribute('href')).toBe('/stores/demo/blog?category=c1&page=2')
     first.unmount()
 
     renderList()
     await screen.findByText('第一篇')
-    fireEvent.click(screen.getByRole('button', { name: '2' }))
-    expect(push).toHaveBeenLastCalledWith('/stores/demo/blog?page=2')
+    expect(screen.getByRole('link', { name: '2' }).getAttribute('href')).toBe('/stores/demo/blog?page=2')
+    expect(screen.getByRole('link', { name: '3' }).getAttribute('href')).toBe('/stores/demo/blog?page=3')
   })
 })
 
@@ -226,5 +226,37 @@ describe('換分類與翻頁的請求', () => {
 
     expect(getCategories, '分類與貼文各自請求：換分類或翻頁不該連分類一起重抓（篩選列會閃）').toHaveBeenCalledTimes(1)
     expect(screen.getByTestId('store-blog-categories'), '篩選列一直都在').toBeTruthy()
+  })
+})
+
+// DEF-500（Sprint 341）：SEO 的伺服器端渲染。server page 先取好分類與這一頁的貼文，第一份 HTML 就有貼文卡片（以前是載入中骨架）。
+describe('伺服器端帶來的初始資料（initialCategories／initialPosts）', () => {
+  it('第一個畫面就有篩選列與貼文，而且不再向後端請求分類與貼文', async () => {
+    renderList({
+      initialCategories: categoriesPage([category('c1', '旅遊筆記')]),
+      initialPosts: postsPage([post('p1', '伺服器端渲染的貼文')]),
+    })
+
+    const link = screen.getByText('伺服器端渲染的貼文').closest('a')
+    expect(link?.getAttribute('href'), '同步就能找到卡片＝它在第一份 HTML 裡').toBe('/stores/demo/blog/slug-p1')
+    expect(chipLabels()).toEqual(['全部', '旅遊筆記'])
+    await waitFor(() => expect(getPosts).not.toHaveBeenCalled())
+    expect(getCategories).not.toHaveBeenCalled()
+  })
+
+  it('指定的分類不存在：伺服器端只帶分類清單、沒有貼文 → 直接顯示「此分類不存在或已停用」，不送貼文請求', async () => {
+    renderList({ categoryId: 'nope', initialCategories: categoriesPage([category('c1', '旅遊筆記')]) })
+
+    expect(screen.getByTestId('store-blog-category-not-found').textContent).toContain('此分類不存在或已停用')
+    await waitFor(() => expect(getPosts).not.toHaveBeenCalled())
+  })
+
+  it('伺服器端沒取到（不傳）→ 與先前相同：骨架，再由瀏覽器自己請求', async () => {
+    getCategories.mockResolvedValue(categoriesPage([]))
+    getPosts.mockResolvedValue(postsPage([post('p1', '瀏覽器載入的貼文')]))
+    renderList()
+
+    expect(await screen.findByText('瀏覽器載入的貼文')).toBeTruthy()
+    expect(getPosts).toHaveBeenCalledTimes(1)
   })
 })

@@ -1,3 +1,4 @@
+import { renderToString } from 'react-dom/server'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -134,22 +135,25 @@ describe('平台層部落格：分頁走網址', () => {
     expect(getFeed.mock.calls[0][0]).toEqual({ page: 2, size: 12 })
   })
 
-  it('總頁數大於 1 才顯示分頁；點頁碼 → 導向 /blog?page=N（第 1 頁是 /blog，不帶 page）', async () => {
+  // 分頁是真正的連結（DEF-500）：搜尋引擎與不執行 JavaScript 的爬蟲只會沿著 <a href> 走，按鈕＋router.push 讓它們到不了第 2 頁
+  it('總頁數大於 1 才顯示分頁；頁碼是連結 → /blog?page=N（第 1 頁是 /blog，不帶 page）', async () => {
     getFeed.mockResolvedValue(feed([card()], { totalPages: 3 }))
     render(<PlatformBlogFeed page={0} />)
 
     const nav = await screen.findByRole('navigation', { name: '分頁' })
-    fireEvent.click(within(nav).getByRole('button', { name: '2' }))
-    expect(push).toHaveBeenCalledWith('/blog?page=2')
+    expect(within(nav).getByRole('link', { name: '2' }).getAttribute('href')).toBe('/blog?page=2')
+    expect(within(nav).getByRole('link', { name: '3' }).getAttribute('href')).toBe('/blog?page=3')
+    expect(within(nav).queryAllByRole('button'), '分頁不能是按鈕：爬蟲點不了').toHaveLength(0)
   })
 
-  it('在第 2 頁點「1」→ 導向 /blog（回到第一頁不帶 page）', async () => {
+  it('在第 2 頁：「1」連到 /blog（回到第一頁不帶 page）、「上一頁」連到 /blog、「下一頁」連到 /blog?page=3', async () => {
     getFeed.mockResolvedValue(feed([card()], { page: 1, totalPages: 3 }))
     render(<PlatformBlogFeed page={1} />)
 
     const nav = await screen.findByRole('navigation', { name: '分頁' })
-    fireEvent.click(within(nav).getByRole('button', { name: '1' }))
-    expect(push).toHaveBeenCalledWith('/blog')
+    expect(within(nav).getByRole('link', { name: '1' }).getAttribute('href')).toBe('/blog')
+    expect(within(nav).getByRole('link', { name: '上一頁' }).getAttribute('href')).toBe('/blog')
+    expect(within(nav).getByRole('link', { name: '下一頁' }).getAttribute('href')).toBe('/blog?page=3')
   })
 
   it('只有一頁時沒有分頁列', async () => {
@@ -158,5 +162,51 @@ describe('平台層部落格：分頁走網址', () => {
 
     await screen.findByText('第一篇文章')
     await waitFor(() => expect(screen.queryByRole('navigation', { name: '分頁' })).toBeNull())
+  })
+})
+
+// DEF-500（Sprint 341）：SEO 的伺服器端渲染。server page 先取好這一頁、以 initialFeed 傳進來，第一份 HTML 就有文章卡片——
+// 以前是載入中骨架，搜尋引擎與不執行 JavaScript 的爬蟲看不到任何文章。
+describe('平台層部落格：伺服器端帶來的第一頁（initialFeed）', () => {
+  it('第一個畫面就有文章卡片與連結，而且不再向後端請求一次', async () => {
+    render(<PlatformBlogFeed page={0} initialFeed={feed([card({ title: '伺服器端渲染的文章' })])} />)
+
+    const link = screen.getByText('伺服器端渲染的文章').closest('a')
+    expect(link?.getAttribute('href'), '同步就能找到卡片＝它在第一份 HTML 裡').toBe('/stores/shop-a/blog/hello')
+    expect(screen.queryByRole('status'), '不該再出現「載入中」').toBeNull()
+    await waitFor(() => expect(getFeed).not.toHaveBeenCalled())
+  })
+
+  it('伺服器端沒取到（不傳 initialFeed）→ 與先前相同：先載入中，再由瀏覽器自己請求', async () => {
+    getFeed.mockResolvedValue(feed([card({ title: '瀏覽器載入的文章' })]))
+    render(<PlatformBlogFeed page={0} />)
+
+    expect(screen.getByRole('status')).toBeTruthy()
+    expect(await screen.findByText('瀏覽器載入的文章')).toBeTruthy()
+    expect(getFeed).toHaveBeenCalledTimes(1)
+  })
+
+  it('伺服器帶來的是空的第一頁（總數為 0）→ 顯示「還沒有文章」，不是載入中', async () => {
+    render(<PlatformBlogFeed page={0} initialFeed={feed([], { totalCount: 0, totalPages: 0 })} />)
+
+    expect(screen.getByText('目前還沒有已發布的文章')).toBeTruthy()
+    await waitFor(() => expect(getFeed).not.toHaveBeenCalled())
+  })
+})
+
+// 日期在伺服器與訪客的瀏覽器各算一次（容器通常是 UTC、訪客在台灣 UTC+8）：沒指定時區的 toLocaleDateString 會在兩邊算出不同的一天，
+// React 偵測到文字不符就丟掉伺服器的 HTML 重新渲染（console 出現 hydration 錯誤）。見 lib/date.ts 的 formatPublicDate。
+describe('平台層部落格：日期在伺服器與瀏覽器算出同一個字串', () => {
+  it('UTC 20:00 發布的文章，不論渲染環境在哪個時區，畫面上都是台灣的隔天（2026/11/2）', () => {
+    const results: string[] = []
+    for (const timeZone of ['UTC', 'Asia/Taipei', 'America/Los_Angeles']) {
+      vi.stubEnv('TZ', timeZone)
+      const html = renderToString(
+        <PlatformBlogFeed page={0} initialFeed={feed([card({ title: '夜間發布', publishedAt: '2026-11-01T20:00:00Z' })])} />
+      )
+      results.push(html.match(/2026\/\d+\/\d+/)?.[0] ?? '（找不到日期）')
+    }
+    vi.unstubAllEnvs()
+    expect(results).toEqual(['2026/11/2', '2026/11/2', '2026/11/2'])
   })
 })

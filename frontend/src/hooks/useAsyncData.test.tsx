@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { useAsyncData } from './useAsyncData'
@@ -306,5 +307,85 @@ describe('useAsyncData：onError 與 errorInfo', () => {
       second.resolve('ok')
     })
     expect(result.current.errorInfo).toBeNull()
+  })
+})
+
+// DEF-500（Sprint 341）：SEO 的伺服器端渲染。伺服器端先取好第一份資料、隨 HTML 一起送出，搜尋引擎與不執行 JavaScript 的爬蟲才看得到內容。
+// 這個 hook 要做到的是：有伺服器資料就「第一個畫面就有內容、不再多打一次請求」（否則伺服器端渲染等於白做，後端請求還加倍），
+// 沒有（伺服器端取不到）就與先前完全一樣由瀏覽器自己載入。
+describe('useAsyncData：伺服器端帶來的初始資料（initialData）', () => {
+  it('第一個畫面就有資料、不是 loading，而且完全不發請求（不重抓一次）', async () => {
+    const fetcher = vi.fn().mockResolvedValue('瀏覽器抓到的')
+    const { result } = renderHook(() => useAsyncData(fetcher, ['p1'], { errorMessage: 'e', initialData: '伺服器帶來的' }))
+
+    expect(result.current).toMatchObject({ loading: false, data: '伺服器帶來的', error: null })
+    await act(async () => {})
+    expect(fetcher, '伺服器已經取過了；再打一次後端請求等於把伺服器端渲染的好處抵銷').not.toHaveBeenCalled()
+    expect(result.current.data).toBe('伺服器帶來的')
+  })
+
+  it('React StrictMode（開發模式 effect 會跑兩次）也不會因此多發請求', async () => {
+    const fetcher = vi.fn().mockResolvedValue('x')
+    renderHook(() => useAsyncData(fetcher, ['p1'], { errorMessage: 'e', initialData: 'ssr' }), { wrapper: StrictMode })
+    await act(async () => {})
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('伺服器端沒取到（initialData 是 undefined）→ 與沒有這個選項完全相同：loading、由瀏覽器自己請求', async () => {
+    const request = deferred<string>()
+    const fetcher = vi.fn().mockReturnValue(request.promise)
+    const { result } = renderHook(() => useAsyncData(fetcher, ['p1'], { errorMessage: 'e', initialData: undefined }))
+
+    expect(result.current).toMatchObject({ loading: true, data: undefined })
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      request.resolve('瀏覽器抓到的')
+    })
+    expect(result.current).toMatchObject({ loading: false, data: '瀏覽器抓到的' })
+  })
+
+  it('依賴改變後照常請求新的一輪（初始資料只對第一輪依賴有效，不會被當成新依賴的結果）', async () => {
+    const next = deferred<string>()
+    const fetcher = vi.fn().mockReturnValue(next.promise)
+    const { result, rerender } = renderHook(({ page }) => useAsyncData(fetcher, [page], { errorMessage: 'e', initialData: '第 1 頁（伺服器）' }), {
+      initialProps: { page: 1 },
+    })
+    expect(result.current.data).toBe('第 1 頁（伺服器）')
+
+    rerender({ page: 2 })
+    expect(result.current.loading, '第 2 頁的資料還沒有，不能把第 1 頁的伺服器資料當成它的結果').toBe(true)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      next.resolve('第 2 頁')
+    })
+    expect(result.current).toMatchObject({ loading: false, data: '第 2 頁' })
+  })
+
+  it('reload() 照常重新請求（重試、寫入動作後重抓不能被初始資料擋住）', async () => {
+    const reloaded = deferred<string>()
+    const fetcher = vi.fn().mockReturnValue(reloaded.promise)
+    const { result } = renderHook(() => useAsyncData(fetcher, [], { errorMessage: 'e', initialData: '伺服器資料' }))
+
+    act(() => result.current.reload())
+    expect(result.current.loading).toBe(true)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      reloaded.resolve('重新載入的')
+    })
+    expect(result.current).toMatchObject({ loading: false, data: '重新載入的' })
+  })
+
+  it('依賴換走再換回第一輪的那一組，也會重新請求（初始資料只在第一次掛載時省掉那一次請求）', async () => {
+    const fetcher = vi.fn().mockResolvedValue('瀏覽器抓到的')
+    const { result, rerender } = renderHook(({ page }) => useAsyncData(fetcher, [page], { errorMessage: 'e', initialData: '伺服器第 1 頁' }), {
+      initialProps: { page: 1 },
+    })
+    rerender({ page: 2 })
+    await act(async () => {})
+    expect(result.current.data).toBe('瀏覽器抓到的')
+
+    rerender({ page: 1 })
+    await act(async () => {})
+    expect(fetcher, '第 2 頁之後回到第 1 頁：舊的伺服器資料可能已經過時，要重新請求').toHaveBeenCalledTimes(2)
   })
 })

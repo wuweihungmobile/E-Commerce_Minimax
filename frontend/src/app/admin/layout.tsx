@@ -7,6 +7,8 @@ import { ADMIN_TITLE_TEMPLATE } from "@/lib/site"
 // default 會經過根 layout 的 template 補上品牌，所以這裡寫到「平台管理」為止。
 export const metadata: Metadata = {
   title: { default: "平台總覽｜平台管理", template: ADMIN_TITLE_TEMPLATE },
+  // 搜尋引擎不收錄（DEF-500，Sprint 341）：平台管理台是登入後才能用的管理介面，沒有可收錄的公開內容
+  robots: { index: false, follow: false },
 }
 
 // 平台管理台共用版型（Sprint 328）：與賣家後台同一個外殼，導覽設定見 components/layout/sellerNav.ts。

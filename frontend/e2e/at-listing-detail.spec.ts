@@ -87,7 +87,8 @@ test.describe('AT-LISTING-DETAIL: 商品詳情頁 + 首頁有資料（S38）', (
     await expect(page.getByText('頁1標記', { exact: true })).toBeVisible();
 
     // 翻到第 2 頁 → 內容更新（頁2標記出現、頁1標記消失）
-    await page.getByRole('button', { name: '2', exact: true }).click();
+    // 分頁是真正的連結（DEF-500，Sprint 341）
+    await page.getByRole('link', { name: '2', exact: true }).click();
     await expect(page.getByText('頁2標記', { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('頁1標記', { exact: true })).toHaveCount(0);
   });

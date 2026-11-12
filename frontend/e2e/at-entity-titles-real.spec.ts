@@ -119,9 +119,12 @@ test.describe('AT-ENTITY-TITLES-REAL: 公開頁的實體標題（真實後端）
     const adminToken = await adminAccessToken(page);
     await setStoreStatusWithToken(page, adminToken, tenantId, 'SUSPENDED');
     try {
-      const html = await (await request.get(`${WEB_BASE}/stores/${slug}`)).text();
+      // Sprint 341（DEF-500）：停權店鋪的頁面是真正的 404（不是 200 加「找不到」畫面），標題是「找不到店鋪」那一頁的，不是頁型標題
+      const response = await request.get(`${WEB_BASE}/stores/${slug}`);
+      expect(response.status(), '停權店鋪對訪客等於不存在：真正的 404').toBe(404);
+      const html = await response.text();
       expect(html, '停權店鋪的店名不能出現在標題裡').not.toContain(storeName);
-      expect(html).toContain(`<title>店鋪首頁｜${BRAND}</title>`);
+      expect(html).toContain(`<title>找不到店鋪｜${BRAND}</title>`);
     } finally {
       await setStoreStatusWithToken(page, adminToken, tenantId, 'ACTIVE');
     }
@@ -144,8 +147,11 @@ test.describe('AT-ENTITY-TITLES-REAL: 公開頁的實體標題（真實後端）
     const removed = await page.request.delete(`${API_BASE}/v2/products/${id}`, { headers: await authHeaders(page) });
     expect([200, 204], await removed.text()).toContain(removed.status());
 
-    const after = await (await request.get(`${WEB_BASE}/listings/${id}`)).text();
+    // Sprint 341（DEF-500）：刪除之後是真正的 404，標題是「找不到商品」那一頁的
+    const afterResponse = await request.get(`${WEB_BASE}/listings/${id}`);
+    expect(afterResponse.status(), '已刪除的商品：真正的 404').toBe(404);
+    const after = await afterResponse.text();
     expect(after, '刪除之後商品名不能再出現在標題或分享資訊裡').not.toContain(name);
-    expect(after).toContain(`<title>商品／房源詳情｜${BRAND}</title>`);
+    expect(after).toContain(`<title>找不到商品｜${BRAND}</title>`);
   });
 });

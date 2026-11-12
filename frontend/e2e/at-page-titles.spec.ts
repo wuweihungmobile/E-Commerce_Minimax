@@ -26,12 +26,18 @@ const site = (name: string) => `${name}｜${BRAND}`;
 const dashboard = (name: string) => `${name}｜賣家後台｜${BRAND}`;
 const admin = (name: string) => `${name}｜平台管理｜${BRAND}`;
 
-/** [路由, 預期標題, 說明這條路由代表哪一種形態] */
-const SSR_TITLES: Array<[string, string, string]> = [
+/**
+ * [路由, 預期標題, 說明這條路由代表哪一種形態, 預期狀態碼（沒寫＝200）]
+ *
+ * Sprint 341（DEF-500）：實體頁（商品詳情、店鋪底下的頁面）的資料改由伺服器端取，不存在的實體是真正的 404（不是 200 加「找不到」畫面）。
+ * 這個表用任意編號探測「頁面形態」，所以那兩條路由現在是 404，標題是 not-found 頁自己的（仍然套用品牌 template，
+ * 這正是這個表要守的：巢狀路由的標題不能切斷上層的 template）。存在的實體的標題見 at-entity-titles-real／at-article-titles-real。
+ */
+const SSR_TITLES: Array<[string, string, string, number?]> = [
   ['/', SITE_TITLE, '首頁：完整品牌標題（title.absolute）'],
   ['/products', site('商品'), 'Server Component'],
-  ['/listings/x', site('商品／房源詳情'), 'Server Component（動態路由）'],
-  ['/stores/demo/products', site('店鋪商品'), 'Server Component（巢狀、動態路由）'],
+  ['/listings/x', site('找不到商品'), 'Server Component（動態路由）：編號不是 UUID，真正的 404，標題是 not-found 頁的', 404],
+  ['/stores/demo/products', site('找不到店鋪'), 'Server Component（巢狀、動態路由）：店鋪不存在，真正的 404，標題是 stores/not-found 的', 404],
   ['/privacy', site('隱私權政策'), '本來就有標題的頁面：不可變成「…｜品牌｜品牌」'],
   ['/login', site('登入'), '有狀態的 client 頁：標題由同目錄 layout 提供'],
   ['/blog', site('部落格'), 'Server Component（Sprint 339，DEF-495：跨店鋪列表；標題在同目錄 layout，/blog/category/{id} 已轉址到這裡）'],
@@ -48,10 +54,10 @@ const SSR_TITLES: Array<[string, string, string]> = [
 ];
 
 test.describe('AT-PAGE-TITLES: 伺服器寫進 HTML 的標題（各種頁面形態，含巢狀路由）', () => {
-  for (const [path, expected, note] of SSR_TITLES) {
+  for (const [path, expected, note, status = 200] of SSR_TITLES) {
     test(`E2E-TITLE-01: ${path} → 「${expected}」（${note}）`, async ({ request }) => {
       const response = await request.get(path);
-      expect(response.status()).toBe(200);
+      expect(response.status()).toBe(status);
       const html = await response.text();
       const titles = [...html.matchAll(/<title>([^<]*)<\/title>/g)].map((m) => m[1]);
       expect(titles, '一個頁面只該有一個 <title>').toEqual([expected]);

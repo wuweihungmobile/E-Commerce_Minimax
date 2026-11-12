@@ -1,6 +1,10 @@
 import type { Metadata } from "next"
 import { StoreRoomsView } from "@/components/storefront/StoreRoomsView"
+import { LIST_PAGE_SIZE, storeListingsPath } from "@/lib/public-api"
+import { peekStoreProfile } from "@/lib/public-data"
 import { storeMetadata } from "@/lib/seo"
+import { dataOrUndefined, fetchPublic } from "@/lib/server-api"
+import type { Listing, Page } from "@/services/listing"
 
 // 標題用「店名｜房源」（DEF-475，Sprint 335）；取不到店名就退回原本的頁型標題。
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
@@ -21,5 +25,18 @@ export default async function StoreRoomsPage({
   const pageRaw = typeof sp.page === "string" ? parseInt(sp.page, 10) : 1
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw - 1 : 0
 
-  return <StoreRoomsView slug={slug} page={page} />
+  // SEO（DEF-500，Sprint 341）：店鋪資料與這一頁的清單在伺服器端取、隨第一份 HTML 送出（做法同 stores/[slug]/page.tsx）
+  const profile = await peekStoreProfile(slug)
+  const listings = profile
+    ? await fetchPublic<Page<Listing>>(storeListingsPath(slug, { type: "ROOM", page, size: LIST_PAGE_SIZE }))
+    : undefined
+
+  return (
+    <StoreRoomsView
+      slug={slug}
+      page={page}
+      initialProfile={profile}
+      initialListings={listings && dataOrUndefined(listings)}
+    />
+  )
 }

@@ -7,6 +7,8 @@ import { DASHBOARD_TITLE_TEMPLATE } from "@/lib/site"
 // default 會經過根 layout 的 template 補上品牌，所以這裡寫到「賣家後台」為止。
 export const metadata: Metadata = {
   title: { default: "營運總覽｜賣家後台", template: DASHBOARD_TITLE_TEMPLATE },
+  // 搜尋引擎不收錄（DEF-500，Sprint 341）：賣家後台是登入後才能用的管理介面，沒有可收錄的公開內容
+  robots: { index: false, follow: false },
 }
 
 // 賣家後台共用版型（Sprint 328，HOMEPAGE_TEMPLATE_INTEGRATION_FRD §7 階段三／行動項 AI-1904）：

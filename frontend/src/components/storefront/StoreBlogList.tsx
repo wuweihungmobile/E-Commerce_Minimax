@@ -8,12 +8,17 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Chip } from "@/components/ui/chip"
 import { ErrorState } from "@/components/ui/states"
 import { buttonVariants } from "@/components/ui/button"
-import { getPublishedPosts, getPublicCategories, type CategoryResponse } from "@/services/cms"
+import {
+  getPublishedPosts,
+  getPublicCategories,
+  type CategoryListResponse,
+  type CategoryResponse,
+  type PostListResponse,
+} from "@/services/cms"
 import { useAsyncData } from "@/hooks/useAsyncData"
 import { Card } from "@/components/ui/card"
 import { articlePath, storeBlogPath } from "@/lib/article-path"
-
-const PAGE_SIZE = 12
+import { LIST_PAGE_SIZE as PAGE_SIZE } from "@/lib/public-api"
 
 export interface StoreBlogListProps {
   slug: string
@@ -22,6 +27,9 @@ export interface StoreBlogListProps {
   page: number
   /** 篩選的分類編號，由 server page 依 URL `category` 解析；沒有＝全部（DEF-486，Sprint 337） */
   categoryId?: string
+  /** 伺服器端已取好的分類清單與這一頁的貼文（SEO 的伺服器端渲染，DEF-500）：有就直接用、不再請求；沒有（沒取到）就由瀏覽器自己載入 */
+  initialCategories?: CategoryListResponse
+  initialPosts?: PostListResponse
 }
 
 // 公開端點不指定分類的順序：依店主設定的 sortOrder，相同再依名稱，篩選列的順序才穩定
@@ -48,7 +56,11 @@ function PostsSkeleton() {
 // 分類篩選（Sprint 337，DEF-486）：網址 ?category={分類編號}。原本文章頁的分類徽章連到 /blog/category/{id}，那一頁的 tenantId
 // 取自 localStorage（只有登入才有），匿名訪客點了只看到「請先登入並設定店鋪以瀏覽部落格」；這裡的店鋪由網址決定、
 // tenantId 由公開的店鋪資料提供，匿名訪客也能用。分類來自 GET /v2/posts/categories（只回啟用中的分類）。
-export function StoreBlogList({ slug, tenantId, page, categoryId }: StoreBlogListProps) {
+//
+// SEO（DEF-500，Sprint 341）：server page 先取好分類與這一頁的貼文以 initialCategories／initialPosts 傳進來，第一份 HTML 就有
+// 貼文卡片；分頁是真正的連結（搜尋引擎沿著連結走到第 2 頁以後）。篩選列（分類）仍是按鈕：分類頁是同一批貼文的子集合，
+// 完整列表（含分頁）已經涵蓋全部貼文，不需要讓爬蟲另外走一遍分類。
+export function StoreBlogList({ slug, tenantId, page, categoryId, initialCategories, initialPosts }: StoreBlogListProps) {
   const router = useRouter()
 
   // 分類載入失敗時：沒指定分類 → 篩選列不顯示、貼文照常（篩選是附加功能）；
@@ -60,6 +72,7 @@ export function StoreBlogList({ slug, tenantId, page, categoryId }: StoreBlogLis
   } = useAsyncData((signal) => getPublicCategories(tenantId, { signal }), [tenantId], {
     errorMessage: "載入分類失敗",
     onError: (_message, err) => console.error("Failed to load categories:", err),
+    initialData: initialCategories,
   })
   const categories = useMemo(() => sortCategories(categoryData?.categories ?? []), [categoryData])
   const selectedCategory = categoryId ? categories.find((c) => c.id === categoryId) : undefined
@@ -70,7 +83,7 @@ export function StoreBlogList({ slug, tenantId, page, categoryId }: StoreBlogLis
     (signal) =>
       getPublishedPosts(tenantId, { page, size: PAGE_SIZE, ...(categoryId ? { categoryId } : {}) }, { signal }),
     [tenantId, page, categoryId],
-    { enabled: !categoryId || selectedCategory !== undefined, errorMessage: "載入貼文失敗" }
+    { enabled: !categoryId || selectedCategory !== undefined, errorMessage: "載入貼文失敗", initialData: initialPosts }
   )
 
   // 換分類回到第一頁（不帶 page）；翻頁保留目前的分類
@@ -173,7 +186,7 @@ export function StoreBlogList({ slug, tenantId, page, categoryId }: StoreBlogLis
           <Pagination
             current={page + 1}
             total={data.totalPages}
-            onChange={(oneBased) => go({ categoryId, page: oneBased })}
+            hrefFor={(oneBased) => storeBlogPath(slug, { categoryId, page: oneBased })}
           />
         )}
       </>

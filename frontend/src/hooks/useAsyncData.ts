@@ -21,8 +21,12 @@ import { getApiErrorInfo, type ApiErrorInfo } from '@/lib/api-error'
 //    即使 fetcher 沒有把 signal 轉給 axios（舊的 service 方法），舊回應也不會蓋掉新的。
 //    fetcher 若把 signal 傳給 axios，被中止的請求會真的取消；取消（CanceledError）不算錯誤。
 // 3. 呼叫端的依賴陣列由 eslint 的 react-hooks/exhaustive-deps（additionalHooks）檢查，漏列會被擋下。
+// 4. initialData（Sprint 341，DEF-500，SEO 的伺服器端渲染）：伺服器端已經取好「第一輪依賴」的結果時，首次渲染直接用它——
+//    loading 為 false、不發請求，搜尋引擎與不執行 JavaScript 的爬蟲拿到的第一份 HTML 就有內容。它只對第一輪有效：
+//    依賴改變、reload() 之後照常重新請求。伺服器端沒取到（逾時、後端壞了）就不要傳，行為與先前完全相同（瀏覽器自己載入）。
+//    要在換頁／換篩選時也直接用新的伺服器資料，呼叫端用 key 讓元件重新掛載（見 HomeContent），不靠這個 hook 猜哪份資料對應哪組依賴。
 
-export interface UseAsyncDataOptions {
+export interface UseAsyncDataOptions<T = unknown> {
   /** false 時不發請求（例如還沒拿到路由參數）：loading 為 false，data 維持上一次的值。預設 true。 */
   enabled?: boolean
   /**
@@ -35,6 +39,11 @@ export interface UseAsyncDataOptions {
    * 例如 onError: (message) => toast.error(message)。被中止或已過期的請求不會呼叫。
    */
   onError?: (message: string, error: unknown) => void
+  /**
+   * 伺服器端已經取好的「第一輪依賴」的資料（SEO 的伺服器端渲染）。有值時首次渲染 loading 為 false、不發請求；
+   * 之後依賴改變或 reload() 照常請求。undefined（伺服器端沒取到）時與沒有這個選項完全相同。
+   */
+  initialData?: T
 }
 
 export interface UseAsyncDataResult<T> {
@@ -58,6 +67,8 @@ interface Settled<T> {
   data: T | undefined
   error: string | null
   errorInfo: ApiErrorInfo | null
+  /** 這筆結果是伺服器端渲染帶來的（initialData），不是這個元件請求的：第一輪的 effect 看到它就不重複請求 */
+  fromInitial?: boolean
 }
 
 function sameKey(a: readonly unknown[] | null, b: readonly unknown[]): boolean {
@@ -72,16 +83,21 @@ function toMessage(error: unknown, errorMessage: UseAsyncDataOptions['errorMessa
 export function useAsyncData<T>(
   fetcher: (signal: AbortSignal) => Promise<T>,
   deps: readonly unknown[],
-  options: UseAsyncDataOptions
+  options: UseAsyncDataOptions<T>
 ): UseAsyncDataResult<T> {
-  const { enabled = true, errorMessage, onError } = options
+  const { enabled = true, errorMessage, onError, initialData } = options
   const [attempt, setAttempt] = useState(0)
-  const [settled, setSettled] = useState<Settled<T> | null>(null)
+  const [settled, setSettled] = useState<Settled<T> | null>(() =>
+    initialData === undefined ? null : { key: [...deps, 0], data: initialData, error: null, errorInfo: null, fromInitial: true }
+  )
   const key = [...deps, attempt]
 
   useEffect(() => {
     if (!enabled) return
     const requestKey = key
+    // 伺服器端已經帶來這一輪的結果（initialData）：不重複請求。只認「帶來的」那一筆（fromInitial）：
+    // 之後任何一次請求完成、或 setData 之後，這個旗標就沒了，依賴再變回同一組也會照常重新請求。
+    if (settled?.fromInitial && sameKey(settled.key, requestKey)) return
     const controller = new AbortController()
     fetcher(controller.signal).then(
       (data) => {

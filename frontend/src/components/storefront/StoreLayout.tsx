@@ -1,18 +1,20 @@
 "use client"
 
-import Link from "next/link"
 import { StorefrontShell } from "@/components/layout/StorefrontShell"
 import { Skeleton } from "@/components/ui/skeleton"
 import storefrontService, { type StoreProfile } from "@/services/storefront"
 import { useAsyncData } from "@/hooks/useAsyncData"
 import { StoreNav, type StoreNavTab } from "@/components/storefront/StoreNav"
-import { buttonVariants, Button } from "@/components/ui/button"
+import { StoreNotFound } from "@/components/storefront/StoreNotFound"
+import { Button } from "@/components/ui/button"
 
 type LoadState = "loading" | "ok" | "notfound" | "error"
 
 export interface StoreLayoutProps {
   slug: string
   active: StoreNavTab
+  /** 伺服器端已取好的店鋪公開資料（SEO 的伺服器端渲染，DEF-500）：有就直接用、不再請求；沒有（沒取到）就由瀏覽器自己載入 */
+  initialProfile?: StoreProfile
   children: (profile: StoreProfile) => React.ReactNode
 }
 
@@ -20,11 +22,15 @@ export interface StoreLayoutProps {
 // 載入店鋪公開資料（GET /v2/public/stores/{slug}，匿名可呼叫）一次，統一處理
 // 「店鋪不存在／非 ACTIVE」（皆回 404，不區分，避免列舉店鋪狀態）與錯誤重試，
 // 其餘 4 條路線（home/products/rooms/blog）共用同一份已解析的 StoreProfile。
-export function StoreLayout({ slug, active, children }: StoreLayoutProps) {
+//
+// SEO（DEF-500，Sprint 341）：店鋪頁的 server page 先取好店鋪資料以 initialProfile 傳進來，第一份 HTML 就有店名與導覽
+// （以前是載入中骨架）。店鋪不存在由伺服器端直接回真正的 404（stores/not-found.tsx，與下面的備援畫面共用 StoreNotFound）；
+// 這裡的 notfound 分支只在「伺服器端沒取到、由瀏覽器自己載入才收到 404」時才會用到。
+export function StoreLayout({ slug, active, initialProfile, children }: StoreLayoutProps) {
   const { data: profile, error, errorInfo, loading, reload } = useAsyncData(
     () => storefrontService.getStoreProfile(slug),
     [slug],
-    { errorMessage: "載入店鋪失敗" }
+    { errorMessage: "載入店鋪失敗", initialData: initialProfile }
   )
   const state: LoadState = loading ? "loading" : error === null ? "ok" : errorInfo?.status === 404 ? "notfound" : "error"
 
@@ -40,23 +46,7 @@ export function StoreLayout({ slug, active, children }: StoreLayoutProps) {
   }
 
   if (state === "notfound") {
-    return (
-      <StorefrontShell>
-        <div
-          data-testid="store-notfound"
-          className="flex flex-col items-center justify-center py-24 text-center gap-3"
-        >
-          <p className="text-lg text-rs-ink">找不到這間店鋪</p>
-          <p className="text-sm text-rs-ink-muted">店鋪可能已下架或不存在</p>
-          <Link
-            href="/"
-            className={buttonVariants({ variant: "outline" })}
-          >
-            回首頁逛逛
-          </Link>
-        </div>
-      </StorefrontShell>
-    )
+    return <StoreNotFound />
   }
 
   if (state === "error" || !profile) {

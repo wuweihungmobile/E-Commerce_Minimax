@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchPublicData } from './server-api'
-import { listingMetadata, postMetadata, storeMetadata } from './seo'
+import { articleJsonLd, listingJsonLd, listingMetadata, postMetadata, storeJsonLd, storeMetadata, websiteJsonLd } from './seo'
 import { SITE_NAME } from './site'
 
 // DEF-475（Sprint 335）：公開頁（店鋪前台、商品／房源詳情）的標題原本是靜態的頁型名稱（「店鋪首頁」「商品／房源詳情」），
@@ -295,5 +295,83 @@ describe('postMetadata：文章頁（Sprint 336，DEF-483）', () => {
     const urls = fetchMock.mock.calls.map((c) => String(c[0]))
     expect(urls[0]).toBe('http://localhost:8080/api/v2/public/stores/a%2F..%2Fb')
     expect(urls[1]).toContain('/v2/posts/x%3Fy%23z?tenantId=')
+  })
+})
+
+// DEF-500（Sprint 341）：SEO。標準網址（canonical）與結構化資料（JSON-LD）。
+describe('標準網址（canonical）', () => {
+  it('店鋪頁、商品頁、文章頁都帶 canonical，且與 og:url 同一個乾淨路徑（追蹤參數進來的網址要收斂成同一個）', async () => {
+    fetchMock.mockResolvedValue(json(store()))
+    const storePage = await storeMetadata('demo', { fallbackTitle: '店鋪首頁', path: '/products', section: '商品' })
+    expect(storePage.alternates?.canonical).toBe('/stores/demo/products')
+    expect(storePage.alternates?.canonical).toBe((storePage.openGraph as { url?: string }).url)
+
+    fetchMock.mockResolvedValue(json(listing()))
+    expect((await listingMetadata(LISTING_ID, '詳情')).alternates?.canonical).toBe(`/listings/${LISTING_ID}`)
+
+    routeFetch({ store: json(store({ tenantId: TENANT_ID })), post: json(post()) })
+    expect((await postMetadata('demo', 'hand-brew', '部落格文章')).alternates?.canonical).toBe('/stores/demo/blog/hand-brew')
+  })
+
+  it('取不到資料時只回靜態標題，不帶殘缺的 canonical', async () => {
+    fetchMock.mockResolvedValue(json({}, 404))
+    const result = await storeMetadata('gone', { fallbackTitle: '店鋪首頁', path: '' })
+    expect(result).toEqual({ title: '店鋪首頁' })
+  })
+})
+
+/** 依路徑（a.b.c）取巢狀欄位；取不到是 undefined。JSON-LD 的形狀是資料，不為它另外宣告型別。 */
+const at = (value: unknown, path: string): unknown =>
+  path.split('.').reduce<unknown>((current, key) => (current as Record<string, unknown> | null | undefined)?.[key], value)
+
+describe('結構化資料（JSON-LD）', () => {
+  it('整站：網站名稱＋站內搜尋（搜尋走首頁的 ?keyword=）', () => {
+    const data = websiteJsonLd()
+    expect(at(data, '@type')).toBe('WebSite')
+    expect(at(data, 'name')).toBe(SITE_NAME)
+    expect(at(data, 'potentialAction.target.urlTemplate')).toBe('https://www.nextkey.com/?keyword={search_term_string}')
+  })
+
+  it('商品：Product＋名稱、說明、圖片、價格與幣別；url 是絕對網址', () => {
+    const data = listingJsonLd(LISTING_ID, {
+      title: ' 手沖咖啡豆 ', description: '淺焙', coverImageUrl: 'https://img.example/a.png', listingType: 'PRODUCT', basePrice: 350, currency: 'TWD',
+    })
+    expect(at(data, '@type')).toBe('Product')
+    expect(at(data, 'name')).toBe('手沖咖啡豆')
+    expect(at(data, 'url')).toBe(`https://www.nextkey.com/listings/${LISTING_ID}`)
+    expect(at(data, 'image')).toBe('https://img.example/a.png')
+    expect(at(data, 'offers')).toMatchObject({ '@type': 'Offer', price: 350, priceCurrency: 'TWD' })
+  })
+
+  it('房源：HotelRoom；沒有合法價格就不帶 offers（寧可少，不寫錯）；相對路徑的圖片不收（爬蟲抓不到）', () => {
+    expect(at(listingJsonLd(LISTING_ID, { title: '海景雙人房', listingType: 'ROOM', basePrice: 2800, currency: 'TWD' }), '@type')).toBe('HotelRoom')
+    const noPrice = listingJsonLd(LISTING_ID, { title: '商品', listingType: 'PRODUCT', basePrice: 'abc', currency: 'TWD', coverImageUrl: '/api/v2/media/x.png' })
+    expect(at(noPrice, 'offers')).toBeUndefined()
+    expect(at(noPrice, 'image')).toBeUndefined()
+    expect(listingJsonLd(LISTING_ID, { title: '  ' })).toBeNull()
+  })
+
+  it('文章：BlogPosting＋標題、發布日期、作者、所屬店鋪部落格；說明去掉商品嵌入語法；標題最長 110 字', () => {
+    const data = articleJsonLd('demo', 'hand-brew', '山海小店', {
+      title: '手沖入門', content: '先選豆 {{embed:listing:0b135be9-bf30-4ddb-ab3f-092f3e26b845}} 再磨豆', publishedAt: '2026-11-01T08:00:00Z', authorName: '小明',
+    })
+    expect(at(data, '@type')).toBe('BlogPosting')
+    expect(at(data, 'url')).toBe('https://www.nextkey.com/stores/demo/blog/hand-brew')
+    expect(at(data, 'datePublished')).toBe('2026-11-01T08:00:00Z')
+    expect(at(data, 'author')).toEqual({ '@type': 'Person', name: '小明' })
+    expect(at(data, 'isPartOf')).toMatchObject({ '@type': 'Blog', name: '山海小店｜部落格' })
+    expect(at(data, 'description')).toBe('先選豆 再磨豆')
+    expect(String(at(articleJsonLd('demo', 'x', '店', { title: 'a'.repeat(200) }), 'headline'))).toHaveLength(110)
+    expect(articleJsonLd('demo', 'x', '店', { title: '' })).toBeNull()
+  })
+
+  it('店鋪：Store＋店名、說明、Logo；沒有店名就不輸出', () => {
+    const data = storeJsonLd('demo', { name: '山海小店', description: '賣山也賣海', logoUrl: 'https://img.example/logo.png' })
+    expect(data).toMatchObject({ '@type': 'Store', name: '山海小店', url: 'https://www.nextkey.com/stores/demo', logo: 'https://img.example/logo.png' })
+    expect(storeJsonLd('demo', { name: '' })).toBeNull()
+  })
+
+  it('slug 含特殊字元時網址有編碼（不會破壞結構）', () => {
+    expect(at(storeJsonLd('a b/c', { name: '店' }), 'url')).toBe('https://www.nextkey.com/stores/a%20b%2Fc')
   })
 })

@@ -1,17 +1,16 @@
 "use client"
 
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Pagination } from "@/components/ui/pagination"
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
-import { getPublicPostFeed } from "@/services/cms"
+import { getPublicPostFeed, type PublicPostFeed } from "@/services/cms"
 import { useAsyncData } from "@/hooks/useAsyncData"
 import { articlePath, platformBlogPath } from "@/lib/article-path"
-
-const PAGE_SIZE = 12
+import { LIST_PAGE_SIZE as PAGE_SIZE } from "@/lib/public-api"
+import { formatPublicDate } from "@/lib/date"
 
 // 平台層部落格 /blog（Sprint 339，DEF-495，使用者選了『做成跨店鋪部落格』）：所有營業中店鋪（ACTIVE）的已發布貼文，
 // 新到舊，匿名可讀。資料來自 GET /v2/public/posts（只有卡片需要的摘要欄位）。
@@ -20,9 +19,13 @@ const PAGE_SIZE = 12
 // 現在不依賴登入狀態、也不送 tenantId；每張卡片帶店鋪名稱，連到「那間店鋪」的文章頁 /stores/{店鋪}/blog/{文章}。
 // 分類是店鋪內的概念，這裡沒有分類篩選（要篩選請進該店鋪的貼文列表 /stores/{店鋪}/blog?category=）。
 //
-// 頁碼由網址 ?page= 決定（server page 解析成 0-based 交給這裡），翻頁用 router.push：可分享、上一頁會回來。
-export function PlatformBlogFeed({ page }: { page: number }) {
-  const router = useRouter()
+// 頁碼由網址 ?page= 決定（server page 解析成 0-based 交給這裡），分頁是真正的連結：可分享、上一頁會回來，
+// 搜尋引擎也能沿著連結走到第 2 頁以後（DEF-500，Sprint 341）。
+//
+// SEO（DEF-500，Sprint 341）：server page 先取好這一頁的資料以 initialFeed 傳進來，第一份 HTML 就有文章卡片
+// （以前是載入中骨架，搜尋引擎與不執行 JavaScript 的爬蟲看不到任何文章）。伺服器端沒取到（逾時、後端壞了）就不傳，
+// 退回原本由瀏覽器自己載入的行為。server page 以頁碼為 key，換頁時重新掛載，直接用新的伺服器資料。
+export function PlatformBlogFeed({ page, initialFeed }: { page: number; initialFeed?: PublicPostFeed }) {
   // 載入失敗顯示錯誤與重新載入（DEF-468 的原則：使用者分不出「沒有文章」與「出錯」）
   const { data, error, loading, reload } = useAsyncData(
     (signal) => getPublicPostFeed({ page, size: PAGE_SIZE }, { signal }),
@@ -30,6 +33,7 @@ export function PlatformBlogFeed({ page }: { page: number }) {
     {
       errorMessage: "載入文章失敗",
       onError: (_message, err) => console.error("Failed to load the platform blog feed:", err),
+      initialData: initialFeed,
     }
   )
 
@@ -86,7 +90,7 @@ export function PlatformBlogFeed({ page }: { page: number }) {
                       )}
                     </div>
                     {post.publishedAt && (
-                      <span className="flex-none">{new Date(post.publishedAt).toLocaleDateString("zh-TW")}</span>
+                      <span className="flex-none">{formatPublicDate(post.publishedAt)}</span>
                     )}
                   </div>
                 </div>
@@ -95,7 +99,7 @@ export function PlatformBlogFeed({ page }: { page: number }) {
           ))}
         </div>
         <div className="mt-8">
-          <Pagination current={page + 1} total={data.totalPages} onChange={(oneBased) => router.push(platformBlogPath(oneBased))} />
+          <Pagination current={page + 1} total={data.totalPages} hrefFor={platformBlogPath} />
         </div>
       </>
     )

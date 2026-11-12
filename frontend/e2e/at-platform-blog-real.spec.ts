@@ -186,11 +186,14 @@ test.describe('AT-PLATFORM-BLOG-REAL: 平台層部落格（跨店鋪，真實後
     const pager = page.getByRole('navigation', { name: '分頁' });
     await expect(pager, '乙店有 13 篇，全列表至少 13 篇，一定有第 2 頁').toBeVisible();
 
-    await pager.getByRole('button', { name: '2', exact: true }).click();
+    // 分頁是真正的連結（DEF-500，Sprint 341）：搜尋引擎與不執行 JavaScript 的爬蟲只會沿著 <a href> 走
+    await expect(pager.getByRole('link', { name: '2', exact: true })).toHaveAttribute('href', '/blog?page=2');
+    await pager.getByRole('link', { name: '2', exact: true }).click();
     await expect(page).toHaveURL(`${WEB_BASE}/blog?page=2`);
     await expect(page.getByTestId('blog-grid').getByRole('link').first()).toBeVisible();
 
-    await pager.getByRole('button', { name: '1', exact: true }).click();
+    await expect(pager.getByRole('link', { name: '1', exact: true })).toHaveAttribute('href', '/blog');
+    await pager.getByRole('link', { name: '1', exact: true }).click();
     await expect(page).toHaveURL(`${WEB_BASE}/blog`);
 
     await page.goto('/blog?page=9999');

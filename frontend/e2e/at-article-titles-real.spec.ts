@@ -131,16 +131,24 @@ test.describe('AT-ARTICLE-TITLES-REAL: 文章頁（真實後端）', () => {
     }
     expect(await viewCount(request), '伺服器端組標題不是一次瀏覽').toBe(before);
 
-    // 真正的瀏覽器載入：頁面讀一次全文（計一次）；標題那一路不能再多算一次
+    // 真正的瀏覽器載入：頁面讀一次全文（計一次）；標題那一路不能再多算一次。
+    // Sprint 341（DEF-500）：文章全文由伺服器端帶來、第一份 HTML 就有，所以「文章出現」不再代表「瀏覽已經計過」——
+    // 計瀏覽的請求在瀏覽器接手（hydration）之後才送，要等到那個回應回來再去讀後端的瀏覽數。
+    const counted = page.waitForResponse(
+      (r) => r.request().method() === 'GET' && new URL(r.url()).pathname.endsWith(`/v2/posts/${postSlug}`)
+    );
     await page.goto(articleUrl(postSlug));
     await expect(page.getByTestId('store-article-title')).toBeVisible();
+    expect((await counted).status()).toBe(200);
     expect(await viewCount(request), '一次瀏覽只計一次（之前的實作若讓標題請求也計，這裡會是 +2 或更多）').toBe(before + 1);
   });
 
-  test('E2E-ARTICLE-04: 草稿、不存在的文章 → 靜態標題「部落格文章」、沒有 Open Graph，標題不外洩；頁面顯示「找不到文章」', async ({ page, request }: { page: Page; request: APIRequestContext }) => {
+  test('E2E-ARTICLE-04: 草稿、不存在的文章 → 真正的 404（Sprint 341，DEF-500）、標題是「找不到文章」那一頁的、沒有 Open Graph，標題不外洩；頁面顯示「找不到文章」', async ({ page, request }: { page: Page; request: APIRequestContext }) => {
     for (const slug of [draftSlug, 'no-such-article-zzz']) {
-      const html = await (await request.get(`${WEB_BASE}${articleUrl(slug)}`)).text();
-      expect(html, `${slug} 的 <title>`).toContain(`<title>部落格文章｜${BRAND}</title>`);
+      const response = await request.get(`${WEB_BASE}${articleUrl(slug)}`);
+      expect(response.status(), `${slug}：草稿對訪客等於不存在，真正的 404`).toBe(404);
+      const html = await response.text();
+      expect(html, `${slug} 的 <title>`).toContain(`<title>找不到文章｜${BRAND}</title>`);
       expect(html, '草稿的標題不能外洩').not.toContain(DRAFT_TITLE);
       expect(html, '取不到文章時不能留下殘缺的分享資訊').not.toContain('property="og:title"');
     }
@@ -163,8 +171,11 @@ test.describe('AT-ARTICLE-TITLES-REAL: 文章頁（真實後端）', () => {
       // DEF-485（Sprint 337）：不只是頁面——直接打公開貼文 API 也一樣（之前停權店鋪的已發布貼文仍讀得到，只是畫面先擋了）
       expect(await publicPostApiStatuses(request), '管理員停權後，三個公開貼文端點立刻都是 404').toEqual(hidden);
 
-      const html = await (await request.get(`${WEB_BASE}${articleUrl(postSlug)}`)).text();
-      expect(html).toContain(`<title>部落格文章｜${BRAND}</title>`);
+      // Sprint 341（DEF-500）：停權店鋪的文章頁是真正的 404；標題是 not-found 頁自己的（不含文章標題與店名）
+      const response = await request.get(`${WEB_BASE}${articleUrl(postSlug)}`);
+      expect(response.status(), '停權店鋪的文章頁：真正的 404').toBe(404);
+      const html = await response.text();
+      expect(html).toMatch(new RegExp(`<title>找不到[^<]*｜${BRAND}</title>`));
       expect(html, '停權店鋪的文章標題不能出現在 HTML').not.toContain(POST_TITLE);
       expect(html, '停權店鋪的店名不能出現在 HTML').not.toContain(storeName);
 
@@ -183,10 +194,17 @@ test.describe('AT-ARTICLE-TITLES-REAL: 文章頁（真實後端）', () => {
     const before = await viewCount(request);
     await loginOnly(page, owner.email, owner.password);
 
+    // 舊網址那一頁為了找店鋪而查詢帶 countView=false；新網址那一頁（文章由伺服器端帶來）載入後才送「計一次瀏覽」的請求（不帶 countView）。
+    // Sprint 341（DEF-500）：文章出現不再代表瀏覽已經計過，要等那個請求回來再讀後端的瀏覽數。
+    const counted = page.waitForResponse((r) => {
+      const url = new URL(r.url());
+      return r.request().method() === 'GET' && url.pathname.endsWith(`/v2/posts/${postSlug}`) && !url.searchParams.has('countView');
+    });
     await page.goto(`/blog/${postSlug}`);
 
     await expect(page).toHaveURL(new RegExp(`${articleUrl(postSlug)}$`));
     await expect(page.getByRole('heading', { level: 2, name: POST_TITLE })).toBeVisible();
+    expect((await counted).status()).toBe(200);
     expect(await viewCount(request), '舊網址為了找店鋪而查詢，不能多計一次瀏覽').toBe(before + 1);
 
     // 匿名訪客：改版前就打不開，現在維持原本的提示，停在舊網址

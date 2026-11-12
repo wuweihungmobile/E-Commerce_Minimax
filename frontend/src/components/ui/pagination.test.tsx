@@ -71,3 +71,53 @@ describe('Pagination', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 })
+
+// DEF-500（Sprint 341）：搜尋引擎與不執行 JavaScript 的爬蟲只會沿著 <a href> 走。按鈕＋onChange 的分頁讓它們永遠到不了第 2 頁以後的內容，
+// 所以公開列表的分頁要用真正的連結。這組測試守的是「連結真的有 href、指向正確的頁」，而不是長相。
+describe('Pagination：連結模式（hrefFor）', () => {
+  const hrefFor = (page: number) => (page === 1 ? '/blog' : `/blog?page=${page}`)
+  const links = () => screen.getAllByRole('link').map((a) => [a.getAttribute('aria-label') ?? a.textContent, a.getAttribute('href')])
+
+  it('頁碼、上一頁、下一頁都是真正的連結，href 指向對應的頁（第 1 頁沒有 ?page）', () => {
+    render(<Pagination current={3} total={5} hrefFor={hrefFor} />)
+    expect(links()).toEqual([
+      ['上一頁', '/blog?page=2'],
+      ['1', '/blog'],
+      ['2', '/blog?page=2'],
+      ['4', '/blog?page=4'],
+      ['5', '/blog?page=5'],
+      ['下一頁', '/blog?page=4'],
+    ])
+    expect(screen.queryAllByRole('button'), '連結模式不該再有按鈕：爬蟲點不了').toHaveLength(0)
+  })
+
+  it('目前這一頁不是連結（連到自己沒有意義），用 aria-current="page" 標示', () => {
+    render(<Pagination current={3} total={5} hrefFor={hrefFor} />)
+    const current = document.querySelector('[aria-current="page"]')
+    expect(current?.textContent).toBe('3')
+    expect(current?.tagName).toBe('SPAN')
+  })
+
+  it('第一頁沒有「上一頁」連結、最後一頁沒有「下一頁」連結（停用的外觀，不會帶爬蟲到不存在的頁）', () => {
+    const { unmount } = render(<Pagination current={1} total={3} hrefFor={hrefFor} />)
+    expect(screen.getByLabelText('上一頁').getAttribute('aria-disabled')).toBe('true')
+    expect(screen.getByLabelText('上一頁').getAttribute('href')).toBeNull()
+    expect(screen.getByLabelText('下一頁').getAttribute('href')).toBe('/blog?page=2')
+    unmount()
+    render(<Pagination current={3} total={3} hrefFor={hrefFor} />)
+    expect(screen.getByLabelText('下一頁').getAttribute('aria-disabled')).toBe('true')
+    expect(screen.getByLabelText('下一頁').getAttribute('href')).toBeNull()
+  })
+
+  it('頁數很多時同樣有首頁、末頁與省略號（省略號不是連結）', () => {
+    render(<Pagination current={10} total={30} hrefFor={hrefFor} />)
+    expect(links().map(([label]) => label)).toEqual(['上一頁', '1', '9', '11', '30', '下一頁'])
+    expect(screen.getAllByText('…')).toHaveLength(2)
+  })
+
+  it('沒給 hrefFor 的既有用法完全不變（仍是按鈕＋onChange，賣家後台等列表在用）', () => {
+    render(<Pagination current={2} total={3} onChange={() => {}} />)
+    expect(screen.queryAllByRole('link')).toHaveLength(0)
+    expect(screen.getAllByRole('button')).toHaveLength(5)
+  })
+})

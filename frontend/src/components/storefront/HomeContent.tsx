@@ -8,10 +8,11 @@ import { SortToolbar } from "@/components/storefront/SortToolbar"
 import { ProductCard } from "@/components/storefront/ProductCard"
 import { Pagination } from "@/components/ui/pagination"
 import { Skeleton } from "@/components/ui/skeleton"
-import listingService from "@/services/listing"
+import listingService, { type Listing, type Page } from "@/services/listing"
 import { useAsyncData } from "@/hooks/useAsyncData"
 import { Button } from "@/components/ui/button"
 import { PageTitle } from '@/components/ui/page-title'
+import { LIST_PAGE_SIZE as PAGE_SIZE, SORT_MAP } from "@/lib/public-api"
 
 const CATEGORIES = [
   { id: "all", label: "全部商品" },
@@ -25,13 +26,16 @@ const SORT_TABS = [
   { id: "priceDesc", label: "價格高到低" },
 ]
 
-const SORT_MAP: Record<string, { sortBy: string; sortDir: "ASC" | "DESC" }> = {
-  newest: { sortBy: "createdAt", sortDir: "DESC" },
-  priceAsc: { sortBy: "basePrice", sortDir: "ASC" },
-  priceDesc: { sortBy: "basePrice", sortDir: "DESC" },
+/** 首頁網址：篩選條件都在 query 裡（只帶非預設值），第 1 頁不帶 page；page 是 0-based，網址是 1-based。 */
+function homeHref(cat: string, sortTab: string, keyword: string, page: number): string {
+  const params = new URLSearchParams()
+  if (cat !== "all") params.set("type", cat)
+  if (sortTab !== "newest") params.set("sort", sortTab)
+  if (keyword) params.set("keyword", keyword)
+  if (page > 0) params.set("page", String(page + 1)) // URL 為 1-based
+  const qs = params.toString()
+  return qs ? `/?${qs}` : "/"
 }
-
-const PAGE_SIZE = 12
 
 export interface HomeContentProps {
   /** 分類（all/product/room），由 server page 依 URL `type` 解析 */
@@ -42,6 +46,8 @@ export interface HomeContentProps {
   keyword: string
   /** 0-based 頁碼，由 server page 依 URL `page` 解析 */
   page: number
+  /** 伺服器端已取好的這一頁（SEO 的伺服器端渲染，DEF-500）：有就直接用、不再請求；沒有（沒取到）就由瀏覽器自己載入 */
+  initialResult?: Page<Listing>
 }
 
 // 首頁內容區（DEF-020：URL-driven 篩選）。篩選/排序/分頁改由 router.push 更新 URL query，
@@ -51,7 +57,11 @@ export interface HomeContentProps {
 // DEF-358(a)（Sprint 259）：改呼叫跨店鋪公開端點 getPublicListings（匿名可用，比照 PRD §12.7
 // 「Guest 可瀏覽所有商品與房源」），取代先前需登入的 getListings——先前 401/403 時顯示
 // 「登入後即可瀏覽精選商品」的 needsAuth 分支因此移除，不再是必要狀態。
-export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
+//
+// SEO（DEF-500，Sprint 341）：首頁是整站最重要的入口。server page 先取好這一頁的商品／房源以 initialResult 傳進來，
+// 第一份 HTML 就有商品卡片與連結；分頁是真正的連結，搜尋引擎能沿著它走到第 2 頁以後。
+// 分類、排序仍是按鈕：分類對應的列表有專屬頁面（/products、/rooms，各自可被收錄），排序只是同一批資料的另一種排列。
+export function HomeContent({ cat, sortTab, keyword, page, initialResult }: HomeContentProps) {
   const router = useRouter()
   const { data: result, error, loading, reload } = useAsyncData(
     () => {
@@ -66,7 +76,7 @@ export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
       })
     },
     [cat, sortTab, keyword, page],
-    { errorMessage: "載入失敗，請稍後再試" }
+    { errorMessage: "載入失敗，請稍後再試", initialData: initialResult }
   )
   // 失敗時不顯示舊資料（與原本失敗後清成 null 相同）
   const data = error === null ? result : undefined
@@ -74,23 +84,13 @@ export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
   // 更新 URL query（保留其他篩選）。篩選變更預設回第 1 頁。
   const navigate = useCallback(
     (next: { cat?: string; sort?: string; page?: number }) => {
-      const c = next.cat ?? cat
-      const s = next.sort ?? sortTab
-      const p = next.page ?? 0
-      const params = new URLSearchParams()
-      if (c !== "all") params.set("type", c)
-      if (s !== "newest") params.set("sort", s)
-      if (keyword) params.set("keyword", keyword)
-      if (p > 0) params.set("page", String(p + 1)) // URL 為 1-based
-      const qs = params.toString()
-      router.push(qs ? `/?${qs}` : "/")
+      router.push(homeHref(next.cat ?? cat, next.sort ?? sortTab, keyword, next.page ?? 0))
     },
     [cat, sortTab, keyword, router]
   )
 
   const handleSelectCat = (id: string) => navigate({ cat: id, page: 0 })
   const handleSort = (id: string) => navigate({ sort: id, page: 0 })
-  const handlePageChange = (oneBased: number) => navigate({ page: oneBased - 1 })
   const handleRetry = () => {
     reload()
   }
@@ -171,7 +171,7 @@ export function HomeContent({ cat, sortTab, keyword, page }: HomeContentProps) {
         <Pagination
           current={page + 1}
           total={data.totalPages}
-          onChange={handlePageChange}
+          hrefFor={(oneBased) => homeHref(cat, sortTab, keyword, oneBased - 1)}
         />
       )}
     </StorefrontShell>

@@ -57,3 +57,22 @@ describe('StoreFeaturedListings', () => {
     expect(screen.queryByTestId('store-featured-error')).toBeNull()
   })
 })
+
+// DEF-500（Sprint 341）：SEO 的伺服器端渲染。server page 先取好精選清單，第一份 HTML 就有商品卡片與連結。
+describe('StoreFeaturedListings：伺服器端帶來的初始資料（initialFeatured）', () => {
+  it('第一個畫面就有精選商品卡（同步就找得到＝在第一份 HTML 裡），而且不再向後端請求', async () => {
+    render(<StoreFeaturedListings slug="demo" initialFeatured={listingsPage([listing])} />)
+
+    expect(screen.getByText('精選的商品')).toBeTruthy()
+    expect(screen.getByTestId('store-featured-listings')).toBeTruthy()
+    await waitFor(() => expect(getListings).not.toHaveBeenCalled())
+  })
+
+  it('伺服器端帶來的是空清單（店主沒勾選精選）→ 這一區不顯示，不是載入中骨架', async () => {
+    const { container } = render(<StoreFeaturedListings slug="demo" initialFeatured={listingsPage([])} />)
+
+    expect(container.querySelector('.animate-pulse')).toBeNull()
+    expect(screen.queryByTestId('store-featured-listings')).toBeNull()
+    await waitFor(() => expect(getListings).not.toHaveBeenCalled())
+  })
+})

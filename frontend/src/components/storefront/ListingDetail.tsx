@@ -4,8 +4,9 @@ import { useState } from "react"
 import Link from "next/link"
 import { Droplets, Star } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import listingService from "@/services/listing"
+import listingService, { type Listing } from "@/services/listing"
 import { useAsyncData } from "@/hooks/useAsyncData"
+import { useIsClient } from "@/hooks/useIsClient"
 import cartService from "@/services/cart"
 import { notifyCartChanged } from "@/services/cartEvents"
 import bookingService, { type AvailabilityResponse } from "@/services/booking"
@@ -16,6 +17,7 @@ import { Input } from "@/components/ui/input"
 import { PageTitle } from "@/components/ui/page-title"
 import { buttonVariants, Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/states"
+import { ListingNotFound } from "@/components/storefront/ListingNotFound"
 import { getApiErrorInfo } from '@/lib/api-error'
 
 type LoadState = "loading" | "ok" | "auth" | "notfound" | "error"
@@ -45,12 +47,25 @@ function unavailableReasonText(reason: string): string {
 
 // 買家商品詳情內容（client）：載入 GET /v2/listings/{id}，三態處理，
 // PRODUCT → 數量 + 加入購物車；ROOM → 日期選擇 + 計價 + 加入購物車（帶日期）。
-export function ListingDetail({ id }: { id: string }) {
+//
+// SEO（DEF-500，Sprint 341）：server page 先取好商品以 initialListing 傳進來，第一份 HTML 就有商品名稱、價格、說明與圖片
+// （以前是載入中骨架）。商品不存在由伺服器端直接回真正的 404（listings/[id]/not-found.tsx，與下面的備援畫面共用 ListingNotFound）；
+// 沒取到（逾時、後端壞了、需要登入的舊行為）就不傳，由瀏覽器自己載入並照舊處理各種失敗。
+export function ListingDetail({ id, initialListing }: { id: string; initialListing?: Listing }) {
   const { data: listing, error, errorInfo, loading, reload } = useAsyncData(
     () => listingService.getListingById(id),
     [id],
-    { errorMessage: "載入商品失敗" }
+    { errorMessage: "載入商品失敗", initialData: initialListing }
   )
+  // 整月日曆的第一個畫面依賴「現在的時間」（本月是幾月、今天是哪一天）：伺服器（容器通常是 UTC）與訪客瀏覽器（台灣 UTC+8）
+  // 在月底／午夜前後算出不同的月份與日期，hydration 會因文字不符而丟掉伺服器的 HTML。日曆不是搜尋引擎要收錄的內容，
+  // 所以只在瀏覽器渲染，伺服器端（與 hydration 期間）先放同樣大小的佔位（DEF-500，Sprint 341）。
+  //
+  // 同一個 isClient 也讓下單相關的互動控制項（日期、數量、查詢可用性、加入購物車）在 hydration 完成前保持停用：
+  // 內容改由伺服器渲染之後，這些控制項在第一份 HTML 就出現了，但事件處理還沒接上——這時輸入的日期與數量會在 hydration 時被
+  // 重設、點擊沒有任何反應（以前它們要等用戶端載入完才出現，天然避開了這個空窗）。停用讓使用者看得出「還沒準備好」，
+  // 而且自動化測試的 fill／click 會等到它可用。
+  const isClient = useIsClient()
   const status = errorInfo?.status
   const state: LoadState = loading
     ? "loading"
@@ -177,19 +192,7 @@ export function ListingDetail({ id }: { id: string }) {
   }
 
   if (state === "notfound") {
-    return (
-      <EmptyState
-        data-testid="listing-notfound"
-        className="py-24"
-        title="找不到這個商品"
-        description="商品可能已下架或不存在"
-        action={
-          <Link href="/" className={buttonVariants({ variant: "outline" })}>
-            回首頁逛逛
-          </Link>
-        }
-      />
-    )
+    return <ListingNotFound />
   }
 
   if (state === "error" || !listing) {
@@ -266,19 +269,23 @@ export function ListingDetail({ id }: { id: string }) {
         {/* ROOM：日期選擇 + 計價 */}
         {isRoom && (
           <div className="flex flex-col gap-3 rounded-lg border border-rs-hairline p-4">
-            <MonthCalendar
-              roomListingId={id}
-              checkIn={checkIn}
-              checkOut={checkOut}
-              basePrice={listing.basePrice}
-              currency={listing.currency}
-              onSelectRange={(ci, co) => {
-                setCheckIn(ci)
-                setCheckOut(co)
-                setAvailability(null)
-                setAvailError(null)
-              }}
-            />
+            {isClient ? (
+              <MonthCalendar
+                roomListingId={id}
+                checkIn={checkIn}
+                checkOut={checkOut}
+                basePrice={listing.basePrice}
+                currency={listing.currency}
+                onSelectRange={(ci, co) => {
+                  setCheckIn(ci)
+                  setCheckOut(co)
+                  setAvailability(null)
+                  setAvailError(null)
+                }}
+              />
+            ) : (
+              <div data-testid="listing-calendar-placeholder" aria-hidden className="min-h-72 rounded bg-rs-tertiary animate-pulse" />
+            )}
             <div className="flex flex-col gap-1 sm:flex-row sm:gap-4">
               <Label className="flex flex-col gap-1">
                 入住日期
@@ -287,6 +294,7 @@ export function ListingDetail({ id }: { id: string }) {
                   data-testid="listing-checkin"
                   value={checkIn}
                   onChange={(e) => setCheckIn(e.target.value)}
+                  disabled={!isClient}
                   className="w-auto"
                 />
               </Label>
@@ -297,6 +305,7 @@ export function ListingDetail({ id }: { id: string }) {
                   data-testid="listing-checkout"
                   value={checkOut}
                   onChange={(e) => setCheckOut(e.target.value)}
+                  disabled={!isClient}
                   className="w-auto"
                 />
               </Label>
@@ -305,7 +314,7 @@ export function ListingDetail({ id }: { id: string }) {
               variant="outline"
               type="button"
               onClick={handleCheckAvailability}
-              disabled={checking}
+              disabled={checking || !isClient}
               className="self-start"
             >
               {checking ? "查詢中…" : "查詢可用性"}
@@ -390,6 +399,7 @@ export function ListingDetail({ id }: { id: string }) {
                 const v = parseInt(e.target.value, 10)
                 if (!isNaN(v) && v >= 1 && v <= 999) setQuantity(v)
               }}
+              disabled={!isClient}
               className="w-20 text-center"
             />
           </Label>
@@ -401,7 +411,7 @@ export function ListingDetail({ id }: { id: string }) {
             variant="default"
             type="button"
             onClick={handleAddToCart}
-            disabled={adding || roomAddBlocked}
+            disabled={adding || roomAddBlocked || !isClient}
             data-testid="listing-add-cart"
             className="gap-2"
           >

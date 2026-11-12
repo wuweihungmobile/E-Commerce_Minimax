@@ -4,17 +4,19 @@ import { ProductCard } from "@/components/storefront/ProductCard"
 import { ErrorState } from "@/components/ui/states"
 import { Skeleton } from "@/components/ui/skeleton"
 import storefrontService from "@/services/storefront"
+import type { Listing, Page } from "@/services/listing"
 import { useAsyncData } from "@/hooks/useAsyncData"
-
-const FEATURED_LIMIT = 8
+import { FEATURED_LIMIT } from "@/lib/public-api"
 
 // 店鋪前台首頁「精選商品/房源」區塊（PRD §11.3.1 <StoreFeaturedListings/>；PRD §12.7；
 // DEF-321(b)，Sprint 252）。StoreOwner 於商品/房源編輯表單勾選「精選」後顯示於此。
-export function StoreFeaturedListings({ slug }: { slug: string }) {
+// SEO（DEF-500，Sprint 341）：server page 先取好精選清單以 initialFeatured 傳進來，第一份 HTML 就有商品卡片與連結；
+// 沒取到就不傳，由瀏覽器自己載入。
+export function StoreFeaturedListings({ slug, initialFeatured }: { slug: string; initialFeatured?: Page<Listing> }) {
   const { data: featured, error, reload } = useAsyncData(
     () => storefrontService.getStoreListings(slug, { featured: true, size: FEATURED_LIMIT }),
     [slug],
-    { errorMessage: "載入精選商品失敗" }
+    { errorMessage: "載入精選商品失敗", initialData: initialFeatured }
   )
 
   // 載入失敗要讓使用者看得出來並能重試（DEF-468：原本當成「沒有精選」而整塊消失，分不出是店主沒設定還是載入壞了）。

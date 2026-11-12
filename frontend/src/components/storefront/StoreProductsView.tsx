@@ -2,12 +2,25 @@
 
 import { StoreLayout } from "@/components/storefront/StoreLayout"
 import { StoreListingGrid } from "@/components/storefront/StoreListingGrid"
+import type { StoreProfile } from "@/services/storefront"
+import type { Listing, Page } from "@/services/listing"
 
 // 與 StoreHomeView 同理：獨立 client component 以符合 RSC 函式 prop 限制。
-export function StoreProductsView({ slug, page }: { slug: string; page: number }) {
+// initialProfile／initialListings：伺服器端已取好的資料（SEO 的伺服器端渲染，DEF-500，Sprint 341）。
+export function StoreProductsView({
+  slug,
+  page,
+  initialProfile,
+  initialListings,
+}: {
+  slug: string
+  page: number
+  initialProfile?: StoreProfile
+  initialListings?: Page<Listing>
+}) {
   return (
-    <StoreLayout slug={slug} active="products">
-      {() => <StoreListingGrid key={page} slug={slug} type="PRODUCT" page={page} />}
+    <StoreLayout slug={slug} active="products" initialProfile={initialProfile}>
+      {() => <StoreListingGrid key={page} slug={slug} type="PRODUCT" page={page} initialListings={initialListings} />}
     </StoreLayout>
   )
 }

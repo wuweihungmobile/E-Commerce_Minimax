@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { StoreBlogView } from "@/components/storefront/StoreBlogView"
+import { loadStoreBlog, peekStoreProfile } from "@/lib/public-data"
 import { storeMetadata } from "@/lib/seo"
 
 // 標題用「店名｜部落格」（DEF-475，Sprint 335）；取不到店名就退回原本的頁型標題。
@@ -25,5 +26,19 @@ export default async function StoreBlogPage({
   const categoryRaw = typeof sp.category === "string" ? sp.category.trim() : ""
   const categoryId = categoryRaw === "" ? undefined : categoryRaw
 
-  return <StoreBlogView slug={slug} page={page} categoryId={categoryId} />
+  // SEO（DEF-500，Sprint 341）：店鋪資料、分類與這一頁的貼文在伺服器端取、隨第一份 HTML 送出；店鋪不存在由
+  // stores/[slug]/layout.tsx 回真正的 404；後端暫時不可用就不帶資料，元件退回由瀏覽器自己載入。
+  const profile = await peekStoreProfile(slug)
+  const blog = profile ? await loadStoreBlog(profile.tenantId, page, categoryId) : {}
+
+  return (
+    <StoreBlogView
+      slug={slug}
+      page={page}
+      categoryId={categoryId}
+      initialProfile={profile}
+      initialCategories={blog.categories}
+      initialPosts={blog.posts}
+    />
+  )
 }

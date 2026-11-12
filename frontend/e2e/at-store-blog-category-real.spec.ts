@@ -181,7 +181,8 @@ test.describe('AT-STORE-BLOG-CATEGORY-REAL: 店鋪貼文列表的分類篩選（
     await page.goto(blogUrl(`?category=${pagedId}`));
     await expect(page.getByTestId('store-blog-grid').getByRole('link')).toHaveCount(PAGE_SIZE);
 
-    await page.getByRole('navigation', { name: '分頁' }).getByRole('button', { name: '2' }).click();
+    // 分頁是真正的連結（DEF-500，Sprint 341）：搜尋引擎與不執行 JavaScript 的爬蟲只會沿著 <a href> 走
+    await page.getByRole('navigation', { name: '分頁' }).getByRole('link', { name: '2' }).click();
 
     await expect(page).toHaveURL(new RegExp(`/stores/${storeSlug}/blog\\?category=${pagedId}&page=2$`));
     await expect(page.getByTestId('store-blog-grid').getByRole('link')).toHaveCount(1);

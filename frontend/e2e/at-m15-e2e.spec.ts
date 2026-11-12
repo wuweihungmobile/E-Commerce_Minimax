@@ -262,11 +262,9 @@ test.describe('AT-M15-REAL: CMS／部落格／儀表板（真實後端，店主�
     await expect(page.getByText('找不到文章')).toHaveCount(0);
     await expect(page.getByText('請先登入並設定店鋪以瀏覽部落格')).toHaveCount(0);
 
-    const notFound = page.waitForResponse(
-      (r) => r.request().method() === 'GET' && new URL(r.url()).pathname.endsWith('/v2/posts/non-existent-slug-12345')
-    );
-    await page.goto(`/stores/${storeSlug}/blog/non-existent-slug-12345`);
-    expect((await notFound).status(), '不存在的 slug 後端應回 404').toBe(404);
+    // Sprint 341（DEF-500）：文章由伺服器端取，後端回 404 時頁面本身就是真正的 HTTP 404（瀏覽器不會再自己向後端要那一篇）
+    const missing = await page.goto(`/stores/${storeSlug}/blog/non-existent-slug-12345`);
+    expect(missing?.status(), '不存在的 slug：真正的 404').toBe(404);
     await expect(page.getByRole('heading', { name: '找不到文章' })).toBeVisible();
     await expect(page.getByRole('heading', { name: EMBED_TITLE })).toHaveCount(0);
   });

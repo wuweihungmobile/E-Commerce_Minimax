@@ -24,6 +24,12 @@ const ALLOWED: Record<string, { count: number; reason: string }> = {
     count: 1,
     reason: '嵌入商品卡預覽：失敗在 fetcher 內逐張處理，並在預覽區顯示「有 N 張無法載入」，hook 本身不會失敗',
   },
+  'components/storefront/StoreArticle.tsx': {
+    count: 1,
+    reason:
+      '瀏覽計數是輔助資訊（Sprint 341，DEF-500）：伺服器端渲染取文章不計瀏覽，瀏覽器載入頁面時才計一次並拿回含本次的瀏覽數；' +
+      '失敗只是數字少 1，文章全文已由伺服器端帶來，不影響閱讀。文章本身載入失敗（沒有伺服器資料時）另有錯誤畫面',
+  },
   // ---- 已登記待修的缺陷：失敗被畫成「沒有資料」或讓使用者卡住，修好就從這裡移除 ----
   // （目前沒有：Sprint 332 登記的 DEF-471～473 已在 Sprint 333 全部修好並移除）
 }

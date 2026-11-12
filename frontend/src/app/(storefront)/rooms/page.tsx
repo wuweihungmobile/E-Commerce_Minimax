@@ -1,5 +1,8 @@
 import type { Metadata } from "next"
 import { ListingTypeBrowser } from "@/components/storefront/ListingTypeBrowser"
+import { LIST_PAGE_SIZE, publicListingsPath, SORT_MAP } from "@/lib/public-api"
+import { dataOrUndefined, fetchPublic } from "@/lib/server-api"
+import type { Listing, Page } from "@/services/listing"
 
 export const metadata: Metadata = {
   title: '房源',
@@ -22,6 +25,12 @@ export default async function RoomsPage({
   const pageRaw = typeof sp.page === "string" ? parseInt(sp.page, 10) : 1
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw - 1 : 0
 
+  // SEO（DEF-500，Sprint 341）：這一頁在「伺服器端」取、隨第一份 HTML 送出（做法同首頁）；取不到就不帶資料，由瀏覽器自己載入。
+  const { sortBy, sortDir } = SORT_MAP[sortTab] ?? SORT_MAP.newest
+  const result = await fetchPublic<Page<Listing>>(
+    publicListingsPath({ page, size: LIST_PAGE_SIZE, type: "room", keyword: keyword || undefined, sortBy, sortDir })
+  )
+
   return (
     <ListingTypeBrowser
       key={`${sortTab}|${keyword}|${page}`}
@@ -31,6 +40,7 @@ export default async function RoomsPage({
       sortTab={sortTab}
       keyword={keyword}
       page={page}
+      initialResult={dataOrUndefined(result)}
     />
   )
 }

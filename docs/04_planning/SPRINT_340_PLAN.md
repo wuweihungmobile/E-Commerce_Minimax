@@ -209,12 +209,14 @@ Sprint 339 總結寫「不需要你決定」，沒有點名下一個要做的項
 | `npm run lint`（`--max-warnings 0`） | 通過（退出碼 0） |
 | `tsc --noEmit` | 通過（退出碼 0） |
 | 完整本機 E2E 守門（`make validate-e2e`） | **389／389 全過（9.0 分）**；守門統計的認證端點被限流 0 次（Sprint 339：389／389、9.6 分；這輪沒有新增或刪除 E2E 案例，案例數相同） |
-| 後端單元／整合測試 | **未執行**：這輪沒有動後端程式（`git diff` 只有前端與文件）；pre-commit 的核心測試與雲端 CI 會跑 |
+| 後端單元／整合測試 | 本機**未執行**：這輪沒有動後端程式（`git diff` 只有前端與文件）；雲端 CI 的整合 job 跑了 **1053／0／0 跳過**（與 Sprint 339 相同）、單元 job success（`mvn test -q`，雲端日誌不印總數） |
 | 守門收尾 | 埠全部釋放、0 個容器；守門留下 2 個匿名卷（建立於 13:04:46～47，帶 `com.docker.volume.anonymous` 標籤），已逐一刪除；`docker volume ls -f dangling=true` 回到只剩 5 個既有具名卷 |
 
 ### 7.5 push 與雲端 CI
 
-（待填）
+- **push**：`22800e61..25e25d81`，3 個 commit——Sprint 338／339 的純文件回填 `08acda04`、Sprint 340 的程式 commit `0da61125`＋文件 commit `25e25d81`。pre-push 輕量守門（`make validate-push`：backend-unit＋schema 漂移＋frontend，act）全過，沒有用 `--no-verify`。push 前先等機器負載降下來：兩個 commit 之後負載平均一度是 16.88／24.33／20.77（1／5／15 分鐘），當時 `ps` 看到的是 IDE 渲染行程與 Spotlight 的 `mdworker`（**成因只是推測，沒有證實**），等了約 6 分鐘、1 分鐘負載降到 5.94 才 push。
+- **雲端 CI 全綠**：run [43163307237](https://github.com/wuweihungmobile/E-Commerce_Minimax/actions/runs/43163307237)，`headSha` `25e25d81` 與本機一致，三個 job 皆 success（以 `gh run view --json` 取得 run 層級結論、逐 job 檢查沒有非 success／skipped 的步驟）：Backend Unit Tests（`mvn test -q`，雲端日誌不印總數；Checkstyle 0 違規）、Frontend Lint & Build（Vitest **37 檔 374／0**、`Compiled successfully`）、Backend Integration Tests & Package（整合 **1053／0／0 跳過**、Checkstyle 0 違規、PMD 通過、BUILD SUCCESS 9 分 27 秒）；整個 run 約 13 分鐘（05:43:47Z → 05:56:50Z）。
+- **雲端沒有 e2e job**（`act-compat.yml` 只有三個 job），所以完整 E2E 守門 389／389 只有本機證據（Sprint 338 計畫書曾誤寫成有，已在 Sprint 339 回填時更正）。
 
 ## 8. 行為變更與已知限制
 
@@ -248,6 +250,7 @@ Sprint 339 總結寫「不需要你決定」，沒有點名下一個要做的項
 6. **我先前對你說突變驗證是「22 個」，實際是 20 個**（G 10＋D 8＋C 2）；以驅動輸出為準。
 7. **zsh 的 `${PIPESTATUS[0]}`** 在管線後是空的（zsh 叫 `pipestatus`），第一次型別檢查與 lint「沒輸出」不等於通過；改成不接管線直接取退出碼。
 8. **S339 計畫書 §6.2 的說法要更正**：「不能說這輪讓它變多或變少」。現在知道成因是預取放大（Sprint 335 的 `generateMetadata` 起就存在，不是 Sprint 339 才有）；Sprint 339 新增的 `/blog`（視窗內 8 張卡片＝16 個、捲過 12 張＝24 個伺服器端請求／次瀏覽）與 5 個改過的規格增加了這類頁面的瀏覽次數，所以**不能說 Sprint 339 完全無關**——但相對 Sprint 338 增加多少沒有量化。已在 S339 計畫書 §6.2 加更正註記。
+9. **雲端日誌第一次下載失敗，我還白等了約 7 分鐘**：`gh api …/jobs/<id>/logs` 的回應含終端機跳脫字元時要加 `--allow-escape-sequences`（我的記憶裡早就有這一條，沒有先套用）。前兩個小日誌立刻失敗，整合 job 的 70 MB 下載卻是整份下載完才報同一個錯；我看到前兩個的錯誤訊息後停掉它（只殺我自己起的那個 `gh` 行程）並重下。
 
 ## 10. 追蹤表的變動
 
@@ -276,8 +279,8 @@ Sprint 339 總結寫「不需要你決定」，沒有點名下一個要做的項
 | `DEF-487` 伺服器端標題請求 | ✅ 已量測（修改前 77% 的後端請求來自 Next 伺服器）；政策部分仍未修 |
 | `DEF-500` ① 初始 HTML | ✅ 已量測（平台 `/blog` 12 張卡片 0 張） |
 | 新登記 | `DEF-501`（部署拓撲） |
-| 程式 commit | `0da61125`（尚未 push，見 §7.5） |
-| push 與雲端 CI | （待填） |
+| 程式 commit | `0da61125`（已 push）；文件 commit `25e25d81`（已 push） |
+| push 與雲端 CI | ✅ 已 push（`22800e61..25e25d81`）；雲端 CI 全綠：run 43163307237 三個 job 皆 success（見 §7.5） |
 
 ---
 
